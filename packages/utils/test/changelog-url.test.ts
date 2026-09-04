@@ -7,7 +7,7 @@
  * worst kind of bug for a link, because it looks like it worked. So these tests
  * pin the exact string rather than asserting it merely contains the version.
  *
- * The format is owned by `website/tools/gen-changelog.mjs`, which writes
+ * The format is owned by `apps/site/tools/gen-changelog.mjs`, which writes
  * `<h2 id="v1-2-3">` for version `1.2.3`. If that generator ever changes its
  * anchor scheme, this suite is the thing that says so.
  */

@@ -85,7 +85,7 @@ fi
 tool_views=$scripts_dir/../src/export/html/tool-views.generated.js
 if [ ! -f "$tool_views" ]; then
 	echo "veyyon: regenerating missing build artifact (tool-views.generated.js)..." >&2
-	if ! bun --cwd="$scripts_dir/../../collab-web" run gen:tool-views >&2; then
+	if ! bun --cwd="$scripts_dir/../../../clients/web" run gen:tool-views >&2; then
 		echo "veyyon: could not regenerate it. Run: cd $scripts_dir/../../.. && bun install" >&2
 		exit 1
 	fi

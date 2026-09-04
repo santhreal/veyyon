@@ -42,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
+        <link rel="stylesheet" href="../theme/veyyon-f68aa443.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-678b97de.js";
+            window.path_to_searchindex_js = "../searchindex-2f73885e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -269,7 +269,7 @@ https://web.example/collab/#relay.example.com/r/&lt;roomId&gt;.&lt;key&gt;   →
 <p>Everything that mutates the host session or machine is host-only: <code>/model</code>, <code>/compact</code>, <code>/resume</code>, <code>/branch</code>, bash (<code>!</code>), python (<code>$</code>), skills, etc. Guests keep a small local allowlist (<code>/dump</code>, <code>/export</code>, <code>/copy</code>, <code>/welcome</code> (aliased <code>/help</code>), <code>/hotkeys</code>, <code>/settings</code>, <code>/leave</code>, <code>/collab</code>, <code>/exit</code>, <code>/quit</code>).</p>
 <p>Known v1 limit for guests: a turn already streaming when you join becomes visible from its next message boundary.</p>
 <h2 id="web-client"><a class="header" href="#web-client">Web client</a></h2>
-<p><code>packages/collab-web</code> is a standalone browser client for the same links, no veyyon install needed on the guest side. The relay serves it at <code>/</code>, which is what makes the <code>/collab</code> deep link click-to-join: <code>https://&lt;relay&gt;/#&lt;link&gt;</code> loads the client and auto-connects from the fragment. It renders the live transcript (streaming text, thinking, tool cards), a subagent panel with on-demand transcripts, and a composer with the same guest powers (prompt, interrupt, hub actions). Run <code>bun run dev</code> in the package for a local instance, <code>bun run mock-host</code> for an offline scripted host to develop against, and <code>bun run build</code> to emit a static <code>dist/</code> deployable anywhere (HTTPS required for WebCrypto). The client never talks to anything but the relay, and the key stays in the URL fragment.</p>
+<p><code>clients/web</code> is a standalone browser client for the same links, no veyyon install needed on the guest side. The relay serves it at <code>/</code>, which is what makes the <code>/collab</code> deep link click-to-join: <code>https://&lt;relay&gt;/#&lt;link&gt;</code> loads the client and auto-connects from the fragment. It renders the live transcript (streaming text, thinking, tool cards), a subagent panel with on-demand transcripts, and a composer with the same guest powers (prompt, interrupt, hub actions). Run <code>bun run dev</code> in the package for a local instance, <code>bun run mock-host</code> for an offline scripted host to develop against, and <code>bun run build</code> to emit a static <code>dist/</code> deployable anywhere (HTTPS required for WebCrypto). The client never talks to anything but the relay, and the key stays in the URL fragment.</p>
 <p>Set <code>collab.webUrl</code> when the browser UI is hosted separately from the websocket relay. When empty, <code>/collab</code> derives <code>http(s)://host[:port]</code> from <code>collab.relayUrl</code>; explicit web UI URLs must use <code>https://</code> except for <code>http://localhost</code> development origins. The generated browser URL still contains the relay-specific collab link in the fragment.</p>
 <h2 id="settings"><a class="header" href="#settings">Settings</a></h2>
 <div class="table-wrapper">

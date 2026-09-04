@@ -127,7 +127,7 @@ are covered.
 | A tool (read, bash, edit, grep) | `packages/coding-agent/src/` tools + `docs/internal/*-tool-runtime.md` |
 | A provider / model | `packages/ai`, `packages/catalog`, and [adding-a-provider.md](adding-a-provider.md) |
 | A Rust hot path | `natives/` + [natives-architecture.md](natives-architecture.md) |
-| The website / docs | `website/`, `docs/handbook/src/`, this `docs/internal/` tree |
+| The website / docs | `apps/site/`, `docs/handbook/src/`, this `docs/internal/` tree |
 
 ## Conventions
 

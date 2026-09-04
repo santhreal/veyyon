@@ -24,8 +24,8 @@ export const ALLOWLIST: Readonly<Record<string, string>> = {
 	"natives/bridge/bindings/scripts/ensure-native.ts": "bootstraps native addon before @veyyon/utils is available",
 	"natives/bridge/bindings/scripts/native-portability.ts": "bootstraps native addon before @veyyon/utils is available",
 	"natives/bridge/bindings/test/native.test.ts": "native addon test suite running without @veyyon/utils dependency",
-	"python/veybot/web/scripts/verify-cards.ts": "standalone python extension verification script",
-	"python/veybot/web/scripts/verify-live.ts": "standalone python extension verification script",
+	"clients/python/veybot/web/scripts/verify-cards.ts": "standalone python extension verification script",
+	"clients/python/veybot/web/scripts/verify-live.ts": "standalone python extension verification script",
 	"scripts/one-owner-answers-a-command-lookup.test.ts": "quotes the owner call to assert the owner implements it",
 	"scripts/tests-never-touch-real-home.test.ts": "quotes Bun.which in static test fixture string",
 };

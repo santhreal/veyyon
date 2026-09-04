@@ -10,7 +10,7 @@ import { $ } from "bun";
  * `docs/internal/README.md` says implementation docs live under
  * `docs/internal/`, but the tree has always disagreed: `ARCHITECTURE.md`,
  * `packages/coding-agent/DEVELOPMENT.md`, `packages/coding-agent/docs/modal-shell.md`
- * and `python/veybot/docs/pr-review-handoff.md` are first-party design and
+ * and `clients/python/veybot/docs/pr-review-handoff.md` are first-party design and
  * implementation notes sitting beside code. Some of those placements are right,
  * a subsystem map belongs next to the subsystems it maps and a standalone
  * published package cannot depend on this repository's docs, so the fix was

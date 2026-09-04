@@ -233,7 +233,7 @@ bun run gen:native:reset
 
 ## Orchestrator-side content-addressed build cache (veybot)
 
-When `veyyon-natives` is built inside the veybot orchestrator (`python/veybot/`), workspaces share built artifacts through a content-addressed cache instead of rebuilding from scratch in every per-issue worktree. The cache is **orchestrator-side only**, `bun --cwd=natives/bridge/bindings run build` itself is unchanged; the cache lives outside the build pipeline and is populated/captured around `ensure_workspace` and post-task success in `python/veybot/src/natives_cache.py`.
+When `veyyon-natives` is built inside the veybot orchestrator (`clients/python/veybot/`), workspaces share built artifacts through a content-addressed cache instead of rebuilding from scratch in every per-issue worktree. The cache is **orchestrator-side only**, `bun --cwd=natives/bridge/bindings run build` itself is unchanged; the cache lives outside the build pipeline and is populated/captured around `ensure_workspace` and post-task success in `clients/python/veybot/src/natives_cache.py`.
 
 ### What is cached
 

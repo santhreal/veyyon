@@ -185,7 +185,7 @@ describe("brand leak lock (SPEC-BRAND-LEAK-CODE)", () => {
 		// Pinned by exact equality: `argot` publishes standalone under its own name and `veybot-web` is
 		// private, so neither carries the scope. A new member outside it turns this red rather than
 		// shipping unscanned.
-		expect(outsideTheScope.sort()).toEqual(["plugins/argot", "python/veybot/web"]);
+		expect(outsideTheScope.sort()).toEqual(["clients/python/veybot/web", "plugins/argot"]);
 		expect(names.length).toBe(MEMBERS.length - outsideTheScope.length);
 		expect(names).toContain("@veyyon/kernel");
 		expect(names).toContain("@veyyon/tui");

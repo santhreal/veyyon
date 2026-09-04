@@ -953,7 +953,7 @@ export function analyzeSource(file: string, rawSource: string): Violation[] {
  *
  * And not only `<member>/test`. That was the second half of the same blind spot: a suite that sits
  * beside the module it tests was read by nothing, and two of them do -- `tests/simulations` places
- * its scenarios beside their harness, and `python/veybot/web` places both of its suites in `src`.
+ * its scenarios beside their harness, and `clients/python/veybot/web` places both of its suites in `src`.
  * The walk now crosses each member's whole tree and keeps a file that is a test or sits under a
  * `test` directory. Production modules stay out: `os.homedir()` in shipped code is how the product
  * finds its config, and a rule about test isolation has nothing to say about it.
@@ -1013,7 +1013,7 @@ describe("no test reaches outside its sandbox", () => {
 		expect(files).toContain("contracts/wire/test/seal.test.ts");
 		// The two shapes a `<member>/test` walk could not see: a suite beside its subject in `src`, and
 		// a member three levels down that no root glob reaches.
-		expect(files).toContain("python/veybot/web/src/work-items.contract.test.ts");
+		expect(files).toContain("clients/python/veybot/web/src/work-items.contract.test.ts");
 		expect(files.some(file => file.startsWith("natives/bridge/bindings/test/"))).toBe(true);
 	});
 

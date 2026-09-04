@@ -34,7 +34,7 @@ paths = [
   # Generated mdbook output. Every finding here is a rendered copy of a docs
   # example already scanned at its source under docs/handbook/src/.
   '''^docs/handbook/book/''',
-  '''^website/docs/''',
+  '''^apps/site/docs/''',
   # Test fixtures. A suite that proves a token is redacted, refused, or never
   # persisted has to contain a token, so these files are where fabricated
   # credentials live on purpose. This is the broadest entry here and the one that

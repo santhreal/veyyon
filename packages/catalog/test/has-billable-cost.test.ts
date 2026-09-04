@@ -106,7 +106,7 @@ describe("one owner", () => {
 	it("is defined once, and both former owners import it", async () => {
 		const sources = [
 			path.join(import.meta.dir, "../scripts/generate-models.ts"),
-			path.join(import.meta.dir, "../../stats/src/db.ts"),
+			path.join(import.meta.dir, "../../../apps/stats/src/db.ts"),
 		];
 
 		for (const file of sources) {

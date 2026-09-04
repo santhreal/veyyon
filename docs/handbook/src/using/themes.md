@@ -7,7 +7,7 @@ Veyyon's interface is built around near-black, near-white, silver structure (`#C
 
 | File | Name | Notes |
 | --- | --- | --- |
-| `defaults/titanium.json` | Titanium | **Default dark theme.** Pitch black `#000000`, silver `#C6CBD4`, ember accent `#F0862E`; mirrors the website tokens (`website/site.css`) |
+| `defaults/titanium.json` | Titanium | **Default dark theme.** Pitch black `#000000`, silver `#C6CBD4`, ember accent `#F0862E`; mirrors the website tokens (`apps/site/site.css`) |
 | `dark.json` | Veyyon Dark | Bundled alternative. Pitch black `#000000` / `#FAFAFA` / silver `#B8BDC7`; predates the ember accent |
 | `light.json` | Light | **Default light theme.** White `#FFFFFF` ground with dark-silver structure `#5C6470`, ember accent |
 

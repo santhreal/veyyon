@@ -270,7 +270,7 @@ export function documentationFiles(repoRoot: string): string[] {
 export async function checkDocImports(repoRoot: string, files?: readonly string[]): Promise<ImportCheckResult> {
 	const members = typeScriptMembersOf(repoRoot);
 	// The trees the failure message names: every one the manifest declares as a glob, plus the tree of
-	// every resolved member, which is what puts a literal member's tree (`python/veybot/web`) on the
+	// every resolved member, which is what puts a literal member's tree (`clients/python/veybot/web`) on the
 	// list. Naming all nineteen member paths says less than naming the four directories a reader would
 	// look in, and naming only the resolved trees would drop a declared tree this checkout does not
 	// carry -- the gate did look there.

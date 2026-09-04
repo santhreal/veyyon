@@ -31,7 +31,7 @@ import { commandText, workflowFiles, workflowTestPaths } from "./runner-referenc
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 
 /** The trees `repoScriptTests` draws from. Anything else is another bucket's job. */
-const ROOTS = ["scripts", "website/tools"] as const;
+const ROOTS = ["scripts", "apps/site/tools"] as const;
 
 /**
  * Directories that hold vendored or generated trees, never our own suites.
@@ -64,7 +64,7 @@ describe("the repo-level test list", () => {
 	it("finds the suites that are known to exist", () => {
 		expect(onDisk.length).toBeGreaterThan(30);
 		expect(onDisk).toContain("scripts/sync-root-changelog.test.ts");
-		expect(onDisk).toContain("website/tools/gen-changelog.test.ts");
+		expect(onDisk).toContain("apps/site/tools/gen-changelog.test.ts");
 	});
 
 	/** The silent gap: a suite written and never wired in runs nowhere. */

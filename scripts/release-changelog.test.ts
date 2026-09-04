@@ -250,7 +250,7 @@ describe("applyReleaseToChangelog", () => {
  * the roll above wrote no version section for v1.0.44, v1.0.45 or v1.0.46: three consecutive releases
  * were tagged and published with no changelog entry at all, while six (v1.0.40 through v1.0.45) sat
  * as unpublished drafts. Nothing in the cut noticed. The failure surfaced in the website build
- * (`reportUndocumentedReleases` in `website/tools/gen-changelog.mjs`, which reconciles published
+ * (`reportUndocumentedReleases` in `apps/site/tools/gen-changelog.mjs`, which reconciles published
  * releases against `packages/coding-agent/CHANGELOG.md`), which is to say it surfaced only after
  * v1.0.46 was already public and no longer fixable by not shipping it.
  *
@@ -314,7 +314,7 @@ describe("the release changelog gate", () => {
 			withChangelog.map(member => `${member}/CHANGELOG.md`).sort(),
 		);
 		expect(publishableWithout, "a publishable member with no CHANGELOG.md is invisible to the cut").toEqual([]);
-		// The recorded decision about which trees hold changelogs at all. `python/veybot/web` is
+		// The recorded decision about which trees hold changelogs at all. `clients/python/veybot/web` is
 		// private and ships none; a new tree that starts publishing turns this red until someone says so.
 		expect([...new Set(withChangelog.map(member => member.split("/")[0]))].sort()).toEqual([
 			"apps",

@@ -680,7 +680,7 @@ when `main` moved on during preparation.
 
 Full detail: [`docs/internal/deployment.md`](docs/internal/deployment.md).
 
-The website is a static site under `website/`, deployed to Cloudflare Pages.
+The website is a static site under `apps/site/`, deployed to Cloudflare Pages.
 
 - `bun run site:build` regenerates `changelog.html` from `packages/coding-agent/CHANGELOG.md`
   (fork-aware: veyyon releases vs inherited oh-my-pi history), stages the install scripts, and runs a
@@ -690,9 +690,9 @@ The website is a static site under `website/`, deployed to Cloudflare Pages.
   `/credentials/.env`). `--dry-run` prints the command without deploying.
 - Two Pages projects: `veyyon` serves `veyyon.dev`, and `veyyon-get` serves `get.veyyon.dev`, the
   install endpoint. Deploy the latter with `VEYYON_PAGES_PROJECT=veyyon-get bun run site:deploy`.
-- `website/docs` is a symlink to `docs/handbook/book`. Rebuild it with `mdbook build` in
+- `apps/site/docs` is a symlink to `docs/handbook/book`. Rebuild it with `mdbook build` in
   `docs/handbook` before deploying a docs change.
-- `site:build` stages gitignored copies of the installers as `website/install.{sh,ps1}`. The source
+- `site:build` stages gitignored copies of the installers as `apps/site/install.{sh,ps1}`. The source
   of truth is `scripts/install.{sh,ps1}`; edit those.
 
 `install.sh` resolves the platform, reads `github.com/santhreal/veyyon` `releases/latest`, downloads

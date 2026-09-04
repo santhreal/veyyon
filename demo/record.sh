@@ -135,7 +135,7 @@ fi
 python3 proof/webp-cadence.py "${WORK}/demo-hd.webp" --expect-ms 33 || true
 
 cp "${WORK}/demo-hd.webp" assets/demo-hd.webp
-cp "${WORK}/demo-hd.webp" website/demo-hd.webp
+cp "${WORK}/demo-hd.webp" apps/site/demo-hd.webp
 cp "${WORK}/demo-hd-cut.mp4" assets/demo-hd.mp4
 cp "${WORK}/demo-hd-cut.mp4" proof/captures/x11/demo-hd-cut.mp4
 cp "${WORK}/scene.mp4" proof/captures/x11/demo-hd.mp4

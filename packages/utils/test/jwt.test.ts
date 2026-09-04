@@ -63,7 +63,7 @@ describe("JWT-decode source lock", () => {
 
 	// The sweep is the shared collector, which walks every declared member at whatever depth it
 	// sits. The walk here read `<root>/<package>/src`, one level under each root, so
-	// `hosts/terminal/engine`, `natives/bridge/bindings`, `python/veybot/web` and `kernel` itself
+	// `hosts/terminal/engine`, `natives/bridge/bindings`, `clients/python/veybot/web` and `kernel` itself
 	// contributed nothing while the roots assertion below still listed them.
 	//
 	// Both shipped source and build scripts are in scope — a codegen script hand-rolled this decode

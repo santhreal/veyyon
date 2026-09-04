@@ -32,7 +32,7 @@ import { memberTopLevels, typeScriptMembers } from "./workspace-layout";
  *
  * WHY THIS IS NOT A ROOT GLOB. These were `new Glob("packages/*\/CHANGELOG.md")` and then
  * `<root>/*\/<fileName>`. A member declared as a literal path (`natives/bridge/bindings`,
- * `python/veybot/web`) is invisible to a root glob by construction: its version was never bumped,
+ * `clients/python/veybot/web`) is invisible to a root glob by construction: its version was never bumped,
  * its `[Unreleased]` was never rolled, and the release published it stale while every check read
  * green. The members now come from the resolved workspace member list, so a member at any depth is
  * covered with no edit here.
@@ -494,7 +494,7 @@ export async function validateReleaseVersionAuthorities(
 	// The changelog is an authority in the same sense as the manifests: it is the tree's own
 	// statement of what this version is, and the published surfaces read it. The website
 	// generator refuses to build when a PUBLISHED GitHub release has no `## [x.y.z]` section
-	// (website/tools/gen-changelog.mjs, reportUndocumentedReleases), and until this check
+	// (apps/site/tools/gen-changelog.mjs, reportUndocumentedReleases), and until this check
 	// existed that refusal was the FIRST thing to notice: v1.0.38 through v1.0.46 were each
 	// tagged at a tree with no section, so each one built binaries, published a release, and
 	// only then went red in `release_site_finalize` with the release already public and the

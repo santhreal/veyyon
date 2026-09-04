@@ -78,21 +78,21 @@ CPU*.md
 packages/coding-agent/binaries/
 
 # veybot runtime state
-python/veybot/data/
-python/veybot/.cache/
-python/veybot/src/static/
-python/veybot/web/dist/
-python/veybot/web/verify-out/
+clients/python/veybot/data/
+clients/python/veybot/.cache/
+clients/python/veybot/src/static/
+clients/python/veybot/web/dist/
+clients/python/veybot/web/verify-out/
 
 # veybot web is TypeScript-only (its tsconfig sets `noEmit`). A tsc emit landing
 # beside a source wins module resolution over the `.ts`/`.tsx` file, so a stale
 # twin silently truncates the bundle and shadows even vite.config.ts.
-python/veybot/web/src/**/*.js
-python/veybot/web/src/**/*.jsx
-python/veybot/web/scripts/**/*.js
-python/veybot/web/vite.config.js
+clients/python/veybot/web/src/**/*.js
+clients/python/veybot/web/src/**/*.jsx
+clients/python/veybot/web/scripts/**/*.js
+clients/python/veybot/web/vite.config.js
 /verify-out/
-python/veybot/.env
+clients/python/veybot/.env
 
 # Local, machine-specific boot perf baseline (see packages/coding-agent/scripts/bench-guard.ts)
 packages/coding-agent/bench/boot-baseline.json
@@ -133,7 +133,7 @@ natives/bridge/bindings/native/.build/
 # is friction with no safety value, since nothing here is ever built or shipped.
 .scratch/
 
-# get.veyyon.dev deploy tree (build artifact from website/build.mjs)
+# get.veyyon.dev deploy tree (build artifact from apps/site/build.mjs)
 /website-get/
 
 # Bun install cache, written into the repo root by some tool invocations.

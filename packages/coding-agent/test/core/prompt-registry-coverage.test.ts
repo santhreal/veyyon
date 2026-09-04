@@ -391,8 +391,7 @@ describe("a registry's directory is written down once", () => {
 		// found where it IS written, or the scan above proves nothing about uniqueness.
 		const found = (await workspaceSources()).filter(
 			source =>
-				!source.file.endsWith(".test.ts") &&
-				source.text.includes('"tests/evals/suites/typescript-edit/prompts"'),
+				!source.file.endsWith(".test.ts") && source.text.includes('"tests/evals/suites/typescript-edit/prompts"'),
 		).length;
 
 		expect(found).toBe(2);

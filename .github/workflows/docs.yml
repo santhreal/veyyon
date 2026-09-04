@@ -161,7 +161,7 @@ jobs:
 
   book-staleness:
     # The rendered handbook (docs/handbook/book) is committed because the
-    # website deploy serves it via the website/docs symlink. Committed build
+    # website deploy serves it via the apps/site/docs symlink. Committed build
     # output goes stale silently; this job fails when the committed book does
     # not match a fresh `mdbook build` of docs/handbook/src at the pinned
     # mdbook version (keep the pin in sync with the version contributors use).

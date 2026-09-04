@@ -48,7 +48,7 @@ const NEVER_A_MEMBER: ReadonlySet<string> = new Set(["node_modules", "target", "
  */
 const UNDOCUMENTED: ReadonlyMap<string, string> = new Map([
 	[
-		"python/veybot/web",
+		"clients/python/veybot/web",
 		"A build target for the Python client's web assets rather than a first-party library, and the table has never listed it.",
 	],
 ]);
@@ -116,7 +116,7 @@ describe("workspace member coverage in AGENTS.md", () => {
 		expect(directories).toContain("natives/search/glob");
 		expect(directories).toContain("natives/shell");
 		expect(directories).toContain("tests/conformance");
-		expect(directories).toContain("python/veybot/web");
+		expect(directories).toContain("clients/python/veybot/web");
 		expect(members.length).toBeGreaterThanOrEqual(30);
 	});
 
@@ -135,7 +135,6 @@ describe("workspace member coverage in AGENTS.md", () => {
 			"natives",
 			"packages",
 			"plugins",
-			"python",
 			"tests",
 		]);
 	});

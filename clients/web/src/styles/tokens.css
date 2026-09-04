@@ -1,6 +1,6 @@
 /* Design tokens — Veyyon brand palette: pitch-black ground, silver structure,
  * a single ember-sun accent (veyyōn = the sun). No purple/cyan/rainbow chrome,
- * no smooth gradients. Mirrors `website/site.css` :root (the reference
+ * no smooth gradients. Mirrors `apps/site/site.css` :root (the reference
  * implementation) and the `brand.md` identity contract. Dark is the default;
  * `[data-theme="light"]` and the prefers-color-scheme light fallback flip to
  * the white-ground light theme.
@@ -32,7 +32,7 @@
 	--accent-muted: rgba(240, 134, 46, 0.16);
 
 	/* brand lockup mark — the stepped ember sun (discrete bands, not a smooth
-	 * gradient), matching website/favicon.svg. */
+	 * gradient), matching apps/site/favicon.svg. */
 	--brand-mark: radial-gradient(circle, #ffca80 0 22%, #fb9e44 22% 44%, #f0862e 44% 66%, #c8590c 66% 100%);
 
 	/* status — used sparingly, only when the meaning fits */

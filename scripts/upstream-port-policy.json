@@ -45,7 +45,7 @@
 		},
 		{
 			"name": "branding, install, website, and CI",
-			"paths": ["packages/web/", "website/", "install.sh", "scripts/install.", ".github/"],
+			"paths": ["packages/web/", "apps/site/", "install.sh", "scripts/install.", ".github/"],
 			"note": "veyyon's brand, distribution, website, and workflows are locally owned. Never import upstream naming, release channels, or CI direction.",
 			"blocksCleanFeatures": true
 		},
@@ -65,7 +65,7 @@
 				"docs/internal/",
 				".github/workflows/",
 				"tests/evals/datasets/dicts/",
-				"python/veybot/"
+				"clients/python/veybot/"
 			],
 			"exact": [
 				".gitignore",

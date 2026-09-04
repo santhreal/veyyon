@@ -204,7 +204,7 @@ export async function verifyPublishedAssetManifest(tag: string): Promise<void> {
 /**
  * The one changelog every published version is read back from.
  *
- * `website/tools/gen-changelog.mjs` reconciles published GitHub releases against this single file and
+ * `apps/site/tools/gen-changelog.mjs` reconciles published GitHub releases against this single file and
  * `reportUndocumentedReleases` fails the website build for any published version missing from it. A
  * package changelog that documents nothing costs nothing; this one costs a public, undocumented
  * release, so it is the file a cut may never leave behind.

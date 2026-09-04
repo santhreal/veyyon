@@ -78,7 +78,7 @@ nothing in them is tracked:
 | Path | Written by |
 | --- | --- |
 | `runs/` | default artifact sink for the benchmark harnesses (`tests/evals`) |
-| `website-get/` | `website/build.mjs`, deployed to get.veyyon.dev by the `deploy_website` CI job |
+| `website-get/` | `apps/site/build.mjs`, deployed to get.veyyon.dev by the `deploy_website` CI job |
 | `relative-cache/` | Bun, at whatever directory it is invoked from |
 | `tests/evals/runs/` | benchmark trial output |
 | `tests/evals/.cache/` | vendored dataset checkouts (Terminal-Bench and friends) |

@@ -35,7 +35,7 @@ describe("collectPackageSourceFiles / collectPackageSources", () => {
 		expect(files.some(f => f.endsWith("/contracts/wire/src/relay.ts"))).toBe(true);
 		// And members declared as literal paths at depth.
 		expect(files.some(f => f.endsWith("/natives/bridge/bindings/src/sha256-sidecar.ts"))).toBe(true);
-		expect(files.some(f => f.endsWith("/python/veybot/web/src/view.ts"))).toBe(true);
+		expect(files.some(f => f.endsWith("/clients/python/veybot/web/src/view.ts"))).toBe(true);
 		// Every path is inside a declared root of this checkout, which is the property `PACKAGES_DIR`
 		// used to stand for while `packages/` was the only root.
 		const rootDirs = MEMBER_ROOTS.map(root => `${path.join(REPO_ROOT, root)}${path.sep}`);
@@ -90,7 +90,9 @@ describe("collectPackageSourceFiles / collectPackageSources", () => {
 		expect(memberKeyOf(path.join(REPO_ROOT, "natives", "bridge", "bindings", "src", "sha256-sidecar.ts"))).toBe(
 			"natives/bridge/bindings",
 		);
-		expect(memberKeyOf(path.join(REPO_ROOT, "python", "veybot", "web", "src", "view.ts"))).toBe("python/veybot/web");
+		expect(memberKeyOf(path.join(REPO_ROOT, "clients", "python", "veybot", "web", "src", "view.ts"))).toBe(
+			"clients/python/veybot/web",
+		);
 		expect(memberKeyOf(path.join(REPO_ROOT, "contracts", "wire", "src", "relay.ts"))).toBe("contracts/wire");
 		// A package under packages/ keeps its bare key without the packages/ prefix.
 		expect(memberKeyOf(path.join(PACKAGES_DIR, "utils", "src", "regex.ts"))).toBe("utils");
@@ -100,14 +102,14 @@ describe("collectPackageSourceFiles / collectPackageSources", () => {
 		expect(memberRelative(path.join(REPO_ROOT, "natives", "bridge", "bindings", "src", "sha256-sidecar.ts"))).toBe(
 			"natives/bridge/bindings/src/sha256-sidecar.ts",
 		);
-		expect(memberRelative(path.join(REPO_ROOT, "python", "veybot", "web", "src", "view.ts"))).toBe(
-			"python/veybot/web/src/view.ts",
+		expect(memberRelative(path.join(REPO_ROOT, "clients", "python", "veybot", "web", "src", "view.ts"))).toBe(
+			"clients/python/veybot/web/src/view.ts",
 		);
 		expect(memberRelative(path.join(PACKAGES_DIR, "utils", "src", "regex.ts"))).toBe("utils/src/regex.ts");
 
 		// memberRootOf extracts the top-level tree.
 		expect(memberRootOf("natives/bridge/bindings/src/sha256-sidecar.ts")).toBe("natives");
-		expect(memberRootOf("python/veybot/web/src/view.ts")).toBe("python");
+		expect(memberRootOf("clients/python/veybot/web/src/view.ts")).toBe("clients");
 		expect(memberRootOf("contracts/wire/src/relay.ts")).toBe("contracts");
 		expect(memberRootOf("utils/src/regex.ts")).toBe("packages");
 	});
@@ -128,7 +130,6 @@ describe("collectPackageSourceFiles / collectPackageSources", () => {
 			"natives",
 			"packages",
 			"plugins",
-			"python",
 			"tests",
 		]);
 	});

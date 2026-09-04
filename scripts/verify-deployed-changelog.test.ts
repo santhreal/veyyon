@@ -26,7 +26,7 @@ import { describe, expect, it } from "bun:test";
 
 import { changelogUrlForVersion, CHANGELOG_URL as SITE_CHANGELOG_URL } from "@veyyon/utils";
 // @ts-expect-error — plain .mjs module, no types; imported for its exports.
-import { releaseAnchor, renderRelease } from "../website/tools/gen-changelog.mjs";
+import { releaseAnchor, renderRelease } from "../apps/site/tools/gen-changelog.mjs";
 import { assertPublishedChangelog, publishedReleaseUrl } from "./verify-deployed-changelog";
 
 /** Versions whose anchors differ in shape, so a per-character transform is exercised. */

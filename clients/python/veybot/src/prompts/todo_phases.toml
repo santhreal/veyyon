@@ -1,0 +1,117 @@
+[[triage_issue]]
+name = "Classify"
+tasks = [
+  "Read the issue body + every prior comment",
+  "Call classify_issue with primary type + labels",
+]
+
+[[triage_issue]]
+name = "Respond"
+tasks = [
+  "Non-bug classifications: one gh_post_comment, then stop",
+  "Bug/documentation: read the failing code path, then ack naming the file and the mechanism",
+]
+
+[[triage_issue]]
+name = "Reproduce"
+tasks = [
+  "repro_record the minimal failing command and its verbatim output",
+  "gh_post_comment the evidence: fenced failure, path:line, Cause:, Next:",
+]
+
+[[triage_issue]]
+name = "Fix and publish"
+tasks = [
+  "Find the existing pattern in this repo that already solves this; copy its shape",
+  "Smallest diff at the cause, plus the test that would have caught it",
+  "gh_push_branch, then gh_open_pr with the Mirrors: line naming that pattern",
+  "One closing gh_post_comment: the PR number and the pattern the fix mirrors",
+]
+
+[[review_pr]]
+name = "Orient"
+tasks = [
+  "Call fetch_pr and read the changed files",
+  "Compare the PR head against its base",
+]
+
+[[review_pr]]
+name = "Classify"
+tasks = [
+  "Call classify_pr with rank, type, and areas",
+]
+
+[[review_pr]]
+name = "Review"
+tasks = [
+  "Stage inline findings with pr_review_comment",
+  "Call submit_pr_review once with the summary",
+]
+
+[[handle_comment]]
+name = "Follow up"
+tasks = [
+  "Read the new comment in full",
+  "Decide the action it demands",
+  "Apply the change, then gh_post_comment reply",
+]
+
+[[handle_review]]
+name = "Review response"
+tasks = [
+  "Read the review comment in full",
+  "Address the requested change in the worktree",
+  "gh_push_branch, then gh_post_comment reply",
+]
+
+[[port_upstream]]
+name = "Assess"
+tasks = [
+  "Read AGENTS.md, UPSTREAM.md, and the upstream PR diff in full",
+  "Find the local owner for every affected behavior",
+  "Decide applicable or not applicable, with local evidence",
+]
+
+[[port_upstream]]
+name = "Prove"
+tasks = [
+  "Fix: produce a failing negative control on unmodified veyyon",
+  "Feature: prove the capability is absent through the operator path",
+]
+
+[[port_upstream]]
+name = "Port"
+tasks = [
+  "Implement the smallest semantic change on the checked-out branch",
+  "Add one focused contract test; keep existing coverage intact",
+  "Fix: revert the production change and prove the test fails",
+]
+
+[[port_upstream]]
+name = "Publish"
+tasks = [
+  "Run the focused suite, the type check, and Biome; record counts",
+  "gh_push_branch, then gh_open_pr with Repro/Cause/Fix/Verification",
+  "Not applicable instead: mark_unable_to_reproduce with the evidence",
+]
+
+[[ci_repair]]
+name = "Diagnose"
+tasks = [
+  "Read the failing log; never infer the cause from the check name",
+  "Reproduce the failure locally with the narrowest command",
+]
+
+[[ci_repair]]
+name = "Repair"
+tasks = [
+  "Fix the owning path, never the symptom and never the gate",
+  "Re-run the failing gate, the owning suite, the type check, and Biome",
+]
+
+[[ci_repair]]
+name = "Report"
+tasks = [
+  "Commit, then gh_push_branch to the same branch",
+  "gh_post_comment with cause, fix, verification counts, and diff audit",
+]

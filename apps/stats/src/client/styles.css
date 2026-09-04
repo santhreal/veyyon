@@ -1250,7 +1250,7 @@
   height: 16px;
   border-radius: 50%;
   /* the stepped ember sun (discrete bands, not a smooth gradient), matching
-     website/favicon.svg */
+     apps/site/favicon.svg */
   background: radial-gradient(circle, #ffca80 0 22%, #fb9e44 22% 44%, #f0862e 44% 66%, #c8590c 66% 100%);
 }
 

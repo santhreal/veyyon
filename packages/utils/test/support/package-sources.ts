@@ -111,7 +111,7 @@ export const REPO_ROOT = path.resolve(PACKAGES_DIR, "..");
  * eight suites and a `bunfig.toml`, and moving it out of `packages/` removed it from both.
  *
  * It then knew ROOTS, which is a list of the directories a member glob sweeps. That reaches a member
- * one level under a glob and nothing else, so `python/veybot/web` and `natives/bridge/bindings` --
+ * one level under a glob and nothing else, so `clients/python/veybot/web` and `natives/bridge/bindings` --
  * both declared as literal paths -- were outside every lock built on it for the same reason
  * `contracts/wire` had been. The member list is resolved, so a member at any depth is in it.
  */

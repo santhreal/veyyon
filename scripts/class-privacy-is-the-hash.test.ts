@@ -43,7 +43,7 @@ const PACKAGES = path.join(REPO_ROOT, "packages");
  *
  * The sweep read `packages/` alone, so a class under any other root could carry `private` and this
  * gate reported no offender. The root view was in turn blind to literal paths
- * (`natives/bridge/bindings`, `python/veybot/web`), which `typeScriptMembers()` now reaches.
+ * (`natives/bridge/bindings`, `clients/python/veybot/web`), which `typeScriptMembers()` now reaches.
  *
  * The allowlist keys are repo-relative for a related reason: two trees may hold a member of the same
  * name, and a key that starts at the member name cannot tell them apart.

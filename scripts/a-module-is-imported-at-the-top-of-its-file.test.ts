@@ -31,11 +31,11 @@ function loadBaseline(): string[] {
 /**
  * The scan reads every top-level directory the workspace member list resolves to, not a fixed
  * `packages` literal: a member outside it (`natives/bridge/bindings`, `contracts/view`) carries the
- * same rule, and a directory list would drop it in silence. `scripts`, `proof` and `website` are
- * tracked TypeScript that no member declares, so they are named alongside.
+ * same rule, and a directory list would drop it in silence. `scripts` and `proof` are tracked
+ * TypeScript that no member declares, so they are named alongside.
  */
 function scannedRoots(): string[] {
-	return Array.from(new Set([...typeScriptMemberTopLevels(), "scripts", "proof", "website"])).sort();
+	return Array.from(new Set([...typeScriptMemberTopLevels(), "scripts", "proof"])).sort();
 }
 
 function trackedSourceFiles(): string[] {

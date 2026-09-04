@@ -13,7 +13,7 @@
  */
 
 // @ts-expect-error — plain .mjs module, no types; imported for its exports.
-import { releaseAnchor } from "../website/tools/gen-changelog.mjs";
+import { releaseAnchor } from "../apps/site/tools/gen-changelog.mjs";
 
 /** The canonical path. `/changelog.html` answers 308 and redirects here. */
 export const CHANGELOG_URL = "https://veyyon.dev/changelog";

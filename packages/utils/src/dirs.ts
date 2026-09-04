@@ -68,7 +68,7 @@ export const CHANGELOG_URL: string = "https://veyyon.dev/changelog";
  * release tooling that names a version. They must agree, so the anchor format
  * lives here rather than being rebuilt at each call site.
  *
- * The format is the one `website/tools/gen-changelog.mjs` emits: it writes
+ * The format is the one `apps/site/tools/gen-changelog.mjs` emits: it writes
  * `<h2 id="v1-2-3">` for version `1.2.3`, replacing every dot with a dash
  * because a dot in a fragment id is legal but awkward to select in CSS. A
  * leading `v` in the argument is tolerated, since callers hold versions both

@@ -118,7 +118,7 @@ describe("license preservation", () => {
 	 * the same machine-readable MIT grant as the repository that ships them.
 	 */
 	it("keeps every Veyyon Python package MIT licensed", async () => {
-		const pyprojects = ["python/veyyon-rpc/pyproject.toml", "python/veybot/pyproject.toml"] as const;
+		const pyprojects = ["clients/python/veyyon-rpc/pyproject.toml", "clients/python/veybot/pyproject.toml"] as const;
 		for (const path of pyprojects) {
 			const pyproject = await readRepositoryFile(path);
 			expect(pyproject).toMatch(/\[project\][\s\S]*?\nlicense\s*=\s*"MIT"/);
@@ -131,12 +131,12 @@ describe("license preservation", () => {
 	 */
 	it("ships the complete MIT text in each Python package", async () => {
 		const rootLicense = await readRepositoryFile("LICENSE");
-		for (const root of ["python/veyyon-rpc", "python/veybot"]) {
+		for (const root of ["clients/python/veyyon-rpc", "clients/python/veybot"]) {
 			expect(await readRepositoryFile(`${root}/LICENSE`)).toBe(rootLicense);
 			expect(await readRepositoryFile(`${root}/pyproject.toml`)).toContain('license-files = ["LICENSE"]');
 		}
 		const dockerfile = await readRepositoryFile("Dockerfile.veybot");
-		expect(dockerfile).toContain("COPY python/veybot/LICENSE ./");
+		expect(dockerfile).toContain("COPY clients/python/veybot/LICENSE ./");
 		const dockerignore = await readRepositoryFile("Dockerfile.veybot.dockerignore");
 		expect(dockerignore).toMatch(/^\/LICENSE$/m);
 		expect(dockerignore).not.toMatch(/^LICENSE$/m);

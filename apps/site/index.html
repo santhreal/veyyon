@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#000000" />
+<link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+<link rel="icon" href="./favicon.ico" sizes="48x48" />
+<link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+<link rel="manifest" href="./site.webmanifest" />
+<meta property="og:site_name" content="Veyyon" />
+<meta property="og:type" content="website" />
+<meta property="og:image" content="https://veyyon.dev/og.png" />
+<title>Veyyon: terminal coding agent</title>
+<meta property="og:title" content="Veyyon: terminal coding agent" />
+<meta property="og:url" content="https://veyyon.dev/" />
+<link rel="canonical" href="https://veyyon.dev/" />
+<meta name="description" content="Local terminal coding agent. Your provider keys, hashline edits, Argot per-project shorthand, tool loop, approval modes, multi-provider catalog. CLI/TUI." />
+<link rel="preload" href="./fonts/JetBrainsMono-Bold.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="./fonts/JetBrainsMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="./site.css" />
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap nav">
+    <a class="brand" href="./">veyyon</a>
+    <nav>
+    <!--NAV:START-->
+      <a href="./models.html">Models</a>
+      <a href="./features.html">Features</a>
+      <a href="./install.html">Install</a>
+      <a href="./changelog.html">Changelog</a>
+      <a href="./docs/">Docs</a>
+      <a href="https://github.com/santhreal/veyyon" aria-label="GitHub"><svg class="nav-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
+      <a href="./install.html" class="btn">Get started</a>
+    <!--NAV:END-->
+    </nav>
+    <details class="nav-menu"><summary>menu</summary>
+      <nav>
+      <!--NAV:START-->
+        <a href="./models.html">Models</a>
+        <a href="./features.html">Features</a>
+        <a href="./install.html">Install</a>
+        <a href="./changelog.html">Changelog</a>
+        <a href="./docs/">Docs</a>
+        <a href="https://github.com/santhreal/veyyon" aria-label="GitHub"><svg class="nav-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
+        <a href="./install.html" class="btn">Get started</a>
+      <!--NAV:END-->
+      </nav>
+    </details>
+  </div>
+</header>
+
+<main>
+
+  <!-- hero: the product first. the sun is atmosphere docked beside the copy
+       (sun.js), not a scroll journey — the install command is readable on load. -->
+  <section class="hero">
+    <canvas id="sun" aria-hidden="true"></canvas>
+    <div class="wrap hero-inner">
+      <span class="eyebrow">Terminal coding agent</span>
+      <h1>Veyyon</h1>
+      <p class="lede">A terminal coding agent. Install and start working.</p>
+      <div class="cta">
+        <a href="./install.html" class="btn primary">Install</a>
+        <a href="./docs/" class="btn">Handbook</a>
+      </div>
+      <div class="install-picker" data-install-selector>
+        <div class="install-platforms" role="group" aria-label="Select your operating system">
+          <button type="button" class="install-platform" data-install-platform="macos" aria-pressed="true">macOS</button>
+          <button type="button" class="install-platform" data-install-platform="linux" aria-pressed="false">Linux</button>
+          <button type="button" class="install-platform" data-install-platform="windows" aria-pressed="false">Windows</button>
+        </div>
+        <div class="install">
+          <span class="p" data-install-prompt>$</span>
+          <code data-install-command>curl -fsSL https://get.veyyon.dev | sh</code>
+          <button type="button" data-install-copy aria-live="polite" aria-atomic="true">copy</button>
+        </div>
+      </div>
+      <div class="run-hint">then <b>veyyon</b> or <b>vey</b> in a repository</div>
+    </div>
+  </section>
+
+  <!-- the product working: real capture (demo-hd.webp), not hand-coded HTML -->
+  <section class="demo-band">
+    <div class="wrap">
+      <div class="showcase">
+        <img class="capture" src="./demo-hd.webp" width="1920" height="1080" decoding="async" alt="Veyyon stores a release key as a protected placeholder, writes a phased todo list, fans refactors out to parallel workers, verifies the build, and signs the result through the placeholder after an explicit approval" />
+      </div>
+    </div>
+  </section>
+
+
+  <section>
+    <div class="wrap">
+      <div class="lead"><span class="kicker">Implementation</span>
+        <h2>Stack and loop</h2>
+        <p class="sub">Architecture and core loop.</p></div>
+      <div class="values">
+        <div>
+          <span class="kicker">Loop</span>
+          <h3>AgentSession tool loop</h3>
+          <p>Model stream → tools (read, bash, edit, …) → results → next turn. Plan/goal/vibe modes change
+            tools and prompts in the engine. <span class="inline">/review</span> and advisor are separate surfaces.</p>
+        </div>
+        <div>
+          <span class="kicker">Stack</span>
+          <h3>Bun/TypeScript + Rust natives</h3>
+          <p>CLI, TUI, providers, and session loop are TypeScript on Bun. Grep, PTY/shell, hashline apply,
+            and related hot paths use <span class="inline">@veyyon/natives</span>.</p>
+        </div>
+        <div>
+          <span class="kicker">Extension points</span>
+          <h3>MCP, skills, hooks</h3>
+          <p>User/project MCP JSON, filesystem skills, TypeScript hooks, plugins. Non-interactive:
+            <span class="inline">veyyon --print</span>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="lead"><span class="kicker">Models</span>
+        <h2>Providers and config</h2>
+        <p class="sub">Catalog providers (Anthropic, OpenAI, Google, Groq, OpenRouter, …) and local discovery
+          (Ollama, LM Studio, llama.cpp). Credentials stay on the host for BYOK paths.</p></div>
+      <div class="panel">
+        <div class="copy">
+          <ul>
+            <li><b>Interactive</b>: <span class="mono">/model</span>, <span class="mono">--model</span>; stored as <span class="mono">modelRoles.default</span>.</li>
+            <li><b>Roles</b>: <span class="mono">smol</span>, <span class="mono">slow</span>, <span class="mono">plan</span>, <span class="mono">task</span>, <span class="mono">advisor</span>, … via <span class="mono">modelRoles</span>.</li>
+            <li><b>Overrides</b>: <span class="mono">subagent.model</span>, <span class="mono">compaction.model</span>.</li>
+            <li><b>Cycle</b>: <span class="mono">cycleOrder</span> (default <span class="mono">smol</span>, <span class="mono">slow</span>).</li>
+          </ul>
+        </div>
+        <pre class="demo" aria-hidden="true"><span class="c"># ~/.veyyon/profiles/default/agent/config.yml</span>
+<span class="k">modelRoles</span>:
+  <span class="k">default</span>: <span class="s">openai/gpt-5</span>
+  <span class="k">smol</span>: <span class="s">openai/gpt-4.1-mini</span>
+<span class="k">subagent</span>:
+  <span class="k">model</span>: <span class="s">deepseek/deepseek-chat</span>
+<span class="k">compaction</span>:
+  <span class="k">model</span>: <span class="s">openai/gpt-5-mini</span></pre>
+      </div>
+      <a class="section-link" href="./models.html">Model selection, roles, and compaction</a>
+    </div>
+  </section>
+
+
+  <section>
+    <div class="wrap">
+      <div class="lead"><span class="kicker">Quickstart</span>
+        <h2>Install and run</h2></div>
+      <div class="steps">
+        <div class="step"><h3>Install</h3><p><span class="inline">curl -fsSL https://get.veyyon.dev | sh</span> on Linux or macOS, <span class="inline">irm https://veyyon.dev/install.ps1 | iex</span> on Windows. Binary: <span class="inline">veyyon</span> / <span class="inline">vey</span>.</p></div>
+        <div class="step"><h3>Auth</h3><p><span class="inline">/login &lt;provider&gt;</span> or set the provider API key env var. Local Ollama/LM Studio/llama.cpp discovery when the daemon is running.</p></div>
+        <div class="step"><h3>Run</h3><p><span class="inline">veyyon</span> in a repo; <span class="inline">/model</span> selects the interactive model. Config default: <span class="inline">~/.veyyon/profiles/default/agent/</span>.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- final call -->
+  <section class="cta-band">
+    <div class="wrap">
+      <span class="kicker">Get started</span>
+      <h2>Install, auth, run</h2>
+      <p>One-line installer, then a provider key or a local
+        daemon. Then <span class="inline">vey</span> in a repository.</p>
+      <div class="cta">
+        <a href="./install.html" class="btn primary">Install veyyon</a>
+        <a href="./docs/" class="btn">Read the handbook</a>
+        <a href="https://github.com/santhreal/veyyon" class="btn">GitHub</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div class="sunset" aria-hidden="true"><canvas data-sun="sunset"></canvas></div>
+
+<footer class="site">
+  <div class="wrap foot">
+    <div>
+      <span class="brand">veyyon</span>
+      <div class="attrib">A fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT), by Can Boluk.</div>
+    </div>
+    <nav>
+    <!--NAV:START-->
+      <a href="./models.html">Models</a>
+      <a href="./features.html">Features</a>
+      <a href="./install.html">Install</a>
+      <a href="./changelog.html">Changelog</a>
+      <a href="./docs/">Docs</a>
+      <a href="https://github.com/santhreal/veyyon" aria-label="GitHub"><svg class="nav-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
+    <!--NAV:END-->
+    </nav>
+  </div>
+</footer>
+
+<script src="./sun-field.js" defer></script>
+<script src="./sun.js" defer></script>
+<script type="module" src="./install-command.js"></script>
+
+<script src="./sunmark.js" defer></script>
+</body>
+</html>

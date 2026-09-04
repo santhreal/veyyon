@@ -49,7 +49,7 @@ function walk(dir: string, keep: (filePath: string) => boolean): string[] {
  * The members are read from the root manifest rather than assumed from globs. While this was
  * `packages/` alone, a suite under any other root was outside the rule: `contracts/wire/test`
  * carries eight of them, and a module-named suite there would have been accepted in silence. The
- * root view was in turn blind to literal paths (`natives/bridge/bindings`, `python/veybot/web`), which
+ * root view was in turn blind to literal paths (`natives/bridge/bindings`, `clients/python/veybot/web`), which
  * `typeScriptMembers()` now reaches.
  */
 function packageRoots(): string[] {
@@ -83,7 +83,7 @@ function collectModuleNamedSuites(): {
 		}
 	}
 
-	const otherRoots = ["scripts", "website", "proof"];
+	const otherRoots = ["scripts", "apps/site", "proof"];
 	for (const root of otherRoots) {
 		const rootDir = path.join(REPO_ROOT, root);
 		const testFiles = walk(rootDir, file => /\.test\.tsx?$/.test(file));
@@ -97,7 +97,7 @@ function collectModuleNamedSuites(): {
 }
 
 function collectIssueNamedSuites(): string[] {
-	const scanRoots = [...new Set([...typeScriptMemberTopLevels(), "scripts", "website", "proof"])];
+	const scanRoots = [...new Set([...typeScriptMemberTopLevels(), "scripts", "proof"])];
 	const issueNamed: string[] = [];
 
 	for (const root of scanRoots) {

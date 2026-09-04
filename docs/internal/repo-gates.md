@@ -73,7 +73,7 @@ produce, and names each one.
 
 `docs/handbook/book` is committed, and the `Docs` workflow rebuilds it with mdbook and fails when the
 result differs from the tree. A handbook edit therefore lands in two parts: the source page, and the
-render (`cd docs/handbook && mdbook build`) in the same change. `website/docs` is a symlink to that
+render (`cd docs/handbook && mdbook build`) in the same change. `apps/site/docs` is a symlink to that
 directory, so a source-only change would publish the previous text at the next deploy.
 
 The version is pinned. mdbook v0.5.2 renders the search index under a content-hashed filename, so a

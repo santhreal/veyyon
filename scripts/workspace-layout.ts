@@ -46,7 +46,7 @@ export const REPO_ROOT = resolve(import.meta.dirname, "..");
  *
  * Two kinds of entry are deliberately not roots, which is why this view is TypeScript-only. A nested
  * entry (`natives/search/*`) sweeps a directory that is itself inside another, and a literal path
- * with no wildcard (`python/veybot/web`) names one member rather than a directory of them, so there
+ * with no wildcard (`clients/python/veybot/web`) names one member rather than a directory of them, so there
  * is no root to sweep. The Rust member list is now entirely of those two shapes.
  */
 export function globbedRoots(manifestText: string, listPattern: RegExp): string[] {
@@ -239,7 +239,7 @@ export function memberTopLevels(): string[] {
  * tree the workspace declares, so a rule reporting nothing is reporting about everything" — needs the
  * trees, not the members. It used to ask `typeScriptRootDirectories()`, which answers with the
  * directories a GLOB sweeps and therefore cannot see a member declared as a literal path:
- * `python/veybot/web` and `natives/bridge/bindings` are both invisible to it, and a sweep that never
+ * `clients/python/veybot/web` and `natives/bridge/bindings` are both invisible to it, and a sweep that never
  * opened them reported no violation there and read green. This answers from the resolved member list,
  * so a member at any depth puts its tree on the list.
  */

@@ -79,7 +79,7 @@ function walk(dir: string, keep: (file: string) => boolean): string[] {
  *
  * This read `packages/` alone, so a shipped module under any other root — `contracts/view/src` is
  * one — was neither required to have a test naming it nor able to count as naming one. The root view
- * was in turn blind to literal paths (`natives/bridge/bindings`, `python/veybot/web`), which
+ * was in turn blind to literal paths (`natives/bridge/bindings`, `clients/python/veybot/web`), which
  * `typeScriptMembers()` now reaches.
  */
 function packageDirs(): string[] {

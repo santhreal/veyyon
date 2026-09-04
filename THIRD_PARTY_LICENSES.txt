@@ -312,8 +312,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 ================================================================================
 Files covered:
 - LICENSE
-- python/veybot/LICENSE
-- python/veyyon-rpc/LICENSE
+- clients/python/veybot/LICENSE
+- clients/python/veyyon-rpc/LICENSE
 
 MIT License
 
@@ -760,10 +760,10 @@ carries forward here because no Codex source is present in this tree.
 ## Fonts and other assets
 
 - `docs/handbook/book/fonts/OPEN-SANS-LICENSE.txt` and
-  `website/docs/fonts/OPEN-SANS-LICENSE.txt` — Open Sans font, Apache
+  `apps/site/docs/fonts/OPEN-SANS-LICENSE.txt` — Open Sans font, Apache
   License 2.0.
 - `docs/handbook/book/fonts/SOURCE-CODE-PRO-LICENSE.txt` and
-  `website/docs/fonts/SOURCE-CODE-PRO-LICENSE.txt` — Source Code Pro, SIL
+  `apps/site/docs/fonts/SOURCE-CODE-PRO-LICENSE.txt` — Source Code Pro, SIL
   Open Font License 1.1.
 - `natives/bridge/addon/src/fonts/Silver.LICENSE` — Silver, Creative
   Commons Attribution 4.0 International.

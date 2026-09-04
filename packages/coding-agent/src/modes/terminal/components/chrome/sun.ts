@@ -2,7 +2,7 @@
  * The Veyyon sun — the brand signature, rendered in the terminal's own cells.
  *
  * veyyōn (வெய்யோன்) is Tamil for "the sun". This is the terminal port of
- * `website/sun.js`: a dense field of monospace glyphs shaded by distance from a
+ * `apps/site/sun.js`: a dense field of monospace glyphs shaded by distance from a
  * centre, coloured in stepped ember bands with per-cell ordered dither. It reads
  * as "tech meets sun" — sharp and cell-native, never a smooth gradient blob
  * (docs/internal/design.md). The ember accent leads *here* — the sun is the one
@@ -19,8 +19,8 @@ import { clamp01 } from "@veyyon/utils/math";
  * The disc's shape: where it fades out, and how it dims toward the limb.
  *
  * The ramp and the glyph vocabulary already had one owner; the SHAPE did not, and
- * three renderers wrote the formula out by hand (`website/sun.js`,
- * `website/sunmark.js`, the OAuth callback page). When the terminal sun gained
+ * three renderers wrote the formula out by hand (`apps/site/sun.js`,
+ * `apps/site/sunmark.js`, the OAuth callback page). When the terminal sun gained
  * limb darkening, the web renderers kept the saturated disc, and the existing
  * parity pin only compared colors and glyphs, so nothing failed. These four
  * numbers are what brand-conformance now pins in every copy.
@@ -39,7 +39,7 @@ export const FALLOFF = {
 
 /**
  * Intensity → glyph. Eight stops, dark core of the void to a solid disc.
- * Exported so brand-conformance can pin website/sun-field.js to this exact
+ * Exported so brand-conformance can pin apps/site/sun-field.js to this exact
  * vocabulary: the web hero and the terminal splash must draw one glyph ramp.
  */
 export const GLYPH = ["·", "·", ":", "░", "▒", "▒", "▓", "█"] as const;

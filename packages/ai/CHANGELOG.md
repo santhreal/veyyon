@@ -4,6 +4,7 @@
 
 ### Changed
 
+- A source comment in the OAuth callback page names the shared sun source at `apps/site/sun-field.js`; behavior is unchanged.
 - Typed tuple copies use spreads rather than `.concat()`, which a `as const` array does not define. No user-visible behavior changes.
 
 - A source-path comment in `register-builtins.ts` names the benchmark module it cites at its new path under `tests/evals/`; behavior is unchanged.

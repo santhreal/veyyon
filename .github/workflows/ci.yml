@@ -886,7 +886,7 @@ jobs:
            # rather than deploying a changelog whose publication state is unknown.
            env:
               GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-           run: node website/build.mjs
+           run: node apps/site/build.mjs
          - name: Deploy both Pages projects and verify the served installers
            uses: ./.github/actions/deploy-cloudflare-site
            with:
@@ -1222,7 +1222,7 @@ jobs:
            # see the release that release_github_publish just made public.
            env:
               GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-           run: node website/build.mjs
+           run: node apps/site/build.mjs
          - name: Deploy the finalized changelog to veyyon.dev
            uses: ./.github/actions/deploy-cloudflare-site
            with:

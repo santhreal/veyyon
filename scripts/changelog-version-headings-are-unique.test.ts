@@ -38,7 +38,7 @@ export function duplicateVersionHeadings(markdown: string): Duplicate[] {
  * The members are read from the root manifest. Scanning `packages/` alone left `contracts/wire` and
  * `contracts/view` outside the rule, so either could ship a duplicated release section — the exact
  * incident this gate exists for — with the gate green. The root view was in turn blind to literal
- * paths (`natives/bridge/bindings`, `python/veybot/web`), which `typeScriptMembers()` now reaches.
+ * paths (`natives/bridge/bindings`, `clients/python/veybot/web`), which `typeScriptMembers()` now reaches.
  */
 function packageChangelogs(): string[] {
 	const found: string[] = [];

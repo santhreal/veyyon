@@ -15,7 +15,7 @@
  * because the second project was named in one file and not the other. The sequence
  * is now `.github/actions/deploy-cloudflare-site`, and every `.github/**` file is
  * read off disk here rather than listed, so a fourth deploy site, or a workflow that
- * reaches for `website/deploy.mjs` on its own, is red on arrival.
+ * reaches for `apps/site/deploy.mjs` on its own, is red on arrival.
  *
  * WHAT IT DOES NOT CATCH. A deploy invoked from outside `.github/**` (the
  * `site:deploy` package script is exactly that, and is meant to be — an operator
@@ -69,13 +69,13 @@ describe("a production site deploy has one owner", () => {
 	});
 
 	it("invokes the Pages deployer nowhere else", () => {
-		expect(filesContaining("website/deploy.mjs")).toEqual([]);
-		expect(action).toContain("website/deploy.mjs --skip-build");
+		expect(filesContaining("apps/site/deploy.mjs")).toEqual([]);
+		expect(action).toContain("apps/site/deploy.mjs --skip-build");
 	});
 
 	it("names the install-endpoint project nowhere else", () => {
 		// The project name and the tree it publishes are one decision, and
-		// `website/deploy.mjs` refuses a name it does not know. A second spelling in
+		// `apps/site/deploy.mjs` refuses a name it does not know. A second spelling in
 		// CI is the drift that left get.veyyon.dev behind main.
 		expect(filesContaining("VEYYON_PAGES_PROJECT")).toEqual([]);
 		expect(filesContaining("veyyon-get")).toEqual([]);

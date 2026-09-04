@@ -52,7 +52,7 @@ async function trackedFiles(): Promise<string[]> {
 const EXEMPT_DIRS = [
 	"natives/vendor/",
 	"docs/handbook/book/",
-	"website/",
+	"apps/site/",
 	"packages/coding-agent/src/export/html/vendor/",
 	"packages/catalog/src/discovery/cursor-gen/",
 ];
@@ -506,7 +506,7 @@ describe("no comment or internal doc attributes a change to a person", () => {
 		expect(EXEMPT_DIRS).toEqual([
 			"natives/vendor/",
 			"docs/handbook/book/",
-			"website/",
+			"apps/site/",
 			"packages/coding-agent/src/export/html/vendor/",
 			"packages/catalog/src/discovery/cursor-gen/",
 		]);

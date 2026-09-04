@@ -67,7 +67,7 @@ async function scriptFiles(): Promise<string[]> {
  * Every manifest that could name a script, under every workspace member the root manifest declares.
  * Reading `packages/` alone left a script named only by a member under another root reading as
  * owned by nobody. The root view was in turn blind to literal paths (`natives/bridge/bindings`,
- * `python/veybot/web`), which `typeScriptMembers()` now reaches.
+ * `clients/python/veybot/web`), which `typeScriptMembers()` now reaches.
  */
 async function callerManifests(): Promise<string[]> {
 	const manifests = [path.join(REPO_ROOT, "package.json")];

@@ -32,7 +32,7 @@ const repoRoot = path.resolve(import.meta.dir, "..");
  * The workspace members, read from the root manifest rather than assumed from globs.
  *
  * This suite knew one root, `packages/`. The root view widened that to globbed roots, but was still
- * blind to literal paths (`natives/bridge/bindings`, `python/veybot/web`). `typeScriptMembers()`
+ * blind to literal paths (`natives/bridge/bindings`, `clients/python/veybot/web`). `typeScriptMembers()`
  * reaches members at any depth.
  */
 const memberRoots = typeScriptMembers();

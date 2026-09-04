@@ -390,8 +390,8 @@ describe("docs examples — documented env vars are consumed in source", () => {
 		/** Directories that hold source but declare no manifest, so no member names them. */
 		const looseRoots: Array<[string, string]> = [
 			["scripts", "**/*.{ts,sh,ps1}"],
-			["website", "**/*.{mjs,sh,ps1}"],
-			["python", "**/*.{py,sh,yml,yaml}"],
+			["apps/site", "**/*.{mjs,sh,ps1}"],
+			["clients/python", "**/*.{py,sh,yml,yaml}"],
 		];
 
 		const scans: Array<[string, string]> = [];

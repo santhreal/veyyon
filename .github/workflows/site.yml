@@ -13,7 +13,7 @@ on:
    push:
       branches: [main]
       paths:
-         - "website/**"
+         - "apps/site/**"
          - "docs/handbook/book/**"
          - "packages/coding-agent/CHANGELOG.md"
          - "scripts/install.sh"
@@ -22,7 +22,7 @@ on:
    pull_request:
       branches: [main]
       paths:
-         - "website/**"
+         - "apps/site/**"
          - "docs/handbook/book/**"
          - "packages/coding-agent/CHANGELOG.md"
          - "scripts/install.sh"
@@ -58,7 +58,7 @@ jobs:
            # runner's 60/hour IP budget and gen-changelog fails closed on the 403.
            env:
               GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-           run: node website/build.mjs
+           run: node apps/site/build.mjs
          # get.veyyon.dev is a SEPARATE Pages project fed by a separate tree
          # (website-get/: the two install scripts and a root rewrite), staged by
          # the build step above. This workflow already triggers on

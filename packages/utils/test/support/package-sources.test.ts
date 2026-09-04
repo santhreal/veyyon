@@ -125,7 +125,7 @@ describe("the shared package-source traversal", () => {
 			// them reported health it had stopped measuring.
 			expect(rels).toContain("contracts/wire/src/relay.ts");
 			expect(rels).toContain("natives/bridge/bindings/src/sha256-sidecar.ts");
-			expect(rels).toContain("python/veybot/web/src/view.ts");
+			expect(rels).toContain("clients/python/veybot/web/src/view.ts");
 		});
 
 		it("keys a member under `packages/` and a member under another root apart, resolving at any depth", async () => {
@@ -148,7 +148,6 @@ describe("the shared package-source traversal", () => {
 				"natives",
 				"packages",
 				"plugins",
-				"python",
 				"tests",
 			]);
 
@@ -156,8 +155,8 @@ describe("the shared package-source traversal", () => {
 			expect(memberKeyOf(path.join(REPO_ROOT, "natives", "bridge", "bindings", "src", "sha256-sidecar.ts"))).toBe(
 				"natives/bridge/bindings",
 			);
-			expect(memberKeyOf(path.join(REPO_ROOT, "python", "veybot", "web", "src", "view.ts"))).toBe(
-				"python/veybot/web",
+			expect(memberKeyOf(path.join(REPO_ROOT, "clients", "python", "veybot", "web", "src", "view.ts"))).toBe(
+				"clients/python/veybot/web",
 			);
 			expect(memberKeyOf(path.join(REPO_ROOT, "contracts", "wire", "src", "relay.ts"))).toBe("contracts/wire");
 			// A package under packages/ keeps its bare key.
@@ -167,8 +166,8 @@ describe("the shared package-source traversal", () => {
 			expect(memberRelative(path.join(REPO_ROOT, "natives", "bridge", "bindings", "src", "sha256-sidecar.ts"))).toBe(
 				"natives/bridge/bindings/src/sha256-sidecar.ts",
 			);
-			expect(memberRelative(path.join(REPO_ROOT, "python", "veybot", "web", "src", "view.ts"))).toBe(
-				"python/veybot/web/src/view.ts",
+			expect(memberRelative(path.join(REPO_ROOT, "clients", "python", "veybot", "web", "src", "view.ts"))).toBe(
+				"clients/python/veybot/web/src/view.ts",
 			);
 			expect(memberRelative(path.join(REPO_ROOT, "contracts", "wire", "src", "relay.ts"))).toBe(
 				"contracts/wire/src/relay.ts",
@@ -179,13 +178,15 @@ describe("the shared package-source traversal", () => {
 
 			// memberRootOf maps keys to their top-level root.
 			expect(memberRootOf("natives/bridge/bindings/src/sha256-sidecar.ts")).toBe("natives");
-			expect(memberRootOf("python/veybot/web/src/view.ts")).toBe("python");
+			expect(memberRootOf("clients/python/veybot/web/src/view.ts")).toBe("clients");
 			expect(memberRootOf("contracts/wire/src/relay.ts")).toBe("contracts");
 			expect(memberRootOf("utils/src/type-guards.ts")).toBe("packages");
 
 			// memberDirOf points to the member directory.
 			expect(memberDirOf("natives/bridge/bindings")).toBe(path.join(REPO_ROOT, "natives", "bridge", "bindings"));
-			expect(memberDirOf("python/veybot/web")).toBe(path.join(REPO_ROOT, "python", "veybot", "web"));
+			expect(memberDirOf("clients/python/veybot/web")).toBe(
+				path.join(REPO_ROOT, "clients", "python", "veybot", "web"),
+			);
 			expect(memberDirOf("contracts/wire")).toBe(path.join(REPO_ROOT, "contracts", "wire"));
 			expect(memberDirOf("utils")).toBe(path.join(PACKAGES_DIR, "utils"));
 		});

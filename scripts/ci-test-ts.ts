@@ -264,7 +264,7 @@ export const nativeAndIntegrationPackages = [
 
 // Packages the CI buckets deliberately skip but a local full run should still
 // cover. One entry, and its reason is structural rather than circumstantial:
-// veybot-web lives under python/veybot, outside every CI TS bucket.
+// veybot-web lives under clients/python/veybot, outside every CI TS bucket.
 //
 // mnemopi was the other entry, and it is the warning this list carries. A whole
 // package was skipped for something true of a handful of its suites, the reason
@@ -272,7 +272,7 @@ export const nativeAndIntegrationPackages = [
 // here costs a package its entire CI run, so it has to name a property of the
 // package. When only some suites cannot run in CI, exclude those suites by name
 // with the reason attached to them and leave the rest of the package running.
-export const localOnlyWorkspacePackages = ["python/veybot/web"];
+export const localOnlyWorkspacePackages = ["clients/python/veybot/web"];
 
 /**
  * Every package whose test suite this runner executes, across all three buckets.
@@ -405,10 +405,10 @@ export const repoScriptTests = [
 	"scripts/release-sentinel.test.ts",
 	"scripts/release-changelog.test.ts",
 	"scripts/release-bump-subject.test.ts",
-	"website/tools/gen-changelog.test.ts",
+	"apps/site/tools/gen-changelog.test.ts",
 	"scripts/tracked-but-deleted-paths.test.ts",
-	"website/tools/undocumented-release-ratchet.test.ts",
-	"website/tools/nav.test.ts",
+	"apps/site/tools/undocumented-release-ratchet.test.ts",
+	"apps/site/tools/nav.test.ts",
 	"scripts/demos/lib/png.test.ts",
 	"scripts/demos/lib/ansi-grid.test.ts",
 	"scripts/demos/lib/ansi-raster.test.ts",

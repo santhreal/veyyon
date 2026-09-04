@@ -33,7 +33,7 @@
  * the moment a member moved out of that directory. `contracts/wire` ships eight test files, and after
  * the move neither direction saw it: the missing-entry sweep never enumerated it, and the stale-entry
  * sweep filtered its bucket row out as "not a package path". Literal members like `natives/bridge/bindings`
- * and `python/veybot/web` were likewise invisible to root globs. The members now come from
+ * and `clients/python/veybot/web` were likewise invisible to root globs. The members now come from
  * `scripts/workspace-layout.ts`, so a member at any depth is covered.
  */
 import { describe, expect, it } from "bun:test";
@@ -191,8 +191,8 @@ describe("the workspace test runner covers every package that ships tests", () =
 		});
 
 		expect(missing).toEqual([]);
-		// `python/veybot/web` is deliberately outside `packages/`, so the guard must
+		// `clients/python/veybot/web` is deliberately outside `packages/`, so the guard must
 		// not assume the prefix; this pins that it is still reached.
-		expect(workspaceTestPackages.some(dir => relative(REPO_ROOT, dir).startsWith("python/"))).toBe(true);
+		expect(workspaceTestPackages.some(dir => relative(REPO_ROOT, dir).startsWith("clients/python/"))).toBe(true);
 	});
 });

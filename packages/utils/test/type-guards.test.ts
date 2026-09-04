@@ -212,13 +212,13 @@ const ERRORMESSAGE_GRANDFATHERED = new Set<string>([]);
 // pre-paint path for one ternary in a debug string. Convert a file, remove its entry. Shrink-only.
 //
 // Keys are member-relative, so a package outside `packages/` carries its root. `plugins/hashline`
-// is the same entry under its current directory; `python/veybot/web` is a member the sweep could
+// is the same entry under its current directory; `clients/python/veybot/web` is a member the sweep could
 // not previously reach, and its copy predates this list.
 const INLINE_ERRORMESSAGE_GRANDFATHERED = new Set([
 	"coding-agent/src/cli/first-frame-replay.ts",
 	"clients/web/src/lib/client.ts",
 	"plugins/hashline/src/patcher.ts",
-	"python/veybot/web/src/state.ts",
+	"clients/python/veybot/web/src/state.ts",
 	"utils/src/ptree.ts",
 	"utils/src/type-guards.ts",
 ]);

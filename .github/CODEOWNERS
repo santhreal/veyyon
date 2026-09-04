@@ -20,5 +20,5 @@
 /scripts/                       @santhreal
 
 # Website and docs
-/website/                       @santhreal
+/apps/site/                     @santhreal
 /docs/                          @santhreal

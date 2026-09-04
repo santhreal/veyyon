@@ -2,7 +2,7 @@
  * The generated directories at the repository root stay generated, and stay out of git.
  *
  * WHY THIS SUITE EXISTS. Four directories at the root hold output rather than source: `runs/` (the
- * default artifact sink for the benchmark harnesses), `website-get/` (staged by `website/build.mjs`
+ * default artifact sink for the benchmark harnesses), `website-get/` (staged by `apps/site/build.mjs`
  * and deployed to get.veyyon.dev), `relative-cache/` (a Bun cache pile), and
  * `tests/evals/{runs,.cache,datasets/repo-cache,datasets/deep-swe/corpus}` (trial output, vendored
  * task corpora and cloned task repos, several gigabytes).
@@ -29,7 +29,11 @@ const repoRoot = path.resolve(import.meta.dir, "..");
 /** Paths that hold generated output, with the ignore entry each one is expected to carry. */
 const GENERATED: ReadonlyArray<{ dir: string; ignoreEntry: string; why: string }> = [
 	{ dir: "runs", ignoreEntry: "/runs/", why: "default artifact sink for the benchmark harnesses" },
-	{ dir: "website-get", ignoreEntry: "/website-get/", why: "staged by website/build.mjs, deployed to get.veyyon.dev" },
+	{
+		dir: "website-get",
+		ignoreEntry: "/website-get/",
+		why: "staged by apps/site/build.mjs, deployed to get.veyyon.dev",
+	},
 	{ dir: "relative-cache", ignoreEntry: "relative-cache/", why: "Bun cache pile written at the repo root" },
 	{ dir: "tests/evals/runs", ignoreEntry: "runs/", why: "benchmark trial output" },
 	{ dir: "tests/evals/.cache", ignoreEntry: ".cache/", why: "vendored dataset checkouts" },
@@ -82,7 +86,7 @@ describe("generated directories at the root", () => {
 		// The ignore entry above is only correct while something produces the directory. If this
 		// staging step is removed or renamed, `website-get/` becomes an ignored directory nobody
 		// writes and the install endpoint deploys whatever is left over on the runner.
-		const build = readFileSync(path.join(repoRoot, "website/build.mjs"), "utf-8");
+		const build = readFileSync(path.join(repoRoot, "apps/site/build.mjs"), "utf-8");
 
 		expect(build).toContain('const GET = join(REPO, "website-get")');
 		expect(build).toContain("install.sh");

@@ -44,7 +44,7 @@ function workspacePackageOf(specifier: string): string | undefined {
  * Publishable packages only: a private one is never installed from a registry.
  *
  * `packages/` was hardcoded here. The root view widened that to globbed roots, but was still blind
- * to literal paths (`natives/bridge/bindings`, `python/veybot/web`). `typeScriptMembers()` reaches
+ * to literal paths (`natives/bridge/bindings`, `clients/python/veybot/web`). `typeScriptMembers()` reaches
  * members at any depth.
  */
 function publishablePackages(): Array<{ dir: string; manifest: Manifest }> {

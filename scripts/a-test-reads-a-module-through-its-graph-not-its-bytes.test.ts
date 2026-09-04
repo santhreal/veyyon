@@ -207,7 +207,7 @@ function byteMatchSites(roots: readonly string[], base: string): string[] {
  * Every directory the sweep opens: the top-level directories holding TypeScript workspace members, plus `scripts/`.
  * Naming `packages/` alone left the suites under any other root — `contracts/wire/test` holds
  * eight — free to grep source bytes, and the gate reported the absence as a pass. The root view
- * was in turn blind to literal paths (`natives/bridge/bindings`, `python/veybot/web`), which
+ * was in turn blind to literal paths (`natives/bridge/bindings`, `clients/python/veybot/web`), which
  * `typeScriptMemberTopLevels()` now reaches.
  */
 function sweptRoots(): string[] {

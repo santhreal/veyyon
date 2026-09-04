@@ -54,7 +54,7 @@ import { typeScriptMembers } from "./workspace-layout";
  * `utils` is a grab bag every package already imports, so a contract there would
  * be a contract nothing can depend on narrowly.
  *
- * The count went 18 -> 19 with no package added. `python/veybot/web` is declared as a literal path
+ * The count went 18 -> 19 with no package added. `clients/python/veybot/web` is declared as a literal path
  * three levels down, so the root sweep this gate used to run could not see it and had been counting
  * 18 members while the workspace held 19. The member list reaches it, and the budget now states the
  * real number. A future rise still needs the sentence above: which existing package was considered
@@ -96,7 +96,7 @@ const PACKAGE_BUDGET = 22;
  * The members are read from the root `package.json` rather than swept across roots: this gate counted
  * `packages/` alone, so moving `wire` under `contracts/` read as a package being deleted and adding
  * `view` beside it counted for nothing at all. The root view was in turn blind to literal paths
- * (`natives/bridge/bindings`, `python/veybot/web`), which `typeScriptMembers()` now reaches.
+ * (`natives/bridge/bindings`, `clients/python/veybot/web`), which `typeScriptMembers()` now reaches.
  */
 function workspacePackages(): string[] {
 	return typeScriptMembers();
@@ -129,7 +129,7 @@ describe("the workspace package count", () => {
 		// missed them counted a smaller workspace than the one that ships, which is how the budget
 		// read 18 for a tree of 19.
 		expect(packages).toContain("natives/bridge/bindings");
-		expect(packages).toContain("python/veybot/web");
+		expect(packages).toContain("clients/python/veybot/web");
 		expect(packages).not.toContain("packages/tsconfig.workspace.json");
 	});
 

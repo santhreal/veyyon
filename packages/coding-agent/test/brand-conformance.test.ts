@@ -12,7 +12,7 @@
  * asserts lock that model so a theme edit that reintroduces an absolute
  * panel background, drifts the silver, or drops the ember accent fails here
  * instead of silently shipping an off-brand default. Reference
- * implementation: website/site.css :root.
+ * implementation: apps/site/site.css :root.
  */
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
@@ -29,10 +29,10 @@ const BRAND_SILVER = "#C6CBD4";
 const EMBER = "#F0862E";
 const EMBER_SELECTION = "#241510";
 
-/** Parse a `--token:#hex` custom property out of website/site.css :root. */
+/** Parse a `--token:#hex` custom property out of apps/site/site.css :root. */
 function websiteToken(css: string, token: string): string {
 	const match = css.match(new RegExp(`--${token}\\s*:\\s*(#[0-9a-fA-F]{6})`));
-	expect(match, `website/site.css must define --${token}`).not.toBeNull();
+	expect(match, `apps/site/site.css must define --${token}`).not.toBeNull();
 	return match![1].toUpperCase();
 }
 
@@ -203,7 +203,7 @@ describe("brand conformance (titanium, the default dark theme)", () => {
 	// can't interpolate theme tokens). Pin the brand-bearing stops to the
 	// website owner so the ramps are locked copies, not silent divergence.
 	it("keeps the shimmer and sun ramp brand stops in parity with site.css", () => {
-		const css = fs.readFileSync(path.join(import.meta.dir, "../../../website/site.css"), "utf-8");
+		const css = fs.readFileSync(path.join(import.meta.dir, "../../../apps/site/site.css"), "utf-8");
 		const hex = (stop: readonly [number, number, number]) =>
 			`#${stop.map(channel => channel.toString(16).padStart(2, "0")).join("")}`.toUpperCase();
 		expect(hex(SILVER_STOPS[1]!)).toBe(websiteToken(css, "silver"));
@@ -212,24 +212,24 @@ describe("brand conformance (titanium, the default dark theme)", () => {
 		expect(hex(SUN_EMBER_RAMP[5]!)).toBe(websiteToken(css, "sun-hi"));
 	});
 
-	// website/sun-field.js is the web-side single source: both the hero disc
-	// (website/sun.js) and the structural marks (website/sunmark.js) read their
+	// apps/site/sun-field.js is the web-side single source: both the hero disc
+	// (apps/site/sun.js) and the structural marks (apps/site/sunmark.js) read their
 	// material from it. Pin it to the terminal sun so the web hero and the
 	// terminal splash render one sun, not two copies that silently drift.
-	it("keeps website/sun-field.js in parity with the terminal sun (sun.ts)", () => {
-		const field = fs.readFileSync(path.join(import.meta.dir, "../../../website/sun-field.js"), "utf-8");
-		expectSunFieldParity(field, "website/sun-field.js");
+	it("keeps apps/site/sun-field.js in parity with the terminal sun (sun.ts)", () => {
+		const field = fs.readFileSync(path.join(import.meta.dir, "../../../apps/site/sun-field.js"), "utf-8");
+		expectSunFieldParity(field, "apps/site/sun-field.js");
 	});
 
 	// The disc's SHAPE has copies too, and they are not in sun-field.js: the hero
-	// (website/sun.js), the structural marks (website/sunmark.js) and the OAuth
+	// (apps/site/sun.js), the structural marks (apps/site/sunmark.js) and the OAuth
 	// page each write the falloff out by hand. Pin the shape wherever it is
 	// written, including the terminal owner, so a fifth copy cannot appear
 	// unnoticed and the four existing ones cannot drift.
 	const FALLOFF_SOURCES = [
 		{ label: "sun.ts", rel: "../src/modes/terminal/components/chrome/sun.ts" },
-		{ label: "website/sun.js", rel: "../../../website/sun.js" },
-		{ label: "website/sunmark.js", rel: "../../../website/sunmark.js" },
+		{ label: "apps/site/sun.js", rel: "../../../apps/site/sun.js" },
+		{ label: "apps/site/sunmark.js", rel: "../../../apps/site/sunmark.js" },
 		{ label: "packages/ai oauth.html", rel: "../../ai/src/registry/oauth/oauth.html" },
 	] as const;
 
@@ -258,9 +258,9 @@ describe("brand conformance (titanium, the default dark theme)", () => {
 	// index.css / styles.css are the only files in those apps allowed raw
 	// color values.
 	const DASHBOARD_TOKEN_FILES = [
-		{ label: "collab-web", rel: "../../collab-web/src/styles/tokens.css" },
-		{ label: "veybot", rel: "../../../python/veybot/web/src/styles/index.css" },
-		{ label: "stats", rel: "../../stats/src/client/styles.css" },
+		{ label: "collab-web", rel: "../../../clients/web/src/styles/tokens.css" },
+		{ label: "veybot", rel: "../../../clients/python/veybot/web/src/styles/index.css" },
+		{ label: "stats", rel: "../../../apps/stats/src/client/styles.css" },
 	] as const;
 
 	// The banned oh-my-pi mark/accent hexes: pink, violet, cyan, brand-purple,
@@ -298,24 +298,24 @@ describe("brand conformance (titanium, the default dark theme)", () => {
 		});
 
 	it("draws each dashboard brand mark as a stepped ember sun, not a multi-hue gradient", () => {
-		const collab = fs.readFileSync(path.join(import.meta.dir, "../../collab-web/src/styles/tokens.css"), "utf-8");
+		const collab = fs.readFileSync(path.join(import.meta.dir, "../../../clients/web/src/styles/tokens.css"), "utf-8");
 		// The mark is a hard-stop radial (discrete bands), never a linear multi-hue sweep.
 		expect(collab).toContain("--brand-mark: radial-gradient(circle");
 		expect(collab).not.toContain("linear-gradient");
 		const veybot = fs.readFileSync(
-			path.join(import.meta.dir, "../../../python/veybot/web/src/styles/index.css"),
+			path.join(import.meta.dir, "../../../clients/python/veybot/web/src/styles/index.css"),
 			"utf-8",
 		);
 		expect(veybot).toMatch(/\.rmp-rail-mark[^}]*radial-gradient\(circle/s);
-		const stats = fs.readFileSync(path.join(import.meta.dir, "../../stats/src/client/styles.css"), "utf-8");
+		const stats = fs.readFileSync(path.join(import.meta.dir, "../../../apps/stats/src/client/styles.css"), "utf-8");
 		expect(stats).toMatch(/\.stats-logo-container::before[^}]*radial-gradient\(circle/s);
 	});
 
 	// The collab-web favicon was the oh-my-pi π glyph in a pink→purple→cyan
 	// linear gradient; it is now the stepped ember sun (concentric ember
-	// circles, no gradient), a copy of website/favicon.svg.
+	// circles, no gradient), a copy of apps/site/favicon.svg.
 	it("ships the stepped ember-sun favicon (no π glyph, no gradient)", () => {
-		const svg = fs.readFileSync(path.join(import.meta.dir, "../../collab-web/public/favicon.svg"), "utf-8");
+		const svg = fs.readFileSync(path.join(import.meta.dir, "../../../clients/web/public/favicon.svg"), "utf-8");
 		// No gradient element and no gradient fill reference (the comment may
 		// still say "no smooth gradient", so match markup, not the word).
 		expect(svg).not.toContain("<linearGradient");
@@ -417,7 +417,7 @@ describe("brand conformance (titanium, the default dark theme)", () => {
 	// banned oh-my-pi hexes, and each must lead with the ember accent.
 	const HEX_PALETTE_FILES = [
 		{ label: "web-export palette", rel: "../src/export/html/web-palette.ts" },
-		{ label: "stats chart palette", rel: "../../stats/src/client/components/chart-shared.tsx" },
+		{ label: "stats chart palette", rel: "../../../apps/stats/src/client/components/chart-shared.tsx" },
 	] as const;
 
 	for (const { label, rel } of HEX_PALETTE_FILES)
@@ -434,7 +434,7 @@ describe("brand conformance (titanium, the default dark theme)", () => {
 	// series) can slip past the two palette-owner locks above. Sweep the whole
 	// stats client tree so any banned hex in any .tsx/.css fails here.
 	it("keeps the entire stats client tree free of banned hexes", () => {
-		const root = path.join(import.meta.dir, "../../stats/src/client");
+		const root = path.join(import.meta.dir, "../../../apps/stats/src/client");
 		const walk = (dir: string): string[] =>
 			fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
 				const full = path.join(dir, entry.name);
@@ -453,7 +453,7 @@ describe("brand conformance (titanium, the default dark theme)", () => {
 
 	it("matches the website reference tokens (site.css :root parity)", async () => {
 		const theme = await titanium();
-		const css = fs.readFileSync(path.join(import.meta.dir, "../../../website/site.css"), "utf-8");
+		const css = fs.readFileSync(path.join(import.meta.dir, "../../../apps/site/site.css"), "utf-8");
 		expect(theme.getColorHex("accent").toUpperCase()).toBe(websiteToken(css, "silver"));
 		expect(theme.getColorHex("mdHeading").toUpperCase()).toBe(websiteToken(css, "silver-hi"));
 		expect(theme.getColorHex("borderAccent").toUpperCase()).toBe(websiteToken(css, "sun"));

@@ -55,7 +55,7 @@ describe("the TypeScript roots come from the manifest", () => {
 
 	/**
 	 * The two exclusions, asserted as behaviour rather than trusted from the source. A nested glob
-	 * sweeps a directory inside another one, and `python/veybot/web` is a single member rather than a
+	 * sweeps a directory inside another one, and `clients/python/veybot/web` is a single member rather than a
 	 * directory of them. Reporting either as a root would make every source sweep walk a tree that is
 	 * not a root, and the Rust member list is now made entirely of those two shapes, which is why it
 	 * has no root view at all.
@@ -65,8 +65,9 @@ describe("the TypeScript roots come from the manifest", () => {
 	});
 
 	it("does not report a literal member path as a root", () => {
-		expect(globbedRoots('{"packages": ["contracts/*", "python/veybot/web"]}', PACKAGE_LIST)).toEqual(["contracts"]);
-		expect(typeScriptRootDirectories()).not.toContain("python");
+		expect(globbedRoots('{"packages": ["contracts/*", "clients/python/veybot/web"]}', PACKAGE_LIST)).toEqual([
+			"contracts",
+		]);
 	});
 
 	it("reports a root the moment the manifest declares it", () => {
@@ -203,7 +204,7 @@ describe("the workspace members come from the manifests", () => {
 	it("resolves a member declared as a literal path", () => {
 		expect(rustMembers()).toContain("natives/shell");
 		expect(rustMembers()).toContain("tests/conformance");
-		expect(typeScriptMembers()).toContain("python/veybot/web");
+		expect(typeScriptMembers()).toContain("clients/python/veybot/web");
 	});
 
 	it("resolves the vendored crates, which are members the workspace does not own", () => {
@@ -258,11 +259,11 @@ describe("the workspace members come from the manifests", () => {
 		});
 
 		expect(unreachable, "a source sweep must read typeScriptMembers(), not the globbed roots").toEqual([
+			"clients/python/veybot/web",
 			"hosts/gui",
 			"hosts/terminal/engine",
 			"kernel",
 			"natives/bridge/bindings",
-			"python/veybot/web",
 		]);
 	});
 });

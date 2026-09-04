@@ -87,7 +87,7 @@ describe("a type is named not derived from a function", () => {
 	it("finds zero ReturnType< sites in tracked TypeScript source and scripts", () => {
 		// The workspace members are read, not named. `packages/` was hardcoded, so a module under any
 		// other root could derive a type from a function and this gate reported zero sites. The root
-		// view was in turn blind to literal paths (`natives/bridge/bindings`, `python/veybot/web`), which
+		// view was in turn blind to literal paths (`natives/bridge/bindings`, `clients/python/veybot/web`), which
 		// `typeScriptMembers()` now reaches.
 		const files = [
 			...typeScriptMembers().flatMap(member => {

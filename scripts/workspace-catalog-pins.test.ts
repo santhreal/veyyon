@@ -57,7 +57,7 @@ const catalog: Record<string, string> = readManifest(path.join(repoRoot, "packag
  * This read `packages/` alone. `contracts/wire` and `contracts/view` both declare `@types/bun`,
  * which is catalogued, so a literal range written there was a second place to change the version
  * and this gate did not look at it. The root view was in turn blind to literal paths
- * (`natives/bridge/bindings`, `python/veybot/web`), which `typeScriptMembers()` now reaches.
+ * (`natives/bridge/bindings`, `clients/python/veybot/web`), which `typeScriptMembers()` now reaches.
  */
 function workspaceManifests(): Array<{ rel: string; manifest: PackageManifest }> {
 	const found: Array<{ rel: string; manifest: PackageManifest }> = [];

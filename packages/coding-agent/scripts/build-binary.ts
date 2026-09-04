@@ -84,7 +84,7 @@ async function main(): Promise<void> {
 	// Compiled binaries ship no dashboard sources; `veyyon stats` serves the
 	// embedded archive or 500s on every request (the empty placeholder builds
 	// fine and only fails at runtime).
-	await runCommand(["bun", "--cwd=../stats", "run", "gen:stats"]);
+	await runCommand(["bun", "--cwd=../../apps/stats", "run", "gen:stats"]);
 	try {
 		await compileCodingAgent({
 			repoRoot,
@@ -108,7 +108,7 @@ async function main(): Promise<void> {
 		}
 	} finally {
 		await runCommand(["bun", "run", "gen:mupdf:reset"]);
-		await runCommand(["bun", "--cwd=../stats", "run", "gen:stats:reset"]);
+		await runCommand(["bun", "--cwd=../../apps/stats", "run", "gen:stats:reset"]);
 		await runCommand(["bun", "--cwd=../../natives/bridge/bindings", "run", "gen:native:reset"]);
 	}
 }

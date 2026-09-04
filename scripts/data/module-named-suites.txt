@@ -571,4 +571,4 @@ plugins/mode-swarm/src/swarm/__tests__/executor.test.ts
 plugins/web/test/integration/wikipedia.test.ts
 plugins/web/test/integration/youtube.test.ts
 plugins/web/test/markdown-link.test.ts
-python/veybot/web/src/work-items.test.ts
+clients/python/veybot/web/src/work-items.test.ts

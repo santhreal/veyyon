@@ -14,8 +14,8 @@ const LEGAL_ARTIFACTS = [
 	"docs/handbook/book/fonts/SOURCE-CODE-PRO-LICENSE.txt",
 	"packages/coding-agent/src/export/markit/NOTICE",
 	"packages/utils/src/vendor/mermaid-ascii/NOTICE",
-	"python/veybot/LICENSE",
-	"python/veyyon-rpc/LICENSE",
+	"clients/python/veybot/LICENSE",
+	"clients/python/veyyon-rpc/LICENSE",
 ] as const;
 
 async function legalArtifactPaths(root: string): Promise<string[]> {

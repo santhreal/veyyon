@@ -71,7 +71,9 @@ export interface PathCheckResult {
 export const SOURCE_ROOTS = [
 	".githooks/",
 	".github/",
+	"apps/",
 	"assets/",
+	"clients/",
 	"contracts/",
 	"demo/",
 	"docs/",
@@ -84,11 +86,9 @@ export const SOURCE_ROOTS = [
 	"patches/",
 	"plugins/",
 	"proof/",
-	"python/",
 	"scripts/",
 	"tests/",
 	"types/",
-	"website/",
 ] as const;
 
 /**

@@ -442,11 +442,11 @@ pipeline. It has two halves:
    implementation does not block an otherwise clean candidate. Fixes touching a
    diverged surface still enter semantic triage with a warning, so the
    underlying bug can be adapted to veyyon's design.
-2. veybot (`python/veybot`) watches the `upstream-port` label. It prepares each
+2. veybot (`clients/python/veybot`) watches the `upstream-port` label. It prepares each
    port in its own worktree and opens one candidate pull request that closes the
    tracking issue. The issue body is evidence only; the execution contract is in
    veybot's own prompts, starting at
-   `python/veybot/src/prompts/kickoff_port_upstream.md`. When a candidate's
+   `clients/python/veybot/src/prompts/kickoff_port_upstream.md`. When a candidate's
    checks go red veybot repairs that branch in place, at most
    `VEYBOT_CI_MAX_REPAIRS` times per head commit, and never by weakening a gate.
 

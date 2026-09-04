@@ -26,7 +26,7 @@
  * very defect it exists to prevent as soon as a second root appeared. `contracts/*` is in the
  * workspace glob, so `--if-present` fans out to it, but nothing here required a contract to declare
  * `check:types` at all -- so a contract could opt out of type checking by omission with this suite
- * green. Literal members like `natives/bridge/bindings` and `python/veybot/web` were likewise
+ * green. Literal members like `natives/bridge/bindings` and `clients/python/veybot/web` were likewise
  * invisible to root globs. The members now come from `scripts/workspace-layout.ts`.
  */
 import { describe, expect, it } from "bun:test";

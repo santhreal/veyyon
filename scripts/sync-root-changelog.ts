@@ -38,7 +38,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error — plain .mjs module, no types; imported for its exports.
-import { renderRootChangelog } from "../website/tools/gen-changelog.mjs";
+import { renderRootChangelog } from "../apps/site/tools/gen-changelog.mjs";
 import { allEntries, unreleasedEntries } from "./changelog-unreleased";
 import { typeScriptMembers } from "./workspace-layout";
 

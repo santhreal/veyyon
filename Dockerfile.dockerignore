@@ -52,11 +52,11 @@ natives/bridge/bindings/native/.build/
 natives/bridge/bindings/native/veyyon_natives.darwin-*.node
 natives/bridge/bindings/native/veyyon_natives.dev.node
 packages/ai/test/.temp-images/
-python/veyyon-rpc/src/veyyon_rpc.egg-info/
-python/veybot/data/
-python/veybot/.cache/
-python/veybot/src/veybot/static/
-python/veybot/web/dist/
+clients/python/veyyon-rpc/src/veyyon_rpc.egg-info/
+clients/python/veybot/data/
+clients/python/veybot/.cache/
+clients/python/veybot/src/veybot/static/
+clients/python/veybot/web/dist/
 
 # Scratch files the repo creates ad-hoc.
 syntax.jsonl

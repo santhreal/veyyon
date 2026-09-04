@@ -147,7 +147,7 @@
 				var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 				var ctx = cv.getContext("2d", { alpha: true });
 				// This page is served self-contained by the local auth server, so it
-				// cannot import the shared sun source (website/sun-field.js). The ramp
+				// cannot import the shared sun source (apps/site/sun-field.js). The ramp
 				// and glyphs below are the same sun as everywhere else; brand-conformance
 				// pins them to site.css so this inline copy cannot silently drift. Keep
 				// them identical to sun-field.js / sun.ts if you touch them.

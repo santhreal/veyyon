@@ -13,7 +13,7 @@
 #     docker build -f Dockerfile.veybot -t veybot:dev .
 #
 # Compose (recommended):
-#     docker compose --project-directory python/veybot build
+#     docker compose --project-directory clients/python/veybot build
 ###############################################################################
 
 ARG VEYYON_BASE=veyyon:dev
@@ -27,13 +27,13 @@ WORKDIR /work
 # Root manifests + the web workspace manifest are enough for `bun install
 # --filter veybot-web` to hydrate just the dashboard's node_modules.
 COPY package.json bun.lock ./
-COPY python/veybot/web/package.json ./python/veybot/web/package.json
+COPY clients/python/veybot/web/package.json ./clients/python/veybot/web/package.json
 # Root package.json declares patchedDependencies, so the patch file must be
 # present before any root-level `bun install` (even a filtered one).
 COPY patches/*.patch ./patches/
 RUN bun install --filter veybot-web
-COPY --exclude=node_modules --exclude=dist python/veybot/web/ ./python/veybot/web/
-RUN bun --cwd=python/veybot/web run build
+COPY --exclude=node_modules --exclude=dist clients/python/veybot/web/ ./clients/python/veybot/web/
+RUN bun --cwd=clients/python/veybot/web run build
 
 ############################
 # 2) runtime — base + veybot src + web bundle + pip install
@@ -48,10 +48,10 @@ WORKDIR /app
 # veybot itself. Drop the Vite-built dashboard into the package tree before
 # `pip install` so it lands in the installed wheel (`static/**/*` is declared
 # as package-data in pyproject.toml).
-COPY python/veybot/pyproject.toml ./
-COPY python/veybot/LICENSE ./
-COPY python/veybot/src/ ./src/
-COPY --from=web-builder /work/python/veybot/web/dist/ ./src/static/
+COPY clients/python/veybot/pyproject.toml ./
+COPY clients/python/veybot/LICENSE ./
+COPY clients/python/veybot/src/ ./src/
+COPY --from=web-builder /work/clients/python/veybot/web/dist/ ./src/static/
 
 RUN pip install --no-cache-dir \
         "fastapi>=0.112" "uvicorn[standard]>=0.30" "httpx>=0.27" \
@@ -68,7 +68,7 @@ RUN mkdir -p /srv/agent-home/.agent /srv/agent-home/.veyyon/agent \
     && mkdir -p /srv/agent-home-stage/.agent /srv/agent-home-stage/.veyyon/agent \
     && printf '[install]\nbackend = "copyfile"\n' > /srv/agent-home/.bunfig.toml
 
-COPY python/veybot/entrypoint.sh /usr/local/bin/veybot-entrypoint
+COPY clients/python/veybot/entrypoint.sh /usr/local/bin/veybot-entrypoint
 RUN chmod +x /usr/local/bin/veybot-entrypoint
 
 VOLUME ["/data"]

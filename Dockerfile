@@ -56,7 +56,7 @@ COPY --parents \
     contracts/*/package.json \
     natives/bridge/bindings/package.json \
     packages/tsconfig.workspace.json \
-    python/veybot/web/package.json \
+    clients/python/veybot/web/package.json \
     natives/*/Cargo.toml \
     natives/*/*/Cargo.toml \
     tests/*/Cargo.toml \
@@ -94,7 +94,7 @@ RUN apt-get update \
 RUN pip install --upgrade pip build
 
 WORKDIR /src
-COPY python/veyyon-rpc /src
+COPY clients/python/veyyon-rpc /src
 RUN python -m build --wheel --outdir /out
 
 ############################
@@ -180,7 +180,7 @@ COPY --parents \
     contracts/*/package.json \
     natives/bridge/bindings/package.json \
     packages/tsconfig.workspace.json \
-    python/veybot/web/package.json \
+    clients/python/veybot/web/package.json \
     /veyyon/
 
 RUN bun install --frozen-lockfile --ignore-scripts

@@ -81,7 +81,7 @@ async function main(): Promise<void> {
 	// The npm bundle ships no stats dashboard sources, so embed the dashboard
 	// archive the same way compiled binaries do (scripts/build-binary.ts). Reset
 	// afterwards to keep the checked-in placeholder empty.
-	await runCommand(["bun", "--cwd=../stats", "run", "gen:stats"]);
+	await runCommand(["bun", "--cwd=../../apps/stats", "run", "gen:stats"]);
 	try {
 		// Build in-process: the docs embed payload is far larger than Linux's
 		// 128KiB per-argv-string cap, so it can never be passed as a CLI
@@ -107,7 +107,7 @@ async function main(): Promise<void> {
 			throw new Error(`CLI bundle failed:\n${output.logs.map(log => log.message).join("\n")}`);
 		}
 	} finally {
-		await runCommand(["bun", "--cwd=../stats", "run", "gen:stats:reset"]);
+		await runCommand(["bun", "--cwd=../../apps/stats", "run", "gen:stats:reset"]);
 	}
 	await ensureShebang();
 	const stat = await fs.stat(cliPath);
