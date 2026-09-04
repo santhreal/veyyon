@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-6fd919c7.js";
+            window.path_to_searchindex_js = "../searchindex-c0270383.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -221,7 +221,8 @@ written.</p>
 <ul>
 <li><code>packages/coding-agent/src/config.ts</code></li>
 <li><code>packages/coding-agent/src/config/config-file.ts</code> (re-exported from <code>config.ts</code>)</li>
-<li><code>packages/coding-agent/src/config/settings.ts</code></li>
+<li><code>kernel/src/settings/store.ts</code> (the layered store, <code>SettingsStore</code>)</li>
+<li><code>packages/coding-agent/src/config/settings.ts</code> (<code>Settings</code>, the product’s store with its hooks)</li>
 <li><code>packages/coding-agent/src/config/settings-schema.ts</code></li>
 <li><code>packages/coding-agent/src/discovery/builtin.ts</code></li>
 <li><code>packages/coding-agent/src/discovery/helpers.ts</code></li>
@@ -335,7 +336,12 @@ written.</p>
 <li>If target path is <code>.yml</code>/<code>.yaml</code>, a sibling <code>.json</code> is auto-migrated once (<code>migrateJsonToYml</code>).</li>
 </ul>
 <hr>
-<h2 id="4-settings-resolution-model-srcconfigsettingsts"><a class="header" href="#4-settings-resolution-model-srcconfigsettingsts">4) Settings resolution model (<code>src/config/settings.ts</code>)</a></h2>
+<h2 id="4-settings-resolution-model-kernelsrcsettingsstorets-srcconfigsettingsts"><a class="header" href="#4-settings-resolution-model-kernelsrcsettingsstorets-srcconfigsettingsts">4) Settings resolution model (<code>kernel/src/settings/store.ts</code>, <code>src/config/settings.ts</code>)</a></h2>
+<p><code>SettingsStore</code> in <code>@veyyon/kernel/settings/store</code> holds the layers, the merge, the reads and
+writes, the YAML load and the debounced save. It takes a <code>SettingsStoreHooks</code> at construction and
+names no setting. <code>Settings</code> in <code>src/config/settings.ts</code> extends it with the product’s hooks: the
+machine-wide bindings, the migrations below, the legacy stores, the per-setting side effects and
+the per-directory resolution.</p>
 <p>The runtime settings model is layered:</p>
 <ol>
 <li>Profile settings: <code>~/.veyyon/profiles/&lt;name&gt;/agent/config.yml</code></li>
@@ -357,7 +363,7 @@ written.</p>
 <li>Merge with legacy DB settings from <code>agent.db</code></li>
 <li>Write merged result to <code>config.yml</code></li>
 </ol>
-<p>Field-level migrations in <code>#migrateRawSettings</code>:</p>
+<p>Field-level migrations in <code>CodingAgentSettingsHooks.migrate</code> (<code>src/config/settings.ts</code>):</p>
 <ul>
 <li><code>queueMode</code> -&gt; <code>steeringMode</code></li>
 <li><code>ask.timeout</code> milliseconds -&gt; seconds when the old value looks like ms (<code>&gt; 1000</code>). The threshold is a guess, because nothing on disk records which format a file uses, so the rewrite is logged with both values. Every other migration here is a fixed point; this one is not, which is why <code>packages/coding-agent/test/settings-migration-idempotence.test.ts</code> pins the property.</li>
@@ -365,7 +371,7 @@ written.</p>
 </ul>
 <hr>
 <h2 id="5-capabilitydiscovery-integration"><a class="header" href="#5-capabilitydiscovery-integration">5) Capability/discovery integration</a></h2>
-<p>Most non-core config loading flows through the capability registry (<code>src/capability/index.ts</code> + <code>src/discovery/index.ts</code>).</p>
+<p>Most non-core config loading flows through the capability registry (<code>src/discovery/capability/index.ts</code> + <code>src/discovery/index.ts</code>).</p>
 <h2 id="provider-ordering"><a class="header" href="#provider-ordering">Provider ordering</a></h2>
 <p>Providers are sorted by numeric priority (higher first). Example priorities:</p>
 <ul>
