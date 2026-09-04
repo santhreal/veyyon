@@ -20,6 +20,13 @@ Operator guide: [Configuration](../using/configuration.md). Every setting, by na
 - Primary user file: `~/.veyyon/profiles/default/agent/config.yml` (or profile path under `~/.veyyon/profiles/`)
 - CLI: `veyyon config list|get|set`, `/settings`, `/reload-plugins` (re-read without restart)
 
+## Settings declarations
+
+Packages register setting tables with `declareSettings` from `@veyyon/kernel/settings/schema`.
+Duplicate paths are rejected, and queries against an empty registry throw.
+`settingsSchemaPaths()` returns an immutable key snapshot reused between registrations.
+The settings store rebuilds its derived path index when the snapshot changes.
+
 ## How configuration resolves
 
 Roots scanned, precedence, and consumption by settings, skills, hooks, tools, and extensions.
@@ -30,6 +37,7 @@ Primary implementation:
 
 - `packages/coding-agent/src/config.ts`
 - `packages/coding-agent/src/config/config-file.ts` (re-exported from `config.ts`)
+- `kernel/src/settings/schema.ts` (setting declarations and registry queries)
 - `kernel/src/settings/store.ts` (the layered store, `SettingsStore`)
 - `packages/coding-agent/src/config/settings.ts` (`Settings`, the product's store with its hooks)
 - `packages/coding-agent/src/config/settings-schema.ts`

@@ -86,6 +86,7 @@ type SettingValueFor<P extends SettingPath> = DeclaredSettings[P] extends { type
 									: never;
 
 const schema: Record<string, RegisteredSettingDef> = {};
+let schemaPaths: readonly SettingPath[] = [];
 
 /**
  * Register a package's settings table and hand it back, so the table is one object under two
@@ -102,7 +103,12 @@ export function declareSettings<T extends SettingsTable>(table: T): T {
 			throw new Error(`Setting "${path}" is declared twice; a setting has one owner.`);
 		}
 	}
-	Object.assign(schema, table);
+	try {
+		Object.assign(schema, table);
+	} finally {
+		// Refresh after assignment, including a partial assignment from a throwing accessor.
+		schemaPaths = Object.freeze(Object.keys(schema) as SettingPath[]);
+	}
 	return table;
 }
 
@@ -120,6 +126,7 @@ export function resetDeclaredSettingsForTest(): void {
 	for (const path of Object.keys(schema)) {
 		delete schema[path];
 	}
+	schemaPaths = [];
 }
 
 /**
@@ -132,7 +139,7 @@ export function resetDeclaredSettingsForTest(): void {
  * state of a running product, so a query against one is a load-order defect and is reported as one.
  */
 function registered(): Record<string, RegisteredSettingDef> {
-	if (Object.keys(schema).length === 0) {
+	if (schemaPaths.length === 0) {
 		throw new Error(
 			"No settings are declared: the module that composes the settings schema has not loaded. Import it before querying a setting.",
 		);
@@ -154,6 +161,12 @@ export function settingsSchema(): Readonly<Record<string, RegisteredSettingDef>>
 	return registered();
 }
 
+/** An immutable key snapshot; registration or reset replaces it for dependent indexes. */
+export function settingsSchemaPaths(): readonly SettingPath[] {
+	registered();
+	return schemaPaths;
+}
+
 /** Get the default value for a setting path */
 export function getDefault<P extends SettingPath>(path: P): SettingValue<P> {
 	return declared(path).default as SettingValue<P>;
@@ -171,7 +184,7 @@ export function getUi(path: SettingPath): AnyUiMetadata | undefined {
 
 /** Get all paths for a specific tab */
 export function getPathsForTab(tab: SettingTab): SettingPath[] {
-	return (Object.keys(registered()) as SettingPath[]).filter(path => {
+	return settingsSchemaPaths().filter(path => {
 		const ui = getUi(path);
 		return ui?.tab === tab;
 	});

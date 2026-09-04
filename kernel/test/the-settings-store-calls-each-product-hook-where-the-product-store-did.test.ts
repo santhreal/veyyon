@@ -152,6 +152,41 @@ afterEach(async () => {
 	await fs.rm(agentDir, { recursive: true, force: true });
 });
 
+describe("registered settings snapshots", () => {
+	// A key-count cache can retain another table's paths after reset/redeclaration.
+	// Exercise every declared fixture path, including undefined and array defaults.
+	// Timing and application schema composition are covered outside this suite.
+	it("invalidates the path index across empty, replacement, and growing registries", () => {
+		const entries = Object.entries(STORE_SETTINGS);
+		try {
+			for (let index = 0; index < entries.length; index++) {
+				const [firstPath, firstDef] = entries[index]!;
+				const [nextPath, nextDef] = entries[(index + 1) % entries.length]!;
+				resetDeclaredSettingsForTest();
+				declareSettings({ [firstPath]: firstDef });
+				const { store } = inMemory();
+				expect(store.getEffectiveSnapshot()).toEqual({ [firstPath]: firstDef.default });
+
+				resetDeclaredSettingsForTest();
+				expect(() => store.getEffectiveSnapshot()).toThrow("No settings are declared");
+				declareSettings({ [nextPath]: nextDef });
+				const replaced = store.getEffectiveSnapshot();
+				expect(Object.keys(replaced)).toEqual([nextPath]);
+				expect(replaced).toEqual({ [nextPath]: nextDef.default });
+
+				declareSettings({ [firstPath]: firstDef });
+				expect(store.getEffectiveSnapshot()).toEqual({
+					[firstPath]: firstDef.default,
+					[nextPath]: nextDef.default,
+				});
+			}
+		} finally {
+			resetDeclaredSettingsForTest();
+			declareSettings(STORE_SETTINGS);
+		}
+	});
+});
+
 describe("the sources a migration sees", () => {
 	it("migrates the initial overrides at construction, after the dotted-key expansion", () => {
 		const { store, hooks } = inMemory({ "store.flag": true, legacyName: "old" } as SettingsOptions["overrides"]);

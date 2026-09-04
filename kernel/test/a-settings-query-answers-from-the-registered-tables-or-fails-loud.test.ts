@@ -33,6 +33,7 @@ import {
 	type SettingPath,
 	type SettingsTable,
 	settingsSchema,
+	settingsSchemaPaths,
 } from "@veyyon/kernel/settings/schema";
 
 const EMPTY = /No settings are declared/;
@@ -71,6 +72,7 @@ describe("a settings query answers from the registered tables or fails loud", ()
 	it("throws from every query while no table has registered", () => {
 		const path: SettingPath = "example.flag";
 		expect(() => settingsSchema()).toThrow(EMPTY);
+		expect(() => settingsSchemaPaths()).toThrow(EMPTY);
 		expect(() => isSettingPath("example.flag")).toThrow(EMPTY);
 		expect(() => getDefault(path)).toThrow(EMPTY);
 		expect(() => getType(path)).toThrow(EMPTY);
@@ -88,6 +90,7 @@ describe("a settings query answers from the registered tables or fails loud", ()
 
 		expect(table).toBe(EXAMPLE_SETTINGS);
 		expect(settingsSchema()["example.flag"]).toBe(EXAMPLE_SETTINGS["example.flag"]);
+		expect<readonly string[]>(settingsSchemaPaths()).toEqual(Object.keys(EXAMPLE_SETTINGS));
 		expect(isSettingPath("example.flag")).toBe(true);
 		expect(isSettingPath("example.absent")).toBe(false);
 		// Typed through the merged declaration: a boolean default, an enum's members.
@@ -131,5 +134,34 @@ describe("a settings query answers from the registered tables or fails loud", ()
 		// A rejected table registers none of its paths, not the ones before the collision.
 		expect(isSettingPath("example.other")).toBe(false);
 		expect(getDefault("example.flag")).toBe(true);
+	});
+
+	it("keeps a key snapshot stable until registration without changing an earlier snapshot", () => {
+		// Store indexes use this snapshot's identity to avoid enumerating on every read.
+		const before = settingsSchemaPaths();
+		expect(settingsSchemaPaths()).toBe(before);
+		declareSettings({ "example.late": { type: "boolean", default: false } });
+		const after = settingsSchemaPaths();
+		expect<readonly string[]>(before).toEqual(Object.keys(EXAMPLE_SETTINGS));
+		expect<readonly string[]>(after).toEqual([...Object.keys(EXAMPLE_SETTINGS), "example.late"]);
+		expect(after).not.toBe(before);
+		expect(() => (after as SettingPath[]).pop()).toThrow();
+	});
+
+	it("keeps the key snapshot consistent with declarations when an accessor throws", () => {
+		for (const includePrefix of [false, true]) {
+			const table: SettingsTable = includePrefix
+				? { "example.beforeFailure": { type: "boolean", default: true } }
+				: {};
+			Object.defineProperty(table, "example.failure", {
+				enumerable: true,
+				get() {
+					throw new Error("Setting accessor failed");
+				},
+			});
+			expect(() => declareSettings(table)).toThrow("Setting accessor failed");
+			// Use the declared table as the oracle without requiring partial registration.
+			expect<readonly string[]>(settingsSchemaPaths()).toEqual(Object.keys(settingsSchema()));
+		}
 	});
 });

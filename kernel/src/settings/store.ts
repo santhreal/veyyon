@@ -40,7 +40,7 @@ import {
 	isUnsetNumberPath,
 	type SettingPath,
 	type SettingValue,
-	settingsSchema,
+	settingsSchemaPaths,
 } from "./schema";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -238,11 +238,10 @@ export function deepMergeSettings(base: RawSettings, overrides: RawSettings): Ra
  * Derived from the registry rather than declared here, so a new setting is covered without being
  * registered anywhere else, and derived lazily because the registry is empty while this module
  * loads: the product's schema module registers its tables when IT loads, and the store's own
- * import runs first. `declareSettings` rejects a path declared twice, so the key count only ever
- * grows and is the version the index is keyed on.
+ * import runs first. The registry replaces its immutable key snapshot on registration or reset,
+ * so snapshot identity invalidates the index even when a replacement has the same number of keys.
  */
 interface SchemaIndex {
-	readonly size: number;
 	readonly paths: readonly SettingPath[];
 	readonly segments: Readonly<Record<string, readonly string[]>>;
 	/**
@@ -258,19 +257,17 @@ interface SchemaIndex {
 let schemaIndex: SchemaIndex | undefined;
 
 function indexedSchema(): SchemaIndex {
-	const schema = settingsSchema();
-	const paths = Object.keys(schema) as SettingPath[];
-	if (schemaIndex && schemaIndex.size === paths.length) return schemaIndex;
+	const paths = settingsSchemaPaths();
+	if (schemaIndex?.paths === paths) return schemaIndex;
 	const segments: Record<string, readonly string[]> = Object.fromEntries(
 		paths.map(settingPath => [settingPath, settingPath.split(".")]),
 	);
 	schemaIndex = {
-		size: paths.length,
 		paths,
 		segments,
 		legacyUnsetSentinelPaths: paths
 			.filter(settingPath => isUnsetNumberPath(settingPath))
-			.map(settingPath => settingPath.split(".")),
+			.map(settingPath => segments[settingPath]!),
 	};
 	return schemaIndex;
 }
