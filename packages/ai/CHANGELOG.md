@@ -19,6 +19,9 @@
 - A signing Anthropic endpoint that answers `stop_reason: "refusal"` with category `reasoning_extraction` has prior-turn reasoning dropped from an immediate retry and from the rest of the session, instead of failing the turn with `Refusal (reasoning_extraction)` every time reasoning demoted to prose is replayed.
 - A tool result whose originating call is no longer in the request reaches the model as a `user`-role `<stale-tool-result>` note instead of as assistant text, so a model no longer reads a tool result in its own voice and reproduces one as a visible message.
 - A resumed session drops an `[Orphan …]` or `[Previous …]` tool-result note already persisted as assistant text, so history recorded before that repair was fixed stops prompting the same visible tool-result message on every later turn.
+- The persisted note is also removed from the turn's transport-native items, which an `openai-responses` or Codex session replays in preference to the text block once warm, so a live session stops re-priming the imitation on every request after the first one instead of accumulating dozens.
+- Stripping a persisted note keeps the reply the model wrote after its byte-exact copy of the tool output, instead of dropping the whole block with the reply in it.
+- Every fold of a tool result whose call is missing from the request is logged with the call id and the ids the request does carry, so the loss of a pairing can be traced from the log instead of only from its symptom.
 - A `<stale-tool-result>` note escapes the tool name and call id it reports, so a call id carrying a quote cannot close the attribute and hand the model forged markup.
 
 ### Changed

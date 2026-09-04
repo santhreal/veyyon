@@ -1,6 +1,18 @@
+import * as logger from "@veyyon/utils/logger";
 import { escapeXmlAttribute } from "@veyyon/utils/sanitize-text";
+import { isRecord } from "@veyyon/utils/type-guards";
 import { renderDemotedThinking } from "../dialect/demotion";
-import type { Api, AssistantMessage, Message, Model, ToolCall, ToolResultMessage, UserMessage } from "../types";
+import type {
+	Api,
+	AssistantMessage,
+	Message,
+	Model,
+	ProviderPayload,
+	TextContent,
+	ToolCall,
+	ToolResultMessage,
+	UserMessage,
+} from "../types";
 import { isDemotedThinking, kDemotedThinking } from "../utils/block-symbols";
 
 const enum ToolCallStatus {
@@ -56,7 +68,75 @@ export function staleToolResultNote(options: {
 const LEGACY_STALE_TOOL_NOTE = /^\[(?:Orphan|Previous) [^\]]*result; call_id=[^\]]*\]: /;
 
 /**
- * Remove a legacy stale-tool note from assistant history.
+ * Text of every tool result the model read between the previous assistant turn
+ * and `index`. An imitated note copies one of these verbatim, so they are the
+ * only evidence of where the copy ends and the model's own reply begins.
+ */
+function precedingToolOutputs(messages: readonly Message[], index: number): string[] {
+	const outputs: string[] = [];
+	for (let i = index - 1; i >= 0; i--) {
+		const message = messages[i]!;
+		if (message.role === "assistant") break;
+		if (message.role !== "toolResult") continue;
+		const text = message.content
+			.filter((block): block is TextContent => block.type === "text")
+			.map(block => block.text)
+			.join("\n");
+		if (text.length > 0) outputs.push(text);
+	}
+	return outputs;
+}
+
+/**
+ * Strip a legacy note from one assistant text.
+ *
+ * Returns the text unchanged when it holds no note, the reply that followed the
+ * copied payload when the copy is byte-equal to one of `priorToolOutputs`, and
+ * `undefined` when nothing of the model's own can be separated from the copy.
+ * A copy that drifts from the tool output (paraphrased, truncated) cannot be
+ * split soundly, so the block goes in full rather than keeping tool output in
+ * the assistant's voice; measured over recorded sessions, about a third of the
+ * notes are exact copies and a quarter of those carry a reply after them.
+ */
+function stripLegacyStaleToolNote(text: string, priorToolOutputs: readonly string[]): string | undefined {
+	const match = LEGACY_STALE_TOOL_NOTE.exec(text);
+	if (!match) return text;
+	const rest = text.slice(match[0].length);
+	for (const output of priorToolOutputs) {
+		if (!rest.startsWith(output)) continue;
+		const reply = rest.slice(output.length).trim();
+		return reply.length > 0 ? reply : undefined;
+	}
+	return undefined;
+}
+
+/**
+ * Apply {@link stripLegacyStaleToolNote} to the transport-native copy of the
+ * turn. A Responses-family provider replays `providerPayload.items` verbatim
+ * once its session is warm, in preference to `content`, so a note left in an
+ * `output_text` part would keep priming the model on the live path no matter
+ * what `content` says.
+ */
+function stripLegacyStaleToolNotesFromPayload(
+	payload: ProviderPayload,
+	priorToolOutputs: readonly string[],
+): ProviderPayload {
+	const items = payload.items.flatMap(item => {
+		const parts: unknown = item.content;
+		if (item.type !== "message" || item.role !== "assistant" || !Array.isArray(parts)) return [item];
+		const content = parts.flatMap((part: unknown) => {
+			if (!isRecord(part) || part.type !== "output_text" || typeof part.text !== "string") return [part];
+			const text = stripLegacyStaleToolNote(part.text, priorToolOutputs);
+			if (text === part.text) return [part];
+			return text === undefined ? [] : [{ ...part, text }];
+		});
+		return content.length > 0 ? [{ ...item, content }] : [];
+	});
+	return { ...payload, items };
+}
+
+/**
+ * Remove legacy stale-tool notes from assistant history.
  *
  * The payload is not re-emitted as a user note. It is truncated output from a
  * call that left the request many turns ago, and a message inserted between an
@@ -66,7 +146,9 @@ const LEGACY_STALE_TOOL_NOTE = /^\[(?:Orphan|Previous) [^\]]*result; call_id=[^\
 function dropLegacyStaleToolNotes(messages: Message[]): Message[] {
 	// This runs on every request for every provider, and all but a handful of
 	// sessions hold no such note, so the common path must not copy the history:
-	// scan first and hand back the same array.
+	// scan first and hand back the same array. `content` is the detector for
+	// `providerPayload` too: both come from the same response, so a note in one
+	// is in the other.
 	let hasNote = false;
 	for (const message of messages) {
 		if (message.role !== "assistant") continue;
@@ -78,19 +160,31 @@ function dropLegacyStaleToolNotes(messages: Message[]): Message[] {
 	if (!hasNote) return messages;
 
 	const result: Message[] = [];
-	for (const message of messages) {
+	for (const [index, message] of messages.entries()) {
 		if (message.role !== "assistant") {
 			result.push(message);
 			continue;
 		}
-		const kept = message.content.filter(block => !(block.type === "text" && LEGACY_STALE_TOOL_NOTE.test(block.text)));
-		if (kept.length === message.content.length) {
+		if (!message.content.some(block => block.type === "text" && LEGACY_STALE_TOOL_NOTE.test(block.text))) {
 			result.push(message);
 			continue;
 		}
+		const priorToolOutputs = precedingToolOutputs(messages, index);
+		const kept = message.content.flatMap((block): AssistantMessage["content"] => {
+			if (block.type !== "text") return [block];
+			const text = stripLegacyStaleToolNote(block.text, priorToolOutputs);
+			if (text === block.text) return [block];
+			// The signature covered the text as generated; the shortened text no
+			// longer matches it, so it must not be replayed as signed.
+			return text === undefined ? [] : [{ ...block, text, textSignature: undefined }];
+		});
 		// An assistant turn holding nothing but the note has no tool call and no
 		// reply left, so replaying it contributes an empty turn.
-		if (kept.length > 0) result.push({ ...message, content: kept });
+		if (kept.length === 0) continue;
+		const providerPayload = message.providerPayload
+			? stripLegacyStaleToolNotesFromPayload(message.providerPayload, priorToolOutputs)
+			: undefined;
+		result.push({ ...message, content: kept, ...(providerPayload ? { providerPayload } : {}) });
 	}
 	return result;
 }
@@ -962,6 +1056,12 @@ export function transformMessages<TApi extends Api>(
 					if (part.type === "text" && part.text.trim() !== "") textParts.push(part.text);
 				}
 				if (textParts.length > 0) {
+					logger.warn("transform-messages: folding a tool result whose call is missing from the history", {
+						provider: model.provider,
+						model: model.id,
+						toolName: msg.toolName,
+						toolCallId: msg.toolCallId,
+					});
 					result.push({
 						role: "user",
 						content: staleToolResultNote({
