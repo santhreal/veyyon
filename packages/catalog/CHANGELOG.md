@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-04
+
 ### Added
 
 - A model's thinking config carries `prefixBinding`, set for Claude 5.1 and later, stating that its thinking blocks are bound to the conversation prefix they were produced against.
@@ -21,26 +23,6 @@
 - OpenCode Zen and Go discovery resolves the wire API of an id the bundle predates from live models.dev, so `muse-spark-1.3-contributor-free` and `muse-spark-1.3-contributor` route to `/responses` instead of failing with HTTP 500 on `/chat/completions`; the bundle also carries both rows.
 - OpenCode Zen and Go model discovery sends the `Veyyon/<version>` user agent the gateway requires, so a discovery request is no longer unlabeled traffic that can be filtered into an empty model picker.
 - An OpenCode Zen or Go discovery whose models.dev lookup fails falls back to the bundle without reporting a discovery failure, so a working gateway listing is no longer warned about as a provider that could not be discovered.
-
-## [1.3.0] - 2026-08-28
-
-### Added
-
-- Export `normalizeOllamaBaseUrl` and `toOllamaNativeBaseUrl`, the single definition of how an Ollama base URL is spelled for each of its two APIs.
-- Added the Command Code provider catalog, with its documented coding flagships as the offline seed and credentialed discovery for the wider Provider API list.
-- Added the Nous Research provider catalog, whose credentialed discovery keeps tool-capable chat models and excludes embedding, media-generation and non-tool rows.
-- Added the `publishesOwnModelLimits` provider flag, which stops generation from backfilling a context window or output cap from another host's same-family model.
-- `ProviderWireCapabilities.anthropicMessages` declares how a provider serves the Anthropic Messages API — its endpoint, credential placement, rejected request features and retryable model errors — and `declaredProviders()` and `declaredCapabilityNames()` derive the declaring sets from the table.
-- Bundled model resolution persists a content-verified enriched snapshot, and a registry cache stamp moves on every row-content write, and on a row crossing the freshness window it is read under, without treating SQLite sidecar churn or a provider re-verifying models it already had as a change.
-- Added `supportsServerCompaction` capability data for ChatGPT Codex backend models on the Responses API.
-
-### Fixed
-
-- LM Studio discovery reports the context window the running server accepts (`loaded_context_length`) rather than the model's compiled ceiling (`max_context_length`), so a model loaded below its ceiling no longer plans a session for context the server refuses.
-
-### Removed
-
-- Removed `derive-tmp.ts`, a scratch probe swept into the package by accident; nothing imported it and no entry point exposed it.
 
 ## [16.5.2] - 2026-07-14
 
@@ -746,6 +728,26 @@
 ### Removed
 
 - Removed the runtime enrichment layer: `enrichModelThinking` (and its non-enumerable memo-slot cache), `refreshModelThinking`, `modelOmitsReasoningEffort`, and the `model-thinking` re-exports of generator-only policies. Thinking metadata is resolved exactly once inside `buildModel`; runtime helpers (`getSupportedEfforts`, `clampThinkingLevelForModel`, `requireSupportedEffort`, the effort mappers) are pure field reads.
+
+## [1.3.0] - 2026-08-28
+
+### Added
+
+- Export `normalizeOllamaBaseUrl` and `toOllamaNativeBaseUrl`, the single definition of how an Ollama base URL is spelled for each of its two APIs.
+- Added the Command Code provider catalog, with its documented coding flagships as the offline seed and credentialed discovery for the wider Provider API list.
+- Added the Nous Research provider catalog, whose credentialed discovery keeps tool-capable chat models and excludes embedding, media-generation and non-tool rows.
+- Added the `publishesOwnModelLimits` provider flag, which stops generation from backfilling a context window or output cap from another host's same-family model.
+- `ProviderWireCapabilities.anthropicMessages` declares how a provider serves the Anthropic Messages API — its endpoint, credential placement, rejected request features and retryable model errors — and `declaredProviders()` and `declaredCapabilityNames()` derive the declaring sets from the table.
+- Bundled model resolution persists a content-verified enriched snapshot, and a registry cache stamp moves on every row-content write, and on a row crossing the freshness window it is read under, without treating SQLite sidecar churn or a provider re-verifying models it already had as a change.
+- Added `supportsServerCompaction` capability data for ChatGPT Codex backend models on the Responses API.
+
+### Fixed
+
+- LM Studio discovery reports the context window the running server accepts (`loaded_context_length`) rather than the model's compiled ceiling (`max_context_length`), so a model loaded below its ceiling no longer plans a session for context the server refuses.
+
+### Removed
+
+- Removed `derive-tmp.ts`, a scratch probe swept into the package by accident; nothing imported it and no entry point exposed it.
 
 ## [1.2.0] - 2026-08-23
 

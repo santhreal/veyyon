@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-04
+
 ### Added
 
 - `TUI.markLayoutSized(component)` marks a root child whose height the `onBeforeCompose` pass owns, so a component-scoped frame renders it instead of reusing the rows the previous frame's content called for.
@@ -14,33 +16,6 @@
 
 - An `Editor` with no `onSubmit` consumer leaves the draft alone when Enter arrives, instead of clearing it, so a submit typed before anything is listening cannot destroy what was typed.
 - `SettingsList` reserves two columns for the scrollbar gutter when items overflow the viewport, matching `ScrollView.contentWidth`.
-
-## [1.3.0] - 2026-08-28
-
-### Added
-
-- `TUI.onBeforeCompose` runs at the top of every frame, before any root child renders, so a layout whose height is a function of its siblings' heights is sized against the children about to render rather than the previous frame's.
-- `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
-- `MOTION.reflow` states the curve for a row that reflows its content sideways: 320ms, symmetric, where `expand` is 180ms and front-loaded.
-- `TUI.composedFrameLines` exposes the rows of the frame just composed, so a check can tell a row the layout composed blank from a row the renderer composed with content and failed to paint.
-- `Editor.discardDraft()` clears the composer and records an undo state first, so the discarded draft comes back with undo; `setText` still drops the undo history, because it loads text from elsewhere rather than editing what was typed.
-
-### Changed
-
-- The ANSI owner check scans `packages/evals/src/backends/harbor` instead of the retired metaharness package path. No behavior change.
-- `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
-- The fuzzy-match benchmark fixture now names the canonical text-search source path instead of the retired grep-tool path. No benchmark behavior changed.
-- Settings rows can open nested panels, used by Files → LSP to keep its dependent switches behind one parent row.
-- The `ui.loop-blocked` warning reports `phase` with the `phaseMs` that earns it, and names the phase only when it held at least half the block; a phase that ran for a sliver of it is reported as `unknown` with the observed label carried as `topPhase`.
-
-### Fixed
-
-- A tab bar holding no tabs keeps its active index at 0, instead of reporting tab -1 and handing an undefined tab to the change callback.
-- `SelectList.setSelectedIndex` holds its low bound on an empty list rather than storing an inverted -1; no behavior changes today, since no caller can distinguish the two.
-- Derive scroll-isolation pinned footer hit-test boundaries from the rendered window top and clamp child frame-local mouse coordinates within valid segment bounds.
-- Nested optional-argument LaTeX constructs parse in linear time without character-by-character concatenation allocations.
-- Exclude pinned footer rows from the scroll-isolation snapshot and scroll space so the composer does not duplicate inside scrolled-back history.
-- Extract LaTeX argument text by slicing the source rather than appending one character at a time, so a deeply nested optional-argument chain degrades linearly instead of quadratically.
 
 ## [16.5.2] - 2026-07-14
 
@@ -1786,6 +1761,33 @@ Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mon
 ### Added
 
 - Added `getText()` method to Text component for retrieving current text content
+
+## [1.3.0] - 2026-08-28
+
+### Added
+
+- `TUI.onBeforeCompose` runs at the top of every frame, before any root child renders, so a layout whose height is a function of its siblings' heights is sized against the children about to render rather than the previous frame's.
+- `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
+- `MOTION.reflow` states the curve for a row that reflows its content sideways: 320ms, symmetric, where `expand` is 180ms and front-loaded.
+- `TUI.composedFrameLines` exposes the rows of the frame just composed, so a check can tell a row the layout composed blank from a row the renderer composed with content and failed to paint.
+- `Editor.discardDraft()` clears the composer and records an undo state first, so the discarded draft comes back with undo; `setText` still drops the undo history, because it loads text from elsewhere rather than editing what was typed.
+
+### Changed
+
+- The ANSI owner check scans `packages/evals/src/backends/harbor` instead of the retired metaharness package path. No behavior change.
+- `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
+- The fuzzy-match benchmark fixture now names the canonical text-search source path instead of the retired grep-tool path. No benchmark behavior changed.
+- Settings rows can open nested panels, used by Files → LSP to keep its dependent switches behind one parent row.
+- The `ui.loop-blocked` warning reports `phase` with the `phaseMs` that earns it, and names the phase only when it held at least half the block; a phase that ran for a sliver of it is reported as `unknown` with the observed label carried as `topPhase`.
+
+### Fixed
+
+- A tab bar holding no tabs keeps its active index at 0, instead of reporting tab -1 and handing an undefined tab to the change callback.
+- `SelectList.setSelectedIndex` holds its low bound on an empty list rather than storing an inverted -1; no behavior changes today, since no caller can distinguish the two.
+- Derive scroll-isolation pinned footer hit-test boundaries from the rendered window top and clamp child frame-local mouse coordinates within valid segment bounds.
+- Nested optional-argument LaTeX constructs parse in linear time without character-by-character concatenation allocations.
+- Exclude pinned footer rows from the scroll-isolation snapshot and scroll space so the composer does not duplicate inside scrolled-back history.
+- Extract LaTeX argument text by slicing the source rather than appending one character at a time, so a deeply nested optional-argument chain degrades linearly instead of quadratically.
 
 ## [1.2.0] - 2026-08-23
 

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-04
+
 ### Added
 
 - The models page on veyyon.dev lists every provider and model veyyon supports, read live from the bundled catalog and auto-refreshed from the repository; `bun run site:build` regenerates `website/models-data.json` from `packages/catalog/src/models.json`.
