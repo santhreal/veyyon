@@ -5,6 +5,10 @@
  * Uses the settings schema as the source of truth for available settings.
  */
 
+import { APP_NAME, errorMessage, getAgentDir, isRecord, nearestNames } from "@veyyon/utils";
+import { renderHelpParagraph, renderHelpTable } from "@veyyon/utils/cli";
+import chalk from "chalk";
+import { Settings, settings, validateProviderMaxInFlightRequests } from "../config/settings";
 import {
 	getDefault,
 	getEnumValues,
@@ -12,14 +16,10 @@ import {
 	getUi,
 	isSettingPath,
 	retiredBy,
+	SETTINGS_SCHEMA,
 	type SettingPath,
 	type SettingValue,
-} from "@veyyon/kernel/settings/schema";
-import { APP_NAME, errorMessage, getAgentDir, isRecord, nearestNames } from "@veyyon/utils";
-import { renderHelpParagraph, renderHelpTable } from "@veyyon/utils/cli";
-import chalk from "chalk";
-import { Settings, settings, validateProviderMaxInFlightRequests } from "../config/settings";
-import { SETTINGS_SCHEMA } from "../config/settings-schema";
+} from "../config/settings-schema";
 import { theme } from "../theme/theme";
 import { EXIT_USAGE } from "./exit-codes";
 import { initXdg } from "./init-xdg";

@@ -39,8 +39,7 @@
 import { describe, expect, it } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
-import { getDefault, getType, type SettingPath } from "@veyyon/kernel/settings/schema";
+import { getDefault, getType, SETTINGS_SCHEMA, type SettingPath } from "@veyyon/coding-agent/config/settings-schema";
 import { getSettingsForTab } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 import {
 	AGENT_DEFAULT_EFFORT,

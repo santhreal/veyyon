@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { SETTING_TABS, SETTINGS_SCHEMA, TAB_GROUPS } from "@veyyon/coding-agent/config/settings-schema";
-import { type SettingPath } from "@veyyon/kernel/settings/schema";
+import {
+	SETTING_TABS,
+	SETTINGS_SCHEMA,
+	type SettingPath,
+	TAB_GROUPS,
+} from "@veyyon/coding-agent/config/settings-schema";
 import { getSettingsForTab } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 import type { SettingTab } from "@veyyon/settings";
 

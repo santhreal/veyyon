@@ -452,7 +452,6 @@
         "@veyyon/catalog": "catalog:",
         "@veyyon/coding-agent": "catalog:",
         "@veyyon/hashline": "catalog:",
-        "@veyyon/kernel": "catalog:",
         "@veyyon/natives": "catalog:",
         "@veyyon/tui": "catalog:",
         "@veyyon/utils": "catalog:",

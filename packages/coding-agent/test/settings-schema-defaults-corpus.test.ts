@@ -1,8 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { GLOBAL_SETTING_BINDINGS } from "@veyyon/coding-agent/config/settings-domains/global";
-import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
-import { getDefault, getEnumValues, getType, type SettingPath } from "@veyyon/kernel/settings/schema";
+import {
+	getDefault,
+	getEnumValues,
+	getType,
+	SETTINGS_SCHEMA,
+	type SettingPath,
+} from "@veyyon/coding-agent/config/settings-schema";
 import { isSettingType } from "@veyyon/settings";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 

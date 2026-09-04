@@ -11,8 +11,7 @@
  */
 
 import type { StreamFn } from "@veyyon/agent-core";
-import type { SettingPath } from "@veyyon/kernel/settings/schema";
-import type { Settings } from "../config/settings";
+import type { SettingPath, Settings } from "../config/settings";
 import { Semaphore } from "./parallel";
 
 const PROVIDER_MAX_CONCURRENCY_SETTINGS: Record<string, SettingPath> = {

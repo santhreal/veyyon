@@ -13,6 +13,28 @@ import { SUBAGENTS_SETTINGS } from "./settings-domains/subagents";
 import { TASKS_SETTINGS } from "./settings-domains/tasks";
 import { TOOLS_SETTINGS } from "./settings-domains/tools";
 
+/**
+ * The query surface, re-exported from the registry that answers it.
+ *
+ * A query reads the tables this module registers, so a caller that imports the query from the
+ * kernel directly asks a registry that may still be empty: the exa provider read `getDefault` at
+ * module scope and threw before this module had loaded. Importing the query from here loads the
+ * tables first, by the one import edge the caller already has.
+ */
+export {
+	describeSettingTypeMismatch,
+	getDefault,
+	getEnumValues,
+	getPathsForTab,
+	getType,
+	getUi,
+	hasUi,
+	isSettingPath,
+	isUnsetNumberPath,
+	retiredBy,
+	type SettingPath,
+	type SettingValue,
+} from "@veyyon/kernel/settings/schema";
 export { type BashInterceptorRule, DEFAULT_BASH_INTERCEPTOR_RULES } from "./bash-interceptor-rules";
 
 /** Unified settings schema - single source of truth for all settings.

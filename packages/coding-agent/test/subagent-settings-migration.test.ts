@@ -27,8 +27,14 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
-import { getDefault, getEnumValues, getType, isSettingPath, type SettingPath } from "@veyyon/kernel/settings/schema";
+import {
+	getDefault,
+	getEnumValues,
+	getType,
+	isSettingPath,
+	SETTINGS_SCHEMA,
+	type SettingPath,
+} from "@veyyon/coding-agent/config/settings-schema";
 import { logger, removeWithRetries } from "@veyyon/utils";
 import * as YAML from "yaml";
 import { guardDestructivePath } from "../../utils/test/helpers/destructive-guard";

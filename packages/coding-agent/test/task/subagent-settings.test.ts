@@ -28,9 +28,8 @@
 import { describe, expect, it, spyOn } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import { getBundledModel } from "@veyyon/catalog/models";
-import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
+import { isSettingPath, resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import type { SubagentAgentSettings } from "@veyyon/coding-agent/config/settings-domains/subagents";
-import { isSettingPath } from "@veyyon/kernel/settings/schema";
 import {
 	getSettingsForTab,
 	invalidateSettingDefsCache,

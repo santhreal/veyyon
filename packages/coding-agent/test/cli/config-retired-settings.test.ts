@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
-import { retiredBy, type SettingPath } from "@veyyon/kernel/settings/schema";
+import { retiredBy, SETTINGS_SCHEMA, type SettingPath } from "@veyyon/coding-agent/config/settings-schema";
 
 /**
  * A superseded setting stops advertising itself as a choice.

@@ -18,7 +18,6 @@ import type { AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-cor
 import type { TSchema } from "@veyyon/ai";
 import { LEGACY_TOOL_DEFINITION_MARKER } from "@veyyon/kernel/registry/legacy-tool-marker";
 import { Type } from "@veyyon/kernel/registry/typebox";
-import type { SettingPath } from "@veyyon/kernel/settings/schema";
 import { Text } from "@veyyon/tui";
 import {
 	errorMessage,
@@ -28,7 +27,7 @@ import {
 	parseFrontmatter as parseOmpFrontmatter,
 } from "@veyyon/utils";
 import type { PromptTemplate } from "../config/prompt-templates";
-import { Settings } from "../config/settings";
+import { type SettingPath, Settings } from "../config/settings";
 import { EditTool } from "../edit";
 import { formatExitCodeNotice } from "../exec/exit-notice";
 import { type LoadExtensionsResult, createAgentSession as ompCreateAgentSession } from "../sdk";

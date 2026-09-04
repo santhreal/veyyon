@@ -41,8 +41,16 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { SETTING_TABS, SETTINGS_SCHEMA, TAB_GROUPS, TAB_METADATA } from "@veyyon/coding-agent/config/settings-schema";
-import { getDefault, getType, getUi, type SettingPath } from "@veyyon/kernel/settings/schema";
+import {
+	getDefault,
+	getType,
+	getUi,
+	SETTING_TABS,
+	SETTINGS_SCHEMA,
+	type SettingPath,
+	TAB_GROUPS,
+	TAB_METADATA,
+} from "@veyyon/coding-agent/config/settings-schema";
 import {
 	getAllSettingDefs,
 	getSettingsForTab,

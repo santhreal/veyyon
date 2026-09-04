@@ -1,8 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import * as url from "node:url";
-import { Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { getDefault } from "@veyyon/kernel/settings/schema";
+import { getDefault, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import {
 	ReadToolGroupComponent,
 	readArgsTargetInternalUrl,

@@ -6,8 +6,12 @@ import { parseUnreleasedSection } from "@veyyon/coding-agent/commit/changelog/pa
 import { extractPathFromRename, parseFileDiffs, parseNumstat } from "@veyyon/coding-agent/commit/git-diff";
 import { parseJsonPayload } from "@veyyon/coding-agent/commit/utils/analysis";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { type CodexAutoRedeemMode, SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
-import { getDefault, type SettingPath } from "@veyyon/kernel/settings/schema";
+import {
+	type CodexAutoRedeemMode,
+	getDefault,
+	SETTINGS_SCHEMA,
+	type SettingPath,
+} from "@veyyon/coding-agent/config/settings-schema";
 import { createMCPToolName, parseMCPToolName } from "@veyyon/coding-agent/mcp/tool-bridge";
 import {
 	dispatchRpcInputFrame,

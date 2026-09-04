@@ -145,8 +145,15 @@ export function memberKeyOf(file: string): string {
 	return memberRelative(file).split("/")[0] ?? "";
 }
 
-/** The directory a {@link memberKeyOf} key names. */
+/**
+ * The directory a {@link memberKeyOf} key names.
+ *
+ * A key with no slash is a package under `packages/`, unless it is itself a member declared at the
+ * repository root: `kernel` is one, and joining it under `packages/` opened a directory that does not
+ * exist, so the preload gate reported the kernel's `bunfig.toml` missing while the file was there.
+ */
 export function memberDirOf(key: string): string {
+	if (MEMBERS.includes(key)) return path.join(REPO_ROOT, key);
 	return key.includes("/") ? path.join(REPO_ROOT, key) : path.join(PACKAGES_DIR, key);
 }
 

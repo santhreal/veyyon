@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { Tool as AiTool } from "@veyyon/ai";
 import { toolWireSchema } from "@veyyon/ai/utils/schema";
-import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { SettingPath } from "@veyyon/kernel/settings/schema";
+import { type SettingPath, Settings } from "@veyyon/coding-agent/config/settings";
 import { loadBundledAgents } from "@veyyon/coding-agent/task/agents";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { EvalTool, getEvalToolDescription } from "@veyyon/coding-agent/tools/shell/eval";

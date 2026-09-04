@@ -3,8 +3,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { Settings } from "../src/config/settings";
-import { SETTINGS_SCHEMA } from "../src/config/settings-schema";
-import { getDefault, type SettingPath } from "@veyyon/kernel/settings/schema";
+import { getDefault, SETTINGS_SCHEMA, type SettingPath } from "../src/config/settings-schema";
 
 const SAMPLE_PATHS = ["tier.openai", "tier.subagent", "display.smoothStreaming", "tools.approvalMode"] as const;
 

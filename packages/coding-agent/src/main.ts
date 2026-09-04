@@ -16,7 +16,6 @@ import { describePendingToolCalls } from "@veyyon/kernel/session/exit-diagnostic
 import { formatNotice, OperatorNotices, stderrNoticeSink } from "@veyyon/kernel/session/operator-notices";
 import { resolveResumableSession, type SessionInfo } from "@veyyon/kernel/session/session-listing";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
-import { getDefault, type SettingPath } from "@veyyon/kernel/settings/schema";
 import {
 	$env,
 	directoryExists,
@@ -57,7 +56,7 @@ import {
 } from "./config/model-resolver";
 import { DEFAULT_MODEL_SLOT } from "./config/model-roles";
 import { ModelsConfigFile } from "./config/models-config";
-import { Settings, settings } from "./config/settings";
+import { getDefault, type SettingPath, Settings, settings } from "./config/settings";
 import { initializeWithSettings } from "./discovery";
 import { reset as resetCapabilities } from "./discovery/capability";
 import {

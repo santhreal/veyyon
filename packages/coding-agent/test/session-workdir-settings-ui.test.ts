@@ -3,8 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
-import { getUi } from "@veyyon/kernel/settings/schema";
+import { getUi, SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
 import {
 	getSettingDef,
 	getSettingsForTab,

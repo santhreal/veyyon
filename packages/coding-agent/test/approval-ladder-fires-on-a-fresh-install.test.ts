@@ -26,10 +26,9 @@
 import { describe, expect, it } from "bun:test";
 // The product's composed schema: the kernel answers a query from whatever tables have registered,
 // and this module is the one that registers them.
-import "@veyyon/coding-agent/config/settings-schema";
+import { getDefault } from "@veyyon/coding-agent/config/settings-schema";
 import type { ApprovalMode, ToolApprovalDecision } from "@veyyon/coding-agent/tools/core/approval";
 import { resolveApproval, resolveEffectiveApprovalMode } from "@veyyon/coding-agent/tools/core/approval";
-import { getDefault } from "@veyyon/kernel/settings/schema";
 
 /** The rung a fresh install runs on: read from the schema, never from the ladder's own constant. */
 function freshInstallMode(): ApprovalMode {

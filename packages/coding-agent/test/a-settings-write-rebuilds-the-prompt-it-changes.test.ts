@@ -33,8 +33,7 @@ import { Agent, type AgentTool } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { getEnumValues, getType, type SettingPath } from "@veyyon/kernel/settings/schema";
-import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
+import { getEnumValues, getType, SETTINGS_SCHEMA, type SettingPath } from "@veyyon/coding-agent/config/settings-schema";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { TOOL_SHAPE_SETTING_PATHS } from "@veyyon/coding-agent/session/agent-session-types";
 import {

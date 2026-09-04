@@ -13,8 +13,15 @@ import { clearCustomApis } from "@veyyon/ai/api-registry";
 import { createMockModel, registerMockApi } from "@veyyon/ai/providers/mock";
 import { __providerInFlightForTesting, streamSimple } from "@veyyon/ai/stream";
 import type { Context } from "@veyyon/ai/types";
-import { onAppendOnlyModeChanged, onStatusLineSessionAccentChanged, resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { getDefault, getEnumValues, type SettingPath } from "@veyyon/kernel/settings/schema";
+import {
+	getDefault,
+	getEnumValues,
+	onAppendOnlyModeChanged,
+	onStatusLineSessionAccentChanged,
+	resetSettingsForTest,
+	type SettingPath,
+	Settings,
+} from "@veyyon/coding-agent/config/settings";
 import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import { getProjectAgentDir, logger, TempDir } from "@veyyon/utils";
 import { YAML } from "bun";

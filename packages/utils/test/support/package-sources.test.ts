@@ -189,6 +189,8 @@ describe("the shared package-source traversal", () => {
 			);
 			expect(memberDirOf("contracts/wire")).toBe(path.join(REPO_ROOT, "contracts", "wire"));
 			expect(memberDirOf("utils")).toBe(path.join(PACKAGES_DIR, "utils"));
+			// A member declared at the repository root has no slash and is not under `packages/`.
+			expect(memberDirOf("kernel")).toBe(path.join(REPO_ROOT, "kernel"));
 		});
 
 		it("omits test files by default and includes them on request", async () => {

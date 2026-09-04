@@ -2,8 +2,14 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { SETTING_TABS, SETTINGS_SCHEMA, Settings } from "@veyyon/coding-agent/config/settings";
-import { getPathsForTab, getUi, type SettingPath } from "@veyyon/kernel/settings/schema";
+import {
+	getPathsForTab,
+	getUi,
+	SETTING_TABS,
+	SETTINGS_SCHEMA,
+	type SettingPath,
+	Settings,
+} from "@veyyon/coding-agent/config/settings";
 import { GLOBAL_SETTING_BINDINGS } from "@veyyon/coding-agent/config/settings-domains/global";
 import { getGlobalConfigRootDir, resolveGlobalDefaultProfile, resolveGlobalProfileSharing } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";

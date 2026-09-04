@@ -19,13 +19,6 @@ import * as path from "node:path";
 // `Settings`, so this file's graph is the most leveraged one in the package.
 import { configureProviderMaxInFlightRequests } from "@veyyon/ai/provider-inflight-limits";
 import { UNSET_NUMBER } from "@veyyon/kernel/settings/optional-number";
-import {
-	describeSettingTypeMismatch,
-	getDefault,
-	isUnsetNumberPath,
-	type SettingPath,
-	type SettingValue,
-} from "@veyyon/kernel/settings/schema";
 import { atomicWriteFile } from "@veyyon/utils/atomic-write";
 import {
 	findShadowedGlobalConfigFiles,
@@ -76,7 +69,17 @@ import {
 	settingsInstancePromise,
 	settingsOrThrow,
 } from "./settings-instance";
-import { type BashInterceptorRule, type GroupPrefix, type GroupTypeMap, SETTINGS_SCHEMA } from "./settings-schema";
+import {
+	type BashInterceptorRule,
+	describeSettingTypeMismatch,
+	type GroupPrefix,
+	type GroupTypeMap,
+	getDefault,
+	isUnsetNumberPath,
+	SETTINGS_SCHEMA,
+	type SettingPath,
+	type SettingValue,
+} from "./settings-schema";
 
 // Re-export types that callers need
 export type * from "./settings-schema";

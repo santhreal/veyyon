@@ -23,11 +23,9 @@ import {
 	getUi,
 	hasUi,
 	retiredBy,
-	type SettingPath,
-} from "@veyyon/kernel/settings/schema";
-import {
 	SETTING_TABS,
 	SETTINGS_SCHEMA,
+	type SettingPath,
 	TAB_GROUPS,
 	TAB_METADATA,
 } from "../packages/coding-agent/src/config/settings-schema";

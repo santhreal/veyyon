@@ -16,7 +16,7 @@
  * under the input, and keeps the submenu open.
  */
 import { describe, expect, it } from "bun:test";
-import { getUi } from "@veyyon/kernel/settings/schema";
+import { getUi } from "@veyyon/coding-agent/config/settings-schema";
 import {
 	parseNumberSetting,
 	UNSET_NUMBER_INPUT,

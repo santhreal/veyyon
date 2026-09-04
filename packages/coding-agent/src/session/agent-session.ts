@@ -214,7 +214,6 @@ import type { ShakeMode, ShakeResult } from "@veyyon/kernel/session/shake-types"
 import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
 import { ToolChoiceQueue } from "@veyyon/kernel/session/tool-choice-queue";
 import { YieldQueue } from "@veyyon/kernel/session/yield-queue";
-import { getDefault } from "@veyyon/kernel/settings/schema";
 import { MacOSPowerAssertion } from "@veyyon/natives";
 import {
 	errorMessage,
@@ -310,6 +309,7 @@ import {
 	serviceTierSettingToTier,
 } from "../config/service-tier";
 import {
+	getDefault,
 	onAppendOnlyModeChanged,
 	onModelRolesChanged,
 	type Settings,

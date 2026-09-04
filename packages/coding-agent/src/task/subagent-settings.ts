@@ -12,12 +12,11 @@
  */
 
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
-import type { SettingPath } from "@veyyon/kernel/settings/schema";
 import { isRecord, logger } from "@veyyon/utils";
 import { parseConfiguredEffortSetting } from "../config/effort-resolver";
 import { resolveConfiguredModelPatterns } from "../config/model-resolver";
 import { DEFAULT_MODEL_SLOT } from "../config/model-roles";
-import type { Settings } from "../config/settings";
+import type { SettingPath, Settings } from "../config/settings";
 import type { SubagentAgentSettings, SubagentLaneSettings } from "../config/settings-domains/subagents";
 import {
 	DEFAULT_ENABLED_BUNDLED_AGENT,

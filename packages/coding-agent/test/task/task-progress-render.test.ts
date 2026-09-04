@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import type { RenderResultOptions } from "@veyyon/agent-core";
-import type { SettingPath, SettingValue } from "@veyyon/kernel/settings/schema";
-import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
+import {
+	resetSettingsForTest,
+	type SettingPath,
+	Settings,
+	type SettingValue,
+	settings,
+} from "@veyyon/coding-agent/config/settings";
 import type { RetryRecoveryMode } from "@veyyon/coding-agent/modes/retry-display";
 import { viewToolRenderer } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { taskToolView } from "@veyyon/coding-agent/task/task-view";

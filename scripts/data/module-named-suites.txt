@@ -279,7 +279,6 @@ packages/coding-agent/test/non-interactive-env.test.ts
 packages/coding-agent/test/oauth-discovery.test.ts
 packages/coding-agent/test/oauth-flow.test.ts
 packages/coding-agent/test/oauth-manual-input.test.ts
-packages/coding-agent/test/optional-number.test.ts
 packages/coding-agent/test/output-fold.test.ts
 packages/coding-agent/test/plan-mode/approved-plan.test.ts
 packages/coding-agent/test/plan-mode/plan-handoff.test.ts

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { Settings } from "@veyyon/coding-agent/config/settings";
-import { type SettingPath } from "@veyyon/kernel/settings/schema";
+import { type SettingPath, Settings } from "@veyyon/coding-agent/config/settings";
 import type { BuiltinToolLoadMode, ToolSession } from "@veyyon/coding-agent/tools";
 import {
 	BUILTIN_TOOLS,

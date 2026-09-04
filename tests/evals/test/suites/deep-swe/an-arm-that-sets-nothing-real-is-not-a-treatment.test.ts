@@ -25,8 +25,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 // The product's composed schema: the kernel answers a query from whatever tables have registered,
 // and this module is the one that registers them.
-import "@veyyon/coding-agent/config/settings-schema";
-import { getEnumValues, getType, isSettingPath } from "@veyyon/kernel/settings/schema";
+import { getEnumValues, getType, isSettingPath } from "@veyyon/coding-agent/config/settings-schema";
 import * as YAML from "yaml";
 import { armsDir } from "../../../engine/package-paths";
 import { isArmConfigFile } from "../../../suites/deep-swe/arm-fingerprint";

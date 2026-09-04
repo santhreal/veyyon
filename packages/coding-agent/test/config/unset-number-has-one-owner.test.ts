@@ -27,9 +27,9 @@
 
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { UNSET_NUMBER } from "@veyyon/kernel/settings/optional-number";
-import { isUnsetNumberPath } from "@veyyon/kernel/settings/schema";
+import { isUnsetNumberPath } from "@veyyon/coding-agent/config/settings-schema";
 import { getAllSettingDefs } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
+import { UNSET_NUMBER } from "@veyyon/kernel/settings/optional-number";
 
 const SRC_ROOT = path.resolve(import.meta.dir, "../../src");
 const KERNEL_SRC_ROOT = path.resolve(import.meta.dir, "../../../../kernel/src");
@@ -69,9 +69,7 @@ async function sources(): Promise<Array<{ file: string; text: string }>> {
 			files.push({ file: `${prefix}${file}`, absolute: path.join(root, file) });
 		}
 	}
-	return await Promise.all(
-		files.map(async ({ file, absolute }) => ({ file, text: await Bun.file(absolute).text() })),
-	);
+	return await Promise.all(files.map(async ({ file, absolute }) => ({ file, text: await Bun.file(absolute).text() })));
 }
 
 const SOURCES = sources();
