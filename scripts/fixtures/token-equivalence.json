@@ -76,7 +76,7 @@
 		"scripts/bench-jsonl-bytes.ts": "02bbcd492dc5cad07d6da3625296217dadbe2338f036ae1fe1f21c0240d68580"
 	},
 	"importReorder": {},
-	"changedCount": 5741,
+	"changedCount": 5744,
 	"changed": [
 		"apps/site/deploy.test.ts",
 		"apps/site/functions/api/grievances.test.ts",
@@ -526,7 +526,10 @@
 		"kernel/src/session/yield-queue.ts",
 		"kernel/src/settings/optional-number.ts",
 		"kernel/src/settings/schema.ts",
+		"kernel/src/settings/signal.ts",
+		"kernel/src/settings/store.ts",
 		"kernel/test/a-settings-query-answers-from-the-registered-tables-or-fails-loud.test.ts",
+		"kernel/test/the-settings-store-calls-each-product-hook-where-the-product-store-did.test.ts",
 		"natives/bridge/bindings/bench/grep-corpus.ts",
 		"natives/bridge/bindings/bench/grep-parity.ts",
 		"natives/bridge/bindings/bench/grep-workers.ts",

@@ -19347,9 +19347,9 @@
 			"differs": "changed",
 			"group": "colocated-test",
 			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
-			"hash": "3cd831dff459efcd094613770c80500d18e50383776bb7950d07de1708937a9b",
+			"hash": "48419bf8466016938605d20f470c4284b59932f215e91cefa82380694a2f6568",
 			"mainHash": "90e688110df76a683a67778a23db361788f2bc620d8d6d93af9372a1d0848219",
-			"structuralHash": "97e1d145ea2d78546b2172785654f25f506828b255ecfa33b92c95020528595c",
+			"structuralHash": "165a376332f39185c946028bdca251702c3975864fa3e9a9ef0bbf875c3f91a8",
 			"mainStructuralHash": "b001a54bbbc17bf0c30761efcbdcfc0ac38b881932ae512aa30c458c301270fa"
 		},
 		"packages/coding-agent/test/cli/startup/a-launch-does-not-load-a-schema-library-it-will-not-use.test.ts": {
