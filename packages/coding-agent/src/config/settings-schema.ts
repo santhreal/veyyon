@@ -1,7 +1,5 @@
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
-import type { AnyUiMetadata, SettingTab, SettingType } from "@veyyon/settings";
-import { isRecord } from "@veyyon/utils/type-guards";
-import { UNSET_NUMBER_OPTION_VALUE } from "./optional-number";
+import { declareSettings, type SettingPath, type SettingValue } from "@veyyon/kernel/settings/schema";
+import type { SettingTab } from "@veyyon/settings";
 import { APPEARANCE_SETTINGS } from "./settings-domains/appearance";
 import { CONTEXT_SETTINGS } from "./settings-domains/context";
 import { EDITING_SETTINGS } from "./settings-domains/editing";
@@ -212,7 +210,7 @@ export const SETTINGS_DOMAIN_SLICES: Record<string, Record<string, unknown>> = {
 	providers: PROVIDERS_SETTINGS,
 };
 
-export const SETTINGS_SCHEMA = {
+export const SETTINGS_SCHEMA = declareSettings({
 	...GLOBAL_SETTINGS,
 	...GENERAL_SETTINGS,
 	...APPEARANCE_SETTINGS,
@@ -225,7 +223,7 @@ export const SETTINGS_SCHEMA = {
 	...TASKS_SETTINGS,
 	...SUBAGENTS_SETTINGS,
 	...PROVIDERS_SETTINGS,
-} as const;
+} as const);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Type Inference
@@ -233,219 +231,8 @@ export const SETTINGS_SCHEMA = {
 
 type Schema = typeof SETTINGS_SCHEMA;
 
-/** All valid setting paths */
-export type SettingPath = keyof Schema;
-
-/** Infer the value type for a setting path */
-/**
- * The value type behind a settings path.
- *
- * The outer `P extends SettingPath` is what makes this DISTRIBUTE. Without it,
- * passing the whole `SettingPath` union (which is what a generic walk over the
- * schema does) makes `Schema[P]` a union that matches none of the branches
- * below, so the whole type collapsed to `never` — and a `never` return silently
- * defeats every narrowing at the call site rather than failing where the mistake
- * is. `docs/handbook/src/reference/settings-reference.md`'s generator hit exactly that: its
- * array-default branch was unreachable code the compiler could not warn about
- * usefully.
- */
-export type SettingValue<P extends SettingPath> = P extends SettingPath ? SettingValueFor<P> : never;
-
-type SettingValueFor<P extends SettingPath> = Schema[P] extends { type: "boolean"; default: undefined }
-	? boolean | undefined
-	: Schema[P] extends { type: "boolean" }
-		? boolean
-		: Schema[P] extends { type: "modelChain" }
-			? string | string[] | undefined
-			: Schema[P] extends { type: "string" }
-				? string | undefined
-				: Schema[P] extends { type: "number"; default: undefined }
-					? number | undefined
-					: Schema[P] extends { type: "number" }
-						? number
-						: Schema[P] extends { type: "enum"; values: infer V }
-							? V extends readonly string[]
-								? V[number]
-								: never
-							: Schema[P] extends { type: "array"; default: infer D }
-								? D
-								: Schema[P] extends { type: "record"; default: infer D }
-									? D
-									: never;
-
-/** Get the default value for a setting path */
-export function getDefault<P extends SettingPath>(path: P): SettingValue<P> {
-	return SETTINGS_SCHEMA[path].default as SettingValue<P>;
-}
-
-/** Check if a path has UI metadata (should appear in settings panel) */
-export function hasUi(path: SettingPath): boolean {
-	return "ui" in SETTINGS_SCHEMA[path];
-}
-
-/** Get UI metadata for a path (undefined if no UI) */
-export function getUi(path: SettingPath): AnyUiMetadata | undefined {
-	const def = SETTINGS_SCHEMA[path];
-	return "ui" in def ? (def.ui as AnyUiMetadata) : undefined;
-}
-
-/** Get all paths for a specific tab */
-export function getPathsForTab(tab: SettingTab): SettingPath[] {
-	return (Object.keys(SETTINGS_SCHEMA) as SettingPath[]).filter(path => {
-		const ui = getUi(path);
-		return ui?.tab === tab;
-	});
-}
-
-/**
- * The key that replaced `path`, or `undefined` when the setting is current.
- *
- * One place answers "is this key still something to choose?", so the CLI listing,
- * the settings UI, and any future surface cannot disagree about it.
- */
-export function retiredBy(path: SettingPath): string | undefined {
-	if (!(path in SETTINGS_SCHEMA)) return undefined;
-	const def = SETTINGS_SCHEMA[path] as { retiredBy?: string };
-	return def.retiredBy;
-}
-
-/**
- * Whether an arbitrary string names a real setting.
- *
- * The one place that answers "does veyyon know this key?", and the type guard
- * that turns an untrusted string into a `SettingPath`. Every surface that
- * accepts a key from outside the program asks this: the `config` CLI, a config
- * file, an eval harness staging an overlay. Each one hand-rolling
- * `path in SETTINGS_SCHEMA` is how they drift apart on what counts, and a
- * caller that forgets to ask silently accepts a key nothing will ever read.
- */
-export function isSettingPath(path: string): path is SettingPath {
-	return path in SETTINGS_SCHEMA;
-}
-
-/** Get the type of a setting */
-export function getType(path: SettingPath): SettingType {
-	return SETTINGS_SCHEMA[path].type;
-}
-
-/** What a value actually is, in the vocabulary the schema uses for types. */
-function describeValueType(value: unknown): string {
-	if (value === null) return "null";
-	if (Array.isArray(value)) return "array";
-	return typeof value;
-}
-
-/**
- * Explain why `value` cannot be the value of `path`, or `undefined` when it can.
- *
- * A settings file is hand-editable, so a wrong type is an ordinary mistake:
- * `autoUpdate: "no"`, `tabWidth: "4"`, a theme name where an object belongs. The
- * danger is that most of those are silently WRONG rather than obviously broken.
- * `"no"` is a truthy string, so a boolean setting a user clearly meant to turn
- * off stays on, and nothing anywhere says why. Detecting the mismatch is what
- * lets the loader say so out loud (Law 10) instead of letting the config lie.
- *
- * The message names the key, what the schema expects, and what was found,
- * because the reader is someone who edited a file and needs to know which line
- * to fix. Enum values are listed for the same reason: "expected one of a, b, c"
- * is actionable where "invalid value" is not.
- *
- * Returns `undefined` for unregistered paths rather than guessing. Subsystems
- * read dotted paths that are not in the schema yet, and inventing a type for
- * those would turn a forward-compatible read into a spurious error.
- */
-export function describeSettingTypeMismatch(path: string, value: unknown): string | undefined {
-	// Read structurally rather than as `SettingDef`: the schema's literal entries
-	// carry readonly defaults (`readonly ["interactive"]`), which are not
-	// assignable to the mutable shapes in that union. Only `type` and `values` are
-	// needed here, and both are safe to read from the literal.
-	const def = (
-		SETTINGS_SCHEMA as unknown as Record<
-			string,
-			| {
-					type?: string;
-					values?: readonly string[];
-					validateEntry?: (key: string, value: unknown) => string | undefined;
-			  }
-			| undefined
-		>
-	)[path];
-	if (def?.type === undefined || value === undefined) return undefined;
-
-	const found = describeValueType(value);
-	const mismatch = (expected: string): string =>
-		`${path}: expected ${expected}, found ${found} (${JSON.stringify(value)})`;
-
-	switch (def.type) {
-		case "boolean":
-			return typeof value === "boolean" ? undefined : mismatch("a boolean (true or false)");
-		case "number":
-			// NaN and the infinities are numbers to `typeof` and poison every
-			// comparison they reach, so they are rejected with the non-numbers.
-			return typeof value === "number" && Number.isFinite(value) ? undefined : mismatch("a finite number");
-		case "string":
-			return typeof value === "string" ? undefined : mismatch("a string");
-		case "modelChain":
-			// Both encodings of one chain. A list of models is the readable way to
-			// write one and the way the handbook shows it, and a comma string is what
-			// a CLI flag and the settings text box produce, so refusing either would
-			// refuse a config the runtime reads correctly. An array with a non-string
-			// in it is still wrong, and saying so names the element.
-			if (typeof value === "string") return undefined;
-			if (Array.isArray(value)) {
-				const bad = value.findIndex(entry => typeof entry !== "string");
-				return bad === -1
-					? undefined
-					: `${path}: expected model patterns, found ${describeValueType(value[bad])} at index ${bad} (${JSON.stringify(value)})`;
-			}
-			return mismatch("a model pattern, or a list of them");
-		case "enum": {
-			const values = def.values ?? [];
-			if (typeof value === "string" && values.includes(value)) return undefined;
-			return `${path}: expected one of ${values.join(", ")}, found ${JSON.stringify(value)}`;
-		}
-		case "array":
-			return Array.isArray(value) ? undefined : mismatch("an array");
-		case "record": {
-			if (!isRecord(value)) return mismatch("an object");
-			// A map whose entries carry a shape of their own (e.g. the
-			// depth-keyed model chains of `subagent.modelByDepth`) names the
-			// offending entry; the entries that are fine keep working.
-			if (def.validateEntry === undefined) return undefined;
-			for (const [key, entry] of Object.entries(value)) {
-				const reason = def.validateEntry(key, entry);
-				if (reason !== undefined) return reason;
-			}
-			return undefined;
-		}
-		default:
-			return undefined;
-	}
-}
-
-/** Get enum values for an enum setting */
-/**
- * True when `path` is a numeric setting whose submenu offers the shared unset row,
- * so the UI shows `Default` and stores {@link UNSET_NUMBER}.
- *
- * Derived from the schema rather than listed by hand: the selector used to carry a
- * hardcoded set of three compaction paths, which silently excluded the six sampling
- * settings that spell the same idea, and would have gone stale the moment a new
- * optional numeric setting shipped.
- */
-export function isUnsetNumberPath(path: SettingPath): boolean {
-	// Synthetic UI ids (e.g. the default-model row) are not schema paths; asking
-	// about one is legitimate from the selector, so answer instead of throwing.
-	if (!(path in SETTINGS_SCHEMA)) return false;
-	if (getType(path) !== "number") return false;
-	const options = getUi(path)?.options;
-	if (!options || options === "runtime") return false;
-	return options.some(option => option.value === UNSET_NUMBER_OPTION_VALUE);
-}
-
-export function getEnumValues(path: SettingPath): readonly string[] | undefined {
-	const def = SETTINGS_SCHEMA[path];
-	return "values" in def ? (def.values as readonly string[]) : undefined;
+declare module "@veyyon/kernel/settings/schema" {
+	interface DeclaredSettings extends Schema {}
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

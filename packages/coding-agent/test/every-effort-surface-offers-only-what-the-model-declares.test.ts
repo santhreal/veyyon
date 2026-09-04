@@ -45,7 +45,8 @@ import { type GeneratedProvider, getBundledModels, getBundledProviders } from "@
 import { ANY_MODEL_EFFORT_KEY } from "@veyyon/coding-agent/config/effort-resolver";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { getUi, isSettingPath, SETTINGS_SCHEMA, type SettingPath } from "@veyyon/coding-agent/config/settings-schema";
+import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
+import { getUi, isSettingPath, type SettingPath } from "@veyyon/kernel/settings/schema";
 import { rpcThinkingLevelRefusal } from "@veyyon/coding-agent/modes/rpc/rpc-mode";
 import { renderEffortStep } from "@veyyon/coding-agent/modes/terminal/components/selectors/effort-picker";
 import { ModelHubComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/model-hub";

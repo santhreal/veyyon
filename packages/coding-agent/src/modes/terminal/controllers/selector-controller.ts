@@ -9,6 +9,7 @@ import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome } from "@veyyon
 import type { SessionInfo } from "@veyyon/kernel/session/session-listing";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
+import { applySamplingKnob, optionalNumber, toNumberOrUndefined } from "@veyyon/kernel/settings/optional-number";
 import { type Component, Loader, type OverlayHandle, Spacer, Text } from "@veyyon/tui";
 import { errorMessage, getActiveAuthDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/utils";
 import * as logger from "@veyyon/utils/logger";
@@ -28,7 +29,6 @@ import {
 	resolveAdvisorRoleSelection,
 } from "../../../config/model-resolver";
 import { DEFAULT_MODEL_SLOT, getRoleInfo, isDefaultModelSlot } from "../../../config/model-roles";
-import { applySamplingKnob, optionalNumber, toNumberOrUndefined } from "../../../config/optional-number";
 import { resolveAvailablePersonalities } from "../../../config/personality-resolver";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../../config/settings-instance";

@@ -11,14 +11,10 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { getPathsForTab, getUi, hasUi, isSettingPath, type SettingPath } from "@veyyon/kernel/settings/schema";
 import {
-	getPathsForTab,
-	getUi,
-	hasUi,
-	isSettingPath,
 	SETTING_TABS,
 	SETTINGS_SCHEMA,
-	type SettingPath,
 	TAB_GROUPS,
 	TAB_METADATA,
 } from "../packages/coding-agent/src/config/settings-schema";

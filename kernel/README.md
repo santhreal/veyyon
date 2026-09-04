@@ -28,6 +28,8 @@ shape this restructure exists to remove.
 |`src/registry/`|Contribution points: the tool domain manifest and the message kind a domain declares on it, tool proxying, widget and host-view declarations, schema conversion|
 |`src/loader/`|Plugin discovery, manifest parsing, the installed registry, the marketplace client, load failure|
 |`src/session/`|The session spine: entries, the session manager and its context builder and loader, the credential store, the role-keyed message kind table, storage, persistence, migrations, listing, retry policy, compaction policy, machine budget|
+|`src/settings/`|The settings schema registry: a package declares the settings it owns as a table through `declareSettings` and merges its type into `DeclaredSettings`; the queries over a declaration (`getDefault`, `getType`, `getUi`, `isSettingPath`, ...) and the unset-number owner|
 
-`src/settings/` and `src/log/` are named in the target architecture and are not populated yet; the
-settings schema and the log sinks still live in `packages/coding-agent`.
+`src/log/` is named in the target architecture and is not populated yet; the log sinks still live in
+`packages/coding-agent`. The settings store that reads `config.yml` still does too; only the schema
+registry has moved.

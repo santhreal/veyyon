@@ -25,14 +25,14 @@ import {
 	optionalNumber,
 	type SamplingKnobs,
 	toNumberOrUndefined,
-} from "@veyyon/coding-agent/config/optional-number";
+} from "@veyyon/kernel/settings/optional-number";
 import {
 	SETTINGS_MIGRATION_VERSION,
 	Settings,
 	stampOwnedConfigMigrations,
 	stripLegacyUnsetSentinels,
 } from "@veyyon/coding-agent/config/settings";
-import { getDefault, isUnsetNumberPath } from "@veyyon/coding-agent/config/settings-schema";
+import { getDefault, isUnsetNumberPath } from "@veyyon/kernel/settings/schema";
 import { removeWithRetries } from "@veyyon/utils";
 import * as YAML from "yaml";
 import { guardDestructivePath } from "../../utils/test/helpers/destructive-guard";

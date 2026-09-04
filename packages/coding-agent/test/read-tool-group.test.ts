@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:te
 import * as path from "node:path";
 import * as url from "node:url";
 import { Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { getDefault } from "@veyyon/coding-agent/config/settings-schema";
+import { getDefault } from "@veyyon/kernel/settings/schema";
 import {
 	ReadToolGroupComponent,
 	readArgsTargetInternalUrl,

@@ -123,6 +123,15 @@ manifest's kinds in `@veyyon/kernel/session/message-kinds`, and `convertToLlm` c
 has no case for by looking its kind up there. A role no manifest declared throws rather than
 leaving the request.
 
+The settings schema is the kernel's registry, the settings are the domains'. Each table under
+`config/settings-domains/` stays where it is; `config/settings-schema.ts` composes them into
+`SETTINGS_SCHEMA` through `declareSettings` (`@veyyon/kernel/settings/schema`) and merges the
+composed type into `DeclaredSettings`, so `SettingPath` and `SettingValue` are the kernel's types
+and `getDefault`, `getType`, `getUi`, `isSettingPath` and the other queries answer from the
+registry. A query before the composition has loaded throws rather than reporting every key
+unknown; a module that queries the schema without reaching `config/settings` imports
+`config/settings-schema` for its effect. The store (`config/settings.ts`) has not moved.
+
 The dividing line is the import graph, not the subject. A module moved when its transitive closure
 named no tool, no host and no mode; a module that reaches one of those stayed. 38 non-test modules
 remain in `src/session/` and 47 in `src/extensibility/`, so the retained side is the larger one.

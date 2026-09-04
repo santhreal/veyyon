@@ -25,14 +25,8 @@ import { ANY_MODEL_EFFORT_KEY } from "@veyyon/coding-agent/config/effort-resolve
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { getRoleInfo, SELECTABLE_MODEL_ROLE_IDS } from "@veyyon/coding-agent/config/model-roles";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import {
-	hasUi,
-	isSettingPath,
-	retiredBy,
-	SETTING_TABS,
-	SETTINGS_SCHEMA,
-	type SettingPath,
-} from "@veyyon/coding-agent/config/settings-schema";
+import { SETTING_TABS, SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
+import { hasUi, isSettingPath, retiredBy, type SettingPath } from "@veyyon/kernel/settings/schema";
 import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-selector";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";

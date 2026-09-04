@@ -6,7 +6,7 @@ import {
 	UNSET_NUMBER_OPTION_LABEL,
 	UNSET_NUMBER_OPTION_VALUE,
 	unsetNumberOption,
-} from "@veyyon/coding-agent/config/optional-number";
+} from "@veyyon/kernel/settings/optional-number";
 
 /**
  * What "unset" means for a numeric setting, in exactly one place.

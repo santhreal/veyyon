@@ -8,7 +8,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { SETTINGS_SCHEMA, type SettingPath } from "@veyyon/coding-agent/config/settings-schema";
+import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
+import { type SettingPath } from "@veyyon/kernel/settings/schema";
 import {
 	formatLspSummary,
 	getSettingDef,

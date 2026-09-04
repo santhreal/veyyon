@@ -13,7 +13,10 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isSettingPath } from "@veyyon/coding-agent/config/settings-schema";
+// The product's composed schema: the kernel answers a query from whatever tables have registered,
+// and this module is the one that registers them.
+import "@veyyon/coding-agent/config/settings-schema";
+import { isSettingPath } from "@veyyon/kernel/settings/schema";
 import { PROMPT_REGISTRIES } from "@veyyon/coding-agent/prompts/all-registries";
 import { describeUnknownPromptIds, errorMessage, isRecord, PROMPT_ID_SHAPE_HINT } from "@veyyon/utils";
 import YAML from "yaml";

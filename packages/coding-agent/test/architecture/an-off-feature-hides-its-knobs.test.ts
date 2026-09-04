@@ -36,13 +36,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import {
-	getDefault,
-	getType,
-	getUi,
-	SETTINGS_SCHEMA,
-	type SettingPath,
-} from "@veyyon/coding-agent/config/settings-schema";
+import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
+import { getDefault, getType, getUi, type SettingPath } from "@veyyon/kernel/settings/schema";
 import { getSettingDef } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 
 /** Every boolean setting that ships off, whether or not it is a feature master. */

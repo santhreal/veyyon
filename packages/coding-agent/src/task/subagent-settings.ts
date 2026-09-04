@@ -12,6 +12,7 @@
  */
 
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
+import type { SettingPath } from "@veyyon/kernel/settings/schema";
 import { isRecord, logger } from "@veyyon/utils";
 import { parseConfiguredEffortSetting } from "../config/effort-resolver";
 import { resolveConfiguredModelPatterns } from "../config/model-resolver";
@@ -25,7 +26,6 @@ import {
 	DEFAULT_SUBAGENT_PRUNE_MS,
 	DEFAULT_SUBAGENT_WAITING_PRUNE_MS,
 } from "../config/settings-domains/subagents";
-import type { SettingPath } from "../config/settings-schema";
 import type { ConfiguredThinkingLevel } from "../thinking";
 import { currentAgentName, type ResolvedSpawnPolicy, resolveSpawnPolicy } from "./spawn-policy";
 import type { AgentDefinition } from "./types";

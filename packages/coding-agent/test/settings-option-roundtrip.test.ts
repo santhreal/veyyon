@@ -1,12 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { UNSET_NUMBER_OPTION_VALUE } from "@veyyon/coding-agent/config/optional-number";
-import {
-	getDefault,
-	getEnumValues,
-	getType,
-	isUnsetNumberPath,
-	type SettingPath,
-} from "@veyyon/coding-agent/config/settings-schema";
+import { UNSET_NUMBER_OPTION_VALUE } from "@veyyon/kernel/settings/optional-number";
+import { getDefault, getEnumValues, getType, isUnsetNumberPath, type SettingPath } from "@veyyon/kernel/settings/schema";
 import { getAllSettingDefs } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 
 /**

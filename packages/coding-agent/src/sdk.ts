@@ -21,6 +21,7 @@ import { createInterruptedTurnAbortMessage } from "@veyyon/kernel/session/exit-d
 import { OperatorNotices, stderrNoticeSink } from "@veyyon/kernel/session/operator-notices";
 import { getRestorableSessionModels } from "@veyyon/kernel/session/session-context";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
+import { optionalNumber } from "@veyyon/kernel/settings/optional-number";
 import {
 	attachFaultSink,
 	errorMessage,
@@ -71,7 +72,6 @@ import {
 	resolveModelRoleValue,
 } from "./config/model-resolver";
 import { DEFAULT_MODEL_SLOT } from "./config/model-roles";
-import { optionalNumber } from "./config/optional-number";
 import { buildServiceTierByFamily } from "./config/service-tier";
 import { Settings } from "./config/settings";
 import { CursorExecHandlers } from "./cursor";

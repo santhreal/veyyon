@@ -20,6 +20,7 @@ import type { ArtifactManager } from "@veyyon/kernel/session/artifacts";
 import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
+import type { SettingPath } from "@veyyon/kernel/settings/schema";
 import {
 	collapseWhitespace,
 	errorMessage,
@@ -46,7 +47,6 @@ import {
 import type { PromptTemplate } from "../config/prompt-templates";
 import { buildServiceTierByFamily, resolveSubagentServiceTier } from "../config/service-tier";
 import { Settings } from "../config/settings";
-import type { SettingPath } from "../config/settings-schema";
 import type { Rule } from "../discovery/capability/rule";
 import type { ToolPathWithSource } from "../extensibility/custom-tools";
 import type { CustomTool } from "../extensibility/custom-tools/types";

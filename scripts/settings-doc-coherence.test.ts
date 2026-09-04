@@ -33,12 +33,8 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-	getDefault,
-	getType,
-	SETTINGS_SCHEMA,
-	type SettingPath,
-} from "../packages/coding-agent/src/config/settings-schema";
+import { getDefault, getType, type SettingPath } from "@veyyon/kernel/settings/schema";
+import { SETTINGS_SCHEMA } from "../packages/coding-agent/src/config/settings-schema";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const DOC_PATH = "docs/handbook/src/reference/settings.md";

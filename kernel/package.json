@@ -35,6 +35,7 @@
     "@veyyon/catalog": "catalog:",
     "@veyyon/plugin": "catalog:",
     "@veyyon/session": "catalog:",
+    "@veyyon/settings": "catalog:",
     "@veyyon/utils": "catalog:"
   },
   "devDependencies": {
@@ -63,6 +64,11 @@
       "types": "./src/session/*.ts",
       "import": "./src/session/*.ts"
     },
-    "./session/*.js": "./src/session/*.ts"
+    "./session/*.js": "./src/session/*.ts",
+    "./settings/*": {
+      "types": "./src/settings/*.ts",
+      "import": "./src/settings/*.ts"
+    },
+    "./settings/*.js": "./src/settings/*.ts"
   }
 }

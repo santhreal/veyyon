@@ -1,3 +1,4 @@
+import { unsetNumberOption } from "@veyyon/kernel/settings/optional-number";
 import {
 	DEFAULT_TTS_LOCAL_MODEL_KEY,
 	DEFAULT_TTS_VOICE,
@@ -32,7 +33,6 @@ import {
 	SEARCH_PROVIDER_PREFERENCES,
 	type SearchProviderId,
 } from "../../tools/web/search/types";
-import { unsetNumberOption } from "../optional-number";
 
 /** Providers domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const PROVIDERS_SETTINGS = {

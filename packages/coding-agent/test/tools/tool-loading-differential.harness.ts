@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { SettingPath } from "@veyyon/coding-agent/config/settings-schema";
+import type { SettingPath } from "@veyyon/kernel/settings/schema";
 import { TOOL_DISCOVERY_AUTO_THRESHOLD } from "@veyyon/coding-agent/discovery/mode";
 import { createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/sdk";
 import type { CreateAgentSessionOptions } from "@veyyon/coding-agent/session/factory-options";

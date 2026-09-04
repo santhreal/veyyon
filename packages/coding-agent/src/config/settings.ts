@@ -18,6 +18,14 @@ import * as path from "node:path";
 // this setter and importing it there cost 285 modules for one function; ~530 test files import
 // `Settings`, so this file's graph is the most leveraged one in the package.
 import { configureProviderMaxInFlightRequests } from "@veyyon/ai/provider-inflight-limits";
+import { UNSET_NUMBER } from "@veyyon/kernel/settings/optional-number";
+import {
+	describeSettingTypeMismatch,
+	getDefault,
+	isUnsetNumberPath,
+	type SettingPath,
+	type SettingValue,
+} from "@veyyon/kernel/settings/schema";
 import { atomicWriteFile } from "@veyyon/utils/atomic-write";
 import {
 	findShadowedGlobalConfigFiles,
@@ -58,7 +66,6 @@ import { type EditMode, normalizeEditMode } from "../utils/edit-mode";
 import { type CompactionStrategySetting, migrateCompactionStrategyValue } from "./compaction-strategy";
 import { readLegacyAgentDbSettings } from "./legacy-agent-db-settings";
 import type { ModelRole } from "./model-roles";
-import { UNSET_NUMBER } from "./optional-number";
 import { GLOBAL_SETTING_BINDINGS } from "./settings-domains/global";
 // The slot, not a second copy of it: this module FILLS the slot that `./settings-instance.ts` owns, and
 // that leaf is what a caller reads when it wants a value rather than the store. See its doc for the split.
@@ -69,17 +76,7 @@ import {
 	settingsInstancePromise,
 	settingsOrThrow,
 } from "./settings-instance";
-import {
-	type BashInterceptorRule,
-	describeSettingTypeMismatch,
-	type GroupPrefix,
-	type GroupTypeMap,
-	getDefault,
-	isUnsetNumberPath,
-	SETTINGS_SCHEMA,
-	type SettingPath,
-	type SettingValue,
-} from "./settings-schema";
+import { type BashInterceptorRule, type GroupPrefix, type GroupTypeMap, SETTINGS_SCHEMA } from "./settings-schema";
 
 // Re-export types that callers need
 export type * from "./settings-schema";
@@ -172,7 +169,7 @@ const SETTING_PATH_SEGMENTS: Record<SettingPath, readonly string[]> = Object.fro
  * {@link Settings.unset}); this list exists only so the load migration can drop the old
  * sentinel, and it is derived from the schema so a new optional numeric setting is covered
  * without being registered anywhere else. The number itself is {@link UNSET_NUMBER}, owned
- * by `config/optional-number.ts` -- this file used to declare its own `-1` beside it, which
+ * by `@veyyon/kernel/settings/optional-number` -- this file used to declare its own `-1` beside it, which
  * is two names for one encoding and exactly the duplication that made the sentinel hard to
  * remove in the first place.
  */

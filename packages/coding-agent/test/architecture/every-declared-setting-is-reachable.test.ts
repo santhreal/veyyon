@@ -25,14 +25,8 @@
  * hides to silence this suite fails here instead.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	getDefault,
-	getType,
-	getUi,
-	SETTING_TABS,
-	SETTINGS_SCHEMA,
-	type SettingPath,
-} from "@veyyon/coding-agent/config/settings-schema";
+import { SETTING_TABS, SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
+import { getDefault, getType, getUi, type SettingPath } from "@veyyon/kernel/settings/schema";
 import {
 	getSettingsForTab,
 	invalidateSettingDefsCache,

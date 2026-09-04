@@ -27,7 +27,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { normalizeModelPatternList } from "@veyyon/coding-agent/config/model-resolver";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { describeSettingTypeMismatch, getType } from "@veyyon/coding-agent/config/settings-schema";
+import { describeSettingTypeMismatch, getType } from "@veyyon/kernel/settings/schema";
 import * as YAML from "yaml";
 import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
 

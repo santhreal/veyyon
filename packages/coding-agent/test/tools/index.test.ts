@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { type SettingPath, Settings } from "@veyyon/coding-agent/config/settings";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { type SettingPath } from "@veyyon/kernel/settings/schema";
 import { createTools, HIDDEN_TOOLS, type ToolSession } from "@veyyon/coding-agent/tools";
 
 // No `VEYYON_PYTHON_SKIP_CHECK` here on purpose: `checkPythonKernelAvailability`

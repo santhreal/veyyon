@@ -12,7 +12,7 @@
  *    side-effect switch, one case per knob, so fixing `sdk.ts` left the interactive path
  *    still broken. Six copies is why the fix looked complete and was not.
  *
- * Unset is now the ABSENT key: `config/optional-number.ts` owns the name `UNSET_NUMBER`, the
+ * Unset is now the ABSENT key: `@veyyon/kernel/settings/optional-number` owns the name `UNSET_NUMBER`, the
  * submenu row, and the `optionalNumber` read, and `config/settings.ts` imports that name to
  * drop a legacy `-1` as it loads. No code re-derives unset from the number any more, and this
  * suite is the lock, because the failure mode of the old design was a SEVENTH copy appearing
@@ -27,20 +27,22 @@
 
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { UNSET_NUMBER } from "@veyyon/coding-agent/config/optional-number";
-import { isUnsetNumberPath } from "@veyyon/coding-agent/config/settings-schema";
+import { UNSET_NUMBER } from "@veyyon/kernel/settings/optional-number";
+import { isUnsetNumberPath } from "@veyyon/kernel/settings/schema";
 import { getAllSettingDefs } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 
 const SRC_ROOT = path.resolve(import.meta.dir, "../../src");
+const KERNEL_SRC_ROOT = path.resolve(import.meta.dir, "../../../../kernel/src");
 
 /**
- * The files allowed to spell the legacy sentinel, relative to `src/`.
+ * The files allowed to spell the legacy sentinel, relative to their package's `src/`, the
+ * kernel's under `kernel/`.
  *
  * `optional-number.ts` declares it and translates it. `settings.ts` is the load migration
  * that removes it from a config an older version wrote, which is the only reason the name
  * still exists at all.
  */
-const OWNERS = ["config/optional-number.ts", "config/settings.ts"];
+const OWNERS = ["kernel/settings/optional-number.ts", "config/settings.ts"];
 
 /** The optional numeric settings, taken from the schema rather than a list kept here. */
 function optionalNumericLeaves(): string[] {
@@ -50,15 +52,25 @@ function optionalNumericLeaves(): string[] {
 	return [...new Set(leaves)].sort();
 }
 
-/** Every `.ts` under `src/`, with its text, as `{ file, text }` relative to `src/`. */
+/**
+ * Every `.ts` under this package's `src/` and the kernel's, with its text, as `{ file, text }`
+ * relative to the package's `src/`; a kernel file is keyed `kernel/<path>`, since the owner of
+ * the sentinel is a kernel module and the readers it serves are here.
+ */
 async function sources(): Promise<Array<{ file: string; text: string }>> {
 	const glob = new Bun.Glob("**/*.ts");
-	const files: string[] = [];
-	for await (const relative of glob.scan({ cwd: SRC_ROOT, onlyFiles: true })) {
-		files.push(relative.replace(/\\/g, "/"));
+	const files: Array<{ file: string; absolute: string }> = [];
+	for (const [root, prefix] of [
+		[SRC_ROOT, ""],
+		[KERNEL_SRC_ROOT, "kernel/"],
+	] as const) {
+		for await (const relative of glob.scan({ cwd: root, onlyFiles: true })) {
+			const file = relative.replace(/\\/g, "/");
+			files.push({ file: `${prefix}${file}`, absolute: path.join(root, file) });
+		}
 	}
 	return await Promise.all(
-		files.map(async file => ({ file, text: await Bun.file(path.join(SRC_ROOT, file)).text() })),
+		files.map(async ({ file, absolute }) => ({ file, text: await Bun.file(absolute).text() })),
 	);
 }
 
@@ -96,7 +108,7 @@ describe("the unset-number sentinel", () => {
 		const files = await SOURCES;
 
 		expect(files.length).toBeGreaterThan(500);
-		expect(files.some(({ file }) => file === "config/optional-number.ts")).toBe(true);
+		expect(files.some(({ file }) => file === "kernel/settings/optional-number.ts")).toBe(true);
 		expect(optionalNumericLeaves()).toEqual([
 			"minP",
 			"modelContextWindow",
@@ -171,7 +183,7 @@ describe("the unset-number sentinel", () => {
 			.filter(({ text }) => declaration.test(text))
 			.map(({ file, text }) => `${file}: ${declaration.exec(text)?.[1]}`);
 
-		expect(declarers).toEqual(["config/optional-number.ts: UNSET_NUMBER"]);
+		expect(declarers).toEqual(["kernel/settings/optional-number.ts: UNSET_NUMBER"]);
 	});
 
 	/**

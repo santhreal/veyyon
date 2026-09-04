@@ -1,5 +1,7 @@
 import { AUTO_COMPACTION_THRESHOLD, parseCompactionThreshold, type ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, Effort, Model } from "@veyyon/ai";
+import { UNSET_NUMBER, UNSET_NUMBER_OPTION_VALUE } from "@veyyon/kernel/settings/optional-number";
+import { getDefault, getType, getUi, isUnsetNumberPath, type SettingPath } from "@veyyon/kernel/settings/schema";
 import type { SettingTab, SubmenuOption } from "@veyyon/settings";
 import {
 	type Component,
@@ -36,20 +38,16 @@ import {
 	ROLE_INHERIT_LABEL,
 	SELECTABLE_MODEL_ROLE_IDS,
 } from "../../../../config/model-roles";
-import { UNSET_NUMBER, UNSET_NUMBER_OPTION_VALUE } from "../../../../config/optional-number";
 import { BUILTIN_PERSONALITY_DESCRIPTIONS, NONE_PERSONALITY } from "../../../../config/personality-resolver";
 import {
-	getDefault,
-	getType,
 	normalizeProviderMaxInFlightRequests,
-	type SettingPath,
 	type SettingSource,
 	settings,
 	validateProviderMaxInFlightRequests,
 } from "../../../../config/settings";
 import type { SubagentAgentSettings, SubagentLaneSettings } from "../../../../config/settings-domains/subagents";
 import type { StatusLinePreset, StatusLineSegmentId } from "../../../../config/settings-schema";
-import { getUi, isUnsetNumberPath, SETTING_TABS, TAB_METADATA } from "../../../../config/settings-schema";
+import { SETTING_TABS, TAB_METADATA } from "../../../../config/settings-schema";
 import { loadCapability } from "../../../../discovery";
 import { PROVIDER_ID as NATIVE_RULES_PROVIDER_ID } from "../../../../discovery/builtin";
 import { BUILTIN_RULE_SECTIONS, type BuiltinRuleSection } from "../../../../discovery/builtin-rules";

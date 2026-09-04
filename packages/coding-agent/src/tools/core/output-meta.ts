@@ -12,6 +12,7 @@ import type {
 	AgentToolUpdateCallback,
 } from "@veyyon/agent-core";
 import type { ImageContent, Static, TextContent, TSchema } from "@veyyon/ai";
+import { getDefault } from "@veyyon/kernel/settings/schema";
 // Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
@@ -19,7 +20,6 @@ import { errorMessage } from "@veyyon/utils/type-guards";
 // and the schema is 60, and this file only needs to know what a setting defaults to. `Settings` is a
 // type here, so naming the store for it is free.
 import type { Settings } from "../../config/settings";
-import { getDefault } from "../../config/settings-schema";
 import {
 	type OutputSummary,
 	type TruncationResult,

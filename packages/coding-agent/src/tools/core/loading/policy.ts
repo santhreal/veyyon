@@ -1,4 +1,4 @@
-import type { SettingValue } from "../../../config/settings-schema";
+import type { SettingValue } from "@veyyon/kernel/settings/schema";
 import { type BuiltinToolName, normalizeToolName, normalizeToolNames, TOOL } from "../builtin-names";
 
 /**

@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { getDefault } from "@veyyon/kernel/settings/schema";
 import { formatCount } from "@veyyon/utils/format";
 import { isEnoent } from "@veyyon/utils/fs-error";
 import { readPipeText } from "@veyyon/utils/stream";
@@ -12,7 +13,6 @@ import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { $which } from "@veyyon/utils/which";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../config/settings-instance";
-import { getDefault } from "../config/settings-schema";
 import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
 import { getContentType } from "./content-type";
 import { ensureWithinRoot as ensureWithinRootShared } from "./filesystem-resource";

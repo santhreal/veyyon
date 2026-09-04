@@ -24,7 +24,8 @@ import { type CpuLimitEnvironment, type CpuLimitProbe, probeCpuLimitSupport } fr
 import { BYTES_PER_GB } from "@veyyon/kernel/session/write-accounting";
 import { resetSettingsForTest, Settings } from "../src/config/settings";
 import { setSettingsInstance } from "../src/config/settings-instance";
-import { getUi, SETTINGS_SCHEMA, type SettingPath } from "../src/config/settings-schema";
+import { SETTINGS_SCHEMA } from "../src/config/settings-schema";
+import { getUi, type SettingPath } from "@veyyon/kernel/settings/schema";
 import {
 	type CpuBudgetGroupHandle,
 	CpuLimitDeniedError,

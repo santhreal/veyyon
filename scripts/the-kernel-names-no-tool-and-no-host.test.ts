@@ -105,6 +105,7 @@ describe("the kernel names no tool and no host", () => {
 		registry: kernelFiles.filter(f => f.startsWith(path.join(kernelSrc, "registry") + path.sep)).length,
 		loader: kernelFiles.filter(f => f.startsWith(path.join(kernelSrc, "loader") + path.sep)).length,
 		session: kernelFiles.filter(f => f.startsWith(path.join(kernelSrc, "session") + path.sep)).length,
+		settings: kernelFiles.filter(f => f.startsWith(path.join(kernelSrc, "settings") + path.sep)).length,
 	};
 
 	let totalSpecifiers = 0;
@@ -124,14 +125,18 @@ describe("the kernel names no tool and no host", () => {
 		// and the credential store, and `custom-message-payload`, the part of the coding agent's
 		// message module those four call; then the message-kind contribution (`registry/message-kind`)
 		// and its role-keyed table (`session/message-kinds`), which is how the spine converts a role a
-		// tool domain records without naming the domain.
-		expect(kernelFiles.length).toBe(60);
+		// tool domain records without naming the domain. Then the settings schema registry
+		// (`settings/schema`), which answers what a declared setting is from whatever tables have
+		// registered, and the unset-number owner (`settings/optional-number`) it reads.
+		expect(kernelFiles.length).toBe(62);
 		expect(concernCounts.registry).toBe(8);
 		expect(concernCounts.loader).toBe(12);
 		expect(concernCounts.session).toBe(40);
+		expect(concernCounts.settings).toBe(2);
 		expect(concernCounts.registry).toBeGreaterThan(0);
 		expect(concernCounts.loader).toBeGreaterThan(0);
 		expect(concernCounts.session).toBeGreaterThan(0);
+		expect(concernCounts.settings).toBeGreaterThan(0);
 		expect(totalSpecifiers).toBeGreaterThan(0);
 	});
 
@@ -161,7 +166,8 @@ describe("the kernel names no tool and no host", () => {
 
 	// 3. The manifest half. Pinned by exact equality so a dependency arrives by decision. A contract
 	// is the one kind of member the kernel may depend on; `@veyyon/plugin` is the manifest vocabulary
-	// the loader reads and `@veyyon/session` the entry vocabulary the session spine persists.
+	// the loader reads, `@veyyon/session` the entry vocabulary the session spine persists and
+	// `@veyyon/settings` the declaration vocabulary the schema registry holds.
 	it("declares only allowed dependencies in package.json", () => {
 		const manifestPath = path.join(kernelDir, "package.json");
 		expect(fs.existsSync(manifestPath)).toBe(true);
@@ -175,6 +181,7 @@ describe("the kernel names no tool and no host", () => {
 			"@veyyon/catalog",
 			"@veyyon/plugin",
 			"@veyyon/session",
+			"@veyyon/settings",
 			"@veyyon/utils",
 		]);
 	});
