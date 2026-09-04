@@ -24,6 +24,14 @@
  * so the interrupt did nothing. Here it steers nothing, spends no stall budget,
  * reports itself, and the user's next message is what continues the loop.
  *
+ * A turn the loop did not run is not the loop's turn. The resume the loop
+ * dispatches waits behind the session's own continuations, and the end of one
+ * of those used to be diagnosed as the loop stalling: a second hidden turn was
+ * queued behind the first, and a turn the model never saw the loop's message
+ * in was counted against its stall budget. The dispatched message is marked,
+ * and the `agent_end` that finds it accepted after the ended turn's last
+ * assistant message steers nothing and counts nothing.
+ *
  * The tool sweep is derived from `EXPERIMENT_TOOL_NAMES` at run time, so a
  * seventh experiment tool is swept the day it is added rather than the day
  * someone remembers this file.
@@ -58,6 +66,7 @@ const SESSION_BRANCH = "autoresearch/tokenizer-throughput";
 interface Steer {
 	customType: string;
 	content: string;
+	details: unknown;
 }
 
 interface Handlers {
@@ -97,8 +106,8 @@ function buildHarness(): Harness {
 			activeTools.splice(0, activeTools.length, ...names);
 		},
 		sendUserMessage(): void {},
-		sendMessage(message: { customType?: string; content: string }): void {
-			steers.push({ customType: message.customType ?? "", content: message.content });
+		sendMessage(message: { customType?: string; content: string; details?: unknown }): void {
+			steers.push({ customType: message.customType ?? "", content: message.content, details: message.details });
 		},
 	} as unknown as ExtensionAPI;
 	createAutoresearchExtension(api);
@@ -393,6 +402,56 @@ describe("a loop that advances nothing does not pass for a running one", () => {
 		await turn(harness, ctx);
 
 		expect(harness.steers.map(steer => steer.customType)).toEqual(["autoresearch-resume"]);
+	});
+
+	it("a continuation ending while the loop's own turn has just started is not a stall", async () => {
+		const cwd = cwdDir.path();
+		const sessionId = await seedSession(cwd, 1);
+		await seedPendingRun(cwd, sessionId);
+		const harness = buildHarness();
+		const ctx = makeCtx(harness, cwd);
+		await harness.handlers.session_start?.({ type: "session_start" } as never, ctx);
+		const warn = vi.spyOn(logger, "warn");
+
+		// The measurement dispatches a resume. The session runs a continuation of
+		// its own first (a code-review pass), and the resume is accepted the moment
+		// that continuation ends: at its `agent_end` the transcript already holds
+		// the loop's message after the continuation's last assistant message.
+		await turn(harness, ctx);
+		expect(harness.steers.map(steer => steer.customType)).toEqual(["autoresearch-resume"]);
+		const assistant = {
+			role: "assistant",
+			content: [],
+			stopReason: "stop",
+			api: "test",
+			provider: "test",
+			model: "test",
+		};
+		const dispatched = {
+			role: "custom",
+			customType: "autoresearch-resume",
+			content: harness.steers[0]!.content,
+			display: false,
+			details: harness.steers[0]!.details,
+			timestamp: 1,
+		};
+		await harness.handlers.agent_end?.({ type: "agent_end", messages: [assistant, dispatched] } as never, ctx);
+
+		// Not a stall: nothing steered, nothing counted against the budget. The
+		// second hidden turn this used to queue is what restarted a loop the user
+		// had stopped, and the count is what turned a slow loop off.
+		expect(harness.steers).toHaveLength(1);
+		expect(warn.mock.calls.some(call => String(call[0]).includes("without advancing"))).toBe(false);
+		expect(harness.loopArmed()).toBe(true);
+
+		// The loop's own turn ends with the measurement still unlogged: that one is
+		// the loop ending a turn without advancing, and it is steered.
+		await harness.handlers.before_agent_start?.({ type: "before_agent_start", systemPrompt: [] } as never, ctx);
+		await harness.handlers.agent_end?.({ type: "agent_end", messages: [dispatched, assistant] } as never, ctx);
+		expect(harness.steers.map(steer => steer.customType)).toEqual([
+			"autoresearch-resume",
+			"autoresearch-stall-nudge",
+		]);
 	});
 
 	it("says autoswarm when the interrupted loop is a swarm", async () => {

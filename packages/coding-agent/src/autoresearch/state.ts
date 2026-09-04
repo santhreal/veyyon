@@ -44,6 +44,7 @@ export function createSessionRuntime(): AutoresearchRuntime {
 		interrupted: false,
 		autoResumeArmed: false,
 		lastAutoResumePendingRunNumber: null,
+		dispatchedTurnId: null,
 		lastRunDuration: null,
 		lastRunAsi: null,
 		lastRunArtifactDir: null,

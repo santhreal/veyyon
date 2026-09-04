@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
@@ -76,6 +77,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		runtime.goal = control.goal;
 		runtime.autoResumeArmed = false;
 		runtime.lastAutoResumePendingRunNumber = null;
+		runtime.dispatchedTurnId = null;
 
 		// Skip storage entirely if autoresearch was never activated in this conversation.
 		// This is the common case: every project gets a session_start event but most
@@ -137,6 +139,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		runtime.autoResumeArmed = false;
 		runtime.goal = goal;
 		runtime.lastAutoResumePendingRunNumber = null;
+		runtime.dispatchedTurnId = null;
 		api.appendEntry("autoresearch-control", goal ? { mode, goal } : { mode });
 	};
 
@@ -181,6 +184,48 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			const message = messages[index];
 			if (message.role !== "assistant") continue;
 			return message.stopReason === "aborted";
+		}
+		return false;
+	};
+
+	/** The details a dispatched turn's message carries, so `agent_end` can find it in the transcript. */
+	const dispatchDetails = (message: AgentMessage): { dispatchId: string } | null => {
+		if (message.role !== "custom") return null;
+		const details: unknown = message.details;
+		if (details === null || typeof details !== "object" || !("dispatchId" in details)) return null;
+		return typeof details.dispatchId === "string" ? { dispatchId: details.dispatchId } : null;
+	};
+
+	/**
+	 * Send a hidden turn on the loop's behalf and remember it until the turn
+	 * that carries it ends. The session starts it once the agent is idle, which
+	 * can be several turns away when a continuation of its own is queued first.
+	 */
+	const dispatchTurn = (runtime: AutoresearchRuntime, message: { customType: string; content: string }): void => {
+		const dispatchId = randomUUID();
+		runtime.dispatchedTurnId = dispatchId;
+		api.sendMessage(
+			{ ...message, display: false, attribution: "agent", details: { dispatchId } },
+			{ deliverAs: "nextTurn", triggerTurn: true },
+		);
+	};
+
+	/**
+	 * Whether the turn the loop dispatched is still on its way at the end of
+	 * another turn. A dispatched message that follows the ended turn's last
+	 * assistant message belongs to the turn that has just been accepted; one
+	 * that precedes it was consumed, so the loop's diagnosis applies. A message
+	 * that is nowhere in the transcript was consumed and compacted away, or
+	 * dropped: either way there is nothing coming, and the diagnosis applies.
+	 * (A dispatch that has not been accepted yet is queued work the session
+	 * reports through `hasPendingMessages`, which the caller checks first.)
+	 */
+	const dispatchedTurnJustStarted = (messages: readonly AgentMessage[], dispatchId: string | null): boolean => {
+		if (dispatchId === null) return false;
+		for (let index = messages.length - 1; index >= 0; index -= 1) {
+			const message = messages[index];
+			if (message.role === "assistant") return false;
+			if (dispatchDetails(message)?.dispatchId === dispatchId) return true;
 		}
 		return false;
 	};
@@ -439,19 +484,14 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 				`Resuming ${spec.label.toLowerCase()} ${refreshed.name}${where} · ${runs === 1 ? "1 run" : `${runs} runs`}${bestText}.`,
 				"info",
 			);
-			api.sendMessage(
-				{
-					customType: "autoresearch-command-resume",
-					content: prompt.render(autoresearchPrompts["autoresearch/command-resume"].text, {
-						branch_status_line: branchStatusLine,
-						has_resume_context: resumeContext.length > 0,
-						resume_context: resumeContext,
-					}),
-					display: false,
-					attribution: "agent",
-				},
-				{ deliverAs: "nextTurn", triggerTurn: true },
-			);
+			dispatchTurn(runtime, {
+				customType: "autoresearch-command-resume",
+				content: prompt.render(autoresearchPrompts["autoresearch/command-resume"].text, {
+					branch_status_line: branchStatusLine,
+					has_resume_context: resumeContext.length > 0,
+					resume_context: resumeContext,
+				}),
+			});
 			return;
 		}
 
@@ -545,17 +585,16 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		dashboard.update(ctx, runtime);
 		dashboard.requestRender();
 		if (!runtime.autoresearchMode) return;
-		if (ctx.hasPendingMessages()) {
-			runtime.autoResumeArmed = false;
-			return;
-		}
 		if (endedByAbort(event.messages)) {
 			// Escape is the user stopping the loop. Resuming it from here, which
 			// this handler did whenever a measurement was waiting, put the loop
 			// back on the very next turn and left nothing the interrupt had done.
 			// The session keeps its state; the next message the user sends
-			// resumes it through `before_agent_start`.
+			// resumes it through `before_agent_start`. Read before the queue: the
+			// interrupt drops a turn the loop dispatched, and a message the user
+			// queued does not make the loop any less stopped.
 			runtime.autoResumeArmed = false;
+			runtime.dispatchedTurnId = null;
 			runtime.stallNudges = 0;
 			runtime.interrupted = true;
 			dashboard.update(ctx, runtime);
@@ -566,6 +605,10 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			);
 			return;
 		}
+		if (ctx.hasPendingMessages()) {
+			runtime.autoResumeArmed = false;
+			return;
+		}
 		const { session } = await loadActiveSession(ctx);
 		const storage = session ? await openAutoresearchStorageIfExists(ctx.cwd) : null;
 		const pendingRow = session && storage ? storage.getPendingRun(session.id) : null;
@@ -573,6 +616,15 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		runtime.lastRunSummary = pendingRun;
 		runtime.lastRunDuration = pendingRun?.durationSeconds ?? runtime.lastRunDuration;
 		runtime.lastRunAsi = pendingRun?.parsedAsi ?? runtime.lastRunAsi;
+		if (dispatchedTurnJustStarted(event.messages, runtime.dispatchedTurnId)) {
+			// The turn that ended is not the loop's. Its resume or nudge waited
+			// behind whatever the session ran first -- a code-review continuation,
+			// a queued follow-up -- and has been accepted as the turn starting now.
+			// Diagnosing a stall here queued a second hidden turn behind the first,
+			// and counted a turn the loop never saw against its stall budget.
+			return;
+		}
+		runtime.dispatchedTurnId = null;
 		const shouldResumePendingRun =
 			pendingRun !== null && runtime.lastAutoResumePendingRunNumber !== pendingRun.runNumber;
 		if (!shouldResumePendingRun && !runtime.autoResumeArmed) {
@@ -598,33 +650,23 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 				);
 				return;
 			}
-			api.sendMessage(
-				{
-					customType: "autoresearch-stall-nudge",
-					content: prompt.render(autoresearchPrompts["autoresearch/stall-nudge"].text, {
-						has_session: Boolean(session),
-					}),
-					display: false,
-					attribution: "agent",
-				},
-				{ deliverAs: "nextTurn", triggerTurn: true },
-			);
+			dispatchTurn(runtime, {
+				customType: "autoresearch-stall-nudge",
+				content: prompt.render(autoresearchPrompts["autoresearch/stall-nudge"].text, {
+					has_session: Boolean(session),
+				}),
+			});
 			return;
 		}
 		runtime.stallNudges = 0;
 		runtime.autoResumeArmed = false;
 		runtime.lastAutoResumePendingRunNumber = pendingRun?.runNumber ?? null;
-		api.sendMessage(
-			{
-				customType: "autoresearch-resume",
-				content: prompt.render(autoresearchPrompts["autoresearch/resume-message"].text, {
-					has_pending_run: Boolean(pendingRun),
-				}),
-				display: false,
-				attribution: "agent",
-			},
-			{ deliverAs: "nextTurn", triggerTurn: true },
-		);
+		dispatchTurn(runtime, {
+			customType: "autoresearch-resume",
+			content: prompt.render(autoresearchPrompts["autoresearch/resume-message"].text, {
+				has_pending_run: Boolean(pendingRun),
+			}),
+		});
 	});
 
 	api.on("before_agent_start", async (event, ctx) => {

@@ -182,6 +182,17 @@ export interface AutoresearchRuntime {
 	interrupted: boolean;
 	autoResumeArmed: boolean;
 	lastAutoResumePendingRunNumber: number | null;
+	/**
+	 * Identifies the hidden turn this loop dispatched (a resume or a stall
+	 * nudge) until the turn that carried it ends. It waits behind whatever the
+	 * session runs first, so the `agent_end` of that other turn -- a code-review
+	 * continuation, a queued follow-up -- is not the loop ending a turn without
+	 * advancing: the loop's next step is already on its way. The id is written
+	 * into the message's details; `agent_end` reads the transcript to tell a
+	 * dispatched turn that was consumed from one that has only just started.
+	 * Cleared when its turn ends, when an interrupt drops it, and with the mode.
+	 */
+	dispatchedTurnId: string | null;
 	lastRunDuration: number | null;
 	lastRunAsi: ASIData | null;
 	lastRunArtifactDir: string | null;
