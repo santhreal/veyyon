@@ -170,10 +170,19 @@ describe("the modules that were repointed stay cut", () => {
 	 * `utils/{stream-frame-limit,eval-prompt-overrides}.ts`. No consumer gained an edge to a subsystem it
 	 * did not already reach, which is the only reason this number may move.
 	 */
+	/**
+	 * Re-measured 2026-09-04 when the model and message vocabulary moved to `@veyyon/model`: `parser.ts`
+	 * 115 -> 119, `db.ts` 120 -> 121, `shared-llm.ts` 202 -> 205, `sync-worker.ts` unchanged at 120. Every
+	 * new module is a leaf of `contracts/model/src/` -- `effort.ts`, `model.ts`, `message.ts`,
+	 * `service-tier.ts`, `stream-block.ts` -- carved out of `catalog/types.ts`, `catalog/effort.ts`,
+	 * `ai/types.ts` and `ai/utils/block-symbols.ts`, each of which was already on the reach and now
+	 * re-exports the contract module. A contract imports nothing in this repository, so no consumer
+	 * gained an edge to a subsystem it did not already reach.
+	 */
 	it.each([
 		["agent/src/proxy.ts", 145],
-		["apps/stats/src/parser.ts", 115],
-		["apps/stats/src/db.ts", 120],
+		["apps/stats/src/parser.ts", 119],
+		["apps/stats/src/db.ts", 121],
 		["apps/stats/src/sync-worker.ts", 120],
 		["plugins/mnemopi/src/core/embeddings.ts", 131],
 		// Re-measured 2026-08-28 at 66, from 127. The file took `trimTrailingSlashes` and
@@ -186,10 +195,11 @@ describe("the modules that were repointed stay cut", () => {
 		// used to spell `"\x1b"` inline and now takes `ESC` from that owner. The leaf adds no edge of
 		// its own, so nothing outside this closure was gained.
 		["coding-agent/src/config/api-key-resolver.ts", 56],
-		// Re-measured 2026-09-04 at 202, from 201. One module from the catalog OpenCode
-		// discovery header leaf; the file still takes no name from the barrel. 184 was the
-		// 2026-07-27 engine-call remasure; 325 before that was the leak.
-		["coding-agent/src/commit/shared-llm.ts", 202],
+		// Re-measured 2026-09-04 at 205, from 202: the three `@veyyon/model` leaves named above. 202
+		// was one module from the catalog OpenCode discovery header leaf; 184 was the 2026-07-27
+		// engine-call remeasure; 325 before that was the leak. The file still takes no name from the
+		// barrel.
+		["coding-agent/src/commit/shared-llm.ts", 205],
 		// The agent's hot loop and the `Agent` class. Both STREAM, so both reach the engine whatever
 		// specifier they use; the ceilings are what the other ten names cost when taken from the entry
 		// point. 378 -> 321 and 380 -> 323.

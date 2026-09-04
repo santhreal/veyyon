@@ -203,6 +203,7 @@ export const fastWorkspacePackages = [
 	"plugins/hashline",
 	"contracts/wire",
 	"contracts/settings",
+	"contracts/model",
 	// The graphical host draws the view contract into strings and touches neither a
 	// terminal nor a socket, so its suites belong in the fast bucket beside the
 	// contract they check.

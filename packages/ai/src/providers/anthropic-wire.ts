@@ -11,6 +11,7 @@
  * `scope`, tool `strict`/`eager_input_streaming`, mid-conversation `system`
  * role) are first-class here instead of being patched in via casts.
  */
+import type { StopDetails } from "@veyyon/model/message";
 import type { TokenTaskBudget } from "../types";
 
 // ─── Cache control ──────────────────────────────────────────────────────────
@@ -301,11 +302,7 @@ export type ContentBlockDelta =
 	| { type: "thinking_delta"; thinking: string }
 	| { type: "signature_delta"; signature: string };
 
-export type StopDetails = {
-	type: string;
-	category?: string | null;
-	explanation?: string | null;
-};
+export type { StopDetails };
 
 export type MessageDelta = {
 	stop_reason?: AnthropicWireStopReason | null;

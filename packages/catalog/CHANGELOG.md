@@ -9,6 +9,7 @@
 
 ### Changed
 
+- The model row, thinking config, effort ladder and service-tier vocabulary are defined in `@veyyon/model`; `@veyyon/catalog/types`, `@veyyon/catalog/effort` and `@veyyon/catalog/provider-models/wire-capabilities` re-export every name they exported before, so no caller changes.
 - Typed tuple copies use spreads rather than `.concat()`, which a `as const` array does not define. No user-visible behavior changes.
 
 - A comment on `OPENROUTER_BASE_URL` names the Perplexity auth module at `tools/web/search/providers/perplexity-auth.ts`. No behavior change.

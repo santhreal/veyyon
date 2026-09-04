@@ -39,6 +39,7 @@
   "dependencies": {
     "@bufbuild/protobuf": "catalog:",
     "@veyyon/catalog": "catalog:",
+    "@veyyon/model": "catalog:",
     "@veyyon/utils": "catalog:",
     "@veyyon/wire": "catalog:",
     "arktype": "catalog:",

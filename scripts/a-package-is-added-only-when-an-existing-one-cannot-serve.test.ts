@@ -107,10 +107,22 @@ import { typeScriptMembers } from "./workspace-layout";
  * the marketplace client that read it; `contracts/settings` is the vocabulary a first-party package
  * writes a setting in code, and the manifest's setting schema is a separate on-disk shape with
  * separate readers, so folding one into the other changes the manifest format; `contracts/view` and
- * `contracts/wire` are a tool's output and the cross-process envelopes. A future rise still needs the
- * sentence above: which existing package was considered and why it could not serve.
+ * `contracts/wire` are a tool's output and the cross-process envelopes.
+ *
+ * The count went 24 -> 25 with `contracts/model`. It is the vocabulary a provider implements and a
+ * host reads -- the `Model` row with its thinking config, the `Message` envelope and its content
+ * blocks, the streamed `AssistantMessageEvent` union, the turn and tool-call study records, the
+ * effort and service-tier ladders -- and it has no dependency at all, which is what lets a provider
+ * plugin type a stream without importing the client that drives it. `catalog` held the model half and
+ * `ai` held the message half, and each is a runtime: a provider that imported `Message` from `ai`
+ * would import every bundled provider, the OAuth flows and the retry loop; a host that imported
+ * `Model` from `catalog` would import models.json and the discovery clients. `contracts/wire` is the
+ * cross-process envelope a message is carried in, not the message; `contracts/view` is what a tool's
+ * output means; `contracts/settings` and `contracts/plugin` are declaration vocabularies with no model
+ * in them. A future rise still needs the sentence above: which existing package was considered and
+ * why it could not serve.
  */
-const PACKAGE_BUDGET = 24;
+const PACKAGE_BUDGET = 25;
 
 /**
  * Every workspace member, as `<root>/<name>`.

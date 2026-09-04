@@ -3378,6 +3378,23 @@
 		"getToolDefinitions",
 		"handleToolCall"
 	],
+	"@veyyon/model": [
+		"EMPTY_ERROR_TOOL_RESULT_TEXT",
+		"Effort",
+		"INSTRUMENTATION_LEVELS",
+		"OPENAI_REASONING_DISABLE_MODES",
+		"OPENAI_WIRE_TIERS",
+		"SERVICE_TIERS",
+		"THINKING_CONTROL_MODES",
+		"THINKING_EFFORTS",
+		"canonicalizeEfforts",
+		"clearStreamingPartialJson",
+		"getStreamingPartialJson",
+		"isEffort",
+		"isServiceTier",
+		"kStreamingPartialJson",
+		"setStreamingPartialJson"
+	],
 	"@veyyon/natives": [
 		"AstMatchStrictness",
 		"CpuBudgetGroup",

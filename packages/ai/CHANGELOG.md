@@ -4,6 +4,7 @@
 
 ### Changed
 
+- The message envelope, content blocks, `AssistantMessageEvent`, `StopDetails`, the turn and tool-call study records and the streaming partial-JSON symbol are defined in `@veyyon/model`; `@veyyon/ai` re-exports every name it exported before, so no caller changes.
 - A source comment in the OAuth callback page names the shared sun source at `apps/site/sun-field.js`; behavior is unchanged.
 - Typed tuple copies use spreads rather than `.concat()`, which a `as const` array does not define. No user-visible behavior changes.
 
