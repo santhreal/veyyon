@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8e08f80c.js";
+            window.path_to_searchindex_js = "../searchindex-4cbb2f53.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -203,7 +203,8 @@ trusted, has the survivors review each other, and keeps at most one.</p>
 <pre><code>/autoswarm
 </code></pre>
 <pre><code>Autoswarm setup
-Autoresearch with breadth. The model derives the metric from your harness.
+Each iteration builds one change per arm and keeps the best. The model derives the metric from your harness.
+No autoresearch.sh yet: the first turn writes and validates one before anything is measured.
 
 › Goal          make the tokenizer faster▌
   Breadth       3    candidate arms per iteration
@@ -221,6 +222,10 @@ type to edit   ↑↓ field   enter start   esc cancel
 toggles certification, Enter starts the run and Escape leaves without starting
 one. The legend lists only the keys that act on the focused field: the arrow
 range on Breadth and Attempts, <code>type to edit</code> on Goal and Models.</p>
+<p>The line under the title states what Enter does on this branch. With no
+session it reads <code>autoresearch.sh found: enter starts measuring with it.</code> or
+<code>No autoresearch.sh yet: the first turn writes and validates one before anything is measured.</code> Over a live session it reads <code>Resumes session &lt;name&gt; on &lt;branch&gt; (&lt;n&gt; runs) with the values below.</code> and the legend reads <code>enter resume</code>
+instead of <code>enter start</code>.</p>
 <p>The first line under the fields is the harness runs one iteration costs, breadth
 multiplied by attempts. It is a ceiling: an arm that succeeds on its first
 attempt uses one. The second line is the review topology for that breadth. The
@@ -233,6 +238,9 @@ goal the field opens on that goal, and the typed text reaches the model as
 context for the resume; the stored goal changes only through <code>/autoswarm goal &lt;text&gt;</code> or a field that leaves the console different from it.</p>
 <p>Escape leaves without starting a run and prints <code>Autoswarm setup cancelled. Nothing was started.</code> The console is not a turn: no <code>Working…</code> loader runs under
 it while it is open.</p>
+<p><code>/autoswarm resume</code> continues an interrupted or paused session without opening
+the console: no goal, no context, the stored values. With no session on the
+branch it prints <code>No autoswarm session on this branch to resume. /autoswarm starts one.</code> and starts nothing.</p>
 <p>The console opens on whatever the current branch is already doing, so running it
 during a session shows that session’s breadth rather than the default, and
 starting applies the new values from the next iteration.</p>

@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-8e08f80c.js";
+            window.path_to_searchindex_js = "searchindex-4cbb2f53.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-b613f6a6.js"></script>
@@ -6689,9 +6689,16 @@ degenerate cases.</p>
 <p><code>/autoresearch off</code> leaves the mode and keeps the session. A bare
 <code>/autoresearch</code> opens the run screen; it does not end anything.</p>
 <p>Escape during a turn stops that turn and pauses the loop without leaving the
-mode, and prints <code>Autoresearch interrupted. Send a message to resume the loop, or off to leave it.</code> The status row stays, the tools stay attached, and nothing
-runs until you send a message; a measurement that was waiting to be logged is
-picked up by that message. <code>/autoresearch off</code> from there leaves the mode.</p>
+mode, and prints <code>Autoresearch interrupted. Send a message or /autoresearch resume to continue, /autoresearch off to leave the loop.</code> The status row reads
+<code>paused · send a message to resume</code>, the tools stay attached, and nothing runs
+until you send a message; a measurement that was waiting to be logged is picked
+up by that message. <code>/autoresearch resume</code> sends nothing but the resume, and
+with no session on the branch prints <code>No autoresearch session on this branch to resume. /autoresearch starts one.</code> <code>/autoresearch off</code> from there leaves the
+mode.</p>
+<p>Text typed after the command on a live session goes to the model as context for
+the resume, and prints <code>Your text goes to the model as context for the resume. /autoresearch goal &lt;text&gt; changes what this session optimizes.</code> The stored goal
+typed back is a resume with nothing to add: no notice, and the model is not told
+the goal a second time.</p>
 <p><code>/autoresearch clear</code> resets the worktree to the segment baseline, deletes
 untracked files and closes the session. It asks first, naming the commit it
 resets to and how many files hold uncommitted changes. The reset restores
@@ -6758,7 +6765,8 @@ trusted, has the survivors review each other, and keeps at most one.</p>
 <pre><code>/autoswarm
 </code></pre>
 <pre><code>Autoswarm setup
-Autoresearch with breadth. The model derives the metric from your harness.
+Each iteration builds one change per arm and keeps the best. The model derives the metric from your harness.
+No autoresearch.sh yet: the first turn writes and validates one before anything is measured.
 
 › Goal          make the tokenizer faster▌
   Breadth       3    candidate arms per iteration
@@ -6776,6 +6784,10 @@ type to edit   ↑↓ field   enter start   esc cancel
 toggles certification, Enter starts the run and Escape leaves without starting
 one. The legend lists only the keys that act on the focused field: the arrow
 range on Breadth and Attempts, <code>type to edit</code> on Goal and Models.</p>
+<p>The line under the title states what Enter does on this branch. With no
+session it reads <code>autoresearch.sh found: enter starts measuring with it.</code> or
+<code>No autoresearch.sh yet: the first turn writes and validates one before anything is measured.</code> Over a live session it reads <code>Resumes session &lt;name&gt; on &lt;branch&gt; (&lt;n&gt; runs) with the values below.</code> and the legend reads <code>enter resume</code>
+instead of <code>enter start</code>.</p>
 <p>The first line under the fields is the harness runs one iteration costs, breadth
 multiplied by attempts. It is a ceiling: an arm that succeeds on its first
 attempt uses one. The second line is the review topology for that breadth. The
@@ -6788,6 +6800,9 @@ goal the field opens on that goal, and the typed text reaches the model as
 context for the resume; the stored goal changes only through <code>/autoswarm goal &lt;text&gt;</code> or a field that leaves the console different from it.</p>
 <p>Escape leaves without starting a run and prints <code>Autoswarm setup cancelled. Nothing was started.</code> The console is not a turn: no <code>Working…</code> loader runs under
 it while it is open.</p>
+<p><code>/autoswarm resume</code> continues an interrupted or paused session without opening
+the console: no goal, no context, the stored values. With no session on the
+branch it prints <code>No autoswarm session on this branch to resume. /autoswarm starts one.</code> and starts nothing.</p>
 <p>The console opens on whatever the current branch is already doing, so running it
 during a session shows that session’s breadth rather than the default, and
 starting applies the new values from the next iteration.</p>

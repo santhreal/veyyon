@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8e08f80c.js";
+            window.path_to_searchindex_js = "../searchindex-4cbb2f53.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -332,9 +332,16 @@ degenerate cases.</p>
 <p><code>/autoresearch off</code> leaves the mode and keeps the session. A bare
 <code>/autoresearch</code> opens the run screen; it does not end anything.</p>
 <p>Escape during a turn stops that turn and pauses the loop without leaving the
-mode, and prints <code>Autoresearch interrupted. Send a message to resume the loop, or off to leave it.</code> The status row stays, the tools stay attached, and nothing
-runs until you send a message; a measurement that was waiting to be logged is
-picked up by that message. <code>/autoresearch off</code> from there leaves the mode.</p>
+mode, and prints <code>Autoresearch interrupted. Send a message or /autoresearch resume to continue, /autoresearch off to leave the loop.</code> The status row reads
+<code>paused · send a message to resume</code>, the tools stay attached, and nothing runs
+until you send a message; a measurement that was waiting to be logged is picked
+up by that message. <code>/autoresearch resume</code> sends nothing but the resume, and
+with no session on the branch prints <code>No autoresearch session on this branch to resume. /autoresearch starts one.</code> <code>/autoresearch off</code> from there leaves the
+mode.</p>
+<p>Text typed after the command on a live session goes to the model as context for
+the resume, and prints <code>Your text goes to the model as context for the resume. /autoresearch goal &lt;text&gt; changes what this session optimizes.</code> The stored goal
+typed back is a resume with nothing to add: no notice, and the model is not told
+the goal a second time.</p>
 <p><code>/autoresearch clear</code> resets the worktree to the segment baseline, deletes
 untracked files and closes the session. It asks first, naming the commit it
 resets to and how many files hold uncommitted changes. The reset restores
