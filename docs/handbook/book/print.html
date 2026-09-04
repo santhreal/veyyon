@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-c0270383.js";
+            window.path_to_searchindex_js = "searchindex-f235412c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-b613f6a6.js"></script>
@@ -16112,6 +16112,11 @@ written.</p>
 <li>Primary user file: <code>~/.veyyon/profiles/default/agent/config.yml</code> (or profile path under <code>~/.veyyon/profiles/</code>)</li>
 <li>CLI: <code>veyyon config list|get|set</code>, <code>/settings</code>, <code>/reload-plugins</code> (re-read without restart)</li>
 </ul>
+<h2 id="settings-declarations"><a class="header" href="#settings-declarations">Settings declarations</a></h2>
+<p>Packages register setting tables with <code>declareSettings</code> from <code>@veyyon/kernel/settings/schema</code>.
+Duplicate paths are rejected, and queries against an empty registry throw.
+<code>settingsSchemaPaths()</code> returns an immutable key snapshot reused between registrations.
+The settings store rebuilds its derived path index when the snapshot changes.</p>
 <h2 id="how-configuration-resolves"><a class="header" href="#how-configuration-resolves">How configuration resolves</a></h2>
 <p>Roots scanned, precedence, and consumption by settings, skills, hooks, tools, and extensions.</p>
 <h2 id="scope-2"><a class="header" href="#scope-2">Scope</a></h2>
@@ -16119,6 +16124,7 @@ written.</p>
 <ul>
 <li><code>packages/coding-agent/src/config.ts</code></li>
 <li><code>packages/coding-agent/src/config/config-file.ts</code> (re-exported from <code>config.ts</code>)</li>
+<li><code>kernel/src/settings/schema.ts</code> (setting declarations and registry queries)</li>
 <li><code>kernel/src/settings/store.ts</code> (the layered store, <code>SettingsStore</code>)</li>
 <li><code>packages/coding-agent/src/config/settings.ts</code> (<code>Settings</code>, the product’s store with its hooks)</li>
 <li><code>packages/coding-agent/src/config/settings-schema.ts</code></li>
