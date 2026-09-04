@@ -6,6 +6,7 @@
 
 - A model's thinking config carries `prefixBinding`, set for Claude 5.1 and later, stating that its thinking blocks are bound to the conversation prefix they were produced against.
 - An `anthropic-messages` model's compat carries `replayDemotedPriorReasoning`, which drops prior-turn reasoning on a signing endpoint instead of replaying it as demoted prose.
+- The bundled ChatGPT Codex catalog carries `gpt-6-astra` and `gpt-reserve`, each with the low-through-max effort ladder and the freeform `apply_patch` tool the endpoint declares.
 
 ### Changed
 
@@ -14,6 +15,8 @@
 ### Fixed
 
 - The Claude Code fingerprint version is 2.1.257, so Anthropic OAuth requests for current models are no longer rejected with `claude_code_version_too_old`.
+- ChatGPT Codex discovery identifies as Codex CLI 0.153.2, the floor `gpt-6-astra` requires, so a subscription that has the model lists it instead of receiving the pre-0.153 model set.
+- A ChatGPT Codex model's effort ladder and `apply_patch` tool type come from the `supported_reasoning_levels` and `apply_patch_tool_type` the endpoint declares for that row, so a newly listed SKU offers effort control at once instead of arriving with none until models.dev catalogs it.
 - Antigravity discovery gives `gemini-3.8-flash-tiered` the same effort surface as 3.7: the endpoint serves 3.8 Flash only under that wire id, with no bare id and no per-tier siblings, so the row arrived raw with no effort levels. It now collapses to a logical `gemini-3.8-flash` row carrying the low/medium/high ladder models.dev declares for `google/gemini-3.8-flash` on the `google-level` transport, and its wire profile pins the 65536 output cap the endpoint reports.
 - OpenCode Zen and Go discovery resolves the wire API of an id the bundle predates from live models.dev, so `muse-spark-1.3-contributor-free` and `muse-spark-1.3-contributor` route to `/responses` instead of failing with HTTP 500 on `/chat/completions`; the bundle also carries both rows.
 - OpenCode Zen and Go model discovery sends the `Veyyon/<version>` user agent the gateway requires, so a discovery request is no longer unlabeled traffic that can be filtered into an empty model picker.

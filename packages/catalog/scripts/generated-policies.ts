@@ -296,11 +296,22 @@ function applyGeneratedModelPolicy(model: ModelSpec<Api>): void {
 		};
 	}
 	const parsedModel = parseKnownModel(model.id);
-	const applyPatchToolType = inferGeneratedApplyPatchToolType(model, parsedModel);
-	if (applyPatchToolType) {
-		model.applyPatchToolType = applyPatchToolType;
-	} else {
-		delete model.applyPatchToolType;
+	// Codex discovery declares `apply_patch_tool_type` per SKU, and on that
+	// transport the declaration outranks the version-derived default, which
+	// stops at GPT-5 and would strip GPT-6 Astra of the freeform patch tool the
+	// endpoint states it takes. Every other transport keeps the inferred value
+	// only, so a stale flag copied onto a completions row is still removed.
+	const declaredOnCodex =
+		model.provider === "openai-codex" &&
+		model.api === "openai-codex-responses" &&
+		model.applyPatchToolType !== undefined;
+	if (!declaredOnCodex) {
+		const applyPatchToolType = inferGeneratedApplyPatchToolType(model, parsedModel);
+		if (applyPatchToolType) {
+			model.applyPatchToolType = applyPatchToolType;
+		} else {
+			delete model.applyPatchToolType;
+		}
 	}
 	if (parsedModel.family === "anthropic") {
 		applyAnthropicCatalogPolicy(model, parsedModel);

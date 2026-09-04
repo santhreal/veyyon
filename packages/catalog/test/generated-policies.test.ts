@@ -363,6 +363,15 @@ describe("generated model policies", () => {
 				provider: "litellm",
 				applyPatchToolType: "freeform",
 			}),
+			// Codex discovery declared it for a GPT-6 SKU the version rule does not reach.
+			createSpec({
+				id: "gpt-6-astra",
+				api: "openai-codex-responses",
+				provider: "openai-codex",
+				applyPatchToolType: "freeform",
+			}),
+			// Undeclared GPT-6 on Codex: the version rule still says nothing.
+			createSpec({ id: "gpt-6-astra", api: "openai-codex-responses", provider: "openai-codex" }),
 		];
 
 		applyGeneratedModelPolicies(models);
@@ -371,5 +380,7 @@ describe("generated model policies", () => {
 		expect(models[1]?.applyPatchToolType).toBe("freeform");
 		expect(models[2]?.applyPatchToolType).toBeUndefined();
 		expect(models[3]?.applyPatchToolType).toBeUndefined();
+		expect(models[4]?.applyPatchToolType).toBe("freeform");
+		expect(models[5]?.applyPatchToolType).toBeUndefined();
 	});
 });
