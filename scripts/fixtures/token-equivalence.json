@@ -76,7 +76,7 @@
 		"scripts/bench-jsonl-bytes.ts": "02bbcd492dc5cad07d6da3625296217dadbe2338f036ae1fe1f21c0240d68580"
 	},
 	"importReorder": {},
-	"changedCount": 5744,
+	"changedCount": 5741,
 	"changed": [
 		"apps/site/deploy.test.ts",
 		"apps/site/functions/api/grievances.test.ts",
@@ -1907,7 +1907,6 @@
 		"packages/coding-agent/test/composer-morph.test.ts",
 		"packages/coding-agent/test/config-cli.test.ts",
 		"packages/coding-agent/test/config/a-bash-rule-matches-the-command-not-its-json.test.ts",
-		"packages/coding-agent/test/config/a-model-chain-is-valid-written-either-way.test.ts",
 		"packages/coding-agent/test/config/a-provider-nobody-configured-does-not-warn.test.ts",
 		"packages/coding-agent/test/config/an-unset-variable-is-never-sent-as-the-credential.test.ts",
 		"packages/coding-agent/test/config/argot-encode-key-migration.test.ts",
@@ -1920,7 +1919,6 @@
 		"packages/coding-agent/test/config/rules-are-on-unless-turned-off.test.ts",
 		"packages/coding-agent/test/config/rules-have-sections.test.ts",
 		"packages/coding-agent/test/config/search-settings-migration.test.ts",
-		"packages/coding-agent/test/config/session-instrumentation-policy.test.ts",
 		"packages/coding-agent/test/config/settings-domain-composition.test.ts",
 		"packages/coding-agent/test/config/settings-instance.test.ts",
 		"packages/coding-agent/test/config/settings-save-failure-is-reported.test.ts",
@@ -2880,7 +2878,6 @@
 		"packages/coding-agent/test/settings-array-editor.test.ts",
 		"packages/coding-agent/test/settings-manager.test.ts",
 		"packages/coding-agent/test/settings-option-roundtrip.test.ts",
-		"packages/coding-agent/test/settings-precedence-chain.test.ts",
 		"packages/coding-agent/test/settings-schema-defaults-corpus.test.ts",
 		"packages/coding-agent/test/settings-search-ranking.test.ts",
 		"packages/coding-agent/test/settings-unset-absent-key.test.ts",

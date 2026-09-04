@@ -18123,7 +18123,7 @@
 			"differs": "changed",
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "b639b6b3a8f6c78654ed906a47e9ce6b964edb03e355c4c527960781b269aedf",
+			"hash": "c553083dcc46d68f3461535d790d7798b9b393bafb63eb9691369bc07f2f43d5",
 			"mainHash": "9960b8d7d01f83eb0c15dcb49c2d452ec52cdfb57fc51f90d82c50a04e399437",
 			"structuralHash": "ec976365d9361ecb5993185d7f788f2f3ca536d7fa805c0e38814585f10ed238",
 			"mainStructuralHash": "fd4470fe40486df8120c91e8eee2d47906b1c258d1a1a4fa23b1973606ffa867"
@@ -19347,9 +19347,9 @@
 			"differs": "changed",
 			"group": "colocated-test",
 			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
-			"hash": "5e6ecadd8c6a3a0a43346d070388cffaef04e4144d03e147e8e4594dca5f0074",
+			"hash": "3cd831dff459efcd094613770c80500d18e50383776bb7950d07de1708937a9b",
 			"mainHash": "90e688110df76a683a67778a23db361788f2bc620d8d6d93af9372a1d0848219",
-			"structuralHash": "ece39c4ab30b1c51b4039158f66756d26251127f7b1a46002fee44bffcd0baac",
+			"structuralHash": "97e1d145ea2d78546b2172785654f25f506828b255ecfa33b92c95020528595c",
 			"mainStructuralHash": "b001a54bbbc17bf0c30761efcbdcfc0ac38b881932ae512aa30c458c301270fa"
 		},
 		"packages/coding-agent/test/cli/startup/a-launch-does-not-load-a-schema-library-it-will-not-use.test.ts": {
