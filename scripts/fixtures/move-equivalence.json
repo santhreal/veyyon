@@ -5982,6 +5982,15 @@
 			"structuralHash": "c0fa52c0526d6fc54f97027b7c03376c85e2907061c0d176fabb474be2b1213a",
 			"mainStructuralHash": "69f26285ab4c1b947382092dc7d123beb86d375f2cacfad5a2f62f42bce5c6f2"
 		},
+		"kernel/src/session/agent-storage.ts": {
+			"old": "packages/coding-agent/src/session/agent-storage.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "a26b28effc740bc0cc7d4259213ba6f23b9f29de3381387ec2c35b0ad3a4661b",
+			"mainHash": "a26b28effc740bc0cc7d4259213ba6f23b9f29de3381387ec2c35b0ad3a4661b",
+			"structuralHash": "795da4305ec503d25a3ea203cf9abdb0e9915d09b8e8c47ab59acefa74195e36",
+			"mainStructuralHash": "795da4305ec503d25a3ea203cf9abdb0e9915d09b8e8c47ab59acefa74195e36"
+		},
 		"kernel/src/session/artifacts.ts": {
 			"old": "packages/coding-agent/src/session/artifacts.ts",
 			"kind": "normalized",
@@ -6152,6 +6161,17 @@
 			"structuralHash": "8514ab30caaafa0c69fab6e7d39436a745bc61d54b4214236c61f7f48fab9fe0",
 			"mainStructuralHash": "8514ab30caaafa0c69fab6e7d39436a745bc61d54b4214236c61f7f48fab9fe0"
 		},
+		"kernel/src/session/session-context.ts": {
+			"old": "packages/coding-agent/src/session/session-context.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "kernel-extraction",
+			"reason": "The plugin loader, contribution registry and session spine left packages/coding-agent for kernel/. Relative imports and array copies follow the move.",
+			"hash": "055220e10c9773c29246493a5dce4b47186a9352578566efe7ee3f7978191fe4",
+			"mainHash": "504306b9671f6fea7d7d55c9b69fcede5cb040cfc084e2f08f01f46e7ceee008",
+			"structuralHash": "af76aa561bc234a367b7643874730e45742661b8dd42bb368a444c57e250f0ac",
+			"mainStructuralHash": "15787c658260d5f82476ded4466bb57ae7fea23834fcc9421a39a8eab250425d"
+		},
 		"kernel/src/session/session-entries.ts": {
 			"old": "packages/coding-agent/src/session/session-entries.ts",
 			"kind": "normalized",
@@ -6180,6 +6200,26 @@
 			"mainHash": "3562e1ab68e3b2ac2195479e423a8e8f38041f6de2ae7a5e8046d28046b9fbcb",
 			"structuralHash": "b19c27860a5141afde9556b753d08981165fa7128e2049f2f5477a506458b871",
 			"mainStructuralHash": "b19c27860a5141afde9556b753d08981165fa7128e2049f2f5477a506458b871"
+		},
+		"kernel/src/session/session-loader.ts": {
+			"old": "packages/coding-agent/src/session/session-loader.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "ada979f85fd676ddf36412102de52cf1ac3415fa24bcb848e7305bbe41d84fe5",
+			"mainHash": "ada979f85fd676ddf36412102de52cf1ac3415fa24bcb848e7305bbe41d84fe5",
+			"structuralHash": "d613fc7a00c942c64866d4d41cc17627f2ea2a5f0751c0058c05d71ae92cefe7",
+			"mainStructuralHash": "d613fc7a00c942c64866d4d41cc17627f2ea2a5f0751c0058c05d71ae92cefe7"
+		},
+		"kernel/src/session/session-manager.ts": {
+			"old": "packages/coding-agent/src/session/session-manager.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "kernel-extraction",
+			"reason": "The plugin loader, contribution registry and session spine left packages/coding-agent for kernel/. Relative imports and array copies follow the move.",
+			"hash": "ed8b701de29d385f8b6b274d42f7c398ca07dc6ae08db47131b9cb4db2e250a7",
+			"mainHash": "4a1f92d1c05ce35897bb8b8079e26493b8b916dd30db875cea5ec94d771e1ab8",
+			"structuralHash": "219fccc48a589d85e02056170d2e275c35a73e03e37fb1d6157c50e09d6437f7",
+			"mainStructuralHash": "9df6b34d1284161dce605997023ab4cb725d07b6cb630d3562122a8ac5d0b3b0"
 		},
 		"kernel/src/session/session-migrations.ts": {
 			"old": "packages/coding-agent/src/session/session-migrations.ts",
@@ -14691,7 +14731,7 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "8fb43ed34c6369b65c6af1eb29834fcadeb4c880299ced3382d765ad1be9a3df",
+			"hash": "55c799fe767856cdaa8c04202907e7ffb0392208f47422c827eb708b9a2e662e",
 			"mainHash": "a606d9e73ab9a6a5fce259e10386d3955343d149d3b9c1d8874069934c761917",
 			"structuralHash": "52db453b99404f853e34dc166bcdf75afd82471e055129a26074068db893eb74",
 			"mainStructuralHash": "9a0340d40c20ca4df1c14c0202c883f8d4e555f2c07280428bc221fad9bb11dd"
@@ -14740,7 +14780,7 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "b9028ed4fb92239d493ad9de4185eea360e72d4dd5325d806e996141f707593f",
+			"hash": "6fac968c67d62d1f19f54a057611243d4cbe7bcae78a42412ff70cbd7fef0828",
 			"mainHash": "1b2a5487caeb93e3420fa215d812416218b6d5f4513e63fa67e6fc9d609b781b",
 			"structuralHash": "8533683c3e76ce870431a1b2b8655b58851cfaa44c55990e26ba6afe1f80ad14",
 			"mainStructuralHash": "d59b9681af439febf247e844509ff7814a0b9ad2ecdb0aa1173ec09f7363f87e"
@@ -14955,7 +14995,7 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "f794e130fde18236fe2934699ae480293e422dfa983ad97852dccc95bed89678",
+			"hash": "5d932c75bf9fc80be8f1241934ef671d92b36b7ea78ccc465b4562ad0c0b28f1",
 			"mainHash": "3b7f7d5ed7cd1322643df28d0977703b5190ffa4b0b680cc2d1af59a0cbd4153",
 			"structuralHash": "a04a920c4ae1f853f62417b0b4574b9cd2013ff3c068f2c4602bf52acfd215c5",
 			"mainStructuralHash": "8711005b3e163b47fd14fe3c14a391af21a6bf607363203e6152b3a841c7a102"
@@ -14966,7 +15006,7 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "b1f412d98db65f39a329a196c59b0229687a7553f8479caf7d430da4ee804670",
+			"hash": "0a358d49272400bf0625aaa1fc780a43e0dc93a56ce766f3522db924631f5546",
 			"mainHash": "a79a7d5b256b3d74c8cb9758a5ae32b74a86f7363e8241ab7f8c2f4628a44372",
 			"structuralHash": "b574fc934b4bcd72b23d530bfc23d4db4b8cc2f6ac062351f3ba72b05db8a07e",
 			"mainStructuralHash": "0996f49c8852fdb110158c012dd644755a16d2d31bde1b8d68e31d00c1797df3"
@@ -14975,7 +15015,7 @@
 			"old": "packages/coding-agent/src/modes/components/model-picker.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "0cfccbfdcd881a953015ce342521a3bc6d9d9a2d307317365a11e004ad5230be",
+			"hash": "479602d2181b2ca959b21205051e461b2d4e68f260259f88453379b99a0be674",
 			"mainHash": "f56280e29848cb2348a6ebc7e14ab06b0073519cae53d8c0b2c222f531384091",
 			"structuralHash": "9359293274e50535f5a0cb236179921014b507a2596d81d815b04f13ca75f372",
 			"mainStructuralHash": "9359293274e50535f5a0cb236179921014b507a2596d81d815b04f13ca75f372"
@@ -15722,7 +15762,7 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "6659c9170d019bfa90b6e3ab271a8108af95ed26e5d82b7f728a317528b6dc1c",
+			"hash": "cc0d797012241a7900c7f51e469a00077848f19056205498f978e260e469da17",
 			"mainHash": "ad103be1467dc2b543f1b5cc64e9cd8f885e8ad469bda36d363242b28fe9b374",
 			"structuralHash": "42c94dda20fa0e2ce407d01329879ba7d3739afffe4231dfa04bdb8ac17573e1",
 			"mainStructuralHash": "86eb7b57f181216d63ec8ffca979345ba2464908679e7dd46c117a05ca891fce"
@@ -15760,7 +15800,7 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "e5bc89dc98a84939c9447c743b4304211f920e553860b24638222fb8ecc22a06",
+			"hash": "ea1dfa7d1e40a681f980bcb48ffce5843dcd8dbf6bd3ec54bfd01be3a8369544",
 			"mainHash": "2afc4e56b3dc53011781fbe8c83d36468ce853f84f65a6d32355447898a237f8",
 			"structuralHash": "2a8e7ed82fb3e149ed132439200f2720f054d691ab45d05002420e9c2aba2725",
 			"mainStructuralHash": "1635918c32e3e3bf4f3ab36e77bb96f9d49a00322ee00f58b27ef718edcdf303"
@@ -15787,7 +15827,7 @@
 			"old": "packages/coding-agent/src/modes/controllers/transcript-composer.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "2392d98ce456c2a418de8bd64b8b51d7d79bacab885376f6c6ea6d1182e5e2f7",
+			"hash": "d809db251ac50b25a04ff3cda2a46b495ca150ae77b140b68817b191da236658",
 			"mainHash": "f9ba823b708630506693396d1d10cdecd15bccdc2214f5f9cb6105bd97bd5e06",
 			"structuralHash": "0c1863e27d1248563f5d1630ffcc644c220fc7b71cc0d7be9578c1738250c25c",
 			"mainStructuralHash": "0c1863e27d1248563f5d1630ffcc644c220fc7b71cc0d7be9578c1738250c25c"
@@ -15948,7 +15988,7 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "1cdc47459223b1dd20c362943aa1da68587d3484087dd57c97b74c0f18a07f1e",
+			"hash": "3005ae0302847a7e60d370544b360cf613071d390bca1d68e381da34c24a5e3f",
 			"mainHash": "8beccb913d7ae075bb75ff4c1e0f385cea3f156db0e74a5b3c87bb4692959641",
 			"structuralHash": "b3d958f889eecfd428325b7b5037463284532350af2e2ec6af8ea7b27a36d894",
 			"mainStructuralHash": "3020ff881599604ab15a53720a9151e05747a3506bbca8e6a8c2e6815bc5eec9"
@@ -16196,7 +16236,7 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "f23c5c137c358b5cabdf33cfb8679a65e3c6d969dcf73d105af8abf367f7028d",
+			"hash": "ebaaf15465b5a63cb132594badd45ae6ca0979a83e9ba54f9d6fbbe2d680f5fa",
 			"mainHash": "a19fab12d838a14e66c2c2e776ca52a84ec0bd2f448d9ad709eea383ec99cc6c",
 			"structuralHash": "56eb6380cfba7a13fadb8a5de3618784e62b0a04b9f18a90fbb290a9da7af4b3",
 			"mainStructuralHash": "c28ab6a5eb46a76df1df14a2e41de5a63e004761b1bd0f15ec65b6252295dcbb"
@@ -16308,7 +16348,7 @@
 			"old": "packages/coding-agent/src/modes/utils/ui-helpers.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "d7be78e349df2442864c99a131a11821a049b2cd9b0d95e9fc8fe41a371d5b15",
+			"hash": "6f6099300c2536bfb7393bf69518fd677d8a5cb1588ea043add7b6c5d95fd66b",
 			"mainHash": "b8c3c7b8862f850ae5adb9cda30eaf10d31f5f1b271f63c9db52d2ba4d941b18",
 			"structuralHash": "12a2ead70986190aa759197511a2381f697a968cdffc01aedfd84f960572030c",
 			"mainStructuralHash": "12a2ead70986190aa759197511a2381f697a968cdffc01aedfd84f960572030c"
@@ -18757,7 +18797,7 @@
 			"differs": "changed",
 			"group": "web-extraction",
 			"reason": "The site scrapers are `@veyyon/web`. A handler states the host capabilities it needs -- the credential store, document conversion, external-tool resolution, the session spawn hook and the fetch preference -- through `ScrapeServices` instead of importing the agent's settings, storage and process modules, and throws a name-preserving `AbortError` rather than the agent's cancellation class. On this side the call sites name the new owner and build the services object.",
-			"hash": "e122ca6e0c4824fcf8bc308cbed937d840aed78d0457d0b0504611b4478f1daa",
+			"hash": "bd47f44c1999f84fc1bc1b6cee4faa8928c56a862179f5771a19c61440b9485d",
 			"mainHash": "5cd878da48a13d6658325c63999e237c99416a3cc0941d2fdbd7876f7516593c",
 			"structuralHash": "4a00cf2f04fc8389ea3273fdc93e6bb086633d090a91a07855794cbdd960eaa3",
 			"mainStructuralHash": "7cfd7642ee2ef956c177d02214d62be3b3194fe9c4d995a1b3a3cc1dc47a55ff"
@@ -19281,7 +19321,7 @@
 			"old": "packages/coding-agent/test/agent-session-retry-fallback.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "a458e8766c7d3c53ce01795235aefbc0bbfc950d52dc4e562d03d09e801c7f01",
+			"hash": "08ef3d97ad7e2bcc8ac8f4fb336bb342285a1825d682c9f407357e5f8b6672fe",
 			"mainHash": "ebc3fa156de1d7e6e1bbd968d476a64565d2ca326104ee20a986689f14fca742",
 			"structuralHash": "cd2d0c0c3d9eaa1b7920420294cb3d29967c2c049b2d6076f24cf9bbeb23d8c0",
 			"mainStructuralHash": "cd2d0c0c3d9eaa1b7920420294cb3d29967c2c049b2d6076f24cf9bbeb23d8c0"
@@ -19312,7 +19352,7 @@
 			"old": "packages/coding-agent/test/startup/the-first-turn-waits-for-hydration-the-first-frame-does-not.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "05c1075d5847b1ff07f711b1953301e0517fa06ff7a471cce26429c3c076251a",
+			"hash": "651fe404e04fbd640a040fdbd4dad624553ecdfe7e546493815a63ef72a89c1b",
 			"mainHash": "5bae3d2d08eea6ab9613cc717b7e9fd6e73596a88a50174a443976752f3c5b6b",
 			"structuralHash": "2707633bf6e7007046fe8bba897f8d90fed185bdf906d4c20ed723e48db273c7",
 			"mainStructuralHash": "2707633bf6e7007046fe8bba897f8d90fed185bdf906d4c20ed723e48db273c7"
@@ -19725,7 +19765,7 @@
 			"old": "packages/coding-agent/test/modes/a-stopped-mode-draws-no-more-frames.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "daf4848d857b08676ad85714850e1760e5e93da87e61c6033ddfde8ed989678d",
+			"hash": "b05075d267b5ec25c8fcec7f7eb1ab7d83b0a1cf2f18e8e56e481519966c0766",
 			"mainHash": "a370630f614a7e8debe9dcc39adc114ee325c2c865adf6bc940f257eacd13fd3",
 			"structuralHash": "02725705838e9d728049b82c6a59dac145c28967ab919e67ab7a2576630850cd",
 			"mainStructuralHash": "02725705838e9d728049b82c6a59dac145c28967ab919e67ab7a2576630850cd"
@@ -20314,7 +20354,7 @@
 			"old": "packages/coding-agent/test/modes/an-idle-session-draws-a-still-todo-board.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "f4a4d034a3d2d486aa6659e70d1bf2805b3b2f74967aef62bfe3a5157aef7286",
+			"hash": "59e15adeaeeee6dc1f76384b8d338f9d8be06d0ec4ca1e03c66974af68f04148",
 			"mainHash": "198707287f9389ecad1cc39740b98398bd98b06d0e5bfb9a66e8856489bdcada",
 			"structuralHash": "4aa03d71a5d7a902a288754f0d07c5bc9eb3438d75fbcd503cd0fa5d392f8a8d",
 			"mainStructuralHash": "4aa03d71a5d7a902a288754f0d07c5bc9eb3438d75fbcd503cd0fa5d392f8a8d"
@@ -20325,7 +20365,7 @@
 			"differs": "changed",
 			"group": "colocated-test",
 			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
-			"hash": "234e00df78408d9be4d89ea31205a1d4f9d8e41c2e370233432ccb785b45b7e6",
+			"hash": "0e903e045995d052b4dd53e283642699e3f1094943735363a446e71d34599950",
 			"mainHash": "74e472ff4f396683ba71b8936761600dc80636d8c7e6b26980e57307baaeb612",
 			"structuralHash": "237ba92b432852f6c08afaa56c8c9cc1e9365c2afbab5fe401dce15a44ea6b89",
 			"mainStructuralHash": "2504998b85c8bda27339e1b971f7f3644832873977ec9d676958fa147f2894cf"
@@ -20334,7 +20374,7 @@
 			"old": "packages/coding-agent/test/modes/todo-hud-states.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "5c92fc0d01ccd1d24593371e3269b48d8eb536978f3839190916bd72fbd2bb05",
+			"hash": "427b27abe3fe8aceba1bfd5dc4bc96a04321a23a10b7e930f31387e461342c0f",
 			"mainHash": "62c930b0004b156a01b218a28b04285e9db1702fe347826b9bcdc4d02848a62b",
 			"structuralHash": "7482c2f761db5790104b1a6cf58b86591c264f57034be87d8cff658a5c219891",
 			"mainStructuralHash": "7482c2f761db5790104b1a6cf58b86591c264f57034be87d8cff658a5c219891"
@@ -20343,7 +20383,7 @@
 			"old": "packages/coding-agent/test/modes/todo-mid-turn-render.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "00519e6560188296d5ab9921cfed9c14b1651598663a0a038ea419b94eac21f3",
+			"hash": "ea91e077b51a60a5c64ff73b59474ee90380f488e92e2ad3d47f9771d150b123",
 			"mainHash": "30af45ab88abd8db4e056defdde3b65af5fd02c9db3999258b66a49c6dcb356b",
 			"structuralHash": "f91f95f9a0589a75eb2b257fb4d18e81e2ed5ea9fa5570ed23d58a15ba63b20b",
 			"mainStructuralHash": "f91f95f9a0589a75eb2b257fb4d18e81e2ed5ea9fa5570ed23d58a15ba63b20b"
@@ -21666,7 +21706,7 @@
 			"old": "packages/coding-agent/test/modes/controllers/tan-command-controller.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "3a912113db0153f042a2344400d736045bdbf69f8b733e2c596edc1584ad10be",
+			"hash": "6bf46406aecd93f6e7cf36bd15a299abd429f84f351cc3df785f681aef2ee460",
 			"mainHash": "3594e5c0134998520b8df2af3eac9a667847d897789065ee81a25c8c3c018866",
 			"structuralHash": "3ef2bfcdc811170ae7d65e657e4bbf7705f492b19610cabbeac3cccce15c1a11",
 			"mainStructuralHash": "3ef2bfcdc811170ae7d65e657e4bbf7705f492b19610cabbeac3cccce15c1a11"
@@ -21702,7 +21742,7 @@
 			"old": "packages/coding-agent/test/modes/controllers/transcript-composer.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "a3b5444aa8664347f3ebcd1b73f46090548c2e84f22824739c2c318b59bb46aa",
+			"hash": "3d326291ae0d5ca2c0d9ba28d6f2d160677a1f34daca7d5b07499d79c895a914",
 			"mainHash": "82e5d41eee5a79a4cdaf80a7daf6142a358461db19d5ef1a79faae5eb8457f89",
 			"structuralHash": "da1aa8a2cffa7b330876bb67fd4199dd8b672eebbcca3d997c65588fa8a8d6ad",
 			"mainStructuralHash": "da1aa8a2cffa7b330876bb67fd4199dd8b672eebbcca3d997c65588fa8a8d6ad"
@@ -21881,7 +21921,7 @@
 			"old": "packages/coding-agent/test/modes/utils/render-initial-messages.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "fe6080acb0cd8839d6596beabbc053369f1d4ee087bd15b2270ba5e09d0d0480",
+			"hash": "4e982baccd267463e2b5f7fe6ee4e72e475362281ccfceaaa75b10a079d5d5df",
 			"mainHash": "1dcee48fe4b5b0c85f400d7ac79f7a4ae836c98807b34fd57b5663147774430c",
 			"structuralHash": "26d0d559bcc043c58f63d50c686dd62aa1c044ab1e572f232e8a6740a91e36eb",
 			"mainStructuralHash": "26d0d559bcc043c58f63d50c686dd62aa1c044ab1e572f232e8a6740a91e36eb"
@@ -22186,7 +22226,7 @@
 			"old": "packages/coding-agent/test/irc/bus-traffic-log.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "4d5f2be27b59eafad8fe4e49d9e6653547492af0e741146ad80636d06b447d7c",
+			"hash": "657e10e2bda929ece47cd917dace001020799b3d0f58ec59dabfdafeec1d50d1",
 			"mainHash": "1c92aae42198b93108a373134cc794920d2e424f92960bb8b0ca632222fc8c0e",
 			"structuralHash": "1187fa37610fc709c613b11b545224081b93ddecefc13fedd34de6f40dd1b760",
 			"mainStructuralHash": "1187fa37610fc709c613b11b545224081b93ddecefc13fedd34de6f40dd1b760"
@@ -22526,7 +22566,7 @@
 			"old": "packages/coding-agent/test/web/search/abort-and-timeout.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "da0561f09a983776bbf1b2464f752b7c817d33bce62155ec691d7d9184ddfe8e",
+			"hash": "ac457a180020ac6cbd1fae84d031383089597ba0940d031d9bc66f4f297a7c85",
 			"mainHash": "9dcdf0ceecf82982cef2ce2918a6e1d21df6a86612d46ac9b643dc4ff29024cc",
 			"structuralHash": "de2015c6105c363acb43d171b549ba2572e417afe20799eecebeb9237283410b",
 			"mainStructuralHash": "de2015c6105c363acb43d171b549ba2572e417afe20799eecebeb9237283410b"
@@ -22553,7 +22593,7 @@
 			"old": "packages/coding-agent/test/web/search/codex-broker.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "ac1b7e9135f60891d803a1998ada1648f5766607a921ba44dec033c6d5fcd66c",
+			"hash": "0f00d81aaad7420e47466c08a95b2c71c99c94592b726be40933bc4c7f820f10",
 			"mainHash": "03fe412cb12421b66d26740ebdf9ea518f299104b1e0d5917b98e5b604d12885",
 			"structuralHash": "230a33d1d95504ff28f3bcd52043d67df08f22d9b248326e5d5f5a91b1cb9e08",
 			"mainStructuralHash": "230a33d1d95504ff28f3bcd52043d67df08f22d9b248326e5d5f5a91b1cb9e08"
@@ -44161,7 +44201,7 @@
 			"old": "packages/simulations/src/turn-sim/harness.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "fa4ad3673dabd422d04571ca249d3ee0f207a3af202352234558ab6e3983e572",
+			"hash": "84fe6b19ceec8e7a2ad240665d11e2a764a6f469d92e0e5cb917b19dcaab25e1",
 			"mainHash": "664d248522ded6bacc695965bc10bdfe18b143213a05e7c980125a029bc4d8c1",
 			"structuralHash": "5f01e4b6e9030135c81ae7cc1d313503d7b1b9a1d37280cc8cffbd189ec23a80",
 			"mainStructuralHash": "5f01e4b6e9030135c81ae7cc1d313503d7b1b9a1d37280cc8cffbd189ec23a80"

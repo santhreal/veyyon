@@ -7762,8 +7762,11 @@
 				"@veyyon/kernel/session/auth-storage",
 				"@veyyon/kernel/session/indexed-session-storage",
 				"@veyyon/kernel/session/redis-session-storage",
+				"@veyyon/kernel/session/session-context",
 				"@veyyon/kernel/session/session-entries",
 				"@veyyon/kernel/session/session-listing",
+				"@veyyon/kernel/session/session-loader",
+				"@veyyon/kernel/session/session-manager",
 				"@veyyon/kernel/session/session-migrations",
 				"@veyyon/kernel/session/session-storage",
 				"@veyyon/kernel/session/sql-session-storage"
@@ -10522,6 +10525,14 @@
 					"to": "@veyyon/coding-agent/config/project-trust.js",
 					"why": "packages/coding-agent/src/security/project-trust.ts moved to packages/coding-agent/src/config/project-trust.ts, which @veyyon/coding-agent publishes as ./config/project-trust.js"
 				},
+				"./session/agent-storage": {
+					"to": "@veyyon/kernel/session/agent-storage",
+					"why": "packages/coding-agent/src/session/agent-storage.ts moved to kernel/src/session/agent-storage.ts, which @veyyon/kernel publishes as ./session/agent-storage"
+				},
+				"./session/agent-storage.js": {
+					"to": "@veyyon/kernel/session/agent-storage.js",
+					"why": "packages/coding-agent/src/session/agent-storage.ts moved to kernel/src/session/agent-storage.ts, which @veyyon/kernel publishes as ./session/agent-storage.js"
+				},
 				"./session/artifacts": {
 					"to": "@veyyon/kernel/session/artifacts",
 					"why": "packages/coding-agent/src/session/artifacts.ts moved to kernel/src/session/artifacts.ts, which @veyyon/kernel publishes as ./session/artifacts"
@@ -10698,6 +10709,14 @@
 					"to": "@veyyon/kernel/session/retry-policy.js",
 					"why": "packages/coding-agent/src/session/retry-policy.ts moved to kernel/src/session/retry-policy.ts, which @veyyon/kernel publishes as ./session/retry-policy.js"
 				},
+				"./session/session-context": {
+					"to": "@veyyon/kernel/session/session-context",
+					"why": "packages/coding-agent/src/session/session-context.ts moved to kernel/src/session/session-context.ts, which @veyyon/kernel publishes as ./session/session-context"
+				},
+				"./session/session-context.js": {
+					"to": "@veyyon/kernel/session/session-context.js",
+					"why": "packages/coding-agent/src/session/session-context.ts moved to kernel/src/session/session-context.ts, which @veyyon/kernel publishes as ./session/session-context.js"
+				},
 				"./session/session-entries": {
 					"to": "@veyyon/kernel/session/session-entries",
 					"why": "packages/coding-agent/src/session/session-entries.ts moved to kernel/src/session/session-entries.ts, which @veyyon/kernel publishes as ./session/session-entries"
@@ -10721,6 +10740,22 @@
 				"./session/session-listing.js": {
 					"to": "@veyyon/kernel/session/session-listing.js",
 					"why": "packages/coding-agent/src/session/session-listing.ts moved to kernel/src/session/session-listing.ts, which @veyyon/kernel publishes as ./session/session-listing.js"
+				},
+				"./session/session-loader": {
+					"to": "@veyyon/kernel/session/session-loader",
+					"why": "packages/coding-agent/src/session/session-loader.ts moved to kernel/src/session/session-loader.ts, which @veyyon/kernel publishes as ./session/session-loader"
+				},
+				"./session/session-loader.js": {
+					"to": "@veyyon/kernel/session/session-loader.js",
+					"why": "packages/coding-agent/src/session/session-loader.ts moved to kernel/src/session/session-loader.ts, which @veyyon/kernel publishes as ./session/session-loader.js"
+				},
+				"./session/session-manager": {
+					"to": "@veyyon/kernel/session/session-manager",
+					"why": "packages/coding-agent/src/session/session-manager.ts moved to kernel/src/session/session-manager.ts, which @veyyon/kernel publishes as ./session/session-manager"
+				},
+				"./session/session-manager.js": {
+					"to": "@veyyon/kernel/session/session-manager.js",
+					"why": "packages/coding-agent/src/session/session-manager.ts moved to kernel/src/session/session-manager.ts, which @veyyon/kernel publishes as ./session/session-manager.js"
 				},
 				"./session/session-migrations": {
 					"to": "@veyyon/kernel/session/session-migrations",
