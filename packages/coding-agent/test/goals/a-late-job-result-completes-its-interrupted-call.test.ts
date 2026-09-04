@@ -30,9 +30,9 @@ import { AsyncJobManager } from "@veyyon/coding-agent/async";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
-import { collectPendingToolCalls } from "@veyyon/coding-agent/session/exit-diagnostics";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { collectPendingToolCalls } from "@veyyon/kernel/session/exit-diagnostics";
 import { TempDir } from "@veyyon/utils";
 
 const CALL_ID = "call_cooldown";

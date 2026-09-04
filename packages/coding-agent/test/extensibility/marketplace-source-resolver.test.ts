@@ -7,7 +7,7 @@ import type {
 	MarketplaceCatalogMetadata,
 	MarketplacePluginEntry,
 	PluginSource,
-} from "@veyyon/coding-agent/extensibility/plugins/marketplace/types";
+} from "@veyyon/kernel/loader/plugins/marketplace/types";
 
 /**
  * resolvePluginSource turns a marketplace plugin entry's `source` into a verified

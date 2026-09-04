@@ -15,12 +15,12 @@
  */
 
 import { tryParseJson } from "@veyyon/utils";
-import { registerProvider } from "../capability";
-import { readFile } from "../capability/fs";
-import { type MCPServer, mcpCapability } from "../capability/mcp";
-import type { Rule } from "../capability/rule";
-import { ruleCapability } from "../capability/rule";
-import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
+import { registerProvider } from "./capability";
+import { readFile } from "./capability/fs";
+import { type MCPServer, mcpCapability } from "./capability/mcp";
+import type { Rule } from "./capability/rule";
+import { ruleCapability } from "./capability/rule";
+import type { LoadContext, LoadResult, SourceMeta } from "./capability/types";
 import { expandEnvVarsDeep, warnUnresolved } from "./env-expansion";
 import { buildRuleFromMarkdown, createSourceMeta, getUserPath, loadFilesFromDir } from "./helpers";
 

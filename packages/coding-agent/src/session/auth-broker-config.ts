@@ -29,6 +29,7 @@ import {
 	getAuthBrokerTokenFilePath,
 	resolveAuthBrokerConfig as resolveAuthBrokerConfigShared,
 } from "@veyyon/ai/auth-broker/discover";
+import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import {
 	getAgentDbPath,
 	getAgentDir,
@@ -39,7 +40,6 @@ import {
 import { resolveConfigValue } from "../config/resolve-config-value";
 import { settingsOrNull } from "../config/settings-instance";
 import { getDefault } from "../config/settings-schema";
-import type { AuthStorage } from "./auth-storage";
 
 export { type AuthBrokerClientConfig, getAuthBrokerTokenFilePath };
 

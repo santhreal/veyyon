@@ -19,8 +19,8 @@ const repoRoot = path.join(import.meta.dir, "..", "..", "..");
 
 /**
  * Modules that must NOT load when the renderer barrel is imported. These are
- * the heavy halves the `vibe-render.ts` / `irc-render.ts` splits carved off:
- * the vibe session runtime, the irc bus, the live agent session, and the tool
+ * the heavy halves the `vibe-render.ts` / `irc-view.ts` splits carved off: the
+ * vibe session runtime, the irc bus, the live agent session, and the tool
  * modules that import them. `registry/agent-registry` is deliberately NOT
  * banned: `internal-urls/local-protocol` (reached via the file tools) uses it
  * as a value, and its own import graph is entirely shared with modules the
@@ -28,8 +28,8 @@ const repoRoot = path.join(import.meta.dir, "..", "..", "..");
  */
 const BANNED_ON_BOOT = [
 	"src/vibe/runtime",
-	"src/tools/vibe.ts",
-	"src/tools/irc.ts",
+	"src/tools/agent/vibe.ts",
+	"src/tools/agent/irc.ts",
 	"src/irc/bus",
 	"src/session/agent-session",
 ];

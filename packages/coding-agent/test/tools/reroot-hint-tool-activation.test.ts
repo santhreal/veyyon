@@ -30,7 +30,7 @@ import {
 	RerootDetector,
 	SET_CWD_TOOL_NAME,
 	wrapToolWithRerootHint,
-} from "@veyyon/coding-agent/tools/reroot-hint";
+} from "@veyyon/coding-agent/tools/fs/reroot-hint";
 
 const CWD = path.join(path.sep, "home", "dev", "launch");
 const OTHER = path.join(path.sep, "srv", "work", "project");

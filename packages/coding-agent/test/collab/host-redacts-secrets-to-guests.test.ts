@@ -18,9 +18,9 @@ import { importRoomKey } from "@veyyon/coding-agent/collab/crypto";
 import { CollabHost } from "@veyyon/coding-agent/collab/host";
 import { COLLAB_PROTO, type CollabFrame, parseCollabLink } from "@veyyon/coding-agent/collab/protocol";
 import { CollabSocket } from "@veyyon/coding-agent/collab/relay-client";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
-import type { SessionEntry } from "@veyyon/coding-agent/session/session-entries";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { installInMemoryRelay, uninstallInMemoryRelay } from "./helpers/in-memory-relay";
 
 const SECRET = "sk-live-COLLABLEAK-0123456789";

@@ -3,7 +3,7 @@
  * Why: only exact lowercase aliases are accepted; typos fail closed to ask.
  */
 import { describe, expect, it } from "bun:test";
-import { normalizeApprovalMode } from "../src/tools/approval";
+import { normalizeApprovalMode } from "../src/tools/core/approval";
 
 describe("normalizeApprovalMode case and whitespace reject", () => {
 	const bad = [

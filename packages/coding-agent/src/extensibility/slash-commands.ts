@@ -1,8 +1,8 @@
 import { parseFrontmatter, prompt } from "@veyyon/utils";
-import { slashCommandCapability } from "../capability/slash-command";
 import { appendInlineArgsFallback, templateUsesInlineArgPlaceholders } from "../config/prompt-templates";
 import type { SlashCommand } from "../discovery";
 import { loadCapability } from "../discovery";
+import { slashCommandCapability } from "../discovery/capability/slash-command";
 import { parseSlashCommand } from "../slash-commands/helpers/parse";
 import { EMBEDDED_COMMAND_TEMPLATES } from "../task/commands";
 import { parseCommandArgs, substituteArgs } from "../utils/command-args";

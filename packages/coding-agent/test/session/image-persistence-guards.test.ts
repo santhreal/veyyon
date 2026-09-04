@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { isImageBlock, isImageDataPayload } from "@veyyon/coding-agent/session/session-persistence";
+import { isImageBlock, isImageDataPayload } from "@veyyon/kernel/session/session-persistence";
 
 /**
  * isImageBlock and isImageDataPayload gate which persisted values are externalized to the

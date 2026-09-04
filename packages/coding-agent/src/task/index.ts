@@ -32,14 +32,14 @@ import {
 import { sessionFileName } from "@veyyon/utils/session-file";
 import type { ToolSession } from "..";
 import { mcpManagerInstance } from "../mcp/manager-instance";
-import type { Theme } from "../modes/theme/theme";
 import { DEFAULT_PLAN_FILE_URL } from "../plan-mode/plan-file-url";
 import { planModePrompts } from "../prompts/plan-mode/rows";
 import { subagentPrompts } from "../prompts/subagent/rows";
 import { toolsPrompts } from "../prompts/tools/rows";
-import { truncateForPrompt } from "../tools/approval";
-import { isIrcEnabled } from "../tools/irc";
-import { formatBytes, formatDuration } from "../tools/render-utils";
+import type { Theme } from "../theme/theme";
+import { isIrcEnabled } from "../tools/agent/irc";
+import { truncateForPrompt } from "../tools/core/approval";
+import { formatBytes, formatDuration } from "../tools/core/render-utils";
 import { inheritContextFiles } from "./context-inheritance";
 import { homogeneousTriageRefusal, isHomogeneousTriageFanout } from "./delegation-policy";
 import { inheritResolvedCollection, resolveAutoloadSkills } from "./inherited-collections";
@@ -68,12 +68,12 @@ import {
 	type TaskToolSchemaInstance,
 } from "./types";
 // Import review tools for side effects (registers subagent tool handlers)
-import "../tools/review";
+import "../tools/agent/review";
 import type { AsyncJobManager } from "../async";
 import type { LocalProtocolOptions } from "../internal-urls";
 import { loadOverallPlanReference } from "../plan-mode/plan-handoff";
 import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
-import { TOOL } from "../tools/builtin-names";
+import { TOOL } from "../tools/core/builtin-names";
 import { type DiscoveryResult, discoverAgents, getAgent } from "./discovery";
 import { runSubprocess } from "./executor";
 import {
@@ -87,9 +87,9 @@ import {
 import { generateTaskName } from "./name-generator";
 import { AgentOutputManager } from "./output-manager";
 import { mapWithConcurrencyLimit, Semaphore } from "./parallel";
-import { renderResult, renderCall as renderTaskCall } from "./render";
 import { repairTaskParams } from "./repair-args";
 import { treeSpawnSemaphore } from "./spawn-semaphore";
+import { taskToolView } from "./task-view";
 import { parseIsolationMode } from "./worktree";
 
 function renderSubagentUserPrompt(assignment: string): string {
@@ -600,10 +600,11 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	readonly summary = "Spawn subagents to complete delegated tasks";
 	readonly strict = true;
 	readonly loadMode = "discoverable";
-	readonly renderResult = renderResult;
+	readonly view = taskToolView;
 	// Suppress the streaming call preview once a (partial or final) result exists
 	// so the task renders as ONE block that transitions in place — not a pending
-	// call frame stacked above the result frame. Mirrors `taskToolRenderer`.
+	// call frame stacked above the result frame. Mirrors the `task` row in
+	// `tools/renderers.ts`.
 	readonly mergeCallAndResult = true;
 	readonly #discoveredAgents: AgentDefinition[];
 	readonly #blockedAgent: string | undefined;
@@ -624,10 +625,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			defaultAgent: catalog.defaultAgent,
 			enabledAgentNames: catalog.agents.map(agent => agent.name),
 		});
-	}
-
-	renderCall(args: unknown, options: Parameters<typeof renderTaskCall>[1], theme: Theme) {
-		return renderTaskCall(repairTaskParams(args as TaskParams), options, theme);
 	}
 
 	/**
@@ -871,7 +868,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		}
 		const asyncSpawns = spawns.filter(spawn => !spawn.blocking);
 		const syncSpawns = spawns.filter(spawn => spawn.blocking);
-		const agentLabel = [...new Set(asyncSpawns.map(spawn => spawn.progress.agent))].join(", ");
+		const agentLabel = Array.from(new Set(asyncSpawns.map(spawn => spawn.progress.agent))).join(", ");
 
 		// Aggregate state for the one tool call. Async spawns report into the
 		// shared progress snapshot through their jobs: the async half stays
@@ -887,7 +884,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		let syncProjectAgentsDir: string | null = null;
 		const buildAsyncDetails = (): TaskToolDetails => ({
 			projectAgentsDir: syncProjectAgentsDir,
-			results: [...syncResults],
+			results: syncResults.slice(),
 			totalDurationMs: Date.now() - callStartedAt,
 			usage: syncUsage,
 			outputPaths: syncOutputPaths,
@@ -1028,7 +1025,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			syncSpawns.map(spawn => ({ item: spawn.item, index: spawn.index })),
 			payloads,
 		);
-		syncResults.push(...merged.results);
+		for (let ri = 0; ri < merged.results.length; ri++) syncResults.push(merged.results[ri]!);
 		syncUsage = merged.usage;
 		syncOutputPaths = merged.outputPaths;
 		syncProjectAgentsDir = merged.projectAgentsDir;

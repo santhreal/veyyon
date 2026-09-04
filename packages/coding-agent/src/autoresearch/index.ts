@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { AutocompleteItem } from "@veyyon/tui";
 import { errorMessage, logger, prompt } from "@veyyon/utils";
+import type { AutocompleteItem } from "@veyyon/utils/autocomplete";
 import type { ExtensionContext, ExtensionFactory } from "../extensibility/extensions";
 import { autoresearchPrompts } from "../prompts/autoresearch/rows";
 import * as git from "../utils/git";
@@ -93,7 +93,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		const activeTools = api.getActiveTools();
 		const experimentTools = new Set(EXPERIMENT_TOOL_NAMES);
 		const nextActiveTools = runtime.autoresearchMode
-			? [...new Set([...activeTools, ...EXPERIMENT_TOOL_NAMES])]
+			? Array.from(new Set(activeTools.concat(EXPERIMENT_TOOL_NAMES)))
 			: activeTools.filter(name => !experimentTools.has(name));
 		const toolsChanged =
 			nextActiveTools.length !== activeTools.length ||
@@ -149,6 +149,13 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 	 */
 	async function openSwarmSetupConsole(ctx: ExtensionContext, prefill: string): Promise<SwarmSetupResult | null> {
 		const runtime = getRuntime(ctx);
+		// The setup console is a screen takeover, so it needs a host that offers one.
+		// Saying so beats returning null, which the caller reads as "left without starting".
+		const terminal = ctx.ui.terminal;
+		if (!terminal) {
+			ctx.ui.notify("The autoswarm setup console needs an interactive terminal.", "warning");
+			return null;
+		}
 		const storage = await openAutoresearchStorageIfExists(ctx.cwd);
 		const session = storage?.getActiveSessionForBranch(await tryReadBranch(ctx.cwd)) ?? null;
 		// Open on what this branch is already doing, so reconfiguring a live swarm
@@ -159,7 +166,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			attempts: session?.attempts ?? runtime.pendingSwarm?.attempts ?? 1,
 			certify: session?.certify ?? runtime.pendingSwarm?.certify ?? true,
 		});
-		return await ctx.ui.custom<SwarmSetupResult | null>(
+		return await terminal.custom<SwarmSetupResult | null>(
 			(tui, theme, _keybindings, done) => ({
 				render: (width: number) => renderSetupConsole(model, width, theme),
 				handleInput: (data: string): void => {

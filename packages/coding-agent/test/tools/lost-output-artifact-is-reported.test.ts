@@ -24,8 +24,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { logger } from "@veyyon/utils";
+import { reportLostOutputArtifact, saveOutputArtifact } from "../../src/tools/core/output-artifact";
 import type { ToolSession } from "../../src/tools/index";
-import { reportLostOutputArtifact, saveOutputArtifact } from "../../src/tools/output-artifact";
 import { makeToolSession } from "../helpers/tool-session";
 
 /** Captured `logger.warn` calls: the message and its structured fields. */

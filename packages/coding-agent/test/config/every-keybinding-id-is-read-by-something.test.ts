@@ -34,24 +34,28 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { KEYBINDINGS } from "@veyyon/coding-agent/config/keybindings";
+import { memberSrcNamed } from "../../../utils/test/support/package-sources";
 
 const CODING_AGENT_SRC = path.resolve(import.meta.dir, "../../src");
-const TUI_SRC = path.resolve(import.meta.dir, "../../../tui/src");
+// A published name is stable and its directory is not: the terminal engine is `hosts/terminal/engine`,
+// and a relative `../../../modes/terminal/draw/src` failed with ENOENT the day it left `packages/`.
+const TUI_SRC = memberSrcNamed("@veyyon/tui");
+const UTILS_SRC = memberSrcNamed("@veyyon/utils");
 
 /**
- * Both roots are scanned, because the table is assembled from two packages.
+ * All three roots are scanned, because the table is assembled across packages.
  *
- * `KEYBINDINGS` spreads `TUI_KEYBINDINGS` from `@veyyon/tui`, and the components
- * that read the `tui.*` ids live in that package. Scanning only `coding-agent`
+ * `KEYBINDINGS` spreads `TUI_KEYBINDINGS` from `@veyyon/utils/keybindings`, and the
+ * components that read the `tui.*` ids live in `@veyyon/tui`. Scanning only `coding-agent`
  * would report all twenty-four of them as unread, which is a wall of false
  * findings and the fastest way to get a gate switched off.
  */
-const ROOTS = [CODING_AGENT_SRC, TUI_SRC];
+const ROOTS = [CODING_AGENT_SRC, TUI_SRC, UTILS_SRC];
 
 /** The two modules that DECLARE the bindings, which naturally name all of them. */
 const DECLARING_MODULES = new Set([
 	path.join(CODING_AGENT_SRC, "config", "keybindings.ts"),
-	path.join(TUI_SRC, "keybindings.ts"),
+	path.join(UTILS_SRC, "keybindings.ts"),
 ]);
 
 /**

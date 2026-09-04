@@ -22,7 +22,7 @@ import { exceedsBlockContextScanCeiling, findBlockContextLines } from "@veyyon/c
  * What it does not catch: the early return in `addMatchingBracketContextRows`
  * saves two whole-file `split("\n")` allocations and is invisible in output --
  * only the predicate agreement below constrains it. The ceiling mirrors
- * `MAX_CACHED_BYTES` in `crates/veyyon-ast/src/parse_cache.rs` by policy, not
+ * `MAX_CACHED_BYTES` in `natives/code/ast/src/parse_cache.rs` by policy, not
  * by a shared constant; if the Rust cap moves, this suite still passes.
  */
 

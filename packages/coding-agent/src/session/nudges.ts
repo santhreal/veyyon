@@ -10,7 +10,7 @@
  * set checkable rather than a scatter of literals down a 20,000-line file.
  */
 
-import { TOOL } from "../tools/builtin-names";
+import { TOOL } from "../tools/core/builtin-names";
 
 /** Hidden mid-run reconciliation hint, sent when landed work outruns the todo list. */
 export const MID_RUN_TODO_NUDGE_MESSAGE_TYPE = "mid-run-todo-nudge";
@@ -28,12 +28,16 @@ export const MEMORY_CONTEXT_MESSAGE_TYPE = "memory-context";
  * date and the working directory.
  *
  * Both used to sit in the project block of the system prompt, and the working
- * directory is the one value in that cache prefix a session routinely changes,
- * so a re-root altered a single line and discarded the cached prefix for the
- * whole conversation behind it. The rebuild on re-root stays, because rules,
- * skills and the workspace tree really are cwd-derived; a move that alters
- * nothing but the path now rebuilds to byte-identical bytes, so there is no
- * invalidation to record.
+ * directory is the one value in that cache prefix a session routinely changes.
+ * Measured on this repository, a re-root from the root to `packages/utils`
+ * altered exactly one line of a 92,921-character prompt — that sentence — and
+ * discarded the cached prefix for the whole conversation behind it; across 19
+ * local log files, 210 of 232 recorded prefix invalidations were a
+ * `cwd-change`, averaging about 85,000 characters re-read for a path that had
+ * moved a directory down. The rebuild on re-root stays, because rules, skills
+ * and the workspace tree really are cwd-derived; a move that alters nothing but
+ * the path now rebuilds to byte-identical bytes, so there is no invalidation to
+ * record.
  */
 export const SESSION_STATE_MESSAGE_TYPE = "session-state";
 

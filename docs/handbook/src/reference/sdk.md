@@ -44,7 +44,11 @@ pointing at it.
 
 ## Entry points
 
-`@veyyon/coding-agent` exports the SDK APIs from the package root (and also via `@veyyon/coding-agent/sdk`).
+`@veyyon/coding-agent` exports the SDK APIs from the package root. `createAgentSession` is also at
+`@veyyon/coding-agent/sdk`; the discovery helpers, the options and result records, the system-prompt
+builder, the custom-tool surface and the MCP helpers are also at
+`@veyyon/coding-agent/session/factory-extensions`, `.../factory-options`, `.../factory-prompt`,
+`.../factory-tools` and `.../factory-mcp`.
 
 Core exports for embedders:
 
@@ -303,7 +307,7 @@ const { session } = await createAgentSession({
 
 ### Tool names have one owner
 
-Every tool name is declared once, in `packages/coding-agent/src/tools/builtin-names.ts`:
+Every tool name is declared once, in `packages/coding-agent/src/tools/core/builtin-names.ts`:
 `BUILTIN_TOOL_NAMES` for the tools offered by default, `HIDDEN_TOOL_NAMES` for the ones a caller or
 a mode turns on, and `TOOL`, a map derived from both.
 
@@ -348,7 +352,9 @@ System prompt is rebuilt to reflect active tool changes.
 
 ## Discovery helpers
 
-Use these when you want partial control without recreating internal discovery logic:
+Use these when you want partial control without recreating internal discovery logic. They live in
+`packages/coding-agent/src/session/factory-extensions.ts`, and `buildSystemPrompt` in
+`factory-prompt.ts` beside it:
 
 - `discoverAuthStorage(agentDir?)`
 - `discoverExtensions(cwd?)`

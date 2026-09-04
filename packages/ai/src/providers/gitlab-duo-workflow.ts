@@ -591,7 +591,7 @@ export function buildGitLabDuoWorkflowInlineFlowConfig(systemPrompt: string): Gi
 				prompt_id: GITLAB_DUO_WORKFLOW_INLINE_PROMPT_ID,
 				toolset: [],
 				inputs: [{ from: "context:goal", as: "goal" }],
-				ui_log_events: [...GITLAB_DUO_WORKFLOW_INLINE_UI_LOG_EVENTS],
+				ui_log_events: GITLAB_DUO_WORKFLOW_INLINE_UI_LOG_EVENTS.slice(),
 			},
 		],
 		routers: [{ from: GITLAB_DUO_WORKFLOW_INLINE_AGENT_NAME, to: "end" }],
@@ -2095,11 +2095,11 @@ export function runGitLabDuoWorkflowSocket(
 		ws.onopen = null;
 		void (async () => {
 			if (active) active.paused = true;
-			const pending: unknown[] = [...replayMessages];
+			const pending: unknown[] = replayMessages.slice();
 			while (!settled) {
 				if (pending.length === 0) {
 					if (active?.pauseBuffer && active.pauseBuffer.length > 0) {
-						pending.push(...active.pauseBuffer);
+						for (let pi = 0; pi < active.pauseBuffer.length; pi++) pending.push(active.pauseBuffer[pi]!);
 						active.pauseBuffer = [];
 						continue;
 					}
@@ -2123,7 +2123,7 @@ export function runGitLabDuoWorkflowSocket(
 					return;
 				}
 				if (active?.pauseBuffer && active.pauseBuffer.length > 0) {
-					pending.push(...active.pauseBuffer);
+					for (let pi = 0; pi < active.pauseBuffer.length; pi++) pending.push(active.pauseBuffer[pi]!);
 					active.pauseBuffer = [];
 				}
 			}

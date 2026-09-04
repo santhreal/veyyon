@@ -3,7 +3,7 @@ import { escapeRegExp } from "@veyyon/utils/regex";
 import { errorMessage } from "@veyyon/utils/type-guards";
 // TYPE ONLY, which is erased. The class is 870 modules (the client, the transports, the tool loader)
 // and this handler needs the process-global SLOT, which `../mcp/manager-instance` owns and imports
-// nothing for. `internal-urls/router.ts` constructs this handler and `tools/read.ts` consults the
+// nothing for. `internal-urls/router.ts` constructs this handler and `tools/fs/read.ts` consults the
 // router, so a value import here is paid by every reader of a local file.
 import type { MCPManager } from "../mcp/manager";
 import { mcpManagerInstance } from "../mcp/manager-instance";

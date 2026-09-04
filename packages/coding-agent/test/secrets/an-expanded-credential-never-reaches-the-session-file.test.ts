@@ -32,12 +32,9 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { SecretVault } from "@veyyon/coding-agent/secrets/vault";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
-import {
-	summarizeToolArguments,
-	TOOL_EXECUTION_START_CUSTOM_TYPE,
-} from "@veyyon/coding-agent/session/exit-diagnostics";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { summarizeToolArguments, TOOL_EXECUTION_START_CUSTOM_TYPE } from "@veyyon/kernel/session/exit-diagnostics";
 import { TempDir } from "@veyyon/utils";
 import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
 
@@ -323,7 +320,7 @@ describe("the redaction authority the rest of the app reads", () => {
 	 */
 	it("is what the share command hands to the snapshot builder", async () => {
 		const sources = [
-			path.resolve(import.meta.dir, "../../src/modes/controllers/command-controller.ts"),
+			path.resolve(import.meta.dir, "../../src/modes/terminal/controllers/command-controller.ts"),
 			path.resolve(import.meta.dir, "../../src/slash-commands/builtin-registry.ts"),
 		];
 		for (const source of sources) {
@@ -341,10 +338,10 @@ describe("the redaction authority the rest of the app reads", () => {
 	 */
 	it("is not bypassed by a direct obfuscate call on any provider-bound seam", async () => {
 		const sources = [
-			"../../src/modes/controllers/event-controller.ts",
-			"../../src/modes/controllers/input-controller.ts",
-			"../../src/hindsight/state.ts",
-			"../../src/mnemopi/backend.ts",
+			"../../src/modes/terminal/controllers/event-controller.ts",
+			"../../src/modes/terminal/controllers/input-controller.ts",
+			"../../src/memory/hindsight/state.ts",
+			"../../src/memory/mnemopi/backend.ts",
 		];
 		for (const relative of sources) {
 			const text = await fs.readFile(path.resolve(import.meta.dir, relative), "utf8");

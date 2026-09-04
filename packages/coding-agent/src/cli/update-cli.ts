@@ -33,7 +33,7 @@ import {
 } from "@veyyon/utils";
 import { $ } from "bun";
 import chalk from "chalk";
-import { theme } from "../modes/theme/theme";
+import { theme } from "../theme/theme";
 import { isTimeoutError, withTimeoutSignal } from "../utils/fetch-timeout";
 import {
 	AUTO_UPDATE_FAILURE_COOLDOWN_MS,
@@ -1608,7 +1608,7 @@ export async function updateViaSourceAt(
 		},
 		{
 			label: "Ensuring native addon",
-			command: ["bun", "--cwd=packages/natives", "run", "ensure"],
+			command: ["bun", "--cwd=natives/bridge/bindings", "run", "ensure"],
 			cwd: checkoutRoot,
 		},
 	];
@@ -1626,7 +1626,7 @@ export async function updateViaSourceAt(
 		},
 		{
 			label: "Restoring native addon",
-			command: ["bun", "--cwd=packages/natives", "run", "ensure"],
+			command: ["bun", "--cwd=natives/bridge/bindings", "run", "ensure"],
 			cwd: checkoutRoot,
 		},
 	];

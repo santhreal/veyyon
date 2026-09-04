@@ -8,7 +8,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { discoverAndLoadExtensions } from "@veyyon/coding-agent/extensibility/extensions/loader";
-import { MANIFEST_KEYS, manifestFromPackageJson } from "@veyyon/coding-agent/extensibility/manifest-key";
+import { MANIFEST_KEYS, manifestFromPackageJson } from "@veyyon/kernel/loader/manifest-key";
 import { TempDir } from "@veyyon/utils";
 
 interface FakeManifest {

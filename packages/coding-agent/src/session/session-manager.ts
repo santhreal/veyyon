@@ -2,34 +2,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ImageContent, Message, MessageAttribution, ServiceTierByFamily, TextContent, Usage } from "@veyyon/ai";
 import { allowsSessionTelemetry, type InstrumentationLevel } from "@veyyon/ai/instrumentation";
-import {
-	directoryExists,
-	errorMessage,
-	getBlobsDir,
-	getProjectDir,
-	getSessionsDir,
-	isEnoent,
-	logger,
-	stringifyJson,
-	toError,
-} from "@veyyon/utils";
-import { pathStateSync } from "@veyyon/utils/fs-optional";
-import { sessionFileName, sessionFileStem } from "@veyyon/utils/session-file";
-import { ArtifactManager } from "./artifacts";
-import { type BlobPutOptions, type BlobPutResult, BlobStore } from "./blob-store";
-import { SESSION_EXIT_CUSTOM_TYPE } from "./exit-diagnostics";
-import {
-	type BashExecutionMessage,
-	type CustomMessage,
-	type FileMentionMessage,
-	type HookMessage,
-	normalizeCustomMessagePayload,
-	type PythonExecutionMessage,
-	sanitizeRehydratedOpenAIResponsesAssistantMessage,
-	stripInternalDetailsFields,
-} from "./messages";
-import type { OperatorNotices } from "./operator-notices";
-import { type BuildSessionContextOptions, buildSessionContext, type SessionContext } from "./session-context";
+import { ArtifactManager } from "@veyyon/kernel/session/artifacts";
+import { type BlobPutOptions, type BlobPutResult, BlobStore } from "@veyyon/kernel/session/blob-store";
+import { SESSION_EXIT_CUSTOM_TYPE } from "@veyyon/kernel/session/exit-diagnostics";
+import type { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import {
 	type BranchSummaryEntry,
 	type CompactionEntry,
@@ -63,17 +39,21 @@ import {
 	type TitleChangeEntry,
 	type TtsrInjectionEntry,
 	type UsageStatistics,
-} from "./session-entries";
-import { findMostRecentSession, listAllSessions, listSessions, type SessionInfo } from "./session-listing";
-import { loadEntriesFromFile, readTitleSlotFromFile, resolveBlobRefsInEntries } from "./session-loader";
-import { generateId, migrateToCurrentVersion } from "./session-migrations";
+} from "@veyyon/kernel/session/session-entries";
+import {
+	findMostRecentSession,
+	listAllSessions,
+	listSessions,
+	type SessionInfo,
+} from "@veyyon/kernel/session/session-listing";
+import { generateId, migrateToCurrentVersion } from "@veyyon/kernel/session/session-migrations";
 import {
 	computeDefaultSessionDir,
 	readTerminalBreadcrumbEntry,
 	resolveManagedSessionRoot,
 	writeTerminalBreadcrumb,
-} from "./session-paths";
-import { prepareEntryForPersistence } from "./session-persistence";
+} from "@veyyon/kernel/session/session-paths";
+import { prepareEntryForPersistence } from "@veyyon/kernel/session/session-persistence";
 import {
 	FileSessionStorage,
 	MemorySessionStorage,
@@ -81,8 +61,33 @@ import {
 	type SessionStorage,
 	type SessionStorageStat,
 	type SessionStorageWriter,
-} from "./session-storage";
-import { type SessionTitleUpdate, serializeTitleSlot } from "./session-title-slot";
+} from "@veyyon/kernel/session/session-storage";
+import { type SessionTitleUpdate, serializeTitleSlot } from "@veyyon/kernel/session/session-title-slot";
+import {
+	directoryExists,
+	errorMessage,
+	getBlobsDir,
+	getProjectDir,
+	getSessionsDir,
+	isEnoent,
+	logger,
+	stringifyJson,
+	toError,
+} from "@veyyon/utils";
+import { pathStateSync } from "@veyyon/utils/fs-optional";
+import { sessionFileName, sessionFileStem } from "@veyyon/utils/session-file";
+import {
+	type BashExecutionMessage,
+	type CustomMessage,
+	type FileMentionMessage,
+	type HookMessage,
+	normalizeCustomMessagePayload,
+	type PythonExecutionMessage,
+	sanitizeRehydratedOpenAIResponsesAssistantMessage,
+	stripInternalDetailsFields,
+} from "./messages";
+import { type BuildSessionContextOptions, buildSessionContext, type SessionContext } from "./session-context";
+import { loadEntriesFromFile, readTitleSlotFromFile, resolveBlobRefsInEntries } from "./session-loader";
 
 const DRAFT_ONLY_SESSION_MARKER = ".draft-only-session";
 
@@ -363,11 +368,11 @@ class SessionEntryIndex {
 			else roots.push(node);
 		}
 
-		const stack = [...roots];
+		const stack = roots.slice();
 		while (stack.length > 0) {
 			const node = stack.pop()!;
 			node.children.sort(orderedByTimestamp);
-			stack.push(...node.children);
+			for (let ci = 0; ci < node.children.length; ci++) stack.push(node.children[ci]!);
 		}
 
 		return roots;
@@ -1475,7 +1480,7 @@ export class SessionManager {
 	}
 
 	#notifySessionNameListeners(): void {
-		for (const callback of [...this.#sessionNameChangedCallbacks]) {
+		for (const callback of Array.from(this.#sessionNameChangedCallbacks)) {
 			try {
 				callback();
 			} catch (err) {
@@ -1485,7 +1490,7 @@ export class SessionManager {
 	}
 
 	#notifyCwdListeners(previous: string, next: string): void {
-		for (const callback of [...this.#cwdChangedCallbacks]) {
+		for (const callback of Array.from(this.#cwdChangedCallbacks)) {
 			try {
 				callback(previous, next);
 			} catch (err) {
@@ -1530,7 +1535,7 @@ export class SessionManager {
 			// Snapshot header + entries by reference: switch/reload replaces the
 			// active header/array wholesale, so rollback needs no deep clone.
 			header: this.#header,
-			entries: [...this.#entries],
+			entries: this.#entries.slice(),
 		};
 	}
 
@@ -1549,7 +1554,7 @@ export class SessionManager {
 		this.#rewriteRequired = snapshot.needsRewrite;
 		this.#forceFileCreation = snapshot.onDisk;
 		this.#draftOnlySessionCleanupArmed = snapshot.draftOnlySessionCleanupArmed;
-		this.#applyEntries(snapshot.header, [...snapshot.entries]);
+		this.#applyEntries(snapshot.header, snapshot.entries.slice());
 		this.#forgetForeignWriter();
 		this.#nextSequence = snapshot.nextSequence;
 		this.#lifecycleStarted = snapshot.lifecycleStarted;
@@ -2498,7 +2503,7 @@ export class SessionManager {
 		const entry: MCPToolSelectionEntry = {
 			type: "mcp_tool_selection",
 			...this.#freshEntryFields(),
-			selectedToolNames: [...selectedToolNames],
+			selectedToolNames: selectedToolNames.slice(),
 		};
 		this.#recordEntry(entry);
 		return entry.id;
@@ -2509,7 +2514,7 @@ export class SessionManager {
 		const entry: TtsrInjectionEntry = {
 			type: "ttsr_injection",
 			...this.#freshEntryFields(),
-			injectedRules: [...ruleNames],
+			injectedRules: ruleNames.slice(),
 		};
 		this.#recordEntry(entry);
 		return entry.id;
@@ -2608,7 +2613,7 @@ export class SessionManager {
 
 	/** All session entries (excludes header). Returns a shallow copy. */
 	getEntries(): SessionEntry[] {
-		return [...this.#entries];
+		return this.#entries.slice();
 	}
 
 	/** Latest persisted lifecycle state, or `unknown` for old/off files. */
@@ -2740,7 +2745,7 @@ export class SessionManager {
 		for (const carried of labelsToCarry) {
 			const labelEntry: LabelEntry = {
 				type: "label",
-				id: generateId(new Set([...keptIds, ...labels.map(entry => entry.id)])),
+				id: generateId(new Set(Array.from(keptIds).concat(labels.map(entry => entry.id)))),
 				parentId,
 				timestamp: nowIso(),
 				targetId: carried.targetId,
@@ -2751,7 +2756,7 @@ export class SessionManager {
 		}
 
 		this.#header = header;
-		this.#entries = [...entriesToKeep, ...labels];
+		this.#entries = entriesToKeep.concat(labels);
 		this.#setSessionId(newSessionId);
 		this.#sessionName = header.title;
 		this.#titleSource = header.titleSource;

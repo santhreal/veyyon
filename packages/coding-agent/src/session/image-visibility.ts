@@ -5,15 +5,33 @@
  * A tool result carrying an image used to say `Read image file [image/png]` and
  * nothing else, so a model that had the picture in its own context reported
  * having shown it — "rendered above", with the user looking at a row of text.
- * The terminal decides this, not the tool: a session without a graphics protocol,
+ * The client decides this, not the tool: a session without a graphics protocol,
  * or with `terminal.showImages` off, replaces every picture with a placeholder
- * row. One owner states it, at the one seam every tool result crosses on its way
- * to the model, so a tool that starts returning images inherits the sentence
- * instead of inventing one.
+ * row, and a piped or headless run draws nothing at all. One owner states it, at
+ * the one seam every tool result crosses on its way to the model, so a tool that
+ * starts returning images inherits the sentence instead of inventing one.
  */
-import type { ImageFallbackReason } from "@veyyon/tui";
-import { TERMINAL } from "@veyyon/tui";
+import type { ImageFallbackReason } from "@veyyon/utils/image-fallback";
 import { settingsOrNull } from "../config/settings-instance";
+
+/**
+ * Whether the client on the other end of this session puts a picture on screen.
+ *
+ * The session cannot answer it. A terminal answers from its graphics protocol, a
+ * browser or a desktop window answers yes, and a piped `-p` run answers no
+ * because it emits text and never draws. So the front end installs the answer,
+ * and an uninstalled probe means no: a session nobody claimed draws nothing,
+ * which is exactly what a headless run does.
+ */
+let clientDrawsImages: (() => boolean) | undefined;
+
+/**
+ * Front-end hook: state whether this client draws pictures. Called once, when a
+ * front end starts, with the capability it has just resolved.
+ */
+export function setImageDisplayProbe(probe: (() => boolean) | undefined): void {
+	clientDrawsImages = probe;
+}
 
 /** What the user's terminal does with an image right now. */
 export interface ImageDisplayState {
@@ -31,10 +49,10 @@ export interface ImageDisplayState {
 /**
  * The live state. Settings are read through the slot, which is empty in a
  * process that never loaded a config; an unset store leaves the default (images
- * on) in force, so only the terminal decides.
+ * on) in force, so only the client's own capability decides.
  */
 export function currentImageDisplayState(): ImageDisplayState {
-	if (!TERMINAL.imageProtocol) return { shown: false, reason: "no-protocol" };
+	if (clientDrawsImages?.() !== true) return { shown: false, reason: "no-protocol" };
 	if (settingsOrNull()?.get("terminal.showImages") === false) return { shown: false, reason: "images-off" };
 	return { shown: true };
 }

@@ -1,8 +1,9 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { editToolRenderer } from "@veyyon/coding-agent/edit/renderer";
-import { getThemeByName, initTheme, type Theme } from "@veyyon/coding-agent/modes/theme/theme";
-import { readToolRenderer } from "@veyyon/coding-agent/tools/read";
-import { writeToolRenderer } from "@veyyon/coding-agent/tools/write";
+import { editToolView } from "@veyyon/coding-agent/edit/edit-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import { getThemeByName, initTheme, type Theme } from "@veyyon/coding-agent/theme/theme";
+import { readToolView } from "@veyyon/coding-agent/tools/fs/read-view";
+import { writeToolView } from "@veyyon/coding-agent/tools/fs/write-view";
 import type { Component } from "@veyyon/tui";
 
 interface InvalidPathCase {
@@ -37,9 +38,8 @@ describe("tool path renderers with invalid provider arguments", () => {
 		it(`read renderer does not throw for ${invalid.name}`, () => {
 			let callComponent: Component | undefined;
 			expect(() => {
-				callComponent = readToolRenderer.renderCall(
-					{ path: invalid.path },
-					{ expanded: false, isPartial: true },
+				callComponent = drawToolView(
+					readToolView.renderCall({ path: invalid.path }, { expanded: false, partial: true }),
 					uiTheme,
 				);
 			}).not.toThrow();
@@ -47,17 +47,19 @@ describe("tool path renderers with invalid provider arguments", () => {
 
 			let resultComponent: Component | undefined;
 			expect(() => {
-				resultComponent = readToolRenderer.renderResult(
-					{
-						content: [{ type: "text", text: "hello from read" }],
-						details: {
-							displayContent: { text: "hello from read", startLine: 1 },
-							contentType: "text/plain",
+				resultComponent = drawToolView(
+					readToolView.renderResult(
+						{
+							content: [{ type: "text", text: "hello from read" }],
+							details: {
+								displayContent: { text: "hello from read", startLine: 1 },
+								contentType: "text/plain",
+							},
 						},
-					},
-					{ expanded: false, isPartial: false },
+						{ expanded: false, partial: false },
+						{ path: invalid.path },
+					),
 					uiTheme,
-					{ path: invalid.path },
 				);
 			}).not.toThrow();
 			const rendered = renderPlain(resultComponent!);
@@ -68,10 +70,13 @@ describe("tool path renderers with invalid provider arguments", () => {
 		it(`write renderer does not throw for ${invalid.name}`, () => {
 			let callComponent: Component | undefined;
 			expect(() => {
-				callComponent = writeToolRenderer.renderCall(
-					{ path: invalid.path, content: "first line\nsecond line" },
-					{ expanded: false, isPartial: true, spinnerFrame: 0 },
+				callComponent = drawToolView(
+					writeToolView.renderCall(
+						{ path: invalid.path, content: "first line\nsecond line" },
+						{ expanded: false, partial: true, frame: 0 },
+					),
 					uiTheme,
+					0,
 				);
 			}).not.toThrow();
 			const callText = renderPlain(callComponent!);
@@ -80,14 +85,16 @@ describe("tool path renderers with invalid provider arguments", () => {
 
 			let resultComponent: Component | undefined;
 			expect(() => {
-				resultComponent = writeToolRenderer.renderResult(
-					{
-						content: [{ type: "text", text: "Wrote file" }],
-						details: { resolvedPath: "/tmp/example.ts" },
-					},
-					{ expanded: false, isPartial: false },
+				resultComponent = drawToolView(
+					writeToolView.renderResult(
+						{
+							content: [{ type: "text", text: "Wrote file" }],
+							details: { resolvedPath: "/tmp/example.ts" },
+						},
+						{ expanded: false, partial: false },
+						{ path: invalid.path, content: "first line\nsecond line" },
+					),
 					uiTheme,
-					{ path: invalid.path, content: "first line\nsecond line" },
 				);
 			}).not.toThrow();
 			const resultText = renderPlain(resultComponent!);
@@ -95,27 +102,32 @@ describe("tool path renderers with invalid provider arguments", () => {
 			expect(resultText).toContain("first line");
 		});
 
-		it(`edit renderer does not throw for ${invalid.name}`, () => {
+		it(`edit view does not throw for ${invalid.name}`, () => {
 			let callComponent: Component | undefined;
 			expect(() => {
-				callComponent = editToolRenderer.renderCall(
-					{ path: invalid.path, oldText: "before", newText: "after" },
-					{ expanded: false, isPartial: true, spinnerFrame: 0, renderContext: { editMode: "replace" } },
+				callComponent = drawToolView(
+					editToolView.renderCall(
+						{ path: invalid.path, oldText: "before", newText: "after", editMode: "replace" },
+						{ expanded: false, partial: true, frame: 0 },
+					),
 					uiTheme,
+					0,
 				);
 			}).not.toThrow();
 			expect(renderPlain(callComponent!)).toContain("Edit");
 
 			let resultComponent: Component | undefined;
 			expect(() => {
-				resultComponent = editToolRenderer.renderResult(
-					{
-						content: [{ type: "text", text: "updated" }],
-						details: { diff: "-before\n+after" },
-					},
-					{ expanded: false, isPartial: false, renderContext: { editMode: "replace" } },
+				resultComponent = drawToolView(
+					editToolView.renderResult(
+						{
+							content: [{ type: "text", text: "updated" }],
+							details: { diff: "-before\n+after" },
+						},
+						{ expanded: false, partial: false },
+						{ path: invalid.path, oldText: "before", newText: "after", editMode: "replace" },
+					),
 					uiTheme,
-					{ path: invalid.path, oldText: "before", newText: "after" },
 				);
 			}).not.toThrow();
 			const rendered = renderPlain(resultComponent!);

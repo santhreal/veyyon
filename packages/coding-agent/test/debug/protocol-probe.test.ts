@@ -5,7 +5,7 @@ import {
 	encodeRgbPng,
 	ProtocolProbeComponent,
 } from "@veyyon/coding-agent/debug/protocol-probe";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { getImageDimensions, ImageBudget, ImageProtocol, TERMINAL } from "@veyyon/tui";
 
 beforeAll(async () => {

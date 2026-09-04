@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { isPathWithinCwd, resolveToCwd } from "@veyyon/coding-agent/tools/path-utils";
+import { isPathWithinCwd, resolveToCwd } from "@veyyon/coding-agent/tools/core/path-utils";
 
 /**
  * isPathWithinCwd properties: reflexivity, child inclusion, sibling exclusion.

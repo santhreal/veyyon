@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
-import { searchWithKagi } from "@veyyon/coding-agent/web/kagi";
-import { searchDuckDuckGo } from "@veyyon/coding-agent/web/search/providers/duckduckgo";
-import { resetExaSearchThrottleForTest, searchExa } from "@veyyon/coding-agent/web/search/providers/exa";
-import { searchGemini } from "@veyyon/coding-agent/web/search/providers/gemini";
-import { searchMojeek } from "@veyyon/coding-agent/web/search/providers/mojeek";
-import { searchTavily } from "@veyyon/coding-agent/web/search/providers/tavily";
+import { searchWithKagi } from "@veyyon/coding-agent/tools/web/kagi";
+import { searchDuckDuckGo } from "@veyyon/coding-agent/tools/web/search/providers/duckduckgo";
+import { resetExaSearchThrottleForTest, searchExa } from "@veyyon/coding-agent/tools/web/search/providers/exa";
+import { searchGemini } from "@veyyon/coding-agent/tools/web/search/providers/gemini";
+import { searchMojeek } from "@veyyon/coding-agent/tools/web/search/providers/mojeek";
+import { searchTavily } from "@veyyon/coding-agent/tools/web/search/providers/tavily";
 
 const inertAuthStorage = {} as AuthStorage;
 

@@ -16,10 +16,15 @@
  * the ground the row sits on, so on a black ground it dissolves and on a grey one it lands on the
  * operator's own page — one ground answers half the question.
  */
-import { Ellipsis, truncateToWidth } from "@veyyon/tui";
-import { hoverBandAt, selectionBand } from "../../packages/coding-agent/src/modes/components/selector-helpers";
-import { setDetectedTerminalGround } from "../../packages/coding-agent/src/modes/theme/ground-tints";
-import { theme } from "../../packages/coding-agent/src/modes/theme/theme";
+
+import { Ellipsis } from "@veyyon/natives";
+import { truncateToWidth } from "@veyyon/utils/width";
+import {
+	hoverBandAt,
+	selectionBand,
+} from "../../packages/coding-agent/src/modes/terminal/components/selectors/selector-helpers";
+import { setDetectedTerminalGround } from "../../packages/coding-agent/src/theme/ground-tints";
+import { theme } from "../../packages/coding-agent/src/theme/theme";
 import { flag, initRender, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");

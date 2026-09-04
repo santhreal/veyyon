@@ -148,7 +148,7 @@ export const CURSOR_API_ENDPOINT = "https://api2.cursor.sh";
  *
  * Four modules spelled it: `mnemopi/config.ts` as `DEFAULT_EMBEDDING_API_URL`, `mnemopi/core/embeddings.ts`
  * and `mnemopi/core/extraction/client.ts` inline inside an env-variable fallback chain, and
- * `coding-agent/web/search/providers/perplexity-auth.ts` as `OPENROUTER_BASE_URL`. That last name is also the
+ * `coding-agent/tools/web/search/providers/perplexity-auth.ts` as `OPENROUTER_BASE_URL`. That last name is also the
  * name of the ENVIRONMENT VARIABLE those chains read, so a reader could not tell from the name whether they
  * were looking at the configured value or the default it falls back to.
  *

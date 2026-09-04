@@ -9,10 +9,10 @@
 import { stripVTControlCharacters } from "node:util";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import { type Component, Container, Editor, Spacer, TUI } from "@veyyon/tui";
-import type { MouseRoutable, SgrMouseEvent } from "@veyyon/tui/mouse";
 import { stripAnsi } from "@veyyon/utils";
-import { settleFrames } from "../../../tui/test/helpers/settle-frames";
-import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
+import type { MouseRoutable, SgrMouseEvent } from "@veyyon/utils/mouse";
+import { settleFrames } from "../../../../hosts/terminal/engine/test/helpers/settle-frames";
+import { VirtualTerminal } from "../../../../hosts/terminal/engine/test/virtual-terminal";
 import {
 	CardPadRow,
 	COMPOSER_BOTTOM_MARGIN_ROWS,
@@ -20,14 +20,14 @@ import {
 	ComposerHairline,
 	mountComposerZone,
 	resolveComposerAccents,
-} from "../../src/modes/components/composer-chrome";
+} from "../../src/modes/terminal/components/composer/composer-chrome";
 import {
 	type ComposerOracleFrameState,
 	evaluateAllComposerOracles,
 	type FrameSegmentSnapshot,
 	type OracleEvaluationResult,
-} from "../../src/modes/components/composer-defect-oracle";
-import { getEditorTheme } from "../../src/modes/theme/theme";
+} from "../../src/modes/terminal/components/composer/composer-defect-oracle";
+import { getEditorTheme } from "../../src/theme/theme";
 import type { CorpusCaseState } from "./renderer-defect-corpus";
 
 /** Transcript content component */

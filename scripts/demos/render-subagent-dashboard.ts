@@ -20,12 +20,13 @@
  * agent TYPES a stock install ships, which said nothing about what was running
  * and could not be opened; `/settings` -> Subagents owns that table.
  */
-import { IrcBus } from "../../packages/coding-agent/src/irc/bus";
-import { AgentDashboard } from "../../packages/coding-agent/src/modes/components/agent-dashboard";
-import { initTheme } from "../../packages/coding-agent/src/modes/theme/theme";
+
+import type { Component, TUI } from "../../hosts/terminal/engine/src";
+import { AgentDashboard } from "../../packages/coding-agent/src/modes/terminal/components/dashboard/agent-dashboard";
 import { AgentRegistry, MAIN_AGENT_ID } from "../../packages/coding-agent/src/registry/agent-registry";
 import type { AgentSession } from "../../packages/coding-agent/src/session/agent-session";
-import type { Component, TUI } from "../../packages/tui/src";
+import { IrcBus } from "../../packages/coding-agent/src/task/irc-bus";
+import { initTheme } from "../../packages/coding-agent/src/theme/theme";
 import { flag, renderWidth } from "./render-args";
 
 const view = flag("view", "live");

@@ -173,7 +173,7 @@ describe("the Codex base URL", () => {
 	/** Including the web-search provider that used to hold the second copy. */
 	it("is imported by the web-search provider", async () => {
 		const provider = await readFile(
-			path.join(PACKAGES, "coding-agent", "src", "web", "search", "providers", "codex.ts"),
+			path.join(PACKAGES, "coding-agent", "src", "tools", "web", "search", "providers", "codex.ts"),
 			"utf8",
 		);
 

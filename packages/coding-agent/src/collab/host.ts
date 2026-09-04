@@ -21,10 +21,10 @@ import type {
 	WireSessionEntry,
 } from "@veyyon/wire";
 import { mapJsonStrings } from "../json-transform";
-import type { InteractiveModeContext } from "../modes/types";
+import type { InteractiveModeContext } from "../modes/terminal/types";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import { type AgentRef, AgentRegistry } from "../registry/agent-registry";
-import type { AgentSessionEvent } from "../session/agent-session";
+import type { AgentSessionEvent } from "../session/agent-session-types";
 import { stripImagesFromMessage, USER_INTERRUPT_LABEL } from "../session/messages";
 import { TASK_SUBAGENT_LIFECYCLE_CHANNEL, TASK_SUBAGENT_PROGRESS_CHANNEL } from "../task/types";
 import { generateRoomKey, generateWriteToken, importRoomKey } from "./crypto";

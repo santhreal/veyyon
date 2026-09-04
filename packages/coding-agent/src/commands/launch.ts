@@ -130,7 +130,7 @@ export default class Index extends Command {
 		}),
 		thinking: Flags.string({
 			description: `Set thinking level: ${CLI_THINKING_LEVELS.join(", ")}`,
-			options: [...CLI_THINKING_LEVELS],
+			options: CLI_THINKING_LEVELS.slice(),
 		}),
 		"hide-thinking": Flags.boolean({
 			description: "Hide thinking blocks in TUI output (display only, does not disable model thinking)",
@@ -249,7 +249,7 @@ export default class Index extends Command {
 		// below regardless, making this module load noise against that.
 		const { runStartupPrologue, shouldPrepaintLaunchCard } = await logger.time(
 			"import:launch-card",
-			() => import("../startup/launch-card"),
+			() => import("../cli/launch-card"),
 		);
 		if (shouldPrepaintLaunchCard(parsed)) {
 			await logger.time("runStartupPrologue", runStartupPrologue, parsed);
@@ -257,7 +257,7 @@ export default class Index extends Command {
 			// graph is loaded in stages that hand the loop back between subtrees.
 			// Without it the next line blocks for the whole evaluation and a
 			// keystroke typed during it is not echoed until the composer mounts.
-			const { warmRuntimeGraph } = await import("../startup/runtime-warmup");
+			const { warmRuntimeGraph } = await import("../cli/runtime-warmup");
 			await logger.time("warmRuntimeGraph", warmRuntimeGraph);
 		}
 		const { runRootCommand } = await logger.time("import:main", () => import("../main"));

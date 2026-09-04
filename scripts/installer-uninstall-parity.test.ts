@@ -8,7 +8,7 @@ import * as path from "node:path";
  *
  * Why this suite exists: a binary install stages the native addon in a
  * per-version cache (~150MB per version) resolved by `getNativesDir()` in
- * packages/natives/native/loader-state.js. Both uninstallers used to remove only
+ * natives/bridge/bindings/native/loader-state.js. Both uninstallers used to remove only
  * the binary, the alias, the source checkout and the completions, so every
  * version ever installed leaked its addon cache forever: uninstall "succeeded"
  * while leaving hundreds of MB on disk, and a later reinstall silently inherited
@@ -35,7 +35,10 @@ function fnBody(body: string, start: string, end: string): string {
 const repoRoot = path.resolve(import.meta.dir, "..");
 const installSh = fs.readFileSync(path.join(repoRoot, "scripts", "install.sh"), "utf8");
 const installPs1 = fs.readFileSync(path.join(repoRoot, "scripts", "install.ps1"), "utf8");
-const loaderState = fs.readFileSync(path.join(repoRoot, "packages", "natives", "native", "loader-state.js"), "utf8");
+const loaderState = fs.readFileSync(
+	path.join(repoRoot, "natives", "bridge", "bindings", "native", "loader-state.js"),
+	"utf8",
+);
 
 /** The uninstall body of each script, so assertions cannot match an install-path string. */
 function uninstallBody(body: string, startMarker: string, endMarker: string): string {

@@ -3,12 +3,12 @@
 > Finalizes a pending action by applying or discarding it.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/resolve.ts`
+- Entry: `packages/coding-agent/src/tools/agent/resolve.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/resolve.md`
 - Key collaborators:
   - `docs/internal/resolve-tool-runtime.md`: preview/apply runtime reference
   - `packages/coding-agent/src/extensibility/custom-tools/loader.ts`: forwards custom pending actions into the queue
-  - `packages/coding-agent/src/tools/ast-edit.ts`: built-in preview producer example
+  - `packages/coding-agent/src/tools/search/ast-edit.ts`: built-in preview producer example
   - `packages/coding-agent/src/session/agent-session.ts`: tool-choice queue, standing resolve handler, and invoker access
 
 ## Inputs

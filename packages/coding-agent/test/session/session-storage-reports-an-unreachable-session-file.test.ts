@@ -24,7 +24,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { FileSessionStorage } from "@veyyon/coding-agent/session/session-storage";
+import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import { attachFaultSink, type DetachFaultSink, type Fault } from "@veyyon/utils";
 
 let root: string;

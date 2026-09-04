@@ -9,9 +9,9 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { loadExtensions } from "@veyyon/coding-agent/extensibility/extensions/loader";
 import { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import * as unexpectedStopClassifier from "@veyyon/coding-agent/session/unexpected-stop-classifier";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { getProjectAgentDir, TempDir, withTimeout } from "@veyyon/utils";
 import * as logger from "@veyyon/utils/logger";
 

@@ -38,14 +38,14 @@ import { setTimeout } from "node:timers/promises";
 import { Agent } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { paintFirstFrame, takeFirstFrame } from "@veyyon/coding-agent/modes/first-frame";
-import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
 import { resetLaunchFactsForTest } from "@veyyon/coding-agent/modes/launch-facts";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { paintFirstFrame, takeFirstFrame } from "@veyyon/coding-agent/modes/terminal/first-frame";
+import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { ProcessTerminal, Text, TUI } from "@veyyon/tui";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { ProcessTerminal, type RenderRequestOptions, Text, TUI, type TUIStartOptions } from "@veyyon/tui";
 import { setTerminalHeadless, TempDir } from "@veyyon/utils";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
 
@@ -165,14 +165,14 @@ async function mount(options: { withCard: boolean }): Promise<{ mode: Interactiv
 	let forcedAfterStart = 0;
 	let started = options.withCard;
 	const start = mode.ui.start.bind(mode.ui);
-	vi.spyOn(mode.ui, "start").mockImplementation(startOptions => {
+	vi.spyOn(mode.ui, "start").mockImplementation((startOptions?: TUIStartOptions) => {
 		// After, not before: `start` claims the viewport with its own forced render, and that claim
 		// is the baseline every later render diffs against rather than a repaint over it.
 		start(startOptions);
 		started = true;
 	});
 	const render = mode.ui.requestRender.bind(mode.ui);
-	vi.spyOn(mode.ui, "requestRender").mockImplementation((force, renderOptions) => {
+	vi.spyOn(mode.ui, "requestRender").mockImplementation((force?: boolean, renderOptions?: RenderRequestOptions) => {
 		if (force === true && started) forcedAfterStart++;
 		render(force, renderOptions);
 	});

@@ -47,7 +47,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { Effort } from "@veyyon/catalog/effort";
 import { ONLINE_MEMORY_MODEL_KEY } from "@veyyon/coding-agent/tiny/models";
-import { TOOL } from "@veyyon/coding-agent/tools/builtin-names";
+import { TOOL } from "@veyyon/coding-agent/tools/core/builtin-names";
 import { createSimulation, type Simulation, simTool } from "./harness";
 
 /** Operator watchdog budgets, in the shape the provider sees them (milliseconds). */

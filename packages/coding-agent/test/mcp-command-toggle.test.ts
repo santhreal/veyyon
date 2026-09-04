@@ -2,10 +2,10 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "bu
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { SourceMeta } from "@veyyon/coding-agent/capability/types";
+import type { SourceMeta } from "@veyyon/coding-agent/discovery/capability/types";
 import type { MCPServerConfig } from "@veyyon/coding-agent/mcp/types";
-import { MCPCommandController } from "@veyyon/coding-agent/modes/controllers/mcp-command-controller";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { MCPCommandController } from "@veyyon/coding-agent/modes/terminal/controllers/mcp-command-controller";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { getMCPConfigPath, getProjectDir, removeWithRetries, setAgentDir, setProjectDir } from "@veyyon/utils";
 import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 

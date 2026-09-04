@@ -3,14 +3,14 @@
  */
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { CredentialDisabledEvent, ImageContent, Model, ProviderResponseMetadata } from "@veyyon/ai";
-import type { KeyId } from "@veyyon/tui";
 import { errorMessage, logger } from "@veyyon/utils";
+import type { KeyId } from "@veyyon/utils/keys";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
 import type { LocalProtocolOptions } from "../../internal-urls/local-protocol";
-import type { MemoryRuntimeContext } from "../../memory-backend";
-import { type Theme, theme } from "../../modes/theme/theme";
+import type { MemoryRuntimeContext } from "../../memory/backend";
 import type { SessionManager } from "../../session/session-manager";
+import { type Theme, theme } from "../../theme/theme";
 import type { BranchHandler, NavigateTreeHandler, NewSessionHandler } from "../session-handler-types";
 import { createExtensionModelQuery } from "./model-api";
 import type {
@@ -200,16 +200,12 @@ const noOpUIContext: ExtensionUIContext = {
 	setStatus: () => {},
 	setWorkingMessage: () => {},
 	setWidget: () => {},
-	setFooter: () => {},
-	setHeader: () => {},
 	setTitle: () => {},
-	custom: async () => undefined as never,
 	setEditorText: () => {},
 	pasteToEditor: () => {},
 	getEditorText: () => "",
 	editor: async () => undefined,
 	addAutocompleteProvider: () => {},
-	setEditorComponent: () => {},
 	get theme() {
 		return theme;
 	},
@@ -913,13 +909,16 @@ export class ExtensionRunner {
 				const result = handlerResult as ResourcesDiscoverResult | undefined;
 
 				if (result?.skillPaths?.length) {
-					skillPaths.push(...result.skillPaths.map(path => ({ path, extensionPath: ext.path })));
+					const sp = result.skillPaths.map(path => ({ path, extensionPath: ext.path }));
+					for (let si = 0; si < sp.length; si++) skillPaths.push(sp[si]!);
 				}
 				if (result?.promptPaths?.length) {
-					promptPaths.push(...result.promptPaths.map(path => ({ path, extensionPath: ext.path })));
+					const pp = result.promptPaths.map(path => ({ path, extensionPath: ext.path }));
+					for (let pi = 0; pi < pp.length; pi++) promptPaths.push(pp[pi]!);
 				}
 				if (result?.themePaths?.length) {
-					themePaths.push(...result.themePaths.map(path => ({ path, extensionPath: ext.path })));
+					const tp = result.themePaths.map(path => ({ path, extensionPath: ext.path }));
+					for (let ti = 0; ti < tp.length; ti++) themePaths.push(tp[ti]!);
 				}
 			}
 		}

@@ -114,7 +114,7 @@ function syncMap(
 	current: Record<string, unknown>,
 ): void {
 	for (const [key, value] of Object.entries(target)) {
-		const path = [...basePath, key];
+		const path = basePath.concat([key]);
 		const existing = current[key];
 		// `undefined` is how a reset arrives: the key is gone, not set to null.
 		if (value === undefined) {
@@ -159,7 +159,7 @@ function syncSequence(
 ): void {
 	for (const [index, value] of target.entries()) {
 		const existing = current[index];
-		const path = [...basePath, index];
+		const path = basePath.concat([index]);
 		if (isRecord(value) && isRecord(existing)) {
 			syncMap(doc, path, value, existing);
 			continue;
@@ -189,13 +189,13 @@ function deleteKeepingComment(
 ): void {
 	const parent = basePath.length === 0 ? doc.contents : doc.getIn(basePath, true);
 	if (!YAML.isMap(parent)) {
-		doc.deleteIn([...basePath, key]);
+		doc.deleteIn(basePath.concat([key]));
 		return;
 	}
 	const index = parent.items.findIndex(item => YAML.isScalar(item.key) && item.key.value === key);
 	const doomed = index === -1 ? undefined : parent.items[index];
 	const orphaned = doomed?.key && typeof doomed.key === "object" ? getCommentBefore(doomed.key) : undefined;
-	doc.deleteIn([...basePath, key]);
+	doc.deleteIn(basePath.concat([key]));
 	if (orphaned === undefined || orphaned === null) return;
 	const next = parent.items[index];
 	if (next?.key && typeof next.key === "object") {

@@ -28,8 +28,8 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { renderContextBar } from "@veyyon/coding-agent/modes/components/status-line/segments";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { renderContextBar } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { useFullColor } from "./helpers/theme-assertions";
 
 function cells(bar: string): string {

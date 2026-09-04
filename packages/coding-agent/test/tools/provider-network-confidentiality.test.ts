@@ -4,13 +4,13 @@ import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { CustomToolContext } from "@veyyon/coding-agent/extensibility/custom-tools";
 import type { ReadonlySessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { hasCredentialBearingUrl, renderHtmlToText } from "@veyyon/coding-agent/tools/fetch";
 import {
 	__resetAutoQaFlushStateForTests,
 	flushGrievances,
 	sanitizeAutoQaPayload,
-} from "@veyyon/coding-agent/tools/report-tool-issue";
-import { ttsTool } from "@veyyon/coding-agent/tools/tts";
+} from "@veyyon/coding-agent/tools/agent/report-tool-issue";
+import { hasCredentialBearingUrl, renderHtmlToText } from "@veyyon/coding-agent/tools/web/fetch";
+import { ttsTool } from "@veyyon/coding-agent/tools/web/tts";
 import { removeWithRetries } from "@veyyon/utils";
 import { asGlobalFetch, mockFetch } from "../helpers/fetch-mock";
 

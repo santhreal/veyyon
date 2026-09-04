@@ -2,7 +2,9 @@
  * Custom tool types.
  *
  * Custom tools are TypeScript modules that define additional tools for the agent.
- * They can provide custom rendering for tool calls and results in the TUI.
+ * They can provide custom rendering for tool calls and results, returning whatever
+ * the active host draws — see {@link HostView}. Nothing in this contract names a
+ * terminal, so a tool plugin written against it loads into any host.
  */
 import type {
 	AgentToolResult,
@@ -13,24 +15,25 @@ import type {
 } from "@veyyon/agent-core";
 import type { CompactionResult } from "@veyyon/agent-core/compaction";
 import type { FetchImpl, Model, Static, TSchema } from "@veyyon/ai";
-import type { Component } from "@veyyon/tui";
+import type { HostView } from "@veyyon/kernel/registry/host-view";
+import type * as TypeBox from "@veyyon/kernel/registry/typebox";
 import type { logger as PiLogger } from "@veyyon/utils";
+import type { ToolViewRenderer } from "@veyyon/view";
 import type { type as ArkType } from "arktype";
 import type * as zod from "zod/v4";
-import type { Rule } from "../../capability/rule";
 import type { CompactionEngineAction } from "../../config/compaction-strategy";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
+import type { Rule } from "../../discovery/capability/rule";
 import type { ExecOptions, ExecResult } from "../../exec/exec";
-import type { HookUIContext } from "../../extensibility/hooks/types";
 import type * as PiCodingAgent from "../../index";
 import type { LocalProtocolOptions } from "../../internal-urls/local-protocol";
-import type { Theme } from "../../modes/theme/theme";
 import type { ReadonlySessionManager } from "../../session/session-manager";
-import type { SessionToolApprovals } from "../../tools/approval-modes";
-import type { TodoItem } from "../../tools/todo";
+import type { Theme } from "../../theme/theme";
+import type { TodoItem } from "../../tools/agent/todo";
+import type { SessionToolApprovals } from "../../tools/core/approval-modes";
+import type { HookUIContext } from "../hooks/types";
 import type { RecoveredRetryError } from "../shared-events";
-import type * as TypeBox from "../typebox";
 
 /** Alias for clarity */
 export type CustomToolUIContext = HookUIContext;
@@ -284,16 +287,35 @@ export interface CustomTool<TParams extends TSchema = TSchema, TDetails = any> {
 
 	/** Called on session lifecycle events - use to reconstruct state or cleanup resources */
 	onSession?: (event: CustomToolSessionEvent, ctx: CustomToolContext) => void | Promise<void>;
-	/** Custom rendering for tool call display - return a Component */
-	renderCall?: (args: Static<TParams>, options: RenderResultOptions, theme: Theme) => Component;
+	/**
+	 * Custom rendering for tool call display.
+	 *
+	 * Returns whatever the active host draws. A terminal plugin returning a
+	 * `@veyyon/tui` Component satisfies this unchanged.
+	 */
+	renderCall?: (args: Static<TParams>, options: RenderResultOptions, theme: Theme) => HostView;
 
-	/** Custom rendering for tool result display - return a Component */
+	/** Custom rendering for tool result display. Returns whatever the active host draws. */
 	renderResult?: (
 		result: CustomToolResult<TDetails>,
 		options: RenderResultOptions,
 		theme: Theme,
 		args?: Static<TParams>,
-	) => Component;
+	) => HostView;
+
+	/**
+	 * Host-agnostic rendering: what the output MEANS, leaving appearance to whoever draws it.
+	 *
+	 * Preferred over {@link renderCall} and {@link renderResult}, which hand the tool a `Theme` and
+	 * take a host view back: a plugin that builds a terminal component runs in a terminal alone, which
+	 * is what the pair keeps. This member receives the disclosure state and nothing else, and returns a
+	 * `ToolView` a terminal, a browser client or a graphical front end each draw their own way.
+	 *
+	 * The tool wrapper forwards every member to the host, so a tool declaring this carries its card
+	 * wherever it runs. A tool declares one or the other; where both are present the host-specific
+	 * pair wins, so a plugin mid-migration keeps its exact output.
+	 */
+	view?: ToolViewRenderer<Static<TParams>, CustomToolResult<TDetails>>;
 }
 
 /** Factory function that creates a custom tool or array of tools */

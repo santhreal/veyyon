@@ -3,9 +3,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { getActiveSkills } from "@veyyon/coding-agent/extensibility/skills";
 import { MCPManager } from "@veyyon/coding-agent/mcp/manager";
-import { getMemoryRoot } from "@veyyon/coding-agent/memories";
-import * as themeEngine from "@veyyon/coding-agent/modes/theme/theme";
-import { formatStatusIcon } from "@veyyon/coding-agent/tools/render-utils";
+import { getMemoryRoot } from "@veyyon/coding-agent/memory/local";
+import * as themeEngine from "@veyyon/coding-agent/theme/theme";
+import { formatStatusIcon } from "@veyyon/coding-agent/tools/core/render-utils";
 import {
 	dynamicImportBindings,
 	dynamicImportSpecifiersIn,
@@ -42,7 +42,7 @@ import { PACKAGES, RESOLUTION, reach, reachedNames, SRC } from "../helpers/modul
  * 2026-07-26:
  *
  *     200,640   528 files x 380   config/settings.ts
- *     152,484   291 files x 524   modes/theme/theme.ts
+ *     152,484   291 files x 524   theme/theme.ts
  *     118,038   206 files x 573   session/session-manager.ts
  *     114,777   117 files x 981   session/agent-session.ts
  *      66,674    53 files x 1258  sdk.ts
@@ -54,8 +54,8 @@ import { PACKAGES, RESOLUTION, reach, reachedNames, SRC } from "../helpers/modul
  *      setter, 285 modules. The caps now live in `@veyyon/ai/provider-inflight-limits`, which imports
  *      nothing; `stream.ts` re-exports the setter so no existing caller changed.
  *   2. `settings-domains/model.ts` imported `THINKING_EFFORTS` from the `@veyyon/ai` barrel, and
- *      `thinking.ts` did the same. The list is owned by `@veyyon/catalog/effort`, which imports
- *      nothing. `settings-schema.ts` went from 371 modules to 106 and `thinking.ts` from 346 to 6.
+ *      `thinking/index.ts` did the same. The list is owned by `@veyyon/catalog/effort`, which imports
+ *      nothing. `settings-schema.ts` went from 371 modules to 106 and `thinking/index.ts` from 346 to 6.
  *   3. `session/agent-storage.ts` imported the sqlite credential store through the `@veyyon/ai` barrel
  *      (345) rather than from `@veyyon/ai/auth-storage` (212), the module that defines it.
  *
@@ -73,7 +73,7 @@ import { PACKAGES, RESOLUTION, reach, reachedNames, SRC } from "../helpers/modul
  * the number left over is the next task rather than the floor.
  *
  * THE SECOND ENTRY IN THE RANKING WAS NOT A BARREL IMPORT AT ALL, which is why it is worth recording
- * separately. `modes/theme/theme.ts` (291 test files) reached 524, and after the settings cut it still
+ * separately. `theme/theme.ts` (291 test files) reached 524, and after the settings cut it still
  * read 307. Nothing in it named a barrel: `getMarkdownTheme` simply LIVED there, and that function binds
  * an ASCII diagram renderer to the palette, so `./mermaid-cache` and its 36 modules sat on the graph of
  * every module that wanted a colour. The fix is the same rule with a different first step: the function
@@ -91,9 +91,9 @@ import { PACKAGES, RESOLUTION, reach, reachedNames, SRC } from "../helpers/modul
  *     deliberate single owner of all 143 prompts and `prompt-registry-coverage` forbids importing one
  *     from anywhere else, so the registry is not the thing to change: `wrapSteeringForModel` moved to
  *     `session/steering-envelope.ts`, which is the module that renders a prompt.
- *   - `formatOutputNotice` from `tools/output-meta.ts` (177), which owns the fluent builder, the tool
+ *   - `formatOutputNotice` from `tools/core/output-meta.ts` (177), which owns the fluent builder, the tool
  *     wrapper and the spill configuration as well as the notice text. The wording and the metadata
- *     shape moved to `tools/output-notice.ts` (81), and the two strippers went with them, because
+ *     shape moved to `tools/core/output-notice.ts` (81), and the two strippers went with them, because
  *     `stripOutputNotice` removes a notice by rebuilding it and matching the tail: one module, one
  *     wording.
  *
@@ -112,7 +112,7 @@ import { PACKAGES, RESOLUTION, reach, reachedNames, SRC } from "../helpers/modul
  * THEN THE RULE WAS WRITTEN DOWN AND IT FOUND TWENTY-ONE MORE, which is the argument for the table
  * below rather than for a twenty-first ceiling. Nine of them were the cheapest kind: `assistantText`,
  * `assistantTextBlocks` and `instrumentationRank` are each defined in a module that reaches exactly ONE,
- * against the barrel's 346, and `modes/utils/copy-targets.ts`, `hindsight/transcript.ts` and
+ * against the barrel's 346, and `modes/terminal/utils/copy-targets.ts`, `hindsight/transcript.ts` and
  * `cli/session-stats.ts` each fell from about 347 to 76 on one line. The other twelve did NOT move their
  * own file's number at all, because those files also import `completeSimple` or `streamSimple` and
  * genuinely want the streaming engine. They were fixed anyway, and the reason is worth stating plainly:
@@ -310,7 +310,7 @@ describe("the settings schema and the thinking ladder", () => {
 	 * ladder are checked, because fixing one and leaving the other keeps the whole graph.
 	 */
 	it("reads the effort ladder from the module that owns it, not through a barrel", () => {
-		for (const file of ["config/settings-domains/model.ts", "thinking.ts"]) {
+		for (const file of ["config/settings-domains/model.ts", "thinking/index.ts"]) {
 			const imports = runtimeImportsOf(path.join(SRC, file));
 
 			expect(imports, `${file} should take THINKING_EFFORTS from @veyyon/catalog/effort`).toContain(
@@ -325,17 +325,17 @@ describe("the settings schema and the thinking ladder", () => {
 		const barrel = path.relative(PACKAGES, path.join(AI_SRC, "index.ts"));
 
 		expect(reachedNames("config/settings-schema.ts")).not.toContain(barrel);
-		expect(reachedNames("thinking.ts")).not.toContain(barrel);
+		expect(reachedNames("thinking/index.ts")).not.toContain(barrel);
 	});
 
 	/**
-	 * FLOOR, so the three ceilings above cannot pass by resolving nothing. `thinking.ts` genuinely
+	 * FLOOR, so the three ceilings above cannot pass by resolving nothing. `thinking/index.ts` genuinely
 	 * imports `@veyyon/agent-core`, `@veyyon/catalog/effort` and `@veyyon/catalog/model-thinking`, so a
 	 * working walk lands well above one.
 	 */
 	it("actually walks the graph it is measuring", () => {
-		expect(reach("thinking.ts")).toBeGreaterThan(3);
-		expect(reachedNames("thinking.ts")).toContain(
+		expect(reach("thinking/index.ts")).toBeGreaterThan(3);
+		expect(reachedNames("thinking/index.ts")).toContain(
 			path.relative(PACKAGES, path.join(PACKAGES, "catalog/src/effort.ts")),
 		);
 	});
@@ -399,7 +399,7 @@ describe("the session layer, the next two entries in the same ranking", () => {
 	});
 
 	it("forwards the credential names from their own module, not the barrel", () => {
-		const imports = runtimeImportsOf(path.join(SRC, "session/auth-storage.ts"));
+		const imports = runtimeImportsOf(path.join(PACKAGES, "..", "kernel/src/session/auth-storage.ts"));
 
 		expect(imports).toContain("@veyyon/ai/auth-storage");
 		expect(imports).not.toContain("@veyyon/ai");
@@ -431,9 +431,9 @@ describe("the theme engine, second in the same ranking", () => {
 	 * absent. Neither is reachable by any path now.
 	 */
 	it("does not reach the mermaid renderer by any path", () => {
-		const reached = reachedNames("modes/theme/theme.ts");
+		const reached = reachedNames("theme/theme.ts");
 
-		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "modes/theme/mermaid-cache.ts")));
+		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "theme/mermaid-cache.ts")));
 		expect(reached).not.toContain(path.join("utils", "src", "mermaid-ascii.ts"));
 	});
 
@@ -444,11 +444,11 @@ describe("the theme engine, second in the same ranking", () => {
 	 * function moved to `./symbol-theme`. See the group below.
 	 */
 	it("does not reach the markdown adapter, and the adapter no longer reaches back", () => {
-		expect(reachedNames("modes/theme/theme.ts")).not.toContain(
-			path.relative(PACKAGES, path.join(SRC, "modes/theme/markdown-theme.ts")),
+		expect(reachedNames("theme/theme.ts")).not.toContain(
+			path.relative(PACKAGES, path.join(SRC, "theme/markdown-theme.ts")),
 		);
-		expect(reachedNames("modes/theme/markdown-theme.ts")).not.toContain(
-			path.relative(PACKAGES, path.join(SRC, "modes/theme/theme.ts")),
+		expect(reachedNames("theme/markdown-theme.ts")).not.toContain(
+			path.relative(PACKAGES, path.join(SRC, "theme/theme.ts")),
 		);
 	});
 
@@ -461,16 +461,16 @@ describe("the theme engine, second in the same ranking", () => {
 	 * of every reader. `./markdown-theme` then took `getSymbolTheme` from `./theme` for one field of the
 	 * markdown theme it builds, and the engine was 144 MARGINAL modules on that graph: a box-drawing
 	 * character set carried theme JSON loading, the hundred embedded theme modules, syntax highlighting
-	 * and mermaid rendering into every rendered markdown cell, and through `tui/code-cell.ts` into
-	 * `tools/read.ts`, which 54 test files import.
+	 * and mermaid rendering into every rendered markdown cell, and through `modes/terminal/draw/code-cell.ts` into
+	 * `tools/fs/read.ts`, which 54 test files import.
 	 *
-	 * `modes/theme/symbol-theme.ts` is that function beside the binding. MEASURED: `markdown-theme`
-	 * 319 -> 175, `tui/code-cell.ts` 327 -> 220, `tools/read.ts` 648 -> 542, `modes/components/diff.ts`
+	 * `theme/symbol-theme.ts` is that function beside the binding. MEASURED: `markdown-theme`
+	 * 319 -> 175, `modes/terminal/draw/code-cell.ts` 327 -> 220, `tools/fs/read.ts` 648 -> 542, `modes/terminal/components/transcript/diff.ts`
 	 * 288 -> 181.
 	 */
 	it("keeps the symbol reader a leaf, so reading the active symbols costs the binding and nothing else", () => {
-		expect(reach("modes/theme/symbol-theme.ts")).toBe(2);
-		expect(runtimeImportsOf(path.join(SRC, "modes/theme/symbol-theme.ts"))).toEqual(["./theme-binding"]);
+		expect(reach("theme/symbol-theme.ts")).toBe(2);
+		expect(runtimeImportsOf(path.join(SRC, "theme/symbol-theme.ts"))).toEqual(["./theme-binding"]);
 	});
 
 	/**
@@ -479,16 +479,16 @@ describe("the theme engine, second in the same ranking", () => {
 	 * the engine by ANY path, which is the assertion that fails if a later import re-opens the edge four
 	 * hops away, the way this one was opened.
 	 */
-	it.each(["modes/theme/markdown-theme.ts", "tui/code-cell.ts"])(
+	it.each(["theme/markdown-theme.ts", "modes/terminal/draw/code-cell.ts"])(
 		"%s reads symbols from the leaf and never reaches the engine",
 		relative => {
 			const reached = reachedNames(relative);
 
-			expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "modes/theme/symbol-theme.ts")));
-			expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "modes/theme/theme-binding.ts")));
-			expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "modes/theme/theme.ts")));
+			expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "theme/symbol-theme.ts")));
+			expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "theme/theme-binding.ts")));
+			expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "theme/theme.ts")));
 			// The engine's own heaviest subtree, named directly: the hundred embedded theme JSON modules.
-			expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "modes/theme/builtin-themes.ts")));
+			expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "theme/builtin-themes.ts")));
 		},
 	);
 
@@ -503,8 +503,8 @@ describe("the theme engine, second in the same ranking", () => {
 	 * green on the same line inside a comment.
 	 */
 	it("still forwards the symbol reader from the engine, so no existing caller changed", () => {
-		expect(reachedNames("modes/theme/theme.ts")).toContain(
-			path.relative(PACKAGES, path.join(SRC, "modes/theme/symbol-theme.ts")),
+		expect(reachedNames("theme/theme.ts")).toContain(
+			path.relative(PACKAGES, path.join(SRC, "theme/symbol-theme.ts")),
 		);
 		expect(typeof themeEngine.getSymbolTheme).toBe("function");
 	});
@@ -517,16 +517,15 @@ describe("the theme engine, second in the same ranking", () => {
 	 * the owner.
 	 */
 	it.each([
-		"tui/code-cell.ts",
-		"tui/file-list.ts",
-		"modes/components/diff.ts",
-		"modes/components/ask-dialog.ts",
-		"modes/components/copy-selector.ts",
-		"modes/components/eval-execution.ts",
-		"modes/components/execution-shared.ts",
-		"tools/bash.ts",
-		"tools/write.ts",
-		"lsp/render.ts",
+		"modes/terminal/draw/code-cell.ts",
+		"modes/terminal/draw/file-list.ts",
+		"modes/terminal/components/transcript/diff.ts",
+		"modes/terminal/components/dialogs/ask-dialog.ts",
+		"modes/terminal/components/selectors/copy-selector.ts",
+		"modes/terminal/components/transcript/eval-execution.ts",
+		"modes/terminal/components/transcript/execution-shared.ts",
+		"tools/shell/bash.ts",
+		"tools/fs/write.ts",
 	])("%s names the owner of the highlighter rather than the engine that forwards it", relative => {
 		const imports = runtimeImportsOf(path.join(SRC, relative));
 
@@ -538,14 +537,14 @@ describe("the theme engine, second in the same ranking", () => {
 	 * of every theme helper a file uses cuts nothing while the engine arrives through a DIFFERENT import,
 	 * and it did for three of the heaviest files in the package:
 	 *
-	 *   - `tools/bash.ts` and `tools/write.ts` took three names from the local `../tui` barrel, which
+	 *   - `tools/shell/bash.ts` and `tools/fs/write.ts` took three names from the local `../tui` barrel, which
 	 *     `export *`s `./file-list`, and THAT module took `getLanguageFromPath` from the engine. So a
 	 *     status line cost 282 modules of presentation layer, four hops away.
-	 *   - `modes/components/eval-execution.ts` took `getSymbolTheme` and `theme` from
+	 *   - `modes/terminal/components/transcript/eval-execution.ts` took `getSymbolTheme` and `theme` from
 	 *     `./execution-shared`, which took them from the engine.
 	 *
-	 * MEASURED: `tui/file-list.ts` 289 -> 180, the local `tui/index.ts` barrel 352 -> 246,
-	 * `tools/bash.ts` 504 -> 353, `tools/write.ts` 536 -> 386, `modes/components/eval-execution.ts`
+	 * MEASURED: `modes/terminal/draw/file-list.ts` 289 -> 180, the local `modes/terminal/draw/index.ts` barrel 352 -> 246,
+	 * `tools/shell/bash.ts` 504 -> 353, `tools/fs/write.ts` 536 -> 386, `modes/terminal/components/transcript/eval-execution.ts`
 	 * 299 -> 193, and the whole suite 857,632 -> 832,035 module instantiations.
 	 *
 	 * Asserted by REACHABILITY rather than by the import list, because that is the difference between the
@@ -553,21 +552,21 @@ describe("the theme engine, second in the same ranking", () => {
 	 */
 	it.each([
 		// Each row carries its own CONTROL: something the file must still reach, so that deleting its theme
-		// usage entirely would fail rather than satisfy the two absences. `tui/file-list.ts` is the one that
+		// usage entirely would fail rather than satisfy the two absences. `modes/terminal/draw/file-list.ts` is the one that
 		// needs a different control from the rest: it takes `Theme` as an erased type and wanted only the
 		// language table, so it has no runtime theme dependency at all and asserting the binding here failed
 		// for the right reason. That is the shape of a vacuous absence, caught by writing the control down.
-		["tui/file-list.ts", "utils/lang-from-path.ts"],
-		["tui/index.ts", "modes/theme/theme-binding.ts"],
-		["tools/bash.ts", "modes/theme/theme-binding.ts"],
-		["tools/write.ts", "modes/theme/theme-binding.ts"],
-		["modes/components/eval-execution.ts", "modes/theme/symbol-theme.ts"],
-		["modes/components/execution-shared.ts", "modes/theme/symbol-theme.ts"],
+		["modes/terminal/draw/file-list.ts", "utils/lang-from-path.ts"],
+		["modes/terminal/draw/index.ts", "theme/theme-binding.ts"],
+		["tools/shell/bash.ts", "theme/theme-binding.ts"],
+		["tools/fs/write.ts", "theme/theme-binding.ts"],
+		["modes/terminal/components/transcript/eval-execution.ts", "theme/symbol-theme.ts"],
+		["modes/terminal/components/transcript/execution-shared.ts", "theme/symbol-theme.ts"],
 	])("%s reaches the theme engine by no path at all", (relative, control) => {
 		const reached = reachedNames(relative);
 
-		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "modes/theme/theme.ts")));
-		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "modes/theme/builtin-themes.ts")));
+		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "theme/theme.ts")));
+		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "theme/builtin-themes.ts")));
 		expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, control)));
 	});
 
@@ -578,9 +577,9 @@ describe("the theme engine, second in the same ranking", () => {
 	 * "does not reach" cases and this one would fail.
 	 */
 	it("keeps the mermaid renderer on the markdown adapter, which is what wants it", () => {
-		const reached = reachedNames("modes/theme/markdown-theme.ts");
+		const reached = reachedNames("theme/markdown-theme.ts");
 
-		expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "modes/theme/mermaid-cache.ts")));
+		expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "theme/mermaid-cache.ts")));
 		expect(reached).toContain(path.join("utils", "src", "mermaid-ascii.ts"));
 	});
 
@@ -591,12 +590,12 @@ describe("the theme engine, second in the same ranking", () => {
 	 * file cost 51 MB per realm (see the note on the settings subscription in `theme.ts`).
 	 */
 	it("reads the active theme through the binding, not through the engine", () => {
-		const imports = runtimeImportsOf(path.join(SRC, "modes/theme/highlight.ts"));
+		const imports = runtimeImportsOf(path.join(SRC, "theme/highlight.ts"));
 
 		expect(imports).toContain("./theme-binding");
 		expect(imports).not.toContain("./theme");
-		expect(reachedNames("modes/theme/highlight.ts")).not.toContain(
-			path.relative(PACKAGES, path.join(SRC, "modes/theme/theme.ts")),
+		expect(reachedNames("theme/highlight.ts")).not.toContain(
+			path.relative(PACKAGES, path.join(SRC, "theme/theme.ts")),
 		);
 	});
 
@@ -606,9 +605,9 @@ describe("the theme engine, second in the same ranking", () => {
 	 * floor above.
 	 */
 	it("actually walks the theme graph", () => {
-		expect(reach("modes/theme/theme.ts")).toBeGreaterThan(120);
-		expect(reachedNames("modes/theme/theme.ts")).toContain(
-			path.relative(PACKAGES, path.join(SRC, "modes/theme/builtin-themes.ts")),
+		expect(reach("theme/theme.ts")).toBeGreaterThan(120);
+		expect(reachedNames("theme/theme.ts")).toContain(
+			path.relative(PACKAGES, path.join(SRC, "theme/builtin-themes.ts")),
 		);
 	});
 });
@@ -628,17 +627,17 @@ describe("session/messages, which the session layer is mostly made of", () => {
 	});
 
 	/**
-	 * THE TOOL LAYER, by name and in both spellings it arrives in. `tools/output-meta.ts` owns the fluent
+	 * THE TOOL LAYER, by name and in both spellings it arrives in. `tools/core/output-meta.ts` owns the fluent
 	 * builder, the tool wrapper and the spill configuration on top of the notice text, so it reaches
 	 * `config/settings`, the streaming output sink and the artifact store. Appending a notice to a message
-	 * needs the wording only, which is what `tools/output-notice.ts` owns.
+	 * needs the wording only, which is what `tools/core/output-notice.ts` owns.
 	 */
 	it("does not reach the tool layer, only the notice wording", () => {
 		const reached = reachedNames("session/messages.ts");
 
-		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "tools/output-meta.ts")));
-		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "tools/output-artifact.ts")));
-		expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "tools/output-notice.ts")));
+		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "tools/core/output-meta.ts")));
+		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "tools/core/output-artifact.ts")));
+		expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "tools/core/output-notice.ts")));
 	});
 
 	/**
@@ -649,8 +648,8 @@ describe("session/messages, which the session layer is mostly made of", () => {
 	it("names the notice module and not the tool module", () => {
 		const imports = runtimeImportsOf(path.join(SRC, "session/messages.ts"));
 
-		expect(imports).toContain("../tools/output-notice");
-		expect(imports).not.toContain("../tools/output-meta");
+		expect(imports).toContain("../tools/core/output-notice");
+		expect(imports).not.toContain("../tools/core/output-meta");
 		expect(imports).not.toContain("../prompts/registry");
 	});
 
@@ -661,11 +660,11 @@ describe("session/messages, which the session layer is mostly made of", () => {
 	 * tail, so wording that varied with settings would silently stop stripping.
 	 */
 	it("keeps the notice wording independent of settings and the tool wrapper", () => {
-		const reached = reachedNames("tools/output-notice.ts");
+		const reached = reachedNames("tools/core/output-notice.ts");
 
 		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "config/settings.ts")));
-		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "tools/output-meta.ts")));
-		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "modes/theme/theme.ts")));
+		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "tools/core/output-meta.ts")));
+		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "theme/theme.ts")));
 	});
 
 	/**
@@ -715,11 +714,11 @@ describe("reading a local file does not load the MCP client, the skill loader or
 	 * `getActiveSkills()` still exist on the heavy modules and still work.
 	 */
 	it("reaches none of the four subsystems the chain used to drag in", () => {
-		const reached = reachedNames("tools/read.ts");
+		const reached = reachedNames("tools/fs/read.ts");
 
 		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "mcp/manager.ts")));
 		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "extensibility/skills.ts")));
-		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "memories/index.ts")));
+		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "memory/local.ts")));
 	});
 
 	/**
@@ -734,7 +733,7 @@ describe("reading a local file does not load the MCP client, the skill loader or
 	 * where this claims) and the aggregate must not (or the cut is decoration).
 	 */
 	it("takes its description from its directory's row module and not from the whole registry", () => {
-		const reached = reachedNames("tools/read.ts");
+		const reached = reachedNames("tools/fs/read.ts");
 
 		expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "prompts/tools/rows.ts")));
 		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "prompts/registry.ts")));
@@ -750,12 +749,12 @@ describe("reading a local file does not load the MCP client, the skill loader or
 	 * A walk that resolved nothing would satisfy the absences above and fail this.
 	 */
 	it("still reaches the router and its handlers, which is what makes the absences meaningful", () => {
-		const reached = reachedNames("tools/read.ts");
+		const reached = reachedNames("tools/fs/read.ts");
 
 		expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "internal-urls/router.ts")));
 		expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "internal-urls/mcp-protocol.ts")));
 		expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "internal-urls/skill-protocol.ts")));
-		expect(reach("tools/read.ts")).toBeGreaterThan(300);
+		expect(reach("tools/fs/read.ts")).toBeGreaterThan(300);
 	});
 
 	/**
@@ -765,7 +764,7 @@ describe("reading a local file does not load the MCP client, the skill loader or
 	 * modules. Asserted as reachability, on the module that is imported by 54 test files.
 	 */
 	it("reaches no module through the @veyyon/utils barrel", () => {
-		const reached = reachedNames("tools/read.ts");
+		const reached = reachedNames("tools/fs/read.ts");
 
 		expect(reached).not.toContain(path.join("utils", "src", "index.ts"));
 		// The control: it still uses utils, through owners. `type-guards` holds `errorMessage`, which almost
@@ -787,12 +786,12 @@ describe("reading a local file does not load the MCP client, the skill loader or
 		const store = path.relative(PACKAGES, path.join(SRC, "config/settings.ts"));
 		const slot = path.relative(PACKAGES, path.join(SRC, "config/settings-instance.ts"));
 
-		for (const file of ["tools/read.ts", "tools/fetch.ts", "web/search/index.ts"]) {
+		for (const file of ["tools/fs/read.ts", "tools/web/fetch.ts", "tools/web/search/index.ts"]) {
 			expect(reachedNames(file), `${file} should not reach the settings store`).not.toContain(store);
 		}
 		// The control: they still read settings, through the slot. An absence of both would mean the walk
 		// stopped resolving rather than that the edge was cut.
-		expect(reachedNames("tools/read.ts")).toContain(slot);
+		expect(reachedNames("tools/fs/read.ts")).toContain(slot);
 	});
 
 	it(`the settings slot reaches exactly ${SETTINGS_INSTANCE_CEILING} module, itself`, () => {
@@ -800,7 +799,7 @@ describe("reading a local file does not load the MCP client, the skill loader or
 	});
 
 	/**
-	 * The edge that made the split worth doing, asserted by NAME rather than by count. `tools/gh.ts` is
+	 * The edge that made the split worth doing, asserted by NAME rather than by count. `tools/web/gh.ts` is
 	 * the `github` tool and it is allowed to be expensive: it renders its own description from the prompt
 	 * registry, which is correct for a tool. What must not come back is a protocol handler naming it, so
 	 * the assertion is about the handler's reach set, not about the tool's size.
@@ -808,20 +807,20 @@ describe("reading a local file does not load the MCP client, the skill loader or
 	it("the issue/pr handler does not reach the github tool or the prompt corpus", () => {
 		const reached = reachedNames("internal-urls/issue-pr-protocol.ts");
 
-		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "tools/gh.ts")));
+		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "tools/web/gh.ts")));
 		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "prompts/registry.ts")));
-		expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "tools/gh-fetch.ts")));
-		expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "tools/github-cache.ts")));
+		expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "tools/web/gh-fetch.ts")));
+		expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "tools/web/github-cache.ts")));
 	});
 
 	/**
 	 * And the tool still re-exports every fetcher, which is the promise that made the move invisible to
-	 * callers. `tools/gh-renderer.ts` and a long tail of tests name `./gh` for these, and the re-export is
+	 * callers. `tools/web/gh-view.ts` and a long tail of tests name `./gh` for these, and the re-export is
 	 * the only reason none of them changed. Asserted through the module's exports rather than by reading
 	 * the source, so a re-export that compiles but resolves to nothing would fail here.
 	 */
 	it("the github tool still re-exports the fetchers it used to own", async () => {
-		const tool = (await import("@veyyon/coding-agent/tools/gh")) as Record<string, unknown>;
+		const tool = (await import("@veyyon/coding-agent/tools/web/gh")) as Record<string, unknown>;
 
 		for (const name of [
 			"getOrFetchIssue",
@@ -852,29 +851,29 @@ describe("reading a local file does not load the MCP client, the skill loader or
 		expect(skill).not.toContain("../extensibility/skills");
 
 		const memory = runtimeImportsOf(path.join(SRC, "internal-urls/memory-protocol.ts"));
-		expect(memory).toContain("../memories/paths");
-		expect(memory).not.toContain("../memories");
+		expect(memory).toContain("../memory/paths");
+		expect(memory).not.toContain("../memory/local");
 	});
 
 	/**
 	 * The four leaves, each asserted to import NOTHING at runtime. That is what makes them leaves and it
 	 * is the whole reason they exist: a slot that imports the thing it holds is not a slot, it is the
-	 * thing. `memories/paths` is the exception at one import, `@veyyon/utils` for `getMemoriesDir`, and
+	 * thing. `memory/paths` is the exception at one import, `@veyyon/utils` for `getMemoriesDir`, and
 	 * its number says so.
 	 */
 	it("the four leaves import nothing at runtime", () => {
 		expect(runtimeImportsOf(path.join(SRC, "mcp/manager-instance.ts"))).toEqual([]);
 		expect(runtimeImportsOf(path.join(SRC, "extensibility/active-skills.ts"))).toEqual([]);
-		expect(runtimeImportsOf(path.join(SRC, "tools/tool-ui-status.ts"))).toEqual([]);
+		expect(runtimeImportsOf(path.join(SRC, "tools/core/tool-ui-status.ts"))).toEqual([]);
 		// `node:path` and one utils name for the directory it joins under. Node builtins are not part of
 		// the graph this file measures, and they are listed here so the assertion stays exact.
 		// `@veyyon/utils/dirs` (15) rather than the barrel (74), for `getMemoriesDir`. Safe to name directly
 		// since `dirs.ts` applies `$HOME/.env` itself; see `packages/utils/test/dotenv-*.test.ts`. 75 -> 18.
-		expect(runtimeImportsOf(path.join(SRC, "memories/paths.ts"))).toEqual(["node:path", "@veyyon/utils/dirs"]);
+		expect(runtimeImportsOf(path.join(SRC, "memory/paths.ts"))).toEqual(["node:path", "@veyyon/utils/dirs"]);
 
 		expect(reach("mcp/manager-instance.ts")).toBe(1);
 		expect(reach("extensibility/active-skills.ts")).toBe(1);
-		expect(reach("tools/tool-ui-status.ts")).toBe(1);
+		expect(reach("tools/core/tool-ui-status.ts")).toBe(1);
 	});
 
 	/**
@@ -895,11 +894,11 @@ describe("reading a local file does not load the MCP client, the skill loader or
 
 	/**
 	 * The status line is the extreme case of the same rule and worth its own exact number: TWO modules,
-	 * itself and the status union it renders. It was 168, and `tui/index.ts` re-exports it into
-	 * `tools/fetch.ts`, which `read.ts` imports, so those 166 were paid four hops away.
+	 * itself and the status union it renders. It was 168, and `modes/terminal/draw/index.ts` re-exports it into
+	 * `tools/web/fetch.ts`, which `read.ts` imports, so those 166 were paid four hops away.
 	 */
 	it("the status line is two modules", () => {
-		expect(reach("tui/status-line.ts")).toBe(2);
+		expect(reach("modes/terminal/draw/status-line.ts")).toBe(2);
 	});
 
 	/**
@@ -909,8 +908,8 @@ describe("reading a local file does not load the MCP client, the skill loader or
 	 * two different modules by design.
 	 */
 	it("the hyperlink formatter does not reach the memory consolidator", () => {
-		expect(reachedNames("tui/hyperlink.ts")).not.toContain(
-			path.relative(PACKAGES, path.join(SRC, "memories/index.ts")),
+		expect(reachedNames("modes/terminal/draw/hyperlink.ts")).not.toContain(
+			path.relative(PACKAGES, path.join(SRC, "memory/local.ts")),
 		);
 	});
 });
@@ -948,11 +947,11 @@ const LEAF_OWNERS: ReadonlyArray<
 > = [
 	["mcpManagerInstance", "mcp/manager-instance.ts", "mcp/manager.ts", 702],
 	["getActiveSkills", "extensibility/active-skills.ts", "extensibility/skills.ts", 366],
-	["getMemoryRoot", "memories/paths.ts", "memories/index.ts", 559],
-	["formatStatusIcon", "tools/tool-ui-status.ts", "tools/render-utils.ts", 168],
+	["getMemoryRoot", "memory/paths.ts", "memory/local.ts", 559],
+	["formatStatusIcon", "tools/core/tool-ui-status.ts", "tools/core/render-utils.ts", 168],
 	// A THIRD SHAPE: a presentation LIST that sat with the thing it presents. The browse order is eight
 	// strings, and `builtin-registry.ts` declares every builtin command, so it imports every command
-	// implementation. `modes/prompt-action-autocomplete.ts` wanted the order and nothing else and paid 1,149
+	// implementation. `modes/terminal/autocomplete/prompt-action-autocomplete.ts` wanted the order and nothing else and paid 1,149
 	// marginal modules for it: 1,386 -> 238.
 	[
 		"BUILTIN_SLASH_COMMAND_CATEGORY_ORDER",
@@ -1011,10 +1010,10 @@ describe("a cheap value is owned by a leaf, and a file that wants only it names 
 		expect(runtimeImportsOf(path.join(SRC, "config/settings-instance.ts"))).toEqual([]);
 		expect(runtimeImportsOf(path.join(SRC, "mcp/manager-instance.ts"))).toEqual([]);
 		expect(runtimeImportsOf(path.join(SRC, "extensibility/active-skills.ts"))).toEqual([]);
-		expect(runtimeImportsOf(path.join(SRC, "tools/tool-ui-status.ts"))).toEqual([]);
+		expect(runtimeImportsOf(path.join(SRC, "tools/core/tool-ui-status.ts"))).toEqual([]);
 		// `@veyyon/utils/dirs` (15) rather than the barrel (74), for `getMemoriesDir`. Safe to name directly
 		// since `dirs.ts` applies `$HOME/.env` itself; see `packages/utils/test/dotenv-*.test.ts`. 75 -> 18.
-		expect(runtimeImportsOf(path.join(SRC, "memories/paths.ts"))).toEqual(["node:path", "@veyyon/utils/dirs"]);
+		expect(runtimeImportsOf(path.join(SRC, "memory/paths.ts"))).toEqual(["node:path", "@veyyon/utils/dirs"]);
 	});
 
 	it.each(LEAF_OWNERS)(
@@ -1043,19 +1042,25 @@ describe("a cheap value is owned by a leaf, and a file that wants only it names 
 	 * API: it is about nobody importing a 702-module class in order to ask whether a manager was installed.
 	 */
 	/**
-	 * THE TASK BARREL, named as an edge rather than as a count. `modes/session-observer-registry.ts`
-	 * subscribes to two event channels BY NAME, and it took those two strings from `../task`, the barrel over
+	 * THE TASK BARREL, named as an edge rather than as a count. `modes/terminal/session-observer-registry.ts`
+	 * subscribes to two event channels BY NAME, and it took those two strings from the `task` barrel over
 	 * the whole task subsystem: 1,407 modules to know what a channel is called. `task/types.ts` declares them
 	 * and reaches 23, so the fix was one specifier and the file went to 24.
 	 *
-	 * Asserted as the SPECIFIER rather than as reachability, because `../task` and `../task/types` differ by
-	 * one path segment, compile identically, and differ by 1,383 modules.
+	 * Asserted as the EDGE rather than as reachability, because `task` and `task/types` differ by one path
+	 * segment, compile identically, and differ by 1,383 modules.
 	 */
 	it("subscribes to task channels through the module that declares them", () => {
-		const imports = runtimeImportsOf(path.join(SRC, "modes/session-observer-registry.ts"));
+		const imports = runtimeImportsOf(path.join(SRC, "modes/terminal/session-observer-registry.ts"));
+		// Compared after resolution, so the assertion survives the file moving a
+		// directory deeper: the barrel and the declaring module differ by one path
+		// segment and by 1,383 modules, and that is the difference being pinned.
+		const resolved = imports
+			.filter(specifier => specifier.startsWith("."))
+			.map(specifier => path.relative(SRC, path.resolve(SRC, "modes/terminal", specifier)));
 
-		expect(imports).not.toContain("../task");
-		expect(imports).toContain("../task/types");
+		expect(resolved).not.toContain("task");
+		expect(resolved).toContain("task/types");
 	});
 
 	it("nobody calls MCPManager.instance() to read the slot", () => {
@@ -1089,14 +1094,14 @@ describe("a cheap value is owned by a leaf, and a file that wants only it names 
  * path. So: the STATIC edge is gone, the DYNAMIC one is present, and the call sites still exist.
  */
 describe("declaring the web-search tool does not load the credential store", () => {
-	const source = fs.readFileSync(path.join(SRC, "web/search/index.ts"), "utf-8");
+	const source = fs.readFileSync(path.join(SRC, "tools/web/search/index.ts"), "utf-8");
 
 	/**
 	 * The four modules by name, because the count is the symptom and these are the cause. Each is a piece of
 	 * credential machinery, and a single static `import { discoverAuthStorage }` brings back all four.
 	 */
 	it("reaches no part of the auth broker or the credential store", () => {
-		const reached = reachedNames("web/search/index.ts");
+		const reached = reachedNames("tools/web/search/index.ts");
 
 		expect(reached).not.toContain(path.join("coding-agent", "src", "session", "auth-broker-config.ts"));
 		expect(reached).not.toContain(path.join("ai", "src", "auth-broker", "client.ts"));
@@ -1111,16 +1116,18 @@ describe("declaring the web-search tool does not load the credential store", () 
 	 * declared search tool genuinely carries, and it must be there.
 	 */
 	it("still reaches what defining a search actually needs", () => {
-		const reached = reachedNames("web/search/index.ts");
+		const reached = reachedNames("tools/web/search/index.ts");
 
-		expect(reached).toContain(path.join("coding-agent", "src", "web", "search", "provider.ts"));
-		expect(reached).toContain(path.join("coding-agent", "src", "web", "search", "render.ts"));
+		expect(reached).toContain(path.join("coding-agent", "src", "tools", "web", "search", "provider.ts"));
+		expect(reached).toContain(path.join("coding-agent", "src", "tools", "web", "search", "view.ts"));
 		expect(reached.length).toBeGreaterThan(100);
 	});
 
 	/** The static edge is gone. This is the assertion that fails if someone re-adds the plain import. */
 	it("names the broker config in no static import", () => {
-		expect(runtimeImportsOf(path.join(SRC, "web/search/index.ts"))).not.toContain("../../session/auth-broker-config");
+		expect(runtimeImportsOf(path.join(SRC, "tools/web/search/index.ts"))).not.toContain(
+			"../../../session/auth-broker-config",
+		);
 	});
 
 	/**
@@ -1131,8 +1138,8 @@ describe("declaring the web-search tool does not load the credential store", () 
 	it("loads the broker config dynamically, and still asks it for credentials", () => {
 		// The parsed dynamic edge, not the characters: the scan this replaced went green on a doc
 		// comment describing the import and red on a reformat of the call it was watching.
-		expect(dynamicImportSpecifiersIn(source)).toContain("../../session/auth-broker-config");
-		expect(dynamicImportBindings(source, "../../session/auth-broker-config")).toEqual(["discover"]);
+		expect(dynamicImportSpecifiersIn(source)).toContain("../../../session/auth-broker-config");
+		expect(dynamicImportBindings(source, "../../../session/auth-broker-config")).toEqual(["discover"]);
 
 		const callSites = withoutComments(source).match(/await discoverAuthStorage\(\)/g) ?? [];
 		expect(callSites.length).toBe(3);

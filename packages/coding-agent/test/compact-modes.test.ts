@@ -4,7 +4,7 @@ import {
 	findCompactMode,
 	type ParsedCompactArgs,
 	parseCompactArgs,
-} from "@veyyon/coding-agent/session/compact-modes";
+} from "@veyyon/kernel/session/compact-modes";
 
 /** Parse a successful `/compact` invocation for assertions below. */
 function parsed(args: string): ParsedCompactArgs {

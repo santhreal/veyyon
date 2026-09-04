@@ -3,9 +3,9 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings, settings } from "@veyyon/coding-agent/config/settings";
-import * as downloader from "@veyyon/coding-agent/stt/downloader";
-import * as recorder from "@veyyon/coding-agent/stt/recorder";
-import { STTController } from "@veyyon/coding-agent/stt/stt-controller";
+import * as downloader from "@veyyon/coding-agent/speech/stt/downloader";
+import * as recorder from "@veyyon/coding-agent/speech/stt/recorder";
+import { STTController } from "@veyyon/coding-agent/speech/stt/stt-controller";
 import { getTinyModelsCacheDir, removeWithRetries, setAgentDir } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 

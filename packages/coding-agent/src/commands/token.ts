@@ -12,7 +12,7 @@ import { ModelRegistry } from "../config/model-registry";
 // `session/auth-broker-config`, which OWNS this, not the `sdk` barrel that re-exports it: the barrel is
 // the whole application and this file wants one function.
 import { discoverAuthStorage } from "../session/auth-broker-config";
-import { getAvailableAuthMethods } from "../web/search/providers/perplexity-auth";
+import { getAvailableAuthMethods } from "../tools/web/search/providers/perplexity-auth";
 
 export default class Token extends Command {
 	static description = "Get the API key or OAuth token for a provider";

@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { computeMnemopiBankScope, extendRecallWithLegacyBanks } from "@veyyon/coding-agent/mnemopi/config";
+import { computeMnemopiBankScope, extendRecallWithLegacyBanks } from "@veyyon/coding-agent/memory/mnemopi/config";
 import { removeWithRetries, TempDir } from "@veyyon/utils";
 
 // Set up a fixture filesystem we can reuse across the two regression
@@ -26,7 +26,7 @@ afterAll(async () => {
 	await rootDir.remove();
 });
 
-// Schema mirrors the subset of `packages/mnemopi/src/core/beam/schema.ts`
+// Schema mirrors the subset of `plugins/mnemopi/src/core/beam/schema.ts`
 // that this code path needs to probe. We deliberately do not run the
 // full schema setup — the cwd-probing query only touches working_memory.
 function createBankFixture(bank: string, metadataRows: readonly Record<string, unknown>[]): void {

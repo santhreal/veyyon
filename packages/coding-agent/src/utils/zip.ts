@@ -10,7 +10,7 @@ import * as zlib from "node:zlib";
 import { formatBytes } from "@veyyon/utils/format";
 // Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
 import * as logger from "@veyyon/utils/logger";
-import { ToolError, toolFailure } from "../tools/tool-errors";
+import { ToolError, toolFailure } from "../tools/core/tool-errors";
 
 /** A ZIP archive decoded to a `path → bytes` map of its file members. */
 export type Unzipped = Record<string, Uint8Array>;
@@ -57,7 +57,7 @@ export function resolveArchiveMemberPath(baseDir: string, ref: string): string {
 	const absolute = decoded.startsWith("/");
 	const baseSegments = absolute || !baseDir ? [] : baseDir.split("/");
 	const out: string[] = [];
-	for (const segment of [...baseSegments, ...decoded.split("/")]) {
+	for (const segment of baseSegments.concat(decoded.split("/"))) {
 		if (segment === "" || segment === ".") continue;
 		if (segment === "..") {
 			out.pop();
@@ -295,7 +295,7 @@ function upsertArchiveEntry(map: Map<string, ArchiveIndexEntry>, entry: ArchiveI
 }
 
 function ensureParentDirectories(map: Map<string, ArchiveIndexEntry>): void {
-	for (const entry of [...map.values()]) {
+	for (const entry of Array.from(map.values())) {
 		const parts = entry.path.split("/");
 		const stop = parts.length - 1;
 		for (let index = 1; index <= stop; index++) {
@@ -818,7 +818,7 @@ export class ArchiveReader {
 			});
 		}
 
-		return [...children.values()].sort((left, right) =>
+		return Array.from(children.values()).sort((left, right) =>
 			left.name.toLowerCase().localeCompare(right.name.toLowerCase()),
 		);
 	}

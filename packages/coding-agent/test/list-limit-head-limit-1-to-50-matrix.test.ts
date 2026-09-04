@@ -2,7 +2,7 @@
  * applyListLimit headLimit 1..50 on 100-item array: exact slice, no limitReached.
  */
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "../src/tools/list-limit";
+import { applyListLimit } from "../src/tools/core/list-limit";
 
 describe("list-limit headLimit 1 to 50 matrix", () => {
 	const items = Array.from({ length: 100 }, (_, i) => i);

@@ -15,14 +15,14 @@ answer changes a family's declaration in `packages/ai/src/error/domains/`, not i
 |`callWithCopilotModelRetry`|`packages/ai/src/utils/retry.ts`|one re-send, `retryBaseDelayMs`|`isCopilotTransientModelError`. Copilot's routing flap is a 400 whose meaning only Copilot knows, and a 400 is a wall to every other loop.|
 |Anthropic stream retry|`packages/ai/src/providers/anthropic.ts` (`isAnthropicStreamRetryable`)|per-stream attempt count|`isProviderRetryableError` plus the Copilot hook, behind `activeAbortTracker.wasCallerAbort()`.|
 |Devin stream retry|`packages/ai/src/providers/devin.ts`|per-stream attempt count|`isProviderRetryableError`, behind `isAbortError`.|
-|OAuth retry and rotation|`packages/ai/src/auth-retry.ts`|one forced refresh, then one rotation per sibling credential|`isAuthRetryableError` and `isDefinitiveOAuthFailure`. A dead grant is not a transport fault: the answer is a different credential, not another attempt.|
+|OAuth retry and rotation|`packages/ai/src/auth-retry.ts`|one refresh-same then one sibling switch for an ordinary 401; a usage limit rotates straight through distinct siblings, capped by `AUTH_RETRY_MAX_ATTEMPTS`|`isAuthRetryableError` decides whether to retry at all, `isUsageLimit` decides refresh-same versus rotate. A dead grant is not a transport fault: the answer is a different credential, not another attempt, and `isDefinitiveOAuthFailure` in `packages/ai/src/error/domains/account.ts` states when the credential itself is spent, read by the refresh paths in `packages/ai/src/auth-storage.ts` rather than by this loop.|
 
 ## Above the transport
 
 |Loop|Where|Budget|Reads|
 |---|---|---|---|
-|Turn retry|`packages/agent/src/agent-loop.ts`|`retry.maxAttempts`, per-turn|`retriable(id)`, which vetoes first, admits the families whose `turn` stage retries, and refuses a replay-unsafe failure that is not declared `replaySafe`.|
-|Fallback chain|`packages/agent/src/agent-loop.ts`|one pass over the configured models|the same classification, after the turn's own attempts are spent. A model that cannot serve the request is answered by a different model, not by waiting.|
+|Turn retry|`packages/coding-agent/src/session/agent-session.ts`|`retry.maxRetries`, per-turn, exponential backoff through `calculateRetryBackoffDelayMs`|`retriable(id)`, which vetoes first, admits the families whose `turn` stage retries, and refuses a replay-unsafe failure that is not declared `replaySafe`.|
+|Fallback chain|`packages/coding-agent/src/session/agent-session.ts`|one pass over the `retry.fallbackChains` entry for the active model or role|the same classification, after the turn's own attempts are spent. A model that cannot serve the request is answered by a different model, not by waiting.|
 
 ## What none of them decide
 
@@ -35,3 +35,5 @@ A refusal. A named HTTP/2 code the RFC says a replay reproduces, and a framing v
 
 A stall. `iterateWithIdleTimeout` throws `StreamTimeoutError` on every deadline, so a stall is retried
 on its own flag through the timeout family, and only a caller's cancel reaches the veto.
+
+*Verified against `954eace449` on 2026-08-31.*

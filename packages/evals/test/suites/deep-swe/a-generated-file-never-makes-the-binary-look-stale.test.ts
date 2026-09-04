@@ -56,7 +56,7 @@ describe("vey binary staleness check — build-generated source exclusions", () 
 
 		// Non-generated source files must NOT be excluded
 		expect(isBuildGeneratedFile("src/cli.ts", "cli.ts")).toBe(false);
-		expect(isBuildGeneratedFile("src/tools/auto-generated-guard.ts", "auto-generated-guard.ts")).toBe(false);
+		expect(isBuildGeneratedFile("src/tools/fs/auto-generated-guard.ts", "auto-generated-guard.ts")).toBe(false);
 		expect(isBuildGeneratedFile("src/index.ts", "index.ts")).toBe(false);
 	});
 

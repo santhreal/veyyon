@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "@veyyon/coding-agent/tools/list-limit";
+import { applyListLimit } from "@veyyon/coding-agent/tools/core/list-limit";
 
 /**
  * Property-style contracts for applyListLimit over many sizes.

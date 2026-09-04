@@ -380,7 +380,7 @@ describe("Cursor grepArgs empty-pattern guard (issue #4574)", () => {
 		expect(emptyGrepPatternRejection("foo", "**/*.ts")).toBeNull();
 		// Whitespace-only patterns count as valid: leading/trailing whitespace is
 		// meaningful in regexes (indentation anchors), matching the coding-agent
-		// text-search engine's contract at packages/coding-agent/src/tools/text-search.ts.
+		// text-search engine's contract at packages/coding-agent/src/tools/search/text-search.ts.
 		expect(emptyGrepPatternRejection(" \tfoo ", undefined)).toBeNull();
 	});
 

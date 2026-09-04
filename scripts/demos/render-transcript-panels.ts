@@ -15,14 +15,15 @@
  *     bun scripts/demos/render-transcript-panels.ts --width 100 --ruler |
  *       bun scripts/demos/render-proof.ts --out /tmp/panels --width 100 --scale 2
  */
-import { BtwPanelComponent } from "../../packages/coding-agent/src/modes/components/btw-panel";
+
+import type { TUI } from "../../hosts/terminal/engine/src/index";
 import {
 	COMPOSER_INSET_COLS,
 	resolveComposerAccents,
-} from "../../packages/coding-agent/src/modes/components/composer-chrome";
-import { OmfgPanelComponent } from "../../packages/coding-agent/src/modes/components/omfg-panel";
-import { initTheme, theme } from "../../packages/coding-agent/src/modes/theme/theme";
-import type { TUI } from "../../packages/tui/src/index";
+} from "../../packages/coding-agent/src/modes/terminal/components/composer/composer-chrome";
+import { BtwPanelComponent } from "../../packages/coding-agent/src/modes/terminal/components/dialogs/btw-panel";
+import { OmfgPanelComponent } from "../../packages/coding-agent/src/modes/terminal/components/dialogs/omfg-panel";
+import { initTheme, theme } from "../../packages/coding-agent/src/theme/theme";
 import { flag, hasFlag, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");

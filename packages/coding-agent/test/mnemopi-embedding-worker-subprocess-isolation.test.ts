@@ -21,11 +21,11 @@ import {
 	createMnemopiEmbedSubprocess,
 	MnemopiEmbedClient,
 	type MnemopiEmbedWorkerHandle,
-} from "@veyyon/coding-agent/mnemopi/embed-client";
+} from "@veyyon/coding-agent/memory/mnemopi/embed-client";
 import type {
 	MnemopiEmbedWorkerInbound,
 	MnemopiEmbedWorkerOutbound,
-} from "@veyyon/coding-agent/mnemopi/embed-protocol";
+} from "@veyyon/coding-agent/memory/mnemopi/embed-protocol";
 import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
 
 describe("issue #3031 — mnemopi embeddings live in an isolated subprocess", () => {
@@ -36,7 +36,7 @@ describe("issue #3031 — mnemopi embeddings live in an isolated subprocess", ()
 		// starve nested Bun subprocess IPC on some Bun builds.
 		const repoRoot = path.resolve(import.meta.dir, "../../..");
 		const script =
-			'const { smokeTestMnemopiEmbedWorker } = await import("@veyyon/coding-agent/mnemopi/embed-client"); await smokeTestMnemopiEmbedWorker({ timeoutMs: 15000 });';
+			'const { smokeTestMnemopiEmbedWorker } = await import("@veyyon/coding-agent/memory/mnemopi/embed-client"); await smokeTestMnemopiEmbedWorker({ timeoutMs: 15000 });';
 		// Hermetic HOME: the probe asserts empty output, and a real-home config
 		// tree can inject startup warnings (e.g. the legacy-layout notice).
 		const { env, cleanup } = hermeticSpawnEnv();

@@ -4,6 +4,13 @@
 
 ### Added
 
+- `AgentTool.view` takes a host-agnostic `ToolViewRenderer` from `@veyyon/view`, so a tool describes its call and result cards without receiving a theme or returning a host component; where a tool also declares `renderCall`/`renderResult`, the host-specific pair still wins.
+
+### Changed
+
+- Typed tuple and Set copies use spreads rather than `.concat()` or `.slice()`, which those types do not define. No user-visible behavior changes.
+
+- A source-path comment in `thinking.ts` names the coding-agent module its reader moved to; behavior is unchanged.
 - Compaction can truncate the middle of an oversized text, keeping both edges, in any message role — including the roles that store their model-visible text outside `content`, such as a shell cell's `output`, a summary's `summary` and a file mention's `files[i].content`.
 - `pruneSupersededToolResults` accepts `cacheWarmSuffixTokens`, a hard ceiling on the sent context a rewrite may sit behind; a candidate over the ceiling is never rewritten, including as part of a batch the cache math would otherwise pay for.
 

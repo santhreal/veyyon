@@ -1,5 +1,8 @@
 import type { Message } from "@veyyon/ai";
-import { canonicalizeToolCallIdsInMessage, type ToolCallIdMap } from "./canonicalize-tool-call-ids";
+import {
+	canonicalizeToolCallIdsInMessage,
+	type ToolCallIdMap,
+} from "@veyyon/kernel/session/canonicalize-tool-call-ids";
 import { createPathRelativizer, type PathRelativizer } from "./relativize-paths";
 
 export interface CanonicalizedProviderMessages {

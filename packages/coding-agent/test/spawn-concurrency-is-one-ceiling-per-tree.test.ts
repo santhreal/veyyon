@@ -25,13 +25,13 @@
  */
 import { afterEach, describe, expect, it } from "bun:test";
 import { setTimeout as sleep } from "node:timers/promises";
+import { disposeOwnedResources } from "@veyyon/kernel/session/owned-resources";
 import {
 	initSessionCpuLimit,
 	resetSessionCpuLimitsForTests,
 	type SessionCpuLimit,
 	withInheritedBudgetGroup,
 } from "../src/session/cpu-limit";
-import { disposeOwnedResources } from "../src/session/owned-resources";
 import { resetTreeSpawnSemaphoresForTests, treeSpawnSemaphore } from "../src/task/spawn-semaphore";
 import {
 	type FakeHost,

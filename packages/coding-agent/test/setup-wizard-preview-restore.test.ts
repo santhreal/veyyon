@@ -24,13 +24,13 @@
  */
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { glyphSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/glyph";
-import { themeSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/theme";
+import { glyphSetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/glyph";
+import { themeSetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/theme";
 import type {
 	SetupSceneController,
 	SetupSceneHost,
 	SetupWizardContext,
-} from "@veyyon/coding-agent/modes/setup-wizard/scenes/types";
+} from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/types";
 import {
 	getCurrentThemeName,
 	initTheme,
@@ -38,7 +38,7 @@ import {
 	type SymbolPreset,
 	setSymbolPreset,
 	theme,
-} from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/theme/theme";
 import { useTempHome } from "./helpers/temp-home";
 
 useTempHome();

@@ -174,8 +174,8 @@ describe("a summary that repeats itself never replaces the history", () => {
 	 */
 	test("a summary whose structure repeats but whose text does not is compacted normally", async () => {
 		const structured = [
-			"- Read `packages/tui/src/tui.ts` and found the paint seam at #emitFullPaint.",
-			"- Read `packages/tui/src/terminal.ts` and found the DEC 2026 probe at line 548.",
+			"- Read `hosts/terminal/engine/src/tui.ts` and found the paint seam at #emitFullPaint.",
+			"- Read `hosts/terminal/engine/src/terminal.ts` and found the DEC 2026 probe at line 548.",
 			"- Read `packages/agent/src/compaction/compaction.ts` and found the summary gate.",
 			"- Read `packages/ai/src/utils/thinking-loop.ts` and found the verbatim detector.",
 			"",

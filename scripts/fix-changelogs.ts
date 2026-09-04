@@ -1,10 +1,11 @@
 #!/usr/bin/env bun
 
+import { existsSync } from "node:fs";
 import * as path from "node:path";
 import { compareDottedNumeric } from "@veyyon/utils/semver";
-import { $, Glob } from "bun";
+import { $ } from "bun";
+import { typeScriptMembersOf } from "./workspace-layout";
 
-const CHANGELOG_GLOB = "packages/*/CHANGELOG.md";
 const ORDERED_SECTION_TITLES = ["Breaking Changes", "Added", "Changed", "Fixed", "Removed"] as const;
 const CHANGELOG_BASELINE_REF = "refs/clog";
 const CHANGELOG_BASELINE_NAME = "clog";
@@ -874,14 +875,22 @@ async function collectHistoricalReleaseRecovery(
 	return recoveryByPath;
 }
 
+/**
+ * Every member `CHANGELOG.md` under `repoRoot`, resolved from its root manifest.
+ *
+ * This globbed `packages/*​/CHANGELOG.md`, so the release cut normalized section
+ * order for members under `packages/` and left every other one exactly as
+ * written: `kernel`, `contracts/view`, `contracts/wire`, `hosts/terminal/engine`,
+ * `natives/bridge/bindings` and the four under `plugins/` all keep a changelog,
+ * and a released section in the wrong order there survived the cut that exists to
+ * fix it. The member list is resolved from the manifest, so a member at any depth
+ * is included and a directory that is not a declared member is not.
+ */
 export async function changelogPaths(repoRoot: string): Promise<string[]> {
-	const glob = new Glob(CHANGELOG_GLOB);
-	const paths: string[] = [];
-	for await (const changelogPath of glob.scan(repoRoot)) {
-		paths.push(path.isAbsolute(changelogPath) ? path.relative(repoRoot, changelogPath) : changelogPath);
-	}
-	paths.sort();
-	return paths;
+	return typeScriptMembersOf(repoRoot)
+		.map(member => `${member}/CHANGELOG.md`)
+		.filter(relative => existsSync(path.join(repoRoot, relative)))
+		.sort();
 }
 
 async function changelogDiff(repoRoot: string, since: string, paths: readonly string[]): Promise<string> {

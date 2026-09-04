@@ -4,11 +4,20 @@
 #   proof/docker/record-x11-before.sh proof/scenes/<name>.sh
 #
 # The before arm holds the branch's changes back: every source file the branch
-# changed is held at its `main`
-# content for the length of the run, restored from an in-memory copy afterwards,
-# and the restore proved by comparing sha256 before and after. No git mutation
-# command is used — `git show` only reads — and the working tree ends
-# byte-identical.
+# changed is held at its content in the base ref for the length of the run, then
+# restored from an in-memory copy, and the restore proved by comparing sha256
+# before and after. A file the branch added is absent for the run and a file the
+# branch deleted is present, since the base tree — not the diff status — defines
+# the arm. No git mutation command is used: `git show` only reads, and the
+# working tree ends byte-identical.
+#
+# The hold cannot synthesize an install layout. `node_modules` and the workspace
+# links in it belong to the branch, so a branch that moves a workspace member or
+# changes a dependency has no faithful hold: the base source it restores imports
+# a member at a path this checkout no longer declares. This refuses that case
+# instead of recording a frame that is half one tree and half the other; record
+# that arm from a checkout of the base ref, with OUT_DIR pointing here.
+# PROOF_ALLOW_MANIFEST_DRIFT=1 records anyway.
 #
 # Output goes to proof/captures/x11/before, beside the after arm of the same
 # name, so the two are directly comparable. A caller that records a matrix --
@@ -31,35 +40,72 @@ if not scenes:
 # arm still records the tree without the change.
 base = os.environ.get("PROOF_BASE_REF", "main")
 
+# Source lives under every first-party root, not `packages/` alone: a member under
+# kernel/, hosts/, contracts/, plugins/ or natives/ reaches the running product the
+# same way, and a pathspec naming one root holds a fraction of the branch and
+# records the rest of it as "before".
+SOURCE_ROOTS = ("contracts/", "hosts/", "kernel/", "natives/", "packages/", "plugins/")
+# A prompt is a `.md` file the product imports as text, and a theme or catalog is
+# `.json`, so both are source here. `.snap` and fixture data are not: a scene reads
+# neither.
+CODE_SUFFIXES = (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".rs", ".md", ".json", ".css")
+MANIFESTS = ("package.json", "tsconfig.json", "Cargo.toml", "bun.lock", "package-lock.json")
+
 changed = subprocess.run(
-    ["git", "diff", "--name-status", f"{base}..HEAD", "--", "packages/*/src/*"],
+    ["git", "diff", "--name-only", f"{base}..HEAD"],
     capture_output=True, text=True, check=True,
 ).stdout.split("\n")
 
-held, deleted_by_branch = [], []
+touched, manifest_drift = [], []
 for line in changed:
-    if not line.strip():
+    path = line.strip()
+    if not path or not path.startswith(SOURCE_ROOTS) or not path.endswith(CODE_SUFFIXES):
         continue
-    fields = line.split("\t")
-    status = fields[0]
-    if status.startswith("D"):
-        deleted_by_branch.append(fields[-1])
-    elif status.startswith("R"):
-        deleted_by_branch.append(fields[1])
-    elif status.startswith("M"):
-        held.append(fields[-1])
+    name = os.path.basename(path)
+    if name in MANIFESTS or (name.startswith("tsconfig.") and name.endswith(".json")):
+        manifest_drift.append(path)
+        continue
+    touched.append(path)
+
+if manifest_drift and os.environ.get("PROOF_ALLOW_MANIFEST_DRIFT") != "1":
+    raise SystemExit(
+        f"{len(manifest_drift)} workspace manifest(s) differ from {base}, so no hold is faithful: "
+        + ", ".join(sorted(manifest_drift)[:5])
+        + "\nrecord this arm from a checkout of "
+        + base
+        + " with OUT_DIR pointing at proof/captures/x11/before, or set PROOF_ALLOW_MANIFEST_DRIFT=1"
+    )
+
 
 def sha(path):
     with open(path, "rb") as fh:
         return hashlib.sha256(fh.read()).hexdigest()
 
-kept = {p: open(p, "rb").read() for p in held}
-shas = {p: sha(p) for p in held}
-for p in deleted_by_branch:
-    if os.path.exists(p):
-        raise SystemExit("file the branch deleted is present again: " + p)
 
-print(f"holding {len(held)} modified files at {base}, restoring {len(deleted_by_branch)} deleted ones")
+def read_or_none(path):
+    if not os.path.exists(path):
+        return None
+    with open(path, "rb") as fh:
+        return fh.read()
+
+
+# The base tree decides what the arm holds: content when the base has the file,
+# absence when it does not. That covers a modification, a file the branch added, a
+# file it deleted and both halves of a rename under one rule.
+want = {}
+for path in touched:
+    old = subprocess.run(["git", "show", f"{base}:{path}"], capture_output=True)
+    want[path] = old.stdout if old.returncode == 0 else None
+
+have = {path: read_or_none(path) for path in touched}
+held = [p for p in touched if have[p] is not None]
+created = [p for p in touched if have[p] is None and want[p] is not None]
+hidden = [p for p in touched if have[p] is not None and want[p] is None]
+
+print(
+    f"holding {len(held)} files at {base}: {len(created)} the branch deleted are restored, "
+    f"{len(hidden)} it added are hidden"
+)
 
 out = os.environ.get("OUT_DIR") or os.path.join("proof", "captures", "x11", "before")
 os.makedirs(out, exist_ok=True)
@@ -69,25 +115,46 @@ os.makedirs(out, exist_ok=True)
 # guard the half it was written against, and the other arm records whatever it lands on.
 env = dict(os.environ, OUT_DIR=os.path.abspath(out), SCENE_ARM="before")
 
+# A file the branch deleted along with its directory needs the directory back, and the
+# restore takes back every directory it made rather than leaving an empty tree behind.
+made_dirs = []
 try:
-    for p in held + deleted_by_branch:
-        old = subprocess.run(["git", "show", f"{base}:{p}"], capture_output=True)
-        if old.returncode != 0:
-            raise SystemExit("no main copy of " + p)
-        with open(p, "wb") as fh:
-            fh.write(old.stdout)
+    for path, content in want.items():
+        if content is None:
+            if os.path.exists(path):
+                os.remove(path)
+            continue
+        parent = os.path.dirname(path)
+        if parent and not os.path.isdir(parent):
+            missing, walk = [], parent
+            while walk and not os.path.isdir(walk):
+                missing.append(walk)
+                walk = os.path.dirname(walk)
+            os.makedirs(parent, exist_ok=True)
+            made_dirs.extend(missing)
+        with open(path, "wb") as fh:
+            fh.write(content)
     for scene in scenes:
         print("recording", scene, flush=True)
         subprocess.run(["proof/docker/record-x11.sh", scene], check=True, env=env)
 finally:
-    for p, content in kept.items():
-        with open(p, "wb") as fh:
+    for path, content in have.items():
+        if content is None:
+            if os.path.exists(path):
+                os.remove(path)
+            continue
+        with open(path, "wb") as fh:
             fh.write(content)
-    for p in deleted_by_branch:
-        if os.path.exists(p):
-            os.remove(p)
-    ok = all(sha(p) == shas[p] for p in held) and not any(os.path.exists(p) for p in deleted_by_branch)
-    print("restored:", ok)
-    if not ok:
+    for directory in sorted(made_dirs, key=len, reverse=True):
+        if os.path.isdir(directory) and not os.listdir(directory):
+            os.rmdir(directory)
+    restored = [
+        path
+        for path, content in have.items()
+        if (sha(path) != hashlib.sha256(content).hexdigest() if content is not None else os.path.exists(path))
+    ]
+    print("restored:", not restored)
+    if restored:
+        print("unrestored:", ", ".join(sorted(restored)[:10]))
         sys.exit(1)
 PY

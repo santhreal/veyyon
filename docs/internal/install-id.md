@@ -31,7 +31,7 @@ Generated IDs are lowercase RFC 4122 UUIDs. Existing persisted values are accept
 
 ## Consumers
 
-- `packages/coding-agent/src/tools/report-tool-issue.ts`: included as `installId` in the auto-QA grievance push body so the backend can deduplicate repeated reports from the same install. See `dev.autoqaPush.*` settings and `VEYYON_AUTO_QA_PUSH_*` env vars.
+- `packages/coding-agent/src/tools/agent/report-tool-issue.ts`: included as `installId` in the auto-QA grievance push body so the backend can deduplicate repeated reports from the same install. See `dev.autoqaPush.*` settings and `VEYYON_AUTO_QA_PUSH_*` env vars.
 
 New consumers MUST treat the value as opaque and MUST NOT derive PII from it; the helper does not mix in hostname, username, or any other host-identifying entropy.
 

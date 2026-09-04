@@ -16,9 +16,9 @@ import {
 } from "@veyyon/coding-agent/extensibility/extensions/runner";
 import { APPROVAL_SELECT_OPTIONS, ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
 import { HookRunner } from "@veyyon/coding-agent/extensibility/hooks/runner";
-import { Type } from "@veyyon/coding-agent/extensibility/typebox";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { Type } from "@veyyon/kernel/registry/typebox";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { getProjectAgentDir, logger, TempDir } from "@veyyon/utils";
 
 /**
@@ -1359,16 +1359,12 @@ describe("ExtensionRunner", () => {
 					setStatus: () => {},
 					setWorkingMessage: () => {},
 					setWidget: () => {},
-					setFooter: () => {},
-					setHeader: () => {},
 					setTitle: () => {},
-					custom: async <T>() => undefined as T,
 					pasteToEditor: () => {},
 					setEditorText: () => {},
 					getEditorText: () => "",
 					editor: async () => undefined,
 					addAutocompleteProvider: () => {},
-					setEditorComponent: () => {},
 					get theme() {
 						return {} as never;
 					},

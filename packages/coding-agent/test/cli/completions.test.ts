@@ -7,7 +7,7 @@ import { buildSpec, type CompletionSpec, generateCompletion } from "@veyyon/codi
 import { EXIT_USAGE } from "@veyyon/coding-agent/cli/exit-codes";
 // The accepted `--approval-mode` set is generated from one array. Import it so a
 // ladder change fails here as a value mismatch, not as a stale hand-typed list.
-import { APPROVAL_MODE_VALUES } from "@veyyon/coding-agent/tools/approval-modes";
+import { APPROVAL_MODE_VALUES } from "@veyyon/coding-agent/tools/core/approval-modes";
 import { APP_ALIAS } from "@veyyon/utils";
 import type { CliConfig, CommandCtor } from "@veyyon/utils/cli";
 import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";

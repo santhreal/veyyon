@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { SILENT_UPDATE_REPORTER, updateViaBinaryAt } from "@veyyon/coding-agent/cli/update-cli";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { removeWithRetries } from "@veyyon/utils";
 import { enterTempHome, type TempHome } from "./helpers/temp-home";
 

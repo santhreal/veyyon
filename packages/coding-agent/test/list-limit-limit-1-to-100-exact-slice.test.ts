@@ -2,7 +2,7 @@
  * applyListLimit limit=1..100 on 200-item array: exact slice and suggestion.
  */
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "../src/tools/list-limit";
+import { applyListLimit } from "../src/tools/core/list-limit";
 
 describe("list-limit limit 1 to 100 exact slice", () => {
 	const items = Array.from({ length: 200 }, (_, i) => `v${i}`);

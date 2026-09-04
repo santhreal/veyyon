@@ -25,11 +25,12 @@ import {
 import { formatCount } from "@veyyon/utils";
 import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../lsp";
 import type { ToolSession } from "../../tools";
-import { outputMeta } from "../../tools/output-meta";
-import { ToolError } from "../../tools/tool-errors";
+import { outputMeta } from "../../tools/core/output-meta";
+import type { LspBatchRequest } from "../../tools/core/render-utils";
+import { ToolError } from "../../tools/core/tool-errors";
+import type { EditToolDetails, EditToolPerFileResult } from "../details";
 import { generateDiffString } from "../diff";
 import { getFileSnapshotStore } from "../file-snapshot-store";
-import type { EditToolDetails, EditToolPerFileResult, LspBatchRequest } from "../renderer";
 import { pruneOversizedEditSnapshots } from "../snapshot-details";
 import { nativeBlockResolver } from "./block-resolver";
 import { HashlineFilesystem } from "./filesystem";

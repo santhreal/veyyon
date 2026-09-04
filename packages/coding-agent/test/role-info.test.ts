@@ -88,20 +88,24 @@ describe("getRoleInfo", () => {
 
 /**
  * getKnownRoleIds builds the selector/carousel role list. It had no direct test, and this describe
- * also guards a real regression: model-roles once imported the heavy `modes/theme/theme` barrel,
- * which pulls modes/theme/shimmer -> config/settings -> discovery -> ... -> config/model-resolver,
+ * also guards a real regression: model-roles once imported the heavy `theme/theme` barrel,
+ * which pulls theme/shimmer -> config/settings -> discovery -> ... -> config/model-resolver,
  * and model-resolver imports model-roles back. That cycle made model-resolver's top-level
  * `const MODEL_ROLE_ALIAS_PREFIXES = [MODEL_ROLE_ALIAS_PREFIX, ...]` read this module's exports while
  * they were still in the temporal dead zone, throwing "Cannot access 'MODEL_ROLE_ALIAS_PREFIX' before
  * initialization" the instant model-roles was imported first (this whole file failed to load). The fix
- * routes the color import through the leaf modes/theme/color. The `it loads` behavior below only
+ * routes the color import through the leaf theme/color. The `it loads` behavior below only
  * passes if that import edge stays off the cycle.
  *
- * The ordering contract pinned here: built-in SELECTABLE roles come first in MODEL_ROLE_IDS order,
+ * The ordering contract pinned here: built-in roles come first in SELECTABLE_MODEL_ROLE_IDS order,
  * then extra roles introduced by cycleOrder, then modelRoles keys, then modelTags keys, each added
- * once (deduped) and never the legacy "default" role. `advisor` is a slot rather than a selectable
- * role -- the advisor feature asks for its model itself -- so it is absent from every list below and
- * the last case pins that as a decision rather than an omission.
+ * once (deduped) and never the legacy "default" role.
+ *
+ * `advisor` is not among the built-ins. It is a slot rather than a selectable role: the model it
+ * runs is asked for in the Advisor group's own row, which writes the same slot, so listing it here
+ * as well gave one value two surfaces. Assigning it puts it back in this list through the
+ * `modelRoles` pass, which `compaction-strategy-settings.test.ts` pins beside the slot itself. The
+ * last case pins the absence as a decision rather than an omission.
  */
 describe("getKnownRoleIds", () => {
 	test("loads without an import-cycle error and lists the built-in roles first in order", () => {

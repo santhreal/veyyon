@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
-import { type PaintGroundSetting, resolvePaintGround } from "@veyyon/tui";
+import { type PaintGroundSetting, resolvePaintGround } from "@veyyon/utils/paint-ground";
 
 const definition = SETTINGS_SCHEMA["tui.paintGround"];
 

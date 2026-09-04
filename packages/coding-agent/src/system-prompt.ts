@@ -17,20 +17,20 @@ import {
 	looksLikeFilePath,
 	prompt,
 } from "@veyyon/utils";
-import { contextFileCapability } from "./capability/context-file";
 import { findConfigFile } from "./config";
-import type { SkillsSettings } from "./config/settings";
-import { type ContextFile, loadCapability } from "./discovery";
-import { ensureManagedAgentsFilesOnStartup, getGlobalAgentsPath } from "./discovery/agents-guidance";
-import { expandAtImports } from "./discovery/at-imports";
-import { loadSkills, type Skill } from "./extensibility/skills";
-import { hasObsidian } from "./internal-urls/vault-protocol";
 import {
 	BUILTIN_PERSONALITIES,
 	DEFAULT_PERSONALITY_NAME,
 	type ResolvedPersonality,
 	resolvePersonality,
-} from "./personality/resolver";
+} from "./config/personality-resolver";
+import type { SkillsSettings } from "./config/settings";
+import { type ContextFile, loadCapability } from "./discovery";
+import { ensureManagedAgentsFilesOnStartup, getGlobalAgentsPath } from "./discovery/agents-guidance";
+import { expandAtImports } from "./discovery/at-imports";
+import { contextFileCapability } from "./discovery/capability/context-file";
+import { loadSkills, type Skill } from "./extensibility/skills";
+import { hasObsidian } from "./internal-urls/vault-protocol";
 import { assertEvalPromptOverrideIdsExist } from "./prompts/eval-overrides";
 import { sessionPrompts } from "./prompts/session/rows";
 import {
@@ -65,8 +65,8 @@ import {
 import { normalizeConcurrencyLimit } from "./task/parallel";
 import { usesCodexTaskPrompt } from "./task/prompt-policy";
 import type { ContextFileEntry } from "./tools";
-import { shortenPath } from "./tools/render-utils";
-import { isNonProjectRoot, NON_PROJECT_REASON_TEXT, type NonProjectReason } from "./tools/reroot-hint";
+import { shortenPath } from "./tools/core/render-utils";
+import { isNonProjectRoot, NON_PROJECT_REASON_TEXT, type NonProjectReason } from "./tools/fs/reroot-hint";
 import { type ActiveRepoContext, resolveActiveRepoContext } from "./utils/active-repo-context";
 import { getCachedGpu, getCpuModel, getEnvironmentInfo } from "./utils/host-environment";
 import { normalizePromptPath } from "./utils/prompt-path";
@@ -361,7 +361,7 @@ export async function loadProjectContextFilesWithWarnings(
 		cwd: resolvedCwd,
 		agentDir: resolvedAgentDir,
 	});
-	const warnings = [...result.warnings];
+	const warnings = result.warnings.slice();
 
 	// Materialize ContextFile items, expanding any `@path/to/file` includes
 	// in their content. The expansion uses the file's own directory as the
@@ -948,7 +948,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	// Priority: explicit list > tools map > conservative SDK fallback.
 	let toolNames = providedToolNames;
 	if (!toolNames) {
-		toolNames = tools ? Array.from(tools.keys()) : [...DEFAULT_SYSTEM_PROMPT_TOOL_NAMES];
+		toolNames = tools ? Array.from(tools.keys()) : DEFAULT_SYSTEM_PROMPT_TOOL_NAMES.slice();
 	}
 
 	// Build tool descriptions for system prompt rendering.
@@ -1093,7 +1093,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		? TEMPLATE_SECTIONS.filter(section => Object.hasOwn(evalSectionOverrides, kebabToCamel(section.id))).map(
 				section => section.id,
 			)
-		: [...new Set(sectionOverrideFiles.filter(file => file.mode === "replace").map(file => file.id))];
+		: Array.from(new Set(sectionOverrideFiles.filter(file => file.mode === "replace").map(file => file.id)));
 	const overriddenStatementSections = new Set(overriddenStatementIds.map(id => id.slice(0, id.indexOf("/"))));
 	const overlappingSections = replacedStatementSections.filter(section => overriddenStatementSections.has(section));
 	if (overlappingSections.length > 0) {

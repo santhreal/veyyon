@@ -27,7 +27,7 @@
  * WHAT IT DOES NOT CATCH. It measures composition, not cadence: a repaint
  * SOURCE that asks for sixty frames a second (an animation that never settles)
  * makes each of these frames cheap and the screen still unusable, which is
- * `packages/tui/test/the-motion-clock-always-stops.test.ts`. It drives one
+ * `hosts/terminal/engine/test/the-motion-clock-always-stops.test.ts`. It drives one
  * width, no images, no alternate screen, and no multiplexer pane, where the
  * divergence rebuild is gated off entirely and the repair contract differs.
  */

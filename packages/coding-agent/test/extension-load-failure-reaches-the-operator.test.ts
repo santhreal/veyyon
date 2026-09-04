@@ -25,14 +25,14 @@ import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { clearCache as clearFsCache } from "@veyyon/coding-agent/discovery/capability/fs";
 import { discoverExtensionPaths, loadExtensions } from "@veyyon/coding-agent/extensibility/extensions";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
-import { type OperatorNotice, OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { type OperatorNotice, OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import {
 	attachFaultSink,
 	type DetachFaultSink,
@@ -336,7 +336,7 @@ describe("an extensions: entry pointing nowhere is reported", () => {
  * files". But `discoverExtensionPaths` is the only production consumer of `hookCapability`, and it
  * filtered the discovered set down to `.ts`/`.js` and dropped the rest without a word.
  *
- * WHAT THE OPERATOR SAW. `modes/components/extensions/state-manager.ts` builds the `/extensions`
+ * WHAT THE OPERATOR SAW. `extensibility/extension-state/state-manager.ts` builds the `/extensions`
  * panel from the same capability load and labels an undisabled, unshadowed hook `state: "active"`.
  * So a shell hook sat on disk, appeared in the panel as active, and never ran, with nothing
  * anywhere saying why. Reproduced before the fix: discovery returned `["bash.sh", "policy.ts"]`,

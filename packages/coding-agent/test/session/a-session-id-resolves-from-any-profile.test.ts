@@ -24,8 +24,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resolveResumableSession } from "@veyyon/coding-agent/session/session-listing";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { resolveResumableSession } from "@veyyon/kernel/session/session-listing";
 import { __resetDirsFromEnvForTests, Snowflake } from "@veyyon/utils";
 import { makeAssistantMessage } from "../session-manager/helpers";
 

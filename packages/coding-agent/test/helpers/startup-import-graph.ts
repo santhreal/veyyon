@@ -9,6 +9,7 @@
  */
 import { readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { typeScriptMembersOf } from "../../../../scripts/workspace-layout";
 
 const tsxTranspiler = new Bun.Transpiler({ loader: "tsx" });
 const tsTranspiler = new Bun.Transpiler({ loader: "ts" });
@@ -50,12 +51,17 @@ function readManifest(dir: string): PackageManifest | undefined {
 	}
 }
 
-/** Every workspace package under `<repoRoot>/packages`, keyed by its declared name. */
+/**
+ * Every workspace package under any declared TypeScript workspace member, keyed by its declared name.
+ *
+ * The members come from the root `package.json` rather than being named here. This helper read
+ * `packages/` literally, then root globs, so a literal member path was invisible to it.
+ * The member list is resolved, so a member at any depth is in it.
+ */
 export function workspacePackages(repoRoot: string): Map<string, WorkspacePackage> {
 	const found = new Map<string, WorkspacePackage>();
-	const packagesDir = join(repoRoot, "packages");
-	for (const entry of new Bun.Glob("*/package.json").scanSync({ cwd: packagesDir })) {
-		const dir = join(packagesDir, dirname(entry));
+	for (const member of typeScriptMembersOf(repoRoot)) {
+		const dir = join(repoRoot, member);
 		const manifest = readManifest(dir);
 		if (manifest?.name) found.set(manifest.name, { name: manifest.name, dir, exports: manifest.exports });
 	}

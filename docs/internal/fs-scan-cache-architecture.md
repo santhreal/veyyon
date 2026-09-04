@@ -1,6 +1,6 @@
 # Filesystem Scan Cache Architecture Contract
 
-This document defines the current contract for the shared filesystem scan cache implemented in Rust (`crates/veyyon-walker/src/cache.rs`) and consumed through the `veyyon_walker::WalkRequest` builder by native discovery/search APIs exposed to `packages/coding-agent`.
+This document defines the current contract for the shared filesystem scan cache implemented in Rust (`natives/search/walker/src/cache.rs`) and consumed through the `veyyon_walker::WalkRequest` builder by native discovery/search APIs exposed to `packages/coding-agent`.
 
 ## What this cache is
 
@@ -14,18 +14,18 @@ Primary goals:
 
 ## Ownership and public surface
 
-- Cache implementation and policy: `crates/veyyon-walker/src/cache.rs` (`collect_entries`, `invalidate_path`, `invalidate_path_string`, `invalidate_all`, env-configured policy getters)
-- Walk entry point that consults the cache: `veyyon_walker::WalkRequest` (`crates/veyyon-walker/src/lib.rs`): the `.cache(bool)` builder flag routes `collect_entries` through `get_or_scan`
-- Native consumers (`crates/veyyon-natives/src/`):
+- Cache implementation and policy: `natives/search/walker/src/cache.rs` (`collect_entries`, `invalidate_path`, `invalidate_path_string`, `invalidate_all`, env-configured policy getters)
+- Walk entry point that consults the cache: `veyyon_walker::WalkRequest` (`natives/search/walker/src/lib.rs`): the `.cache(bool)` builder flag routes `collect_entries` through `get_or_scan`
+- Native consumers (`natives/bridge/addon/src/`):
   - `glob.rs`: cache opt-in via config
   - `fd.rs` (`fuzzyFind`): cache opt-in via config
   - `ast.rs` (`astGrep`/`astEdit` file discovery): always cached (`.cache(true)`)
   - `grep.rs`: **not cached**: it builds its walk with `.cache(false)`; there is no cached grep directory mode today
 - JS binding/export:
-  - `packages/natives/native/index.d.ts` (`invalidateFsScanCache`)
-  - `packages/natives/native/index.js`
+  - `natives/bridge/bindings/native/index.d.ts` (`invalidateFsScanCache`)
+  - `natives/bridge/bindings/native/index.js`
 - Coding-agent mutation invalidation helpers:
-  - `packages/coding-agent/src/tools/fs-cache-invalidation.ts`
+  - `packages/coding-agent/src/tools/core/fs-cache-invalidation.ts`
 
 ## Cache key partitioning (hard contract)
 
@@ -117,8 +117,8 @@ Current defaults in native APIs:
 Current callers:
 
 - `@`-mention fuzzy file autocomplete enables cache (`fuzzyFind` with `cache: true`):
-  - `packages/tui/src/autocomplete.ts`
-- Mutation flows invalidate through `packages/coding-agent/src/tools/fs-cache-invalidation.ts`.
+  - `packages/utils/src/autocomplete.ts`
+- Mutation flows invalidate through `packages/coding-agent/src/tools/core/fs-cache-invalidation.ts`.
 
 ## Invalidation contract
 
@@ -147,8 +147,8 @@ Central helpers:
 
 Current mutation callsites include:
 
-- `packages/coding-agent/src/tools/write.ts`
-- `packages/coding-agent/src/tools/acp-bridge.ts`
+- `packages/coding-agent/src/tools/fs/write.ts`
+- `packages/coding-agent/src/tools/core/acp-bridge.ts`
 - `packages/coding-agent/src/edit/hashline/filesystem.ts`
 - `packages/coding-agent/src/edit/modes/patch.ts`
 - `packages/coding-agent/src/edit/modes/replace.ts`
@@ -188,4 +188,4 @@ When introducing cache use in a new scanner/search path:
 - `glob`/`fuzzyFind`/`astGrep` share scan entries only when the full `WalkOptions` key matches.
 - Every native consumer sets `skip_git=true`, so `.git` is excluded from all cached scans in practice; `should_skip_path` re-enforces it at the discovery-filter layer.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `632fd91c3b4e` on 2026-08-28.*

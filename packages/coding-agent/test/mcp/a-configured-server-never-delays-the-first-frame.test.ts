@@ -35,8 +35,8 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { CustomTool } from "@veyyon/coding-agent/extensibility/custom-tools/types";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 /** A stdio MCP server that answers `initialize` and `tools/list` and nothing else. */

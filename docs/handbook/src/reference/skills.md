@@ -133,7 +133,7 @@ If `skills.enableSkillCommands` is true, interactive mode registers one slash co
   - **Ctrl+Enter** (`app.message.followUp`) → invokes the skill on the `followUp` queue while streaming, or as a normal idle prompt when the agent is not streaming
 - appends metadata (`[Skill directory: <baseDir>]`, optional `User: <args>`)
 
-There is no flag, mode-selector, or frontmatter knob to override this, the keybinding _is_ the choice, identical to how free text is routed during streaming (Enter steers, Ctrl+Enter queues a follow-up; both dispatch through `#invokeSkillCommand` in `packages/coding-agent/src/modes/controllers/input-controller.ts`).
+There is no flag, mode-selector, or frontmatter knob to override this, the keybinding _is_ the choice, identical to how free text is routed during streaming (Enter steers, Ctrl+Enter queues a follow-up; both dispatch through `#invokeSkillCommand` in `packages/coding-agent/src/modes/terminal/controllers/input-controller.ts`).
 
 ## `skill://` URL behavior
 

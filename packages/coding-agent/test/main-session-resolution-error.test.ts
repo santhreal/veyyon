@@ -12,8 +12,8 @@ import * as path from "node:path";
 import type { Args } from "@veyyon/coding-agent/cli/args";
 import type { Settings } from "@veyyon/coding-agent/config/settings";
 import { createSessionManager, SessionResolutionError, writeStartupNotice } from "@veyyon/coding-agent/main";
-import * as sessionListingModule from "@veyyon/coding-agent/session/session-listing";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import * as sessionListingModule from "@veyyon/kernel/session/session-listing";
 
 function buildResumeArgs(resume: string, sessionDir?: string): Args {
 	return {

@@ -1,6 +1,6 @@
 // The owner, not the `@veyyon/ai` barrel: `@veyyon/catalog/effort` imports nothing, and the barrel is the
 // whole streaming engine. This module is a six-entry table and one clamp; it must stay a leaf, because
-// `ThinkingLevel` is read by config, by the CLI and by `packages/coding-agent/src/thinking.ts`.
+// `ThinkingLevel` is read by config, by the CLI and by `packages/coding-agent/src/thinking/index.ts`.
 import { Effort } from "@veyyon/catalog/effort";
 
 /**

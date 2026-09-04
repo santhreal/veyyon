@@ -22,7 +22,7 @@ import { existsSync } from "node:fs";
 import * as path from "node:path";
 import { Args, Command, Flags } from "@veyyon/utils/cli";
 import { type PluginAction, type PluginCommandArgs, runPluginCommand } from "../cli/plugin-cli";
-import { initTheme } from "../modes/theme/theme";
+import { initTheme } from "../theme/theme";
 
 /**
  * Heuristic used to decide whether `veyyon install <target>` should `link` a

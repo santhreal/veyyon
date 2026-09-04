@@ -5,8 +5,8 @@ import {
 	renderTodoStatePreview,
 	todoReminderFingerprint,
 } from "@veyyon/coding-agent/session/todo-reminder";
-import { boundedTodoPreviewText, TODO_ITEM_PREVIEW_WIDTH, type TodoPhase } from "@veyyon/coding-agent/tools/todo";
-import { visibleWidth } from "@veyyon/tui";
+import { boundedTodoPreviewText, TODO_ITEM_PREVIEW_WIDTH, type TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
+import { visibleWidth } from "@veyyon/utils/width";
 
 function largeTodoState(): TodoPhase[] {
 	return [

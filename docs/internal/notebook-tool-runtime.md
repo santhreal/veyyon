@@ -8,8 +8,8 @@ The critical distinction: **notebook support is file conversion/editing, not not
 
 - [`src/edit/notebook.ts`](../../packages/coding-agent/src/edit/notebook.ts)
 - [`src/edit/read-file.ts`](../../packages/coding-agent/src/edit/read-file.ts)
-- [`src/tools/read.ts`](../../packages/coding-agent/src/tools/read.ts)
-- [`src/tools/eval.ts`](../../packages/coding-agent/src/tools/eval.ts)
+- [`src/tools/fs/read.ts`](../../packages/coding-agent/src/tools/fs/read.ts)
+- [`src/tools/shell/eval.ts`](../../packages/coding-agent/src/tools/shell/eval.ts)
 - [`src/eval/py/executor.ts`](../../packages/coding-agent/src/eval/py/executor.ts)
 - [`src/eval/py/kernel.ts`](../../packages/coding-agent/src/eval/py/kernel.ts)
 - [`src/session/streaming-output.ts`](../../packages/coding-agent/src/session/streaming-output.ts)
@@ -36,7 +36,7 @@ No kernel lifecycle exists in this path:
 - no rich display capture
 - no output artifact pipeline from execution
 
-## Kernel-backed execution path (`src/tools/eval.ts` + `src/eval/py/*`)
+## Kernel-backed execution path (`src/tools/shell/eval.ts` + `src/eval/py/*`)
 
 When the agent needs to run cell-style Python code (sequential cells, persistent state, rich displays), that goes through the **`eval` tool** with per-cell `language: "py"`, not through notebook file handling.
 
@@ -115,6 +115,7 @@ Kernel startup and per-execution environment patching can receive:
 - `VEYYON_TOOL_BRIDGE_TOKEN`
 - `VEYYON_TOOL_BRIDGE_SESSION`
 - `VEYYON_EVAL_LOCAL_ROOTS`
+- `VEYYON_EVAL_SESSION_ID`
 
 The runner initializes process state so code executes in the requested cwd, managed env entries are reflected in `os.environ`, and cwd is available on `sys.path`.
 
@@ -186,4 +187,4 @@ If a workflow needs both notebook mutation and execution:
 
 Current implementation does not provide a single tool that both mutates `.ipynb` and executes notebook cells through kernel context.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

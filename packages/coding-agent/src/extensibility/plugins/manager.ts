@@ -1,6 +1,25 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { type ManifestHolder, manifestFromPackageJson } from "@veyyon/kernel/loader/manifest-key";
+import { type GitSource, parseGitUrl } from "@veyyon/kernel/loader/plugins/git-url";
+import {
+	getInstalledPluginsRegistryPath,
+	readInstalledPluginsRegistry,
+} from "@veyyon/kernel/loader/plugins/installed-registry";
+import { extractPackageName, type ParsedPluginSpec, parsePluginSpec } from "@veyyon/kernel/loader/plugins/parser";
+import { parsePluginId } from "@veyyon/kernel/loader/plugins/plugin-id";
+import { normalizePluginRuntimeConfig } from "@veyyon/kernel/loader/plugins/runtime-config";
+import type {
+	DoctorCheck,
+	DoctorOptions,
+	InstalledPlugin,
+	InstallOptions,
+	PluginManifest,
+	PluginRuntimeConfig,
+	PluginSettingSchema,
+	ProjectPluginOverrides,
+} from "@veyyon/kernel/loader/plugins/types";
 import {
 	errorMessage,
 	getPluginsDir,
@@ -16,26 +35,10 @@ import {
 	readPipeText,
 } from "@veyyon/utils";
 import { adoptIntoPrimarySessionCpuBudget } from "../../session/cpu-limit";
-import { type ManifestHolder, manifestFromPackageJson } from "../manifest-key";
 import { withExitGuard } from "../utils";
 import { refreshBunGitCache } from "./bun-git-cache";
-import { type GitSource, parseGitUrl } from "./git-url";
-import { getInstalledPluginsRegistryPath, readInstalledPluginsRegistry } from "./installed-registry";
 import { installLegacyPiSpecifierShim, loadLegacyPiModule } from "./legacy-pi-compat";
 import { resolvePluginManifestEntries } from "./loader";
-import { extractPackageName, type ParsedPluginSpec, parsePluginSpec } from "./parser";
-import { parsePluginId } from "./plugin-id";
-import { normalizePluginRuntimeConfig } from "./runtime-config";
-import type {
-	DoctorCheck,
-	DoctorOptions,
-	InstalledPlugin,
-	InstallOptions,
-	PluginManifest,
-	PluginRuntimeConfig,
-	PluginSettingSchema,
-	ProjectPluginOverrides,
-} from "./types";
 
 // =============================================================================
 // Validation

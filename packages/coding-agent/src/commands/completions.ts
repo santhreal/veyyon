@@ -72,8 +72,8 @@ export default class Completions extends Command {
 		const aliasMap = new Map<string, readonly string[]>();
 		for (const { entry, Cmd } of loaded) {
 			map.set(entry.name, Cmd);
-			const merged = new Set<string>([...(Cmd.aliases ?? []), ...(entry.aliases ?? [])]);
-			aliasMap.set(entry.name, [...merged]);
+			const merged = new Set<string>(Array.from(Cmd.aliases ?? []).concat(Array.from(entry.aliases ?? [])));
+			aliasMap.set(entry.name, Array.from(merged));
 		}
 
 		const config: CliConfig = { bin: APP_NAME, version: VERSION, commands: map };

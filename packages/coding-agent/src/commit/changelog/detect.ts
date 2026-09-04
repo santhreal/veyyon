@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ChangelogBoundary } from "../../commit/types";
+import type { ChangelogBoundary } from "../types";
 
 const CHANGELOG_NAME = "CHANGELOG.md";
 

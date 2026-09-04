@@ -79,7 +79,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# THE RUNGS. `AUTONOMY_LABEL` in tools/approval-modes.ts is the whole set, and
+# THE RUNGS. `AUTONOMY_LABEL` in tools/core/approval-modes.ts is the whole set, and
 # `/permissions <rung>` is the only way to reach one without restarting. They are shot
 # before any mode is enabled, because `mode` renders bypass, base mode and rung through one
 # `joinStates` call and a base label would put two variables in the frame at once.

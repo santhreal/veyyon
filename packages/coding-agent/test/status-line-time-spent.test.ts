@@ -13,11 +13,11 @@
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
-import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/segments";
-import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
-import { NO_SESSION_FACTS } from "@veyyon/coding-agent/modes/components/status-line/session-facts";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { StatusLineComponent } from "../src/modes/terminal/components/status-line/component";
+import { NO_SESSION_FACTS } from "../src/modes/terminal/components/status-line/session-facts";
 
 beforeAll(async () => {
 	resetSettingsForTest();
@@ -94,6 +94,7 @@ function makeSession(
 		autoResolvedThinkingLevel: () => undefined,
 		isFastModeActive: () => false,
 		isFastModeEnabled: () => false,
+		isAdvisorActive: () => false,
 		getGoalModeState: () => null,
 		getAsyncJobSnapshot: () => ({ running: [] }),
 		modelRegistry: { isUsingOAuth: () => false },

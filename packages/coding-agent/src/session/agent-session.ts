@@ -33,7 +33,6 @@ import {
 	type AsideMessage,
 	type CompactionSummaryMessage,
 	countTokens,
-	createToolScopedAbortReason,
 	resolveTelemetry,
 	type StreamFn,
 	TERMINAL_TOOL_RESULT_ABORT_REASON,
@@ -85,7 +84,6 @@ import {
 	type SummaryOptions,
 	serverCompactionRouteAbsent,
 	shouldCompact,
-	stripLegacyArchive,
 	upsertFileOperations,
 } from "@veyyon/agent-core/compaction";
 import { modelServesPrefixCacheHits } from "@veyyon/agent-core/compaction/cache-aligned-context";
@@ -96,51 +94,47 @@ import {
 	readToolSupersedeKey,
 } from "@veyyon/agent-core/compaction/pruning";
 import type { ProtectedToolMatcher } from "@veyyon/agent-core/compaction/tool-protection";
-import type {
-	Api,
-	AssistantMessage,
-	AssistantMessageEvent,
-	AssistantRetryRecovery,
-	AssistantRetryRecoveryKind,
-	CodexCompactionContext,
-	Context,
-	ImageContent,
-	InstrumentationLevel,
-	Message,
-	MessageAttribution,
-	Model,
-	ProviderResponseMetadata,
-	ProviderSessionState,
-	ResetCreditAccountStatus,
-	ResetCreditRedeemOutcome,
-	ResetCreditTarget,
-	ServiceTier,
-	ServiceTierByFamily,
-	ServiceTierFamily,
-	SimpleStreamOptions,
-	TextContent,
-	ToolCall,
-	ToolChoice,
-	ToolResultMessage,
-	Usage,
-	UsageReport,
-} from "@veyyon/ai";
 import {
+	type Api,
+	type AssistantMessage,
+	type AssistantMessageEvent,
+	type AssistantRetryRecovery,
+	type AssistantRetryRecoveryKind,
+	type CodexCompactionContext,
+	type Context,
 	calculateRateLimitBackoffMs,
 	clearAnthropicFastModeFallback,
 	deriveClaudeDeviceId,
+	type ImageContent,
+	type InstrumentationLevel,
+	type Message,
+	type Model,
+	type ProviderResponseMetadata,
+	type ProviderSessionState,
 	parseRateLimitReason,
+	type ResetCreditAccountStatus,
+	type ResetCreditRedeemOutcome,
+	type ResetCreditTarget,
 	realizesPriorityServiceTier,
 	resolveModelServiceTier,
+	type ServiceTier,
+	type ServiceTierByFamily,
+	type ServiceTierFamily,
+	type SimpleStreamOptions,
 	serviceTierFamily,
 	streamSimple,
+	type TextContent,
+	type ToolCall,
+	type ToolChoice,
+	type ToolResultMessage,
+	type Usage,
+	type UsageReport,
 } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
 import {
 	assistantTurnMetricsForPersistence,
 	assistantTurnRequestForPersistence,
 	instrumentationRank,
-	type SessionTelemetryDetail,
 	sessionTelemetryDetail,
 	toolCallMetricsForPersistence,
 } from "@veyyon/ai/instrumentation";
@@ -151,12 +145,67 @@ import { assistantText } from "@veyyon/ai/utils/message-text";
 import { toolWireSchema } from "@veyyon/ai/utils/schema";
 import { GeminiHeaderRunDetector, isGeminiThinkingModel } from "@veyyon/ai/utils/thinking-loop";
 import { type RepeatedToolCallDetection, ToolCallLoopGuard } from "@veyyon/ai/utils/tool-call-loop-guard";
-import { Effort } from "@veyyon/catalog/effort";
+import type { Effort } from "@veyyon/catalog/effort";
 import { isFireworksFastModelId, toFireworksBaseModelId } from "@veyyon/catalog/fireworks-model-id";
-import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
 import { modelsAreEqual } from "@veyyon/catalog/models";
 import { ANTIGRAVITY_PRIMARY_ENDPOINT, ANTIGRAVITY_SANDBOX_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import type { InMemorySnapshotStore } from "@veyyon/hashline";
+import {
+	COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION,
+	COMPACTION_CHECK_CONTINUATION,
+	COMPACTION_CHECK_NONE,
+	COMPACTION_RECOVERY_BAND,
+	type CompactionBar,
+	type CompactionBudget,
+	type CompactionCheckResult,
+	compactionDeadEndWarning,
+	createCodexCompactionContext,
+	declaredContextWindow,
+	mergeLlmCompactionPreserveData,
+	PRUNE_CACHE_WARM_SUFFIX_TOKENS,
+	PRUNE_IDLE_FLUSH_MS,
+	TRUNCATION_KEEP_EDGE_TOKENS,
+	TRUNCATION_MIN_TEXT_TOKENS,
+} from "@veyyon/kernel/session/agent-session-compaction-policy";
+import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import type { ClientBridge, ClientBridgePermissionOutcome } from "@veyyon/kernel/session/client-bridge";
+import { findCompactMode } from "@veyyon/kernel/session/compact-modes";
+import { abortDetached } from "@veyyon/kernel/session/detached-abort";
+import {
+	collectPendingToolCalls,
+	createInterruptedTurnAbortMessage,
+	SESSION_EXIT_CUSTOM_TYPE,
+	type SessionExitData,
+	sessionExitLogLevel,
+	summarizeToolArguments,
+	TOOL_EXECUTION_START_CUSTOM_TYPE,
+	type ToolExecutionStartData,
+} from "@veyyon/kernel/session/exit-diagnostics";
+import { OperatorNotices, stderrNoticeSink } from "@veyyon/kernel/session/operator-notices";
+import { disposeOwnedResources } from "@veyyon/kernel/session/owned-resources";
+import {
+	calculateRetryBackoffDelayMs,
+	describeRetryPolicySource,
+	type ResolvedRetryPolicy,
+	resolveRetryPolicy,
+	unreplayableContinueDelayMs,
+} from "@veyyon/kernel/session/retry-policy";
+import {
+	type BranchSummaryEntry,
+	type CompactionEntry,
+	EPHEMERAL_MODEL_CHANGE_ROLE,
+	type NewSessionOptions,
+	type SessionEntry,
+} from "@veyyon/kernel/session/session-entries";
+import {
+	isAwaitingUserAnswer,
+	mayContinueAtSettle,
+	type SettleContinuationState,
+} from "@veyyon/kernel/session/settle-continuation";
+import type { ShakeMode, ShakeResult } from "@veyyon/kernel/session/shake-types";
+import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
+import { ToolChoiceQueue } from "@veyyon/kernel/session/tool-choice-queue";
+import { YieldQueue } from "@veyyon/kernel/session/yield-queue";
 import { MacOSPowerAssertion } from "@veyyon/natives";
 import {
 	errorMessage,
@@ -174,7 +223,6 @@ import {
 	logger,
 	postmortem,
 	prompt,
-	relativePathWithinRoot,
 	Snowflake,
 	setProjectDir,
 	withScopedTimeoutSignal,
@@ -213,24 +261,14 @@ import {
 	expandSessionContext,
 	expandSessionMessageEntries,
 } from "../argot-wire";
-import { type AsyncJob, type AsyncJobDeliveryState, AsyncJobManager } from "../async";
-import { classifyDifficulty } from "../auto-thinking/classifier";
-import { reset as resetCapabilities } from "../capability";
-import type { Rule } from "../capability/rule";
+import { type AsyncJob, AsyncJobManager } from "../async";
 import { shouldEnableAppendOnlyContext } from "../config/append-only-context-mode";
-import type { CompactionEngineAction } from "../config/compaction-strategy";
 import {
 	isCompactionStrategyOff,
 	isThresholdCompactionDisabled,
 	resolveCompactionEngineAction,
 	toAgentCompactionSettings,
 } from "../config/compaction-strategy";
-import {
-	type EffortSource,
-	resolveEffort,
-	withLegacyDefaultEffort,
-	withPersistedEffort,
-} from "../config/effort-resolver";
 import { credentialRemedySentence, missingCredentialsMessage } from "../config/missing-credentials";
 import type { ModelRegistry } from "../config/model-registry";
 import {
@@ -262,17 +300,29 @@ import {
 	serviceTierForAllFamilies,
 	serviceTierSettingToTier,
 } from "../config/service-tier";
-import type { Settings, SkillsSettings } from "../config/settings";
 import {
 	getDefault,
 	onAppendOnlyModeChanged,
 	onModelRolesChanged,
+	type Settings,
+	type SkillsSettings,
 	validateProviderMaxInFlightRequests,
 } from "../config/settings";
 import { AFTER_EDIT_CHECKS } from "../config/settings-domains/editing";
 import { RawSseDebugBuffer } from "../debug/raw-sse-buffer";
-import { loadCapability } from "../discovery";
+import { loadCapability, reset as resetCapabilities } from "../discovery/capability";
+
 import { clearClaudePluginRootsCache } from "../discovery/helpers";
+import { countToolsForAutoDiscovery, resolveEffectiveToolDiscoveryMode } from "../discovery/mode";
+import {
+	buildDiscoverableToolSearchIndex,
+	collectDiscoverableTools,
+	type DiscoverableTool,
+	type DiscoverableToolSearchIndex,
+	filterBySource,
+	isMCPToolName,
+	selectDiscoverableToolNamesByServer,
+} from "../discovery/tool-index";
 // The owning modules, not the `../edit` barrel. The barrel `export *`s the streaming applier, the
 // hashline engine and the EditTool, and pulls in 44 modules nothing else here reaches; these six
 // symbols are declared in four leaves that reach a handful between them.
@@ -286,8 +336,8 @@ import { executePython as executePythonCommand, type PythonResult } from "../eva
 import { namespaceSessionId as namespacePythonSessionId } from "../eval/py/session-namespace";
 import { defaultEvalSessionId } from "../eval/session-id";
 import { type BashResult, executeBash as executeBashCommand } from "../exec/bash-executor";
-import type { TtsrManager, TtsrMatchContext } from "../export/ttsr";
-import type { LoadedCustomCommand } from "../extensibility/custom-commands";
+import type { TtsrManager } from "../export/ttsr";
+import type { LoadedCustomCommand } from "../extensibility/custom-commands/types";
 import type { CustomTool, CustomToolContext } from "../extensibility/custom-tools/types";
 import { CustomToolAdapter } from "../extensibility/custom-tools/wrapper";
 import type {
@@ -317,8 +367,7 @@ import type { RecoveredRetryError } from "../extensibility/shared-events";
 import type { Skill } from "../extensibility/skills";
 import { expandSlashCommand, type FileSlashCommand } from "../extensibility/slash-commands";
 import { GoalRuntime } from "../goals/runtime";
-import type { Goal, GoalAbortReason, GoalModeState } from "../goals/state";
-import type { HindsightSessionState } from "../hindsight/state";
+import type { GoalAbortReason, GoalModeState } from "../goals/state";
 // The owning module, not the `../internal-urls` barrel: the barrel re-exports every protocol
 // handler and reaches several hundred modules, and all three of these are declared in
 // `local-protocol`, which reaches seven.
@@ -327,21 +376,13 @@ import {
 	listLocalPlanFileUrls,
 	resolveLocalUrlToPath,
 } from "../internal-urls/local-protocol";
-import {
-	IrcBus,
-	type IrcMessage,
-	type IrcPersistedDeliveryFacts,
-	type IrcPersistedDeliveryTelemetry,
-	projectIrcDeliveryTelemetry,
-} from "../irc/bus";
-import { resolveMemoryBackend } from "../memory-backend";
-import { shutdownMnemopiEmbedClient } from "../mnemopi/embed-client";
-import { getMnemopiSessionState, type MnemopiSessionState, setMnemopiSessionState } from "../mnemopi/state";
-import { containsOrchestrate } from "../modes/orchestrate-keyword";
-import type { RetryRecoveryMode } from "../modes/retry-display";
-import { theme } from "../modes/theme/theme-binding";
-import { containsUltrathink } from "../modes/ultrathink-keyword";
-import { containsWorkflow } from "../modes/workflow-keyword";
+import { resolveMemoryBackend } from "../memory/backend";
+import type { HindsightSessionState } from "../memory/hindsight/state";
+import { shutdownMnemopiEmbedClient } from "../memory/mnemopi/embed-client";
+import { getMnemopiSessionState, type MnemopiSessionState, setMnemopiSessionState } from "../memory/mnemopi/state";
+import { containsOrchestrate } from "../modes/keywords/orchestrate-keyword";
+import { containsUltrathink } from "../modes/keywords/ultrathink-keyword";
+import { containsWorkflow } from "../modes/keywords/workflow-keyword";
 import { resolveApprovedPlan } from "../plan-mode/approved-plan";
 import { DEFAULT_PLAN_FILE_URL } from "../plan-mode/plan-file-url";
 import { resolvePlanFilePath } from "../plan-mode/plan-path";
@@ -350,7 +391,6 @@ import type { PlanModeState } from "../plan-mode/state";
 import { advisorPrompts } from "../prompts/advisor/rows";
 import { goalsPrompts } from "../prompts/goals/rows";
 import { planModePrompts } from "../prompts/plan-mode/rows";
-import { rulesPrompts } from "../prompts/rules/rows";
 import { sessionPrompts } from "../prompts/session/rows";
 import { sideChannelPrompts } from "../prompts/side-channel/rows";
 import { steeringPrompts } from "../prompts/steering/rows";
@@ -374,58 +414,51 @@ import {
 } from "../slash-commands/helpers/parse";
 import { invalidateHostMetadata } from "../ssh/connection-manager";
 import { isLivePromptGate } from "../system-prompt-builder/gate-registry";
+import {
+	IrcBus,
+	type IrcMessage,
+	type IrcPersistedDeliveryFacts,
+	type IrcPersistedDeliveryTelemetry,
+	projectIrcDeliveryTelemetry,
+} from "../task/irc-bus";
 import { usesCodexTaskPrompt } from "../task/prompt-policy";
 import { enabledSubagentNames, preferredSubagentName, resolveDelegation } from "../task/subagent-settings";
+import { theme } from "../theme/theme-binding";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,
-	clampAutoThinkingEffort,
 	concreteThinkingLevel,
-	configuredThinkingLevelsForModel,
 	parseConfiguredThinkingLevel,
-	resolveProvisionalAutoLevel,
 	resolveThinkingLevelForModel,
 	shouldDisableReasoning,
 	toReasoningEffort,
 } from "../thinking";
 import { formatTitleConversationContext, type TitleConversationTurn } from "../tiny/message-preproc";
 import { shutdownTinyTitleClient } from "../tiny/title-client";
-import { countToolsForAutoDiscovery, resolveEffectiveToolDiscoveryMode } from "../tool-discovery/mode";
+import { isAutoQaEnabled } from "../tools/agent/report-tool-issue";
+import { buildResolveReminderMessage, type ResolveToolDetails, runResolveInvocation } from "../tools/agent/resolve";
 import {
-	buildDiscoverableToolSearchIndex,
-	collectDiscoverableTools,
-	type DiscoverableTool,
-	type DiscoverableToolSearchIndex,
-	filterBySource,
-	isMCPToolName,
-	selectDiscoverableToolNamesByServer,
-} from "../tool-discovery/tool-index";
+	boundedTodoPreviewText,
+	prioritizeTodoItems,
+	TODO_ITEM_PREVIEW_WIDTH,
+	type TodoPhase,
+	USER_TODO_EDIT_CUSTOM_TYPE,
+} from "../tools/agent/todo";
 import {
 	resolveEffectiveApprovalMode,
 	validateApprovalModeSetting,
 	validateApprovalPolicySettings,
-} from "../tools/approval";
-import type { ApprovalMode, SessionToolApprovals } from "../tools/approval-modes";
-import { assertEditableFile } from "../tools/auto-generated-guard";
-import { normalizeToolNames, TOOL } from "../tools/builtin-names";
-import type { CheckpointState, CompletedRewindState } from "../tools/checkpoint";
-import { reportLostOutputArtifact } from "../tools/output-artifact";
-import { outputMeta, wrapToolWithMetaNotice } from "../tools/output-meta";
-import { normalizeLocalScheme, resolveToCwd } from "../tools/path-utils";
-import { shortenPath } from "../tools/render-utils";
-import { isAutoQaEnabled } from "../tools/report-tool-issue";
-import { buildResolveReminderMessage, type ResolveToolDetails, runResolveInvocation } from "../tools/resolve";
-import {
-	boundedTodoPreviewText,
-	getLatestTodoPhasesFromEntries,
-	prioritizeTodoItems,
-	TODO_ITEM_PREVIEW_WIDTH,
-	type TodoItem,
-	type TodoPhase,
-	USER_TODO_EDIT_CUSTOM_TYPE,
-} from "../tools/todo";
-import { ToolAbortError, ToolError } from "../tools/tool-errors";
-import { clampTimeout } from "../tools/tool-timeouts";
+} from "../tools/core/approval";
+import type { ApprovalMode, SessionToolApprovals } from "../tools/core/approval-modes";
+import { normalizeToolNames, TOOL } from "../tools/core/builtin-names";
+import { reportLostOutputArtifact } from "../tools/core/output-artifact";
+import { outputMeta, wrapToolWithMetaNotice } from "../tools/core/output-meta";
+import { normalizeLocalScheme, resolveToCwd } from "../tools/core/path-utils";
+import { shortenPath } from "../tools/core/render-utils";
+import { ToolAbortError, ToolError } from "../tools/core/tool-errors";
+import { clampTimeout } from "../tools/core/tool-timeouts";
+import { assertEditableFile } from "../tools/fs/auto-generated-guard";
+import type { CheckpointState, CompletedRewindState } from "../tools/fs/checkpoint";
 import { parseCommandArgs } from "../utils/command-args";
 import { type EditMode, resolveEditMode } from "../utils/edit-mode";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
@@ -436,10 +469,78 @@ import { formatLocalCalendarDate } from "../utils/local-date";
 import { normalizePromptPath } from "../utils/prompt-path";
 import { generateSessionTitle } from "../utils/title-generator";
 import { buildNamedToolChoice, isToolChoiceActive } from "../utils/tool-choice";
-import type { VibeModeState } from "../vibe/state";
+import {
+	sanitizeAssistantForReparentedHistory,
+	titleConversationTurnFromMessage,
+} from "./agent-session-message-shapes";
+import {
+	extractPermissionLocations,
+	getPermissionIntent,
+	PERMISSION_OPTIONS,
+	PERMISSION_OPTIONS_BY_ID,
+	PERMISSION_REQUIRED_TOOLS,
+} from "./agent-session-permissions";
+import {
+	IMAGE_ATTACHMENT_DESCRIPTION_TYPE,
+	isAdvisorCard,
+	isDisplayableQueuedMessage,
+	isHiddenUserCompanion,
+	isTerminalTextAssistantAnswer,
+	isUserQueuedMessage,
+	queueChipText,
+	type RestoredQueuedMessage,
+	toRestoredQueuedMessage,
+} from "./agent-session-queue";
+import {
+	type ActiveRetryFallbackState,
+	formatRetryFallbackBaseSelector,
+	formatRetryFallbackSelector,
+	isRetryFallbackModelKey,
+	isRetryFallbackWildcardKey,
+	parseRetryFallbackSelector,
+	type RetryFallbackChains,
+	type RetryFallbackRevertPolicy,
+	type RetryFallbackSelector,
+} from "./agent-session-retry-fallback";
+import {
+	type ActiveAdvisor,
+	type AdvisorRuntimeDescriptor,
+	type AdvisorStats,
+	type AgentContinueSkipReason,
+	type AgentSessionConfig,
+	type AgentSessionDisposeOptions,
+	type AgentSessionEvent,
+	type AgentSessionEventListener,
+	type AsyncJobSnapshot,
+	type AsyncResultEntry,
+	type CommandMetadataChangedListener,
+	type ContextUsageBreakdown,
+	type FollowUpOptions,
+	type FreshSessionResult,
+	type HandoffResult,
+	type MessageEndPersistenceSlot,
+	type ModelCycleResult,
+	type PendingContextSnapshot,
+	type PendingRecoveredRetryError,
+	type PerAdvisorStat,
+	type PlanYolo,
+	type PostPromptSkipReason,
+	type Prewalk,
+	type ProjectAdvisorScope,
+	type PromptOptions,
+	type ResolvedRoleModel,
+	type RoleModelCycle,
+	type RoleModelCycleResult,
+	type ScheduledAgentContinueOptions,
+	type SecretRuntimeLease,
+	type SessionHandoffOptions,
+	type SessionNameTrigger,
+	type SessionStats,
+	type SetSessionNameWithTrigger,
+	SHUTDOWN_DISPOSE_TIMEOUT_MS,
+	TOOL_SHAPE_SETTING_PATHS,
+} from "./agent-session-types";
 import { AgentStorage } from "./agent-storage";
-import type { AuthStorage } from "./auth-storage";
-import type { ClientBridge, ClientBridgePermissionOutcome } from "./client-bridge";
 import {
 	type CodexAutoRedeemRedeemDecision,
 	defaultCodexAutoRedeemCoordinator,
@@ -447,39 +548,12 @@ import {
 	shouldEvaluateCodexAutoRedeem,
 	shouldPromptCodexAutoRedeem,
 } from "./codex-auto-reset";
-import { findCompactMode } from "./compact-modes";
-import {
-	COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION,
-	COMPACTION_CHECK_CONTINUATION,
-	COMPACTION_CHECK_NONE,
-	COMPACTION_RECOVERY_BAND,
-	type CompactionBar,
-	type CompactionBudget,
-	type CompactionCheckResult,
-	compactionDeadEndWarning,
-	createCodexCompactionContext,
-	declaredContextWindow,
-	PRUNE_CACHE_WARM_SUFFIX_TOKENS,
-	PRUNE_IDLE_FLUSH_MS,
-	TRUNCATION_KEEP_EDGE_TOKENS,
-	TRUNCATION_MIN_TEXT_TOKENS,
-} from "./compaction-policy";
+
 // The accounting, not the drawing. Both of these used to be imported from `modes/`, which put the
 // terminal UI on the session engine's graph and cost the layering gate a standing exception each.
 import { buildContextSnapshot, computeStoredMessagesTokens, estimateContextSnapshotAttribution } from "./context-usage";
 import { initSessionCpuLimit, rekeySessionCpuLimit, sessionCpuLimit } from "./cpu-limit";
-import { abortDetached } from "./detached-abort";
 import { dedupeEphemeralReply } from "./ephemeral-reply";
-import {
-	collectPendingToolCalls,
-	createInterruptedTurnAbortMessage,
-	SESSION_EXIT_CUSTOM_TYPE,
-	type SessionExitData,
-	sessionExitLogLevel,
-	summarizeToolArguments,
-	TOOL_EXECUTION_START_CUSTOM_TYPE,
-	type ToolExecutionStartData,
-} from "./exit-diagnostics";
 import { ORCHESTRATE_NOTICE, renderWorkflowNotice, ULTRATHINK_NOTICE } from "./magic-keyword-notices";
 import {
 	type BashExecutionMessage,
@@ -505,10 +579,6 @@ import { computeNonMessageBreakdown, computeNonMessageTokens } from "./non-messa
 import {
 	GEMINI_TOOL_REMINDER_TYPE,
 	MEMORY_CONTEXT_MESSAGE_TYPE,
-	MID_RUN_TODO_NUDGE_MAX_PER_CYCLE,
-	MID_RUN_TODO_NUDGE_MESSAGE_TYPE,
-	MID_RUN_TODO_NUDGE_MUTATING_TOOLS,
-	MID_RUN_TODO_NUDGE_MUTATION_THRESHOLD,
 	PLAN_DECISION_TOOLS,
 	PLAN_MODE_REMINDER_MAX,
 	PLAN_YOLO_HANDOFF_MESSAGE_TYPE,
@@ -521,70 +591,26 @@ import {
 	THINKING_LOOP_REDIRECT_TYPE,
 	TOOL_CALL_LOOP_REDIRECT_TYPE,
 } from "./nudges";
-import { OperatorNotices, stderrNoticeSink } from "./operator-notices";
-import { disposeOwnedResources } from "./owned-resources";
-import {
-	extractPermissionLocations,
-	getPermissionIntent,
-	PERMISSION_OPTIONS,
-	PERMISSION_OPTIONS_BY_ID,
-	PERMISSION_REQUIRED_TOOLS,
-} from "./permission-intent";
 import { ProviderContextCanonicalizer } from "./provider-context-canonicalizer";
 import { applyProviderImagePolicy } from "./provider-image-budget";
-import {
-	IMAGE_ATTACHMENT_DESCRIPTION_TYPE,
-	isAdvisorCard,
-	isDisplayableQueuedMessage,
-	isHiddenUserCompanion,
-	isTerminalTextAssistantAnswer,
-	isUserQueuedMessage,
-	queueChipText,
-	type RestoredQueuedMessage,
-	toRestoredQueuedMessage,
-} from "./queued-message";
 import { normalizeRoots } from "./relativize-paths";
-import {
-	type ActiveRetryFallbackState,
-	formatRetryFallbackBaseSelector,
-	formatRetryFallbackSelector,
-	isRetryFallbackModelKey,
-	isRetryFallbackWildcardKey,
-	parseRetryFallbackSelector,
-	type RetryFallbackChains,
-	type RetryFallbackRevertPolicy,
-	type RetryFallbackSelector,
-} from "./retry-fallback";
-import {
-	calculateRetryBackoffDelayMs,
-	describeRetryPolicySource,
-	type ResolvedRetryPolicy,
-	resolveRetryPolicy,
-	unreplayableContinueDelayMs,
-} from "./retry-policy";
 import {
 	checkpointStartedAtFromEntry,
 	completedRewindFromEntry,
 	isSuccessfulCheckpointEntry,
 } from "./rewind-checkpoint";
-import type { BuildSessionContextOptions, SessionContext } from "./session-context";
-import { getLatestCompactionEntry, getRestorableSessionModels } from "./session-context";
+import { ThinkingRuntime } from "./runtime/thinking-runtime";
+import { TodoRuntime } from "./runtime/todo-runtime";
+import { TtsrRuntime } from "./runtime/ttsr-runtime";
+import {
+	type BuildSessionContextOptions,
+	getLatestCompactionEntry,
+	getRestorableSessionModels,
+	type SessionContext,
+} from "./session-context";
 import { formatSessionDumpText } from "./session-dump-format";
-import type {
-	BranchSummaryEntry,
-	CompactionEntry,
-	NewSessionOptions,
-	SessionEntry,
-	SessionTitleSource,
-} from "./session-entries";
-import { EPHEMERAL_MODEL_CHANGE_ROLE } from "./session-entries";
 import { formatSessionHistoryMarkdown } from "./session-history-format";
 import { cleanupEmptyMoveSession, type SessionManager } from "./session-manager";
-import { isAwaitingUserAnswer, mayContinueAtSettle, type SettleContinuationState } from "./settle-continuation";
-import type { ShakeMode, ShakeResult } from "./shake-types";
-import type { SideCompleteImpl } from "./side-complete";
-import { incompleteTodoItems, renderTodoContinuationReminder, todoReminderFingerprint } from "./todo-reminder";
-import { ToolChoiceQueue } from "./tool-choice-queue";
 import { parseTurnBudgetDirective } from "./turn-budget";
 import { planTurnPersistence, sameMessageContent, sessionMessagePersistenceKey } from "./turn-persistence";
 import { classifyUnexpectedStop, isUnexpectedStopCandidate } from "./unexpected-stop-classifier";
@@ -593,27 +619,7 @@ import {
 	VERIFICATION_EVIDENCE_REMINDER_TYPE,
 	VerificationEvidenceLedger,
 } from "./verification-evidence-ledger";
-import { YieldQueue } from "./yield-queue";
-
-interface PendingContextSnapshot {
-	promptTokens: number;
-	nonMessageTokens: number;
-	/**
-	 * How many messages existed BEFORE this turn: the index in `messages` where the turn begins.
-	 *
-	 * Not "how many messages this prompt accounts for". A turn submits messages that never join the
-	 * conversation -- the session-state line carrying the date and directory, recalled memories --
-	 * so a count of what was submitted overshoots the boundary by however many of those there were,
-	 * and the anchor test below then rejects every provider count the turn produces.
-	 */
-	cutoffCount: number;
-	/** The submitted messages, by identity: each is already inside `promptTokens`. */
-	submitted: ReadonlySet<AgentMessage>;
-	detail: SessionTelemetryDetail;
-	storedMessagesTokens?: number;
-	tailTokens?: number;
-	compactionEntryId?: string;
-}
+import type { VibeModeState } from "./vibe-runtime";
 
 /** Abort reason for the Gemini reasoning-header runaway interrupt. Surfaced on the
  *  discarded assistant turn only; never reaches the model. */
@@ -622,149 +628,15 @@ const GEMINI_HEADER_INTERRUPT_REASON = "Interrupted: emit a tool call instead of
 // A side-channel assistant response is signed for the hidden prompt/history that
 // produced it. If we persist that response under a different user turn, native
 // replay anchors become invalid; keep only visible, non-cryptographic content.
-function sanitizeAssistantForReparentedHistory(message: AssistantMessage): AssistantMessage {
-	const content: AssistantMessage["content"] = [];
-	for (const block of message.content) {
-		if (block.type === "redactedThinking") continue;
-		if (block.type === "thinking") {
-			content.push({ type: "thinking", thinking: block.thinking });
-			continue;
-		}
-		content.push(block);
-	}
-	return { ...message, content, providerPayload: undefined };
-}
-
-/** Session-specific events that extend the core AgentEvent */
-export type AgentSessionEvent =
-	| AgentEvent
-	| {
-			type: "auto_compaction_start";
-			reason: "threshold" | "overflow" | "idle" | "incomplete";
-			action: CompactionEngineAction;
-	  }
-	| {
-			type: "auto_compaction_end";
-			action: CompactionEngineAction;
-			result: CompactionResult | undefined;
-			aborted: boolean;
-			willRetry: boolean;
-			errorMessage?: string;
-			/** True when compaction was skipped for a benign reason (no model, no candidates, nothing to compact). */
-			skipped?: boolean;
-	  }
-	| {
-			type: "auto_retry_start";
-			attempt: number;
-			maxAttempts: number;
-			delayMs: number;
-			errorMessage: string;
-			errorId?: number;
-			/**
-			 * Why this attempt budget applies, when it is not simply the global
-			 * setting (e.g. `cursor provider default`). Shown to the user so a
-			 * limit they never configured is explainable rather than mysterious.
-			 */
-			policySource?: string;
-			/**
-			 * Which recovery is waiting. Absent means a retry, which is what the
-			 * retry ladder emits; `continue` is an unreplayable tool batch being
-			 * carried forward instead of resent. Only the wording differs, but a
-			 * countdown claiming a retry sits on the same screen as a notice saying
-			 * the batch is being continued.
-			 */
-			mode?: RetryRecoveryMode;
-	  }
-	| {
-			type: "auto_retry_end";
-			success: boolean;
-			attempt: number;
-			finalError?: string;
-			mode?: RetryRecoveryMode;
-			recoveredErrors?: RecoveredRetryError[];
-	  }
-	| { type: "retry_fallback_applied"; from: string; to: string; role: string }
-	| { type: "retry_fallback_succeeded"; model: string; role: string }
-	| { type: "ttsr_triggered"; rules: Rule[] }
-	| { type: "todo_reminder"; todos: TodoItem[]; attempt: number; maxAttempts: number }
-	| { type: "todo_auto_clear" }
-	| { type: "irc_message"; message: CustomMessage }
-	| { type: "notice"; level: "info" | "warning" | "error"; message: string; source?: string }
-	| {
-			type: "thinking_level_changed";
-			thinkingLevel: ThinkingLevel | undefined;
-			/** The user-configured selector when it differs from the effective level (e.g. `auto`). */
-			configured?: ConfiguredThinkingLevel;
-			/** The level `auto` resolved to this turn, once classified. */
-			resolved?: Effort;
-	  }
-	| { type: "goal_updated"; goal: Goal | null; state?: GoalModeState }
-	| { type: "cwd_changed"; previous: string; cwd: string };
-/** Listener function for agent session events */
-export type AgentSessionEventListener = (event: AgentSessionEvent) => void;
 
 const UNEXPECTED_STOP_MAX_RETRIES = 3;
 const UNEXPECTED_STOP_TIMEOUT_MS = 4000;
 const EMPTY_STOP_MAX_RETRIES = 3;
-/**
- * Budget for callers on the user-visible `/quit` / `/exit` shutdown path that
- * want to cap how long they wait for `MnemopiSessionState.dispose()` to finish
- * its consolidate pass. Consolidate fires fresh LLM fact extractions, each a
- * 1–3 s round-trip, so interactive shutdown passes this budget to keep the
- * UI responsive. Callers that keep the process/session host alive must omit it
- * so dispose still awaits the full consolidate-then-close pipeline.
- */
-export const SHUTDOWN_CONSOLIDATE_BUDGET_MS = 1_500;
-
-export interface AgentSessionDisposeOptions {
-	mnemopiConsolidateTimeoutMs?: number;
-	/**
-	 * Postmortem reason that triggered this dispose (signal/fatal teardown
-	 * paths). When set, the persisted `session_exit` diagnostic records it
-	 * instead of the generic `"dispose"` used for normal programmatic disposal
-	 * (`/quit`, test teardown, subagent completion).
-	 */
-	reason?: postmortem.Reason;
-}
-
-/**
- * Settings that change the SHAPE OF THE TOOLS the model is handed, rather than
- * any text in the system prompt.
- *
- * WHY THIS IS NOT A LIST OF PROMPT GATES. Which settings rewrite the prompt is
- * answered in one place, `system-prompt-builder/gate-registry.ts`, and the
- * listener below reads it through {@link isLivePromptGate}. This table used to
- * restate five of those rows and omit the other five, which is the same
- * two-lists-that-must-agree failure the registry exists to end: writing
- * `personality`, `tools.format`, `inlineToolDescriptors`, `includeModelInPrompt`,
- * `tui.renderMermaid` or `tools.intentTracing` from anything other than the
- * settings selector (a slash command, an SDK or ACP host, a plugin) changed the
- * configuration and left the prompt describing the previous one.
- *
- * These three are genuinely not prompt gates: they gate no template variable and
- * no runtime section, they decide the `task` tool's own description and schema
- * (`tools/task/index.ts` reads all three per rebuild), and nothing else notices
- * when one is written. A rebuild is how the model is told.
- */
-export const TOOL_SHAPE_SETTING_PATHS: Readonly<Record<string, true>> = {
-	"async.enabled": true,
-	"subagent.isolation.mode": true,
-	"subagent.maxNestedSpawnDepth": true,
-};
 
 /** Whether writing `path` must rebuild the prompt the model is holding. */
 function rebuildsThePrompt(path: string): boolean {
 	return isLivePromptGate(path) || TOOL_SHAPE_SETTING_PATHS[path] === true;
 }
-
-/**
- * How long a headless `shutdown()` waits for `dispose()` to flush before it
- * exits anyway. Long enough for a session-log write, short enough that a wedged
- * teardown cannot strand the caller.
- */
-const SHUTDOWN_DISPOSE_TIMEOUT_MS = 5_000;
-export type CommandMetadataChangedListener = () => void | Promise<void>;
-export type AsyncJobSnapshotItem = Pick<AsyncJob, "id" | "type" | "status" | "label" | "startTime">;
 
 /**
  * Slack added past a sibling credential's block expiry before retrying, so
@@ -777,551 +649,7 @@ function hasNonWhitespace(value: string): boolean {
 	return NON_WHITESPACE_RE.test(value);
 }
 
-export interface AsyncJobSnapshot {
-	running: AsyncJobSnapshotItem[];
-	recent: AsyncJobSnapshotItem[];
-	delivery: AsyncJobDeliveryState;
-}
-
-/** One finished background job queued for the async-result follow-up. */
-export interface AsyncResultEntry {
-	jobId: string;
-	result: string;
-	job: AsyncJob | undefined;
-	durationMs: number | undefined;
-}
-
 export type { ShakeMode, ShakeResult };
-/**
- * Prewalk: switches an active session one-way from its starting model to
- * a fast/cheap `target` at the first completed turn that runs an edit/write
- * tool once the todo list exists. A hidden plan nudge asks the starting
- * model to write a plan, initialize its todo list from it, and start; the
- * todo call opens the trigger gate (it never fires the switch itself), so
- * the starting model always begins the implementation. A hidden
- * checklist nudge asks the target model to verify its work before
- * finishing. Both are always on — this is the one mechanism that won out
- * over turn-count and ungated variants in testing.
- */
-export interface Prewalk {
-	target: Model;
-	thinkingLevel?: ConfiguredThinkingLevel;
-}
-
-/**
- * PlanYolo: forces the session into read-only plan mode at start, then
- * auto-approves the plan the instant the model calls `resolve({ action:
- * "apply" })` for it — no interactive review — and switches to a fast/cheap
- * `target` model to implement it. The headless counterpart to interactive
- * plan mode's "Approve and execute", for print/non-interactive runs where
- * there is no one to click Approve.
- */
-export interface PlanYolo {
-	target: Model;
-	thinkingLevel?: ConfiguredThinkingLevel;
-}
-
-// ============================================================================
-// Types
-// ============================================================================
-
-/**
- * Immutable authority admitted for one provider request.
- *
- * Expansion and redaction intentionally travel together in one snapshot: a
- * later disable/re-scope may replace the session's live runtime, but it cannot
- * change what an already-admitted request uses after an async hook resumes.
- */
-export interface SecretRuntimeLease {
-	readonly revision: number;
-	readonly cwd: string;
-	/** Live expansion authority. Undefined when expansion is disabled. */
-	readonly expansionObfuscator: SecretObfuscator | undefined;
-	/**
-	 * Redaction-only authority, which outlives expansion.
-	 *
-	 * This is a different object from `expansionObfuscator` and outlives it on
-	 * purpose: a disable or a cwd move off the vault ends expansion while the
-	 * redaction tombstones stay, so a value the model has already seen as a
-	 * placeholder can never travel back to a provider as plaintext. Prefer the
-	 * `obfuscate*` closures below; this object is exposed for the few consumers
-	 * that hold a redactor themselves rather than calling through the lease.
-	 */
-	readonly redactionObfuscator: SecretObfuscator | undefined;
-	/** True when the redaction-only authority still holds live values or tombstones. */
-	readonly hasRedactions: boolean;
-	obfuscateText(text: string): string;
-	obfuscateMessages(messages: Message[]): Message[];
-	obfuscateContext(context: Context): Context;
-	obfuscatePayload(payload: unknown): unknown;
-	/**
-	 * Whether expansion may proceed against the captured vault revision, without
-	 * side effects. True when nothing needs expanding, or when the captured
-	 * revision is still current. Pass the payload for the payload-aware answer:
-	 * text with no live placeholder is always fresh, because expanding it could
-	 * not change a byte. NEVER throws and NEVER schedules work, so a render path
-	 * can consult it and degrade.
-	 */
-	isFreshForExpansion(text?: string): boolean;
-	/**
-	 * Refresh a stale runtime and resolve once expansion may proceed.
-	 *
-	 * A stale captured revision is a cache miss, not a security event: the
-	 * recovery is to re-read the vault, which is what this awaits. Resolves
-	 * immediately when `text` carries no live placeholder or the revision is
-	 * current. Rejects ONLY when a refresh was attempted, genuinely failed, and
-	 * `text` carries a live placeholder.
-	 */
-	ensureFreshForExpansion(text?: string): Promise<void>;
-	/**
-	 * Synchronously assert that named expansion is still backed by the captured
-	 * vault revision, for a SPEND: text about to be expanded and handed to a
-	 * tool, a command, or the provider. Silent for any payload without a live
-	 * placeholder. Prefer {@link SecretRuntimeLease.ensureFreshForExpansion}
-	 * wherever an await is possible, and NEVER call this from a display or render
-	 * path: an exception there unwinds the renderer instead of failing one
-	 * operation.
-	 */
-	assertFreshForExpansion(text?: string): void;
-}
-
-export interface ProjectAdvisorScope {
-	advisorWatchdogPrompt?: string;
-	advisorContextPrompt?: string;
-	advisorSharedInstructions?: string;
-	advisorConfigs?: AdvisorConfig[];
-}
-
-export interface AgentSessionConfig {
-	agent: Agent;
-	sessionManager: SessionManager;
-	settings: Settings;
-	/** Whether the caller explicitly requested yolo/auto-approve behavior for this session. */
-	autoApprove?: boolean;
-	/**
-	 * Start the session with the full permission bypass on (the
-	 * `--dangerously-skip-permissions` launch flag). Stronger than `autoApprove`:
-	 * removes every prompt including per-tool `prompt` overrides, but explicit
-	 * `deny` and plan mode still block. Toggle at runtime with `/yolo`.
-	 */
-	bypassAllApprovals?: boolean;
-	/**
-	 * A subagent's live view of its parent's bypass. The child's own
-	 * `bypassAllApprovals` is a snapshot taken at spawn, so without this a parent
-	 * that revokes `/yolo` leaves an already-running child bypassing approvals to
-	 * the end of its run. Consulted on every check and can only narrow.
-	 */
-	parentApprovalBypassed?: () => boolean;
-	/** Models to cycle through with Ctrl+P (from --models flags). */
-	scopedModels?: Array<{
-		model: Model;
-		thinkingLevel?: ConfiguredThinkingLevel;
-		/** True only when this entry carried an explicit `:effort` suffix. */
-		explicitThinkingLevel?: boolean;
-	}>;
-	/** Initial session thinking selector. */
-	thinkingLevel?: ConfiguredThinkingLevel;
-	/** Origin of the initial selector, used to distinguish a session override from a saved default. */
-	thinkingSource?: EffortSource;
-	/** Prewalk from the starting model to a fast/cheap target at the first edit/write once the todo list exists. */
-	prewalk?: Prewalk;
-	/** Force read-only plan mode at start, auto-approve on the model's first
-	 *  `resolve` call, then switch to the target to implement. */
-	planYolo?: PlanYolo;
-
-	/** Initial per-family service tiers (OpenAI / Anthropic / Google) for the live session. */
-	serviceTierByFamily?: ServiceTierByFamily;
-	/** Prompt templates for expansion */
-	promptTemplates?: PromptTemplate[];
-	/** File-based slash commands for expansion */
-	slashCommands?: FileSlashCommand[];
-	/** Extension runner (created in main.ts with wrapped tools) */
-	extensionRunner?: ExtensionRunner;
-	/** Loaded skills (already discovered by SDK) */
-	skills?: Skill[];
-	/**
-	 * Channel for non-fatal problems the operator must see.
-	 *
-	 * Replaces the old `skillWarnings` array, which was collected, threaded through here, and
-	 * exposed as a getter that no production code read: skill-loading problems were discarded in
-	 * silence while the field made it look as though somebody was showing them. Skill warnings now
-	 * arrive here as notices with `source: "skills"`, alongside everything else that needs saying.
-	 */
-	operatorNotices?: OperatorNotices;
-	/** Custom commands (TypeScript slash commands) */
-	customCommands?: LoadedCustomCommand[];
-	skillsSettings?: SkillsSettings;
-	/** Model registry for API key resolution and model discovery */
-	modelRegistry: ModelRegistry;
-	/** Tool registry for LSP and settings */
-	toolRegistry?: Map<string, AgentTool>;
-	/** Creates the tools registered only while `/vibe` mode is active. */
-	createVibeTools?: () => AgentTool[];
-	/** Tool names whose current registry entry is still the built-in implementation. */
-	builtInToolNames?: Iterable<string>;
-	/** Update tool-session predicates that render guidance from the live active tool set. */
-	setActiveToolNames?: (names: Iterable<string>) => void;
-	/** Current session pre-LLM message transform pipeline */
-	transformContext?: (messages: AgentMessage[], signal?: AbortSignal) => AgentMessage[] | Promise<AgentMessage[]>;
-	/**
-	 * Per-request transform applied after `convertToLlm` and before the
-	 * provider call. Used for secret obfuscation and image
-	 * clamping. When supplied via {@link createAgentSession}, the advisor agent
-	 * inherits this so its requests undergo the same shaping as the main turn.
-	 */
-	transformProviderContext?: (
-		context: Context,
-		model: Model,
-		runtime?: SecretRuntimeLease,
-	) => Context | Promise<Context>;
-	/**
-	 * Stream wrapper passed to side-channel requests (`/btw`, `/omfg`, IRC
-	 * auto-replies, and handoff generation) so they apply the same provider
-	 * shaping and host-level request wrappers as normal agent turns. Defaults
-	 * to plain `streamSimple` when omitted.
-	 */
-	sideStreamFn?: StreamFn;
-	/**
-	 * Stream wrapper passed to the advisor agent so its requests apply the
-	 * session's `providers.openrouterVariant`, `providers.antigravityEndpoint`,
-	 * `providers.maxInFlightRequests`, and `model.loopGuard.*` settings —
-	 * keeping OpenRouter sticky-routing / response caching consistent with the
-	 * main agent. Defaults to plain `streamSimple` when omitted.
-	 */
-	advisorStreamFn?: StreamFn;
-	/** Hint that OpenAI Codex requests should prefer websocket transport when supported. */
-	preferWebsockets?: boolean;
-	/** Provider payload hook used by the active session request path */
-	onPayload?: SimpleStreamOptions["onPayload"];
-	/** Provider response hook used by the active session request path */
-	onResponse?: SimpleStreamOptions["onResponse"];
-	/** Raw SSE hook used by the active session request path */
-	onSseEvent?: SimpleStreamOptions["onSseEvent"];
-	/** Per-session raw SSE diagnostic buffer */
-	rawSseDebugBuffer?: RawSseDebugBuffer;
-	/** Current session message-to-LLM conversion pipeline */
-	convertToLlm?: (messages: AgentMessage[]) => Message[] | Promise<Message[]>;
-	/** System prompt builder that can consider tool availability. Returns ordered provider-facing blocks. */
-	rebuildSystemPrompt?: (toolNames: string[], tools: Map<string, AgentTool>) => Promise<{ systemPrompt: string[] }>;
-	/** Local calendar date provider used by prompt-cache invalidation. Defaults to the host local date. */
-	getLocalCalendarDate?: () => string;
-	/** Rebuild the SSH tool from current capability discovery results. */
-	reloadSshTool?: () => Promise<AgentTool | null>;
-	requestedToolNames?: ReadonlySet<string>;
-	/**
-	 * Optional accessor for live MCP server instructions. Read by the session's
-	 * `rebuildSystemPrompt`-skip optimization to detect server-side instruction
-	 * changes (e.g. an MCP server upgrade) that would otherwise pass the tool-set
-	 * signature comparison and silently keep a stale prompt cached.
-	 */
-	getMcpServerInstructions?: () => Map<string, string> | undefined;
-	/** Enable hidden-by-default MCP tool discovery for this session. */
-	mcpDiscoveryEnabled?: boolean;
-	/** MCP tool names to activate for the current session when discovery mode is enabled. */
-	initialSelectedMCPToolNames?: string[];
-	/** Whether constructor-provided MCP defaults should be persisted immediately. */
-	persistInitialMCPToolSelection?: boolean;
-	/** MCP server names whose tools should seed discovery-mode sessions whenever those servers are connected. */
-	defaultSelectedMCPServerNames?: string[];
-	/** MCP tool names that should seed brand-new sessions created from this AgentSession. */
-	defaultSelectedMCPToolNames?: string[];
-	/** TTSR manager for time-traveling stream rules */
-	ttsrManager?: TtsrManager;
-	/** Secret obfuscator for deobfuscating streaming edit content */
-	obfuscator?: SecretObfuscator;
-	/** Initial immutable SDK runtime snapshot. Supersedes `obfuscator` when present. */
-	secretRuntime?: SecretRuntimeLease;
-	/** Await the latest winning runtime before admitting one provider request. */
-	leaseSecretRuntime?: () => Promise<SecretRuntimeLease>;
-	/** Recover the lease attached by the SDK to a provider context. */
-	resolveSecretRuntimeLeaseForContext?: (context: Context) => SecretRuntimeLease | undefined;
-	/**
-	 * Reload and atomically replace the complete secret runtime for a cwd.
-	 * The SDK owns config/env/vault loading; the session owns when lifecycle changes require it.
-	 */
-	refreshSecretRuntime?: (cwd: string) => Promise<SecretRuntimeLease | SecretObfuscator | undefined>;
-	/** Argot shorthand codec (experimental); expands handles before display/tools. */
-	argot?: ArgotSession;
-	/** Inherited eval executor session id from a parent agent. */
-	parentEvalSessionId?: string;
-	/** Logical owner for retained eval kernels created by this session. */
-	evalKernelOwnerId?: string;
-	/**
-	 * AsyncJobManager that this session installed as the process-global instance.
-	 * Only set for top-level sessions; subagents inherit the parent's manager and
-	 * **MUST NOT** dispose it on their own teardown.
-	 */
-	ownedAsyncJobManager?: AsyncJobManager;
-	/**
-	 * Whether this session was spawned by another session in the SAME process.
-	 *
-	 * Set from `isSubagentSession` in `sdk.ts`, which is the one owner of that
-	 * question. It governs re-rooting: a subagent shares the process with its
-	 * parent and its siblings, so moving its working directory must not move
-	 * theirs. See {@link AgentSession.rescopeToCwd}. Default false, which is the
-	 * safe reading for an embedder that builds a session directly: a session with
-	 * nobody above it owns the process.
-	 */
-	isSubagent?: boolean;
-	/**
-	 * AsyncJobManager reachable by this session for scoped job actions.
-	 *
-	 * Top-level owners receive their own manager, subagents receive the inherited
-	 * parent manager, and secondary in-process top-level sessions receive
-	 * `undefined` so job snapshots and ACP drains cannot observe the primary's
-	 * state.
-	 */
-	asyncJobManager?: AsyncJobManager;
-	/** Agent identity (registry id like "Main" or "Alice") used for IRC routing. */
-	agentId?: string;
-	/** Whether this session is the top-level agent or a subagent. Drives eager-task
-	 *  prelude gating so a top-level session created with a custom `agentId` still
-	 *  receives the always-mode reminder. Defaults to "main". */
-	agentKind?: "main" | "sub";
-	/**
-	 * Override the provider-facing session ID for all API requests from this session.
-	 * When absent, `sessionManager.getSessionId()` is used. Needed when benchmark or
-	 * SDK callers issue probes / prewarming with an explicit `--provider-session-id`
-	 * so that credential sticky selection is consistent with the session's streaming calls.
-	 */
-	providerSessionId?: string;
-	/** Marks `agent.promptCacheKey` as fork-inherited so incompatible route changes can clear it. */
-	providerPromptCacheKeySource?: "explicit" | "fork";
-	/**
-	 * Full advisor toolset, pre-built in `createAgentSession` against a distinct,
-	 * advisor-scoped `ToolSession` (its own `-advisor` session/agent id) so the
-	 * advisor's tool state stays isolated from the primary. The advisor is a full
-	 * agent; its config `tools` selects a subset (default read/search). Undefined
-	 * when the advisor is disabled.
-	 */
-	advisorTools?: AgentTool[];
-	/** Preloaded watchdog prompt content for the advisor. */
-	advisorWatchdogPrompt?: string;
-	/** Preloaded YAML top-level `instructions` shared baseline, kept separate from
-	 *  `advisorWatchdogPrompt` so `/advisor configure` can swap it live. */
-	advisorSharedInstructions?: string;
-	/**
-	 * Preloaded project context files (AGENTS.md, etc.) rendered as a system-prompt
-	 * block for the advisor — the same standing instructions the primary agent
-	 * receives, so the reviewer holds the agent to them.
-	 */
-	advisorContextPrompt?: string;
-	/**
-	 * Advisors discovered from `WATCHDOG.yml`. Empty/undefined runs a single
-	 * legacy advisor on the `advisor` role (byte-for-byte the pre-config path).
-	 */
-	advisorConfigs?: AdvisorConfig[];
-	/**
-	 * Strip tool descriptions from provider-bound tool specs on side requests
-	 * (handoff). A resolver follows the active model so session dumps and side
-	 * requests use the same descriptor placement as the rebuilt system prompt.
-	 */
-	pruneToolDescriptions?: boolean | ((model: Model) => boolean);
-	/**
-	 * Disconnect this session's OWNED MCP manager on dispose. Provided only when
-	 * the session created the manager (top-level sessions); subagents reuse a
-	 * parent's manager via `options.mcpManager` and omit this so a child's
-	 * teardown never tears down the shared servers.
-	 */
-	disconnectOwnedMcpManager?: () => Promise<void>;
-	/**
-	 * Override the bundled system prompt used by automatic session-title
-	 * generation paths (initial title + replan refresh). Source-of-truth is
-	 * `TITLE_SYSTEM.md` discovered via {@link discoverTitleSystemPromptFile} and
-	 * resolved through {@link resolvePromptInput}; refresh after a `/move`-style
-	 * cwd change via {@link AgentSession.setTitleSystemPrompt}.
-	 */
-	titleSystemPrompt?: string;
-}
-
-/** Options for AgentSession.prompt() */
-export interface PromptOptions {
-	/** Whether to expand file-based prompt templates (default: true) */
-	expandPromptTemplates?: boolean;
-	/** Image attachments */
-	images?: ImageContent[];
-	/** When streaming, how to queue the message: "steer" (interrupt) or "followUp" (wait). */
-	streamingBehavior?: "steer" | "followUp";
-	/** Optional tool choice override for the next LLM call. */
-	toolChoice?: ToolChoice;
-	/** Send as developer/system message instead of user. Providers that support it use the developer role; others fall back to user. */
-	synthetic?: boolean;
-	/** Marks this prompt as a deliberate user action (typed message, `.`/`c`
-	 *  continue). Clears advisor auto-resume suppression that a user interrupt set.
-	 *  Defaults to `!synthetic`; manual-continue is synthetic yet user-initiated, so
-	 *  it sets this explicitly. Agent-initiated synthetic prompts (auto-continue,
-	 *  plan re-prime, reminders) leave it unset and keep suppression latched. */
-	userInitiated?: boolean;
-	/** Explicit billing/initiator attribution for the prompt. Defaults to user prompts as `user` and synthetic prompts as `agent`. */
-	attribution?: MessageAttribution;
-	/** Skip pre-send compaction checks for this prompt (internal use for maintenance flows). */
-	skipCompactionCheck?: boolean;
-}
-
-/** Options for AgentSession.followUp() */
-export interface FollowUpOptions {
-	/** Enqueue as a hidden developer message (agent-attributed by default) instead of a user follow-up. */
-	synthetic?: boolean;
-	/** Whether to expand file-based prompt templates (default: true). */
-	expandPromptTemplates?: boolean;
-	/** Explicit billing/initiator attribution. Defaults to `agent` for synthetic follow-ups. */
-	attribution?: MessageAttribution;
-}
-
-/** Result from a handoff operation. */
-export interface HandoffResult {
-	document: string;
-	savedPath?: string;
-}
-
-export interface SessionHandoffOptions {
-	autoTriggered?: boolean;
-	signal?: AbortSignal;
-	onSwitchCancelled?: () => void;
-}
-
-/** Result from cycleModel() */
-export interface ModelCycleResult {
-	model: Model;
-	thinkingLevel: ThinkingLevel | undefined;
-	/** Whether cycling through scoped models (--models flag) or all available */
-	isScoped: boolean;
-}
-
-/** Result from cycleRoleModels() */
-export interface RoleModelCycleResult {
-	model: Model;
-	thinkingLevel: ThinkingLevel | undefined;
-	role: string;
-}
-
-/** A configured role resolved to a concrete model, used by role cycling and
- *  the plan-approval model slider. */
-export interface ResolvedRoleModel {
-	role: string;
-	model: Model;
-	thinkingLevel?: ConfiguredThinkingLevel;
-	explicitThinkingLevel: boolean;
-}
-
-/** The set of resolvable role models plus the index of the currently active
- *  one within {@link ResolvedRoleModel.role} order. */
-export interface RoleModelCycle {
-	models: ResolvedRoleModel[];
-	currentIndex: number;
-}
-
-export interface ContextUsageBreakdown {
-	contextWindow: number;
-	anchored: boolean;
-	usedTokens: number;
-	systemPromptTokens: number;
-	systemToolsTokens: number;
-	systemContextTokens: number;
-	skillsTokens: number;
-	messagesTokens: number;
-	pendingMessagesTokens: number;
-}
-
-/** Session statistics for /session command */
-export interface SessionStats {
-	sessionFile: string | undefined;
-	sessionId: string;
-	userMessages: number;
-	assistantMessages: number;
-	toolCalls: number;
-	toolResults: number;
-	totalMessages: number;
-	tokens: {
-		input: number;
-		output: number;
-		reasoning: number;
-		cacheRead: number;
-		cacheWrite: number;
-		total: number;
-	};
-	premiumRequests: number;
-	cost: number;
-	contextUsage?: ContextUsage;
-}
-
-/** Advisor statistics for /advisor status command. */
-export interface AdvisorStats {
-	configured: boolean;
-	active: boolean;
-	model?: Model;
-	contextWindow: number;
-	contextTokens: number;
-	tokens: {
-		input: number;
-		output: number;
-		reasoning: number;
-		cacheRead: number;
-		cacheWrite: number;
-		total: number;
-	};
-	cost: number;
-	messages: {
-		user: number;
-		assistant: number;
-		total: number;
-	};
-	/** Per-advisor breakdown; one entry per active advisor (single-advisor sessions have one). */
-	advisors: PerAdvisorStat[];
-}
-
-/** One advisor's slice of {@link AdvisorStats}, surfaced for the multi-advisor status panel. */
-export interface PerAdvisorStat {
-	name: string;
-	model: Model;
-	contextWindow: number;
-	contextTokens: number;
-	tokens: AdvisorStats["tokens"];
-	cost: number;
-	messages: AdvisorStats["messages"];
-}
-
-/**
- * One live advisor instance: its own agent/runtime/tools/recorder plus a
- * per-advisor emission guard and identity. The session holds an array of these;
- * primary-scoped state (turn counters, interrupt latches, the shared yield
- * channel) stays on the session.
- */
-interface ActiveAdvisor {
-	/** Display name from config ("default" for the legacy no-YAML advisor). */
-	name: string;
-	/** Slug for the transcript filename/session id; "" → `__advisor.jsonl`. */
-	slug: string;
-	agent: Agent;
-	runtime: AdvisorRuntime;
-	adviseTool: AdviseTool;
-	emissionGuard: AdvisorEmissionGuard;
-	recorder: AdvisorTranscriptRecorder;
-	/** Latest recorder close, awaited by dispose() so the final turn lands on disk. */
-	recorderClosed: Promise<void>;
-	/** Unsubscribe for the advisor agent's event stream feeding the recorder. */
-	agentUnsubscribe?: () => void;
-	model: Model;
-	thinkingLevel: ThinkingLevel;
-	/** Stable key for the resolved runtime inputs that require a rebuild to change. */
-	signature: string;
-}
-
-/** Resolved advisor config ready to instantiate as an {@link ActiveAdvisor}. */
-interface AdvisorRuntimeDescriptor {
-	config: AdvisorConfig;
-	name: string;
-	slug: string;
-	model: Model;
-	thinkingLevel: ThinkingLevel;
-	signature: string;
-}
-
-export interface FreshSessionResult {
-	previousSessionId: string;
-	sessionId: string;
-	closedProviderSessions: number;
-}
 
 /**
  * Whether `next` is the same tool set as `current` in a different order.
@@ -1404,7 +732,6 @@ const noOpUIContext: ExtensionUIContext = {
 	setWorkingMessage: () => {},
 	setWidget: () => {},
 	setTitle: () => {},
-	custom: async () => undefined as never,
 	setEditorText: () => {},
 	pasteToEditor: () => {},
 	getEditorText: () => "",
@@ -1416,9 +743,6 @@ const noOpUIContext: ExtensionUIContext = {
 	getAllThemes: () => Promise.resolve([]),
 	getTheme: () => Promise.resolve(undefined),
 	setTheme: _theme => Promise.resolve({ success: false, error: "UI not available" }),
-	setFooter: () => {},
-	setHeader: () => {},
-	setEditorComponent: () => {},
 	getToolsExpanded: () => false,
 	setToolsExpanded: () => {},
 };
@@ -1435,14 +759,6 @@ function createHandoffFileName(date = new Date()): string {
 // ============================================================================
 // AgentSession Class
 // ============================================================================
-
-function mergeLlmCompactionPreserveData(
-	hookPreserveData: Record<string, unknown> | undefined,
-	resultPreserveData: Record<string, unknown> | undefined,
-): Record<string, unknown> | undefined {
-	const preserveData = { ...(hookPreserveData ?? {}), ...(resultPreserveData ?? {}) };
-	return stripLegacyArchive(Object.keys(preserveData).length > 0 ? preserveData : undefined);
-}
 
 /**
  * Redact every string in a provider payload, object keys included, after
@@ -1474,43 +790,7 @@ export function obfuscateProviderPayload(value: unknown, obfuscator: SecretObfus
 	}
 }
 
-type MessageEndPersistenceSlot = {
-	readonly promise: Promise<void>;
-	persist: (persistMessage: () => void) => Promise<void>;
-	release: () => void;
-};
-type PendingRecoveredRetryError = {
-	entryId: string;
-	persistenceKey: string;
-	recovery: AssistantRetryRecoveryKind;
-	attempt: number;
-	note: string;
-};
-
-type PostPromptSkipReason = "aborted" | "stale-generation";
-
-type AgentContinueSkipReason =
-	| PostPromptSkipReason
-	| "session-unavailable"
-	| "should-continue-false"
-	| "post-restore-unavailable";
-
-type ScheduledAgentContinueOptions = {
-	delayMs?: number;
-	generation?: number;
-	shouldContinue?: () => boolean;
-	onSkip?: (reason: AgentContinueSkipReason) => void;
-	onError?: () => void;
-};
-
 const REPLAN_TITLE_CONTEXT_TURN_LIMIT = 6;
-
-type SessionNameTrigger = "replan";
-type SetSessionNameWithTrigger = (
-	name: string,
-	source?: SessionTitleSource,
-	trigger?: SessionNameTrigger,
-) => Promise<boolean>;
 
 // A thin adapter over the `contentText` owner for the `unknown` agent-message
 // boundary: content here may be a plain string, an array of blocks (a wider
@@ -1518,39 +798,6 @@ type SetSessionNameWithTrigger = (
 // string/non-array guards live here; the block flattening (skip non-text, trim,
 // join with a blank line) is the owner's job. `contentText` skips non-record and
 // non-string-text blocks the same way the old hand-rolled loop did.
-function textFromContent(content: unknown): string {
-	if (typeof content === "string") return content.trim();
-	if (!Array.isArray(content)) return "";
-	return contentText(content, { separator: "\n\n", trimBlocks: true });
-}
-
-function thinkingFromContent(content: unknown): string {
-	if (!Array.isArray(content)) return "";
-	const parts: string[] = [];
-	for (const block of content) {
-		if (!isRecord(block) || block.type !== "thinking" || typeof block.thinking !== "string") continue;
-		const thinking = block.thinking.trim();
-		if (thinking) parts.push(thinking);
-	}
-	return parts.join("\n\n");
-}
-
-function toolCallOpFromMessage(message: AgentMessage, toolCallId: string): string | undefined {
-	if (message.role !== "assistant" || !Array.isArray(message.content)) return undefined;
-	for (const block of message.content) {
-		if (!isRecord(block) || block.type !== "toolCall" || block.id !== toolCallId) continue;
-		return isRecord(block.arguments) ? getStringProperty(block.arguments, "op") : undefined;
-	}
-	return undefined;
-}
-
-function titleConversationTurnFromMessage(message: AgentMessage): TitleConversationTurn | undefined {
-	if (message.role !== "user" && message.role !== "assistant") return undefined;
-	const text = textFromContent(message.content);
-	const thinking = message.role === "assistant" ? thinkingFromContent(message.content) : undefined;
-	if (!text && !thinking) return undefined;
-	return { role: message.role, ...(text ? { text } : {}), ...(thinking ? { thinking } : {}) };
-}
 
 export class AgentSession {
 	readonly agent: Agent;
@@ -1605,23 +852,9 @@ export class AgentSession {
 		thinkingLevel?: ConfiguredThinkingLevel;
 		explicitThinkingLevel?: boolean;
 	}>;
-	/** Effective, metadata-clamped thinking level applied to the agent (never `auto`). */
-	#thinkingLevel: ThinkingLevel | undefined;
-	/** Explicit session-only choice. Undefined lets selector and saved per-model defaults apply. */
-	#sessionThinkingOverride: ConfiguredThinkingLevel | undefined;
-	/** Explicit effort suffix on the selector that activated the current model. */
-	#activeSelectorThinkingLevel: ConfiguredThinkingLevel | undefined;
-	/** True when the user configured `auto`; the effective level is resolved per turn. */
-	#autoThinking: boolean = false;
-	/** The level `auto` last resolved to (for UI); undefined until a turn is classified. */
-	#autoResolvedLevel: Effort | undefined;
 	#prewalk: Prewalk | undefined;
 	/** True once the plan nudge has been queued; scrubbed from context at the switch. */
 	#prewalkPlanInjected = false;
-	/** True once any successful `todo` call landed — opens the prewalk
-	 *  trigger gate: the switch fires at the first edit/write AFTER the todo
-	 *  list exists (sessions without a todo tool skip the gate). */
-	#prewalkTodoSeen = false;
 	#planYolo: PlanYolo | undefined;
 	#planYoloPreviousTools: string[] | undefined;
 	#planYoloArmed = false;
@@ -1713,69 +946,8 @@ export class AgentSession {
 	#retryResolve: (() => void) | undefined = undefined;
 	#activeRetryFallback: ActiveRetryFallbackState | undefined = undefined;
 	#pendingRecoveredRetryErrors: PendingRecoveredRetryError[] = [];
-	// Todo completion reminder state
-	#todoReminderCount = 0;
-	/**
-	 * Set after a reminder is appended and cleared only by tool-level progress or
-	 * a changed todo snapshot. A user correction does not clear it: otherwise
-	 * repeated "continue" prompts replay the same reminder payload.
-	 */
-	#todoReminderAwaitingProgress = false;
-	/** Fingerprint of the last rendered incomplete state; unchanged retries omit the list. */
-	#lastTodoReminderFingerprint: string | undefined = undefined;
-	/**
-	 * Error text of the most recent `todo` result that failed, cleared by the
-	 * next one that succeeds. While it is set the board write never landed, so
-	 * the recorded phases describe a state the session cannot vouch for and no
-	 * reminder may assert a count from them.
-	 *
-	 * Cleared with the reminder counters at every lifecycle boundary that starts
-	 * a new context (new session, `/clear`, resume, handoff): the latch names one
-	 * specific write against one specific board, and those boundaries replace the
-	 * board, so carrying it across is a claim about a transcript that is gone.
-	 * Without that reset one failure disabled todo continuation pressure for the
-	 * rest of the process, and the repeated-failure instruction tells the model to
-	 * stop calling `todo`, so no later success would ever clear it.
-	 *
-	 * Deliberately NOT expired on a turn count or a timer. The latch is not a
-	 * cooldown; it records that the board is unverified, and nothing but a landed
-	 * write or a discarded board makes it verified again. Ageing it out would just
-	 * resume asserting "you stopped with N incomplete items" from the same stale
-	 * phases, which is the false statement the suppression exists to prevent.
-	 */
-	#lastTodoFailureText: string | undefined = undefined;
-	/**
-	 * Id of the newest `compaction` entry ON THE ACTIVE BRANCH at the moment a
-	 * stop-time reminder last echoed the full todo list, `null` when the branch
-	 * held none, and `undefined` before the first echo of this session.
-	 *
-	 * The compaction entry is the boundary of the model's current context
-	 * window, and every path that compacts (manual `/compact`, and idle,
-	 * threshold, overflow and incomplete auto-compaction, which all funnel
-	 * through one `appendCompaction` call) persists one, so this is the signal a
-	 * per-window latch should key off rather than a turn count. A differing id
-	 * means the previous echo scrolled out of context and the next reminder may
-	 * spend a fresh echo. Cleared with the reminder counters at every lifecycle
-	 * boundary that starts a new window (new session, handoff, reminders
-	 * re-enabled), since the latch describes one window only.
-	 */
-	#todoReminderEchoCompactionId: string | null | undefined = undefined;
-	/**
-	 * Successful mutating tool results (bash/eval/edit/write/ast_edit) since the
-	 * agent last touched the `todo` tool. Drives {@link #takeMidRunTodoNudge} so
-	 * the live HUD stays in sync with actual progress instead of flipping
-	 * `0/N -> N/N` only at the very end of a long run (issue #3651). Read-only
-	 * tools and errored results never tick it. Reset to 0 on any `todo` tool
-	 * result, on a nudge fire (cooldown), on a stop-time reminder, and at every
-	 * new-prompt / clear / handoff lifecycle boundary.
-	 */
-	#mutationsSinceLastTodoTouch = 0;
-	/** Mid-run nudges fired this prompt cycle; capped by
-	 *  {@link MID_RUN_TODO_NUDGE_MAX_PER_CYCLE}, reset with the counter above. */
-	#midRunNudgeCount = 0;
 	#planModeReminderCount = 0;
 	#planModeReminderAwaitingProgress = false;
-	#todoPhases: TodoPhase[] = [];
 	#replanTitleRefreshInFlight: Promise<void> | undefined = undefined;
 	/** Resolved TITLE_SYSTEM.md override applied to every automatic session-title
 	 *  generation path. Refresh via {@link AgentSession.setTitleSystemPrompt} when
@@ -1967,22 +1139,15 @@ export class AgentSession {
 	#defaultSelectedMCPToolNames = new Set<string>();
 	#sessionDefaultSelectedMCPToolNames = new Map<string, string[]>();
 
-	// TTSR manager for time-traveling stream rules
-	#ttsrManager: TtsrManager | undefined = undefined;
-	#pendingTtsrInjections: Rule[] = [];
-	/** Per-tool TTSR rules whose `interruptMode` opted out of aborting the stream.
-	 *  Bucketed while the tool call's arguments stream, then rendered in
-	 *  `#ttsrAfterToolCall` into `#pendingTtsrToolReminders`. */
-	#perToolTtsrInjections = new Map<string, Rule[]>();
-	/** Rendered tool-scoped TTSR reminders waiting for the next aside boundary.
-	 *  Model-only: they never enter a tool result, so nothing the user reads
-	 *  carries `<system-reminder>` markup. See {@link #ttsrAfterToolCall}. */
-	#pendingTtsrToolReminders: { content: string; rules: string[] }[] = [];
-	#ttsrAbortPending = false;
-	#ttsrRetryToken = 0;
-	#ttsrResumePromise: Promise<void> | undefined = undefined;
-	#ttsrResumeResolve: (() => void) | undefined = undefined;
-
+	/** Time-Traveling Stream Rules: match rules against a streaming turn and
+	 *  deliver matched bodies back to the model. Owns all TTSR state. */
+	#ttsr: TtsrRuntime;
+	/** The todo board plus the eager prelude, mid-run nudge and stop-time
+	 *  reminder that keep it honest. Owns all todo state. */
+	#todo: TodoRuntime;
+	/** How hard the model thinks and who decided: the session override, the
+	 *  selector pin, the saved default, and `auto`. Owns all thinking state. */
+	#thinking: ThinkingRuntime;
 	/** One-shot flag for expected internal plan-mode aborts. Approval actions may
 	 *  abort the post-`resolve` continuation before compaction, execution, or
 	 *  manual refinement. Consumed inside `#handleAgentEvent` for the matching
@@ -2174,7 +1339,7 @@ export class AgentSession {
 		if (this.#isDisposed || this.isStreaming) return;
 		if (this.#pendingIrcInterrupts.length === 0 && this.#pendingIrcAsides.length === 0) return;
 		if (this.#canAutoContinueForFollowUp() && this.agent.hasQueuedMessages()) return;
-		const records = [...this.#pendingIrcInterrupts, ...this.#pendingIrcAsides];
+		const records = this.#pendingIrcInterrupts.concat(this.#pendingIrcAsides);
 		this.#pendingIrcInterrupts = [];
 		this.#pendingIrcAsides = [];
 		if (this.#planModeState?.enabled) {
@@ -2209,10 +1374,10 @@ export class AgentSession {
 			this.agent.peekSteeringQueue().length === 0 &&
 			this.agent.peekFollowUpQueue().length > 0 &&
 			!this.#canAutoContinueForFollowUp()
-				? [...this.agent.peekFollowUpQueue()]
+				? this.agent.peekFollowUpQueue().slice()
 				: [];
 		if (parkedFollowUps.length > 0) {
-			this.agent.replaceQueues([...this.agent.peekSteeringQueue()], []);
+			this.agent.replaceQueues(this.agent.peekSteeringQueue().slice(), []);
 		}
 		this.#resetPromptMaintenanceState();
 		this.#beginInFlight();
@@ -2224,8 +1389,8 @@ export class AgentSession {
 			.finally(() => {
 				if (parkedFollowUps.length > 0) {
 					this.agent.replaceQueues(
-						[...this.agent.peekSteeringQueue()],
-						[...parkedFollowUps, ...this.agent.peekFollowUpQueue()],
+						this.agent.peekSteeringQueue().slice(),
+						parkedFollowUps.concat(this.agent.peekFollowUpQueue()),
 					);
 				}
 				this.#endInFlight();
@@ -2240,7 +1405,7 @@ export class AgentSession {
 	#extractQueuedAdvisorCards(): CustomMessage[] {
 		const steering = this.agent.peekSteeringQueue();
 		const followUp = this.agent.peekFollowUpQueue();
-		const cards = [...steering, ...followUp].filter(isAdvisorCard);
+		const cards = steering.concat(followUp).filter(isAdvisorCard);
 		if (cards.length === 0) return [];
 		this.agent.replaceQueues(
 			steering.filter(m => !isAdvisorCard(m)),
@@ -2358,9 +1523,9 @@ export class AgentSession {
 		// the fast model the whole implementation cold. Sessions without a todo
 		// tool skip the gate.
 		if (context.toolResults.some(result => result.toolName === TOOL.todo)) {
-			this.#prewalkTodoSeen = true;
+			this.#todo.noteTodoToolResult();
 		}
-		const todoGateOpen = this.#prewalkTodoSeen || !this.#toolRegistry.has(TOOL.todo);
+		const todoGateOpen = this.#todo.sawTodoTool || !this.#toolRegistry.has(TOOL.todo);
 		const action = todoGateOpen
 			? context.toolResults.find(result => PREWALK_ACTION_TOOLS[result.toolName])
 			: undefined;
@@ -2476,7 +1641,7 @@ export class AgentSession {
 		const previousTools = this.getActiveToolNames();
 		const augmentations: string[] = [TOOL.resolve];
 		if (this.hasBuiltInTool(TOOL.write)) augmentations.push(TOOL.write);
-		await this.setActiveToolsByName([...new Set([...previousTools, ...augmentations])]);
+		await this.setActiveToolsByName(Array.from(new Set(previousTools.concat(augmentations))));
 		this.#planYoloPreviousTools = previousTools;
 		this.setPlanModeState({
 			enabled: true,
@@ -2573,30 +1738,27 @@ export class AgentSession {
 		this.#isSubagent = config.isSubagent === true;
 		this.#asyncJobManager = config.asyncJobManager ?? config.ownedAsyncJobManager;
 		this.#scopedModels = config.scopedModels ?? [];
-		this.#sessionThinkingOverride = config.thinkingSource === "session" ? config.thinkingLevel : undefined;
-		this.#activeSelectorThinkingLevel = config.thinkingSource === "selector" ? config.thinkingLevel : undefined;
-		if (config.thinkingLevel === AUTO_THINKING) {
-			// `auto` is session-level: keep the flag and show a provisional concrete
-			// level (the agent's initial effort was already set by the caller) until
-			// the first user turn is classified.
-			this.#autoThinking = true;
-			this.#thinkingLevel = resolveProvisionalAutoLevel(this.model);
-		} else {
-			// Clamp the configured level against the session's model, mirroring the
-			// restore path below. A persisted `high` (set while on another model)
-			// forwarded unclamped to a reasoning model with no controllable effort
-			// surface (e.g. devin/swe-1-6: `thinking: undefined`) threw
-			// "Thinking effort high is not supported ... Supported efforts:" (empty
-			// list) at the FIRST stream of every turn — the session was unusable.
-			this.#thinkingLevel = resolveThinkingLevelForModel(this.model, config.thinkingLevel);
-		}
+		this.#thinking = new ThinkingRuntime({
+			agent: this.agent,
+			sessionStore: this.sessionManager,
+			settings: this.settings,
+			model: () => this.model,
+			modelRegistry: () => this.#modelRegistry,
+			sessionId: () => this.sessionId,
+			obfuscateProviderText: text => this.obfuscateProviderText(text),
+			sideComplete: () => this.#sideCompleteImpl,
+			promptGeneration: () => this.#promptGeneration,
+			magicKeywordEnabled: keyword => this.#magicKeywordEnabled(keyword),
+			clearInheritedProviderPromptCacheKey: reason => this.#clearInheritedProviderPromptCacheKey(reason),
+			emitSessionEvent: event => this.#emit(event),
+		});
+		this.#thinking.seedFromConfig(config.thinkingLevel, config.thinkingSource);
 		if (config.prewalk) {
 			this.#prewalk = config.prewalk;
 		}
 		if (config.planYolo) {
 			this.#planYolo = config.planYolo;
 		}
-		this.#applyThinkingLevelToAgent(this.#thinkingLevel);
 
 		this.#promptTemplates = config.promptTemplates ?? [];
 		this.#slashCommands = config.slashCommands ?? [];
@@ -2833,14 +1995,14 @@ export class AgentSession {
 		// `job poll` / `irc wait` can return early before the boundary drains them.
 		this.agent.hasIrcInterrupts = () => this.#pendingIrcInterrupts.length > 0;
 		this.agent.setAsideMessageProvider(() => {
-			const pendingIrc = [...this.#pendingIrcInterrupts, ...this.#pendingIrcAsides];
+			const pendingIrc = this.#pendingIrcInterrupts.concat(this.#pendingIrcAsides);
 			this.#pendingIrcInterrupts = [];
 			this.#pendingIrcAsides = [];
 			const thunks: AsideMessage[] = pendingIrc.map(record => () => record);
 			thunks.push(...this.yieldQueue.drainLazy());
 			// Mid-run todo reconciliation — evaluated at injection time so a turn
 			// that flips a todo just before this poll suppresses the nudge.
-			thunks.push(() => this.#takeMidRunTodoNudge());
+			thunks.push(() => this.#todo.takeMidRunNudge());
 			// Memory context published mid-run (a recall on `agent_start`, a
 			// mental-model reload) rides in here instead of rewriting the system
 			// prompt, which would cost a full uncached re-read of the conversation.
@@ -2848,7 +2010,7 @@ export class AgentSession {
 			// Tool-scoped TTSR reminders. An aside rather than a steer: a steer
 			// aborts the tool batch still in flight, and a reminder about a call
 			// that already finished has no business cutting its siblings short.
-			thunks.push(() => this.#takePendingTtsrToolReminders());
+			thunks.push(() => this.#ttsr.takePendingToolReminders());
 			return thunks;
 		});
 		this.#convertToLlm = config.convertToLlm ?? convertToLlm;
@@ -2881,7 +2043,39 @@ export class AgentSession {
 			this.sessionManager.getSessionFile(),
 			this.#getConfiguredDefaultSelectedMCPToolNames(),
 		);
-		this.#ttsrManager = config.ttsrManager;
+		this.#ttsr = new TtsrRuntime(
+			{
+				agent: this.agent,
+				sessionStore: this.sessionManager,
+				argotEnabled: () => this.settings.get("argot.enabled") === true,
+				argotLoaded: () => this.#argot?.loaded === true,
+				promptGeneration: () => this.#promptGeneration,
+				emitSessionEventDetached: (event, context) => this.#emitSessionEventDetached(event, context),
+				scheduleAgentContinue: options => this.#scheduleAgentContinue(options),
+				schedulePostPromptTask: (task, options) => this.#schedulePostPromptTask(task, options),
+			},
+			config.ttsrManager,
+		);
+		this.#todo = new TodoRuntime({
+			agent: this.agent,
+			sessionStore: this.sessionManager,
+			todoSettings: () => ({
+				enabled: this.settings.get("todo.enabled"),
+				reminders: this.settings.get("todo.reminders"),
+				remindersMax: this.settings.get("todo.reminders.max"),
+				eager: this.settings.get("todo.eager"),
+			}),
+			model: () => this.model,
+			planModeEnabled: () => this.#planModeState?.enabled === true,
+			goalModeActive: () => this.#goalModeState?.enabled === true && this.#goalModeState.goal.status === "active",
+			activeToolNames: () => this.getActiveToolNames(),
+			eagerPreludeContext: () => this.#buildEagerPreludeContext(),
+			consumeLastServedToolChoiceLabel: () => this.#toolChoiceQueue.consumeLastServedLabel(),
+			hasPendingAsyncWake: () => this.#hasPendingAsyncWake(),
+			emitSessionEvent: event => this.#emitSessionEvent(event),
+			scheduleAgentContinue: options => this.#scheduleAgentContinue(options),
+			promptGeneration: () => this.#promptGeneration,
+		});
 		this.#secretRuntime = config.secretRuntime;
 		this.#obfuscator = config.secretRuntime?.expansionObfuscator ?? config.obfuscator;
 		this.#leaseSecretRuntime = config.leaseSecretRuntime;
@@ -2907,7 +2101,7 @@ export class AgentSession {
 		this.agent.afterToolCall = ctx => this.#afterToolCall(ctx);
 		this.agent.providerSessionState = this.#providerSessionState;
 		this.#syncAgentSessionId();
-		this.#syncTodoPhasesFromBranch();
+		this.#todo.syncFromBranch();
 		this.#goalRuntime = new GoalRuntime({
 			getState: () => this.#goalModeState,
 			setState: state => {
@@ -2974,10 +2168,7 @@ export class AgentSession {
 			// while disabled, and a stale self-continuation latch would otherwise
 			// survive disable/re-enable and silence the fresh runway.
 			if ((path === "todo.reminders" || path === "todo.enabled") && value === false) {
-				this.#todoReminderCount = 0;
-				this.#todoReminderAwaitingProgress = false;
-				this.#lastTodoReminderFingerprint = undefined;
-				this.#todoReminderEchoCompactionId = undefined;
+				this.#todo.onRemindersDisabled();
 			}
 			// The limiter used to learn about a changed budget only when the bash
 			// or launch tool next ran, because those two are the only spawn paths
@@ -3540,7 +2731,7 @@ export class AgentSession {
 	 *  session-level latch reset {@link #resetAdvisorSessionState} performs. */
 	#resetAllAdvisorRuntimes(): void {
 		for (const a of this.#advisors) a.runtime.reset();
-		this.#ttsrManager?.resetForCompaction();
+		this.#ttsr.onCompaction();
 	}
 
 	#stopAdvisorRuntime(): void {
@@ -3958,7 +3149,7 @@ export class AgentSession {
 
 	/** TTSR manager for time-traveling stream rules */
 	get ttsrManager(): TtsrManager | undefined {
-		return this.#ttsrManager;
+		return this.#ttsr.manager;
 	}
 
 	/** Secret obfuscator, when secrets are configured; /share redaction reuses it. */
@@ -4097,7 +3288,7 @@ export class AgentSession {
 
 	/** Whether a TTSR abort is pending (stream was aborted to inject rules) */
 	get isTtsrAbortPending(): boolean {
-		return this.#ttsrAbortPending;
+		return this.#ttsr.isAbortPending;
 	}
 
 	/** Whether an expected internal plan-mode abort is pending. Consumed by
@@ -4308,7 +3499,7 @@ export class AgentSession {
 		// ended has either a released child or this agent on it. Bounded by the
 		// ENDING scope so the purge cannot reach a line another conversation in
 		// this process recorded under a recycled agent name.
-		IrcBus.global().forgetAgents([...descendants, id], endingScope);
+		IrcBus.global().forgetAgents(descendants.concat([id]), endingScope);
 		// Standing approval grants die with the conversation they were given in.
 		// "Allow bash for this session" is an answer about the work in front of
 		// you, and `/new` or `/resume` replaces that work entirely; carrying the
@@ -4352,7 +3543,7 @@ export class AgentSession {
 	/** Emit an event to all listeners */
 	#emit(event: AgentSessionEvent): void {
 		// Copy array before iteration to avoid mutation during iteration.
-		const listeners = [...this.#eventListeners];
+		const listeners = this.#eventListeners.slice();
 		for (const l of listeners) {
 			try {
 				const result = l(event) as unknown;
@@ -5166,7 +4357,7 @@ export class AgentSession {
 		}
 		// Step the mid-run todo counter synchronously, BEFORE any await in this
 		// handler. The agent loop's next-turn `getAsideMessages` poll can run
-		// before queued microtasks drain, so `#takeMidRunTodoNudge` MUST see the
+		// before queued microtasks drain, so `TodoRuntime.takeMidRunNudge` MUST see the
 		// freshest counter — otherwise a turn that just invoked `todo` could
 		// trip a spurious nudge against stale state, and a turn that just hit
 		// the threshold could fail to nudge until a later turn (issue #3651).
@@ -5176,12 +4367,17 @@ export class AgentSession {
 		// and only successful mutating tools tick — read-only exploration is
 		// not progress an agent could mark done.
 		if (event.type === "message_end" && event.message.role === "toolResult") {
-			const { toolName, isError } = event.message;
-			if (toolName === TOOL.todo) {
-				this.#mutationsSinceLastTodoTouch = 0;
-			} else if (!isError && MID_RUN_TODO_NUDGE_MUTATING_TOOLS[toolName]) {
-				this.#mutationsSinceLastTodoTouch++;
-			}
+			this.#todo.onToolResultLanded(event.message.toolName, event.message.isError);
+		}
+		// Same rule, same reason: record the assistant message that ended the turn
+		// synchronously, BEFORE any await in this handler. `agent_end` is dispatched
+		// immediately after its `message_end`, so an assignment parked behind the
+		// persistence await lets the settle read the PREVIOUS assistant message — a
+		// tool-use turn followed by a text-only stop then settles as if it still
+		// carried tool calls, and every stop-time pass (todo reconciliation,
+		// session_stop hooks) is skipped for a turn that really did stop.
+		if (event.type === "message_end" && event.message.role === "assistant") {
+			this.#lastAssistantMessage = event.message;
 		}
 		// Plan-mode internal transition: stamp `SILENT_ABORT_MARKER` on the
 		// persisted message BEFORE the obfuscator's display-side copy below.
@@ -5338,39 +4534,16 @@ export class AgentSession {
 				details?: { op?: string; path?: string; phases?: TodoPhase[] };
 				isError?: boolean;
 			};
-			this.#todoReminderAwaitingProgress = false;
+			this.#todo.noteToolProgress();
 			if (toolName === TOOL.edit && details?.path) {
 				this.#invalidateFileCacheForPath(details.path);
 			}
 			if (toolName === TOOL.todo && !isError && Array.isArray(details?.phases)) {
 				this.setTodoPhases(details.phases);
-				if (this.#isTodoInitResult(details, toolCallId)) {
+				if (this.#todo.isInitResult(details, toolCallId)) {
 					this.#scheduleReplanTitleRefresh();
 				}
 			}
-		}
-		// The same ordering hazard, for the message the settle pass reads as the
-		// turn's last word. `agent_end` follows its `message_end` with nothing in
-		// between, so a subscriber that awaits below would leave the settle looking
-		// at the previous assistant message — the one carrying the tool calls —
-		// and every text-only-stop pass (todo reminder, rewind, session_stop) would
-		// be skipped as if the turn were still mid-tool-use.
-
-		// The same ordering hazard, for the message the settle pass reads as the
-		// turn's last word. `agent_end` follows its `message_end` with nothing in
-		// between, so a subscriber that awaits below would leave the settle looking
-		// at the previous assistant message — the one carrying the tool calls —
-		// and every text-only-stop pass (todo reminder, rewind, session_stop) would
-		// be skipped as if the turn were still mid-tool-use.
-
-		// The same ordering hazard, for the message the settle pass reads as the
-		// turn's last word. `agent_end` follows its `message_end` with nothing in
-		// between, so a subscriber that awaits below would leave the settle looking
-		// at the previous assistant message — the one carrying the tool calls —
-		// and every text-only-stop pass (todo reminder, rewind, session_stop) would
-		// be skipped as if the turn were still mid-tool-use.
-		if (event.type === "message_end" && event.message.role === "assistant") {
-			this.#lastAssistantMessage = event.message;
 		}
 
 		try {
@@ -5382,13 +4555,11 @@ export class AgentSession {
 
 		if (event.type === "turn_start") {
 			this.#resetStreamingEditState();
-			// TTSR: Reset buffer on turn start
-			this.#ttsrManager?.resetBuffer();
+			this.#ttsr.onTurnStart();
 		}
 
-		// TTSR: Increment message count on turn end (for repeat-after-gap tracking)
-		if (event.type === "turn_end" && this.#ttsrManager) {
-			this.#ttsrManager.incrementMessageCount();
+		if (event.type === "turn_end") {
+			this.#ttsr.onTurnEnd();
 		}
 		// Finalize the tool-choice queue's in-flight yield after tools have executed.
 		// This must happen at turn_end (not message_end) because onInvoked handlers
@@ -5421,37 +4592,13 @@ export class AgentSession {
 			}
 		}
 
-		// TTSR: Check for pattern matches on assistant text/thinking and tool argument deltas
-		if (event.type === "message_update" && this.#ttsrManager?.hasRules()) {
-			const assistantEvent = event.assistantMessageEvent;
-			let matchContext: TtsrMatchContext | undefined;
-			let streamingToolCall: ToolCall | undefined;
-
-			if (assistantEvent.type === "text_delta") {
-				matchContext = { source: "text" };
-			} else if (assistantEvent.type === "thinking_delta") {
-				matchContext = { source: "thinking" };
-			} else if (assistantEvent.type === "toolcall_delta") {
-				streamingToolCall = this.#getStreamingToolCallBlock(event.message, assistantEvent.contentIndex);
-				matchContext = this.#getTtsrToolMatchContext(streamingToolCall, assistantEvent.contentIndex);
-			}
-
-			if (matchContext && "delta" in assistantEvent) {
-				const targetMessageTimestamp = event.message.role === "assistant" ? event.message.timestamp : undefined;
-				const matches = this.#checkTtsrStream(assistantEvent.delta, matchContext, streamingToolCall);
-				if (matches.length > 0 && this.#handleTtsrMatches(matches, matchContext, targetMessageTimestamp)) {
-					return;
-				}
-				// ast-grep `astCondition` rules match against the reconstructed edit/write
-				// snapshot, which only exists for tool argument streams. The native worker
-				// call is async, so this path is awaited and self-throttled by the manager.
-				if (matchContext.source === "tool" && this.#ttsrManager?.hasAstRules()) {
-					const astMatches = await this.#checkTtsrAstStream(matchContext, streamingToolCall);
-					if (astMatches.length > 0 && this.#handleTtsrMatches(astMatches, matchContext, targetMessageTimestamp)) {
-						return;
-					}
-				}
-			}
+		// A TTSR rule matching a stream delta may abort the turn to inject its body,
+		// in which case this event is done: the retry it scheduled carries the rest.
+		if (
+			event.type === "message_update" &&
+			(await this.#ttsr.observeStreamDelta(event.message, event.assistantMessageEvent))
+		) {
+			return;
 		}
 
 		if (
@@ -5472,6 +4619,13 @@ export class AgentSession {
 
 		// Handle session persistence
 		if (event.type === "message_end") {
+			// Recorded BEFORE the persistence await below. The agent emits `message_end`
+			// and `agent_end` from one synchronous `#emit`, so awaiting first let the
+			// settle read a stale message: a turn that called a tool and then stopped
+			// with text was still reported as ending in a tool call, and every
+			// stop-time pass keyed on that — the todo reminder among them — was
+			// skipped for the rest of the session.
+			if (event.message.role === "assistant") this.#lastAssistantMessage = event.message;
 			const persistMessageEnd = () => {
 				// Check if this is a hook/custom message
 				if (event.message.role === "hookMessage" || event.message.role === "custom") {
@@ -5484,7 +4638,7 @@ export class AgentSession {
 						event.message.attribution ?? "agent",
 					);
 					if (event.message.role === "custom" && event.message.customType === "ttsr-injection") {
-						this.#markTtsrInjected(this.#extractTtsrRuleNames(event.message.details));
+						this.#ttsr.onInjectionPersisted(event.message.details);
 					}
 				} else {
 					this.#persistSessionMessageIfMissing(event.message);
@@ -5534,14 +4688,7 @@ export class AgentSession {
 						"priority",
 					);
 				}
-				// Resolve TTSR resume gate before checking for new deferred injections.
-				// Gate on #ttsrAbortPending, not stopReason: a non-TTSR abort (e.g. streaming
-				// edit) also produces stopReason === "aborted" but has no continuation coming.
-				// Only skip when #ttsrAbortPending is true (TTSR continuation is imminent).
-				if (!this.#ttsrAbortPending) {
-					this.#resolveTtsrResume();
-				}
-				this.#queueDeferredTtsrInjectionIfNeeded(assistantMsg);
+				this.#ttsr.onAssistantSettled(assistantMsg);
 				if (this.#handoffAbortController) {
 					this.#skipPostTurnMaintenanceAssistantTimestamp = assistantMsg.timestamp;
 				}
@@ -5620,23 +4767,8 @@ export class AgentSession {
 				const todoCallDidNotFail = details?.__synthetic === true || details?.__skipped === true;
 				if (toolName === TOOL.todo && !todoCallDidNotFail) {
 					const errorText = isError ? (content?.find(part => part.type === "text")?.text ?? "") : undefined;
-					if (errorText === undefined) {
-						// A landed write makes the board authoritative again.
-						this.#lastTodoFailureText = undefined;
-					} else {
-						const repeated = errorText === this.#lastTodoFailureText;
-						this.#lastTodoFailureText = errorText;
-						const reminderText = [
-							"<system-reminder>",
-							"todo failed, so todo progress is not visible to the user and the recorded board may be stale.",
-							errorText ? `Failure: ${errorText}` : "Failure: todo returned an error.",
-							// Repeating "call todo again" after an identical failure asks for a
-							// call that already proved impossible, and each attempt costs a turn.
-							repeated
-								? "This is the same failure as the previous todo call, so retrying that payload cannot succeed. Treat todo as unusable for the rest of this turn and continue the work without it."
-								: "Fix the todo payload and call todo again before continuing.",
-							"</system-reminder>",
-						].join("\n");
+					const reminderText = this.#todo.recordWriteOutcome(errorText);
+					if (reminderText !== undefined) {
 						await this.sendCustomMessage(
 							{
 								customType: "todo-error-reminder",
@@ -5684,9 +4816,14 @@ export class AgentSession {
 					cacheWrite: usage.cacheWrite,
 				},
 			});
-			const fallbackAssistant = [...settledMessages]
-				.reverse()
-				.find((message): message is AssistantMessage => message.role === "assistant");
+			let fallbackAssistant: AssistantMessage | undefined;
+			for (let i = settledMessages.length - 1; i >= 0; i--) {
+				const message = settledMessages[i]!;
+				if (message.role === "assistant") {
+					fallbackAssistant = message;
+					break;
+				}
+			}
 			const msg = this.#lastAssistantMessage ?? fallbackAssistant;
 			this.#lastAssistantMessage = undefined;
 			if (!msg) {
@@ -5699,6 +4836,11 @@ export class AgentSession {
 				await emitAgentEndNotification();
 				return;
 			}
+			// The identity of the settling message is read above, before its
+			// persistence slot drains; the passes below append to the branch, so wait
+			// for the entry to exist or a continuation reminder lands ahead of the
+			// reply it answers. Resolved already whenever the slot drained first.
+			await this.#waitForSessionMessagePersistence(msg);
 
 			const successfulYieldMessage = this.#findSuccessfulYieldAssistantMessage(settledMessages);
 			const yieldOnThisMessage = this.#assistantEndedWithSuccessfulYield(msg);
@@ -5880,7 +5022,7 @@ export class AgentSession {
 			// Stop-time todo reconciliation only fires at a text-only final stop. A run
 			// that ends still mid-tool-use (deadline hit, context full, etc.) skips the
 			// reminder so we don't pile a follow-up onto an already in-flight turn.
-			// Mid-run sync is handled separately via #takeMidRunTodoNudge so a long
+			// Mid-run sync is handled separately via TodoRuntime.takeMidRunNudge so a long
 			// tool-use loop still gets prodded to keep the live HUD honest (issue #3651).
 			const hasToolCalls = msg.content.some(content => content.type === "toolCall");
 			if (hasToolCalls) {
@@ -5910,7 +5052,7 @@ export class AgentSession {
 				// Called unconditionally: its first statement consumes the served
 				// tool-choice label, and skipping that leaks a `user-force` label
 				// onto the next turn. The hold is a parameter instead.
-				const todoContinuationScheduled = await this.#checkTodoCompletion(settleState);
+				const todoContinuationScheduled = await this.#todo.checkCompletionAtSettle(settleState);
 				if (todoContinuationScheduled) {
 					await emitAgentEndNotification();
 					return;
@@ -5920,7 +5062,7 @@ export class AgentSession {
 			// the terminal stop: the async-result delivery continues the loop and
 			// the real stop settles later. Defer the session_stop hook pass until
 			// the session is fully idle (the todo reminder above defers the same
-			// way inside #checkTodoCompletion).
+			// way inside TodoRuntime.checkCompletionAtSettle).
 			if (this.#hasPendingAsyncWake()) {
 				await emitAgentEndNotification();
 				return;
@@ -5994,22 +5136,6 @@ export class AgentSession {
 			finalError,
 		});
 		this.#resolveRetry();
-	}
-
-	/** Create the TTSR resume gate promise if one doesn't already exist. */
-	#ensureTtsrResumePromise(): void {
-		if (this.#ttsrResumePromise) return;
-		const { promise, resolve } = Promise.withResolvers<void>();
-		this.#ttsrResumePromise = promise;
-		this.#ttsrResumeResolve = resolve;
-	}
-
-	/** Resolve and clear the TTSR resume gate. */
-	#resolveTtsrResume(): void {
-		if (!this.#ttsrResumeResolve) return;
-		this.#ttsrResumeResolve();
-		this.#ttsrResumeResolve = undefined;
-		this.#ttsrResumePromise = undefined;
 	}
 
 	#ensurePostPromptTasksPromise(): void {
@@ -6146,7 +5272,7 @@ export class AgentSession {
 	async #cancelPostPromptTasks(): Promise<void> {
 		this.#postPromptTasksAbortController.abort();
 		this.#postPromptTasksAbortController = new AbortController();
-		this.#resolveTtsrResume();
+		this.#ttsr.resolveResume();
 
 		const pendingTasks = Array.from(this.#postPromptTasks);
 		if (pendingTasks.length === 0) {
@@ -6176,8 +5302,9 @@ export class AgentSession {
 				await this.#retryPromise;
 				continue;
 			}
-			if (this.#ttsrResumePromise) {
-				await this.#ttsrResumePromise;
+			const ttsrResume = this.#ttsr.resumePromise;
+			if (ttsrResume) {
+				await ttsrResume;
 				continue;
 			}
 			if (this.#postPromptTasksPromise) {
@@ -6195,188 +5322,6 @@ export class AgentSession {
 		}
 	}
 
-	#formatTtsrAbortReason(rules: Rule[]): string {
-		const label = rules.length === 1 ? "rule" : "rules";
-		const ruleNames = rules.map(rule => rule.name).join(", ");
-		return `TTSR matched ${label}: ${ruleNames}`;
-	}
-
-	/**
-	 * Resolve a rule body's template against the live session, for either delivery path.
-	 *
-	 * ONE owner, because there are TWO ways a rule reaches the model and only one of them used to
-	 * render. A stream-interrupting rule went through here; a tool-scoped rule (`interruptMode:
-	 * never` matching on a tool stream) had its RAW body folded into the tool result by
-	 * `#ttsrAfterToolCall`. That is the path `cwd-reroot` always takes, so the model was shown
-	 * `{{#if argot}}` markup verbatim — the exact leak `discovery/builtin-defaults.test.ts` exists to
-	 * prevent, bypassed on the only path that rule uses.
-	 *
-	 * - `argot` gates advice to call `argot_load`, a tool that is not registered by default.
-	 * - `cwd` lets a rule say where the session currently is.
-	 * - `matchedPath` lets a rule name what triggered it; it is set only for a rule with a
-	 *   `pathScope`, so a body that uses it must guard the reference.
-	 */
-	#renderRuleBody(rule: Rule): string {
-		const argotEnabled = this.settings.get("argot.enabled") === true;
-		return prompt.render(rule.content, {
-			argot: argotEnabled,
-			// Whether the nudge to LOAD shorthand still applies, which is a different question from
-			// whether the feature is on: telling a model to load a dictionary it already loaded is
-			// advice it cannot act on. `unless` does not exist in the template language, so the
-			// condition a rule wants to gate on has to be passed already inverted.
-			argotUnloaded: argotEnabled && this.#argot?.loaded !== true,
-			cwd: this.sessionManager.getCwd(),
-			matchedPath: this.#ttsrManager?.lastMatchedPath(rule.name),
-		});
-	}
-
-	/**
-	 * Keep only matches that will actually say something to the model.
-	 *
-	 * A rule body may be entirely wrapped in a `{{#if}}` gate — `argot-load-nudge` is, because its
-	 * advice is to call a tool that only exists when argot is enabled. When the gate is closed the
-	 * body renders to nothing, and delivering that is worse than not firing: an empty
-	 * `<system-reminder>` spends tokens, interrupts a stream on the interrupting path, marks the rule
-	 * as injected so it cannot fire when the gate later opens, and tells the model that a rule was
-	 * violated without saying which behaviour to change.
-	 *
-	 * Dropped here rather than at either delivery site, so the decision is made once, before the
-	 * claim is taken and before `ttsr_triggered` is emitted. The drop is LOGGED at warn: a bundled
-	 * rule that can never say anything is a packaging bug, and it must not be silent.
-	 */
-	#deliverableTtsrMatches(matches: Rule[]): Rule[] {
-		const deliverable: Rule[] = [];
-		for (const rule of matches) {
-			if (this.#renderRuleBody(rule).trim().length > 0) {
-				deliverable.push(rule);
-				continue;
-			}
-			// A body wrapped in a `{{#if}}` gate rendering empty is the gate WORKING, and it happens on
-			// every match for as long as the gate is closed, so it is reported at debug. A body with no
-			// gate that renders empty cannot ever say anything: that is a packaging bug in the rule and
-			// it is reported at warn, where an operator will see it.
-			const gated = rule.content.includes("{{#if");
-			const message = "TTSR rule matched but its body renders empty, not delivering";
-			const fields = { ruleName: rule.name, path: rule.path, gated };
-			if (gated) logger.debug(message, fields);
-			else logger.warn(message, fields);
-		}
-		return deliverable;
-	}
-
-	/** Get TTSR injection payload and clear pending injections. */
-	#getTtsrInjectionContent(): { content: string; rules: Rule[] } | undefined {
-		if (this.#pendingTtsrInjections.length === 0) return undefined;
-		const rules = this.#pendingTtsrInjections;
-		const content = rules
-			.map(r =>
-				prompt.render(rulesPrompts["rules/ttsr-interrupt"].text, {
-					name: r.name,
-					path: this.#displayRulePath(r.path),
-					content: this.#renderRuleBody(r),
-				}),
-			)
-			.join("\n\n");
-		this.#pendingTtsrInjections = [];
-		return { content, rules };
-	}
-
-	/**
-	 * Render a rule's file path for model-facing TTSR injections without leaking
-	 * the absolute home directory: cwd-relative when the rule lives in the
-	 * project, `~`-relative when it lives under home, else the raw path.
-	 */
-	#displayRulePath(rulePath: string): string {
-		const cwdRel =
-			relativePathWithinRoot(this.sessionManager.getCwd(), rulePath) ??
-			this.#displayPathWithinRoot(this.sessionManager.getCwd(), rulePath);
-		if (cwdRel) return cwdRel;
-		const homeRel = relativePathWithinRoot(os.homedir(), rulePath);
-		if (homeRel) return `~/${homeRel}`;
-		return rulePath;
-	}
-
-	#displayPathWithinRoot(root: string, candidate: string): string | null {
-		const relative = path.relative(path.resolve(root), path.resolve(candidate));
-		return relative && !relative.startsWith("..") && !path.isAbsolute(relative) ? relative : null;
-	}
-
-	#addPendingTtsrInjections(rules: Rule[]): void {
-		const seen = new Set(this.#pendingTtsrInjections.map(rule => rule.name));
-		for (const rule of rules) {
-			if (seen.has(rule.name)) continue;
-			this.#pendingTtsrInjections.push(rule);
-			seen.add(rule.name);
-		}
-	}
-
-	/** Tool-call id whose argument deltas triggered a TTSR match, when known. */
-	#extractTtsrToolCallId(matchContext: TtsrMatchContext): string | undefined {
-		if (matchContext.source !== "tool") return undefined;
-		const key = matchContext.streamKey;
-		if (typeof key !== "string" || !key.startsWith("toolcall:")) return undefined;
-		const id = key.slice("toolcall:".length);
-		return id.length > 0 ? id : undefined;
-	}
-
-	#addPerToolTtsrInjections(toolCallId: string, rules: Rule[]): void {
-		const bucket = this.#perToolTtsrInjections.get(toolCallId) ?? [];
-		const seen = new Set(bucket.map(rule => rule.name));
-		// Dedupe against rules already bucketed for other tool calls in this
-		// same assistant message so one rule attaches to exactly one tool call.
-		const claimedElsewhere = new Set<string>();
-		for (const [otherId, otherBucket] of this.#perToolTtsrInjections) {
-			if (otherId === toolCallId) continue;
-			for (const rule of otherBucket) claimedElsewhere.add(rule.name);
-		}
-		const newlyAdded: string[] = [];
-		for (const rule of rules) {
-			if (seen.has(rule.name) || claimedElsewhere.has(rule.name)) continue;
-			bucket.push(rule);
-			seen.add(rule.name);
-			newlyAdded.push(rule.name);
-		}
-		if (bucket.length === 0) return;
-		this.#perToolTtsrInjections.set(toolCallId, bucket);
-		// Claim the rules in the TTSR manager so subsequent deltas in this same
-		// turn (e.g. a sibling tool call's argument stream) don't re-match them.
-		// Persistence still happens in #ttsrAfterToolCall when the tool actually
-		// produces a result we can fold the reminder into. The claim is PROVISIONAL:
-		// #dropUndeliveredPerToolInjections gives it back if that never happens.
-		if (newlyAdded.length > 0) {
-			this.#ttsrManager?.markInjectedByNames(newlyAdded);
-		}
-	}
-
-	/**
-	 * Drop tool-scoped reminders that will never be delivered, and give their claims back.
-	 *
-	 * A tool-scoped reminder is claimed when it is bucketed and delivered later, in `afterToolCall`.
-	 * A turn that is aborted or errors never reaches that hook, so the bucket has to be discarded —
-	 * and the claim discarded with it. Clearing the bucket alone left the rule marked as injected
-	 * with nothing ever shown to the model, and under the default `repeatMode: "once"` that is
-	 * permanent for the session: one interrupted turn silently retires the rule.
-	 *
-	 * This is why `cwd-reroot` "just did not fire". The state that suppressed it is indistinguishable
-	 * from the state after a successful injection, so nothing anywhere reported a problem.
-	 */
-	#dropUndeliveredPerToolInjections(): void {
-		if (this.#perToolTtsrInjections.size === 0 && this.#pendingTtsrToolReminders.length === 0) return;
-		const undelivered = new Set<string>();
-		for (const bucket of this.#perToolTtsrInjections.values()) {
-			for (const rule of bucket) undelivered.add(rule.name);
-		}
-		// A reminder rendered but not yet drained as an aside is undelivered too.
-		// The turn dying between `afterToolCall` and the next step boundary is the
-		// same loss as the turn dying before the tool ran, so it releases the same way.
-		for (const reminder of this.#pendingTtsrToolReminders) {
-			for (const name of reminder.rules) undelivered.add(name);
-		}
-		this.#perToolTtsrInjections.clear();
-		this.#pendingTtsrToolReminders = [];
-		this.#ttsrManager?.releaseInjectedByNames([...undelivered]);
-	}
-
 	#afterToolCall(ctx: AfterToolCallContext): AfterToolCallResult | undefined {
 		if (
 			this.#isTerminalYieldToolResult({
@@ -6389,488 +5334,9 @@ export class AgentSession {
 			this.#synchronouslyTerminatedYieldToolCallIds.add(ctx.toolCall.id);
 			this.agent.abort(TERMINAL_TOOL_RESULT_ABORT_REASON);
 		}
-		return this.#ttsrAfterToolCall(ctx);
+		return this.#ttsr.afterToolCall(ctx);
 	}
 
-	/**
-	 * `afterToolCall` hook: queue any per-tool TTSR reminders for model-only delivery.
-	 *
-	 * This used to PREPEND the rendered reminder into `ctx.result.content`. Two things
-	 * fell out of that, both reported from one screenshot. The reminder is model-directed
-	 * `<system-reminder>` markup and a tool result is a surface the user reads, so the
-	 * markup was shown to them, duplicating the `Injecting rule:` banner already on screen.
-	 * And on a call that ALSO errored the reminder became the first text block, which is
-	 * what the TUI prints as the error headline, so the real failure was pushed out of view
-	 * for the user and displaced for the model.
-	 *
-	 * Appending would have fixed only the second half. The interrupting path has always
-	 * delivered its reminder as a `display: false` `ttsr-injection` custom message, so this
-	 * takes the same channel and the two paths now differ only in timing: an aside rides the
-	 * next step boundary, which is before the model's next call and after the batch in flight
-	 * finishes. A steer would reach the model just as promptly but aborts the remaining tool
-	 * calls in the batch, and a reminder about a call that already returned must not do that.
-	 *
-	 * Persistence moves with the delivery. `message_end` marks and records any
-	 * `ttsr-injection` custom message, so recording here as well would double-count, and
-	 * recording here at all would claim a delivery that a dying turn never makes.
-	 */
-	#ttsrAfterToolCall(ctx: AfterToolCallContext): AfterToolCallResult | undefined {
-		const rules = this.#perToolTtsrInjections.get(ctx.toolCall.id);
-		if (!rules || rules.length === 0) return undefined;
-		this.#perToolTtsrInjections.delete(ctx.toolCall.id);
-		// The reminder states that the tool ran. On an errored or skipped call that is
-		// false, and a false statement about what just happened is worse than no reminder.
-		const details = ctx.result?.details;
-		const skipped = isRecord(details) && details.__skipped === true;
-		const ran = !ctx.isError && !skipped;
-		const reminder = rules
-			.map(r =>
-				prompt.render(rulesPrompts["rules/ttsr-tool-reminder"].text, {
-					name: r.name,
-					path: this.#displayRulePath(r.path),
-					content: this.#renderRuleBody(r),
-					tool: ctx.toolCall.name,
-					ran,
-				}),
-			)
-			.join("\n\n");
-		const ruleNames = rules.map(r => r.name.trim()).filter(n => n.length > 0);
-		this.#pendingTtsrToolReminders.push({ content: reminder, rules: ruleNames });
-		return undefined;
-	}
-
-	/** Drain queued tool-scoped TTSR reminders as one model-only aside, if any wait. */
-	#takePendingTtsrToolReminders(): AgentMessage | null {
-		if (this.#pendingTtsrToolReminders.length === 0) return null;
-		const pending = this.#pendingTtsrToolReminders;
-		this.#pendingTtsrToolReminders = [];
-		return {
-			role: "custom",
-			customType: "ttsr-injection",
-			content: pending.map(reminder => reminder.content).join("\n\n"),
-			display: false,
-			details: { rules: pending.flatMap(reminder => reminder.rules) },
-			attribution: "agent",
-			timestamp: Date.now(),
-		};
-	}
-
-	#extractTtsrRuleNames(details: unknown): string[] {
-		if (!isRecord(details)) {
-			return [];
-		}
-		const rules = (details as { rules?: unknown }).rules;
-		if (!Array.isArray(rules)) {
-			return [];
-		}
-		return rules.filter((ruleName): ruleName is string => typeof ruleName === "string");
-	}
-
-	#markTtsrInjected(ruleNames: string[]): void {
-		const uniqueRuleNames = Array.from(
-			new Set(ruleNames.map(ruleName => ruleName.trim()).filter(ruleName => ruleName.length > 0)),
-		);
-		if (uniqueRuleNames.length === 0) {
-			return;
-		}
-		this.#ttsrManager?.markInjectedByNames(uniqueRuleNames);
-		this.sessionManager.appendTtsrInjection(uniqueRuleNames);
-	}
-
-	#findTtsrAssistantIndex(targetTimestamp: number | undefined): number {
-		const messages = this.agent.state.messages;
-		for (let i = messages.length - 1; i >= 0; i--) {
-			const message = messages[i];
-			if (message.role !== "assistant") {
-				continue;
-			}
-			if (targetTimestamp === undefined || message.timestamp === targetTimestamp) {
-				return i;
-			}
-		}
-		return -1;
-	}
-
-	#shouldInterruptForTtsrMatch(matches: Rule[], matchContext: TtsrMatchContext): boolean {
-		const globalMode = this.#ttsrManager?.getSettings().interruptMode ?? "always";
-		for (const rule of matches) {
-			const mode = rule.interruptMode ?? globalMode;
-			if (mode === "never") continue;
-			if (mode === "prose-only" && (matchContext.source === "text" || matchContext.source === "thinking"))
-				return true;
-			if (mode === "tool-only" && matchContext.source === "tool") return true;
-			if (mode === "always") return true;
-		}
-		return false;
-	}
-
-	#queueDeferredTtsrInjectionIfNeeded(assistantMsg: AssistantMessage): void {
-		if (assistantMsg.stopReason === "aborted" || assistantMsg.stopReason === "error") {
-			// Tools that hadn't started by abort/error will never produce results to
-			// fold injections into — drop their stale per-tool entries AND give back the
-			// claims they took, or the rules stay retired for the rest of the session
-			// having shown the model nothing.
-			this.#dropUndeliveredPerToolInjections();
-		}
-		if (this.#ttsrAbortPending || this.#pendingTtsrInjections.length === 0) {
-			return;
-		}
-		if (assistantMsg.stopReason === "aborted" || assistantMsg.stopReason === "error") {
-			this.#pendingTtsrInjections = [];
-			return;
-		}
-
-		const injection = this.#getTtsrInjectionContent();
-		if (!injection) {
-			return;
-		}
-		this.agent.followUp({
-			role: "custom",
-			customType: "ttsr-injection",
-			content: injection.content,
-			display: false,
-			details: { rules: injection.rules.map(rule => rule.name) },
-			attribution: "agent",
-			timestamp: Date.now(),
-		});
-		this.#ensureTtsrResumePromise();
-		// Mark as injected after this custom message is delivered and persisted (handled in message_end).
-		// followUp() only enqueues; resume on the next tick once streaming settles.
-		this.#scheduleAgentContinue({
-			delayMs: 1,
-			generation: this.#promptGeneration,
-			onSkip: () => {
-				this.#resolveTtsrResume();
-			},
-			shouldContinue: () => {
-				if (this.agent.state.isStreaming || !this.agent.hasQueuedMessages()) {
-					this.#resolveTtsrResume();
-					return false;
-				}
-				return true;
-			},
-			onError: () => {
-				this.#resolveTtsrResume();
-			},
-		});
-	}
-
-	/** Extract the tool-call block a toolcall_delta event refers to, if present. */
-	#getStreamingToolCallBlock(message: AgentMessage, contentIndex: number): ToolCall | undefined {
-		if (message.role !== "assistant") {
-			return undefined;
-		}
-
-		const content = message.content;
-		if (!Array.isArray(content) || contentIndex < 0 || contentIndex >= content.length) {
-			return undefined;
-		}
-
-		const block = content[contentIndex];
-		if (!block || typeof block !== "object" || block.type !== "toolCall") {
-			return undefined;
-		}
-
-		return block as ToolCall;
-	}
-
-	/** Build TTSR match context for tool call argument deltas. */
-	#getTtsrToolMatchContext(toolCall: ToolCall | undefined, contentIndex: number): TtsrMatchContext {
-		const context: TtsrMatchContext = { source: "tool" };
-		if (!toolCall) {
-			return context;
-		}
-
-		context.toolName = toolCall.name;
-		context.streamKey = toolCall.id ? `toolcall:${toolCall.id}` : `tool:${toolCall.name}:${contentIndex}`;
-		context.filePaths = this.#extractTtsrToolFilePaths(toolCall);
-		return context;
-	}
-
-	/**
-	 * Resolve the file paths a tool call would touch for TTSR path-glob matching.
-	 *
-	 * Prefer the tool's own `matcherPaths` hook — it understands the wire format
-	 * (hashline `[path#TAG]` section headers, apply_patch envelope markers) and
-	 * surfaces paths the generic top-level argument scan never sees. Fall back
-	 * to {@link #extractTtsrFilePathsFromArgs} for tools that pass paths as
-	 * `path`/`paths` arguments and for tool calls whose payload has not yet
-	 * streamed a header.
-	 */
-	#extractTtsrToolFilePaths(toolCall: ToolCall): string[] | undefined {
-		const args = toolCall.arguments ?? {};
-		const tools = this.agent.state.tools;
-		const tool =
-			tools.find(t => t.name === toolCall.name) ??
-			tools.find(t => t.customWireName !== undefined && t.customWireName === toolCall.name);
-		const toolPaths = tool?.matcherPaths?.(args);
-		if (toolPaths && toolPaths.length > 0) {
-			const normalized = toolPaths.flatMap(p => this.#normalizeTtsrPathCandidates(p));
-			if (normalized.length > 0) return Array.from(new Set(normalized));
-		}
-		return this.#extractTtsrFilePathsFromArgs(args);
-	}
-
-	/**
-	 * Match a stream delta against TTSR rules.
-	 *
-	 * Tool argument streams prefer the tool's `matcherDigest` normalization — the
-	 * real content the call introduces — over the raw argument delta, so rule
-	 * conditions written against source text keep working regardless of the
-	 * tool's wire format (hashline patches, JSON-escaped strings, ...).
-	 */
-	#checkTtsrStream(delta: string, matchContext: TtsrMatchContext, toolCall: ToolCall | undefined): Rule[] {
-		const manager = this.#ttsrManager;
-		if (!manager) {
-			return [];
-		}
-		const entries = this.#resolveTtsrMatcherEntries(toolCall);
-		if (entries) {
-			const matches: Rule[] = [];
-			for (const entry of entries) {
-				matches.push(...manager.checkSnapshot(entry.digest, this.#perFileTtsrContext(matchContext, entry.path)));
-			}
-			return matches;
-		}
-		const digest = this.#resolveTtsrMatcherDigest(toolCall);
-		if (digest !== undefined) {
-			return manager.checkSnapshot(digest, matchContext);
-		}
-		return manager.checkDelta(delta, matchContext);
-	}
-
-	/** Reconstruct the tool's normalized source snapshot via its `matcherDigest`, if any. */
-	#resolveTtsrMatcherDigest(toolCall: ToolCall | undefined): string | undefined {
-		const tool = this.#resolveTtsrTool(toolCall);
-		return tool?.matcherDigest?.(toolCall?.arguments ?? {});
-	}
-
-	/**
-	 * Per-file split of a streamed call (one entry per touched file paired with
-	 * the digest of only that file's added lines). Lets {@link #checkTtsrStream}
-	 * and {@link #checkTtsrAstStream} evaluate each file in isolation so a
-	 * path-scoped rule like `tool:edit(*.ts)` never fires on text that belongs
-	 * to a sibling Markdown hunk in a multi-file payload.
-	 */
-	#resolveTtsrMatcherEntries(toolCall: ToolCall | undefined): readonly { path: string; digest: string }[] | undefined {
-		const tool = this.#resolveTtsrTool(toolCall);
-		const entries = tool?.matcherEntries?.(toolCall?.arguments ?? {});
-		return entries && entries.length > 0 ? entries : undefined;
-	}
-
-	#resolveTtsrTool(toolCall: ToolCall | undefined) {
-		if (!toolCall) return undefined;
-		const tools = this.agent.state.tools;
-		return (
-			tools.find(t => t.name === toolCall.name) ??
-			tools.find(t => t.customWireName !== undefined && t.customWireName === toolCall.name)
-		);
-	}
-
-	/**
-	 * Replace `matchContext`'s `filePaths` + `streamKey` so a per-file entry
-	 * gets its own glob-eligible path and its own TTSR buffer/repeat tracking
-	 * (each file's stream is independent inside the same tool call).
-	 */
-	#perFileTtsrContext(base: TtsrMatchContext, filePath: string): TtsrMatchContext {
-		const filePaths = this.#normalizeTtsrPathCandidates(filePath);
-		return {
-			...base,
-			filePaths: filePaths.length > 0 ? filePaths : [filePath],
-			streamKey: base.streamKey ? `${base.streamKey}#${filePath}` : undefined,
-		};
-	}
-
-	/**
-	 * Match ast-grep `astCondition` rules against the reconstructed tool snapshot.
-	 *
-	 * Only edit/write tool streams expose a `matcherDigest`, which is the real source
-	 * the call introduces; AST matching needs that (and a language inferred from the
-	 * path argument), so non-digest streams never produce AST matches.
-	 */
-	async #checkTtsrAstStream(matchContext: TtsrMatchContext, toolCall: ToolCall | undefined): Promise<Rule[]> {
-		const manager = this.#ttsrManager;
-		if (!manager) {
-			return [];
-		}
-		const entries = this.#resolveTtsrMatcherEntries(toolCall);
-		if (entries) {
-			const matches: Rule[] = [];
-			for (const entry of entries) {
-				matches.push(
-					...(await manager.checkAstSnapshot(entry.digest, this.#perFileTtsrContext(matchContext, entry.path))),
-				);
-			}
-			return matches;
-		}
-		const digest = this.#resolveTtsrMatcherDigest(toolCall);
-		if (digest === undefined) {
-			return [];
-		}
-		return manager.checkAstSnapshot(digest, matchContext);
-	}
-
-	/**
-	 * Route TTSR matches to either a per-tool injection or a stream-interrupting
-	 * retry. Returns true when the stream was aborted and the caller should stop
-	 * processing this event.
-	 */
-	#handleTtsrMatches(
-		rawMatches: Rule[],
-		matchContext: TtsrMatchContext,
-		targetMessageTimestamp: number | undefined,
-	): boolean {
-		// A rule whose body renders to nothing is dropped before anything is claimed or emitted.
-		const matches = this.#deliverableTtsrMatches(rawMatches);
-		if (matches.length === 0) {
-			return false;
-		}
-		// Decide first: a non-interrupting tool-source match attaches to the
-		// specific tool call's result instead of driving a loop-wide follow-up.
-		const shouldInterrupt = this.#shouldInterruptForTtsrMatch(matches, matchContext);
-		const matchedToolId = this.#extractTtsrToolCallId(matchContext);
-		const perToolId = shouldInterrupt ? undefined : matchedToolId;
-		if (perToolId) {
-			this.#addPerToolTtsrInjections(perToolId, matches);
-			this.#emitSessionEventDetached({ type: "ttsr_triggered", rules: matches }, "ttsr-per-tool");
-			return false;
-		}
-
-		// Queue rules for injection; mark as injected only after successful enqueue.
-		this.#addPendingTtsrInjections(matches);
-		if (!shouldInterrupt) {
-			return false;
-		}
-
-		// Abort the stream immediately — do not gate on extension callbacks
-		this.#ttsrAbortPending = true;
-		this.#ensureTtsrResumePromise();
-		const abortReason = this.#formatTtsrAbortReason(matches);
-		this.agent.abort(
-			matchedToolId
-				? createToolScopedAbortReason(
-						abortReason,
-						{ [matchedToolId]: abortReason },
-						"TTSR interrupt on another tool call",
-					)
-				: abortReason,
-		);
-		// Notify extensions (fire-and-forget, does not block abort)
-		this.#emitSessionEventDetached({ type: "ttsr_triggered", rules: matches }, "ttsr-interrupt");
-		// Schedule retry after a short delay
-		const retryToken = ++this.#ttsrRetryToken;
-		const generation = this.#promptGeneration;
-		this.#schedulePostPromptTask(
-			async () => {
-				if (this.#ttsrRetryToken !== retryToken) {
-					this.#resolveTtsrResume();
-					return;
-				}
-
-				const targetAssistantIndex = this.#findTtsrAssistantIndex(targetMessageTimestamp);
-				if (!this.#ttsrAbortPending || this.#promptGeneration !== generation || targetAssistantIndex === -1) {
-					this.#ttsrAbortPending = false;
-					this.#pendingTtsrInjections = [];
-					this.#dropUndeliveredPerToolInjections();
-					this.#resolveTtsrResume();
-					return;
-				}
-				this.#ttsrAbortPending = false;
-				// The interrupting rules are about to be injected as a system reminder; any
-				// TOOL-scoped buckets from the same turn are not, so their claims go back.
-				this.#dropUndeliveredPerToolInjections();
-				const ttsrSettings = this.#ttsrManager?.getSettings();
-				if (ttsrSettings?.contextMode === "discard") {
-					// Remove the partial/aborted assistant turn from agent state
-					this.agent.replaceMessages(this.agent.state.messages.slice(0, targetAssistantIndex));
-				}
-				// Inject TTSR rules as system reminder before retry
-				const injection = this.#getTtsrInjectionContent();
-				if (injection) {
-					const details = { rules: injection.rules.map(rule => rule.name) };
-					this.agent.appendMessage({
-						role: "custom",
-						customType: "ttsr-injection",
-						content: injection.content,
-						display: false,
-						details,
-						attribution: "agent",
-						timestamp: Date.now(),
-					});
-					this.sessionManager.appendCustomMessageEntry(
-						"ttsr-injection",
-						injection.content,
-						false,
-						details,
-						"agent",
-					);
-					this.#markTtsrInjected(details.rules);
-				}
-				try {
-					await this.agent.continue();
-				} catch {
-					this.#resolveTtsrResume();
-				}
-			},
-			{ delayMs: 50 },
-		);
-		return true;
-	}
-
-	/** Extract path-like arguments from tool call payload for TTSR glob matching. */
-	#extractTtsrFilePathsFromArgs(args: unknown): string[] | undefined {
-		if (!isRecord(args)) {
-			return undefined;
-		}
-
-		const rawPaths: string[] = [];
-		for (const [key, value] of Object.entries(args)) {
-			const normalizedKey = key.toLowerCase();
-			if (typeof value === "string" && (normalizedKey === "path" || normalizedKey.endsWith("path"))) {
-				rawPaths.push(value);
-				continue;
-			}
-			if (Array.isArray(value) && (normalizedKey === "paths" || normalizedKey.endsWith("paths"))) {
-				for (const candidate of value) {
-					if (typeof candidate === "string") {
-						rawPaths.push(candidate);
-					}
-				}
-			}
-		}
-
-		const normalizedPaths = rawPaths.flatMap(pathValue => this.#normalizeTtsrPathCandidates(pathValue));
-		if (normalizedPaths.length === 0) {
-			return undefined;
-		}
-
-		return Array.from(new Set(normalizedPaths));
-	}
-
-	/** Convert a path argument into stable relative/absolute candidates for glob checks. */
-	#normalizeTtsrPathCandidates(rawPath: string): string[] {
-		const trimmed = rawPath.trim();
-		if (trimmed.length === 0) {
-			return [];
-		}
-
-		const normalizedInput = trimmed.replaceAll("\\", "/");
-		const candidates = new Set<string>([normalizedInput]);
-		if (normalizedInput.startsWith("./")) {
-			candidates.add(normalizedInput.slice(2));
-		}
-
-		const cwd = this.sessionManager.getCwd();
-		const absolutePath = path.isAbsolute(trimmed) ? path.normalize(trimmed) : path.resolve(cwd, trimmed);
-		candidates.add(absolutePath.replaceAll("\\", "/"));
-
-		const relativePath = path.relative(cwd, absolutePath).replaceAll("\\", "/");
-		if (relativePath && relativePath !== "." && !relativePath.startsWith("../") && relativePath !== "..") {
-			candidates.add(relativePath);
-		}
-
-		return Array.from(candidates);
-	}
 	/** Find the last assistant message in agent state (including aborted ones) */
 	#findLastAssistantMessage(): AssistantMessage | undefined {
 		const messages = this.agent.state.messages;
@@ -7787,7 +6253,7 @@ export class AgentSession {
 	}
 
 	#notifyCommandMetadataChanged(): void {
-		const listeners = [...this.#commandMetadataChangedListeners];
+		const listeners = this.#commandMetadataChangedListeners.slice();
 		for (const listener of listeners) {
 			// `CommandMetadataChangedListener` is `() => void | Promise<void>`, so
 			// the published contract INVITES an async listener, but a `catch`
@@ -7876,7 +6342,7 @@ export class AgentSession {
 	providerCacheKeyDiscards(): readonly string[] {
 		// Frozen copy, matching `systemPromptInvalidations`: this is cost evidence,
 		// and a reader that trimmed the live array would under-report re-prefills.
-		return Object.freeze([...this.#providerCacheKeyDiscards]);
+		return Object.freeze(this.#providerCacheKeyDiscards.slice());
 	}
 
 	/**
@@ -7977,7 +6443,9 @@ export class AgentSession {
 	 * sent again.
 	 */
 	#lastDeliveredBlock(customType: string): string | undefined {
-		for (const message of [...this.agent.state.messages].reverse()) {
+		const messages = this.agent.state.messages;
+		for (let i = messages.length - 1; i >= 0; i--) {
+			const message = messages[i]!;
 			if (message.role !== "custom" || message.customType !== customType) continue;
 			return typeof message.content === "string" ? message.content : undefined;
 		}
@@ -8246,36 +6714,66 @@ export class AgentSession {
 		this.agent.state.model = { ...model, contextWindow: reported };
 	}
 
-	/** Effective thinking level applied to the agent (the resolved level when `auto`). */
-	get thinkingLevel(): ThinkingLevel | undefined {
-		return this.#thinkingLevel;
-	}
-
-	/** The selector the user configured: `auto` when auto mode is active, else the effective level. */
-	configuredThinkingLevel(): ConfiguredThinkingLevel | undefined {
-		return this.#autoThinking ? AUTO_THINKING : this.#thinkingLevel;
-	}
-
-	/** Session-only effort choice, excluding selector and saved per-model defaults. */
-	get sessionThinkingOverride(): ConfiguredThinkingLevel | undefined {
-		return this.#sessionThinkingOverride;
-	}
-
-	/** True when `auto` thinking mode is active. */
-	get isAutoThinking(): boolean {
-		return this.#autoThinking;
-	}
-
-	/** The level `auto` resolved to for the current turn (undefined until classified). */
-	autoResolvedThinkingLevel(): Effort | undefined {
-		return this.#autoResolvedLevel;
-	}
-
 	#serviceTierByFamily: ServiceTierByFamily = {};
 
 	/** Live per-family service tiers (OpenAI / Anthropic / Google). */
 	get serviceTierByFamily(): ServiceTierByFamily {
 		return this.#serviceTierByFamily;
+	}
+
+	/**
+	 * The thinking surface, delegated to {@link ThinkingRuntime}. These eight
+	 * members are the session's public effort API — the facade, rpc mode, the SDK
+	 * and `/effort` all reach them here — so they stay on the class while the
+	 * state and the resolution rules live with the collaborator.
+	 */
+
+	/** Effective thinking level applied to the agent (the resolved level when `auto`). */
+	get thinkingLevel(): ThinkingLevel | undefined {
+		return this.#thinking.level;
+	}
+
+	/** The selector the user configured: `auto` when auto mode is active, else the effective level. */
+	configuredThinkingLevel(): ConfiguredThinkingLevel | undefined {
+		return this.#thinking.configuredLevel();
+	}
+
+	/** Session-only effort choice, excluding selector and saved per-model defaults. */
+	get sessionThinkingOverride(): ConfiguredThinkingLevel | undefined {
+		return this.#thinking.sessionOverride;
+	}
+
+	/** True when `auto` thinking mode is active. */
+	get isAutoThinking(): boolean {
+		return this.#thinking.isAuto;
+	}
+
+	/** The level `auto` resolved to for the current turn (undefined until classified). */
+	autoResolvedThinkingLevel(): Effort | undefined {
+		return this.#thinking.autoResolvedLevel();
+	}
+
+	/**
+	 * Set the thinking level. Public calls create a session override; internal
+	 * model routing passes `resolved` so per-model defaults remain eligible on
+	 * the next switch. `auto` resolves to a concrete effort for each turn.
+	 */
+	setThinkingLevel(
+		level: ConfiguredThinkingLevel | undefined,
+		persist: boolean = false,
+		source: "session" | "resolved" = "session",
+	): void {
+		this.#thinking.set(level, persist, source);
+	}
+
+	/** Cycle through the active model's named effort variants. */
+	cycleThinkingLevel(): ConfiguredThinkingLevel | undefined {
+		return this.#thinking.cycle();
+	}
+
+	/** Effort variants the active model accepts. */
+	getAvailableThinkingLevels(): ReadonlyArray<Effort> {
+		return this.#thinking.availableLevels();
 	}
 
 	/** Whether agent is currently streaming a response */
@@ -8453,7 +6951,7 @@ export class AgentSession {
 			this.#installedVibeToolNames.add(tool.name);
 		}
 
-		await this.#applyActiveToolsByName([...new Set([...baseToolNames, ...vibeToolNames])]);
+		await this.#applyActiveToolsByName(Array.from(new Set(baseToolNames.concat(vibeToolNames))));
 	}
 
 	/** Removes tools installed by {@link activateVibeTools} and activates `nextToolNames`. */
@@ -8552,12 +7050,11 @@ export class AgentSession {
 		if (activated.length === 0) {
 			return [];
 		}
-		const nextActive = [
-			...this.#getActiveNonMCPToolNames(),
-			...this.#filterSelectableMCPToolNames(nextSelectedMCPToolNames),
-		];
+		const nextActive = this.#getActiveNonMCPToolNames().concat(
+			this.#filterSelectableMCPToolNames(nextSelectedMCPToolNames),
+		);
 		await this.setActiveToolsByName(nextActive);
-		return [...new Set(activated)];
+		return Array.from(new Set(activated));
 	}
 
 	// ── Generic tool discovery (covers built-in + MCP + extension) ────────────
@@ -8583,7 +7080,7 @@ export class AgentSession {
 		const activeNames = new Set(this.getActiveToolNames());
 		const mcpTools = Array.from(this.#discoverableMCPTools.values()).filter(t => !activeNames.has(t.name));
 		const localTools: DiscoverableTool[] = mode === "all" ? this.#collectDiscoverableLocalTools() : [];
-		const allTools = [...localTools, ...mcpTools];
+		const allTools = localTools.concat(mcpTools);
 		return filter?.source ? allTools.filter(t => t.source === filter.source) : allTools;
 	}
 
@@ -8624,7 +7121,7 @@ export class AgentSession {
 		const nonMcpSelected = Array.from(this.#selectedDiscoveredToolNames).filter(
 			name => activeNames.has(name) && this.#toolRegistry.has(name) && !isMCPToolName(name),
 		);
-		return [...new Set([...mcpSelected, ...nonMcpSelected])];
+		return Array.from(new Set(mcpSelected.concat(nonMcpSelected)));
 	}
 
 	async activateDiscoveredTools(toolNames: string[]): Promise<string[]> {
@@ -8650,7 +7147,7 @@ export class AgentSession {
 				}
 			}
 			if (newlyAdded.length > 0) {
-				const nextActive = [...this.getActiveToolNames(), ...newlyAdded];
+				const nextActive = this.getActiveToolNames().concat(newlyAdded);
 				await this.setActiveToolsByName(nextActive);
 				this.#invalidateDiscoverableToolSearchIndex();
 			}
@@ -10430,7 +8927,7 @@ export class AgentSession {
 		// Skip eager preludes when the user has already queued a directive
 		const hasPendingUserDirective = this.#toolChoiceQueue.inspect().includes("user-force");
 		const eagerTodoPrelude =
-			!options?.synthetic && !hasPendingUserDirective ? this.#createEagerTodoPrelude(expandedText) : undefined;
+			!options?.synthetic && !hasPendingUserDirective ? this.#todo.eagerPrelude(expandedText) : undefined;
 		const eagerTaskPrelude =
 			!options?.synthetic && !hasPendingUserDirective ? this.#createEagerTaskPrelude(expandedText) : undefined;
 		const normalizedImages = await this.#normalizeImagesForModel(options?.images);
@@ -10559,8 +9056,7 @@ export class AgentSession {
 
 			// A new user prompt does not reset stop-time reminder suppression. Replaying
 			// the same unfinished list after each "continue" correction floods context.
-			this.#mutationsSinceLastTodoTouch = 0;
-			this.#midRunNudgeCount = 0;
+			this.#todo.onNewPrompt();
 			this.#resetPromptMaintenanceState();
 			this.#acceptTerminalEmptyStopForPrompt = options?.acceptTerminalEmptyStop === true;
 
@@ -10768,8 +9264,8 @@ export class AgentSession {
 			// before the model request. Synthetic/tool-continuation turns (developer/
 			// custom roles) and non-auto sessions are skipped. Never blocks the turn —
 			// failures fall back to a concrete level inside the helper.
-			if (this.#autoThinking && message.role === "user") {
-				await this.#applyAutoThinkingLevel(expandedText, generation);
+			if (this.#thinking.isAuto && message.role === "user") {
+				await this.#thinking.applyAuto(expandedText, generation);
 				if (this.#promptGeneration !== generation) {
 					return;
 				}
@@ -11534,53 +10030,14 @@ export class AgentSession {
 		return this.#operatorNotices;
 	}
 
+	/** The recorded todo board. Public: the RPC mode, the SDK, the todo slash
+	 *  command and the interactive HUD all read and write it through here. */
 	getTodoPhases(): TodoPhase[] {
-		return this.#cloneTodoPhases(this.#todoPhases);
+		return this.#todo.phases();
 	}
 
 	setTodoPhases(phases: TodoPhase[]): void {
-		const nextPhases = this.#cloneTodoPhases(phases);
-		const previous = todoReminderFingerprint(incompleteTodoItems(this.#todoPhases));
-		const next = todoReminderFingerprint(incompleteTodoItems(nextPhases));
-		this.#todoPhases = nextPhases;
-		if (previous !== next) {
-			if (previous === "[]" || next === "[]") this.#todoReminderCount = 0;
-			this.#todoReminderAwaitingProgress = false;
-			this.#lastTodoReminderFingerprint = undefined;
-		}
-	}
-
-	/**
-	 * Drop every piece of todo-reminder state that describes the context being
-	 * left. Called from each boundary that starts a new one: `newSession`
-	 * (`/new` and `/clear` both route through it), handoff, and resume.
-	 *
-	 * One function rather than four copies of the same five assignments, because
-	 * the copies were what let {@link #lastTodoFailureText} survive a `/new`: it
-	 * was added later and never appeared in any of them, so a single failed todo
-	 * write silenced every reminder for the rest of the process.
-	 */
-	#resetTodoReminderStateForNewContext(): void {
-		this.#todoReminderCount = 0;
-		this.#todoReminderAwaitingProgress = false;
-		this.#lastTodoReminderFingerprint = undefined;
-		this.#todoReminderEchoCompactionId = undefined;
-		this.#lastTodoFailureText = undefined;
-		this.#mutationsSinceLastTodoTouch = 0;
-		this.#midRunNudgeCount = 0;
-	}
-
-	#isTodoInitResult(details: Record<string, unknown>, toolCallId: string | undefined): boolean {
-		const detailOp = getStringProperty(details, "op");
-		if (detailOp) return detailOp === "init";
-		if (!toolCallId) return false;
-		for (let i = this.agent.state.messages.length - 1; i >= 0; i--) {
-			const message = this.agent.state.messages[i];
-			if (!message) continue;
-			const op = toolCallOpFromMessage(message, toolCallId);
-			if (op) return op === "init";
-		}
-		return false;
+		this.#todo.setPhases(phases);
 	}
 
 	#buildReplanTitleContext(): string {
@@ -11656,19 +10113,8 @@ export class AgentSession {
 		this.#titleSystemPrompt = prompt;
 	}
 
-	#syncTodoPhasesFromBranch(): void {
-		this.setTodoPhases(getLatestTodoPhasesFromEntries(this.sessionManager.getBranch()));
-	}
-
-	#cloneTodoPhases(phases: TodoPhase[]): TodoPhase[] {
-		return phases.map(phase => ({
-			name: phase.name,
-			tasks: phase.tasks.map(task => ({ content: task.content, status: task.status })),
-		}));
-	}
-
 	// Auto-clear of completed/abandoned tasks was removed: the timer-driven
-	// splice mutated canonical `#todoPhases` between tool calls, so the model
+	// splice mutated the canonical todo board between tool calls, so the model
 	// observed phase totals shrinking ("5 → 4") after marking tasks done. The
 	// `tasks.todoClearDelay` setting is now inert; completed tasks survive
 	// until the next explicit `todo` call removes them via `rm`/`drop`.
@@ -11838,7 +10284,7 @@ export class AgentSession {
 			this.#getConfiguredDefaultSelectedMCPToolNames(),
 		);
 
-		this.#resetTodoReminderStateForNewContext();
+		this.#todo.resetForNewContext();
 		this.#planReferenceSent = false;
 		this.#planReferencePath = DEFAULT_PLAN_FILE_URL;
 		this.#resetAdvisorSessionState();
@@ -11983,7 +10429,7 @@ export class AgentSession {
 
 		// Apply the session override, explicit selector variant, saved per-model
 		// default, or model default in that order.
-		this.#reapplyThinkingLevel(options?.thinkingLevel);
+		this.#thinking.reapplyForModel(options?.thinkingLevel);
 		await this.#syncAfterModelChange(previousEditMode);
 		return { switched: true };
 	}
@@ -12018,7 +10464,7 @@ export class AgentSession {
 			`${targetModel.provider}/${targetModel.id}`,
 		);
 
-		this.#reapplyThinkingLevel(thinkingLevel);
+		this.#thinking.reapplyForModel(thinkingLevel);
 		await this.#syncAfterModelChange(previousEditMode);
 	}
 
@@ -12182,7 +10628,7 @@ export class AgentSession {
 
 		// An unsuffixed scoped entry re-reads the current saved per-model default;
 		// only an explicit scope suffix is a selector pin.
-		this.#reapplyThinkingLevel(next.explicitThinkingLevel ? next.thinkingLevel : undefined);
+		this.#thinking.reapplyForModel(next.explicitThinkingLevel ? next.thinkingLevel : undefined);
 		await this.#syncAfterModelChange(previousEditMode);
 
 		return { model: next.model, thinkingLevel: this.thinkingLevel, isScoped: true };
@@ -12212,7 +10658,7 @@ export class AgentSession {
 		this.sessionManager.appendModelChange(`${nextModel.provider}/${nextModel.id}`);
 		AgentStorage.forAgentDir(this.settings.getAgentDir())?.recordModelUsage(`${nextModel.provider}/${nextModel.id}`);
 		// Re-apply the current thinking level (or auto) for the newly selected model
-		this.#reapplyThinkingLevel();
+		this.#thinking.reapplyForModel();
 		await this.#syncAfterModelChange(previousEditMode);
 
 		return { model: nextModel, thinkingLevel: this.thinkingLevel, isScoped: false };
@@ -12227,239 +10673,6 @@ export class AgentSession {
 		const patterns = this.settings.get("enabledModels");
 		if (!patterns || patterns.length === 0) return all;
 		return filterAvailableModelsByEnabledPatterns(all, patterns, this.settings);
-	}
-
-	// =========================================================================
-	// Thinking Level Management
-	// =========================================================================
-
-	#resolvedEffortForModel(
-		model: Model | undefined,
-		selectorLevel?: ConfiguredThinkingLevel,
-	): ConfiguredThinkingLevel | undefined {
-		const resolved = resolveEffort({
-			sessionOverride: this.#sessionThinkingOverride,
-			selectorLevel,
-			modelSelector: model ? `${model.provider}/${model.id}` : undefined,
-			defaultEffort: withLegacyDefaultEffort(
-				this.settings.isConfigured("defaultEffort") ? this.settings.get("defaultEffort") : undefined,
-				this.settings.get("defaultThinkingLevel"),
-			),
-		});
-		return resolved.level ?? model?.thinking?.defaultLevel;
-	}
-
-	/**
-	 * Write a durable default effort into the `defaultEffort` row that governs
-	 * the selected model, which is the setting {@link resolveEffort} actually
-	 * reads. The retired `defaultThinkingLevel` enum this replaced is consulted
-	 * only when `defaultEffort` is absent, so persisting there was discarded on
-	 * the next read for every profile that had a `defaultEffort` object.
-	 */
-	#persistDefaultEffort(level: ConfiguredThinkingLevel): void {
-		this.settings.set(
-			"defaultEffort",
-			withPersistedEffort(
-				this.settings.isConfigured("defaultEffort") ? this.settings.get("defaultEffort") : undefined,
-				this.settings.get("defaultThinkingLevel"),
-				level,
-				this.model ? `${this.model.provider}/${this.model.id}` : undefined,
-			),
-		);
-	}
-
-	#applyThinkingLevelToAgent(level: ThinkingLevel | undefined): void {
-		this.agent.setThinkingLevel(toReasoningEffort(level));
-		this.agent.setDisableReasoning(shouldDisableReasoning(level));
-	}
-
-	/**
-	 * Set the thinking level. Public calls create a session override; internal
-	 * model routing passes `resolved` so per-model defaults remain eligible on
-	 * the next switch. `auto` resolves to a concrete effort for each turn.
-	 */
-	setThinkingLevel(
-		level: ConfiguredThinkingLevel | undefined,
-		persist: boolean = false,
-		source: "session" | "resolved" = "session",
-	): void {
-		if (source === "session") {
-			this.#sessionThinkingOverride = level;
-			if (level === undefined) {
-				level = this.#resolvedEffortForModel(this.model, this.#activeSelectorThinkingLevel);
-			}
-		}
-		if (level === AUTO_THINKING) {
-			const provisional = resolveProvisionalAutoLevel(this.model);
-			const wasAuto = this.#autoThinking;
-			this.#autoThinking = true;
-			this.#autoResolvedLevel = undefined;
-			this.#thinkingLevel = provisional;
-			if (!wasAuto) {
-				this.#clearInheritedProviderPromptCacheKey("auto-thinking-enter");
-			}
-			this.#applyThinkingLevelToAgent(provisional);
-			if (persist) {
-				this.#persistDefaultEffort(AUTO_THINKING);
-			}
-			if (!wasAuto || this.#thinkingLevel !== provisional) {
-				this.#emit({ type: "thinking_level_changed", thinkingLevel: provisional, configured: AUTO_THINKING });
-			}
-			return;
-		}
-
-		const wasAuto = this.#autoThinking;
-		this.#autoThinking = false;
-		this.#autoResolvedLevel = undefined;
-		const effectiveLevel = resolveThinkingLevelForModel(this.model, level);
-		// A level the active model does not accept resolves to the nearest
-		// supported one (or drops). Interactive entry points refuse such levels
-		// outright, so a clamp here means a persisted or inherited value met a
-		// model switch: name both levels instead of silently drifting (the
-		// "random arbitrary effort" report, 2026-08-05).
-		if (
-			level !== undefined &&
-			level !== ThinkingLevel.Inherit &&
-			level !== ThinkingLevel.Off &&
-			effectiveLevel !== level
-		) {
-			logger.warn(
-				"Requested thinking level is not accepted by the active model; using the nearest supported level",
-				{
-					model: this.model ? `${this.model.provider}/${this.model.id}` : "none",
-					requested: level,
-					using: effectiveLevel ?? "provider default",
-					accepted: this.model ? getSupportedEfforts(this.model).join(", ") : "",
-				},
-			);
-		}
-		// Leaving auto must persist even when the resolved effort is unchanged (e.g.
-		// auto resolved to medium, then the user pins medium): otherwise the latest
-		// session entry keeps `configured: "auto"` and resume re-enables auto.
-		const isChanging = wasAuto || effectiveLevel !== this.#thinkingLevel;
-
-		this.#thinkingLevel = effectiveLevel;
-		this.#applyThinkingLevelToAgent(effectiveLevel);
-
-		// Durability is not a change notification. Pinning the level the session
-		// already sits at is the ordinary way to ask for a default, so this write
-		// cannot share the branch guarding event emission, the transcript entry,
-		// and cache invalidation, all of which are legitimately change-gated.
-		// `off` stays non-persistable: it is a state to leave, not a default.
-		if (persist && effectiveLevel !== undefined && effectiveLevel !== ThinkingLevel.Off) {
-			this.#persistDefaultEffort(effectiveLevel);
-		}
-		if (isChanging) {
-			this.#clearInheritedProviderPromptCacheKey("thinking-level-change");
-			this.sessionManager.appendThinkingLevelChange(effectiveLevel, effectiveLevel);
-			this.#emit({ type: "thinking_level_changed", thinkingLevel: effectiveLevel });
-		}
-	}
-
-	/** Apply the current session override, selector pin, or saved model default after a model switch. */
-	#reapplyThinkingLevel(selectorLevel?: ConfiguredThinkingLevel): void {
-		this.#activeSelectorThinkingLevel = selectorLevel;
-		this.setThinkingLevel(this.#resolvedEffortForModel(this.model, selectorLevel), false, "resolved");
-	}
-
-	/**
-	 * Cycle through the active model's named effort variants.
-	 *
-	 * Models with different provider vocabularies keep different valid lists;
-	 * the shared control and ordering stay the same.
-	 */
-	cycleThinkingLevel(): ConfiguredThinkingLevel | undefined {
-		const levels = configuredThinkingLevelsForModel(this.model);
-		if (levels.length === 0) return undefined;
-		const configured = this.configuredThinkingLevel();
-		const currentLevel = configured === ThinkingLevel.Inherit ? ThinkingLevel.Off : configured;
-		const currentIndex = currentLevel ? levels.indexOf(currentLevel) : -1;
-		const nextIndex = (currentIndex + 1) % levels.length;
-		const nextLevel = levels[nextIndex];
-		if (!nextLevel) return undefined;
-
-		this.setThinkingLevel(nextLevel);
-		return nextLevel;
-	}
-
-	/** Timeout (ms) for per-turn auto-thinking classification before falling back. */
-	static readonly #AUTO_THINKING_TIMEOUT_MS = 4000;
-
-	/**
-	 * Classify the current user turn and set the effective thinking level for it.
-	 * Bounded by a timeout + abort; on any failure (no smol model, timeout, parse
-	 * error) it falls back to the provisional concrete level and continues. Never
-	 * throws into the turn, and never clears `#autoThinking` (auto stays active).
-	 */
-	async #applyAutoThinkingLevel(promptText: string, generation: number): Promise<void> {
-		const model = this.model;
-		if (!model?.reasoning) return;
-		// Models with reasoning but no controllable effort surface (devin-agent
-		// Cascade routes effort via sibling model ids, not a wire param) have
-		// nothing to pick — skip classification rather than discard its result.
-		if (getSupportedEfforts(model).length === 0) return;
-
-		let resolved: Effort | undefined;
-		let classificationError: string | undefined;
-		if (this.#magicKeywordEnabled("ultrathink") && containsUltrathink(promptText)) {
-			// The user explicitly asked for maximum thinking; bypass the classifier
-			// (and its xhigh auto ceiling) and jump straight to the highest
-			// supported level for this model.
-			resolved = clampAutoThinkingEffort(model, Effort.Max);
-		} else {
-			const controller = new AbortController();
-			const timer = setTimeout(() => controller.abort(), AgentSession.#AUTO_THINKING_TIMEOUT_MS);
-			try {
-				resolved = await classifyDifficulty(promptText, {
-					settings: this.settings,
-					registry: this.#modelRegistry,
-					model,
-					sessionId: this.sessionId,
-					signal: controller.signal,
-					metadataResolver: provider => this.agent.metadataForProvider(provider),
-					obfuscateProviderText: text => this.obfuscateProviderText(text),
-					completeImpl: this.#sideCompleteImpl,
-				});
-			} catch (error) {
-				classificationError = errorMessage(error);
-			} finally {
-				clearTimeout(timer);
-			}
-		}
-
-		// Drop the result if the turn was aborted/superseded while classifying.
-		if (this.#promptGeneration !== generation || !this.#autoThinking) return;
-
-		const effort = resolved ?? resolveProvisionalAutoLevel(model);
-
-		// Auto thinking exists to pick the level for you. When classification fails
-		// it quietly falls back to a provisional level, so the user gets a thinking
-		// budget nobody chose while the feature reports itself as on. That was a
-		// `logger.debug`, which is silent (Law 10). Reported at warn, and the level
-		// actually used is named, because "auto-thinking failed" without it does not
-		// tell an operator what their turn ran at.
-		if (classificationError !== undefined) {
-			logger.warn("auto-thinking: could not classify the prompt, using a fallback level", {
-				error: classificationError,
-				fallbackLevel: effort ?? "none",
-				timeoutMs: AgentSession.#AUTO_THINKING_TIMEOUT_MS,
-				fix: "If this repeats, the classifier model may be unreachable; set a fixed thinking level with /effort to stop relying on it.",
-			});
-		}
-		if (effort === undefined) return;
-		const shouldPersistResolution = this.#autoResolvedLevel !== effort;
-		this.#autoResolvedLevel = effort;
-		this.#thinkingLevel = effort;
-		this.#applyThinkingLevelToAgent(effort);
-		if (shouldPersistResolution) {
-			this.sessionManager.appendThinkingLevelChange(effort, AUTO_THINKING);
-		}
-		this.#emit({
-			type: "thinking_level_changed",
-			thinkingLevel: effort,
-			configured: AUTO_THINKING,
-			resolved: effort,
-		});
 	}
 
 	/**
@@ -12565,14 +10778,6 @@ export class AgentSession {
 	toggleFastMode(): boolean {
 		if (!this.setFastMode(!this.isFastModeEnabled())) return false;
 		return this.isFastModeEnabled();
-	}
-
-	/**
-	 * Get available thinking levels for current model.
-	 */
-	getAvailableThinkingLevels(): ReadonlyArray<Effort> {
-		if (!this.model) return [];
-		return getSupportedEfforts(this.model);
 	}
 
 	// =========================================================================
@@ -12695,7 +10900,7 @@ export class AgentSession {
 		}
 
 		await this.#afterHistoryRewrite();
-		this.#syncTodoPhasesFromBranch();
+		this.#todo.syncFromBranch();
 		return result;
 	}
 
@@ -12739,7 +10944,7 @@ export class AgentSession {
 		}
 
 		await this.#afterHistoryRewrite();
-		this.#syncTodoPhasesFromBranch();
+		this.#todo.syncFromBranch();
 		return result;
 	}
 
@@ -13136,7 +11341,7 @@ export class AgentSession {
 			// the plan from disk and re-injects it on the next turn (issue #1246).
 			this.#planReferenceSent = false;
 			this.#resetAllAdvisorRuntimes();
-			this.#syncTodoPhasesFromBranch();
+			this.#todo.syncFromBranch();
 			if (codexCompaction) {
 				this.#resetCodexProviderAfterCompaction(codexCompaction);
 			} else {
@@ -13359,7 +11564,7 @@ export class AgentSession {
 				handoffFileLists.modifiedFiles,
 				handoffFileOps.read,
 			);
-			const carriedTodoPhases = this.#cloneTodoPhases(this.#todoPhases);
+			const carriedTodoPhases = this.#todo.phases();
 
 			if (handoffSignal.aborted) {
 				throw new Error("Handoff cancelled");
@@ -13408,7 +11613,7 @@ export class AgentSession {
 			this.#resetMemoryContextForNewTranscript();
 			this.#pendingNextTurnMessages = [];
 			this.#scheduledHiddenNextTurnGeneration = undefined;
-			this.#resetTodoReminderStateForNewContext();
+			this.#todo.resetForNewContext();
 
 			// Inject the handoff document as a custom message
 			const handoffContent = createHandoffContext(handoffText);
@@ -13442,7 +11647,7 @@ export class AgentSession {
 			const sessionContext = this.buildDisplaySessionContext();
 			this.agent.replaceMessages(sessionContext.messages);
 			this.#resetAllAdvisorRuntimes();
-			this.#syncTodoPhasesFromBranch();
+			this.#todo.syncFromBranch();
 			if (this.#extensionRunner) {
 				await this.#extensionRunner.emit({
 					type: "session_switch",
@@ -14635,7 +12840,7 @@ export class AgentSession {
 		await this.#restoreMCPSelectionsForSessionContext(sessionContext);
 		this.agent.replaceMessages(activeMessages ?? sessionContext.messages);
 		this.#resetAdvisorSessionState();
-		this.#syncTodoPhasesFromBranch();
+		this.#todo.syncFromBranch();
 		this.#closeCodexProviderSessionsForHistoryRewrite();
 		this.#checkpointState = undefined;
 		this.#pendingRewindReport = undefined;
@@ -14726,83 +12931,6 @@ export class AgentSession {
 		};
 	}
 
-	#createEagerTodoPrelude(
-		promptText: string | undefined,
-	): { message: AgentMessage; toolChoice?: ToolChoice } | undefined {
-		const mode = this.settings.get("todo.eager");
-		const todosEnabled = this.settings.get("todo.enabled");
-		if (mode === "default" || !todosEnabled) {
-			return undefined;
-		}
-
-		if (this.#planModeState?.enabled) {
-			return undefined;
-		}
-		if (this.getTodoPhases().length > 0) {
-			return undefined;
-		}
-
-		// Only inject on the first user message of the conversation. Subsequent user
-		// turns must not receive the eager todo reminder — they often correct, clarify,
-		// or redirect the prior task, and forcing a brand-new todo list there is wrong.
-		// When `promptText` is undefined (post-compaction re-injection) there is no fresh
-		// user message to gate on, so skip the first-message and prompt-suffix checks.
-		if (promptText !== undefined) {
-			const hasPriorUserMessage = this.agent.state.messages.some(m => m.role === "user");
-			if (hasPriorUserMessage) {
-				return undefined;
-			}
-
-			const trimmedPromptText = promptText.trimEnd();
-			if (trimmedPromptText.endsWith("?") || trimmedPromptText.endsWith("!")) {
-				return undefined;
-			}
-		}
-
-		// Must check the active tool set, not just the registry: tool discovery
-		// (tools.discoveryMode === "all") can register `todo` while hiding it from
-		// the exposed tools. Forcing a named tool_choice for an inactive tool makes
-		// the provider reject the request (HTTP 400).
-		if (!this.getActiveToolNames().includes(TOOL.todo)) {
-			logger.warn("Eager todo enforcement skipped because todo is not active", {
-				activeToolNames: this.getActiveToolNames(),
-			});
-			return undefined;
-		}
-
-		const message: AgentMessage = {
-			role: "custom",
-			customType: "eager-todo-prelude",
-			content: prompt.render(turnControlPrompts["turn-control/eager-todo"].text, {
-				...this.#buildEagerPreludeContext(),
-				forced: mode === "always",
-			}),
-			display: false,
-			attribution: "agent",
-			timestamp: Date.now(),
-		};
-		// `preferred` suggests a todo list (reminder only); `always` also forces the
-		// `todo` tool on the first turn — the previous boolean-on behavior. Post-compaction
-		// re-injection (`promptText === undefined`) is always reminder-only: forcing a tool
-		// onto the auto-resumed turn would override the agent's in-flight action.
-		if (promptText === undefined || mode === "preferred") {
-			return { message };
-		}
-		const todoToolChoice = buildNamedToolChoice(TOOL.todo, this.model);
-		if (!todoToolChoice) {
-			// `always` on a model that can't be forced degrades to reminder-only (no
-			// tool_choice). For `todo.eager: true` users migrated to `always`, such
-			// models now receive the first-turn reminder where they previously got
-			// nothing (see the CHANGELOG entry); `always ⊇ preferred` is preserved.
-			logger.warn(
-				"Eager todo proceeding with the reminder only because the current model does not support a forced todo tool_choice",
-				{ modelApi: this.model?.api, modelId: this.model?.id },
-			);
-			return { message };
-		}
-		return { message, toolChoice: todoToolChoice };
-	}
-
 	#createEagerTaskPrelude(promptText: string | undefined): AgentMessage | undefined {
 		// Resolved against the agents the live task tool will actually accept: a
 		// reminder to delegate, in a session where every agent is disabled, is an
@@ -14845,238 +12973,11 @@ export class AgentSession {
 	 */
 	#buildPostCompactionEagerNudges(): AgentMessage[] {
 		const nudges: AgentMessage[] = [];
-		const todo = this.#createEagerTodoPrelude(undefined);
+		const todo = this.#todo.eagerPrelude(undefined);
 		if (todo) nudges.push(todo.message);
 		const task = this.#createEagerTaskPrelude(undefined);
 		if (task) nudges.push(task);
 		return nudges;
-	}
-	/**
-	 * Check if agent stopped with incomplete todos and prompt to continue.
-	 *
-	 * `settleState` carries the tail's single reading of "waiting on the user".
-	 * This runs even when that hold is set, because the first statement consumes
-	 * the served tool-choice label and skipping the call would leak it onto the
-	 * next turn.
-	 */
-	async #checkTodoCompletion(settleState: SettleContinuationState): Promise<boolean> {
-		// Skip todo reminders when the most recent turn was driven by an explicit user force —
-		// the user wanted exactly that tool, not a follow-up nag about incomplete todos.
-		const lastServedLabel = this.#toolChoiceQueue.consumeLastServedLabel();
-		if (lastServedLabel === "user-force") {
-			return false;
-		}
-
-		const remindersEnabled = this.settings.get("todo.reminders");
-		const todosEnabled = this.settings.get("todo.enabled");
-		if (!remindersEnabled || !todosEnabled) {
-			this.#todoReminderCount = 0;
-			this.#todoReminderAwaitingProgress = false;
-			this.#lastTodoReminderFingerprint = undefined;
-			this.#todoReminderEchoCompactionId = undefined;
-			return false;
-		}
-
-		// Plan mode owns convergence via #enforcePlanModeDecisionAtSettle (remind →
-		// cap → yield). Todo reminders must not re-wake a turn the cap intends to
-		// yield to the user. The label is already consumed above, so no leak.
-		if (this.#planModeState?.enabled) {
-			return false;
-		}
-
-		// Goal mode is the sole autonomous continuation owner while active. A
-		// stop-time todo reminder would append a second continuation prompt and
-		// race the goal continuation scheduled by the interactive mode.
-		if (this.#goalModeState?.enabled === true && this.#goalModeState.goal.status === "active") {
-			return false;
-		}
-
-		// Suppress within a self-continuation chain: if the agent's last turn was driven by a
-		// prior reminder (and the agent took no tool-level action since), do not re-ping.
-		// The agent has already acknowledged; further escalation just wastes context and
-		// pressures the agent into busy-work or destructive ops (issue #2590).
-		if (this.#todoReminderAwaitingProgress) {
-			logger.debug("Todo completion: prior reminder still awaiting agent action; staying silent", {
-				attempt: this.#todoReminderCount,
-			});
-			return false;
-		}
-
-		const remindersMax = this.settings.get("todo.reminders.max");
-		if (this.#todoReminderCount >= remindersMax) {
-			logger.debug("Todo completion: max reminders reached", { count: this.#todoReminderCount });
-			return false;
-		}
-
-		// The board is only as trustworthy as the last write that landed. After a
-		// failed `todo` call the recorded phases are whatever survived from before
-		// it, so "you stopped with N incomplete todo item(s)" would assert a count
-		// the session never recorded. The todo-error reminder already told the
-		// model the board may be stale; say nothing further.
-		if (this.#lastTodoFailureText !== undefined) {
-			logger.debug("Todo completion: last todo write failed, board state unknown; staying silent");
-			return false;
-		}
-
-		const incomplete = incompleteTodoItems(this.#todoPhases);
-		if (incomplete.length === 0) {
-			this.#todoReminderCount = 0;
-			this.#todoReminderAwaitingProgress = false;
-			this.#lastTodoReminderFingerprint = undefined;
-			return false;
-		}
-
-		if (!mayContinueAtSettle("todo-reminder", settleState)) {
-			logger.debug("Todo completion: assistant is waiting for user input; skipping reminder", {
-				incomplete: incomplete.length,
-			});
-			return false;
-		}
-
-		// Background async jobs (bash/task) owned by this agent re-wake the loop
-		// when they complete: the result delivery enqueues an async-result
-		// follow-up that continues the run, and todos are re-evaluated at that
-		// settle. A stop with such a job in flight is a scheduling pause, not
-		// abandonment, so stay silent instead of injecting duplicate context.
-		if (this.#hasPendingAsyncWake()) {
-			logger.debug("Todo completion: async jobs in flight will re-wake the loop; skipping reminder", {
-				incomplete: incomplete.length,
-			});
-			return false;
-		}
-
-		const fingerprint = todoReminderFingerprint(incomplete);
-		if (fingerprint === this.#lastTodoReminderFingerprint) {
-			this.#todoReminderAwaitingProgress = true;
-			logger.debug("Todo completion: unchanged todo state already reminded; staying silent", {
-				incomplete: incomplete.length,
-				attempt: this.#todoReminderCount,
-			});
-			return false;
-		}
-
-		this.#todoReminderCount++;
-		// One full-list echo per context window. The list is worth repeating once
-		// after a compaction boundary, because the model may no longer see it;
-		// repeating it on every escalation inside one window is pure duplication.
-		//
-		// Read off the ACTIVE BRANCH, not every persisted entry: a rewind leaves
-		// the abandoned path's compaction entry in the file while the model's
-		// context is rebuilt without it. Keying on the file would hold the latch
-		// at an id that is no longer in the window, and the echo would never come
-		// back for the rest of the session.
-		const compactionBoundary = getLatestCompactionEntry(this.sessionManager.getBranch())?.id ?? null;
-		const echoFullList = this.#todoReminderEchoCompactionId !== compactionBoundary;
-		const reminder = renderTodoContinuationReminder({
-			items: incomplete,
-			attempt: this.#todoReminderCount,
-			maxAttempts: remindersMax,
-			echoFullList,
-		});
-		// Spent only when a list actually goes out, so a suppressed reminder
-		// leaves the allowance intact.
-		if (echoFullList) this.#todoReminderEchoCompactionId = compactionBoundary;
-		// Reserve before awaiting event subscribers so overlapping agent_end events
-		// cannot both emit the same reminder.
-		this.#lastTodoReminderFingerprint = fingerprint;
-		this.#todoReminderAwaitingProgress = true;
-
-		logger.debug("Todo completion: sending reminder", {
-			incomplete: incomplete.length,
-			attempt: this.#todoReminderCount,
-		});
-
-		// Emit event for UI to render notification
-		await this.#emitSessionEvent({
-			type: "todo_reminder",
-			todos: incomplete.map(({ content, status }) => ({ content, status })),
-			attempt: this.#todoReminderCount,
-			maxAttempts: remindersMax,
-		});
-
-		const reminderMessage: Message = {
-			role: "developer",
-			content: [{ type: "text", text: reminder }],
-			attribution: "agent",
-			timestamp: Date.now(),
-		};
-
-		// A stop-time reminder starts a fresh reminder runway. Without resetting
-		// the mid-run counter here, a run that stopped just below the threshold
-		// would spend its stale pre-reminder count and fire "Mid-run reminder 2/3"
-		// after only a little post-reminder work.
-		this.#mutationsSinceLastTodoTouch = 0;
-		// Inject reminder and persist it so the JSONL transcript matches model context.
-		this.agent.appendMessage(reminderMessage);
-		this.sessionManager.appendMessage(reminderMessage);
-		this.#scheduleAgentContinue({ generation: this.#promptGeneration });
-		return true;
-	}
-
-	/**
-	 * Build the next mid-run todo reconciliation nudge when the agent has landed
-	 * {@link MID_RUN_TODO_NUDGE_MUTATION_THRESHOLD} mutating tool results without
-	 * invoking the `todo` tool and incomplete items remain. Returns the hidden
-	 * (`display: false`) custom message when it should fire, or `null` to skip.
-	 * Called once per turn via the aside provider; mutates internal counters when
-	 * it fires so the caller does not need to track delivery state.
-	 *
-	 * Deliberately a SEPARATE concept from {@link #checkTodoCompletion}'s
-	 * stop-time reminder: this is a gentle model-only hint (no `todo_reminder`
-	 * event, no TUI render, no escalation counter, own per-cycle budget), while
-	 * the stop-time reminder is the user-visible escalation ladder. Without this
-	 * nudge, long runs drive the live HUD to `0/N` until the final stop, then
-	 * batch-flip to `N/N` (issue #3651).
-	 */
-	#takeMidRunTodoNudge(): AgentMessage | null {
-		if (this.#mutationsSinceLastTodoTouch < MID_RUN_TODO_NUDGE_MUTATION_THRESHOLD) return null;
-		if (this.#midRunNudgeCount >= MID_RUN_TODO_NUDGE_MAX_PER_CYCLE) return null;
-		if (!this.settings.get("todo.enabled")) return null;
-		if (!this.settings.get("todo.reminders")) return null;
-		// Plan-mode runs are authoring a plan file, not implementing it; todos
-		// don't apply, mirroring {@link #createEagerTodoPrelude}.
-		if (this.#planModeState?.enabled) return null;
-		// Tool discovery / explicit active-tool lists can hide `todo` from this
-		// run while `todo.enabled` remains true (e.g. `setActiveToolsByName`
-		// restricting the slate). Mirror {@link #createEagerTodoPrelude}'s
-		// guard so we never ask the model to call a tool that is not in its
-		// schema — the request would fabricate an unknown tool call.
-		if (!this.getActiveToolNames().includes(TOOL.todo)) return null;
-		// A failed `todo` write leaves the recorded board unverified, so counting
-		// "incomplete items" off it would nudge about work the session cannot
-		// confirm is outstanding. Same honesty rule as the stop-time reminder.
-		if (this.#lastTodoFailureText !== undefined) return null;
-
-		const incomplete = this.getTodoPhases()
-			.flatMap(phase => phase.tasks)
-			.filter(task => task.status === "pending" || task.status === "in_progress");
-		if (incomplete.length === 0) return null;
-
-		// Reset the mutation counter so the nudge has another full runway before
-		// the next fire; #midRunNudgeCount caps total nudges per prompt cycle.
-		this.#mutationsSinceLastTodoTouch = 0;
-		this.#midRunNudgeCount++;
-
-		const { toolRefs } = this.#buildEagerPreludeContext();
-		const reminder = prompt.render(turnControlPrompts["turn-control/mid-run-todo-nudge"].text, {
-			toolRefs,
-			incompleteCount: incomplete.length,
-			plural: incomplete.length !== 1,
-		});
-
-		logger.debug("Mid-run todo nudge fired", {
-			incomplete: incomplete.length,
-			nudge: this.#midRunNudgeCount,
-		});
-
-		return {
-			role: "custom",
-			customType: MID_RUN_TODO_NUDGE_MESSAGE_TYPE,
-			content: reminder,
-			display: false,
-			attribution: "agent",
-			timestamp: Date.now(),
-		};
 	}
 
 	/**
@@ -16639,7 +14540,7 @@ export class AgentSession {
 			// the plan from disk and re-injects it on the next turn (issue #1246).
 			this.#planReferenceSent = false;
 			this.#resetAllAdvisorRuntimes();
-			this.#syncTodoPhasesFromBranch();
+			this.#todo.syncFromBranch();
 			if (codexCompaction) {
 				this.#resetCodexProviderAfterCompaction(codexCompaction);
 			} else {
@@ -18875,9 +16776,7 @@ export class AgentSession {
 		const previousPendingNextTurnMessages = [...this.#pendingNextTurnMessages];
 		const previousScheduledHiddenNextTurnGeneration = this.#scheduledHiddenNextTurnGeneration;
 		const previousModel = this.model;
-		const previousThinkingLevel = this.#thinkingLevel;
-		const previousAutoThinking = this.#autoThinking;
-		const previousAutoResolvedLevel = this.#autoResolvedLevel;
+		const previousThinking = this.#thinking.snapshot();
 		const previousServiceTierByFamily = this.#serviceTierByFamily;
 		const previousSelectedMCPToolNames = new Set(this.#selectedMCPToolNames);
 		const previousTools = [...this.agent.state.tools];
@@ -18967,11 +16866,11 @@ export class AgentSession {
 
 			this.agent.replaceMessages(sessionContext.messages);
 			this.#resetAdvisorSessionState();
-			this.#syncTodoPhasesFromBranch();
+			this.#todo.syncFromBranch();
 			// The board just came back from the branch, so every latch describing
 			// the pre-switch board (including a failed write against it) is about a
 			// board this session no longer holds.
-			this.#resetTodoReminderStateForNewContext();
+			this.#todo.resetForNewContext();
 			if (switchingToDifferentSession) {
 				this.#closeAllProviderSessions("session switch");
 			} else if (didReloadConversationChange) {
@@ -19048,20 +16947,7 @@ export class AgentSession {
 						? AUTO_THINKING
 						: (sessionContext.thinkingLevel as ThinkingLevel | undefined)
 					: defaultThinkingLevel;
-			if (restoredThinkingLevel === AUTO_THINKING) {
-				this.#autoThinking = true;
-				// Resume in auto (pending) like a fresh auto session: the next user
-				// turn reclassifies. We intentionally do not seed the last resolved
-				// effort, so the cold (--continue) and in-app switch paths display
-				// identically as `auto` until then.
-				this.#autoResolvedLevel = undefined;
-				this.#thinkingLevel = resolveProvisionalAutoLevel(this.model);
-			} else {
-				this.#autoThinking = false;
-				this.#autoResolvedLevel = undefined;
-				this.#thinkingLevel = resolveThinkingLevelForModel(this.model, restoredThinkingLevel);
-			}
-			this.#applyThinkingLevelToAgent(this.#thinkingLevel);
+			this.#thinking.seed(restoredThinkingLevel);
 			this.#serviceTierByFamily = hasServiceTierEntry
 				? (sessionContext.serviceTier ?? {})
 				: configuredServiceTierByFamily;
@@ -19139,12 +17025,9 @@ export class AgentSession {
 			if (previousModel) {
 				this.agent.setModel(previousModel);
 			}
-			this.#thinkingLevel = previousThinkingLevel;
-			this.#autoThinking = previousAutoThinking;
-			this.#autoResolvedLevel = previousAutoResolvedLevel;
-			this.#applyThinkingLevelToAgent(previousThinkingLevel);
+			this.#thinking.restore(previousThinking);
 			this.#serviceTierByFamily = previousServiceTierByFamily;
-			this.#syncTodoPhasesFromBranch();
+			this.#todo.syncFromBranch();
 			this.#resetAllAdvisorRuntimes();
 			this.#reconnectToAgent();
 			if (restoreScopeError || restoreMcpError) {
@@ -19215,7 +17098,7 @@ export class AgentSession {
 			this.sessionManager.createBranchedSession(selectedEntry.parentId);
 		}
 		this.#rehydrateCheckpointRewindState();
-		this.#syncTodoPhasesFromBranch();
+		this.#todo.syncFromBranch();
 		this.#freshProviderSessionId = undefined;
 		// A branch retains a genuine prefix of the source transcript, so the source
 		// cache identity stays valid: `createBranchedSession` seeds it onto the new
@@ -19315,7 +17198,7 @@ export class AgentSession {
 			timestamp: Date.now(),
 		});
 		this.sessionManager.appendMessage(sanitizeAssistantForReparentedHistory(assistantMessage));
-		this.#syncTodoPhasesFromBranch();
+		this.#todo.syncFromBranch();
 		this.#freshProviderSessionId = undefined;
 		// `/btw` branches at the live leaf, so the entire retained prefix is
 		// byte-identical to what the source session just cached. Adopt the branch
@@ -19530,7 +17413,7 @@ export class AgentSession {
 		this.agent.replaceMessages(displayContext.messages);
 		this.#rehydrateCheckpointRewindState();
 		this.#resetAdvisorSessionState();
-		this.#syncTodoPhasesFromBranch();
+		this.#todo.syncFromBranch();
 		this.#closeCodexProviderSessionsForHistoryRewrite();
 
 		this.#branchSummaryAbortController = undefined;
@@ -20243,7 +18126,7 @@ export class AgentSession {
 			messages: this.messages,
 			systemPrompt: this.agent.state.systemPrompt,
 			model: this.agent.state.model,
-			thinkingLevel: this.#thinkingLevel,
+			thinkingLevel: this.#thinking.level,
 			tools: this.agent.state.tools,
 			inlineToolDescriptors: activeModel ? this.#resolvePruneToolDescriptions(activeModel) : false,
 		});
@@ -20267,7 +18150,7 @@ export class AgentSession {
 		const llmMessages = await this.convertMessagesToLlm(messages);
 		const payload = {
 			model: this.agent.state.model ?? null,
-			thinkingLevel: this.#thinkingLevel ?? null,
+			thinkingLevel: this.#thinking.level ?? null,
 			serviceTier: this.#serviceTierEntry(),
 			systemPrompt: this.agent.state.systemPrompt,
 			tools: this.agent.state.tools.map(tool => ({

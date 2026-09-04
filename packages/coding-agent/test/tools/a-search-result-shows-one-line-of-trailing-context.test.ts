@@ -3,9 +3,12 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { getAllSettingDefs, invalidateSettingDefsCache } from "@veyyon/coding-agent/modes/components/settings-defs";
+import {
+	getAllSettingDefs,
+	invalidateSettingDefsCache,
+} from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { SearchTool } from "@veyyon/coding-agent/tools/search";
+import { SearchTool } from "@veyyon/coding-agent/tools/search/search";
 import { removeWithRetries } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";
 

@@ -19,7 +19,7 @@
  * exported without a propagation test.
  *
  * NOT covered here: whether the addon loads on a given host. That is
- * `packages/natives`' portability surface. This suite pins what happens to a
+ * `natives/bridge/bindings`' portability surface. This suite pins what happens to a
  * caller once it cannot.
  */
 
@@ -29,7 +29,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 import * as workspaceTree from "@veyyon/coding-agent/workspace-tree";
 import * as natives from "@veyyon/natives";
 import { markNativeAddonUnavailable } from "@veyyon/natives/loader-state";

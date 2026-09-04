@@ -11,6 +11,8 @@ import { errorMessage, getProjectDir, isThenable, logger, readJsonl, Snowflake, 
 import { RingBuffer } from "@veyyon/utils/ring";
 import type { Subprocess } from "bun";
 import { hostHasInheritableConsole } from "../../eval/py/spawn-options";
+import { buildMcpChildEnv } from "../child-environment";
+import { isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "../timeout";
 import type {
 	JsonRpcError,
 	JsonRpcMessage,
@@ -19,10 +21,8 @@ import type {
 	MCPRequestOptions,
 	MCPStdioServerConfig,
 	MCPTransport,
-} from "../../mcp/types";
-import { toJsonRpcError } from "../../mcp/types";
-import { buildMcpChildEnv } from "../child-environment";
-import { isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "../timeout";
+} from "../types";
+import { toJsonRpcError } from "../types";
 import { describeJsonRpcError, isUnattributableError, rejectAllPending } from "../unattributable-error";
 import { terminateMcpServerTree } from "./process-tree";
 import { mcpNotConnectedMessage, mcpTimeoutMessage } from "./transport-failure";

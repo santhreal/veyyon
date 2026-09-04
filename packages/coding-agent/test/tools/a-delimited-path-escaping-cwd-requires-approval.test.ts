@@ -33,18 +33,19 @@ import type { AgentToolContext } from "@veyyon/agent-core";
 import { AuthStorage } from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import {
 	expandDelimitedPathEntries,
 	expandDelimitedPathEntriesSync,
 	splitDelimitedPathEntry,
 	splitDelimitedPathEntrySync,
-} from "@veyyon/coding-agent/tools/path-utils";
-import { readToolRenderer } from "@veyyon/coding-agent/tools/read";
-import { shortenPath } from "@veyyon/coding-agent/tools/render-utils";
+} from "@veyyon/coding-agent/tools/core/path-utils";
+import { shortenPath } from "@veyyon/coding-agent/tools/core/render-utils";
+import { readToolView } from "@veyyon/coding-agent/tools/fs/read-view";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 describe("a delimited path escaping cwd requires approval", () => {
@@ -395,22 +396,24 @@ describe("a delimited path escaping cwd requires approval", () => {
 		}
 	});
 
-	it("sanitizes resolvedPath in readToolRenderer using shortenPath", async () => {
+	it("sanitizes resolvedPath in the read card using shortenPath", async () => {
 		const uiTheme = await getThemeByName("dark");
 		expect(uiTheme).toBeDefined();
 		const homeDir = os.homedir();
 		const secretSubpath = path.join(homeDir, "workspace", "project");
-		const rendered = readToolRenderer.renderResult(
-			{
-				content: [{ type: "text", text: "file contents" }],
-				details: {
-					resolvedPath: secretSubpath,
-					contentType: "text/plain",
+		const rendered = drawToolView(
+			readToolView.renderResult(
+				{
+					content: [{ type: "text", text: "file contents" }],
+					details: {
+						resolvedPath: secretSubpath,
+						contentType: "text/plain",
+					},
 				},
-			},
-			{ expanded: false, isPartial: false },
+				{ expanded: false, partial: false },
+				{ path: "." },
+			),
 			uiTheme!,
-			{ path: "." },
 		);
 
 		const renderedLines = rendered.render(120);

@@ -25,8 +25,8 @@ import { stripThinkingVariantToken } from "@veyyon/catalog/identity/family";
 import { modelsAreEqual } from "@veyyon/catalog/models";
 import { DEFAULT_MODEL_PER_PROVIDER } from "@veyyon/catalog/provider-models";
 import { resolveBareVariantAlias, resolveVariantAlias } from "@veyyon/catalog/variant-collapse";
-import { fuzzyMatch } from "@veyyon/tui";
 import { logger } from "@veyyon/utils";
+import { fuzzyMatch } from "@veyyon/utils/fuzzy";
 import MODEL_PRIO from "../priority.json" with { type: "json" };
 import { AgentStorage } from "../session/agent-storage";
 import {
@@ -73,7 +73,7 @@ export function pickDefaultAvailableModel(availableModels: Model<Api>[]): Model<
 			isKnownProvider(model.provider) &&
 			DEFAULT_MODEL_PER_PROVIDER[model.provider] === model.id,
 	);
-	return [...sharedDefaultMatches].sort((a, b) => {
+	return sharedDefaultMatches.slice().sort((a, b) => {
 		const aRank = providerPriority.get(a.provider.toLowerCase()) ?? Number.POSITIVE_INFINITY;
 		const bRank = providerPriority.get(b.provider.toLowerCase()) ?? Number.POSITIVE_INFINITY;
 		if (aRank !== bRank) return aRank - bRank;
@@ -180,7 +180,10 @@ function resolveGlobScopePattern(
 
 /**
  * Parse a model string in "provider/modelId" format.
- * Returns undefined if the format is invalid.
+ * Returns undefined if the format is invalid, which includes a selector that
+ * names a provider and no model (`openai/`, `openai/:high`): an empty id
+ * matches nothing, so returning one hands every caller a selector that fails
+ * later at model lookup instead of failing here where the text is still visible.
  */
 export function parseModelString(
 	modelStr: string,
@@ -189,17 +192,17 @@ export function parseModelString(
 	const slashIdx = modelStr.indexOf("/");
 	if (slashIdx <= 0) return undefined;
 	const id = modelStr.slice(slashIdx + 1);
+	if (!id) return undefined;
 	const provider = modelStr.slice(0, slashIdx);
 	// Strip strict thinking level suffixes first (e.g. "claude-sonnet-4-6:high" -> id "claude-sonnet-4-6", thinkingLevel "high").
 	const strict = splitThinkingSuffix(id);
-	if (strict.level) return { provider, id: strict.base, thinkingLevel: strict.level };
+	if (strict.level) return strict.base ? { provider, id: strict.base, thinkingLevel: strict.level } : undefined;
 	// `max` is a real thinking level, but real model IDs can also end in
 	// `:max`. Context-aware callers pass a literal lookup so those models win.
 	const maxAlias = splitThinkingSuffix(id, -1, options);
 	if (maxAlias.level) {
-		return options?.isLiteralModelId?.(provider, id) === true
-			? { provider, id }
-			: { provider, id: maxAlias.base, thinkingLevel: maxAlias.level };
+		if (options?.isLiteralModelId?.(provider, id) === true) return { provider, id };
+		return maxAlias.base ? { provider, id: maxAlias.base, thinkingLevel: maxAlias.level } : undefined;
 	}
 	return { provider, id };
 }
@@ -556,7 +559,7 @@ function mergeModelMatchPreferences(
 
 function pickPreferredModel(candidates: Model<Api>[], context: ModelPreferenceContext): Model<Api> {
 	if (candidates.length <= 1) return candidates[0];
-	return [...candidates].sort((a, b) => {
+	return candidates.slice().sort((a, b) => {
 		if (context.hasConfiguredAuth) {
 			const aAuth = context.hasConfiguredAuth(a);
 			const bAuth = context.hasConfiguredAuth(b);
@@ -627,7 +630,7 @@ function includeSyntheticAllowedModels(available: Model<Api>[], allowedModels: I
 		}
 	}
 
-	result.push(...allowedByKey.values());
+	for (const model of allowedByKey.values()) result.push(model);
 	return result;
 }
 
@@ -769,7 +772,7 @@ function matchModel(
 		return datedVersions[0];
 	}
 
-	const sortedById = [...datedVersions].sort((a, b) => b.id.localeCompare(a.id));
+	const sortedById = datedVersions.slice().sort((a, b) => b.id.localeCompare(a.id));
 	const topId = sortedById[0]?.id;
 	if (!topId) return undefined;
 	const topCandidates = sortedById.filter(model => model.id === topId);

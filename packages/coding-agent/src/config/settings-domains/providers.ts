@@ -1,4 +1,12 @@
 import {
+	DEFAULT_TTS_LOCAL_MODEL_KEY,
+	DEFAULT_TTS_VOICE,
+	TTS_LOCAL_MODEL_OPTIONS,
+	TTS_LOCAL_MODEL_VALUES,
+	TTS_LOCAL_VOICE_OPTIONS,
+	TTS_LOCAL_VOICE_VALUES,
+} from "../../speech/tts/models";
+import {
 	TINY_MODEL_DEVICE_DEFAULT,
 	TINY_MODEL_DEVICE_SETTING_OPTIONS,
 	TINY_MODEL_DEVICE_SETTING_VALUES,
@@ -20,14 +28,10 @@ import {
 	TINY_TITLE_MODEL_VALUES,
 } from "../../tiny/models";
 import {
-	DEFAULT_TTS_LOCAL_MODEL_KEY,
-	DEFAULT_TTS_VOICE,
-	TTS_LOCAL_MODEL_OPTIONS,
-	TTS_LOCAL_MODEL_VALUES,
-	TTS_LOCAL_VOICE_OPTIONS,
-	TTS_LOCAL_VOICE_VALUES,
-} from "../../tts/models";
-import { SEARCH_PROVIDER_OPTIONS, SEARCH_PROVIDER_PREFERENCES, type SearchProviderId } from "../../web/search/types";
+	SEARCH_PROVIDER_OPTIONS,
+	SEARCH_PROVIDER_PREFERENCES,
+	type SearchProviderId,
+} from "../../tools/web/search/types";
 import { unsetNumberOption } from "../optional-number";
 
 /** Providers domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */

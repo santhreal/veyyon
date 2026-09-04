@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseGalleryStates } from "@veyyon/coding-agent/cli/gallery-cli";
 import { parseUnreleasedSection } from "@veyyon/coding-agent/commit/changelog/parse";
-import { extractPathFromRename, parseFileDiffs, parseNumstat } from "@veyyon/coding-agent/commit/git/diff";
+import { extractPathFromRename, parseFileDiffs, parseNumstat } from "@veyyon/coding-agent/commit/git-diff";
 import { parseJsonPayload } from "@veyyon/coding-agent/commit/utils/analysis";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
@@ -28,45 +28,27 @@ import {
 	shouldEvaluateCodexAutoRedeem,
 	shouldPromptCodexAutoRedeem,
 } from "@veyyon/coding-agent/session/codex-auto-reset";
-import { findCompactMode, parseCompactArgs } from "@veyyon/coding-agent/session/compact-modes";
 import { normalizeRoots } from "@veyyon/coding-agent/session/relativize-paths";
-import {
-	parseTitleSlotLine,
-	serializeTitleSlot,
-	titleUpdateFromSlot,
-} from "@veyyon/coding-agent/session/session-title-slot";
-import { formatShakeSummary, type ShakeResult } from "@veyyon/coding-agent/session/shake-types";
+import { type FindingPriority, getPriorityInfo, isFindingPriority } from "@veyyon/coding-agent/tools/agent/review";
 import {
 	type ApprovalMode,
 	type ApprovalResolutionOptions,
 	resolveApproval,
 	type ToolApproval,
-} from "@veyyon/coding-agent/tools/approval";
-import { astEditFilesystemTargets } from "@veyyon/coding-agent/tools/ast-edit";
-import { parseConflictUri, scanConflictLines } from "@veyyon/coding-agent/tools/conflict-detect";
+} from "@veyyon/coding-agent/tools/core/approval";
 import {
 	cwdEscapingTargets,
 	formatCwdBoundaryReason,
 	searchPathFilesystemTargets,
-} from "@veyyon/coding-agent/tools/cwd-boundary";
-import {
-	buildSearchDateQualifier,
-	parsePositiveDecimalInt,
-	parseSearchDateBound,
-	resolveTailLimit,
-} from "@veyyon/coding-agent/tools/gh";
-import { formatShortSha } from "@veyyon/coding-agent/tools/gh-format";
-import { parseIssueUrl, parsePrUrl } from "@veyyon/coding-agent/tools/gh-url";
-import { isWaitingPollDetails } from "@veyyon/coding-agent/tools/job";
-import { applyListLimit } from "@veyyon/coding-agent/tools/list-limit";
-import { formatMatchLine } from "@veyyon/coding-agent/tools/match-line-format";
+} from "@veyyon/coding-agent/tools/core/cwd-boundary";
+import { applyListLimit } from "@veyyon/coding-agent/tools/core/list-limit";
 import {
 	formatFullOutputReference,
 	formatTruncationMetaNotice,
 	stripGeneratedOutputNotice,
 	stripRawOutputArtifactNotice,
 	type TruncationMeta,
-} from "@veyyon/coding-agent/tools/output-meta";
+} from "@veyyon/coding-agent/tools/core/output-meta";
 import {
 	combineSearchGlobs,
 	expandPath,
@@ -80,19 +62,33 @@ import {
 	parseLineRanges,
 	parseSearchPath,
 	resolveToCwd,
-} from "@veyyon/coding-agent/tools/path-utils";
-import { enforcePlanModeWrite, unwrapHashlineHeaderPath } from "@veyyon/coding-agent/tools/plan-mode-guard";
-import { type FindingPriority, getPriorityInfo, isFindingPriority } from "@veyyon/coding-agent/tools/review";
+} from "@veyyon/coding-agent/tools/core/path-utils";
+import { enforcePlanModeWrite, unwrapHashlineHeaderPath } from "@veyyon/coding-agent/tools/core/plan-mode-guard";
 import {
 	clampTimeout,
 	describeTimeoutParam,
 	formatTimeoutClampNotice,
 	type ToolWithTimeout,
-} from "@veyyon/coding-agent/tools/tool-timeouts";
-import { writeFilesystemTargets } from "@veyyon/coding-agent/tools/write";
+} from "@veyyon/coding-agent/tools/core/tool-timeouts";
+import { parseConflictUri, scanConflictLines } from "@veyyon/coding-agent/tools/fs/conflict-detect";
+import { writeFilesystemTargets } from "@veyyon/coding-agent/tools/fs/write";
+import { astEditFilesystemTargets } from "@veyyon/coding-agent/tools/search/ast-edit";
+import { formatMatchLine } from "@veyyon/coding-agent/tools/search/match-line-format";
+import { isWaitingPollDetails } from "@veyyon/coding-agent/tools/shell/job";
+import {
+	buildSearchDateQualifier,
+	parsePositiveDecimalInt,
+	parseSearchDateBound,
+	resolveTailLimit,
+} from "@veyyon/coding-agent/tools/web/gh";
+import { formatShortSha } from "@veyyon/coding-agent/tools/web/gh-format";
+import { parseIssueUrl, parsePrUrl } from "@veyyon/coding-agent/tools/web/gh-url";
 import { detectLanguageId } from "@veyyon/coding-agent/utils/lang-from-path";
-import { formatIsoDate, formatMediaDuration } from "@veyyon/coding-agent/web/scrapers/types";
 import { InMemoryFilesystem, InMemorySnapshotStore, Patch, Patcher, parsePatch, Recovery } from "@veyyon/hashline";
+import { findCompactMode, parseCompactArgs } from "@veyyon/kernel/session/compact-modes";
+import { parseTitleSlotLine, serializeTitleSlot, titleUpdateFromSlot } from "@veyyon/kernel/session/session-title-slot";
+import { formatShakeSummary, type ShakeResult } from "@veyyon/kernel/session/shake-types";
+import { formatIsoDate, formatMediaDuration } from "@veyyon/web/scrapers/types";
 import type { CorpusCase } from "../helpers/corpus-loader";
 import { flattenCorpus, loadCorpusFile } from "../helpers/corpus-loader";
 import { makeToolSession } from "../helpers/tool-session";

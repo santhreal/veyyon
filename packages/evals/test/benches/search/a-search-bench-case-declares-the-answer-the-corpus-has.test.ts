@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import type { FileSearchDetails } from "@veyyon/coding-agent/tools/file-search";
-import type { SearchToolDetails } from "@veyyon/coding-agent/tools/search";
-import type { StructureSearchDetails } from "@veyyon/coding-agent/tools/structure-search";
-import type { TextSearchDetails } from "@veyyon/coding-agent/tools/text-search";
+import type { FileSearchDetails } from "@veyyon/coding-agent/tools/search/file-search";
+import type { SearchToolDetails } from "@veyyon/coding-agent/tools/search/search";
+import type { StructureSearchDetails } from "@veyyon/coding-agent/tools/search/structure-search";
+import type { TextSearchDetails } from "@veyyon/coding-agent/tools/search/text-search";
 import { materializeCorpus } from "../../../benches/search/corpus";
 import {
 	collectMatchedPaths,

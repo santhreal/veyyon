@@ -9,7 +9,7 @@
  * asserting the probe variable never arrives.
  *
  * That end-to-end test is the contract, but it points at the symptom. It went red because
- * `tools/tool-errors.ts`, seven modules deep in the entry's import graph, imported `errorMessage` and
+ * `tools/core/tool-errors.ts`, seven modules deep in the entry's import graph, imported `errorMessage` and
  * `isAbortError` from the barrel instead of from `@veyyon/utils/type-guards` and `@veyyon/utils/abortable`.
  * Reading a failing spawn tells you a `.env` was loaded; it does not tell you which of eleven modules did
  * it. This suite walks the actual import graph and names the file, so the next accidental barrel import is
@@ -72,7 +72,7 @@ async function walkFromEntry(): Promise<Graph> {
 describe("the JS evaluator's process entry", () => {
 	/**
 	 * The walk has to actually reach the module that broke this, or a passing result would mean nothing.
-	 * `tools/tool-errors.ts` is the file that regressed and it sits behind `eval/js/shared/helpers.ts`, so
+	 * `tools/core/tool-errors.ts` is the file that regressed and it sits behind `eval/js/shared/helpers.ts`, so
 	 * both are asserted present: this pins that the traversal follows relative imports across directories
 	 * and does not stop at the `eval/js` boundary.
 	 */
@@ -82,7 +82,7 @@ describe("the JS evaluator's process entry", () => {
 
 		expect(relative).toContain("eval/js/process-entry.ts");
 		expect(relative).toContain("eval/js/shared/helpers.ts");
-		expect(relative).toContain("tools/tool-errors.ts");
+		expect(relative).toContain("tools/core/tool-errors.ts");
 		expect(relative.length).toBeGreaterThan(5);
 	});
 
@@ -99,7 +99,7 @@ describe("the JS evaluator's process entry", () => {
 	 * reaching for the barrel does not know.
 	 */
 	it("keeps tool-errors on subpath imports", async () => {
-		const source = await Bun.file(path.join(SRC_ROOT, "tools/tool-errors.ts")).text();
+		const source = await Bun.file(path.join(SRC_ROOT, "tools/core/tool-errors.ts")).text();
 
 		expect(specifiers(source)).toContain("@veyyon/utils/abortable");
 		expect(specifiers(source)).toContain("@veyyon/utils/type-guards");

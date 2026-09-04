@@ -134,7 +134,7 @@ const AUTH_STORAGE_CEILING = 227;
  * field meant importing every login flow, transport and model list in the package. `src/provider-env-keys.ts`
  * owns those rules now, at 23 modules, and `registry/types.ts` no longer declares the field, so there is one
  * place to write a rule and one module that reads it. Downstream: `web/parallel.ts` 164 -> 72,
- * `tools/fetch.ts` 368 -> 282, `tools/read.ts` 542 -> 468.
+ * `tools/web/fetch.ts` 368 -> 282, `tools/fs/read.ts` 542 -> 468.
  *
  * 73 since 2026-08-22: `compat/markup-leaks.ts`, one file in the catalog holding the provider and
  * model-id vocabulary for the markup a host leaks into visible content. `compat/openai.ts` is already

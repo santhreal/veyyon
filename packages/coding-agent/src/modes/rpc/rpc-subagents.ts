@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
+import type { FileEntry, SessionMessageEntry } from "@veyyon/kernel/session/session-entries";
 import { isEnoent } from "@veyyon/utils";
-import type { FileEntry, SessionMessageEntry } from "../../session/session-entries";
 import { parseSessionEntries } from "../../session/session-loader";
 import {
 	type AgentProgress,
@@ -155,7 +155,7 @@ export class RpcSubagentRegistry {
 	}
 
 	getSubagents(): RpcSubagentSnapshot[] {
-		return [...this.#subagents.values()].sort((a, b) => a.index - b.index || a.id.localeCompare(b.id));
+		return Array.from(this.#subagents.values()).sort((a, b) => a.index - b.index || a.id.localeCompare(b.id));
 	}
 
 	#rememberTranscriptSession(subagentId: string, sessionFile: string | undefined): void {

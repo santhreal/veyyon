@@ -338,7 +338,7 @@ function BehaviorModelsTable({
 	const trendByKey = useMemo(() => buildTrendLookup(behaviorSeries), [behaviorSeries]);
 
 	const sortedModels = useMemo(() => {
-		return [...models].sort((a, b) => {
+		return models.slice().sort((a, b) => {
 			if (b.totalMessages !== a.totalMessages) {
 				return b.totalMessages - a.totalMessages;
 			}
@@ -578,7 +578,7 @@ interface ModelTrendSeries {
 function buildTrendLookup(points: BehaviorTimeSeriesPoint[]): Map<string, ModelTrendSeries> {
 	if (points.length === 0) return new Map();
 
-	const allDays = [...new Set(points.map(p => p.timestamp))].sort((a, b) => a - b);
+	const allDays = Array.from(new Set(points.map(p => p.timestamp))).sort((a, b) => a - b);
 	const byKey = new Map<string, Map<number, DailyPoint>>();
 
 	for (const point of points) {

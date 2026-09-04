@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
-import { type DiscoveredSkill, skillCapability } from "@veyyon/coding-agent/capability/skill";
 import { loadCapability } from "@veyyon/coding-agent/discovery";
+import { clearCache as clearFsCache } from "@veyyon/coding-agent/discovery/capability/fs";
+import { type DiscoveredSkill, skillCapability } from "@veyyon/coding-agent/discovery/capability/skill";
 import { removeWithRetries, setAgentDir } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 

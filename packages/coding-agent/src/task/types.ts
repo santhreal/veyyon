@@ -3,7 +3,7 @@ import type { Usage } from "@veyyon/ai";
 import { $envpos } from "@veyyon/utils/env";
 import { type BaseType, type } from "arktype";
 import type { RetryRecoveryMode } from "../modes/retry-display";
-import type { AgentSessionEvent } from "../session/agent-session";
+import type { AgentSessionEvent } from "../session/agent-session-types";
 import type { ConfiguredThinkingLevel } from "../thinking";
 import { DEFAULT_SPAWN_AGENT } from "./spawn-policy";
 import type { NestedRepoPatch } from "./worktree";
@@ -137,7 +137,7 @@ function taskAgentSchemaRule(defaultAgent: string | undefined, enabledAgentNames
 	if (enabledAgentNames === undefined) {
 		return trimmedDefault ? type("string").default(trimmedDefault) : "string";
 	}
-	const names = [...new Set(enabledAgentNames.map(name => name.trim()).filter(Boolean))];
+	const names = Array.from(new Set(enabledAgentNames.map(name => name.trim()).filter(Boolean)));
 	const enabled = type.enumerated(...names);
 	return trimmedDefault ? enabled.default(trimmedDefault) : enabled;
 }

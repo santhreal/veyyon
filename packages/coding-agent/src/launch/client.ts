@@ -343,7 +343,7 @@ export async function daemonClientForProject(
 
 /** Close every project broker connection held by this veyyon process. */
 export async function closeDaemonClients(): Promise<void> {
-	const pending = [...sharedClients.values()];
+	const pending = Array.from(sharedClients.values());
 	sharedClients.clear();
 	// One connection that never resolved must not strand the rest: settle every
 	// entry and close the ones that produced a client.

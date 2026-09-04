@@ -1,0 +1,160 @@
+/**
+ * Locks the ONE-PLACE agent-status visual language: the glyph form (subagent dashboard
+ * roster) and the word form (transcript viewer header) must derive the SAME
+ * color from the single owner for every status. This is the regression guard for
+ * the pre-unification bug where the hub and viewer disagreed on status colors —
+ * the hub used running→accent/idle→success and the viewer the exact reverse, so
+ * an identical agent state carried opposite colors depending on which view you
+ * were in.
+ */
+import { beforeAll, describe, expect, it } from "bun:test";
+import {
+	AGENT_DISPLAY_STATES,
+	type AgentDisplayState,
+	agentDisplayState,
+	agentStatusColor,
+	agentStatusGlyph,
+	agentStatusWord,
+} from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-status-display";
+import { AGENT_STATUSES } from "@veyyon/coding-agent/registry/agent-registry";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
+import { useFullColor } from "../../../helpers/theme-assertions";
+
+/**
+ * The variant space derived from the visual language owner at run time.
+ * Fails by default if a new display state is added without full coverage.
+ */
+const ALL_STATUSES: readonly AgentDisplayState[] = AGENT_DISPLAY_STATES;
+
+/** All members of the underlying AgentStatus union, derived from its runtime owner. */
+const ALL_AGENT_STATUSES = AGENT_STATUSES;
+
+describe("agent status display (ONE-PLACE)", () => {
+	useFullColor();
+
+	beforeAll(async () => {
+		await initTheme();
+	});
+
+	it("maps each status to its canonical color", () => {
+		expect(agentStatusColor("running")).toBe("accent");
+		expect(agentStatusColor("blocked")).toBe("warning");
+		expect(agentStatusColor("idle")).toBe("success");
+		expect(agentStatusColor("waiting")).toBe("link");
+		expect(agentStatusColor("parked")).toBe("muted");
+		expect(agentStatusColor("aborted")).toBe("error");
+	});
+
+	/**
+	 * The derivation itself, which every surface goes through so none of them can
+	 * disagree about when an agent counts as blocked or waiting.
+	 *
+	 * The last case is the one that bites: `waitingOnPeer` is written at the end
+	 * of a run and left in place while the agent is woken again, so a surface
+	 * reading it on a `running` row would report the reason it stopped LAST time
+	 * as the reason it is stopped now.
+	 */
+	it("pins the exact source-derived display state set", () => {
+		const expected = ["aborted", "blocked", "idle", "parked", "running", "waiting"] satisfies AgentDisplayState[];
+		expect([...AGENT_DISPLAY_STATES].sort()).toEqual(expected.sort());
+	});
+
+	/**
+	 * The derivation itself, which every surface goes through so none of them can
+	 * disagree about when an agent counts as blocked or waiting.
+	 *
+	 * Precedence hierarchy under test:
+	 * 1. `running` + `blockedOnApproval` -> `blocked` (open approval outranks busy)
+	 * 2. `running` without approval -> `running` (stale `waitingOnPeer` ignored)
+	 * 3. `aborted` -> `aborted` (terminal error beats open approval and peer wait)
+	 * 4. `idle` / `parked` + `waitingOnPeer` -> `waiting` (stopped on peer)
+	 * 5. `idle` / `parked` without peer wait -> `idle` / `parked` (stale approval ignored)
+	 */
+	it("derives blocked and waiting from the ref, with approval winning while running", () => {
+		expect(agentDisplayState({ status: "running" })).toBe("running");
+		expect(agentDisplayState({ status: "running", blockedOnApproval: true })).toBe("blocked");
+		expect(agentDisplayState({ status: "parked", waitingOnPeer: true })).toBe("waiting");
+		expect(agentDisplayState({ status: "idle", waitingOnPeer: true })).toBe("waiting");
+		expect(agentDisplayState({ status: "parked", waitingOnPeer: false })).toBe("parked");
+		expect(agentDisplayState({ status: "running", waitingOnPeer: true })).toBe("running");
+		expect(agentDisplayState({ status: "parked", waitingOnPeer: true, blockedOnApproval: true })).toBe("waiting");
+		expect(agentDisplayState({ status: "aborted", blockedOnApproval: true })).toBe("aborted");
+		expect(agentDisplayState({ status: "idle", blockedOnApproval: true })).toBe("idle");
+		expect(agentDisplayState({ status: "parked", blockedOnApproval: true })).toBe("parked");
+	});
+
+	/**
+	 * Exhaustive matrix across every member of AgentStatus x boolean combinations.
+	 * Mutation-gates every branch in `agentDisplayState`.
+	 */
+	it("evaluates the complete precedence matrix across all AgentStatus variants", () => {
+		for (const status of ALL_AGENT_STATUSES) {
+			// Case 1: no modifiers
+			const plain = agentDisplayState({ status });
+			expect(plain).toBe(status);
+
+			// Case 2: blockedOnApproval = true
+			const blocked = agentDisplayState({ status, blockedOnApproval: true });
+			if (status === "running") {
+				expect(blocked).toBe("blocked");
+			} else {
+				expect(blocked).toBe(status); // Terminal/stopped statuses ignore blockedOnApproval
+			}
+
+			// Case 3: waitingOnPeer = true
+			const waiting = agentDisplayState({ status, waitingOnPeer: true });
+			if (status === "idle" || status === "parked") {
+				expect(waiting).toBe("waiting");
+			} else {
+				expect(waiting).toBe(status); // Running and aborted ignore waitingOnPeer
+			}
+
+			// Case 4: both blockedOnApproval = true AND waitingOnPeer = true
+			const both = agentDisplayState({ status, blockedOnApproval: true, waitingOnPeer: true });
+			if (status === "running") {
+				expect(both).toBe("blocked");
+			} else if (status === "idle" || status === "parked") {
+				expect(both).toBe("waiting");
+			} else {
+				expect(both).toBe("aborted"); // Aborted ignores both
+			}
+		}
+	});
+
+	it("renders the glyph and word of a status in the same color", () => {
+		for (const status of ALL_STATUSES) {
+			const expectedAnsi = theme.getFgAnsi(agentStatusColor(status));
+			expect(agentStatusGlyph(status).startsWith(expectedAnsi)).toBe(true);
+			expect(agentStatusWord(status).startsWith(expectedAnsi)).toBe(true);
+		}
+	});
+
+	it("renders the state name as the word body", () => {
+		for (const status of ALL_STATUSES) {
+			expect(Bun.stripANSI(agentStatusWord(status))).toBe(status);
+		}
+	});
+
+	it("gives every display state its own color", () => {
+		const colors = new Set(ALL_STATUSES.map(agentStatusColor));
+		expect(colors.size).toBe(ALL_STATUSES.length);
+	});
+
+	/**
+	 * WHY width and distinctness, not merely non-empty: the roster draws one
+	 * glyph per agent in a single cell, so the two ways it can be unreadable are
+	 * an absent mark (an empty or blank glyph leaves the row looking unstyled)
+	 * and a shared mark (two states drawn identically, which makes the glyph
+	 * column decorative). Color already separates them for a sighted operator;
+	 * the glyph has to as well, because color is what a narrow or monochrome
+	 * terminal drops first.
+	 */
+	it("renders a distinct one-cell glyph for every status", () => {
+		const glyphs = ALL_STATUSES.map(status => Bun.stripANSI(agentStatusGlyph(status)));
+		for (const [index, glyph] of glyphs.entries()) {
+			expect(Bun.stringWidth(glyph), `${ALL_STATUSES[index]} glyph ${JSON.stringify(glyph)}`).toBe(1);
+			expect(glyph.trim(), `${ALL_STATUSES[index]} glyph must not be blank`).not.toBe("");
+		}
+		expect(new Set(glyphs).size).toBe(ALL_STATUSES.length);
+	});
+});

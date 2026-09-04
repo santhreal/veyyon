@@ -1,7 +1,7 @@
 /**
  * Nothing the launch card draws needs a database, so nothing on its path may load one.
  *
- * WHY THIS SUITE EXISTS. `commands/launch.ts` paints the card before it imports the runtime, and
+ * WHY THIS SUITE EXISTS. `cli/launch-card.ts` paints the card before it imports the runtime, and
  * everything that paint reaches is evaluated first, on every interactive launch, while the terminal
  * is still blank. `config/settings.ts` sat on that path and imported `session/agent-storage.ts` for
  * a handle it cached and a legacy table it read once on a first run, which put `bun:sqlite` and
@@ -85,10 +85,18 @@ const ADMITTED_ON_THE_CARD_PATH = [path.join("coding-agent", "src", "config", "l
  * leaf over `@veyyon/utils` entry points the card already reached — dirs, atomic-write, fs-error,
  * logger and type-guards — so it costs itself and nothing under it.
  *
+ * 304 rather than 293 is a file count, not more work: the terminal engine's `tui.ts` became ten
+ * modules under `core/` (`renderer`, `container`, `overlay`, `scroll`, `cursor`, `mouse-routing`,
+ * `component-types`, `terminal-session`, `image-budget`, `tui`), and the string, layout and colour
+ * helpers it carried moved to `@veyyon/utils` subpaths (`width`, `wrap`, `padding`, `sgr`, `bar`,
+ * `color-format`, `tight-mode`, `word-nav`). The card reaches 20 engine modules where it reached 30,
+ * and no subsystem joined the path — which is what the reachability assertions below, not this
+ * number, are the proof of.
+ *
  * The floor is what stops a resolution table that stopped resolving from satisfying the ceiling with
  * a handful of modules while measuring nothing.
  */
-const LAUNCH_CARD_CEILING = 293;
+const LAUNCH_CARD_CEILING = 304;
 const LAUNCH_CARD_FLOOR = 150;
 
 describe("the launch card opens no database", () => {
@@ -101,7 +109,7 @@ describe("the launch card opens no database", () => {
 		expect(DATABASE_OWNERS).toContain(path.join("coding-agent", "src", "session", "agent-storage.ts"));
 		expect(DATABASE_OWNERS).toContain(path.join("ai", "src", "auth-storage-sqlite.ts"));
 		expect(DATABASE_OWNERS).toContain(ADMITTED_ON_THE_CARD_PATH[0]);
-		expect(reach("startup/launch-card.ts")).toBeGreaterThan(LAUNCH_CARD_FLOOR);
+		expect(reach("cli/launch-card.ts")).toBeGreaterThan(LAUNCH_CARD_FLOOR);
 	});
 
 	/**
@@ -117,8 +125,8 @@ describe("the launch card opens no database", () => {
 	});
 
 	for (const [label, entry] of [
-		["the launch card", "startup/launch-card.ts"],
-		["the first frame", "modes/first-frame.ts"],
+		["the launch card", "cli/launch-card.ts"],
+		["the first frame", "modes/terminal/first-frame.ts"],
 		["the settings store", "config/settings.ts"],
 	] as const) {
 		/**
@@ -135,6 +143,6 @@ describe("the launch card opens no database", () => {
 
 	/** The ordinary way the cost comes back: not a database, just a hundred more modules. */
 	it("does not grow the launch card's graph", () => {
-		expect(reach("startup/launch-card.ts")).toBeLessThanOrEqual(LAUNCH_CARD_CEILING);
+		expect(reach("cli/launch-card.ts")).toBeLessThanOrEqual(LAUNCH_CARD_CEILING);
 	});
 });

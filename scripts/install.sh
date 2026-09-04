@@ -198,7 +198,7 @@ fi
 # ramp, then the name letterspaced in silver, which is the same order the setup
 # splash uses — the eye lands on the sun, the name second.
 #
-# `packages/coding-agent/src/modes/components/sun.ts` is the OWNER of the brand
+# `packages/coding-agent/src/modes/terminal/components/chrome/sun.ts` is the OWNER of the brand
 # ember and of the glyph ramp; the values below are bands 2, 4, 6 and 7 of its
 # `EMBER` array and glyphs from its `GLYPH` ramp, quoted rather than reinvented.
 # `scripts/installer-brand-parity.test.ts` reads both files and fails if they
@@ -1581,7 +1581,7 @@ Move $dest aside and re-run, or re-run with --force to have the installer move i
 # digest, printing nothing when the body holds no digest.
 #
 # Strict on purpose, and deliberately identical to the TypeScript owner in
-# packages/natives/src/sha256-sidecar.ts: a token that is not exactly 64 hex
+# natives/bridge/bindings/src/sha256-sidecar.ts: a token that is not exactly 64 hex
 # characters means the response is not a checksum at all (an HTML error page, a
 # rate-limit body, a sidecar truncated by a dropped connection). Passing that
 # token through would compare the real digest against "<!doctype" and report a
@@ -1898,7 +1898,7 @@ do_uninstall() {
     done
     # Remove the per-version native addon cache a binary install stages there
     # (~150MB per version). The path shape is owned by getNativesDir() in
-    # packages/natives/native/loader-state.js — mirror it EXACTLY: honor
+    # natives/bridge/bindings/native/loader-state.js — mirror it EXACTLY: honor
     # $XDG_DATA_HOME/veyyon/natives only when $XDG_DATA_HOME/veyyon already
     # exists (the loader's condition), otherwise ~/.veyyon/natives. Only the
     # `natives` cache subdir is removed; the user's auth/config/sessions under

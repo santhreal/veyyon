@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { renderSetupSplash, SETUP_SPLASH_MS } from "@veyyon/coding-agent/modes/setup-wizard/scenes/splash";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { renderSetupSplash, SETUP_SPLASH_MS } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/splash";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { APP_NAME } from "@veyyon/utils";
 
 beforeAll(async () => {

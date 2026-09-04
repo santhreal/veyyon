@@ -33,6 +33,6 @@ Memory backends are selected via `memory.backend` (Settings → Memory, or the a
    - `HINDSIGHT_RECALL_BUDGET`, `HINDSIGHT_RECALL_MAX_TOKENS`: recall sizing
    - `HINDSIGHT_BANK_MISSION`, `HINDSIGHT_DEBUG`
 
-   The full override list, including recall/retain/reflect timeouts and sizing knobs, is in `packages/coding-agent/src/hindsight/config.ts`; the `hindsight.*` settings keys are in [docs/handbook/src/reference/settings-reference.md](../../docs/handbook/src/reference/settings-reference.md).
+   The full override list, including recall/retain/reflect timeouts and sizing knobs, is in `packages/coding-agent/src/memory/hindsight/config.ts`; the `hindsight.*` settings keys are in [docs/handbook/src/reference/settings-reference.md](../../docs/handbook/src/reference/settings-reference.md).
 
 Switching backends mid-session takes effect on the next system prompt rebuild and the next `/memory` command.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { formatMatchLine } from "@veyyon/coding-agent/tools/match-line-format";
+import { formatMatchLine } from "@veyyon/coding-agent/tools/search/match-line-format";
 
 /**
  * formatMatchLine full matrix of match/context × plain/hashline.

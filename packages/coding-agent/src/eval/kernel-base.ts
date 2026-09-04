@@ -203,7 +203,7 @@ export function createAbortError(name: "AbortError" | "TimeoutError", message: s
  * Throw because a kernel operation's signal is already aborted, PRESERVING the
  * identity of the reason.
  *
- * This is deliberately not `tools/tool-errors.ts`'s `throwIfAborted`, and the
+ * This is deliberately not `tools/core/tool-errors.ts`'s `throwIfAborted`, and the
  * name says so. That one normalizes every abort to a single `ToolAbortError`
  * because its callers catch one type. A kernel cannot: the timer at
  * `runWithDeadline` aborts with a `TimeoutError` and the caller has to be able

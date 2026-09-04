@@ -3,7 +3,7 @@
 > Mark the current top-level conversation state so later `rewind` can collapse exploratory context into a report.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/checkpoint.ts`
+- Entry: `packages/coding-agent/src/tools/fs/checkpoint.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/checkpoint.md`
 - Key collaborators:
   - `packages/coding-agent/src/session/agent-session.ts`: captures the active checkpoint after tool success.
@@ -31,7 +31,7 @@ The tool returns a single text result plus structured details:
 No checkpoint ID, artifact URI, job handle, file path, or restore token is returned.
 
 ## Flow
-1. `CheckpointTool.createIf()` in `packages/coding-agent/src/tools/checkpoint.ts` returns `null` for subagents by checking `session.taskDepth`; only top-level sessions can see the tool.
+1. `CheckpointTool.createIf()` in `packages/coding-agent/src/tools/fs/checkpoint.ts` returns `null` for subagents by checking `session.taskDepth`; only top-level sessions can see the tool.
 2. `CheckpointTool.execute()` rejects subagent calls again with `ToolError("Checkpoint not available in subagents.")`.
 3. It rejects nested checkpoints with `ToolError("Checkpoint already active.")` when `session.getCheckpointState?.()` is already set.
 4. It creates `startedAt = new Date().toISOString()` and returns a normal `toolResult()` payload. The tool itself does not persist anything.
@@ -61,7 +61,7 @@ You are in an active checkpoint. You MUST call rewind with your investigation fi
 - The tool is registered as discoverable in `packages/coding-agent/src/tools/index.ts`.
 - Only one active checkpoint is allowed per top-level session.
 - Checkpoint state is rebuilt from the session branch on resume: `#rehydrateCheckpointRewindState()` in `agent-session.ts` restores a pending checkpoint (so `rewind` can still complete it) or the completed-rewind report, from the persisted checkpoint/rewind tool entries.
-- Session persistence still applies to the ordinary checkpoint tool call message. Global session persistence truncation is `MAX_PERSIST_CHARS = 500_000` in `packages/coding-agent/src/session/session-persistence.ts`.
+- Session persistence still applies to the ordinary checkpoint tool call message. Global session persistence truncation is `MAX_PERSIST_CHARS = 500_000` in `kernel/src/session/session-persistence.ts`.
 
 ## Errors
 - `ToolError("Checkpoint not available in subagents.")`: thrown for subagent sessions.
@@ -79,5 +79,5 @@ You are in an active checkpoint. You MUST call rewind with your investigation fi
   - staged changes
   - artifacts
   - blob-store contents
-  - SQLite history rows from `packages/coding-agent/src/session/history-storage.ts`
+  - SQLite history rows from `kernel/src/session/history-storage.ts`
   - auth or agent records from `packages/coding-agent/src/session/agent-storage.ts`

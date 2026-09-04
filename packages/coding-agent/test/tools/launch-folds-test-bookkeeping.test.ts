@@ -14,8 +14,8 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as launchClient from "@veyyon/coding-agent/launch/client";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { LaunchTool } from "@veyyon/coding-agent/tools/launch";
-import { MIN_FOLDABLE_LINES } from "@veyyon/coding-agent/tools/output-fold";
+import { MIN_FOLDABLE_LINES } from "@veyyon/coding-agent/tools/core/output-fold";
+import { LaunchTool } from "@veyyon/coding-agent/tools/shell/launch";
 
 /** A `go test -v` run: bookkeeping for the tests that passed, one real failure, a verdict. */
 function goTestLog(): string {

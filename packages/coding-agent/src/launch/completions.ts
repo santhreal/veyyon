@@ -92,7 +92,10 @@ export async function appendDaemonCompletion(
 		});
 	}
 	const cutoff = now - DAEMON_COMPLETIONS_MAX_AGE_MS;
-	const records = [...existing, record].filter(entry => entry.exitedAt >= cutoff).slice(-DAEMON_COMPLETIONS_LIMIT);
+	const records = existing
+		.concat([record])
+		.filter(entry => entry.exitedAt >= cutoff)
+		.slice(-DAEMON_COMPLETIONS_LIMIT);
 	await atomicWriteFile(
 		daemonCompletionsPath(runtimeDir),
 		JSON.stringify({ version: DAEMON_COMPLETIONS_SCHEMA_VERSION, records }),

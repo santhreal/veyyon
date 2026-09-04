@@ -179,7 +179,7 @@ export function buildMcpChildEnv(
 		return { env: { ...env, ...declared }, withheld: [], inherited: true };
 	}
 
-	const wanted = new Set<string>([...mcpBaselineEnvNames(platform), ...(config.envPassthrough ?? [])]);
+	const wanted = new Set<string>(mcpBaselineEnvNames(platform).concat(config.envPassthrough ?? []));
 	const matches = matcherFor(wanted, platform);
 
 	const env: Record<string, string> = {};

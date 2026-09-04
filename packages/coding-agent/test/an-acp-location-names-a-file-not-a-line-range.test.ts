@@ -18,7 +18,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { mapAgentSessionEventToAcpSessionUpdates } from "@veyyon/coding-agent/modes/acp/acp-event-mapper";
-import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 
 const CWD = "/repo";
 

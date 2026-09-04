@@ -13,14 +13,14 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { type SettingPath, Settings } from "@veyyon/coding-agent/config/settings";
 import { EditTool } from "@veyyon/coding-agent/edit";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { convertToLlm } from "@veyyon/coding-agent/session/messages";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
 import type {
 	ClientBridge,
 	ClientBridgePermissionOutcome,
 	ClientBridgePermissionToolCall,
-} from "@veyyon/coding-agent/session/client-bridge";
-import { convertToLlm } from "@veyyon/coding-agent/session/messages";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import type { ToolSession } from "@veyyon/coding-agent/tools";
+} from "@veyyon/kernel/session/client-bridge";
 import { TempDir } from "@veyyon/utils";
 import { type } from "arktype";
 import { makeToolSession } from "./helpers/tool-session";

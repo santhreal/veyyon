@@ -57,8 +57,8 @@ describe("chunkTestFiles", () => {
 
 	/** `.test.tsx` counts: the UI bucket has them and they chunk like any other file. */
 	it("reads a tsx suite", () => {
-		expect(chunkTestFiles("bun test packages/tui/test/render.test.tsx")).toEqual([
-			"packages/tui/test/render.test.tsx",
+		expect(chunkTestFiles("bun test hosts/terminal/engine/test/render.test.tsx")).toEqual([
+			"hosts/terminal/engine/test/render.test.tsx",
 		]);
 	});
 

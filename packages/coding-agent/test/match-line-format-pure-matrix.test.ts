@@ -2,7 +2,7 @@
  * formatMatchLine pure matrix: plain vs hashline, match vs context.
  */
 import { describe, expect, it } from "bun:test";
-import { formatMatchLine } from "../src/tools/match-line-format";
+import { formatMatchLine } from "../src/tools/search/match-line-format";
 
 describe("formatMatchLine pure matrix", () => {
 	it("plain match", () => {

@@ -40,11 +40,12 @@ import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { resolveCompactionKind } from "@veyyon/coding-agent/modes/components/compaction-summary-message";
-import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
-import type { CompactionEntry } from "@veyyon/coding-agent/session/session-entries";
+import { resolveCompactionKind } from "@veyyon/coding-agent/modes/terminal/components/transcript/compaction-summary-message";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import type { CompactionEntry } from "@veyyon/kernel/session/session-entries";
 import { TempDir } from "@veyyon/utils";
 
 /** The compaction item OpenAI returns: opaque, and the whole point of the window. */

@@ -13,7 +13,7 @@
  *   - the evals SKILL's copy-paste command passed `--model ...gemini-3.6-flash`
  *     while every encode arm allowlisted `gemini-3.5-flash`, so the documented
  *     command was refused by the pre-run treatment guard,
- *   - `BACKLOG.md` pointed 19 times at `packages/argot/`, a directory that does
+ *   - `BACKLOG.md` pointed 19 times at `plugins/argot/`, a directory that does
  *     not exist (the package named `argot` lived in `packages/lexpack/` at the time;
  *     both now agree on `argot`).
  *

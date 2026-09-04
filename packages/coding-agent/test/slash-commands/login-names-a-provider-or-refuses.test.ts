@@ -32,7 +32,7 @@
  * WHAT IT DOES NOT CATCH. It drives the command handlers with a fake `InteractiveModeContext`, so
  * it proves which context call each argument produces and not what the selector then renders; the
  * card that a successful login lands on is proven in
- * `test/modes/controllers/a-command-login-lands-in-the-account-manager.test.ts` against the real
+ * `test/modes/terminal/controllers/a-command-login-lands-in-the-account-manager.test.ts` against the real
  * controller. It also says nothing about whether a provider's login FLOW works, only about routing,
  * and nothing about whether the logout selector then lists the api_key row it was opened for.
  */

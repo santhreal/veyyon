@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import type { ReadyInfo, TabWorkerInbound, TabWorkerOutbound } from "@veyyon/coding-agent/tools/browser/tab-protocol";
-import { initializeTabWorkerForTest } from "@veyyon/coding-agent/tools/browser/tab-supervisor";
+import type {
+	ReadyInfo,
+	TabWorkerInbound,
+	TabWorkerOutbound,
+} from "@veyyon/coding-agent/tools/web/browser/tab-protocol";
+import { initializeTabWorkerForTest } from "@veyyon/coding-agent/tools/web/browser/tab-supervisor";
 
 class FakeStartupWorker {
 	#errorHandlers = new Set<(error: Error) => void>();

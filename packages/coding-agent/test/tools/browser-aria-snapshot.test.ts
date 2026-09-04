@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { buildAriaSnapshotScript, parseAriaRefSelector } from "@veyyon/coding-agent/tools/browser";
+import { buildAriaSnapshotScript, parseAriaRefSelector } from "@veyyon/coding-agent/tools/web/browser";
 
 describe("parseAriaRefSelector", () => {
 	it("accepts the explicit aria-ref prefixes and returns the bare id", () => {

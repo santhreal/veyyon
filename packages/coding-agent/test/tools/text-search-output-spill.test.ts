@@ -6,7 +6,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { DEFAULT_MAX_BYTES } from "@veyyon/coding-agent/session/streaming-output";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { removeWithRetries } from "@veyyon/utils";
-import { SearchTool } from "../../src/tools/search";
+import { SearchTool } from "../../src/tools/search/search";
 import { makeToolSession } from "../helpers/tool-session";
 
 // TW-9: a single grep query can return a match set that dwarfs the inline floor

@@ -3,17 +3,17 @@
 > Send and receive messages between agents over a process-global mailbox bus.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/irc.ts`
+- Entry: `packages/coding-agent/src/tools/agent/irc.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/irc.md`
 - Key collaborators:
-  - `packages/coding-agent/src/irc/bus.ts`: process-global `IrcBus`: per-agent mailboxes, delivery, waiter matching.
+  - `packages/coding-agent/src/task/irc-bus.ts`: process-global `IrcBus`: per-agent mailboxes, delivery, waiter matching.
   - `packages/coding-agent/src/registry/agent-registry.ts`: process-global agent directory and status.
   - `packages/coding-agent/src/registry/agent-lifecycle.ts`: revival of parked recipients on direct send.
   - `packages/coding-agent/src/session/agent-session.ts`: `deliverIrcMessage(...)`: recipient-side injection and wake turns.
   - `packages/coding-agent/src/prompts/side-channel/irc-incoming.md`: incoming-message rendering for the recipient.
   - `packages/coding-agent/src/prompts/side-channel/irc-autoreply.md`: prompt for the ephemeral auto-reply side turn (busy recipient, async disabled).
   - `packages/coding-agent/src/config/settings-domains/tools.ts`: `irc.timeoutMs`.
-  - `packages/coding-agent/src/modes/controllers/event-controller.ts`: renders IRC events into chat UI.
+  - `packages/coding-agent/src/modes/terminal/controllers/event-controller.ts`: renders IRC events into chat UI.
 
 ## Inputs
 
@@ -77,7 +77,7 @@
 
 ## Limits & Caps
 - Availability gates: `isIrcEnabled` (running as a subagent, or task spawning available: there is no `irc.enabled` setting), an `AgentRegistry`, and a caller agent id.
-- Mailboxes are bounded at 100 messages per agent (`MAILBOX_CAP` in `packages/coding-agent/src/irc/bus.ts`); oldest messages are dropped beyond the cap.
+- Mailboxes are bounded at 100 messages per agent (`MAILBOX_CAP` in `packages/coding-agent/src/task/irc-bus.ts`); oldest messages are dropped beyond the cap.
 - `irc.timeoutMs` defaults to `120_000` and is the default `wait` / `send await:true` timeout; `0` disables the timeout, non-finite or negative values fall back to the default, positive values are truncated and clamped to at least `1` ms.
 - Broadcast scope: live peers only (`running`/`idle`) via `listVisibleTo`; direct sends address any non-aborted agent, including parked ones.
 

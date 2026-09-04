@@ -4,7 +4,7 @@
  * WHY THE SLOT IS NOT IN `skills.ts`. It was, and that module DISCOVERS and loads skills: the frontmatter
  * parser, the filesystem walk, the bundled skill definitions, 365 modules. Reading the slot therefore
  * meant importing all of that, and `internal-urls/skill-protocol.ts` reads the slot and nothing else. The
- * router constructs that handler, `tools/read.ts` consults the router (a `read` of `skill://…` is a real
+ * router constructs that handler, `tools/fs/read.ts` consults the router (a `read` of `skill://…` is a real
  * feature), and 54 test files import `read`, so a local file read pulled in the skill loader.
  *
  * `skills.ts` re-exports all three names, so no existing caller changed.

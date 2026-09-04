@@ -5,12 +5,13 @@ import type { AssistantMessage, TextContent, ToolCall } from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import type { CustomMessage } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { TodoTool } from "@veyyon/coding-agent/tools/todo";
+import { TodoTool } from "@veyyon/coding-agent/tools/agent/todo";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 /**
@@ -313,7 +314,7 @@ describe("AgentSession mid-run todo reconciliation nudge", () => {
 		// An explicit active-tool list (or discovery-mode filtering) can drop
 		// `todo` from the slate while the setting flag stays true. Asking the
 		// model to call a tool that is not in its schema would produce
-		// fabricated/unknown tool calls. Mirror {@link #createEagerTodoPrelude}.
+		// fabricated/unknown tool calls. Mirror {@link TodoRuntime.eagerPrelude}.
 		await session.setActiveToolsByName([]);
 		expect(session.getActiveToolNames()).not.toContain("todo");
 

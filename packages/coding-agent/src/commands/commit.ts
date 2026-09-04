@@ -5,7 +5,7 @@ import { postmortem } from "@veyyon/utils";
 import { Command, Flags } from "@veyyon/utils/cli";
 import { runCommitCommand } from "../commit";
 import type { CommitCommandArgs } from "../commit/types";
-import { initTheme } from "../modes/theme/theme";
+import { initTheme } from "../theme/theme";
 
 export default class Commit extends Command {
 	static description = "Generate a commit message and update changelogs";

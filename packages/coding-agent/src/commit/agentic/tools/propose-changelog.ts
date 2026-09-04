@@ -1,7 +1,7 @@
 import { type } from "arktype";
-import type { CommitAgentState } from "../../../commit/agentic/state";
-import { CHANGELOG_CATEGORIES, type ChangelogCategory } from "../../../commit/types";
 import type { CustomTool } from "../../../extensibility/custom-tools/types";
+import { CHANGELOG_CATEGORIES, type ChangelogCategory } from "../../types";
+import type { CommitAgentState } from "../state";
 
 const changelogCategoryProperties = {
 	"Breaking Changes?": "string[]",

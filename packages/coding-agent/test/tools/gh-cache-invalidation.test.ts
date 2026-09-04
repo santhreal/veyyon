@@ -7,8 +7,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { invalidateGithubCacheForBashCommand } from "@veyyon/coding-agent/tools/gh-cache-invalidation";
-import { getCached, putCached, resetForTests as resetCacheForTests } from "@veyyon/coding-agent/tools/github-cache";
+import { invalidateGithubCacheForBashCommand } from "@veyyon/coding-agent/tools/core/gh-cache-invalidation";
+import { getCached, putCached, resetForTests as resetCacheForTests } from "@veyyon/coding-agent/tools/web/github-cache";
 import { removeWithRetries } from "@veyyon/utils";
 
 const REPO = "owner/example";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { isLineInRanges, parseLineRanges } from "@veyyon/coding-agent/tools/path-utils";
+import { isLineInRanges, parseLineRanges } from "@veyyon/coding-agent/tools/core/path-utils";
 
 /**
  * parseLineRanges / isLineInRanges properties for closed and open ranges.

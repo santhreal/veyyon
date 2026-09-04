@@ -71,11 +71,11 @@
  *   - utils/jj.ts: `ensureAvailable()` calls `$which("jj")` before spawning,
  *     and that answer is fixed at process start (constraint 2).
  *   - tools/browser/registry.ts: needs a real Chromium and a CDP endpoint.
- *   - tools/fetch.ts, web/scrapers/youtube.ts, utils/tools-manager.ts,
+ *   - tools/web/fetch.ts, web/scrapers/youtube.ts, utils/tools-manager.ts,
  *     extensibility/plugins/manager.ts: every entry point performs network I/O
  *     or a tool download first, and the sandbox has no network.
  *   - modes/rpc/rpc-client.ts: spawns another copy of the harness.
- *   - exec/bash-executor.ts, tools/bash-interactive.ts: the native brush spawn
+ *   - exec/bash-executor.ts, tools/shell/bash-interactive.ts: the native brush spawn
  *     observer and the PTY spawner adopt inside Rust, not through a JS hook,
  *     so a stub here would prove nothing about that path.
  */
@@ -83,8 +83,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { disposeOwnedResources } from "@veyyon/kernel/session/owned-resources";
 import { getToolsDir } from "@veyyon/utils";
-import { DapClient } from "../src/dap/client";
+import { DapClient } from "../src/debug/dap/client";
 import { execCommand } from "../src/exec/exec";
 import { spawnObsidian } from "../src/internal-urls/vault-protocol";
 import { getOrCreateClient } from "../src/lsp/client";
@@ -98,9 +99,8 @@ import {
 	type SessionCpuLimit,
 	sessionCpuBudgetName,
 } from "../src/session/cpu-limit";
-import { disposeOwnedResources } from "../src/session/owned-resources";
-import { startRecording } from "../src/stt/recorder";
-import { playAudioFile } from "../src/tts/player";
+import { startRecording } from "../src/speech/stt/recorder";
+import { playAudioFile } from "../src/speech/tts/player";
 import * as git from "../src/utils/git";
 import { makeCgroupRoot, makeDelegatedParent, makeFakeHost, removeCgroupRoots } from "./helpers/fake-cgroup";
 

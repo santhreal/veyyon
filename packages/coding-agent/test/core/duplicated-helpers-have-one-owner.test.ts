@@ -67,11 +67,11 @@ import { tryReadHeadSha } from "@veyyon/coding-agent/autoresearch/git";
 import * as collabCrypto from "@veyyon/coding-agent/collab/crypto";
 import * as collabProtocol from "@veyyon/coding-agent/collab/protocol";
 import { canonicalProjectDir } from "@veyyon/coding-agent/launch/paths";
+import { buildTreePrefix } from "@veyyon/coding-agent/modes/terminal/draw/utils";
 import { formatProviderName } from "@veyyon/coding-agent/slash-commands/helpers/format";
 import * as workerClient from "@veyyon/coding-agent/subprocess/worker-client";
 import type { WorkerLogPayload } from "@veyyon/coding-agent/subprocess/worker-log";
 import * as workerLog from "@veyyon/coding-agent/subprocess/worker-log";
-import { buildTreePrefix } from "@veyyon/coding-agent/tui/utils";
 import { branch } from "@veyyon/coding-agent/utils/git";
 import { errorMessage, parseJsonOrYamlByExtension, TempDir } from "@veyyon/utils";
 import { asStrictBytes } from "@veyyon/utils/bytes";
@@ -83,13 +83,25 @@ const SRC = path.join(import.meta.dir, "../../src");
 const PACKAGES = path.join(SRC, "../..");
 
 /**
- * The runtime module specifiers `relative` (under `src/`) names.
+ * The modules `relative` (under `src/`) imports, each named by its own identity rather than by the
+ * path it was written as: a relative specifier is resolved against the importing file and reported
+ * as a `src`-relative module path, and a package specifier is reported verbatim.
  *
  * This is the "no private copy" proof, not a search for one: a module cannot import a binding and
  * also declare it, so the presence of the edge is checked here and its exclusivity by `bun check`.
+ *
+ * The specifier is resolved because a pin on the written form states the DEPTH of the importer and
+ * not the owner, so moving either file reddens the check while the edge it guards is intact. The
+ * owner is the thing this suite is about.
  */
 function importsOf(relative: string): string[] {
-	return moduleSpecifiersIn(fs.readFileSync(path.join(SRC, relative), "utf-8"));
+	const dir = path.posix.dirname(relative.split(path.sep).join("/"));
+
+	return moduleSpecifiersIn(fs.readFileSync(path.join(SRC, relative), "utf-8")).map(specifier =>
+		specifier.startsWith(".")
+			? path.posix.normalize(path.posix.join(dir, specifier)).replace(/\.tsx?$/, "")
+			: specifier,
+	);
 }
 
 /** The same, for a file in a sibling package. */
@@ -135,7 +147,7 @@ describe("canonicalProjectDir", () => {
 	/** Both launch callers take it from `./paths`, which is also the proof neither declares its own. */
 	it("is defined once, and the two launch callers import it", () => {
 		for (const file of ["launch/client.ts", "launch/presence.ts"]) {
-			expect(importsOf(file), file).toContain("./paths");
+			expect(importsOf(file), file).toContain("launch/paths");
 		}
 	});
 });
@@ -161,7 +173,7 @@ describe("parseJsonOrYamlByExtension", () => {
 	});
 
 	it("is what both config readers call, and neither defines its own", () => {
-		for (const file of ["lsp/config.ts", "dap/config.ts"]) {
+		for (const file of ["lsp/config.ts", "debug/dap/config.ts"]) {
 			expect(importsOf(file), file).toContain("@veyyon/utils");
 		}
 	});
@@ -191,13 +203,12 @@ describe("formatProviderName", () => {
 	});
 
 	it("is defined once and imported by all three surfaces", () => {
-		const surfaces: ReadonlyArray<readonly [string, string]> = [
-			["slash-commands/helpers/usage-report.ts", "./format"],
-			["cli/usage-cli.ts", "../slash-commands/helpers/format"],
-			["modes/controllers/command-controller.ts", "../../slash-commands/helpers/format"],
-		];
-		for (const [file, owner] of surfaces) {
-			expect(importsOf(file), file).toContain(owner);
+		for (const file of [
+			"slash-commands/helpers/usage-report.ts",
+			"cli/usage-cli.ts",
+			"modes/terminal/controllers/command-controller.ts",
+		]) {
+			expect(importsOf(file), file).toContain("slash-commands/helpers/format");
 		}
 	});
 });
@@ -222,7 +233,7 @@ describe("the DAP client's error rendering", () => {
 	 * the failure and one that says nothing. So the copies are gone rather than moved.
 	 */
 	it("goes through the shared owner, and no private copy remains", () => {
-		for (const file of ["dap/client.ts", "dap/session.ts"]) {
+		for (const file of ["debug/dap/client.ts", "debug/dap/session.ts"]) {
 			expect(importsOf(file), file).toContain("@veyyon/utils");
 		}
 	});
@@ -309,7 +320,7 @@ describe("tryReadHeadSha", () => {
 
 	it("is defined once in autoresearch/git.ts and imported by both experiment tools", () => {
 		for (const file of ["autoresearch/tools/init-experiment.ts", "autoresearch/tools/log-experiment.ts"]) {
-			expect(importsOf(file), file).toContain("../git");
+			expect(importsOf(file), file).toContain("autoresearch/git");
 		}
 	});
 });
@@ -335,23 +346,23 @@ describe("branch.currentOrHead", () => {
 
 	it("is what both bundled commands call, and neither defines its own", async () => {
 		for (const file of [
-			"extensibility/custom-commands/bundled/review/index.ts",
-			"extensibility/custom-commands/bundled/ci-green/index.ts",
+			"extensibility/custom-commands/bundled/review.ts",
+			"extensibility/custom-commands/bundled/ci-green.ts",
 		]) {
-			expect(importsOf(file), file).toContain("../../../../utils/git");
+			expect(importsOf(file), file).toContain("utils/git");
 		}
 	});
 });
 
 describe("sanitizeDiagnosticDisplayText", () => {
 	/**
-	 * Two surfaces render diagnostics (the LSP panel and the tool-result renderer) and each had its own
+	 * Two surfaces render diagnostics (the LSP card and the tool-result renderer) and each had its own
 	 * copy of the same one-line rule. A literal tab in a rendered diagnostic lands on the terminal's tab
 	 * stops, so a column marker under it points at the wrong column; the two surfaces disagreeing about
 	 * that would mean the same diagnostic reads differently depending on where it appeared.
 	 */
-	it("is defined once in render-utils, and the LSP renderer imports it", () => {
-		expect(importsOf("lsp/render.ts")).toContain("../tools/render-utils");
+	it("is defined once in render-utils, and the LSP card imports it", () => {
+		expect(importsOf("lsp/view.ts")).toContain("tools/core/render-utils");
 	});
 });
 
@@ -363,8 +374,8 @@ describe("the browser tab target id", () => {
 	 * Both had a private copy of both functions.
 	 */
 	it("is derived by one module that both sides import", () => {
-		for (const file of ["tools/browser/tab-supervisor.ts", "tools/browser/tab-worker.ts"]) {
-			expect(importsOf(file), file).toContain("./target-id");
+		for (const file of ["tools/web/browser/tab-supervisor.ts", "tools/web/browser/tab-worker.ts"]) {
+			expect(importsOf(file), file).toContain("tools/web/browser/target-id");
 		}
 	});
 });
@@ -376,7 +387,7 @@ describe("the collab wire envelope", () => {
 	 * one wire format. Drift there does not throw: the payload still decrypts, because the room key is
 	 * untouched, and the frame is simply delivered to the wrong peer. `@veyyon/wire` already owned
 	 * `ENVELOPE_HEADER_LENGTH`, so the three functions that read it belong beside it. The format itself is
-	 * pinned byte by byte in `packages/wire/test/envelope.test.ts`.
+	 * pinned byte by byte in `contracts/wire/test/envelope.test.ts`.
 	 */
 	/**
 	 * IDENTITY, which is the strongest form available here and the one a text search cannot reach: the
@@ -456,7 +467,7 @@ describe("the AES-256-GCM frame seal", () => {
 	 * itself a mirror of the host's. Drift fails in the worst available way, because a GCM tag mismatch
 	 * cannot distinguish a wrong key from a wrong layout: change the IV length on one side and every
 	 * frame fails to authenticate with nothing naming the cause, which reads as a broken relay or a bad
-	 * link. The format is pinned in `packages/wire/test/seal.test.ts`; this is the lock that neither side
+	 * link. The format is pinned in `contracts/wire/test/seal.test.ts`; this is the lock that neither side
 	 * states it again.
 	 */
 	/**
@@ -496,7 +507,7 @@ describe("the AES-256-GCM frame seal", () => {
 	 * appears rather than waiting for a browser build to break.
 	 */
 	it("did not give @veyyon/wire a dependency", () => {
-		const manifest = JSON.parse(fs.readFileSync(path.join(PACKAGES, "wire/package.json"), "utf-8")) as {
+		const manifest = JSON.parse(fs.readFileSync(path.join(PACKAGES, "../contracts/wire/package.json"), "utf-8")) as {
 			dependencies?: Record<string, string>;
 		};
 
@@ -520,10 +531,38 @@ describe("buildTreePrefix", () => {
 		expect(buildTreePrefix([true, false, true], theme)).toBe("│     │  ");
 	});
 
-	it("has one definition, and the two other renderers import it", () => {
-		for (const file of ["task/render.ts", "tools/json-tree.ts"]) {
-			expect(importsOf(file), file).toContain("../tui/utils");
-		}
+	/**
+	 * The consumer set moved when the task card became a ToolView: `task/render.ts` drew the agent
+	 * tree as terminal strings and is gone, and the host draws that tree in `modes/terminal/draw/draw-tool-view.ts`,
+	 * which resolves the ancestors from the depth a view states rather than being handed a list. So
+	 * the JSON renderer is the one caller left, and the guard against a fourth copy is the set of
+	 * files allowed to touch the rule glyph at all: a new tree drawn by hand reddens this until
+	 * someone records why it is not the helper's job.
+	 */
+	it("has one definition, the JSON renderer imports it, and no new file rolls the rule by hand", () => {
+		expect(importsOf("tools/core/json-tree-render.ts")).toContain("modes/terminal/draw/utils");
+
+		const drawers = fs
+			.readdirSync(SRC, { recursive: true, encoding: "utf8" })
+			.filter(entry => entry.endsWith(".ts"))
+			.filter(entry => fs.readFileSync(path.join(SRC, entry), "utf8").includes("tree.vertical"))
+			.map(entry => entry.split(path.sep).join("/"))
+			.sort();
+
+		expect(drawers).toEqual([
+			// The two selectors draw their own tree of a filesystem, through `getTreeContinuePrefix`
+			// beside the helper this cell is about.
+			"modes/terminal/components/selectors/copy-selector.ts",
+			"modes/terminal/components/selectors/tree-selector.ts",
+			// The host's view drawer, which knows a line's depth and its last-child answer and not its
+			// ancestor list, and dims each rule as it lays it down.
+			"modes/terminal/draw/draw-tool-view.ts",
+			// The owner.
+			"modes/terminal/draw/utils.ts",
+			// Where the glyph itself is declared and resolved for a theme.
+			"theme/symbols.ts",
+			"theme/theme-class.ts",
+		]);
 	});
 
 	/**
@@ -568,7 +607,7 @@ describe("the CLI model runtime", () => {
 	 */
 	it("is what both CLIs default to, and neither builds its own", () => {
 		for (const file of ["cli/bench-cli.ts", "cli/dry-balance-cli.ts"]) {
-			expect(importsOf(file), file).toContain("./model-runtime");
+			expect(importsOf(file), file).toContain("cli/model-runtime");
 		}
 	});
 });
@@ -582,8 +621,8 @@ describe("the worker log replay", () => {
 	 * is reading, without any sign that it happened.
 	 */
 	it("has one owner that both supervisors import", () => {
-		for (const file of ["eval/js/context-manager.ts", "tools/browser/tab-supervisor.ts"]) {
-			expect(importsOf(file), file).toContain("../../subprocess/worker-log");
+		for (const file of ["eval/js/context-manager.ts", "tools/web/browser/tab-supervisor.ts"]) {
+			expect(importsOf(file), file).toContain("subprocess/worker-log");
 		}
 	});
 

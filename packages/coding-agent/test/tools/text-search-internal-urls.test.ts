@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import * as capability from "@veyyon/coding-agent/capability";
-import type { CapabilityResult } from "@veyyon/coding-agent/capability/types";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import * as capability from "@veyyon/coding-agent/discovery/capability";
+import type { CapabilityResult } from "@veyyon/coding-agent/discovery/capability/types";
 import { resetActiveSkillsForTests, setActiveSkills } from "@veyyon/coding-agent/extensibility/skills";
 import {
 	type InternalResource,
@@ -16,9 +16,9 @@ import {
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import * as sshFileTransfer from "@veyyon/coding-agent/ssh/file-transfer";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 import { removeWithRetries } from "@veyyon/utils";
-import { SearchTool } from "../../src/tools/search";
+import { SearchTool } from "../../src/tools/search/search";
 
 function getResultText(result: { content: Array<{ type: string; text?: string }> }): string {
 	return result.content

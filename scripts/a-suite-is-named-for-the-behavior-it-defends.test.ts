@@ -9,6 +9,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const BASELINE_PATH = path.join(REPO_ROOT, "scripts", "data", "module-named-suites.txt");
@@ -42,18 +43,17 @@ function walk(dir: string, keep: (filePath: string) => boolean): string[] {
 	return found;
 }
 
+/**
+ * Every workspace member directory, repo-relative.
+ *
+ * The members are read from the root manifest rather than assumed from globs. While this was
+ * `packages/` alone, a suite under any other root was outside the rule: `contracts/wire/test`
+ * carries eight of them, and a module-named suite there would have been accepted in silence. The
+ * root view was in turn blind to literal paths (`natives/bridge/bindings`, `python/veybot/web`), which
+ * `typeScriptMembers()` now reaches.
+ */
 function packageRoots(): string[] {
-	const pkgsDir = path.join(REPO_ROOT, "packages");
-	const packages = fs
-		.readdirSync(pkgsDir, { withFileTypes: true })
-		.filter(entry => entry.isDirectory())
-		.map(entry => path.join("packages", entry.name));
-
-	const pythonWeb = path.join("python", "veybot", "web");
-	if (fs.existsSync(path.join(REPO_ROOT, pythonWeb))) {
-		packages.push(pythonWeb);
-	}
-	return packages;
+	return typeScriptMembers();
 }
 
 function collectModuleNamedSuites(): {
@@ -97,7 +97,7 @@ function collectModuleNamedSuites(): {
 }
 
 function collectIssueNamedSuites(): string[] {
-	const scanRoots = ["packages", "scripts", "website", "proof", "python"];
+	const scanRoots = [...new Set([...typeScriptMemberTopLevels(), "scripts", "website", "proof"])];
 	const issueNamed: string[] = [];
 
 	for (const root of scanRoots) {
@@ -144,7 +144,16 @@ describe("a suite is named for the behavior it defends", () => {
 	it("guards against a vacuous sweep", () => {
 		const { colliding, allTestCount } = collectModuleNamedSuites();
 		expect(allTestCount).toBeGreaterThan(4000);
-		expect(colliding).toContain("packages/coding-agent/src/hindsight/client.test.ts");
+		expect(colliding).toContain("packages/coding-agent/src/memory/hindsight/client.test.ts");
+	});
+
+	// A member under a root the sweep never opened is unreachable: its suites can be named after
+	// their module and this gate stays green, because a name it never read cannot collide.
+	it("reaches a member under every root the workspace declares", () => {
+		const roots = new Set(packageRoots().map(member => member.split("/")[0]));
+
+		expect([...roots].sort()).toEqual(typeScriptMemberTopLevels());
+		expect(packageRoots()).toContain("contracts/wire");
 	});
 
 	it("matches the shrink-only baseline exactly", () => {

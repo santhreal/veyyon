@@ -11,13 +11,13 @@
  * pattern, byte-identical to the one in the TUI job tool. Two copies of one wire shape drift
  * silently: the surface nobody is watching keeps the stale pattern and starts showing raw
  * markup. The parser now has one owner, `@veyyon/wire/task-result`, whose own contract suite
- * is `packages/wire/test/the-task-result-envelope-has-one-reader.test.ts`. This file is the
+ * is `contracts/wire/test/the-task-result-envelope-has-one-reader.test.ts`. This file is the
  * other half of that arrangement: it proves this renderer ASKS the owner rather than
  * answering for itself, by driving the real registry renderer and reading the emitted HTML.
  *
  * WHAT IT DOES NOT CATCH. Whether the envelope the prompt emits still has the tag names the
- * owner looks for; `packages/coding-agent/test/job-renderer-preview.test.ts` renders the real
- * prompt and pins that.
+ * owner looks for; `packages/coding-agent/test/a-job-card-states-what-is-still-running.test.ts`
+ * renders the real prompt and pins that.
  */
 import { describe, expect, it } from "bun:test";
 import { createElement } from "react";

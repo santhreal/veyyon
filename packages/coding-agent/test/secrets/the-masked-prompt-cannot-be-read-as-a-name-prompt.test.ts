@@ -26,11 +26,9 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { HookInputComponent } from "@veyyon/coding-agent/modes/components/hook-input";
-import { ExtensionUiController } from "@veyyon/coding-agent/modes/controllers/extension-ui-controller";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import type { HookInputComponent } from "@veyyon/coding-agent/modes/terminal/components/dialogs/hook-input";
+import { ExtensionUiController } from "@veyyon/coding-agent/modes/terminal/controllers/extension-ui-controller";
 import { resolveVaultLocations, SecretVault } from "@veyyon/coding-agent/secrets/vault";
-import { OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
 import {
 	maskedPromptHint,
 	maskedPromptTitle,
@@ -38,9 +36,11 @@ import {
 	runSecretCommandForSurface,
 	type SecretCommandOutcome,
 } from "@veyyon/coding-agent/slash-commands/helpers/secret";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
+import { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import { DEFAULT_MASK_CHAR } from "@veyyon/tui";
-import { PASTE_END, PASTE_START } from "@veyyon/tui/bracketed-paste";
 import { stripAnsi } from "@veyyon/utils";
+import { PASTE_END, PASTE_START } from "@veyyon/utils/bracketed-paste";
 
 let home: string;
 let project: string;
@@ -146,9 +146,9 @@ async function secretThroughRealDialog(
 	const { overlays, ctx: uiCtx } = hookHost();
 	const controller = new ExtensionUiController(uiCtx as never);
 
-	const present = (title: string, mask: string | undefined, drive: Drive): Promise<string | undefined> => {
-		fields.push({ title, masked: mask !== undefined });
-		const pending = controller.showHookInput(title, undefined, undefined, mask ? { mask } : undefined);
+	const present = (title: string, masked: boolean, drive: Drive): Promise<string | undefined> => {
+		fields.push({ title, masked });
+		const pending = controller.showHookInput(title, undefined, undefined, masked ? { mask: true } : undefined);
 		const component = uiCtx.hookInput;
 		if (component === undefined) throw new Error("The field was never presented.");
 		if (!overlays.includes(component)) throw new Error("The field was built but never put on screen.");
@@ -176,9 +176,8 @@ async function secretThroughRealDialog(
 		agentDir: agentDir(),
 		// Always supplied, because its presence is what selects the TUI surface. A test whose
 		// contract is that the masked field stays shut passes `mustNotOpen`.
-		promptForValue: () =>
-			present(maskedPromptTitle(), DEFAULT_MASK_CHAR, options.typeValue ?? mustNotOpen("masked value")),
-		...(typeName === undefined ? {} : { promptForName: () => present(namePromptTitle(), undefined, typeName) }),
+		promptForValue: () => present(maskedPromptTitle(), true, options.typeValue ?? mustNotOpen("masked value")),
+		...(typeName === undefined ? {} : { promptForName: () => present(namePromptTitle(), false, typeName) }),
 	};
 
 	const outcome = await runSecretCommandForSurface(args, port as never);
@@ -419,7 +418,7 @@ describe("the masked credential field as the operator sees it", () => {
 	function paintedField(title: string, hint: string): string {
 		const { overlays, ctx: uiCtx } = hookHost();
 		const controller = new ExtensionUiController(uiCtx as never);
-		void controller.showHookInput(title, undefined, undefined, { mask: DEFAULT_MASK_CHAR, hint });
+		void controller.showHookInput(title, undefined, undefined, { mask: true, hint });
 		const field = uiCtx.hookInput;
 		if (field === undefined) throw new Error("The field was never presented.");
 		if (!overlays.includes(field)) throw new Error("The field was built but never put on screen.");
@@ -430,6 +429,29 @@ describe("the masked credential field as the operator sees it", () => {
 	function paintedMaskedField(): string {
 		return paintedField(maskedPromptTitle(), maskedPromptHint());
 	}
+
+	/**
+	 * The caller states THAT the field is masked and never WHICH character stands in for a keystroke:
+	 * the glyph belongs to the host that draws the field, which is why `inputOptions.mask` is a
+	 * boolean. The proof is the painted field after typing, because a controller that stopped
+	 * resolving the boolean would hand the component no mask and paint the credential itself.
+	 */
+	it("draws the terminal's own mask character in place of what was typed", () => {
+		const { overlays, ctx: uiCtx } = hookHost();
+		const controller = new ExtensionUiController(uiCtx as never);
+		void controller.showHookInput(maskedPromptTitle(), undefined, undefined, {
+			mask: true,
+			hint: maskedPromptHint(),
+		});
+		const field = uiCtx.hookInput;
+		if (field === undefined) throw new Error("The field was never presented.");
+		if (!overlays.includes(field)) throw new Error("The field was built but never put on screen.");
+		field.handleInput("sk-live-42");
+		const painted = stripAnsi(field.render(100).join("\n"));
+
+		expect(painted).not.toContain("sk-live-42");
+		expect(painted).toContain(DEFAULT_MASK_CHAR.repeat("sk-live-42".length));
+	});
 
 	/**
 	 * LOCKS OUT the exact defect: a field titled "Paste the secret", which an operator reads as a

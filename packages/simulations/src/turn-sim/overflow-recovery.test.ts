@@ -13,8 +13,10 @@
  * compaction off, plus an overflow stamped with a model the user switched away
  * from mid-failure (which must recover nothing and must not compact the new
  * model's history), two summarizer-failure rows covering both branches of the
- * recovery decision (context fits -> retry answers; context genuinely overflows
- * without reduction -> parks with error), plus a plain 400 as the control: it
+ * recovery decision (context fits -> retry answers; context over the fit bar ->
+ * the tiered rescue truncates and the run ends with either the answer a retry
+ * produced or the refusal stated with its stand-down notice, never silence),
+ * plus a plain 400 as the control: it
  * never enters the ladder, so it is what "an error the user can see" looks like
  * when nothing intervenes.
  *
@@ -362,9 +364,9 @@ describe("a turn the provider refuses for size", () => {
 		// the 200k window. `#compactionCreatedRetryFit` is satisfied without rescue, so the session
 		// schedules a retry continuation and answers normally rather than stranding the user.
 		expect(surfaced(sim)).toBe("surfaced=assistant stop=stop");
-		// The retry is what separates this row from the parking row below: a tool-carrying
-		// request ran AFTER the summarizer refused, so the answer below came from a re-sent
-		// turn rather than from a call that predates the overflow.
+		// What separates this row from the reduction row below: the history here fits the window
+		// already, so nothing is truncated and the answer comes from a re-sent turn rather than from
+		// a call that predates the overflow.
 		const summarizerCall = calls.find(call => call.tools === 0)?.index ?? -1;
 		expect(calls.some(call => call.tools > 0 && call.index > summarizerCall)).toBe(true);
 		const lastMessage = sim.session.messages.at(-1) as {
@@ -378,7 +380,7 @@ describe("a turn the provider refuses for size", () => {
 		expect(sim.session.isStreaming).toBe(false);
 	});
 
-	it("keeps the refusal visible when the summarizer fails and the context genuinely overflows", async () => {
+	it("reduces the oversized turn and never leaves the user with silence when the summarizer fails", async () => {
 		const calls: Call[] = [];
 		const contextWindow = 12_000;
 		// A defaulted reserve on a 12k window falls back to 15% (1,800 tokens), leaving an 85% fit budget (10,200 tokens).
@@ -436,16 +438,70 @@ describe("a turn the provider refuses for size", () => {
 		expect(calls.some(call => call.tools === 0)).toBe(true);
 		expect(sim.session.messages.some(message => message.role === "compactionSummary")).toBe(false);
 
-		// Neither rescue tier (shake elision or image dropping) could reduce plain text context,
-		// so residual tokens remain over the fit budget and the refusal is restored to active context.
-		const reserveTokens = Math.floor(contextWindow * 0.15);
-		const fitBudget = contextWindow - reserveTokens;
-		const finalTokens = estimatedTokens(sim.session.messages);
-		expect(`residual ${finalTokens} exceeds fit budget ${fitBudget}: ${finalTokens > fitBudget}`).toBe(
-			`residual ${finalTokens} exceeds fit budget ${fitBudget}: true`,
-		);
+		// Neither of the first two rescue tiers can reduce plain prose: there is no tool result to
+		// elide and no image to drop. The last-resort tier asks only how big a text is, so it cuts
+		// the middle out of the largest one and the pass reaches the fit bar without a summary. That
+		// is the floor under a session whose bulk no reducer recognizes by shape, and the notice is
+		// what tells the operator bytes left the context.
+		//
+		// One notice per rescue round, and the round COUNT is token arithmetic: it depends on the
+		// size of the system prompt this session was built with, which moves with work that has
+		// nothing to do with the ladder. So what is pinned is that the rescue ran, that every round
+		// it ran reported the cut it made, and that it ran a bounded number of times rather than
+		// re-entering forever — the bound is the five prompts this row sends, one rescue each.
+		const recovery = sim
+			.eventsOfType("notice")
+			.map(event => event.message)
+			.filter(message => message.startsWith("Compaction dead-end recovery:"));
+		expect(recovery.length).toBeGreaterThan(0);
+		expect(recovery.length).toBeLessThanOrEqual(5);
+		for (const message of recovery) {
+			expect(message).toMatch(/truncated the middle of \d+ oversized message/);
+		}
 
-		expect(surfaced(sim)).toBe("surfaced=assistant stop=error");
+		// The reduction is real, not just announced: the prose the user sent is no longer in context
+		// at full length. Measured against the text the prompt carried, so a tier that reported a
+		// saving it did not make fails here.
+		const longestUserText = Math.max(
+			...sim.session.messages
+				.filter(message => message.role === "user")
+				.map(message => {
+					const content = (message as { content?: unknown }).content;
+					const blocks = Array.isArray(content) ? (content as Array<{ type?: string; text?: string }>) : [];
+					return blocks
+						.filter(block => block.type === "text")
+						.reduce((max, block) => Math.max(max, (block.text ?? "").length), 0);
+				}),
+		);
+		expect(longestUserText).toBeLessThan(userText.length);
+
+		// WHETHER THE RESCUE FREES ENOUGH IS TOKEN ARITHMETIC. It depends on the size of the system
+		// prompt this session was built with, the same input the round count depends on, so pinning
+		// one of the two endings pins the arithmetic and not the ladder. What holds either way is
+		// the contract this suite exists for: the user is never left with silence. The last thing in
+		// context is an assistant turn, and it is either the answer a retry produced — with no
+		// stand-down notice, because maintenance made progress — or the refusal itself, carrying the
+		// provider's wording and the notice that says automatic maintenance stopped and why. A run
+		// that resolves with a user message last, or with no stop reason, fails both branches.
+		const last = sim.session.messages.at(-1) as {
+			role?: string;
+			stopReason?: string;
+			errorMessage?: string;
+		};
+		expect(last?.role).toBe("assistant");
+		const standDown = sim
+			.eventsOfType("notice")
+			.map(event => event.message)
+			.filter(message => message.startsWith("Compaction freed too little context"));
+		if (last?.stopReason === "error") {
+			expect(`parked ${last.errorMessage} after ${standDown.length > 0} stand-down`).toBe(
+				`parked ${OVERFLOW_MESSAGE} after true stand-down`,
+			);
+		} else {
+			expect(`answered ${surfaced(sim)} after ${standDown.length} stand-downs`).toBe(
+				"answered surfaced=assistant stop=stop after 0 stand-downs",
+			);
+		}
 		expect(describeViolations("summarizer failed overflow store", pairingViolations(sim.session.messages))).toEqual(
 			[],
 		);

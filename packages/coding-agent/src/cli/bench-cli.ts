@@ -15,8 +15,9 @@ import type {
 } from "@veyyon/ai";
 import { resolveModelServiceTier, streamSimple } from "@veyyon/ai";
 import { buildModelProviderPriorityRank } from "@veyyon/catalog/identity";
-import { replaceTabs, truncateToWidth } from "@veyyon/tui";
 import { errorMessage, formatDuration, getAgentDir, getProjectDir } from "@veyyon/utils";
+import { truncateToWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 import chalk from "chalk";
 import type { ApiKeyResolverModel } from "../config/api-key-resolver";
 import { credentialRemedySentence } from "../config/missing-credentials";
@@ -347,7 +348,7 @@ function formatRunLine(result: BenchRunResult, index: number, total: number): st
 }
 
 export function formatBenchTable(summary: BenchSummary): string {
-	const ranked = [...summary.models].sort((a, b) => {
+	const ranked = summary.models.slice().sort((a, b) => {
 		if (a.average === null && b.average === null) return 0;
 		if (a.average === null) return 1;
 		if (b.average === null) return -1;
@@ -402,7 +403,7 @@ interface BenchTarget {
 function pickHighestPriorityProvider(models: Model<Api>[], providerOrder?: readonly string[]): Model<Api> | undefined {
 	if (models.length <= 1) return models[0];
 	const priority = buildModelProviderPriorityRank(providerOrder);
-	return [...models].sort((a, b) => {
+	return models.slice().sort((a, b) => {
 		const aRank = priority.get(a.provider.toLowerCase()) ?? Number.POSITIVE_INFINITY;
 		const bRank = priority.get(b.provider.toLowerCase()) ?? Number.POSITIVE_INFINITY;
 		return aRank - bRank;

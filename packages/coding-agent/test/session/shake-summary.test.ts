@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { formatShakeSummary } from "@veyyon/coding-agent/session/shake-types";
+import { formatShakeSummary } from "@veyyon/kernel/session/shake-types";
 
 /**
  * formatShakeSummary is the single one-line operator summary shared by the TUI and ACP after

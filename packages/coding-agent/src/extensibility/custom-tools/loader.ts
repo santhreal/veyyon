@@ -6,20 +6,23 @@
  */
 import * as path from "node:path";
 import type { AgentToolResult } from "@veyyon/agent-core";
+import {
+	factoryExportMissingMessage,
+	moduleImportFailedMessage,
+	nameConflictMessage,
+} from "@veyyon/kernel/loader/load-failure";
+import * as typebox from "@veyyon/kernel/registry/typebox";
 import { errorMessage, logger } from "@veyyon/utils";
 import { type } from "arktype";
 import * as zodModule from "zod/v4";
-import { toolCapability } from "../../capability/tool";
 import { type DiscoveredCustomTool, loadCapability } from "../../discovery";
+import { toolCapability } from "../../discovery/capability/tool";
 import { pluginsRootFor } from "../../discovery/helpers";
-import type { ExecOptions } from "../../exec/exec";
-import { execCommand, withSessionCpuExec } from "../../exec/exec";
-import type { HookUIContext } from "../../extensibility/hooks/types";
-import { getAllPluginToolPaths } from "../../extensibility/plugins/loader";
+import { type ExecOptions, execCommand, withSessionCpuExec } from "../../exec/exec";
 // Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
 import { type CodingAgentApi, loadCodingAgentApi } from "../coding-agent-api";
-import { factoryExportMissingMessage, moduleImportFailedMessage, nameConflictMessage } from "../load-failure";
-import * as typebox from "../typebox";
+import type { HookUIContext } from "../hooks/types";
+import { getAllPluginToolPaths } from "../plugins/loader";
 import { createNoOpUIContext, resolvePath, withExitGuard } from "../utils";
 import type { CustomToolAPI, CustomToolFactory, LoadedCustomTool, ToolLoadError } from "./types";
 
@@ -195,7 +198,7 @@ export class CustomToolLoader {
 	async load(pathsWithSources: ToolPathWithSource[]): Promise<void> {
 		for (const { path: toolPath, source } of pathsWithSources) {
 			const { tools: loadedTools, errors } = await loadTool(toolPath, this.#sharedApi.cwd, this.#sharedApi, source);
-			this.errors.push(...errors);
+			for (let ei = 0; ei < errors.length; ei++) this.errors.push(errors[ei]!);
 
 			for (const loadedTool of loadedTools) {
 				// Check for name conflicts

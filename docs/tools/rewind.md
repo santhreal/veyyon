@@ -3,7 +3,7 @@
 > End an active checkpoint by pruning exploratory context and retaining a concise report.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/checkpoint.ts`
+- Entry: `packages/coding-agent/src/tools/fs/checkpoint.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/rewind.md`
 - Key collaborators:
   - `packages/coding-agent/src/session/agent-session.ts`: validates pending rewind state, applies the actual rewind, and injects the retained report.
@@ -30,7 +30,7 @@ The tool returns a single text result plus structured details:
 The returned tool result is not the final rewind. `AgentSession` waits until `turn_end`, then applies the rewind side effects asynchronously.
 
 ## Flow
-1. `RewindTool.createIf()` in `packages/coding-agent/src/tools/checkpoint.ts` hides the tool from subagents.
+1. `RewindTool.createIf()` in `packages/coding-agent/src/tools/fs/checkpoint.ts` hides the tool from subagents.
 2. `RewindTool.execute()` rejects subagent calls with `ToolError("Checkpoint not available in subagents.")`.
 3. With no active checkpoint, it throws `ToolError("Checkpoint already completed; continue from the retained rewind report instead of calling rewind again.")` when a completed rewind report exists for the branch, otherwise `ToolError("No active checkpoint. Create a checkpoint before calling rewind.")`.
 4. It trims `params.report`; if empty, it throws `ToolError("Report cannot be empty.")`.
@@ -40,7 +40,7 @@ The returned tool result is not the final rewind. `AgentSession` waits until `tu
 8. `#applyRewind()` calls `sessionManager.branchWithSummary(checkpointEntryId, report, { startedAt })`. That moves the persisted session leaf back to the checkpoint entry and appends a new `branch_summary` entry whose `summary` is the rewind report. If `checkpointEntryId` no longer resolves, it logs a warning and falls back to `branchWithSummary(null, report, { startedAt })`, branching from root instead.
 9. It persists a hidden custom message through `sessionManager.appendCustomMessageEntry("rewind-report", ...)` with `details = { report, startedAt, rewoundAt }`, and records `#lastCompletedRewind = { report, startedAt, rewoundAt }` so a later `rewind` call gets the "already completed" error instead of "No active checkpoint".
 10. It rebuilds the conversation with `buildDisplaySessionContext()`, splices the rebuilt messages into the live agent (`agent.replaceMessages(...)`), marks the rewound tool result ids in `#rewoundToolResultIds`, and restores MCP tool selections via `#restoreMCPSelectionsForSessionContext(...)`.
-11. It then runs `#resetAdvisorSessionState()`, `#syncTodoPhasesFromBranch()`, and `#closeCodexProviderSessionsForHistoryRewrite()`.
+11. It then runs `#resetAdvisorSessionState()`, `TodoRuntime.syncFromBranch()`, and `#closeCodexProviderSessionsForHistoryRewrite()`.
 12. Finally it clears `#checkpointState` and `#pendingRewindReport`.
 
 ## Modes / Variants
@@ -70,7 +70,7 @@ The returned tool result is not the final rewind. `AgentSession` waits until `tu
 - Requires exactly one active checkpoint; there is no path to name or choose among multiple checkpoints.
 - Report text must be non-empty after `trim()`.
 - Rewind restores only the message prefix recorded by `checkpointMessageCount`; there is no file restore, artifact restore, blob restore, or process restore path.
-- Persisted report/summary content is still subject to the global session persistence cap `MAX_PERSIST_CHARS = 500_000` in `packages/coding-agent/src/session/session-persistence.ts`.
+- Persisted report/summary content is still subject to the global session persistence cap `MAX_PERSIST_CHARS = 500_000` in `kernel/src/session/session-persistence.ts`.
 
 ## Errors
 - `ToolError("Checkpoint not available in subagents.")`: thrown for subagent sessions.
@@ -88,9 +88,9 @@ The returned tool result is not the final rewind. `AgentSession` waits until `tu
 - Not restored:
   - filesystem contents
   - git state
-  - artifacts under `packages/coding-agent/src/session/artifacts.ts`
-  - blob-store payloads under `packages/coding-agent/src/session/blob-store.ts`
-  - prompt history rows in `packages/coding-agent/src/session/history-storage.ts`
+  - artifacts under `kernel/src/session/artifacts.ts`
+  - blob-store payloads under `kernel/src/session/blob-store.ts`
+  - prompt history rows in `kernel/src/session/history-storage.ts`
   - auth or other agent storage in `packages/coding-agent/src/session/agent-storage.ts`
 - There is no concurrent-edit reconciliation. If code or session-adjacent state changes during the checkpoint window, rewind does not merge or revert them; it only drops conversation context and rewires the session branch.
 - Rewind is not destructive to persisted session history. `branchWithSummary()` appends a new `branch_summary` entry and moves the leaf; it does not delete the abandoned path from the `.jsonl` session log. The active context is cut over to the new branch, but the old entries remain in session storage.

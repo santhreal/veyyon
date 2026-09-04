@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { extractDocumentLinks, parseAlternateLinks } from "@veyyon/coding-agent/tools/fetch";
+import { extractDocumentLinks, parseAlternateLinks } from "@veyyon/coding-agent/tools/web/fetch";
 
 /**
  * Both link scanners used to wrap their entire loop in `try { ... } catch {}`

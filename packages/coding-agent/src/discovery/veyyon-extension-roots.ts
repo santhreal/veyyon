@@ -18,10 +18,10 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { getAgentDir, isEnoent, logger, tryParseJson } from "@veyyon/utils";
-import { readDirEntries, readFile } from "../capability/fs";
-import type { LoadContext } from "../capability/types";
 import { getEnabledPlugins } from "../extensibility/plugins/loader";
-import { expandTilde } from "../tools/path-utils";
+import { expandTilde } from "../tools/core/path-utils";
+import { readDirEntries, readFile } from "./capability/fs";
+import type { LoadContext } from "./capability/types";
 import { listClaudePluginRoots, pluginsRootFor } from "./helpers";
 
 /** A resolved extension package directory wired into the discovery surfaces. */
@@ -62,7 +62,7 @@ export function injectVeyyonExtensionCliRoots(paths: readonly string[], home: st
 		// CLI scope mirrors how `--extension` is treated elsewhere — user-level overrides win.
 		if (!merged.has(resolved)) merged.set(resolved, { path: resolved, level: "user" });
 	}
-	injectedCliRoots = [...merged.values()];
+	injectedCliRoots = Array.from(merged.values());
 }
 
 /** Drop every CLI-injected root. Tests use this between cases. */

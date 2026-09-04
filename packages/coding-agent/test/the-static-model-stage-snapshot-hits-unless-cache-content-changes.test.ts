@@ -19,7 +19,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { writeModelCache } from "@veyyon/catalog/model-cache";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 const DAY_MS = 24 * 60 * 60 * 1000;

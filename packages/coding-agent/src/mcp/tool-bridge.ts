@@ -9,25 +9,20 @@ import type { TSchema } from "@veyyon/ai";
 import { namesDeadSocket } from "@veyyon/ai/error/flags";
 import { normalizeSchemaForMCP } from "@veyyon/ai/utils/schema";
 import { errorMessage, isAbortError, isRecord, untilAborted } from "@veyyon/utils";
+import type { ToolViewRenderer } from "@veyyon/view";
 import { INTENT_FIELD } from "@veyyon/wire";
-import type { SourceMeta } from "../capability/types";
-import type {
-	CustomTool,
-	CustomToolContext,
-	CustomToolResult,
-	RenderResultOptions,
-} from "../extensibility/custom-tools/types";
+import type { SourceMeta } from "../discovery/capability/types";
+import type { CustomTool, CustomToolContext, CustomToolResult } from "../extensibility/custom-tools/types";
 import { resolveLocalUrlToFile } from "../internal-urls/local-protocol";
-import type { Theme } from "../modes/theme/theme";
 import { resolveProviderTextTransform, transformProviderPayload } from "../provider-boundary";
-import type { OutputMeta } from "../tools/output-meta";
-import { normalizeLocalScheme } from "../tools/path-utils";
-import { ToolAbortError, throwIfAborted, toolAbort } from "../tools/tool-errors";
+import type { OutputMeta } from "../tools/core/output-meta";
+import { normalizeLocalScheme } from "../tools/core/path-utils";
+import { ToolAbortError, throwIfAborted, toolAbort } from "../tools/core/tool-errors";
 import { callTool } from "./client";
-import { renderMCPCall, renderMCPResult } from "./render";
 import { retainMCPToolArgsAttemptFactory } from "./transports/http";
 import { isMCPTransportStateMessage } from "./transports/transport-failure";
 import type { MCPContent, MCPServerConnection, MCPToolCallParams, MCPToolCallResult, MCPToolDefinition } from "./types";
+import { createMCPToolView } from "./view";
 
 /** Reconnect callback: tears down stale connection, returns new one or null. */
 export type MCPReconnect = () => Promise<MCPServerConnection | null>;
@@ -461,15 +456,11 @@ export class MCPTool implements CustomTool<TSchema, MCPToolDetails> {
 		this.parameters = normalizeSchemaForMCP(tool.inputSchema) as TSchema;
 		this.mcpToolName = tool.name;
 		this.mcpServerName = connection.name;
+		this.view = createMCPToolView(this.label);
 	}
 
-	renderCall(args: unknown, _options: RenderResultOptions, theme: Theme) {
-		return renderMCPCall(normalizeToolArgs(args), theme, this.label);
-	}
-
-	renderResult(result: CustomToolResult<MCPToolDetails>, options: RenderResultOptions, theme: Theme, args?: unknown) {
-		return renderMCPResult(result, options, theme, normalizeToolArgs(args));
-	}
+	/** The card this tool draws, bound to the `server/tool` its call row names. */
+	readonly view: Required<ToolViewRenderer<unknown, CustomToolResult<MCPToolDetails>>>;
 
 	async execute(
 		_toolCallId: string,
@@ -567,15 +558,11 @@ export class DeferredMCPTool implements CustomTool<TSchema, MCPToolDetails> {
 		this.mcpServerName = serverName;
 		this.#fallbackProvider = source?.provider;
 		this.#fallbackProviderName = source?.providerName;
+		this.view = createMCPToolView(this.label);
 	}
 
-	renderCall(args: unknown, _options: RenderResultOptions, theme: Theme) {
-		return renderMCPCall(normalizeToolArgs(args), theme, this.label);
-	}
-
-	renderResult(result: CustomToolResult<MCPToolDetails>, options: RenderResultOptions, theme: Theme, args?: unknown) {
-		return renderMCPResult(result, options, theme, normalizeToolArgs(args));
-	}
+	/** The card this tool draws, bound to the `server/tool` its call row names. */
+	readonly view: Required<ToolViewRenderer<unknown, CustomToolResult<MCPToolDetails>>>;
 
 	async execute(
 		_toolCallId: string,

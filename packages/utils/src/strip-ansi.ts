@@ -6,7 +6,7 @@
  * different behavior and must not reuse this name.
  *
  * The contract is shared with the Rust `strip_ansi` in
- * `crates/veyyon-shell/src/minimizer/primitives.rs`, and both are tested against
+ * `natives/shell/src/minimizer/primitives.rs`, and both are tested against
  * the same cases in `fixtures/ansi-strip-corpus.json`. Read that file before
  * changing anything here: the two implementations used to disagree, and every
  * disagreement was a defect rather than a difference of taste.

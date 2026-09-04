@@ -457,7 +457,8 @@ export async function parseSessionFile(sessionPath: string, fromOffset = 0): Pro
 		if (isLinkableAssistantEntry(entry)) {
 			const msgStats = extractStats(sessionPath, folder, entry, currentServiceTier, agentType);
 			if (msgStats) stats.push(msgStats);
-			toolCalls.push(...extractToolCalls(sessionPath, folder, entry, agentType));
+			const calls = extractToolCalls(sessionPath, folder, entry, agentType);
+			for (let ci = 0; ci < calls.length; ci++) toolCalls.push(calls[ci]!);
 			// Link assistant's responding model back to the user message it answered.
 			const parentId = (entry as SessionMessageEntry).parentId;
 			if (parentId) {
@@ -538,7 +539,7 @@ export async function listAllSessionFiles(): Promise<string[]> {
 
 	for (const folder of folders) {
 		const files = await listSessionFiles(folder);
-		allFiles.push(...files);
+		for (let fi = 0; fi < files.length; fi++) allFiles.push(files[fi]!);
 	}
 
 	return allFiles;

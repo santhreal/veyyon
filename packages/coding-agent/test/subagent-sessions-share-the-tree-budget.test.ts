@@ -30,7 +30,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { type CreateAgentSessionOptions, createAgentSession, type WorkspaceTree } from "@veyyon/coding-agent/sdk";
+import { createAgentSession, type WorkspaceTree } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import {
 	resetSessionCpuLimitsForTests,
@@ -38,6 +38,7 @@ import {
 	sessionCpuLimit,
 	withInheritedBudgetGroup,
 } from "@veyyon/coding-agent/session/cpu-limit";
+import type { CreateAgentSessionOptions } from "@veyyon/coding-agent/session/factory-options";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { createSubagentSession } from "@veyyon/coding-agent/task/executor";
 import { Snowflake, setAgentDir, TempDir } from "@veyyon/utils";

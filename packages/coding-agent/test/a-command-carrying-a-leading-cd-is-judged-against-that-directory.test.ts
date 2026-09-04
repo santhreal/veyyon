@@ -26,7 +26,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { bashApprovalDecision, extractEffectiveBashCommand } from "../src/tools/bash";
+import { bashApprovalDecision, extractEffectiveBashCommand } from "../src/tools/shell/bash";
 
 describe("a command carrying a leading cd is judged against that directory", () => {
 	// A four-level deep working directory inside a safe project tree.

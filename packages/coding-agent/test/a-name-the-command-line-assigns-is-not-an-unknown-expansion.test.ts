@@ -54,7 +54,7 @@ import {
 	findCriticalBashRisk,
 	PROTECTED_ROOTS,
 	SHELL_MAINTAINED_VARIABLES,
-} from "../src/tools/bash-guard";
+} from "../src/tools/shell/bash-guard";
 
 const HOME = "/home/operator";
 /** A fixed environment, so no case can pass or fail because of this machine. */

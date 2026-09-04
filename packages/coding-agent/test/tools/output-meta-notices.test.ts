@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import type { TruncationMeta } from "@veyyon/coding-agent/tools/output-meta";
+import type { TruncationMeta } from "@veyyon/coding-agent/tools/core/output-meta";
 import {
 	formatFullOutputReference,
 	formatTruncationMetaNotice,
 	stripGeneratedOutputNotice,
 	stripRawOutputArtifactNotice,
-} from "@veyyon/coding-agent/tools/output-meta";
+} from "@veyyon/coding-agent/tools/core/output-meta";
 
 /**
  * The output-notice formatters/strippers decide what the model sees when a tool result is

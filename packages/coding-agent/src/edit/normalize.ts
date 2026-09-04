@@ -5,8 +5,7 @@
  * primitives live in `@veyyon/hashline` and are re-exported here so
  * existing consumers see one stable surface.
  */
-
-import { padding } from "@veyyon/tui";
+import { padding } from "@veyyon/utils/padding";
 
 export {
 	type BomResult,

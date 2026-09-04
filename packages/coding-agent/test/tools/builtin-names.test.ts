@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { normalizeToolName, normalizeToolNames } from "@veyyon/coding-agent/tools/builtin-names";
+import { normalizeToolName, normalizeToolNames } from "@veyyon/coding-agent/tools/core/builtin-names";
 
 /**
  * normalizeToolName / normalizeToolNames lowercase user- or config-supplied tool names,

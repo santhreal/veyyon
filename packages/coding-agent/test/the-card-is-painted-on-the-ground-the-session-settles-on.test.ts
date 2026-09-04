@@ -43,22 +43,22 @@ import { Agent } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { settings } from "@veyyon/coding-agent/config/settings-instance";
-import { paintFirstFrame, takeFirstFrame } from "@veyyon/coding-agent/modes/first-frame";
-import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
 import { readLaunchFacts, recordLaunchFacts, resetLaunchFactsForTest } from "@veyyon/coding-agent/modes/launch-facts";
+import { paintFirstFrame, takeFirstFrame } from "@veyyon/coding-agent/modes/terminal/first-frame";
+import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import {
 	getVisibleGround,
 	groundHairlineHex,
 	groundTintFgAnsi,
 	resetGroundTintsForTest,
 	setDetectedTerminalGround,
-} from "@veyyon/coding-agent/modes/theme/ground-tints";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { OSC11_RESET_BACKGROUND_SEQUENCE, osc11SetBackgroundSequence } from "@veyyon/tui/paint-ground";
+} from "@veyyon/coding-agent/theme/ground-tints";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { setTerminalHeadless, TempDir } from "@veyyon/utils";
+import { OSC11_RESET_BACKGROUND_SEQUENCE, osc11SetBackgroundSequence } from "@veyyon/utils/paint-ground";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
 import { useTruecolorTheme } from "./helpers/theme-assertions";
 

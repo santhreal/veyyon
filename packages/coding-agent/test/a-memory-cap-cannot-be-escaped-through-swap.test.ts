@@ -29,10 +29,10 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { memoryCapControls } from "@veyyon/coding-agent/session/cgroup-format";
-import { probeCpuLimitSupport } from "@veyyon/coding-agent/session/cgroup-host";
 import { SessionCpuLimit } from "@veyyon/coding-agent/session/cpu-limit";
-import { ensureMachineBudget, MACHINE_BUDGET_DIR_NAME } from "@veyyon/coding-agent/session/machine-budget";
+import { memoryCapControls } from "@veyyon/kernel/session/cgroup-format";
+import { probeCpuLimitSupport } from "@veyyon/kernel/session/cgroup-host";
+import { ensureMachineBudget, MACHINE_BUDGET_DIR_NAME } from "@veyyon/kernel/session/machine-budget";
 import { makeCgroupRoot, makeDelegatedParent, makeFakeHost, removeCgroupRoots } from "./helpers/fake-cgroup";
 
 let root = "";

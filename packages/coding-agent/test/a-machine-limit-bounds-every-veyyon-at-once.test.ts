@@ -39,9 +39,9 @@ import * as fsPromises from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
-import { formatCpuMaxValue } from "@veyyon/coding-agent/session/cgroup-format";
-import { probeCpuLimitSupport } from "@veyyon/coding-agent/session/cgroup-host";
 import { SessionCpuLimit } from "@veyyon/coding-agent/session/cpu-limit";
+import { formatCpuMaxValue } from "@veyyon/kernel/session/cgroup-format";
+import { probeCpuLimitSupport } from "@veyyon/kernel/session/cgroup-host";
 import {
 	addMachineHarnessWrite,
 	anyMachineLimitActive,
@@ -52,7 +52,7 @@ import {
 	machineSpawnedWrittenBytes,
 	machineWrittenBytes,
 	resetMachineWriteTally,
-} from "@veyyon/coding-agent/session/machine-budget";
+} from "@veyyon/kernel/session/machine-budget";
 import { GLOBAL_RESOURCE_LIMITS } from "@veyyon/utils/dirs";
 import * as YAML from "yaml";
 import { makeCgroupRoot, makeDelegatedParent, makeFakeHost, removeCgroupRoots } from "./helpers/fake-cgroup";

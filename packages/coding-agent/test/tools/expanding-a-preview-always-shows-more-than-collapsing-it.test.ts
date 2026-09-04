@@ -17,8 +17,12 @@
 // surface looks, and it belongs to the capture that shows the surface.
 
 import { describe, expect, it } from "bun:test";
-import { DEFAULT_TERMINAL_PREVIEW_LINES, PREVIEW_LIMITS, TRUNCATE_LENGTHS } from "../../src/tools/render-limits";
-import * as renderUtils from "../../src/tools/render-utils";
+import {
+	DEFAULT_TERMINAL_PREVIEW_LINES,
+	PREVIEW_LIMITS,
+	TRUNCATE_LENGTHS,
+} from "@veyyon/coding-agent/tools/core/render-limits";
+import * as renderUtils from "@veyyon/coding-agent/tools/core/render-utils";
 
 describe("expanding a preview always shows more than collapsing it", () => {
 	const pairs = [

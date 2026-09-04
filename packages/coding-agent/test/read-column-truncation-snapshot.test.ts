@@ -19,8 +19,8 @@ import { canonicalSnapshotKey, getFileSnapshotStore } from "@veyyon/coding-agent
 import { HashlineFilesystem } from "@veyyon/coding-agent/edit/hashline/filesystem";
 import { writethroughNoop } from "@veyyon/coding-agent/lsp";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import type { ReadToolDetails } from "@veyyon/coding-agent/tools/read";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import type { ReadToolDetails } from "@veyyon/coding-agent/tools/fs/read";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 import { Patch, Patcher } from "@veyyon/hashline";
 import { removeWithRetries } from "@veyyon/utils";
 

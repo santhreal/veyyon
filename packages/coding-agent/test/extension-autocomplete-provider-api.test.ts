@@ -20,18 +20,18 @@ import * as path from "node:path";
 import { Agent, type AgentTool } from "@veyyon/agent-core";
 import type { Api, Model } from "@veyyon/ai";
 import { Effort } from "@veyyon/catalog/effort";
-import type { AutocompleteProvider } from "@veyyon/tui";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { logger, TempDir } from "@veyyon/utils";
+import type { AutocompleteProvider } from "@veyyon/utils/autocomplete";
 import { type } from "arktype";
 import { ModelRegistry } from "../src/config/model-registry";
 import { resetSettingsForTest, Settings } from "../src/config/settings";
 import { loadExtensions } from "../src/extensibility/extensions/loader";
 import { ExtensionRunner } from "../src/extensibility/extensions/runner";
-import { InteractiveMode } from "../src/modes/interactive-mode";
-import { initTheme } from "../src/modes/theme/theme";
+import { InteractiveMode } from "../src/modes/terminal/interactive-mode";
 import { AgentSession } from "../src/session/agent-session";
-import { AuthStorage } from "../src/session/auth-storage";
 import { SessionManager } from "../src/session/session-manager";
+import { initTheme } from "../src/theme/theme";
 
 function makeTool(name: string): AgentTool {
 	return {

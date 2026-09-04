@@ -17,16 +17,16 @@
  */
 
 import { isRecord, logger, parseFrontmatter, tryParseJson } from "@veyyon/utils";
-import { registerProvider } from "../capability";
-import { type ContextFile, contextFileCapability } from "../capability/context-file";
-import { type ExtensionModule, extensionModuleCapability } from "../capability/extension-module";
-import { readFile } from "../capability/fs";
-import { type MCPServer, mcpCapability } from "../capability/mcp";
-import { type DiscoveredSkill, skillCapability } from "../capability/skill";
-import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
-import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
+import { registerProvider } from "./capability";
+import { type ContextFile, contextFileCapability } from "./capability/context-file";
+import { type ExtensionModule, extensionModuleCapability } from "./capability/extension-module";
+import { readFile } from "./capability/fs";
+import { type MCPServer, mcpCapability } from "./capability/mcp";
+import { type DiscoveredSkill, skillCapability } from "./capability/skill";
+import { type SlashCommand, slashCommandCapability } from "./capability/slash-command";
+import type { LoadContext, LoadResult, SourceMeta } from "./capability/types";
 
 import { expandEnvVarsDeep, warnUnresolved } from "./env-expansion";
 import {
@@ -141,7 +141,7 @@ function normalizeCommand(
 	const configuredArgs = stringArray(argsValue);
 	if (Array.isArray(commandValue)) {
 		const [command, ...commandArgs] = commandValue;
-		const args = configuredArgs ? [...commandArgs, ...configuredArgs] : commandArgs;
+		const args = configuredArgs ? commandArgs.concat(configuredArgs) : commandArgs;
 		return {
 			command: typeof command === "string" ? command : undefined,
 			args: args.length > 0 ? args : undefined,

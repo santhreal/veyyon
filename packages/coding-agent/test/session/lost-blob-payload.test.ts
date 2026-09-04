@@ -2,19 +2,19 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Message } from "@veyyon/ai";
-import * as blobStoreModule from "@veyyon/coding-agent/session/blob-store";
+import { convertToLlm, replaceLostBlobPayloads } from "@veyyon/coding-agent/session/messages";
+import { resolveBlobRefsInEntries } from "@veyyon/coding-agent/session/session-loader";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import * as blobStoreModule from "@veyyon/kernel/session/blob-store";
 import {
 	BlobStore,
 	externalizeImageDataSync,
 	externalizeImageDataUrlSync,
 	externalizeTextSync,
 	isTextBlobRef,
-} from "@veyyon/coding-agent/session/blob-store";
-import { convertToLlm, replaceLostBlobPayloads } from "@veyyon/coding-agent/session/messages";
-import { type OperatorNotice, OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
-import type { FileEntry } from "@veyyon/coding-agent/session/session-entries";
-import { resolveBlobRefsInEntries } from "@veyyon/coding-agent/session/session-loader";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+} from "@veyyon/kernel/session/blob-store";
+import { type OperatorNotice, OperatorNotices } from "@veyyon/kernel/session/operator-notices";
+import type { FileEntry } from "@veyyon/kernel/session/session-entries";
 import { getBlobsDir, setAgentDir, TempDir } from "@veyyon/utils";
 import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 

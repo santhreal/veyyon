@@ -20,7 +20,8 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { probeCpuLimitSupport } from "../src/session/cgroup-host";
+import { probeCpuLimitSupport } from "@veyyon/kernel/session/cgroup-host";
+import { BYTES_PER_GB } from "@veyyon/kernel/session/write-accounting";
 import {
 	budgetedFileCommit,
 	type CpuBudgetGroupHandle,
@@ -31,7 +32,6 @@ import {
 	sessionCpuBudgetName,
 	WriteBudgetDeniedError,
 } from "../src/session/cpu-limit";
-import { BYTES_PER_GB } from "../src/session/write-accounting";
 import {
 	type FakeHost,
 	makeCgroupRoot,

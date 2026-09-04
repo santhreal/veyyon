@@ -17,9 +17,13 @@
 import type { AssistantMessage, ToolCallMetrics, ToolResultMessage } from "@veyyon/ai";
 // The rank from the module that defines it (1 module) rather than the barrel (346).
 import { type InstrumentationLevel, instrumentationRank } from "@veyyon/ai/instrumentation";
+import type {
+	FileEntry,
+	SessionHeader,
+	SessionLifecycleReason,
+	SessionMessageEntry,
+} from "@veyyon/kernel/session/session-entries";
 import { clamp, isRecord } from "@veyyon/utils";
-
-import type { FileEntry, SessionHeader, SessionLifecycleReason, SessionMessageEntry } from "../session/session-entries";
 
 const COMPACTION_ENTRY_ID_SAMPLE_LIMIT = 16;
 
@@ -823,7 +827,7 @@ function accumulateToolResult(message: ToolResultMessage, sink: ToolResultSink):
 function resolveToolLatency(tools: Map<string, ToolAccumulator>): ToolLatencyStat[] {
 	const stats: ToolLatencyStat[] = [];
 	for (const [tool, acc] of tools) {
-		const sorted = [...acc.durations].sort((a, b) => a - b);
+		const sorted = acc.durations.slice().sort((a, b) => a - b);
 		stats.push({
 			tool,
 			calls: acc.calls,
@@ -851,7 +855,7 @@ function resolveToolCost(tools: Map<string, ToolAccumulator>): ToolCostStat[] {
 }
 
 function resolveRepeats(repeats: Map<string, RepeatedCall>): RepeatedCall[] {
-	const stats = [...repeats.values()].filter(r => r.count > 1);
+	const stats = Array.from(repeats.values()).filter(r => r.count > 1);
 	// Most-repeated first; ties by total time spent, then tool name.
 	stats.sort((a, b) => b.count - a.count || b.totalDurationMs - a.totalDurationMs || a.tool.localeCompare(b.tool));
 	return stats;

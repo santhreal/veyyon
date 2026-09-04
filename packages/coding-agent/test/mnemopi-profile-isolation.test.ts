@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { loadMnemopiConfig } from "@veyyon/coding-agent/mnemopi/config";
+import { loadMnemopiConfig } from "@veyyon/coding-agent/memory/mnemopi/config";
 import { Mnemopi } from "@veyyon/mnemopi";
 import { __resetProfileSnapshotForTests, getActiveProfile, getAgentDir, setProfile } from "@veyyon/utils";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";

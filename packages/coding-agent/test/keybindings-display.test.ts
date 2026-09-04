@@ -5,7 +5,7 @@ import {
 	getDefaultPasteImageKeys,
 	KeybindingsManager,
 } from "@veyyon/coding-agent/config/keybindings";
-import type { KeyId } from "@veyyon/tui";
+import type { KeyId } from "@veyyon/utils/keys";
 
 /**
  * formatKeyHint / formatKeyHints turn a stored key id into the human-readable hint

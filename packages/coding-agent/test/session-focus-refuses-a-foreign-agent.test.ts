@@ -14,8 +14,8 @@
  * caller that arrives with an id from anywhere else.
  */
 import { describe, expect, it, vi } from "bun:test";
-import { SessionFocusController } from "@veyyon/coding-agent/modes/controllers/session-focus-controller";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { SessionFocusController } from "@veyyon/coding-agent/modes/terminal/controllers/session-focus-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import type { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";

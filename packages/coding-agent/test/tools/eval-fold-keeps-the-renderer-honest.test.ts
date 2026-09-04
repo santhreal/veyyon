@@ -23,8 +23,8 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import * as evalIndex from "@veyyon/coding-agent/eval";
 import type { EvalToolDetails } from "@veyyon/coding-agent/eval/types";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { EvalTool } from "@veyyon/coding-agent/tools/eval";
-import { MIN_FOLDABLE_LINES } from "@veyyon/coding-agent/tools/output-fold";
+import { MIN_FOLDABLE_LINES } from "@veyyon/coding-agent/tools/core/output-fold";
+import { EvalTool } from "@veyyon/coding-agent/tools/shell/eval";
 
 function makeSession(): ToolSession {
 	return {

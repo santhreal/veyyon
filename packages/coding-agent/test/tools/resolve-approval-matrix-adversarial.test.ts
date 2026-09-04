@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { requiresApproval, resolveApproval, truncateForPrompt } from "@veyyon/coding-agent/tools/approval";
+import { requiresApproval, resolveApproval, truncateForPrompt } from "@veyyon/coding-agent/tools/core/approval";
 
 /**
  * resolveApproval matrix: yolo/ask/plan/always-ask × read/write/exec tiers,

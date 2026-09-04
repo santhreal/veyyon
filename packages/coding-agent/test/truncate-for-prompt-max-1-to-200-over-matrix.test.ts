@@ -3,7 +3,7 @@
  * Why: every boundary max must preserve prefix and report exact omitted count.
  */
 import { describe, expect, it } from "bun:test";
-import { truncateForPrompt } from "../src/tools/approval";
+import { truncateForPrompt } from "../src/tools/core/approval";
 
 describe("truncateForPrompt max 1 to 200 over matrix", () => {
 	for (let max = 1; max <= 200; max++) {

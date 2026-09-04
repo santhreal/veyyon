@@ -34,7 +34,7 @@
 import { describe, expect, it } from "bun:test";
 import { buildSystemPrompt } from "@veyyon/coding-agent/system-prompt";
 import { PROMPT_STATEMENTS } from "@veyyon/coding-agent/system-prompt-builder/statement-registry";
-import { BUILTIN_TOOL_NAMES, HIDDEN_TOOL_NAMES } from "@veyyon/coding-agent/tools/builtin-names";
+import { BUILTIN_TOOL_NAMES, HIDDEN_TOOL_NAMES } from "@veyyon/coding-agent/tools/core/builtin-names";
 
 const EMPTY_TREE = {
 	rootPath: "/tmp",

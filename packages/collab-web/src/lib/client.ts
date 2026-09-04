@@ -290,7 +290,7 @@ export class GuestClient {
 				this.#header = frame.header;
 				this.#entries = [];
 				this.#state = frame.state;
-				this.#agents = [...frame.agents];
+				this.#agents = frame.agents.slice();
 				this.#stream = null;
 				this.#streamDone = false;
 				this.#activeTools = new Map();
@@ -313,7 +313,7 @@ export class GuestClient {
 				// Stream transcript fragments into the live snapshot. The host
 				// always closes the train with `final: true`; that flip is what
 				// moves the guest from "waiting" to "live".
-				this.#entries = [...this.#entries, ...frame.entries];
+				this.#entries = this.#entries.concat(frame.entries);
 				if (frame.final) {
 					this.#clearSnapshotProgressTimer();
 					this.#phase = "live";
@@ -323,7 +323,7 @@ export class GuestClient {
 				break;
 			}
 			case "entry":
-				this.#entries = [...this.#entries, frame.entry];
+				this.#entries = this.#entries.concat([frame.entry]);
 				if (this.#streamDone && frame.entry.type === "message" && frame.entry.message.role === "assistant") {
 					this.#stream = null;
 					this.#streamDone = false;
@@ -343,7 +343,7 @@ export class GuestClient {
 				}
 				break;
 			case "agents":
-				this.#agents = [...frame.agents];
+				this.#agents = frame.agents.slice();
 				break;
 			case "bus":
 				if (frame.channel === "task:subagent:progress") {
@@ -355,7 +355,7 @@ export class GuestClient {
 				}
 				break;
 			case "ui-request":
-				if (this.#uiRequest) this.#uiRequestQueue = [...this.#uiRequestQueue, frame.request];
+				if (this.#uiRequest) this.#uiRequestQueue = this.#uiRequestQueue.concat([frame.request]);
 				else this.#uiRequest = frame.request;
 				break;
 			case "ui-request-end":
@@ -477,7 +477,7 @@ export class GuestClient {
 
 	#pushNotice(level: Notice["level"], message: string): void {
 		const notice: Notice = { id: ++this.#noticeSeq, level, message, at: Date.now() };
-		const next = [...this.#notices, notice];
+		const next = this.#notices.concat([notice]);
 		if (next.length > MAX_NOTICES) next.splice(0, next.length - MAX_NOTICES);
 		this.#notices = next;
 	}

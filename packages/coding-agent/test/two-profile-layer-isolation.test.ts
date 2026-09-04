@@ -32,17 +32,17 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { loadCapability } from "@veyyon/coding-agent/discovery";
+import { PROFILE_AGENTS_GUIDANCE } from "@veyyon/coding-agent/discovery/agents-guidance";
 import {
 	captureRegistryForTests,
 	initializeWithSettings,
 	type RegistrySnapshot,
 	restoreRegistryForTests,
-} from "@veyyon/coding-agent/capability";
-import type { Rule } from "@veyyon/coding-agent/capability/rule";
-import { type SlashCommand, slashCommandCapability } from "@veyyon/coding-agent/capability/slash-command";
-import { Settings } from "@veyyon/coding-agent/config/settings";
-import { loadCapability } from "@veyyon/coding-agent/discovery";
-import { PROFILE_AGENTS_GUIDANCE } from "@veyyon/coding-agent/discovery/agents-guidance";
+} from "@veyyon/coding-agent/discovery/capability";
+import type { Rule } from "@veyyon/coding-agent/discovery/capability/rule";
+import { type SlashCommand, slashCommandCapability } from "@veyyon/coding-agent/discovery/capability/slash-command";
 import { clearClaudePluginRootsCache } from "@veyyon/coding-agent/discovery/helpers";
 import { discoverCustomToolPaths } from "@veyyon/coding-agent/extensibility/custom-tools";
 import { discoverExtensionPaths } from "@veyyon/coding-agent/extensibility/extensions";
@@ -50,10 +50,10 @@ import { discoverAndLoadHooks } from "@veyyon/coding-agent/extensibility/hooks";
 import { loadSkills } from "@veyyon/coding-agent/extensibility/skills";
 import { loadSlashCommands } from "@veyyon/coding-agent/extensibility/slash-commands";
 import { loadAllMCPConfigs } from "@veyyon/coding-agent/mcp/config";
-import { discoverContextFiles, discoverRules, discoverSkills } from "@veyyon/coding-agent/sdk";
+import { discoverContextFiles, discoverRules, discoverSkills } from "@veyyon/coding-agent/session/factory-extensions";
 import { buildSystemPrompt, loadProjectContextFiles } from "@veyyon/coding-agent/system-prompt";
 import { discoverCommands } from "@veyyon/coding-agent/task/commands";
-import { discoverAgents } from "@veyyon/coding-agent/task/discovery";
+import { type DiscoveryResult, discoverAgents } from "@veyyon/coding-agent/task/discovery";
 import { getGlobalSubagentsDir } from "@veyyon/utils";
 import {
 	GLOBAL_BODY,
@@ -285,17 +285,19 @@ describe("a non-active agent dir gets its own layers, not the booted profile's",
 
 	/**
 	 * Agent definitions shipped by an extension PACKAGE the profile declared in its own
-	 * `settings.json#extensions`. That source resolved the process-active profile
-	 * independently of the sibling layers, so fixing the marketplace read alone would
-	 * still have handed a spawned agent the wrong definition through it.
+	 * `settings.json#extensions`, against the user-authored definitions, which are GLOBAL.
+	 * Two sources feeding the same `discoverAgents` surface as the marketplace case below,
+	 * and each one resolved the process-active profile independently of the others, so
+	 * fixing the marketplace read alone would still have handed a spawned agent the wrong
+	 * definition through the extension source.
 	 *
-	 * The user-authored dir is the OPPOSITE claim and is asserted in the same case, so
-	 * neither can be traded for the other: `~/<config>/subagents` is global on purpose
-	 * (a definition is authored once, and `subagent.agents.<name>.enabled` is the
-	 * per-profile answer), so both loads must return it. A profile-private definitions
-	 * dir at `<agentDir>/agents` is the retired shape, and stays unread.
+	 * The two sources are asserted together because they scope DIFFERENTLY and the split is
+	 * invisible from either one alone: switching profile changes which extension packages
+	 * contribute agents, and never which user-authored agents exist. The retired
+	 * `<agentDir>/agents` location is asserted absent in the same breath — a definition
+	 * left there is silently unavailable, which is the failure the global dir replaced.
 	 */
-	test("discoverAgents follows the named profile for its extensions and shares the global definitions", async () => {
+	test("scopes extension agents to the named profile and user agents globally", async () => {
 		const f = fixture("agentdirs-active");
 		const namedAgentDir = f.agentDirFor("agentdirs-named");
 		const activePackage = path.join(f.home, "active-agent-pkg");
@@ -305,14 +307,14 @@ describe("a non-active agent dir gets its own layers, not the booted profile's",
 		f.writeFile(path.join(f.agentDir, "settings.json"), JSON.stringify({ extensions: [activePackage] }));
 		f.writeFile(path.join(namedAgentDir, "settings.json"), JSON.stringify({ extensions: [namedPackage] }));
 		writeAgentDefinition(f, getGlobalSubagentsDir(), "global-user-agent");
-		writeAgentDefinition(f, path.join(f.agentDir, "agents"), "active-user-agent");
-		writeAgentDefinition(f, path.join(namedAgentDir, "agents"), "named-user-agent");
+		writeAgentDefinition(f, path.join(f.agentDir, "agents"), "retired-active-agent");
+		writeAgentDefinition(f, path.join(namedAgentDir, "agents"), "retired-named-agent");
 
 		const defaulted = await discoverAgents(f.cwd, f.home);
 		f.resetCaches();
 		const named = await discoverAgents(f.cwd, f.home, namedAgentDir);
 
-		const own = (result: Awaited<ReturnType<typeof discoverAgents>>): string[] =>
+		const own = (result: DiscoveryResult): string[] =>
 			result.agents.map(agent => agent.name).filter(name => name.endsWith("-agent"));
 		expect(own(defaulted).toSorted()).toEqual(["active-ext-agent", "global-user-agent"]);
 		expect(own(named).toSorted()).toEqual(["global-user-agent", "named-ext-agent"]);

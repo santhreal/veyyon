@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
+import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 import { $ } from "bun";
+import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout";
 
 /**
  * Every script under `scripts/` is either called by something automated, or says
@@ -61,17 +63,26 @@ async function scriptFiles(): Promise<string[]> {
 	return found.sort();
 }
 
+/**
+ * Every manifest that could name a script, under every workspace member the root manifest declares.
+ * Reading `packages/` alone left a script named only by a member under another root reading as
+ * owned by nobody. The root view was in turn blind to literal paths (`natives/bridge/bindings`,
+ * `python/veybot/web`), which `typeScriptMembers()` now reaches.
+ */
+async function callerManifests(): Promise<string[]> {
+	const manifests = [path.join(REPO_ROOT, "package.json")];
+	for (const member of typeScriptMembers()) {
+		const manifest = path.join(REPO_ROOT, member, "package.json");
+		if (existsSync(manifest)) manifests.push(manifest);
+	}
+	return manifests;
+}
+
 /** Text of every manifest and workflow that could name a script. */
 async function callerText(): Promise<string> {
 	const parts: string[] = [];
-	parts.push(await readFile(path.join(REPO_ROOT, "package.json"), "utf8"));
-
-	const packages = await readdir(path.join(REPO_ROOT, "packages"), { withFileTypes: true }).catch(() => []);
-	for (const pkg of packages) {
-		if (!pkg.isDirectory()) continue;
-		const manifest = path.join(REPO_ROOT, "packages", pkg.name, "package.json");
-		const text = await readFile(manifest, "utf8").catch(() => undefined);
-		if (text !== undefined) parts.push(text);
+	for (const manifest of await callerManifests()) {
+		parts.push(await readFile(manifest, "utf8"));
 	}
 
 	const workflowDir = path.join(REPO_ROOT, ".github", "workflows");
@@ -233,6 +244,20 @@ describe("every script under scripts/ has an owner", () => {
 		expect(SCRIPTS.length).toBeGreaterThan(50);
 		expect(SCRIPTS).toContain("scripts/ci-test-ts.ts");
 		expect(SCRIPTS).toContain("scripts/session-stats/sync.py");
+	});
+
+	/**
+	 * Guard on the guard, part one-and-a-half: the OWNER side reads every root.
+	 *
+	 * A manifest the sweep never opened cannot name anything, so a script wired only by a member
+	 * under an unread root reads as unowned and the rule below reports a finding that is not real.
+	 */
+	it("reads a manifest under every root the workspace declares", async () => {
+		const manifests = (await callerManifests()).map(file => path.relative(REPO_ROOT, file).replaceAll(path.sep, "/"));
+		const roots = new Set(manifests.filter(file => file !== "package.json").map(file => file.split("/")[0]));
+
+		expect([...roots].sort()).toEqual(typeScriptMemberTopLevels());
+		expect(manifests).toContain("contracts/wire/package.json");
 	});
 
 	/**

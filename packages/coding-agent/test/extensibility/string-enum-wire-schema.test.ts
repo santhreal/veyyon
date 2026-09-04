@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { StringEnum } from "@veyyon/coding-agent/extensibility/legacy-pi-ai-shim";
+import { StringEnum } from "@veyyon/kernel/loader/legacy-pi-ai-shim";
 
 /**
  * StringEnum is the legacy pi-ai compat helper an old extension uses to declare an enum

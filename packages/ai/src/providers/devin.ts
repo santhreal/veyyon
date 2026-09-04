@@ -588,7 +588,7 @@ function buildDevinChatRequest(
 	const cascadeId = options?.conversationId ?? options?.sessionId ?? crypto.randomUUID();
 	const stopPatterns =
 		options?.stopSequences && options.stopSequences.length > 0
-			? [...DEVIN_DEFAULT_STOP_PATTERNS, ...options.stopSequences]
+			? DEVIN_DEFAULT_STOP_PATTERNS.concat(options.stopSequences)
 			: DEVIN_DEFAULT_STOP_PATTERNS;
 	return create(GetChatMessageRequestSchema, {
 		metadata: create(MetadataSchema, {

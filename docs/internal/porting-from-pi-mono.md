@@ -33,7 +33,7 @@ git format-patch b21b42d032919de2f2e6920a76fa9a37c3920c0a..HEAD --stdout > chang
 Most runtime TypeScript sources omit `.js` in internal imports, but several current entrypoints and tool modules keep `.js` for ESM/runtime compatibility. Follow the surrounding file and package export style; do not blanket-strip or blanket-add extensions.
 
 - In `packages/coding-agent` runtime sources, prefer extensionless internal imports when the surrounding module does, but preserve existing `.js` imports in files that already require them.
-- In `packages/tui/test` and `packages/natives/bench`, keep `.js` where surrounding files already use it.
+- In `hosts/terminal/engine/test` and `natives/bridge/bindings/bench`, keep `.js` where surrounding files already use it.
 - Keep real file extensions when required by tooling or import assertions (e.g., `.json`, `.css`, `.md` text embeds).
 - Example: `import { x } from "./foo.js";` → `import { x } from "./foo";` only when that package/file convention is extensionless.
 
@@ -139,7 +139,7 @@ Treat `package.json` as a contract. Merge intentionally.
   - Heavy Node APIs should not be introduced casually; current source still uses selected Node APIs (`node:crypto`, `node:readline`, synchronous `node:fs`, and `child_process`) where they fit provider, CLI, or process-control semantics.
   - Lightweight Node APIs (`os.homedir`, `os.tmpdir`, `fs.mkdtempSync`, `path.*`) are kept.
   - CLI shebangs use `bun` (not `node`, not `tsx`).
-  - TypeScript packages generally use source files directly; `@veyyon/natives` exports generated native bindings from `packages/natives/native`.
+  - TypeScript packages generally use source files directly; `@veyyon/natives` exports generated native bindings from `natives/bridge/bindings/native`.
   - CI workflows run Bun for install/check/test.
 
 ## 8) Remove old compatibility layers
@@ -278,7 +278,7 @@ packages/ai:
 - fix: add overflow detection for Bedrock, MiniMax, Kimi providers
 - fix: 429 status is rate limiting, not context overflow
 
-packages/tui:
+hosts/terminal/engine:
 - fix: refactored autocomplete state tracking
 - fix: file autocomplete should not trigger on empty text
 - fix: configurable autocomplete max visible items
@@ -360,7 +360,7 @@ Our fork has architectural decisions that differ from upstream. **Do not port th
 | Upstream                                                         | Our Fork                                                                                          |
 | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `jiti` for TypeScript loading                                    | Native Bun `import()`                                                                              |
-| `pkg.pi` manifest field                                          | `pkg.veyyon` preferred; `omp` and `pi` remain accepted as legacy keys (`MANIFEST_KEYS` in `src/extensibility/manifest-key.ts`, first defined wins) |
+| `pkg.pi` manifest field                                          | `pkg.veyyon` preferred; `omp` and `pi` remain accepted as legacy keys (`MANIFEST_KEYS` in `kernel/src/loader/manifest-key.ts`, first defined wins) |
 | `StringEnum` from `pi-ai`                                        | `Type.Enum` from the `pi.typebox` shim (or author the schema with `pi.zod`); `pi-ai` no longer exports `StringEnum` |
 | `formatSize` from `pi-coding-agent`                              | `formatBytes` from `@veyyon/utils`                                                            |
 | `DefaultResourceLoader` / `DefaultPackageManager` / `SettingsManager` / `createEventBus` | Capability-based discovery (`loadCapability(...)`) plus the `Settings` singleton and `EventBus` |
@@ -391,15 +391,17 @@ These exist in our fork but not upstream. **Never overwrite:**
 What the fork took from oh-my-pi:
 
 - The TypeScript/Bun agent loop, TUI, and mode system (`packages/coding-agent`,
-  `packages/agent`, `packages/tui`, `packages/ai`, `packages/catalog`, and
-  most of `packages/*`).
+  `packages/agent`, `packages/ai`, `packages/catalog`, and most of `packages/*`).
+  The terminal renderer moved after the fork: upstream's `packages/tui` is
+  `hosts/terminal/engine`, and the published package name `@veyyon/tui` is
+  unchanged.
 - The Rust native hot paths, including their vendored third-party dependencies
-  under `crates/vendor/`. The crates were renamed after the fork, so the paths
-  here are the current ones: search in `crates/veyyon-grep-kernel` and
-  `crates/veyyon-uu-grep`, the shell and its output minimizer in
-  `crates/veyyon-shell`, and the PTY and the rest of the N-API surface in
-  `crates/veyyon-natives`. The hashline edit engine is TypeScript, in
-  `packages/hashline`, not in a crate.
+  under `natives/vendor/`. The crates were renamed after the fork, so the paths
+  here are the current ones: search in `natives/search/grep-kernel` and
+  `natives/search/uu-grep`, the shell and its output minimizer in
+  `natives/shell`, and the PTY and the rest of the N-API surface in
+  `natives/bridge/addon`. The hashline edit engine is TypeScript, in
+  `plugins/hashline`, not in a crate.
 - The prompt/agent model, hashline edit engine, mnemopi memory system, and
   provider catalog that oh-my-pi shipped.
 
@@ -481,4 +483,4 @@ handbook pages. `neverPorted` in `scripts/upstream-port-policy.json` lists the
 paths a port has no business authoring, which is the checklist to read that diff
 against.
 
-*Verified against `d22ae362` on 2026-08-22.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

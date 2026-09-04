@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { SetCwdTool } from "@veyyon/coding-agent/tools/set-cwd";
+import { SetCwdTool } from "@veyyon/coding-agent/tools/fs/set-cwd";
 import { makeToolSession } from "./helpers/tool-session";
 
 /**

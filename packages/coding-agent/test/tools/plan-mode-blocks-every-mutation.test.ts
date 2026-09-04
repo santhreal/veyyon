@@ -33,8 +33,8 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { requiresApproval, resolveApproval } from "@veyyon/coding-agent/tools/approval";
-import { enforcePlanModeWrite } from "@veyyon/coding-agent/tools/plan-mode-guard";
+import { requiresApproval, resolveApproval } from "@veyyon/coding-agent/tools/core/approval";
+import { enforcePlanModeWrite } from "@veyyon/coding-agent/tools/core/plan-mode-guard";
 import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
 
 // Tracked temp directories: the factory deletes what it made when this file finishes.

@@ -14,11 +14,11 @@
  * Measured on the veyyon repo before the fix, which carries a 39 KB root
  * `AGENTS.md`: `loadProjectContextFiles({cwd})` returned exactly one file, the
  * global `~/.veyyon/AGENTS.md`, whether called from the repo root, from
- * `packages/argot`, or from the parent directory. Zero project rules, ever.
+ * `plugins/argot`, or from the parent directory. Zero project rules, ever.
  *
  * The workspace-tree listing did not cover the gap. It reports AGENTS.md files it
  * finds BELOW cwd, so the root file was missing from the root's own listing
- * (`["python/veybot/AGENTS.md"]`), and from `packages/argot` the list was empty.
+ * (`["python/veybot/AGENTS.md"]`), and from `plugins/argot` the list was empty.
  * Meanwhile `prompts/session/project-prompt.md` told the model "the relevant ones
  * are already in your context" and "you NEVER grep/glob for AGENTS.md", so a model
  * following its instructions could not recover the rules by looking for them
@@ -33,8 +33,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { loadCapability } from "@veyyon/coding-agent/capability";
-import { type ContextFile, contextFileCapability } from "@veyyon/coding-agent/capability/context-file";
+import { loadCapability } from "@veyyon/coding-agent/discovery/capability";
+import { type ContextFile, contextFileCapability } from "@veyyon/coding-agent/discovery/capability/context-file";
 import { loadProjectContextFiles } from "@veyyon/coding-agent/system-prompt";
 import { removeWithRetries } from "@veyyon/utils";
 

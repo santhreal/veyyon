@@ -176,6 +176,10 @@ Optional rendering hooks:
 - `renderCall(args, options, theme)`
 - `renderResult(result, options, theme, args?)`
 
+Both return `HostView`: whatever the host running the tool draws. Under the
+terminal that is a `@veyyon/tui` `Component`, so a renderer written against the
+terminal needs no change.
+
 Runtime behavior in TUI:
 
 - If hooks exist, tool output is rendered inside a `Box` container.

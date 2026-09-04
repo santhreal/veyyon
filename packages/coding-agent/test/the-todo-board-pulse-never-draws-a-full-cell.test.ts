@@ -26,10 +26,13 @@
  * motion, the colours, or the timer that supplies `frame`.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
-import { renderTodoBoardLines, type TodoBoardOptions } from "@veyyon/coding-agent/modes/components/todo-board";
-import { SPINNER_FRAMES, spinnerRampOneLevelShallower } from "@veyyon/coding-agent/modes/theme/symbols";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { TodoItem, TodoPhase } from "@veyyon/coding-agent/tools/todo";
+import {
+	renderTodoBoardLines,
+	type TodoBoardOptions,
+} from "@veyyon/coding-agent/modes/terminal/components/dashboard/todo-board";
+import { SPINNER_FRAMES, spinnerRampOneLevelShallower } from "@veyyon/coding-agent/theme/symbols";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
+import type { TodoItem, TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
 
 function phase(name: string, tasks: Array<[string, TodoItem["status"]]>): TodoPhase {
 	return { name, tasks: tasks.map(([content, status]) => ({ content, status })) };

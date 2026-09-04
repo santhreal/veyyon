@@ -16,13 +16,13 @@
  */
 import * as path from "node:path";
 import { tryParseJson } from "@veyyon/utils";
-import { registerProvider } from "../capability";
-import { type ContextFile, contextFileCapability } from "../capability/context-file";
-import { type ExtensionManifest, extensionCapability, type ManifestExtension } from "../capability/extension";
-import { type ExtensionModule, extensionModuleCapability } from "../capability/extension-module";
-import { readDirEntries, readFile } from "../capability/fs";
-import { type MCPServer, mcpCapability } from "../capability/mcp";
-import type { LoadContext, LoadResult } from "../capability/types";
+import { registerProvider } from "./capability";
+import { type ContextFile, contextFileCapability } from "./capability/context-file";
+import { type ExtensionManifest, extensionCapability, type ManifestExtension } from "./capability/extension";
+import { type ExtensionModule, extensionModuleCapability } from "./capability/extension-module";
+import { readDirEntries, readFile } from "./capability/fs";
+import { type MCPServer, mcpCapability } from "./capability/mcp";
+import type { LoadContext, LoadResult } from "./capability/types";
 import { expandEnvVarsDeep, warnUnresolved } from "./env-expansion";
 import {
 	buildExtensionModuleItems,

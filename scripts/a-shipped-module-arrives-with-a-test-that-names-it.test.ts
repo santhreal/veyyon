@@ -4,7 +4,7 @@
  * Startpage bot-wall refusal and both newly added authentication registries: three paths that had
  * shipped, changed, and never been named by a test. A sweep finds that once. A gate keeps finding it.
  *
- * WHAT IT DOES. It enumerates every shipped TypeScript module under `packages/<pkg>/src` at run time,
+ * WHAT IT DOES. It enumerates every shipped TypeScript module under `<root>/<member>/src` at run time,
  * enumerates every test file at run time, and asserts that the set of modules no test names is
  * EXACTLY the list below. A module added without a test turns this red. The list is shrink-only:
  * deleting an entry because the module gained a test is the point, and adding one records a decision
@@ -20,11 +20,39 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 
-/** This file lists unnamed modules by path, so counting itself would mark every one of them named. */
-const SELF = path.join("scripts", "a-shipped-module-arrives-with-a-test-that-names-it.test.ts");
+/**
+ * Suites whose subject IS a list of module paths, which therefore name every
+ * module they record without testing any of it.
+ *
+ * This file lists unnamed modules by path, so counting itself would mark every
+ * one of them named. The architecture ledger has the same shape: it records the
+ * modules outside the terminal host that import the terminal engine, and three
+ * pickers went from unnamed to named the moment that ledger listed them, which
+ * is coverage this gate would have reported and no test would have provided.
+ */
+const PATH_LEDGERS = new Set([
+	path.join("scripts", "a-shipped-module-arrives-with-a-test-that-names-it.test.ts"),
+	path.join(
+		"packages",
+		"coding-agent",
+		"test",
+		"architecture",
+		"only-the-terminal-host-imports-the-terminal-engine.test.ts",
+	),
+]);
+
+/**
+ * Directory names the walk never enters: foreign trees, build output and the
+ * untracked run artifacts a benchmark writes. Every name here is either not
+ * checked in or holds no TypeScript, so a skip can never hide a test file.
+ * `packages/evals/suites/deep-swe` and `packages/evals/test/suites/deep-swe` are
+ * checked-in source and are walked.
+ */
+const SKIP_DIRS = new Set(["node_modules", "dist", "target", "repo-cache", "runs", "assets"]);
 
 function walk(dir: string, keep: (file: string) => boolean): string[] {
 	const found: string[] = [];
@@ -37,7 +65,7 @@ function walk(dir: string, keep: (file: string) => boolean): string[] {
 	for (const entry of entries) {
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
-			if (entry.name === "node_modules") continue;
+			if (SKIP_DIRS.has(entry.name)) continue;
 			found.push(...walk(full, keep));
 		} else if (keep(full)) {
 			found.push(full);
@@ -46,16 +74,20 @@ function walk(dir: string, keep: (file: string) => boolean): string[] {
 	return found;
 }
 
+/**
+ * Every workspace member directory, across the roots the root manifest declares.
+ *
+ * This read `packages/` alone, so a shipped module under any other root — `contracts/view/src` is
+ * one — was neither required to have a test naming it nor able to count as naming one. The root view
+ * was in turn blind to literal paths (`natives/bridge/bindings`, `python/veybot/web`), which
+ * `typeScriptMembers()` now reaches.
+ */
 function packageDirs(): string[] {
-	const root = path.join(REPO_ROOT, "packages");
-	return fs
-		.readdirSync(root, { withFileTypes: true })
-		.filter(entry => entry.isDirectory())
-		.map(entry => path.join(root, entry.name));
+	return typeScriptMembers().map(member => path.join(REPO_ROOT, member));
 }
 
 /** Every shipped module: under `src`, TypeScript, not a declaration file and not a test. */
-function shippedModules(): string[] {
+function collectShippedModules(): string[] {
 	const files: string[] = [];
 	for (const pkg of packageDirs()) {
 		files.push(
@@ -68,17 +100,64 @@ function shippedModules(): string[] {
 	return files.map(file => path.relative(REPO_ROOT, file)).sort();
 }
 
-/** Every test file, which is what may name a module. */
-function testFiles(): string[] {
+/**
+ * Every test file, which is what may name a module.
+ *
+ * Walked over the WHOLE package rather than its `test/` directory. While the walk
+ * was `<pkg>/test`, a suite sitting beside the module it tests counted for nothing,
+ * and `packages/simulations` places its suites exactly there, so `harness.ts` read
+ * as unnamed while the scenario suite naming it sat next to it. `shippedModules`
+ * already excludes `.test.` files, so widening this cannot make a test file look
+ * like a shipped module.
+ */
+function collectTestFiles(): string[] {
 	const files: string[] = [];
 	for (const pkg of packageDirs()) {
+		files.push(...walk(pkg, file => file.endsWith(".test.ts") || file.endsWith(".test.tsx")));
 		files.push(...walk(path.join(pkg, "test"), file => file.endsWith(".ts")));
 	}
 	files.push(...walk(path.join(REPO_ROOT, "scripts"), file => file.endsWith(".test.ts")));
-	return files.map(file => path.relative(REPO_ROOT, file)).filter(file => file !== SELF);
+	return [...new Set(files.map(file => path.relative(REPO_ROOT, file)))].filter(file => !PATH_LEDGERS.has(file));
+}
+
+let shippedModulesCache: string[] | undefined;
+let testFilesCache: string[] | undefined;
+
+/**
+ * The module list, walked once.
+ *
+ * Three cells ask for it and one asks twice. The walk is deterministic, so a second answer was
+ * never different, only slower: under the leak checker every test file in the repository runs at
+ * once, and six full walks of every member's `src` and `test` took this suite past the per-test
+ * deadline it clears comfortably on its own.
+ */
+function shippedModules(): string[] {
+	shippedModulesCache ??= collectShippedModules();
+	return shippedModulesCache;
+}
+
+/** The test-file list, walked once, for the reason stated on `shippedModules`. */
+function testFiles(): string[] {
+	testFilesCache ??= collectTestFiles();
+	return testFilesCache;
 }
 
 const QUOTED_PATH = /['"`]([^'"`\n]*\/[^'"`\n]*)['"`]/g;
+
+/**
+ * A maximal run of the characters a module path is made of.
+ *
+ * Route 3 asks whether a suffix appears anywhere in the test corpus. Asked of the concatenated
+ * corpus that is one scan of every test file's bytes per candidate, which is the cost that put this
+ * suite over the leak checker's per-test deadline. Asked of the DISTINCT runs below it is the same
+ * question: a needle made only of these characters is a contiguous run, so it lies inside one
+ * maximal run or nowhere, and the runs are joined on a character the class excludes so no match can
+ * straddle two of them. Same verdict, a corpus two orders of magnitude smaller.
+ */
+const PATH_TOKEN = /[A-Za-z0-9_./-]+/g;
+
+/** A suffix the token index can answer for, which is every suffix drawn from `PATH_TOKEN`'s class. */
+const PATH_CHARS_ONLY = /^[A-Za-z0-9_./-]+$/;
 
 /** The `src`-relative path of a shipped module, which is the key every route compares against. */
 const SRC_SUFFIX = /\/src\/(.+)\.ts$/;
@@ -96,36 +175,58 @@ function moduleKey(literal: string): string {
 }
 
 /**
+ * Whether any test file's bytes contain `needle`, by reading the corpus again.
+ *
+ * The token index above cannot hold a path with a space or a bracket in it, and answering "not
+ * found" for one would silently promote that module into the recorded set. No shipped module is
+ * named that way today, so this reads nothing today; it is here so the index is a speedup rather
+ * than a narrowing of what route 3 asks.
+ */
+function corpusContains(needle: string): boolean {
+	for (const file of testFiles()) {
+		if (fs.readFileSync(path.join(REPO_ROOT, file), "utf8").includes(needle)) return true;
+	}
+	return false;
+}
+
+/**
  * The modules no test names, by three routes in ascending cost: an exact module key, a bare path
  * segment (which covers a barrel or a basename reference), and a raw substring scan for the handful
  * neither route matched.
  *
- * A key that is itself a shipped module path contributes no segments. That reference is already
- * spent on the exact step, and letting it also credit a same-named module in another package is the
- * one way this can over-report: a test importing `swarm/pipeline` would otherwise mark
- * `commit/pipeline` covered, which is the opposite of what a floor is for.
+ * A key that is itself a shipped module path contributes no segments, and neither does a key that
+ * is a shipped DIRECTORY. Both references are already spent: the module path on the exact step, the
+ * directory on the barrel step below. Letting either also credit a same-named module elsewhere is
+ * the one way this can over-report: a test importing `swarm/pipeline` would otherwise mark
+ * `commit/pipeline` covered, and `@veyyon/ai/auth-gateway` (a barrel directory) marked
+ * `coding-agent/src/commands/auth-gateway.ts` covered from another package entirely, which is the
+ * opposite of what a floor is for.
  */
 function unnamedModules(): string[] {
 	const keys = new Set<string>();
-	const texts: string[] = [];
+	const tokens = new Set<string>();
 
 	for (const file of testFiles()) {
 		const text = fs.readFileSync(path.join(REPO_ROOT, file), "utf8");
-		texts.push(text);
 		for (const match of text.matchAll(QUOTED_PATH)) keys.add(moduleKey(match[1] ?? ""));
+		for (const token of text.match(PATH_TOKEN) ?? []) tokens.add(token);
 	}
-	const corpus = texts.join("\n");
+	const index = [...tokens].join("\n");
 
 	const shipped = shippedModules();
 	const shippedSuffixes = new Set<string>();
+	const shippedDirectories = new Set<string>();
 	for (const file of shipped) {
 		const suffix = SRC_SUFFIX.exec(file)?.[1];
-		if (suffix !== undefined) shippedSuffixes.add(suffix);
+		if (suffix === undefined) continue;
+		shippedSuffixes.add(suffix);
+		const parts = suffix.split("/");
+		for (let depth = 1; depth < parts.length; depth += 1) shippedDirectories.add(parts.slice(0, depth).join("/"));
 	}
 
 	const segments = new Set<string>();
 	for (const key of keys) {
-		if (shippedSuffixes.has(key)) continue;
+		if (shippedSuffixes.has(key) || shippedDirectories.has(key)) continue;
 		for (const segment of key.split("/")) segments.add(segment);
 	}
 
@@ -136,7 +237,7 @@ function unnamedModules(): string[] {
 		const base = suffix.slice(suffix.lastIndexOf("/") + 1);
 		if (keys.has(suffix) || segments.has(base)) continue;
 		if (suffix.endsWith("/index") && keys.has(suffix.slice(0, -"/index".length))) continue;
-		if (corpus.includes(suffix)) continue;
+		if (PATH_CHARS_ONLY.test(suffix) ? index.includes(suffix) : corpusContains(suffix)) continue;
 		unnamed.push(file);
 	}
 	return unnamed.sort();
@@ -145,8 +246,15 @@ function unnamedModules(): string[] {
 /**
  * Shrink-only. Remove an entry when the module gains a test. Adding one records that a shipped
  * module ships with no test naming it, which should be rare enough to argue about in review.
+ *
+ * Thirteen entries came out when `testFiles` widened from `<pkg>/test` to the whole
+ * package, because a suite sitting beside the module it tests now counts.
  */
 const NAMED_BY_NO_TEST: readonly string[] = [
+	"hosts/terminal/engine/src/components/cancellable-loader.ts",
+	"hosts/terminal/engine/src/components/settings-search.ts",
+	"kernel/src/loader/plugins/runtime-config.ts",
+	"kernel/src/session/classifier-tokens.ts",
 	"packages/agent/src/compaction/legacy-provider-native.ts",
 	"packages/agent/src/compaction/remote-compaction-entry.ts",
 	"packages/agent/src/tool-result-never-ran.ts",
@@ -158,7 +266,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/ai/src/error/domains/request.ts",
 	"packages/ai/src/providers/anthropic-messages-server-schema.ts",
 	"packages/ai/src/providers/grammar.ts",
-	"packages/ai/src/providers/openai-anthropic-shim.ts",
 	"packages/ai/src/providers/openai-chat-server-schema.ts",
 	"packages/ai/src/providers/openai-responses-server-schema.ts",
 	"packages/ai/src/providers/synthetic.ts",
@@ -169,10 +276,8 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/ai/src/registry/minimax-code.ts",
 	"packages/ai/src/registry/oauth/device-code.ts",
 	"packages/ai/src/registry/oauth/pkce.ts",
-	"packages/ai/src/registry/oauth/success-page.ts",
 	"packages/ai/src/registry/oauth/wafer.ts",
 	"packages/ai/src/registry/openai-codex-device.ts",
-	"packages/ai/src/registry/parallel.ts",
 	"packages/ai/src/registry/qianfan.ts",
 	"packages/ai/src/registry/qwen-portal.ts",
 	"packages/ai/src/registry/sakana.ts",
@@ -184,6 +289,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/ai/src/registry/xiaomi-token-plan-sgp.ts",
 	"packages/ai/src/utils/deterministic-id.ts",
 	"packages/ai/src/utils/github-copilot-http.ts",
+	"packages/ai/src/utils/opencode-headers.ts",
 	"packages/ai/src/utils/openrouter-headers.ts",
 	"packages/ai/src/utils/parse-bind.ts",
 	"packages/ai/src/utils/provider-fetch.ts",
@@ -218,12 +324,12 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/catalog/src/discovery/devin-gen/exa/reactive_component_pb/reactive_component_pb.ts",
 	"packages/catalog/src/discovery/devin-gen/exa/trust_pb/trust_pb.ts",
 	"packages/catalog/src/provider-models/bundled-references.ts",
-	"packages/coding-agent/src/autoresearch/shortcuts.ts",
 	"packages/coding-agent/src/cli/auth-gateway-cli.ts",
-	"packages/coding-agent/src/cli/commands/init-xdg.ts",
+	"packages/coding-agent/src/cli/gallery-fixtures/agentic.ts",
 	"packages/coding-agent/src/cli/gallery-fixtures/codeintel.ts",
 	"packages/coding-agent/src/cli/grep-cli.ts",
 	"packages/coding-agent/src/cli/grievances-cli.ts",
+	"packages/coding-agent/src/cli/init-xdg.ts",
 	"packages/coding-agent/src/cli/read-cli.ts",
 	"packages/coding-agent/src/cli/rollback-picker-host.ts",
 	"packages/coding-agent/src/cli/session-picker.ts",
@@ -231,6 +337,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/cli/setup-model-picker.ts",
 	"packages/coding-agent/src/cli/stats-cli.ts",
 	"packages/coding-agent/src/cli/worktree-cli.ts",
+	"packages/coding-agent/src/commands/auth-gateway.ts",
 	"packages/coding-agent/src/commands/complete.ts",
 	"packages/coding-agent/src/commands/dry-balance.ts",
 	"packages/coding-agent/src/commands/gallery.ts",
@@ -245,95 +352,53 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/commit/analysis/conventional.ts",
 	"packages/coding-agent/src/commit/pipeline.ts",
 	"packages/coding-agent/src/config/dialect-format.ts",
-
 	"packages/coding-agent/src/debug/remote-debugger.ts",
 	"packages/coding-agent/src/discovery/windsurf.ts",
 	"packages/coding-agent/src/edit/hashline/params.ts",
 	"packages/coding-agent/src/eval/agent-bridge-name.ts",
-	"packages/coding-agent/src/eval/completion-bridge.ts",
-	"packages/coding-agent/src/eval/jl/prelude.ts",
-	"packages/coding-agent/src/eval/js/shared/prelude.ts",
-	"packages/coding-agent/src/eval/py/prelude.ts",
 	"packages/coding-agent/src/eval/py/session-namespace.ts",
-	"packages/coding-agent/src/eval/rb/prelude.ts",
 	"packages/coding-agent/src/eval/session-id.ts",
+	"packages/coding-agent/src/export/markit/converters/docx.ts",
+	"packages/coding-agent/src/export/markit/converters/epub.ts",
+	"packages/coding-agent/src/export/markit/converters/pptx.ts",
 	"packages/coding-agent/src/export/redact-snapshot.ts",
-	"packages/coding-agent/src/extensibility/plugins/runtime-config.ts",
 	"packages/coding-agent/src/extensibility/session-handler-types.ts",
-	"packages/coding-agent/src/internal-urls/agent-protocol.ts",
 	"packages/coding-agent/src/internal-urls/relative-path.ts",
 	"packages/coding-agent/src/internal-urls/veyyon-protocol.ts",
 	"packages/coding-agent/src/lsp/clients/lsp-linter-client.ts",
 	"packages/coding-agent/src/lsp/deferred-diagnostics.ts",
-	"packages/coding-agent/src/markit/converters/docx.ts",
-	"packages/coding-agent/src/markit/converters/epub.ts",
-	"packages/coding-agent/src/markit/converters/pptx.ts",
 	"packages/coding-agent/src/mcp/config-commands.ts",
-	"packages/coding-agent/src/mcp/loader.ts",
 	"packages/coding-agent/src/mcp/smithery-auth.ts",
 	"packages/coding-agent/src/mcp/smithery-connect.ts",
-	"packages/coding-agent/src/mnemopi/embed-worker.ts",
-	"packages/coding-agent/src/modes/components/advisor-message.ts",
-	"packages/coding-agent/src/modes/components/agent-model-badge.ts",
-	"packages/coding-agent/src/modes/components/collab-prompt-message.ts",
-	"packages/coding-agent/src/modes/components/keybinding-hints.ts",
-	"packages/coding-agent/src/modes/components/overlay-box.ts",
-	"packages/coding-agent/src/modes/components/pause-screen.ts",
-	"packages/coding-agent/src/modes/components/select-list-mouse-routing.ts",
-	"packages/coding-agent/src/modes/components/skill-message.ts",
-	"packages/coding-agent/src/modes/setup-wizard/scenes/outro.ts",
-	"packages/coding-agent/src/modes/setup-wizard/scenes/wizard-list.ts",
-	"packages/coding-agent/src/modes/skill-command.ts",
-	"packages/coding-agent/src/modes/theme/before-markdown-theme.ts",
-	"packages/coding-agent/src/modes/utils/interactive-context-helpers.ts",
+	"packages/coding-agent/src/memory/mnemopi/embed-worker.ts",
+	"packages/coding-agent/src/modes/terminal/components/chrome/overlay-box.ts",
+	"packages/coding-agent/src/modes/terminal/components/composer/keybinding-hints.ts",
+	"packages/coding-agent/src/modes/terminal/components/selectors/select-list-mouse-routing.ts",
+	"packages/coding-agent/src/modes/terminal/setup-wizard/scenes/outro.ts",
+	"packages/coding-agent/src/modes/terminal/setup-wizard/scenes/wizard-list.ts",
+	"packages/coding-agent/src/modes/terminal/skill-command.ts",
 	"packages/coding-agent/src/plan-mode/plan-path.ts",
 	"packages/coding-agent/src/secrets/standalone-runtime.ts",
-	"packages/coding-agent/src/session/classifier-tokens.ts",
-	"packages/coding-agent/src/session/side-complete.ts",
 	"packages/coding-agent/src/slash-commands/bare-subcommand.ts",
-	"packages/coding-agent/src/stt/asr-worker.ts",
-	"packages/coding-agent/src/tools/browser/handle-release.ts",
-	"packages/coding-agent/src/tools/browser/tab-worker-entry.ts",
-	"packages/coding-agent/src/tools/irc-render.ts",
-	"packages/coding-agent/src/tools/result-notice.ts",
-	"packages/coding-agent/src/tools/text-search-scope.ts",
-	"packages/coding-agent/src/tts/downloader.ts",
-	"packages/coding-agent/src/tts/tts-worker.ts",
-	"packages/coding-agent/src/tui/width-aware-text.ts",
-	"packages/coding-agent/src/web/scrapers/choosealicense.ts",
-	"packages/coding-agent/src/web/scrapers/cisa-kev.ts",
-	"packages/coding-agent/src/web/scrapers/clojars.ts",
-	"packages/coding-agent/src/web/scrapers/crossref.ts",
-	"packages/coding-agent/src/web/scrapers/discourse.ts",
-	"packages/coding-agent/src/web/scrapers/fdroid.ts",
-	"packages/coding-agent/src/web/scrapers/firefox-addons.ts",
-	"packages/coding-agent/src/web/scrapers/flathub.ts",
-	"packages/coding-agent/src/web/scrapers/jetbrains-marketplace.ts",
-	"packages/coding-agent/src/web/scrapers/lemmy.ts",
-	"packages/coding-agent/src/web/scrapers/musicbrainz.ts",
-	"packages/coding-agent/src/web/scrapers/orcid.ts",
-	"packages/coding-agent/src/web/scrapers/rawg.ts",
-	"packages/coding-agent/src/web/scrapers/searchcode.ts",
-	"packages/coding-agent/src/web/scrapers/snapcraft.ts",
-	"packages/coding-agent/src/web/scrapers/sourcegraph.ts",
-	"packages/coding-agent/src/web/scrapers/spdx.ts",
-	"packages/coding-agent/src/web/scrapers/vscode-marketplace.ts",
-	"packages/coding-agent/src/web/search/providers/jina.ts",
-	"packages/coding-agent/src/web/search/providers/synthetic.ts",
+	"packages/coding-agent/src/speech/stt/asr-worker.ts",
+	"packages/coding-agent/src/speech/tts/downloader.ts",
+	"packages/coding-agent/src/speech/tts/tts-worker.ts",
+	"packages/coding-agent/src/theme/before-markdown-theme.ts",
+	"packages/coding-agent/src/tools/core/result-notice.ts",
+	"packages/coding-agent/src/tools/search/text-search-scope.ts",
+	"packages/coding-agent/src/tools/web/browser/handle-release.ts",
+	"packages/coding-agent/src/tools/web/browser/tab-worker-entry.ts",
+	"packages/coding-agent/src/tools/web/search/providers/jina.ts",
+	"packages/coding-agent/src/tools/web/search/providers/synthetic.ts",
 	"packages/collab-web/src/lib/use-guest.ts",
-	"packages/mnemopi/src/util/ids.ts",
-	"packages/simulations/src/turn-sim/invariants.ts",
 	"packages/stats/src/client/components/range-meta.ts",
 	"packages/stats/src/client/data/charts.ts",
 	"packages/stats/src/client/data/useHashRoute.ts",
 	"packages/stats/src/client/data/useResource.ts",
-	"packages/tui/src/components/cancellable-loader.ts",
-	"packages/tui/src/components/settings-search.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/ansi.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/canvas.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/class-diagram.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/converter.ts",
-	"packages/utils/src/vendor/mermaid-ascii/ascii/draw.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/edge-bundling.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/edge-routing.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/er-diagram.ts",
@@ -352,12 +417,51 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/utils/src/vendor/mermaid-ascii/text-metrics.ts",
 	"packages/utils/src/vendor/mermaid-ascii/xychart/colors.ts",
 	"packages/utils/src/windows-acl.ts",
+	"plugins/mnemopi/src/util/ids.ts",
+	"plugins/web/src/scrapers/choosealicense.ts",
+	"plugins/web/src/scrapers/cisa-kev.ts",
+	"plugins/web/src/scrapers/clojars.ts",
+	"plugins/web/src/scrapers/crossref.ts",
+	"plugins/web/src/scrapers/discourse.ts",
+	"plugins/web/src/scrapers/fdroid.ts",
+	"plugins/web/src/scrapers/firefox-addons.ts",
+	"plugins/web/src/scrapers/flathub.ts",
+	"plugins/web/src/scrapers/jetbrains-marketplace.ts",
+	"plugins/web/src/scrapers/lemmy.ts",
+	"plugins/web/src/scrapers/musicbrainz.ts",
+	"plugins/web/src/scrapers/orcid.ts",
+	"plugins/web/src/scrapers/rawg.ts",
+	"plugins/web/src/scrapers/searchcode.ts",
+	"plugins/web/src/scrapers/snapcraft.ts",
+	"plugins/web/src/scrapers/sourcegraph.ts",
+	"plugins/web/src/scrapers/spdx.ts",
+	"plugins/web/src/scrapers/vscode-marketplace.ts",
 ];
 
 describe("a shipped module arrives with a test that names it", () => {
 	it("scans a corpus large enough for the answer to mean anything", () => {
 		expect(shippedModules().length).toBeGreaterThan(1500);
 		expect(testFiles().length).toBeGreaterThan(3000);
+	});
+
+	// And the corpus reaches every root. A root the walk never opened contributes no module and no
+	// test, so its modules are neither required to be named nor able to name anything, and the
+	// recorded set below stays exactly as it was.
+	it("scans a module and a test under every root the workspace declares", () => {
+		const moduleRoots = new Set(shippedModules().map(file => file.split(path.sep)[0]));
+		const testRoots = new Set(testFiles().map(file => file.split(path.sep)[0]));
+
+		expect([...moduleRoots].sort()).toEqual(typeScriptMemberTopLevels());
+		expect(testRoots.has("contracts")).toBe(true);
+	});
+
+	// A ledger key that no longer names a file excludes nothing, and every module that ledger
+	// records silently reads as named again. The keys are checked against disk rather than trusted.
+	it("excludes only path ledgers that exist", () => {
+		const missing = [...PATH_LEDGERS].filter(file => !fs.existsSync(path.join(REPO_ROOT, file)));
+
+		expect(missing).toEqual([]);
+		expect(PATH_LEDGERS.size).toBe(2);
 	});
 
 	it("has exactly the recorded set of modules that no test names", () => {

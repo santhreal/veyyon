@@ -20,9 +20,9 @@ import {
 	validateProviderMaxInFlightRequests,
 } from "../config/settings";
 import { isSettingPath, retiredBy, SETTINGS_SCHEMA } from "../config/settings-schema";
-import { theme } from "../modes/theme/theme";
-import { initXdg } from "./commands/init-xdg";
+import { theme } from "../theme/theme";
 import { EXIT_USAGE } from "./exit-codes";
+import { initXdg } from "./init-xdg";
 
 // =============================================================================
 // Types

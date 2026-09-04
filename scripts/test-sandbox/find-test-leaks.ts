@@ -4,7 +4,7 @@
 // Usage:
 //   bun scripts/test-sandbox/find-test-leaks.ts packages/coding-agent/test        # a directory
 //   bun scripts/test-sandbox/find-test-leaks.ts packages/utils/test/profiles.test.ts
-//   bun scripts/test-sandbox/find-test-leaks.ts --json packages/tui/test
+//   bun scripts/test-sandbox/find-test-leaks.ts --json hosts/terminal/engine/test
 //
 // Why this exists: a full `bun test` run showed roughly twenty failures that
 // vanished when the same files ran alone, and the count moved between runs

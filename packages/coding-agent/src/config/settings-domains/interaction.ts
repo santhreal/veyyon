@@ -1,6 +1,6 @@
 import { DEFAULT_RELAY_URL, DEFAULT_SHARE_URL } from "@veyyon/wire";
-import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS, STT_MODEL_VALUES } from "../../stt/models";
-import { STT_SUBMIT_TRIGGER_OPTIONS, STT_SUBMIT_TRIGGER_VALUES } from "../../stt/submit-trigger";
+import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS, STT_MODEL_VALUES } from "../../speech/stt/models";
+import { STT_SUBMIT_TRIGGER_OPTIONS, STT_SUBMIT_TRIGGER_VALUES } from "../../speech/stt/submit-trigger";
 
 /** Interaction domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const INTERACTION_SETTINGS = {

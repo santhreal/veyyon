@@ -35,7 +35,7 @@ export * from "./math";
 // NOT re-exported: `./mermaid-ascii`.
 //
 // The vendored diagram renderer is 35 modules, a third of everything this barrel reaches, and it
-// has exactly one consumer (`coding-agent/src/modes/theme/mermaid-cache.ts`). Every file that
+// has exactly one consumer (`coding-agent/src/theme/mermaid-cache.ts`). Every file that
 // imports `@veyyon/utils` for `errorMessage` or `logger` was instantiating a Mermaid parser, and
 // the test runner gives each file its own realm, so that cost is paid per file rather than once:
 // 664 test files import this barrel. Import it as `@veyyon/utils/mermaid-ascii` instead.

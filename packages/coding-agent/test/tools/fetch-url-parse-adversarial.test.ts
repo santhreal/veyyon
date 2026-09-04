@@ -4,7 +4,7 @@ import {
 	htmlNestingExceeds,
 	parseAlternateLinks,
 	parseReadUrlTarget,
-} from "@veyyon/coding-agent/tools/fetch";
+} from "@veyyon/coding-agent/tools/web/fetch";
 
 /**
  * Fetch/read-url pure parsers: URL target extraction, nesting DoS guard,

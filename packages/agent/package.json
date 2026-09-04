@@ -39,6 +39,7 @@
     "@veyyon/catalog": "catalog:",
     "@veyyon/natives": "catalog:",
     "@veyyon/utils": "catalog:",
+    "@veyyon/view": "catalog:",
     "@veyyon/wire": "catalog:",
     "@opentelemetry/api": "catalog:"
   },

@@ -25,8 +25,8 @@
  * number ships.
  */
 import { describe, expect, test } from "bun:test";
-import type { Rule } from "@veyyon/coding-agent/capability/rule";
 import { buildBuiltinRules } from "@veyyon/coding-agent/discovery/builtin-defaults";
+import type { Rule } from "@veyyon/coding-agent/discovery/capability/rule";
 import { buildRuleFromMarkdown } from "@veyyon/coding-agent/discovery/helpers";
 import { TtsrManager, type TtsrMatchContext } from "@veyyon/coding-agent/export/ttsr";
 

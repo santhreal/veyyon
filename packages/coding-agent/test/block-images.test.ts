@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { processFileArguments } from "@veyyon/coding-agent/cli/file-processor";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 import { removeSyncWithRetries } from "@veyyon/utils";
 
 // 1x1 red PNG image as base64 (smallest valid PNG)

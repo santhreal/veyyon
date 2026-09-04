@@ -36,8 +36,8 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { disposeAllVmContexts } from "@veyyon/coding-agent/eval/js/context-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { EvalTool } from "@veyyon/coding-agent/tools/eval";
-import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
+import { ToolAbortError } from "@veyyon/coding-agent/tools/core/tool-errors";
+import { EvalTool } from "@veyyon/coding-agent/tools/shell/eval";
 import { makeToolSession } from "../helpers/tool-session";
 
 function makeSession(): ToolSession {

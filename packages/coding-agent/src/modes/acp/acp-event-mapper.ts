@@ -6,9 +6,9 @@ import type {
 	ToolCallLocation,
 	ToolKind,
 } from "@agentclientprotocol/sdk";
-import type { AgentSessionEvent } from "../../session/agent-session";
-import { resolveToCwd, splitPathAndSel } from "../../tools/path-utils";
-import type { TodoStatus } from "../../tools/todo";
+import type { AgentSessionEvent } from "../../session/agent-session-types";
+import type { TodoStatus } from "../../tools/agent/todo";
+import { resolveToCwd, splitPathAndSel } from "../../tools/core/path-utils";
 import { canonicalizeMessage } from "../../utils/thinking-display";
 
 interface MessageProgress {
@@ -504,7 +504,7 @@ function mergeToolUpdateContent(startContent: ToolCallContent[], resultContent: 
 	if (startContent.length === 0) {
 		return resultContent;
 	}
-	const merged = [...startContent];
+	const merged = startContent.slice();
 	for (const item of resultContent) {
 		if (
 			item.type === "content" &&
@@ -599,7 +599,7 @@ function extractToolLocationsFromResult(result: unknown, cwd?: string): ToolCall
 		return direct;
 	}
 	const seen = new Set(direct.map(loc => loc.path));
-	const locations = [...direct];
+	const locations = direct.slice();
 	for (const entry of perFile) {
 		const raw = extractStringProperty<PathContainer>(entry, "path");
 		if (!raw) continue;
@@ -658,11 +658,11 @@ function terminalToolCallContent(terminalId: string): ToolCallContent {
 function extractToolCallContent(value: unknown, options: AcpEventMapperOptions): ToolCallContent[] {
 	const richContent = extractStructuredToolCallContent(value, options);
 	const detailsImageContent = extractDetailsImageToolCallContent(value, options, richContent);
-	const combinedContent = [...richContent, ...detailsImageContent];
+	const combinedContent = richContent.concat(detailsImageContent);
 	const terminalId = extractTerminalId(value);
 	const content =
 		terminalId && !hasTerminalContent(combinedContent, terminalId)
-			? [...combinedContent, terminalToolCallContent(terminalId)]
+			? combinedContent.concat([terminalToolCallContent(terminalId)])
 			: combinedContent;
 	const fallbackText = extractReadableText(value);
 	if (!fallbackText) {
@@ -671,7 +671,7 @@ function extractToolCallContent(value: unknown, options: AcpEventMapperOptions):
 	if (hasEquivalentTextContent(content, fallbackText)) {
 		return content;
 	}
-	return [...content, textToolCallContent(fallbackText)];
+	return content.concat([textToolCallContent(fallbackText)]);
 }
 
 function extractStructuredToolCallContent(value: unknown, options: AcpEventMapperOptions): ToolCallContent[] {

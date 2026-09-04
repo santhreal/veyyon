@@ -1,9 +1,9 @@
 import { stripVTControlCharacters } from "node:util";
+import { setAnsiPolicy } from "../../hosts/terminal/engine/src/index";
 import { Settings } from "../../packages/coding-agent/src/config/settings";
-import { AgentsSceneController } from "../../packages/coding-agent/src/modes/setup-wizard/scenes/agents";
-import { initTheme, theme } from "../../packages/coding-agent/src/modes/theme/theme";
+import { AgentsSceneController } from "../../packages/coding-agent/src/modes/terminal/setup-wizard/scenes/agents";
 import { loadBundledAgents } from "../../packages/coding-agent/src/task/agents";
-import { setAnsiPolicy } from "../../packages/tui/src/index";
+import { initTheme, theme } from "../../packages/coding-agent/src/theme/theme";
 import { flag, renderWidth } from "./render-args";
 
 const width = renderWidth();

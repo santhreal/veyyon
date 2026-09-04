@@ -19,7 +19,7 @@
  * people to ignore these warnings, which is how the loud path stops working.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { sendUserAgentOverride, type UserAgentOverride } from "@veyyon/coding-agent/tools/browser/launch";
+import { sendUserAgentOverride, type UserAgentOverride } from "@veyyon/coding-agent/tools/web/browser/launch";
 import { logger } from "@veyyon/utils";
 
 const OVERRIDE: UserAgentOverride = {

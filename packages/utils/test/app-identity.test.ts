@@ -14,12 +14,12 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { readFile } from "node:fs/promises";
 import * as path from "node:path";
 import { APP_DIRECTORY_SLUG, APP_DISPLAY_NAME } from "../src/app-identity";
 import { APP_NAME } from "../src/dirs";
 import { moduleSpecifiersIn } from "../src/module-reach";
-
-const PACKAGES = path.resolve(import.meta.dir, "../..");
+import { collectPackageSources, memberFileOf, PACKAGES_DIR } from "./support/package-sources";
 
 describe("the product's two names", () => {
 	/** The path slug, lowercase, with nothing in it a filesystem treats specially. */
@@ -54,17 +54,17 @@ describe("the product's two names", () => {
 });
 
 describe("the product name has one owner per form", () => {
-	const TREES = ["utils/src", "tui/src", "coding-agent/src", "ai/src", "catalog/src"] as const;
-
+	/**
+	 * Every workspace member's production source, keyed the way an allow-list is written. The sweep
+	 * named five package trees under `packages/`, which broke the day `@veyyon/tui` moved to
+	 * `hosts/terminal/engine` and could never have seen a copy of the name in `kernel` or under
+	 * `plugins/`.
+	 */
 	async function sources(): Promise<ReadonlyArray<{ file: string; text: string }>> {
 		const collected: Array<{ file: string; text: string }> = [];
-		for (const tree of TREES) {
-			const root = path.join(PACKAGES, tree);
-			for (const file of new Bun.Glob("**/*.ts").scanSync(root)) {
-				const full = path.join(root, file);
-				if (full === path.join(PACKAGES, "utils/src/app-identity.ts")) continue;
-				collected.push({ file: `${tree}/${file}`, text: await Bun.file(full).text() });
-			}
+		for (const { rel, text } of await collectPackageSources({ dirs: ["src"] })) {
+			if (rel === "utils/src/app-identity.ts") continue;
+			collected.push({ file: rel, text });
 		}
 		return collected;
 	}
@@ -107,7 +107,7 @@ describe("the product name has one owner per form", () => {
 	 * Asserted rather than assumed, so a reader can see the exemption is a decision about a real convention.
 	 */
 	it("leaves the per-provider display-name convention alone", async () => {
-		const discovery = path.join(PACKAGES, "coding-agent/src/discovery");
+		const discovery = path.join(PACKAGES_DIR, "coding-agent/src/discovery");
 		const declarers: string[] = [];
 		for (const file of new Bun.Glob("*.ts").scanSync(discovery)) {
 			const text = await Bun.file(path.join(discovery, file)).text();
@@ -121,13 +121,13 @@ describe("the product name has one owner per form", () => {
 		}
 	});
 
-	/** The non-vacuity twin: the scan reaches all five package trees and every module that held a copy. */
+	/** The non-vacuity twin: the scan reaches every member and every module that held a copy. */
 	it("scans every package that named the product", async () => {
 		const files = (await sources()).map(entry => entry.file);
 		expect(files.length).toBeGreaterThan(500);
 		for (const declarer of [
-			"tui/src/desktop-notify.ts",
-			"tui/src/terminal-capabilities.ts",
+			"hosts/terminal/engine/src/desktop-notify.ts",
+			"hosts/terminal/engine/src/terminal-capabilities.ts",
 			"coding-agent/src/discovery/builtin.ts",
 			"utils/src/dirs.ts",
 		]) {
@@ -137,14 +137,14 @@ describe("the product name has one owner per form", () => {
 
 	/** The positive half: each former declarer reads the display name from the owner. */
 	it("has every former declarer importing the display name", async () => {
-		for (const file of [
-			"tui/src/desktop-notify.ts",
-			"tui/src/terminal-capabilities.ts",
+		for (const key of [
+			"hosts/terminal/engine/src/desktop-notify.ts",
+			"hosts/terminal/engine/src/terminal-capabilities.ts",
 			"coding-agent/src/discovery/builtin.ts",
 		]) {
-			const text = await Bun.file(path.join(PACKAGES, file)).text();
-			expect(text, file).toContain("APP_DISPLAY_NAME");
-			expect(moduleSpecifiersIn(text), file).toContain("@veyyon/utils/app-identity");
+			const text = await readFile(memberFileOf(key), "utf8");
+			expect(text, key).toContain("APP_DISPLAY_NAME");
+			expect(moduleSpecifiersIn(text), key).toContain("@veyyon/utils/app-identity");
 		}
 	});
 
@@ -153,7 +153,7 @@ describe("the product name has one owner per form", () => {
 	 * to read a name.
 	 */
 	it("imports nothing", async () => {
-		const owner = await Bun.file(path.join(PACKAGES, "utils/src/app-identity.ts")).text();
+		const owner = await readFile(path.join(PACKAGES_DIR, "utils/src/app-identity.ts"), "utf8");
 		// The PARSED specifier list, not the characters: the scan this replaced also went red on a doc
 		// comment containing `from "..."`, and on a free `import type`, which costs nothing at runtime.
 		expect(moduleSpecifiersIn(owner)).toEqual([]);

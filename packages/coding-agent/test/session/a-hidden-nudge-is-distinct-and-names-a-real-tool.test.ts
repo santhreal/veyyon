@@ -25,7 +25,7 @@
 import { describe, expect, test } from "bun:test";
 import * as nudges from "../../src/session/nudges";
 import { VERIFICATION_EVIDENCE_REMINDER_TYPE } from "../../src/session/verification-evidence-ledger";
-import { isKnownToolName, TOOL } from "../../src/tools/builtin-names";
+import { isKnownToolName, TOOL } from "../../src/tools/core/builtin-names";
 
 /** Every string export whose name marks it as a `customType` discriminator. */
 const declaredTypes: Array<{ name: string; value: string }> = Object.entries(

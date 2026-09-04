@@ -1,9 +1,9 @@
-import * as imageGen from "../tools/image-gen";
-// The LEAVES that own these, not the `../web/search` barrel. The barrel is the
+import * as imageGen from "../tools/web/image-gen";
+// The LEAVES that own these, not the `../tools/web/search` barrel. The barrel is the
 // search tool: it reaches 426 modules, including the theme engine, and this file
 // applies three settings. `./provider` and `./types` reach four between them.
-import { setExcludedSearchProviders, setPreferredSearchProvider } from "../web/search/provider";
-import { isSearchProviderId, isSearchProviderPreference } from "../web/search/types";
+import { setExcludedSearchProviders, setPreferredSearchProvider } from "../tools/web/search/provider";
+import { isSearchProviderId, isSearchProviderPreference } from "../tools/web/search/types";
 
 interface ProviderGlobalSettings {
 	get(path: "providers.webSearchExclude"): unknown;

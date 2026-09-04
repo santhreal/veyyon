@@ -8,9 +8,9 @@
  *
  *   - `modes/acp/acp-event-mapper.ts` inspects an `unknown` value and asks only whether it
  *     has `role === "assistant"`. Structural, no other requirement.
- *   - `modes/components/status-line/token-rate.ts` additionally requires a numeric
+ *   - `modes/terminal/components/status-line/token-rate.ts` additionally requires a numeric
  *     `timestamp` and a `usage.output`, because it is about to compute a rate.
- *   - `modes/controllers/omfg-rule.ts` additionally requires `content` to be an ARRAY,
+ *   - `modes/terminal/controllers/omfg-rule.ts` additionally requires `content` to be an ARRAY,
  *     because it is about to walk the blocks looking for tool calls.
  *   - `stats/src/parser.ts` additionally requires a non-empty `id`, because a legacy entry
  *     without one violates the `messages.entry_id NOT NULL` constraint downstream.
@@ -30,9 +30,18 @@ import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 
-import { tokensPerSecond } from "../src/modes/components/status-line/token-rate";
+import {
+	MEMBER_ROOTS,
+	MEMBERS,
+	memberRelative,
+	memberRootOf,
+	REPO_ROOT,
+} from "../../utils/test/support/package-sources";
+import { tokensPerSecond } from "../src/modes/terminal/components/status-line/token-rate";
 
-const PACKAGES_DIR = path.join(import.meta.dir, "..", "..");
+// Roots and keys come from the shared owner. This named `packages/`, so a second declaration of a
+// locked name under another root read as no declaration at all. The root view then missed members
+// declared at literal paths, which the member view now reaches at any depth.
 
 /** Every `.ts` file under a package's `src`, skipping dependencies and build output. */
 async function sourceFiles(dir: string, out: string[] = []): Promise<string[]> {
@@ -54,15 +63,21 @@ async function sourceFiles(dir: string, out: string[] = []): Promise<string[]> {
 	return out;
 }
 
-/** Files declaring `function <name>(`, as `<package>/<relative path>`. */
+/** Every member source the lock reads, over every member the workspace declares. */
+async function memberSources(): Promise<string[]> {
+	const found: string[] = [];
+	for (const member of MEMBERS) {
+		found.push(...(await sourceFiles(path.join(REPO_ROOT, member, "src"))));
+	}
+	return found;
+}
+
+/** Files declaring `function <name>(`, keyed as the shared owner keys a member source. */
 async function declarersOf(name: string): Promise<string[]> {
 	const declaration = new RegExp(`^\\s*(?:export )?(?:async )?function ${name}\\s*\\(`, "m");
 	const found: string[] = [];
-	for (const entry of await readdir(PACKAGES_DIR, { withFileTypes: true, encoding: "utf8" })) {
-		if (!entry.isDirectory()) continue;
-		for (const file of await sourceFiles(path.join(PACKAGES_DIR, entry.name, "src"))) {
-			if (declaration.test(await readFile(file, "utf8"))) found.push(path.relative(PACKAGES_DIR, file));
-		}
+	for (const file of await memberSources()) {
+		if (declaration.test(await readFile(file, "utf8"))) found.push(memberRelative(file));
 	}
 	return found.sort();
 }
@@ -76,6 +91,18 @@ describe("the walk this lock depends on", () => {
 	it("finds real declarations and none for an invented name", async () => {
 		expect((await declarersOf("tokensPerSecond")).length).toBeGreaterThan(0);
 		expect(await declarersOf("aFunctionThatDoesNotExist")).toEqual([]);
+	});
+
+	/**
+	 * And the walk opens every root the workspace declares. While it named `packages/` alone, a
+	 * second declaration under any other root was invisible, and "nobody declares this name" was
+	 * true only of the directory it happened to read.
+	 */
+	it("reads a module under every root the workspace declares", async () => {
+		const keys = (await memberSources()).map(file => memberRelative(file));
+
+		expect([...new Set(keys.map(memberRootOf))].sort()).toEqual([...MEMBER_ROOTS].sort());
+		expect(await declarersOf("packEnvelope")).toEqual(["contracts/wire/src/index.ts"]);
 	});
 });
 
@@ -98,11 +125,11 @@ describe("no two modules answer different questions under one name", () => {
 			path.join("coding-agent", "src", "modes", "acp", "acp-event-mapper.ts"),
 		]);
 		expect(await declarersOf("isAssistantMessageWithBlocks")).toEqual([
-			path.join("coding-agent", "src", "modes", "controllers", "omfg-rule.ts"),
+			path.join("coding-agent", "src", "modes", "terminal", "controllers", "omfg-rule.ts"),
 		]);
 		expect(await declarersOf("isLinkableAssistantEntry")).toEqual([path.join("stats", "src", "parser.ts")]);
 		expect(await declarersOf("isRateableAssistantTurn")).toEqual([
-			path.join("coding-agent", "src", "modes", "components", "status-line", "token-rate.ts"),
+			path.join("coding-agent", "src", "modes", "terminal", "components", "status-line", "token-rate.ts"),
 		]);
 	});
 });

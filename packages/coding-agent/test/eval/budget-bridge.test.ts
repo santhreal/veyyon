@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { runEvalBudget } from "@veyyon/coding-agent/eval/budget-bridge";
 import type { Goal, GoalModeState } from "@veyyon/coding-agent/goals/state";
-import type { UsageStatistics } from "@veyyon/coding-agent/session/session-entries";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
+import type { UsageStatistics } from "@veyyon/kernel/session/session-entries";
 import { makeToolSession } from "../helpers/tool-session";
 
 /**

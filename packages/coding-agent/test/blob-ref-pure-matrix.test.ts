@@ -9,7 +9,7 @@ import {
 	isTextBlobRef,
 	parseBlobRef,
 	parseTextBlobRef,
-} from "@veyyon/coding-agent/session/blob-store";
+} from "@veyyon/kernel/session/blob-store";
 
 const HASH = "a".repeat(64);
 

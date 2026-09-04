@@ -32,8 +32,8 @@
  */
 import { describe, expect, it } from "bun:test";
 import type { AgentTool } from "@veyyon/agent-core";
-import { wrapToolWithMetaNotice } from "@veyyon/coding-agent/tools/output-meta";
-import { ToolAbortError, ToolError } from "@veyyon/coding-agent/tools/tool-errors";
+import { wrapToolWithMetaNotice } from "@veyyon/coding-agent/tools/core/output-meta";
+import { ToolAbortError, ToolError } from "@veyyon/coding-agent/tools/core/tool-errors";
 import { isAbortError } from "@veyyon/utils";
 import { type } from "arktype";
 

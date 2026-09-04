@@ -3,7 +3,7 @@
  * Why: fail-closed deny must throw; prompt must not throw.
  */
 import { describe, expect, it } from "bun:test";
-import { requiresApproval } from "../src/tools/approval";
+import { requiresApproval } from "../src/tools/core/approval";
 
 function tool(name: string, tier: "read" | "write" | "exec") {
 	// `tier` is already the narrow ToolTier union; `as const` is invalid on a

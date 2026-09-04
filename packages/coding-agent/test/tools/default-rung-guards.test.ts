@@ -35,7 +35,7 @@ import type { AgentTool, ToolApprovalDecision } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
 import { ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
-import type { SessionToolApprovals } from "@veyyon/coding-agent/tools/approval-modes";
+import type { SessionToolApprovals } from "@veyyon/coding-agent/tools/core/approval-modes";
 import { type } from "arktype";
 
 /** Text the tool returns when it actually runs, so "it ran" is observable. */

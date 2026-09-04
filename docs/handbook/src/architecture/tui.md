@@ -1,27 +1,40 @@
 # TUI integration for extensions and custom tools
 
-The current TUI contract used by `packages/coding-agent` and `packages/tui` for extension UI, custom tool UI, and custom renderers.
+The current TUI contract used by `packages/coding-agent` and `hosts/terminal/engine` for extension UI, custom tool UI, and custom renderers.
 
 ## What this subsystem is
 
 The runtime has two layers:
 
-- **Rendering engine (`packages/tui`)**: differential terminal renderer, input dispatch, focus, overlays, cursor placement.
+- **Rendering engine (`hosts/terminal/engine`)**: differential terminal renderer, input dispatch, focus, overlays, cursor placement.
 - **Integration layer (`packages/coding-agent`)**: mounts extension/custom-tool components, wires keybindings/theme, and restores editor state.
 
 ## Runtime behavior by mode
 
-| Mode                | `ctx.ui.custom(...)` availability | Notes                                                                                                                          |
-| ------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Interactive TUI     | Supported                         | Component is mounted in the editor area or overlay, focused, and must call `done(result)` to resolve.                          |
-| Background/headless | Not interactive                   | UI context is no-op (`hasUI === false`).                                                                                       |
-| RPC mode            | Not mounted                       | `custom()` is implemented as unsupported UI and returns `undefined as never`; do not depend on interactive UI in RPC handlers. |
+| Mode                | `ctx.ui.terminal` | Notes                                                                                                                                |
+| ------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Interactive TUI     | Present           | `terminal.custom(...)` mounts the component in the editor area or an overlay, focuses it, and resolves when it calls `done(result)`. |
+| Background/headless | Undefined         | The UI context is a no-op (`hasUI === false`).                                                                                       |
+| RPC mode            | Undefined         | Screen takeover needs a live `TUI`, which RPC does not have.                                                                         |
 
-If your extension/tool can run in non-interactive mode, guard with `ctx.hasUI` / `pi.hasUI`.
+Screen takeover is a capability the host reports, not a method every host declares.
+`ctx.ui.terminal` is `undefined` wherever there is no terminal, so an extension that
+needs it checks for it and states what it cannot do:
+
+```ts
+const terminal = ctx.ui.terminal;
+if (!terminal) {
+	ctx.ui.notify("This picker needs an interactive terminal.", "warning");
+	return;
+}
+const picked = await terminal.custom<string | undefined>((tui, theme, keybindings, done) => {
+	// ...
+});
+```
 
 ## Core component contract (`@veyyon/tui`)
 
-`packages/tui/src/tui.ts` defines:
+`hosts/terminal/engine/src/tui.ts` defines:
 
 ```ts
 export interface Component {
@@ -58,7 +71,8 @@ Your `render(width)` output must be terminal-safe:
 Minimal pattern:
 
 ```ts
-import { replaceTabs, truncateToWidth } from "@veyyon/tui";
+import { truncateToWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 
 render(width: number): readonly string[] {
   return this.lines.map(line => truncateToWidth(replaceTabs(line), width));
@@ -135,11 +149,12 @@ Custom tools typically use the same UI entrypoint via the factory-scoped `pi.ui`
 
 ```ts
 async execute(toolCallId, params, onUpdate, ctx, signal) {
-  if (!pi.hasUI) {
+  const terminal = pi.ui.terminal;
+  if (!terminal) {
     return { content: [{ type: "text", text: "UI unavailable" }] };
   }
 
-  const picked = await pi.ui.custom<string | undefined>((tui, theme, done) => {
+  const picked = await terminal.custom<string | undefined>((tui, theme, keybindings, done) => {
     const component = new MyPickerComponent(done, signal);
     return component;
   });
@@ -150,7 +165,7 @@ async execute(toolCallId, params, onUpdate, ctx, signal) {
 
 ## 3) Custom tool call/result renderers
 
-Custom tools and extension tools can return components from:
+Custom tools and extension tools define two optional renderers:
 
 - `renderCall(args, options, theme)`
 - `renderResult(result, options, theme, args?)`
@@ -161,7 +176,8 @@ Custom tools and extension tools can return components from:
 - `isPartial: boolean`
 - `spinnerFrame?: number`
 
-These renderers are mounted by `ToolExecutionComponent`.
+Both return `HostView`, which is whatever the active host draws. In the terminal
+that is a `@veyyon/tui` `Component`, and `ToolExecutionComponent` mounts it.
 
 ## Lifecycle and cancellation
 
@@ -187,12 +203,10 @@ return loader;
 
 ```ts
 import type { Component } from "@veyyon/tui";
-import {
-  SelectList,
-  matchesKey,
-  replaceTabs,
-  truncateToWidth,
-} from "@veyyon/tui";
+import { SelectList } from "@veyyon/tui";
+import { matchesKey } from "@veyyon/utils/keys";
+import { truncateToWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 import {
   getSelectListTheme,
   type ExtensionAPI,
@@ -238,9 +252,10 @@ export default function extension(pi: ExtensionAPI): void {
   pi.registerCommand("pick-model", {
     description: "Pick a model profile",
     handler: async (_args, ctx) => {
-      if (!ctx.hasUI) return;
+      const terminal = ctx.ui.terminal;
+      if (!terminal) return;
 
-      const selected = await ctx.ui.custom<string | undefined>(
+      const selected = await terminal.custom<string | undefined>(
         (tui, theme, keybindings, done) => {
           const items = [
             { value: "fast", label: theme.fg("accent", "Fast") },
@@ -259,12 +274,12 @@ export default function extension(pi: ExtensionAPI): void {
 
 ## Key implementation files
 
-- `packages/tui/src/tui.ts`: `Component`, `Focusable`, cursor marker, focus, overlay, input dispatch.
-- `packages/tui/src/utils.ts`: width/truncation/sanitization primitives.
-- `packages/tui/src/keys.ts` / `keybindings.ts`: key parsing and configurable action mapping.
-- `packages/coding-agent/src/modes/controllers/extension-ui-controller.ts`: interactive mounting/unmounting for extension/hook/custom-tool UI.
+- `hosts/terminal/engine/src/tui.ts`: `Component`, `Focusable`, cursor marker, focus, overlay, input dispatch.
+- `packages/utils/src/width.ts`: width/truncation/sanitization primitives.
+- `packages/utils/src/keys.ts` / `keybindings.ts`: key parsing and configurable action mapping.
+- `packages/coding-agent/src/modes/terminal/controllers/extension-ui-controller.ts`: interactive mounting/unmounting for extension/hook/custom-tool UI.
 - `packages/coding-agent/src/extensibility/extensions/types.ts`: extension UI and renderer contracts.
 - `packages/coding-agent/src/extensibility/hooks/types.ts`: hook UI contract (legacy custom signature).
 - `packages/coding-agent/src/extensibility/custom-tools/types.ts`: custom tool execute/render contracts.
-- `packages/coding-agent/src/modes/components/tool-execution.ts`: mounting `renderCall`/`renderResult` components and partial-state options.
-- `packages/coding-agent/src/tools/context.ts`: tool UI context propagation (`hasUI`, `ui`).
+- `packages/coding-agent/src/modes/terminal/components/transcript/tool-execution.ts`: mounting `renderCall`/`renderResult` components and partial-state options.
+- `packages/coding-agent/src/tools/core/context.ts`: tool UI context propagation (`hasUI`, `ui`).

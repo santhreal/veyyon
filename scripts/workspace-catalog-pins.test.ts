@@ -27,8 +27,9 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import * as path from "node:path";
+import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
 
@@ -50,18 +51,23 @@ function readManifest(file: string): PackageManifest {
 
 const catalog: Record<string, string> = readManifest(path.join(repoRoot, "package.json")).workspaces?.catalog ?? {};
 
-/** Every workspace package under `packages/`, by its manifest path. */
+/**
+ * Every workspace member manifest, across the members the root manifest declares.
+ *
+ * This read `packages/` alone. `contracts/wire` and `contracts/view` both declare `@types/bun`,
+ * which is catalogued, so a literal range written there was a second place to change the version
+ * and this gate did not look at it. The root view was in turn blind to literal paths
+ * (`natives/bridge/bindings`, `python/veybot/web`), which `typeScriptMembers()` now reaches.
+ */
 function workspaceManifests(): Array<{ rel: string; manifest: PackageManifest }> {
-	const packagesDir = path.join(repoRoot, "packages");
 	const found: Array<{ rel: string; manifest: PackageManifest }> = [];
-	for (const entry of readdirSync(packagesDir, { withFileTypes: true })) {
-		if (!entry.isDirectory()) continue;
-		const file = path.join(packagesDir, entry.name, "package.json");
+	for (const member of typeScriptMembers()) {
+		const rel = `${member}/package.json`;
+		const file = path.join(repoRoot, rel);
 		try {
-			found.push({ rel: `packages/${entry.name}/package.json`, manifest: readManifest(file) });
+			found.push({ rel, manifest: readManifest(file) });
 		} catch {
-			// `packages/` holds one non-package entry (the shared tsconfig), which has no manifest.
-			// Skipping it is correct here; ORG-XP-5 owns whether it should live there at all.
+			// A non-existent manifest is skipped.
 		}
 	}
 	return found;
@@ -80,6 +86,14 @@ function isLiteralVersion(spec: string): boolean {
 const manifests = workspaceManifests();
 
 describe("the catalog is the only place a shared version is written", () => {
+	it("reads a manifest under every root the workspace declares", () => {
+		// A root the sweep never opened has no literal pin as far as this gate is concerned, which is
+		// the same green as a root with none. Pinned by equality so a new root records a decision.
+		const roots = new Set(manifests.map(entry => entry.rel.split("/")[0]));
+
+		expect([...roots].sort()).toEqual(typeScriptMemberTopLevels());
+	});
+
 	it("has no package pinning a catalogued dependency with a literal range", () => {
 		// The lock. A literal that agrees with the catalog today is the exact shape the four
 		// migrated pins had, so agreement is not a defence: the offence is having a second place

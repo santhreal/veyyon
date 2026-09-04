@@ -5,7 +5,7 @@
  * pull the account id out of it". `wire/codex.ts` had `JWT_CLAIM_PATH` and `getCodexAccountId`;
  * `ai/registry/oauth/openai-codex.ts` had `JWT_CLAIM_PATH` again with its own extractor;
  * `ai/usage/openai-codex.ts` had the same URI under a third name, `JWT_AUTH_CLAIM`;
- * `coding-agent/web/search/providers/codex.ts` had a fourth copy while ALREADY importing three other constants
+ * `coding-agent/tools/web/search/providers/codex.ts` had a fourth copy while ALREADY importing three other constants
  * from the owner in the same import statement; and `ai/auth-credential-rows.ts` spelled both URIs as bare
  * literals, which is the copy a grep for any of the three constant names never finds.
  *
@@ -250,7 +250,7 @@ describe("the Codex claim namespaces have one owner", () => {
 			"../../ai/src/registry/oauth/openai-codex.ts",
 			"../../ai/src/usage/openai-codex.ts",
 			"../../ai/src/auth-credential-rows.ts",
-			"../../coding-agent/src/web/search/providers/codex.ts",
+			"../../coding-agent/src/tools/web/search/providers/codex.ts",
 		]) {
 			expect(files).toContain(declarer);
 		}
@@ -262,7 +262,7 @@ describe("the Codex claim namespaces have one owner", () => {
 			["../../ai/src/registry/oauth/openai-codex.ts", "readCodexTokenIdentity"],
 			["../../ai/src/usage/openai-codex.ts", "getCodexAccountId"],
 			["../../ai/src/auth-credential-rows.ts", "readCodexClaimsFromPayload"],
-			["../../coding-agent/src/web/search/providers/codex.ts", "getCodexAccountId"],
+			["../../coding-agent/src/tools/web/search/providers/codex.ts", "getCodexAccountId"],
 		];
 		for (const [relative, symbol] of expected) {
 			const text = await Bun.file(path.resolve(import.meta.dir, relative)).text();

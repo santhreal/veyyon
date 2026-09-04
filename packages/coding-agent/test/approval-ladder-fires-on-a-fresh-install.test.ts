@@ -25,8 +25,8 @@
  */
 import { describe, expect, it } from "bun:test";
 import { getDefault } from "@veyyon/coding-agent/config/settings-schema";
-import type { ApprovalMode, ToolApprovalDecision } from "@veyyon/coding-agent/tools/approval";
-import { resolveApproval, resolveEffectiveApprovalMode } from "@veyyon/coding-agent/tools/approval";
+import type { ApprovalMode, ToolApprovalDecision } from "@veyyon/coding-agent/tools/core/approval";
+import { resolveApproval, resolveEffectiveApprovalMode } from "@veyyon/coding-agent/tools/core/approval";
 
 /** The rung a fresh install runs on: read from the schema, never from the ladder's own constant. */
 function freshInstallMode(): ApprovalMode {

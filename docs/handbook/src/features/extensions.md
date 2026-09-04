@@ -8,11 +8,11 @@ Extension runtime modules:
 - `src/extensibility/extensions/runner.ts`
 - `src/extensibility/extensions/wrapper.ts`
 - `src/extensibility/extensions/index.ts`
-- `src/modes/controllers/extension-ui-controller.ts`
+- `src/modes/terminal/controllers/extension-ui-controller.ts`
 
 For discovery paths and filesystem loading rules, see [`extension-loading.md`](../../../internal/extension-loading.md).
 
-For packaged user-facing extension CLIs/features such as `packages/swarm-extension`, see [`user-facing-packages.md`](../../../internal/user-facing-packages.md).
+For packaged user-facing extension CLIs/features such as `plugins/mode-swarm`, see [`user-facing-packages.md`](../../../internal/user-facing-packages.md).
 
 ## What an extension is
 
@@ -320,32 +320,33 @@ Supported:
 - input editing: `setEditorText`, `getEditorText`, `pasteToEditor`, `editor`
 - autocomplete stacking: `addAutocompleteProvider(factory)` wraps the built-in editor provider (factories apply in registration order and re-apply on every slash-command refresh)
 - terminal title and working message (`setTitle`, `setWorkingMessage`)
-- notifications/status/editor text/terminal input/custom overlays
+- notifications, status, terminal input
 - theme listing/loading by name (`setTheme` supports string names)
 - tools expanded toggle
+- `setWidget(key, lines, options)` for text widgets above or below the editor (`placement: "aboveEditor" | "belowEditor"`; content capped at 10 lines)
 
-Current no-op methods in this controller:
+`ctx.ui.terminal` is present here, so this mode also offers screen takeover:
 
-- `setFooter`
-- `setHeader`
-
-`setEditorComponent` is wired to the live editor (`ctx.setEditorComponent(factory)`). `setWidget` renders real widget components above or below the editor via `setHookWidget(...)` (`placement: "aboveEditor" | "belowEditor"`; string-array content capped at 10 lines).
+- `terminal.custom(factory, options)` mounts a component with keyboard focus, as an overlay when `options.overlay` is set
+- `terminal.setWidgetComponent(key, factory, options)` puts a component in the same widget slot `setWidget` writes text into
+- `terminal.setEditorComponent(factory)` replaces the live editor
 
 ### RPC mode (`rpc-mode.ts`)
 
 `ctx.ui` is backed by RPC `extension_ui_request` events:
 
 - dialog methods (`select`, `confirm`, `input`, `editor`) round-trip to client responses
-- fire-and-forget methods emit requests (`notify`, `setStatus`, `setWidget` for string arrays, `setEditorText`; `setTitle` emits only when `VEYYON_RPC_EMIT_TITLE=1`)
+- fire-and-forget methods emit requests (`notify`, `setStatus`, `setWidget`, `setEditorText`; `setTitle` emits only when `VEYYON_RPC_EMIT_TITLE=1`)
 
-Unsupported/no-op in RPC implementation:
+`ctx.ui.terminal` is `undefined`: RPC has no live `TUI` to hand a component factory.
+
+Unsupported or inert in the RPC implementation:
 
 - `onTerminalInput`
-- `custom`
-- `setFooter`, `setHeader`, `setEditorComponent`, `addAutocompleteProvider`
+- `addAutocompleteProvider`
 - `setWorkingMessage`
 - theme switching/loading (`setTheme` returns failure)
-- tool expansion controls are inert
+- tool expansion controls
 
 ### Print/headless/subagent paths
 
@@ -383,7 +384,7 @@ pi.on("session_start", async (_event, ctx) => {
 
 ```ts
 pi.registerMessageRenderer("my-type", (message, { expanded }, theme) => {
-  // return pi-tui Component
+  // return whatever the host draws; under the terminal, a @veyyon/tui Component
 });
 ```
 

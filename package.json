@@ -12,7 +12,13 @@
 	},
 	"workspaces": {
 		"packages": [
+			"contracts/*",
+			"hosts/gui",
+			"hosts/terminal/engine",
+			"kernel",
+			"natives/bridge/bindings",
 			"packages/*",
+			"plugins/*",
 			"python/veybot/web"
 		],
 		"catalog": {
@@ -32,12 +38,15 @@
 			"@veyyon/ai": "1.3.0",
 			"@veyyon/catalog": "1.3.0",
 			"@veyyon/coding-agent": "1.3.0",
+			"@veyyon/kernel": "1.3.0",
 			"@veyyon/mnemopi": "1.3.0",
 			"@veyyon/natives": "1.3.0",
 			"@veyyon/tui": "1.3.0",
 			"@veyyon/utils": "1.3.0",
 			"@veyyon/wire": "1.3.0",
+			"@veyyon/view": "1.3.0",
 			"@veyyon/tool-render": "1.3.0",
+			"@veyyon/web": "1.3.0",
 			"@opentelemetry/api": "^1.9.1",
 			"@opentelemetry/context-async-hooks": "^2.7.1",
 			"@opentelemetry/exporter-trace-otlp-proto": "^0.220.0",
@@ -114,7 +123,7 @@
 		"dev:timing": "VEYYON_TIMING=x bun --cwd=packages/coding-agent --preload ../utils/src/module-timer.ts src/cli.ts",
 		"claude:trace": "bun scripts/claude-trace.ts",
 		"build": "bun run --workspaces --if-present build",
-		"build:native": "bun --cwd=packages/natives run build",
+		"build:native": "bun --cwd=natives/bridge/bindings run build",
 		"test": "bash scripts/test-sandbox/run.sh bun scripts/ci-test-ts.ts local",
 		"test:ts": "bash scripts/test-sandbox/run.sh bun scripts/ci-test-ts.ts local-ts",
 		"test:scripts": "bash scripts/test-sandbox/run.sh bun scripts/ci-test-ts.ts scripts",
@@ -203,8 +212,8 @@
 		"gen:mupdf:reset": "bun --cwd=packages/coding-agent run gen:mupdf:reset",
 		"gen:stats": "bun --cwd=packages/stats run gen:stats",
 		"gen:stats:reset": "bun --cwd=packages/stats run gen:stats:reset",
-		"gen:native": "bun --cwd=packages/natives run gen:native",
-		"gen:native:reset": "bun --cwd=packages/natives run gen:native:reset",
+		"gen:native": "bun --cwd=natives/bridge/bindings run gen:native",
+		"gen:native:reset": "bun --cwd=natives/bridge/bindings run gen:native:reset",
 		"check-spoofed-versions": "bun scripts/check-spoofed-versions.ts"
 	},
 	"devDependencies": {

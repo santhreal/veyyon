@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, setSystemTime, vi } from "bun:test";
 import type { AuthStorage, CredentialOriginKind, FetchImpl } from "@veyyon/ai";
-import { searchXAI, XAIProvider } from "@veyyon/coding-agent/web/search/providers/xai";
-import { SearchProviderError } from "@veyyon/coding-agent/web/search/types";
+import { searchXAI, XAIProvider } from "@veyyon/coding-agent/tools/web/search/providers/xai";
+import { SearchProviderError } from "@veyyon/coding-agent/tools/web/search/types";
 
 type CapturedRequest = {
 	url: string;

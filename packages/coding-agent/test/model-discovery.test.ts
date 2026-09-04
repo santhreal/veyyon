@@ -11,7 +11,7 @@ import type { OpenAICompat } from "@veyyon/catalog/types";
 import { kNoAuth } from "@veyyon/coding-agent/config/auth-state";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest } from "@veyyon/coding-agent/config/settings";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 describe("ModelRegistry runtime discovery", () => {

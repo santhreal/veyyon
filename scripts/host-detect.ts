@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 
 /**
  * Tri-state AVX2 detection, matching the shipped runtime loader's
- * `detectAvx2Support` (packages/natives/native/loader-state.js). Kept as a
+ * `detectAvx2Support` (natives/bridge/bindings/native/loader-state.js). Kept as a
  * separate implementation on purpose — this is a build-time script and that is
  * shipped runtime `.js`, so neither should import the other across that
  * boundary — but the SEMANTICS are identical and must stay in lock-step:

@@ -9,7 +9,7 @@ import {
 	type AuthGatewayCommandArgs,
 	runAuthGatewayCommand,
 } from "../cli/auth-gateway-cli";
-import { initTheme } from "../modes/theme/theme";
+import { initTheme } from "../theme/theme";
 
 export default class AuthGateway extends Command {
 	static description = "Run an auth-gateway forward proxy backed by the configured broker";
@@ -18,7 +18,7 @@ export default class AuthGateway extends Command {
 		action: Args.string({
 			description: "Sub-command",
 			required: false,
-			options: [...AUTH_GATEWAY_ACTIONS],
+			options: AUTH_GATEWAY_ACTIONS.slice(),
 		}),
 	};
 

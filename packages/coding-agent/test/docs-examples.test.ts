@@ -8,15 +8,18 @@ import { describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { createAutoresearchExtension } from "@veyyon/coding-agent/autoresearch";
 import { parseArgs } from "@veyyon/coding-agent/cli/args";
 import { isSubcommand } from "@veyyon/coding-agent/cli-commands";
 import { KEYBINDINGS } from "@veyyon/coding-agent/config/keybindings";
 import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
+import type { ExtensionAPI, ExtensionFactory } from "@veyyon/coding-agent/extensibility/extensions";
 import { validateServerConfig } from "@veyyon/coding-agent/mcp/config";
 import { MCP_CONFIG_SCHEMA_URL } from "@veyyon/coding-agent/mcp/types";
 import { BUILTIN_SLASH_COMMAND_DEFS } from "@veyyon/coding-agent/slash-commands/builtin-registry";
 import { BUILTIN_TOOLS, HIDDEN_TOOLS } from "@veyyon/coding-agent/tools";
 import { YAML } from "bun";
+import { workspaceMembers } from "../../../scripts/workspace-layout";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 
@@ -369,28 +372,54 @@ describe("docs examples — documented env vars are consumed in source", () => {
 		return name.replace(/^VEYYON_/, "");
 	}
 
-	/** Every VEYYON_ env-var suffix any source file reads or writes. */
+	/**
+	 * Every VEYYON_ env-var suffix any source file reads or writes.
+	 *
+	 * The scan takes the MEMBER list, not a list of root directories. A root list said
+	 * `["packages", "*\/src/**"]` and `["crates", "*\/src/**"]`, which held only while every member sat
+	 * one level under one of two roots. The Rust tree is grouped by purpose now (`natives/search/walker`),
+	 * so `crates` resolved to nothing, `existsSync` skipped it in silence, and the gate reported that
+	 * `VEYYON_WALK_WORKERS` -- read in `natives/search/walker/src/cache.rs` -- was documented and never
+	 * read. A root a scan names and cannot read is a rule that covers less than it claims, so the roots
+	 * that are not members are asserted to exist and to contribute, rather than skipped.
+	 */
 	function collectSourceEnvSuffixes(): Set<string> {
 		const suffixes = new Set<string>();
-		const globs: Array<[string, string]> = [
-			["packages", "*/src/**/*.{ts,tsx}"],
-			["packages", "*/scripts/**/*.ts"],
-			["packages", "*/test/**/*.{ts,tsx}"],
-			["packages", "*/native/**/*.js"],
-			["crates", "*/src/**/*.rs"],
+		/** Where a TypeScript member keeps the files that may read an env var. */
+		const typeScriptPatterns = ["src/**/*.{ts,tsx}", "scripts/**/*.ts", "test/**/*.{ts,tsx}", "native/**/*.js"];
+		/** Directories that hold source but declare no manifest, so no member names them. */
+		const looseRoots: Array<[string, string]> = [
 			["scripts", "**/*.{ts,sh,ps1}"],
 			["website", "**/*.{mjs,sh,ps1}"],
 			["python", "**/*.{py,sh,yml,yaml}"],
 		];
-		for (const [dir, pattern] of globs) {
+
+		const scans: Array<[string, string]> = [];
+		for (const member of workspaceMembers()) {
+			const patterns = member.manifest === "package.json" ? typeScriptPatterns : ["**/*.rs"];
+			for (const pattern of patterns) scans.push([member.directory, pattern]);
+		}
+		scans.push(...looseRoots);
+
+		const readByRoot = new Map<string, number>();
+		for (const [dir, pattern] of scans) {
 			const root = path.join(REPO_ROOT, dir);
-			if (!fs.existsSync(root)) continue;
+			if (!fs.existsSync(root)) {
+				throw new Error(`the env-var scan names ${dir}, which does not exist`);
+			}
+			readByRoot.set(dir, readByRoot.get(dir) ?? 0);
 			for (const rel of new Bun.Glob(pattern).scanSync({ cwd: root })) {
 				if (rel.includes("node_modules/")) continue;
+				readByRoot.set(dir, (readByRoot.get(dir) ?? 0) + 1);
 				const text = fs.readFileSync(path.join(root, rel), "utf-8");
 				for (const match of text.matchAll(ENV_NAME_RE)) {
 					suffixes.add(envSuffix(match[0]));
 				}
+			}
+		}
+		for (const [dir, pattern] of looseRoots) {
+			if ((readByRoot.get(dir) ?? 0) === 0) {
+				throw new Error(`the env-var scan read no file under ${dir} matching ${pattern}`);
 			}
 		}
 		return suffixes;
@@ -436,7 +465,7 @@ describe("docs examples — documented env vars are consumed in source", () => {
 	});
 });
 
-describe("docs examples — documented slash commands exist in the builtin registry", () => {
+describe("docs examples — documented slash commands exist in the shipped registry", () => {
 	// A backticked single-token `/name` (optionally with subcommand/arg words
 	// after it). Multi-segment paths (`/etc/veyyon/skills`) never match because
 	// a second `/` breaks the token; the lookbehind stops a closing backtick
@@ -466,31 +495,45 @@ describe("docs examples — documented slash commands exist in the builtin regis
 		);
 		for (const m of loaderSrc.matchAll(/path: "bundled:([a-z][a-z0-9_-]*)"/g)) registered.add(m[1]);
 	}
-	// Commands an inline extension registers (`/autoresearch`, `/autoswarm`) are
-	// reachable from the composer and documented like any other, but they carry
-	// their own handler and so are declared where that handler lives rather than
-	// in the builtin table. Sweep the source for the registration call, the way
-	// the bundled list above is swept, so a new one is covered on the day it
-	// lands.
+	// Commands a bundled extension registers (`/autoresearch`, `/autoswarm`) are
+	// as reachable as a builtin, and the handbook documents them the same way.
+	// Collect them by running each bundled factory against a recording API, so a
+	// command added or renamed there is covered without a list here.
+	const fromBundledFactory = new Set<string>();
 	{
-		const listed = spawnSync("git", ["ls-files", "packages/coding-agent/src/**/*.ts"], {
-			cwd: REPO_ROOT,
-			encoding: "utf-8",
-			maxBuffer: 64 * 1024 * 1024,
-		});
-		if (listed.status !== 0) throw new Error(`git ls-files failed: ${listed.stderr}`);
-		for (const file of listed.stdout.split("\n").filter(Boolean)) {
-			const source = fs.readFileSync(path.join(REPO_ROOT, file), "utf-8");
-			if (!source.includes("registerCommand(")) continue;
-			for (const m of source.matchAll(/registerCommand\(\s*"([a-z][a-z0-9_-]*)"/g)) registered.add(m[1]);
-		}
+		const record = (factory: ExtensionFactory): void => {
+			const api = {
+				appendEntry(): void {},
+				exec: async () => ({ code: 0, stderr: "", stdout: "" }),
+				on(): void {},
+				registerCommand(name: string): void {
+					registered.add(name);
+					fromBundledFactory.add(name);
+				},
+				registerShortcut(): void {},
+				registerTool(): void {},
+				sendMessage(): void {},
+				sendUserMessage(): void {},
+			} as unknown as ExtensionAPI;
+			factory(api);
+		};
+		// `sdk.ts` pushes exactly this factory into `inlineExtensions`; a second
+		// bundled extension that registers commands is added here too.
+		record(createAutoresearchExtension);
 	}
 
+	/**
+	 * Anti-vacuity, per source. A scan that silently matched nothing would leave
+	 * `registered` short and report a correct handbook page as a missing command,
+	 * which is the failure this block was written to fix -- so the scan is proved
+	 * alive here rather than diagnosed from a docs failure later.
+	 */
 	it("the registry is alive", () => {
 		expect(registered.size).toBeGreaterThan(30);
+		expect(fromBundledFactory.size).toBeGreaterThan(0);
 	});
 
-	it("every backticked /command in the handbook is a registered builtin (or alias)", () => {
+	it("every backticked /command in the handbook is a builtin, an alias, or a bundled-extension command", () => {
 		const failures: string[] = [];
 		let mentions = 0;
 		for (const file of markdownFiles) {
@@ -504,7 +547,7 @@ describe("docs examples — documented slash commands exist in the builtin regis
 				for (const match of lines[i].matchAll(SLASH_MENTION_RE)) {
 					mentions++;
 					if (!registered.has(match[1])) {
-						failures.push(`${file}:${i + 1}: slash command /${match[1]} is not in the builtin registry`);
+						failures.push(`${file}:${i + 1}: slash command /${match[1]} is not a shipped command`);
 					}
 				}
 			}
@@ -588,13 +631,21 @@ describe("docs examples — inline dotted settings mentions are registered paths
 	 */
 	const HOSTNAME_RE = /\.(?:com|org|net|io|dev|sh|app|ai|co|gov|edu|local)$/;
 	/**
-	 * cgroup v2 control files share the dotted shape, and `memory` is a settings
-	 * root, so `memory.max` — the kernel file the memory cap is written to — was
-	 * reported as an unregistered setting. The names come from the kernel, not
-	 * from veyyon, so they are listed rather than pattern-matched: a token that
-	 * merely starts with `memory.` is still checked.
+	 * cgroup v2 control-file names share the dotted shape, and one of them collides with a real
+	 * settings root.
+	 *
+	 * `memory` IS a settings root (`memory.backend`), so the resource-limits page saying
+	 * `memoryLimitGb` is enforced by writing `memory.max` on the group was reported as an
+	 * unregistered settings path. The page names a kernel interface, not a veyyon setting; its
+	 * siblings `cpu.max`, `pids.max` and `io.stat` only pass because those roots happen not to be
+	 * settings roots. The exact file set is pinned, so a token that merely looks like one is still
+	 * checked.
 	 */
-	const CGROUP_CONTROL_FILES = new Set([
+	const CGROUP_CONTROL = new Set([
+		"cpu.max",
+		"cpu.stat",
+		"io.max",
+		"io.stat",
 		"memory.current",
 		"memory.high",
 		"memory.max",
@@ -602,6 +653,8 @@ describe("docs examples — inline dotted settings mentions are registered paths
 		"memory.stat",
 		"memory.swap.current",
 		"memory.swap.max",
+		"pids.max",
+		"pids.current",
 	]);
 	const NEGATION_RE = /\bnot?\s+(?:a\s+)?`|\*\*not\*\*|does not exist|not shipped|never existed|removed|is gone/i;
 
@@ -680,7 +733,7 @@ describe("docs examples — inline dotted settings mentions are registered paths
 					const token = match[1];
 					if (FILE_EXT_RE.test(token)) continue;
 					if (HOSTNAME_RE.test(token)) continue;
-					if (CGROUP_CONTROL_FILES.has(token)) continue;
+					if (CGROUP_CONTROL.has(token)) continue;
 					if (!schemaRoots.has(token.split(".")[0])) continue;
 					mentions++;
 					if (!isKnownDotted(token)) {

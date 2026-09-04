@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { buildNoImageResult } from "@veyyon/coding-agent/tools/image-gen";
+import { buildNoImageResult } from "@veyyon/coding-agent/tools/web/image-gen";
 
 /**
  * Sibling of `set-cwd-confirmation.test.ts`, guarding the same class of defect

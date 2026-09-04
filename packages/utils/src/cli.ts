@@ -366,7 +366,7 @@ export abstract class Command {
 				if (val !== undefined && desc.options && !Array.isArray(val)) {
 					if (!desc.options.includes(val as string)) {
 						throw new CliUsageError(
-							`Expected --${name} to be one of: ${[...desc.options].join(", ")}; got "${val}"`,
+							`Expected --${name} to be one of: ${desc.options.slice().join(", ")}; got "${val}"`,
 						);
 					}
 				}
@@ -400,7 +400,7 @@ export abstract class Command {
 			if (argVal !== undefined && desc.options && typeof argVal === "string") {
 				if (!desc.options.includes(argVal)) {
 					throw new CliUsageError(
-						`Expected ${argName} to be one of: ${[...desc.options].join(", ")}; got "${argVal}"`,
+						`Expected ${argName} to be one of: ${desc.options.slice().join(", ")}; got "${argVal}"`,
 					);
 				}
 			}
@@ -687,7 +687,7 @@ function renderCommandBody(lines: string[], Cmd: CommandCtor): void {
 		for (const [index, [, desc]] of argEntries.entries()) {
 			const parts: string[] = [];
 			if (desc.description) parts.push(desc.description);
-			if (desc.options) parts.push(`(${[...desc.options].join("|")})`);
+			if (desc.options) parts.push(`(${desc.options.slice().join("|")})`);
 			pushWrapped(lines, lefts[index] ?? "", parts.join(" "), column, width);
 		}
 		lines.push("");
@@ -710,7 +710,7 @@ function renderCommandBody(lines: string[], Cmd: CommandCtor): void {
 				desc.kind === "boolean"
 					? ""
 					: desc.options
-						? `=<${[...desc.options].join("|")}>`
+						? `=<${desc.options.slice().join("|")}>`
 						: desc.kind === "integer"
 							? "=<int>"
 							: "=<value>";

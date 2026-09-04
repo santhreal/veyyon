@@ -12,7 +12,7 @@
  * durable summary says what the retries cost once they are over.
  */
 import * as AIError from "@veyyon/ai/error";
-import { previewLine } from "../tools/render-utils";
+import { previewLine } from "../tools/core/render-utils";
 
 /**
  * Plain-language names for the error classes worth showing mid-retry.

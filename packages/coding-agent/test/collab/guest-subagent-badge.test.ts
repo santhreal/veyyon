@@ -11,8 +11,8 @@ import { CollabSocket } from "@veyyon/coding-agent/collab/relay-client";
 import {
 	countRunningSubagentBadgeAgents,
 	getRunningSubagentBadgeRegistry,
-} from "@veyyon/coding-agent/modes/running-subagent-badge";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+} from "@veyyon/coding-agent/modes/terminal/running-subagent-badge";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { installInMemoryRelay, uninstallInMemoryRelay } from "./helpers/in-memory-relay";
 

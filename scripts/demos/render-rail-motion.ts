@@ -22,14 +22,15 @@
  * motion plays over.
  */
 
-import { theme } from "../../packages/coding-agent/src/modes/theme/theme";
-import { bashToolRenderer } from "../../packages/coding-agent/src/tools/bash";
+import { drawToolView } from "../../packages/coding-agent/src/modes/terminal/draw/draw-tool-view";
 import {
 	paintRailMotion,
 	RAIL_SETTLE_FRAMES,
 	type RailMotion,
 	railIdleHeadAt,
-} from "../../packages/coding-agent/src/tui/rail-motion";
+} from "../../packages/coding-agent/src/modes/terminal/draw/rail-motion";
+import { theme } from "../../packages/coding-agent/src/theme/theme";
+import { bashToolView } from "../../packages/coding-agent/src/tools/shell/bash-view";
 import { flag, hasFlag, initRender, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");
@@ -50,15 +51,16 @@ const OUTPUT = [
 ].join("\n");
 
 const running = hasFlag("running");
-const component = running
-	? bashToolRenderer.renderCall({ command }, { expanded: false, isPartial: true }, theme)
-	: bashToolRenderer.renderResult(
-			// `BashToolDetails` carries the exit code only; the command and output reach the renderer
+const view = running
+	? bashToolView.renderCall({ command }, { expanded: false, partial: true })
+	: bashToolView.renderResult(
+			// `BashToolDetails` carries the exit code only; the command and output reach the card
 			// through the call args and the result content.
 			{ content: [{ type: "text", text: OUTPUT }], details: { exitCode: 0 } },
-			{ expanded: false, isPartial: false },
-			theme,
+			{ expanded: false, partial: false },
+			{ command },
 		);
+const component = drawToolView(view, theme);
 
 const lines = component.render(width);
 const idle = flag("idle", "");

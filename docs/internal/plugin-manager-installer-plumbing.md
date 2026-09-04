@@ -4,7 +4,7 @@ This document describes how `veyyon plugin` npm/git/link operations mutate plugi
 
 ## Scope and architecture
 
-There are two plugin-management implementations in the codebase:
+There is one plugin-management implementation in the codebase:
 
 1. **Active path used by CLI commands**: `PluginManager` (`src/extensibility/plugins/manager.ts`), the sole plugin-management implementation. The legacy `installer.ts` helper module was deleted (commit bbaf24df); no installer module exists under `packages/coding-agent/src`.
 
@@ -78,7 +78,7 @@ Marketplace registries live separately:
 
 ## Manifest source and required fields
 
-Manifest is resolved through the one-owner helper `manifestFromPackageJson()` (`src/extensibility/manifest-key.ts`, `MANIFEST_KEYS = ["veyyon", "omp", "pi"]`, first defined key wins):
+Manifest is resolved through the one-owner helper `manifestFromPackageJson()` (`kernel/src/loader/manifest-key.ts`, `MANIFEST_KEYS = ["veyyon", "omp", "pi"]`, first defined key wins):
 
 1. `package.json.veyyon`
 2. legacy `package.json.omp`
@@ -108,7 +108,7 @@ Malformed `package.json` JSON is a hard failure at read time; malformed manifest
    - `[a,b]`: validates each feature exists in manifest features map
    - `[]`: empty feature list
    - bare spec: `null` (use defaults policy later in loader)
-7. Validate declared extension entries (`#validateInstalledExtensions`): each manifest `extensions` entry must resolve on disk and import to a factory function. On failure, roll back the install, restore the previous `plugins/package.json`, remove the freshly installed package, and restore any prior version from a backup taken before `bun install`, then abort.
+7. Validate declared extension entries (`#validateInstalledExtensions`): each manifest `extensions` entry must resolve on disk and import to a factory function. On failure, roll back the install, restore the previous plugins-root `package.json`, remove the freshly installed package, and restore any prior version from a backup taken before `bun install`, then abort.
 8. Upsert lockfile runtime state: `{ version, enabledFeatures, enabled: true }`.
 
 ### Update semantics
@@ -163,7 +163,7 @@ Caveat: `PluginManager.link` performs no cwd path-boundary or symlink-target tra
 
 ## Discovery gate
 
-`getEnabledPlugins(cwd)` (`plugins/loader.ts`) enumerates two roots: the user root (`getPluginsDir(home)`) plus, when a `.veyyon/` or `.git/` anchor exists at or above cwd, the project root `<anchor>/.veyyon/plugins`. Each root contributes its plugin dependency manifest (`package.json`) unioned with lockfile plugin entries, so `plugin link`-only plugins without a dependency entry are still discovered, and project entries shadow same-named user entries. It then reads:
+`getEnabledPlugins(cwd)` (`src/extensibility/plugins/loader.ts`) enumerates two roots: the user root (`getPluginsDir(home)`) plus, when a `.veyyon/` or `.git/` anchor exists at or above cwd, the project root `<anchor>/.veyyon/plugins`. Each root contributes its plugin dependency manifest (`package.json`) unioned with lockfile plugin entries, so `plugin link`-only plugins without a dependency entry are still discovered, and project entries shadow same-named user entries. It then reads:
 
 - lockfile runtime state
 - project overrides via `getConfigDirPaths("plugin-overrides.json", { user: false, cwd })`
@@ -274,9 +274,9 @@ Operationally, `doctor --fix` can repair some drift (`bun install`, orphaned con
 - [`src/cli/plugin-cli.ts`](../../packages/coding-agent/src/cli/plugin-cli.ts): action dispatch, user-facing command handlers
 - [`src/extensibility/plugins/manager.ts`](../../packages/coding-agent/src/extensibility/plugins/manager.ts): active install/remove/list/link/state/doctor implementation (link performs no path-boundary/traversal safety checks)
 - [`src/extensibility/plugins/loader.ts`](../../packages/coding-agent/src/extensibility/plugins/loader.ts): enabled-plugin discovery and tool/hook/command path resolution
-- [`src/extensibility/plugins/parser.ts`](../../packages/coding-agent/src/extensibility/plugins/parser.ts): install spec and package-name parsing helpers
-- [`src/extensibility/plugins/types.ts`](../../packages/coding-agent/src/extensibility/plugins/types.ts): manifest/runtime/override type contracts
+- [`kernel/src/loader/plugins/parser.ts`](../../kernel/src/loader/plugins/parser.ts): install spec and package-name parsing helpers
+- [`kernel/src/loader/plugins/types.ts`](../../kernel/src/loader/plugins/types.ts): manifest/runtime/override type contracts
 - [`src/extensibility/custom-tools/loader.ts`](../../packages/coding-agent/src/extensibility/custom-tools/loader.ts): runtime wiring for plugin-provided tool modules
 - [`src/extensibility/extensions/loader.ts`](../../packages/coding-agent/src/extensibility/extensions/loader.ts): runtime wiring for plugin-provided extension modules
 
-*Verified against `ad7ede4a` on 2026-07-28.*
+*Verified against `a9aad1d21` on 2026-08-31.*

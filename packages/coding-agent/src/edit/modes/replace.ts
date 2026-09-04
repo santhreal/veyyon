@@ -8,15 +8,16 @@ import type { AgentToolResult } from "@veyyon/agent-core";
 import { type } from "arktype";
 import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../lsp";
 import type { ToolSession } from "../../tools";
-import { routeWriteThroughBridge } from "../../tools/acp-bridge";
-import { invalidateFsScanAfterWrite } from "../../tools/fs-cache-invalidation";
-import { outputMeta } from "../../tools/output-meta";
-import { enforcePlanModeWrite, resolvePlanPath } from "../../tools/plan-mode-guard";
+import { routeWriteThroughBridge } from "../../tools/core/acp-bridge";
+import { invalidateFsScanAfterWrite } from "../../tools/core/fs-cache-invalidation";
+import { outputMeta } from "../../tools/core/output-meta";
+import { enforcePlanModeWrite, resolvePlanPath } from "../../tools/core/plan-mode-guard";
+import type { LspBatchRequest } from "../../tools/core/render-utils";
+import type { EditToolDetails } from "../details";
 import { generateDiffString, replaceText } from "../diff";
 import { EditMatchError, findMatch, formatOccurrenceError } from "../match";
 import { detectLineEnding, normalizeToLF, restoreLineEndings } from "../normalize";
 import { readEditFileTextWithBom, serializeEditFileText } from "../read-file";
-import type { EditToolDetails, LspBatchRequest } from "../renderer";
 import { pruneOversizedEditSnapshots } from "../snapshot-details";
 
 export const replaceEditEntrySchema = type({

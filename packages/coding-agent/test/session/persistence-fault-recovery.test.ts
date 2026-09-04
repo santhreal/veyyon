@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import type { AssistantMessage } from "@veyyon/ai";
-import { isRecord, TempDir } from "@veyyon/utils";
-import { type OperatorNotice, OperatorNotices } from "../../src/session/operator-notices";
-import { SessionManager } from "../../src/session/session-manager";
+import { type OperatorNotice, OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import {
 	FileSessionStorage,
 	type SessionStorageWriter,
 	type WriteTextAtomicOptions,
-} from "../../src/session/session-storage";
+} from "@veyyon/kernel/session/session-storage";
+import { isRecord, TempDir } from "@veyyon/utils";
+import { SessionManager } from "../../src/session/session-manager";
 
 /**
  * WHY THIS SUITE EXISTS.

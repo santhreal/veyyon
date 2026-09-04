@@ -1,5 +1,5 @@
 import * as os from "node:os";
-import type { InteractiveModeContext } from "../modes/types";
+import type { InteractiveModeContext } from "../modes/terminal/types";
 
 /** Display name for this process's user in collab sessions. */
 /**

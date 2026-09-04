@@ -1,9 +1,9 @@
+import type { DoctorCheck } from "@veyyon/kernel/loader/plugins/types";
 import { $which } from "@veyyon/utils";
-import { theme } from "../../modes/theme/theme";
 // `session/auth-broker-config`, which OWNS this, not the `sdk` barrel that re-exports it: the barrel is
 // the whole application and this file wants one function.
 import { discoverAuthStorage } from "../../session/auth-broker-config";
-import type { DoctorCheck } from "./types";
+import { theme } from "../../theme/theme";
 
 export async function runDoctorChecks(): Promise<DoctorCheck[]> {
 	const checks: DoctorCheck[] = [];

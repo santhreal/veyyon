@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { Skill } from "@veyyon/coding-agent/extensibility/skills";
 import { InternalUrlRouter, type ResolveContext, resolveLocalUrlToPath } from "@veyyon/coding-agent/internal-urls";
-import { expandInternalUrls } from "@veyyon/coding-agent/tools/bash-skill-urls";
+import { expandInternalUrls } from "@veyyon/coding-agent/tools/shell/bash-skill-urls";
 import { removeWithRetries } from "@veyyon/utils";
 
 function shellEscape(p: string): string {

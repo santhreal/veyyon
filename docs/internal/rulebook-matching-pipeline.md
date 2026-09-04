@@ -9,9 +9,9 @@ It reflects the current implementation, including partial semantics and metadata
 
 ## Implementation files
 
-- [`packages/coding-agent/src/capability/rule.ts`](../../packages/coding-agent/src/capability/rule.ts)
-- [`packages/coding-agent/src/capability/rule-buckets.ts`](../../packages/coding-agent/src/capability/rule-buckets.ts)
-- [`packages/coding-agent/src/capability/index.ts`](../../packages/coding-agent/src/capability/index.ts)
+- [`packages/coding-agent/src/discovery/capability/rule.ts`](../../packages/coding-agent/src/discovery/capability/rule.ts)
+- [`packages/coding-agent/src/discovery/capability/rule-buckets.ts`](../../packages/coding-agent/src/discovery/capability/rule-buckets.ts)
+- [`packages/coding-agent/src/discovery/capability/index.ts`](../../packages/coding-agent/src/discovery/capability/index.ts)
 - [`packages/coding-agent/src/discovery/index.ts`](../../packages/coding-agent/src/discovery/index.ts)
 - [`packages/coding-agent/src/discovery/helpers.ts`](../../packages/coding-agent/src/discovery/helpers.ts)
 - [`packages/coding-agent/src/discovery/builtin.ts`](../../packages/coding-agent/src/discovery/builtin.ts)
@@ -224,14 +224,14 @@ The first three steps are the operator's levers, and `ruleIsEnabled` (`capabilit
 
 - Carried through on `Rule`.
 - Rendered inline in the default prompt's rulebook listing (`- <name> (<glob>, ...): <description>`); the custom-prompt template renders them as `<glob>...</glob>` entries.
-- Exposed in rules UI state (`extensions` mode list).
+- Reported by `ttsr list` (`cli/ttsr-cli.ts`) in a rule's condition summary and in its JSON output.
 - Used by TTSR as a global path gate: if a TTSR rule has globs, the match context must include at least one matching file path.
 - Not used to automatically select rulebook rules for `rule://`; rulebook matching remains advisory prompt behavior.
 
 ### `alwaysApply`
 
 - Parsed and preserved by providers.
-- Used in UI display (`"always"` trigger label in extensions state manager).
+- Used in UI display (`"always"` kind label in the settings selector's rules panel).
 - Used as an exclusion condition from `rulebookRules`.
 - **Full rule content is auto-injected into the system prompt** (before the rulebook rules section).
 - Rule is also addressable via `rule://<name>` for re-reading.
@@ -248,11 +248,11 @@ The first three steps are the operator's levers, and `ruleIsEnabled` (`capabilit
 - `warmupMatches` is how many distinct streams the rule matches in before it fires at all, default 1 (fire on the first match). The unit is the stream, not the match: one tool call is re-matched on every delta it streams, so a warm-up counted in matches clears inside the first call and the rule fires exactly as early as it would with no warm-up. Use it for advice about a HABIT rather than an event — `cwd-reroot` declares 3, because one read of a file in another project is a glance and the rule's own body says to ignore it in that case. The count is set aside when the reminder is claimed and restored if that claim is released undelivered, and it starts again once the reminder has been heard, so a rule that spoke has to see the pattern again before it speaks again. A fractional or non-positive value is ignored, same reading as the gap.
 - `pathScope` requires the path the condition matched to be outside (`outside-cwd`) or inside (`inside-cwd`) the session working directory. A condition is a regex over the model's output and cannot know where the working directory is, so a rule about location fires on any path of the right shape. This is what made `cwd-reroot` advise re-rooting into the project the session was already in. The comparison runs against the LIVE working directory at match time, so it stays right after a `set_cwd`, and it resolves both paths rather than comparing strings, so `/work/project-two` is not read as inside `/work/project`. With no working directory available the rule does not fire: a rule that asked to be filtered must not fire unfiltered. `TtsrManager.lastMatchedPath(name)` returns the path that decided the match, which is how an injected body can name the directory it is advising about.
 
-A rule that uses `pathScope` should stay scoped to navigation tools (`read`, `search`). These tools are comparatively safe because their raw argument streams normally contain navigation arguments instead of file bodies, but the stream is not path-only: it can also contain intent, patterns, and other arguments. For `edit`, `write`, `ast_edit`, and `bash`, the stream also carries file content or a heredoc, and content mentions absolute paths constantly: docs, configs, fixtures, path constants. Scoping those tools into a path rule makes it fire on what a file talks about rather than on where the file lives, and no regex over the stream can tell the two apart. When you want to react to where a write actually lands, use the tool's declared `filesystemTargets` instead; `RerootDetector` in `src/tools/reroot-hint.ts` does this.
+A rule that uses `pathScope` should stay scoped to navigation tools (`read`, `search`). These tools are comparatively safe because their raw argument streams normally contain navigation arguments instead of file bodies, but the stream is not path-only: it can also contain intent, patterns, and other arguments. For `edit`, `write`, `ast_edit`, and `bash`, the stream also carries file content or a heredoc, and content mentions absolute paths constantly: docs, configs, fixtures, path constants. Scoping those tools into a path rule makes it fire on what a file talks about rather than on where the file lives, and no regex over the stream can tell the two apart. When you want to react to where a write actually lands, use the tool's declared `filesystemTargets` instead; `RerootDetector` in `src/tools/fs/reroot-hint.ts` does this.
 
 ### Rule bodies and their render context
 
-A rule body is a template. `AgentSession.#renderRuleBody` is the one place it is resolved, for both TTSR delivery paths, and it provides exactly four variables:
+A rule body is a template. `TtsrRuntime.#renderRuleBody` (`session/runtime/ttsr-runtime.ts`) is the one place it is resolved, for both TTSR delivery paths, and it provides exactly four variables:
 
 - `argot` -- whether the argot feature is enabled, for advice that names an argot tool.
 - `argotUnloaded` -- whether argot is enabled AND the project's dictionary is not loaded yet. This is the gate a nudge to CALL `argot_load` must use: the feature being on does not mean the dictionary is missing, and advising a model to load one it already loaded is advice it cannot act on. The template language has no `unless`, so the inverted condition is passed in pre-inverted.
@@ -295,4 +295,4 @@ Implications:
 3. Rule selection for `rule://` includes rulebook, always-apply, and registered TTSR rules (so a triggered TTSR rule can be re-read), but not rules that registered no condition and carry neither a description nor `alwaysApply`.
 4. Discovery warnings (`loadCapability("rules").warnings`) are produced but `createAgentSession` does not currently surface/log them in this path.
 
-*Verified against `8bb0e4d0` on 2026-08-25.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

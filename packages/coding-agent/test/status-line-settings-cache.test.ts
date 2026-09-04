@@ -4,13 +4,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { StatusLineComponent, type StatusLineSettings } from "@veyyon/coding-agent/modes/components/status-line";
-import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/components/status-line/presets";
-import { withIcon } from "@veyyon/coding-agent/modes/theme/icon-label";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { StatusLineSettings } from "@veyyon/coding-agent/modes/terminal/components/status-line/index";
+import { STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/terminal/components/status-line/presets";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { withIcon } from "@veyyon/coding-agent/theme/icon-label";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import * as git from "@veyyon/coding-agent/utils/git";
 import { removeSyncWithRetries, setProjectDir } from "@veyyon/utils";
+import { StatusLineComponent } from "../src/modes/terminal/components/status-line/component";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 import { makeStatusLineSession } from "./helpers/status-line-session";
 
@@ -158,6 +159,14 @@ describe("StatusLineComponent effective settings cache", () => {
 		component.setHookStatus("hook", "hook done");
 		expect(component.render(80)).toEqual(["hook done"]);
 		expect(component.getEffectiveSettingsForTest()).toBe(effective);
+	});
+
+	it("joins hook statuses sorted by key with one space each, an empty one included", () => {
+		const component = makeComponent({ preset: "default", showHookStatus: true });
+		component.setHookStatus("b-lint", "lint running");
+		component.setHookStatus("a-empty", "");
+		component.setHookStatus("c-test", "tests green");
+		expect(component.render(80)).toEqual([" lint running tests green"]);
 	});
 
 	it("does not mutate shared preset segment options during narrow renders", () => {

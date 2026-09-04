@@ -4,8 +4,8 @@
  */
 
 import { errorMessage, readPipeText } from "@veyyon/utils";
-import type { Diagnostic, DiagnosticSeverity, LinterClient, ServerConfig } from "../../lsp/types";
 import { adoptIntoPrimarySessionCpuBudget } from "../../session/cpu-limit";
+import type { Diagnostic, DiagnosticSeverity, LinterClient, ServerConfig } from "../types";
 
 /** Shape of a single violation from `swiftlint lint --reporter json`. */
 interface SwiftLintViolation {

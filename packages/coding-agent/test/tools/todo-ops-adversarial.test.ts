@@ -7,7 +7,7 @@ import {
 	phaseRomanNumeral,
 	phasesToMarkdown,
 	todoMatchesAnyDescription,
-} from "@veyyon/coding-agent/tools/todo";
+} from "@veyyon/coding-agent/tools/agent/todo";
 
 /**
  * Pure todo state ops: init/start/done/rm, markdown round-trip, roman labels.

@@ -13,44 +13,63 @@ operator manual.
 
 |Member|Description|
 |---|---|
+|`contracts/wire`|Dependency-free wire and presentation types, so a browser, a test client or a second host need not depend on coding-agent|
+|`contracts/view`|Dependency-free tool view model, so a tool describes its output without constructing a terminal component|
+|`kernel`|The only member that is not a plugin — the plugin loader, the contribution registry and the session spine, naming no tool and no host|
 |`packages/ai`|Multi-provider LLM client with streaming support|
 |`packages/catalog`|Model catalog: bundled models.json, provider descriptors, model identity/classification|
 |`packages/agent`|Agent runtime with tool calling and state management|
 |`packages/coding-agent`|Main CLI application (primary focus)|
-|`packages/tui`|Terminal UI library with differential rendering|
-|`packages/natives`|Bindings for native text/image/grep operations|
+|`hosts/gui`|Graphical host: draws the same `ToolView` models as HTML, the second implementation that keeps `contracts/view` a contract rather than a description of the terminal|
+|`hosts/terminal/engine`|Terminal UI library with differential rendering|
 |`packages/stats`|Local observability dashboard (`veyyon stats`)|
 |`packages/utils`|Shared utilities (logger, streams, temp files)|
-|`packages/argot`|Per-project shorthand vocabularies: lossless substitution codec over `AGENTS.dict`. Published standalone — depends on nothing in this repo|
-|`packages/hashline`|Line-anchored patch language the edit tool applies, with a pluggable filesystem backend|
-|`packages/mnemopi`|Local SQLite memory engine: triples, embeddings, recall|
-|`packages/wire`|Dependency-free collab wire types, so a browser or test client need not depend on coding-agent|
-|`packages/tool-render`|Shared React tool-call renderers for HTML export and collab-web|
+|`plugins/argot`|Per-project shorthand vocabularies: lossless substitution codec over `AGENTS.dict`. Published standalone — depends on nothing in this repo|
+|`plugins/hashline`|Line-anchored patch language the edit tool applies, with a pluggable filesystem backend|
+|`plugins/mnemopi`|Local SQLite memory engine: triples, embeddings, recall|
+|`packages/tool-render`|Shared React tool-call renderers for HTML export, collab-web and the stats dashboard|
 |`packages/collab-web`|Browser guest client and local relay for collab live sessions (private)|
-|`packages/swarm-extension`|Swarm orchestration extension|
+|`plugins/mode-swarm`|Swarm orchestration extension|
+|`plugins/web`|Site scrapers that turn a URL into markdown: ~80 per-site handlers, the page loader escalation ladder and the Parallel extract client, running against host capabilities passed in rather than imported|
 |`packages/evals`|Every model and agent evaluation: the DeepSWE, Terminal-Bench 3.0 and TypeScript-edit suites, harness adapters, execution backends, run store, REST/SSE API and live dashboard (private)|
 |`packages/simulations`|Deterministic offline simulations driving real subsystems end to end (private)|
-|`crates/veyyon-ast`|Structural search, replace and code-block summaries over tree-sitter and ast-grep|
-|`crates/veyyon-conformance`|Whole-product conformance corpus and harness, on virtual clock, filesystem, terminal and network (test only, issue #877)|
-|`crates/veyyon-diff-kernel`|Line-comparison engine for unified diff, ported from GNU diff `compareseq` and `shift_boundaries`|
-|`crates/veyyon-glob`|Glob normalization, brace expansion, depth bounds and compilation|
-|`crates/veyyon-grep-kernel`|One compiled matcher over regex and PCRE2 for every search path|
-|`crates/veyyon-iso`|Copy-on-write filesystem isolation and change diffing (APFS clonefile, Linux overlayfs, Windows ProjFS)|
-|`crates/veyyon-keys`|Zero-copy parser for the Kitty keyboard protocol and legacy escape sequences|
-|`crates/veyyon-natives`|The napi addon: the only Rust surface TypeScript calls (grep, glob, text measurement, highlighting, clipboard, SIXEL)|
-|`crates/veyyon-shell`|In-process POSIX shell: interpreter, coreutils builtins, output minimizer, process supervision|
-|`crates/veyyon-test-scratch`|Scratch directories removed on drop, including on panic (test only)|
-|`crates/veyyon-text`|ANSI-aware width measurement, grapheme segmentation and truncation over UTF-16|
-|`crates/veyyon-uu-diff`|`diff` as an in-process shell builtin|
-|`crates/veyyon-uu-grep`|`grep` as an in-process shell builtin, ripgrep-backed|
-|`crates/veyyon-uutils-ctx`|Thread-local stdio and cwd the uutils builtins run against|
-|`crates/veyyon-walker`|Parallel directory traversal with entry caching, gitignore filtering and cancellation|
+|`natives/bridge/addon`|The napi addon: the only Rust surface TypeScript calls (grep, glob, text measurement, highlighting, clipboard, SIXEL)|
+|`natives/bridge/bindings`|Bindings for native text/image/grep operations|
+|`natives/code/ast`|Structural search, replace and code-block summaries over tree-sitter and ast-grep|
+|`natives/diff/kernel`|Line-comparison engine for unified diff, ported from GNU diff `compareseq` and `shift_boundaries`|
+|`natives/diff/uu-diff`|`diff` as an in-process shell builtin|
+|`natives/fs/iso`|Copy-on-write filesystem isolation and change diffing (APFS clonefile, Linux overlayfs, Windows ProjFS)|
+|`natives/fs/uutils-ctx`|Thread-local stdio and cwd the uutils builtins run against|
+|`natives/search/glob`|Glob normalization, brace expansion, depth bounds and compilation|
+|`natives/search/grep-kernel`|One compiled matcher over regex and PCRE2 for every search path|
+|`natives/search/uu-grep`|`grep` as an in-process shell builtin, ripgrep-backed|
+|`natives/search/walker`|Parallel directory traversal with entry caching, gitignore filtering and cancellation|
+|`natives/shell`|In-process POSIX shell: interpreter, coreutils builtins, output minimizer, process supervision|
+|`natives/testing/scratch`|Scratch directories removed on drop, including on panic (test only)|
+|`natives/text/keys`|Zero-copy parser for the Kitty keyboard protocol and legacy escape sequences|
+|`natives/text/measure`|ANSI-aware width measurement, grapheme segmentation and truncation over UTF-16|
+|`tests/conformance`|Whole-product conformance corpus and harness, on virtual clock, filesystem, terminal and network (test only, issue #877)|
 
-Every `packages/*` member is TypeScript and every `crates/*` member is Rust.
-`packages/tsconfig.workspace.json` is shared TypeScript config, not a package; `crates/vendor` is
-vendored third-party code, not a first-party crate. `scripts/package-map-coverage.test.ts` fails
-when a workspace member under either directory is missing from the table, and when
-`ARCHITECTURE.md` grows a second copy of it.
+`kernel/` and every `contracts/*`, `hosts/*`, `packages/*` and `plugins/*` member is TypeScript. First-party
+Rust is grouped by purpose under `natives/`, vendored Rust is `natives/vendor/`, and the whole-product
+conformance corpus is
+`tests/conformance/`.
+`plugins/*` is the optional layer: a member there contributes tools, modes or storage through the
+kernel's contribution registry, and the product runs with it absent. A plugin never imports another
+plugin.
+`contracts/*` is the interface layer: a member there has zero runtime dependencies on anything in
+this repository, which
+`packages/coding-agent/test/architecture/a-contract-depends-on-nothing-in-this-repository.test.ts`
+enforces by sweeping the directory rather than by naming its members.
+`contracts/tsconfig.workspace.json` and `packages/tsconfig.workspace.json` are shared TypeScript
+config, not packages; `natives/vendor` is vendored third-party code, not a first-party crate.
+`scripts/workspace-layout.ts` resolves the member list out of the root `package.json` and
+`Cargo.toml`, expanding each pattern against the tree, so a member arrives covered at whatever depth
+it sits and whether a glob or a literal path declares it:
+`scripts/package-map-coverage.test.ts` fails when a resolved member is missing from
+the table or when `ARCHITECTURE.md` grows a second copy of it,
+`scripts/workspace-test-coverage.test.ts` fails when a member ships tests no bucket runs, and
+`scripts/workspace-typecheck-coverage.test.ts` fails when a member declares no `check:types`.
 
 Import catalog values — bundled models, model-thinking helpers, identity, descriptors, model
 manager and cache — from `@veyyon/catalog/<module>`, never through `@veyyon/ai`. Type-only imports
@@ -187,7 +206,7 @@ never reaches behavior is a dead flag.
 An experimental feature that is off hides its dependent knobs completely — not greyed out, not
 inert, gone. Wire each dependent setting to a `ui.condition` that reads the master toggle. Declare
 the setting in `packages/coding-agent/src/config/settings-domains/<domain>.ts` and register its
-predicate in `CONDITIONS` in `packages/coding-agent/src/modes/components/settings-defs.ts`; the
+predicate in `CONDITIONS` in `packages/coding-agent/src/modes/terminal/components/selectors/settings-defs.ts`; the
 selector hides any setting whose condition returns false. The off-vs-on pair proves it: off shows
 only the master toggle, on shows the toggle plus its dependents.
 
@@ -217,9 +236,12 @@ model is actually told, and why enablement is inert". Read it before touching th
 - Never `ReturnType<>`. Name the type.
 - Imports are top-level, and a type is never imported dynamically: no `import("pkg").Type`. A
   dynamic `await import()` is allowed only where a lazy boundary already exists, which is the tool
-  dispatch table (`packages/coding-agent/src/tools/index.ts`), CLI command dispatch, and the
-  barrels held out of TUI startup. `scripts/a-module-is-imported-at-the-top-of-its-file.test.ts`
-  pins that set, so a new site elsewhere fails.
+  dispatch table (`packages/coding-agent/src/tools/index.ts` and the per-domain manifests it unions,
+  `packages/coding-agent/src/tools/<domain>/manifest.ts`), CLI command dispatch, the
+  barrels held out of TUI startup, and `scripts/package-exports-surface.ts`, whose specifiers are
+  read from the manifests at run time and are the loader boundary the export gate exercises.
+  `scripts/a-module-is-imported-at-the-top-of-its-file.test.ts` pins that set, so a new site
+  elsewhere fails.
 - Check `node_modules` for external API types instead of guessing.
 - A third-party version that two or more packages share lives in `workspaces.catalog` in the root
   `package.json`, and each of those packages writes `"react": "catalog:"`. A dependency already in
@@ -350,7 +372,7 @@ and error messages, which often embed file content (a patch failure message carr
 
 A tool-call preview has several render paths. Preview-only fields and partially streamed args must
 work in all of them. Streamed argument buffers decode through `decodeStreamedToolArgs` /
-`ToolArgsRevealController` (`modes/controllers/tool-args-reveal.ts`) on both the live event path and
+`ToolArgsRevealController` (`modes/terminal/controllers/tool-args-reveal.ts`) on both the live event path and
 transcript rebuilds; never spread provider-parsed `arguments` next to a raw `__partialJson`, because
 parsed args lag the stream by a throttled parse window.
 
@@ -368,7 +390,7 @@ For the bash tool:
 
 Argot is the codec that lets the model write short `§handle` tokens, which veyyon expands before
 anything outside the model's history sees them. The integration spec is
-[`packages/argot/INTEGRATING.md`](packages/argot/INTEGRATING.md); read it rather than re-deriving it.
+[`plugins/argot/INTEGRATING.md`](plugins/argot/INTEGRATING.md); read it rather than re-deriving it.
 All codec logic — longest match, the boundary rule, a handle split across token deltas — lives in
 argot. Never hand-roll handle logic here.
 

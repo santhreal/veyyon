@@ -4,7 +4,7 @@
  * Branch: `fix/brush-detach-when-embedded`
  * Target commit: b0950f7ed
  *
- * The fix lives in `crates/vendor/brush-core/src/commands.rs` and is
+ * The fix lives in `natives/vendor/brush-core/src/commands.rs` and is
  * verified at the unit level by `veyyon-natives::shell::tests::child_session_action`
  * (truth-table) and `embedded_external_command_runs_in_its_own_session` (real
  * brush spawn). This test pulls the fix end-to-end through the Veyyon coding
@@ -47,11 +47,11 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { BashTool } from "@veyyon/coding-agent/tools/bash";
+import { BashTool } from "@veyyon/coding-agent/tools/shell/bash";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 /** Scripted assistant turn that issues a single `bash` tool call. */

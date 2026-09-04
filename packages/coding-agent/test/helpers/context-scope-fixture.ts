@@ -2,7 +2,7 @@ import { afterEach, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { reset as resetCapabilityCaches } from "@veyyon/coding-agent/capability";
+import { reset as resetCapabilityCaches } from "@veyyon/coding-agent/discovery/capability";
 import { getAgentDir, getGlobalConfigRootDir, getProfileRootDir, setProfile } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./settings-test-state";
 import { useTrackedTempDirs } from "./tracked-temp-dir";

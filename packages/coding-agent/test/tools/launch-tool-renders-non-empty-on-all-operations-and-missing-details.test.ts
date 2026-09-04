@@ -33,11 +33,15 @@
 
 import { describe, expect, it } from "bun:test";
 import type { DaemonSnapshot } from "@veyyon/coding-agent/launch/protocol";
-import { streamingStringKeysForTool } from "@veyyon/coding-agent/modes/controllers/tool-args-reveal";
-import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
-import { type LaunchToolDetails, launchToolRenderer } from "@veyyon/coding-agent/tools/launch";
+import { streamingStringKeysForTool } from "@veyyon/coding-agent/modes/terminal/controllers/tool-args-reveal";
+import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
+import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
+import type { LaunchToolDetails } from "@veyyon/coding-agent/tools/shell/launch";
 import { sanitizeText } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
+
+/** The card the registry draws for `launch`, which every op below is swept through. */
+const launchToolRenderer = toolRenderers.launch;
 
 async function theme() {
 	const t = await getThemeByName("dark");

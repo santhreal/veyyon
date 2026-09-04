@@ -11,7 +11,7 @@ import type { ImageContent, Model } from "@veyyon/ai";
 import { errorMessage, isRecord, ptree, readJsonl } from "@veyyon/utils";
 import type { FileSink } from "bun";
 import type { BashResult } from "../../exec/bash-executor";
-import type { AgentSessionEvent, SessionStats } from "../../session/agent-session";
+import type { AgentSessionEvent, SessionStats } from "../../session/agent-session-types";
 import { primarySessionCpuAdoption } from "../../session/cpu-limit";
 import type {
 	RpcAvailableCommandsUpdateFrame,
@@ -783,7 +783,7 @@ export class RpcClient {
 	 * Changes take effect before the next model call.
 	 */
 	async setCustomTools(tools: RpcClientCustomTool[]): Promise<string[]> {
-		this.#customTools = [...tools];
+		this.#customTools = tools.slice();
 		if (!this.#process) {
 			return this.#customTools.map(tool => tool.name);
 		}

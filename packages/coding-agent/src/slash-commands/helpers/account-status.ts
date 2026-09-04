@@ -18,8 +18,9 @@
  * reports divergence the block says what was pinned, what is serving instead and why, because a
  * silent swap is the failure this whole surface exists to make visible.
  */
-import { replaceTabs, truncateToWidth } from "@veyyon/tui";
 import { sanitizeText } from "@veyyon/utils";
+import { truncateToWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 import {
 	type AccountInventory,
 	type AccountRow,
@@ -29,7 +30,7 @@ import {
 	credentialStateNote,
 	selectedButRotated,
 } from "../../session/account-inventory";
-import { TRUNCATE_LENGTHS } from "../../tools/render-utils";
+import { TRUNCATE_LENGTHS } from "../../tools/core/render-utils";
 import { formatDurationCoarse, formatUsageWindowLine, usageWindowLabelColumn } from "./format";
 
 /** Left margin of every account row, matching the other inline report blocks. */
@@ -211,9 +212,13 @@ export function renderAccountStatus(
 		}
 
 		const rotated = selectedButRotated(inventory, provider);
-		if (rotated) lines.push(...divergenceLines(provider, rotated.chosen, now));
+		if (rotated) {
+			const dl = divergenceLines(provider, rotated.chosen, now);
+			for (let li = 0; li < dl.length; li++) lines.push(dl[li]!);
+		}
 
-		lines.push(...usageLines(row, now));
+		const ul = usageLines(row, now);
+		for (let li = 0; li < ul.length; li++) lines.push(ul[li]!);
 
 		if (row.health === "failed" && row.healthReason) {
 			lines.push(line(DETAIL_INDENT, cell(row.healthReason, TRUNCATE_LENGTHS.CONTENT)));
@@ -236,7 +241,9 @@ export function renderAccountStatus(
 	// sentence seven times in an eight-provider block: it tripled the height, buried the accounts
 	// between repetitions of itself, and read as nagging rather than as an offer. The placeholder
 	// on each row is what marks WHICH accounts it applies to.
-	const unnamed = [...routed.values()].filter(rows => !(rows.find(r => r.activeForSession) ?? rows[0])?.name).length;
+	const unnamed = Array.from(routed.values()).filter(
+		rows => !(rows.find(r => r.activeForSession) ?? rows[0])?.name,
+	).length;
 	if (unnamed > 0) {
 		lines.push(
 			line(ROW_INDENT, `${unnamed === 1 ? "1 account has" : `${unnamed} accounts have`} no name · ${NAME_HINT}`),

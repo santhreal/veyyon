@@ -8,24 +8,24 @@
  */
 import * as path from "node:path";
 import { logger, parseFrontmatter } from "@veyyon/utils";
-import { registerProvider } from "../capability";
-import type { ContextFile } from "../capability/context-file";
-import { contextFileCapability } from "../capability/context-file";
-import { type ExtensionModule, extensionModuleCapability } from "../capability/extension-module";
-import { readFile } from "../capability/fs";
-import type { Hook } from "../capability/hook";
-import { hookCapability } from "../capability/hook";
-import type { MCPServer } from "../capability/mcp";
-import { mcpCapability } from "../capability/mcp";
-import type { Prompt } from "../capability/prompt";
-import { promptCapability } from "../capability/prompt";
-import type { DiscoveredSkill } from "../capability/skill";
-import { skillCapability } from "../capability/skill";
-import type { SlashCommand } from "../capability/slash-command";
-import { slashCommandCapability } from "../capability/slash-command";
-import type { DiscoveredCustomTool } from "../capability/tool";
-import { toolCapability } from "../capability/tool";
-import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
+import { registerProvider } from "./capability";
+import type { ContextFile } from "./capability/context-file";
+import { contextFileCapability } from "./capability/context-file";
+import { type ExtensionModule, extensionModuleCapability } from "./capability/extension-module";
+import { readFile } from "./capability/fs";
+import type { Hook } from "./capability/hook";
+import { hookCapability } from "./capability/hook";
+import type { MCPServer } from "./capability/mcp";
+import { mcpCapability } from "./capability/mcp";
+import type { Prompt } from "./capability/prompt";
+import { promptCapability } from "./capability/prompt";
+import type { DiscoveredSkill } from "./capability/skill";
+import { skillCapability } from "./capability/skill";
+import type { SlashCommand } from "./capability/slash-command";
+import { slashCommandCapability } from "./capability/slash-command";
+import type { DiscoveredCustomTool } from "./capability/tool";
+import { toolCapability } from "./capability/tool";
+import type { LoadContext, LoadResult, SourceMeta } from "./capability/types";
 
 import {
 	buildExtensionModuleItems,

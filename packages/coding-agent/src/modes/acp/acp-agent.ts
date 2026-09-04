@@ -41,10 +41,15 @@ import {
 } from "@agentclientprotocol/sdk";
 import type { AgentToolResult } from "@veyyon/agent-core";
 import type { AssistantMessage, Model } from "@veyyon/ai";
+import { BlobStore, resolveImageDataSync } from "@veyyon/kernel/session/blob-store";
+import { abortDetached } from "@veyyon/kernel/session/detached-abort";
+import type { UsageStatistics } from "@veyyon/kernel/session/session-entries";
+import type { SessionInfo as StoredSessionInfo } from "@veyyon/kernel/session/session-listing";
 import { clampLow, getBlobsDir, isEnoent, logger, VERSION } from "@veyyon/utils";
-import { disableProvider, enableProvider, reset as resetCapabilities } from "../../capability";
 import { Settings } from "../../config/settings";
+import { disableProvider, enableProvider, reset as resetCapabilities } from "../../discovery/capability";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../../discovery/helpers";
+import { loadAllExtensions } from "../../extensibility/extension-state/state-manager";
 import {
 	type ExtensionUIContext,
 	type ExtensionUIDialogOptions,
@@ -59,34 +64,30 @@ import { loadSlashCommands } from "../../extensibility/slash-commands";
 import { listLocalPlanFileUrls } from "../../internal-urls/local-protocol";
 import { MCPManager } from "../../mcp/manager";
 import type { MCPServerConfig } from "../../mcp/types";
-import { loadAllExtensions } from "../../modes/components/extensions/state-manager";
-import { theme } from "../../modes/theme/theme";
 import { type PlanApprovalDetails, resolveApprovedPlan } from "../../plan-mode/approved-plan";
 import { DEFAULT_PLAN_FILE_URL } from "../../plan-mode/plan-file-url";
 import { resolvePlanFilePath } from "../../plan-mode/plan-path";
-import type { AgentSession, AgentSessionEvent } from "../../session/agent-session";
-import { BlobStore, resolveImageDataSync } from "../../session/blob-store";
-import { abortDetached } from "../../session/detached-abort";
+import type { AgentSession } from "../../session/agent-session";
+import type { AgentSessionEvent } from "../../session/agent-session-types";
 import { isSilentAbort, SKILL_PROMPT_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "../../session/messages";
-import type { UsageStatistics } from "../../session/session-entries";
-import type { SessionInfo as StoredSessionInfo } from "../../session/session-listing";
 import { SessionManager } from "../../session/session-manager";
 import { executeAcpBuiltinSlashCommand } from "../../slash-commands/acp-builtins";
 import { buildAvailableSlashCommands, toAcpAvailableCommands } from "../../slash-commands/available-commands";
-import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS } from "../../stt/models";
-import {
-	configuredThinkingLevelsForModel,
-	getConfiguredThinkingLevelMetadata,
-	parseConfiguredThinkingLevel,
-} from "../../thinking";
-import { runResolveInvocation } from "../../tools/resolve";
-import { ToolError } from "../../tools/tool-errors";
+import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS } from "../../speech/stt/models";
 import {
 	DEFAULT_TTS_LOCAL_MODEL_KEY,
 	DEFAULT_TTS_VOICE,
 	TTS_LOCAL_MODELS,
 	TTS_LOCAL_VOICE_OPTIONS,
-} from "../../tts/models";
+} from "../../speech/tts/models";
+import { theme } from "../../theme/theme";
+import {
+	configuredThinkingLevelsForModel,
+	getConfiguredThinkingLevelMetadata,
+	parseConfiguredThinkingLevel,
+} from "../../thinking";
+import { runResolveInvocation } from "../../tools/agent/resolve";
+import { ToolError } from "../../tools/core/tool-errors";
 import { canonicalizeMessage } from "../../utils/thinking-display";
 import { createAcpClientBridge } from "./acp-client-bridge";
 import {
@@ -440,16 +441,12 @@ export function createAcpExtensionUiContext(
 		setStatus: () => {},
 		setWorkingMessage: () => {},
 		setWidget: () => {},
-		setFooter: () => {},
-		setHeader: () => {},
 		setTitle: () => {},
-		custom: async () => undefined as never,
 		pasteToEditor: () => {},
 		setEditorText: () => {},
 		getEditorText: () => "",
 		editor: async () => undefined,
 		addAutocompleteProvider: () => {},
-		setEditorComponent: () => {},
 		get theme() {
 			return theme;
 		},
@@ -1293,9 +1290,14 @@ export class AcpAgent implements Agent {
 		if (!progress || progress.textEmitted) {
 			return;
 		}
-		const lastAssistant = [...event.messages]
-			.reverse()
-			.find((message): message is AssistantMessage => message.role === "assistant");
+		let lastAssistant: AssistantMessage | undefined;
+		for (let mi = event.messages.length - 1; mi >= 0; mi -= 1) {
+			const message = event.messages[mi]!;
+			if (message.role === "assistant") {
+				lastAssistant = message as AssistantMessage;
+				break;
+			}
+		}
 		if (!lastAssistant) {
 			return;
 		}
@@ -1332,9 +1334,14 @@ export class AcpAgent implements Agent {
 		if (streamedDelivery && (await streamedDelivery)) {
 			return;
 		}
-		const lastAssistant = [...event.messages]
-			.reverse()
-			.find((message): message is AssistantMessage => message.role === "assistant");
+		let lastAssistant: AssistantMessage | undefined;
+		for (let mi = event.messages.length - 1; mi >= 0; mi -= 1) {
+			const message = event.messages[mi]!;
+			if (message.role === "assistant") {
+				lastAssistant = message as AssistantMessage;
+				break;
+			}
+		}
 		if (lastAssistant?.stopReason !== "error") {
 			return;
 		}
@@ -1437,9 +1444,14 @@ export class AcpAgent implements Agent {
 		if (cancelRequested) {
 			return "cancelled";
 		}
-		const lastAssistant = [...event.messages]
-			.reverse()
-			.find((message): message is AssistantMessage => message.role === "assistant");
+		let lastAssistant: AssistantMessage | undefined;
+		for (let mi = event.messages.length - 1; mi >= 0; mi -= 1) {
+			const message = event.messages[mi]!;
+			if (message.role === "assistant") {
+				lastAssistant = message as AssistantMessage;
+				break;
+			}
+		}
 		const reason = lastAssistant?.stopReason;
 		switch (reason) {
 			case "aborted":
@@ -2217,7 +2229,7 @@ export class AcpAgent implements Agent {
 		if (options.includeStart === false) {
 			return notifications;
 		}
-		return [...mapAgentSessionEventToAcpSessionUpdates(startEvent, sessionId, { cwd }), ...notifications];
+		return mapAgentSessionEventToAcpSessionUpdates(startEvent, sessionId, { cwd }).concat(notifications);
 	}
 
 	#buildReplayToolArgs(details: unknown): { path?: string } {

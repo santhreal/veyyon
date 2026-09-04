@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
+import { HistoryStorage } from "@veyyon/kernel/session/history-storage";
 import { TempDir } from "@veyyon/utils";
 import { readTableSql } from "./helpers/sqlite-inspect";
 

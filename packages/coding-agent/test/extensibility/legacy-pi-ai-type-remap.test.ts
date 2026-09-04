@@ -15,7 +15,7 @@ import {
 	installLegacyPiSpecifierShim,
 	loadLegacyPiModule,
 } from "@veyyon/coding-agent/extensibility/plugins/legacy-pi-compat";
-import { Type as TypeBoxShimType } from "@veyyon/coding-agent/extensibility/typebox";
+import { Type as TypeBoxShimType } from "@veyyon/kernel/registry/typebox";
 import { removeWithRetries } from "@veyyon/utils";
 
 // pi-ai 15.1.0 removed the runtime `Type` export from `@veyyon/ai`'s

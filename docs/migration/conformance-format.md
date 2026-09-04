@@ -89,8 +89,8 @@ short-circuited: one run reports every diverging vector with the canonical
 ## Reference corpus
 
 The first fully wired module is `hashline` (tokenizer + normalize):
-`packages/hashline/test/conformance/vectors/`, replayed by
-`packages/hashline/test/conformance/hashline-conformance.test.ts`, which also
+`plugins/hashline/test/conformance/vectors/`, replayed by
+`plugins/hashline/test/conformance/hashline-conformance.test.ts`, which also
 pins the corpus file and vector counts so a file dropped from disk cannot pass
 silently. Use it as the template when wiring the next module.
 

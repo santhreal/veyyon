@@ -32,7 +32,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../../utils/test/helpers/isolated-config-root";
 import { createDaemonBrokerClient, type DaemonBrokerClient } from "../../src/launch/client";
 import { managedDaemonDir, managedDaemonMetaPath, managedDaemonPreviousLogPath } from "../../src/launch/paths";
-import { toolContent } from "../../src/tools/launch";
+import { toolContent } from "../../src/tools/shell/launch";
 
 let isolatedConfigRoot: IsolatedConfigRoot | undefined;
 const TEST_PARENT = path.resolve(import.meta.dirname, "../../../../.internal/launch-races");

@@ -5,7 +5,7 @@
  * way: "no prompts", with one exception, "only blatantly destructive commands
  * (rm -rf / and its expansions) and an explicit deny policy still stop a call"
  * (`config/settings-domains/tools.ts`), "Only destructive commands ask"
- * (`modes/setup-wizard/scenes/approvals.ts`), "No prompts except blatantly
+ * (`modes/terminal/setup-wizard/scenes/approvals.ts`), "No prompts except blatantly
  * destructive commands" (`/autonomy`). The code was broader than all three. The
  * floor was every entry in the flagged-pattern table, so on the yolo rung, in
  * the operator's own repository, this stopped and asked:
@@ -32,16 +32,16 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { requiresApproval, resolveApproval } from "../src/tools/approval";
-import { bashApprovalDecision } from "../src/tools/bash";
-import type { BashRiskSeverity, FlaggedBashPattern } from "../src/tools/bash-guard";
+import { requiresApproval, resolveApproval } from "../src/tools/core/approval";
+import { bashApprovalDecision } from "../src/tools/shell/bash";
+import type { BashRiskSeverity, FlaggedBashPattern } from "../src/tools/shell/bash-guard";
 import {
 	FLAGGED_BASH_PATTERNS,
 	findFlaggedBashPattern,
 	PROTECTED_HOME_DIRECTORIES,
 	PROTECTED_ROOTS,
 	SECRET_HOME_DIRECTORIES,
-} from "../src/tools/bash-guard";
+} from "../src/tools/shell/bash-guard";
 
 /** The real bash tool's approval decision, as the wrapper sees it. */
 const bash = { name: "bash", approval: bashApprovalDecision };

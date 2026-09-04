@@ -13,7 +13,7 @@ import {
 	portCandidateKind,
 	renderPortIssue,
 	titleType,
-} from "./upstream-radar.ts";
+} from "./upstream-radar";
 
 /**
  * This representative policy proves the intake split: fixes always receive
@@ -87,7 +87,7 @@ describe("port candidate policy", () => {
 		expect(
 			isPortWorthy(
 				"feat(tui): replace plan review",
-				["packages/coding-agent/src/modes/components/plan-review-overlay.ts"],
+				["packages/coding-agent/src/modes/terminal/components/dialogs/plan-review-overlay.ts"],
 				policy,
 			),
 		).toBe(false);
@@ -198,7 +198,7 @@ describe("divergedMatches + divergenceWarning", () => {
 
 	it("flags multiple touched surfaces at once", () => {
 		const surfaces = divergedMatches(
-			["packages/catalog/src/hosts.ts", "packages/coding-agent/src/modes/interactive-mode.ts"],
+			["packages/catalog/src/hosts.ts", "packages/coding-agent/src/modes/terminal/interactive-mode.ts"],
 			policy,
 		);
 		expect(surfaces.map(s => s.name)).toEqual(["model catalog", "interactive TUI"]);
@@ -252,7 +252,9 @@ describe("shipped upstream-port-policy.json", () => {
 			"packages/ai/src/instrumentation.ts",
 			"packages/coding-agent/src/tools/",
 			"packages/coding-agent/src/modes/",
-			"crates/",
+			"natives/",
+			"tests/conformance/",
+			"natives/bridge/bindings/",
 			".github/",
 		]) {
 			const surface = shipped.divergedSurfaces.find(candidate => candidate.paths.includes(path));

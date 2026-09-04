@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/sdk";
-import { BrowserTool } from "@veyyon/coding-agent/tools/browser";
-import { ensureChromiumExecutable } from "@veyyon/coding-agent/tools/browser/launch";
+import { BrowserTool } from "@veyyon/coding-agent/tools/web/browser";
+import { ensureChromiumExecutable } from "@veyyon/coding-agent/tools/web/browser/launch";
 
 function makeSession(): ToolSession {
 	return {

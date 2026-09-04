@@ -6,7 +6,7 @@ import {
 	GeminiProvider,
 	geminiPerformedSearch,
 	searchGemini,
-} from "@veyyon/coding-agent/web/search/providers/gemini";
+} from "@veyyon/coding-agent/tools/web/search/providers/gemini";
 
 // A realistic grounded Cloud Code response: text PLUS groundingMetadata (a real
 // Google Search grounding always carries chunks/queries). The request-shaping

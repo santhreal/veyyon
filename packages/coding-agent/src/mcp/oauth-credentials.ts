@@ -1,6 +1,6 @@
+import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { getActiveProfile } from "@veyyon/utils/dirs";
 import { expandEnvVarsDeep, unresolvedRefusedDownstream } from "../discovery/env-expansion";
-import type { AuthStorage } from "../session/auth-storage";
 import {
 	isManagedMCPOAuthCredentialId,
 	type MCPStoredOAuthCredential,

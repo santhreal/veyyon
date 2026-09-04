@@ -35,8 +35,8 @@ import {
 	clearUnreadableSessions,
 	getUnreadableSessions,
 	recoverOrphanedBackups,
-} from "@veyyon/coding-agent/session/session-listing";
-import { FileSessionStorage, MemorySessionStorage } from "@veyyon/coding-agent/session/session-storage";
+} from "@veyyon/kernel/session/session-listing";
+import { FileSessionStorage, MemorySessionStorage } from "@veyyon/kernel/session/session-storage";
 import { type PathState, TempDir } from "@veyyon/utils";
 
 const LIVE = '{"type":"session","id":"live","keep":true}\n';

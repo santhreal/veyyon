@@ -24,7 +24,7 @@ import {
 	type SecretExpansionRecord,
 } from "@veyyon/coding-agent/secrets/audit";
 import { renderLog } from "@veyyon/coding-agent/secrets/secret-command";
-import { OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
+import { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 
 let dir: string;
 let logPath: string;

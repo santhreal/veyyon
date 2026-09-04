@@ -15,7 +15,7 @@
  * works.
  */
 import { describe, expect, it } from "bun:test";
-import { cloneSafe, safeJsonStringify } from "@veyyon/coding-agent/tools/browser/run-output";
+import { cloneSafe, safeJsonStringify } from "@veyyon/coding-agent/tools/web/browser/run-output";
 
 describe("safeJsonStringify delegates to the shared renderer", () => {
 	it("renders with two-space indentation, which is what a run's display output uses", () => {

@@ -15,8 +15,8 @@ import { canonicalSnapshotKey } from "../edit/file-snapshot-store";
 import { normalizeToLF } from "../edit/normalize";
 import type { FileMentionMessage } from "../session/messages";
 import { formatHeadTruncationNotice, truncateHead, truncateHeadBytes } from "../session/streaming-output";
-import { type InlinePricingSource, inlineBudgetFor } from "../tools/output-artifact";
-import { resolveReadPath } from "../tools/path-utils";
+import { type InlinePricingSource, inlineBudgetFor } from "../tools/core/output-artifact";
+import { resolveReadPath } from "../tools/core/path-utils";
 import { formatDimensionNote, resizeImage } from "./image-resize";
 
 /** Regex to match @filepath patterns in text */
@@ -169,7 +169,7 @@ async function buildDirectoryListing(
 
 /** Extract all @filepath mentions from text */
 export function extractFileMentions(text: string): string[] {
-	const matches = [...text.matchAll(FILE_MENTION_REGEX)];
+	const matches = Array.from(text.matchAll(FILE_MENTION_REGEX));
 	const mentions: string[] = [];
 
 	for (const match of matches) {
@@ -185,7 +185,7 @@ export function extractFileMentions(text: string): string[] {
 		mentions.push(cleaned);
 	}
 
-	return [...new Set(mentions)];
+	return Array.from(new Set(mentions));
 }
 
 /**

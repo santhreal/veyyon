@@ -2,9 +2,10 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import {
 	decodeStreamedToolArgs,
 	streamingStringKeysForTool,
-} from "@veyyon/coding-agent/modes/controllers/tool-args-reveal";
-import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
-import { writeToolRenderer } from "@veyyon/coding-agent/tools/write";
+} from "@veyyon/coding-agent/modes/terminal/controllers/tool-args-reveal";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import * as themeModule from "@veyyon/coding-agent/theme/theme";
+import { writeToolView } from "@veyyon/coding-agent/tools/fs/write-view";
 import type { TUI } from "@veyyon/tui";
 import { createToolExecution } from "./helpers/tool-execution";
 
@@ -27,7 +28,7 @@ describe("write streaming preview honors Ctrl+O expansion", () => {
 		const uiStub = { requestRender() {}, requestComponentRender() {} } as unknown as TUI;
 		const content = Array.from({ length: lineCount }, (_, i) => `line ${i + 1}`).join("\n");
 		// No updateResult() -> the call stays pending, exercising the streaming
-		// `renderCall` path (formatStreamingContent), not the merged result render.
+		// `renderCall` path (the tail window onto the file), not the merged result render.
 		return createToolExecution("write", { file_path: "/tmp/foo.ts", content }, {}, undefined, uiStub);
 	}
 
@@ -73,40 +74,79 @@ describe("write streaming preview honors Ctrl+O expansion", () => {
 		expect(hasLine(collapsed, 4)).toBe(true);
 		expect(stripAnsi(collapsed.join("\n"))).not.toContain("earlier line");
 	});
-	it("reuses the highlighted streaming body across frame renders", async () => {
-		if (!initialized) {
-			await themeModule.initTheme();
-			initialized = true;
-		}
-		const uiTheme = (await themeModule.getThemeByName("dark")) ?? (await themeModule.getThemeByName("light"));
-		expect(uiTheme).toBeDefined();
-		const options = { expanded: false, isPartial: true, spinnerFrame: 0 };
-		const highlightSpy = vi
-			.spyOn(themeModule, "highlightCode")
-			.mockImplementation((code: string) => code.split("\n"));
-		const component = writeToolRenderer.renderCall(
-			{ path: "/tmp/cache.ts", content: "const a = 1;\nconst b = 2;" },
-			options,
-			uiTheme!,
-		);
+	it("highlights a streaming write once across widths and spinner frames", async () => {
+		// A live write recomposes on every spinner tick — the card's display key carries the frame —
+		// so the file would be re-highlighted twelve times a second without the memo the host keeps.
+		// The card is drawn again here rather than only re-rendered, which is what a tick does.
+		//
+		// Counted through the theme rather than through a spy on the highlighter's module: the gutter
+		// of each code row is `theme.fg("dim", "<number> ")`, written in the same pass that highlights
+		// the file and skipped whole on a memo hit. So a draw that highlights writes one gutter span
+		// per row and a draw that re-uses the memo writes none — and the count is readable on the
+		// theme object every host already holds, with no module namespace to patch.
+		const uiTheme = await getUiTheme();
+		let gutters = 0;
+		const realFg = uiTheme.fg.bind(uiTheme);
+		vi.spyOn(uiTheme, "fg").mockImplementation((color, text: string) => {
+			if (/^ *\d+ $/.test(text)) gutters += 1;
+			return realFg(color, text);
+		});
+		const args = { path: "/tmp/cache.ts", content: "const a = 1;\nconst b = 2;" };
+		const draw = (frame: number) =>
+			drawToolView(writeToolView.renderCall(args, { expanded: false, partial: true, frame }), uiTheme, frame);
 
+		const component = draw(0);
 		component.render(80);
 		component.render(120);
-		expect(highlightSpy).toHaveBeenCalledTimes(1);
+		expect(gutters).toBe(2);
 
-		options.spinnerFrame = 1;
-		component.render(120);
-		expect(highlightSpy).toHaveBeenCalledTimes(1);
+		// A second draw of the same file at the same shape re-uses the memo, so no gutter is written.
+		draw(1).render(120);
+		expect(gutters).toBe(2);
+
+		// A frame whose content grew is a different file and is highlighted again, so the memo is a
+		// memo rather than a card frozen at its first paint.
+		args.content = `${args.content}\nconst c = 3;`;
+		const grown = draw(2);
+		grown.render(120);
+		expect(gutters).toBe(5);
+		expect(stripAnsi(grown.render(120).join("\n"))).toContain("const c = 3;");
+		// And the row that arrived is numbered where it sits in the file, not where it sits in the
+		// window, so the memo cannot be satisfied by a stale gutter.
+		expect(stripAnsi(grown.render(120).join("\n"))).toContain("  3 const c = 3;");
+	});
+
+	it("changes only its liveness row as the spinner advances", async () => {
+		// The bytes of the file may not move under a spinner tick: every row the terminal already
+		// committed to native scrollback would have to be recommitted, which is the duplicate frame
+		// the repaint seam exists to prevent. Asserted on the drawn rows rather than through a spy, so
+		// it holds whatever the highlighter is doing underneath.
+		const uiTheme = await getUiTheme();
+		const args = { path: "/tmp/tick.ts", content: "const a = 1;\nconst b = 2;\nconst c = 3;" };
+		const rowsAt = (frame: number) =>
+			drawToolView(writeToolView.renderCall(args, { expanded: false, partial: true, frame }), uiTheme, frame)
+				.render(100)
+				.map(row => row.trimEnd());
+
+		const first = rowsAt(0);
+		const second = rowsAt(1);
+		expect(second.slice(0, -1)).toEqual(first.slice(0, -1));
+		// The last row is the one that ticks, and it is the streaming row rather than a code row.
+		expect(stripAnsi(first.at(-1) ?? "")).toContain("… (streaming)");
+		expect(second.at(-1)).not.toBe(first.at(-1));
 	});
 
 	it("coerces truthy non-string content for pending write previews", async () => {
 		const uiTheme = await getUiTheme();
 		const runtimeContent = ["object first\r\nobject second"];
 
-		const component = writeToolRenderer.renderCall(
-			{ path: "/tmp/runtime-content.ts", content: runtimeContent },
-			{ expanded: true, isPartial: true, spinnerFrame: 0 },
+		const component = drawToolView(
+			writeToolView.renderCall(
+				{ path: "/tmp/runtime-content.ts", content: runtimeContent },
+				{ expanded: true, partial: true, frame: 0 },
+			),
 			uiTheme,
+			0,
 		);
 
 		const rendered = stripAnsi(component.render(120).join("\n"));
@@ -120,14 +160,16 @@ describe("write streaming preview honors Ctrl+O expansion", () => {
 		const uiTheme = await getUiTheme();
 		const runtimeContent = ["merged first\r\nmerged second"];
 
-		const component = writeToolRenderer.renderResult(
-			{
-				content: [{ type: "text", text: "Wrote /tmp/runtime-content.ts" }],
-				details: { resolvedPath: "/tmp/runtime-content.ts" },
-			},
-			{ expanded: true, isPartial: false },
+		const component = drawToolView(
+			writeToolView.renderResult(
+				{
+					content: [{ type: "text", text: "Wrote /tmp/runtime-content.ts" }],
+					details: { resolvedPath: "/tmp/runtime-content.ts" },
+				},
+				{ expanded: true, partial: false },
+				{ path: "/tmp/runtime-content.ts", content: runtimeContent },
+			),
 			uiTheme,
-			{ path: "/tmp/runtime-content.ts", content: runtimeContent },
 		);
 
 		const rendered = stripAnsi(component.render(120).join("\n"));
@@ -149,21 +191,24 @@ describe("write streaming preview honors Ctrl+O expansion", () => {
 		}
 
 		const progressText = `Writing 12 bytes to tab\tpath/${"segment/".repeat(20)}UNTRUNCATED_TAIL_SENTINEL.ts...`;
-		const component = writeToolRenderer.renderResult(
-			{
-				content: [{ type: "text", text: progressText }],
-				details: {
-					resolvedPath: "/tmp/progress.ts",
-					diagnostics: {
-						errored: true,
-						summary: "1 error",
-						messages: ["diagnostic sentinel"],
+		const component = drawToolView(
+			writeToolView.renderResult(
+				{
+					content: [{ type: "text", text: progressText }],
+					details: {
+						resolvedPath: "/tmp/progress.ts",
+						diagnostics: {
+							errored: true,
+							summary: "1 error",
+							messages: ["diagnostic sentinel"],
+						},
 					},
 				},
-			},
-			{ expanded: false, isPartial: true, spinnerFrame: 0 },
+				{ expanded: false, partial: true, frame: 0 },
+				{ path: "/tmp/progress.ts", content: "const x = 1;" },
+			),
 			uiTheme,
-			{ path: "/tmp/progress.ts", content: "const x = 1;" },
+			0,
 		);
 
 		const rendered = stripAnsi(component.render(100).join("\n"));

@@ -6,7 +6,7 @@ code paths in:
 
 - `packages/coding-agent/src/**`
 - `packages/ai/src/**` (provider/auth resolution used by coding-agent)
-- `packages/utils/src/**` and `packages/tui/src/**` where those vars directly affect coding-agent runtime
+- `packages/utils/src/**` and `hosts/terminal/engine/src/**` where those vars directly affect coding-agent runtime
 
 It documents only active behavior.
 

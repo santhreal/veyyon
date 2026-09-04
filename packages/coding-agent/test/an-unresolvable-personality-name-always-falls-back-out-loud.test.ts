@@ -5,7 +5,7 @@ import {
 	BUILTIN_PERSONALITIES,
 	DEFAULT_PERSONALITY_NAME,
 	resolvePersonality,
-} from "@veyyon/coding-agent/personality/resolver";
+} from "@veyyon/coding-agent/config/personality-resolver";
 import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
 
 /**

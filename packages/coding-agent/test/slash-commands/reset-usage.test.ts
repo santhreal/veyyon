@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome } from "@veyyon/coding-agent/session/auth-storage";
 import {
 	describeRedeemOutcome,
 	type ResetUsageAccount,
 	toResetUsageAccounts,
 } from "@veyyon/coding-agent/slash-commands/helpers/reset-usage";
+import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome } from "@veyyon/kernel/session/auth-storage";
 
 /**
  * `/usage reset` builds its account selector and status lines from these two pure

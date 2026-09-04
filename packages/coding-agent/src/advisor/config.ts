@@ -11,7 +11,7 @@ import {
 import { type } from "arktype";
 import { YAML } from "bun";
 import { expandAtImports } from "../discovery/at-imports";
-import { BUILTIN_TOOL_NAMES, normalizeToolNames } from "../tools/builtin-names";
+import { BUILTIN_TOOL_NAMES, normalizeToolNames } from "../tools/core/builtin-names";
 import { collectConfigCandidates } from "./watchdog";
 
 /**
@@ -167,7 +167,7 @@ export async function discoverAdvisorConfigs(cwd: string, agentDir?: string): Pr
 	}
 
 	return {
-		advisors: [...advisors.values()],
+		advisors: Array.from(advisors.values()),
 		sharedInstructions: sharedParts.length > 0 ? sharedParts.join("\n\n") : undefined,
 	};
 }
@@ -257,7 +257,7 @@ export async function loadWatchdogConfigFile(filePath: string): Promise<Watchdog
 		advisors: (result.advisors ?? []).map(a => ({
 			name: a.name,
 			model: a.model?.trim() || undefined,
-			tools: a.tools === undefined ? undefined : [...a.tools],
+			tools: a.tools === undefined ? undefined : Array.from(a.tools),
 			instructions: a.instructions?.trim() ? a.instructions : undefined,
 		})),
 	};
@@ -276,7 +276,7 @@ export function serializeWatchdogConfig(doc: WatchdogConfigDoc): string {
 		out.advisors = doc.advisors.map(a => {
 			const entry: AdvisorConfig = { name: a.name };
 			if (a.model?.trim()) entry.model = a.model;
-			if (a.tools !== undefined) entry.tools = [...a.tools];
+			if (a.tools !== undefined) entry.tools = Array.from(a.tools);
 			if (a.instructions?.trim()) entry.instructions = a.instructions;
 			return entry;
 		});

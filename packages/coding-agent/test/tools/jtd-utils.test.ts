@@ -7,7 +7,7 @@ import {
 	isJTDRef,
 	isJTDType,
 	isJTDValues,
-} from "@veyyon/coding-agent/tools/jtd-utils";
+} from "@veyyon/coding-agent/tools/core/jtd-utils";
 
 /**
  * These seven guards discriminate which JSON Type Definition form a schema node is,

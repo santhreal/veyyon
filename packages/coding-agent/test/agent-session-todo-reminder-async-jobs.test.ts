@@ -7,9 +7,10 @@ import { AsyncJobManager } from "@veyyon/coding-agent/async";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions";
-import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir, withTimeout } from "@veyyon/utils";
 
 /**
@@ -21,7 +22,7 @@ import { TempDir, withTimeout } from "@veyyon/utils";
  * job in flight is a scheduling pause, not a terminal stop, so both:
  *
  * - the todo reminder (`todo_reminder` event + injected `<system-reminder>`
- *   continuation in `#checkTodoCompletion`), and
+ *   continuation in `TodoRuntime.checkCompletionAtSettle`), and
  * - the `session_stop` extension hook pass (`#emitSessionStopEvent`)
  *
  * must stay silent and defer to the settle reached once the session is fully

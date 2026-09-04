@@ -1,0 +1,376 @@
+/**
+ * Unified Web Search Tool
+ *
+ * Single tool supporting Anthropic, Perplexity, Exa, Brave, Jina, Kimi, Gemini, Codex, Tavily, Kagi, Z.AI, SearXNG, and Synthetic
+ * providers with provider-specific parameters exposed conditionally.
+ */
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import type { AuthStorage } from "@veyyon/ai";
+import { formatCount, prompt, truncate } from "@veyyon/utils";
+import { type } from "arktype";
+// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import { settings } from "../../../config/settings-instance";
+import type { CustomTool, CustomToolContext } from "../../../extensibility/custom-tools/types";
+import { toolsPrompts } from "../../../prompts/tools/rows";
+import type { ProviderTextTransformResolver } from "../../../provider-boundary";
+import type { ToolSession } from "../..";
+import { formatAge } from "../../core/render-utils";
+import { throwIfAborted } from "../../core/tool-errors";
+import {
+	formatSearchProviderFailure,
+	formatSearchProviderFailures,
+	getSearchProvider,
+	getSearchProviderLabel,
+	type SearchProvider,
+	selectSearchProviders,
+} from "./provider";
+import type { SearchProviderId, SearchRenderDetails, SearchResponse } from "./types";
+import { SearchProviderError } from "./types";
+import { webSearchToolView } from "./view";
+
+/**
+ * Open the credential store, loading the module that knows how ON DEMAND.
+ *
+ * `session/auth-broker-config.ts` reaches 347 modules: the broker client, the remote store, the snapshot
+ * cache and the SQLite credential store underneath them. Every one of those is needed to RUN a search and
+ * none of them is needed to DEFINE one, and a static import made this file, which eighteen web-search
+ * providers sit behind, carry all of it from the moment it was parsed.
+ *
+ * The three call sites below are already `async` and only run when a search executes, so the await costs
+ * nothing they were not already paying, and the module is cached after the first one. The same technique is
+ * what took the tool registry off the boot graph; see `tools/index.ts`.
+ *
+ * NOT a fallback: if the module fails to load, this rejects and the search reports it, exactly as a static
+ * import that failed to resolve would.
+ */
+async function discoverAuthStorage(): Promise<AuthStorage> {
+	const { discoverAuthStorage: discover } = await import("../../../session/auth-broker-config");
+	return discover();
+}
+
+/** Web search tool parameters schema */
+export const webSearchSchema = type({
+	query: "string",
+	recency: "'day' | 'week' | 'month' | 'year'?",
+	limit: "number?",
+	max_tokens: "number?",
+	temperature: "number?",
+	num_search_results: "number?",
+});
+
+export type SearchToolParams = typeof webSearchSchema.infer;
+
+export interface SearchQueryParams extends SearchToolParams {
+	provider?: SearchProviderId | "auto";
+}
+
+/** Format response for LLM consumption */
+function formatForLLM(response: SearchResponse): string {
+	const parts: string[] = [];
+
+	if (response.answer) {
+		parts.push(response.answer);
+		if (response.sources.length > 0) {
+			parts.push("\n## Sources");
+			parts.push(formatCount("source", response.sources.length));
+		}
+	}
+
+	for (const [i, src] of response.sources.entries()) {
+		const age = formatAge(src.ageSeconds) || src.publishedDate;
+		const agePart = age ? ` (${age})` : "";
+		parts.push(`[${i + 1}] ${src.title}${agePart}\n    ${src.url}`);
+		if (src.snippet) {
+			parts.push(`    ${truncate(src.snippet, 240)}`);
+		}
+	}
+
+	if (response.citations && response.citations.length > 0) {
+		parts.push("\n## Citations");
+		parts.push(formatCount("citation", response.citations.length));
+		for (const [i, citation] of response.citations.entries()) {
+			const title = citation.title || citation.url;
+			parts.push(`[${i + 1}] ${title}\n    ${citation.url}`);
+			if (citation.citedText) {
+				parts.push(`    ${truncate(citation.citedText, 240)}`);
+			}
+		}
+	}
+
+	if (response.relatedQuestions && response.relatedQuestions.length > 0) {
+		parts.push("\n## Related");
+		parts.push(formatCount("question", response.relatedQuestions.length));
+		for (const q of response.relatedQuestions) {
+			parts.push(`- ${q}`);
+		}
+	}
+
+	if (response.searchQueries && response.searchQueries.length > 0) {
+		parts.push(`Search queries: ${response.searchQueries.length}`);
+		for (const query of response.searchQueries.slice(0, 3)) {
+			parts.push(`- ${truncate(query, 120)}`);
+		}
+	}
+
+	return parts.join("\n");
+}
+
+/**
+ * Whether a response carries something that answers the query. An answer, a source and a citation
+ * do. Intermediate search queries and follow-up suggestions do not: they describe a search rather
+ * than answer one, and the type says so — "intermediate", "follow-up question suggestions".
+ *
+ * The distinction decides two things at once, which is why it is not cosmetic. A response counted
+ * as content is handed to the model AND ends the provider chain, so a metasearch engine that found
+ * nothing and offered a "did you mean" (SearXNG maps those into `relatedQuestions`) would return a
+ * list of questions as the result and stop the search before a provider with real results ran.
+ * `render.ts` already draws the same line, calling a result successful only when it has sources.
+ */
+function hasRenderableSearchContent(response: SearchResponse): boolean {
+	if (response.answer?.trim()) return true;
+	if (response.sources.length > 0) return true;
+	if (response.citations?.length) return true;
+	return false;
+}
+
+interface ExecuteSearchOptions {
+	authStorage: AuthStorage;
+	sessionId?: string;
+	signal?: AbortSignal;
+	resolveProviderTextTransform?: ProviderTextTransformResolver;
+}
+
+/** Execute web search */
+async function executeSearch(
+	_toolCallId: string,
+	params: SearchQueryParams,
+	options: ExecuteSearchOptions,
+): Promise<{ content: Array<{ type: "text"; text: string }>; details: SearchRenderDetails; isError?: boolean }> {
+	const { authStorage, sessionId, signal, resolveProviderTextTransform } = options;
+	const selection = selectSearchProviders(params.provider);
+	if ("refusal" in selection) {
+		return {
+			content: [{ type: "text" as const, text: `Error: ${selection.refusal}` }],
+			details: { response: { provider: "none", sources: [] }, error: selection.refusal },
+			isError: true,
+		};
+	}
+	const candidates = selection.candidates;
+
+	// Invariant across providers; read once and tolerate an uninitialized
+	// Settings singleton (e.g. `veyyon q ...` CLI path, unit tests) so the
+	// provider-fallback loop never aborts before any provider runs.
+	let antigravityEndpointMode: "auto" | "production" | "sandbox" | undefined;
+	try {
+		antigravityEndpointMode = settings.get("providers.antigravityEndpoint");
+	} catch {
+		antigravityEndpointMode = undefined;
+	}
+
+	let geminiModel: string | undefined;
+	try {
+		geminiModel = settings.get("providers.webSearchGeminiModel");
+	} catch {
+		geminiModel = undefined;
+	}
+
+	const failures: Array<{ provider: Pick<SearchProvider, "id" | "label">; error: unknown }> = [];
+	let availableProviderCount = 0;
+	let lastProvider: Pick<SearchProvider, "id" | "label"> | undefined;
+	for (const candidate of candidates) {
+		let provider: SearchProvider | undefined;
+		const providerMeta = { id: candidate.id, label: getSearchProviderLabel(candidate.id) };
+		lastProvider = providerMeta;
+		try {
+			provider = await getSearchProvider(candidate.id);
+			const available = candidate.explicit
+				? await provider.isExplicitlyAvailable(authStorage)
+				: await provider.isAvailable(authStorage);
+			if (!available) continue;
+			availableProviderCount++;
+			lastProvider = provider;
+
+			const response = await provider.search({
+				query: params.query,
+				limit: params.limit,
+				recency: params.recency,
+				systemPrompt: toolsPrompts["tools/web-search-system"].text,
+				maxOutputTokens: params.max_tokens,
+				numSearchResults: params.num_search_results,
+				temperature: params.temperature,
+				signal,
+				authStorage,
+				sessionId,
+				antigravityEndpointMode,
+				geminiModel,
+				resolveProviderTextTransform,
+			});
+
+			if (!hasRenderableSearchContent(response)) {
+				// "No renderable search content" is this file's vocabulary, and it reads as a rendering
+				// problem. After the check above it means one thing, so it says that thing.
+				throw new SearchProviderError(provider.id, `${provider.label} found no results for this query.`, 204);
+			}
+
+			const text = formatForLLM(response);
+
+			return {
+				content: [{ type: "text" as const, text }],
+				details: { response },
+			};
+		} catch (error) {
+			// Surface user-initiated cancellation immediately so the session sees
+			// a clean abort instead of a generic "all providers failed" message.
+			// Without this, an AbortError from `fetch()` is treated as a provider
+			// failure and the loop falls through to the next provider (or to the
+			// summary error), masking the cancellation.
+			throwIfAborted(signal);
+			failures.push({ provider: provider ?? providerMeta, error });
+		}
+	}
+
+	if (availableProviderCount === 0 && failures.length === 0) {
+		// A chosen provider with no credential is a different fact from "nothing is
+		// configured", and it is the one an operator can act on: the search did not quietly
+		// use something else, so the message has to name what was chosen and found unusable.
+		const chosen = candidates.length === 1 && candidates[0]?.explicit ? candidates[0].id : undefined;
+		const message =
+			chosen === undefined
+				? "No web search provider configured."
+				: `${getSearchProviderLabel(chosen)} is the chosen web search provider and is not configured. ` +
+					`Add its credential, or set providers.webSearch to auto.`;
+		return {
+			content: [{ type: "text" as const, text: `Error: ${message}` }],
+			details: { response: { provider: chosen ?? "none", sources: [] }, error: message },
+			isError: true,
+		};
+	}
+
+	const lastFailure = failures[failures.length - 1];
+	const baseMessage = lastFailure
+		? formatSearchProviderFailure(lastFailure.error, lastFailure.provider)
+		: `Unknown error from ${lastProvider?.label ?? "web search provider"}`;
+	const message =
+		failures.length > 1 ? `All web search providers failed: ${formatSearchProviderFailures(failures)}` : baseMessage;
+
+	return {
+		content: [{ type: "text" as const, text: `Error: ${message}` }],
+		details: {
+			response: { provider: lastFailure?.provider.id ?? lastProvider?.id ?? "none", sources: [] },
+			error: message,
+		},
+		isError: true,
+	};
+}
+
+/**
+ * Execute a web search query for CLI/testing workflows.
+ *
+ * `authStorage` may be omitted; in that case we discover one via the standard
+ * factory (`discoverAuthStorage`), which honours `VEYYON_AUTH_BROKER_URL` and
+ * otherwise opens the local SQLite credential store.
+ */
+export async function runSearchQuery(
+	params: SearchQueryParams,
+	options: {
+		authStorage?: AuthStorage;
+		sessionId?: string;
+		signal?: AbortSignal;
+		resolveProviderTextTransform?: ProviderTextTransformResolver;
+	} = {},
+): Promise<{ content: Array<{ type: "text"; text: string }>; details: SearchRenderDetails }> {
+	const createdAuthStorage = options.authStorage ? undefined : await discoverAuthStorage();
+	const authStorage = options.authStorage ?? createdAuthStorage;
+	if (!authStorage) {
+		throw new Error("Failed to initialize authentication storage");
+	}
+	try {
+		return await executeSearch("cli-web-search", params, {
+			authStorage,
+			sessionId: options.sessionId,
+			signal: options.signal,
+			resolveProviderTextTransform: options.resolveProviderTextTransform,
+		});
+	} finally {
+		createdAuthStorage?.close();
+	}
+}
+
+/**
+ * Web search tool implementation.
+ *
+ * Supports the configured web-search provider chain with automatic fallback.
+ */
+export class WebSearchTool implements AgentTool<typeof webSearchSchema, SearchRenderDetails> {
+	readonly name = "web_search";
+	readonly approval = "read" as const;
+	readonly label = "Web Search";
+	readonly description: string;
+	readonly parameters = webSearchSchema;
+	readonly strict = true;
+	readonly loadMode = "discoverable";
+	readonly summary = "Search the web for up-to-date information";
+
+	#session: ToolSession;
+
+	constructor(session: ToolSession) {
+		this.#session = session;
+		this.description = prompt.render(toolsPrompts["tools/web-search"].text);
+	}
+
+	async execute(
+		_toolCallId: string,
+		params: SearchToolParams,
+		signal?: AbortSignal,
+		_onUpdate?: AgentToolUpdateCallback<SearchRenderDetails>,
+		_context?: AgentToolContext,
+	): Promise<AgentToolResult<SearchRenderDetails>> {
+		const authStorage = this.#session.authStorage ?? (await discoverAuthStorage());
+		const sessionId = this.#session.getSessionId?.() ?? undefined;
+		return executeSearch(_toolCallId, params, {
+			authStorage,
+			sessionId,
+			signal,
+			resolveProviderTextTransform: () => this.#session.obfuscateProviderText,
+		});
+	}
+}
+
+/** Web search tool as CustomTool, which is the shape that carries a card. */
+export const webSearchCustomTool: CustomTool<typeof webSearchSchema, SearchRenderDetails> = {
+	name: "web_search",
+	label: "Web Search",
+	description: prompt.render(toolsPrompts["tools/web-search"].text),
+	parameters: webSearchSchema,
+
+	approval: "read",
+	async execute(
+		toolCallId: string,
+		params: SearchToolParams,
+		_onUpdate,
+		ctx: CustomToolContext,
+		signal?: AbortSignal,
+	) {
+		const authStorage = ctx.modelRegistry?.authStorage ?? (await discoverAuthStorage());
+		const sessionId = ctx.sessionManager.getSessionId();
+		return executeSearch(toolCallId, params, {
+			authStorage,
+			sessionId,
+			signal,
+			resolveProviderTextTransform: () => ctx.obfuscateProviderText,
+		});
+	},
+	/**
+	 * The tool's own card, as data. Declared here so the live tool carries it and any host that draws
+	 * a transcript reads it off the tool rather than from a terminal-side registry.
+	 */
+	view: webSearchToolView,
+};
+
+export function getSearchTools(): CustomTool<any, any>[] {
+	return [webSearchCustomTool];
+}
+
+export { getSearchProvider, setExcludedSearchProviders, setPreferredSearchProvider } from "./provider";
+export type { SearchProviderId as SearchProvider, SearchResponse } from "./types";
+export { isSearchProviderId, isSearchProviderPreference } from "./types";

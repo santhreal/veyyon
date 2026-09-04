@@ -7,12 +7,12 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions";
-import type { MemoryBackend } from "@veyyon/coding-agent/memory-backend";
-import * as memoryBackendModule from "@veyyon/coding-agent/memory-backend";
+import type { MemoryBackend } from "@veyyon/coding-agent/memory/backend";
+import * as memoryBackendModule from "@veyyon/coding-agent/memory/backend";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 const HOOK_SECRET = "SESSION_HOOK_SECRET_7f31";

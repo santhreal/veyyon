@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { normalizeToolEventInput, resolveToolEventInput } from "@veyyon/coding-agent/extensibility/tool-event-input";
+import { normalizeToolEventInput, resolveToolEventInput } from "@veyyon/kernel/registry/tool-event-input";
 
 describe("resolveToolEventInput", () => {
 	const upper = { name: "edit", resolveEventInput: (input: string) => input.toUpperCase() };

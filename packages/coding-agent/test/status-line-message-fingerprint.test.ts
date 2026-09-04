@@ -13,7 +13,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
-import { messageFingerprint } from "@veyyon/coding-agent/modes/components/status-line/component";
+import { messageFingerprint } from "@veyyon/coding-agent/modes/terminal/components/status-line/component";
 
 function assistantWithToolCall(args: unknown): AgentMessage {
 	return {

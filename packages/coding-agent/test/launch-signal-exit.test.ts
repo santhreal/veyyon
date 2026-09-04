@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { DaemonSnapshot } from "@veyyon/coding-agent/launch/protocol";
 import { parseDaemonSnapshot } from "@veyyon/coding-agent/launch/protocol";
-import { daemonLabel } from "@veyyon/coding-agent/tools/launch";
+import { daemonLabel } from "@veyyon/coding-agent/tools/shell/launch";
 
 // WHY THIS SUITE EXISTS (BACKLOG DOG-2)
 // -------------------------------------

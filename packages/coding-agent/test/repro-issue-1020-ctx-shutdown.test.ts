@@ -5,8 +5,8 @@ import type {
 	ExtensionContextActions,
 	ExtensionUIContext,
 } from "@veyyon/coding-agent/extensibility/extensions";
-import { ExtensionUiController } from "@veyyon/coding-agent/modes/controllers/extension-ui-controller";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { ExtensionUiController } from "@veyyon/coding-agent/modes/terminal/controllers/extension-ui-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 
 /**
  * Issue #1020: `ctx.shutdown()` is a no-op in interactive mode.
@@ -79,6 +79,7 @@ describe("issue #1020 - ctx.shutdown() in interactive mode", () => {
 				extensionRunner: fakeExtensionRunner,
 			},
 			setToolUIContext: () => {},
+			setToolNotifier: () => {},
 			editor: {
 				setText: () => {},
 				handleInput: () => {},

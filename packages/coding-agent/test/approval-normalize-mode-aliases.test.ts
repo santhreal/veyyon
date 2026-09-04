@@ -7,8 +7,8 @@
  * default.
  */
 import { describe, expect, it } from "bun:test";
-import { normalizeApprovalMode, validateApprovalModeSetting } from "../src/tools/approval";
-import { APPROVAL_MODE_VALUES, AUTONOMY_LABEL } from "../src/tools/approval-modes";
+import { normalizeApprovalMode, validateApprovalModeSetting } from "../src/tools/core/approval";
+import { APPROVAL_MODE_VALUES, AUTONOMY_LABEL } from "../src/tools/core/approval-modes";
 
 describe("normalizeApprovalMode alias matrix", () => {
 	const map: Array<[string | undefined, string]> = [

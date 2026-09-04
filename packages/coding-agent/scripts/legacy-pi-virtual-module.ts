@@ -1,6 +1,8 @@
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isEnoent } from "@veyyon/utils/fs-error";
 import { isRecord } from "@veyyon/utils/type-guards";
+import { typeScriptMembersOf } from "../../../scripts/workspace-layout";
 
 /** Build-time specifier resolved to bundled legacy Pi module namespaces. */
 export const LEGACY_PI_MODULES_SPECIFIER = "veyyon-legacy-pi-modules";
@@ -9,23 +11,50 @@ const VIRTUAL_NAMESPACE = "veyyon-legacy-pi-modules-build";
 const packageDir = path.resolve(import.meta.dir, "..");
 const repoRoot = path.resolve(packageDir, "..", "..");
 
-interface BundledPackage {
-	readonly dir: string;
-	readonly identifier: string;
-	readonly rootShim: string | null;
+/** One compat shim, named by the package that owns it rather than by a path this file spells. */
+interface ShimSource {
+	/** The published name of the workspace package the shim file lives in. */
+	readonly package: string;
+	/** The shim's path inside that package, forward-slashed. */
+	readonly module: string;
 }
 
+interface BundledPackage {
+	/** The published package name, which is what a member's manifest declares and a specifier says. */
+	readonly name: string;
+	readonly identifier: string;
+	readonly rootShim: ShimSource | null;
+}
+
+const CODING_AGENT = "@veyyon/coding-agent";
+const KERNEL = "@veyyon/kernel";
+
 const BUNDLED_PACKAGES: readonly BundledPackage[] = [
-	{ dir: "agent", identifier: "PiAgentCore", rootShim: null },
-	{ dir: "ai", identifier: "PiAi", rootShim: "legacy-pi-ai-shim.ts" },
-	{ dir: "coding-agent", identifier: "PiCodingAgent", rootShim: "legacy-pi-coding-agent-shim.ts" },
-	{ dir: "natives", identifier: "PiNatives", rootShim: null },
-	{ dir: "tui", identifier: "PiTui", rootShim: null },
-	{ dir: "utils", identifier: "PiUtils", rootShim: null },
+	{ name: "@veyyon/agent-core", identifier: "PiAgentCore", rootShim: null },
+	{
+		name: "@veyyon/ai",
+		identifier: "PiAi",
+		rootShim: { package: KERNEL, module: "src/loader/legacy-pi-ai-shim.ts" },
+	},
+	{
+		name: CODING_AGENT,
+		identifier: "PiCodingAgent",
+		rootShim: { package: CODING_AGENT, module: "src/extensibility/legacy-pi-coding-agent-shim.ts" },
+	},
+	{ name: "@veyyon/natives", identifier: "PiNatives", rootShim: null },
+	{
+		name: "@veyyon/tui",
+		identifier: "PiTui",
+		rootShim: { package: CODING_AGENT, module: "src/extensibility/legacy-pi-tui-shim.ts" },
+	},
+	{ name: "@veyyon/utils", identifier: "PiUtils", rootShim: null },
 ];
 
+/** The bundled package names, so a sweep states the subject rather than restating this table. */
+export const BUNDLED_PACKAGE_NAMES: readonly string[] = BUNDLED_PACKAGES.map(pkg => pkg.name);
+
 const TYPEBOX_MODULE_KEY = "typebox";
-const TYPEBOX_SHIM = "typebox.ts";
+const TYPEBOX_SHIM: ShimSource = { package: KERNEL, module: "src/registry/typebox.ts" };
 const SKIPPED_WILDCARD_BASENAMES = new Set(["index"]);
 const MAIN_THREAD_UNSAFE_WILDCARD_BASENAMES = new Set(["worker-entry"]);
 
@@ -88,8 +117,96 @@ function exportImportTarget(value: unknown): string | null {
 	return null;
 }
 
-function shimSpecifier(file: string): string {
-	return path.join(packageDir, "src", "extensibility", file);
+/**
+ * The absolute path of a shim, resolved through the member directory of the package that owns it.
+ *
+ * The path used to be built from this package's own `src/extensibility`, which stopped resolving the
+ * day the pi-ai and TypeBox shims moved into `@veyyon/kernel`: the bundler reported two unresolvable
+ * entrypoints and the binary never built. A missing file fails here instead, naming the shim.
+ */
+async function shimSpecifier(shim: ShimSource): Promise<string> {
+	const file = path.join(await memberDirectory(shim.package), shim.module);
+	if (!(await fileExists(file))) {
+		throw new Error(`Bundled Pi root shim ${shim.package}/${shim.module} is missing from this checkout: ${file}`);
+	}
+	return file;
+}
+
+async function fileExists(file: string): Promise<boolean> {
+	try {
+		return (await fs.stat(file)).isFile();
+	} catch (error) {
+		if (isEnoent(error)) return false;
+		throw error;
+	}
+}
+
+interface BundledManifest {
+	readonly name: string;
+	readonly exports: Record<string, unknown>;
+}
+
+/**
+ * Every workspace member directory, by the package name its manifest declares.
+ *
+ * A bundled package used to be named by its directory under `packages/`, which stopped being true
+ * the day `@veyyon/tui` became `hosts/terminal/engine` and `@veyyon/natives` became
+ * `natives/bridge/bindings`: the binary build died on a manifest path that no longer exists. The
+ * member list is the package manager's own answer to "where does this package live", so a member
+ * that moves again is followed rather than restated here.
+ */
+let memberDirectoriesByName: Map<string, string> | undefined;
+
+async function memberDirectory(name: string): Promise<string> {
+	if (!memberDirectoriesByName) {
+		const resolved = new Map<string, string>();
+		for (const member of typeScriptMembersOf(repoRoot)) {
+			const manifest: unknown = JSON.parse(await fs.readFile(path.join(repoRoot, member, "package.json"), "utf8"));
+			if (isRecord(manifest) && typeof manifest.name === "string") resolved.set(manifest.name, member);
+		}
+		memberDirectoriesByName = resolved;
+	}
+	const directory = memberDirectoriesByName.get(name);
+	if (directory === undefined) {
+		throw new Error(`Bundled Pi package ${name} is not a workspace member of this checkout`);
+	}
+	return path.join(repoRoot, directory);
+}
+
+/**
+ * Where each bundled package sits in this checkout, by name.
+ *
+ * Exported so a suite can sweep it: a member that moves and a member whose manifest name changes
+ * both break the binary build here, and nothing else in the test suite compiles a binary.
+ */
+export async function bundledPackageDirectories(): Promise<Map<string, string>> {
+	const resolved = new Map<string, string>();
+	for (const pkg of BUNDLED_PACKAGES) resolved.set(pkg.name, await memberDirectory(pkg.name));
+	return resolved;
+}
+
+async function readBundledManifest(packageRoot: string): Promise<BundledManifest> {
+	const manifestPath = path.join(packageRoot, "package.json");
+	const manifest: unknown = JSON.parse(await fs.readFile(manifestPath, "utf8"));
+	if (!isRecord(manifest) || typeof manifest.name !== "string") {
+		throw new Error(`Bundled Pi package manifest has no name: ${manifestPath}`);
+	}
+	return { name: manifest.name, exports: isRecord(manifest.exports) ? manifest.exports : {} };
+}
+
+/**
+ * Package root keys served by a legacy compat shim instead of the canonical
+ * package entrypoint, because the shim re-attaches a surface the canonical
+ * barrel dropped. Derived from `BUNDLED_PACKAGES`, so a package that gains or
+ * loses a root shim never leaves a second list behind to go stale.
+ */
+export async function collectShimmedRootKeys(): Promise<string[]> {
+	const keys: string[] = [];
+	for (const pkg of BUNDLED_PACKAGES) {
+		if (!pkg.rootShim) continue;
+		keys.push((await readBundledManifest(await memberDirectory(pkg.name))).name);
+	}
+	return keys;
 }
 
 /**
@@ -112,20 +229,15 @@ export async function collectBundledPiEntries(): Promise<BundledPiEntry[]> {
 	}
 
 	for (const pkg of BUNDLED_PACKAGES) {
-		const packageRoot = path.join(repoRoot, "packages", pkg.dir);
-		const manifestPath = path.join(packageRoot, "package.json");
-		const manifest: unknown = await Bun.file(manifestPath).json();
-		if (!isRecord(manifest) || typeof manifest.name !== "string") {
-			throw new Error(`Bundled Pi package manifest has no name: ${manifestPath}`);
-		}
-		const exportsField = isRecord(manifest.exports) ? manifest.exports : {};
-		const rootSpecifier = pkg.rootShim ? shimSpecifier(pkg.rootShim) : manifest.name;
-		addEntry(manifest.name, `bundled${pkg.identifier}`, rootSpecifier);
+		const packageRoot = await memberDirectory(pkg.name);
+		const { name, exports: exportsField } = await readBundledManifest(packageRoot);
+		const rootSpecifier = pkg.rootShim ? await shimSpecifier(pkg.rootShim) : name;
+		addEntry(name, `bundled${pkg.identifier}`, rootSpecifier);
 
 		for (const exportKey in exportsField) {
 			if (!exportKey.startsWith("./") || exportKey === "." || exportKey.includes("*")) continue;
 			const subpath = exportKey.slice(2);
-			const key = `${manifest.name}/${subpath}`;
+			const key = `${name}/${subpath}`;
 			addEntry(key, bindingForSubpath(pkg.identifier, subpath), key);
 		}
 
@@ -150,7 +262,7 @@ export async function collectBundledPiEntries(): Promise<BundledPiEntry[]> {
 					const basename = match.slice(0, match.length - pattern.sourceSuffix.length);
 					if (!isSafeWildcardBasename(basename) || basename.includes("/")) continue;
 					const subpath = `${pattern.exportPrefix}${basename}${pattern.exportSuffix}`;
-					const key = `${manifest.name}/${subpath}`;
+					const key = `${name}/${subpath}`;
 					addEntry(key, bindingForSubpath(pkg.identifier, subpath), key);
 				}
 			} catch (error) {
@@ -159,7 +271,7 @@ export async function collectBundledPiEntries(): Promise<BundledPiEntry[]> {
 		}
 	}
 
-	addEntry(TYPEBOX_MODULE_KEY, "bundledTypeBoxShim", shimSpecifier(TYPEBOX_SHIM));
+	addEntry(TYPEBOX_MODULE_KEY, "bundledTypeBoxShim", await shimSpecifier(TYPEBOX_SHIM));
 	return entries;
 }
 

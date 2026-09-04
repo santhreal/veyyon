@@ -32,7 +32,7 @@ const REPO_ROOT = path.resolve(import.meta.dir, "..", "..", "..");
 const OWNER_URL = `file://${path.join(REPO_ROOT, "packages/utils/src/native-process.ts")}`;
 const PTREE_URL = `file://${path.join(REPO_ROOT, "packages/utils/src/ptree.ts")}`;
 const PROCMGR_URL = `file://${path.join(REPO_ROOT, "packages/utils/src/procmgr.ts")}`;
-const NATIVE_INDEX_URL = `file://${path.join(REPO_ROOT, "packages/natives/native/index.js")}`;
+const NATIVE_INDEX_URL = `file://${path.join(REPO_ROOT, "natives/bridge/bindings/native/index.js")}`;
 const LOAD_MARKER = "native:loadNative:start";
 
 /**

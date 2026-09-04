@@ -6,10 +6,10 @@ import * as path from "node:path";
 import { getAgentDir } from "@veyyon/utils/dirs";
 import { isEnoent } from "@veyyon/utils/fs-error";
 import { errorMessage } from "@veyyon/utils/type-guards";
-// The path layout, not the memory subsystem: `../memories` reaches 558 modules because it asks a model
-// to summarise a session, and `getMemoryRoot` is a path join. `../memories/paths` is 76.
-import { getMemoryRoot } from "../memories/paths";
-import { getMnemopiSessionState, type MnemopiScopedMemoryHit, type MnemopiSessionState } from "../mnemopi/state";
+import { getMnemopiSessionState, type MnemopiScopedMemoryHit, type MnemopiSessionState } from "../memory/mnemopi/state";
+// The path layout, not the memory subsystem: `../memory/local` reaches 558 modules because it asks a model
+// to summarise a session, and `getMemoryRoot` is a path join. `../memory/paths` is 76.
+import { getMemoryRoot } from "../memory/paths";
 import { AgentRegistry } from "../registry/agent-registry";
 import { buildDirectoryResource, ensureWithinRoot as ensureWithinRootShared } from "./filesystem-resource";
 import { validateRelativePath } from "./relative-path";

@@ -39,12 +39,12 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { IrcBus, type IrcMessage } from "@veyyon/coding-agent/irc/bus";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AGENT_STATUSES, AgentRegistry, type AgentStatus } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { IrcBus, type IrcMessage } from "@veyyon/coding-agent/task/irc-bus";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { IrcTool } from "@veyyon/coding-agent/tools/irc";
+import { IrcTool } from "@veyyon/coding-agent/tools/agent/irc";
 
 /** A peer that accepts delivery and never answers, unless `onDeliver` replies. */
 function makePeer(onDeliver?: (msg: IrcMessage) => void): AgentSession {

@@ -17,8 +17,8 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { bashApprovalDecision } from "../src/tools/bash";
-import { findCriticalBashRisk } from "../src/tools/bash-guard";
+import { bashApprovalDecision } from "../src/tools/shell/bash";
+import { findCriticalBashRisk } from "../src/tools/shell/bash-guard";
 
 const HOME = "/home/agent";
 

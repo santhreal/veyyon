@@ -17,14 +17,15 @@
  * and prove nothing. `--ruler` prefixes a column ruler so a misaligned block can be
  * read off the image directly instead of estimated.
  */
-import { BashExecutionComponent } from "../../packages/coding-agent/src/modes/components/bash-execution";
+
+import type { TUI } from "../../hosts/terminal/engine/src/index";
 import {
 	COMPOSER_INSET_COLS,
 	resolveComposerAccents,
-} from "../../packages/coding-agent/src/modes/components/composer-chrome";
-import { ToolExecutionComponent } from "../../packages/coding-agent/src/modes/components/tool-execution";
-import { initTheme, theme } from "../../packages/coding-agent/src/modes/theme/theme";
-import type { TUI } from "../../packages/tui/src/index";
+} from "../../packages/coding-agent/src/modes/terminal/components/composer/composer-chrome";
+import { BashExecutionComponent } from "../../packages/coding-agent/src/modes/terminal/components/transcript/bash-execution";
+import { ToolExecutionComponent } from "../../packages/coding-agent/src/modes/terminal/components/transcript/tool-execution";
+import { initTheme, theme } from "../../packages/coding-agent/src/theme/theme";
 import { flag, hasFlag, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");

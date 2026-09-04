@@ -43,7 +43,7 @@ src/main.ts (runRootCommand)  ── theme / settings / model registry / session
    ▼
 createAgentSession(...)        ── src/sdk.ts → AgentSession
    │
-   ├── InteractiveMode   (src/modes/, TUI event loop)
+   ├── InteractiveMode   (src/modes/terminal/, TUI event loop)
    ├── runPrintMode      (one-shot text/json)
    └── runRpcMode        (JSONL stdin/stdout server)
 ```
@@ -80,31 +80,53 @@ re-export it; a re-export is not a second declaration and the check allows it.
 ## Source layout (`src/`)
 
 Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
-`config.ts`, `system-prompt.ts`, `thinking.ts`, `workspace-tree.ts`,
+`config.ts`, `system-prompt.ts`, `workspace-tree.ts`,
 `cli-commands.ts`, `telemetry-export.ts`.
 
 | Directory | Responsibility | Reference |
 |---|---|---|
 | `cli/`, `commands/`, `commit/`, `export/` | Command-line adapters and concrete subcommands | — |
-| `modes/` | Interactive TUI, print, and RPC runtimes | [rpc.md](../../docs/handbook/src/reference/rpc.md), [sdk.md](../../docs/handbook/src/reference/sdk.md) |
-| `session/` | `AgentSession`, JSONL session tree, storage, history | [session.md](../../docs/internal/session.md), [session-tree-architecture.md](../../docs/internal/session-tree-architecture.md) |
+| `modes/` | Mode runtimes: `terminal/` is the interactive TUI, `print-mode.ts` the one-shot runtime, `rpc/` and `acp/` the client-driven servers, `keywords/` the magic-keyword parsing | [rpc.md](../../docs/handbook/src/reference/rpc.md), [sdk.md](../../docs/handbook/src/reference/sdk.md) |
+| `presentation/`, `theme/` | View-model builders over `@veyyon/wire/presentation`, and the palette every output surface reads | [tui-design-language.md](../../docs/internal/tui-design-language.md) |
+| `session/` | Turn loop, session composition, and prompt rendering (session spine lives in `@veyyon/kernel/session`) | [session.md](../../docs/internal/session.md), [session-tree-architecture.md](../../docs/internal/session-tree-architecture.md) |
 | `config/`, `registry/`, `secrets/` | Settings, model/provider registry, secret obfuscation | [settings.md](../../docs/handbook/src/reference/settings.md), [config-usage.md](../../docs/handbook/src/architecture/config.md), [models.md](../../docs/handbook/src/reference/models-yml.md), [secrets.md](../../docs/handbook/src/architecture/secrets.md) |
-| `tools/` | Built-in tool implementations + render/meta helpers | [custom-tools.md](../../docs/handbook/src/using/custom-tools.md), [`tools/`](../../docs/tools/) |
-| `exec/`, `eval/`, `ssh/`, `dap/`, `debug/` | Execution backends (shell, py/js kernels, ssh, debugger) | [bash-tool-runtime.md](../../docs/internal/bash-tool-runtime.md), [python-repl.md](../../docs/handbook/src/features/python-repl.md) |
+| `tools/` | Built-in tool implementations, grouped one directory per domain: `core/` is the shared plumbing every domain reads, then `fs/`, `search/`, `shell/`, `web/` and `agent/`. Each domain declares a `manifest.ts` (lazy tool factories, no terminal import) and a `renderers.ts` (its TUI renderers); `index.ts` and `renderers.ts` at the root compose them | [custom-tools.md](../../docs/handbook/src/using/custom-tools.md), [`tools/`](../../docs/tools/) |
+| `exec/`, `eval/`, `ssh/`, `debug/` | Execution backends (shell, py/js kernels, ssh, debugger; `debug/dap/` is the adapter protocol) | [bash-tool-runtime.md](../../docs/internal/bash-tool-runtime.md), [python-repl.md](../../docs/handbook/src/features/python-repl.md) |
 | `lsp/` | Language-server client/runtime | [lsp-config.md](../../docs/handbook/src/features/lsp.md), [tools/lsp.md](../../docs/tools/lsp.md) |
-| `task/`, `swarm/`, `irc/`, `goals/`, `plan-mode/` | Subagent delegation, parallelism, inter-agent IRC, plan mode | [task-agent-discovery.md](../../docs/internal/task-agent-discovery.md), [tools/task.md](../../docs/tools/task.md) |
-| `web/`, `exa/` | Fetch, browser automation, search providers, scrapers | [tools/web_search.md](../../docs/tools/web_search.md), [tools/browser.md](../../docs/tools/browser.md) |
+| `task/`, `goals/`, `plan-mode/` | Subagent delegation, parallelism, inter-agent IRC (`task/irc-bus.ts`), plan mode | [task-agent-discovery.md](../../docs/internal/task-agent-discovery.md), [tools/task.md](../../docs/tools/task.md) |
+| `exa/` | Exa MCP researcher and websets tools. Fetch, browser automation and search providers live under `tools/web/`. Site scrapers are `@veyyon/web` and run against a `ScrapeServices` object `tools/web/scrape-services.ts` builds | [tools/web_search.md](../../docs/tools/web_search.md), [tools/browser.md](../../docs/tools/browser.md) |
 | `mcp/` | MCP transport / manager / loader / tool bridge | [mcp-config.md](../../docs/handbook/src/reference/mcp-config.md), [mcp-runtime-lifecycle.md](../../docs/internal/mcp-runtime-lifecycle.md) |
-| `extensibility/`, `slash-commands/` | Extensions, hooks, custom tools/commands, skills, plugins | [extensions.md](../../docs/handbook/src/features/extensions.md), [hooks.md](../../docs/handbook/src/reference/hooks.md), [skills.md](../../docs/handbook/src/reference/skills.md) |
-| `capability/`, `discovery/`, `tool-discovery/` | Capability registry + provider discovery modules | [extension-loading.md](../../docs/internal/extension-loading.md), [context-files.md](../../docs/handbook/src/context/context-files.md) |
+| `extensibility/`, `slash-commands/` | Extensions, hooks, custom tools/commands, skills, and host shims (loader and registry live in `@veyyon/kernel`) | [extensions.md](../../docs/handbook/src/features/extensions.md), [hooks.md](../../docs/handbook/src/reference/hooks.md), [skills.md](../../docs/handbook/src/reference/skills.md) |
+| `discovery/` | Provider discovery plus the capability registry in `discovery/capability/` | [extension-loading.md](../../docs/internal/extension-loading.md), [context-files.md](../../docs/handbook/src/context/context-files.md) |
 | `advisor/`, `autolearn/`, `autoresearch/` | Advisor/watchdog, managed skills, background research | [advisor-watchdog.md](../../docs/handbook/src/features/advisor.md) |
-| `memories/`, `memory-backend/`, `mnemopi/`, `hindsight/` | Memory subsystems and backends | [memory.md](../../docs/handbook/src/architecture/memory.md), [mnemosyne-memory-backend.md](../../docs/internal/mnemosyne-memory-backend.md) |
+| `memory/` | Memory subsystems and backends, with `memory/mnemopi/` and `memory/hindsight/` | [memory.md](../../docs/handbook/src/architecture/memory.md), [mnemosyne-memory-backend.md](../../docs/internal/mnemosyne-memory-backend.md) |
 | `internal-urls/` | Router + handlers (`agent://`, `docs://`, `rule://`, …) | [tree.md](../../docs/handbook/src/reference/tree-command.md) |
-| `tui/`, `collab/` | Low-level TUI primitives, live session sharing | [tui.md](../../docs/handbook/src/architecture/tui.md), [collab.md](../../docs/handbook/src/features/collab.md) |
-| `tts/`, `stt/` | Text-to-speech / speech-to-text | — |
-| `tiny/`, `auto-thinking/` | Embedded tiny-model experiments, auto thinking level | [local-tiny-models.md](../../docs/internal/local-tiny-models.md) |
-| `async/`, `lib/`, `utils/`, `prompts/`, `edit/` | Shared plumbing, prompt assets, patch/diff engine | [tools/edit.md](../../docs/tools/edit.md) |
+| `modes/terminal/draw/`, `collab/` | Low-level TUI primitives, live session sharing | [tui.md](../../docs/handbook/src/architecture/tui.md), [collab.md](../../docs/handbook/src/features/collab.md) |
+| `speech/` | Text-to-speech (`speech/tts/`) and speech-to-text (`speech/stt/`) | — |
+| `tiny/`, `thinking/` | Embedded tiny-model experiments, thinking levels and the auto classifier | [local-tiny-models.md](../../docs/internal/local-tiny-models.md) |
+| `async/`, `utils/`, `prompts/`, `edit/` | Shared plumbing, prompt assets, patch/diff engine | [tools/edit.md](../../docs/tools/edit.md) |
 | `system-prompt-builder/` | Section and statement registries, banner grammar, gate resolution, prompt inspection | [system-prompt-architecture.md](../../docs/internal/system-prompt-architecture.md), [system-prompt-customization.md](../../docs/handbook/src/models/system-prompt.md) |
+
+### Kernel split (`session/` and `extensibility/`)
+
+35 modules of the session spine and 18 modules of the loader and registry live in `@veyyon/kernel`,
+accessed as `@veyyon/kernel/session/<module>`, `@veyyon/kernel/loader/<module>` and
+`@veyyon/kernel/registry/<module>`. `kernel/README.md` groups them by concern.
+
+The dividing line is the import graph, not the subject. A module moved when its transitive closure
+named no tool, no host and no mode; a module that reaches one of those stayed. 42 non-test modules
+remain in `src/session/` and 47 in `src/extensibility/`, so the retained side is the larger one.
+An import graph does not show an ambient dependency, so two modules came back after the type check
+read them: `extensibility/plugins/legacy-pi-virtual-modules.d.ts`, reached by a
+`/// <reference path>` directive, and `session/turn-persistence.ts`, which keys the message roles
+`session/messages.ts` adds to `CustomAgentMessages` through declaration merging.
+
+`src/session/` keeps the turn loop (`agent-session.ts` and its siblings), the `factory-*`
+composition modules that assemble tools and prompts, the runtimes under `runtime/`, and the two
+modules that render a prompt the registry pins (`verification-evidence-ledger.ts`,
+`steering-envelope.ts`). `src/extensibility/` keeps the extension, hook, skill and custom-tool
+surfaces, the legacy Pi shims, and `extension-state/`, whose state shape is the Extension Control
+Center dashboard's.
 
 ## Subsystem reference
 
@@ -168,14 +190,14 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 - [theme.md](../../docs/handbook/src/reference/theme.md)
 - [renderer-defect-oracle.md](../../docs/internal/renderer-defect-oracle.md) — the composer zone
   invariants and how a failing state is recorded. Render verification lives in two places, and the
-  split follows the dependency direction rather than preference: `packages/tui/test/render-stress-*`
+  split follows the dependency direction rather than preference: `hosts/terminal/engine/test/render-stress-*`
   drives randomized operation sequences against synthetic components and reduces a failure to a
   minimal one, while the composer oracles sit in `packages/coding-agent/test` because
-  `mountComposerZone` is defined here and `packages/tui` cannot import this package. The composer
+  `mountComposerZone` is defined here and `hosts/terminal/engine` cannot import this package. The composer
   side reuses `VirtualTerminal` and `settle-frames` from the tui suite and none of its randomized
   machinery, so a defect that only appears in a sequence of operations belongs on the tui side.
 
-### Natives (`crates/veyyon-natives`, `packages/natives`)
+### Natives (`natives/bridge/addon`, `natives/bridge/bindings`)
 - [natives-architecture.md](../../docs/internal/natives-architecture.md), [natives-addon-loader-runtime.md](../../docs/internal/natives-addon-loader-runtime.md), [natives-binding-contract.md](../../docs/internal/natives-binding-contract.md)
 - [natives-text-search-pipeline.md](../../docs/internal/natives-text-search-pipeline.md), [natives-shell-pty-process.md](../../docs/internal/natives-shell-pty-process.md), [natives-media-system-utils.md](../../docs/internal/natives-media-system-utils.md)
 - [natives-build-release-debugging.md](../../docs/internal/natives-build-release-debugging.md), [natives-rust-task-cancellation.md](../../docs/internal/natives-rust-task-cancellation.md), [porting-to-natives.md](../../docs/internal/porting-to-natives.md)
@@ -194,7 +216,7 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 
 | To add… | Start here |
 |---|---|
-| A built-in tool | `src/tools/index.ts` (`BUILTIN_TOOLS` / `HIDDEN_TOOLS`) + [custom-tools.md](../../docs/handbook/src/using/custom-tools.md) |
+| A built-in tool | `src/tools/<domain>/manifest.ts` (the domain's `tools` / `hidden` factories) and `src/tools/<domain>/renderers.ts`, both composed by `src/tools/index.ts` and `src/tools/renderers.ts` + [custom-tools.md](../../docs/handbook/src/using/custom-tools.md) |
 | An extension (TS/JS module) | [extensions.md](../../docs/handbook/src/features/extensions.md), [extension-loading.md](../../docs/internal/extension-loading.md), [skills/authoring-extensions.md](../../docs/handbook/src/features/extensions-authoring.md) |
 | A hook | `src/extensibility/hooks/types.ts` + [hooks.md](../../docs/handbook/src/reference/hooks.md), [skills/authoring-hooks.md](../../docs/handbook/src/features/hooks-authoring.md) |
 | A slash command | [slash-command-internals.md](../../docs/internal/slash-command-internals.md) |

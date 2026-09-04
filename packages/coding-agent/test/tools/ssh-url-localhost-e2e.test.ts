@@ -1,16 +1,16 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import * as os from "node:os";
-import * as capability from "@veyyon/coding-agent/capability";
-import type { SSHHost } from "@veyyon/coding-agent/capability/ssh";
-import type { CapabilityResult } from "@veyyon/coding-agent/capability/types";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import * as capability from "@veyyon/coding-agent/discovery/capability";
+import type { SSHHost } from "@veyyon/coding-agent/discovery/capability/ssh";
+import type { CapabilityResult } from "@veyyon/coding-agent/discovery/capability/types";
 import { parseInternalUrl } from "@veyyon/coding-agent/internal-urls/parse";
 import { InternalUrlRouter } from "@veyyon/coding-agent/internal-urls/router";
 import { SshProtocolHandler } from "@veyyon/coding-agent/internal-urls/ssh-protocol";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
-import { SearchTool } from "@veyyon/coding-agent/tools/search";
-import { WriteTool } from "@veyyon/coding-agent/tools/write";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
+import { WriteTool } from "@veyyon/coding-agent/tools/fs/write";
+import { SearchTool } from "@veyyon/coding-agent/tools/search/search";
 
 // Live integration against `ssh localhost`. Skips automatically where key-based
 // localhost SSH is unavailable (CI without sshd). Capability lookup is mocked

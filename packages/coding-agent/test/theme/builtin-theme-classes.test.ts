@@ -1,10 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { getBuiltinThemes } from "@veyyon/coding-agent/modes/theme/builtin-themes";
-import {
-	BUILTIN_THEME_CLASSES,
-	isLightTheme,
-	isLightThemeJson,
-} from "@veyyon/coding-agent/modes/theme/theme-luminance";
+import { getBuiltinThemes } from "@veyyon/coding-agent/theme/builtin-themes";
+import { BUILTIN_THEME_CLASSES, isLightTheme, isLightThemeJson } from "@veyyon/coding-agent/theme/theme-luminance";
 import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 /**
@@ -12,7 +8,7 @@ import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
  *
  * WHY THIS SUITE EXISTS. `config/settings` needs one boolean for one legacy migration: an old flat
  * `theme: "<name>"` string has to land in the `theme.light` or `theme.dark` slot. It used to get that
- * boolean by importing `modes/theme/builtin-themes`, which statically embeds one JSON module per bundled
+ * boolean by importing `theme/builtin-themes`, which statically embeds one JSON module per bundled
  * theme, so the settings module carried 103 modules of theme data nothing on that path reads. Because
  * roughly 1,500 test files import `Settings`, they carried it too: 33,000 module instantiations across
  * a full run for a hundred-entry lookup table.
@@ -143,9 +139,7 @@ describe("the table carries no theme JSON with it", () => {
 	 * from being dragged in.
 	 */
 	it("imports neither the JSON table nor the theme engine nor settings", async () => {
-		const source = await Bun.file(
-			new URL("../../src/modes/theme/theme-luminance.ts", import.meta.url).pathname,
-		).text();
+		const source = await Bun.file(new URL("../../src/theme/theme-luminance.ts", import.meta.url).pathname).text();
 		// The shared walker, not a local regex. This assertion used to carry its own copy of the pattern,
 		// including the `[\s\S]*?` middle that ran a non-re-export `export` forward to the next `from` in
 		// the file and swallowed every real import in between. `@veyyon/utils/module-reach` owns the

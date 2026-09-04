@@ -3,10 +3,10 @@ import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getBundledModel } from "@veyyon/catalog/models";
-import { listSessions } from "@veyyon/coding-agent/session/session-listing";
 import { loadEntriesFromFile } from "@veyyon/coding-agent/session/session-loader";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { MemorySessionStorage } from "@veyyon/coding-agent/session/session-storage";
+import { listSessions } from "@veyyon/kernel/session/session-listing";
+import { MemorySessionStorage } from "@veyyon/kernel/session/session-storage";
 
 class CountingMemorySessionStorage extends MemorySessionStorage {
 	writeTextSyncCalls = 0;

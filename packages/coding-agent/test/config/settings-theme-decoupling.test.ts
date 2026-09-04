@@ -3,7 +3,7 @@
  * apply live.
  *
  * WHY THIS SUITE EXISTS. Settings called `setAutoThemeMapping`, `setSymbolPreset`
- * and `setColorBlindMode` directly, so it imported `modes/theme/theme`, which
+ * and `setColorBlindMode` directly, so it imported `theme/theme`, which
  * imports `./shimmer`, which imports `config/settings` again. A cycle is one
  * strongly connected component and has to be instantiated as a unit, so every
  * module in it cost what the whole thing cost. Measured with twenty identical test
@@ -17,16 +17,16 @@
  *
  * The edge was also backwards. Settings is domain configuration, the theme engine
  * is terminal UI, and this repo's standard is that domain logic does not import
- * UI. So settings now fires a `SettingSignal` and `modes/theme/theme` subscribes
+ * UI. So settings now fires a `SettingSignal` and `theme/theme` subscribes
  * at its own import, which is the pattern settings already used for
  * `provider.appendOnlyContext`, `modelRoles`, `statusLine.sessionAccent` and the
  * hindsight scope.
  *
  * THEN THE COST MOVED ONE STEP OUT. Breaking the cycle left settings importing
- * `modes/theme/builtin-themes`, which statically embeds one JSON module per bundled theme. The cycle
+ * `theme/builtin-themes`, which statically embeds one JSON module per bundled theme. The cycle
  * was gone, but settings still dragged 103 modules of theme data for one boolean, and so did every file
  * that imports `Settings`: the suite-total reach ratchet (since deleted, see `docs/internal/testing.md`)
- * measured 33,242 module instantiations across a full run. `modes/theme/theme-luminance` now owns the
+ * measured 33,242 module instantiations across a full run. `theme/theme-luminance` now owns the
  * light/dark question as a table, and settings imports that. So this suite guards two edges, not one:
  * settings must stay out of the cycle, AND out of the theme JSON.
  *
@@ -45,28 +45,28 @@ import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 const SRC = path.join(import.meta.dir, "..", "..", "src");
 const SETTINGS = path.join(SRC, "config", "settings.ts");
-const THEME = path.join(SRC, "modes", "theme", "theme.ts");
-const SHIMMER = path.join(SRC, "modes", "theme", "shimmer.ts");
-const BUILTIN_THEMES = path.join(SRC, "modes", "theme", "builtin-themes.ts");
-const THEME_LUMINANCE = path.join(SRC, "modes", "theme", "theme-luminance.ts");
+const THEME = path.join(SRC, "theme", "theme.ts");
+const SHIMMER = path.join(SRC, "theme", "shimmer.ts");
+const BUILTIN_THEMES = path.join(SRC, "theme", "builtin-themes.ts");
+const THEME_LUMINANCE = path.join(SRC, "theme", "theme-luminance.ts");
 
 /**
  * The theme-engine modules settings must never statically import, as EXACT specifiers.
  *
  * Matched exactly rather than by substring, and that is not a style preference. The earlier version
- * asked whether any specifier `includes("modes/theme/theme")`, which also matches
- * `modes/theme/theme-luminance`, `theme-class` and `theme-binding`. So the check reported the cycle was
+ * asked whether any specifier `includes("theme/theme")`, which also matches
+ * `theme/theme-luminance`, `theme-class` and `theme-binding`. So the check reported the cycle was
  * back the moment a sibling module was named with that prefix, and it would equally have missed nothing
  * while claiming to guard something narrower than it did. A forbidden-module list says which modules
  * are forbidden.
  */
 const FORBIDDEN_FROM_SETTINGS = [
-	"../modes/theme/theme",
-	"../modes/theme/shimmer",
-	"../modes/theme/theme-class",
+	"../theme/theme",
+	"../theme/shimmer",
+	"../theme/theme-class",
 	// The JSON-carrying module. Not part of the cycle, but importing it costs the hundred embedded
 	// theme JSON modules, which is what `theme-luminance` exists to avoid; see its header.
-	"../modes/theme/builtin-themes",
+	"../theme/builtin-themes",
 ] as const;
 
 /**
@@ -86,6 +86,17 @@ const FORBIDDEN_FROM_SETTINGS = [
  */
 function staticImports(file: string): string[] {
 	return moduleSpecifiersIn(fs.readFileSync(file, "utf-8"));
+}
+
+/**
+ * The `src`-relative modules a file statically imports. The positive edges below
+ * are asserted through this rather than through the raw specifier, so moving a
+ * module one directory deeper does not read as the edge disappearing.
+ */
+function staticImportTargets(file: string): string[] {
+	return staticImports(file)
+		.filter(specifier => specifier.startsWith("."))
+		.map(specifier => path.relative(SRC, path.resolve(path.dirname(file), specifier)));
 }
 
 describe("config/settings stays out of the theme engine", () => {
@@ -117,8 +128,8 @@ describe("config/settings stays out of the theme engine", () => {
 	it("reaches the light/dark classifier through the classifier leaf, not the JSON one", () => {
 		const imports = staticImports(SETTINGS);
 
-		expect(imports).toContain("../modes/theme/theme-luminance");
-		expect(imports).not.toContain("../modes/theme/builtin-themes");
+		expect(imports).toContain("../theme/theme-luminance");
+		expect(imports).not.toContain("../theme/builtin-themes");
 	});
 
 	/**
@@ -191,9 +202,9 @@ describe("config/settings stays out of the theme engine", () => {
 		// weaker one: the dependency on configuration is still here, so the absences above are still
 		// meaningful, and the cycle this suite exists for cannot form through shimmer at all any more,
 		// because the module it now names cannot import the theme barrel back.
-		expect(staticImports(SHIMMER)).toContain("../../config/settings-instance");
-		expect(staticImports(SHIMMER)).not.toContain("../../config/settings");
-		expect(staticImports(THEME)).toContain("../../config/settings");
+		expect(staticImportTargets(SHIMMER)).toContain("config/settings-instance");
+		expect(staticImportTargets(SHIMMER)).not.toContain("config/settings");
+		expect(staticImportTargets(THEME)).toContain("config/settings");
 	});
 
 	/**
@@ -203,11 +214,10 @@ describe("config/settings stays out of the theme engine", () => {
 	 */
 	it("points the dependency from the UI at the configuration, not the reverse", () => {
 		const settingsImports = staticImports(SETTINGS);
-		const themeImports = staticImports(THEME);
 
-		expect(themeImports).toContain("../../config/settings");
+		expect(staticImportTargets(THEME)).toContain("config/settings");
 		// Exact specifiers, for the reason `FORBIDDEN_FROM_SETTINGS` documents: a substring test for
-		// "modes/theme/theme" also matches `theme-luminance`, the leaf settings is SUPPOSED to import.
+		// "theme/theme" also matches `theme-luminance`, the leaf settings is SUPPOSED to import.
 		expect(
 			settingsImports.filter(specifier => (FORBIDDEN_FROM_SETTINGS as readonly string[]).includes(specifier)),
 		).toEqual([]);
@@ -219,7 +229,7 @@ describe("the theme settings still apply when the engine is loaded", () => {
 	 * Put the theme engine's ambient state back before any other suite in this process runs.
 	 *
 	 * WHY THIS TEARDOWN IS NOT OPTIONAL. The cases below change global rendering state on purpose --
-	 * that is what they are proving -- and `currentSymbolPresetOverride` in `modes/theme/theme.ts`
+	 * that is what they are proving -- and `currentSymbolPresetOverride` in `theme/theme.ts`
 	 * is module scope, so leaving it on `ascii` changes what EVERY later suite in the same process
 	 * renders. That is not hypothetical: it is why
 	 * `assistant-message-mermaid > aligns box borders for CJK labels` intermittently found zero rows
@@ -235,7 +245,7 @@ describe("the theme settings still apply when the engine is loaded", () => {
 	 * than assumed, because a teardown that silently does not work is worse than none.
 	 */
 	afterAll(async () => {
-		const themeModule = await import("@veyyon/coding-agent/modes/theme/theme");
+		const themeModule = await import("@veyyon/coding-agent/theme/theme");
 		const { Settings } = await import("@veyyon/coding-agent/config/settings");
 
 		await Bun.sleep(20);
@@ -252,7 +262,7 @@ describe("the theme settings still apply when the engine is loaded", () => {
 	 * changes the setting, which is the real operator sequence.
 	 */
 	it("applies symbolPreset through the signal", async () => {
-		const themeModule = await import("@veyyon/coding-agent/modes/theme/theme");
+		const themeModule = await import("@veyyon/coding-agent/theme/theme");
 		const { Settings } = await import("@veyyon/coding-agent/config/settings");
 		const settings = Settings.isolated();
 
@@ -269,7 +279,7 @@ describe("the theme settings still apply when the engine is loaded", () => {
 	 * different setter, so one working does not imply the other.
 	 */
 	it("applies colorBlindMode through the signal", async () => {
-		const themeModule = await import("@veyyon/coding-agent/modes/theme/theme");
+		const themeModule = await import("@veyyon/coding-agent/theme/theme");
 		const { Settings } = await import("@veyyon/coding-agent/config/settings");
 		const settings = Settings.isolated();
 
@@ -308,7 +318,7 @@ describe("the light/dark classifier moved without changing its answers", () => {
 	 * would fail here rather than in the legacy migration that uses it.
 	 */
 	it("classifies the two bundled defaults correctly", async () => {
-		const { isLightTheme } = await import("@veyyon/coding-agent/modes/theme/builtin-themes");
+		const { isLightTheme } = await import("@veyyon/coding-agent/theme/builtin-themes");
 
 		expect(isLightTheme("light")).toBe(true);
 		expect(isLightTheme("dark")).toBe(false);
@@ -316,7 +326,7 @@ describe("the light/dark classifier moved without changing its answers", () => {
 
 	/** An unknown theme name falls to dark, which is the shipped default. */
 	it("classifies an unknown theme as dark", async () => {
-		const { isLightTheme } = await import("@veyyon/coding-agent/modes/theme/builtin-themes");
+		const { isLightTheme } = await import("@veyyon/coding-agent/theme/builtin-themes");
 
 		expect(isLightTheme("no-such-theme-exists-here")).toBe(false);
 		// Absent name means the default theme, which is dark.
@@ -325,13 +335,13 @@ describe("the light/dark classifier moved without changing its answers", () => {
 
 	/**
 	 * The barrel still exports it. Callers import theme lookups from
-	 * `modes/theme/theme`, and the move must not have changed that public surface,
+	 * `theme/theme`, and the move must not have changed that public surface,
 	 * so the re-export is asserted to be the SAME function rather than merely
 	 * present.
 	 */
 	it("is still exported from the theme barrel, as the same function", async () => {
-		const barrel = await import("@veyyon/coding-agent/modes/theme/theme");
-		const leaf = await import("@veyyon/coding-agent/modes/theme/builtin-themes");
+		const barrel = await import("@veyyon/coding-agent/theme/theme");
+		const leaf = await import("@veyyon/coding-agent/theme/builtin-themes");
 
 		expect(barrel.isLightTheme).toBe(leaf.isLightTheme);
 		expect(barrel.getBuiltinThemes).toBe(leaf.getBuiltinThemes);
@@ -343,7 +353,7 @@ describe("the light/dark classifier moved without changing its answers", () => {
 	 * fall through to the dark default and still pass the two cases above.
 	 */
 	it("still carries the whole bundled theme set", async () => {
-		const { getBuiltinThemes } = await import("@veyyon/coding-agent/modes/theme/builtin-themes");
+		const { getBuiltinThemes } = await import("@veyyon/coding-agent/theme/builtin-themes");
 		const themes = getBuiltinThemes();
 
 		expect(themes.dark).toBeDefined();

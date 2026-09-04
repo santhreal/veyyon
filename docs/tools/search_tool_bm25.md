@@ -3,10 +3,10 @@
 > Search the hidden tool-discovery index and activate the top matches for the current session.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/search-tool-bm25.ts`
+- Entry: `packages/coding-agent/src/tools/search/search-tool-bm25.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/search-tool-bm25.md`
 - Key collaborators:
-  - `packages/coding-agent/src/tool-discovery/tool-index.ts`: discoverable-tool metadata and BM25 index/search.
+  - `packages/coding-agent/src/discovery/tool-index.ts`: discoverable-tool metadata and BM25 index/search.
   - `packages/coding-agent/src/session/agent-session.ts`: session discovery mode, corpus assembly, activation, cache invalidation.
   - `packages/coding-agent/src/sdk.ts`: initial hiding of discoverable built-ins and prompt-time discoverable summary.
   - `packages/coding-agent/src/tools/index.ts`: tool-session discovery hooks, essential/discoverable load modes, registry wiring.
@@ -27,7 +27,7 @@
 {"query":"...","activated_tools":["..."],"match_count":2,"total_tools":17}
 ```
 
-- Runtime-only `details` carries the ranked matches used by the TUI renderer:
+- Runtime-only `details` carries the ranked matches the card reads:
   - `query`, `limit`, `total_tools`
   - `activated_tools`: tool names activated by this call
   - `active_selected_tools`: cumulative discovered-tool selections still active
@@ -39,10 +39,10 @@
     - optional `mcp_tool_name`
     - `schema_keys`
     - `score` rounded to 6 decimals
-- The renderer shows a status line plus up to 5 collapsed tree items by default (`COLLAPSED_MATCH_LIMIT`), each with label, optional server name, score to 3 decimals, and truncated description. The ranked match list is not serialized into `content`.
+- The card in `packages/coding-agent/src/tools/search/search-tool-bm25-view.ts` states a status row plus up to 5 collapsed matches (`COLLAPSED_MATCH_LIMIT`), one row per tool carrying label, optional server name, score to 3 decimals and truncated description, and states how many it held back. Every host draws that description; the terminal draws the rows as a tree. The ranked match list is not serialized into `content`.
 
 ## Flow
-1. `SearchToolBm25Tool.createIf()` in `packages/coding-agent/src/tools/search-tool-bm25.ts` exposes the tool for explicit discovery modes (`"mcp-only"` / `"all"`) or legacy `mcp.discoveryMode === true`. The default `"auto"` mode is resolved later by `createAgentSession()` after MCP/extension tools are registered, which also injects the tool for local discovery.
+1. `SearchToolBm25Tool.createIf()` in `packages/coding-agent/src/tools/search/search-tool-bm25.ts` exposes the tool for explicit discovery modes (`"mcp-only"` / `"all"`) or legacy `mcp.discoveryMode === true`. The default `"auto"` mode is resolved later by `createAgentSession()` after MCP/extension tools are registered, which also injects the tool for local discovery.
 2. `description` is rendered from `packages/coding-agent/src/prompts/tools/search-tool-bm25.md` via `renderSearchToolBm25Description()`, using the current discoverable-tool list plus per-server summary/count.
 3. `execute()` re-checks capability and settings:
    - missing discovery hooks -> `ToolError("Tool discovery is unavailable in this session.")`
@@ -50,11 +50,11 @@
 4. `query` is trimmed and validated; `limit` is defaulted/validated.
 5. `getDiscoverableToolSearchIndexForExecution()` fetches the cached generic search index from the session when available, otherwise rebuilds an index from the current discoverable-tool list.
 6. `getSelectedToolNames()` reads the current discovered selections so already-selected tools can be excluded from fresh results.
-7. `searchDiscoverableTools()` in `packages/coding-agent/src/tool-discovery/tool-index.ts` tokenizes the query, scores every document with BM25, sorts by descending score then `tool.name`, and returns up to `searchIndex.documents.length` results; `execute()` then filters already-selected names and slices to `limit`.
+7. `searchDiscoverableTools()` in `packages/coding-agent/src/discovery/tool-index.ts` tokenizes the query, scores every document with BM25, sorts by descending score then `tool.name`, and returns up to `searchIndex.documents.length` results; `execute()` then filters already-selected names and slices to `limit`.
 8. If any matches remain, `activateTools()` activates all matched tool names through `session.activateDiscoveredTools()` or legacy `activateDiscoveredMCPTools()`.
 9. `details` is assembled from the activated names, current selected names, corpus size, and formatted matches; `content` is reduced to the compact JSON summary from `buildSearchToolBm25Content()`.
-10. `searchToolBm25Renderer` renders either:
-   - the structured `details` view, or
+10. `searchToolBm25ToolView` describes either:
+   - the structured `details` card, or
    - a fallback text-only warning block if `details` is absent.
 
 ## Modes / Variants
@@ -79,16 +79,16 @@
   - Tool availability changes before the next model call in the same turn; the prompt text says this explicitly.
 - User-visible prompts / interactive UI
   - The tool description includes discoverable server summaries and total discoverable-tool count.
-  - The TUI renderer shows ranked matches, but the model-visible text summary does not.
+  - The card shows ranked matches, but the model-visible text summary does not.
 
 ## Limits & Caps
-- Default result cap: `8` (`DEFAULT_LIMIT` in `packages/coding-agent/src/tools/search-tool-bm25.ts`).
+- Default result cap: `8` (`DEFAULT_LIMIT` in `packages/coding-agent/src/tools/search/search-tool-bm25.ts`).
 - `limit` must be a positive integer; no tool-level upper bound beyond corpus size.
-- Renderer collapsed list cap: `5` (`COLLAPSED_MATCH_LIMIT`).
-- Renderer truncation widths:
+- Card collapsed list cap: `5` (`COLLAPSED_MATCH_LIMIT` in `packages/coding-agent/src/tools/search/search-tool-bm25-view.ts`).
+- Card truncation widths:
   - label: `72` chars (`MATCH_LABEL_LEN`)
   - description: `96` chars (`MATCH_DESCRIPTION_LEN`)
-- BM25+ parameters in `packages/coding-agent/src/tool-discovery/tool-index.ts`:
+- BM25+ parameters in `packages/coding-agent/src/discovery/tool-index.ts`:
   - `BM25_K1 = 1.2`
   - `BM25_B = 0.75`
   - `BM25_DELTA = 1.0`
@@ -99,7 +99,7 @@
   - `serverName`: `2`
   - `summary`: `2`
   - each `schemaKey`: `1`
-- Summary fallback length for discoverable metadata: first `200` chars of `description` when no explicit summary exists (`getDiscoverableTool()` in `packages/coding-agent/src/tool-discovery/tool-index.ts`).
+- Summary fallback length for discoverable metadata: first `200` chars of `description` when no explicit summary exists (`getDiscoverableTool()` in `packages/coding-agent/src/discovery/tool-index.ts`).
 
 ## Errors
 - `execute()` throws `ToolError` for unavailable discovery hooks, disabled discovery mode, empty trimmed query, and non-positive/non-integer `limit`.

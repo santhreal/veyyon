@@ -30,16 +30,17 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { AgentToolResult } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { SessionEntry } from "@veyyon/coding-agent/session/session-entries";
+import { viewToolRenderer } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import {
 	getLatestTodoPhasesSnapshotFromEntries,
 	type TodoPhase,
 	TodoTool,
 	type TodoToolDetails,
-	todoToolRenderer,
-} from "@veyyon/coding-agent/tools/todo";
+} from "@veyyon/coding-agent/tools/agent/todo";
+import { todoToolView } from "@veyyon/coding-agent/tools/agent/todo-view";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, type TUI } from "@veyyon/tui";
 import {
 	isTerminalTodoStatus,
@@ -50,6 +51,9 @@ import {
 	type TodoStatus,
 } from "@veyyon/wire";
 import { createToolExecution } from "../helpers/tool-execution";
+
+// The card the terminal registry draws for `todo`: the shipped view through the shipped drawer.
+const todoToolRenderer = viewToolRenderer(todoToolView, { mergeCallAndResult: true });
 
 /**
  * The terminality call, one row per status, written down here so it is an
@@ -101,10 +105,15 @@ function renderLines(
  * The exact bytes a finished board must produce — success SGR included, since the
  * colour is half the report. Built from the theme accessors rather than a literal
  * escape so a re-themed success colour stays the contract.
+ *
+ * Two runs, not one: the card names the mark and the summary as separate spans, because a host
+ * that is not a terminal draws the mark from its own glyph table, so the terminal opens the
+ * success colour for each. Same glyph, same colour, same words.
  */
 function doneLine(tasks: number): string {
 	const plural = tasks === 1 ? "task" : "tasks";
-	return theme.fg("success", `${theme.checkbox.checked} ${TODO_DONE_SUMMARY} · ${tasks} ${plural}`);
+	const summary = ` ${TODO_DONE_SUMMARY} · ${tasks} ${plural}`;
+	return `${theme.fg("success", theme.checkbox.checked)}${theme.fg("success", summary)}`;
 }
 
 /** The SGR `theme.fg(color, …)` opens with, isolated from any text. */

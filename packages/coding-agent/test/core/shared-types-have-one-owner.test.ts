@@ -30,14 +30,15 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import type { SessionEntry as HostSessionEntry } from "@veyyon/agent-core/compaction/entries";
-import type { ManifestExtension } from "@veyyon/coding-agent/capability/extension";
+import type { ManifestExtension } from "@veyyon/coding-agent/discovery/capability/extension";
+import type { ExtensionRow } from "@veyyon/coding-agent/extensibility/extension-state/types";
 import type { LoadedExtension } from "@veyyon/coding-agent/extensibility/extensions/types";
-import type { ExtensionRow } from "@veyyon/coding-agent/modes/components/extensions/types";
 import { PROMPTS } from "@veyyon/coding-agent/prompts/registry";
 import type { DenseVector, Vector } from "@veyyon/mnemopi/types";
 import type { SessionEntry as DeprecatedStatsSessionEntry, SessionLogEntry } from "@veyyon/stats/types";
 import type { JsonPrimitive, JsonValue, PromptEntry, PromptSection } from "@veyyon/utils";
 import type { SessionEntry as DeprecatedWireSessionEntry, WireSessionEntry } from "@veyyon/wire";
+import { typeScriptMembers } from "../../../../scripts/workspace-layout";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../../..");
 
@@ -72,36 +73,36 @@ const UNIFIED = [
 	},
 	{
 		name: "Vector",
-		owner: "packages/mnemopi/src/types.ts",
+		owner: "plugins/mnemopi/src/types.ts",
 		resolution:
 			"four declarations in one package with three meanings; the two `Float32Array` copies now re-export `DenseVector` under their old name and the unused `number[]` alias was spelled out",
 	},
 	{
 		name: "DenseVector",
-		owner: "packages/mnemopi/src/types.ts",
+		owner: "plugins/mnemopi/src/types.ts",
 		resolution: "the name the two `Vector = Float32Array` copies collapsed into, beside the wide `Vector` it is not",
 	},
 	{
 		name: "Veracity",
-		owner: "packages/mnemopi/src/core/veracity.ts",
+		owner: "plugins/mnemopi/src/core/veracity.ts",
 		resolution:
 			'five declarations with DIFFERENT value sets, and the narrowest validated writes: `clampVeracity("false")` returned `"unknown"`, so a memory recorded as known-wrong was scored 0.8 by recall instead of 0. The vocabulary is now derived from the weight table, so a value cannot exist without a weight',
 	},
 	{
 		name: "StoredVeracity",
-		owner: "packages/mnemopi/src/types.ts",
+		owner: "plugins/mnemopi/src/types.ts",
 		resolution:
 			"the wide read-row spelling beside the closed vocabulary, because the column has no CHECK constraint; the old `| string` in `core/beam/types.ts` collapsed the union to `string` and checked nothing",
 	},
 	{
 		name: "SessionHeader",
-		owner: "packages/coding-agent/src/session/session-entries.ts",
+		owner: "kernel/src/session/session-entries.ts",
 		resolution:
 			"three headers under one name; the wire one became `WireSessionHeader` and the stats parser's `SessionLogHeader`, and the host now PROJECTS onto the wire shape instead of sending its own verbatim",
 	},
 	{
 		name: "WireSessionHeader",
-		owner: "packages/wire/src/index.ts",
+		owner: "contracts/wire/src/index.ts",
 		resolution: "the four fields a guest receives, which the host was overshooting by three",
 	},
 	{
@@ -111,24 +112,24 @@ const UNIFIED = [
 	},
 	{
 		name: "WireUserMessage",
-		owner: "packages/wire/src/index.ts",
+		owner: "contracts/wire/src/index.ts",
 		resolution:
 			"the four fields a guest renders, keeping `UserMessage` as a renamed export because wire is published",
 	},
 	{
 		name: "WireAssistantMessage",
-		owner: "packages/wire/src/index.ts",
+		owner: "contracts/wire/src/index.ts",
 		resolution:
 			"the widest gap of the four: the host's `AssistantMessage` carries `providerPayload`, `request`, `contextSnapshot`, `retryRecovery`, `responseId`, `turnMetrics` and `errorId`, and this one carries content, model, usage, stop reason, timestamp, and nothing else",
 	},
 	{
 		name: "WireDeveloperMessage",
-		owner: "packages/wire/src/index.ts",
+		owner: "contracts/wire/src/index.ts",
 		resolution: "renamed with the rest of the vocabulary so no message shape here answers to a bare name",
 	},
 	{
 		name: "WireToolResultMessage",
-		owner: "packages/wire/src/index.ts",
+		owner: "contracts/wire/src/index.ts",
 		resolution: "renamed with the rest of the vocabulary so no message shape here answers to a bare name",
 	},
 	{
@@ -139,7 +140,7 @@ const UNIFIED = [
 	},
 	{
 		name: "WireStopReason",
-		owner: "packages/wire/src/index.ts",
+		owner: "contracts/wire/src/index.ts",
 		resolution:
 			"prefixed even though it matches today, because two identical unions under one name are how they drift apart later without either side noticing",
 	},
@@ -163,7 +164,7 @@ const UNIFIED = [
 	},
 	{
 		name: "WireSessionEntry",
-		owner: "packages/wire/src/index.ts",
+		owner: "contracts/wire/src/index.ts",
 		resolution: "the guest-renderable subset, which is six variants of the host's dozen-plus",
 	},
 	{
@@ -173,7 +174,7 @@ const UNIFIED = [
 	},
 	{
 		name: "ManifestExtension",
-		owner: "packages/coding-agent/src/capability/extension.ts",
+		owner: "packages/coding-agent/src/discovery/capability/extension.ts",
 		resolution: "one of three `Extension` declarations; this one is a Gemini-style extension directory on disk",
 	},
 	{
@@ -183,12 +184,12 @@ const UNIFIED = [
 	},
 	{
 		name: "ExtensionRow",
-		owner: "packages/coding-agent/src/modes/components/extensions/types.ts",
+		owner: "packages/coding-agent/src/extensibility/extension-state/types.ts",
 		resolution: "the third; a Control Center row, most of which are skills and rules rather than extensions",
 	},
 	{
 		name: "DiscoveredCustomTool",
-		owner: "packages/coding-agent/src/capability/tool.ts",
+		owner: "packages/coding-agent/src/discovery/capability/tool.ts",
 		resolution:
 			"the same shape of bug as Extension: a tool-definition file on disk, renamed off the runtime `CustomTool` an extension registers",
 	},
@@ -200,7 +201,7 @@ const UNIFIED = [
 	},
 	{
 		name: "TabWorkerTransport",
-		owner: "packages/coding-agent/src/tools/browser/tab-protocol.ts",
+		owner: "packages/coding-agent/src/tools/web/browser/tab-protocol.ts",
 		resolution: "the other one; its `send` also takes a transfer list, so the two were never interchangeable",
 	},
 	{
@@ -210,7 +211,7 @@ const UNIFIED = [
 	},
 	{
 		name: "TabWorkerOutbound",
-		owner: "packages/coding-agent/src/tools/browser/tab-protocol.ts",
+		owner: "packages/coding-agent/src/tools/web/browser/tab-protocol.ts",
 		resolution:
 			"the tab worker's outbound union, which carries `tool-call` and `init-failed` the eval one has no idea about",
 	},
@@ -232,15 +233,15 @@ const UNIFIED = [
 	},
 	{
 		name: "TodoPhase",
-		owner: "packages/coding-agent/src/tools/todo.ts",
+		owner: "packages/coding-agent/src/tools/agent/todo.ts",
 		resolution:
-			"the todo vocabulary was declared twice in ONE package; `modes/types.ts`'s `TodoItem` carried `details?` and `notes?`, which the tool's arktype schema has no concept of and nothing ever wrote, so the HUD's superscript note count was unreachable code. The writer owns the shape and `modes/types.ts` re-exports it. `TodoItem` itself is not listed here because generated Cursor protobuf declares that name too",
+			"the todo vocabulary was declared twice in ONE package; `modes/terminal/types.ts`'s `TodoItem` carried `details?` and `notes?`, which the tool's arktype schema has no concept of and nothing ever wrote, so the HUD's superscript note count was unreachable code. The writer owns the shape and `modes/terminal/types.ts` re-exports it. `TodoItem` itself is not listed here because generated Cursor protobuf declares that name too",
 	},
 	{
 		name: "TodoStatus",
-		owner: "packages/wire/src/index.ts",
+		owner: "contracts/wire/src/index.ts",
 		resolution:
-			"byte-identical in both copies, which is how the two `TodoItem`s looked interchangeable. The union then moved OUT of the coding agent entirely: it is derived from `TODO_STATUS_IS_TERMINAL` in `@veyyon/wire`, so a new status cannot join it without a terminality decision landing beside it, and both renderers of a todo board read the same vocabulary. `tools/todo.ts` and `modes/types.ts` re-export the name and declare nothing",
+			"byte-identical in both copies, which is how the two `TodoItem`s looked interchangeable. The union then moved OUT of the coding agent entirely: it is derived from `TODO_STATUS_IS_TERMINAL` in `@veyyon/wire`, so a new status cannot join it without a terminality decision landing beside it, and both renderers of a todo board read the same vocabulary. `tools/agent/todo.ts` and `modes/terminal/types.ts` re-export the name and declare nothing",
 	},
 	{
 		name: "Usage",
@@ -250,13 +251,13 @@ const UNIFIED = [
 	},
 	{
 		name: "RecallResult",
-		owner: "packages/mnemopi/src/core/beam/types.ts",
+		owner: "plugins/mnemopi/src/core/beam/types.ts",
 		resolution:
 			"three declarations. Hindsight's (a different memory SERVICE, keyed on `text` rather than `content`) became `HindsightRecallResult`; mnemopi's second copy in `src/types.ts` was DEAD -- nothing imported it, inside the package or out -- and it would have typechecked while missing `truncated`/`full_length`, the fields a caller must check before trusting `content`",
 	},
 	{
 		name: "HindsightRecallResult",
-		owner: "packages/coding-agent/src/hindsight/client.ts",
+		owner: "packages/coding-agent/src/memory/hindsight/client.ts",
 		resolution:
 			"the memory backend is switchable, so both were in play at once and the index signature on this one meant handing it to mnemopi-shaped code typechecked",
 	},
@@ -268,13 +269,13 @@ const UNIFIED = [
 	},
 	{
 		name: "McpServerJsonRpcResponse",
-		owner: "packages/mnemopi/src/mcp-server.ts",
+		owner: "plugins/mnemopi/src/mcp-server.ts",
 		resolution:
 			"what a server SENDS, including the `id: null` the JSON-RPC 2.0 spec requires for an error it cannot attribute to a request",
 	},
 	{
 		name: "McpServerJsonRpcRequest",
-		owner: "packages/mnemopi/src/mcp-server.ts",
+		owner: "plugins/mnemopi/src/mcp-server.ts",
 		resolution:
 			"what a server PARSES: every field optional, because a client can send anything. The client-side `JsonRpcRequest` requires all three, which is right for a request you build and wrong for one you receive",
 	},
@@ -297,14 +298,23 @@ const UNIFIED = [
  */
 const NOT_OUR_SOURCE = ["node_modules", "/dist/", "/vendor/", "/repo-cache/"];
 
-/** Every `.ts` under `packages/` that this repository actually maintains, with its text. */
+/**
+ * Every `.ts` under any declared TypeScript workspace member that this repository maintains, with its
+ * text.
+ *
+ * The members are read from the root `package.json` rather than named here. This suite globbed
+ * `packages/**` literally, then root globs, so a member declared as a literal path was invisible to
+ * it. The member list is resolved, so a member at any depth is covered.
+ */
 async function ourSources(): Promise<Array<{ file: string; text: string }>> {
-	const glob = new Bun.Glob("packages/**/*.ts");
 	const paths: string[] = [];
-	for await (const relative of glob.scan({ cwd: REPO_ROOT, onlyFiles: true })) {
-		const file = relative.replace(/\\/g, "/");
-		if (NOT_OUR_SOURCE.some(excluded => file.includes(excluded))) continue;
-		paths.push(file);
+	for (const member of typeScriptMembers()) {
+		const glob = new Bun.Glob(`${member}/**/*.ts`);
+		for await (const relative of glob.scan({ cwd: REPO_ROOT, onlyFiles: true })) {
+			const file = relative.replace(/\\/g, "/");
+			if (NOT_OUR_SOURCE.some(excluded => file.includes(excluded))) continue;
+			paths.push(file);
+		}
 	}
 	return await Promise.all(
 		paths.map(async file => ({ file, text: await Bun.file(path.join(REPO_ROOT, file)).text() })),

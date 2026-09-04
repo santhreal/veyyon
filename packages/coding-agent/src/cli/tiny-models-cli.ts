@@ -1,5 +1,5 @@
-import { subCellBar } from "@veyyon/tui/sub-cell-bar";
 import { clampLow, formatBytes } from "@veyyon/utils";
+import { subCellBar } from "@veyyon/utils/bar";
 import chalk from "chalk";
 import { transformersRepoCacheState } from "../subprocess/transformers-cache";
 import {

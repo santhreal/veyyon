@@ -3,8 +3,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
-import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
+import * as themeModule from "@veyyon/coding-agent/theme/theme";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import type { TUI } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
@@ -97,7 +97,9 @@ describe("apply_patch rendering", () => {
 
 		expect(rendered).toContain("src/first.ts");
 		expect(rendered).toContain("Edit");
-		expect(rendered).toContain("(+1 more)");
+		// The pending-file count is the host's trailing run on the head row (`+1 more`), where the
+		// terminal renderer wrote its own parenthesised hint.
+		expect(rendered).toContain("+1 more");
 	});
 
 	it("does not show missing end-marker errors while apply_patch input is streaming", async () => {
@@ -142,12 +144,15 @@ describe("apply_patch rendering", () => {
 			].join("\n");
 
 			const component = createToolExecution("apply_patch", { input }, {}, undefined, uiStub, tmpDir);
+			// The resolved preview is recognised by the diff gutter, which carries the line number read
+			// from the file on disk. The streamed patch body cannot state one, and the `(preview)` label
+			// main wrote under a collapsed preview is now the host's `… (streaming)` row.
 			const before = Bun.stripANSI(component.render(160).join("\n"));
-			expect(before).not.toContain("(preview)");
+			expect(before).not.toContain("-1│const value = 1;");
 
 			component.setArgsComplete();
-			const after = await waitForRenderedText(component, 160, "(preview)");
-			expect(after).toContain("(preview)");
+			const after = await waitForRenderedText(component, 160, "-1│const value = 1;");
+			expect(after).toContain("-1│const value = 1;");
 			expect(after).toContain("const value = 2;");
 		} finally {
 			await removeWithRetries(tmpDir);
@@ -187,7 +192,7 @@ describe("apply_patch rendering", () => {
 		const uiStub = { requestRender() {}, requestComponentRender() {} } as unknown as TUI;
 		const component = createToolExecution(
 			"edit",
-			{ path: "packages/coding-agent/src/tools/image-gen.ts" },
+			{ path: "packages/coding-agent/src/tools/web/image-gen.ts" },
 			{},
 			undefined,
 			uiStub,
@@ -197,7 +202,7 @@ describe("apply_patch rendering", () => {
 			{
 				content: [{ type: "text", text: "" }],
 				details: {
-					path: "packages/coding-agent/src/tools/image-gen.ts",
+					path: "packages/coding-agent/src/tools/web/image-gen.ts",
 					op: "update",
 					diff: [
 						" 10|}",

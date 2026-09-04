@@ -1,6 +1,17 @@
 [workspace]
-members = ["crates/veyyon-*", "crates/vendor/*"]
-exclude = ["crates/vendor/brush-core", "crates/vendor/brush-builtins"]
+members = [
+	"natives/bridge/addon",
+	"natives/code/*",
+	"natives/diff/*",
+	"natives/fs/*",
+	"natives/search/*",
+	"natives/shell",
+	"natives/testing/*",
+	"natives/text/*",
+	"natives/vendor/*",
+	"tests/conformance",
+]
+exclude = ["natives/vendor/brush-core", "natives/vendor/brush-builtins"]
 resolver = "3"
 
 [workspace.package]
@@ -12,8 +23,8 @@ homepage = "https://veyyon.dev/"
 repository = "https://github.com/santhreal/veyyon"
 
 [patch.crates-io]
-brush-core = { path = "crates/vendor/brush-core" }
-brush-builtins = { path = "crates/vendor/brush-builtins" }
+brush-core = { path = "natives/vendor/brush-core" }
+brush-builtins = { path = "natives/vendor/brush-builtins" }
 
 [profile.release]
 opt-level = 3
@@ -23,7 +34,7 @@ strip = true
 # Unwind (not abort) so panics inside vendored code and native tasks stay
 # recoverable at the appropriate boundary: the uutils boundary
 # (veyyon-shell coreutils) turns a panic into a failed command, and the
-# `task::blocking` wrapper in `crates/veyyon-natives/src/task.rs` catches unwinds
+# `task::blocking` wrapper in `natives/bridge/addon/src/task.rs` catches unwinds
 # inside `Blocking::compute` before they cross napi-rs's async-work
 # `extern "C"` callback (napi `src/async_work.rs:109`) so they surface as
 # rejected JS Promises instead of forced process aborts under Rust's C-unwind
@@ -31,7 +42,7 @@ strip = true
 # per-call `catch_unwind` on the `Task`/`AsyncTask` path; the tokio-future
 # path (`env.spawn_future`) is guarded upstream. Recoverable uutils panics
 # are kept out of the crash report by the crash hook
-# (see crates/veyyon-natives/src/crash_handler.rs).
+# (see natives/bridge/addon/src/crash_handler.rs).
 panic = "unwind"
 
 [profile.ci]
@@ -175,21 +186,21 @@ too_many_lines = "allow"     # Arbitrary limits don't account for necessary comp
 # ──────────────────────────────────────────────────────────────────────────────
 # Internal Libraries
 # ──────────────────────────────────────────────────────────────────────────────
-veyyon-ast = { path = "crates/veyyon-ast" }
-veyyon-iso = { path = "crates/veyyon-iso" }
-veyyon-diff-kernel = { path = "crates/veyyon-diff-kernel" }
-veyyon-glob = { path = "crates/veyyon-glob" }
-veyyon-grep-kernel = { path = "crates/veyyon-grep-kernel" }
-veyyon-keys = { path = "crates/veyyon-keys" }
-veyyon-shell = { path = "crates/veyyon-shell" }
-veyyon-test-scratch = { path = "crates/veyyon-test-scratch" }
-veyyon-text = { path = "crates/veyyon-text" }
-veyyon-uu-diff = { path = "crates/veyyon-uu-diff" }
-veyyon-uu-grep = { path = "crates/veyyon-uu-grep" }
-veyyon-uutils-ctx = { path = "crates/veyyon-uutils-ctx" }
-veyyon-walker = { path = "crates/veyyon-walker" }
-brush-core = { path = "crates/vendor/brush-core" }
-brush-builtins = { path = "crates/vendor/brush-builtins" }
+veyyon-ast = { path = "natives/code/ast" }
+veyyon-iso = { path = "natives/fs/iso" }
+veyyon-diff-kernel = { path = "natives/diff/kernel" }
+veyyon-glob = { path = "natives/search/glob" }
+veyyon-grep-kernel = { path = "natives/search/grep-kernel" }
+veyyon-keys = { path = "natives/text/keys" }
+veyyon-shell = { path = "natives/shell" }
+veyyon-test-scratch = { path = "natives/testing/scratch" }
+veyyon-text = { path = "natives/text/measure" }
+veyyon-uu-diff = { path = "natives/diff/uu-diff" }
+veyyon-uu-grep = { path = "natives/search/uu-grep" }
+veyyon-uutils-ctx = { path = "natives/fs/uutils-ctx" }
+veyyon-walker = { path = "natives/search/walker" }
+brush-core = { path = "natives/vendor/brush-core" }
+brush-builtins = { path = "natives/vendor/brush-builtins" }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Async Runtime & Concurrency

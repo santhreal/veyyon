@@ -137,7 +137,7 @@ back to `prompt`, so commands still stop for your approval.
 
 ## Critical bash commands
 
-Within the exec tier, a guard (`packages/coding-agent/src/tools/bash-guard.ts`) forces a prompt in
+Within the exec tier, a guard (`packages/coding-agent/src/tools/shell/bash-guard.ts`) forces a prompt in
 `plan`, `ask`, `ask-command` and `auto`, even over a per-tool `allow`. It has two halves.
 
 The first half judges what a command would DELETE, and it judges the paths after expansion rather

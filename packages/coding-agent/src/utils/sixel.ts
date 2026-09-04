@@ -1,6 +1,6 @@
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 
-import { BEL, ST } from "@veyyon/tui/ansi";
+import { BEL, ST } from "@veyyon/utils/ansi";
 import { $env, $flag } from "@veyyon/utils/env";
 
 const SIXEL_START_REGEX = /\x1bP(?:[0-9;]*)q/u;

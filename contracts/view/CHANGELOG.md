@@ -1,0 +1,32 @@
+# Changelog
+
+> **Fork notice.** Veyyon is a source fork of oh-my-pi ([can1357/oh-my-pi](https://github.com/can1357/oh-my-pi), MIT). Veyyon's own release line starts at **`1.0.0`**.
+
+## [Unreleased]
+
+### Added
+
+- `@veyyon/view` states the host-agnostic tool view model: `ToolView`, `StatusRowView`, `TextBlockView`, `ViewSpan`, `ViewTone`, `ViewStatus` and `ToolViewRenderer`. A tool returning one of these describes its output without importing a terminal component or receiving a theme, so any host can draw it. The package has no dependencies.
+- `ToolViewContext` states the disclosure state a host passes to a view renderer, so a tool can show a shorter summary collapsed and its full output expanded without naming a host.
+- `FramedBlockView` states a framed panel: a `StatusRowView` header, an optional `ViewStatus` the host reads for the rail colour, and `ViewSection`s of `ViewLine`s, so a tool describes a card without negotiating a width.
+- `StatusRowView.emblem` names a symbol a host resolves from its own registry, falling back to the row's status icon when the host has no such symbol.
+- `ToolViewRenderer.renderResult` receives the call arguments alongside the result, so a card whose header states the operation still states it when the call failed and returned no details.
+- `ViewSpan.symbol` names a symbol a host resolves from its own registry for one span inside a line, drawn in that span's tone; `text` is what a host without such a symbol draws instead.
+- `HeadedBlockView` states a frameless card: an optional `StatusRowView` header, `ViewLine`s under it, and a `ViewHiddenCount` naming what a preview held back, so a terse tool card describes its rows without picking an indent, a width or the gesture that reveals the rest.
+- `ViewTone` carries an `output` tone for text the tool itself produced, so a card that shows tool output states that rather than reaching for a colour name.
+- `ViewSpan.link` and `StatusRowView.descriptionLink` name a target a run of text points at, so a card states where a URL leads without writing a terminal escape sequence, and `ViewTone` carries a `link` tone for text that is a target.
+- `ViewSection.hidden` states what a section held back as a `ViewHiddenCount`, so a framed card discloses the rows it did not draw the same way a headed card already did.
+- `FramedBlockView.contents` distinguishes a card whose body is a status report from one whose body is fetched data, so a host paints the outcome across a report and leaves fetched content on its own ground.
+- `NoticeView` states a short notice whose whole body carries one state — a headline, an optional tag and lines under it — so a tool describes a decision without filling a plate itself; a span inside a notice states emphasis and structure, never colour.
+- `ToolViewContext.partial` states whether the result in hand is the tool's last word or an update it will replace, so a card that streams reports running rather than reading an outcome off a half-finished result.
+- `ViewSection.tail` states that a section is a window onto the end of its lines, measured by the host in the rows the lines occupy after wrapping, so a tool that cannot know a width or a viewport height still keeps the end of a long command or a long output on screen.
+- `HeadedBlockView.tail` states that a headed card's lines are a window onto their end, the bargain `ViewSection.tail` strikes for a card with no sections to strike it in, so a stream of output whose newest rows matter is stated whole and cut by the host.
+- `ViewSpan.trailing` states that a run is trailing detail on its line, so a host with columns to spare places it at the line's end and pads the runs that lead it, and a host drawing one column after another writes it where it falls.
+- `StatusRowView.descriptionFileLine` states the line inside `descriptionFile` a row names, so a card that read one window of a file sends a reader to that window rather than to the file's first line.
+- `ViewCodeLines.lineNumbers` states the number each line has in the file, one entry per line, for a section that is several windows onto one file: the rows are in file order and the numbers jump, and a `null` entry is a row standing in for an elided span.
+- `ViewSection.markdown` states that a section's lines are a document rather than source, so a tool that read a `.md` file says what the text is and leaves headings, emphasis and layout to the host.
+- `ViewSpan.markdown` states that one run of a line is Markdown written for a single line, so the label of an offered choice keeps the emphasis its author wrote without the tool deciding what bold looks like; a host with no renderer draws the source.
+- `ViewSpan.status` states that one run is the state mark of its line, drawn from the host's own glyph set and animated while the state moves, so a card whose body is a set of things each doing something marks every row without naming a glyph.
+- `ViewSpan.badge` states that one run is a short label the host sets off in its own bracket grammar, the line-level twin of `StatusRowView.badge`, so a row that marks what kind of thing it names leaves the brackets to the host.
+- `ViewSpan.live` states that the thing a run names is still in flight, so a host with a clock may animate that run alone while the settled columns beside it stand still, and a host with no clock draws it in its tone.
+- `StatusRowView.descriptionFits` states that a row must keep its description whole by shortening it inside itself, so a card whose description is the file it acted on keeps both the path and the counts after it, and a card whose description is prose is left for the host to clip at its own edge.

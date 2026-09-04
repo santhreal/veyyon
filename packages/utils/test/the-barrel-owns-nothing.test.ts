@@ -9,7 +9,7 @@
  * One did not. `structuredCloneJSON` was DEFINED in the barrel, with a private
  * `isPlainObject` beside it, so the only way to get a deep copy was to import the
  * whole thing. Five files in `@veyyon/ai` did, which is part of how the barrel got
- * onto `tools/read.ts`'s module graph and turned a landed reach cut red. It lives in
+ * onto `tools/fs/read.ts`'s module graph and turned a landed reach cut red. It lives in
  * `json.ts` now, where the other JSON helpers are.
  *
  * A definition in a barrel is easy to add and invisible afterwards: it looks like

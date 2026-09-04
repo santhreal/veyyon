@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { getExtraHelpText } from "@veyyon/coding-agent/cli/args";
 import { OPTIONAL_VALUE_FLAGS, STRING_VALUE_FLAGS, VALUELESS_FLAGS } from "@veyyon/coding-agent/cli/flag-tables";
 import LaunchCommand from "@veyyon/coding-agent/commands/launch";
-import { BUILTIN_TOOL_NAMES, isKnownToolName } from "@veyyon/coding-agent/tools/builtin-names";
+import { BUILTIN_TOOL_NAMES, isKnownToolName } from "@veyyon/coding-agent/tools/core/builtin-names";
 import type { FlagDescriptor } from "@veyyon/utils/cli";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 

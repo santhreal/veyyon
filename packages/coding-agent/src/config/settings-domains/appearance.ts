@@ -76,7 +76,7 @@ export const APPEARANCE_SETTINGS = {
 	 * Off is still one keystroke away for a composer that should carry nothing, and off does not
 	 * silence the focus badge: while the view is proxied onto an agent, the footline still renders
 	 * the agent's name and `esc to go back`. See `#composerFootline` in
-	 * `modes/interactive-mode.ts` for why that one line is not configurable.
+	 * `modes/terminal/interactive-mode.ts` for why that one line is not configurable.
 	 */
 	"statusLine.enabled": {
 		type: "boolean",
@@ -124,7 +124,7 @@ export const APPEARANCE_SETTINGS = {
 	 * the composer footline that replaced it joins segments with its own fixed
 	 * `  ·  `. A row that offers seven separator styles and changes nothing on
 	 * screen is worse than no row, so the control is gone. The KEY stays only
-	 * because `modes/controllers/selector-controller.ts` still reads it; when
+	 * because `modes/terminal/controllers/selector-controller.ts` still reads it; when
 	 * that file loses its two `statusLine.separator` reads, delete this entry.
 	 */
 	"statusLine.separator": {

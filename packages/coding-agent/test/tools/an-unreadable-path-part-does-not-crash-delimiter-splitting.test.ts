@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
-import { splitDelimitedPathEntrySync } from "@veyyon/coding-agent/tools/path-utils";
+import { splitDelimitedPathEntrySync } from "@veyyon/coding-agent/tools/core/path-utils";
 
 /**
  * WHY: `probePartResolvesSync` answers one question — does this candidate part

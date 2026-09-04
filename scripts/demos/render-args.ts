@@ -65,7 +65,7 @@ export function renderWidth(argv: readonly string[] = process.argv): number {
  * and cannot answer the question it was taken for.
  */
 export async function initRender(themeName: string, options: { settings?: boolean } = {}): Promise<void> {
-	const { initTheme } = await import("../../packages/coding-agent/src/modes/theme/theme");
+	const { initTheme } = await import("../../packages/coding-agent/src/theme/theme");
 	if (options.settings) {
 		const { Settings } = await import("../../packages/coding-agent/src/config/settings");
 		await Settings.init({ inMemory: true });
@@ -76,7 +76,7 @@ export async function initRender(themeName: string, options: { settings?: boolea
 	setAnsiPolicy("full");
 	const ground = flag("ground", "");
 	if (ground !== "") {
-		const { setDetectedTerminalGround } = await import("../../packages/coding-agent/src/modes/theme/ground-tints");
+		const { setDetectedTerminalGround } = await import("../../packages/coding-agent/src/theme/ground-tints");
 		setDetectedTerminalGround(ground);
 	}
 }

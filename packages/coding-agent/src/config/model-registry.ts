@@ -2,11 +2,15 @@ import { execSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { ApiKeyResolver, FetchImpl } from "@veyyon/ai";
 import { registerCustomApi, unregisterCustomApis } from "@veyyon/ai/api-registry";
+import { registerOAuthProvider, unregisterOAuthProviders } from "@veyyon/ai/oauth";
+import type { OAuthCredentials, OAuthLoginCallbacks } from "@veyyon/ai/oauth/types";
 import type { Api, Context, Model, ModelSpec, SimpleStreamOptions, ThinkingConfig } from "@veyyon/ai/types";
 import type { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { buildModel } from "@veyyon/catalog/build";
 import { isVertexExpressOpenAIUrl } from "@veyyon/catalog/hosts";
+import { getBundledModelReferenceIndex, resolveModelReference } from "@veyyon/catalog/identity";
 import { modelCacheStamp, readModelCache } from "@veyyon/catalog/model-cache";
 import { createModelManager, type ModelManagerOptions, type ModelRefreshStrategy } from "@veyyon/catalog/model-manager";
 import {
@@ -27,6 +31,44 @@ import {
 	getVariantAliasSources,
 	resolveVariantAlias,
 } from "@veyyon/catalog/variant-collapse";
+import type { AuthStorage, OAuthCredential } from "@veyyon/kernel/session/auth-storage";
+import {
+	atomicWriteFileSync,
+	DAY_MS,
+	errorMessage,
+	getModelDbPath,
+	HOUR_MS,
+	isBunTestRuntime,
+	isRecord,
+	logger,
+	wrapFetchForExtraCa,
+} from "@veyyon/utils";
+import { type ApiKeyResolverModel, type ApiKeyResolverOptions, createApiKeyResolver } from "./api-key-resolver";
+import { isAuthenticated, kNoAuth } from "./auth-state";
+import type { ConfigError, ConfigFile } from "./config-file";
+import {
+	commandFailureReason,
+	configCommandPolicy,
+	describeConfigEnvReference,
+	isConfigValueCommand,
+	parseConfigValueCommand,
+	reportUnresolvedEnvReference,
+	resolveConfigEnvReference,
+} from "./config-value-resolution";
+import {
+	DISCOVERY_DEFAULT_MAX_TOKENS,
+	type DiscoveryContext,
+	type DiscoveryProviderConfig,
+	discoverLlamaCppModelRuntimeMetadata,
+	discoverModelsByProviderType,
+	getImplicitOllamaBaseUrl,
+	getOllamaContextLengthOverride,
+	normalizeLiteLLMDiscoveryBaseUrl,
+} from "./model-discovery";
+import { parseModelString, resolveProviderModelReference } from "./model-resolver";
+import { ModelsConfigFile, type ProviderValidationModel, validateProviderConfiguration } from "./models-config";
+import type { ModelOverride, ModelsConfig, ProviderAuthMode } from "./models-config-schema";
+import { settings } from "./settings";
 
 const SPECIAL_MODEL_MANAGER_PROVIDER_IDS: readonly string[] = [
 	"google-antigravity",
@@ -56,50 +98,6 @@ const RUNTIME_DYNAMIC_MODEL_FETCH_TIMEOUT_MS = 15_000;
 // makes the OAuth-refresh preflight fire exactly when the manager will fetch.
 const BUILT_IN_DISCOVERY_CACHE_TTL_MS = 2 * HOUR_MS;
 const BUILT_IN_DISCOVERY_NON_AUTHORITATIVE_RETRY_MS = 5 * 60 * 1000;
-
-import type { ApiKeyResolver, FetchImpl } from "@veyyon/ai";
-import { registerOAuthProvider, unregisterOAuthProviders } from "@veyyon/ai/oauth";
-import type { OAuthCredentials, OAuthLoginCallbacks } from "@veyyon/ai/oauth/types";
-import { getBundledModelReferenceIndex, resolveModelReference } from "@veyyon/catalog/identity";
-import {
-	atomicWriteFileSync,
-	DAY_MS,
-	errorMessage,
-	getModelDbPath,
-	HOUR_MS,
-	isBunTestRuntime,
-	isRecord,
-	logger,
-	wrapFetchForExtraCa,
-} from "@veyyon/utils";
-import { parseModelString, resolveProviderModelReference } from "../config/model-resolver";
-import type { AuthStorage, OAuthCredential } from "../session/auth-storage";
-import { type ApiKeyResolverModel, type ApiKeyResolverOptions, createApiKeyResolver } from "./api-key-resolver";
-import { isAuthenticated, kNoAuth } from "./auth-state";
-import type { ConfigError, ConfigFile } from "./config-file";
-import {
-	commandFailureReason,
-	configCommandPolicy,
-	describeConfigEnvReference,
-	isConfigValueCommand,
-	parseConfigValueCommand,
-	reportUnresolvedEnvReference,
-	resolveConfigEnvReference,
-} from "./config-value-resolution";
-import {
-	DISCOVERY_DEFAULT_MAX_TOKENS,
-	type DiscoveryContext,
-	type DiscoveryProviderConfig,
-	discoverLlamaCppModelRuntimeMetadata,
-	discoverModelsByProviderType,
-	getImplicitOllamaBaseUrl,
-	getOllamaContextLengthOverride,
-	normalizeLiteLLMDiscoveryBaseUrl,
-} from "./model-discovery";
-import { ModelsConfigFile, type ProviderValidationModel, validateProviderConfiguration } from "./models-config";
-import type { ModelOverride, ModelsConfig, ProviderAuthMode } from "./models-config-schema";
-import { settings } from "./settings";
-
 function isDiscoveryBearerApiKey(apiKey: string | undefined | null): apiKey is string {
 	return isAuthenticated(apiKey) && !LOCAL_PROVIDER_PLACEHOLDERS.has(apiKey);
 }
@@ -312,7 +310,7 @@ function mergeByModelKey<T extends { provider: string; id: string }>(
 	incoming: readonly T[],
 	combine: (existing: Model<Api> | undefined, entry: T) => Model<Api>,
 ): Model<Api>[] {
-	const merged = [...base];
+	const merged = base.slice();
 	const indexByKey = new Map<string, number>();
 	for (let i = 0; i < merged.length; i += 1) {
 		indexByKey.set(`${merged[i].provider}\u0000${merged[i].id}`, i);
@@ -472,7 +470,7 @@ function createLiveConfigHeaders(
 	if (liveSources.length === 0 && (!options?.authHeader || !options.apiKeyConfig)) return undefined;
 
 	const localHeaders: Record<string, string> = {};
-	const allSources = [...liveSources, localHeaders];
+	const allSources = liveSources.concat([localHeaders]);
 	const current = () => materializeConfigHeaderSources(allSources, options) ?? {};
 	return new Proxy(localHeaders, {
 		get(target, property, receiver) {
@@ -1462,7 +1460,8 @@ export class ModelRegistry {
 						} as ModelSpec<Api>),
 					)
 				: withTransport.map(model => buildModel(model));
-			cachedModels.push(...this.#applyProviderModelOverrides(providerId, withCompat));
+			const overrides = this.#applyProviderModelOverrides(providerId, withCompat);
+			for (let oi = 0; oi < overrides.length; oi++) cachedModels.push(overrides[oi]!);
 		}
 		return { models: cachedModels, authoritativeFreshProviders };
 	}
@@ -1497,7 +1496,7 @@ export class ModelRegistry {
 					),
 				),
 			);
-			cachedModels.push(...models);
+			for (let mi = 0; mi < models.length; mi++) cachedModels.push(models[mi]!);
 			const stale =
 				providerConfig.discovery.type === "llama.cpp" || !cache.fresh || !cache.authoritative || configStale;
 			this.#providerDiscoveryStates.set(providerConfig.provider, {
@@ -1705,7 +1704,7 @@ export class ModelRegistry {
 			configuredDiscoveriesPromise,
 			this.#discoverBuiltInProviderModels(strategy, providerFilter),
 		]);
-		const discovered = [...configuredDiscovered, ...builtInDiscovery.models];
+		const discovered = configuredDiscovered.concat(builtInDiscovery.models);
 		if (discovered.length === 0 && builtInDiscovery.authoritativeProviders.size === 0) {
 			return;
 		}
@@ -1953,7 +1952,7 @@ export class ModelRegistry {
 		const authoritativeProviders = new Set<string>();
 		const models: Model<Api>[] = [];
 		for (const discovery of discoveries) {
-			models.push(...discovery.models);
+			for (let mi = 0; mi < discovery.models.length; mi++) models.push(discovery.models[mi]!);
 			for (const provider of discovery.authoritativeProviders) {
 				authoritativeProviders.add(provider);
 			}
@@ -2619,7 +2618,7 @@ export class ModelRegistry {
 			}
 			// Store as runtime overlays so they survive #reloadStaticModels()
 			this.#runtimeModelOverlays = this.#runtimeModelOverlays.filter(m => m.provider !== providerName);
-			this.#runtimeModelOverlays.push(...newOverlays);
+			for (let oi = 0; oi < newOverlays.length; oi++) this.#runtimeModelOverlays.push(newOverlays[oi]!);
 
 			// Also update #models immediately for the current cycle
 			const nextModels = this.#models.filter(m => m.provider !== providerName);

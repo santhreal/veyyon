@@ -11,7 +11,7 @@
  * to its own copy turns this red on the first value the two disagree about.
  *
  * WHAT IT DOES NOT CATCH: the parser's own half of the agreement, which
- * `packages/hashline/test/one-reader-decides-what-a-bare-literal-row-looks-like.test.ts` covers, and
+ * `plugins/hashline/test/one-reader-decides-what-a-bare-literal-row-looks-like.test.ts` covers, and
  * a body whose rows are not uniformly prefixed, which neither layer treats as a mapping.
  */
 
@@ -21,8 +21,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ToolError } from "@veyyon/coding-agent/tools/tool-errors";
-import { WriteTool } from "@veyyon/coding-agent/tools/write";
+import { ToolError } from "@veyyon/coding-agent/tools/core/tool-errors";
+import { WriteTool } from "@veyyon/coding-agent/tools/fs/write";
 import { BARE_LITERAL_VALUE_RE } from "@veyyon/hashline";
 import { removeWithRetries } from "@veyyon/utils";
 

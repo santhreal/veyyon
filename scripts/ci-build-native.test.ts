@@ -26,13 +26,13 @@ async function runCiNativeDryRun(env: Record<string, string | undefined> = {}): 
 describe("ci native build environment", () => {
 	it("prints static PCRE2 env for the default native build dry run", async () => {
 		await expect(runCiNativeDryRun()).resolves.toBe(
-			"DRY RUN bun --cwd=packages/natives run build [default] PCRE2_SYS_STATIC=1\n",
+			"DRY RUN bun --cwd=natives/bridge/bindings run build [default] PCRE2_SYS_STATIC=1\n",
 		);
 	});
 
 	it("prints static PCRE2 env without dropping x64 variant settings", async () => {
 		await expect(runCiNativeDryRun({ TARGET_VARIANTS: "baseline" })).resolves.toBe(
-			'DRY RUN bun --cwd=packages/natives run build [baseline] PCRE2_SYS_STATIC=1 TARGET_VARIANT=baseline RUSTFLAGS="-C target-cpu=x86-64-v2"\n',
+			'DRY RUN bun --cwd=natives/bridge/bindings run build [baseline] PCRE2_SYS_STATIC=1 TARGET_VARIANT=baseline RUSTFLAGS="-C target-cpu=x86-64-v2"\n',
 		);
 	});
 });
@@ -182,12 +182,12 @@ function outputValue(contents: string, key: string): string {
 
 async function writeNativeHashFixture(root: string): Promise<void> {
 	const files: Record<string, string> = {
-		"crates/example.rs": "native source\n",
+		"natives/example.rs": "native source\n",
 		"Cargo.toml": "[workspace]\n",
 		"Cargo.lock": "version = 4\n",
 		"rust-toolchain.toml": '[toolchain]\nchannel = "stable"\n',
-		"packages/natives/scripts/build.ts": "export {};\n",
-		"packages/natives/package.json": "{}\n",
+		"natives/bridge/bindings/scripts/build.ts": "export {};\n",
+		"natives/bridge/bindings/package.json": "{}\n",
 		"scripts/ci-build-native.ts": "export {};\n",
 		"scripts/host-detect.ts": "export {};\n",
 		".github/actions/build-native/action.yml": "name: fixture recipe\n",

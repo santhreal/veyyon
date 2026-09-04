@@ -1,37 +1,25 @@
 /**
  * TUI renderers for built-in tools.
  *
- * These provide rich visualization for tool calls and results in the TUI.
+ * The rows come from the domain renderer tables, each sitting next to the tools it draws, plus the
+ * six whose subject lives outside `tools/`. This module owns the {@link ToolRenderer} contract and
+ * the union; it no longer owns the list.
  */
 import type { Component } from "@veyyon/tui";
-import { editToolRenderer } from "../edit/renderer";
+import type { ToolViewRenderer } from "@veyyon/view";
+import { editToolView } from "../edit/edit-view";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import { goalToolRenderer } from "../goals/tools/goal-tool";
-import { lspToolRenderer } from "../lsp/render";
-import type { Theme } from "../modes/theme/theme";
-import { taskToolRenderer } from "../task/renderer";
-import { webSearchToolRenderer } from "../web/search/render";
-import { askToolRenderer } from "./ask";
-import { astEditToolRenderer } from "./ast-edit";
-import { bashToolRenderer } from "./bash";
-import { browserToolRenderer } from "./browser/render";
-import { debugToolRenderer } from "./debug";
-import { evalToolRenderer } from "./eval-render";
-import { githubToolRenderer } from "./gh-renderer";
-import { inspectImageToolRenderer } from "./inspect-image-renderer";
-import { ircToolRenderer } from "./irc-render";
-import { jobToolRenderer } from "./job";
-import { launchToolRenderer } from "./launch";
-import { recallToolRenderer, reflectToolRenderer, retainToolRenderer } from "./memory-render";
-import { readToolRenderer } from "./read";
-import { resolveToolRenderer } from "./resolve";
-import { searchToolRenderer } from "./search-renderer";
-import { searchToolBm25Renderer } from "./search-tool-bm25";
-import { setCwdToolRenderer } from "./set-cwd";
-import { sshToolRenderer } from "./ssh";
-import { todoToolRenderer } from "./todo";
-import { createVibeToolRenderer } from "./vibe-render";
-import { writeToolRenderer } from "./write";
+import { goalToolView } from "../goals/goal-tool";
+import { lspToolView } from "../lsp/view";
+import { viewToolRenderer } from "../modes/terminal/draw/draw-tool-view";
+import { taskToolView } from "../task/task-view";
+import type { Theme } from "../theme/theme";
+import { agentRenderers } from "./agent/renderers";
+import { fsRenderers } from "./fs/renderers";
+import { searchRenderers } from "./search/renderers";
+import { shellRenderers } from "./shell/renderers";
+import { webRenderers } from "./web/renderers";
+import { webSearchToolView } from "./web/search/view";
 
 /**
  * Per-renderer opt-in for a full viewport replay when the first result
@@ -50,6 +38,16 @@ export type ToolRenderer = {
 		theme: Theme,
 		args?: unknown,
 	) => Component;
+	/**
+	 * The host-agnostic card this entry draws, present only on an entry built by `viewToolRenderer`.
+	 *
+	 * An entry either DESCRIBES its card as a {@link ToolViewRenderer} and lets a host draw it, or
+	 * draws terminal components itself. Both look the same from the two members above, so the
+	 * distinction is stated here rather than inferred, and the architecture gate that records every
+	 * card still drawn in terminal components resolves the split from the registry instead of from a
+	 * list kept by hand.
+	 */
+	view?: ToolViewRenderer<never, never>;
 	mergeCallAndResult?: boolean;
 	/**
 	 * Whether the call render IS an interactive widget rather than a preview of one.
@@ -88,44 +86,29 @@ export type ToolRenderer = {
 	forceResultViewportRepaintOnSettle?: boolean;
 };
 
+// One object under both names: `apply_patch` is the provider-side spelling of `edit`, and a host
+// that groups by renderer identity (streamed-arg keys, the first-result replay) treats them as the
+// same card. Two wrappers around the same view would be two objects and split that grouping.
+const editRenderer = viewToolRenderer(editToolView, { mergeCallAndResult: true }) as ToolRenderer;
+
 export const toolRenderers: Record<string, ToolRenderer> = {
-	ask: askToolRenderer as ToolRenderer,
-	ast_edit: astEditToolRenderer as ToolRenderer,
-	bash: bashToolRenderer as ToolRenderer,
-	browser: browserToolRenderer as ToolRenderer,
-	debug: debugToolRenderer as ToolRenderer,
-	eval: evalToolRenderer as ToolRenderer,
-	edit: editToolRenderer as ToolRenderer,
-	apply_patch: editToolRenderer as ToolRenderer,
-	search: searchToolRenderer as ToolRenderer,
-	lsp: lspToolRenderer as ToolRenderer,
-	inspect_image: inspectImageToolRenderer as ToolRenderer,
-	irc: ircToolRenderer as ToolRenderer,
-	launch: launchToolRenderer as ToolRenderer,
-	read: readToolRenderer as ToolRenderer,
-	job: jobToolRenderer as ToolRenderer,
-	resolve: resolveToolRenderer as ToolRenderer,
-	retain: retainToolRenderer as ToolRenderer,
-	recall: recallToolRenderer as ToolRenderer,
-	reflect: reflectToolRenderer as ToolRenderer,
-	search_tool_bm25: searchToolBm25Renderer as ToolRenderer,
-	ssh: sshToolRenderer as ToolRenderer,
-	// Lazy getter: `taskToolRenderer` lives in a module that closes an import
-	// cycle back here (task/renderer → task/render → … → tools/renderers), so
-	// reading it at init order-dependently hits its temporal dead zone. Deferring
-	// the read to first access (render time) sidesteps the cycle entirely.
-	get task(): ToolRenderer {
-		return taskToolRenderer as ToolRenderer;
-	},
-	todo: todoToolRenderer as ToolRenderer,
-	set_cwd: setCwdToolRenderer as ToolRenderer,
-	github: githubToolRenderer as ToolRenderer,
-	goal: goalToolRenderer as ToolRenderer,
-	web_search: webSearchToolRenderer as ToolRenderer,
-	vibe_spawn: createVibeToolRenderer("spawn") as ToolRenderer,
-	vibe_send: createVibeToolRenderer("send") as ToolRenderer,
-	vibe_wait: createVibeToolRenderer("wait") as ToolRenderer,
-	vibe_kill: createVibeToolRenderer("kill") as ToolRenderer,
-	vibe_list: createVibeToolRenderer("list") as ToolRenderer,
-	write: writeToolRenderer as ToolRenderer,
+	...fsRenderers,
+	...searchRenderers,
+	...shellRenderers,
+	...webRenderers,
+	...agentRenderers,
+	edit: editRenderer,
+	apply_patch: editRenderer,
+	// The lsp tool describes a view, and this entry is the terminal's drawing of it — the path a
+	// rebuilt transcript takes, where no tool instance exists to read `tool.view` from.
+	lsp: viewToolRenderer(lspToolView, { mergeCallAndResult: true, inline: true }) as ToolRenderer,
+	// The task tool describes a view, and this entry is the terminal's drawing of it. The lazy getter
+	// that used to stand here worked around an import cycle through `task/render.ts`, which drew the
+	// card with the terminal engine and reached back into this table; a view imports neither.
+	task: viewToolRenderer(taskToolView, { mergeCallAndResult: true }) as ToolRenderer,
+	// The goal tool describes a view instead of drawing a component, so its entry here is the
+	// terminal's drawing of that same view. It exists for the rebuilt transcript of a session that
+	// never constructed the tool, which is the one path that cannot read `tool.view`.
+	goal: viewToolRenderer(goalToolView, { mergeCallAndResult: true }) as ToolRenderer,
+	web_search: viewToolRenderer(webSearchToolView, { mergeCallAndResult: true }) as ToolRenderer,
 };

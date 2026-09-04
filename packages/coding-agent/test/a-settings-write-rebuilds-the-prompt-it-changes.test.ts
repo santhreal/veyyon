@@ -34,7 +34,8 @@ import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import { type SettingPath, Settings } from "@veyyon/coding-agent/config/settings";
 import { getEnumValues, getType, SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
-import { AgentSession, TOOL_SHAPE_SETTING_PATHS } from "@veyyon/coding-agent/session/agent-session";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { TOOL_SHAPE_SETTING_PATHS } from "@veyyon/coding-agent/session/agent-session-types";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import {
 	FROZEN_PROMPT_GATE_SETTINGS,

@@ -57,7 +57,7 @@ sh "$ROOT_DIR/scripts/install-tests/functions.test.sh"
 
 section "Binary install smoke"
 # Channel 1: what `curl | sh` puts on a user's machine.
-bun --cwd=packages/natives run build
+bun --cwd=natives/bridge/bindings run build
 bun --cwd=packages/coding-agent run build
 
 BINARY_DIR="$WORK_DIR/binary-bin"

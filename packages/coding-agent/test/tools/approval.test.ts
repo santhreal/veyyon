@@ -16,9 +16,9 @@ import {
 	type ToolTier,
 	truncateForPrompt,
 	validateApprovalModeSetting,
-} from "@veyyon/coding-agent/tools/approval";
-import { BashTool } from "@veyyon/coding-agent/tools/bash";
-import { DEBUG_READONLY_ACTIONS } from "@veyyon/coding-agent/tools/debug";
+} from "@veyyon/coding-agent/tools/core/approval";
+import { BashTool } from "@veyyon/coding-agent/tools/shell/bash";
+import { DEBUG_READONLY_ACTIONS } from "@veyyon/coding-agent/tools/shell/debug";
 import { useIsolatedGlobalSettings } from "../helpers/isolated-global-settings";
 
 type ApprovalTool = Pick<AgentTool, "name" | "approval" | "formatApprovalDetails">;

@@ -300,10 +300,10 @@ def test_port_kickoff_with_prior_failure_renders_the_retry_preamble() -> None:
         issue=_Issue(body=_PORT_BODY_FIX),
         workspace=_Workspace(),
         kind="fix",
-        prior_failure="GitCommandError: rebase conflict in packages/tui/src/render.ts",
+        prior_failure="GitCommandError: rebase conflict in hosts/terminal/engine/src/render.ts",
     )
     assert "Previous attempt failed" in out
-    assert "rebase conflict in packages/tui/src/render.ts" in out
+    assert "rebase conflict in hosts/terminal/engine/src/render.ts" in out
     assert out.index("Previous attempt failed") < out.index("## Execution protocol")
 
 

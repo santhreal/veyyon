@@ -23,7 +23,7 @@
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import type { ToolChoice } from "@veyyon/ai";
 import * as unexpectedStopClassifier from "@veyyon/coding-agent/session/unexpected-stop-classifier";
-import { TOOL } from "@veyyon/coding-agent/tools/builtin-names";
+import { TOOL } from "@veyyon/coding-agent/tools/core/builtin-names";
 import { createSimulation, type ProviderScript, type Simulation, simTool } from "./harness";
 
 let sim: Simulation | undefined;

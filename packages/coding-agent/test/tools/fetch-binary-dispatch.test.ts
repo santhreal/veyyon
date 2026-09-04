@@ -6,11 +6,11 @@ import * as path from "node:path";
 import type { ImageContent, TextContent } from "@veyyon/ai";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 import { zip } from "@veyyon/coding-agent/utils/zip";
-import * as scrapers from "@veyyon/coding-agent/web/scrapers/types";
-import * as scraperUtils from "@veyyon/coding-agent/web/scrapers/utils";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
+import * as scrapers from "@veyyon/web/scrapers/types";
+import * as scraperUtils from "@veyyon/web/scrapers/utils";
 
 function makeSession(testDir: string): ToolSession {
 	const sessionFile = path.join(testDir, "session.jsonl");

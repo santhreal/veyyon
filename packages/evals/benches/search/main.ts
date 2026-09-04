@@ -16,7 +16,7 @@ import { performance } from "node:perf_hooks";
 import type { AgentToolResult } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import type { SearchType } from "@veyyon/coding-agent/tools/search";
+import type { SearchType } from "@veyyon/coding-agent/tools/search/search";
 import { errorMessage } from "@veyyon/utils";
 import {
 	type FlagGrammar,

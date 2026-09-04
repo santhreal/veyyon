@@ -56,7 +56,7 @@ export class JjCommandError extends Error {
 	constructor(args: readonly string[], result: JjCommandResult) {
 		super(formatCommandFailure(args, result));
 		this.name = "JjCommandError";
-		this.args = [...args];
+		this.args = args.slice();
 		this.result = result;
 	}
 }

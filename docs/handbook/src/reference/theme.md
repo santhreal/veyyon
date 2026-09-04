@@ -13,11 +13,11 @@ The theme system drives:
 - syntax highlighting colors used by native highlighter (`@veyyon/natives`)
 - status line segment colors
 
-Primary implementation: `src/modes/theme/theme.ts`.
+Primary implementation: `src/theme/theme.ts`.
 
 ## Theme JSON shape
 
-Theme files are JSON objects validated against the runtime schema in `theme.ts` (`themeJsonSchema`) and mirrored by `src/modes/theme/theme-schema.json`.
+Theme files are JSON objects validated against the runtime schema in `theme.ts` (`themeJsonSchema`) and mirrored by `src/theme/theme-schema.json`.
 
 Top-level fields:
 

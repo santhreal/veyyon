@@ -19,11 +19,11 @@
  */
 import * as path from "node:path";
 import { parseFrontmatter } from "@veyyon/utils";
-import { registerProvider } from "../capability";
-import { type ContextFile, contextFileCapability } from "../capability/context-file";
-import { type Instruction, instructionCapability } from "../capability/instruction";
-import { type Rule, ruleCapability } from "../capability/rule";
-import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
+import { registerProvider } from "./capability";
+import { type ContextFile, contextFileCapability } from "./capability/context-file";
+import { type Instruction, instructionCapability } from "./capability/instruction";
+import { type Rule, ruleCapability } from "./capability/rule";
+import type { LoadContext, LoadResult, SourceMeta } from "./capability/types";
 
 import {
 	buildRuleFromMarkdown,

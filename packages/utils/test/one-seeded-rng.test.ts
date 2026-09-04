@@ -4,7 +4,7 @@
  * WHY THIS SUITE EXISTS (FUZZ-LCG-IS-DUPLICATED-BYTE-FOR-BYTE). `lcg` was
  * defined twice, byte for byte: same multiplier 1664525, same increment
  * 1013904223, same `>>> 0`, same `/ 0x1_0000_0000`. One copy was exported from
- * `packages/tui/test/helpers/`, which nine suites imported by relative path; the
+ * `hosts/terminal/engine/test/helpers/`, which nine suites imported by relative path; the
  * other was inlined in the coding-agent highlighter fuzzer with a comment saying
  * there was nothing to import -- which was true, because a test directory is not
  * an API.
@@ -18,8 +18,8 @@
  * next.
  *
  * TWO FORMS, ONE RECURRENCE. The copies were not quite identical, which is the
- * drift this suite exists to stop: `packages/utils` and `packages/mnemopi`
- * returned a fraction in `[0, 1)`, while the ~134 `packages/hashline/test/`
+ * drift this suite exists to stop: `packages/utils` and `plugins/mnemopi`
+ * returned a fraction in `[0, 1)`, while the ~134 `plugins/hashline/test/`
  * seed-shard suites returned the raw `uint32` state. Both are wanted -- integer
  * draws are cheaper for `% n` indexing -- so {@link lcgUint32} owns the
  * recurrence and {@link lcg} is that function normalized. Neither can drift from

@@ -12,8 +12,8 @@ DEMO_THINKING="${DEMO_THINKING:-high}"
 PROOF_AUTH_DIR="${PROOF_AUTH_DIR:-${REPO_ROOT}/.internal/recording-auth}"
 
 echo "=== 1. Building Standalone Binary & Native Addons ==="
-if [[ ! -f packages/natives/native/veyyon_natives.linux-x64-modern.node && ! -f packages/natives/native/veyyon_natives.linux-x64-baseline.node ]]; then
-	bun --cwd=packages/natives run ensure
+if [[ ! -f natives/bridge/bindings/native/veyyon_natives.linux-x64-modern.node && ! -f natives/bridge/bindings/native/veyyon_natives.linux-x64-baseline.node ]]; then
+	bun --cwd=natives/bridge/bindings run ensure
 fi
 if [[ ! -f packages/coding-agent/src/export/html/tool-views.generated.js ]]; then
 	bun --cwd=packages/collab-web run gen:tool-views

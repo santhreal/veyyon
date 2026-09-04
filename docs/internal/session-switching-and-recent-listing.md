@@ -7,16 +7,16 @@ It focuses on current implementation behavior, including fallback paths and cave
 ## Implementation files
 
 - [`../src/session/session-manager.ts`](../../packages/coding-agent/src/session/session-manager.ts)
-- [`../src/session/session-listing.ts`](../../packages/coding-agent/src/session/session-listing.ts)
-- [`../src/session/session-paths.ts`](../../packages/coding-agent/src/session/session-paths.ts)
+- [`kernel/src/session/session-listing.ts`](../../kernel/src/session/session-listing.ts)
+- [`kernel/src/session/session-paths.ts`](../../kernel/src/session/session-paths.ts)
 - [`../src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts)
 - [`../src/cli/session-picker.ts`](../../packages/coding-agent/src/cli/session-picker.ts)
-- [`../src/modes/components/session-selector.ts`](../../packages/coding-agent/src/modes/components/session-selector.ts)
-- [`../src/modes/controllers/selector-controller.ts`](../../packages/coding-agent/src/modes/controllers/selector-controller.ts)
+- [`../src/modes/terminal/components/selectors/session-selector.ts`](../../packages/coding-agent/src/modes/terminal/components/selectors/session-selector.ts)
+- [`../src/modes/terminal/controllers/selector-controller.ts`](../../packages/coding-agent/src/modes/terminal/controllers/selector-controller.ts)
 - [`../src/main.ts`](../../packages/coding-agent/src/main.ts)
 - [`../src/sdk.ts`](../../packages/coding-agent/src/sdk.ts)
-- [`../src/modes/interactive-mode.ts`](../../packages/coding-agent/src/modes/interactive-mode.ts)
-- [`../src/modes/utils/ui-helpers.ts`](../../packages/coding-agent/src/modes/utils/ui-helpers.ts)
+- [`../src/modes/terminal/interactive-mode.ts`](../../packages/coding-agent/src/modes/terminal/interactive-mode.ts)
+- [`../src/modes/terminal/utils/ui-helpers.ts`](../../packages/coding-agent/src/modes/terminal/utils/ui-helpers.ts)
 
 ## Recent-session discovery
 
@@ -248,4 +248,4 @@ Switch/open can still throw on true I/O failures (permission errors, rewrite fai
 - First match in modified-descending order wins; there is no ambiguity UI if multiple sessions share a prefix.
 - Prefix-listing metadata is intentionally lightweight, so search text may not include messages outside the first 4KB of the session file.
 
-*Verified against `ad7ede4a` on 2026-07-28.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

@@ -3,8 +3,8 @@
  */
 import type { AgentTool, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { Static, TSchema } from "@veyyon/ai";
-import type { Theme } from "../../modes/theme/theme";
-import { applyToolProxy } from "../tool-proxy";
+import { applyToolProxy } from "@veyyon/kernel/registry/tool-proxy";
+import type { Theme } from "../../theme/theme";
 import type { CustomTool, CustomToolContext } from "./types";
 
 export class CustomToolAdapter<TParams extends TSchema = TSchema, TDetails = any, TTheme extends Theme = Theme>

@@ -6,7 +6,7 @@
  * capability one is the file as discovery loads it (whole markdown `content`, `path`,
  * `level`); the extensibility one is the session-facing summary (`description`, `filePath`,
  * `baseDir`, `source`). `@veyyon/coding-agent` served the summary, while
- * `@veyyon/coding-agent/discovery` and `@veyyon/coding-agent/capability/skill` served the
+ * `@veyyon/coding-agent/discovery` and `@veyyon/coding-agent/discovery/capability/skill` served the
  * record, so code touching nothing but `name`/`_source` type-checked against either and could
  * read the wrong provenance with no error anywhere. The discovery record is now
  * `DiscoveredSkill`, named the way `capability/tool.ts` names `DiscoveredCustomTool`.
@@ -25,12 +25,12 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { clearCache } from "@veyyon/coding-agent/capability/fs";
-import type { DiscoveredSkill } from "@veyyon/coding-agent/capability/skill";
 // @ts-expect-error the discovery barrel exports the record as `DiscoveredSkill`. A type named
 // `Skill` reachable from here is the second owner this fix removed: it would be the record,
 // while `@veyyon/coding-agent` serves the summary under that same name.
 import type { Skill as SkillFromDiscoveryBarrel } from "@veyyon/coding-agent/discovery";
+import { clearCache } from "@veyyon/coding-agent/discovery/capability/fs";
+import type { DiscoveredSkill } from "@veyyon/coding-agent/discovery/capability/skill";
 import { scanSkillsFromDir } from "@veyyon/coding-agent/discovery/helpers";
 import type { Skill as SessionSkill } from "@veyyon/coding-agent/extensibility/skills";
 import { removeSyncWithRetries } from "@veyyon/utils";

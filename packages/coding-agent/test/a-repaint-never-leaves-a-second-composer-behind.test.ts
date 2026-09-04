@@ -28,9 +28,9 @@
 
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
-import { settleFrames } from "../../tui/test/helpers/settle-frames";
-import { isComposerPromptLine, isHairlineLine } from "../src/modes/components/composer-defect-oracle";
-import { initTheme } from "../src/modes/theme/theme";
+import { settleFrames } from "../../../hosts/terminal/engine/test/helpers/settle-frames";
+import { isComposerPromptLine, isHairlineLine } from "../src/modes/terminal/components/composer/composer-defect-oracle";
+import { initTheme } from "../src/theme/theme";
 import { runComposerOracleScenario } from "./helpers/composer-oracle-runner";
 
 /** Terminal geometries walked in order, each a full repaint of the composer zone. */

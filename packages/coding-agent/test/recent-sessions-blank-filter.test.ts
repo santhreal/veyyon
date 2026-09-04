@@ -12,8 +12,8 @@
  *  4. The limit counts surviving sessions — blanks do not eat slots.
  */
 import { describe, expect, it } from "bun:test";
-import { getRecentSessions } from "@veyyon/coding-agent/session/session-listing";
-import { MemorySessionStorage } from "@veyyon/coding-agent/session/session-storage";
+import { getRecentSessions } from "@veyyon/kernel/session/session-listing";
+import { MemorySessionStorage } from "@veyyon/kernel/session/session-storage";
 
 const DIR = "/sessions/project";
 

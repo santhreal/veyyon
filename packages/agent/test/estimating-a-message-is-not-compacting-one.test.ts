@@ -116,7 +116,7 @@ describe("the estimator is a leaf", () => {
 
 		expect(reached).toContain(path.join("packages", "agent", "src", "tokenizer.ts"));
 		expect(reached).toContain(path.join("packages", "utils", "src", "tokens.ts"));
-		expect(reached).toContain(path.join("packages", "natives", "native", "index.js"));
+		expect(reached).toContain(path.join("natives", "bridge", "bindings", "native", "index.js"));
 	});
 
 	/**

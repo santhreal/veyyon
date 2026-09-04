@@ -216,7 +216,7 @@ export function buildBehaviorSummary(
 }
 
 export function buildFolderRows(folders: FolderStats[]): FolderRowView[] {
-	const sorted = [...folders].sort((a, b) => {
+	const sorted = folders.slice().sort((a, b) => {
 		if (b.totalCost !== a.totalCost) {
 			return b.totalCost - a.totalCost;
 		}

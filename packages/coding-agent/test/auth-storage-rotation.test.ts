@@ -7,7 +7,7 @@ import * as oauth from "@veyyon/ai/oauth";
 import type { OAuthCredentials, OAuthProviderId } from "@veyyon/ai/oauth/types";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { createApiKeyResolver } from "../src/config/api-key-resolver";
 

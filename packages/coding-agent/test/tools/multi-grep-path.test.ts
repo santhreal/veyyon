@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
-import { resolveExplicitSearchPaths } from "@veyyon/coding-agent/tools/path-utils";
+import { resolveExplicitSearchPaths } from "@veyyon/coding-agent/tools/core/path-utils";
 import { isRecord, removeWithRetries } from "@veyyon/utils";
 
 const isWindows = process.platform === "win32";

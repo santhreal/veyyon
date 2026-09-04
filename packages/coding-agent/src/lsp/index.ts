@@ -20,18 +20,17 @@ import {
 	untilAborted,
 } from "@veyyon/utils";
 import type { BunFile } from "bun";
-import { theme } from "../modes/theme/theme-binding";
-import type { Theme } from "../modes/theme/theme-class";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { adoptIntoPrimarySessionCpuBudget } from "../session/cpu-limit";
+import { theme } from "../theme/theme-binding";
 import type { ToolSession } from "../tools";
-import { truncateForPrompt } from "../tools/approval";
-import { formatPathRelativeToCwd, resolveToCwd } from "../tools/path-utils";
-// The leaf, not `tools/tool-result`: that module builds results and reaches 151 modules through
-// `tools/output-meta`, and this only prepends a string to one already built.
-import { prependResultNotice } from "../tools/result-notice";
-import { ToolAbortError, ToolError, throwIfAborted } from "../tools/tool-errors";
-import { clampTimeout, formatTimeoutClampNotice } from "../tools/tool-timeouts";
+import { truncateForPrompt } from "../tools/core/approval";
+import { formatPathRelativeToCwd, resolveToCwd } from "../tools/core/path-utils";
+// The leaf, not `tools/core/tool-result`: that module builds results and reaches 151 modules through
+// `tools/core/output-meta`, and this only prepends a string to one already built.
+import { prependResultNotice } from "../tools/core/result-notice";
+import { ToolAbortError, ToolError, throwIfAborted } from "../tools/core/tool-errors";
+import { clampTimeout, formatTimeoutClampNotice } from "../tools/core/tool-timeouts";
 import { isTimeoutError, scopedTimeoutSignal } from "../utils/fetch-timeout";
 import {
 	ensureFileOpen,
@@ -103,6 +102,7 @@ import {
 	symbolKindToIcon,
 	uriToFile,
 } from "./utils";
+import { lspToolView } from "./view";
 
 export type { LspServerStatus } from "./client";
 export type { LspToolDetails } from "./types";
@@ -620,7 +620,7 @@ function parseGoWorkspaceBuildPatterns(output: string): string[] {
 		const pattern = goWorkspaceBuildPattern(entry.DiskPath);
 		if (pattern) patterns.add(pattern);
 	}
-	return [...patterns];
+	return Array.from(patterns);
 }
 
 /** Resolve the `go build` command for a `go.work` workspace. */
@@ -1186,7 +1186,7 @@ function mergeDiagnostics(
 			}
 		}
 		if (result.messages.length > 0) {
-			messages.push(...result.messages);
+			for (let mi = 0; mi < result.messages.length; mi++) messages.push(result.messages[mi]!);
 		}
 		if (result.formatter !== undefined) {
 			hasFormatter = true;
@@ -1567,8 +1567,9 @@ export function createLspWritethrough(cwd: string, options?: WritethroughOptions
 /**
  * LSP tool for language server protocol operations.
  */
-export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Theme> {
+export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails> {
 	readonly name = "lsp";
+	readonly view = lspToolView;
 	readonly approval = (args: unknown): ToolApprovalDecision => {
 		const rawAction = (args as Partial<LspParams>).action;
 		const action = typeof rawAction === "string" ? rawAction.toLowerCase() : "";
@@ -1754,7 +1755,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 						if (serverConfig.createClient) {
 							const linterClient = getLinterClient(serverName, serverConfig, this.session.cwd);
 							const diagnostics = await linterClient.lint(resolved);
-							allDiagnostics.push(...diagnostics);
+							for (let di = 0; di < diagnostics.length; di++) allDiagnostics.push(diagnostics[di]!);
 							continue;
 						}
 						const client = await getOrCreateClient(serverConfig, this.session.cwd, undefined, signal);
@@ -1771,7 +1772,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 							minVersion,
 							expectedDocumentVersion,
 						});
-						allDiagnostics.push(...diagnostics);
+						for (let di = 0; di < diagnostics.length; di++) allDiagnostics.push(diagnostics[di]!);
 					} catch (err) {
 						if (err instanceof ToolAbortError || signal?.aborted) {
 							throw err;
@@ -1980,7 +1981,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 				}
 				if (serverNotes.length > 0) {
 					lines.push("  Server notes:");
-					lines.push(...serverNotes);
+					for (let ni = 0; ni < serverNotes.length; ni++) lines.push(serverNotes[ni]!);
 				}
 				return {
 					content: [{ type: "text", text: lines.join("\n") }],
@@ -2018,7 +2019,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 					if (!existing) {
 						acceptedByUri.set(uri, {
 							primaryServer: serverName,
-							edits: [...edits],
+							edits: edits.slice(),
 							discarded: 0,
 							conflictServers: new Set(),
 						});
@@ -2037,7 +2038,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 						if (discardedOld > 0) existing.conflictServers.add(existing.primaryServer);
 						existing.discarded += discardedOld;
 						existing.primaryServer = serverName;
-						existing.edits = [...edits, ...keptOld];
+						existing.edits = edits.concat(keptOld);
 					} else {
 						// Existing wins; discard incoming edits that overlap any accepted edit.
 						let discardedNew = 0;
@@ -2097,7 +2098,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 
 			if (serverNotes.length > 0) {
 				summary.push("  Server notes:");
-				summary.push(...serverNotes);
+				for (let ni = 0; ni < serverNotes.length; ni++) summary.push(serverNotes[ni]!);
 			}
 
 			const header = `Renamed ${fileCountLabel} → ${destLabel}`;
@@ -2312,7 +2313,8 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 						continue;
 					}
 					respondingServers.add(workspaceServerName);
-					aggregatedSymbols.push(...filterWorkspaceSymbols(workspaceResult, normalizedQuery));
+					const filtered = filterWorkspaceSymbols(workspaceResult, normalizedQuery);
+					for (let si = 0; si < filtered.length; si++) aggregatedSymbols.push(filtered[si]!);
 				} catch (err) {
 					if (err instanceof ToolAbortError || signal?.aborted) {
 						throw err;
@@ -2670,11 +2672,13 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 						const summaryLines: string[] = [];
 						if (appliedAction.edits.length > 0) {
 							summaryLines.push("  Workspace edit:");
-							summaryLines.push(...appliedAction.edits.map(item => `    ${item}`));
+							const editLines = appliedAction.edits.map(item => `    ${item}`);
+							for (let li = 0; li < editLines.length; li++) summaryLines.push(editLines[li]!);
 						}
 						if (appliedAction.executedCommands.length > 0) {
 							summaryLines.push("  Executed command(s):");
-							summaryLines.push(...appliedAction.executedCommands.map(commandName => `    ${commandName}`));
+							const cmdLines = appliedAction.executedCommands.map(commandName => `    ${commandName}`);
+							for (let li = 0; li < cmdLines.length; li++) summaryLines.push(cmdLines[li]!);
 						}
 
 						output = `Applied "${appliedAction.title}":\n${summaryLines.join("\n")}`;

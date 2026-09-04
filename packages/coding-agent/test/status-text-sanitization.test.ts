@@ -19,7 +19,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { sanitizeStatusText } from "@veyyon/coding-agent/modes/shared";
+import { sanitizeStatusText } from "@veyyon/utils/sanitize-status-text";
 
 interface EscapeFamilyCase {
 	name: string;

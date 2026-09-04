@@ -25,9 +25,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { AsyncJobManager } from "@veyyon/coding-agent/async";
 import { closeDaemonClients } from "@veyyon/coding-agent/launch/client";
-import { resetLaunchExitWatchesForTests } from "@veyyon/coding-agent/tools/launch-exit-watch";
+import { resetLaunchExitWatchesForTests } from "@veyyon/coding-agent/tools/shell/launch-exit-watch";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../../utils/test/helpers/isolated-config-root";
-import { LaunchTool } from "../../src/tools/launch";
+import { LaunchTool } from "../../src/tools/shell/launch";
 import { makeToolSession } from "../helpers/tool-session";
 
 let isolatedConfigRoot: IsolatedConfigRoot | undefined;

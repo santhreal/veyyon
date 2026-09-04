@@ -113,6 +113,14 @@
 # state and the before arm the old one -- so it needs to know which one it is running.
 : "${SCENE_ARM:=after}"
 
+# ─── Seeded fixtures ────────────────────────────────────────────────────────
+# A NAME IN SCENE_ENV_VARS WITHOUT A DEFAULT HERE BREAKS EVERY OTHER SCENE. The
+# forwarding loop below expands `${!name}` under `set -u`, so an unset knob is not
+# an empty string, it is `!name: unbound variable` and no recording at all -- and
+# the one scene that exports the knob itself keeps working, which is what hid it.
+: "${SCENE_SEED_AUTORESEARCH:=0}"
+: "${SCENE_SEED_ADVISORS:=0}"
+
 # ─── Motion gate ────────────────────────────────────────────────────────────
 : "${SCENE_MOTION_GATE:=1}"
 : "${SCENE_MOTION_FLOOR:=12}"
@@ -134,7 +142,23 @@ SCENE_BACKDROP_BLUR SCENE_CWD SCENE_SETTLE_SCALE SCENE_GIF SCENE_GIF_FPS
 SCENE_GIF_WIDTH SCENE_SETTINGS
 SCENE_SIGNING_NUMBER SCENE_HIDE_THINKING SCENE_COMMAND SCENE_MOTION_GATE
 SCENE_MOTION_FLOOR SCENE_MOTION_GATE_BIN SCENE_OUTPUT SCENE_SEAT SCENE_HOLD SCENE_TYPING_REPEAT SCENE_MARK_LEAD_MIN_MS SCENE_ARM
+SCENE_SEED_AUTORESEARCH SCENE_SEED_ADVISORS
 "
+
+# EVERY NAME IN THE LIST MUST HAVE A DEFAULT ABOVE, and the check runs here rather
+# than in the two forwarding loops, which reach `${!name}` one recorder invocation
+# later and report the failure as `!name: unbound variable` at a line that names no
+# knob. This states which knob and what to do about it.
+scene_missing_defaults=""
+for scene_knob in ${SCENE_ENV_VARS}; do
+	[ -n "${!scene_knob+set}" ] || scene_missing_defaults="${scene_missing_defaults} ${scene_knob}"
+done
+if [ -n "${scene_missing_defaults}" ]; then
+	printf 'scene-config: no default for%s\n' "${scene_missing_defaults}" >&2
+	printf 'scene-config: give each one a `: "${NAME:=value}"` line above SCENE_ENV_VARS.\n' >&2
+	exit 1
+fi
+unset scene_missing_defaults scene_knob
 
 # Exported, not merely set. A session writes a bootstrap script and hands it to a
 # terminal, so a value that is only a shell variable in the session's own process

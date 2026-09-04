@@ -6,18 +6,21 @@ maps the *flow* (input → component tree → render); this doc explains the
 **render contract, why it is shaped this way, and the invariants you must not
 violate**. Scope is the core engine only:
 
-- [`packages/tui/src/tui.ts`](../../packages/tui/src/tui.ts): frame pipeline, commit ledger, window math, emitters, cursor placement.
-- [`packages/tui/src/terminal.ts`](../../packages/tui/src/terminal.ts): `ProcessTerminal`, capability probes, private-CSI reassembly.
-- [`packages/tui/src/terminal-capabilities.ts`](../../packages/tui/src/terminal-capabilities.ts): `TERMINAL` profile, sync-output / DECCARA / image detection.
-- [`packages/tui/src/stdin-buffer.ts`](../../packages/tui/src/stdin-buffer.ts): escape-sequence reassembly.
-- [`packages/tui/src/utils.ts`](../../packages/tui/src/utils.ts): width/slice/wrap (the width model).
-- [`packages/tui/src/kitty-graphics.ts`](../../packages/tui/src/kitty-graphics.ts) + [`components/image.ts`](../../packages/tui/src/components/image.ts): inline images.
-- [`packages/tui/src/deccara.ts`](../../packages/tui/src/deccara.ts): rectangular-fill optimizer.
+- [`hosts/terminal/engine/src/core/tui.ts`](../../hosts/terminal/engine/src/core/tui.ts): frame pipeline, commit ledger, window math, emitters, cursor placement.
+- [`hosts/terminal/engine/src/core/renderer.ts`](../../hosts/terminal/engine/src/core/renderer.ts): per-row frame preparation — SGR coalescing, line fitting, committed-prefix resync, cursor-marker extraction.
+- [`hosts/terminal/engine/src/core/component-types.ts`](../../hosts/terminal/engine/src/core/component-types.ts): `Component`, the native-scrollback seam interfaces and their accessors.
+- [`hosts/terminal/engine/src/core/overlay.ts`](../../hosts/terminal/engine/src/core/overlay.ts), [`core/scroll.ts`](../../hosts/terminal/engine/src/core/scroll.ts), [`core/cursor.ts`](../../hosts/terminal/engine/src/core/cursor.ts), [`core/image-budget.ts`](../../hosts/terminal/engine/src/core/image-budget.ts), [`core/container.ts`](../../hosts/terminal/engine/src/core/container.ts), [`core/terminal-session.ts`](../../hosts/terminal/engine/src/core/terminal-session.ts), [`core/mouse-routing.ts`](../../hosts/terminal/engine/src/core/mouse-routing.ts): the sibling modules the pipeline calls. `hosts/terminal/engine/src/tui.ts` is a barrel over them and holds no logic.
+- [`hosts/terminal/engine/src/terminal.ts`](../../hosts/terminal/engine/src/terminal.ts): `ProcessTerminal`, capability probes, private-CSI reassembly.
+- [`hosts/terminal/engine/src/terminal-capabilities.ts`](../../hosts/terminal/engine/src/terminal-capabilities.ts): `TERMINAL` profile, sync-output / DECCARA / image detection.
+- [`hosts/terminal/engine/src/stdin-buffer.ts`](../../hosts/terminal/engine/src/stdin-buffer.ts): escape-sequence reassembly.
+- [`packages/utils/src/width.ts`](../../packages/utils/src/width.ts): width/slice/wrap (the width model).
+- [`packages/utils/src/kitty-graphics.ts`](../../packages/utils/src/kitty-graphics.ts) + [`components/image.ts`](../../hosts/terminal/engine/src/components/image.ts): inline images.
+- [`packages/utils/src/deccara.ts`](../../packages/utils/src/deccara.ts): rectangular-fill optimizer.
 
 Application-layer renderers (transcript, tool calls, session tree, editor,
 widgets) are **out of scope**, they live in `packages/coding-agent`. The one
 app-layer file that is load-bearing for this contract is
-[`transcript-container.ts`](../../packages/coding-agent/src/modes/components/transcript-container.ts),
+[`transcript-container.ts`](../../packages/coding-agent/src/modes/terminal/components/transcript/transcript-container.ts),
 which implements the commit-boundary seam described below.
 
 ---
@@ -131,7 +134,8 @@ scrolled reader could be looking at.
 5. Cursor markers were stripped at compose time into `#frameCursorMarkers`
    (they never reach the terminal, the prefix ledger, or the audit); pick the
    bottom-most marker at or below the window top, prepare lines (width fitting,
-   `#prepareFrame`), slice the window (or, while a frozen scroll-isolation view
+   `prepareLinesArray` over `core/renderer.ts`, cached per width in
+   `PreparedFrameCache`), slice the window (or, while a frozen scroll-isolation view
    is up, assemble it from the scroll snapshot above the live footer, §11),
    then composite overlays **into the window slice only** (screen
    coordinates, an overlay never touches the frame or the ledger).
@@ -166,7 +170,7 @@ several terminal families snap a scrolled reader to the bottom on those.
 
 ### The commit-boundary seam (the load-bearing app contract)
 
-`NativeScrollbackLiveRegion` (tui.ts) is how a component keeps mutable rows out
+`NativeScrollbackLiveRegion` (`core/component-types.ts`) is how a component keeps mutable rows out
 of the audited history. The interface is a **single method**:
 
 - `getNativeScrollbackLiveRegionStart()`: first row that may still mutate
@@ -235,7 +239,7 @@ see it.
 4. **NEVER probe the viewport position or fork on platform in the update
    path.** win32 behaves like POSIX. The probe APIs are gone; do not
    reintroduce them. The only platform forks left are ConPTY-scoped and sit
-   outside the update byte shape: `#truncateLargeConptyFrame` bounds an
+   outside the update byte shape: `truncateLargeConptyFrame` (`core/renderer.ts`) bounds an
    oversized full-paint replay, and `#armPostFullPaintSettle` delays the frames
    just after one.
 5. **Mutable content stays below the commit boundary.** App-layer renderers
@@ -294,8 +298,8 @@ cosmetic, not corrupting.
 
 ## 5. Width model
 
-`visibleWidth` / `truncateToWidth` / `sliceByColumn` / `wrapTextWithAnsi`
-(`utils.ts`) all agree on **one UAX#11 width model**. Slicing, truncation,
+`visibleWidth` / `truncateToWidth` / `sliceByColumn` (`@veyyon/utils/width`) and
+`wrapTextWithAnsi` (`@veyyon/utils/wrap`) all agree on **one UAX#11 width model**. Slicing, truncation,
 wrapping, and segment extraction run on the native engine
 (`@veyyon/natives`, Rust `unicode-width`); `visibleWidth` measures with
 `Bun.stringWidth` **pinned to that same model** (`STRING_WIDTH_OPTS`:
@@ -351,7 +355,7 @@ width models in measure-vs-slice produced crashes.
   it is not a number, which is the rule the native uses. `Number.parseInt` would
   accept `s=2x`, `w=+5` and `w= 5`, and reading those as numbers makes this side
   measure WIDER than the cut, which is the direction that overflows a line.
-  `packages/tui/test/visible-width-osc66-spans.test.ts` pins every span shape
+  `packages/utils/test/visible-width-osc66-spans.test.ts` pins every span shape
   against the native binding directly, including the malformed spans (an escape
   in the payload, or no terminator) where the two still differ and the native is
   the one to change.
@@ -359,7 +363,7 @@ width models in measure-vs-slice produced crashes.
 These corrections exist for the same reason: `truncateToWidth` cuts on the native
 engine and `visibleWidth` measures, so a disagreement means a span cut to fit `W`
 re-measures wider than `W` and the caller that sized a viewport by the cut writes
-past the last column. `packages/tui/test/visible-width-enclosing-marks.test.ts`
+past the last column. `packages/utils/test/visible-width-enclosing-marks.test.ts`
 pins each mark correction and each deliberate non-correction.
 
 **Rule:** any new measuring code routes through these helpers, and the hot
@@ -372,7 +376,7 @@ with marks stripped (`sameLinesAllowingMarkDrift`).
 
 ## 6. The fidelity gate (use it)
 
-`packages/tui/test/render-stress-harness.ts` drives the renderer's **real
+`hosts/terminal/engine/test/render-stress-harness.ts` drives the renderer's **real
 emitted ANSI** into a ghostty-web `VirtualTerminal` across randomized op
 sequences and parameterized terminal shapes, and validates the contract with a
 **shadow commit ledger**: `#shadowTape` materializes what native scrollback
@@ -399,6 +403,22 @@ it: you are. Run it locally, plus `render-regressions.test.ts`,
 `streaming-scrollback-defer.test.ts`, and the `issue-*-repro.test.ts` files,
 before changing ledger math, emitters, or the seam. A change that passes one
 terminal and one seed is not verified.
+
+### What proves a split of the engine changed no bytes
+
+`tui.ts` was 5415 lines and is now ten modules under `hosts/terminal/engine/src/core/`.
+The evidence that the move emitted the same bytes is the corpus already here:
+`render-regressions.test.ts` and `render-stress-oracles.test.ts` assert exact
+emitted ANSI against a `VirtualTerminal`, and they passed against the split
+engine without a byte changing in either file. A pass there is a stronger claim
+than a golden capture of a handful of sequences, because the corpus covers the
+op orders and terminal shapes that produced each of the regressions it is named
+for, and its expectations were written before the split rather than recorded
+from it.
+
+There is no separate golden file for the split, and there will not be one. A
+golden captured from the post-split engine records whatever the engine does,
+including a defect, and a golden captured before it cannot be captured now.
 
 ---
 
@@ -430,8 +450,9 @@ a non-answering terminal is detected when DA1 returns first. Replies can arrive
 ## 8. Inline images & memory
 
 Kitty images are **transmit-once, place-many**; the placeholder encoding lives
-in `kitty-graphics.ts` and the delete escape in `terminal-capabilities.ts`
-(`encodeKittyDeleteImage`). `ImageBudget` (`components/image.ts`) keeps only the
+in `@veyyon/utils/kitty-graphics` and the delete escape in `terminal-capabilities.ts`
+(`encodeKittyDeleteImage`). `ImageBudget` (`core/image-budget.ts`, re-exported by
+`components/image.ts`) keeps only the
 most-recent N images live; when the cap is exceeded the demoted image's pixels
 are deleted by id (`a=d,d=I`) and its visible rows re-render as the text
 fallback through the ordinary window diff, **no destructive replay**. A demoted
@@ -443,6 +464,31 @@ block and never shifts committed content below it.
 **Rule:** never re-emit full base64 per frame. Kitty Unicode placeholders are
 default-on only for kitty/ghostty (`VEYYON_NO_KITTY_PLACEHOLDERS` /
 `VEYYON_KITTY_PLACEHOLDERS`).
+
+### 8a. Who decides a picture was drawn
+
+A tool result carrying an image also carries a sentence to the model about
+whether the user saw it, written by `session/image-visibility.ts` in
+`coding-agent`. The renderer answers half of that question and the session owns
+the other half, so the two halves are wired rather than shared:
+
+- The **vocabulary** is `@veyyon/utils/image-fallback`:
+  `IMAGE_FALLBACK_REASONS` plus the `ImageFallbackReason` union built from it.
+  It sits in utils because both ends name it and neither can import the other —
+  a conversation engine cannot depend on a renderer, and `imageFallback()` here
+  turns the same cause into the placeholder row the user reads. The value form
+  exists so a check can sweep every cause; a union alone cannot be enumerated.
+- The **capability** travels the other way. The session cannot read `TERMINAL`
+  to learn whether a picture reached a screen, because a `-p` run, an rpc client
+  and a browser guest are not this terminal. The front end installs the answer
+  with `setImageDisplayProbe(() => TERMINAL.imageProtocol !== null)` —
+  `InteractiveMode`'s constructor does it, beside the other capability reads —
+  and an uninstalled probe means the client draws nothing, which is the truthful
+  answer for every headless mode.
+
+A late demotion is a third case and stays where it is: the block reports through
+`recordImageDisplay` once `ImageBudget` has taken the pixels back, because only
+the block knows a picture it already drew is gone.
 
 ---
 
@@ -563,7 +609,7 @@ bottom.
   no motion reports — so the engine pairs a left press with its release and calls
   `onSelectionAttempt` when they land in different cells outside the footer. The
   engine keeps no "already told them" state; the coding agent owns the wording
-  and the once-per-run policy in `modes/utils/selection-notice.ts`, and a tip
+  and the once-per-run policy in `modes/terminal/utils/selection-notice.ts`, and a tip
   gated on `tui.scrollIsolation` says the same thing before you hit it.
 
 ### 11a. The `alt-arrows` transport (selection and a pinned composer, both)
@@ -623,7 +669,7 @@ drops committed rows the way the real container does. Only the second one can
 see this class of bug. Both state `setScrollbackRebuild(false)` explicitly, because
 the rebuild is on by default and these suites assert the append-below history it
 would otherwise erase. A third suite,
-`packages/coding-agent/test/modes/components/transcript-scrollback-pinned-composer.test.ts`,
+`packages/coding-agent/test/modes/terminal/components/transcript-scrollback-pinned-composer.test.ts`,
 mounts the real container and the real shortcut bar together, so the host side of
 the contract is proven too.
 
@@ -633,4 +679,4 @@ thumb) and the attributes the terminal presents, through
 `VirtualTerminal#getViewportRowFaintColumns`. A byte assertion alone would still
 pass if a later reset in the same row cancelled the dim.
 
-*Verified against `19234e94d39e` on 2026-08-07.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

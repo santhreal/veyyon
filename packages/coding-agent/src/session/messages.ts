@@ -28,11 +28,11 @@ import type {
 	UserMessage,
 } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
+import { isBlobRef, isTextBlobRef } from "@veyyon/kernel/session/blob-store";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { isRecord } from "@veyyon/utils/type-guards";
 import { formatExitCodeNotice } from "../exec/exit-notice";
-import { ToolAbortError } from "../tools/tool-errors";
-import { isBlobRef, isTextBlobRef } from "./blob-store";
+import { ToolAbortError } from "../tools/core/tool-errors";
 import { imageDisplayStateForCall, imageVisibilityNotice, isImageVisibilityNotice } from "./image-visibility";
 
 export {
@@ -43,11 +43,10 @@ export {
 	createCustomMessage,
 } from "@veyyon/agent-core/compaction/messages";
 
-// The notice text, not the tool layer that builds it: `../tools/output-meta` reaches 177 modules
+// The notice text, not the tool layer that builds it: `../tools/core/output-meta` reaches 177 modules
 // because it owns the builder, the tool wrapper and the spill configuration, and appending a notice to
-// a message needs none of them. `../tools/output-notice` owns the wording and the metadata shape.
-import type { OutputMeta } from "../tools/output-notice";
-import { formatOutputNotice } from "../tools/output-notice";
+// a message needs none of them. `../tools/core/output-notice` owns the wording and the metadata shape.
+import { formatOutputNotice, type OutputMeta } from "../tools/core/output-notice";
 
 export const SKILL_PROMPT_MESSAGE_TYPE = "skill-prompt";
 export const LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE = "lsp-late-diagnostic";

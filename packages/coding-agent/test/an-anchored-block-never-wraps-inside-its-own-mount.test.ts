@@ -38,20 +38,22 @@ import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { renderSubagentHudLines } from "@veyyon/coding-agent/modes/components/subagent-hud";
-import { renderTodoBoardLines } from "@veyyon/coding-agent/modes/components/todo-board";
-import { ANCHORED_BLOCK_PADDING_X, InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
-import type { ObservableSession } from "@veyyon/coding-agent/modes/session-observer-registry";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { renderSubagentHudLines } from "@veyyon/coding-agent/modes/terminal/components/dashboard/subagent-hud";
+import { renderTodoBoardLines } from "@veyyon/coding-agent/modes/terminal/components/dashboard/todo-board";
+import { paintRailMotion, railIdleHeadAt } from "@veyyon/coding-agent/modes/terminal/draw/rail-motion";
+import { ANCHORED_BLOCK_PADDING_X, InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
+import type { ObservableSession } from "@veyyon/coding-agent/modes/terminal/session-observer-registry";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { type SubagentProgressPayload, TASK_SUBAGENT_PROGRESS_CHANNEL } from "@veyyon/coding-agent/task";
-import type { TodoItem, TodoPhase } from "@veyyon/coding-agent/tools/todo";
-import { paintRailMotion, railIdleHeadAt } from "@veyyon/coding-agent/tui/rail-motion";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
+import type { TodoItem, TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
-import { getPaddingX, Text, visibleWidth } from "@veyyon/tui";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { Text } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
+import { getPaddingX } from "@veyyon/utils/tight-mode";
+import { visibleWidth } from "@veyyon/utils/width";
 
 /** The width the mode hands a block, which is what the mount leaves it. */
 function contentColumns(terminalColumns: number): number {

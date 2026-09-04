@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { inlineCapForTurn } from "@veyyon/coding-agent/session/streaming-output";
-import { BROAD_SEARCH_INLINE_MAX_BYTES } from "@veyyon/coding-agent/tools/text-search";
+import { BROAD_SEARCH_INLINE_MAX_BYTES } from "@veyyon/coding-agent/tools/search/text-search";
 import { formatSearchDisclosureBenchmark, runSearchDisclosureBenchmark } from "../../../benches/search/disclosure";
 
 /**

@@ -4,10 +4,10 @@ import * as fs from "node:fs/promises";
 import path from "node:path";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { isEnoent } from "@veyyon/utils/fs-error";
-import { theme } from "../modes/theme/theme-binding";
-import type { Theme } from "../modes/theme/theme-class";
-import { formatGroupedFiles } from "../tools/grouped-file-output";
-import { formatPathRelativeToCwd, resolveToCwd } from "../tools/path-utils";
+import { theme } from "../theme/theme-binding";
+import type { Theme } from "../theme/theme-class";
+import { formatGroupedFiles } from "../tools/core/grouped-file-output";
+import { formatPathRelativeToCwd, resolveToCwd } from "../tools/core/path-utils";
 import type {
 	CodeAction,
 	Command,
@@ -475,7 +475,8 @@ export function formatDocumentSymbol(symbol: DocumentSymbol, indent = 0): string
 
 	if (symbol.children) {
 		for (const child of symbol.children) {
-			results.push(...formatDocumentSymbol(child, indent + 1));
+			const childResults = formatDocumentSymbol(child, indent + 1);
+			for (let ri = 0; ri < childResults.length; ri++) results.push(childResults[ri]!);
 		}
 	}
 

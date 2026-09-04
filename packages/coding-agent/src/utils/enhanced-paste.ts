@@ -1,5 +1,5 @@
 import type { ImageContent } from "@veyyon/ai";
-import { BEL, ST } from "@veyyon/tui/ansi";
+import { BEL, ST } from "@veyyon/utils/ansi";
 
 const OSC5522_PREFIX = "\x1b]5522;";
 const PASTE_EVENT_NAME_BASE64 = Buffer.from("Paste event", "utf8").toString("base64");

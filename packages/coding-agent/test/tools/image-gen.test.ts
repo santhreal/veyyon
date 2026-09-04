@@ -10,7 +10,7 @@ import {
 	imageGenTool,
 	isImageProviderPreference,
 	setPreferredImageProvider,
-} from "@veyyon/coding-agent/tools/image-gen";
+} from "@veyyon/coding-agent/tools/web/image-gen";
 import { removeWithRetries } from "@veyyon/utils";
 
 /**

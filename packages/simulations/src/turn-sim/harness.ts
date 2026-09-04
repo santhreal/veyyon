@@ -67,13 +67,14 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { buildServiceTierByFamily } from "@veyyon/coding-agent/config/service-tier";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { TtsrManager } from "@veyyon/coding-agent/export/ttsr";
-import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { MemorySessionStorage } from "@veyyon/coding-agent/session/session-storage";
 import { createSettingsAwareStreamFn } from "@veyyon/coding-agent/session/settings-stream-fn";
 import { wrapStreamFnWithProviderConcurrency } from "@veyyon/coding-agent/task/provider-concurrency";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { MemorySessionStorage } from "@veyyon/kernel/session/session-storage";
 import { TempDir } from "@veyyon/utils";
 import { type } from "arktype";
 

@@ -29,12 +29,12 @@ const REPO_SLUG = "santhreal/veyyon";
 
 /** Every path the compute step hashes, as it names them. */
 const HASHED_FILES = [
-	"crates/veyyon-natives/src/lib.rs",
+	"natives/bridge/addon/src/lib.rs",
 	"Cargo.toml",
 	"Cargo.lock",
 	"rust-toolchain.toml",
-	"packages/natives/scripts/native-portability.ts",
-	"packages/natives/package.json",
+	"natives/bridge/bindings/scripts/native-portability.ts",
+	"natives/bridge/bindings/package.json",
 	"scripts/ci-build-native.ts",
 	"scripts/host-detect.ts",
 	".github/actions/build-native/action.yml",
@@ -215,7 +215,7 @@ describe("the native addon cache key", () => {
 			expect(changed, `${relative} must be part of the key`).not.toBe(base);
 		}
 		const added = await computeHash(root =>
-			fs.writeFileSync(path.join(root, "crates/veyyon-natives/src/new.rs"), "new\n"),
+			fs.writeFileSync(path.join(root, "natives/bridge/addon/src/new.rs"), "new\n"),
 		);
 		expect(added).not.toBe(base);
 	});
@@ -226,6 +226,27 @@ describe("the native addon cache key", () => {
 			fs.writeFileSync(path.join(root, "packages/coding-agent/src/cli.ts"), "edited\n"),
 		);
 		expect(unrelated).toBe(base);
+	});
+
+	/**
+	 * The bindings package sits INSIDE the hashed `natives` tree and is not a build input beyond its
+	 * build scripts and its manifest, both named in {@link HASHED_FILES}. The tree walk prunes the rest,
+	 * so a test or a changelog line there does not rebuild six addons. Without the prune this cell goes
+	 * red, which is the cost regression it exists to catch.
+	 */
+	it("stays put when the bindings package's own tests or changelog change", async () => {
+		const base = await computeHash();
+		for (const relative of [
+			"natives/bridge/bindings/test/a-test-file.test.ts",
+			"natives/bridge/bindings/CHANGELOG.md",
+			"natives/bridge/bindings/bench/grep.ts",
+		]) {
+			const edited = await computeHash(root => {
+				fs.mkdirSync(path.dirname(path.join(root, relative)), { recursive: true });
+				fs.writeFileSync(path.join(root, relative), "edited\n");
+			});
+			expect(edited, `${relative} must not be part of the key`).toBe(base);
+		}
 	});
 });
 

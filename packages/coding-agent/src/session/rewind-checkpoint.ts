@@ -6,39 +6,14 @@
  * takes one entry and returns a value; none of it touches live session state.
  */
 
-import type { ImageContent, TextContent } from "@veyyon/ai";
-import { TOOL } from "../tools/builtin-names";
-import type { CompletedRewindState } from "../tools/checkpoint";
-import type { SessionEntry, SessionMessageEntry } from "./session-entries";
-
-function customMessageContentText(content: string | (TextContent | ImageContent)[]): string {
-	if (typeof content === "string") return content;
-	const parts: string[] = [];
-	for (const part of content) {
-		if (part.type === "text") parts.push(part.text);
-	}
-	return parts.join("\n");
-}
-
-/**
- * Read `key` off `value` as a string, considering own data properties only, so
- * an inherited member never answers for a field the entry does not carry.
- */
-function stringProperty(value: object, key: string): string | undefined {
-	const field = Object.getOwnPropertyDescriptor(value, key)?.value;
-	return typeof field === "string" ? field : undefined;
-}
-
-/**
- * The report body of a rewind-report message. Content written before the last
- * `Report:` marker is preamble; an entry with no marker is all report.
- */
-function reportFromRewindReportContent(content: string): string {
-	const marker = "\nReport:\n";
-	const index = content.lastIndexOf(marker);
-	const report = index >= 0 ? content.slice(index + marker.length) : content;
-	return report.trim();
-}
+import type { SessionEntry, SessionMessageEntry } from "@veyyon/kernel/session/session-entries";
+import { TOOL } from "../tools/core/builtin-names";
+import type { CompletedRewindState } from "../tools/fs/checkpoint";
+import {
+	customMessageContentText,
+	reportFromRewindReportContent,
+	stringProperty,
+} from "./agent-session-message-shapes";
 
 /**
  * The completed rewind a `rewind-report` entry records, or undefined for any

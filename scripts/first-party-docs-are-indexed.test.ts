@@ -129,7 +129,7 @@ describe("first-party prose outside docs/", () => {
 			"packages/coding-agent/src/discovery/builtin-rules/ts-no-any.md",
 			"packages/coding-agent/src/system-prompt-builder/statements/role/principles.md",
 			"packages/coding-agent/test/fixtures/skills/valid-skill/SKILL.md",
-			"packages/hashline/src/prompt.md",
+			"plugins/hashline/src/prompt.md",
 			"README.md",
 		]) {
 			expect(PAGES).not.toContain(skipped);

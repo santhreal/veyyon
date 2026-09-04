@@ -9,10 +9,9 @@
  * for a credential without showing it, and that difference is one injected function
  * ({@link SecretCommandPort.promptForValue}) rather than a second copy of the logic.
  */
-import { DEFAULT_MASK_CHAR } from "@veyyon/tui";
 import { errorMessage, getAgentDir, getGlobalConfigRootDir, logger } from "@veyyon/utils";
 import type { Settings } from "../../config/settings";
-import type { InteractiveModeContext } from "../../modes/types";
+import type { InteractiveModeContext } from "../../modes/terminal/types";
 import { SecretAuditLog, secretAuditPath } from "../../secrets/audit";
 import {
 	needsValuePrompt,
@@ -392,8 +391,7 @@ export function interactiveSecretPort(ctx: SecretPortHost): SecretCommandPort {
 		cwd: ctx.sessionManager.getCwd(),
 		globalConfigRoot: getGlobalConfigRootDir(),
 		agentDir: getAgentDir(),
-		promptForValue: () =>
-			ctx.showHookInput(maskedPromptTitle(), undefined, { mask: DEFAULT_MASK_CHAR, hint: maskedPromptHint() }),
+		promptForValue: () => ctx.showHookInput(maskedPromptTitle(), undefined, { mask: true, hint: maskedPromptHint() }),
 		// Deliberately unmasked: a name is not a credential, and the operator seeing this field echo
 		// after the hidden one is what distinguishes the two questions.
 		promptForName: () => ctx.showHookInput(namePromptTitle(), undefined, { hint: namePromptHint() }),

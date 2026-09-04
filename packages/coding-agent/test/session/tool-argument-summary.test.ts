@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { summarizeToolArguments } from "@veyyon/coding-agent/session/exit-diagnostics";
+import { summarizeToolArguments } from "@veyyon/kernel/session/exit-diagnostics";
 
 /**
  * summarizeToolArguments projects a persisted tool-call's full argument object down to just the

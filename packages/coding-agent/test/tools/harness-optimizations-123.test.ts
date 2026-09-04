@@ -1,8 +1,8 @@
 import { describe, expect, it, spyOn } from "bun:test";
 import { AsyncJobManager } from "@veyyon/coding-agent/async";
-import { JobTool } from "@veyyon/coding-agent/tools/job";
+import { JobTool } from "@veyyon/coding-agent/tools/shell/job";
 import { MismatchError } from "@veyyon/hashline";
-import { applyOpsToPhases, type TodoPhase } from "../../src/tools/todo";
+import { applyOpsToPhases, type TodoPhase } from "../../src/tools/agent/todo";
 import { makeToolSession } from "../helpers/tool-session";
 
 describe("Harness Optimization 1: Job Uptime Formatting", () => {

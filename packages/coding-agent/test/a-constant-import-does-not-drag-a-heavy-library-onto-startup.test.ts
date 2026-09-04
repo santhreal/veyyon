@@ -1,12 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 
 /**
  * WHY: importing a string constant is enough to evaluate the module that holds it, and twice now a
  * module that wanted one literal has put a multi-megabyte library on the session startup path.
  *
- * `tools/read.ts`, `tools/fetch.ts` and `cli/file-processor.ts` imported `CONVERTIBLE_EXTENSIONS`, a
+ * `tools/fs/read.ts`, `tools/web/fetch.ts` and `cli/file-processor.ts` imported `CONVERTIBLE_EXTENSIONS`, a
  * nine-string set, from the `markit` barrel. The barrel reaches `markit/registry.ts`, which statically
  * imports five document converters and through them mammoth, jszip, turndown, domino, bluebird and
  * xmlbuilder: 104ms of module evaluation to read nine strings, while `utils/markit.ts` was already
@@ -30,6 +30,7 @@ import { dirname, join, relative, resolve } from "node:path";
  */
 
 const SRC = resolve(import.meta.dirname, "..", "src");
+const WEB_PLUGIN_SRC = resolve(import.meta.dirname, "..", "..", "..", "plugins", "web", "src");
 
 /**
  * Third-party packages whose module evaluation is expensive enough that reaching one from a startup
@@ -132,17 +133,36 @@ function staticImportsOf(file: string): ModuleImports {
 
 /** The eagerly awaited tool-factory modules, read out of the factory table itself. */
 function startupRoots(): Map<string, string> {
-	const indexPath = join(SRC, "tools", "index.ts");
-	const source = readFileSync(indexPath, "utf8");
 	const roots = new Map<string, string>();
-	// Each factory is `<name>: async s => ... await import("<specifier>") ...` on one or more lines.
-	for (const match of source.matchAll(/await import\((["'])([^"']+)\1\)/g)) {
-		const specifier = match[2];
-		if (!specifier?.startsWith(".")) continue;
-		const resolved = resolveRelative(specifier, indexPath);
-		if (resolved) roots.set(resolved, specifier);
+	for (const table of factoryTableFiles()) {
+		const source = readFileSync(table, "utf8");
+		// Each factory is `<name>: async s => ... await import("<specifier>") ...` on one or more lines.
+		for (const match of source.matchAll(/await import\((["'])([^"']+)\1\)/g)) {
+			const specifier = match[2];
+			if (!specifier?.startsWith(".")) continue;
+			const resolved = resolveRelative(specifier, table);
+			if (resolved) roots.set(resolved, specifier);
+		}
 	}
 	return roots;
+}
+
+/**
+ * Every file that holds tool factories: `tools/index.ts` and each domain's `manifest.ts`.
+ *
+ * The domain directory is read at run time rather than listed, so a domain added tomorrow is measured
+ * without an edit here. A hardcoded list would lower this ceiling in silence, which is the failure
+ * mode the whole suite is built to avoid.
+ */
+function factoryTableFiles(): string[] {
+	const toolsDir = join(SRC, "tools");
+	const files = [join(toolsDir, "index.ts")];
+	for (const entry of readdirSync(toolsDir, { withFileTypes: true })) {
+		if (!entry.isDirectory()) continue;
+		const manifest = join(toolsDir, entry.name, "manifest.ts");
+		if (existsSync(manifest)) files.push(manifest);
+	}
+	return files;
 }
 
 /** Every expensive package reachable from `root` through static imports, with the path that reaches it. */
@@ -187,7 +207,7 @@ describe("a startup root cannot reach an expensive third-party package through s
 		const roots = startupRoots();
 		// A regression that empties this set would make every other assertion vacuously true.
 		expect(roots.size).toBeGreaterThan(20);
-		expect([...roots.values()]).toContain("../web/search");
+		expect([...roots.values()]).toContain("./web/search");
 		expect([...roots.values()]).toContain("./read");
 	});
 
@@ -205,10 +225,16 @@ describe("a startup root cannot reach an expensive third-party package through s
 
 	it("reaches no expensive package from the non-tool startup modules that triggered this suite", () => {
 		const offenders: string[] = [];
-		for (const entry of ["cli/file-processor.ts", "web/scrapers/types.ts", "web/search/providers/perplexity.ts"]) {
-			const root = join(SRC, entry);
-			expect(existsSync(root)).toBe(true);
-			for (const [pkg, trail] of expensiveReachableFrom(root)) {
+		// Two of the three left this package: the scrapers and their fingerprint leaf are
+		// `@veyyon/web`. The walk follows the file, not the directory it used to sit in, because the
+		// property under test is what a startup root reaches and that does not change with the owner.
+		for (const entry of [
+			join(SRC, "cli/file-processor.ts"),
+			join(WEB_PLUGIN_SRC, "scrapers/types.ts"),
+			join(SRC, "tools/web/search/providers/perplexity.ts"),
+		]) {
+			expect(existsSync(entry)).toBe(true);
+			for (const [pkg, trail] of expensiveReachableFrom(entry)) {
 				offenders.push(`${entry} -> ${pkg}\n    via ${trail.join("\n     -> ")}`);
 			}
 		}
@@ -217,29 +243,33 @@ describe("a startup root cannot reach an expensive third-party package through s
 
 	it("keeps the two constant leaves import-free, which is the property that makes them cheap", () => {
 		for (const leaf of [
-			"markit/convertible-extensions.ts",
-			"web/search/providers/browser-fingerprint-constants.ts",
+			join(SRC, "export/markit/convertible-extensions.ts"),
+			join(WEB_PLUGIN_SRC, "browser-fingerprint-constants.ts"),
 		]) {
-			const { bare, local } = staticImportsOf(join(SRC, leaf));
+			const { bare, local } = staticImportsOf(leaf);
 			expect({ leaf, bare, local }).toEqual({ leaf, bare: [], local: [] });
 		}
 	});
 
 	it("still sees the expensive packages where they legitimately live, so the walker is not blind", () => {
-		// A walker that resolved nothing would report zero offenders everywhere. `markit/registry.ts`
-		// genuinely imports the converters, and `browser-headers.ts` genuinely imports header-generator.
-		expect([...expensiveReachableFrom(join(SRC, "markit", "registry.ts")).keys()].sort()).toContain("mammoth");
-		expect([...expensiveReachableFrom(join(SRC, "web", "search", "providers", "browser-headers.ts")).keys()]).toEqual(
-			["header-generator"],
+		// A walker that resolved nothing would report zero offenders everywhere.
+		// `export/markit/registry.ts` genuinely imports the converters, and
+		// `browser-headers.ts` genuinely imports header-generator.
+		expect([...expensiveReachableFrom(join(SRC, "export", "markit", "registry.ts")).keys()].sort()).toContain(
+			"mammoth",
 		);
+		expect([
+			...expensiveReachableFrom(join(SRC, "tools", "web", "search", "providers", "browser-headers.ts")).keys(),
+		]).toEqual(["header-generator"]);
 	});
 
 	it("follows a re-export edge, which is the shape that carried the converters", () => {
-		// `markit/index.ts` names the converters only through `export * from "./registry"`. A walker that
-		// followed `import` but not `export * from` would call the barrel clean and miss the whole defect.
-		const barrel = readFileSync(join(SRC, "markit", "index.ts"), "utf8");
+		// `export/markit/index.ts` names the converters only through
+		// `export * from "./registry"`. A walker that followed `import` but not
+		// `export * from` would call the barrel clean and miss the whole defect.
+		const barrel = readFileSync(join(SRC, "export", "markit", "index.ts"), "utf8");
 		expect(barrel).toContain('export * from "./registry"');
 		expect(barrel).not.toContain("import ");
-		expect([...expensiveReachableFrom(join(SRC, "markit", "index.ts")).keys()].sort()).toContain("mammoth");
+		expect([...expensiveReachableFrom(join(SRC, "export", "markit", "index.ts")).keys()].sort()).toContain("mammoth");
 	});
 });

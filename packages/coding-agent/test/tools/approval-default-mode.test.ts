@@ -21,8 +21,8 @@ import {
 	normalizeApprovalMode,
 	requiresApproval,
 	resolveEffectiveApprovalMode,
-} from "@veyyon/coding-agent/tools/approval";
-import { DEFAULT_APPROVAL_MODE } from "@veyyon/coding-agent/tools/approval-modes";
+} from "@veyyon/coding-agent/tools/core/approval";
+import { DEFAULT_APPROVAL_MODE } from "@veyyon/coding-agent/tools/core/approval-modes";
 
 describe("the unset tools.approvalMode default", () => {
 	/**

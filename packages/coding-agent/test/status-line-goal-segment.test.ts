@@ -1,11 +1,11 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/segments";
-import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
-import { NO_SESSION_FACTS } from "@veyyon/coding-agent/modes/components/status-line/session-facts";
-import { stateSeparator } from "@veyyon/coding-agent/modes/components/status-line/state-grammar";
-import { initTheme, type ThemeColor, theme } from "@veyyon/coding-agent/modes/theme/theme";
-import { normalizeApprovalMode } from "@veyyon/coding-agent/tools/approval";
-import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/approval-modes";
+import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import { stateSeparator } from "@veyyon/coding-agent/modes/terminal/components/status-line/state-grammar";
+import { initTheme, type ThemeColor, theme } from "@veyyon/coding-agent/theme/theme";
+import { normalizeApprovalMode } from "@veyyon/coding-agent/tools/core/approval";
+import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/core/approval-modes";
+import { NO_SESSION_FACTS } from "../src/modes/terminal/components/status-line/session-facts";
 import { useFullColor } from "./helpers/theme-assertions";
 
 // Every assertion below names a colour, so the policy is declared rather than
@@ -105,7 +105,7 @@ function plain(ctx: SegmentContext): string {
 
 /**
  * The `mode` segment carries the approval rung after the mode label (see
- * `test/modes/components/status-line/approval-rung-segment.test.ts`), and this
+ * `test/modes/terminal/components/status-line/approval-rung-segment.test.ts`), and this
  * stub session names no `effectiveApprovalMode`, so the rung resolves to the
  * default. Every expectation here is the whole segment, so it has to include it.
  */
@@ -122,7 +122,7 @@ function modeLabel(icon: string, readout: string): string {
  *
  * The two are INDEPENDENT states, so they are divided by the footline's state
  * separator, while the goal's own token readout stays bound to its label with a
- * plain space. See `modes/components/status-line/state-grammar.ts`.
+ * plain space. See `modes/terminal/components/status-line/state-grammar.ts`.
  */
 function goalLabel(icon: string, readout: string): string {
 	return `${modeLabel(icon, readout)}${Bun.stripANSI(stateSeparator())}${RUNG}`;

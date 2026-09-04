@@ -144,7 +144,8 @@ export class StreamMarkupHealing {
 	 */
 	flushEvents(): StreamMarkupHealingEvent[] {
 		const tail = this.#toolScanner ? this.#healThinking(this.#toolScanner.flush()) : [];
-		tail.push(...this.#thinkingScanner.flush());
+		const flushed = this.#thinkingScanner.flush();
+		for (let fi = 0; fi < flushed.length; fi++) tail.push(flushed[fi]!);
 		return this.#convertScannerEvents(tail);
 	}
 
@@ -184,8 +185,10 @@ export class StreamMarkupHealing {
 	#healThinking(toolEvents: readonly InbandScanEvent[]): InbandScanEvent[] {
 		const out: InbandScanEvent[] = [];
 		for (const event of toolEvents) {
-			if (event.type === "text") out.push(...this.#thinkingScanner.feed(event.text));
-			else out.push(event);
+			if (event.type === "text") {
+				const fed = this.#thinkingScanner.feed(event.text);
+				for (let fi = 0; fi < fed.length; fi++) out.push(fed[fi]!);
+			} else out.push(event);
 		}
 		return out;
 	}

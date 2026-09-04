@@ -18,7 +18,7 @@ export const shellFixtures: Record<string, GalleryFixture> = {
 					type: "text",
 					text: [
 						" M src/cli/gallery-cli.ts",
-						" M src/tools/bash.ts",
+						" M src/tools/shell/bash.ts",
 						"?? src/cli/gallery-fixtures/shell.ts",
 						"a1b2c3d Wire gallery command into CLI dispatch",
 						"9f8e7d6 Add ToolExecutionComponent lifecycle states",
@@ -39,11 +39,11 @@ export const shellFixtures: Record<string, GalleryFixture> = {
 				{
 					type: "text",
 					text: [
-						"src/tools/bash.ts:1142:34 - error TS2339: Property 'requestedTimeoutSeconds' does not exist on type 'BashToolDetails'.",
+						"src/tools/shell/bash.ts:1142:34 - error TS2339: Property 'requestedTimeoutSeconds' does not exist on type 'BashToolDetails'.",
 						"",
 						"1142   const requestedTimeoutSeconds = details?.requestedTimeoutSeconds;",
 						"                                            ~~~~~~~~~~~~~~~~~~~~~~~~",
-						"Found 1 error in src/tools/bash.ts:1142",
+						"Found 1 error in src/tools/shell/bash.ts:1142",
 					].join("\n"),
 				},
 			],

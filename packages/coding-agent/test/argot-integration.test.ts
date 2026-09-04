@@ -21,7 +21,7 @@ import { expandAssistantContent, expandSessionContext, expandToolArguments } fro
 import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
 import { buildSystemPrompt } from "@veyyon/coding-agent/system-prompt";
 import { RUNTIME_SECTIONS, withSectionBanner } from "@veyyon/coding-agent/system-prompt-builder/section-registry";
-import { ArgotLoadTool, ArgotUnloadTool } from "@veyyon/coding-agent/tools/argot";
+import { ArgotLoadTool, ArgotUnloadTool } from "@veyyon/coding-agent/tools/agent/argot";
 import { ArgotParseError, ArgotSession, DICT_FILENAME, parseDict, renderPreamble } from "argot";
 import { useTempHome } from "./helpers/temp-home";
 import { makeToolSession } from "./helpers/tool-session";

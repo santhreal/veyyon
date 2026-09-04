@@ -2,10 +2,10 @@ import { describe, expect, it, spyOn } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { KEEP_NOTHING_ENTRY_ID, resolveCompactionBoundaryIndex } from "@veyyon/agent-core/compaction/entries";
 import type { TextContent } from "@veyyon/ai";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import * as logger from "@veyyon/utils/logger";
 import type { CompactionSummaryMessage } from "./messages";
 import { buildSessionContext, type StrippedToolCallsMarker } from "./session-context";
-import type { SessionEntry } from "./session-entries";
 
 const timestamp = "2026-07-09T00:00:00.000Z";
 

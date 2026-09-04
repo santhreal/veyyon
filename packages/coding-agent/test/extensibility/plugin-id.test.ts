@@ -7,8 +7,8 @@ import {
 	buildPluginId as buildPluginIdViaTypes,
 	isValidNameSegment as isValidNameSegmentViaTypes,
 	parsePluginId as parsePluginIdViaTypes,
-} from "@veyyon/coding-agent/extensibility/plugins/marketplace/types";
-import { buildPluginId, isValidNameSegment, parsePluginId } from "@veyyon/coding-agent/extensibility/plugins/plugin-id";
+} from "@veyyon/kernel/loader/plugins/marketplace/types";
+import { buildPluginId, isValidNameSegment, parsePluginId } from "@veyyon/kernel/loader/plugins/plugin-id";
 
 /**
  * `plugin-id.ts` is the single owner of plugin/marketplace name-segment

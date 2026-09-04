@@ -10,7 +10,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { getOrFetchIssue, getOrFetchPr } from "@veyyon/coding-agent/tools/gh";
+import { ToolAbortError, throwIfAborted } from "@veyyon/coding-agent/tools/core/tool-errors";
+import { getOrFetchIssue, getOrFetchPr } from "@veyyon/coding-agent/tools/web/gh";
 import {
 	clearAll,
 	getCached,
@@ -18,8 +19,7 @@ import {
 	openDb,
 	putCached,
 	resetForTests as resetCacheForTests,
-} from "@veyyon/coding-agent/tools/github-cache";
-import { ToolAbortError, throwIfAborted } from "@veyyon/coding-agent/tools/tool-errors";
+} from "@veyyon/coding-agent/tools/web/github-cache";
 import * as git from "@veyyon/coding-agent/utils/git";
 import { removeWithRetries } from "@veyyon/utils";
 

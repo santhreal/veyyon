@@ -34,10 +34,10 @@ async function fixture(): Promise<string> {
 		),
 		Bun.write(
 			path.join(root, "Cargo.toml"),
-			`[workspace]\nmembers = ["crates/*"]\n\n[workspace.package]\nversion = "${version}"\n`,
+			`[workspace]\nmembers = ["natives/*"]\n\n[workspace.package]\nversion = "${version}"\n`,
 		),
 		Bun.write(
-			path.join(root, "crates/core/Cargo.toml"),
+			path.join(root, "natives/core/Cargo.toml"),
 			'[package]\nname = "veyyon-core"\nversion.workspace = true\n',
 		),
 		Bun.write(
@@ -45,7 +45,7 @@ async function fixture(): Promise<string> {
 			`version = 4\n\n[[package]]\nname = "veyyon-core"\nversion = "${version}"\n`,
 		),
 		Bun.write(
-			path.join(root, "crates/core/src/lib.rs"),
+			path.join(root, "natives/core/src/lib.rs"),
 			'#[napi(js_name = "__veyyonNativesV1_2_3")]\nfn sentinel() {}\n',
 		),
 		Bun.write(
@@ -113,7 +113,7 @@ describe("prepared release version authorities", () => {
 			[
 				"Cargo workspace",
 				"Cargo.toml",
-				'[workspace]\nmembers = ["crates/*"]\n\n[workspace.package]\nversion = "1.2.2"\n',
+				'[workspace]\nmembers = ["natives/*"]\n\n[workspace.package]\nversion = "1.2.2"\n',
 			],
 			[
 				"Cargo.lock package veyyon-core",
@@ -122,7 +122,7 @@ describe("prepared release version authorities", () => {
 			],
 			[
 				"native sentinel __veyyonNativesV1_2_2",
-				"crates/core/src/lib.rs",
+				"natives/core/src/lib.rs",
 				'#[napi(js_name = "__veyyonNativesV1_2_2")]\nfn sentinel() {}\n',
 			],
 		];

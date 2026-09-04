@@ -6,8 +6,6 @@
  *   (`extractCompleteEdits`),
  * - compute unified diff previews for the in-flight args
  *   (`computeDiffPreview`), and
- * - render a text placeholder while no diff exists yet
- *   (`renderStreamingFallback`).
  *
  * The shared renderer / `ToolExecutionComponent` consult the strategy via
  * the injected `editMode` rather than probing argument shape.
@@ -20,7 +18,6 @@ import {
 	type SnapshotStore,
 } from "@veyyon/hashline";
 import { errorMessage } from "@veyyon/utils";
-import type { Theme } from "../modes/theme/theme";
 import { type EditMode, resolveEditMode } from "../utils/edit-mode";
 import {
 	ABORT_MARKER,
@@ -84,11 +81,6 @@ export interface EditStreamingStrategy<Args = unknown> {
 	 */
 	computeDiffPreview(args: Args, ctx: StreamingDiffContext): Promise<PerFileDiffPreview[] | null>;
 	/**
-	 * Rendered inline while the diff hasn't been computed yet (or when the
-	 * compute returned `null` because args are still too partial).
-	 */
-	renderStreamingFallback(args: Args, uiTheme: Theme): string;
-	/**
 	 * Project the (potentially partial) args onto the plain text the edit
 	 * introduces into files — added lines without patch grammar — so stream
 	 * matchers (TTSR rules) can run source-level patterns against real content
@@ -132,16 +124,16 @@ export interface EditStreamingStrategy<Args = unknown> {
  * preview from showing an incomplete edit.
  */
 export function dropIncompleteLastEdit<T>(edits: readonly T[], partialJson: string | undefined, listKey: string): T[] {
-	if (!Array.isArray(edits) || edits.length === 0) return [...(edits ?? [])];
-	if (!partialJson) return [...edits];
+	if (!Array.isArray(edits) || edits.length === 0) return (edits ?? []).slice();
+	if (!partialJson) return edits.slice();
 
 	const keyMarker = `"${listKey}"`;
 	const keyIdx = partialJson.indexOf(keyMarker);
-	if (keyIdx === -1) return [...edits];
+	if (keyIdx === -1) return edits.slice();
 
 	// Find the `[` that opens the list value.
 	let i = partialJson.indexOf("[", keyIdx + keyMarker.length);
-	if (i === -1) return [...edits];
+	if (i === -1) return edits.slice();
 	i++;
 
 	let depth = 0;
@@ -187,7 +179,7 @@ export function dropIncompleteLastEdit<T>(edits: readonly T[], partialJson: stri
 	if (lastClose === -1 || (listIsStillOpen && sawNewObjectAfterLastClose)) {
 		return edits.slice(0, -1);
 	}
-	return [...edits];
+	return edits.slice();
 }
 
 // -----------------------------------------------------------------------------
@@ -359,9 +351,6 @@ const replaceStrategy: EditStreamingStrategy<ReplaceArgs> = {
 		ctx.signal.throwIfAborted();
 		return [toPerFilePreview(args.path, result)];
 	},
-	renderStreamingFallback() {
-		return "";
-	},
 	matcherDigest(args) {
 		const edits = args?.edits;
 		if (!Array.isArray(edits)) return undefined;
@@ -408,9 +397,6 @@ const patchStrategy: EditStreamingStrategy<PatchArgs> = {
 		);
 		ctx.signal.throwIfAborted();
 		return [toPerFilePreview(args.path, result)];
-	},
-	renderStreamingFallback() {
-		return "";
 	},
 	matcherDigest(args) {
 		const edits = args?.edits;
@@ -589,14 +575,6 @@ const hashlineStrategy: EditStreamingStrategy<HashlineArgs> = {
 		}
 		return previews.length > 0 ? previews : null;
 	},
-	renderStreamingFallback() {
-		// Never leak raw hashline syntax (`64:`, `|payload`, `[path#hash]`)
-		// to the user — the streaming preview already projects every
-		// parseable op onto the real file via applyPartialTo, and an
-		// unparseable trailing chunk renders as "no preview yet" rather
-		// than a sigil dump.
-		return "";
-	},
 	matcherDigest(args) {
 		const input = hashlineEditText(args);
 		if (typeof input !== "string") return undefined;
@@ -663,9 +641,6 @@ const applyPatchStrategy: EditStreamingStrategy<ApplyPatchArgs> = {
 			previews.push(toPerFilePreview(path, result));
 		}
 		return previews.length > 0 ? previews : null;
-	},
-	renderStreamingFallback() {
-		return "";
 	},
 	matcherDigest(args) {
 		const input = args?.input;

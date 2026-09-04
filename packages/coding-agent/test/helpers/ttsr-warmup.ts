@@ -7,7 +7,7 @@
  * count and the rule drift apart. The number is read off the rule, so raising or dropping
  * a warm-up moves every suite with it.
  */
-import type { Rule } from "@veyyon/coding-agent/capability/rule";
+import type { Rule } from "@veyyon/coding-agent/discovery/capability/rule";
 import type { TtsrManager, TtsrMatchContext } from "@veyyon/coding-agent/export/ttsr";
 
 /**

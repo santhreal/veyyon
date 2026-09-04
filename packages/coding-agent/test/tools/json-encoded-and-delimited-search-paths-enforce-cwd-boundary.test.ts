@@ -32,9 +32,9 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { cwdEscapingTargets, searchPathFilesystemTargets } from "@veyyon/coding-agent/tools/cwd-boundary";
-import { parseApprovalPathList } from "@veyyon/coding-agent/tools/path-utils";
-import { SearchTool, searchSchema } from "@veyyon/coding-agent/tools/search";
+import { cwdEscapingTargets, searchPathFilesystemTargets } from "@veyyon/coding-agent/tools/core/cwd-boundary";
+import { parseApprovalPathList } from "@veyyon/coding-agent/tools/core/path-utils";
+import { SearchTool, searchSchema } from "@veyyon/coding-agent/tools/search/search";
 import { Snowflake } from "@veyyon/utils";
 
 describe("JSON-encoded and delimited search paths enforce cwd boundary", () => {

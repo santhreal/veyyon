@@ -9,7 +9,7 @@ import {
 } from "@veyyon/coding-agent/cli/gallery-cli";
 import type { GalleryFixture } from "@veyyon/coding-agent/cli/gallery-fixtures";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { getAvailableThemes, initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { getAvailableThemes, initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";

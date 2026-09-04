@@ -1,4 +1,4 @@
-import type { SearchToolInput, SearchType } from "@veyyon/coding-agent/tools/search";
+import type { SearchToolInput, SearchType } from "@veyyon/coding-agent/tools/search/search";
 import type { SearchExpectation } from "./expectations";
 
 export interface SearchBenchmarkCase {

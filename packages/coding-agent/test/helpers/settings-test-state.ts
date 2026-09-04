@@ -1,16 +1,15 @@
 import { vi } from "bun:test";
 import * as fs from "node:fs";
 import { resetSettingsForTest } from "@veyyon/coding-agent/config/settings";
+import { getActiveProfile, getAgentDir, getProjectDir, setProjectDir } from "@veyyon/utils";
+import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 import {
 	getKeybindings,
-	isTuiTight,
 	type KeybindingsManager,
 	resetKeybindingsForTests,
 	setKeybindings,
-	setTuiTight,
-} from "@veyyon/tui";
-import { getActiveProfile, getAgentDir, getProjectDir, setProjectDir } from "@veyyon/utils";
-import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
+} from "@veyyon/utils/keybindings";
+import { isTuiTight, setTuiTight } from "@veyyon/utils/tight-mode";
 
 /**
  * Snapshot of every process-global that Settings / dir / profile tests mutate.

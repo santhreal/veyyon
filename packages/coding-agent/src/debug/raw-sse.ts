@@ -1,7 +1,11 @@
-import { type Component, matchesKey, parseSgrMouse, replaceTabs, ScrollView, truncateToWidth } from "@veyyon/tui";
+import { type Component, ScrollView } from "@veyyon/tui";
 import { clampLow, errorMessage, sanitizeText } from "@veyyon/utils";
-import { bottomBorder, divider, row, topBorder } from "../modes/components/overlay-box";
-import { theme } from "../modes/theme/theme";
+import { matchesKey } from "@veyyon/utils/keys";
+import { parseSgrMouse } from "@veyyon/utils/mouse";
+import { truncateToWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
+import { bottomBorder, divider, row, topBorder } from "../modes/terminal/components/chrome/overlay-box";
+import { theme } from "../theme/theme";
 import { copyToClipboard } from "../utils/clipboard";
 import {
 	formatRawSseIsoTime,
@@ -198,13 +202,13 @@ export class RawSseViewerComponent implements Component {
 		this.#bodyRowCount = bodyHeight;
 
 		return [
-			topBorder(this.#lastRenderWidth, "Raw Provider Stream"),
-			row(this.#summaryText(), this.#lastRenderWidth),
-			divider(this.#lastRenderWidth),
-			...bodyRows.map(line => row(line, this.#lastRenderWidth)),
-			divider(this.#lastRenderWidth),
-			row(this.#statusText(), this.#lastRenderWidth),
-			bottomBorder(this.#lastRenderWidth),
+			topBorder(this.#lastRenderWidth, "Raw Provider Stream", theme),
+			row(this.#summaryText(), this.#lastRenderWidth, theme),
+			divider(this.#lastRenderWidth, theme),
+			...bodyRows.map(line => row(line, this.#lastRenderWidth, theme)),
+			divider(this.#lastRenderWidth, theme),
+			row(this.#statusText(), this.#lastRenderWidth, theme),
+			bottomBorder(this.#lastRenderWidth, theme),
 		];
 	}
 

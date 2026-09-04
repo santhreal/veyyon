@@ -22,7 +22,7 @@
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import type { AssistantMessage } from "@veyyon/ai";
 import { type PrintModeSession, runPrintMode } from "@veyyon/coding-agent/modes/print-mode";
-import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 
 /** The stored credential. Never a substring of the placeholder, so a hit is unambiguous. */
 const CREDENTIAL = "ghp_harness_9f3b2c7d1e5a4806";

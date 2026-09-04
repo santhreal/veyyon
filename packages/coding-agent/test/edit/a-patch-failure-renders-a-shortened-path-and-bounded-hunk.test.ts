@@ -1,10 +1,13 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { editToolRenderer } from "@veyyon/coding-agent/edit/renderer";
-import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
-import { PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/render-utils";
+import { editToolView } from "@veyyon/coding-agent/edit/edit-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import * as themeModule from "@veyyon/coding-agent/theme/theme";
+import { PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/core/render-utils";
 
 /**
  * WHY:
@@ -18,9 +21,9 @@ import { PREVIEW_LIMITS } from "@veyyon/coding-agent/tools/render-utils";
  * This suite defends two contracts:
  * 1. Patch failure error rendering shortens absolute paths (using shortenPath) so home directories
  *    are rendered as '~' rather than leaking absolute home paths.
- * 2. In collapsed view, a large failed hunk is bounded to PREVIEW_LIMITS.DIFF_COLLAPSED_LINES with
- *    an accurate dim trailer naming the count of omitted lines (via formatMoreLines). In expanded
- *    view, the full error content is visible without the truncation trailer.
+ * 2. In collapsed view, a large failed hunk is bounded to PREVIEW_LIMITS.DIFF_COLLAPSED_LINES and
+ *    the card says how many lines it kept back. In expanded view, the full error content is visible
+ *    with nothing held back.
  *
  * What this does not catch:
  * Failures outside tool rendering that log raw error objects directly to disk diagnostic logs.
@@ -38,6 +41,23 @@ async function getUiTheme() {
 	return theme!;
 }
 
+/** The failed card a session draws for `filePath`, as the plain rows it occupies. */
+function renderFailure(errorText: string, filePath: string, uiTheme: Theme, expanded: boolean): string {
+	const component = drawToolView(
+		editToolView.renderResult(
+			{
+				content: [{ type: "text", text: errorText }],
+				details: { diff: "", op: "update", path: filePath },
+				isError: true,
+			},
+			{ expanded, partial: false },
+			{ file_path: filePath },
+		),
+		uiTheme,
+	);
+	return stripVTControlCharacters(component.render(120).join("\n"));
+}
+
 describe("patch failure error rendering", () => {
 	it("renders a shortened home path rather than an absolute path containing the home directory", async () => {
 		const uiTheme = await getUiTheme();
@@ -46,22 +66,7 @@ describe("patch failure error rendering", () => {
 		const shortenedPath = `~/workspace/project/src/index.ts`;
 		const errorText = `Failed to find expected lines in ${absolutePath}:\nconst value = 1;`;
 
-		const component = editToolRenderer.renderResult(
-			{
-				content: [{ type: "text", text: errorText }],
-				details: {
-					diff: "",
-					op: "update",
-					path: absolutePath,
-				},
-				isError: true,
-			},
-			{ expanded: false, isPartial: false },
-			uiTheme,
-			{ file_path: absolutePath },
-		);
-
-		const rendered = Bun.stripANSI(component.render(120).join("\n"));
+		const rendered = renderFailure(errorText, absolutePath, uiTheme, false);
 		expect(rendered).toContain(shortenedPath);
 		expect(rendered).not.toContain(home);
 	});
@@ -76,23 +81,7 @@ describe("patch failure error rendering", () => {
 		const oldLines = Array.from({ length: 100 }, (_, i) => `const line${i + 1} = ${i + 1};`);
 		const errorText = `Failed to find expected lines in ${absolutePath}:\n${oldLines.join("\n")}`;
 
-		// Collapsed render
-		const collapsedComponent = editToolRenderer.renderResult(
-			{
-				content: [{ type: "text", text: errorText }],
-				details: {
-					diff: "",
-					op: "update",
-					path: absolutePath,
-				},
-				isError: true,
-			},
-			{ expanded: false, isPartial: false },
-			uiTheme,
-			{ file_path: absolutePath },
-		);
-
-		const collapsedRendered = Bun.stripANSI(collapsedComponent.render(120).join("\n"));
+		const collapsedRendered = renderFailure(errorText, absolutePath, uiTheme, false);
 		expect(collapsedRendered).toContain(shortenedPath);
 		expect(collapsedRendered).not.toContain(home);
 
@@ -103,29 +92,13 @@ describe("patch failure error rendering", () => {
 		// Total lines = 101. Bound = PREVIEW_LIMITS.DIFF_COLLAPSED_LINES (40). Omitted = 61 lines.
 		const expectedHidden = 101 - PREVIEW_LIMITS.DIFF_COLLAPSED_LINES;
 		expect(expectedHidden).toBe(61);
-		expect(collapsedRendered).toContain(`… ${expectedHidden} more lines`);
+		expect(collapsedRendered).toContain(`${expectedHidden} more lines`);
 
 		// Later lines past the bound should NOT be rendered in collapsed view
 		expect(collapsedRendered).not.toContain("const line80 = 80;");
 		expect(collapsedRendered).not.toContain("const line100 = 100;");
 
-		// Expanded render
-		const expandedComponent = editToolRenderer.renderResult(
-			{
-				content: [{ type: "text", text: errorText }],
-				details: {
-					diff: "",
-					op: "update",
-					path: absolutePath,
-				},
-				isError: true,
-			},
-			{ expanded: true, isPartial: false },
-			uiTheme,
-			{ file_path: absolutePath },
-		);
-
-		const expandedRendered = Bun.stripANSI(expandedComponent.render(120).join("\n"));
+		const expandedRendered = renderFailure(errorText, absolutePath, uiTheme, true);
 		expect(expandedRendered).toContain(shortenedPath);
 		expect(expandedRendered).not.toContain(home);
 		expect(expandedRendered).toContain("const line1 = 1;");
@@ -152,18 +125,7 @@ describe("patch failure error rendering", () => {
 		];
 
 		for (const errorText of errorVariants) {
-			const component = editToolRenderer.renderResult(
-				{
-					content: [{ type: "text", text: errorText }],
-					details: { diff: "", op: "update", path: targetFile },
-					isError: true,
-				},
-				{ expanded: false, isPartial: false },
-				uiTheme,
-				{ file_path: targetFile },
-			);
-
-			const rendered = Bun.stripANSI(component.render(120).join("\n"));
+			const rendered = renderFailure(errorText, targetFile, uiTheme, false);
 			expect(rendered).toContain(shortened);
 			expect(rendered).not.toContain(home);
 		}

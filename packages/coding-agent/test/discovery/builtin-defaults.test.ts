@@ -5,10 +5,14 @@
  * rule of the same name overrides a bundled default (first-wins dedup).
  */
 import { describe, expect, it } from "bun:test";
-import { getCapability } from "@veyyon/coding-agent/capability";
-import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "@veyyon/coding-agent/capability/rule";
-import type { LoadContext } from "@veyyon/coding-agent/capability/types";
 import { BUILTIN_RULE_SOURCES } from "@veyyon/coding-agent/discovery/builtin-rules/index";
+import { getCapability } from "@veyyon/coding-agent/discovery/capability";
+import {
+	BUILTIN_DEFAULTS_PROVIDER_ID,
+	type Rule,
+	ruleCapability,
+} from "@veyyon/coding-agent/discovery/capability/rule";
+import type { LoadContext } from "@veyyon/coding-agent/discovery/capability/types";
 import { prompt } from "@veyyon/utils";
 // Register all discovery providers as a side effect.
 import "@veyyon/coding-agent/discovery";
@@ -101,8 +105,8 @@ describe("builtin-defaults rule provider", () => {
 
 		// In-cwd work uses short RELATIVE paths, which carry no leading slash and never fire.
 		for (const relative of [
-			'{"path":"src/tools/read.ts"}',
-			'{"path":"packages/coding-agent/src/tools/read.ts:1-40"}',
+			'{"path":"src/tools/fs/read.ts"}',
+			'{"path":"packages/coding-agent/src/tools/fs/read.ts:1-40"}',
 		]) {
 			manager.resetBuffer();
 			expect(manager.checkDelta(relative, { source: "tool", toolName: "read" }), relative).toEqual([]);
@@ -127,7 +131,7 @@ describe("builtin-defaults rule provider", () => {
 		// path it happens to have in absolute form.
 		manager.resetBuffer();
 		expect(
-			manager.checkDelta('{"path":"/workspaces/veyyon-fixture/packages/coding-agent/src/tools/read.ts"}', {
+			manager.checkDelta('{"path":"/workspaces/veyyon-fixture/packages/coding-agent/src/tools/fs/read.ts"}', {
 				source: "tool",
 				toolName: "read",
 			}),

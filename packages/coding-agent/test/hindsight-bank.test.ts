@@ -2,9 +2,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, type 
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { computeBankScope, deriveBankId, ensureBankExists } from "@veyyon/coding-agent/hindsight/bank";
-import { HindsightApi } from "@veyyon/coding-agent/hindsight/client";
-import type { HindsightConfig } from "@veyyon/coding-agent/hindsight/config";
+import { computeBankScope, deriveBankId, ensureBankExists } from "@veyyon/coding-agent/memory/hindsight/bank";
+import { HindsightApi } from "@veyyon/coding-agent/memory/hindsight/client";
+import type { HindsightConfig } from "@veyyon/coding-agent/memory/hindsight/config";
 import { removeWithRetries } from "@veyyon/utils";
 
 // Isolate `git` invocations in this file from the host's global config —

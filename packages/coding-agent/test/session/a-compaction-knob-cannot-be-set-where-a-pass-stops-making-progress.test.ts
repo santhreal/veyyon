@@ -36,7 +36,7 @@ import {
 	PRUNE_IDLE_FLUSH_MS,
 	TRUNCATION_KEEP_EDGE_TOKENS,
 	TRUNCATION_MIN_TEXT_TOKENS,
-} from "../../src/session/compaction-policy";
+} from "@veyyon/kernel/session/agent-session-compaction-policy";
 
 const model = (contextWindow: unknown): Model => ({ contextWindow }) as Model;
 

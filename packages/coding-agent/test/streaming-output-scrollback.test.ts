@@ -1,14 +1,16 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { AssistantMessage } from "@veyyon/ai";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
-import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/assistant-message";
-import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
-import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { evalToolRenderer } from "@veyyon/coding-agent/tools/eval-render";
-import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";
-import { type Component, resetKeybindingsForTests, setKeybindings, TUI } from "@veyyon/tui";
-import { settleFrames } from "../../tui/test/helpers/settle-frames";
-import { VirtualTerminal } from "../../tui/test/virtual-terminal";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/assistant-message";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-container";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
+import { previewWindowRows } from "@veyyon/coding-agent/tools/core/render-utils";
+import { evalToolView } from "@veyyon/coding-agent/tools/shell/eval-view";
+import { type Component, TUI } from "@veyyon/tui";
+import { resetKeybindingsForTests, setKeybindings } from "@veyyon/utils/keybindings";
+import { settleFrames } from "../../../hosts/terminal/engine/test/helpers/settle-frames";
+import { VirtualTerminal } from "../../../hosts/terminal/engine/test/virtual-terminal";
 import { createToolExecution } from "./helpers/tool-execution";
 
 // Long, path-like output that wraps at the box's inner width — the case that
@@ -221,13 +223,17 @@ describe("streaming tool output never sprays duplicate scrollback banners", () =
 			},
 			isError: false,
 		};
-		const component = evalToolRenderer.renderResult(result, { expanded: false, isPartial: true }, activeTheme);
+		const component = drawToolView(
+			evalToolView.renderResult(result, { expanded: false, partial: true }),
+			activeTheme,
+		);
 		const lines = component.render(80);
 		// The collapsed cell box fits the viewport budget: code + output tails are
 		// each capped at previewWindowRows() VISUAL rows. Pre-fix the long output
 		// wrapped into ~2x its line count and blew past this.
 		expect(lines.length).toBeLessThanOrEqual(previewWindowRows() + 10);
-		expect(lines.map(line => Bun.stripANSI(line)).join("\n")).toContain("ctrl+o");
+		// The window note names the gesture that uncaps it, in whatever words the host words it in.
+		expect(lines.map(line => Bun.stripANSI(line)).join("\n")).toMatch(/ctrl\+o/i);
 	});
 
 	test("streams live assistant thinking and answer rows into native scrollback before finalize", async () => {

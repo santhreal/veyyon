@@ -24,7 +24,7 @@
 // price the extra turn a dropped match costs when the model wanted it.
 import { describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { getDiscoverableTool } from "@veyyon/coding-agent/tool-discovery/tool-index";
+import { getDiscoverableTool } from "@veyyon/coding-agent/discovery/tool-index";
 import {
 	computeEssentialBuiltinNames,
 	createTools,
@@ -34,8 +34,8 @@ import {
 import {
 	resolveDiscoveryAllForceActive,
 	resolveInitialActiveToolNames,
-} from "@veyyon/coding-agent/tools/loading/policy";
-import { SearchToolBm25Tool } from "@veyyon/coding-agent/tools/search-tool-bm25";
+} from "@veyyon/coding-agent/tools/core/loading/policy";
+import { SearchToolBm25Tool } from "@veyyon/coding-agent/tools/search/search-tool-bm25";
 import { makeToolSession } from "../helpers/tool-session";
 
 interface DiscoveryResult {

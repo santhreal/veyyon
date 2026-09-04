@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { resolveApproval } from "@veyyon/coding-agent/tools/approval";
+import { resolveApproval } from "@veyyon/coding-agent/tools/core/approval";
 
 /**
  * User config allow/deny/prompt overrides across modes and tiers.

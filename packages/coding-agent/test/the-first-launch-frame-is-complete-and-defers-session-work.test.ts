@@ -17,10 +17,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { APP_NAME, TempDir } from "@veyyon/utils";
 import { Settings } from "../src/config/settings";
-import { paintFirstFrame, shouldPaintFirstFrame, takeFirstFrame } from "../src/modes/first-frame";
-import { renderSetupSplash, SETUP_SPLASH_MS } from "../src/modes/setup-wizard/scenes/splash";
-import { resetGroundTintsForTest } from "../src/modes/theme/ground-tints";
-import { initTheme } from "../src/modes/theme/theme";
+import { paintFirstFrame, shouldPaintFirstFrame, takeFirstFrame } from "../src/modes/terminal/first-frame";
+import { renderSetupSplash, SETUP_SPLASH_MS } from "../src/modes/terminal/setup-wizard/scenes/splash";
+import { resetGroundTintsForTest } from "../src/theme/ground-tints";
+import { initTheme } from "../src/theme/theme";
 
 let tempDir: TempDir;
 beforeAll(async () => {

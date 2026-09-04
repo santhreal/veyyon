@@ -9,32 +9,32 @@ This document is the foundation for deeper module-level docs.
 
 ## Implementation files
 
-- `packages/natives/native/index.js`
-- `packages/natives/native/index.d.ts`
-- `packages/natives/native/loader-state.js`
-- `packages/natives/native/embedded-addon.js`
-- `packages/natives/scripts/build-native.ts`
-- `packages/natives/scripts/embed-native.ts`
-- `packages/natives/scripts/gen-enums.ts`
-- `packages/natives/scripts/ensure-native.ts`
-- `packages/natives/package.json`
-- `packages/natives/src/sha256-sidecar.ts`
-- `crates/veyyon-natives/src/lib.rs`
+- `natives/bridge/bindings/native/index.js`
+- `natives/bridge/bindings/native/index.d.ts`
+- `natives/bridge/bindings/native/loader-state.js`
+- `natives/bridge/bindings/native/embedded-addon.js`
+- `natives/bridge/bindings/scripts/build-native.ts`
+- `natives/bridge/bindings/scripts/embed-native.ts`
+- `natives/bridge/bindings/scripts/gen-enums.ts`
+- `natives/bridge/bindings/scripts/ensure-native.ts`
+- `natives/bridge/bindings/package.json`
+- `natives/bridge/bindings/src/sha256-sidecar.ts`
+- `natives/bridge/addon/src/lib.rs`
 
 ## Package entrypoint and public surface
 
-`packages/natives/package.json` points at generated native artifacts:
+`natives/bridge/bindings/package.json` points at generated native artifacts:
 
 - `main`: `./native/index.js`
 - `types`: `./native/index.d.ts`
 - `exports["."].types`: `./native/index.d.ts`
 - `exports["."].import`: `./native/index.js`
 
-There is no current `packages/natives/src` TypeScript wrapper around the root
+There is no current `natives/bridge/bindings/src` TypeScript wrapper around the root
 native API. Consumers import functions/classes/enums directly from
 `@veyyon/natives`; the type contract is the generated `native/index.d.ts` plus
 the explicit named exports generated into `native/index.js` by
-`packages/natives/scripts/gen-enums.ts`. The package also exports
+`natives/bridge/bindings/scripts/gen-enums.ts`. The package also exports
 `@veyyon/natives/sha256-sidecar` from `src/sha256-sidecar.ts`; that non-native
 subpath parses checksum sidecars without loading the addon.
 
@@ -46,7 +46,7 @@ Current capability groups in the generated API include:
 
 ## Loader layer
 
-`packages/natives/native/index.js` is the package entrypoint; its lazy exports route through `loadNative()` from `loader-state.js` on first use, and `loader-state.js` owns runtime addon selection and optional embedded extraction.
+`natives/bridge/bindings/native/index.js` is the package entrypoint; its lazy exports route through `loadNative()` from `loader-state.js` on first use, and `loader-state.js` owns runtime addon selection and optional embedded extraction.
 
 ### Candidate resolution model
 
@@ -85,18 +85,18 @@ The published `@veyyon/natives` package ships **only** the loader layer in `nati
 The loader still knows how to resolve a per-platform optional-dependency leaf,
 `@veyyon/natives-<platform>-<arch>`, and prefers it over the core package's
 `native/` directory. That resolution order is real code and is covered by
-`packages/natives/test/issue-823-repro.test.ts`, which builds the candidate list
+`natives/bridge/bindings/test/issue-823-repro.test.ts`, which builds the candidate list
 from synthetic paths and needs no leaf package on disk.
 
 Nothing generates those leaves. veyyon ships GitHub-only, so the npm publish
 channel was removed, and the `gen-npm-packages.ts` script that once wrote the
-leaves under `packages/natives/scripts/` went with it. It is not coming back:
+leaves under `natives/bridge/bindings/scripts/` went with it. It is not coming back:
 `scripts/install-methods-coverage.test.ts` fails if that script, its test, or a
 `gen:npm` manifest entry reappears. Adding a build target therefore does
 **not** require adding a leaf package, and there is no `LEAF_TARGETS` list to
 extend. It does require all of the following:
 
-- a `crates/veyyon-natives` build for the tag;
+- a `natives/bridge/addon` build for the tag;
 - a matching entry in the loader's supported-platform set;
 - entries in the CI native-build matrices and required native-artifact cache;
 - an entry in the compiled-binary target list and release job matrix; and
@@ -106,7 +106,7 @@ extend. It does require all of the following:
 These are separate allowlists. A loader entry alone does not make a target
 buildable or releasable.
 
-You may find a stale `packages/natives/npm/<platform>-<arch>/` directory in a
+You may find a stale `natives/bridge/bindings/npm/<platform>-<arch>/` directory in a
 working tree that predates the removal. It is untracked, it is not built by
 anything, and its `package.json` still carries whatever version was current when
 it was generated. It is local leftover, not part of the layout.
@@ -150,12 +150,13 @@ Loader failures are explicit:
 
 ## Rust N-API module layer
 
-`crates/veyyon-natives/src/lib.rs` declares exported module ownership:
+`natives/bridge/addon/src/lib.rs` declares exported module ownership:
 
 - `appearance`
 - `ast`
 - `block`
 - `clipboard`
+- `cpu_budget`
 - `crash_handler`
 - `fd`
 - `glob`
@@ -185,18 +186,18 @@ N-API exports are generated from Rust `#[napi]` functions/classes/objects/enums.
 
 ## Ownership boundaries
 
-- **Loader/package ownership (`packages/natives/native`, `packages/natives/scripts`)**
+- **Loader/package ownership (`natives/bridge/bindings/native`, `natives/bridge/bindings/scripts`)**
   - runtime binary selection
   - CPU variant selection and override handling
   - compiled-binary embedded archive extraction
   - Windows `node_modules` addon staging
   - generated TypeScript declarations and explicit ESM export/enum patching
-- **N-API crate ownership (`crates/veyyon-natives/src`)**
+- **N-API crate ownership (`natives/bridge/addon/src`)**
   - N-API symbols, DTOs, string/result conversion, and JavaScript-visible errors
   - platform-native implementations that remain local to the addon
   - adapter shims over shared engines and backends in crates such as
     `veyyon-text`, `veyyon-walker`, `veyyon-ast`, and `veyyon-iso`
-- **Consumer ownership (`packages/coding-agent`, `packages/tui`)**
+- **Consumer ownership (`packages/coding-agent`, `hosts/terminal/engine`)**
   - user-facing policy and fallbacks that are not built into the native API
   - higher-level rendering, artifact, shell-session, and command behavior
 
@@ -243,8 +244,8 @@ The scripts have distinct state transitions:
   it is independently present.
 - **Variant**: x64 CPU-specific build flavor (`modern` AVX2, `baseline` fallback).
 - **Generated binding declaration**: `native/index.d.ts` emitted by napi-rs during `build-native.ts`.
-- **Version sentinel**: Rust export named from the package version (for example `__veyyonNativesV16_0_3`) that lets the loader reject a `.node` from a different release.
+- **Version sentinel**: Rust export named from the package version (for example `__veyyonNativesV1_3_0`) that lets the loader reject a `.node` from a different release.
 - **Compiled binary mode**: Runtime mode where the CLI is bundled and native addons are resolved from embedded/cache paths before package-local paths.
 - **Embedded addon**: Build artifact metadata and archive reference generated into `native/embedded-addon.js` so compiled binaries can extract matching `.node` payloads.
 
-*Verified against `0eb8d74a3ecf60e1b2ec37c15e9255f2dbe310dc` on 2026-07-30.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

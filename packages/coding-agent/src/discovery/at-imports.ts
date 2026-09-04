@@ -25,7 +25,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import { logger } from "@veyyon/utils";
-import { readFile } from "../capability/fs";
+import { readFile } from "./capability/fs";
 
 /** Maximum number of recursive `@`-import hops. Matches Claude Code's documented cap. */
 export const MAX_AT_IMPORT_DEPTH = 5;

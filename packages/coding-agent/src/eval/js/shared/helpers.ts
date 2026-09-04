@@ -1,6 +1,6 @@
 import * as path from "node:path";
 
-import { ToolError } from "../../../tools/tool-errors";
+import { ToolError } from "../../../tools/core/tool-errors";
 import { type KernelStore, openKernelStore } from "../../kernel-store";
 import type { JsStatusEvent } from "./types";
 

@@ -5,13 +5,14 @@ import * as path from "node:path";
 import type { AgentTool } from "@veyyon/agent-core";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { EDIT_MODE_STRATEGIES } from "@veyyon/coding-agent/edit";
-import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer-chrome";
-import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
-import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";
-import { TUI, visibleWidth } from "@veyyon/tui";
+import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
+import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
+import { previewWindowRows } from "@veyyon/coding-agent/tools/core/render-utils";
+import { TUI } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
-import { VirtualTerminal } from "../../tui/test/virtual-terminal";
+import { visibleWidth } from "@veyyon/utils/width";
+import { VirtualTerminal } from "../../../hosts/terminal/engine/test/virtual-terminal";
 import { createToolExecution } from "./helpers/tool-execution";
 
 // The streaming edit preview is a fixed-height tail window ("cursor"): the last
@@ -473,11 +474,10 @@ describe("streaming tool call preview height (bounded across renderers)", () => 
 	test("eval pending preview windows the code to the viewport tail", () => {
 		// Eval cell code is capped to the same viewport-sized TAIL window as
 		// bash/ssh: the live edge stays visible behind an "… N earlier lines"
-		// marker on top; ctrl+o uncaps. Unlike bash, the marker row sits above
-		// the window, so previewWindowRows() code lines stay visible.
+		// marker on top; ctrl+o uncaps. The marker is one of the window's rows.
 		const window = previewWindowRows();
 		const total = window + 5;
-		const hidden = total - window;
+		const hidden = total - (window - 1);
 		const longLines = Array.from({ length: total }, (_, i) => `line-${i}`);
 		const { lines, text } = renderPending("eval", {
 			language: "js",

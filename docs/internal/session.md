@@ -19,24 +19,52 @@ Does not cover `/tree` UI rendering behavior beyond semantics that affect sessio
 ## Implementation Files
 
 - [`src/session/session-manager.ts`](../../packages/coding-agent/src/session/session-manager.ts): orchestration: tree/leaf, appends, persistence, blobs, lifecycle factories
-- [`src/session/session-entries.ts`](../../packages/coding-agent/src/session/session-entries.ts): entry/header types, `SessionEntry` union, `CURRENT_SESSION_VERSION`
-- [`src/session/session-migrations.ts`](../../packages/coding-agent/src/session/session-migrations.ts): version migrations
+- [`kernel/src/session/session-entries.ts`](../../kernel/src/session/session-entries.ts): entry/header types, `SessionEntry` union, `CURRENT_SESSION_VERSION`
+- [`kernel/src/session/session-migrations.ts`](../../kernel/src/session/session-migrations.ts): version migrations
 - [`src/session/session-loader.ts`](../../packages/coding-agent/src/session/session-loader.ts): file load + blob-ref resolution
-- [`src/session/session-entry-shape.ts`](../../packages/coding-agent/src/session/session-entry-shape.ts): the shape check every decoded record passes before it is treated as a `FileEntry`
+- [`kernel/src/session/session-entry-shape.ts`](../../kernel/src/session/session-entry-shape.ts): the shape check every decoded record passes before it is treated as a `FileEntry`
 - [`src/session/session-context.ts`](../../packages/coding-agent/src/session/session-context.ts): `buildSessionContext`
-- [`src/session/session-persistence.ts`](../../packages/coding-agent/src/session/session-persistence.ts): large-text + image blob externalization, transient-field stripping
-- [`src/session/session-title-slot.ts`](../../packages/coding-agent/src/session/session-title-slot.ts): fixed-width title-slot serialization/parsing
-- [`src/session/session-paths.ts`](../../packages/coding-agent/src/session/session-paths.ts): on-disk layout, dir encoding, terminal breadcrumbs
-- [`src/session/session-listing.ts`](../../packages/coding-agent/src/session/session-listing.ts): discovery (list/recent/resolve)
-- [`src/session/session-storage.ts`](../../packages/coding-agent/src/session/session-storage.ts): storage abstractions
+- [`kernel/src/session/session-persistence.ts`](../../kernel/src/session/session-persistence.ts): large-text + image blob externalization, transient-field stripping
+- [`kernel/src/session/session-title-slot.ts`](../../kernel/src/session/session-title-slot.ts): fixed-width title-slot serialization/parsing
+- [`kernel/src/session/session-paths.ts`](../../kernel/src/session/session-paths.ts): on-disk layout, dir encoding, terminal breadcrumbs
+- [`kernel/src/session/session-listing.ts`](../../kernel/src/session/session-listing.ts): discovery (list/recent/resolve)
+- [`kernel/src/session/session-storage.ts`](../../kernel/src/session/session-storage.ts): storage abstractions
 - [`src/session/messages.ts`](../../packages/coding-agent/src/session/messages.ts): custom-message transformers
-- [`src/session/blob-store.ts`](../../packages/coding-agent/src/session/blob-store.ts): content-addressed blob store
-- [`src/session/history-storage.ts`](../../packages/coding-agent/src/session/history-storage.ts): prompt history (separate subsystem)
-- [`src/session/operator-notices.ts`](../../packages/coding-agent/src/session/operator-notices.ts): the one channel for a non-fatal problem the operator has to see (separate subsystem, see below)
+- [`kernel/src/session/blob-store.ts`](../../kernel/src/session/blob-store.ts): content-addressed blob store
+- [`kernel/src/session/history-storage.ts`](../../kernel/src/session/history-storage.ts): prompt history (separate subsystem)
+- [`kernel/src/session/operator-notices.ts`](../../kernel/src/session/operator-notices.ts): the one channel for a non-fatal problem the operator has to see (separate subsystem, see below)
+- [`src/session/runtime/`](../../packages/coding-agent/src/session/runtime): session collaborators, each owning one subsystem's state behind a narrow host interface (separate subsystem, see below)
+
+## Session collaborators
+
+`src/session/runtime/` holds the subsystems extracted from `AgentSession`. A collaborator owns
+every field of one subsystem and reaches the session through a host interface it declares itself.
+
+|Module|Owns|Host names|
+|---|---|---|
+|[`ttsr-runtime.ts`](../../packages/coding-agent/src/session/runtime/ttsr-runtime.ts)|Time-Traveling Stream Rules: the pending interrupt queue, the per-tool buckets, the abort latch, the retry token and the resume gate|8|
+|[`todo-runtime.ts`](../../packages/coding-agent/src/session/runtime/todo-runtime.ts)|The todo board, the eager prelude, the mid-run nudge and the stop-time reminder ladder, with the failure latch that silences all three|13|
+|[`thinking-runtime.ts`](../../packages/coding-agent/src/session/runtime/thinking-runtime.ts)|How hard the model thinks and who decided: the session override, the selector pin, the saved default, and `auto` with its per-turn classification|12|
+
+Three rules hold for a new one:
+
+- **The host interface names the slice, not the class.** `readonly agent: Agent` couples the
+  collaborator to a 200-member class and makes it unconstructible in a test. `TtsrAgent` declares
+  the seven members and three state fields TTSR reaches, and `Agent` satisfies it structurally.
+  Settings arrive as predicates (`argotEnabled()`) or one snapshot (`todoSettings()`), never as a
+  `Settings` handle. One exception, and only this shape: a collaborator that passes the handle
+  through wholesale to another owner may hold it, because narrowing it there would only re-declare
+  that owner's surface. `ThinkingRuntime` holds one because `classifyDifficulty` takes a `Settings`
+  and reads rows the collaborator never names.
+- **The collaborator owns its state.** Sibling modules sharing the session's `#private` fields is
+  the same object with more files. A field that stays behind is a field the extraction missed.
+- **Extraction order follows host width, not size.** A subsystem needing 60 session members is the
+  monolith with an interface bolted on; extract the narrow ones first, then the shared spine they
+  reveal.
 
 ## Operator notices
 
-`OperatorNotices` is where a subsystem says "this is degraded, carry on" and reaches a person. Use it instead of `logger.warn` for anything an operator needs to act on. The default transport set is `{ file: true }` with no console transport (`logger.ts:219`), and a TUI cannot write to the console without corrupting its render, so a `logger.warn` at startup lands in a file nobody opens. Before this existed, refusing to start was the only reliably loud mechanism in the codebase.
+`OperatorNotices` is where a subsystem says "this is degraded, carry on" and reaches a person. Use it instead of `logger.warn` for anything an operator needs to act on. The default transport set is `{ file: true }` with no console transport (`logger.ts:248`), and a TUI cannot write to the console without corrupting its render, so a `logger.warn` at startup lands in a file nobody opens. Before this existed, refusing to start was the only reliably loud mechanism in the codebase.
 
 The contract, in the order it matters:
 
@@ -46,20 +74,20 @@ The contract, in the order it matters:
 - Two severities only, `warning` and `error`. A third is never used honestly.
 - `all()` is the record, so a diagnostic or a test can read what was raised without a sink ever having been attached.
 
-Raise one with `session.operatorNotices.warn(source, text)`, where `source` is the subsystem in one lowercase word. `secrets`, `skills` and `filesystem` are the current callers. `AgentSession.skillWarnings` was the previous attempt: a getter that collected skill-loading problems and was read by no production code at all, which is worse than no channel, because the next person to need one reuses it and inherits the silence. The secrets subsystem's use of this channel is documented in [`../handbook/src/architecture/secrets.md`](../handbook/src/architecture/secrets.md).
+Raise one with `session.operatorNotices.warn(source, text)`, where `source` is the subsystem in one lowercase word. `secrets`, `skills`, `system-prompt`, `cpu`, `session` and `filesystem` are the current callers. `AgentSession.skillWarnings` was the previous attempt: a getter that collected skill-loading problems and was read by no production code at all, which is worse than no channel, because the next person to need one reuses it and inherits the silence. The secrets subsystem's use of this channel is documented in [`../handbook/src/architecture/secrets.md`](../handbook/src/architecture/secrets.md).
 
 ### Reaching the channel from a lower layer
 
-`OperatorNotices` lives in `packages/coding-agent`, so `packages/utils` cannot import it, and the helpers that find most degradations there are free functions with no session handle. Those report through `reportFault` in `packages/utils/src/fault-sink.ts`, and the reporting direction is inverted: the low layer owns a sink, and whoever owns a surface attaches theirs. `sdk.ts` attaches one beside the `OperatorNotices` it builds, so every mode gets the reach without having to remember.
+`OperatorNotices` lives in `kernel`, so `packages/utils` cannot import it, and the helpers that find most degradations there are free functions with no session handle. Those report through `reportFault` in `packages/utils/src/fault-sink.ts`, and the reporting direction is inverted: the low layer owns a sink, and whoever owns a surface attaches theirs. `sdk.ts` attaches one beside the `OperatorNotices` it builds, so every mode gets the reach without having to remember.
 
 What you need to know before using it:
 
 - Call `reportFault({ source, text, context })` from a low-layer helper that cannot throw and cannot reach a session. Use `OperatorNotices` directly whenever you do have a session.
 - `text` is what a person reads, so it names the consequence and the remedy. `context` is the structured detail for the file log, kept out of `text` because a JSON blob mid-sentence is how a channel becomes noise.
 - The **file log is written either way**, before any forwarding. Attaching a sink can only add reach, never remove the record, so no configuration reports a fault to fewer places than before.
-- The sink is **module-level**, which is the opposite of the per-session rule above and deliberate. These faults are properties of the machine rather than of a session: a directory that cannot be listed affects both sessions in a process, and identical notices collapse anyway.
-- A sink that throws does not break the caller, because these run inside helpers whose contract is to carry on. The throw is recorded on its own line.
-- Call `setFaultSink(undefined)` in test teardown. A sink that outlives the test that installed it collects another test's faults and reports them against the wrong subject.
+- The sink set is **module-level**, which is the opposite of the per-session rule above and deliberate. These faults are properties of the machine rather than of a session: a directory that cannot be listed affects both sessions in a process, and identical notices collapse anyway.
+- A sink that throws does not break the caller, because these run inside helpers whose contract is to carry on. It does not block the other sinks either, and the throw is recorded on its own line.
+- Detach in test teardown with the handle `attachFaultSink` returned. A sink that outlives the test that installed it collects another test's faults and reports them against the wrong subject.
 
 `fs-optional.ts` is the reason this exists. Its header promised that a directory that exists and cannot be listed "is not allowed to be silent", and it reported that with `logger.warn`, so an unreadable `~/.veyyon/agents` showed the operator "no subagents" and put the cause in a file nobody opens.
 
@@ -720,7 +748,7 @@ Applied when header `version < 3`:
 
 - Missing file (`ENOENT`) -> returns `[]`.
 - A malformed line is skipped (via `parseJsonlLenient`, or the byte-buffer drain in `loadEntriesFromFileStream` for files >= 8 MiB) so one corrupt record cannot make a whole session unopenable — but the skip is never silent: each dropped record is logged with its offset and a final total is logged, so lost data is visible when studying the session rather than vanishing without a trace. Each malformed record is counted exactly once (the parser reports an error alongside the preceding good record, so counting is gated to the record's own head position).
-- A line that DECODES but does not fit the shape is dropped the same way. Decoding is not validating, and a record whose fields are missing reaches readers that dereference them: an assistant entry written without `usage` used to throw while the transcript was being built, so the viewer died in its constructor and showed no rows at all. `checkSessionEntryShape` in [`session-entry-shape.ts`](../../packages/coding-agent/src/session/session-entry-shape.ts) is the one owner of that check, and both read paths call it. The record is dropped and reported with the reason, never repaired: a turn that claims `0` tokens it did not use is a wrong number in the transcript and in every total taken from it (Law 10).
+- A line that DECODES but does not fit the shape is dropped the same way. Decoding is not validating, and a record whose fields are missing reaches readers that dereference them: an assistant entry written without `usage` used to throw while the transcript was being built, so the viewer died in its constructor and showed no rows at all. `checkSessionEntryShape` in [`kernel/src/session/session-entry-shape.ts`](../../kernel/src/session/session-entry-shape.ts) is the one owner of that check, and both read paths call it. The record is dropped and reported with the reason, never repaired: a turn that claims `0` tokens it did not use is a wrong number in the transcript and in every total taken from it (Law 10).
 - The shape check asks only for what a reader dereferences without guarding: a `message` object with a `role`, and, on an assistant turn, a `content` array and a `usage` record with four finite counters. `id`, `parentId` and `timestamp` are deliberately NOT required, because v1 sessions carry none of them and `migrateSessionEntries` fills them in after the loader returns.
 - Missing files (`ENOENT`) and zero-length files return `[]`. A non-empty file with no readable header, or whose first readable record is not a valid session header (`type !== "session"` or missing string `id`), throws `CorruptSessionFileError` and is not replaced.
 
@@ -810,7 +838,7 @@ Before persisting entries:
   - the full bytes are written content-addressed and the JSONL line keeps a short `blobtext:sha256:<hash>` ref
   - on load `resolveBlobRefsInEntries` restores the exact original string, so a huge tool result round-trips losslessly and stays fully readable when studying the session
   - signed/encrypted blocks (see the persistence pipeline) are exempt and persist verbatim
-- Transient fields `partialJson` and `jsonlEvents` are removed.
+- The transient field `jsonlEvents` is removed.
 - If an object has both `content` and `lineCount`, line count is recomputed from the inline content, but not when `content` is a `blobtext:` ref (the ref is one line; the real count is preserved).
 - Image blocks in `content` arrays with base64 length >= 1024 are externalized to blob refs:
   - stored as `blob:sha256:<hash>`
@@ -855,4 +883,4 @@ Metadata extraction for `getRecentSessions` reads a prefix via `readTextSlices(.
 
 Use session files for conversation graph/state replay; use `HistoryStorage` for prompt history UX.
 
-*Verified against `61c974a6c` on 2026-08-21.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

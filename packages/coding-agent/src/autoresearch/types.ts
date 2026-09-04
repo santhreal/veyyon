@@ -1,6 +1,6 @@
 import type { AgentToolResult } from "@veyyon/agent-core";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import type { ExtensionAPI, ExtensionContext } from "../extensibility/extensions";
-import type { SessionEntry } from "../session/session-entries";
 import type { TruncationResult } from "../session/streaming-output";
 
 export type MetricDirection = "lower" | "higher";

@@ -35,9 +35,10 @@ import type { AssistantMessage, TextContent } from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import {
 	isAwaitingUserAnswer,
 	mayContinueAtSettle,
@@ -46,7 +47,7 @@ import {
 	SETTLE_CONTINUATION_POLICY,
 	type SettleContinuationRoute,
 	WAITING_CUES,
-} from "@veyyon/coding-agent/session/settle-continuation";
+} from "@veyyon/kernel/session/settle-continuation";
 import { TempDir } from "@veyyon/utils";
 import { type } from "arktype";
 
@@ -405,7 +406,7 @@ describe("a reply that asks the user something ends the turn", () => {
 		});
 
 		/**
-		 * The hold is a parameter to `#checkTodoCompletion`, not a reason to skip
+		 * The hold is a parameter to `TodoRuntime.checkCompletionAtSettle`, not a reason to skip
 		 * calling it: its first statement consumes the tool-choice label the last
 		 * turn was forced with. Short-circuiting the call would carry a `user-force`
 		 * label onto the following turn and silence a reminder that is owed there.

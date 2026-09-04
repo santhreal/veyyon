@@ -1,8 +1,8 @@
 import { type } from "arktype";
-import type { CommitAgentState } from "../../../commit/agentic/state";
-import { isTestFilePath } from "../../../commit/utils/test-paths";
 import type { CustomTool } from "../../../extensibility/custom-tools/types";
 import * as git from "../../../utils/git";
+import { isTestFilePath } from "../../utils/test-paths";
+import type { CommitAgentState } from "../state";
 
 const TARGET_TOKENS = 30000;
 const CHARS_PER_TOKEN = 4;
@@ -84,13 +84,13 @@ function truncateDiffContent(diff: string): { content: string; truncated: boolea
 	const truncatedCount = lines.length - KEEP_HEAD_LINES - KEEP_TAIL_LINES;
 
 	return {
-		content: [...head, `\n[…${truncatedCount}ln elided…]\n`, ...tail].join("\n"),
+		content: head.concat([`\n[…${truncatedCount}ln elided…]\n`], tail).join("\n"),
 		truncated: true,
 	};
 }
 
 function processDiffs(files: string[], diffs: Map<string, string>): { result: string; truncatedFiles: string[] } {
-	const sortedFiles = [...files].sort((a, b) => getFilePriority(b) - getFilePriority(a));
+	const sortedFiles = files.slice().sort((a, b) => getFilePriority(b) - getFilePriority(a));
 
 	const truncatedFiles: string[] = [];
 	const parts: string[] = [];

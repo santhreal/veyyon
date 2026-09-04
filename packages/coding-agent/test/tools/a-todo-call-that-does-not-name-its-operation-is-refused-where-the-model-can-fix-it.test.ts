@@ -20,9 +20,9 @@
  */
 import { describe, expect, it } from "bun:test";
 import { validateToolArguments } from "@veyyon/ai/utils/validation";
-import { GoalTool } from "@veyyon/coding-agent/goals/tools/goal-tool";
-import { repairToolCallArguments } from "@veyyon/coding-agent/repair/schema-repair";
-import { applyOpsToPhases, TodoTool } from "@veyyon/coding-agent/tools/todo";
+import { GoalTool } from "@veyyon/coding-agent/goals/goal-tool";
+import { applyOpsToPhases, TodoTool } from "@veyyon/coding-agent/tools/agent/todo";
+import { repairToolCallArguments } from "@veyyon/coding-agent/tools/core/repair/schema-repair";
 
 const session = {
 	getTodoPhases: () => [{ name: "Setup", tasks: [{ content: "Scaffold project structure", status: "pending" }] }],

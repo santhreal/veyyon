@@ -3,7 +3,7 @@
  * Why: UI "load more" doubles the ceiling; wrong meta key breaks match vs result UX.
  */
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "../src/tools/list-limit";
+import { applyListLimit } from "../src/tools/core/list-limit";
 
 describe("list-limit match type suggestion grid", () => {
 	for (let limit = 1; limit <= 30; limit++) {

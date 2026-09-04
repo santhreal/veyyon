@@ -1674,7 +1674,7 @@ def test_fetch_pr_head_backfills_missing_blobs_into_partial_clone(tmp_path: Path
 
 
 def _seed_native_dir(repo_dir: Path) -> Path:
-    native_dir = repo_dir / "packages" / "natives" / "native"
+    native_dir = repo_dir / "natives" / "bridge" / "bindings" / "native"
     native_dir.mkdir(parents=True, exist_ok=True)
     return native_dir
 
@@ -1691,9 +1691,9 @@ def test_ensure_workspace_without_cache_leaves_native_dir_untouched(tmp_path: Pa
         author_email="robveybot@example.invalid",
     )
     assert mgr.natives_cache is None
-    # No `packages/natives/native/` was tracked in the upstream, and no cache
+    # No `natives/bridge/bindings/native/` was tracked in the upstream, and no cache
     # is configured → the directory wasn't created by populate.
-    assert not (ws.repo_dir / "packages" / "natives" / "native").exists()
+    assert not (ws.repo_dir / "natives" / "bridge" / "bindings" / "native").exists()
 
 
 def test_ensure_workspace_populates_from_natives_cache(tmp_path: Path, upstream_repo: Path) -> None:
@@ -1737,7 +1737,7 @@ def test_ensure_workspace_populates_from_natives_cache(tmp_path: Path, upstream_
         author_name="robveybot",
         author_email="robveybot@example.invalid",
     )
-    native_dir2 = ws2.repo_dir / "packages" / "natives" / "native"
+    native_dir2 = ws2.repo_dir / "natives" / "bridge" / "bindings" / "native"
     # The auto-populate path used the real target_triple() — which matches
     # the host that just captured. So the same key applies and files appear.
     assert native_dir2.is_dir(), "populate should have created native/ on hit"
@@ -1765,7 +1765,7 @@ def test_ensure_workspace_cache_miss_is_silent_noop(tmp_path: Path, upstream_rep
     )
     # Cache is empty so the workspace ends up identical to the no-cache case.
     assert ws.repo_dir.is_dir()
-    assert not (ws.repo_dir / "packages" / "natives" / "native").exists()
+    assert not (ws.repo_dir / "natives" / "bridge" / "bindings" / "native").exists()
 
 
 def test_repo_lock_is_per_repo_identity(tmp_path: Path) -> None:

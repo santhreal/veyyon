@@ -14,7 +14,7 @@
   - `packages/coding-agent/src/registry/agent-registry.ts`: process-global agent directory (`running | idle | parked | aborted`).
   - `packages/coding-agent/src/async/job-manager.ts`: background job registration, progress, and result delivery.
   - `packages/coding-agent/src/task/parallel.ts`: `Semaphore` used for the session-scoped concurrency bound.
-  - `@veyyon/natives` (`crates/veyyon-iso`): isolation PAL: `isoResolve` / `isoStart` / `isoStop` backend resolution and fallback.
+  - `@veyyon/natives` (`natives/fs/iso`): isolation PAL: `isoResolve` / `isoStart` / `isoStop` backend resolution and fallback.
   - `packages/coding-agent/src/task/worktree.ts`: isolation mode mapping (`parseIsolationMode`) and lifecycle (`ensureIsolation`/`cleanupIsolation`), patch capture, branch merge.
   - `packages/coding-agent/src/task/output-manager.ts`: session-scoped `agent://` id allocation.
   - `packages/coding-agent/src/task/name-generator.ts`: default AdjectiveNoun agent ids.
@@ -120,7 +120,7 @@ Artifacts and side channels:
   - Child sessions may use whichever networked tools/models their active tool set permits.
   - MCP proxy tools can call existing parent MCP connections with a 60_000 ms timeout.
 - Subprocesses / native bindings
-  - Isolation backends run through the `veyyon-natives` PAL (`crates/veyyon-iso`): kernel `overlay` with `fuse-overlayfs`/`fusermount[3]` fallback on Linux, APFS/Btrfs/ZFS/reflink clones, ProjFS on Windows, recursive copy as last resort.
+  - Isolation backends run through the `veyyon-natives` PAL (`natives/fs/iso`): kernel `overlay` with `fuse-overlayfs`/`fusermount[3]` fallback on Linux, APFS/Btrfs/ZFS/reflink clones, ProjFS on Windows, recursive copy as last resort.
   - Git operations for baseline capture, patch apply, worktrees, branches, stash, cherry-pick, commits.
 - Session state (transcript, memory, jobs, checkpoints, registries)
   - Creates child `AgentSession` instances with isolated settings snapshots; finished sessions stay registered in the process-global `AgentRegistry` as `idle`/`parked` until process teardown or explicit release.
@@ -161,7 +161,7 @@ Artifacts and side channels:
 - Parallelism is parallel `task` calls in one assistant message: or, with `subagent.batch`, a `tasks[]` batch in one call; either way the session-scoped semaphore bounds the fan-out. With `async.enabled=true`, each spawn is an independent background job.
 - Shared background convention without batch mode: write it once to a `local://` file and reference that path in each spawn's `task`: subagents share the parent's `local://` root. With `subagent.batch`, the required `context` parameter carries the shared background directly into each spawn's system prompt.
 - Prefer messaging an existing agent (`irc`) over a fresh spawn for follow-up work: it already holds the relevant context. `irc` op:"list" shows idle/parked candidates; messaging a parked agent revives it. `history://<id>` shows what an agent has done.
-- `irc` availability is derived, not configured (`isIrcEnabled` in `packages/coding-agent/src/tools/irc.ts`): it exists exactly when there is someone to message: the session can spawn subagents, or it is a subagent itself. Messaging is the only follow-up path to a finished subagent, so task without irc would strand idle agents.
+- `irc` availability is derived, not configured (`isIrcEnabled` in `packages/coding-agent/src/tools/agent/irc.ts`): it exists exactly when there is someone to message: the session can spawn subagents, or it is a subagent itself. Messaging is the only follow-up path to a finished subagent, so task without irc would strand idle agents.
 - `tools.discoveryMode: all` hides non-essential built-ins, and `task` is a carve-out. At `subagent.delegation` `preferred` (the default) or `required` the prompt asks you to delegate, so `task` stays in the request; hiding it would leave an instruction you cannot follow. At `allowed` nothing asks for delegation, so `task` is hidden like any other discoverable built-in and you reach it through `search_tool_bm25`, and the prompt drops its delegation section to match. The decision is made in `sdk.ts` before agent discovery runs, from the strength alone: whether any agent is enabled is not knowable yet at that point.
 - Only the general-purpose `deep` agent ships enabled. Every other bundled agent, `scout` included, needs a `subagent.agents.<name>.enabled = true` row before the model may choose it, and a spawn that names a disabled agent is refused with `Agent "<name>" is disabled`. A user-authored agent under `.veyyon/agents/` is on by default: writing the file is the opt-in.
 - Subagents are internally synchronous: the executor forces `async.enabled = false` and `bash.autoBackground.enabled = false` in the child settings snapshot, so there are no fire-and-forget grandchildren.

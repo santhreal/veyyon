@@ -3,7 +3,7 @@
  * Why: order of application is a contract for suggestion meta and item count.
  */
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "../src/tools/list-limit";
+import { applyListLimit } from "../src/tools/core/list-limit";
 
 describe("list-limit head before and after limit order", () => {
 	const items = Array.from({ length: 100 }, (_, i) => i);

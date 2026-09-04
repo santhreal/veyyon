@@ -9,7 +9,7 @@
 // JSON-RPC 2.0 Types
 // =============================================================================
 
-import type { SourceMeta } from "../capability/types";
+import type { SourceMeta } from "../discovery/capability/types";
 
 export interface JsonRpcRequest {
 	jsonrpc: "2.0";

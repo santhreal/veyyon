@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
-import { getThemeByName, initTheme, type Theme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { getThemeByName, initTheme, type Theme, theme } from "@veyyon/coding-agent/theme/theme";
 import {
 	capParseErrors,
 	capPreviewLines,
@@ -24,9 +24,9 @@ import {
 	previewLine,
 	shortenPath,
 	truncateDiffByHunk,
-} from "@veyyon/coding-agent/tools/render-utils";
-import { resetKeybindingsForTests, setKeybindings } from "@veyyon/tui";
+} from "@veyyon/coding-agent/tools/core/render-utils";
 import { sanitizeText } from "@veyyon/utils";
+import { resetKeybindingsForTests, setKeybindings } from "@veyyon/utils/keybindings";
 
 describe("parse error formatting", () => {
 	it("deduplicates parse errors while preserving order", () => {

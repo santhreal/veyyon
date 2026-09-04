@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { postmortem } from "@veyyon/utils";
-import { ToolAbortError, throwIfAborted } from "../../src/tools/tool-errors";
+import { ToolAbortError, throwIfAborted } from "../../src/tools/core/tool-errors";
 
 describe("tool abort errors", () => {
 	it("wraps non-ToolAbortError abort reasons as ToolAbortError while preserving marked cause chains", () => {

@@ -28,19 +28,24 @@
  * a new package cannot join the tree already exempt. A list entry naming a
  * package that has no tests fails too, so a deleted or renamed package cannot rot
  * in the list and quietly shrink the run.
+ *
+ * THE MEMBERS ARE DERIVED, NOT NAMED. This suite enumerated `packages/` literally, which made it blind
+ * the moment a member moved out of that directory. `contracts/wire` ships eight test files, and after
+ * the move neither direction saw it: the missing-entry sweep never enumerated it, and the stale-entry
+ * sweep filtered its bucket row out as "not a package path". Literal members like `natives/bridge/bindings`
+ * and `python/veybot/web` were likewise invisible to root globs. The members now come from
+ * `scripts/workspace-layout.ts`, so a member at any depth is covered.
  */
 import { describe, expect, it } from "bun:test";
 import { type Dirent, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
 	fastWorkspacePackages,
 	localOnlyWorkspacePackages,
 	nativeAndIntegrationPackages,
 	workspaceTestPackages,
 } from "./ci-test-ts";
-
-const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
+import { REPO_ROOT, typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout";
 
 /**
  * Packages the runner reaches WITHOUT a list entry, with the mechanism that
@@ -52,7 +57,7 @@ const DISCOVERED_NOT_LISTED: Record<string, string> = {
 	"packages/coding-agent": "discovered by walking the package in codingAgentTestCommands",
 };
 
-/** Directories that are not workspace packages even though they sit under packages/. */
+/** Whether a repo-relative directory is a workspace member, by carrying a manifest. */
 function isPackageDir(dir: string): boolean {
 	try {
 		return statSync(join(REPO_ROOT, dir, "package.json")).isFile();
@@ -87,15 +92,21 @@ function testFileCount(dir: string): number {
 	return found;
 }
 
-/** Every `packages/*` directory that ships at least one test file. */
+/** The TypeScript member top levels whose members this runner is responsible for. */
+const ROOTS = typeScriptMemberTopLevels();
+
+/** Every workspace member under any declared root that ships at least one test file. */
 function packagesWithTests(): string[] {
 	const out: string[] = [];
-	for (const entry of readdirSync(join(REPO_ROOT, "packages"))) {
-		const dir = `packages/${entry}`;
-		if (!isPackageDir(dir)) continue;
-		if (testFileCount(dir) > 0) out.push(dir);
+	for (const member of typeScriptMembers()) {
+		if (testFileCount(member) > 0) out.push(member);
 	}
 	return out.sort();
+}
+
+/** Whether a bucket entry names a member under a declared root, so the stale sweep can judge it. */
+function isUnderADeclaredRoot(dir: string): boolean {
+	return ROOTS.some(root => dir.startsWith(`${root}/`));
 }
 
 describe("the workspace test runner covers every package that ships tests", () => {
@@ -106,8 +117,12 @@ describe("the workspace test runner covers every package that ships tests", () =
 		const withTests = packagesWithTests();
 
 		expect(withTests.length).toBeGreaterThan(10);
-		expect(withTests).toContain("packages/argot");
-		expect(testFileCount("packages/argot")).toBeGreaterThan(20);
+		expect(withTests).toContain("plugins/argot");
+		expect(testFileCount("plugins/argot")).toBeGreaterThan(20);
+		// A member outside `packages/`, which is what the literal enumeration could not see. Naming it
+		// means the sweep has to reach every declared root, not just the one that happens to be first.
+		expect(withTests).toContain("contracts/wire");
+		expect(ROOTS).toContain("contracts");
 	});
 
 	it("runs the tests of every package that has them", () => {
@@ -125,7 +140,7 @@ describe("the workspace test runner covers every package that ships tests", () =
 		// run quietly smaller while the list still reads complete, and `bun test` in a
 		// directory with no test files exits 0.
 		const stale = workspaceTestPackages
-			.filter(dir => dir.startsWith("packages/"))
+			.filter(dir => isUnderADeclaredRoot(dir))
 			.filter(dir => testFileCount(dir) === 0);
 
 		expect(stale).toEqual([]);

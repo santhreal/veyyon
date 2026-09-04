@@ -3,7 +3,7 @@
  * and normalize line endings.
  *
  * Bun-native implementation of the former native `sanitizeText` (see
- * `crates/veyyon-natives/src/text.rs::sanitize_text`). JavaScript strings are
+ * `natives/bridge/addon/src/text.rs::sanitize_text`). JavaScript strings are
  * already UTF-16 code-unit arrays. `toWellFormed()` handles the uncommon
  * malformed path; when it changes the input, replacement characters are
  * dropped and the normalized result goes through the well-formed sanitizer.
@@ -12,7 +12,7 @@
  * string after the control probe.
  */
 
-const ESC_CHAR = "\x1b";
+import { ESC as ESC_CHAR } from "./ansi";
 
 // Well-formed strings only need control/ANSI detection: C0 (excl. \t \n),
 // CR, DEL, and C1. ESC (0x1B) is in \x0B-\x1F.

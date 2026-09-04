@@ -1,16 +1,15 @@
 import { type AssistantMessage, completeSimple, type Model, seedApiKeyResolver, withAuth } from "@veyyon/ai";
 import { ProviderHttpError } from "@veyyon/ai/error";
 import { assistantText } from "@veyyon/ai/utils/message-text";
+import { REASONING_SAFE_MAX_TOKENS } from "@veyyon/kernel/session/classifier-tokens";
+import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
 import { errorMessage, logger, prompt } from "@veyyon/utils";
-
 import type { ModelRegistry } from "../config/model-registry";
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
 import { turnControlPrompts } from "../prompts/turn-control/rows";
 import { isTinyMemoryLocalModelKey, ONLINE_MEMORY_MODEL_KEY } from "../tiny/models";
 import { tinyModelClient } from "../tiny/title-client";
-import { REASONING_SAFE_MAX_TOKENS } from "./classifier-tokens";
-import type { SideCompleteImpl } from "./side-complete";
 
 /**
  * The instruction half only: the online path sends the message as its own user

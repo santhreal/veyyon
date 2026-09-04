@@ -2,10 +2,10 @@
 // pages that consume it.
 //
 // The nav used to be nine hand-copied blocks across six HTML files. Nothing
-// compared the copies, so 404.html quietly lost a link. These tests are the
-// reason that cannot happen again: the first group pins the renderer, the
-// second reads the pages on disk and fails if any of them drifts from the
-// one link list.
+// compared the copies, so a page quietly lost a link and a generated page failed
+// to mark its own section as current. These tests are the reason that cannot
+// happen again: the first group pins the renderer, the second reads the pages on
+// disk and fails if any of them drifts from the one link list.
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -18,15 +18,22 @@ type Link = { label: string; href: string; page?: string; absolute?: boolean };
 const links: Link[] = LINKS;
 
 /**
- * The accessible name of an anchor: its text when it has any, otherwise its `aria-label`.
- *
- * The GitHub link renders an aria-hidden glyph and no text, so reading text nodes alone drops it
- * and every count below is quietly one short.
+ * The accessible name of one anchor: its text content, or its `aria-label` when the
+ * content is an icon carrying no text of its own. An anchor with neither has no name
+ * at all — a screen reader announces its URL — so it throws rather than being skipped,
+ * which is what let an icon-only link into every nav region unnamed.
  */
-function accessibleName(anchor: string): string {
-	const text = anchor.replace(/<[^>]*>/g, "").trim();
-	if (text !== "") return text;
-	return /aria-label="([^"]*)"/.exec(anchor)?.[1] ?? "";
+function anchorName(anchor: string, inner: string): string {
+	const text = inner.replace(/<[^>]*>/g, "").trim();
+	if (text) return text;
+	const labelled = /aria-label="([^"]+)"/.exec(anchor);
+	if (!labelled) throw new Error(`nav anchor has no accessible name: ${anchor}`);
+	return labelled[1]!;
+}
+
+/** Every anchor's accessible name in one nav's HTML, in document order. */
+function anchorNames(html: string): string[] {
+	return [...html.matchAll(/<a\s[^>]*>([\s\S]*?)<\/a>/g)].map(([anchor, inner]) => anchorName(anchor, inner!));
 }
 
 /** Link names and hrefs found inside a page's nav region. */
@@ -34,10 +41,10 @@ function navRegions(html: string): { links: { href: string; label: string; curre
 	const regions = [...html.matchAll(/<!--NAV:START-->([\s\S]*?)<!--NAV:END-->/g)];
 	return regions.map(([, raw]) => ({
 		raw,
-		links: [...raw.matchAll(/<a href="([^"]+)"([^>]*)>([\s\S]*?)<\/a>/g)].map(([whole, href, attrs]) => ({
-			href,
-			label: accessibleName(whole),
-			current: attrs.includes('aria-current="page"'),
+		links: [...raw!.matchAll(/<a href="([^"]+)"([^>]*)>([\s\S]*?)<\/a>/g)].map(([anchor, href, attrs, inner]) => ({
+			href: href!,
+			label: anchorName(anchor, inner!),
+			current: attrs!.includes('aria-current="page"'),
 		})),
 	}));
 }
@@ -48,8 +55,7 @@ describe("renderNav", () => {
 	 *  to stop. */
 	it("renders every link in order, with the CTA last in header navs", () => {
 		const html = renderNav({ prefix: "./", current: "install" });
-		const labels = [...html.matchAll(/<a\b[\s\S]*?<\/a>/g)].map(([anchor]) => accessibleName(anchor));
-		expect(labels).toEqual([...links.map(l => l.label), CTA.label]);
+		expect(anchorNames(html)).toEqual([...links.map(l => l.label), CTA.label]);
 	});
 
 	/** The footer carries the same destinations but not the Get-started button;
@@ -117,8 +123,7 @@ describe("built pages", () => {
 		expect(regions[2]!.links.at(-1)!.label).toBe("GitHub");
 	});
 
-	/** Every page must announce itself. A page that failed to mark its own
-	 *  link was the original drift symptom. */
+	/** Every page must announce itself, so a reader always knows which section they are in. */
 	it.each(PAGES.filter(p => p.current))("$file marks its own nav link current", ({ file, current, prefix }) => {
 		const html = readFileSync(join(WEBSITE, file), "utf8");
 		const expected = `${prefix}${links.find(l => l.page === current)!.href}`;
@@ -126,6 +131,25 @@ describe("built pages", () => {
 			const marked = region.links.filter(l => l.current);
 			expect(marked).toHaveLength(1);
 			expect(marked[0]!.href).toBe(expected);
+		}
+	});
+
+	/**
+	 * A link rendered as a glyph is named by `aria-label` or it is named by nothing: its
+	 * svg is `aria-hidden`, so a screen reader falls back to the URL. Every icon link in
+	 * LINKS is asserted by name in every region of every page, so a new one that ships
+	 * unnamed — or a renamed one whose label stops reaching the markup — is red.
+	 */
+	it.each(PAGES)("$file names every icon link in every region", ({ file }) => {
+		const iconLinks = links.filter(link => "icon" in link);
+		expect(iconLinks.length).toBeGreaterThan(0);
+		const html = readFileSync(join(WEBSITE, file), "utf8");
+		for (const region of navRegions(html)) {
+			for (const link of iconLinks) {
+				const anchor = region.links.find(l => l.href === (link.absolute ? link.href : `./${link.href}`));
+				expect(anchor?.label).toBe(link.label);
+			}
+			expect(region.raw).toContain(`aria-label="${iconLinks[0]!.label}"`);
 		}
 	});
 });

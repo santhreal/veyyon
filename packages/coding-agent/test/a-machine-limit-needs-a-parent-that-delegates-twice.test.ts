@@ -36,7 +36,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { probeCpuLimitSupport } from "@veyyon/coding-agent/session/cgroup-host";
+import { probeCpuLimitSupport } from "@veyyon/kernel/session/cgroup-host";
 import { makeCgroupRoot, makeFakeHost, removeCgroupRoots } from "./helpers/fake-cgroup";
 
 /** A cgroup directory with the marker files the probe reads. */

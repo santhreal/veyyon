@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
+import { HistoryStorage } from "@veyyon/kernel/session/history-storage";
 import { TempDir } from "@veyyon/utils";
 
 let tempDir: TempDir | null = null;

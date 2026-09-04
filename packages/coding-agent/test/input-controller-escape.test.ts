@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "bun:test";
 import type { ImageContent } from "@veyyon/ai";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { InputController } from "@veyyon/coding-agent/modes/controllers/input-controller";
-import type { InteractiveModeContext, SubmittedUserInput } from "@veyyon/coding-agent/modes/types";
+import { InputController } from "@veyyon/coding-agent/modes/terminal/controllers/input-controller";
+import type { InteractiveModeContext, SubmittedUserInput } from "@veyyon/coding-agent/modes/terminal/types";
 import { USER_INTERRUPT_LABEL } from "@veyyon/coding-agent/session/messages";
-import { vocalizer } from "@veyyon/coding-agent/tts/vocalizer";
+import { vocalizer } from "@veyyon/coding-agent/speech/tts/vocalizer";
 import * as logger from "@veyyon/utils/logger";
 
 type Spy = Mock<(...args: unknown[]) => unknown>;
@@ -842,7 +842,7 @@ describe("InputController double-tap ← gesture", () => {
  *
  * WHAT IT DOES NOT CATCH: that the discarded draft is recoverable. `discardDraft` is a
  * fake here; the real editor's undo contract is pinned in
- * `packages/tui/test/discarding-a-draft-leaves-it-on-the-undo-stack.test.ts`.
+ * `hosts/terminal/engine/test/discarding-a-draft-leaves-it-on-the-undo-stack.test.ts`.
  */
 describe("InputController Esc-Esc discards the draft", () => {
 	function setup() {

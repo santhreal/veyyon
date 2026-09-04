@@ -60,7 +60,7 @@ import type { TSchema } from "@veyyon/ai/types";
 import { toolWireSchema } from "@veyyon/ai/utils/schema/wire";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
-import { createRepairToolCallArgumentsHook } from "@veyyon/coding-agent/repair/agent-hook";
+import { createRepairToolCallArgumentsHook } from "@veyyon/coding-agent/tools/core/repair/agent-hook";
 import { BUILTIN_TOOLS, HIDDEN_TOOLS } from "@veyyon/coding-agent/tools/index";
 import { TempDir } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";

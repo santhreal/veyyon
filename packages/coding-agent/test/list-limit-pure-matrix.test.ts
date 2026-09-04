@@ -2,7 +2,7 @@
  * applyListLimit pure matrix: exact items, limitReached, meta keys.
  */
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "../src/tools/list-limit";
+import { applyListLimit } from "../src/tools/core/list-limit";
 
 describe("applyListLimit pure matrix", () => {
 	it("no options returns all", () => {

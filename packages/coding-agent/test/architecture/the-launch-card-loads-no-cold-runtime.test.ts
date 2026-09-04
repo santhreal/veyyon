@@ -87,13 +87,13 @@ describe("the launch card loads no cold runtime", () => {
 	 * set equality, which an empty walk would also satisfy.
 	 */
 	it("walks a real graph and finds its platform imports", () => {
-		const reached = reachedNames("startup/launch-card.ts");
+		const reached = reachedNames("cli/launch-card.ts");
 
 		expect(reached.length).toBeGreaterThan(150);
 		expect(reached).toContain(path.join("utils", "src", "postmortem.ts"));
 		expect(reached).toContain(path.join("utils", "src", "file-lock.ts"));
-		expect(reached).toContain(path.join("natives", "native", "loader-state.js"));
-		expect(platformSpecifiersOn("startup/launch-card.ts")).toContain("node:fs");
+		expect(reached).toContain(path.join("..", "natives", "bridge", "bindings", "native", "loader-state.js"));
+		expect(platformSpecifiersOn("cli/launch-card.ts")).toContain("node:fs");
 	});
 
 	/**
@@ -102,15 +102,15 @@ describe("the launch card loads no cold runtime", () => {
 	 * nothing.
 	 */
 	it("sees a cold runtime on the path of a module that does load one", () => {
-		const onATool = platformSpecifiersOn("tools/bash.ts");
+		const onATool = platformSpecifiersOn("tools/shell/bash.ts");
 
 		expect(onATool).toContain("node:child_process");
 		expect(onATool).toContain("node:crypto");
 	});
 
 	for (const [label, entry] of [
-		["the launch card", "startup/launch-card.ts"],
-		["the first frame", "modes/first-frame.ts"],
+		["the launch card", "cli/launch-card.ts"],
+		["the first frame", "modes/terminal/first-frame.ts"],
 	] as const) {
 		/** One case per entry, so a failure names the path that regained the runtime. */
 		it(`${label} evaluates nothing but the platform it uses`, () => {

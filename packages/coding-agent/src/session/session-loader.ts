@@ -1,9 +1,4 @@
 import type { AgentMessage } from "@veyyon/agent-core";
-import { getBlobsDir } from "@veyyon/utils/dirs";
-import { isEnoent } from "@veyyon/utils/fs-error";
-// Owners, not the `@veyyon/utils` barrel: 4 modules against 74.
-import * as logger from "@veyyon/utils/logger";
-import { readLines } from "@veyyon/utils/stream";
 import {
 	BlobStore,
 	isBlobRef,
@@ -11,26 +6,31 @@ import {
 	resolveImageData,
 	resolveImageDataUrl,
 	resolveTextBlobRef,
-} from "./blob-store";
-import type { OperatorNotices } from "./operator-notices";
-import { buildSessionContext } from "./session-context";
+} from "@veyyon/kernel/session/blob-store";
+import type { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import {
 	type FileEntry,
 	SESSION_TITLE_SLOT_BYTES,
 	type SessionEntry,
 	type SessionHeader,
 	type SessionTitleSlotEntry,
-} from "./session-entries";
-import { checkSessionEntryShape } from "./session-entry-shape";
-import { migrateToCurrentVersion } from "./session-migrations";
-import { isImageBlock, isImageDataPayload } from "./session-persistence";
-import { FileSessionStorage, type SessionStorage } from "./session-storage";
+} from "@veyyon/kernel/session/session-entries";
+import { checkSessionEntryShape } from "@veyyon/kernel/session/session-entry-shape";
+import { migrateToCurrentVersion } from "@veyyon/kernel/session/session-migrations";
+import { isImageBlock, isImageDataPayload } from "@veyyon/kernel/session/session-persistence";
+import { FileSessionStorage, type SessionStorage } from "@veyyon/kernel/session/session-storage";
 import {
 	parseTitleSlotFromContent,
 	parseTitleSlotLine,
 	type SessionTitleUpdate,
 	titleUpdateFromSlot,
-} from "./session-title-slot";
+} from "@veyyon/kernel/session/session-title-slot";
+import { getBlobsDir } from "@veyyon/utils/dirs";
+import { isEnoent } from "@veyyon/utils/fs-error";
+// Owners, not the `@veyyon/utils` barrel: 4 modules against 74.
+import * as logger from "@veyyon/utils/logger";
+import { readLines } from "@veyyon/utils/stream";
+import { buildSessionContext } from "./session-context";
 
 const STREAM_LOAD_THRESHOLD_BYTES = 8 * 1024 * 1024;
 

@@ -8,7 +8,7 @@ import {
 	resetRegisteredArtifactDirsForTests,
 } from "@veyyon/coding-agent/internal-urls/registry-helpers";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 
 function getTextOutput(result: { content: Array<{ type: string; text?: string }> }): string {
 	return result.content

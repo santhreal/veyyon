@@ -12,7 +12,7 @@
  * `@veyyon/ai/utils/schema` -- a JSON Schema validator, on the graph because the obfuscator
  * redacts tool schemas through `toolWireSchema`. `provider-boundary.ts` imported one
  * function and got all of it, and since the boundary is on the graph of everything that can
- * make an outbound request, so did they: `tools/read.ts` was 24 modules over its ceiling and
+ * make an outbound request, so did they: `tools/fs/read.ts` was 24 modules over its ceiling and
  * every one of the 24 was that edge. Reading a local file loaded a schema validator.
  *
  * So this file guards the shape of the fix rather than the number in the ceiling. The

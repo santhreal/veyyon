@@ -4,8 +4,8 @@ import {
 	getUnreadableSessions,
 	listSessions,
 	recoverOrphanedBackups,
-} from "@veyyon/coding-agent/session/session-listing";
-import { MemorySessionStorage } from "@veyyon/coding-agent/session/session-storage";
+} from "@veyyon/kernel/session/session-listing";
+import { MemorySessionStorage } from "@veyyon/kernel/session/session-storage";
 
 const DIR = "/sessions/project";
 

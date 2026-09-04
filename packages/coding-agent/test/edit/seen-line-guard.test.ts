@@ -7,9 +7,9 @@ import { type ExecuteHashlineSingleOptions, executeHashlineSingle } from "@veyyo
 import { canonicalSnapshotKey, getFileSnapshotStore } from "@veyyon/coding-agent/edit/file-snapshot-store";
 import { DEFAULT_MAX_BYTES } from "@veyyon/coding-agent/session/streaming-output";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 import { removeWithRetries } from "@veyyon/utils";
-import { SearchTool } from "../../src/tools/search";
+import { SearchTool } from "../../src/tools/search/search";
 
 function createSession(cwd: string): ToolSession {
 	return {

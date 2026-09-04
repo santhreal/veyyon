@@ -24,7 +24,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { toWireSessionHeader } from "@veyyon/coding-agent/collab/protocol";
-import type { SessionHeader } from "@veyyon/coding-agent/session/session-entries";
+import type { SessionHeader } from "@veyyon/kernel/session/session-entries";
 
 /** A host header with every field the host's own type declares populated. */
 function fullHostHeader(): SessionHeader {

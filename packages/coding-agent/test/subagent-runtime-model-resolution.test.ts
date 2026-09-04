@@ -6,7 +6,8 @@ import type { Api, Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
-import type { AgentSession, AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { runSubprocess } from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
 import { createMockSession, yieldSuccessEvent } from "./helpers/subagent-session";
@@ -78,7 +79,12 @@ describe("subagent runtime model resolution", () => {
 		vi.spyOn(sdkModule, "createAgentSession").mockImplementation(async options => {
 			if (!options) throw new Error("Expected createAgentSession options");
 			childFallbackChains = options.settings?.get("retry.fallbackChains") as Record<string, string[]> | undefined;
-			return { session: createYieldingSession(), extensionsResult: {}, setToolUIContext: () => {} } as never;
+			return {
+				session: createYieldingSession(),
+				extensionsResult: {},
+				setToolUIContext: () => {},
+				setToolNotifier: () => {},
+			} as never;
 		});
 
 		const agent: AgentDefinition = { name: "task", description: "test", systemPrompt: "test", source: "bundled" };
@@ -133,7 +139,12 @@ describe("subagent runtime model resolution", () => {
 		vi.spyOn(sdkModule, "createAgentSession").mockImplementation(async options => {
 			if (!options) throw new Error("Expected createAgentSession options");
 			childFallbackChains = options.settings?.get("retry.fallbackChains") as Record<string, string[]> | undefined;
-			return { session: createYieldingSession(), extensionsResult: {}, setToolUIContext: () => {} } as never;
+			return {
+				session: createYieldingSession(),
+				extensionsResult: {},
+				setToolUIContext: () => {},
+				setToolNotifier: () => {},
+			} as never;
 		});
 
 		const agent: AgentDefinition = { name: "task", description: "test", systemPrompt: "test", source: "bundled" };
@@ -169,7 +180,12 @@ describe("subagent runtime model resolution", () => {
 			childModelPattern = options.modelPattern;
 			childModelPatternAuthFallback = options.modelPatternAuthFallback;
 			childModelPatternFallbackRole = options.modelPatternFallbackRole;
-			return { session: createYieldingSession(), extensionsResult: {}, setToolUIContext: () => {} } as never;
+			return {
+				session: createYieldingSession(),
+				extensionsResult: {},
+				setToolUIContext: () => {},
+				setToolNotifier: () => {},
+			} as never;
 		});
 
 		const agent: AgentDefinition = { name: "task", description: "test", systemPrompt: "test", source: "bundled" };

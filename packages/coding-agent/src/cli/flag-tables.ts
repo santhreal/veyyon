@@ -33,7 +33,7 @@
 import type { ConfiguredThinkingLevel } from "../thinking";
 // approval-modes.ts is intentionally free of runtime deps (no @veyyon/utils), so
 // importing it here does not violate the bootstrap-race IMPORT RULE above.
-import { APPROVAL_MODE_VALUES, isKnownApprovalMode } from "../tools/approval-modes";
+import { APPROVAL_MODE_VALUES, isKnownApprovalMode } from "../tools/core/approval-modes";
 import type { Args, Mode } from "./args";
 import { CliUsageError } from "./usage-error";
 
@@ -113,7 +113,7 @@ function parseMaxTimeSeconds(value: string): number {
 
 /**
  * Accepted `--mode` values, with the guard that gates them. Mirrors the
- * `isKnownApprovalMode` shape in `../tools/approval-modes` so both enum-valued
+ * `isKnownApprovalMode` shape in `../tools/core/approval-modes` so both enum-valued
  * flags reject a bad value the same way.
  *
  * Keyed by `Mode` rather than written as a bare array so the compiler forces

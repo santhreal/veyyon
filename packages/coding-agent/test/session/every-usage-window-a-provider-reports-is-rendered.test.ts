@@ -41,15 +41,15 @@ import {
 } from "@veyyon/ai";
 import "@veyyon/ai/usage/defaults";
 import { listRegisteredUsageProviders } from "@veyyon/ai/usage/registry";
-import { accountUsageLines } from "@veyyon/coding-agent/modes/components/account-manager-rows";
+import { accountUsageLines } from "@veyyon/coding-agent/modes/terminal/components/account/account-manager-rows";
 import {
 	type AccountRow,
 	applyUsageReports,
 	buildAccountInventory,
 } from "@veyyon/coding-agent/session/account-inventory";
 import { USAGE_WINDOW_LABEL_MAX } from "@veyyon/coding-agent/slash-commands/helpers/format";
-import { visibleWidth } from "@veyyon/tui";
 import type { FetchImpl } from "@veyyon/utils";
+import { visibleWidth } from "@veyyon/utils/width";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 
 // The Kimi provider stamps a device id into the agent dir while building its request headers, so

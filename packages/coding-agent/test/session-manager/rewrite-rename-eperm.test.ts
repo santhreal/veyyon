@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { recoverOrphanedBackups } from "@veyyon/coding-agent/session/session-listing";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { FileSessionStorage, MemorySessionStorage } from "@veyyon/coding-agent/session/session-storage";
+import { recoverOrphanedBackups } from "@veyyon/kernel/session/session-listing";
+import { FileSessionStorage, MemorySessionStorage } from "@veyyon/kernel/session/session-storage";
 
 class FsCodeError extends Error {
 	code: string;

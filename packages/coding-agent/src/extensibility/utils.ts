@@ -1,6 +1,6 @@
 import * as path from "node:path";
-import { theme } from "../modes/theme/theme";
-import { expandPath, normalizeLocalScheme } from "../tools/path-utils";
+import { theme } from "../theme/theme";
+import { expandPath, normalizeLocalScheme } from "../tools/core/path-utils";
 import type { HookUIContext } from "./hooks/types";
 
 /**
@@ -33,7 +33,6 @@ export function createNoOpUIContext(): HookUIContext {
 		input: async () => undefined,
 		notify: () => {},
 		setStatus: () => {},
-		custom: async () => undefined as never,
 		setEditorText: () => {},
 		getEditorText: () => "",
 		editor: async () => undefined,

@@ -30,9 +30,10 @@
 // thin git/filesystem shell around it.
 
 import * as path from "node:path";
-import { $, Glob } from "bun";
+import { $ } from "bun";
 
-import { UNRELEASED_HEADING, unreleasedEntries } from "./changelog-unreleased.ts";
+import { UNRELEASED_HEADING, unreleasedEntries } from "./changelog-unreleased";
+import { typeScriptMembersOf } from "./workspace-layout";
 
 /** A publishable package that participates in the changelog/release system. */
 export interface ChangelogPackage {
@@ -184,7 +185,12 @@ async function resolveBase(): Promise<string> {
 }
 
 /**
- * Every publishable package under `packages/`, in path order.
+ * Every publishable package, across the workspace members the checkout's own root `package.json`
+ * declares.
+ *
+ * The members are read rather than named. This function globbed `packages/*` alone, then member globs,
+ * so a published member declared as a literal path was invisible to it. A gate scoped to a directory
+ * instead of to the rule does not fail when the directory is wrong; it passes about less.
  *
  * A package with no `CHANGELOG.md` is an ERROR here, not a package to skip. Skipping was the old
  * behaviour and it made the gate quietly incomplete: `argot` and `@veyyon/tool-render` both shipped
@@ -195,10 +201,11 @@ async function resolveBase(): Promise<string> {
 export async function discoverPackages(repoRoot: string): Promise<ChangelogPackage[]> {
 	const packages: ChangelogPackage[] = [];
 	const missing: string[] = [];
-	const glob = new Glob("packages/*/package.json");
-	for await (const rel of glob.scan({ cwd: repoRoot })) {
-		const dir = path.dirname(rel);
-		const manifest = (await Bun.file(path.join(repoRoot, rel)).json()) as {
+	for (const member of typeScriptMembersOf(repoRoot)) {
+		const dir = member;
+		const manifestPath = path.join(repoRoot, dir, "package.json");
+		if (!(await Bun.file(manifestPath).exists())) continue;
+		const manifest = (await Bun.file(manifestPath).json()) as {
 			name?: string;
 			private?: boolean;
 		};

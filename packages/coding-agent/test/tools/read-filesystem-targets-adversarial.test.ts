@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { readFilesystemTargets } from "@veyyon/coding-agent/tools/read";
-import { writeFilesystemTargets } from "@veyyon/coding-agent/tools/write";
+import { readFilesystemTargets } from "@veyyon/coding-agent/tools/fs/read";
+import { writeFilesystemTargets } from "@veyyon/coding-agent/tools/fs/write";
 
 /**
  * read/write filesystemTargets extraction: path lists, hashline unwrap, multi.

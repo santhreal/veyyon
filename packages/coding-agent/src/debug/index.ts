@@ -17,12 +17,15 @@ import {
 	Text,
 } from "@veyyon/tui";
 import { errorMessage, getSessionsDir } from "@veyyon/utils";
-import { ModalSelectListComponent } from "../modes/components/modal-select-list";
-import { mountTranscriptBlock, transcriptBlockText } from "../modes/components/transcript-block-chrome";
-import { TranscriptBlock } from "../modes/components/transcript-container";
-import { getSelectListTheme, getSymbolTheme, theme } from "../modes/theme/theme";
-import type { InteractiveModeContext } from "../modes/types";
-import { formatBytes } from "../tools/render-utils";
+import { ModalSelectListComponent } from "../modes/terminal/components/selectors/modal-select-list";
+import {
+	mountTranscriptBlock,
+	transcriptBlockText,
+} from "../modes/terminal/components/transcript/transcript-block-chrome";
+import { TranscriptBlock } from "../modes/terminal/components/transcript/transcript-container";
+import type { InteractiveModeContext } from "../modes/terminal/types";
+import { getSelectListTheme, getSymbolTheme, theme } from "../theme/theme";
+import { formatBytes } from "../tools/core/render-utils";
 import { openPath } from "../utils/open";
 import { DebugLogViewerComponent } from "./log-viewer";
 import { generateHeapSnapshotData, type ProfilerSession, startCpuProfile } from "./profiler";

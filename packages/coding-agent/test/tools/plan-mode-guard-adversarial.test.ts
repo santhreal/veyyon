@@ -5,8 +5,8 @@ import {
 	resolvePlanPath,
 	targetsLocalSandbox,
 	unwrapHashlineHeaderPath,
-} from "@veyyon/coding-agent/tools/plan-mode-guard";
-import { ToolError } from "@veyyon/coding-agent/tools/tool-errors";
+} from "@veyyon/coding-agent/tools/core/plan-mode-guard";
+import { ToolError } from "@veyyon/coding-agent/tools/core/tool-errors";
 import { makeToolSession } from "../helpers/tool-session";
 
 /**

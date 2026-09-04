@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { renderHtmlToText } from "@veyyon/coding-agent/tools/fetch";
+import { renderHtmlToText } from "@veyyon/coding-agent/tools/web/fetch";
 import { asGlobalFetch } from "../helpers/fetch-mock";
 
 /**

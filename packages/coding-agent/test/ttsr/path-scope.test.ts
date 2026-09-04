@@ -23,7 +23,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import type { Rule } from "@veyyon/coding-agent/capability/rule";
+import type { Rule } from "@veyyon/coding-agent/discovery/capability/rule";
 import { TtsrManager } from "@veyyon/coding-agent/export/ttsr";
 
 const CWD = "/work/project";

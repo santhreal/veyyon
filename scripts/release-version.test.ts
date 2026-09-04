@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { bumpVersion, parseVersion, rewriteCargoWorkspaceVersion, rewritePackageVersion } from "./release.ts";
+import { bumpVersion, parseVersion, rewriteCargoWorkspaceVersion, rewritePackageVersion } from "./release";
 
 // The version-bump arithmetic decides the number of EVERY release cut by
 // release.ts. A regression here does not fail loudly — it silently publishes the

@@ -9,7 +9,7 @@ import {
 	type AuthBrokerCommandArgs,
 	runAuthBrokerCommand,
 } from "../cli/auth-broker-cli";
-import { initTheme } from "../modes/theme/theme";
+import { initTheme } from "../theme/theme";
 
 export default class AuthBroker extends Command {
 	static description = `Manage the ${APP_NAME} auth-broker (credential vault)`;
@@ -18,7 +18,7 @@ export default class AuthBroker extends Command {
 		action: Args.string({
 			description: "Sub-command",
 			required: false,
-			options: [...AUTH_BROKER_ACTIONS],
+			options: AUTH_BROKER_ACTIONS.slice(),
 		}),
 		// Second positional: provider id (login/logout) or filesystem path (import).
 		source: Args.string({

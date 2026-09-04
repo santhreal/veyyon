@@ -25,7 +25,7 @@
  *     that fell through to a match-anything comparison is how the original defect surfaced.
  *
  * WHAT IT DOES NOT CATCH. Rendering (glyphs, column widths, the sidebar) belongs to
- * `test/modes/components/account-manager.test.ts`. Whether a request actually goes to the routed
+ * `test/modes/terminal/components/account-manager.test.ts`. Whether a request actually goes to the routed
  * credential is the registry's contract, not the inventory's.
  */
 

@@ -6,11 +6,19 @@
 
 import * as fs from "node:fs/promises";
 import path from "node:path";
-import type { AgentEvent, AgentIdentity, AgentTelemetryConfig } from "@veyyon/agent-core";
-import { recordHandoff, resolveTelemetry } from "@veyyon/agent-core";
+import {
+	type AgentEvent,
+	type AgentIdentity,
+	type AgentTelemetryConfig,
+	recordHandoff,
+	resolveTelemetry,
+} from "@veyyon/agent-core";
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import type { Api, Model, ServiceTierByFamily, Usage } from "@veyyon/ai";
 import { emptyUsage } from "@veyyon/catalog/models";
+import type { ArtifactManager } from "@veyyon/kernel/session/artifacts";
+import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
 import {
 	collapseWhitespace,
 	errorMessage,
@@ -27,7 +35,6 @@ import {
 import { sessionFileName } from "@veyyon/utils/session-file";
 import type { ArgotSession, StreamDecoder } from "argot";
 import { createSubagentStreamDecoder, expandSubagentReturn } from "../argot-wire";
-import type { Rule } from "../capability/rule";
 import { ModelRegistry } from "../config/model-registry";
 import {
 	formatModelSelectorValue,
@@ -39,16 +46,17 @@ import type { PromptTemplate } from "../config/prompt-templates";
 import { buildServiceTierByFamily, resolveSubagentServiceTier } from "../config/service-tier";
 import { Settings } from "../config/settings";
 import type { SettingPath } from "../config/settings-schema";
+import type { Rule } from "../discovery/capability/rule";
 import type { ToolPathWithSource } from "../extensibility/custom-tools";
 import type { CustomTool } from "../extensibility/custom-tools/types";
 import { runExtensionCompact, runExtensionSetModel } from "../extensibility/extensions/compact-handler";
 import { getSessionSlashCommands } from "../extensibility/extensions/get-commands-handler";
 import type { ExtensionUIContext } from "../extensibility/extensions/types";
 import { buildSkillPromptMessage, type Skill } from "../extensibility/skills";
-import type { HindsightSessionState } from "../hindsight/state";
 import type { LocalProtocolOptions } from "../internal-urls";
 import type { MCPManager } from "../mcp/manager";
-import type { MnemopiSessionState } from "../mnemopi/state";
+import type { HindsightSessionState } from "../memory/hindsight/state";
+import type { MnemopiSessionState } from "../memory/mnemopi/state";
 import { subagentPrompts } from "../prompts/subagent/rows";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import { AgentRegistry } from "../registry/agent-registry";
@@ -62,29 +70,29 @@ import { AgentRegistry } from "../registry/agent-registry";
 // subagent the real program has loaded `sdk` anyway, and a test that never spawns
 // one no longer pays for it. The TYPE stays a static import because types are
 // erased.
-import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "../sdk";
-import type { AgentSession, AgentSessionEvent } from "../session/agent-session";
-import type { ArtifactManager } from "../session/artifacts";
+import type { AgentSession } from "../session/agent-session";
+import type { AgentSessionEvent } from "../session/agent-session-types";
 import { discoverAuthStorage } from "../session/auth-broker-config";
-import type { AuthStorage } from "../session/auth-storage";
 import { rootBudgetGroupOwnerId, withInheritedBudgetGroup } from "../session/cpu-limit";
+import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "../session/factory-options";
 import { SKILL_PROMPT_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "../session/messages";
 import { SessionManager } from "../session/session-manager";
 import { truncateTail } from "../session/streaming-output";
 import type { ConfiguredThinkingLevel } from "../thinking";
 import type { ContextFileEntry, ToolSession } from "../tools";
-import { resolveEvalBackends } from "../tools/eval-backends";
-import { isIrcEnabled } from "../tools/irc";
-import { normalizeSchema } from "../tools/jtd-to-json-schema";
+import { isIrcEnabled } from "../tools/agent/irc";
+import { type ReportFindingDetails, toReviewFinding } from "../tools/agent/review";
+import { normalizeSchema } from "../tools/core/jtd-to-json-schema";
 import {
 	buildOutputValidator,
 	type OutputValidator,
 	summarizeValidationFailure,
-} from "../tools/output-schema-validator";
-import { type ReportFindingDetails, toReviewFinding } from "../tools/review";
+} from "../tools/core/output-schema-validator";
+import { ToolAbortError } from "../tools/core/tool-errors";
+import { resolveEvalBackends } from "../tools/shell/eval-backends";
 // SIDE-EFFECT IMPORT, and it is load-bearing.
 //
-// `tools/yield.ts` registers the `yield` handler on `subprocessToolRegistry` at module load, and
+// `tools/agent/yield.ts` registers the `yield` handler on `subprocessToolRegistry` at module load, and
 // this file's entire completion path reads it: no handler means `recordExtractedToolData` is never
 // called, so `yieldCalled` stays false, the subagent is prompted again for a result it already
 // returned, and the run finally reports a missing yield with exit code 1. Nothing in the extracted
@@ -95,14 +103,20 @@ import { type ReportFindingDetails, toReviewFinding } from "../tools/review";
 // emit a yield event. The dependency was real, unstated and unenforced, and it broke the moment the
 // child session was a stub rather than a real one. Stating it here is what makes the parent's
 // interpretation of a yield independent of who built the child.
-import "../tools/yield";
-import type { SideCompleteImpl } from "../session/side-complete";
-import { ToolAbortError } from "../tools/tool-errors";
+import "../tools/agent/yield";
 import type { EventBus } from "../utils/event-bus";
 import { buildNamedToolChoice } from "../utils/tool-choice";
 import type { WorkspaceTree } from "../workspace-tree";
 import { type AutoloadSkillPlan, settleAutoloadSkills } from "./inherited-collections";
 import { generateTaskLabel } from "./label";
+// SIDE-EFFECT IMPORT, for the same reason as `../tools/agent/yield` above.
+//
+// `nested-task-details.ts` registers the `task` handler, and this file's `recordExtractedToolData`
+// is what reads it: no handler means a child's own spawns never reach `extractedToolData.task`, so a
+// two-level delegation reports one level and everything under it stays invisible. The registration
+// used to ride in on `task/render.ts`, which drew the tree that consumed it; the drawing is a view
+// now and imports nothing terminal, so the protocol half states its own dependency here.
+import "./nested-task-details";
 import {
 	resolveSubagentIdleTtlMs,
 	resolveSubagentMaxNestedSpawnDepth,
@@ -1588,7 +1602,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 					logger.error(
 						`Subagent ${id} returned a ${YIELD_TOOL_NAME} result and no ${YIELD_TOOL_NAME} handler is registered on subprocessToolRegistry. ` +
 							`The result cannot be read, so this run will report a missing yield. This is a build wiring fault, not a subagent fault: ` +
-							`task/executor.ts must import tools/yield.ts for its registration side effect.`,
+							`task/executor.ts must import tools/agent/yield.ts for its registration side effect.`,
 					);
 				}
 				const eventRecord: unknown = event;
@@ -2851,7 +2865,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		toolNames = agent.tools;
 		// Auto-include task tool if spawns defined but task not in tools
 		if (agent.spawns !== undefined && !toolNames.includes("task") && !atMaxDepth) {
-			toolNames = [...toolNames, "task"];
+			toolNames = toolNames.concat(["task"]);
 		}
 	}
 
@@ -2861,7 +2875,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 	// IRC is always available; the COOP prompt section advertises it, so a restricted
 	// whitelist must still carry `irc` for the subagent to actually use it.
 	if (toolNames && !toolNames.includes("irc")) {
-		toolNames = [...toolNames, "irc"];
+		toolNames = toolNames.concat(["irc"]);
 	}
 	if (toolNames?.includes("exec")) {
 		const backends = resolveEvalBackends({ settings } as ToolSession);
@@ -3155,7 +3169,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 					});
 					return defaultPrompt.length === 0
 						? [subagentPrompt]
-						: [...defaultPrompt.slice(0, -1), subagentPrompt, defaultPrompt[defaultPrompt.length - 1]];
+						: defaultPrompt.slice(0, -1).concat([subagentPrompt, defaultPrompt[defaultPrompt.length - 1]!]);
 				},
 				sessionManager: sessionManagerForRun,
 				hasUI: false,

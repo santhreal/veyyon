@@ -15,11 +15,11 @@ import * as path from "node:path";
 import type { Args } from "@veyyon/coding-agent/cli/args";
 import type { Settings } from "@veyyon/coding-agent/config/settings";
 import { createSessionManager } from "@veyyon/coding-agent/main";
-import type { SessionHeader } from "@veyyon/coding-agent/session/session-entries";
-import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
-import * as sessionListingModule from "@veyyon/coding-agent/session/session-listing";
 import { loadEntriesFromFile } from "@veyyon/coding-agent/session/session-loader";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import type { SessionHeader } from "@veyyon/kernel/session/session-entries";
+import type { SessionInfo } from "@veyyon/kernel/session/session-listing";
+import * as sessionListingModule from "@veyyon/kernel/session/session-listing";
 
 function buildArgs(resume: string, sessionDir?: string): Args {
 	return {

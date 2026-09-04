@@ -1,5 +1,5 @@
 /** Bash-interceptor redirect rules: the default Tier-A rule set and its row shape.
- * Used as the `bashInterceptor.patterns` setting default and by tools/bash-interceptor. */
+ * Used as the `bashInterceptor.patterns` setting default and by tools/shell/bash-interceptor. */
 export interface BashInterceptorRule {
 	pattern: string;
 	flags?: string;

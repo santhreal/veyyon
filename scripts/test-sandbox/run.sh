@@ -101,15 +101,21 @@
 # runner keeps the original local-first order because it is already a disposable
 # machine and has no LAN route to the remote host.
 #
-# MACOS CI
-# --------
-# macos-14 GitHub runners have no KVM, no Linux container runtime that can run a
-# Linux guest without a VM of its own, and nested virtualisation is not offered.
-# There is no rung on that runner that is as hard as the Linux ones. This script
-# therefore REFUSES on darwin (exit 3) instead of degrading to the bare runner.
-# The macOS job's job is to build and typecheck; the TypeScript suites run on the
-# ubuntu runner inside the docker rung. That is stated here so nobody later
-# mistakes the absence of a macOS test run for an oversight.
+# MACOS
+# -----
+# Every rung here is a Linux boundary, so a Darwin host has none of its own. It may
+# still reach one through a Linux VM whose kernel runs the container -- colima,
+# Docker Desktop, Rancher -- and the docker rung's probe answers that by asking the
+# daemon rather than the host kernel. A macos-14 GitHub runner has no such daemon,
+# no KVM and no nested virtualisation, so it takes the refusal below (exit 3)
+# instead of degrading to the bare runner: the macOS job builds and typechecks, and
+# the TypeScript suites run on the ubuntu runner inside the docker rung. That is
+# stated here so nobody later mistakes the absence of a macOS test run for an
+# oversight.
+#
+# Nothing is taken on trust either way. The guest still has to prove
+# VEYYON_TEST_HOST_HOME unreadable from inside, so a VM that mounted the operator's
+# home back into the container fails that gate rather than passing quietly.
 #
 # WHERE ARTIFACTS LAND
 # --------------------
@@ -413,8 +419,17 @@ main() {
 		log "already inside the '${VEYYON_TEST_SANDBOX}' sandbox; running directly"
 		exec "${cmd[@]}"
 	fi
+	# A non-Linux host refuses only when no rung answers, which is what the message
+	# says. The probes are asked here rather than assumed from `uname`, because a
+	# Linux VM's daemon is a rung this host reaches and the kernel name cannot see it.
+	# See the MACOS note above for why a macOS runner still lands here.
 	if [ "$(uname -s)" != "Linux" ]; then
-		die "no kernel-level isolation rung exists on $(uname -s). This script refuses to run the suite on the bare host. On macOS CI the TypeScript suites are expected to run on the ubuntu runner; see the MACOS CI note in this file." 3
+		local reachable=0 candidate
+		for candidate in "${RUNGS[@]}"; do
+			"probe_${candidate}" >/dev/null 2>&1 && { reachable=1; break; }
+		done
+		[ "$reachable" = 1 ] ||
+			die "no kernel-level isolation rung exists on $(uname -s). This script refuses to run the suite on the bare host. On macOS CI the TypeScript suites are expected to run on the ubuntu runner; see the MACOS note in this file." 3
 	fi
 
 	local r status

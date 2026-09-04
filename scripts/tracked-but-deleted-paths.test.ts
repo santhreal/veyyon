@@ -114,6 +114,7 @@ describe("check-doc-freshness keeps the other answer on purpose", () => {
  * exact equality, so a sweep that starts reading contents fails here until it takes the owner.
  */
 const NAMES_ONLY: Readonly<Record<string, string>> = {
+	"scripts/check-doc-paths.test.ts": "derives top-level directory names from the index, opens no listed path",
 	"scripts/check-doc-freshness.ts": "reports a listed doc that is gone, the asymmetry asserted above",
 	"scripts/internal-docs-are-tracked.test.ts": "asserts which docs git tracks, opens no listed path",
 	"scripts/root-layout.test.ts": "counts tracked paths per directory, opens none",

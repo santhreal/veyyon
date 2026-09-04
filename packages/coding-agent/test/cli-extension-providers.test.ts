@@ -20,7 +20,7 @@ import { AuthStorage } from "@veyyon/ai";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { getModelMatchPreferences, resolveCliModel } from "@veyyon/coding-agent/config/model-resolver";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { loadCliExtensionProviders } from "@veyyon/coding-agent/sdk";
+import { loadCliExtensionProviders } from "@veyyon/coding-agent/session/factory-extensions";
 import { TempDir } from "@veyyon/utils";
 
 let tmp: TempDir;

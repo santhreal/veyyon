@@ -299,6 +299,8 @@ describe("an invalid release is refused before it touches the system", () => {
 			'ensure_on_path "$(install_dir)"',
 		]) {
 			expect(finish, mutation).toContain(mutation);
+			// And nowhere else: a copy of the write back in `install_binary` would run before the gate.
+			expect(body.indexOf(mutation), mutation).toBe(-1);
 		}
 	});
 

@@ -11,7 +11,7 @@ import { hasLegacyProviderNativeCompaction } from "@veyyon/agent-core/compaction
 // The owner, not the `compaction` subpath barrel. That barrel re-exports the compaction ENGINE, which
 // imports the `@veyyon/ai` barrel to summarize a conversation; this module is a self-contained reader for a
 // retired archive format and imports nothing at all. The edge cost 238 modules, and it was on the graph of
-// `internal-urls/index.ts` (the URL router) and `tools/read.ts` through `session/session-loader.ts`.
+// `internal-urls/index.ts` (the URL router) and `tools/fs/read.ts` through `session/session-loader.ts`.
 import { legacyArchiveSourceText } from "@veyyon/agent-core/compaction/legacy-snapcompact-archive";
 // The remote-compaction entry reader is a leaf beside the legacy one: it turns a
 // server-side compaction's stored window back into the provider payload the
@@ -26,6 +26,11 @@ import type { TextContent } from "@veyyon/ai";
 // `@veyyon/ai/types` is 5 modules against the barrel's 346, and this file is on
 // `session/session-manager.ts`'s path, which ~200 test files import.
 import { coerceServiceTierByFamily, type ServiceTierByFamily } from "@veyyon/ai/types";
+import {
+	type CompactionEntry,
+	EPHEMERAL_MODEL_CHANGE_ROLE,
+	type SessionEntry,
+} from "@veyyon/kernel/session/session-entries";
 // The owner, not the `@veyyon/utils` barrel: 2 modules against 74, and this file is on
 // the graph of the URL router and the read tool.
 import * as logger from "@veyyon/utils/logger";
@@ -36,7 +41,6 @@ import {
 	isCustomMessageContent,
 	normalizeCustomMessagePayload,
 } from "./messages";
-import { type CompactionEntry, EPHEMERAL_MODEL_CHANGE_ROLE, type SessionEntry } from "./session-entries";
 
 export interface SessionContext {
 	messages: AgentMessage[];
@@ -275,7 +279,7 @@ export function buildSessionContext(
 				injectedTtsrRulesSet.add(ruleName);
 			}
 		} else if (entry.type === "mcp_tool_selection") {
-			selectedMCPToolNames = [...entry.selectedToolNames];
+			selectedMCPToolNames = entry.selectedToolNames.slice();
 			hasPersistedMCPToolSelection = true;
 		} else if (entry.type === "mode_change") {
 			mode = entry.mode;

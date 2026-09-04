@@ -10,7 +10,7 @@ import { pluralize } from "@veyyon/utils/format";
 import { nearestNames } from "@veyyon/utils/levenshtein";
 import chalk from "chalk";
 import { CLI_THINKING_LEVELS, type ConfiguredThinkingLevel, parseCliThinkingLevel } from "../thinking";
-import { BUILTIN_TOOL_NAMES, type BuiltinToolName, normalizeToolNames } from "../tools/builtin-names";
+import { BUILTIN_TOOL_NAMES, type BuiltinToolName, normalizeToolNames } from "../tools/core/builtin-names";
 import {
 	OPTIONAL_FLAGS,
 	OPTIONAL_VALUE_FLAGS,
@@ -144,7 +144,7 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 	// into the array, and callers reuse the same argv (the post-extension
 	// reparse in `runRootCommand` parses it a second time). Mutating the input
 	// would corrupt that later parse, so never touch the caller's array.
-	const args = [...inputArgs];
+	const args = inputArgs.slice();
 	const result: Args = {
 		messages: [],
 		fileArgs: [],

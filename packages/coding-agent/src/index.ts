@@ -1,7 +1,17 @@
-import { HookEditorComponent, HookInputComponent, HookSelectorComponent } from "./modes/components";
+import { HookEditorComponent, HookInputComponent, HookSelectorComponent } from "./modes/terminal/components";
 
 // Core session management
 
+export * from "@veyyon/kernel/session/agent-session-compaction-policy";
+// Auth and model registry
+export * from "@veyyon/kernel/session/auth-storage";
+export * from "@veyyon/kernel/session/indexed-session-storage";
+export * from "@veyyon/kernel/session/redis-session-storage";
+export * from "@veyyon/kernel/session/session-entries";
+export * from "@veyyon/kernel/session/session-listing";
+export * from "@veyyon/kernel/session/session-migrations";
+export * from "@veyyon/kernel/session/session-storage";
+export * from "@veyyon/kernel/session/sql-session-storage";
 // Re-export TUI components for custom tool rendering
 export { Container, Markdown, Spacer, Text } from "@veyyon/tui";
 // Logging
@@ -46,9 +56,7 @@ export * from "./lsp";
 export * from "./main";
 // Run modes for programmatic SDK usage
 export * from "./modes";
-export * from "./modes/components";
-// Theme utilities for custom tools
-export * from "./modes/theme/theme";
+export * from "./modes/terminal/components";
 // SDK for programmatic usage
 export * from "./sdk";
 export {
@@ -65,60 +73,66 @@ export {
 	secretAuditPath,
 } from "./secrets/audit";
 export * from "./session/agent-session";
-// Auth and model registry
-export * from "./session/auth-storage";
-export * from "./session/indexed-session-storage";
+export * from "./session/agent-session-message-shapes";
+export * from "./session/agent-session-permissions";
+export * from "./session/agent-session-queue";
+export * from "./session/agent-session-retry-fallback";
+export * from "./session/agent-session-types";
+export * from "./session/factory-extensions";
+export * from "./session/factory-mcp";
+export * from "./session/factory-notices";
+export * from "./session/factory-options";
+export * from "./session/factory-prompt";
+export * from "./session/factory-tools";
 export * from "./session/messages";
-export * from "./session/redis-session-storage";
+export * from "./session/nudges";
+export * from "./session/rewind-checkpoint";
 export * from "./session/session-context";
 export * from "./session/session-dump-format";
-export * from "./session/session-entries";
-export * from "./session/session-listing";
 export * from "./session/session-loader";
 export * from "./session/session-manager";
-export * from "./session/session-migrations";
-export * from "./session/session-storage";
-export * from "./session/sql-session-storage";
 export * from "./session/streaming-output";
 export * from "./task";
 export * from "./task/executor";
 export type * from "./task/types";
+// Theme utilities for custom tools
+export * from "./theme/theme";
 // Tools (detail types and utilities)
 export * from "./tools";
-export * from "./tools/ask";
-export * from "./tools/ast-edit";
-export * from "./tools/bash";
-export * from "./tools/browser";
-export * from "./tools/checkpoint";
-export * from "./tools/debug";
-export * from "./tools/eval";
-export * from "./tools/eval-backends";
-export * from "./tools/gh";
-export * from "./tools/image-gen";
-export * from "./tools/inspect-image";
-export * from "./tools/irc";
-export * from "./tools/job";
-export * from "./tools/launch";
-export * from "./tools/learn";
-export * from "./tools/manage-skill";
-export * from "./tools/memory-edit";
-export * from "./tools/memory-recall";
-export * from "./tools/memory-reflect";
-export * from "./tools/memory-retain";
-export * from "./tools/read";
-export * from "./tools/report-tool-issue";
-export * from "./tools/resolve";
-export * from "./tools/review";
-export * from "./tools/search";
-export * from "./tools/search-tool-bm25";
-export * from "./tools/ssh";
-export * from "./tools/todo";
-export * from "./tools/tts";
-export * from "./tools/vibe";
-export * from "./tools/write";
-export * from "./tools/yield";
+export * from "./tools/agent/ask";
+export * from "./tools/agent/irc";
+export * from "./tools/agent/learn";
+export * from "./tools/agent/manage-skill";
+export * from "./tools/agent/memory-edit";
+export * from "./tools/agent/memory-recall";
+export * from "./tools/agent/memory-reflect";
+export * from "./tools/agent/memory-retain";
+export * from "./tools/agent/report-tool-issue";
+export * from "./tools/agent/resolve";
+export * from "./tools/agent/review";
+export * from "./tools/agent/todo";
+export * from "./tools/agent/vibe";
+export * from "./tools/agent/yield";
+export * from "./tools/fs/checkpoint";
+export * from "./tools/fs/inspect-image";
+export * from "./tools/fs/read";
+export * from "./tools/fs/write";
+export * from "./tools/search/ast-edit";
+export * from "./tools/search/search";
+export * from "./tools/search/search-tool-bm25";
+export * from "./tools/shell/bash";
+export * from "./tools/shell/debug";
+export * from "./tools/shell/eval";
+export * from "./tools/shell/eval-backends";
+export * from "./tools/shell/job";
+export * from "./tools/shell/launch";
+export * from "./tools/shell/ssh";
+export * from "./tools/web/browser";
+export * from "./tools/web/gh";
+export * from "./tools/web/image-gen";
+export * from "./tools/web/search";
+export * from "./tools/web/tts";
 export * from "./utils/git";
-export * from "./web/search";
 // UI components for extensions
 export {
 	HookEditorComponent as ExtensionEditorComponent,

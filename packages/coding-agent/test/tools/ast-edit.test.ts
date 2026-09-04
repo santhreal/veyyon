@@ -4,8 +4,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { adaptSchemaForStrict, toolWireSchema } from "@veyyon/ai/utils/schema";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { ToolChoiceQueue } from "@veyyon/coding-agent/session/tool-choice-queue";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
+import { ToolChoiceQueue } from "@veyyon/kernel/session/tool-choice-queue";
 import { removeWithRetries } from "@veyyon/utils";
 
 type InvokedToolResult = {

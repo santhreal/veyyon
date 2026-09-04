@@ -1,6 +1,6 @@
 import type { ptree } from "@veyyon/utils";
 import { type } from "arktype";
-import { describeTimeoutParam } from "../tools/tool-timeouts";
+import { describeTimeoutParam } from "../tools/core/tool-timeouts";
 
 // =============================================================================
 // Tool Schema

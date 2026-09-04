@@ -18,13 +18,16 @@
 import * as path from "node:path";
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { ImageContent } from "@veyyon/ai";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { getConfigRootDir, logger } from "@veyyon/utils";
 import { SNAPSHOT_PROGRESS_TIMEOUT_MS, TRANSCRIPT_TIMEOUT_MS, WELCOME_TIMEOUT_MS } from "@veyyon/wire";
-import type { AgentTranscriptRemote, AgentTranscriptRemoteRead } from "../modes/components/agent-transcript-viewer";
-import type { InteractiveModeContext } from "../modes/types";
+import type {
+	AgentTranscriptRemote,
+	AgentTranscriptRemoteRead,
+} from "../modes/terminal/components/dashboard/agent-transcript-viewer";
+import type { InteractiveModeContext } from "../modes/terminal/types";
 import { AgentRegistry } from "../registry/agent-registry";
-import type { AgentSessionEvent } from "../session/agent-session";
-import type { SessionEntry } from "../session/session-entries";
+import type { AgentSessionEvent } from "../session/agent-session-types";
 import { shouldDisableReasoning, toReasoningEffort } from "../thinking";
 import { setSessionTerminalTitle } from "../utils/title-generator";
 import { importRoomKey } from "./crypto";
@@ -397,7 +400,7 @@ export class CollabGuestLink {
 			logger.debug("collab guest dropping orphan snapshot-chunk");
 			return false;
 		}
-		pending.entries.push(...frame.entries.map(fromWireSessionEntry));
+		for (let ei = 0; ei < frame.entries.length; ei++) pending.entries.push(fromWireSessionEntry(frame.entries[ei]!));
 		const complete = frame.final || pending.entries.length >= pending.entryCount;
 		if (complete) {
 			this.#clearSnapshotProgressTimer();
@@ -484,7 +487,7 @@ export class CollabGuestLink {
 				const entry = fromWireSessionEntry(frame.entry);
 				this.#ctx.sessionManager.ingestReplicatedEntry(entry);
 				if (entry.type === "message") {
-					this.#ctx.session.agent.replaceMessages([...this.#ctx.session.messages, entry.message]);
+					this.#ctx.session.agent.replaceMessages(this.#ctx.session.messages.concat([entry.message]));
 				}
 				break;
 			}
@@ -689,7 +692,7 @@ export class CollabGuestLink {
 	 */
 	#clearUiRequests(): void {
 		if (this.#pendingUiRequests.size === 0) return;
-		const aborts = [...this.#pendingUiRequests.values()];
+		const aborts = Array.from(this.#pendingUiRequests.values());
 		this.#pendingUiRequests.clear();
 		for (const abort of aborts.reverse()) abort.abort();
 	}

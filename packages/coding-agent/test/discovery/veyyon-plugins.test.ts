@@ -16,16 +16,16 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getCapability } from "@veyyon/coding-agent/capability";
-import { clearCache } from "@veyyon/coding-agent/capability/fs";
-import { hookCapability } from "@veyyon/coding-agent/capability/hook";
-import { mcpCapability } from "@veyyon/coding-agent/capability/mcp";
-import { promptCapability } from "@veyyon/coding-agent/capability/prompt";
-import { ruleCapability } from "@veyyon/coding-agent/capability/rule";
-import { skillCapability } from "@veyyon/coding-agent/capability/skill";
-import { slashCommandCapability } from "@veyyon/coding-agent/capability/slash-command";
-import { toolCapability } from "@veyyon/coding-agent/capability/tool";
-import type { LoadContext, Provider } from "@veyyon/coding-agent/capability/types";
+import { getCapability } from "@veyyon/coding-agent/discovery/capability";
+import { clearCache } from "@veyyon/coding-agent/discovery/capability/fs";
+import { hookCapability } from "@veyyon/coding-agent/discovery/capability/hook";
+import { mcpCapability } from "@veyyon/coding-agent/discovery/capability/mcp";
+import { promptCapability } from "@veyyon/coding-agent/discovery/capability/prompt";
+import { ruleCapability } from "@veyyon/coding-agent/discovery/capability/rule";
+import { skillCapability } from "@veyyon/coding-agent/discovery/capability/skill";
+import { slashCommandCapability } from "@veyyon/coding-agent/discovery/capability/slash-command";
+import { toolCapability } from "@veyyon/coding-agent/discovery/capability/tool";
+import type { LoadContext, Provider } from "@veyyon/coding-agent/discovery/capability/types";
 // Register all discovery providers as a side effect.
 import "@veyyon/coding-agent/discovery";
 import {

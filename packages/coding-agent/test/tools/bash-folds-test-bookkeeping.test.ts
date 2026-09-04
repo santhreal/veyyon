@@ -16,8 +16,8 @@
 
 import { describe, expect, it } from "bun:test";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { BashTool } from "@veyyon/coding-agent/tools/bash";
-import { MIN_FOLDABLE_LINES } from "@veyyon/coding-agent/tools/output-fold";
+import { MIN_FOLDABLE_LINES } from "@veyyon/coding-agent/tools/core/output-fold";
+import { BashTool } from "@veyyon/coding-agent/tools/shell/bash";
 import { useIsolatedGlobalSettings } from "../helpers/isolated-global-settings";
 import { makeToolSession } from "../helpers/tool-session";
 

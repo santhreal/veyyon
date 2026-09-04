@@ -2,12 +2,47 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import * as url from "node:url";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
-import { visibleWidth } from "@veyyon/tui";
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { getThemeByName, type Theme } from "@veyyon/coding-agent/theme/theme";
+import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
+import type { SearchToolDetails, SearchToolInput } from "@veyyon/coding-agent/tools/search/search";
+import type { TextSearchDetails, TextSearchRenderArgs } from "@veyyon/coding-agent/tools/search/text-search";
+import type { Component } from "@veyyon/tui";
 import { sanitizeText } from "@veyyon/utils";
-import { searchToolRenderer } from "../../src/tools/search-renderer";
-import { textSearchRenderer } from "../../src/tools/text-search";
+import { visibleWidth } from "@veyyon/utils/width";
 import { expectNotAccented, useFullColor } from "../helpers/theme-assertions";
+
+/**
+ * The production `search` entry, which is the card a session draws. `search` is a view the terminal
+ * draws rather than a renderer module to import, so the suites below reach it through the registry.
+ */
+const searchToolRenderer = toolRenderers.search;
+
+/**
+ * The `text` branch of the production search renderer, which is the path a session draws: the card is
+ * a view the terminal draws rather than a renderer module to import, so the type-bearing arguments
+ * and the nested details are assembled here and every assertion below stays on the real bytes.
+ */
+const textSearchRenderer = {
+	renderCall: (args: TextSearchRenderArgs, options: RenderResultOptions, theme: Theme): Component =>
+		searchToolRenderer.renderCall({ ...args, type: "text" } as unknown as SearchToolInput, options, theme),
+	renderResult: (
+		result: { content: Array<{ type: string; text?: string }>; details?: TextSearchDetails; isError?: boolean },
+		options: RenderResultOptions,
+		theme: Theme,
+		args?: TextSearchRenderArgs,
+	): Component =>
+		searchToolRenderer.renderResult(
+			{
+				content: result.content,
+				details: { type: "text", result: result.details } as unknown as SearchToolDetails,
+				...(result.isError === undefined ? {} : { isError: result.isError }),
+			},
+			options,
+			theme,
+			args === undefined ? undefined : ({ ...args, type: "text" } as unknown as SearchToolInput),
+		),
+};
 
 function extractLinkUris(text: string): string[] {
 	return [...text.matchAll(/\x1b\]8;[^;]*;([^\x1b]+)\x1b\\/g)].map(match => match[1]!);
@@ -150,7 +185,9 @@ describe("textSearchRenderer and searchToolRenderer (text)", () => {
 			`${rail}    *2│const firstFlag = true;`,
 			`${rail}    ## second.ts#bbbb`,
 			`${rail}    *4│const secondFlag = true;`,
-			`${rail}  … 1 more match`,
+			// The card's held-back note is the host's: the same count, in the same dim, followed by the
+			// expand gesture every other card offers.
+			`${rail}  … 1 more match ▸ Ctrl+O expand`,
 		]);
 		// Kept as negatives: context lines and the budgeted-out third file must be
 		// absent from ANY line, which an equality check states only for this exact

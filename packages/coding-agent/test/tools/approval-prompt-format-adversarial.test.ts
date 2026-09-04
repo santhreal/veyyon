@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { formatApprovalPrompt, truncateForPrompt } from "@veyyon/coding-agent/tools/approval";
+import { formatApprovalPrompt, truncateForPrompt } from "@veyyon/coding-agent/tools/core/approval";
 
 /**
  * formatApprovalPrompt includes tool name and args summary; truncate elides long args.

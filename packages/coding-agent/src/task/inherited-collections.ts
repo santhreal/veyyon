@@ -80,7 +80,7 @@ export function inheritResolvedCollection<T>(args: InheritResolvedCollectionArgs
 		logger.debug("Subagent resolves its own layer: parent resolved zero items", { agent: agentName, kind });
 		return undefined;
 	}
-	return [...items];
+	return items.slice();
 }
 
 /**
@@ -146,9 +146,9 @@ export function resolveAutoloadSkills<T extends { name: string }>(
 	if (available === undefined) {
 		logger.debug("Subagent resolves its own autoloadSkills: spawner holds no authoritative skill set", {
 			agent: agentName,
-			requested: [...requested],
+			requested: requested.slice(),
 		});
-		return { kind: "deferred", names: [...requested] };
+		return { kind: "deferred", names: requested.slice() };
 	}
 	return { kind: "resolved", skills: matchAutoloadSkills(requested, available, agentName) };
 }

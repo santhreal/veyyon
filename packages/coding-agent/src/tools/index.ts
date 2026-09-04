@@ -7,50 +7,52 @@ import type {
 } from "@veyyon/agent-core";
 import type { FetchImpl, ImageContent, Model, ServiceTierByFamily, ToolChoice } from "@veyyon/ai";
 import type { InMemorySnapshotStore } from "@veyyon/hashline";
+import type { ToolDomainManifest } from "@veyyon/kernel/registry/tool-domain";
+import type { ArtifactManager } from "@veyyon/kernel/session/artifacts";
+import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import type { ClientBridge } from "@veyyon/kernel/session/client-bridge";
+import type { SubagentSpawnRecord, UsageStatistics } from "@veyyon/kernel/session/session-entries";
+import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
+import type { ToolChoiceQueue } from "@veyyon/kernel/session/tool-choice-queue";
 import { logger } from "@veyyon/utils";
-import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL } from "argot/constants";
+import type { HostNotifier } from "@veyyon/utils/host-notification";
 import type { ArgotSession } from "argot/session";
 import type { AsyncJobManager } from "../async/job-manager";
-import type { ContextFile } from "../capability/context-file";
-import type { Rule } from "../capability/rule";
 import type { ModelRegistry } from "../config/model-registry";
 import type { PromptTemplate } from "../config/prompt-templates";
 import type { Settings } from "../config/settings";
+import type { ContextFile } from "../discovery/capability/context-file";
+import type { Rule } from "../discovery/capability/rule";
+import { resolveEffectiveToolDiscoveryMode } from "../discovery/mode";
+import type { DiscoverableTool, DiscoverableToolSearchIndex, DiscoverableToolSource } from "../discovery/tool-index";
 import type { NoopLoopGuard } from "../edit/hashline/noop-loop-guard";
 import type { ToolPathWithSource } from "../extensibility/custom-tools";
 import type { Skill } from "../extensibility/skills";
 import type { GoalModeState, GoalRuntime } from "../goals";
-import type { HindsightSessionState } from "../hindsight/state";
 import type { LocalProtocolOptions } from "../internal-urls";
 import type { DiagnosticsLedger } from "../lsp/diagnostics-ledger";
 import type { MCPManager } from "../mcp";
-import type { MnemopiSessionState } from "../mnemopi/state";
+import type { HindsightSessionState } from "../memory/hindsight/state";
+import type { MnemopiSessionState } from "../memory/mnemopi/state";
 import type { PlanModeState } from "../plan-mode/state";
 import type { AgentRegistry } from "../registry/agent-registry";
-import type { ArtifactManager } from "../session/artifacts";
-import type { AuthStorage } from "../session/auth-storage";
-import type { ClientBridge } from "../session/client-bridge";
 import type { CustomMessage } from "../session/messages";
-import type { SubagentSpawnRecord, UsageStatistics } from "../session/session-entries";
-import type { SideCompleteImpl } from "../session/side-complete";
-import type { ToolChoiceQueue } from "../session/tool-choice-queue";
 import type { AgentOutputManager } from "../task/output-manager";
 import { delegationEnabled, resolveSessionMaxNestedSpawnDepth } from "../task/subagent-settings";
 import { canSpawnAtDepth } from "../task/types";
 import type { ConfiguredThinkingLevel } from "../thinking";
-import { resolveEffectiveToolDiscoveryMode } from "../tool-discovery/mode";
-import type {
-	DiscoverableTool,
-	DiscoverableToolSearchIndex,
-	DiscoverableToolSource,
-} from "../tool-discovery/tool-index";
 import type { EventBus } from "../utils/event-bus";
 import type { WorkspaceTree } from "../workspace-tree";
-import { type BuiltinToolName, type HiddenToolName, normalizeToolNames, TOOL } from "./builtin-names";
-import type { CheckpointState, CompletedRewindState } from "./checkpoint";
-import type { ConflictHistory } from "./conflict-detect";
-import { resolveEvalBackends } from "./eval-backends";
-import { isIrcEnabled } from "./irc-enabled";
+import { isIrcEnabled } from "./agent/irc-enabled";
+import { agentDomain } from "./agent/manifest";
+import type { TodoPhase } from "./agent/todo";
+import {
+	BUILTIN_TOOL_NAMES,
+	type BuiltinToolName,
+	type HiddenToolName,
+	normalizeToolNames,
+	TOOL,
+} from "./core/builtin-names";
 import {
 	augmentRequestedToolNames,
 	type BuiltinToolPermissionInputs,
@@ -60,25 +62,31 @@ import {
 	resolveEvalToolAvailability,
 	selectBaseToolNames,
 	withYieldToolAppended,
-} from "./loading";
-import { wrapToolWithMetaNotice } from "./output-meta";
-import { RerootDetector, wrapToolWithRerootHint } from "./reroot-hint";
-import type { TodoPhase } from "./todo";
+} from "./core/loading";
+import { wrapToolWithMetaNotice } from "./core/output-meta";
+import type { CheckpointState, CompletedRewindState } from "./fs/checkpoint";
+import type { ConflictHistory } from "./fs/conflict-detect";
+import { fsDomain } from "./fs/manifest";
+import { RerootDetector, wrapToolWithRerootHint } from "./fs/reroot-hint";
+import { searchDomain } from "./search/manifest";
+import { resolveEvalBackends } from "./shell/eval-backends";
+import { shellDomain } from "./shell/manifest";
+import { webDomain } from "./web/manifest";
 
 // Builtin implementation modules remain lazy so the CLI boot path does not
 // parse tools this session never activates.
 export type { LspStartupServerInfo } from "../lsp";
-export type { BashToolDetails, BashToolInput } from "./bash";
 // Tool-loading rules now live in `./loading`. Re-exported here because `@veyyon/coding-agent/tools`
 // is the documented import path for them and the SDK plus several suites use it.
 export {
 	type BuiltinToolLoadMode,
 	DEFAULT_ESSENTIAL_TOOL_NAMES,
 	filterInitialToolsForDiscoveryAll,
-} from "./loading";
-export type { ReadToolDetails, ReadToolInput } from "./read";
-export type { SearchToolDetails, SearchToolInput } from "./search";
-export type { WriteToolInput } from "./write";
+} from "./core/loading";
+export type { ReadToolDetails, ReadToolInput } from "./fs/read";
+export type { WriteToolInput } from "./fs/write";
+export type { SearchToolDetails, SearchToolInput } from "./search/search";
+export type { BashToolDetails, BashToolInput } from "./shell/bash";
 
 /** Tool type (AgentTool from pi-ai) */
 export type Tool = AgentTool<any, any, any>;
@@ -109,7 +117,7 @@ export type {
 	DiscoverableToolSearchIndex,
 	DiscoverableToolSearchResult,
 	DiscoverableToolSource,
-} from "../tool-discovery/tool-index";
+} from "../discovery/tool-index";
 
 /**
  * A late LSP diagnostics result that arrived after the edit/write tool already
@@ -156,6 +164,12 @@ export interface ToolSession {
 	 * concurrency bracket, so a fan-out of labels cannot outrun them.
 	 */
 	sideComplete?: SideCompleteImpl;
+	/**
+	 * Deliver an out-of-band notification to the operator, when a host installed
+	 * one. Absent means nothing on this host can reach an operator who is looking
+	 * elsewhere, so a caller skips the work rather than calling into a no-op.
+	 */
+	notify?: HostNotifier;
 	/** Whether UI is available */
 	hasUI: boolean;
 	/** Effective concrete effort currently applied to the parent session. */
@@ -468,7 +482,7 @@ export type ToolFactory = (session: ToolSession) => Tool | null | Promise<Tool |
  *
  * Settings adapter for {@link resolveEssentialToolNames}; the rule lives in `./loading/policy`
  * with the rest of the tool-loading decisions. Kept at this name and signature because the SDK
- * and `test/tool-discovery/initial-tools.test.ts` both call it.
+ * and `test/discovery/initial-tools.test.ts` both call it.
  */
 export function computeEssentialBuiltinNames(settings: Settings): string[] {
 	return resolveEssentialToolNames({
@@ -478,63 +492,70 @@ export function computeEssentialBuiltinNames(settings: Settings): string[] {
 }
 
 /**
+ * Every tool domain this package ships, in the order their rows enter {@link BUILTIN_TOOLS}.
+ *
+ * A host that wants one subject reads the manifest it wants instead of the union: the keys are
+ * readable without constructing a tool, and each factory pulls its implementation in on first use.
+ * The terminal takes the union below because it advertises every tool it is allowed to.
+ */
+export const BUILTIN_TOOL_DOMAINS: readonly ToolDomainManifest<ToolFactory>[] = [
+	fsDomain,
+	searchDomain,
+	shellDomain,
+	webDomain,
+	agentDomain,
+];
+
+/**
+ * Every domain's rows, plus the four whose implementation lives outside `tools/`.
+ *
+ * Typed rather than cast, so the completeness check the hand-written literal used to carry is
+ * still here: a name added to `BuiltinToolName` with no domain claiming it fails on this
+ * annotation, and a domain claiming a name that is not one fails in its own manifest.
+ */
+const DOMAIN_TOOL_FACTORIES: Record<BuiltinToolName, ToolFactory> = {
+	...fsDomain.tools,
+	...searchDomain.tools,
+	...shellDomain.tools,
+	...webDomain.tools,
+	...agentDomain.tools,
+	// The four whose implementation is not a tool directory: the edit tool is the hashline
+	// executor, `lsp` and `task` are subsystems of their own, and `web_search` is the provider
+	// search client under `./web/search`.
+	edit: async s => new (await import("../edit")).EditTool(s),
+	lsp: async s => (await import("../lsp")).LspTool.createIf(s),
+	task: async s => (await import("../task")).TaskTool.create(s),
+	web_search: async s => new (await import("./web/search")).WebSearchTool(s),
+};
+
+/**
  * Public callable factory map. External callers may invoke `BUILTIN_TOOLS.read(session)` or
  * `BUILTIN_TOOLS[name](session)` to construct a tool directly.
+ *
+ * The rows come from the domain manifests rather than being listed here. This map WAS the list, and
+ * it was the one place a tool's own directory could not answer for itself: `tools/fs` could be read
+ * end to end without learning that it contributes `read`, and a host that wanted the filesystem
+ * tools and nothing else had to import a table naming all thirty-three. Each domain now declares its
+ * own manifest next to the tools it constructs, {@link BUILTIN_TOOL_DOMAINS} is the list of them,
+ * and {@link DOMAIN_TOOL_FACTORIES} is their union.
+ *
+ * KEYED IN DECLARATION ORDER, which is `BUILTIN_TOOL_NAMES` and not the order the domains happen to
+ * be spread in. `createTools` offers the tools in this map's key order, so key order is prompt order
+ * and prompt order is prompt-cache identity: assembling the union by domain reshuffled seven names
+ * and invalidated every cached prefix while changing nothing about which tools a session has.
+ * `test/tools/tool-loading-differential.test.ts` holds the captured order this reproduces.
  */
-export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
-	read: async s => new (await import("./read")).ReadTool(s),
-	bash: async s => new (await import("./bash")).BashTool(s),
-	launch: async s => new (await import("./launch")).LaunchTool(s),
-	edit: async s => new (await import("../edit")).EditTool(s),
-	search: async s => new (await import("./search")).SearchTool(s),
-	ast_edit: async s => new (await import("./ast-edit")).AstEditTool(s),
-	ask: async s => (await import("./ask")).AskTool.createIf(s),
-	debug: async s => (await import("./debug")).DebugTool.createIf(s),
-	eval: async s => (await import("./eval")).EvalTool.create(s),
-	ssh: async s => (await import("./ssh")).loadSshTool(s),
-	github: async s => (await import("./gh")).GithubTool.createIf(s),
-	lsp: async s => (await import("../lsp")).LspTool.createIf(s),
-	inspect_image: async s => new (await import("./inspect-image")).InspectImageTool(s),
-	browser: async s => new (await import("./browser")).BrowserTool(s),
-	checkpoint: async s => (await import("./checkpoint")).CheckpointTool.createIf(s),
-	rewind: async s => (await import("./checkpoint")).RewindTool.createIf(s),
-	task: async s => (await import("../task")).TaskTool.create(s),
-	job: async s => new (await import("./job")).JobTool(s),
-	irc: async s => (await import("./irc")).IrcTool.createIf(s),
-	todo: async s => new (await import("./todo")).TodoTool(s),
-	web_search: async s => new (await import("../web/search")).WebSearchTool(s),
-	search_tool_bm25: async s => (await import("./search-tool-bm25")).SearchToolBm25Tool.createIf(s),
-	set_cwd: async s => new (await import("./set-cwd")).SetCwdTool(s),
-	write: async s => new (await import("./write")).WriteTool(s),
-	memory_edit: async s => (await import("./memory-edit")).MemoryEditTool.createIf(s),
-	retain: async s => (await import("./memory-retain")).MemoryRetainTool.createIf(s),
-	recall: async s => (await import("./memory-recall")).MemoryRecallTool.createIf(s),
-	reflect: async s => (await import("./memory-reflect")).MemoryReflectTool.createIf(s),
-	learn: async s => (await import("./learn")).LearnTool.createIf(s),
-	manage_skill: async s => (await import("./manage-skill")).ManageSkillTool.createIf(s),
-	// The two Argot folder tools exist only when the session holds a codec; with
-	// the feature off, or for a subagent under `argot.subagents: off`, there is no
-	// session to load into, so the factory returns null and the tool is absent.
-	[ARGOT_LOAD_TOOL]: async s =>
-		s.settings.get("argot.enabled") && s.getArgotSession?.() !== undefined
-			? new (await import("./argot")).ArgotLoadTool(s)
-			: null,
-	[ARGOT_UNLOAD_TOOL]: async s =>
-		s.settings.get("argot.enabled") && s.getArgotSession?.() !== undefined
-			? new (await import("./argot")).ArgotUnloadTool(s)
-			: null,
-};
+export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = Object.fromEntries(
+	BUILTIN_TOOL_NAMES.map(name => [name, DOMAIN_TOOL_FACTORIES[name]] as const),
+) as Record<BuiltinToolName, ToolFactory>;
 
 // Keyed by `HiddenToolName` rather than `string` for the same reason `BUILTIN_TOOLS` is keyed by
 // `BuiltinToolName`: the registry is a declaration site, so the key set is what the compiler checks
 // a rename against. Typed as `string` it accepted any key, and a hidden tool renamed in one place
 // stayed registered under the old name with nothing to say so.
 export const HIDDEN_TOOLS: Record<HiddenToolName, ToolFactory> = {
-	yield: async s => new (await import("./yield")).YieldTool(s),
-	report_finding: async () => (await import("./review")).reportFindingTool,
-	report_tool_issue: async s => (await import("./report-tool-issue")).createReportToolIssueTool(s),
-	resolve: async s => new (await import("./resolve")).ResolveTool(s),
-	goal: async s => new (await import("../goals/tools/goal-tool")).GoalTool(s),
+	...agentDomain.hidden,
+	goal: async s => new (await import("../goals/goal-tool")).GoalTool(s),
 };
 
 export type ToolName = BuiltinToolName;
@@ -705,7 +726,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 
 	// Auto-inject report_tool_issue when autoqa is enabled (env or setting).
 	// Injected unconditionally into every agent, regardless of requested tool list.
-	const { createReportToolIssueTool, isAutoQaEnabled } = await import("./report-tool-issue");
+	const { createReportToolIssueTool, isAutoQaEnabled } = await import("./agent/report-tool-issue");
 	const autoQA = isAutoQaEnabled(session.settings);
 	if (autoQA && !tools.some(t => t.name === TOOL.report_tool_issue)) {
 		// Build the enum from tools we just constructed via BUILTIN_TOOLS / HIDDEN_TOOLS.

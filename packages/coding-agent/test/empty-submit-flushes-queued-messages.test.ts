@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "bun:test";
 import type { ImageContent } from "@veyyon/ai";
-import { InputController } from "@veyyon/coding-agent/modes/controllers/input-controller";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { InputController } from "@veyyon/coding-agent/modes/terminal/controllers/input-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { USER_INTERRUPT_LABEL } from "@veyyon/coding-agent/session/messages";
 
 function createContext(options?: {

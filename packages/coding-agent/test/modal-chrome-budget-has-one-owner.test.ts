@@ -44,11 +44,11 @@ import {
 	planModalChrome,
 	renderModalShell,
 	sizingForArea,
-} from "@veyyon/coding-agent/modes/components/modal-shell";
-import { ModelHubComponent } from "@veyyon/coding-agent/modes/components/model-hub";
-import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/session-selector";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
-import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
+} from "@veyyon/coding-agent/modes/terminal/components/chrome/modal-shell";
+import { ModelHubComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/model-hub";
+import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/session-selector";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
+import type { SessionInfo } from "@veyyon/kernel/session/session-listing";
 import type { TUI } from "@veyyon/tui";
 
 const UP = "\x1b[A";
@@ -155,8 +155,8 @@ describe("no component restates the chrome arithmetic", () => {
 	 * that a correct number was computed the wrong way, and the number is correct
 	 * right up until someone changes `vPad` or `footerLines`.
 	 */
-	const componentsDir = path.join(import.meta.dir, "..", "src", "modes", "components");
-	const OWNER = path.join(componentsDir, "modal-shell.ts");
+	const componentsDir = path.join(import.meta.dir, "..", "src", "modes", "terminal", "components");
+	const OWNER = path.join(componentsDir, "chrome", "modal-shell.ts");
 
 	function sourceFiles(dir: string): string[] {
 		const out: string[] = [];
@@ -520,10 +520,10 @@ describe("ModelHub roles list windowing", () => {
 	/**
 	 * The rows the roles view draws, top to bottom, for {@link chainSettings}.
 	 *
-	 * Read from `SELECTABLE_MODEL_ROLE_IDS` rather than written out, because the table's membership
-	 * is a decision the source records: `advisor` owns a slot and is deliberately kept off this
-	 * screen, and a list typed out here claimed a row for it and failed against a hub that was
-	 * right. A role added or withdrawn now moves this list with the screen.
+	 * The role tags come from `SELECTABLE_MODEL_ROLE_IDS`, which is the list the view itself draws
+	 * from. A copy of the tags here went stale the moment `advisor` left the table — the window
+	 * cases then failed for a missing row rather than for a windowing defect, and a role ADDED to
+	 * the table would have gone unwindowed with every case still green.
 	 */
 	function chainRowLabels(): string[] {
 		const rows = SELECTABLE_MODEL_ROLE_IDS.map(role => {

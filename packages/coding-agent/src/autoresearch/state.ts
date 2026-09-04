@@ -1,4 +1,4 @@
-import type { SessionEntry } from "../session/session-entries";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { inferMetricUnitFromName, isBetter } from "./helpers";
 import type { RunRow, SessionRow } from "./storage";
 import type {
@@ -60,9 +60,9 @@ export function cloneExperimentState(state: ExperimentState): ExperimentState {
 		...state,
 		results: state.results.map(cloneResult),
 		secondaryMetrics: state.secondaryMetrics.map(metric => ({ ...metric })),
-		scopePaths: [...state.scopePaths],
-		offLimits: [...state.offLimits],
-		constraints: [...state.constraints],
+		scopePaths: state.scopePaths.slice(),
+		offLimits: state.offLimits.slice(),
+		constraints: state.constraints.slice(),
 	};
 }
 
@@ -71,8 +71,8 @@ function cloneResult(result: ExperimentResult): ExperimentResult {
 		...result,
 		metrics: { ...result.metrics },
 		asi: result.asi ? structuredClone(result.asi) : undefined,
-		modifiedPaths: [...result.modifiedPaths],
-		scopeDeviations: [...result.scopeDeviations],
+		modifiedPaths: result.modifiedPaths.slice(),
+		scopeDeviations: result.scopeDeviations.slice(),
 	};
 }
 
@@ -135,7 +135,7 @@ export function findBaselineSecondary(
 
 export function sortedMedian(values: number[]): number {
 	if (values.length === 0) return 0;
-	const sorted = [...values].sort((left, right) => left - right);
+	const sorted = values.slice().sort((left, right) => left - right);
 	const midpoint = Math.floor(sorted.length / 2);
 	if (sorted.length % 2 === 0) {
 		return (sorted[midpoint - 1] + sorted[midpoint]) / 2;
@@ -178,9 +178,9 @@ export function buildExperimentState(session: SessionRow, loggedRuns: RunRow[]):
 	state.metricName = session.primaryMetric;
 	state.metricUnit = session.metricUnit;
 	state.bestDirection = session.direction;
-	state.scopePaths = [...session.scopePaths];
-	state.offLimits = [...session.offLimits];
-	state.constraints = [...session.constraints];
+	state.scopePaths = session.scopePaths.slice();
+	state.offLimits = session.offLimits.slice();
+	state.constraints = session.constraints.slice();
 	state.notes = session.notes;
 	state.branch = session.branch;
 	state.baselineCommit = session.baselineCommit;
@@ -188,7 +188,12 @@ export function buildExperimentState(session: SessionRow, loggedRuns: RunRow[]):
 	state.maxExperiments = session.maxIterations;
 	state.breadth = session.breadth;
 	state.currentSegment = session.currentSegment;
-	state.secondaryMetrics = session.secondaryMetrics.map(name => ({ name, unit: inferMetricUnitFromName(name) }));
+	// Same exclusion as `registerSecondaryMetrics`, one step earlier: a session that
+	// declares its primary among `secondaryMetrics` gets the duplicate column from the
+	// declaration instead of from a run, and the filter has to cover both doors.
+	state.secondaryMetrics = session.secondaryMetrics
+		.filter(name => name !== state.metricName)
+		.map(name => ({ name, unit: inferMetricUnitFromName(name) }));
 
 	for (const run of loggedRuns) {
 		if (run.status === null) continue;
@@ -211,7 +216,7 @@ export function buildExperimentState(session: SessionRow, loggedRuns: RunRow[]):
 		};
 		state.results.push(result);
 		if (run.segment === state.currentSegment) {
-			registerSecondaryMetrics(state.secondaryMetrics, result.metrics);
+			registerSecondaryMetrics(state.secondaryMetrics, result.metrics, state.metricName);
 		}
 	}
 
@@ -254,8 +259,19 @@ export function createRuntimeStore(): RuntimeStore {
 	};
 }
 
-function registerSecondaryMetrics(metrics: MetricDef[], values: NumericMetricMap): void {
+/**
+ * Add every metric a run reported, except the primary one, to the secondary column set.
+ *
+ * THE PRIMARY IS EXCLUDED BECAUSE A RUN REPORTS IT TWICE. `log_experiment` writes the
+ * primary reading into `metrics` alongside the secondary ones, so a session whose primary
+ * is `ms` grew an `ms` secondary column: the dashboard table carried the same number in
+ * two adjacent columns under the same heading, and the summary line read
+ * `Secondary: cold_ms 509.40ms +0.3%  ms 318.70ms -22.8%`, where the second reading is the
+ * primary already printed one line above it.
+ */
+function registerSecondaryMetrics(metrics: MetricDef[], values: NumericMetricMap, primaryName: string): void {
 	for (const name of Object.keys(values)) {
+		if (name === primaryName) continue;
 		if (metrics.some(metric => metric.name === name)) continue;
 		metrics.push({
 			name,

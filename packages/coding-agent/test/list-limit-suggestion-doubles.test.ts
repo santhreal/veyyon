@@ -2,7 +2,7 @@
  * applyListLimit meta suggestion is 2× reached for result and head limits.
  */
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "../src/tools/list-limit";
+import { applyListLimit } from "../src/tools/core/list-limit";
 
 describe("applyListLimit suggestion doubles reached", () => {
 	it("resultLimit suggestion", () => {

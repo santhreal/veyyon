@@ -1,18 +1,20 @@
 import * as path from "node:path";
 import { createInterface } from "node:readline/promises";
 import { $env, errorMessage, getProjectDir, isEnoent, prompt } from "@veyyon/utils";
-import { applyChangelogProposals } from "../../commit/changelog";
-import { detectChangelogBoundaries } from "../../commit/changelog/detect";
-import { parseUnreleasedSection } from "../../commit/changelog/parse";
-import { formatCommitMessage } from "../../commit/message";
-import { resolvePrimaryModel, resolveSmolModel } from "../../commit/model-selection";
-import type { CommitCommandArgs, ConventionalAnalysis, NumstatEntry } from "../../commit/types";
 import { ModelRegistry } from "../../config/model-registry";
 import { Settings } from "../../config/settings";
 import { commitAgenticPrompts } from "../../prompts/commit-agentic/rows";
-import { discoverAuthStorage, discoverContextFiles } from "../../sdk";
+import { discoverAuthStorage } from "../../sdk";
+import { discoverContextFiles } from "../../session/factory-extensions";
 import * as git from "../../utils/git";
+import { applyChangelogProposals } from "../changelog";
+import { detectChangelogBoundaries } from "../changelog/detect";
+import { parseUnreleasedSection } from "../changelog/parse";
+import { formatCommitMessage } from "../message";
+import { resolvePrimaryModel, resolveSmolModel } from "../model-selection";
+import type { CommitCommandArgs, ConventionalAnalysis, NumstatEntry } from "../types";
 import { type ExistingChangelogEntries, runCommitAgentSession } from "./agent";
+import { createCommitConsoleReporter } from "./agent-render";
 import { generateFallbackProposal } from "./fallback";
 import { assignLockFilesToPlan } from "./lock-files";
 import type { CommitAgentState, CommitProposal, HunkSelector, SplitCommitPlan } from "./state";
@@ -145,6 +147,7 @@ export async function runAgenticCommit(args: CommitCommandArgs): Promise<void> {
 			requireChangelog: !args.noChangelog && changelogTargets.length > 0,
 			diffText: diff,
 			existingChangelogEntries,
+			reporter: createCommitConsoleReporter(),
 			onComplete: async commitState => {
 				agentSessionCompleted = true;
 				await completeAgentCommitState(commitState, {

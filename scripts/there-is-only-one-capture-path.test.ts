@@ -41,7 +41,7 @@ const REPO_ROOT = path.join(import.meta.dirname, "..");
  * `no-attribution-in-the-tree.test.ts` does.
  */
 const ALLOWED_TO_NAME_IT = [
-	"packages/coding-agent/src/modes/data/emojis.json",
+	"packages/coding-agent/src/modes/terminal/data/emojis.json",
 	"scripts/there-is-only-one-capture-path.test.ts",
 ];
 

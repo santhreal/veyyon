@@ -30,7 +30,7 @@ import { describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
+import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { buildSystemPrompt } from "@veyyon/coding-agent/system-prompt";
 
 const EMPTY_TREE = {

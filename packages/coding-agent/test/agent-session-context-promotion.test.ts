@@ -5,10 +5,11 @@ import * as compactionModule from "@veyyon/agent-core/compaction";
 import type { AssistantMessage, Model, ProviderSessionState } from "@veyyon/ai";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
-import { TRUNCATION_MIN_TEXT_TOKENS } from "@veyyon/coding-agent/session/compaction-policy";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { TRUNCATION_MIN_TEXT_TOKENS } from "@veyyon/kernel/session/agent-session-compaction-policy";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 describe("AgentSession context promotion", () => {
@@ -543,6 +544,12 @@ describe("AgentSession context promotion", () => {
 			"contextPromotion.enabled": false,
 		});
 		const compactSpy = vi.spyOn(compactionModule, "compact");
+		// Isolate the candidate set to the model this case is about. Compaction walks every
+		// available model, and a sibling with a larger window would reach `compact()` — which this
+		// suite does not mock — and hang the cell on a provider call. The cannot-fit refusal is a
+		// skip of THIS window, not a network error from a bigger one.
+		vi.spyOn(modelRegistry, "getAvailable").mockReturnValue([model]);
+		compactSpy.mockRejectedValue(new Error("compact must not be reached: the summary cannot fit this model"));
 
 		const agent = new Agent({
 			initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] },
@@ -591,8 +598,9 @@ describe("AgentSession context promotion", () => {
 		// And the refusal the user has to read is still the last thing in context.
 		// The rollback runs after the event, so wait for it rather than racing it.
 		await waitFor(() => session.messages.at(-1)?.role === "assistant");
-		expect(session.messages.at(-1)?.role).toBe("assistant");
-		expect((session.messages.at(-1) as AssistantMessage).stopReason).toBe("error");
+		const last = session.messages.at(-1);
+		expect(last?.role).toBe("assistant");
+		expect(last && last.role === "assistant" ? last.stopReason : undefined).toBe("error");
 	});
 
 	it("promotes to a larger-context model on response.incomplete (length stop)", async () => {

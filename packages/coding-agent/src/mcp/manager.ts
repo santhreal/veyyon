@@ -10,13 +10,13 @@ import type { TSchema } from "@veyyon/ai";
 // The owner, not the barrel: classifying an OAuth failure is a string test that
 // belongs to the flag it decides, and `error/flags.ts` is where that flag lives.
 import { isDefinitiveOAuthFailure } from "@veyyon/ai/error/flags";
+import { type AuthStorage, REMOTE_REFRESH_SENTINEL } from "@veyyon/kernel/session/auth-storage";
 import { errorMessage, logger } from "@veyyon/utils";
-import { FOREIGN_PROVIDER_IDS } from "../capability/index";
-import type { SourceMeta } from "../capability/types";
 import { describeConfigEnvReference } from "../config/config-value-resolution";
 import { invalidateConfigValue, resolveConfigValue } from "../config/resolve-config-value";
+import { FOREIGN_PROVIDER_IDS } from "../discovery/capability";
+import type { SourceMeta } from "../discovery/capability/types";
 import type { CustomTool } from "../extensibility/custom-tools/types";
-import { type AuthStorage, REMOTE_REFRESH_SENTINEL } from "../session/auth-storage";
 import {
 	classifyMcpAuthFailure,
 	MCPAuthRequiredError,
@@ -49,23 +49,22 @@ import {
 } from "./oauth-credentials";
 import { type MCPStoredOAuthCredential, refreshMCPOAuthToken } from "./oauth-flow";
 import { MCP_CONFIG_STATUS_LABEL, type McpConnectionStatusEvent } from "./startup-events";
-import type { MCPToolDetails } from "./tool-bridge";
-import { DeferredMCPTool, MCPTool, mcpToolNamePrefix } from "./tool-bridge";
+import { DeferredMCPTool, MCPTool, type MCPToolDetails, mcpToolNamePrefix } from "./tool-bridge";
 import type { MCPToolCache } from "./tool-cache";
 import { describeMCPServerTarget } from "./transports/transport-failure";
-import type {
-	MCPGetPromptResult,
-	MCPPrompt,
-	MCPRequestOptions,
-	MCPResource,
-	MCPResourceReadResult,
-	MCPResourceTemplate,
-	MCPServerConfig,
-	MCPServerConnection,
-	MCPToolDefinition,
-	MCPTransport,
+import {
+	type MCPGetPromptResult,
+	MCPNotificationMethods,
+	type MCPPrompt,
+	type MCPRequestOptions,
+	type MCPResource,
+	type MCPResourceReadResult,
+	type MCPResourceTemplate,
+	type MCPServerConfig,
+	type MCPServerConnection,
+	type MCPToolDefinition,
+	type MCPTransport,
 } from "./types";
-import { MCPNotificationMethods } from "./types";
 
 type ToolLoadResult = {
 	connection: MCPServerConnection;
@@ -629,7 +628,8 @@ export class MCPManager {
 					const { connection, serverTools } = value;
 					connectedServers.add(name);
 					const reconnect = () => this.reconnectServer(name);
-					allTools.push(...MCPTool.fromTools(connection, serverTools, reconnect));
+					const mcpTools = MCPTool.fromTools(connection, serverTools, reconnect);
+					for (let ti = 0; ti < mcpTools.length; ti++) allTools.push(mcpTools[ti]!);
 				} else if (task.tracked.status === "rejected") {
 					const message = errorMessage(task.tracked.reason);
 					errors.set(name, message);
@@ -639,9 +639,14 @@ export class MCPManager {
 					if (cached) {
 						const source = this.#sources.get(name);
 						const reconnect = () => this.reconnectServer(name);
-						allTools.push(
-							...DeferredMCPTool.fromTools(name, cached, () => this.waitForConnection(name), source, reconnect),
+						const deferred = DeferredMCPTool.fromTools(
+							name,
+							cached,
+							() => this.waitForConnection(name),
+							source,
+							reconnect,
 						);
+						for (let ti = 0; ti < deferred.length; ti++) allTools.push(deferred[ti]!);
 					}
 				}
 			}
@@ -669,7 +674,7 @@ export class MCPManager {
 		// copy on every reconnect. See `mcpToolNamePrefix`.
 		const prefix = mcpToolNamePrefix(name);
 		this.#tools = this.#tools.filter(t => !t.name.startsWith(prefix));
-		this.#tools.push(...tools);
+		for (let ti = 0; ti < tools.length; ti++) this.#tools.push(tools[ti]!);
 		// Stable sort by name so reconnect order does not perturb the array.
 		// See `sortMCPToolsByName` for the cache-stability rationale.
 		sortMCPToolsByName(this.#tools);
@@ -847,9 +852,10 @@ export class MCPManager {
 	 * Get all known server names (connected, connecting, or discovered).
 	 */
 	getAllServerNames(): string[] {
-		return Array.from(
-			new Set([...this.#sources.keys(), ...this.#connections.keys(), ...this.#pendingConnections.keys()]),
-		);
+		const names = new Set<string>(this.#sources.keys());
+		for (const name of this.#connections.keys()) names.add(name);
+		for (const name of this.#pendingConnections.keys()) names.add(name);
+		return Array.from(names);
 	}
 
 	/**
@@ -969,7 +975,7 @@ export class MCPManager {
 	invalidateCommandCredentials(name?: string): number {
 		const configs =
 			name === undefined
-				? [...this.#serverConfigs.values()]
+				? Array.from(this.#serverConfigs.values())
 				: [this.#connections.get(name)?.config ?? this.#serverConfigs.get(name)].filter(
 						(config): config is MCPServerConfig => config !== undefined,
 					);
@@ -1240,7 +1246,7 @@ export class MCPManager {
 
 				// Unsubscribe URIs that were removed
 				if (oldUris) {
-					const removed = [...oldUris].filter(uri => !newUris.has(uri));
+					const removed = Array.from(oldUris).filter(uri => !newUris.has(uri));
 					if (removed.length > 0) {
 						try {
 							await unsubscribeFromResources(connection, removed);
@@ -1252,7 +1258,7 @@ export class MCPManager {
 
 				// Subscribe to the current set and update tracking atomically
 				try {
-					const allUris = [...newUris];
+					const allUris = Array.from(newUris);
 					await subscribeToResources(connection, allUris);
 					const action = resolveSubscriptionPostAction(
 						this.#notificationsEnabled,

@@ -3,9 +3,9 @@ import { buildModel } from "@veyyon/catalog/build";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { DEFAULT_MODEL_SLOT } from "@veyyon/coding-agent/config/model-roles";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { SelectorController } from "@veyyon/coding-agent/modes/terminal/controllers/selector-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 

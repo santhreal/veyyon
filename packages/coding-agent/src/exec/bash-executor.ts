@@ -9,8 +9,8 @@ import { isExecutable, type ShellConfig } from "@veyyon/utils/procmgr";
 import { Settings, type ShellMinimizerSettings } from "../config/settings";
 import { sessionCpuLimit } from "../session/cpu-limit";
 import { OutputSink } from "../session/streaming-output";
-import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../tools/output-meta";
-import { TOOL_TIMEOUTS } from "../tools/tool-timeouts";
+import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../tools/core/output-meta";
+import { TOOL_TIMEOUTS } from "../tools/core/tool-timeouts";
 import { getOrCreateSnapshot } from "../utils/shell-snapshot";
 import { buildNonInteractiveEnv } from "./non-interactive-env";
 
@@ -202,7 +202,7 @@ function ensureInteractiveShellArgs(shell: string, args: string[]): string[] {
 
 	const commandIndex = args.findIndex(arg => arg === "-c" || arg === "--command");
 	if (commandIndex !== -1) {
-		return [...args.slice(0, commandIndex), "-i", ...args.slice(commandIndex)];
+		return args.slice(0, commandIndex).concat("-i", args.slice(commandIndex));
 	}
 
 	const compactCommandIndex = args.findIndex(arg => /^-[^-]*c[^-]*$/.test(arg));
@@ -210,7 +210,7 @@ function ensureInteractiveShellArgs(shell: string, args: string[]): string[] {
 		return args.map((arg, index) => (index === compactCommandIndex ? arg.replace("c", "ic") : arg));
 	}
 
-	return [...args, "-i"];
+	return args.concat("-i");
 }
 
 function quoteShellArg(value: string): string {

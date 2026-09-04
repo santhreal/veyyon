@@ -28,8 +28,8 @@ import * as path from "node:path";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
-import { type OperatorNotice, OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { type OperatorNotice, OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import { faultSinkCount, removeSyncWithRetries, reportFault, Snowflake } from "@veyyon/utils";
 
 describe("the fault sink follows the session that installed it", () => {

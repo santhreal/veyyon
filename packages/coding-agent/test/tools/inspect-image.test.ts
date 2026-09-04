@@ -6,13 +6,12 @@ import { AuthStorage, type completeSimple, type ImageContent, type Model } from 
 import { buildModel } from "@veyyon/catalog/build";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { InspectImageTool } from "@veyyon/coding-agent/tools/inspect-image";
-import { inspectImageToolRenderer } from "@veyyon/coding-agent/tools/inspect-image-renderer";
+import { InspectImageTool } from "@veyyon/coding-agent/tools/fs/inspect-image";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import { removeSyncWithRetries, sanitizeText } from "@veyyon/utils";
 import { type } from "arktype";
@@ -332,9 +331,10 @@ describe("InspectImageTool", () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
 		const uiTheme = theme!;
-		expect(toolRenderers.inspect_image).toBeDefined();
+		const inspectImageRenderer = toolRenderers.inspect_image;
+		if (!inspectImageRenderer) throw new Error("inspect_image has no registry entry");
 
-		const callComponent = inspectImageToolRenderer.renderCall(
+		const callComponent = inspectImageRenderer.renderCall(
 			{ path: "/tmp/screenshot.png", question: "What error text is visible?" },
 			{ expanded: false, isPartial: false },
 			uiTheme,
@@ -344,7 +344,7 @@ describe("InspectImageTool", () => {
 		expect(callOutput).toContain("Question:");
 		expect(callOutput).toContain("What error text is visible?");
 
-		const resultComponent = inspectImageToolRenderer.renderResult(
+		const resultComponent = inspectImageRenderer.renderResult(
 			{
 				content: [{ type: "text", text: "line 1\nline 2\nline 3\nline 4\nline 5" }],
 				details: {
@@ -378,8 +378,10 @@ describe("InspectImageTool", () => {
 	it("counts more than one folded line in the plural", async () => {
 		const uiTheme = await getThemeByName("dark");
 		if (!uiTheme) throw new Error("dark theme missing");
+		const inspectImageRenderer = toolRenderers.inspect_image;
+		if (!inspectImageRenderer) throw new Error("inspect_image has no registry entry");
 
-		const resultComponent = inspectImageToolRenderer.renderResult(
+		const resultComponent = inspectImageRenderer.renderResult(
 			{
 				content: [{ type: "text", text: Array.from({ length: 9 }, (_, index) => `line ${index + 1}`).join("\n") }],
 				details: { model: "openai/gpt-4o", imagePath: "/tmp/screenshot.png", mimeType: "image/png" },

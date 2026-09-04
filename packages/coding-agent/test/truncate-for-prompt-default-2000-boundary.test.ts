@@ -2,7 +2,7 @@
  * truncateForPrompt default max 2000: exact boundary identity and +1 elide.
  */
 import { describe, expect, it } from "bun:test";
-import { truncateForPrompt } from "../src/tools/approval";
+import { truncateForPrompt } from "../src/tools/core/approval";
 
 describe("truncateForPrompt default 2000 boundary", () => {
 	it("1999 identity", () => {

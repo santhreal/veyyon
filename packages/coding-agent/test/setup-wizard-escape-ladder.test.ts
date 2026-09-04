@@ -24,20 +24,26 @@
 import { beforeAll, describe, expect, it, vi } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ImportCandidate } from "@veyyon/coding-agent/discovery/import-scan";
-import { AgentsSceneController, agentsSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/agents";
-import { approvalsSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/approvals";
-import { glyphSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/glyph";
-import { ImportSceneController, importSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/import";
-import { providersSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/providers";
-import { themeSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/theme";
+import {
+	AgentsSceneController,
+	agentsSetupScene,
+} from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/agents";
+import { approvalsSetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/approvals";
+import { glyphSetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/glyph";
+import {
+	ImportSceneController,
+	importSetupScene,
+} from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/import";
+import { providersSetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/providers";
+import { themeSetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/theme";
 import type {
 	SetupScene,
 	SetupSceneHost,
 	SetupWizardContext,
-} from "@veyyon/coding-agent/modes/setup-wizard/scenes/types";
-import { SetupWizardComponent } from "@veyyon/coding-agent/modes/setup-wizard/wizard-overlay";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/types";
+import { SetupWizardComponent } from "@veyyon/coding-agent/modes/terminal/setup-wizard/wizard-overlay";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { useTempHome } from "./helpers/temp-home";
 
 /**

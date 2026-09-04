@@ -13,13 +13,13 @@
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import type { StatusLineSettings } from "@veyyon/coding-agent/modes/components/status-line";
-import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { StatusLineSettings } from "@veyyon/coding-agent/modes/terminal/components/status-line/index";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { GitRefHead } from "@veyyon/coding-agent/utils/git";
 import * as git from "@veyyon/coding-agent/utils/git";
 import { getProjectDir, setProjectDir } from "@veyyon/utils";
+import { StatusLineComponent } from "../src/modes/terminal/components/status-line/component";
 import { makeStatusLineSession } from "./helpers/status-line-session";
 
 const originalProjectDir = getProjectDir();

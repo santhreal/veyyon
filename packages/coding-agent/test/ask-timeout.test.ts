@@ -2,9 +2,9 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import type { AgentToolContext, AgentToolResult } from "@veyyon/agent-core";
 import type { TUI } from "@veyyon/tui";
 import type { ExtensionUIDialogOptions, ExtensionUISelectItem } from "../src/extensibility/extensions";
-import { HookSelectorComponent } from "../src/modes/components/hook-selector";
-import { getThemeByName, setThemeInstance } from "../src/modes/theme/theme";
-import { AskTool, type AskToolDetails } from "../src/tools/ask";
+import { HookSelectorComponent } from "../src/modes/terminal/components/selectors/hook-selector";
+import { getThemeByName, setThemeInstance } from "../src/theme/theme";
+import { AskTool, type AskToolDetails } from "../src/tools/agent/ask";
 import { makeToolSession } from "./helpers/tool-session";
 
 type AskExecutionResult = AgentToolResult<AskToolDetails>;

@@ -3,7 +3,7 @@
  * strictly greater. Suggestion is always 2×.
  */
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "@veyyon/coding-agent/tools/list-limit";
+import { applyListLimit } from "@veyyon/coding-agent/tools/core/list-limit";
 
 describe("applyListLimit inclusive ceiling", () => {
 	for (const n of [1, 2, 5, 10, 100]) {

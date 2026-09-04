@@ -21,8 +21,8 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
-import { formatErrorDetail, formatErrorMessage, TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/render-utils";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
+import { formatErrorDetail, formatErrorMessage, TRUNCATE_LENGTHS } from "@veyyon/coding-agent/tools/core/render-utils";
 
 beforeAll(async () => {
 	await initTheme();

@@ -73,7 +73,7 @@ const VACUOUS_NEGATIVE = new RegExp(
 );
 
 /** A suite makes colour possible either through the helper or by hand. */
-const DECLARES = /\buseFullColor\s*\(|\bsetAnsiPolicy\s*\(\s*["'`]full/;
+const DECLARES = /\buseFullColor\s*\(|\bsetAnsiPolicy\s*\(\s*["'`]full|\buseDifferentialTheme\s*\(/;
 
 /** The sanctioned policy-independent spelling; a file using it is already correct. */
 const USES_HELPER = /\bexpectNotColored\s*\(/;
@@ -91,7 +91,7 @@ describe("vacuous colour-absence assertions", () => {
 		// identically to a clean tree. That is the same defect class the guard
 		// exists to catch, so the guard must not have it.
 		expect(files.length).toBeGreaterThan(400);
-		expect(files).toContain("modes/components/ask-dialog.test.ts");
+		expect(files).toContain("modes/terminal/components/ask-dialog.test.ts");
 		expect(files).toContain("ui/ansi-policy.test.ts");
 	});
 

@@ -21,8 +21,8 @@
  */
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { formatCount } from "@veyyon/utils/format";
-import * as capability from "../capability";
-import { type SSHHost, sshCapability } from "../capability/ssh";
+import * as capability from "../discovery/capability";
+import { type SSHHost, sshCapability } from "../discovery/capability/ssh";
 import type { SSHConnectionTarget } from "../ssh/connection-manager";
 import {
 	listRemoteDir,

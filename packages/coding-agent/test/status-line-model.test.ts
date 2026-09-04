@@ -1,9 +1,9 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
-import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/segments";
-import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
-import { NO_SESSION_FACTS } from "@veyyon/coding-agent/modes/components/status-line/session-facts";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
+import { NO_SESSION_FACTS } from "../src/modes/terminal/components/status-line/session-facts";
 
 beforeAll(async () => {
 	await initTheme();

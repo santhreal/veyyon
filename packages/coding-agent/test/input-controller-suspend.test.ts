@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, type Mock, vi } from "bun:test";
-import { InputController } from "@veyyon/coding-agent/modes/controllers/input-controller";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { InputController } from "@veyyon/coding-agent/modes/terminal/controllers/input-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 
 interface SuspendCtx {
 	ctx: InteractiveModeContext;

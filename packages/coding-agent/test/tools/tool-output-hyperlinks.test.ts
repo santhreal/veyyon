@@ -4,14 +4,22 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as url from "node:url";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { editToolRenderer } from "@veyyon/coding-agent/edit/renderer";
-import { getThemeByName, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { editToolView } from "@veyyon/coding-agent/edit/edit-view";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { ReadTool, readToolRenderer } from "@veyyon/coding-agent/tools/read";
-import { WriteTool, writeToolRenderer } from "@veyyon/coding-agent/tools/write";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
+import { readToolView } from "@veyyon/coding-agent/tools/fs/read-view";
+import { WriteTool } from "@veyyon/coding-agent/tools/fs/write";
+import { writeToolView } from "@veyyon/coding-agent/tools/fs/write-view";
+import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import { removeSyncWithRetries } from "@veyyon/utils";
-import { structureSearchRenderer } from "../../src/tools/structure-search";
-import { textSearchRenderer } from "../../src/tools/text-search";
+
+/**
+ * The production `search` entry, which is the card a session draws. `search` is a view the terminal
+ * draws rather than a renderer module to import, so the suites below reach it through the registry.
+ */
+const searchToolRenderer = toolRenderers.search;
 
 // 1x1 PNG so the read tool takes its image branch.
 const TINY_PNG_BASE64 =
@@ -60,22 +68,24 @@ describe("tool output OSC 8 file:// hyperlinks", () => {
 			const textRes = await tool.execute("t", { path: textPath });
 			const imgRes = await tool.execute("i", { path: imgPath });
 
-			const textRender = readToolRenderer
-				.renderResult(
+			const textRender = drawToolView(
+				readToolView.renderResult(
 					{ content: textRes.content, details: textRes.details, isError: textRes.isError },
-					{ expanded: false, isPartial: false },
-					theme,
+					{ expanded: false, partial: false },
 					{ path: textPath },
-				)
+				),
+				theme,
+			)
 				.render(200)
 				.join("\n");
-			const imgRender = readToolRenderer
-				.renderResult(
+			const imgRender = drawToolView(
+				readToolView.renderResult(
 					{ content: imgRes.content, details: imgRes.details, isError: imgRes.isError },
-					{ expanded: false, isPartial: false },
-					theme,
+					{ expanded: false, partial: false },
 					{ path: imgPath },
-				)
+				),
+				theme,
+			)
 				.render(200)
 				.join("\n");
 
@@ -94,13 +104,14 @@ describe("tool output OSC 8 file:// hyperlinks", () => {
 			const filePath = path.join(dir, "out.ts");
 			const tool = new WriteTool(createTestToolSession(dir));
 			const res = await tool.execute("w", { path: filePath, content: "export const x = 1;\n" });
-			const rendered = writeToolRenderer
-				.renderResult(
+			const rendered = drawToolView(
+				writeToolView.renderResult(
 					{ content: res.content, details: res.details, isError: res.isError },
-					{ expanded: false, isPartial: false },
-					theme,
+					{ expanded: false, partial: false },
 					{ path: filePath },
-				)
+				),
+				theme,
+			)
 				.render(200)
 				.join("\n");
 			expect(extractLinkUris(rendered)).toContain(url.pathToFileURL(path.resolve(filePath)).href);
@@ -129,8 +140,15 @@ describe("tool output OSC 8 file:// hyperlinks", () => {
 				displayContent: ["# src/", "## interactive-mode.ts#abcd", "*12│const needle = true;"].join("\n"),
 			},
 		};
-		const rendered = textSearchRenderer
-			.renderResult(result as never, { expanded: true, isPartial: false }, theme, { input: "needle" })
+		// Through the search renderer, since the text card is a view the terminal draws rather than a
+		// renderer module to import.
+		const rendered = searchToolRenderer
+			.renderResult(
+				{ content: result.content, details: { type: "text", result: result.details } } as never,
+				{ expanded: true, isPartial: false },
+				theme,
+				{ type: "text", input: "needle" } as never,
+			)
 			.render(240)
 			.join("\n");
 		const interactiveModeUri = url.pathToFileURL(path.resolve(interactiveModePath)).href;
@@ -161,8 +179,15 @@ describe("tool output OSC 8 file:// hyperlinks", () => {
 				displayContent: ["# src/", "## interactive-mode.ts", "  *12│const needle = true;"].join("\n"),
 			},
 		};
-		const rendered = structureSearchRenderer
-			.renderResult(result as never, { expanded: true, isPartial: false }, theme, { input: "needle" })
+		// Through the search renderer, since the structure card is a view the terminal draws rather than
+		// a renderer module to import.
+		const rendered = searchToolRenderer
+			.renderResult(
+				{ content: result.content, details: { type: "structure", result: result.details } } as never,
+				{ expanded: true, isPartial: false },
+				theme,
+				{ type: "structure", input: "needle" } as never,
+			)
 			.render(240)
 			.join("\n");
 		const interactiveModeUri = url.pathToFileURL(path.resolve(interactiveModePath)).href;
@@ -175,16 +200,17 @@ describe("tool output OSC 8 file:// hyperlinks", () => {
 		settings.override("tui.hyperlinks", "always");
 		const theme = (await getThemeByName("dark"))!;
 		const editPath = path.resolve("/tmp/veyyon-project/src/a.ts");
-		const rendered = editToolRenderer
-			.renderResult(
+		const rendered = drawToolView(
+			editToolView.renderResult(
 				{
 					content: [{ type: "text", text: "Updated src/a.ts" }],
 					details: { diff: "+1|// x", op: "update", path: editPath },
 				},
-				{ expanded: false, isPartial: false, renderContext: { editMode: "hashline" } },
-				theme,
-				{ path: "src/a.ts" },
-			)
+				{ expanded: false, partial: false },
+				{ path: "src/a.ts", editMode: "hashline" },
+			),
+			theme,
+		)
 			.render(200)
 			.join("\n");
 		const editUri = url.pathToFileURL(path.resolve(editPath)).href;

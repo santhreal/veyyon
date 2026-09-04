@@ -27,8 +27,8 @@ cargo-fuzz = true
 # shell core than the one that ships. Keep the two in sync; the paths are
 # relative to this file.
 [patch.crates-io]
-brush-core = { path = "../crates/vendor/brush-core" }
-brush-builtins = { path = "../crates/vendor/brush-builtins" }
+brush-core = { path = "../natives/vendor/brush-core" }
+brush-builtins = { path = "../natives/vendor/brush-builtins" }
 
 [dependencies]
 libfuzzer-sys = "0.4"
@@ -40,17 +40,17 @@ arbitrary = { version = "1", features = ["derive"] }
 # matcher is not testing the code that ships.
 ast-grep-core = { version = "0.39", default-features = false, features = ["tree-sitter"] }
 
-veyyon-ast = { path = "../crates/veyyon-ast" }
-veyyon-diff-kernel = { path = "../crates/veyyon-diff-kernel" }
-veyyon-glob = { path = "../crates/veyyon-glob" }
-veyyon-iso = { path = "../crates/veyyon-iso" }
-veyyon-keys = { path = "../crates/veyyon-keys" }
-veyyon-shell = { path = "../crates/veyyon-shell" }
-veyyon-text = { path = "../crates/veyyon-text" }
-veyyon-uu-diff = { path = "../crates/veyyon-uu-diff" }
-veyyon-uu-grep = { path = "../crates/veyyon-uu-grep" }
-veyyon-uutils-ctx = { path = "../crates/veyyon-uutils-ctx" }
-veyyon-walker = { path = "../crates/veyyon-walker" }
+veyyon-ast = { path = "../natives/code/ast" }
+veyyon-diff-kernel = { path = "../natives/diff/kernel" }
+veyyon-glob = { path = "../natives/search/glob" }
+veyyon-iso = { path = "../natives/fs/iso" }
+veyyon-keys = { path = "../natives/text/keys" }
+veyyon-shell = { path = "../natives/shell" }
+veyyon-text = { path = "../natives/text/measure" }
+veyyon-uu-diff = { path = "../natives/diff/uu-diff" }
+veyyon-uu-grep = { path = "../natives/search/uu-grep" }
+veyyon-uutils-ctx = { path = "../natives/fs/uutils-ctx" }
+veyyon-walker = { path = "../natives/search/walker" }
 
 # Fuzzers spend all their time in the code under test, so it is compiled
 # optimized. `debug = 1` keeps line tables, which is what turns a crash artifact

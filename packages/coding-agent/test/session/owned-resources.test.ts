@@ -25,7 +25,7 @@ import {
 	disposeOwnedResources,
 	registeredOwnedResourceDisposers,
 	registerOwnedResourceDisposer,
-} from "@veyyon/coding-agent/session/owned-resources";
+} from "@veyyon/kernel/session/owned-resources";
 
 /** Register under a test-only prefix so a real subsystem's entry is never replaced. */
 const PREFIX = "test-owned-resource:";
@@ -317,7 +317,7 @@ describe("the real subsystems", () => {
 		await import("@veyyon/coding-agent/eval/rb/executor");
 		await import("@veyyon/coding-agent/eval/jl/executor");
 		await import("@veyyon/coding-agent/eval/js/context-manager");
-		await import("@veyyon/coding-agent/tools/browser/tab-supervisor");
+		await import("@veyyon/coding-agent/tools/web/browser/tab-supervisor");
 
 		const registered = registeredOwnedResourceDisposers();
 

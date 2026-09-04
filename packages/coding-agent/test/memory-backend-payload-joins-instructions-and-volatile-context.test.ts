@@ -27,10 +27,10 @@
 
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { localBackend } from "@veyyon/coding-agent/memory-backend/local-backend";
-import { offBackend } from "@veyyon/coding-agent/memory-backend/off-backend";
-import { buildMemoryPayloadForDisplay } from "@veyyon/coding-agent/memory-backend/payload";
-import type { MemoryBackend } from "@veyyon/coding-agent/memory-backend/types";
+import { localBackend } from "@veyyon/coding-agent/memory/local-backend";
+import { offBackend } from "@veyyon/coding-agent/memory/off-backend";
+import { buildMemoryPayloadForDisplay } from "@veyyon/coding-agent/memory/payload";
+import type { MemoryBackend } from "@veyyon/coding-agent/memory/types";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { logger } from "@veyyon/utils";
 

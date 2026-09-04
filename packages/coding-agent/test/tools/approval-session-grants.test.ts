@@ -23,7 +23,7 @@ import { describe, expect, it } from "bun:test";
 import type { AgentTool } from "@veyyon/agent-core";
 import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
 import { APPROVAL_SELECT_OPTIONS, ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
-import type { SessionToolApprovals } from "@veyyon/coding-agent/tools/approval-modes";
+import type { SessionToolApprovals } from "@veyyon/coding-agent/tools/core/approval-modes";
 import { type } from "arktype";
 
 /** Text the tool returns when it actually runs, so "did it run" is observable. */

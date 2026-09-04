@@ -8,22 +8,25 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { getOpenRouterHeaders } from "@veyyon/ai";
 import { Glob } from "bun";
 // Relative: `loader-state.js` is a hand-authored shim with no export-map entry,
 // and giving it one to satisfy a test would widen the package's public surface.
-import { buildHelpMessage } from "../../natives/native/loader-state.js";
+import { buildHelpMessage } from "../../../natives/bridge/bindings/native/loader-state.js";
+import { MEMBERS } from "../../utils/test/support/package-sources";
 
 const ROOT = `${import.meta.dir}/../../..`;
 
 /** Runtime source trees the ban applies to (never test/, fixtures, docs). */
 const RUNTIME_SRC = [
 	"packages/ai/src",
-	"packages/tui/src",
+	"hosts/terminal/engine/src",
 	"packages/coding-agent/src",
-	"packages/wire/src",
+	"contracts/wire/src",
 	"packages/collab-web/src",
-	"packages/swarm-extension/src",
+	"plugins/mode-swarm/src",
 	"packages/utils/src",
 	"packages/catalog/src",
 	"packages/agent/src",
@@ -36,7 +39,7 @@ const RUNTIME_SRC = [
  * telling users to fetch veyyon's OWN `.node` assets from a fork's repo. Scanned
  * for upstream release/download infra below so that leak class can't come back.
  */
-const NATIVE_LOADER_SRC = ["packages/natives/native"] as const;
+const NATIVE_LOADER_SRC = ["natives/bridge/bindings/native"] as const;
 
 /**
  * A tree that matches nothing is a stale path, not a clean result. Two other scans in this file
@@ -110,7 +113,7 @@ describe("brand leak lock (SPEC-BRAND-LEAK-CODE)", () => {
 		const banned = /\bomp\.sh(?![a-zA-Z])/;
 		const allowed = new Set([
 			"packages/coding-agent/src/config/settings-domains/providers.ts",
-			"packages/wire/src/index.ts",
+			"contracts/wire/src/index.ts",
 		]);
 		const allow = (rel: string) => allowed.has(rel);
 		const hits = await scanRuntimeSrc(banned, allow);
@@ -157,19 +160,35 @@ describe("brand leak lock (SPEC-BRAND-LEAK-CODE)", () => {
 		// The published author identity of veyyon's OWN packages is `santhreal`. Two
 		// foreign names had leaked in: the upstream fork author `Can Boluk` across
 		// most manifests, and a zero-footprint placeholder `Derek Rynd` on
-		// @veyyon/swarm-extension. This scans every workspace package manifest so
+		// @veyyon/swarm-extension. This scans every workspace member manifest so
 		// neither — nor any other non-santhreal author — can reappear when a package
 		// is added or bumped.
-		const glob = new Glob("packages/*/package.json");
+		//
+		// The member list answers, not `packages/*/package.json`: a member declared under
+		// `kernel`, `contracts/`, `hosts/`, `plugins/` or `natives/` is published under the same
+		// name and was invisible to a glob rooted at one directory.
 		const offenders: Array<{ pkg: string; author: unknown }> = [];
-		let scanned = 0;
-		for await (const rel of glob.scan({ cwd: ROOT })) {
-			const manifest = (await Bun.file(`${ROOT}/${rel}`).json()) as { name?: string; author?: unknown };
-			if (typeof manifest.name !== "string" || !manifest.name.startsWith("@veyyon/")) continue;
-			scanned++;
+		const names: string[] = [];
+		const outsideTheScope: string[] = [];
+		for (const member of MEMBERS) {
+			const manifest = JSON.parse(await readFile(join(ROOT, member, "package.json"), "utf8")) as {
+				name?: string;
+				author?: unknown;
+			};
+			if (typeof manifest.name !== "string" || !manifest.name.startsWith("@veyyon/")) {
+				outsideTheScope.push(member);
+				continue;
+			}
+			names.push(manifest.name);
 			if (manifest.author !== "santhreal") offenders.push({ pkg: manifest.name, author: manifest.author });
 		}
-		expect(scanned).toBeGreaterThan(10);
+		// Pinned by exact equality: `argot` publishes standalone under its own name and `veybot-web` is
+		// private, so neither carries the scope. A new member outside it turns this red rather than
+		// shipping unscanned.
+		expect(outsideTheScope.sort()).toEqual(["plugins/argot", "python/veybot/web"]);
+		expect(names.length).toBe(MEMBERS.length - outsideTheScope.length);
+		expect(names).toContain("@veyyon/kernel");
+		expect(names).toContain("@veyyon/tui");
 		expect(offenders).toEqual([]);
 	});
 
@@ -182,7 +201,7 @@ describe("brand leak lock (SPEC-BRAND-LEAK-CODE)", () => {
 	});
 
 	it("theme JSONs carry no upstream schema URLs", async () => {
-		const themeRoot = `${ROOT}/packages/coding-agent/src/modes/theme`;
+		const themeRoot = `${ROOT}/packages/coding-agent/src/theme`;
 		const glob = new Glob("**/*.json");
 		const hits: string[] = [];
 		let scanned = 0;

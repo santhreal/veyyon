@@ -21,16 +21,18 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { ANTHROPIC_WEB_SEARCH_TOOL } from "@veyyon/catalog/wire/anthropic";
-import { LEGACY_TOOL_DEFINITION_MARKER } from "@veyyon/coding-agent/extensibility/legacy-tool-marker";
 import { MCP_PROTOCOL_VERSION } from "@veyyon/coding-agent/mcp/protocol-version";
-import { MAIN_CALL_SIGN } from "@veyyon/coding-agent/modes/components/agent-activity";
+import { MAIN_CALL_SIGN } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-activity";
 import { DEFAULT_PLAN_FILE_URL } from "@veyyon/coding-agent/plan-mode/plan-file-url";
 import { MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
+import { LEGACY_TOOL_DEFINITION_MARKER } from "@veyyon/kernel/registry/legacy-tool-marker";
 import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 
-const SRC = path.resolve(import.meta.dir, "../../src");
-const AI_SRC = path.resolve(import.meta.dir, "../../../ai/src");
-const CATALOG_SRC = path.resolve(import.meta.dir, "../../../catalog/src");
+const REPO_ROOT = path.resolve(import.meta.dir, "../../../..");
+const SRC = path.join(REPO_ROOT, "packages/coding-agent/src");
+const AI_SRC = path.join(REPO_ROOT, "packages/ai/src");
+const CATALOG_SRC = path.join(REPO_ROOT, "packages/catalog/src");
+const KERNEL_SRC = path.join(REPO_ROOT, "kernel/src");
 
 describe("the legacy tool-definition marker", () => {
 	/** The exact property name, since it is set with `defineProperty` and read by index. */
@@ -55,7 +57,9 @@ describe("the legacy tool-definition marker", () => {
 	it("is stamped by the shim from the owner", () => {
 		const shim = path.join(SRC, "extensibility/legacy-pi-coding-agent-shim.ts");
 
-		expect(moduleSpecifiersIn(fs.readFileSync(shim, "utf-8"))).toContain("./legacy-tool-marker");
+		expect(moduleSpecifiersIn(fs.readFileSync(shim, "utf-8"))).toContain(
+			"@veyyon/kernel/registry/legacy-tool-marker",
+		);
 	});
 });
 
@@ -114,7 +118,7 @@ describe("the MCP protocol revision", () => {
 	it("is sent by both MCP speakers from the one owner", () => {
 		for (const [file, specifier] of [
 			["mcp/client.ts", "./protocol-version"],
-			["web/search/providers/zai.ts", "../../../mcp/protocol-version"],
+			["tools/web/search/providers/zai.ts", "../../../../mcp/protocol-version"],
 		] as const) {
 			expect(moduleSpecifiersIn(fs.readFileSync(path.join(SRC, file), "utf-8")), file).toContain(specifier);
 		}
@@ -129,7 +133,7 @@ describe("Anthropic's web-search tool name", () => {
 
 	/** The asker and the matcher read one declaration, across two packages. */
 	it("is read by the provider that asks and the one that matches", async () => {
-		const search = await Bun.file(path.join(SRC, "web/search/providers/anthropic.ts")).text();
+		const search = await Bun.file(path.join(SRC, "tools/web/search/providers/anthropic.ts")).text();
 		const provider = await Bun.file(path.join(AI_SRC, "providers/anthropic.ts")).text();
 		expect(search).toContain("name: ANTHROPIC_WEB_SEARCH_TOOL,");
 		expect(search).toContain("stripClaudeToolPrefix(block.name) === ANTHROPIC_WEB_SEARCH_TOOL");
@@ -141,7 +145,7 @@ describe("Anthropic's web-search tool name", () => {
 
 describe("each value is declared once", () => {
 	const OWNERS = new Set([
-		path.join(SRC, "extensibility/legacy-tool-marker.ts"),
+		path.join(KERNEL_SRC, "registry/legacy-tool-marker.ts"),
 		path.join(SRC, "plan-mode/plan-file-url.ts"),
 		path.join(SRC, "mcp/protocol-version.ts"),
 		path.join(CATALOG_SRC, "wire/anthropic.ts"),
@@ -149,13 +153,13 @@ describe("each value is declared once", () => {
 
 	async function sources(): Promise<ReadonlyArray<{ file: string; text: string }>> {
 		const collected: Array<{ file: string; text: string }> = [];
-		for (const root of [SRC, AI_SRC, CATALOG_SRC]) {
+		for (const root of [SRC, AI_SRC, CATALOG_SRC, KERNEL_SRC]) {
 			for (const file of new Bun.Glob("**/*.ts").scanSync(root)) {
 				const full = path.join(root, file);
 				if (OWNERS.has(full)) continue;
 				// In-source test directories are fixtures, not declarations of where a value comes from.
 				if (file.includes("__tests__")) continue;
-				collected.push({ file: path.relative(path.join(SRC, "../.."), full), text: await Bun.file(full).text() });
+				collected.push({ file: path.relative(REPO_ROOT, full), text: await Bun.file(full).text() });
 			}
 		}
 		return collected;
@@ -194,9 +198,9 @@ describe("each value is declared once", () => {
 	 * interesting part of this suite.
 	 *
 	 * The same eight bytes appear elsewhere and mean different things, so a tree-wide scan for them would be
-	 * wrong rather than merely noisy. `tools/builtin-names.ts` lists veyyon's OWN tool called `web_search`, the
+	 * wrong rather than merely noisy. `tools/core/builtin-names.ts` lists veyyon's OWN tool called `web_search`, the
 	 * one the model calls; `ai/providers/openai-responses-wire.ts` has it as a member of an OpenAI wire type
-	 * union, beside `web_search_2025_08_26`; `web/search/providers/xai.ts` and `.../codex.ts` each name their
+	 * union, beside `web_search_2025_08_26`; `tools/web/search/providers/xai.ts` and `.../codex.ts` each name their
 	 * own vendor's server tool. Folding those into one constant would assert that four independent vendors and
 	 * veyyon's own tool registry change together, and the day one of them renamed its tool the others would
 	 * silently follow.
@@ -206,7 +210,7 @@ describe("each value is declared once", () => {
 	 */
 	it("spells Anthropic's tool name only through the owner in the two modules that must agree", async () => {
 		const speakers = [
-			path.join(SRC, "web/search/providers/anthropic.ts"),
+			path.join(SRC, "tools/web/search/providers/anthropic.ts"),
 			path.join(AI_SRC, "providers/anthropic.ts"),
 		];
 		for (const file of speakers) {
@@ -222,9 +226,9 @@ describe("each value is declared once", () => {
 	 */
 	it("leaves the other vendors' identical tool names alone", async () => {
 		const others: ReadonlyArray<[string, string]> = [
-			[path.join(SRC, "tools/builtin-names.ts"), "veyyon's own tool"],
+			[path.join(SRC, "tools/core/builtin-names.ts"), "veyyon's own tool"],
 			[path.join(AI_SRC, "providers/openai-responses-wire.ts"), "OpenAI's wire type"],
-			[path.join(SRC, "web/search/providers/xai.ts"), "xAI's server tool"],
+			[path.join(SRC, "tools/web/search/providers/xai.ts"), "xAI's server tool"],
 		];
 		for (const [file, what] of others) {
 			const text = await Bun.file(file).text();
@@ -246,8 +250,9 @@ describe("each value is declared once", () => {
 		const offenders: string[] = [];
 		for (const { file, text } of await sources()) {
 			for (const name of retired) {
-				// `sdk.ts` keeps `TOOL_DEFINITION_MARKER` for its symbol, which is a different key on purpose.
-				if (name === "TOOL_DEFINITION_MARKER" && file.endsWith("coding-agent/src/sdk.ts")) continue;
+				// `session/factory-tools.ts` keeps `TOOL_DEFINITION_MARKER` for its symbol, which is a different key on purpose.
+				if (name === "TOOL_DEFINITION_MARKER" && file.endsWith("coding-agent/src/session/factory-tools.ts"))
+					continue;
 				if (new RegExp(`^\\s*(?:export )?const ${name}\\b`, "m").test(text)) offenders.push(`${file}: ${name}`);
 			}
 		}
@@ -259,15 +264,15 @@ describe("each value is declared once", () => {
 		const files = (await sources()).map(entry => entry.file);
 		expect(files.length).toBeGreaterThan(500);
 		for (const declarer of [
-			"coding-agent/src/sdk.ts",
-			"coding-agent/src/extensibility/legacy-pi-coding-agent-shim.ts",
-			"coding-agent/src/modes/acp/acp-agent.ts",
-			"coding-agent/src/plan-mode/plan-protection.ts",
-			"coding-agent/src/session/agent-session.ts",
-			"coding-agent/src/mcp/client.ts",
-			"coding-agent/src/web/search/providers/zai.ts",
-			"coding-agent/src/web/search/providers/anthropic.ts",
-			"ai/src/providers/anthropic.ts",
+			"packages/coding-agent/src/sdk.ts",
+			"packages/coding-agent/src/extensibility/legacy-pi-coding-agent-shim.ts",
+			"packages/coding-agent/src/modes/acp/acp-agent.ts",
+			"packages/coding-agent/src/plan-mode/plan-protection.ts",
+			"packages/coding-agent/src/session/agent-session.ts",
+			"packages/coding-agent/src/mcp/client.ts",
+			"packages/coding-agent/src/tools/web/search/providers/zai.ts",
+			"packages/coding-agent/src/tools/web/search/providers/anthropic.ts",
+			"packages/ai/src/providers/anthropic.ts",
 		]) {
 			expect(files).toContain(declarer);
 		}
@@ -278,7 +283,7 @@ describe("each value is declared once", () => {
 	 * does not refile it.
 	 *
 	 * `registry/agent-registry.ts` declares `MAIN_AGENT_ID`, the name a driving agent answers to and the
-	 * name the model is told to write. `modes/components/agent-activity.ts` declares `MAIN_CALL_SIGN`, the
+	 * name the model is told to write. `modes/terminal/components/dashboard/agent-activity.ts` declares `MAIN_CALL_SIGN`, the
 	 * label a person reads in the dashboard. They share five bytes and nothing else.
 	 *
 	 * Folding them would assert that renaming the label renames what the model addresses, and the label is
@@ -295,7 +300,9 @@ describe("each value is declared once", () => {
 		expect(MAIN_AGENT_ID).toBe("Main");
 		expect(MAIN_CALL_SIGN).toBe("Main");
 		expect(
-			moduleSpecifiersIn(fs.readFileSync(path.join(SRC, "modes/components/agent-activity.ts"), "utf-8")),
+			moduleSpecifiersIn(
+				fs.readFileSync(path.join(SRC, "modes/terminal/components/dashboard/agent-activity.ts"), "utf-8"),
+			),
 		).not.toContain("../../registry/agent-registry");
 	});
 

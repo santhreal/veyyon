@@ -3,11 +3,12 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { ModelHubComponent } from "@veyyon/coding-agent/modes/components/model-hub";
-import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/session-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
-import { setKeybindings, type TUI } from "@veyyon/tui";
+import { ModelHubComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/model-hub";
+import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/session-selector";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import type { SessionInfo } from "@veyyon/kernel/session/session-listing";
+import type { TUI } from "@veyyon/tui";
+import { setKeybindings } from "@veyyon/utils/keybindings";
 
 beforeAll(() => {
 	initTheme();

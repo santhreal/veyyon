@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { nextActionableTask, type TodoPhase } from "@veyyon/coding-agent/tools/todo";
+import { nextActionableTask, type TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
 
 /**
  * nextActionableTask selection over many phase layouts.

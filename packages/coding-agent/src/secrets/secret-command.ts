@@ -38,8 +38,12 @@
  *     It is visible on screen until the editor is cleared, so {@link addSecret} says so in its
  *     confirmation rather than leaving the user to assume otherwise.
  */
-import { Ellipsis, padding, sanitizeSingleLine, truncateToWidth, visibleWidth } from "@veyyon/tui/utils";
+
+import { Ellipsis } from "@veyyon/natives";
 import { errorMessage, formatCount } from "@veyyon/utils";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { sanitizeSingleLine } from "@veyyon/utils/wrap";
 import type { SecretAuditLog, SecretExpansionRecord } from "./audit";
 import type { MaskedInventory } from "./obfuscator";
 import { MAX_SECRET_NAME_LENGTH } from "./placeholder";
@@ -414,7 +418,7 @@ function buildUsage(entryLines: readonly string[], footerLines: readonly string[
 		// The blank line after each group is what makes the grouping visible at all.
 		lines.push(heading, ...entries.map(entry => `${OUTPUT_INDENT}${entry}`), "");
 	}
-	lines.push(...footerLines);
+	for (let li = 0; li < footerLines.length; li++) lines.push(footerLines[li]!);
 	return lines.join("\n");
 }
 
@@ -601,7 +605,7 @@ function parseTuiValue(args: string, tokens: readonly SecretToken[]): SecretComm
  */
 export function parseSecretCommand(args: string, surface: SecretCommandSurface = "tui"): SecretCommandRequest {
 	const usageText = secretCommandUsage(surface);
-	const tokens = [...args.matchAll(/\S+/gu)].map(match => ({
+	const tokens = Array.from(args.matchAll(/\S+/gu)).map(match => ({
 		value: match[0],
 		start: match.index,
 		end: match.index + match[0].length,
@@ -1378,7 +1382,7 @@ export function renderSecretList(
 		return masked === undefined ? help : `${masked}\n\n${help}`;
 	}
 
-	const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name));
+	const sorted = entries.slice().sort((a, b) => a.name.localeCompare(b.name));
 	const rows = sorted.map(entry => {
 		const urgency = expiryUrgency(entry, options.now);
 		return [
@@ -1697,7 +1701,7 @@ async function clearEveryVault(context: { vault: SecretVault }): Promise<SecretC
 	}
 	// A survivor means a scope was written back while this ran, or one could not be read at all. It
 	// is still spendable, so it is reported rather than covered by "removed from every vault".
-	const live = [...new Set((await context.vault.load()).map(entry => entry.name))].sort();
+	const live = Array.from(new Set((await context.vault.load()).map(entry => entry.name))).sort();
 	if (live.length > 0) {
 		lines.push(
 			`${live.join(", ")} ${live.length === 1 ? "is" : "are"} still stored and still spendable. ` +

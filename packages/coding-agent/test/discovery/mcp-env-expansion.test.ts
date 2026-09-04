@@ -14,9 +14,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
-import { type MCPServer, mcpCapability } from "@veyyon/coding-agent/capability/mcp";
 import { loadCapability } from "@veyyon/coding-agent/discovery";
+import { clearCache as clearFsCache } from "@veyyon/coding-agent/discovery/capability/fs";
+import { type MCPServer, mcpCapability } from "@veyyon/coding-agent/discovery/capability/mcp";
 import { removeWithRetries, setAgentDir } from "@veyyon/utils";
 import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 

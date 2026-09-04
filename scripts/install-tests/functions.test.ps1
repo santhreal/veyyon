@@ -170,7 +170,7 @@ try {
 # a dropped connection), and passing it through reports "checksum mismatch" —
 # telling the user their download is corrupt when the sidecar was the problem.
 # Same contract as install.sh's parse_sha256_sidecar and the TypeScript owner in
-# packages/natives/src/sha256-sidecar.ts.
+# natives/bridge/bindings/src/sha256-sidecar.ts.
 $sixtyFour = "a" * 64
 Check "sidecar parse takes the leading hash token" (ConvertFrom-Sha256Sidecar "$sixtyFour  veyyon-windows-x64.exe") $sixtyFour
 Check "sidecar parse reads a bare digest with no filename" (ConvertFrom-Sha256Sidecar $sixtyFour) $sixtyFour
@@ -395,7 +395,7 @@ try {
 
 # --- uninstall reclaims the native addon cache, never the user's data ---
 # A binary install stages ~150MB per version under getNativesDir()
-# (packages/natives/native/loader-state.js). Uninstall used to leave every one of
+# (natives/bridge/bindings/native/loader-state.js). Uninstall used to leave every one of
 # them behind, so uninstalling "succeeded" while the disk was never freed and a
 # later reinstall silently inherited stale addons. It must reclaim the cache and
 # ONLY the cache: auth/config/sessions sit beside it under ~/.veyyon and are the

@@ -9,9 +9,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { clearCache } from "@veyyon/coding-agent/capability/fs";
-import type { DiscoveredSkill } from "@veyyon/coding-agent/capability/skill";
-import type { LoadContext, LoadResult } from "@veyyon/coding-agent/capability/types";
+import { clearCache } from "@veyyon/coding-agent/discovery/capability/fs";
+import type { DiscoveredSkill } from "@veyyon/coding-agent/discovery/capability/skill";
+import type { LoadContext, LoadResult } from "@veyyon/coding-agent/discovery/capability/types";
 import { scanSkillsFromDir } from "@veyyon/coding-agent/discovery/helpers";
 import { removeSyncWithRetries } from "@veyyon/utils";
 

@@ -130,17 +130,15 @@ describe.each(Object.keys(SEAMS))("the %s backend", id => {
 
 	it("asks its kernel module whether the runtime is available", async () => {
 		using tempDir = TempDir.createSync(`@veyyon-${id}-availability-seam-`);
-		let checks = 0;
-		vi.spyOn(seams.availabilityModule, seams.availabilityExport).mockImplementation((async () => {
-			checks += 1;
-			return { ok: true };
+		const asked: string[] = [];
+		vi.spyOn(seams.availabilityModule, seams.availabilityExport).mockImplementation(((cwd: string) => {
+			asked.push(cwd);
+			return Promise.resolve({ ok: true });
 		}) as never);
 
 		const available = await backend().isAvailable(makeToolSession({ cwd: tempDir.path() }));
 
-		// Once, counted here rather than read off the spy: a backend that probed twice per
-		// availability check would double every interpreter launch.
-		expect(checks).toBe(1);
+		expect(asked).toEqual([tempDir.path()]);
 		expect(available).toBe(true);
 	});
 
@@ -156,10 +154,10 @@ describe.each(Object.keys(SEAMS))("the %s backend", id => {
 
 	it("runs the cell through its executor module", async () => {
 		using tempDir = TempDir.createSync(`@veyyon-${id}-executor-seam-`);
-		let runs = 0;
-		vi.spyOn(seams.executorModule, seams.executorExport).mockImplementation((async () => {
-			runs += 1;
-			return {
+		const ran: string[] = [];
+		vi.spyOn(seams.executorModule, seams.executorExport).mockImplementation(((code: string) => {
+			ran.push(code);
+			return Promise.resolve({
 				output: "from the executor module",
 				exitCode: 0,
 				cancelled: false,
@@ -170,13 +168,13 @@ describe.each(Object.keys(SEAMS))("the %s backend", id => {
 				outputBytes: 24,
 				displayOutputs: [],
 				stdinRequested: false,
-			};
+			});
 		}) as never);
 		const session = makeToolSession({ cwd: tempDir.path() });
 
 		const result = await backend().execute("1 + 1", execOptions(tempDir.path(), session));
 
-		expect(runs).toBe(1);
+		expect(ran).toEqual(["1 + 1"]);
 		expect(result.output).toBe("from the executor module");
 	});
 });

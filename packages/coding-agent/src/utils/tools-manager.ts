@@ -12,7 +12,7 @@ import { TempDir } from "@veyyon/utils/temp";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { $which } from "@veyyon/utils/which";
 import { primarySessionCpuAdoption } from "../session/cpu-limit";
-import { throwIfAborted } from "../tools/tool-errors";
+import { throwIfAborted } from "../tools/core/tool-errors";
 import { scopedTimeoutSignal } from "./fetch-timeout";
 import { extractArchive } from "./zip";
 

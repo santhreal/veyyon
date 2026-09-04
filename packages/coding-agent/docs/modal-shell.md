@@ -4,7 +4,7 @@ Floating overlay chrome specification for Veyyon TUI surfaces.
 
 Idle sessions display transcript and bottom composer; overlays float above the active session surface.
 
-Source: `src/modes/components/modal-shell.ts`. Test: `packages/coding-agent/test/brand-conformance.test.ts`.
+Source: `src/modes/terminal/components/chrome/modal-shell.ts`. Test: `packages/coding-agent/test/brand-conformance.test.ts`.
 
 ## Sizing presets
 
@@ -12,9 +12,9 @@ Source: `src/modes/components/modal-shell.ts`. Test: `packages/coding-agent/test
 |---|---:|---:|---:|---:|---:|---:|---:|
 | LARGE | 0.90 | 140 | 60 | 7 | 2 | 2 | 2 |
 | MEDIUM | 0.60 | 120 | 44 | 4 | 2 | 1 | 2 |
-| SETTINGS | 0.70 | 110 | 44 | 3 | 2 | 1 | 2 |
+| SETTINGS | 0.80 | 124 | 44 | 3 | 2 | 1 | 2 |
 
-- `withCompact(true)` sets `v_margin=0`, `h_pad=1`, `v_pad=0`.
+- `sizingForArea(sizing, areaHeight, forceCompact?)` is the only way to reach the compact strip: it sets `h_pad=1`, `v_pad=0` and leaves `v_margin` alone. It reads the area height itself through `modalNeedsCompactPadding`, so no card restates the decision.
 - `computeModalDims`: preferred width = `area.w * width_pct`, clamped to `[min_width, min(area.w-4, max_width)]`; height = `area.h - 2*v_margin`.
 - Returns null geometry and clears hit rectangles when `w < 20` or `h < 6`.
 - Card is centered with blank underpaint.
@@ -27,7 +27,7 @@ Source: `src/modes/components/modal-shell.ts`. Test: `packages/coding-agent/test
 4. Optional search row and divider at top of body.
 5. Body padding (`h_pad` / `v_pad`).
 6. Optional tip line via `fitTipLine` when height ≥ 6.
-7. Footer with centered chips, bold keys, and separator `  |  `.
+7. Footer with centered chips, bold keys, and separator `SHORTCUT_SEP` (`  ·  `).
 8. Optional breadcrumb suffix on title (`Settings › Label`).
 
 ## Disclosure
@@ -43,7 +43,7 @@ FilterFocused → Browse → close modal. Sub-pane Esc returns to Browse. Close 
 
 | Element | Token | Notes |
 |---|---|---|
-| Card border / box-drawing | `borderAccent` (silver `#c6cbd4`) | Structural borders |
+| Card border / box-drawing | `borderAccent` (ember `#F0862E` in titanium) | Structural borders, with one ember tick after the top-left corner |
 | Title / chip keys | `accent` (silver) | Bold title and key tokens |
 | Chip labels / tip | `muted` / `dim` | Secondary text |
 | Close glyph | `accent` | Visible accent |

@@ -7,7 +7,7 @@ import {
 	TODO_TOTAL_PREVIEW_WIDTH,
 	type TodoItem,
 	type TodoPhase,
-} from "../tools/todo";
+} from "../tools/agent/todo";
 
 export interface IncompleteTodoItem {
 	phase: string;
@@ -115,7 +115,7 @@ export function renderTodoContinuationReminder(options: {
 				shown++;
 			}
 		}
-		lines.push(...preview.lines);
+		for (let li = 0; li < preview.lines.length; li++) lines.push(preview.lines[li]!);
 		const hidden = items.length - shown;
 		if (hidden > 0) lines.push(`  … ${hidden} more item(s) retained in machine todo state.`);
 	} else {

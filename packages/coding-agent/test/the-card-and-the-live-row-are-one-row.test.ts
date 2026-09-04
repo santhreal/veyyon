@@ -31,7 +31,7 @@
  * the live row has facts the card cannot have (a session name, a measured gauge), which is the
  * whole reason the two rows differ at all. Byte agreement for the one fact both rows have before
  * any lookup — the branch — is held in
- * `test/modes/components/status-line/the-branch-reads-the-same-on-the-card-and-the-live-row.test.ts`,
+ * `test/modes/terminal/components/status-line/the-branch-reads-the-same-on-the-card-and-the-live-row.test.ts`,
  * and that the rows land on the same SCREEN ROW is held in
  * `the-first-frame-paints-the-composer-instantly.test.ts`. The preset cases here run wide enough
  * that the fitter sheds nothing, because what a narrow row drops is the fitter's contract and is
@@ -40,23 +40,28 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, type Mock, spyOn } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { settings } from "@veyyon/coding-agent/config/settings-instance";
 import {
 	COMPOSER_INSET_COLS,
 	LaunchComposerFoot,
 	QuietZoneLine,
-} from "@veyyon/coding-agent/modes/components/composer-chrome";
-import { resolvePresetSegments, STATUS_LINE_PRESETS } from "@veyyon/coding-agent/modes/components/status-line/presets";
+} from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
+import {
+	resolvePresetSegments,
+	STATUS_LINE_PRESETS,
+} from "@veyyon/coding-agent/modes/terminal/components/status-line/presets";
 // Namespace-imported throughout: the budget case spies on `composeQuietRow`, and a named import
 // beside the namespace would be a second binding onto the same module for no reason.
-import * as quietRow from "@veyyon/coding-agent/modes/components/status-line/quiet-row";
-import { launchSegmentContext } from "@veyyon/coding-agent/modes/components/status-line/session-facts";
-import type { StatusLinePreset } from "@veyyon/coding-agent/modes/components/status-line/types";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import * as quietRow from "@veyyon/coding-agent/modes/terminal/components/status-line/quiet-row";
+import { launchSegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/session-facts";
+import type { StatusLinePreset } from "@veyyon/coding-agent/modes/terminal/components/status-line/types";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { branchLabelFromFiles } from "@veyyon/coding-agent/utils/git-head";
 import * as utils from "@veyyon/utils";
-import { getProjectDir, stripAnsi } from "@veyyon/utils";
+import { getProjectDir, setProjectDir, stripAnsi, TempDir } from "@veyyon/utils";
 
 /**
  * The profile chip hides on the built-in `default` profile and shows on any named one, so the
@@ -65,6 +70,17 @@ import { getProjectDir, stripAnsi } from "@veyyon/utils";
  * since a chip that renders nothing cannot go missing from the card.
  */
 const ACTIVE_PROFILE = "work";
+
+/**
+ * The branch both sides of the sweep render, decided by a fixture checkout rather than by this one.
+ *
+ * `branchLabelFromFiles` answers null on a detached HEAD, which is what a pull-request CI job
+ * checks out, so the `git` id rendered nothing there and joined the silent table on that machine
+ * alone. The card reads the branch itself through `getProjectDir()`, so pinning it only on the
+ * gatherer's side would put a chip on one side of the comparison and not the other: the project
+ * directory is moved instead, and one checkout answers for both.
+ */
+const FIXTURE_BRANCH = "card-fixture";
 
 /** Wide enough that the fitter sheds nothing: this suite is about presence, not degradation. */
 const WIDE = 400;
@@ -184,8 +200,21 @@ function resolvedIds(preset: StatusLinePreset): string[] {
 const CONFIGURED_MODEL = "claude-sonnet-4-5";
 const CONFIGURED_APPROVAL = "yolo";
 
+let fixture: TempDir | null = null;
+let previousProjectDir: string | null = null;
+
 beforeAll(async () => {
+	// A checkout whose HEAD names FIXTURE_BRANCH, written as files because that is how the card
+	// reads it. Both sides of the sweep below read the branch through the production path, so the
+	// fixture has to decide it for the card as well as for the gatherer.
+	fixture = TempDir.createSync("vy-card-row-");
+	const gitDir = path.join(fixture.path(), ".git");
+	fs.mkdirSync(path.join(gitDir, "refs", "heads"), { recursive: true });
+	fs.writeFileSync(path.join(gitDir, "HEAD"), `ref: refs/heads/${FIXTURE_BRANCH}\n`);
+	fs.writeFileSync(path.join(gitDir, "refs", "heads", FIXTURE_BRANCH), `${"0".repeat(40)}\n`);
 	await Settings.init({ inMemory: true, cwd: process.cwd() });
+	previousProjectDir = getProjectDir();
+	setProjectDir(fixture.path());
 	await initTheme(false);
 	settings.setModelRole("default", CONFIGURED_MODEL);
 	settings.set("tools.approvalMode", CONFIGURED_APPROVAL);
@@ -193,7 +222,14 @@ beforeAll(async () => {
 
 afterAll(() => {
 	// The seeded model role and approval rung are process-wide; a later file in the bucket must not
-	// inherit them, and must not inherit an in-memory store it did not initialize.
+	// inherit them, and must not inherit an in-memory store it did not initialize. The project
+	// directory moves the process working directory with it, so it is restored BEFORE the fixture
+	// is removed: leaving the process inside a deleted cwd breaks every relative path a later file
+	// resolves.
+	if (previousProjectDir !== null) setProjectDir(previousProjectDir);
+	previousProjectDir = null;
+	fixture?.removeSync();
+	fixture = null;
 	resetSettingsForTest();
 });
 

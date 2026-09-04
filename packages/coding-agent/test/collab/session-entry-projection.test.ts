@@ -27,7 +27,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { fromWireSessionEntry, toWireSessionEntry } from "@veyyon/coding-agent/collab/protocol";
-import type { SessionEntry } from "@veyyon/coding-agent/session/session-entries";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 
 /** Keys a projected entry may have, so a leak is named rather than counted. */
 function keysOf(value: unknown): string[] {

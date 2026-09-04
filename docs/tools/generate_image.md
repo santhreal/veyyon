@@ -3,7 +3,7 @@
 > Generate or edit images and write generated image files to temporary paths.
 
 ## Source
-- Entry: `packages/coding-agent/src/tools/image-gen.ts`
+- Entry: `packages/coding-agent/src/tools/web/image-gen.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/image-gen.md`
 - Session injection: `packages/coding-agent/src/sdk.ts` (`getImageGenTools()`)
 

@@ -1039,7 +1039,7 @@ describe("the waiting signal reads the sign-off, not the whole run", () => {
 				{ activeToolNames: ["yield"] },
 			);
 			AgentRegistry.global().register({ id, displayName: id, kind: "sub", session, sessionFile: null });
-			return { session, extensionsResult: {}, setToolUIContext: () => {} } as never;
+			return { session, extensionsResult: {}, setToolUIContext: () => {}, setToolNotifier: () => {} } as never;
 		});
 		await runSubprocess({
 			cwd: "/tmp",

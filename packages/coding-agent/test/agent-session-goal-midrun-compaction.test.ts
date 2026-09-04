@@ -10,10 +10,10 @@ import { ExtensionRuntime, loadExtensionFromFactory } from "@veyyon/coding-agent
 import { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
 import type { GoalModeState } from "@veyyon/coding-agent/goals/state";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 import { type } from "arktype";
 

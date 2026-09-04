@@ -11,7 +11,7 @@ import {
 	resolveImageData,
 	resolveTextBlobRef,
 	resolveTextBlobRefSync,
-} from "@veyyon/coding-agent/session/blob-store";
+} from "@veyyon/kernel/session/blob-store";
 import { TempDir } from "@veyyon/utils";
 
 describe("BlobStore image display paths", () => {

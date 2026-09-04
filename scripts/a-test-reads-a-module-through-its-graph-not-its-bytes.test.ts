@@ -36,6 +36,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Node, Project, type SourceFile, SyntaxKind } from "ts-morph";
+import { typeScriptMemberTopLevels } from "./workspace-layout";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 
@@ -202,6 +203,17 @@ function byteMatchSites(roots: readonly string[], base: string): string[] {
 	return [...new Set(sites)].sort();
 }
 
+/**
+ * Every directory the sweep opens: the top-level directories holding TypeScript workspace members, plus `scripts/`.
+ * Naming `packages/` alone left the suites under any other root — `contracts/wire/test` holds
+ * eight — free to grep source bytes, and the gate reported the absence as a pass. The root view
+ * was in turn blind to literal paths (`natives/bridge/bindings`, `python/veybot/web`), which
+ * `typeScriptMemberTopLevels()` now reaches.
+ */
+function sweptRoots(): string[] {
+	return [...typeScriptMemberTopLevels().map(root => path.join(REPO_ROOT, root)), path.join(REPO_ROOT, "scripts")];
+}
+
 /** The path roots every control fixture names, so a fixture is one or two lines of its own shape. */
 const PRELUDE = [
 	'const SRC = path.join(import.meta.dir, "../src");',
@@ -221,9 +233,18 @@ describe("an invariant about a module is read from the module graph", () => {
 	 * hide inside a count.
 	 */
 	it("matches no module's source bytes outside the recorded remainder", () => {
-		expect(byteMatchSites([path.join(REPO_ROOT, "packages"), path.join(REPO_ROOT, "scripts")], REPO_ROOT)).toEqual([
-			...ALLOWED,
-		]);
+		expect(byteMatchSites(sweptRoots(), REPO_ROOT)).toEqual([...ALLOWED]);
+	});
+
+	// And the roots the sweep opens are every one the workspace declares. A root nobody walked
+	// contributes no candidate, so the recorded remainder above stays empty by absence.
+	it("opens every root the workspace declares", () => {
+		const opened = sweptRoots().map(root => path.relative(REPO_ROOT, root));
+		expect(opened).toEqual([...typeScriptMemberTopLevels(), "scripts"]);
+		expect(opened).toContain("contracts");
+
+		// And the walk under that root reaches real suites, so the root is opened, not merely listed.
+		expect(testFiles(path.join(REPO_ROOT, "contracts")).length).toBeGreaterThan(0);
 	});
 
 	/**

@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { ConfigFile } from "@veyyon/coding-agent/config/config-file";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { modelsConfigSchemas } from "@veyyon/coding-agent/config/models-config-schema";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 describe("ModelRegistry.create() factory (F6)", () => {

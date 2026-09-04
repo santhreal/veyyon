@@ -19,8 +19,8 @@ Does not cover:
 
 ## Implementation files
 
-- [`../src/modes/controllers/input-controller.ts`](../../packages/coding-agent/src/modes/controllers/input-controller.ts)
-- [`../src/modes/controllers/command-controller.ts`](../../packages/coding-agent/src/modes/controllers/command-controller.ts)
+- [`../src/modes/terminal/controllers/input-controller.ts`](../../packages/coding-agent/src/modes/terminal/controllers/input-controller.ts)
+- [`../src/modes/terminal/controllers/command-controller.ts`](../../packages/coding-agent/src/modes/terminal/controllers/command-controller.ts)
 - [`../src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts)
 - [`packages/agent/src/compaction/compaction.ts`](../../packages/agent/src/compaction/compaction.ts)
 - [`../src/session/session-manager.ts`](../../packages/coding-agent/src/session/session-manager.ts)
@@ -260,4 +260,4 @@ High-level state flow:
 - Manual handoff has no streaming visibility; a cancellable loader is shown until the UI updates after generation completes.
 - Auto-triggered handoffs can write a timestamped `handoff-*.md` artifact when `compaction.handoffSaveToDisk` is enabled; write failure is logged and does not fail the handoff.
 
-*Verified against `7e4c6374` on 2026-08-06.*
+*Verified against `23e2a7938b9f` on 2026-08-28.*

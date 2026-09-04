@@ -4,7 +4,7 @@
  * WHY IT IS NOT IN `builtin-registry.ts`. That module declares every builtin command, so it imports every
  * command implementation and reaches 1,381 modules. This list is eight strings and it decides presentation,
  * which is a question the autocomplete asks without needing a single command body:
- * `modes/prompt-action-autocomplete.ts` imported the registry for this name alone and paid 1,149 marginal
+ * `modes/terminal/autocomplete/prompt-action-autocomplete.ts` imported the registry for this name alone and paid 1,149 marginal
  * modules for it. The registry re-exports the name it used to declare, so nothing else changed.
  *
  * A category not listed here still renders; it sorts after the listed ones by first appearance, which is

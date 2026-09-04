@@ -1137,7 +1137,7 @@ export function collapseEffortVariants<TSpec extends VariantSpecLike>(
 		}
 	}
 
-	if (replacement.size === 0) return [...specs];
+	if (replacement.size === 0) return specs.slice();
 
 	const emitted = new Set<string>();
 	const out: TSpec[] = [];
@@ -1178,7 +1178,7 @@ export function collapseEffortVariantsAcrossProviders<TSpec extends VariantSpecL
 		if (derived.length > 0) {
 			result = collapseEffortVariants(result, { families: derived });
 		}
-		out.push(...result);
+		for (let ri = 0; ri < result.length; ri++) out.push(result[ri]!);
 	}
 	return out;
 }

@@ -33,7 +33,7 @@ prompt ──► veyyon (src/cli.ts)
          tool handlers                 (read, bash, edit, grep, …)
               │        └─► Rust natives via napi (grep, pty, shell, text)
               ▼
-         results back to the model ──► TUI render (packages/tui)
+         results back to the model ──► TUI render (hosts/terminal/engine)
 ```
 
 Interactive use runs in the TUI; non-interactive use runs `veyyon` with a prompt or a
@@ -42,8 +42,33 @@ subcommand (`commit`, `grep`, `models`, `exec`, …).
 ## Workspace layout
 
 The repository layout and component responsibilities are documented in [`AGENTS.md`](AGENTS.md).
-TypeScript packages live under `packages/`; first-party Rust crates live under `crates/veyyon-*`.
-Vendored third-party Rust code lives under `crates/vendor/`.
+TypeScript members are under `contracts/`, `hosts/`, `packages/`, `plugins/` and `kernel/`; first-party
+Rust is grouped by purpose under `natives/`.
+Vendored third-party Rust code is under `natives/vendor/`, and the whole-product conformance corpus
+is under `tests/conformance/`.
+
+`hosts/` holds the surfaces a tool's output is drawn on, and there are two. A tool returns a
+`ToolView` from `contracts/view` and names neither: `hosts/terminal/engine` draws it as rows of
+escape bytes, and `hosts/gui` draws the same models as HTML. The second one is what keeps the
+contract a contract, because a view member no other host can draw fails there rather than being
+discovered by whoever writes the next client.
+
+`kernel/` (`@veyyon/kernel`) is the only workspace member that is not a plugin: it holds the
+plugin loader, the contribution registry, and the session spine.
+
+The kernel follows a strict dependency direction: it may name `contracts/`, the shared runtime
+packages (`@veyyon/agent-core`, `@veyyon/ai`, `@veyyon/catalog`, `@veyyon/utils`), and the platform
+(node and bun builtins). It may not name a tool, a host, a mode, or `@veyyon/coding-agent`. This
+rule is enforced by `scripts/the-kernel-names-no-tool-and-no-host.test.ts`.
+
+Its source is organized into three concern directories:
+- `src/registry/` — contribution registry, tool proxies, host view types, widgets, and TypeBox schemas.
+- `src/loader/` — plugin loader, plugin parser, manifest keys, runtime config, marketplace client, and compatibility shims.
+- `src/session/` — session spine: storage backends (SQL, Redis, indexed storage), history, persistence, migrations, compaction policy, cgroups and machine budget accounting, artifacts, turn persistence, and queue management.
+
+`kernel/` has no root barrel and exposes no `.` entry point: a barrel nobody imports is banned
+(`scripts/barrel-files-are-imported.test.ts`), and a single entry point would republish 53 modules
+as one surface. Consumers import deep module paths directly (`@veyyon/kernel/<concern>/<module>`).
 
 ## Generated directories
 

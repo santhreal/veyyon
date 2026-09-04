@@ -1,0 +1,7 @@
+{
+	"extends": "../../packages/tsconfig.workspace.json",
+	"include": [
+		"src",
+		"test"
+	]
+}

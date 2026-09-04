@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { computeDefaultSessionDir, resolveManagedSessionRoot } from "@veyyon/coding-agent/session/session-paths";
-import type { SessionStorage } from "@veyyon/coding-agent/session/session-storage";
+import { computeDefaultSessionDir, resolveManagedSessionRoot } from "@veyyon/kernel/session/session-paths";
+import type { SessionStorage } from "@veyyon/kernel/session/session-storage";
 
 /**
  * resolveManagedSessionRoot decides whether a session directory is one veyyon itself laid out for a

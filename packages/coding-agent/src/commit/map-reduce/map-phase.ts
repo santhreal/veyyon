@@ -1,13 +1,13 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, ApiKey, AssistantMessage, Model } from "@veyyon/ai";
 import { prompt } from "@veyyon/utils";
-import type { FileDiff, FileObservation } from "../../commit/types";
-import { isExcludedFile } from "../../commit/utils/exclusions";
 import { commitPrompts } from "../../prompts/commit/rows";
 import { mapWithConcurrencyLimit } from "../../task/parallel";
 import { toReasoningEffort } from "../../thinking";
 import { withScopedTimeoutSignal } from "../../utils/fetch-timeout";
 import { completeCommitSimple, type ResolveObfuscateProviderText } from "../shared-llm";
+import type { FileDiff, FileObservation } from "../types";
+import { isExcludedFile } from "../utils/exclusions";
 import { MAX_FILE_TOKENS, truncateToTokenLimit } from "./utils";
 
 const MAX_CONTEXT_FILES = 20;

@@ -9,7 +9,7 @@ export const editFixtures: Record<string, GalleryFixture> = {
 		// harness diff strategy skips `{ file_path, previewDiff }` (no `path`/`edits`),
 		// so the canned diff survives the streaming and progress states.
 		streamingArgs: {
-			file_path: "packages/coding-agent/src/tools/read.ts",
+			file_path: "packages/coding-agent/src/tools/fs/read.ts",
 			previewDiff: [
 				"@@ -88,3 +88,4 @@",
 				" 	const offset = args.offset ?? 1;",
@@ -18,7 +18,7 @@ export const editFixtures: Record<string, GalleryFixture> = {
 			].join("\n"),
 		},
 		args: {
-			file_path: "packages/coding-agent/src/tools/read.ts",
+			file_path: "packages/coding-agent/src/tools/fs/read.ts",
 			previewDiff: [
 				"@@ -88,5 +88,6 @@",
 				" 	const offset = args.offset ?? 1;",
@@ -30,9 +30,9 @@ export const editFixtures: Record<string, GalleryFixture> = {
 			].join("\n"),
 		},
 		result: {
-			content: [{ type: "text", text: "Edited packages/coding-agent/src/tools/read.ts (1 hunk, +3 -2)" }],
+			content: [{ type: "text", text: "Edited packages/coding-agent/src/tools/fs/read.ts (1 hunk, +3 -2)" }],
 			details: {
-				path: "packages/coding-agent/src/tools/read.ts",
+				path: "packages/coding-agent/src/tools/fs/read.ts",
 				firstChangedLine: 89,
 				diff: [
 					"@@ -88,5 +88,6 @@",
@@ -49,12 +49,12 @@ export const editFixtures: Record<string, GalleryFixture> = {
 			content: [
 				{
 					type: "text",
-					text: "Edit failed: the search text was not found in packages/coding-agent/src/tools/read.ts",
+					text: "Edit failed: the search text was not found in packages/coding-agent/src/tools/fs/read.ts",
 				},
 			],
 			isError: true,
 			details: {
-				path: "packages/coding-agent/src/tools/read.ts",
+				path: "packages/coding-agent/src/tools/fs/read.ts",
 				diff: "",
 				errorText:
 					"No match for the search text. Expected `const limit = args.limit ?? 2000;` near line 89, but the file has `const limit = args.limit ?? 1000;`. Re-read the file and retry with the current contents.",
@@ -207,7 +207,7 @@ export const editFixtures: Record<string, GalleryFixture> = {
 						"-488:		const totalFiles = args?.edits ? countEditFiles(args.edits) : 0;",
 						"+488:		const totalFiles = args?.edits ? countDistinctFiles(args.edits) : 0;",
 						"",
-						"# tools/tool-result.ts (1 replacement)",
+						"# tools/core/tool-result.ts (1 replacement)",
 						"-42:	return countEditFiles(files);",
 						"+42:	return countDistinctFiles(files);",
 					].join("\n"),
@@ -221,10 +221,10 @@ export const editFixtures: Record<string, GalleryFixture> = {
 				limitReached: false,
 				scopePath: "packages/coding-agent/src",
 				searchPath: "/Users/dev/Projects/pi/packages/coding-agent/src",
-				files: ["edit/renderer.ts", "tools/tool-result.ts"],
+				files: ["edit/renderer.ts", "tools/core/tool-result.ts"],
 				fileReplacements: [
 					{ path: "edit/renderer.ts", count: 2 },
-					{ path: "tools/tool-result.ts", count: 1 },
+					{ path: "tools/core/tool-result.ts", count: 1 },
 				],
 				displayContent: [
 					"# edit/",

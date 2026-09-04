@@ -18,7 +18,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as updateCli from "@veyyon/coding-agent/cli/update-cli";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { releaseRedirect } from "../helpers/release-redirect";
 
 // The command styles its output through the global theme, which the CLI

@@ -42,7 +42,7 @@
 import { expect, it } from "bun:test";
 import { SUPERSEDED_NOTICE } from "@veyyon/agent-core/compaction/pruning";
 import * as AIError from "@veyyon/ai/error";
-import { TOOL } from "@veyyon/coding-agent/tools/builtin-names";
+import { TOOL } from "@veyyon/coding-agent/tools/core/builtin-names";
 import { createSimulation, type ScriptedTurn, type Simulation, simTool } from "./harness";
 
 /** Row 1: the watchdog's own stall message, transient from its prose. */

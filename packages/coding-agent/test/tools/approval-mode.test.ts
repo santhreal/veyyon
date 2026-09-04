@@ -8,7 +8,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { normalizeApprovalMode } from "@veyyon/coding-agent/tools/approval";
+import { normalizeApprovalMode } from "@veyyon/coding-agent/tools/core/approval";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { isolatedAuthStorage } from "../helpers/isolated-auth-storage";
 import { useIsolatedGlobalSettings } from "../helpers/isolated-global-settings";

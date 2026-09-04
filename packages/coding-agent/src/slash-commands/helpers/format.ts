@@ -1,9 +1,8 @@
-import { SUB_CELL_BAR_RAMP, subCellBar } from "@veyyon/tui/sub-cell-bar";
-import { visibleWidth } from "@veyyon/tui/tui";
-import { truncateToWidth } from "@veyyon/tui/utils";
+import { SUB_CELL_BAR_RAMP, subCellBar } from "@veyyon/utils/bar";
 import { clamp01 } from "@veyyon/utils/math";
-import { shimmerText } from "../../modes/theme/shimmer";
-import { theme as currentTheme, type Theme } from "../../modes/theme/theme";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { shimmerText } from "../../theme/shimmer";
+import { theme as currentTheme, type Theme } from "../../theme/theme";
 
 /** Format a millisecond duration as a coarse-grained human label. */
 // Coarse, single-unit duration for compact status lines: rounds to the nearest

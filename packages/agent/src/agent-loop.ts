@@ -274,7 +274,7 @@ function snapshotAssistantMessage(message: AssistantMessage, mode: SnapshotMode 
 			...message.usage,
 			cost: { ...message.usage.cost },
 		},
-		disabledFeatures: message.disabledFeatures ? [...message.disabledFeatures] : undefined,
+		disabledFeatures: message.disabledFeatures ? message.disabledFeatures.slice() : undefined,
 		toolCallAbortMessages: message.toolCallAbortMessages ? { ...message.toolCallAbortMessages } : undefined,
 	};
 }
@@ -414,10 +414,10 @@ export function agentLoop(
 	const stream = createAgentStream();
 
 	(async () => {
-		const newMessages: AgentMessage[] = [...prompts];
+		const newMessages: AgentMessage[] = prompts.slice();
 		const currentContext: AgentContext = {
 			...context,
-			messages: [...context.messages, ...prompts],
+			messages: context.messages.concat(prompts),
 		};
 
 		stream.push({ type: "agent_start" });
@@ -463,7 +463,7 @@ export function agentLoopContinue(
 
 	(async () => {
 		const newMessages: AgentMessage[] = [];
-		const currentContext: AgentContext = { ...context, messages: [...context.messages] };
+		const currentContext: AgentContext = { ...context, messages: context.messages.slice() };
 
 		stream.push({ type: "agent_start" });
 		stream.push({ type: "turn_start" });
@@ -688,7 +688,7 @@ function injectIntentIntoSchema(
 		return {
 			...schemaRecord,
 			...(needsReorder ? { properties: { [INTENT_FIELD]: intentProp, ...rest } } : {}),
-			...(needsRequired ? { required: [...required, INTENT_FIELD] } : {}),
+			...(needsRequired ? { required: required.concat(INTENT_FIELD) } : {}),
 		};
 	}
 	return {
@@ -699,7 +699,7 @@ function injectIntentIntoSchema(
 				: { type: "string" },
 			...properties,
 		},
-		...(mode === "require" ? { required: [...required, INTENT_FIELD] } : {}),
+		...(mode === "require" ? { required: required.concat(INTENT_FIELD) } : {}),
 	};
 }
 
@@ -1341,7 +1341,7 @@ async function runLoopBody(
 				if (hasMoreToolCalls) {
 					// Mid-work: fold any non-interrupting asides into the next turn alongside steering.
 					const asides = signal?.aborted ? [] : resolveAsides(await config.getAsideMessages?.());
-					pendingMessages = asides.length > 0 ? [...steering, ...asides] : steering;
+					pendingMessages = asides.length > 0 ? steering.concat(asides) : steering;
 				} else {
 					// Stop boundary: only steering (live user input) forces another turn here. Leave
 					// asides for the outer drain below so a passive aside can't trigger an extra model
@@ -1371,7 +1371,7 @@ async function runLoopBody(
 			const followUpMessages = signal?.aborted ? [] : (await config.getFollowUpMessages?.()) || [];
 			if (lateSteering.length > 0 || asideMessages.length > 0 || followUpMessages.length > 0) {
 				// Set as pending so the inner loop processes them before stopping.
-				pendingMessages = [...lateSteering, ...asideMessages, ...followUpMessages];
+				pendingMessages = lateSteering.concat(asideMessages, followUpMessages);
 				continue;
 			}
 
@@ -1470,7 +1470,9 @@ async function streamAssistantResponse(
 		promptToolWireTools = llmContext.tools;
 		llmContext = {
 			...llmContext,
-			systemPrompt: [...(llmContext.systemPrompt ?? []), renderInbandToolPrompt(promptToolWireTools, ownedDialect)],
+			systemPrompt: (llmContext.systemPrompt ?? []).concat(
+				renderInbandToolPrompt(promptToolWireTools, ownedDialect),
+			),
 			messages: encodeInbandToolHistory(llmContext.messages, ownedDialect, promptToolWireTools),
 			tools: undefined,
 		};
@@ -2003,7 +2005,7 @@ function disambiguateToolCallIds(message: AssistantMessage, takenIds: ReadonlySe
 		while (taken(`${block.id}_${suffix}`)) suffix += 1;
 		const unique = `${block.id}_${suffix}`;
 		seen.add(unique);
-		content ??= [...message.content];
+		content ??= message.content.slice();
 		content[index] = { ...block, id: unique };
 	}
 	return content ? { ...message, content } : message;

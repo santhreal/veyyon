@@ -488,10 +488,10 @@ class DaemonBroker {
 			case "start":
 				return this.#start(operation.spec, operation.owner);
 			case "list": {
-				await Promise.all([...this.#records.values()].map(record => this.#refreshDetached(record)));
+				await Promise.all(Array.from(this.#records.values()).map(record => this.#refreshDetached(record)));
 				return {
 					op: "list",
-					daemons: [...this.#records.values()]
+					daemons: Array.from(this.#records.values())
 						.sort((left, right) => left.snapshot.createdAt - right.snapshot.createdAt)
 						.map(record => record.snapshot),
 					completions: await this.#completionRecords(),
@@ -1132,7 +1132,7 @@ class DaemonBroker {
 	#record(name: string): ManagedDaemon {
 		const record = this.#records.get(name);
 		if (record) return record;
-		const names = [...this.#records.keys()];
+		const names = Array.from(this.#records.keys());
 		throw new Error(`Unknown daemon ${name}${names.length ? `. Available: ${names.join(", ")}` : ""}`);
 	}
 
@@ -1301,7 +1301,7 @@ class DaemonBroker {
 		this.#idleTimer = setTimeout(() => {
 			this.#idleTimer = undefined;
 			void (async () => {
-				const livePersistent = [...this.#records.values()].some(
+				const livePersistent = Array.from(this.#records.values()).some(
 					record => record.spec.persist && !terminalState(record.snapshot.state),
 				);
 				if (this.#clients.size > 0 || livePersistent) return;

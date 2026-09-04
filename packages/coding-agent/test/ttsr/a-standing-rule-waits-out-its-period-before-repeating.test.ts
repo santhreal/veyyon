@@ -22,8 +22,8 @@
  * on — but that is a design decision, not something a test can settle.
  */
 import { describe, expect, test } from "bun:test";
-import type { Rule } from "../../src/capability/rule";
 import { buildBuiltinRules } from "../../src/discovery/builtin-defaults";
+import type { Rule } from "../../src/discovery/capability/rule";
 import { TtsrManager } from "../../src/export/ttsr";
 import { warmUpRule } from "../helpers/ttsr-warmup";
 

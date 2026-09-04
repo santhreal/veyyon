@@ -15,7 +15,7 @@ import {
 	unpackEnvelope,
 } from "@veyyon/coding-agent/collab/protocol";
 import { CollabSocket } from "@veyyon/coding-agent/collab/relay-client";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 
 interface RelayData {
 	role: "host" | "guest";

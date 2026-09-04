@@ -26,6 +26,8 @@ import {
 	DEAD_PATH_BASELINE,
 	extractCodeSpanPaths,
 	looksLikeSourcePath,
+	NON_SOURCE_ROOTS,
+	SOURCE_ROOTS,
 } from "./check-doc-paths";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "doc-paths-"));
@@ -48,6 +50,12 @@ describe("looksLikeSourcePath", () => {
 		expect(looksLikeSourcePath("docs/internal/testing.md")).toBe(true);
 		expect(looksLikeSourcePath("scripts/check-doc-links.ts")).toBe(true);
 		expect(looksLikeSourcePath(".github/workflows/docs.yml")).toBe(true);
+		expect(looksLikeSourcePath("kernel/src/session/spine.ts")).toBe(true);
+		expect(looksLikeSourcePath("contracts/wire/src/index.ts")).toBe(true);
+		expect(looksLikeSourcePath("hosts/terminal/engine/src/box.ts")).toBe(true);
+		expect(looksLikeSourcePath("plugins/argot/package.json")).toBe(true);
+		expect(looksLikeSourcePath("natives/diff/kernel/tests/gnu_unified_differential.rs")).toBe(true);
+		expect(looksLikeSourcePath("tests/conformance/README.md")).toBe(true);
 		// A directory, which has no extension to match on.
 		expect(looksLikeSourcePath("packages/coding-agent/test/fixtures/")).toBe(true);
 		// A `file:line` locator still names one real file.
@@ -276,7 +284,12 @@ describe("the repository's own docs", () => {
 	 */
 	it("actually checks the docs it claims to, rather than passing on an empty set", () => {
 		expect(result.filesChecked).toBeGreaterThan(300);
-		expect(result.pathsChecked).toBeGreaterThan(1000);
+		// Above the count the seven original roots reached, so narrowing the root set
+		// back to `packages/`, `scripts/`, `docs/`, `website/`, `assets/` and `.github/`
+		// -- which left every path under `kernel/`, `contracts/`, `hosts/`, `natives/`,
+		// `plugins/` and `tests/` unchecked -- fails here rather than passing quietly
+		// on a third of the corpus.
+		expect(result.pathsChecked).toBeGreaterThan(1500);
 		// The gate's own script, named in its own doc comment, is a path it must resolve.
 		expect(fs.existsSync(path.join(repoRoot, "scripts/check-doc-paths.ts"))).toBe(true);
 	});
@@ -301,5 +314,31 @@ describe("the repository's own docs", () => {
 	it("keeps the baseline small enough that adding to it is a decision", () => {
 		expect(DEAD_PATH_BASELINE.length).toBeLessThanOrEqual(15);
 		expect(new Set(DEAD_PATH_BASELINE).size).toBe(DEAD_PATH_BASELINE.length);
+	});
+
+	/**
+	 * The root set is the gate's blind spot, and a new top-level directory is how it
+	 * grows: code moved into `kernel/`, `contracts/`, `hosts/` and `plugins/`, docs
+	 * followed it, and every span naming those was invisible because the list still
+	 * said `packages/`. The tracked tree answers which directories exist, so a new
+	 * one turns this red until it is a root or is recorded as not being one.
+	 */
+	it("covers every tracked top-level directory, or records why one is not a source root", () => {
+		const listed = Bun.spawnSync(["git", "-C", repoRoot, "ls-files"]);
+		expect(listed.exitCode).toBe(0);
+		const tracked = new Set(
+			new TextDecoder()
+				.decode(listed.stdout)
+				.split("\n")
+				.filter(line => line.includes("/"))
+				.map(line => `${line.slice(0, line.indexOf("/"))}/`),
+		);
+		expect(tracked.size).toBeGreaterThan(10);
+		const covered = new Set<string>([...SOURCE_ROOTS, ...NON_SOURCE_ROOTS]);
+		expect([...tracked].filter(dir => !covered.has(dir)).sort()).toEqual([]);
+		// The reverse direction: a root naming a directory the tree no longer has is
+		// dead weight that hides the fact nothing under it can resolve. `examples/`
+		// was exactly that.
+		expect(SOURCE_ROOTS.filter(dir => !tracked.has(dir)).sort()).toEqual([]);
 	});
 });

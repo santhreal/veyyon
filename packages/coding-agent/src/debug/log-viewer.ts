@@ -1,16 +1,12 @@
-import {
-	type Component,
-	extractPrintableText,
-	matchesKey,
-	padding,
-	parseSgrMouse,
-	replaceTabs,
-	truncateToWidth,
-	visibleWidth,
-} from "@veyyon/tui";
+import type { Component } from "@veyyon/tui";
 import { clampLow, errorMessage, pluralize, sanitizeText } from "@veyyon/utils";
-import { bottomBorder, divider, row, topBorder } from "../modes/components/overlay-box";
-import { theme } from "../modes/theme/theme";
+import { extractPrintableText, matchesKey } from "@veyyon/utils/keys";
+import { parseSgrMouse } from "@veyyon/utils/mouse";
+import { padding } from "@veyyon/utils/padding";
+import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
+import { bottomBorder, divider, row, topBorder } from "../modes/terminal/components/chrome/overlay-box";
+import { theme } from "../theme/theme";
 import { copyToClipboard } from "../utils/clipboard";
 import {
 	formatDebugLogExpandedLines,
@@ -335,9 +331,9 @@ export class DebugLogViewerModel {
 			return 0;
 		}
 		const offset = newEntries.length;
-		this.#entries = [...newEntries, ...this.#entries];
+		this.#entries = newEntries.concat(this.#entries);
 		this.#loadedStartIndex += offset;
-		this.#expandedLogIndices = new Set([...this.#expandedLogIndices].map(logIndex => logIndex + offset));
+		this.#expandedLogIndices = new Set(Array.from(this.#expandedLogIndices).map(logIndex => logIndex + offset));
 		const adjustedCursor: CursorToken | undefined =
 			previousCursor?.kind === "log" ? { kind: "log", logIndex: previousCursor.logIndex + offset } : previousCursor;
 		const adjustedAnchor = previousAnchorLogIndex === undefined ? undefined : previousAnchorLogIndex + offset;
@@ -687,15 +683,15 @@ export class DebugLogViewerComponent implements Component {
 		const visibleBodyLines = this.#renderVisibleBodyLines(rows, bodyHeight);
 
 		return [
-			topBorder(this.#lastRenderWidth, "Recent Logs"),
-			row(this.#summaryText(), this.#lastRenderWidth),
-			row(this.#filterText(), this.#lastRenderWidth),
-			divider(this.#lastRenderWidth),
+			topBorder(this.#lastRenderWidth, "Recent Logs", theme),
+			row(this.#summaryText(), this.#lastRenderWidth, theme),
+			row(this.#filterText(), this.#lastRenderWidth, theme),
+			divider(this.#lastRenderWidth, theme),
 			...visibleBodyLines,
-			divider(this.#lastRenderWidth),
-			row(this.#statusText(), this.#lastRenderWidth),
-			row(theme.fg("dim", this.#controlsText()), this.#lastRenderWidth),
-			bottomBorder(this.#lastRenderWidth),
+			divider(this.#lastRenderWidth, theme),
+			row(this.#statusText(), this.#lastRenderWidth, theme),
+			row(theme.fg("dim", this.#controlsText()), this.#lastRenderWidth, theme),
+			bottomBorder(this.#lastRenderWidth, theme),
 		];
 	}
 
@@ -861,7 +857,7 @@ export class DebugLogViewerComponent implements Component {
 		const lines: string[] = [];
 		if (rows.length === 0) {
 			this.#bodyLineToRowIndex.push(undefined);
-			lines.push(row(theme.fg("muted", "no matches"), this.#lastRenderWidth));
+			lines.push(row(theme.fg("muted", "no matches"), this.#lastRenderWidth, theme));
 		}
 		for (let i = this.#scrollRowOffset; i < rows.length; i++) {
 			const renderedRow = rows[i];
@@ -874,7 +870,7 @@ export class DebugLogViewerComponent implements Component {
 					break;
 				}
 				this.#bodyLineToRowIndex.push(renderedRow.rowIndex);
-				lines.push(row(line, this.#lastRenderWidth));
+				lines.push(row(line, this.#lastRenderWidth, theme));
 			}
 
 			if (lines.length >= bodyHeight) {
@@ -884,7 +880,7 @@ export class DebugLogViewerComponent implements Component {
 
 		while (lines.length < bodyHeight) {
 			this.#bodyLineToRowIndex.push(undefined);
-			lines.push(row("", this.#lastRenderWidth));
+			lines.push(row("", this.#lastRenderWidth, theme));
 		}
 
 		return lines;

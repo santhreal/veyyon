@@ -11,7 +11,7 @@ Veyyon's interface is built around near-black, near-white, silver structure (`#C
 | `dark.json` | Veyyon Dark | Bundled alternative. Pitch black `#000000` / `#FAFAFA` / silver `#B8BDC7`; predates the ember accent |
 | `light.json` | Light | **Default light theme.** White `#FFFFFF` ground with dark-silver structure `#5C6470`, ember accent |
 
-A larger bundled catalog ships under `modes/theme/defaults/` and is selectable from the theme picker.
+A larger bundled catalog ships under `src/theme/defaults/` and is selectable from the theme picker.
 
 ## Changing theme
 

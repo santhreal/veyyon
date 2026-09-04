@@ -24,12 +24,24 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { CpuLimitEnvironment } from "../src/session/cgroup-host";
-import { defaultCpuLimitEnvironment, probeCpuLimitSupport } from "../src/session/cgroup-host";
-import type { CpuBudgetGroupHandle } from "../src/session/cpu-limit";
-import { CpuLimitDeniedError, SessionCpuLimit, sessionCpuBudgetName } from "../src/session/cpu-limit";
-import type { FakeHost } from "./helpers/fake-cgroup";
-import { makeCgroupRoot, makeDelegatedParent, makeFakeHost, removeCgroupRoots } from "./helpers/fake-cgroup";
+import {
+	type CpuLimitEnvironment,
+	defaultCpuLimitEnvironment,
+	probeCpuLimitSupport,
+} from "@veyyon/kernel/session/cgroup-host";
+import {
+	type CpuBudgetGroupHandle,
+	CpuLimitDeniedError,
+	SessionCpuLimit,
+	sessionCpuBudgetName,
+} from "../src/session/cpu-limit";
+import {
+	type FakeHost,
+	makeCgroupRoot,
+	makeDelegatedParent,
+	makeFakeHost,
+	removeCgroupRoots,
+} from "./helpers/fake-cgroup";
 
 afterEach(removeCgroupRoots);
 

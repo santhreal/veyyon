@@ -1,9 +1,0 @@
-{
-	"extends": "../tsconfig.workspace.json",
-	"include": [
-		"bench",
-		"native",
-		"scripts",
-		"test"
-	]
-}

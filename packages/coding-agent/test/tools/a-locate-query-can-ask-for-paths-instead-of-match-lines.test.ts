@@ -19,15 +19,18 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
-import { SearchTool, type SearchToolDetails, searchSchema } from "@veyyon/coding-agent/tools/search";
-import {
-	MULTI_FILE_PER_FILE_MATCHES,
-	type TextSearchDetails,
-	textSearchRenderer,
-} from "@veyyon/coding-agent/tools/text-search";
+import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
+import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
+import { SearchTool, type SearchToolDetails, searchSchema } from "@veyyon/coding-agent/tools/search/search";
+import { MULTI_FILE_PER_FILE_MATCHES, type TextSearchDetails } from "@veyyon/coding-agent/tools/search/text-search";
 import { removeWithRetries } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";
+
+/**
+ * The production `search` entry, which is the card a session draws. `search` is a view the terminal
+ * draws rather than a renderer module to import, so the suites below reach it through the registry.
+ */
+const searchToolRenderer = toolRenderers.search;
 
 function textOf(result: { content: Array<{ type: string; text?: string }> }): string {
 	return result.content
@@ -138,14 +141,17 @@ describe("a locate query can ask for paths instead of match lines", () => {
 			const textResult = textDetailsOf(result);
 			const theme = await getThemeByName("dark");
 			expect(theme).toBeDefined();
-			const frame = textSearchRenderer
+			// Through the search renderer, since the text card is a view the terminal draws rather than
+			// a renderer module to import.
+			const frame = searchToolRenderer
 				.renderResult(
-					{ content: result.content, details: textResult },
+					{
+						content: result.content,
+						details: { type: "text", result: textResult } as unknown as SearchToolDetails,
+					},
 					{ expanded: false, isPartial: false },
 					theme!,
-					{
-						input: NEEDLE,
-					},
+					{ type: "text", input: NEEDLE } as never,
 				)
 				.render(100);
 			const plain = (Array.isArray(frame) ? frame : [frame]).join("\n").replaceAll(/\u001b\[[\d;]*m/g, "");

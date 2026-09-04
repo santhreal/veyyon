@@ -51,8 +51,7 @@ import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import type { SubagentAgentSettings } from "@veyyon/coding-agent/config/settings-domains/subagents";
 import { isSettingPath, SETTINGS_SCHEMA, type SettingPath } from "@veyyon/coding-agent/config/settings-schema";
-import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-selector";
 import { resolveEffectiveSubagentThinkingLevel } from "@veyyon/coding-agent/task/executor";
 import {
 	AGENT_DEFAULT_EFFORT,
@@ -67,6 +66,7 @@ import {
 	subagentModelSourceLabel,
 } from "@veyyon/coding-agent/task/subagent-settings";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { CONFIGURED_THINKING_LEVELS, type ConfiguredThinkingLevel } from "@veyyon/coding-agent/thinking";
 import { logger, removeWithRetries } from "@veyyon/utils";
 import * as YAML from "yaml";

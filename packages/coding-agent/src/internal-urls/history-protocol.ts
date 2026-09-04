@@ -113,7 +113,7 @@ export class HistoryProtocolHandler implements ProtocolHandler {
 			const ambiguous = await ambiguousSessionFileIds();
 			const collided = ambiguous.has(agentId)
 				? agentId
-				: [...ambiguous].find(id => id.toLowerCase() === agentId.toLowerCase());
+				: Array.from(ambiguous).find(id => id.toLowerCase() === agentId.toLowerCase());
 			if (collided !== undefined) {
 				throw new Error(
 					`Ambiguous agent: ${collided}\n` +

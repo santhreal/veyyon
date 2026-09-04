@@ -191,7 +191,7 @@ export function collectArgotLoadedRoots(
 			roots.add(root);
 		}
 	}
-	return [...roots];
+	return Array.from(roots);
 }
 
 /**

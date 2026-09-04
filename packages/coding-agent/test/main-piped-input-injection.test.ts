@@ -21,7 +21,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { runRootCommand } from "@veyyon/coding-agent/main";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..", "..", "..");

@@ -13,10 +13,11 @@ import { createMockModel } from "@veyyon/ai/providers/mock";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { normalizeCustomMessagePayload } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 import { type } from "arktype";
 import { loopSource, unionMembers } from "../../agent/test/support/invented-tool-result-sources";
@@ -25,7 +26,7 @@ import { loopSource, unionMembers } from "../../agent/test/support/invented-tool
  * An interrupted `todo` call is not a verdict on the payload, whatever interrupted
  * it.
  *
- * The session keeps one string, `#lastTodoFailureText`, and compares the next
+ * The session keeps one string, `#lastFailureText`, and compares the next
  * failure against it. That is text classification, and interrupt placeholders are
  * built to defeat it: the headline is FIXED PER SOURCE, so two unrelated interrupts
  * arrive byte-identical, the comparison says "same failure again", and the model is

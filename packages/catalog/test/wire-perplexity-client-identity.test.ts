@@ -4,7 +4,7 @@
  * Why this suite exists: two packages take part in ONE Perplexity session and each had its own copy of the app
  * identity it claims. `@veyyon/ai`'s `registry/oauth/perplexity.ts` mints the session JWT through the email-OTP
  * flow with `API_VERSION = "2.18"` and `APP_USER_AGENT = "Perplexity/641 ..."`;
- * `@veyyon/coding-agent`'s `web/search/providers/perplexity.ts` spends that session with the same two values
+ * `@veyyon/coding-agent`'s `tools/web/search/providers/perplexity.ts` spends that session with the same two values
  * under `OAUTH_API_VERSION` and `OAUTH_USER_AGENT`. The version was spelled a third time inside one request,
  * once as the `X-App-ApiVersion` header and once as the ask body's `version` field.
  *
@@ -35,8 +35,9 @@ import {
 const AI_SRC = path.resolve(import.meta.dir, "../../ai/src");
 const CODING_AGENT_SRC = path.resolve(import.meta.dir, "../../coding-agent/src");
 const LOGIN = path.join(AI_SRC, "registry/oauth/perplexity.ts");
-const SEARCH = path.join(CODING_AGENT_SRC, "web/search/providers/perplexity.ts");
-const BROWSER_HEADERS = path.join(CODING_AGENT_SRC, "web/search/providers/browser-fingerprint-constants.ts");
+const SEARCH = path.join(CODING_AGENT_SRC, "tools/web/search/providers/perplexity.ts");
+const WEB_SRC = path.resolve(import.meta.dir, "../../../plugins/web/src");
+const BROWSER_HEADERS = path.join(WEB_SRC, "browser-fingerprint-constants.ts");
 
 describe("the spoofed Perplexity app identity", () => {
 	/**
@@ -196,9 +197,7 @@ describe("the browser fingerprint states its version once", () => {
 	 * literals; this reads the shipped module and checks the version it interpolates appears in both.
 	 */
 	it("uses one Chrome version in the User-Agent and the client hint", async () => {
-		const { CHROME_DESKTOP_USER_AGENT } = await import(
-			"@veyyon/coding-agent/web/search/providers/browser-fingerprint-constants"
-		);
+		const { CHROME_DESKTOP_USER_AGENT } = await import("@veyyon/web/browser-fingerprint-constants");
 		const version = /Chrome\/(\d+)\./.exec(CHROME_DESKTOP_USER_AGENT)?.[1];
 		expect(version, "no Chrome version in the User-Agent").toBeDefined();
 		const source = await Bun.file(BROWSER_HEADERS).text();
@@ -218,7 +217,7 @@ describe("the browser fingerprint states its version once", () => {
 	it("has the anonymous search path reading the shared browser User-Agent", async () => {
 		const search = await Bun.file(SEARCH).text();
 		expect(search).toContain("CHROME_DESKTOP_USER_AGENT");
-		expect(moduleSpecifiersIn(search)).toContain("./browser-fingerprint-constants");
+		expect(moduleSpecifiersIn(search)).toContain("@veyyon/web/browser-fingerprint-constants");
 		expect(search).not.toContain("ANONYMOUS_USER_AGENT");
 	});
 
@@ -228,13 +227,13 @@ describe("the browser fingerprint states its version once", () => {
 	 */
 	it("has the scraper ladder reading the shared Windows User-Agent", async () => {
 		const { CHROME_DESKTOP_USER_AGENT, CHROME_WINDOWS_USER_AGENT } = await import(
-			"@veyyon/coding-agent/web/search/providers/browser-fingerprint-constants"
+			"@veyyon/web/browser-fingerprint-constants"
 		);
 		const version = (agent: string) => /Chrome\/(\d+)\./.exec(agent)?.[1];
 		expect(version(CHROME_WINDOWS_USER_AGENT)).toBe(version(CHROME_DESKTOP_USER_AGENT));
 		expect(CHROME_WINDOWS_USER_AGENT).toContain("Windows NT 10.0");
 		expect(CHROME_DESKTOP_USER_AGENT).toContain("Macintosh");
-		const scraper = await Bun.file(path.join(CODING_AGENT_SRC, "web/scrapers/types.ts")).text();
+		const scraper = await Bun.file(path.join(WEB_SRC, "scrapers/types.ts")).text();
 		expect(scraper).toContain("CHROME_WINDOWS_USER_AGENT");
 		expect(scraper).toContain(
 			'const USER_AGENTS = ["curl/8.0", "Mozilla/5.0 (compatible; TextBot/1.0)", CHROME_WINDOWS_USER_AGENT];',
@@ -244,7 +243,7 @@ describe("the browser fingerprint states its version once", () => {
 	/** No module outside the owner spells a Chrome User-Agent literal. */
 	it("spells no Chrome User-Agent outside the fingerprint owner", async () => {
 		const offenders: string[] = [];
-		for (const root of [AI_SRC, CODING_AGENT_SRC]) {
+		for (const root of [AI_SRC, CODING_AGENT_SRC, WEB_SRC]) {
 			for (const file of new Bun.Glob("**/*.ts").scanSync(root)) {
 				const full = path.join(root, file);
 				if (full === BROWSER_HEADERS) continue;

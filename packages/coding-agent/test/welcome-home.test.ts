@@ -16,29 +16,37 @@
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { WelcomeComponent } from "@veyyon/coding-agent/modes/components/welcome";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import {
+	WELCOME_SESSION_SLOTS,
+	WelcomeComponent,
+} from "@veyyon/coding-agent/modes/terminal/components/dialogs/welcome";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 
+const WIDTH = 100;
+
+/** The launch hero: the screen a start paints, before anyone asks for `/welcome`. */
 function home(sessions: { name: string; timeAgo: string }[]): string {
-	const welcome = new WelcomeComponent("1.2.3", "Sonnet 4.5", "anthropic", sessions);
-	return welcome
-		.render(100)
-		.map(line => stripVTControlCharacters(line))
-		.join("\n");
+	return frameOf(new WelcomeComponent("1.2.3", "Sonnet 4.5", "anthropic", sessions));
 }
 
-/** The `/welcome` surface: the same component with its full flag, which is where sessions live. */
+/** The `/welcome` screen: the sunrise header plus the menu and `Recent` column. */
 function welcomeScreen(sessions: { name: string; timeAgo: string }[]): string {
-	const welcome = new WelcomeComponent("1.2.3", "Sonnet 4.5", "anthropic", sessions, [], true);
+	return frameOf(new WelcomeComponent("1.2.3", "Sonnet 4.5", "anthropic", sessions, [], true));
+}
+
+function frameOf(welcome: WelcomeComponent): string {
 	return welcome
-		.render(100)
+		.render(WIDTH)
 		.map(line => stripVTControlCharacters(line))
 		.join("\n");
 }
 
 describe("welcome home screen", () => {
-	beforeAll(() => {
-		initTheme();
+	// Awaited: `initTheme` is async, and every cell here renders through the resolved theme. The
+	// unawaited call left the palette unset for whichever cell ran first, which throws on
+	// `isLight` — the ordering that hid it is the runtime's, not this suite's to bet on.
+	beforeAll(async () => {
+		await initTheme();
 	});
 
 	/**
@@ -115,6 +123,21 @@ describe("welcome home screen", () => {
 		);
 	});
 
+	/**
+	 * The column holds a fixed number of rows, so a long history cannot push the menu off the
+	 * screen. The cap is the component's own constant rather than a number repeated here.
+	 */
+	it("lists no more sessions on /welcome than the column has slots", () => {
+		const sessions = ["newest", "second", "third", "fourth", "fifth", "sixth", "seventh"].map((name, index) => ({
+			name,
+			timeAgo: `${index + 1}h ago`,
+		}));
+		const frame = welcomeScreen(sessions);
+		const listed = sessions.filter(session => frame.includes(session.name)).map(session => session.name);
+
+		expect(listed).toEqual(sessions.slice(0, WELCOME_SESSION_SLOTS).map(session => session.name));
+	});
+
 	it("truncates a long session name instead of shattering the centred column", () => {
 		const longName = "a".repeat(120);
 		const frame = welcomeScreen([{ name: longName, timeAgo: "1d ago" }]);
@@ -122,7 +145,7 @@ describe("welcome home screen", () => {
 		expect(frame).not.toContain(longName);
 		expect(frame).toContain("1d ago");
 		for (const line of frame.split("\n")) {
-			expect(line.length).toBeLessThanOrEqual(100);
+			expect(line.length).toBeLessThanOrEqual(WIDTH);
 		}
 	});
 });

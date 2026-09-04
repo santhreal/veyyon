@@ -13,7 +13,7 @@
  * irc", which for a foreign id is advice `irc send` refuses.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { countRunningSubagentBadgeAgents } from "@veyyon/coding-agent/modes/running-subagent-badge";
+import { countRunningSubagentBadgeAgents } from "@veyyon/coding-agent/modes/terminal/running-subagent-badge";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 
 let registry: AgentRegistry;

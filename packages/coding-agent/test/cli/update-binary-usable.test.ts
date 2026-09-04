@@ -17,7 +17,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type * as updateCliModule from "../../src/cli/update-cli";
-import { initTheme } from "../../src/modes/theme/theme";
+import { initTheme } from "../../src/theme/theme";
 import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
 
 let verifyBinaryUsable: typeof updateCliModule.verifyBinaryUsable;

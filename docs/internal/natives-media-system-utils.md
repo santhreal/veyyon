@@ -4,19 +4,19 @@ This document covers the media/system/conversion exports currently present in `@
 
 ## Implementation files
 
-- `crates/veyyon-natives/src/sixel.rs`
-- `crates/veyyon-natives/src/html.rs`
-- `crates/veyyon-natives/src/clipboard.rs`
-- `crates/veyyon-natives/src/tokens.rs`
-- `crates/veyyon-natives/src/appearance.rs`
-- `crates/veyyon-natives/src/power.rs`
-- `crates/veyyon-natives/src/prof.rs`
-- `crates/veyyon-natives/src/task.rs`
-- `packages/natives/native/index.js`
-- `packages/natives/native/loader-state.js`
-- `packages/natives/native/index.d.ts`
-- `packages/natives/scripts/build-native.ts`
-- `packages/natives/scripts/gen-enums.ts`
+- `natives/bridge/addon/src/sixel.rs`
+- `natives/bridge/addon/src/html.rs`
+- `natives/bridge/addon/src/clipboard.rs`
+- `natives/bridge/addon/src/tokens.rs`
+- `natives/bridge/addon/src/appearance.rs`
+- `natives/bridge/addon/src/power.rs`
+- `natives/bridge/addon/src/prof.rs`
+- `natives/bridge/addon/src/task.rs`
+- `natives/bridge/bindings/native/index.js`
+- `natives/bridge/bindings/native/loader-state.js`
+- `natives/bridge/bindings/native/index.d.ts`
+- `natives/bridge/bindings/scripts/build-native.ts`
+- `natives/bridge/bindings/scripts/gen-enums.ts`
 
 The package resolves `@veyyon/natives` through `native/index.js`, while `index.d.ts` supplies its generated declarations. Function and class exports in `index.js` are lazy facades: importing or merely referencing an export does not load the addon. The first invocation, construction, or static class access asks `loader-state.js` to load the addon and either returns the native export or throws; this is deferral, not a functional fallback. During the build, `napi build` generates `index.d.ts`, then `gen-enums.ts` rewrites the generated JS export registry in `index.js`.
 
@@ -68,7 +68,7 @@ Conversion behavior:
 - On Windows, an `arboard` image-read error other than `ContentNotAvailable` triggers a best-effort native fallback: `clipboard-win` reads raw `CF_DIB`, the module wraps and decodes it as BMP, and a successful decode returns PNG. If raw DIB retrieval or decoding fails, the original `arboard` error is preserved and rejected.
 - Clipboard access or image encoding failures outside that Windows recovery path reject/throw as native errors.
 
-There is no current `packages/natives` TS wrapper that emits OSC52, handles Termux, or suppresses native text-copy failures. Consumers own those fallback and suppression policies; the native module itself owns the Windows best-effort image recovery described above.
+There is no current `natives/bridge/bindings` TS wrapper that emits OSC52, handles Termux, or suppresses native text-copy failures. Consumers own those fallback and suppression policies; the native module itself owns the Windows best-effort image recovery described above.
 
 ### Tokens (`tokens`)
 
@@ -115,7 +115,7 @@ There is one failure this function CANNOT report, and the caller has to prevent 
 to exactly the requested dimensions and step 4 allocates an RGBA buffer for the result, so a large
 enough target asks Rust for an allocation it cannot make, and an allocation failure aborts the
 process instead of throwing. No `try/catch` on the JavaScript side sees it. Bound the input before
-you call: `packages/tui/src/terminal-capabilities.ts` refuses a target or a source over
+you call: `hosts/terminal/engine/src/terminal-capabilities.ts` refuses a target or a source over
 `MAX_SIXEL_PIXELS` (16777216, roughly twice a 3840x2160 UHD/4K frame), checking the pixel
 PRODUCT rather than only each axis. For example, `4096x8192` fits below a per-axis cap of
 16777216 on both axes but contains 33554432 pixels. The source is checked as well as the target,

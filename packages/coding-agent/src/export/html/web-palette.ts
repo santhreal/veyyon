@@ -2,7 +2,7 @@
  * Web/export palette — the veyyon brand identity shared by the collab-web live
  * client (`share.veyyon.dev/`) and every public HTML export / share viewer (`/s/<id>`).
  *
- * Why this exists separately from `modes/theme/dark.json`: both surfaces are now
+ * Why this exists separately from `theme/dark.json`: both surfaces are now
  * silver-on-black, so the split is no longer about ground color. Two things keep
  * them apart:
  *

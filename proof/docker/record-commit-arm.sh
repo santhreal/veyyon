@@ -14,7 +14,7 @@
 # own recordings and no source depends on it.
 #
 # node_modules is bind-mounted from the working tree at /repo/node_modules. Its
-# `@veyyon/*` entries are RELATIVE symlinks (`../../packages/tui`), so inside
+# `@veyyon/*` entries are RELATIVE symlinks (`../../hosts/terminal/engine`), so inside
 # the container they resolve into the archived tree's own packages, not into the
 # working tree. That is the whole reason the mount is safe: the arm runs the
 # commit's source, and only its third-party dependencies come from outside.
@@ -102,8 +102,8 @@ docker run --rm \
 	--mount "type=bind,src=${TREE},dst=/repo" \
 	--mount "type=bind,src=${REPO_ROOT}/node_modules,dst=/repo/node_modules,readonly" \
 	--mount "type=bind,src=${REPO_ROOT}/proof,dst=/rig,readonly" \
-	--mount "type=bind,src=${REPO_ROOT}/packages/natives/native/veyyon_natives.linux-x64-modern.node,dst=/repo/packages/natives/native/veyyon_natives.linux-x64-modern.node,readonly" \
-	--mount "type=bind,src=${REPO_ROOT}/packages/natives/native/veyyon_natives.linux-x64-baseline.node,dst=/repo/packages/natives/native/veyyon_natives.linux-x64-baseline.node,readonly" \
+	--mount "type=bind,src=${REPO_ROOT}/natives/bridge/bindings/native/veyyon_natives.linux-x64-modern.node,dst=/repo/natives/bridge/bindings/native/veyyon_natives.linux-x64-modern.node,readonly" \
+	--mount "type=bind,src=${REPO_ROOT}/natives/bridge/bindings/native/veyyon_natives.linux-x64-baseline.node,dst=/repo/natives/bridge/bindings/native/veyyon_natives.linux-x64-baseline.node,readonly" \
 	--mount "type=bind,src=${REPO_ROOT}/packages/coding-agent/src/export/html/tool-views.generated.js,dst=/repo/packages/coding-agent/src/export/html/tool-views.generated.js,readonly" \
 	--mount "type=bind,src=${OUT},dst=/out" \
 	--tmpfs /sandbox/home:exec,size=1g \

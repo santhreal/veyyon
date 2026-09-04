@@ -10,6 +10,10 @@ import * as os from "node:os";
 import { createInterface } from "node:readline/promises";
 import { EventLoopKeepalive } from "@veyyon/agent-core";
 import type { ImageContent } from "@veyyon/ai";
+import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { describePendingToolCalls } from "@veyyon/kernel/session/exit-diagnostics";
+import { formatNotice, OperatorNotices, stderrNoticeSink } from "@veyyon/kernel/session/operator-notices";
+import { resolveResumableSession, type SessionInfo } from "@veyyon/kernel/session/session-listing";
 import {
 	$env,
 	directoryExists,
@@ -24,14 +28,15 @@ import {
 	setProjectDir,
 	VERSION,
 } from "@veyyon/utils";
+import type { HostNotifier } from "@veyyon/utils/host-notification";
 import { isSessionFileName } from "@veyyon/utils/session-file";
 import chalk from "chalk";
-import { reset as resetCapabilities } from "./capability";
 import { type Args, reportUnrecognizedFlags } from "./cli/args";
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from "./cli/exit-codes";
 import { applyExtensionFlags, type ExtensionFlagSink } from "./cli/extension-flags";
 import { processFileArguments } from "./cli/file-processor";
 import { buildInitialMessage } from "./cli/initial-message";
+import { takeStartupPrologue } from "./cli/prologue-handoff";
 import { selectSession } from "./cli/session-picker";
 import { applySessionWorkdir, applyStartupCwd } from "./cli/startup-cwd";
 import { getLatestRelease, type ReleaseInfo, runAutoUpdate } from "./cli/update-cli";
@@ -52,6 +57,7 @@ import { DEFAULT_MODEL_SLOT } from "./config/model-roles";
 import { ModelsConfigFile } from "./config/models-config";
 import { getDefault, type SettingPath, Settings, settings } from "./config/settings";
 import { initializeWithSettings } from "./discovery";
+import { reset as resetCapabilities } from "./discovery/capability";
 import {
 	clearPluginRootsAndCaches,
 	injectPluginDirRoots,
@@ -64,37 +70,28 @@ import type { ExtensionUIContext } from "./extensibility/extensions/types";
 import { scheduleMarketplaceAutoUpdate } from "./extensibility/plugins/marketplace-auto-update";
 import { registerDaemonProjectPresence } from "./launch/presence";
 import type { MCPManager } from "./mcp";
-import { setLaunchTip, updateInstalledTip } from "./modes/components/launch-tip";
-import type * as firstFrameModule from "./modes/first-frame";
-import type * as interactiveModeModule from "./modes/interactive-mode";
-import type { InteractiveMode } from "./modes/interactive-mode";
 import type { PrintModeOptions } from "./modes/print-mode";
 import { CURRENT_SETUP_VERSION, resolveOnboardingGeneration } from "./modes/setup-version";
-import { initTheme, stopThemeWatcher } from "./modes/theme/theme";
-import type { SubmittedUserInput } from "./modes/types";
+import { setLaunchTip, updateInstalledTip } from "./modes/terminal/components/dialogs/launch-tip";
+import type * as firstFrameModule from "./modes/terminal/first-frame";
+import type * as interactiveModeModule from "./modes/terminal/interactive-mode";
+import type { InteractiveMode } from "./modes/terminal/interactive-mode";
+import type { SubmittedUserInput } from "./modes/terminal/types";
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
-import {
-	type CreateAgentSessionOptions,
-	type CreateAgentSessionResult,
-	createAgentSession,
-	discoverAuthStorage,
-	loadSessionExtensions,
-} from "./sdk";
+import { createAgentSession, discoverAuthStorage } from "./sdk";
 import type { AgentSession } from "./session/agent-session";
-import type { AuthStorage } from "./session/auth-storage";
 import type { InteractiveSessionFactory } from "./session/background-sessions";
 import { rootBudgetGroupOwnerId, sessionCpuExecHooks } from "./session/cpu-limit";
-import { describePendingToolCalls } from "./session/exit-diagnostics";
-import { formatNotice, OperatorNotices, stderrNoticeSink } from "./session/operator-notices";
-import { resolveResumableSession, type SessionInfo } from "./session/session-listing";
+import { loadSessionExtensions } from "./session/factory-extensions";
+import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "./session/factory-options";
 import { SessionManager } from "./session/session-manager";
 import { executeBuiltinSlashCommand } from "./slash-commands/builtin-registry";
-import { takeStartupPrologue } from "./startup/prologue-handoff";
 import { shouldShowStartupSplash } from "./startup-splash";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "./system-prompt";
 import { createPersistedSubagentReviverFactory } from "./task/persisted-revive";
 import { resolveSubagentIdleTtlMs, resolveSubagentPruneBudget } from "./task/subagent-settings";
 import { initTelemetryExport, isTelemetryExportEnabled } from "./telemetry-export";
+import { initTheme, stopThemeWatcher } from "./theme/theme";
 import type { LspStartupServerInfo } from "./tools";
 import { decideUpdateNotice, readLastChangelogVersion, writeLastChangelogVersion } from "./utils/changelog";
 import { EventBus } from "./utils/event-bus";
@@ -512,14 +509,14 @@ export function createAcpSessionFactory(args: AcpSessionFactoryOptions): AcpSess
 let interactiveModeLoad: Promise<typeof interactiveModeModule> | undefined;
 
 function loadInteractiveMode(): Promise<typeof interactiveModeModule> {
-	interactiveModeLoad ??= import("./modes/interactive-mode");
+	interactiveModeLoad ??= import("./modes/terminal/interactive-mode");
 	return interactiveModeLoad;
 }
 
 let firstFrameLoad: Promise<typeof firstFrameModule> | undefined;
 
 function loadFirstFrame(): Promise<typeof firstFrameModule> {
-	firstFrameLoad ??= import("./modes/first-frame");
+	firstFrameLoad ??= import("./modes/terminal/first-frame");
 	return firstFrameLoad;
 }
 
@@ -540,9 +537,18 @@ async function runInteractiveMode(
 	initialImages?: ImageContent[],
 	joinLink?: string,
 	createNextSession?: InteractiveSessionFactory,
+	setToolNotifier?: (notify: HostNotifier) => void,
 ): Promise<void> {
 	const { InteractiveMode } = await loadInteractiveMode();
-	const mode = new InteractiveMode(session, version, setExtensionUIContext, lspServers, mcpManager, eventBus);
+	const mode = new InteractiveMode(
+		session,
+		version,
+		setExtensionUIContext,
+		lspServers,
+		mcpManager,
+		eventBus,
+		setToolNotifier,
+	);
 	mode.createNextSession = createNextSession;
 
 	// Cold-launch gate: the full setup wizard (every scene + the overlay and
@@ -558,7 +564,7 @@ async function runInteractiveMode(
 	const onboarding = resolveOnboardingGeneration(settings);
 	const setupStale = !onboarding.unreadable && onboarding.version < CURRENT_SETUP_VERSION;
 	const setupWizard =
-		forceSetupWizard || setupStale || showStartupSplash ? await import("./modes/setup-wizard") : undefined;
+		forceSetupWizard || setupStale || showStartupSplash ? await import("./modes/terminal/setup-wizard") : undefined;
 	const setupScenes = setupWizard
 		? await setupWizard.selectSetupScenes(onboarding.version, setupWizard.ALL_SCENES, mode, {
 				resuming,
@@ -1860,12 +1866,13 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 		// the TUI delivers them once it is up (see `InteractiveMode.start`). Every other mode
 		// keeps the default, which writes to stderr as they arrive.
 		const operatorNotices = isInteractive ? new OperatorNotices() : new OperatorNotices(stderrNoticeSink);
-		const { session, setToolUIContext, modelFallbackMessage, lspServers, mcpManager } = await createSession({
-			...sessionOptions,
-			eventBus,
-			operatorNotices,
-			preloadedExtensions: extensionsResult,
-		});
+		const { session, setToolUIContext, setToolNotifier, modelFallbackMessage, lspServers, mcpManager } =
+			await createSession({
+				...sessionOptions,
+				eventBus,
+				operatorNotices,
+				preloadedExtensions: extensionsResult,
+			});
 
 		// Cold-revive support: a `parked` subagent ref restored from disk (the persisted-subagent
 		// scan, collab mirror, resumed process) has a sessionFile but no in-memory
@@ -1995,6 +2002,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 				initialImages,
 				parsedArgs.join,
 				createNextSession,
+				setToolNotifier,
 			);
 		} else {
 			stopStartupWatchdog();

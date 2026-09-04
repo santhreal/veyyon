@@ -17,7 +17,7 @@ import {
 	registerForegroundBashWait,
 	requestManualBackground,
 	resetForegroundBashRegistryForTest,
-} from "@veyyon/coding-agent/tools/bash-foreground-registry";
+} from "@veyyon/coding-agent/tools/shell/bash-foreground-registry";
 
 describe("foreground bash wait registry", () => {
 	beforeEach(() => {

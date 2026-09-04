@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { Settings, settings } from "../src/config/settings";
-import * as downloader from "../src/stt/downloader";
-import * as recorder from "../src/stt/recorder";
-import { STTController } from "../src/stt/stt-controller";
-import { evaluateSubmitTrigger, type SttSubmitTrigger } from "../src/stt/submit-trigger";
-import * as transcriber from "../src/stt/transcriber";
+import * as downloader from "../src/speech/stt/downloader";
+import * as recorder from "../src/speech/stt/recorder";
+import { STTController } from "../src/speech/stt/stt-controller";
+import { evaluateSubmitTrigger, type SttSubmitTrigger } from "../src/speech/stt/submit-trigger";
+import * as transcriber from "../src/speech/stt/transcriber";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 
 describe("STT Submit Trigger Evaluation", () => {

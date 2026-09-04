@@ -35,7 +35,7 @@ import { resolveDialect } from "../config/dialect-format";
 import { shouldInlineToolDescriptors } from "../config/inline-tool-descriptors-mode";
 import type { Settings } from "../config/settings";
 import { enabledSubagentNames, resolveDelegation } from "../task/subagent-settings";
-import { isIrcEnabled } from "../tools/irc-enabled";
+import { isIrcEnabled } from "../tools/agent/irc-enabled";
 
 /**
  * The settings-derived slice of `BuildSystemPromptOptions`, and the ONE place these fields are

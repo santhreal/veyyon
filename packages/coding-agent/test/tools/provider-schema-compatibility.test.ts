@@ -11,7 +11,7 @@ import {
 } from "@veyyon/ai/utils/schema";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createTools, HIDDEN_TOOLS, type ToolSession } from "@veyyon/coding-agent/tools";
-import { createVibeTools } from "@veyyon/coding-agent/tools/vibe";
+import { createVibeTools } from "@veyyon/coding-agent/tools/agent/vibe";
 import { isRecord } from "@veyyon/utils";
 
 interface ToolSchemaEntry {

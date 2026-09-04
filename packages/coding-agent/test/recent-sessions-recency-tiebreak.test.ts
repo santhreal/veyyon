@@ -16,8 +16,8 @@
  * the tiebreak — not wall-clock write timing — decides the order.
  */
 import { describe, expect, it } from "bun:test";
-import { getRecentSessions } from "@veyyon/coding-agent/session/session-listing";
-import { MemorySessionStorage } from "@veyyon/coding-agent/session/session-storage";
+import { getRecentSessions } from "@veyyon/kernel/session/session-listing";
+import { MemorySessionStorage } from "@veyyon/kernel/session/session-storage";
 
 const DIR = "/sessions/project";
 const TIE_MTIME = 5_000;

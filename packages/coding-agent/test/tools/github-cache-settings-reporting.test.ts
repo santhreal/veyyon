@@ -18,7 +18,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import type { Settings } from "@veyyon/coding-agent/config/settings";
-import { resolveCacheTtl } from "@veyyon/coding-agent/tools/github-cache";
+import { resolveCacheTtl } from "@veyyon/coding-agent/tools/web/github-cache";
 import { logger } from "@veyyon/utils";
 
 /** A settings object that answers from a map, as the real one does. */

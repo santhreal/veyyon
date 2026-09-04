@@ -32,10 +32,17 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, type Mock, spyOn } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { settings } from "@veyyon/coding-agent/config/settings-instance";
-import { COMPOSER_INSET_COLS, LaunchComposerFoot } from "@veyyon/coding-agent/modes/components/composer-chrome";
-import { renderWelcomeTip, TIP_ENTRIES, WelcomeComponent } from "@veyyon/coding-agent/modes/components/welcome";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { AUTONOMY_LABEL, type AutonomyLevel } from "@veyyon/coding-agent/tools/approval-modes";
+import {
+	COMPOSER_INSET_COLS,
+	LaunchComposerFoot,
+} from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
+import {
+	renderWelcomeTip,
+	TIP_ENTRIES,
+	WelcomeComponent,
+} from "@veyyon/coding-agent/modes/terminal/components/dialogs/welcome";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { AUTONOMY_LABEL, type AutonomyLevel } from "@veyyon/coding-agent/tools/core/approval-modes";
 import * as utils from "@veyyon/utils";
 import { stripAnsi } from "@veyyon/utils";
 import { STATUS_ROW } from "../../../scripts/bench-startup";

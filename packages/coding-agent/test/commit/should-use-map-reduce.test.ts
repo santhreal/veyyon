@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { parseFileDiffs } from "../../src/commit/git/diff";
+import { parseFileDiffs } from "../../src/commit/git-diff";
 import { shouldUseMapReduce } from "../../src/commit/map-reduce/index";
 import { estimateTokens } from "../../src/commit/map-reduce/utils";
 

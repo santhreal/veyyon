@@ -7,7 +7,7 @@ import {
 	EXIT_OK,
 	EXIT_USAGE,
 } from "@veyyon/coding-agent/cli/exit-codes";
-import { APPROVAL_MODE_VALUES } from "@veyyon/coding-agent/tools/approval-modes";
+import { APPROVAL_MODE_VALUES } from "@veyyon/coding-agent/tools/core/approval-modes";
 import { CLI_EXIT_USAGE } from "@veyyon/utils/cli";
 import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
 

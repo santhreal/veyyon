@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { AgentTool } from "@veyyon/agent-core";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { Text, type TUI } from "@veyyon/tui";
 import { createToolExecution } from "./helpers/tool-execution";
 

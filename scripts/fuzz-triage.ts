@@ -41,6 +41,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { DEFAULT_TARGET_DIR, fuzzDir, readTargetNames, repoRoot } from "./fuzz";
+import { rustMembers } from "./workspace-layout";
 
 /** Seconds a single reproduction attempt may take before it is inconclusive. */
 export const REPRODUCE_TIMEOUT_SECONDS = 120;
@@ -149,6 +150,23 @@ export function parseCrashSignature(output: string): CrashSignature | undefined 
 }
 
 /**
+ * The repository trees a first-party crash location can name, derived from the
+ * Cargo workspace at run time.
+ *
+ * A hardcoded `crates/` was here, and it went stale the moment the crates moved
+ * under `natives/`: the pattern stopped matching and every first-party panic
+ * kept its absolute path, so the same crash signed differently on two machines
+ * and deduplication silently stopped working. Reading the workspace means a
+ * crate tree added or renamed is covered without an edit here.
+ */
+function firstPartyTrees(): string[] {
+	const trees = new Set(rustMembers().map(member => member.split("/")[0]!));
+	// The fuzz harnesses are their own cargo project, excluded from the workspace.
+	trees.add("fuzz");
+	return [...trees].sort();
+}
+
+/**
  * Make a crash location comparable between machines.
  *
  * A panic inside a dependency reports an absolute path through the cargo
@@ -163,7 +181,7 @@ export function normalizeLocation(rawLocation: string): string {
 	const location = rawLocation.trim().replace(/:$/, "");
 	const registry = location.match(/index\.crates\.io-[^/]+\/(.+)$/);
 	if (registry) return registry[1]!;
-	const local = location.match(/veyyon\/(crates\/.+|fuzz\/.+)$/);
+	const local = location.match(new RegExp(`veyyon/((?:${firstPartyTrees().join("|")})/.+)$`));
 	if (local) return local[1]!;
 	return location;
 }

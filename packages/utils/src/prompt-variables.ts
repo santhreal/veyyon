@@ -234,7 +234,7 @@ export function analyzeTemplate(template: string, options: AnalyzeOptions = {}):
 			}
 		};
 		collect(node);
-		return new Set([...frame.guarded, ...roots]);
+		return new Set(Array.from(frame.guarded).concat(Array.from(roots)));
 	}
 
 	function visit(nodes: readonly Node[], frame: Frame): void {
@@ -280,8 +280,8 @@ export function analyzeTemplate(template: string, options: AnalyzeOptions = {}):
 
 	const required: TemplateVariable[] = [];
 	const optional: TemplateVariable[] = [];
-	for (const [name, list] of [...sightings].sort(([a], [b]) => a.localeCompare(b))) {
-		const paths = [...new Set(list.map(s => s.path))].sort();
+	for (const [name, list] of Array.from(sightings).sort(([a], [b]) => a.localeCompare(b))) {
+		const paths = Array.from(new Set(list.map(s => s.path))).sort();
 		const printed = list.filter(s => s.use === "interpolated");
 		const requiredWhen = dedupeGuardSets(printed.map(s => s.guards));
 		if (printed.length > 0) required.push({ name, use: "interpolated", paths, requiredWhen });
@@ -292,7 +292,7 @@ export function analyzeTemplate(template: string, options: AnalyzeOptions = {}):
 
 /** Collapse guard sets to the distinct ones, dropping any that a weaker one subsumes. */
 function dedupeGuardSets(sets: readonly (readonly string[])[]): readonly (readonly string[])[] {
-	const normalized = sets.map(set => [...new Set(set)].sort());
+	const normalized = sets.map(set => Array.from(new Set(set)).sort());
 	// An unguarded sighting makes every guarded one redundant: the name prints
 	// no matter what, so there is nothing left to condition on.
 	if (normalized.some(set => set.length === 0)) return [[]];

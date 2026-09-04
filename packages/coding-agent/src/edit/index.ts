@@ -10,23 +10,27 @@ import { getDiagnosticsLedger } from "../lsp/diagnostics-ledger";
 import { PROMPTS } from "../prompts/registry";
 import { budgetedFileCommit, sessionBudgetLimits } from "../session/cpu-limit";
 import type { ToolSession } from "../tools";
-import { abortedPartway } from "../tools/aborted-partway";
-import { truncateForPrompt } from "../tools/approval";
-import { isInternalUrlPath } from "../tools/path-utils";
+import { abortedPartway } from "../tools/core/aborted-partway";
+import { truncateForPrompt } from "../tools/core/approval";
+import { isInternalUrlPath } from "../tools/core/path-utils";
+import { getLspBatchRequest, type LspBatchRequest } from "../tools/core/render-utils";
 import { type EditMode, normalizeEditMode, resolveEditMode } from "../utils/edit-mode";
+import type { EditToolDetails, EditToolPerFileResult } from "./details";
+import { editToolView } from "./edit-view";
 import { executeHashlineSingle, hashlineEditParamsSchema } from "./hashline";
 import { type ApplyPatchParams, applyPatchSchema, expandApplyPatchToEntries } from "./modes/apply-patch";
 import applyPatchGrammar from "./modes/apply-patch.lark" with { type: "text" };
 import { executePatchSingle, type PatchEditEntry, type PatchParams, patchEditSchema } from "./modes/patch";
 import { executeReplaceSingle, type ReplaceEditEntry, type ReplaceParams, replaceEditSchema } from "./modes/replace";
-import { type EditToolDetails, type EditToolPerFileResult, getLspBatchRequest, type LspBatchRequest } from "./renderer";
 import { pruneOversizedEditSnapshots } from "./snapshot-details";
 import { EDIT_MODE_STRATEGIES } from "./streaming";
 
 export * from "@veyyon/hashline";
 export { DEFAULT_EDIT_MODE, type EditMode, normalizeEditMode } from "../utils/edit-mode";
 export * from "./apply-patch";
+export * from "./details";
 export * from "./diff";
+export * from "./edit-view";
 export * from "./file-snapshot-store";
 export * from "./hashline";
 // The matching engine moved out of `./modes/replace` to break a cycle with
@@ -36,7 +40,6 @@ export * from "./modes/apply-patch";
 export * from "./modes/patch";
 export * from "./modes/replace";
 export * from "./normalize";
-export * from "./renderer";
 export * from "./snapshot-details";
 export * from "./streaming";
 
@@ -150,7 +153,7 @@ function createEditWritethrough(session: ToolSession): WritethroughCallback {
  * text of something that looked like an ordinary failure.
  *
  * So the abort keeps its type AND carries the summary in its message. The
- * sentence itself is built by `tools/aborted-partway.ts`, which `pr_checkout`
+ * sentence itself is built by `tools/core/aborted-partway.ts`, which `pr_checkout`
  * and `retain` also use: the per-file loop and the per-entry loop must not word
  * this differently, and neither must the other tools that can stop halfway. This
  * function supplies the nouns and the advice, which are the parts only the edit
@@ -303,7 +306,7 @@ async function executeApplyPatchPerFile(
 						.filter(Boolean)
 						.join("\n"),
 					firstChangedLine: perFileResults.find(r => r.firstChangedLine)?.firstChangedLine,
-					perFileResults: [...perFileResults],
+					perFileResults: perFileResults.slice(),
 				},
 			});
 		}
@@ -499,7 +502,7 @@ export function editFilesystemTargets(args: unknown): string[] {
 	return targets;
 }
 
-export class EditTool implements AgentTool<TInput> {
+export class EditTool implements AgentTool<TInput, EditToolDetails> {
 	readonly approval = (args: unknown) => {
 		const targetPath = extractApprovalPath(args);
 		return targetPath !== "(unknown)" && isInternalUrlPath(targetPath) ? "read" : "write";
@@ -515,6 +518,7 @@ export class EditTool implements AgentTool<TInput> {
 	readonly loadMode = "essential";
 	readonly concurrency = "exclusive";
 	readonly strict = true;
+	readonly view = editToolView;
 
 	readonly #allowFuzzy: boolean;
 	readonly #fuzzyThreshold: number;

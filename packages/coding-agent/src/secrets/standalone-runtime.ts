@@ -50,7 +50,7 @@ export async function loadStandaloneSecretRuntime(options: StandaloneSecretRunti
 			expiresAt: secret.expiresAt,
 			origin: "vault",
 		}));
-		return new SecretObfuscator([...envEntries, ...fileEntries, ...vaultEntries], { placeholderKey });
+		return new SecretObfuscator(envEntries.concat(fileEntries, vaultEntries), { placeholderKey });
 	} catch {
 		throw new Error(
 			"Refusing provider dispatch because the secret protection runtime could not be loaded. Fix secrets.yml, env-keywords.yml, or the secret vault and retry.",

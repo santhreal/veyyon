@@ -36,10 +36,10 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getGlobalSubagentsDir, readdirIfPresent, reportFault } from "@veyyon/utils";
-import { isProviderEnabled } from "../capability";
+import { isProviderEnabled } from "../discovery/capability";
 import { listClaudePluginRoots, pluginsRootFor } from "../discovery/helpers";
 import { listVeyyonExtensionRoots } from "../discovery/veyyon-extension-roots";
-import { isKnownToolName } from "../tools/builtin-names";
+import { isKnownToolName } from "../tools/core/builtin-names";
 import { loadBundledAgents, parseAgent } from "./agents";
 import { currentAgentName } from "./spawn-policy";
 import type { AgentDefinition, AgentSource } from "./types";
@@ -202,7 +202,7 @@ export async function discoverAgents(
 	// Always null: there is no project agents dir any more. The field stays on
 	// `DiscoveryResult` because ~30 call sites in `task/index.ts` plumb it into
 	// `TaskToolDetails` for display; retiring it is a separate mechanical pass.
-	return { agents: [...loadedAgents, ...bundledAgents], projectAgentsDir: null };
+	return { agents: loadedAgents.concat(bundledAgents), projectAgentsDir: null };
 }
 
 /**

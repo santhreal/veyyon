@@ -49,10 +49,10 @@ describe("assignLockFilesToPlan", () => {
 	});
 
 	it("falls back to any matching manifest when no sibling in the lock file's directory is planned", () => {
-		const target = plan({ paths: ["docs/README.md"] }, { paths: ["crates/thing/Cargo.toml"] });
-		assignLockFilesToPlan(target, ["docs/README.md", "crates/thing/Cargo.toml", "Cargo.lock"]);
+		const target = plan({ paths: ["docs/README.md"] }, { paths: ["natives/thing/Cargo.toml"] });
+		assignLockFilesToPlan(target, ["docs/README.md", "natives/thing/Cargo.toml", "Cargo.lock"]);
 		expect(pathsOf(target, 0)).toEqual(["docs/README.md"]);
-		expect(pathsOf(target, 1)).toEqual(["crates/thing/Cargo.toml", "Cargo.lock"]);
+		expect(pathsOf(target, 1)).toEqual(["natives/thing/Cargo.toml", "Cargo.lock"]);
 	});
 
 	it("falls back to the last commit when no manifest sibling is planned", () => {

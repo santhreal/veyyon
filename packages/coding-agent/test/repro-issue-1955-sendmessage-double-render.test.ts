@@ -8,12 +8,12 @@ import type {
 	ExtensionContextActions,
 	ExtensionUIContext,
 } from "@veyyon/coding-agent/extensibility/extensions";
-import { ExtensionUiController } from "@veyyon/coding-agent/modes/controllers/extension-ui-controller";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
-import { UiHelpers } from "@veyyon/coding-agent/modes/utils/ui-helpers";
+import { ExtensionUiController } from "@veyyon/coding-agent/modes/terminal/controllers/extension-ui-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
+import { UiHelpers } from "@veyyon/coding-agent/modes/terminal/utils/ui-helpers";
 import { buildSessionContext, type SessionContext } from "@veyyon/coding-agent/session/session-context";
-import type { CustomMessageEntry, SessionEntry } from "@veyyon/coding-agent/session/session-entries";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import type { CustomMessageEntry, SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { Container } from "@veyyon/tui";
 
 /**
@@ -128,6 +128,7 @@ function createHarness(): Harness {
 			getEntries: () => entries,
 		},
 		setToolUIContext: vi.fn(),
+		setToolNotifier: vi.fn(),
 		setEditorComponent: vi.fn(),
 		setWorkingMessage: vi.fn(),
 		setToolsExpanded: vi.fn(),

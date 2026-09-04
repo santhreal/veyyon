@@ -14,15 +14,15 @@ import type { ResolvedOpenAICompat } from "@veyyon/catalog/types";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { convertToLlm } from "@veyyon/coding-agent/session/messages";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import {
 	allocateCanonicalToolCallId,
 	canonicalizeToolCallIds,
 	resolveCanonicalToolCallId,
 	type ToolCallIdMap,
-} from "@veyyon/coding-agent/session/canonicalize-tool-call-ids";
-import { convertToLlm } from "@veyyon/coding-agent/session/messages";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+} from "@veyyon/kernel/session/canonicalize-tool-call-ids";
 import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
 import { type } from "arktype";
 

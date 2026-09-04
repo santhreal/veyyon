@@ -16,11 +16,16 @@ import { AstMatchStrictness, astMatch, FileType, type GlobMatch, glob } from "@v
 import { collapseWhitespace, errorMessage, escapeRegExp, logger, truncate } from "@veyyon/utils";
 import { getProjectDir } from "@veyyon/utils/dirs";
 import chalk from "chalk";
-import { type Rule, ruleCapability } from "../capability/rule";
-import { type BucketRulesOptions, bucketRules, resolveRuleLevers, ruleIsEnabled } from "../capability/rule-buckets";
 import { Settings } from "../config/settings";
 import type { TtsrSettings } from "../config/settings-schema";
 import { initializeWithSettings, loadCapability } from "../discovery";
+import { type Rule, ruleCapability } from "../discovery/capability/rule";
+import {
+	type BucketRulesOptions,
+	bucketRules,
+	resolveRuleLevers,
+	ruleIsEnabled,
+} from "../discovery/capability/rule-buckets";
 import { buildRuleFromMarkdown, createSourceMeta } from "../discovery/helpers";
 import type { TtsrManager } from "../export/ttsr";
 
@@ -216,7 +221,7 @@ async function evaluate(
 		context.source === "tool" && context.filePaths && context.filePaths.length > 0
 			? await manager.checkAstSnapshot(snippet, context)
 			: [];
-	const hitNames = new Set<string>([...regexHit, ...astHit].map(r => r.name));
+	const hitNames = new Set<string>(regexHit.concat(astHit).map(r => r.name));
 
 	const lang = deriveLang(context.filePaths);
 	const astEligible = context.source === "tool" && !!lang;
@@ -647,7 +652,8 @@ async function scanRulePlanMatchesContent(
 	let astHit = false;
 	if ((includeDetails || !regexHit) && lang && plan.astConditions.length > 0) {
 		if (includeDetails) {
-			matchedAst.push(...(await astMatches(plan.rule, fileContent, lang)));
+			const astMatchesResult = await astMatches(plan.rule, fileContent, lang);
+			for (let ai = 0; ai < astMatchesResult.length; ai++) matchedAst.push(astMatchesResult[ai]!);
 			astHit = matchedAst.length > 0;
 		} else {
 			try {

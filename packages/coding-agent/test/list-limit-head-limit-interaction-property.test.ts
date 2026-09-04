@@ -4,7 +4,7 @@
  * limitType match vs result meta keys.
  */
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "@veyyon/coding-agent/tools/list-limit";
+import { applyListLimit } from "@veyyon/coding-agent/tools/core/list-limit";
 
 describe("applyListLimit head/limit interaction property", () => {
 	for (const n of [0, 1, 2, 5, 10]) {

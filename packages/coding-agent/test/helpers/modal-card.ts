@@ -8,7 +8,7 @@
  * Slicing them off here keeps those assertions about the list instead of about
  * where the card happens to sit on screen.
  */
-import { theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { theme } from "@veyyon/coding-agent/theme/theme";
 
 /**
  * The card's content columns, ANSI stripped, one string per body row.

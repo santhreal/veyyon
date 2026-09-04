@@ -42,7 +42,7 @@ import { MCPManager } from "@veyyon/coding-agent/mcp/manager";
 import * as oauthFlow from "@veyyon/coding-agent/mcp/oauth-flow";
 import type { McpConnectionStatusEvent } from "@veyyon/coding-agent/mcp/startup-events";
 import type { MCPServerConfig } from "@veyyon/coding-agent/mcp/types";
-import { REMOTE_REFRESH_SENTINEL } from "@veyyon/coding-agent/session/auth-storage";
+import { REMOTE_REFRESH_SENTINEL } from "@veyyon/kernel/session/auth-storage";
 import { logger } from "@veyyon/utils";
 
 const MCP_CREDENTIAL_ID = "mcp_oauth_attribution";

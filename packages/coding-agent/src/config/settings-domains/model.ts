@@ -227,7 +227,7 @@ export const MODEL_SETTINGS = {
 	// Value is a personality name resolved at runtime against built-ins plus
 	// Tier-B `~/.veyyon/personalities/*.md` and `.veyyon/personalities/*.md`
 	// data files (project > user > built-in). "none" is a reserved sentinel
-	// that omits the block. See packages/coding-agent/src/personality/resolver.ts.
+	// that omits the block. See packages/coding-agent/src/config/personality-resolver.ts.
 	personality: {
 		type: "string",
 		default: "default",

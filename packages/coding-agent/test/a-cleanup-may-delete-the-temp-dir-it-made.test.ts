@@ -24,7 +24,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { findCriticalBashRisk } from "../src/tools/bash-guard";
+import { findCriticalBashRisk } from "../src/tools/shell/bash-guard";
 
 /** A stable home directory, so the rule is stated independently of the machine. */
 const HOME = "/home/agent";

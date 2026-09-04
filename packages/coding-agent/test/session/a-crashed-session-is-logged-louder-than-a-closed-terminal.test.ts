@@ -29,10 +29,10 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
-import { SESSION_EXIT_CUSTOM_TYPE, type SessionExitLogLevel } from "@veyyon/coding-agent/session/exit-diagnostics";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { SESSION_EXIT_CUSTOM_TYPE, type SessionExitLogLevel } from "@veyyon/kernel/session/exit-diagnostics";
 import { logger, postmortem, TempDir } from "@veyyon/utils";
 
 const EXIT_MESSAGE = "Session exit recorded";

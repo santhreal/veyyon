@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { NEXT_PREFERENCE, PREFERENCE_LABEL, ThemeToggle } from "../src/ThemeToggle";
+import { NEXT_PREFERENCE, PREFERENCE_LABEL, type ThemePreference, ThemeToggle } from "../src/ThemeToggle";
 
 describe("ThemeToggle", () => {
 	it("cycles preferences in the order system -> light -> dark -> system", () => {
@@ -31,17 +31,18 @@ describe("ThemeToggle", () => {
 		expect(htmlDark).toContain(`title="${PREFERENCE_LABEL.dark} — click to switch"`);
 	});
 
-	it("triggers setPreference with the next preference in cycle when rendered", () => {
-		const chosen: string[] = [];
-		const element = ThemeToggle({
-			preference: "system",
-			setPreference: next => chosen.push(next),
-			className: "test-toggle",
-		});
+	it("passes the next preference in the cycle to setPreference when clicked", () => {
+		const received: ThemePreference[] = [];
 
-		element.props.onClick();
+		for (const preference of ["system", "light", "dark"] as ThemePreference[]) {
+			const element = ThemeToggle({
+				preference,
+				setPreference: next => received.push(next),
+				className: "test-toggle",
+			});
+			element.props.onClick();
+		}
 
-		// The list, not the spy: one click sets exactly one preference, and it is the next in cycle.
-		expect(chosen).toEqual(["light"]);
+		expect(received).toEqual(["light", "dark", "system"]);
 	});
 });

@@ -43,15 +43,15 @@ import type {
 	ExtensionAskDialogQuestion,
 	ExtensionUIContext,
 } from "@veyyon/coding-agent/extensibility/extensions/types";
-import { AskDialogComponent } from "@veyyon/coding-agent/modes/components/ask-dialog";
-import type { ExtensionUiControllerContext } from "@veyyon/coding-agent/modes/controllers/extension-ui-controller";
-import { ExtensionUiController } from "@veyyon/coding-agent/modes/controllers/extension-ui-controller";
-import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { AskDialogComponent } from "@veyyon/coding-agent/modes/terminal/components/dialogs/ask-dialog";
+import type { ExtensionUiControllerContext } from "@veyyon/coding-agent/modes/terminal/controllers/extension-ui-controller";
+import { ExtensionUiController } from "@veyyon/coding-agent/modes/terminal/controllers/extension-ui-controller";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
 import { BUILTIN_TOOLS, HIDDEN_TOOLS, type ToolSession } from "@veyyon/coding-agent/tools";
-import { AskTool, type AskToolInput } from "@veyyon/coding-agent/tools/ask";
+import { AskTool, type AskToolInput } from "@veyyon/coding-agent/tools/agent/ask";
 import type { Component, OverlayHandle } from "@veyyon/tui";
-import { setKeybindings } from "@veyyon/tui";
 import { isRecord } from "@veyyon/utils";
+import { setKeybindings } from "@veyyon/utils/keybindings";
 import { makeToolSession } from "../helpers/tool-session";
 
 /** The shape that killed the session: everything but the text that gets rendered. */
@@ -132,6 +132,10 @@ function createHarness(collabHost?: unknown): ControllerHarness {
 		collabHost,
 		focusActiveEditorArea: (): void => {},
 		setToolUIContext: (): void => {},
+		// Offered because the controller installs it during initHooksAndCustomTools;
+		// this suite is about which ask surfaces refuse an unrenderable question, not
+		// about what a notification carries.
+		setToolNotifier: (): void => {},
 		session: {},
 	} as unknown as ExtensionUiControllerContext;
 	return { ctx, controller: new ExtensionUiController(ctx), overlays, focused };

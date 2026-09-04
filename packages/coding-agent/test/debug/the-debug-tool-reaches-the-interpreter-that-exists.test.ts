@@ -22,7 +22,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { DebugTool } from "@veyyon/coding-agent/tools/debug";
+import { DebugTool } from "@veyyon/coding-agent/tools/shell/debug";
 import { $which, removeWithRetries } from "@veyyon/utils";
 
 const created: string[] = [];

@@ -229,7 +229,7 @@ function normalizeCustomModelIds(customModelIds: readonly string[] | undefined):
 		}
 		normalized.add(trimmed);
 	}
-	return [...normalized];
+	return Array.from(normalized);
 }
 
 function createCursorReferenceMap(): Map<string, ModelSpec<"cursor-agent">> {
@@ -313,7 +313,7 @@ function normalizeCursorModels(
 		byId.set(normalized.id, normalized);
 	}
 
-	return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+	return Array.from(byId.values()).sort((a, b) => a.id.localeCompare(b.id));
 }
 
 function normalizeCursorModel(

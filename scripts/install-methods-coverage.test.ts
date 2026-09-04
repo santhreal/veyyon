@@ -45,8 +45,8 @@ const removedNpmMachinery = [
 	"scripts/fix-dts-extensions.ts",
 	"scripts/fix-dts-extensions.test.ts",
 	"scripts/install-tests/tarball.dockerfile",
-	"packages/natives/scripts/gen-npm-packages.ts",
-	"packages/natives/test/npm-packages.test.ts",
+	"natives/bridge/bindings/scripts/gen-npm-packages.ts",
+	"natives/bridge/bindings/test/npm-packages.test.ts",
 ];
 
 /**
@@ -93,7 +93,7 @@ describe("the release gate covers both shipped install channels", () => {
 
 	it("runs the installer helper unit tests before the build-heavy smokes", () => {
 		const helpers = runCi.indexOf("functions.test.sh");
-		const build = runCi.indexOf("bun --cwd=packages/natives run build");
+		const build = runCi.indexOf("bun --cwd=natives/bridge/bindings run build");
 		expect(helpers).toBeGreaterThan(-1);
 		expect(build).toBeGreaterThan(helpers);
 	});
@@ -173,7 +173,7 @@ describe("the npm/tarball topology stays deleted", () => {
 
 	it("no manifest still offers an npm-packaging script", () => {
 		const natives = JSON.parse(
-			fs.readFileSync(path.join(repoRoot, "packages", "natives", "package.json"), "utf8"),
+			fs.readFileSync(path.join(repoRoot, "natives", "bridge", "bindings", "package.json"), "utf8"),
 		) as { scripts?: Record<string, string> };
 		expect(natives.scripts?.["gen:npm"]).toBeUndefined();
 	});

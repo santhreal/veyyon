@@ -9,7 +9,7 @@ import {
 import { renderToolBatchLedger, TOOL_BATCH_LEDGER_HEADLINE_PREFIX } from "@veyyon/agent-core/tool-batch-ledger";
 import type { AgentMessage } from "@veyyon/agent-core/types";
 import type { AssistantMessage, ImageContent, TextContent, ToolResultMessage, UserMessage } from "@veyyon/ai";
-import { recordImageDisplay } from "@veyyon/coding-agent/session/image-visibility";
+import { recordImageDisplay, setImageDisplayProbe } from "@veyyon/coding-agent/session/image-visibility";
 import {
 	type BashExecutionMessage,
 	convertToLlm,
@@ -18,7 +18,6 @@ import {
 	type PythonExecutionMessage,
 } from "@veyyon/coding-agent/session/messages";
 import { ProviderContextCanonicalizer } from "@veyyon/coding-agent/session/provider-context-canonicalizer";
-import { TERMINAL } from "@veyyon/tui";
 
 /**
  * WHY:
@@ -614,10 +613,10 @@ describe("unchanged provider context prefix is not retransformed across turns", 
 		});
 
 		it("evaluates statePlacedImageVisibility dynamically and reflects image display fallback", () => {
-			const originalProtocol = (TERMINAL as { imageProtocol?: string }).imageProtocol;
+			// The front end states whether it draws pictures; the session never asks a
+			// renderer, so a drawing client is installed rather than a terminal stubbed.
+			setImageDisplayProbe(() => true);
 			try {
-				(TERMINAL as { imageProtocol?: string }).imageProtocol = "kitty";
-
 				const sampleImage: ImageContent = {
 					type: "image",
 					data: "base64png",
@@ -648,7 +647,7 @@ describe("unchanged provider context prefix is not retransformed across turns", 
 				const llm3 = convertToLlm([tr]);
 				expect(llm3[0]).toBe(llm2[0]);
 			} finally {
-				(TERMINAL as { imageProtocol?: string }).imageProtocol = originalProtocol;
+				setImageDisplayProbe(undefined);
 			}
 		});
 	});

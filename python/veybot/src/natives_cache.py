@@ -1,14 +1,14 @@
-"""Content-addressed cache of pre-built ``packages/natives/native/`` artifacts.
+"""Content-addressed cache of pre-built ``natives/bridge/bindings/native/`` artifacts.
 
 The napi-rs build of ``veyyon_natives.<platform>-<arch>[-variant].node`` takes
-minutes. Most issues never touch ``crates/``, so the same artifact is
+minutes. Most issues never touch ``natives/``, so the same artifact is
 buildable in every workspace whose source state matches one we've already
 built. This module:
 
 1. Computes a deterministic key from the git tree-hashes of the inputs that
    determine the build output, plus the target triple.
 2. On workspace populate: hardlinks cached files into the worktree's
-   ``packages/natives/native/`` (a noop on cache miss).
+   ``natives/bridge/bindings/native/`` (a noop on cache miss).
 3. On successful task exit: captures the workspace's freshly-built artifacts
    into the cache under its (possibly new) key.
 
@@ -48,19 +48,20 @@ log = logging.getLogger(__name__)
 # Paths whose git tree-hash feeds the cache key. Order is significant — the
 # hash incorporates the (path, tree_hash) pairs in this exact order so a
 # different ordering would produce a different key. Cover every input the
-# napi build reads: all workspace crates (veyyon-natives transitively depends on
+# napi build reads: all workspace crates, which are grouped by purpose under
+# ``natives/`` (veyyon-natives transitively depends on
 # veyyon-ast/veyyon-iso/veyyon-shell), the workspace Cargo manifest + lock, the rust
 # toolchain pin, and the natives package itself (build script + scripts/* +
 # package.json with napi config).
 CACHE_KEY_PATHS: tuple[str, ...] = (
-    "crates",
+    "natives",
     "Cargo.lock",
     "Cargo.toml",
     "rust-toolchain.toml",
-    "packages/natives",
+    "natives/bridge/bindings",
 )
 
-# Files in ``packages/natives/native/`` that ARE pure functions of the
+# Files in ``natives/bridge/bindings/native/`` that ARE pure functions of the
 # cache-key inputs and travel as a unit. ``.node`` is matched by glob since
 # the basename embeds the target triple + variant.
 _CACHED_NODE_GLOB = "veyyon_natives.*.node"

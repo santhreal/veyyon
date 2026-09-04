@@ -17,9 +17,9 @@ import * as path from "node:path";
 import { getGlobalSubagentsDir, getProjectDir, isEnoent } from "@veyyon/utils";
 import { YAML } from "bun";
 import chalk from "chalk";
-import { theme } from "../modes/theme/theme";
 import { loadBundledAgents } from "../task/agents";
 import type { AgentDefinition } from "../task/types";
+import { theme } from "../theme/theme";
 
 export type AgentsAction = "unpack";
 
@@ -81,7 +81,7 @@ async function unpackBundledAgents(flags: AgentsCommandArgs["flags"]): Promise<U
 	const targetDir = resolveTargetDir(flags);
 	await fs.mkdir(targetDir, { recursive: true });
 
-	const bundledAgents = [...loadBundledAgents()].sort((a, b) => a.name.localeCompare(b.name));
+	const bundledAgents = Array.from(loadBundledAgents()).sort((a, b) => a.name.localeCompare(b.name));
 	const written: string[] = [];
 	const skipped: string[] = [];
 

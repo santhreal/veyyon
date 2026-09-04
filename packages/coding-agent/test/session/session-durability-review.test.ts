@@ -9,17 +9,17 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { parseSessionContent } from "@veyyon/coding-agent/session/session-loader";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import {
 	IndexedSessionStorage,
 	type SessionStorageBackend,
 	type SessionStorageIndexEntry,
-} from "@veyyon/coding-agent/session/indexed-session-storage";
-import { OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
-import { listAllSessions, listSessions, resolveResumableSession } from "@veyyon/coding-agent/session/session-listing";
-import { parseSessionContent } from "@veyyon/coding-agent/session/session-loader";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { MemorySessionStorage, type WriteTextAtomicOptions } from "@veyyon/coding-agent/session/session-storage";
-import type { SessionTitleUpdate } from "@veyyon/coding-agent/session/session-title-slot";
+} from "@veyyon/kernel/session/indexed-session-storage";
+import { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
+import { listAllSessions, listSessions, resolveResumableSession } from "@veyyon/kernel/session/session-listing";
+import { MemorySessionStorage, type WriteTextAtomicOptions } from "@veyyon/kernel/session/session-storage";
+import type { SessionTitleUpdate } from "@veyyon/kernel/session/session-title-slot";
 import { getAgentDir } from "@veyyon/utils";
 
 const ISO = "2026-07-28T12:00:00.000Z";

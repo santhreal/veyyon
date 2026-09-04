@@ -10,17 +10,17 @@ import { editFilesystemTargets } from "@veyyon/coding-agent/edit";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { astEditFilesystemTargets } from "@veyyon/coding-agent/tools/ast-edit";
 import {
 	cwdEscapingTargets,
 	formatCwdBoundaryReason,
 	hasFilesystemTargets,
 	searchPathFilesystemTargets,
-} from "@veyyon/coding-agent/tools/cwd-boundary";
-import { inspectImageFilesystemTargets } from "@veyyon/coding-agent/tools/inspect-image";
-import { isPathWithinCwd } from "@veyyon/coding-agent/tools/path-utils";
-import { readFilesystemTargets } from "@veyyon/coding-agent/tools/read";
-import { writeFilesystemTargets } from "@veyyon/coding-agent/tools/write";
+} from "@veyyon/coding-agent/tools/core/cwd-boundary";
+import { isPathWithinCwd } from "@veyyon/coding-agent/tools/core/path-utils";
+import { inspectImageFilesystemTargets } from "@veyyon/coding-agent/tools/fs/inspect-image";
+import { readFilesystemTargets } from "@veyyon/coding-agent/tools/fs/read";
+import { writeFilesystemTargets } from "@veyyon/coding-agent/tools/fs/write";
+import { astEditFilesystemTargets } from "@veyyon/coding-agent/tools/search/ast-edit";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 /** A stand-in filesystem tool: the boundary only needs `filesystemTargets`. */

@@ -4,8 +4,8 @@ This document explains how preview/apply workflows are modeled in coding-agent a
 
 ## Scope and key files
 
-- [`src/tools/resolve.ts`](../../packages/coding-agent/src/tools/resolve.ts)
-- [`src/tools/ast-edit.ts`](../../packages/coding-agent/src/tools/ast-edit.ts)
+- [`src/tools/agent/resolve.ts`](../../packages/coding-agent/src/tools/agent/resolve.ts)
+- [`src/tools/search/ast-edit.ts`](../../packages/coding-agent/src/tools/search/ast-edit.ts)
 - [`src/extensibility/custom-tools/types.ts`](../../packages/coding-agent/src/extensibility/custom-tools/types.ts)
 - [`src/extensibility/custom-tools/loader.ts`](../../packages/coding-agent/src/extensibility/custom-tools/loader.ts)
 - [`src/sdk.ts`](../../packages/coding-agent/src/sdk.ts)
@@ -144,4 +144,4 @@ When `queueResolveHandler(...)` registers a preview, the agent runtime does **no
 - Implement `reject(reason)` when the discard needs cleanup (temp state, locks, notifications); omit it for stateless previews where the default message suffices.
 - If your tool can stage multiple previews, remember they stack as unique-keyed pending invokers (resolved head-first), not a forced tool-choice sequence and not a separate `pushPendingAction` stack.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

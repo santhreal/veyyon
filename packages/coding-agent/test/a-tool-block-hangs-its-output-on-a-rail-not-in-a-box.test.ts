@@ -25,7 +25,7 @@
  * time, so a sixth state cannot arrive with a rail nobody coloured.
  *
  * WHAT THIS DOES NOT CATCH. A renderer that hand-rolls its own frame instead of going
- * through the owner. There is exactly one, `tools/bash-interactive.ts`, and it is
+ * through the owner. There is exactly one, `tools/shell/bash-interactive.ts`, and it is
  * deliberate: that block mirrors a live PTY whose width IS the terminal's, so a hugged
  * or railed frame would misreport the geometry the program inside it draws to. A second
  * hand-rolled frame added elsewhere would be a second definition of what a block looks
@@ -45,22 +45,16 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
-import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
-import { initTheme, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
 import {
 	type OutputBlockOptions,
 	outputBlockContentWidth,
 	renderOutputBlock,
-} from "@veyyon/coding-agent/tui/output-block";
-import {
-	type AnsiPolicy,
-	getAnsiPolicy,
-	setAnsiPolicy,
-	TERMINAL,
-	type TUI,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "@veyyon/tui";
+} from "@veyyon/coding-agent/modes/terminal/draw/output-block";
+import { initTheme, setThemeInstance, theme } from "@veyyon/coding-agent/theme/theme";
+import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, TERMINAL, type TUI } from "@veyyon/tui";
+import { visibleWidth } from "@veyyon/utils/width";
+import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
 import { createToolExecution } from "./helpers/tool-execution";
 
 const ui = { requestRender: () => {}, requestComponentRender: () => {} } as unknown as TUI;
@@ -81,9 +75,9 @@ function plain(lines: readonly string[]): string[] {
  * rail and plate nobody checked.
  */
 async function declaredStates(): Promise<string[]> {
-	const text = await fs.readFile(path.join(SRC, "tui", "types.ts"), "utf8");
+	const text = await fs.readFile(path.join(SRC, "modes", "terminal", "draw", "types.ts"), "utf8");
 	const declaration = /export type State\s*=([^;]+);/.exec(text);
-	if (!declaration) throw new Error("State is no longer an exported type alias in src/tui/types.ts");
+	if (!declaration) throw new Error("State is no longer an exported type alias in src/modes/terminal/draw/types.ts");
 	const members = [...declaration[1].matchAll(/"([^"]+)"/g)].map(m => m[1]!);
 	if (members.length === 0) throw new Error("State declares no string members");
 	return members;

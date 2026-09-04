@@ -1,7 +1,7 @@
 # The Bun surface: policy, conventions, and worker hosting
 
 Bun is the runtime and the test runner today. The direction for this project's tooling is Rust and
-Cargo: `crates/` is where capability keeps moving, and the TypeScript that stays should be ordinary
+Cargo: `natives/` is where capability keeps moving, and the TypeScript that stays should be ordinary
 enough to port or retire cheaply. The rule in [`AGENTS.md`](../../AGENTS.md) follows from that; this
 page holds the measurements, the history, and the local conventions.
 

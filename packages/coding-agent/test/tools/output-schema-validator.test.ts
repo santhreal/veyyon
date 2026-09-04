@@ -6,7 +6,7 @@ import {
 	formatAllValidationIssues,
 	formatValidationIssueHeadline,
 	summarizeValidationFailure,
-} from "@veyyon/coding-agent/tools/output-schema-validator";
+} from "@veyyon/coding-agent/tools/core/output-schema-validator";
 
 describe("buildOutputValidator", () => {
 	it("returns the empty result for an absent schema", () => {

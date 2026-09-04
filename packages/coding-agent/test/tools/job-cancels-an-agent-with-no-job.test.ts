@@ -21,7 +21,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { JobTool } from "@veyyon/coding-agent/tools/job";
+import { JobTool } from "@veyyon/coding-agent/tools/shell/job";
 import { makeToolSession } from "../helpers/tool-session";
 
 interface Spy {

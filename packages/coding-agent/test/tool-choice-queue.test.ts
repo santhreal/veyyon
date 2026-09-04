@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { RejectInfo, ResolveInfo } from "@veyyon/coding-agent/session/tool-choice-queue";
-import { ToolChoiceQueue } from "@veyyon/coding-agent/session/tool-choice-queue";
+import type { RejectInfo, ResolveInfo } from "@veyyon/kernel/session/tool-choice-queue";
+import { ToolChoiceQueue } from "@veyyon/kernel/session/tool-choice-queue";
 
 const forced = { type: "tool", name: "write" } as const;
 const forcedRead = { type: "tool", name: "read" } as const;
@@ -160,7 +160,7 @@ describe("ToolChoiceQueue", () => {
 			expect(q.consumeLastServedLabel()).toBeUndefined();
 		});
 
-		// #checkTodoCompletion suppresses the incomplete-todo nag with
+		// TodoRuntime.checkCompletionAtSettle suppresses the incomplete-todo nag with
 		// `consumeLastServedLabel() === "user-force"`. A requeued yield is still the
 		// user's force, so it must report the same label after an aborted turn.
 		it("reports the original label after the yield was requeued", () => {

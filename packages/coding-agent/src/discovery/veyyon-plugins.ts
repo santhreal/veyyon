@@ -19,16 +19,16 @@
 
 import * as path from "node:path";
 import { isRecord, logger, parseFrontmatter, tryParseJson } from "@veyyon/utils";
-import { registerProvider } from "../capability";
-import { readDirEntries, readFile } from "../capability/fs";
-import { type Hook, hookCapability } from "../capability/hook";
-import { type MCPServer, mcpCapability } from "../capability/mcp";
-import { type Prompt, promptCapability } from "../capability/prompt";
-import { type Rule, ruleCapability } from "../capability/rule";
-import { type DiscoveredSkill, skillCapability } from "../capability/skill";
-import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
-import { type DiscoveredCustomTool, toolCapability } from "../capability/tool";
-import type { LoadContext, LoadResult } from "../capability/types";
+import { registerProvider } from "./capability";
+import { readDirEntries, readFile } from "./capability/fs";
+import { type Hook, hookCapability } from "./capability/hook";
+import { type MCPServer, mcpCapability } from "./capability/mcp";
+import { type Prompt, promptCapability } from "./capability/prompt";
+import { type Rule, ruleCapability } from "./capability/rule";
+import { type DiscoveredSkill, skillCapability } from "./capability/skill";
+import { type SlashCommand, slashCommandCapability } from "./capability/slash-command";
+import { type DiscoveredCustomTool, toolCapability } from "./capability/tool";
+import type { LoadContext, LoadResult } from "./capability/types";
 import { buildRuleFromMarkdown, createSourceMeta, loadFilesFromDir, scanSkillsFromDir } from "./helpers";
 import { resolvePluginStdioPaths } from "./substitute-plugin-root";
 import { listVeyyonExtensionRoots, type VeyyonExtensionRoot } from "./veyyon-extension-roots";

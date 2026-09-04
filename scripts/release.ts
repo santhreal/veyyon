@@ -15,7 +15,7 @@ import * as path from "node:path";
  */
 import { isReleaseTag, isReleaseVersion, RELEASE_VERSION_BODY } from "@veyyon/utils/semver";
 import { $, Glob, JSONC } from "bun";
-import { hasVersionHeading, unreleasedEntries } from "./changelog-unreleased.ts";
+import { hasVersionHeading, unreleasedEntries } from "./changelog-unreleased";
 import { runChangelogFixer } from "./fix-changelogs";
 import {
 	assertPreparedReleaseChangelogs,
@@ -25,10 +25,30 @@ import {
 	verifyReleaseTagIsOnMain,
 } from "./release-policy";
 import { orphanRefusalLines, writeRootChangelog } from "./sync-root-changelog";
+import { memberTopLevels, typeScriptMembers } from "./workspace-layout";
 
-const changelogGlob = new Glob("packages/*/CHANGELOG.md");
-const packageJsonGlob = new Glob("packages/*/package.json");
-const cargoTomlGlob = new Glob("crates/*/Cargo.toml");
+/**
+ * Every member file of one name, across the workspace members the manifests declare.
+ *
+ * WHY THIS IS NOT A ROOT GLOB. These were `new Glob("packages/*\/CHANGELOG.md")` and then
+ * `<root>/*\/<fileName>`. A member declared as a literal path (`natives/bridge/bindings`,
+ * `python/veybot/web`) is invisible to a root glob by construction: its version was never bumped,
+ * its `[Unreleased]` was never rolled, and the release published it stale while every check read
+ * green. The members now come from the resolved workspace member list, so a member at any depth is
+ * covered with no edit here.
+ */
+async function memberFiles(fileName: string): Promise<string[]> {
+	const found: string[] = [];
+	for (const member of typeScriptMembers()) {
+		const filePath = `${member}/${fileName}`;
+		if (await Bun.file(filePath).exists()) {
+			found.push(filePath);
+		}
+	}
+	return found.sort();
+}
+
+const cargoTomlGlob = new Glob("{natives,tests}/**/Cargo.toml");
 export function parseReleaseRequest(args: readonly string[]): string {
 	if (args.length > 1) {
 		throw new Error("Release accepts one version: major, minor, patch, or an explicit x.y.z.");
@@ -95,7 +115,7 @@ function removeEmptyVersionEntries(content: string): string {
  * The fresh `## [Unreleased]` header stays exactly where the old one sat, and the
  * dated version section is inserted directly BELOW it. This matters for a
  * changelog whose `## [Unreleased]` lives under a fork-notice blockquote (e.g.
- * `packages/hashline/CHANGELOG.md`): a title-anchored insert (`# Changelog\n\n` +
+ * `plugins/hashline/CHANGELOG.md`): a title-anchored insert (`# Changelog\n\n` +
  * a fresh `## [Unreleased]`) jammed `[Unreleased]` above the fork notice and left
  * the real bullets stranded in a phantom version that never published. When
  * `[Unreleased]` has no bullets, no version entry is created: a stray `### Fixed`
@@ -129,7 +149,7 @@ export function applyReleaseToChangelog(content: string, version: string, date: 
 async function updateChangelogsForRelease(version: string): Promise<void> {
 	const date = new Date().toISOString().split("T")[0];
 
-	for await (const changelog of changelogGlob.scan(".")) {
+	for (const changelog of await memberFiles("CHANGELOG.md")) {
 		const content = await Bun.file(changelog).text();
 
 		if (!content.includes("## [Unreleased]")) {
@@ -143,12 +163,12 @@ async function updateChangelogsForRelease(version: string): Promise<void> {
 }
 
 /**
- * Read every `packages/<name>/CHANGELOG.md` with the name of the package that owns it, so the
+ * Read every member `<root>/<name>/CHANGELOG.md` with the name of the package that owns it, so the
  * gate can name the offender rather than a path the operator has to map back to a package.
  */
 export async function loadPackageChangelogs(): Promise<PackageChangelog[]> {
 	const changelogs: PackageChangelog[] = [];
-	for await (const changelog of changelogGlob.scan(".")) {
+	for (const changelog of await memberFiles("CHANGELOG.md")) {
 		const posixPath = changelog.replaceAll(path.sep, "/");
 		const dir = path.dirname(changelog);
 		const manifest = Bun.file(path.join(dir, "package.json"));
@@ -456,7 +476,7 @@ export async function validateReleaseVersionAuthorities(
 	}
 
 	const sentinelName = sentinelExportName(version);
-	const sentinelGlob = new Glob("{crates,packages}/**/*.{rs,ts,mts,cts,js,mjs,cjs}");
+	const sentinelGlob = new Glob("{natives,tests,packages}/**/*.{rs,ts,mts,cts,js,mjs,cjs}");
 	let sentinelAuthorities = 0;
 	for await (const sourcePath of sentinelGlob.scan({ cwd: rootDir, onlyFiles: true })) {
 		const normalizedPath = normalizedRelativePath(sourcePath);
@@ -498,7 +518,7 @@ export async function validateReleaseVersionAuthorities(
 
 export async function prepareReleaseTree(version: string, latestTag: string): Promise<void> {
 	console.log(`Updating package versions to ${version}…`);
-	const pkgJsonPaths = await Array.fromAsync(packageJsonGlob.scan("."));
+	const pkgJsonPaths = await memberFiles("package.json");
 	const publicPkgPaths: string[] = [];
 	for (const pkgPath of pkgJsonPaths) {
 		const pkgJson = await Bun.file(pkgPath).json();
@@ -548,19 +568,22 @@ export async function prepareReleaseTree(version: string, latestTag: string): Pr
 			`previous sentinel ${prevSentinelName} equals the new one — version ${version} is not ahead of ${latestTag}.`,
 		);
 	}
-	const sentinelGlob = new Bun.Glob("{crates,packages}/**/*.{rs,ts,mts,cts,js,mjs,cjs}");
+	const sentinelRoots = memberTopLevels();
 	const sentinelFiles: Array<{ path: string; content: string }> = [];
-	for await (const path of sentinelGlob.scan(".")) {
-		if (isSentinelRewriteExcluded(path)) continue;
-		const content = await Bun.file(path).text();
-		if (content.includes(prevSentinelName)) sentinelFiles.push({ path, content });
+	for (const root of sentinelRoots) {
+		const sentinelGlob = new Bun.Glob(`${root}/**/*.{rs,ts,mts,cts,js,mjs,cjs}`);
+		for await (const path of sentinelGlob.scan(".")) {
+			if (isSentinelRewriteExcluded(path)) continue;
+			const content = await Bun.file(path).text();
+			if (content.includes(prevSentinelName)) sentinelFiles.push({ path, content });
+		}
 	}
-	const libRsBefore = await Bun.file("crates/veyyon-natives/src/lib.rs").text();
+	const libRsBefore = await Bun.file("natives/bridge/addon/src/lib.rs").text();
 	const sentinelState = classifySentinelBumpState(libRsBefore, prevSentinelName, sentinelName);
 	if (sentinelState === "missing") {
 		throw new Error(
 			`could not locate the previous veyyon-natives sentinel ${prevSentinelName} or target ${sentinelName} in ` +
-				"crates/veyyon-natives/src/lib.rs; reconcile lib.rs (or the latest tag) before releasing.",
+				"natives/bridge/addon/src/lib.rs; reconcile lib.rs (or the latest tag) before releasing.",
 		);
 	}
 	if (sentinelFiles.length > 0) {
@@ -568,10 +591,10 @@ export async function prepareReleaseTree(version: string, latestTag: string): Pr
 			sentinelFiles.map(file => Bun.write(file.path, file.content.replaceAll(prevSentinelName, sentinelName))),
 		);
 	}
-	const libRs = await Bun.file("crates/veyyon-natives/src/lib.rs").text();
+	const libRs = await Bun.file("natives/bridge/addon/src/lib.rs").text();
 	if (!libRs.includes(`js_name = "${sentinelName}"`)) {
 		throw new Error(
-			`veyyon-natives version sentinel did not move to ${sentinelName} in crates/veyyon-natives/src/lib.rs.`,
+			`veyyon-natives version sentinel did not move to ${sentinelName} in natives/bridge/addon/src/lib.rs.`,
 		);
 	}
 	console.log(`  sentinel: ${sentinelName}${sentinelState === "alreadyBumped" ? " (already bumped)" : ""}\n`);

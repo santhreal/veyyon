@@ -38,6 +38,7 @@ import { setCwdRenderer } from "./tools/set-cwd";
 import { sshRenderer } from "./tools/ssh";
 import { taskRenderer } from "./tools/task";
 import { todoRenderer } from "./tools/todo";
+import { vibeRenderer } from "./tools/vibe";
 import { webSearchRenderer } from "./tools/web-search";
 import { writeRenderer } from "./tools/write";
 import { yieldRenderer } from "./tools/yield";
@@ -89,6 +90,11 @@ const RENDERERS: Record<string, ToolRenderer> = {
 	ssh: sshRenderer,
 	task: taskRenderer,
 	todo: todoRenderer,
+	vibe_kill: vibeRenderer,
+	vibe_list: vibeRenderer,
+	vibe_send: vibeRenderer,
+	vibe_spawn: vibeRenderer,
+	vibe_wait: vibeRenderer,
 	web_search: webSearchRenderer,
 	write: writeRenderer,
 	yield: yieldRenderer,

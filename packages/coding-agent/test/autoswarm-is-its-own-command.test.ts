@@ -18,8 +18,8 @@ import { closeAllAutoresearchStorages, openAutoresearchStorage } from "@veyyon/c
 import { DEFAULT_SWARM_BREADTH } from "@veyyon/coding-agent/autoresearch/swarm";
 import type { ExtensionAPI, ExtensionContext } from "@veyyon/coding-agent/extensibility/extensions";
 import * as git from "@veyyon/coding-agent/utils/git";
-import type { AutocompleteItem } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
+import type { AutocompleteItem } from "@veyyon/utils/autocomplete";
 import { $ } from "bun";
 
 interface CommandSpec {
@@ -44,7 +44,25 @@ interface ConsoleDrive {
 
 /** Theme whose colour functions are identity, so a frame assertion sees plain text. */
 function passthroughTheme(): unknown {
-	return { fg: (_name: string, text: string) => text, bold: (text: string) => text };
+	return {
+		fg: (_name: string, text: string) => text,
+		bold: (text: string) => text,
+		// The console draws overlay chrome, so the passthrough theme carries the
+		// glyph set too; colour is what is stripped here, not structure.
+		boxSharp: {
+			topLeft: "┌",
+			topRight: "┐",
+			bottomLeft: "└",
+			bottomRight: "┘",
+			horizontal: "─",
+			vertical: "│",
+			cross: "┼",
+			teeDown: "┬",
+			teeUp: "┴",
+			teeRight: "├",
+			teeLeft: "┤",
+		},
+	};
 }
 
 function buildHarness(): Harness {
@@ -75,10 +93,14 @@ function buildHarness(): Harness {
 }
 
 /**
- * Drives `ui.custom` the way the real surface does: build the component through
- * the factory, render it, feed each key, and resolve with whatever `done`
+ * Drives `ui.terminal.custom` the way the real surface does: build the component
+ * through the factory, render it, feed each key, and resolve with whatever `done`
  * received. Feeding real keystrokes is the point — a fake that returns a
  * configuration object would pass while the console was unreachable.
+ *
+ * Screen takeover is a capability a host offers, so the fake offers it. Leaving it
+ * off `ui` would send the command down its "no terminal" branch and the suite would
+ * assert nothing about the console.
  */
 function makeCtx(
 	cwd: string,
@@ -94,31 +116,33 @@ function makeCtx(
 			notify: (text: string, level: string) => {
 				notices.push({ text, level });
 			},
-			custom: async <T>(
-				factory: (
-					tui: unknown,
-					theme: unknown,
-					keybindings: unknown,
-					done: (result: T) => void,
-				) => { render: (width: number) => string[]; handleInput: (data: string) => void },
-				options?: { overlay?: boolean },
-			): Promise<T> => {
-				drive.opened = true;
-				drive.overlay = options?.overlay === true;
-				const settled: Array<{ value: T }> = [];
-				const tui = { requestRender: (): void => {} };
-				const component = factory(tui, passthroughTheme(), {}, (result: T) => {
-					if (settled.length === 0) settled.push({ value: result });
-				});
-				drive.frames.push(component.render(80));
-				for (const key of keys) {
-					if (settled.length > 0) break;
-					component.handleInput(key);
+			terminal: {
+				custom: async <T>(
+					factory: (
+						tui: unknown,
+						theme: unknown,
+						keybindings: unknown,
+						done: (result: T) => void,
+					) => { render: (width: number) => string[]; handleInput: (data: string) => void },
+					options?: { overlay?: boolean },
+				): Promise<T> => {
+					drive.opened = true;
+					drive.overlay = options?.overlay === true;
+					const settled: Array<{ value: T }> = [];
+					const tui = { requestRender: (): void => {} };
+					const component = factory(tui, passthroughTheme(), {}, (result: T) => {
+						if (settled.length === 0) settled.push({ value: result });
+					});
 					drive.frames.push(component.render(80));
-				}
-				const outcome = settled[0];
-				if (!outcome) throw new Error(`console never resolved for keys: ${JSON.stringify(keys)}`);
-				return outcome.value;
+					for (const key of keys) {
+						if (settled.length > 0) break;
+						component.handleInput(key);
+						drive.frames.push(component.render(80));
+					}
+					const outcome = settled[0];
+					if (!outcome) throw new Error(`console never resolved for keys: ${JSON.stringify(keys)}`);
+					return outcome.value;
+				},
 			},
 		},
 		sessionManager: {

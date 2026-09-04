@@ -6,6 +6,13 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import {
+	factoryExportMissingMessage,
+	invalidArtifactFieldMessage,
+	moduleImportFailedMessage,
+	nameConflictMessage,
+} from "@veyyon/kernel/loader/load-failure";
+import * as typebox from "@veyyon/kernel/registry/typebox";
 import { errorMessage, getAgentDir, getProjectDir, isEnoent, readdirIfPresent, reportFault } from "@veyyon/utils";
 import * as arktype from "arktype";
 import * as zodModule from "zod/v4";
@@ -13,13 +20,6 @@ import { getConfigDirs } from "../../config";
 import { execCommand, withSessionCpuExec } from "../../exec/exec";
 // Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
 import { loadCodingAgentApi } from "../coding-agent-api";
-import {
-	factoryExportMissingMessage,
-	invalidArtifactFieldMessage,
-	moduleImportFailedMessage,
-	nameConflictMessage,
-} from "../load-failure";
-import * as typebox from "../typebox";
 import { GreenCommand } from "./bundled/ci-green";
 import { ReviewCommand } from "./bundled/review";
 import type {

@@ -1,16 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { getCapability } from "@veyyon/coding-agent/discovery";
 import {
 	captureRegistryForTests,
 	initializeWithSettings,
 	type RegistrySnapshot,
 	restoreRegistryForTests,
-} from "@veyyon/coding-agent/capability";
-import { type ExtensionModule, extensionModuleCapability } from "@veyyon/coding-agent/capability/extension-module";
-import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
-import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { getCapability } from "@veyyon/coding-agent/discovery";
+} from "@veyyon/coding-agent/discovery/capability";
+import {
+	type ExtensionModule,
+	extensionModuleCapability,
+} from "@veyyon/coding-agent/discovery/capability/extension-module";
+import { clearCache as clearFsCache } from "@veyyon/coding-agent/discovery/capability/fs";
 import * as discoveryHelpers from "@veyyon/coding-agent/discovery/helpers";
 import {
 	discoverAndLoadExtensions,

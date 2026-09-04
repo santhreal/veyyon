@@ -33,9 +33,9 @@ import {
 	githubIssueJsonWithStateReasonFallback,
 	type PrDiffFile,
 	resolveDefaultRepoMemoized,
-} from "../tools/gh-fetch";
-import { parsePositiveDecimalInt } from "../tools/gh-format";
-import { type CacheStatus, formatFreshnessNote } from "../tools/github-cache";
+} from "../tools/web/gh-fetch";
+import { parsePositiveDecimalInt } from "../tools/web/gh-format";
+import { type CacheStatus, formatFreshnessNote } from "../tools/web/github-cache";
 import * as git from "../utils/git";
 import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext } from "./types";
 

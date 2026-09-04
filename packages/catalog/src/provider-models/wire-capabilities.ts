@@ -258,7 +258,7 @@ export function declaredCapabilityNames(): readonly string[] {
 	for (const entry of Object.values(PROVIDER_WIRE_CAPABILITIES)) {
 		for (const name of Object.keys(entry)) names.add(name);
 	}
-	return [...names].sort();
+	return Array.from(names).sort();
 }
 
 /**

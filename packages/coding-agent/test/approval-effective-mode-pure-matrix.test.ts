@@ -8,7 +8,7 @@
  * function returns rather than what the value eventually means.
  */
 import { describe, expect, it } from "bun:test";
-import { resolveEffectiveApprovalMode } from "../src/tools/approval";
+import { resolveEffectiveApprovalMode } from "../src/tools/core/approval";
 
 describe("resolveEffectiveApprovalMode pure matrix", () => {
 	const configs = [undefined, "yolo", "auto", "ask", "ask-command", "plan", "auto-edit", "write"] as const;

@@ -1,15 +1,15 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { atomicWriteFileSync } from "@veyyon/utils/atomic-write";
+import { getActiveProfile, getAgentDir, getProfileRootDir } from "@veyyon/utils/dirs";
+import { isEnoent } from "@veyyon/utils/fs-error";
 import {
 	type Keybinding,
 	type KeybindingsConfig,
 	setKeybindings,
 	KeybindingsManager as TuiKeybindingsManager,
-} from "@veyyon/tui/keybindings";
-import type { KeyId } from "@veyyon/tui/keys";
-import { atomicWriteFileSync } from "@veyyon/utils/atomic-write";
-import { getActiveProfile, getAgentDir, getProfileRootDir } from "@veyyon/utils/dirs";
-import { isEnoent } from "@veyyon/utils/fs-error";
+} from "@veyyon/utils/keybindings";
+import type { KeyId } from "@veyyon/utils/keys";
 // Owners, not the `@veyyon/utils` barrel: 6 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import { quarantineUnparseableFileSync } from "@veyyon/utils/quarantine-file";
@@ -26,8 +26,7 @@ import { JSONC, YAML } from "bun";
  */
 export { type AppKeybinding, getDefaultPasteImageKeys, KEYBINDINGS } from "./keybinding-defs";
 
-import type { AppKeybinding } from "./keybinding-defs";
-import { KEYBINDINGS } from "./keybinding-defs";
+import { type AppKeybinding, KEYBINDINGS } from "./keybinding-defs";
 
 /**
  * Migration map from old keybinding names to new namespaced IDs.
@@ -403,7 +402,7 @@ function keyConfigValue(keys: KeyId[]): KeyId | KeyId[] {
 		const key = keys[0];
 		if (key !== undefined) return key;
 	}
-	return [...keys];
+	return keys.slice();
 }
 
 /**

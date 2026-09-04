@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { PlanModeState } from "@veyyon/coding-agent/plan-mode/state";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { enforcePlanModeWrite, resolvePlanPath } from "@veyyon/coding-agent/tools/plan-mode-guard";
+import { enforcePlanModeWrite, resolvePlanPath } from "@veyyon/coding-agent/tools/core/plan-mode-guard";
 import { removeWithRetries } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";
 

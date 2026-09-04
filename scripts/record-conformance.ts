@@ -18,8 +18,9 @@
 
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { detectLineEnding, normalizeToLF, restoreLineEndings, stripBom } from "../packages/hashline/src/normalize";
-import { parseLid, splitHashlineLines } from "../packages/hashline/src/tokenizer";
+import { CONFORMANCE_SCHEMA_VERSION, encodeConformanceValue } from "../packages/utils/src/conformance";
+import { detectLineEnding, normalizeToLF, restoreLineEndings, stripBom } from "../plugins/hashline/src/normalize";
+import { parseLid, splitHashlineLines } from "../plugins/hashline/src/tokenizer";
 import {
 	binarizeAsArray,
 	cosineSimilarity,
@@ -32,8 +33,7 @@ import {
 	quantizeInt8AsArray,
 	weibullDecayFactor12,
 	wordSetSorted,
-} from "../packages/mnemopi/src/core/conformance-boundary";
-import { CONFORMANCE_SCHEMA_VERSION, encodeConformanceValue } from "../packages/utils/src/conformance";
+} from "../plugins/mnemopi/src/core/conformance-boundary";
 
 interface RecordedCase {
 	name: string;
@@ -595,7 +595,7 @@ function mmrCases(): RecordedCase[] {
 
 const RECORDERS: Record<string, ModuleRecorder> = {
 	hashline: {
-		vectorDir: join(import.meta.dir, "../packages/hashline/test/conformance/vectors"),
+		vectorDir: join(import.meta.dir, "../plugins/hashline/test/conformance/vectors"),
 		corpora: () => [
 			{
 				file: "tokenizer-split-hashline-lines",
@@ -642,7 +642,7 @@ const RECORDERS: Record<string, ModuleRecorder> = {
 		],
 	},
 	mnemopi: {
-		vectorDir: join(import.meta.dir, "../packages/mnemopi/test/conformance/vectors"),
+		vectorDir: join(import.meta.dir, "../plugins/mnemopi/test/conformance/vectors"),
 		corpora: () => [
 			{
 				file: "vector-math-cosine-similarity",

@@ -23,7 +23,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { decodeStreamedToolArgs } from "@veyyon/coding-agent/modes/controllers/tool-args-reveal";
+import { decodeStreamedToolArgs } from "@veyyon/coding-agent/modes/terminal/controllers/tool-args-reveal";
 import { ArgotSession, type Vocabulary } from "argot";
 
 /** A real, loaded codec. `§db` is a path, `§blob` expands to text that would break naive JSON splicing. */

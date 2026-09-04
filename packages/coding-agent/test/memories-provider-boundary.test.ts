@@ -4,7 +4,7 @@ import * as path from "node:path";
 import type { ApiKey, Context, Model, SimpleStreamOptions } from "@veyyon/ai";
 import * as ai from "@veyyon/ai";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { startMemoryStartupTask } from "@veyyon/coding-agent/memories";
+import { startMemoryStartupTask } from "@veyyon/coding-agent/memory/local";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import { Snowflake, TempDir } from "@veyyon/utils";
 

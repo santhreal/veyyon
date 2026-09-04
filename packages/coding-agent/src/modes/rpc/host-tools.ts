@@ -1,8 +1,8 @@
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { Static, TSchema } from "@veyyon/ai";
+import { applyToolProxy } from "@veyyon/kernel/registry/tool-proxy";
 import { Snowflake } from "@veyyon/utils";
-import { applyToolProxy } from "../../extensibility/tool-proxy";
-import type { Theme } from "../../modes/theme/theme";
+import type { Theme } from "../../theme/theme";
 import type {
 	RpcHostToolCallRequest,
 	RpcHostToolCancelRequest,

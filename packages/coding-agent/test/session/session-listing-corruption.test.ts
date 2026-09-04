@@ -1,12 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import {
-	clearUnreadableSessions,
-	getUnreadableSessions,
-	listSessions,
-} from "@veyyon/coding-agent/session/session-listing";
-import { FileSessionStorage } from "@veyyon/coding-agent/session/session-storage";
+import { clearUnreadableSessions, getUnreadableSessions, listSessions } from "@veyyon/kernel/session/session-listing";
+import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import { removeWithRetries } from "@veyyon/utils";
 import { guardDestructivePath } from "../../../utils/test/helpers/destructive-guard";
 import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";

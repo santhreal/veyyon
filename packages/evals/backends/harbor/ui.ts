@@ -4,7 +4,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { escapeMarkdownTableCell } from "@veyyon/coding-agent/utils/markdown-table";
+import { escapeMarkdownTableCell } from "@veyyon/utils/markdown-table";
 import { clampLow } from "@veyyon/utils";
 import type { HarnessBackendBinding } from "../../engine/contracts";
 import type { TrialStatus } from "../../engine/store-shapes";

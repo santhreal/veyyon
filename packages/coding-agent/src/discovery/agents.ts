@@ -11,13 +11,13 @@
  * nothing else.
  */
 import * as path from "node:path";
-import { registerProvider } from "../capability";
-import { type ContextFile, contextFileCapability } from "../capability/context-file";
-import { type Prompt, promptCapability } from "../capability/prompt";
-import { type Rule, ruleCapability } from "../capability/rule";
-import { type DiscoveredSkill, skillCapability } from "../capability/skill";
-import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
-import type { LoadContext, LoadResult } from "../capability/types";
+import { registerProvider } from "./capability";
+import { type ContextFile, contextFileCapability } from "./capability/context-file";
+import { type Prompt, promptCapability } from "./capability/prompt";
+import { type Rule, ruleCapability } from "./capability/rule";
+import { type DiscoveredSkill, skillCapability } from "./capability/skill";
+import { type SlashCommand, slashCommandCapability } from "./capability/slash-command";
+import type { LoadContext, LoadResult } from "./capability/types";
 import {
 	buildRuleFromMarkdown,
 	createSourceMeta,

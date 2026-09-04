@@ -32,8 +32,8 @@ import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import { logger, removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { makeAssistantMessage } from "./helpers";
 

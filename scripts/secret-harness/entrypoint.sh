@@ -42,7 +42,7 @@ MOCK_LOG="$WORK/mock-provider.log"
 SPENT="$PROJECT/spent-digest.txt"
 MODEL="harness/harness-model"
 
-# Every approval mode `tools/approval.ts` accepts, legacy aliases included, split
+# Every approval mode `tools/core/approval.ts` accepts, legacy aliases included, split
 # by what the secret-use boundary is documented to do in each. The lists are
 # spelled out rather than derived so a mode added to the product without a
 # decision here shows up as a missing row instead of silently inheriting one.

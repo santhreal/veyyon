@@ -5,9 +5,9 @@ import type { AgentTool, AgentToolContext } from "@veyyon/agent-core";
 import type { Settings } from "@veyyon/coding-agent/config/settings";
 import type { BashExecutorOptions } from "@veyyon/coding-agent/exec/bash-executor";
 import type { SSHExecutorOptions } from "@veyyon/coding-agent/ssh/ssh-executor";
-import type { runInteractiveBashPty } from "@veyyon/coding-agent/tools/bash-interactive";
-import { type InlinePricingSource, inlineBudgetFor } from "@veyyon/coding-agent/tools/output-artifact";
-import { wrapToolWithMetaNotice } from "@veyyon/coding-agent/tools/output-meta";
+import { type InlinePricingSource, inlineBudgetFor } from "@veyyon/coding-agent/tools/core/output-artifact";
+import { wrapToolWithMetaNotice } from "@veyyon/coding-agent/tools/core/output-meta";
+import type { runInteractiveBashPty } from "@veyyon/coding-agent/tools/shell/bash-interactive";
 import { type } from "arktype";
 
 /**
@@ -67,12 +67,12 @@ describe("OutputSink inline budget", () => {
 	it("finds the streaming executors that construct a sink", () => {
 		const sites = sinkConstructionSites().map(file => path.relative(ROOT, file));
 		expect(sites.length).toBeGreaterThanOrEqual(6);
-		expect(sites).toContain(path.join("tools", "eval.ts"));
+		expect(sites).toContain(path.join("tools", "shell", "eval.ts"));
 		expect(sites).toContain(path.join("eval", "executor-base.ts"));
 		expect(sites).toContain(path.join("eval", "js", "executor.ts"));
 		expect(sites).toContain(path.join("exec", "bash-executor.ts"));
 		expect(sites).toContain(path.join("ssh", "ssh-executor.ts"));
-		expect(sites).toContain(path.join("tools", "bash-interactive.ts"));
+		expect(sites).toContain(path.join("tools", "shell", "bash-interactive.ts"));
 	});
 
 	/**

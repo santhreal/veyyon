@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { type ManifestHolder, manifestFromPackageJson } from "@veyyon/kernel/loader/manifest-key";
 import { FileType, glob } from "@veyyon/natives";
 import {
 	errorMessage,
@@ -15,21 +16,19 @@ import {
 	parseFrontmatter,
 	tryParseJson,
 } from "@veyyon/utils";
-import type { ExtensionModule } from "../capability/extension-module";
-import { invalidate as invalidateFsCache, readDirEntries, readFile } from "../capability/fs";
-import { parseRuleConditionAndScope, type Rule, type RuleFrontmatter } from "../capability/rule";
-import type { DiscoveredSkill, SkillFrontmatter } from "../capability/skill";
-import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
-import { type ManifestHolder, manifestFromPackageJson } from "../extensibility/manifest-key";
 import {
 	canonicalProjectRoot,
 	describeProjectExecutable,
 	describeRefusal,
 	ProjectTrust,
-} from "../security/project-trust";
+} from "../config/project-trust";
 import { type ConfiguredThinkingLevel, parseConfiguredThinkingLevel } from "../thinking";
-import { normalizeToolNames, TOOL } from "../tools/builtin-names";
-
+import { normalizeToolNames, TOOL } from "../tools/core/builtin-names";
+import type { ExtensionModule } from "./capability/extension-module";
+import { invalidate as invalidateFsCache, readDirEntries, readFile } from "./capability/fs";
+import { parseRuleConditionAndScope, type Rule, type RuleFrontmatter } from "./capability/rule";
+import type { DiscoveredSkill, SkillFrontmatter } from "./capability/skill";
+import type { LoadContext, LoadResult, SourceMeta } from "./capability/types";
 import { buildPluginDirRoot } from "./plugin-dir-roots";
 
 /**
@@ -323,7 +322,7 @@ export function parseAgentFields(frontmatter: Record<string, unknown>): ParsedAg
 
 	// Subagents with explicit tool lists always need yield
 	if (tools && !tools.includes(TOOL.yield)) {
-		tools = [...tools, TOOL.yield];
+		tools = tools.concat([TOOL.yield]);
 	}
 
 	// Parse spawns field (array, "*", or CSV)
@@ -714,8 +713,8 @@ export async function discoverExtensionModulePaths(dir: string): Promise<string[
 		// Native glob does not follow linked extension directories.
 		discoverLinkedExtensionModuleFiles(dir),
 	]);
-	const indexFiles = [...globIndexFiles, ...linkedFiles.indexFiles];
-	const packageJsonFiles = [...globPackageJsonFiles, ...linkedFiles.packageJsonFiles];
+	const indexFiles = globIndexFiles.concat(linkedFiles.indexFiles);
+	const packageJsonFiles = globPackageJsonFiles.concat(linkedFiles.packageJsonFiles);
 
 	// The native glob walker runs with follow_links=false, so a symlinked extension
 	// directory is yielded as a Symlink entry but never descended into: its inner
@@ -780,7 +779,7 @@ export async function discoverExtensionModulePaths(dir: string): Promise<string[
 	for (const preferredPath of preferredIndexBySubdir.values()) {
 		discovered.add(path.join(dir, preferredPath));
 	}
-	return [...discovered];
+	return Array.from(discovered);
 }
 
 /**
@@ -1216,7 +1215,7 @@ export async function listClaudePluginRoots(
 export function clearClaudePluginRootsCache(): void {
 	pluginRootsCache.clear();
 	for (const invalidate of pluginCacheInvalidators) invalidate();
-	preloadedPluginRoots = [...injectedPluginDirRoots];
+	preloadedPluginRoots = injectedPluginDirRoots.slice();
 	// Re-warm preloaded roots asynchronously so sync LSP config reads stay valid
 	if (lastPreloadHome) {
 		void preloadPluginRoots(lastPreloadHome, getProjectDir());

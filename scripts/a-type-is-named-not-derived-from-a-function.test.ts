@@ -7,6 +7,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { typeScriptMembers, typeScriptMemberTopLevels } from "./workspace-layout";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 
@@ -66,7 +67,7 @@ export function findReturnTypeSites(source: string): Array<{ line: number; text:
 	return found;
 }
 
-function findSourceFiles(dir: string, isRoot = false): string[] {
+function findSourceFiles(dir: string): string[] {
 	if (!fs.existsSync(dir)) return [];
 	const results: string[] = [];
 	const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -74,14 +75,7 @@ function findSourceFiles(dir: string, isRoot = false): string[] {
 		if (SKIPPED_DIRS[entry.name]) continue;
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
-			if (isRoot && path.basename(dir) === "packages") {
-				const srcDir = path.join(full, "src");
-				if (fs.existsSync(srcDir)) {
-					results.push(...findSourceFiles(srcDir));
-				}
-			} else {
-				results.push(...findSourceFiles(full));
-			}
+			results.push(...findSourceFiles(full));
 		} else if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) {
 			results.push(path.relative(REPO_ROOT, full).replaceAll("\\", "/"));
 		}
@@ -91,12 +85,25 @@ function findSourceFiles(dir: string, isRoot = false): string[] {
 
 describe("a type is named not derived from a function", () => {
 	it("finds zero ReturnType< sites in tracked TypeScript source and scripts", () => {
+		// The workspace members are read, not named. `packages/` was hardcoded, so a module under any
+		// other root could derive a type from a function and this gate reported zero sites. The root
+		// view was in turn blind to literal paths (`natives/bridge/bindings`, `python/veybot/web`), which
+		// `typeScriptMembers()` now reaches.
 		const files = [
-			...findSourceFiles(path.join(REPO_ROOT, "packages"), true),
+			...typeScriptMembers().flatMap(member => {
+				const srcDir = path.join(REPO_ROOT, member, "src");
+				return fs.existsSync(srcDir) ? findSourceFiles(srcDir) : [];
+			}),
 			...findSourceFiles(path.join(REPO_ROOT, "scripts")),
 		].sort();
 
 		expect(files.length).toBeGreaterThan(50);
+
+		// And the corpus reaches every declared root. A root the walk never opened contributes no
+		// file, so its modules are exempt by absence and the empty list below still reads green.
+		const roots = new Set(files.map(file => file.split("/")[0]));
+		expect([...roots].sort()).toEqual([...typeScriptMemberTopLevels(), "scripts"].sort());
+		expect(files).toContain("contracts/wire/src/relay.ts");
 
 		const violations: string[] = [];
 		for (const file of files) {

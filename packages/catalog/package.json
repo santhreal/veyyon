@@ -42,6 +42,7 @@
     "@veyyon/ai": "catalog:",
     "@veyyon/coding-agent": "catalog:",
     "@veyyon/mnemopi": "catalog:",
+    "@veyyon/web": "catalog:",
     "@types/bun": "catalog:"
   },
   "engines": {

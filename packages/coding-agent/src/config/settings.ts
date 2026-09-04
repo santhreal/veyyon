@@ -45,19 +45,19 @@ import { type QuarantinedFile, quarantineUnparseableFile } from "@veyyon/utils/q
 import { errorMessage, isRecord } from "@veyyon/utils/type-guards";
 import { syncYamlTextToSettings } from "@veyyon/utils/yaml-sync";
 import { JSONC, YAML } from "bun";
-import type { ModelRole } from "../config/model-roles";
-// The classifier leaf, NOT `../modes/theme/theme` and NOT `../modes/theme/builtin-themes`. The barrel
+// The classifier leaf, NOT `../theme/theme` and NOT `../theme/builtin-themes`. The barrel
 // imports `./shimmer`, which imports this file, and that cycle had to be instantiated as one unit:
 // importing `config/settings` anywhere cost 51 MB, paid once per test file because the runner gives each
 // one a fresh realm. `builtin-themes` breaks the cycle but statically embeds one JSON module per bundled
 // theme, so reaching through it cost this file 103 modules of theme data nothing here reads, and cost
 // them again to every one of the ~1,500 files that import `Settings`. `theme-luminance` owns the same
 // boolean as a table and carries no theme JSON.
-import { isLightTheme } from "../modes/theme/theme-luminance";
-import { normalizeToolName } from "../tools/builtin-names";
+import { isLightTheme } from "../theme/theme-luminance";
+import { normalizeToolName } from "../tools/core/builtin-names";
 import { type EditMode, normalizeEditMode } from "../utils/edit-mode";
 import { type CompactionStrategySetting, migrateCompactionStrategyValue } from "./compaction-strategy";
 import { readLegacyAgentDbSettings } from "./legacy-agent-db-settings";
+import type { ModelRole } from "./model-roles";
 import { UNSET_NUMBER } from "./optional-number";
 import { GLOBAL_SETTING_BINDINGS } from "./settings-domains/global";
 // The slot, not a second copy of it: this module FILLS the slot that `./settings-instance.ts` owns, and
@@ -414,7 +414,7 @@ function resolvePathScopedStringArray(settingPath: SettingPath, value: unknown, 
 						...stringArrayFromUnknown(scoped.items),
 						...stringArrayFromUnknown(scoped.providers),
 					];
-		resolved.push(...values);
+		for (let vi = 0; vi < values.length; vi++) resolved.push(values[vi]!);
 	}
 
 	return resolved;
@@ -926,7 +926,7 @@ export class Settings {
 			inMemory: true,
 		});
 		forked.#activateProcessHooks = false;
-		forked.#configFiles = [...this.#configFiles];
+		forked.#configFiles = this.#configFiles.slice();
 		forked.#global = structuredClone(this.#global);
 		forked.#configOverlay = structuredClone(this.#configOverlay);
 		forked.#overrides = structuredClone(this.#overrides);
@@ -947,7 +947,7 @@ export class Settings {
 		cloned.#configPath = this.#configPath;
 		cloned.#activateProcessHooks = this.#activateProcessHooks;
 		cloned.#global = structuredClone(this.#global);
-		cloned.#configFiles = [...this.#configFiles];
+		cloned.#configFiles = this.#configFiles.slice();
 		cloned.#configOverlay = structuredClone(this.#configOverlay);
 		cloned.#overrides = structuredClone(this.#overrides);
 		cloned.#rebuildMerged();
@@ -1580,7 +1580,7 @@ export class Settings {
 				);
 				continue;
 			}
-			setByPath(raw, [...segments], flat);
+			setByPath(raw, segments.slice(), flat);
 		}
 	}
 
@@ -2503,14 +2503,15 @@ export class Settings {
 		if (!this.#persist || !this.#configPath || this.#modified.size === 0) return;
 
 		const configPath = this.#configPath;
-		const modifiedPaths = [...this.#modified];
+		const modifiedPaths = Array.from(this.#modified);
 		this.#modified.clear();
 
 		try {
-			// The lock is a directory beside the config file, and its parent check refuses a parent
-			// that is not there. A profile that has never been launched interactively has no agent
-			// directory yet, so the first `veyyon config set` on it failed with the lock's ENOENT
-			// before the writer that creates the tree ever ran.
+			// The lock directory lands beside the config file, so the parent has to exist before the
+			// lock is taken: a profile that has never been launched interactively has no agent
+			// directory yet, so the first save into it failed the lock's own lstat with ENOENT and
+			// reported the setting as unsaved. Inside this try, a home that cannot take the directory
+			// at all is recorded as a save failure like any other, rather than as a missing lock.
 			await fsp.mkdir(path.dirname(configPath), { recursive: true });
 			await withFileLock(configPath, async () => {
 				// Re-read to preserve external changes. Strict: an unreadable file
@@ -2621,7 +2622,7 @@ class SettingSignal<A extends unknown[] = []> {
 	 *
 	 * WHY THE TWO SETS ARE NOT ONE. Clearing every listener on `resetSettingsForTest` fixed a real
 	 * leak -- a subscription made in one test file stayed alive for the whole process -- and broke
-	 * something else in the same move: `modes/theme/theme` subscribes at ITS OWN IMPORT and never
+	 * something else in the same move: `theme/theme` subscribes at ITS OWN IMPORT and never
 	 * unsubscribes, because there is nothing to unsubscribe from a module. Clearing that one meant
 	 * the first reset in a process permanently disconnected the theme engine from settings, so
 	 * `symbolPreset` and `colorBlindMode` stopped applying for every later file. Import-time
@@ -2681,7 +2682,7 @@ class SettingSignal<A extends unknown[] = []> {
 	 * rest.
 	 */
 	fire(...args: A): void {
-		for (const cb of [...this.#permanent, ...this.#listeners]) {
+		for (const cb of Array.from(this.#permanent).concat(Array.from(this.#listeners))) {
 			try {
 				cb(...args);
 			} catch (err) {
@@ -2741,7 +2742,7 @@ const SETTING_HOOKS: Partial<Record<SettingPath, SettingHook<any>>> = {
  *
  * WHY THESE FOUR THEME SETTINGS GO THROUGH SIGNALS. This file used to call
  * `setAutoThemeMapping`, `setSymbolPreset` and `setColorBlindMode` directly, which
- * meant settings imported `modes/theme/theme`, which imports `./shimmer`, which
+ * meant settings imported `theme/theme`, which imports `./shimmer`, which
  * imports this file again. That cycle is one strongly connected component, so
  * every module in it had to be instantiated as a unit: importing `config/settings`
  * anywhere cost 51 MB, and since the test runner gives each test file a fresh
@@ -2758,7 +2759,7 @@ const autoThemeMappingSignal = new SettingSignal<[slot: "dark" | "light", themeN
 
 /**
  * Subscribe to `theme.dark` / `theme.light` changes. Returns an unsubscribe
- * function. `modes/theme/theme` subscribes at its own import.
+ * function. `theme/theme` subscribes at its own import.
  */
 export const onAutoThemeMappingChanged = (
 	cb: (slot: "dark" | "light", themeName: string) => void,
@@ -2829,7 +2830,7 @@ export const onHindsightScopeChanged = (cb: () => void) => hindsightScopeSignal.
  * Teardown a downstream module asks `resetSettingsForTest` to run.
  *
  * The registry lives in `./settings-instance.ts` with the slot, and is re-exported here because this is
- * the name callers import. A module that only REGISTERS should import the leaf: `modes/theme/markdown-theme.ts`
+ * the name callers import. A module that only REGISTERS should import the leaf: `theme/markdown-theme.ts`
  * registers one hook and paid 95 modules of settings store for the privilege.
  *
  * @internal

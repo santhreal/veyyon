@@ -55,11 +55,11 @@ import {
 } from "@veyyon/coding-agent/eval/kernel-tool-bridge";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { AskTool } from "@veyyon/coding-agent/tools/ask";
-import { type CmuxTab, runCmuxCode } from "@veyyon/coding-agent/tools/browser/cmux/cmux-tab";
-import type { SessionSnapshot } from "@veyyon/coding-agent/tools/browser/tab-protocol";
-import { evalSchema } from "@veyyon/coding-agent/tools/eval";
+import { AskTool } from "@veyyon/coding-agent/tools/agent/ask";
 import { BUILTIN_TOOLS, HIDDEN_TOOLS } from "@veyyon/coding-agent/tools/index";
+import { evalSchema } from "@veyyon/coding-agent/tools/shell/eval";
+import { type CmuxTab, runCmuxCode } from "@veyyon/coding-agent/tools/web/browser/cmux/cmux-tab";
+import type { SessionSnapshot } from "@veyyon/coding-agent/tools/web/browser/tab-protocol";
 import { TempDir } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import { ArgotSession } from "argot";
@@ -89,7 +89,7 @@ const EXECUTED = "the tool executed";
 
 /** The ask payload that killed a session: every field but the one the dialog renders. */
 const ASK_WITHOUT_QUESTION_TEXT = {
-	questions: [{ id: "dest", header: "Skill dest", options: [{ label: "packages/argot" }], multi: false }],
+	questions: [{ id: "dest", header: "Skill dest", options: [{ label: "plugins/argot" }], multi: false }],
 };
 
 function ok(text: string): AgentToolResult {

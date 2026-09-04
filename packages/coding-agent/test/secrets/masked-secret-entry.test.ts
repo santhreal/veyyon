@@ -19,7 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets";
 import {
 	NONINTERACTIVE_SECRET_COMMAND_USAGE,
@@ -27,10 +27,9 @@ import {
 	type SecretSubcommand,
 } from "@veyyon/coding-agent/secrets/secret-command";
 import { resolveVaultLocations, SecretVault } from "@veyyon/coding-agent/secrets/vault";
-import { OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
 import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
 import { maskedPromptTitle, runSecretCommandForSurface } from "@veyyon/coding-agent/slash-commands/helpers/secret";
-import { DEFAULT_MASK_CHAR } from "@veyyon/tui";
+import { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 
 /** The credential under test. Long enough to be obfuscatable, distinctive enough to grep for. */
 const VALUE = "ghp_maskedEntryTestCredential99";
@@ -690,9 +689,9 @@ describe("the TUI path", () => {
 		const [title, placeholder, inputOptions] = showHookInput.mock.calls[0] as unknown as [
 			string,
 			undefined,
-			{ mask?: string },
+			{ mask?: boolean },
 		];
-		expect(inputOptions.mask).toBe(DEFAULT_MASK_CHAR);
+		expect(inputOptions.mask).toBe(true);
 		expect(placeholder).toBeUndefined();
 		expect(title).toBe(maskedPromptTitle());
 		// And it carries NO name, because at this point there is not one yet to carry: `/secret add`

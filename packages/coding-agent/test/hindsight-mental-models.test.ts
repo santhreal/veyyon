@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import type { BankScope } from "@veyyon/coding-agent/hindsight/bank";
+import type { BankScope } from "@veyyon/coding-agent/memory/hindsight/bank";
 import {
 	type HindsightApi,
 	HindsightApi as HindsightApiCtor,
 	type MentalModelSummary,
-} from "@veyyon/coding-agent/hindsight/client";
+} from "@veyyon/coding-agent/memory/hindsight/client";
 import {
 	diffMentalModelContent,
 	ensureMentalModels,
@@ -15,7 +15,7 @@ import {
 	resolveSeedsForScope,
 	seedAlreadyExists,
 	summarizeMentalModel,
-} from "@veyyon/coding-agent/hindsight/mental-models";
+} from "@veyyon/coding-agent/memory/hindsight/mental-models";
 
 afterEach(() => {
 	vi.restoreAllMocks();

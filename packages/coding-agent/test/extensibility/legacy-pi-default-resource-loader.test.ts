@@ -8,8 +8,8 @@ import {
 	createAgentSession as legacyCreateAgentSession,
 } from "@veyyon/coding-agent/extensibility/legacy-pi-coding-agent-shim";
 import type { Skill } from "@veyyon/coding-agent/extensibility/skills";
-import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "@veyyon/coding-agent/sdk";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
+import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "@veyyon/coding-agent/session/factory-options";
 import { removeWithRetries } from "@veyyon/utils";
 
 // Issue #4567: every published version of pi-schedule-prompt (and every pi

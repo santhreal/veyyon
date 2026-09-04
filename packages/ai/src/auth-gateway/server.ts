@@ -142,7 +142,7 @@ const reportedDroppedTypedOptions = new Set<string>();
  * `user` and `logitBias` carry caller data.
  */
 function reportDroppedTypedOptions(api: Api, names: string[]): void {
-	const signature = `${api}:${[...names].sort().join(",")}`;
+	const signature = `${api}:${Array.from(names).sort().join(",")}`;
 	const detail = { api, dropped: names };
 	if (reportedDroppedTypedOptions.has(signature)) {
 		logger.debug("auth-gateway still dropping unsupported typed options", detail);

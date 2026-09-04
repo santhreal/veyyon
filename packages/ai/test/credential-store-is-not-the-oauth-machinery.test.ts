@@ -106,8 +106,14 @@ const ROWS_CEILING = 8;
  * Google `finish_reason: error` matched neither and was classified with no flags at all. The owner is a
  * sibling leaf inside `ai/src/error/`, its own imports were already on this reach, and the neighbouring
  * assertion still refuses `auth-storage.ts`, the registry and `stream.ts` by name.
+ *
+ * RE-MEASURED 2026-08-28 at 45. The one new module is `@veyyon/utils/ansi`, a zero-import leaf that owns
+ * the terminal escape constants. `sanitize-text.ts` is already on this reach and used to spell `"\x1b"`
+ * inline; it now takes `ESC` from that owner, so the constant has one declaration instead of one per
+ * caller. The leaf imports nothing, so this closure gained a name and no edge, and the neighbouring
+ * assertion still refuses `auth-storage.ts`, the registry and `stream.ts` by name.
  */
-const STORE_CEILING = 44;
+const STORE_CEILING = 45;
 
 describe("the row helpers are pure", () => {
 	/**

@@ -27,7 +27,7 @@ import type {
 	ModelChangeEntry,
 	SessionEntry,
 	SessionMessageEntry,
-} from "@veyyon/coding-agent/session/session-entries";
+} from "@veyyon/kernel/session/session-entries";
 
 let entryCounter = 0;
 let lastId: string | null = null;

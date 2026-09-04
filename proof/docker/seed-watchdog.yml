@@ -1,0 +1,38 @@
+# Project advisor roster for the `/advisor configure` scene.
+#
+# Four entries, because the overlay is a split: a roster list on the left and a
+# preview of the selected entry on the right, and one entry proves neither the
+# selection moving nor a preview long enough to scroll. The models are ones the
+# recorder's catalog resolves, and the tool grants differ per row so the frame
+# shows a read-only advisor beside one that may edit and run a command.
+instructions: |
+  Everyone: name the file and the line, and say what input breaks it.
+
+advisors:
+  - name: Architecture
+    model: anthropic/claude-sonnet-4-5:medium
+    tools: [read, search]
+    instructions: |
+      Watch cross-module coupling and public-API growth. A second convention
+      beside an existing one is a finding, not a preference.
+
+  - name: Performance
+    model: anthropic/claude-sonnet-4-5:low
+    tools: [read, search]
+    instructions: |
+      Report allocations on a hot path, an avoidable copy, and any work moved
+      inside a loop that could sit outside it.
+
+  - name: Fixer
+    model: anthropic/claude-sonnet-4-5:high
+    tools: [read, search, edit, bash]
+    instructions: |
+      You may edit and run the tests to prove a fix locally, then advise. Never
+      leave the tree dirty: revert anything the advice does not carry.
+
+  - name: Docs
+    model: openai/gpt-5-mini:medium
+    tools: [read, search]
+    instructions: |
+      Flag an observable behavior change whose owning document did not move in
+      the same diff.

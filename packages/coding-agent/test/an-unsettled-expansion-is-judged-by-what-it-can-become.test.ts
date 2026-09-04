@@ -56,7 +56,7 @@ import {
 	PROTECTED_HOME_DIRECTORIES,
 	PROTECTED_ROOTS,
 	SECRET_HOME_DIRECTORIES,
-} from "../src/tools/bash-guard";
+} from "../src/tools/shell/bash-guard";
 
 const HOME = "/home/operator";
 /** A fixed environment and working directory, so no case depends on this machine. */

@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { SetCwdTool } from "@veyyon/coding-agent/tools/set-cwd";
+import { SetCwdTool } from "@veyyon/coding-agent/tools/fs/set-cwd";
 import { TempDir } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";
 

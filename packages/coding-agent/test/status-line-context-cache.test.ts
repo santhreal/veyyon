@@ -16,9 +16,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { ContextUsage } from "@veyyon/coding-agent/extensibility/extensions/types";
-import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { StatusLineComponent } from "../src/modes/terminal/components/status-line/component";
 import { statusLineSessionParts } from "./helpers/status-line-session";
 
 beforeAll(async () => {

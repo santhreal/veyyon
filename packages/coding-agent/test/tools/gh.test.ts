@@ -15,7 +15,7 @@ import {
 	parseSearchDateBound,
 	resolveDefaultRepoMemoized,
 	resolveTailLimit,
-} from "@veyyon/coding-agent/tools/gh";
+} from "@veyyon/coding-agent/tools/web/gh";
 import * as git from "@veyyon/coding-agent/utils/git";
 import { hashPath, removeWithRetries, setAgentDir } from "@veyyon/utils";
 import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";

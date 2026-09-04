@@ -11,6 +11,7 @@ import {
 	type StreamingPartialJsonCarrier,
 	setStreamingPartialJson,
 } from "@veyyon/ai/utils/block-symbols";
+import type { SessionMessageEntry } from "@veyyon/kernel/session/session-entries";
 import { type ArgotGate, makeGate } from "argot/policy";
 import type { ArgotSession } from "argot/session";
 import { makeStreamDecoder, type StreamDecoder } from "argot/stream";
@@ -18,7 +19,6 @@ import type { Vocabulary } from "argot/types";
 import { type JsonWithOptionalFields, mapJsonStrings } from "./json-transform";
 import { mapAgentMessageStrings, mapAssistantContentStrings } from "./secrets/obfuscator";
 import type { SessionContext } from "./session/session-context";
-import type { SessionMessageEntry } from "./session/session-entries";
 
 /**
  * Adapt veyyon's three settings fields to an argot gate. The gate SHAPE and its
@@ -348,7 +348,8 @@ export class ArgotStreamDisplayDecoder {
 			if (content !== source.partial.content) patch.partial = { ...source.partial, content };
 		}
 
-		return Object.keys(patch).length === 0 ? event : { ...event, ...patch };
+		for (const _ in patch) return { ...event, ...patch };
+		return event;
 	}
 
 	/**

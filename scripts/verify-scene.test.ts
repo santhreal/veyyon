@@ -37,6 +37,40 @@ function sources(overrides: Partial<SceneSources> & { scene: string }): SceneSou
 const problems = (input: Partial<SceneSources> & { scene: string }): string[] =>
 	verifySceneSources(sources(input)).map(finding => finding.problem);
 
+/** Every `.ts` byte under one directory, concatenated. */
+async function rootText(root: string): Promise<string> {
+	const parts: string[] = [];
+	const walk = async (dir: string): Promise<void> => {
+		for (const entry of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+			if (entry.name === "node_modules" || entry.name === "dist") continue;
+			const full = path.join(dir, entry.name);
+			if (entry.isDirectory()) {
+				await walk(full);
+				continue;
+			}
+			if (entry.name.endsWith(".ts")) parts.push(await readFile(full, "utf8"));
+		}
+	};
+	await walk(root);
+	return parts.join("\n");
+}
+
+/**
+ * A name `root` declares that appears nowhere in `elsewhere`, or null when it declares none.
+ *
+ * Uniqueness is the whole point. A name the root shares with another one proves nothing: it is
+ * read through the other root's text, so an assertion on it stays green with this root dropped
+ * from the subject entirely — which is exactly how the first version of this test passed against
+ * a verifier reading `packages/` alone.
+ */
+function unsharedDeclaration(rootSource: string, elsewhere: string): string | null {
+	for (const match of rootSource.matchAll(/^export (?:async )?(?:function|const|class|interface) (\w{12,})/gm)) {
+		const name = match[1];
+		if (name && !elsewhere.includes(name)) return name;
+	}
+	return null;
+}
+
 describe("a scene guard has to resolve to something that produces it", () => {
 	it("accepts a needle the submitted prompt asks the model to print", () => {
 		expect(
@@ -205,5 +239,23 @@ describe("every recorded scene in this repository", () => {
 			}
 		}
 		expect(findings).toEqual([]);
+	});
+
+	/**
+	 * The subject used to be `packages/coding-agent/src` alone, which was the whole product
+	 * until the terminal host, the kernel and the domain plugins moved out of it. A label the
+	 * screen draws is defined in `plugins/` or `hosts/` now, so a verifier reading one member
+	 * reports a live needle as unresolved and the fix a reader reaches for is deleting the
+	 * guard. Each root is proved by a string only it owns, read out of the tree at run time,
+	 * so a member that moves again fails here rather than at the next take.
+	 */
+	it("reads the string a plugin, a host, a contract and the kernel own", async () => {
+		const agentText = await agentSourceText();
+		const packagesText = await rootText(path.join(REPO_ROOT, "packages"));
+		for (const root of ["plugins", "hosts", "kernel", "contracts"]) {
+			const owned = unsharedDeclaration(await rootText(path.join(REPO_ROOT, root)), packagesText);
+			expect(owned, `${root}/ declares no name of its own to sample`).not.toBeNull();
+			expect(agentText.includes(owned as string), `${root}/ is outside the verifier's subject`).toBe(true);
+		}
 	});
 });

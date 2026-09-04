@@ -32,17 +32,18 @@ import {
 	createAcpExtensionUiContext,
 } from "@veyyon/coding-agent/modes/acp/acp-agent";
 import type { PlanModeState } from "@veyyon/coding-agent/plan-mode/state";
-import type { AgentSession, AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { SILENT_ABORT_MARKER } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS } from "@veyyon/coding-agent/stt/models";
-import { CONFIGURED_THINKING_LEVELS, configuredThinkingLevelsForModel } from "@veyyon/coding-agent/thinking";
+import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS } from "@veyyon/coding-agent/speech/stt/models";
 import {
 	DEFAULT_TTS_LOCAL_MODEL_KEY,
 	DEFAULT_TTS_VOICE,
 	TTS_LOCAL_MODELS,
 	TTS_LOCAL_VOICE_OPTIONS,
-} from "@veyyon/coding-agent/tts/models";
+} from "@veyyon/coding-agent/speech/tts/models";
+import { CONFIGURED_THINKING_LEVELS, configuredThinkingLevelsForModel } from "@veyyon/coding-agent/thinking";
 import { setAgentDir } from "@veyyon/utils";
 import type { z } from "zod/v4";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";

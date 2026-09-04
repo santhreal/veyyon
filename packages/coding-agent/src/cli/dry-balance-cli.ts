@@ -12,8 +12,9 @@ import type {
 	SimpleStreamOptions,
 } from "@veyyon/ai";
 import { streamSimple } from "@veyyon/ai";
-import { replaceTabs, truncateToWidth } from "@veyyon/tui";
 import { formatDuration } from "@veyyon/utils";
+import { truncateToWidth } from "@veyyon/utils/width";
+import { replaceTabs } from "@veyyon/utils/wrap";
 import chalk from "chalk";
 import { modelResolutionFailureMessage } from "../config/model-resolution-failure";
 import {
@@ -618,7 +619,7 @@ function sortedStats(
 	map: Map<string, number>,
 	samples: number,
 ): Array<{ label: string; count: number; percent: number }> {
-	return [...map.entries()]
+	return Array.from(map.entries())
 		.map(([label, count]) => ({ label, count, percent: (count / samples) * 100 }))
 		.sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
 }

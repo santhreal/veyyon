@@ -29,15 +29,15 @@ import { atomicWriteFilePreservingMode, isEnoent } from "@veyyon/utils";
 import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../lsp";
 import { FileChangeType, notifyWorkspaceWatchedFiles } from "../../lsp/client";
 import type { ToolSession } from "../../tools";
-import { routeWriteThroughBridge } from "../../tools/acp-bridge";
-import { assertEditableFileContent } from "../../tools/auto-generated-guard";
-import { invalidateFsScanAfterWrite } from "../../tools/fs-cache-invalidation";
-import { isInternalUrlPath } from "../../tools/path-utils";
-import { enforcePlanModeWrite, resolvePlanPath, targetsLocalSandbox } from "../../tools/plan-mode-guard";
+import { routeWriteThroughBridge } from "../../tools/core/acp-bridge";
+import { invalidateFsScanAfterWrite } from "../../tools/core/fs-cache-invalidation";
+import { isInternalUrlPath } from "../../tools/core/path-utils";
+import { enforcePlanModeWrite, resolvePlanPath, targetsLocalSandbox } from "../../tools/core/plan-mode-guard";
+import type { LspBatchRequest } from "../../tools/core/render-utils";
+import { assertEditableFileContent } from "../../tools/fs/auto-generated-guard";
 import { canonicalSnapshotKey } from "../file-snapshot-store";
 import { isNotebookPath } from "../notebook";
 import { readEditFileText, serializeEditFileText } from "../read-file";
-import type { LspBatchRequest } from "../renderer";
 
 export interface HashlineFilesystemOptions {
 	session: ToolSession;

@@ -257,7 +257,7 @@ export interface Explanation {
 export function explain(error: unknown, api?: Api): Explanation {
 	const trace: string[] = [];
 	const id = classify(error, api, trace);
-	return { id, rules: [...new Set(trace)] };
+	return { id, rules: Array.from(new Set(trace)) };
 }
 
 /** Whether any link of the chain carried wording the rules could read. */

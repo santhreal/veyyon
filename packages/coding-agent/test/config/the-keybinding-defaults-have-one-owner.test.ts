@@ -29,7 +29,7 @@ import { KEYBINDINGS as VIA_LOADER } from "@veyyon/coding-agent/config/keybindin
 import { moduleSpecifiersIn, namedImportsFrom, typeOnlyModuleSpecifiersIn } from "@veyyon/utils/module-reach";
 
 const SRC = path.resolve(import.meta.dir, "../../src");
-const EDITOR = path.join(SRC, "modes", "components", "custom-editor.ts");
+const EDITOR = path.join(SRC, "modes", "terminal", "components", "composer", "custom-editor.ts");
 const DEFS = path.join(SRC, "config", "keybinding-defs.ts");
 
 const EDITOR_SOURCE = fs.readFileSync(EDITOR, "utf8");
@@ -53,17 +53,17 @@ describe("the keybinding defaults have one owner", () => {
 	 * profile resolver, and one import of the loader from here would undo that
 	 * silently, since everything would still compile and pass.
 	 *
-	 * The specifiers are the TUI's owning leaves rather than its barrel, which is
-	 * the same rule one level down: `@veyyon/tui` re-exports the renderer and every
-	 * component, and this file wants a key table and a key id.
+	 * The specifiers are the owning leaves rather than a barrel, which is the same
+	 * rule one level down: `@veyyon/utils` re-exports every shared helper in the
+	 * package, and this file wants a key table and a key id.
 	 */
-	it("imports nothing but the TUI's key modules from the leaf", () => {
+	it("imports nothing but the keyboard primitives from the leaf", () => {
 		const imported = [...moduleSpecifiersIn(DEFS_SOURCE), ...typeOnlyModuleSpecifiersIn(DEFS_SOURCE)];
 
 		expect(
 			[...new Set(imported)].sort(),
-			"keybinding-defs.ts is the leaf a UI component reads. Keep its imports to @veyyon/tui",
-		).toEqual(["@veyyon/tui/keybindings", "@veyyon/tui/keys"]);
+			"keybinding-defs.ts is the leaf a UI component reads. Keep its imports to the @veyyon/utils keyboard modules",
+		).toEqual(["@veyyon/utils/keybindings", "@veyyon/utils/keys"]);
 	});
 
 	/**
@@ -92,7 +92,7 @@ describe("the keybinding defaults have one owner", () => {
 	 * so it would have stayed green with the import deleted.
 	 */
 	it("reads the shared table in the editor", () => {
-		expect(namedImportsFrom(EDITOR_SOURCE, "../../config/keybinding-defs")).toEqual(["KEYBINDINGS"]);
+		expect(namedImportsFrom(EDITOR_SOURCE, "../../../../config/keybinding-defs")).toEqual(["KEYBINDINGS"]);
 	});
 });
 

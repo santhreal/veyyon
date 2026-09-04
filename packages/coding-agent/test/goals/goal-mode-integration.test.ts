@@ -4,17 +4,17 @@ import { Agent, type AgentEvent } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { GoalTool } from "@veyyon/coding-agent/goals/tools/goal-tool";
-import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { SubmittedUserInput } from "@veyyon/coding-agent/modes/types";
+import type { DiscoverableTool } from "@veyyon/coding-agent/discovery/tool-index";
+import { GoalTool } from "@veyyon/coding-agent/goals/goal-tool";
+import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
+import type { SubmittedUserInput } from "@veyyon/coding-agent/modes/terminal/types";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { normalizeCustomMessagePayload } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import type { DiscoverableTool } from "@veyyon/coding-agent/tool-discovery/tool-index";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { createTools, type Tool, type ToolSession } from "@veyyon/coding-agent/tools";
-import type { TodoPhase } from "@veyyon/coding-agent/tools/todo";
+import type { TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 function createToolSession(cwd: string, settings: Settings, overrides: Partial<ToolSession> = {}): ToolSession {

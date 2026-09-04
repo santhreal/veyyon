@@ -3,7 +3,7 @@
  * Why: ceiling arithmetic must stay exact past the prior 100-band coverage.
  */
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "../src/tools/list-limit";
+import { applyListLimit } from "../src/tools/core/list-limit";
 
 describe("list-limit limit 101 to 300 exact slice", () => {
 	const items = Array.from({ length: 500 }, (_, i) => `v${i}`);

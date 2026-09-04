@@ -7,7 +7,7 @@
  * member costs what the whole component costs, and Bun's test runner gives every
  * test file a fresh realm. Two cycles did the damage:
  *
- *   config/settings -> modes/theme/theme -> modes/theme/shimmer -> config/settings
+ *   config/settings -> theme/theme -> theme/shimmer -> config/settings
  *
  *   tools/path-utils -> internal-urls -> internal-urls/skill-protocol ->
  *   extensibility/skills -> discovery -> discovery/builtin -> tools/path-utils
@@ -34,7 +34,7 @@
  * layer loads when something actually spawns a subagent.
  *
  * Cutting the three moved the same numbers: `path-utils` 51.7 to 7.8 MB per file,
- * `config/settings` 51.4 to 15.6, `modes/theme/theme` 51.2 to 16.1, `discovery`
+ * `config/settings` 51.4 to 15.6, `theme/theme` 51.2 to 16.1, `discovery`
  * 51.5 to 44.0, `session/agent-session` 90.9 to 61.6. `path-utils` now reaches two
  * modules in total, `agent-session` 712 instead of 1120, and the graphs under
  * `discovery`, `config/settings`, `path-utils` and `theme` are acyclic.
@@ -67,7 +67,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { resolveToolSearchScope } from "@veyyon/coding-agent/tools/search-scope";
+import { resolveToolSearchScope } from "@veyyon/coding-agent/tools/search/search-scope";
 import { moduleGraph, moduleSpecifiersIn, resolveModuleSpecifier } from "@veyyon/utils/module-reach";
 
 const SRC = path.join(import.meta.dir, "..", "..", "src");
@@ -174,14 +174,14 @@ function findCycles(graph: Graph): string[][] {
 const ACYCLIC_ENTRIES = [
 	["discovery", "discovery/index.ts"],
 	["config/settings", "config/settings.ts"],
-	["tools/path-utils", "tools/path-utils.ts"],
-	["modes/theme/theme", "modes/theme/theme.ts"],
+	["tools/path-utils", "tools/core/path-utils.ts"],
+	["theme/theme", "theme/theme.ts"],
 	["config/model-registry", "config/model-registry.ts"],
 	["config/model-resolver", "config/model-resolver.ts"],
 	["internal-urls", "internal-urls/index.ts"],
 	["session/agent-session", "session/agent-session.ts"],
 	// Added after a full runner pass failed six chunks with two errors of one shape:
-	// `Export named 'formatOutputNotice' not found in module tools/output-meta.ts` and
+	// `Export named 'formatOutputNotice' not found in module tools/core/output-meta.ts` and
 	// `Export named 'wrapSteeringForModel' not found in module session/messages.ts`. Both
 	// names exist in the source, and a name that is present at rest and absent at
 	// resolution time is what a re-export through a module caught mid-initialization looks
@@ -190,8 +190,8 @@ const ACYCLIC_ENTRIES = [
 	// entries are the graphs those two modules sit in.
 	["session/messages", "session/messages.ts"],
 	["session/steering-envelope", "session/steering-envelope.ts"],
-	["tools/output-meta", "tools/output-meta.ts"],
-	["tools/output-notice", "tools/output-notice.ts"],
+	["tools/output-meta", "tools/core/output-meta.ts"],
+	["tools/output-notice", "tools/core/output-notice.ts"],
 ] as const;
 
 /**
@@ -239,14 +239,14 @@ const GRAPH_SIZE_CEILINGS = [
 	// Measured 2026-07-26 at 2, down from the 51-MB-per-realm component it used to sit inside. This is
 	// the module imported for small helpers throughout the package, so it is the most leveraged number
 	// in the list.
-	["tools/path-utils", "tools/path-utils.ts", 6],
+	["tools/path-utils", "tools/core/path-utils.ts", 6],
 	// Measured 2026-07-26 at 36, down from 139 when the light/dark classifier left
-	// `modes/theme/builtin-themes` for `modes/theme/theme-luminance` and stopped dragging one JSON
+	// `theme/builtin-themes` for `theme/theme-luminance` and stopped dragging one JSON
 	// module per bundled theme. ~1,500 test files import `Settings`, so this is the second most
 	// leveraged.
 	["config/settings", "config/settings.ts", 45],
 	// Measured 2026-07-26 at 145. The engine legitimately owns the theme JSON.
-	["modes/theme/theme", "modes/theme/theme.ts", 160],
+	["theme/theme", "theme/theme.ts", 160],
 	// Measured 2026-07-26 at 65.
 	["tools/index", "tools/index.ts", 80],
 	// Measured 2026-07-26 at 49.
@@ -270,7 +270,7 @@ const GRAPH_SIZE_CEILINGS = [
 	// Measured 2026-07-26 at 18.
 	["eval/js/tool-bridge", "eval/js/tool-bridge.ts", 25],
 	// Measured 2026-07-26 at 47.
-	["tools/plan-mode-guard", "tools/plan-mode-guard.ts", 60],
+	["tools/plan-mode-guard", "tools/core/plan-mode-guard.ts", 60],
 	// Measured 2026-07-26 at 183.
 	["utils/image-vision-fallback", "utils/image-vision-fallback.ts", 200],
 	// Measured 2026-07-26 at 199.
@@ -374,8 +374,8 @@ describe("the graph is this package's own, which is what the ceilings are set fr
 	it("resolves a relative specifier to the file it names", () => {
 		const settings = path.join(SRC, "config/settings.ts");
 
-		expect(resolveModuleSpecifier(settings, "../modes/theme/theme-luminance")).toBe(
-			path.join(SRC, "modes/theme/theme-luminance.ts"),
+		expect(resolveModuleSpecifier(settings, "../theme/theme-luminance")).toBe(
+			path.join(SRC, "theme/theme-luminance.ts"),
 		);
 	});
 
@@ -405,7 +405,7 @@ describe("the specific edges that closed the two cycles stay gone", () => {
 	 * new line in it.
 	 */
 	it("keeps tools/path-utils out of internal-urls", () => {
-		const imports = staticImports("tools/path-utils.ts");
+		const imports = staticImports("tools/core/path-utils.ts");
 
 		expect(imports.some(specifier => specifier.includes("internal-urls"))).toBe(false);
 	});
@@ -413,8 +413,8 @@ describe("the specific edges that closed the two cycles stay gone", () => {
 	/**
 	 * The same for the settings/theme edge, for the same reason.
 	 *
-	 * EXACT specifiers, not a substring. `includes("modes/theme/theme")` also matches
-	 * `modes/theme/theme-luminance`, which is the classifier leaf settings is SUPPOSED to import: it
+	 * EXACT specifiers, not a substring. `includes("theme/theme")` also matches
+	 * `theme/theme-luminance`, which is the classifier leaf settings is SUPPOSED to import: it
 	 * carries the light/dark answer as a table so settings does not drag the hundred embedded theme
 	 * JSON modules for one boolean. A substring test failed the moment that leaf was named, reporting
 	 * the cycle was back when the opposite had happened. The same collision existed in
@@ -423,15 +423,15 @@ describe("the specific edges that closed the two cycles stay gone", () => {
 	it("keeps config/settings out of the theme barrel", () => {
 		const imports = staticImports("config/settings.ts");
 
-		expect(imports).not.toContain("../modes/theme/theme");
-		expect(imports).not.toContain("../modes/theme/shimmer");
-		expect(imports).not.toContain("../modes/theme/theme-class");
+		expect(imports).not.toContain("../theme/theme");
+		expect(imports).not.toContain("../theme/shimmer");
+		expect(imports).not.toContain("../theme/theme-class");
 		// And the leaf it does import, so this is not satisfied by settings dropping the classifier.
-		expect(imports).toContain("../modes/theme/theme-luminance");
+		expect(imports).toContain("../theme/theme-luminance");
 	});
 
 	/**
-	 * Locks out: deleting `tools/search-scope.ts` outright, which would satisfy every absence above.
+	 * Locks out: deleting `tools/search/search-scope.ts` outright, which would satisfy every absence above.
 	 * The function that needed the router still lives there and still names it.
 	 *
 	 * Asserted by importing the module and checking the export, not by searching its text for
@@ -440,10 +440,10 @@ describe("the specific edges that closed the two cycles stay gone", () => {
 	 * rather than the surface.
 	 */
 	it("still resolves internal URLs, from tools/search-scope", () => {
-		const imports = staticImports("tools/search-scope.ts");
+		const imports = staticImports("tools/search/search-scope.ts");
 
-		expect(imports).toContain("../internal-urls");
-		expect(imports).toContain("./path-utils");
+		expect(imports).toContain("../../internal-urls");
+		expect(imports).toContain("../core/path-utils");
 		expect(typeof resolveToolSearchScope).toBe("function");
 	});
 });

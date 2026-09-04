@@ -59,7 +59,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { AUTONOMY_LABEL } from "../packages/coding-agent/src/tools/approval-modes";
+import { AUTONOMY_LABEL } from "../packages/coding-agent/src/tools/core/approval-modes";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const CLI_SOURCE = path.join(REPO_ROOT, "packages", "coding-agent", "src", "cli.ts");

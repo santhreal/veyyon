@@ -1,0 +1,116 @@
+/**
+ * Regression test for the abort-guard on `EventController.sendCompletionNotification`.
+ *
+ * Bug: a user Ctrl+C on the `ask` tool selector throws `ToolAbortError`,
+ * the turn ends with `stopReason === "aborted"`, and `#handleAgentEnd`
+ * fires `sendCompletionNotification()`. Without a guard this produced a
+ * misleading "Task complete" desktop toast for a turn that never actually
+ * completed. The fix mirrors the `stopReason !== "aborted"` pattern already
+ * used by `#currentContextTokens`, `#handleMessageEnd`, and the
+ * retry / TTSR / compaction skip paths in `agent-session.ts`.
+ */
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
+import type { AssistantMessage } from "@veyyon/ai";
+import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
+import { EventController } from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { TERMINAL } from "@veyyon/tui";
+import { useTrackedTempDirs } from "../../../helpers/tracked-temp-dir";
+
+// Tracked temp directories: the factory deletes what it made when this file finishes.
+// These call sites used a bare `mkdtempSync` with no teardown, so every run left the
+// directory in `/tmp` forever. Cleanup is attached to creation so a new case cannot
+// reintroduce the leak by forgetting an `afterAll`.
+const makeAbortguardDir = useTrackedTempDirs("veyyon-abortguard-");
+
+beforeAll(() => {
+	initTheme();
+});
+
+beforeEach(async () => {
+	resetSettingsForTest();
+	const tempDir = makeAbortguardDir();
+	await Settings.init({ inMemory: true, cwd: tempDir });
+});
+
+afterEach(() => {
+	vi.restoreAllMocks();
+	resetSettingsForTest();
+});
+
+type StopReason = "stop" | "aborted" | "error";
+
+function makeAssistantMessage(stopReason: StopReason): AssistantMessage {
+	return {
+		role: "assistant",
+		content: [{ type: "text", text: "hello" }],
+		stopReason,
+		usage: { inputTokens: 0, outputTokens: 0 },
+		timestamp: Date.now(),
+	} as unknown as AssistantMessage;
+}
+
+function makeContext(lastMessage: AssistantMessage | undefined): InteractiveModeContext {
+	const sessionMock = {
+		getLastAssistantMessage: () => lastMessage,
+	};
+	return {
+		sessionManager: {
+			getSessionName: () => "test-session",
+		},
+		session: sessionMock,
+		viewSession: sessionMock,
+		// Required members of the context. Omitting them used to be tolerated by
+		// `?.()` calls in the controller, which meant production silently skipped
+		// the composer refresh and the welcome dismissal whenever either was
+		// missing. The calls are unconditional now, so the stub supplies them.
+		refreshComposerShortcuts: vi.fn(),
+		dismissWelcome: vi.fn(),
+	} as unknown as InteractiveModeContext;
+}
+
+describe("EventController.sendCompletionNotification — abort guard", () => {
+	it("skips notification when the last assistant message stopReason === 'aborted'", () => {
+		const spy = vi.spyOn(TERMINAL, "sendNotification").mockImplementation(() => {});
+		settings.override("completion.notify", "on");
+		const controller = new EventController(makeContext(makeAssistantMessage("aborted")));
+		controller.sendCompletionNotification();
+		expect(spy).toHaveBeenCalledTimes(0);
+	});
+
+	it("skips notification when the last assistant message stopReason === 'error'", () => {
+		const spy = vi.spyOn(TERMINAL, "sendNotification").mockImplementation(() => {});
+		settings.override("completion.notify", "on");
+		const controller = new EventController(makeContext(makeAssistantMessage("error")));
+		controller.sendCompletionNotification();
+		expect(spy).toHaveBeenCalledTimes(0);
+	});
+
+	it("fires notification when stopReason === 'stop' (normal completion)", () => {
+		const spy = vi.spyOn(TERMINAL, "sendNotification").mockImplementation(() => {});
+		settings.override("completion.notify", "on");
+		const controller = new EventController(makeContext(makeAssistantMessage("stop")));
+		controller.sendCompletionNotification();
+		expect(spy).toHaveBeenCalledTimes(1);
+		// Completion now sends a structured notification (title=session, body="Complete").
+		expect(spy).toHaveBeenCalledWith(expect.objectContaining({ body: "Complete", type: "completion" }));
+	});
+
+	it("fires notification when getLastAssistantMessage is absent (e.g. brand-new session)", () => {
+		// Defensive: optional-chain `?.()` returns undefined; treat as 'no abort flag', proceed.
+		const spy = vi.spyOn(TERMINAL, "sendNotification").mockImplementation(() => {});
+		settings.override("completion.notify", "on");
+		const controller = new EventController(makeContext(undefined));
+		controller.sendCompletionNotification();
+		expect(spy).toHaveBeenCalledTimes(1);
+	});
+
+	it("honors the existing completion.notify=off gate", () => {
+		const spy = vi.spyOn(TERMINAL, "sendNotification").mockImplementation(() => {});
+		settings.override("completion.notify", "off");
+		const controller = new EventController(makeContext(makeAssistantMessage("stop")));
+		controller.sendCompletionNotification();
+		expect(spy).toHaveBeenCalledTimes(0);
+	});
+});

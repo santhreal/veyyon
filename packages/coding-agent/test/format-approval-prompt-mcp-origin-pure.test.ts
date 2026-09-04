@@ -3,7 +3,7 @@
  * Why: MCP tools default to exec and must be labeled so operators see origin.
  */
 import { describe, expect, it } from "bun:test";
-import { formatApprovalPrompt } from "../src/tools/approval";
+import { formatApprovalPrompt } from "../src/tools/core/approval";
 
 describe("formatApprovalPrompt MCP origin pure", () => {
 	it("mcp__ tool without approval adds Origin line", () => {

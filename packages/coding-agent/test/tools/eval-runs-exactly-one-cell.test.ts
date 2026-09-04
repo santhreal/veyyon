@@ -29,7 +29,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { disposeAllVmContexts } from "@veyyon/coding-agent/eval/js/context-manager";
 import type { EvalToolDetails } from "@veyyon/coding-agent/eval/types";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { EvalTool } from "@veyyon/coding-agent/tools/eval";
+import { EvalTool } from "@veyyon/coding-agent/tools/shell/eval";
 import { makeToolSession } from "../helpers/tool-session";
 
 function makeSession(): ToolSession {

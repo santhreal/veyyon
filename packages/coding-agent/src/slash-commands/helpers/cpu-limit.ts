@@ -18,10 +18,14 @@
  * make sense for this piece of work. It overrides to zero for this session
  * only, never writes config, and `reset` puts it back.
  */
+import {
+	anyMachineLimitActive,
+	type MachineBudgetLimits,
+	machineBudgetLimits,
+} from "@veyyon/kernel/session/machine-budget";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import type { Settings } from "../../config/settings";
 import { resolvedMachineBudgetPlacement, sessionCpuLimit } from "../../session/cpu-limit";
-import { anyMachineLimitActive, type MachineBudgetLimits, machineBudgetLimits } from "../../session/machine-budget";
 
 /** What a `/cpu-limit` invocation did, and the sentence to show for it. */
 export interface CpuLimitCommandResult {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
-import { abortDetached, type DetachedAbortTarget } from "@veyyon/coding-agent/session/detached-abort";
+import { abortDetached, type DetachedAbortTarget } from "@veyyon/kernel/session/detached-abort";
 import { logger } from "@veyyon/utils";
 
 /**

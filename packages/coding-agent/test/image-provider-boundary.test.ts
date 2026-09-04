@@ -10,8 +10,8 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { CustomToolContext } from "@veyyon/coding-agent/extensibility/custom-tools";
 import type { ReadonlySessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { imageGenTool, setPreferredImageProvider } from "@veyyon/coding-agent/tools/image-gen";
-import { InspectImageTool } from "@veyyon/coding-agent/tools/inspect-image";
+import { InspectImageTool } from "@veyyon/coding-agent/tools/fs/inspect-image";
+import { imageGenTool, setPreferredImageProvider } from "@veyyon/coding-agent/tools/web/image-gen";
 import {
 	type DescribeAttachedImagesDeps,
 	describeAttachedImagesForTextModel,

@@ -14,8 +14,8 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import type { Rule } from "@veyyon/coding-agent/capability/rule";
 import type { TtsrSettings } from "@veyyon/coding-agent/config/settings";
+import type { Rule } from "@veyyon/coding-agent/discovery/capability/rule";
 import { TtsrManager } from "@veyyon/coding-agent/export/ttsr";
 import { logger } from "@veyyon/utils";
 

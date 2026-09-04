@@ -147,12 +147,12 @@ export async function globPaths(patterns: string | string[], options: GlobPathsO
 	const patternArray = Array.isArray(patterns) ? patterns : [patterns];
 	const mentionsNodeModules = patternArray.some(p => p.includes("node_modules"));
 
-	const baseExclude = mentionsNodeModules ? [...ALWAYS_IGNORED] : [...ALWAYS_IGNORED, ...NODE_MODULES_IGNORED];
-	let effectiveExclude = exclude ? [...baseExclude, ...exclude] : baseExclude;
+	const baseExclude = mentionsNodeModules ? ALWAYS_IGNORED.slice() : ALWAYS_IGNORED.concat(NODE_MODULES_IGNORED);
+	let effectiveExclude = exclude ? baseExclude.concat(exclude) : baseExclude;
 
 	if (gitignore) {
 		const gitignorePatterns = await loadGitignorePatterns(cwd ?? getProjectDir());
-		effectiveExclude = [...effectiveExclude, ...gitignorePatterns];
+		effectiveExclude = effectiveExclude.concat(gitignorePatterns);
 	}
 
 	const base = cwd ?? getProjectDir();

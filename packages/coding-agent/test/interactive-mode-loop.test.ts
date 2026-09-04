@@ -3,12 +3,12 @@ import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { SubmittedUserInput } from "@veyyon/coding-agent/modes/types";
+import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
+import type { SubmittedUserInput } from "@veyyon/coding-agent/modes/terminal/types";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 async function flushMicrotasks(): Promise<void> {
@@ -57,6 +57,26 @@ describe("InteractiveMode loop auto-submit", () => {
 		authStorage?.close();
 		tempDir?.removeSync();
 		resetSettingsForTest();
+	});
+
+	/**
+	 * The invariant every test below rests on, asserted at the choke point rather
+	 * than through one of its symptoms. `getUserInput` installs the input callback
+	 * and arms the loop and goal timers with no `await` in front of them. An
+	 * `async` guard that early-returns still yields a microtask, and in that tick
+	 * there is no callback for an arriving submission to reach and no timer armed
+	 * for the loop; the compact test below is the symptom that showed it, but a
+	 * later refactor can reintroduce the await without touching loop mode at all.
+	 */
+	it("installs the input callback before it yields, so no submission lands in a gap", () => {
+		vi.useFakeTimers();
+		mode.loopModeEnabled = true;
+		mode.loopPrompt = "armed synchronously";
+
+		void mode.getUserInput();
+
+		expect(mode.onInputCallback).toBeDefined();
+		expect(vi.getTimerCount()).toBeGreaterThan(0);
 	});
 
 	it("does not resolve the next loop prompt while compaction is running", async () => {

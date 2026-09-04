@@ -6,10 +6,12 @@ import type {
 	ExtensionAskDialogResult,
 	ExtensionUISelectItem,
 } from "@veyyon/coding-agent/extensibility/extensions";
-import { getThemeByName, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import { getThemeByName, initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { AskTool, askToolRenderer } from "@veyyon/coding-agent/tools/ask";
-import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
+import { AskTool } from "@veyyon/coding-agent/tools/agent/ask";
+import { askToolView } from "@veyyon/coding-agent/tools/agent/ask-view";
+import { ToolAbortError } from "@veyyon/coding-agent/tools/core/tool-errors";
 import { stripAnsi } from "@veyyon/utils";
 import { type } from "arktype";
 
@@ -86,7 +88,7 @@ describe("AskTool cancellation", () => {
 			abort,
 		});
 
-		expect(
+		await expect(
 			tool.execute(
 				"call-1",
 				{
@@ -151,7 +153,7 @@ describe("AskTool cancellation", () => {
 			abort,
 		});
 
-		expect(
+		await expect(
 			tool.execute(
 				"call-timeout-cancel",
 				{
@@ -459,21 +461,23 @@ describe("AskTool option descriptions", () => {
 	it("renders descriptions under labels in ask call previews", async () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
-		const rendered = askToolRenderer.renderCall(
-			{
-				question: "How should authentication continue?",
-				options: [
-					{
-						label: "Use local credentials",
-						description: "Authenticate with provider keys already configured under ~/.veyyon.",
-					},
-					{
-						label: "Set up in terminal",
-						description: "Launch the terminal setup flow to add credentials before continuing.",
-					},
-				],
-			},
-			{ expanded: true, isPartial: false },
+		const rendered = drawToolView(
+			askToolView.renderCall(
+				{
+					question: "How should authentication continue?",
+					options: [
+						{
+							label: "Use local credentials",
+							description: "Authenticate with provider keys already configured under ~/.veyyon.",
+						},
+						{
+							label: "Set up in terminal",
+							description: "Launch the terminal setup flow to add credentials before continuing.",
+						},
+					],
+				},
+				{ expanded: true, partial: false },
+			),
 			theme!,
 		);
 		const renderedLines = stripAnsi(rendered.render(120).join("\n")).split("\n");
@@ -937,7 +941,7 @@ describe("AskTool custom input", () => {
 
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
-		const rendered = askToolRenderer.renderResult(result, { expanded: true, isPartial: false }, theme!);
+		const rendered = drawToolView(askToolView.renderResult(result, { expanded: true, partial: false }), theme!);
 		const renderedText = stripAnsi(rendered.render(120).join("\n"));
 		expect(renderedText).toContain("alpha");
 		expect(renderedText).toContain("custom detail");
@@ -1025,7 +1029,7 @@ describe("AskTool multiline custom input rendering", () => {
 
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
-		const rendered = askToolRenderer.renderResult(result, { expanded: true, isPartial: false }, theme!);
+		const rendered = drawToolView(askToolView.renderResult(result, { expanded: true, partial: false }), theme!);
 		const renderedText = stripAnsi(rendered.render(120).join("\n"));
 
 		// All three lines should appear
@@ -1080,7 +1084,7 @@ describe("AskTool multiline custom input rendering", () => {
 
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
-		const rendered = askToolRenderer.renderResult(result, { expanded: true, isPartial: false }, theme!);
+		const rendered = drawToolView(askToolView.renderResult(result, { expanded: true, partial: false }), theme!);
 		const renderedText = stripAnsi(rendered.render(120).join("\n"));
 
 		expect(renderedText).toContain("second line");
@@ -1343,9 +1347,11 @@ describe("AskTool option markers", () => {
 	it("renders a single-choice call with the block marker and a non-multi header", async () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
-		const rendered = askToolRenderer.renderCall(
-			{ question: "Pick one", options: [{ label: "Alpha" }, { label: "Beta" }] },
-			{ expanded: true, isPartial: false },
+		const rendered = drawToolView(
+			askToolView.renderCall(
+				{ question: "Pick one", options: [{ label: "Alpha" }, { label: "Beta" }] },
+				{ expanded: true, partial: false },
+			),
 			theme!,
 		);
 		const text = stripAnsi(rendered.render(120).join("\n"));
@@ -1358,9 +1364,11 @@ describe("AskTool option markers", () => {
 	it("renders a multi-select call with the block marker and a multi header", async () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
-		const rendered = askToolRenderer.renderCall(
-			{ question: "Pick many", options: [{ label: "Alpha" }, { label: "Beta" }], multi: true },
-			{ expanded: true, isPartial: false },
+		const rendered = drawToolView(
+			askToolView.renderCall(
+				{ question: "Pick many", options: [{ label: "Alpha" }, { label: "Beta" }], multi: true },
+				{ expanded: true, partial: false },
+			),
 			theme!,
 		);
 		const text = stripAnsi(rendered.render(120).join("\n"));
@@ -1395,9 +1403,11 @@ describe("AskTool option markers", () => {
 			{ label: "Swift" },
 			{ label: "Haskell" },
 		];
-		const renderedCall = askToolRenderer.renderCall(
-			{ questions: [{ id: "fav_lang", question: "Which programming language?", options }] },
-			{ expanded: true, isPartial: true },
+		const renderedCall = drawToolView(
+			askToolView.renderCall(
+				{ questions: [{ id: "fav_lang", question: "Which programming language?", options }] },
+				{ expanded: true, partial: true },
+			),
 			theme!,
 		);
 
@@ -1407,22 +1417,24 @@ describe("AskTool option markers", () => {
 		expect(secondCall.match(/TypeScript/g)?.length).toBe(1);
 		expect(secondCall.match(/Haskell/g)?.length).toBe(1);
 
-		const renderedResult = askToolRenderer.renderResult(
-			{
-				content: [{ type: "text", text: "" }],
-				details: {
-					results: [
-						{
-							id: "fav_lang",
-							question: "Which programming language?",
-							options: options.map(option => option.label),
-							multi: false,
-							selectedOptions: ["Python"],
-						},
-					],
+		const renderedResult = drawToolView(
+			askToolView.renderResult(
+				{
+					content: [{ type: "text", text: "" }],
+					details: {
+						results: [
+							{
+								id: "fav_lang",
+								question: "Which programming language?",
+								options: options.map(option => option.label),
+								multi: false,
+								selectedOptions: ["Python"],
+							},
+						],
+					},
 				},
-			},
-			{ expanded: true, isPartial: false },
+				{ expanded: true, partial: false },
+			),
 			theme!,
 		);
 		const firstResult = stripAnsi(renderedResult.render(120).join("\n"));
@@ -1439,9 +1451,11 @@ describe("AskTool option markers", () => {
 		// the SAME array on every render of identical text at identical width.
 		// Appending option rows in place would poison that cached entry, so a
 		// second render of the component would duplicate the options.
-		const renderedCall = askToolRenderer.renderCall(
-			{ question: "Which **language** do you prefer?", options: [{ label: "OptionDupCanary" }] },
-			{ expanded: true, isPartial: false },
+		const renderedCall = drawToolView(
+			askToolView.renderCall(
+				{ question: "Which **language** do you prefer?", options: [{ label: "OptionDupCanary" }] },
+				{ expanded: true, partial: false },
+			),
 			theme!,
 		);
 		const first = stripAnsi(renderedCall.render(120).join("\n"));
@@ -1449,17 +1463,19 @@ describe("AskTool option markers", () => {
 		expect(second).toBe(first);
 		expect(second.match(/OptionDupCanary/g)?.length).toBe(1);
 
-		const renderedResult = askToolRenderer.renderResult(
-			{
-				content: [{ type: "text", text: "" }],
-				details: {
-					question: "Which **language** do you prefer?",
-					multi: false,
-					options: ["OptionDupCanary"],
-					selectedOptions: ["OptionDupCanary"],
+		const renderedResult = drawToolView(
+			askToolView.renderResult(
+				{
+					content: [{ type: "text", text: "" }],
+					details: {
+						question: "Which **language** do you prefer?",
+						multi: false,
+						options: ["OptionDupCanary"],
+						selectedOptions: ["OptionDupCanary"],
+					},
 				},
-			},
-			{ expanded: true, isPartial: false },
+				{ expanded: true, partial: false },
+			),
 			theme!,
 		);
 		const firstResult = stripAnsi(renderedResult.render(120).join("\n"));
@@ -1470,12 +1486,14 @@ describe("AskTool option markers", () => {
 	it("renders single-choice result selection with a filled radio marker", async () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
-		const rendered = askToolRenderer.renderResult(
-			{
-				content: [{ type: "text", text: "" }],
-				details: { question: "Pick one", multi: false, selectedOptions: ["Alpha"] },
-			},
-			{ expanded: true, isPartial: false },
+		const rendered = drawToolView(
+			askToolView.renderResult(
+				{
+					content: [{ type: "text", text: "" }],
+					details: { question: "Pick one", multi: false, selectedOptions: ["Alpha"] },
+				},
+				{ expanded: true, partial: false },
+			),
 			theme!,
 		);
 		const text = stripAnsi(rendered.render(120).join("\n"));
@@ -1486,12 +1504,14 @@ describe("AskTool option markers", () => {
 	it("renders multi-select result selections with checkbox markers", async () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
-		const rendered = askToolRenderer.renderResult(
-			{
-				content: [{ type: "text", text: "" }],
-				details: { question: "Pick many", multi: true, selectedOptions: ["Alpha", "Beta"] },
-			},
-			{ expanded: true, isPartial: false },
+		const rendered = drawToolView(
+			askToolView.renderResult(
+				{
+					content: [{ type: "text", text: "" }],
+					details: { question: "Pick many", multi: true, selectedOptions: ["Alpha", "Beta"] },
+				},
+				{ expanded: true, partial: false },
+			),
 			theme!,
 		);
 		const text = stripAnsi(rendered.render(120).join("\n"));
@@ -1500,7 +1520,7 @@ describe("AskTool option markers", () => {
 	});
 });
 
-describe("askToolRenderer malformed call args", () => {
+describe("askToolView malformed call args", () => {
 	it("renders double-encoded questions string instead of crashing the TUI", async () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
@@ -1509,9 +1529,8 @@ describe("askToolRenderer malformed call args", () => {
 		const doubleEncoded = JSON.stringify([
 			{ id: "q1", question: "Pick one", options: [{ label: "Alpha" }, { label: "Beta" }] },
 		]);
-		const rendered = askToolRenderer.renderCall(
-			{ questions: doubleEncoded } as never,
-			{ expanded: true, isPartial: false },
+		const rendered = drawToolView(
+			askToolView.renderCall({ questions: doubleEncoded } as never, { expanded: true, partial: false }),
 			theme!,
 		);
 		const text = stripAnsi(rendered.render(120).join("\n"));
@@ -1524,9 +1543,8 @@ describe("askToolRenderer malformed call args", () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
 		for (const questions of ["[{trunc", 42, { 0: { id: "x" } }]) {
-			const rendered = askToolRenderer.renderCall(
-				{ questions } as never,
-				{ expanded: true, isPartial: true },
+			const rendered = drawToolView(
+				askToolView.renderCall({ questions } as never, { expanded: true, partial: true }),
 				theme!,
 			);
 			const text = stripAnsi(rendered.render(120).join("\n"));
@@ -1537,15 +1555,17 @@ describe("askToolRenderer malformed call args", () => {
 	it("drops malformed question entries and option items while keeping valid ones", async () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
-		const rendered = askToolRenderer.renderCall(
-			{
-				questions: [
-					null,
-					"garbage",
-					{ id: "ok", question: "Real question", options: ["BareString", { label: "Proper" }, { nope: 1 }, 7] },
-				],
-			} as never,
-			{ expanded: true, isPartial: true },
+		const rendered = drawToolView(
+			askToolView.renderCall(
+				{
+					questions: [
+						null,
+						"garbage",
+						{ id: "ok", question: "Real question", options: ["BareString", { label: "Proper" }, { nope: 1 }, 7] },
+					],
+				} as never,
+				{ expanded: true, partial: true },
+			),
 			theme!,
 		);
 		const text = stripAnsi(rendered.render(120).join("\n"));

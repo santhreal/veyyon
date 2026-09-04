@@ -8,20 +8,34 @@
  * base, or the same model accumulates a second, independent cooldown entry and a model that was
  * stood down keeps being retried at another effort.
  *
- * WHAT IT DOES NOT CATCH. `formatRetryFallbackSelector` is not exercised: it is a composition of
- * `formatModelStringWithRouting` and `formatModelSelectorValue`, both owned and tested in
- * `config/model-resolver`, and reaching it needs a populated model catalog that says nothing about
- * this module. Nor does it pin how `parseModelString` resolves a `:` that could be either an effort
- * suffix or part of a model id; that ambiguity belongs to the parser this module calls.
+ * WHAT IT DOES NOT CATCH. Which chain the retry policy picks when several keys match, and the
+ * cooldown and revert policy, which live with the retry policy itself. Nor does it pin how
+ * `parseModelString` resolves a `:` that could be either an effort suffix or part of a model id;
+ * that ambiguity belongs to the parser this module calls.
  */
 import { describe, expect, it } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
+import type { Model } from "@veyyon/ai";
 import {
 	formatRetryFallbackBaseSelector,
+	formatRetryFallbackSelector,
 	isRetryFallbackModelKey,
 	isRetryFallbackWildcardKey,
 	parseRetryFallbackSelector,
-} from "@veyyon/coding-agent/session/retry-fallback";
+} from "@veyyon/coding-agent/session/agent-session-retry-fallback";
+
+function model(provider: string, id: string): Model {
+	return {
+		id,
+		name: id,
+		provider,
+		api: "openai-completions",
+		baseUrl: "https://example.invalid/v1",
+		contextWindow: 128_000,
+		maxTokens: 8192,
+		cost: { input: 0, output: 0 },
+	} as Model;
+}
 
 describe("a fallback chain key says whether it follows a role or a model", () => {
 	it("reads a name with no slash as a role, which is not a selector", () => {
@@ -103,5 +117,45 @@ describe("a fallback chain selector keeps its model apart from its effort", () =
 		expect(parsed?.provider).toBe("anthropic");
 		expect(parsed?.id).toBe("*");
 		expect(formatRetryFallbackBaseSelector(parsed!)).toBe("anthropic/*");
+	});
+
+	it("refuses every shape that names a provider without a model", () => {
+		expect(parseRetryFallbackSelector("/")).toBeUndefined();
+		expect(parseRetryFallbackSelector("/claude-sonnet-4")).toBeUndefined();
+		expect(parseRetryFallbackSelector("anthropic")).toBeUndefined();
+		expect(parseRetryFallbackSelector("anthropic/")).toBeUndefined();
+		expect(parseRetryFallbackSelector("anthropic/:high")).toBeUndefined();
+		expect(parseRetryFallbackSelector("anthropic/:max")).toBeUndefined();
+	});
+
+	it("round-trips a formatted model back through the parse it came from", () => {
+		const formatted = formatRetryFallbackSelector(model("openai", "gpt-4o-mini"), undefined);
+		const parsed = parseRetryFallbackSelector(formatted);
+
+		expect(parsed?.provider).toBe("openai");
+		expect(parsed?.id).toBe("gpt-4o-mini");
+		expect(formatRetryFallbackBaseSelector({ ...parsed!, raw: formatted })).toBe("openai/gpt-4o-mini");
+	});
+
+	it("carries an effort through format and back through parse", () => {
+		const formatted = formatRetryFallbackSelector(model("anthropic", "claude-sonnet-4"), ThinkingLevel.High);
+		const parsed = parseRetryFallbackSelector(formatted);
+
+		expect(parsed?.thinkingLevel).toBe(ThinkingLevel.High);
+		expect(formatRetryFallbackBaseSelector(parsed!)).toBe("anthropic/claude-sonnet-4");
+	});
+
+	it("consults the model lookup a caller supplies when the id itself carries a slash", () => {
+		const known = model("openrouter", "meta-llama/llama-3.1-70b");
+		const lookup = {
+			find(provider: string, id: string): Model | undefined {
+				return provider === "openrouter" && id === "meta-llama/llama-3.1-70b" ? known : undefined;
+			},
+		};
+
+		const parsed = parseRetryFallbackSelector("openrouter/meta-llama/llama-3.1-70b", lookup);
+
+		expect(parsed?.provider).toBe("openrouter");
+		expect(parsed?.id).toBe("meta-llama/llama-3.1-70b");
 	});
 });

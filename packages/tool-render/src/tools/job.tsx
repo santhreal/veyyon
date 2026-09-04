@@ -193,7 +193,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 		else if (job.status === "cancelled") cancelledCount++;
 	}
 
-	const sorted = [...jobs].sort((a, b) => {
+	const sorted = jobs.slice().sort((a, b) => {
 		const diff = (STATUS_ORDER[a.status] ?? 4) - (STATUS_ORDER[b.status] ?? 4);
 		return diff !== 0 ? diff : b.durationMs - a.durationMs;
 	});

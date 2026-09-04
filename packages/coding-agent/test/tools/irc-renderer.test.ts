@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import type { IrcMessage } from "@veyyon/coding-agent/irc/bus";
-import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
-import { type IrcDetails, ircToolRenderer } from "@veyyon/coding-agent/tools/irc";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import type { IrcMessage } from "@veyyon/coding-agent/task/irc-bus";
+import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
+import type { IrcDetails } from "@veyyon/coding-agent/tools/agent/irc";
+import { type IrcViewArgs, type IrcViewResult, ircToolView } from "@veyyon/coding-agent/tools/agent/irc-view";
 import { sanitizeText } from "@veyyon/utils";
 
 async function theme() {
@@ -15,6 +17,12 @@ const lines = (component: { render: (w: number) => readonly string[] }, width = 
 		.split("\n")
 		.map(l => l.trimEnd());
 
+/** The card the terminal draws for a result, which is the view through the host's own drawing. */
+async function card(result: IrcViewResult, args: IrcViewArgs, expanded = false): Promise<string[]> {
+	const uiTheme = await theme();
+	return lines(drawToolView(ircToolView.renderResult(result, { expanded }, args), uiTheme));
+}
+
 const msg = (overrides: Partial<IrcMessage>): IrcMessage => ({
 	id: "7181122334455667789",
 	from: "AuthLoader",
@@ -24,25 +32,20 @@ const msg = (overrides: Partial<IrcMessage>): IrcMessage => ({
 	...overrides,
 });
 
-describe("ircToolRenderer send", () => {
+describe("the irc card for a send", () => {
 	it("folds a single delivery outcome into the header and shows the awaited reply", async () => {
-		const uiTheme = await theme();
-		const rendered = lines(
-			ircToolRenderer.renderResult(
-				{
-					content: [{ type: "text", text: "" }],
-					details: {
-						op: "send",
-						from: "Main",
-						to: "AuthLoader",
-						receipts: [{ to: "AuthLoader", outcome: "revived" }],
-						waited: msg({ body: "go ahead, auth.ts is yours." }),
-					} satisfies IrcDetails,
-				},
-				{ expanded: false, isPartial: false },
-				uiTheme,
-				{ op: "send", to: "AuthLoader", message: "Are you done with auth.ts?", await: true },
-			),
+		const rendered = await card(
+			{
+				content: [{ type: "text", text: "" }],
+				details: {
+					op: "send",
+					from: "Main",
+					to: "AuthLoader",
+					receipts: [{ to: "AuthLoader", outcome: "revived" }],
+					waited: msg({ body: "go ahead, auth.ts is yours." }),
+				} satisfies IrcDetails,
+			},
+			{ op: "send", to: "AuthLoader", message: "Are you done with auth.ts?", await: true },
 		);
 		expect(rendered[0]).toContain("AuthLoader");
 		expect(rendered[0]).toContain("revived");
@@ -51,25 +54,20 @@ describe("ircToolRenderer send", () => {
 	});
 
 	it("lists per-recipient outcomes with error text when a broadcast partially fails", async () => {
-		const uiTheme = await theme();
-		const rendered = lines(
-			ircToolRenderer.renderResult(
-				{
-					content: [{ type: "text", text: "" }],
-					details: {
-						op: "send",
-						from: "Main",
-						to: "all",
-						receipts: [
-							{ to: "AuthLoader", outcome: "woken" },
-							{ to: "RateLimiter", outcome: "failed", error: 'unknown agent "RateLimiter"' },
-						],
-					} satisfies IrcDetails,
-				},
-				{ expanded: false, isPartial: false },
-				uiTheme,
-				{ op: "send", to: "all", message: "heads up" },
-			),
+		const rendered = await card(
+			{
+				content: [{ type: "text", text: "" }],
+				details: {
+					op: "send",
+					from: "Main",
+					to: "all",
+					receipts: [
+						{ to: "AuthLoader", outcome: "woken" },
+						{ to: "RateLimiter", outcome: "failed", error: 'unknown agent "RateLimiter"' },
+					],
+				} satisfies IrcDetails,
+			},
+			{ op: "send", to: "all", message: "heads up" },
 		);
 		expect(rendered[0]).toContain("broadcast");
 		expect(rendered[0]).toContain("1 delivered");
@@ -81,102 +79,77 @@ describe("ircToolRenderer send", () => {
 	});
 
 	it("flags an awaited send whose reply timed out", async () => {
-		const uiTheme = await theme();
-		const rendered = lines(
-			ircToolRenderer.renderResult(
-				{
-					content: [{ type: "text", text: "" }],
-					details: {
-						op: "send",
-						from: "Main",
-						to: "AuthLoader",
-						receipts: [{ to: "AuthLoader", outcome: "injected" }],
-						waited: null,
-					} satisfies IrcDetails,
-				},
-				{ expanded: false, isPartial: false },
-				uiTheme,
-				{ op: "send", to: "AuthLoader", message: "ping", await: true },
-			),
+		const rendered = await card(
+			{
+				content: [{ type: "text", text: "" }],
+				details: {
+					op: "send",
+					from: "Main",
+					to: "AuthLoader",
+					receipts: [{ to: "AuthLoader", outcome: "injected" }],
+					waited: null,
+				} satisfies IrcDetails,
+			},
+			{ op: "send", to: "AuthLoader", message: "ping", await: true },
 		);
 		expect(rendered[0]).toContain("no reply");
 		expect(rendered.some(line => line.includes("No reply yet"))).toBe(true);
 	});
 
 	it("surfaces pre-delivery validation failures as an error detail", async () => {
-		const uiTheme = await theme();
-		const rendered = lines(
-			ircToolRenderer.renderResult(
-				{
-					content: [{ type: "text", text: '`to` is required for op="send".' }],
-					details: { op: "send", from: "Main" } satisfies IrcDetails,
-					isError: true,
-				},
-				{ expanded: false, isPartial: false },
-				uiTheme,
-				{ op: "send" },
-			),
+		const rendered = await card(
+			{
+				content: [{ type: "text", text: '`to` is required for op="send".' }],
+				details: { op: "send", from: "Main" } satisfies IrcDetails,
+				isError: true,
+			},
+			{ op: "send" },
 		);
 		expect(rendered.some(line => line.includes('`to` is required for op="send".'))).toBe(true);
 	});
 });
 
-describe("ircToolRenderer wait", () => {
+describe("the irc card for a wait", () => {
 	it("renders the consumed message under a sender header", async () => {
-		const uiTheme = await theme();
-		const rendered = lines(
-			ircToolRenderer.renderResult(
-				{
-					content: [{ type: "text", text: "" }],
-					details: { op: "wait", from: "Main", waited: msg({}) } satisfies IrcDetails,
-				},
-				{ expanded: false, isPartial: false },
-				uiTheme,
-				{ op: "wait", from: "AuthLoader" },
-			),
+		const rendered = await card(
+			{
+				content: [{ type: "text", text: "" }],
+				details: { op: "wait", from: "Main", waited: msg({}) } satisfies IrcDetails,
+			},
+			{ op: "wait", from: "AuthLoader" },
 		);
 		expect(rendered[0]).toContain("AuthLoader");
 		expect(rendered.some(line => line.includes("session-store rename is merged."))).toBe(true);
 	});
 
 	it("marks a timed-out wait without inventing a message", async () => {
-		const uiTheme = await theme();
-		const rendered = lines(
-			ircToolRenderer.renderResult(
-				{
-					content: [{ type: "text", text: "No message from AuthLoader within 2m." }],
-					details: { op: "wait", from: "Main", waited: null } satisfies IrcDetails,
-				},
-				{ expanded: false, isPartial: false },
-				uiTheme,
-				{ op: "wait", from: "AuthLoader" },
-			),
+		const rendered = await card(
+			{
+				content: [{ type: "text", text: "No message from AuthLoader within 2m." }],
+				details: { op: "wait", from: "Main", waited: null } satisfies IrcDetails,
+			},
+			{ op: "wait", from: "AuthLoader" },
 		);
 		expect(rendered[0]).toContain("timed out");
 		expect(rendered.some(line => line.includes("No message from AuthLoader within 2m."))).toBe(true);
 	});
 });
 
-describe("ircToolRenderer inbox", () => {
+describe("the irc card for an inbox", () => {
 	it("lists each message with sender and body preview", async () => {
-		const uiTheme = await theme();
-		const rendered = lines(
-			ircToolRenderer.renderResult(
-				{
-					content: [{ type: "text", text: "" }],
-					details: {
-						op: "inbox",
-						from: "Main",
-						inbox: [
-							msg({ from: "AuthLoader", body: "bus landed." }),
-							msg({ from: "RateLimiter", body: "receipts carry outcome.", replyTo: "7181122334455667791" }),
-						],
-					} satisfies IrcDetails,
-				},
-				{ expanded: false, isPartial: false },
-				uiTheme,
-				{ op: "inbox", peek: true },
-			),
+		const rendered = await card(
+			{
+				content: [{ type: "text", text: "" }],
+				details: {
+					op: "inbox",
+					from: "Main",
+					inbox: [
+						msg({ from: "AuthLoader", body: "bus landed." }),
+						msg({ from: "RateLimiter", body: "receipts carry outcome.", replyTo: "7181122334455667791" }),
+					],
+				} satisfies IrcDetails,
+			},
+			{ op: "inbox", peek: true },
 		);
 		// The whole block, in order. Every row hangs from the house rail, including
 		// the header; items carry no tree connectors and a message body is nested
@@ -185,7 +158,7 @@ describe("ircToolRenderer inbox", () => {
 			"▏ IRC inbox 2 messages · peek",
 			"▏  AuthLoader just now",
 			"▏    bus landed.",
-			"▏  RateLimiter just now ⟦reply⟧",
+			"▏  RateLimiter just now reply",
 			"▏    receipts carry outcome.",
 		]);
 		for (const line of rendered) {
@@ -196,21 +169,16 @@ describe("ircToolRenderer inbox", () => {
 	it("marks only the message that is a reply", async () => {
 		// The negative twin for the marker above: with neither message carrying a
 		// `replyTo`, no row may claim to be one.
-		const uiTheme = await theme();
-		const rendered = lines(
-			ircToolRenderer.renderResult(
-				{
-					content: [{ type: "text", text: "" }],
-					details: {
-						op: "inbox",
-						from: "Main",
-						inbox: [msg({ from: "AuthLoader", body: "bus landed." })],
-					} satisfies IrcDetails,
-				},
-				{ expanded: false, isPartial: false },
-				uiTheme,
-				{ op: "inbox", peek: true },
-			),
+		const rendered = await card(
+			{
+				content: [{ type: "text", text: "" }],
+				details: {
+					op: "inbox",
+					from: "Main",
+					inbox: [msg({ from: "AuthLoader", body: "bus landed." })],
+				} satisfies IrcDetails,
+			},
+			{ op: "inbox", peek: true },
 		);
 
 		expect(rendered).toEqual(["▏ IRC inbox 1 message · peek", "▏  AuthLoader just now", "▏    bus landed."]);
@@ -220,42 +188,37 @@ describe("ircToolRenderer inbox", () => {
 	});
 });
 
-describe("ircToolRenderer list", () => {
+describe("the irc card for a peer list", () => {
 	it("summarizes status counts and flags unread peers", async () => {
-		const uiTheme = await theme();
-		const rendered = lines(
-			ircToolRenderer.renderResult(
-				{
-					content: [{ type: "text", text: "" }],
-					details: {
-						op: "list",
-						from: "Main",
-						peers: [
-							{
-								id: "RateLimiter",
-								displayName: "task",
-								kind: "sub",
-								status: "parked",
-								parentId: "Main",
-								unread: 2,
-								lastActivity: Date.now() - 12 * 60_000,
-							},
-							{
-								id: "AuthLoader",
-								displayName: "task",
-								kind: "sub",
-								status: "running",
-								parentId: "Main",
-								unread: 0,
-								lastActivity: Date.now() - 2 * 60_000,
-							},
-						],
-					} satisfies IrcDetails,
-				},
-				{ expanded: false, isPartial: false },
-				uiTheme,
-				{ op: "list" },
-			),
+		const rendered = await card(
+			{
+				content: [{ type: "text", text: "" }],
+				details: {
+					op: "list",
+					from: "Main",
+					peers: [
+						{
+							id: "RateLimiter",
+							displayName: "task",
+							kind: "sub",
+							status: "parked",
+							parentId: "Main",
+							unread: 2,
+							lastActivity: Date.now() - 12 * 60_000,
+						},
+						{
+							id: "AuthLoader",
+							displayName: "task",
+							kind: "sub",
+							status: "running",
+							parentId: "Main",
+							unread: 0,
+							lastActivity: Date.now() - 2 * 60_000,
+						},
+					],
+				} satisfies IrcDetails,
+			},
+			{ op: "list" },
 		);
 		expect(rendered[0]).toContain("1 running");
 		expect(rendered[0]).toContain("1 parked");
@@ -269,32 +232,27 @@ describe("ircToolRenderer list", () => {
 	});
 
 	it("renders a peer's role displayName and current activity in the row", async () => {
-		const uiTheme = await theme();
-		const rendered = lines(
-			ircToolRenderer.renderResult(
-				{
-					content: [{ type: "text", text: "" }],
-					details: {
-						op: "list",
-						from: "Main",
-						peers: [
-							{
-								id: "AuthScout",
-								displayName: "Auth-flow security reviewer",
-								kind: "sub",
-								status: "running",
-								parentId: "Main",
-								unread: 0,
-								lastActivity: Date.now() - 5_000,
-								activity: "auditing the token refresh path",
-							},
-						],
-					} satisfies IrcDetails,
-				},
-				{ expanded: false, isPartial: false },
-				uiTheme,
-				{ op: "list" },
-			),
+		const rendered = await card(
+			{
+				content: [{ type: "text", text: "" }],
+				details: {
+					op: "list",
+					from: "Main",
+					peers: [
+						{
+							id: "AuthScout",
+							displayName: "Auth-flow security reviewer",
+							kind: "sub",
+							status: "running",
+							parentId: "Main",
+							unread: 0,
+							lastActivity: Date.now() - 5_000,
+							activity: "auditing the token refresh path",
+						},
+					],
+				} satisfies IrcDetails,
+			},
+			{ op: "list" },
 		);
 		const row = rendered.find(line => line.includes("AuthScout"));
 		expect(row).toBeDefined();
@@ -306,7 +264,6 @@ describe("ircToolRenderer list", () => {
 	});
 
 	it("collapses peer roster with an overflow line when not expanded", async () => {
-		const uiTheme = await theme();
 		const peers = Array.from({ length: 12 }, (_, i) => ({
 			id: `Agent_${i + 1}`,
 			displayName: "task",
@@ -316,55 +273,34 @@ describe("ircToolRenderer list", () => {
 			unread: 0,
 			lastActivity: Date.now() - 10_000,
 		}));
-		const rendered = lines(
-			ircToolRenderer.renderResult(
-				{
-					content: [{ type: "text", text: "" }],
-					details: { op: "list", from: "Main", peers } satisfies IrcDetails,
-				},
-				{ expanded: false, isPartial: false },
-				uiTheme,
-				{ op: "list" },
-			),
-		);
+		const result: IrcViewResult = {
+			content: [{ type: "text", text: "" }],
+			details: { op: "list", from: "Main", peers } satisfies IrcDetails,
+		};
+		const rendered = await card(result, { op: "list" });
 		expect(rendered.some(l => l.includes("… 4 more peers"))).toBe(true);
 		for (const line of rendered) {
 			expect(line).not.toMatch(/[├└│]/);
 		}
 
-		const expanded = lines(
-			ircToolRenderer.renderResult(
-				{
-					content: [{ type: "text", text: "" }],
-					details: { op: "list", from: "Main", peers } satisfies IrcDetails,
-				},
-				{ expanded: true, isPartial: false },
-				uiTheme,
-				{ op: "list" },
-			),
-		);
+		const expanded = await card(result, { op: "list" }, true);
 		expect(expanded.some(l => l.includes("more peers"))).toBe(false);
 		expect(expanded.some(l => l.includes("Agent_12"))).toBe(true);
 	});
 });
 
-describe("ircToolRenderer body truncation", () => {
+describe("the irc card's body truncation", () => {
 	it("collapses long bodies with an elision counter and expands on demand", async () => {
-		const uiTheme = await theme();
 		const body = Array.from({ length: 6 }, (_, i) => `reply line ${i + 1}`).join("\n");
 		const details: IrcDetails = { op: "wait", from: "Main", waited: msg({ body }) };
-		const result = { content: [{ type: "text", text: "" }], details };
+		const result: IrcViewResult = { content: [{ type: "text", text: "" }], details };
 
-		const collapsed = lines(
-			ircToolRenderer.renderResult(result, { expanded: false, isPartial: false }, uiTheme, { op: "wait" }),
-		);
+		const collapsed = await card(result, { op: "wait" });
 		expect(collapsed.some(line => line.includes("reply line 2"))).toBe(true);
 		expect(collapsed.some(line => line.includes("reply line 3"))).toBe(false);
-		expect(collapsed.some(line => line.includes("+4 more lines"))).toBe(true);
+		expect(collapsed.some(line => line.includes("… 4 more lines"))).toBe(true);
 
-		const expanded = lines(
-			ircToolRenderer.renderResult(result, { expanded: true, isPartial: false }, uiTheme, { op: "wait" }),
-		);
+		const expanded = await card(result, { op: "wait" }, true);
 		expect(expanded.some(line => line.includes("reply line 6"))).toBe(true);
 		expect(expanded.some(line => line.includes("more lines"))).toBe(false);
 	});

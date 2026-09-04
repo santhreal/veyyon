@@ -34,7 +34,7 @@
 # would stall the middle of the motion. The page's frames are cut out of the
 # recording afterwards.
 
-head -c 20000 /repo/packages/coding-agent/src/modes/components/status-line/component.ts >/sandbox/home/demo/notes.md
+head -c 20000 /repo/packages/coding-agent/src/modes/terminal/components/status-line/component.ts >/sandbox/home/demo/notes.md
 
 settle 18
 

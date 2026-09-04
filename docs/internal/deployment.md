@@ -18,7 +18,7 @@ draft, then rebuilds `veyyon.dev` so the changelog records the now-public releas
 
 The site is a static tree under `website/`, deployed to Cloudflare Pages. There is no
 build framework. Most marketing HTML is authored directly, while the build rewrites
-shared navigation and generates the changelog, blog pages, sitemap region, and installer trees.
+shared navigation and generates the changelog, the models data and the installer trees.
 
 ### Build
 
@@ -106,7 +106,7 @@ on 2026-07-28: the book carried a page whose markdown was not committed, so CI
 rebuilt 99 files differently and reported the book stale against sources that were
 never wrong.
 
-### Automatic sync: merge a change, it publishes itself
+### Automatic sync: merge a site change, it publishes itself
 
 `.github/workflows/site.yml` is what makes the repository and the site one thing.
 It builds the site on pull requests targeting `main` that touch `website/**`

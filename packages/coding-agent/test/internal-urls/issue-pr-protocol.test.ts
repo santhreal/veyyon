@@ -11,7 +11,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { InternalUrlRouter } from "@veyyon/coding-agent/internal-urls";
-import { resetForTests as resetCacheForTests } from "@veyyon/coding-agent/tools/github-cache";
+import { resetForTests as resetCacheForTests } from "@veyyon/coding-agent/tools/web/github-cache";
 import * as git from "@veyyon/coding-agent/utils/git";
 import { removeWithRetries } from "@veyyon/utils";
 

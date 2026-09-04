@@ -2,7 +2,7 @@
 export type EvalLanguage = "python" | "js" | "ruby" | "julia";
 
 import type { ImageContent } from "@veyyon/ai";
-import type { OutputMeta } from "../tools/output-meta";
+import type { OutputMeta } from "../tools/core/output-meta";
 
 /** Status event emitted by eval prelude helpers for TUI rendering. */
 export interface EvalStatusEvent {

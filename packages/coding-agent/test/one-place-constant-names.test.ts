@@ -61,7 +61,7 @@ const RENAMED = [
 		because: "it bounds what a bug report reads, not how large a log may grow",
 	},
 	{
-		file: "dap/session.ts",
+		file: "debug/dap/session.ts",
 		was: "MAX_OUTPUT_BYTES",
 		now: "MAX_BUFFERED_OUTPUT_BYTES",
 		because: "the task tool owns MAX_OUTPUT_BYTES, which matches its env var",
@@ -102,7 +102,7 @@ describe("constants renamed out of a name collision", () => {
 		// is user-facing and the constant has to match it. That is the reason the
 		// dap ring moved instead.
 		expect(declaresConstant("task/types.ts", "MAX_OUTPUT_BYTES")).toBe(true);
-		expect(declaresConstant("dap/session.ts", "MAX_OUTPUT_BYTES")).toBe(false);
+		expect(declaresConstant("debug/dap/session.ts", "MAX_OUTPUT_BYTES")).toBe(false);
 	});
 
 	it("keeps the relay budget more generous than the loopback one", () => {

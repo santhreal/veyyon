@@ -17,6 +17,7 @@ import type { ExecutorOptions } from "../../task/executor";
 import * as taskExecutor from "../../task/executor";
 import * as isolationRunner from "../../task/isolation-runner";
 import { AgentOutputManager } from "../../task/output-manager";
+import { AGENT_DEFAULT_EFFORT } from "../../task/subagent-settings";
 import type { AgentDefinition, AgentProgress, SingleResult } from "../../task/types";
 import type { ToolSession } from "../../tools";
 import { EVAL_AGENT_MAX_DEPTH, runEvalAgent } from "../agent-bridge";
@@ -493,15 +494,18 @@ describe("runEvalAgent", () => {
 		expect(secondOptions.outputSchemaOverridesAgent).toBeUndefined();
 	});
 
-	it("takes a per-agent lane effort over the blanket setting, and the call's model over the lane's", async () => {
+	it("takes a per-agent lane effort over the shared setting, and the call's model over the lane's", async () => {
 		// `subagent.agents.<name>.thinkingLevel` is a LANE field and the highest
 		// layer there is: it names the agent, and the page that shows it is the page
 		// that edits it. So a lane row beats `subagent.thinkingLevel`, and a spawn
-		// under a lane must not quietly run at the blanket effort — that is the
+		// under a lane must not quietly run at the shared effort — that is the
 		// regression this arm catches, since both values are plausible and only one
-		// is the one the operator set on that agent. The model is the other half:
-		// the explicit `model` on the call outranks the lane's own `model`, so a
-		// caller naming a model is never overridden by settings.
+		// is the one the operator set on that agent. `subagent.thinkingLevel` is the
+		// SHARED effort and answers only while `subagent.sharedModel` is on, so the
+		// second arm turns that switch on; the third proves it is inert without it.
+		// The model is the other half: the explicit `model` on the call outranks the
+		// lane's own `model`, so a caller naming a model is never overridden by
+		// settings.
 		mockAgents([taskAgent]);
 		const runSpy = vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options => singleResult(options));
 		const laneRow = makeSession({
@@ -525,21 +529,37 @@ describe("runEvalAgent", () => {
 				"subagent.thinkingLevel": "high",
 			}),
 		});
+		const unshared = makeSession({
+			settings: Settings.isolated({
+				"async.enabled": false,
+				"subagent.isolation.mode": "none",
+				"subagent.thinkingLevel": "high",
+			}),
+		});
 
 		await runEvalAgent({ prompt: "lane row", model: "p/call" }, { session: laneRow });
 		await runEvalAgent({ prompt: "blanket setting", model: "p/call:max" }, { session: blanket });
+		await runEvalAgent({ prompt: "shared switch off", model: "p/call" }, { session: unshared });
 
 		const lane = runSpy.mock.calls[0]?.[0];
 		const applied = runSpy.mock.calls[1]?.[0];
-		if (!lane || !applied) throw new Error("runSubprocess was not called twice");
+		const inert = runSpy.mock.calls[2]?.[0];
+		if (!lane || !applied || !inert) throw new Error("runSubprocess was not called three times");
 		expect(lane.modelOverride).toEqual(["p/call"]);
 		expect(lane.thinkingLevel).toBe(ThinkingLevel.High);
 		expect(lane.parentThinkingLevel).toBeUndefined();
 		// The `:max` suffix rides on the model pattern: only the executor knows a
-		// suffix was present, so the resolved effort stays the blanket value here.
+		// suffix was present, so the resolved effort stays the shared value here.
 		expect(applied.modelOverride).toEqual(["p/call:max"]);
 		expect(applied.thinkingLevel).toBe(ThinkingLevel.High);
 		expect(applied.parentThinkingLevel).toBeUndefined();
+		// Shared off: the shared value is not a layer of the per-agent chain at all, so it reaches no
+		// spawn. Nothing else decides here either — no lane row, no frontmatter level — so the spawn
+		// runs at the documented default, which is what a resolver that returns a level rather than an
+		// absence states. The regression this pins is the shared "high" arriving anyway.
+		expect(inert.modelOverride).toEqual(["p/call"]);
+		expect(inert.thinkingLevel).toBe(AGENT_DEFAULT_EFFORT);
+		expect(inert.thinkingLevel).not.toBe(ThinkingLevel.High);
 	});
 
 	it("forwards session-scoped MCP, local protocol options, and the parent agent id", async () => {

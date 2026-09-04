@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
-import { searchFirecrawl } from "@veyyon/coding-agent/web/search/providers/firecrawl";
-import { SearchProviderError } from "@veyyon/coding-agent/web/search/types";
+import { searchFirecrawl } from "@veyyon/coding-agent/tools/web/search/providers/firecrawl";
+import { SearchProviderError } from "@veyyon/coding-agent/tools/web/search/types";
 
 const TEST_KEY = "test-firecrawl-key";
 

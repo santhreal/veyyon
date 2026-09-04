@@ -3,7 +3,7 @@
  *
  * WHY THIS SUITE EXISTS. A settings-fed gate in the system prompt used to be declared in up
  * to six places (see `system-prompt-builder/gate-registry.ts` for the list). The one that
- * failed quietly was the last: `modes/controllers/selector-controller.ts` carried a
+ * failed quietly was the last: `modes/terminal/controllers/selector-controller.ts` carried a
  * hand-written `case` per setting deciding which flips rebuild the prompt, and it had exactly
  * two of the settings. Flipping `subagent.batch`, `subagent.delegation`, `subagent.maxConcurrency`,
  * `subagent.agents`, `includeModelInPrompt` or `tools.format` changed the setting and left the
@@ -59,7 +59,7 @@ import { conditionVariables, PROMPT_STATEMENTS } from "../../src/system-prompt-b
 
 const PACKAGE_ROOT = path.resolve(import.meta.dir, "../..");
 const SDK = path.join(PACKAGE_ROOT, "src/sdk.ts");
-const SELECTOR_CONTROLLER = path.join(PACKAGE_ROOT, "src/modes/controllers/selector-controller.ts");
+const SELECTOR_CONTROLLER = path.join(PACKAGE_ROOT, "src/modes/terminal/controllers/selector-controller.ts");
 
 /**
  * Gate variables the PROMPT reads that are NOT fed by a setting, and what feeds each instead.
@@ -412,7 +412,7 @@ describe("the rebuild has one owner, and it is not the settings screen", () => {
 		// Absence of a call site is the one claim only a source read can make. That the trigger
 		// WORKS is proven where it lives, against real writes and a real session, in
 		// `test/a-settings-write-rebuilds-the-prompt-it-changes.test.ts`, and that this screen
-		// stays out of it is proven in `test/modes/controllers/selector-prompt-gate-rebuild.test.ts`.
+		// stays out of it is proven in `test/modes/terminal/controllers/selector-prompt-gate-rebuild.test.ts`.
 		const source = await Bun.file(SELECTOR_CONTROLLER).text();
 		const calls = [...source.matchAll(/refreshBaseSystemPrompt\(/g)];
 

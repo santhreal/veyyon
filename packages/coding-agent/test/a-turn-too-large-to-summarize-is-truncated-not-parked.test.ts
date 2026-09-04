@@ -45,8 +45,8 @@ import { loadExtensions } from "@veyyon/coding-agent/extensibility/extensions/lo
 import { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
 import { MAX_JSON_TRANSFORM_STRING_BYTES, SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import { AgentSession, obfuscateProviderPayload } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { getProjectAgentDir, TempDir } from "@veyyon/utils";
 
 const CONTEXT_WINDOW = 200_000;

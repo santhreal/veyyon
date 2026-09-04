@@ -6,18 +6,18 @@
  */
 import * as path from "node:path";
 import { isMissingPath, tryParseJson } from "@veyyon/utils";
-import { registerProvider } from "../capability";
-import { type ContextFile, contextFileCapability } from "../capability/context-file";
-import { type ExtensionModule, extensionModuleCapability } from "../capability/extension-module";
-import { readFile } from "../capability/fs";
-import { type Hook, hookCapability } from "../capability/hook";
-import { type MCPServer, mcpCapability } from "../capability/mcp";
-import { type DiscoveredSkill, skillCapability } from "../capability/skill";
-import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
-import { type DiscoveredCustomTool, toolCapability } from "../capability/tool";
-import type { LoadContext, LoadResult } from "../capability/types";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
+import { registerProvider } from "./capability";
+import { type ContextFile, contextFileCapability } from "./capability/context-file";
+import { type ExtensionModule, extensionModuleCapability } from "./capability/extension-module";
+import { readFile } from "./capability/fs";
+import { type Hook, hookCapability } from "./capability/hook";
+import { type MCPServer, mcpCapability } from "./capability/mcp";
+import { type DiscoveredSkill, skillCapability } from "./capability/skill";
+import { type SlashCommand, slashCommandCapability } from "./capability/slash-command";
+import { type DiscoveredCustomTool, toolCapability } from "./capability/tool";
+import type { LoadContext, LoadResult } from "./capability/types";
 import { expandEnvVarsDeep, warnUnresolved } from "./env-expansion";
 import {
 	calculateDepth,
@@ -263,7 +263,7 @@ function addClaudeCommandNamespaceAliases(commands: SlashCommand[], commandsDir:
 		aliases.push({ ...command, name: relativeName.replace(/[\\/]+/g, ":") });
 	}
 
-	return nestedCommands.length === 0 ? commands : [...rootCommands, ...nestedCommands, ...aliases];
+	return nestedCommands.length === 0 ? commands : rootCommands.concat(nestedCommands, aliases);
 }
 
 async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashCommand>> {

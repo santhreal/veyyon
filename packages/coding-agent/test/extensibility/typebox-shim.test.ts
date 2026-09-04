@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { Tool } from "@veyyon/ai/types";
 import { isValidJsonSchema, toolWireSchema } from "@veyyon/ai/utils/schema";
 import { validateToolArguments } from "@veyyon/ai/utils/validation";
-import { type TSchema, Type } from "@veyyon/coding-agent/extensibility/typebox";
+import { type TSchema, Type } from "@veyyon/kernel/registry/typebox";
 
 /**
  * The typebox shim's `Type.*` builders return arktype-backed validator wrappers

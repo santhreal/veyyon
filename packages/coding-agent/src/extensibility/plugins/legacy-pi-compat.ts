@@ -275,6 +275,32 @@ function sourceShimPath(file: string): string {
 }
 
 /**
+ * The on-disk path of a compat shim that another workspace package owns, or
+ * `null` when this build has no source copy of it.
+ *
+ * Two shims left this package when the plugin loader and the tool registry moved
+ * into `@veyyon/kernel`, and a path built from this file's own directory stopped
+ * finding them: the binary build failed on
+ * `src/extensibility/legacy-pi-ai-shim.ts`, a file that no longer exists. The
+ * module resolver already states where a package publishes a subpath, so the
+ * owner is asked instead of a path being spelled here, and the next move is
+ * followed rather than restated.
+ */
+function packageShimPath(specifier: string): string | null {
+	try {
+		return url.fileURLToPath(import.meta.resolve(specifier));
+	} catch {
+		return null;
+	}
+}
+
+/** The kernel subpath serving the pi-ai root, which owns the borrowed `Type` runtime. */
+const KERNEL_PI_AI_SHIM_SPECIFIER = "@veyyon/kernel/loader/legacy-pi-ai-shim";
+
+/** The kernel subpath serving the Zod-backed TypeBox surface. */
+const KERNEL_TYPEBOX_SHIM_SPECIFIER = "@veyyon/kernel/registry/typebox";
+
+/**
  * Resolve the path the TypeBox compatibility shim ships at, then drop it when
  * the source file is missing.
  *
@@ -303,7 +329,10 @@ export function __resolveTypeBoxShimPath(
 	return pathExistsSync(sourcePath) ? sourcePath : null;
 }
 
-const TYPEBOX_SHIM_PATH = __resolveTypeBoxShimPath(IS_COMPILED_BINARY, sourceShimPath("typebox.ts"));
+const TYPEBOX_SHIM_PATH = __resolveTypeBoxShimPath(
+	IS_COMPILED_BINARY,
+	packageShimPath(KERNEL_TYPEBOX_SHIM_SPECIFIER) ?? "",
+);
 
 // Legacy extensions historically imported `Type` (and `Static`/`TSchema`) from
 // the package root of `@(scope)/pi-ai`. pi-ai 15.1.0 removed the runtime `Type`
@@ -315,7 +344,7 @@ const TYPEBOX_SHIM_PATH = __resolveTypeBoxShimPath(IS_COMPILED_BINARY, sourceShi
 // against the bundled pi-ai package.
 const LEGACY_PI_AI_SHIM_PATH = IS_COMPILED_BINARY
 	? bundledModuleVirtualSpecifier(`${CANONICAL_PI_SCOPE}/pi-ai`)
-	: sourceShimPath("legacy-pi-ai-shim.ts");
+	: (packageShimPath(KERNEL_PI_AI_SHIM_SPECIFIER) ?? "");
 
 // The coding-agent's own `./src/index.ts` cannot be listed as an extra
 // `bun --compile` entrypoint alongside the CLI entry without breaking binary
@@ -327,6 +356,17 @@ const LEGACY_PI_AI_SHIM_PATH = IS_COMPILED_BINARY
 const LEGACY_PI_CODING_AGENT_SHIM_PATH = IS_COMPILED_BINARY
 	? bundledModuleVirtualSpecifier(`${CANONICAL_PI_SCOPE}/pi-coding-agent`)
 	: sourceShimPath("legacy-pi-coding-agent-shim.ts");
+
+// `@veyyon/tui` stopped re-exporting the string, escape and input primitives when
+// they moved to `@veyyon/utils`, which breaks every extension published against
+// the old barrel (`visibleWidth` from `@earendil-works/pi-tui`, `Key` from
+// plannotator) at import time rather than at call time. The bare tui root
+// therefore resolves to a sibling shim that re-exports the renderer plus every
+// module the barrel dropped. Subpath imports such as `@veyyon/tui/terminal`
+// continue to resolve directly against the bundled tui package.
+const LEGACY_PI_TUI_SHIM_PATH = IS_COMPILED_BINARY
+	? bundledModuleVirtualSpecifier(`${CANONICAL_PI_SCOPE}/pi-tui`)
+	: sourceShimPath("legacy-pi-tui-shim.ts");
 
 // Package-root overrides. Shim entries (`pi-ai`, `pi-coding-agent`) always
 // replace the canonical surface so the legacy `Type` runtime and the legacy
@@ -390,6 +430,8 @@ export function __buildLegacyPiPackageRootOverrides(
 		[`${CANONICAL_PI_SCOPE}/ai`]: LEGACY_PI_AI_SHIM_PATH,
 		[`${CANONICAL_PI_SCOPE}/pi-coding-agent`]: LEGACY_PI_CODING_AGENT_SHIM_PATH,
 		[`${CANONICAL_PI_SCOPE}/coding-agent`]: LEGACY_PI_CODING_AGENT_SHIM_PATH,
+		[`${CANONICAL_PI_SCOPE}/pi-tui`]: LEGACY_PI_TUI_SHIM_PATH,
+		[`${CANONICAL_PI_SCOPE}/tui`]: LEGACY_PI_TUI_SHIM_PATH,
 	};
 	if (isCompiled) {
 		for (const key of bundledModuleKeys) {
@@ -1369,9 +1411,9 @@ function installExtensionGraphHook(
 	}
 
 	if (asyncModules.size > 0) {
-		const alternation = [...asyncModules.keys()].map(escapeRegExp).join("|");
+		const alternation = Array.from(asyncModules.keys()).map(escapeRegExp).join("|");
 		const filter = new RegExp(`^(?:${alternation})(?:\\?mtime=\\d+)?$`);
-		const hookId = Bun.hash(`${entryRealPath}\0async\0${[...asyncModules.keys()].join("\0")}`).toString(36);
+		const hookId = Bun.hash(`${entryRealPath}\0async\0${Array.from(asyncModules.keys()).join("\0")}`).toString(36);
 		Bun.plugin({
 			name: `veyyon:legacy-pi-ext:${hookId}`,
 			setup(build) {
@@ -1398,9 +1440,11 @@ function installExtensionGraphHook(
 	}
 
 	if (syncCommonJsModules.size > 0) {
-		const alternation = [...syncCommonJsModules.keys()].map(escapeRegExp).join("|");
+		const alternation = Array.from(syncCommonJsModules.keys()).map(escapeRegExp).join("|");
 		const filter = new RegExp(`^(?:${alternation})(?:\\?mtime=\\d+)?$`);
-		const hookId = Bun.hash(`${entryRealPath}\0sync-cjs\0${[...syncCommonJsModules.keys()].join("\0")}`).toString(36);
+		const hookId = Bun.hash(
+			`${entryRealPath}\0sync-cjs\0${Array.from(syncCommonJsModules.keys()).join("\0")}`,
+		).toString(36);
 		Bun.plugin({
 			name: `veyyon:legacy-pi-ext:${hookId}`,
 			setup(build) {

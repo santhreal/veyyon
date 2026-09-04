@@ -2,14 +2,14 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import type { AgentTool } from "@veyyon/agent-core";
 import type { TSchema } from "@veyyon/ai";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { renderMCPResult } from "@veyyon/coding-agent/mcp/render";
 import { DeferredMCPTool, MCPTool, type MCPToolDetails } from "@veyyon/coding-agent/mcp/tool-bridge";
 import type { MCPServerConnection, MCPToolDefinition, MCPTransport } from "@veyyon/coding-agent/mcp/types";
-import { getThemeByName, initTheme, type Theme } from "@veyyon/coding-agent/modes/theme/theme";
-import { formatOutputNotice, type OutputMeta } from "@veyyon/coding-agent/tools/output-meta";
-import { formatStatusIcon } from "@veyyon/coding-agent/tools/render-utils";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import { getThemeByName, initTheme, type Theme } from "@veyyon/coding-agent/theme/theme";
+import { formatOutputNotice, type OutputMeta } from "@veyyon/coding-agent/tools/core/output-meta";
+import { formatStatusIcon } from "@veyyon/coding-agent/tools/core/render-utils";
 import { TUI } from "@veyyon/tui";
-import { VirtualTerminal } from "../../tui/test/virtual-terminal";
+import { VirtualTerminal } from "../../../hosts/terminal/engine/test/virtual-terminal";
 import { createToolExecution } from "./helpers/tool-execution";
 
 beforeAll(async () => {
@@ -81,12 +81,9 @@ function makeAgentTool(mcpTool: MCPTool): RenderableMCPAgentTool {
 		execute(): Promise<never> {
 			return Promise.reject(new Error("MCP execution is not used by renderer tests"));
 		},
-		renderCall(args, options, uiTheme) {
-			return mcpTool.renderCall(args, options, uiTheme);
-		},
-		renderResult(result, options, uiTheme) {
-			return mcpTool.renderResult(result, options, uiTheme);
-		},
+		// The card the tool describes, which is what the transcript draws for it now that the tool
+		// declares no terminal renderer of its own.
+		view: mcpTool.view,
 	};
 }
 
@@ -157,9 +154,8 @@ describe("MCP tool rendering", () => {
 			details: { serverName: "evk", mcpToolName: "peek", meta },
 		};
 
-		const rendered = Bun.stripANSI(
-			renderMCPResult(result, { expanded: true, isPartial: false }, uiTheme).render(160).join("\n"),
-		);
+		const card = makeTool().view.renderResult(result, { expanded: true });
+		const rendered = Bun.stripANSI(drawToolView(card, uiTheme).render(160).join("\n"));
 
 		expect(rendered).toContain("event 97");
 		expect(rendered).toContain("event 100");

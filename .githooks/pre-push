@@ -85,8 +85,14 @@ link_node_modules() {
 		[ -e "$entry" ] || continue
 		name=${entry##*/}
 		target=$(readlink "$entry" 2>/dev/null || true)
+		# Every workspace member is linked relative to the repository root, whatever root it sits
+		# under: `../../packages/ai`, `../../hosts/terminal/engine`, `../../plugins/web`,
+		# `../../kernel`. Matching `packages/*` alone sent the other eight back to the dirty tree,
+		# which is the failure this whole function exists to prevent, and it also gave a module two
+		# identities in one program: `@veyyon/tui` resolved outside the checkout while a relative
+		# import of the same file resolved inside it.
 		case "$target" in
-		../../packages/*) ln -sfn "$1/${target#../../}" "$dst/@veyyon/$name" ;;
+		../../*) ln -sfn "$1/${target#../../}" "$dst/@veyyon/$name" ;;
 		*) ln -sfn "$entry" "$dst/@veyyon/$name" ;;
 		esac
 	done

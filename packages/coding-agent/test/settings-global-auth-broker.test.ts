@@ -50,6 +50,10 @@ describe("authBrokerUrl binding", () => {
 	});
 
 	test("every global setting key has a matching binding (schema/bindings can not drift)", () => {
+		// Set equality both directions: a declared setting with no binding would
+		// silently fail to persist, and a binding with no declaration would write
+		// a key no screen can reach. The machine-wide resource limits are declared
+		// here alongside their bindings, so they need no exception.
 		expect(Object.keys(GLOBAL_SETTING_BINDINGS).sort()).toEqual(Object.keys(GLOBAL_SETTINGS).sort());
 	});
 });

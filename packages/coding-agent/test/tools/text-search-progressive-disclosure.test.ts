@@ -15,8 +15,8 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { canonicalSnapshotKey, getFileSnapshotStore } from "@veyyon/coding-agent/edit/file-snapshot-store";
 import { inlineCapForTurn } from "@veyyon/coding-agent/session/streaming-output";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { SearchTool } from "@veyyon/coding-agent/tools/search";
-import { BROAD_SEARCH_INLINE_MAX_BYTES } from "@veyyon/coding-agent/tools/text-search";
+import { SearchTool } from "@veyyon/coding-agent/tools/search/search";
+import { BROAD_SEARCH_INLINE_MAX_BYTES } from "@veyyon/coding-agent/tools/search/text-search";
 import { removeWithRetries } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";
 

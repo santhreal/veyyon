@@ -72,7 +72,7 @@ Frontend (Vite + SolidJS, in `web/` — still a bun workspace):
 ```
 bun run veybot:web:dev            # vite dev server with proxy to :8080
 bun run veybot:web:build          # produce src/static/ bundle
-bun --cwd=python/veybot/web run typecheck   # tsc --noEmit
+bun --cwd=python/veybot/web run check:types   # tsc --noEmit
 ```
 
 In-container CLI (`veybot` console script → `veybot.cli:main`): no root aliases — invoke directly:

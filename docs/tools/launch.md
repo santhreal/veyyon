@@ -3,7 +3,7 @@
 > Launch and control long-running project processes shared by every veyyon instance in the same directory.
 
 ## Source
-- Tool: `packages/coding-agent/src/tools/launch.ts`
+- Tool: `packages/coding-agent/src/tools/shell/launch.ts`
 - Broker client: `packages/coding-agent/src/launch/client.ts`
 - Broker runtime: `packages/coding-agent/src/launch/broker.ts`
 - Veyyon process presence: `packages/coding-agent/src/launch/presence.ts`

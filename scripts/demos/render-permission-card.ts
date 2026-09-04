@@ -19,9 +19,9 @@ import {
 	APPROVAL_DIALOG_OPTIONS,
 	APPROVAL_SELECT_OPTIONS,
 } from "../../packages/coding-agent/src/extensibility/extensions/wrapper";
-import { HookSelectorComponent } from "../../packages/coding-agent/src/modes/components/hook-selector";
-import { initTheme } from "../../packages/coding-agent/src/modes/theme/theme";
-import { formatApprovalCard } from "../../packages/coding-agent/src/tools/approval";
+import { HookSelectorComponent } from "../../packages/coding-agent/src/modes/terminal/components/selectors/hook-selector";
+import { initTheme } from "../../packages/coding-agent/src/theme/theme";
+import { formatApprovalCard } from "../../packages/coding-agent/src/tools/core/approval";
 import { flag, hasFlag, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");

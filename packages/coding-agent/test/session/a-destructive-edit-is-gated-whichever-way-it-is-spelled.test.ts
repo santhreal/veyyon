@@ -21,7 +21,7 @@ import {
 	PERMISSION_OPTIONS,
 	PERMISSION_OPTIONS_BY_ID,
 	PERMISSION_REQUIRED_TOOLS,
-} from "../../src/session/permission-intent";
+} from "../../src/session/agent-session-permissions";
 
 /** The same delete, written the three ways the edit tool accepts it. */
 const DELETE_SPELLINGS: Record<string, unknown> = {

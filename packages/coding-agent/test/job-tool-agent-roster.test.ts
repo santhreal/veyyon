@@ -10,7 +10,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { AsyncJobManager } from "@veyyon/coding-agent/async";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { JobTool } from "@veyyon/coding-agent/tools/job";
+import { JobTool } from "@veyyon/coding-agent/tools/shell/job";
 import { makeToolSession } from "./helpers/tool-session";
 
 const managers: AsyncJobManager[] = [];

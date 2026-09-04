@@ -2,7 +2,7 @@ import { logger, ptree } from "@veyyon/utils";
 import { Settings } from "../config/settings";
 import { primarySessionCpuAdoption } from "../session/cpu-limit";
 import { OutputSink } from "../session/streaming-output";
-import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../tools/output-meta";
+import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../tools/core/output-meta";
 import { buildRemoteCommand, ensureConnection, ensureHostInfo, type SSHConnectionTarget } from "./connection-manager";
 import { hasSshfs, mountRemote } from "./sshfs-mount";
 import { wrapInPosixShell } from "./utils";

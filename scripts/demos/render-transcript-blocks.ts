@@ -20,20 +20,20 @@
  * image instead of estimated.
  */
 
+import { type Component, Container, type TUI } from "../../hosts/terminal/engine/src/index";
 import type { AgentMessage } from "../../packages/agent/src/index";
-import { BtwPanelComponent } from "../../packages/coding-agent/src/modes/components/btw-panel";
+import { TinyTitleDownloadProgressComponent } from "../../packages/coding-agent/src/modes/terminal/components/chrome/tiny-title-download-progress";
 import {
 	COMPOSER_INSET_COLS,
 	resolveComposerAccents,
-} from "../../packages/coding-agent/src/modes/components/composer-chrome";
-import { ErrorBannerComponent } from "../../packages/coding-agent/src/modes/components/error-banner";
-import { OmfgPanelComponent } from "../../packages/coding-agent/src/modes/components/omfg-panel";
-import { TinyTitleDownloadProgressComponent } from "../../packages/coding-agent/src/modes/components/tiny-title-download-progress";
-import { showCommandMessage } from "../../packages/coding-agent/src/modes/controllers/command-controller-shared";
-import { initTheme, theme } from "../../packages/coding-agent/src/modes/theme/theme";
-import type { InteractiveModeContext } from "../../packages/coding-agent/src/modes/types";
-import { UiHelpers } from "../../packages/coding-agent/src/modes/utils/ui-helpers";
-import { type Component, Container, type TUI } from "../../packages/tui/src/index";
+} from "../../packages/coding-agent/src/modes/terminal/components/composer/composer-chrome";
+import { BtwPanelComponent } from "../../packages/coding-agent/src/modes/terminal/components/dialogs/btw-panel";
+import { OmfgPanelComponent } from "../../packages/coding-agent/src/modes/terminal/components/dialogs/omfg-panel";
+import { ErrorBannerComponent } from "../../packages/coding-agent/src/modes/terminal/components/transcript/error-banner";
+import { showCommandMessage } from "../../packages/coding-agent/src/modes/terminal/controllers/command-controller-shared";
+import type { InteractiveModeContext } from "../../packages/coding-agent/src/modes/terminal/types";
+import { UiHelpers } from "../../packages/coding-agent/src/modes/terminal/utils/ui-helpers";
+import { initTheme, theme } from "../../packages/coding-agent/src/theme/theme";
 import { flag, hasFlag, renderWidth } from "./render-args";
 
 const themeName = flag("theme", "titanium");

@@ -7,7 +7,7 @@
 
 import { errorMessage } from "@veyyon/utils";
 import * as Diff from "diff";
-import { resolveToCwd } from "../tools/path-utils";
+import { resolveToCwd } from "../tools/core/path-utils";
 import { type BlockContextSource, exceedsBlockContextScanCeiling, findBlockContextLines } from "../utils/block-context";
 import { parseUnifiedHunkHeader } from "../utils/unified-hunk-header";
 import { EOF_MARKER, FILE_OP_MARKERS, PATCH_WRAPPER_MARKERS } from "./apply-patch/markers";
@@ -134,7 +134,7 @@ function insertBracketContextRows(
 	contextLines: ReadonlyMap<number, string>,
 	seenRows: Set<string>,
 ): void {
-	const context = [...contextLines].sort(([left], [right]) => left - right);
+	const context = Array.from(contextLines).sort(([left], [right]) => left - right);
 	for (const [lineNumber, text] of context) {
 		const row = formatNumberedDiffLine(" ", lineNumber, text);
 		if (seenRows.has(row)) continue;
@@ -296,7 +296,7 @@ export function generateDiffString(
 						const leadingContext = raw.slice(0, contextLimit);
 						const trailingContext = raw.slice(raw.length - contextLimit);
 						middleSkip = raw.length - leadingContext.length - trailingContext.length;
-						linesToShow = [...leadingContext, ...trailingContext];
+						linesToShow = leadingContext.concat(trailingContext);
 					} else {
 						linesToShow = raw;
 					}
@@ -706,7 +706,7 @@ function parseOneHunk(lines: string[], lineNumber: number, allowMissingContext: 
 }
 
 function stripLineNumberPrefixes(hunk: DiffHunk): void {
-	const allLines = [...hunk.oldLines, ...hunk.newLines].filter(line => line.trim().length > 0);
+	const allLines = hunk.oldLines.concat(hunk.newLines).filter(line => line.trim().length > 0);
 	if (allLines.length < 2) return;
 
 	const numberMatches = allLines

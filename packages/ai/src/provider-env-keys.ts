@@ -3,7 +3,7 @@
  *
  * WHY THIS IS ITS OWN MODULE. `env-api-key.ts` answers "which variable holds provider X's key" and it is
  * imported for exactly that, by eighteen web-search providers in `@veyyon/coding-agent`, by
- * `web/parallel.ts`, and through that by `tools/fetch.ts` and `tools/read.ts`. Its own doc records why it
+ * `web/parallel.ts`, and through that by `tools/web/fetch.ts` and `tools/fs/read.ts`. Its own doc records why it
  * was split out of `stream.ts`: asking a one-line question should not cost the streaming engine.
  *
  * It kept costing 158 modules anyway, because the OVERRIDES lived on the provider DEFINITIONS. A definition

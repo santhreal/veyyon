@@ -24,8 +24,8 @@ import type {
 	SessionEntry,
 	SessionMessageEntry,
 	ThinkingLevelChangeEntry,
-} from "@veyyon/coding-agent/session/session-entries";
-import { migrateSessionEntries } from "@veyyon/coding-agent/session/session-migrations";
+} from "@veyyon/kernel/session/session-entries";
+import { migrateSessionEntries } from "@veyyon/kernel/session/session-migrations";
 import { e2eApiKey } from "./helpers/e2e-session";
 
 // ============================================================================

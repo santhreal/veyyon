@@ -2,7 +2,7 @@
  * formatApprovalPrompt combinations of reason + string/array details.
  */
 import { describe, expect, it } from "bun:test";
-import { formatApprovalPrompt } from "../src/tools/approval";
+import { formatApprovalPrompt } from "../src/tools/core/approval";
 
 describe("formatApprovalPrompt reason and details grid", () => {
 	it("name only", () => {

@@ -6,7 +6,7 @@ import { Args, Command, Flags, renderCommandHelp } from "@veyyon/utils/cli";
 import { parseArgs } from "../cli/args";
 import { runSetupCommand, SETUP_COMPONENTS, type SetupCommandArgs, type SetupComponent } from "../cli/setup-cli";
 import { runRootCommand } from "../main";
-import { initTheme } from "../modes/theme/theme";
+import { initTheme } from "../theme/theme";
 
 export interface OnboardingSetupDependencies {
 	runRoot?: typeof runRootCommand;

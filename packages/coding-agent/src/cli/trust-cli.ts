@@ -18,14 +18,14 @@
  */
 import * as path from "node:path";
 import { pathExists } from "@veyyon/utils";
-import { clearClaudePluginRootsCache, resolveActiveProjectRegistryPath } from "../discovery/helpers";
 import {
 	canonicalProjectRoot,
 	describeProjectExecutable,
 	type ProjectExecutable,
 	ProjectTrust,
 	type ProjectTrustVerdict,
-} from "../security/project-trust";
+} from "../config/project-trust";
+import { clearClaudePluginRootsCache, resolveActiveProjectRegistryPath } from "../discovery/helpers";
 
 export type TrustAction = "approve" | "deny" | "forget" | "list";
 

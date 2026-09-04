@@ -12,7 +12,7 @@
  *      independent of the setting's own default in `config/settings-domains/`.
  *   4. population at the call site in `sdk.ts`.
  *   5. an entry in the template context object.
- *   6. a hand-written `case` in `modes/controllers/selector-controller.ts`, if flipping the
+ *   6. a hand-written `case` in `modes/terminal/controllers/selector-controller.ts`, if flipping the
  *      setting was supposed to rebuild the prompt.
  *
  * Step 6 was the one that failed quietly and the one an operator notices. That switch had

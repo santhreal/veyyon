@@ -13,11 +13,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as AIError from "@veyyon/ai/error";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { AgentTranscriptViewer } from "@veyyon/coding-agent/modes/components/agent-transcript-viewer";
-import type { ObservableSession, SessionObserverRegistry } from "@veyyon/coding-agent/modes/session-observer-registry";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AgentTranscriptViewer } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-transcript-viewer";
+import type {
+	ObservableSession,
+	SessionObserverRegistry,
+} from "@veyyon/coding-agent/modes/terminal/session-observer-registry";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { SILENT_ABORT_MARKER } from "@veyyon/coding-agent/session/messages";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { TUI } from "@veyyon/tui";
 import { removeSyncWithRetries } from "@veyyon/utils";
 

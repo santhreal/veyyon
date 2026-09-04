@@ -25,10 +25,10 @@
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import type { StatusLineSettings } from "@veyyon/coding-agent/modes/components/status-line";
-import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
 import { recordLaunchFacts, resetLaunchFactsForTest } from "@veyyon/coding-agent/modes/launch-facts";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { StatusLineSettings } from "@veyyon/coding-agent/modes/terminal/components/status-line";
+import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/components/status-line";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { GitRefHead, GitStatusSummary } from "@veyyon/coding-agent/utils/git";
 import * as git from "@veyyon/coding-agent/utils/git";
 import { getProjectDir, setProjectDir } from "@veyyon/utils";
@@ -112,6 +112,7 @@ function makeSession(cwd?: string) {
 		...statusLineSessionParts({ sessionName: "late git read", messages: [], ...(cwd ? { cwd: () => cwd } : {}) }),
 		state: { messages: [], model: undefined },
 		model: undefined,
+
 		getAsyncJobSnapshot: () => ({ running: [] }),
 	} as unknown as ConstructorParameters<typeof StatusLineComponent>[0];
 }

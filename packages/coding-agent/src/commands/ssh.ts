@@ -3,7 +3,7 @@
  */
 import { Args, Command, Flags } from "@veyyon/utils/cli";
 import { runSSHCommand, SSH_ACTIONS, type SSHAction, type SSHCommandArgs } from "../cli/ssh-cli";
-import { initTheme } from "../modes/theme/theme";
+import { initTheme } from "../theme/theme";
 
 export default class SSH extends Command {
 	static description = "Manage SSH host configurations";

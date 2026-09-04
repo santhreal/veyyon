@@ -7,13 +7,13 @@ This page indexes README-only user-facing package CLIs and features that need ro
 - **Include** root docs coverage for package-local CLIs, extension features, dashboards, and benchmark runners that users can run directly or through `veyyon`.
 - **Exclude explicitly** when a package/crate is internal implementation only; point to the architecture doc that owns it.
 - Package READMEs and manifests remain the source of truth for package-local setup and flags; root docs make the feature discoverable and link to exact source paths.
-- Internal Rust crates remain covered by native architecture docs unless promoted as standalone user-facing commands or APIs. The contributor-facing map lives at [`native-crates.md`](./native-crates.md); today every `crates/*` entry is internal to `@veyyon/natives` and the embedded shell, so [`natives-architecture.md`](./natives-architecture.md) and the surrounding native docs own them.
+- Internal Rust crates remain covered by native architecture docs unless promoted as standalone user-facing commands or APIs. The contributor-facing map lives at [`native-crates.md`](./native-crates.md); today every `natives/*` entry is internal to `@veyyon/natives` and the embedded shell, so [`natives-architecture.md`](./natives-architecture.md) and the surrounding native docs own them.
 
 ## Package CLIs and features
 
-### `packages/swarm-extension`: swarm orchestration
+### `plugins/mode-swarm`: swarm orchestration
 
-Sources: [`packages/swarm-extension/README.md`](../../packages/swarm-extension/README.md), [`packages/swarm-extension/package.json`](../../packages/swarm-extension/package.json), [`packages/swarm-extension/src/cli.ts`](../../packages/swarm-extension/src/cli.ts), [`packages/swarm-extension/src/extension.ts`](../../packages/swarm-extension/src/extension.ts).
+Sources: [`plugins/mode-swarm/README.md`](../../plugins/mode-swarm/README.md), [`plugins/mode-swarm/package.json`](../../plugins/mode-swarm/package.json), [`plugins/mode-swarm/src/cli.ts`](../../plugins/mode-swarm/src/cli.ts), [`plugins/mode-swarm/src/extension.ts`](../../plugins/mode-swarm/src/extension.ts).
 
 - Package: `@veyyon/swarm-extension`; bin: `veyyon-swarm`.
 - Feature: multi-agent DAG orchestration from YAML swarms, supporting `pipeline`, `parallel`, and `sequential` modes.
@@ -39,7 +39,7 @@ Sources: [`packages/stats/README.md`](../../packages/stats/README.md), [`package
 
 Sources: [`packages/evals/package.json`](../../packages/evals/package.json), [`packages/evals/engine/contracts.ts`](../../packages/evals/engine/contracts.ts), [`packages/evals/suites/typescript-edit/generate.ts`](../../packages/evals/suites/typescript-edit/generate.ts), [`packages/evals/suites/typescript-edit/verify.ts`](../../packages/evals/suites/typescript-edit/verify.ts), [`packages/evals/backends/in-process/client.ts`](../../packages/evals/backends/in-process/client.ts), [`packages/evals/EVALS.md`](../../packages/evals/EVALS.md).
 
-- Package: private `@veyyon/evals`; bins: `evals` (suite runner) and `evals-server` (run store API and dashboard).
+- Package: private `@veyyon/evals`; bin: `evals`, the suite runner; `evals serve` starts the run store API and dashboard.
 - Feature: one runner over five axes — eval suite, agent harness, configuration arm, prompt variant, and model — across three execution backends (`pier` for DeepSWE containers, `harbor` for Terminal-Bench 3.0, `in-process` for the TypeScript-edit suite).
 - Suites: `suites/deep-swe` (SWE tasks in Pier containers), `suites/terminal-bench` (Terminal-Bench 3.0 through Harbor), `suites/typescript-edit` (in-process TypeScript source mutations).
 - Modules: `engine` holds the suite, harness and backend contracts plus the variant matrix and the run engine; `store` holds the SQLite run store and experiment grouping; `api` serves the REST/SSE API; `dashboard` is the live dashboard; `tools` renders aggregates and markdown tables.
@@ -48,4 +48,4 @@ Sources: [`packages/evals/package.json`](../../packages/evals/package.json), [`p
 - Outputs: trial directories and JSON result snapshots under `packages/evals/runs/`, plus the run rows the dashboard reads.
 - Side effects/limits: extracts fixture archives, clones upstream task repositories into `datasets/repo-cache/`, vendors pinned datasets into `.cache/`, and runs Docker containers for the `pier` and `harbor` backends.
 
-*Verified against `6f9dbe46` on 2026-08-28.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

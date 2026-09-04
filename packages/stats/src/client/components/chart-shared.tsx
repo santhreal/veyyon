@@ -172,7 +172,7 @@ export function buildAggregateTimeSeries<T extends { timestamp: number }, B>(
 		accumulate(bucket, point);
 		byDay.set(point.timestamp, bucket);
 	}
-	const sorted = [...byDay.entries()].sort((a, b) => a[0] - b[0]);
+	const sorted = Array.from(byDay.entries()).sort((a, b) => a[0] - b[0]);
 	return {
 		labels: sorted.map(([ts]) => format(new Date(ts), "MMM d")),
 		datasets: [{ label, data: sorted.map(([, bucket]) => bucketToValue(bucket)) }],
@@ -215,7 +215,7 @@ export function buildTopNByModelSeries<T extends ModelKeyedPoint, B>(
 		}
 	}
 
-	const sorted = [...totals.entries()].sort((a, b) => b[1].weight - a[1].weight);
+	const sorted = Array.from(totals.entries()).sort((a, b) => b[1].weight - a[1].weight);
 	const topEntries = sorted.slice(0, topN);
 	const topKeys = new Set(topEntries.map(([key]) => key));
 
@@ -228,7 +228,7 @@ export function buildTopNByModelSeries<T extends ModelKeyedPoint, B>(
 		labelByKey.set(key, (modelCount.get(model) ?? 0) > 1 ? `${model} (${provider})` : model);
 	}
 
-	const allDays = [...new Set(points.map(p => p.timestamp))].sort((a, b) => a - b);
+	const allDays = Array.from(new Set(points.map(p => p.timestamp))).sort((a, b) => a - b);
 	const seriesNames = topEntries.map(([key]) => labelByKey.get(key) ?? key);
 	const hasOther = points.some(p => !topKeys.has(`${p.model}::${p.provider}`));
 	if (hasOther) seriesNames.push("Other");

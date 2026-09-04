@@ -204,17 +204,21 @@ const ERRORMESSAGE_GRANDFATHERED = new Set<string>([]);
 // 2026-07 codemod converted every convertible production `.ts` source to
 // errorMessage(). Five legitimately remain: ptree.ts keeps a deliberate
 // `String(reason ?? "aborted")` fallback ternary; type-guards.ts is the owner
-// definition itself; hashline and collab-web are standalone packages with no
-// `@veyyon/utils` dependency (hashline ships only `diff`/`lru-cache`; collab-web is
-// a browser bundle), so importing the util for one ternary would add an unwanted
-// workspace dep and is worse than the local copy; first-frame-replay.ts runs before
-// the import graph loads and imports node builtins only, so the import would put
-// `@veyyon/utils` on the pre-paint path for one ternary in a debug string.
-// Convert a file, remove its entry. Shrink-only.
+// definition itself; hashline, collab-web and the veybot web UI are standalone packages with no
+// `@veyyon/utils` dependency (hashline ships only `diff`/`lru-cache`; the other two are browser
+// bundles, veybot-web on solid-js alone), so importing the util for one ternary would add an
+// unwanted workspace dep and is worse than the local copy; `first-frame-replay.ts` runs before the
+// import graph loads and imports node builtins only, so the import would put `@veyyon/utils` on the
+// pre-paint path for one ternary in a debug string. Convert a file, remove its entry. Shrink-only.
+//
+// Keys are member-relative, so a package outside `packages/` carries its root. `plugins/hashline`
+// is the same entry under its current directory; `python/veybot/web` is a member the sweep could
+// not previously reach, and its copy predates this list.
 const INLINE_ERRORMESSAGE_GRANDFATHERED = new Set([
-	"coding-agent/src/startup/first-frame-replay.ts",
+	"coding-agent/src/cli/first-frame-replay.ts",
 	"collab-web/src/lib/client.ts",
-	"hashline/src/patcher.ts",
+	"plugins/hashline/src/patcher.ts",
+	"python/veybot/web/src/state.ts",
 	"utils/src/ptree.ts",
 	"utils/src/type-guards.ts",
 ]);
@@ -286,8 +290,8 @@ function isIsRecordCloneBody(body: string): boolean {
 // the coding-agent modes/ UI lane, which an active feature branch owns; convert
 // them when that lane unblocks, then remove the entry. Shrink-only.
 const ISRECORD_INLINE_GRANDFATHERED = new Set([
-	"coding-agent/src/modes/controllers/event-controller.ts",
-	"coding-agent/src/modes/utils/transcript-render-helpers.ts",
+	"coding-agent/src/modes/terminal/controllers/event-controller.ts",
+	"coding-agent/src/modes/terminal/utils/transcript-render-helpers.ts",
 ]);
 
 // A dotted value/member expression (no call parens, no index brackets).
@@ -329,9 +333,9 @@ const NEGATED_INLINE_ISRECORD = [
 // remove the entry. Shrink-only.
 const NEGATED_ISRECORD_INLINE_GRANDFATHERED = new Set([
 	"coding-agent/src/modes/acp/acp-event-mapper.ts",
-	"coding-agent/src/modes/components/model-hub.ts",
-	"coding-agent/src/modes/components/read-tool-group.ts",
-	"coding-agent/src/modes/controllers/omfg-rule.ts",
+	"coding-agent/src/modes/terminal/components/selectors/model-hub.ts",
+	"coding-agent/src/modes/terminal/components/transcript/read-tool-group.ts",
+	"coding-agent/src/modes/terminal/controllers/omfg-rule.ts",
 	"coding-agent/src/modes/rpc/rpc-mode.ts",
 ]);
 

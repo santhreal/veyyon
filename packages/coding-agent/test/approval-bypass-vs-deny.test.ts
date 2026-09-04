@@ -2,7 +2,7 @@
  * bypassAllApprovals upgrades prompt to allow but not deny.
  */
 import { describe, expect, it } from "bun:test";
-import { resolveApproval } from "../src/tools/approval";
+import { resolveApproval } from "../src/tools/core/approval";
 
 describe("resolveApproval bypass vs deny", () => {
 	it("bypass allows always-ask exec", () => {

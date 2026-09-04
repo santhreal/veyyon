@@ -7,8 +7,8 @@
 import { APP_NAME, errorMessage, getProjectDir } from "@veyyon/utils";
 import chalk from "chalk";
 import { PluginManager, parseSettingValue, validateSetting } from "../extensibility/plugins";
-import { createMarketplaceManager, type MarketplaceManager } from "../extensibility/plugins/marketplace/index.js";
-import { theme } from "../modes/theme/theme";
+import { createMarketplaceManager, type MarketplaceManager } from "../extensibility/plugins/marketplace";
+import { theme } from "../theme/theme";
 
 // =============================================================================
 // Types
@@ -626,7 +626,7 @@ async function handleFeatures(
 			}
 		}
 
-		await manager.setEnabledFeatures(pluginName, [...currentFeatures]);
+		await manager.setEnabledFeatures(pluginName, Array.from(currentFeatures));
 		console.log(chalk.green(`${theme.status.success} Updated features for ${pluginName}`));
 	}
 

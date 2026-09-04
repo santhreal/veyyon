@@ -4,11 +4,13 @@ import * as path from "node:path";
 import { getOAuthProviders, type OAuthProviderInfo } from "@veyyon/ai/oauth";
 import { PROVIDER_REGISTRY } from "@veyyon/ai/registry";
 import { stripEffortTierSuffix } from "@veyyon/catalog/variant-collapse";
-import { type AutocompleteItem, Spacer } from "@veyyon/tui";
+import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { parseCompactArgs } from "@veyyon/kernel/session/compact-modes";
+import { resolveResumableSession } from "@veyyon/kernel/session/session-listing";
+import { formatShakeSummary, type ShakeMode } from "@veyyon/kernel/session/shake-types";
 import {
 	APP_NAME,
 	CHANGELOG_URL,
-	collapseWhitespace,
 	getActiveProfile,
 	getAgentDir,
 	getGlobalConfigRootDir,
@@ -18,6 +20,8 @@ import {
 	nearestNames,
 	truncate,
 } from "@veyyon/utils";
+import type { AutocompleteItem } from "@veyyon/utils/autocomplete";
+import { sanitizeStatusText } from "@veyyon/utils/sanitize-status-text";
 import { advisorStatusNextStep, describeAdvisorToggle } from "../advisor/messages";
 import { runTrustSlashCommand } from "../cli/trust-cli";
 import { COLLAB_GUEST_ALLOWED_COMMANDS } from "../collab/guest-commands";
@@ -39,12 +43,12 @@ import { settings } from "../config/settings-instance";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../discovery/helpers.js";
 import { shareSession } from "../export/share";
 import { PluginManager } from "../extensibility/plugins";
-import { buildMemoryPayloadForDisplay, resolveMemoryBackend } from "../memory-backend";
-import { runPauseScreen } from "../modes/components/pause-screen";
+import { buildMemoryPayloadForDisplay, resolveMemoryBackend } from "../memory/backend";
 import { describeLoopLimitRuntime } from "../modes/loop-limit";
-import { theme } from "../modes/theme/theme";
-import type { InteractiveModeContext } from "../modes/types";
-import { extractLastCodeBlock, extractLastCommand } from "../modes/utils/copy-targets";
+import { runPauseScreen } from "../modes/terminal/components/dialogs/pause-screen";
+import { urlHyperlinkAlways } from "../modes/terminal/draw/hyperlink";
+import type { InteractiveModeContext } from "../modes/terminal/types";
+import { extractLastCodeBlock, extractLastCommand } from "../modes/terminal/utils/copy-targets";
 import { SECRET_TUI_SUBCOMMANDS } from "../secrets/secret-command";
 import {
 	type AccountRow,
@@ -55,17 +59,14 @@ import {
 	applyUsageReports,
 	loadAccountInventory,
 } from "../session/account-inventory";
-import type { AgentSession, FreshSessionResult, HandoffResult } from "../session/agent-session";
-import type { AuthStorage } from "../session/auth-storage";
-import { parseCompactArgs } from "../session/compact-modes";
-import { resolveResumableSession } from "../session/session-listing";
-import { formatShakeSummary, type ShakeMode } from "../session/shake-types";
+import type { AgentSession } from "../session/agent-session";
+import type { FreshSessionResult, HandoffResult } from "../session/agent-session-types";
 import { configuredSubagentModelChains } from "../task/subagent-settings";
+import { theme } from "../theme/theme";
 import { configuredThinkingLevelsForModel, parseConfiguredThinkingLevel } from "../thinking";
-import { normalizeApprovalMode } from "../tools/approval";
-import { AUTONOMY_LABEL, isKnownApprovalMode } from "../tools/approval-modes";
-import { expandTilde, resolveToCwd } from "../tools/path-utils";
-import { urlHyperlinkAlways } from "../tui";
+import { normalizeApprovalMode } from "../tools/core/approval";
+import { AUTONOMY_LABEL, isKnownApprovalMode } from "../tools/core/approval-modes";
+import { expandTilde, resolveToCwd } from "../tools/core/path-utils";
 import { copyToClipboard } from "../utils/clipboard";
 import { bareInvocationShowsSubcommands } from "./bare-subcommand";
 import {
@@ -220,8 +221,13 @@ function noThinkingControlMessage(session: AgentSession): string {
 
 const AUTOCOMPLETE_DETAIL_LIMIT = 48;
 
+/**
+ * A command's detail column: one line, plain, capped. The value is not this file's -- a goal
+ * objective is typed or written by a model -- so an escape sequence in it would style the rest of
+ * the autocomplete row, and `sanitizeStatusText` strips it before the cap counts characters.
+ */
 function shortDetail(value: string, limit = AUTOCOMPLETE_DETAIL_LIMIT): string {
-	return truncate(collapseWhitespace(value), limit);
+	return truncate(sanitizeStatusText(value), limit);
 }
 
 function formatTokenCount(value: number): string {
@@ -254,7 +260,7 @@ function collabLinkHint(host: CollabHost, heading: string, view = false): string
 
 function showCollabQrCode(ctx: Pick<InteractiveModeContext, "present" | "showError">, webLink: string): void {
 	try {
-		ctx.present([new Spacer(1), new CollabQrCodeComponent(webLink)]);
+		ctx.present([new CollabQrCodeComponent(webLink)]);
 	} catch (err) {
 		ctx.showError(`Failed to render collab QR code: ${errorMessage(err)}`);
 	}
@@ -2617,7 +2623,7 @@ function toSlashCommandSpec(declaration: BuiltinSlashCommandDeclaration): SlashC
 		description: declaration.description,
 		...BUILTIN_SLASH_COMMAND_HANDLERS[declaration.name as BuiltinSlashCommandName],
 	};
-	if (declaration.aliases) spec.aliases = [...declaration.aliases];
+	if (declaration.aliases) spec.aliases = Array.from(declaration.aliases);
 	if (declaration.allowArgs !== undefined) spec.allowArgs = declaration.allowArgs;
 	if (declaration.inlineHint !== undefined) spec.inlineHint = declaration.inlineHint;
 	if (declaration.acpDescription !== undefined) spec.acpDescription = declaration.acpDescription;

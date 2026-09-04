@@ -181,11 +181,15 @@ const LOCAL_DEF = /function\s+trimTrailingSlash(?:es)?\s*\(/;
 // defined outside the owner is an offender. No grandfathered set.
 const LOCAL_NORMALIZE_BASE_URL = /function\s+normalizeBaseUrl\s*\(/;
 
-// Inline `.replace(/\/+$/...)` trailing-slash strips are fully drained: every
-// former site now calls trimTrailingSlashes. The set is empty, so ANY new inline
-// strip in a production `.ts` source fails the lock and must import the owner
-// instead. (utils/src/url.ts is the owner and always allowed.)
-const INLINE_STRIP_GRANDFATHERED = new Set<string>([]);
+// Inline `.replace(/\/+$/...)` trailing-slash strips are drained to zero. The last site was the
+// ChatGPT Codex compact route in `ai/src/providers/openai-compaction.ts`, which was grandfathered
+// because `scripts/the-codex-compaction-route-is-locked.test.ts` byte-locks that file and would have
+// refused the import of the owner; the route now derives its URL without a strip at all, so the
+// contradiction is gone. The set stays as the recording place for a future site a byte-lock makes
+// unreachable, and the cell below fails on an entry whose strip is gone, which is what emptied it.
+// ANY inline strip in a production `.ts` source fails the lock and must import the owner instead.
+// (utils/src/url.ts is the owner and always allowed.)
+const INLINE_STRIP_GRANDFATHERED = new Set<string>();
 // Whitespace-tolerant between `replace(` and the pattern. It was not, and that is exactly how one slipped
 // through: the formatter wrapped `mnemopi/src/core/extraction/client.ts`'s call across three lines, so
 // `replace(` and `/\/+$/` were no longer adjacent and the lock read the file as clean. The site had been
@@ -199,7 +203,7 @@ const INLINE_STRIP = /replace\(\s*\/\\\/\+\$\//;
 // dir-marker sites where a single trailing slash is a filesystem-path separator,
 // not a URL, and the doubled-slash case never arises: keep them local. Any NEW
 // strip-one URL normalizer fails this lock — call trimTrailingSlashes instead.
-const STRIPONE_GRANDFATHERED = new Set<string>(["tui/src/autocomplete.ts", "utils/src/path-tree.ts"]);
+const STRIPONE_GRANDFATHERED = new Set<string>(["utils/src/autocomplete.ts", "utils/src/path-tree.ts"]);
 // Whitespace-tolerant for the same reason `INLINE_STRIP` is: this required single spaces around the `?`
 // and the whole ternary on one line, so a formatter wrapping it would have hidden a new violation the
 // same way one was hidden in mnemopi. Re-scanned in the widened form, it still finds exactly the two

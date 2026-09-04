@@ -3,20 +3,21 @@
  */
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { ImageContent, Static, TextContent, TSchema } from "@veyyon/ai";
+import { normalizeToolEventInput, resolveToolEventInput } from "@veyyon/kernel/registry/tool-event-input";
+import { applyToolProxy } from "@veyyon/kernel/registry/tool-proxy";
 import { errorMessage, isCancellation, toError } from "@veyyon/utils";
+import type { ToolViewRenderer } from "@veyyon/view";
 import type { Settings } from "../../config/settings";
-import type { Theme } from "../../modes/theme/theme";
 import { AgentRegistry } from "../../registry/agent-registry";
+import type { Theme } from "../../theme/theme";
 import {
 	type ApprovalMode,
 	formatApprovalCard,
 	requiresApproval,
 	resolveEffectiveApprovalMode,
-} from "../../tools/approval";
-import { cwdEscapingTargets, formatCwdBoundaryReason } from "../../tools/cwd-boundary";
-import { secretUseApprovalReason } from "../../tools/secret-use-boundary";
-import { normalizeToolEventInput, resolveToolEventInput } from "../tool-event-input";
-import { applyToolProxy } from "../tool-proxy";
+} from "../../tools/core/approval";
+import { cwdEscapingTargets, formatCwdBoundaryReason } from "../../tools/core/cwd-boundary";
+import { secretUseApprovalReason } from "../../tools/core/secret-use-boundary";
 import type { ExtensionRunner } from "./runner";
 import type {
 	ExtensionUIDialogOptions,
@@ -104,6 +105,13 @@ export class RegisteredToolAdapter implements AgentTool<TSchema, unknown, unknow
 		theme: unknown,
 		args?: Static<TSchema>,
 	) => unknown;
+	/**
+	 * Forwarded in the constructor like the pair above, rather than left to `applyToolProxy`: the
+	 * field declarations on this class put `renderCall`, `renderResult` and `view` on the instance
+	 * already, and the proxy skips every key the wrapper owns. Without the assignment a definition's
+	 * view would never reach a host, and the tool would fall back to the generic card.
+	 */
+	view?: ToolViewRenderer<Static<TSchema>, AgentToolResult<unknown>>;
 
 	constructor(
 		private registeredTool: RegisteredTool,
@@ -127,6 +135,9 @@ export class RegisteredToolAdapter implements AgentTool<TSchema, unknown, unknow
 					theme as Theme,
 					args,
 				);
+		}
+		if (registeredTool.definition.view) {
+			this.view = registeredTool.definition.view;
 		}
 	}
 

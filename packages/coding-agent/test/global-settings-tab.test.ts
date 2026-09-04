@@ -43,7 +43,13 @@ describe("Global settings tab coherence (PROF-2/PROF-3)", () => {
 			expect(SETTINGS_SCHEMA[path as SettingPath]).toBeDefined();
 			expect(getUi(path as SettingPath)?.scope).toBe("global");
 		}
-		// The tab is not empty, and its paths are exactly the global-scoped set.
+		// Scope decides where a value is STORED and the tab decides where it is
+		// configured. The two agree for every setting, including the four
+		// machine-wide resource limits: those are declared on this tab, and
+		// Resources carries a read-only row pointing here rather than a second
+		// copy of the knobs. The set equality holds in both directions, so a
+		// global-scoped setting that becomes unreachable, or a foreign path that
+		// appears on the tab, turns this red.
 		expect(new Set(getPathsForTab("global"))).toEqual(new Set(scopedGlobalPaths));
 		expect(scopedGlobalPaths.length).toBeGreaterThan(0);
 	});

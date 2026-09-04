@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 // FIRST, and it has to stay first: this import writes the previous bare launch's card to the
 // terminal during its own evaluation, which is the only position from which it beats the ~33ms of
-// import below it. It reaches node builtins only. See ./startup/first-frame-replay.
-import "./startup/first-frame-replay-entry";
+// import below it. It reaches node builtins only. See ./cli/first-frame-replay.
+import "./cli/first-frame-replay-entry";
 // Subpath, NOT the "@veyyon/utils" barrel: the barrel re-exports ./env, which
 // eagerly parses the agent-directory .env at import time (env.ts). Pulling that
 // in here would load the .env BEFORE runCli() calls setProfile(), so
@@ -126,9 +126,9 @@ async function runSmokeTest(): Promise<void> {
 
 	const { smokeTestSyncWorker, startServer } = await import("@veyyon/stats");
 	const { smokeTestTinyTitleWorker } = await import("./tiny/title-client");
-	const { smokeTestSttWorker } = await import("./stt/asr-client");
-	const { smokeTestTtsWorker } = await import("./tts/tts-client");
-	const { smokeTestMnemopiEmbedWorker } = await import("./mnemopi/embed-client");
+	const { smokeTestSttWorker } = await import("./speech/stt/asr-client");
+	const { smokeTestTtsWorker } = await import("./speech/tts/tts-client");
+	const { smokeTestMnemopiEmbedWorker } = await import("./memory/mnemopi/embed-client");
 	const { smokeTestJsEvalWorker } = await import("./eval/js/context-manager");
 	// Smoke dependencies stay lazy so normal CLI startup does not load worker clients.
 	const { smokeTestDaemonBroker } = await import("./launch/client");
@@ -169,7 +169,7 @@ async function runWorkerEntrypoint(arg: string | undefined): Promise<boolean> {
 	// module binds the real handler once loaded.
 	if (arg === TAB_WORKER_ARG) {
 		if (parentPort) installWorkerInbox(parentPort);
-		await import("./tools/browser/tab-worker-entry");
+		await import("./tools/web/browser/tab-worker-entry");
 		return true;
 	}
 	if (arg === JS_EVAL_WORKER_ARG) {
@@ -186,17 +186,17 @@ async function runWorkerEntrypoint(arg: string | undefined): Promise<boolean> {
 		return true;
 	}
 	if (arg === STT_WORKER_ARG) {
-		const { startSttWorker } = await import("./stt/asr-worker");
+		const { startSttWorker } = await import("./speech/stt/asr-worker");
 		await runIpcSubprocessWorker(startSttWorker);
 		return true;
 	}
 	if (arg === TTS_WORKER_ARG) {
-		const { startTtsWorker } = await import("./tts/tts-worker");
+		const { startTtsWorker } = await import("./speech/tts/tts-worker");
 		await runIpcSubprocessWorker(startTtsWorker);
 		return true;
 	}
 	if (arg === MNEMOPI_EMBED_WORKER_ARG) {
-		const { startMnemopiEmbedWorker } = await import("./mnemopi/embed-worker");
+		const { startMnemopiEmbedWorker } = await import("./memory/mnemopi/embed-worker");
 		await runIpcSubprocessWorker(startMnemopiEmbedWorker);
 		return true;
 	}

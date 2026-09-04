@@ -44,7 +44,7 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { settingsOrThrow } from "@veyyon/coding-agent/config/settings-instance";
 import { getDefault } from "@veyyon/coding-agent/config/settings-schema";
 import { discoverAuthStorage } from "@veyyon/coding-agent/session/auth-broker-config";
-import type { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
 
 const PROVIDER = "unit-operator-gate";

@@ -22,7 +22,7 @@
  * travels with the result whatever the policy is, and only the bypass reads it.
  */
 import { describe, expect, it } from "bun:test";
-import { resolveApproval } from "@veyyon/coding-agent/tools/approval";
+import { resolveApproval } from "@veyyon/coding-agent/tools/core/approval";
 
 /** A tool whose own decision marks the call critical, the shape `rm -rf ~` produces. */
 const criticalTool = {

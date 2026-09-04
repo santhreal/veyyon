@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { BUILTIN_TOOL_NAMES } from "@veyyon/coding-agent/tools/builtin-names";
-import { ResolveTool } from "@veyyon/coding-agent/tools/resolve";
+import { ResolveTool } from "@veyyon/coding-agent/tools/agent/resolve";
+import { BUILTIN_TOOL_NAMES } from "@veyyon/coding-agent/tools/core/builtin-names";
 
 // Every shipped built-in tool that is exposed to the model in normal sessions
 // must have a docs/tools/<name>.md root doc served by `veyyon://`. File names use

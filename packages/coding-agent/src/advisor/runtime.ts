@@ -115,7 +115,7 @@ export function quarantineAdvisorUnsafeOutput(
 		if (block.type === "text") generatedParts.push(block.text);
 	}
 	if (unavailableToolNames.size > 0) {
-		const names = [...unavailableToolNames].sort();
+		const names = Array.from(unavailableToolNames).sort();
 		const toolLabel = names.length === 1 ? "tool" : "tools";
 		reasons.push(`requested unavailable ${toolLabel} ${names.join(", ")}`);
 	}
@@ -451,7 +451,7 @@ export class AdvisorRuntime {
 	}
 
 	#wakeAllWaiters(): void {
-		for (const w of [...this.#waiters]) {
+		for (const w of Array.from(this.#waiters)) {
 			w.finish();
 		}
 	}

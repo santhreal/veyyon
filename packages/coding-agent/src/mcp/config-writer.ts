@@ -6,7 +6,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { atomicWriteFile, isEnoent, withFileLock } from "@veyyon/utils";
-import { invalidate as invalidateFsCache } from "../capability/fs";
+import { invalidate as invalidateFsCache } from "../discovery/capability/fs";
 import { MCP_CONFIG_SCHEMA_URL, type MCPConfigFile, type MCPServerConfig } from "./types";
 import { validateServerConfig } from "./validate";
 
@@ -126,7 +126,7 @@ export async function addMCPServer(filePath: string, name: string, config: MCPSe
 		if (existing.mcpServers?.[name]) {
 			throw new Error(
 				// Keep the words "already exists": `#handleWizardComplete` in
-				// `modes/controllers/mcp-command-controller.ts` matches that phrase to
+				// `modes/terminal/controllers/mcp-command-controller.ts` matches that phrase to
 				// decide which tip to append, so rewording it silently drops the tip.
 				`MCP server "${name}" already exists in ${filePath}, and adding it again would silently replace a working entry. Fix: pick a different name, or run \`/mcp remove ${name}\` first, or edit ${filePath} directly to change the existing entry.`,
 			);
@@ -341,7 +341,7 @@ export interface SetMcpServerEnabledOptions {
  */
 export async function setMcpServerEnabled(options: SetMcpServerEnabledOptions): Promise<void> {
 	const { userPath, projectPath, sourcePath, name, enabled } = options;
-	const candidatePaths = [...new Set([sourcePath, projectPath, userPath].filter(path => path !== undefined))];
+	const candidatePaths = Array.from(new Set([sourcePath, projectPath, userPath].filter(path => path !== undefined)));
 	let updatedInConfig = false;
 
 	for (const filePath of candidatePaths) {

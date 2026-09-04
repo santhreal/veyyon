@@ -4,7 +4,7 @@ import {
 	formatPluginSpec,
 	type ParsedPluginSpec,
 	parsePluginSpec,
-} from "@veyyon/coding-agent/extensibility/plugins/parser";
+} from "@veyyon/kernel/loader/plugins/parser";
 
 /**
  * These parse a plugin specifier's feature-bracket syntax, format it back, and

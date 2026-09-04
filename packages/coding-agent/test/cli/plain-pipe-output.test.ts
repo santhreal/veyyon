@@ -84,7 +84,7 @@ describe("`veyyon search` output on a pipe (unit)", () => {
 	});
 
 	it("strips theme escapes from the rendered panel when chalk detects no color support", async () => {
-		const searchIndex = await import("@veyyon/coding-agent/web/search/index");
+		const searchIndex = await import("@veyyon/coding-agent/tools/web/search/index");
 		const { runSearchCommand } = await import("@veyyon/coding-agent/cli/web-search-cli");
 		const { spyOn } = await import("bun:test");
 		const chalk = (await import("chalk")).default;

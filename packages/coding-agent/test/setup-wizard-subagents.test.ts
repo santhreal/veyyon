@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { agentsSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/agents";
+import { agentsSetupScene } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/agents";
 import type {
 	SetupSceneHost,
 	SetupSceneResult,
 	SetupWizardContext,
-} from "@veyyon/coding-agent/modes/setup-wizard/scenes/types";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/types";
 import * as discoveryModule from "@veyyon/coding-agent/task/discovery";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
+import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 
 const agents: AgentDefinition[] = [
 	{ name: "scout", description: "Explore code without editing", systemPrompt: "", source: "bundled", tools: ["read"] },

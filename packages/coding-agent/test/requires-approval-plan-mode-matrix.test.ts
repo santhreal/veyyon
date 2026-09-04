@@ -3,7 +3,7 @@
  * Why: plan mode must not silently allow destructive tools.
  */
 import { describe, expect, it } from "bun:test";
-import { requiresApproval, resolveEffectiveApprovalMode } from "../src/tools/approval";
+import { requiresApproval, resolveEffectiveApprovalMode } from "../src/tools/core/approval";
 
 describe("requiresApproval plan mode matrix", () => {
 	it("effective plan when planModeActive", () => {

@@ -44,7 +44,7 @@ import {
 	setThemeInstance,
 	type Theme,
 	type ThemeChangeEvent,
-} from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/theme/theme";
 import { logger } from "@veyyon/utils";
 
 /** One captured `logger.warn` call. */

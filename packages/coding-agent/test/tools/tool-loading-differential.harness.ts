@@ -5,7 +5,9 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { SettingPath } from "@veyyon/coding-agent/config/settings-schema";
-import { type CreateAgentSessionOptions, createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/sdk";
+import { TOOL_DISCOVERY_AUTO_THRESHOLD } from "@veyyon/coding-agent/discovery/mode";
+import { createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/sdk";
+import type { CreateAgentSessionOptions } from "@veyyon/coding-agent/session/factory-options";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { type } from "arktype";
@@ -155,11 +157,31 @@ export class ToolLoadRunner {
 }
 
 /**
+ * Non-`search_tool_bm25` tools the fixture registry holds, which is what the auto rule
+ * counts against the threshold.
+ *
+ * A literal, because the cases below are a static array and cannot boot a session to
+ * measure one, and no frozen outcome reports it either — an outcome lists what survived
+ * the loading rules, which is fewer. It does not go stale in silence: it is the operand
+ * that puts `auto-at-threshold` exactly ON the line, so a tool added to or removed from
+ * the registry slides that case across, its real boot registers `search_tool_bm25` where
+ * the frozen outcome has none, and the cell goes red carrying the direction to re-count.
+ */
+export const FIXTURE_REGISTRY_SIZE = 22;
+
+/**
+ * Bulk tools that land the fixture registry exactly ON the threshold, so registering one
+ * more crosses it. Derived from both operands, so moving either the threshold or the
+ * registry keeps the pair straddling rather than quietly landing on one side.
+ */
+export const AT_THRESHOLD_BULK = TOOL_DISCOVERY_AUTO_THRESHOLD - FIXTURE_REGISTRY_SIZE;
+
+/**
  * The matrix. Every cell names one input the loading rules read; together they cover
  * `tools.discoveryMode` (all four values), `tools.essentialOverride` (empty and not),
  * a per-tool enable flag, an `eval` backend toggle, a harness-profile tool allowlist, an
- * explicit `toolNames` request, a restored selection, a `forceActive` trigger, and tool
- * counts on both sides of the 40-tool auto threshold.
+ * explicit `toolNames` request, a restored selection, a `forceActive` trigger, and a tool
+ * count past the auto threshold.
  *
  * Cells are earned, not guessed: each one was added because a deliberate mutation of the
  * rule it covers survived the suite. Adding a rule to `tools/loading/policy.ts` without a
@@ -207,10 +229,13 @@ export const TOOL_LOAD_CASES: readonly ToolLoadCase[] = [
 		name: "delegation-off-discovery-all",
 		settings: { "tools.discoveryMode": "all", "subagent.delegation": "off" },
 	},
-	// 18 and 19 straddle the boundary exactly: the fixture registry holds 22 non-`search_tool_bm25`
-	// tools, so 22+18 = 40 is NOT "> TOOL_DISCOVERY_AUTO_THRESHOLD" and 22+19 = 41 is. A tool added
-	// to or removed from the registry moves this boundary, and the two cases below go red until the
-	// counts here and the frozen outcomes are re-recorded together.
-	{ name: "auto-at-threshold", extensions: [bulkToolExtension(18, "bulk")] },
-	{ name: "auto-over-threshold", extensions: [bulkToolExtension(19, "bulk")] },
+	// The two cells straddle the boundary exactly: `FIXTURE_REGISTRY_SIZE + AT_THRESHOLD_BULK`
+	// is NOT "> TOOL_DISCOVERY_AUTO_THRESHOLD" and one more tool is. Both counts derive from
+	// the threshold and the registry size rather than restating them, so a tool added to the
+	// shipped registry turns the parity cell red with the number to re-pin instead of sliding
+	// both cells onto the same side of a line they are here to bracket. The off-by-one is
+	// asserted directly against `resolveEffectiveMode` in `tool-discovery/subagent.test.ts`;
+	// these two prove the real boot path agrees with it.
+	{ name: "auto-at-threshold", extensions: [bulkToolExtension(AT_THRESHOLD_BULK, "bulk")] },
+	{ name: "auto-over-threshold", extensions: [bulkToolExtension(AT_THRESHOLD_BULK + 1, "bulk")] },
 ];

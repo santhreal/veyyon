@@ -12,8 +12,9 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { CGROUP_CPU_PERIOD_USEC, formatCpuMaxValue, formatSystemdCpuQuota } from "../src/session/cgroup-format";
-import { probeCpuLimitSupport } from "../src/session/cgroup-host";
+import { CGROUP_CPU_PERIOD_USEC, formatCpuMaxValue, formatSystemdCpuQuota } from "@veyyon/kernel/session/cgroup-format";
+import { probeCpuLimitSupport } from "@veyyon/kernel/session/cgroup-host";
+import { disposeOwnedResources } from "@veyyon/kernel/session/owned-resources";
 import {
 	CPU_LIMIT_SATURATION_NICE,
 	type CpuBudgetGroupHandle,
@@ -23,7 +24,6 @@ import {
 	sessionCpuBudgetName,
 	sessionCpuLimit,
 } from "../src/session/cpu-limit";
-import { disposeOwnedResources } from "../src/session/owned-resources";
 import {
 	type FakeHost,
 	makeCgroupRoot,

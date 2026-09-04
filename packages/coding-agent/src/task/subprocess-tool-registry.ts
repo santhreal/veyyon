@@ -4,16 +4,13 @@
  * Tools can register handlers to:
  * - Extract structured data from their execution results
  * - Trigger subprocess termination on completion
- * - Provide custom rendering for realtime/final display
  */
-import type { Component } from "@veyyon/tui";
-import type { Theme } from "../modes/theme/theme";
-import { TOOL } from "../tools/builtin-names";
+import { TOOL } from "../tools/core/builtin-names";
 
 /**
  * The tool a spawned agent uses to return its result, by name.
  *
- * It lives here rather than in `tools/yield.ts` because the name is part of the SUBPROCESS
+ * It lives here rather than in `tools/agent/yield.ts` because the name is part of the SUBPROCESS
  * PROTOCOL, not just a tool's label: a `tool_execution_end` carrying it is how the executor learns
  * a subagent is finished, the reminder loop forces a named tool_choice with it, and the renderer
  * gives its extracted data a section of its own. All three read it, and the tool module cannot be
@@ -56,16 +53,14 @@ export interface SubprocessToolHandler<TData = unknown> {
 	shouldTerminate?: (event: SubprocessToolEvent) => boolean;
 
 	/**
-	 * Render a single data item inline during streaming progress.
-	 * Called for each tool execution end event.
+	 * A tool's accumulated data is drawn by the block that owns it, never by a handler.
+	 *
+	 * Two rendering members used to sit here, `renderInline` and `renderFinal`, and no reader could
+	 * reach either: every caller draws a tool's rows through the card that owns them, and each of the
+	 * three registered handlers is skipped by name before the lookup that would have found it. They
+	 * were terminal drawing typed into the subprocess protocol, which is why removing them is what
+	 * takes the last terminal type out of this module.
 	 */
-	renderInline?: (data: TData, theme: Theme) => Component;
-
-	/**
-	 * Render accumulated data in the final result view.
-	 * Called once with all accumulated data for this tool.
-	 */
-	renderFinal?: (allData: TData[], theme: Theme, expanded: boolean) => Component;
 }
 
 /** Registry for subprocess tool handlers */

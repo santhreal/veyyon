@@ -34,11 +34,15 @@ import { describe, expect, it } from "bun:test";
 import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
+import {
+	MEMBER_ROOTS,
+	MEMBERS,
+	memberRelative,
+	memberRootOf,
+	REPO_ROOT,
+} from "../../../utils/test/support/package-sources";
 import { GLOBAL_SETTING_BINDINGS } from "../../src/config/settings-domains/global";
 import { SETTINGS_SCHEMA } from "../../src/config/settings-schema";
-
-const PACKAGE_DIR = path.join(import.meta.dir, "..", "..");
-const PACKAGES_DIR = path.join(PACKAGE_DIR, "..");
 
 /**
  * Keys assembled at runtime rather than written as literals, with the site that builds
@@ -75,16 +79,16 @@ async function typescriptFiles(dir: string, out: string[] = []): Promise<string[
 	return out;
 }
 
-/** All non-test source across every workspace package, excluding the schema itself. */
+/** All non-test source across every workspace member, excluding the schema itself. */
 async function productionFiles(): Promise<Array<{ file: string; text: string }>> {
-	const packages = await readdir(PACKAGES_DIR, { withFileTypes: true });
 	const out: Array<{ file: string; text: string }> = [];
-	for (const pkg of packages) {
-		if (!pkg.isDirectory()) continue;
-		for (const file of await typescriptFiles(path.join(PACKAGES_DIR, pkg.name, "src"))) {
+	// Every workspace member, not `packages/` alone: a reader of a setting could live under another
+	// root or at depth, and a key nothing appeared to read reads exactly like a dead flag.
+	for (const member of MEMBERS) {
+		for (const file of await typescriptFiles(path.join(REPO_ROOT, member, "src"))) {
 			if (file.includes(`${path.sep}settings-domains${path.sep}`)) continue;
 			if (file.includes(`${path.sep}__tests__${path.sep}`) || file.endsWith(".test.ts")) continue;
-			out.push({ file: path.relative(PACKAGES_DIR, file), text: await readFile(file, "utf8") });
+			out.push({ file: memberRelative(file), text: await readFile(file, "utf8") });
 		}
 	}
 	return out;
@@ -267,6 +271,11 @@ describe("the walk this lock depends on", () => {
 		expect(SOURCE.length).toBeGreaterThan(1_000_000);
 		expect(GROUPS_READ.size).toBeGreaterThan(5);
 		expect(FILES.length).toBeGreaterThan(1_000);
+
+		// And the corpus spans every root the workspace declares. A root nobody walked contributes no
+		// reader, so a key read only from there reads exactly like a dead flag.
+		const roots = new Set(FILES.map(entry => memberRootOf(entry.file)));
+		expect([...roots].sort()).toEqual([...MEMBER_ROOTS].sort());
 	});
 
 	/**

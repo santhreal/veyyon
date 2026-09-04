@@ -24,13 +24,13 @@ import { stripVTControlCharacters } from "node:util";
 import {
 	formatContextRemaining,
 	formatContextRemainingPercent,
-	formatContextUsage,
 	getContextUsageLevel,
-} from "@veyyon/coding-agent/modes/components/status-line/context-thresholds";
-import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/segments";
-import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
-import { NO_SESSION_FACTS } from "@veyyon/coding-agent/modes/components/status-line/session-facts";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/terminal/components/status-line/context-thresholds";
+import type { SegmentContext } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import { renderSegment } from "@veyyon/coding-agent/modes/terminal/components/status-line/segments";
+import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import { formatContextUsage } from "@veyyon/utils/format";
+import { NO_SESSION_FACTS } from "../src/modes/terminal/components/status-line/session-facts";
 
 beforeAll(async () => {
 	await initTheme();

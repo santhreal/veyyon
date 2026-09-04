@@ -6,8 +6,8 @@ import type { AgentToolResult } from "@veyyon/agent-core";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { type ExecuteHashlineSingleOptions, executeHashlineSingle } from "@veyyon/coding-agent/edit";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import type { ReadToolDetails } from "@veyyon/coding-agent/tools/read";
-import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import type { ReadToolDetails } from "@veyyon/coding-agent/tools/fs/read";
+import { ReadTool } from "@veyyon/coding-agent/tools/fs/read";
 import { removeWithRetries } from "@veyyon/utils";
 import { makeToolSession } from "./helpers/tool-session";
 

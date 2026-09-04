@@ -5,8 +5,9 @@ is the map of the code; this is the path through it.
 
 ## Prerequisites
 
-- **Bun** (the version in `package.json` `packageManager` and the
-  `oven-sh/setup-bun` pin, currently 1.4.0). veyyon is Bun-first; do not
+- **Bun** (the version in the root `package.json` `packageManager` field,
+  currently 1.4.0; the workflows name no `bun-version`, so `oven-sh/setup-bun`
+  installs the version that field states). veyyon is Bun-first; do not
   substitute Node.
 - **Rust** (the pinned `nightly-2026-04-29` toolchain in
   `rust-toolchain.toml`). It is required by `bun run check` and by the fuller
@@ -88,8 +89,10 @@ Testing rules and anti-patterns: [testing.md](testing.md).
 
 ### The pre-push hook
 
-The `pre-push` hook activated above runs `bun run check:ts` and refuses the
-push when it fails. It takes about 15 seconds on a warm cache.
+The `pre-push` hook activated above runs `bun run check:ts`, `bun run check:tools`
+and `bun run changelog:root:check`, and refuses the push when one of them fails.
+It also refuses a commit whose built handbook pages load a hashed asset the commit
+does not carry. The typecheck takes about 15 seconds on a warm cache.
 
 It checks each pushed ref-tip SHA, not your working tree. That matters because
 this tree usually has in-flight work in it, and a hook that typechecked
@@ -123,7 +126,7 @@ are covered.
 | A CLI command / TUI behavior | `packages/coding-agent/src/`, see DEVELOPMENT.md's source map |
 | A tool (read, bash, edit, grep) | `packages/coding-agent/src/` tools + `docs/internal/*-tool-runtime.md` |
 | A provider / model | `packages/ai`, `packages/catalog`, and [adding-a-provider.md](adding-a-provider.md) |
-| A Rust hot path | `crates/` + [natives-architecture.md](natives-architecture.md) |
+| A Rust hot path | `natives/` + [natives-architecture.md](natives-architecture.md) |
 | The website / docs | `website/`, `docs/handbook/src/`, this `docs/internal/` tree |
 
 ## Conventions
@@ -141,4 +144,4 @@ fix), and make sure `bun run check` and the tests pass. Opening the PR runs
 `Checks` and `CI` against it; a maintainer makes the final call and decides
 whether an automated review is requested.
 
-*Verified against `61c974a6c` on 2026-08-21.*
+*Verified against `4aaaffd0a` on 2026-08-30.*

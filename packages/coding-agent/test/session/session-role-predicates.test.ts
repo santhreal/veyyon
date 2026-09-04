@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import fs from "node:fs";
 import path from "node:path";
-import type { CreateAgentSessionOptions } from "@veyyon/coding-agent/sdk";
-import { isInProcessChildSession, isSubagentSession } from "@veyyon/coding-agent/sdk";
+import type { CreateAgentSessionOptions } from "@veyyon/coding-agent/session/factory-options";
+import { isInProcessChildSession, isSubagentSession } from "@veyyon/coding-agent/session/factory-options";
 
 const SDK = path.join(import.meta.dir, "../../src/sdk.ts");
 

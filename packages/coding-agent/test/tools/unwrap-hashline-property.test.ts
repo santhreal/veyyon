@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { unwrapHashlineHeaderPath } from "@veyyon/coding-agent/tools/plan-mode-guard";
+import { unwrapHashlineHeaderPath } from "@veyyon/coding-agent/tools/core/plan-mode-guard";
 
 /**
  * unwrapHashlineHeaderPath properties over many path/tag combinations.

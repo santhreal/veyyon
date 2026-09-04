@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
+import { typeScriptMembersOf } from "../../../../scripts/workspace-layout";
 
 /**
  * ONE owner for the monorepo "collect every package's TypeScript sources"
@@ -40,7 +42,7 @@ export const SKIP_DIR_NAMES: ReadonlySet<string> = new Set(["node_modules", "dis
  * Matching on the published name rather than the directory name is the point:
  * the exemption was originally keyed on the directory, the package's directory
  * was renamed to `packages/lexpack`, and the exemption silently stopped
- * matching (it is `packages/argot` again as of 2026-07-25, which changes nothing
+ * matching (it is `plugins/argot` again as of 2026-07-25, which changes nothing
  * about why the name is the key). Six ownership locks then failed against a package that is exempt by
  * design. A published name is the package's stable identity; a directory name
  * is not. `packageNameFor` resolves it, and `resolveExemptPackageDirs` fails
@@ -49,42 +51,46 @@ export const SKIP_DIR_NAMES: ReadonlySet<string> = new Set(["node_modules", "dis
  */
 export const EXEMPT_PACKAGE_NAMES: ReadonlySet<string> = new Set(["argot"]);
 
-/** The `name` declared by `packages/<dir>/package.json`, or undefined. */
-async function packageNameFor(dirName: string): Promise<string | undefined> {
-	const manifest = path.join(PACKAGES_DIR, dirName, "package.json");
-	const text = await readFile(manifest, "utf8").catch(() => undefined);
+/** The `name` declared by `<member>/package.json`, or undefined. */
+async function packageNameFor(memberDir: string): Promise<string | undefined> {
+	const text = await readFile(path.join(memberDir, "package.json"), "utf8").catch(() => undefined);
 	if (text === undefined) return undefined;
 	const parsed: unknown = JSON.parse(text);
-	const name = (parsed as { name?: unknown }).name;
+	if (parsed === null || typeof parsed !== "object" || !("name" in parsed)) return undefined;
+	const name = parsed.name;
 	return typeof name === "string" ? name : undefined;
 }
 
 /**
- * Directory names under `packages/` whose package is exempt.
+ * Leaf directory names of the workspace members whose package is exempt.
  *
- * Throws when an {@link EXEMPT_PACKAGE_NAMES} entry matches no package, because
- * the only two ways that happens are both defects: the package was deleted (the
- * entry is stale and must go) or it was renamed (the exemption is dead and the
- * locks are now scanning a package they must not judge). Either way the fix is a
- * source edit, never a silent skip.
+ * Resolved across EVERY declared workspace member, not the contents of one root. The exemption read
+ * `packages/` only, so moving the exempt package to another root (`plugins/argot`) made the entry
+ * match nothing and the resolution threw, taking every lock built on this traversal red — the same
+ * class of failure the name-keyed resolution below exists to prevent, one level up.
+ *
+ * Throws when an {@link EXEMPT_PACKAGE_NAMES} entry matches no member, because the only two ways
+ * that happens are both defects: the package was deleted (the entry is stale and must go) or it was
+ * renamed (the exemption is dead and the locks are now scanning a package they must not judge).
+ * Either way the fix is a source edit, never a silent skip.
  */
 export async function resolveExemptPackageDirs(): Promise<ReadonlySet<string>> {
 	const dirs = new Set<string>();
 	const matched = new Set<string>();
-	for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
-		if (!pkg.isDirectory()) continue;
-		const name = (await packageNameFor(pkg.name)) ?? pkg.name;
+	for (const member of MEMBERS) {
+		const leaf = member.slice(member.lastIndexOf("/") + 1);
+		const name = (await packageNameFor(path.join(REPO_ROOT, member))) ?? leaf;
 		if (!EXEMPT_PACKAGE_NAMES.has(name)) continue;
-		dirs.add(pkg.name);
+		dirs.add(leaf);
 		matched.add(name);
 	}
 	const missing = [...EXEMPT_PACKAGE_NAMES].filter(name => !matched.has(name));
 	if (missing.length > 0) {
 		throw new Error(
-			`package-sources: EXEMPT_PACKAGE_NAMES names no package under ${PACKAGES_DIR}: ${missing.join(", ")}. ` +
-				`Either the package was removed (delete the entry) or it was renamed (update the entry to its new ` +
-				`package.json "name"). Leaving it would make every @veyyon/utils ownership lock scan a package that ` +
-				`is exempt by design.`,
+			`package-sources: EXEMPT_PACKAGE_NAMES names no workspace member under ${REPO_ROOT}: ` +
+				`${missing.join(", ")}. Either the package was removed (delete the entry) or it was renamed ` +
+				`(update the entry to its new package.json "name"). Leaving it would make every @veyyon/utils ` +
+				`ownership lock scan a package that is exempt by design.`,
 		);
 	}
 	return dirs;
@@ -92,6 +98,117 @@ export async function resolveExemptPackageDirs(): Promise<ReadonlySet<string>> {
 
 /** Absolute path to the monorepo `packages/` directory. */
 export const PACKAGES_DIR = path.resolve(import.meta.dir, "..", "..", "..");
+
+/** Absolute path to the repository root, which is the parent of every workspace root. */
+export const REPO_ROOT = path.resolve(PACKAGES_DIR, "..");
+
+/**
+ * Every workspace member directory, repo-relative, resolved from the root manifest rather than named.
+ *
+ * This collector knew one root, `packages/`. A member under any other root was outside every lock
+ * built on it: the `@veyyon/utils` single-owner locks could not see a hand-rolled copy there, and
+ * `tripwire-preload-coverage` could not see that the member has tests at all. `contracts/wire` has
+ * eight suites and a `bunfig.toml`, and moving it out of `packages/` removed it from both.
+ *
+ * It then knew ROOTS, which is a list of the directories a member glob sweeps. That reaches a member
+ * one level under a glob and nothing else, so `python/veybot/web` and `natives/bridge/bindings` --
+ * both declared as literal paths -- were outside every lock built on it for the same reason
+ * `contracts/wire` had been. The member list is resolved, so a member at any depth is in it.
+ */
+export const MEMBERS: readonly string[] = typeScriptMembersOf(REPO_ROOT);
+
+/** The top-level directory of each member, which is what a per-tree coverage assertion compares. */
+export const MEMBER_ROOTS: readonly string[] = [...new Set(MEMBERS.map(member => member.split("/")[0] ?? ""))].sort();
+
+/**
+ * The key an allow-list is written in: repo-relative, forward slashes, with a leading `packages/`
+ * dropped.
+ *
+ * Dropping that one prefix keeps every existing key (`utils/src/x.ts`) spelled as it always was
+ * while a member under another root reads as `contracts/wire/src/relay.ts` — unambiguous as long as
+ * no package under `packages/` is named after another root, which `package-sources.test.ts`
+ * asserts.
+ */
+export function memberRelative(file: string): string {
+	const rel = path.relative(REPO_ROOT, file).replaceAll(path.sep, "/");
+	return rel.startsWith("packages/") ? rel.slice("packages/".length) : rel;
+}
+
+/**
+ * The member a collected file belongs to, spelled the way {@link memberRelative} spells it:
+ * `utils` for a package, `contracts/wire` for a member under another root.
+ */
+export function memberKeyOf(file: string): string {
+	const rel = path.relative(REPO_ROOT, file).replaceAll(path.sep, "/");
+	const member = MEMBERS.find(candidate => rel === candidate || rel.startsWith(`${candidate}/`));
+	if (member !== undefined) return member.startsWith("packages/") ? member.slice("packages/".length) : member;
+	return memberRelative(file).split("/")[0] ?? "";
+}
+
+/** The directory a {@link memberKeyOf} key names. */
+export function memberDirOf(key: string): string {
+	return key.includes("/") ? path.join(REPO_ROOT, key) : path.join(PACKAGES_DIR, key);
+}
+
+/**
+ * The absolute path a {@link memberRelative} key names, which is that function's inverse.
+ *
+ * A key whose head is a declared workspace root (`hosts/terminal/engine/src/x.ts`) resolves against
+ * the repository root; any other key is under `packages/`, where the prefix was dropped.
+ */
+export function memberFileOf(key: string): string {
+	const head = key.split("/")[0] ?? "";
+	return MEMBER_ROOTS.includes(head) ? path.join(REPO_ROOT, key) : path.join(PACKAGES_DIR, key);
+}
+
+/**
+ * The directory of the member whose `package.json` declares {@link name}, absolute.
+ *
+ * A suite that reads one other package's sources used to spell that package's directory as a
+ * relative path (`../../tui/src`). A published name is the package's stable identity and its
+ * directory is not: `@veyyon/tui` is `hosts/terminal/engine`, `@veyyon/hashline` is
+ * `plugins/hashline`, and a suite anchored on the old path fails with ENOENT the day the directory
+ * moves — six suites here did, all at once, for exactly that reason.
+ *
+ * Throws when no member declares the name, because the two ways that happens are both defects: the
+ * package was renamed (the caller is now locking nothing) or removed (the caller's subject is gone).
+ */
+export function memberDirNamed(name: string): string {
+	for (const member of MEMBERS) {
+		const manifest = path.join(REPO_ROOT, member, "package.json");
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(readFileSync(manifest, "utf8"));
+		} catch {
+			continue;
+		}
+		if (parsed !== null && typeof parsed === "object" && (parsed as { name?: unknown }).name === name) {
+			return path.join(REPO_ROOT, member);
+		}
+	}
+	throw new Error(
+		`package-sources: no workspace member under ${REPO_ROOT} declares the package name ${name}. ` +
+			`Either it was renamed (update the caller to the new name) or removed (drop the caller's subject).`,
+	);
+}
+
+/** The `src` directory of the member whose `package.json` declares {@link name}, absolute. */
+export function memberSrcNamed(name: string): string {
+	return path.join(memberDirNamed(name), "src");
+}
+
+/**
+ * The workspace root a {@link memberRelative} key belongs to.
+ *
+ * A key under `packages/` has that prefix dropped, so a key with no declared root at its head names
+ * a package. This exists so a sweep can assert it reached EVERY declared root: without that
+ * assertion a sweep narrowed back to one directory stays green, because the roots it stopped
+ * reading hold no violation to report.
+ */
+export function memberRootOf(key: string): string {
+	const head = key.split("/")[0] ?? "";
+	return MEMBER_ROOTS.includes(head) ? head : "packages";
+}
 
 async function walk(dir: string, includeTests: boolean, out: string[], includeExempt = false): Promise<void> {
 	// A missing subdir (an assets-only package has no src/, a src-only scan finds
@@ -131,16 +248,17 @@ export interface CollectPackageSourcesOptions {
 	includeExemptPackages?: boolean;
 }
 
-/** Absolute paths of every matching `.ts` file across non-exempt packages. */
+/** Absolute paths of every matching `.ts` file across non-exempt members of every root. */
 export async function collectPackageSourceFiles(options: CollectPackageSourcesOptions = {}): Promise<string[]> {
 	const dirs = options.dirs ?? ["src"];
 	const includeTests = options.includeTests ?? false;
 	const files: string[] = [];
 	const exemptDirs = options.includeExemptPackages ? new Set<string>() : await resolveExemptPackageDirs();
-	for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
-		if (!pkg.isDirectory() || exemptDirs.has(pkg.name)) continue;
+	for (const member of MEMBERS) {
+		const name = member.slice(member.lastIndexOf("/") + 1);
+		if (exemptDirs.has(name)) continue;
 		for (const sub of dirs) {
-			await walk(path.join(PACKAGES_DIR, pkg.name, sub), includeTests, files, options.includeExemptPackages);
+			await walk(path.join(REPO_ROOT, member, sub), includeTests, files, options.includeExemptPackages);
 		}
 	}
 	return files;
@@ -154,17 +272,14 @@ export interface PackageSource {
 
 /**
  * Same coverage as {@link collectPackageSourceFiles}, but also reads each file
- * and returns `{ rel, text }` pairs. `rel` is relative to `packages/` with
- * forward slashes so allow-lists read the same on every platform.
+ * and returns `{ rel, text }` pairs. `rel` is {@link memberRelative}, so an
+ * allow-list reads the same on every platform.
  */
 export async function collectPackageSources(options: CollectPackageSourcesOptions = {}): Promise<PackageSource[]> {
 	const files = await collectPackageSourceFiles(options);
 	const out: PackageSource[] = [];
 	for (const file of files) {
-		out.push({
-			rel: path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/"),
-			text: await readFile(file, "utf8"),
-		});
+		out.push({ rel: memberRelative(file), text: await readFile(file, "utf8") });
 	}
 	return out;
 }

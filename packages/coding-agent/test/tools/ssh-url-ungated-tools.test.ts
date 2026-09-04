@@ -3,8 +3,8 @@ import * as os from "node:os";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { InternalUrlRouter } from "@veyyon/coding-agent/internal-urls/router";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { SearchTool } from "@veyyon/coding-agent/tools/search";
-import { resolveToolSearchScope } from "@veyyon/coding-agent/tools/search-scope";
+import { SearchTool } from "@veyyon/coding-agent/tools/search/search";
+import { resolveToolSearchScope } from "@veyyon/coding-agent/tools/search/search-scope";
 
 // Minimal ToolSession stub (ssh-url-approval.test.ts shape). The ssh:// guard
 // fires before any session/SSH access, so no real cwd/fs is needed.

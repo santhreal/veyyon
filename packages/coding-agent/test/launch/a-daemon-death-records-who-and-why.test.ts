@@ -49,7 +49,7 @@ import {
 	type DaemonTerminationOwner,
 	parseDaemonSnapshot,
 } from "../../src/launch/protocol";
-import { toolContent } from "../../src/tools/launch";
+import { toolContent } from "../../src/tools/shell/launch";
 
 // The broker worker is the veyyon CLI (inherits this process's env); isolate the
 // config root so a real ~/.veyyon cannot break broker startup, exactly as

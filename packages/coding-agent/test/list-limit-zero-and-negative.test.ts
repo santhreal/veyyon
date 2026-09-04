@@ -2,7 +2,7 @@
  * applyListLimit ignores non-positive limit and headLimit.
  */
 import { describe, expect, it } from "bun:test";
-import { applyListLimit } from "../src/tools/list-limit";
+import { applyListLimit } from "../src/tools/core/list-limit";
 
 describe("applyListLimit non-positive ignored", () => {
 	const items = ["a", "b", "c"];

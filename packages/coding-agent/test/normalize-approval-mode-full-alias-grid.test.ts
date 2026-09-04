@@ -4,7 +4,7 @@
  * closed to `ask` rather than inherit that default.
  */
 import { describe, expect, it } from "bun:test";
-import { normalizeApprovalMode } from "../src/tools/approval";
+import { normalizeApprovalMode } from "../src/tools/core/approval";
 
 describe("normalizeApprovalMode full alias grid", () => {
 	const cases: Array<[string | undefined, string]> = [

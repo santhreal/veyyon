@@ -4,7 +4,7 @@
  * ends the one line worth reading (a warning, a failing assertion, a summary)
  * has already scrolled out of the card, and the reader has to press ctrl+o or
  * open the artifact to find out what happened. The per-tool shell minimizer in
- * `crates/veyyon-shell/src/minimizer/` cannot help here: its filters rebuild
+ * `natives/shell/src/minimizer/` cannot help here: its filters rebuild
  * whole buffers and only ever run on a SEALED capture, while this window is
  * painted from the live stream.
  *
@@ -15,24 +15,25 @@
  * control that the uncollapsed tail really did hide the anomaly.
  *
  * What it does NOT catch: the ssh card's fixed five-line fallback preview
- * (`tools/ssh.ts`, no tail window at all), the interactive `!command` execution
- * block (`modes/components/execution-shared.ts:createCollapsedPreview`, which is
+ * (`tools/shell/ssh.ts`, no tail window at all), the interactive `!command` execution
+ * block (`modes/terminal/components/transcript/execution-shared.ts:createCollapsedPreview`, which is
  * handed pre-styled text and so cannot key on a leading token), a markdown eval
  * cell (rendered by `Markdown` before the tail is taken), and the Rust
  * minimizer's per-tool filters, which have their own tests in the crate.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
-import { truncateToVisualLines } from "@veyyon/coding-agent/modes/components/visual-truncate";
-import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { bashToolRenderer } from "@veyyon/coding-agent/tools/bash";
-import { evalToolRenderer } from "@veyyon/coding-agent/tools/eval-render";
+import { truncateToVisualLines } from "@veyyon/coding-agent/modes/terminal/components/transcript/visual-truncate";
+import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
 import {
 	collapseProgressRuns,
 	PROGRESS_RUN_MIN_LINES,
 	previewWindowRows,
-} from "@veyyon/coding-agent/tools/render-utils";
-import { resetKeybindingsForTests, setKeybindings } from "@veyyon/tui";
+} from "@veyyon/coding-agent/tools/core/render-utils";
+import { bashToolView } from "@veyyon/coding-agent/tools/shell/bash-view";
+import { evalToolView } from "@veyyon/coding-agent/tools/shell/eval-view";
+import { resetKeybindingsForTests, setKeybindings } from "@veyyon/utils/keybindings";
 
 const ORIGINAL_ROWS = Object.getOwnPropertyDescriptor(process.stdout, "rows");
 
@@ -143,13 +144,14 @@ describe("the collapsed card window", () => {
 
 	test("bash keeps the warning and names what it counted away", () => {
 		const rendered = plain(
-			bashToolRenderer
-				.renderResult(
+			drawToolView(
+				bashToolView.renderResult(
 					{ content: [{ type: "text", text: CARGO_CAPTURE.join("\n") }] },
-					{ expanded: false, isPartial: false },
-					activeTheme,
-				)
-				.render(80),
+					{ expanded: false, partial: false },
+					{ command: "cargo test -p keyhog-scanner" },
+				),
+				activeTheme,
+			).render(80),
 		);
 		expect(rendered.join("\n")).toContain(WARNING);
 		expect(rendered.join("\n")).toContain("+39 earlier");
@@ -158,13 +160,14 @@ describe("the collapsed card window", () => {
 
 	test("ctrl+o still shows every progress line bash counted away", () => {
 		const rendered = plain(
-			bashToolRenderer
-				.renderResult(
+			drawToolView(
+				bashToolView.renderResult(
 					{ content: [{ type: "text", text: CARGO_CAPTURE.join("\n") }] },
-					{ expanded: true, isPartial: false },
-					activeTheme,
-				)
-				.render(80),
+					{ expanded: true, partial: false },
+					{ command: "cargo test -p keyhog-scanner" },
+				),
+				activeTheme,
+			).render(80),
 		);
 		expect(rendered.filter(line => line.includes("Compiling"))).toHaveLength(40);
 		expect(rendered.join("\n")).not.toContain("+39 earlier");
@@ -172,13 +175,13 @@ describe("the collapsed card window", () => {
 
 	test("eval keeps the warning and names what it counted away", () => {
 		const rendered = plain(
-			evalToolRenderer
-				.renderResult(
+			drawToolView(
+				evalToolView.renderResult(
 					{ content: [{ type: "text", text: CARGO_CAPTURE.join("\n") }] },
-					{ expanded: false, isPartial: false },
-					activeTheme,
-				)
-				.render(80),
+					{ expanded: false },
+				),
+				activeTheme,
+			).render(80),
 		);
 		expect(rendered.join("\n")).toContain(WARNING);
 		expect(rendered.join("\n")).toContain("+39 earlier");
@@ -187,8 +190,8 @@ describe("the collapsed card window", () => {
 
 	test("an eval cell keeps the warning and names what it counted away", () => {
 		const rendered = plain(
-			evalToolRenderer
-				.renderResult(
+			drawToolView(
+				evalToolView.renderResult(
 					{
 						content: [{ type: "text", text: "" }],
 						details: {
@@ -203,10 +206,10 @@ describe("the collapsed card window", () => {
 							],
 						},
 					},
-					{ expanded: false, isPartial: false },
-					activeTheme,
-				)
-				.render(80),
+					{ expanded: false },
+				),
+				activeTheme,
+			).render(80),
 		);
 		expect(rendered.join("\n")).toContain(WARNING);
 		expect(rendered.join("\n")).toContain("+39 earlier");

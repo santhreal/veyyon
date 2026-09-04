@@ -24,8 +24,9 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { MnemopiSessionState } from "@veyyon/coding-agent/mnemopi/state";
-import type { AgentSession, AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import { MnemopiSessionState } from "@veyyon/coding-agent/memory/mnemopi/state";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import * as logger from "@veyyon/utils/logger";
 
 // No `useIsolatedAgentDir()` here, deliberately. That helper reaches

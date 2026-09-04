@@ -13,15 +13,15 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
+import { SelectorController } from "@veyyon/coding-agent/modes/terminal/controllers/selector-controller";
 import { createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/sdk";
 import { SecretVault } from "@veyyon/coding-agent/secrets/vault";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { runSecretCommandForSurface } from "@veyyon/coding-agent/slash-commands/helpers/secret";
 import { createPersistedSubagentReviverFactory } from "@veyyon/coding-agent/task/persisted-revive";
-import { TempDir } from "@veyyon/utils";
+import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { setProjectDir, TempDir } from "@veyyon/utils";
 import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
 import { useSpyTeardown } from "../helpers/spy-teardown";
 
@@ -33,6 +33,9 @@ const CONFIG_B_VALUE = "project-b-file-secret-97531";
 const ENV_VALUE = "runtime-environment-secret-86420";
 const ENV_NAME = "VEYYON_LIFECYCLE_SECRET";
 const getConfigRoot = useIsolatedConfigRoot();
+
+/** The working directory this file inherited, restored before a fixture tree is deleted. */
+const HOME_CWD = process.cwd();
 
 let registryRoot: TempDir;
 let authStorage: AuthStorage;
@@ -134,6 +137,11 @@ async function addSecretAndForgeAnExternalWrite(fixture: RuntimeFixture, project
 
 async function disposeFixture(fixture: RuntimeFixture): Promise<void> {
 	await fixture.session.dispose();
+	// `createAgentSession` chdirs into the fixture's project through `setProjectDir`,
+	// so the process working directory is inside the tree about to be deleted. Leave
+	// it there and every later `process.cwd()` in this process throws ENOENT — the
+	// next file in a shared run, and the leak tracer's own snapshot.
+	setProjectDir(HOME_CWD);
 	await fixture.root.remove();
 }
 

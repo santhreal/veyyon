@@ -24,12 +24,12 @@
 
 import { describe, expect, test } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import {
 	checkpointStartedAtFromEntry,
 	completedRewindFromEntry,
 	isSuccessfulCheckpointEntry,
 } from "../../src/session/rewind-checkpoint";
-import type { SessionEntry } from "../../src/session/session-entries";
 
 const base = { id: "e1", parentId: null, timestamp: "2024-01-01T00:00:00.000Z" };
 

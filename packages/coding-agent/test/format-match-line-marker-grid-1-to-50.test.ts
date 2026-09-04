@@ -3,7 +3,7 @@
  * Why: grep/ast-grep alignment depends on * vs space and : vs | never swapping.
  */
 import { describe, expect, it } from "bun:test";
-import { formatMatchLine } from "../src/tools/match-line-format";
+import { formatMatchLine } from "../src/tools/search/match-line-format";
 
 describe("formatMatchLine marker grid 1 to 50", () => {
 	for (let n = 1; n <= 50; n++) {

@@ -1,16 +1,16 @@
 # Whole-Product Rust Conformance and Bug-Discovery Engine
 
-Technical architecture and implementation plan for replacing the TypeScript test surface and the simulations package (`packages/simulations`) with a unified Rust conformance crate (`crates/veyyon-conformance`).
+Technical architecture and implementation plan for replacing the TypeScript test surface and the simulations package (`packages/simulations`) with a unified Rust conformance crate (`tests/conformance`).
 
 Tracking issue: [#877](https://github.com/santhreal/veyyon/issues/877).
 
 ## System Architecture
 
-The conformance engine is an out-of-process verification and differential testing harness located at `crates/veyyon-conformance`. It validates observable product behavior against formal specifications, deterministic state machines, and independent reference oracles.
+The conformance engine is an out-of-process verification and differential testing harness located at `tests/conformance`. It validates observable product behavior against formal specifications, deterministic state machines, and independent reference oracles.
 
 ```
 +-----------------------------------------------------------------------------------+
-|                            crates/veyyon-conformance                              |
+|                                tests/conformance                                  |
 +-----------------------------------------------------------------------------------+
 |  +---------------------+  +----------------------+  +--------------------------+  |
 |  |  Corpus Generator   |  | Materialized Corpus  |  |   Independent Oracles    |  |
@@ -42,7 +42,7 @@ The conformance engine is an out-of-process verification and differential testin
 
 ### Module Organization
 
-The `crates/veyyon-conformance` crate is partitioned into targeted modules:
+The `tests/conformance` crate is partitioned into targeted modules:
 
 - `src/corpus/`: Schema definitions, deterministic serialization, materialization, and canonical BLAKE3 deduplication.
 - `src/generator/`: Sixteen per-subsystem plans, the family that walks their axis product to fill each allocation exactly, greedy covering arrays, and the boundary-value tables.
@@ -101,7 +101,7 @@ schema is versioned independently from production persistence formats:
 }
 ```
 
-`crates/veyyon-conformance/src/corpus/mod.rs` is the authority for this shape;
+`tests/conformance/src/corpus/mod.rs` is the authority for this shape;
 the JSON above is what it serializes. An absent optional field is absent rather
 than null, so an oracle constrains exactly what its contract names and cannot
 silently accept a wider outcome than it was written for.
@@ -246,7 +246,7 @@ reaching its count by repeating a tuple.
 To eliminate self-fulfilling tests and mock drift, the test harness adheres to strict execution invariants:
 
 1. **Zero Production Logic in Fakes**: No shadow reimplementations of TypeScript or Rust production logic exist in test helpers. Cases execute the compiled release artifact or migrated production crates through their production interfaces.
-2. **Migration Precedence**: Production logic must be ported to Rust crates (`crates/veyyon-*`) before direct-Rust cases claim to cover it. Remaining TypeScript behavior is exercised by driving the compiled CLI through external PTY/ConPTY, real isolated workspaces, and TCP loopback endpoints.
+2. **Migration Precedence**: Production logic must be ported to Rust crates (`natives/*`) before direct-Rust cases claim to cover it. Remaining TypeScript behavior is exercised by driving the compiled CLI through external PTY/ConPTY, real isolated workspaces, and TCP loopback endpoints.
 3. **Black-Box Process Boundaries**: The conformance harness drives `target/release/veyyon` through standard streams, PTY/ConPTY devices, isolated profile/workspace directories, and configured loopback services. It does not inject code or virtual I/O implementations into the process.
 4. **Observable Contract Verification**: Assertions check observable output streams, filesystem state changes, exit codes, PTY cell grids, and wire packets. Internal function pointers, private variables, and memory layouts are not asserted.
 5. **No Mock Libraries**: Production paths do not link against mock-injecting libraries. Direct-Rust cases substitute only external I/O traits; compiled-product cases manipulate the environment strictly outside the process and never interpose syscalls or dynamic libraries.
@@ -597,7 +597,7 @@ The resulting minimal reproducer is serialized as a standalone JSONL record with
 
 ## Discovery Engines
 
-`crates/veyyon-conformance` integrates specialized bug-discovery engines:
+`tests/conformance` integrates specialized bug-discovery engines:
 
 ```
 +-----------------------------------------------------------------------------------+
@@ -773,13 +773,13 @@ production-boundary rule forbids.
 
 ## Migration Waves and Decommissioning Plan
 
-The migration from TypeScript test suites and `packages/simulations` to `crates/veyyon-conformance` proceeds in six sequential waves, numbered 0 through 5.
+The migration from TypeScript test suites and `packages/simulations` to `tests/conformance` proceeds in six sequential waves, numbered 0 through 5.
 
 ```
 +-----------------------------------------------------------------------------------+
 |                             Six-Wave Migration Plan                              |
 +-----------------------------------------------------------------------------------+
-| [Wave 0: Infrastructure]  --> Scaffold crates/veyyon-conformance, VFS, VPTY, vmock |
+| [Wave 0: Infrastructure]  --> Scaffold tests/conformance, VFS, VPTY, vmock        |
 |           |                                                                       |
 | [Wave 1: Stateless Core]  --> Subsystems 11 Configuration, 14 Editing, 16 Wire |
 |           |                                                                       |
@@ -795,7 +795,7 @@ The migration from TypeScript test suites and `packages/simulations` to `crates/
 
 ### Wave 0: Harness & Virtual Infrastructure Construction
 
-- Construct `crates/veyyon-conformance` crate structure and dependencies.
+- Construct `tests/conformance` crate structure and dependencies.
 - Implement `vfs`, `vpty`, `vclock`, and `vmock` engines.
 - Build the 250,000-case generator, deduplication validator, and JSONL materializer.
 - Establish baseline JUnit and SARIF reporting.
@@ -804,9 +804,9 @@ The migration from TypeScript test suites and `packages/simulations` to `crates/
 ### Wave 1: Stateless Core, Configuration, Wire Protocols, and Argot
 
 - Migrate Subsystems 11, 14, and 16 before claiming direct Rust coverage:
-  - `packages/argot` -> a production `veyyon-argot` crate
-  - `packages/hashline` -> a production `veyyon-hashline` crate
-  - `packages/wire` -> a production `veyyon-wire` crate
+  - `plugins/argot` -> a production `veyyon-argot` crate
+  - `plugins/hashline` -> a production `veyyon-hashline` crate
+  - `contracts/wire` -> a production `veyyon-wire` crate
   - Catalog classification and configuration schema logic -> production Rust crates
 - Keep independent conformance oracles declarative: they describe invariants and expected records but never reimplement the production algorithm.
 - Materialize exactly 42,000 cases and 720 error contracts.
@@ -815,11 +815,11 @@ The migration from TypeScript test suites and `packages/simulations` to `crates/
 ### Wave 2: Providers, Persistence, Memory, and LSP
 
 - Port and verify Subsystems 02, 05, 13, and 15:
-  - `packages/mnemopi` & SQLite persistence
+  - `plugins/mnemopi` & SQLite persistence
   - `packages/ai` streaming and token accumulation
   - LSP JSON-RPC transport and diagnostics
 - Materialize exactly 62,000 cases and 1,056 error contracts.
-- **Gate**: 100% pass on the Wave 2 corpus; delete superseded tests in `packages/mnemopi/test` and `packages/ai/test` only after inventory parity.
+- **Gate**: 100% pass on the Wave 2 corpus; delete superseded tests in `plugins/mnemopi/test` and `packages/ai/test` only after inventory parity.
 
 ### Wave 3: Agent Runtime, Tools, Sessions, Concurrency, Security, and Context
 
@@ -834,7 +834,7 @@ The migration from TypeScript test suites and `packages/simulations` to `crates/
 
 - Port and verify Subsystems 01, 08, 09, and 10:
   - Terminal UI rendering across all viewports and dual grounds
-  - `packages/natives` and `crates/veyyon-natives` text, image, search, and filesystem services
+  - `natives/bridge/bindings` and `natives/bridge/addon` text, image, search, and filesystem services
   - Worker subprocess lifecycles (`stats`, `js_eval`, `tiny_inference`, `tab`)
   - CLI flag parsing, dispatch, and error output
   - Distribution installers (`install.sh`, `install.ps1`)
@@ -846,7 +846,7 @@ The migration from TypeScript test suites and `packages/simulations` to `crates/
 1. **Parity Certification**: Run all 250,000 cases through the target declared by each canonical record; assert zero failures. The 5,000 compiled-product cases use the release artifact.
 2. **Mutation Gate Run**: Execute at least 1,200 mutations; certify at least 1,000 killed and zero critical-path survivors.
 3. **Simulation Package Fold & Deletion**:
-   - Transfer any remaining non-redundant scenario definitions from `packages/simulations` into `crates/veyyon-conformance`.
+   - Transfer any remaining non-redundant scenario definitions from `packages/simulations` into `tests/conformance`.
    - Delete `packages/simulations` directory and remove workspace entries from `package.json` and `tsconfig.json`.
 4. **Final Product-Test Elimination**: Delete all superseded `.test.ts` files under `packages/`. Retain or explicitly port repository-governance checks under `scripts/`.
 5. **CI Pipeline Migration**:
@@ -916,7 +916,8 @@ target/conformance-reports/
 
 ### 3. Standalone Reproduction CLI
 
-Any failure is replayed locally with a single self-contained command:
+Planned, and the one binary that exists today is `campaign`. A failure will
+replay locally with a single self-contained command:
 
 ```sh
 cargo run -p veyyon-conformance --bin replay -- --case [CASE_ID]
@@ -945,3 +946,5 @@ The conformance migration is complete when all the following quantitative criter
 - [ ] **TypeScript Product-Test Deletion**: Zero superseded `*.test.ts` files remain in `packages/`; repository-governance checks under `scripts/` are retained or ported with parity.
 - [ ] **CI Performance**: Direct-Rust p95 is <= 1.5 ms, compiled-product p95 is <= 500 ms, three cold calibrations of every exact shard finish in <= 144 seconds, and the complete 250,000-case CI run finishes in < 180 seconds across eight runners.
 - [ ] **Zero Unresolved Mismatches**: Every corpus mismatch is fixed or represented by an explicit reviewed contract change across Linux x86_64, Linux aarch64, macOS x86_64, macOS aarch64, and Windows x86_64.
+
+*Verified against `954eace449` on 2026-08-31.*
