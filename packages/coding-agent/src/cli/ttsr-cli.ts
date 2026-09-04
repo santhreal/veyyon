@@ -23,6 +23,7 @@ import type { TtsrSettings } from "../config/settings-schema";
 import { initializeWithSettings, loadCapability } from "../discovery";
 import { buildRuleFromMarkdown, createSourceMeta } from "../discovery/helpers";
 import type { TtsrManager } from "../export/ttsr";
+import { EXIT_USAGE } from "./exit-codes";
 
 export type TtsrAction = "test" | "list" | "scan";
 
@@ -978,7 +979,8 @@ export async function runTtsrCommand(cmd: TtsrCommandArgs): Promise<void> {
 	if (cmd.action === "test") {
 		if (!cmd.test) {
 			process.stderr.write(`${chalk.red("error: `ttsr test` requires a snippet, --file, or piped stdin")}\n`);
-			process.exit(1);
+			process.exit(EXIT_USAGE);
+			return;
 		}
 		await runTest(cmd.test, cmd.json ?? false, cwd);
 		return;
@@ -990,11 +992,12 @@ export async function runTtsrCommand(cmd: TtsrCommandArgs): Promise<void> {
 	if (cmd.action === "scan") {
 		if (!cmd.scan) {
 			process.stderr.write(`${chalk.red("error: scan arguments missing")}\n`);
-			process.exit(1);
+			process.exit(EXIT_USAGE);
+			return;
 		}
 		await runScan(cmd.scan, cmd.json ?? false, cwd);
 		return;
 	}
 	process.stderr.write(`${chalk.red(`error: unknown ttsr action: ${cmd.action}`)}\n`);
-	process.exit(1);
+	process.exit(EXIT_USAGE);
 }

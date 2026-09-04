@@ -58,7 +58,7 @@ export async function processFileArguments(fileArgs: string[], options?: Process
 		// Read file, handling not-found gracefully
 		let buffer: Uint8Array;
 		try {
-			buffer = await Bun.file(absolutePath).bytes();
+			buffer = await fs.promises.readFile(absolutePath);
 		} catch (err) {
 			if (isEnoent(err)) {
 				console.error(chalk.red(`Error: File not found: ${absolutePath}`));
@@ -72,7 +72,7 @@ export async function processFileArguments(fileArgs: string[], options?: Process
 
 		if (mimeType) {
 			// Handle image file
-			const base64Content = buffer.toBase64();
+			const base64Content = Buffer.from(buffer).toString("base64");
 			let attachment: ImageContent;
 			let dimensionNote: string | undefined;
 
