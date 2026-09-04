@@ -598,12 +598,19 @@ export class AutoresearchStorage {
 	}
 
 	markRunCompleted(params: MarkRunCompletedParams): RunRow {
+		const run = this.getRunByIdRequired(params.runId);
+		if (run.status !== null) {
+			throw new Error(`Cannot complete run ${params.runId}: run is already logged with status "${run.status}"`);
+		}
+		if (run.abandonedAt !== null) {
+			throw new Error(`Cannot complete run ${params.runId}: run was abandoned`);
+		}
 		this.#db
 			.prepare(
 				`UPDATE runs SET
 					completed_at = ?, duration_ms = ?, exit_code = ?, timed_out = ?,
 					parsed_primary = ?, parsed_metrics_json = ?, parsed_asi_json = ?
-				WHERE id = ?`,
+				WHERE id = ? AND status IS NULL AND abandoned_at IS NULL`,
 			)
 			.run(
 				params.completedAt,
@@ -619,6 +626,13 @@ export class AutoresearchStorage {
 	}
 
 	markRunLogged(params: MarkRunLoggedParams): RunRow {
+		const run = this.getRunByIdRequired(params.runId);
+		if (run.status !== null) {
+			throw new Error(`Cannot log run ${params.runId}: run is already logged with status "${run.status}"`);
+		}
+		if (run.abandonedAt !== null) {
+			throw new Error(`Cannot log run ${params.runId}: run was abandoned`);
+		}
 		this.#db
 			.prepare(
 				`UPDATE runs SET
@@ -626,7 +640,7 @@ export class AutoresearchStorage {
 					commit_hash = ?, confidence = ?, modified_paths_json = ?, scope_deviations_json = ?,
 					justification = ?, logged_at = ?,
 					arm = COALESCE(?, arm), certified_by = COALESCE(?, certified_by)
-				WHERE id = ?`,
+				WHERE id = ? AND status IS NULL AND abandoned_at IS NULL`,
 			)
 			.run(
 				params.status,

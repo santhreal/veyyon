@@ -81,7 +81,7 @@ export function createCertifyArmsTool(
 				modifiedPaths: arm.modified_paths,
 			}));
 			const { survivors, rejected } = triage(candidates, session.offLimits);
-			const certifier = certifierFor(survivors.length);
+			const certifier = certifierFor(survivors.length, session.certify);
 			const lines: string[] = [];
 
 			lines.push(
@@ -90,7 +90,7 @@ export function createCertifyArmsTool(
 			for (const entry of rejected) {
 				lines.push(`- rejected ${entry.arm}: ${entry.reason} (${entry.detail})`);
 			}
-			if (certificationDegraded(session.breadth, survivors.length)) {
+			if (certificationDegraded(session.breadth, survivors.length, session.certify)) {
 				lines.push(
 					`Certification degraded: breadth is ${session.breadth} but only ${survivors.length} arms survived, so review falls back to ${certifier}.`,
 				);
@@ -116,7 +116,7 @@ export function createCertifyArmsTool(
 			}
 
 			if (params.verdicts === undefined) {
-				const pairs = certificationPairs(survivors);
+				const pairs = certificationPairs(survivors, session.certify);
 				if (pairs.length === 0) {
 					lines.push("Nothing to certify.");
 				} else {
