@@ -80,7 +80,7 @@ import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 import * as wire from "@veyyon/wire";
 
 const SRC = path.join(import.meta.dir, "../../src");
-const PACKAGES = path.join(SRC, "../..");
+const REPO_ROOT = path.join(SRC, "../../..");
 
 /**
  * The modules `relative` (under `src/`) imports, each named by its own identity rather than by the
@@ -104,9 +104,9 @@ function importsOf(relative: string): string[] {
 	);
 }
 
-/** The same, for a file in a sibling package. */
+/** The same, for a file in another member, `relative` to the repository root. */
 function packageImportsOf(relative: string): string[] {
-	return moduleSpecifiersIn(fs.readFileSync(path.join(PACKAGES, relative), "utf-8"));
+	return moduleSpecifiersIn(fs.readFileSync(path.join(REPO_ROOT, relative), "utf-8"));
 }
 
 /** One git command in `cwd`, output trimmed. Throws with git's own message when it fails. */
@@ -441,7 +441,7 @@ describe("asStrictBytes", () => {
 	 * unconditional (neither spans its own buffer), so a plain `new Uint8Array` is identical.
 	 */
 	it("is what every remaining crypto call site imports", () => {
-		for (const file of ["ai/src/providers/aws-sigv4.ts", "ai/src/auth-broker/snapshot-cache.ts"]) {
+		for (const file of ["packages/ai/src/providers/aws-sigv4.ts", "packages/ai/src/auth-broker/snapshot-cache.ts"]) {
 			expect(packageImportsOf(file), file).toContain("@veyyon/utils/bytes");
 		}
 	});
@@ -453,7 +453,7 @@ describe("asStrictBytes", () => {
 	 * for every browser-graph root; this pins the one call site that reaches it from a signing path.
 	 */
 	it("is reached through the submodule where the barrel would be wrong", () => {
-		const specifiers = packageImportsOf("ai/src/providers/aws-sigv4.ts");
+		const specifiers = packageImportsOf("packages/ai/src/providers/aws-sigv4.ts");
 
 		expect(specifiers).toContain("@veyyon/utils/bytes");
 		expect(specifiers).not.toContain("@veyyon/utils");
@@ -507,7 +507,7 @@ describe("the AES-256-GCM frame seal", () => {
 	 * appears rather than waiting for a browser build to break.
 	 */
 	it("did not give @veyyon/wire a dependency", () => {
-		const manifest = JSON.parse(fs.readFileSync(path.join(PACKAGES, "../contracts/wire/package.json"), "utf-8")) as {
+		const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "contracts/wire/package.json"), "utf-8")) as {
 			dependencies?: Record<string, string>;
 		};
 
