@@ -1216,6 +1216,13 @@ export type AnthropicClientOptionsArgs = {
 	disableStrictTools?: boolean;
 	fetch?: FetchImpl;
 	claudeCodeSessionId?: string;
+	/**
+	 * The conversation this request belongs to, for the OpenCode session header.
+	 * Not `claudeCodeSessionId`: a side-channel turn gives provider routing a
+	 * unique per-request session id while keeping the conversation's prompt-cache
+	 * key, so routing on it would send a new session per recap.
+	 */
+	conversationId?: string;
 };
 
 export type AnthropicClientOptionsResult = {
@@ -2023,6 +2030,7 @@ const streamAnthropicOnce = (
 					thinkingDisplay: options?.thinkingDisplay,
 					fetch: options?.fetch,
 					claudeCodeSessionId: options?.sessionId ?? extractClaudeMetadataSessionId(options?.metadata?.user_id),
+					conversationId: options?.promptCacheKey ?? options?.sessionId,
 					disableStrictTools,
 				});
 				client = created.client;
@@ -3010,6 +3018,7 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 		thinkingDisplay,
 		isOAuth,
 		claudeCodeSessionId,
+		conversationId,
 		disableStrictTools: disableStrictToolsOverride,
 	} = args;
 	const compat = model.compat;
@@ -3072,7 +3081,7 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 	}
 
 	// First in the merge below, so a caller-supplied header still wins.
-	const openCodeHeaders = isOpenCodeProvider(model.provider) ? getOpenCodeHeaders(claudeCodeSessionId) : undefined;
+	const openCodeHeaders = isOpenCodeProvider(model.provider) ? getOpenCodeHeaders(conversationId) : undefined;
 	const defaultHeaders = buildAnthropicHeaders({
 		apiKey,
 		baseUrl,

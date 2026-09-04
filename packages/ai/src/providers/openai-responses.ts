@@ -85,6 +85,7 @@ import {
 	buildResponsesDeltaInput,
 	buildResponsesInput,
 	clearOpenAIStrictToolsState,
+	conversationIdForOpenCode,
 	createInitialResponsesAssistantMessage,
 	createOpenAIStrictToolsState,
 	disableStrictToolsForScope,
@@ -410,7 +411,7 @@ const streamOpenAIResponsesOnce = (
 				extraHeaders: options?.headers,
 				initiatorOverride: options?.initiatorOverride,
 				messages: context.messages,
-				sessionId: options?.sessionId,
+				conversationId: conversationIdForOpenCode(options),
 				openAISessionId: routingSessionId,
 				promptCacheSessionId,
 			});

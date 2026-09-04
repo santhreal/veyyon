@@ -542,3 +542,141 @@ describe("an unsigned block beside a signed one in the same turn", () => {
 		expect(readPriorReasoningReplayDisabled(providerSessionState)).toBe(true);
 	});
 });
+
+/**
+ * BACKTEST — replays the failure as it was recorded, not as it was imagined.
+ *
+ * The capture is two log entries five minutes apart in one process, both
+ * `Idle recap turn failed`, both carrying the same refusal. Three things in it
+ * were not invented, and each is asserted below:
+ *
+ * 1. The explanation text beside `category: "reasoning_extraction"`. The
+ *    synthetic fixture above uses a made-up sentence, so nothing proved the
+ *    transport recovers from what Anthropic actually sends.
+ * 2. `claude-fable-5-1` on the direct `anthropic` endpoint — the recorded
+ *    failure was NOT on a gateway, which the class tests concentrate on.
+ * 3. It RECURRED. The turn that failed is the idle recap, an ephemeral
+ *    side-channel turn that routes under a fresh per-request session id
+ *    (`<session>:side:<snowflake>`) while sharing one `providerSessionState`
+ *    map with the conversation. Two failures five minutes apart is the shape
+ *    of a learned flag that was never learned.
+ *
+ * Sanitization: the explanation is Anthropic's own public product string. The
+ * capture's timestamps, pid, profile, machine paths and conversation content
+ * are not reproduced, and the session ids below are invented. What reproduces
+ * the defect is the category, the demoted prose, and the repeat.
+ */
+describe("backtest: the recorded idle-recap refusal and its recurrence", () => {
+	const RECORDED_EXPLANATION =
+		"This request was blocked as it seems to violate Anthropic's Terms of Service restrictions on reverse engineering or duplicating model outputs. To learn more, visit https://www.anthropic.com/legal/commercial-terms.";
+	const RECORDED_SURFACED_PREFIX = "Refusal (reasoning_extraction)";
+
+	function recordedRefusalRequest(category = "reasoning_extraction") {
+		return eventStream(
+			[
+				{ type: "message_start", message: { id: "msg_recorded", usage: { ...USAGE, output_tokens: 0 } } },
+				{
+					type: "message_delta",
+					delta: {
+						stop_reason: "refusal",
+						stop_details: { type: "refusal", category, explanation: RECORDED_EXPLANATION },
+					},
+					usage: USAGE,
+				},
+				{ type: "message_stop" },
+			],
+			"req_recorded",
+		);
+	}
+
+	/** The routing id a side-channel turn actually uses: unique per request. */
+	let sideTurn = 0;
+	const nextSideSessionId = (): string => `01a05f22-278d-7245-a5ee-73408ed7d508:side:${++sideTurn}`;
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("recovers the recap turn that was recorded as failed", async () => {
+		const providerSessionState = new Map<string, ProviderSessionState>();
+		let attempt = 0;
+		vi.spyOn(AnthropicMessages.prototype, "create").mockImplementation(() => {
+			attempt += 1;
+			return (attempt === 1 ? recordedRefusalRequest() : successRequest()) as never;
+		});
+
+		const stream = streamAnthropic(signingTarget, crossModelPriorTurn, {
+			apiKey: "sk-ant-test",
+			sessionId: nextSideSessionId(),
+			providerSessionState,
+		});
+		await drain(stream);
+		const result = await stream.result();
+
+		expect(attempt).toBe(2);
+		expect(result.stopReason).toBe("stop");
+		// The exact string the capture recorded must no longer reach the caller.
+		expect(result.errorMessage ?? "").not.toContain(RECORDED_SURFACED_PREFIX);
+		expect(result.errorMessage ?? "").not.toContain(RECORDED_EXPLANATION);
+	});
+
+	it("does not refuse a second time five minutes later", async () => {
+		// The recurrence is the defect. Two side-channel turns, each under its own
+		// routing session id, sharing the conversation's provider state map: the
+		// second must not spend a refused request rediscovering what the first
+		// learned.
+		const providerSessionState = new Map<string, ProviderSessionState>();
+		const captured: unknown[] = [];
+		let attempt = 0;
+		vi.spyOn(AnthropicMessages.prototype, "create").mockImplementation((params: unknown) => {
+			attempt += 1;
+			captured.push(params);
+			return (attempt === 1 ? recordedRefusalRequest() : successRequest()) as never;
+		});
+
+		for (const _turn of [1, 2]) {
+			const stream = streamAnthropic(signingTarget, crossModelPriorTurn, {
+				apiKey: "sk-ant-test",
+				sessionId: nextSideSessionId(),
+				providerSessionState,
+			});
+			await drain(stream);
+			const result = await stream.result();
+			expect(result.stopReason).toBe("stop");
+			expect(result.errorMessage ?? "").not.toContain(RECORDED_SURFACED_PREFIX);
+		}
+
+		// Three requests total, never four: refused, retried, then the second turn
+		// straight through. A fourth means the flag did not survive the side turn's
+		// fresh routing id, which is exactly the recorded five-minute repeat.
+		expect(attempt).toBe(3);
+		expect(serialized(captured[0])).toContain(PRIOR_REASONING);
+		expect(serialized(captured[1])).not.toContain(PRIOR_REASONING);
+		expect(serialized(captured[2])).not.toContain(PRIOR_REASONING);
+		expect(readPriorReasoningReplayDisabled(providerSessionState)).toBe(true);
+	});
+
+	it("keys recovery on the category, not on the recorded sentence", async () => {
+		// Negative control for the capture itself: the same explanation under
+		// another category is a real refusal and has to surface, or the transport
+		// would be matching prose.
+		const providerSessionState = new Map<string, ProviderSessionState>();
+		let attempt = 0;
+		vi.spyOn(AnthropicMessages.prototype, "create").mockImplementation(() => {
+			attempt += 1;
+			return recordedRefusalRequest("policy_violation") as never;
+		});
+
+		const stream = streamAnthropic(signingTarget, crossModelPriorTurn, {
+			apiKey: "sk-ant-test",
+			sessionId: nextSideSessionId(),
+			providerSessionState,
+		});
+		await drain(stream);
+		const result = await stream.result();
+
+		expect(attempt).toBe(1);
+		expect(result.errorMessage ?? "").toContain(RECORDED_EXPLANATION);
+		expect(readPriorReasoningReplayDisabled(providerSessionState)).not.toBe(true);
+	});
+});
