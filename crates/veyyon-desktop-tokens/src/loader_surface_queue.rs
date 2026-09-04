@@ -1,12 +1,10 @@
 use std::path::Path;
 
-use toml::Value;
-
 use crate::{
 	error::TokenError,
-	loader::{parse_toml, read_file, validate_table_keys},
-	loader_surface::{resolve_spacing_opt, resolve_stroke_opt},
-	schema::{ScaleTokens, SpacingStep, StrokeStep},
+	loader::{parse_toml, read_file},
+	schema::ScaleTokens,
+	section::Section,
 	surface::QueueSurfaceTokens,
 };
 
@@ -14,22 +12,12 @@ use crate::{
 pub fn load_queue(path: &Path, scale: &ScaleTokens) -> Result<QueueSurfaceTokens, TokenError> {
 	let text = read_file(path)?;
 	let val = parse_toml(path, &text)?;
-	let root = val.as_table().ok_or_else(|| TokenError::MissingKey {
-		path:    path.to_path_buf(),
-		section: "root".to_string(),
-		key:     "geometry".to_string(),
-	})?;
-	validate_table_keys(path, &text, "root", root, &["meta", "geometry"])?;
+	let root = Section::root(path, &text, &val)?;
+	root.only(&["meta", "geometry"])?;
+	root.meta("surface_queue")?;
 
-	let geom = root
-		.get("geometry")
-		.and_then(Value::as_table)
-		.ok_or_else(|| TokenError::MissingKey {
-			path:    path.to_path_buf(),
-			section: "root".to_string(),
-			key:     "geometry".to_string(),
-		})?;
-	validate_table_keys(path, &text, "geometry", geom, &[
+	let geom = root.sub("geometry")?;
+	geom.only(&[
 		"width",
 		"insets",
 		"row_heights",
@@ -39,264 +27,69 @@ pub fn load_queue(path: &Path, scale: &ScaleTokens) -> Result<QueueSurfaceTokens
 		"limits",
 	])?;
 
-	let width =
-		geom
-			.get("width")
-			.and_then(Value::as_table)
-			.ok_or_else(|| TokenError::MissingKey {
-				path:    path.to_path_buf(),
-				section: "geometry".to_string(),
-				key:     "width".to_string(),
-			})?;
-	let width_default_px = width
-		.get("default_px")
-		.and_then(Value::as_integer)
-		.unwrap_or(256) as f32;
-	let width_min_px = width
-		.get("min_px")
-		.and_then(Value::as_integer)
-		.unwrap_or(208) as f32;
-	let width_max_viewport_delta_px = width
-		.get("max_viewport_delta_px")
-		.and_then(Value::as_integer)
-		.unwrap_or(640) as f32;
-	let width_floor_max_px = width
-		.get("floor_max_px")
-		.and_then(Value::as_integer)
-		.unwrap_or(208) as f32;
-	let width_collapsed_px = width
-		.get("collapsed_px")
-		.and_then(Value::as_integer)
-		.unwrap_or(0) as f32;
-	let outer_edge_stroke = resolve_stroke_opt(
-		path,
-		&text,
-		"geometry.width",
+	let width = geom.sub("width")?;
+	width.only(&[
+		"default_px",
+		"min_px",
+		"max_viewport_delta_px",
+		"floor_max_px",
+		"collapsed_px",
 		"outer_edge_stroke",
-		width.get("outer_edge_stroke"),
-		StrokeStep::Hairline,
-		scale,
-	)?;
+	])?;
 
-	let insets = geom
-		.get("insets")
-		.and_then(Value::as_table)
-		.ok_or_else(|| TokenError::MissingKey {
-			path:    path.to_path_buf(),
-			section: "geometry".to_string(),
-			key:     "insets".to_string(),
-		})?;
-	let content_inset = resolve_spacing_opt(
-		path,
-		&text,
-		"geometry.insets",
-		"content_inset",
-		insets.get("content_inset"),
-		SpacingStep::S4,
-		scale,
-	)?;
-	let row_inset = resolve_spacing_opt(
-		path,
-		&text,
-		"geometry.insets",
-		"row_inset",
-		insets.get("row_inset"),
-		SpacingStep::S5,
-		scale,
-	)?;
+	let insets = geom.sub("insets")?;
+	insets.only(&["content_inset", "row_inset"])?;
 
-	let row_h = geom
-		.get("row_heights")
-		.and_then(Value::as_table)
-		.ok_or_else(|| TokenError::MissingKey {
-			path:    path.to_path_buf(),
-			section: "geometry".to_string(),
-			key:     "row_heights".to_string(),
-		})?;
-	let card_px = row_h
-		.get("card_px")
-		.and_then(Value::as_integer)
-		.unwrap_or(78) as f32;
-	let line_px = row_h
-		.get("line_px")
-		.and_then(Value::as_integer)
-		.unwrap_or(36) as f32;
-	let section_header_px = row_h
-		.get("section_header_px")
-		.and_then(Value::as_integer)
-		.unwrap_or(20) as f32;
+	let row_h = geom.sub("row_heights")?;
+	row_h.only(&["card_px", "line_px", "section_header_px"])?;
 
-	let card_layout = geom
-		.get("card_layout")
-		.and_then(Value::as_table)
-		.ok_or_else(|| TokenError::MissingKey {
-			path:    path.to_path_buf(),
-			section: "geometry".to_string(),
-			key:     "card_layout".to_string(),
-		})?;
-	let card_padding_top = resolve_spacing_opt(
-		path,
-		&text,
-		"geometry.card_layout",
+	let card_layout = geom.sub("card_layout")?;
+	card_layout.only(&[
 		"padding_top",
-		card_layout.get("padding_top"),
-		SpacingStep::S4,
-		scale,
-	)?;
-	let card_padding_bottom = resolve_spacing_opt(
-		path,
-		&text,
-		"geometry.card_layout",
 		"padding_bottom",
-		card_layout.get("padding_bottom"),
-		SpacingStep::S4,
-		scale,
-	)?;
-	let card_padding_horizontal = resolve_spacing_opt(
-		path,
-		&text,
-		"geometry.card_layout",
 		"padding_horizontal",
-		card_layout.get("padding_horizontal"),
-		SpacingStep::S5,
-		scale,
-	)?;
-	let card_header_gap = resolve_spacing_opt(
-		path,
-		&text,
-		"geometry.card_layout",
 		"header_gap",
-		card_layout.get("header_gap"),
-		SpacingStep::S1,
-		scale,
-	)?;
-	let card_body_gap = resolve_spacing_opt(
-		path,
-		&text,
-		"geometry.card_layout",
 		"body_gap",
-		card_layout.get("body_gap"),
-		SpacingStep::S2,
-		scale,
-	)?;
-	let card_badge_height = card_layout
-		.get("badge_height")
-		.and_then(Value::as_integer)
-		.unwrap_or(20) as f32;
-	let card_title_height = card_layout
-		.get("title_height")
-		.and_then(Value::as_integer)
-		.unwrap_or(20) as f32;
-	let card_subtitle_height = card_layout
-		.get("subtitle_height")
-		.and_then(Value::as_integer)
-		.unwrap_or(16) as f32;
-
-	let section_layout = geom
-		.get("section_layout")
-		.and_then(Value::as_table)
-		.ok_or_else(|| TokenError::MissingKey {
-			path:    path.to_path_buf(),
-			section: "geometry".to_string(),
-			key:     "section_layout".to_string(),
-		})?;
-	validate_table_keys(path, &text, "geometry.section_layout", section_layout, &[
-		"gap_above",
-		"gap_below",
+		"badge_height_px",
+		"title_height_px",
+		"subtitle_height_px",
 	])?;
-	let section_gap_above = resolve_spacing_opt(
-		path,
-		&text,
-		"geometry.section_layout",
-		"gap_above",
-		section_layout.get("gap_above"),
-		SpacingStep::S6,
-		scale,
-	)?;
-	let section_gap_below = resolve_spacing_opt(
-		path,
-		&text,
-		"geometry.section_layout",
-		"gap_below",
-		section_layout.get("gap_below"),
-		SpacingStep::S2,
-		scale,
-	)?;
 
-	let footer = geom
-		.get("footer")
-		.and_then(Value::as_table)
-		.ok_or_else(|| TokenError::MissingKey {
-			path:    path.to_path_buf(),
-			section: "geometry".to_string(),
-			key:     "footer".to_string(),
-		})?;
-	validate_table_keys(path, &text, "geometry.footer", footer, &[
-		"height_px",
-		"inset",
-		"gear_size_px",
-	])?;
-	let footer_height_px = footer
-		.get("height_px")
-		.and_then(Value::as_integer)
-		.unwrap_or(36) as f32;
-	let footer_inset = resolve_spacing_opt(
-		path,
-		&text,
-		"geometry.footer",
-		"inset",
-		footer.get("inset"),
-		SpacingStep::S4,
-		scale,
-	)?;
-	let gear_size_px = footer
-		.get("gear_size_px")
-		.and_then(Value::as_integer)
-		.unwrap_or(16) as f32;
+	let section_layout = geom.sub("section_layout")?;
+	section_layout.only(&["gap_above", "gap_below"])?;
 
-	let limits = geom
-		.get("limits")
-		.and_then(Value::as_table)
-		.ok_or_else(|| TokenError::MissingKey {
-			path:    path.to_path_buf(),
-			section: "geometry".to_string(),
-			key:     "limits".to_string(),
-		})?;
-	let max_hover_actions = limits
-		.get("max_hover_actions")
-		.and_then(Value::as_integer)
-		.unwrap_or(2) as usize;
-	let parked_initial_page_size = limits
-		.get("parked_initial_page_size")
-		.and_then(Value::as_integer)
-		.unwrap_or(25) as usize;
+	let footer = geom.sub("footer")?;
+	footer.only(&["height_px", "inset", "gear_size_px"])?;
+
+	let limits = geom.sub("limits")?;
+	limits.only(&["max_hover_actions", "parked_initial_page_size"])?;
 
 	Ok(QueueSurfaceTokens {
-		width_default_px,
-		width_min_px,
-		width_max_viewport_delta_px,
-		width_floor_max_px,
-		width_collapsed_px,
-		outer_edge_stroke,
-		content_inset,
-		row_inset,
-		card_px,
-		line_px,
-		section_header_px,
-		card_padding_top,
-		card_padding_bottom,
-		card_padding_horizontal,
-		card_header_gap,
-		card_body_gap,
-		card_badge_height,
-		card_title_height,
-		card_subtitle_height,
-		max_hover_actions,
-		parked_initial_page_size,
-		footer_height_px,
-		footer_inset,
-		gear_size_px,
-		section_gap_above,
-		section_gap_below,
+		width_default_px:            width.number("default_px")?,
+		width_min_px:                width.number("min_px")?,
+		width_max_viewport_delta_px: width.number("max_viewport_delta_px")?,
+		width_floor_max_px:          width.number("floor_max_px")?,
+		width_collapsed_px:          width.number("collapsed_px")?,
+		outer_edge_stroke:           width.stroke("outer_edge_stroke", scale)?,
+		content_inset:               insets.spacing("content_inset", scale)?,
+		row_inset:                   insets.spacing("row_inset", scale)?,
+		card_px:                     row_h.number("card_px")?,
+		line_px:                     row_h.number("line_px")?,
+		section_header_px:           row_h.number("section_header_px")?,
+		card_padding_top:            card_layout.spacing("padding_top", scale)?,
+		card_padding_bottom:         card_layout.spacing("padding_bottom", scale)?,
+		card_padding_horizontal:     card_layout.spacing("padding_horizontal", scale)?,
+		card_header_gap:             card_layout.spacing("header_gap", scale)?,
+		card_body_gap:               card_layout.spacing("body_gap", scale)?,
+		card_badge_height:           card_layout.number("badge_height_px")?,
+		card_title_height:           card_layout.number("title_height_px")?,
+		card_subtitle_height:        card_layout.number("subtitle_height_px")?,
+		max_hover_actions:           limits.count("max_hover_actions")?,
+		parked_initial_page_size:    limits.count("parked_initial_page_size")?,
+		footer_height_px:            footer.number("height_px")?,
+		footer_inset:                footer.spacing("inset", scale)?,
+		gear_size_px:                footer.number("gear_size_px")?,
+		section_gap_above:           section_layout.spacing("gap_above", scale)?,
+		section_gap_below:           section_layout.spacing("gap_below", scale)?,
 	})
 }
