@@ -648,9 +648,7 @@ describe("session/messages, which the session layer is mostly made of", () => {
 		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "tools/core/output-meta.ts")));
 		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "tools/core/output-artifact.ts")));
 		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "tools/core/output-notice.ts")));
-		expect(reached).toContain(
-			path.join("..", "kernel", "src", "session", "message-kinds.ts"),
-		);
+		expect(reached).toContain(path.join("..", "kernel", "src", "session", "message-kinds.ts"));
 	});
 
 	/**
