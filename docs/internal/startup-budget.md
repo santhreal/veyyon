@@ -1,6 +1,8 @@
 # Startup budget
 
-What veyyon does before a person sees anything, what it costs, and how to measure it again.
+Startup latency is the interval from process launch to a visually settled, editable screen. First-byte, composer and input timings are separate intermediate measurements.
+
+Mode-specific Vibe tools load through the agent tool manifest on `/vibe` activation, not during runtime warmup. Activation awaits tool construction before changing the registry or active toolset. A failed load leaves both unchanged; first-use measurements include this deferred work.
 
 ## Measure it
 
@@ -32,7 +34,7 @@ Thirteen arms:
 | `ready:load` | The timing tree's `(before instrumentation)` line: runtime init plus module load, before the first marker. |
 | `ready:boot` | The timing tree's `Total`: every boot phase from the first marker to the TUI handoff. |
 | `ready` | Wall time of an interactive launch under `VEYYON_TIMING=x`, which prints the tree and exits where the TUI would start. |
-| `first-frame` | Wall time from spawn to the first byte the process writes to a pty. This is what a person waits for. |
+| `first-frame` | Wall time from spawn to the first byte the process writes to a pty. This does not establish a settled or editable screen. |
 | `composer` | The composer's placeholder row on screen. A first byte is not a screen anyone can read. |
 | `editable` | A character typed after the first byte coming back echoed: the moment the terminal answers. |
 | `statusrow` | The status row on screen, matched by the approval rung between two of the row's separator dots. |
@@ -52,6 +54,49 @@ holds the marker against the row the card renders.
 
 `VEYYON_TIMING=x veyyon` prints the phase tree on its own, without the bench, and exits. `full`
 adds every module-load span.
+
+### Settled editable screen
+
+```sh
+bun scripts/bench-startup.ts --only settled --cold --runs 5 \
+  --seed /path/to/isolated-config --expect-model 'Model Display Name' \
+  --cwd /path/to/project --json .captures/settled-startup.json
+
+# Use the same observer, seed and project with another source checkout:
+bun scripts/bench-startup.ts --only settled --cold --runs 5 \
+  --source /path/to/checkout/packages/coding-agent/src/cli.ts \
+  --seed /path/to/isolated-config --expect-model 'Model Display Name' \
+  --cwd /path/to/project --json .captures/settled-startup-baseline.json
+```
+
+`--seed` copies an isolated config root containing `config.yml` and
+`profiles/default/agent/` into the benchmark scratch directory. Use synthetic
+credentials and a local model definition for offline measurements. Set
+`onboardingVersion: 1` in the root config and the default model role in the profile
+config. Do not seed launch-fact, replay or model-discovery caches for a cold run.
+`--bin` selects a compiled executable instead of `--source`.
+
+The settled arm uses a 140-column, 45-row PTY and a headless terminal parser. It
+requires the expected model display name, a resolved percentage gauge and an edited
+probe on the composer row. PTY echo is disabled. The probe includes deletion, so its
+final text is not sent literally. Terminal responses are returned to the process.
+
+`settled:editable-frame` is the later of the first successful edited probe and the
+last change to rendered text, cell styles or cursor position during the observation.
+The final screen must still contain the resolved metadata and retained input.
+Nonvisual terminal queries do not restart the interval.
+
+`--observe-ms` defaults to 5000. `--stable-ms` requires at least 1000 milliseconds
+without a final screen change. Missing metadata, lost input, early exit or an
+insufficient stable interval fails the arm. `--columns` and `--rows` change the PTY
+and parser dimensions together. Each run writes a timestamped screen trace under
+the scratch directory, including failed runs. Process-tree termination is awaited.
+
+The observation interval bounds the result: an update after it is not covered.
+This measures cold profile state, not a flushed operating-system page cache.
+Terminal-parser traces are timing diagnostics, not visual proof. Background input
+responsiveness, deferred capability readiness and immediate action latency require
+separate interaction measurements; a retained startup probe does not prove them.
 
 ## Guard a change against a regression
 

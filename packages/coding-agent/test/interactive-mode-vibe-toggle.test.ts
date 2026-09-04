@@ -5,9 +5,14 @@
  * 2. Entering registers and activates exactly `read` plus the vibe tools.
  * 3. Exiting unregisters the vibe tools and restores the pre-vibe active toolset
  *    exactly, including the legitimate empty set.
+ *
+ * Deferred factories must finish before the active toolset or registry changes;
+ * rejection must preserve both. This catches treating a pending factory as an
+ * array. It does not measure module evaluation or worker execution latency.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
+import { scheduler } from "node:timers/promises";
 import { Agent, type AgentTool } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
@@ -40,6 +45,7 @@ describe("InteractiveMode vibe mode toggle", () => {
 	let session: AgentSession;
 	let mode: InteractiveMode;
 
+	let vibeTools: () => AgentTool[] | Promise<AgentTool[]>;
 	beforeAll(async () => {
 		await initTheme();
 	});
@@ -54,6 +60,7 @@ describe("InteractiveMode vibe mode toggle", () => {
 		if (!model) throw new Error("Expected claude-sonnet-4-5 to exist in registry");
 
 		const registryTools = [stubTool("read")];
+		vibeTools = () => VIBE_TOOL_NAMES.map(stubTool);
 
 		session = new AgentSession({
 			agent: new Agent({
@@ -68,7 +75,7 @@ describe("InteractiveMode vibe mode toggle", () => {
 			settings: Settings.isolated({}),
 			modelRegistry,
 			toolRegistry: new Map(registryTools.map(tool => [tool.name, tool])),
-			createVibeTools: () => VIBE_TOOL_NAMES.map(stubTool),
+			createVibeTools: () => vibeTools(),
 		});
 		mode = new InteractiveMode(session, "test", undefined, undefined, undefined, new EventBus());
 	});
@@ -102,5 +109,36 @@ describe("InteractiveMode vibe mode toggle", () => {
 		expect(mode.vibeModeEnabled).toBe(false);
 		expect(session.getActiveToolNames()).toEqual([]);
 		expect(session.getAllToolNames()).toEqual(["read"]);
+	});
+
+	it("waits for deferred tools before activating the complete mode toolset", async () => {
+		const deferred = Promise.withResolvers<AgentTool[]>();
+		vibeTools = () => deferred.promise;
+		let settled = false;
+		const activation = session.activateVibeTools(["read"]).finally(() => {
+			settled = true;
+		});
+		void activation.catch(() => {});
+		await scheduler.yield();
+		expect(settled).toBe(false);
+		expect(session.getAllToolNames()).toEqual(["read"]);
+		expect(session.getActiveToolNames()).toEqual([]);
+		deferred.resolve(VIBE_TOOL_NAMES.map(stubTool));
+		await activation;
+		expect(session.getActiveToolNames().toSorted()).toEqual(["read", ...VIBE_TOOL_NAMES].toSorted());
+		await session.deactivateVibeTools([]);
+		expect(session.getAllToolNames()).toEqual(["read"]);
+		expect(session.getActiveToolNames()).toEqual([]);
+	});
+
+	it("preserves the registry and active tools when deferred construction fails", async () => {
+		const deferred = Promise.withResolvers<AgentTool[]>();
+		vibeTools = () => deferred.promise;
+		const activation = session.activateVibeTools(["read"]);
+		void activation.catch(() => {});
+		deferred.reject(new Error("Vibe module could not load"));
+		await expect(activation).rejects.toThrow("Vibe module could not load");
+		expect(session.getAllToolNames()).toEqual(["read"]);
+		expect(session.getActiveToolNames()).toEqual([]);
 	});
 });

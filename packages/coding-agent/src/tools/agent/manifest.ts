@@ -12,7 +12,7 @@
 import type { ToolDomainManifest } from "@veyyon/kernel/registry/tool-domain";
 import { ARGOT_LOAD_TOOL, ARGOT_UNLOAD_TOOL } from "argot/constants";
 import type { BuiltinToolName, HiddenToolName } from "../core/builtin-names";
-import type { ToolFactory } from "../index";
+import type { Tool, ToolFactory, ToolSession } from "../index";
 
 export const agentTools = {
 	ask: async s => (await import("./ask")).AskTool.createIf(s),
@@ -49,3 +49,9 @@ export const agentDomain = {
 	tools: agentTools,
 	hidden: agentHiddenTools,
 } satisfies ToolDomainManifest<ToolFactory>;
+
+/** Construct mode-specific tools only when the session enters Vibe mode. */
+export async function createVibeModeTools(session: ToolSession): Promise<Tool[]> {
+	// Manifest factory: a static import initializes these tools while the mode is disabled.
+	return (await import("./vibe")).createVibeTools(session);
+}

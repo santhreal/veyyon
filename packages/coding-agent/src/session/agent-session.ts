@@ -1015,7 +1015,7 @@ export class AgentSession {
 
 	// Tool registry and prompt builder for extensions
 	#toolRegistry: Map<string, AgentTool>;
-	#createVibeTools: (() => AgentTool[]) | undefined;
+	#createVibeTools: AgentSessionConfig["createVibeTools"];
 	#installedVibeToolNames = new Set<string>();
 	#transformContext: (messages: AgentMessage[], signal?: AbortSignal) => AgentMessage[] | Promise<AgentMessage[]>;
 	#onPayload: SimpleStreamOptions["onPayload"] | undefined;
@@ -6935,7 +6935,7 @@ export class AgentSession {
 			throw new Error("Vibe tools are unavailable in this session.");
 		}
 
-		const tools = createVibeTools();
+		const tools = await createVibeTools();
 		const vibeToolNames = tools.map(tool => tool.name);
 		if (new Set(vibeToolNames).size !== vibeToolNames.length) {
 			throw new Error("Vibe tool names must be unique.");

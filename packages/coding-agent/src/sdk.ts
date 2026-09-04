@@ -182,8 +182,8 @@ import {
 	type Tool,
 	type ToolSession,
 } from "./tools";
+import { createVibeModeTools } from "./tools/agent/manifest";
 import { queueResolveHandler } from "./tools/agent/resolve";
-import { createVibeTools } from "./tools/agent/vibe";
 import { normalizeToolNames, TOOL } from "./tools/core/builtin-names";
 import { ToolContextStore } from "./tools/core/context";
 import { resolveDiscoveryAllForceActive, resolveInitialActiveToolNames } from "./tools/core/loading";
@@ -3372,7 +3372,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			skillsSettings: settings.getGroup("skills"),
 			modelRegistry,
 			toolRegistry,
-			createVibeTools: sessionIsSubagent ? undefined : () => createVibeTools(toolSession),
+			createVibeTools: sessionIsSubagent ? undefined : () => createVibeModeTools(toolSession),
 			// A subagent shares this process with its parent and its siblings, so its
 			// re-root may not move the process working directory or any other
 			// process-global project state. See `AgentSession.rescopeToCwd`.

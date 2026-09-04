@@ -200,7 +200,7 @@ export interface AgentSessionConfig {
 	/** Tool registry for LSP and settings */
 	toolRegistry?: Map<string, AgentTool>;
 	/** Creates the tools registered only while `/vibe` mode is active. */
-	createVibeTools?: () => AgentTool[];
+	createVibeTools?: () => AgentTool[] | Promise<AgentTool[]>;
 	/** Tool names whose current registry entry is still the built-in implementation. */
 	builtInToolNames?: Iterable<string>;
 	/** Update tool-session predicates that render guidance from the live active tool set. */

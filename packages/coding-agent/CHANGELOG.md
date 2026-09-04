@@ -29,6 +29,7 @@
 
 ### Changed
 
+- Vibe tools load on `/vibe` activation rather than during startup, and failed loading preserves the session toolset.
 - The settings schema registry is `@veyyon/kernel/settings/schema` and `config/optional-number` is `@veyyon/kernel/settings/optional-number`; `config/settings-schema` composes the domain tables through `declareSettings` and still exports the queries (`getDefault`, `getType`, `getUi`, `hasUi`, `getPathsForTab`, `retiredBy`, `isSettingPath`, `getEnumValues`, `isUnsetNumberPath`, `describeSettingTypeMismatch`), the `SettingPath` and `SettingValue` types, `SETTINGS_SCHEMA`, the tab metadata and the typed groups, so importing a query loads the tables it reads. No setting, default or config file changes.
 - `Settings` (`config/settings`) extends `SettingsStore` from `@veyyon/kernel/settings/store` and passes the product's hook set (the global setting bindings, the `SETTING_HOOKS` table, the config migrations, the `settings.json` and `agent.db` legacy read, the changelog-marker seed and the per-directory resolution of `enabledModels`); `config/settings` re-exports the store's vocabulary and `SettingSignal` under the same names, so every import resolves. No setting, default, config file or write order changes.
 - The tool session, the terminal mode and the SDK read `HostNotifier` from `@veyyon/host` instead of `@veyyon/utils/host-notification`; behavior is unchanged.

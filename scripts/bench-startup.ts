@@ -60,6 +60,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { AUTONOMY_LABEL } from "../packages/coding-agent/src/tools/core/approval-modes";
+import { recordSettledStartup } from "./record-settled-startup";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const CLI_SOURCE = path.join(REPO_ROOT, "packages", "coding-agent", "src", "cli.ts");
@@ -76,7 +77,8 @@ const ONBOARDED_CONFIG = "onboardingVersion: 1\n";
  * measuring `frame` on a machine the bench is not itself loading.
  */
 const ARM_GROUPS = ["version", "help", "ready", "frame", "replay"] as const;
-type ArmGroup = (typeof ARM_GROUPS)[number];
+const OPTIONAL_ARM_GROUPS = ["settled"] as const;
+type ArmGroup = (typeof ARM_GROUPS)[number] | (typeof OPTIONAL_ARM_GROUPS)[number];
 
 interface Options {
 	runs: number;
@@ -86,6 +88,14 @@ interface Options {
 	timeoutMs: number;
 	only?: Set<ArmGroup>;
 	scratch?: string;
+	source?: string;
+	cwd?: string;
+	seed?: string;
+	expectedModel?: string;
+	observationMs: number;
+	stableMs: number;
+	columns: number;
+	rows: number;
 }
 
 interface Sample {
@@ -94,7 +104,15 @@ interface Sample {
 }
 
 function parseArgs(argv: string[]): Options {
-	const options: Options = { runs: 5, cold: false, timeoutMs: 60_000 };
+	const options: Options = {
+		runs: 5,
+		cold: false,
+		timeoutMs: 60_000,
+		observationMs: 5000,
+		stableMs: 1000,
+		columns: 140,
+		rows: 45,
+	};
 	for (let i = 0; i < argv.length; i++) {
 		const arg = argv[i];
 		if (arg === "--runs") options.runs = Number(argv[++i]);
@@ -104,18 +122,40 @@ function parseArgs(argv: string[]): Options {
 		else if (arg === "--timeout") options.timeoutMs = Number(argv[++i]) * 1000;
 		else if (arg === "--scratch") options.scratch = argv[++i];
 		else if (arg === "--only") options.only = parseArmGroups(argv[++i]);
+		else if (arg === "--source") options.source = path.resolve(argv[++i]);
+		else if (arg === "--cwd") options.cwd = path.resolve(argv[++i]);
+		else if (arg === "--seed") options.seed = path.resolve(argv[++i]);
+		else if (arg === "--expect-model") options.expectedModel = argv[++i];
+		else if (arg === "--observe-ms") options.observationMs = Number(argv[++i]);
+		else if (arg === "--stable-ms") options.stableMs = Number(argv[++i]);
+		else if (arg === "--columns") options.columns = Number(argv[++i]);
+		else if (arg === "--rows") options.rows = Number(argv[++i]);
 		else throw new Error(`unknown argument: ${arg}`);
 	}
-	if (!Number.isFinite(options.runs) || options.runs < 1) throw new Error("--runs must be a positive integer");
+	for (const [name, value] of Object.entries({
+		runs: options.runs,
+		"observe-ms": options.observationMs,
+		"stable-ms": options.stableMs,
+		columns: options.columns,
+		rows: options.rows,
+	})) {
+		if (!Number.isSafeInteger(value) || value < 1) throw new Error(`--${name} must be a positive integer`);
+	}
+	if (options.source && options.bin) throw new Error("--source and --bin are mutually exclusive");
+	if (options.stableMs >= options.observationMs) throw new Error("--stable-ms must be smaller than --observe-ms");
+	if (options.only?.has("settled") && !options.expectedModel?.trim()) {
+		throw new Error("--only settled requires --expect-model with the resolved display name");
+	}
 	return options;
 }
 
 function parseArmGroups(raw: string | undefined): Set<ArmGroup> {
 	const names = (raw ?? "").split(",").filter(name => name !== "");
-	if (names.length === 0) throw new Error(`--only needs at least one of: ${ARM_GROUPS.join(", ")}`);
+	const known: readonly string[] = [...ARM_GROUPS, ...OPTIONAL_ARM_GROUPS];
+	if (names.length === 0) throw new Error(`--only needs at least one of: ${known.join(", ")}`);
 	for (const name of names) {
-		if (!ARM_GROUPS.includes(name as ArmGroup)) {
-			throw new Error(`--only got unknown arm group ${JSON.stringify(name)}; known: ${ARM_GROUPS.join(", ")}`);
+		if (!known.includes(name)) {
+			throw new Error(`--only got unknown arm group ${JSON.stringify(name)}; known: ${known.join(", ")}`);
 		}
 	}
 	return new Set(names as ArmGroup[]);
@@ -123,7 +163,9 @@ function parseArmGroups(raw: string | undefined): Set<ArmGroup> {
 
 /** The command that launches veyyon: a built binary when given one, else the source entry under Bun. */
 function launcher(options: Options): { command: string; prefix: string[] } {
-	return options.bin ? { command: options.bin, prefix: [] } : { command: "bun", prefix: [CLI_SOURCE] };
+	return options.bin
+		? { command: options.bin, prefix: [] }
+		: { command: process.execPath, prefix: [options.source ?? CLI_SOURCE] };
 }
 
 /**
@@ -137,9 +179,13 @@ function launcher(options: Options): { command: string; prefix: string[] } {
  * the program, on every launch that has not yet taken the terminal into raw mode. Turning it off
  * means an echo observed here was written by the process under test.
  */
-function ptyWrapper(command: string, args: string[]): { command: string; args: string[] } {
+function ptyWrapper(
+	command: string,
+	args: string[],
+	size?: { columns: number; rows: number },
+): { command: string; args: string[] } {
 	const quoted = [command, ...args].map(part => `'${part.replaceAll("'", "'\\''")}'`).join(" ");
-	const withoutEcho = `stty -echo 2>/dev/null; exec ${quoted}`;
+	const withoutEcho = `stty -echo${size ? ` cols ${size.columns} rows ${size.rows}` : ""}; exec ${quoted}`;
 	return os.platform() === "darwin"
 		? { command: "script", args: ["-q", "/dev/null", "/bin/sh", "-c", withoutEcho] }
 		: { command: "script", args: ["-qec", withoutEcho, "/dev/null"] };
@@ -406,7 +452,7 @@ async function main(): Promise<void> {
 	// Local disk, not the repository, when the repository is a network mount. A seeded home on NFS
 	// measures the network: the launch reads its config, writes its vault and session store, and
 	// loads the addon through it, none of which a user's launch does over a wire.
-	const scratch = options.scratch ?? path.join(REPO_ROOT, ".captures", "bench-startup");
+	const scratch = path.resolve(options.scratch ?? path.join(REPO_ROOT, ".captures", "bench-startup"));
 	await fs.rm(scratch, { recursive: true, force: true });
 	await fs.mkdir(scratch, { recursive: true });
 
@@ -436,8 +482,15 @@ async function main(): Promise<void> {
 	 */
 	async function envFor(): Promise<Record<string, string>> {
 		if (options.cold) await fs.rm(path.join(scratch, "home"), { recursive: true, force: true });
+		if (options.seed) {
+			const config = path.join(scratch, "config");
+			if (options.cold) await fs.rm(config, { recursive: true, force: true });
+			await fs.cp(options.seed, config, { recursive: true, force: false });
+			if (installedNatives) await hardlinkTree(installedNatives, path.join(config, "natives"));
+		}
 		const home = await seedHome(scratch, installedNatives);
 		return {
+			...(options.seed ? { VEYYON_CONFIG_DIR: path.join(scratch, "config") } : {}),
 			HOME: home,
 			TERM: "xterm-256color",
 			VEYYON_PROFILE: "",
@@ -517,6 +570,35 @@ async function main(): Promise<void> {
 			if (replayed.editable !== undefined) push("replay:editable", replayed.editable);
 			if (replayed.statusrow !== undefined) push("replay:statusrow", replayed.statusrow);
 		}
+
+		if (options.only?.has("settled")) {
+			const seeded = await envFor();
+			const environment: Record<string, string> = {
+				PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
+				LANG: "C.UTF-8",
+				...seeded,
+				XDG_CONFIG_HOME: path.join(seeded.HOME, ".config"),
+				XDG_CACHE_HOME: path.join(seeded.HOME, ".cache"),
+				COLORTERM: "truecolor",
+			};
+			const pty = ptyWrapper(command, [...prefix, "--no-session"], options);
+			await fs.rm(recording, { force: true });
+			const marks = await recordSettledStartup({
+				...pty,
+				cwd: options.cwd ?? REPO_ROOT,
+				env: environment,
+				columns: options.columns,
+				rows: options.rows,
+				expectedModel: options.expectedModel!,
+				observationMs: options.observationMs,
+				stableMs: options.stableMs,
+				trace: path.join(scratch, `settled-${run + 1}.json`),
+			});
+			push("settled:first-byte", marks.firstByte);
+			push("settled:editable", marks.editable);
+			push("settled:editable-frame", marks.settledEditable);
+			push("settled:stable-tail", marks.stableForMs);
+		}
 	}
 
 	const arms = [
@@ -533,6 +615,10 @@ async function main(): Promise<void> {
 		"replay:composer",
 		"replay:editable",
 		"replay:statusrow",
+		"settled:first-byte",
+		"settled:editable",
+		"settled:editable-frame",
+		"settled:stable-tail",
 	];
 	const lines = [
 		`veyyon startup — ${options.bin ? `binary ${options.bin}` : "bun source"}, ${options.cold ? "cold" : "warm"} home, ${options.runs} run(s)`,
@@ -554,6 +640,18 @@ async function main(): Promise<void> {
 					home: options.cold ? "cold" : "warm",
 					runs: options.runs,
 					platform: `${os.platform()}-${os.arch()}`,
+					source: options.source ?? CLI_SOURCE,
+					cwd: options.cwd ?? REPO_ROOT,
+					seed: options.seed,
+					settlement: options.only?.has("settled")
+						? {
+								expectedModel: options.expectedModel,
+								columns: options.columns,
+								rows: options.rows,
+								observationMs: options.observationMs,
+								minimumStableMs: options.stableMs,
+							}
+						: undefined,
 					samples,
 				},
 				null,
