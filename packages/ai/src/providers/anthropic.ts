@@ -3911,6 +3911,12 @@ export function convertAnthropicMessages(
 				} else if (block.type === "thinking") {
 					if (hasSignedThinking) {
 						if (!block.thinkingSignature || block.thinkingSignature.trim().length === 0) {
+							// An unsigned block cannot ride alongside a signed one, so it
+							// would otherwise demote to prose here. Once this endpoint has
+							// refused demoted prior reasoning it is dropped instead:
+							// re-sending the prose earns the same `reasoning_extraction`
+							// refusal, and the one retry that learned the flag is spent.
+							if (!model.compat.replayDemotedPriorReasoning) continue;
 							if (block.thinking.trim().length === 0) continue;
 							blocks.push({
 								type: "text",

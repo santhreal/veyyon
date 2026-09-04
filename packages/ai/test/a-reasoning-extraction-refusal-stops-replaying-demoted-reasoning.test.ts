@@ -32,6 +32,14 @@ import { buildModel } from "@veyyon/catalog/build";
  * after content already streamed (retrying would duplicate visible output, so
  * the error surfaces), and the native signed-replay path, which sends
  * signatures rather than prose and never reaches the classifier.
+ *
+ * Bedrock-hosted Claude demotes prior reasoning the same way
+ * (`amazon-bedrock.ts`, the branch that has a signature-requiring model and no
+ * signature) and fronts the same classifier, so it is exposed to the same
+ * refusal. Nothing here covers it: the Converse wire reports a flat
+ * `stopReason` string with no `stop_details` category, so the signal this
+ * recovery keys on is not observable on that transport and no equivalent
+ * signal has been identified.
  */
 
 const PRIOR_REASONING = "Check the README, weigh both options, then answer.";
@@ -435,6 +443,102 @@ describe("a gateway that demotes unsigned thinking without being a known signing
 		expect(result.errorMessage).toBeUndefined();
 		expect(serialized(captured[0])).toContain(PRIOR_REASONING);
 		expect(serialized(captured[1])).not.toContain(PRIOR_REASONING);
+		expect(readPriorReasoningReplayDisabled(providerSessionState)).toBe(true);
+	});
+});
+
+/**
+ * The sibling demotion site. `convertAnthropicMessages` demotes an unsigned
+ * thinking block to prose a second time, independently of the transform, when
+ * the same assistant turn also carries a SIGNED block: Anthropic rejects a
+ * mixed signed/unsigned pair, so the unsigned one cannot ride natively. That
+ * site fires on an endpoint which replays unsigned thinking, where the
+ * transform's drop rule does not apply, so the learned flag reached the
+ * transform and the prose still went out — the retry earned the same refusal
+ * and the one retry was already spent. Reachable wherever a gateway accepts
+ * unsigned replay while its upstream still enforces the classifier.
+ */
+describe("an unsigned block beside a signed one in the same turn", () => {
+	const SIGNED_REASONING = "Weigh both API options before answering.";
+	const UNSIGNED_REASONING = "Second pass: the CLI section is the relevant one.";
+
+	const replayingTarget: Model<"anthropic-messages"> = buildModel({
+		id: "claude-fable-5-1",
+		name: "Claude Fable 5.1 (unsigned-replay gateway)",
+		api: "anthropic-messages",
+		provider: "opencode-zen",
+		baseUrl: "https://opencode.ai/zen/v1",
+		reasoning: true,
+		input: ["text"],
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: 200_000,
+		maxTokens: 8_192,
+		compat: { replayUnsignedThinking: true },
+	});
+
+	/**
+	 * Same model and provider as the target, so no foreign signature is
+	 * stripped: the signed block stays signed, which is what makes the turn
+	 * mixed and routes the unsigned block to the second demotion site.
+	 */
+	const mixedPriorTurn: Context = {
+		messages: [
+			{ role: "user", content: "Summarize README", timestamp: 0 },
+			{
+				role: "assistant",
+				content: [
+					{ type: "thinking", thinking: SIGNED_REASONING, thinkingSignature: "sig_native" },
+					{ type: "thinking", thinking: UNSIGNED_REASONING, thinkingSignature: "" },
+					{ type: "text", text: "The README covers the CLI." },
+				],
+				api: "anthropic-messages",
+				provider: "opencode-zen",
+				model: "claude-fable-5-1",
+				usage: {
+					input: 0,
+					output: 0,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 0,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				stopReason: "stop",
+				timestamp: 0,
+			} satisfies AssistantMessage,
+			{ role: "user", content: "Translate to French.", timestamp: 0 },
+		] satisfies Message[],
+	};
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("drops only the unsigned block on retry and keeps replaying the signed one", async () => {
+		const providerSessionState = new Map<string, ProviderSessionState>();
+		const captured: unknown[] = [];
+		let attempt = 0;
+		vi.spyOn(AnthropicMessages.prototype, "create").mockImplementation((params: unknown) => {
+			attempt += 1;
+			captured.push(params);
+			return (attempt === 1 ? refusalRequest() : successRequest()) as never;
+		});
+
+		const stream = streamAnthropic(replayingTarget, mixedPriorTurn, {
+			apiKey: "sk-zen-test",
+			providerSessionState,
+		});
+		await drain(stream);
+		const result = await stream.result();
+
+		expect(attempt).toBe(2);
+		expect(result.stopReason).toBe("stop");
+		expect(result.errorMessage).toBeUndefined();
+		// The first request carries the prose the classifier refuses.
+		expect(serialized(captured[0])).toContain(UNSIGNED_REASONING);
+		// The retry drops it, and keeps the signed block, which replays under
+		// signature and never reaches the classifier.
+		expect(serialized(captured[1])).not.toContain(UNSIGNED_REASONING);
+		expect(serialized(captured[1])).toContain(SIGNED_REASONING);
 		expect(readPriorReasoningReplayDisabled(providerSessionState)).toBe(true);
 	});
 });
