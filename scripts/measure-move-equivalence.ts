@@ -395,20 +395,88 @@ export function renamePairs(repoRoot: string, baseSha: string, headRef = "HEAD")
 		"diff",
 		"--find-renames=25%",
 		"-l0",
-		"--diff-filter=R",
+		"--diff-filter=RD",
 		"--name-status",
 		`${baseSha}...${headRef}`,
 	])
 		.toString("utf-8")
 		.split("\n");
 	const pairs: [string, string][] = [];
+	const deleted: string[] = [];
 	for (const row of raw) {
 		const parts = row.split("\t");
+		if (parts.length === 2 && parts[0] === "D" && !isGeneratedOutput(parts[1])) deleted.push(parts[1]);
 		if (parts.length !== 3 || !parts[0].startsWith("R")) continue;
 		if (isGeneratedOutput(parts[1]) || isGeneratedOutput(parts[2])) continue;
 		pairs.push([parts[1], parts[2]]);
 	}
-	return pairs;
+	return pairedWithTheMemberItMovedWith(repoRoot, pairs, deleted);
+}
+
+/**
+ * Git's rename pairs, re-pointed to the destination the member move predicts.
+ *
+ * Rename detection is a similarity test over every deleted and every added path, and a member's
+ * small manifests are near-identical across members: fourteen `tsconfig.json` files differ by a
+ * line or by nothing. Git pairs those by whichever similarity is highest, which for identical bytes
+ * is arbitrary, so `packages/wire/tsconfig.json` was reported moved to `contracts/view/`,
+ * `packages/swarm-extension/tsconfig.json` to `contracts/wire/`, and `packages/tui/tsconfig.json` to
+ * `hosts/gui/`. Each of those rows compared a file against a member it never belonged to, a member
+ * this branch created was recorded as a move, and the manifest that did move with its member had no
+ * row at all -- and every new member shuffled the chain again, so the counts moved for a reason
+ * nobody could name.
+ *
+ * The prefix table is the majority vote of the member's own files, so it states where the member
+ * went. A pair whose source that table resolves to a path that exists on this branch, is not the
+ * pair's destination, and is claimed by no other pair is re-pointed there; the destination it leaves
+ * behind is a file this branch created, and it is recorded nowhere, which is what a new file is.
+ * Re-pointing one pair frees a destination another pair may need, so this runs to a fixed point.
+ *
+ * A path git reports deleted gets the same reading afterwards. When a member's manifest lost its
+ * best match to a sibling's, git had no second pairing to offer and reported the file gone, so
+ * `packages/stats/bunfig.toml` was a delete while `apps/stats/bunfig.toml` was a move from
+ * `packages/argot/`. A delete whose predicted destination exists and is still unclaimed once the
+ * pairs settle is that destination's move.
+ *
+ * WHAT IT DOES NOT CATCH. A file moved on its own to a place the table does not predict, while a
+ * new file with its name appears where the table does predict, is re-pointed to the new file; and a
+ * file this branch deleted while creating an unrelated one at its predicted destination is paired
+ * with it. Neither is silent: the row lands in the changed bucket and has to be explained.
+ */
+export function pairedWithTheMemberItMovedWith(
+	repoRoot: string,
+	pairs: readonly [string, string][],
+	deleted: readonly string[] = [],
+): [string, string][] {
+	const rewrites = derivePrefixRewrites(pairs);
+	const predictedFor = (oldPath: string): string | undefined => {
+		const rule = rewrites.find(([oldPrefix]) => oldPath === oldPrefix || oldPath.startsWith(`${oldPrefix}/`));
+		return rule === undefined ? undefined : `${rule[1]}${oldPath.slice(rule[0].length)}`;
+	};
+	const reconciled: [string, string][] = pairs.map(pair => [pair[0], pair[1]]);
+	const claimed = new Set(reconciled.map(([, destination]) => destination));
+	for (;;) {
+		let moved = false;
+		for (const pair of reconciled) {
+			const [oldPath, newPath] = pair;
+			const predicted = predictedFor(oldPath);
+			if (predicted === undefined || predicted === newPath || claimed.has(predicted)) continue;
+			if (!fs.existsSync(path.join(repoRoot, predicted))) continue;
+			claimed.delete(newPath);
+			claimed.add(predicted);
+			pair[1] = predicted;
+			moved = true;
+		}
+		if (!moved) break;
+	}
+	for (const oldPath of deleted) {
+		const predicted = predictedFor(oldPath);
+		if (predicted === undefined || claimed.has(predicted)) continue;
+		if (!fs.existsSync(path.join(repoRoot, predicted))) continue;
+		claimed.add(predicted);
+		reconciled.push([oldPath, predicted]);
+	}
+	return reconciled;
 }
 
 /**

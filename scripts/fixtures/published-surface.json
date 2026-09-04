@@ -6381,6 +6381,7 @@
 		"packages": [
 			"@veyyon/gui-host",
 			"@veyyon/kernel",
+			"@veyyon/settings",
 			"@veyyon/view",
 			"@veyyon/web"
 		],

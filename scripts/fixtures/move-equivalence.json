@@ -1148,7 +1148,7 @@
 			"structuralHash": "cefd6abd50e47f5bbec9d7da452aa6067c172a385879329fd65fbfa8f783616a",
 			"mainStructuralHash": "cefd6abd50e47f5bbec9d7da452aa6067c172a385879329fd65fbfa8f783616a"
 		},
-		"apps/stats/bunfig.toml": {
+		"plugins/argot/bunfig.toml": {
 			"old": "packages/argot/bunfig.toml",
 			"kind": "normalized",
 			"differs": "changed",
@@ -3971,8 +3971,19 @@
 			"structuralHash": "aa4b4d62533ba8ebde35c5fb407bb13d06d792e809261be10ba22034e44a23ad",
 			"mainStructuralHash": "aa4b4d62533ba8ebde35c5fb407bb13d06d792e809261be10ba22034e44a23ad"
 		},
-		"contracts/view/tsconfig.json": {
+		"tests/simulations/tsconfig.json": {
 			"old": "packages/simulations/tsconfig.json",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "manifest-depth",
+			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
+			"hash": "f36f461aabbffd4eafe6b2e439c44da476fa8775f92f214859bb84e41831445e",
+			"mainHash": "8aef7ebe0daaf2899f092e24842c6ed182c7aceb60a49bf422ddce47d12f7a15",
+			"structuralHash": "9c11564209d86314e25789821745c0d8518493deeda6968d2e4e5cc7f4f0579b",
+			"mainStructuralHash": "b2cd3a124b3f24b9bf45aafdf178c91bc45d17e665f2345f96a4d781c548d3be"
+		},
+		"contracts/wire/tsconfig.json": {
+			"old": "packages/wire/tsconfig.json",
 			"kind": "normalized",
 			"differs": "none",
 			"hash": "8aef7ebe0daaf2899f092e24842c6ed182c7aceb60a49bf422ddce47d12f7a15",
@@ -4000,7 +4011,7 @@
 			"structuralHash": "48583949cf3f69b7c779bb1c6428e02b75919c3089f083ed04617763a0732af3",
 			"mainStructuralHash": "48583949cf3f69b7c779bb1c6428e02b75919c3089f083ed04617763a0732af3"
 		},
-		"contracts/wire/bunfig.toml": {
+		"natives/bridge/bindings/bunfig.toml": {
 			"old": "packages/natives/bunfig.toml",
 			"kind": "normalized",
 			"differs": "changed",
@@ -4116,14 +4127,16 @@
 			"structuralHash": "73d48a842ccb978af567eb02d339ab5f5fc6240e93d0465cd58a30cf454c177d",
 			"mainStructuralHash": "73d48a842ccb978af567eb02d339ab5f5fc6240e93d0465cd58a30cf454c177d"
 		},
-		"contracts/wire/tsconfig.json": {
-			"old": "packages/wire/tsconfig.json",
+		"plugins/mode-swarm/tsconfig.json": {
+			"old": "packages/swarm-extension/tsconfig.json",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "8aef7ebe0daaf2899f092e24842c6ed182c7aceb60a49bf422ddce47d12f7a15",
-			"mainHash": "8aef7ebe0daaf2899f092e24842c6ed182c7aceb60a49bf422ddce47d12f7a15",
-			"structuralHash": "b2cd3a124b3f24b9bf45aafdf178c91bc45d17e665f2345f96a4d781c548d3be",
-			"mainStructuralHash": "b2cd3a124b3f24b9bf45aafdf178c91bc45d17e665f2345f96a4d781c548d3be"
+			"differs": "changed",
+			"group": "manifest-depth",
+			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
+			"hash": "9c5151f22e6936c4a25bb1aea8464bd22122ad897ba7a04474fdbace2c90b906",
+			"mainHash": "a1e82eeae139556292d69cca788fe55b91572c668d59f86fadff1d3e92ad76b2",
+			"structuralHash": "1d7f97a967e880b347d9c604ca01d126277fe741dea754142b58fc1c81b36b70",
+			"mainStructuralHash": "e1e57951e261b35ed89913061450e826a7c3536661a8d13e1b2297f852abc808"
 		},
 		"contracts/wire/tsconfig.publish.json": {
 			"old": "packages/wire/tsconfig.publish.json",
@@ -4134,7 +4147,7 @@
 			"structuralHash": "3e823dfa50a745297133ddaa28e7711dd16e54ea540bf1ec73047630ad4d99b1",
 			"mainStructuralHash": "3e823dfa50a745297133ddaa28e7711dd16e54ea540bf1ec73047630ad4d99b1"
 		},
-		"hosts/gui/bunfig.toml": {
+		"plugins/hashline/bunfig.toml": {
 			"old": "packages/hashline/bunfig.toml",
 			"kind": "normalized",
 			"differs": "changed",
@@ -4145,7 +4158,7 @@
 			"structuralHash": "e67cafbcfa993d42c79936c2b3c96323734290b2b9be51a7f589f8cec069a2d9",
 			"mainStructuralHash": "d77fe7e12f97d22f38bab5a9245647b1325964f93f1353248eac056a4bb1f09c"
 		},
-		"hosts/gui/tsconfig.json": {
+		"hosts/terminal/engine/tsconfig.json": {
 			"old": "packages/tui/tsconfig.json",
 			"kind": "normalized",
 			"differs": "changed",
@@ -5775,15 +5788,15 @@
 			"structuralHash": "db7140b054bae1b899e370c9bb2df3e088a67d51d17ef27f323696511b31dcff",
 			"mainStructuralHash": "db7140b054bae1b899e370c9bb2df3e088a67d51d17ef27f323696511b31dcff"
 		},
-		"hosts/terminal/engine/tsconfig.json": {
+		"plugins/hashline/tsconfig.json": {
 			"old": "packages/hashline/tsconfig.json",
 			"kind": "normalized",
 			"differs": "changed",
 			"group": "manifest-depth",
 			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
-			"hash": "d15bacbdda48a13ace6cef832622daf0754b125bb399edff53db4529e7acc82c",
+			"hash": "4727b8d59142037ab3bdbf174cafaf587cb1bc7eaf0f2a34d75a4472fd2aa55c",
 			"mainHash": "8c311aa9b6154a484e086da0fc6da90d35cd5ec99bd94405937c9a5b162b106b",
-			"structuralHash": "3d1f42113994e537eb4004f5efb7506ca09cdc40ef4bd70c307730dc2b8db465",
+			"structuralHash": "e658471018ceb65393394f6b12620b464a83346164060fd2e5e57d2c4cba7169",
 			"mainStructuralHash": "b7e87a3a0dbf53f214467603befab7c2567ce60d153a73e9c5a220610fa5f760"
 		},
 		"hosts/terminal/engine/tsconfig.publish.json": {
@@ -15055,8 +15068,8 @@
 		"packages/coding-agent/src/modes/terminal/components/selectors/settings-defs.ts": {
 			"old": "packages/coding-agent/src/modes/components/settings-defs.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "528e5d410535c701e71daf9445357aca0e5797dd970a918ba12f1325a23ec11e",
+			"differs": "imports-and-comments-only",
+			"hash": "cae728448a82693261ad7d505b41bb5e9e633350735ea988668e5fd2d3ec351b",
 			"mainHash": "528e5d410535c701e71daf9445357aca0e5797dd970a918ba12f1325a23ec11e",
 			"structuralHash": "b28ec89591f7d0f607291f1ab5c2f4a93c3dda39ec64c2788756b0a928a6ff3d",
 			"mainStructuralHash": "b28ec89591f7d0f607291f1ab5c2f4a93c3dda39ec64c2788756b0a928a6ff3d"
@@ -15067,7 +15080,7 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "65377ab1623dd51ce41cddf42d970fe29e0165dc71cbd4f5698431560d7e60f2",
+			"hash": "74c9a5d487119f3a8346f79fb4659a74226faa92c90cd88211b67874280f5b43",
 			"mainHash": "9e36e00a94b136b65cd7a51ea200c1134b14d1b2a7628f51f310e753d9885ec0",
 			"structuralHash": "b9577933142101965027fb0a40f52a5a77743d1c2949667ae775fa7b668c1696",
 			"mainStructuralHash": "2a8469bed1c668438006e14d308c40864695be56b01326ca99abe00b01aa15f5"
@@ -20083,7 +20096,7 @@
 			"old": "packages/coding-agent/test/modes/components/an-empty-group-shows-no-heading.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "f50aa91dd475774172be440da26abfbe039c9e257bad3a34d1def97517eeafaf",
+			"hash": "e24090f58fa88f9dc1cc6c6d555d0c77803556618e817ea546987f084e5f8d78",
 			"mainHash": "42129e94d7a6365566c6d1309f111853337e18297a712bf670f3d3ef6966c9bc",
 			"structuralHash": "299923de72bfac42e35d27d52a57cdb4c6d910743dbd795767ad0798d4112913",
 			"mainStructuralHash": "299923de72bfac42e35d27d52a57cdb4c6d910743dbd795767ad0798d4112913"
@@ -20355,7 +20368,7 @@
 			"old": "packages/coding-agent/test/modes/components/dependent-knobs-hide-while-their-master-is-off.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "e7570130670759ea4a9f135df318906f27b49c60c3334ca740c690b8c727eb7a",
+			"hash": "e4a3a534bbf453d1de6395af7dd4b92f8e2a6fe3a66e6f8a561e64ee0a241a78",
 			"mainHash": "0822575407a08b88791f32b9b9d636a16e46b8d1bb136b52aaf82bb3561ff052",
 			"structuralHash": "b495e91d329c7c308b90987cba1b70ede22d607345a42f74f53588c89996128b",
 			"mainStructuralHash": "b495e91d329c7c308b90987cba1b70ede22d607345a42f74f53588c89996128b"
@@ -20715,7 +20728,7 @@
 			"old": "packages/coding-agent/test/modes/components/settings-layout.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "51714bcd124e4dd97961e906ec0d7f3b0ce387ff36faa88ce6d7cbd729f034b7",
+			"hash": "2c435a22988f009d67283a3643cf8351701b1277716ce4ee539406d9c7ceb47d",
 			"mainHash": "f27eb54cfea55f33d1a1fbc19d5299885487210482f2a27915b6f88219759731",
 			"structuralHash": "a043f4ea3e88f48d28729659b2080f7da249c843fd6c9a93f14aa4426e65e3bb",
 			"mainStructuralHash": "a043f4ea3e88f48d28729659b2080f7da249c843fd6c9a93f14aa4426e65e3bb"
@@ -20733,7 +20746,7 @@
 			"old": "packages/coding-agent/test/modes/components/settings-machine-limits-pointer.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "e59f6348dfe9c699f4edff92df03625688b302d8887bc3c7894fd90ef4f71882",
+			"hash": "9f3af0dd774c3b7e9e21ae2f511e5f5048e510722f1fcd1355da1b273bb6232e",
 			"mainHash": "24bd1eda3179a20ac65cd127d8b2858384dc687e5a0b50df466e4f33111b717c",
 			"structuralHash": "f2572d1f840eae1b80f17748ed3cf939fa5d2bc68297b8a32dea88368a2c7ed0",
 			"mainStructuralHash": "f2572d1f840eae1b80f17748ed3cf939fa5d2bc68297b8a32dea88368a2c7ed0"
@@ -20823,7 +20836,7 @@
 			"old": "packages/coding-agent/test/modes/components/settings-tab-context.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "f38d937b8b9ba141144abb3c94fb28cc3bdde95b4aebde7b573ff0682d7afbe1",
+			"hash": "c755af448e61bac77c0e5e5a56cb3549a91c29f0c44253617daa44f40fea4cb1",
 			"mainHash": "abddce0b3a175c3e1538857089db21ca737285b5ba1a15681f1c40aaaf7d7b72",
 			"structuralHash": "8934257b89eb4df57bb6fbe5d838b0074b34079c9fc9514d69c82fdd859eb1b4",
 			"mainStructuralHash": "8934257b89eb4df57bb6fbe5d838b0074b34079c9fc9514d69c82fdd859eb1b4"
@@ -21084,7 +21097,7 @@
 			"old": "packages/coding-agent/test/modes/components/the-resources-tab-owns-every-session-limit.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "a21251bfee3b49be4f5b827d1f89a5f94457522883be0978d24676f75f698fca",
+			"hash": "1efff5b0d20562863e87d3837d71a42afae109bd7ac635765fa749bf13d480e1",
 			"mainHash": "588ea4ae1e38479897fb7337f44beb8aa66be8317c5e35b4dddf4be31ef5d4e3",
 			"structuralHash": "6e3625fee9d22a6dbf57b2aa4fea8c03b3298b84b3765107849d5745d1137f51",
 			"mainStructuralHash": "6e3625fee9d22a6dbf57b2aa4fea8c03b3298b84b3765107849d5745d1137f51"
@@ -36493,17 +36506,6 @@
 			"structuralHash": "903e923c5951b80e9c9b54e6091748c88aba3d0334987deddf9d7373f30984fd",
 			"mainStructuralHash": "903e923c5951b80e9c9b54e6091748c88aba3d0334987deddf9d7373f30984fd"
 		},
-		"plugins/mode-swarm/tsconfig.json": {
-			"old": "packages/swarm-extension/tsconfig.json",
-			"kind": "normalized",
-			"differs": "changed",
-			"group": "manifest-depth",
-			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
-			"hash": "9c5151f22e6936c4a25bb1aea8464bd22122ad897ba7a04474fdbace2c90b906",
-			"mainHash": "a1e82eeae139556292d69cca788fe55b91572c668d59f86fadff1d3e92ad76b2",
-			"structuralHash": "1d7f97a967e880b347d9c604ca01d126277fe741dea754142b58fc1c81b36b70",
-			"mainStructuralHash": "e1e57951e261b35ed89913061450e826a7c3536661a8d13e1b2297f852abc808"
-		},
 		"plugins/web/src/browser-fingerprint-constants.ts": {
 			"old": "packages/coding-agent/src/web/search/providers/browser-fingerprint-constants.ts",
 			"kind": "normalized",
@@ -44489,6 +44491,61 @@
 			"mainHash": "c2e29a18f6926e6a97ad8155d5ec3ca4e9774af289eb9115b37abb89f664ee41",
 			"structuralHash": "1bbdda07c8a1a11cc25dca6403ccc011ed9d0c26cc19bef0e3bbf391588744d0",
 			"mainStructuralHash": "1bbdda07c8a1a11cc25dca6403ccc011ed9d0c26cc19bef0e3bbf391588744d0"
+		},
+		"tests/simulations/bunfig.toml": {
+			"old": "packages/simulations/bunfig.toml",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "manifest-depth",
+			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
+			"hash": "1cdfc76e896b4df720c8c700ea6c8e4d6473a012ad5f490fe73a29e0cb1105fa",
+			"mainHash": "e357f0514f16015c938d120055649b63d1d92e5ce69c9745766c46f30c386a77",
+			"structuralHash": "e67cafbcfa993d42c79936c2b3c96323734290b2b9be51a7f589f8cec069a2d9",
+			"mainStructuralHash": "d77fe7e12f97d22f38bab5a9245647b1325964f93f1353248eac056a4bb1f09c"
+		},
+		"apps/stats/bunfig.toml": {
+			"old": "packages/stats/bunfig.toml",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "manifest-depth",
+			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
+			"hash": "1cdfc76e896b4df720c8c700ea6c8e4d6473a012ad5f490fe73a29e0cb1105fa",
+			"mainHash": "e357f0514f16015c938d120055649b63d1d92e5ce69c9745766c46f30c386a77",
+			"structuralHash": "e67cafbcfa993d42c79936c2b3c96323734290b2b9be51a7f589f8cec069a2d9",
+			"mainStructuralHash": "d77fe7e12f97d22f38bab5a9245647b1325964f93f1353248eac056a4bb1f09c"
+		},
+		"plugins/mode-swarm/bunfig.toml": {
+			"old": "packages/swarm-extension/bunfig.toml",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "manifest-depth",
+			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
+			"hash": "1cdfc76e896b4df720c8c700ea6c8e4d6473a012ad5f490fe73a29e0cb1105fa",
+			"mainHash": "e357f0514f16015c938d120055649b63d1d92e5ce69c9745766c46f30c386a77",
+			"structuralHash": "e67cafbcfa993d42c79936c2b3c96323734290b2b9be51a7f589f8cec069a2d9",
+			"mainStructuralHash": "d77fe7e12f97d22f38bab5a9245647b1325964f93f1353248eac056a4bb1f09c"
+		},
+		"hosts/terminal/engine/bunfig.toml": {
+			"old": "packages/tui/bunfig.toml",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "manifest-depth",
+			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
+			"hash": "1cdfc76e896b4df720c8c700ea6c8e4d6473a012ad5f490fe73a29e0cb1105fa",
+			"mainHash": "e357f0514f16015c938d120055649b63d1d92e5ce69c9745766c46f30c386a77",
+			"structuralHash": "e67cafbcfa993d42c79936c2b3c96323734290b2b9be51a7f589f8cec069a2d9",
+			"mainStructuralHash": "d77fe7e12f97d22f38bab5a9245647b1325964f93f1353248eac056a4bb1f09c"
+		},
+		"contracts/wire/bunfig.toml": {
+			"old": "packages/wire/bunfig.toml",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "manifest-depth",
+			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
+			"hash": "1cdfc76e896b4df720c8c700ea6c8e4d6473a012ad5f490fe73a29e0cb1105fa",
+			"mainHash": "e357f0514f16015c938d120055649b63d1d92e5ce69c9745766c46f30c386a77",
+			"structuralHash": "e67cafbcfa993d42c79936c2b3c96323734290b2b9be51a7f589f8cec069a2d9",
+			"mainStructuralHash": "d77fe7e12f97d22f38bab5a9245647b1325964f93f1353248eac056a4bb1f09c"
 		}
 	},
 	"importAttributes": {
