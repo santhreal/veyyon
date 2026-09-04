@@ -11,6 +11,7 @@
 - A Codex server-side compaction sends the session's `prompt_cache_key`, so it lands on the session's cached prefix instead of missing it and making the next turn re-pay full uncached input.
 - A Codex server-side compaction with no session id is refused instead of minting a random conversation identity, which opened a second cache lineage and left the post-compaction history reset with nothing to find.
 - The Claude Code user-agent reports `agent-sdk/0.3.257`, the Agent SDK release paired with the Claude Code version the same request sends.
+- With `accounts.loadBalancing` off, one account per provider and credential type serves every session: the explicit choice, else the session's sticky account, else the first stored row. The resolver no longer hashes a new session across accounts, ranks accounts by headroom, or skips a rate-limited or out-of-quota account for a sibling; the session waits on its own account, and only a refused grant moves it, announced through `onCredentialFailover`. Turning the setting on restores the previous rotation and ranking.
 
 ### Changed
 

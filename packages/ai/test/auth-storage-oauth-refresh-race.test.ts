@@ -29,7 +29,10 @@ describe("AuthStorage OAuth refresh race", () => {
 		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-ai-auth-oauth-race-"));
 		store = await SqliteAuthCredentialStore.open(path.join(tempDir, "agent.db"));
 		events = [];
+		// Preflighting and rotating across siblings is movement; the library holds it off unless a
+		// host opts in.
 		authStorage = new AuthStorage(store, {
+			loadBalancing: true,
 			onCredentialDisabled: event => {
 				events.push(event);
 			},
@@ -60,6 +63,7 @@ describe("AuthStorage OAuth refresh race", () => {
 	function storageWithRefresher(refresh: (credential: OAuthCredential) => Promise<OAuthCredentials>): AuthStorage {
 		if (!store) throw new Error("test setup failed");
 		return new AuthStorage(store, {
+			loadBalancing: true,
 			onCredentialDisabled: event => {
 				events.push(event);
 			},

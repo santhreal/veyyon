@@ -152,10 +152,10 @@ describe("the account that was chosen", () => {
 		}
 	});
 
-	it("does not colour a peek when nobody chose an account", async () => {
-		// The negative control for the arm above: with no choice, a peek follows availability like
-		// everything else, so the held account is not what discovery reports.
-		const { storage } = await twoAccountsFirstHeld({ choose: false });
+	it("does not colour a peek when nobody chose an account and movement is on", async () => {
+		// The negative control for the arm above: with no choice and movement allowed, a peek follows
+		// availability like everything else, so the held account is not what discovery reports.
+		const { storage } = await twoAccountsFirstHeld({ choose: false, loadBalancing: true });
 		try {
 			expect(await storage.peekApiKey(PROVIDER)).toBe("access-sibling");
 		} finally {

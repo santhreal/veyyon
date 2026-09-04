@@ -73,7 +73,8 @@ describe("credential selection under a provider-wide quota wall", () => {
 			else store.upsertAuthCredentialForProvider(PROVIDER, { type: "api_key", key: `access-${suffix}` });
 		}
 		const rows = store.listAuthCredentials(PROVIDER);
-		storage = new AuthStorage(store, { rankingStrategyResolver: () => undefined });
+		// Availability ordering is movement; the library holds it off unless a host opts in.
+		storage = new AuthStorage(store, { loadBalancing: true, rankingStrategyResolver: () => undefined });
 		await storage.reload();
 		const now = Date.now();
 		for (const [position, offset] of offsets.entries()) {
