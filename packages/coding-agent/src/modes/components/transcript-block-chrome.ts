@@ -56,7 +56,7 @@ export function transcriptBlockText(text: string): Text {
 
 /**
  * A command's report as a transcript block: an accent title on the header row and the
- * already-styled body at the rail. `/account status`, `/account refresh` and `/lsp` print through
+ * already-styled body at the rail. `/account status`, `/account refresh`, `/lsp` and `/trust` print through
  * this, so a report never lands in the transcript as a bare paragraph that reads like a chat
  * message. `showMarkdownPanel` in `command-controller.ts` is the Markdown-bodied twin.
  */

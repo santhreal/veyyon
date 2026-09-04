@@ -2573,7 +2573,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				runtime.ctx.settings.getAgentDir(),
 				runtime.ctx.sessionManager.getCwd(),
 			);
-			runtime.ctx.showStatus(report);
+			runtime.ctx.present(reportBlock("Trust", report.trimEnd()));
 		},
 	},
 	force: {
