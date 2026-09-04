@@ -357,7 +357,7 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 		name: "contract-extraction",
 		matches: relative => relative.startsWith("contracts/"),
 		reason:
-			"Wire and view types were extracted into dependency-free contract packages, which is where the presentation view-models now live.",
+			"Wire and view types were extracted into contract packages that import nothing that runs, which is where the presentation view-models now live; a wire shape a guest reads is a type-only projection of the one @veyyon/model owns.",
 	},
 ];
 
