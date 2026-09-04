@@ -64,10 +64,12 @@ export class SkillProtocolHandler implements ProtocolHandler {
 
 		let resolvedBaseDir: string;
 		let resolvedTargetPath: string;
+		let resolvedEntryPath: string;
 		try {
-			[resolvedBaseDir, resolvedTargetPath] = await Promise.all([
+			[resolvedBaseDir, resolvedTargetPath, resolvedEntryPath] = await Promise.all([
 				fs.realpath(skill.baseDir),
 				fs.realpath(targetPath),
+				fs.realpath(skill.filePath),
 			]);
 		} catch (error) {
 			if (isEnoent(error)) {
@@ -75,7 +77,13 @@ export class SkillProtocolHandler implements ProtocolHandler {
 			}
 			throw error;
 		}
-		ensureWithinRoot(resolvedTargetPath, resolvedBaseDir, "skill");
+		// The declared entry file is what the loader parsed to make this skill exist, so it is
+		// served wherever it really lives: an operator commonly installs a skill as a directory
+		// holding one `SKILL.md` symlink into a source tree. Every other child still has to
+		// resolve inside the root, or a symlink turns the skill into an arbitrary-file reader.
+		if (resolvedTargetPath !== resolvedEntryPath) {
+			ensureWithinRoot(resolvedTargetPath, resolvedBaseDir, "skill");
+		}
 		targetPath = resolvedTargetPath;
 
 		const stats: fsTypes.Stats = await fs.stat(targetPath);
