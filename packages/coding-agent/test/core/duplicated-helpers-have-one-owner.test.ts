@@ -502,16 +502,19 @@ describe("the AES-256-GCM frame seal", () => {
 	});
 
 	/**
-	 * `@veyyon/wire` has no dependencies, which is what lets the browser guest import it directly. The
-	 * seal was the one thing that looked like it needed `@veyyon/utils`, so this fails if a dependency
-	 * appears rather than waiting for a browser build to break.
+	 * `@veyyon/wire` depends on one thing, `@veyyon/model`, and reaches it by `import type` only: its
+	 * content blocks, stop reason and usage are projections of the model contract's shapes, and the
+	 * contract layer gate admits that edge and pins it. Nothing that runs arrives through it, which is
+	 * what lets the browser guest import `@veyyon/wire` directly. The seal was the one thing that
+	 * looked like it needed `@veyyon/utils`, so this fails if a second dependency appears rather than
+	 * waiting for a browser build to break.
 	 */
-	it("did not give @veyyon/wire a dependency", () => {
+	it("gave @veyyon/wire no dependency but the model contract it projects", () => {
 		const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "contracts/wire/package.json"), "utf-8")) as {
 			dependencies?: Record<string, string>;
 		};
 
-		expect(manifest.dependencies ?? {}).toEqual({});
+		expect(manifest.dependencies ?? {}).toEqual({ "@veyyon/model": "catalog:" });
 	});
 });
 
