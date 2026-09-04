@@ -297,6 +297,12 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 			"The site scrapers are `@veyyon/web`. A handler states the host capabilities it needs -- the credential store, document conversion, external-tool resolution, the session spawn hook and the fetch preference -- through `ScrapeServices` instead of importing the agent's settings, storage and process modules, and throws a name-preserving `AbortError` rather than the agent's cancellation class. On this side the call sites name the new owner and build the services object.",
 	},
 	{
+		name: "plugin-source",
+		matches: relative => /^plugins\/[^/]+\/src\//.test(relative),
+		reason:
+			"A plugin left packages/ for plugins/. Relative imports and array copies follow the move.",
+	},
+	{
 		name: "host-boundary",
 		matches: relative => relative.startsWith("packages/coding-agent/src/modes/terminal/"),
 		reason:
@@ -308,10 +314,22 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 		reason: "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
 	},
 	{
+		name: "colocated-test",
+		matches: relative => relative.startsWith("packages/coding-agent/test/"),
+		reason:
+			"A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
+	},
+	{
 		name: "kernel-absorption",
 		matches: relative => relative === "kernel/src/session/agent-session-compaction-policy.ts",
 		reason:
 			"The kernel's compaction policy module carries the knobs this branch extracted from `agent-session.ts` plus the vocabulary main later extracted into a package-local module of its own, which git pairs as the rename source. One owner states both sets, and no knob's value changed.",
+	},
+	{
+		name: "kernel-extraction",
+		matches: relative => relative.startsWith("kernel/src/"),
+		reason:
+			"The plugin loader, contribution registry and session spine left packages/coding-agent for kernel/. Relative imports and array copies follow the move.",
 	},
 	{
 		name: "contract-extraction",

@@ -550,6 +550,30 @@ const DOCUMENTED_KEY_RELOCATIONS: Readonly<Record<string, Readonly<Record<string
 			to: "./discovery/*",
 			why: "the discovery modules are flat under src/discovery/, which ./discovery/* serves",
 		},
+		"./tui": {
+			to: "./modes/terminal/draw",
+			why: "the same modules are published at ./modes/terminal/draw after the move",
+		},
+		"./tui/*": {
+			to: "./modes/terminal/draw/*",
+			why: "the same modules are published at ./modes/terminal/draw/* after the move",
+		},
+		"./web/*": {
+			to: "./tools/web/*",
+			why: "the same modules are published at ./tools/web/* after the move",
+		},
+		"./web/search": {
+			to: "./tools/web/search",
+			why: "the same modules are published at ./tools/web/search after the move",
+		},
+		"./web/search/*": {
+			to: "./tools/web/search/*",
+			why: "the same modules are published at ./tools/web/search/* after the move",
+		},
+		"./web/search/providers/*": {
+			to: "./tools/web/search/providers/*",
+			why: "the same modules are published at ./tools/web/search/providers/* after the move",
+		},
 		"./web/scrapers": {
 			to: "@veyyon/web/scrapers",
 			why: "the site handlers moved to plugins/web, which @veyyon/web publishes as ./scrapers",
@@ -654,8 +678,8 @@ const ABSORBED_SUBPATHS: Readonly<Record<string, Readonly<Record<string, Relocat
 			why: "VibeModeState is declared in session/vibe-runtime.ts, which publishes it",
 		},
 		"./web/search/render": {
-			to: "./web/search/view",
-			why: "the web_search pending row, answer card, unreadable-response fallback and error panel are declared in web/search/view.ts as views the host draws, so the module that built their terminal components is gone",
+			to: "./tools/web/search/view",
+			why: "the web_search pending row, answer card, unreadable-response fallback and error panel are declared in tools/web/search/view.ts as views the host draws, so the module that built their terminal components is gone",
 		},
 	},
 	"@veyyon/stats": {

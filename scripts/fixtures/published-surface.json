@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "ced8b7d710615959f60b79e66a4c8e864969a928",
+	"generatedFrom": "91ccad595600b27b90a93454995490320e586802",
 	"packages": {
 		"@veyyon/agent-core": {
 			"name": "@veyyon/agent-core",
@@ -6401,6 +6401,8 @@
 				"./modes/terminal/components/status-line",
 				"./modes/terminal/components/status-line/*",
 				"./modes/terminal/controllers/*",
+				"./modes/terminal/draw",
+				"./modes/terminal/draw/*",
 				"./modes/terminal/setup-wizard",
 				"./modes/terminal/setup-wizard/*",
 				"./modes/terminal/utils/*",
@@ -6410,7 +6412,11 @@
 				"./speech/tts/*",
 				"./theme/*",
 				"./theme/defaults",
-				"./thinking"
+				"./thinking",
+				"./tools/web/*",
+				"./tools/web/search",
+				"./tools/web/search/*",
+				"./tools/web/search/providers/*"
 			]
 		},
 		"resolvedSubpaths": {
@@ -6977,6 +6983,35 @@
 				"./modes/terminal/controllers/welcome-controller.js",
 				"./modes/terminal/controllers/working-loader",
 				"./modes/terminal/controllers/working-loader.js",
+				"./modes/terminal/draw",
+				"./modes/terminal/draw/code-cell",
+				"./modes/terminal/draw/code-cell.js",
+				"./modes/terminal/draw/draw-tool-view",
+				"./modes/terminal/draw/draw-tool-view.js",
+				"./modes/terminal/draw/file-list",
+				"./modes/terminal/draw/file-list.js",
+				"./modes/terminal/draw/hyperlink",
+				"./modes/terminal/draw/hyperlink.js",
+				"./modes/terminal/draw/index",
+				"./modes/terminal/draw/index.js",
+				"./modes/terminal/draw/output-block",
+				"./modes/terminal/draw/output-block.js",
+				"./modes/terminal/draw/rail-motion",
+				"./modes/terminal/draw/rail-motion.js",
+				"./modes/terminal/draw/status-line",
+				"./modes/terminal/draw/status-line.js",
+				"./modes/terminal/draw/terminal-row",
+				"./modes/terminal/draw/terminal-row.js",
+				"./modes/terminal/draw/tree-list",
+				"./modes/terminal/draw/tree-list.js",
+				"./modes/terminal/draw/types",
+				"./modes/terminal/draw/types.js",
+				"./modes/terminal/draw/utils",
+				"./modes/terminal/draw/utils.js",
+				"./modes/terminal/draw/width-aware-text",
+				"./modes/terminal/draw/width-aware-text.js",
+				"./modes/terminal/draw/wrap-diff-row",
+				"./modes/terminal/draw/wrap-diff-row.js",
 				"./modes/terminal/driver",
 				"./modes/terminal/driver.js",
 				"./modes/terminal/first-frame",
@@ -7505,26 +7540,85 @@
 				"./tools/web/github-cache.js",
 				"./tools/web/image-gen",
 				"./tools/web/image-gen.js",
+				"./tools/web/kagi",
+				"./tools/web/kagi.js",
 				"./tools/web/manifest",
 				"./tools/web/manifest.js",
 				"./tools/web/renderers",
 				"./tools/web/renderers.js",
 				"./tools/web/scrape-services",
 				"./tools/web/scrape-services.js",
+				"./tools/web/search",
+				"./tools/web/search/index",
+				"./tools/web/search/index.js",
+				"./tools/web/search/provider",
+				"./tools/web/search/provider.js",
+				"./tools/web/search/providers/anthropic",
+				"./tools/web/search/providers/anthropic.js",
+				"./tools/web/search/providers/base",
+				"./tools/web/search/providers/base.js",
+				"./tools/web/search/providers/brave",
+				"./tools/web/search/providers/brave.js",
+				"./tools/web/search/providers/browser-headers",
+				"./tools/web/search/providers/browser-headers.js",
+				"./tools/web/search/providers/browser-page",
+				"./tools/web/search/providers/browser-page.js",
+				"./tools/web/search/providers/codex",
+				"./tools/web/search/providers/codex.js",
+				"./tools/web/search/providers/duckduckgo",
+				"./tools/web/search/providers/duckduckgo.js",
+				"./tools/web/search/providers/exa",
+				"./tools/web/search/providers/exa.js",
+				"./tools/web/search/providers/firecrawl",
+				"./tools/web/search/providers/firecrawl.js",
+				"./tools/web/search/providers/gemini",
+				"./tools/web/search/providers/gemini.js",
+				"./tools/web/search/providers/google",
+				"./tools/web/search/providers/google.js",
+				"./tools/web/search/providers/jina",
+				"./tools/web/search/providers/jina.js",
+				"./tools/web/search/providers/kagi",
+				"./tools/web/search/providers/kagi.js",
+				"./tools/web/search/providers/kimi",
+				"./tools/web/search/providers/kimi.js",
+				"./tools/web/search/providers/mojeek",
+				"./tools/web/search/providers/mojeek.js",
+				"./tools/web/search/providers/parallel",
+				"./tools/web/search/providers/parallel.js",
+				"./tools/web/search/providers/perplexity",
+				"./tools/web/search/providers/perplexity-auth",
+				"./tools/web/search/providers/perplexity-auth.js",
+				"./tools/web/search/providers/perplexity.js",
+				"./tools/web/search/providers/public",
+				"./tools/web/search/providers/public.js",
+				"./tools/web/search/providers/searxng",
+				"./tools/web/search/providers/searxng.js",
+				"./tools/web/search/providers/startpage",
+				"./tools/web/search/providers/startpage.js",
+				"./tools/web/search/providers/synthetic",
+				"./tools/web/search/providers/synthetic.js",
+				"./tools/web/search/providers/tavily",
+				"./tools/web/search/providers/tavily.js",
+				"./tools/web/search/providers/tinyfish",
+				"./tools/web/search/providers/tinyfish.js",
+				"./tools/web/search/providers/utils",
+				"./tools/web/search/providers/utils.js",
+				"./tools/web/search/providers/xai",
+				"./tools/web/search/providers/xai.js",
+				"./tools/web/search/providers/zai",
+				"./tools/web/search/providers/zai.js",
+				"./tools/web/search/types",
+				"./tools/web/search/types.js",
+				"./tools/web/search/utils",
+				"./tools/web/search/utils.js",
+				"./tools/web/search/view",
+				"./tools/web/search/view.js",
 				"./tools/web/tts",
 				"./tools/web/tts.js",
 				"./tools/web/xai-http",
 				"./tools/web/xai-http.js",
-				"./tui/draw-tool-view",
-				"./tui/draw-tool-view.js",
-				"./tui/terminal-row",
-				"./tui/terminal-row.js",
-				"./tui/wrap-diff-row",
-				"./tui/wrap-diff-row.js",
 				"./utils/jsonrpc-framing",
-				"./utils/jsonrpc-framing.js",
-				"./web/search/view",
-				"./web/search/view.js"
+				"./utils/jsonrpc-framing.js"
 			],
 			"@veyyon/utils": [
 				"./ansi",
@@ -7651,6 +7745,7 @@
 				"./tools/web/browser",
 				"./tools/web/gh",
 				"./tools/web/image-gen",
+				"./tools/web/search",
 				"./tools/web/tts",
 				"@veyyon/kernel/session/agent-session-compaction-policy",
 				"@veyyon/kernel/session/auth-storage",
@@ -7783,6 +7878,30 @@
 				"./tool-discovery/*": {
 					"to": "./discovery/*",
 					"why": "the discovery modules are flat under src/discovery/, which ./discovery/* serves"
+				},
+				"./tui": {
+					"to": "./modes/terminal/draw",
+					"why": "the same modules are published at ./modes/terminal/draw after the move"
+				},
+				"./tui/*": {
+					"to": "./modes/terminal/draw/*",
+					"why": "the same modules are published at ./modes/terminal/draw/* after the move"
+				},
+				"./web/*": {
+					"to": "./tools/web/*",
+					"why": "the same modules are published at ./tools/web/* after the move"
+				},
+				"./web/search": {
+					"to": "./tools/web/search",
+					"why": "the same modules are published at ./tools/web/search after the move"
+				},
+				"./web/search/*": {
+					"to": "./tools/web/search/*",
+					"why": "the same modules are published at ./tools/web/search/* after the move"
+				},
+				"./web/search/providers/*": {
+					"to": "./tools/web/search/providers/*",
+					"why": "the same modules are published at ./tools/web/search/providers/* after the move"
 				},
 				"./web/scrapers": {
 					"to": "@veyyon/web/scrapers",
@@ -11960,6 +12079,98 @@
 					"to": "@veyyon/coding-agent/speech/tts/wav.js",
 					"why": "packages/coding-agent/src/tts/wav.ts moved to packages/coding-agent/src/speech/tts/wav.ts, which @veyyon/coding-agent publishes as ./speech/tts/wav.js"
 				},
+				"./tui": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/index",
+					"why": "packages/coding-agent/src/tui/index.ts moved to packages/coding-agent/src/modes/terminal/draw/index.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/index"
+				},
+				"./tui/code-cell": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/code-cell",
+					"why": "packages/coding-agent/src/tui/code-cell.ts moved to packages/coding-agent/src/modes/terminal/draw/code-cell.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/code-cell"
+				},
+				"./tui/code-cell.js": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/code-cell.js",
+					"why": "packages/coding-agent/src/tui/code-cell.ts moved to packages/coding-agent/src/modes/terminal/draw/code-cell.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/code-cell.js"
+				},
+				"./tui/file-list": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/file-list",
+					"why": "packages/coding-agent/src/tui/file-list.ts moved to packages/coding-agent/src/modes/terminal/draw/file-list.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/file-list"
+				},
+				"./tui/file-list.js": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/file-list.js",
+					"why": "packages/coding-agent/src/tui/file-list.ts moved to packages/coding-agent/src/modes/terminal/draw/file-list.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/file-list.js"
+				},
+				"./tui/hyperlink": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/hyperlink",
+					"why": "packages/coding-agent/src/tui/hyperlink.ts moved to packages/coding-agent/src/modes/terminal/draw/hyperlink.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/hyperlink"
+				},
+				"./tui/hyperlink.js": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/hyperlink.js",
+					"why": "packages/coding-agent/src/tui/hyperlink.ts moved to packages/coding-agent/src/modes/terminal/draw/hyperlink.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/hyperlink.js"
+				},
+				"./tui/index": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/index",
+					"why": "packages/coding-agent/src/tui/index.ts moved to packages/coding-agent/src/modes/terminal/draw/index.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/index"
+				},
+				"./tui/index.js": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/index.js",
+					"why": "packages/coding-agent/src/tui/index.ts moved to packages/coding-agent/src/modes/terminal/draw/index.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/index.js"
+				},
+				"./tui/output-block": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/output-block",
+					"why": "packages/coding-agent/src/tui/output-block.ts moved to packages/coding-agent/src/modes/terminal/draw/output-block.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/output-block"
+				},
+				"./tui/output-block.js": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/output-block.js",
+					"why": "packages/coding-agent/src/tui/output-block.ts moved to packages/coding-agent/src/modes/terminal/draw/output-block.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/output-block.js"
+				},
+				"./tui/rail-motion": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/rail-motion",
+					"why": "packages/coding-agent/src/tui/rail-motion.ts moved to packages/coding-agent/src/modes/terminal/draw/rail-motion.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/rail-motion"
+				},
+				"./tui/rail-motion.js": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/rail-motion.js",
+					"why": "packages/coding-agent/src/tui/rail-motion.ts moved to packages/coding-agent/src/modes/terminal/draw/rail-motion.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/rail-motion.js"
+				},
+				"./tui/status-line": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/status-line",
+					"why": "packages/coding-agent/src/tui/status-line.ts moved to packages/coding-agent/src/modes/terminal/draw/status-line.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/status-line"
+				},
+				"./tui/status-line.js": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/status-line.js",
+					"why": "packages/coding-agent/src/tui/status-line.ts moved to packages/coding-agent/src/modes/terminal/draw/status-line.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/status-line.js"
+				},
+				"./tui/tree-list": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/tree-list",
+					"why": "packages/coding-agent/src/tui/tree-list.ts moved to packages/coding-agent/src/modes/terminal/draw/tree-list.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/tree-list"
+				},
+				"./tui/tree-list.js": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/tree-list.js",
+					"why": "packages/coding-agent/src/tui/tree-list.ts moved to packages/coding-agent/src/modes/terminal/draw/tree-list.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/tree-list.js"
+				},
+				"./tui/types": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/types",
+					"why": "packages/coding-agent/src/tui/types.ts moved to packages/coding-agent/src/modes/terminal/draw/types.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/types"
+				},
+				"./tui/types.js": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/types.js",
+					"why": "packages/coding-agent/src/tui/types.ts moved to packages/coding-agent/src/modes/terminal/draw/types.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/types.js"
+				},
+				"./tui/utils": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/utils",
+					"why": "packages/coding-agent/src/tui/utils.ts moved to packages/coding-agent/src/modes/terminal/draw/utils.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/utils"
+				},
+				"./tui/utils.js": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/utils.js",
+					"why": "packages/coding-agent/src/tui/utils.ts moved to packages/coding-agent/src/modes/terminal/draw/utils.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/utils.js"
+				},
+				"./tui/width-aware-text": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/width-aware-text",
+					"why": "packages/coding-agent/src/tui/width-aware-text.ts moved to packages/coding-agent/src/modes/terminal/draw/width-aware-text.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/width-aware-text"
+				},
+				"./tui/width-aware-text.js": {
+					"to": "@veyyon/coding-agent/modes/terminal/draw/width-aware-text.js",
+					"why": "packages/coding-agent/src/tui/width-aware-text.ts moved to packages/coding-agent/src/modes/terminal/draw/width-aware-text.ts, which @veyyon/coding-agent publishes as ./modes/terminal/draw/width-aware-text.js"
+				},
 				"./utils/markdown-link": {
 					"to": "@veyyon/web/markdown-link",
 					"why": "packages/coding-agent/src/utils/markdown-link.ts moved to plugins/web/src/markdown-link.ts, which @veyyon/web publishes as ./markdown-link"
@@ -11999,6 +12210,14 @@
 				"./vibe/state.js": {
 					"to": "./session/vibe-runtime.js",
 					"why": "VibeModeState is declared in session/vibe-runtime.ts, which publishes it"
+				},
+				"./web/kagi": {
+					"to": "@veyyon/coding-agent/tools/web/kagi",
+					"why": "packages/coding-agent/src/web/kagi.ts moved to packages/coding-agent/src/tools/web/kagi.ts, which @veyyon/coding-agent publishes as ./tools/web/kagi"
+				},
+				"./web/kagi.js": {
+					"to": "@veyyon/coding-agent/tools/web/kagi.js",
+					"why": "packages/coding-agent/src/web/kagi.ts moved to packages/coding-agent/src/tools/web/kagi.ts, which @veyyon/coding-agent publishes as ./tools/web/kagi.js"
 				},
 				"./web/parallel": {
 					"to": "@veyyon/web/parallel",
@@ -12636,6 +12855,50 @@
 					"to": "@veyyon/web/scrapers/youtube.js",
 					"why": "packages/coding-agent/src/web/scrapers/youtube.ts moved to plugins/web/src/scrapers/youtube.ts, which @veyyon/web publishes as ./scrapers/youtube.js"
 				},
+				"./web/search": {
+					"to": "@veyyon/coding-agent/tools/web/search/index",
+					"why": "packages/coding-agent/src/web/search/index.ts moved to packages/coding-agent/src/tools/web/search/index.ts, which @veyyon/coding-agent publishes as ./tools/web/search/index"
+				},
+				"./web/search/index": {
+					"to": "@veyyon/coding-agent/tools/web/search/index",
+					"why": "packages/coding-agent/src/web/search/index.ts moved to packages/coding-agent/src/tools/web/search/index.ts, which @veyyon/coding-agent publishes as ./tools/web/search/index"
+				},
+				"./web/search/index.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/index.js",
+					"why": "packages/coding-agent/src/web/search/index.ts moved to packages/coding-agent/src/tools/web/search/index.ts, which @veyyon/coding-agent publishes as ./tools/web/search/index.js"
+				},
+				"./web/search/provider": {
+					"to": "@veyyon/coding-agent/tools/web/search/provider",
+					"why": "packages/coding-agent/src/web/search/provider.ts moved to packages/coding-agent/src/tools/web/search/provider.ts, which @veyyon/coding-agent publishes as ./tools/web/search/provider"
+				},
+				"./web/search/provider.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/provider.js",
+					"why": "packages/coding-agent/src/web/search/provider.ts moved to packages/coding-agent/src/tools/web/search/provider.ts, which @veyyon/coding-agent publishes as ./tools/web/search/provider.js"
+				},
+				"./web/search/providers/anthropic": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/anthropic",
+					"why": "packages/coding-agent/src/web/search/providers/anthropic.ts moved to packages/coding-agent/src/tools/web/search/providers/anthropic.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/anthropic"
+				},
+				"./web/search/providers/anthropic.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/anthropic.js",
+					"why": "packages/coding-agent/src/web/search/providers/anthropic.ts moved to packages/coding-agent/src/tools/web/search/providers/anthropic.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/anthropic.js"
+				},
+				"./web/search/providers/base": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/base",
+					"why": "packages/coding-agent/src/web/search/providers/base.ts moved to packages/coding-agent/src/tools/web/search/providers/base.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/base"
+				},
+				"./web/search/providers/base.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/base.js",
+					"why": "packages/coding-agent/src/web/search/providers/base.ts moved to packages/coding-agent/src/tools/web/search/providers/base.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/base.js"
+				},
+				"./web/search/providers/brave": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/brave",
+					"why": "packages/coding-agent/src/web/search/providers/brave.ts moved to packages/coding-agent/src/tools/web/search/providers/brave.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/brave"
+				},
+				"./web/search/providers/brave.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/brave.js",
+					"why": "packages/coding-agent/src/web/search/providers/brave.ts moved to packages/coding-agent/src/tools/web/search/providers/brave.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/brave.js"
+				},
 				"./web/search/providers/browser-fingerprint-constants": {
 					"to": "@veyyon/web/browser-fingerprint-constants",
 					"why": "packages/coding-agent/src/web/search/providers/browser-fingerprint-constants.ts moved to plugins/web/src/browser-fingerprint-constants.ts, which @veyyon/web publishes as ./browser-fingerprint-constants"
@@ -12644,13 +12907,221 @@
 					"to": "@veyyon/web/browser-fingerprint-constants.js",
 					"why": "packages/coding-agent/src/web/search/providers/browser-fingerprint-constants.ts moved to plugins/web/src/browser-fingerprint-constants.ts, which @veyyon/web publishes as ./browser-fingerprint-constants.js"
 				},
+				"./web/search/providers/browser-headers": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/browser-headers",
+					"why": "packages/coding-agent/src/web/search/providers/browser-headers.ts moved to packages/coding-agent/src/tools/web/search/providers/browser-headers.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/browser-headers"
+				},
+				"./web/search/providers/browser-headers.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/browser-headers.js",
+					"why": "packages/coding-agent/src/web/search/providers/browser-headers.ts moved to packages/coding-agent/src/tools/web/search/providers/browser-headers.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/browser-headers.js"
+				},
+				"./web/search/providers/browser-page": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/browser-page",
+					"why": "packages/coding-agent/src/web/search/providers/browser-page.ts moved to packages/coding-agent/src/tools/web/search/providers/browser-page.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/browser-page"
+				},
+				"./web/search/providers/browser-page.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/browser-page.js",
+					"why": "packages/coding-agent/src/web/search/providers/browser-page.ts moved to packages/coding-agent/src/tools/web/search/providers/browser-page.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/browser-page.js"
+				},
+				"./web/search/providers/codex": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/codex",
+					"why": "packages/coding-agent/src/web/search/providers/codex.ts moved to packages/coding-agent/src/tools/web/search/providers/codex.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/codex"
+				},
+				"./web/search/providers/codex.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/codex.js",
+					"why": "packages/coding-agent/src/web/search/providers/codex.ts moved to packages/coding-agent/src/tools/web/search/providers/codex.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/codex.js"
+				},
+				"./web/search/providers/duckduckgo": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/duckduckgo",
+					"why": "packages/coding-agent/src/web/search/providers/duckduckgo.ts moved to packages/coding-agent/src/tools/web/search/providers/duckduckgo.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/duckduckgo"
+				},
+				"./web/search/providers/duckduckgo.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/duckduckgo.js",
+					"why": "packages/coding-agent/src/web/search/providers/duckduckgo.ts moved to packages/coding-agent/src/tools/web/search/providers/duckduckgo.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/duckduckgo.js"
+				},
+				"./web/search/providers/exa": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/exa",
+					"why": "packages/coding-agent/src/web/search/providers/exa.ts moved to packages/coding-agent/src/tools/web/search/providers/exa.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/exa"
+				},
+				"./web/search/providers/exa.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/exa.js",
+					"why": "packages/coding-agent/src/web/search/providers/exa.ts moved to packages/coding-agent/src/tools/web/search/providers/exa.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/exa.js"
+				},
+				"./web/search/providers/firecrawl": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/firecrawl",
+					"why": "packages/coding-agent/src/web/search/providers/firecrawl.ts moved to packages/coding-agent/src/tools/web/search/providers/firecrawl.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/firecrawl"
+				},
+				"./web/search/providers/firecrawl.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/firecrawl.js",
+					"why": "packages/coding-agent/src/web/search/providers/firecrawl.ts moved to packages/coding-agent/src/tools/web/search/providers/firecrawl.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/firecrawl.js"
+				},
+				"./web/search/providers/gemini": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/gemini",
+					"why": "packages/coding-agent/src/web/search/providers/gemini.ts moved to packages/coding-agent/src/tools/web/search/providers/gemini.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/gemini"
+				},
+				"./web/search/providers/gemini.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/gemini.js",
+					"why": "packages/coding-agent/src/web/search/providers/gemini.ts moved to packages/coding-agent/src/tools/web/search/providers/gemini.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/gemini.js"
+				},
+				"./web/search/providers/google": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/google",
+					"why": "packages/coding-agent/src/web/search/providers/google.ts moved to packages/coding-agent/src/tools/web/search/providers/google.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/google"
+				},
+				"./web/search/providers/google.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/google.js",
+					"why": "packages/coding-agent/src/web/search/providers/google.ts moved to packages/coding-agent/src/tools/web/search/providers/google.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/google.js"
+				},
+				"./web/search/providers/jina": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/jina",
+					"why": "packages/coding-agent/src/web/search/providers/jina.ts moved to packages/coding-agent/src/tools/web/search/providers/jina.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/jina"
+				},
+				"./web/search/providers/jina.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/jina.js",
+					"why": "packages/coding-agent/src/web/search/providers/jina.ts moved to packages/coding-agent/src/tools/web/search/providers/jina.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/jina.js"
+				},
+				"./web/search/providers/kagi": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/kagi",
+					"why": "packages/coding-agent/src/web/search/providers/kagi.ts moved to packages/coding-agent/src/tools/web/search/providers/kagi.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/kagi"
+				},
+				"./web/search/providers/kagi.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/kagi.js",
+					"why": "packages/coding-agent/src/web/search/providers/kagi.ts moved to packages/coding-agent/src/tools/web/search/providers/kagi.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/kagi.js"
+				},
+				"./web/search/providers/kimi": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/kimi",
+					"why": "packages/coding-agent/src/web/search/providers/kimi.ts moved to packages/coding-agent/src/tools/web/search/providers/kimi.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/kimi"
+				},
+				"./web/search/providers/kimi.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/kimi.js",
+					"why": "packages/coding-agent/src/web/search/providers/kimi.ts moved to packages/coding-agent/src/tools/web/search/providers/kimi.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/kimi.js"
+				},
+				"./web/search/providers/mojeek": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/mojeek",
+					"why": "packages/coding-agent/src/web/search/providers/mojeek.ts moved to packages/coding-agent/src/tools/web/search/providers/mojeek.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/mojeek"
+				},
+				"./web/search/providers/mojeek.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/mojeek.js",
+					"why": "packages/coding-agent/src/web/search/providers/mojeek.ts moved to packages/coding-agent/src/tools/web/search/providers/mojeek.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/mojeek.js"
+				},
+				"./web/search/providers/parallel": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/parallel",
+					"why": "packages/coding-agent/src/web/search/providers/parallel.ts moved to packages/coding-agent/src/tools/web/search/providers/parallel.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/parallel"
+				},
+				"./web/search/providers/parallel.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/parallel.js",
+					"why": "packages/coding-agent/src/web/search/providers/parallel.ts moved to packages/coding-agent/src/tools/web/search/providers/parallel.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/parallel.js"
+				},
+				"./web/search/providers/perplexity": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/perplexity",
+					"why": "packages/coding-agent/src/web/search/providers/perplexity.ts moved to packages/coding-agent/src/tools/web/search/providers/perplexity.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/perplexity"
+				},
+				"./web/search/providers/perplexity-auth": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/perplexity-auth",
+					"why": "packages/coding-agent/src/web/search/providers/perplexity-auth.ts moved to packages/coding-agent/src/tools/web/search/providers/perplexity-auth.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/perplexity-auth"
+				},
+				"./web/search/providers/perplexity-auth.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/perplexity-auth.js",
+					"why": "packages/coding-agent/src/web/search/providers/perplexity-auth.ts moved to packages/coding-agent/src/tools/web/search/providers/perplexity-auth.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/perplexity-auth.js"
+				},
+				"./web/search/providers/perplexity.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/perplexity.js",
+					"why": "packages/coding-agent/src/web/search/providers/perplexity.ts moved to packages/coding-agent/src/tools/web/search/providers/perplexity.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/perplexity.js"
+				},
+				"./web/search/providers/public": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/public",
+					"why": "packages/coding-agent/src/web/search/providers/public.ts moved to packages/coding-agent/src/tools/web/search/providers/public.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/public"
+				},
+				"./web/search/providers/public.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/public.js",
+					"why": "packages/coding-agent/src/web/search/providers/public.ts moved to packages/coding-agent/src/tools/web/search/providers/public.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/public.js"
+				},
+				"./web/search/providers/searxng": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/searxng",
+					"why": "packages/coding-agent/src/web/search/providers/searxng.ts moved to packages/coding-agent/src/tools/web/search/providers/searxng.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/searxng"
+				},
+				"./web/search/providers/searxng.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/searxng.js",
+					"why": "packages/coding-agent/src/web/search/providers/searxng.ts moved to packages/coding-agent/src/tools/web/search/providers/searxng.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/searxng.js"
+				},
+				"./web/search/providers/startpage": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/startpage",
+					"why": "packages/coding-agent/src/web/search/providers/startpage.ts moved to packages/coding-agent/src/tools/web/search/providers/startpage.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/startpage"
+				},
+				"./web/search/providers/startpage.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/startpage.js",
+					"why": "packages/coding-agent/src/web/search/providers/startpage.ts moved to packages/coding-agent/src/tools/web/search/providers/startpage.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/startpage.js"
+				},
+				"./web/search/providers/synthetic": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/synthetic",
+					"why": "packages/coding-agent/src/web/search/providers/synthetic.ts moved to packages/coding-agent/src/tools/web/search/providers/synthetic.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/synthetic"
+				},
+				"./web/search/providers/synthetic.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/synthetic.js",
+					"why": "packages/coding-agent/src/web/search/providers/synthetic.ts moved to packages/coding-agent/src/tools/web/search/providers/synthetic.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/synthetic.js"
+				},
+				"./web/search/providers/tavily": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/tavily",
+					"why": "packages/coding-agent/src/web/search/providers/tavily.ts moved to packages/coding-agent/src/tools/web/search/providers/tavily.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/tavily"
+				},
+				"./web/search/providers/tavily.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/tavily.js",
+					"why": "packages/coding-agent/src/web/search/providers/tavily.ts moved to packages/coding-agent/src/tools/web/search/providers/tavily.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/tavily.js"
+				},
+				"./web/search/providers/tinyfish": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/tinyfish",
+					"why": "packages/coding-agent/src/web/search/providers/tinyfish.ts moved to packages/coding-agent/src/tools/web/search/providers/tinyfish.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/tinyfish"
+				},
+				"./web/search/providers/tinyfish.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/tinyfish.js",
+					"why": "packages/coding-agent/src/web/search/providers/tinyfish.ts moved to packages/coding-agent/src/tools/web/search/providers/tinyfish.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/tinyfish.js"
+				},
+				"./web/search/providers/utils": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/utils",
+					"why": "packages/coding-agent/src/web/search/providers/utils.ts moved to packages/coding-agent/src/tools/web/search/providers/utils.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/utils"
+				},
+				"./web/search/providers/utils.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/utils.js",
+					"why": "packages/coding-agent/src/web/search/providers/utils.ts moved to packages/coding-agent/src/tools/web/search/providers/utils.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/utils.js"
+				},
+				"./web/search/providers/xai": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/xai",
+					"why": "packages/coding-agent/src/web/search/providers/xai.ts moved to packages/coding-agent/src/tools/web/search/providers/xai.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/xai"
+				},
+				"./web/search/providers/xai.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/xai.js",
+					"why": "packages/coding-agent/src/web/search/providers/xai.ts moved to packages/coding-agent/src/tools/web/search/providers/xai.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/xai.js"
+				},
+				"./web/search/providers/zai": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/zai",
+					"why": "packages/coding-agent/src/web/search/providers/zai.ts moved to packages/coding-agent/src/tools/web/search/providers/zai.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/zai"
+				},
+				"./web/search/providers/zai.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/providers/zai.js",
+					"why": "packages/coding-agent/src/web/search/providers/zai.ts moved to packages/coding-agent/src/tools/web/search/providers/zai.ts, which @veyyon/coding-agent publishes as ./tools/web/search/providers/zai.js"
+				},
 				"./web/search/render": {
-					"to": "./web/search/view",
-					"why": "the web_search pending row, answer card, unreadable-response fallback and error panel are declared in web/search/view.ts as views the host draws, so the module that built their terminal components is gone"
+					"to": "./tools/web/search/view",
+					"why": "the web_search pending row, answer card, unreadable-response fallback and error panel are declared in tools/web/search/view.ts as views the host draws, so the module that built their terminal components is gone"
 				},
 				"./web/search/render.js": {
-					"to": "./web/search/view.js",
-					"why": "the web_search pending row, answer card, unreadable-response fallback and error panel are declared in web/search/view.ts as views the host draws, so the module that built their terminal components is gone"
+					"to": "./tools/web/search/view.js",
+					"why": "the web_search pending row, answer card, unreadable-response fallback and error panel are declared in tools/web/search/view.ts as views the host draws, so the module that built their terminal components is gone"
+				},
+				"./web/search/types": {
+					"to": "@veyyon/coding-agent/tools/web/search/types",
+					"why": "packages/coding-agent/src/web/search/types.ts moved to packages/coding-agent/src/tools/web/search/types.ts, which @veyyon/coding-agent publishes as ./tools/web/search/types"
+				},
+				"./web/search/types.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/types.js",
+					"why": "packages/coding-agent/src/web/search/types.ts moved to packages/coding-agent/src/tools/web/search/types.ts, which @veyyon/coding-agent publishes as ./tools/web/search/types.js"
+				},
+				"./web/search/utils": {
+					"to": "@veyyon/coding-agent/tools/web/search/utils",
+					"why": "packages/coding-agent/src/web/search/utils.ts moved to packages/coding-agent/src/tools/web/search/utils.ts, which @veyyon/coding-agent publishes as ./tools/web/search/utils"
+				},
+				"./web/search/utils.js": {
+					"to": "@veyyon/coding-agent/tools/web/search/utils.js",
+					"why": "packages/coding-agent/src/web/search/utils.ts moved to packages/coding-agent/src/tools/web/search/utils.ts, which @veyyon/coding-agent publishes as ./tools/web/search/utils.js"
 				}
 			},
 			"@veyyon/tui": {

@@ -391,7 +391,7 @@ describe("a published surface survives the move", () => {
 		}
 
 		expect(unservedRelocations).toEqual([]);
-		expect(checked).toBe(31);
+		expect(checked).toBe(37);
 	});
 
 	/**
@@ -444,7 +444,7 @@ describe("a published surface survives the move", () => {
 	 * documented key relocation, or a recorded absorption — so a rule that started matching more than
 	 * it should would otherwise pass as a wider set of correct-looking rows.
 	 *
-	 * 1031 coding-agent subpaths relocated, 100 of them into `@veyyon/kernel`: 50 modules moved and
+	 * 1302 coding-agent subpaths relocated, 100 of them into `@veyyon/kernel`: 50 modules moved and
 	 * each is served twice, extensionless and under a `.js` alias. The modules this branch added
 	 * rather than moved (`extensibility/host-view`, `extensibility/widget`) carry no row, since they
 	 * were never part of the baseline surface. Two of the kernel rows are `session/compaction-policy`,
@@ -493,7 +493,7 @@ describe("a published surface survives the move", () => {
 		expect(Object.keys(rows).sort()).toEqual(["@veyyon/coding-agent", "@veyyon/tui"]);
 
 		const codingAgent = rows["@veyyon/coding-agent"] ?? {};
-		expect(Object.keys(codingAgent).length).toBe(1214);
+		expect(Object.keys(codingAgent).length).toBe(1302);
 		const intoKernel = Object.values(codingAgent).filter(note => note.to.startsWith("@veyyon/kernel/"));
 		expect(intoKernel.length).toBe(100);
 		const kernelConcerns = new Set(intoKernel.map(note => note.to.split("/").slice(0, 3).join("/")));
