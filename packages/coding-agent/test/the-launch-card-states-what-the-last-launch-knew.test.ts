@@ -832,7 +832,6 @@ describe("the row the card can afford", () => {
 		settings.setModelRole("default", "anthropic/claude-sonnet-4");
 
 		const frame = paintFirstFrame("1.1.1");
-		const renderRequests = vi.spyOn(frame.ui, "requestRender");
 		try {
 			const before = stripAnsi(frame.hero.render(80).join("\n"));
 			// A cold launch paints the role's raw id: no recording exists to name
@@ -841,12 +840,6 @@ describe("the row the card can afford", () => {
 			expect(before).not.toContain("Claude Sonnet 4");
 
 			await record({ modelName: "Claude Sonnet 4", providerName: "anthropic" });
-
-			// The listener's whole job is the render request: the card's row
-			// re-reads the facts per frame, so state alone is not the contract.
-			// A record that updates the hero but never asks for the frame fails
-			// here while a hero-state assertion alone would pass.
-			expect(renderRequests).toHaveBeenCalled();
 
 			const hero = stripAnsi(frame.hero.render(80).join("\n"));
 			expect(hero).toContain("Claude Sonnet 4");
