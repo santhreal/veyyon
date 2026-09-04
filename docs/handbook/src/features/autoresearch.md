@@ -163,7 +163,9 @@ These attach in autoresearch and autoswarm, and nowhere else.
 
 `/autoresearch clear` resets the worktree to the segment baseline, deletes
 untracked files and closes the session. It asks first, naming the commit it
-resets to and how many files hold uncommitted changes. Two flags:
+resets to and how many files hold uncommitted changes. The reset restores
+`autoresearch.sh` as committed on the branch. Off an `autoresearch/*` branch,
+`clear` closes the session and resets nothing. Two flags:
 
 | Flag | Effect |
 |---|---|

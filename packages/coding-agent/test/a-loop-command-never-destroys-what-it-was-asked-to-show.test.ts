@@ -304,7 +304,7 @@ describe("a loop command never destroys what it was asked to show", () => {
 		expect(harness.notices.at(-1)?.text).toContain("nothing was reset");
 	});
 
-	it("keeps the files on --keep-tree without asking", async () => {
+	it("keeps the files on --keep-tree without asking, the harness among them", async () => {
 		const harness = buildHarness();
 		const surface = newSurface();
 		const ctx = makeCtx(cwdDir.path(), harness, surface);
@@ -312,14 +312,41 @@ describe("a loop command never destroys what it was asked to show", () => {
 		await openSessionAtHead(cwdDir.path());
 		const dirty = path.join(cwdDir.path(), "work-in-progress.txt");
 		await Bun.write(dirty, "unsaved\n");
+		// `autoresearch.sh` is the live harness, not a legacy artifact, and "leave
+		// every file alone" includes it: it was removed from the worktree on every
+		// clear, whichever flag was passed.
+		const harnessFile = path.join(cwdDir.path(), "autoresearch.sh");
+		await Bun.write(harnessFile, "#!/usr/bin/env bash\necho METRIC ms=1\n");
 
 		await harness.commands.get("autoresearch")?.handler("clear --keep-tree", ctx);
 
 		// Nothing destructive happens, so there is nothing to confirm.
 		expect(surface.confirms).toEqual([]);
 		expect(await Bun.file(dirty).exists()).toBe(true);
+		expect(await Bun.file(harnessFile).exists()).toBe(true);
 		expect(harness.notices.at(-1)?.text).toBe("Autoresearch session cleared.");
 		expect(harness.activeTools).toEqual([]);
+	});
+
+	it("leaves the committed harness in place after a confirmed reset", async () => {
+		const harness = buildHarness();
+		const surface = newSurface(true);
+		const ctx = makeCtx(cwdDir.path(), harness, surface);
+		await harness.commands.get("autoresearch")?.handler("make it faster", ctx);
+		const harnessFile = path.join(cwdDir.path(), "autoresearch.sh");
+		await Bun.write(harnessFile, "#!/usr/bin/env bash\necho METRIC ms=1\n");
+		await $`git add autoresearch.sh && git commit -m harness`.cwd(cwdDir.path()).quiet();
+		await openSessionAtHead(cwdDir.path());
+		await Bun.write(path.join(cwdDir.path(), "autoresearch.md"), "legacy notes\n");
+
+		await harness.commands.get("autoresearch")?.handler("clear", ctx);
+
+		expect(surface.confirms.length).toBe(1);
+		// The reset put the baseline back, harness included; the legacy file the
+		// prompt forbids is what a reset clears away.
+		expect(await Bun.file(harnessFile).exists()).toBe(true);
+		expect(await Bun.file(path.join(cwdDir.path(), "autoresearch.md")).exists()).toBe(false);
+		expect((await $`git status --porcelain`.cwd(cwdDir.path()).quiet()).stdout.toString().trim()).toBe("");
 	});
 
 	it("resets to the baseline of the branch it is standing on, not the newest session", async () => {

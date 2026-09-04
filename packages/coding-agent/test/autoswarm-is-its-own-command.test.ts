@@ -218,6 +218,22 @@ describe("autoswarm is its own command", () => {
 		expect(harness.messages).toContain("make startup faster");
 	});
 
+	/**
+	 * `goal <text>` is the one subcommand both loops share, and on autoswarm the
+	 * console was opened with the whole argument string, so the field read
+	 * `goal make startup faster` and that literal became the goal.
+	 */
+	it("prefills only the text after the goal subcommand, not the word itself", async () => {
+		const harness = buildHarness();
+		const drive: ConsoleDrive = { opened: false, overlay: false, frames: [] };
+		await harness.commands
+			.get("autoswarm")
+			?.handler("goal make startup faster", makeCtx(cwdDir.path(), harness.notices, ["\r"], drive));
+		expect(drive.frames[0]?.join("\n")).toContain("Goal          make startup faster");
+		expect(harness.messages).toContain("make startup faster");
+		expect(harness.messages).not.toContain("goal make startup faster");
+	});
+
 	it("parks the breadth chosen in the console, and opens at the ring-sized default", async () => {
 		const harness = buildHarness();
 		const drive: ConsoleDrive = { opened: false, overlay: false, frames: [] };

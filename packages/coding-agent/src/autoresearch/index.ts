@@ -21,7 +21,7 @@ import {
 	findBestKeptResult,
 	reconstructControlState,
 } from "./state";
-import { openAutoresearchStorage, openAutoresearchStorageIfExists, type RunRow, type SessionRow } from "./storage";
+import { openAutoresearchStorageIfExists, type RunRow, type SessionRow } from "./storage";
 import { DEFAULT_SWARM_BREADTH } from "./swarm";
 import { activeToolsChanged, activeToolsFor, EXPERIMENT_TOOL_NAMES } from "./tools";
 import { createCertifyArmsTool } from "./tools/certify-arms";
@@ -277,9 +277,10 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 
 		// Autoswarm is configured in a console rather than through arguments, so
 		// whatever was typed after the command prefills the goal it opens with.
+		// After `goal`, that is the text and not the word: `freeText` has it cut.
 		let swarmSetup: SwarmSetupResult | null = null;
 		if (spec.swarm) {
-			swarmSetup = await openSwarmSetupConsole(ctx, trimmed);
+			swarmSetup = await openSwarmSetupConsole(ctx, freeText);
 			if (!swarmSetup) return;
 			runtime.pendingSwarm = {
 				breadth: swarmSetup.breadth,
@@ -662,12 +663,14 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		runtime: AutoresearchRuntime,
 		opts: { keepTree: boolean; resetTreeForce: boolean },
 	): Promise<void> {
-		const storage = await openAutoresearchStorage(ctx.cwd);
+		// Open only what exists: a `clear` on a project that never ran a loop
+		// must not create the store it is clearing.
+		const storage = await openAutoresearchStorageIfExists(ctx.cwd);
 		const branchName = await tryReadBranch(ctx.cwd);
 		// Scoped to the branch: the newest open session may belong to another one,
 		// and its baseline is the commit `git reset --hard` below would move this
 		// worktree to. Every other caller resolves the session the same way.
-		const session = storage.getActiveSessionForBranch(branchName);
+		const session = storage?.getActiveSessionForBranch(branchName) ?? null;
 		const onAutoresearchBranch = branchName?.startsWith("autoresearch/") ?? false;
 		const shouldResetTree = !opts.keepTree && (onAutoresearchBranch || opts.resetTreeForce);
 		if (shouldResetTree && session?.baselineCommit) {
@@ -699,6 +702,10 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			try {
 				await git.reset(ctx.cwd, { hard: true, target: session.baselineCommit });
 				await git.clean(ctx.cwd);
+				// The legacy files the prompt forbids are cleared with the tree, and
+				// only with it: `--keep-tree` and a clear off the branch leave every
+				// file alone, the harness included.
+				removeLegacyArtifacts(ctx.cwd);
 				ctx.ui.notify(`Reset worktree to baseline ${session.baselineCommit.slice(0, 12)}.`, "info");
 			} catch (err) {
 				ctx.ui.notify(`Failed to reset worktree to baseline: ${errorMessage(err)}`, "error");
@@ -707,9 +714,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			ctx.ui.notify("No baseline commit recorded — skipped worktree reset.", "warning");
 		}
 
-		removeLegacyArtifacts(ctx.cwd);
-
-		if (session) {
+		if (session && storage) {
 			storage.closeSession(session.id);
 		}
 		runtime.state = createExperimentState();
@@ -735,9 +740,13 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 	}
 };
 
+/**
+ * Files the upstream loop once kept in the worktree and the prompt now forbids.
+ * `autoresearch.sh` is not among them: it is the live harness, committed on the
+ * session's branch.
+ */
 const LEGACY_ARTIFACTS = [
 	"autoresearch.md",
-	"autoresearch.sh",
 	"autoresearch.checks.sh",
 	"autoresearch.program.md",
 	"autoresearch.ideas.md",
