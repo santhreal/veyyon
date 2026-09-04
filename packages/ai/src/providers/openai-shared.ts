@@ -67,6 +67,7 @@ import {
 } from "../utils/block-symbols";
 import type { AssistantMessageEventStream } from "../utils/event-stream";
 import type { CapturedHttpErrorResponse } from "../utils/http-inspector";
+import { getOpenCodeHeaders, isOpenCodeProvider } from "../utils/opencode-headers";
 import { getOpenRouterHeaders } from "../utils/openrouter-headers";
 import { isForcedToolChoice } from "../utils/tool-choice";
 import {
@@ -141,6 +142,12 @@ export interface OpenAIRequestSetupOptions {
 	};
 	openAISessionId?: string;
 	promptCacheSessionId?: string;
+	/**
+	 * The raw conversation id. Distinct from the two above, which are withheld
+	 * once cache retention is "none"; the OpenCode gateway requires its session
+	 * header on every request regardless of local cache settings.
+	 */
+	sessionId?: string;
 }
 
 export interface OpenAIRequestSetup {
@@ -199,6 +206,18 @@ export function resolveOpenAIRequestSetup(
 	let headers = { ...(model.headers ?? {}) };
 	if (model.provider === "openrouter") {
 		Object.assign(headers, getOpenRouterHeaders());
+	}
+	if (isOpenCodeProvider(model.provider)) {
+		// Set only when absent, so `model.headers` above and `extraHeaders` below
+		// both still win. Keyed on the raw conversation id rather than the
+		// prompt-cache key, so a session that disables caching still routes to one
+		// upstream provider, and so both transport families derive the same value
+		// for the same conversation.
+		for (const [name, value] of Object.entries(
+			getOpenCodeHeaders(options.sessionId ?? options.promptCacheSessionId ?? options.openAISessionId),
+		)) {
+			setHeaderIfAbsent(headers, name, value);
+		}
 	}
 	Object.assign(headers, options.extraHeaders);
 	if (model.provider === "coreweave") {

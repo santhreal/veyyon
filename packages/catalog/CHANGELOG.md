@@ -5,6 +5,7 @@
 ### Added
 
 - A model's thinking config carries `prefixBinding`, set for Claude 5.1 and later, stating that its thinking blocks are bound to the conversation prefix they were produced against.
+- An `anthropic-messages` model's compat carries `replayDemotedPriorReasoning`, which drops prior-turn reasoning on a signing endpoint instead of replaying it as demoted prose.
 
 ### Changed
 

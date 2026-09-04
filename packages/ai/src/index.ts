@@ -51,6 +51,7 @@ export * from "./usage/zai";
 export * from "./utils/anthropic-auth";
 export * from "./utils/event-stream";
 export * from "./utils/message-text";
+export * from "./utils/opencode-headers";
 export * from "./utils/openrouter-headers";
 export * from "./utils/retry";
 export * from "./utils/schema";

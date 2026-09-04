@@ -233,10 +233,11 @@ function resolveOpenAiCompactRequest(
 	model: Model<Api>,
 	apiKey: string,
 	messages: Message[],
+	sessionId: string | undefined,
 ): { url: string; headers: Record<string, string> } {
 	const setup = resolveOpenAIRequestSetup(
 		{ provider: model.provider, id: model.id, baseUrl: model.baseUrl, headers: model.headers },
-		{ apiKey, messages },
+		{ apiKey, messages, sessionId },
 	);
 	const baseUrl = trimTrailingSlashes(setup.baseUrl ?? "https://api.openai.com/v1");
 	return { url: `${baseUrl}/responses/compact`, headers: setup.headers };
@@ -348,7 +349,7 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 				? resolveAzureCompactRequest(model, apiKey)
 				: isCodex
 					? resolveCodexCompactRequest(model, apiKey, request)
-					: resolveOpenAiCompactRequest(model, apiKey, request.messages);
+					: resolveOpenAiCompactRequest(model, apiKey, request.messages, request.sessionId);
 		const { url, headers } = resolved;
 
 		const input: Array<Record<string, unknown>> = [

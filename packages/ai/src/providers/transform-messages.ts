@@ -499,15 +499,34 @@ export function transformMessages<TApi extends Api>(
 						if (!sanitized.thinkingSignature && (!sanitized.thinking || sanitized.thinking.trim() === "")) {
 							return [];
 						}
-						// Same-model Anthropic replay to a signature-enforcing endpoint
-						// requires valid signatures to natively replay thinking blocks.
-						// Both undefined and empty string signatures are invalid and must
-						// be dropped entirely — not demoted to text. Demotion would cause
-						// the reasoning_extraction safety classifier to refuse the response.
+						// An unsigned thinking block cannot be replayed natively where the
+						// endpoint enforces Anthropic's signature protocol, so it is dropped
+						// entirely rather than demoted to text. Both undefined and empty
+						// string signatures are invalid. Demotion would cause the
+						// reasoning_extraction safety classifier to refuse the response.
+						//
+						// Same-model replay to a statically known signing endpoint always
+						// drops: there is no reasoning to preserve across a switch that did
+						// not happen.
+						//
+						// Otherwise the block keeps demoting by default, so cross-vendor
+						// reasoning survives a model switch (#3434, #3528), and drops once
+						// this endpoint has answered `reasoning_extraction` for it. That
+						// second condition is keyed on the endpoint demoting unsigned
+						// thinking rather than on `signingEndpoint`, because the prose the
+						// classifier reads is produced by the demotion: it covers an
+						// endpoint recognised up front, one learned from a live signing 400
+						// (#4297, which clears `replayUnsignedThinking` and never
+						// `signingEndpoint`), and a gateway that fronts Claude under its own
+						// host, such as OpenCode Zen's `/zen/v1/messages`. The model
+						// identity the block came from is invisible to the classifier, which
+						// reads only the request.
+						const signatureIsInvalid = !sanitized.thinkingSignature || sanitized.thinkingSignature.trim() === "";
+						const demotesUnsignedThinking = !model.compat.replayUnsignedThinking;
 						if (
-							isSameModel &&
-							isSigningAnthropicTarget &&
-							(!sanitized.thinkingSignature || sanitized.thinkingSignature.trim() === "")
+							signatureIsInvalid &&
+							((isSameModel && isSigningAnthropicTarget) ||
+								(demotesUnsignedThinking && !model.compat.replayDemotedPriorReasoning))
 						) {
 							return [];
 						}

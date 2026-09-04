@@ -511,6 +511,20 @@ export interface AnthropicCompat {
 	 */
 	replayUnsignedThinking?: boolean;
 	/**
+	 * Replay prior-turn reasoning that has to be demoted to text, rather than
+	 * dropping it. Only reached on a signing endpoint, where an unsigned prior
+	 * thinking block cannot be replayed natively and is otherwise rendered as
+	 * demoted prose. Anthropic's `reasoning_extraction` safety classifier reads
+	 * that prose as extracted reasoning and answers `stop_reason: "refusal"`,
+	 * and the heat is cumulative in the number of demoted blocks, so a long
+	 * cross-model session trips it where a single block does not. Set to `false`
+	 * for an endpoint that enforces the classifier; the transport also learns it
+	 * for the rest of the session the first time a refusal fires. Default:
+	 * `true`, which preserves cross-vendor reasoning across a model switch
+	 * (#3434, #3528).
+	 */
+	replayDemotedPriorReasoning?: boolean;
+	/**
 	 * Whether the endpoint requires `thinking.type: "enabled"` whenever the
 	 * model reasons. Use for models that reject omitted or disabled thinking.
 	 */
