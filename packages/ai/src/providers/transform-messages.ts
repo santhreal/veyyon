@@ -1,3 +1,4 @@
+import { escapeXmlAttribute } from "@veyyon/utils/sanitize-text";
 import { renderDemotedThinking } from "../dialect/demotion";
 import type { Api, AssistantMessage, Message, Model, ToolCall, ToolResultMessage, UserMessage } from "../types";
 import { isDemotedThinking, kDemotedThinking } from "../utils/block-symbols";
@@ -39,7 +40,12 @@ export function staleToolResultNote(options: {
 	isError?: boolean;
 }): string {
 	const errorAttr = options.isError ? ' is-error="true"' : "";
-	return `<stale-tool-result tool="${options.toolName}" id="${options.toolCallId}"${errorAttr}>\n${options.text}\n</stale-tool-result>`;
+	// Attributes are escaped through the one owner; the body stays raw, matching
+	// `<tool_response>` in dialect/rendering.ts, because escaping a tool payload
+	// turns every `<` in the code the model is reading into `&lt;`.
+	const tool = escapeXmlAttribute(options.toolName);
+	const id = escapeXmlAttribute(options.toolCallId);
+	return `<stale-tool-result tool="${tool}" id="${id}"${errorAttr}>\n${options.text}\n</stale-tool-result>`;
 }
 
 /**
@@ -58,6 +64,19 @@ const LEGACY_STALE_TOOL_NOTE = /^\[(?:Orphan|Previous) [^\]]*result; call_id=[^\
  * Anthropic requires, so the cost of keeping it exceeds what it can inform.
  */
 function dropLegacyStaleToolNotes(messages: Message[]): Message[] {
+	// This runs on every request for every provider, and all but a handful of
+	// sessions hold no such note, so the common path must not copy the history:
+	// scan first and hand back the same array.
+	let hasNote = false;
+	for (const message of messages) {
+		if (message.role !== "assistant") continue;
+		if (message.content.some(block => block.type === "text" && LEGACY_STALE_TOOL_NOTE.test(block.text))) {
+			hasNote = true;
+			break;
+		}
+	}
+	if (!hasNote) return messages;
+
 	const result: Message[] = [];
 	for (const message of messages) {
 		if (message.role !== "assistant") {
