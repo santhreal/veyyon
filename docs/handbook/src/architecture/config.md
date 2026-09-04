@@ -30,7 +30,8 @@ Primary implementation:
 
 - `packages/coding-agent/src/config.ts`
 - `packages/coding-agent/src/config/config-file.ts` (re-exported from `config.ts`)
-- `packages/coding-agent/src/config/settings.ts`
+- `kernel/src/settings/store.ts` (the layered store, `SettingsStore`)
+- `packages/coding-agent/src/config/settings.ts` (`Settings`, the product's store with its hooks)
 - `packages/coding-agent/src/config/settings-schema.ts`
 - `packages/coding-agent/src/discovery/builtin.ts`
 - `packages/coding-agent/src/discovery/helpers.ts`
@@ -169,7 +170,13 @@ Legacy migration still supported:
 
 ---
 
-## 4) Settings resolution model (`src/config/settings.ts`)
+## 4) Settings resolution model (`kernel/src/settings/store.ts`, `src/config/settings.ts`)
+
+`SettingsStore` in `@veyyon/kernel/settings/store` holds the layers, the merge, the reads and
+writes, the YAML load and the debounced save. It takes a `SettingsStoreHooks` at construction and
+names no setting. `Settings` in `src/config/settings.ts` extends it with the product's hooks: the
+machine-wide bindings, the migrations below, the legacy stores, the per-setting side effects and
+the per-directory resolution.
 
 The runtime settings model is layered:
 
@@ -196,7 +203,7 @@ On startup, if `config.yml` is missing:
 2. Merge with legacy DB settings from `agent.db`
 3. Write merged result to `config.yml`
 
-Field-level migrations in `#migrateRawSettings`:
+Field-level migrations in `CodingAgentSettingsHooks.migrate` (`src/config/settings.ts`):
 
 - `queueMode` -> `steeringMode`
 - `ask.timeout` milliseconds -> seconds when the old value looks like ms (`> 1000`). The threshold is a guess, because nothing on disk records which format a file uses, so the rewrite is logged with both values. Every other migration here is a fixed point; this one is not, which is why `packages/coding-agent/test/settings-migration-idempotence.test.ts` pins the property.
@@ -206,7 +213,7 @@ Field-level migrations in `#migrateRawSettings`:
 
 ## 5) Capability/discovery integration
 
-Most non-core config loading flows through the capability registry (`src/capability/index.ts` + `src/discovery/index.ts`).
+Most non-core config loading flows through the capability registry (`src/discovery/capability/index.ts` + `src/discovery/index.ts`).
 
 ## Provider ordering
 
