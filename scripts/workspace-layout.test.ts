@@ -120,6 +120,7 @@ describe("one member pattern resolves against the tree", () => {
 			"contracts/model",
 			"contracts/plugin",
 			"contracts/settings",
+			"contracts/tool",
 			"contracts/view",
 			"contracts/wire",
 		]);

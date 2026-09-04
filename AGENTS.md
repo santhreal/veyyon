@@ -17,6 +17,7 @@ operator manual.
 |`contracts/view`|Dependency-free tool view model, so a tool describes its output without constructing a terminal component|
 |`contracts/settings`|Dependency-free setting declaration vocabulary, so a package declares a setting without importing the store that persists it or the host that draws it|
 |`contracts/model`|Dependency-free model and message vocabulary, so a provider plugin implements a stream and a host reads a turn without importing the catalog that resolves the model or the client that drives it|
+|`contracts/tool`|What a tool declares and returns, so a tool states its spec, approval tier and result without importing the loop that schedules it or the host that prompts for approval; imports `@veyyon/model` type-only|
 |`contracts/plugin`|Dependency-free plugin manifest vocabulary, so a package declares what its `package.json` `veyyon` field contributes without importing the loader that installs it|
 |`kernel`|The only member that is not a plugin — the plugin loader, the contribution registry and the session spine, naming no tool and no host|
 |`packages/ai`|Multi-provider LLM client with streaming support|

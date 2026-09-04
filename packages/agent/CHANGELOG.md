@@ -8,6 +8,7 @@
 
 ### Changed
 
+- `AgentToolResult`, `AgentToolUpdateCallback`, `ToolTier`, `ToolApprovalDecision` and `ToolApproval` are defined in `@veyyon/tool` as `ToolResult`, `ToolUpdateCallback` and the same approval names; `@veyyon/agent` exports every name it exported before, so no caller changes.
 - Typed tuple and Set copies use spreads rather than `.concat()` or `.slice()`, which those types do not define. No user-visible behavior changes.
 
 - A source-path comment in `thinking.ts` names the coding-agent module its reader moved to; behavior is unchanged.

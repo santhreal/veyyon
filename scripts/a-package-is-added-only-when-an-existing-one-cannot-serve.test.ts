@@ -119,10 +119,20 @@ import { typeScriptMembers } from "./workspace-layout";
  * `Model` from `catalog` would import models.json and the discovery clients. `contracts/wire` is the
  * cross-process envelope a message is carried in, not the message; `contracts/view` is what a tool's
  * output means; `contracts/settings` and `contracts/plugin` are declaration vocabularies with no model
- * in them. A future rise still needs the sentence above: which existing package was considered and
- * why it could not serve.
+ * in them.
+ *
+ * The count went 25 -> 26 with `contracts/tool`. It is what a tool declares and returns -- the
+ * schema-independent `ToolSpec` with its examples, the approval tier vocabulary, `ToolResult` and the
+ * streaming update -- and it imports one thing, the message content blocks from `contracts/model`,
+ * type-only, because a tool result holds the blocks a message holds and a second declaration of them
+ * is what the flat rule had produced in `contracts/wire`. `agent` held the result and the approval
+ * vocabulary and `ai` held the spec, and each is a runtime: a plugin that imported `ToolResult` from
+ * `agent` would import the loop, the compactor and every provider behind it. `contracts/model` is the
+ * message vocabulary, and a tool's approval tier is not a message; `contracts/view` is what a tool's
+ * output means to a host, and a result is what it means to the model. A future rise still needs the
+ * sentence above: which existing package was considered and why it could not serve.
  */
-const PACKAGE_BUDGET = 25;
+const PACKAGE_BUDGET = 26;
 
 /**
  * Every workspace member, as `<root>/<name>`.

@@ -3514,6 +3514,7 @@
 		"startServer",
 		"syncAllSessions"
 	],
+	"@veyyon/tool": [],
 	"@veyyon/tool-render": [
 		"AgentLink",
 		"Badge",
