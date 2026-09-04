@@ -42,20 +42,26 @@ const ASSEMBLER = path.join(SRC, "system-prompt.ts");
 const AGGREGATE = path.join(SRC, "prompts", "all-registries.ts");
 
 /**
- * Measured at 1618 against the merge base's 1581. Two of the extra modules are the
- * catalog OpenCode discovery header leaf this branch absorbed with origin/main; the
- * rest is `contracts/model`, whose six leaves (`effort`, `instrumentation`,
+ * Measured at 1621 against the merge base's 1581. Two of the extra modules are the
+ * catalog OpenCode discovery header leaf this branch absorbed with origin/main;
+ * six are `contracts/model`, whose leaves (`effort`, `instrumentation`,
  * `message`, `model`, `service-tier`, `stream-block`) sit on the graph beside the
- * `ai` and `catalog` modules that re-export them. `contracts/host`,
- * `contracts/session` and `contracts/tool` are reached by type only and do not count.
- * The number is modules, so a split raises it while the code the launch runs
- * is the same, and re-pinning here is the decision that growth is supposed to force.
+ * `ai` and `catalog` modules that re-export them; two are the shell domain's
+ * message kinds, which ride on its manifest so a transcript with a `!` command
+ * converts wherever the tool table loads: `tools/shell/execution-messages` and the
+ * kernel's `session/message-kinds` table. One is `export/html/tool-views.generated.js`,
+ * the gitignored bundle the HTML export imports as text: the walker counts a file
+ * that exists and skips one that does not, so a tree where the bundle has been built
+ * measures one higher than a fresh checkout. `contracts/host`, `contracts/session`
+ * and `contracts/tool` are reached by type only and do not count. The number is
+ * modules, so a split raises it while the code the launch runs is the same, and
+ * re-pinning here is the decision that growth is supposed to force.
  *
  * A ratchet, not a target: nothing breaks when it grows, which is exactly why it is pinned. There
  * is no margin left on purpose — the next module on this graph is a barrel someone reached for
  * and owes a line here.
  */
-const LAUNCH_REACH_CEILING = 1618;
+const LAUNCH_REACH_CEILING = 1621;
 
 /**
  * Measured at 498, down from 538 at the merge base and 718 before the aggregate edge was cut. The

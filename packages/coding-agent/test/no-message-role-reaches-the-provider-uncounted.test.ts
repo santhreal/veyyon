@@ -25,7 +25,7 @@
  *
  * FAIL BY DEFAULT. `SAMPLES` is a `Record<AgentMessage["role"], …>`, so adding a
  * role to `CustomAgentMessages` fails the type check until a sample exists, and
- * `convertToLlm` already ends in `m satisfies never` for the same reason. A role
+ * `convertToLlm` throws on a role no domain manifest declared a kind for. A role
  * whose wire form carries text and whose estimate is zero fails here.
  *
  * WHAT IT DOES NOT CATCH. It does not audit the accuracy of the number: an arm
@@ -39,8 +39,14 @@ import { describe, expect, it } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { estimateTokens } from "@veyyon/agent-core/compaction";
 import type { ImageContent } from "@veyyon/ai";
+import { registerAgentMessageKinds } from "@veyyon/kernel/session/message-kinds";
 import type { FileMentionMessage } from "../src/session/messages";
 import { convertToLlm } from "../src/session/messages";
+import { shellDomain } from "../src/tools/shell/manifest";
+
+// The shell roles convert through the kinds the shell manifest declares, registered here the way
+// the tool registry registers them.
+registerAgentMessageKinds(shellDomain.messageKinds);
 
 /** Matches the estimator's fixed per-image charge. */
 const IMAGE_TOKEN_ESTIMATE = 1200;
@@ -107,8 +113,9 @@ describe("a message role that reaches the provider is counted", () => {
 
 	it("puts every role on the wire, so every role has a cost to account for", () => {
 		const silent = roles.filter(role => wireTokens(SAMPLES[role]) === 0);
-		// Nothing here is display-only: `convertToLlm` ends in `m satisfies never`,
-		// so a role that sends nothing is a decision someone has to record.
+		// Nothing here is display-only: `convertToLlm` converts every kernel role by case and every
+		// domain role through a declared kind, so a role that sends nothing is a decision someone
+		// has to record.
 		expect(silent).toEqual([]);
 	});
 

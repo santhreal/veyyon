@@ -2,14 +2,16 @@
  * WHY: the transcript builder is the only path from a session message to
  * something an operator sees, and its switch is on a role string. The defect
  * class this closes is a message role that reaches the builder and falls
- * through: a new custom role registered in `session/messages.ts`, or a new
- * member of the core `Message` union, renders as an "Unrenderable message role"
- * error block in production while every hand-written test stays green because
- * nobody added a case for it.
+ * through: a new custom role a module of this package adds to
+ * `CustomAgentMessages` by declaration merging, or a new member of the core
+ * `Message` union, renders as an "Unrenderable message role" error block in
+ * production while every hand-written test stays green because nobody added a
+ * case for it.
  *
  * So the role set is enumerated from source at run time — the `Message` union in
- * `@veyyon/model` and the `CustomAgentMessages` declaration-merge block in
- * `session/messages.ts` — and the expected mapping is pinned by exact equality.
+ * `@veyyon/model` and every `CustomAgentMessages` declaration-merge block under
+ * `src/`, since a tool domain declares its own roles beside its own manifest —
+ * and the expected mapping is pinned by exact equality.
  * Adding a role turns this file RED until someone records what it renders as.
  *
  * What it does NOT catch: whether a block's *fields* are right beyond the ones
@@ -18,7 +20,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
 import type { AgentMessage } from "@veyyon/session";
 import type { TranscriptBlock } from "@veyyon/wire/presentation";
 import {
@@ -29,7 +32,7 @@ import {
 } from "../../src/presentation/transcript-builder";
 
 const MODEL_MESSAGE = new URL("../../../../contracts/model/src/message.ts", import.meta.url).pathname;
-const CODING_AGENT_MESSAGES = new URL("../../src/session/messages.ts", import.meta.url).pathname;
+const CODING_AGENT_SRC = new URL("../../src/", import.meta.url).pathname;
 
 /** Role literals of the core `Message` union, read from its own declaration. */
 function coreRoles(): string[] {
@@ -49,17 +52,23 @@ function coreRoles(): string[] {
 	});
 }
 
-/** Custom roles this package registers by declaration merging. */
+/** Custom roles this package registers by declaration merging, from every module that does. */
 function customRoles(): string[] {
-	const source = readFileSync(CODING_AGENT_MESSAGES, "utf8");
-	const block = /interface CustomAgentMessages\s*\{([\s\S]*?)\n\t\}/.exec(source);
-	if (block === null) throw new Error(`no CustomAgentMessages block in ${CODING_AGENT_MESSAGES}`);
 	const roles: string[] = [];
-	for (const line of block[1]!.split("\n")) {
-		const entry = /^\s*([A-Za-z_$][\w$]*)\s*:/.exec(line);
-		if (entry !== null) roles.push(entry[1]!);
+	const files = readdirSync(CODING_AGENT_SRC, { recursive: true, encoding: "utf8" })
+		.filter(file => file.endsWith(".ts") && !file.endsWith(".test.ts") && !file.endsWith(".d.ts"))
+		.sort();
+	for (const file of files) {
+		const source = readFileSync(path.join(CODING_AGENT_SRC, file), "utf8");
+		if (!source.includes('declare module "@veyyon/session"')) continue;
+		const block = /interface CustomAgentMessages\s*\{([\s\S]*?)\n\t\}/.exec(source);
+		if (block === null) continue;
+		for (const line of block[1]!.split("\n")) {
+			const entry = /^\s*([A-Za-z_$][\w$]*)\s*:/.exec(line);
+			if (entry !== null) roles.push(entry[1]!);
+		}
 	}
-	if (roles.length === 0) throw new Error("CustomAgentMessages parsed to no roles");
+	if (roles.length === 0) throw new Error(`no CustomAgentMessages block under ${CODING_AGENT_SRC}`);
 	return roles;
 }
 

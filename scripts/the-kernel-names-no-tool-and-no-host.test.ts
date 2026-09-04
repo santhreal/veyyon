@@ -119,14 +119,16 @@ describe("the kernel names no tool and no host", () => {
 	// 1. Anti-vacuity, first cell
 	it("finds kernel source files and extracts import specifiers", () => {
 		expect(kernelMember).toBeDefined();
-		// 58: the 53 of the extraction (54 less `session/content-text.ts`, whose text extraction both
+		// 60: the 53 of the extraction (54 less `session/content-text.ts`, whose text extraction both
 		// packages call in `@veyyon/utils`) plus the session manager, its context builder, its loader
 		// and the credential store, and `custom-message-payload`, the part of the coding agent's
-		// message module those four call.
-		expect(kernelFiles.length).toBe(58);
-		expect(concernCounts.registry).toBe(7);
+		// message module those four call; then the message-kind contribution (`registry/message-kind`)
+		// and its role-keyed table (`session/message-kinds`), which is how the spine converts a role a
+		// tool domain records without naming the domain.
+		expect(kernelFiles.length).toBe(60);
+		expect(concernCounts.registry).toBe(8);
 		expect(concernCounts.loader).toBe(12);
-		expect(concernCounts.session).toBe(39);
+		expect(concernCounts.session).toBe(40);
 		expect(concernCounts.registry).toBeGreaterThan(0);
 		expect(concernCounts.loader).toBeGreaterThan(0);
 		expect(concernCounts.session).toBeGreaterThan(0);

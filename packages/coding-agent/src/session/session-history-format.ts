@@ -14,14 +14,13 @@ import { contentText } from "@veyyon/utils/content-text";
 import { formatCount, truncate } from "@veyyon/utils/format";
 import { escapeXmlText } from "@veyyon/utils/sanitize-text";
 import { INTENT_FIELD } from "@veyyon/wire";
+import type { BashExecutionMessage, PythonExecutionMessage } from "../tools/shell/execution-messages";
 import type {
-	BashExecutionMessage,
 	BranchSummaryMessage,
 	CompactionSummaryMessage,
 	CustomMessage,
 	FileMentionMessage,
 	HookMessage,
-	PythonExecutionMessage,
 } from "./messages";
 
 export interface HistoryFormatOptions {

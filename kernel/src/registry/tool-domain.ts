@@ -15,8 +15,12 @@
  *
  * The renderer table stays out of this type deliberately. A renderer draws a terminal component, so
  * a domain declares one in a separate module that only a terminal host imports; a headless or
- * browser host reads the manifest and never loads it.
+ * browser host reads the manifest and never loads it. A message kind is the opposite case: every
+ * host converts a transcript before it sends one, so the conversion of a role a domain adds is data
+ * every host needs and it travels on the manifest.
  */
+import type { AgentMessageKind } from "./message-kind";
+
 export interface ToolDomainManifest<TFactory> {
 	/** The domain's directory name, which is also how a host reports where a tool came from. */
 	readonly domain: string;
@@ -30,4 +34,9 @@ export interface ToolDomainManifest<TFactory> {
 	 * finding report. Absent when a domain contributes none.
 	 */
 	readonly hidden?: Readonly<Record<string, TFactory>>;
+	/**
+	 * Message roles this domain adds to the transcript, each with its conversion to what a provider
+	 * reads. Absent when a domain records nothing of its own.
+	 */
+	readonly messageKinds?: readonly AgentMessageKind[];
 }

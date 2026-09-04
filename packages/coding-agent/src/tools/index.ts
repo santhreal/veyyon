@@ -12,6 +12,7 @@ import type { ToolDomainManifest } from "@veyyon/kernel/registry/tool-domain";
 import type { ArtifactManager } from "@veyyon/kernel/session/artifacts";
 import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import type { ClientBridge } from "@veyyon/kernel/session/client-bridge";
+import { registerAgentMessageKinds } from "@veyyon/kernel/session/message-kinds";
 import type { SubagentSpawnRecord, UsageStatistics } from "@veyyon/kernel/session/session-entries";
 import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
 import type { ToolChoiceQueue } from "@veyyon/kernel/session/tool-choice-queue";
@@ -505,6 +506,13 @@ export const BUILTIN_TOOL_DOMAINS: readonly ToolDomainManifest<ToolFactory>[] = 
 	webDomain,
 	agentDomain,
 ];
+
+// The roles the domains record are registered where the domains are assembled, so a transcript
+// holding a `!` command converts wherever this table loads — the terminal, the SDK, a resume — and
+// nowhere a domain's own module has to be imported first.
+for (const domain of BUILTIN_TOOL_DOMAINS) {
+	registerAgentMessageKinds(domain.messageKinds ?? []);
+}
 
 /**
  * Every domain's rows, plus the four whose implementation lives outside `tools/`.

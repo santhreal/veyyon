@@ -12,7 +12,7 @@ import {
 	type SessionMessageEntry,
 } from "@veyyon/coding-agent";
 import { RpcClient } from "@veyyon/coding-agent/modes/rpc/rpc-client";
-import type { BashExecutionMessage } from "@veyyon/coding-agent/session/messages";
+import type { BashExecutionMessage } from "@veyyon/coding-agent/tools/shell/execution-messages";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { e2eApiKey } from "./helpers/e2e-session";
 

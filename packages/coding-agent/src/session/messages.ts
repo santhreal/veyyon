@@ -30,8 +30,8 @@ import type {
 import * as AIError from "@veyyon/ai/error";
 import { isBlobRef, isTextBlobRef } from "@veyyon/kernel/session/blob-store";
 import { type CustomMessageContent, isCustomMessageContent } from "@veyyon/kernel/session/custom-message-payload";
-// Owners, not the `@veyyon/utils` barrel: 1 module against 74.
-import { formatExitCodeNotice } from "../exec/exit-notice";
+import { agentMessageKind } from "@veyyon/kernel/session/message-kinds";
+// Owner, not the `@veyyon/utils` barrel: 1 module against 74.
 import { ToolAbortError } from "../tools/core/tool-errors";
 import { imageDisplayStateForCall, imageVisibilityNotice, isImageVisibilityNotice } from "./image-visibility";
 
@@ -42,11 +42,6 @@ export {
 	createCompactionSummaryMessage,
 	createCustomMessage,
 } from "@veyyon/agent-core/compaction/messages";
-
-// The notice text, not the tool layer that builds it: `../tools/core/output-meta` reaches 177 modules
-// because it owns the builder, the tool wrapper and the spill configuration, and appending a notice to
-// a message needs none of them. `../tools/core/output-notice` owns the wording and the metadata shape.
-import { formatOutputNotice, type OutputMeta } from "../tools/core/output-notice";
 
 export {
 	type CustomMessageContent,
@@ -514,49 +509,6 @@ export function replaceLostBlobPayloads(messages: Message[]): Message[] {
 }
 
 /**
- * Message type for bash executions via the ! command.
- */
-export interface BashExecutionMessage {
-	role: "bashExecution";
-	command: string;
-	output: string;
-	exitCode: number | undefined;
-	/**
-	 * The signal that killed the command, when it died from one.
-	 *
-	 * A `!` command is run through the same executor as the agent's bash tool, so
-	 * it inherits the same ambiguity: `exitCode` 137 is produced both by an
-	 * out-of-memory kill and by a program calling `exit(137)`. Optional because
-	 * sessions recorded before this field existed do not have it, and its absence
-	 * means "not known", not "not a signal".
-	 */
-	signal?: number;
-	cancelled: boolean;
-	truncated: boolean;
-	meta?: OutputMeta;
-	timestamp: number;
-	/** If true, this message is excluded from LLM context (!! prefix) */
-	excludeFromContext?: boolean;
-}
-
-/**
- * Message type for user-initiated Python executions via the $ command.
- * Shares the same kernel session as eval's Python backend.
- */
-export interface PythonExecutionMessage {
-	role: "pythonExecution";
-	code: string;
-	output: string;
-	exitCode: number | undefined;
-	cancelled: boolean;
-	truncated: boolean;
-	meta?: OutputMeta;
-	timestamp: number;
-	/** If true, this message is excluded from LLM context ($$ prefix) */
-	excludeFromContext?: boolean;
-}
-
-/**
  * Message type for extension-injected messages via sendMessage().
  */
 export interface CustomMessage<T = unknown> {
@@ -611,54 +563,16 @@ export interface FileMentionMessage {
 
 // Extend CustomAgentMessages via declaration merging
 // Legacy hookMessage is kept for migration; new code should use custom.
+// The `!` command and `$` run roles are the shell domain's, declared with their conversion in
+// `tools/shell/execution-messages.ts` and reached below through the kernel's kind table.
 declare module "@veyyon/session" {
 	interface CustomAgentMessages {
-		bashExecution: BashExecutionMessage;
-		pythonExecution: PythonExecutionMessage;
 		custom: CustomMessage;
 		hookMessage: HookMessage;
 		branchSummary: BranchSummaryMessage;
 		compactionSummary: CompactionSummaryMessage;
 		fileMention: FileMentionMessage;
 	}
-}
-
-/**
- * Convert a BashExecutionMessage to user message text for LLM context.
- */
-export function bashExecutionToText(msg: BashExecutionMessage): string {
-	let text = `Ran \`${msg.command}\`\n`;
-	if (msg.output) {
-		text += `\`\`\`\n${msg.output}\n\`\`\``;
-	} else {
-		text += "(no output)";
-	}
-	if (msg.cancelled) {
-		text += "\n\n(command cancelled)";
-	} else if (msg.exitCode !== null && msg.exitCode !== undefined && msg.exitCode !== 0) {
-		text += `\n\n${formatExitCodeNotice(msg.exitCode, msg.signal)}`;
-	}
-	text += formatOutputNotice(msg.meta);
-	return text;
-}
-
-/**
- * Convert a PythonExecutionMessage to user message text for LLM context.
- */
-export function pythonExecutionToText(msg: PythonExecutionMessage): string {
-	let text = `Ran Python:\n\`\`\`python\n${msg.code}\n\`\`\`\n`;
-	if (msg.output) {
-		text += `Output:\n\`\`\`\n${msg.output}\n\`\`\``;
-	} else {
-		text += "(no output)";
-	}
-	if (msg.cancelled) {
-		text += "\n\n(execution cancelled)";
-	} else if (msg.exitCode !== null && msg.exitCode !== undefined && msg.exitCode !== 0) {
-		text += `\n\nExecution failed with code ${msg.exitCode}`;
-	}
-	text += formatOutputNotice(msg.meta);
-	return text;
 }
 
 function customMessageContentToLlmContent(content: CustomMessage["content"]): (TextContent | ImageContent)[] {
@@ -824,27 +738,6 @@ function statePlacedImageVisibility(message: ToolResultMessage): ToolResultMessa
 	return stamped;
 }
 
-interface CachedBashExecution {
-	role: "bashExecution";
-	converted: Message[];
-	command: string;
-	output?: string;
-	cancelled?: boolean;
-	exitCode?: number;
-	signal?: number;
-	meta?: OutputMeta;
-}
-
-interface CachedPythonExecution {
-	role: "pythonExecution";
-	converted: Message[];
-	code: string;
-	output?: string;
-	cancelled?: boolean;
-	exitCode?: number | null;
-	meta?: OutputMeta;
-}
-
 interface CachedFileMention {
 	role: "fileMention";
 	converted: Message[];
@@ -857,7 +750,7 @@ interface CachedSkillPrompt {
 	content: unknown;
 }
 
-type CachedCodingAgentMessage = CachedBashExecution | CachedPythonExecution | CachedFileMention | CachedSkillPrompt;
+type CachedCodingAgentMessage = CachedFileMention | CachedSkillPrompt;
 
 const codingAgentMessageCache = new WeakMap<AgentMessage, CachedCodingAgentMessage>();
 
@@ -872,76 +765,6 @@ const codingAgentMessageCache = new WeakMap<AgentMessage, CachedCodingAgentMessa
 export function convertToLlm(messages: AgentMessage[]): Message[] {
 	return messages.flatMap((m, index): Message[] => {
 		switch (m.role) {
-			case "bashExecution": {
-				if (m.excludeFromContext) {
-					return [];
-				}
-				const cached = codingAgentMessageCache.get(m);
-				if (
-					cached?.role === "bashExecution" &&
-					cached.command === m.command &&
-					cached.output === m.output &&
-					cached.cancelled === m.cancelled &&
-					cached.exitCode === m.exitCode &&
-					cached.signal === m.signal &&
-					cached.meta === m.meta
-				) {
-					return cached.converted;
-				}
-				const converted: Message[] = [
-					{
-						role: "user",
-						content: [{ type: "text", text: bashExecutionToText(m) }],
-						attribution: "user",
-						timestamp: m.timestamp,
-					},
-				];
-				codingAgentMessageCache.set(m, {
-					role: "bashExecution",
-					converted,
-					command: m.command,
-					output: m.output,
-					cancelled: m.cancelled,
-					exitCode: m.exitCode,
-					signal: m.signal,
-					meta: m.meta,
-				});
-				return converted;
-			}
-			case "pythonExecution": {
-				if (m.excludeFromContext) {
-					return [];
-				}
-				const cached = codingAgentMessageCache.get(m);
-				if (
-					cached?.role === "pythonExecution" &&
-					cached.code === m.code &&
-					cached.output === m.output &&
-					cached.cancelled === m.cancelled &&
-					cached.exitCode === m.exitCode &&
-					cached.meta === m.meta
-				) {
-					return cached.converted;
-				}
-				const converted: Message[] = [
-					{
-						role: "user",
-						content: [{ type: "text", text: pythonExecutionToText(m) }],
-						attribution: "user",
-						timestamp: m.timestamp,
-					},
-				];
-				codingAgentMessageCache.set(m, {
-					role: "pythonExecution",
-					converted,
-					code: m.code,
-					output: m.output,
-					cancelled: m.cancelled,
-					exitCode: m.exitCode,
-					meta: m.meta,
-				});
-				return converted;
-			}
 			case "fileMention": {
 				const cached = codingAgentMessageCache.get(m);
 				if (cached?.role === "fileMention" && cached.files === m.files) {
@@ -1049,8 +872,10 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 				return converted ? [converted] : [];
 			}
 			default:
-				m satisfies never;
-				return [];
+				// A role a tool domain added — the shell's `!` command and `$` run — converts through
+				// the kind its manifest declared. A role nobody declared throws rather than
+				// vanishing from the request.
+				return agentMessageKind<typeof m>(m.role).toLlm(m);
 		}
 	});
 }

@@ -466,6 +466,7 @@ import { ToolAbortError, ToolError } from "../tools/core/tool-errors";
 import { clampTimeout } from "../tools/core/tool-timeouts";
 import { assertEditableFile } from "../tools/fs/auto-generated-guard";
 import type { CheckpointState, CompletedRewindState } from "../tools/fs/checkpoint";
+import type { BashExecutionMessage, PythonExecutionMessage } from "../tools/shell/execution-messages";
 import { parseCommandArgs } from "../utils/command-args";
 import { type EditMode, resolveEditMode } from "../utils/edit-mode";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
@@ -561,7 +562,6 @@ import { initSessionCpuLimit, rekeySessionCpuLimit, sessionCpuLimit } from "./cp
 import { dedupeEphemeralReply } from "./ephemeral-reply";
 import { ORCHESTRATE_NOTICE, renderWorkflowNotice, ULTRATHINK_NOTICE } from "./magic-keyword-notices";
 import {
-	type BashExecutionMessage,
 	type CustomMessage,
 	type CustomMessagePayload,
 	convertToLlm,
@@ -573,7 +573,6 @@ import {
 	isEmptyErrorTurn,
 	isUserInterruptAbort,
 	normalizeCustomMessagePayload,
-	type PythonExecutionMessage,
 	replaceLostBlobPayloads,
 	SILENT_ABORT_MARKER,
 	SKILL_PROMPT_MESSAGE_TYPE,

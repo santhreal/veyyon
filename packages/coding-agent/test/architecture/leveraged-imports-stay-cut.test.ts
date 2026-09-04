@@ -560,9 +560,13 @@ describe("the theme engine, second in the same ranking", () => {
 		// needs a different control from the rest: it takes `Theme` as an erased type and wanted only the
 		// language table, so it has no runtime theme dependency at all and asserting the binding here failed
 		// for the right reason. That is the shape of a vacuous absence, caught by writing the control down.
+		// `tools/shell/bash.ts` names no theme helper either: its control was the binding for as long as
+		// `output-notice` reached it through `lsp/utils`, and once the diagnostic grouping moved beside
+		// `formatGroupedFiles` that path closed, so the control is the exit-code wording the tool must
+		// still append.
 		["modes/terminal/draw/file-list.ts", "utils/lang-from-path.ts"],
 		["modes/terminal/draw/index.ts", "theme/theme-binding.ts"],
-		["tools/shell/bash.ts", "theme/theme-binding.ts"],
+		["tools/shell/bash.ts", "exec/exit-notice.ts"],
 		["tools/fs/write.ts", "theme/theme-binding.ts"],
 		["modes/terminal/components/transcript/eval-execution.ts", "theme/symbol-theme.ts"],
 		["modes/terminal/components/transcript/execution-shared.ts", "theme/symbol-theme.ts"],
@@ -633,26 +637,32 @@ describe("session/messages, which the session layer is mostly made of", () => {
 	/**
 	 * THE TOOL LAYER, by name and in both spellings it arrives in. `tools/core/output-meta.ts` owns the fluent
 	 * builder, the tool wrapper and the spill configuration on top of the notice text, so it reaches
-	 * `config/settings`, the streaming output sink and the artifact store. Appending a notice to a message
-	 * needs the wording only, which is what `tools/core/output-notice.ts` owns.
+	 * `config/settings`, the streaming output sink and the artifact store. The notice wording itself
+	 * (`tools/core/output-notice.ts`) is no longer this module's either: the two roles that appended it,
+	 * the `!` command and the `$` run, are the shell domain's and convert through the kind its manifest
+	 * declares, so the spine reaches the kernel's kind table and the abort sentence, and no notice.
 	 */
-	it("does not reach the tool layer, only the notice wording", () => {
+	it("does not reach the tool layer, nor the notice wording the shell's roles append", () => {
 		const reached = reachedNames("session/messages.ts");
 
 		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "tools/core/output-meta.ts")));
 		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "tools/core/output-artifact.ts")));
-		expect(reached).toContain(path.relative(PACKAGES, path.join(SRC, "tools/core/output-notice.ts")));
+		expect(reached).not.toContain(path.relative(PACKAGES, path.join(SRC, "tools/core/output-notice.ts")));
+		expect(reached).toContain(
+			path.join("..", "kernel", "src", "session", "message-kinds.ts"),
+		);
 	});
 
 	/**
-	 * The specifiers, so a failure names the import to change rather than a count. Both are the kind of
+	 * The specifiers, so a failure names the import to change rather than a count. Each is the kind of
 	 * edit that compiles and runs either way: `output-meta` re-exports every notice name, and the
 	 * registry is one autocomplete away.
 	 */
-	it("names the notice module and not the tool module", () => {
+	it("names the kind table and not the tool module", () => {
 		const imports = runtimeImportsOf(path.join(SRC, "session/messages.ts"));
 
-		expect(imports).toContain("../tools/core/output-notice");
+		expect(imports).toContain("@veyyon/kernel/session/message-kinds");
+		expect(imports).not.toContain("../tools/core/output-notice");
 		expect(imports).not.toContain("../tools/core/output-meta");
 		expect(imports).not.toContain("../prompts/registry");
 	});

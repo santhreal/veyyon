@@ -23,7 +23,7 @@
 
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { formatBytes, pluralize } from "@veyyon/utils/format";
-import { formatGroupedDiagnosticMessages } from "../../lsp/utils";
+import { formatGroupedDiagnosticMessages } from "./grouped-file-output";
 
 /**
  * Truncation metadata for the output notice.

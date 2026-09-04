@@ -109,12 +109,19 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 
 ### Kernel split (`session/` and `extensibility/`)
 
-39 modules of the session spine and 18 modules of the loader and registry live in `@veyyon/kernel`,
+40 modules of the session spine and 20 modules of the loader and registry live in `@veyyon/kernel`,
 accessed as `@veyyon/kernel/session/<module>`, `@veyyon/kernel/loader/<module>` and
 `@veyyon/kernel/registry/<module>`. `kernel/README.md` groups them by concern. The session
 manager, its context builder, its loader and the credential store are among them; the part of
 `session/messages.ts` they call (the custom-message payload and the rehydration sanitiser) is
 `@veyyon/kernel/session/custom-message-payload`, which `session/messages.ts` re-exports.
+
+A transcript role a tool domain records is the domain's, not the spine's. The shell domain's `!`
+command and `$` run are `tools/shell/execution-messages.ts`, declared on `tools/shell/manifest.ts`
+as `messageKinds` (`@veyyon/kernel/registry/message-kind`); `tools/index.ts` registers every
+manifest's kinds in `@veyyon/kernel/session/message-kinds`, and `convertToLlm` converts a role it
+has no case for by looking its kind up there. A role no manifest declared throws rather than
+leaving the request.
 
 The dividing line is the import graph, not the subject. A module moved when its transitive closure
 named no tool, no host and no mode; a module that reaches one of those stayed. 38 non-test modules

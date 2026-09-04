@@ -9,19 +9,17 @@
 import type { AgentMessage, ThinkingLevel } from "@veyyon/agent-core";
 import type { AssistantMessage, Model, ToolExample, TSchema } from "@veyyon/ai";
 import { renderDelimitedThinking, renderToolInventory } from "@veyyon/ai/dialect";
+import { agentMessageKind } from "@veyyon/kernel/session/message-kinds";
 import { INTENT_FIELD } from "@veyyon/wire";
 import { YAML } from "bun";
+import type { BashExecutionMessage, PythonExecutionMessage } from "../tools/shell/execution-messages";
 import { canonicalizeMessage } from "../utils/thinking-display";
-import {
-	type BashExecutionMessage,
-	type BranchSummaryMessage,
-	bashExecutionToText,
-	type CompactionSummaryMessage,
-	type CustomMessage,
-	type FileMentionMessage,
-	type HookMessage,
-	type PythonExecutionMessage,
-	pythonExecutionToText,
+import type {
+	BranchSummaryMessage,
+	CompactionSummaryMessage,
+	CustomMessage,
+	FileMentionMessage,
+	HookMessage,
 } from "./messages";
 
 /** Minimal tool shape for dump output (matches AgentTool fields used by formatSessionDumpText). */
@@ -156,14 +154,14 @@ function appendMarkdownTranscript(lines: string[], messages: readonly AgentMessa
 			const bashMsg = msg as BashExecutionMessage;
 			if (!bashMsg.excludeFromContext) {
 				lines.push("## Bash Execution\n");
-				lines.push(bashExecutionToText(bashMsg));
+				lines.push(agentMessageKind<BashExecutionMessage>("bashExecution").toText(bashMsg));
 				lines.push("\n");
 			}
 		} else if (msg.role === "pythonExecution") {
 			const pythonMsg = msg as PythonExecutionMessage;
 			if (!pythonMsg.excludeFromContext) {
 				lines.push("## Python Execution\n");
-				lines.push(pythonExecutionToText(pythonMsg));
+				lines.push(agentMessageKind<PythonExecutionMessage>("pythonExecution").toText(pythonMsg));
 				lines.push("\n");
 			}
 		} else if (msg.role === "custom" || msg.role === "hookMessage") {

@@ -11,13 +11,18 @@ import type { AgentMessage } from "@veyyon/agent-core/types";
 import type { AssistantMessage, ImageContent, TextContent, ToolResultMessage, UserMessage } from "@veyyon/ai";
 import { recordImageDisplay, setImageDisplayProbe } from "@veyyon/coding-agent/session/image-visibility";
 import {
-	type BashExecutionMessage,
 	convertToLlm,
 	type FileMentionMessage,
 	INTERRUPTED_THINKING_MESSAGE_TYPE,
-	type PythonExecutionMessage,
 } from "@veyyon/coding-agent/session/messages";
 import { ProviderContextCanonicalizer } from "@veyyon/coding-agent/session/provider-context-canonicalizer";
+import type { BashExecutionMessage, PythonExecutionMessage } from "@veyyon/coding-agent/tools/shell/execution-messages";
+import { shellDomain } from "@veyyon/coding-agent/tools/shell/manifest";
+import { registerAgentMessageKinds } from "@veyyon/kernel/session/message-kinds";
+
+// The shell roles convert through the kinds the shell manifest declares, registered here the way
+// the tool registry registers them.
+registerAgentMessageKinds(shellDomain.messageKinds);
 
 /**
  * WHY:

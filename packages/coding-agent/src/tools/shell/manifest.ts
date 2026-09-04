@@ -11,6 +11,7 @@
 import type { ToolDomainManifest } from "@veyyon/kernel/registry/tool-domain";
 import type { BuiltinToolName } from "../core/builtin-names";
 import type { ToolFactory } from "../index";
+import { bashExecutionKind, pythonExecutionKind } from "./execution-messages";
 
 export const shellTools = {
 	bash: async s => new (await import("./bash")).BashTool(s),
@@ -21,4 +22,13 @@ export const shellTools = {
 	ssh: async s => (await import("./ssh")).loadSshTool(s),
 } satisfies Partial<Record<BuiltinToolName, ToolFactory>>;
 
-export const shellDomain = { domain: "shell", tools: shellTools } satisfies ToolDomainManifest<ToolFactory>;
+/**
+ * The two roles the domain records, a `!` command and a `$` run, ride on the manifest as kinds: they
+ * are the wording the model reads, which is the domain's, and the kernel converts the roles by
+ * looking them up rather than by naming the shell.
+ */
+export const shellDomain = {
+	domain: "shell",
+	tools: shellTools,
+	messageKinds: [bashExecutionKind, pythonExecutionKind],
+} satisfies ToolDomainManifest<ToolFactory>;

@@ -25,9 +25,9 @@ shape this restructure exists to remove.
 
 |Directory|Contents|
 |---|---|
-|`src/registry/`|Contribution points, tool proxying, widget and host-view declarations, schema conversion|
+|`src/registry/`|Contribution points: the tool domain manifest and the message kind a domain declares on it, tool proxying, widget and host-view declarations, schema conversion|
 |`src/loader/`|Plugin discovery, manifest parsing, the installed registry, the marketplace client, load failure|
-|`src/session/`|The session spine: entries, the session manager and its context builder and loader, the credential store, storage, persistence, migrations, listing, retry policy, compaction policy, machine budget|
+|`src/session/`|The session spine: entries, the session manager and its context builder and loader, the credential store, the role-keyed message kind table, storage, persistence, migrations, listing, retry policy, compaction policy, machine budget|
 
 `src/settings/` and `src/log/` are named in the target architecture and are not populated yet; the
 settings schema and the log sinks still live in `packages/coding-agent`.
