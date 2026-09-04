@@ -42,6 +42,7 @@ import {
 	PERSONAL_GITHUB_COPILOT_BASE_URL,
 	parseGitHubCopilotApiKey,
 } from "../wire/github-copilot";
+import { getOpenCodeUserAgent } from "../wire/opencode-headers";
 import { basetenRouteReasoning } from "./baseten-reasoning";
 import { createBundledReferenceMap, createReferenceResolver, toModelSpec } from "./bundled-references";
 
@@ -2344,6 +2345,9 @@ function openCodeModelManagerOptions(
 					provider: providerId,
 					baseUrl: discoveryBaseUrl,
 					apiKey,
+					// The gateway flags traffic with no client user agent, and discovery
+					// reads it with the same key as a completion request.
+					headers: { "User-Agent": getOpenCodeUserAgent() },
 					mapModel: (entry, defaults) => {
 						const reference = modelsDevReferences.get(defaults.id) ?? bundledReferences.get(defaults.id);
 						const name = toModelName(entry.name, reference?.name ?? defaults.name);

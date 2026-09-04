@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import packageJson from "../../package.json" with { type: "json" };
+import { getOpenCodeUserAgent } from "@veyyon/catalog/wire/opencode-headers";
 
 /**
  * The provider ids that reach an OpenCode gateway: the OAuth provider and the
@@ -38,7 +38,7 @@ export function openCodeSessionHeaderValue(sessionId: string): string {
  * per-request value would defeat the affinity it exists for.
  */
 export function getOpenCodeHeaders(sessionId?: string): Record<string, string> {
-	const headers: Record<string, string> = { "User-Agent": `Veyyon/${packageJson.version}` };
+	const headers: Record<string, string> = { "User-Agent": getOpenCodeUserAgent() };
 	if (sessionId) headers["x-opencode-session"] = openCodeSessionHeaderValue(sessionId);
 	return headers;
 }

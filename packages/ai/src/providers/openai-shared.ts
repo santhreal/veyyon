@@ -94,7 +94,7 @@ import type {
 	ResponseStatus,
 	ResponseStreamEvent,
 } from "./openai-responses-wire";
-import { transformMessages } from "./transform-messages";
+import { staleToolResultNote, transformMessages } from "./transform-messages";
 import { joinTextWithImagePlaceholder, NON_VISION_IMAGE_PLACEHOLDER, partitionVisionContent } from "./vision-guard";
 
 export interface OpenAIModelIdentity {
@@ -1230,7 +1230,7 @@ export function collectCustomCallIds(messages: ResponseInput): Set<string> {
 /**
  * Convert orphan `function_call_output` / `custom_tool_call_output` items —
  * those whose `call_id` has no matching preceding `function_call` /
- * `custom_tool_call` in the same input — into assistant text notes.
+ * `custom_tool_call` in the same input — into user-role notes.
  *
  * The Responses API rejects unpaired outputs with
  * `400 No tool call found for function call output with call_id …`. Orphans
@@ -1245,10 +1245,12 @@ export function collectCustomCallIds(messages: ResponseInput): Set<string> {
  *   `function_call` ever landing in any persisted provider payload.
  *
  * Dropping the result loses information the model needs to recover; sending
- * it as-is 400s the request. Folding it into an assistant `message` preserves
- * the payload (call_id + truncated output) while staying within the Responses
- * input grammar. Matches the behavior of {@link transformRequestBody} in the
- * codex provider — issue #1351 / regression of #472.
+ * it as-is 400s the request. Folding it into a `message` preserves the payload
+ * (call_id + truncated output) while staying within the Responses input
+ * grammar. {@link staleToolResultNote} decides the envelope and the role, and
+ * states why the role is never `assistant`. Matches the behavior of
+ * {@link transformRequestBody} in the codex provider — issue #1351 /
+ * regression of #472.
  */
 export function repairOrphanResponsesToolOutputs(input: ResponseInput): ResponseInput {
 	const knownCallIds = new Set<string>();
@@ -1291,8 +1293,8 @@ export function repairOrphanResponsesToolOutputs(input: ResponseInput): Response
 		if (text.length > ORPHAN_OUTPUT_LIMIT) text = `${text.slice(0, ORPHAN_OUTPUT_LIMIT)}\n...[truncated]`;
 		return {
 			type: "message",
-			role: "assistant",
-			content: `[Orphan ${toolName} result; call_id=${callId}]: ${text}`,
+			role: "user",
+			content: staleToolResultNote({ toolName, toolCallId: callId, text }),
 		} as ResponseInput[number];
 	});
 }
@@ -1808,13 +1810,18 @@ export function appendResponsesToolResultMessages<TApi extends Api>(
 	if (strictResponsesPairing && !knownCallIds.has(normalized.callId)) {
 		// Strict backends (Azure, Copilot) reject unpaired outputs outright, but
 		// silently dropping the result loses information the model needs. Fold it
-		// into an assistant note instead (same shape as repairOrphanResponsesToolOutputs).
+		// into a note instead (same shape as repairOrphanResponsesToolOutputs).
 		const limit = 16_000;
 		const noteText = output.length > limit ? `${output.slice(0, limit)}\n...[truncated]` : output;
 		messages.push({
 			type: "message",
-			role: "assistant",
-			content: `[Orphan ${toolResult.toolName || "tool"} result; call_id=${normalized.callId}]: ${noteText}`,
+			role: "user",
+			content: staleToolResultNote({
+				toolName: toolResult.toolName || "tool",
+				toolCallId: normalized.callId,
+				text: noteText,
+				isError: toolResult.isError,
+			}),
 		} as ResponseInput[number]);
 		return;
 	}

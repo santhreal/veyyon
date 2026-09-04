@@ -10,6 +10,73 @@ const enum ToolCallStatus {
 }
 
 /**
+ * Wrap a tool result whose originating tool call is no longer in the request.
+ *
+ * Compaction, session-tree branching, a locally rejected call and a
+ * `providerPayload` splice all produce a result with no call to pair it to.
+ * Every provider rejects the unpaired block, and dropping it loses output the
+ * model needs, so the payload is preserved as an ordinary message instead.
+ *
+ * A caller MUST attach this to `role: "user"`, never `role: "assistant"`.
+ * The assistant role puts tool output in the model's own voice, and a model
+ * that reads its own prior turn ending in a note shaped like a tool result
+ * reproduces that shape: `grok-4.6` on `openai-responses` emitted a whole
+ * `search` result as visible prose, with a provider `textSignature` proving it
+ * generated the text token by token rather than the note being echoed back.
+ * The user role also keeps stale, model-untrusted output from gaining
+ * instruction priority: `developer` maps to `system` on Ollama and stays above
+ * user priority on OpenAI reasoning models, while `user` is plain content
+ * everywhere.
+ *
+ * The tag matters as much as the role. An XML envelope reads as data the model
+ * quotes from, where a bare `[Orphan tool result; call_id=…]: ` prefix reads as
+ * a message template it can imitate.
+ */
+export function staleToolResultNote(options: {
+	toolName: string;
+	toolCallId: string;
+	text: string;
+	isError?: boolean;
+}): string {
+	const errorAttr = options.isError ? ' is-error="true"' : "";
+	return `<stale-tool-result tool="${options.toolName}" id="${options.toolCallId}"${errorAttr}>\n${options.text}\n</stale-tool-result>`;
+}
+
+/**
+ * The note format persisted before the repair moved to `role: "user"`:
+ * `[Orphan <tool> result; call_id=<id>]: <output>` from the Responses repair,
+ * and `[Previous …]` from the Codex one.
+ */
+const LEGACY_STALE_TOOL_NOTE = /^\[(?:Orphan|Previous) [^\]]*result; call_id=[^\]]*\]: /;
+
+/**
+ * Remove a legacy stale-tool note from assistant history.
+ *
+ * The payload is not re-emitted as a user note. It is truncated output from a
+ * call that left the request many turns ago, and a message inserted between an
+ * assistant `tool_use` and its `tool_result` would break the contiguity
+ * Anthropic requires, so the cost of keeping it exceeds what it can inform.
+ */
+function dropLegacyStaleToolNotes(messages: Message[]): Message[] {
+	const result: Message[] = [];
+	for (const message of messages) {
+		if (message.role !== "assistant") {
+			result.push(message);
+			continue;
+		}
+		const kept = message.content.filter(block => !(block.type === "text" && LEGACY_STALE_TOOL_NOTE.test(block.text)));
+		if (kept.length === message.content.length) {
+			result.push(message);
+			continue;
+		}
+		// An assistant turn holding nothing but the note has no tool call and no
+		// reply left, so replaying it contributes an empty turn.
+		if (kept.length > 0) result.push({ ...message, content: kept });
+	}
+	return result;
+}
+
+/**
  * Maximum tool-call id length the strictest replay provider accepts.
  *
  * Anthropic requires `^[a-zA-Z0-9_-]+$` with a 64-char cap; Google and Codex
@@ -294,6 +361,13 @@ export function transformMessages<TApi extends Api>(
 	duplicateToolCallIdSuffixPrefix = "_dup",
 	targetCompat: Model<TApi>["compat"] = model.compat,
 ): Message[] {
+	// Sessions recorded before the repair rode `role: "user"` hold the note as
+	// real assistant text, because the model reproduced it and the reply was
+	// persisted like any other. Replaying one primes the same imitation again,
+	// so a resumed session would keep emitting tool results as prose long after
+	// the repair was fixed. Strip it on the way out of storage.
+	messages = dropLegacyStaleToolNotes(messages);
+
 	// Drop assistant `toolCall` blocks with empty/whitespace `id` or `name`
 	// (and their matched `toolResult` messages) before anything else looks at
 	// the history. Replays of these would 400 every provider — see
@@ -862,29 +936,21 @@ export function transformMessages<TApi extends Api>(
 					continue;
 				}
 				// No pending tool-call window: safe to preserve the text payload so the
-				// model still sees what the tool returned.
-				//
-				// The note is emitted with `role: "user"` rather than `role: "developer"`
-				// because the developer role is elevated by some providers:
-				//
-				// * Ollama maps `developer` -> `system` (highest instruction priority).
-				// * OpenAI chat-completions reasoning models forward `developer` as
-				//   `developer` (above-user instruction priority).
-				//
-				// Stale, model-untrusted tool output must not gain instruction priority
-				// above user/developer messages it lived alongside before compaction.
-				// `user` role is mapped to plain user content by every provider, so the
-				// content survives without ever being treated as an instruction the
-				// model should obey.
+				// model still sees what the tool returned. staleToolResultNote owns both
+				// the envelope and the rule that it rides on `role: "user"`.
 				const textParts: string[] = [];
 				for (const part of msg.content) {
 					if (part.type === "text" && part.text.trim() !== "") textParts.push(part.text);
 				}
 				if (textParts.length > 0) {
-					const errorAttr = msg.isError ? ' is-error="true"' : "";
 					result.push({
 						role: "user",
-						content: `<stale-tool-result tool="${msg.toolName}" id="${msg.toolCallId}"${errorAttr}>\n${textParts.join("\n")}\n</stale-tool-result>`,
+						content: staleToolResultNote({
+							toolName: msg.toolName,
+							toolCallId: msg.toolCallId,
+							text: textParts.join("\n"),
+							isError: msg.isError,
+						}),
 						timestamp: messageTimestamp,
 					} as UserMessage);
 				}
