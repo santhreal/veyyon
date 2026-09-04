@@ -50,10 +50,12 @@ operator manual.
 |`natives/text/measure`|ANSI-aware width measurement, grapheme segmentation and truncation over UTF-16|
 |`tests/conformance`|Whole-product conformance corpus and harness, on virtual clock, filesystem, terminal and network (test only, issue #877)|
 
-`kernel/` and every `contracts/*`, `hosts/*`, `packages/*` and `plugins/*` member is TypeScript. First-party
-Rust is grouped by purpose under `natives/`, vendored Rust is `natives/vendor/`, and the whole-product
-conformance corpus is
-`tests/conformance/`.
+`kernel/` and every `contracts/*`, `hosts/*`, `packages/*`, `plugins/*`, `apps/*`, `clients/*` and
+`tests/*` member is TypeScript. First-party Rust is grouped by purpose under `natives/`, vendored
+Rust is `natives/vendor/`, and the whole-product conformance corpus is `tests/conformance/`.
+`apps/*` is a deployable: the stats dashboard and the website. `clients/*` is a client of the
+product that is not the terminal host: the browser guest client and the Python clients. `tests/*`
+is a test-only member: the eval suites and the offline simulations, published nowhere.
 `plugins/*` is the optional layer: a member there contributes tools, modes or storage through the
 kernel's contribution registry, and the product runs with it absent. A plugin never imports another
 plugin.

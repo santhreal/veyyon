@@ -71,7 +71,7 @@ packages/coding-agent/src/utils/mupdf-wasm-embedded.js
 # instrument anyone re-runs, so they stay out of the tree and out of a broad add.
 .measure-tmp/
 /runs/
-python/omp-rpc/src/omp_rpc.egg-info/
+clients/python/omp-rpc/src/omp_rpc.egg-info/
 # parallel-agent worktrees
 .wt/
 CPU*.md

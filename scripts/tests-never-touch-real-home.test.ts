@@ -955,14 +955,17 @@ export function analyzeSource(file: string, rawSource: string): Violation[] {
  * beside the module it tests was read by nothing, and two of them do -- `tests/simulations` places
  * its scenarios beside their harness, and `clients/python/veybot/web` places both of its suites in `src`.
  * The walk now crosses each member's whole tree and keeps a file that is a test or sits under a
- * `test` directory. Production modules stay out: `os.homedir()` in shipped code is how the product
- * finds its config, and a rule about test isolation has nothing to say about it.
+ * `test` directory inside the member. Production modules stay out: `os.homedir()` in shipped code
+ * is how the product finds its config, and a rule about test isolation has nothing to say about it.
+ * The directory segments are read below the member's root, so the `tests/` workspace root that
+ * holds `tests/evals` and `tests/simulations` does not turn a runner or a backend into a test file.
  */
 export function testSources(): string[] {
 	const found: string[] = [];
-	const isTestModule = (relPath: string): boolean =>
-		/\.test\.tsx?$/.test(relPath) || relPath.split("/").some(segment => segment === "test" || segment === "tests");
-	const walk = (dir: string): void => {
+	const isTestModule = (memberRelPath: string): boolean =>
+		/\.test\.tsx?$/.test(memberRelPath) ||
+		memberRelPath.split("/").some(segment => segment === "test" || segment === "tests");
+	const walk = (dir: string, memberRoot: string): void => {
 		let entries: Dirent[];
 		try {
 			entries = readdirSync(dir, { withFileTypes: true });
@@ -973,16 +976,17 @@ export function testSources(): string[] {
 			if (SKIP_DIRS.has(entry.name)) continue;
 			const full = path.join(dir, entry.name);
 			if (entry.isDirectory()) {
-				walk(full);
+				walk(full, memberRoot);
 				continue;
 			}
 			if (!/\.tsx?$/.test(entry.name)) continue;
-			const rel = path.relative(REPO_ROOT, full).replaceAll(path.sep, "/");
-			if (isTestModule(rel)) found.push(rel);
+			if (!isTestModule(path.relative(memberRoot, full).replaceAll(path.sep, "/"))) continue;
+			found.push(path.relative(REPO_ROOT, full).replaceAll(path.sep, "/"));
 		}
 	};
 	for (const member of typeScriptMembers()) {
-		walk(path.join(REPO_ROOT, member));
+		const memberRoot = path.join(REPO_ROOT, member);
+		walk(memberRoot, memberRoot);
 	}
 	return found.sort();
 }
@@ -1014,6 +1018,11 @@ describe("no test reaches outside its sandbox", () => {
 		// The two shapes a `<member>/test` walk could not see: a suite beside its subject in `src`, and
 		// a member three levels down that no root glob reaches.
 		expect(files).toContain("clients/python/veybot/web/src/work-items.contract.test.ts");
+		// A member under the `tests/` workspace root is not thereby a tree of test files: its runners
+		// and backends spawn docker and the eval binary by design, and reading them as suites reported
+		// eight of them as sandbox escapes the day the root arrived. The `.test.ts` files there still count.
+		expect(files).not.toContain("tests/evals/api/runner.ts");
+		expect(files.some(file => file.startsWith("tests/evals/") && file.endsWith(".test.ts"))).toBe(true);
 		expect(files.some(file => file.startsWith("natives/bridge/bindings/test/"))).toBe(true);
 	});
 

@@ -251,6 +251,11 @@ function unnamedModules(): string[] {
  * package, because a suite sitting beside the module it tests now counts.
  */
 const NAMED_BY_NO_TEST: readonly string[] = [
+	"apps/stats/src/client/components/range-meta.ts",
+	"apps/stats/src/client/data/charts.ts",
+	"apps/stats/src/client/data/useHashRoute.ts",
+	"apps/stats/src/client/data/useResource.ts",
+	"clients/web/src/lib/use-guest.ts",
 	"hosts/terminal/engine/src/components/cancellable-loader.ts",
 	"hosts/terminal/engine/src/components/settings-search.ts",
 	"kernel/src/loader/plugins/runtime-config.ts",
@@ -390,11 +395,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/tools/web/browser/tab-worker-entry.ts",
 	"packages/coding-agent/src/tools/web/search/providers/jina.ts",
 	"packages/coding-agent/src/tools/web/search/providers/synthetic.ts",
-	"clients/web/src/lib/use-guest.ts",
-	"apps/stats/src/client/components/range-meta.ts",
-	"apps/stats/src/client/data/charts.ts",
-	"apps/stats/src/client/data/useHashRoute.ts",
-	"apps/stats/src/client/data/useResource.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/ansi.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/canvas.ts",
 	"packages/utils/src/vendor/mermaid-ascii/ascii/class-diagram.ts",

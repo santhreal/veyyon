@@ -287,6 +287,12 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 			"The overflow row asserted a refusal that stayed visible after the summarizer failed. A session no longer parks there: when no reducer recognizes the shape of what is too large, the last-resort tier cuts the middle out of the largest text, the pass reaches the fit bar with no summary and the scheduled retry answers. The row requires that recovery -- one dead-end notice naming the truncation, prose shorter than the prompt carried, and an answer rather than a refusal.",
 	},
 	{
+		name: "relocated-member-path",
+		matches: relative => /^(apps|clients)\/|^tests\/(evals|simulations)\//.test(relative),
+		reason:
+			"A member that left `packages/`, `python/` or `website/` for `apps/`, `clients/` or `tests/` states its own directory in a usage string, a command, a registry key or a comment, and climbs to the repository root by a relative path that gained one level. The move itself spells only the new location. A row here can also carry an edit this branch made before the move and every unmoved sibling carries too -- the array-spread rewrite, the `natives/` path spelling, a site page's nav fix -- each recorded in the commit that made it, none made by the relocation.",
+	},
+	{
 		name: "plugin-path-expectation",
 		matches: relative => /^plugins\/[^/]+\/test\//.test(relative),
 		reason:

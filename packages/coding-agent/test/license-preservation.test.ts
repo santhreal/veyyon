@@ -90,7 +90,7 @@ describe("license preservation", () => {
 	 */
 	it("keeps every Veyyon JavaScript package manifest MIT licensed", async () => {
 		const paths = ["package.json", ...typeScriptMembers().map(member => `${member}/package.json`)];
-		for await (const path of new Glob("python/**/package.json").scan({ cwd: ROOT })) {
+		for await (const path of new Glob("clients/python/**/package.json").scan({ cwd: ROOT })) {
 			if (!paths.includes(path)) paths.push(path);
 		}
 
