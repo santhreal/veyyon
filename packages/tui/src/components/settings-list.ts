@@ -713,7 +713,7 @@ export class SettingsList implements Component {
 			// the always-aligned start of the value column for this frame.
 			this.#valueColStart = 2 + maxLabelWidth + 2;
 			const itemRowsOverflow = this.#filteredItems.length > viewportHeight;
-			const itemRowWidth = Math.max(0, width - (itemRowsOverflow ? 1 : 0));
+			const itemRowWidth = Math.max(0, width - (itemRowsOverflow ? 2 : 0));
 			const visibleItems = this.#filteredItems.slice(startIndex, startIndex + viewportHeight);
 			// In the flat layout the active section's heading row carries the
 			// section-focus cursor (the split layout shows it in the sidebar).
@@ -851,7 +851,7 @@ export class SettingsList implements Component {
 		// column + separator (2) — the always-aligned start of the value column.
 		this.#valueColStart = sidebarWidth + 2 + 2 + maxLabelWidth + 2;
 		const overflow = this.#filteredItems.length > viewportHeight;
-		const rowWidth = Math.max(0, paneWidth - (overflow ? 1 : 0));
+		const rowWidth = Math.max(0, paneWidth - (overflow ? 2 : 0));
 		const itemRows: string[] = [];
 		for (let r = 0; r < viewportHeight; r++) {
 			const index = startRow + r;

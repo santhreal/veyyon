@@ -68,6 +68,7 @@
 
 ### Fixed
 
+- Settings selector displays a dimmed '(unset)' for optional text settings with empty values, sizes the subagent roster list to fit the modal viewport without clipping custom agent hints or navigation keys, and passes the target pane width to the status line preview.
 - The interactive console (`bash` with a PTY), the autoresearch dashboard and every other `ui.custom(..., { overlay: true })` surface sit above the composer zone instead of covering the whole screen: the prompt, status line and footline stay painted while the overlay is up, and the console box is sized to the rows above them.
 - A session on a model whose thinking blocks are bound to their conversation prefix, such as Claude 5.1 and later, leaves an already-sent tool result in place instead of superseding it mid-history, which invalidated every thinking block recorded after it and drew a 400 on the next turn.
 - The installer refuses to replace a binary whose only ownership record is a pre-identity v1 receipt, instead of moving it aside. That receipt vouches for the path alone, so a user who deleted the installed binary and put their own file at the name left exactly one behind, and it was being read as permission to displace their file.

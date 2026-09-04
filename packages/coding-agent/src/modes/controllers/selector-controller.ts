@@ -341,10 +341,11 @@ export class SelectorController {
 						});
 						this.ctx.ui.requestRender();
 					},
-					getStatusLinePreview: () => {
+					getStatusLinePreview: (previewWidth?: number) => {
 						// Preview the quiet composer zones (what the operator actually sees),
 						// two rows: location above, capability below.
-						const width = this.ctx.editor.getTopBorderAvailableWidth(this.ctx.ui.terminal.columns);
+						const width =
+							previewWidth ?? this.ctx.editor.getTopBorderAvailableWidth(this.ctx.ui.terminal.columns);
 						const { locationLine, capabilityLine } = this.ctx.statusLine.renderQuietLines(width);
 						return `${locationLine}\n${capabilityLine}`;
 					},
