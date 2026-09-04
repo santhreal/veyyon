@@ -116,6 +116,10 @@
 
 ### Fixed
 
+- The autoswarm setup console handles Unicode emojis, CJK characters and combining marks on backspace and windowing without splitting surrogate pairs, and supports Shift-Tab field navigation.
+- Autoswarm triage rejects candidate arms whose edits fall inside off-limits directories, where an exact string comparison only matched exact path literals.
+- Autoswarm review assigns the director as the sole reviewer when certification is disabled on the session, instead of creating peer review rings for three or more surviving arms.
+- Autoresearch storage rejects completing or logging an abandoned run, and rejects duplicate log calls on an already logged run.
 - `/autoresearch status` and `/autoswarm status` open the run screen, where the word was swallowed as the goal and overwrote what a live session was optimizing.
 - A live session's goal changes only through `goal <text>` or the setup console, so any other text after the command reaches the model as context for the resume and leaves the stored goal as it was.
 - `/autoresearch` and `/autoswarm` offer `status` and `goal` in their argument completions, where only `off` and `clear` were listed and every other word reached the goal write.
@@ -126,6 +130,8 @@
 - `/account status`, `/account refresh` and `/lsp` print their report as a titled transcript block at the rail, where the lines landed as a bare paragraph that read like an assistant message.
 - Logging an arm whose model restore is refused, because the session model lost its key mid-run, reports that the session is still on the arm's model instead of recording the restore as done, and the next arm's restore target stays the session's own model rather than the arm it was stranded on.
 - An autoresearch or autoswarm turn that ends with no experiment tool run, no measurement waiting and no resume armed is steered back to the loop on the next turn; after three such turns in a row the loop turns itself off and states how to reach the session's runs, where the mode stayed on and the status row read as a live experiment until the user typed something.
+- `/autoswarm goal <text>` opens the setup console with `<text>` in the goal field, where the field read `goal <text>` and that literal was written as the goal on start.
+- `/autoresearch clear --keep-tree`, and a `clear` off an `autoresearch/*` branch, leave every worktree file in place, where both deleted `autoresearch.sh` and the other loop files from the worktree; a confirmed reset restores the committed harness and removes only the legacy files the prompt forbids, and a `clear` on a project that never ran a loop no longer creates the run store.
 - The installer refuses to replace a binary whose only ownership record is a pre-identity v1 receipt, instead of moving it aside. That receipt vouches for the path alone, so a user who deleted the installed binary and put their own file at the name left exactly one behind, and it was being read as permission to displace their file.
 - `veyyon agents unpack` writes to `~/.veyyon/subagents`, the directory subagent discovery reads, instead of the profile's `agent/agents` dir, where an unpacked definition was reported as written and then never loaded.
 - `veyyon config set` and `veyyon config reset` no longer exit 1 with an ENOENT on a profile that has never been launched: the save now creates the profile's agent directory before it takes the config file's lock, which refused a parent directory that did not exist yet.
