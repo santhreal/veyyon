@@ -78,7 +78,7 @@
 		"scripts/bench-jsonl-bytes.ts": "02bbcd492dc5cad07d6da3625296217dadbe2338f036ae1fe1f21c0240d68580"
 	},
 	"importReorder": {},
-	"changedCount": 5634,
+	"changedCount": 5635,
 	"changed": [
 		"apps/site/deploy.test.ts",
 		"apps/site/functions/api/grievances.test.ts",
@@ -232,6 +232,7 @@
 		"clients/web/test/transcript-dom-shim.ts",
 		"clients/web/test/transcript-polling.test.ts",
 		"clients/web/test/transcript.test.tsx",
+		"contracts/plugin/src/index.ts",
 		"contracts/settings/src/index.ts",
 		"contracts/settings/test/a-type-tag-is-one-the-vocabulary-declares.test.ts",
 		"contracts/view/src/index.ts",

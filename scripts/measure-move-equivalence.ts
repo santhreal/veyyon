@@ -438,6 +438,11 @@ export function renamePairs(repoRoot: string, baseSha: string, headRef = "HEAD")
  * `packages/argot/`. A delete whose predicted destination exists and is still unclaimed once the
  * pairs settle is that destination's move.
  *
+ * The prediction reads directory rules only. A pair whose destination is too short to share a
+ * directory with its source (`packages/hashline/tsconfig.json` -> `kernel/tsconfig.json`) puts a
+ * whole-path rule in the table, and that rule is the pair's own vote: reading it back would
+ * predict the pairing under question and settle it.
+ *
  * WHAT IT DOES NOT CATCH. A file moved on its own to a place the table does not predict, while a
  * new file with its name appears where the table does predict, is re-pointed to the new file; and a
  * file this branch deleted while creating an unrelated one at its predicted destination is paired
@@ -450,7 +455,7 @@ export function pairedWithTheMemberItMovedWith(
 ): [string, string][] {
 	const rewrites = derivePrefixRewrites(pairs);
 	const predictedFor = (oldPath: string): string | undefined => {
-		const rule = rewrites.find(([oldPrefix]) => oldPath === oldPrefix || oldPath.startsWith(`${oldPrefix}/`));
+		const rule = rewrites.find(([oldPrefix]) => oldPath.startsWith(`${oldPrefix}/`));
 		return rule === undefined ? undefined : `${rule[1]}${oldPath.slice(rule[0].length)}`;
 	};
 	const reconciled: [string, string][] = pairs.map(pair => [pair[0], pair[1]]);

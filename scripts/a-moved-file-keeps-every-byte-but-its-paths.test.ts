@@ -96,9 +96,9 @@ describe("a moved file keeps every byte but its paths", () => {
 		const buckets = new Map<string, number>();
 		for (const [, record] of rows) buckets.set(record.differs, (buckets.get(record.differs) ?? 0) + 1);
 		expect([...buckets].sort()).toEqual([
-			["changed", 378],
+			["changed", 379],
 			["imports-and-comments-only", 814],
-			["none", 3608],
+			["none", 3607],
 		]);
 		expect(rewrites.length).toBeGreaterThan(50);
 		const paths = rows.map(([relative]) => relative);
@@ -178,6 +178,10 @@ describe("a moved file keeps every byte but its paths", () => {
 	 * files of each member carry the majority, so the table states where each member went, and every
 	 * manifest follows it. What the re-pointing leaves behind -- `contracts/view/tsconfig.json`, a
 	 * file this branch created -- is paired with nothing.
+	 *
+	 * `hashline`'s `tsconfig.json` went to `kernel/tsconfig.json`, a destination too short to share
+	 * a directory with its source, so the table holds that pair as a whole-path rule. A prediction
+	 * that read it back would confirm the pair; the member rule is the one that counts.
 	 */
 	it("pairs a manifest with the member it moved with", () => {
 		const reported: [string, string][] = [
@@ -192,6 +196,9 @@ describe("a moved file keeps every byte but its paths", () => {
 			["packages/wire/tsconfig.json", "contracts/view/tsconfig.json"],
 			["packages/swarm-extension/tsconfig.json", "contracts/wire/tsconfig.json"],
 			["packages/argot/bunfig.toml", "apps/stats/bunfig.toml"],
+			["packages/hashline/src/index.ts", "plugins/hashline/src/index.ts"],
+			["packages/hashline/src/apply.ts", "plugins/hashline/src/apply.ts"],
+			["packages/hashline/tsconfig.json", "kernel/tsconfig.json"],
 		];
 		const deleted = ["packages/stats/bunfig.toml", "packages/stats/gone-for-good.ts"];
 
@@ -200,6 +207,9 @@ describe("a moved file keeps every byte but its paths", () => {
 		expect(paired.get("packages/wire/tsconfig.json")).toBe("contracts/wire/tsconfig.json");
 		expect(paired.get("packages/swarm-extension/tsconfig.json")).toBe("plugins/mode-swarm/tsconfig.json");
 		expect(paired.get("packages/argot/bunfig.toml")).toBe("plugins/argot/bunfig.toml");
+		// The pair's own whole-path rule does not settle it; the member rule does.
+		expect(paired.get("packages/hashline/tsconfig.json")).toBe("plugins/hashline/tsconfig.json");
+		expect([...paired.values()]).not.toContain("kernel/tsconfig.json");
 		// A delete whose member destination exists and is unclaimed is that destination's move.
 		expect(paired.get("packages/stats/bunfig.toml")).toBe("apps/stats/bunfig.toml");
 		// A delete with no file at its predicted destination stays a delete.
@@ -236,7 +246,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.hash || hash !== record.mainHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(unchanged).toBe(3608);
+		expect(unchanged).toBe(3607);
 	});
 
 	/**
@@ -265,7 +275,7 @@ describe("a moved file keeps every byte but its paths", () => {
 	 */
 	it("explains every file whose content really changed", () => {
 		const changed = rows.filter(([, record]) => record.differs === "changed");
-		expect(changed.length).toBe(378);
+		expect(changed.length).toBe(379);
 		const unexplained: string[] = [];
 		const drifted: string[] = [];
 		for (const [relative, record] of changed) {
