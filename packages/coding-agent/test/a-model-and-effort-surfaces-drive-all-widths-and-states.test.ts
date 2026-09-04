@@ -124,23 +124,35 @@ describe("Model and effort surfaces drive all widths and states", () => {
 		});
 
 		it("ThinkingSelectorComponent preselects default row when currentLevel is undefined", () => {
-			const onSelect = vi.fn();
-			const onCancel = vi.fn();
-			const comp = new ThinkingSelectorComponent(undefined, astra, onSelect, onCancel);
+			const selected: Array<thinking.ConfiguredThinkingLevel | undefined> = [];
+			const comp = new ThinkingSelectorComponent(
+				undefined,
+				astra,
+				level => {
+					selected.push(level);
+				},
+				() => {},
+			);
 			const list = comp.getSelectList();
 			expect(list.getSelectedItem()?.value).toBe("");
 			comp.handleInput("\n");
-			expect(onSelect).toHaveBeenCalledWith(undefined);
+			expect(selected).toEqual([undefined]);
 		});
 
 		it("ThinkingSelectorComponent preselects specific level when currentLevel is configured", () => {
-			const onSelect = vi.fn();
-			const onCancel = vi.fn();
-			const comp = new ThinkingSelectorComponent(ThinkingLevel.High, astra, onSelect, onCancel);
+			const selected: Array<thinking.ConfiguredThinkingLevel | undefined> = [];
+			const comp = new ThinkingSelectorComponent(
+				ThinkingLevel.High,
+				astra,
+				level => {
+					selected.push(level);
+				},
+				() => {},
+			);
 			const list = comp.getSelectList();
 			expect(list.getSelectedItem()?.value).toBe("high");
 			comp.handleInput("\n");
-			expect(onSelect).toHaveBeenCalledWith(ThinkingLevel.High);
+			expect(selected).toEqual([ThinkingLevel.High]);
 		});
 	});
 
@@ -317,14 +329,16 @@ describe("Model and effort surfaces drive all widths and states", () => {
 			browser.handleInput("\x7f"); // Backspace
 			expect(browser.query).toBe("astr");
 
-			const onCancel = vi.fn();
-			browser.onCancel = onCancel;
+			let cancelled = 0;
+			browser.onCancel = () => {
+				cancelled += 1;
+			};
 			browser.handleInput("\x1b"); // Escape clears query first
 			expect(browser.query).toBe("");
-			expect(onCancel).not.toHaveBeenCalled();
+			expect(cancelled).toBe(0);
 
 			browser.handleInput("\x1b"); // Escape with empty query calls onCancel
-			expect(onCancel).toHaveBeenCalledTimes(1);
+			expect(cancelled).toBe(1);
 		});
 
 		it("ModelSelectorPanel shows 'No matching models' when search query has 0 matches", () => {
@@ -365,8 +379,10 @@ describe("Model and effort surfaces drive all widths and states", () => {
 			const browser = new ModelBrowser(settings);
 			const items = buildBrowserItems(testModels);
 			browser.setItems(items);
-			const onActivate = vi.fn();
-			browser.onActivate = onActivate;
+			const activated: unknown[] = [];
+			browser.onActivate = item => {
+				activated.push(item);
+			};
 
 			expect(browser.getSelected()?.id).toBe(testModels[0].id);
 
@@ -380,15 +396,17 @@ describe("Model and effort surfaces drive all widths and states", () => {
 			expect(browser.getSelected()?.id).toBe(testModels[0].id);
 
 			browser.handleInput("\n"); // Enter
-			expect(onActivate).toHaveBeenCalledWith(items[0]);
+			expect(activated).toEqual([items[0]]);
 		});
 
 		it("ModelBrowser mouse interaction (wheel, hover motion, click select, click activate)", () => {
 			const browser = new ModelBrowser(settings);
 			const items = buildBrowserItems(testModels);
 			browser.setItems(items);
-			const onActivate = vi.fn();
-			browser.onActivate = onActivate;
+			const activated: unknown[] = [];
+			browser.onActivate = item => {
+				activated.push(item);
+			};
 
 			// Mouse motion over line 3 (index 1)
 			browser.routeMouse({ row: 3, col: 10, leftClick: false, motion: true, wheel: null } as SgrMouseEvent, 3);
@@ -400,7 +418,7 @@ describe("Model and effort surfaces drive all widths and states", () => {
 
 			// Second click on selected line activates
 			browser.routeMouse({ row: 3, col: 10, leftClick: true, motion: false, wheel: null } as SgrMouseEvent, 3);
-			expect(onActivate).toHaveBeenCalledWith(items[1]);
+			expect(activated).toEqual([items[1]]);
 		});
 	});
 

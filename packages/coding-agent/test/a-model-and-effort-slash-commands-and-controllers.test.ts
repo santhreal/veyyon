@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
@@ -10,6 +10,15 @@ import type {
 	SlashCommandRuntime,
 	TuiSlashCommandRuntime,
 } from "@veyyon/coding-agent/slash-commands/types";
+
+/**
+ * WHY: `/model`, `/switch` and `/effort` are the keyboard path to the model and
+ * effort pickers and to a direct effort change. Each case drives the real
+ * builtin handler against a session recorder and asserts what the operator
+ * observes: the printed line, the model or level the session now holds, the
+ * selector that opened, and the composer text cleared. Not covered: the
+ * selector components themselves (see the widths-and-states suite).
+ */
 
 function makeNoEffortModel(provider = "test-provider", id = "no-effort-model"): Model {
 	return buildModel({
@@ -26,24 +35,39 @@ function makeNoEffortModel(provider = "test-provider", id = "no-effort-model"): 
 	});
 }
 
-function makeMockSession(model?: Model, configuredLevel?: string): AgentSession {
+interface SessionRecorder {
+	session: AgentSession;
+	/** Every `setModel` / `setModelTemporary` argument, in order. */
+	modelsSet: Model[];
+	/** Every `setThinkingLevel` call as `[level, persist]`, in order. */
+	levelsSet: Array<[string, boolean | undefined]>;
+}
+
+function makeSession(model?: Model, configuredLevel?: string): SessionRecorder {
 	let currentModel = model;
 	let currentLevel = configuredLevel;
-	return {
-		model: currentModel,
+	const modelsSet: Model[] = [];
+	const levelsSet: Array<[string, boolean | undefined]> = [];
+	const session = {
+		get model() {
+			return currentModel;
+		},
 		getAvailableModels: () => (currentModel ? [currentModel] : []),
 		configuredThinkingLevel: () => currentLevel,
-		setModel: vi.fn(async (m: Model) => {
+		async setModel(m: Model): Promise<void> {
 			currentModel = m;
-		}),
-		setModelTemporary: vi.fn(async (m: Model) => {
+			modelsSet.push(m);
+		},
+		async setModelTemporary(m: Model): Promise<void> {
 			currentModel = m;
-		}),
-		setThinkingLevel: vi.fn((lvl: string, _persist?: boolean) => {
+			modelsSet.push(m);
+		},
+		setThinkingLevel(lvl: string, persist?: boolean): void {
 			currentLevel = lvl;
-		}),
-		resolveTemporaryModelThinkingLevel: vi.fn(() => undefined),
-		getContextUsage: vi.fn(() => ({ tokens: 1000 })),
+			levelsSet.push([lvl, persist]);
+		},
+		resolveTemporaryModelThinkingLevel: () => undefined,
+		getContextUsage: () => ({ tokens: 1000 }),
 		modelRegistry: {
 			authStorage: {
 				hasAuth: () => true,
@@ -51,6 +75,72 @@ function makeMockSession(model?: Model, configuredLevel?: string): AgentSession 
 			},
 		},
 	} as unknown as AgentSession;
+	return { session, modelsSet, levelsSet };
+}
+
+interface HeadlessRecorder {
+	runtime: SlashCommandRuntime;
+	printed: string[];
+}
+
+function makeHeadless(session: AgentSession): HeadlessRecorder {
+	const printed: string[] = [];
+	const runtime = {
+		session,
+		output: (line: string) => {
+			printed.push(line);
+		},
+		notifyTitleChanged(): void {},
+		notifyConfigChanged(): void {},
+	} as unknown as SlashCommandRuntime;
+	return { runtime, printed };
+}
+
+interface TuiRecorder {
+	runtime: TuiSlashCommandRuntime;
+	/** Arguments of each `showModelSelector` call. */
+	modelSelectorOpened: unknown[];
+	/** One entry per `showThinkingSelector` call. */
+	thinkingSelectorOpened: number;
+	editorText: string[];
+	statuses: string[];
+}
+
+function makeTui(session?: AgentSession): TuiRecorder {
+	const rec: TuiRecorder = {
+		runtime: undefined as unknown as TuiSlashCommandRuntime,
+		modelSelectorOpened: [],
+		thinkingSelectorOpened: 0,
+		editorText: [],
+		statuses: [],
+	};
+	rec.runtime = {
+		ctx: {
+			session,
+			showModelSelector(options?: unknown): void {
+				rec.modelSelectorOpened.push(options);
+			},
+			showThinkingSelector(): void {
+				rec.thinkingSelectorOpened += 1;
+			},
+			showStatus(text: string): void {
+				rec.statuses.push(text);
+			},
+			statusLine: { invalidate(): void {} },
+			updateEditorBorderColor(): void {},
+			editor: {
+				setText(text: string): void {
+					rec.editorText.push(text);
+				},
+			},
+			ui: { requestRender(): void {} },
+		},
+	} as unknown as TuiSlashCommandRuntime;
+	return rec;
+}
+
+function consumed(result: unknown): boolean {
+	return typeof result === "object" && result !== null && "consumed" in result && result.consumed === true;
 }
 
 describe("Model and effort slash commands and controllers", () => {
@@ -63,47 +153,30 @@ describe("Model and effort slash commands and controllers", () => {
 
 	describe("/model command", () => {
 		it("headless: shows current model when called with no args", async () => {
-			const session = makeMockSession(astra);
-			const output = vi.fn();
-			const runtime = {
-				session,
-				output,
-				notifyTitleChanged: vi.fn(),
-				notifyConfigChanged: vi.fn(),
-			} as unknown as SlashCommandRuntime;
+			const { session } = makeSession(astra);
+			const { runtime, printed } = makeHeadless(session);
 
 			const cmd: ParsedSlashCommand = { name: "model", args: "", text: "/model" };
 			const result = await modelCmd.handle!(cmd, runtime);
-			expect(output).toHaveBeenCalledWith("Current model: openai-codex/gpt-6-astra");
-			expect(result && "consumed" in result && result.consumed).toBe(true);
+			expect(printed).toEqual(["Current model: openai-codex/gpt-6-astra"]);
+			expect(consumed(result)).toBe(true);
 		});
 
 		it("headless: sets model when called with valid model id", async () => {
-			const session = makeMockSession(astra);
-			const output = vi.fn();
-			const runtime = {
-				session,
-				output,
-				notifyTitleChanged: vi.fn(),
-				notifyConfigChanged: vi.fn(),
-			} as unknown as SlashCommandRuntime;
+			const { session, modelsSet } = makeSession(astra);
+			const { runtime, printed } = makeHeadless(session);
 
 			const cmd: ParsedSlashCommand = { name: "model", args: "gpt-6-astra", text: "/model gpt-6-astra" };
 			const result = await modelCmd.handle!(cmd, runtime);
-			expect(session.setModel).toHaveBeenCalledWith(astra);
-			expect(output).toHaveBeenCalledWith("Model set to openai-codex/gpt-6-astra.");
-			expect(result && "consumed" in result && result.consumed).toBe(true);
+			expect(modelsSet).toEqual([astra]);
+			expect(session.model).toBe(astra);
+			expect(printed).toEqual(["Model set to openai-codex/gpt-6-astra."]);
+			expect(consumed(result)).toBe(true);
 		});
 
 		it("headless: returns error usage when model is unknown", async () => {
-			const session = makeMockSession(astra);
-			const output = vi.fn();
-			const runtime = {
-				session,
-				output,
-				notifyTitleChanged: vi.fn(),
-				notifyConfigChanged: vi.fn(),
-			} as unknown as SlashCommandRuntime;
+			const { session, modelsSet } = makeSession(astra);
+			const { runtime, printed } = makeHeadless(session);
 
 			const cmd: ParsedSlashCommand = {
 				name: "model",
@@ -111,165 +184,103 @@ describe("Model and effort slash commands and controllers", () => {
 				text: "/model nonexistent-model",
 			};
 			const result = await modelCmd.handle!(cmd, runtime);
-			expect(output).toHaveBeenCalledWith(expect.stringContaining("Unknown model: nonexistent-model"));
-			expect(result && "consumed" in result && result.consumed).toBe(true);
+			expect(printed).toHaveLength(1);
+			expect(printed[0]).toContain("Unknown model: nonexistent-model");
+			expect(modelsSet).toEqual([]);
+			expect(consumed(result)).toBe(true);
 		});
 
-		it("TUI: calls showModelSelector and clears editor", () => {
-			const showModelSelector = vi.fn();
-			const setText = vi.fn();
-			const runtime = {
-				ctx: {
-					showModelSelector,
-					editor: { setText },
-				},
-			} as unknown as TuiSlashCommandRuntime;
-
+		it("TUI: opens the model selector and clears the composer", () => {
+			const rec = makeTui();
 			const cmd: ParsedSlashCommand = { name: "model", args: "", text: "/model" };
-			modelCmd.handleTui!(cmd, runtime);
-			expect(showModelSelector).toHaveBeenCalled();
-			expect(setText).toHaveBeenCalledWith("");
+			modelCmd.handleTui!(cmd, rec.runtime);
+			expect(rec.modelSelectorOpened).toHaveLength(1);
+			expect(rec.editorText).toEqual([""]);
 		});
 
-		it("TUI: /switch calls showModelSelector with temporaryOnly: true", () => {
-			const showModelSelector = vi.fn();
-			const setText = vi.fn();
-			const runtime = {
-				ctx: {
-					showModelSelector,
-					editor: { setText },
-				},
-			} as unknown as TuiSlashCommandRuntime;
-
+		it("TUI: /switch opens the model selector in temporary-only mode", () => {
+			const rec = makeTui();
 			const cmd: ParsedSlashCommand = { name: "switch", args: "", text: "/switch" };
-			switchCmd.handleTui!(cmd, runtime);
-			expect(showModelSelector).toHaveBeenCalledWith({ temporaryOnly: true });
-			expect(setText).toHaveBeenCalledWith("");
+			switchCmd.handleTui!(cmd, rec.runtime);
+			expect(rec.modelSelectorOpened).toEqual([{ temporaryOnly: true }]);
+			expect(rec.editorText).toEqual([""]);
 		});
 	});
 
 	describe("/effort command", () => {
 		it("headless: shows current effort choices when called with no args on gpt-6-astra", async () => {
-			const session = makeMockSession(astra, "high");
-			const output = vi.fn();
-			const runtime = {
-				session,
-				output,
-				notifyConfigChanged: vi.fn(),
-			} as unknown as SlashCommandRuntime;
+			const { session } = makeSession(astra, "high");
+			const { runtime, printed } = makeHeadless(session);
 
 			const cmd: ParsedSlashCommand = { name: "effort", args: "", text: "/effort" };
 			const result = await effortCmd.handle!(cmd, runtime);
-			expect(output).toHaveBeenCalled();
-			const msg = output.mock.calls[0][0];
-			expect(msg).toContain("Effort: high (this session)");
-			expect(msg).toContain("off, auto, low, medium, high, xhigh, max");
-			expect(result && "consumed" in result && result.consumed).toBe(true);
+			expect(printed).toHaveLength(1);
+			expect(printed[0]).toContain("Effort: high (this session)");
+			expect(printed[0]).toContain("off, auto, low, medium, high, xhigh, max");
+			expect(consumed(result)).toBe(true);
 		});
 
 		it("headless: shows no reasoning control message for no-effort model", async () => {
-			const session = makeMockSession(noEffort);
-			const output = vi.fn();
-			const runtime = {
-				session,
-				output,
-				notifyConfigChanged: vi.fn(),
-			} as unknown as SlashCommandRuntime;
+			const { session } = makeSession(noEffort);
+			const { runtime, printed } = makeHeadless(session);
 
 			const cmd: ParsedSlashCommand = { name: "effort", args: "", text: "/effort" };
 			const result = await effortCmd.handle!(cmd, runtime);
-			expect(output).toHaveBeenCalledWith(
-				"test-provider/no-effort-model does not reason; there is no effort to set.",
-			);
-			expect(result && "consumed" in result && result.consumed).toBe(true);
+			expect(printed).toEqual(["test-provider/no-effort-model does not reason; there is no effort to set."]);
+			expect(consumed(result)).toBe(true);
 		});
 
 		it("headless: sets valid effort level for this session", async () => {
-			const session = makeMockSession(astra);
-			const output = vi.fn();
-			const runtime = {
-				session,
-				output,
-				notifyConfigChanged: vi.fn(),
-			} as unknown as SlashCommandRuntime;
+			const { session, levelsSet } = makeSession(astra);
+			const { runtime, printed } = makeHeadless(session);
 
 			const cmd: ParsedSlashCommand = { name: "effort", args: "max", text: "/effort max" };
 			const result = await effortCmd.handle!(cmd, runtime);
-			expect(session.setThinkingLevel).toHaveBeenCalledWith(ThinkingLevel.Max, false);
-			expect(output).toHaveBeenCalled();
-			expect(output.mock.calls[0][0]).toContain("Effort set to max for this session.");
-			expect(result && "consumed" in result && result.consumed).toBe(true);
+			expect(levelsSet).toEqual([[ThinkingLevel.Max, false]]);
+			expect(session.configuredThinkingLevel()).toBe(ThinkingLevel.Max);
+			expect(printed).toHaveLength(1);
+			expect(printed[0]).toContain("Effort set to max for this session.");
+			expect(consumed(result)).toBe(true);
 		});
 
 		it("headless: rejects unsupported effort level", async () => {
-			const session = makeMockSession(astra);
-			const output = vi.fn();
-			const runtime = {
-				session,
-				output,
-			} as unknown as SlashCommandRuntime;
+			const { session, levelsSet } = makeSession(astra);
+			const { runtime, printed } = makeHeadless(session);
 
 			const cmd: ParsedSlashCommand = { name: "effort", args: "superhigh", text: "/effort superhigh" };
 			const result = await effortCmd.handle!(cmd, runtime);
-			expect(output).toHaveBeenCalledWith(expect.stringContaining("Unknown thinking level: superhigh"));
-			expect(result && "consumed" in result && result.consumed).toBe(true);
+			expect(printed).toHaveLength(1);
+			expect(printed[0]).toContain("Unknown thinking level: superhigh");
+			expect(levelsSet).toEqual([]);
+			expect(consumed(result)).toBe(true);
 		});
 
-		it("TUI: bare /effort calls showThinkingSelector", () => {
-			const showThinkingSelector = vi.fn();
-			const setText = vi.fn();
-			const runtime = {
-				ctx: {
-					session: makeMockSession(astra),
-					showThinkingSelector,
-					editor: { setText },
-				},
-			} as unknown as TuiSlashCommandRuntime;
-
+		it("TUI: bare /effort opens the thinking selector", () => {
+			const rec = makeTui(makeSession(astra).session);
 			const cmd: ParsedSlashCommand = { name: "effort", args: "", text: "/effort" };
-			effortCmd.handleTui!(cmd, runtime);
-			expect(showThinkingSelector).toHaveBeenCalled();
-			expect(setText).toHaveBeenCalledWith("");
+			effortCmd.handleTui!(cmd, rec.runtime);
+			expect(rec.thinkingSelectorOpened).toBe(1);
+			expect(rec.editorText).toEqual([""]);
 		});
 
 		it("TUI: /effort <level> sets effort directly and displays status", () => {
-			const session = makeMockSession(astra);
-			const showStatus = vi.fn();
-			const setText = vi.fn();
-			const runtime = {
-				ctx: {
-					session,
-					showStatus,
-					statusLine: { invalidate: vi.fn() },
-					updateEditorBorderColor: vi.fn(),
-					editor: { setText },
-					ui: { requestRender: vi.fn() },
-				},
-			} as unknown as TuiSlashCommandRuntime;
-
+			const { session, levelsSet } = makeSession(astra);
+			const rec = makeTui(session);
 			const cmd: ParsedSlashCommand = { name: "effort", args: "high", text: "/effort high" };
-			effortCmd.handleTui!(cmd, runtime);
-			expect(session.setThinkingLevel).toHaveBeenCalledWith(ThinkingLevel.High, false);
-			expect(showStatus).toHaveBeenCalledWith(expect.stringContaining("Effort set to high for this session."));
+			effortCmd.handleTui!(cmd, rec.runtime);
+			expect(levelsSet).toEqual([[ThinkingLevel.High, false]]);
+			expect(rec.thinkingSelectorOpened).toBe(0);
+			expect(rec.statuses).toHaveLength(1);
+			expect(rec.statuses[0]).toContain("Effort set to high for this session.");
 		});
 
 		it("TUI: /effort on no-effort model displays reason status", () => {
-			const session = makeMockSession(noEffort);
-			const showStatus = vi.fn();
-			const setText = vi.fn();
-			const runtime = {
-				ctx: {
-					session,
-					showStatus,
-					editor: { setText },
-				},
-			} as unknown as TuiSlashCommandRuntime;
-
+			const { session, levelsSet } = makeSession(noEffort);
+			const rec = makeTui(session);
 			const cmd: ParsedSlashCommand = { name: "effort", args: "high", text: "/effort high" };
-			effortCmd.handleTui!(cmd, runtime);
-			expect(showStatus).toHaveBeenCalledWith(
-				"test-provider/no-effort-model does not reason; there is no effort to set.",
-			);
+			effortCmd.handleTui!(cmd, rec.runtime);
+			expect(rec.statuses).toEqual(["test-provider/no-effort-model does not reason; there is no effort to set."]);
+			expect(levelsSet).toEqual([]);
 		});
 	});
 });
