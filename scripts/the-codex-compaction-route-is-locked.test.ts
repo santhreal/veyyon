@@ -50,7 +50,14 @@ const LOCKED_FILE = "packages/ai/src/providers/openai-compaction.ts";
  * SHA-256 of the locked file. Updating this constant without operator permission
  * is the exact move this gate exists to stop.
  */
-const LOCKED_SHA256 = "e380143f7edbd422ada4a9a21650e3df73b6496445f25abd925ce8cdc3c44f49";
+const LOCKED_SHA256 = "2c18e649bd3279671519feacfb14400dfb94800022d887539c69781127d51ff8";
+// 2026-09-04, with the operator's say-so: the lock moved from e380143f after
+// 74553de179 keyed the OpenCode session header on the conversation id. The
+// diff against the locked bytes is four lines, all in the non-Codex branch —
+// an import of `conversationIdForOpenCode`, a parameter rename, and the
+// conversation id fed into the request setup. The Codex wire above is
+// untouched: same endpoint, `stream: true`, trigger item last, SSE reply, and
+// the same client metadata.
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
