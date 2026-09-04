@@ -23,6 +23,8 @@
 - `/autoresearch resume` and `/autoswarm resume` continue an interrupted or paused session without a console or a transcript line, are offered in argument completion, and print what would start one when the branch has no session.
 - An interrupted autoresearch loop puts `paused · send a message to resume` on the status row until a turn resumes it, and the interrupt notice names `/autoresearch resume` and `/autoresearch off` in full rather than a bare `off`.
 - `/autoresearch <text>` on a live session where `<text>` is the stored goal is a resume with nothing to add: it neither prints a context notice nor sends the goal to the model a second time.
+- A file search accepts `path` as the directory its `input` globs are searched under, the way `path` scopes a text search: `{ type: "files", input: "*.ts", path: "src" }` is `src/**/*.ts`, each `input` entry keeps its own depth, and a scope that is a glob or an input that is absolute is rejected naming the spelling that works.
+- Browser tool calls batched in one turn run in the order written; `run` and `close` on the same tab used to start together and the run found its tab closed.
 
 ### Changed
 
