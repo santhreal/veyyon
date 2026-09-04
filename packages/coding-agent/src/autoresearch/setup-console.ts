@@ -1,4 +1,4 @@
-import { matchesKey } from "@veyyon/tui";
+import { getSegmenter, matchesKey, sliceByColumn, visibleWidth } from "@veyyon/tui";
 import { clamp } from "@veyyon/utils";
 import type { Theme } from "../modes/theme/theme";
 import { replaceTabs, truncateToWidth } from "../tools/render-utils";
@@ -27,6 +27,15 @@ export function parseArmModels(text: string): string[] {
 }
 
 const SUBTITLE = "Autoresearch with breadth. The model derives the metric from your harness.";
+
+/** `text` without its last grapheme cluster, so backspace never splits a surrogate pair or a combining mark. */
+function dropLastGrapheme(text: string): string {
+	if (text.length === 0) return "";
+	const segments = [...getSegmenter().segment(text)];
+	if (segments.length === 0) return "";
+	const last = segments[segments.length - 1];
+	return text.slice(0, last.index);
+}
 
 /**
  * Pure state behind the setup console, so the rules are testable without a
@@ -96,8 +105,8 @@ export class SwarmSetupModel {
 	}
 
 	backspace(): void {
-		if (this.field === "goal") this.goal = this.goal.slice(0, -1);
-		else if (this.field === "models") this.models = this.models.slice(0, -1);
+		if (this.field === "goal") this.goal = dropLastGrapheme(this.goal);
+		else if (this.field === "models") this.models = dropLastGrapheme(this.models);
 	}
 
 	/**
@@ -280,8 +289,13 @@ function keyLegend(model: SwarmSetupModel): string {
  * anything.
  */
 function textWindow(value: string, room: number): string {
-	if (room <= 0 || value.length <= room) return value;
-	return `…${value.slice(value.length - room + 1)}`;
+	if (room <= 0) return "";
+	const width = visibleWidth(value);
+	if (width <= room) return value;
+	if (room <= 1) return "…";
+	// Strict: a wide character straddling the left edge is dropped rather than
+	// drawn a column past the room.
+	return `…${sliceByColumn(value, width - room + 1, room - 1, true)}`;
 }
 
 /**
@@ -355,7 +369,7 @@ export function renderSetupConsole(model: SwarmSetupModel, width: number, theme:
 export function handleSetupKey(model: SwarmSetupModel, data: string): "start" | "cancel" | null {
 	if (matchesKey(data, "escape") || matchesKey(data, "esc")) return "cancel";
 	if (matchesKey(data, "return") || matchesKey(data, "enter")) return model.canStart() ? "start" : null;
-	if (matchesKey(data, "up")) {
+	if (matchesKey(data, "up") || matchesKey(data, "shift+tab")) {
 		model.moveField(-1);
 		return null;
 	}

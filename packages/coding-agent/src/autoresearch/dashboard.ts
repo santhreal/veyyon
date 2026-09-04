@@ -9,7 +9,7 @@
  * terminal. Everything that table held is in {@link ./screen}, which is a screen
  * and can afford it.
  */
-import { visibleWidth } from "@veyyon/tui";
+import { sanitizeSingleLine, visibleWidth } from "@veyyon/tui";
 import type { ExtensionContext } from "../extensibility/extensions";
 import { theme } from "../modes/theme/theme";
 import { truncateToWidth } from "../tools/render-utils";
@@ -190,7 +190,7 @@ export function renderStatusRow(runtime: AutoresearchRuntime, width = process.st
 			// The branch is the actionable part: it is what the user checks out to
 			// resume. Width is the segment system's job, so it is not capped a
 			// second time here into something that cannot be typed back.
-			text: theme.fg("warning", `paused · session on ${runtime.pausedOnBranch}`),
+			text: theme.fg("warning", `paused · session on ${sanitizeSingleLine(runtime.pausedOnBranch)}`),
 			// Outranks every other droppable segment: a metric with no explanation of
 			// why the loop stopped is the reading that misleads, and this replaces
 			// `mode off` rather than sitting beside it.
@@ -224,7 +224,10 @@ export function renderStatusRow(runtime: AutoresearchRuntime, width = process.st
 	// the user mid-loop and nothing on screen connects it to an arm.
 	if (runtime.activeArm) {
 		segments.push({
-			text: theme.fg("accent", `${runtime.activeArm.arm} on ${truncateToWidth(runtime.activeArm.modelLabel, 24)}`),
+			text: theme.fg(
+				"accent",
+				`${runtime.activeArm.arm} on ${truncateToWidth(sanitizeSingleLine(runtime.activeArm.modelLabel), 24)}`,
+			),
 			drop: 6,
 		});
 	}

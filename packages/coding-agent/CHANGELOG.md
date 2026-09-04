@@ -91,6 +91,10 @@
 
 ### Fixed
 
+- The autoswarm setup console handles Unicode emojis, CJK characters and combining marks on backspace and windowing without splitting surrogate pairs, and supports Shift-Tab field navigation.
+- Autoswarm triage rejects candidate arms whose edits fall inside off-limits directories, where an exact string comparison only matched exact path literals.
+- Autoswarm review assigns the director as the sole reviewer when certification is disabled on the session, instead of creating peer review rings for three or more surviving arms.
+- Autoresearch storage rejects completing or logging an abandoned run, and rejects duplicate log calls on an already logged run.
 - `/autoresearch status` and `/autoswarm status` open the run screen, where the word was swallowed as the goal and overwrote what a live session was optimizing.
 - A live session's goal changes only through `goal <text>` or the setup console, so any other text after the command reaches the model as context for the resume and leaves the stored goal as it was.
 - `/autoresearch` and `/autoswarm` offer `status` and `goal` in their argument completions, where only `off` and `clear` were listed and every other word reached the goal write.
