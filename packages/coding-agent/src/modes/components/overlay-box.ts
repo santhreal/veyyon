@@ -36,7 +36,9 @@ export function topBorder(width: number, title: string): string {
 	const box = theme.boxSharp;
 	const inner = Math.max(0, width - 2);
 	if (!title) return paint(box.topLeft + box.horizontal.repeat(inner) + box.topRight);
-	const shown = truncateToWidth(` ${title} `, topBorderTitleWidth(width) + 2);
+	// `topBorderTitleWidth` + 2 for any box wide enough to hold a title; bounded by the rule
+	// itself so a box under six columns still comes out `width` wide.
+	const shown = truncateToWidth(` ${title} `, Math.max(0, inner - 2));
 	const fillWidth = Math.max(0, inner - 1 - visibleWidth(shown));
 	return (
 		paint(box.topLeft + box.horizontal) +
@@ -96,7 +98,9 @@ export function topBorderSplit(width: number, title: string, sidebarWidth: numbe
 	if (!title) {
 		left = paint(box.topLeft + box.horizontal.repeat(leftLen));
 	} else {
-		const shown = truncateToWidth(` ${title} `, topBorderSplitTitleWidth(sidebarWidth) + 2);
+		// `topBorderSplitTitleWidth` + 2 for any sidebar wide enough to hold a title; bounded by
+		// the segment itself so a zero-width sidebar does not push the tee past its column.
+		const shown = truncateToWidth(` ${title} `, Math.max(0, leftLen - 1));
 		const fillWidth = Math.max(0, leftLen - 1 - visibleWidth(shown));
 		left =
 			paint(box.topLeft + box.horizontal) +
