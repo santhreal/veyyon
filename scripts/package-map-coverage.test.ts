@@ -26,7 +26,7 @@
 import { describe, expect, it } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import * as path from "node:path";
-import { memberTopLevels, REPO_ROOT as repoRoot, workspaceMembers } from "./workspace-layout";
+import { memberTopLevels, REPO_ROOT as repoRoot, rustExcluded, workspaceMembers } from "./workspace-layout";
 
 /** Every manifest that makes a directory a workspace member. */
 const MANIFESTS: readonly string[] = ["package.json", "Cargo.toml"];
@@ -169,17 +169,27 @@ describe("workspace member coverage in AGENTS.md", () => {
 	 * because each asks the manifests what to cover. The sweep skips a member's own subtree, so it walks
 	 * the group directories and stops, and it is what turns a crate added under `natives/search/` but
 	 * left out of `members` into a red gate.
+	 *
+	 * A path in the root `Cargo.toml` `exclude` list is a recorded decision, not a hole: the vendored
+	 * crates the workspace patches in rather than builds, and `tests/fuzz`, a cargo workspace of its own.
 	 */
 	it("has no manifest under a member directory that the workspace does not declare", () => {
 		const declared = new Set(members.map(member => member.directory));
+		const excluded = rustExcluded();
 		const undeclared: string[] = [];
 		for (const top of memberTopLevels()) {
 			for (const directory of manifestDirectories(top, [])) {
-				if (declared.has(directory) || isVendored(directory)) continue;
+				if (declared.has(directory) || excluded.has(directory) || isVendored(directory)) continue;
 				undeclared.push(directory);
 			}
 		}
 		expect(undeclared, "declare it in package.json or Cargo.toml, or move it out of the workspace").toEqual([]);
+	});
+
+	it("excludes from the Rust workspace only directories that hold a manifest", () => {
+		for (const directory of rustExcluded()) {
+			expect(existsSync(path.join(repoRoot, directory, "Cargo.toml")), `${directory}/Cargo.toml`).toBe(true);
+		}
 	});
 
 	it("exempts from documentation only members that exist", () => {

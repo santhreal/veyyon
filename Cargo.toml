@@ -11,7 +11,9 @@ members = [
 	"natives/vendor/*",
 	"tests/conformance",
 ]
-exclude = ["natives/vendor/brush-core", "natives/vendor/brush-builtins"]
+# `tests/fuzz` is its own cargo workspace: cargo-fuzz builds it with nightly and
+# a sanitizer profile the root workspace never uses.
+exclude = ["natives/vendor/brush-core", "natives/vendor/brush-builtins", "tests/fuzz"]
 resolver = "3"
 
 [workspace.package]

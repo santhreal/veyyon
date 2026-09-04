@@ -204,11 +204,16 @@ export function typeScriptMembers(): string[] {
 	return typeScriptMembersOf(REPO_ROOT);
 }
 
+/** Paths the root `Cargo.toml` excludes: directories that hold a manifest and are not members. */
+export function rustExcluded(): Set<string> {
+	const manifest = readFileSync(join(REPO_ROOT, "Cargo.toml"), "utf-8");
+	return listedPaths(manifest, /exclude\s*=\s*\[([^\]]*)\]/);
+}
+
 /** Rust workspace members, from the root `Cargo.toml`, honouring its `exclude` list. */
 export function rustMembers(): string[] {
 	const manifest = readFileSync(join(REPO_ROOT, "Cargo.toml"), "utf-8");
-	const excluded = listedPaths(manifest, /exclude\s*=\s*\[([^\]]*)\]/);
-	return memberDirectories(manifest, /members\s*=\s*\[([^\]]*)\]/, REPO_ROOT, "Cargo.toml", excluded);
+	return memberDirectories(manifest, /members\s*=\s*\[([^\]]*)\]/, REPO_ROOT, "Cargo.toml", rustExcluded());
 }
 
 /** Every workspace member, TypeScript first, each paired with the manifest that declares it. */
