@@ -1354,7 +1354,8 @@ const AGENT_ROW_EFFORT = "\u0000subagent-effort";
  * spread across a CLI command, a directory path and a handbook page with no one
  * place naming all three.
  */
-const CUSTOM_AGENT_HINT = "Custom subagents: markdown files in ~/.veyyon/subagents/";
+const CUSTOM_AGENT_HINT =
+	"Write your own: a markdown file in ~/.veyyon/subagents/. Guide: veyyon.dev/docs/features/subagents-authoring.html";
 
 /** The settings one pass through the roster can write. */
 type SubagentRosterPath = "subagent.agents";
@@ -1770,6 +1771,8 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		this.addChild(detail);
 		this.addChild(new Spacer(1));
 		this.addChild(new Text(theme.fg("muted", `  ${CUSTOM_AGENT_HINT}`), 0, 0));
+		this.addChild(new Spacer(1));
+		this.addChild(new Text(theme.fg("dim", "  Enter to configure · Esc to go back"), 0, 0));
 	}
 
 	#agent(name: string): AgentDefinition | undefined {
@@ -3487,7 +3490,7 @@ export class SettingsSelectorComponent implements Component {
 					label: def.label,
 					description: def.description,
 					currentValue: this.#formatTextInputValue(def.path, currentValue),
-					labelForValue: value => (value.trim().length === 0 ? theme.fg("dim", "(unset)") : value),
+					labelForValue: value => (value.length === 0 ? theme.fg("dim", "(unset)") : value),
 					submenu: (cv, done) => this.#createTextInput(def, cv, done),
 					changed,
 				};
