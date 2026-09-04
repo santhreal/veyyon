@@ -77,7 +77,7 @@
 		"scripts/bench-jsonl-bytes.ts": "02bbcd492dc5cad07d6da3625296217dadbe2338f036ae1fe1f21c0240d68580"
 	},
 	"importReorder": {},
-	"changedCount": 5654,
+	"changedCount": 5656,
 	"changed": [
 		"apps/site/deploy.test.ts",
 		"apps/site/functions/api/grievances.test.ts",
@@ -231,6 +231,8 @@
 		"clients/web/test/transcript-dom-shim.ts",
 		"clients/web/test/transcript-polling.test.ts",
 		"clients/web/test/transcript.test.tsx",
+		"contracts/host/src/index.ts",
+		"contracts/host/src/notification.ts",
 		"contracts/model/src/effort.ts",
 		"contracts/model/src/index.ts",
 		"contracts/model/src/instrumentation.ts",

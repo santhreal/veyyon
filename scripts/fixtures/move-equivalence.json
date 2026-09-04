@@ -3967,17 +3967,6 @@
 			"structuralHash": "aa4b4d62533ba8ebde35c5fb407bb13d06d792e809261be10ba22034e44a23ad",
 			"mainStructuralHash": "aa4b4d62533ba8ebde35c5fb407bb13d06d792e809261be10ba22034e44a23ad"
 		},
-		"natives/bridge/bindings/bunfig.toml": {
-			"old": "packages/natives/bunfig.toml",
-			"kind": "normalized",
-			"differs": "changed",
-			"group": "manifest-depth",
-			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
-			"hash": "1cdfc76e896b4df720c8c700ea6c8e4d6473a012ad5f490fe73a29e0cb1105fa",
-			"mainHash": "e357f0514f16015c938d120055649b63d1d92e5ce69c9745766c46f30c386a77",
-			"structuralHash": "e67cafbcfa993d42c79936c2b3c96323734290b2b9be51a7f589f8cec069a2d9",
-			"mainStructuralHash": "d77fe7e12f97d22f38bab5a9245647b1325964f93f1353248eac056a4bb1f09c"
-		},
 		"tests/simulations/tsconfig.json": {
 			"old": "packages/simulations/tsconfig.json",
 			"kind": "normalized",
@@ -3989,17 +3978,8 @@
 			"structuralHash": "9c11564209d86314e25789821745c0d8518493deeda6968d2e4e5cc7f4f0579b",
 			"mainStructuralHash": "b2cd3a124b3f24b9bf45aafdf178c91bc45d17e665f2345f96a4d781c548d3be"
 		},
-		"contracts/wire/tsconfig.json": {
-			"old": "packages/wire/tsconfig.json",
-			"kind": "normalized",
-			"differs": "none",
-			"hash": "8aef7ebe0daaf2899f092e24842c6ed182c7aceb60a49bf422ddce47d12f7a15",
-			"mainHash": "8aef7ebe0daaf2899f092e24842c6ed182c7aceb60a49bf422ddce47d12f7a15",
-			"structuralHash": "b2cd3a124b3f24b9bf45aafdf178c91bc45d17e665f2345f96a4d781c548d3be",
-			"mainStructuralHash": "b2cd3a124b3f24b9bf45aafdf178c91bc45d17e665f2345f96a4d781c548d3be"
-		},
-		"plugins/hashline/bunfig.toml": {
-			"old": "packages/hashline/bunfig.toml",
+		"natives/bridge/bindings/bunfig.toml": {
+			"old": "packages/natives/bunfig.toml",
 			"kind": "normalized",
 			"differs": "changed",
 			"group": "manifest-depth",
@@ -4008,6 +3988,15 @@
 			"mainHash": "e357f0514f16015c938d120055649b63d1d92e5ce69c9745766c46f30c386a77",
 			"structuralHash": "e67cafbcfa993d42c79936c2b3c96323734290b2b9be51a7f589f8cec069a2d9",
 			"mainStructuralHash": "d77fe7e12f97d22f38bab5a9245647b1325964f93f1353248eac056a4bb1f09c"
+		},
+		"contracts/wire/tsconfig.json": {
+			"old": "packages/wire/tsconfig.json",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "8aef7ebe0daaf2899f092e24842c6ed182c7aceb60a49bf422ddce47d12f7a15",
+			"mainHash": "8aef7ebe0daaf2899f092e24842c6ed182c7aceb60a49bf422ddce47d12f7a15",
+			"structuralHash": "b2cd3a124b3f24b9bf45aafdf178c91bc45d17e665f2345f96a4d781c548d3be",
+			"mainStructuralHash": "b2cd3a124b3f24b9bf45aafdf178c91bc45d17e665f2345f96a4d781c548d3be"
 		},
 		"plugins/mode-swarm/tsconfig.json": {
 			"old": "packages/swarm-extension/tsconfig.json",
@@ -4019,6 +4008,17 @@
 			"mainHash": "a1e82eeae139556292d69cca788fe55b91572c668d59f86fadff1d3e92ad76b2",
 			"structuralHash": "1d7f97a967e880b347d9c604ca01d126277fe741dea754142b58fc1c81b36b70",
 			"mainStructuralHash": "e1e57951e261b35ed89913061450e826a7c3536661a8d13e1b2297f852abc808"
+		},
+		"plugins/hashline/bunfig.toml": {
+			"old": "packages/hashline/bunfig.toml",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "manifest-depth",
+			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
+			"hash": "1cdfc76e896b4df720c8c700ea6c8e4d6473a012ad5f490fe73a29e0cb1105fa",
+			"mainHash": "e357f0514f16015c938d120055649b63d1d92e5ce69c9745766c46f30c386a77",
+			"structuralHash": "e67cafbcfa993d42c79936c2b3c96323734290b2b9be51a7f589f8cec069a2d9",
+			"mainStructuralHash": "d77fe7e12f97d22f38bab5a9245647b1325964f93f1353248eac056a4bb1f09c"
 		},
 		"hosts/terminal/engine/tsconfig.json": {
 			"old": "packages/tui/tsconfig.json",
@@ -4033,6 +4033,17 @@
 		},
 		"plugins/mnemopi/tsconfig.json": {
 			"old": "packages/mnemopi/tsconfig.json",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "manifest-depth",
+			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
+			"hash": "4727b8d59142037ab3bdbf174cafaf587cb1bc7eaf0f2a34d75a4472fd2aa55c",
+			"mainHash": "8c311aa9b6154a484e086da0fc6da90d35cd5ec99bd94405937c9a5b162b106b",
+			"structuralHash": "e658471018ceb65393394f6b12620b464a83346164060fd2e5e57d2c4cba7169",
+			"mainStructuralHash": "b7e87a3a0dbf53f214467603befab7c2567ce60d153a73e9c5a220610fa5f760"
+		},
+		"plugins/hashline/tsconfig.json": {
+			"old": "packages/hashline/tsconfig.json",
 			"kind": "normalized",
 			"differs": "changed",
 			"group": "manifest-depth",
@@ -4168,17 +4179,6 @@
 			"mainHash": "19887a6cd09a00322b85c3f24f82dc05007f226f577ac497af484458e43b43ee",
 			"structuralHash": "73d48a842ccb978af567eb02d339ab5f5fc6240e93d0465cd58a30cf454c177d",
 			"mainStructuralHash": "73d48a842ccb978af567eb02d339ab5f5fc6240e93d0465cd58a30cf454c177d"
-		},
-		"plugins/hashline/tsconfig.json": {
-			"old": "packages/hashline/tsconfig.json",
-			"kind": "normalized",
-			"differs": "changed",
-			"group": "manifest-depth",
-			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
-			"hash": "4727b8d59142037ab3bdbf174cafaf587cb1bc7eaf0f2a34d75a4472fd2aa55c",
-			"mainHash": "8c311aa9b6154a484e086da0fc6da90d35cd5ec99bd94405937c9a5b162b106b",
-			"structuralHash": "e658471018ceb65393394f6b12620b464a83346164060fd2e5e57d2c4cba7169",
-			"mainStructuralHash": "b7e87a3a0dbf53f214467603befab7c2567ce60d153a73e9c5a220610fa5f760"
 		},
 		"contracts/wire/tsconfig.publish.json": {
 			"old": "packages/wire/tsconfig.publish.json",
@@ -15946,7 +15946,7 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "2e471525942c4c77e2007679fe8c67453b7ae9d5a9d537d1ec493bf93c7b3bf1",
+			"hash": "1cdc47459223b1dd20c362943aa1da68587d3484087dd57c97b74c0f18a07f1e",
 			"mainHash": "8beccb913d7ae075bb75ff4c1e0f385cea3f156db0e74a5b3c87bb4692959641",
 			"structuralHash": "b3d958f889eecfd428325b7b5037463284532350af2e2ec6af8ea7b27a36d894",
 			"mainStructuralHash": "3020ff881599604ab15a53720a9151e05747a3506bbca8e6a8c2e6815bc5eec9"
@@ -16194,7 +16194,7 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "01206b322c19947ff1e7832501b2d2cb6a1738eb86e6c955b83ccf0d47037efc",
+			"hash": "f23c5c137c358b5cabdf33cfb8679a65e3c6d969dcf73d105af8abf367f7028d",
 			"mainHash": "a19fab12d838a14e66c2c2e776ca52a84ec0bd2f448d9ad709eea383ec99cc6c",
 			"structuralHash": "56eb6380cfba7a13fadb8a5de3618784e62b0a04b9f18a90fbb290a9da7af4b3",
 			"mainStructuralHash": "c28ab6a5eb46a76df1df14a2e41de5a63e004761b1bd0f15ec65b6252295dcbb"

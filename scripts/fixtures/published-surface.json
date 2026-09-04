@@ -6380,6 +6380,7 @@
 	"additions": {
 		"packages": [
 			"@veyyon/gui-host",
+			"@veyyon/host",
 			"@veyyon/kernel",
 			"@veyyon/model",
 			"@veyyon/plugin",
