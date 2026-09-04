@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-617a7fce.js";
+            window.path_to_searchindex_js = "../searchindex-c757fa25.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -556,7 +556,11 @@ previous set, schemes missing from the new list are unregistered.</p>
 <ul>
 <li><code>select</code>, <code>confirm</code>, <code>input</code>, <code>editor</code>, <code>cancel</code></li>
 <li><code>notify</code>, <code>setStatus</code>, <code>setWidget</code>, <code>setTitle</code>, <code>set_editor_text</code></li>
-<li><code>open_url</code> (emitted by RPC login flows)</li>
+<li><code>open_url</code> (emitted by RPC login flows). Carries <code>url</code>, optional <code>launchUrl</code>
+and <code>instructions</code>, and <code>credential</code>: <code>"oauth"</code> when the flow waits on the
+URL and the host opens it in a browser, <code>"api-key"</code> when the URL is where a
+key is obtained and the flow is about to prompt for a paste, so the host
+shows it without opening it.</li>
 </ul>
 <p>Runtime note:</p>
 <ul>
