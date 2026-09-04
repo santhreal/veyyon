@@ -296,12 +296,17 @@ describe("the launch composer", () => {
 	it("leaves the branch off the card when the row will not show one", () => {
 		settings.set("git.enabled", false);
 		try {
-			const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
-			const row = launchRows(100).find(candidate => candidate.includes(located));
-			expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located}`);
-			// Nothing after the location is a branch: no separator-then-label, and
-			// no bare label anywhere else on the row.
-			expect(row).not.toContain(branchLabelFromFiles(getProjectDir()) as string);
+			withDeepProject(project => {
+				const label = branchLabelFromFiles(project);
+				// The fixture wrote the HEAD this reads, so an absent label is the fixture's doing.
+				expect(label).toBe(FIXTURE_BRANCH);
+				const located = budgetedLocation();
+				const row = launchRows(widthThatFitsTheLocation()).find(candidate => candidate.includes(located));
+				expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located}`);
+				// Nothing after the location is a branch: no separator-then-label, and
+				// no bare label anywhere else on the row.
+				expect(row).not.toContain(FIXTURE_BRANCH);
+			});
 		} finally {
 			settings.set("git.enabled", true);
 		}
@@ -313,11 +318,14 @@ describe("the launch composer", () => {
 		// lookup lands: clean, unmarked. What it does when a launch DID record a scan is held in
 		// `the-launch-card-states-what-the-last-launch-knew.test.ts`; the config root is isolated
 		// above so that file's recordings cannot answer for this one.
-		const label = branchLabelFromFiles(getProjectDir());
-		const row = launchRows(100).find(candidate => candidate.includes(label as string));
-		expect(row).toBeDefined();
-		expect(row).toContain(renderBranch(label, false));
-		expect(row).not.toContain("*");
+		withDeepProject(project => {
+			const label = branchLabelFromFiles(project);
+			expect(label).toBe(FIXTURE_BRANCH);
+			const branch = renderBranch(label, false);
+			const row = launchRows(widthThatFitsTheLocation()).find(candidate => candidate.includes(branch));
+			expect(row).toBeDefined();
+			expect(row).not.toContain("*");
+		});
 	});
 });
 
