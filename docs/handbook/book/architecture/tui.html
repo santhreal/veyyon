@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-1d10cb91.js";
+            window.path_to_searchindex_js = "../searchindex-cbf2960b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -269,7 +269,8 @@ render(width: number): readonly string[] {
 <ul>
 <li><code>TUI.setFocus(component)</code> routes input to that component.</li>
 <li>Overlay APIs exist in <code>TUI</code> (<code>showOverlay</code>, <code>OverlayHandle</code>). In interactive extension/custom UI, <code>custom(..., { overlay: true })</code> mounts your component through <code>TUI.showOverlay(...)</code>; without <code>overlay</code>, it replaces the editor component area directly.</li>
-<li>Overlay custom UI is anchored at <code>bottom-center</code> with full terminal width/max height and is removed through the returned overlay handle when <code>done(...)</code> closes the flow.</li>
+<li>Overlay custom UI is anchored at <code>bottom-center</code> with full terminal width and is removed through the returned overlay handle when <code>done(...)</code> closes the flow. It is placed with <code>aboveFooter: true</code>: the overlay covers the transcript region only, and the composer zone (prompt, status line, footline) stays painted under it. Size the component from <code>tui.terminal.rows - tui.pinnedFooterRows</code>; a taller render is clipped to the rows above the footer.</li>
+<li><code>OverlayOptions.aboveFooter</code> is the general form of that placement. With a pinned footer (<code>TUI.setPinnedFooterChildCount</code>), the screen rows from the footer’s top down are added to the overlay’s bottom margin every frame, so the reserve follows a footer that grows or a frame shorter than the viewport. Without a pinned footer the option does nothing.</li>
 </ul>
 <h2 id="mount-points-and-return-contracts"><a class="header" href="#mount-points-and-return-contracts">Mount points and return contracts</a></h2>
 <h2 id="1-extension-ui-extensionuicontext"><a class="header" href="#1-extension-ui-extensionuicontext">1) Extension UI (<code>ExtensionUIContext</code>)</a></h2>
@@ -288,7 +289,7 @@ render(width: number): readonly string[] {
 <ul>
 <li>Saves editor text.</li>
 <li>Without <code>options.overlay</code>, replaces the editor component with your component.</li>
-<li>With <code>options.overlay</code>, mounts your component as a bottom-centered overlay instead of replacing the editor.</li>
+<li>With <code>options.overlay</code>, mounts your component as a bottom-centered overlay above the composer zone instead of replacing the editor; the prompt and status line remain visible.</li>
 <li>Focuses your component.</li>
 <li>On <code>done(result)</code>: calls <code>component.dispose?.()</code>, hides the overlay if present, restores editor + text for non-overlay flows, focuses editor, resolves promise.
 So <code>done(...)</code> is mandatory for completion.</li>
