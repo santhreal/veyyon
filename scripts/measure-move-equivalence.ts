@@ -332,6 +332,12 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 			"The bounds, the scalar formatter and the one-line argument preview a `ToolView` card reads left this module for `json-tree-view.ts`, which loads without a theme or a tree-rail glyph; this module re-exports every one of them under its old name and keeps the terminal string walk unchanged.",
 	},
 	{
+		name: "diagnostic-grouping-owner",
+		matches: relative => relative === "packages/coding-agent/src/tools/core/grouped-file-output.ts",
+		reason:
+			"`formatGroupedDiagnosticMessages` moved here from `lsp/utils.ts`, beside the `formatGroupedFiles` it is written over, so the output notice a tool appends reads it without the language-server module and the theme that module reaches; `lsp/utils.ts` re-exports it under the same name.",
+	},
+	{
 		name: "engine-consumer",
 		matches: relative => relative.startsWith("packages/coding-agent/src/"),
 		reason: "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",

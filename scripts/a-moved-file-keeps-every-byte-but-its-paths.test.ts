@@ -96,8 +96,8 @@ describe("a moved file keeps every byte but its paths", () => {
 		const buckets = new Map<string, number>();
 		for (const [, record] of rows) buckets.set(record.differs, (buckets.get(record.differs) ?? 0) + 1);
 		expect([...buckets].sort()).toEqual([
-			["changed", 383],
-			["imports-and-comments-only", 813],
+			["changed", 384],
+			["imports-and-comments-only", 814],
 			["none", 3608],
 		]);
 		expect(rewrites.length).toBeGreaterThan(50);
@@ -246,7 +246,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.hash || hash !== record.mainHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(unchanged).toBe(3608);
+		expect(unchanged).toBe(3606);
 	});
 
 	/**
@@ -265,7 +265,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.structuralHash || hash !== record.mainStructuralHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(importOnly).toBe(813);
+		expect(importOnly).toBe(814);
 	});
 
 	/**
@@ -275,7 +275,7 @@ describe("a moved file keeps every byte but its paths", () => {
 	 */
 	it("explains every file whose content really changed", () => {
 		const changed = rows.filter(([, record]) => record.differs === "changed");
-		expect(changed.length).toBe(383);
+		expect(changed.length).toBe(384);
 		const unexplained: string[] = [];
 		const drifted: string[] = [];
 		for (const [relative, record] of changed) {
@@ -301,6 +301,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			"changelog-or-readme",
 			"colocated-test",
 			"contract-extraction",
+			"diagnostic-grouping-owner",
 			"engine-consumer",
 			"extracted-to-utils",
 			"host-boundary",

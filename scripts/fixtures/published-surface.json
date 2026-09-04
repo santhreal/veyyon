@@ -7475,6 +7475,8 @@
 				"./tools/shell/eval-view",
 				"./tools/shell/eval-view.js",
 				"./tools/shell/eval.js",
+				"./tools/shell/execution-messages",
+				"./tools/shell/execution-messages.js",
 				"./tools/shell/job",
 				"./tools/shell/job-view",
 				"./tools/shell/job-view.js",

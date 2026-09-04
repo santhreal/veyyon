@@ -18007,10 +18007,12 @@
 		"packages/coding-agent/src/tools/core/grouped-file-output.ts": {
 			"old": "packages/coding-agent/src/tools/grouped-file-output.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "01859446ba00951504d4d38031c4b4645cf683e087599576f195bcd81583e8a9",
+			"differs": "changed",
+			"group": "diagnostic-grouping-owner",
+			"reason": "`formatGroupedDiagnosticMessages` moved here from `lsp/utils.ts`, beside the `formatGroupedFiles` it is written over, so the output notice a tool appends reads it without the language-server module and the theme that module reaches; `lsp/utils.ts` re-exports it under the same name.",
+			"hash": "db852cb1a6459e826b868c124682190492c193b03360ac1c98f2a5472810ab84",
 			"mainHash": "01859446ba00951504d4d38031c4b4645cf683e087599576f195bcd81583e8a9",
-			"structuralHash": "d083ef3f106daaa4ff48e9c1f3c0590e5c07163148512e190e141f666e4d230e",
+			"structuralHash": "f56852a3a25cb275f6b07534bdbb649535adb1a0790033cf12d20427315645bc",
 			"mainStructuralHash": "d083ef3f106daaa4ff48e9c1f3c0590e5c07163148512e190e141f666e4d230e"
 		},
 		"packages/coding-agent/src/tools/core/json-tree-render.ts": {
@@ -18116,8 +18118,8 @@
 		"packages/coding-agent/src/tools/core/output-notice.ts": {
 			"old": "packages/coding-agent/src/tools/output-notice.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "6de391a241f5700405d3617f63bbf569215b7f0c22deea1678e6b104e00c46e2",
+			"differs": "imports-and-comments-only",
+			"hash": "a956718706feae06e1f6baa062be8ec36d95dc83b75ce9b3884c685d6cff473c",
 			"mainHash": "6de391a241f5700405d3617f63bbf569215b7f0c22deea1678e6b104e00c46e2",
 			"structuralHash": "a41941b11e229e0ee9d0fc7282b303536b3e85d4ee3c0ed3ed45c34e217f8d47",
 			"mainStructuralHash": "a41941b11e229e0ee9d0fc7282b303536b3e85d4ee3c0ed3ed45c34e217f8d47"
@@ -19332,9 +19334,9 @@
 			"differs": "changed",
 			"group": "colocated-test",
 			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
-			"hash": "a9da188ea0209c18bcc9f1a3d38f5b38c895ac19c5342cd189b935d4122754d2",
+			"hash": "5e6ecadd8c6a3a0a43346d070388cffaef04e4144d03e147e8e4594dca5f0074",
 			"mainHash": "90e688110df76a683a67778a23db361788f2bc620d8d6d93af9372a1d0848219",
-			"structuralHash": "c42c3cd463299845d8a1664cad3e079fd01d7ef142e402a6d8ad213166d13709",
+			"structuralHash": "ece39c4ab30b1c51b4039158f66756d26251127f7b1a46002fee44bffcd0baac",
 			"mainStructuralHash": "b001a54bbbc17bf0c30761efcbdcfc0ac38b881932ae512aa30c458c301270fa"
 		},
 		"packages/coding-agent/test/cli/startup/a-launch-does-not-load-a-schema-library-it-will-not-use.test.ts": {
