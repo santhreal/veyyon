@@ -17,10 +17,12 @@ import {
 	formatBadge,
 	formatDuration,
 	formatEmptyMessage,
+	formatErrorDetail,
 	formatStatusIcon,
 	getPreviewLines,
 	PREVIEW_LIMITS,
 	replaceTabs,
+	shortenEmbeddedPaths,
 	type ToolUIColor,
 	type ToolUIStatus,
 } from "./render-utils";
@@ -652,10 +654,16 @@ export const jobToolRenderer = {
 		let jobs = result.details?.jobs ?? [];
 		const agents = result.details?.agents ?? [];
 
+		if (result.isError) {
+			const fallback = result.content?.find(c => c.type === "text")?.text || "Job operation failed";
+			const header = renderStatusLine({ icon: "error", title: describeTarget(args) || "Job" }, uiTheme);
+			return new Text([header, formatErrorDetail(fallback, uiTheme)].join("\n"), 0, 0);
+		}
+
 		if (jobs.length === 0 && agents.length === 0) {
 			const fallback = result.content?.find(c => c.type === "text")?.text || "No jobs to process";
 			const header = renderStatusLine({ icon: "warning", title: describeTarget(args) || "Job" }, uiTheme);
-			return new Text([header, formatEmptyMessage(fallback, uiTheme)].join("\n"), 0, 0);
+			return new Text([header, formatEmptyMessage(shortenEmbeddedPaths(fallback), uiTheme)].join("\n"), 0, 0);
 		}
 
 		const isPollCall = args

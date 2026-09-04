@@ -41,6 +41,7 @@ import {
 	pluralize,
 	previewLine,
 	replaceTabs,
+	shortenEmbeddedPaths,
 	shortenPath,
 	TRUNCATE_LENGTHS,
 	truncateToWidth,
@@ -578,7 +579,8 @@ function callMeta(args: LaunchRenderArgs): string[] {
  */
 function pushTextLines(body: string[], text: string, theme: Theme): void {
 	if (!text.trim()) return;
-	for (const line of replaceTabs(text.trimEnd()).split("\n")) body.push(theme.fg("toolOutput", line));
+	for (const line of replaceTabs(shortenEmbeddedPaths(text.trimEnd())).split("\n"))
+		body.push(theme.fg("toolOutput", line));
 }
 
 /** TUI renderer: one status header per op, meta from structured details, capped body lines. */
@@ -640,7 +642,8 @@ export const launchToolRenderer = {
 		let description = params.name ?? daemon?.name;
 
 		if (isError) {
-			for (const line of replaceTabs(text.trimEnd()).split("\n")) body.push(theme.fg("error", line));
+			for (const line of replaceTabs(shortenEmbeddedPaths(text.trimEnd())).split("\n"))
+				body.push(theme.fg("error", line));
 		} else {
 			switch (op) {
 				case "start": {

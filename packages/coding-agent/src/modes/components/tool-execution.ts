@@ -41,6 +41,7 @@ import {
 	formatStatusIcon,
 	replaceTabs,
 	resolveImageOptions,
+	shortenEmbeddedPaths,
 	shortenPath,
 	truncateToWidth,
 } from "../../tools/render-utils";
@@ -1377,14 +1378,18 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 						),
 					);
 					if (output) {
-						this.#contentBox.addChild(this.#onRail(new Text(theme.fg("toolOutput", replaceTabs(output)), 0, 0)));
+						this.#contentBox.addChild(
+							this.#onRail(new Text(theme.fg("toolOutput", replaceTabs(shortenEmbeddedPaths(output))), 0, 0)),
+						);
 					}
 				}
 			} else if (renderableResult) {
 				// Has result but no custom renderResult
 				const output = this.#getTextOutput();
 				if (output) {
-					this.#contentBox.addChild(this.#onRail(new Text(theme.fg("toolOutput", replaceTabs(output)), 0, 0)));
+					this.#contentBox.addChild(
+						this.#onRail(new Text(theme.fg("toolOutput", replaceTabs(shortenEmbeddedPaths(output))), 0, 0)),
+					);
 				}
 			}
 			// Custom tools that draw their own frame (task) render flush; plain
@@ -1532,7 +1537,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 						);
 						if (output) {
 							this.#contentBox.addChild(
-								this.#onRail(new Text(theme.fg("toolOutput", replaceTabs(output)), 0, 0)),
+								this.#onRail(new Text(theme.fg("toolOutput", replaceTabs(shortenEmbeddedPaths(output))), 0, 0)),
 							);
 						}
 					}
@@ -1791,7 +1796,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			return lines.join("\n");
 		}
 
-		const textContent = this.#getTextOutput().trimEnd();
+		const textContent = replaceTabs(shortenEmbeddedPaths(this.#getTextOutput().trimEnd()));
 		if (!textContent) {
 			lines.push(theme.fg("dim", "(no output)"));
 			return lines.join("\n");
@@ -1824,7 +1829,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		const displayLines = outputLines.slice(0, maxOutputLines);
 
 		for (const line of displayLines) {
-			lines.push(theme.fg("toolOutput", truncateToWidth(replaceTabs(line), contentWidth)));
+			lines.push(theme.fg("toolOutput", truncateToWidth(replaceTabs(shortenEmbeddedPaths(line)), contentWidth)));
 		}
 
 		if (outputLines.length > maxOutputLines) {

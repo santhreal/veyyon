@@ -18,6 +18,7 @@ import {
 	formatStatusIcon,
 	replaceTabs,
 	sanitizeDiagnosticDisplayText,
+	shortenEmbeddedPaths,
 	shortenPath,
 	TRUNCATE_LENGTHS,
 	truncateToWidth,
@@ -127,7 +128,7 @@ export function renderResult(
 	const request = args ?? result.details?.request;
 	const requestLines: string[] = [];
 	if (request?.file) {
-		requestLines.push(theme.fg("toolOutput", request.file));
+		requestLines.push(theme.fg("toolOutput", shortenPath(request.file)));
 	}
 	if (request?.line !== undefined) {
 		requestLines.push(theme.fg("dim", `line ${request.line}`));
@@ -561,7 +562,8 @@ function renderSymbols(symbolsMatch: RegExpMatchArray, lines: string[], expanded
 /**
  * Generic fallback rendering for unknown result types.
  */
-function renderGeneric(text: string, lines: string[], expanded: boolean, theme: Theme): string[] {
+function renderGeneric(text: string, rawLines: string[], expanded: boolean, theme: Theme): string[] {
+	const lines = rawLines.map(line => replaceTabs(shortenEmbeddedPaths(line)));
 	const hasError = text.includes("Error:") || text.includes(theme.status.error);
 	const hasSuccess = text.includes(theme.status.success) || text.includes("Applied");
 

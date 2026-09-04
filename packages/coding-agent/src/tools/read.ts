@@ -122,7 +122,7 @@ import {
 	splitPathAndSel,
 	splitPathAndSelPreferringLiteral,
 } from "./path-utils";
-import { formatBytes, replaceTabs, shortenPath, wrapBrackets } from "./render-utils";
+import { formatBytes, replaceTabs, shortenEmbeddedPaths, shortenPath, wrapBrackets } from "./render-utils";
 import {
 	executeReadQuery,
 	getRowByKey,
@@ -4050,7 +4050,9 @@ export const readToolRenderer = {
 				title += `:${startLine}${endLine ? `-${endLine}` : ""}`;
 			}
 			const header = renderStatusLine({ icon: "error", title }, uiTheme);
-			const errorLines = errorText.split("\n").map(line => uiTheme.fg("error", replaceTabs(line)));
+			const errorLines = errorText
+				.split("\n")
+				.map(line => uiTheme.fg("error", replaceTabs(shortenEmbeddedPaths(line))));
 			const outputBlock = new CachedOutputBlock();
 			return markFramedBlockComponent({
 				render: (width: number) =>
@@ -4105,7 +4107,9 @@ export const readToolRenderer = {
 				{ icon: suffix ? "warning" : "success", title: "Read", description: `${displayPath}${correction}` },
 				uiTheme,
 			);
-			const detailLines = contentText ? contentText.split("\n").map(line => uiTheme.fg("toolOutput", line)) : [];
+			const detailLines = contentText
+				? contentText.split("\n").map(line => uiTheme.fg("toolOutput", replaceTabs(line)))
+				: [];
 			const lines = [...detailLines, ...warningLines];
 			const outputBlock = new CachedOutputBlock();
 			return markFramedBlockComponent({

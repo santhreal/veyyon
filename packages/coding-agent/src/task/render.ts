@@ -28,6 +28,7 @@ import {
 	previewLine,
 	previewWindowRows,
 	replaceTabs,
+	shortenEmbeddedPaths,
 	type ToolUIStatus,
 	truncateToWidth,
 } from "../tools/render-utils";
@@ -1547,7 +1548,19 @@ export function renderResult(
 			sections: [
 				...(contextSection ? [contextSection(width)] : []),
 				...(assignmentSection ? [assignmentSection(width)] : []),
-				...(text ? [{ separator: true, lines: [theme.fg("dim", truncateToWidth(text, width))] }] : []),
+				...(text
+					? [
+							{
+								separator: true,
+								lines: [
+									theme.fg(
+										errored ? "error" : "dim",
+										truncateToWidth(replaceTabs(shortenEmbeddedPaths(text)), width),
+									),
+								],
+							},
+						]
+					: []),
 			],
 			state: errored ? "error" : "success",
 			borderColor: errored ? "error" : "borderMuted",

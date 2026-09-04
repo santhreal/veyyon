@@ -5,7 +5,7 @@ import { formatMoreLines, isRecord } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import type { Theme } from "../modes/theme/theme";
 import { buildTreePrefix } from "../tui/utils";
-import { truncateToWidth } from "./render-utils";
+import { replaceTabs, shortenEmbeddedPaths, truncateToWidth } from "./render-utils";
 
 /** Max depth for JSON tree rendering */
 export const JSON_TREE_MAX_DEPTH_COLLAPSED = 2;
@@ -33,7 +33,8 @@ export function formatScalar(value: unknown, maxLen: number): string {
 	if (typeof value === "boolean") return String(value);
 	if (typeof value === "number") return String(value);
 	if (typeof value === "string") {
-		const escaped = value.replace(/\n/g, "\\n").replace(/\t/g, "\\t");
+		const shortened = shortenEmbeddedPaths(value);
+		const escaped = shortened.replace(/\n/g, "\\n").replace(/\t/g, "\\t");
 		const truncated = truncateToWidth(escaped, maxLen);
 		return `"${truncated}"`;
 	}
@@ -137,7 +138,7 @@ export function renderJsonTreeLines(
 					const continuePrefix = buildTreePrefix(ancestors, theme);
 
 					// First line with label
-					const firstLine = truncateToWidth(strLines[0], maxScalarLen);
+					const firstLine = truncateToWidth(replaceTabs(shortenEmbeddedPaths(strLines[0])), maxScalarLen);
 					pushLine(`${prefix}${iconScalar} ${label}: ${theme.fg("dim", `"${firstLine}`)}`);
 
 					// Subsequent lines indented
@@ -146,7 +147,7 @@ export function renderJsonTreeLines(
 							truncated = true;
 							break;
 						}
-						const line = truncateToWidth(strLines[i], maxScalarLen);
+						const line = truncateToWidth(replaceTabs(shortenEmbeddedPaths(strLines[i])), maxScalarLen);
 						pushLine(`${continuePrefix}   ${theme.fg("dim", ` ${line}`)}`);
 					}
 

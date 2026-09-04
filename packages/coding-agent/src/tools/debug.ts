@@ -52,6 +52,7 @@ import {
 	formatStatusIcon,
 	PREVIEW_LIMITS,
 	replaceTabs,
+	shortenEmbeddedPaths,
 	shortenPath,
 	TRUNCATE_LENGTHS,
 	truncateToWidth,
@@ -641,7 +642,7 @@ export const debugToolRenderer = {
 				const previewLimit = options.expanded ? PREVIEW_LIMITS.EXPANDED_LINES : PREVIEW_LIMITS.COLLAPSED_LINES;
 				const displayedLines = rawLines
 					.slice(0, previewLimit)
-					.map(line => truncateToWidth(line, TRUNCATE_LENGTHS.LINE));
+					.map(line => truncateToWidth(shortenEmbeddedPaths(line), TRUNCATE_LENGTHS.LINE));
 				const remaining = rawLines.length - displayedLines.length;
 				if (remaining > 0) {
 					displayedLines.push(

@@ -18,7 +18,14 @@ import {
 } from "../tool-discovery/tool-index";
 import { framedBlock, renderStatusLine, truncateToWidth } from "../tui";
 import type { ToolSession } from ".";
-import { formatCount, formatExpandHint, formatMoreItems, replaceTabs, TRUNCATE_LENGTHS } from "./render-utils";
+import {
+	formatCount,
+	formatExpandHint,
+	formatMoreItems,
+	replaceTabs,
+	shortenEmbeddedPaths,
+	TRUNCATE_LENGTHS,
+} from "./render-utils";
 import { ToolError } from "./tool-errors";
 
 const DEFAULT_LIMIT = 8;
@@ -236,7 +243,7 @@ function renderFallbackResult(text: string, theme: Theme): Component {
 	const header = renderStatusLine({ icon: "warning", title: TOOL_DISCOVERY_TITLE }, theme);
 	const bodyLines = (text || "Tool discovery completed")
 		.split("\n")
-		.map(line => theme.fg("dim", truncateToWidth(replaceTabs(line), TRUNCATE_LENGTHS.LINE)));
+		.map(line => theme.fg("dim", truncateToWidth(replaceTabs(shortenEmbeddedPaths(line)), TRUNCATE_LENGTHS.LINE)));
 	return new Text([header, ...bodyLines].join("\n"), 0, 0);
 }
 

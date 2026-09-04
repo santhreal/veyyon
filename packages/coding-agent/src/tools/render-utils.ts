@@ -5,6 +5,7 @@
  * tool renderers to ensure a unified TUI experience.
  */
 
+import * as os from "node:os";
 import * as path from "node:path";
 import type { ToolCallContext } from "@veyyon/agent-core";
 import type { Ellipsis } from "@veyyon/natives";
@@ -214,7 +215,7 @@ export function collapseProgressRuns(
 export function renderCollapsedOutputLines(
 	lines: readonly string[],
 	theme: Theme,
-	styleLine: (line: string) => string = line => theme.fg("toolOutput", replaceTabs(line)),
+	styleLine: (line: string) => string = line => theme.fg("toolOutput", replaceTabs(shortenEmbeddedPaths(line))),
 ): string[] {
 	return collapseProgressRuns(lines).map(row => {
 		const text = styleLine(row.text);
@@ -338,7 +339,10 @@ function sanitizeErrorText(message: string | undefined): string {
 	if (!clean) return "Unknown error";
 	// Shorten before truncating: an error that opens with an absolute home path would otherwise
 	// spend the whole line budget on the prefix and leak the home directory into the error card.
-	return replaceTabs(truncateToWidth(shortenEmbeddedPaths(clean), TRUNCATE_LENGTHS.LINE));
+	return clean
+		.split("\n")
+		.map(line => replaceTabs(truncateToWidth(shortenEmbeddedPaths(line), TRUNCATE_LENGTHS.LINE)))
+		.join("\n");
 }
 
 export function formatErrorMessage(message: string | undefined, theme: Theme): string {
@@ -353,7 +357,11 @@ export function formatErrorMessage(message: string | undefined, theme: Theme): s
  * errors, indenting two columns to sit under the header title instead.
  */
 export function formatErrorDetail(message: string | undefined, theme: Theme): string {
-	return `  ${theme.fg("error", sanitizeErrorText(message))}`;
+	const sanitized = sanitizeErrorText(message);
+	return sanitized
+		.split("\n")
+		.map(line => `  ${theme.fg("error", line)}`)
+		.join("\n");
 }
 
 export function formatEmptyMessage(message: string, theme: Theme): string {
@@ -761,16 +769,19 @@ export function formatScopeMeta(paths: string | readonly string[]): string {
  * {@link shortenPath}.
  */
 export function shortenEmbeddedPaths(text: string, homeDir?: string): string {
-	return text
-		.split(" ")
-		.map(segment => {
-			const leading = segment.match(/^[("'`[]*/)?.[0] ?? "";
-			const trailing = segment.match(/[)"'`,.;:\]]*$/)?.[0] ?? "";
-			const end = segment.length - trailing.length;
-			if (leading.length >= end) return segment;
-			return `${leading}${shortenPath(segment.slice(leading.length, end), homeDir)}${trailing}`;
-		})
-		.join(" ");
+	const home = homeDir ?? os.homedir();
+	if (!home) return text;
+	const escapedHome = home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const normalizedHomePattern = escapedHome.replace(/\\\\/g, "[/\\\\]");
+	const regex = new RegExp(`(^|[^a-zA-Z0-9_])(${normalizedHomePattern})((?:[/\\\\][^\\s"'\`)\\]}>]*?)?)`, "g");
+	return text.replace(regex, (_match, prefix, _h, suffix) => {
+		const rawSuffix = suffix ?? "";
+		const trailingPunctMatch = rawSuffix.match(/[)"'`,.;:\]]+$/);
+		const trailingPunct = trailingPunctMatch ? trailingPunctMatch[0] : "";
+		const pathSuffix = trailingPunct ? rawSuffix.slice(0, -trailingPunct.length) : rawSuffix;
+		const normalizedSuffix = pathSuffix.replaceAll(path.win32.sep, path.posix.sep);
+		return `${prefix}~${normalizedSuffix}${trailingPunct}`;
+	});
 }
 
 export function formatToolWorkingDirectory(workdir: string | undefined, projectDir: string): string | undefined {

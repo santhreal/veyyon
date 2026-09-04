@@ -22,6 +22,7 @@ import {
 	formatDuration,
 	formatStatusIcon,
 	replaceTabs,
+	shortenEmbeddedPaths,
 	type ToolUIColor,
 	type ToolUIStatus,
 	truncateToWidth,
@@ -77,7 +78,7 @@ interface VibeRenderArgs {
 
 /** One-line, escape-stripped fragment for embedding in a frame row. */
 function frameText(text: string, max: number): string {
-	return oneLineLabel(replaceTabs(text), max);
+	return oneLineLabel(replaceTabs(shortenEmbeddedPaths(text)), max);
 }
 
 /**
