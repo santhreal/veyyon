@@ -49,8 +49,13 @@ const LOCKED_FILE = "packages/ai/src/providers/openai-compaction.ts";
 /**
  * SHA-256 of the locked file. Updating this constant without operator permission
  * is the exact move this gate exists to stop.
+ *
+ * Re-locked after merging origin/main `74553de179` (OpenCode session header on
+ * the conversation, not the routing id). The wire is unchanged:
+ * `{base}/codex/responses`, `stream: true`, trailing `compaction_trigger`.
+ * `{base}/codex/responses/compact` still answers 404.
  */
-const LOCKED_SHA256 = "e380143f7edbd422ada4a9a21650e3df73b6496445f25abd925ce8cdc3c44f49";
+const LOCKED_SHA256 = "6ee198c2c3ebec6256a44f314dfb6ffed6fe790127a95433339b59b0b264e40b";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
