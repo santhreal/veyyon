@@ -398,20 +398,6 @@ export function normalizeOpenRouterResponsesSessionId(sessionId: string | undefi
 	return normalizeOpenAIStableId(sessionId, 256, "session_");
 }
 
-/**
- * The conversation a request belongs to: the pinned prompt-cache key when the
- * caller has one, else the session id. Independent of cache retention, because
- * the OpenCode gateway requires its session header on every request, and it
- * prefers the cache key so a side-channel turn — which deliberately routes
- * under a unique per-request session id while keeping the conversation's cache
- * key — lands on the conversation the operator is actually in.
- */
-export function conversationIdForOpenCode(
-	options: Pick<OpenAICacheOptions, "promptCacheKey" | "sessionId"> | undefined,
-): string | undefined {
-	return options?.promptCacheKey ?? options?.sessionId;
-}
-
 /** Resolve a prompt-cache identity, falling back to the provider session unless caching is disabled. */
 export function getOpenAIPromptCacheKey(options: OpenAICacheOptions | undefined): string | undefined {
 	if (resolveCacheRetention(options?.cacheRetention) === "none") return undefined;
@@ -1260,17 +1246,22 @@ export function repairOrphanResponsesToolOutputs(input: ResponseInput): Response
 		if (typeof callId !== "string") continue;
 		if (t === "function_call" || t === "custom_tool_call") knownCallIds.add(callId);
 	}
-	let hasOrphan = false;
+	const orphanCallIds: string[] = [];
 	for (const item of input) {
 		const t = (item as { type?: string }).type;
 		if (t !== "function_call_output" && t !== "custom_tool_call_output") continue;
 		const callId = (item as { call_id?: unknown }).call_id;
-		if (typeof callId === "string" && !knownCallIds.has(callId)) {
-			hasOrphan = true;
-			break;
-		}
+		if (typeof callId === "string" && !knownCallIds.has(callId)) orphanCallIds.push(callId);
 	}
-	if (!hasOrphan) return input;
+	if (orphanCallIds.length === 0) return input;
+	// The fold is the only trace of how the pairing was lost. The reported
+	// occurrences (an imitated note in a session with no compaction and every
+	// result paired in storage) cannot be diagnosed from the transcript alone.
+	logger.warn("openai-responses: folding tool outputs whose call is missing from the request", {
+		orphanCallIds,
+		knownCallIds: [...knownCallIds],
+		inputItems: input.length,
+	});
 	return input.map(item => {
 		const t = (item as { type?: string }).type;
 		if (t !== "function_call_output" && t !== "custom_tool_call_output") return item;
@@ -1811,6 +1802,14 @@ export function appendResponsesToolResultMessages<TApi extends Api>(
 		// Strict backends (Azure, Copilot) reject unpaired outputs outright, but
 		// silently dropping the result loses information the model needs. Fold it
 		// into a note instead (same shape as repairOrphanResponsesToolOutputs).
+		logger.warn("openai-responses: folding a tool result whose call is missing from the request", {
+			provider: model.provider,
+			model: model.id,
+			toolName: toolResult.toolName,
+			toolCallId: toolResult.toolCallId,
+			normalizedCallId: normalized.callId,
+			knownCallIds: [...knownCallIds],
+		});
 		const limit = 16_000;
 		const noteText = output.length > limit ? `${output.slice(0, limit)}\n...[truncated]` : output;
 		messages.push({
