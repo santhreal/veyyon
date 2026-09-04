@@ -34,7 +34,7 @@ import type { Message, ToolResultMessage } from "@veyyon/ai";
 import { createMockModel } from "@veyyon/ai/providers/mock";
 import { type } from "arktype";
 
-const AGENT_SRC = path.resolve(import.meta.dirname, "../../../agent/src");
+const AGENT_SRC = path.resolve(import.meta.dirname, "../../../../packages/agent/src");
 
 /**
  * Sentinel for the `undefined` arm of the source union. `undefined` is a real
