@@ -5,10 +5,10 @@ import {
 	getDefault,
 	getEnumValues,
 	getType,
-	isSettingType,
 	SETTINGS_SCHEMA,
 	type SettingPath,
 } from "@veyyon/coding-agent/config/settings-schema";
+import { isSettingType } from "@veyyon/settings";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 
 /**

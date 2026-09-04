@@ -20,12 +20,12 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import type { SettingTab } from "@veyyon/coding-agent/config/settings-schema";
 import {
 	MACHINE_LIMITS_POINTER_ROW_ID,
 	SettingsSelectorComponent,
 } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-selector";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import type { SettingTab } from "@veyyon/settings";
 import { stubStdoutGeometry } from "../../../helpers/stdout-geometry";
 
 const WIDTH = 160;

@@ -11,6 +11,7 @@
 - `sanitizeStatusText` is `@veyyon/utils/sanitize-status-text`, so a subpath import previously resolved through `@veyyon/coding-agent/modes/sanitize-status-text` names the utils module: the function is text-only and every host reduces a value to one line the same way.
 - The 81 site scrapers, the page loader and the Parallel extraction client moved to `@veyyon/web`: a subpath import previously resolved through `@veyyon/coding-agent/web/scrapers/*` or `@veyyon/coding-agent/web/parallel` is now `@veyyon/web/scrapers/*` and `@veyyon/web/parallel`, and the search providers' `withHardTimeout` is `@veyyon/web/hard-timeout`.
 - `escapeMarkdownTableCell` and the Turndown helpers are `@veyyon/utils/markdown-table` and `@veyyon/utils/turndown`, and `htmlToBasicMarkdown` is `@veyyon/utils/html-markdown`, so a subpath import previously resolved through `@veyyon/coding-agent/utils/markdown-table`, `@veyyon/coding-agent/utils/turndown` or the scrapers barrel names the utils module.
+- The setting declaration vocabulary — `SettingDef` and its definition kinds, `SettingType`, `SETTING_TYPES`, `isSettingType`, `SettingTab`, `AnyUiMetadata` and `SubmenuOption` — moved from `@veyyon/coding-agent/config/settings-schema` to `@veyyon/settings`; the schema, its readers, the tab metadata and the tab groups stay where they were.
 
 ### Added
 

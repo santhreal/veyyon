@@ -7,11 +7,11 @@
  * for which tabs/groups remain visible vs schema-only (no `ui` block).
  */
 
+import type { AnyUiMetadata, SettingTab, SubmenuOption } from "@veyyon/settings";
 import { TERMINAL } from "@veyyon/tui";
 import { resolveEffort, withLegacyDefaultEffort } from "../../../../config/effort-resolver";
 import { Settings } from "../../../../config/settings";
 import {
-	type AnyUiMetadata,
 	getDefault,
 	getEnumValues,
 	getPathsForTab,
@@ -19,8 +19,6 @@ import {
 	getUi,
 	SETTING_TABS,
 	type SettingPath,
-	type SettingTab,
-	type SubmenuOption,
 	TAB_GROUPS,
 } from "../../../../config/settings-schema";
 import { AUTO_THINKING } from "../../../../thinking";

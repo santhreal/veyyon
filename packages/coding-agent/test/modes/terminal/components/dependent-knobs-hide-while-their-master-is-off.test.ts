@@ -28,18 +28,13 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
-import {
-	getDefault,
-	getUi,
-	SETTINGS_SCHEMA,
-	type SettingPath,
-	type SettingTab,
-} from "@veyyon/coding-agent/config/settings-schema";
+import { getDefault, getUi, SETTINGS_SCHEMA, type SettingPath } from "@veyyon/coding-agent/config/settings-schema";
 import {
 	getSettingDef,
 	getSettingsForTab,
 	invalidateSettingDefsCache,
 } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
+import type { SettingTab } from "@veyyon/settings";
 
 beforeEach(async () => {
 	resetSettingsForTest();

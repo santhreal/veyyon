@@ -1,5 +1,5 @@
 import type { ServiceTier, ServiceTierByFamily } from "@veyyon/ai";
-import type { SubmenuOption } from "./settings-schema";
+import type { SubmenuOption } from "@veyyon/settings";
 
 /**
  * The word the priority tier is named by on every user-facing surface.

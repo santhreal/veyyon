@@ -12,7 +12,7 @@
  * The component is the one `/settings` constructs, not a drawing of it, so the
  * rows in the image are the rows the schema produces.
  */
-import type { SettingTab } from "../../packages/coding-agent/src/config/settings-schema";
+import type { SettingTab } from "@veyyon/settings";
 import { SettingsSelectorComponent } from "../../packages/coding-agent/src/modes/terminal/components/selectors/settings-selector";
 import { flag, initRender, renderWidth } from "./render-args";
 

@@ -1,5 +1,6 @@
 import { AUTO_COMPACTION_THRESHOLD, parseCompactionThreshold, type ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, Effort, Model } from "@veyyon/ai";
+import type { SettingTab, SubmenuOption } from "@veyyon/settings";
 import {
 	type Component,
 	Container,
@@ -47,12 +48,7 @@ import {
 	validateProviderMaxInFlightRequests,
 } from "../../../../config/settings";
 import type { SubagentAgentSettings, SubagentLaneSettings } from "../../../../config/settings-domains/subagents";
-import type {
-	SettingTab,
-	StatusLinePreset,
-	StatusLineSegmentId,
-	SubmenuOption,
-} from "../../../../config/settings-schema";
+import type { StatusLinePreset, StatusLineSegmentId } from "../../../../config/settings-schema";
 import { getUi, isUnsetNumberPath, SETTING_TABS, TAB_METADATA } from "../../../../config/settings-schema";
 import { loadCapability } from "../../../../discovery";
 import { PROVIDER_ID as NATIVE_RULES_PROVIDER_ID } from "../../../../discovery/builtin";

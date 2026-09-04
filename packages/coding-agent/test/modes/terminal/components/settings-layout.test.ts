@@ -4,10 +4,10 @@ import {
 	SETTING_TABS,
 	SETTINGS_SCHEMA,
 	type SettingPath,
-	type SettingTab,
 	TAB_GROUPS,
 } from "@veyyon/coding-agent/config/settings-schema";
 import { getSettingsForTab } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
+import type { SettingTab } from "@veyyon/settings";
 
 interface UiShape {
 	tab: SettingTab;

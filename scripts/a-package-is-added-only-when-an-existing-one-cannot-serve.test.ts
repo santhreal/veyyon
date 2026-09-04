@@ -87,8 +87,19 @@ import { typeScriptMembers } from "./workspace-layout";
  * `clients/web` is a guest client that would drag a relay and a socket into a pure string
  * function. A future rise still needs the sentence above: which existing package was considered and
  * why it could not serve.
+ *
+ * The count went 22 -> 23 with `contracts/settings`. It is the vocabulary a settings schema is
+ * written in -- the definition kinds, the `ui` block, the tab names and the condition-by-name rule --
+ * and it has no dependency at all, which is what lets a plugin declare a setting without importing
+ * the store or the panel. `coding-agent` is where it was, and a plugin that imported the vocabulary
+ * from there would import the whole CLI; `kernel` will assemble the schema FROM plugin declarations,
+ * so the vocabulary has to sit below it rather than in it; `contracts/view` is what a tool's output
+ * means and `contracts/wire` is the cross-process envelopes, and a settings declaration is neither;
+ * and `utils` is imported by everything, so a contract there is one nothing can depend on narrowly.
+ * A future rise still needs the sentence above: which existing package was considered and why it
+ * could not serve.
  */
-const PACKAGE_BUDGET = 22;
+const PACKAGE_BUDGET = 23;
 
 /**
  * Every workspace member, as `<root>/<name>`.

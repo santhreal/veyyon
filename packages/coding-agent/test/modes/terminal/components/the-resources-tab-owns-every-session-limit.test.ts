@@ -48,8 +48,6 @@ import {
 	SETTING_TABS,
 	SETTINGS_SCHEMA,
 	type SettingPath,
-	type SettingTab,
-	type SettingType,
 	TAB_GROUPS,
 	TAB_METADATA,
 } from "@veyyon/coding-agent/config/settings-schema";
@@ -60,6 +58,7 @@ import {
 } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
 import { SYMBOL_PRESETS, type SymbolKey } from "@veyyon/coding-agent/theme/symbols";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
+import type { SettingTab, SettingType } from "@veyyon/settings";
 import * as YAML from "yaml";
 import { useTrackedTempDirs } from "../../../helpers/tracked-temp-dir";
 
