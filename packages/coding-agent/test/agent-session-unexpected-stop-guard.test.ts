@@ -7,9 +7,9 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { type SettingPath, Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import * as unexpectedStopClassifier from "@veyyon/coding-agent/session/unexpected-stop-classifier";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { logger, TempDir } from "@veyyon/utils";
 
 const recordToolSchema = z.object({ value: z.string() });

@@ -19,7 +19,7 @@ Primary implementation:
 - `src/modes/terminal/controllers/selector-controller.ts` (tree UI launch + summary prompt flow)
 - `src/modes/terminal/components/selectors/tree-selector.ts` (navigation, filters, search, labels, rendering)
 - `src/session/agent-session.ts` (`navigateTree` leaf switching + optional summary)
-- `src/session/session-manager.ts` (`getTree`, `branch`, `branchWithSummary`, `resetLeaf`, label persistence)
+- `kernel/src/session/session-manager.ts` (`getTree`, `branch`, `branchWithSummary`, `resetLeaf`, label persistence)
 
 ## How to open it
 

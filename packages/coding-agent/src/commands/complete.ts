@@ -9,9 +9,9 @@
  * doesn't pay for the full agent boot.
  */
 import { type GeneratedProvider, getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { Command } from "@veyyon/utils/cli";
 import { SETTINGS_SCHEMA } from "../config/settings-schema";
-import { SessionManager } from "../session/session-manager";
 
 /** Every kind this helper answers. Shared with the completion generator. */
 export const COMPLETE_KINDS = ["models", "sessions", "settings", "setting-values"] as const;

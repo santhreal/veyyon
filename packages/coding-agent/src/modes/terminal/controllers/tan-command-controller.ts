@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { assistantText } from "@veyyon/ai/utils/message-text";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { errorMessage, prompt, Snowflake } from "@veyyon/utils";
 import { sessionFileName } from "@veyyon/utils/session-file";
 import { sideChannelPrompts } from "../../../prompts/side-channel/rows";
@@ -8,7 +9,6 @@ import { AgentRegistry, MAIN_AGENT_ID } from "../../../registry/agent-registry";
 import * as sdk from "../../../sdk";
 import type { AgentSession } from "../../../session/agent-session";
 import { BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE } from "../../../session/messages";
-import { SessionManager } from "../../../session/session-manager";
 import { createMCPProxyTools, createSubagentSettings } from "../../../task/executor";
 import { USER_TODO_EDIT_CUSTOM_TYPE } from "../../../tools/agent/todo";
 import { previewLine } from "../../../tools/core/render-utils";

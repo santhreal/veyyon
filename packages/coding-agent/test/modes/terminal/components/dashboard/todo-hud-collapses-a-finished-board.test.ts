@@ -41,11 +41,11 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { viewToolRenderer } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme, stopThemeWatcher, theme } from "@veyyon/coding-agent/theme/theme";
 import type { TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
 import { todoToolView } from "@veyyon/coding-agent/tools/agent/todo-view";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 import { isTodoListDone, TODO_DONE_SUMMARY, TODO_STATUSES, type TodoStatus } from "@veyyon/wire";

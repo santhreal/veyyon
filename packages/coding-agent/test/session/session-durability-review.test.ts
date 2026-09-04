@@ -9,8 +9,6 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { parseSessionContent } from "@veyyon/coding-agent/session/session-loader";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import {
 	IndexedSessionStorage,
 	type SessionStorageBackend,
@@ -18,6 +16,8 @@ import {
 } from "@veyyon/kernel/session/indexed-session-storage";
 import { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import { listAllSessions, listSessions, resolveResumableSession } from "@veyyon/kernel/session/session-listing";
+import { parseSessionContent } from "@veyyon/kernel/session/session-loader";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { MemorySessionStorage, type WriteTextAtomicOptions } from "@veyyon/kernel/session/session-storage";
 import type { SessionTitleUpdate } from "@veyyon/kernel/session/session-title-slot";
 import { getAgentDir } from "@veyyon/utils";

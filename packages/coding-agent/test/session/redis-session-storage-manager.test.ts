@@ -10,8 +10,8 @@
 
 import { describe, expect, it } from "bun:test";
 import type { Usage } from "@veyyon/ai";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { RedisSessionStorage, type RedisSessionStorageClient } from "@veyyon/kernel/session/redis-session-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 
 interface FakeRedis extends RedisSessionStorageClient {
 	strings: Map<string, string>;

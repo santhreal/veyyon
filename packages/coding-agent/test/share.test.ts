@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
+import type { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { SessionData } from "../src/export/html";
 import {
 	buildShareSnapshot,
@@ -9,7 +10,6 @@ import {
 	shareSession,
 } from "../src/export/share";
 import { SecretObfuscator } from "../src/secrets/obfuscator";
-import type { SessionManager } from "../src/session/session-manager";
 
 const IV_LENGTH = 12;
 

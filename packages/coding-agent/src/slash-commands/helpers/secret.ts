@@ -9,6 +9,8 @@
  * for a credential without showing it, and that difference is one injected function
  * ({@link SecretCommandPort.promptForValue}) rather than a second copy of the logic.
  */
+
+import type { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { errorMessage, getAgentDir, getGlobalConfigRootDir, logger } from "@veyyon/utils";
 import type { Settings } from "../../config/settings";
 import type { InteractiveModeContext } from "../../modes/terminal/types";
@@ -23,7 +25,6 @@ import {
 } from "../../secrets/secret-command";
 import { normaliseSecretName, resolveVaultLocations, SecretVault, type VaultLocations } from "../../secrets/vault";
 import type { AgentSession } from "../../session/agent-session";
-import type { SessionManager } from "../../session/session-manager";
 import { copyToClipboard } from "../../utils/clipboard";
 
 /** What `/secret` needs from whichever surface invoked it. */

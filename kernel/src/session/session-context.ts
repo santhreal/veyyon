@@ -13,6 +13,11 @@ import { hasLegacyProviderNativeCompaction } from "@veyyon/agent-core/compaction
 // retired archive format and imports nothing at all. The edge cost 238 modules, and it was on the graph of
 // `internal-urls/index.ts` (the URL router) and `tools/fs/read.ts` through `session/session-loader.ts`.
 import { legacyArchiveSourceText } from "@veyyon/agent-core/compaction/legacy-snapcompact-archive";
+import {
+	createBranchSummaryMessage,
+	createCompactionSummaryMessage,
+	createCustomMessage,
+} from "@veyyon/agent-core/compaction/messages";
 // The remote-compaction entry reader is a leaf beside the legacy one: it turns a
 // server-side compaction's stored window back into the provider payload the
 // Responses-family request builder replays, and names who compacted for display.
@@ -26,21 +31,11 @@ import type { TextContent } from "@veyyon/ai";
 // `@veyyon/ai/types` is 5 modules against the barrel's 346, and this file is on
 // `session/session-manager.ts`'s path, which ~200 test files import.
 import { coerceServiceTierByFamily, type ServiceTierByFamily } from "@veyyon/ai/types";
-import {
-	type CompactionEntry,
-	EPHEMERAL_MODEL_CHANGE_ROLE,
-	type SessionEntry,
-} from "@veyyon/kernel/session/session-entries";
 // The owner, not the `@veyyon/utils` barrel: 2 modules against 74, and this file is on
 // the graph of the URL router and the read tool.
 import * as logger from "@veyyon/utils/logger";
-import {
-	createBranchSummaryMessage,
-	createCompactionSummaryMessage,
-	createCustomMessage,
-	isCustomMessageContent,
-	normalizeCustomMessagePayload,
-} from "./messages";
+import { isCustomMessageContent, normalizeCustomMessagePayload } from "./custom-message-payload";
+import { type CompactionEntry, EPHEMERAL_MODEL_CHANGE_ROLE, type SessionEntry } from "./session-entries";
 
 export interface SessionContext {
 	messages: AgentMessage[];

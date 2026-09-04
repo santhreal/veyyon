@@ -7,8 +7,8 @@
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/rewind.md`
 - Key collaborators:
   - `packages/coding-agent/src/session/agent-session.ts`: validates pending rewind state, applies the actual rewind, and injects the retained report.
-  - `packages/coding-agent/src/session/session-manager.ts`: branches the persisted session tree and appends persisted summary/report entries.
-  - `packages/coding-agent/src/session/session-context.ts`: `buildSessionContext()` converts persisted `branch_summary` entries into LLM-visible `branchSummary` messages on rebuilt context.
+  - `kernel/src/session/session-manager.ts`: branches the persisted session tree and appends persisted summary/report entries.
+  - `kernel/src/session/session-context.ts`: `buildSessionContext()` converts persisted `branch_summary` entries into LLM-visible `branchSummary` messages on rebuilt context.
   - `packages/coding-agent/src/tools/index.ts`: registers the tool and shares the `checkpoint.enabled` gate.
 
 ## Inputs
@@ -91,6 +91,6 @@ The returned tool result is not the final rewind. `AgentSession` waits until `tu
   - artifacts under `kernel/src/session/artifacts.ts`
   - blob-store payloads under `kernel/src/session/blob-store.ts`
   - prompt history rows in `kernel/src/session/history-storage.ts`
-  - auth or other agent storage in `packages/coding-agent/src/session/agent-storage.ts`
+  - auth or other agent storage in `kernel/src/session/agent-storage.ts`
 - There is no concurrent-edit reconciliation. If code or session-adjacent state changes during the checkpoint window, rewind does not merge or revert them; it only drops conversation context and rewires the session branch.
 - Rewind is not destructive to persisted session history. `branchWithSummary()` appends a new `branch_summary` entry and moves the leaf; it does not delete the abandoned path from the `.jsonl` session log. The active context is cut over to the new branch, but the old entries remain in session storage.

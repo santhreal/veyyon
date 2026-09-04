@@ -35,7 +35,7 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { isolatedAuthStorage } from "../helpers/isolated-auth-storage";
 import { useIsolatedGlobalSettings } from "../helpers/isolated-global-settings";
 

@@ -14,7 +14,7 @@ Both are persisted as session entries and converted into agent-attributed develo
 - `packages/agent/src/compaction/branch-summarization.ts`
 - `packages/agent/src/compaction/pruning.ts`
 - `packages/agent/src/compaction/utils.ts`
-- `packages/coding-agent/src/session/session-manager.ts`
+- `kernel/src/session/session-manager.ts`
 - `packages/coding-agent/src/session/agent-session.ts`
 - `packages/coding-agent/src/session/messages.ts`
 - `packages/coding-agent/src/extensibility/hooks/types.ts`

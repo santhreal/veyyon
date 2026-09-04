@@ -19,7 +19,7 @@ import {
 	type TranscriptComposerPort,
 } from "@veyyon/coding-agent/modes/terminal/controllers/transcript-composer";
 import type { SubmittedUserInput } from "@veyyon/coding-agent/modes/terminal/types";
-import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
+import type { SessionContext } from "@veyyon/kernel/session/session-context";
 import type { Component } from "@veyyon/tui";
 
 const NUL = "\u0000";

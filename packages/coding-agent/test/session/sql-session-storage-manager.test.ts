@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "bun:test";
 import type { Usage } from "@veyyon/ai";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { SqlSessionStorage } from "@veyyon/kernel/session/sql-session-storage";
 import { SQL } from "bun";
 

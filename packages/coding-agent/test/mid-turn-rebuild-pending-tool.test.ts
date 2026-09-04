@@ -20,8 +20,8 @@ import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/compone
 import { EventController } from "@veyyon/coding-agent/modes/terminal/controllers/event-controller";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { UiHelpers } from "@veyyon/coding-agent/modes/terminal/utils/ui-helpers";
-import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import type { SessionContext } from "@veyyon/kernel/session/session-context";
 
 const usage = {
 	input: 1,

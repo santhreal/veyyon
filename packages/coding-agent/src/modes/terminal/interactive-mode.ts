@@ -19,7 +19,9 @@ import { modelsAreEqual } from "@veyyon/catalog/models";
 import type { HostNotifier } from "@veyyon/host";
 import type { CompactMode } from "@veyyon/kernel/session/compact-modes";
 import { HistoryStorage } from "@veyyon/kernel/session/history-storage";
+import type { SessionContext } from "@veyyon/kernel/session/session-context";
 import { getRecentSessions } from "@veyyon/kernel/session/session-listing";
+import type { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { ShakeMode } from "@veyyon/kernel/session/shake-types";
 import {
 	type Component,
@@ -109,8 +111,6 @@ import {
 	type KeptSession,
 } from "../../session/background-sessions";
 import { setImageDisplayProbe } from "../../session/image-visibility";
-import type { SessionContext } from "../../session/session-context";
-import type { SessionManager } from "../../session/session-manager";
 import { VibeSessionRegistry } from "../../session/vibe-runtime";
 import {
 	BUILTIN_SLASH_COMMAND_RESERVED_NAMES,

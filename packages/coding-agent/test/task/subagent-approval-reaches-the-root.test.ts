@@ -52,9 +52,9 @@ import { ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensi
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import type { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { createSubagentSettings, resolveRootUIContext, runSubprocess } from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
+import type { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { type } from "arktype";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 import { createMockSession, createSessionResult, yieldSuccessEvent } from "../helpers/subagent-session";

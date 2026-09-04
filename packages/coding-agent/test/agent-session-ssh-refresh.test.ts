@@ -9,11 +9,11 @@ import { loadCapability } from "@veyyon/coding-agent/discovery";
 import { reset as resetCapabilities } from "@veyyon/coding-agent/discovery/capability";
 import { type SSHHost, sshCapability } from "@veyyon/coding-agent/discovery/capability/ssh";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { addSSHHost, removeSSHHost, updateSSHHost } from "@veyyon/coding-agent/ssh/config-writer";
 import * as connectionManager from "@veyyon/coding-agent/ssh/connection-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { loadSshTool } from "@veyyon/coding-agent/tools/shell/ssh";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import {
 	captureDirOverrides,
 	type DirOverridesSnapshot,

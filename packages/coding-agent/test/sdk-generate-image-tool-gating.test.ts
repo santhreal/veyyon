@@ -10,7 +10,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { initializeExtensions } from "@veyyon/coding-agent/modes/runtime-init";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 // Regression for issue #5305: image-gen is registered as a custom tool, and

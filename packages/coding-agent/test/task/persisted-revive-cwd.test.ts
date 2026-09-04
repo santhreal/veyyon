@@ -6,9 +6,9 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { createPersistedSubagentReviverFactory } from "@veyyon/coding-agent/task/persisted-revive";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { getProjectAgentDir, Snowflake, TempDir } from "@veyyon/utils";
 import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
 

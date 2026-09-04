@@ -9,7 +9,6 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { editFilesystemTargets } from "@veyyon/coding-agent/edit";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import {
 	cwdEscapingTargets,
 	formatCwdBoundaryReason,
@@ -21,6 +20,7 @@ import { inspectImageFilesystemTargets } from "@veyyon/coding-agent/tools/fs/ins
 import { readFilesystemTargets } from "@veyyon/coding-agent/tools/fs/read";
 import { writeFilesystemTargets } from "@veyyon/coding-agent/tools/fs/write";
 import { astEditFilesystemTargets } from "@veyyon/coding-agent/tools/search/ast-edit";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 /** A stand-in filesystem tool: the boundary only needs `filesystemTargets`. */

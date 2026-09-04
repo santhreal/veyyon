@@ -16,6 +16,7 @@
  * `save` callback.
  */
 import type { Model } from "@veyyon/ai";
+import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import { type Component, Input, type SelectItem, SelectList, type TUI } from "@veyyon/tui";
 import { clampLow, errorMessage } from "@veyyon/utils";
 import { type MouseRoutable, routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
@@ -29,7 +30,6 @@ import {
 import type { ModelRegistry } from "../../../../config/model-registry";
 import { formatModelSelectorValue } from "../../../../config/model-resolver";
 import type { Settings } from "../../../../config/settings";
-import { AgentStorage } from "../../../../session/agent-storage";
 import { getSelectListTheme, theme } from "../../../../theme/theme";
 import {
 	type ConfiguredThinkingLevel,

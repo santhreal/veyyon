@@ -9,9 +9,9 @@ import { PRIORITY_TIER_COMMAND_LABEL } from "@veyyon/coding-agent/config/service
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import * as mcpConfigWriter from "@veyyon/coding-agent/mcp/config-writer";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import type { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/acp-builtins";
 import * as sshConfigWriter from "@veyyon/coding-agent/ssh/config-writer";
+import type { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { removeWithRetries } from "@veyyon/utils";
 
 interface FakeAcpBuiltinSession {

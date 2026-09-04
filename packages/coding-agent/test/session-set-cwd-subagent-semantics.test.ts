@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { resolveSpawnCwd } from "@veyyon/coding-agent/task";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 
 const tempDirs: TempDir[] = [];

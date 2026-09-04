@@ -239,9 +239,9 @@ The two systems intersect only indirectly: both reduce session JSONL bloat, but 
 - [`kernel/src/session/blob-store.ts`](../../kernel/src/session/blob-store.ts): blob reference format, hashing, put/get, externalize/resolve helpers.
 - [`kernel/src/session/artifacts.ts`](../../kernel/src/session/artifacts.ts): session artifact directory model and numeric artifact ID/path allocation.
 - [`src/session/streaming-output.ts`](../../packages/coding-agent/src/session/streaming-output.ts): `OutputSink` truncation/spill-to-file behavior and summary metadata.
-- [`src/session/session-manager.ts`](../../packages/coding-agent/src/session/session-manager.ts): `BlobStore`/`ArtifactManager` construction, persistence-transform and blob-rehydration call sites, session fork/move interactions.
+- [`kernel/src/session/session-manager.ts`](../../kernel/src/session/session-manager.ts): `BlobStore`/`ArtifactManager` construction, persistence-transform and blob-rehydration call sites, session fork/move interactions.
 - [`kernel/src/session/session-persistence.ts`](../../kernel/src/session/session-persistence.ts): `prepareEntryForPersistence()`: large-string externalization to `blobtext:` refs, transient-field stripping, and synchronous image-blob externalization.
-- [`src/session/session-loader.ts`](../../packages/coding-agent/src/session/session-loader.ts): `resolveBlobRefsInEntries()`: blob-ref rehydration to base64 / data URLs on load.
+- [`kernel/src/session/session-loader.ts`](../../kernel/src/session/session-loader.ts): `resolveBlobRefsInEntries()`: blob-ref rehydration to base64 / data URLs on load.
 - [`src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts): artifact directory copy during interactive fork.
 - [`src/internal-urls/artifact-protocol.ts`](../../packages/coding-agent/src/internal-urls/artifact-protocol.ts): `artifact://` resolver.
 - [`src/internal-urls/agent-protocol.ts`](../../packages/coding-agent/src/internal-urls/agent-protocol.ts): `agent://` resolver + JSON extraction.

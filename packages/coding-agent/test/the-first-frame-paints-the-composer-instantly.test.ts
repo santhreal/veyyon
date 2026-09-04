@@ -26,10 +26,10 @@ import {
 import { segmentSeparator } from "@veyyon/coding-agent/modes/terminal/components/status-line/state-grammar";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { getEditorTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
 import { branchLabelFromFiles, HEAD_REF_PREFIX, LOCAL_BRANCH_PREFIX } from "@veyyon/coding-agent/utils/git-head";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { Component } from "@veyyon/tui";
 import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";

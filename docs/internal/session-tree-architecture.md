@@ -15,8 +15,8 @@ The session is stored as an append-only entry log, but runtime behavior is tree-
 
 Key files:
 
-- `src/session/session-manager.ts`: tree data model, traversal, leaf movement, branch/session extraction
-- `src/session/session-context.ts`: `buildSessionContext` context reconstruction (resolved root→leaf LLM context, compaction/branch-summary replay)
+- `kernel/src/session/session-manager.ts`: tree data model, traversal, leaf movement, branch/session extraction
+- `kernel/src/session/session-context.ts`: `buildSessionContext` context reconstruction (resolved root→leaf LLM context, compaction/branch-summary replay)
 - `src/session/agent-session.ts`: `/tree` navigation flow, summarization, hook/event emission
 - `src/modes/terminal/components/selectors/tree-selector.ts`: interactive tree UI behavior and filtering
 - `src/modes/terminal/controllers/selector-controller.ts`: selector orchestration for `/tree` and `/branch`

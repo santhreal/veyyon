@@ -10,9 +10,9 @@ import { StatusLineComponent } from "@veyyon/coding-agent/modes/terminal/compone
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { ContextUsageBreakdown } from "@veyyon/coding-agent/session/agent-session-types";
 import { computeContextBreakdown } from "@veyyon/coding-agent/session/context-usage";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 
 describe("Context usage consolidation", () => {

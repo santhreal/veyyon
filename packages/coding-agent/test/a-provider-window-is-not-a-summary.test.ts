@@ -21,7 +21,7 @@
 import { describe, expect, it } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai/types";
-import { buildSessionContext } from "@veyyon/coding-agent/session/session-context";
+import { buildSessionContext } from "@veyyon/kernel/session/session-context";
 import type {
 	CompactionEntry,
 	ModelChangeEntry,

@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
+import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import { TempDir } from "@veyyon/utils";
 
 describe("AgentStorage model perf aggregates", () => {

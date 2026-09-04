@@ -8,7 +8,7 @@ import type { SettingPath } from "@veyyon/coding-agent/config/settings-schema";
 import { TOOL_DISCOVERY_AUTO_THRESHOLD } from "@veyyon/coding-agent/discovery/mode";
 import { createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/sdk";
 import type { CreateAgentSessionOptions } from "@veyyon/coding-agent/session/factory-options";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { type } from "arktype";
 import { isolatedAuthStorage } from "../helpers/isolated-auth-storage";

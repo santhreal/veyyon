@@ -36,7 +36,6 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import {
 	expandDelimitedPathEntries,
@@ -46,6 +45,7 @@ import {
 } from "@veyyon/coding-agent/tools/core/path-utils";
 import { shortenPath } from "@veyyon/coding-agent/tools/core/render-utils";
 import { readToolView } from "@veyyon/coding-agent/tools/fs/read-view";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 describe("a delimited path escaping cwd requires approval", () => {

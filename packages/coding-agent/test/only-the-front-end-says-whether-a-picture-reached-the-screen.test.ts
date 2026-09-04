@@ -34,9 +34,9 @@ import {
 	imageVisibilityNotice,
 	setImageDisplayProbe,
 } from "@veyyon/coding-agent/session/image-visibility";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { ImageProtocol, imageFallback, setTerminalImageProtocol, TERMINAL } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 import { IMAGE_FALLBACK_REASONS } from "@veyyon/utils/image-fallback";

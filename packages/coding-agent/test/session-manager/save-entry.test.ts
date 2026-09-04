@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { CustomEntry } from "@veyyon/kernel/session/session-entries";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 
 describe("SessionManager.saveCustomEntry", () => {
 	it("saves custom entries and includes them in tree traversal", () => {

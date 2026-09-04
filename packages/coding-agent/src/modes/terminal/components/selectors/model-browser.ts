@@ -11,6 +11,7 @@ import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import { getModelPricing, modelsAreEqual } from "@veyyon/catalog/models";
+import type { ModelPerfStats } from "@veyyon/kernel/session/agent-storage";
 import { Ellipsis } from "@veyyon/natives";
 import { type Component, Input, ScrollView } from "@veyyon/tui";
 import { clampLow, formatNumber } from "@veyyon/utils";
@@ -23,7 +24,6 @@ import { resolveEffort, withLegacyDefaultEffort } from "../../../../config/effor
 import { getModelMatchPreferences, resolveModelRoleValue } from "../../../../config/model-resolver";
 import { DEFAULT_MODEL_SLOT, getKnownRoleIds, getRoleInfo, MODEL_ROLE_IDS } from "../../../../config/model-roles";
 import type { Settings } from "../../../../config/settings";
-import type { ModelPerfStats } from "../../../../session/agent-storage";
 import { type ThemeColor, theme } from "../../../../theme/theme";
 import { AUTO_THINKING, type ConfiguredThinkingLevel } from "../../../../thinking";
 import {

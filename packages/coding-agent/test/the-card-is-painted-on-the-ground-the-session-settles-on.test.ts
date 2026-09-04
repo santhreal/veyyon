@@ -47,7 +47,6 @@ import { readLaunchFacts, recordLaunchFacts, resetLaunchFactsForTest } from "@ve
 import { paintFirstFrame, takeFirstFrame } from "@veyyon/coding-agent/modes/terminal/first-frame";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import {
 	getVisibleGround,
 	groundHairlineHex,
@@ -57,6 +56,7 @@ import {
 } from "@veyyon/coding-agent/theme/ground-tints";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { setTerminalHeadless, TempDir } from "@veyyon/utils";
 import { OSC11_RESET_BACKGROUND_SEQUENCE, osc11SetBackgroundSequence } from "@veyyon/utils/paint-ground";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";

@@ -56,9 +56,9 @@ import { EventController } from "@veyyon/coding-agent/modes/terminal/controllers
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { UiHelpers } from "@veyyon/coding-agent/modes/terminal/utils/ui-helpers";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
-import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
+import type { SessionContext } from "@veyyon/kernel/session/session-context";
 import { stripAnsi } from "@veyyon/utils";
 
 const CALL_ID = "call-ghost";

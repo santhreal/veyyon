@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import { resolveBlobRefsInEntries } from "@veyyon/coding-agent/session/session-loader";
 import {
 	BlobStore,
 	externalizeImageDataSync,
@@ -9,6 +8,7 @@ import {
 	isTextBlobRef,
 } from "@veyyon/kernel/session/blob-store";
 import type { FileEntry } from "@veyyon/kernel/session/session-entries";
+import { resolveBlobRefsInEntries } from "@veyyon/kernel/session/session-loader";
 import { TempDir } from "@veyyon/utils";
 
 /**

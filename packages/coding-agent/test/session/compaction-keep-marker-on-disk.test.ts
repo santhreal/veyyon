@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
-import { buildSessionContext } from "@veyyon/coding-agent/session/session-context";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { buildSessionContext } from "@veyyon/kernel/session/session-context";
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { setAgentDir, TempDir } from "@veyyon/utils";
 import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 

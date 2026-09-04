@@ -18,9 +18,9 @@ import { kStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { UiHelpers } from "@veyyon/coding-agent/modes/terminal/utils/ui-helpers";
-import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
+import type { SessionContext } from "@veyyon/kernel/session/session-context";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { type Component, Container, Image, ImageProtocol, setTerminalImageProtocol, TERMINAL } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 

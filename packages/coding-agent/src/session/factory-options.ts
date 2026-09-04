@@ -10,6 +10,7 @@ import type { Model } from "@veyyon/ai";
 import type { HostNotifier } from "@veyyon/host";
 import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import type { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
+import type { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { ArgotSession } from "argot";
 import type { EffortSource } from "../config/effort-resolver";
 import type { ModelRegistry } from "../config/model-registry";
@@ -38,7 +39,6 @@ import type { WorkspaceTree } from "../workspace-tree";
 import type { AgentSession } from "./agent-session";
 import type { PlanYolo, Prewalk } from "./agent-session-types";
 import { discoverContextFiles } from "./factory-extensions";
-import type { SessionManager } from "./session-manager";
 
 export interface CreateAgentSessionOptions {
 	/** Working directory for project-local discovery. Default: getProjectDir() */

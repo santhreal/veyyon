@@ -42,9 +42,9 @@ import { resetLaunchFactsForTest } from "@veyyon/coding-agent/modes/launch-facts
 import { paintFirstFrame, takeFirstFrame } from "@veyyon/coding-agent/modes/terminal/first-frame";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { ProcessTerminal, type RenderRequestOptions, Text, TUI, type TUIStartOptions } from "@veyyon/tui";
 import { setTerminalHeadless, TempDir } from "@veyyon/utils";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";

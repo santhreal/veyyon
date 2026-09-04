@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { parseTurnBudget } from "@veyyon/coding-agent/session/turn-budget";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 
 describe("parseTurnBudget", () => {
 	it("parses k/m multipliers and decimals", () => {

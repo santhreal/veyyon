@@ -6,8 +6,8 @@ import { computeSessionStats } from "@veyyon/coding-agent/cli/session-stats";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 
 const tempDirs: TempDir[] = [];

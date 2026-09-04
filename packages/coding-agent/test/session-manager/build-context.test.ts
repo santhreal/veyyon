@@ -1,6 +1,6 @@
 import { describe, expect, it, spyOn } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
-import { buildSessionContext, getLatestCompactionEntry } from "@veyyon/coding-agent/session/session-context";
+import { buildSessionContext, getLatestCompactionEntry } from "@veyyon/kernel/session/session-context";
 import type {
 	BranchSummaryEntry,
 	CompactionEntry,

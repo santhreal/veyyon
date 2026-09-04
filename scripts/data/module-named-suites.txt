@@ -84,7 +84,6 @@ packages/coding-agent/src/modes/terminal/controllers/extension-ui-controller.tes
 packages/coding-agent/src/modes/terminal/session-teardown.test.ts
 packages/coding-agent/src/modes/terminal/utils/transcript-render-helpers.test.ts
 packages/coding-agent/src/session/messages.test.ts
-packages/coding-agent/src/session/session-context.test.ts
 packages/coding-agent/src/ssh/__tests__/sshfs-mount.test.ts
 packages/coding-agent/src/system-prompt-builder/banner-grammar.test.ts
 packages/coding-agent/src/system-prompt-builder/default-template.test.ts

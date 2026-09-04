@@ -228,8 +228,9 @@ describe("SQLITE_NOW_EPOCH", () => {
 	it("is imported by every module that builds SQL with it", async () => {
 		for (const key of [
 			"ai/src/auth-storage-sqlite.ts",
-			"coding-agent/src/session/agent-storage.ts",
-			// The session history store moved to the kernel with the rest of the session spine.
+			// The credential store and the session history store moved to the kernel with the rest of
+			// the session spine.
+			"kernel/src/session/agent-storage.ts",
 			"kernel/src/session/history-storage.ts",
 		]) {
 			const text = await readFile(memberFileOf(key), "utf8");

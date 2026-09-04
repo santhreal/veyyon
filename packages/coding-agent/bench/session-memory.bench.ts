@@ -20,7 +20,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { SessionManager } from "../src/session/session-manager";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 
 const TARGET_MB = Number(process.env.SESSION_MB ?? "32");
 const TOOL_OUTPUT_EVERY = 10;

@@ -39,8 +39,8 @@ import {
 	withInheritedBudgetGroup,
 } from "@veyyon/coding-agent/session/cpu-limit";
 import type { CreateAgentSessionOptions } from "@veyyon/coding-agent/session/factory-options";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { createSubagentSession } from "@veyyon/coding-agent/task/executor";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { Snowflake, setAgentDir, TempDir } from "@veyyon/utils";
 import { isolatedAuthStorage } from "./helpers/isolated-auth-storage";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";

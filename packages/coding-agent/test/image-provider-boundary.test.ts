@@ -8,7 +8,6 @@ import { buildModel } from "@veyyon/catalog/build";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { CustomToolContext } from "@veyyon/coding-agent/extensibility/custom-tools";
-import type { ReadonlySessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { InspectImageTool } from "@veyyon/coding-agent/tools/fs/inspect-image";
 import { imageGenTool, setPreferredImageProvider } from "@veyyon/coding-agent/tools/web/image-gen";
@@ -16,6 +15,7 @@ import {
 	type DescribeAttachedImagesDeps,
 	describeAttachedImagesForTextModel,
 } from "@veyyon/coding-agent/utils/image-vision-fallback";
+import type { ReadonlySessionManager } from "@veyyon/kernel/session/session-manager";
 import { removeWithRetries } from "@veyyon/utils";
 
 const TINY_PNG = Uint8Array.fromBase64(

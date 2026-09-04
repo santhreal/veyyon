@@ -13,7 +13,6 @@
  */
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import type { AuthStorage, FetchImpl } from "@veyyon/ai";
-import type { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { ToolAbortError } from "@veyyon/coding-agent/tools/core/tool-errors";
 import { WebSearchTool } from "@veyyon/coding-agent/tools/web/search";
@@ -22,6 +21,7 @@ import { searchAnthropic } from "@veyyon/coding-agent/tools/web/search/providers
 import type { SearchParams } from "@veyyon/coding-agent/tools/web/search/providers/base";
 import { searchBrave } from "@veyyon/coding-agent/tools/web/search/providers/brave";
 import type { SearchProviderId, SearchResponse } from "@veyyon/coding-agent/tools/web/search/types";
+import type { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import { useIsolatedAgentDir } from "../../../helpers/isolated-agent-dir";
 import { makeToolSession } from "../../../helpers/tool-session";

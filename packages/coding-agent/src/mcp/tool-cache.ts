@@ -3,8 +3,9 @@
  *
  * Stores tool definitions per server in agent.db for fast startup.
  */
+
+import type { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import { DAY_MS, isRecord, logger } from "@veyyon/utils";
-import type { AgentStorage } from "../session/agent-storage";
 import type { MCPServerConfig, MCPToolDefinition } from "./types";
 
 const CACHE_VERSION = 1;

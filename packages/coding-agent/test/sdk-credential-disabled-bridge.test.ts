@@ -12,7 +12,7 @@ import { ExtensionRuntime } from "@veyyon/coding-agent/extensibility/extensions/
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { SecretAuditLog } from "@veyyon/coding-agent/secrets/audit";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { postmortem, removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { useIsolatedConfigRoot } from "./helpers/isolated-agent-dir";
 

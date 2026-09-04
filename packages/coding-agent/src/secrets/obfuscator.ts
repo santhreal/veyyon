@@ -2,10 +2,10 @@ import * as crypto from "node:crypto";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, Context, ImageContent, Message, TextContent, Tool } from "@veyyon/ai";
 import { toolWireSchema } from "@veyyon/ai/utils/schema";
+import type { SessionContext } from "@veyyon/kernel/session/session-context";
 import { isWellFormedUtf16, utf8ByteLength } from "@veyyon/utils/string-length";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { type JsonWithOptionalFields, mapJsonStrings } from "../json-transform";
-import type { SessionContext } from "../session/session-context";
 import {
 	buildNamePlaceholder,
 	buildValuePlaceholder,

@@ -10,8 +10,8 @@
  */
 
 import type { AgentMessage } from "@veyyon/agent-core";
+import type { SessionContext } from "@veyyon/kernel/session/session-context";
 import type { Component } from "@veyyon/tui";
-import type { SessionContext } from "../../../session/session-context";
 import type { ToolExecutionHandle } from "../components/transcript/tool-execution";
 import type { TranscriptContainer } from "../components/transcript/transcript-container";
 import type { SubmittedUserInput } from "../types";

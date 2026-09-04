@@ -34,6 +34,7 @@ import type { HostView } from "@veyyon/kernel/registry/host-view";
 import type * as TypeBox from "@veyyon/kernel/registry/typebox";
 import type { ExtensionWidgetContent, ExtensionWidgetOptions } from "@veyyon/kernel/registry/widget";
 import type { CompactMode } from "@veyyon/kernel/session/compact-modes";
+import type { ReadonlySessionManager, SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { logger as PiLogger } from "@veyyon/utils";
 import type { AutocompleteItem, AutocompleteProvider } from "@veyyon/utils/autocomplete";
 import type { KeyId } from "@veyyon/utils/keys";
@@ -49,7 +50,6 @@ import type * as PiCodingAgent from "../../index";
 import type { LocalProtocolOptions } from "../../internal-urls/local-protocol";
 import type { MemoryRuntimeContext } from "../../memory/backend";
 import type { CustomMessage, CustomMessagePayload } from "../../session/messages";
-import type { ReadonlySessionManager, SessionManager } from "../../session/session-manager";
 import type { Theme } from "../../theme/theme";
 import type {
 	BashToolDetails,

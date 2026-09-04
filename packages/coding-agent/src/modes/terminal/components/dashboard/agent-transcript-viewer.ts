@@ -22,6 +22,7 @@
 import * as fs from "node:fs";
 import type { AgentTool } from "@veyyon/agent-core";
 import type { FileEntry, SessionMessageEntry } from "@veyyon/kernel/session/session-entries";
+import { parseSessionEntries } from "@veyyon/kernel/session/session-loader";
 import { type Component, Editor, ScrollView, type TUI } from "@veyyon/tui";
 import { errorMessage, formatContextUsage, formatDuration, formatNumber, logger } from "@veyyon/utils";
 import { matchesKey } from "@veyyon/utils/keys";
@@ -30,7 +31,6 @@ import type { KeyId } from "../../../../config/keybindings";
 import type { MessageRenderer } from "../../../../extensibility/extensions/types";
 import type { AgentLifecycleManager } from "../../../../registry/agent-lifecycle";
 import type { AgentRegistry } from "../../../../registry/agent-registry";
-import { parseSessionEntries } from "../../../../session/session-loader";
 import { getEditorTheme, theme } from "../../../../theme/theme";
 import { replaceTabs, shortenPath, truncateToWidth } from "../../../../tools/core/render-utils";
 import type { ObservableSession, SessionObserverRegistry } from "../../session-observer-registry";

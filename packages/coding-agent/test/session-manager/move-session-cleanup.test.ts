@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { cleanupEmptyMoveSession, SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { cleanupEmptyMoveSession, SessionManager } from "@veyyon/kernel/session/session-manager";
 import { setAgentDir } from "@veyyon/utils";
 import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 import { makeAssistantMessage } from "./helpers";

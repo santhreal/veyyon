@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { removeWithRetries } from "@veyyon/utils";
 import { guardDestructivePath } from "../../../utils/test/helpers/destructive-guard";
 import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";

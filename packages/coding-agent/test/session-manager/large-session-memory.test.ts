@@ -3,9 +3,9 @@ import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getBundledModel } from "@veyyon/catalog/models";
-import { loadEntriesFromFile } from "@veyyon/coding-agent/session/session-loader";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { listSessions } from "@veyyon/kernel/session/session-listing";
+import { loadEntriesFromFile } from "@veyyon/kernel/session/session-loader";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { MemorySessionStorage } from "@veyyon/kernel/session/session-storage";
 
 class CountingMemorySessionStorage extends MemorySessionStorage {

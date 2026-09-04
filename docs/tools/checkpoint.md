@@ -7,7 +7,7 @@
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/checkpoint.md`
 - Key collaborators:
   - `packages/coding-agent/src/session/agent-session.ts`: captures the active checkpoint after tool success.
-  - `packages/coding-agent/src/session/session-manager.ts`: persists the normal session entry stream; not the active checkpoint marker.
+  - `kernel/src/session/session-manager.ts`: persists the normal session entry stream; not the active checkpoint marker.
   - `packages/coding-agent/src/tools/index.ts`: registers the tool and gates it behind `checkpoint.enabled`.
   - `packages/coding-agent/src/config/settings-domains/tools.ts`: defines the disabled-by-default feature flag.
 
@@ -80,4 +80,4 @@ You are in an active checkpoint. You MUST call rewind with your investigation fi
   - artifacts
   - blob-store contents
   - SQLite history rows from `kernel/src/session/history-storage.ts`
-  - auth or agent records from `packages/coding-agent/src/session/agent-storage.ts`
+  - auth or agent records from `kernel/src/session/agent-storage.ts`

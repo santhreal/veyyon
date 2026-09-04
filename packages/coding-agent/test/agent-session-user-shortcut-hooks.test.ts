@@ -8,8 +8,8 @@ import * as pythonExecutor from "@veyyon/coding-agent/eval/py/executor";
 import * as bashExecutor from "@veyyon/coding-agent/exec/bash-executor";
 import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 import { useIsolatedGlobalSettings } from "./helpers/isolated-global-settings";
 

@@ -30,11 +30,11 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { cwdEscapingTargets, searchPathFilesystemTargets } from "@veyyon/coding-agent/tools/core/cwd-boundary";
 import { parseApprovalPathList } from "@veyyon/coding-agent/tools/core/path-utils";
 import { SearchTool, searchSchema } from "@veyyon/coding-agent/tools/search/search";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { Snowflake } from "@veyyon/utils";
 
 describe("JSON-encoded and delimited search paths enforce cwd boundary", () => {

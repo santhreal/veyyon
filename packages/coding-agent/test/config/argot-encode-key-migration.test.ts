@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { buildArgotGate } from "@veyyon/coding-agent/argot-wire";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
+import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import { getProjectAgentDir, TempDir } from "@veyyon/utils";
 import { shouldEncode } from "argot";
 import { YAML } from "bun";

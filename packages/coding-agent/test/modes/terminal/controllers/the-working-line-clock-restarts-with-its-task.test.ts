@@ -17,10 +17,10 @@
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
+import type { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { Container, type Loader, type TUI } from "@veyyon/tui";
 import { Text } from "@veyyon/tui/components/text";
 import { WorkingLoaderController } from "../../../../src/modes/terminal/controllers/working-loader";
-import type { SessionManager } from "../../../../src/session/session-manager";
 import { initTheme } from "../../../../src/theme/theme";
 
 beforeAll(async () => {

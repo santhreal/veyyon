@@ -45,6 +45,7 @@ import { BlobStore, resolveImageDataSync } from "@veyyon/kernel/session/blob-sto
 import { abortDetached } from "@veyyon/kernel/session/detached-abort";
 import type { UsageStatistics } from "@veyyon/kernel/session/session-entries";
 import type { SessionInfo as StoredSessionInfo } from "@veyyon/kernel/session/session-listing";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { clampLow, getBlobsDir, isEnoent, logger, VERSION } from "@veyyon/utils";
 import { Settings } from "../../config/settings";
 import { disableProvider, enableProvider, reset as resetCapabilities } from "../../discovery/capability";
@@ -70,7 +71,6 @@ import { resolvePlanFilePath } from "../../plan-mode/plan-path";
 import type { AgentSession } from "../../session/agent-session";
 import type { AgentSessionEvent } from "../../session/agent-session-types";
 import { isSilentAbort, SKILL_PROMPT_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "../../session/messages";
-import { SessionManager } from "../../session/session-manager";
 import { executeAcpBuiltinSlashCommand } from "../../slash-commands/acp-builtins";
 import { buildAvailableSlashCommands, toAcpAvailableCommands } from "../../slash-commands/available-commands";
 import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS } from "../../speech/stt/models";

@@ -1,11 +1,32 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ImageContent, Message, MessageAttribution, ServiceTierByFamily, TextContent, Usage } from "@veyyon/ai";
+import type { AgentMessage } from "@veyyon/agent-core";
+import type { BranchSummaryMessage, CompactionSummaryMessage } from "@veyyon/agent-core/compaction/messages";
+import type { ImageContent, MessageAttribution, ServiceTierByFamily, TextContent, Usage } from "@veyyon/ai";
 import { allowsSessionTelemetry, type InstrumentationLevel } from "@veyyon/ai/instrumentation";
-import { ArtifactManager } from "@veyyon/kernel/session/artifacts";
-import { type BlobPutOptions, type BlobPutResult, BlobStore } from "@veyyon/kernel/session/blob-store";
-import { SESSION_EXIT_CUSTOM_TYPE } from "@veyyon/kernel/session/exit-diagnostics";
-import type { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
+import {
+	directoryExists,
+	errorMessage,
+	getBlobsDir,
+	getProjectDir,
+	getSessionsDir,
+	isEnoent,
+	logger,
+	stringifyJson,
+	toError,
+} from "@veyyon/utils";
+import { pathStateSync } from "@veyyon/utils/fs-optional";
+import { sessionFileName, sessionFileStem } from "@veyyon/utils/session-file";
+import { ArtifactManager } from "./artifacts";
+import { type BlobPutOptions, type BlobPutResult, BlobStore } from "./blob-store";
+import {
+	normalizeCustomMessagePayload,
+	sanitizeRehydratedOpenAIResponsesAssistantMessage,
+	stripInternalDetailsFields,
+} from "./custom-message-payload";
+import { SESSION_EXIT_CUSTOM_TYPE } from "./exit-diagnostics";
+import type { OperatorNotices } from "./operator-notices";
+import { type BuildSessionContextOptions, buildSessionContext, type SessionContext } from "./session-context";
 import {
 	type BranchSummaryEntry,
 	type CompactionEntry,
@@ -39,21 +60,17 @@ import {
 	type TitleChangeEntry,
 	type TtsrInjectionEntry,
 	type UsageStatistics,
-} from "@veyyon/kernel/session/session-entries";
-import {
-	findMostRecentSession,
-	listAllSessions,
-	listSessions,
-	type SessionInfo,
-} from "@veyyon/kernel/session/session-listing";
-import { generateId, migrateToCurrentVersion } from "@veyyon/kernel/session/session-migrations";
+} from "./session-entries";
+import { findMostRecentSession, listAllSessions, listSessions, type SessionInfo } from "./session-listing";
+import { loadEntriesFromFile, readTitleSlotFromFile, resolveBlobRefsInEntries } from "./session-loader";
+import { generateId, migrateToCurrentVersion } from "./session-migrations";
 import {
 	computeDefaultSessionDir,
 	readTerminalBreadcrumbEntry,
 	resolveManagedSessionRoot,
 	writeTerminalBreadcrumb,
-} from "@veyyon/kernel/session/session-paths";
-import { prepareEntryForPersistence } from "@veyyon/kernel/session/session-persistence";
+} from "./session-paths";
+import { prepareEntryForPersistence } from "./session-persistence";
 import {
 	FileSessionStorage,
 	MemorySessionStorage,
@@ -61,33 +78,8 @@ import {
 	type SessionStorage,
 	type SessionStorageStat,
 	type SessionStorageWriter,
-} from "@veyyon/kernel/session/session-storage";
-import { type SessionTitleUpdate, serializeTitleSlot } from "@veyyon/kernel/session/session-title-slot";
-import {
-	directoryExists,
-	errorMessage,
-	getBlobsDir,
-	getProjectDir,
-	getSessionsDir,
-	isEnoent,
-	logger,
-	stringifyJson,
-	toError,
-} from "@veyyon/utils";
-import { pathStateSync } from "@veyyon/utils/fs-optional";
-import { sessionFileName, sessionFileStem } from "@veyyon/utils/session-file";
-import {
-	type BashExecutionMessage,
-	type CustomMessage,
-	type FileMentionMessage,
-	type HookMessage,
-	normalizeCustomMessagePayload,
-	type PythonExecutionMessage,
-	sanitizeRehydratedOpenAIResponsesAssistantMessage,
-	stripInternalDetailsFields,
-} from "./messages";
-import { type BuildSessionContextOptions, buildSessionContext, type SessionContext } from "./session-context";
-import { loadEntriesFromFile, readTitleSlotFromFile, resolveBlobRefsInEntries } from "./session-loader";
+} from "./session-storage";
+import { type SessionTitleUpdate, serializeTitleSlot } from "./session-title-slot";
 
 const DRAFT_ONLY_SESSION_MARKER = ".draft-only-session";
 
@@ -2337,15 +2329,7 @@ export class SessionManager {
 	 * CompactionSummaryMessage / BranchSummaryMessage are rejected here — they are
 	 * top-level entries via appendCompaction()/branchWithSummary().
 	 */
-	appendMessage(
-		message:
-			| Message
-			| CustomMessage
-			| HookMessage
-			| BashExecutionMessage
-			| PythonExecutionMessage
-			| FileMentionMessage,
-	): string {
+	appendMessage(message: Exclude<AgentMessage, BranchSummaryMessage | CompactionSummaryMessage>): string {
 		const entry: SessionMessageEntry = { type: "message", ...this.#freshEntryFields(), message };
 		this.#recordEntry(entry);
 		return entry.id;

@@ -7,9 +7,9 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { getProjectAgentDir, TempDir } from "@veyyon/utils";
 
 describe("AgentSession advisor toggle", () => {

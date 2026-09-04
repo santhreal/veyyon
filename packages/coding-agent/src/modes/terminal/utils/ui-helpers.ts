@@ -1,6 +1,7 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent, Message, Usage } from "@veyyon/ai";
 import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
+import type { SessionContext, StrippedToolCallsMarker } from "@veyyon/kernel/session/session-context";
 import { type Component, Spacer, Text, TruncatedText } from "@veyyon/tui";
 import { APP_NAME, errorMessage, formatCount } from "@veyyon/utils";
 import type { AdvisorMessageDetails } from "../../../advisor";
@@ -14,7 +15,6 @@ import {
 	SKILL_PROMPT_MESSAGE_TYPE,
 	type SkillPromptDetails,
 } from "../../../session/messages";
-import type { SessionContext, StrippedToolCallsMarker } from "../../../session/session-context";
 import { theme } from "../../../theme/theme";
 import { replaceTabs } from "../../../tools/core/render-utils";
 import { createAdvisorMessageCard } from "../components/transcript/advisor-message";

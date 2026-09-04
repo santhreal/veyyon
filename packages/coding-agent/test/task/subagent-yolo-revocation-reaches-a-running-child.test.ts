@@ -33,9 +33,9 @@ import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { runSubprocess } from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 import { createMockSession, createSessionResult, yieldSuccessEvent } from "../helpers/subagent-session";
 

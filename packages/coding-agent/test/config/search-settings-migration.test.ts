@@ -6,7 +6,7 @@ import {
 	getAllSettingDefs,
 	invalidateSettingDefsCache,
 } from "@veyyon/coding-agent/modes/terminal/components/selectors/settings-defs";
-import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
+import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import { getProjectAgentDir, TempDir } from "@veyyon/utils";
 import { YAML } from "bun";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";

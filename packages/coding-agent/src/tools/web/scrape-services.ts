@@ -1,8 +1,8 @@
+import type { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import type { DocumentConversion, ScrapeServices } from "@veyyon/web/scrapers/types";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../config/settings-instance";
-import type { AgentStorage } from "../../session/agent-storage";
 import { primarySessionCpuAdoption } from "../../session/cpu-limit";
 import { convertBufferWithMarkit } from "../../utils/markit";
 import { ensureTool, type ToolName } from "../../utils/tools-manager";

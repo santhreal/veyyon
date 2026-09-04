@@ -2,7 +2,7 @@
  * Contracts for the session-transcript naming rules: one extension, one advisor stem, and helpers that mean
  * what their names say.
  *
- * WHY THIS SUITE EXISTS. The extension is a WRITER-AND-SCANNER contract. `session/session-manager.ts` builds
+ * WHY THIS SUITE EXISTS. The extension is a WRITER-AND-SCANNER contract. `kernel/src/session/session-manager.ts` builds
  * `<timestamp>_<id>.jsonl`; `session/session-listing.ts`, `cli/gc-cli.ts`, `export/html`, `debug/report-bundle.ts`,
  * `registry/persisted-subagents.ts`, `internal-urls/registry-helpers.ts` and `@veyyon/stats`'s parser all
  * DISCOVER transcripts by matching it. It was spelled inline at dozens of sites in four packages, plus three
@@ -296,6 +296,7 @@ describe("the naming module has one owner", () => {
 	it("declares the extension nowhere else in the session and stats paths", async () => {
 		const repoRoot = path.resolve(import.meta.dir, "../../..");
 		const scanned = [
+			"kernel/src/session",
 			"packages/coding-agent/src/session",
 			"packages/coding-agent/src/advisor",
 			"packages/coding-agent/src/internal-urls",
@@ -327,7 +328,7 @@ describe("the naming module has one owner", () => {
 	it("has the writer and the scanners importing the owner", async () => {
 		const repoRoot = path.resolve(import.meta.dir, "../../..");
 		for (const file of [
-			"packages/coding-agent/src/session/session-manager.ts",
+			"kernel/src/session/session-manager.ts",
 			"kernel/src/session/session-listing.ts",
 			"packages/coding-agent/src/cli/gc-cli.ts",
 			"apps/stats/src/parser.ts",

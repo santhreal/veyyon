@@ -12,7 +12,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { TOOL_DISCOVERY_AUTO_THRESHOLD } from "@veyyon/coding-agent/discovery/mode";
 import type { CustomTool } from "@veyyon/coding-agent/extensibility/custom-tools/types";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { type } from "arktype";
 

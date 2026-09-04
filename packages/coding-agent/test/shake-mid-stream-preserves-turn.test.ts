@@ -9,10 +9,10 @@ import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { HistoryStorage } from "@veyyon/kernel/session/history-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 import { createToolExecution } from "./helpers/tool-execution";
 

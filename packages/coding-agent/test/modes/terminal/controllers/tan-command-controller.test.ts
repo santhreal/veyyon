@@ -8,7 +8,7 @@ import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
 import * as sdkModule from "@veyyon/coding-agent/sdk";
 import type { CreateAgentSessionResult } from "@veyyon/coding-agent/session/factory-options";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 
 interface CapturedJobRunContext {

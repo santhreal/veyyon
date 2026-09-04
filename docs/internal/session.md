@@ -18,12 +18,12 @@ Does not cover `/tree` UI rendering behavior beyond semantics that affect sessio
 
 ## Implementation Files
 
-- [`src/session/session-manager.ts`](../../packages/coding-agent/src/session/session-manager.ts): orchestration: tree/leaf, appends, persistence, blobs, lifecycle factories
+- [`kernel/src/session/session-manager.ts`](../../kernel/src/session/session-manager.ts): orchestration: tree/leaf, appends, persistence, blobs, lifecycle factories
 - [`kernel/src/session/session-entries.ts`](../../kernel/src/session/session-entries.ts): entry/header types, `SessionEntry` union, `CURRENT_SESSION_VERSION`
 - [`kernel/src/session/session-migrations.ts`](../../kernel/src/session/session-migrations.ts): version migrations
-- [`src/session/session-loader.ts`](../../packages/coding-agent/src/session/session-loader.ts): file load + blob-ref resolution
+- [`kernel/src/session/session-loader.ts`](../../kernel/src/session/session-loader.ts): file load + blob-ref resolution
 - [`kernel/src/session/session-entry-shape.ts`](../../kernel/src/session/session-entry-shape.ts): the shape check every decoded record passes before it is treated as a `FileEntry`
-- [`src/session/session-context.ts`](../../packages/coding-agent/src/session/session-context.ts): `buildSessionContext`
+- [`kernel/src/session/session-context.ts`](../../kernel/src/session/session-context.ts): `buildSessionContext`
 - [`kernel/src/session/session-persistence.ts`](../../kernel/src/session/session-persistence.ts): large-text + image blob externalization, transient-field stripping
 - [`kernel/src/session/session-title-slot.ts`](../../kernel/src/session/session-title-slot.ts): fixed-width title-slot serialization/parsing
 - [`kernel/src/session/session-paths.ts`](../../kernel/src/session/session-paths.ts): on-disk layout, dir encoding, terminal breadcrumbs

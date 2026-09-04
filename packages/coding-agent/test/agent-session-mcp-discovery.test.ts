@@ -9,8 +9,8 @@ import { Effort } from "@veyyon/catalog/effort";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { CustomTool } from "@veyyon/coding-agent/extensibility/custom-tools/types";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { OutputMeta } from "@veyyon/coding-agent/tools/core/output-meta";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { removeSyncWithRetries } from "@veyyon/utils";
 import { type } from "arktype";
 

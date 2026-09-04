@@ -37,7 +37,6 @@ import {
 	SessionObserverRegistry,
 } from "@veyyon/coding-agent/modes/terminal/session-observer-registry";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import {
 	type AgentProgress,
 	type SubagentLifecyclePayload,
@@ -48,6 +47,7 @@ import {
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 

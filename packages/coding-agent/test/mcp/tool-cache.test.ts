@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { MCPToolCache } from "@veyyon/coding-agent/mcp/tool-cache";
 import type { MCPServerConfig, MCPToolDefinition } from "@veyyon/coding-agent/mcp/types";
-import type { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
+import type { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import { DAY_MS } from "@veyyon/utils";
 
 /**

@@ -14,10 +14,10 @@ import {
 	INTERRUPTED_THINKING_MESSAGE_TYPE,
 	USER_INTERRUPT_LABEL,
 } from "@veyyon/coding-agent/session/messages";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 
 const REASONING_TEXT = "I have partly reasoned through the implementation and should preserve this.";

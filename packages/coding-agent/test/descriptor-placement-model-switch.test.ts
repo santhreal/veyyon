@@ -8,7 +8,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { estimateToolSchemaTokens } from "@veyyon/coding-agent/session/non-message-tokens";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { estimateTokensFromText, TempDir } from "@veyyon/utils";
 
 function bundledModel(provider: string, id: string): Model<Api> {

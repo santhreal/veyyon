@@ -7,6 +7,7 @@ import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai/registry/derived";
 import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome } from "@veyyon/kernel/session/auth-storage";
 import type { SessionInfo } from "@veyyon/kernel/session/session-listing";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import { type Component, Loader, type OverlayHandle, Spacer, Text } from "@veyyon/tui";
 import { errorMessage, getActiveAuthDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/utils";
@@ -41,7 +42,6 @@ import {
 	loadAccountInventory,
 } from "../../../session/account-inventory";
 import { BackgroundSessions } from "../../../session/background-sessions";
-import { SessionManager } from "../../../session/session-manager";
 import { formatProviderName } from "../../../slash-commands/helpers/format";
 import {
 	describeRedeemOutcome,

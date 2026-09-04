@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { SessionStatus } from "@veyyon/kernel/session/session-listing";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { MemorySessionStorage } from "@veyyon/kernel/session/session-storage";
 
 const SESSION_DIR = "/sessions/status-proj";

@@ -22,7 +22,7 @@ import {
 	type SettingPath,
 	Settings,
 } from "@veyyon/coding-agent/config/settings";
-import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
+import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import { getProjectAgentDir, logger, TempDir } from "@veyyon/utils";
 import { YAML } from "bun";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";

@@ -9,11 +9,11 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { CreateAgentSessionResult } from "@veyyon/coding-agent/session/factory-options";
-import { getRestorableSessionModels } from "@veyyon/coding-agent/session/session-context";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { getRestorableSessionModels } from "@veyyon/kernel/session/session-context";
 import { EPHEMERAL_MODEL_CHANGE_ROLE } from "@veyyon/kernel/session/session-entries";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 
 describe("AgentSession model persistence", () => {

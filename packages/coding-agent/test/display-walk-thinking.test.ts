@@ -25,7 +25,7 @@ import { describe, expect, it } from "bun:test";
 import type { AssistantMessage } from "@veyyon/ai";
 import { expandAssistantContent, expandSessionContext } from "@veyyon/coding-agent/argot-wire";
 import { deobfuscateAssistantContent, SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
-import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
+import type { SessionContext } from "@veyyon/kernel/session/session-context";
 import { ArgotSession, type Vocabulary } from "argot";
 
 const SECRET = "sk-live-9f3a7c21b8e4";

@@ -3,13 +3,13 @@
  */
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { CredentialDisabledEvent, ImageContent, Model, ProviderResponseMetadata } from "@veyyon/ai";
+import type { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { errorMessage, logger } from "@veyyon/utils";
 import type { KeyId } from "@veyyon/utils/keys";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
 import type { LocalProtocolOptions } from "../../internal-urls/local-protocol";
 import type { MemoryRuntimeContext } from "../../memory/backend";
-import type { SessionManager } from "../../session/session-manager";
 import { type Theme, theme } from "../../theme/theme";
 import type { BranchHandler, NavigateTreeHandler, NewSessionHandler } from "../session-handler-types";
 import { createExtensionModelQuery } from "./model-api";

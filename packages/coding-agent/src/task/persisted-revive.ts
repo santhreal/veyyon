@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { ModelRegistry } from "../config/model-registry";
 import type { Settings } from "../config/settings";
 import { mcpManagerInstance } from "../mcp/manager-instance";
@@ -9,7 +10,6 @@ import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 // static import of `../sdk`, the composition root, is what put this module in a
 // 54-module cycle.
 import type { AgentSession } from "../session/agent-session";
-import { SessionManager } from "../session/session-manager";
 import { createMCPProxyTools, createSubagentSettingsForCwd } from "./executor";
 
 /**

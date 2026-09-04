@@ -33,9 +33,9 @@ import { TODO_BOARD_FRAME_DIVISOR } from "@veyyon/coding-agent/modes/terminal/co
 import { RAIL_IDLE_STEP_MS } from "@veyyon/coding-agent/modes/terminal/draw/rail-motion";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme, stopThemeWatcher, theme } from "@veyyon/coding-agent/theme/theme";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 import { VirtualTerminal } from "../../../../../../../hosts/terminal/engine/test/virtual-terminal";

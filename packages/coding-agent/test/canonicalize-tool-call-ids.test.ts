@@ -15,7 +15,6 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import {
 	allocateCanonicalToolCallId,
@@ -23,6 +22,7 @@ import {
 	resolveCanonicalToolCallId,
 	type ToolCallIdMap,
 } from "@veyyon/kernel/session/canonicalize-tool-call-ids";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
 import { type } from "arktype";
 

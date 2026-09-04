@@ -23,7 +23,7 @@ Does not cover:
 - [`../src/modes/terminal/controllers/command-controller.ts`](../../packages/coding-agent/src/modes/terminal/controllers/command-controller.ts)
 - [`../src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts)
 - [`packages/agent/src/compaction/compaction.ts`](../../packages/agent/src/compaction/compaction.ts)
-- [`../src/session/session-manager.ts`](../../packages/coding-agent/src/session/session-manager.ts)
+- [`kernel/src/session/session-manager.ts`](../../kernel/src/session/session-manager.ts)
 - [`../src/slash-commands/builtin-registry.ts`](../../packages/coding-agent/src/slash-commands/builtin-registry.ts)
 
 ## Trigger path

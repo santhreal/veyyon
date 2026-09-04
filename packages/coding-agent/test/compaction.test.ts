@@ -17,7 +17,7 @@ import {
 import * as ai from "@veyyon/ai";
 import type { AssistantMessage, Model, Usage } from "@veyyon/ai/types";
 import { getBundledModel } from "@veyyon/catalog/models";
-import { buildSessionContext } from "@veyyon/coding-agent/session/session-context";
+import { buildSessionContext } from "@veyyon/kernel/session/session-context";
 import type {
 	CompactionEntry,
 	ModelChangeEntry,

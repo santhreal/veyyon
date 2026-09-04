@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { readLegacyAgentDbSettings } from "@veyyon/coding-agent/config/legacy-agent-db-settings";
-import { AgentStorage, SCHEMA_VERSION } from "@veyyon/coding-agent/session/agent-storage";
+import { AgentStorage, SCHEMA_VERSION } from "@veyyon/kernel/session/agent-storage";
 import { TempDir } from "@veyyon/utils";
 import { readTableSql } from "./helpers/sqlite-inspect";
 

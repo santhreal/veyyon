@@ -6,7 +6,7 @@ It focuses on current implementation behavior, including fallback paths and cave
 
 ## Implementation files
 
-- [`../src/session/session-manager.ts`](../../packages/coding-agent/src/session/session-manager.ts)
+- [`kernel/src/session/session-manager.ts`](../../kernel/src/session/session-manager.ts)
 - [`kernel/src/session/session-listing.ts`](../../kernel/src/session/session-listing.ts)
 - [`kernel/src/session/session-paths.ts`](../../kernel/src/session/session-paths.ts)
 - [`../src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts)

@@ -167,6 +167,7 @@ import {
 	TRUNCATION_KEEP_EDGE_TOKENS,
 	TRUNCATION_MIN_TEXT_TOKENS,
 } from "@veyyon/kernel/session/agent-session-compaction-policy";
+import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import type { ClientBridge, ClientBridgePermissionOutcome } from "@veyyon/kernel/session/client-bridge";
 import { findCompactMode } from "@veyyon/kernel/session/compact-modes";
@@ -191,12 +192,19 @@ import {
 	unreplayableContinueDelayMs,
 } from "@veyyon/kernel/session/retry-policy";
 import {
+	type BuildSessionContextOptions,
+	getLatestCompactionEntry,
+	getRestorableSessionModels,
+	type SessionContext,
+} from "@veyyon/kernel/session/session-context";
+import {
 	type BranchSummaryEntry,
 	type CompactionEntry,
 	EPHEMERAL_MODEL_CHANGE_ROLE,
 	type NewSessionOptions,
 	type SessionEntry,
 } from "@veyyon/kernel/session/session-entries";
+import { cleanupEmptyMoveSession, type SessionManager } from "@veyyon/kernel/session/session-manager";
 import {
 	isAwaitingUserAnswer,
 	mayContinueAtSettle,
@@ -311,7 +319,6 @@ import {
 import { AFTER_EDIT_CHECKS } from "../config/settings-domains/editing";
 import { RawSseDebugBuffer } from "../debug/raw-sse-buffer";
 import { loadCapability, reset as resetCapabilities } from "../discovery/capability";
-
 import { clearClaudePluginRootsCache } from "../discovery/helpers";
 import { countToolsForAutoDiscovery, resolveEffectiveToolDiscoveryMode } from "../discovery/mode";
 import {
@@ -540,7 +547,6 @@ import {
 	SHUTDOWN_DISPOSE_TIMEOUT_MS,
 	TOOL_SHAPE_SETTING_PATHS,
 } from "./agent-session-types";
-import { AgentStorage } from "./agent-storage";
 import {
 	type CodexAutoRedeemRedeemDecision,
 	defaultCodexAutoRedeemCoordinator,
@@ -548,7 +554,6 @@ import {
 	shouldEvaluateCodexAutoRedeem,
 	shouldPromptCodexAutoRedeem,
 } from "./codex-auto-reset";
-
 // The accounting, not the drawing. Both of these used to be imported from `modes/`, which put the
 // terminal UI on the session engine's graph and cost the layering gate a standing exception each.
 import { buildContextSnapshot, computeStoredMessagesTokens, estimateContextSnapshotAttribution } from "./context-usage";
@@ -602,15 +607,8 @@ import {
 import { ThinkingRuntime } from "./runtime/thinking-runtime";
 import { TodoRuntime } from "./runtime/todo-runtime";
 import { TtsrRuntime } from "./runtime/ttsr-runtime";
-import {
-	type BuildSessionContextOptions,
-	getLatestCompactionEntry,
-	getRestorableSessionModels,
-	type SessionContext,
-} from "./session-context";
 import { formatSessionDumpText } from "./session-dump-format";
 import { formatSessionHistoryMarkdown } from "./session-history-format";
-import { cleanupEmptyMoveSession, type SessionManager } from "./session-manager";
 import { parseTurnBudgetDirective } from "./turn-budget";
 import { planTurnPersistence, sameMessageContent, sessionMessagePersistenceKey } from "./turn-persistence";
 import { classifyUnexpectedStop, isUnexpectedStopCandidate } from "./unexpected-stop-classifier";

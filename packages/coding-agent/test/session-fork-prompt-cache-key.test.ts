@@ -11,9 +11,9 @@ import { buildSessionOptions } from "@veyyon/coding-agent/main";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { CreateAgentSessionOptions } from "@veyyon/coding-agent/session/factory-options";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { CURRENT_SESSION_VERSION, type SessionHeader } from "@veyyon/kernel/session/session-entries";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 
 const OPENAI_TEST_MODEL = getBundledModel("openai", "gpt-4o-mini");

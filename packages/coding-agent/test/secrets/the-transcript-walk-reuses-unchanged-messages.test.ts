@@ -28,7 +28,7 @@ import {
 	mapAgentMessageStrings,
 	SecretObfuscator,
 } from "@veyyon/coding-agent/secrets/obfuscator";
-import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
+import type { SessionContext } from "@veyyon/kernel/session/session-context";
 
 const SECRET = "WALK_IDENTITY_SECRET_TOKEN_9182";
 

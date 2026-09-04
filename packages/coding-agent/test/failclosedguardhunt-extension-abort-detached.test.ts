@@ -48,7 +48,7 @@ import { ExtensionUiController } from "@veyyon/coding-agent/modes/terminal/contr
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { USER_INTERRUPT_LABEL } from "@veyyon/coding-agent/session/messages";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { logger } from "@veyyon/utils";
 
 /** One captured `logger.warn` call. */

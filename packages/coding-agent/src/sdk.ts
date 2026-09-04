@@ -15,9 +15,12 @@ import {
 	prewarmOpenAICodexResponses,
 } from "@veyyon/ai/providers/openai-codex-responses";
 import type { HostNotifier } from "@veyyon/host";
+import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import { abortDetached } from "@veyyon/kernel/session/detached-abort";
 import { createInterruptedTurnAbortMessage } from "@veyyon/kernel/session/exit-diagnostics";
 import { OperatorNotices, stderrNoticeSink } from "@veyyon/kernel/session/operator-notices";
+import { getRestorableSessionModels } from "@veyyon/kernel/session/session-context";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import {
 	attachFaultSink,
 	errorMessage,
@@ -141,12 +144,9 @@ import { secretSpendMarker } from "./secrets/spend-marker";
 import { resolveVaultLocations, type ScopedVaultEntry, SecretVault, vaultPathFor } from "./secrets/vault";
 import { loadOrCreateVaultKey } from "./secrets/vault-crypto";
 import { AgentSession, obfuscateProviderPayload } from "./session/agent-session";
-import { AgentStorage } from "./session/agent-storage";
 import { discoverAuthStorage } from "./session/auth-broker-config";
 import { sessionCpuExecHooks } from "./session/cpu-limit";
 import { convertToLlm, LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "./session/messages";
-import { getRestorableSessionModels } from "./session/session-context";
-import { SessionManager } from "./session/session-manager";
 import { createSettingsAwareStreamFn } from "./session/settings-stream-fn";
 import { wrapSteeringForModel } from "./session/steering-envelope";
 import { closeAllConnections } from "./ssh/connection-manager";

@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import * as path from "node:path";
-import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
+import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import { logger, TempDir } from "@veyyon/utils";
 
 /**

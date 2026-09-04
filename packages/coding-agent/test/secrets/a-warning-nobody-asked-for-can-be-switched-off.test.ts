@@ -29,9 +29,9 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { renderSecretList } from "@veyyon/coding-agent/secrets/secret-command";
 import { resolveVaultLocations, SecretVault } from "@veyyon/coding-agent/secrets/vault";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
 

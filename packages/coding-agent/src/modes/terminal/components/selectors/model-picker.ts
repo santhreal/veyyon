@@ -4,6 +4,7 @@
  * Model entries switch the current session only.
  */
 import type { Model } from "@veyyon/ai";
+import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import type { Component, TUI } from "@veyyon/tui";
 import { errorMessage } from "@veyyon/utils";
 import { matchesKey } from "@veyyon/utils/keys";
@@ -12,7 +13,6 @@ import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth } from "@veyyon/utils/width";
 import type { ModelRegistry } from "../../../../config/model-registry";
 import type { Settings } from "../../../../config/settings";
-import { AgentStorage } from "../../../../session/agent-storage";
 import { theme } from "../../../../theme/theme";
 import {
 	computeModalDims,

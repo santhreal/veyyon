@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
-import { loadEntriesFromFileStream, parseSessionContent } from "@veyyon/coding-agent/session/session-loader";
 import { type OperatorNotice, OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import type { FileEntry } from "@veyyon/kernel/session/session-entries";
+import { loadEntriesFromFileStream, parseSessionContent } from "@veyyon/kernel/session/session-loader";
 import { serializeTitleSlot } from "@veyyon/kernel/session/session-title-slot";
 import { TempDir } from "@veyyon/utils";
 

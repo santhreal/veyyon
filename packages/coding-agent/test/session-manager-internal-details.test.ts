@@ -12,13 +12,10 @@
  * `__`-prefixed fields not in the allowlist) is preserved verbatim.
  */
 import { describe, expect, it } from "bun:test";
-import {
-	readQueueChipText,
-	type SkillPromptDetails,
-	stripInternalDetailsFields,
-} from "@veyyon/coding-agent/session/messages";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import type { SkillPromptDetails } from "@veyyon/coding-agent/session/messages";
+import { readQueueChipText, stripInternalDetailsFields } from "@veyyon/kernel/session/custom-message-payload";
 import type { CustomMessageEntry } from "@veyyon/kernel/session/session-entries";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 
 const SKILL_TYPE = "skill-prompt";
 

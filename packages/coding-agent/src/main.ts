@@ -15,6 +15,7 @@ import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { describePendingToolCalls } from "@veyyon/kernel/session/exit-diagnostics";
 import { formatNotice, OperatorNotices, stderrNoticeSink } from "@veyyon/kernel/session/operator-notices";
 import { resolveResumableSession, type SessionInfo } from "@veyyon/kernel/session/session-listing";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import {
 	$env,
 	directoryExists,
@@ -84,7 +85,6 @@ import type { InteractiveSessionFactory } from "./session/background-sessions";
 import { rootBudgetGroupOwnerId, sessionCpuExecHooks } from "./session/cpu-limit";
 import { loadSessionExtensions } from "./session/factory-extensions";
 import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "./session/factory-options";
-import { SessionManager } from "./session/session-manager";
 import { executeBuiltinSlashCommand } from "./slash-commands/builtin-registry";
 import { shouldShowStartupSplash } from "./startup-splash";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "./system-prompt";

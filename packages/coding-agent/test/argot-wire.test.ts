@@ -24,7 +24,7 @@ import {
 	expandSubagentReturn,
 	expandToolArguments,
 } from "@veyyon/coding-agent/argot-wire";
-import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
+import type { SessionContext } from "@veyyon/kernel/session/session-context";
 import { ArgotSession, EMPTY_GATE, type Vocabulary } from "argot";
 
 /** A real, loaded codec: `§db` -> `src/db.ts`, `§dbconn` -> a longer path. */

@@ -13,6 +13,7 @@ import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import { getCatalogProviderEntry } from "@veyyon/catalog/provider-models";
+import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import { type Component, Input, ScrollView, type TUI } from "@veyyon/tui";
 import { clampLow, errorMessage } from "@veyyon/utils";
 import { fuzzyFilter } from "@veyyon/utils/fuzzy";
@@ -25,7 +26,6 @@ import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import type { ModelRegistry } from "../../../../config/model-registry";
 import { getKnownRoleIds, getRoleInfo, ROLE_INHERIT_LABEL } from "../../../../config/model-roles";
 import type { Settings } from "../../../../config/settings";
-import { AgentStorage } from "../../../../session/agent-storage";
 import { theme } from "../../../../theme/theme";
 import {
 	type ConfiguredThinkingLevel,

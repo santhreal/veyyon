@@ -3,7 +3,7 @@
  * loader/runner. Both surfaces wire the same new-session / branch / navigate
  * handlers into their command contexts; this is the single source of truth.
  */
-import type { SessionManager } from "../session/session-manager";
+import type { SessionManager } from "@veyyon/kernel/session/session-manager";
 
 /** Handler for `ctx.newSession()` — creates (and optionally seeds) a session. */
 export type NewSessionHandler = (options?: {

@@ -25,10 +25,10 @@ import { stripThinkingVariantToken } from "@veyyon/catalog/identity/family";
 import { modelsAreEqual } from "@veyyon/catalog/models";
 import { DEFAULT_MODEL_PER_PROVIDER } from "@veyyon/catalog/provider-models";
 import { resolveBareVariantAlias, resolveVariantAlias } from "@veyyon/catalog/variant-collapse";
+import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import { logger } from "@veyyon/utils";
 import { fuzzyMatch } from "@veyyon/utils/fuzzy";
 import MODEL_PRIO from "../priority.json" with { type: "json" };
-import { AgentStorage } from "../session/agent-storage";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,

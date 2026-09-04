@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "bun:test";
 import type { AuthStorage } from "@veyyon/ai";
 import type { FetchImpl } from "@veyyon/ai/types";
-import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
 import type { SearchParams } from "@veyyon/coding-agent/tools/web/search/providers/base";
 import { searchCodex } from "@veyyon/coding-agent/tools/web/search/providers/codex";
+import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 
 function makeSseResponse(): string {
 	return [

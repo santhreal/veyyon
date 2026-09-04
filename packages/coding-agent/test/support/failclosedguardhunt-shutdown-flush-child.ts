@@ -16,7 +16,7 @@ import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { LoadedCustomCommand } from "@veyyon/coding-agent/extensibility/custom-commands";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 
 const markerPath = process.argv[2];
 if (!markerPath) throw new Error("child requires a marker path argument");

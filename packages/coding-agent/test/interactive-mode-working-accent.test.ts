@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import * as sessionColor from "@veyyon/coding-agent/utils/session-color";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { Container, NativeScrollbackLiveRegion } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 

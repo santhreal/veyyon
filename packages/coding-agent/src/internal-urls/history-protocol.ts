@@ -16,10 +16,11 @@
  * - history:// - Index of all registry + on-disk agents (id, status, kind, last activity)
  * - history://<agentId> - Concise markdown transcript of that agent
  */
+
+import { loadSessionMessagesReadOnly } from "@veyyon/kernel/session/session-loader";
 import type { AgentRef } from "../registry/agent-registry";
 import { AgentRegistry } from "../registry/agent-registry";
 import { formatSessionHistoryMarkdown } from "../session/session-history-format";
-import { loadSessionMessagesReadOnly } from "../session/session-loader";
 import { ambiguousSessionFileIds, liveConversationScopes, sessionFilesFromDisk } from "./registry-helpers";
 import type { InternalResource, InternalUrl, ProtocolHandler, UrlCompletion } from "./types";
 

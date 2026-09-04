@@ -34,16 +34,27 @@ import * as path from "node:path";
 import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
 import { PACKAGES, reach, reachedNames } from "../helpers/module-reach-gate";
 
-/** Every `.ts` file under a workspace package's `src/`, as a path relative to `packages/`. */
+/**
+ * Every `.ts` file under a workspace package's `src/`, plus the kernel's, as a path relative to
+ * `packages/`, which is what `reachedNames` reports. The kernel sits beside `packages/` and holds
+ * the credential store the session spine took with it, so a sweep of `packages/` alone would find
+ * one owner fewer and the intersections below would be about less.
+ */
 function workspaceSources(): string[] {
 	const found: string[] = [];
-	for (const member of fs.readdirSync(PACKAGES, { withFileTypes: true })) {
-		if (!member.isDirectory()) continue;
-		const src = path.join(PACKAGES, member.name, "src");
+	const roots = [
+		...fs
+			.readdirSync(PACKAGES, { withFileTypes: true })
+			.filter(member => member.isDirectory())
+			.map(member => member.name),
+		path.join("..", "kernel"),
+	];
+	for (const member of roots) {
+		const src = path.join(PACKAGES, member, "src");
 		if (!fs.existsSync(src)) continue;
 		for (const file of fs.readdirSync(src, { recursive: true, encoding: "utf8" })) {
 			if (!file.endsWith(".ts") || file.endsWith(".d.ts")) continue;
-			found.push(path.join(member.name, "src", file));
+			found.push(path.join(member, "src", file));
 		}
 	}
 	return found.sort();
@@ -106,7 +117,7 @@ describe("the launch card opens no database", () => {
 	 * list return.
 	 */
 	it("finds the workspace's SQLite owners and walks a real graph", () => {
-		expect(DATABASE_OWNERS).toContain(path.join("coding-agent", "src", "session", "agent-storage.ts"));
+		expect(DATABASE_OWNERS).toContain(path.join("..", "kernel", "src", "session", "agent-storage.ts"));
 		expect(DATABASE_OWNERS).toContain(path.join("ai", "src", "auth-storage-sqlite.ts"));
 		expect(DATABASE_OWNERS).toContain(ADMITTED_ON_THE_CARD_PATH[0]);
 		expect(reach("cli/launch-card.ts")).toBeGreaterThan(LAUNCH_CARD_FLOOR);
@@ -117,7 +128,9 @@ describe("the launch card opens no database", () => {
 	 * handle reaches the SQLite credential store, so the intersections below are real tests.
 	 */
 	it("sees a database on the path of a module that does open one", () => {
-		const reached = new Set(reachedNames("session/agent-storage.ts"));
+		const reached = new Set(
+			reachedNames(path.join("..", "..", "..", "kernel", "src", "session", "agent-storage.ts")),
+		);
 
 		expect(DATABASE_OWNERS.filter(owner => reached.has(owner))).toContain(
 			path.join("ai", "src", "auth-storage-sqlite.ts"),

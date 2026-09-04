@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { loadEntriesFromFileStream, parseSessionContent } from "@veyyon/coding-agent/session/session-loader";
 import type { FileEntry } from "@veyyon/kernel/session/session-entries";
+import { loadEntriesFromFileStream, parseSessionContent } from "@veyyon/kernel/session/session-loader";
 import { serializeTitleSlot } from "@veyyon/kernel/session/session-title-slot";
 import { logger } from "@veyyon/utils";
 

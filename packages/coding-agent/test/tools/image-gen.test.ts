@@ -3,7 +3,6 @@ import type { Model } from "@veyyon/ai";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import type { CustomToolContext } from "@veyyon/coding-agent/extensibility/custom-tools";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
-import type { ReadonlySessionManager } from "@veyyon/coding-agent/session/session-manager";
 import {
 	getImageGenTools,
 	getImageGenToolsWithRegistry,
@@ -11,6 +10,7 @@ import {
 	isImageProviderPreference,
 	setPreferredImageProvider,
 } from "@veyyon/coding-agent/tools/web/image-gen";
+import type { ReadonlySessionManager } from "@veyyon/kernel/session/session-manager";
 import { removeWithRetries } from "@veyyon/utils";
 
 /**

@@ -8,8 +8,8 @@ import type { PythonKernel as PythonKernelInstance } from "@veyyon/coding-agent/
 import * as pythonKernel from "@veyyon/coding-agent/eval/py/kernel";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { createAgentSession, type ExtensionFactory, type WorkspaceTree } from "@veyyon/coding-agent/sdk";
-import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { Snowflake, setAgentDir, TempDir } from "@veyyon/utils";
 import { isolatedAuthStorage } from "./helpers/isolated-auth-storage";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";

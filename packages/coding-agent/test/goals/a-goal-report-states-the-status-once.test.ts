@@ -38,8 +38,8 @@ import {
 	type GoalModeHost,
 } from "@veyyon/coding-agent/modes/terminal/controllers/goal-mode-controller";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 
 /**

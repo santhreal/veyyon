@@ -1,10 +1,10 @@
 import type { AssistantMessage } from "@veyyon/ai";
+import type { SessionContext } from "@veyyon/kernel/session/session-context";
 import { errorMessage, formatCount, logger } from "@veyyon/utils";
 import { sanitizeStatusText } from "@veyyon/utils/sanitize-status-text";
 import { type GuidedGoalMessage, newGuidedGoalSessionId, runGuidedGoalTurn } from "../../../goals/guided-setup";
 import type { Goal, GoalModeState, GoalStatus } from "../../../goals/state";
 import type { AgentSessionEvent } from "../../../session/agent-session-types";
-import type { SessionContext } from "../../../session/session-context";
 import { formatDurationCoarse } from "../../../slash-commands/helpers/format";
 import type { InteractiveModeContext } from "../types";
 

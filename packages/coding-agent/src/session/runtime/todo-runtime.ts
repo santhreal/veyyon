@@ -26,6 +26,7 @@
  */
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { Api, Message, Model, ToolChoice } from "@veyyon/ai";
+import { getLatestCompactionEntry } from "@veyyon/kernel/session/session-context";
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { mayContinueAtSettle, type SettleContinuationState } from "@veyyon/kernel/session/settle-continuation";
 import { getStringProperty, logger, prompt } from "@veyyon/utils";
@@ -41,7 +42,6 @@ import {
 	MID_RUN_TODO_NUDGE_MUTATING_TOOLS,
 	MID_RUN_TODO_NUDGE_MUTATION_THRESHOLD,
 } from "../nudges";
-import { getLatestCompactionEntry } from "../session-context";
 import { incompleteTodoItems, renderTodoContinuationReminder, todoReminderFingerprint } from "../todo-reminder";
 
 /**

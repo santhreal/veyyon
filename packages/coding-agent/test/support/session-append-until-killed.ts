@@ -13,7 +13,7 @@
  * Usage: `bun <this file> <cwd> <sessionDir> <agentDir>`. Prints
  * `file <path>` once, then `committed <n>` after each flushed append.
  */
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { setAgentDir } from "@veyyon/utils";
 
 const [, , cwd, sessionDir, agentDir] = process.argv;

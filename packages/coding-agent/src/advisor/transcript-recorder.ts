@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { Message, UserMessage } from "@veyyon/ai";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { logger } from "@veyyon/utils";
 import {
 	ADVISOR_TRANSCRIPT_FILENAME,
@@ -9,7 +10,6 @@ import {
 	sessionFileName,
 	sessionFileStem,
 } from "@veyyon/utils/session-file";
-import { SessionManager } from "../session/session-manager";
 
 /**
  * The advisor transcript naming contract, owned by `@veyyon/utils/session-file` and re-exported here.

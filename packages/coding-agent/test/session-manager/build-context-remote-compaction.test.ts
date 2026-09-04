@@ -9,7 +9,7 @@ import type { Model } from "@veyyon/ai";
 import { buildResponsesInput } from "@veyyon/ai/providers/openai-shared";
 import type { Message } from "@veyyon/ai/types";
 import { getBundledModel } from "@veyyon/catalog/models";
-import { buildSessionContext } from "@veyyon/coding-agent/session/session-context";
+import { buildSessionContext } from "@veyyon/kernel/session/session-context";
 import type { CompactionEntry, SessionEntry, SessionMessageEntry } from "@veyyon/kernel/session/session-entries";
 
 /**

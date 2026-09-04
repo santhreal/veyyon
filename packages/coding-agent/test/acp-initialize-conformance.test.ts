@@ -13,7 +13,7 @@ import { buildModel } from "@veyyon/catalog/build";
 import { AcpAgent } from "@veyyon/coding-agent/modes/acp/acp-agent";
 import { ACP_TERMINAL_AUTH_FLAG, prepareAcpTerminalAuthArgs } from "@veyyon/coding-agent/modes/acp/terminal-auth";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { setAgentDir, VERSION } from "@veyyon/utils";
 import { type } from "arktype";
 import { expectAcpStructure } from "./helpers/acp-schema";

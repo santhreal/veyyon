@@ -3,9 +3,9 @@
  */
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { ImageContent, Model } from "@veyyon/ai";
+import type { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { errorMessage } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";
-import type { SessionManager } from "../../session/session-manager";
 import { createNoOpUIContext } from "../utils";
 import type {
 	AppendEntryHandler,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { AssistantMessage } from "@veyyon/ai";
-import { buildSessionContext } from "@veyyon/coding-agent/session/session-context";
+import { buildSessionContext } from "@veyyon/kernel/session/session-context";
 import type { ModelChangeEntry, SessionEntry, SessionMessageEntry } from "@veyyon/kernel/session/session-entries";
 
 /**

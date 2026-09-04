@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { LabelEntry } from "@veyyon/kernel/session/session-entries";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 
 describe("SessionManager labels", () => {
 	it("sets and gets labels", () => {

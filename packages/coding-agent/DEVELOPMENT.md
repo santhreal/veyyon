@@ -109,12 +109,15 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 
 ### Kernel split (`session/` and `extensibility/`)
 
-35 modules of the session spine and 18 modules of the loader and registry live in `@veyyon/kernel`,
+39 modules of the session spine and 18 modules of the loader and registry live in `@veyyon/kernel`,
 accessed as `@veyyon/kernel/session/<module>`, `@veyyon/kernel/loader/<module>` and
-`@veyyon/kernel/registry/<module>`. `kernel/README.md` groups them by concern.
+`@veyyon/kernel/registry/<module>`. `kernel/README.md` groups them by concern. The session
+manager, its context builder, its loader and the credential store are among them; the part of
+`session/messages.ts` they call (the custom-message payload and the rehydration sanitiser) is
+`@veyyon/kernel/session/custom-message-payload`, which `session/messages.ts` re-exports.
 
 The dividing line is the import graph, not the subject. A module moved when its transitive closure
-named no tool, no host and no mode; a module that reaches one of those stayed. 42 non-test modules
+named no tool, no host and no mode; a module that reaches one of those stayed. 38 non-test modules
 remain in `src/session/` and 47 in `src/extensibility/`, so the retained side is the larger one.
 An import graph does not show an ambient dependency, so two modules came back after the type check
 read them: `extensibility/plugins/legacy-pi-virtual-modules.d.ts`, reached by a

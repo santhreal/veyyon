@@ -134,6 +134,9 @@ import { PACKAGES, RESOLUTION, reach, reachedNames, SRC } from "../helpers/modul
 
 const AI_SRC = path.join(PACKAGES, "ai/src");
 
+/** The kernel, where the session spine now sits; a path under it is spelled relative to `SRC` for `reach`. */
+const KERNEL_SRC = path.join(PACKAGES, "..", "kernel/src");
+
 /** The runtime specifiers one module names, which is what a "does not import X" claim is about. */
 function runtimeImportsOf(absolute: string): string[] {
 	return moduleSpecifiersIn(fs.readFileSync(absolute, "utf-8"));
@@ -367,7 +370,7 @@ describe("the caps leaf that made the settings cut possible", () => {
 	});
 });
 
-describe("session/agent-storage, the remaining edge into @veyyon/ai", () => {
+describe("kernel session/agent-storage, the remaining edge into @veyyon/ai", () => {
 	/**
 	 * The three imports this file needs, each from the module that OWNS the name. The store from
 	 * `auth-storage-sqlite` (83), the busy predicate from `auth-credential-rows` (75), and the credential
@@ -376,7 +379,7 @@ describe("session/agent-storage, the remaining edge into @veyyon/ai", () => {
 	 * `@veyyon/ai/auth-storage` compiles, runs, and costs this file 214 modules again.
 	 */
 	it("imports the credential store from its own module, not the barrel", () => {
-		const imports = runtimeImportsOf(path.join(SRC, "session/agent-storage.ts"));
+		const imports = runtimeImportsOf(path.join(KERNEL_SRC, "session/agent-storage.ts"));
 
 		expect(imports).toContain("@veyyon/ai/auth-storage-sqlite");
 		expect(imports).toContain("@veyyon/ai/auth-credential-rows");
@@ -392,14 +395,14 @@ describe("the session layer, the next two entries in the same ranking", () => {
 	 * streaming engine, the provider registry and every transport.
 	 */
 	it("takes the service-tier coercion from @veyyon/ai/types, not the barrel", () => {
-		const imports = runtimeImportsOf(path.join(SRC, "session/session-context.ts"));
+		const imports = runtimeImportsOf(path.join(KERNEL_SRC, "session/session-context.ts"));
 
 		expect(imports).toContain("@veyyon/ai/types");
 		expect(imports).not.toContain("@veyyon/ai");
 	});
 
 	it("forwards the credential names from their own module, not the barrel", () => {
-		const imports = runtimeImportsOf(path.join(PACKAGES, "..", "kernel/src/session/auth-storage.ts"));
+		const imports = runtimeImportsOf(path.join(KERNEL_SRC, "session/auth-storage.ts"));
 
 		expect(imports).toContain("@veyyon/ai/auth-storage");
 		expect(imports).not.toContain("@veyyon/ai");
@@ -416,9 +419,10 @@ describe("the session layer, the next two entries in the same ranking", () => {
 	 * detect a broken resolution table, and a broken table returns single digits.
 	 */
 	it("actually walks the session graph", () => {
-		expect(reach("session/session-manager.ts")).toBeGreaterThan(150);
-		expect(reachedNames("session/session-manager.ts")).toContain(
-			path.relative(PACKAGES, path.join(SRC, "session/messages.ts")),
+		const manager = path.relative(SRC, path.join(KERNEL_SRC, "session/session-manager.ts"));
+		expect(reach(manager)).toBeGreaterThan(150);
+		expect(reachedNames(manager)).toContain(
+			path.relative(PACKAGES, path.join(KERNEL_SRC, "session/session-context.ts")),
 		);
 	});
 });

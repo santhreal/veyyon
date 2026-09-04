@@ -31,9 +31,9 @@ import {
 	type FacadeToolResult,
 } from "@veyyon/coding-agent/session/facade";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import type { ClientBridge } from "@veyyon/kernel/session/client-bridge";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 
 const bashSchema = z.object({ command: z.string() });

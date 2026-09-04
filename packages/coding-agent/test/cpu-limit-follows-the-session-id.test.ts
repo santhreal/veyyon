@@ -37,8 +37,8 @@ import {
 	resetSessionCpuLimitsForTests,
 	sessionCpuLimit,
 } from "@veyyon/coding-agent/session/cpu-limit";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 /** Registering at 0 cores creates no group and touches no cgroup tree, which is all these cases need. */

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
+import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import { getWorktreesDir, setAgentDir, setWorktreesDir, TempDir } from "@veyyon/utils";
 import { setTransports } from "@veyyon/utils/logger";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../../utils/test/helpers/isolated-config-root";

@@ -18,6 +18,7 @@ import type { Api, Model, ServiceTierByFamily, Usage } from "@veyyon/ai";
 import { emptyUsage } from "@veyyon/catalog/models";
 import type { ArtifactManager } from "@veyyon/kernel/session/artifacts";
 import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
 import {
 	collapseWhitespace,
@@ -76,7 +77,6 @@ import { discoverAuthStorage } from "../session/auth-broker-config";
 import { rootBudgetGroupOwnerId, withInheritedBudgetGroup } from "../session/cpu-limit";
 import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "../session/factory-options";
 import { SKILL_PROMPT_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "../session/messages";
-import { SessionManager } from "../session/session-manager";
 import { truncateTail } from "../session/streaming-output";
 import type { ConfiguredThinkingLevel } from "../thinking";
 import type { ContextFileEntry, ToolSession } from "../tools";

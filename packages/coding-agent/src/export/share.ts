@@ -20,11 +20,11 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentState } from "@veyyon/agent-core";
+import type { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { $which, errorMessage, isRecord, logger, trimTrailingSlashes } from "@veyyon/utils";
 import { DEFAULT_SHARE_URL, sealBytes } from "@veyyon/wire";
 import { $ } from "bun";
 import type { SecretObfuscator } from "../secrets/obfuscator";
-import type { SessionManager } from "../session/session-manager";
 import { buildSessionData, type SessionData } from "./html";
 import { redactSessionDataForShare } from "./redact-snapshot";
 

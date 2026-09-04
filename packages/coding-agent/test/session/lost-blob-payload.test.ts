@@ -3,8 +3,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Message } from "@veyyon/ai";
 import { convertToLlm, replaceLostBlobPayloads } from "@veyyon/coding-agent/session/messages";
-import { resolveBlobRefsInEntries } from "@veyyon/coding-agent/session/session-loader";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import * as blobStoreModule from "@veyyon/kernel/session/blob-store";
 import {
 	BlobStore,
@@ -15,6 +13,8 @@ import {
 } from "@veyyon/kernel/session/blob-store";
 import { type OperatorNotice, OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import type { FileEntry } from "@veyyon/kernel/session/session-entries";
+import { resolveBlobRefsInEntries } from "@veyyon/kernel/session/session-loader";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { getBlobsDir, setAgentDir, TempDir } from "@veyyon/utils";
 import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 

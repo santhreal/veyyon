@@ -27,8 +27,8 @@ import {
 	testSetExtensionHandlerTimeoutMs,
 	testSetSessionShutdownHandlerTimeoutMs,
 } from "@veyyon/coding-agent/extensibility/extensions/runner";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { getProjectAgentDir, logger, TempDir } from "@veyyon/utils";
 
 const HANG_EXTENSION_SRC = `

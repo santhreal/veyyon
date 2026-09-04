@@ -4,6 +4,8 @@ import type { AssistantMessage, ImageContent, Message, Usage, UsageReport } from
 import type { HostNotifier } from "@veyyon/host";
 import type { CompactMode } from "@veyyon/kernel/session/compact-modes";
 import type { HistoryStorage } from "@veyyon/kernel/session/history-storage";
+import type { SessionContext } from "@veyyon/kernel/session/session-context";
+import type { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { ShakeMode } from "@veyyon/kernel/session/shake-types";
 import type { Component, Container, EditorTheme, Loader, Spacer, Text, TUI } from "@veyyon/tui";
 import type { CollabGuestLink } from "../../collab/guest";
@@ -26,8 +28,6 @@ import type { MCPManager } from "../../mcp";
 import type { PlanApprovalDetails } from "../../plan-mode/approved-plan";
 import type { AgentSession } from "../../session/agent-session";
 import type { InteractiveSessionFactory, KeptSession } from "../../session/background-sessions";
-import type { SessionContext } from "../../session/session-context";
-import type { SessionManager } from "../../session/session-manager";
 import type { SubcommandDef } from "../../slash-commands/types";
 import type { Theme } from "../../theme/theme";
 import type { LspStartupServerInfo } from "../../tools";

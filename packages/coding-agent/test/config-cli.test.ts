@@ -4,7 +4,7 @@ import { runConfigCommand, suggestSettingPaths } from "@veyyon/coding-agent/cli/
 import { EXIT_USAGE } from "@veyyon/coding-agent/cli/exit-codes";
 import { resetSettingsForTest } from "@veyyon/coding-agent/config/settings";
 import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
-import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
+import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import { setAgentDir, TempDir } from "@veyyon/utils";
 import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";

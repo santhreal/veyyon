@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { getBundledModel } from "@veyyon/catalog/models";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import {
 	MemorySessionStorage,
 	type SessionStorageWriter,
