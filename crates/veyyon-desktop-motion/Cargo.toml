@@ -10,11 +10,6 @@ repository.workspace = true
 [lints]
 workspace = true
 
-[features]
-default = []
-# The GPUI feature is off-by-default because the host environment currently lacks Vulkan development libraries.
-gpui = []
-
 [dependencies]
 serde.workspace = true
 thiserror.workspace = true
