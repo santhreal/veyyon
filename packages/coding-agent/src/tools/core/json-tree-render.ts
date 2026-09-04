@@ -9,10 +9,7 @@
 import { formatMoreLines, isRecord } from "@veyyon/utils";
 import { buildTreePrefix } from "../../modes/terminal/draw/utils";
 import type { Theme } from "../../theme/theme";
-import {
-	formatScalar,
-	HIDDEN_JSON_TREE_KEYS,
-} from "./json-tree-view";
+import { formatScalar, HIDDEN_JSON_TREE_KEYS } from "./json-tree-view";
 import { truncateToWidth } from "./render-utils";
 
 export {

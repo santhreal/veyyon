@@ -18,13 +18,13 @@ import { isRecord } from "@veyyon/utils";
 import type { HeadedBlockView, StatusRowView, ToolViewContext, ToolViewRenderer, ViewLine } from "@veyyon/view";
 import {
 	formatArgsInline,
-	jsonTreeViewLines,
 	JSON_TREE_MAX_DEPTH_COLLAPSED,
 	JSON_TREE_MAX_DEPTH_EXPANDED,
 	JSON_TREE_MAX_LINES_COLLAPSED,
 	JSON_TREE_MAX_LINES_EXPANDED,
 	JSON_TREE_SCALAR_LEN_COLLAPSED,
 	JSON_TREE_SCALAR_LEN_EXPANDED,
+	jsonTreeViewLines,
 } from "../tools/core/json-tree-view";
 import { stripOutputNotice } from "../tools/core/output-meta";
 // The words a truncation is named by, from the leaf that owns them rather than from the styled
