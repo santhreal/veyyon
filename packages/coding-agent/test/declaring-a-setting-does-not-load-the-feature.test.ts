@@ -45,8 +45,8 @@ const DOMAINS_DIR = join(SRC, "config", "settings-domains");
  * are reached for their option tables only; each of those modules is a leaf that
  * declares model keys, device names or provider ids and loads no client.
  * `@veyyon/kernel` is reached for `settings/optional-number`, the unset-number
- * owner, which imports nothing; `@veyyon/model` is the contract `@veyyon/ai`'s
- * instrumentation levels are read from, and it imports nothing that runs.
+ * owner, which imports nothing; `@veyyon/model` is the contract `@veyyon/ai` and `@veyyon/catalog`
+ * read the instrumentation levels and the thinking efforts from, and it imports nothing that runs.
  */
 const DOMAIN_REACH: Record<string, string[]> = {
 	"appearance.ts": ["config/"],
@@ -63,7 +63,14 @@ const DOMAIN_REACH: Record<string, string[]> = {
 	"general.ts": ["config/"],
 	"global.ts": ["config/", "npm:@veyyon/utils", "npm:yaml"],
 	"interaction.ts": ["config/", "npm:@veyyon/wire", "speech/"],
-	"model.ts": ["config/", "npm:@veyyon/agent-core", "npm:@veyyon/catalog", "npm:@veyyon/kernel", "thinking/"],
+	"model.ts": [
+		"config/",
+		"npm:@veyyon/agent-core",
+		"npm:@veyyon/catalog",
+		"npm:@veyyon/kernel",
+		"npm:@veyyon/model",
+		"thinking/",
+	],
 	"providers.ts": ["config/", "npm:@veyyon/kernel", "npm:@veyyon/utils", "npm:yaml", "speech/", "tiny/", "tools/"],
 	"resources.ts": ["config/"],
 	"shared.ts": ["config/"],
