@@ -25,6 +25,7 @@ import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-comman
 import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
 import type { SlashCommandRuntime } from "@veyyon/coding-agent/slash-commands/types";
 import type { Component } from "@veyyon/tui";
+import { useTruecolorTheme } from "../helpers/theme-assertions";
 
 const PROVIDER = "unit-accounts";
 const OTHER_PROVIDER = "unit-idle";
@@ -42,6 +43,8 @@ interface Harness {
 }
 
 describe("/account verbs", () => {
+	// `/account status` and `/account refresh` print transcript blocks whose header is themed.
+	useTruecolorTheme("dark");
 	let store: SqliteAuthCredentialStore | null = null;
 	let harness: Harness | null = null;
 	let workId = 0;
