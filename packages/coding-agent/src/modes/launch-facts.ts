@@ -39,7 +39,7 @@ import { getLaunchFactsCachePath, getProjectDir, VERSION } from "@veyyon/utils/d
 import { isEnoent } from "@veyyon/utils/fs-error";
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
-import { settings } from "../config/settings-instance";
+import { isSettingsInitialized, settings } from "../config/settings-instance";
 import { AUTO_THINKING, type ConfiguredThinkingLevel } from "../thinking";
 import type { GitStatusSummary } from "../utils/git";
 
@@ -427,6 +427,91 @@ export function launchModelLabel(): string {
  * failed write is not retried on the next frame — that would turn an unwritable cache directory
  * into a warning per redraw — and the next changed fact tries again.
  */
+/** Whether the update carries a fact at all, and so is worth waking the card for. */
+function carriesUpdate(update: LaunchFactsUpdate): boolean {
+	return Object.values(update).some(value => value !== undefined);
+}
+
+/**
+ * What the row and the session record at rest, reduced to the values the
+ * decision reads.
+ *
+ * The status row computed this record inline for every render; the session now
+ * records the same decision the moment it can, so the card's next render shows
+ * the facts without waiting for the row to mount. One owner: the row delegates
+ * here.
+ */
+export interface RestLaunchFactsSource {
+	model: { provider?: string; id: string; name?: string; thinking?: unknown } | null;
+	/** `null` is the row's unset level, which records the same way `Off` does. */
+	thinkingLevel: string | null;
+	isAutoThinking: boolean;
+	/** A percentage is recorded only for an at-rest session: no messages yet. */
+	messageCount: number;
+	/** The project's own context weight, subtracted for the model-floor reading. */
+	systemContextTokens: number;
+}
+
+export function recordRestLaunchFacts(
+	source: RestLaunchFactsSource,
+	contextPercent: number | null,
+	contextLimit: number,
+): Promise<void> {
+	// The record is keyed by the configured default role, so a process that
+	// never initialised settings has no key to file under — and nothing to say
+	// to the next launch's card. An ACP or eval session constructs through the
+	// same entrypoint without settings; recording must not be the thing that
+	// breaks it.
+	if (!isSettingsInitialized()) return Promise.resolve();
+	const update: LaunchFactsUpdate = {};
+	// Both model facts are filed under the DEFAULT ROLE, because that string is
+	// what the next launch keys on. The role is `provider/id` — comparing it to
+	// the bare `model.id` never matched — and it carries an optional `:thinking`
+	// or `@route` suffix, which is why this tests the qualified id as a PREFIX at
+	// a delimiter rather than splitting on a colon the id may contain.
+	const role = settings.getModelRole("default");
+	const qualified = source.model?.provider ? `${source.model.provider}/${source.model.id}` : source.model?.id;
+	const isDefaultRole =
+		!!role &&
+		!!qualified &&
+		(role === qualified || role.startsWith(`${qualified}:`) || role.startsWith(`${qualified}@`));
+
+	// A percentage is a fraction of the window of the model that measured it; a
+	// session runs another model whenever `--model` or `/model` says so, and
+	// recording that reading under the role's key hands the next launch a gauge
+	// drawn against a window its model does not have. The model's copy is the
+	// same reading with the project's context files taken out, so a project
+	// never measured states a floor every project shares.
+	if (isDefaultRole && contextPercent !== null && source.messageCount === 0) {
+		update.contextPercent = contextPercent;
+		update.modelContextPercent =
+			contextLimit > 0 ? contextPercent - (source.systemContextTokens / contextLimit) * 100 : contextPercent;
+	}
+
+	if (source.model?.name && isDefaultRole) {
+		update.modelName = source.model.name;
+		if (source.model.provider) update.providerName = source.model.provider;
+	}
+
+	// The effort is model-scoped for the same reason the gauge is: clamped to
+	// the rungs this model supports. Sent as an explicit `null` when the row
+	// printed no tail, so a model whose thinking was turned off stops the next
+	// launch printing the rung it used to run at.
+	if (isDefaultRole && source.model) {
+		if (!source.model.thinking) {
+			update.thinking = null;
+		} else if (source.isAutoThinking) {
+			update.thinking = AUTO_THINKING;
+		} else {
+			const level = source.thinkingLevel;
+			update.thinking = level === null || level === ThinkingLevel.Off ? null : (level as ConfiguredThinkingLevel);
+		}
+	}
+
+	if (!carriesUpdate(update)) return Promise.resolve();
+	return recordLaunchFacts(update);
+}
+
 export function recordLaunchFacts(update: LaunchFactsUpdate): Promise<void> {
 	// Each key is read once, so the entry this call merges into and the entry it writes back are
 	// the same one even though the settings store is free to move between statements.
@@ -503,6 +588,9 @@ export function recordLaunchFacts(update: LaunchFactsUpdate): Promise<void> {
 		sameFacts(recordedModel, nextModel) &&
 		sameFacts(recordedTerminal, nextTerminal)
 	) {
+		// The memo already states these facts (a prior call wrote them), so a
+		// render asked for now reads them either from the memo or the file.
+		notifyLaunchFactsRecorded();
 		return Promise.resolve();
 	}
 
@@ -512,7 +600,11 @@ export function recordLaunchFacts(update: LaunchFactsUpdate): Promise<void> {
 		models: evictOldest({ ...previous?.models, [model]: nextModel }),
 		terminals: evictOldest({ ...previous?.terminals, [terminal]: nextTerminal }),
 	};
+	// The memo lands before the notify, so a listener that reads on the same
+	// turn reads the new facts, not the ones it is replacing; the write only
+	// has to reach the NEXT process.
 	memo = file;
+	notifyLaunchFactsRecorded();
 	return atomicWriteJson(getLaunchFactsCachePath(), file, { fsync: false }).catch((err: unknown) => {
 		logger.warn("Launch facts could not be written; the next launch will use placeholders", {
 			error: errorMessage(err),
@@ -537,4 +629,49 @@ function evictOldest<T extends { recordedAt: number }>(entries: Record<string, T
 /** Forget what this process read or wrote, so a test can drive the file directly. */
 export function resetLaunchFactsForTest(): void {
 	memo = undefined;
+}
+
+/**
+ * The provider the configured default role names, parsed from the role itself.
+ *
+ * A role is stored `provider/id`, and a provider id never contains a slash, so
+ * the first segment is the provider. This is the card's cold answer for the
+ * hero's provider: the session records it per model, but a machine's first
+ * launch of a model has no recording, and the role already states the fact for
+ * free. Empty when no role is configured or the role carries no provider.
+ */
+export function launchProviderLabel(): string {
+	const role = settings.getModelRole("default");
+	if (!role) return "";
+	const slash = role.indexOf("/");
+	return slash > 0 ? role.slice(0, slash) : "";
+}
+
+type LaunchFactsListener = () => void;
+
+const launchFactsListeners = new Set<LaunchFactsListener>();
+
+/**
+ * Subscribe to every launch-facts record that changed a fact.
+ *
+ * The launch card reads the file on every render, so a listener's job is only
+ * to ask for a render: the card's status row then picks up whatever was
+ * recorded the moment the session knows it, rather than when the session's own
+ * status row first mounts. Returns the unsubscribe.
+ */
+export function onLaunchFactsRecorded(listener: LaunchFactsListener): () => void {
+	launchFactsListeners.add(listener);
+	return () => {
+		launchFactsListeners.delete(listener);
+	};
+}
+
+function notifyLaunchFactsRecorded(): void {
+	for (const listener of launchFactsListeners) {
+		try {
+			listener();
+		} catch (error) {
+			logger.warn("A launch-facts listener failed", { error: errorMessage(error) });
+		}
+	}
 }

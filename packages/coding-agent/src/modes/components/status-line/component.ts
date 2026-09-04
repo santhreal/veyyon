@@ -19,7 +19,6 @@ import type { AgentSession } from "../../../session/agent-session";
 import type { OAuthAccountIdentity } from "../../../session/auth-storage";
 import { computeNonMessageBreakdown } from "../../../session/non-message-tokens";
 import { limitMatchesActiveAccount } from "../../../slash-commands/helpers/active-oauth-account";
-import { AUTO_THINKING } from "../../../thinking";
 import {
 	type ActiveRepoContext,
 	resolveActiveRepoContextSync,
@@ -27,7 +26,7 @@ import {
 	type WorktreeContext,
 } from "../../../utils/active-repo-context";
 import * as git from "../../../utils/git";
-import { type LaunchFactsUpdate, readLaunchFacts, recordLaunchFacts } from "../../launch-facts";
+import { readLaunchFacts, recordLaunchFacts, recordRestLaunchFacts } from "../../launch-facts";
 import { sanitizeStatusText } from "../../shared";
 import { withIcon } from "../../theme/icon-label";
 import { transitionsEnabled } from "../../theme/shimmer";
@@ -1270,69 +1269,21 @@ export class StatusLineComponent implements Component {
 	 */
 	#recordLaunchFacts(contextPercent: number | null, contextLimit: number, isCollabGuest: boolean): void {
 		if (isCollabGuest) return;
-		const update: LaunchFactsUpdate = {};
-
-		// `session.state.model` is the one the row itself renders from, via `#facts()`;
-		// `session.model` is undefined here and recorded nothing at all.
-		//
-		// Both model facts are filed under the DEFAULT ROLE, because that string is what the next
-		// launch keys on, so they are recorded only when the session is running that role's model.
-		// The role is `provider/id` — comparing it to the bare `model.id` never matched and left
-		// the card printing the raw id — and it carries an optional `:thinking` or `@route`
-		// suffix, which is why this tests the qualified id as a PREFIX at a delimiter rather than
-		// splitting on a colon the id is itself allowed to contain.
-		const model = this.session.state.model;
-		const role = settings.getModelRole("default");
-		const qualified = model?.provider ? `${model.provider}/${model.id}` : model?.id;
-		const isDefaultRole =
-			!!role &&
-			!!qualified &&
-			(role === qualified || role.startsWith(`${qualified}:`) || role.startsWith(`${qualified}@`));
-
-		// A percentage is a fraction of the window of the model that measured it. A session runs a
-		// model other than the configured role whenever `--model` names one, `/model` switches
-		// before anything is sent, or the role does not resolve and the fallback answers — and
-		// recording that reading under the role's key hands the next launch a gauge drawn against
-		// a window its model does not have. Left absent, the card states `?` and is right.
-		//
-		// The model's copy is the same reading with this project's context files taken out, so a
-		// project that has never been measured states a floor every project shares rather than the
-		// last directory's `AGENTS.md`. `computeNonMessageBreakdown` is the same cached split the
-		// `/context` panel reads, keyed on the prompt, tool and skill references, so it costs a
-		// map lookup on a resting redraw.
-		if (isDefaultRole && contextPercent !== null && (this.session.messages?.length ?? 0) === 0) {
-			update.contextPercent = contextPercent;
-			const projectContext = computeNonMessageBreakdown(this.session).systemContextTokens;
-			// Not clamped here: `recordLaunchFacts` holds every recorded percentage inside the band
-			// the gauge can draw, and a second clamp on this line would be a second owner of it.
-			update.modelContextPercent =
-				contextLimit > 0 ? contextPercent - (projectContext / contextLimit) * 100 : contextPercent;
-		}
-
-		if (model?.name && isDefaultRole) {
-			update.modelName = model.name;
-			if (model.provider) update.providerName = model.provider;
-		}
-
-		// The effort is model-scoped for the same reason the gauge is: it is clamped to the rungs
-		// this model supports, so the level one model ran at states nothing about another's. Sent as
-		// an explicit `null` when the row printed no tail, so a model whose thinking was turned off
-		// stops the next launch printing the rung it used to run at.
-		if (isDefaultRole && model) {
-			const supportsThinking = Boolean(model.thinking);
-			const level = this.session.state.thinkingLevel ?? ThinkingLevel.Off;
-			if (!supportsThinking) {
-				update.thinking = null;
-			} else if (this.session.isAutoThinking) {
-				update.thinking = AUTO_THINKING;
-			} else {
-				update.thinking = level === ThinkingLevel.Off ? null : level;
-			}
-		}
-
-		if (this.#cachedGitStatus) update.gitStatus = this.#cachedGitStatus;
-
-		if (Object.keys(update).length > 0) void recordLaunchFacts(update);
+		// The record decision lives in launch-facts, shared with the session's
+		// at-rest record, so the two callers cannot drift; this row keeps only
+		// what is its own: the collab-guest guard and the git status it scanned.
+		void recordRestLaunchFacts(
+			{
+				model: this.session.state.model,
+				thinkingLevel: this.session.state.thinkingLevel ?? null,
+				isAutoThinking: this.session.isAutoThinking,
+				messageCount: this.session.messages?.length ?? 0,
+				systemContextTokens: computeNonMessageBreakdown(this.session).systemContextTokens,
+			},
+			contextPercent,
+			contextLimit,
+		);
+		if (this.#cachedGitStatus) void recordLaunchFacts({ gitStatus: this.#cachedGitStatus });
 	}
 
 	#buildSegmentContext(
