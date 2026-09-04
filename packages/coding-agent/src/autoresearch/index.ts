@@ -23,7 +23,7 @@ import {
 } from "./state";
 import { openAutoresearchStorage, openAutoresearchStorageIfExists, type RunRow, type SessionRow } from "./storage";
 import { DEFAULT_SWARM_BREADTH } from "./swarm";
-import { activeToolsChanged, activeToolsFor } from "./tools";
+import { activeToolsChanged, activeToolsFor, EXPERIMENT_TOOL_NAMES } from "./tools";
 import { createCertifyArmsTool } from "./tools/certify-arms";
 import { createInitExperimentTool } from "./tools/init-experiment";
 import { createLogExperimentTool } from "./tools/log-experiment";
@@ -145,23 +145,39 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		swarm: boolean;
 	}
 
-	const disableMode = async (ctx: ExtensionContext, runtime: AutoresearchRuntime, label: string): Promise<void> => {
+	/**
+	 * The most consecutive turns the loop nudges a model that is not advancing it.
+	 * Two, because the longest legitimate run of turns with no measurement in them
+	 * is `init_experiment`, then `start_arm`, then the `run_experiment` that ends
+	 * the drought: a smaller budget stops a session that is still opening.
+	 */
+	const MAX_STALL_NUDGES = 2;
+
+	/** Which of the two commands a session is running as, for the messages a user reads. */
+	const modeLabel = (runtime: AutoresearchRuntime): string =>
+		effectiveBreadth(runtime) > 1 ? "Autoswarm" : "Autoresearch";
+
+	const disableMode = async (
+		ctx: ExtensionContext,
+		runtime: AutoresearchRuntime,
+		label: string,
+		/** Why the loop stopped, when it stopped itself rather than being turned off. */
+		reason?: string,
+	): Promise<void> => {
 		setMode(ctx, false, runtime.goal, "off");
 		// Leaving mid-arm must not leave the user on that arm's model.
 		const exit = await leaveArm(api, runtime);
 		dashboard.update(ctx, runtime);
 		await api.setActiveTools(activeToolsFor(api.getActiveTools(), false, effectiveBreadth(runtime)));
+		const head = reason ? `${label} stopped: ${reason}` : `${label} mode disabled`;
 		if (exit.strandedOn) {
 			ctx.ui.notify(
-				`${label} mode disabled, but your model could not be restored. The session is still on ${exit.strandedOn}.`,
+				`${head}, but your model could not be restored. The session is still on ${exit.strandedOn}.`,
 				"warning",
 			);
 			return;
 		}
-		ctx.ui.notify(
-			exit.restored ? `${label} mode disabled, and your model restored` : `${label} mode disabled`,
-			"info",
-		);
+		ctx.ui.notify(exit.restored ? `${head}, and your model restored` : head, reason ? "warning" : "info");
 	};
 
 	/**
@@ -413,6 +429,14 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		runtimeStore.clear(getSessionKey(ctx));
 	});
 
+	// Whether the model touched the loop at all is the difference between a turn
+	// that stopped mid-setup and one that ignored the loop entirely, and a stall
+	// is diagnosed from the log line that says which happened.
+	api.on("tool_execution_end", (event, ctx) => {
+		if (!EXPERIMENT_TOOL_NAMES.includes(event.toolName)) return;
+		getRuntime(ctx).loopToolRanThisTurn = true;
+	});
+
 	api.on("agent_end", async (_event, ctx) => {
 		const runtime = getRuntime(ctx);
 		runtime.runningExperiment = null;
@@ -433,8 +457,42 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		const shouldResumePendingRun =
 			pendingRun !== null && runtime.lastAutoResumePendingRunNumber !== pendingRun.runNumber;
 		if (!shouldResumePendingRun && !runtime.autoResumeArmed) {
+			// The turn ended with the loop untouched: nothing armed a resume, no
+			// measurement is waiting, so there is no next step and nobody is coming.
+			// Returning here is what left a live-looking row above a loop that had
+			// stopped -- the mode stayed on, the tools stayed attached, and the
+			// session sat until the user typed something.
+			runtime.stallNudges += 1;
+			logger.warn("autoresearch loop ended a turn without advancing", {
+				sessionId: session?.id ?? null,
+				stallNudges: runtime.stallNudges,
+				toolRanThisTurn: runtime.loopToolRanThisTurn,
+			});
+			if (runtime.stallNudges > MAX_STALL_NUDGES) {
+				runtime.stallNudges = 0;
+				const label = modeLabel(runtime);
+				await disableMode(
+					ctx,
+					runtime,
+					label,
+					`the model ended ${MAX_STALL_NUDGES + 1} turns without advancing the experiment. The session and its runs are kept, \`/${label.toLowerCase()} status\` shows them`,
+				);
+				return;
+			}
+			api.sendMessage(
+				{
+					customType: "autoresearch-stall-nudge",
+					content: prompt.render(autoresearchPrompts["autoresearch/stall-nudge"].text, {
+						has_session: Boolean(session),
+					}),
+					display: false,
+					attribution: "agent",
+				},
+				{ deliverAs: "nextTurn", triggerTurn: true },
+			);
 			return;
 		}
+		runtime.stallNudges = 0;
 		runtime.autoResumeArmed = false;
 		runtime.lastAutoResumePendingRunNumber = pendingRun?.runNumber ?? null;
 		api.sendMessage(
@@ -452,6 +510,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 
 	api.on("before_agent_start", async (event, ctx) => {
 		const runtime = getRuntime(ctx);
+		runtime.loopToolRanThisTurn = false;
 		// A paused loop keeps re-checking. This handler is the only one that notices
 		// a git checkout mid-conversation -- `session_branch` is the conversation
 		// tree branching, not the repository -- so returning here on a paused

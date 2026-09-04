@@ -53,6 +53,8 @@ export function createSessionRuntime(): AutoresearchRuntime {
 		goal: null,
 		pendingSwarm: null,
 		activeArm: null,
+		loopToolRanThisTurn: false,
+		stallNudges: 0,
 	};
 }
 

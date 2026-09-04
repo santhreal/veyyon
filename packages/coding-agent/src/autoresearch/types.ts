@@ -195,6 +195,20 @@ export interface AutoresearchRuntime {
 	 * an arm, which is where the loop's own reasoning happens.
 	 */
 	activeArm: ActiveArm | null;
+	/**
+	 * Whether an experiment tool ran during the turn now ending. Diagnostic: it
+	 * separates a turn that stopped part-way through the loop from one that
+	 * ignored the loop entirely, which are the same stall on the row and
+	 * different failures in the log.
+	 */
+	loopToolRanThisTurn: boolean;
+	/**
+	 * Consecutive turns that ended with no next step for the loop. Reset by a
+	 * measurement or a logged run, bounded by `MAX_STALL_NUDGES`: past the budget
+	 * the loop turns itself off and says so, so a model that will not drive it
+	 * cannot spend the session being asked again.
+	 */
+	stallNudges: number;
 }
 
 export interface ActiveArm {
