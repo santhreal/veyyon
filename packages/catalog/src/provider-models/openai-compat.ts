@@ -2309,14 +2309,18 @@ function openCodeModelCacheProviderId(
  * i.e. Responses-only; `/chat/completions` returns HTTP 500) can only come
  * from models.dev. The same descriptor rules the generator uses resolve the
  * row, so runtime and bundle agree; the bundle is the offline fallback.
+ *
+ * No discovery hooks: `onFailure` is the reason for a `null` catalog, and a
+ * models.dev miss leaves the gateway listing intact and the bundle in place.
+ * Reporting it would warn "discovery failed" for a provider whose models were
+ * discovered.
  */
 async function loadOpenCodeModelsDevReferences(
 	providerId: "opencode-go" | "opencode-zen",
 	fetchImpl?: FetchImpl,
-	hooks?: DiscoveryHooks,
 ): Promise<Map<string, ModelSpec<Api>>> {
 	const references = new Map<string, ModelSpec<Api>>();
-	const payload = await fetchModelsDevPayload(fetchImpl, hooks);
+	const payload = await fetchModelsDevPayload(fetchImpl);
 	if (!isRecord(payload)) return references;
 	const descriptors = MODELS_DEV_PROVIDER_DESCRIPTORS.filter(descriptor => descriptor.providerId === providerId);
 	for (const model of mapModelsDevToModels(payload, descriptors)) references.set(model.id, model);
@@ -2338,7 +2342,7 @@ function openCodeModelManagerOptions(
 		dynamicModelsAuthoritative: true,
 		...(apiKey && {
 			fetchDynamicModels: async hooks => {
-				const modelsDevReferences = await loadOpenCodeModelsDevReferences(providerId, config?.fetch, hooks);
+				const modelsDevReferences = await loadOpenCodeModelsDevReferences(providerId, config?.fetch);
 				return fetchOpenAICompatibleModels<Api>({
 					onFailure: hooks?.onFailure,
 					api: "openai-completions",

@@ -15,6 +15,20 @@ export function isOpenCodeProvider(provider: string): boolean {
 }
 
 /**
+ * The conversation a request belongs to: the pinned prompt-cache key when the
+ * caller has one, else the session id. Independent of cache retention, because
+ * the OpenCode gateway requires its session header on every request, and it
+ * prefers the cache key so a side-channel turn — which deliberately routes
+ * under a unique per-request session id while keeping the conversation's cache
+ * key — lands on the conversation the operator is actually in.
+ */
+export function conversationIdForOpenCode(
+	options: { promptCacheKey?: string; sessionId?: string } | undefined,
+): string | undefined {
+	return options?.promptCacheKey ?? options?.sessionId;
+}
+
+/**
  * Derive the `x-opencode-session` value from the local session id.
  *
  * Hashed rather than sent verbatim: the gateway needs one stable value per

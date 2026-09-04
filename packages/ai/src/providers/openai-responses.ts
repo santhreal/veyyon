@@ -36,6 +36,7 @@ import {
 	iterateWithIdleTimeout,
 } from "../utils/idle-iterator";
 import { OpenAIHttpError, type OpenAIStreamHandle, postOpenAIStream } from "../utils/openai-http";
+import { conversationIdForOpenCode } from "../utils/opencode-headers";
 import { notifyProviderResponse } from "../utils/provider-response";
 import { callWithCopilotModelRetry } from "../utils/retry";
 import {
@@ -85,7 +86,6 @@ import {
 	buildResponsesDeltaInput,
 	buildResponsesInput,
 	clearOpenAIStrictToolsState,
-	conversationIdForOpenCode,
 	createInitialResponsesAssistantMessage,
 	createOpenAIStrictToolsState,
 	disableStrictToolsForScope,

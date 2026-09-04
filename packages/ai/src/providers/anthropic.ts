@@ -77,7 +77,7 @@ import { isPreResponseStall, openStallLadderBudget } from "../utils/first-event-
 import { isFoundryEnabled } from "../utils/foundry";
 import { finalizeErrorMessage, materializeDumpBody, type RawHttpRequestDump } from "../utils/http-inspector";
 import { getStreamFirstEventTimeoutMs, getStreamIdleTimeoutMs, iterateWithIdleTimeout } from "../utils/idle-iterator";
-import { getOpenCodeHeaders, isOpenCodeProvider } from "../utils/opencode-headers";
+import { conversationIdForOpenCode, getOpenCodeHeaders, isOpenCodeProvider } from "../utils/opencode-headers";
 import { notifyProviderResponse } from "../utils/provider-response";
 import { COMBINATOR_KEYS, NO_STRICT, toolWireSchema } from "../utils/schema";
 import { spillToDescription } from "../utils/schema/spill";
@@ -2030,7 +2030,7 @@ const streamAnthropicOnce = (
 					thinkingDisplay: options?.thinkingDisplay,
 					fetch: options?.fetch,
 					claudeCodeSessionId: options?.sessionId ?? extractClaudeMetadataSessionId(options?.metadata?.user_id),
-					conversationId: options?.promptCacheKey ?? options?.sessionId,
+					conversationId: conversationIdForOpenCode(options),
 					disableStrictTools,
 				});
 				client = created.client;

@@ -5,6 +5,7 @@ import {
 	supportsCodexReasoningSummary,
 } from "@veyyon/catalog/identity";
 import { requireSupportedEffort } from "@veyyon/catalog/model-thinking";
+import * as logger from "@veyyon/utils/logger";
 import type { Model } from "../../types";
 import { mapOpenAIReasoningEffort, ORPHAN_TOOL_CALL_PLACEHOLDER } from "../openai-shared";
 import { staleToolResultNote } from "../transform-messages";
@@ -254,6 +255,11 @@ function repairToolCallPairs(input: InputItem[]): InputItem[] {
 			callId !== undefined &&
 			!callIds.has(callId)
 		) {
+			logger.warn("openai-codex: folding a tool output whose call is missing from the request", {
+				toolCallId: callId,
+				knownCallIds: [...callIds],
+				inputItems: input.length,
+			});
 			repaired.push(orphanFunctionOutputToMessage(item, callId));
 			continue;
 		}

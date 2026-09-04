@@ -30,7 +30,9 @@ function openCodeModelManagerFactories(): [
 ][] {
 	const factories: [string, (config: { apiKey: string; fetch: FetchImpl }) => ModelManagerOptions<Api>][] = [];
 	for (const [name, value] of Object.entries(openaiCompat)) {
-		if (!/^opencode.*ModelManagerOptions$/.test(name)) continue;
+		// Both spellings, because the module's own helper is `openCodeModelManagerOptions`
+		// while its exports are `opencodeZen…`; a case-sensitive prefix would skip one.
+		if (!/^open[Cc]ode.*ModelManagerOptions$/.test(name)) continue;
 		if (typeof value !== "function") continue;
 		const factory = value as (config: { apiKey: string; fetch: FetchImpl }) => ModelManagerOptions<Api>;
 		factories.push([name, factory]);

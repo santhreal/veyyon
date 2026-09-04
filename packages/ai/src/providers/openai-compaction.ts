@@ -56,6 +56,7 @@ import { $env, logger, scopedTimeoutSignal, stringifyJson } from "@veyyon/utils"
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { boundProviderErrorDetail, ProviderHttpError, readProviderErrorDetail } from "../error";
 import type { Api, CodexCompactionRequestContext, FetchImpl, Message, Model, ProviderSessionState } from "../types";
+import { conversationIdForOpenCode } from "../utils/opencode-headers";
 import {
 	buildCodexCompactionV2Window,
 	CODEX_COMPACTION_TRIGGER_ITEM,
@@ -349,12 +350,7 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 				? resolveAzureCompactRequest(model, apiKey)
 				: isCodex
 					? resolveCodexCompactRequest(model, apiKey, request)
-					: resolveOpenAiCompactRequest(
-							model,
-							apiKey,
-							request.messages,
-							request.promptCacheKey ?? request.sessionId,
-						);
+					: resolveOpenAiCompactRequest(model, apiKey, request.messages, conversationIdForOpenCode(request));
 		const { url, headers } = resolved;
 
 		const input: Array<Record<string, unknown>> = [
