@@ -1,8 +1,24 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
+import {
+	computeModalDims,
+	MODAL_SIZING_SETTINGS,
+	sizingForArea,
+} from "@veyyon/coding-agent/modes/components/modal-shell";
 import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+
+const activeSelectors = new Set<SettingsSelectorComponent>();
+
+function layoutPaneWidth(terminalWidth: number): number {
+	const termHeight = Math.max(1, process.stdout.rows || 40);
+	const sizing = sizingForArea(MODAL_SIZING_SETTINGS, termHeight);
+	const dims = computeModalDims(terminalWidth, termHeight, sizing)!;
+	const contentWidth = dims.contentWidth;
+	const sidebarWidth = Math.min(19, Math.max(10, Math.floor(contentWidth / 3)));
+	return Math.max(1, contentWidth - sidebarWidth - 3);
+}
 
 function createSelector(
 	overrides: {
@@ -27,6 +43,7 @@ function createSelector(
 			getStatusLinePreview: overrides.getStatusLinePreview,
 		},
 	);
+	activeSelectors.add(component);
 	component.render(131);
 	return component;
 }
@@ -46,6 +63,10 @@ describe("subagent roster and unset settings visibility contracts", () => {
 	});
 
 	afterEach(() => {
+		for (const selector of activeSelectors) {
+			selector.dispose();
+		}
+		activeSelectors.clear();
 		resetSettingsForTest();
 	});
 	it("renders (unset) for empty text settings in the settings list", () => {
@@ -70,9 +91,7 @@ describe("subagent roster and unset settings visibility contracts", () => {
 		});
 
 		const frame = strippedFrame(component, 131);
-		expect(capturedWidth).toBeDefined();
-		expect(capturedWidth).toBeGreaterThan(30);
-		expect(capturedWidth).toBeLessThan(131);
+		expect(capturedWidth).toBe(layoutPaneWidth(131));
 
 		const previewLine = frame.find(line => line.includes("capability-line"));
 		expect(previewLine).toBeDefined();
@@ -81,8 +100,18 @@ describe("subagent roster and unset settings visibility contracts", () => {
 
 	it("renders navigation footer and custom agent hint in subagent roster without clipping", async () => {
 		const { promise, resolve } = Promise.withResolvers<void>();
-		const component = createSelector({
-			requestRender: () => resolve(),
+		let resolved = false;
+		let component: SettingsSelectorComponent | undefined;
+		component = createSelector({
+			requestRender: () => {
+				if (component && !resolved) {
+					const frame = strippedFrame(component, 131);
+					if (frame.some(line => line.includes("scout") || line.includes("task"))) {
+						resolved = true;
+						resolve();
+					}
+				}
+			},
 		});
 
 		// Type search query to filter for Roster
@@ -93,16 +122,18 @@ describe("subagent roster and unset settings visibility contracts", () => {
 		component.handleInput("\r");
 		component.render(131);
 
-		// Wait deterministically for discoverAgents async loading to trigger requestRender
+		// Wait deterministically for discoverAgents async loading to render discovered roster rows
 		await promise;
 
 		const frame = strippedFrame(component, 131);
 
-		// Both CUSTOM_AGENT_HINT and SelectList navigation controls must be present in the frame
+		// Discovered agent rows, CUSTOM_AGENT_HINT and navigation controls must be present
+		const agentRow = frame.find(line => line.includes("scout") || line.includes("task"));
 		const hintLine = frame.find(line => line.includes("~/.veyyon/subagents/"));
-		const listHintLine = frame.find(line => line.includes("select") && line.includes("close"));
+		const navLine = frame.find(line => line.includes("Enter to configure") && line.includes("Esc to go back"));
 
+		expect(agentRow).toBeDefined();
 		expect(hintLine).toBeDefined();
-		expect(listHintLine).toBeDefined();
+		expect(navLine).toBeDefined();
 	});
 });
