@@ -188,7 +188,9 @@ describe("with load balancing off one account serves a provider", () => {
 			usageProviderResolver: () => ({
 				id: PROVIDER,
 				fetchUsage: async ({ credential }) =>
-					credential.accountId ? usageReport(credential.accountId, credential.accountId === "account-first" ? 0.95 : 0.05) : null,
+					credential.accountId
+						? usageReport(credential.accountId, credential.accountId === "account-first" ? 0.95 : 0.05)
+						: null,
 			}),
 		});
 	}
