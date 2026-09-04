@@ -26,7 +26,7 @@ import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { resolveActiveRepoContextSync, resolveWorktreeContext } from "@veyyon/coding-agent/utils/active-repo-context";
-import { branchLabelFromFiles, HEAD_REF_PREFIX, LOCAL_BRANCH_PREFIX } from "@veyyon/coding-agent/utils/git-head";
+import { branchLabelFromFiles } from "@veyyon/coding-agent/utils/git-head";
 import type { Component } from "@veyyon/tui";
 import { visibleWidth } from "@veyyon/tui/utils";
 import { getProjectDir, TempDir } from "@veyyon/utils";
@@ -275,7 +275,7 @@ describe("the launch composer", () => {
 			const located = rendered.content;
 			const row = launchRows(100).find(candidate => candidate.includes(located));
 			expect(row).toBeDefined();
-			expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located.content}`);
+			expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located}`);
 		} finally {
 			settings.set("statusLine.segmentOptions", {});
 		}
