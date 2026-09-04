@@ -39,9 +39,16 @@ third states which model each arm runs on. All three change with the fields
 above them.
 
 Enter does nothing while the goal is empty, and the legend reads `enter needs a
-goal` until one is typed. Text typed after the command prefills the goal, so
-`/autoswarm make the tokenizer faster` opens the console with that goal already
-in the field.
+goal` until one is typed. With no session on the branch, text typed after the
+command prefills the goal, so `/autoswarm make the tokenizer faster` opens the
+console with that goal already in the field. Over a session that already has a
+goal the field opens on that goal, and the typed text reaches the model as
+context for the resume; the stored goal changes only through `/autoswarm goal
+<text>` or a field that leaves the console different from it.
+
+Escape leaves without starting a run and prints `Autoswarm setup cancelled.
+Nothing was started.` The console is not a turn: no `Working…` loader runs under
+it while it is open.
 
 The console opens on whatever the current branch is already doing, so running it
 during a session shows that session's breadth rather than the default, and
@@ -221,3 +228,13 @@ measured from the values a field currently holds is a column narrower in every
 other state, and the hint beside it moves as the toggle crosses. The column is
 sized from the bounds each field can reach instead, so the hints stand still.
 A frame of any other state shows the column's position but not that it holds.
+
+`proof/scenes/autoswarm-run-resume-keeps-goal.sh` opens the console over the
+seeded session with resume text after the command, and leaves with Escape. The
+`open` frame shows the session's goal in the field rather than the typed text;
+`cancelled` shows the notice under the command:
+
+```sh
+SCENE_MOTION_FLOOR=0 proof/record.sh proof/scenes/autoswarm-run-resume-keeps-goal.sh
+SCENE_MOTION_FLOOR=0 proof/record.sh --before proof/scenes/autoswarm-run-resume-keeps-goal.sh
+```

@@ -162,9 +162,10 @@ These attach in autoresearch and autoswarm, and nowhere else.
 `/autoresearch` opens the run screen; it does not end anything.
 
 Escape during a turn stops that turn and pauses the loop without leaving the
-mode. The status row stays, the tools stay attached, and nothing runs until you
-send a message; a measurement that was waiting to be logged is picked up by
-that message. `/autoresearch off` from there leaves the mode.
+mode, and prints `Autoresearch interrupted. Send a message to resume the loop,
+or off to leave it.` The status row stays, the tools stay attached, and nothing
+runs until you send a message; a measurement that was waiting to be logged is
+picked up by that message. `/autoresearch off` from there leaves the mode.
 
 `/autoresearch clear` resets the worktree to the segment baseline, deletes
 untracked files and closes the session. It asks first, naming the commit it
@@ -215,3 +216,17 @@ SCENE_MOTION_FLOOR=1 proof/docker/record-x11-before.sh proof/scenes/autoresearch
 The before arm holds every source file the branch changed at `origin/main`,
 takes away every file it added and puts back every file it deleted, then
 restores all three from memory and verifies the restore by checksum.
+
+`proof/scenes/autoresearch-escape-interrupts.sh` starts the loop over the seeded
+swarm session, presses Escape during its turn and sends a message to resume it.
+It needs a model, since an interrupt is only one when a turn is streaming;
+`proof/scenes/new-session-keeps-running.sh` states how the llama.cpp sidecar is
+started. Its before arm holds at the commit before the fix, because `origin/main`
+has no stall nudge and leaves the loop silently stopped there:
+
+```sh
+PROOF_LLM_BASE_URL=http://veyyon-proof-llm:8080/v1 SCENE_MOTION_FLOOR=1 \
+	proof/record.sh proof/scenes/autoresearch-escape-interrupts.sh
+PROOF_LLM_BASE_URL=http://veyyon-proof-llm:8080/v1 SCENE_MOTION_FLOOR=1 \
+	PROOF_BASE_REF=82b08a8511 proof/record.sh --before proof/scenes/autoresearch-escape-interrupts.sh
+```

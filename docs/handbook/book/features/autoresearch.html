@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-25889477.js";
+            window.path_to_searchindex_js = "../searchindex-8e08f80c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -331,6 +331,10 @@ degenerate cases.</p>
 <h2 id="ending-a-session"><a class="header" href="#ending-a-session">Ending a session</a></h2>
 <p><code>/autoresearch off</code> leaves the mode and keeps the session. A bare
 <code>/autoresearch</code> opens the run screen; it does not end anything.</p>
+<p>Escape during a turn stops that turn and pauses the loop without leaving the
+mode, and prints <code>Autoresearch interrupted. Send a message to resume the loop, or off to leave it.</code> The status row stays, the tools stay attached, and nothing
+runs until you send a message; a measurement that was waiting to be logged is
+picked up by that message. <code>/autoresearch off</code> from there leaves the mode.</p>
 <p><code>/autoresearch clear</code> resets the worktree to the segment baseline, deletes
 untracked files and closes the session. It asks first, naming the commit it
 resets to and how many files hold uncommitted changes. The reset restores
@@ -377,6 +381,17 @@ SCENE_MOTION_FLOOR=1 proof/docker/record-x11-before.sh proof/scenes/autoresearch
 <p>The before arm holds every source file the branch changed at <code>origin/main</code>,
 takes away every file it added and puts back every file it deleted, then
 restores all three from memory and verifies the restore by checksum.</p>
+<p><code>proof/scenes/autoresearch-escape-interrupts.sh</code> starts the loop over the seeded
+swarm session, presses Escape during its turn and sends a message to resume it.
+It needs a model, since an interrupt is only one when a turn is streaming;
+<code>proof/scenes/new-session-keeps-running.sh</code> states how the llama.cpp sidecar is
+started. Its before arm holds at the commit before the fix, because <code>origin/main</code>
+has no stall nudge and leaves the loop silently stopped there:</p>
+<pre><code class="language-sh">PROOF_LLM_BASE_URL=http://veyyon-proof-llm:8080/v1 SCENE_MOTION_FLOOR=1 \
+	proof/record.sh proof/scenes/autoresearch-escape-interrupts.sh
+PROOF_LLM_BASE_URL=http://veyyon-proof-llm:8080/v1 SCENE_MOTION_FLOOR=1 \
+	PROOF_BASE_REF=82b08a8511 proof/record.sh --before proof/scenes/autoresearch-escape-interrupts.sh
+</code></pre>
 
                     </main>
 
