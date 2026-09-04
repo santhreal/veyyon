@@ -11,7 +11,14 @@
  * Row geometry is in `renderRunScreen`, which takes its width and height as
  * arguments so a test can pin a frame without a terminal.
  */
-import { type Component, type SelectItem, SelectList, sanitizeSingleLine, truncateToWidth } from "@veyyon/tui";
+import {
+	type Component,
+	type SelectItem,
+	SelectList,
+	sanitizeSingleLine,
+	truncateToWidth,
+	visibleWidth,
+} from "@veyyon/tui";
 import { clampLow } from "@veyyon/utils";
 import {
 	bottomBorder,
@@ -22,6 +29,8 @@ import {
 	splitRow,
 	topBorder,
 	topBorderSplit,
+	topBorderSplitTitleWidth,
+	topBorderTitleWidth,
 } from "../modes/components/overlay-box";
 import { getSelectListTheme, type ThemeColor, theme } from "../modes/theme/theme";
 import { shortenPath } from "../tools/shorten-path";
@@ -131,7 +140,16 @@ export function metricLabel(result: ExperimentResult, unit: string): string {
 	return result.measuredPrimary === null ? "no metric" : formatNum(result.measuredPrimary, unit);
 }
 
-export function screenTitle(runtime: AutoresearchRuntime): string {
+/**
+ * The title inset into the card's top border: the loop kind, the session name,
+ * and the state the loop is in when it is not simply running.
+ *
+ * `budget` is the columns the border has for it. The border truncates from the
+ * right, which is where the state sits, so the title is fitted here: the name
+ * gives way and `(paused)` or `(mode off)` stays, since the session pane can
+ * repeat the name and nothing else on the screen repeats the state.
+ */
+export function screenTitle(runtime: AutoresearchRuntime, budget = Number.POSITIVE_INFINITY): string {
 	const state = runtime.state;
 	// The name and the goal are model-written text, and this one is inset into a
 	// border: a tab or a newline in it breaks the row the card is measured by.
@@ -145,7 +163,9 @@ export function screenTitle(runtime: AutoresearchRuntime): string {
 	// same one, so `esc` mid-turn does not leave a title that reads as running.
 	const paused = runtime.interrupted || runtime.pausedOnBranch !== null;
 	const mode = runtime.autoresearchMode ? (paused ? "  (paused)" : "") : "  (mode off)";
-	return name ? `${label} · ${name}${mode}` : `${label}${mode}`;
+	const head = name ? `${label} · ${name}` : label;
+	if (visibleWidth(head) + mode.length <= budget) return head + mode;
+	return `${truncateToWidth(head, Math.max(0, budget - mode.length))}${mode}`;
 }
 
 /**
@@ -707,13 +727,13 @@ export function renderRunScreen(
 	if (screenStacks(width)) {
 		const bodyRows = stackedBodyRows(rows);
 		const listRows = screenListRows(bodyRows);
-		out.push(topBorder(width, screenTitle(runtime)));
+		out.push(topBorder(width, screenTitle(runtime, topBorderTitleWidth(width))));
 		for (let index = 0; index < listRows; index += 1) out.push(row(sidebar[index] ?? "", width));
 		out.push(divider(width));
 		for (let index = 0; index < bodyRows - listRows; index += 1) out.push(row(detail[index] ?? "", width));
 	} else {
 		const bodyRows = Math.max(3, rows - 4);
-		out.push(topBorderSplit(width, screenTitle(runtime), sidebarWidth));
+		out.push(topBorderSplit(width, screenTitle(runtime, topBorderSplitTitleWidth(sidebarWidth)), sidebarWidth));
 		for (let index = 0; index < bodyRows; index += 1) {
 			out.push(splitRow(sidebar[index] ?? "", detail[index] ?? "", width, sidebarWidth));
 		}

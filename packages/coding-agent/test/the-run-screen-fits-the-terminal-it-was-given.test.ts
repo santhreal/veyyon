@@ -170,6 +170,28 @@ describe("the run screen fits the terminal it was given", () => {
 		expect(screenTitle(paused)).toContain("mode off");
 	});
 
+	it("keeps the loop's state in a title the border has no room for", () => {
+		// The title sits in the sidebar's border segment, which truncates from the
+		// right, and the state is the rightmost word. `Autoswarm · <name>  (paused)`
+		// over a sidebar of 40 columns lost `(paused)` to an ellipsis, so the screen
+		// of a paused loop titled itself as a running one whenever the name was
+		// long enough. The name gives way; the state stays.
+		const paused = runtimeWith(1);
+		paused.state.name = "tokenizer-throughput-and-scanner-latency";
+		paused.interrupted = true;
+		for (const budget of [24, 32, 40]) {
+			const title = screenTitle(paused, budget);
+			expect(visibleWidth(title)).toBeLessThanOrEqual(budget);
+			expect(title.endsWith("(paused)")).toBe(true);
+			expect(title.startsWith("Autoresearch")).toBe(true);
+		}
+		// A title that fits is not touched.
+		expect(screenTitle(paused, 80)).toBe("Autoresearch · tokenizer-throughput-and-scanner-latency  (paused)");
+		// The rendered border carries the state, not only the function's output.
+		const frame = frameOf(paused, 100, 14).map(stripAnsi);
+		expect(frame[0]).toContain("(paused)");
+	});
+
 	it("reads a swarm the console configured before any session exists", () => {
 		// Between the setup console and the first `init_experiment` there is no
 		// stored session, so `state.breadth` is 1 for a whole turn. The surface
