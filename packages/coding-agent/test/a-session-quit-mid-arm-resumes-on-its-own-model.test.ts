@@ -78,7 +78,13 @@ describe("a session quit mid-arm resumes on its own model", () => {
 		const sessionManager = SessionManager.create(tempDir.path(), path.join(tempDir.path(), "active"));
 		const session = new AgentSession({
 			agent: new Agent({
-				initialState: { model: ownModel, systemPrompt: ["Test"], tools: [], messages: [], thinkingLevel: Effort.Medium },
+				initialState: {
+					model: ownModel,
+					systemPrompt: ["Test"],
+					tools: [],
+					messages: [],
+					thinkingLevel: Effort.Medium,
+				},
 			}),
 			sessionManager,
 			settings,
