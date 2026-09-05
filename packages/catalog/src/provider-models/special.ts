@@ -53,6 +53,10 @@ export interface CursorModelManagerConfig {
 // A stale window is not cosmetic here, it decides when compaction fires.
 const CURSOR_CACHE_PROVIDER_ID = "cursor:max-mode-v3";
 
+export function resolveCursorCacheProviderId(_config?: CursorModelManagerConfig): string {
+	return CURSOR_CACHE_PROVIDER_ID;
+}
+
 export function cursorModelManagerOptions(config: CursorModelManagerConfig = {}): ModelManagerOptions<"cursor-agent"> {
 	const { apiKey, baseUrl, clientVersion } = config;
 	return {
@@ -133,6 +137,11 @@ function gitLabDuoWorkflowModelCacheProviderId(apiKey: string, config: GitLabDuo
 	const cwd = config.cwd ?? process.cwd();
 	const scope = [config.baseUrl ?? "", namespaceId, projectId, cwd].join("\u0000");
 	return `gitlab-duo-agent:${Bun.hash(`${apiKey}\u0000${scope}`).toString(36)}`;
+}
+
+export function resolveGitLabDuoWorkflowCacheProviderId(config?: GitLabDuoWorkflowModelManagerConfig): string {
+	const apiKey = config?.apiKey;
+	return apiKey ? gitLabDuoWorkflowModelCacheProviderId(apiKey, config ?? {}) : "gitlab-duo-agent";
 }
 
 // Devin (Codeium Cascade)

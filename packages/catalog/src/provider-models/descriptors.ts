@@ -40,6 +40,11 @@ import {
 	openrouterModelManagerOptions,
 	qianfanModelManagerOptions,
 	qwenPortalModelManagerOptions,
+	resolveLitellmCacheProviderId,
+	resolveOpencodeGoCacheProviderId,
+	resolveOpencodeZenCacheProviderId,
+	resolveOpenrouterCacheProviderId,
+	resolveVllmCacheProviderId,
 	sakanaModelManagerOptions,
 	syntheticModelManagerOptions,
 	togetherModelManagerOptions,
@@ -58,6 +63,8 @@ import {
 	cursorModelManagerOptions,
 	devinModelManagerOptions,
 	gitLabDuoWorkflowModelManagerOptions,
+	resolveCursorCacheProviderId,
+	resolveGitLabDuoWorkflowCacheProviderId,
 	zaiModelManagerOptions,
 } from "./special";
 
@@ -128,6 +135,7 @@ export const CATALOG_PROVIDERS = [
 		defaultModel: "claude-4.6-opus-high",
 		envVars: ["CURSOR_ACCESS_TOKEN"],
 		createModelManagerOptions: (config: ModelManagerConfig) => cursorModelManagerOptions(config),
+		resolveCacheProviderId: resolveCursorCacheProviderId,
 		catalogDiscovery: { label: "Cursor", envVars: ["CURSOR_API_KEY"], oauthProvider: "cursor" },
 	},
 	{
@@ -174,6 +182,7 @@ export const CATALOG_PROVIDERS = [
 		defaultModel: "claude_sonnet_4_6_vertex",
 		envVars: ["GITLAB_TOKEN"],
 		createModelManagerOptions: (config: ModelManagerConfig) => gitLabDuoWorkflowModelManagerOptions(config),
+		resolveCacheProviderId: resolveGitLabDuoWorkflowCacheProviderId,
 		dynamicModelsAuthoritative: true,
 	},
 	{
@@ -229,6 +238,7 @@ export const CATALOG_PROVIDERS = [
 		defaultModel: "claude-opus-4-8",
 		envVars: ["LITELLM_API_KEY"],
 		createModelManagerOptions: (config: ModelManagerConfig) => litellmModelManagerOptions(config),
+		resolveCacheProviderId: resolveLitellmCacheProviderId,
 		catalogDiscovery: { label: "LiteLLM", allowUnauthenticated: true },
 	},
 	{
@@ -330,6 +340,7 @@ export const CATALOG_PROVIDERS = [
 		defaultModel: "kimi-k2.7-code",
 		envVars: ["OPENCODE_API_KEY"],
 		createModelManagerOptions: (config: ModelManagerConfig) => opencodeGoModelManagerOptions(config),
+		resolveCacheProviderId: resolveOpencodeGoCacheProviderId,
 		dynamicModelsAuthoritative: true,
 	},
 	{
@@ -337,6 +348,7 @@ export const CATALOG_PROVIDERS = [
 		defaultModel: "claude-opus-4-8",
 		envVars: ["OPENCODE_API_KEY"],
 		createModelManagerOptions: (config: ModelManagerConfig) => opencodeZenModelManagerOptions(config),
+		resolveCacheProviderId: resolveOpencodeZenCacheProviderId,
 		dynamicModelsAuthoritative: true,
 	},
 	{
@@ -344,6 +356,7 @@ export const CATALOG_PROVIDERS = [
 		defaultModel: "openai/gpt-5.5",
 		envVars: ["OPENROUTER_API_KEY"],
 		createModelManagerOptions: (config: ModelManagerConfig) => openrouterModelManagerOptions(config),
+		resolveCacheProviderId: resolveOpenrouterCacheProviderId,
 		catalogDiscovery: { label: "OpenRouter", allowUnauthenticated: true },
 	},
 	{
@@ -417,6 +430,7 @@ export const CATALOG_PROVIDERS = [
 		defaultModel: "gpt-oss-20b",
 		envVars: ["VLLM_API_KEY"],
 		createModelManagerOptions: (config: ModelManagerConfig) => vllmModelManagerOptions(config),
+		resolveCacheProviderId: resolveVllmCacheProviderId,
 		catalogDiscovery: { label: "vLLM", allowUnauthenticated: true },
 	},
 	{
@@ -525,6 +539,7 @@ export const PROVIDER_DESCRIPTORS: readonly ProviderDescriptor[] = CATALOG_ENTRY
 			providerId: provider.id,
 			defaultModel: provider.defaultModel,
 			createModelManagerOptions: provider.createModelManagerOptions,
+			resolveCacheProviderId: provider.resolveCacheProviderId,
 			allowUnauthenticated: provider.allowUnauthenticated,
 			dynamicModelsAuthoritative: provider.dynamicModelsAuthoritative,
 			catalogDiscovery: provider.catalogDiscovery

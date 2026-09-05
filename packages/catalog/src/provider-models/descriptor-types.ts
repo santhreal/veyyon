@@ -23,6 +23,8 @@ export interface CatalogDiscoveryConfig {
 export interface ProviderDescriptor {
 	providerId: string;
 	createModelManagerOptions(config: ModelManagerConfig): ModelManagerOptions<Api>;
+	/** Lightweight cache-ID resolver. When omitted, defaults to `providerId`. */
+	resolveCacheProviderId?(config: ModelManagerConfig): string;
 	/** Preferred model ID when no explicit selection is made. */
 	defaultModel: string;
 	/** When true, the runtime creates a model manager even without a valid API key (e.g. ollama). */
@@ -65,6 +67,8 @@ export interface ProviderCatalogEntry {
 	readonly envVars?: readonly string[];
 	/** Runtime model-manager factory. Omitted for catalog-only providers. */
 	readonly createModelManagerOptions?: (config: ModelManagerConfig) => ModelManagerOptions<Api>;
+	/** Lightweight cache-ID resolver. When omitted, defaults to `id`. */
+	readonly resolveCacheProviderId?: (config: ModelManagerConfig) => string;
 	/** When true, the runtime creates a model manager even without a valid API key. */
 	readonly allowUnauthenticated?: boolean;
 	/** When true, successful runtime discovery replaces bundled provider models. */

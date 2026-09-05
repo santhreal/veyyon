@@ -12,14 +12,17 @@ import type { Api, Model } from "../types";
 import { getBracketStrippedModelIdCandidates, getLongestModelLikeIdSegment, getModelLikeIdSegments } from "./id";
 import { REFERENCE_TRAILING_MARKER_PATTERN } from "./markers";
 
-export interface ModelReferenceIndex {
-	exact: Map<string, Model<Api>>;
-	suffixAlias: Map<string, Model<Api>>;
+export type ModelReferenceCandidate = Pick<Model<Api>, "id" | "provider" | "cost"> &
+	Partial<Pick<Model<Api>, "contextWindow" | "maxTokens">>;
+
+export interface ModelReferenceIndex<TCandidate extends ModelReferenceCandidate = Model<Api>> {
+	exact: Map<string, TCandidate>;
+	suffixAlias: Map<string, TCandidate>;
 }
 
 // xai-oauth subscription entries carry zero public pricing and inflated maxTokens;
 // keep them provider-local so they cannot outrank paid/public Grok references.
-export function isZeroCostXaiOAuthReference(candidate: Model<Api>): boolean {
+export function isZeroCostXaiOAuthReference(candidate: ModelReferenceCandidate): boolean {
 	return (
 		candidate.provider === "xai-oauth" &&
 		candidate.cost.input === 0 &&
@@ -31,7 +34,10 @@ export function isZeroCostXaiOAuthReference(candidate: Model<Api>): boolean {
 
 // Prefer the reference with the largest limits and complete cache pricing, then
 // first-party OpenAI entries.
-function shouldReplaceReference(existing: Model<Api> | undefined, candidate: Model<Api>): boolean {
+function shouldReplaceReference<TCandidate extends ModelReferenceCandidate>(
+	existing: TCandidate | undefined,
+	candidate: TCandidate,
+): boolean {
 	if (!existing) return true;
 	if (candidate.contextWindow !== existing.contextWindow) {
 		return (candidate.contextWindow ?? 0) > (existing.contextWindow ?? 0);
@@ -55,8 +61,14 @@ function normalizeReferenceKey(value: string): string {
  * Build a reference index from a model catalog (typically the bundled models).
  * Pure: callers are responsible for memoizing the result.
  */
-export function buildModelReferenceIndex(models: Iterable<Model<Api>>): ModelReferenceIndex {
-	const exact = new Map<string, Model<Api>>();
+export function buildModelReferenceIndex(models: Iterable<Model<Api>>): ModelReferenceIndex;
+export function buildModelReferenceIndex<TCandidate extends ModelReferenceCandidate>(
+	models: Iterable<TCandidate>,
+): ModelReferenceIndex<TCandidate>;
+export function buildModelReferenceIndex<TCandidate extends ModelReferenceCandidate = Model<Api>>(
+	models: Iterable<TCandidate>,
+): ModelReferenceIndex<TCandidate> {
+	const exact = new Map<string, TCandidate>();
 	for (const candidate of models) {
 		if (isZeroCostXaiOAuthReference(candidate)) {
 			continue;
@@ -69,8 +81,10 @@ export function buildModelReferenceIndex(models: Iterable<Model<Api>>): ModelRef
 	return { exact, suffixAlias: buildSuffixAliasMap(exact) };
 }
 
-function buildSuffixAliasMap(exactReferences: ReadonlyMap<string, Model<Api>>): Map<string, Model<Api>> {
-	const aliases = new Map<string, Model<Api>>();
+function buildSuffixAliasMap<TCandidate extends ModelReferenceCandidate>(
+	exactReferences: ReadonlyMap<string, TCandidate>,
+): Map<string, TCandidate> {
+	const aliases = new Map<string, TCandidate>();
 	for (const reference of exactReferences.values()) {
 		const slashIndex = reference.id.lastIndexOf("/");
 		if (slashIndex === -1) {
@@ -138,7 +152,10 @@ function getReferenceCandidateIds(modelId: string): string[] {
 }
 
 /** Resolve a (possibly proxied/affixed) model id to its bundled upstream reference. */
-export function resolveModelReference(modelId: string, index: ModelReferenceIndex): Model<Api> | undefined {
+export function resolveModelReference<TCandidate extends ModelReferenceCandidate = Model<Api>>(
+	modelId: string,
+	index: ModelReferenceIndex<TCandidate>,
+): TCandidate | undefined {
 	for (const candidate of getReferenceCandidateIds(modelId)) {
 		const key = normalizeReferenceKey(candidate);
 		const reference = index.exact.get(key) ?? index.suffixAlias.get(key);

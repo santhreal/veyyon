@@ -6,9 +6,20 @@
  * non-bundled reference data use the pure builder directly
  * ({@link buildModelReferenceIndex}).
  */
-import { getBundledModels, getBundledProviders } from "../models";
+import {
+	getBundledModel,
+	getBundledModels,
+	getBundledProviders,
+	iterateBundledModelMetadata,
+	type GeneratedProvider,
+} from "../models";
 import type { Api, Model } from "../types";
-import { buildModelReferenceIndex, type ModelReferenceIndex } from "./reference";
+import {
+	buildModelReferenceIndex,
+	type ModelReferenceCandidate,
+	type ModelReferenceIndex,
+	resolveModelReference,
+} from "./reference";
 
 let bundledModels: readonly Model<Api>[] | undefined;
 
@@ -20,9 +31,26 @@ function getBundledModelList(): readonly Model<Api>[] {
 }
 
 let referenceIndex: ModelReferenceIndex | undefined;
+let metadataReferenceIndex: ModelReferenceIndex<ModelReferenceCandidate> | undefined;
 
 /** Proxy-reference index over the bundled catalog. */
 export function getBundledModelReferenceIndex(): ModelReferenceIndex {
 	referenceIndex ??= buildModelReferenceIndex(getBundledModelList());
 	return referenceIndex;
+}
+
+/**
+ * Resolve a (possibly proxied/affixed) model id to its bundled upstream reference,
+ * enriching only the matched model's provider rather than the entire catalog.
+ */
+export function resolveBundledModelReference(modelId: string): Model<Api> | undefined {
+	if (referenceIndex) {
+		return resolveModelReference(modelId, referenceIndex);
+	}
+	metadataReferenceIndex ??= buildModelReferenceIndex(iterateBundledModelMetadata());
+	const candidate = resolveModelReference(modelId, metadataReferenceIndex);
+	if (!candidate) {
+		return undefined;
+	}
+	return getBundledModel(candidate.provider as GeneratedProvider, candidate.id);
 }

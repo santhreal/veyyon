@@ -74,7 +74,7 @@ export type KnownHost = keyof typeof KNOWN_HOSTS;
 
 // Non-global, non-Unicode patterns preserve ASCII case folding without allocating
 // a normalized URL on every lookup or folding punctuation into control characters.
-const HOST_URL_PATTERNS = Object.fromEntries(
+const HOST_URL_PATTERNS = Object.fromEntries<readonly RegExp[]>(
 	Object.entries(KNOWN_HOSTS).map(([host, spec]) => [
 		host,
 		spec.urlMarkers.map(marker => new RegExp(escapeRegExp(marker), "i")),
