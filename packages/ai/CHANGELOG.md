@@ -19,6 +19,7 @@
 
 ### Fixed
 
+- Credential-store startup applies SQLite busy handling and WAL mode before initializing refresh leases, allowing concurrent launches to wait for database locks.
 - Reasoning recorded behind a rewritten history prefix is dropped before the request on a model that binds thinking blocks to their prefix, instead of being replayed and answered with a 400.
 - ChatGPT Codex server-side compaction streams a trailing `compaction_trigger` item to `{base}/codex/responses`, instead of posting to `{base}/codex/responses/compact`, which answers 404 and turned every compaction into a paid local pass for the rest of the session.
 - A Codex compaction stream carrying a `compaction` item with no `encrypted_content` is refused instead of being stored as a window every later turn discards.

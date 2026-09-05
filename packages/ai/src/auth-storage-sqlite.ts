@@ -293,7 +293,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 				} catch {
 					// Ignore chmod failures (e.g., Windows)
 				}
-				SqliteAuthCredentialStore.#ensureAuthCredentialRefreshLeasesTable(db);
 				return new SqliteAuthCredentialStore(db);
 			} catch (err) {
 				db?.close();
@@ -310,18 +309,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 			`Failed to open auth database at '${dbPath}' after ${maxAttempts} attempts: ${lastBusyError?.message}`,
 			{ cause: lastBusyError },
 		);
-	}
-
-	static #ensureAuthCredentialRefreshLeasesTable(db: Database): void {
-		db.run(`
-			CREATE TABLE IF NOT EXISTS auth_credential_refresh_leases (
-				credential_id INTEGER PRIMARY KEY,
-				owner TEXT NOT NULL,
-				expires_at_ms INTEGER NOT NULL,
-				updated_at INTEGER NOT NULL
-			);
-			CREATE INDEX IF NOT EXISTS idx_auth_credential_refresh_leases_expires ON auth_credential_refresh_leases(expires_at_ms);
-		`);
 	}
 
 	#initializeSchema(): void {
@@ -378,11 +365,11 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 			);
 			CREATE INDEX IF NOT EXISTS idx_usage_history_recorded ON usage_history(recorded_at);
 		`);
+		this.#createAuthCredentialRefreshLeasesTable();
 
 		if (!this.#authCredentialsTableExists()) {
 			this.#createAuthCredentialsTable();
 			this.#createAuthCredentialBlocksTable();
-			this.#createAuthCredentialRefreshLeasesTable();
 			this.#writeAuthSchemaVersion(AUTH_SCHEMA_VERSION);
 			return;
 		}
@@ -400,7 +387,6 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 
 		this.#createAuthCredentialIndexes();
 		this.#createAuthCredentialBlocksTable();
-		this.#createAuthCredentialRefreshLeasesTable();
 		this.#backfillCredentialIdentityKeys();
 		// Rewriting an already-current version row is a no-op write transaction
 		// on every boot; only persist when the recorded version actually changes.
@@ -491,7 +477,15 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 	}
 
 	#createAuthCredentialRefreshLeasesTable(): void {
-		SqliteAuthCredentialStore.#ensureAuthCredentialRefreshLeasesTable(this.#db);
+		this.#db.run(`
+			CREATE TABLE IF NOT EXISTS auth_credential_refresh_leases (
+				credential_id INTEGER PRIMARY KEY,
+				owner TEXT NOT NULL,
+				expires_at_ms INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL
+			);
+			CREATE INDEX IF NOT EXISTS idx_auth_credential_refresh_leases_expires ON auth_credential_refresh_leases(expires_at_ms);
+		`);
 	}
 
 	#migrateAuthSchema(fromVersion: number): void {

@@ -164,6 +164,9 @@ By default every profile reads one machine-wide set of provider logins, so signi
 The first time a profile opens the shared store, any login already saved in that profile is promoted into it,
 so turning sharing on never signs you out.
 
+Concurrent launches wait for temporary database locks during credential-store initialization.
+If the database remains locked after the bounded retries, startup reports the database path and SQLite error.
+
 To give a profile its own private credentials instead, turn sharing off in the global config
 `~/.veyyon/config.yml`:
 

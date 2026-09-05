@@ -10,6 +10,7 @@
 
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
+import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -61,25 +62,63 @@ describe("SqliteAuthCredentialStore.open SQLITE_BUSY handling", () => {
 		}
 	});
 
-	test("installs busy_timeout BEFORE any lock-taking statement", async () => {
-		const store = await SqliteAuthCredentialStore.open(path.join(tempDir, "agent.db"));
+	test("waits for a startup lock before initializing or migrating the schema", async () => {
+		// SQLite's native busy wait runs on the platform clock in another process;
+		// JavaScript fake timers cannot advance it.
+		const dbPath = path.join(tempDir, "agent.db");
+		const locker = new Database(dbPath);
+		locker.run("CREATE TABLE lock_fixture (id INTEGER PRIMARY KEY)");
+		locker.run("BEGIN EXCLUSIVE");
+		let locked = true;
+		let releaseTimer: NodeJS.Timeout | undefined;
+		const finished = Promise.withResolvers<{ stdout: string; stderr: string }>();
+		const child = execFile(
+			process.execPath,
+			[path.join(import.meta.dirname, "fixtures/open-auth-store.ts"), dbPath],
+			{
+				cwd: tempDir,
+				env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, HOME: tempDir, TMPDIR: tempDir },
+				timeout: 8_000,
+				killSignal: "SIGKILL",
+			},
+			(error, stdout, stderr) => {
+				if (error) finished.reject(error);
+				else finished.resolve({ stdout, stderr });
+			},
+		);
+		let opening = "";
+		child.stdout?.on("data", chunk => {
+			opening += String(chunk);
+			if (releaseTimer || !opening.includes("opening\n")) return;
+			// Longer than the 700ms retry-only window, shorter than the configured 5s busy wait.
+			// The child reports readiness before opening; the parent can release the lock while
+			// SQLite blocks the child's event loop. No SQLite method is replaced.
+			// Fake JS timers cannot advance SQLite's native busy handler in another process.
+			releaseTimer = setTimeout(() => {
+				try {
+					locker.run("COMMIT");
+					locked = false;
+				} catch (error) {
+					finished.reject(error);
+				}
+			}, 1_200);
+		});
 		try {
-			// The store doesn't expose the handle, so open a sibling read-only
-			// connection and verify the persisted side-effect of the open: WAL
-			// mode is set (PRAGMA journal_mode=WAL persists to the header), and
-			// the busy_timeout PRAGMA executed without throwing — the latter is
-			// proven by `open()` returning a store at all.
-			const observer = new Database(path.join(tempDir, "agent.db"));
-			try {
-				const row = observer.query("PRAGMA journal_mode").get() as { journal_mode: string };
-				expect(row.journal_mode).toBe("wal");
-			} finally {
-				observer.close();
-			}
+			const { stdout, stderr } = await finished.promise;
+			expect(locked).toBe(false);
+			expect(stderr).toBe("");
+			expect(stdout.split("\n")).toEqual([
+				"opening",
+				JSON.stringify({ providers: ["fixture"], key: "test-fixture-key" }),
+				"",
+			]);
 		} finally {
-			store.close();
+			clearTimeout(releaseTimer);
+			if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+			if (locked) locker.run("ROLLBACK");
+			locker.close();
 		}
-	});
+	}, 12_000);
 
 	test("retries through a transient SQLITE_BUSY_RECOVERY and eventually succeeds", async () => {
 		const dbPath = path.join(tempDir, "retry.db");
