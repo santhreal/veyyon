@@ -1,10 +1,10 @@
 //! Sheet docked edge overlay container primitive (§8.25).
 
-use veyyon_gpui::{AnyElement, App, IntoElement, RenderOnce, Window, div, prelude::*};
+use veyyon_gpui::{AnyElement, App, IntoElement, Pixels, RenderOnce, Window, div, prelude::*};
 
 use crate::{
 	geometry::SheetAnchor,
-	token_set::{ColorRole, RadiusStep, SpacingStep, TokenSet},
+	token_set::{ColorRole, RadiusStep, SpacingStep, StrokeStep, TokenSet},
 };
 
 /// Docked edge-anchored overlay container with fixed elevation and border
@@ -39,6 +39,14 @@ impl Sheet {
 	pub fn top(child: impl IntoElement) -> Self {
 		Self { anchor: SheetAnchor::Top, child: child.into_any_element() }
 	}
+
+	/// The frame a sheet draws around its child on each side: the padding
+	/// plus the hairline. A caller sizing the child to a declared outer
+	/// measure subtracts it twice.
+	#[must_use]
+	pub fn inset(tokens: &TokenSet) -> Pixels {
+		tokens.spacing(SpacingStep::S4) + tokens.stroke(StrokeStep::Hairline)
+	}
 }
 
 impl RenderOnce for Sheet {
@@ -54,7 +62,7 @@ impl RenderOnce for Sheet {
 		let mut el = div()
 			.bg(bg)
 			.p(pad)
-			.border_1()
+			.border(tokens.stroke(StrokeStep::Hairline))
 			.border_color(border_color)
 			.shadow_lg();
 

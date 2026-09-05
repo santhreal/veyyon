@@ -1,4 +1,8 @@
 //! Tooltip wrapper primitive (§8.25).
+//!
+//! The tag stays invisible until the pointer rests on the anchor, which the
+//! renderer tracks through a hover group named after the tooltip's identity.
+//! Layout is unaffected: the tag is absolutely positioned below the anchor.
 
 use veyyon_gpui::{
 	AnyElement, App, IntoElement, RenderOnce, SharedString, Window, div, prelude::*,
@@ -11,13 +15,25 @@ use crate::token_set::{ColorRole, RadiusStep, SpacingStep, TextRamp, TokenSet};
 pub struct Tooltip {
 	text:   SharedString,
 	anchor: AnyElement,
+	group:  SharedString,
 }
 
 impl Tooltip {
-	/// Creates a tooltip with text content and anchor element.
+	/// Creates a tooltip with text content and anchor element. Two tooltips
+	/// with the same text share one hover group.
 	#[must_use]
 	pub fn new(text: impl Into<SharedString>, anchor: impl IntoElement) -> Self {
-		Self { text: text.into(), anchor: anchor.into_any_element() }
+		let text = text.into();
+		let group: SharedString = format!("tooltip:{text}").into();
+		Self { text, anchor: anchor.into_any_element(), group }
+	}
+
+	/// Names the hover group, for a tooltip whose text is shared by others on
+	/// the same surface.
+	#[must_use]
+	pub fn group(mut self, group: impl Into<SharedString>) -> Self {
+		self.group = group.into();
+		self
 	}
 }
 
@@ -34,6 +50,12 @@ impl RenderOnce for Tooltip {
 		let font_size = tokens.font_size(TextRamp::Small);
 
 		let tag = div()
+			.absolute()
+			.top_full()
+			.left_0()
+			.mt(pad_y)
+			.invisible()
+			.group_hover(self.group.clone(), |s| s.visible())
 			.bg(bg)
 			.rounded(radius)
 			.border_1()
@@ -43,16 +65,13 @@ impl RenderOnce for Tooltip {
 			.text_size(font_size)
 			.text_color(tokens.color(ColorRole::Foreground))
 			.shadow_md()
-			.max_w_full()
-			.overflow_hidden()
 			.whitespace_nowrap()
-			.truncate()
 			.child(self.text);
 
 		div()
+			.group(self.group)
 			.relative()
 			.max_w_full()
-			.overflow_hidden()
 			.child(self.anchor)
 			.child(tag)
 	}

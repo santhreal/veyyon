@@ -1,8 +1,12 @@
 //! FilePicker button and drop target primitive (§8.25).
+//!
+//! The picker shows the path it holds and a browse affordance. Choosing a file
+//! is a host action, so the primitive dispatches the click and the caller
+//! opens whatever chooser it has; the picked path comes back through state.
 
 use std::path::PathBuf;
 
-use veyyon_gpui::{App, IntoElement, RenderOnce, Window, div, prelude::*};
+use veyyon_gpui::{App, ClickEvent, ElementId, IntoElement, RenderOnce, Window, div, prelude::*};
 
 use crate::{
 	icons::{Icon, IconName, IconSize},
@@ -12,16 +16,24 @@ use crate::{
 /// File selection trigger showing current path and browse affordance.
 #[derive(IntoElement)]
 pub struct FilePicker {
-	path:     Option<PathBuf>,
-	disabled: bool,
-	on_pick:  Option<Box<dyn Fn(PathBuf, &mut Window, &mut App) + 'static>>,
+	id:        ElementId,
+	path:      Option<PathBuf>,
+	disabled:  bool,
+	on_browse: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
 }
 
 impl FilePicker {
 	/// Creates a file picker with optional initial path.
 	#[must_use]
 	pub fn new(path: Option<PathBuf>) -> Self {
-		Self { path, disabled: false, on_pick: None }
+		Self { id: ElementId::from("file-picker"), path, disabled: false, on_browse: None }
+	}
+
+	/// Sets the element id.
+	#[must_use]
+	pub fn id(mut self, id: impl Into<ElementId>) -> Self {
+		self.id = id.into();
+		self
 	}
 
 	/// Configures disabled state.
@@ -31,10 +43,14 @@ impl FilePicker {
 		self
 	}
 
-	/// Attaches file selection callback.
+	/// Attaches the click the browse affordance dispatches. A disabled picker
+	/// dispatches nothing.
 	#[must_use]
-	pub fn on_pick(mut self, handler: impl Fn(PathBuf, &mut Window, &mut App) + 'static) -> Self {
-		self.on_pick = Some(Box::new(handler));
+	pub fn on_browse(
+		mut self,
+		handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+	) -> Self {
+		self.on_browse = Some(Box::new(handler));
 		self
 	}
 }
@@ -72,6 +88,7 @@ impl RenderOnce for FilePicker {
 			.child("Browse");
 
 		let mut el = div()
+			.id(self.id)
 			.w_full()
 			.bg(bg)
 			.rounded(radius)
@@ -90,14 +107,27 @@ impl RenderOnce for FilePicker {
 					.flex()
 					.flex_row()
 					.items_center()
+					.min_w_0()
+					.overflow_hidden()
 					.gap(tokens.spacing(SpacingStep::S2))
 					.child(folder_icon)
-					.child(div().text_size(font_size).text_color(fg).child(label)),
+					.child(
+						div()
+							.min_w_0()
+							.overflow_hidden()
+							.whitespace_nowrap()
+							.truncate()
+							.text_size(font_size)
+							.text_color(fg)
+							.child(label),
+					),
 			)
 			.child(browse_tag);
 
 		if self.disabled {
 			el = el.opacity(0.4).cursor_not_allowed();
+		} else if let Some(handler) = self.on_browse {
+			el = el.on_click(move |event, window, cx| handler(event, window, cx));
 		}
 
 		el

@@ -1,28 +1,44 @@
-//! Status Dot indicator primitive (§8.25).
+//! Status dot indicator primitive (§8.25).
+//!
+//! A 6px mark (§5.6) in a tint's ink or a colour role, or an empty slot of the
+//! same size so a column of rows whose first entry has no state keeps its
+//! titles aligned.
 
 use veyyon_gpui::{App, IntoElement, RenderOnce, Window, div, prelude::*};
 
-use crate::token_set::{RadiusStep, SpacingStep, TintRole, TokenSet};
+use crate::token_set::{ColorRole, RadiusStep, SpacingStep, TintRole, TokenSet};
 
-/// Status indicator dot with semantic tint fill.
+/// What the dot is inked with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DotInk {
+	Tint(TintRole),
+	Role(ColorRole),
+	Empty,
+}
+
+/// Status indicator dot.
 #[derive(IntoElement)]
 pub struct Dot {
-	tint:    TintRole,
-	pulsing: bool,
+	ink: DotInk,
 }
 
 impl Dot {
-	/// Creates a status dot with semantic tint.
+	/// A dot in the ink of a semantic tint.
 	#[must_use]
-	pub fn new(tint: TintRole) -> Self {
-		Self { tint, pulsing: false }
+	pub const fn new(tint: TintRole) -> Self {
+		Self { ink: DotInk::Tint(tint) }
 	}
 
-	/// Configures whether the dot has active pulsing motion.
+	/// A dot in a colour role, for a state that has no tint pair.
 	#[must_use]
-	pub fn pulsing(mut self, pulsing: bool) -> Self {
-		self.pulsing = pulsing;
-		self
+	pub const fn role(role: ColorRole) -> Self {
+		Self { ink: DotInk::Role(role) }
+	}
+
+	/// The dot's slot with nothing drawn in it.
+	#[must_use]
+	pub const fn empty() -> Self {
+		Self { ink: DotInk::Empty }
 	}
 }
 
@@ -30,10 +46,14 @@ impl RenderOnce for Dot {
 	fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let default_tokens = TokenSet::default();
 		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
-		let tint_pair = tokens.tint(self.tint);
-		let size = tokens.spacing(SpacingStep::S2);
+		let fill = match self.ink {
+			DotInk::Tint(tint) => tokens.tint(tint).ink,
+			DotInk::Role(role) => tokens.color(role),
+			DotInk::Empty => tokens.transparent(),
+		};
+		let size = tokens.spacing(SpacingStep::S3);
 		let radius = tokens.radius(RadiusStep::Full);
 
-		div().size(size).rounded(radius).bg(tint_pair.fill)
+		div().flex_shrink_0().size(size).rounded(radius).bg(fill)
 	}
 }

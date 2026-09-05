@@ -110,15 +110,6 @@ pub enum BadgeVariant {
 	Outline,
 }
 
-/// Text truncation mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum TruncateMode {
-	#[default]
-	End,
-	Middle,
-	Start,
-}
-
 /// Option entry for `Select` dropdown controls.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SelectOption {
@@ -263,6 +254,32 @@ impl KeyChord {
 		Self { key: key.into(), ctrl: false, alt: false, shift: false, meta: false }
 	}
 
+	/// Reads a chord in the keymap grammar: modifiers and the key joined by
+	/// `-`, as in `ctrl-shift-k` or `cmd-,`. The key is the last part;
+	/// `primary` is read as the platform's command modifier, and a chord that
+	/// ends in `-` has `-` as its key.
+	#[must_use]
+	pub fn parse(chord: &str) -> Self {
+		let (modifiers, key) = match chord.rsplit_once('-') {
+			Some((modifiers, "")) => (modifiers.trim_end_matches('-'), "-"),
+			Some((modifiers, key)) => (modifiers, key),
+			None => ("", chord),
+		};
+		let mut parsed = Self::key(key.to_owned());
+		for modifier in modifiers.split('-').filter(|part| !part.is_empty()) {
+			match modifier.to_ascii_lowercase().as_str() {
+				"ctrl" | "control" => parsed.ctrl = true,
+				"alt" | "option" => parsed.alt = true,
+				"shift" => parsed.shift = true,
+				"cmd" | "meta" | "super" => parsed.meta = true,
+				"primary" if cfg!(target_os = "macos") => parsed.meta = true,
+				"primary" => parsed.ctrl = true,
+				_ => {},
+			}
+		}
+		parsed
+	}
+
 	/// Attaches command/meta modifier.
 	#[must_use]
 	pub fn meta(mut self) -> Self {
@@ -309,12 +326,6 @@ impl KeyChord {
 		}
 		list
 	}
-}
-
-/// Markdown rendering options.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct MarkdownConfig {
-	pub selectable: bool,
 }
 
 /// Image source descriptor for avatars.

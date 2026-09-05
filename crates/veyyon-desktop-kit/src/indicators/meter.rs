@@ -1,6 +1,10 @@
 //! Meter determinate bounded capacity gauge primitive (§8.25).
+//!
+//! The track takes its container's width and the fill is a fraction of the
+//! track, so a meter in a 240px control column and one across a settings page
+//! both read the same fraction.
 
-use veyyon_gpui::{App, IntoElement, Pixels, RenderOnce, Window, div, prelude::*};
+use veyyon_gpui::{App, IntoElement, Pixels, RenderOnce, Window, div, prelude::*, relative};
 
 use crate::token_set::{ColorRole, RadiusStep, SpacingStep, TokenSet};
 
@@ -29,12 +33,12 @@ impl RenderOnce for Meter {
 		let default_tokens = TokenSet::default();
 		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
 
-		let track_h: Pixels = tokens.spacing(SpacingStep::S1);
+		let track_h: Pixels = tokens.spacing(SpacingStep::S2);
 		let radius = tokens.radius(RadiusStep::Full);
 		let track_bg = tokens.color(ColorRole::Inset);
 		let fill_bg = tokens.color(ColorRole::Accent);
 
-		let fill_width = tokens.spacing(SpacingStep::S10) * self.fraction;
+		let fill_width = relative(self.fraction);
 
 		div()
 			.w_full()

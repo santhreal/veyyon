@@ -10,7 +10,7 @@ pub use veyyon_desktop_tokens::{
 	ColorRole, ElevationTokens, MonoSizeStep, RadiusStep, RgbColor, ScaleTokens, SpacingStep,
 	StrokeStep, Theme, TokenError, Tokens, load_bundled_theme, load_bundled_tokens,
 };
-use veyyon_gpui::{FontWeight, Hsla, Pixels, px};
+use veyyon_gpui::{FontWeight, Hsla, Pixels, SharedString, px};
 
 /// Number of semantic colour roles defined in the system (§6.4).
 pub const COLOR_ROLE_COUNT: usize = 29;
@@ -271,6 +271,14 @@ impl TokenSet {
 	#[must_use]
 	pub fn mono_line_height(&self, step: MonoSizeStep) -> Pixels {
 		px(self.scale.mono_size(step).line_height)
+	}
+
+	/// The family mono text is set in (§6.3). One accessor, so every mono
+	/// element in the kit and the surfaces asks the same question; the value is
+	/// a generic family until a mono face ships with the product.
+	#[must_use]
+	pub fn mono_family(&self) -> SharedString {
+		SharedString::new_static("monospace")
 	}
 
 	/// Resolves font weight.

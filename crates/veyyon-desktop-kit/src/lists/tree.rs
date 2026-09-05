@@ -3,14 +3,28 @@
 use std::sync::Arc;
 
 use veyyon_gpui::{
-	AnyElement, App, ClickEvent, ElementId, IntoElement, RenderOnce, SharedString, Window, div,
-	prelude::*,
+	AnyElement, App, ClickEvent, ElementId, IntoElement, Pixels, RenderOnce, SharedString, Window,
+	div, prelude::*,
 };
 
 use crate::{
 	icons::{Icon, IconName, IconSize},
 	token_set::{ColorRole, RadiusStep, SpacingStep, TextRamp, TokenSet},
 };
+
+/// Row geometry a surface's panel tokens set. Unset fields fall back to the
+/// kit's own spacing and type ramp.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TreeNodeMetrics {
+	/// The row's fixed height; unset lets padding decide.
+	pub row_height:  Option<Pixels>,
+	/// Indent at depth zero.
+	pub indent_base: Option<Pixels>,
+	/// Indent added per depth level.
+	pub indent_step: Option<Pixels>,
+	/// Label size and line height.
+	pub font:        Option<(Pixels, Pixels)>,
+}
 
 /// Hierarchical tree node element.
 #[derive(IntoElement)]
@@ -22,6 +36,8 @@ pub struct TreeNode {
 	is_expanded: bool,
 	is_selected: bool,
 	icon:        Option<IconName>,
+	trailing:    Option<AnyElement>,
+	metrics:     TreeNodeMetrics,
 	on_toggle:   Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static>>,
 	on_click:    Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static>>,
 }
@@ -38,6 +54,8 @@ impl TreeNode {
 			is_expanded: false,
 			is_selected: false,
 			icon: None,
+			trailing: None,
+			metrics: TreeNodeMetrics::default(),
 			on_toggle: None,
 			on_click: None,
 		}
@@ -78,7 +96,23 @@ impl TreeNode {
 		self
 	}
 
-	/// Sets branch expansion toggle callback.
+	/// Sets the trailing slot, drawn after the label at the row's end.
+	#[must_use]
+	pub fn trailing(mut self, element: impl IntoElement) -> Self {
+		self.trailing = Some(element.into_any_element());
+		self
+	}
+
+	/// Sets the row geometry a surface's panel tokens dictate.
+	#[must_use]
+	pub fn metrics(mut self, metrics: TreeNodeMetrics) -> Self {
+		self.metrics = metrics;
+		self
+	}
+
+	/// Sets branch expansion toggle callback. With it the chevron is its own
+	/// control; without it the chevron is a glyph and the row's click is the
+	/// only one.
 	#[must_use]
 	pub fn on_toggle(
 		mut self,
@@ -110,11 +144,24 @@ impl RenderOnce for TreeNode {
 			tokens.transparent()
 		};
 
-		let indent = tokens.spacing(SpacingStep::S4) * (self.depth as f32);
+		let depth = self.depth as f32;
+		let step = self
+			.metrics
+			.indent_step
+			.unwrap_or_else(|| tokens.spacing(SpacingStep::S4));
+		let base = self
+			.metrics
+			.indent_base
+			.unwrap_or_else(|| tokens.spacing(SpacingStep::S2));
+		let indent = base + step * depth;
 		let pad_x = tokens.spacing(SpacingStep::S2);
 		let pad_y = tokens.spacing(SpacingStep::S1);
 		let radius = tokens.radius(RadiusStep::Sm);
 		let gap = tokens.spacing(SpacingStep::S2);
+		let (font_size, line_height) = self
+			.metrics
+			.font
+			.unwrap_or_else(|| (tokens.font_size(TextRamp::Body), tokens.line_height(TextRamp::Body)));
 
 		let chevron = if self.is_branch {
 			let icon_name = if self.is_expanded {
@@ -122,20 +169,18 @@ impl RenderOnce for TreeNode {
 			} else {
 				IconName::ChevronRight
 			};
-			let mut chevron_el = div()
-				.id(ElementId::from("tree-chevron"))
-				.cursor_pointer()
-				.child(
-					Icon::new(icon_name)
-						.size(IconSize::Size12)
-						.color(tokens.color(ColorRole::Secondary)),
-				);
-
-			if let Some(handler) = self.on_toggle {
-				chevron_el = chevron_el.on_click(move |ev, window, cx| handler(ev, window, cx));
+			let glyph = Icon::new(icon_name)
+				.size(IconSize::Size12)
+				.color(tokens.color(ColorRole::Secondary));
+			match self.on_toggle {
+				Some(handler) => div()
+					.id(ElementId::from("tree-chevron"))
+					.cursor_pointer()
+					.on_click(move |ev, window, cx| handler(ev, window, cx))
+					.child(glyph)
+					.into_any_element(),
+				None => div().child(glyph).into_any_element(),
 			}
-
-			chevron_el.into_any_element()
 		} else {
 			div()
 				.size(tokens.spacing(SpacingStep::S3))
@@ -154,17 +199,22 @@ impl RenderOnce for TreeNode {
 			.w_full()
 			.max_w_full()
 			.min_w_0()
+			.flex_shrink_0()
 			.overflow_hidden()
 			.bg(bg)
 			.rounded(radius)
-			.pl(indent + pad_x)
+			.pl(indent)
 			.pr(pad_x)
-			.py(pad_y)
 			.flex()
 			.items_center()
 			.gap(gap)
 			.cursor_pointer()
+			.hover(|s| s.bg(tokens.row_hover()))
 			.child(chevron);
+		el = match self.metrics.row_height {
+			Some(height) => el.h(height),
+			None => el.py(pad_y),
+		};
 
 		if let Some(icon) = node_icon {
 			el = el.child(div().flex_shrink_0().child(icon));
@@ -177,10 +227,19 @@ impl RenderOnce for TreeNode {
 				.overflow_hidden()
 				.whitespace_nowrap()
 				.truncate()
-				.text_size(tokens.font_size(TextRamp::Body))
-				.text_color(tokens.color(ColorRole::Foreground))
+				.text_size(font_size)
+				.line_height(line_height)
+				.text_color(tokens.color(if self.is_selected {
+					ColorRole::Foreground
+				} else {
+					ColorRole::Secondary
+				}))
 				.child(self.label),
 		);
+
+		if let Some(trailing) = self.trailing {
+			el = el.child(div().flex_shrink_0().child(trailing));
+		}
 
 		if let Some(handler) = self.on_click {
 			el = el.on_click(move |ev, window, cx| handler(ev, window, cx));
@@ -197,8 +256,9 @@ pub type TreeRow = TreeNode;
 /// closure.
 #[derive(IntoElement)]
 pub struct Tree {
+	id:          Option<ElementId>,
 	root_count:  usize,
-	render_node: Arc<dyn Fn(usize, &mut Window, &mut App) -> AnyElement + Send + Sync + 'static>,
+	render_node: Arc<dyn Fn(usize, &mut Window, &mut App) -> AnyElement + 'static>,
 }
 
 impl Tree {
@@ -206,9 +266,17 @@ impl Tree {
 	#[must_use]
 	pub fn new(
 		root_count: usize,
-		render_node: impl Fn(usize, &mut Window, &mut App) -> AnyElement + Send + Sync + 'static,
+		render_node: impl Fn(usize, &mut Window, &mut App) -> AnyElement + 'static,
 	) -> Self {
-		Self { root_count, render_node: Arc::new(render_node) }
+		Self { id: None, root_count, render_node: Arc::new(render_node) }
+	}
+
+	/// Sets an element id, which makes the tree a vertically scrolling
+	/// container rather than a stack that clips.
+	#[must_use]
+	pub fn id(mut self, id: impl Into<ElementId>) -> Self {
+		self.id = Some(id.into());
+		self
 	}
 }
 
@@ -218,11 +286,18 @@ impl RenderOnce for Tree {
 		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
 		let gap = tokens.spacing(SpacingStep::S1);
 
-		let mut container = div().w_full().flex().flex_col().gap(gap);
-		for idx in 0..self.root_count {
-			let node = (self.render_node)(idx, window, cx);
-			container = container.child(node);
+		let nodes: Vec<AnyElement> = (0..self.root_count)
+			.map(|idx| (self.render_node)(idx, window, cx))
+			.collect();
+		let container = div().w_full().flex().flex_col().gap(gap);
+		match self.id {
+			Some(id) => container
+				.id(id)
+				.flex_1()
+				.overflow_y_scroll()
+				.children(nodes)
+				.into_any_element(),
+			None => container.children(nodes).into_any_element(),
 		}
-		container
 	}
 }
