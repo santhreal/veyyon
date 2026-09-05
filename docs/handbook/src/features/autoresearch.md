@@ -122,7 +122,11 @@ count, and the blocks separate them. A segment past the width of the pane draws
 its most recent runs, marked with a leading `…`. A run shows its metric and
 percentage change against the segment baseline, secondary metrics, confidence,
 the arm that produced it and the arm that certified it, the flag reason, scope
-deviations, the change description, the commit and the files it touched.
+deviations, the change description, the commit and the files it touched. The
+run in flight shows its command, its artifacts directory and, under `Output`,
+the last twelve lines the harness printed, refreshed once a second: escapes
+are stripped, and a progress row rewritten with carriage returns shows its
+final state.
 
 `log_experiment` requires a metric on every status, so a run that crashed before
 it measured anything is recorded with a zero. The screen states `no metric` for

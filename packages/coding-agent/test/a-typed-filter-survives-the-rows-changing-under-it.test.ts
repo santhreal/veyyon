@@ -70,6 +70,7 @@ function runtimeWith(count: number, ago: number | null): AutoresearchRuntime {
 			command: "bun run bench",
 			runDirectory: "/repo/.veyyon/autoresearch/0099",
 			runNumber: count + 1,
+			tail: "",
 		};
 	}
 	return runtime;

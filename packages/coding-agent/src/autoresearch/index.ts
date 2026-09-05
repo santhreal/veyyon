@@ -7,7 +7,7 @@ import { errorMessage, logger, prompt } from "@veyyon/utils";
 import type { ExtensionContext, ExtensionFactory } from "../extensibility/extensions";
 import { autoresearchPrompts } from "../prompts/autoresearch/rows";
 import * as git from "../utils/git";
-import { leaveArm } from "./arm-model";
+import { closeModels, leaveArm } from "./arm-model";
 import { type ConsoleAction, type ConsoleHost, LoopConsoleModel, type LoopSetup } from "./console";
 import { createDashboardController } from "./dashboard";
 import { ensureAutoresearchBranch, parseWorkDirDirtyPaths } from "./git";
@@ -288,6 +288,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 				baseline: session?.baselineCommit != null,
 			}),
 			modelExists: spec => ctx.models.resolve(spec) !== undefined,
+			modelSuggestions: spec => closeModels(spec, ctx.models.list()),
 			presets: () => {
 				presets ??= loadPresets();
 				return presets;

@@ -254,6 +254,7 @@ describe("the run screen fits the terminal it was given", () => {
 			startedAt: Date.now(),
 			command: "bash autoresearch.sh",
 			runDirectory: "/repo/.autoresearch/run-4",
+			tail: "",
 		};
 		expect(runScreenRows(runtime).map(row => row.value)).toEqual([
 			"session",
@@ -276,6 +277,7 @@ describe("the run screen fits the terminal it was given", () => {
 			startedAt: Date.now(),
 			command: "bash autoresearch.sh",
 			runDirectory: `${home}/.veyyon/profiles/work/autoresearch/0002`,
+			tail: "",
 		};
 		const running = renderRunDetail(runtime, "running", 90).join("\n");
 		expect(stripAnsi(running)).toContain("~/.veyyon/profiles/work/autoresearch/0002");
@@ -298,6 +300,47 @@ describe("the run screen fits the terminal it was given", () => {
 		const pending = renderRunDetail(runtime, "pending", 90).join("\n");
 		expect(stripAnsi(pending)).toContain("~/.veyyon/profiles/work/autoresearch/0003");
 		expect(pending).not.toContain(home);
+	});
+
+	it("shows the newest harness output under a running run, as a terminal would be left showing it", () => {
+		const runtime = runtimeWith(1);
+		const running = {
+			runNumber: 2,
+			startedAt: Date.now(),
+			command: "bash autoresearch.sh",
+			runDirectory: "/repo/.autoresearch/run-2",
+			tail: "",
+		};
+		runtime.runningExperiment = running;
+		// Nothing printed yet: no Output block, not an empty one.
+		expect(stripAnsi(renderRunDetail(runtime, "running", 60).join("\n"))).not.toContain("Output");
+		const older = Array.from({ length: 20 }, (_, index) => `warmup ${index}`);
+		running.tail = [
+			...older,
+			"progress 10%\rprogress 55%\rprogress 90%",
+			"\x1b[32mok\x1b[0m\tbench\tdone",
+			"\x1b[2K\x1b[1Acursor moves are stripped",
+			"",
+			"",
+		].join("\n");
+		const pane = renderRunDetail(runtime, "running", 60);
+		const text = stripAnsi(pane.join("\n"));
+		const output = pane.findIndex(line => stripAnsi(line) === "Output");
+		expect(output).toBeGreaterThan(0);
+		const shown = pane.slice(output + 1).map(line => stripAnsi(line));
+		// Twelve rows: the newest twelve, so the eight oldest warmup lines are gone.
+		expect(shown).toHaveLength(12);
+		expect(shown[0]).toBe("warmup 11");
+		expect(text).not.toContain("warmup 10");
+		// A row rewritten with carriage returns shows its last state only.
+		expect(shown).toContain("progress 90%");
+		expect(text).not.toContain("progress 10%");
+		// Colour is stripped, tabs are cells, a cursor move never reaches the row.
+		expect(shown).toContain("ok   bench   done");
+		expect(shown.at(-1)).toBe("cursor moves are stripped");
+		expect(pane.join("\n")).not.toContain("\x1b[1A");
+		// Trailing blank lines are not rows.
+		expect(shown.at(-1)?.length).toBeGreaterThan(0);
 	});
 
 	it("shows arm and reviewer on a run that has them", () => {

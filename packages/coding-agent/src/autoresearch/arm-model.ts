@@ -37,6 +37,40 @@ export function armIndex(arm: string): number | null {
 }
 
 /**
+ * Models close to a spec that resolved to nothing, as `provider/id`, closest
+ * first. A spec is close to a model when the spec is inside the model's id or
+ * name, or when a run of three or more letters in the spec is (`opus4` for
+ * `claude-opus-4`, `gpt-5` for `gpt-4o`, `o3` for nothing). The whole spec
+ * outranks a run of letters, every run outranks some, and a shorter id
+ * outranks a longer one, so the model most likely meant is listed first. The
+ * compare is case-insensitive.
+ */
+export function closeModels(spec: string, models: readonly { id: string; name: string; provider: string }[]): string[] {
+	const needle = spec.trim().toLowerCase();
+	if (needle.length === 0) return [];
+	const tokens = (needle.match(/[a-z]{3,}/g) ?? []) as string[];
+	const ranked: { label: string; rank: number; length: number }[] = [];
+	for (const model of models) {
+		const id = model.id.toLowerCase();
+		const name = model.name.toLowerCase();
+		const rank =
+			id === needle || name === needle
+				? 0
+				: id.includes(needle) || name.includes(needle)
+					? 1
+					: tokens.length > 0 && tokens.every(token => id.includes(token) || name.includes(token))
+						? 2
+						: tokens.some(token => id.includes(token) || name.includes(token))
+							? 3
+							: null;
+		if (rank === null) continue;
+		ranked.push({ label: `${model.provider}/${model.id}`, rank, length: model.id.length });
+	}
+	ranked.sort((a, b) => a.rank - b.rank || a.length - b.length || a.label.localeCompare(b.label));
+	return ranked.map(entry => entry.label);
+}
+
+/**
  * Put the session on the model configured for `arm` and remember what to return
  * to.
  *

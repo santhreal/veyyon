@@ -21,7 +21,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Model } from "@veyyon/ai";
-import { enterArm, leaveArm } from "@veyyon/coding-agent/autoresearch/arm-model";
+import { closeModels, enterArm, leaveArm } from "@veyyon/coding-agent/autoresearch/arm-model";
 import { type ConsoleHost, LoopConsoleModel, parseArmModels } from "@veyyon/coding-agent/autoresearch/console";
 import { renderRunDetail } from "@veyyon/coding-agent/autoresearch/screen";
 import { SetupFormComponent } from "@veyyon/coding-agent/autoresearch/setup-form";
@@ -383,6 +383,38 @@ describe("an arm is built by the model configured for it", () => {
 		expect(model.models).toBe("sonnet, gpt-5");
 		expect(model.unknownModels()).toEqual([]);
 		expect(model.startBlocker()).toBeNull();
+	});
+
+	it("names the models close to a spec nothing resolves, most likely first, and none for a spec like nothing", () => {
+		// A typo on the models row is fixed from the card when the card states
+		// what was probably meant; a list opened elsewhere is where it was fixed.
+		const models = [
+			{ id: "claude-opus-4-1", name: "Claude Opus 4.1", provider: "anthropic" },
+			{ id: "claude-opus-4", name: "Claude Opus 4", provider: "anthropic" },
+			{ id: "claude-sonnet-4", name: "Claude Sonnet 4", provider: "anthropic" },
+			{ id: "gpt-5", name: "GPT-5", provider: "openai" },
+			{ id: "gpt-5-mini", name: "GPT-5 mini", provider: "openai" },
+			{ id: "gpt-4o", name: "GPT-4o", provider: "openai" },
+			// Alphabetically first, longest id: only the length rule puts it after the openai ones.
+			{ id: "big-gpt-5-turbo-preview", name: "Big", provider: "azure" },
+		];
+		// A substring of the id outranks a token match, and a shorter id outranks a longer one.
+		expect(closeModels("opus-4", models)).toEqual(["anthropic/claude-opus-4", "anthropic/claude-opus-4-1"]);
+		// A run of letters in the spec (`opus`) reaches the ids the whole spec does not.
+		expect(closeModels("opus4", models)).toEqual(["anthropic/claude-opus-4", "anthropic/claude-opus-4-1"]);
+		// Case does not matter, and the name is searched as well as the id.
+		expect(closeModels("Sonnet", models)).toEqual(["anthropic/claude-sonnet-4"]);
+		// The exact id, then the ids that contain the spec (shorter first), then the ids that share a run of letters.
+		expect(closeModels("gpt-5", models)).toEqual([
+			"openai/gpt-5",
+			"openai/gpt-5-mini",
+			"azure/big-gpt-5-turbo-preview",
+			"openai/gpt-4o",
+		]);
+		// A spec that shares no run of three letters with any model suggests nothing: two letters is noise.
+		expect(closeModels("o3", models)).toEqual([]);
+		expect(closeModels("gp-9", models)).toEqual([]);
+		expect(closeModels("   ", models)).toEqual([]);
 	});
 
 	it("ignores an unresolvable spec on an arm the session will never reach", () => {

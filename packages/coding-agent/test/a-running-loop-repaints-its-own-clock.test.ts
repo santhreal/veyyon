@@ -54,6 +54,7 @@ function runtimeRunning(): AutoresearchRuntime {
 		startedAt: Date.now() - 5_000,
 		command: "bash autoresearch.sh",
 		runDirectory: "/repo/.autoresearch/run-1",
+		tail: "",
 	};
 	return runtime;
 }

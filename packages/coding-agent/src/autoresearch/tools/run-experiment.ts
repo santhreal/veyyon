@@ -22,7 +22,12 @@ import {
 } from "../helpers";
 import { buildExperimentState } from "../state";
 import { openAutoresearchStorageIfExists } from "../storage";
-import type { AutoresearchToolFactoryOptions, RunDetails, RunExperimentProgressDetails } from "../types";
+import type {
+	AutoresearchToolFactoryOptions,
+	RunDetails,
+	RunExperimentProgressDetails,
+	RunningExperiment,
+} from "../types";
 import { DEFAULT_HARNESS_COMMAND } from "./init-experiment";
 
 const runExperimentSchema = type({
@@ -129,12 +134,14 @@ export function createRunExperimentTool(
 			runtime.lastRunArtifactDir = runDirectory;
 			runtime.lastRunNumber = insertedRun.id;
 			runtime.lastRunSummary = null;
-			runtime.runningExperiment = {
+			const running: RunningExperiment = {
 				startedAt,
 				command: resolvedCommand,
 				runDirectory,
 				runNumber: insertedRun.id,
+				tail: "",
 			};
+			runtime.runningExperiment = running;
 			options.dashboard.update(ctx, runtime);
 			options.dashboard.requestRender();
 
@@ -149,6 +156,9 @@ export function createRunExperimentTool(
 					cpuSessionId: ctx.sessionManager.getSessionId(),
 					signal,
 					onProgress: details => {
+						// The screen's clock repaints the pane once a second; this is
+						// what it repaints from.
+						running.tail = details.tailOutput;
 						onUpdate?.({
 							content: [{ type: "text", text: details.tailOutput }],
 							details: {

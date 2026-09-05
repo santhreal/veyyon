@@ -138,6 +138,27 @@ describe("the autoswarm console configures a run before it starts", () => {
 		expect(unknown.host.acted).toEqual([]);
 	});
 
+	it("lists the models close to a spec that resolves to nothing, and nothing when the host has none", () => {
+		const suggesting = driveConsole(
+			{ goal: "speed", breadth: 2, armModels: ["sonnet", "opus4"] },
+			recordingHost({
+				modelExists: spec => spec === "sonnet",
+				modelSuggestions: spec =>
+					spec === "opus4" ? ["anthropic/claude-opus-4-1", "anthropic/claude-opus-4", "openrouter/opus-4"] : [],
+			}),
+		);
+		expect(suggesting.model.modelSummary()).toBe(
+			'No model matches "opus4". Close: anthropic/claude-opus-4-1, anthropic/claude-opus-4, openrouter/opus-4.',
+		);
+		// The blocker on the button stays short: the footer is one row.
+		expect(suggesting.model.startBlocker()).toBe('no model matches "opus4"');
+		const bare = driveConsole(
+			{ goal: "speed", breadth: 2, armModels: ["sonnet", "opus4"] },
+			recordingHost({ modelExists: spec => spec === "sonnet" }),
+		);
+		expect(bare.model.modelSummary()).toBe('No model matches "opus4".');
+	});
+
 	it("calls host.act('start') and closes on the start button with a valid setup", () => {
 		const { model, host, press, outcomes } = driveConsole({
 			goal: "make it faster",

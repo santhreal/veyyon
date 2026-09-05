@@ -22,6 +22,7 @@ import {
 	type Component,
 	type MouseRoutable,
 	matchesKey,
+	replaceTabs,
 	type SelectItem,
 	SelectList,
 	type SgrMouseEvent,
@@ -29,7 +30,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { clampLow } from "@veyyon/utils";
+import { clampLow, stripAnsi } from "@veyyon/utils";
 import {
 	bottomBorder,
 	divider,
@@ -531,17 +532,41 @@ function notesDetail(state: ExperimentState, width: number): string[] {
 	return lines;
 }
 
+/** Rows of harness output the running pane shows: the newest, since those say whether it is moving. */
+const TAIL_ROWS = 12;
+
+/**
+ * The last {@link TAIL_ROWS} lines of what the harness printed, one row each.
+ * The harness writes for a terminal: a progress bar rewrites its row with a
+ * carriage return, a colour is an escape, a table is tabs. Each line is what
+ * a terminal would be left showing, with the escapes stripped, since a cursor
+ * move inside a pane row would paint over the card.
+ */
+function harnessTail(tail: string, width: number): string[] {
+	const lines = stripAnsi(tail).split(/\r?\n/);
+	while (lines.length > 0 && lines[lines.length - 1]!.trim().length === 0) lines.pop();
+	return lines.slice(-TAIL_ROWS).map(line => {
+		const shown = line.slice(line.lastIndexOf("\r") + 1);
+		return theme.fg("muted", truncateToWidth(replaceTabs(shown), width));
+	});
+}
+
 function pendingDetail(runtime: AutoresearchRuntime, width: number): string[] {
 	const state = runtime.state;
 	const running = runtime.runningExperiment;
 	if (running) {
-		return [
+		const lines = [
 			...field("Run", `#${running.runNumber}  running ${formatElapsed(Date.now() - running.startedAt)}`, width),
 			...field("Command", running.command, width),
 			// The run directory is under the profile, so the untouched string states the home
 			// directory and account name on a screen a demo or a screenshot carries out of the session.
 			...field("Artifacts", shortenPath(running.runDirectory), width),
 		];
+		const tail = harnessTail(running.tail, width);
+		if (tail.length > 0) {
+			lines.push("", theme.fg("dim", "Output"), ...tail);
+		}
+		return lines;
 	}
 	const pending = runtime.lastRunSummary;
 	if (!pending) return [theme.fg("muted", "No run in flight.")];

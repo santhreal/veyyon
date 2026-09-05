@@ -151,6 +151,13 @@ export interface RunningExperiment {
 	command: string;
 	runDirectory: string;
 	runNumber: number;
+	/**
+	 * The last lines the harness printed, refreshed once a second while it
+	 * runs. What the run screen shows under the command, so a reader who
+	 * opens it during a five-minute benchmark sees the harness moving rather
+	 * than a clock.
+	 */
+	tail: string;
 }
 
 /** What the user decides about a swarm. Everything else is the model's to derive. */

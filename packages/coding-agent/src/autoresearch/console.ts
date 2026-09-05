@@ -51,6 +51,11 @@ export interface ConsoleSituation {
 export interface ConsoleHost {
 	situation(): ConsoleSituation;
 	modelExists(spec: string): boolean;
+	/**
+	 * Models close to a spec that does not resolve, as specs `modelExists`
+	 * accepts, closest first. A host with no model list has none.
+	 */
+	modelSuggestions?(spec: string): string[];
 	presets(): LoopPreset[];
 	savePreset(preset: Omit<LoopPreset, "builtin">): "saved" | "builtin";
 	deletePreset(name: string): boolean;
@@ -62,6 +67,8 @@ export interface ConsoleHost {
 
 /** The most iterations the field takes, by arrow or by digits. */
 const ITERATIONS_CAP = 999;
+/** The most suggestions the models note lists for specs that do not resolve. */
+const MODEL_SUGGESTIONS = 3;
 
 /**
  * Split the models row into one entry per arm, `a0` first. An entry left empty
@@ -231,7 +238,16 @@ export class LoopConsoleModel {
 	/** The arm-to-model assignment the models row spells, read back as arms. */
 	modelSummary(): string {
 		const unknown = this.unknownModels();
-		if (unknown.length > 0) return `No model matches ${unknown.map(spec => `"${spec}"`).join(", ")}.`;
+		if (unknown.length > 0) {
+			const named = unknown.map(spec => `"${spec}"`).join(", ");
+			// What the host has that is close to what was typed, so a typo is
+			// fixed from the card rather than from a model list opened elsewhere.
+			const close = unknown.flatMap(spec => this.#host.modelSuggestions?.(spec) ?? []);
+			const distinct = [...new Set(close)].slice(0, MODEL_SUGGESTIONS);
+			return distinct.length > 0
+				? `No model matches ${named}. Close: ${distinct.join(", ")}.`
+				: `No model matches ${named}.`;
+		}
 		const specs = parseArmModels(this.models);
 		if (specs.length === 0) return "Every arm runs on the session model.";
 		const assigned: string[] = [];

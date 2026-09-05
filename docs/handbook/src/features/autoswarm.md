@@ -188,7 +188,9 @@ there.
 Each spec resolves the way `--model` resolves one: `provider/id`, a bare id, or
 a role alias such as `@slow`. A spec that matches nothing blocks the start: the
 note reads `No model matches "<spec>".` and the `Start swarm` button states
-`no model matches "<spec>"` until it is fixed.
+`no model matches "<spec>"` until it is fixed. When an authenticated model's id
+or name contains the spec, or a run of three or more letters of it, the note
+adds up to three as `Close: anthropic/claude-opus-4, …`, the likeliest first.
 
 `start_arm` performs the switch. The loop calls it before the first edit of each
 arm, which is also what puts the arm on the status row (`a1 on GPT-5`) while it
