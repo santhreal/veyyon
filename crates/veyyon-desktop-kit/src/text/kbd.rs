@@ -50,7 +50,7 @@ impl RenderOnce for Kbd {
 					.border_color(border_color)
 					.rounded(radius)
 					.px(pad_x)
-					.font_family(".SystemMonoFont")
+					.font_family(tokens.mono_family())
 					.text_size(font_size)
 					.text_color(text_color)
 					.child(SharedString::from(modifier));
@@ -63,7 +63,7 @@ impl RenderOnce for Kbd {
 				.border_color(border_color)
 				.rounded(radius)
 				.px(pad_x)
-				.font_family(".SystemMonoFont")
+				.font_family(tokens.mono_family())
 				.text_size(font_size)
 				.text_color(text_color)
 				.child(chord.key);

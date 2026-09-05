@@ -1,35 +1,71 @@
-//! Code block syntax-highlighted display primitive (§8.25).
+//! Mono pane primitive (§8.25): the frame every block of code or captured
+//! output is shown in.
+//!
+//! One shape for the transcript's invoke output, an approval's detail and a
+//! raw value nobody could name (§5.3): an inset ground, one radius, one
+//! padding, lines that truncate rather than wrap, and a height cap after which
+//! the pane clips. A caption above the pane says what the lines are.
 
-use veyyon_gpui::{App, IntoElement, RenderOnce, SharedString, Window, div, prelude::*};
+use veyyon_gpui::{App, IntoElement, Pixels, RenderOnce, SharedString, Window, div, prelude::*};
 
-use crate::token_set::{ColorRole, MonoSizeStep, RadiusStep, SpacingStep, TokenSet};
+use crate::token_set::{ColorRole, MonoSizeStep, RadiusStep, SpacingStep, TextRamp, TokenSet};
 
-/// Code block syntax container with line numbering and monospace styling.
+/// A captioned, height-capped pane of monospace lines.
 #[derive(IntoElement)]
 pub struct CodeBlock {
-	code:         SharedString,
-	language:     Option<SharedString>,
+	lines:        Vec<SharedString>,
+	caption:      Option<SharedString>,
 	line_numbers: bool,
+	size:         MonoSizeStep,
+	max_height:   Option<Pixels>,
 }
 
 impl CodeBlock {
-	/// Creates a code block with code text content.
+	/// A pane of `code`, one row per line.
 	#[must_use]
 	pub fn new(code: impl Into<SharedString>) -> Self {
-		Self { code: code.into(), language: None, line_numbers: true }
+		let code: SharedString = code.into();
+		Self::lines(code.lines().map(|line| SharedString::from(line.to_owned())))
 	}
 
-	/// Sets language identifier for syntax styling.
+	/// A pane of lines already split.
 	#[must_use]
-	pub fn language(mut self, language: impl Into<SharedString>) -> Self {
-		self.language = Some(language.into());
+	pub fn lines(lines: impl IntoIterator<Item = SharedString>) -> Self {
+		Self {
+			lines:        lines.into_iter().collect(),
+			caption:      None,
+			line_numbers: false,
+			size:         MonoSizeStep::Body,
+			max_height:   None,
+		}
+	}
+
+	/// The line above the pane saying what the lines are: a language, a
+	/// command, a file.
+	#[must_use]
+	pub fn caption(mut self, caption: impl Into<SharedString>) -> Self {
+		self.caption = Some(caption.into());
 		self
 	}
 
-	/// Sets whether line numbers are displayed.
+	/// Whether each line is numbered.
 	#[must_use]
-	pub fn line_numbers(mut self, line_numbers: bool) -> Self {
+	pub const fn line_numbers(mut self, line_numbers: bool) -> Self {
 		self.line_numbers = line_numbers;
+		self
+	}
+
+	/// The mono size the lines are set at.
+	#[must_use]
+	pub const fn size(mut self, size: MonoSizeStep) -> Self {
+		self.size = size;
+		self
+	}
+
+	/// The height after which the pane clips.
+	#[must_use]
+	pub const fn max_height(mut self, max_height: Pixels) -> Self {
+		self.max_height = Some(max_height);
 		self
 	}
 }
@@ -39,59 +75,71 @@ impl RenderOnce for CodeBlock {
 		let default_tokens = TokenSet::default();
 		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
 
-		let bg = tokens.color(ColorRole::Inset);
-		let border_color = tokens.color(ColorRole::Hairline);
-		let radius = tokens.radius(RadiusStep::Md);
-		let pad = tokens.spacing(SpacingStep::S3);
-		let font_size = tokens.mono_font_size(MonoSizeStep::Body);
-		let line_h = tokens.mono_line_height(MonoSizeStep::Body);
+		let font_size = tokens.mono_font_size(self.size);
+		let line_h = tokens.mono_line_height(self.size);
+		let ink = tokens.color(ColorRole::Secondary);
+		let number_ink = tokens.color(ColorRole::Muted);
+		let width = self.lines.len().to_string().len();
 
-		let mut container = div()
+		let mut body = div()
 			.w_full()
-			.bg(bg)
-			.rounded(radius)
-			.border_1()
-			.border_color(border_color)
-			.p(pad)
-			.text_size(font_size)
-			.line_height(line_h)
-			.font_family(".SystemMonoFont")
+			.overflow_hidden()
+			.bg(tokens.color(ColorRole::Inset))
+			.rounded(tokens.radius(RadiusStep::Sm))
+			.p(tokens.spacing(SpacingStep::S2))
 			.flex()
-			.flex_col();
-
-		if let Some(lang) = self.language {
-			container = container.child(
-				div()
-					.text_size(tokens.mono_font_size(MonoSizeStep::Small))
-					.text_color(tokens.color(ColorRole::Muted))
-					.mb(tokens.spacing(SpacingStep::S1))
-					.child(lang),
-			);
+			.flex_col()
+			.font_family(tokens.mono_family())
+			.text_size(font_size)
+			.line_height(line_h);
+		if let Some(max_height) = self.max_height {
+			body = body.max_h(max_height);
 		}
 
-		let lines: Vec<&str> = self.code.lines().collect();
-		for (idx, line) in lines.iter().enumerate() {
-			let mut line_row = div().flex().items_center();
-
+		for (index, line) in self.lines.into_iter().enumerate() {
+			let mut row = div().w_full().min_w_0().flex().flex_row();
 			if self.line_numbers {
-				let line_num_str = format!("{:>3} ", idx + 1);
-				line_row = line_row.child(
+				row = row.child(
 					div()
-						.text_color(tokens.color(ColorRole::Muted))
+						.flex_shrink_0()
 						.mr(tokens.spacing(SpacingStep::S2))
-						.child(line_num_str),
+						.text_color(number_ink)
+						.child(format!("{:>width$}", index + 1)),
 				);
 			}
-
-			line_row = line_row.child(
-				div()
-					.text_color(tokens.color(ColorRole::Foreground))
-					.child(SharedString::from((*line).to_string())),
+			body = body.child(
+				row.child(
+					div()
+						.flex_1()
+						.min_w_0()
+						.overflow_hidden()
+						.whitespace_nowrap()
+						.truncate()
+						.text_color(ink)
+						.child(line),
+				),
 			);
-
-			container = container.child(line_row);
 		}
 
-		container
+		let mut pane = div()
+			.w_full()
+			.flex()
+			.flex_col()
+			.gap(tokens.spacing(SpacingStep::S1));
+		if let Some(caption) = self.caption {
+			pane = pane.child(
+				div()
+					.w_full()
+					.min_w_0()
+					.overflow_hidden()
+					.whitespace_nowrap()
+					.truncate()
+					.text_size(tokens.font_size(TextRamp::Micro))
+					.line_height(tokens.line_height(TextRamp::Micro))
+					.text_color(number_ink)
+					.child(caption),
+			);
+		}
+		pane.child(body)
 	}
 }

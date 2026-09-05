@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use veyyon_gpui::{
-	AnyElement, App, ClickEvent, ElementId, IntoElement, RenderOnce, SharedString, Window, div,
-	prelude::*,
+	AnyElement, App, ClickEvent, ElementId, IntoElement, Pixels, RenderOnce, SharedString, Window,
+	div, prelude::*,
 };
 
 use crate::{
@@ -24,6 +24,7 @@ pub struct ListRow {
 	selection: SelectionState,
 	on_click:  Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static>>,
 	compact:   bool,
+	height:    Option<Pixels>,
 }
 
 impl ListRow {
@@ -39,6 +40,7 @@ impl ListRow {
 			selection: SelectionState::default(),
 			on_click:  None,
 			compact:   false,
+			height:    None,
 		}
 	}
 
@@ -84,6 +86,13 @@ impl ListRow {
 		self
 	}
 
+	/// Sets a fixed row height from a surface's tokens, replacing the padding.
+	#[must_use]
+	pub fn height(mut self, height: Pixels) -> Self {
+		self.height = Some(height);
+		self
+	}
+
 	/// Sets click handler.
 	#[must_use]
 	pub fn on_click(
@@ -121,15 +130,24 @@ impl RenderOnce for ListRow {
 			.w_full()
 			.max_w_full()
 			.min_w_0()
+			.flex_shrink_0()
 			.overflow_hidden()
 			.bg(bg)
 			.rounded(radius)
 			.px(pad_x)
-			.py(pad_y)
 			.flex()
 			.items_center()
-			.gap(gap)
-			.cursor_pointer();
+			.gap(gap);
+		el = match self.height {
+			Some(height) => el.h(height),
+			None => el.py(pad_y),
+		};
+		// A row that answers a click is hit-tested and lights on hover; a row
+		// that answers none is neither, so the frame's hit rects stay the set
+		// of controls the window will answer.
+		if self.on_click.is_some() {
+			el = el.cursor_pointer().hover(|s| s.bg(tokens.row_hover()));
+		}
 
 		if let Some(leading) = self.leading {
 			el = el.child(div().flex_shrink_0().child(leading));

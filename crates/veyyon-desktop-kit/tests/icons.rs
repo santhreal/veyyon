@@ -7,8 +7,7 @@ use veyyon_desktop_kit::{
 	Icon, IconName, IconSize, TokenSet, icon_bytes, validate_icon_uniqueness,
 };
 use veyyon_gpui::{
-	App, Context, HeadlessAppContext, IntoElement, Render, SvgRenderer, Window, div, prelude::*, px,
-	size,
+	App, Context, IntoElement, Render, SvgRenderer, Window, div, prelude::*, px, size,
 };
 
 #[test]
@@ -106,10 +105,7 @@ impl Render for SingleIconFixture {
 
 #[test]
 fn every_icon_renders_in_headless_frame() -> Result<(), Box<dyn std::error::Error>> {
-	let text_system = Arc::new(gpui_wgpu::CosmicTextSystem::new("sans-serif"));
-	let mut cx = HeadlessAppContext::with_platform(text_system, Arc::new(()), || {
-		gpui_platform::current_headless_renderer()
-	});
+	let mut cx = veyyon_desktop_kit::headless::app_context()?;
 
 	let viewport = size(px(40.0), px(40.0));
 	let scale_factor = 1.0;

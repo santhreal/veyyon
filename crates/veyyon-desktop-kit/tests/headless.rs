@@ -1,8 +1,6 @@
 //! Headless GPU rendering rasterization verification tests for desktop kit
 //! (§8.25).
 
-use std::sync::Arc;
-
 use strum::IntoEnumIterator;
 use veyyon_desktop_kit::{
 	AnchorCorner, Avatar, Badge, Button, ButtonVariant, Checkbox, CheckboxState, CodeBlock, Dialog,
@@ -14,17 +12,14 @@ use veyyon_desktop_kit::{
 	token_set::{ColorRole, SpacingStep, TintRole, TokenSet},
 };
 use veyyon_gpui::{
-	App, Context, HeadlessAppContext, IntoElement, ParentElement, Point, Render, Styled, Window,
-	div, prelude::*, px, size,
+	App, Context, IntoElement, ParentElement, Point, Render, Styled, Window, div, prelude::*, px,
+	size,
 };
 
 #[test]
 fn the_desktop_kit_primitives_render_distinct_pixels_on_headless_surface()
 -> Result<(), Box<dyn std::error::Error>> {
-	let text_system = Arc::new(gpui_wgpu::CosmicTextSystem::new("sans-serif"));
-	let mut cx = HeadlessAppContext::with_platform(text_system, Arc::new(()), || {
-		gpui_platform::current_headless_renderer()
-	});
+	let mut cx = veyyon_desktop_kit::headless::app_context()?;
 
 	let viewport = size(px(400.0), px(300.0));
 	let scale_factor = 1.0;
@@ -77,7 +72,7 @@ impl Render for KitPrimitiveFixture {
 				Markdown::new("## Heading\n- Item 1\n- Item 2").into_any_element()
 			},
 			PrimitiveKind::CodeBlock => CodeBlock::new("fn main() {\n    println!(\"ok\");\n}")
-				.language("rust")
+				.caption("rust")
 				.into_any_element(),
 			PrimitiveKind::Kbd => Kbd::chords([KeyChord::key("K").meta()]).into_any_element(),
 			PrimitiveKind::Button => Button::new("Primary Action")

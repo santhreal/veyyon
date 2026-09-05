@@ -36,10 +36,8 @@ impl Render for EditorFixture {
 
 fn headless_context() -> (HeadlessAppContext, MutexGuard<'static, ()>) {
 	let permit = RENDERER_MUTEX.lock();
-	let text_system = Arc::new(gpui_wgpu::CosmicTextSystem::new("sans-serif"));
-	let cx = HeadlessAppContext::with_platform(text_system, Arc::new(()), || {
-		gpui_platform::current_headless_renderer()
-	});
+	let cx = veyyon_desktop_kit::headless::app_context()
+		.expect("a GPU with a Vulkan ICD is required for this suite");
 	(cx, permit)
 }
 

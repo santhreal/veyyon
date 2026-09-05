@@ -20,6 +20,8 @@ extern crate veyyon_gpui as gpui;
 
 pub mod controls;
 pub mod geometry;
+#[cfg(feature = "headless")]
+pub mod headless;
 pub mod icons;
 pub mod indicators;
 pub mod input;

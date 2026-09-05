@@ -11,6 +11,11 @@ description = "Token-driven primitive kit for the veyyon desktop front end"
 [lints]
 workspace = true
 
+[features]
+# The offscreen renderer and app context a headless frame is drawn with
+# (`headless` module). A test crate enables it; a windowed build does not.
+headless = ["dep:anyhow", "dep:gpui_platform", "dep:gpui_wgpu"]
+
 [dependencies]
 strum = { workspace = true }
 parking_lot = { workspace = true }
@@ -20,7 +25,9 @@ thiserror = { workspace = true }
 veyyon-desktop-motion = { workspace = true }
 veyyon-desktop-tokens = { workspace = true }
 veyyon-gpui = { workspace = true }
+anyhow = { workspace = true, optional = true }
+gpui_platform = { workspace = true, features = ["test-support"], optional = true }
+gpui_wgpu = { workspace = true, optional = true }
 
 [dev-dependencies]
-gpui_platform = { workspace = true, features = ["test-support"] }
-gpui_wgpu = { workspace = true }
+veyyon-desktop-kit = { path = ".", features = ["headless"] }

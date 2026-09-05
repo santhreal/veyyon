@@ -2,7 +2,10 @@
 
 use std::sync::Arc;
 
-use veyyon_gpui::{App, ElementId, IntoElement, RenderOnce, SharedString, Window, div, prelude::*};
+use veyyon_gpui::{
+	AnyElement, App, ElementId, IntoElement, Pixels, RenderOnce, SharedString, Window, div,
+	prelude::*,
+};
 
 use super::editor::slot::EditorSlot;
 use crate::{
@@ -17,6 +20,9 @@ pub struct SearchField {
 	id:          Option<ElementId>,
 	editor:      EditorSlot,
 	placeholder: SharedString,
+	trailing:    Option<AnyElement>,
+	height:      Option<Pixels>,
+	flush:       bool,
 	on_change:   Option<Arc<dyn Fn(SharedString, &mut Window, &mut App) + Send + Sync + 'static>>,
 	on_clear:    Option<Arc<dyn Fn(&mut Window, &mut App) + Send + Sync + 'static>>,
 }
@@ -29,9 +35,35 @@ impl SearchField {
 			id:          None,
 			editor:      editor.into(),
 			placeholder: "Search...".into(),
+			trailing:    None,
+			height:      None,
+			flush:       false,
 			on_change:   None,
 			on_clear:    None,
 		}
+	}
+
+	/// Sets the trailing slot, drawn after the text and before the clear
+	/// control.
+	#[must_use]
+	pub fn trailing(mut self, element: impl IntoElement) -> Self {
+		self.trailing = Some(element.into_any_element());
+		self
+	}
+
+	/// Sets a fixed height from a surface's tokens.
+	#[must_use]
+	pub fn height(mut self, height: Pixels) -> Self {
+		self.height = Some(height);
+		self
+	}
+
+	/// Draws the field without its own edge and radius, for a field that is
+	/// the top row of a float whose edge it shares.
+	#[must_use]
+	pub fn flush(mut self, flush: bool) -> Self {
+		self.flush = flush;
+		self
 	}
 
 	/// Sets element ID.
@@ -95,13 +127,10 @@ impl RenderOnce for SearchField {
 		let id = self.id.unwrap_or_else(|| ElementId::from("search-field"));
 		let mut container = div()
 			.id(id)
-			.h(metrics.height)
+			.h(self.height.unwrap_or(metrics.height))
 			.w_full()
 			.min_w_0()
 			.overflow_hidden()
-			.rounded(metrics.radius)
-			.border(tokens.stroke(StrokeStep::Hairline))
-			.border_color(edge)
 			.px(metrics.inset)
 			.flex()
 			.items_center()
@@ -115,6 +144,12 @@ impl RenderOnce for SearchField {
 						.color(tokens.color(ColorRole::Secondary)),
 				),
 			);
+		if !self.flush {
+			container = container
+				.rounded(metrics.radius)
+				.border(tokens.stroke(StrokeStep::Hairline))
+				.border_color(edge);
+		}
 
 		match self.editor {
 			EditorSlot::Entity(entity) => {
@@ -139,6 +174,10 @@ impl RenderOnce for SearchField {
 						.child(text),
 				);
 			},
+		}
+
+		if let Some(trailing) = self.trailing {
+			container = container.child(div().flex_shrink_0().child(trailing));
 		}
 
 		if let (true, Some(on_clear)) = (has_value, self.on_clear) {

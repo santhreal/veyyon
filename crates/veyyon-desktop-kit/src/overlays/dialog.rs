@@ -1,7 +1,8 @@
 //! Modal Dialog primitive (§8.25).
 
 use veyyon_gpui::{
-	AnyElement, App, IntoElement, RenderOnce, SharedString, Window, div, prelude::*,
+	AnyElement, App, ClickEvent, ElementId, IntoElement, RenderOnce, SharedString, Window, div,
+	prelude::*,
 };
 
 use crate::{
@@ -10,26 +11,54 @@ use crate::{
 	token_set::{ColorRole, RadiusStep, SpacingStep, TextRamp, TokenSet},
 };
 
+/// The click handler an action button dispatches through.
+type ActionHandler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
+
 /// Modal dialog float container with title header, body slot, and action button
 /// row.
 #[derive(IntoElement)]
 pub struct Dialog {
+	id:      ElementId,
 	title:   SharedString,
 	body:    AnyElement,
-	actions: Vec<DialogButtonSpec>,
+	actions: Vec<(DialogButtonSpec, Option<ActionHandler>)>,
 }
 
 impl Dialog {
 	/// Creates a dialog with title and body element.
 	#[must_use]
 	pub fn new(title: impl Into<SharedString>, body: impl IntoElement) -> Self {
-		Self { title: title.into(), body: body.into_any_element(), actions: Vec::new() }
+		Self {
+			id:      ElementId::from("dialog"),
+			title:   title.into(),
+			body:    body.into_any_element(),
+			actions: Vec::new(),
+		}
 	}
 
-	/// Appends an action button specification.
+	/// Sets the element id the action buttons derive theirs from.
+	#[must_use]
+	pub fn id(mut self, id: impl Into<ElementId>) -> Self {
+		self.id = id.into();
+		self
+	}
+
+	/// Appends an action button that answers no click: a label the caller
+	/// closes the dialog around by other means.
 	#[must_use]
 	pub fn action(mut self, action: DialogButtonSpec) -> Self {
-		self.actions.push(action);
+		self.actions.push((action, None));
+		self
+	}
+
+	/// Appends an action button with the click it dispatches.
+	#[must_use]
+	pub fn action_on_click(
+		mut self,
+		action: DialogButtonSpec,
+		handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+	) -> Self {
+		self.actions.push((action, Some(Box::new(handler))));
 		self
 	}
 }
@@ -63,8 +92,15 @@ impl RenderOnce for Dialog {
 			.justify_end()
 			.gap(tokens.spacing(SpacingStep::S2));
 
-		for action in self.actions {
-			let btn = Button::new(action.label).variant(action.variant);
+		for (index, (action, handler)) in self.actions.into_iter().enumerate() {
+			let id = ElementId::NamedChild(
+				std::sync::Arc::new(self.id.clone()),
+				format!("action-{index}").into(),
+			);
+			let mut btn = Button::new(action.label).id(id).variant(action.variant);
+			if let Some(handler) = handler {
+				btn = btn.on_click(handler);
+			}
 			action_row = action_row.child(btn);
 		}
 
