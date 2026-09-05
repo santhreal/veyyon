@@ -513,6 +513,24 @@ export interface OpenAIResponsesHistoryPayload {
 
 export type ProviderPayload = OpenAIResponsesHistoryPayload;
 
+/**
+ * Marks a user or developer message whose body is prior-turn reasoning demoted
+ * to prose — a thinking run the source model was still streaming when the turn
+ * ended, so it has no signature and cannot ride on the assistant message.
+ * `transformMessages` applies the replay policy it applies to an unsigned
+ * thinking block from that source: a signing Anthropic endpoint drops the
+ * message on same-model replay, and any `anthropic-messages` target drops it
+ * once `compat.replayDemotedPriorReasoning` is off, whether by catalog or
+ * learned from a `reasoning_extraction` refusal. Every other target replays it.
+ * `provider` and `model` identify the turn the reasoning came from; a message
+ * that no longer knows its origin sets neither and only the endpoint-level drop
+ * applies.
+ */
+export interface DemotedReasoningSource {
+	provider?: string;
+	model?: string;
+}
+
 export interface UserMessage {
 	role: "user";
 	content: string | (TextContent | ImageContent)[];
@@ -533,6 +551,8 @@ export interface UserMessage {
 	 * blocks rather than let the API reject the request or drop them silently.
 	 */
 	historyRewriteAt?: number;
+	/** See {@link DemotedReasoningSource}. */
+	demotedReasoningSource?: DemotedReasoningSource;
 	timestamp: number; // Unix timestamp in milliseconds
 }
 
@@ -545,6 +565,8 @@ export interface DeveloperMessage {
 	providerPayload?: ProviderPayload;
 	/** See {@link UserMessage.historyRewriteAt}. */
 	historyRewriteAt?: number;
+	/** See {@link DemotedReasoningSource}. */
+	demotedReasoningSource?: DemotedReasoningSource;
 	timestamp: number; // Unix timestamp in milliseconds
 }
 

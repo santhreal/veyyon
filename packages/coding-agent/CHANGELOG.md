@@ -17,6 +17,10 @@
 - A click on a single-line field places its caret under the pointer in the hook prompt, the login dialog, the MCP add wizard, the history search, the text and config rows of the settings screens, and the setup form; the rollback panel's list takes the pointer through the settings host.
 - `ctx.ui.custom(..., { overlay })` accepts `OverlayOptions` beside `true`, so an extension can place and size its own card over the transcript.
 
+### Fixed
+
+- Interrupting Claude mid-thinking no longer fails every later turn with `Refusal (reasoning_extraction)` on an endpoint that enforces the classifier: the hidden continuity message that carries the unfinished reasoning states which turn it came from, and the request drops it on same-model replay to a signing Anthropic endpoint, and after one refusal on any other, instead of re-sending it on the retry and for the rest of the session.
+
 ## [1.4.0] - 2026-09-04
 
 ### Added
