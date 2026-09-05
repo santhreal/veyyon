@@ -62,9 +62,7 @@ export function parseReleaseRequest(args: readonly string[]): string {
  */
 export function versionAlreadyTaggedFailure(version: string, latestTag: string): string[] {
 	if (`v${version}` !== latestTag) {
-		return [
-			`Error: v${version} is already a tag. A version number is used once; pick one that has not been tagged.`,
-		];
+		return [`Error: v${version} is already a tag. A version number is used once; pick one that has not been tagged.`];
 	}
 	return [
 		`Error: ${latestTag} is already tagged.`,

@@ -126,10 +126,7 @@ export function buildRollbackRows(
 
 	return releases.map(release => {
 		const releaseTime = release.publishedAt ? Date.parse(release.publishedAt) : Number.NaN;
-		const newer =
-			!Number.isNaN(currentTime) &&
-			!Number.isNaN(releaseTime) &&
-			releaseTime > currentTime;
+		const newer = !Number.isNaN(currentTime) && !Number.isNaN(releaseTime) && releaseTime > currentTime;
 
 		return {
 			version: release.version,

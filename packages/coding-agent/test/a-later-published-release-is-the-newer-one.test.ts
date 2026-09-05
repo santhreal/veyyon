@@ -18,10 +18,10 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { checkForNewVersion } from "../src/main";
 import { buildRollbackRows } from "../src/cli/rollback-cli";
 import { getAllReleases, runAutoUpdate, runUpdateCommand } from "../src/cli/update-cli";
 import { Settings } from "../src/config/settings";
+import { checkForNewVersion } from "../src/main";
 
 const realFetch = globalThis.fetch;
 let tempDir = "";
@@ -73,7 +73,7 @@ describe("auto-update: runAutoUpdate", () => {
 			{ tag: "v0.0.1", version: "0.0.1" },
 			path.join(tempDir, "auto-update.json"),
 			() => "binary",
-			async (version) => {
+			async version => {
 				installed.push(version);
 				return { warnings: [] };
 			},
@@ -90,7 +90,7 @@ describe("auto-update: runAutoUpdate", () => {
 			{ tag: "v1.4.0", version: "1.4.0" },
 			path.join(tempDir, "auto-update.json"),
 			() => "binary",
-			async (version) => {
+			async version => {
 				installed.push(version);
 				return { warnings: [] };
 			},
@@ -110,7 +110,7 @@ describe("update command: runUpdateCommand", () => {
 		stubGithubRedirect("0.0.1");
 		const installed: string[] = [];
 
-		await runUpdateCommand({ force: false, check: false }, async (version) => {
+		await runUpdateCommand({ force: false, check: false }, async version => {
 			installed.push(version);
 		});
 
@@ -133,22 +133,19 @@ describe("release catalog: getAllReleases", () => {
 
 		const releases = await getAllReleases();
 
-		expect(releases.map((r) => r.version)).toEqual(["0.0.1", "1.4.0"]);
+		expect(releases.map(r => r.version)).toEqual(["0.0.1", "1.4.0"]);
 	});
 
 	it("preserves API order for undated entries", async () => {
 		globalThis.fetch = (async () =>
-			new Response(
-				JSON.stringify([
-					{ tag_name: "v1.4.0" },
-					{ tag_name: "v0.0.1" },
-				]),
-				{ status: 200, headers: { "content-type": "application/json" } },
-			)) as unknown as typeof fetch;
+			new Response(JSON.stringify([{ tag_name: "v1.4.0" }, { tag_name: "v0.0.1" }]), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			})) as unknown as typeof fetch;
 
 		const releases = await getAllReleases();
 
-		expect(releases.map((r) => r.version)).toEqual(["1.4.0", "0.0.1"]);
+		expect(releases.map(r => r.version)).toEqual(["1.4.0", "0.0.1"]);
 	});
 });
 
@@ -161,9 +158,9 @@ describe("rollback rows: buildRollbackRows", () => {
 
 	it("marks 0.0.1 newer than running 1.4.0 when its published date is later", () => {
 		const rows = buildRollbackRows(releases, "1.4.0");
-		const row001 = rows.find((r) => r.version === "0.0.1");
-		const row140 = rows.find((r) => r.version === "1.4.0");
-		const row130 = rows.find((r) => r.version === "1.3.0");
+		const row001 = rows.find(r => r.version === "0.0.1");
+		const row140 = rows.find(r => r.version === "1.4.0");
+		const row130 = rows.find(r => r.version === "1.3.0");
 
 		expect(row001?.newer).toBe(true);
 		expect(row140?.newer).toBe(false);

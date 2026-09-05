@@ -47,7 +47,6 @@ export const RELEASE_NOTES_BODY_LIMIT = 120_000;
 // alphabetically after these.
 const CATEGORY_ORDER = ["Breaking Changes", "Added", "Changed", "Fixed", "Removed"] as const;
 
-
 export interface ChangelogVersionSpan {
 	version: string;
 	/** 0-indexed line of the `## [X.Y.Z]` heading. */
@@ -382,7 +381,7 @@ async function loadPackageName(pkgDir: string): Promise<string> {
  * Stable sort: order releases by publication date descending.
  * Entries without a date keep the API's order.
  */
-export function orderReleasesByPublication<T extends { publishedAt?: unknown }>(releases: readonly T[]): T[] {
+function orderReleasesByPublication<T extends { publishedAt?: unknown }>(releases: readonly T[]): T[] {
 	return [...releases].sort((a, b) => {
 		const dateA = typeof a.publishedAt === "string" ? a.publishedAt : "";
 		const dateB = typeof b.publishedAt === "string" ? b.publishedAt : "";
@@ -415,7 +414,7 @@ export function resolvePublishedFloorFromList(
 		return { floor: null, versionsInRange: [target] };
 	}
 
-	const floorIdx = ordered.findIndex(r => r === floorCandidate);
+	const floorIdx = ordered.indexOf(floorCandidate);
 	const publishedAfterFloor = ordered
 		.slice(0, floorIdx)
 		.map(r => r.version)

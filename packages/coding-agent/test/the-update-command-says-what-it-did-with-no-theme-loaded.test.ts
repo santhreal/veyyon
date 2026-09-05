@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { VERSION } from "@veyyon/utils";
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { VERSION } from "@veyyon/utils";
 
 /**
  * Every line `veyyon update` prints must print with no theme loaded.

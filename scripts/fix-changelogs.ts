@@ -437,7 +437,6 @@ function sectionHasContent(section: ReleaseSection): boolean {
 	return section.subsections.some(subsection => trimBlankLines(numberedText(subsection.lines)).length > 0);
 }
 
-
 /**
  * Collapse release sections that share a version title into one, keeping the
  * first occurrence in document order.

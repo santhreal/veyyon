@@ -8,7 +8,6 @@ import {
 	formatCommitSummary,
 	groupCommitsByType,
 	mergePackageSection,
-	orderReleasesByPublication,
 	resolvePublishedFloorFromList,
 } from "./ci-release-notes";
 
@@ -60,7 +59,7 @@ const FIXTURE = [
 	"",
 ].join("\n");
 
-describe("orderReleasesByPublication / resolvePublishedFloorFromList", () => {
+describe("resolvePublishedFloorFromList", () => {
 	it("resolves floor 1.4.0 for target 0.0.1 when v0.0.1 was published after v1.4.0", () => {
 		const releases = [
 			{ tagName: "v0.0.1", publishedAt: "2026-09-05T00:00:00Z" },
