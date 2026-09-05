@@ -220,17 +220,16 @@ describe("Roster columns", () => {
 		}
 	}
 
-	/** Every roster row, as plain text. */
+	/** Every subagent roster row, as plain text, found by its type column. */
 	function rosterRows(dashboard: AgentDashboard): string[] {
-		return frame(dashboard).filter(line => /\b(running|idle|parked|aborted)\b/.test(line));
+		return frame(dashboard).filter(line => /\b(scout|reviewer|librarian|designer)\b/.test(line));
 	}
 
 	/**
-	 * The model starts at ONE column on every row. It used to follow the status
-	 * word directly, so `running` and `idle` put it three columns apart and the
-	 * eye had to re-find it on every line.
+	 * The model ENDS at one column on every row: it is right-aligned metadata on
+	 * the trailing edge, and an edge that wanders is a table nobody can scan.
 	 */
-	test("starts the model badge at the same column on every row", () => {
+	test("ends the model badge at the same column on every row", () => {
 		registerMixed();
 		const dashboard = new AgentDashboard({ terminalHeight: ROWS, showModelBadge: true });
 
@@ -244,14 +243,22 @@ describe("Roster columns", () => {
 		dashboard.dispose();
 	});
 
-	/** The status word starts at one column too, which is what makes it scannable. */
-	test("starts the status word at the same column on every row", () => {
+	/**
+	 * The state word is drawn only for the states a reader has to act on or
+	 * account for. `running` and `idle` are the glyph alone; `parked` and
+	 * `aborted` get their word, and it starts at one column on both rows.
+	 */
+	test("words only the exceptional states, at one column", () => {
 		registerMixed();
 		const dashboard = new AgentDashboard({ terminalHeight: ROWS, showModelBadge: true });
 
-		const columns = new Set(rosterRows(dashboard).map(row => row.search(/\b(running|idle|parked|aborted)\b/)));
+		const rows = rosterRows(dashboard);
+		const worded = rows.map(row => row.search(/\b(parked|aborted)\b/)).filter(at => at >= 0);
 
-		expect(columns.size).toBe(1);
+		expect(rows).toHaveLength(4);
+		expect(worded).toHaveLength(2);
+		expect(new Set(worded).size).toBe(1);
+		expect(rows.some(row => /\b(running|idle)\b/.test(row))).toBeFalse();
 		dashboard.dispose();
 	});
 
@@ -287,17 +294,12 @@ describe("Roster columns", () => {
 	/** The columns are measured over the WHOLE roster, so scrolling never shifts them. */
 	test("keeps the columns still while the roster scrolls", () => {
 		const dashboard = paintedCard(60);
-		const before = frame(dashboard)
-			.find(line => /type-\d{3}/.test(line))
-			?.indexOf("running");
+		const edges = (line: string | undefined) => [line?.indexOf("type-"), line?.lastIndexOf("just now")];
+		const before = edges(frame(dashboard).find(line => /type-\d{3}/.test(line)));
 
 		dashboard.handleInput(PAGE_DOWN);
 
-		expect(
-			frame(dashboard)
-				.find(line => /type-\d{3}/.test(line))
-				?.indexOf("running"),
-		).toBe(before);
+		expect(edges(frame(dashboard).find(line => /type-\d{3}/.test(line)))).toEqual(before);
 		dashboard.dispose();
 	});
 });
@@ -340,10 +342,12 @@ describe("A column never takes the whole row", () => {
 		registerWithOneLongType();
 		const dashboard = new AgentDashboard({ terminalHeight: ROWS, showModelBadge: true });
 
-		const rows = frame(dashboard).filter(line => /\brunning\b/.test(line));
+		const rows = frame(dashboard).filter(line => /\b(a-very-long|reviewer|scout|Main Session)\b/.test(line));
 
 		expect(rows).toHaveLength(4);
-		expect(rows.every(row => row.includes("running"))).toBeTrue();
+		// The trailing edge survives on every row, which it cannot if one column
+		// has taken the space.
+		expect(rows.every(row => row.includes("just now"))).toBeTrue();
 		dashboard.dispose();
 	});
 
@@ -364,9 +368,9 @@ describe("A column never takes the whole row", () => {
 		for (const width of [110, 90, 70, 56]) {
 			const rows = dashboard.render(width).map(line => line.replace(ANSI_PATTERN, ""));
 			const row = rows.find(line => line.includes("a-very-long"));
-			// The status still makes it onto the row at every width, which it cannot
+			// The age still makes it onto the row at every width, which it cannot
 			// do if one column has taken the space.
-			expect(row).toContain("running");
+			expect(row).toContain("just now");
 		}
 		dashboard.dispose();
 	});
@@ -410,26 +414,55 @@ describe("The model badge under pressure", () => {
 		const dashboard = new AgentDashboard({ terminalHeight: ROWS, showModelBadge: true });
 
 		const row = dashboard
-			.render(70)
+			.render(58)
 			.map(line => line.replace(ANSI_PATTERN, ""))
 			.find(line => line.includes("reviewer"));
 
 		expect(row).toContain("claude-son");
+		expect(row).not.toContain("claude-sonnet-5");
 		dashboard.dispose();
 	});
 
-	/** Below what a reader could use, it is dropped rather than stubbed. */
+	/**
+	 * Below what a reader could use, it is dropped rather than stubbed. The
+	 * badge column is capped at a quarter of the row, and a quarter narrower
+	 * than MIN_MODEL_BADGE is not a badge. At 40 columns the flat frame's row
+	 * is 36 wide and the cap is 9.
+	 */
 	test("drops the badge when too little of it would survive", () => {
 		registerOne();
 		const dashboard = new AgentDashboard({ terminalHeight: ROWS, showModelBadge: true });
 
 		const row = dashboard
-			.render(58)
+			.render(40)
 			.map(line => line.replace(ANSI_PATTERN, ""))
 			.find(line => line.includes("reviewer"));
 
 		expect(row).not.toContain("claude");
-		expect(row).toContain("idle");
+		expect(row).toContain("just now");
+		dashboard.dispose();
+	});
+
+	/**
+	 * A badge the cap allows can still be one the row cannot hold next to the
+	 * name, the type and the age. It is then shed whole, and the age stays
+	 * whole: the row used to keep both and let the final truncation crush them
+	 * to `claude-so…  just…`, the columns spent and neither question answered.
+	 * At 44 columns the row is 40 wide, the cap is 10, and the head plus a
+	 * 10-cell badge plus the age is 43.
+	 */
+	test("sheds the badge whole rather than crushing the age when the row cannot hold both", () => {
+		registerOne();
+		const dashboard = new AgentDashboard({ terminalHeight: ROWS, showModelBadge: true });
+
+		const row = dashboard
+			.render(44)
+			.map(line => line.replace(ANSI_PATTERN, ""))
+			.find(line => line.includes("reviewer"));
+
+		expect(row).not.toContain("claude");
+		expect(row).not.toContain("…");
+		expect(row).toContain("just now");
 		dashboard.dispose();
 	});
 });

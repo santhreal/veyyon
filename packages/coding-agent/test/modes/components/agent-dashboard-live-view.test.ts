@@ -15,7 +15,7 @@ import { IrcBus } from "@veyyon/coding-agent/irc/bus";
 import { AgentDashboard } from "@veyyon/coding-agent/modes/components/agent-dashboard";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
-import { getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
+import { getAnsiPolicy, setAnsiPolicy, visibleWidth } from "@veyyon/tui";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
@@ -51,13 +51,13 @@ function frameOf(dashboard: AgentDashboard): string {
 }
 
 /**
- * Rows the CARD occupies, which is not the length of the frame.
+ * Rows the SURFACE occupies, which is not the length of the frame.
  *
- * The dashboard renders into the whole terminal and floats its card in the
- * middle of that area, the way every other modal does, so `render().length` is
- * the viewport and says nothing about how tall the card is. Measuring the
- * drawn extent is what these height assertions were always about; taking the
- * array length instead made them pass for a card of any size.
+ * The dashboard renders into the whole terminal and the flat frame hugs its
+ * content from the top, so `render().length` is the viewport and says nothing
+ * about how tall the drawn surface is. Measuring the drawn extent is what
+ * these height assertions were always about; taking the array length instead
+ * made them pass for a surface of any size.
  */
 function cardRows(lines: readonly string[]): number {
 	const drawn = lines.map(line => line.replace(ANSI_PATTERN, "").trimEnd());
@@ -368,31 +368,30 @@ describe("Card chrome", () => {
 	});
 
 	/**
-	 * And the card it hugs to is CENTRED in the terminal, like every other modal
-	 * in this TUI.
+	 * The surface is drawn the way the transcript is drawn: anchored to the top
+	 * of the terminal, the full width of it, with no border. The title is the
+	 * first line and the key hints are the last drawn line; what follows is the
+	 * terminal's own empty rows, not a bottom margin.
 	 *
-	 * Hugging alone put the shrunken card flush against the top of the screen,
-	 * because the shell was handed the card's own height as the area to lay out
-	 * in and so had no slack to centre within. The blank rows above and below the
-	 * card are what prove it floats rather than hangs.
+	 * The card used to float in a bordered box in the middle of the screen, and
+	 * a reader opening `/agents` next to the transcript got a second visual
+	 * grammar for the same kind of content.
 	 */
-	test("floats the hugged card in the middle of the terminal", () => {
+	test("draws a flat, top-anchored, borderless surface", () => {
 		geo.setRows(40);
 		for (let index = 0; index < 4; index++) registerSub(`${index}-Sub`, "reviewer");
 		const dashboard = new AgentDashboard({ terminalHeight: 40 });
 
-		const drawn = dashboard.render(100).map(line => line.replace(ANSI_PATTERN, "").trimEnd());
+		const drawn = dashboard.render(100).map(line => line.replace(ANSI_PATTERN, ""));
 
 		expect(drawn.length).toBe(40);
-		const above = drawn.findIndex(line => line.length > 0);
+		expect(drawn[0]!.trim()).toBe("Subagent Dashboard");
+		expect(drawn.map(visibleWidth)).toEqual(Array.from({ length: 40 }, () => 100));
+		expect(drawn.join("\n")).not.toMatch(/[│╭╮╰╯┌┐└┘]/);
 		let lastDrawn = drawn.length - 1;
-		while (lastDrawn > 0 && drawn[lastDrawn]!.length === 0) lastDrawn--;
-		const below = drawn.length - 1 - lastDrawn;
-		expect(above).toBeGreaterThan(0);
-		expect(below).toBeGreaterThan(0);
-		// Centred, not merely floating: the two margins differ by at most the odd
-		// row that cannot be split.
-		expect(Math.abs(above - below)).toBeLessThanOrEqual(1);
+		while (lastDrawn > 0 && drawn[lastDrawn]!.trim().length === 0) lastDrawn--;
+		expect(drawn[lastDrawn]).toContain("esc close");
+		expect(drawn[lastDrawn - 1]!.trim()).toMatch(new RegExp(`^${theme.boxSharp.horizontal}+$`));
 		dashboard.dispose();
 	});
 
@@ -476,6 +475,30 @@ describe("Readable without colour", () => {
 			expect(strip).toBeDefined();
 			expect(strip).toContain("[Live (1)]");
 			expect(strip).not.toContain("\x1b[");
+		} finally {
+			dashboard.dispose();
+			setAnsiPolicy(previousPolicy);
+		}
+	});
+
+	/**
+	 * With SGR available the tab theme's tint is the mark, and the strip carries
+	 * no brackets: the bracketed spelling is the fallback, not the design.
+	 * `noColor` is the boundary case, because bold still reaches the terminal
+	 * there and so the theme can still mark the active tab.
+	 */
+	test.each(["full", "noColor"] as const)("marks the active view tab by tint alone under the %s policy", policy => {
+		const previousPolicy = getAnsiPolicy();
+		setAnsiPolicy(policy);
+		registerSub("0-Sub", "reviewer");
+		const dashboard = new AgentDashboard({ terminalHeight: 40 });
+
+		try {
+			const strip = dashboard.render(120).find(line => line.includes("Live (1)"));
+
+			expect(strip).toBeDefined();
+			expect(strip).not.toContain("[Live (1)]");
+			expect(strip).toContain("\x1b[");
 		} finally {
 			dashboard.dispose();
 			setAnsiPolicy(previousPolicy);

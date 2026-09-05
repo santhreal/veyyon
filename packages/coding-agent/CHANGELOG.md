@@ -20,6 +20,8 @@
 - The dashboard hydrates the session on the branch from the store when the runtime has not loaded it, so its detail pane states the session's goal and runs instead of `(not stated)`.
 - A click on a single-line field places its caret under the pointer in the hook prompt, the login dialog, the MCP add wizard, the history search, the text and config rows of the settings screens, and the setup form; the rollback panel's list takes the pointer through the settings host.
 - `ctx.ui.custom(..., { overlay })` accepts `OverlayOptions` beside `true`, so an extension can place and size its own card over the transcript.
+- The `/agents` roster row is glyph, name, type and activity, with the model and the age right-aligned at the row's edge; the `running`/`idle` word is gone and a state word appears only for `blocked`, `waiting`, `parked` and `aborted`. The detail pane is separated from the roster by a blank row and indented to the name column, in place of the dashed rule with the agent's name.
+- The `/agents` surface is drawn flat, the way the transcript is: anchored to the top of the terminal at its full width with no border, the title as the first line, one hairline above the key hints, and no click-outside dismissal. The active view tab is marked by its tint alone, bracketed only on a terminal that receives no styling.
 
 ### Fixed
 
@@ -27,6 +29,7 @@
 - Interrupting Claude mid-thinking no longer fails every later turn with `Refusal (reasoning_extraction)` on an endpoint that enforces the classifier: the hidden continuity message that carries the unfinished reasoning states which turn it came from, and the request drops it on same-model replay to a signing Anthropic endpoint, and after one refusal on any other, instead of re-sending it on the retry and for the rest of the session.
 - A logged metric of zero or below is a measurement: a session minimising a count tags the kept run that reached zero as best, and a signed metric's negative runs are ranked by direction in the Best row, the keep gate of `log_experiment`, the confidence figure, the `Trend` row and the prompt's recent-run rows; only a crash's logged placeholder reads as unmeasured, and it prints `no metric` in the prompt as it does on screen.
 - The setup form's models note states a spec past the last arm (`"glm" has no arm at breadth 2.`), which the persisted setup dropped without a word when breadth came down.
+- A narrow `/agents` roster row without an activity sheds its model badge and then its age whole instead of truncating them to `claude-so…  just…`.
 
 ## [1.4.0] - 2026-09-04
 

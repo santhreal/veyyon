@@ -57,6 +57,7 @@ import type { AgentTool } from "@veyyon/agent-core";
 import {
 	type Component,
 	Container,
+	getAnsiPolicy,
 	matchesKey,
 	type OverlayHandle,
 	padding,
@@ -97,7 +98,7 @@ import {
 } from "../utils/keybinding-matchers";
 import { agentType, collectLiveAgents, type LiveAgent } from "./agent-activity";
 import { modelBadgeFromSelector } from "./agent-model-badge";
-import { agentDisplayState, agentStatusGlyph, agentStatusWord } from "./agent-status-display";
+import { type AgentDisplayState, agentDisplayState, agentStatusGlyph, agentStatusWord } from "./agent-status-display";
 import { type AgentTranscriptRemote, AgentTranscriptViewer } from "./agent-transcript-viewer";
 import { AGENT_VIEW_AGE_TICK_MS, AGENT_VIEW_DATA_CHANGE_COALESCE_MS } from "./agent-view-timings";
 import {
@@ -105,7 +106,7 @@ import {
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
-	MODAL_SIZING_LARGE,
+	MODAL_SIZING_FLAT,
 	MODAL_SIZING_MEDIUM,
 	type ModalShellGeometry,
 	type ModalShortcut,
@@ -126,6 +127,9 @@ interface ViewTab {
 }
 
 const VIEW_ORDER: readonly ViewId[] = ["live", "comms"];
+
+/** Cells between the tabs of the view strip. */
+const TAB_GAP = "    ";
 
 /**
  * ModalShell footer chips for the Live roster.
@@ -221,14 +225,57 @@ interface RosterExtras {
  * which means a disabled specialist cannot appear in it at all: not by a filter
  * that could drift, but because a disabled agent is never spawned and so never
  * registers.
+ *
+ * A row has three regions, and the eye is meant to land on the middle one:
+ * `‹cursor› ‹glyph› ‹call sign›  ‹type›` on the left, the one-line gist of what
+ * the agent is doing across the middle, and `‹model›  ‹age›` right-aligned in
+ * dim on the trailing edge. The state is the coloured glyph, and a word beside
+ * it only for a state the glyph alone should not be asked to carry
+ * ({@link WORDED_STATES}). The task widget in the transcript draws its agents
+ * the same way, glyph then name then gist then dim stats, so the card reads as
+ * the same product rather than a table bolted onto it.
  */
 /**
  * Narrowest a model badge is worth drawing.
  *
  * `claude-son…` is a model you can recognise; `clau…` is four columns spent on
- * nothing. Below this the row keeps the space for the status and the age.
+ * nothing. Below this the row drops the badge and gives the gist the space.
  */
 const MIN_MODEL_BADGE = 10;
+
+/**
+ * Narrowest a gist is worth drawing. Under this a truncated activity line is an
+ * ellipsis with two words in front of it, so the row sheds its trailing
+ * metadata first and the gist last.
+ */
+const MIN_GIST = 12;
+
+/**
+ * States that get a WORD on the row as well as their glyph.
+ *
+ * `running` and `idle` are the roster's ordinary weather and their glyphs
+ * already differ in shape (the running mark against the filled square), so a
+ * word next to each one was a column of `running running idle` that every row
+ * paid for and no row was read by. The four here are the exceptions a reader
+ * has to act on or account for: a prompt waiting on them, a peer that may never
+ * answer, a session that is gone but revivable, and one that was killed. The
+ * column exists only while one of them is on the roster.
+ */
+const WORDED_STATES: ReadonlySet<AgentDisplayState> = new Set(["blocked", "waiting", "parked", "aborted"]);
+
+/** The state word the row draws, or nothing for a state the glyph carries alone. */
+function rowStateWord(state: AgentDisplayState): string {
+	return WORDED_STATES.has(state) ? state : "";
+}
+
+/**
+ * Cells before the call sign on every roster row: the cursor slot, a space,
+ * the status glyph and a space. The detail pane indents to this so its lines
+ * start under the names rather than under the cursor.
+ */
+function rowPrefixWidth(): number {
+	return visibleWidth(theme.nav.cursor) + 1 + visibleWidth(theme.symbol("status.running")) + 1;
+}
 
 /**
  * Frame a failure for the notice line, in the operator's terms.
@@ -257,14 +304,16 @@ const MIN_NAME_COLUMN = 8;
 /**
  * Widths the roster's fixed columns are padded to, measured over every agent.
  *
- * One object rather than four positional numbers: the row builder took them in
- * an order only its own call site knew, and a fifth column would have meant a
- * fifth positional argument to thread through.
+ * One object rather than positional numbers: the row builder took them in an
+ * order only its own call site knew, and a further column would have meant a
+ * further positional argument to thread through.
  */
 interface RosterColumns {
 	sign: number;
 	type: number;
+	/** Zero while no agent is in a {@link WORDED_STATES} state, and then the column is not drawn. */
 	status: number;
+	model: number;
 	age: number;
 }
 
@@ -314,23 +363,23 @@ class LiveRosterPane implements Component {
 
 		const now = this.now();
 		// Aligned columns, measured over the WHOLE roster rather than the visible
-		// page, so scrolling never shifts the text sideways. Status and age are
-		// measured too, not only the two name columns: with `running` on one row
-		// and `idle` on the next, an unpadded status pushed the model and the
-		// activity three columns apart down the list, and a list whose columns do
-		// not line up is read as noise rather than scanned as a table. The age is
-		// the subtle one, because `formatAge` returns an EMPTY string for an agent
-		// that just moved, so those rows lost the column entirely and everything
-		// after them slid left.
+		// page, so scrolling never shifts the text sideways. The state word and
+		// the age are measured too, not only the two name columns: with `blocked`
+		// on one row and `parked` on the next, an unpadded word pushed the gist
+		// two columns apart down the list, and a list whose columns do not line
+		// up is read as noise rather than scanned. The age is the subtle one,
+		// because `formatAge` returns an EMPTY string for an agent that just
+		// moved, so those rows lost the column entirely and the trailing edge
+		// slid.
 		const widest = (measure: (agent: LiveAgent) => string) =>
 			this.agents.reduce((width, agent) => Math.max(width, visibleWidth(measure(agent))), 0);
-		// No column may take more than a quarter of the row. Status and age are
-		// short words and cap themselves, but the two NAME columns are whatever an
-		// agent was called: one subagent spawned as
+		// No column may take more than a quarter of the row. State and age are
+		// short words and cap themselves, but the name columns and the model are
+		// whatever an agent was called: one subagent spawned as
 		// `a-very-long-agent-type-name` padded the type column to 27 cells on every
-		// row, and on a 56-column card that left nothing for the status, the model
-		// or the activity. A name long enough to cost the row its content is
-		// truncated rather than paid for.
+		// row, and on a 56-column card that left nothing for the model or the
+		// activity. A name long enough to cost the row its content is truncated
+		// rather than paid for.
 		const cap = Math.max(MIN_NAME_COLUMN, Math.floor(width / 4));
 		const columns: RosterColumns = {
 			sign: Math.min(
@@ -342,12 +391,21 @@ class LiveRosterPane implements Component {
 				cap,
 			),
 			// The DISPLAYED word, not `agent.status`: a waiting agent's word is
-			// longer than the `parked` it is derived from, and measuring the raw
-			// status padded the column one cell short, sliding every following
-			// column left on exactly the rows that most need reading.
-			status: widest(agent => agentDisplayState(agent)),
+			// longer than the `parked` it is derived from, and a running agent's is
+			// nothing at all.
+			status: widest(agent => rowStateWord(agentDisplayState(agent))),
+			model: 0,
 			age: widest(agent => formatAge(ageSeconds(now, agent.lastActivity))),
 		};
+		// The badge column is capped with the name columns. A column the cap has
+		// cut below MIN_MODEL_BADGE is not drawn at all rather than stubbed to
+		// `clau…` on every row; a badge that is short in its own right (`gpt-5-2`)
+		// is whole and stays. Decided for the column, not per row, so a dropped
+		// badge never leaves an empty column pushing the age off a narrow row.
+		const widestBadge = widest(agent => this.extrasFor(agent).model ?? "");
+		if (widestBadge > 0 && Math.min(widestBadge, cap) >= Math.min(widestBadge, MIN_MODEL_BADGE)) {
+			columns.model = Math.min(widestBadge, cap);
+		}
 
 		const start = this.scrollOffset;
 		const end = Math.min(start + this.maxVisible, this.agents.length);
@@ -381,7 +439,7 @@ class LiveRosterPane implements Component {
 		return sv.render(width);
 	}
 
-	/** `‹glyph› ‹call sign› ‹type› ‹status› ‹age› ‹model› ‹unread› ‹activity› [x]`. */
+	/** `‹cursor› ‹glyph› ‹call sign›  ‹type›  [‹state›]  [↳ parent]  [read-only]  [unread]  ‹gist› … ‹model›  ‹age› [x]`. */
 	#row(
 		agent: LiveAgent,
 		selected: boolean,
@@ -415,19 +473,9 @@ class LiveRosterPane implements Component {
 		const cursor = selected ? theme.fg("accent", theme.nav.cursor) : padding(visibleWidth(theme.nav.cursor));
 		const state = agentDisplayState(agent);
 		const parts = [`${cursor} ${agentStatusGlyph(state)} ${name}  ${kind}`];
-		parts.push(theme.fg("dim", agentStatusWord(state)) + padding(columns.status - visibleWidth(state)));
-		const age = formatAge(ageSeconds(now, agent.lastActivity));
-		parts.push(theme.fg("dim", age) + padding(columns.age - visibleWidth(age)));
-		// The model badge gets what is left, and only if what is left can still say
-		// something. Letting the row's own truncation cut it produced `clau…`,
-		// which costs four columns to tell you nothing; `claude-son…` is a model
-		// you can recognise. Below MIN_MODEL_BADGE columns the badge is dropped
-		// rather than stubbed, the same way the activity below is.
-		if (extras.model) {
-			const room = contentWidth - visibleWidth(parts.join(PART_GAP)) - PART_GAP.length;
-			if (room >= Math.min(visibleWidth(extras.model), MIN_MODEL_BADGE)) {
-				parts.push(truncateToWidth(extras.model, room));
-			}
+		if (columns.status > 0) {
+			const word = rowStateWord(state);
+			parts.push((word ? agentStatusWord(state) : "") + padding(columns.status - visibleWidth(word)));
 		}
 		// A nested spawn's parent, so a deep run reads as a tree rather than a flat
 		// list of strangers. Omitted for the common case of a child of a driving
@@ -442,16 +490,42 @@ class LiveRosterPane implements Component {
 		// here does not exist in DejaVu Sans Mono at all.
 		if (extras.unread > 0)
 			parts.push(theme.fg("warning", withIcon(theme.symbol("icon.unread"), String(extras.unread))));
-
 		const head = parts.join(PART_GAP);
-		// The gist gets whatever is left of the row: it is the answer to "what is
-		// it doing", and a fixed column for it would truncate the one useful line.
+
+		// The trailing edge: model and age, right-aligned, each in a column
+		// measured over the roster so the edge is one straight line down the
+		// list. Both are metadata, which is why they sit at the edge in the
+		// badge's own muted paint and dim rather than between the name and the
+		// gist in the row's own colour.
+		const age = formatAge(ageSeconds(now, agent.lastActivity));
+		const ageCell = padding(columns.age - visibleWidth(age)) + theme.fg("dim", age);
+		const model = columns.model > 0 && extras.model ? truncateToWidth(extras.model, columns.model) : "";
+		const modelCell = padding(columns.model - visibleWidth(model)) + model;
 		const doing = agent.activity ?? extras.task;
-		const gistWidth = contentWidth - visibleWidth(head) - 2;
-		const content =
-			doing && gistWidth >= 12
-				? `${head}  ${theme.fg("muted", truncateToWidth(sanitizeSingleLine(doing), gistWidth))}`
-				: head;
+		const gist = doing ? sanitizeSingleLine(doing) : "";
+		// What a narrow row sheds, in order: the model badge, then the age, then
+		// the gist. The gist is the answer to "what is it doing" and goes last;
+		// the metadata is what the pane can be asked for. A candidate is skipped
+		// when it does not fit at all, gist or no gist: the row used to take the
+		// first candidate whenever there was no gist and let the final truncate
+		// crush it to `claude-so…  just…`, which costs the columns and answers
+		// neither question.
+		const trailingCandidates: readonly (readonly string[])[] =
+			columns.model > 0 ? [[modelCell, ageCell], [ageCell], []] : [[ageCell], []];
+		let content = head;
+		for (const cells of trailingCandidates) {
+			const trailing = cells.join(PART_GAP);
+			const trailingWidth = visibleWidth(trailing);
+			const trailingCost = trailingWidth > 0 ? trailingWidth + PART_GAP.length : 0;
+			const gistWidth = contentWidth - visibleWidth(head) - PART_GAP.length - trailingCost;
+			const trailingFits = visibleWidth(head) + trailingCost <= contentWidth;
+			if (cells.length > 0 && (!trailingFits || (gist && gistWidth < MIN_GIST))) continue;
+			const middle =
+				gist && gistWidth >= MIN_GIST ? `${PART_GAP}${theme.fg("muted", truncateToWidth(gist, gistWidth))}` : "";
+			const fill = Math.max(0, contentWidth - visibleWidth(head) - visibleWidth(middle) - trailingWidth);
+			content = trailingWidth > 0 ? `${head}${middle}${padding(fill)}${trailing}` : `${head}${middle}`;
+			break;
+		}
 		const contentPadded =
 			truncateToWidth(content, contentWidth) + padding(Math.max(0, contentWidth - visibleWidth(content)));
 		const actionWidth = 4;
@@ -493,8 +567,15 @@ const DETAIL_OUTPUT_LINES = 2;
  * the same executor progress the task widget draws its block from, so the two
  * surfaces never disagree about one agent.
  *
+ * No rule and no heading. The selected row above already carries the cursor,
+ * the band and the name, and a second `Kestrel deep` under a dashed line was
+ * a heading for a section one row tall. A blank row separates the pane from
+ * the roster the way a blank row separates blocks in the transcript, and the
+ * lines are indented to the roster's name column so they read as belonging to
+ * the row above rather than as a table under it.
+ *
  * Layout, top to bottom:
- * `── ‹call sign› ‹type› ────` a rule naming the agent the rows belong to
+ * ``                           the blank row
  * `‹assignment›`               what it was asked to do, one line
  * `‹tool line›`                current tool + intent + elapsed, or the
  *                              retry / give-up state, or the last tool
@@ -510,31 +591,24 @@ class AgentDetailPane implements Component {
 	) {}
 
 	render(width: number): readonly string[] {
-		const lines: string[] = [this.#rule(width)];
+		const indent = padding(rowPrefixWidth());
+		const inner = Math.max(0, width - indent.length);
+		const lines: string[] = [""];
 		const progress = this.observed?.progress;
 		const assignment = this.observed?.description ?? progress?.assignment ?? progress?.task;
-		if (assignment) lines.push(theme.fg("muted", truncateToWidth(sanitizeSingleLine(assignment), width)));
+		if (assignment) lines.push(indent + theme.fg("muted", truncateToWidth(sanitizeSingleLine(assignment), inner)));
 		if (progress) {
 			const tool = this.#toolLine(progress, this.now());
-			if (tool) lines.push(truncateToWidth(tool, width));
-			lines.push(truncateToWidth(this.#statsLine(progress), width));
-			lines.push(...this.#outputLines(progress, width));
+			if (tool) lines.push(indent + truncateToWidth(tool, inner));
+			lines.push(indent + truncateToWidth(this.#statsLine(progress), inner));
+			lines.push(...this.#outputLines(progress, inner).map(line => indent + line));
 		} else if (this.agent.kind === "main") {
-			lines.push(theme.fg("dim", "The driving session. Its transcript is the main view."));
+			lines.push(indent + theme.fg("dim", "The driving session. Its transcript is the main view."));
 		} else {
-			lines.push(theme.fg("dim", "No live progress: this agent is not running in this process."));
+			lines.push(indent + theme.fg("dim", "No live progress: this agent is not running in this process."));
 		}
 		while (lines.length < DETAIL_ROWS) lines.push("");
 		return lines.slice(0, DETAIL_ROWS);
-	}
-
-	/** `── Kestrel reviewer ────────`, the rule that separates the pane from the roster. */
-	#rule(width: number): string {
-		const bar = theme.boxSharp.horizontal;
-		const label = ` ${theme.bold(replaceTabs(this.agent.callSign))} ${theme.fg("link", replaceTabs(agentType(this.agent)))} `;
-		const shown = truncateToWidth(label, Math.max(0, width - 4));
-		const fill = Math.max(0, width - 2 - visibleWidth(shown));
-		return theme.fg("dim", bar.repeat(2)) + shown + theme.fg("dim", bar.repeat(fill));
 	}
 
 	/**
@@ -606,7 +680,7 @@ class AgentDetailPane implements Component {
 		return text
 			.split("\n")
 			.slice(-DETAIL_OUTPUT_LINES)
-			.map(line => theme.fg("dim", truncateToWidth(`  ${replaceTabs(line)}`, width)));
+			.map(line => theme.fg("dim", truncateToWidth(replaceTabs(line), width)));
 	}
 
 	invalidate(): void {}
@@ -1221,12 +1295,18 @@ export class AgentDashboard extends Container {
 		return this.#liveAgents.find(agent => agent.id === id)?.callSign ?? id;
 	}
 
-	/** Mailbox depth, spawn description and model badge for one row. */
+	/**
+	 * Mailbox depth, spawn description and model badge for one row. The gist
+	 * falls back from the tiny-model label to the ASSIGNMENT the caller wrote,
+	 * never to `progress.task`: that is the assignment inside the subagent
+	 * user-prompt wrapper, so every fresh row read `Complete the assignment
+	 * below, thoroughly: ## Target …` until the label landed.
+	 */
 	#extrasFor(agent: LiveAgent): RosterExtras {
 		const observed = this.#observableFor(agent.id);
 		return {
 			unread: this.#irc.unreadCount(agent.id),
-			task: observed?.description ?? observed?.progress?.task,
+			task: observed?.description ?? observed?.progress?.assignment ?? observed?.progress?.task,
 			model: this.#deps.showModelBadge ? this.#modelBadge(agent, observed) : undefined,
 		};
 	}
@@ -1427,18 +1507,14 @@ export class AgentDashboard extends Container {
 	}
 
 	/**
-	 * Floating ModalShell card: titled chrome, tab bar, body, centered shortcut
-	 * chips. Transcript visible around the card (host overlay is fullscreen so the
-	 * alt-screen + mouse tracking stay active for the card's lifetime).
+	 * The flat shell: the title as a line, the tab strip, the body, one hairline
+	 * and the left-aligned key hints, drawn the way the transcript is drawn and
+	 * taking the whole terminal (the host overlay is fullscreen so the alt-screen
+	 * and mouse tracking stay active for the card's lifetime).
 	 */
 	override render(width: number): readonly string[] {
-		// The card is laid out against the WHOLE terminal, not against its own
-		// height. Passing the card's height as the area left the shell no slack to
-		// centre in, so the card sat flush against the top of the screen while
-		// every other modal floated in the middle. The shell shrinks the card to
-		// `preferredBodyRows` below and re-centres it in this area.
 		const area = this.#terminalRows();
-		const sizing = sizingForArea(MODAL_SIZING_LARGE, area);
+		const sizing = sizingForArea(MODAL_SIZING_FLAT, area);
 		const dims = computeModalDims(width, area, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;
@@ -1741,28 +1817,30 @@ export class AgentDashboard extends Container {
 
 	/**
 	 * The view strip, styled by the SHARED overlay tab theme rather than a local
-	 * pair of colours.
+	 * pair of colours: it is the same control the settings and extension
+	 * overlays draw, and a second styling of it is how two fullscreen cards end
+	 * up disagreeing about what an active tab looks like. Four cells between
+	 * the tabs, the spacing the composer's footline keeps between its segments.
 	 *
-	 * Two reasons. It is the same control the settings and extension overlays
-	 * draw, and a second styling of it is how two fullscreen cards end up
-	 * disagreeing about what an active tab looks like. The shared active style
-	 * is bold as well as tinted, and this strip also brackets the active label,
-	 * so the active view stays legible when a dumb terminal suppresses every SGR.
+	 * The active label is bracketed only when the ANSI policy is `plain`, where
+	 * no SGR reaches the terminal and the theme's bold tint cannot mark it. On
+	 * any other terminal the tint is the mark and the brackets were clutter.
 	 */
 	#renderTabBar(): string {
 		const tabTheme = getTabBarTheme();
-		const parts: string[] = [" "];
+		const plain = getAnsiPolicy() === "plain";
+		const parts: string[] = [];
 		this.#tabHits = [];
-		let column = 1; // the leading space above
+		let column = 0;
 		for (const tab of this.#viewTabs()) {
 			const isActive = tab.id === this.#activeView;
 			const text = `${tab.label} (${tab.count})`;
-			const label = isActive ? `[${text}]` : ` ${text} `;
+			const label = plain && isActive ? `[${text}]` : text;
 			this.#tabHits.push({ id: tab.id, start: column, end: column + visibleWidth(label) });
-			column += visibleWidth(label);
+			column += visibleWidth(label) + TAB_GAP.length;
 			parts.push(isActive ? tabTheme.activeTab(label) : tabTheme.inactiveTab(label));
 		}
-		return parts.join("");
+		return parts.join(TAB_GAP);
 	}
 
 	/** Rebuild layout and request a TUI render pass (for use after async state changes). */

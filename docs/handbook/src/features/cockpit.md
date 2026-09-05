@@ -127,7 +127,9 @@ Two run clocks tick alongside the segments, both measuring model runtime, never 
 | `/agents` | Subagent dashboard: the live roster (agent type, status, activity; Enter opens one agent's session) and the Comms stream of agent-to-agent messages |
 | `/jobs` | List background async tool jobs |
 
-`/cockpit` and `/hub` are aliases of `/agents`, as is the `app.agents.hub` keybinding and a double-tap of the left arrow on an empty composer. They used to open a separate screen with its own roster and its own drill-in, which meant "which agents are running" had two answers that could disagree with each other. They all open the one card now.
+`/cockpit` and `/hub` are aliases of `/agents`, as is the `app.agents.hub` keybinding and a double-tap of the left arrow on an empty composer. They used to open a separate screen with its own roster and its own drill-in, which meant "which agents are running" had two answers that could disagree with each other. They all open the one surface now.
+
+The surface is drawn the way the transcript is drawn: anchored to the top of the terminal, the full width of it, with no border. The title is the first line, the view strip sits under it, and one hairline separates the roster from the key hints at the bottom. The active view is marked by the strip's tint alone; on a terminal that emits no styling at all it is bracketed instead. There is no click-outside: Escape and the `esc close` chip close it.
 
 ### One conversation at a time
 
@@ -137,14 +139,14 @@ open session in the same process. Changing `session.newKeepsBackground` takes
 effect on the next launch; the running session keeps the value it started with
 ([#928](https://github.com/santhreal/veyyon/issues/928)).
 
-The card is scoped to the conversation on screen: the roster, the Comms stream and
+The surface is scoped to the conversation on screen: the roster, the Comms stream and
 the transcripts it opens are that conversation's. A conversation this process is
 still running off-screen is counted by the status line's background chip and has no
-card of its own.
+surface of its own.
 
 ### The Live roster
 
-Each row is one agent that exists right now: a status glyph, its call sign, the TYPE of agent it was spawned from (`reviewer`, `scout`), its status, how long since it last did anything, and what it is doing. Rows sit in spawn order, oldest first, with your own session at the top. The row you are on is marked two ways, a cursor glyph in the first column and a band across the whole row, so it stays readable on a terminal that renders no colour. Agents from earlier runs of the same session appear too, marked `parked`, because their transcripts are still on disk even though this process never started them.
+Each row is one agent that exists right now: a status glyph, its call sign, the TYPE of agent it was spawned from (`reviewer`, `scout`), what it is doing, and at the row's right edge the model it runs on and how long since it last did anything. The glyph is the state: a working agent and an idle one differ by glyph and colour alone, and a word appears beside the type only for a state you have to act on or account for, `blocked` on an approval prompt, `waiting` on a peer, `parked`, or `aborted`. Rows sit in spawn order, oldest first, with your own session at the top. The row you are on is marked two ways, a cursor glyph in the first column and a band across the whole row, so it stays readable on a terminal that renders no colour. Agents from earlier runs of the same session appear too, marked `parked`, because their transcripts are still on disk even though this process never started them.
 
 Press Enter on a row and the main view becomes that agent's session: the transcript, the composer, and the status line all point at it, so you read what it is doing and then answer it. Press Esc there to come back to your own session. While you are focused on an agent, the composer footline contains a persistent `<agent-id> · esc to go back` badge at the left, and the inline `Subagents` block above the composer lists that session's own spawns, so inside a leaf agent with no spawns of its own the block disappears. Opening a parked agent revives it on the way in.
 
@@ -152,9 +154,9 @@ To terminate a subagent, select its row and press `x`, or hover the row and clic
 
 Clicking elsewhere on a row does the same thing as Enter, and clicking a name in the view strip switches to that view. Opening an agent is reversible with Esc, so a row click opens rather than only moving the cursor. The scroll wheel moves whatever the arrow keys move: the roster cursor on Live, the stream on Comms. Page up and page down move by a screenful, on either view.
 
-The roster is a table, so you can scan a column instead of reading every row: the status, the age, the model and the activity each start at the same place on every line. A name long enough to crowd the row out is truncated rather than paid for by every other row, and the model badge is dropped when the card is too narrow to show enough of it to recognise.
+The columns line up so you can scan one instead of reading every row: the names and the state word start at the same place on every line, and the model and the age end at the same place. A name long enough to crowd the row out is truncated rather than paid for by every other row. A narrow row sheds its right edge before its activity: first the model badge, dropped whole rather than cut to something unrecognisable, then the age.
 
-Under the roster, a detail pane opens the selected agent up. A rule with the agent's call sign and type separates it from the rows above. Below the rule: the assignment the agent was spawned with, the tool it is inside with its intent and, past five seconds, how long it has been there, then its elapsed time, tool count, request count, context gauge and cost, then the last two lines its tools printed. While the agent is waiting between provider retries the tool line states the attempt, the wait and the error instead; once a retry has given up it states that. The pane appears once any agent on the roster reports progress and then stays the same height for every row, so moving the cursor never resizes the card; your own session's row states that its transcript is the main view. On a terminal too short to hold both the roster and the pane, the roster keeps the whole card.
+Under the roster, a detail pane opens the selected agent up. One blank row separates it from the roster, and its lines are indented to the name column. In order: the assignment the agent was spawned with, the tool it is inside with its intent and, past five seconds, how long it has been there, then its elapsed time, tool count, request count, context gauge and cost, then the last two lines its tools printed. While the agent is waiting between provider retries the tool line states the attempt, the wait and the error instead; once a retry has given up it states that. The pane appears once any agent on the roster reports progress and then stays the same height for every row, so moving the cursor never resizes the card; your own session's row states that its transcript is the main view. On a terminal too short to hold both the roster and the pane, the roster keeps the whole card.
 
 Two agents open a read-only transcript instead of handing the main view over. An advisor is observability-only and is not an addressable peer, so there is nothing on the other end to receive a reply. A collab guest's agents live on the host, so there is no local session to point at.
 
