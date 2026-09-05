@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { VERSION } from "@veyyon/utils";
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -138,21 +139,21 @@ await updateViaBinaryAt(${JSON.stringify(target)}, "2.0.0", line => console.log(
 	const branches: { name: string; version: string; opts: string; expect: string }[] = [
 		{
 			name: "already up to date",
-			version: "0.0.1",
+			version: VERSION,
 			opts: "{ force: false, check: false }",
 			expect: "✓ Already up to date",
 		},
 		{
 			name: "up to date, --check with --force",
-			version: "0.0.1",
+			version: VERSION,
 			opts: "{ force: true, check: true }",
-			expect: "Up to date at 0.0.1; --force would reinstall it",
+			expect: `Up to date at ${VERSION}; --force would reinstall it`,
 		},
 		{
 			name: "up to date, --force reinstalls",
-			version: "0.0.1",
+			version: VERSION,
 			opts: "{ force: true, check: false }",
-			expect: "Forcing reinstall of 0.0.1",
+			expect: `Forcing reinstall of ${VERSION}`,
 		},
 		{
 			name: "a newer release is available",

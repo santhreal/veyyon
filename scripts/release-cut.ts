@@ -26,7 +26,6 @@
  *
  * `docs/internal/releasing.md` is the same flow in prose.
  */
-import { isNewerVersion } from "@veyyon/utils/semver";
 import {
 	bumpVersion,
 	loadPackageChangelogs,
@@ -34,7 +33,7 @@ import {
 	prepareReleaseTree,
 	releaseBumpSubject,
 	validateReleaseVersionAuthorities,
-	versionNotNewerFailure,
+	versionAlreadyTaggedFailure,
 } from "./release";
 import { assertReleaseIsDocumented, RELEASE_NOTES_CHANGELOG } from "./release-policy";
 import { git, nextSteps, shipRelease } from "./release-ship";
@@ -51,17 +50,20 @@ const DIRTY_PATHS_SHOWN = 12;
 
 /**
  * Resolve `major`/`minor`/`patch`/`x.y.z` against the latest tag, or return the
- * operator-facing refusal. The caller prints `failure` verbatim: re-cutting an
- * already-tagged version is a documented recovery, not a mistake, and the
- * advice for the two cases is opposite.
+ * operator-facing refusal. Release order is publication order, so the version
+ * requested is not compared with the latest tag: the one refusal is a version
+ * that is already a tag in `existingTags`, since a tag is used once. The caller
+ * prints `failure` verbatim: re-cutting the latest tag is a documented
+ * recovery, not a mistake, and the advice for the two cases is opposite.
  */
 export function resolveReleaseVersion(
 	request: string,
 	latestTag: string,
+	existingTags: readonly string[],
 ): { version: string; failure?: undefined } | { version?: undefined; failure: string[] } {
 	const version =
 		request === "major" || request === "minor" || request === "patch" ? bumpVersion(latestTag, request) : request;
-	if (!isNewerVersion(version, latestTag)) return { failure: versionNotNewerFailure(version, latestTag) };
+	if (existingTags.includes(`v${version}`)) return { failure: versionAlreadyTaggedFailure(version, latestTag) };
 	return { version };
 }
 
@@ -172,10 +174,14 @@ async function main(argv: readonly string[]): Promise<void> {
 
 	// `git describe` exits 128 when no tag matches, which must not abort the
 	// first release; `.nothrow()` has no execFile equivalent, so catch it.
+	// The latest tag is the bump base for `major`/`minor`/`patch`; the full tag
+	// list is what a requested version is checked against, since a number that
+	// an older release used is as taken as the latest one.
 	const described = await git("describe", "--tags", "--abbrev=0", "--match", "v*").catch(() => "");
 	const latestTag = described.trim() || NO_TAG_BASELINE;
+	const existingTags = (await git("tag", "--list", "v*")).split("\n").filter(tag => tag.length > 0);
 
-	const resolved = resolveReleaseVersion(request, latestTag);
+	const resolved = resolveReleaseVersion(request, latestTag, existingTags);
 	if (resolved.failure) {
 		for (const line of resolved.failure) console.error(line);
 		process.exit(1);

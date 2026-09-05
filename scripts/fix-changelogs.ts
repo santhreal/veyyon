@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 
 import * as path from "node:path";
-import { compareDottedNumeric } from "@veyyon/utils/semver";
 import { $, Glob } from "bun";
 
 const CHANGELOG_GLOB = "packages/*/CHANGELOG.md";
@@ -438,15 +437,6 @@ function sectionHasContent(section: ReleaseSection): boolean {
 	return section.subsections.some(subsection => trimBlankLines(numberedText(subsection.lines)).length > 0);
 }
 
-/**
- * Newest first. Delegates to the one version-ordering owner: the local version
- * of this returned NaN for a title with a non-numeric part (`NaN - 0` is NaN and
- * `NaN !== 0` is true), and a comparator that returns NaN leaves the resulting
- * order up to the engine.
- */
-function compareVersionTitlesDesc(left: string, right: string): number {
-	return compareDottedNumeric(right, left);
-}
 
 /**
  * Collapse release sections that share a version title into one, keeping the
@@ -454,17 +444,17 @@ function compareVersionTitlesDesc(left: string, right: string): number {
  *
  * WHY THIS EXISTS. A version has exactly one home (ONE-PLACE): the changelog must
  * never carry two `## [1.0.31]` sections. A release cut inserts the new
- * `## [X.Y.Z]` at the top and this fixer sorts it down into the historical
- * block; a hiccup in that promote-then-sort across successive cuts left the live
- * changelog with byte-identical duplicates ([1.0.31] and [1.0.25] each appeared
- * twice). Duplicates force every downstream consumer — the release-notes
- * roll-up, the root-changelog sync, the website changelog generator — to dedup
- * defensively, and any that does not double-prints the bullets. This folds every
- * later same-title section into the first: its leading prose and each of its
- * subsection items are merged in by title, dropping items that already appear
- * verbatim, and the emptied later copy is discarded. Runs before per-section
- * normalization so the merged result is compacted like any other section.
- * Idempotent: a changelog with no duplicate versions is returned unchanged.
+ * `## [X.Y.Z]` directly under `## [Unreleased]`; a hiccup across successive cuts
+ * left the live changelog with byte-identical duplicates ([1.0.31] and [1.0.25]
+ * each appeared twice). Duplicates force every downstream consumer (the
+ * release-notes roll-up, the root-changelog sync, the website changelog
+ * generator) to dedup defensively, and any that does not double-prints the
+ * bullets. This folds every later same-title section into the first: its leading
+ * prose and each of its subsection items are merged in by title, dropping items
+ * that already appear verbatim, and the emptied later copy is discarded. Runs
+ * before per-section normalization so the merged result is compacted like any
+ * other section. Idempotent: a changelog with no duplicate versions is returned
+ * unchanged.
  */
 function mergeDuplicateVersionSections(document: ChangelogDocument): number {
 	const firstByTitle = new Map<string, ReleaseSection>();
@@ -502,9 +492,7 @@ function mergeDuplicateVersionSections(document: ChangelogDocument): number {
 
 function sortReleaseSections(document: ChangelogDocument): void {
 	const unreleasedSections = document.sections.filter(section => section.title === "Unreleased");
-	const releasedSections = document.sections
-		.filter(section => section.title !== "Unreleased")
-		.sort((left, right) => compareVersionTitlesDesc(left.title, right.title));
+	const releasedSections = document.sections.filter(section => section.title !== "Unreleased");
 	document.sections = [...unreleasedSections, ...releasedSections];
 }
 

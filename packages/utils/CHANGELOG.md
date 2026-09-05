@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Removed
+
+- Removed `isNewerVersion` in favor of publication-order comparison and equality checks.
+
 ## [1.4.0] - 2026-09-04
 
 ### Added

@@ -1,20 +1,12 @@
 /**
- * The one repo-wide owner of semantic-version comparison.
+ * Semantic version syntax helpers and comparators.
  *
- * Import this instead of hand-rolling `a.split(".").map(Number)`. That idiom
- * looks right and is wrong in ways that matter: `Number("3-beta")` is `NaN`,
- * `NaN || 0` is `0`, and the whole prerelease tail collapses into a single
- * zero. The copies it produced disagreed with each other on real inputs, and
- * because the update path compared versions one way while the startup notice
- * compared them another, the two could reach opposite conclusions about
- * whether an update existed.
+ * Version strings are labels and publication order decides release order.
+ * Product and release surfaces determine whether a release is newer by publication
+ * timestamp rather than numeric version comparison.
  *
- * Concretely, the hand-rolled form gets these wrong:
- *
- * - `1.2.3-alpha.5` vs `1.2.3-beta.1`: it reports alpha as the newer of the
- *   two, because it compares `5` against `1` and never sees `alpha`/`beta`.
- * - `1.2.3+build.7` vs `1.2.3`: it reports them as different, but build
- *   metadata is not part of precedence, so they rank equal.
+ * `compareSemver`, `tryCompareSemver` and `compareDottedNumeric` remain available
+ * for sorting and ordering operations where semver precedence is explicitly required.
  */
 
 /**
@@ -66,24 +58,6 @@ export function compareSemver(a: string, b: string): number {
  */
 export function bareVersion(version: string): string {
 	return version.startsWith("v") ? version.slice(1) : version;
-}
-
-/**
- * Whether `candidate` is strictly newer than `current`.
- *
- * This is the update question ("is there something to install?") stated once,
- * so no caller has to remember which side of the comparison goes first or
- * whether the boundary is `>` or `>=`. Equal versions are not newer, so a
- * caller polling a registry does not reinstall what it already has.
- *
- * ```ts
- * isNewerVersion("1.2.4", "1.2.3"); // true
- * isNewerVersion("1.2.3", "1.2.3"); // false: same version, nothing to do
- * isNewerVersion("1.2.3-rc.1", "1.2.3"); // false: a prerelease is not an upgrade
- * ```
- */
-export function isNewerVersion(candidate: string, current: string): boolean {
-	return compareSemver(candidate, current) > 0;
 }
 
 /**

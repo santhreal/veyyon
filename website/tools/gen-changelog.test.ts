@@ -90,12 +90,10 @@ describe("renderInline", () => {
 	});
 });
 
-describe("normalizeVersion / compareVersions", () => {
-	it("strips a leading v and compares numerically", () => {
+describe("normalizeVersion", () => {
+	it("strips a leading v", () => {
 		expect(gen.normalizeVersion("v1.2.3")).toBe("1.2.3");
-		expect(gen.compareVersions("1.0.0", "16.5.2")).toBe(-1);
-		expect(gen.compareVersions("v1.10.0", "1.9.0")).toBe(1);
-		expect(gen.compareVersions("16.5.2", "v16.5.2")).toBe(0);
+		expect(gen.normalizeVersion("1.2.3")).toBe("1.2.3");
 	});
 });
 
@@ -240,6 +238,36 @@ describe("buildChangelogHtml", () => {
 		expect(upstreamCount).toBe(0);
 		expect(html).toContain("upstream-note");
 	});
+
+	it("assigns the latest pill to the release with the greatest published_at", () => {
+		const source = [
+			"# Changelog",
+			"",
+			"## [0.0.1] - 2026-09-05",
+			"",
+			"### Fixed",
+			"",
+			"- Later release with lower version label.",
+			"",
+			"## [1.4.0] - 2026-08-01",
+			"",
+			"### Added",
+			"",
+			"- Earlier release with higher version label.",
+			"",
+		].join("\n");
+		const parsed = gen.parseReleases(source);
+		const gh = [
+			{ tag_name: "v1.4.0", published_at: "2026-08-01T00:00:00Z", html_url: "u", draft: false },
+			{ tag_name: "v0.0.1", published_at: "2026-09-05T00:00:00Z", html_url: "u", draft: false },
+		];
+		const { releases } = gen.reconcile(parsed, gh);
+		const { html } = gen.buildChangelogHtml(releases);
+		const v001Block = html.slice(html.indexOf('id="v0-0-1"'), html.indexOf('id="v1-4-0"'));
+		const v140Block = html.slice(html.indexOf('id="v1-4-0"'));
+		expect(v001Block).toContain(">latest<");
+		expect(v140Block).not.toContain(">latest<");
+	});
 });
 
 describe("every bullet is rendered", () => {
@@ -345,6 +373,30 @@ describe("renderRootChangelog", () => {
 		expect(root).not.toContain("## [16.5.1]");
 		expect(root).not.toContain("Inherited upstream change");
 		expect(root).not.toContain("Older inherited fix");
+	});
+
+	it("orders versions by document order in the lead changelog rather than by version number", () => {
+		const source = [
+			"# Changelog",
+			"",
+			"## [Unreleased]",
+			"",
+			"## [0.0.1] - 2026-09-05",
+			"",
+			"### Fixed",
+			"",
+			"- Fix in 0.0.1.",
+			"",
+			"## [1.4.0] - 2026-08-01",
+			"",
+			"### Added",
+			"",
+			"- Feature in 1.4.0.",
+			"",
+		].join("\n");
+
+		const root = gen.renderRootChangelog(source);
+		expect(root.indexOf("## [0.0.1]")).toBeLessThan(root.indexOf("## [1.4.0]"));
 	});
 
 	it("rebrands veyyon entries into Veyyon's voice (omp → vey, omp:// → veyyon://)", () => {

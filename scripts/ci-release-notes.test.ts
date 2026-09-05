@@ -4,11 +4,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {
 	boundReleaseNotesBody,
-	compareVersions,
 	enumerateChangelogVersions,
 	formatCommitSummary,
 	groupCommitsByType,
 	mergePackageSection,
+	orderReleasesByPublication,
+	resolvePublishedFloorFromList,
 } from "./ci-release-notes";
 
 const FIXTURE = [
@@ -59,45 +60,44 @@ const FIXTURE = [
 	"",
 ].join("\n");
 
-describe("compareVersions", () => {
-	it("orders semver tags numerically across all components", () => {
-		expect(compareVersions("15.12.5", "15.13.0") < 0).toBe(true);
-		expect(compareVersions("v15.13.0", "15.12.6") > 0).toBe(true);
-		expect(compareVersions("15.12.6", "15.12.6") === 0).toBe(true);
-		// Numeric (not lexicographic) — 15.2.0 < 15.13.0.
-		expect(compareVersions("15.2.0", "15.13.0") < 0).toBe(true);
+describe("orderReleasesByPublication / resolvePublishedFloorFromList", () => {
+	it("resolves floor 1.4.0 for target 0.0.1 when v0.0.1 was published after v1.4.0", () => {
+		const releases = [
+			{ tagName: "v0.0.1", publishedAt: "2026-09-05T00:00:00Z" },
+			{ tagName: "v1.4.0", publishedAt: "2026-08-01T00:00:00Z" },
+		];
+		const { floor, versionsInRange } = resolvePublishedFloorFromList(releases, "0.0.1");
+		expect(floor).toBe("1.4.0");
+		expect(versionsInRange).toEqual(["0.0.1"]);
 	});
 
-	it("orders a prerelease against released versions instead of calling everything equal", () => {
-		// REGRESSION: this comparator used to match `X.Y.Z` only and return 0 for
-		// anything else, meaning "same version". A prerelease target compared equal
-		// to every released version, so mergePackageSection selected the whole
-		// changelog and the release notes for an rc contained the entire history.
-		expect(compareVersions("1.2.1-rc.1", "1.2.0") > 0).toBe(true);
-		expect(compareVersions("1.2.1-rc.1", "1.2.1") < 0).toBe(true);
-		expect(compareVersions("1.0.0", "1.2.1-rc.1") < 0).toBe(true);
-		expect(compareVersions("1.2.1-rc.1", "1.2.1-rc.1") === 0).toBe(true);
-	});
-});
-
-describe("mergePackageSection with a prerelease target", () => {
-	it("selects no released section for a prerelease that has none of its own", () => {
-		// The concrete failure the comparator bug produced: every released section
-		// compared equal to the rc target and was merged into its notes.
-		const changelog = ["## [1.2.0]", "### Added", "- older feature", "", "## [1.1.0]", "### Added", "- oldest"].join(
-			"\n",
-		);
-
-		expect(mergePackageSection(changelog, null, "1.2.1-rc.1")).toBe("");
+	it("resolves the floor to the most recent published release other than target", () => {
+		const releases = [
+			{ tagName: "v15.13.0", publishedAt: "2026-06-14T12:00:00Z" },
+			{ tagName: "v15.12.6", publishedAt: "2026-06-14T06:00:00Z" },
+			{ tagName: "v15.12.5", publishedAt: "2026-06-14T00:00:00Z" },
+			{ tagName: "v15.12.4", publishedAt: "2026-06-13T00:00:00Z" },
+		];
+		const { floor, versionsInRange } = resolvePublishedFloorFromList(releases, "15.13.0");
+		expect(floor).toBe("15.12.6");
+		expect(versionsInRange).toEqual(["15.13.0"]);
 	});
 
-	it("still selects the range below a prerelease when a floor is given", () => {
-		const changelog = ["## [1.2.0]", "### Added", "- newer", "", "## [1.1.0]", "### Added", "- older"].join("\n");
+	it("resolves floor 15.12.4 when intermediate versions were silent tags not in GitHub releases", () => {
+		const releases = [
+			{ tagName: "v15.13.0", publishedAt: "2026-06-14T12:00:00Z" },
+			{ tagName: "v15.12.4", publishedAt: "2026-06-13T00:00:00Z" },
+		];
+		const { floor, versionsInRange } = resolvePublishedFloorFromList(releases, "15.13.0");
+		expect(floor).toBe("15.12.4");
+		expect(versionsInRange).toEqual(["15.13.0"]);
+	});
 
-		const merged = mergePackageSection(changelog, "1.1.0", "1.2.1-rc.1");
-
-		expect(merged).toContain("- newer");
-		expect(merged).not.toContain("- older");
+	it("returns floor null when no other published release exists", () => {
+		const releases = [{ tagName: "v0.0.1", publishedAt: "2026-09-05T00:00:00Z" }];
+		const { floor, versionsInRange } = resolvePublishedFloorFromList(releases, "0.0.1");
+		expect(floor).toBeNull();
+		expect(versionsInRange).toEqual(["0.0.1"]);
 	});
 });
 
@@ -121,8 +121,12 @@ describe("enumerateChangelogVersions", () => {
 });
 
 describe("mergePackageSection", () => {
-	it("includes every silent-tag section above floor up to target inclusive", () => {
-		const merged = mergePackageSection(FIXTURE, "15.12.4", "15.13.0");
+	// The window a release_github run computes for v15.13.0 when v15.12.4 was the
+	// last release that published: the target plus every silent tag after it.
+	const SILENT_WINDOW = ["15.13.0", "15.12.6", "15.12.5"];
+
+	it("includes every silent-tag section in the window, target inclusive", () => {
+		const merged = mergePackageSection(FIXTURE, SILENT_WINDOW);
 		// 15.12.6 and 15.12.5 unique fingerprints must land.
 		expect(merged).toContain("Removed `writeLine`/`writeLineSync` from the public SessionStorageWriter contract.");
 		expect(merged).toContain("Added package-level exports for session context.");
@@ -133,21 +137,46 @@ describe("mergePackageSection", () => {
 		expect(merged).not.toContain("Unreleased entry");
 	});
 
+	it("takes exactly the 0.0.1 sections for a window of [0.0.1] cut after 1.4.0", () => {
+		const changelog = [
+			"# Changelog",
+			"",
+			"## [Unreleased]",
+			"",
+			"## [0.0.1] - 2026-09-05",
+			"",
+			"### Fixed",
+			"",
+			"- Fix in 0.0.1.",
+			"",
+			"## [1.4.0] - 2026-08-01",
+			"",
+			"### Added",
+			"",
+			"- Feature in 1.4.0.",
+			"",
+		].join("\n");
+
+		const merged = mergePackageSection(changelog, ["0.0.1"]);
+		expect(merged).toContain("- Fix in 0.0.1.");
+		expect(merged).not.toContain("Feature in 1.4.0.");
+	});
+
 	it("dedupes bullets flattened forward into multiple versions", () => {
-		const merged = mergePackageSection(FIXTURE, "15.12.4", "15.13.0");
+		const merged = mergePackageSection(FIXTURE, SILENT_WINDOW);
 		const dupRegex = /Fixed unknown `--`-prefixed flags being silently consumed as prompt text\./g;
 		expect(merged.match(dupRegex)?.length).toBe(1);
 	});
 
 	it("groups bullets under the canonical category order regardless of source-version order", () => {
-		const merged = mergePackageSection(FIXTURE, "15.12.4", "15.13.0");
+		const merged = mergePackageSection(FIXTURE, SILENT_WINDOW);
 		// Expected canonical order: Breaking Changes → Added → Changed → Fixed → Removed.
 		const headings = [...merged.matchAll(/^### (.+)$/gm)].map(m => m[1]);
 		expect(headings).toEqual(["Breaking Changes", "Added", "Changed", "Fixed", "Removed"]);
 	});
 
-	it("floor=null reproduces single-version (legacy) extraction for the target", () => {
-		const merged = mergePackageSection(FIXTURE, null, "15.13.0");
+	it("a one-version window reproduces single-version extraction for the target", () => {
+		const merged = mergePackageSection(FIXTURE, ["15.13.0"]);
 		expect(merged).toContain("Fixed something only in 15.13.0");
 		expect(merged).toContain("Removed a deprecated thing in 15.13.0");
 		// Anything below the target stays out when no floor is set.
@@ -157,14 +186,14 @@ describe("mergePackageSection", () => {
 
 	it("returns empty string when no version in the requested range carries body content", () => {
 		const empty = ["# Changelog", "", "## [15.13.0] - 2026-06-14", "", "## [15.12.6] - 2026-06-14"].join("\n");
-		expect(mergePackageSection(empty, "15.12.5", "15.13.0")).toBe("");
+		expect(mergePackageSection(empty, ["15.13.0", "15.12.6"])).toBe("");
 	});
 
 	it("never emits a category with only blank/whitespace bullets after dedup", () => {
 		// If 15.13.0 already pulled the only Fixed bullet, an older section
 		// contributing the identical bullet must not produce an empty
 		// `### Fixed` heading by itself.
-		const merged = mergePackageSection(FIXTURE, "15.12.4", "15.13.0");
+		const merged = mergePackageSection(FIXTURE, SILENT_WINDOW);
 		expect(merged).not.toMatch(/### Fixed\s*\n\s*(### |$)/);
 	});
 });

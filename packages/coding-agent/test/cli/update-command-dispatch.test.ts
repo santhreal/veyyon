@@ -18,6 +18,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as updateCli from "@veyyon/coding-agent/cli/update-cli";
+import { VERSION } from "@veyyon/utils";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { releaseRedirect } from "../helpers/release-redirect";
 
@@ -107,7 +108,7 @@ describe("runUpdateCommand reaches the installer", () => {
 
 	it("installs nothing when already up to date without --force", async () => {
 		spyOn(console, "log").mockImplementation(() => {});
-		stubLatestRelease("0.0.1");
+		stubLatestRelease(VERSION);
 		let called = false;
 
 		await updateCli.runUpdateCommand({ force: false, check: false }, async () => {
@@ -115,6 +116,18 @@ describe("runUpdateCommand reaches the installer", () => {
 		});
 
 		expect(called).toBe(false);
+	});
+
+	it("installs when the latest release is 0.0.1 over running VERSION", async () => {
+		spyOn(console, "log").mockImplementation(() => {});
+		stubLatestRelease("0.0.1");
+		const calls: { version: string; force: boolean }[] = [];
+
+		await updateCli.runUpdateCommand({ force: false, check: false }, async (version, force) => {
+			calls.push({ version, force });
+		});
+
+		expect(calls).toEqual([{ version: "0.0.1", force: false }]);
 	});
 });
 
@@ -159,7 +172,7 @@ describe("update closes by pointing at the rest of the mechanism", () => {
 		spyOn(console, "log").mockImplementation((...args: unknown[]) => {
 			logs.push(args.map(String).join(" "));
 		});
-		stubLatestRelease("0.0.1");
+		stubLatestRelease(VERSION);
 
 		await updateCli.runUpdateCommand({ force: false, check: false }, async () => {});
 
@@ -172,7 +185,6 @@ describe("update closes by pointing at the rest of the mechanism", () => {
 		spyOn(console, "log").mockImplementation((...args: unknown[]) => {
 			logs.push(args.map(String).join(" "));
 		});
-
 		updateCli.printUpdateHelp();
 
 		const help = logs.join("\n");

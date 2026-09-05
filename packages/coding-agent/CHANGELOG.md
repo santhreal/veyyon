@@ -11,6 +11,7 @@
 
 ### Changed
 
+- The updater, startup version check and rollback picker order releases by publication date and treat any different latest version as an update.
 - `/autoswarm` opens the swarm console and takes no arguments. On a branch with no session it is a centered launcher card: a form with the goal, a `swarm`/`wide` preset switch, breadth from 2 to 8 with `◂`/`▸` steppers, per-arm models, attempts, a certification toggle, an iteration cap, a `Start` button and a `Save as` row for presets. Over a session it is the run dashboard: the ledger beside the detail of the highlighted row, the actions the swarm's state allows on single keys (`s` start or resume, `p` pause, `n` new session, `x` stop, `c` clear session, `r` reset worktree), `e` for the setup form and Enter for the full-width detail view.
 - A field edited in the setup form is written as it is typed, to the session on the branch or parked for the start; the form opens with the caret on the Goal row, Enter on the Goal row starts or resumes the swarm, `↑↓`/`tab` move between rows, `←→` or a digit set a count and `space` flips a toggle, `ctrl+u` clears a text row, a click lands the caret or steps, picks and flips the control under the pointer, and the footer names the keys of the highlighted row.
 - `/autoresearch` is the serial loop only, with the subcommands `status`, `resume`, `goal <text>`, `off` and `clear [--keep-tree|--reset-tree]`; `/autoswarm` no longer takes them.

@@ -19,7 +19,7 @@ import {
 	verifyDownloadChecksum,
 } from "@veyyon/coding-agent/cli/update-cli";
 import Update from "@veyyon/coding-agent/commands/update";
-import { removeWithRetries } from "@veyyon/utils";
+import { removeWithRetries, VERSION } from "@veyyon/utils";
 import type { CliConfig } from "@veyyon/utils/cli";
 import { LATEST_RELEASE_URL, releaseRedirect } from "./helpers/release-redirect";
 import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
@@ -588,7 +588,7 @@ describe("runUpdateCommand --check --force messaging", () => {
 		// command used to print "Forcing reinstall of X" and then return silently,
 		// which reads as a reinstall that broke. In check mode it must instead state
 		// that --force WOULD reinstall, so the output matches what actually happens.
-		spyOn(globalThis, "fetch").mockResolvedValue(releaseRedirect("v0.0.1"));
+		spyOn(globalThis, "fetch").mockResolvedValue(releaseRedirect(`v${VERSION}`));
 		const logs: string[] = [];
 		spyOn(console, "log").mockImplementation((...args: unknown[]) => {
 			logs.push(args.map(String).join(" "));
@@ -597,7 +597,7 @@ describe("runUpdateCommand --check --force messaging", () => {
 		await updateCli.runUpdateCommand({ force: true, check: true });
 
 		const combined = logs.join("\n");
-		expect(combined).toContain("Up to date at 0.0.1; --force would reinstall it");
+		expect(combined).toContain(`Up to date at ${VERSION}; --force would reinstall it`);
 		expect(combined).not.toContain("Forcing reinstall");
 	});
 });
@@ -619,15 +619,10 @@ describe("runAutoUpdate", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("reports up-to-date when the registry has nothing newer", async () => {
+	it("reports up-to-date when the release matches the current version", async () => {
 		stubRegistry(async () => releaseRedirect("v1.2.3"));
 
 		expect(await updateCli.runAutoUpdate("1.2.3", undefined, await statePath(), () => "binary")).toEqual({
-			status: "up-to-date",
-		});
-		// Strictly newer is required, so a registry that has fallen behind the
-		// installed build must not trigger a downgrade install.
-		expect(await updateCli.runAutoUpdate("2.0.0", undefined, await statePath(), () => "binary")).toEqual({
 			status: "up-to-date",
 		});
 	});
