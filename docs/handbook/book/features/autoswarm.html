@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-871f1173.js";
+            window.path_to_searchindex_js = "../searchindex-695ab59a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -240,9 +240,9 @@ button states why it cannot start while it cannot: <code>needs a goal</code> or
 </thead>
 <tbody>
 <tr><td>Goal</td><td>Type to edit; a click places the caret; <code>ctrl+u</code> clears the row. Enter starts the swarm.</td></tr>
-<tr><td>Preset</td><td><code>←</code> <code>→</code> or space pick the next preset; a click picks the one under the pointer. The preset the fields equal is painted as in force; <code>delete</code> removes it when it is a saved one.</td></tr>
+<tr><td>Preset</td><td><code>←</code> <code>→</code> or space pick the next preset; a click picks the one under the pointer. The preset the fields equal is painted as in force; <code>delete</code> removes it when it is a saved one. A row of presets wider than the card scrolls to keep the one in force on it, with <code>…</code> where presets are hidden.</td></tr>
 <tr><td>Breadth</td><td><code>←</code> <code>→</code>, or a digit, between 2 and 8; a click on <code>◂</code> or <code>▸</code> steps.</td></tr>
-<tr><td>Models</td><td>Type one spec per arm, comma separated; <code>ctrl+u</code> clears the row.</td></tr>
+<tr><td>Models</td><td>Type one spec per arm, comma separated; <code>ctrl+u</code> clears the row. Enter moves to Attempts.</td></tr>
 <tr><td>Attempts</td><td><code>←</code> <code>→</code>, or a digit, between 1 and 5: retries before an arm is abandoned.</td></tr>
 <tr><td>Certify</td><td><code>←</code>, <code>→</code>, space, Enter or a click toggles cross-review.</td></tr>
 <tr><td>Iterations</td><td><code>←</code> <code>→</code> or typed digits, appending as typed; backspace drops the last digit; <code>0</code> is <code>auto</code>, which leaves the cap to the model.</td></tr>
@@ -364,7 +364,9 @@ there.</p>
 <p>Each spec resolves the way <code>--model</code> resolves one: <code>provider/id</code>, a bare id, or
 a role alias such as <code>@slow</code>. A spec that matches nothing blocks the start: the
 note reads <code>No model matches "&lt;spec&gt;".</code> and the <code>Start swarm</code> button states
-<code>no model matches "&lt;spec&gt;"</code> until it is fixed.</p>
+<code>no model matches "&lt;spec&gt;"</code> until it is fixed. When an authenticated model’s id
+or name contains the spec, or a run of three or more letters of it, the note
+adds up to three as <code>Close: anthropic/claude-opus-4, …</code>, the likeliest first.</p>
 <p><code>start_arm</code> performs the switch. The loop calls it before the first edit of each
 arm, which is also what puts the arm on the status row (<code>a1 on GPT-5</code>) while it
 is being built. The session returns to its own model when the arm’s result is

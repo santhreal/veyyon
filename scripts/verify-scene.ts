@@ -81,10 +81,13 @@ function promptFiles(scene: string): string[] {
 	return [...found];
 }
 
-/** Needles the scene declares a source for in a comment. */
+/**
+ * Needles the scene declares a source for in a comment. The declaration may sit
+ * inside an `if` arm, indented with the guard it explains.
+ */
 function declaredNeedles(scene: string): Set<string> {
 	const declared = new Set<string>();
-	for (const match of scene.matchAll(/^#\s*needle-source:\s*(.+?)\s*--\s*.+$/gm)) {
+	for (const match of scene.matchAll(/^\s*#\s*needle-source:\s*(.+?)\s*--\s*.+$/gm)) {
 		declared.add(match[1]);
 	}
 	return declared;

@@ -33,12 +33,13 @@ settle 20
 
 # The typed text is not a goal over a session. The detail pane has to show the
 # goal the session already holds.
+# needle-source: OVERVIEW -- the ledger's first group header, its `overview` group name upper-cased by the run screen
+# needle-source: Autoswarm setup -- the title of main's modal form, which the dashboard replaced
 slash "/autoswarm keep pushing on the arena allocator"
 settle 3
 if [ "${SCENE_ARM:-after}" = "after" ]; then
 	expect_screen "OVERVIEW" 30 "dashboard"
 else
-	# needle-source: Autoswarm setup -- the title of main's modal form, which the dashboard replaced
 	expect_screen "Autoswarm setup" 30 "console"
 fi
 shot open

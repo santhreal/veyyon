@@ -17,8 +17,9 @@
  * suite), and colour (the theme's).
  */
 import { describe, expect, it } from "bun:test";
-import { CURSOR_MARKER, Form, type FormField, type FormTheme } from "@veyyon/tui";
+import { Form, type FormField, type FormTheme } from "@veyyon/tui/components/form";
 import type { SgrMouseEvent } from "@veyyon/tui/mouse";
+import { CURSOR_MARKER } from "@veyyon/tui/tui";
 
 const LEFT = "\x1b[D";
 const RIGHT = "\x1b[C";

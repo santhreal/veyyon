@@ -6,6 +6,7 @@
  * way, every edit is applied to the host as it is made.
  */
 import { type Component, Form, type MouseRoutable, matchesKey, type SgrMouseEvent } from "@veyyon/tui";
+import { clamp } from "@veyyon/utils";
 import { getFormTheme } from "../modes/theme/theme";
 import type { ConsoleAction, LoopConsoleModel } from "./console";
 
@@ -72,7 +73,7 @@ export class SetupFormComponent implements Component, MouseRoutable {
 		let top = this.#windowTop;
 		if (focusedTop < top) top = focusedTop;
 		else if (focusedTop >= top + rows) top = focusedTop - rows + 1;
-		this.#windowTop = Math.min(Math.max(0, top), maxTop);
+		this.#windowTop = clamp(top, 0, maxTop);
 		return lines.slice(this.#windowTop, this.#windowTop + rows);
 	}
 

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-871f1173.js";
+            window.path_to_searchindex_js = "../searchindex-695ab59a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -303,7 +303,11 @@ count, and the blocks separate them. A segment past the width of the pane draws
 its most recent runs, marked with a leading <code>…</code>. A run shows its metric and
 percentage change against the segment baseline, secondary metrics, confidence,
 the arm that produced it and the arm that certified it, the flag reason, scope
-deviations, the change description, the commit and the files it touched.</p>
+deviations, the change description, the commit and the files it touched. The
+run in flight shows its command, its artifacts directory and, under <code>Output</code>,
+the last twelve lines the harness printed, refreshed once a second: escapes
+are stripped, and a progress row rewritten with carriage returns shows its
+final state.</p>
 <p><code>log_experiment</code> requires a metric on every status, so a run that crashed before
 it measured anything is recorded with a zero. The screen states <code>no metric</code> for
 that run rather than formatting the zero, and draws it as a <code>·</code> in the blocks
