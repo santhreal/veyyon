@@ -372,9 +372,15 @@ export function serializeConversationForSummary(messages: Message[], dialect?: D
  * prose is no answer here either: the classifier's heat is cumulative in block
  * count, and a compaction payload replays every thinking block in the discarded
  * range at once. A summary describes what was asked, done and decided, all of
- * which survives in the text, tool calls and results this still renders.
+ * which survives in the text, tool calls and results this still renders. A
+ * user or developer message that carries prior reasoning as prose
+ * (`demotedReasoningSource`) is the same chain of thought in another slot and
+ * is dropped for the same reason.
  */
 export function serializeConversation(messages: Message[], dialect?: Dialect): string {
+	messages = messages.filter(
+		msg => (msg.role !== "user" && msg.role !== "developer") || msg.demotedReasoningSource === undefined,
+	);
 	// Tool results flagged contextually useless (and their paired calls) are
 	// dropped from the serialized text: the source region is discarded after
 	// summarization anyway, so excluding them costs nothing and keeps garbage

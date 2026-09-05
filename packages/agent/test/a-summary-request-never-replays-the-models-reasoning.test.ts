@@ -29,7 +29,10 @@ import { getBundledModel } from "@veyyon/catalog/models";
  * anyone remembered: a thirteenth dialect that renders thinking goes red here
  * without an edit. Bare prose is not the fix either — `renderDemotedThinking`
  * states the classifier's heat is cumulative in block count, and a compaction
- * payload carries every block in the discarded range at once.
+ * payload carries every block in the discarded range at once. The same
+ * reasoning also reaches the serializer already demoted to prose, in the
+ * developer message a user-interrupted turn leaves behind (tagged
+ * `demotedReasoningSource`); that message is dropped from the transcript too.
  *
  * WHAT IT DOES NOT CATCH: the cache-aligned path, which hands the session's own
  * messages back to the provider with their signatures intact. That is native
@@ -128,6 +131,28 @@ describe("a summary request never replays the model's reasoning", () => {
 		const messages: Message[] = [
 			{ role: "user", content: [{ type: "text", text: "first question" }], timestamp: 1 },
 			assistant([{ type: "thinking", thinking: REASONING, thinkingSignature: "sig-1" }]),
+			{ role: "user", content: [{ type: "text", text: "second question" }], timestamp: 3 },
+		];
+
+		const rendered = serializeConversationForSummary(messages, dialect);
+
+		expect(rendered).not.toContain(REASONING);
+		expect(rendered).toContain("first question");
+		expect(rendered).toContain("second question");
+	});
+
+	test.each([...DIALECTS])("a %s transcript drops reasoning that arrives already demoted to prose", dialect => {
+		const messages: Message[] = [
+			{ role: "user", content: [{ type: "text", text: "first question" }], timestamp: 1 },
+			assistant([{ type: "text", text: "[Interrupted by user]" }]),
+			{
+				role: "developer",
+				content: [
+					{ type: "text", text: `Your previous turn was interrupted while you were thinking.\n${REASONING}` },
+				],
+				demotedReasoningSource: { provider: "mock", model: "mock" },
+				timestamp: 2,
+			},
 			{ role: "user", content: [{ type: "text", text: "second question" }], timestamp: 3 },
 		];
 

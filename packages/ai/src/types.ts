@@ -522,9 +522,10 @@ export type ProviderPayload = OpenAIResponsesHistoryPayload;
  * message on same-model replay, and any `anthropic-messages` target drops it
  * once `compat.replayDemotedPriorReasoning` is off, whether by catalog or
  * learned from a `reasoning_extraction` refusal. Every other target replays it.
- * `provider` and `model` identify the turn the reasoning came from; a message
- * that no longer knows its origin sets neither and only the endpoint-level drop
- * applies.
+ * A summarization transcript (`serializeConversation` in `@veyyon/agent-core`)
+ * leaves the message out the way it leaves thinking blocks out. `provider` and
+ * `model` identify the turn the reasoning came from; a message that no longer
+ * knows its origin sets neither and only the endpoint-level drop applies.
  */
 export interface DemotedReasoningSource {
 	provider?: string;
