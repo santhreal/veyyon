@@ -8,6 +8,7 @@
 - Swarm presets: `swarm` and `wide` are built in, and the console saves the current shape under a name to `presets.json` beside the autoresearch databases, offered in every repository.
 - The run screen's `running` row shows the last twelve lines the harness printed under the command, refreshed once a second, with escapes stripped and a carriage-return progress row shown in its final state.
 - The setup form's models note lists up to three authenticated models close to a spec that resolves to nothing (`No model matches "opus4". Close: anthropic/claude-opus-4, …`).
+- The `/agents` card's Live view shows a detail pane under the roster for the selected agent: its assignment, the tool it is in with its elapsed time or the retry it is waiting on, its elapsed, tool, request, context and cost figures, and the last two lines its tools printed.
 
 ### Changed
 

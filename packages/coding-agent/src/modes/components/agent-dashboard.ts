@@ -3,7 +3,9 @@
  *
  * Two views, one card, both about a run in progress:
  * - Live: every agent that exists right now, what TYPE of agent each one is,
- *   and what it is doing. Enter hands the main view over to that agent's live
+ *   and what it is doing. Under the roster, a detail pane opens the selected
+ *   agent up: its assignment, the tool it is in, its cost so far and the last
+ *   lines it printed. Enter hands the main view over to that agent's live
  *   session, where you read it and talk to it; Esc there returns you to your
  *   own session.
  * - Comms: the agent-to-agent traffic, streaming, oldest first, with a summary
@@ -69,7 +71,7 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
-import { clampLow, errorMessage, formatAge, formatMoreLines, getProjectDir, logger } from "@veyyon/utils";
+import { clampLow, errorMessage, formatAge, formatCount, formatMoreLines, getProjectDir, logger } from "@veyyon/utils";
 import type { KeyId } from "../../config/keybindings";
 import type { MessageRenderer } from "../../extensibility/extensions/types";
 import { IrcBus, type IrcLogEntry } from "../../irc/bus";
@@ -77,6 +79,9 @@ import { AgentLifecycleManager } from "../../registry/agent-lifecycle";
 import { AgentRegistry } from "../../registry/agent-registry";
 import { registerPersistedSubagents } from "../../registry/persisted-subagents";
 import { USER_INTERRUPT_LABEL } from "../../session/messages";
+import { appendAgentStats, sanitizeRecentOutput } from "../../task/render";
+import type { AgentProgress } from "../../task/types";
+import { formatDuration, previewLine } from "../../tools/render-utils";
 import type { ObservableSession, SessionObserverRegistry } from "../session-observer-registry";
 import { getTabBarTheme } from "../shared";
 import { withIcon } from "../theme/icon-label";
@@ -460,6 +465,148 @@ class LiveRosterPane implements Component {
 		// `width` here is the view's content width, so the band stops exactly where
 		// the scrollbar gutter starts.
 		return selectionBand(theme.fg("accent", line), width);
+	}
+
+	invalidate(): void {}
+}
+
+/**
+ * Rows the detail pane draws under the roster, always exactly this many.
+ *
+ * Fixed rather than hugging its content because the pane is redrawn on every
+ * progress event: a pane that grew a row when a tool started and lost it when
+ * the tool ended would move the roster above it, and the card around both,
+ * several times a second.
+ */
+const DETAIL_ROWS = 6;
+
+/** Output lines the detail pane shows, newest last. */
+const DETAIL_OUTPUT_LINES = 2;
+
+/**
+ * The detail pane: what the SELECTED agent is doing, in more than one row.
+ *
+ * The roster row gets one line, and the one line it spends on activity is the
+ * gist. The questions a reader has once the gist has caught their eye — what
+ * was it asked to do, which tool is it in and for how long, what has it cost,
+ * what did it print last, and why is it not moving — are answered here, from
+ * the same executor progress the task widget draws its block from, so the two
+ * surfaces never disagree about one agent.
+ *
+ * Layout, top to bottom:
+ * `── ‹call sign› ‹type› ────` a rule naming the agent the rows belong to
+ * `‹assignment›`               what it was asked to do, one line
+ * `‹tool line›`                current tool + intent + elapsed, or the
+ *                              retry / give-up state, or the last tool
+ * `‹stats›`                    elapsed · tools · requests · context · cost
+ * `‹output›` × 2               the last lines its tools printed
+ */
+class AgentDetailPane implements Component {
+	constructor(
+		private readonly agent: LiveAgent,
+		private readonly observed: ObservableSession | undefined,
+		/** Read at render time, for the same reason the roster's is. */
+		private readonly now: () => number,
+	) {}
+
+	render(width: number): readonly string[] {
+		const lines: string[] = [this.#rule(width)];
+		const progress = this.observed?.progress;
+		const assignment = this.observed?.description ?? progress?.assignment ?? progress?.task;
+		if (assignment) lines.push(theme.fg("muted", truncateToWidth(sanitizeSingleLine(assignment), width)));
+		if (progress) {
+			const tool = this.#toolLine(progress, this.now());
+			if (tool) lines.push(truncateToWidth(tool, width));
+			lines.push(truncateToWidth(this.#statsLine(progress), width));
+			lines.push(...this.#outputLines(progress, width));
+		} else if (this.agent.kind === "main") {
+			lines.push(theme.fg("dim", "The driving session. Its transcript is the main view."));
+		} else {
+			lines.push(theme.fg("dim", "No live progress: this agent is not running in this process."));
+		}
+		while (lines.length < DETAIL_ROWS) lines.push("");
+		return lines.slice(0, DETAIL_ROWS);
+	}
+
+	/** `── Kestrel reviewer ────────`, the rule that separates the pane from the roster. */
+	#rule(width: number): string {
+		const bar = theme.boxSharp.horizontal;
+		const label = ` ${theme.bold(replaceTabs(this.agent.callSign))} ${theme.fg("link", replaceTabs(agentType(this.agent)))} `;
+		const shown = truncateToWidth(label, Math.max(0, width - 4));
+		const fill = Math.max(0, width - 2 - visibleWidth(shown));
+		return theme.fg("dim", bar.repeat(2)) + shown + theme.fg("dim", bar.repeat(fill));
+	}
+
+	/**
+	 * Which tool the agent is inside and how long it has been there, or the
+	 * reason it is not inside one. A retry wait and a give-up are drawn here
+	 * rather than on a row of their own because they are the answer to the same
+	 * question, "why is it not moving", and one slot keeps the pane's height.
+	 */
+	#toolLine(progress: AgentProgress, now: number): string | undefined {
+		const hook = theme.fg("dim", theme.tree.hook);
+		if (progress.retryState && progress.status === "running") {
+			const retry = progress.retryState;
+			const remainingMs = Math.max(0, retry.startedAtMs + retry.delayMs - now);
+			const wait = remainingMs > 0 ? `in ${formatDuration(remainingMs)}` : "now";
+			const verb = retry.mode === "continue" ? "continuing" : "retrying";
+			const summary = `${verb} ${retry.attempt}/${retry.maxAttempts} ${wait}: ${previewLine(sanitizeSingleLine(retry.errorMessage), 80)}`;
+			return `${hook} ${theme.fg("warning", summary)}`;
+		}
+		if (progress.retryFailure && progress.status !== "running") {
+			const gaveUp = progress.retryFailure.mode === "continue" ? "continuation" : "auto-retry";
+			const summary = `${gaveUp} gave up after ${formatCount("attempt", progress.retryFailure.attempt)}: ${previewLine(sanitizeSingleLine(progress.retryFailure.errorMessage), 80)}`;
+			return `${hook} ${theme.fg("error", summary)}`;
+		}
+		if (progress.currentTool) {
+			let line = `${hook} ${theme.fg("muted", sanitizeSingleLine(progress.currentTool))}`;
+			const detail = progress.lastIntent ?? progress.currentToolArgs;
+			if (detail) line += `: ${theme.fg("dim", previewLine(sanitizeSingleLine(detail), 60))}`;
+			if (progress.currentToolStartMs) {
+				const elapsed = now - progress.currentToolStartMs;
+				// Past five seconds the elapsed time is the message: a read does not
+				// take five seconds, a build or a hung process does.
+				if (elapsed > 5000) line += `${theme.sep.dot}${theme.fg("warning", formatDuration(elapsed))}`;
+			}
+			return line;
+		}
+		const recent = progress.recentTools[0];
+		if (!recent) return undefined;
+		let line = `${hook} ${theme.fg("dim", sanitizeSingleLine(recent.tool))}`;
+		const detail = progress.lastIntent ?? recent.args;
+		if (detail) line += `: ${theme.fg("dim", previewLine(sanitizeSingleLine(detail), 60))}`;
+		return line;
+	}
+
+	/** `12m 3s · 14 tools · 4 req · 47k/200k · $0.12`, the same stats the task widget appends. */
+	#statsLine(progress: AgentProgress): string {
+		return appendAgentStats(
+			theme.fg("dim", formatDuration(progress.durationMs)),
+			{
+				toolCount: progress.toolCount,
+				requests: progress.requests,
+				tokens: progress.tokens,
+				contextTokens: progress.contextTokens,
+				contextWindow: progress.contextWindow,
+				cost: progress.cost,
+			},
+			theme,
+		);
+	}
+
+	/**
+	 * The last lines the agent's tools printed, oldest first, from the executor's
+	 * already-decoded tail (`progress.recentOutput` is newest-first and has been
+	 * through the argot seam, so nothing here needs expanding).
+	 */
+	#outputLines(progress: AgentProgress, width: number): string[] {
+		if (progress.recentOutput.length === 0) return [];
+		const text = sanitizeRecentOutput([...progress.recentOutput].reverse().join("\n"));
+		if (!text) return [];
+		return text
+			.split("\n")
+			.slice(-DETAIL_OUTPUT_LINES)
+			.map(line => theme.fg("dim", truncateToWidth(`  ${replaceTabs(line)}`, width)));
 	}
 
 	invalidate(): void {}
@@ -861,6 +1008,13 @@ export class AgentDashboard extends Container {
 
 	#builtRows = -1;
 	#builtCols = -1;
+	/**
+	 * Detail rows the layout was last built with. The reservation depends on the
+	 * shell's body budget, which the first build (in the constructor) has not
+	 * seen yet, so the first render compares and rebuilds rather than showing a
+	 * roster that grows a pane one event later.
+	 */
+	#builtDetailRows = -1;
 	/** Content-column width inside the ModalShell card, refreshed every render. */
 	#contentWidth = 80;
 	/**
@@ -1213,17 +1367,47 @@ export class AgentDashboard extends Container {
 	 * that resizes its own frame as messages arrive is jitter.
 	 */
 	#computeBodyHeight(): number {
-		// Chrome inside the card: tab bar + spacer, plus the notice line when one is
-		// showing. ModalShell owns everything outside the body, and how much that is
-		// comes from {@link #bodyBudget}, which render() takes from the shell.
-		const budget = Math.max(1, this.#bodyBudget - 2 - (this.#notice ? 2 : 0));
+		const budget = this.#paneBudget();
 		// Comms also carries its summary line and a spacer. Charging the pane for
 		// them is what keeps the stream's last row on screen: a body longer than the
 		// budget is truncated silently, so two uncounted rows at the top drop two
 		// rows off the tail, which on a feed pinned to the newest message means the
 		// newest message.
 		if (this.#activeView !== "live") return Math.max(1, budget - 2);
-		return Math.min(budget, Math.max(AgentDashboard.#MIN_ROSTER_ROWS, this.#liveAgents.length));
+		const rosterBudget = Math.max(1, budget - this.#detailRows());
+		return Math.min(rosterBudget, Math.max(AgentDashboard.#MIN_ROSTER_ROWS, this.#liveAgents.length));
+	}
+
+	/**
+	 * Body rows left for the panes once the chrome inside the card is charged:
+	 * tab bar + spacer, plus the notice line when one is showing. ModalShell owns
+	 * everything outside the body, and how much that is comes from
+	 * {@link #bodyBudget}, which render() takes from the shell.
+	 */
+	#paneBudget(): number {
+		return Math.max(1, this.#bodyBudget - this.#paneRowOffset());
+	}
+
+	/**
+	 * Rows the detail pane takes out of the body budget: {@link DETAIL_ROWS}, or
+	 * none.
+	 *
+	 * None while no agent in the roster has executor progress to show, which is
+	 * the idle card with only the driving session on it: six rows telling one
+	 * agent that it is the driving session is the empty space this card is not
+	 * allowed to draw. Once any agent reports progress the pane is reserved for
+	 * EVERY selection, including the ones with nothing to report, so moving the
+	 * cursor never resizes the card. And none when the body cannot hold both the
+	 * roster floor and the pane: on a short terminal the roster is the surface,
+	 * and a pane that cost it its rows would answer a question nobody could ask.
+	 */
+	#detailRows(): number {
+		if (this.#paneBudget() < AgentDashboard.#MIN_ROSTER_ROWS + DETAIL_ROWS) return 0;
+		const observed = this.#observers?.getSessions();
+		if (!observed?.some(session => session.progress && this.#liveAgents.some(agent => agent.id === session.id))) {
+			return 0;
+		}
+		return DETAIL_ROWS;
 	}
 
 	/**
@@ -1271,7 +1455,11 @@ export class AgentDashboard extends Container {
 			hoveredShortcutId: this.#hoveredShortcutId,
 		}).maxBodyRows;
 		// Rebuild when terminal geometry changes so the card re-fits on resize.
-		if (area !== this.#builtRows || dims.contentWidth !== this.#builtCols) {
+		if (
+			area !== this.#builtRows ||
+			dims.contentWidth !== this.#builtCols ||
+			this.#detailRows() !== this.#builtDetailRows
+		) {
 			this.#buildLayout();
 		}
 
@@ -1609,6 +1797,10 @@ export class AgentDashboard extends Container {
 					},
 				),
 			);
+			const selected = this.#liveAgents[this.#liveSelectedIndex];
+			if (selected && this.#detailRows() > 0) {
+				this.addChild(new AgentDetailPane(selected, this.#observableFor(selected.id), () => Date.now()));
+			}
 		} else {
 			this.addChild(new Text(this.#commsSummary(), 0, 0));
 			this.addChild(new Spacer(1));
@@ -1630,6 +1822,7 @@ export class AgentDashboard extends Container {
 
 		this.#builtRows = this.#terminalRows();
 		this.#builtCols = this.#contentWidth;
+		this.#builtDetailRows = this.#detailRows();
 	}
 
 	/**
