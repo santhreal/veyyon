@@ -27,7 +27,7 @@ import {
 } from "../../../utils/active-repo-context";
 import * as git from "../../../utils/git";
 import { readLaunchFacts, recordLaunchFacts, recordRestLaunchFacts } from "../../launch-facts";
-import { sanitizeStatusText } from "../../shared";
+import { sanitizeStyledStatusText } from "../../shared";
 import { withIcon } from "../../theme/icon-label";
 import { transitionsEnabled } from "../../theme/shimmer";
 import { theme } from "../../theme/theme";
@@ -1705,7 +1705,7 @@ export class StatusLineComponent implements Component {
 
 		const sortedStatuses = Array.from(this.#hookStatuses.entries())
 			.sort(([a], [b]) => a.localeCompare(b))
-			.map(([, text]) => sanitizeStatusText(text));
+			.map(([, text]) => sanitizeStyledStatusText(text));
 		const hookLine = sortedStatuses.join(" ");
 		return [truncateToWidth(hookLine, width)];
 	}

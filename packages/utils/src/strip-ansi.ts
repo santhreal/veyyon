@@ -101,6 +101,27 @@ export function stripAnsi(s: string): string {
 }
 
 /**
+ * A CSI sequence whose final byte is `m`, with no intermediate bytes: SGR, the
+ * one kind of sequence that paints and moves nothing.
+ */
+const SGR_SEQUENCE = /^\x1b\[[\x30-\x3f]*m$/;
+
+/**
+ * Strip every sequence {@link stripAnsi} strips except SGR, so styled text a
+ * caller was promised it may pass (a hook's status row, painted with the theme)
+ * keeps its colours and loses its cursor moves, hyperlinks, title sets and
+ * graphics. A lone escape byte is dropped for the same reason as in
+ * `stripAnsi`: what survives a pass must be a fixed point.
+ */
+export function stripAnsiExceptSgr(s: string): string {
+	if (!HAS_ESCAPE_OR_C1.test(s)) return s;
+	const normalized = s.replace(C1_INTRODUCERS, ch => C1_MAP[ch] ?? ch);
+	return normalized
+		.replace(ESCAPE_SEQUENCE, sequence => (SGR_SEQUENCE.test(sequence) ? sequence : ""))
+		.replace(/\x1b(?!\[[\x30-\x3f]*m)/g, "");
+}
+
+/**
  * Strip the same grammar from a stream, one chunk at a time.
  *
  * A consumer that re-strips the whole accumulated output on every arrival pays

@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `stripAnsiExceptSgr()` strips every escape sequence `stripAnsi()` strips except SGR, for a surface that admits styled text.
+
 ### Removed
 
 - Removed `isNewerVersion` in favor of publication-order comparison and equality checks.

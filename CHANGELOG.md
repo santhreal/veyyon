@@ -13,6 +13,7 @@
 - `Form`: a component of labelled fields — `text` with an in-field caret, `stepper` with `◂`/`▸` arrows and typed digits, `toggle`, `segmented`, `button` and `note` — that lays every value out at one column after the widest label, moves a ring with `↑↓`/`tab`, routes a click to the caret, arrow, option, switch or button under the pointer, windows a `segmented` strip wider than its row around the chosen option, and moves the ring on from a text field whose Enter nothing takes.
 - `Input` routes a click to the caret position under it (`routeMouse`) and reports the caret with `getCursor()`.
 - A `MouseRoutable` overlay drawn over the transcript on the normal screen receives the wheel and click reports inside its bounds; reports outside it keep scrolling the transcript and reaching the pinned footer.
+- `stripAnsiExceptSgr()` strips every escape sequence `stripAnsi()` strips except SGR, for a surface that admits styled text.
 
 ### Changed
 
@@ -32,6 +33,7 @@
 
 ### Fixed
 
+- A hook status set through `ctx.ui.setStatus` keeps the theme colours it was painted with, as its contract states, so the autoresearch status row shows its kept count in green, its flagged count in yellow and its best metric in the tool colour instead of one grey line; cursor moves, hyperlinks and graphics in a status are still stripped.
 - Interrupting Claude mid-thinking no longer fails every later turn with `Refusal (reasoning_extraction)` on an endpoint that enforces the classifier: the hidden continuity message that carries the unfinished reasoning states which turn it came from, and the request drops it on same-model replay to a signing Anthropic endpoint, and after one refusal on any other, instead of re-sending it on the retry and for the rest of the session.
 - A logged metric of zero or below is a measurement: a session minimising a count tags the kept run that reached zero as best, and a signed metric's negative runs are ranked by direction in the Best row, the keep gate of `log_experiment`, the confidence figure, the `Trend` row and the prompt's recent-run rows; only a crash's logged placeholder reads as unmeasured, and it prints `no metric` in the prompt as it does on screen.
 - The setup form's models note states a spec past the last arm (`"glm" has no arm at breadth 2.`), which the persisted setup dropped without a word when breadth came down.

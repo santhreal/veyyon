@@ -1,4 +1,4 @@
-import { stripAnsi } from "@veyyon/utils/strip-ansi";
+import { stripAnsi, stripAnsiExceptSgr } from "@veyyon/utils/strip-ansi";
 
 /**
  * Sanitize text for display in a single-line status indicator. Strips all
@@ -17,6 +17,18 @@ import { stripAnsi } from "@veyyon/utils/strip-ansi";
 export function sanitizeStatusText(text: string): string {
 	return stripAnsi(text)
 		.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
+		.replace(/ +/g, " ")
+		.trim();
+}
+
+/**
+ * The same sanitizer for text a caller is allowed to style: hook status text
+ * (`ctx.ui.setStatus`), whose contract admits theme colours. SGR sequences
+ * survive; every other escape and control byte is stripped or spaced as above.
+ */
+export function sanitizeStyledStatusText(text: string): string {
+	return stripAnsiExceptSgr(text)
+		.replace(/[\u0000-\u001a\u001c-\u001f\u007f-\u009f]/g, " ")
 		.replace(/ +/g, " ")
 		.trim();
 }

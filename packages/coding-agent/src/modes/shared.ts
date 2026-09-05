@@ -5,7 +5,7 @@ import { hoverBand, theme } from "./theme/theme";
 // Text Sanitization
 // ═══════════════════════════════════════════════════════════════════════════
 
-export { sanitizeStatusText } from "./sanitize-status-text";
+export { sanitizeStatusText, sanitizeStyledStatusText } from "./sanitize-status-text";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Tab Bar Theme
