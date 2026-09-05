@@ -35,7 +35,7 @@ use crate::{
 	keymap::Keymap,
 	layout::LabelState,
 	model::ShellState,
-	queue::RailMotion,
+	queue::{RailMotion, RowMenu},
 	tokens::InstalledTokens,
 };
 
@@ -59,6 +59,12 @@ pub struct ShellView {
 	/// the refusal line.
 	attach:         AttachState,
 	rail_motion:    RailMotion,
+	/// The queue row menu that is open, if one is (§5.1). Window-local,
+	/// like a hover: a snapshot never reopens one.
+	row_menu:       Option<RowMenu>,
+	/// The width the operator dragged the docked right panel to. Window-local
+	/// like the row menu: a snapshot never moves the handle (§5.6).
+	panel_width:    Option<f32>,
 	focus_handle:   Option<FocusHandle>,
 	now_ms:         u64,
 	subscriptions:  Vec<Subscription>,
@@ -79,6 +85,8 @@ impl ShellView {
 			composer_cache: String::new(),
 			attach: AttachState::default(),
 			rail_motion: RailMotion::new(),
+			row_menu: None,
+			panel_width: None,
 			focus_handle: None,
 			now_ms: 0,
 			subscriptions: Vec::new(),
@@ -140,6 +148,35 @@ impl ShellView {
 	#[must_use]
 	pub fn notice(&self) -> Option<&str> {
 		self.notice.as_deref()
+	}
+
+	/// The queue row menu that is open, if one is.
+	#[must_use]
+	pub const fn row_menu(&self) -> Option<RowMenu> {
+		self.row_menu
+	}
+
+	/// Opens the menu for a queue row at the pointer.
+	pub const fn open_row_menu(&mut self, menu: RowMenu) {
+		self.row_menu = Some(menu);
+	}
+
+	/// Closes the queue row menu, if one is open.
+	pub const fn close_row_menu(&mut self) {
+		self.row_menu = None;
+	}
+
+	/// The width the operator dragged the docked right panel to, if they have.
+	#[must_use]
+	pub const fn panel_width(&self) -> Option<f32> {
+		self.panel_width
+	}
+
+	/// Records the width a drag of the split handle asked for. The shed bounds
+	/// it on the next frame, so a value past the panel's share is not an error
+	/// here.
+	pub const fn set_panel_width(&mut self, width_px: f32) {
+		self.panel_width = Some(width_px);
 	}
 
 	/// Returns a reference to the active composer editor entity if initialized.

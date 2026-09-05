@@ -1,12 +1,12 @@
 //! `ContextBreakdown` settings page body rendering (§5.9).
 
-use veyyon_desktop_kit::{Badge, ColorRole, RadiusStep, TintRole, TokenSet};
+use veyyon_desktop_kit::{Badge, Meter, TintRole, TokenSet};
 use veyyon_desktop_model::SurfaceId;
 use veyyon_desktop_tokens::SettingsSurfaceTokens;
-use veyyon_gpui::{Context, Div, ParentElement, Styled, div, px};
+use veyyon_gpui::{Div, ParentElement, Styled, div};
 
 use crate::{
-	ShellView,
+	controls::ControlStates,
 	settings::{
 		SettingsState,
 		row::{empty_state_row, setting_row},
@@ -29,9 +29,9 @@ fn format_number(n: u64) -> String {
 /// Renders the Context window allocation breakdown page rows.
 pub fn render_context_page(
 	state: &SettingsState,
+	controls: &ControlStates,
 	geometry: &SettingsSurfaceTokens,
 	tokens: &TokenSet,
-	cx: &Context<ShellView>,
 ) -> Div {
 	let mut container = div()
 		.flex()
@@ -46,10 +46,7 @@ pub fn render_context_page(
 		));
 	};
 
-	let shell_state = cx.entity().read(cx).state();
-	let av = shell_state
-		.controls
-		.availability(&SurfaceId::ContextBreakdownRefreshButton);
+	let av = controls.availability(&SurfaceId::ContextBreakdownRefreshButton);
 
 	// Header row: Total allocation
 	let total_label = if let Some(limit) = ctx.limit_tokens {
@@ -76,20 +73,7 @@ pub fn render_context_page(
 	if let Some(limit) = ctx.limit_tokens
 		&& limit > 0
 	{
-		let ratio = ((ctx.total_tokens as f32 / limit as f32) * 100.0).clamp(0.0, 100.0);
-		let meter = div()
-			.w_full()
-			.h(px(4.0))
-			.rounded(tokens.radius(RadiusStep::Full))
-			.bg(tokens.color(ColorRole::Inset))
-			.overflow_hidden()
-			.child(
-				div()
-					.h_full()
-					.w(veyyon_gpui::relative(ratio / 100.0))
-					.bg(tokens.color(ColorRole::Accent)),
-			);
-		container = container.child(meter);
+		container = container.child(Meter::new(ctx.total_tokens as f32 / limit as f32));
 	}
 
 	// Categories

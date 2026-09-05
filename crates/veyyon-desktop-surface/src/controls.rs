@@ -9,7 +9,10 @@
 //! `state.controls.availability(&id)` and applies `availability_style` to set
 //! opacity, cursor, and activation handling.
 
-use std::collections::BTreeMap;
+use std::{
+	cell::RefCell,
+	collections::{BTreeMap, BTreeSet},
+};
 
 use serde::{Deserialize, Serialize};
 use veyyon_desktop_kit::{
@@ -78,27 +81,46 @@ impl ControlError {
 
 /// Container tracking availability and error states for all interactive surface
 /// controls (§4.3, §4.4).
+///
+/// A control the projection never set reads as at rest, which is the one
+/// silent default in the gate path (§1.2). Every such read is recorded so a
+/// test that renders every scene can assert the set is empty: a control that
+/// reads an id `project_controls` does not own turns that test red.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ControlStates {
 	availability: BTreeMap<SurfaceId, Availability>,
 	errors:       BTreeMap<SurfaceId, ControlError>,
+	unprojected:  RefCell<BTreeSet<SurfaceId>>,
 }
 
 impl ControlStates {
 	/// Creates an empty control state registry.
 	#[must_use]
 	pub const fn new() -> Self {
-		Self { availability: BTreeMap::new(), errors: BTreeMap::new() }
+		Self {
+			availability: BTreeMap::new(),
+			errors:       BTreeMap::new(),
+			unprojected:  RefCell::new(BTreeSet::new()),
+		}
 	}
 
 	/// Returns the availability state for a given control identifier.
+	///
+	/// An id no projection set reads as `Enabled` and is recorded in
+	/// [`Self::unprojected`].
 	#[must_use]
 	pub fn availability(&self, id: &SurfaceId) -> Availability {
-		self
-			.availability
-			.get(id)
-			.cloned()
-			.unwrap_or(Availability::Enabled)
+		self.availability.get(id).cloned().unwrap_or_else(|| {
+			self.unprojected.borrow_mut().insert(id.clone());
+			Availability::Enabled
+		})
+	}
+
+	/// Every id a surface read that no projection had set, in the order the
+	/// ids sort. Empty when every control drawn is one the projection owns.
+	#[must_use]
+	pub fn unprojected(&self) -> Vec<SurfaceId> {
+		self.unprojected.borrow().iter().cloned().collect()
 	}
 
 	/// Returns the active error associated with a given control identifier, if

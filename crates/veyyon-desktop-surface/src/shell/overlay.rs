@@ -7,12 +7,13 @@ use veyyon_gpui::{
 	Styled, div, px,
 };
 
-use crate::{Intent, ShellView, overlay::Overlay};
+use crate::{Intent, ShellView, controls::ControlStates, overlay::Overlay};
 
 /// Renders the backdrop blur scrim and centered overlay dialog.
 #[must_use]
 pub fn overlay_scrim(
 	overlay: &Overlay,
+	controls: &ControlStates,
 	panels: &PanelsSurfaceTokens,
 	surface: &SurfaceTokens,
 	tokens: &TokenSet,
@@ -24,7 +25,7 @@ pub fn overlay_scrim(
 				.into_any_element()
 		},
 		Overlay::Settings(settings) => {
-			crate::settings::settings_surface(settings, &surface.settings, tokens, cx)
+			crate::settings::settings_surface(settings, controls, &surface.settings, tokens, cx)
 				.into_any_element()
 		},
 	};

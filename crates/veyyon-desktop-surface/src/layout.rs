@@ -87,6 +87,11 @@ pub struct ShedInput {
 	pub queue_collapsed:    bool,
 	/// Whether the right panel has anything to show and is not collapsed.
 	pub panel_open:         bool,
+	/// The width the operator dragged the docked panel to, when they have.
+	/// Window-local: a snapshot never moves the handle. The breakpoint's own
+	/// width applies until the first drag, and the bounds below apply to
+	/// both.
+	pub panel_width:        Option<f32>,
 	/// The label state the previous frame settled on.
 	pub labels:             LabelState,
 }
@@ -153,8 +158,14 @@ pub fn shell_widths(input: ShedInput, surface: &SurfaceTokens) -> ShellWidths {
 	let breakpoint = surface.breakpoints.resolve(viewport);
 	let queue_px = (breakpoint.queue_width_px > 0.0 && !input.queue_collapsed)
 		.then_some(breakpoint.queue_width_px);
-	let right_panel =
-		panel_placement(viewport, queue_px.unwrap_or(0.0), input.panel_open, breakpoint, surface);
+	let right_panel = panel_placement(
+		viewport,
+		queue_px.unwrap_or(0.0),
+		input.panel_open,
+		input.panel_width,
+		breakpoint,
+		surface,
+	);
 	let session_px = (viewport - queue_px.unwrap_or(0.0) - right_panel.inline_width()).max(0.0);
 	let composer_px = input
 		.gutter_px
@@ -231,6 +242,7 @@ fn panel_placement(
 	viewport_px: f32,
 	queue_px: f32,
 	panel_open: bool,
+	dragged_px: Option<f32>,
 	breakpoint: &BreakpointConfig,
 	surface: &SurfaceTokens,
 ) -> RightPanelPlacement {
@@ -252,12 +264,17 @@ fn panel_placement(
 	match breakpoint.right_panel_mode {
 		RightPanelMode::Overlay => overlay,
 		RightPanelMode::Inline { width_px } => {
+			// A drag asks for a width; it is bounded like the declared one,
+			// and never below the panel's minimum, so a drag cannot turn the
+			// column into the overlay.
+			let asked =
+				dragged_px.map_or(width_px, |dragged| dragged.max(panels.right_panel_min_width_px));
 			// An inline panel is bounded a third time, by what the session
 			// surface must keep. Without this bound a window between two rows
 			// takes the upper row's panel out of the lower row's transcript,
 			// which is how the surface being read reaches zero width.
 			let ceiling = viewport_px - queue_px - panels.right_panel_container_margin_px;
-			let width = width_px.min(share).min(ceiling);
+			let width = asked.min(share).min(ceiling);
 
 			// Below the panel's own minimum there is no inline column to draw:
 			// it overlays instead, so it stays reachable at its real measure

@@ -46,6 +46,7 @@ fn shed(viewport_px: f32, viewport_height_px: f32, panel_open: bool) -> ShedInpu
 		gutter_px,
 		queue_collapsed: false,
 		panel_open,
+		panel_width: None,
 		labels: LabelState::default(),
 	}
 }

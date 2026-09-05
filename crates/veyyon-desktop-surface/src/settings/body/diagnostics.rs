@@ -8,6 +8,7 @@ use veyyon_gpui::{ClickEvent, Context, Div, ElementId, IntoElement, ParentElemen
 
 use crate::{
 	Intent, ShellView,
+	controls::ControlStates,
 	settings::{
 		SettingsState,
 		row::{empty_state_row, setting_row, setting_row_with_secondary},
@@ -17,6 +18,7 @@ use crate::{
 /// Renders the Diagnostics telemetry and service health page rows.
 pub fn render_diagnostics_page(
 	state: &SettingsState,
+	controls: &ControlStates,
 	geometry: &SettingsSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
@@ -34,10 +36,7 @@ pub fn render_diagnostics_page(
 		));
 	};
 
-	let shell_state = cx.entity().read(cx).state();
-	let av = shell_state
-		.controls
-		.availability(&SurfaceId::DiagnosticRefreshButton);
+	let av = controls.availability(&SurfaceId::DiagnosticRefreshButton);
 
 	// Refresh action row
 	let refresh_btn = Button::new("Refresh")

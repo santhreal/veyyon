@@ -10,13 +10,14 @@ use veyyon_desktop_kit::{
 };
 use veyyon_desktop_tokens::QueueSurfaceTokens;
 use veyyon_gpui::{
-	ClickEvent, Context, ElementId, InteractiveElement, IntoElement, ParentElement,
-	StatefulInteractiveElement, Styled, div, px,
+	ClickEvent, Context, ElementId, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
+	ParentElement, StatefulInteractiveElement, Styled, div, px,
 };
 
 use crate::{
 	Intent, ShellView,
 	model::{Badge, Row},
+	queue::RowMenu,
 };
 
 /// Renders a card row (78px): badge, timer, title, subtitle, and hover actions.
@@ -128,6 +129,14 @@ pub fn card_row(
 			view.dispatch(Intent::SelectSession(id));
 			cx.notify();
 		}))
+		// A right-click opens the row's answers as a menu at the pointer.
+		.on_mouse_down(
+			MouseButton::Right,
+			cx.listener(move |view, event: &MouseDownEvent, _window, cx| {
+				view.open_row_menu(RowMenu { id, origin: event.position, card: true });
+				cx.notify();
+			}),
+		)
 		.hover(move |style| style.bg(hover_bg))
 		.flex_shrink_0()
 		.h(px(geometry.card_px))
