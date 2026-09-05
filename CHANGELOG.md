@@ -26,6 +26,7 @@
 ### Fixed
 
 - Interrupting Claude mid-thinking no longer fails every later turn with `Refusal (reasoning_extraction)` on an endpoint that enforces the classifier: the hidden continuity message that carries the unfinished reasoning states which turn it came from, and the request drops it on same-model replay to a signing Anthropic endpoint, and after one refusal on any other, instead of re-sending it on the retry and for the rest of the session.
+- A compaction, branch-summary or turn-prefix transcript leaves out a user or developer message that carries prior reasoning as prose (`demotedReasoningSource`), the message a user-interrupted turn leaves behind, instead of quoting that reasoning back at the endpoint inside the summary request.
 - A user or developer message that carries prior-turn reasoning as prose declares its origin through `demotedReasoningSource`, and `transformMessages` holds it to the unsigned-thinking replay policy: a signing Anthropic endpoint drops it on same-model replay, and every `anthropic-messages` target drops it once `replayDemotedPriorReasoning` is off by catalog or learned from a `reasoning_extraction` refusal, instead of re-sending the same prose on the retry and on every later turn of the session.
 
 ## [1.4.0] - 2026-09-04
