@@ -108,7 +108,11 @@ export function appendAgentStats(
 	theme: Theme,
 ): string {
 	if (opts.toolCount) {
-		line += `${theme.sep.dot}${theme.fg("dim", `${formatNumber(opts.toolCount)} ${theme.icon.extensionTool}`)}`;
+		// The unicode preset's tool icon is EMPTY, and `14 ` followed by a separator
+		// is a number that labels nothing. The word stands in where the icon does not.
+		const toolIcon = theme.icon.extensionTool;
+		const tools = toolIcon ? `${formatNumber(opts.toolCount)} ${toolIcon}` : formatCount("tool", opts.toolCount);
+		line += `${theme.sep.dot}${theme.fg("dim", tools)}`;
 	}
 	if (opts.requests) {
 		line += `${theme.sep.dot}${theme.fg("dim", `${formatNumber(opts.requests)} req`)}`;

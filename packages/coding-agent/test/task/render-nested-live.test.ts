@@ -229,9 +229,13 @@ describe("task renderer: nested live rendering", () => {
 		// Context matches the status line gauge, which is tok/tok — one unit on both
 		// sides of the slash (it used to print `21.3%/272K`, a percent over a token
 		// count). Cost is separated by the theme dot separator, not a literal ".".
-		const expectedStats = `${formatNumber(19)} ${theme.icon.extensionTool}${theme.sep.dot}58K/272K${theme.sep.dot}$2.10`;
+		// The tool count is labelled by the preset's icon, and by the word `tools`
+		// only where the preset has no icon: an unlabelled `19` says nothing.
+		const toolIcon = theme.icon.extensionTool;
+		const tools = toolIcon ? `${formatNumber(19)} ${toolIcon}` : "19 tools";
+		const expectedStats = `${tools}${theme.sep.dot}58K/272K${theme.sep.dot}$2.10`;
 		expect(text).toContain(expectedStats);
-		expect(text).not.toContain("tools");
+		if (toolIcon) expect(text).not.toContain("tools");
 		expect(text).not.toContain("ctx");
 		expect(text).not.toContain("Σ");
 	});

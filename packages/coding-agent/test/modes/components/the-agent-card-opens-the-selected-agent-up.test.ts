@@ -122,7 +122,7 @@ describe("the agent card opens the selected agent up", () => {
 		expect(pane).toContain("search: Finding parseConfig callers");
 		expect(pane).toMatch(/1[12]\.\ds/); // the elapsed time, past the five-second mark
 		expect(pane).toContain("1m35s");
-		expect(pane).toContain("14 ");
+		expect(pane).toContain("14 tools");
 		expect(pane).toContain("4 req");
 		expect(pane).toContain("47K/200K");
 		expect(pane).toContain("$0.12");
