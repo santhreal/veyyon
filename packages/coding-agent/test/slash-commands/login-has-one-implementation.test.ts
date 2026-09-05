@@ -29,10 +29,10 @@ import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import * as oauthUtils from "@veyyon/ai/registry/oauth";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
+import { formatProviderName } from "@veyyon/coding-agent/session/account-format";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/acp-builtins";
 import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
-import { formatProviderName } from "@veyyon/coding-agent/slash-commands/helpers/format";
 import type { SlashCommandRuntime, TuiSlashCommandRuntime } from "@veyyon/coding-agent/slash-commands/types";
 
 const PROVIDER = "unit-accounts";

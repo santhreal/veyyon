@@ -20,6 +20,8 @@
  * or a newline in an upstream failure reason tears a card open, and those strings arrive from
  * the network.
  */
+
+import { formatDurationCoarse } from "../../../../session/account-format";
 import {
 	type AccountInventory,
 	type AccountRow,
@@ -29,11 +31,7 @@ import {
 	accountOriginLabel,
 	credentialStateNote,
 } from "../../../../session/account-inventory";
-import {
-	formatDurationCoarse,
-	formatUsageWindowLine,
-	usageWindowLabelColumn,
-} from "../../../../slash-commands/helpers/format";
+import { formatUsageWindowLine, usageWindowLabelColumn } from "../../../../slash-commands/helpers/format";
 
 /** Width of the usage bar in the manager's body pane, in cells. */
 export const USAGE_BAR_WIDTH = 10;

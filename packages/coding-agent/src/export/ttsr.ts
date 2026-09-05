@@ -84,6 +84,10 @@ function isInsideRoot(root: string, candidate: string): boolean {
 	return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
+/** Module-scoped token pattern avoiding re-creation on every tool scope token. */
+const TOOL_SCOPE_TOKEN_PATTERN =
+	/^(?:(?<prefix>tool)(?::(?<tool>[a-z0-9_-]+))?|(?<bare>[a-z0-9_-]+))(?:\((?<path>[^)]+)\))?$/i;
+
 const DEFAULT_SCOPE: TtsrScope = {
 	allowText: true,
 	allowThinking: false,
@@ -181,8 +185,11 @@ export class TtsrManager {
 	}
 
 	#compileConditions(rule: Rule): RegExp[] {
+		if (!rule.condition || rule.condition.length === 0) {
+			return [];
+		}
 		const compiled: RegExp[] = [];
-		for (const pattern of rule.condition ?? []) {
+		for (const pattern of rule.condition) {
 			if (pattern.trim().length === 0) {
 				// `new RegExp("")` matches EVERY stream, so a blank condition compiled into a catch-all:
 				// a rule whose frontmatter said `condition: ""` fired on every delta rather than never,
@@ -210,17 +217,17 @@ export class TtsrManager {
 			return undefined;
 		}
 
-		const compiled = globs
-			.map(glob => glob.trim())
-			.filter(glob => glob.length > 0)
-			.map(glob => new Bun.Glob(glob));
+		const compiled: Bun.Glob[] = [];
+		for (const raw of globs) {
+			const glob = raw.trim();
+			if (glob.length === 0) continue;
+			compiled.push(new Bun.Glob(glob));
+		}
 		return compiled.length > 0 ? compiled : undefined;
 	}
 
 	#parseToolScopeToken(token: string): ToolScope | undefined {
-		const match = /^(?:(?<prefix>tool)(?::(?<tool>[a-z0-9_-]+))?|(?<bare>[a-z0-9_-]+))(?:\((?<path>[^)]+)\))?$/i.exec(
-			token,
-		);
+		const match = TOOL_SCOPE_TOKEN_PATTERN.exec(token);
 		if (!match) {
 			return undefined;
 		}
@@ -247,7 +254,7 @@ export class TtsrManager {
 				allowText: DEFAULT_SCOPE.allowText,
 				allowThinking: DEFAULT_SCOPE.allowThinking,
 				allowAnyTool: DEFAULT_SCOPE.allowAnyTool,
-				toolScopes: [...DEFAULT_SCOPE.toolScopes],
+				toolScopes: DEFAULT_SCOPE.toolScopes,
 			};
 		}
 
@@ -444,7 +451,10 @@ export class TtsrManager {
 		}
 
 		const conditions = this.#compileConditions(rule);
-		const astConditions = (rule.astCondition ?? []).map(pattern => pattern.trim()).filter(p => p.length > 0);
+		const astConditions =
+			rule.astCondition && rule.astCondition.length > 0
+				? rule.astCondition.map(pattern => pattern.trim()).filter(p => p.length > 0)
+				: [];
 		if (conditions.length === 0 && astConditions.length === 0) {
 			// LOUD, because it is indistinguishable from a rule that simply never matches: a rule with
 			// no trigger is registered by the provider, listed by `/rules`, and silently never monitored.
@@ -478,13 +488,6 @@ export class TtsrManager {
 		if (scope.allowText) this.#canMatchText = true;
 		if (scope.allowThinking) this.#canMatchThinking = true;
 
-		logger.debug("TTSR rule registered", {
-			ruleName: rule.name,
-			conditions: rule.condition,
-			astConditions: rule.astCondition,
-			scope: rule.scope,
-			globs: rule.globs,
-		});
 
 		return true;
 	}

@@ -21,6 +21,7 @@
 import { sanitizeText } from "@veyyon/utils";
 import { truncateToWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "@veyyon/utils/wrap";
+import { formatDurationCoarse } from "../../session/account-format";
 import {
 	type AccountInventory,
 	type AccountRow,
@@ -31,7 +32,7 @@ import {
 	selectedButRotated,
 } from "../../session/account-inventory";
 import { TRUNCATE_LENGTHS } from "../../tools/core/render-utils";
-import { formatDurationCoarse, formatUsageWindowLine, usageWindowLabelColumn } from "./format";
+import { formatUsageWindowLine, usageWindowLabelColumn } from "./format";
 
 /** Left margin of every account row, matching the other inline report blocks. */
 const ROW_INDENT = "  ";

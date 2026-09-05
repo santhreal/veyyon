@@ -9,6 +9,11 @@ and register usage backends through `@veyyon/ai/usage/defaults`. They do not eva
 `@veyyon/ai` package barrel. Usage providers and credential-ranking strategies remain
 available to direct session construction, the SDK and terminal startup.
 
+Interactive startup starts background model discovery after terminal initialization
+and an event-loop yield. Initial model resolution still completes before session
+construction returns. ACP, RPC, noninteractive launches and subsequent session
+creation retain their existing discovery order.
+
 The launch and session composer footlines use the same filesystem-derived repository
 and linked-worktree location context and draft-token estimate. Typing before session
 initialization updates the estimate on the launch card; mounting the session does not
@@ -28,13 +33,40 @@ For compiled comparisons, set `SCENE_COMMAND` to
 use a separate `OUT_DIR` per arm. The scene disables automatic updates in the
 container configuration before either executable starts.
 
+Postpaint submissions are captured through the native editor submit handler until
+session hooks and event subscriptions finish initializing. Dispatch does not await
+model-turn completion. Each pending action retains its text and attachments; later
+drafts remain separate, including when an extension replaces the editor.
+
+Record the immediate settings action with the same compiled-target setup:
+
+```sh
+SCENE_COMMAND='env STARTUP_EXECUTABLE=/repo/path/to/binary bash -l' \
+  SCENE_MOTION_FLOOR=1 proof/record.sh proof/scenes/startup-early-settings.sh
+```
+
+The launch composer loads the configured keybindings before accepting input.
+The interactive session reuses that manager. Model-selector actions entered
+during initialization open after the session is ready and preserve the draft.
+
+```sh
+SCENE_COMMAND='env STARTUP_EXECUTABLE=/repo/path/to/binary bash -l' \
+  SCENE_MOTION_FLOOR=1 proof/record.sh proof/scenes/startup-early-model-selectors.sh
+```
+
 Bundled and resolved model snapshots use `@veyyon/utils/json-snapshot`. Each write
 serializes its payload once; each read verifies the fingerprint and payload bytes
 before parsing. Replacement is atomic without a durability flush because a missing
 or invalid snapshot rebuilds from its inputs. Bundled format v4 and resolved-stage
 format v9 reject snapshots from preceding formats. The resolved stage stores only
-discovery-derived models and provider state; bundled records use the catalog cache.
-Provider overrides are applied after loading the bundled records on each launch.
+discovery-derived models and provider state. Bundled models resolve once per requested
+provider, without installing a disk snapshot store during production startup.
+Explicitly installed catalog snapshot stores remain supported. Provider overrides
+are applied when the provider's records are resolved.
+Standard provider cache reads use each descriptor's cache-ID resolver rather than
+constructing discovery options. Versioned, endpoint-scoped and credential-scoped
+namespaces retain their existing format. Constant namespaces do not require a
+model-derived base URL.
 
 Endpoint host markers compile once as literal, case-insensitive patterns. Matching
 does not allocate a normalized URL and does not fold punctuation or control characters.
@@ -52,6 +84,10 @@ native addon already extracted, so no run measures the setup wizard, no run touc
 profile, sessions, or vault, and no run pays a write an install has already done. `--cold` deletes
 that home before every arm and re-seeds it, because one arm otherwise warms the GPU cache and the
 model catalog for the next.
+With `--seed`, cold arms also replace the copied configuration before each launch.
+Warm arms copy it once and retain subsequent configuration and cache changes.
+The source seed is never modified. Each PTY arm terminates its process tree before
+the next arm starts, and `--cwd` applies to native extraction and measured launches.
 
 Extraction belongs to the seed because every install path performs it: `install.sh` runs
 `doctor_natives`, `install.ps1` runs its mirror, and the self-updater runs the same search probe. A

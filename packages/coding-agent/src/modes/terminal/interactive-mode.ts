@@ -102,6 +102,7 @@ import { resolvePlanFilePath } from "../../plan-mode/plan-path";
 import { planModePrompts } from "../../prompts/plan-mode/rows";
 import { requestsPrompts } from "../../prompts/requests/rows";
 import { type AgentRegistry, MAIN_AGENT_ID } from "../../registry/agent-registry";
+import { formatProviderName } from "../../session/account-format";
 import type { AgentSession } from "../../session/agent-session";
 import { type ResolvedRoleModel, SHUTDOWN_CONSOLIDATE_BUDGET_MS } from "../../session/agent-session-types";
 import {
@@ -115,7 +116,6 @@ import {
 	BUILTIN_SLASH_COMMAND_RESERVED_NAMES,
 	buildTuiBuiltinSlashCommands,
 } from "../../slash-commands/builtin-registry";
-import { formatProviderName } from "../../slash-commands/helpers/format";
 import type { SubcommandDef } from "../../slash-commands/types";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "../../system-prompt";
 import { applyGroundPaint, getDetectedTerminalGround, setDetectedTerminalGround } from "../../theme/ground-tints";
@@ -614,7 +614,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.session = session;
 		this.sessionManager = session.sessionManager;
 		this.settings = session.settings;
-		this.keybindings = KeybindingsManager.inMemory();
+		this.keybindings = this.#firstFrame?.keybindings ?? KeybindingsManager.inMemory();
 		this.agent = session.agent;
 		this.#version = version;
 		this.#toolUiContextSetter = setToolUIContext;
@@ -965,7 +965,9 @@ export class InteractiveMode implements InteractiveModeContext {
 	async init(): Promise<void> {
 		if (this.isInitialized) return;
 
-		this.keybindings = logger.time("InteractiveMode.init:keybindings", () => KeybindingsManager.create());
+		this.keybindings =
+			this.#firstFrame?.keybindings ??
+			logger.time("InteractiveMode.init:keybindings", () => KeybindingsManager.create());
 		this.#refreshComposerShortcuts();
 
 		// Clock heartbeat: once per second WHILE THE MODEL WORKS, refresh the
@@ -1091,9 +1093,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#layout.seedAfterMount();
 
 		this.#inputController.setupKeyHandlers();
-		this.#inputController.setupEditorSubmitHandler();
-
-		// Wire observer registry to EventBus
+		this.editor.beginEarlySubmissions();
 		if (this.#eventBus) {
 			this.#observerRegistry.subscribeToEventBus(this.#eventBus);
 		}
@@ -1352,6 +1352,9 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.statusLine.watchGitState(() => {
 			this.ui.requestRender();
 		});
+
+		this.#inputController.setupEditorSubmitHandler();
+		this.#inputController.drainEarlySubmissions();
 	}
 
 	/** Themes already warned about an unhonored `always`, so the log is not repeated. */
@@ -3677,6 +3680,9 @@ export class InteractiveMode implements InteractiveModeContext {
 			nextEditor.setHistoryStorage(this.historyStorage);
 		}
 		nextEditor.setText(previousText);
+		nextEditor.pendingImages = previousEditor.pendingImages;
+		nextEditor.pendingImageLinks = previousEditor.pendingImageLinks;
+		nextEditor.imageLinks = previousEditor.imageLinks;
 
 		this.editorContainer.clear();
 		this.editor = nextEditor;
@@ -3684,7 +3690,9 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.ui.setFocus(nextEditor);
 
 		this.#inputController.setupKeyHandlers();
-		this.#inputController.setupEditorSubmitHandler();
+		if (!nextEditor.adoptEarlySubmissions(previousEditor)) {
+			this.#inputController.setupEditorSubmitHandler();
+		}
 
 		void this.refreshSlashCommandState().catch(error => {
 			logger.warn("Failed to refresh slash command state for custom editor", { error: String(error) });

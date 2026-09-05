@@ -5844,11 +5844,13 @@
 		"kernel/src/loader/manifest-key.ts": {
 			"old": "packages/coding-agent/src/extensibility/manifest-key.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "182fa8c9b80535314034199444bde2f651218d19e19da844bba47ff015ba446f",
+			"differs": "changed",
+			"hash": "bd2ac2ece05be5d2c36ff1aad3e3605077ce1aaddb1f41291b077eed046fae82",
 			"mainHash": "182fa8c9b80535314034199444bde2f651218d19e19da844bba47ff015ba446f",
-			"structuralHash": "31218b2ae5dd9d1b3bd3888c359a8b613eceda64d7a8c019676e90e86baca0ec",
-			"mainStructuralHash": "31218b2ae5dd9d1b3bd3888c359a8b613eceda64d7a8c019676e90e86baca0ec"
+			"structuralHash": "1220c1286f8053de3c4e22f5538a1eae95a2e9063399aed6aab09c8aa30b5ce2",
+			"mainStructuralHash": "31218b2ae5dd9d1b3bd3888c359a8b613eceda64d7a8c019676e90e86baca0ec",
+			"group": "plugin-runtime-validation",
+			"reason": "The plugin loader accepts absent manifest holders and normalizes malformed plugin and settings maps to empty records before discovery reads persisted configuration."
 		},
 		"kernel/src/loader/plugins/git-url.ts": {
 			"old": "packages/coding-agent/src/extensibility/plugins/git-url.ts",
@@ -5920,11 +5922,13 @@
 		"kernel/src/loader/plugins/runtime-config.ts": {
 			"old": "packages/coding-agent/src/extensibility/plugins/runtime-config.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "1c19808e1dd2d635a1e7fb7648ffa8cbb75aeeffadc95b2d5ea0188246098de0",
+			"differs": "changed",
+			"hash": "2944092062e95de6a0568d91ad1a7a5c0c5a8d17e47be4d66bc93fe199e0dd55",
 			"mainHash": "1c19808e1dd2d635a1e7fb7648ffa8cbb75aeeffadc95b2d5ea0188246098de0",
-			"structuralHash": "714009b8c238e4bae6969d08e26036cf66d7b7f1cfe0b5ec32e9a4777a17dc51",
-			"mainStructuralHash": "714009b8c238e4bae6969d08e26036cf66d7b7f1cfe0b5ec32e9a4777a17dc51"
+			"structuralHash": "bc5d2d758343571469b1e82c2142e801524c45e41f7f1ab661fe46587e7e6eb9",
+			"mainStructuralHash": "714009b8c238e4bae6969d08e26036cf66d7b7f1cfe0b5ec32e9a4777a17dc51",
+			"group": "plugin-runtime-validation",
+			"reason": "The plugin loader accepts absent manifest holders and normalizes malformed plugin and settings maps to empty records before discovery reads persisted configuration."
 		},
 		"kernel/src/loader/plugins/types.ts": {
 			"old": "packages/coding-agent/src/extensibility/plugins/types.ts",
@@ -5945,15 +5949,6 @@
 			"mainHash": "956ef99030a1c120e347e0027ec6d50ebbb1d65a4751a895567ab7f11260ce85",
 			"structuralHash": "bfba712e66234539f2f9df51c90129b6c6b318313f18f3b2d89f1977f643bedf",
 			"mainStructuralHash": "bfba712e66234539f2f9df51c90129b6c6b318313f18f3b2d89f1977f643bedf"
-		},
-		"kernel/src/registry/tool-event-input.ts": {
-			"old": "packages/coding-agent/src/extensibility/tool-event-input.ts",
-			"kind": "normalized",
-			"differs": "none",
-			"hash": "c94b932eb062cb803e3be8ce923db0ce1daff37763cec90bff138993bf14ec39",
-			"mainHash": "c94b932eb062cb803e3be8ce923db0ce1daff37763cec90bff138993bf14ec39",
-			"structuralHash": "f69b21a8bd3bbe28af255e690dbb6ca2e2d677f84402d352bc2fe78bdaef48e4",
-			"mainStructuralHash": "f69b21a8bd3bbe28af255e690dbb6ca2e2d677f84402d352bc2fe78bdaef48e4"
 		},
 		"kernel/src/registry/tool-proxy.ts": {
 			"old": "packages/coding-agent/src/extensibility/tool-proxy.ts",
@@ -13596,11 +13591,11 @@
 			"old": "packages/coding-agent/src/startup/runtime-stages.ts",
 			"kind": "normalized",
 			"differs": "changed",
-			"group": "engine-consumer",
-			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "f1ca309a80d7044051e40c3b03cdaee3a3fa1f0a2bc0012523e3272786a05185",
+			"group": "startup-initialization",
+			"reason": "The launch composer and initialized session share location and token metadata, retain input during handover, and defer runtime initialization. Behavioral and visual startup checks establish preservation; these rows record the source changes.",
+			"hash": "84ee370783befaa840edec4cc00f93caa0bf1be71b667253102503dfd0695bc1",
 			"mainHash": "51db702d38791b1c1260aebaaf5a2a9b282fc20c4583f8c20a688a5c4d2c8321",
-			"structuralHash": "6c8b51963d0ebd2360ef4aa2c396b8e802280b9d6cc50a416f7f1b34d526c579",
+			"structuralHash": "ba3cf213d8523905eb7491bca2c58157a189e0986b39619ea9e89a95d5b58f87",
 			"mainStructuralHash": "e15dc39937d7e05197b113046a63fd36ad5e57d763c4aecda6026273a747800c"
 		},
 		"packages/coding-agent/src/cli/runtime-warmup.ts": {
@@ -13781,11 +13776,13 @@
 		"packages/coding-agent/src/discovery/capability/rule-buckets.ts": {
 			"old": "packages/coding-agent/src/capability/rule-buckets.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "2ac9b2c6998921f04e7dae4dabe062111fe88c326727e20451d59690e4f5d160",
+			"differs": "changed",
+			"hash": "23614b49b2aee4f89ec294fefb32fda2c528364e1e395a96c4bf17fb0fb4121a",
 			"mainHash": "2ac9b2c6998921f04e7dae4dabe062111fe88c326727e20451d59690e4f5d160",
-			"structuralHash": "1740af23b397265b87b32a8515addf60fe0730e6cb71f8c7f74d2af93763b388",
-			"mainStructuralHash": "1740af23b397265b87b32a8515addf60fe0730e6cb71f8c7f74d2af93763b388"
+			"structuralHash": "e5d600ca0bcdb8c9cd94d87d5e62ee27ea1055c2ad977377e52c5077353eaeda",
+			"mainStructuralHash": "1740af23b397265b87b32a8515addf60fe0730e6cb71f8c7f74d2af93763b388",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner."
 		},
 		"packages/coding-agent/src/discovery/capability/rule.ts": {
 			"old": "packages/coding-agent/src/capability/rule.ts",
@@ -14073,7 +14070,7 @@
 			"differs": "changed",
 			"group": "view-conversion",
 			"reason": "A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. A suite that named the deleted renderer module reads the registry entry instead. Byte identity of the drawn output is proved by the oracle suite, not here.",
-			"hash": "2d72adb9c59b685678c871a8f5e24694228e338e93852b5d03812ab87a3d2c31",
+			"hash": "cb1734d5aa3d613ea6b4410d6d42091f33885892ac70763afedf3d89f2c3bd90",
 			"mainHash": "e64f1a24414688155e74076ac6421b7416b6fbc04f1a51c8747e5712dbfba07f",
 			"structuralHash": "d455e27d641d35ad90b0006b15897561f5745c0b3e1a94c1e038b5f7cb5e24bb",
 			"mainStructuralHash": "2f8fac33777a1c41d69cfbfab7f68785636a74d2c511f62e38562a8377aabec2"
@@ -14225,7 +14222,7 @@
 			"old": "packages/coding-agent/src/memories/index.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "20f96dc0937b5f371f148ab83553aa8b5e1cb0a9e749b1bc3de148973772d426",
+			"hash": "b668dbcfcb0f35b0d271182629275e6e8f9b739eb5f6ba42f2a7dea80c5fbfad",
 			"mainHash": "f3d22ae0064c52fee7e51d8d72216cbe69c83e097f4fa8c1e5cbc0b6cb319d8d",
 			"structuralHash": "59e920ef1a127b92d00dbf3d38c62aa8a81187f8d819e053a9ea5bd82ad537fa",
 			"mainStructuralHash": "59e920ef1a127b92d00dbf3d38c62aa8a81187f8d819e053a9ea5bd82ad537fa"
@@ -14535,8 +14532,8 @@
 		"packages/coding-agent/src/modes/terminal/components/account/account-manager-rows.ts": {
 			"old": "packages/coding-agent/src/modes/components/account-manager-rows.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "0cf6faeba02a8e09388df779da88223224da9ae6017e04cb266fd6740e459fb4",
+			"differs": "imports-and-comments-only",
+			"hash": "022f302de006416193a3227700d38b9858bea964d1880d0f275fd560451a2f41",
 			"mainHash": "0cf6faeba02a8e09388df779da88223224da9ae6017e04cb266fd6740e459fb4",
 			"structuralHash": "1470e4bbe63bc86715cddc310878e3aabf771736b88a08749cb6531d7c260a29",
 			"mainStructuralHash": "1470e4bbe63bc86715cddc310878e3aabf771736b88a08749cb6531d7c260a29"
@@ -14554,7 +14551,7 @@
 			"old": "packages/coding-agent/src/modes/components/account-manager.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "308dff3ead95c78f9f2f9467fedab79171334fd95d37fec176480d742ad35b35",
+			"hash": "fa7ed29568d29f5c92d2cc3c6019c3cf93ec41e943ed07f9b96459c912e62e4a",
 			"mainHash": "d2506a303e52c285bb71d1bb36e8452b5ae4775c492f67e907626edcf62eecd5",
 			"structuralHash": "ee6455703d0cc7c7335c2044c31cff088c4d145aab0f1061d944e121e23ec6fa",
 			"mainStructuralHash": "ee6455703d0cc7c7335c2044c31cff088c4d145aab0f1061d944e121e23ec6fa"
@@ -14629,11 +14626,13 @@
 		"packages/coding-agent/src/modes/terminal/components/composer/composer-chrome.ts": {
 			"old": "packages/coding-agent/src/modes/components/composer-chrome.ts",
 			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "f72dbdb20673097153f3de77e6243936e8068dd7ab7fd08aa2997162da30a0a5",
+			"differs": "changed",
+			"hash": "496166a3ca42b9441daa6faeaa61317a80800ee16a2b009bc217fad115a3ad95",
 			"mainHash": "3b736d2a0ea117a13a9cd8b93718c1cc8cc2a42d1b490250b4db9067cd4e6d19",
-			"structuralHash": "6830877e694acd4003a6d3ad1c76c695ea76924e1178221c1f1c254defc93ee8",
-			"mainStructuralHash": "6830877e694acd4003a6d3ad1c76c695ea76924e1178221c1f1c254defc93ee8"
+			"structuralHash": "aed31fa7cf2ed0872752252f9fb078383fc1bb2c4aa26cfe1d8f4632d74bf645",
+			"mainStructuralHash": "6830877e694acd4003a6d3ad1c76c695ea76924e1178221c1f1c254defc93ee8",
+			"group": "startup-initialization",
+			"reason": "The launch composer and initialized session share location and token metadata, retain input during handover, and defer runtime initialization. Behavioral and visual startup checks establish preservation; these rows record the source changes."
 		},
 		"packages/coding-agent/src/modes/terminal/components/composer/composer-defect-oracle.ts": {
 			"old": "packages/coding-agent/src/modes/components/composer-defect-oracle.ts",
@@ -14675,11 +14674,11 @@
 			"old": "packages/coding-agent/src/modes/components/custom-editor.ts",
 			"kind": "normalized",
 			"differs": "changed",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "1cb2da6d0e1efd93c6a299c89fad764997320816c28cbda00464070c3df34aba",
+			"group": "startup-initialization",
+			"reason": "The launch composer and initialized session share location and token metadata, retain input during handover, and defer runtime initialization. Behavioral and visual startup checks establish preservation; these rows record the source changes.",
+			"hash": "c5fdafe421a156318dae4f37dd106b74992aa6e2a7a84a853a2050675433160b",
 			"mainHash": "8e4e2d8f66729df1fedddf319dea1f0d81ba18fd4cebd68bf1af6217505cc710",
-			"structuralHash": "9075e3ee04a47649a0f3fdfc2abd2e856f36af76e6ab61ad327b1e0d0386f4b3",
+			"structuralHash": "b0c8f3bbbd34c975631b7579817b4b6018bb038b45adbca85571668c4e687a91",
 			"mainStructuralHash": "967b82cf25bf9fad78dc800308b8e65190957f464afbcaa223146393e91d33d4"
 		},
 		"packages/coding-agent/src/modes/terminal/components/composer/history-search.ts": {
@@ -14849,7 +14848,7 @@
 			"old": "packages/coding-agent/src/modes/components/login-dialog.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "a51e773a99c759c187b81fa46e22a762aa23749d330a5e85ee680dd17d952137",
+			"hash": "2ef988fdf68421954c3bc204a2897ad0e3feed0a97c7bdbee79b81e743c6c8a3",
 			"mainHash": "3f8a2730a9e92ecdecdc9aa94be0e93ae2d5b9e33a08a6aa5228f227ed455dca",
 			"structuralHash": "cffbdca158cf2357351ae7704ba155cceb451c4787aaf4c343f18ec81083cef5",
 			"mainStructuralHash": "cffbdca158cf2357351ae7704ba155cceb451c4787aaf4c343f18ec81083cef5"
@@ -14876,7 +14875,7 @@
 			"old": "packages/coding-agent/src/modes/components/pause-screen.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "dc0cb2181b12d42a99cbdadc71831de1c55eb278387e8a344763317eccddcfc0",
+			"hash": "8f2437c6834229488265916c1621ca7d31536337b304d4954808c79235bd12ba",
 			"mainHash": "ba355376d8aae2e13b986f0023f73b33a50b3cee6c16cb37e29077391d551946",
 			"structuralHash": "691d5805c4abc2109abdf87d3463cf93033ad869df19642c73a1243642733d69",
 			"mainStructuralHash": "691d5805c4abc2109abdf87d3463cf93033ad869df19642c73a1243642733d69"
@@ -15236,11 +15235,11 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/component.ts",
 			"kind": "normalized",
 			"differs": "changed",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "767b79bb5cac9c876144c97f9f3a74d0a3c68c56ca1d3fdf04c97d7e52663b9a",
+			"group": "startup-initialization",
+			"reason": "The launch composer and initialized session share location and token metadata, retain input during handover, and defer runtime initialization. Behavioral and visual startup checks establish preservation; these rows record the source changes.",
+			"hash": "aed6eeba0f371cdf4fc2bee067874a360525de5ab5e913599d4624fc9e93074c",
 			"mainHash": "0e37525ffc75ee20b31c8481cc772428db522b0a9616c6607e2f4ac660856faf",
-			"structuralHash": "6517b6ae9f075acd905d61bea7f2a2fa8fdb8314ab27c4387c84327a6d8e783a",
+			"structuralHash": "50497b6d9a3d6da1f54f94bc89fdcdfc0a20f4431c58d70eb62e75f72e2ee317",
 			"mainStructuralHash": "9624cc8c39a53672b0de060494419bb5259ee62335cf0c34aad788ca00dade60"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/context-thresholds.ts": {
@@ -15347,11 +15346,13 @@
 		"packages/coding-agent/src/modes/terminal/components/status-line/session-facts.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/session-facts.ts",
 			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "a87f8580cf9dc4434affb8819734ff9fabc40e185ccc284af09bac2815df9adc",
+			"differs": "changed",
+			"hash": "d9e1e49035a40a8a5ec154d6e340f7f549e2142084436078fef597aa42076ee8",
 			"mainHash": "8bd5fcea68f772f84d2a55a194e77abf1b878cbfa2f7fcebe93b680e1313a9ad",
-			"structuralHash": "2a56d603315589c19b1910700d9e432837988f9b142a0c028030964386bdb109",
-			"mainStructuralHash": "2a56d603315589c19b1910700d9e432837988f9b142a0c028030964386bdb109"
+			"structuralHash": "991e70d887d18c4b413c580751356376c45e80942fdd1dc4fd087aeda61e543e",
+			"mainStructuralHash": "2a56d603315589c19b1910700d9e432837988f9b142a0c028030964386bdb109",
+			"group": "startup-initialization",
+			"reason": "The launch composer and initialized session share location and token metadata, retain input during handover, and defer runtime initialization. Behavioral and visual startup checks establish preservation; these rows record the source changes."
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/state-grammar.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/state-grammar.ts",
@@ -15374,11 +15375,13 @@
 		"packages/coding-agent/src/modes/terminal/components/status-line/types.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/types.ts",
 			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "ef86973f5e69d8333f8f3e913c8d91010a3302e40d641c8966b2885112bc210a",
+			"differs": "changed",
+			"hash": "d6c948a2cd41b2e9e10a2287eb73863a15957280abd947c88838c5cbe0a5c16f",
 			"mainHash": "f93f51d9e1f0ed0589534ac239e4c72e6c8bc4dbf7befa9da049d24adcf98d5d",
-			"structuralHash": "ba88b5d1a42261527a6274bbff4341274f26d25a3f1d76ef78c3d3c5bb05b9ae",
-			"mainStructuralHash": "ba88b5d1a42261527a6274bbff4341274f26d25a3f1d76ef78c3d3c5bb05b9ae"
+			"structuralHash": "2a01650c5cd50c86f004a44942bbc713162376cf1fe8adc4acd61a2771ea96c8",
+			"mainStructuralHash": "ba88b5d1a42261527a6274bbff4341274f26d25a3f1d76ef78c3d3c5bb05b9ae",
+			"group": "startup-initialization",
+			"reason": "The launch composer and initialized session share location and token metadata, retain input during handover, and defer runtime initialization. Behavioral and visual startup checks establish preservation; these rows record the source changes."
 		},
 		"packages/coding-agent/src/modes/terminal/components/tips.txt": {
 			"old": "packages/coding-agent/src/modes/components/tips.txt",
@@ -15682,7 +15685,7 @@
 			"old": "packages/coding-agent/src/modes/controllers/command-controller.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "f8971e59d1c449696538ecbca5c2d622a19b09a2aac17f9cd5e6bf7cc9b67f3a",
+			"hash": "6c97a1d8a0f91e54b8b1f740dbc595873bfb046a863557a4effc8d83fabacca6",
 			"mainHash": "3cd639ffe63034450da093ddd60ad350f7f23aa912bf25170e8571d85d569f8c",
 			"structuralHash": "a81ed0559e6a6d108140597cae073fca8263176595a4e1c1938b2d4cf82b18a6",
 			"mainStructuralHash": "a81ed0559e6a6d108140597cae073fca8263176595a4e1c1938b2d4cf82b18a6"
@@ -15733,11 +15736,11 @@
 			"old": "packages/coding-agent/src/modes/controllers/input-controller.ts",
 			"kind": "normalized",
 			"differs": "changed",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "5eb4482202d364fb0db750411183b8cf4b6ba5707df8129a79d886d33abe51fd",
+			"group": "startup-initialization",
+			"reason": "The launch composer and initialized session share location and token metadata, retain input during handover, and defer runtime initialization. Behavioral and visual startup checks establish preservation; these rows record the source changes.",
+			"hash": "49a6e30b4a54596fb2a331ad41ac4c926658d2123c8327f14da15da65df68712",
 			"mainHash": "4e216b23d49daa0200107ef2a8fc95d892d8015ccb56e1beb76978e7b45f210a",
-			"structuralHash": "6228a75f921e2b292fbf1e431e8b85ace761bf2d76d1783fba890465fd7472ca",
+			"structuralHash": "367eda12eef291df56bdf9138c922bb946c741ba07bc90bf8b5ff2bced7cc1be",
 			"mainStructuralHash": "be78442077925eb04c00fc3a430db6376346067d02674bafd3709aca407a4cd7"
 		},
 		"packages/coding-agent/src/modes/terminal/controllers/mcp-command-controller.ts": {
@@ -15775,7 +15778,7 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "9ca4a3b64274e853c9e70077a077701d3ea93fc9b665727ef17db8ff7e27c7e7",
+			"hash": "9c32c6d98101edb1a9c88bd7151fa74575f7419609e62eaaa3ea95388993de1d",
 			"mainHash": "ad103be1467dc2b543f1b5cc64e9cd8f885e8ad469bda36d363242b28fe9b374",
 			"structuralHash": "42c94dda20fa0e2ce407d01329879ba7d3739afffe4231dfa04bdb8ac17573e1",
 			"mainStructuralHash": "86eb7b57f181216d63ec8ffca979345ba2464908679e7dd46c117a05ca891fce"
@@ -15971,11 +15974,13 @@
 		"packages/coding-agent/src/modes/terminal/first-frame.ts": {
 			"old": "packages/coding-agent/src/modes/first-frame.ts",
 			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "11bdd58807711bdc183a4ae0c0460415815dfbf41a718fd2cc020bae78d9c22e",
+			"differs": "changed",
+			"hash": "f4ce8cfefcd1d740bccd6842d39010ca774e3de5993b5271e8248c96782e7919",
 			"mainHash": "bbdd821035447b648fe4a0923037c620abd8efbb9b585fa491e10a7733aa2764",
-			"structuralHash": "a16709c55d116589b853eb15bc75d5907da9841312661fe2e9dbef2a48bb3752",
-			"mainStructuralHash": "a16709c55d116589b853eb15bc75d5907da9841312661fe2e9dbef2a48bb3752"
+			"structuralHash": "fffad3e90c3f68bd71a4d1628324d5bee99d47c0b99d8dce230c7e53dc10315a",
+			"mainStructuralHash": "a16709c55d116589b853eb15bc75d5907da9841312661fe2e9dbef2a48bb3752",
+			"group": "startup-initialization",
+			"reason": "The launch composer and initialized session share location and token metadata, retain input during handover, and defer runtime initialization. Behavioral and visual startup checks establish preservation; these rows record the source changes."
 		},
 		"packages/coding-agent/src/modes/terminal/image-reference-markers.ts": {
 			"old": "packages/coding-agent/src/modes/image-reference-markers.ts",
@@ -15999,11 +16004,11 @@
 			"old": "packages/coding-agent/src/modes/interactive-mode.ts",
 			"kind": "normalized",
 			"differs": "changed",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "3005ae0302847a7e60d370544b360cf613071d390bca1d68e381da34c24a5e3f",
+			"group": "startup-initialization",
+			"reason": "The launch composer and initialized session share location and token metadata, retain input during handover, and defer runtime initialization. Behavioral and visual startup checks establish preservation; these rows record the source changes.",
+			"hash": "96558dbf09f18a0b9b7e5fbb93f4a5d17f14d5a0446eed425ee04f556b70f4d6",
 			"mainHash": "8beccb913d7ae075bb75ff4c1e0f385cea3f156db0e74a5b3c87bb4692959641",
-			"structuralHash": "b3d958f889eecfd428325b7b5037463284532350af2e2ec6af8ea7b27a36d894",
+			"structuralHash": "8f550d26d212c33960e01d9947aa331457c1d2677683944bed53c10d790cc7ec",
 			"mainStructuralHash": "3020ff881599604ab15a53720a9151e05747a3506bbca8e6a8c2e6815bc5eec9"
 		},
 		"packages/coding-agent/src/modes/terminal/oauth-manual-input.ts": {
@@ -16144,7 +16149,7 @@
 			"old": "packages/coding-agent/src/modes/setup-wizard/scenes/sign-in.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "2c71808ed64c1b1f3a741a6f8e7eacb8306346ab946d25480b9829760f33bbc8",
+			"hash": "a6dca58d7f758783567129241700993b429b92315b4302d7700aa70ee4015f34",
 			"mainHash": "3186d0841b2d8903116b0624b4d8cb88084408a5cf7b4e5adc87022931903736",
 			"structuralHash": "3563559c4b733a8ee417202ffc85e0a8115d7f8c66d51d6226195d11fc439893",
 			"mainStructuralHash": "3563559c4b733a8ee417202ffc85e0a8115d7f8c66d51d6226195d11fc439893"
@@ -16586,8 +16591,8 @@
 		"packages/coding-agent/src/speech/tts/speech-enhancer.ts": {
 			"old": "packages/coding-agent/src/tts/speech-enhancer.ts",
 			"kind": "normalized",
-			"differs": "none",
-			"hash": "45f71afbb2269dff8a68578b7b1898c3f31f3e30434ec3abd67b2d83c0798046",
+			"differs": "imports-and-comments-only",
+			"hash": "2c56e7a2ec6bbc08efa32d44308f6086f5d8f68d0c0651c5e563251e0e159011",
 			"mainHash": "45f71afbb2269dff8a68578b7b1898c3f31f3e30434ec3abd67b2d83c0798046",
 			"structuralHash": "dcd4d74b5b16c862444799160e1c3b900c0e0c62812becee4cd83560866644ea",
 			"mainStructuralHash": "dcd4d74b5b16c862444799160e1c3b900c0e0c62812becee4cd83560866644ea"
@@ -17729,7 +17734,7 @@
 			"old": "packages/coding-agent/src/auto-thinking/classifier.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "8d57416a76b378370af54d591e201b894f8b945b03ac7d741debd27b94ca0b4b",
+			"hash": "5c66bb2b154b04bdab95526296c3aef6b941c9224d27c39e953637412bed0b9b",
 			"mainHash": "4ac2f22b422afa4d5d2b38dcfa44594f54245c531f2b1bfa7721dc17af59e5d9",
 			"structuralHash": "529e56a11c84256617ba7165c03147d875cd7636660a6be4abb5278b315a5056",
 			"mainStructuralHash": "529e56a11c84256617ba7165c03147d875cd7636660a6be4abb5278b315a5056"
@@ -18330,11 +18335,11 @@
 			"old": "packages/coding-agent/src/tools/read.ts",
 			"kind": "normalized",
 			"differs": "changed",
-			"group": "engine-consumer",
-			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "ddb76e9c47972ca1aaea76decd42d0185e239904a45e7883dd93a1fc67c66197",
+			"group": "deferred-tool-initialization",
+			"reason": "Tool imports follow the domain split and defer optional execution dependencies until an enabled request. Local reads and transcript previews do not initialize URL readers or evaluator implementations.",
+			"hash": "14fe8b9468f129aed2220ef79c836eb67c6694f0f39264d069b9468481bbd082",
 			"mainHash": "d2e1a93d8a0a5cf65dbbabdb6839e5405ad1363b89c9014b2cd37eabfc9a322b",
-			"structuralHash": "6fb206ff653bafb803e0badc7cc23243cb37365ce0fe7a9abb0a26caa40df34b",
+			"structuralHash": "f1ac52e0cb9f83daa8ae6808bedacf0eaae3117a5dfdc66ac862ed1c1296e946",
 			"mainStructuralHash": "b83c1037ff21fa6421d977f3d6b7bbb8f57249aa48cbd970bdf2aa48e0e8fcce"
 		},
 		"packages/coding-agent/src/tools/fs/reroot-hint.ts": {
@@ -18383,9 +18388,9 @@
 			"old": "packages/coding-agent/src/tools/ast-edit.ts",
 			"kind": "normalized",
 			"differs": "changed",
-			"group": "engine-consumer",
-			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "75dcf420f7e9bf219ed596d9a5db4db5be384f7694bda96a503b424e21a77374",
+			"group": "deferred-tool-initialization",
+			"reason": "Tool imports follow the domain split and defer optional execution dependencies until an enabled request. Local reads and transcript previews do not initialize URL readers or evaluator implementations.",
+			"hash": "23b59c902dc2c37bf0db632e023e42d64dde362b6e03e35895e469b2398e85e4",
 			"mainHash": "422f3e871d5ab4919d3767397ba6fc67cbd58a53950b33f019ad051365a33010",
 			"structuralHash": "b05884c5ef52795aad176ae38011315df44a548bfc849a618210dfb2bdf9a240",
 			"mainStructuralHash": "c19ff48d4824d2b0215958f370b94f9350540853fc2c8d442322c3b680c44336"
@@ -18443,11 +18448,11 @@
 			"old": "packages/coding-agent/src/tools/structure-search.ts",
 			"kind": "normalized",
 			"differs": "changed",
-			"group": "engine-consumer",
-			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "cce63f691823987fc549883d76174a3774119641a3de1f47dece667c4c642fe3",
+			"group": "deferred-tool-initialization",
+			"reason": "Tool imports follow the domain split and defer optional execution dependencies until an enabled request. Local reads and transcript previews do not initialize URL readers or evaluator implementations.",
+			"hash": "7b13ba1a013ca2952116c47caf02e3aa8a1de9033e3a9d6c1985a114bd4d1f10",
 			"mainHash": "189d9165b9596137c3e58678b787da667b5a4a51b7ea0299d0eac306b347b0ab",
-			"structuralHash": "5218d722948532daf55c1b27fa910ac9d5eabe1feb4933e5319bdc08c400d3c3",
+			"structuralHash": "778487aae053251e4df9d747d0322496cfc2ce992b72ac8fd4105433bc8064a4",
 			"mainStructuralHash": "0450bf1af684a8d45af83926521dea9cc8abd5890a14fd28b1746e90937c1b5e"
 		},
 		"packages/coding-agent/src/tools/search/text-search-scope.ts": {
@@ -18463,11 +18468,11 @@
 			"old": "packages/coding-agent/src/tools/text-search.ts",
 			"kind": "normalized",
 			"differs": "changed",
-			"group": "engine-consumer",
-			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "00d3de438cee448028e0cf920662c0c993350a3917d39a4c7692235345a7a4d4",
+			"group": "deferred-tool-initialization",
+			"reason": "Tool imports follow the domain split and defer optional execution dependencies until an enabled request. Local reads and transcript previews do not initialize URL readers or evaluator implementations.",
+			"hash": "bd0d00311d47b46bde3fd30f517710983f0eb8f73f140f2b1f971605ce63810a",
 			"mainHash": "1bb08145583de3bcb26ec9000b125f21e7760ef946b6929e2e8731009886a717",
-			"structuralHash": "915dc27b8ba9fda51133b4e20ef36bde83da21b0c4f7e32bd922d6f949cbef61",
+			"structuralHash": "4f51fdbbc1705411ba2591113b7aeddb89145185b609ecb68b7915c5ff31d742",
 			"mainStructuralHash": "2cd02455bfc7f1bfd3aed2fe2a9cec845f42285e322f91cbb067174b9e009e84"
 		},
 		"packages/coding-agent/src/tools/shell/bash-foreground-registry.ts": {
@@ -18563,11 +18568,11 @@
 			"old": "packages/coding-agent/src/tools/eval.ts",
 			"kind": "normalized",
 			"differs": "changed",
-			"group": "engine-consumer",
-			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "b566109848920183a8a73e36fc93badea96533582a8e0cf4b0995420d59744e8",
+			"group": "deferred-tool-initialization",
+			"reason": "Tool imports follow the domain split and defer optional execution dependencies until an enabled request. Local reads and transcript previews do not initialize URL readers or evaluator implementations.",
+			"hash": "24da2cbda25e380cd3b68bf0caef70867c98c8917b606f8dc4e0b963fd859af3",
 			"mainHash": "e1fa28e8b9907dc1662a5c997e0311556093f4e9769bf0536a11eec8eb58003e",
-			"structuralHash": "8d171e0f02ed4e44bab001fe6bcae67f900dabbe6018a01d6be964c3c6ee269d",
+			"structuralHash": "ec1acd0039f9b1fb4d3cb3264c30b31a411dbfea4ef6e6c8760f9f0fadaa9af0",
 			"mainStructuralHash": "e7ecabc44b74c83835e14cfee99ff6b6cbcd1614364a2dcaa2a30740bda1dfda"
 		},
 		"packages/coding-agent/src/tools/shell/job.ts": {
@@ -18810,11 +18815,11 @@
 			"old": "packages/coding-agent/src/tools/fetch.ts",
 			"kind": "normalized",
 			"differs": "changed",
-			"group": "web-extraction",
-			"reason": "The site scrapers are `@veyyon/web`. A handler states the host capabilities it needs -- the credential store, document conversion, external-tool resolution, the session spawn hook and the fetch preference -- through `ScrapeServices` instead of importing the agent's settings, storage and process modules, and throws a name-preserving `AbortError` rather than the agent's cancellation class. On this side the call sites name the new owner and build the services object.",
-			"hash": "bd47f44c1999f84fc1bc1b6cee4faa8928c56a862179f5771a19c61440b9485d",
+			"group": "deferred-tool-initialization",
+			"reason": "Tool imports follow the domain split and defer optional execution dependencies until an enabled request. Local reads and transcript previews do not initialize URL readers or evaluator implementations.",
+			"hash": "e25232a911722e605940f9d74c0a92e1abe1a6684127eac7f7515fe4e8be60ba",
 			"mainHash": "5cd878da48a13d6658325c63999e237c99416a3cc0941d2fdbd7876f7516593c",
-			"structuralHash": "4a00cf2f04fc8389ea3273fdc93e6bb086633d090a91a07855794cbdd960eaa3",
+			"structuralHash": "05fe4c3fe6457882eab46b64ed563cac7a1ea42285fab94310a9f9f1e04871ff",
 			"mainStructuralHash": "7cfd7642ee2ef956c177d02214d62be3b3194fe9c4d995a1b3a3cc1dc47a55ff"
 		},
 		"packages/coding-agent/src/tools/web/gh-fetch.ts": {
@@ -19440,11 +19445,13 @@
 		"packages/coding-agent/test/discovery/capability/rule-buckets.test.ts": {
 			"old": "packages/coding-agent/test/capability/rule-buckets.test.ts",
 			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "bdabfb89e585e47c9409cc75f7c39ca67997a3fd7bbdb58119adf9d52227c92e",
+			"differs": "changed",
+			"hash": "3d84b1f9990554ff540b6e1cf4e48c36c67b391434b4c9c819f0876701060f29",
 			"mainHash": "a3ad0ceaf598dfaa5ecdba5e332bbcb4fa0ddd43028e6bee68356d322099ed1c",
-			"structuralHash": "c8048a0e1e442438512739d49bd17cab4c0fb387b419813c2499e68e9cf33530",
-			"mainStructuralHash": "c8048a0e1e442438512739d49bd17cab4c0fb387b419813c2499e68e9cf33530"
+			"structuralHash": "f6b74e9f90e7266c8fcddd4ea9ef4882b5ecf3cd22cc549894ab54b6d21feb72",
+			"mainStructuralHash": "c8048a0e1e442438512739d49bd17cab4c0fb387b419813c2499e68e9cf33530",
+			"group": "colocated-test",
+			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner."
 		},
 		"packages/coding-agent/test/discovery/capability/rule-condition-scope.test.ts": {
 			"old": "packages/coding-agent/test/capability/rule-condition-scope.test.ts",
@@ -19844,11 +19851,13 @@
 		"packages/coding-agent/test/modes/terminal/components/a-keystroke-at-the-launch-card-shows-up-there.test.ts": {
 			"old": "packages/coding-agent/test/modes/components/a-keystroke-at-the-launch-card-shows-up-there.test.ts",
 			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "95e674c35a0fca5590612ce489e96eeb4ad0b564b9295baf83a9af27d89ccaae",
+			"differs": "changed",
+			"hash": "5d906bb2e166a737f7957ebd7be63f8aab962ce7baef55c005d46d7f2bab49a8",
 			"mainHash": "8c27df73c515498450b60cdecf8434a77c04869ebbdd391216167f79add2b0af",
-			"structuralHash": "2107e3e073ed9c5fdd831da2af20e954428809669af9eeaac10e2cf59a0133f2",
-			"mainStructuralHash": "2107e3e073ed9c5fdd831da2af20e954428809669af9eeaac10e2cf59a0133f2"
+			"structuralHash": "62c66b9da432457c213397889f3f095b743fe6a6b95f3ba08c56170550bad0b2",
+			"mainStructuralHash": "2107e3e073ed9c5fdd831da2af20e954428809669af9eeaac10e2cf59a0133f2",
+			"group": "colocated-test",
+			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner."
 		},
 		"packages/coding-agent/test/modes/terminal/components/a-long-command-keeps-the-approval-options-on-screen.test.ts": {
 			"old": "packages/coding-agent/test/modes/components/a-long-command-keeps-the-approval-options-on-screen.test.ts",
@@ -21100,7 +21109,7 @@
 			"old": "packages/coding-agent/test/modes/components/the-login-screen-is-one-frame.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "16abef32caf763c36d53e470c1eeb9531278a847179d0e13469736b4bc66dd30",
+			"hash": "e9b1b8b7a100e22ace912f9ad9d74c08037f2546dcc11dcf6a53b9cb17996a0d",
 			"mainHash": "1745b6f0fbcfc1d0a760da2206ca7ec46dacba56044a916c3af084f199e193b8",
 			"structuralHash": "92a07019cfe2575022c4643c9f12079e7889a3640b7d41a9ab505073cc6318e0",
 			"mainStructuralHash": "92a07019cfe2575022c4643c9f12079e7889a3640b7d41a9ab505073cc6318e0"
@@ -21378,11 +21387,13 @@
 		"packages/coding-agent/test/modes/terminal/controllers/a-launch-card-handover-does-not-strand-the-composer-mid-screen.test.ts": {
 			"old": "packages/coding-agent/test/modes/controllers/a-launch-card-handover-does-not-strand-the-composer-mid-screen.test.ts",
 			"kind": "normalized",
-			"differs": "imports-and-comments-only",
-			"hash": "46f2f1c6204f6dc1ed4735ca08ca2d5d12d0acc765c13df6f658d2feb0325ebb",
+			"differs": "changed",
+			"hash": "91729b32a07188cef6702307b790a0fe5d219520f03e22d508eaa58850240758",
 			"mainHash": "ea19bcefe152b1ebf7ae0c60ace0b504c84d73b5aa523e9603740b7525f3b701",
-			"structuralHash": "d385b3f92e0ad2d3af75e10c4687d1fb252e7c9ca774a3bd12a7e4f95f11acb8",
-			"mainStructuralHash": "d385b3f92e0ad2d3af75e10c4687d1fb252e7c9ca774a3bd12a7e4f95f11acb8"
+			"structuralHash": "00e7fe6b6a29a7ea63bfa01fa1b109768f43d69e9ccf3e58dc8ace3ac14d7e3e",
+			"mainStructuralHash": "d385b3f92e0ad2d3af75e10c4687d1fb252e7c9ca774a3bd12a7e4f95f11acb8",
+			"group": "colocated-test",
+			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner."
 		},
 		"packages/coding-agent/test/modes/terminal/controllers/a-new-session-lets-the-running-one-finish.test.ts": {
 			"old": "packages/coding-agent/test/modes/controllers/a-new-session-lets-the-running-one-finish.test.ts",
@@ -21676,7 +21687,7 @@
 			"old": "packages/coding-agent/test/modes/controllers/selector-controller-login.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "2d743995aea1c32c203f6e63c828f26a0b808a8538601eaf507041a878cc3451",
+			"hash": "f8678b474a33d56a48fb64364673580591161d90e2a4421f9fd54d655d94feaf",
 			"mainHash": "d95d291f2b5970192ea11a557f997af45f752a53ae5eb6edd0a7525a0d0ca8ec",
 			"structuralHash": "2ded4fc9db4905b7f7091b8bcdbd998fe32708e59c3a142dbfc7c8d63acc9384",
 			"mainStructuralHash": "2ded4fc9db4905b7f7091b8bcdbd998fe32708e59c3a142dbfc7c8d63acc9384"
@@ -22196,7 +22207,7 @@
 			"old": "packages/coding-agent/test/tts/speech-enhancer.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "ae9d5d59e5e92aff2d090528b99e8c2b192b16716f1163bcbb4a72ed991abd76",
+			"hash": "6b3c49358a14cabb7f071d653821951bc37fb855eed8e2e8a9fdccb50cb5d25c",
 			"mainHash": "520e814b8a63de9eeb8ed5d5f06ec0350dce7573abbcc4e0449c18f28e9f9c23",
 			"structuralHash": "835efb9d6a649d408e87bd0aee6a1d36c80c43880814a218ee33bce80b25faa1",
 			"mainStructuralHash": "835efb9d6a649d408e87bd0aee6a1d36c80c43880814a218ee33bce80b25faa1"

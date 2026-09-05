@@ -50,6 +50,7 @@ import { urlHyperlinkAlways } from "../modes/terminal/draw/hyperlink";
 import type { InteractiveModeContext } from "../modes/terminal/types";
 import { extractLastCodeBlock, extractLastCommand } from "../modes/terminal/utils/copy-targets";
 import { SECRET_TUI_SUBCOMMANDS } from "../secrets/secret-command";
+import { formatDurationCoarse, formatProviderName } from "../session/account-format";
 import {
 	type AccountRow,
 	accountDisplayLabel,
@@ -78,7 +79,6 @@ import { type AccountRoleSources, accountRoleAnnotations, renderAccountStatus } 
 import { CollabQrCodeComponent } from "./helpers/collab-qrcode";
 import { buildContextReportText } from "./helpers/context-report";
 import { applyCpuLimitCommand } from "./helpers/cpu-limit";
-import { formatDurationCoarse, formatProviderName } from "./helpers/format";
 import { handleMcpAcp } from "./helpers/mcp";
 import { commandConsumed, errorMessage, parseSlashCommand, parseSubcommand, usage } from "./helpers/parse";
 import { describeRedeemOutcome, type ResetUsageAccount, toResetUsageAccounts } from "./helpers/reset-usage";

@@ -30,9 +30,9 @@ import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
+import { formatProviderName } from "../../../../session/account-format";
 import type { AccountInventory, AccountRow } from "../../../../session/account-inventory";
 import { accountsForProvider, selectedButRotated } from "../../../../session/account-inventory";
-import { formatProviderName } from "../../../../slash-commands/helpers/format";
 import { theme } from "../../../../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
 import {

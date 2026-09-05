@@ -62,14 +62,19 @@ export interface EnabledRuleLevers {
 	enabledExperiments: ReadonlySet<string>;
 }
 
+const EMPTY_NAME_SET: ReadonlySet<string> = new Set<string>();
+
 /** Names, trimmed the way every caller has always trimmed them. */
-function nameSet(names: readonly string[] | undefined): Set<string> {
+function nameSet(names: readonly string[] | undefined): ReadonlySet<string> {
+	if (!names || names.length === 0) {
+		return EMPTY_NAME_SET;
+	}
 	const set = new Set<string>();
-	for (const raw of names ?? []) {
+	for (const raw of names) {
 		const name = raw.trim();
 		if (name.length > 0) set.add(name);
 	}
-	return set;
+	return set.size > 0 ? set : EMPTY_NAME_SET;
 }
 
 /** Resolve the operator's three levers into the form `ruleIsEnabled` reads. */

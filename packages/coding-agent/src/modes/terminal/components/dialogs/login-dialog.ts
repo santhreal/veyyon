@@ -3,7 +3,7 @@ import { getKeybindings } from "@veyyon/utils/keybindings";
 import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
 import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
-import { formatProviderName } from "../../../../slash-commands/helpers/format";
+import { formatProviderName } from "../../../../session/account-format";
 import { theme } from "../../../../theme/theme";
 import { openPath } from "../../../../utils/open";
 import {

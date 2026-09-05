@@ -141,8 +141,8 @@ describe("nobody takes one cheap name from the whole package", () => {
 			([relative]) => relative,
 		);
 
-		expect(singles.length).toBeGreaterThan(5);
-		expect(singles).toContain("coding-agent/src/utils/title-generator.ts");
+		expect(singles.length).toBeGreaterThan(0);
+		expect(singles).toContain("coding-agent/src/tools/fs/inspect-image.ts");
 	});
 });
 

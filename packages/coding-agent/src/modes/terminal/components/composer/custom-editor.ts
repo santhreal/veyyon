@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { fileURLToPath } from "node:url";
 import type { ImageContent } from "@veyyon/ai";
 // Leaves, not the `@veyyon/tui` and `@veyyon/utils` barrels: the editor is on the launch path, and
@@ -25,7 +26,7 @@ import { isQueuedMessageList, parseQueueShorthand, QUEUE_LIST_MARKER_RE } from "
  * `Extract<...>` union gave: a name that is not a real app binding is an error
  * here, not a row that silently matches nothing.
  */
-const CONFIGURABLE_EDITOR_ACTIONS = [
+export const CONFIGURABLE_EDITOR_ACTIONS = [
 	"app.interrupt",
 	"app.clear",
 	"app.exit",
@@ -48,7 +49,18 @@ const CONFIGURABLE_EDITOR_ACTIONS = [
 	"app.bash.background",
 ] as const satisfies readonly AppKeybinding[];
 
-type ConfigurableEditorAction = (typeof CONFIGURABLE_EDITOR_ACTIONS)[number];
+export type ConfigurableEditorAction = (typeof CONFIGURABLE_EDITOR_ACTIONS)[number];
+
+/**
+ * The subset of configurable editor actions that are captured and deferred
+ * during early startup (postpaint first frame until interactive mode is initialized).
+ */
+export const DEFERRED_EDITOR_ACTIONS = [
+	"app.model.select",
+	"app.model.selectTemporary",
+] as const satisfies readonly ConfigurableEditorAction[];
+
+export type DeferredEditorAction = (typeof DEFERRED_EDITOR_ACTIONS)[number];
 
 /**
  * The shipped chord for each action this editor matches, read from the one table.
@@ -295,25 +307,109 @@ export function extractImagePathFromText(text: string): string | undefined {
 	}
 	return undefined;
 }
+export interface EarlySubmission {
+	readonly text: string;
+	readonly images?: ImageContent[];
+	readonly imageLinks?: (string | undefined)[];
+}
 
 /**
  * Custom editor that handles configurable app-level shortcuts for coding-agent.
  */
 export class CustomEditor extends Editor {
-	imageLinks?: readonly (string | undefined)[];
+	#earlySubmissions: EarlySubmission[] = [];
+	#earlyActions: DeferredEditorAction[] = [];
+	#capturingEarlySubmissions = false;
+	#draftInputRevision = 0;
+	#submissionDraftScope: AsyncLocalStorage<number> | undefined;
+
+	/** Delayed submissions may finish after another draft has been entered. */
+	withPreservedDraft<T>(action: () => T): T {
+		this.#submissionDraftScope ??= new AsyncLocalStorage<number>();
+		const revision = this.getText() || this.pendingImages.length > 0 ? -1 : this.#draftInputRevision;
+		return this.#submissionDraftScope.run(revision, action);
+	}
+
+	#isNewerDraft(): boolean {
+		const revision = this.#submissionDraftScope?.getStore();
+		return revision !== undefined && revision !== this.#draftInputRevision;
+	}
+
+	override setText(text: string): void {
+		if (!this.#isNewerDraft()) super.setText(text);
+	}
+
+	takeEarlySubmissions(): EarlySubmission[] {
+		this.#capturingEarlySubmissions = false;
+		return this.#earlySubmissions.splice(0);
+	}
+
+	takeEarlyActions(): DeferredEditorAction[] {
+		return this.#earlyActions.splice(0);
+	}
+	beginEarlySubmissions(): void {
+		this.#capturingEarlySubmissions = true;
+		this.onSubmit = text => {
+			if (!text && this.pendingImages.length === 0) return;
+			this.#earlySubmissions.push({
+				text,
+				images: this.pendingImages.length > 0 ? this.pendingImages.slice() : undefined,
+				imageLinks: this.pendingImageLinks.length > 0 ? this.pendingImageLinks.slice() : undefined,
+			});
+			this.imageLinks = undefined;
+			this.pendingImages = [];
+			this.pendingImageLinks = [];
+		};
+	}
+
+	hasEarlySubmissions(): boolean {
+		return this.#earlySubmissions.length > 0;
+	}
+
+	hasEarlyActions(): boolean {
+		return this.#earlyActions.length > 0;
+	}
+
+	adoptEarlySubmissions(previous: CustomEditor): boolean {
+		if (!previous.#capturingEarlySubmissions) return false;
+		this.#earlySubmissions.push(...previous.takeEarlySubmissions());
+		this.#earlyActions.push(...previous.takeEarlyActions());
+		this.beginEarlySubmissions();
+		return true;
+	}
+	#imageLinks: readonly (string | undefined)[] | undefined;
+	get imageLinks(): readonly (string | undefined)[] | undefined {
+		return this.#imageLinks;
+	}
+	set imageLinks(value: readonly (string | undefined)[] | undefined) {
+		if (!this.#isNewerDraft()) this.#imageLinks = value;
+	}
 
 	/** Draft images pasted into the composer, consumed on submit. Co-located with
 	 *  {@link imageLinks} so every piece of draft-image state lives on the editor. */
-	pendingImages: ImageContent[] = [];
+	#pendingImages: ImageContent[] = [];
+	get pendingImages(): ImageContent[] {
+		return this.#pendingImages;
+	}
+	set pendingImages(value: ImageContent[]) {
+		if (!this.#isNewerDraft()) this.#pendingImages = value;
+	}
 	/** Per-image source links (file:// targets) parallel to {@link pendingImages};
 	 *  `undefined` entries are images without a backing reference yet. */
-	pendingImageLinks: (string | undefined)[] = [];
+	#pendingImageLinks: (string | undefined)[] = [];
+	get pendingImageLinks(): (string | undefined)[] {
+		return this.#pendingImageLinks;
+	}
+	set pendingImageLinks(value: (string | undefined)[]) {
+		if (!this.#isNewerDraft()) this.#pendingImageLinks = value;
+	}
 
 	/** Clear the composer draft: optionally commit `historyText` to history, then
 	 *  reset the editor text and all pending draft-image state. The shared tail of
 	 *  every "message submitted" path; pass no argument for a plain discard. */
 	clearDraft(historyText?: string): void {
 		if (historyText !== undefined) this.addToHistory(historyText);
+		if (this.#isNewerDraft()) return;
 		this.setText("");
 		this.imageLinks = undefined;
 		this.pendingImages = [];
@@ -511,6 +607,12 @@ export class CustomEditor extends Editor {
 		this.#rebuildActionMatchKeys(action);
 	}
 
+	applyKeybindings(keybindings: { getKeys(action: AppKeybinding): KeyId[] }): void {
+		for (const action of CONFIGURABLE_EDITOR_ACTIONS) {
+			this.setActionKeys(action, keybindings.getKeys(action));
+		}
+	}
+
 	#rebuildActionMatchKeys(action: ConfigurableEditorAction): void {
 		this.#actionMatchKeys.set(action, buildMatchKeys(this.#actionKeys.get(action) ?? []));
 	}
@@ -659,12 +761,14 @@ export class CustomEditor extends Editor {
 	}
 
 	handleInput(data: string): void {
+		this.#draftInputRevision++;
 		// Serialize behind any in-flight async paste so a trailing Enter / follow-up key can't
 		// submit before the clipboard image reaches `pendingImages` (Codex PR #3602 review).
 		if (this.#pasteInFlight > 0) {
 			this.#pendingInput.push(data);
 			return;
 		}
+
 		const hadBareQueuePrefix = this.getText() === "->" || this.getText() === "=>";
 		const kittyParsed = parseKittySequence(data);
 		if (kittyParsed && (kittyParsed.modifier & 64) !== 0 && this.onCapsLock) {
@@ -754,9 +858,15 @@ export class CustomEditor extends Editor {
 			}
 
 			// Intercept configured temporary model selector shortcut
-			if (this.#matchesAction(canonical, "app.model.selectTemporary") && this.onSelectModelTemporary) {
-				this.onSelectModelTemporary();
-				return;
+			if (this.#matchesAction(canonical, "app.model.selectTemporary")) {
+				if (this.#capturingEarlySubmissions) {
+					this.#earlyActions.push("app.model.selectTemporary");
+					return;
+				}
+				if (this.onSelectModelTemporary) {
+					this.onSelectModelTemporary();
+					return;
+				}
 			}
 
 			// Intercept configured display reset shortcut
@@ -785,9 +895,15 @@ export class CustomEditor extends Editor {
 			}
 
 			// Intercept configured model selector shortcut
-			if (this.#matchesAction(canonical, "app.model.select") && this.onSelectModel) {
-				this.onSelectModel();
-				return;
+			if (this.#matchesAction(canonical, "app.model.select")) {
+				if (this.#capturingEarlySubmissions) {
+					this.#earlyActions.push("app.model.select");
+					return;
+				}
+				if (this.onSelectModel) {
+					this.onSelectModel();
+					return;
+				}
 			}
 
 			// Intercept configured history search shortcut

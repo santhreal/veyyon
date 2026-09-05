@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import {
 	Agent,
 	type AgentEvent,
@@ -2901,12 +2902,15 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		hasRegistered = true;
 
 		setActiveToolNames(initialToolNames);
+		// Let pending input and rendering run between tool construction and prompt assembly.
+		await yieldToEventLoop();
 		const { systemPrompt } = await logger.time(
 			"buildSystemPrompt",
 			rebuildSystemPrompt,
 			initialToolNames,
 			toolRegistry,
 		);
+		await yieldToEventLoop();
 
 		const promptTemplates = await promptTemplatesPromise;
 		toolSession.promptTemplates = promptTemplates;
@@ -3709,6 +3713,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// is a session-start decision for BOTH; the fire-time re-check in `#onAgentEnd` still handles a
 		// mid-session DISABLE. The subscription lives for the session's lifetime; the reference is
 		// intentionally discarded (the listener retains it).
+		await yieldToEventLoop();
 		session.deferStartupWork(
 			logger.time("startMemoryStartupTask", startMemoryBackend).catch(error => {
 				logger.warn("memory backend startup failed", { error: errorMessage(error) });

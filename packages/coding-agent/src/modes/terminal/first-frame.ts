@@ -46,6 +46,7 @@ import { setTuiTight } from "@veyyon/utils/tight-mode";
 import { clearFirstFrameRecording, recordFirstFrame } from "../../cli/first-frame-recorder";
 import { takeReplayedFirstFrame } from "../../cli/first-frame-replay";
 import { settings } from "../../config/settings-instance";
+import { KeybindingsManager } from "../../config/keybindings";
 import { applyGroundPaint, setDetectedTerminalGround } from "../../theme/ground-tints";
 import { getEditorTheme, theme } from "../../theme/theme";
 import { launchModelLabel, readLaunchFacts } from "../launch-facts";
@@ -109,6 +110,7 @@ export interface FirstFrame {
 	 * chrome to the mode's zone without being detached from its parent.
 	 */
 	readonly editorContainer: Container;
+	readonly keybindings: KeybindingsManager;
 	/**
 	 * Settle what the next launch replays: record this card, keep a recording this card confirmed,
 	 * or drop one it corrected.
@@ -146,7 +148,7 @@ let painted: FirstFrame | undefined;
  * terminal. The frame is held for {@link takeFirstFrame}; the caller keeps
  * nothing.
  */
-export function paintFirstFrame(version: string): FirstFrame {
+export function paintFirstFrame(version: string, keybindings?: KeybindingsManager): FirstFrame {
 	setTuiTight(settings.get("tui.tight"));
 	setTerminalTextSizing(settings.get("tui.textSizing") && TERMINAL.textSizing);
 	const ui = new TUI(new ProcessTerminal(), settings.get("showHardwareCursor"));
@@ -179,7 +181,9 @@ export function paintFirstFrame(version: string): FirstFrame {
 	// The composer, live. Dressed through the one chrome owner and sized through
 	// the one height policy, so it is the same composer the mode goes on using
 	// rather than a lookalike that has to be reconciled with one.
+	const keybindingsManager = keybindings ?? KeybindingsManager.create();
 	const editor = new CustomEditor(getEditorTheme());
+	editor.applyKeybindings(keybindingsManager);
 	applyComposerChrome(editor, resolveComposerAccents(PRISTINE_COMPOSER_ACCENT_STATE));
 	editor.setUseTerminalCursor(ui.getShowHardwareCursor());
 	editor.setMaxHeight(computeEditorMaxHeight(ui.terminal.rows));
@@ -292,6 +296,7 @@ export function paintFirstFrame(version: string): FirstFrame {
 		hero,
 		editor,
 		editorContainer,
+		keybindings: keybindingsManager,
 		release(): void {
 			discardUntilMount?.();
 			discardUntilMount = undefined;
@@ -338,6 +343,9 @@ export function paintFirstFrame(version: string): FirstFrame {
 			const delivered = Promise.withResolvers<void>();
 			setImmediate(delivered.resolve);
 			await delivered.promise;
+			// Prelaunch input typed before the card was composed settles into the draft,
+			// but must not auto-submit on handover.
+			editor.beginEarlySubmissions();
 			if (editor.getText().length === 0) return false;
 			// Forced rather than trusted: the editor's own render request is
 			// subject to the throttle, and this call is the one that has to be

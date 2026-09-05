@@ -2,9 +2,10 @@
  * The subtrees {@link warmRuntimeGraph} loads, in the order it loads them.
  *
  * Separated from the loader so the list reads as data: one line per subtree,
- * ordered from the packages everything sits on to the interactive mode that
- * sits on all of them. Each entry is a literal specifier that `../main` imports
+ * ordered from the lowest packages everything sits on to the session runtime.
+ * Each entry is a literal specifier that `../main` and session creation import
  * transitively, so warming is a reordering of work the launch already does.
+ * Interactive mode is loaded lazily and concurrently via `loadInteractiveMode()`.
  *
  * The dynamic import is the mechanism, not a shortcut: a static import here
  * would be folded back into `../main`'s one synchronous evaluation chain and
@@ -25,7 +26,6 @@
  * | @veyyon/tui          |  25ms |
  * | advisor              |  39ms |
  * | session/agent-session|  82ms |
- * | modes/interactive    | 108ms |
  *
  * A stage worth more than about 50ms compiled is a candidate for splitting into
  * its own heavy children; the four monoliths above were split that way already.
@@ -59,17 +59,4 @@ export const WARMUP_STAGES: readonly WarmupStage[] = [
 	{ name: "session/agent-session", load: () => import("../session/agent-session") },
 	{ name: "sdk", load: () => import("../sdk") },
 	{ name: "slash-commands/builtin-registry", load: () => import("../slash-commands/builtin-registry") },
-	{
-		name: "modes/terminal/controllers/event-controller",
-		load: () => import("../modes/terminal/controllers/event-controller"),
-	},
-	{
-		name: "modes/terminal/controllers/tan-command-controller",
-		load: () => import("../modes/terminal/controllers/tan-command-controller"),
-	},
-	{
-		name: "modes/terminal/controllers/selector-controller",
-		load: () => import("../modes/terminal/controllers/selector-controller"),
-	},
-	{ name: "modes/terminal/interactive-mode", load: () => import("../modes/terminal/interactive-mode") },
 ];

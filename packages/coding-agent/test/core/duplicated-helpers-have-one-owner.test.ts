@@ -68,7 +68,7 @@ import * as collabCrypto from "@veyyon/coding-agent/collab/crypto";
 import * as collabProtocol from "@veyyon/coding-agent/collab/protocol";
 import { canonicalProjectDir } from "@veyyon/coding-agent/launch/paths";
 import { buildTreePrefix } from "@veyyon/coding-agent/modes/terminal/draw/utils";
-import { formatProviderName } from "@veyyon/coding-agent/slash-commands/helpers/format";
+import { formatProviderName } from "@veyyon/coding-agent/session/account-format";
 import * as workerClient from "@veyyon/coding-agent/subprocess/worker-client";
 import type { WorkerLogPayload } from "@veyyon/coding-agent/subprocess/worker-log";
 import * as workerLog from "@veyyon/coding-agent/subprocess/worker-log";
@@ -208,7 +208,7 @@ describe("formatProviderName", () => {
 			"cli/usage-cli.ts",
 			"modes/terminal/controllers/command-controller.ts",
 		]) {
-			expect(importsOf(file), file).toContain("slash-commands/helpers/format");
+			expect(importsOf(file), file).toContain("session/account-format");
 		}
 	});
 });

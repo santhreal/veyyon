@@ -128,4 +128,57 @@ describe("bucketRules", () => {
 		expect(alwaysApplyRules.map(r => r.name)).toEqual([]);
 		expect(rulebookRules.map(r => r.name)).toEqual(["no-foo"]);
 	});
+
+	it("excludes experimental rules by default and includes them when named in experimentalRules", () => {
+		const mgr = new TtsrManager();
+		const exp = makeRule({ name: "exp-foo", condition: ["EXP"], description: "exp desc" });
+		exp.experimental = true;
+
+		const defaultBuckets = bucketRules([exp], mgr);
+		expect(defaultBuckets.rulebookRules).toHaveLength(0);
+		expect(defaultBuckets.alwaysApplyRules).toHaveLength(0);
+		expect(mgr.hasRules()).toBe(false);
+
+		const optedInBuckets = bucketRules([exp], mgr, { experimentalRules: ["exp-foo"] });
+		expect(optedInBuckets.rulebookRules).toHaveLength(0);
+		expect(optedInBuckets.alwaysApplyRules).toHaveLength(0);
+		expect(mgr.hasRules()).toBe(true);
+		expect(mgr.checkDelta("contains EXP token", { source: "text" }).map(r => r.name)).toEqual(["exp-foo"]);
+	});
+
+	it("disabledRules wins over experimentalRules when a rule is named in both", () => {
+		const mgr = new TtsrManager();
+		const exp = makeRule({ name: "exp-foo", condition: ["EXP"], description: "exp desc" });
+		exp.experimental = true;
+
+		const buckets = bucketRules([exp], mgr, {
+			experimentalRules: ["exp-foo"],
+			disabledRules: ["exp-foo"],
+		});
+
+		expect(buckets.rulebookRules).toHaveLength(0);
+		expect(buckets.alwaysApplyRules).toHaveLength(0);
+		expect(mgr.hasRules()).toBe(false);
+	});
+
+	it("prefers TTSR over alwaysApply when valid condition exists, and degrades when registration fails", () => {
+		const mgr = new TtsrManager();
+		const validTtsrAlways = makeRule({
+			name: "ttsr-always",
+			condition: ["VALID"],
+			alwaysApply: true,
+			description: "desc",
+		});
+		const invalidTtsrAlways = makeRule({
+			name: "invalid-ttsr-always",
+			condition: ["   "],
+			alwaysApply: true,
+			description: "desc",
+		});
+
+		const { alwaysApplyRules } = bucketRules([validTtsrAlways, invalidTtsrAlways], mgr);
+
+		expect(mgr.checkDelta("contains VALID token", { source: "text" }).map(r => r.name)).toEqual(["ttsr-always"]);
+		expect(alwaysApplyRules.map(r => r.name)).toEqual(["invalid-ttsr-always"]);
+	});
 });

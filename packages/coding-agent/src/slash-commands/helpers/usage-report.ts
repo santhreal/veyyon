@@ -1,9 +1,10 @@
 import type { UsageLimit, UsageReport } from "@veyyon/ai";
 import type { OAuthAccountIdentity } from "@veyyon/kernel/session/auth-storage";
 import { formatCount, sanitizeText } from "@veyyon/utils";
+import { formatDurationCoarse, formatProviderName } from "../../session/account-format";
 import type { SlashCommandRuntime } from "../types";
 import { reportMatchesActiveAccount } from "./active-oauth-account";
-import { formatDurationCoarse, formatProviderName, renderAsciiBar } from "./format";
+import { renderAsciiBar } from "./format";
 
 function formatUsageAmount(limit: UsageLimit): string {
 	const amount = limit.amount;

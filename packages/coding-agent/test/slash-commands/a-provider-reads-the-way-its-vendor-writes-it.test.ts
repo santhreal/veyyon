@@ -22,7 +22,7 @@
 import { describe, expect, it } from "bun:test";
 import { getBundledProviders } from "@veyyon/catalog/models";
 import { CATALOG_PROVIDERS, getCatalogProviderEntry } from "@veyyon/catalog/provider-models/descriptors";
-import { formatProviderName, PROVIDER_NAME_SEGMENTS } from "@veyyon/coding-agent/slash-commands/helpers/format";
+import { formatProviderName, PROVIDER_NAME_SEGMENTS } from "@veyyon/coding-agent/session/account-format";
 
 /** Every provider id the product can be asked to render, from both catalog authorities. */
 function providerIds(): string[] {

@@ -41,11 +41,11 @@ import {
 	seedAlreadyExists,
 	summarizeMentalModel,
 } from "../../../memory/hindsight";
+import { formatProviderName } from "../../../session/account-format";
 import type { AgentSession } from "../../../session/agent-session";
 import type { AsyncJobSnapshotItem } from "../../../session/agent-session-types";
 import { computeContextBreakdown } from "../../../session/context-usage";
 import { limitMatchesActiveAccount } from "../../../slash-commands/helpers/active-oauth-account";
-import { formatProviderName } from "../../../slash-commands/helpers/format";
 import { interactiveSecretPort, runSecretCommandForSurface } from "../../../slash-commands/helpers/secret";
 import { getMarkdownTheme } from "../../../theme/markdown-theme";
 import { getSymbolTheme, theme } from "../../../theme/theme";

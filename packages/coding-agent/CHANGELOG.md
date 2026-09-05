@@ -4,9 +4,10 @@
 
 ### Breaking Changes
 
+- Account formatting helpers are exported from `@veyyon/coding-agent/session/account-format` instead of `@veyyon/coding-agent/slash-commands/helpers/format`.
 - Screen takeover moved off `ExtensionUIContext` and `HookUIContext` onto an optional `ui.terminal` capability: `custom()` and `setEditorComponent()` are now `ctx.ui.terminal?.custom(...)` and `ctx.ui.terminal?.setEditorComponent(...)`, and a component widget goes through `ctx.ui.terminal?.setWidgetComponent(key, factory)` while `setWidget(key, lines)` keeps the text form every host draws. A host that is not a terminal omits `ui.terminal` rather than declaring members with empty bodies.
 - Removed `ui.setHeader()` and `ui.setFooter()`, which every host implemented as an empty function, interactive mode included.
-- Fifty-three session spine, plugin loader and contribution registry modules moved from `src/session/` and `src/extensibility/` to `@veyyon/kernel`: subpath imports previously resolved through `@veyyon/coding-agent/session/*`, `@veyyon/coding-agent/extensibility/*`, `@veyyon/coding-agent/extensibility/plugins` and `@veyyon/coding-agent/extensibility/plugins/*` are now imported from `@veyyon/kernel/session/*`, `@veyyon/kernel/loader/*` and `@veyyon/kernel/registry/*`.
+- Session spine, plugin loader and contribution registry modules moved from `src/session/` and `src/extensibility/` to `@veyyon/kernel`: affected subpath imports now use `@veyyon/kernel/session/*`, `@veyyon/kernel/loader/*` and `@veyyon/kernel/registry/*`; edit-specific event normalization remains at `@veyyon/coding-agent/extensibility/tool-event-input`.
 - The 152 modules under `src/tools/` moved into one directory per domain — `core/` for the plumbing every domain reads, then `fs/`, `search/`, `shell/`, `web/` and `agent/` — so a subpath import previously resolved through `@veyyon/coding-agent/tools/<name>` is now `@veyyon/coding-agent/tools/<domain>/<name>`.
 - `sanitizeStatusText` is `@veyyon/utils/sanitize-status-text`, so a subpath import previously resolved through `@veyyon/coding-agent/modes/sanitize-status-text` names the utils module: the function is text-only and every host reduces a value to one line the same way.
 - The 81 site scrapers, the page loader and the Parallel extraction client moved to `@veyyon/web`: a subpath import previously resolved through `@veyyon/coding-agent/web/scrapers/*` or `@veyyon/coding-agent/web/parallel` is now `@veyyon/web/scrapers/*` and `@veyyon/web/parallel`, and the search providers' `withHardTimeout` is `@veyyon/web/hard-timeout`.
@@ -30,6 +31,11 @@
 
 ### Changed
 
+- Account inventory formatting no longer imports terminal progress-bar or theme helpers; displayed values are unchanged.
+- Terminal mode initialization overlaps session discovery instead of loading during sequential runtime warmup.
+- Interactive startup begins background model discovery after terminal initialization.
+- Model registry initialization defers unused provider records until lookup or enumeration while preserving runtime provider updates and model overrides.
+- Startup reads provider caches without constructing unrelated discovery options or their bundled reference maps.
 - Model discovery snapshots from earlier host-classification rules rebuild before model selection.
 - Resolved model snapshots no longer duplicate the bundled catalog; model selection and provider overrides are unchanged.
 - Resolved model snapshots use shared byte-integrity checks and atomic replacement without durability flushes; obsolete snapshots rebuild before model selection.
@@ -54,7 +60,7 @@
 - ToolView cards that walk a JSON value read their bounds and scalar formatting from `json-tree-view.ts` rather than loading the terminal walker that draws tree-rail glyphs. No user-visible behavior changes.
 - The terminal's ToolView drawer names every kind the contract declares, so a kind added to the union fails the type check instead of drawing as a one-line text row. No user-visible behavior changes.
 
-- Fifty-three modules moved from `src/session/` (35 session spine modules) and `src/extensibility/` (18 loader and registry modules) to `@veyyon/kernel`, leaving `src/session/` containing the turn loop, session factories and prompt rendering, and `src/extensibility/` containing tool, command, hook and host extensions.
+- Session persistence, plugin loading and generic contribution registration use `@veyyon/kernel`; the turn loop, prompt rendering and tool-specific extensibility remain in the coding-agent package.
 - Terminal drawing of a `ToolView` lives in `src/modes/terminal/draw/`, and web search lives in `src/tools/web/search/`. Subpath imports previously resolved through `@veyyon/coding-agent/tui` and `@veyyon/coding-agent/web/search` now name those directories. No user-visible behavior changes.
 - Every tool module is grouped by domain under `src/tools/<domain>/`, each domain importing only `core/` and itself, so the dispatch table no longer sits above 139 flat modules. No user-visible behavior changes.
 - Source-path comments and the gallery search fixture name the terminal renderer at its new path, `hosts/terminal/engine`, and a new architecture gate records every module outside `src/modes/terminal/` that still imports it. No user-visible behavior changes.
@@ -189,6 +195,8 @@
 
 ### Fixed
 
+- Configured shortcuts apply from the first editable frame, and model-selector shortcuts entered during startup preserve the draft through initialization.
+- Submissions entered during startup execute after initialization without waiting for a model turn, preserving later drafts and attachments through command handling and editor replacement.
 - The launch composer shows the same linked-worktree location and draft-token estimate as the mounted session, avoiding a late footline repaint.
 
 - `bun run gen:tool-views` in the coding-agent package uses the relocated `clients/web` generator.

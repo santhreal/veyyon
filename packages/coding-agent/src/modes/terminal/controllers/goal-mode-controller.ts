@@ -4,8 +4,8 @@ import { errorMessage, formatCount, logger } from "@veyyon/utils";
 import { sanitizeStatusText } from "@veyyon/utils/sanitize-status-text";
 import { type GuidedGoalMessage, newGuidedGoalSessionId, runGuidedGoalTurn } from "../../../goals/guided-setup";
 import type { Goal, GoalModeState, GoalStatus } from "../../../goals/state";
+import { formatDurationCoarse } from "../../../session/account-format";
 import type { AgentSessionEvent } from "../../../session/agent-session-types";
-import { formatDurationCoarse } from "../../../slash-commands/helpers/format";
 import type { InteractiveModeContext } from "../types";
 
 /**

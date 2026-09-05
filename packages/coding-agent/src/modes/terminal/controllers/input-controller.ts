@@ -40,7 +40,11 @@ import { createPromptActionAutocompleteProvider } from "../autocomplete/prompt-a
 import { pointerMotionEnabled } from "../components/chrome/modal-shell";
 import { renderSegmentTrack } from "../components/chrome/segment-track";
 import { TinyTitleDownloadProgressComponent } from "../components/chrome/tiny-title-download-progress";
-import { extractImagePathFromText } from "../components/composer/custom-editor";
+import {
+	CONFIGURABLE_EDITOR_ACTIONS,
+	type DeferredEditorAction,
+	extractImagePathFromText,
+} from "../components/composer/custom-editor";
 import { AGENT_VIEW_LEFT_TAP_WINDOW_MS } from "../components/dashboard/agent-view-timings";
 import { AssistantMessageComponent } from "../components/transcript/assistant-message";
 import { shiftImageMarkers } from "../image-reference-markers";
@@ -303,7 +307,13 @@ export class InputController {
 	}
 
 	setupKeyHandlers(): void {
-		this.ctx.editor.setActionKeys("app.interrupt", this.ctx.keybindings.getKeys("app.interrupt"));
+		if (typeof this.ctx.editor.applyKeybindings === "function") {
+			this.ctx.editor.applyKeybindings(this.ctx.keybindings);
+		} else if (typeof this.ctx.editor.setActionKeys === "function") {
+			for (const action of CONFIGURABLE_EDITOR_ACTIONS) {
+				this.ctx.editor.setActionKeys(action, this.ctx.keybindings.getKeys(action));
+			}
+		}
 		if (!this.#focusedLeftTapListenerInstalled) {
 			this.#focusedLeftTapListenerInstalled = true;
 			this.ctx.ui.addInputListener(data => {
@@ -486,62 +496,31 @@ export class InputController {
 			}
 		};
 
-		this.ctx.editor.setActionKeys("app.clear", this.ctx.keybindings.getKeys("app.clear"));
 		this.ctx.editor.onClear = () => this.handleCtrlC();
-		this.ctx.editor.setActionKeys("app.exit", this.ctx.keybindings.getKeys("app.exit"));
-		this.ctx.editor.setActionKeys("app.display.reset", this.ctx.keybindings.getKeys("app.display.reset"));
 		this.ctx.editor.onDisplayReset = () => this.ctx.ui.resetDisplay();
 		this.ctx.editor.onExit = () => this.handleCtrlD();
-		this.ctx.editor.setActionKeys("app.suspend", this.ctx.keybindings.getKeys("app.suspend"));
 		this.ctx.editor.onSuspend = () => this.handleCtrlZ();
-		this.ctx.editor.setActionKeys("app.bash.background", this.ctx.keybindings.getKeys("app.bash.background"));
 		// Conditional: consumes the key only while a foreground command is
 		// waiting; otherwise ctrl+b stays readline cursor-left.
 		this.ctx.editor.onBashBackground = () => requestManualBackground();
-		this.ctx.editor.setActionKeys("app.thinking.cycle", this.ctx.keybindings.getKeys("app.thinking.cycle"));
 		this.ctx.editor.onCycleThinkingLevel = () => this.cycleThinkingLevel();
-		this.ctx.editor.setActionKeys("app.model.cycleForward", this.ctx.keybindings.getKeys("app.model.cycleForward"));
 		this.ctx.editor.onCycleModelForward = () => this.cycleRoleModel("forward");
-		this.ctx.editor.setActionKeys("app.model.cycleBackward", this.ctx.keybindings.getKeys("app.model.cycleBackward"));
 		this.ctx.editor.onCycleModelBackward = () => this.cycleRoleModel("backward");
-		this.ctx.editor.setActionKeys(
-			"app.model.selectTemporary",
-			this.ctx.keybindings.getKeys("app.model.selectTemporary"),
-		);
 		this.ctx.editor.onSelectModelTemporary = () => this.ctx.showModelSelector({ temporaryOnly: true });
 
 		// Global debug handler on TUI (works regardless of focus)
 		this.ctx.ui.onDebug = () => this.ctx.showDebugSelector();
-		this.ctx.editor.setActionKeys("app.model.select", this.ctx.keybindings.getKeys("app.model.select"));
 		this.ctx.editor.onSelectModel = () => this.ctx.showModelSelector();
-		this.ctx.editor.setActionKeys("app.history.search", this.ctx.keybindings.getKeys("app.history.search"));
 		this.ctx.editor.onHistorySearch = () => this.ctx.showHistorySearch();
-		this.ctx.editor.setActionKeys("app.thinking.toggle", this.ctx.keybindings.getKeys("app.thinking.toggle"));
 		this.ctx.editor.onToggleThinking = () => this.ctx.toggleThinkingBlockVisibility();
-		this.ctx.editor.setActionKeys("app.editor.external", this.ctx.keybindings.getKeys("app.editor.external"));
 		this.ctx.editor.onExternalEditor = () => void this.openExternalEditor();
-		this.ctx.editor.setActionKeys(
-			"app.clipboard.pasteImage",
-			this.ctx.keybindings.getKeys("app.clipboard.pasteImage"),
-		);
 		this.ctx.editor.onPasteImage = () => this.handleImagePaste();
 		this.ctx.editor.onPasteImagePath = path => this.handleImagePathPaste(path);
-		this.ctx.editor.setActionKeys(
-			"app.clipboard.pasteTextRaw",
-			this.ctx.keybindings.getKeys("app.clipboard.pasteTextRaw"),
-		);
 		this.ctx.editor.onPasteTextRaw = () => void this.handleClipboardTextRawPaste();
 		this.ctx.editor.onLargePaste = (text, lineCount) => this.handleLargePaste(text, lineCount);
-		this.ctx.editor.setActionKeys(
-			"app.clipboard.copyPrompt",
-			this.ctx.keybindings.getKeys("app.clipboard.copyPrompt"),
-		);
 		this.ctx.editor.onCopyPrompt = () => this.handleCopyPrompt();
-		this.ctx.editor.setActionKeys("app.tools.expand", this.ctx.keybindings.getKeys("app.tools.expand"));
 		this.ctx.editor.onExpandTools = () => this.toggleToolOutputExpansion();
-		this.ctx.editor.setActionKeys("app.message.dequeue", this.ctx.keybindings.getKeys("app.message.dequeue"));
 		this.ctx.editor.onDequeue = () => this.handleDequeue();
-		this.ctx.editor.setActionKeys("app.retry", this.ctx.keybindings.getKeys("app.retry"));
 		this.ctx.editor.onRetry = () => void this.handleRetry();
 		this.ctx.editor.clearCustomKeyHandlers();
 		// Wire up extension shortcuts
@@ -693,321 +672,279 @@ export class InputController {
 
 	setupEditorSubmitHandler(): void {
 		this.ctx.editor.onSubmit = async (text: string) => {
-			// Chat idiom: submitting snaps a scrolled-up transcript back to the
-			// live tail — the operator just engaged with the present.
-			this.ctx.ui.scrollToLiveTail();
-			text = normalizeSubmittedPrompt(text);
-			const hasPendingImages = this.ctx.editor.pendingImages.length > 0;
-			if ((!isSettingsInitialized() || settings.get("emojiAutocomplete")) && text) text = expandEmoticons(text);
+			await this.submit(text);
+		};
+	}
 
-			// Focused subagent session: the editor is a plain chat box for it.
-			// Everything below (continue shortcuts, slash/bash/python, loop,
-			// compaction queueing) is main-session-only.
-			if (this.ctx.focusedAgentId) {
-				await this.#submitToFocusedSession(text, "steer");
-				return;
+	drainEarlySubmissions(): void {
+		const earlySubmissions = this.ctx.editor.takeEarlySubmissions();
+		const earlyActions = this.ctx.editor.takeEarlyActions();
+		if (earlySubmissions.length === 0 && earlyActions.length === 0) return;
+
+		for (const early of earlySubmissions) {
+			void this.ctx.editor
+				.withPreservedDraft(() =>
+					this.submit(early.text, {
+						images: early.images,
+						imageLinks: early.imageLinks,
+					}),
+				)
+				.catch(error => this.ctx.showError(errorMessage(error)));
+		}
+
+		for (const action of earlyActions) {
+			this.#executeDeferredAction(action);
+		}
+	}
+
+	#executeDeferredAction(action: DeferredEditorAction): void {
+		switch (action) {
+			case "app.model.select":
+				if (this.ctx.editor.onSelectModel) {
+					this.ctx.editor.onSelectModel();
+				} else {
+					this.ctx.showModelSelector();
+				}
+				break;
+			case "app.model.selectTemporary":
+				if (this.ctx.editor.onSelectModelTemporary) {
+					this.ctx.editor.onSelectModelTemporary();
+				} else {
+					this.ctx.showModelSelector({ temporaryOnly: true });
+				}
+				break;
+		}
+	}
+
+	async submit(
+		text: string,
+		options?: {
+			images?: ImageContent[];
+			imageLinks?: (string | undefined)[];
+		},
+	): Promise<void> {
+		// Chat idiom: submitting snaps a scrolled-up transcript back to the
+		// live tail — the operator just engaged with the present.
+		this.ctx.ui.scrollToLiveTail();
+		text = normalizeSubmittedPrompt(text);
+		let inputImages = options
+			? options.images
+			: this.ctx.editor.pendingImages.length > 0
+				? this.ctx.editor.pendingImages.slice()
+				: undefined;
+		let inputImageLinks = options
+			? options.imageLinks
+			: this.ctx.editor.pendingImageLinks.length > 0
+				? this.ctx.editor.pendingImageLinks.slice()
+				: undefined;
+		const hasPendingImages = (inputImages?.length ?? 0) > 0;
+		if ((!isSettingsInitialized() || settings.get("emojiAutocomplete")) && text) text = expandEmoticons(text);
+		// Focused subagent session: the editor is a plain chat box for it.
+		// Everything below (continue shortcuts, slash/bash/python, loop,
+		// compaction queueing) is main-session-only.
+		if (this.ctx.focusedAgentId) {
+			await this.#submitToFocusedSession(text, "steer");
+			return;
+		}
+
+		// Empty submit while streaming with queued messages: abort the active
+		// turn and let the post-unwind drain deliver the agent-core queue.
+		if (!text && !hasPendingImages && this.ctx.session.isStreaming) {
+			if (this.ctx.session.queuedMessageCount > 0) {
+				const aborting = this.ctx.session.abort({ reason: USER_INTERRUPT_LABEL });
+				await aborting;
+				this.ctx.updatePendingMessagesDisplay();
+				this.ctx.ui.requestRender();
 			}
+			return;
+		}
 
-			// Empty submit while streaming with queued messages: abort the active
-			// turn and let the post-unwind drain deliver the agent-core queue.
-			if (!text && !hasPendingImages && this.ctx.session.isStreaming) {
-				if (this.ctx.session.queuedMessageCount > 0) {
-					const aborting = this.ctx.session.abort({ reason: USER_INTERRUPT_LABEL });
-					await aborting;
-					this.ctx.updatePendingMessagesDisplay();
-					this.ctx.ui.requestRender();
-				}
-				return;
-			}
+		if (!text && !hasPendingImages) return;
 
-			if (!text && !hasPendingImages) return;
-
-			// Continue shortcuts: "." or "c" resume the agent with a hidden agent-authored
-			// developer directive (no visible user message) instead of an empty turn, so the
-			// model continues the prior intent rather than second-guessing the interrupt.
-			if (text === "." || text === "c") {
-				if (this.ctx.onInputCallback) {
-					this.ctx.editor.clearDraft();
-					this.ctx.onInputCallback({
-						text: turnControlPrompts["turn-control/manual-continue"].text,
-						cancelled: false,
-						started: true,
-						synthetic: true,
-						userInitiated: true,
-					});
-				}
-				return;
-			}
-
-			const runner = this.ctx.session.extensionRunner;
-			let inputImages = this.ctx.editor.pendingImages.length > 0 ? this.ctx.editor.pendingImages.slice() : undefined;
-			let inputImageLinks =
-				this.ctx.editor.pendingImageLinks.length > 0 ? this.ctx.editor.pendingImageLinks.slice() : undefined;
-			let hasInputImages = (inputImages?.length ?? 0) > 0;
-
-			if (runner?.hasHandlers("input")) {
-				const result = await runner.emitInput(text, inputImages, "interactive");
-				if (result?.handled) {
-					this.ctx.editor.clearDraft();
-					return;
-				}
-				if (result?.text !== undefined) {
-					text = normalizeSubmittedPrompt(result.text);
-				}
-				if (result?.images !== undefined) {
-					inputImages = result.images;
-					inputImageLinks = await materializeImageReferenceLinks(
-						inputImages,
-						this.ctx.sessionManager.putBlob.bind(this.ctx.sessionManager),
-					);
-				}
-				hasInputImages = (inputImages?.length ?? 0) > 0;
-			}
-
-			if (!text && !hasInputImages) return;
-
-			const queueBody = parseQueueShorthand(text);
-			if (queueBody !== undefined) {
-				await this.#queueForYield(queueBody, {
-					historyText: text,
-					images: inputImages,
-					imageLinks: inputImageLinks,
+		// Continue shortcuts: "." or "c" resume the agent with a hidden agent-authored
+		// developer directive (no visible user message) instead of an empty turn, so the
+		// model continues the prior intent rather than second-guessing the interrupt.
+		if (text === "." || text === "c") {
+			if (this.ctx.onInputCallback) {
+				this.ctx.editor.clearDraft();
+				this.ctx.onInputCallback({
+					text: turnControlPrompts["turn-control/manual-continue"].text,
+					cancelled: false,
+					started: true,
+					synthetic: true,
+					userInitiated: true,
 				});
+			}
+			return;
+		}
+
+		const runner = this.ctx.session.extensionRunner;
+		let hasInputImages = (inputImages?.length ?? 0) > 0;
+
+		if (runner?.hasHandlers("input")) {
+			const result = await runner.emitInput(text, inputImages, "interactive");
+			if (result?.handled) {
+				this.ctx.editor.clearDraft();
 				return;
 			}
-
-			// Handle built-in slash commands
-			if (text) {
-				const slashResult = await executeBuiltinSlashCommand(text, {
-					ctx: this.ctx,
-				});
-				if (slashResult === true) {
-					if (!shouldSkipHistory(text)) this.ctx.editor.addToHistory(text);
-					return;
-				}
-				if (typeof slashResult === "string") {
-					// Command handled but returned remaining text to use as prompt.
-					// Record the original slash command text so Up Arrow recalls
-					// "/loop 10 fix bug" rather than just "fix bug".
-					if (!shouldSkipHistory(text)) this.ctx.editor.addToHistory(text);
-					text = slashResult;
-				}
+			if (result?.text !== undefined) {
+				text = normalizeSubmittedPrompt(result.text);
 			}
+			if (result?.images !== undefined) {
+				inputImages = result.images;
+				inputImageLinks = await materializeImageReferenceLinks(
+					inputImages,
+					this.ctx.sessionManager.putBlob.bind(this.ctx.sessionManager),
+				);
+			}
+			hasInputImages = (inputImages?.length ?? 0) > 0;
+		}
 
-			// Collab guest: prompts execute on the host; local slash/skill/bash/
-			// python execution is host-only (builtins are gated inside
-			// executeBuiltinSlashCommand, which already consumed allowed ones).
-			if (this.ctx.collabGuest) {
-				if (text.startsWith("/")) {
-					this.ctx.showStatus(`${text.split(/\s+/, 1)[0]} is host-only during a collab session`);
-					this.ctx.editor.setText("");
-					return;
-				}
-				if (text.startsWith("!") || parsePythonCommandInput(text)) {
-					this.ctx.showStatus("Local execution is host-only during a collab session");
-					this.ctx.editor.setText("");
-					return;
-				}
-				if (this.ctx.collabGuest.readOnly) {
-					// Keep the typed text: the prompt was not consumed.
-					this.ctx.showStatus("This collab link is read-only — prompting is disabled");
-					return;
-				}
-				const images = inputImages && inputImages.length > 0 ? inputImages.slice() : undefined;
-				this.ctx.editor.clearDraft(text);
-				// No local render: the prompt comes back from the host as a
-				// collab-prompt event/entry and renders with the author badge.
-				this.ctx.collabGuest.sendPrompt(text, images);
+		if (!text && !hasInputImages) return;
+
+		const queueBody = parseQueueShorthand(text);
+		if (queueBody !== undefined) {
+			await this.#queueForYield(queueBody, {
+				historyText: text,
+				images: inputImages,
+				imageLinks: inputImageLinks,
+			});
+			return;
+		}
+
+		// Handle built-in slash commands
+		if (text) {
+			const slashResult = await executeBuiltinSlashCommand(text, {
+				ctx: this.ctx,
+			});
+			if (slashResult === true) {
+				if (!shouldSkipHistory(text)) this.ctx.editor.addToHistory(text);
 				return;
 			}
-
-			// Handle skill commands (/skill:name [args]). Enter ⇒ steer (matches the
-			// free-text Enter semantics below); Ctrl+Enter routes through `handleFollowUp`.
-			// During compaction, queue immediately so bash/python/loop-mode branches do
-			// not consume the skill before the compaction-resume path re-parses it.
-			if (text && isKnownSkillCommand(this.ctx, text)) {
-				if (this.ctx.session.isCompacting) {
-					const images = inputImages && inputImages.length > 0 ? inputImages.slice() : undefined;
-					this.ctx.queueCompactionMessage(text, "steer", images);
-					return;
-				}
-				if (await this.#invokeSkillCommand(text, "steer", inputImages, inputImageLinks)) {
-					return;
-				}
+			if (typeof slashResult === "string") {
+				// Command handled but returned remaining text to use as prompt.
+				// Record the original slash command text so Up Arrow recalls
+				// "/loop 10 fix bug" rather than just "fix bug".
+				if (!shouldSkipHistory(text)) this.ctx.editor.addToHistory(text);
+				text = slashResult;
 			}
+		}
 
-			// Handle bash command (! for normal, !! for excluded from context)
-			if (text.startsWith("!")) {
-				const isExcluded = text.startsWith("!!");
-				const command = isExcluded ? text.slice(2).trim() : text.slice(1).trim();
-				if (command) {
-					if (this.ctx.session.isBashRunning) {
-						this.ctx.showWarning("A bash command is already running. Press Esc to cancel it first.");
-						this.ctx.editor.setText(text);
-						return;
-					}
-					this.ctx.editor.addToHistory(text);
-					await this.ctx.handleBashCommand(command, isExcluded);
-					this.ctx.isBashMode = false;
-					this.ctx.updateEditorBorderColor();
-					return;
-				}
+		// Collab guest: prompts execute on the host; local slash/skill/bash/
+		// python execution is host-only (builtins are gated inside
+		// executeBuiltinSlashCommand, which already consumed allowed ones).
+		if (this.ctx.collabGuest) {
+			if (text.startsWith("/")) {
+				this.ctx.showStatus(`${text.split(/\s+/, 1)[0]} is host-only during a collab session`);
+				this.ctx.editor.setText("");
+				return;
 			}
-
-			// Handle python command (`$ <code>` for normal, `$$ <code>` for excluded from context).
-			// Shell-style variables such as `$HOME` are normal prose unless a space follows the sigil.
-			const pythonCommand = parsePythonCommandInput(text);
-			if (pythonCommand) {
-				const { code, isExcluded } = pythonCommand;
-				if (code) {
-					if (this.ctx.session.isEvalRunning) {
-						this.ctx.showWarning("A Python execution is already running. Press Esc to cancel it first.");
-						this.ctx.editor.setText(text);
-						return;
-					}
-					this.ctx.editor.addToHistory(text);
-					await this.ctx.handlePythonCommand(code, isExcluded);
-					this.ctx.isPythonMode = false;
-					this.ctx.updateEditorBorderColor();
-					return;
-				}
+			if (text.startsWith("!") || parsePythonCommandInput(text)) {
+				this.ctx.showStatus("Local execution is host-only during a collab session");
+				this.ctx.editor.setText("");
+				return;
 			}
-
-			// While loop mode is on, every user-typed prompt becomes the new loop
-			// prompt that auto-resubmits after each yield.
-			if (this.ctx.loopModeEnabled) {
-				this.ctx.loopPrompt = text;
+			if (this.ctx.collabGuest.readOnly) {
+				// Keep the typed text: the prompt was not consumed.
+				this.ctx.showStatus("This collab link is read-only — prompting is disabled");
+				return;
 			}
+			const images = inputImages && inputImages.length > 0 ? inputImages.slice() : undefined;
+			this.ctx.editor.clearDraft(text);
+			// No local render: the prompt comes back from the host as a
+			// collab-prompt event/entry and renders with the author badge.
+			this.ctx.collabGuest.sendPrompt(text, images);
+			return;
+		}
 
-			// Queue input during compaction
+		// Handle skill commands (/skill:name [args]). Enter ⇒ steer (matches the
+		// free-text Enter semantics below); Ctrl+Enter routes through `handleFollowUp`.
+		// During compaction, queue immediately so bash/python/loop-mode branches do
+		// not consume the skill before the compaction-resume path re-parses it.
+		if (text && isKnownSkillCommand(this.ctx, text)) {
 			if (this.ctx.session.isCompacting) {
 				const images = inputImages && inputImages.length > 0 ? inputImages.slice() : undefined;
 				this.ctx.queueCompactionMessage(text, "steer", images);
 				return;
 			}
-
-			// If streaming, use prompt() with steer behavior
-			// This handles extension commands (execute immediately), prompt template expansion, and queueing
-			if (this.ctx.session.isStreaming) {
-				this.ctx.editor.addToHistory(text);
-				this.ctx.editor.setText("");
-				this.ctx.editor.imageLinks = undefined;
-				const images = inputImages && inputImages.length > 0 ? inputImages.slice() : undefined;
-				this.ctx.editor.pendingImages = [];
-				this.ctx.editor.pendingImageLinks = [];
-				// Record the signature so the queued message's eventual delivery
-				// (a user-role `message_start` event) leaves any draft the user has
-				// typed since queuing intact. Same protection as #783, applied to
-				// the streaming/queue path.
-				try {
-					await this.ctx.withLocalSubmission(
-						text,
-						() => this.ctx.session.prompt(text, { streamingBehavior: "steer", images }),
-						{ imageCount: images?.length ?? 0 },
-					);
-				} catch (error) {
-					// Don't lose the queued steer draft: restore text and images so
-					// the user can retry after dispatch validation/queue failures.
-					this.ctx.editor.setText(text);
-					if (images && images.length > 0) {
-						this.ctx.editor.pendingImages = [...images];
-						this.ctx.editor.pendingImageLinks = inputImageLinks
-							? [...inputImageLinks]
-							: images.map(() => undefined);
-						this.ctx.editor.imageLinks = this.ctx.editor.pendingImageLinks;
-					}
-					this.ctx.showError(errorMessage(error));
-				}
-				this.ctx.updatePendingMessagesDisplay();
-				this.ctx.ui.requestRender();
+			if (await this.#invokeSkillCommand(text, "steer", inputImages, inputImageLinks)) {
 				return;
 			}
+		}
 
-			// Normal message submission
-			// First, move any pending bash components to chat
-			this.ctx.flushPendingBashComponents();
-
-			// Auto-generate a session title while the session is still unnamed.
-			// Greetings / acknowledgements / empty input carry no task, so they are
-			// skipped deterministically (no model invoked, no download-progress UI)
-			// and the session stays unnamed — the next user message gets a fresh
-			// chance, so titling defers past "hi" instead of latching onto it.
-			if (!this.ctx.sessionManager.getSessionName() && !autoTitleDisabled() && !isLowSignalTitleInput(text)) {
-				this.#showTinyTitleDownloadProgress(this.ctx.settings.get("providers.tinyModel"));
-				const registry = this.ctx.session.modelRegistry;
-				generateSessionTitle(
-					text,
-					registry,
-					this.ctx.settings,
-					this.ctx.session.sessionId,
-					this.ctx.session.model,
-					provider => this.ctx.session.agent.metadataForProvider(provider),
-					this.ctx.session.titleSystemPrompt,
-					providerText => this.ctx.session.obfuscateProviderText(providerText),
-					this.ctx.session.sideComplete,
-				)
-					.then(async title => {
-						// Re-check: a concurrent attempt for an earlier message may have
-						// already named the session. Don't clobber it. Terminal title and
-						// accent updates fire from the onSessionNameChanged listener.
-						if (title && !this.ctx.sessionManager.getSessionName()) {
-							await this.ctx.sessionManager.setSessionName(title, "auto");
-						}
-					})
-					.catch(err => {
-						logger.warn("title-generator: uncaught auto-title error", {
-							sessionId: this.ctx.session.sessionId,
-							reason: "uncaught-auto-title-error",
-							error: errorMessage(err),
-						});
-					});
+		// Handle bash command (! for normal, !! for excluded from context)
+		if (text.startsWith("!")) {
+			const isExcluded = text.startsWith("!!");
+			const command = isExcluded ? text.slice(2).trim() : text.slice(1).trim();
+			if (command) {
+				if (this.ctx.session.isBashRunning) {
+					this.ctx.showWarning("A bash command is already running. Press Esc to cancel it first.");
+					this.ctx.editor.setText(text);
+					return;
+				}
+				this.ctx.editor.addToHistory(text);
+				await this.ctx.handleBashCommand(command, isExcluded);
+				this.ctx.isBashMode = false;
+				this.ctx.updateEditorBorderColor();
+				return;
 			}
+		}
 
-			if (this.ctx.onInputCallback) {
-				// Include any pending images from clipboard paste
-				this.ctx.editor.imageLinks = undefined;
-				const images = inputImages && inputImages.length > 0 ? inputImages.slice() : undefined;
-				this.ctx.editor.pendingImages = [];
-				this.ctx.editor.pendingImageLinks = [];
+		// Handle python command (`$ <code>` for normal, `$$ <code>` for excluded from context).
+		// Shell-style variables such as `$HOME` are normal prose unless a space follows the sigil.
+		const pythonCommand = parsePythonCommandInput(text);
+		if (pythonCommand) {
+			const { code, isExcluded } = pythonCommand;
+			if (code) {
+				if (this.ctx.session.isEvalRunning) {
+					this.ctx.showWarning("A Python execution is already running. Press Esc to cancel it first.");
+					this.ctx.editor.setText(text);
+					return;
+				}
+				this.ctx.editor.addToHistory(text);
+				await this.ctx.handlePythonCommand(code, isExcluded);
+				this.ctx.isPythonMode = false;
+				this.ctx.updateEditorBorderColor();
+				return;
+			}
+		}
 
-				// Render user message immediately, then let session events catch up.
-				// Tag the submission as "steer": this is a normal Enter the controller
-				// believed was idle, but a background turn can start in the gap before
-				// `submitInteractiveInput` dispatches it. Steering matches the
-				// streaming-branch Enter (above) and keeps the message from throwing
-				// AgentBusyError on that race.
-				const submission = this.ctx.startPendingSubmission({
+		// While loop mode is on, every user-typed prompt becomes the new loop
+		// prompt that auto-resubmits after each yield.
+		if (this.ctx.loopModeEnabled) {
+			this.ctx.loopPrompt = text;
+		}
+
+		// Queue input during compaction
+		if (this.ctx.session.isCompacting) {
+			const images = inputImages && inputImages.length > 0 ? inputImages.slice() : undefined;
+			this.ctx.queueCompactionMessage(text, "steer", images);
+			return;
+		}
+
+		// If streaming, use prompt() with steer behavior
+		// This handles extension commands (execute immediately), prompt template expansion, and queueing
+		if (this.ctx.session.isStreaming) {
+			this.ctx.editor.addToHistory(text);
+			this.ctx.editor.setText("");
+			this.ctx.editor.imageLinks = undefined;
+			this.ctx.editor.pendingImages = [];
+			this.ctx.editor.pendingImageLinks = [];
+			const images = inputImages && inputImages.length > 0 ? inputImages.slice() : undefined;
+			// Record the signature so the queued message's eventual delivery
+			// (a user-role `message_start` event) leaves any draft the user has
+			// typed since queuing intact. Same protection as #783, applied to
+			// the streaming/queue path.
+			try {
+				await this.ctx.withLocalSubmission(
 					text,
-					images,
-					imageLinks: inputImageLinks,
-					streamingBehavior: "steer",
-				});
-
-				this.ctx.onInputCallback(submission);
-			} else {
-				// No input waiter: the main loop is between turns (post-turn
-				// epilogue, retry backoff, or a scheduled continue) with the agent
-				// momentarily idle. The editor already cleared itself on Enter, so
-				// falling through here would silently swallow the message. Submit a
-				// real prompt directly; if a background turn starts in the gap,
-				// `streamingBehavior: "steer"` preserves the typed-message queueing
-				// semantics instead of throwing AgentBusyError.
-				this.ctx.editor.imageLinks = undefined;
-				const images = inputImages && inputImages.length > 0 ? inputImages.slice() : undefined;
-				this.ctx.editor.pendingImages = [];
-				this.ctx.editor.pendingImageLinks = [];
-				try {
-					await this.ctx.withLocalSubmission(
-						text,
-						() => this.ctx.session.prompt(text, { streamingBehavior: "steer", images }),
-						{
-							imageCount: images?.length ?? 0,
-						},
-					);
-				} catch (error) {
-					// Don't lose the message: hand the text and images back to the
-					// editor so the user can retry (e.g. prompt dispatch rejecting an
-					// extension command).
+					() => this.ctx.session.prompt(text, { streamingBehavior: "steer", images }),
+					{ imageCount: images?.length ?? 0 },
+				);
+			} catch (error) {
+				// Don't lose the queued steer draft: restore text and images so
+				// the user can retry after dispatch validation/queue failures.
+				if (!this.ctx.editor.getText()) {
 					this.ctx.editor.setText(text);
 					if (images && images.length > 0) {
 						this.ctx.editor.pendingImages = [...images];
@@ -1016,13 +953,115 @@ export class InputController {
 							: images.map(() => undefined);
 						this.ctx.editor.imageLinks = this.ctx.editor.pendingImageLinks;
 					}
-					this.ctx.showError(errorMessage(error));
 				}
-				this.ctx.updatePendingMessagesDisplay();
-				this.ctx.ui.requestRender();
+				this.ctx.showError(errorMessage(error));
 			}
-			this.ctx.editor.addToHistory(text);
-		};
+			this.ctx.updatePendingMessagesDisplay();
+			this.ctx.ui.requestRender();
+			return;
+		}
+
+		// Normal message submission
+		// First, move any pending bash components to chat
+		this.ctx.flushPendingBashComponents();
+
+		// Auto-generate a session title while the session is still unnamed.
+		// Greetings / acknowledgements / empty input carry no task, so they are
+		// skipped deterministically (no model invoked, no download-progress UI)
+		// and the session stays unnamed — the next user message gets a fresh
+		// chance, so titling defers past "hi" instead of latching onto it.
+		if (!this.ctx.sessionManager.getSessionName() && !autoTitleDisabled() && !isLowSignalTitleInput(text)) {
+			this.#showTinyTitleDownloadProgress(this.ctx.settings.get("providers.tinyModel"));
+			const registry = this.ctx.session.modelRegistry;
+			generateSessionTitle(
+				text,
+				registry,
+				this.ctx.settings,
+				this.ctx.session.sessionId,
+				this.ctx.session.model,
+				provider => this.ctx.session.agent.metadataForProvider(provider),
+				this.ctx.session.titleSystemPrompt,
+				providerText => this.ctx.session.obfuscateProviderText(providerText),
+				this.ctx.session.sideComplete,
+			)
+				.then(async title => {
+					// Re-check: a concurrent attempt for an earlier message may have
+					// already named the session. Don't clobber it. Terminal title and
+					// accent updates fire from the onSessionNameChanged listener.
+					if (title && !this.ctx.sessionManager.getSessionName()) {
+						await this.ctx.sessionManager.setSessionName(title, "auto");
+					}
+				})
+				.catch(err => {
+					logger.warn("title-generator: uncaught auto-title error", {
+						sessionId: this.ctx.session.sessionId,
+						reason: "uncaught-auto-title-error",
+						error: errorMessage(err),
+					});
+				});
+		}
+
+		if (this.ctx.onInputCallback) {
+			// Include any pending images from clipboard paste
+			this.ctx.editor.imageLinks = undefined;
+			this.ctx.editor.pendingImages = [];
+			this.ctx.editor.pendingImageLinks = [];
+			const images = inputImages && inputImages.length > 0 ? inputImages.slice() : undefined;
+
+			// Render user message immediately, then let session events catch up.
+			// Tag the submission as "steer": this is a normal Enter the controller
+			// believed was idle, but a background turn can start in the gap before
+			// `submitInteractiveInput` dispatches it. Steering matches the
+			// streaming-branch Enter (above) and keeps the message from throwing
+			// AgentBusyError on that race.
+			const submission = this.ctx.startPendingSubmission({
+				text,
+				images,
+				imageLinks: inputImageLinks,
+				streamingBehavior: "steer",
+			});
+
+			this.ctx.onInputCallback(submission);
+		} else {
+			// No input waiter: the main loop is between turns (post-turn
+			// epilogue, retry backoff, or a scheduled continue) with the agent
+			// momentarily idle. The editor already cleared itself on Enter, so
+			// falling through here would silently swallow the message. Submit a
+			// real prompt directly; if a background turn starts in the gap,
+			// `streamingBehavior: "steer"` preserves the typed-message queueing
+			// semantics instead of throwing AgentBusyError.
+			this.ctx.editor.imageLinks = undefined;
+			this.ctx.editor.pendingImages = [];
+			this.ctx.editor.pendingImageLinks = [];
+			const images = inputImages && inputImages.length > 0 ? inputImages.slice() : undefined;
+			try {
+				await this.ctx.withLocalSubmission(
+					text,
+					() => this.ctx.session.prompt(text, { streamingBehavior: "steer", images }),
+					{
+						imageCount: images?.length ?? 0,
+					},
+				);
+			} catch (error) {
+				// Don't lose the message: hand the text and images back to the
+				// editor so the user can retry (e.g. prompt dispatch rejecting an
+				// extension command).
+				if (!this.ctx.editor.getText()) {
+					this.ctx.editor.setText(text);
+					if (images && images.length > 0) {
+						this.ctx.editor.pendingImages = [...images];
+						this.ctx.editor.pendingImageLinks = inputImageLinks
+							? [...inputImageLinks]
+							: images.map(() => undefined);
+						this.ctx.editor.imageLinks = this.ctx.editor.pendingImageLinks;
+					}
+				}
+				this.ctx.showError(errorMessage(error));
+			}
+			this.ctx.updatePendingMessagesDisplay();
+			this.ctx.ui.requestRender();
+		}
+		this.ctx.editor.addToHistory(text);
 	}
 
 	/** Submit editor text to the focused subagent session (chat-only focus policy). */

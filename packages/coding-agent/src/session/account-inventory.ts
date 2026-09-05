@@ -28,7 +28,7 @@ import type {
 } from "@veyyon/ai";
 import { OAUTH_REFRESH_FAILURE_DISABLE_PREFIX } from "@veyyon/ai/auth-credential-rows";
 import { limitMatchesActiveAccount } from "../slash-commands/helpers/active-oauth-account";
-import { formatDurationCoarse, formatProviderName } from "../slash-commands/helpers/format";
+import { formatDurationCoarse, formatProviderName } from "./account-format";
 
 /** One usage window as an account row shows it. */
 export interface AccountUsageWindow {

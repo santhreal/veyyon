@@ -61,6 +61,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
+import { Process } from "@veyyon/natives";
+import { AnsiStripper } from "@veyyon/utils";
 import { parseDocument } from "yaml";
 import { AUTONOMY_LABEL } from "../packages/coding-agent/src/tools/core/approval-modes";
 import { recordSettledStartup } from "./record-settled-startup";
@@ -196,7 +198,7 @@ function launcher(options: Options): { command: string; prefix: string[] } {
  * the program, on every launch that has not yet taken the terminal into raw mode. Turning it off
  * means an echo observed here was written by the process under test.
  */
-function ptyWrapper(
+export function ptyWrapper(
 	command: string,
 	args: string[],
 	size?: { columns: number; rows: number },
@@ -208,7 +210,7 @@ function ptyWrapper(
 		: { command: "script", args: ["-qec", withoutEcho, "/dev/null"] };
 }
 
-interface RunOutcome {
+export interface RunOutcome {
 	ms: number;
 	stdout: string;
 }
@@ -238,7 +240,7 @@ export const STATUS_ROW = new RegExp(
 		.join("|")})\\s+·`,
 );
 
-interface FrameMarks {
+export interface FrameMarks {
 	firstByte?: number;
 	composer?: number;
 	editable?: number;
@@ -264,42 +266,80 @@ interface FrameMarks {
  *               terminal — what the pty here gives — sheds it before anything else, and a launch
  *               resolving a long model id never printed it at all.
  */
-async function recordFrame(
+export async function recordFrame(
 	command: string,
 	args: string[],
 	env: Record<string, string>,
 	holdMs: number,
 	probe = true,
+	cwd = REPO_ROOT,
 ): Promise<FrameMarks> {
 	const marks: FrameMarks = {};
 	const started = performance.now();
+	const processState: { target: Process | null } = { target: null };
 	const child = spawn(command, args, {
-		cwd: REPO_ROOT,
+		cwd,
 		stdio: ["pipe", "pipe", "pipe"],
 		env: { ...process.env, ...env },
 	});
+	child.once("spawn", () => {
+		processState.target = child.pid === undefined ? null : Process.fromPid(child.pid);
+	});
 
-	let seen = "";
+	const stdoutStripper = new AnsiStripper();
+	const stderrStripper = new AnsiStripper();
+	let stdoutSeen = "";
+	let stderrSeen = "";
 	const at = (): number => performance.now() - started;
-	const onData = (chunk: string): void => {
-		seen += chunk;
+	const handleChunk = (chunk: string, isStderr: boolean): void => {
+		if (isStderr) {
+			stderrSeen += stderrStripper.push(chunk);
+		} else {
+			stdoutSeen += stdoutStripper.push(chunk);
+		}
+		const visible = stdoutSeen + stdoutStripper.pending + stderrSeen + stderrStripper.pending;
 		if (marks.firstByte === undefined) {
 			marks.firstByte = at();
 			if (probe) child.stdin.write(PROBE);
 		}
-		if (marks.composer === undefined && seen.includes("ask anything")) marks.composer = at();
-		if (marks.editable === undefined && seen.includes(PROBE)) marks.editable = at();
-		if (marks.statusrow === undefined && STATUS_ROW.test(seen)) marks.statusrow = at();
+		if (marks.composer === undefined && visible.includes("ask anything")) marks.composer = at();
+		if (marks.editable === undefined && visible.includes(PROBE)) marks.editable = at();
+		if (marks.statusrow === undefined && STATUS_ROW.test(visible)) marks.statusrow = at();
 	};
 	child.stdout.setEncoding("utf8");
-	child.stdout.on("data", onData);
+	child.stdout.on("data", (chunk: string) => handleChunk(chunk, false));
 	child.stderr.setEncoding("utf8");
-	child.stderr.on("data", onData);
+	child.stderr.on("data", (chunk: string) => handleChunk(chunk, true));
 
 	const held = Promise.withResolvers<void>();
-	setTimeout(held.resolve, holdMs);
-	await held.promise;
-	child.kill("SIGKILL");
+	const timer = setTimeout(held.resolve, holdMs);
+	child.once("error", held.reject);
+
+	let failure: { error: unknown } | undefined;
+	try {
+		await held.promise;
+	} catch (error) {
+		failure = { error };
+	} finally {
+		clearTimeout(timer);
+	}
+	try {
+		const target = processState.target ?? (child.pid === undefined ? null : Process.fromPid(child.pid));
+		if (target) {
+			const terminated = await target.terminate({ gracefulMs: 500, timeoutMs: 2000 });
+			if (!terminated) {
+				throw new Error(`Startup process tree ${target.pid} did not terminate`);
+			}
+		} else if (child.pid !== undefined) {
+			child.kill("SIGKILL");
+		}
+	} catch (error) {
+		if (failure) {
+			throw new AggregateError([failure.error, error], "Startup recording and process cleanup both failed");
+		}
+		throw error;
+	}
+	if (failure) throw failure.error;
 	return marks;
 }
 
@@ -308,38 +348,70 @@ async function recordFrame(
  * the rest. The child is killed the moment the number is captured — an interactive launch never
  * ends on its own, and nothing after the first byte is being measured.
  */
-async function timeRun(
+export async function timeRun(
 	command: string,
 	args: string[],
 	env: Record<string, string>,
 	until: "first-byte" | "exit",
 	timeoutMs: number,
+	cwd = REPO_ROOT,
 ): Promise<RunOutcome> {
 	const { promise, resolve, reject } = Promise.withResolvers<RunOutcome>();
 	const started = performance.now();
 	let ms: number | undefined;
 	let stdout = "";
 	let settled = false;
+	const processState: { target: Process | null } = { target: null };
 
 	const child = spawn(command, args, {
-		cwd: REPO_ROOT,
+		cwd,
 		stdio: ["ignore", "pipe", "pipe"],
 		env: { ...process.env, ...env },
 	});
+	child.once("spawn", () => {
+		processState.target = child.pid === undefined ? null : Process.fromPid(child.pid);
+	});
 
-	const finish = (): void => {
+	const cleanup = async (): Promise<void> => {
+		const target = processState.target ?? (child.pid === undefined ? null : Process.fromPid(child.pid));
+		if (target) {
+			const terminated = await target.terminate({ gracefulMs: 500, timeoutMs: 2000 });
+			if (!terminated) {
+				throw new Error(`Startup process tree ${target.pid} did not terminate`);
+			}
+		} else if (child.pid !== undefined) {
+			child.kill("SIGKILL");
+		}
+	};
+
+	const finish = async (): Promise<void> => {
 		if (settled) return;
 		settled = true;
 		clearTimeout(timer);
-		if (ms === undefined) reject(new Error(`no output before exit: ${stdout.slice(-300)}`));
-		else resolve({ ms, stdout });
+		try {
+			if (ms === undefined) {
+				await cleanup();
+				reject(new Error(`no output before exit: ${stdout.slice(-300)}`));
+			} else {
+				if (until === "first-byte") {
+					await cleanup();
+				}
+				resolve({ ms, stdout });
+			}
+		} catch (error) {
+			reject(error);
+		}
 	};
 
-	const timer = setTimeout(() => {
-		child.kill("SIGKILL");
+	const timer = setTimeout(async () => {
 		if (!settled) {
 			settled = true;
-			reject(new Error(`timed out after ${timeoutMs}ms`));
+			try {
+				await cleanup();
+				reject(new Error(`timed out after ${timeoutMs}ms`));
+			} catch (error) {
+				reject(error);
+			}
 		}
 	}, timeoutMs);
 
@@ -348,22 +420,25 @@ async function timeRun(
 		stdout += chunk;
 		if (until !== "first-byte" || ms !== undefined) return;
 		ms = performance.now() - started;
-		child.kill("SIGKILL");
+		void finish();
 	});
 	child.stderr.setEncoding("utf8");
 	child.stderr.on("data", (chunk: string) => {
 		stdout += chunk;
 	});
-	child.on("error", err => {
+	child.on("error", async err => {
 		clearTimeout(timer);
 		if (!settled) {
 			settled = true;
+			try {
+				await cleanup();
+			} catch {}
 			reject(err);
 		}
 	});
 	child.on("close", () => {
 		if (until === "exit") ms = performance.now() - started;
-		finish();
+		void finish();
 	});
 
 	return promise;
@@ -442,14 +517,19 @@ const execFileAsync = promisify(execFile);
  * themselves and report the cost. That matches `install.sh`, which skips the probe on a build with
  * no `grep` subcommand.
  */
-async function extractInstalledNatives(root: string, command: string, prefix: string[]): Promise<string | undefined> {
+export async function extractInstalledNatives(
+	root: string,
+	command: string,
+	prefix: string[],
+	cwd = REPO_ROOT,
+): Promise<string | undefined> {
 	const installed = path.join(root, "installed");
 	const probe = path.join(installed, "probe");
 	await fs.mkdir(probe, { recursive: true });
 	await fs.writeFile(path.join(probe, "probe.txt"), "veyyon-native-self-test\n");
 	try {
 		await execFileAsync(command, [...prefix, "grep", "veyyon-native-self-test", probe], {
-			cwd: REPO_ROOT,
+			cwd,
 			env: { ...process.env, HOME: installed, VEYYON_PROFILE: "" },
 		});
 	} catch (err) {
@@ -515,8 +595,10 @@ async function main(): Promise<void> {
 	 */
 	const recording = path.join(scratch, "first-frame.json");
 
+	const cwd = options.cwd ?? REPO_ROOT;
+
 	/** The addon the install left behind, extracted once and hardlinked into every seeded home. */
-	const installedNatives = await extractInstalledNatives(scratch, command, prefix);
+	const installedNatives = await extractInstalledNatives(scratch, command, prefix, cwd);
 
 	/**
 	 * `--cold` means every arm pays first-launch cost, so the home is thrown away before each arm
@@ -528,11 +610,24 @@ async function main(): Promise<void> {
 		if (options.cold) await fs.rm(path.join(scratch, "home"), { recursive: true, force: true });
 		if (options.seed) {
 			const config = path.join(scratch, "config");
-			if (options.cold) await fs.rm(config, { recursive: true, force: true });
-			await fs.cp(options.seed, config, { recursive: true, force: false });
-			await disableBenchmarkUpdates(path.join(config, "config.yml"));
-			await disableBenchmarkUpdates(path.join(config, "profiles", "default", "agent", "config.yml"));
-			if (installedNatives) await hardlinkTree(installedNatives, path.join(config, "natives"));
+			if (options.cold) {
+				await fs.rm(config, { recursive: true, force: true });
+				await fs.cp(options.seed, config, { recursive: true, force: false });
+				await disableBenchmarkUpdates(path.join(config, "config.yml"));
+				await disableBenchmarkUpdates(path.join(config, "profiles", "default", "agent", "config.yml"));
+				if (installedNatives) await hardlinkTree(installedNatives, path.join(config, "natives"));
+			} else {
+				const configExists = await fs.stat(config).then(
+					() => true,
+					() => false,
+				);
+				if (!configExists) {
+					await fs.cp(options.seed, config, { recursive: true, force: false });
+					await disableBenchmarkUpdates(path.join(config, "config.yml"));
+					await disableBenchmarkUpdates(path.join(config, "profiles", "default", "agent", "config.yml"));
+					if (installedNatives) await hardlinkTree(installedNatives, path.join(config, "natives"));
+				}
+			}
 		}
 		const home = await seedHome(scratch, installedNatives);
 		return {
@@ -549,12 +644,12 @@ async function main(): Promise<void> {
 	for (let run = 0; run < options.runs; run++) {
 		if (wants("version")) {
 			const env = await envFor();
-			push("version", (await timeRun(command, [...prefix, "--version"], env, "exit", options.timeoutMs)).ms);
+			push("version", (await timeRun(command, [...prefix, "--version"], env, "exit", options.timeoutMs, cwd)).ms);
 		}
 
 		if (wants("help")) {
 			const env = await envFor();
-			push("help", (await timeRun(command, [...prefix, "--help"], env, "exit", options.timeoutMs)).ms);
+			push("help", (await timeRun(command, [...prefix, "--help"], env, "exit", options.timeoutMs, cwd)).ms);
 		}
 
 		if (wants("ready")) {
@@ -566,6 +661,7 @@ async function main(): Promise<void> {
 				{ ...env, VEYYON_TIMING: "x" },
 				"exit",
 				options.timeoutMs,
+				cwd,
 			);
 			push("ready", ready.ms);
 			const total = parseInstrumentedTotal(ready.stdout);
@@ -584,7 +680,7 @@ async function main(): Promise<void> {
 			// The recording goes first, so this arm composes the card whatever the arm before it left
 			// behind. This launch types, so it leaves no recording of its own.
 			await fs.rm(recording, { force: true });
-			const marks = await recordFrame(framePty.command, framePty.args, env, FRAME_HOLD_MS);
+			const marks = await recordFrame(framePty.command, framePty.args, env, FRAME_HOLD_MS, true, cwd);
 			if (marks.firstByte !== undefined) push("first-frame", marks.firstByte);
 			if (marks.composer !== undefined) push("composer", marks.composer);
 			if (marks.editable !== undefined) push("editable", marks.editable);
@@ -598,7 +694,7 @@ async function main(): Promise<void> {
 			// Its own timing is discarded: it is the off arm again, and the off arm is already
 			// measured.
 			await fs.rm(recording, { force: true });
-			await recordFrame(framePty.command, framePty.args, env, FRAME_HOLD_MS, false);
+			await recordFrame(framePty.command, framePty.args, env, FRAME_HOLD_MS, false, cwd);
 
 			// Same env, same pty, same binary, and the recording the launch above wrote. Nothing else
 			// differs, so the gap between this arm and `first-frame` is the replay and only the
@@ -610,7 +706,7 @@ async function main(): Promise<void> {
 			// so the gap between `replay` and `replay:editable` is how long the screen is a picture.
 			// Typing costs this launch its own recording, which nothing reads: the recording is
 			// rewritten above on every run.
-			const replayed = await recordFrame(framePty.command, framePty.args, env, FRAME_HOLD_MS);
+			const replayed = await recordFrame(framePty.command, framePty.args, env, FRAME_HOLD_MS, true, cwd);
 			if (replayed.firstByte !== undefined) push("replay", replayed.firstByte);
 			if (replayed.composer !== undefined) push("replay:composer", replayed.composer);
 			if (replayed.editable !== undefined) push("replay:editable", replayed.editable);

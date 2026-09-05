@@ -9,11 +9,7 @@ import type { ApiKey, FetchImpl } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
 import type { Api, Model } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
-import {
-	getBundledModelReferenceIndex,
-	resolveModelReference,
-	stripBracketedModelIdAffixes,
-} from "@veyyon/catalog/identity";
+import { resolveBundledModelReference, stripBracketedModelIdAffixes } from "@veyyon/catalog/identity";
 import {
 	normalizeOllamaBaseUrl as catalogNormalizeOllamaBaseUrl,
 	fetchLiteLLMRichModels,
@@ -660,7 +656,7 @@ export async function discoverOpenAIModelsList(
 		? await withAuth(apiKey, key => attempt({ ...baseHeaders, Authorization: `Bearer ${key}` }))
 		: await attempt(baseHeaders);
 	const models = payload.data ?? [];
-	const references = getBundledModelReferenceIndex();
+	
 	const discovered: Model<Api>[] = [];
 	for (const item of models) {
 		const id = item.id;
@@ -675,7 +671,7 @@ export async function discoverOpenAIModelsList(
 		// reasoning support — flows through when the provider is silent. Local
 		// runtime state and provider-reported values still win; proxy-specific
 		// headers/baseUrl/cost stay local.
-		const reference = resolveModelReference(id, references) as ModelSpec<Api> | undefined;
+		const reference = resolveBundledModelReference(id) as ModelSpec<Api> | undefined;
 		const referenceCompat = reference?.compat as OpenAICompat | undefined;
 		const contextWindow =
 			toPositiveNumberOrUndefined(item.max_model_len) ??
@@ -726,8 +722,8 @@ export async function discoverLiteLLMModels(
 	ctx: DiscoveryContext,
 ): Promise<Model<Api>[]> {
 	const baseUrl = normalizeLiteLLMDiscoveryBaseUrl(providerConfig.baseUrl);
-	const references = getBundledModelReferenceIndex();
-	const resolveReference = (id: string) => resolveModelReference(id, references) as ModelSpec<Api> | undefined;
+	
+	const resolveReference = (id: string) => resolveBundledModelReference(id) as ModelSpec<Api> | undefined;
 	const baseHeaders: Record<string, string> = { ...(providerConfig.headers ?? {}) };
 	let headers = baseHeaders;
 	const attempt = async (h: Record<string, string>) => {
@@ -831,7 +827,7 @@ export async function discoverProxyModels(
 				: providerConfig.api;
 		if (!api) continue;
 		const isAnthropic = api === "anthropic-messages";
-		const reference = resolveModelReference(id, getBundledModelReferenceIndex());
+		const reference = resolveBundledModelReference(id);
 		const discoveryName = typeof item.name === "string" ? item.name.trim() : "";
 		const displayName =
 			reference?.name ??

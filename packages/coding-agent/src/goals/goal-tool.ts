@@ -5,7 +5,7 @@ import { truncateToWidth } from "@veyyon/utils/width";
 import type { ToolView, ToolViewContext, ToolViewRenderer, ViewLine, ViewSection, ViewTone } from "@veyyon/view";
 import { type } from "arktype";
 import { toolsPrompts } from "../prompts/tools/rows";
-import { formatDurationCoarse } from "../slash-commands/helpers/format";
+import { formatDurationCoarse } from "../session/account-format";
 import type { ToolSession } from "../tools";
 import { sanitizeErrorText, TRUNCATE_LENGTHS } from "../tools/core/render-utils";
 import { ToolError } from "../tools/core/tool-errors";

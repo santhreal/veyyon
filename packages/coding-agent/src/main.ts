@@ -8,6 +8,7 @@
 import * as fsSync from "node:fs";
 import * as os from "node:os";
 import { createInterface } from "node:readline/promises";
+import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import { EventLoopKeepalive } from "@veyyon/agent-core";
 import type { ImageContent } from "@veyyon/ai";
 import type { HostNotifier } from "@veyyon/host";
@@ -577,6 +578,11 @@ async function runInteractiveMode(
 	const playStartupSplash = showStartupSplash && setupScenes.length === 0;
 
 	await mode.init();
+
+	// Yield once so the completed first frame can flush to stdout before the background
+	// discovery refresh begins.
+	await yieldToEventLoop();
+	session.modelRegistry?.refreshInBackground();
 
 	// Subscribed BEFORE the wizard, not after it. The write-side twin of the
 	// unparseable-settings notice, and it cannot be a startup check: a save happens
@@ -1347,9 +1353,12 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 	// Kick off AuthStorage and ModelRegistry discovery in parallel with settings/theme init.
 	// Awaited when resolveModelScope / session construction needs it.
 	const authStoragePromise = logger.time("discoverAuthStorage", deps.discoverAuthStorage ?? discoverAuthStorage);
-	const modelRegistryPromise = authStoragePromise.then(auth =>
-		logger.time("modelRegistry:init", () => new ModelRegistry(auth)),
-	);
+	const modelRegistryPromise = authStoragePromise.then(async auth => {
+		const registry = logger.time("modelRegistry:init", () => new ModelRegistry(auth));
+		// Cached discovery otherwise continues through session construction in one microtask chain.
+		await yieldToEventLoop();
+		return registry;
+	});
 	modelRegistryPromise.catch(() => {});
 	if (parsedArgs.version) {
 		writeStartupNotice(parsedArgs, `${VERSION}\n`);
@@ -1753,12 +1762,19 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 	}
 
 	const createAgentSessionImpl = deps.createAgentSession ?? createAgentSession;
-	const createSession = async (options: CreateAgentSessionOptions): Promise<CreateAgentSessionResult> => {
+	const createSession = async (
+		options: CreateAgentSessionOptions,
+		deferModelRefresh = false,
+	): Promise<CreateAgentSessionResult> => {
 		const result = await logger.time("createAgentSession", createAgentSessionImpl, options);
-		// Kick off background model discovery only after createAgentSession finishes its parallel
-		// discovery arms; running these concurrently contends for the event loop and stretches
-		// every parallel arm by ~30ms.
-		modelRegistry.refreshInBackground();
+		if (!deferModelRefresh) {
+			await yieldToEventLoop();
+			// Kick off background model discovery only after createAgentSession finishes its parallel
+			// discovery arms; running these concurrently contends for the event loop and stretches
+			// every parallel arm by ~30ms.
+			modelRegistry.refreshInBackground();
+			await yieldToEventLoop();
+		}
 		return result;
 	};
 
@@ -1867,12 +1883,15 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 		// keeps the default, which writes to stderr as they arrive.
 		const operatorNotices = isInteractive ? new OperatorNotices() : new OperatorNotices(stderrNoticeSink);
 		const { session, setToolUIContext, setToolNotifier, modelFallbackMessage, lspServers, mcpManager } =
-			await createSession({
-				...sessionOptions,
-				eventBus,
-				operatorNotices,
-				preloadedExtensions: extensionsResult,
-			});
+			await createSession(
+				{
+					...sessionOptions,
+					eventBus,
+					operatorNotices,
+					preloadedExtensions: extensionsResult,
+				},
+				isInteractive,
+			);
 
 		// Cold-revive support: a `parked` subagent ref restored from disk (the persisted-subagent
 		// scan, collab mirror, resumed process) has a sessionFile but no in-memory

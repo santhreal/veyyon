@@ -92,13 +92,13 @@ describe("a moved file keeps every byte but its paths", () => {
 	 */
 	it("reads a ledger covering the whole move", () => {
 		expect(ledger.generatedFrom).toMatch(/^[0-9a-f]{40}$/);
-		expect(rows.length).toBe(4805);
+		expect(rows.length).toBe(4804);
 		const buckets = new Map<string, number>();
 		for (const [, record] of rows) buckets.set(record.differs, (buckets.get(record.differs) ?? 0) + 1);
 		expect([...buckets].sort()).toEqual([
-			["changed", 386],
-			["imports-and-comments-only", 816],
-			["none", 3603],
+			["changed", 396],
+			["imports-and-comments-only", 811],
+			["none", 3597],
 		]);
 		expect(rewrites.length).toBeGreaterThan(50);
 		const paths = rows.map(([relative]) => relative);
@@ -246,7 +246,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.hash || hash !== record.mainHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(unchanged).toBe(3603);
+		expect(unchanged).toBe(3597);
 	});
 
 	/**
@@ -265,7 +265,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.structuralHash || hash !== record.mainStructuralHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(importOnly).toBe(816);
+		expect(importOnly).toBe(811);
 	});
 
 	/**
@@ -275,7 +275,7 @@ describe("a moved file keeps every byte but its paths", () => {
 	 */
 	it("explains every file whose content really changed", () => {
 		const changed = rows.filter(([, record]) => record.differs === "changed");
-		expect(changed.length).toBe(386);
+		expect(changed.length).toBe(396);
 		const unexplained: string[] = [];
 		const drifted: string[] = [];
 		for (const [relative, record] of changed) {
@@ -301,6 +301,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			"changelog-or-readme",
 			"colocated-test",
 			"contract-extraction",
+			"deferred-tool-initialization",
 			"diagnostic-grouping-owner",
 			"engine-consumer",
 			"extracted-to-utils",
@@ -312,11 +313,13 @@ describe("a moved file keeps every byte but its paths", () => {
 			"oracle-freeze",
 			"overflow-rescue-row",
 			"plugin-path-expectation",
+			"plugin-runtime-validation",
 			"plugin-source",
 			"relocated-member-path",
 			"rust-path-expectation",
 			"shared-mode-seed",
 			"site-models-regen",
+			"startup-initialization",
 			"terminal-readout",
 			"vendored-manifest",
 			"view-conversion",

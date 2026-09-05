@@ -34,6 +34,7 @@ import { resolveAvailablePersonalities } from "../../../config/personality-resol
 import { settings } from "../../../config/settings-instance";
 import { disableProvider, enableProvider } from "../../../discovery";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../../../discovery/helpers";
+import { formatProviderName } from "../../../session/account-format";
 import {
 	accountDisplayLabel,
 	applyCredentialHealth,
@@ -42,7 +43,6 @@ import {
 	loadAccountInventory,
 } from "../../../session/account-inventory";
 import { BackgroundSessions } from "../../../session/background-sessions";
-import { formatProviderName } from "../../../slash-commands/helpers/format";
 import {
 	describeRedeemOutcome,
 	type ResetUsageAccount,

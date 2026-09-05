@@ -69,6 +69,11 @@ named in the log once. `stripWorkPrefix: false` turns the whole step off.
 A project inside a temporary directory is shown relative to that temporary directory instead,
 with its own icon, whatever `displayRoots` says.
 
+The launch composer accepts input while the session initializes. Enter submits the
+current text and attachments after initialization completes. Later drafts remain
+editable and are not cleared by the earlier submission. Input buffered before the
+launch card appears remains a draft; a buffered Enter does not submit it.
+
 The launch card draws the whole row before the session mounts. The working directory comes from the
 process, the branch from `.git/HEAD` and its ref files, and the mode from config. The model name,
 the effort beside it, the dirty marker (`*`) and the context gauge are what a previous launch

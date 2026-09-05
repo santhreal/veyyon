@@ -69,6 +69,7 @@ const DOMAIN_REACH: Record<string, string[]> = {
 		"npm:@veyyon/catalog",
 		"npm:@veyyon/kernel",
 		"npm:@veyyon/model",
+		"npm:@veyyon/utils",
 		"thinking/",
 	],
 	"providers.ts": ["config/", "npm:@veyyon/kernel", "npm:@veyyon/utils", "npm:yaml", "speech/", "tiny/", "tools/"],

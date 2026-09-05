@@ -35,7 +35,7 @@ process argv
 src/cli.ts (runCli)            ── worker-host dispatch + Bun version guard;
    │  default subcommand: launch    argv normalization
    ▼
-src/commands/* (+ src/cli/)   ── per-command adapters
+src/commands/* (+ src/cli/)   ── per-command adapters (launch runs prologue + paints first frame)
    │
    ▼
 src/main.ts (runRootCommand)  ── theme / settings / model registry / session opts
@@ -43,7 +43,7 @@ src/main.ts (runRootCommand)  ── theme / settings / model registry / session
    ▼
 createAgentSession(...)        ── src/sdk.ts → AgentSession
    │
-   ├── InteractiveMode   (src/modes/terminal/, TUI event loop)
+   ├── InteractiveMode   (src/modes/terminal/, TUI event loop; adopts first frame)
    ├── runPrintMode      (one-shot text/json)
    └── runRpcMode        (JSONL stdin/stdout server)
 ```

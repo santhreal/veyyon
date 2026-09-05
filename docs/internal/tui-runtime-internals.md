@@ -29,7 +29,7 @@ Boundary rule: the TUI engine is message-agnostic. It only knows `Component.rend
 
 ## Boot and component tree assembly
 
-`InteractiveMode` constructs `TUI(new ProcessTerminal(), settings.get("showHardwareCursor"))`, applies `tui.maxInlineImages` and Kitty text-sizing settings, then creates persistent containers:
+`InteractiveMode` adopts the pre-painted `FirstFrame` (reusing `ui`, `hero`, `editor`, `editorContainer`, and `keybindings`) when available, or constructs `TUI(new ProcessTerminal(), settings.get("showHardwareCursor"))` and applies `tui.maxInlineImages` and Kitty text-sizing settings. It then creates persistent containers:
 
 - `chatContainer` (a `TranscriptContainer`)
 - `pendingMessagesContainer`

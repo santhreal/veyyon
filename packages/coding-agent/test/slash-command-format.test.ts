@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as settingsModule from "@veyyon/coding-agent/config/settings";
-import { formatDurationCoarse, renderAsciiBar } from "@veyyon/coding-agent/slash-commands/helpers/format";
+import { formatDurationCoarse } from "@veyyon/coding-agent/session/account-format";
+import { renderAsciiBar } from "@veyyon/coding-agent/slash-commands/helpers/format";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 
 const testTheme = {

@@ -219,6 +219,32 @@ export function derivePrefixRewrites(pairs: readonly [string, string][]): [strin
  */
 const GROUPS: readonly { name: string; matches: (relative: string) => boolean; reason: string }[] = [
 	{
+		name: "startup-initialization",
+		matches: relative =>
+			relative === "packages/coding-agent/src/cli/runtime-stages.ts" ||
+			/^packages\/coding-agent\/src\/modes\/terminal\/(?:first-frame\.ts|interactive-mode\.ts|controllers\/input-controller\.ts|components\/composer\/(?:custom-editor|composer-chrome)\.ts|components\/status-line\/(?:component|session-facts|types)\.ts)$/.test(
+				relative,
+			),
+		reason:
+			"The launch composer and initialized session share location and token metadata, retain input during handover, and defer runtime initialization. Behavioral and visual startup checks establish preservation; these rows record the source changes.",
+	},
+	{
+		name: "deferred-tool-initialization",
+		matches: relative =>
+			/^packages\/coding-agent\/src\/tools\/(?:fs\/read|search\/(?:ast-edit|structure-search|text-search)|shell\/eval|web\/fetch)\.ts$/.test(
+				relative,
+			),
+		reason:
+			"Tool imports follow the domain split and defer optional execution dependencies until an enabled request. Local reads and transcript previews do not initialize URL readers or evaluator implementations.",
+	},
+	{
+		name: "plugin-runtime-validation",
+		matches: relative =>
+			relative === "kernel/src/loader/manifest-key.ts" || relative === "kernel/src/loader/plugins/runtime-config.ts",
+		reason:
+			"The plugin loader accepts absent manifest holders and normalizes malformed plugin and settings maps to empty records before discovery reads persisted configuration.",
+	},
+	{
 		name: "vendored-manifest",
 		matches: relative => relative.startsWith("natives/vendor/") && relative.endsWith("Cargo.toml"),
 		reason:

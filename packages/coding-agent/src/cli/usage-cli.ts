@@ -14,10 +14,10 @@ import { SUB_CELL_BAR_RAMP, subCellBar } from "@veyyon/utils/bar";
 import chalk from "chalk";
 import { credentialRemedySentence } from "../config/missing-credentials";
 import { ModelRegistry } from "../config/model-registry";
+import { formatProviderName } from "../session/account-format";
 // `session/auth-broker-config`, which OWNS this, not the `sdk` barrel that re-exports it: the barrel is
 // the whole application and this file wants one function.
 import { discoverAuthStorage } from "../session/auth-broker-config";
-import { formatProviderName } from "../slash-commands/helpers/format";
 
 const BAR_WIDTH = 28;
 
