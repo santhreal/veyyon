@@ -14,6 +14,7 @@ import { theme } from "../../modes/theme/theme";
 import { formatProviderName } from "../../slash-commands/helpers/format";
 import { openPath } from "../../utils/open";
 import {
+	CARD_BODY_COL_INSET,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
@@ -73,6 +74,8 @@ export class LoginDialogComponent implements Component {
 	#abortController = new AbortController();
 	#inputResolver?: (value: string) => void;
 	#inputRejecter?: (error: Error) => void;
+	/** Body line the field was painted on in the last frame, or -1 while no question is asked. */
+	#inputBodyLine = -1;
 	#auth?: AuthState;
 	#prompt?: PromptState;
 	#status?: string;
@@ -198,9 +201,11 @@ export class LoginDialogComponent implements Component {
 		}
 
 		const prompt = this.#prompt;
+		this.#inputBodyLine = -1;
 		if (prompt) {
 			if (body.length > 0) body.push("");
 			say(theme.fg("text", prompt.message));
+			this.#inputBodyLine = body.length;
 			body.push(...this.#input.render(dims.contentWidth));
 			if (prompt.placeholder) {
 				body.push(theme.fg("dim", `looks like ${prompt.placeholder}`));
@@ -257,6 +262,20 @@ export class LoginDialogComponent implements Component {
 		) {
 			this.#escape();
 			return true;
+		}
+		// A click on the field places its caret; the pasted key is then editable
+		// where the pointer landed rather than only at its end.
+		const geometry = this.#shellGeometry;
+		if (geometry && event.leftClick && this.#prompt && this.#inputBodyLine >= 0) {
+			const line = event.row - geometry.bodyRowStart;
+			if (line >= 0 && line < geometry.bodyRowCount) {
+				this.#input.routeMouse(
+					event,
+					line - this.#inputBodyLine,
+					event.col - geometry.cardColStart - CARD_BODY_COL_INSET,
+				);
+				this.#tui.requestRender();
+			}
 		}
 		return true;
 	}

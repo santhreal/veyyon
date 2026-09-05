@@ -536,8 +536,8 @@ git -C "${WIDE}" -c commit.gpgsign=false commit -q -m "seed the normalizer"
 # The autoresearch surfaces -- the status row, the run screen, and the widget
 # they replaced -- render from a stored session and its logged runs. A scene
 # cannot produce those: the loop needs a harness in the tree and a model willing
-# to spend an hour in it, which is why the setup-console scene stops at the
-# console. The session is seeded through the product's own storage API instead,
+# to spend an hour in it, which is why the console scene never presses Start.
+# The session is seeded through the product's own storage API instead,
 # and the scene reaches it the way a user reaches yesterday's run.
 #
 # Keyed off the scene name rather than a knob the caller passes: a re-record

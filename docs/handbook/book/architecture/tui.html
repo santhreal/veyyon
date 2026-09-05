@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c757fa25.js";
+            window.path_to_searchindex_js = "../searchindex-871f1173.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -282,14 +282,14 @@ render(width: number): readonly string[] {
     keybindings: KeybindingsManager,
     done: (result: T) =&gt; void,
   ) =&gt; (Component &amp; { dispose?(): void }) | Promise&lt;Component &amp; { dispose?(): void }&gt;,
-  options?: { overlay?: boolean },
+  options?: { overlay?: boolean | OverlayOptions },
 ): Promise&lt;T&gt;
 </code></pre>
 <p>Behavior in interactive mode (<code>extension-ui-controller.ts</code>):</p>
 <ul>
 <li>Saves editor text.</li>
 <li>Without <code>options.overlay</code>, replaces the editor component with your component.</li>
-<li>With <code>options.overlay</code>, mounts your component as a bottom-centered overlay above the composer zone instead of replacing the editor; the prompt and status line remain visible.</li>
+<li>With <code>options.overlay: true</code>, mounts your component as a bottom-centered overlay above the composer zone instead of replacing the editor; the prompt and status line remain visible. An <code>OverlayOptions</code> object mounts it with that geometry instead (a centered card, a fixed width). Either way a component that implements <code>MouseRoutable</code> receives the wheel and click reports inside its bounds.</li>
 <li>Focuses your component.</li>
 <li>On <code>done(result)</code>: calls <code>component.dispose?.()</code>, hides the overlay if present, restores editor + text for non-overlay flows, focuses editor, resolves promise.
 So <code>done(...)</code> is mandatory for completion.</li>

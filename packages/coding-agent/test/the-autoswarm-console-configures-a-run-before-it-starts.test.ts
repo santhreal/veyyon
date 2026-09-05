@@ -1,344 +1,259 @@
 /**
- * WHY: `/autoswarm` is configured in a console rather than through command
- * arguments, so every rule a user relies on lives in keystroke handling: which
- * row the keys reach, where a value stops, whether Enter can start a run that
- * has nothing to optimize.
+ * WHY: the console model and the setup form around it govern how a loop is
+ * configured before it starts or while it runs. Every rule the operator
+ * relies on is pressed here against the production form: numeric clamping of
+ * breadth and attempts, the keys that flip certification, digit and step
+ * editing of the iteration cap, start blockers that keep an empty goal or an
+ * unresolvable model from starting, the action matrix across loop states,
+ * and the form listing every setup field.
  *
- * The class this closes is a key acting on the wrong row, or acting where it
- * should not act at all — typing that edits a number, space that inserts a
- * character into a toggle, an arrow that walks past a bound, Enter that starts
- * an empty run. Each is invisible to a type check, because every field is a
- * property on one object and every key is a string.
+ * The class this closes is invalid run configuration, arrow bounds overflow,
+ * a start that goes through on a missing goal or an unknown model, a
+ * corrupted action matrix, and a setup field the form forgot.
  *
- * What it does not catch: how the frame looks. Colour, spacing and clipping are
- * the renderer's, and this suite reads a passthrough theme.
+ * What it does not catch: theme colours or the card's frame layout, which
+ * the renderer and theme suites check.
  */
 import { describe, expect, it } from "bun:test";
 import {
-	handleSetupKey,
-	renderSetupConsole,
-	SwarmSetupModel,
-	setupRows,
-} from "@veyyon/coding-agent/autoresearch/setup-console";
-import { MAX_ATTEMPTS, MAX_BREADTH, MIN_ATTEMPTS, MIN_BREADTH } from "@veyyon/coding-agent/autoresearch/swarm";
+	ACTION_FIELD,
+	actionsFor,
+	type ConsoleAction,
+	type ConsoleFieldId,
+	type ConsoleSituation,
+	FIELD_LABELS,
+} from "@veyyon/coding-agent/autoresearch/console";
+import { MAX_ATTEMPTS, MAX_BREADTH, MIN_ATTEMPTS, MIN_SWARM_BREADTH } from "@veyyon/coding-agent/autoresearch/swarm";
+import { driveConsole, NO_SESSION, recordingHost } from "./helpers/autoswarm-console";
+import { useTruecolorTheme } from "./helpers/theme-assertions";
 
-const DOWN = "\x1b[B";
-const UP = "\x1b[A";
 const LEFT = "\x1b[D";
 const RIGHT = "\x1b[C";
 const ENTER = "\r";
-const ESCAPE = "\x1b";
 const BACKSPACE = "\x7f";
 
-function fresh(
-	overrides: Partial<{
-		goal: string;
-		breadth: number;
-		attempts: number;
-		certify: boolean;
-		armModels: string[];
-		modelExists: (spec: string) => boolean;
-		context: SwarmSetupModel["context"];
-	}> = {},
-) {
-	return new SwarmSetupModel({
-		goal: "make it faster",
-		breadth: 3,
-		attempts: 1,
-		certify: true,
-		armModels: [],
-		...overrides,
-	});
-}
-
-function feed(model: SwarmSetupModel, keys: string[]): Array<"start" | "cancel" | null> {
-	return keys.map(key => handleSetupKey(model, key));
-}
-
-const theme = {
-	fg: (_name: string, text: string) => text,
-	bold: (text: string) => text,
-} as unknown as Parameters<typeof renderSetupConsole>[2];
+const WITH_SESSION: ConsoleSituation = {
+	...NO_SESSION,
+	session: { name: "bench", branch: "autoresearch/bench", runs: 3 },
+	harness: true,
+};
 
 describe("the autoswarm console configures a run before it starts", () => {
-	it("walks every field and wraps in both directions", () => {
-		// Every row must be reachable. A row the cursor cannot land on is a
-		// setting nobody can change, which is the same as not shipping it.
-		const model = fresh();
-		const ids = setupRows(model).map(row => row.id);
-		expect(ids).toEqual(["goal", "breadth", "models", "attempts", "certify"]);
+	useTruecolorTheme("dark");
 
-		const seen: string[] = [model.field];
-		for (let index = 0; index < ids.length; index++) {
-			handleSetupKey(model, DOWN);
-			seen.push(model.field);
-		}
-		expect(seen).toEqual(["goal", "breadth", "models", "attempts", "certify", "goal"]);
+	it("clamps breadth to MIN_SWARM_BREADTH..MAX_BREADTH and attempts to MIN_ATTEMPTS..MAX_ATTEMPTS via arrows", () => {
+		const { model, press } = driveConsole({ breadth: 3, attempts: 2 });
 
-		handleSetupKey(model, UP);
-		expect(model.field).toBe("certify");
-	});
-
-	it("clamps each number at both ends rather than running past them", () => {
-		const model = fresh({ breadth: MIN_BREADTH, attempts: MIN_ATTEMPTS });
-		handleSetupKey(model, DOWN);
-		feed(model, Array<string>(MAX_BREADTH + 4).fill(RIGHT));
+		for (let i = 0; i < 10; i++) press("breadth", LEFT);
+		expect(model.breadth).toBe(MIN_SWARM_BREADTH);
+		for (let i = 0; i < 20; i++) press("breadth", RIGHT);
 		expect(model.breadth).toBe(MAX_BREADTH);
-		feed(model, Array<string>(MAX_BREADTH + 4).fill(LEFT));
-		expect(model.breadth).toBe(MIN_BREADTH);
 
-		// Breadth is back at its minimum here, so the models row is gone and one
-		// step down lands on attempts.
-		handleSetupKey(model, DOWN);
-		feed(model, Array<string>(MAX_ATTEMPTS + 4).fill(RIGHT));
-		expect(model.attempts).toBe(MAX_ATTEMPTS);
-		feed(model, Array<string>(MAX_ATTEMPTS + 4).fill(LEFT));
+		for (let i = 0; i < 15; i++) press("attempts", LEFT);
 		expect(model.attempts).toBe(MIN_ATTEMPTS);
+		for (let i = 0; i < 25; i++) press("attempts", RIGHT);
+		expect(model.attempts).toBe(MAX_ATTEMPTS);
+
+		// Constructor clamping
+		expect(driveConsole({ breadth: 0 }).model.breadth).toBe(MIN_SWARM_BREADTH);
+		expect(driveConsole({ breadth: 99 }).model.breadth).toBe(MAX_BREADTH);
+		expect(driveConsole({ attempts: -5 }).model.attempts).toBe(MIN_ATTEMPTS);
+		expect(driveConsole({ attempts: 50 }).model.attempts).toBe(MAX_ATTEMPTS);
+		expect(driveConsole({ breadth: Number.NaN }).model.breadth).toBe(MIN_SWARM_BREADTH);
 	});
 
-	it("clamps a value it was constructed with, not only one the keys produced", () => {
-		// The console opens on a session's stored breadth. A database row from a
-		// future version, or a hand-edited one, must not put the cursor on a
-		// value the arrows cannot leave.
-		expect(fresh({ breadth: 99 }).breadth).toBe(MAX_BREADTH);
-		expect(fresh({ breadth: 0 }).breadth).toBe(MIN_BREADTH);
-		expect(fresh({ attempts: 99 }).attempts).toBe(MAX_ATTEMPTS);
-		expect(fresh({ attempts: -3 }).attempts).toBe(MIN_ATTEMPTS);
-		expect(fresh({ breadth: Number.NaN }).breadth).toBe(MIN_BREADTH);
-	});
+	it("toggles certify on left, right, space, and enter", () => {
+		const { model, press } = driveConsole({ certify: true });
 
-	it("types into the goal and nowhere else", () => {
-		const model = fresh({ goal: "" });
-		feed(model, ["g", "o", " ", "f", "a", "s", "t"]);
-		expect(model.goal).toBe("go fast");
-
-		// On a number row the same characters must not become text, and must not
-		// silently edit the number either.
-		handleSetupKey(model, DOWN);
-		const breadthBefore = model.breadth;
-		feed(model, ["7", "x"]);
-		expect(model.goal).toBe("go fast");
-		expect(model.breadth).toBe(breadthBefore);
-	});
-
-	it("uses space to toggle off the goal row and as a character on it", () => {
-		const model = fresh({ goal: "a", certify: true });
-		handleSetupKey(model, " ");
-		expect(model.goal).toBe("a ");
-		expect(model.certify).toBe(true);
-
-		feed(model, [DOWN, DOWN, DOWN, DOWN, " "]);
-		expect(model.field).toBe("certify");
+		press("certify", LEFT);
 		expect(model.certify).toBe(false);
-		expect(model.goal).toBe("a ");
-		handleSetupKey(model, " ");
+		press("certify", RIGHT);
 		expect(model.certify).toBe(true);
+		press("certify", " ");
+		expect(model.certify).toBe(false);
+		press("certify", ENTER);
+		expect(model.certify).toBe(true);
+		press("certify", "\n");
+		expect(model.certify).toBe(false);
 	});
 
-	it("backspaces the goal and stops at empty without throwing", () => {
-		const model = fresh({ goal: "ab" });
-		feed(model, [BACKSPACE, BACKSPACE, BACKSPACE, BACKSPACE]);
-		expect(model.goal).toBe("");
+	it("steps iterations, takes digits, drops digits on backspace, and renders auto at 0", () => {
+		const { model, press, frame } = driveConsole({ maxIterations: null });
+		const iterationsRow = (): string => frame().find(line => line.includes("Iterations")) ?? "";
 
-		// Backspace on a number row must not decrement it, and must not reach
-		// back into the goal either — the row it would silently eat.
-		const numbers = fresh({ goal: "keep me", breadth: 3 });
-		handleSetupKey(numbers, DOWN);
-		feed(numbers, [BACKSPACE, BACKSPACE]);
-		expect(numbers.breadth).toBe(3);
-		expect(numbers.goal).toBe("keep me");
+		// Initial 0 is auto
+		expect(model.iterations).toBe(0);
+		expect(iterationsRow()).toContain("auto");
+		expect(model.setup().maxIterations).toBeNull();
+
+		press("iterations", RIGHT);
+		expect(model.iterations).toBe(1);
+		expect(iterationsRow()).toContain(" 1 ");
+		expect(model.setup().maxIterations).toBe(1);
+
+		press("iterations", LEFT);
+		expect(model.iterations).toBe(0);
+		expect(iterationsRow()).toContain("auto");
+		expect(model.setup().maxIterations).toBeNull();
+
+		// Left arrow does not go below 0
+		press("iterations", LEFT);
+		expect(model.iterations).toBe(0);
+
+		// Digits typed in a row append
+		press("iterations", "2");
+		expect(model.iterations).toBe(2);
+		press("iterations", "5");
+		expect(model.iterations).toBe(25);
+		press("iterations", "0");
+		expect(model.iterations).toBe(250);
+		expect(model.setup().maxIterations).toBe(250);
+
+		// Backspace drops one digit
+		press("iterations", BACKSPACE);
+		expect(model.iterations).toBe(25);
+		press("iterations", BACKSPACE);
+		expect(model.iterations).toBe(2);
+		press("iterations", BACKSPACE);
+		expect(model.iterations).toBe(0);
+		expect(iterationsRow()).toContain("auto");
+		expect(model.setup().maxIterations).toBeNull();
 	});
 
-	it("refuses to start without a goal, and reports why on the key that refuses", () => {
-		const model = fresh({ goal: "   " });
-		expect(model.canStart()).toBe(false);
-		expect(handleSetupKey(model, ENTER)).toBeNull();
-		// The report is on the legend, beside `enter`, rather than a warning line
-		// somewhere above it: a legend that prints `enter start` while enter does
-		// nothing is the console contradicting itself.
-		const refusing = renderSetupConsole(model, 80, theme).join("\n");
-		expect(refusing).toContain("enter needs a goal");
-		expect(refusing).not.toContain("enter start");
+	it("blocks start on empty goal or unknown model and refuses Enter on the start button", () => {
+		const empty = driveConsole({ goal: "   " });
+		expect(empty.model.startBlocker()).toBe("needs a goal");
+		expect(empty.frame().join("\n")).toContain("needs a goal");
+		empty.press(ACTION_FIELD, ENTER);
+		expect(empty.host.acted).toEqual([]);
+		expect(empty.outcomes).toEqual([]);
 
-		handleSetupKey(model, "x");
-		expect(model.canStart()).toBe(true);
-		expect(handleSetupKey(model, ENTER)).toBe("start");
-		const starting = renderSetupConsole(model, 80, theme).join("\n");
-		expect(starting).toContain("enter start");
-		expect(starting).not.toContain("enter needs a goal");
+		const unknown = driveConsole(
+			{ goal: "speed", breadth: 2, armModels: ["sonnet", "mystery-ai"] },
+			recordingHost({ modelExists: spec => spec === "sonnet" }),
+		);
+		expect(unknown.model.startBlocker()).toBe('no model matches "mystery-ai"');
+		expect(unknown.frame().join("\n")).toContain('no model matches "mystery-ai"');
+		unknown.press(ACTION_FIELD, ENTER);
+		expect(unknown.host.acted).toEqual([]);
 	});
 
-	it("cancels on escape from any field", () => {
-		for (const prefix of [[], [DOWN], [DOWN, DOWN], [DOWN, DOWN, DOWN], [DOWN, DOWN, DOWN, DOWN]]) {
-			const model = fresh();
-			feed(model, prefix);
-			expect(handleSetupKey(model, ESCAPE)).toBe("cancel");
-		}
-	});
-
-	it("hands back a trimmed goal with the values that were set", () => {
-		const model = fresh({ goal: "  make startup faster  ", breadth: 3, attempts: 1, certify: true });
-		feed(model, [DOWN, RIGHT, DOWN, DOWN, RIGHT, DOWN, " ", ENTER]);
-		expect(model.result()).toEqual({
-			goal: "make startup faster",
-			breadth: 4,
-			attempts: 2,
-			certify: false,
-			armModels: [],
-		});
-	});
-
-	it("states what the chosen breadth actually buys", () => {
-		// Breadth 2 cannot form a ring, because two arms would review each other,
-		// so the director reviews both. A console that describes a ring at breadth
-		// 2 is lying about the run. The arm count is on the cost line above this
-		// one, so this sentence carries only the topology.
-		expect(fresh({ breadth: 1 }).certifierSummary()).toContain("Serial");
-		expect(fresh({ breadth: 2 }).certifierSummary()).toContain("director");
-		expect(fresh({ breadth: 2 }).certifierSummary()).not.toContain("reviewed by another");
-		expect(fresh({ breadth: 3 }).certifierSummary()).toContain("reviewed by another");
-		expect(fresh({ breadth: 3 }).certifierSummary()).not.toContain("director");
-		expect(fresh({ breadth: 4, certify: false }).certifierSummary()).toContain("No cross-review");
-	});
-
-	it("renders every row, the current values and the key legend", () => {
-		const model = fresh({ goal: "make it faster", breadth: 5, attempts: 2, certify: false });
-		const frame = renderSetupConsole(model, 80, theme).join("\n");
-		for (const label of ["Goal", "Breadth", "Attempts", "Certification"]) {
-			expect(frame).toContain(label);
-		}
-		expect(frame).toContain("make it faster");
-		expect(frame).toContain("5");
-		expect(frame).toContain("off");
-		expect(frame).toContain("esc cancel");
-	});
-
-	it("states on the frame whether enter resumes a session or starts one, and whether a harness exists", () => {
-		// The same console opens over three trees. Without the line, a user
-		// reconfiguring a 12-run session and a user starting from nothing read the
-		// same screen and press the same key for opposite outcomes.
-		const resuming = new SwarmSetupModel({
+	it("calls host.act('start') and closes on the start button with a valid setup", () => {
+		const { model, host, press, outcomes } = driveConsole({
 			goal: "make it faster",
-			breadth: 3,
-			attempts: 1,
-			certify: true,
-			armModels: [],
-			context: { session: { name: "sess-1", branch: "autoresearch/x", runs: 12 }, harness: true },
+			breadth: 2,
+			armModels: ["sonnet", "gpt-5"],
 		});
-		const resumingFrame = renderSetupConsole(resuming, 100, theme).join("\n");
-		expect(resumingFrame).toContain("Resumes session sess-1 on autoresearch/x (12 runs)");
-		expect(resumingFrame).toContain("enter resume");
-		expect(resumingFrame).not.toContain("enter start");
-
-		const withHarness = fresh({ context: { session: null, harness: true } });
-		const withHarnessFrame = renderSetupConsole(withHarness, 100, theme).join("\n");
-		expect(withHarnessFrame).toContain("autoresearch.sh found");
-		expect(withHarnessFrame).toContain("enter start");
-
-		const bare = fresh({ context: { session: null, harness: false } });
-		const bareFrame = renderSetupConsole(bare, 100, theme).join("\n");
-		expect(bareFrame).toContain("No autoresearch.sh yet");
-		expect(bareFrame).toContain("enter start");
-		expect(bareFrame).not.toContain("Resumes session");
+		expect(model.startBlocker()).toBeNull();
+		press(ACTION_FIELD, ENTER);
+		expect(host.acted).toEqual(["start"]);
+		expect(outcomes).toEqual(["close"]);
 	});
 
-	it("lines the hints up in one column whatever the values are", () => {
-		// `on` is two cells and `3` is one, so a hint appended straight after the
-		// value hangs at a different place on every row and reads as ragged.
-		//
-		// The hints come from `setupRows` rather than from three strings copied
-		// into this file: a reworded hint used to fall out of the filter and take
-		// its row's alignment out of the assertion with it, and a fourth hinted
-		// field would never have been checked at all.
-		const model = fresh({ breadth: 3, attempts: 1, certify: true });
-		const hintColumns = (candidate: SwarmSetupModel): number[] =>
-			setupRows(candidate)
-				.filter(row => row.hint.length > 0)
-				.map(row => {
-					const line = renderSetupConsole(candidate, 100, theme).find(text => text.includes(`  ${row.hint}`));
-					// -1 for a hint the console did not print, so a dropped row fails
-					// here rather than quietly shrinking the set below.
-					return line === undefined ? -1 : line.indexOf(`  ${row.hint}`);
-				});
-
-		const columns = hintColumns(model);
-		expect(columns).toHaveLength(3);
-		expect(columns.every(column => column > 0)).toBe(true);
-		expect(new Set(columns).size).toBe(1);
-
-		// And it stays one column when a value changes width.
-		handleSetupKey(model, DOWN);
-		feed(model, [DOWN, DOWN, DOWN, " "]);
-		expect(model.certify).toBe(false);
-		expect(hintColumns(model)).toEqual(columns);
+	it("stays open when host.act returns 'stay'", () => {
+		const host = recordingHost();
+		host.act = action => {
+			host.acted.push(action);
+			return "stay";
+		};
+		const { press, outcomes } = driveConsole({ goal: "speed", breadth: 2, certify: false }, host);
+		press(ACTION_FIELD, ENTER);
+		expect(host.acted).toEqual(["start"]);
+		expect(outcomes).toEqual(["stay"]);
 	});
 
-	it("shows a placeholder for an empty goal instead of a blank row", () => {
-		const frame = renderSetupConsole(fresh({ goal: "" }), 80, theme).join("\n");
-		expect(frame).toContain("what should get faster?");
-	});
+	it("sweeps actionsFor across all combinations of session, modeOn, busy, interrupted, and baseline", () => {
+		const bools = [false, true];
 
-	it("keeps every rendered line inside the given width", () => {
-		// The console is an overlay. A line wider than the terminal wraps and
-		// pushes the legend off screen, which is how a user loses the exit key.
-		const model = fresh({ goal: "x".repeat(400) });
-		for (const width of [40, 60, 80, 120]) {
-			for (const line of renderSetupConsole(model, width, theme)) {
-				expect(line.length).toBeLessThanOrEqual(width);
+		for (const hasSession of bools) {
+			for (const modeOn of bools) {
+				for (const busy of bools) {
+					for (const interrupted of bools) {
+						for (const baseline of bools) {
+							const situation: ConsoleSituation = {
+								session: hasSession ? { name: "bench", branch: "autoresearch/bench", runs: 3 } : null,
+								harness: true,
+								modeOn,
+								busy,
+								interrupted,
+								pausedOnBranch: null,
+								baseline,
+							};
+
+							const actions = actionsFor(situation);
+
+							if (!hasSession) {
+								expect(actions).toEqual(["start"]);
+							} else {
+								const expected: ConsoleAction[] = [];
+								if (modeOn && busy && !interrupted) {
+									expected.push("pause");
+								} else {
+									expected.push("resume");
+								}
+								expected.push("new");
+								if (modeOn) {
+									expected.push("stop");
+								}
+								expected.push("clear");
+								if (baseline) {
+									expected.push("reset");
+								}
+								expect(actions).toEqual(expected);
+							}
+						}
+					}
+				}
 			}
 		}
 	});
 
-	it("keeps the end of a long goal in view instead of running off the edge", () => {
-		// Typing past the right edge must keep showing the characters being
-		// typed. A left-anchored value freezes on screen while the goal grows,
-		// so the user cannot see what they are writing.
-		const model = fresh({ goal: "" });
-		feed(model, "make the cold start of the whole binary measurably faster".split(""));
-		const frame = renderSetupConsole(model, 60, theme).join("\n");
-		expect(frame).toContain("faster");
-		expect(frame).toContain("…");
-		expect(frame).not.toContain("make the cold start");
-	});
-
-	it("ignores an unhandled escape sequence rather than typing it", () => {
-		// A function key or a mouse report must not land in the goal as literal
-		// bracket-codes, which is what a naive printable check would do.
-		const model = fresh({ goal: "keep" });
-		for (const sequence of ["\x1b[5~", "\x1b[15~", "\x1bOP", "\x1b[M   "]) {
-			expect(handleSetupKey(model, sequence)).toBeNull();
+	it("lists every setup field on the form, each under its label, and the button last among them", () => {
+		const { form, frame } = driveConsole({ breadth: 3, armModels: ["sonnet", "gpt-5"] });
+		// Swept from the label table, so a field added there fails here until the form lists it.
+		const ids = Object.keys(FIELD_LABELS) as ConsoleFieldId[];
+		const painted = frame();
+		for (const id of ids) {
+			form.focus(id);
+			expect(form.focusedId).toBe(id);
+			expect(painted.some(line => line.includes(FIELD_LABELS[id]))).toBe(true);
 		}
-		expect(model.goal).toBe("keep");
+		form.focus(ACTION_FIELD);
+		expect(form.focusedId).toBe(ACTION_FIELD);
+		// A row that is no field never takes the ring.
+		form.focus("cost");
+		expect(form.focusedId).toBe(ACTION_FIELD);
 	});
 
-	it("states the harness runs the configuration commits to, at every reachable setting", () => {
-		// Breadth and attempts multiply, and neither row states it: breadth 4 with
-		// 3 attempts is twelve builds and twelve measurements per iteration. A
-		// user setting the second knob cannot see the cost of the first, which is
-		// how a loop meant to run over lunch gets configured to run overnight.
-		for (let breadth = MIN_BREADTH; breadth <= MAX_BREADTH; breadth += 1) {
-			for (let attempts = MIN_ATTEMPTS; attempts <= MAX_ATTEMPTS; attempts += 1) {
-				const model = fresh({ breadth, attempts });
-				const flat = renderSetupConsole(model, 100, theme).join("\n").replace(/\s+/g, " ");
-				const total = breadth * attempts;
-				const expected =
-					total === 1
-						? `${breadth} experiment × ${attempts} attempts: 1 harness run per iteration.`
-						: `${breadth} ${breadth === 1 ? "experiment" : "arms"} × ${attempts} attempts: up to ${total} harness runs per iteration.`;
-				expect(flat).toContain(expected);
-			}
-		}
-	});
+	it("offers 'new' only with a session, blocks it on empty goal or unknown model, and calls host.act('new') once valid", () => {
+		expect(actionsFor(NO_SESSION).includes("new")).toBe(false);
+		expect(actionsFor(WITH_SESSION).includes("new")).toBe(true);
 
-	it("holds its height while the goal is emptied and retyped", () => {
-		// The refusal used to be a line of its own that appeared the moment the
-		// goal was cleared, so the legend moved under the reader's eye on the
-		// keystroke that cleared it and moved back on the one that fixed it.
-		// What the legend then prints is the previous test's; this one is the shape.
-		const model = fresh({ goal: "x" });
-		const withGoal = renderSetupConsole(model, 80, theme);
-		handleSetupKey(model, BACKSPACE);
-		expect(model.goal).toBe("");
-		expect(renderSetupConsole(model, 80, theme).length).toBe(withGoal.length);
+		// With a session the primary action is Resume; New is a second action
+		// the model runs on request, blocked by the same setup rules as Start.
+		const empty = driveConsole({ goal: "   " }, recordingHost({ situation: () => WITH_SESSION }));
+		expect(empty.model.blocker("new")).toBe("needs a goal");
+		expect(empty.model.perform("new")).toBe("refused");
+		expect(empty.host.acted).toEqual([]);
+
+		const unknown = driveConsole(
+			{ goal: "speed", breadth: 2, armModels: ["sonnet", "mystery-ai"] },
+			recordingHost({ situation: () => WITH_SESSION, modelExists: spec => spec === "sonnet" }),
+		);
+		expect(unknown.model.blocker("new")).toBe('no model matches "mystery-ai"');
+		expect(unknown.model.perform("new")).toBe("refused");
+		expect(unknown.host.acted).toEqual([]);
+
+		const valid = driveConsole(
+			{ goal: "speed", breadth: 2, armModels: ["sonnet"] },
+			recordingHost({ situation: () => WITH_SESSION }),
+		);
+		expect(valid.model.blocker("new")).toBeNull();
+		expect(valid.model.perform("new")).toBe("close");
+		expect(valid.host.acted).toEqual(["new"]);
+		// An action the situation does not offer is refused before the setup is read.
+		expect(valid.model.blocker("start")).toBe("not available now");
+		expect(valid.model.perform("start")).toBe("refused");
+		expect(valid.host.acted).toEqual(["new"]);
 	});
 });

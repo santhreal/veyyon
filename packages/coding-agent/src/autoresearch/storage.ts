@@ -508,7 +508,7 @@ export class AutoresearchStorage {
 			setClauses.push("notes = ?");
 			values.push(updates.notes);
 		}
-		// The four swarm settings the setup console reopens on: declared by
+		// The swarm settings the console edits on a live session: declared by
 		// `UpdateSessionParams` and silently dropped here, so raising breadth on a
 		// live session left the loop running its old shape.
 		if (updates.breadth !== undefined) {

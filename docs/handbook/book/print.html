@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-c757fa25.js";
+            window.path_to_searchindex_js = "searchindex-871f1173.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-b613f6a6.js"></script>
@@ -6559,6 +6559,28 @@ not. It stops when you interrupt it or the iteration cap is reached.</p>
 <p>Start it with <code>/autoresearch</code>, optionally with a goal:</p>
 <pre><code>/autoresearch make the tokenizer faster
 </code></pre>
+<p><code>/autoresearch</code> runs one change per iteration and is driven by subcommands.
+<a href="#autoswarm">Autoswarm</a> is the same loop with several candidate arms per
+iteration, set up and driven from the <code>/autoswarm</code> console; a session started
+there is resumed, paused, stopped and cleared there.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Command</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>/autoresearch &lt;goal&gt;</code></td><td>Starts a session on the branch, or resumes the one on it with the text as context.</td></tr>
+<tr><td><code>/autoresearch</code></td><td>Opens the run screen while the loop is on; otherwise resumes the session on the branch.</td></tr>
+<tr><td><code>/autoresearch status</code></td><td>Opens the run screen.</td></tr>
+<tr><td><code>/autoresearch resume</code></td><td>Picks an interrupted or paused loop back up with nothing to add.</td></tr>
+<tr><td><code>/autoresearch goal &lt;text&gt;</code></td><td>Changes what the session on the branch optimizes.</td></tr>
+<tr><td><code>/autoresearch off</code></td><td>Leaves the mode and keeps the session.</td></tr>
+<tr><td><code>/autoresearch clear [--keep-tree|--reset-tree]</code></td><td>Closes the session; see <a href="#ending-a-session">Ending a session</a>.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Tab after <code>/autoresearch</code> completes the subcommands, and after <code>clear</code> the two
+flags.</p>
 <h2 id="the-harness"><a class="header" href="#the-harness">The harness</a></h2>
 <p>Autoresearch measures through one file, <code>autoresearch.sh</code>, in the repository
 root. Write it before the loop starts. It must exit 0 and print at least one
@@ -6606,8 +6628,8 @@ own benchmark can improve the number without improving the code.</p>
 <p>A live loop occupies one status row:</p>
 <pre><code>autoswarm · run #5 · 1m 12s · 4 runs · 3 kept · 3 arms · best 168.40ms -12.6% · conf 3.2x · ctrl+x runs
 </code></pre>
-<p><code>ctrl+x</code> opens the run screen, and so does <code>/autoresearch</code> with nothing after
-it:</p>
+<p><code>ctrl+x</code> opens the run screen, and so does <code>/autoresearch status</code>, or a bare
+<code>/autoresearch</code> while the loop is on:</p>
 <pre><code>┌─ Autoswarm · tokenizer-laten…┬───────────────────────────────────────────────────┐
 │   OVERVIEW ───────────────── │ Best        168.40ms · -12.6% · from 192.78ms ·   │
 │ › Session                    │             run 4 · arm b                         │
@@ -6620,7 +6642,7 @@ it:</p>
 │   #1    192.78ms       base  │                                                   │
 │                              │ Breadth     3 arms per iteration                  │
 ├──────────────────────────────┴───────────────────────────────────────────────────┤
-│ up/down select   pgup/pgdn page   esc close                                      │
+│ ↑↓ row   pgup/pgdn page   esc close                                              │
 └──────────────────────────────────────────────────────────────────────────────────┘
 </code></pre>
 <p>The list holds the session, the playbook, the run in flight and every logged
@@ -6645,9 +6667,11 @@ that run rather than formatting the zero, and draws it as a <code>·</code> in t
 rather than as a height. A run whose harness printed its metric and then died
 shows that number, and the comparison is against it.</p>
 <p>Up and down move through the list, page up and page down move the detail pane by
-a full pane, and typing filters the list. Escape clears a live filter, and closes
-the screen when there is none. It is readable before the first run, where it
-shows the goal, the scope and the metric the session was configured with.</p>
+a full pane, and Escape closes the screen. Typing filters the list by run
+number, arm, verdict or change description, and the filter survives the rows
+changing under it; Escape clears a filter before it closes the screen. The
+screen is readable before the first run, where it shows the goal, the scope and
+the metric the session was configured with.</p>
 <p>On a terminal too narrow for two panes, the list is above the detail instead of
 beside it, both at the full width of the card, and the footer prints the widest
 hint that fits, down to <code>esc close</code>. The status row drops its segments from the
@@ -6658,8 +6682,8 @@ the best itself.</p>
 <h2 id="going-wider"><a class="header" href="#going-wider">Going wider</a></h2>
 <p><code>/autoresearch</code> tries one change per iteration. <a href="#autoswarm">Autoswarm</a> is
 the same loop with several candidate arms per iteration, cross-reviewed before
-one is kept. Everything on this page — the harness, segments, scope, the
-correctness warning below — applies to both.</p>
+one is kept, driven from its own console. Everything on this page — the
+harness, segments, scope, the correctness warning below — applies to both.</p>
 <h2 id="correctness-is-the-harnesss-job"><a class="header" href="#correctness-is-the-harnesss-job">Correctness is the harness’s job</a></h2>
 <p>Autoresearch compares numbers. It does not know whether the code still works,
 and nothing in the loop discovers that a faster implementation is wrong.</p>
@@ -6687,13 +6711,14 @@ degenerate cases.</p>
 </div>
 <h2 id="ending-a-session"><a class="header" href="#ending-a-session">Ending a session</a></h2>
 <p><code>/autoresearch off</code> leaves the mode and keeps the session. A bare
-<code>/autoresearch</code> opens the run screen; it does not end anything.</p>
+<code>/autoresearch</code> opens the run screen while the loop is on; it does not end
+anything.</p>
 <p>Escape during a turn stops that turn and pauses the loop without leaving the
-mode, and prints <code>Autoresearch interrupted. Send a message or /autoresearch resume to continue, /autoresearch off to leave the loop.</code> The status row reads
+mode, and prints <code>Autoresearch interrupted. Send a message or /autoresearch resume to continue; /autoresearch off stops it.</code> The status row reads
 <code>paused · send a message to resume</code>, the run screen title reads <code>(paused)</code>, the
 tools stay attached, and nothing runs until you send a message; a measurement
 that was waiting to be logged is picked up by that message. <code>/autoresearch resume</code> sends nothing but the resume, and with no session on the branch prints
-<code>No autoresearch session on this branch to resume. /autoresearch starts one.</code>
+<code>No autoresearch session on this branch to resume. /autoresearch &lt;goal&gt; starts one.</code>
 <code>/autoresearch off</code> from there leaves the mode.</p>
 <p>Text typed after the command on a live session goes to the model as context for
 the resume, and prints
@@ -6702,9 +6727,10 @@ The stored goal typed back is a resume with nothing to add: no notice, and the
 model is not told the goal a second time.</p>
 <p><code>/autoresearch clear</code> resets the worktree to the segment baseline, deletes
 untracked files and closes the session. It asks first, naming the commit it
-resets to and how many files hold uncommitted changes. The reset restores
-<code>autoresearch.sh</code> as committed on the branch. Off an <code>autoresearch/*</code> branch,
-<code>clear</code> closes the session and resets nothing. Two flags:</p>
+resets to and how many files hold uncommitted changes; a decline resets nothing
+and leaves the session open. The reset restores <code>autoresearch.sh</code> as committed
+on the branch. Off an <code>autoresearch/*</code> branch, <code>clear</code> closes the session and
+resets nothing. Two flags:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -6720,7 +6746,11 @@ resets to and how many files hold uncommitted changes. The reset restores
 misspelled <code>--keep-tree</code> cannot fall through to the reset. A <code>clear</code> that cannot
 read git status resets nothing and leaves the session open, since the
 confirmation exists to state what the reset discards.</p>
-<p><code>/autoswarm</code> takes the same subcommands.</p>
+<p>A session started from <code>/autoswarm</code> is ended from its dashboard: <code>x</code> stop,
+<code>n</code> new session, <code>c</code> clear session and <code>r</code> reset worktree are the subcommands
+above as keys.</p>
+<p>Without an interactive terminal (<code>-p</code>, a pipe) every subcommand works as
+written; only the run screen and the <code>/autoswarm</code> console need one.</p>
 <p>State is stored per repository, under the profile directory. The database is
 keyed on the primary checkout, so worktrees of one repository share it.
 <code>VEYYON_AUTORESEARCH_DB_DIR</code> overrides the location.</p>
@@ -6762,74 +6792,160 @@ PROOF_LLM_BASE_URL=http://veyyon-proof-llm:8080/v1 SCENE_MOTION_FLOOR=1 \
 <p>Autoswarm is <a href="#autoresearch">autoresearch</a> with breadth. An iteration builds
 several candidate arms instead of one change, rejects the ones that cannot be
 trusted, has the survivors review each other, and keeps at most one.</p>
-<p><code>/autoswarm</code> opens a setup console:</p>
+<p><code>/autoswarm</code> opens the console. It takes no arguments: the goal, the breadth
+and everything else are fields on the surface it opens.</p>
 <pre><code>/autoswarm
 </code></pre>
-<pre><code>Autoswarm setup
-Each iteration builds one change per arm and keeps the best. The model derives the metric from your harness.
-No autoresearch.sh yet: the first turn writes and validates one before anything is measured.
-
-› Goal          make the tokenizer faster▌
-  Breadth       3    candidate arms per iteration
-  Models        one per arm, comma separated
-  Attempts      1    retries before an arm is abandoned
-  Certification on   arms cross-review before one is kept
-
-3 arms × 1 attempts: up to 3 harness runs per iteration.
-Each arm is reviewed by another, and no pair reviews each other.
-Every arm runs on the session model.
-
-type to edit   ↑↓ field   enter start   esc cancel
+<h2 id="the-console"><a class="header" href="#the-console">The console</a></h2>
+<p><code>/autoswarm</code> opens one of two surfaces, chosen by whether the current branch
+has a session.</p>
+<h3 id="the-launcher"><a class="header" href="#the-launcher">The launcher</a></h3>
+<p>With no session on the branch, <code>/autoswarm</code> opens a centered card over the
+transcript: the setup form, a Start button and a Save-as row.</p>
+<pre><code>┌─ Autoswarm ──────────────────────────────────────────────────────────┐
+│ ▸ Goal         what to optimize                                      │
+│   Preset      swarm  wide                                            │
+│   Breadth     ◂ 3 arms ▸                                             │
+│   Models      session model for every arm                            │
+│   Attempts    1 ▸                                                    │
+│   Certify     ● on                                                   │
+│   Iterations  auto ▸                                                 │
+│   3 arms × 1 attempt: up to 3 harness runs per iteration. Each arm   │
+│   is reviewed by another, and no pair reviews each other.            │
+│   Every arm runs on the session model.                               │
+│   No autoresearch.sh yet: the first turn writes and validates one    │
+│   before anything is measured.                                       │
+│   [ Start swarm ]  needs a goal                                      │
+│   Save as     preset name                                            │
+├──────────────────────────────────────────────────────────────────────┤
+│ type the goal · enter starts the swarm   ↑↓ field   esc close        │
+└──────────────────────────────────────────────────────────────────────┘
 </code></pre>
-<p>Up and down move between fields, left and right change the focused value, space
-toggles certification, Enter starts the run and Escape leaves without starting
-one. The legend lists only the keys that act on the focused field: the arrow
-range on Breadth and Attempts, <code>type to edit</code> on Goal and Models.</p>
-<p>The line under the title states what Enter does on this branch. With no
-session it reads <code>autoresearch.sh found: enter starts measuring with it.</code> or
-<code>No autoresearch.sh yet: the first turn writes and validates one before anything is measured.</code>
-Over a live session it reads
-<code>Resumes session &lt;name&gt; on &lt;branch&gt; (&lt;n&gt; runs) with the values below.</code> and the
-legend reads <code>enter resume</code> instead of <code>enter start</code>.</p>
-<p>The first line under the fields is the harness runs one iteration costs, breadth
-multiplied by attempts. It is a ceiling: an arm that succeeds on its first
-attempt uses one. The second line is the review topology for that breadth. The
-third states which model each arm runs on. All three change with the fields
-above them.</p>
-<p>Enter does nothing while the goal is empty, and the legend reads <code>enter needs a goal</code> until one is typed. With no session on the branch, text typed after the
-command prefills the goal, so <code>/autoswarm make the tokenizer faster</code> opens the
-console with that goal already in the field. Over a session that already has a
-goal the field opens on that goal, and the typed text reaches the model as
-context for the resume; the stored goal changes only through <code>/autoswarm goal &lt;text&gt;</code> or a field that leaves the console different from it.</p>
-<p>Escape leaves without starting a run and prints <code>Autoswarm setup cancelled. Nothing was started.</code> The console is not a turn: no <code>Working…</code> loader runs under
-it while it is open.</p>
-<p><code>/autoswarm resume</code> continues an interrupted or paused session without opening
-the console: no goal, no context, the stored values. With no session on the
-branch it prints <code>No autoswarm session on this branch to resume. /autoswarm starts one.</code> and starts nothing.</p>
-<p>The console opens on whatever the current branch is already doing, so running it
-during a session shows that session’s breadth rather than the default, and
-starting applies the new values from the next iteration.</p>
-<p>A bare <code>/autoswarm</code> reopens the console rather than the run screen, because the
-console is where a live swarm is reconfigured. <code>ctrl+x</code> opens the run screen from
-either loop.</p>
+<p>The shortest path is three keys long: open, type the goal, Enter. The card
+opens with the caret on the Goal row, and Enter on that row starts the swarm
+once it holds text. Enter on the <code>Start swarm</code> button does the same. The
+button states why it cannot start while it cannot: <code>needs a goal</code> or
+<code>no model matches "&lt;spec&gt;"</code>.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Keys</th></tr>
+</thead>
+<tbody>
+<tr><td>Goal</td><td>Type to edit; a click places the caret; <code>ctrl+u</code> clears the row. Enter starts the swarm.</td></tr>
+<tr><td>Preset</td><td><code>←</code> <code>→</code> or space pick the next preset; a click picks the one under the pointer. The preset the fields equal is painted as in force; <code>delete</code> removes it when it is a saved one.</td></tr>
+<tr><td>Breadth</td><td><code>←</code> <code>→</code>, or a digit, between 2 and 8; a click on <code>◂</code> or <code>▸</code> steps.</td></tr>
+<tr><td>Models</td><td>Type one spec per arm, comma separated; <code>ctrl+u</code> clears the row.</td></tr>
+<tr><td>Attempts</td><td><code>←</code> <code>→</code>, or a digit, between 1 and 5: retries before an arm is abandoned.</td></tr>
+<tr><td>Certify</td><td><code>←</code>, <code>→</code>, space, Enter or a click toggles cross-review.</td></tr>
+<tr><td>Iterations</td><td><code>←</code> <code>→</code> or typed digits, appending as typed; backspace drops the last digit; <code>0</code> is <code>auto</code>, which leaves the cap to the model.</td></tr>
+<tr><td>Save as</td><td>Type a name; Enter saves the current shape as a preset.</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>↑</code> <code>↓</code>, <code>tab</code> and <code>shift+tab</code> move between fields, the wheel walks them, and
+a click puts the ring on the field under the pointer. Escape closes the card.
+Closing starts nothing; a field edited on the card is parked for the start, so
+the next <code>/autoswarm</code> opens with it.</p>
+<p>The notes under the fields state what one iteration costs and how the arms are
+reviewed: <code>3 arms × 1 attempt: up to 3 harness runs per iteration.</code> is a
+ceiling, since an arm that succeeds on its first attempt uses one, and
+<code>Each arm is reviewed by another, and no pair reviews each other.</code> is the review
+topology for that breadth. Both change with the fields above them. A third
+note states whether <code>autoresearch.sh</code> was found: the first turn measures with
+it, or writes and validates one before anything is measured.</p>
+<h3 id="the-dashboard"><a class="header" href="#the-dashboard">The dashboard</a></h3>
+<p>Over a session, <code>/autoswarm</code> opens the run dashboard: the ledger on the left,
+the highlighted row in full on the right, and the actions the swarm’s state
+allows on single keys along the footer.</p>
+<pre><code>┌─ Autoswarm · tokenizer-thro… ┬───────────────────────────────────────────────────┐
+│   OVERVIEW ───────────────── │ Best        41ms · -18.0% · from 50ms · run 3 ·   │
+│ › Session                    │             arm a2                                │
+│   Playbook                   │ Trend       █▆▁                                   │
+│   SEGMENT 1 ──────────────── │ Metric      duration · lower is better            │
+│   #3 a2 41ms best            │                                                   │
+│   #2 a1 47ms kept            │ Goal        make the tokenizer faster             │
+│   #1 a0 50ms base            │ Session     tokenizer-throughput                  │
+│                              │                                                   │
+│                              │ Segment     1 · 3 runs, 3 kept                    │
+│                              │ ↓ 6 more                                          │
+├──────────────────────────────┴───────────────────────────────────────────────────┤
+│ s resume   e setup   enter detail   n new session   x stop   esc close           │
+└──────────────────────────────────────────────────────────────────────────────────┘
+</code></pre>
+<p>The footer sheds hints from its end when the card is narrow, <code>esc close</code>
+last, so the primary action, <code>e setup</code> and <code>enter detail</code> outlive the rest.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>s</code></td><td>Start, or Resume over a session.</td></tr>
+<tr><td><code>p</code></td><td>Pause, offered while a turn is streaming.</td></tr>
+<tr><td><code>n</code></td><td>New session: closes the session on the branch, keeps every file and every logged run, prints <code>Closed &lt;name&gt; · N runs kept in the store. Starting a new session.</code>, and starts a fresh one with the setup as it stands. Blocked by the same conditions as Start.</td></tr>
+<tr><td><code>x</code></td><td>Stop, while the mode is on.</td></tr>
+<tr><td><code>c</code></td><td>Clear session.</td></tr>
+<tr><td><code>r</code></td><td>Reset worktree, when the session has a baseline commit.</td></tr>
+<tr><td><code>e</code></td><td>The setup form, over the same fields as the launcher, with the primary action as its button.</td></tr>
+<tr><td>Enter</td><td>The highlighted row at the full width of the card.</td></tr>
+</tbody>
+</table>
+</div>
+<p>An action runs after the dashboard closes, so a confirmation or a turn never
+opens under it. An action the situation blocks is refused on the footer with
+its reason. <code>↑</code> <code>↓</code> move through the ledger, <code>pgup</code> <code>pgdn</code> page the detail,
+the wheel scrolls the pane under the pointer and a click selects the row under
+it. Escape closes the dashboard, or returns to the ledger from the setup form
+and the detail view. Closing starts nothing and stops nothing; the swarm is
+exactly as it was.</p>
+<p>A field edited on the setup form is written to the session as it is typed.
+Breadth changed on a live session applies from the next iteration. Enter on
+the Goal row resumes the swarm.</p>
+<p>The dashboard opens on whatever the current branch is already doing, so opening
+it during a session shows that session’s setup rather than the default. A
+session started with <code>/autoresearch &lt;goal&gt;</code> is a serial loop and is driven by
+that command’s subcommands; opening the dashboard over it shows it at breadth
+2, and resuming from there widens it from its next iteration.</p>
+<p>A terminal too narrow for two panes stacks the ledger over the detail at the
+full width of the card.</p>
+<h3 id="presets"><a class="header" href="#presets">Presets</a></h3>
+<p>A preset is the shape of a swarm without its goal: breadth, attempts,
+certification, per-arm models and the iteration cap. Two are built in:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Preset</th><th>Breadth</th><th>Attempts</th><th>Certify</th></tr>
+</thead>
+<tbody>
+<tr><td><code>swarm</code></td><td>3</td><td>1</td><td>on</td></tr>
+<tr><td><code>wide</code></td><td>5</td><td>2</td><td>on</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>←</code> <code>→</code> on the Preset row applies the next one, and a click applies the one
+under the pointer. The preset the fields currently equal is painted as in
+force. <code>Save as</code> takes a name and Enter saves the current shape under it; a
+saved preset is offered in every repository. A built-in name cannot be saved
+over. Saved presets are kept in <code>presets.json</code> beside the autoresearch
+databases. A saved breadth outside 2 to 8 loads at the nearer bound.</p>
 <p>Everything autoresearch provides is unchanged underneath: the same
 <code>autoresearch.sh</code> harness, the same metric lines, the same segments, the same
 scope rules, the same database. Read that page first; this one covers only what
 breadth adds.</p>
-<p><code>/autoresearch</code> is still there and still serial. Autoswarm does not replace it.</p>
 <h2 id="breadth"><a class="header" href="#breadth">Breadth</a></h2>
-<p>Breadth is 1 to 8 and opens at 3, the fewest arms a review ring needs. The
-status row states <code>N arms</code> whenever breadth is above 1, and the run screen
-states it per session.</p>
+<p>Breadth is 2 to 8 and opens at 3, the fewest arms a review ring needs. The
+status row states <code>N arms</code>, and the run screen states it per session.</p>
 <p>Arms share one worktree. They are built one at a time, measured, and reverted,
 so breadth costs iteration time rather than disk. An arm is a different idea:
 two arms that produce the same diff are counted once.</p>
-<p>Breadth 1 is the serial loop exactly. No arms, no review, no certification cost.</p>
+<p>One change per iteration, with no arms and no review, is
+<a href="#autoresearch"><code>/autoresearch</code></a>.</p>
 <h2 id="models-per-arm"><a class="header" href="#models-per-arm">Models per arm</a></h2>
 <p>The Models row assigns one model to each arm, in arm order, comma separated:</p>
 <pre><code>  Models        opus, gpt-5, glm
 </code></pre>
-<p><code>a0</code> runs on Opus, <code>a1</code> on GPT-5, <code>a2</code> on GLM. The line under the fields reads
+<p><code>a0</code> runs on Opus, <code>a1</code> on GPT-5, <code>a2</code> on GLM. The note under the fields reads
 the assignment back as arms, so an arm that is off by one comma is visible
 before the run starts:</p>
 <pre><code>a0 opus · a1 gpt-5 · a2 glm.
@@ -6839,9 +6955,9 @@ on GPT-5 and leaves <code>a0</code> where the session already is. An arm past th
 the list runs on the session model too, and clearing the row puts every arm
 there.</p>
 <p>Each spec resolves the way <code>--model</code> resolves one: <code>provider/id</code>, a bare id, or
-a role alias such as <code>@slow</code>. A spec that matches nothing refuses the run, and
-the legend reads <code>enter needs a known model</code> until it is fixed. The row is
-absent at breadth 1, where there are no arms to spread across models.</p>
+a role alias such as <code>@slow</code>. A spec that matches nothing blocks the start: the
+note reads <code>No model matches "&lt;spec&gt;".</code> and the <code>Start swarm</code> button states
+<code>no model matches "&lt;spec&gt;"</code> until it is fixed.</p>
 <p><code>start_arm</code> performs the switch. The loop calls it before the first edit of each
 arm, which is also what puts the arm on the status row (<code>a1 on GPT-5</code>) while it
 is being built. The session returns to its own model when the arm’s result is
@@ -6928,33 +7044,29 @@ diff against a hypothesis. The mechanical rejections above hold whatever the
 reviewer concludes; the judgement on top of them does not.</p>
 <h2 id="session-state"><a class="header" href="#session-state">Session state</a></h2>
 <p>Breadth, attempts, certification and the per-arm models belong to the session
-rather than the installation, so the setup console sets them per investigation
-and <code>/settings</code> does not carry them. A run records which arm produced it and
-which arm certified it, both stated on the run screen’s entry for that run.</p>
+rather than the installation, so the console sets them per investigation and
+<code>/settings</code> does not carry them. A <a href="#presets">preset</a> saves that shape under a
+name for every repository. A run records which arm produced it and which arm
+certified it, both stated on the dashboard’s detail of that run.</p>
 <p>A winning arm has to beat the segment’s baseline, not merely the other arms of
 its iteration. An iteration where every arm regressed is a null round.</p>
 <p><code>certify_arms</code> and <code>start_arm</code> attach only while breadth is above 1. A serial
-session has one candidate, no ring and no arm to open, so there is nothing for
-either to do.</p>
-<h2 id="regenerating-the-setup-console-captures"><a class="header" href="#regenerating-the-setup-console-captures">Regenerating the setup console captures</a></h2>
-<p><code>proof/scenes/autoswarm-setup.sh</code> opens the console, moves through the fields,
-assigns a model per arm and types one nothing matches, toggles certification off
-and back on, empties the goal and leaves with Escape.
-It is a stills take that measures under 1 fps of real change, so both arms turn
-the motion gate off; at the default the recorder rejects the take as a stutter:</p>
-<pre><code class="language-sh">SCENE_MOTION_FLOOR=0 proof/docker/record-x11.sh proof/scenes/autoswarm-setup.sh
-SCENE_MOTION_FLOOR=0 proof/docker/record-x11-before.sh proof/scenes/autoswarm-setup.sh
+<code>/autoresearch</code> session has one candidate, no ring and no arm to open, so there
+is nothing for either to do.</p>
+<h2 id="regenerating-the-console-captures"><a class="header" href="#regenerating-the-console-captures">Regenerating the console captures</a></h2>
+<p><code>proof/scenes/autoswarm-setup.sh</code> opens the launcher, moves through the fields,
+raises the breadth, assigns a model per arm and types one nothing matches,
+toggles certification off and back on, sets an iteration cap, switches to the
+<code>wide</code> preset, and leaves with Escape. It is a stills take that measures under 1 fps of real change, so
+both arms turn the motion gate off; at the default the recorder rejects the take
+as a stutter:</p>
+<pre><code class="language-sh">SCENE_MOTION_FLOOR=0 proof/record.sh proof/scenes/autoswarm-setup.sh
+SCENE_MOTION_FLOOR=0 proof/record.sh --before proof/scenes/autoswarm-setup.sh
 </code></pre>
-<p>The frame that carries the console’s layout contract is <code>certification-off</code>.
-<code>off</code> is three columns where every other value is one or two, so a value column
-measured from the values a field currently holds is a column narrower in every
-other state, and the hint beside it moves as the toggle crosses. The column is
-sized from the bounds each field can reach instead, so the hints stand still.
-A frame of any other state shows the column’s position but not that it holds.</p>
-<p><code>proof/scenes/autoswarm-run-resume-keeps-goal.sh</code> opens the console over the
-seeded session with resume text after the command, and leaves with Escape. The
-<code>open</code> frame shows the session’s goal in the field rather than the typed text;
-<code>cancelled</code> shows the notice under the command:</p>
+<p><code>proof/scenes/autoswarm-run-resume-keeps-goal.sh</code> opens the dashboard over the
+seeded session and leaves with Escape. The <code>open</code> frame shows the session’s
+goal in the detail pane with <code>s resume</code> on the footer; <code>cancelled</code> shows the
+loop untouched under the command:</p>
 <pre><code class="language-sh">SCENE_MOTION_FLOOR=0 proof/record.sh proof/scenes/autoswarm-run-resume-keeps-goal.sh
 SCENE_MOTION_FLOOR=0 proof/record.sh --before proof/scenes/autoswarm-run-resume-keeps-goal.sh
 </code></pre>
@@ -17865,14 +17977,14 @@ render(width: number): readonly string[] {
     keybindings: KeybindingsManager,
     done: (result: T) =&gt; void,
   ) =&gt; (Component &amp; { dispose?(): void }) | Promise&lt;Component &amp; { dispose?(): void }&gt;,
-  options?: { overlay?: boolean },
+  options?: { overlay?: boolean | OverlayOptions },
 ): Promise&lt;T&gt;
 </code></pre>
 <p>Behavior in interactive mode (<code>extension-ui-controller.ts</code>):</p>
 <ul>
 <li>Saves editor text.</li>
 <li>Without <code>options.overlay</code>, replaces the editor component with your component.</li>
-<li>With <code>options.overlay</code>, mounts your component as a bottom-centered overlay above the composer zone instead of replacing the editor; the prompt and status line remain visible.</li>
+<li>With <code>options.overlay: true</code>, mounts your component as a bottom-centered overlay above the composer zone instead of replacing the editor; the prompt and status line remain visible. An <code>OverlayOptions</code> object mounts it with that geometry instead (a centered card, a fixed width). Either way a component that implements <code>MouseRoutable</code> receives the wheel and click reports inside its bounds.</li>
 <li>Focuses your component.</li>
 <li>On <code>done(result)</code>: calls <code>component.dispose?.()</code>, hides the overlay if present, restores editor + text for non-overlay flows, focuses editor, resolves promise.
 So <code>done(...)</code> is mandatory for completion.</li>

@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { detectMacOSAppearance, MacAppearanceObserver } from "@veyyon/natives";
 import type { EditorTheme } from "@veyyon/tui/components/editor";
+import type { FormTheme } from "@veyyon/tui/components/form";
 import type { SelectListTheme } from "@veyyon/tui/components/select-list";
 import type { SettingsListTheme } from "@veyyon/tui/components/settings-list";
 import { blendHex } from "@veyyon/tui/motion-paint";
@@ -1260,6 +1261,26 @@ export function getSelectListTheme(): SelectListTheme {
 		// label with a short rule tail, so the list reads as a map of sections.
 		groupHeader: (name: string) =>
 			theme.fg("borderAccent", `  ${name.toUpperCase()} ${"─".repeat(Math.max(4, 30 - name.length))}`),
+	};
+}
+
+/**
+ * The form's paint: the ring is the same live accent the select list's cursor
+ * is, so a focused field and a selected row read as the same thing; the
+ * primary button is the accent band, a disabled one the muted text.
+ */
+export function getFormTheme(): FormTheme {
+	return {
+		focusedLabel: (text: string) => theme.bold(theme.fg("accent", text)),
+		label: (text: string) => theme.fg("dim", text),
+		value: (text: string) => theme.fg("toolTitle", text),
+		placeholder: (text: string) => theme.fg("dim", text),
+		control: (text: string) => theme.fg("muted", text),
+		active: (text: string) => theme.bold(theme.fg("accent", text)),
+		button: (text: string) => theme.fg("toolTitle", text),
+		primaryButton: (text: string) => theme.bold(theme.fg("accent", text)),
+		disabledButton: (text: string) => theme.fg("dim", text),
+		muted: (text: string) => theme.fg("muted", text),
 	};
 }
 

@@ -74,7 +74,7 @@ export function createInitExperimentTool(
 			const constraints = dedupeStrings(params.constraints ?? []);
 			const secondaryMetrics = dedupeStrings(params.secondary_metrics ?? []);
 			const goal = params.goal?.trim() || null;
-			const maxIterations =
+			const argIterations =
 				params.max_iterations !== undefined && Number.isFinite(params.max_iterations) && params.max_iterations > 0
 					? Math.floor(params.max_iterations)
 					: null;
@@ -86,7 +86,7 @@ export function createInitExperimentTool(
 			const requiresHarness = !existing || isNewSegmentInit;
 			// An unset value keeps whatever the session already has, so a plain
 			// reconfigure never silently collapses a swarm back to serial.
-			// The setup console parks the operator's answers before a session
+			// The console parks the operator's answers before a session
 			// exists, and they outrank the tool's arguments on the init that
 			// consumes them: the model never saw the console, so an argument it
 			// passes here is a guess, and a guess of 1 turned a configured swarm
@@ -94,6 +94,7 @@ export function createInitExperimentTool(
 			// with nothing parked, may still reconfigure from what the harness
 			// turned out to be.
 			const parked = runtime.pendingSwarm;
+			const maxIterations = parked?.maxIterations ?? argIterations;
 			const breadth = parked?.breadth ?? clampCount(params.breadth, MAX_BREADTH) ?? existing?.breadth ?? 1;
 			const attempts = parked?.attempts ?? clampCount(params.attempts, MAX_ATTEMPTS) ?? existing?.attempts ?? 1;
 			const certify = parked?.certify ?? params.certify ?? existing?.certify ?? true;
@@ -102,7 +103,7 @@ export function createInitExperimentTool(
 				((params.breadth !== undefined && clampCount(params.breadth, MAX_BREADTH) !== parked.breadth) ||
 					(params.attempts !== undefined && clampCount(params.attempts, MAX_ATTEMPTS) !== parked.attempts) ||
 					(params.certify !== undefined && params.certify !== parked.certify));
-			// Per-arm models are the user's choice in the setup console, never the
+			// Per-arm models are the user's choice in the console, never the
 			// model's: this tool takes no argument for them, and a breadth that
 			// lands back at 1 drops them, since there are no arms to spread.
 			const armModels = breadth > 1 ? (parked?.armModels ?? existing?.armModels ?? []).slice(0, breadth) : [];
@@ -248,7 +249,7 @@ export function createInitExperimentTool(
 			);
 			if (overriddenByConsole) {
 				lines.push(
-					"The breadth, attempts and certification arguments were ignored: the setup console the user configured this run in decides them.",
+					"The breadth, attempts and certification arguments were ignored: the console the user configured this run in decides them.",
 				);
 			}
 			if (session.scopePaths.length > 0) {

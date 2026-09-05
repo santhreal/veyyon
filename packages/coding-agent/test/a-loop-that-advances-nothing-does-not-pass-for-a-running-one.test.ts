@@ -295,7 +295,7 @@ describe("a loop that advances nothing does not pass for a running one", () => {
 		const notice = harness.notices.at(-1);
 		expect(notice?.level).toBe("warning");
 		expect(notice?.text).toContain("Autoresearch stopped");
-		expect(notice?.text).toContain("/autoresearch status");
+		expect(notice?.text).toContain("`/autoresearch` shows them");
 		expect(notice?.text).toContain("kept");
 	});
 
@@ -305,7 +305,7 @@ describe("a loop that advances nothing does not pass for a running one", () => {
 		while (harness.loopArmed()) await turn(harness, ctx);
 
 		expect(harness.notices.at(-1)?.text).toContain("Autoswarm stopped");
-		expect(harness.notices.at(-1)?.text).toContain("/autoswarm status");
+		expect(harness.notices.at(-1)?.text).toContain("`/autoswarm` shows them");
 	});
 
 	it("a further turn after the loop stopped itself steers nothing", async () => {

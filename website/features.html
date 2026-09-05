@@ -202,24 +202,24 @@ bash: curl -H "Authorization: Bearer #STAGING_TOKEN#" https://api.example.com
           <li><b>Mechanical Rejection</b>: before a reviewer sees anything, four rejections fire automatically — <span class="inline">empty</span> (changed nothing), <span class="inline">scope</span> (edited an off-limits path), <span class="inline">opaque</span> (unreadable diff: binary patch or 512+ base64 chars), and <span class="inline">duplicate</span> (same diff as another arm).</li>
           <li><b>Cross-Review Ring</b>: with 3+ survivors, each arm is reviewed by another in a ring where no pair reviews each other. A reviewer flags an arm when the metric moved for the wrong reason — a hardcoded answer, a cache keyed on benchmark inputs, a narrowed input space, or work relocated out of the timed region. A flagged arm cannot win, however good its number.</li>
           <li><b>Relocated-Cost Detection</b>: a change that moves work out of the timed region lowers the metric without making anything faster. If the harness reports a cold-start metric (<span class="inline">cold_ms</span>), growth above 25ms against baseline is stated to the reviewer as a measured fact.</li>
-          <li><b>Setup Console</b>: <span class="inline">/autoswarm</span> opens an interactive console for the goal, breadth, attempts, and certification toggle. Text after the command prefills the goal: <span class="inline">/autoswarm make the tokenizer faster</span>.</li>
+          <li><b>Swarm Console</b>: <span class="inline">/autoswarm</span> opens a launcher card on a fresh branch — goal, preset, breadth, models per arm, attempts, certification and the iteration cap as form fields, with saved presets — and the run dashboard over a session: the ledger beside the detail of the highlighted run, the swarm's actions (resume, pause, new session, stop, clear, reset) on single keys, and the setup form one key away. <span class="inline">/autoresearch</span> is the serial loop, driven by subcommands: <span class="inline">/autoresearch make the tokenizer faster</span>, then <span class="inline">status</span>, <span class="inline">resume</span>, <span class="inline">goal</span>, <span class="inline">off</span> and <span class="inline">clear</span>.</li>
         </ul>
       </div>
-      <pre class="demo" aria-hidden="true"><span class="c"># autoswarm setup console</span>
+      <pre class="demo" aria-hidden="true"><span class="c"># the swarm launcher</span>
 /autoswarm
 
-<span class="k">Autoswarm setup</span>
-<span class="c">Autoresearch with breadth. The model derives the metric from your harness.</span>
+<span class="k">▸ Goal</span>        make the tokenizer faster
+  <span class="k">Preset</span>      <span class="k">swarm</span>  wide
+  <span class="k">Breadth</span>     ◂ 3 arms ▸
+  <span class="k">Models</span>      session model for every arm
+  <span class="k">Attempts</span>    1 ▸
+  <span class="k">Certify</span>     ● on
+  <span class="k">Iterations</span>  auto ▸
+  <span class="c">3 arms × 1 attempt: up to 3 harness runs per iteration.</span>
+  <span class="k">[ Start swarm ]</span>
+  <span class="k">Save as</span>     preset name
 
-<span class="k">› Goal</span>          make the tokenizer faster
-  <span class="k">Breadth</span>       3     candidate arms per iteration
-  <span class="k">Attempts</span>      1     retries before an arm is abandoned
-  <span class="k">Certification</span> on    arms cross-review before one is kept
-
-<span class="c">3 arms in a review ring: each arm is reviewed by another,</span>
-<span class="c">and no pair reviews each other.</span>
-
-<span class="c">↑↓ field   ←→ adjust   space toggle   enter start   esc cancel</span></pre>
+<span class="c">type the goal · enter starts the swarm   ↑↓ field   esc close</span></pre>
     </div>
   </section>
 

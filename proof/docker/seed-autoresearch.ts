@@ -7,7 +7,7 @@
  * The run screen, the status row and the widget they replaced all render from a
  * session and its logged runs. Producing those by running the loop needs a
  * harness in the tree and a model willing to spend an hour in it, which is why
- * the setup-console scene stops at the console: a capture cannot wait for it.
+ * the console scene never presses Start: a capture cannot wait for it.
  *
  * This writes the session through the product's own storage API rather than
  * through SQL, so the fixture cannot drift from the schema, and it goes to the

@@ -8,16 +8,11 @@ import type { ExtensionContext, ExtensionFactory } from "../extensibility/extens
 import { autoresearchPrompts } from "../prompts/autoresearch/rows";
 import * as git from "../utils/git";
 import { leaveArm } from "./arm-model";
+import { type ConsoleAction, type ConsoleHost, LoopConsoleModel, type LoopSetup } from "./console";
 import { createDashboardController } from "./dashboard";
 import { ensureAutoresearchBranch, parseWorkDirDirtyPaths } from "./git";
 import { formatNum, gitStatusPorcelain, gitWorkDirPrefix } from "./helpers";
-import {
-	handleSetupKey,
-	renderSetupConsole,
-	type SwarmSetupContext,
-	SwarmSetupModel,
-	type SwarmSetupResult,
-} from "./setup-console";
+import { deletePreset, type LoopPreset, loadPresets, savePreset } from "./presets";
 import { AUTORESEARCH_SCREEN_KEY } from "./shortcuts";
 import {
 	buildExperimentState,
@@ -29,7 +24,7 @@ import {
 	findBestKeptResult,
 	reconstructControlState,
 } from "./state";
-import { openAutoresearchStorageIfExists, type RunRow, type SessionRow } from "./storage";
+import { type AutoresearchStorage, openAutoresearchStorageIfExists, type RunRow, type SessionRow } from "./storage";
 import { DEFAULT_SWARM_BREADTH } from "./swarm";
 import { activeToolsChanged, activeToolsFor, EXPERIMENT_TOOL_NAMES } from "./tools";
 import { createCertifyArmsTool } from "./tools/certify-arms";
@@ -150,17 +145,13 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 	api.registerTool(createCertifyArmsTool({ dashboard, getRuntime, pi: api }));
 	api.registerTool(createStartArmTool({ dashboard, getRuntime, pi: api }));
 
-	// `/autoresearch` and `/autoswarm` are one engine reached two ways. Autoswarm
-	// is autoresearch with breadth: same session, same tools, same store, plus
-	// arms and certification. Autoresearch stays serial and is never given a
-	// breadth control, so nothing about the serial loop changes.
-	interface ModeCommandSpec {
-		label: string;
-		/** The command as a user types it, for a message that names a subcommand. */
-		command: string;
-		/** Autoswarm opens the setup console and runs with breadth; autoresearch stays serial. */
-		swarm: boolean;
-	}
+	// `/autoresearch` and `/autoswarm` are one engine reached two ways, and
+	// they are two commands on purpose. `/autoresearch` is the serial loop: a
+	// goal typed after it starts or resumes, and `status`, `resume`, `goal`,
+	// `off` and `clear` are its subcommands. `/autoswarm` is the console: the
+	// breadth, per-arm models, attempts, certification and presets a swarm
+	// needs, with no arguments. Same session store, same tools; a swarm is a
+	// session whose breadth is above 1.
 
 	/**
 	 * The most consecutive turns the loop nudges a model that is not advancing it.
@@ -254,94 +245,293 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 	};
 
 	/**
-	 * Opens the autoswarm setup console and resolves to the chosen configuration,
-	 * or to null when the user leaves without starting. `goalText` is what was
-	 * typed on purpose as the goal: after `goal`, or anything after the command
-	 * when no session exists yet, so `/autoswarm make startup faster` lands in
-	 * the goal field rather than being parsed as arguments. Over a live session
-	 * the field opens on that session's goal; free text is context for the
-	 * resume, and prefilling it here made Enter overwrite the goal with it.
+	 * The autoswarm surfaces: the launcher before a session exists, the
+	 * dashboard over one. A field edited in either is persisted as it is
+	 * typed: to the session recorded on this branch, or parked for the start
+	 * when there is none yet. An action closes the surface and runs once it
+	 * has closed, so a confirmation or a turn never opens under the overlay.
 	 */
-	async function openSwarmSetupConsole(
-		ctx: ExtensionContext,
-		goalText: { explicit: string | null; free: string },
-	): Promise<SwarmSetupResult | null> {
+	async function openSwarmConsole(ctx: ExtensionContext): Promise<void> {
 		const runtime = getRuntime(ctx);
+		const branch = await tryReadBranch(ctx.cwd);
 		const storage = await openAutoresearchStorageIfExists(ctx.cwd);
-		const session = storage?.getActiveSessionForBranch(await tryReadBranch(ctx.cwd)) ?? null;
-		const goal = goalText.explicit ?? (session ? (session.goal ?? "") : goalText.free || (runtime.goal ?? ""));
-		// What Enter does is decided by what is on the branch already, so the
-		// console states it: a live session with its runs, or a fresh start and
-		// whether a harness exists to measure it with.
-		const context: SwarmSetupContext = session
-			? {
-					session: {
-						name: session.name,
-						branch: session.branch,
-						runs: storage?.listLoggedRuns(session.id).length ?? 0,
-					},
-					harness: true,
-				}
-			: { session: null, harness: await harnessExists(ctx.cwd) };
-		// Open on what this branch is already doing, so reconfiguring a live swarm
-		// shows its real breadth instead of the default.
-		const model = new SwarmSetupModel({
-			goal,
-			context,
-			breadth: session?.breadth ?? runtime.pendingSwarm?.breadth ?? DEFAULT_SWARM_BREADTH,
-			attempts: session?.attempts ?? runtime.pendingSwarm?.attempts ?? 1,
-			certify: session?.certify ?? runtime.pendingSwarm?.certify ?? true,
-			armModels: session?.armModels ?? runtime.pendingSwarm?.armModels ?? [],
-			// The console refuses a spec nothing matches, through the resolver
-			// `--model` selection uses, so a typo is caught at the row rather than
-			// leaving the arm silently on the session model mid-run.
-			modelExists: (spec: string) => ctx.models.resolve(spec) !== undefined,
-		});
-		return await ctx.ui.custom<SwarmSetupResult | null>(
-			(tui, theme, _keybindings, done) => ({
-				render: (width: number) => renderSetupConsole(model, width, theme),
-				handleInput: (data: string): void => {
-					const outcome = handleSetupKey(model, data);
-					if (outcome === "start") done(model.result());
-					else if (outcome === "cancel") done(null);
-					else tui.requestRender();
-				},
+		let session = storage?.getActiveSessionForBranch(branch) ?? null;
+		// The ledger paints from the runtime, and a session the store holds that
+		// the runtime never loaded (opened by another process, or before this one
+		// activated the mode) would show a detail pane with no goal or runs.
+		if (session && storage && runtime.state.sessionId !== session.id) {
+			runtime.state = buildExperimentState(session, storage.listLoggedRuns(session.id));
+			runtime.goal = runtime.goal ?? session.goal;
+		}
+		const harness = session !== null || (await harnessExists(ctx.cwd));
+		const parked = runtime.pendingSwarm;
+		const initial: LoopSetup = {
+			goal: session?.goal ?? runtime.goal ?? "",
+			breadth: session?.breadth ?? parked?.breadth ?? DEFAULT_SWARM_BREADTH,
+			attempts: session?.attempts ?? parked?.attempts ?? 1,
+			certify: session?.certify ?? parked?.certify ?? true,
+			armModels: session?.armModels ?? parked?.armModels ?? [],
+			maxIterations: session?.maxIterations ?? parked?.maxIterations ?? null,
+		};
+		let presets: LoopPreset[] | null = null;
+		const requested: { action: ConsoleAction | null } = { action: null };
+		const host: ConsoleHost = {
+			situation: () => ({
+				session: session
+					? { name: session.name, branch: session.branch, runs: runtime.state.results.length }
+					: null,
+				harness,
+				modeOn: runtime.autoresearchMode,
+				busy: !ctx.isIdle(),
+				interrupted: runtime.interrupted,
+				pausedOnBranch: runtime.pausedOnBranch,
+				baseline: session?.baselineCommit != null,
 			}),
-			{ overlay: true },
-		);
+			modelExists: spec => ctx.models.resolve(spec) !== undefined,
+			presets: () => {
+				presets ??= loadPresets();
+				return presets;
+			},
+			savePreset: preset => {
+				const outcome = savePreset(preset);
+				presets = null;
+				ctx.ui.notify(
+					outcome === "saved"
+						? `Preset "${preset.name}" saved.`
+						: `"${preset.name}" is built in; pick another name.`,
+					outcome === "saved" ? "info" : "warning",
+				);
+				return outcome;
+			},
+			deletePreset: name => {
+				const removed = deletePreset(name);
+				presets = null;
+				if (removed) ctx.ui.notify(`Preset "${name}" removed.`, "info");
+				return removed;
+			},
+			apply: setup => {
+				if (setup.goal.length > 0) runtime.goal = setup.goal;
+				if (session && storage) {
+					storage.updateSession(session.id, {
+						...(setup.goal.length > 0 ? { goal: setup.goal } : {}),
+						attempts: setup.attempts,
+						certify: setup.certify,
+						maxParallel: setup.breadth,
+						armModels: setup.armModels,
+						maxIterations: setup.maxIterations,
+					});
+					session = storage.getSessionById(session.id) ?? session;
+					runtime.state = buildExperimentState(session, storage.listLoggedRuns(session.id));
+					runtime.pendingSwarm = null;
+					dashboard.update(ctx, runtime);
+					// Breadth decides which tools a live loop has: the swarm-only
+					// tools attach the moment breadth leaves 1, and detach when it
+					// returns.
+					if (runtime.autoresearchMode) {
+						const active = api.getActiveTools();
+						const next = activeToolsFor(active, true, effectiveBreadth(runtime));
+						if (activeToolsChanged(active, next)) {
+							api.setActiveTools(next).catch(err => {
+								logger.warn("autoresearch console could not update the active tools", {
+									error: errorMessage(err),
+								});
+							});
+						}
+					}
+					return;
+				}
+				runtime.pendingSwarm = {
+					breadth: setup.breadth,
+					attempts: setup.attempts,
+					certify: setup.certify,
+					armModels: setup.armModels,
+					maxIterations: setup.maxIterations,
+				};
+				dashboard.update(ctx, runtime);
+			},
+			act: action => {
+				requested.action = action;
+				return "close";
+			},
+		};
+		const model = new LoopConsoleModel(initial, host);
+		if (!ctx.hasUI) {
+			// No terminal to draw the console in (`-p`, a pipe).
+			ctx.ui.notify(
+				"The autoswarm console needs an interactive terminal. `/autoresearch <goal>` starts the serial loop without one.",
+				"warning",
+			);
+			return;
+		}
+		// Two surfaces: the launcher is the setup card for a branch with nothing
+		// on it yet, and the dashboard is the ledger with the actions on keys.
+		if (session === null) await dashboard.showLauncher(ctx, model);
+		else await dashboard.showScreen(ctx, runtime, model);
+		const action = requested.action;
+		if (action === null) return;
+		if (action === "pause") {
+			// `agent_end` reads the abort and reports the pause.
+			ctx.abort();
+			return;
+		}
+		if (action === "stop") {
+			await disableMode(ctx, runtime, modeLabel(runtime));
+			return;
+		}
+		if (action === "clear" || action === "reset") {
+			await handleClear(ctx, runtime, {
+				resetTree: action === "reset",
+				keepHint: "Clear session closes it and keeps your files.",
+			});
+			return;
+		}
+		if (action === "new" && session && storage) {
+			// The session on this branch is closed with every file left as it
+			// is, and the setup on screen starts the next one on the same branch.
+			const runs = storage.listLoggedRuns(session.id).length;
+			await closeSession(ctx, runtime, session, storage);
+			ctx.ui.notify(
+				`Closed ${session.name} · ${runs === 1 ? "1 run" : `${runs} runs`} kept in the store. Starting a new session.`,
+				"info",
+			);
+		}
+		await startOrResume(ctx, runtime, model.setup());
 	}
 
-	const runModeCommand = async (args: string, ctx: ExtensionContext, spec: ModeCommandSpec): Promise<void> => {
+	/** The line the resume prompt opens with: which branch the loop is on. */
+	const branchStatusLine = (branchResult: { branchName: string | null; created: boolean }): string =>
+		branchResult.branchName
+			? branchResult.created
+				? `Created and checked out dedicated git branch \`${branchResult.branchName}\` before resuming.`
+				: `Using dedicated git branch \`${branchResult.branchName}\`.`
+			: "Continuing on the current branch — no autoresearch branch was created.";
+
+	/**
+	 * Resume `session` on the branch the loop landed on: reload its runs, turn
+	 * the mode on, attach the tools and dispatch the resume turn. The prompt is
+	 * the model's; the user reads one line stating what is being resumed.
+	 */
+	async function resumeSession(
+		ctx: ExtensionContext,
+		runtime: AutoresearchRuntime,
+		storage: AutoresearchStorage,
+		session: SessionRow,
+		branchResult: { branchName: string | null; created: boolean },
+		resumeContext: string,
+	): Promise<void> {
+		runtime.pendingSwarm = null;
+		runtime.state = buildExperimentState(session, storage.listLoggedRuns(session.id));
+		runtime.goal = session.goal;
+		setMode(ctx, true, runtime.goal, "on");
+		dashboard.update(ctx, runtime);
+		await api.setActiveTools(activeToolsFor(api.getActiveTools(), true, effectiveBreadth(runtime)));
+		const runs = runtime.state.results.length;
+		const best = findBestKeptResult(runtime.state.results, runtime.state.currentSegment, runtime.state.bestDirection);
+		const bestText = best ? ` · best ${formatNum(best.metric, runtime.state.metricUnit)}` : "";
+		const where = branchResult.branchName ? ` on \`${branchResult.branchName}\`` : "";
+		ctx.ui.notify(
+			`Resuming ${modeLabel(runtime).toLowerCase()} ${session.name}${where} · ${runs === 1 ? "1 run" : `${runs} runs`}${bestText}.`,
+			"info",
+		);
+		dispatchTurn(runtime, {
+			customType: "autoresearch-command-resume",
+			content: prompt.render(autoresearchPrompts["autoresearch/command-resume"].text, {
+				branch_status_line: branchStatusLine(branchResult),
+				has_resume_context: resumeContext.length > 0,
+				resume_context: resumeContext,
+			}),
+		});
+	}
+
+	/**
+	 * Start or resume the swarm on its `autoresearch/*` branch with the setup
+	 * the console holds. Which of the two it is depends on the branch the loop
+	 * lands on, not on the row pressed: `Start` from `main` checks out a branch
+	 * that may already carry a session, and that session is resumed with the
+	 * new values rather than shadowed by a second one.
+	 */
+	async function startOrResume(ctx: ExtensionContext, runtime: AutoresearchRuntime, setup: LoopSetup): Promise<void> {
+		const goal = setup.goal.length > 0 ? setup.goal : null;
+		const branchResult = await ensureAutoresearchBranch(api, ctx.cwd, goal ?? runtime.goal);
+		if (!branchResult.ok) {
+			ctx.ui.notify(branchResult.error, "error");
+			return;
+		}
+		if (branchResult.warning) ctx.ui.notify(branchResult.warning, "warning");
+
+		// Only open the DB if it already exists; the empty-state path must not
+		// create one.
+		const storage = await openAutoresearchStorageIfExists(ctx.cwd);
+		const existing = storage?.getActiveSessionForBranch(branchResult.branchName) ?? null;
+		if (existing && storage) {
+			// A Goal row cleared to nothing is not a request to forget the goal.
+			storage.updateSession(existing.id, {
+				...(goal !== null ? { goal } : {}),
+				branch: branchResult.branchName,
+				breadth: setup.breadth,
+				attempts: setup.attempts,
+				certify: setup.certify,
+				maxParallel: setup.breadth,
+				armModels: setup.armModels,
+				maxIterations: setup.maxIterations,
+			});
+			await resumeSession(ctx, runtime, storage, storage.getSessionById(existing.id) ?? existing, branchResult, "");
+			return;
+		}
+
+		runtime.pendingSwarm = {
+			breadth: setup.breadth,
+			attempts: setup.attempts,
+			certify: setup.certify,
+			armModels: setup.armModels,
+			maxIterations: setup.maxIterations,
+		};
+		setMode(ctx, true, goal, "on");
+		dashboard.update(ctx, runtime);
+		await api.setActiveTools(activeToolsFor(api.getActiveTools(), true, effectiveBreadth(runtime)));
+		if (goal !== null) {
+			api.sendUserMessage(goal);
+		} else {
+			ctx.ui.notify("Autoswarm enabled—describe what to optimize in your next message.", "info");
+		}
+	}
+
+	/**
+	 * `/autoresearch`: the serial loop. Bare, it opens the run screen on a live
+	 * loop and enables the mode otherwise; text after it is the goal of a new
+	 * session or context for resuming the one on the branch. The subcommands
+	 * are `status`, `resume`, `goal <text>`, `off` and `clear`.
+	 */
+	async function runAutoresearchCommand(args: string, ctx: ExtensionContext): Promise<void> {
 		const trimmed = args.trim();
 		const runtime = getRuntime(ctx);
 
 		// A bare command on a live loop is a request to LOOK at it, never to end
-		// it. Ending one is `off`, a word typed on purpose:
-		// reaching for `/autoswarm` to check on a run and having the mode fall out
-		// from under you is the same keystroke meaning two opposite things.
+		// it. Ending one is `off`, a word typed on purpose: reaching for
+		// `/autoresearch` to check on a run and having the mode fall out from
+		// under you is the same keystroke meaning two opposite things.
 		if (trimmed === "off") {
-			await disableMode(ctx, runtime, spec.label);
+			await disableMode(ctx, runtime, "Autoresearch");
 			return;
 		}
 		// `status` is the word a user reaches for to CHECK a run, and it used to be
 		// swallowed as the goal: `/autoresearch status` on a 20-run session
 		// overwrote its goal with "status" and fed that back to the model as the
-		// thing to optimize. Both commands answer it with the screen, running or
-		// not.
-		if (trimmed === "status") {
-			await dashboard.showScreen(ctx, runtime);
+		// thing to optimize. It is answered with the screen, running or not.
+		if (trimmed === "status" || (trimmed === "" && runtime.autoresearchMode)) {
+			await dashboard.showScreen(ctx, runtime, null);
 			return;
 		}
 		// `resume` picks an interrupted or paused loop back up with nothing to
-		// add: no console, no goal, no context. Any message resumes it too; this
-		// is the word for a user who does not know that.
+		// add: no goal, no context. Any message resumes it too; this is the word
+		// for a user who does not know that.
 		const resumeWord = trimmed === "resume";
 		if (resumeWord) {
 			const storage = await openAutoresearchStorageIfExists(ctx.cwd);
 			const onBranch = storage?.getActiveSessionForBranch(await tryReadBranch(ctx.cwd)) ?? null;
 			if (!onBranch) {
 				ctx.ui.notify(
-					`No ${spec.label.toLowerCase()} session on this branch to resume. /${spec.command} starts one.`,
+					"No autoresearch session on this branch to resume. /autoresearch <goal> starts one.",
 					"warning",
 				);
 				return;
@@ -349,21 +539,17 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		}
 
 		// A live session's goal changes only where it is typed on purpose: this
-		// subcommand, or the setup console's goal field. Free text after the
-		// command is context for the resume and never a rewrite of the goal.
+		// subcommand. Free text after the command is context for the resume and
+		// never a rewrite of the goal.
 		let explicitGoal: string | null = null;
 		if (trimmed === "goal" || trimmed.startsWith("goal ")) {
 			explicitGoal = trimmed === "goal" ? "" : trimmed.slice("goal ".length).trim();
 			if (explicitGoal.length === 0) {
-				ctx.ui.notify(`\`goal\` needs the text to optimize: /${spec.command} goal <what to optimize>`, "error");
+				ctx.ui.notify("`goal` needs the text to optimize: /autoresearch goal <what to optimize>", "error");
 				return;
 			}
 		}
 		const freeText = explicitGoal ?? trimmed;
-		if (trimmed === "" && runtime.autoresearchMode && !spec.swarm) {
-			await dashboard.showScreen(ctx, runtime);
-			return;
-		}
 
 		if (trimmed === "clear" || trimmed.startsWith("clear ")) {
 			const flags = trimmed === "clear" ? [] : trimmed.slice("clear ".length).trim().split(/\s+/).filter(Boolean);
@@ -377,138 +563,73 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 				);
 				return;
 			}
+			// The tree is reset on an `autoresearch/*` branch, where the baseline
+			// is the branch's own; elsewhere only when asked, and never with
+			// `--keep-tree`.
+			const onAutoresearchBranch = (await tryReadBranch(ctx.cwd))?.startsWith("autoresearch/") ?? false;
 			await handleClear(ctx, runtime, {
-				keepTree: flags.includes("--keep-tree"),
-				resetTreeForce: flags.includes("--reset-tree"),
+				resetTree: !flags.includes("--keep-tree") && (onAutoresearchBranch || flags.includes("--reset-tree")),
+				keepHint: "Use `clear --keep-tree` to close the session and keep your files.",
 			});
 			return;
 		}
 
-		// Autoswarm is configured in a console rather than through arguments. The
-		// console decides what the typed text is: the goal of a session that does
-		// not exist yet, or context for resuming one that does.
-		let swarmSetup: SwarmSetupResult | null = null;
-		if (spec.swarm && !resumeWord) {
-			swarmSetup = await openSwarmSetupConsole(ctx, { explicit: explicitGoal, free: trimmed });
-			if (!swarmSetup) {
-				// The command is already in the transcript as the user's line; with
-				// nothing under it, Escape reads as a run that never started rather
-				// than a choice not to.
-				ctx.ui.notify("Autoswarm setup cancelled. Nothing was started.", "info");
-				return;
-			}
-			runtime.pendingSwarm = {
-				breadth: swarmSetup.breadth,
-				attempts: swarmSetup.attempts,
-				certify: swarmSetup.certify,
-				armModels: swarmSetup.armModels,
-			};
-		}
-
-		const goalArg = swarmSetup?.goal ?? (freeText.length > 0 ? freeText : null);
+		const goalArg = resumeWord || freeText.length === 0 ? null : freeText;
 		const branchResult = await ensureAutoresearchBranch(api, ctx.cwd, goalArg ?? runtime.goal);
 		if (!branchResult.ok) {
 			ctx.ui.notify(branchResult.error, "error");
 			return;
 		}
-		if (branchResult.warning) {
-			ctx.ui.notify(branchResult.warning, "warning");
-		}
+		if (branchResult.warning) ctx.ui.notify(branchResult.warning, "warning");
 
 		// Look up an existing session for the branch we just landed on. A session
 		// recorded under a different autoresearch/* branch is intentionally ignored
 		// — the command on a fresh branch starts a fresh session. Only open the
 		// DB if it already exists; the empty-state path must not create one.
-		const existingStorage = await openAutoresearchStorageIfExists(ctx.cwd);
-		const existingSession = existingStorage?.getActiveSessionForBranch(branchResult.branchName) ?? null;
-		// Free text is context for the resume, unless it is the goal typed back:
-		// `/autoresearch make the tokenizer faster` on the session that already
-		// optimizes that is a resume with nothing to add, and telling the model
-		// the goal twice or the user that the goal is unchanged answers nothing.
-		const storedGoal = existingSession?.goal ?? "";
-		const resumeContext = explicitGoal === null && !resumeWord && trimmed !== storedGoal ? trimmed : "";
-		const branchStatusLine = branchResult.branchName
-			? branchResult.created
-				? `Created and checked out dedicated git branch \`${branchResult.branchName}\` before resuming.`
-				: `Using dedicated git branch \`${branchResult.branchName}\`.`
-			: "Continuing on the current branch — no autoresearch branch was created.";
-
-		if (existingSession && existingStorage) {
-			// Only a goal typed on purpose is written: `goal <text>`, or a console
-			// goal field that left the console different from the stored goal.
-			// Free text reaches the model as resume context, with the stored goal
-			// left as it was.
-			const consoleGoal = swarmSetup && swarmSetup.goal !== (existingSession.goal ?? "") ? swarmSetup.goal : null;
-			const deliberateGoal = consoleGoal ?? explicitGoal;
-			if (deliberateGoal) existingStorage.updateSession(existingSession.id, { goal: deliberateGoal });
+		const storage = await openAutoresearchStorageIfExists(ctx.cwd);
+		const existing = storage?.getActiveSessionForBranch(branchResult.branchName) ?? null;
+		if (existing && storage) {
+			// Free text is context for the resume, unless it is the goal typed
+			// back: `/autoresearch make the tokenizer faster` on the session that
+			// already optimizes that is a resume with nothing to add.
+			const storedGoal = existing.goal ?? "";
+			const resumeContext = explicitGoal === null && goalArg !== null && goalArg !== storedGoal ? goalArg : "";
+			if (explicitGoal !== null) storage.updateSession(existing.id, { goal: explicitGoal });
 			else if (resumeContext.length > 0) {
 				ctx.ui.notify(
-					`Your text goes to the model as context for the resume. \`/${spec.command} goal <text>\` changes what this session optimizes.`,
+					"Your text goes to the model as context for the resume. `/autoresearch goal <text>` changes what this session optimizes.",
 					"info",
 				);
 			}
-			if (branchResult.branchName) {
-				existingStorage.updateSession(existingSession.id, { branch: branchResult.branchName });
-			}
-			// A session already running serially is raised to the breadth just
-			// chosen, so the console governs the resumed run too.
-			if (swarmSetup) {
-				existingStorage.updateSession(existingSession.id, {
-					breadth: swarmSetup.breadth,
-					attempts: swarmSetup.attempts,
-					certify: swarmSetup.certify,
-					maxParallel: swarmSetup.breadth,
-					armModels: swarmSetup.armModels,
-				});
-				runtime.pendingSwarm = null;
-			}
-			const refreshed = existingStorage.getSessionById(existingSession.id) ?? existingSession;
-			runtime.state = buildExperimentState(refreshed, existingStorage.listLoggedRuns(refreshed.id));
-			runtime.goal = refreshed.goal ?? goalArg;
-			setMode(ctx, true, runtime.goal, "on");
-			dashboard.update(ctx, runtime);
-			await api.setActiveTools(activeToolsFor(api.getActiveTools(), true, effectiveBreadth(runtime)));
-			// The prompt is the model's; the user reads what is being resumed. As
-			// a user message the prompt sat in the transcript as fourteen lines of
-			// instructions nobody typed, under the command line that already says
-			// what was asked.
-			const runs = runtime.state.results.length;
-			const best = findBestKeptResult(
-				runtime.state.results,
-				runtime.state.currentSegment,
-				runtime.state.bestDirection,
+			if (branchResult.branchName) storage.updateSession(existing.id, { branch: branchResult.branchName });
+			await resumeSession(
+				ctx,
+				runtime,
+				storage,
+				storage.getSessionById(existing.id) ?? existing,
+				branchResult,
+				resumeContext,
 			);
-			const bestText = best ? ` · best ${formatNum(best.metric, runtime.state.metricUnit)}` : "";
-			const where = branchResult.branchName ? ` on \`${branchResult.branchName}\`` : "";
-			ctx.ui.notify(
-				`Resuming ${spec.label.toLowerCase()} ${refreshed.name}${where} · ${runs === 1 ? "1 run" : `${runs} runs`}${bestText}.`,
-				"info",
-			);
-			dispatchTurn(runtime, {
-				customType: "autoresearch-command-resume",
-				content: prompt.render(autoresearchPrompts["autoresearch/command-resume"].text, {
-					branch_status_line: branchStatusLine,
-					has_resume_context: resumeContext.length > 0,
-					resume_context: resumeContext,
-				}),
-			});
 			return;
 		}
 
+		// A serial loop: whatever the autoswarm console parked is not this
+		// command's, so `init_experiment` opens the session at breadth 1.
+		runtime.pendingSwarm = null;
 		setMode(ctx, true, goalArg, "on");
 		dashboard.update(ctx, runtime);
 		await api.setActiveTools(activeToolsFor(api.getActiveTools(), true, effectiveBreadth(runtime)));
 		if (goalArg !== null) {
 			api.sendUserMessage(goalArg);
 		} else {
-			ctx.ui.notify(`${spec.label} enabled—describe what to optimize in your next message.`, "info");
+			ctx.ui.notify("Autoresearch enabled—describe what to optimize in your next message.", "info");
 		}
-	};
+	}
 
 	// Every subcommand is listed before a letter is typed: one nobody can see is
 	// one nobody finds, and reaching for an unlisted word used to overwrite the
-	// goal. Breadth is not among them — autoswarm is configured in its console.
-	function modeCompletions(argumentPrefix: string): AutocompleteItem[] | null {
+	// goal.
+	function autoresearchCompletions(argumentPrefix: string): AutocompleteItem[] | null {
 		const normalized = argumentPrefix.trim().toLowerCase();
 		if (normalized.startsWith("clear")) {
 			return [
@@ -522,7 +643,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		}
 		if (argumentPrefix.includes(" ")) return null;
 		const completions: AutocompleteItem[] = [
-			{ label: "status", value: "status", description: "Open the run screen: goal, runs, arms" },
+			{ label: "status", value: "status", description: "Open the run screen: goal, runs, metric" },
 			{ label: "resume", value: "resume", description: "Pick an interrupted loop back up" },
 			{ label: "goal", value: "goal ", description: "Change what this session optimizes" },
 			{ label: "off", value: "off", description: "Leave the mode, keep the session" },
@@ -538,17 +659,23 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 	}
 
 	api.registerCommand("autoresearch", {
-		description: `Run an optimization loop. Bare opens the run screen (${AUTORESEARCH_SCREEN_KEY}); also status, resume, goal <text>, off, clear.`,
-		getArgumentCompletions: modeCompletions,
-		handler: (args, ctx) =>
-			runModeCommand(args, ctx, { label: "Autoresearch", command: "autoresearch", swarm: false }),
+		description: `Run a serial optimization loop on a goal. Bare opens the run screen (${AUTORESEARCH_SCREEN_KEY}); also status, resume, goal <text>, off, clear.`,
+		getArgumentCompletions: autoresearchCompletions,
+		handler: runAutoresearchCommand,
 	});
 
 	api.registerCommand("autoswarm", {
 		description:
-			"Autoresearch with breadth: opens a setup console, then explores several candidate arms per iteration.",
-		getArgumentCompletions: modeCompletions,
-		handler: (args, ctx) => runModeCommand(args, ctx, { label: "Autoswarm", command: "autoswarm", swarm: true }),
+			"Open the autoswarm console: goal, breadth, per-arm models, attempts, certification, presets; start, pause, resume, new session, stop and clear. Takes no arguments.",
+		handler: (args, ctx) => {
+			if (args.trim().length > 0) {
+				ctx.ui.notify(
+					"`/autoswarm` takes no arguments: the goal and every other setting are set in the console.",
+					"warning",
+				);
+			}
+			return openSwarmConsole(ctx);
+		},
 	});
 
 	api.registerShortcut(AUTORESEARCH_SCREEN_KEY, {
@@ -556,9 +683,8 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		handler(ctx): Promise<void> {
 			// Reachable before the first run, on purpose: the screen is where the
 			// goal, the scope and the harness are read, and those exist before any
-			// measurement does. It used to reject the command with "no results yet",
-			// which is when the configured values are most worth checking.
-			return dashboard.showScreen(ctx, getRuntime(ctx));
+			// measurement does.
+			return dashboard.showScreen(ctx, getRuntime(ctx), null);
 		},
 	});
 
@@ -598,9 +724,11 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 			runtime.stallNudges = 0;
 			runtime.interrupted = true;
 			dashboard.update(ctx, runtime);
-			const command = modeLabel(runtime).toLowerCase();
+			const swarm = effectiveBreadth(runtime) > 1;
 			ctx.ui.notify(
-				`${modeLabel(runtime)} interrupted. Send a message or \`/${command} resume\` to continue, \`/${command} off\` to leave the loop.`,
+				swarm
+					? "Autoswarm interrupted. Send a message to continue, or open `/autoswarm` to resume, stop or clear it."
+					: "Autoresearch interrupted. Send a message or `/autoresearch resume` to continue; `/autoresearch off` stops it.",
 				"info",
 			);
 			return;
@@ -646,7 +774,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 					ctx,
 					runtime,
 					label,
-					`the model ended ${MAX_STALL_NUDGES + 1} turns without advancing the experiment. The session and its runs are kept, \`/${label.toLowerCase()} status\` shows them`,
+					`the model ended ${MAX_STALL_NUDGES + 1} turns without advancing the experiment. The session and its runs are kept, \`/${label.toLowerCase()}\` shows them`,
 				);
 				return;
 			}
@@ -825,12 +953,47 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		};
 	});
 
+	/**
+	 * Close `session` and leave every file alone. The runtime is emptied, the
+	 * mode is left, the tools detach and the model an arm switched to is
+	 * restored; the logged runs stay in the store.
+	 */
+	async function closeSession(
+		ctx: ExtensionContext,
+		runtime: AutoresearchRuntime,
+		session: SessionRow | null,
+		storage: AutoresearchStorage | null,
+	): Promise<{ strandedOn: string | null }> {
+		if (session && storage) storage.closeSession(session.id);
+		runtime.state = createExperimentState();
+		runtime.goal = null;
+		runtime.lastRunDuration = null;
+		runtime.lastRunAsi = null;
+		runtime.lastRunArtifactDir = null;
+		runtime.lastRunNumber = null;
+		runtime.lastRunSummary = null;
+		runtime.pendingSwarm = null;
+		// Same reason as `off`: a closed session leaves nothing behind, including
+		// the model an arm switched to.
+		const exit = await leaveArm(api, runtime);
+		setMode(ctx, false, null, "clear");
+		dashboard.update(ctx, runtime);
+		await api.setActiveTools(activeToolsFor(api.getActiveTools(), false, effectiveBreadth(runtime)));
+		return { strandedOn: exit.strandedOn };
+	}
+
+	/**
+	 * Clear the session on this branch. With `resetTree` the worktree is reset
+	 * to the segment baseline first, after a confirmation that states the
+	 * commit and the file count; `keepHint` is the caller's own way of closing
+	 * the session without touching files, for the prompts to state.
+	 */
 	async function handleClear(
 		ctx: ExtensionContext,
 		runtime: AutoresearchRuntime,
-		opts: { keepTree: boolean; resetTreeForce: boolean },
+		opts: { resetTree: boolean; keepHint: string },
 	): Promise<void> {
-		// Open only what exists: a `clear` on a project that never ran a loop
+		// Open only what exists: a clear on a project that never ran a loop
 		// must not create the store it is clearing.
 		const storage = await openAutoresearchStorageIfExists(ctx.cwd);
 		const branchName = await tryReadBranch(ctx.cwd);
@@ -838,20 +1001,18 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 		// and its baseline is the commit `git reset --hard` below would move this
 		// worktree to. Every other caller resolves the session the same way.
 		const session = storage?.getActiveSessionForBranch(branchName) ?? null;
-		const onAutoresearchBranch = branchName?.startsWith("autoresearch/") ?? false;
-		const shouldResetTree = !opts.keepTree && (onAutoresearchBranch || opts.resetTreeForce);
-		if (shouldResetTree && session?.baselineCommit) {
+		if (opts.resetTree && session?.baselineCommit) {
 			// `git reset --hard` plus `git clean` is the one autoresearch action with
-			// nothing behind it: uncommitted work in the worktree is gone, and the
-			// command that reaches it is four letters typed after a slash. Prompt, state
-			// the commit and the file count, and treat a decline as "clear nothing":
-			// `clear --keep-tree` closes the session without touching files.
+			// nothing behind it: uncommitted work in the worktree is gone, and what
+			// reaches it is four letters after a slash or one Enter in the console.
+			// Prompt, state the commit and the file count, and treat a decline as
+			// "clear nothing".
 			const dirty = await dirtyPathCount(ctx.cwd);
 			if (dirty === null) {
 				// Nothing is reset and the session stays open, so the baseline commit
 				// this needs is still recorded when git answers again.
 				ctx.ui.notify(
-					"Could not read git status, so nothing was reset and the session is still open. Use `clear --keep-tree` to close the session and keep your files.",
+					`Could not read git status, so nothing was reset and the session is still open. ${opts.keepHint}`,
 					"error",
 				);
 				return;
@@ -860,7 +1021,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 				"Reset worktree to baseline?",
 				`Resets to ${session.baselineCommit.slice(0, 12)} and deletes untracked files${
 					dirty > 0 ? `, discarding uncommitted changes in ${dirty} ${dirty === 1 ? "file" : "files"}` : ""
-				}. Use \`clear --keep-tree\` to close the session and keep your files.`,
+				}. ${opts.keepHint}`,
 			);
 			if (!confirmed) {
 				ctx.ui.notify("Clear cancelled; nothing was reset.", "info");
@@ -870,39 +1031,23 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 				await git.reset(ctx.cwd, { hard: true, target: session.baselineCommit });
 				await git.clean(ctx.cwd);
 				// The legacy files the prompt forbids are cleared with the tree, and
-				// only with it: `--keep-tree` and a clear off the branch leave every
-				// file alone, the harness included.
+				// only with it: a clear that keeps the tree leaves every file alone,
+				// the harness included.
 				removeLegacyArtifacts(ctx.cwd);
 				ctx.ui.notify(`Reset worktree to baseline ${session.baselineCommit.slice(0, 12)}.`, "info");
 			} catch (err) {
 				ctx.ui.notify(`Failed to reset worktree to baseline: ${errorMessage(err)}`, "error");
 			}
-		} else if (shouldResetTree) {
+		} else if (opts.resetTree) {
 			ctx.ui.notify("No baseline commit recorded — skipped worktree reset.", "warning");
 		}
 
-		if (session && storage) {
-			storage.closeSession(session.id);
-		}
-		runtime.state = createExperimentState();
-		runtime.goal = null;
-		runtime.lastRunDuration = null;
-		runtime.lastRunAsi = null;
-		runtime.lastRunArtifactDir = null;
-		runtime.lastRunNumber = null;
-		runtime.lastRunSummary = null;
-		runtime.pendingSwarm = null;
-		// Same reason as `off`: a cleared session leaves nothing behind, including
-		// the model an arm switched to.
-		const exit = await leaveArm(api, runtime);
-		setMode(ctx, false, null, "clear");
-		dashboard.update(ctx, runtime);
-		await api.setActiveTools(activeToolsFor(api.getActiveTools(), false, effectiveBreadth(runtime)));
+		const { strandedOn } = await closeSession(ctx, runtime, session, storage);
 		ctx.ui.notify(
-			exit.strandedOn
-				? `Autoresearch session cleared, but your model could not be restored. The session is still on ${exit.strandedOn}.`
+			strandedOn
+				? `Autoresearch session cleared, but your model could not be restored. The session is still on ${strandedOn}.`
 				: "Autoresearch session cleared.",
-			exit.strandedOn ? "warning" : "info",
+			strandedOn ? "warning" : "info",
 		);
 	}
 };

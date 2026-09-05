@@ -37,7 +37,7 @@ You MAY edit anything else needed to make `autoresearch.sh` work — benchmark b
 4. Call `init_experiment` with the goal, primary metric (matching the `METRIC` name), and scope. Pass `metric_unit` only for a unit that is not the metric's own name (`ms`, `MiB`); a count has no unit. This snapshots the worktree as the baseline and starts Phase 2 (the iteration loop).
 {{#if has_swarm_setup}}
 
-The user configured this run in the autoswarm setup console: {{swarm_breadth}} arms per iteration, {{swarm_attempts}} attempts each, certification {{#if swarm_certify}}on{{else}}off{{/if}}. Those values are set; do not pass `breadth`, `attempts` or `certify` to `init_experiment`. After it returns, the iteration loop runs with breadth: start each arm with `start_arm` before its first edit.
+The user configured this run in the autoswarm console: {{swarm_breadth}} arms per iteration, {{swarm_attempts}} attempts each, certification {{#if swarm_certify}}on{{else}}off{{/if}}. Those values are set; do not pass `breadth`, `attempts` or `certify` to `init_experiment`. After it returns, the iteration loop runs with breadth: start each arm with `start_arm` before its first edit.
 {{/if}}
 
 ### Rules

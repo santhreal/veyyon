@@ -23,6 +23,7 @@ import type {
 	LoaderMessageColorFn,
 	NativeScrollbackLiveRegion,
 	OverlayHandle,
+	OverlayOptions,
 	SlashCommand,
 } from "@veyyon/tui";
 import {
@@ -5527,7 +5528,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			keybindings: KeybindingsManager,
 			done: (result: T) => void,
 		) => (Component & { dispose?(): void }) | Promise<Component & { dispose?(): void }>,
-		options?: { overlay?: boolean },
+		options?: { overlay?: boolean | OverlayOptions },
 	): Promise<T> {
 		return this.#extensionUiController.showHookCustom(factory, options);
 	}

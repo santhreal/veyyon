@@ -10,6 +10,24 @@ Start it with `/autoresearch`, optionally with a goal:
 /autoresearch make the tokenizer faster
 ```
 
+`/autoresearch` runs one change per iteration and is driven by subcommands.
+[Autoswarm](./autoswarm.md) is the same loop with several candidate arms per
+iteration, set up and driven from the `/autoswarm` console; a session started
+there is resumed, paused, stopped and cleared there.
+
+| Command | Effect |
+|---|---|
+| `/autoresearch <goal>` | Starts a session on the branch, or resumes the one on it with the text as context. |
+| `/autoresearch` | Opens the run screen while the loop is on; otherwise resumes the session on the branch. |
+| `/autoresearch status` | Opens the run screen. |
+| `/autoresearch resume` | Picks an interrupted or paused loop back up with nothing to add. |
+| `/autoresearch goal <text>` | Changes what the session on the branch optimizes. |
+| `/autoresearch off` | Leaves the mode and keeps the session. |
+| `/autoresearch clear [--keep-tree\|--reset-tree]` | Closes the session; see [Ending a session](#ending-a-session). |
+
+Tab after `/autoresearch` completes the subcommands, and after `clear` the two
+flags.
+
 ## The harness
 
 Autoresearch measures through one file, `autoresearch.sh`, in the repository
@@ -68,8 +86,8 @@ A live loop occupies one status row:
 autoswarm · run #5 · 1m 12s · 4 runs · 3 kept · 3 arms · best 168.40ms -12.6% · conf 3.2x · ctrl+x runs
 ```
 
-`ctrl+x` opens the run screen, and so does `/autoresearch` with nothing after
-it:
+`ctrl+x` opens the run screen, and so does `/autoresearch status`, or a bare
+`/autoresearch` while the loop is on:
 
 ```
 ┌─ Autoswarm · tokenizer-laten…┬───────────────────────────────────────────────────┐
@@ -84,7 +102,7 @@ it:
 │   #1    192.78ms       base  │                                                   │
 │                              │ Breadth     3 arms per iteration                  │
 ├──────────────────────────────┴───────────────────────────────────────────────────┤
-│ up/down select   pgup/pgdn page   esc close                                      │
+│ ↑↓ row   pgup/pgdn page   esc close                                              │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -113,9 +131,11 @@ rather than as a height. A run whose harness printed its metric and then died
 shows that number, and the comparison is against it.
 
 Up and down move through the list, page up and page down move the detail pane by
-a full pane, and typing filters the list. Escape clears a live filter, and closes
-the screen when there is none. It is readable before the first run, where it
-shows the goal, the scope and the metric the session was configured with.
+a full pane, and Escape closes the screen. Typing filters the list by run
+number, arm, verdict or change description, and the filter survives the rows
+changing under it; Escape clears a filter before it closes the screen. The
+screen is readable before the first run, where it shows the goal, the scope and
+the metric the session was configured with.
 
 On a terminal too narrow for two panes, the list is above the detail instead of
 beside it, both at the full width of the card, and the footer prints the widest
@@ -129,8 +149,8 @@ the best itself.
 
 `/autoresearch` tries one change per iteration. [Autoswarm](./autoswarm.md) is
 the same loop with several candidate arms per iteration, cross-reviewed before
-one is kept. Everything on this page — the harness, segments, scope, the
-correctness warning below — applies to both.
+one is kept, driven from its own console. Everything on this page — the
+harness, segments, scope, the correctness warning below — applies to both.
 
 ## Correctness is the harness's job
 
@@ -159,16 +179,17 @@ These attach in autoresearch and autoswarm, and nowhere else.
 ## Ending a session
 
 `/autoresearch off` leaves the mode and keeps the session. A bare
-`/autoresearch` opens the run screen; it does not end anything.
+`/autoresearch` opens the run screen while the loop is on; it does not end
+anything.
 
 Escape during a turn stops that turn and pauses the loop without leaving the
 mode, and prints `Autoresearch interrupted. Send a message or /autoresearch
-resume to continue, /autoresearch off to leave the loop.` The status row reads
+resume to continue; /autoresearch off stops it.` The status row reads
 `paused · send a message to resume`, the run screen title reads `(paused)`, the
 tools stay attached, and nothing runs until you send a message; a measurement
 that was waiting to be logged is picked up by that message. `/autoresearch
 resume` sends nothing but the resume, and with no session on the branch prints
-`No autoresearch session on this branch to resume. /autoresearch starts one.`
+`No autoresearch session on this branch to resume. /autoresearch <goal> starts one.`
 `/autoresearch off` from there leaves the mode.
 
 Text typed after the command on a live session goes to the model as context for
@@ -179,9 +200,10 @@ model is not told the goal a second time.
 
 `/autoresearch clear` resets the worktree to the segment baseline, deletes
 untracked files and closes the session. It asks first, naming the commit it
-resets to and how many files hold uncommitted changes. The reset restores
-`autoresearch.sh` as committed on the branch. Off an `autoresearch/*` branch,
-`clear` closes the session and resets nothing. Two flags:
+resets to and how many files hold uncommitted changes; a decline resets nothing
+and leaves the session open. The reset restores `autoresearch.sh` as committed
+on the branch. Off an `autoresearch/*` branch, `clear` closes the session and
+resets nothing. Two flags:
 
 | Flag | Effect |
 |---|---|
@@ -193,7 +215,12 @@ misspelled `--keep-tree` cannot fall through to the reset. A `clear` that cannot
 read git status resets nothing and leaves the session open, since the
 confirmation exists to state what the reset discards.
 
-`/autoswarm` takes the same subcommands.
+A session started from `/autoswarm` is ended from its dashboard: `x` stop,
+`n` new session, `c` clear session and `r` reset worktree are the subcommands
+above as keys.
+
+Without an interactive terminal (`-p`, a pipe) every subcommand works as
+written; only the run screen and the `/autoswarm` console need one.
 
 State is stored per repository, under the profile directory. The database is
 keyed on the primary checkout, so worktrees of one repository share it.

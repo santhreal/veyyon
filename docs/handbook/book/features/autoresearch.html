@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c757fa25.js";
+            window.path_to_searchindex_js = "../searchindex-871f1173.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -202,6 +202,28 @@ not. It stops when you interrupt it or the iteration cap is reached.</p>
 <p>Start it with <code>/autoresearch</code>, optionally with a goal:</p>
 <pre><code>/autoresearch make the tokenizer faster
 </code></pre>
+<p><code>/autoresearch</code> runs one change per iteration and is driven by subcommands.
+<a href="./autoswarm.html">Autoswarm</a> is the same loop with several candidate arms per
+iteration, set up and driven from the <code>/autoswarm</code> console; a session started
+there is resumed, paused, stopped and cleared there.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Command</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>/autoresearch &lt;goal&gt;</code></td><td>Starts a session on the branch, or resumes the one on it with the text as context.</td></tr>
+<tr><td><code>/autoresearch</code></td><td>Opens the run screen while the loop is on; otherwise resumes the session on the branch.</td></tr>
+<tr><td><code>/autoresearch status</code></td><td>Opens the run screen.</td></tr>
+<tr><td><code>/autoresearch resume</code></td><td>Picks an interrupted or paused loop back up with nothing to add.</td></tr>
+<tr><td><code>/autoresearch goal &lt;text&gt;</code></td><td>Changes what the session on the branch optimizes.</td></tr>
+<tr><td><code>/autoresearch off</code></td><td>Leaves the mode and keeps the session.</td></tr>
+<tr><td><code>/autoresearch clear [--keep-tree|--reset-tree]</code></td><td>Closes the session; see <a href="#ending-a-session">Ending a session</a>.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Tab after <code>/autoresearch</code> completes the subcommands, and after <code>clear</code> the two
+flags.</p>
 <h2 id="the-harness"><a class="header" href="#the-harness">The harness</a></h2>
 <p>Autoresearch measures through one file, <code>autoresearch.sh</code>, in the repository
 root. Write it before the loop starts. It must exit 0 and print at least one
@@ -249,8 +271,8 @@ own benchmark can improve the number without improving the code.</p>
 <p>A live loop occupies one status row:</p>
 <pre><code>autoswarm · run #5 · 1m 12s · 4 runs · 3 kept · 3 arms · best 168.40ms -12.6% · conf 3.2x · ctrl+x runs
 </code></pre>
-<p><code>ctrl+x</code> opens the run screen, and so does <code>/autoresearch</code> with nothing after
-it:</p>
+<p><code>ctrl+x</code> opens the run screen, and so does <code>/autoresearch status</code>, or a bare
+<code>/autoresearch</code> while the loop is on:</p>
 <pre><code>┌─ Autoswarm · tokenizer-laten…┬───────────────────────────────────────────────────┐
 │   OVERVIEW ───────────────── │ Best        168.40ms · -12.6% · from 192.78ms ·   │
 │ › Session                    │             run 4 · arm b                         │
@@ -263,7 +285,7 @@ it:</p>
 │   #1    192.78ms       base  │                                                   │
 │                              │ Breadth     3 arms per iteration                  │
 ├──────────────────────────────┴───────────────────────────────────────────────────┤
-│ up/down select   pgup/pgdn page   esc close                                      │
+│ ↑↓ row   pgup/pgdn page   esc close                                              │
 └──────────────────────────────────────────────────────────────────────────────────┘
 </code></pre>
 <p>The list holds the session, the playbook, the run in flight and every logged
@@ -288,9 +310,11 @@ that run rather than formatting the zero, and draws it as a <code>·</code> in t
 rather than as a height. A run whose harness printed its metric and then died
 shows that number, and the comparison is against it.</p>
 <p>Up and down move through the list, page up and page down move the detail pane by
-a full pane, and typing filters the list. Escape clears a live filter, and closes
-the screen when there is none. It is readable before the first run, where it
-shows the goal, the scope and the metric the session was configured with.</p>
+a full pane, and Escape closes the screen. Typing filters the list by run
+number, arm, verdict or change description, and the filter survives the rows
+changing under it; Escape clears a filter before it closes the screen. The
+screen is readable before the first run, where it shows the goal, the scope and
+the metric the session was configured with.</p>
 <p>On a terminal too narrow for two panes, the list is above the detail instead of
 beside it, both at the full width of the card, and the footer prints the widest
 hint that fits, down to <code>esc close</code>. The status row drops its segments from the
@@ -301,8 +325,8 @@ the best itself.</p>
 <h2 id="going-wider"><a class="header" href="#going-wider">Going wider</a></h2>
 <p><code>/autoresearch</code> tries one change per iteration. <a href="./autoswarm.html">Autoswarm</a> is
 the same loop with several candidate arms per iteration, cross-reviewed before
-one is kept. Everything on this page — the harness, segments, scope, the
-correctness warning below — applies to both.</p>
+one is kept, driven from its own console. Everything on this page — the
+harness, segments, scope, the correctness warning below — applies to both.</p>
 <h2 id="correctness-is-the-harnesss-job"><a class="header" href="#correctness-is-the-harnesss-job">Correctness is the harness’s job</a></h2>
 <p>Autoresearch compares numbers. It does not know whether the code still works,
 and nothing in the loop discovers that a faster implementation is wrong.</p>
@@ -330,13 +354,14 @@ degenerate cases.</p>
 </div>
 <h2 id="ending-a-session"><a class="header" href="#ending-a-session">Ending a session</a></h2>
 <p><code>/autoresearch off</code> leaves the mode and keeps the session. A bare
-<code>/autoresearch</code> opens the run screen; it does not end anything.</p>
+<code>/autoresearch</code> opens the run screen while the loop is on; it does not end
+anything.</p>
 <p>Escape during a turn stops that turn and pauses the loop without leaving the
-mode, and prints <code>Autoresearch interrupted. Send a message or /autoresearch resume to continue, /autoresearch off to leave the loop.</code> The status row reads
+mode, and prints <code>Autoresearch interrupted. Send a message or /autoresearch resume to continue; /autoresearch off stops it.</code> The status row reads
 <code>paused · send a message to resume</code>, the run screen title reads <code>(paused)</code>, the
 tools stay attached, and nothing runs until you send a message; a measurement
 that was waiting to be logged is picked up by that message. <code>/autoresearch resume</code> sends nothing but the resume, and with no session on the branch prints
-<code>No autoresearch session on this branch to resume. /autoresearch starts one.</code>
+<code>No autoresearch session on this branch to resume. /autoresearch &lt;goal&gt; starts one.</code>
 <code>/autoresearch off</code> from there leaves the mode.</p>
 <p>Text typed after the command on a live session goes to the model as context for
 the resume, and prints
@@ -345,9 +370,10 @@ The stored goal typed back is a resume with nothing to add: no notice, and the
 model is not told the goal a second time.</p>
 <p><code>/autoresearch clear</code> resets the worktree to the segment baseline, deletes
 untracked files and closes the session. It asks first, naming the commit it
-resets to and how many files hold uncommitted changes. The reset restores
-<code>autoresearch.sh</code> as committed on the branch. Off an <code>autoresearch/*</code> branch,
-<code>clear</code> closes the session and resets nothing. Two flags:</p>
+resets to and how many files hold uncommitted changes; a decline resets nothing
+and leaves the session open. The reset restores <code>autoresearch.sh</code> as committed
+on the branch. Off an <code>autoresearch/*</code> branch, <code>clear</code> closes the session and
+resets nothing. Two flags:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -363,7 +389,11 @@ resets to and how many files hold uncommitted changes. The reset restores
 misspelled <code>--keep-tree</code> cannot fall through to the reset. A <code>clear</code> that cannot
 read git status resets nothing and leaves the session open, since the
 confirmation exists to state what the reset discards.</p>
-<p><code>/autoswarm</code> takes the same subcommands.</p>
+<p>A session started from <code>/autoswarm</code> is ended from its dashboard: <code>x</code> stop,
+<code>n</code> new session, <code>c</code> clear session and <code>r</code> reset worktree are the subcommands
+above as keys.</p>
+<p>Without an interactive terminal (<code>-p</code>, a pipe) every subcommand works as
+written; only the run screen and the <code>/autoswarm</code> console need one.</p>
 <p>State is stored per repository, under the profile directory. The database is
 keyed on the primary checkout, so worktrees of one repository share it.
 <code>VEYYON_AUTORESEARCH_DB_DIR</code> overrides the location.</p>

@@ -621,7 +621,6 @@ describe("autoresearch slash command", () => {
 		expect(harness.sentMessages).toEqual([]);
 		expect(harness.notifications.some(n => n.message.includes("Autoresearch enabled"))).toBe(true);
 	});
-
 	it("forwards a slash argument as the user message and creates a slug branch", async () => {
 		const dir = makeTempDir().path();
 		const harness = createCommandHarness(dir, async (_command, args) => {
@@ -647,7 +646,7 @@ describe("autoresearch slash command", () => {
 			if (args[0] === "show-ref") return { code: 1, stderr: "", stdout: "" };
 			return { code: 0, stderr: "", stdout: "" };
 		});
-		await harness.command.handler("", harness.ctx);
+		await harness.command.handler("reduce edit benchmark runtime variance", harness.ctx);
 		expect(harness.notifications.some(n => n.type === "error" && n.message.includes("dirty"))).toBe(true);
 		// Should abort: no enabled notification, no checkout, no message sent
 		expect(harness.notifications.some(n => n.message.includes("Autoresearch enabled"))).toBe(false);

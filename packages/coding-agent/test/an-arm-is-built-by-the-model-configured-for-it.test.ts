@@ -9,8 +9,7 @@
  * Its members: an off-by-one between the comma list and the arm index, a spec
  * that resolves to nothing and falls back, a restore that never happens so
  * every later arm inherits the first arm's model, an arm id past the configured
- * breadth, a stale session row from before the column existed, and the knob
- * being reachable at breadth 1 where there are no arms to spread.
+ * breadth, and a stale session row from before the column existed.
  *
  * What it does not catch: that the provider actually answers on the switched
  * model. `pi.setModel` is the product's own model switch and is observed here
@@ -23,17 +22,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Model } from "@veyyon/ai";
 import { enterArm, leaveArm } from "@veyyon/coding-agent/autoresearch/arm-model";
+import { type ConsoleHost, LoopConsoleModel, parseArmModels } from "@veyyon/coding-agent/autoresearch/console";
 import { renderRunDetail } from "@veyyon/coding-agent/autoresearch/screen";
-import {
-	handleSetupKey,
-	parseArmModels,
-	renderSetupConsole,
-	SwarmSetupModel,
-	setupRows,
-} from "@veyyon/coding-agent/autoresearch/setup-console";
+import { SetupFormComponent } from "@veyyon/coding-agent/autoresearch/setup-form";
 import { createExperimentState, createSessionRuntime } from "@veyyon/coding-agent/autoresearch/state";
 import { AutoresearchStorage } from "@veyyon/coding-agent/autoresearch/storage";
-import { MAX_BREADTH, MIN_BREADTH } from "@veyyon/coding-agent/autoresearch/swarm";
+import { MAX_BREADTH, MIN_SWARM_BREADTH } from "@veyyon/coding-agent/autoresearch/swarm";
 import { createLogExperimentTool } from "@veyyon/coding-agent/autoresearch/tools/log-experiment";
 import { createRunExperimentTool } from "@veyyon/coding-agent/autoresearch/tools/run-experiment";
 import { createStartArmTool } from "@veyyon/coding-agent/autoresearch/tools/start-arm";
@@ -129,23 +123,45 @@ const LEGACY_RUNS_DDL = `CREATE TABLE runs (
 	abandoned_at INTEGER
 )`;
 
-const plainTheme = {
-	fg: (_name: string, text: string) => text,
-	bold: (text: string) => text,
-} as unknown as Parameters<typeof renderSetupConsole>[2];
-
 function modelNamed(id: string): Model {
 	// A provider, because a run records `provider/id`: without one the stored
 	// value would read `undefined/gpt-5` and the assertion would pass on it.
 	return { id, name: id.toUpperCase(), api: "anthropic-messages", provider: "acme" } as unknown as Model;
 }
-
 /** Every model this session can reach, by the spec that names it. */
 const CATALOG: Record<string, Model> = {
 	sonnet: modelNamed("sonnet"),
 	"gpt-5": modelNamed("gpt-5"),
 	glm: modelNamed("glm"),
 };
+
+function stubHost(overrides: Partial<ConsoleHost> = {}): ConsoleHost {
+	return {
+		situation: () => ({
+			session: null,
+			harness: false,
+			modeOn: false,
+			busy: false,
+			interrupted: false,
+			pausedOnBranch: null,
+			baseline: false,
+		}),
+		modelExists: (spec: string) => spec in CATALOG,
+		presets: () => [],
+		savePreset: () => "saved",
+		deletePreset: () => true,
+		apply: () => {},
+		act: () => "stay",
+		...overrides,
+	};
+}
+
+/** The setup form over `model` with the ring on the Models row, as the launcher presents it. */
+function modelsRow(model: LoopConsoleModel): SetupFormComponent {
+	const form = new SetupFormComponent({ model, onAction: () => {}, onCancel: () => {} });
+	form.focus("models");
+	return form;
+}
 
 interface Switcher {
 	api: ExtensionAPI;
@@ -300,63 +316,44 @@ describe("an arm is built by the model configured for it", () => {
 		expect(parseArmModels("")).toEqual([]);
 	});
 
-	it("offers the models row only where there are arms to spread across", () => {
-		// Swept from the source bounds rather than a hardcoded pair: a knob that
-		// governs arms must be gone at breadth 1, not present and inert.
-		for (let breadth = MIN_BREADTH; breadth <= MAX_BREADTH; breadth += 1) {
-			const model = new SwarmSetupModel({ goal: "faster", breadth, attempts: 1, certify: true, armModels: [] });
-			const ids = setupRows(model).map(row => row.id);
-			expect(ids.includes("models")).toBe(breadth > 1);
-			expect(model.fields().includes("models")).toBe(breadth > 1);
+	it("always offers the models row across all swarm breadths", () => {
+		for (let breadth = MIN_SWARM_BREADTH; breadth <= MAX_BREADTH; breadth += 1) {
+			const model = new LoopConsoleModel(
+				{ goal: "faster", breadth, attempts: 1, certify: true, armModels: [], maxIterations: null },
+				stubHost(),
+			);
+			expect(modelsRow(model).focusedId).toBe("models");
 		}
 	});
 
-	it("drops the row and the assignment together when breadth falls back to 1", () => {
-		// Lowering breadth takes the row out from under the cursor. A cursor left
-		// on a row that no longer renders is a console where the arrows edit
-		// something invisible.
-		const model = new SwarmSetupModel({
-			goal: "faster",
-			breadth: 3,
-			attempts: 1,
-			certify: true,
-			armModels: ["sonnet", "gpt-5", "glm"],
-			modelExists: spec => spec in CATALOG,
-		});
-		model.field = "models";
-		model.adjust(0);
-		expect(model.field).toBe("models");
-		model.field = "breadth";
-		model.adjust(-1);
-		model.adjust(-1);
-		expect(model.breadth).toBe(1);
-		expect(model.field).toBe("breadth");
-		expect(model.result().armModels).toEqual([]);
-		expect(model.modelSummary()).toBe("");
-	});
-
 	it("hands back one spec per arm, trimmed to the configured breadth", () => {
-		const model = new SwarmSetupModel({
-			goal: "faster",
-			breadth: 2,
-			attempts: 1,
-			certify: true,
-			armModels: ["sonnet", "gpt-5", "glm"],
-			modelExists: spec => spec in CATALOG,
-		});
-		expect(model.result().armModels).toEqual(["sonnet", "gpt-5"]);
+		const model = new LoopConsoleModel(
+			{
+				goal: "faster",
+				breadth: 2,
+				attempts: 1,
+				certify: true,
+				armModels: ["sonnet", "gpt-5", "glm"],
+				maxIterations: null,
+			},
+			stubHost(),
+		);
+		expect(model.setup().armModels).toEqual(["sonnet", "gpt-5"]);
 		expect(model.modelSummary()).toBe("a0 sonnet · a1 gpt-5.");
 	});
 
 	it("names the arm each spec lands on, including the ones left on the session model", () => {
-		const model = new SwarmSetupModel({
-			goal: "faster",
-			breadth: 3,
-			attempts: 1,
-			certify: true,
-			armModels: ["", "gpt-5"],
-			modelExists: spec => spec in CATALOG,
-		});
+		const model = new LoopConsoleModel(
+			{
+				goal: "faster",
+				breadth: 3,
+				attempts: 1,
+				certify: true,
+				armModels: ["", "gpt-5"],
+				maxIterations: null,
+			},
+			stubHost(),
+		);
 		expect(model.modelSummary()).toBe("a0 session model · a1 gpt-5 · a2 session model.");
 	});
 
@@ -364,45 +361,47 @@ describe("an arm is built by the model configured for it", () => {
 		// Starting anyway would run the arm on the session model and report it as
 		// the model that was asked for. The refusal is on `enter`, where the
 		// console already states why a run cannot start.
-		const model = new SwarmSetupModel({
-			goal: "faster",
-			breadth: 2,
-			attempts: 1,
-			certify: true,
-			armModels: ["sonnet", "gpt-4o"],
-			modelExists: spec => spec in CATALOG,
-		});
+		const model = new LoopConsoleModel(
+			{
+				goal: "faster",
+				breadth: 2,
+				attempts: 1,
+				certify: true,
+				armModels: ["sonnet", "gpt-4o"],
+				maxIterations: null,
+			},
+			stubHost(),
+		);
 		expect(model.unknownModels()).toEqual(["gpt-4o"]);
-		expect(model.canStart()).toBe(false);
-		const frame = renderSetupConsole(model, 100, plainTheme).join("\n");
-		expect(frame).toContain("enter needs a known model");
-		expect(frame).toContain('No model matches "gpt-4o"');
-		expect(frame).not.toContain("enter start");
+		expect(model.startBlocker()).toBe('no model matches "gpt-4o"');
 
 		// A spec that resolves clears the refusal, so the console is not stuck.
-		model.field = "models";
-		model.backspace();
-		model.backspace();
-		model.typeText("5");
+		const form = modelsRow(model);
+		form.handleInput("\x7f"); // backspace 'o'
+		form.handleInput("\x7f"); // backspace '4'
+		form.handleInput("5"); // type '5' -> "sonnet, gpt-5"
 		expect(model.models).toBe("sonnet, gpt-5");
-		expect(model.canStart()).toBe(true);
+		expect(model.unknownModels()).toEqual([]);
+		expect(model.startBlocker()).toBeNull();
 	});
 
 	it("ignores an unresolvable spec on an arm the session will never reach", () => {
 		// Breadth 2 with three specs: the third arm does not exist, so the spec on
 		// it cannot mislead anybody and must not block the run either.
-		const model = new SwarmSetupModel({
-			goal: "faster",
-			breadth: 2,
-			attempts: 1,
-			certify: true,
-			armModels: ["sonnet", "gpt-5", "nonexistent"],
-			modelExists: spec => spec in CATALOG,
-		});
+		const model = new LoopConsoleModel(
+			{
+				goal: "faster",
+				breadth: 2,
+				attempts: 1,
+				certify: true,
+				armModels: ["sonnet", "gpt-5", "nonexistent"],
+				maxIterations: null,
+			},
+			stubHost(),
+		);
 		expect(model.unknownModels()).toEqual([]);
-		expect(model.canStart()).toBe(true);
+		expect(model.startBlocker()).toBeNull();
 	});
-
 	it("switches the session to the arm's model and back when the arm is logged", async () => {
 		const harness = await swarmWith(["sonnet", "gpt-5"]);
 		const switching = switcher(harness.dir);
@@ -762,28 +761,33 @@ describe("an arm is built by the model configured for it", () => {
 		expect(serial.some(line => line.startsWith("Arm"))).toBe(false);
 		expect(serial.some(line => line.startsWith("Built on") && line.includes("acme/gpt-5"))).toBe(true);
 	});
-
 	it("takes a pasted list that ends in a newline, and types nothing from a key sequence", () => {
 		// A model list is pasted, and a paste out of a terminal or a document
 		// carries a trailing newline. The whole chunk used to be rejected, so the
 		// paste inserted nothing and said nothing.
-		const model = new SwarmSetupModel({ goal: "g", breadth: 2, attempts: 1, certify: true, armModels: [] });
-		model.field = "models";
-		handleSetupKey(model, "sonnet, gpt-5\n");
+		const model = new LoopConsoleModel(
+			{ goal: "g", breadth: 2, attempts: 1, certify: true, armModels: [], maxIterations: null },
+			stubHost(),
+		);
+		modelsRow(model).handleInput("sonnet, gpt-5\n");
 		expect(parseArmModels(model.models)).toEqual(["sonnet", "gpt-5"]);
 
 		// An interior newline separates rather than fusing two specs.
-		const pasted = new SwarmSetupModel({ goal: "g", breadth: 2, attempts: 1, certify: true, armModels: [] });
-		pasted.field = "models";
-		handleSetupKey(pasted, "sonnet,\ngpt-5");
+		const pasted = new LoopConsoleModel(
+			{ goal: "g", breadth: 2, attempts: 1, certify: true, armModels: [], maxIterations: null },
+			stubHost(),
+		);
+		modelsRow(pasted).handleInput("sonnet,\ngpt-5");
 		expect(parseArmModels(pasted.models)).toEqual(["sonnet", "gpt-5"]);
 
 		// An escape sequence is a key, not text: it must not type its own bytes.
 		// F1, deliberately: an arrow is caught by its own branch above, so a test
 		// that used one would pass with the escape guard removed.
-		const untouched = new SwarmSetupModel({ goal: "g", breadth: 2, attempts: 1, certify: true, armModels: [] });
-		untouched.field = "models";
-		handleSetupKey(untouched, "\u001bOP");
+		const untouched = new LoopConsoleModel(
+			{ goal: "g", breadth: 2, attempts: 1, certify: true, armModels: [], maxIterations: null },
+			stubHost(),
+		);
+		modelsRow(untouched).handleInput("\u001bOP");
 		expect(untouched.models).toBe("");
 	});
 });

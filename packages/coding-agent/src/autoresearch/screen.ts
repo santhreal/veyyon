@@ -1,20 +1,30 @@
 /**
- * The autoresearch / autoswarm run screen: one surface that owns a loop.
+ * The autoresearch run screen, and the autoswarm dashboard built on it.
  *
- * Reached with the extension's own chord, it is the `/advisor configure` idiom —
- * a two-pane {@link ./overlay-box} card whose sidebar is a {@link SelectList} of
- * everything the session has produced and whose body is the highlighted entry in
- * full. The session, the injected playbook, the run in flight and every logged
- * run are rows in one list, so reading a loop is scrolling, not remembering
- * which chord shows which slice.
+ * Reached with the extension's own chord and `/autoresearch status`, it is the
+ * `/advisor configure` idiom — a two-pane {@link ./overlay-box} card whose
+ * sidebar is a {@link SelectList} of everything the session has produced and
+ * whose body is the highlighted entry in full. The session, the injected
+ * playbook, the run in flight and every logged run are rows in one list, so
+ * reading a loop is scrolling, not remembering which chord shows which slice.
+ * Enter opens the highlighted row at the card's full width.
+ *
+ * `/autoswarm` over a session opens the same card with a {@link ./console}
+ * model: the actions the swarm allows sit on single keys in the footer, and
+ * `e` opens the setup form as a view of the card. Before a session exists,
+ * `/autoswarm` opens the launcher in {@link ./launcher} instead. Without a
+ * model the card is the read-only run screen.
  *
  * Row geometry is in `renderRunScreen`, which takes its width and height as
  * arguments so a test can pin a frame without a terminal.
  */
 import {
 	type Component,
+	type MouseRoutable,
+	matchesKey,
 	type SelectItem,
 	SelectList,
+	type SgrMouseEvent,
 	sanitizeSingleLine,
 	truncateToWidth,
 	visibleWidth,
@@ -34,7 +44,9 @@ import {
 } from "../modes/components/overlay-box";
 import { getSelectListTheme, type ThemeColor, theme } from "../modes/theme/theme";
 import { shortenPath } from "../tools/shorten-path";
+import { ACTION_KEYS, ACTION_LABELS, type ConsoleAction, type LoopConsoleModel } from "./console";
 import { formatElapsed, formatNum, formatPercentChange } from "./helpers";
+import { SetupFormComponent } from "./setup-form";
 import {
 	currentResults,
 	effectiveBreadth,
@@ -58,18 +70,14 @@ const SIDEBAR_MIN = 22;
 const SIDEBAR_MAX = 40;
 
 /**
- * Footer hints, widest first. The row is truncated to the card, so one long
- * string lost its tail: below 29 columns the card cut `esc close` off and the
- * screen stated no way out of itself. Each entry is a whole hint, and the
- * widest one that fits is the one printed, so the exit is the last thing shed
- * rather than the first.
+ * Footer segments for a run row, most important first. The footer sheds from
+ * the end, so the order is what survives a narrow card: the arrows first,
+ * the page keys after them.
  */
-const FOOTER_HINTS = [
-	"up/down select   pgup/pgdn page   esc close",
-	"up/down   pgup/pgdn   esc close",
-	"esc close",
-	"esc",
-];
+const RUN_ROW_HINTS = ["↑↓ row", "pgup/pgdn page", "enter detail"];
+const CLOSE_HINT = "esc close";
+const BACK_HINT = "esc back";
+const HINT_GAP = "   ";
 /**
  * Shortest frame the card can be: four chrome rows (title border, divider,
  * footer, bottom border) around the three-row body floor. The clamp used to be
@@ -79,35 +87,28 @@ const FOOTER_HINTS = [
 const SCREEN_MIN_ROWS = 7;
 
 /**
- * Soft-wrap plain text, returning at least one (possibly empty) line.
+ * Wrap a value to `width`, flattened to one line first: a literal tab lands on
+ * the terminal's own tab stops and opens a hole through the pane's columns,
+ * and an embedded newline pushes a row past the border the caller measured.
  *
- * Every value in this pane is text a model wrote into the session — a
- * description, a note, a flag reason, a commit subject — so it is sanitized
- * first: a literal tab lands on the terminal's own tab stops and opens a hole
- * through the pane's columns, and an embedded newline pushes a row past the
- * border the caller measured.
+ * A continuation line is trimmed at the front. The wrapper keeps the space it
+ * broke on, so a line that wrapped started one column right of the line above
+ * it: under a label, the hanging indent stopped hanging, and in a paragraph
+ * the second line was indented. Indentation inside a value is not lost by
+ * this: the flatten has already collapsed it.
  */
 function wrap(text: string, width: number): string[] {
 	if (!text) return [""];
-	return Bun.wrapAnsi(sanitizeSingleLine(text), Math.max(1, width), { trim: false }).split("\n");
+	return Bun.wrapAnsi(sanitizeSingleLine(text), Math.max(1, width), { trim: false })
+		.split("\n")
+		.map((line, index) => (index === 0 ? line : line.trimStart()));
 }
 
-/**
- * `Label       value`, wrapped under a hanging indent so values stay in column.
- *
- * A continuation line is trimmed at the front. The wrapper keeps the space it
- * broke on, so a value that wrapped started one column right of the value above
- * it and the hanging indent stopped hanging. Indentation inside a value is not
- * lost by this: `sanitizeSingleLine` has already collapsed it, and the one
- * caller with meaningful indentation -- the playbook -- wraps directly.
- */
+/** `Label       value`, wrapped under a hanging indent so values stay in column. */
 function field(label: string, value: string, width: number): string[] {
 	const body = Math.max(1, width - LABEL_WIDTH);
-	const lines = wrap(value, body);
-	return lines.map((line, index) =>
-		index === 0
-			? `${theme.fg("dim", label.padEnd(LABEL_WIDTH))}${line}`
-			: `${" ".repeat(LABEL_WIDTH)}${line.trimStart()}`,
+	return wrap(value, body).map((line, index) =>
+		index === 0 ? `${theme.fg("dim", label.padEnd(LABEL_WIDTH))}${line}` : `${" ".repeat(LABEL_WIDTH)}${line}`,
 	);
 }
 
@@ -675,12 +676,19 @@ function runDetail(result: ExperimentResult, state: ExperimentState, width: numb
 }
 
 /**
- * The widest hint the footer can print whole, or the last one when even that
- * overflows. `row` insets a column on each side of the border pair.
+ * The footer: the longest run of `segments` that fits whole, with `leave`
+ * (`esc close`, or `esc back` on a view of the card) after it, or `esc` alone
+ * when even that overflows. `row` insets a column on each side of the border
+ * pair. The segments are measured as printed, so a styled one is not charged
+ * for its escape bytes.
  */
-export function footerHint(width: number): string {
+export function footerHint(width: number, segments: readonly string[] = RUN_ROW_HINTS, leave = CLOSE_HINT): string {
 	const room = Math.max(0, width - 4);
-	return FOOTER_HINTS.find(hint => hint.length <= room) ?? FOOTER_HINTS[FOOTER_HINTS.length - 1];
+	for (let keep = segments.length; keep >= 0; keep -= 1) {
+		const hint = [...segments.slice(0, keep), leave].join(HINT_GAP);
+		if (visibleWidth(hint) <= room) return hint;
+	}
+	return "esc";
 }
 
 /**
@@ -722,6 +730,7 @@ export function renderRunScreen(
 	sidebar: readonly string[],
 	detail: readonly string[],
 	sidebarWidth: number,
+	hints: readonly string[] = RUN_ROW_HINTS,
 ): string[] {
 	const out: string[] = [];
 	if (screenStacks(width)) {
@@ -739,10 +748,31 @@ export function renderRunScreen(
 		}
 	}
 	out.push(screenStacks(width) ? divider(width) : dividerSplit(width, sidebarWidth));
-	out.push(row(theme.fg("dim", footerHint(width)), width));
+	out.push(row(theme.fg("dim", footerHint(width, hints)), width));
 	out.push(bottomBorder(width));
 	// The chrome has a floor of its own — two borders and the insets between
 	// them — so a terminal narrower than that still gets rows it can print.
+	return out.map(line => truncateToWidth(line, width));
+}
+
+/**
+ * A view of the card with one pane at the full inner width: the highlighted
+ * row in full, or the setup form. `rows` lines exactly, like the ledger.
+ */
+export function renderPaneScreen(
+	runtime: AutoresearchRuntime,
+	width: number,
+	rows: number,
+	body: readonly string[],
+	hints: readonly string[],
+	leave: string,
+): string[] {
+	const out: string[] = [topBorder(width, screenTitle(runtime, topBorderTitleWidth(width)))];
+	const bodyRows = Math.max(1, rows - 4);
+	for (let index = 0; index < bodyRows; index += 1) out.push(row(body[index] ?? "", width));
+	out.push(divider(width));
+	out.push(row(theme.fg("dim", footerHint(width, hints, leave)), width));
+	out.push(bottomBorder(width));
 	return out.map(line => truncateToWidth(line, width));
 }
 
@@ -779,36 +809,114 @@ function signatureOf(items: readonly SelectItem[]): string {
 	return items.map(item => `${item.value}|${item.label}`).join("\n");
 }
 
+/** Where the two panes landed in the last frame, in the card's own cells. */
+interface PaneGeometry {
+	listTop: number;
+	listRows: number;
+	listLeft: number;
+	listWidth: number;
+	detailTop: number;
+	detailRows: number;
+	detailLeft: number;
+	detailWidth: number;
+}
+
+/**
+ * What the card shows. The ledger is the two-pane run screen; `detail` is the
+ * highlighted row alone at the card's full width, entered with Enter and left
+ * with Escape; `setup` is the console's form, one key away over a session.
+ */
+export type ScreenView = "ledger" | "detail" | "setup";
+
+/**
+ * The dashboard's action bar: the primary action, then the two keys the card
+ * itself owns, then the other actions the swarm allows. The footer sheds from
+ * the end, so on a narrow card the primary action, `e setup` and
+ * `enter detail` outlive `clear session` and `reset worktree`, which are
+ * what a reader least needs a hint for and least wants to press by accident.
+ */
+export function actionBar(model: LoopConsoleModel): string[] {
+	const [primary, ...rest] = model
+		.actions()
+		.map(action => `${ACTION_KEYS[action]} ${ACTION_LABELS[action].toLowerCase()}`);
+	return [...(primary ? [primary] : []), "e setup", "enter detail", ...rest, ROW_HINT];
+}
+
+const ROW_HINT = "↑↓ row";
+const DETAIL_VIEW_HINTS = ["↑↓ run", "pgup/pgdn page"];
+
 /**
  * Live screen. Rebuilds its list whenever the loop's data changed, keeping the
  * highlighted row: a run logged while the screen is open must not move the
  * reader's cursor onto a different run.
+ *
+ * With a console model the card is the autoswarm dashboard: the ledger's rows
+ * are runs, the footer is the action bar and each action is one key, `e`
+ * opens the setup form as a view of the card, and no letter is a filter.
+ * Without one, the card is the run screen: the list owns the arrows and every
+ * printable character, which is its filter. Enter on a row drills into it
+ * either way.
+ *
+ * The card sits over the transcript rather than on the alternate screen, so
+ * its mouse reports arrive through {@link routeMouse} from the engine's
+ * overlay routing, in the card's own cells.
  */
-export class AutoresearchScreenComponent implements Component {
+export class AutoresearchScreenComponent implements Component, MouseRoutable {
 	#runtime: AutoresearchRuntime;
+	#model: LoopConsoleModel | null;
+	#form: SetupFormComponent | null;
 	#close: () => void;
 	#requestRender: () => void;
 	#rows: () => number;
 	#list: SelectList;
-	#selected = "session";
+	#selected: string;
 	#signature = "";
 	#detailScroll = 0;
+	#view: ScreenView = "ledger";
+	/** Why the last action key did nothing, shown in the footer until the next key. */
+	#notice: string | null = null;
 	/** Last sidebar width, so the group rule is drawn to the column it lives in. */
 	#sidebarWidth = SIDEBAR_MIN;
 	/** Rows the detail pane last showed, so a page key moves by a viewport. */
 	#detailRows = 1;
+	/** Pane rectangles of the last render, so a report is matched to the pane it landed in. */
+	#panes: PaneGeometry | null = null;
+	/** Body rows of the last single-pane paint. */
+	#bodyRows = 0;
 
 	constructor(options: {
 		runtime: AutoresearchRuntime;
+		/** The autoswarm console over the ledger, or null for the run screen. */
+		model: LoopConsoleModel | null;
 		close: () => void;
 		requestRender: () => void;
 		rows: () => number;
 	}) {
 		this.#runtime = options.runtime;
+		this.#model = options.model;
 		this.#close = options.close;
 		this.#requestRender = options.requestRender;
 		this.#rows = options.rows;
-		this.#list = this.#buildList(runScreenRows(this.#runtime));
+		const model = options.model;
+		this.#form = model
+			? new SetupFormComponent({
+					model,
+					onAction: action => this.#perform(action),
+					onCancel: () => this.#leaveView(),
+				})
+			: null;
+		const items = this.#items();
+		this.#selected = "session";
+		this.#list = this.#buildList(items);
+	}
+
+	/** The view the card is on, for a host asserting a transition. */
+	get view(): ScreenView {
+		return this.#view;
+	}
+
+	#items(): SelectItem[] {
+		return runScreenRows(this.#runtime, this.#sidebarWidth);
 	}
 
 	#buildList(items: SelectItem[]): SelectList {
@@ -824,7 +932,13 @@ export class AutoresearchScreenComponent implements Component {
 				return theme.fg("borderAccent", `  ${text} ${"─".repeat(rule)}`);
 			},
 		};
-		const list = new SelectList(items, Math.max(3, this.#rows() - 4), listTheme);
+		const list = new SelectList(items, Math.max(3, this.#rows() - 4), listTheme, {
+			// A letter on the dashboard is an action key, never a query, so the
+			// list's own search is off there: with it on, a stacked card whose
+			// rows overflowed printed `Type to search` under a list nothing
+			// searches. The run screen keeps it, since typing there is a filter.
+			overflowSearch: this.#model === null,
+		});
 		const index = items.findIndex(item => item.value === this.#selected);
 		list.setSelectedIndex(index >= 0 ? index : 0);
 		list.onSelectionChange = item => {
@@ -832,17 +946,18 @@ export class AutoresearchScreenComponent implements Component {
 			this.#detailScroll = 0;
 		};
 		list.onCancel = () => this.#close();
+		// A click on the highlighted row, or Enter: the row in full.
+		list.onSelect = () => this.#enterView("detail");
 		return list;
 	}
 
 	/**
 	 * Push new rows only when the rows themselves changed, so an idle repaint
-	 * costs one string. The list is updated rather than replaced: a reader who
-	 * filtered the sidebar keeps their filter and their selected run across a run
-	 * being logged.
+	 * costs one string. The list is updated rather than replaced, so the
+	 * selected row survives a run being logged.
 	 */
 	#sync(): void {
-		const items = runScreenRows(this.#runtime, this.#sidebarWidth);
+		const items = this.#items();
 		// The width is part of the signature: a resize sheds or restores a column
 		// of every run row, and a signature blind to it left the list rendering
 		// the columns of the width before last.
@@ -850,6 +965,52 @@ export class AutoresearchScreenComponent implements Component {
 		if (signature === this.#signature) return;
 		this.#signature = signature;
 		this.#list.setItems(items);
+		// A row that vanished under the cursor leaves the cursor where the list
+		// put it; read the cursor back so the detail pane follows.
+		const current = this.#list.getSelectedItem();
+		if (current && current.value !== this.#selected) {
+			this.#selected = current.value;
+			this.#detailScroll = 0;
+		}
+	}
+
+	#enterView(view: "detail" | "setup"): void {
+		if (view === "setup" && this.#form === null) return;
+		this.#view = view;
+		this.#detailScroll = 0;
+		this.#notice = null;
+		this.#requestRender();
+	}
+
+	#leaveView(): void {
+		this.#view = "ledger";
+		this.#notice = null;
+		this.#requestRender();
+	}
+
+	/** Run an action from the bar or the form; the card leaves when the action needs it to. */
+	#perform(action: ConsoleAction): void {
+		const model = this.#model;
+		if (!model) return;
+		const outcome = model.perform(action);
+		if (outcome === "close") {
+			this.#close();
+			return;
+		}
+		this.#notice = outcome === "refused" ? `${ACTION_LABELS[action]}: ${model.blocker(action)}` : null;
+		this.#requestRender();
+	}
+
+	#hints(): readonly string[] {
+		if (this.#notice) return [this.#notice];
+		switch (this.#view) {
+			case "setup":
+				return [this.#form?.hint() ?? "", "↑↓ field"];
+			case "detail":
+				return DETAIL_VIEW_HINTS;
+			case "ledger":
+				return this.#model ? actionBar(this.#model) : RUN_ROW_HINTS;
+		}
 	}
 
 	render(width: number): readonly string[] {
@@ -858,6 +1019,19 @@ export class AutoresearchScreenComponent implements Component {
 		this.#sidebarWidth = screenStacks(width) ? width - 4 : sidebarWidth;
 		// After the width, because the rows are built against it.
 		this.#sync();
+		const leave = this.#view === "ledger" ? CLOSE_HINT : BACK_HINT;
+		if (this.#view !== "ledger") {
+			const inner = Math.max(1, width - 4);
+			const bodyRows = Math.max(1, rows - 4);
+			this.#detailRows = bodyRows;
+			const body =
+				this.#view === "setup" && this.#form
+					? this.#form.render(inner, bodyRows)
+					: this.#detailWindow(inner, bodyRows);
+			this.#bodyRows = body.length;
+			this.#panes = null;
+			return renderPaneScreen(this.#runtime, width, rows, body, this.#hints(), leave);
+		}
 		// Stacked, both panes are the full inner width and the rows are split
 		// between them; side by side, both panes get every body row.
 		const stackedRows = stackedBodyRows(rows);
@@ -868,7 +1042,28 @@ export class AutoresearchScreenComponent implements Component {
 		const sidebar = this.#list.render(this.#sidebarWidth);
 		this.#detailRows = detailRows;
 		const detail = this.#detailWindow(paneWidth, detailRows);
-		return renderRunScreen(this.#runtime, width, rows, sidebar, detail, sidebarWidth);
+		this.#panes = screenStacks(width)
+			? {
+					listTop: 1,
+					listRows,
+					listLeft: 2,
+					listWidth: this.#sidebarWidth,
+					detailTop: 1 + listRows + 1,
+					detailRows,
+					detailLeft: 2,
+					detailWidth: paneWidth,
+				}
+			: {
+					listTop: 1,
+					listRows,
+					listLeft: 2,
+					listWidth: sidebarWidth,
+					detailTop: 1,
+					detailRows,
+					detailLeft: sidebarWidth + 5,
+					detailWidth: paneWidth,
+				};
+		return renderRunScreen(this.#runtime, width, rows, sidebar, detail, sidebarWidth, this.#hints());
 	}
 
 	/**
@@ -890,8 +1085,76 @@ export class AutoresearchScreenComponent implements Component {
 		return window;
 	}
 
+	/**
+	 * A report in the card's own cells. On the ledger, the wheel over the runs
+	 * walks the cursor, a click on a row lands on it and a click on the
+	 * highlighted row opens it, and the wheel over the detail pane scrolls what
+	 * the page keys scroll. On the detail view the wheel scrolls the detail; on
+	 * the setup view the form takes the report. A report on the chrome does
+	 * nothing.
+	 */
+	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
+		if (this.#view === "setup") {
+			const bodyLine = line - 1;
+			if (bodyLine >= 0 && bodyLine < this.#bodyRows) {
+				this.#form?.routeMouse(event, bodyLine, Math.max(0, col - 2));
+				this.#requestRender();
+			}
+			return;
+		}
+		if (this.#view === "detail") {
+			if (event.wheel !== null && line >= 1 && line <= this.#bodyRows) {
+				this.#detailScroll = Math.max(0, this.#detailScroll + event.wheel);
+				this.#requestRender();
+			}
+			return;
+		}
+		const panes = this.#panes;
+		if (!panes) return;
+		const inList =
+			line >= panes.listTop &&
+			line < panes.listTop + panes.listRows &&
+			col >= panes.listLeft &&
+			col < panes.listLeft + panes.listWidth;
+		if (inList) {
+			if (event.wheel !== null) {
+				this.#list.handleWheel(event.wheel);
+				return;
+			}
+			const index = this.#list.hitTest(line - panes.listTop);
+			if (event.motion) {
+				this.#list.setHoverIndex(index ?? null);
+				return;
+			}
+			if (event.leftClick && index !== undefined) this.#list.clickItem(index);
+			return;
+		}
+		const inDetail =
+			line >= panes.detailTop &&
+			line < panes.detailTop + panes.detailRows &&
+			col >= panes.detailLeft &&
+			col < panes.detailLeft + panes.detailWidth;
+		if (inDetail && event.wheel !== null) {
+			this.#detailScroll = Math.max(0, this.#detailScroll + event.wheel);
+		}
+	}
+
 	handleInput(data: string): void {
+		this.#notice = null;
+		if (this.#view === "setup" && this.#form) {
+			if (data === "\x1b") {
+				this.#leaveView();
+				return;
+			}
+			this.#form.handleInput(data);
+			this.#requestRender();
+			return;
+		}
 		if (data === "\x1b") {
+			if (this.#view === "detail") {
+				this.#leaveView();
+				return;
+			}
 			// A reader who filtered the run list gets their filter back first: the
 			// list states whether Escape has a filter to clear, and one that closed
 			// the whole screen instead read a filter as "leave".
@@ -903,9 +1166,8 @@ export class AutoresearchScreenComponent implements Component {
 			this.#close();
 			return;
 		}
-		// The detail pane pages with the page keys; the list owns the arrows and
-		// every printable character, which is its filter, so no letter is a chord
-		// here. A page is the pane's own height less the indicator row it spends.
+		// The detail pane pages with the page keys. A page is the pane's own
+		// height less the indicator row it spends.
 		const page = Math.max(1, this.#detailRows - 1);
 		if (data === "\x1b[5~") {
 			this.#detailScroll = Math.max(0, this.#detailScroll - page);
@@ -917,7 +1179,44 @@ export class AutoresearchScreenComponent implements Component {
 			this.#requestRender();
 			return;
 		}
-		this.#list.handleInput(data);
-		this.#requestRender();
+		if (this.#view === "ledger" && isEnter(data)) {
+			this.#enterView("detail");
+			return;
+		}
+		const model = this.#model;
+		if (model === null) {
+			// The run screen: the list owns the arrows and every printable
+			// character, which is its filter, so no letter is a chord here. On
+			// the detail view only the arrows reach it, so the run under the
+			// pane can be walked without leaving it.
+			if (this.#view === "detail" && !isNavigation(data)) return;
+			this.#list.handleInput(data);
+			this.#requestRender();
+			return;
+		}
+		// The dashboard: one key per action the swarm allows, `e` for the setup
+		// form, the arrows for the ledger. A letter that is none of these does
+		// nothing; it is never a filter.
+		const action = model.actions().find(candidate => ACTION_KEYS[candidate] === data);
+		if (action) {
+			this.#perform(action);
+			return;
+		}
+		if (data === "e") {
+			this.#enterView("setup");
+			return;
+		}
+		if (isNavigation(data)) {
+			this.#list.handleInput(data);
+			this.#requestRender();
+		}
 	}
+}
+
+function isEnter(data: string): boolean {
+	return matchesKey(data, "return") || matchesKey(data, "enter") || data === "\n";
+}
+
+function isNavigation(data: string): boolean {
+	return matchesKey(data, "up") || matchesKey(data, "down") || matchesKey(data, "home") || matchesKey(data, "end");
 }

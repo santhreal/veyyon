@@ -239,3 +239,5 @@ export const MAX_ATTEMPTS = 5;
 export const MIN_ATTEMPTS = 1;
 /** Breadth `/autoswarm` opens with: the fewest arms a certification ring needs. */
 export const DEFAULT_SWARM_BREADTH = 3;
+/** The fewest arms the autoswarm console accepts: a swarm of one arm is `/autoresearch`. */
+export const MIN_SWARM_BREADTH = 2;

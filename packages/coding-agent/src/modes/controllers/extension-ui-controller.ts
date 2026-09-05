@@ -1,4 +1,4 @@
-import type { Component, OverlayHandle, TUI } from "@veyyon/tui";
+import type { Component, OverlayHandle, OverlayOptions, TUI } from "@veyyon/tui";
 import { Container, Spacer, Text } from "@veyyon/tui";
 import { clampLow, errorMessage } from "@veyyon/utils";
 import type { CollabUiRequestDraft, CollabUiSelectItem } from "@veyyon/wire";
@@ -1128,7 +1128,7 @@ export class ExtensionUiController {
 			keybindings: KeybindingsManager,
 			done: (result: T) => void,
 		) => (Component & { dispose?(): void }) | Promise<Component & { dispose?(): void }>,
-		options?: { overlay?: boolean },
+		options?: { overlay?: boolean | OverlayOptions },
 	): Promise<T> {
 		const savedText = this.ctx.editor.getText();
 		const keybindings = KeybindingsManager.inMemory();
@@ -1162,16 +1162,16 @@ export class ExtensionUiController {
 			}
 			component = c;
 			if (options?.overlay) {
-				// The overlay sits on the transcript region: the composer zone (prompt,
+				// `true` is the transcript-region card: the composer zone (prompt,
 				// status line, footline) stays painted under it, so a running console
-				// or dashboard never takes the whole screen.
-				overlayHandle = this.ctx.ui.showOverlay(component, {
-					anchor: "bottom-center",
-					width: "100%",
-					maxHeight: "100%",
-					margin: 0,
-					aboveFooter: true,
-				});
+				// or dashboard never takes the whole screen. A caller with a shape of
+				// its own (a centered launcher) passes the geometry.
+				overlayHandle = this.ctx.ui.showOverlay(
+					component,
+					options.overlay === true
+						? { anchor: "bottom-center", width: "100%", maxHeight: "100%", margin: 0, aboveFooter: true }
+						: options.overlay,
+				);
 				return;
 			}
 			this.ctx.editorContainer.clear();

@@ -42,6 +42,7 @@ function dashboardStub(): DashboardController {
 		clear(): void {},
 		requestRender(): void {},
 		showScreen: async (): Promise<void> => {},
+		showLauncher: async (): Promise<void> => {},
 		update(): void {},
 	};
 }

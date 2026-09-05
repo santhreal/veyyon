@@ -1,26 +1,26 @@
 /**
  * WHY: a list on screen whose data changes is rebuilt by its host, and a rebuilt
  * `SelectList` is a NEW list — the query the reader typed is gone and the cursor
- * is back on the first row. The autoresearch run screen made that visible: its
- * sidebar carried the elapsed time of the run in flight, so the rows changed
- * once a second, and a filter typed into the sidebar disappeared on the next
- * tick. Filtering a forty-run session was impossible while a run was running.
+ * is back on the first row. The autoresearch run screen previously exposed this
+ * via live clocks in list data and search filtering.
  *
- * Two contracts, and both are needed: a surface does not put a live clock in
- * list DATA (the clock belongs to the frame, which is repainted from scratch),
- * and a list whose rows are replaced keeps the reader's filter and the row they
- * had selected.
+ * Two contracts are defended:
+ * 1. The run screen (`model: null`): printable characters filter the ledger,
+ *    the filter survives background runs being logged, and Esc clears the
+ *    active filter before closing the screen.
+ * 2. The dashboard (`model: LoopConsoleModel`): the setup view opened with `e`
+ *    takes printable keystrokes as the goal, the typed goal and the view
+ *    survive background runs, and a letter on the ledger is never a filter.
  *
- * The class is reader-owned view state discarded by a data refresh. It is closed
- * at `SelectList.setItems`, the one path a host has to change rows without
- * constructing a new list, and at the run screen, which is the host that
- * refreshes on a timer rather than on a keystroke.
- *
- * What it does not catch: a host that still constructs a second `SelectList`
- * instead of calling `setItems`. Nothing prevents that, and the run screen's own
- * case below is what would notice it there.
+ * The class this closes is lost reader-owned cursor position, discarded in-flight
+ * console input or search filter on background run completion, and trapped or
+ * uncancelable search filters.
+ * What it does not catch: terminal key encoding differences outside the TUI
+ * input handler.
  */
 import { describe, expect, it } from "bun:test";
+import { type ConsoleHost, LoopConsoleModel, type LoopSetup } from "@veyyon/coding-agent/autoresearch/console";
+import { BUILTIN_PRESETS } from "@veyyon/coding-agent/autoresearch/presets";
 import { AutoresearchScreenComponent, runScreenRows } from "@veyyon/coding-agent/autoresearch/screen";
 import { createExperimentState, createSessionRuntime } from "@veyyon/coding-agent/autoresearch/state";
 import type { AutoresearchRuntime, ExperimentResult } from "@veyyon/coding-agent/autoresearch/types";
@@ -75,6 +75,43 @@ function runtimeWith(count: number, ago: number | null): AutoresearchRuntime {
 	return runtime;
 }
 
+function stubConsole(runtime: AutoresearchRuntime): {
+	console: LoopConsoleModel;
+	applied: LoopSetup[];
+} {
+	const applied: LoopSetup[] = [];
+	const host: ConsoleHost = {
+		situation: () => ({
+			session: runtime.state?.name
+				? { name: runtime.state.name, branch: runtime.state.branch, runs: runtime.state.results.length }
+				: null,
+			harness: true,
+			modeOn: runtime.autoresearchMode,
+			busy: runtime.runningExperiment !== null,
+			interrupted: runtime.interrupted,
+			pausedOnBranch: null,
+			baseline: false,
+		}),
+		modelExists: () => true,
+		presets: () => [...BUILTIN_PRESETS],
+		savePreset: () => "saved",
+		deletePreset: () => true,
+		apply: setup => applied.push(setup),
+		act: () => "stay",
+	};
+	const console = new LoopConsoleModel(
+		{
+			goal: runtime.goal ?? "",
+			breadth: runtime.pendingSwarm?.breadth ?? runtime.state?.breadth ?? 1,
+			attempts: runtime.pendingSwarm?.attempts ?? 1,
+			certify: runtime.pendingSwarm?.certify ?? false,
+			armModels: runtime.pendingSwarm?.armModels ?? [],
+			maxIterations: null,
+		},
+		host,
+	);
+	return { console, applied };
+}
 const ROWS: SelectItem[] = [
 	{ value: "alpha", label: "alpha" },
 	{ value: "beta", label: "beta" },
@@ -179,17 +216,25 @@ describe("a typed filter survives the rows changing under it", () => {
 		expect(later).toEqual(early);
 	});
 
-	it("keeps a filter typed into the run screen while the loop logs a run", () => {
+	it("keeps a filter typed into the run screen (model: null) while the loop logs a run, and clears it with Esc before closing", () => {
 		// Twenty runs in a twelve-row terminal: more rows than the sidebar can
 		// show, which is when the component offers its search.
 		const runtime = runtimeWith(20, 5_000);
+		let closes = 0;
 		const screen = new AutoresearchScreenComponent({
 			runtime,
-			close: () => {},
+			model: null,
+			close: () => {
+				closes += 1;
+			},
 			requestRender: () => {},
 			rows: () => 12,
 		});
 		expect(screen.render(100).some(line => stripAnsi(line).includes("#20"))).toBeTrue();
+
+		// Footer on the run screen without console is RUN_ROW_HINTS
+		const initialFrame = screen.render(100).map(line => stripAnsi(line));
+		expect(initialFrame.at(-2)).toContain("↑↓ row   pgup/pgdn page   enter detail   esc close");
 
 		// "playb" reaches the Playbook row and nothing else: a run row is filtered
 		// on its label, which holds its number and its arm and neither of which
@@ -211,5 +256,61 @@ describe("a typed filter survives the rows changing under it", () => {
 		const after = screen.render(100).map(line => stripAnsi(line));
 		expect(after.some(line => line.includes("Playbook"))).toBeTrue();
 		expect(after.every(line => !line.includes("#"))).toBeTrue();
+
+		// Escape clears the active filter first, rather than closing the screen.
+		screen.handleInput("\x1b");
+		expect(closes).toBe(0);
+		const cleared = screen.render(100).map(line => stripAnsi(line));
+		expect(cleared.some(line => line.includes("#20") || line.includes("#21"))).toBeTrue();
+
+		// A second Escape closes the screen once the filter is cleared.
+		screen.handleInput("\x1b");
+		expect(closes).toBe(1);
+	});
+
+	it("edits the goal on the setup view, keeps it across logged runs, and never filters the ledger on a letter", () => {
+		const runtime = runtimeWith(20, 5_000);
+		const { console, applied } = stubConsole(runtime);
+		const screen = new AutoresearchScreenComponent({
+			runtime,
+			model: console,
+			close: () => {},
+			requestRender: () => {},
+			rows: () => 20,
+		});
+
+		// `e` opens the setup form, whose ring starts on the Goal row.
+		screen.handleInput("e");
+		expect(screen.view).toBe("setup");
+		for (const char of "faster") screen.handleInput(char);
+		expect(console.goal).toBe("faster");
+		expect(applied.at(-1)?.goal).toBe("faster");
+		const frame1 = screen.render(100).map(line => stripAnsi(line));
+		expect(frame1.some(line => line.includes("faster"))).toBe(true);
+
+		// A run logged while the form is open changes the rows under it, but
+		// leaves the view, the ring and the typed goal where they were.
+		runtime.runningExperiment = null;
+		runtime.state.results.push(result({ runNumber: 21, metric: 79 }));
+		const frame2 = screen.render(100).map(line => stripAnsi(line));
+		expect(screen.view).toBe("setup");
+		expect(console.goal).toBe("faster");
+		expect(frame2.some(line => line.includes("faster"))).toBe(true);
+		for (const char of " now") screen.handleInput(char);
+		expect(console.goal).toBe("faster now");
+
+		// Back on the ledger, a letter that is no action key does nothing: the
+		// rows stay, and the goal is not typed into.
+		screen.handleInput("\x1b");
+		expect(screen.view).toBe("ledger");
+		const items = runScreenRows(runtime);
+		const runIndex = items.findIndex(item => item.value === "run:20");
+		expect(runIndex).toBeGreaterThan(0);
+		for (let i = 0; i < runIndex; i++) screen.handleInput("\x1b[B");
+		for (const char of "play") screen.handleInput(char);
+		const frame3 = screen.render(100).map(line => stripAnsi(line));
+		expect(frame3.some(line => line.includes("#20"))).toBe(true);
+		expect(frame3.some(line => line.includes("#19"))).toBe(true);
+		expect(console.goal).toBe("faster now");
 	});
 });

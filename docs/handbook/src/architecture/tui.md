@@ -113,7 +113,7 @@ custom<T>(
     keybindings: KeybindingsManager,
     done: (result: T) => void,
   ) => (Component & { dispose?(): void }) | Promise<Component & { dispose?(): void }>,
-  options?: { overlay?: boolean },
+  options?: { overlay?: boolean | OverlayOptions },
 ): Promise<T>
 ```
 
@@ -121,7 +121,7 @@ Behavior in interactive mode (`extension-ui-controller.ts`):
 
 - Saves editor text.
 - Without `options.overlay`, replaces the editor component with your component.
-- With `options.overlay`, mounts your component as a bottom-centered overlay above the composer zone instead of replacing the editor; the prompt and status line remain visible.
+- With `options.overlay: true`, mounts your component as a bottom-centered overlay above the composer zone instead of replacing the editor; the prompt and status line remain visible. An `OverlayOptions` object mounts it with that geometry instead (a centered card, a fixed width). Either way a component that implements `MouseRoutable` receives the wheel and click reports inside its bounds.
 - Focuses your component.
 - On `done(result)`: calls `component.dispose?.()`, hides the overlay if present, restores editor + text for non-overlay flows, focuses editor, resolves promise.
   So `done(...)` is mandatory for completion.

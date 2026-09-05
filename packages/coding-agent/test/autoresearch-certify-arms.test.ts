@@ -50,6 +50,7 @@ function dashboardStub(): DashboardController {
 		clear(): void {},
 		requestRender(): void {},
 		showScreen: async (): Promise<void> => {},
+		showLauncher: async (): Promise<void> => {},
 		update(): void {},
 	};
 }
@@ -180,7 +181,7 @@ describe("breadth reaches the session", () => {
 	});
 
 	it("adopts the setup parked before the session existed", async () => {
-		// The setup console parks its answers on the runtime because there is no
+		// The console parks its answers on the runtime because there is no
 		// database yet; init must consume all three, or the console silently does
 		// nothing when used in the order a user reaches for it.
 		const dir = freshRepo();
@@ -207,7 +208,7 @@ describe("breadth reaches the session", () => {
 		expect(session.certify).toBe(false);
 		expect(session.armModels).toEqual(["sonnet", "", "gpt-5", ""]);
 		expect(text).toContain("4 arms per iteration");
-		expect(text).toContain("setup console");
+		expect(text).toContain("the console the user configured this run in decides them");
 	});
 
 	it("lets a later init reconfigure once nothing is parked", async () => {

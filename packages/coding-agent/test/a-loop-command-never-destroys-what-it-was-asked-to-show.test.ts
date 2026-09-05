@@ -2,7 +2,7 @@
  * WHY: the autoresearch and autoswarm commands each carried an action that did
  * the opposite of what the words on screen stated.
  *
- * Three defects, one class — a keystroke whose effect is not the one it reads
+ * Five defects, one class — a keystroke whose effect is not the one it reads
  * as:
  *   1. A bare `/autoresearch` on a live loop DISABLED the loop. The command you
  *      reach for to look at a run turned it off.
@@ -14,6 +14,8 @@
  *   4. The reset resolved its session as the newest open row rather than the one
  *      on this branch, so a second worktree elsewhere decided which commit this
  *      one was reset to.
+ *   5. Text after the command was swallowed as the goal, so `/autoresearch
+ *      status` rewrote what a 20-run session was optimizing.
  *
  * The class is: an argument the parser does not recognize, or a bare command,
  * must never resolve to the destructive branch, and the destructive branch acts
@@ -54,6 +56,7 @@ interface Harness {
 	shortcuts: Map<string, ShortcutSpec>;
 	notices: Array<{ text: string; level: string }>;
 	messages: string[];
+	hidden: Array<{ content: string }>;
 	activeTools: string[];
 }
 
@@ -84,6 +87,7 @@ function buildHarness(): Harness {
 	const shortcuts = new Map<string, ShortcutSpec>();
 	const notices: Array<{ text: string; level: string }> = [];
 	const messages: string[] = [];
+	const hidden: Array<{ content: string }> = [];
 	const activeTools: string[] = [];
 	const api = {
 		appendEntry(): void {},
@@ -107,11 +111,11 @@ function buildHarness(): Harness {
 		// command line above it already says what was asked; the context typed
 		// after the command travels inside it, so it is recorded the same way.
 		sendMessage(message: { content: string }): void {
-			messages.push(message.content);
+			hidden.push({ content: message.content });
 		},
 	} as unknown as ExtensionAPI;
 	createAutoresearchExtension(api);
-	return { commands, shortcuts, notices, messages, activeTools };
+	return { commands, shortcuts, notices, messages, hidden, activeTools };
 }
 
 /**
@@ -124,7 +128,11 @@ function makeCtx(cwd: string, harness: Harness, surface: Surface): ExtensionCont
 	return {
 		cwd,
 		hasUI: true,
+		isIdle: () => true,
 		hasPendingMessages: () => false,
+		models: {
+			resolve: (_spec: string) => undefined,
+		},
 		ui: {
 			notify: (text: string, level: string) => {
 				harness.notices.push({ text, level });
@@ -156,7 +164,8 @@ function makeCtx(cwd: string, harness: Harness, surface: Surface): ExtensionCont
 					if (settled.length === 0) settled.push({ value: result });
 				});
 				surface.screens.push([...component.render(100)]);
-				for (const key of surface.keys.length > 0 ? surface.keys : ["\x1b"]) {
+				const keysToRun = surface.keys.length > 0 ? [...surface.keys] : ["\x1b"];
+				for (const key of keysToRun) {
 					if (settled.length > 0) break;
 					component.handleInput(key);
 				}
@@ -385,7 +394,7 @@ describe("a loop command never destroys what it was asked to show", () => {
 
 	it("occupies one status row and no widget above the composer", async () => {
 		// The row replaced an eighteen-row table charged to the conversation on
-		// every frame. One line, and the chord that opens the rest.
+		// every step. It stays on one line and registers no widget.
 		const harness = buildHarness();
 		const surface = newSurface();
 		const ctx = makeCtx(cwdDir.path(), harness, surface);
@@ -417,10 +426,9 @@ describe("a loop command never destroys what it was asked to show", () => {
 		// An empty prefix used to return nothing, so the two words that reach
 		// every remaining behaviour were discoverable only from the handbook.
 		const harness = buildHarness();
-		for (const name of ["autoresearch", "autoswarm"]) {
-			const completions = harness.commands.get(name)?.getArgumentCompletions?.("") ?? [];
-			expect(completions.map(item => item.value)).toEqual(["status", "resume", "goal ", "off", "clear"]);
-		}
+		const completions = harness.commands.get("autoresearch")?.getArgumentCompletions?.("") ?? [];
+		expect(completions.map(item => item.value)).toEqual(["status", "resume", "goal ", "off", "clear"]);
+		expect(harness.commands.get("autoswarm")?.getArgumentCompletions).toBeUndefined();
 		const flags = harness.commands.get("autoresearch")?.getArgumentCompletions?.("clear ") ?? [];
 		expect(flags.map(item => item.value)).toEqual(["clear --keep-tree", "clear --reset-tree"]);
 	});
@@ -449,37 +457,45 @@ describe("a loop command never destroys what it was asked to show", () => {
 		// On autoswarm the write hid one layer down: the text prefilled the
 		// console's goal field, and the Enter that starts the run stored it.
 		await openSessionAtHead(cwdDir.path());
-		for (const name of ["autoresearch", "autoswarm"]) {
-			const harness = buildHarness();
-			const surface = newSurface();
-			const ctx = makeCtx(cwdDir.path(), harness, surface);
+		const words = ["status", "state", "show", "runs", "resume", "--help", "make it slower"];
 
-			for (const word of ["status", "state", "show", "runs", "resume", "--help", "make it slower"]) {
-				// `status` opens the run screen, which Escape closes; every other word
-				// on autoswarm opens the console, which Enter starts.
-				surface.keys = word === "status" ? ["\x1b"] : ["\r"];
-				await harness.commands.get(name)?.handler(word, ctx);
-				const storage = await openAutoresearchStorage(cwdDir.path());
-				expect(storage.getActiveSessionForBranch("autoresearch/test")?.goal).toBe("make it faster");
-			}
-			// Free text is not silently dropped either: it reaches the model as resume
-			// context, and the user is told which word rewrites the goal.
-			expect(harness.messages.join("\n")).toContain("make it slower");
-			expect(harness.notices.map(notice => notice.text).join("\n")).toContain(`/${name} goal <text>`);
+		const harness1 = buildHarness();
+		const surface1 = newSurface();
+		const ctx1 = makeCtx(cwdDir.path(), harness1, surface1);
+		for (const word of words) {
+			surface1.keys = word === "status" ? ["\x1b"] : ["\r"];
+			await harness1.commands.get("autoresearch")?.handler(word, ctx1);
+			const storage = await openAutoresearchStorage(cwdDir.path());
+			expect(storage.getActiveSessionForBranch("autoresearch/test")?.goal).toBe("make it faster");
 		}
+		// Free text is not silently dropped either: it reaches the model as resume
+		// context, and the user is told which word rewrites the goal.
+		expect(harness1.hidden.map(m => m.content).join("\n")).toContain("make it slower");
+		expect(harness1.notices.map(notice => notice.text).join("\n")).toContain("/autoresearch goal <text>");
+
+		const harness2 = buildHarness();
+		const surface2 = newSurface();
+		const ctx2 = makeCtx(cwdDir.path(), harness2, surface2);
+		for (const word of words) {
+			surface2.keys = ["\x1b"];
+			await harness2.commands.get("autoswarm")?.handler(word, ctx2);
+			const storage = await openAutoresearchStorage(cwdDir.path());
+			expect(storage.getActiveSessionForBranch("autoresearch/test")?.goal).toBe("make it faster");
+		}
+		expect(harness2.notices.some(n => n.level === "warning" && n.text.includes("takes no arguments"))).toBe(true);
 	});
 
 	it("opens the swarm console on the session's own goal, not on the text typed after the command", async () => {
 		const harness = buildHarness();
 		const surface = newSurface();
-		surface.keys = ["\r"];
+		surface.keys = ["\x1b"];
 		const ctx = makeCtx(cwdDir.path(), harness, surface);
 		await openSessionAtHead(cwdDir.path());
 
 		await harness.commands.get("autoswarm")?.handler("continue where it left off", ctx);
 
 		const consoleFrame = stripAnsi(surface.screens[0]?.join("\n") ?? "");
-		expect(consoleFrame).toContain("Goal          make it faster");
+		expect(consoleFrame).toMatch(/Goal\s+make it/);
 		expect(consoleFrame).not.toContain("continue where it left off");
 	});
 
@@ -488,13 +504,30 @@ describe("a loop command never destroys what it was asked to show", () => {
 		const surface = newSurface();
 		const ctx = makeCtx(cwdDir.path(), harness, surface);
 		await openSessionAtHead(cwdDir.path());
-		// Backspace over "faster", type "slower", Enter.
-		surface.keys = [...Array.from({ length: 6 }, () => "\x7f"), ..."slower", "\r"];
+		// A session exists, so the dashboard opens on its ledger; `e` opens the
+		// setup form with the ring on Goal. Backspace over "faster", type
+		// "slower", and Enter on the Goal row runs the primary action: Resume.
+		surface.keys = ["e", ...Array.from({ length: 6 }, () => "\x7f"), ..."slower", "\r"];
 
 		await harness.commands.get("autoswarm")?.handler("", ctx);
 
 		const storage = await openAutoresearchStorage(cwdDir.path());
 		expect(storage.getActiveSessionForBranch("autoresearch/test")?.goal).toBe("make it slower");
+	});
+
+	it("leaves the stored goal unchanged when the Goal row was cleared and Resume is chosen", async () => {
+		const harness = buildHarness();
+		const surface = newSurface();
+		const ctx = makeCtx(cwdDir.path(), harness, surface);
+		await openSessionAtHead(cwdDir.path());
+		// `e` to the setup form on Goal, ctrl+u (\x15) to clear it, Esc back to
+		// the ledger, then `s` resumes.
+		surface.keys = ["e", "\x15", "\x1b", "s"];
+
+		await harness.commands.get("autoswarm")?.handler("", ctx);
+
+		const storage = await openAutoresearchStorage(cwdDir.path());
+		expect(storage.getActiveSessionForBranch("autoresearch/test")?.goal).toBe("make it faster");
 	});
 
 	it("rewrites the goal only where it is typed on purpose", async () => {
@@ -527,10 +560,10 @@ describe("a loop command never destroys what it was asked to show", () => {
 		const surface = newSurface();
 		const ctx = makeCtx(cwdDir.path(), harness, surface);
 		await openSessionAtHead(cwdDir.path());
-		// The real console, driven by the keys a user presses: down to breadth,
-		// right twice to 3, down past the models row to attempts, right to 2, then
-		// the Enter that starts it.
-		surface.keys = ["\x1b[B", "\x1b[C", "\x1b[C", "\x1b[B", "\x1b[B", "\x1b[C", "\r"];
+		// Setup form rows: Goal, Preset, Breadth, Models, Attempts. `e` opens it
+		// on Goal; Down 2 to Breadth, type 3; Down 2 to Attempts, type 2; Esc back
+		// to the ledger, then `s` resumes with the setup the form holds.
+		surface.keys = ["e", "\x1b[B", "\x1b[B", "3", "\x1b[B", "\x1b[B", "2", "\x1b", "s"];
 
 		await harness.commands.get("autoswarm")?.handler("", ctx);
 

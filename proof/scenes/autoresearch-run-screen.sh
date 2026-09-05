@@ -20,7 +20,7 @@
 # reached from seed-demo.sh by this scene's name): seven logged runs over two
 # segments, four arms, one flagged by its reviewer, a playbook, and a metric that
 # improved. Running the loop for real needs a harness and an hour of model time,
-# which is why the setup-console scene stops at the console.
+# which is why the console scene never presses Start.
 #
 # A still take: the screen holds between keystrokes, so the motion gate has to be
 # lowered or it rejects the take as a stutter. Each width takes its own OUT_DIR,

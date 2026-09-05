@@ -9,12 +9,14 @@
  * terminal. Everything that table held is in {@link ./screen}, which is a screen
  * and can afford it.
  */
-import { sanitizeSingleLine, visibleWidth } from "@veyyon/tui";
+import { type SgrMouseEvent, sanitizeSingleLine, visibleWidth } from "@veyyon/tui";
 import { formatCount } from "@veyyon/utils";
 import type { ExtensionContext } from "../extensibility/extensions";
 import { theme } from "../modes/theme/theme";
 import { truncateToWidth } from "../tools/render-utils";
+import type { LoopConsoleModel } from "./console";
 import { formatElapsed, formatNum, formatPercentChange } from "./helpers";
+import { LAUNCHER_OVERLAY, LauncherComponent } from "./launcher";
 import { AutoresearchScreenComponent } from "./screen";
 import { AUTORESEARCH_SCREEN_KEY } from "./shortcuts";
 import { currentResults, effectiveBreadth, findBaselineMetric, findBestKeptResult } from "./state";
@@ -103,7 +105,7 @@ export function createDashboardController(): DashboardController {
 			ctx.ui.setStatus("autoresearch", renderStatusRow(runtime));
 			requestRender();
 		},
-		async showScreen(ctx, runtime): Promise<void> {
+		async showScreen(ctx, runtime, model: LoopConsoleModel | null): Promise<void> {
 			if (!ctx.hasUI) return;
 			await ctx.ui.custom<void>(
 				(tui, _theme, _keybindings, done) => {
@@ -113,6 +115,7 @@ export function createDashboardController(): DashboardController {
 					syncTimer();
 					const component = new AutoresearchScreenComponent({
 						runtime,
+						model,
 						close: () => done(undefined),
 						requestRender,
 						// The rows the overlay can paint: the window minus the pinned
@@ -122,10 +125,36 @@ export function createDashboardController(): DashboardController {
 					return {
 						render: (width: number) => component.render(width),
 						handleInput: (data: string) => component.handleInput(data),
+						// The engine routes a report over the card here; the wrapper
+						// is what the overlay stack holds, not the screen.
+						routeMouse: (event: SgrMouseEvent, line: number, col: number) =>
+							component.routeMouse(event, line, col),
 						dispose: stopRefresh,
 					};
 				},
 				{ overlay: true },
+			);
+		},
+		async showLauncher(ctx, model: LoopConsoleModel): Promise<void> {
+			if (!ctx.hasUI) return;
+			await ctx.ui.custom<void>(
+				(tui, _theme, _keybindings, done) => {
+					const component = new LauncherComponent({
+						model,
+						close: () => done(undefined),
+						requestRender: () => tui.requestRender(),
+						// The rows the card can take: the window minus the composer zone
+						// it stays above and the row of margin on each side.
+						rows: () => tui.terminal.rows - tui.pinnedFooterRows - 2,
+					});
+					return {
+						render: (width: number) => component.render(width),
+						handleInput: (data: string) => component.handleInput(data),
+						routeMouse: (event: SgrMouseEvent, line: number, col: number) =>
+							component.routeMouse(event, line, col),
+					};
+				},
+				{ overlay: LAUNCHER_OVERLAY },
 			);
 		},
 	};

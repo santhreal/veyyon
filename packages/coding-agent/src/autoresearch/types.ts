@@ -3,6 +3,7 @@ import type { Model } from "@veyyon/ai";
 import type { ExtensionAPI, ExtensionContext } from "../extensibility/extensions";
 import type { SessionEntry } from "../session/session-entries";
 import type { TruncationResult } from "../session/streaming-output";
+import type { LoopConsoleModel } from "./console";
 
 export type MetricDirection = "lower" | "higher";
 
@@ -163,6 +164,11 @@ export interface SwarmSetup {
 	 * Empty at breadth 1, where there are no arms to spread across models.
 	 */
 	armModels: string[];
+	/**
+	 * Soft iteration cap per segment, set in the console. Null, or absent, leaves
+	 * it to `init_experiment`'s own argument.
+	 */
+	maxIterations?: number | null;
 }
 
 export interface AutoresearchRuntime {
@@ -202,9 +208,9 @@ export interface AutoresearchRuntime {
 	state: ExperimentState;
 	goal: string | null;
 	/**
-	 * Swarm configuration chosen before any session exists, by the setup console
-	 * or `/autoswarm breadth N`. `init_experiment` consumes it, so the user
-	 * configures in the order they reach for it: set up, then start.
+	 * Loop configuration chosen in the console before any session exists.
+	 * `init_experiment` consumes it, so the user configures in the order they
+	 * reach for it: set up, then start.
 	 */
 	pendingSwarm: SwarmSetup | null;
 	/**
@@ -260,8 +266,10 @@ export interface RuntimeStore {
 export interface DashboardController {
 	clear(ctx: ExtensionContext): void;
 	requestRender(): void;
-	/** Open the run screen and resolve when it closes. */
-	showScreen(ctx: ExtensionContext, runtime: AutoresearchRuntime): Promise<void>;
+	/** Open the run screen, as the autoswarm dashboard when `model` is given, and resolve when it closes. */
+	showScreen(ctx: ExtensionContext, runtime: AutoresearchRuntime, model: LoopConsoleModel | null): Promise<void>;
+	/** Open the autoswarm launcher, the centered setup card for a branch with no session, and resolve when it closes. */
+	showLauncher(ctx: ExtensionContext, model: LoopConsoleModel): Promise<void>;
 	/** Repaint the status row from the current runtime. */
 	update(ctx: ExtensionContext, runtime: AutoresearchRuntime): void;
 }

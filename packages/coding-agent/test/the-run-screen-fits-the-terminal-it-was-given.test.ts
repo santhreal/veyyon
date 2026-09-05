@@ -19,6 +19,8 @@
  */
 import { describe, expect, it } from "bun:test";
 import { homedir } from "node:os";
+import { type ConsoleHost, LoopConsoleModel } from "@veyyon/coding-agent/autoresearch/console";
+import { BUILTIN_PRESETS } from "@veyyon/coding-agent/autoresearch/presets";
 import {
 	AutoresearchScreenComponent,
 	footerHint,
@@ -72,18 +74,50 @@ function runtimeWith(count: number, overrides: Partial<AutoresearchRuntime> = {}
 	);
 	return Object.assign(runtime, overrides);
 }
+function consoleFor(runtime: AutoresearchRuntime): LoopConsoleModel {
+	const host: ConsoleHost = {
+		situation: () => ({
+			session: runtime.state?.name
+				? { name: runtime.state.name, branch: runtime.state.branch, runs: runtime.state.results.length }
+				: null,
+			harness: true,
+			modeOn: runtime.autoresearchMode,
+			busy: runtime.runningExperiment !== null,
+			interrupted: runtime.interrupted,
+			pausedOnBranch: null,
+			baseline: false,
+		}),
+		modelExists: () => true,
+		presets: () => [...BUILTIN_PRESETS],
+		savePreset: () => "saved",
+		deletePreset: () => true,
+		apply: () => {},
+		act: () => "stay",
+	};
+	return new LoopConsoleModel(
+		{
+			goal: runtime.goal ?? "",
+			breadth: runtime.pendingSwarm?.breadth ?? runtime.state?.breadth ?? 1,
+			attempts: runtime.pendingSwarm?.attempts ?? 1,
+			certify: runtime.pendingSwarm?.certify ?? false,
+			armModels: runtime.pendingSwarm?.armModels ?? [],
+			maxIterations: null,
+		},
+		host,
+	);
+}
 
 /** The component's own frame, rendered at a fixed viewport. */
 function frameOf(runtime: AutoresearchRuntime, width: number, rows: number): readonly string[] {
 	const screen = new AutoresearchScreenComponent({
 		runtime,
+		model: consoleFor(runtime),
 		close: () => {},
 		requestRender: () => {},
 		rows: () => rows,
 	});
 	return screen.render(width);
 }
-
 describe("the run screen fits the terminal it was given", () => {
 	// The screen paints through the process-wide theme, so a suite that renders
 	// it has to install one and put the previous instance back.
@@ -131,14 +165,18 @@ describe("the run screen fits the terminal it was given", () => {
 			}),
 		];
 		for (const value of ["session", "notes", "run:1"]) {
+			const console = consoleFor(runtime);
 			const screen = new AutoresearchScreenComponent({
 				runtime,
+				model: console,
 				close: () => {},
 				requestRender: () => {},
 				rows: () => 16,
 			});
 			// Select the row under test the way the reader does, then render.
-			screen.handleInput(value === "session" ? "" : "\x1b[B");
+			const items = runScreenRows(runtime);
+			const targetIndex = items.findIndex(item => item.value === value);
+			for (let i = 0; i < targetIndex; i++) screen.handleInput("\x1b[B");
 			const frame = screen.render(64);
 			expect(frame.length).toBe(16);
 			for (const line of frame) expect(visibleWidth(line)).toBeLessThanOrEqual(64);
@@ -271,15 +309,17 @@ describe("the run screen fits the terminal it was given", () => {
 		runtime.state.results = [result({ arm: "arm-b", certifiedBy: "arm-c" })];
 		expect(runScreenRows(runtime).find(row => row.value === "run:1")?.label).toContain("arm-b");
 
+		const console = consoleFor(runtime);
 		const screen = new AutoresearchScreenComponent({
 			runtime,
+			model: console,
 			close: () => {},
 			requestRender: () => {},
 			rows: () => 20,
 		});
-		// Down twice: session → playbook → the run.
-		screen.handleInput("\x1b[B");
-		screen.handleInput("\x1b[B");
+		const items = runScreenRows(runtime);
+		const targetIndex = items.findIndex(item => item.value === "run:1");
+		for (let i = 0; i < targetIndex; i++) screen.handleInput("\x1b[B");
 		const detail = screen.render(90).join("\n");
 		expect(detail).toContain("arm-b");
 		expect(detail).toContain("arm-c");
@@ -333,11 +373,13 @@ describe("the run screen fits the terminal it was given", () => {
 			const frame = frameOf(runtimeWith(3), width, 20);
 			const text = stripAnsi(frame.join("\n"));
 			expect(frame.length).toBe(20);
-			// Both panes are on screen either way: a run to select, and the head of
-			// the selected run's detail, whose first field is the one a reader of
-			// this screen came for.
-			expect(text).toContain("Playbook");
+			// Both panes are on screen either way: the session row in the ledger,
+			// and the head of its detail in the detail pane. The actions are keys
+			// on the footer, not rows, so the ledger spends no row on them.
+			expect(text).toContain("Session");
 			expect(text).toContain("Best");
+			expect(text).toContain("s resume");
+			for (const line of frame) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
 		}
 		// Every detail field states its LABEL in full, which is what the two-column
 		// pane could not do — it printed `S…`, `G…`, `M…` down the side of the card
@@ -369,8 +411,10 @@ describe("the run screen fits the terminal it was given", () => {
 		// up past the full hint, so a future hint added to the ladder is covered
 		// by the sweep rather than by a case someone remembered to add.
 		for (let width = 13; width <= 60; width += 1) {
+			const rt = runtimeWith(3);
 			const screen = new AutoresearchScreenComponent({
-				runtime: runtimeWith(3),
+				runtime: rt,
+				model: consoleFor(rt),
 				close: () => {},
 				requestRender: () => {},
 				rows: () => 12,
@@ -395,8 +439,10 @@ describe("the run screen fits the terminal it was given", () => {
 		// frames. Paging has to land on the same CONTENT it started on.
 		const runtime = runtimeWith(1);
 		runtime.state.notes = Array.from({ length: 120 }, (_unused, index) => `note line ${index}`).join("\n");
+		const console = consoleFor(runtime);
 		const screen = new AutoresearchScreenComponent({
 			runtime,
+			model: console,
 			close: () => {},
 			requestRender: () => {},
 			rows: () => 20,
@@ -406,7 +452,9 @@ describe("the run screen fits the terminal it was given", () => {
 				.render(80)
 				.map(line => stripAnsi(line))
 				.join("\n");
-		screen.handleInput("\x1b[B"); // session → playbook
+		const items = runScreenRows(runtime);
+		const notesIndex = items.findIndex(item => item.value === "notes");
+		for (let i = 0; i < notesIndex; i++) screen.handleInput("\x1b[B"); // navigate to playbook
 		const first = textOf();
 		expect(first).toContain("note line 0");
 
@@ -419,36 +467,26 @@ describe("the run screen fits the terminal it was given", () => {
 		expect(textOf()).toBe(first);
 	});
 
-	it("closes on escape, and on escape only once the filter is gone", () => {
+	it("closes on escape", () => {
 		// `q` closed the screen and never reached the list, so a reader filtering
 		// for a run whose label held a q lost the surface mid-keystroke. Escape is
-		// the only chord the card claims, and it clears a live filter before it
-		// means leave — the setup wizard lost onboarding to exactly that reading.
+		// the only chord the card claims.
 		const closes: string[] = [];
-		const newScreen = (runs: number, rows: number): AutoresearchScreenComponent =>
-			new AutoresearchScreenComponent({
-				runtime: runtimeWith(runs),
+		const newScreen = (runs: number, rows: number): AutoresearchScreenComponent => {
+			const rt = runtimeWith(runs);
+			return new AutoresearchScreenComponent({
+				runtime: rt,
+				model: consoleFor(rt),
 				close: () => closes.push("closed"),
 				requestRender: () => {},
 				rows: () => rows,
 			});
+		};
 
-		const unfiltered = newScreen(3, 20);
-		for (const key of ["q", "Q", "\x1b[5~", "\x1b[6~", "\x1b[B"]) unfiltered.handleInput(key);
+		const screen = newScreen(3, 20);
+		for (const key of ["q", "Q", "\x1b[5~", "\x1b[6~", "\x1b[B"]) screen.handleInput(key);
 		expect(closes).toEqual([]);
-		unfiltered.handleInput("\x1b");
-		expect(closes).toEqual(["closed"]);
-
-		// A list longer than its budget is the one that can be typed into, which is
-		// the case where Escape has two meanings.
-		closes.length = 0;
-		const filtered = newScreen(30, 12);
-		filtered.render(80);
-		filtered.handleInput("2");
-		filtered.handleInput("\x1b");
-		expect(closes).toEqual([]);
-		// The filter is gone, so this one leaves.
-		filtered.handleInput("\x1b");
+		screen.handleInput("\x1b");
 		expect(closes).toEqual(["closed"]);
 	});
 
@@ -465,13 +503,19 @@ describe("the run screen fits the terminal it was given", () => {
 			result({ description: "shortened\tthe\nhot loop", flagged: true, flaggedReason: "reason\nover\nlines" }),
 		];
 		for (const rowIndex of [0, 1, 2]) {
+			const console = consoleFor(runtime);
 			const screen = new AutoresearchScreenComponent({
 				runtime,
+				model: console,
 				close: () => {},
 				requestRender: () => {},
 				rows: () => 20,
 			});
-			for (let step = 0; step < rowIndex; step += 1) screen.handleInput("\x1b[B");
+			const items = runScreenRows(runtime);
+			const runItems = runScreenRows(runtime);
+			const targetValue = runItems[rowIndex].value;
+			const targetIndex = items.findIndex(item => item.value === targetValue);
+			for (let step = 0; step < targetIndex; step += 1) screen.handleInput("\x1b[B");
 			const frame = screen.render(70);
 			expect(frame.length).toBe(20);
 			for (const line of frame) {
@@ -494,14 +538,16 @@ describe("the run screen fits the terminal it was given", () => {
 			result({ runNumber: 4, metric: 25, segment: 1 }),
 		];
 		runtime.state.currentSegment = 1;
+		const console = consoleFor(runtime);
 		const screen = new AutoresearchScreenComponent({
 			runtime,
+			model: console,
 			close: () => {},
 			requestRender: () => {},
 			rows: () => 24,
 		});
-		const rows = runScreenRows(runtime);
-		const index = rows.findIndex(row => row.value === "run:2");
+		const items = runScreenRows(runtime);
+		const index = items.findIndex(row => row.value === "run:2");
 		expect(index).toBeGreaterThan(0);
 		for (let step = 0; step < index; step += 1) screen.handleInput("\x1b[B");
 

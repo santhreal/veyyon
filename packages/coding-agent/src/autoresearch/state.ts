@@ -61,7 +61,7 @@ export function createSessionRuntime(): AutoresearchRuntime {
 }
 
 /**
- * The breadth this session runs at, including the one the setup console just
+ * The breadth this session runs at, including the one the console just
  * chose.
  *
  * `state.breadth` is read from the stored session, which does not exist until

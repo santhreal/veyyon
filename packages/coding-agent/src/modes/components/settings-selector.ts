@@ -171,9 +171,14 @@ export function parseNumberSetting(path: SettingPath, text: string): number | ty
  * Submenu component for free-text string settings.
  * Mirrors the ConfigInputSubmenu pattern from plugin-settings.ts.
  */
-class TextInputSubmenu extends Container {
+class TextInputSubmenu extends MouseRoutedSubmenu {
 	#input: Input;
 	#error: Text;
+
+	/** A click on the field places its caret; the prose above it takes nothing. */
+	mouseTarget(): Input {
+		return this.#input;
+	}
 
 	constructor(
 		label: string,
