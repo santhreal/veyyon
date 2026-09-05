@@ -8267,14 +8267,6 @@
 					"to": "@veyyon/kernel/loader/plugins/types.js",
 					"why": "packages/coding-agent/src/extensibility/plugins/types.ts moved to kernel/src/loader/plugins/types.ts, which @veyyon/kernel publishes as ./loader/plugins/types.js"
 				},
-				"./extensibility/tool-event-input": {
-					"to": "@veyyon/kernel/registry/tool-event-input",
-					"why": "packages/coding-agent/src/extensibility/tool-event-input.ts moved to kernel/src/registry/tool-event-input.ts, which @veyyon/kernel publishes as ./registry/tool-event-input"
-				},
-				"./extensibility/tool-event-input.js": {
-					"to": "@veyyon/kernel/registry/tool-event-input.js",
-					"why": "packages/coding-agent/src/extensibility/tool-event-input.ts moved to kernel/src/registry/tool-event-input.ts, which @veyyon/kernel publishes as ./registry/tool-event-input.js"
-				},
 				"./extensibility/tool-proxy": {
 					"to": "@veyyon/kernel/registry/tool-proxy",
 					"why": "packages/coding-agent/src/extensibility/tool-proxy.ts moved to kernel/src/registry/tool-proxy.ts, which @veyyon/kernel publishes as ./registry/tool-proxy"

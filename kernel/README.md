@@ -18,8 +18,7 @@ import { sessionBodyToString } from "@veyyon/kernel/session/session-storage";
 import { parsePluginSpec } from "@veyyon/kernel/loader/plugins/parser";
 ```
 
-There is no root barrel. A single entry point would republish 53 modules as one surface, which is the
-shape this restructure exists to remove.
+Import the required subpath; the package has no root barrel.
 
 ## Layout
 
@@ -30,6 +29,5 @@ shape this restructure exists to remove.
 |`src/session/`|The session spine: entries, the session manager and its context builder and loader, the credential store, the role-keyed message kind table, storage, persistence, migrations, listing, retry policy, compaction policy, machine budget|
 |`src/settings/`|The settings schema registry: a package declares the settings it owns as a table through `declareSettings` and merges its type into `DeclaredSettings`; the queries over a declaration (`getDefault`, `getType`, `getUi`, `isSettingPath`, ...) and the unset-number owner|
 
-`src/log/` is named in the target architecture and is not populated yet; the log sinks still live in
-`packages/coding-agent`. The settings store that reads `config.yml` still does too; only the schema
-registry has moved.
+The settings store is published as `@veyyon/kernel/settings/store`. Log sinks remain
+in `packages/coding-agent`.

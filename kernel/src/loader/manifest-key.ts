@@ -13,7 +13,8 @@ export type ManifestKey = (typeof MANIFEST_KEYS)[number];
 export type ManifestHolder<T> = { [K in ManifestKey]?: T };
 
 /** Read the plugin/extension manifest from a parsed package.json. */
-export function manifestFromPackageJson<T>(pkg: ManifestHolder<T>): T | undefined {
+export function manifestFromPackageJson<T>(pkg: ManifestHolder<T> | null | undefined): T | undefined {
+	if (!pkg || typeof pkg !== "object") return undefined;
 	for (const key of MANIFEST_KEYS) {
 		const manifest = pkg[key];
 		if (manifest !== undefined) return manifest;

@@ -488,6 +488,9 @@ describe("a published surface survives the move", () => {
 	 * spellings and this branch relocated them with the directory, and main then deleted the segment
 	 * the suite covers along with the suite, so the baseline serves neither.
 	 *
+	 * The two edit-event normalization spellings remain at their coding-agent subpaths;
+	 * they are not kernel relocations because their behavior depends on edit tool syntax.
+	 *
 	 * 167 of the coding-agent rows are the web extraction, each subpath served twice: 163 into
 	 * `@veyyon/web` — the 81 site handlers under `./scrapers`, the scrapers barrel under the package
 	 * root, the Parallel client, the markdown-link helper and the browser fingerprint constants the
@@ -499,9 +502,9 @@ describe("a published surface survives the move", () => {
 		expect(Object.keys(rows).sort()).toEqual(["@veyyon/coding-agent", "@veyyon/tui"]);
 
 		const codingAgent = rows["@veyyon/coding-agent"] ?? {};
-		expect(Object.keys(codingAgent).length).toBe(1312);
+		expect(Object.keys(codingAgent).length).toBe(1310);
 		const intoKernel = Object.values(codingAgent).filter(note => note.to.startsWith("@veyyon/kernel/"));
-		expect(intoKernel.length).toBe(110);
+		expect(intoKernel.length).toBe(108);
 		const kernelConcerns = new Set(intoKernel.map(note => note.to.split("/").slice(0, 3).join("/")));
 		expect([...kernelConcerns].sort()).toEqual([
 			"@veyyon/kernel/loader",

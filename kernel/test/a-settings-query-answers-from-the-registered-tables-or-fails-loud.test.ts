@@ -16,7 +16,7 @@
  * application pins every domain the schema spreads.
  */
 
-import { beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
 	declareSettings,
 	describeSettingTypeMismatch,
@@ -66,6 +66,9 @@ declare module "@veyyon/kernel/settings/schema" {
 
 describe("a settings query answers from the registered tables or fails loud", () => {
 	beforeAll(() => {
+		resetDeclaredSettingsForTest();
+	});
+	afterAll(() => {
 		resetDeclaredSettingsForTest();
 	});
 
