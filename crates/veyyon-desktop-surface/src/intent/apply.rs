@@ -1,12 +1,8 @@
 //! Execution and local state application for operator intents (§4.1, §5.14).
 
 use crate::{
-	attach::ConnectionPhase,
-	composer::{QueueMode, TurnPhase},
-	controls::Availability,
-	intent::Intent,
-	model::ShellState,
-	overlay::Overlay,
+	attach::ConnectionPhase, composer::TurnPhase, controls::Availability, intent::Intent,
+	model::ShellState, overlay::Overlay,
 };
 
 /// Applies the part of an intent that the local shell owns.
@@ -34,38 +30,16 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 				state.cards.remove(*card);
 			}
 		},
-		Intent::Send { .. } => {
-			state.turn = TurnPhase::Running { queue_mode: state.composer.queue_mode };
-			state.composer.attachments.clear();
-		},
-		Intent::Steer(_) => {
-			state.turn = TurnPhase::Running { queue_mode: QueueMode::Steer };
-		},
-		Intent::Queue(_) => {
-			state.turn = TurnPhase::Running { queue_mode: QueueMode::Queue };
-		},
-		Intent::AbortTurn => {
-			state.turn = TurnPhase::Idle;
-		},
+		// Turn state and attachments change on host acknowledgement, not on a request attempt.
+		Intent::Send { .. } | Intent::Steer(_) | Intent::Queue(_) | Intent::AbortTurn => {},
 		Intent::SetQueueMode(mode) => {
 			state.composer.queue_mode = *mode;
 			if let TurnPhase::Running { queue_mode } = &mut state.turn {
 				*queue_mode = *mode;
 			}
 		},
-		// The model and the level are the host's to confirm: it answers
-		// with a Models snapshot, which the projection draws. Until then the
-		// control shows what was asked for, so a click is seen to land.
-		Intent::SelectModel(choice) => {
-			if let Some(model) = &mut state.composer.model {
-				model.current = Some(choice.clone());
-			}
-		},
-		Intent::SetThinking(level) => {
-			if let Some(thinking) = &mut state.composer.thinking {
-				thinking.level.clone_from(&level.level);
-			}
-		},
+		// Selection remains host-confirmed; a failed request cannot replace the displayed value.
+		Intent::SelectModel(_) | Intent::SetThinking(_) => {},
 		Intent::Attach(attachment) => state.composer.attach(attachment.clone()),
 		Intent::RemoveAttachment(index) => state.composer.detach(*index),
 		Intent::RetryConnection => {

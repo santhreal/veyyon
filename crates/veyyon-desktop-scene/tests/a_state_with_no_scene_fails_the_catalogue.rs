@@ -34,13 +34,13 @@ fn test_required_state_count_matches_protocol_enumeration_sum() {
 	// 6 connection states + (30 capabilities * 3 gate variants) + one pending
 	// gate per capability an action is gated by (24 of the 30) + 12 roles
 	// + 16 block kinds + 19 error scopes + 8 badges + 5 sections + 2 row shapes
-	// + 41 kit primitives
-	// = 6 + 90 + 24 + 12 + 16 + 19 + 8 + 5 + 2 + 41 = 223
+	// + 40 kit primitives
+	// = 6 + 90 + 24 + 12 + 16 + 19 + 8 + 5 + 2 + 40 = 222
 	assert_eq!(gated_capabilities().len(), 24, "capabilities at least one action is gated by");
 	assert_eq!(
 		states.len(),
-		223,
-		"required state count must equal 223 derived from protocol and kit enums"
+		222,
+		"required state count must equal 222 derived from protocol and kit enums"
 	);
 }
 
@@ -48,11 +48,11 @@ fn test_required_state_count_matches_protocol_enumeration_sum() {
 fn test_empty_registry_reports_all_required_states_as_missing() {
 	let registry = SceneRegistry::empty();
 	let missing = registry.missing_scenes();
-	assert_eq!(missing.len(), 223, "empty catalogue must report all 223 required states as missing");
+	assert_eq!(missing.len(), 222, "empty catalogue must report all 222 required states as missing");
 
 	match registry.validate_completeness() {
 		Err(SceneError::MissingScenes(missing_list)) => {
-			assert_eq!(missing_list.len(), 223);
+			assert_eq!(missing_list.len(), 222);
 			assert!(missing_list.contains(&"shell/connection-detached".to_string()));
 			assert!(missing_list.contains(&"kit/button".to_string()));
 		},

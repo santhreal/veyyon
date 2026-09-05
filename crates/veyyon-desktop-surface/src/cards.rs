@@ -189,8 +189,7 @@ fn question(
 			div()
 				.id(("option", option))
 				.on_click(cx.listener(move |view, _event, _window, cx| {
-					view.dispatch(Intent::Answer { card, option });
-					cx.notify();
+					view.dispatch(Intent::Answer { card, option }, cx);
 				}))
 				.hover(move |style| style.bg(hover))
 				.h(px(geometry.question_option_row_height_px))
@@ -338,8 +337,7 @@ fn answers(choices: &[(&str, Choice)], tokens: &TokenSet, cx: &Context<ShellView
 				.id(("choice", index))
 				.on_click(cx.listener(move |view, _event, _window, cx| {
 					let intent = choice.intent(view);
-					view.dispatch(intent);
-					cx.notify();
+					view.dispatch(intent, cx);
 				}))
 				.hover(move |style| style.bg(hover))
 				.flex_shrink_0()

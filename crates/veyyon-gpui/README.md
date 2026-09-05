@@ -4,12 +4,14 @@ Contains the GPUI renderer snapshot and patch extension interfaces for the veyyo
 
 ## Upstream and Fork Topology
 
-GPUI is tracked as a fork of `zed-industries/zed` hosted at `santhreal/zed` on branch `veyyon`.
+The canonical GPUI fork is the private [`santhreal/gpui`](https://github.com/santhreal/gpui) repository on branch `veyyon`, derived from `zed-industries/zed`.
 The workspace consumes a snapshot of that branch: `scripts/vendor-gpui.ts` extracts the 23-crate
 GPUI closure from one commit into `crates/vendor/<crate>` and records the commit in
 `crates/vendor/GPUI_VENDOR_REV`. The vendored crates are excluded from the workspace and from
 `cargo fmt --all`; their own suite runs in the fork. A renderer change is made in the fork, gated
 there, pushed, and re-vendored. An edit made directly under `crates/vendor` is lost on the next run.
+The vendor directory is a generated dependency snapshot, not a separately maintained fork.
+Reusable renderer changes belong in `santhreal/gpui`; Veyyon-specific surfaces and tokens remain in the desktop crates here.
 
 ## Rebase Policy
 
@@ -49,12 +51,12 @@ Every patch has a corresponding golden test or invariant assertion in the reposi
 
 ## Patch Series Status
 
-The snapshot is `8a8c65c89c6cd92e1791f35f7d9a655ffac2e7e7`. Sixteen commits sit over upstream
+The snapshot revision is recorded in `crates/vendor/GPUI_VENDOR_REV`. The patch series is based on upstream
 `399258feeaf90ad8a3a208c99221ee87b6452f38`:
 
 |series patch|commit|
 |---|---|
-|P10, headless deterministic surface|`32dbf750f6`, `86edfba9ba`, `9d4553735d`, `8a8c65c89c`|
+|P10, headless deterministic surface|`32dbf750f6`, `86edfba9ba`, `9d4553735d`, `8a8c65c89c`, `41d8e7cf55`, `f3b88ebb42`|
 |P1, affine transforms|`8253f6ed3b`|
 |P2, animator identity|`d01551a128`|
 |P3, spring integrator and native delay|`acd0490a45`|

@@ -135,8 +135,7 @@ fn file_header(
 			div()
 				.id(ElementId::Name(format!("toggle-diff-mode-{}", file.path).into()))
 				.on_click(cx.listener(move |view, _event, _window, cx| {
-					view.dispatch(Intent::SetDiffMode(next_mode));
-					cx.notify();
+					view.dispatch(Intent::SetDiffMode(next_mode), cx);
 				}))
 				.px(tokens.spacing(SpacingStep::S2))
 				.py(px(2.0))

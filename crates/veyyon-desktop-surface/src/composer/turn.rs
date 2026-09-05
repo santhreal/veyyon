@@ -128,8 +128,7 @@ impl PrimaryAction {
 	}
 }
 
-/// Secondary actions paired with the primary action or accessible on split
-/// buttons.
+/// Secondary actions paired with the primary action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SecondaryAction {
 	/// Steer action offered on the secondary split button when in queue mode.

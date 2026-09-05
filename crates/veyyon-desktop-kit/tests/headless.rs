@@ -78,9 +78,6 @@ impl Render for KitPrimitiveFixture {
 			PrimitiveKind::Button => Button::new("Primary Action")
 				.variant(ButtonVariant::Primary)
 				.into_any_element(),
-			PrimitiveKind::SplitButton => veyyon_desktop_kit::SplitButton::new("Execute")
-				.variant(ButtonVariant::Primary)
-				.into_any_element(),
 			PrimitiveKind::IconButton => IconButton::new(IconName::Search).into_any_element(),
 			PrimitiveKind::Toggle => Toggle::new(true).into_any_element(),
 			PrimitiveKind::Checkbox => Checkbox::new(CheckboxState::Checked)

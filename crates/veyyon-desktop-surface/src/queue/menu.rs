@@ -45,7 +45,7 @@ pub fn row_menu_layer(menu: RowMenu, cx: &Context<ShellView>) -> impl IntoElemen
 		let () = entity.update(app, |view, cx| {
 			view.close_row_menu();
 			if let Some(intent) = intent {
-				view.dispatch(intent);
+				view.dispatch(intent, cx);
 			}
 			cx.notify();
 		});

@@ -114,8 +114,25 @@ pub fn gate_kind(
 	if let Some(request) = registry.find_pending_for_action(action) {
 		return Gate::Pending { request };
 	}
+	gate_capability(action_to_capability(action), capabilities, registry)
+}
 
-	let capability = action_to_capability(action);
+/// Evaluates availability for a whole surface (§5.13).
+///
+/// Applies to cards, panel tabs, drawer tabs, and settings pages. Pending
+/// while any action of that capability is in flight, else its status.
+///
+/// This is the one gate for a capability no action maps to (`Questions`,
+/// `Plans`, `Extensions`): its surface still has the fourth state (§1.2).
+#[must_use]
+pub fn gate_capability(
+	capability: Capability,
+	capabilities: &CapabilityMap,
+	registry: &RequestRegistry,
+) -> Gate {
+	if let Some(request) = registry.find_pending_for_capability(capability) {
+		return Gate::Pending { request };
+	}
 	match capabilities.get(capability) {
 		CapabilityStatus::Available => Gate::Enabled,
 		CapabilityStatus::Unavailable { reason } => Gate::Unavailable { reason: reason.clone() },

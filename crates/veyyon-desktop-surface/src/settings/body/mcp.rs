@@ -50,8 +50,7 @@ pub fn render_mcp_page(
 			.id(ElementId::Name(format!("mcp-toggle-{}", server.name).into()))
 			.on_toggle(move |val, _win, app| {
 				let () = ent.update(app, |view, cx| {
-					view.dispatch(Intent::SetMcpEnabled { server: s_name.clone(), enabled: val });
-					cx.notify();
+					view.dispatch(Intent::SetMcpEnabled { server: s_name.clone(), enabled: val }, cx);
 				});
 			})
 			.into_any_element();

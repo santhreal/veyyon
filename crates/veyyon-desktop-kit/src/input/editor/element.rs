@@ -141,15 +141,15 @@ impl Element for EditorElement {
 		let font_size = style.font_size.to_pixels(window.rem_size());
 		let line_height = window.line_height();
 
-		let default_tokens = TokenSet::default();
-		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
-
 		let wrap_width = Some(bounds.size.width);
 
-		let (text_to_shape, run_color) = if is_empty {
-			(placeholder.to_string(), tokens.color(ColorRole::Muted))
-		} else {
-			(content, tokens.color(ColorRole::Foreground))
+		let (text_to_shape, run_color) = {
+			let tokens = TokenSet::for_app(cx);
+			if is_empty {
+				(placeholder.to_string(), tokens.color(ColorRole::Muted))
+			} else {
+				(content, tokens.color(ColorRole::Foreground))
+			}
 		};
 
 		let run = TextRun {
@@ -203,10 +203,10 @@ impl Element for EditorElement {
 		let is_empty = editor.is_empty();
 		let scroll_top = editor.scroll_top;
 
-		let default_tokens = TokenSet::default();
-		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
-		let selection_color = tokens.row_selected();
-		let caret_color = tokens.color(ColorRole::Accent);
+		let (selection_color, caret_color) = {
+			let tokens = TokenSet::for_app(cx);
+			(tokens.row_selected(), tokens.color(ColorRole::Accent))
+		};
 
 		// Register input handler for IME and platform text events
 		window.handle_input(&focus_handle, ElementInputHandler::new(bounds, self.editor.clone()), cx);

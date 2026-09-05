@@ -1,6 +1,6 @@
 //! Token-driven primitive kit for the veyyon desktop front end.
 //!
-//! Exposes the 41 primitive components across 7 groups, resolving all visual
+//! Exposes the 40 primitive components across 7 groups, resolving all visual
 //! attributes from design tokens and motion roles (§8.24).
 
 #![allow(
@@ -56,16 +56,14 @@ pub enum PrimitiveGroup {
 	Indicators,
 }
 
-/// Enumeration of all 41 primitive component slots in the kit (§6.7).
+/// Enumeration of the kit's 40 primitive component slots (§6.7).
 ///
-/// Reconciled with §6.7's 41-slot inventory table (under the ceiling of 44):
+/// The inventory stays under the ceiling of 44:
 /// - Text (5 slots, 7 names): `Text` (`Label`, `Mono`), `Truncate`, `Markdown`,
 ///   `CodeBlock`, `Kbd`. `OpeningLine` from previous draft is removed as
 ///   opening line is a §5 surface, not a kit primitive.
-/// - Controls (10 slots): `Button`, `SplitButton`, `IconButton`, `Toggle`,
-///   `Checkbox`, `Radio`, `Select`, `Slider`, `SegmentedControl`,
-///   `NumberInput`. `SplitButton` is restored from §6.7; `NumberInput` is
-///   placed in Controls per §6.7 table.
+/// - Controls (9 slots): `Button`, `IconButton`, `Toggle`, `Checkbox`, `Radio`,
+///   `Select`, `Slider`, `SegmentedControl`, `NumberInput`.
 /// - Input (4 slots): `TextField`, `TextArea`, `SearchField`, `FilePicker`.
 /// - Layout (7 slots): `Stack`, `Row`, `Spacer`, `Divider`, `ScrollView`,
 ///   `Resizable`, `Sheet`. `Row` and `Divider` are restored from §6.7.
@@ -87,9 +85,8 @@ pub enum PrimitiveKind {
 	CodeBlock,
 	Kbd,
 
-	// Group 2: Controls (10 slots)
+	// Group 2: Controls (9 slots)
 	Button,
-	SplitButton,
 	IconButton,
 	Toggle,
 	Checkbox,
@@ -146,7 +143,6 @@ impl PrimitiveKind {
 			},
 
 			Self::Button
-			| Self::SplitButton
 			| Self::IconButton
 			| Self::Toggle
 			| Self::Checkbox

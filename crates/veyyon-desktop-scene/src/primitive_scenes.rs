@@ -77,12 +77,6 @@ pub fn render_primitive(kind: PrimitiveKind, _window: &mut Window, cx: &mut App)
 			.child(Button::new(FixtureText::PROJECT_EXTREME_SINGLE).variant(ButtonVariant::Default))
 			.into_any_element(),
 
-		PrimitiveKind::SplitButton => {
-			veyyon_desktop_kit::SplitButton::new(FixtureText::PROJECT_TYPICAL)
-				.variant(ButtonVariant::Primary)
-				.into_any_element()
-		},
-
 		PrimitiveKind::IconButton => Stack::horizontal(SpacingStep::S2)
 			.child(IconButton::new(IconName::Search))
 			.child(IconButton::new(IconName::Settings))
@@ -320,12 +314,12 @@ pub fn render_primitive_scene(
 	})
 }
 
-/// Renders all 41 primitive scenes in inventory order.
+/// Renders every primitive scene in inventory order.
 pub fn render_all_primitive_scenes(
 	cx: &mut HeadlessAppContext,
 	options: &RenderOptions,
 ) -> Result<Vec<(PrimitiveKind, RgbaFrame)>, RenderError> {
-	let mut frames = Vec::with_capacity(41);
+	let mut frames = Vec::with_capacity(PrimitiveKind::iter().len());
 	for kind in PrimitiveKind::iter() {
 		let frame = render_primitive_scene(cx, kind, options)?;
 		frames.push((kind, frame));
@@ -333,7 +327,7 @@ pub fn render_all_primitive_scenes(
 	Ok(frames)
 }
 
-/// Generates a unified contact sheet containing all 41 primitive scenes.
+/// Generates a unified contact sheet containing every primitive scene.
 pub fn generate_kit_coverage_sheet(
 	cx: &mut HeadlessAppContext,
 	options: &RenderOptions,

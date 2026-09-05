@@ -143,8 +143,7 @@ fn attachment_card(
 						.size(IconSize::Size12)
 						.variant(IconButtonVariant::Ghost)
 						.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
-							view.dispatch(Intent::RemoveAttachment(index));
-							cx.notify();
+							view.dispatch(Intent::RemoveAttachment(index), cx);
 						})),
 				),
 		)

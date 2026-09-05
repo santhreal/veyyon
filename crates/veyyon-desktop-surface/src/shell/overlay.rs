@@ -1,35 +1,22 @@
-//! Modal floating overlay placement and scrim rendering (§5.8, §5.9).
+//! Centered overlay placement and backdrop interaction.
 
 use veyyon_desktop_kit::TokenSet;
-use veyyon_desktop_tokens::{PanelsSurfaceTokens, SurfaceTokens};
+use veyyon_desktop_tokens::PanelsSurfaceTokens;
 use veyyon_gpui::{
 	ClickEvent, Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
 	Styled, div, px,
 };
 
-use crate::{Intent, ShellView, controls::ControlStates, overlay::Overlay};
+use crate::ShellView;
 
-/// Renders the backdrop blur scrim and centered overlay dialog.
+/// Renders a centered surface; its content is constructed before placement.
 #[must_use]
 pub fn overlay_scrim(
-	overlay: &Overlay,
-	controls: &ControlStates,
+	content: impl IntoElement,
 	panels: &PanelsSurfaceTokens,
-	surface: &SurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
-	let overlay_el = match overlay {
-		Overlay::Palette(palette) => {
-			crate::palette::palette_surface(palette, &surface.palette, &surface.queue, tokens, cx)
-				.into_any_element()
-		},
-		Overlay::Settings(settings) => {
-			crate::settings::settings_surface(settings, controls, &surface.settings, tokens, cx)
-				.into_any_element()
-		},
-	};
-
 	div()
 		.id("overlay-scrim")
 		.absolute()
@@ -40,15 +27,12 @@ pub fn overlay_scrim(
 		.backdrop_blur(px(panels.right_panel_overlay_scrim_blur_px))
 		.bg(tokens.scrim())
 		.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
-			view.dispatch(Intent::CloseOverlay);
-			cx.notify();
+			view.close_palette(cx);
 		}))
 		.child(
 			div()
 				.id("overlay-dialog-container")
-				.on_click(cx.listener(|_view, _event: &ClickEvent, _window, _cx| {
-					// Stop propagation inside dialog.
-				}))
-				.child(overlay_el),
+				.on_click(|_event, _window, cx| cx.stop_propagation())
+				.child(content),
 		)
 }

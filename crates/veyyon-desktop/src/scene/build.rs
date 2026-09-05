@@ -159,7 +159,9 @@ fn capability_gate(
 		},
 	};
 	seed.store.capabilities.set(capability, status);
-	Ok(seed.finish())
+	let mut built = seed.finish();
+	built.composer_text = FixtureText::MESSAGE_TYPICAL.to_string();
+	Ok(built)
 }
 
 /// The attached window after a failure of one scope with no request.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Vendor the GPUI crate closure from a zed fork repository checkout.
+ * Vendor the GPUI crate closure from the canonical santhreal/gpui checkout.
  *
  * Extracts the 23 crates making up GPUI and its immediate runtime support from a
  * specified git revision into `crates/vendor/<name>`, rewriting their manifests
@@ -9,7 +9,7 @@
  * to `crates/vendor/GPUI_VENDOR_REV` so a snapshot states where it came from.
  *
  * Usage:
- *   bun scripts/vendor-gpui.ts --source <zed-checkout-path> --rev <git-revision>
+ *   bun scripts/vendor-gpui.ts --source <gpui-checkout-path> --rev <git-revision>
  */
 
 import { execFileSync } from "node:child_process";

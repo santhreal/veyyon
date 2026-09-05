@@ -202,10 +202,11 @@ fn with_shell<R>(test: impl FnOnce(&mut HeadlessSession<ShellView>) -> R) -> R {
 fn a_refusal_is_reported_under_the_composer_and_an_admission_clears_it() {
 	with_shell(|session| {
 		session
-			.update(|view, _window, _cx| {
-				view.attach(Err(AttachmentError::Unsupported {
-					path: PathBuf::from("/repo/notes.txt"),
-				}));
+			.update(|view, _window, cx| {
+				view.attach(
+					Err(AttachmentError::Unsupported { path: PathBuf::from("/repo/notes.txt") }),
+					cx,
+				);
 				let notice = view
 					.composer_local()
 					.notice
@@ -219,7 +220,7 @@ fn a_refusal_is_reported_under_the_composer_and_an_admission_clears_it() {
 					MediaType::Png,
 					payload_for(MediaType::Png, magic_for(MediaType::Png)),
 				);
-				view.attach(Ok(shot));
+				view.attach(Ok(shot), cx);
 				assert_eq!(view.composer_local().notice, None, "an admitted file clears the refusal");
 				assert_eq!(view.state().composer.attachments.len(), 1);
 				assert!(view.pending().is_empty(), "Attach is local: no host round-trip");
@@ -279,24 +280,24 @@ fn the_drop_overlay_tracks_real_transitions_only() {
 }
 
 #[test]
-fn a_send_carries_the_tray_and_clears_it_an_empty_prompt_sends_nothing() {
+fn a_send_carries_the_tray_without_consuming_it_and_an_empty_prompt_sends_nothing() {
 	with_shell(|session| {
-		session.update(|view, _window, _cx| {
+		session.update(|view, _window, cx| {
 			let shot = Attachment::from_path(
 				PathBuf::from("/repo/shot.png"),
 				MediaType::Png,
 				payload_for(MediaType::Png, magic_for(MediaType::Png)),
 			);
-			view.dispatch(Intent::Attach(shot));
+			view.dispatch(Intent::Attach(shot), cx);
 			assert_eq!(view.state().composer.attachments.len(), 1);
 			let send = Intent::Send { text: "   ".to_owned(), attachments: Vec::new() };
-			view.dispatch(send);
+			view.dispatch(send, cx);
 			assert_eq!(view.state().composer.attachments.len(), 1, "a blank prompt keeps its tray");
 			assert!(view.pending().is_empty(), "a blank prompt reaches no host");
 
 			let tray = view.state().composer.attachments.clone();
-			view.dispatch(Intent::Send { text: "look at this".to_owned(), attachments: tray });
-			assert!(view.state().composer.attachments.is_empty(), "a send clears the tray");
+			view.dispatch(Intent::Send { text: "look at this".to_owned(), attachments: tray }, cx);
+			assert_eq!(view.state().composer.attachments.len(), 1, "a request attempt retains the tray");
 			assert!(
 				matches!(view.pending(), [Intent::Send { text, attachments }] if text == "look at this" && attachments.len() == 1),
 				"the send reaches the host with its tray: {:?}",

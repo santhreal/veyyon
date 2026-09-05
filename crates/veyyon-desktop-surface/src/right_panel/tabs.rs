@@ -57,8 +57,7 @@ pub fn tab_strip(
 		let mut tab_el = div()
 			.id(("panel-tab", index))
 			.on_click(cx.listener(move |view, _event, _window, cx| {
-				view.dispatch(Intent::SelectTab(index));
-				cx.notify();
+				view.dispatch(Intent::SelectTab(index), cx);
 			}))
 			.hover(move |style| style.bg(hover))
 			.max_w(px(geometry.tabs_max_width_px))

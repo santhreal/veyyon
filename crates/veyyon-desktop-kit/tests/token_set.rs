@@ -9,14 +9,20 @@
 //!    Rust.
 //! 2. `TokenSet` failing open on a missing role or defaulting to a fallback
 //!    color.
+//! 3. App token resolution ignoring an installed theme or retaining a stale
+//!    theme after replacement.
 //!
 //! WHAT IT DOES NOT CATCH:
 //! GPUI shader-level rendering bugs or display-server color space conversions.
 
+use std::sync::Arc;
+
+use gpui_wgpu::CosmicTextSystem;
 use veyyon_desktop_kit::token_set::{
 	COLOR_ROLE_COUNT, ColorRole, RgbColor, TokenError, TokenSet, load_bundled_theme,
 	load_bundled_tokens,
 };
+use veyyon_gpui::HeadlessAppContext;
 
 #[test]
 fn the_token_set_reports_bundled_dark_theme_colours() {
@@ -102,4 +108,28 @@ fn the_token_set_cannot_be_built_from_a_theme_missing_a_role() {
 			},
 		}
 	}
+}
+
+#[test]
+fn app_resolution_uses_the_bundle_until_a_theme_is_installed_and_tracks_replacement() {
+	let source = load_bundled_tokens().expect("bundled tokens must load");
+	let mut cx = HeadlessAppContext::new(Arc::new(CosmicTextSystem::new("sans-serif")));
+	cx.update(|app| {
+		let fallback = TokenSet::default();
+		{
+			let resolved = TokenSet::for_app(app);
+			for role in ColorRole::all() {
+				assert_eq!(resolved.color(role), fallback.color(role), "{role:?}");
+			}
+		}
+		for theme_name in ["light", "dark", "light"] {
+			let theme = load_bundled_theme(theme_name).expect("bundled theme must load");
+			let expected = TokenSet::from_tokens(&source, &theme).expect("valid theme");
+			app.set_global(expected.clone());
+			let resolved = TokenSet::for_app(app);
+			for role in ColorRole::all() {
+				assert_eq!(resolved.color(role), expected.color(role), "{theme_name}: {role:?}");
+			}
+		}
+	});
 }

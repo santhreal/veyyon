@@ -48,8 +48,7 @@ pub fn render_themes_page(
 				.id(ElementId::Name(format!("theme-opt-{}", theme.id).into()))
 				.size(ButtonSize::Small)
 				.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {
-					view.dispatch(Intent::SelectTheme(theme_id_str.clone()));
-					cx.notify();
+					view.dispatch(Intent::SelectTheme(theme_id_str.clone()), cx);
 				}))
 				.into_any_element()
 		};

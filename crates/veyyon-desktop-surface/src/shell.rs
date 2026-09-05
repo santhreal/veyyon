@@ -15,9 +15,13 @@ use veyyon_gpui::{
 };
 
 mod attach;
+mod commands;
+mod composer;
 pub mod connection;
+mod float;
 pub mod keys;
 pub mod overlay;
+mod palette;
 mod render;
 mod session;
 pub mod titlebar;
@@ -55,6 +59,8 @@ pub struct ShellView {
 	keymap:         Keymap,
 	composer:       Option<Entity<Editor>>,
 	composer_cache: String,
+	palette_input:  palette::PaletteInput,
+	submitted:      Option<composer::SubmittedDraft>,
 	/// What the composer draws that is the window's: the drop target and
 	/// the refusal line.
 	attach:         AttachState,
@@ -83,6 +89,8 @@ impl ShellView {
 			keymap: Keymap::default(),
 			composer: None,
 			composer_cache: String::new(),
+			palette_input: palette::PaletteInput::default(),
+			submitted: None,
 			attach: AttachState::default(),
 			rail_motion: RailMotion::new(),
 			row_menu: None,
@@ -214,6 +222,16 @@ impl ShellView {
 				this.submit_primary_turn_action(cx);
 			},
 			EditorEvent::Escape => {
+				if this
+					.state
+					.overlay
+					.as_ref()
+					.and_then(crate::Overlay::as_palette)
+					.is_some()
+				{
+					this.close_palette(cx);
+					return;
+				}
 				if !this.state.cards.is_empty() {
 					this.state.cards.remove(0);
 					cx.notify();
@@ -221,6 +239,7 @@ impl ShellView {
 			},
 			EditorEvent::Changed => {
 				this.composer_cache = ed.read(cx).text().to_string();
+				this.update_slash_palette(cx);
 				cx.notify();
 			},
 			EditorEvent::PasteMedia(item) => this.attach_clipboard(item, cx),
@@ -249,63 +268,6 @@ impl ShellView {
 		} else {
 			String::new()
 		}
-	}
-
-	/// Submits the primary turn action according to the active turn phase.
-	pub fn submit_primary_turn_action(&mut self, cx: &mut Context<Self>) {
-		let text = if let Some(ed) = &self.composer {
-			ed.update(cx, |editor, cx| editor.take_text(cx))
-		} else {
-			std::mem::take(&mut self.composer_cache)
-		};
-		self.composer_cache.clear();
-		let has_text = !text.trim().is_empty();
-		let (primary, _secondary) = crate::composer::primary_action(&self.state.turn, has_text);
-
-		match primary {
-			crate::composer::PrimaryAction::Send => {
-				if has_text {
-					let attachments = self.state.composer.attachments.clone();
-					self.clear_composer_notice();
-					self.dispatch(Intent::Send { text, attachments });
-				}
-			},
-			crate::composer::PrimaryAction::Steer => {
-				if has_text {
-					self.dispatch(Intent::Steer(text));
-				}
-			},
-			crate::composer::PrimaryAction::Queue => {
-				if has_text {
-					self.dispatch(Intent::Queue(text));
-				}
-			},
-			crate::composer::PrimaryAction::Answer => {
-				if !self.state.cards.is_empty() {
-					if has_text {
-						self.dispatch(Intent::Reply { card: 0, text });
-					} else {
-						self.dispatch(Intent::Answer { card: 0, option: 0 });
-					}
-				}
-			},
-			crate::composer::PrimaryAction::Approve => {
-				if !self.state.cards.is_empty() {
-					self.dispatch(Intent::Approval { card: 0, approved: true, standing: false });
-				}
-			},
-			crate::composer::PrimaryAction::Accept => {
-				if !self.state.cards.is_empty() {
-					self.dispatch(Intent::Plan { card: 0, accepted: true });
-				}
-			},
-			crate::composer::PrimaryAction::Refine => {
-				if !self.state.cards.is_empty() {
-					self.dispatch(Intent::Plan { card: 0, accepted: false });
-				}
-			},
-		}
-		cx.notify();
 	}
 
 	/// Replaces the token set, after a reload applied a new one.
@@ -350,8 +312,12 @@ impl ShellView {
 	/// Every surface reaches the state through here and through nothing else,
 	/// so what an interaction does is decided in one place rather than in each
 	/// click handler.
-	pub fn dispatch(&mut self, intent: Intent) {
+	pub fn dispatch(&mut self, intent: Intent, cx: &mut Context<Self>) {
+		if !self.composer_action_allowed(&intent) {
+			return;
+		}
 		self.intents.dispatch(intent, &mut self.state);
+		cx.notify();
 	}
 
 	/// Takes the intents a host has not seen yet.

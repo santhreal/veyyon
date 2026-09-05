@@ -57,8 +57,7 @@ pub fn render_general_page(
 				.text_color(tokens.color(ColorRole::Muted))
 				.hover(move |s| s.text_color(tokens.color(ColorRole::Foreground)))
 				.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {
-					view.dispatch(Intent::ResetSetting(key_clone.clone()));
-					cx.notify();
+					view.dispatch(Intent::ResetSetting(key_clone.clone()), cx);
 				}))
 				.child("Reset");
 			// The tooltip states what the reset restores, so the operator

@@ -43,6 +43,11 @@ struct Host {
 
 /// Resolves the initiating surface for an operator intent.
 fn surface_for_intent(intent: &Intent, active_session: Option<&SessionId>) -> SurfaceId {
+	if let Some(surface) = active_session.and_then(|session| {
+		veyyon_desktop_surface::composer::actions::request_surface(intent, session)
+	}) {
+		return surface;
+	}
 	match intent {
 		Intent::RetryConnection => SurfaceId::ConnectionRetryButton,
 		Intent::StartProviderAuth(p) => SurfaceId::ProviderAuthStartButton(p.clone()),
@@ -53,10 +58,6 @@ fn surface_for_intent(intent: &Intent, active_session: Option<&SessionId>) -> Su
 		Intent::CancelAuthFlow => SurfaceId::ProviderAuthCancelButton(String::new()),
 		Intent::RetryAuthFlow => SurfaceId::ProviderAuthRetryButton(String::new()),
 		Intent::RetryControl(id) => id.clone(),
-		Intent::Send { .. } => match active_session {
-			Some(s) => SurfaceId::ComposerSendButton(s.clone()),
-			None => SurfaceId::GlobalTitlebarLine,
-		},
 		Intent::SelectSession(id) => SurfaceId::QueueSessionRow(SessionId(id.to_string())),
 		Intent::SetDrawer { .. } => SurfaceId::TerminalCreateButton(
 			active_session
@@ -239,7 +240,8 @@ fn main() {
 				}
 				let mut host = host.borrow_mut();
 				let host = &mut *host;
-				let active_session = host.store.persisted.shell.active_session.clone();
+				let active_session =
+					Some(SessionId::from(view.read(cx).state().current_id.to_string()));
 				let now_ms = current_timestamp_ms();
 				for intent in &intents {
 					let surface = surface_for_intent(intent, active_session.as_ref());
@@ -249,8 +251,13 @@ fn main() {
 						host
 							.registry
 							.register(req_id, kind, surface.clone(), now_ms, 30_000);
+						view.update(cx, |view, _cx| view.track_submission(req_id, intent));
 					}
 				}
+				view.update(cx, |view, cx| {
+					project_controls(&host.store, &host.registry, &host.index, view.state_mut());
+					cx.notify();
+				});
 			})
 			.detach();
 		}
@@ -276,15 +283,18 @@ fn main() {
 								HostEvent::ConnectionChanged(state) => {
 									notice = Some(connection_notice(state));
 								},
-								HostEvent::RequestFailed { error, .. } => {
+								HostEvent::RequestFailed { request, error } => {
 									let active = host.store.persisted.shell.active_session.as_ref();
 									if let Some(line) =
 										land_failure(error, &host.registry, active, view.state_mut())
 									{
 										notice = Some(Some(line));
 									}
+									host.registry.complete(request);
+									view.finish_submission(*request, false, cx);
 								},
 								HostEvent::RequestSucceeded { request } => {
+									view.finish_submission(*request, true, cx);
 									if let Some(in_flight) = host.registry.complete(request) {
 										view.state_mut().controls.clear_error(&in_flight.surface);
 									}

@@ -4,13 +4,13 @@
 //! render time, ensuring primitives contain no hardcoded numeric style literals
 //! (§8.24).
 
-use std::path::PathBuf;
+use std::{borrow::Cow, path::PathBuf};
 
 pub use veyyon_desktop_tokens::{
 	ColorRole, ElevationTokens, MonoSizeStep, RadiusStep, RgbColor, ScaleTokens, SpacingStep,
 	StrokeStep, Theme, TokenError, Tokens, load_bundled_theme, load_bundled_tokens,
 };
-use veyyon_gpui::{FontWeight, Hsla, Pixels, SharedString, px};
+use veyyon_gpui::{App, FontWeight, Hsla, Pixels, SharedString, px};
 
 /// Number of semantic colour roles defined in the system (§6.4).
 pub const COLOR_ROLE_COUNT: usize = 29;
@@ -135,6 +135,17 @@ impl Default for TokenSet {
 }
 
 impl TokenSet {
+	/// Borrows installed tokens without loading the bundled files during
+	/// rendering. Standalone kit contexts without installed tokens use the
+	/// validated bundle.
+	#[must_use]
+	pub fn for_app(cx: &App) -> Cow<'_, Self> {
+		match cx.try_global::<Self>() {
+			Some(tokens) => Cow::Borrowed(tokens),
+			None => Cow::Owned(Self::default()),
+		}
+	}
+
 	/// Builds a token set from loaded `Tokens` and `Theme`.
 	///
 	/// Resolves every semantic color role once at construction time and fails

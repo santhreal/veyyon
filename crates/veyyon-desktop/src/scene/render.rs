@@ -134,7 +134,13 @@ impl<'cx> SceneWindow<'cx> {
 						let mut view = ShellView::new(installed, built.state);
 						view.set_clock_ms(SCENE_CLOCK_MS);
 						view.set_notice(built.notice);
-						let view = cx.new(|_| view);
+						let composer_text = built.composer_text;
+						let view = cx.new(|cx| {
+							if !composer_text.is_empty() {
+								view.set_composed(composer_text, cx);
+							}
+							view
+						});
 						*root = RootView::Shell(view.clone());
 						Some(view)
 					},

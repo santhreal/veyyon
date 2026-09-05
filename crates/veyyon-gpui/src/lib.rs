@@ -1,7 +1,7 @@
 //! The desktop front end's view of GPUI.
 //!
-//! GPUI is a vendored snapshot of the `santhreal/zed` fork, branch `veyyon`,
-//! under `crates/vendor`, at the commit recorded in
+//! GPUI is a vendored snapshot of the private `santhreal/gpui` fork, branch
+//! `veyyon`, under `crates/vendor`, at the commit recorded in
 //! `crates/vendor/GPUI_VENDOR_REV`. That branch carries the patch series;
 //! `scripts/vendor-gpui.ts` extracts one commit of it. The golden tests under
 //! `tests/` prove each patch through the snapshot.

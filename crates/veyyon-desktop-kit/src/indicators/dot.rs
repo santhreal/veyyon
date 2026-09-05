@@ -44,8 +44,8 @@ impl Dot {
 
 impl RenderOnce for Dot {
 	fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let default_tokens = TokenSet::default();
-		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
+		let resolved_tokens = TokenSet::for_app(cx);
+		let tokens: &TokenSet = &resolved_tokens;
 		let fill = match self.ink {
 			DotInk::Tint(tint) => tokens.tint(tint).ink,
 			DotInk::Role(role) => tokens.color(role),

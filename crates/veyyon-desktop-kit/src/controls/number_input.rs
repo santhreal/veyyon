@@ -76,8 +76,8 @@ impl NumberInput {
 
 impl RenderOnce for NumberInput {
 	fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let default_tokens = TokenSet::default();
-		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
+		let resolved_tokens = TokenSet::for_app(cx);
+		let tokens: &TokenSet = &resolved_tokens;
 
 		// §6.10: no ground, a hairline edge, the value in foreground ink and the
 		// steppers as square text controls inside the frame. A stepper at its

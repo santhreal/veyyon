@@ -450,13 +450,19 @@
 - A turn that ends on text after a tool call is recognized as finished even while a session subscriber is still running, so the todo reminder, the rewind pass and the session-stop hooks no longer skip a turn whose final message arrived behind a slow subscriber.
 - The GPU front end's theme is the window's own preference rather than an engine request, so a detached window can be themed, and the profile theme list is read-only because a profile theme carries no palette the window could draw.
 - The desktop host states that profile theme listing is unavailable rather than describing a theme selection it never owned.
-- The desktop renderer repaints only the region a state change declares, keeping the rest of the frame in a retained texture, clips rounded and path-bounded subtrees at the boundary, and shapes each distinct line of text once across frames; GPUI is now a vendored snapshot of the `santhreal/zed` fork under `crates/vendor` rather than a git dependency.
+- The desktop renderer repaints only the region a state change declares, keeps unaffected content in a retained texture, clips rounded and path-bounded subtrees, and reuses shaped text across frames; GPUI is vendored from the private canonical `santhreal/gpui` repository.
+- The native desktop composer integrates model selection and an up-arrow primary action, with secondary turn actions in slash commands and a separate stop control during active turns.
+- Native desktop palettes retain their closing transition and reverse from their current position when reopened.
+- Desktop controls reuse installed theme tokens rather than parsing bundled fallback tokens during each render.
 
 ### Fixed
 
 - The GUI host omits a setting whose value or schema default resolves to `undefined` from the settings snapshot instead of shipping the entry without the `value` and `default` fields, which the desktop decoder rejected as a fatal protocol error and dropped the connection; observed with `auth.broker.token` on a host with no broker token.
 - A comment in the GUI host frame decoder names the Rust file that mirrors the frame-size bound correctly. No behavior change.
 - The desktop host names one accumulating entry per streamed reply, so the desktop replaces that entry as the reply grows; while unreleased every delta carried a new name and one reply drew as a column of duplicates.
+- Native desktop drafts and attachments clear only after the matching host acknowledgment succeeds, while failed requests retain submitted content.
+- Desktop capability scenes initialize draft text so turn submission availability remains visible in rendered scenes.
+- Desktop keyboard and pointer actions notify the host observer at the shared dispatch boundary without waiting for an unrelated repaint.
 - A memory limit pins the capped subtree's swap to zero, so the cap bounds the whole anonymous footprint; while unreleased a 256 MB machine cap let a single process reach 5,520 MB by swapping.
 - The machine limit requires a parent that delegates two cgroup levels, so a host that delegates one — a container whose cgroup root holds processes — reports per-session limits held and the machine tier unheld, instead of reporting a machine cap the kernel never applies.
 - The CPU-limit probe and the limiter resolve one environment, so the probe can no longer report support for a cgroup path the limiter does not write to.
@@ -481,6 +487,7 @@
 - The `--subagent-model` launch flag, which set the model for every subagent in the session.
 - The `--project` flag on `veyyon agents unpack`, which wrote definitions to `./.veyyon/agents`; there is no project scope for subagent discovery, so those files were never loaded.
 - The tagline under the wordmark on the session welcome hero, which the launch card and the mounted hero each printed.
+- Removed the unused desktop SplitButton primitive and its registered scene.
 
 ## [1.3.0] - 2026-08-28
 

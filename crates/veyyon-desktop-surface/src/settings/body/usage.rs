@@ -57,8 +57,7 @@ pub fn render_usage_page(
 		.id("usage-refresh-btn")
 		.size(ButtonSize::Small)
 		.on_click(cx.listener(|view, _e: &ClickEvent, _w, cx| {
-			view.dispatch(Intent::RefreshUsage);
-			cx.notify();
+			view.dispatch(Intent::RefreshUsage, cx);
 		}));
 	container = container.child(setting_row(
 		"Usage Metrics",

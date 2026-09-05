@@ -42,8 +42,7 @@ pub fn render_providers_page(
 				.id(ElementId::Name(format!("auth-btn-{}", provider.id).into()))
 				.size(ButtonSize::Small)
 				.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {
-					view.dispatch(Intent::StartProviderAuth(provider_id.clone()));
-					cx.notify();
+					view.dispatch(Intent::StartProviderAuth(provider_id.clone()), cx);
 				}))
 				.into_any_element()
 		};

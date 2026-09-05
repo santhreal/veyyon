@@ -67,7 +67,6 @@ const GATES_STILL_INVISIBLE: &[Capability] = &[
 	Capability::PendingEdits,
 	Capability::Terminals,
 	Capability::ProcessSupervisor,
-	Capability::Models,
 	Capability::Providers,
 	Capability::Authentication,
 	Capability::Mcp,
@@ -105,8 +104,8 @@ const ALIASES: &[&[&str]] = &[
 	// The attached window before any exchange: the opening line is what the
 	// composer and the live section rest against.
 	&["composer/rest", "opening-line/rest", "queue-section/live"],
-	// The baseline frame, from three catalogue entries that name it.
-	&[BASELINE, "transcript-block/text", "capability-gate/turn-control-enabled"],
+	// The baseline frame, from catalogue entries with the same prose exchange.
+	&[BASELINE, "transcript-block/text"],
 	// A badge is a card in the live partition with that badge.
 	&["queue-badge/watching", "queue-card/watching"],
 	&["queue-badge/working", "queue-card/working"],
@@ -233,9 +232,7 @@ fn every_scene_shows_the_state_it_names() {
 		.collect();
 	let mut by_bytes: BTreeMap<&[u8], Vec<&str>> = BTreeMap::new();
 	for (name, bytes) in &frames {
-		let is_gate_alias =
-			gate_names.contains(name) && name != "capability-gate/turn-control-enabled";
-		if is_gate_alias || error_names.contains(name) {
+		if gate_names.contains(name) || error_names.contains(name) {
 			continue;
 		}
 		by_bytes.entry(bytes).or_default().push(name);

@@ -20,6 +20,7 @@ pub mod turn;
 use veyyon_desktop_kit::{
 	Badge as BadgeChip, ColorRole, Icon, IconName, IconSize, SpacingStep, TokenSet, input::Editor,
 };
+use veyyon_desktop_model::{SessionId, SurfaceId};
 use veyyon_desktop_tokens::ComposerSurfaceTokens;
 use veyyon_gpui::{
 	BoxShadow, Context, DragMoveEvent, Entity, ExternalPaths, InteractiveElement, IntoElement,
@@ -27,7 +28,11 @@ use veyyon_gpui::{
 };
 
 pub use self::{actions::*, attachments::*, footer::*, media::*, state::*, turn::*};
-use crate::{ShellView, controls::ControlStates, model::Badge};
+use crate::{
+	ShellView,
+	controls::{ControlStates, hairline_for},
+	model::Badge,
+};
 
 /// What the composer draws that is the window's and not the state's: whether
 /// files are being dragged over it, which turns the float into a drop target,
@@ -60,6 +65,24 @@ pub fn composer(
 
 	let mut shadow_colour = tokens.color(ColorRole::Ground);
 	shadow_colour.a = geometry.shadow_opacity;
+
+	let session = SessionId::from(session_id.to_string());
+	let primary_id = turn.primary_surface(has_text, &session);
+	let request_ids = [
+		SurfaceId::ComposerSendButton(session.clone()),
+		SurfaceId::ComposerSteerButton(session.clone()),
+		SurfaceId::ComposerQueueButton(session.clone()),
+		SurfaceId::ComposerAbortButton(session.clone()),
+		SurfaceId::ComposerQueueModeToggle(session.clone()),
+		SurfaceId::ComposerModelSelector(session.clone()),
+		SurfaceId::ComposerThinkingSelector(session),
+	];
+	let primary_error = (!request_ids.contains(&primary_id))
+		.then(|| hairline_for(controls, &primary_id, tokens, cx))
+		.flatten();
+	let hairlines = request_ids
+		.iter()
+		.filter_map(|id| hairline_for(controls, id, tokens, cx));
 
 	let editor_content = if let Some(ed) = editor {
 		div()
@@ -147,6 +170,8 @@ pub fn composer(
 				.child(footer_row(
 					turn, composer, has_text, session_id, labels, controls, geometry, tokens, cx,
 				))
+				.children(primary_error)
+				.children(hairlines)
 				.children(local.dropping.then(|| drop_target(geometry, tokens))),
 		)
 }

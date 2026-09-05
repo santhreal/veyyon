@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
-use crate::{action::HostActionKind, connection::RequestId, surface::SurfaceId};
+use crate::{
+	action::HostActionKind, capabilities::Capability, connection::RequestId,
+	gate::action_to_capability, surface::SurfaceId,
+};
 
 /// Represents an active in-flight request waiting for host acknowledgment.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +54,16 @@ impl RequestRegistry {
 			.pending
 			.iter()
 			.find(|(_, req)| req.action == action)
+			.map(|(id, _)| *id)
+	}
+
+	/// Finds the first pending request whose action is gated by a capability.
+	#[must_use]
+	pub fn find_pending_for_capability(&self, capability: Capability) -> Option<RequestId> {
+		self
+			.pending
+			.iter()
+			.find(|(_, req)| action_to_capability(req.action) == capability)
 			.map(|(id, _)| *id)
 	}
 

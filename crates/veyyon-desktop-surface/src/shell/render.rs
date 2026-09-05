@@ -9,7 +9,6 @@ use veyyon_gpui::{
 use super::{
 	connection::connection_banner,
 	keys::bind_global_keys,
-	overlay::overlay_scrim,
 	session::session_surface,
 	titlebar::{TitlebarState, attention_strip, attention_strip_height, titlebar},
 };
@@ -164,6 +163,7 @@ pub fn render_shell(
 		&widths,
 		view.installed(),
 		view.laid_out(),
+		view.palette_anchor(),
 		cx,
 	);
 
@@ -222,9 +222,8 @@ pub fn render_shell(
 	let mut columns = view
 		.laid_out()
 		.track_children(columns, move |index| column_regions.get(index).copied().flatten());
-	if let Some(overlay) = &view.state().overlay {
-		let controls = &view.state().controls;
-		columns = columns.child(overlay_scrim(overlay, controls, panels, &surface, &tokens, cx));
+	if let Some(overlay) = super::float::overlay_layer(view, window, cx) {
+		columns = columns.child(overlay);
 	}
 	if let Some(menu) = view.row_menu() {
 		columns = columns.child(row_menu_layer(menu, cx));

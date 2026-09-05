@@ -135,8 +135,8 @@ impl TreeNode {
 
 impl RenderOnce for TreeNode {
 	fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let default_tokens = TokenSet::default();
-		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
+		let resolved_tokens = TokenSet::for_app(cx);
+		let tokens: &TokenSet = &resolved_tokens;
 
 		let bg = if self.is_selected {
 			tokens.row_selected()
@@ -282,8 +282,8 @@ impl Tree {
 
 impl RenderOnce for Tree {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let default_tokens = TokenSet::default();
-		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
+		let resolved_tokens = TokenSet::for_app(cx);
+		let tokens: &TokenSet = &resolved_tokens;
 		let gap = tokens.spacing(SpacingStep::S1);
 
 		let nodes: Vec<AnyElement> = (0..self.root_count)

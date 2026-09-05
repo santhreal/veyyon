@@ -235,11 +235,11 @@ fn a_dispatched_intent_reaches_the_frame_the_operator_then_looks_at() {
 	let closed = render_view_captured(&mut cx, &options(), move |_window, app: &mut App| {
 		let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
 			.expect("the bundled tokens and theme install");
-		app.new(|_| {
+		app.new(|cx| {
 			let mut view = ShellView::new(installed, fixture::with_drawer());
 			// Closed by dispatch, from the state that ships it open, so the
 			// frame below is what a click on the titlebar control produces.
-			view.dispatch(Intent::SetDrawer { open: false });
+			view.dispatch(Intent::SetDrawer { open: false }, cx);
 			assert!(!view.state().drawer_open, "the dispatch did not close the drawer");
 			view
 		})
@@ -328,11 +328,12 @@ fn the_refusal_notice_registers_its_close_while_it_is_up() {
 		render_view_captured(&mut cx, &options(), move |_window, app: &mut App| {
 			let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
 				.expect("the bundled tokens and theme install");
-			app.new(|_| {
+			app.new(|cx| {
 				let mut view = ShellView::new(installed, fixture::populated());
-				view.attach(Err(AttachmentError::Unsupported {
-					path: PathBuf::from("/repo/notes.txt"),
-				}));
+				view.attach(
+					Err(AttachmentError::Unsupported { path: PathBuf::from("/repo/notes.txt") }),
+					cx,
+				);
 				assert!(view.composer_local().notice.is_some(), "the refusal did not raise the notice");
 				view
 			})

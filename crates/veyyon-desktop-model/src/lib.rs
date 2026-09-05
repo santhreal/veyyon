@@ -44,7 +44,7 @@ pub use event::{
 	ALL_SECTION_NAMES, HostEvent, SessionHeaderView, SessionLoadError, SessionStatus,
 	SessionSummary, SnapshotSection, SnapshotSectionKind,
 };
-pub use gate::{Gate, action_to_capability, gate, gate_kind};
+pub use gate::{Gate, action_to_capability, gate, gate_capability, gate_kind};
 pub use interaction::{
 	ApprovalInteraction, PendingDecisions, PlanInteraction, QuestionInteraction,
 };

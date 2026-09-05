@@ -91,11 +91,10 @@ fn render_tree_row(
 		.on_click(move |_event, _window, app| {
 			let () = entity.update(app, |view, cx| {
 				if is_dir {
-					view.dispatch(Intent::ToggleTreeNode(row_path.clone()));
+					view.dispatch(Intent::ToggleTreeNode(row_path.clone()), cx);
 				} else {
-					view.dispatch(Intent::OpenFile(row_path.clone()));
+					view.dispatch(Intent::OpenFile(row_path.clone()), cx);
 				}
-				cx.notify();
 			});
 		});
 	if !row.is_dir {

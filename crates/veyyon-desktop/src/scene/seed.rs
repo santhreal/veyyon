@@ -27,8 +27,9 @@ const ENDPOINT: &str = "127.0.0.1:47000";
 /// What a scene hands the view: the projected state and the attention line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Built {
-	pub state:  ShellState,
-	pub notice: Option<String>,
+	pub state:         ShellState,
+	pub notice:        Option<String>,
+	pub composer_text: String,
 }
 
 /// The protocol model under construction.
@@ -147,6 +148,6 @@ impl Seed {
 		let mut index = SessionIndex::new();
 		project(&self.store, &mut index, &HashMap::new(), SCENE_CLOCK_MS, &mut self.state);
 		project_controls(&self.store, &self.registry, &index, &mut self.state);
-		Built { state: self.state, notice: self.notice }
+		Built { state: self.state, notice: self.notice, composer_text: String::new() }
 	}
 }

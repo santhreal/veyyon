@@ -31,8 +31,7 @@ const RADIO_MAX: usize = 2;
 fn set_value(entity: &Entity<ShellView>, app: &mut App, key: &str, value: Value) {
 	let key = key.to_owned();
 	let () = entity.update(app, |view, cx| {
-		view.dispatch(Intent::SettingChanged { key, value });
-		cx.notify();
+		view.dispatch(Intent::SettingChanged { key, value }, cx);
 	});
 }
 

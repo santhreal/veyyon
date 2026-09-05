@@ -22,7 +22,7 @@ use veyyon_desktop_scene::{
 };
 use veyyon_desktop_surface::{
 	Badge, Command, Keymap, KeymapError, Overlay, Row, Scope, Section, ShellState, ShellView,
-	install_tokens, resolve_chord,
+	attach::ConnectionPhase, install_tokens, resolve_chord,
 };
 use veyyon_gpui::{App, AppContext};
 
@@ -32,6 +32,7 @@ fn test_options() -> RenderOptions {
 
 fn sample_state() -> ShellState {
 	ShellState {
+		connection: ConnectionPhase::Attached,
 		sections: vec![(Section::Live, vec![
 			Row {
 				id:       101,
@@ -232,6 +233,8 @@ fn keystrokes_dispatch_intents_on_real_shellview_in_headless_session() {
 		.keystroke(&palette_chord)
 		.expect("keystroke dispatches");
 	assert!(handled, "primary-k must be handled by ShellView action listener");
+	let palette_frame = session.frame().expect("palette frame renders");
+	assert!(!palette_frame.hitboxes.is_empty(), "palette frame must contain interactive hitboxes");
 
 	session
 		.update(|view, _window, _cx| {
@@ -242,6 +245,15 @@ fn keystrokes_dispatch_intents_on_real_shellview_in_headless_session() {
 		})
 		.expect("palette overlay state verified");
 
+	// Close palette overlay so focus returns to the shell for queue navigation.
+	session
+		.update(|view, _window, cx| {
+			view.close_palette(cx);
+		})
+		.expect("palette closed");
+	let _ = session
+		.frame()
+		.expect("frame settles after closing palette");
 	// 3. Dispatch primary-b (cmd-b / ctrl-b) to toggle the queue rail.
 	let queue_chord = resolve_chord("primary-b");
 	let handled_b = session

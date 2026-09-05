@@ -29,8 +29,8 @@ impl Spacer {
 
 impl RenderOnce for Spacer {
 	fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let default_tokens = TokenSet::default();
-		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
+		let resolved_tokens = TokenSet::for_app(cx);
+		let tokens: &TokenSet = &resolved_tokens;
 		let size = tokens.spacing(self.step);
 
 		if self.step == SpacingStep::S0 {
@@ -71,8 +71,8 @@ impl Divider {
 
 impl RenderOnce for Divider {
 	fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let default_tokens = TokenSet::default();
-		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
+		let resolved_tokens = TokenSet::for_app(cx);
+		let tokens: &TokenSet = &resolved_tokens;
 		let line_color = tokens.color(ColorRole::Hairline);
 		let stroke_px = tokens.stroke(StrokeStep::Hairline);
 		let margin_px = tokens.spacing(self.margin);

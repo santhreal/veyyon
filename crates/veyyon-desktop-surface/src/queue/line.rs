@@ -64,8 +64,7 @@ pub fn line_row(
 				.size(IconSize::Size12)
 				.variant(IconButtonVariant::Ghost)
 				.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
-					view.dispatch(Intent::ParkSession(unpark_id));
-					cx.notify();
+					view.dispatch(Intent::ParkSession(unpark_id), cx);
 				})),
 		)
 		.child(
@@ -74,8 +73,7 @@ pub fn line_row(
 				.size(IconSize::Size12)
 				.variant(IconButtonVariant::Ghost)
 				.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
-					view.dispatch(Intent::DeferSession(recall_id));
-					cx.notify();
+					view.dispatch(Intent::DeferSession(recall_id), cx);
 				})),
 		);
 
@@ -84,8 +82,7 @@ pub fn line_row(
 		.id(("queue-line", id as usize))
 		.relative()
 		.on_click(cx.listener(move |view, _event, _window, cx| {
-			view.dispatch(Intent::SelectSession(id));
-			cx.notify();
+			view.dispatch(Intent::SelectSession(id), cx);
 		}))
 		// A right-click opens the row's answers as a menu at the pointer.
 		.on_mouse_down(
