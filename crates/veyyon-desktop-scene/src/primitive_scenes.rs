@@ -59,7 +59,7 @@ pub fn render_primitive(kind: PrimitiveKind, _window: &mut Window, cx: &mut App)
 			FixtureText::CJK,
 			FixtureText::BRANCH_EXTREME_90
 		))
-		.language("rust")
+		.caption("rust")
 		.line_numbers(true)
 		.into_any_element(),
 
@@ -252,9 +252,10 @@ pub fn render_primitive(kind: PrimitiveKind, _window: &mut Window, cx: &mut App)
 			.into_any_element(),
 
 		PrimitiveKind::Dot => Stack::horizontal(SpacingStep::S3)
-			.child(Dot::new(TintRole::Working).pulsing(true))
+			.child(Dot::new(TintRole::Working))
 			.child(Dot::new(TintRole::Error))
-			.child(Dot::new(TintRole::Done))
+			.child(Dot::role(ColorRole::Muted))
+			.child(Dot::empty())
 			.into_any_element(),
 
 		PrimitiveKind::Spinner => Spinner::new().size(SpinnerSize::Large).into_any_element(),

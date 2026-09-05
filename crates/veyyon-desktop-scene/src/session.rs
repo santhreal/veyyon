@@ -12,8 +12,8 @@
 use std::time::Duration;
 
 use veyyon_gpui::{
-	App, Context, Entity, Keystroke, Modifiers, MouseButton, MouseDownEvent, MouseUpEvent, Pixels,
-	PlatformInput, Point, Render, Window, WindowHandle,
+	App, Context, Entity, Keystroke, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent,
+	MouseUpEvent, Pixels, PlatformInput, Point, Render, Window, WindowHandle,
 };
 
 use crate::headless::{Captured, Headless, RenderError, RenderOptions, capture_window};
@@ -86,13 +86,19 @@ impl<'a, V: Render + 'static> HeadlessSession<'a, V> {
 	/// [`advance`](Self::advance) moved the clock. A window with nothing pending
 	/// draws nothing, and the capture is the frame already on screen.
 	pub fn frame(&mut self) -> Result<Captured, RenderError> {
+		self.deliver_frame()?;
+		capture_window(self.cx, self.window.into(), self.options.scale_factor)
+	}
+
+	/// One vsync without a capture.
+	fn deliver_frame(&mut self) -> Result<(), RenderError> {
 		self.cx.run_until_parked();
 		self
 			.cx
 			.request_frame(self.window.into())
 			.map_err(|error| RenderError::NoFrame { message: format!("{error:?}") })?;
 		self.cx.run_until_parked();
-		capture_window(self.cx, self.window.into(), self.options.scale_factor)
+		Ok(())
 	}
 
 	/// Dispatches a single keystroke chord (such as `"cmd-k"`, `"enter"`, or
@@ -177,6 +183,64 @@ impl<'a, V: Render + 'static> HeadlessSession<'a, V> {
 
 		self.cx.run_until_parked();
 		Ok(())
+	}
+
+	/// Drags the left button from `from` to `to`: a press, a move just past
+	/// the renderer's 2px drag threshold that starts the drag, a move halfway
+	/// and a move to `to` that a drag-move listener sees with the drag active,
+	/// and a release there.
+	///
+	/// A frame is delivered after each move, as a live window draws between
+	/// pointer events, so a listener that re-renders its element on every
+	/// move is driven through the re-render rather than around it, and the
+	/// second move it sees follows a frame drawn from the first.
+	pub fn drag(&mut self, from: Point<Pixels>, to: Point<Pixels>) -> Result<(), RenderError> {
+		let modifiers = Modifiers::default();
+		let mouse_down = PlatformInput::MouseDown(MouseDownEvent {
+			button: MouseButton::Left,
+			position: from,
+			modifiers,
+			click_count: 1,
+			first_mouse: false,
+		});
+		let travel = to - from;
+		let length = f32::from(travel.x).hypot(f32::from(travel.y));
+		// The threshold move is skipped for a drag too short to have one.
+		let threshold = (length > 4.0).then(|| from + travel * (4.0 / length));
+		let midway = from + travel * 0.5;
+		let moves = threshold.into_iter().chain([midway, to]).map(|position| {
+			PlatformInput::MouseMove(MouseMoveEvent {
+				position,
+				pressed_button: Some(MouseButton::Left),
+				modifiers,
+			})
+		});
+		let mouse_up = PlatformInput::MouseUp(MouseUpEvent {
+			button: MouseButton::Left,
+			position: to,
+			modifiers,
+			click_count: 1,
+		});
+
+		self.dispatch(mouse_down)?;
+		for mouse_move in moves {
+			self.dispatch(mouse_move)?;
+			self.deliver_frame()?;
+		}
+		self.dispatch(mouse_up)?;
+
+		self.cx.run_until_parked();
+		Ok(())
+	}
+
+	/// Dispatches one platform input to the window.
+	fn dispatch(&mut self, input: PlatformInput) -> Result<(), RenderError> {
+		self
+			.cx
+			.update_window(self.window.into(), |_, window, cx| {
+				window.dispatch_event(input, cx);
+			})
+			.map_err(|error| RenderError::Window { message: format!("{error:?}") })
 	}
 
 	/// Advances the simulated clock by the specified duration and processes
