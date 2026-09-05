@@ -14,6 +14,7 @@
  * these launches while changing in production (none known).
  */
 import { afterEach, describe, expect, it, vi } from "bun:test";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -26,7 +27,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 interface SnapshotHeader {
 	fingerprint: string;
-	stageDigest: string;
+	payloadDigest: string;
 }
 
 interface SnapshotStage {
@@ -230,6 +231,25 @@ describe("static model stage snapshot", () => {
 
 		expect(mtime()).not.toBe(before);
 		expect(readSnapshot().stage.builtIn.length).toBeGreaterThan(0);
+	});
+
+	it.each(["fingerprint", "framing"])("rebuilds a retired stage with obsolete %s", async variant => {
+		await coldLaunch();
+		const { header, stage } = readSnapshot();
+		const expectedWindow = stage.builtIn[0]!.contextWindow;
+		stage.builtIn[0]!.contextWindow = 1;
+		const payload = JSON.stringify(stage);
+		const payloadDigest = createHash("sha256").update(payload).digest("hex");
+		const staleHeader =
+			variant === "fingerprint"
+				? { fingerprint: header.fingerprint.replace(/^[^:]+/, "6"), payloadDigest }
+				: { fingerprint: header.fingerprint, stageDigest: payloadDigest };
+		fs.writeFileSync(snapshotPath, `${JSON.stringify(staleHeader)}\n${payload}`);
+
+		launch();
+
+		expect(readSnapshot().stage.builtIn[0]!.contextWindow).toBe(expectedWindow);
+		expect(readSnapshot().header.fingerprint.split(":")[0]).toBe("7");
 	});
 
 	it("a snapshot naming another fingerprint misses rather than serving", async () => {

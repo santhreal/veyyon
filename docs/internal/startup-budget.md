@@ -9,6 +9,31 @@ and register usage backends through `@veyyon/ai/usage/defaults`. They do not eva
 `@veyyon/ai` package barrel. Usage providers and credential-ranking strategies remain
 available to direct session construction, the SDK and terminal startup.
 
+The launch and session composer footlines use the same filesystem-derived repository
+and linked-worktree location context and draft-token estimate. Typing before session
+initialization updates the estimate on the launch card; mounting the session does not
+replace the location format or add an estimate that was previously absent.
+
+Record linked-worktree startup and typing through session initialization with:
+
+```sh
+SCENE_COMMAND='bash -l' SCENE_MOTION_FLOOR=1 \
+  proof/record.sh proof/scenes/startup-worktree-draft.sh
+```
+
+The scene checks the retained draft, configured model display name and resolved
+context gauge. Its low motion threshold accounts for the stationary startup screen.
+For compiled comparisons, set `SCENE_COMMAND` to
+`env STARTUP_EXECUTABLE=/repo/path/to/binary bash -l` for each isolated target and
+use a separate `OUT_DIR` per arm. The scene disables automatic updates in the
+container configuration before either executable starts.
+
+Bundled and resolved model snapshots use `@veyyon/utils/json-snapshot`. Each write
+serializes its payload once; each read verifies the fingerprint and payload bytes
+before parsing. Replacement is atomic without a durability flush because a missing
+or invalid snapshot rebuilds from its inputs. Bundled format v3 and resolved-stage
+format v7 reject snapshots from preceding formats.
+
 ## Measure it
 
 ```sh
@@ -80,6 +105,17 @@ credentials and a local model definition for offline measurements. Set
 `onboardingVersion: 1` in the root config and the default model role in the profile
 config. Do not seed launch-fact, replay or model-discovery caches for a cold run.
 `--bin` selects a compiled executable instead of `--source`.
+
+Compiled targets are copied into the scratch directory before execution. The supplied
+executable is not run or modified. Reports include the copy's SHA-256, and a changed
+digest after measurement rejects the run without writing a result. Rebuild a target
+whose provenance cannot be established; a filename does not establish its revision.
+
+The benchmark disables `startup.checkUpdate` and `startup.autoUpdate` in its copied
+root and profile configuration. Other seed values remain unchanged. Both comparison
+arms use this override, so these measurements exclude release checks and installation.
+Without `--cold`, the first repetition still starts with an empty scratch directory;
+use subsequent repetitions for warm-state comparisons.
 
 The settled arm uses a 140-column, 45-row PTY and a headless terminal parser. It
 requires the expected model display name, a resolved percentage gauge and an edited

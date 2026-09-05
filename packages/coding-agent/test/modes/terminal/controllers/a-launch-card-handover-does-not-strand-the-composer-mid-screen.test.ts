@@ -104,7 +104,7 @@ describe("a launch card handover does not strand the composer mid-screen", () =>
 			new Spacer(1),
 			cardLayout.bottomFill,
 		];
-		mountLaunchComposer({ addChild: child => cardChildren.push(child) }, new Composer());
+		mountLaunchComposer({ addChild: child => cardChildren.push(child) }, new Composer(), () => "");
 		for (const child of cardChildren) tui.addChild(child);
 		cardLayout.sync();
 		tui.start();

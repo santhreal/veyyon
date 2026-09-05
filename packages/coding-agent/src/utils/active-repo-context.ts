@@ -21,7 +21,11 @@ import { isEnoent } from "@veyyon/utils/fs-error";
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 
-import { type GitRepository, repo } from "./git";
+import {
+	type GitRepository,
+	resolveRepository as resolveRepositoryFromFiles,
+	resolveRepositorySync as resolveRepositoryFromFilesSync,
+} from "./git-head";
 
 export interface ActiveRepoContext {
 	cwd: string;
@@ -78,7 +82,7 @@ function reportUnlistableCwd(cwd: string, error: unknown): void {
 
 async function resolveRepository(cwd: string): Promise<GitRepository | null> {
 	try {
-		return await repo.resolve(cwd);
+		return await resolveRepositoryFromFiles(cwd);
 	} catch {
 		// Null means "cwd is not inside a repository", and this resolution is a filesystem walk up the
 		// directory chain, so a failure at any level means the same thing to the caller: keep looking for a
@@ -89,7 +93,7 @@ async function resolveRepository(cwd: string): Promise<GitRepository | null> {
 
 function resolveRepositorySync(cwd: string): GitRepository | null {
 	try {
-		return repo.resolveSync(cwd);
+		return resolveRepositoryFromFilesSync(cwd);
 	} catch {
 		// Same verdict as the asynchronous twin above.
 		return null;

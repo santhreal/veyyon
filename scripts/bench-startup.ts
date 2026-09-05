@@ -55,17 +55,20 @@
  * transpile cost and is the pessimistic reading.
  */
 import { execFile, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
+import { parseDocument } from "yaml";
 import { AUTONOMY_LABEL } from "../packages/coding-agent/src/tools/core/approval-modes";
 import { recordSettledStartup } from "./record-settled-startup";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const CLI_SOURCE = path.join(REPO_ROOT, "packages", "coding-agent", "src", "cli.ts");
 /** Onboarding generation the seeded home claims to have finished, so no run measures the wizard. */
-const ONBOARDED_CONFIG = "onboardingVersion: 1\n";
+const ONBOARDED_CONFIG = "onboardingVersion: 1\nstartup:\n  checkUpdate: false\n  autoUpdate: false\n";
 
 /**
  * Arm groups, one launch each. A run measures all of them, which is what makes a whole run
@@ -384,6 +387,28 @@ async function seedHome(root: string, installedNatives: string | undefined): Pro
 	return home;
 }
 
+/** Disable release checks only in the copied benchmark configuration. */
+export async function disableBenchmarkUpdates(configPath: string): Promise<void> {
+	let source = "";
+	try {
+		source = await fs.readFile(configPath, "utf8");
+	} catch (error) {
+		if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
+	}
+	const config = parseDocument(source);
+	if (config.errors.length) throw new Error(`Invalid benchmark config ${configPath}: ${config.errors[0].message}`);
+	config.setIn(["startup", "checkUpdate"], false);
+	config.setIn(["startup", "autoUpdate"], false);
+	await fs.mkdir(path.dirname(configPath), { recursive: true });
+	await fs.writeFile(configPath, config.toString());
+}
+
+async function executableDigest(command: string): Promise<string> {
+	const digest = createHash("sha256");
+	for await (const chunk of createReadStream(command)) digest.update(chunk);
+	return digest.digest("hex");
+}
+
 /**
  * Mirror a directory as hardlinks. Same filesystem by construction: both live under the scratch.
  *
@@ -462,13 +487,18 @@ function report(arm: string, samples: number[]): string {
 
 async function main(): Promise<void> {
 	const options = parseArgs(process.argv.slice(2));
-	const { command, prefix } = launcher(options);
+	const launch = launcher(options);
+	const { prefix } = launch;
 	// Local disk, not the repository, when the repository is a network mount. A seeded home on NFS
 	// measures the network: the launch reads its config, writes its vault and session store, and
 	// loads the addon through it, none of which a user's launch does over a wire.
 	const scratch = path.resolve(options.scratch ?? path.join(REPO_ROOT, ".captures", "bench-startup"));
 	await fs.rm(scratch, { recursive: true, force: true });
 	await fs.mkdir(scratch, { recursive: true });
+	// Never let a self-updating executable replace the supplied installed binary.
+	const command = options.bin ? path.join(scratch, path.basename(options.bin)) : launch.command;
+	if (options.bin) await fs.copyFile(path.resolve(options.bin), command);
+	const binarySha256 = options.bin ? await executableDigest(command) : undefined;
 
 	const samples: Sample[] = [];
 	const push = (arm: string, ms: number): void => {
@@ -500,6 +530,8 @@ async function main(): Promise<void> {
 			const config = path.join(scratch, "config");
 			if (options.cold) await fs.rm(config, { recursive: true, force: true });
 			await fs.cp(options.seed, config, { recursive: true, force: false });
+			await disableBenchmarkUpdates(path.join(config, "config.yml"));
+			await disableBenchmarkUpdates(path.join(config, "profiles", "default", "agent", "config.yml"));
 			if (installedNatives) await hardlinkTree(installedNatives, path.join(config, "natives"));
 		}
 		const home = await seedHome(scratch, installedNatives);
@@ -635,6 +667,9 @@ async function main(): Promise<void> {
 			}
 		}
 	}
+	if (binarySha256 !== undefined && (await executableDigest(command)) !== binarySha256) {
+		throw new Error("Benchmark executable changed during measurement; discard these samples and rebuild the target");
+	}
 
 	const arms = [
 		"version",
@@ -676,10 +711,11 @@ async function main(): Promise<void> {
 			`${JSON.stringify(
 				{
 					target: options.bin ?? "bun source",
+					binarySha256,
 					home: options.cold ? "cold" : "warm",
 					runs: options.runs,
 					platform: `${os.platform()}-${os.arch()}`,
-					source: options.source ?? CLI_SOURCE,
+					source: options.bin ? undefined : (options.source ?? CLI_SOURCE),
 					cwd: options.cwd ?? REPO_ROOT,
 					seed: options.seed,
 					settlement: OPTIONAL_ARM_GROUPS.some(arm => options.only?.has(arm))

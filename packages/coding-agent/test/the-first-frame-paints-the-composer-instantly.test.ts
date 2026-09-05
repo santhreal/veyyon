@@ -97,7 +97,7 @@ function launchComposer(): Component[] {
 	applyComposerChrome(editor, resolveComposerAccents(PRISTINE_COMPOSER_ACCENT_STATE));
 	editor.setMaxHeight(computeEditorMaxHeight(30));
 	const mounted: Component[] = [];
-	mountLaunchComposer({ addChild: child => mounted.push(child) }, editor);
+	mountLaunchComposer({ addChild: child => mounted.push(child) }, editor, () => editor.getText());
 	return mounted;
 }
 
@@ -330,15 +330,20 @@ describe("the launch composer", () => {
 
 	it("honors a path budget the session overrides the preset with", () => {
 		settings.set("statusLine.segmentOptions", { path: { maxLength: 12 } });
-		try {
-			const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
-			expect(visibleWidth(located)).toBeLessThanOrEqual(12);
-			const row = launchRows(100).find(candidate => candidate.includes(located));
-			expect(row).toBeDefined();
-			expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located}`);
-		} finally {
-			settings.set("statusLine.segmentOptions", {});
-		}
+		withDeepProject(() => {
+			try {
+				const { content: located, pin } = renderLocation({
+					projectDir: getProjectDir(),
+					options: resolveLocationOptions(),
+				});
+				expect(visibleWidth(located) - pin).toBe(12);
+				const row = launchRows(100).find(candidate => candidate.includes(located));
+				expect(row).toBeDefined();
+				expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located}`);
+			} finally {
+				settings.set("statusLine.segmentOptions", {});
+			}
+		});
 	});
 
 	it("names the branch, after the location, joined the way the live row joins segments", () => {

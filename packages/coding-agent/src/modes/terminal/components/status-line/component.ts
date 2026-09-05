@@ -22,11 +22,11 @@ import { withIcon } from "../../../../theme/icon-label";
 import { transitionsEnabled } from "../../../../theme/shimmer";
 import { theme } from "../../../../theme/theme";
 import { AUTO_THINKING } from "../../../../thinking";
-import { type ActiveRepoContext, resolveActiveRepoContextSync } from "../../../../utils/active-repo-context";
 import * as git from "../../../../utils/git";
 import { type LaunchFactsUpdate, readLaunchFacts, recordLaunchFacts } from "../../../launch-facts";
 import { isTreeDirty } from "./branch";
 import { canReuseCachedPr, createPrCacheContext, isSamePrCacheContext, type PrCacheContext } from "./git-utils";
+import { type LocationContext, resolveLocationContext } from "./location-context";
 import {
 	composeQuietLines,
 	composeQuietRow,
@@ -202,35 +202,6 @@ interface ContextUsageMemo {
 	skillsRef: readonly any[] | undefined;
 }
 
-interface ActiveRepoCache {
-	projectDir: string;
-	activeRepo: ActiveRepoContext | null;
-	effectiveGitCwd: string;
-	/** Project + worktree dir name when `projectDir` is a linked worktree, else null. */
-	worktree: WorktreeContext | null;
-}
-
-interface WorktreeContext {
-	/** Primary-checkout (project) name shown by the path segment. */
-	projectName: string;
-	/** Worktree directory name — suppressed from the path when it equals the branch. */
-	worktreeName: string;
-}
-
-/**
- * Project + worktree-dir names when `cwd` is a linked git worktree, else null.
- * The project name comes from the shared primary checkout; bare-repo worktrees
- * resolve to the shared `foo.git` dir, so a trailing `.git` is stripped.
- */
-function resolveWorktreeContext(cwd: string): WorktreeContext | null {
-	const worktree = git.repo.linkedWorktreeSync(cwd);
-	if (!worktree) return null;
-	const base = path.basename(worktree.primaryRoot);
-	const projectName = base.endsWith(".git") ? base.slice(0, -4) : base;
-	if (!projectName) return null;
-	return { projectName, worktreeName: path.basename(worktree.root) };
-}
-
 /**
  * Per-{@link AgentSession} active-processing meter for the `time_spent`
  * segment. `activeMs` is the union of every completed `agent_start`→
@@ -340,7 +311,7 @@ export class StatusLineComponent implements Component {
 	#vibeModeStatus: { enabled: boolean } | null = null;
 	#collabStatus: CollabStatus | null = null;
 	#focusedAgentId: string | undefined;
-	#activeRepoCache: ActiveRepoCache | undefined;
+	#activeRepoCache: LocationContext | undefined;
 
 	// Git status caching (1s TTL)
 	#cachedGitStatus: git.GitStatusSummary | null = null;
@@ -433,18 +404,13 @@ export class StatusLineComponent implements Component {
 		);
 	}
 
-	#resolveActiveRepoCache(): ActiveRepoCache {
+	#resolveActiveRepoCache(): LocationContext {
 		const projectDir = this.session.sessionManager?.getCwd?.() ?? getProjectDir();
 		if (this.#activeRepoCache?.projectDir === projectDir) {
 			return this.#activeRepoCache;
 		}
 
-		const activeRepo = resolveActiveRepoContextSync(projectDir);
-		const effectiveGitCwd = activeRepo?.repoRoot ?? projectDir;
-		// Only collapse the bare-cwd case: a single-direct-child-repo context
-		// (activeRepo set) renders `<parent> ↳ <child>`, which we leave intact.
-		const worktree = activeRepo ? null : resolveWorktreeContext(effectiveGitCwd);
-		this.#activeRepoCache = { projectDir, activeRepo, effectiveGitCwd, worktree };
+		this.#activeRepoCache = resolveLocationContext(projectDir);
 		return this.#activeRepoCache;
 	}
 

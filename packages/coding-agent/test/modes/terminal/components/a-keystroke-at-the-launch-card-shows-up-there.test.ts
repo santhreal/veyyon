@@ -56,7 +56,7 @@ function launchComposer(): { editor: CustomEditor; render: (width: number) => st
 	applyComposerChrome(editor, resolveComposerAccents(PRISTINE_COMPOSER_ACCENT_STATE));
 	editor.setMaxHeight(computeEditorMaxHeight(30));
 	const mounted: Component[] = [];
-	mountLaunchComposer({ addChild: child => mounted.push(child) }, editor);
+	mountLaunchComposer({ addChild: child => mounted.push(child) }, editor, () => editor.getText());
 	return {
 		editor,
 		render: width => mounted.flatMap(child => child.render(width)).map(row => stripVTControlCharacters(row)),

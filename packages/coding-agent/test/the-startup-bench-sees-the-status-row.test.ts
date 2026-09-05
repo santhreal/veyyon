@@ -61,7 +61,7 @@ const CONFIGURED_MODEL = "claude-sonnet-4-5";
 
 /** The card's footline, as the component paints it, with the composer inset removed. */
 function cardRow(width: number): string {
-	const rows = new LaunchComposerFoot().render(width);
+	const rows = new LaunchComposerFoot(() => "").render(width);
 	const footline = rows.find(row => stripAnsi(row).trim().length > 0);
 	return stripAnsi(footline ?? "").slice(COMPOSER_INSET_COLS);
 }

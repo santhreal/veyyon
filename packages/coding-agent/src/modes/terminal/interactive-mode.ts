@@ -42,7 +42,6 @@ import { isInsideTerminalMultiplexer } from "@veyyon/tui/terminal-capabilities";
 import {
 	APP_NAME,
 	errorMessage,
-	estimateTokensFromText,
 	formatCount,
 	formatNumber,
 	getProjectDir,
@@ -164,6 +163,7 @@ import {
 	mountComposerZone,
 	PRISTINE_COMPOSER_ACCENT_STATE,
 	QuietZoneLine,
+	renderDraftTokenZone,
 	resolveComposerAccents,
 } from "./components/composer/composer-chrome";
 import { buildComposerShortcuts, ComposerShortcutsBar } from "./components/composer/composer-shortcuts";
@@ -931,25 +931,10 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * itself (see {@link ComposerHairline}), not a glyph parked at the edge.
 	 */
 	#locationRightZone(): string | null {
-		const zones = [this.#draftTokenZone(), this.#mcpZoneText()].filter((z): z is string => z !== null);
+		const zones = [renderDraftTokenZone(this.editor.getText()), this.#mcpZoneText()].filter(
+			(z): z is string => z !== null,
+		);
 		return zones.length > 0 ? zones.join(theme.fg("dim", " · ")) : null;
-	}
-
-	/**
-	 * DS-6 dock: live draft size in the footline's right zone, gold
-	 * (matchHighlight) so the growing draft reads as "the found thing you are
-	 * about to send". Shown only while a non-blank draft exists; uses the one
-	 * shared byte-aware estimator, so the number matches budget math elsewhere.
-	 */
-	#draftTokenZone(): string | null {
-		const draft = this.editor.getText();
-		const trimmed = draft.trim();
-		if (trimmed.length === 0) return null;
-		// A bare slash-command token ("/se…") is menu navigation, not a draft —
-		// counting its characters is noise. The counter returns the moment the
-		// command takes arguments or the text is prose.
-		if (trimmed.startsWith("/") && !/\s/.test(trimmed)) return null;
-		return theme.fg("matchHighlight", `~${estimateTokensFromText(draft)} tok`);
 	}
 
 	/**

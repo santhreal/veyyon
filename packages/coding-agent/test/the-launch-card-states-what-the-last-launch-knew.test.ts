@@ -165,6 +165,7 @@ function cardContext() {
 		compactThinkingLevel: false,
 		branch: "main",
 		autoCompactEnabled: true,
+		location: null,
 	});
 }
 
@@ -173,7 +174,7 @@ const GAUGE = /▰|left/;
 
 /** The card's footline at `width`, from the component that paints it, styling removed. */
 function cardFootRow(width: number): string {
-	const rows = new LaunchComposerFoot().render(width);
+	const rows = new LaunchComposerFoot(() => "").render(width);
 	return stripAnsi(rows.find(line => stripAnsi(line).trim().length > 0) ?? "");
 }
 

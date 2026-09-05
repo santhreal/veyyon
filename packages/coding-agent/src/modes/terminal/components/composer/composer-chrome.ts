@@ -14,6 +14,7 @@ import type { Component } from "@veyyon/tui/tui";
 import { getProjectDir } from "@veyyon/utils/dirs";
 import { clampLow } from "@veyyon/utils/math";
 import type { MouseRoutable, SgrMouseEvent } from "@veyyon/utils/mouse";
+import { estimateTokensFromText } from "@veyyon/utils/tokens";
 import { truncateToWidth } from "@veyyon/utils/width";
 import { isThresholdCompactionDisabled } from "../../../../config/compaction-strategy";
 import { settings } from "../../../../config/settings-instance";
@@ -21,7 +22,7 @@ import { groundHairlineHex, groundTintFgAnsi } from "../../../../theme/ground-ti
 import { theme } from "../../../../theme/theme";
 import { branchLabelFromFiles } from "../../../../utils/git-head";
 import { EMBER } from "../chrome/sun";
-import { isBranchOnTheRow } from "../status-line/branch";
+import { type LocationContext, resolveLocationContext } from "../status-line/location-context";
 import {
 	composeQuietRow,
 	effectiveStatusLineSettings,
@@ -245,11 +246,23 @@ export function mountComposerZone(ui: { addChild(component: Component): void }, 
  * Returns the number of root children mounted, for the same reason
  * {@link mountComposerZone} does.
  */
-export function mountLaunchComposer(ui: { addChild(component: Component): void }, editorContainer: Component): number {
+export function mountLaunchComposer(
+	ui: { addChild(component: Component): void },
+	editorContainer: Component,
+	getDraft: () => string,
+): number {
 	ui.addChild(new LaunchComposerHead());
 	ui.addChild(editorContainer);
-	ui.addChild(new LaunchComposerFoot());
+	ui.addChild(new LaunchComposerFoot(getDraft));
 	return 3;
+}
+
+/** The same draft estimate before and after the session adopts the composer. */
+export function renderDraftTokenZone(draft: string): string | null {
+	const trimmed = draft.trim();
+	if (trimmed.length === 0) return null;
+	if (trimmed.startsWith("/") && !/\s/.test(trimmed)) return null;
+	return theme.fg("matchHighlight", `~${estimateTokensFromText(draft)} tok`);
 }
 
 /**
@@ -440,6 +453,13 @@ export class LaunchComposerHead implements Component {
  * written was missing here and nothing failed.
  */
 export class LaunchComposerFoot implements Component {
+	readonly #getDraft: () => string;
+	#location: LocationContext | undefined;
+
+	constructor(getDraft: () => string) {
+		this.#getDraft = getDraft;
+	}
+
 	render(width: number): string[] {
 		const w = Math.max(1, width);
 		const inset = " ".repeat(COMPOSER_INSET_COLS);
@@ -465,9 +485,9 @@ export class LaunchComposerFoot implements Component {
 	 * place, not a difference between two rows.
 	 */
 	#footline(avail: number): string {
+		if (!settings.get("statusLine.enabled")) return "";
 		const effectiveSettings = effectiveStatusLineSettings(statusLineSettingsFromConfig());
-		const gitEnabled = isBranchOnTheRow();
-		const branch = gitEnabled ? branchLabelFromFiles(getProjectDir()) : null;
+		const gitEnabled = settings.get("git.enabled");
 		// The endless-session `∞` is a CONFIGURED fact, not a measured one, so the
 		// row states it now rather than letting it appear beside the gauge a
 		// second later. Same predicate the session mirrors into the live row.
@@ -478,14 +498,26 @@ export class LaunchComposerFoot implements Component {
 			effectiveSettings,
 			gitEnabled,
 			expansion: 0,
-			buildContext: request =>
-				launchSegmentContext({
+			buildContext: request => {
+				const projectDir = getProjectDir();
+				let location: LocationContext | null = null;
+				if (gitEnabled && (request.includePath || request.includeGit || request.includePr)) {
+					if (this.#location?.projectDir !== projectDir) this.#location = resolveLocationContext(projectDir);
+					location = this.#location;
+				}
+				const branch =
+					request.includeGit || request.includePr
+						? branchLabelFromFiles(location?.effectiveGitCwd ?? projectDir)
+						: null;
+				return launchSegmentContext({
 					width: request.width,
 					options: request.options,
 					compactThinkingLevel: effectiveSettings.compactThinkingLevel ?? false,
 					branch,
 					autoCompactEnabled,
-				}),
+					location,
+				});
+			},
 			subagentBadge: subagentBadgeText(0),
 			badgeSlot: null,
 		});
@@ -500,6 +532,7 @@ export class LaunchComposerFoot implements Component {
 				// row only positions, and an empty string is how the composer spells their absence.
 				badge: "",
 				clock: "",
+				locationRight: renderDraftTokenZone(this.#getDraft()),
 				// The path expansion is a click-driven animation on the live row. Nothing has been
 				// clicked yet, so the row is at rest and the expanded half is never consulted.
 				expansion: 0,

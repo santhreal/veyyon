@@ -27,6 +27,7 @@ import { AUTO_THINKING } from "../../../../thinking";
 import type { ApprovalMode } from "../../../../tools/core/approval-modes";
 import { isKnownApprovalMode } from "../../../../tools/core/approval-modes";
 import { launchModelLabel, readLaunchFacts } from "../../../launch-facts";
+import type { LocationContext } from "./location-context";
 import type { SegmentContext, StatusLineSegmentOptions } from "./types";
 
 /**
@@ -167,6 +168,7 @@ export interface LaunchContextRequest {
 	branch: string | null;
 	/** Threshold compaction is configured on, which the gauge states as its limit kind. */
 	autoCompactEnabled: boolean;
+	location: LocationContext | null;
 }
 
 /**
@@ -189,7 +191,7 @@ export function launchSegmentContext(request: LaunchContextRequest): SegmentCont
 	const launchFacts = readLaunchFacts();
 	return {
 		facts: factsAtLaunch(),
-		activeRepo: null,
+		activeRepo: request.location?.activeRepo ?? null,
 		width: request.width,
 		options: request.options,
 		compactThinkingLevel: request.compactThinkingLevel,
@@ -209,7 +211,7 @@ export function launchSegmentContext(request: LaunchContextRequest): SegmentCont
 		backgroundSessionCount: 0,
 		activeMs: 0,
 		git: { branch: request.branch, status: launchFacts.gitStatus, pr: null },
-		worktree: null,
+		worktree: request.location?.worktree ?? null,
 		account: null,
 		usage: null,
 	};

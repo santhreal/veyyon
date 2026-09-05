@@ -141,7 +141,7 @@ const SILENT_AT_LAUNCH: Record<string, string[]> = {
 
 /** The card's footline row, as the component paints it, with the inset removed. */
 function cardRow(): string {
-	const rows = new LaunchComposerFoot().render(WIDE);
+	const rows = new LaunchComposerFoot(() => "").render(WIDE);
 	const footline = rows.find(row => stripAnsi(row).trim().length > 0);
 	return stripAnsi(footline ?? "").slice(COMPOSER_INSET_COLS);
 }
@@ -168,6 +168,7 @@ function launchParts(): Map<string, string> {
 				compactThinkingLevel: effective.compactThinkingLevel ?? false,
 				branch,
 				autoCompactEnabled: false,
+				location: null,
 			}),
 		subagentBadge: quietRow.subagentBadgeText(0),
 		badgeSlot: null,
@@ -342,7 +343,7 @@ describe("the card and the live row are one row", () => {
 					}, COMPOSER_INSET_COLS).render(terminal);
 
 					composeSpy.mockClear();
-					new LaunchComposerFoot().render(terminal);
+					new LaunchComposerFoot(() => "").render(terminal);
 					const card = composeSpy.mock.calls.at(-1)?.[0].width ?? -1;
 
 					return { terminal, card, live };

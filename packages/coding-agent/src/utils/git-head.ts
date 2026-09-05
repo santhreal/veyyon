@@ -167,6 +167,112 @@ export function resolveRepositorySync(startDir: string): GitRepository | null {
 	}
 }
 
+async function retryOnEintr<T>(op: () => Promise<T>): Promise<T | null> {
+	for (let attempt = 0; attempt <= EINTR_MAX_RETRIES; attempt += 1) {
+		try {
+			return await op();
+		} catch (err) {
+			if (shouldRetry(err, attempt)) continue;
+			return null;
+		}
+	}
+	throw new Error("retryOnEintr: exhausted without resolution");
+}
+
+async function getEntryType(gitEntryPath: string): Promise<EntryType | null> {
+	return retryOnEintr(async () => {
+		const stat = await fs.promises.stat(gitEntryPath);
+		if (stat.isDirectory()) return "directory";
+		if (stat.isFile()) return "file";
+		return null;
+	});
+}
+
+export async function readOptionalText(filePath: string): Promise<string | null> {
+	return retryOnEintr(() => fs.promises.readFile(filePath, "utf8"));
+}
+
+async function resolveGitDir(gitEntryPath: string, entryType: EntryType): Promise<string | null> {
+	if (entryType === "directory") return gitEntryPath;
+	const content = await readOptionalText(gitEntryPath);
+	if (content === null) return null;
+	const parsed = parseGitDirPointer(content);
+	if (!parsed) return null;
+	const gitDir = path.resolve(path.dirname(gitEntryPath), parsed);
+	return (await getEntryType(gitDir)) === "directory" ? gitDir : null;
+}
+
+async function resolveCommonDir(gitDir: string): Promise<string> {
+	const content = await readOptionalText(path.join(gitDir, "commondir"));
+	const relative = content?.trim();
+	if (!relative) return gitDir;
+	return path.resolve(gitDir, relative);
+}
+
+function isLinkedWorktree(repository: GitRepository): boolean {
+	return (
+		repository.gitDir !== repository.commonDir &&
+		getEntryTypeSync(path.join(repository.gitDir, "commondir")) === "file"
+	);
+}
+
+async function isLinkedWorktreeAsync(repository: GitRepository): Promise<boolean> {
+	return (
+		repository.gitDir !== repository.commonDir &&
+		(await getEntryType(path.join(repository.gitDir, "commondir"))) === "file"
+	);
+}
+
+export function primaryRootFromRepositorySync(repository: GitRepository): string {
+	if (path.basename(repository.commonDir) === ".git") return path.dirname(repository.commonDir);
+	if (isLinkedWorktree(repository)) return repository.commonDir;
+	return repository.repoRoot;
+}
+
+export async function primaryRootFromRepository(repository: GitRepository): Promise<string> {
+	if (path.basename(repository.commonDir) === ".git") return path.dirname(repository.commonDir);
+	if (await isLinkedWorktreeAsync(repository)) return repository.commonDir;
+	return repository.repoRoot;
+}
+
+async function resolveRepoFromEntry(
+	repoRoot: string,
+	gitEntryPath: string,
+	entryType: EntryType,
+): Promise<GitRepository | null> {
+	const gitDir = await resolveGitDir(gitEntryPath, entryType);
+	if (!gitDir) return null;
+	return {
+		commonDir: await resolveCommonDir(gitDir),
+		gitDir,
+		gitEntryPath,
+		headPath: path.join(gitDir, "HEAD"),
+		repoRoot,
+	};
+}
+
+export async function resolveRepository(startDir: string): Promise<GitRepository | null> {
+	let current = path.resolve(startDir);
+	while (true) {
+		const gitEntryPath = path.join(current, ".git");
+		const entryType = await getEntryType(gitEntryPath);
+		if (entryType) {
+			const repository = await resolveRepoFromEntry(current, gitEntryPath, entryType);
+			if (repository) return repository;
+		}
+		const parent = path.dirname(current);
+		if (parent === current) return null;
+		current = parent;
+	}
+}
+
+/** Linked-checkout metadata from repository files, without the subprocess API. */
+export function linkedWorktreeFromFiles(cwd: string): { root: string; primaryRoot: string } | null {
+	const repository = resolveRepositorySync(cwd);
+	if (!repository || !isLinkedWorktree(repository)) return null;
+	return { root: repository.repoRoot, primaryRoot: primaryRootFromRepositorySync(repository) };
+}
+
 export function getRefLookupDirs(repository: GitRepository): string[] {
 	if (repository.gitDir === repository.commonDir) return [repository.gitDir];
 	return [repository.gitDir, repository.commonDir];

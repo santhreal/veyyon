@@ -6,6 +6,7 @@ import type {
 } from "../../../../config/settings-schema";
 import type { ActiveRepoContext } from "../../../../utils/active-repo-context";
 import type { GitStatusSummary } from "../../../../utils/git";
+import type { LocationWorktree } from "./location";
 import type { SessionFacts } from "./session-facts";
 
 export type { StatusLinePreset, StatusLineSegmentId, StatusLineSeparatorStyle };
@@ -174,7 +175,7 @@ export interface SegmentContext {
 	 * base-prefixed `<base>/<project>/<worktree>` path to the project name —
 	 * the worktree/branch is already shown by the git segment.
 	 */
-	worktree: { projectName: string; worktreeName: string } | null;
+	worktree: LocationWorktree | null;
 	/**
 	 * The credential serving the active provider, and how many that provider stores.
 	 *

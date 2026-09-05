@@ -21,6 +21,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { writeJsonSnapshotSync } from "@veyyon/utils/json-snapshot";
 import { buildModel } from "../src/build";
 // Relative imports, not `@veyyon/catalog/...`: the workspace `node_modules`
 // link resolves to the primary checkout rather than to this worktree, so the
@@ -30,7 +31,7 @@ import { createEnrichedRegistrySnapshotStore } from "../src/registry-snapshot";
 import type { Api, Model } from "../src/types";
 
 /** Pinned so an unrecorded format change cannot silently reuse old snapshots. */
-const FORMAT_VERSION_PREFIX = "v2:";
+const FORMAT_VERSION_PREFIX = "v3:";
 
 function writeEnrichedRegistrySnapshot(
 	registry: Map<string, Map<string, Model<Api>>>,
@@ -87,7 +88,7 @@ describe("the enriched catalog snapshot is exact or ignored", () => {
 
 	it("refuses a snapshot whose fingerprint names another catalog or format", () => {
 		writeEnrichedRegistrySnapshot(liveRegistry(), `${FORMAT_VERSION_PREFIX}test`, dbPath);
-		expect(readEnrichedRegistrySnapshot("v2:different", dbPath)).toBeNull();
+		expect(readEnrichedRegistrySnapshot("v3:different", dbPath)).toBeNull();
 	});
 
 	it("refuses a corrupt file instead of serving partial records", () => {
@@ -101,13 +102,13 @@ describe("the enriched catalog snapshot is exact or ignored", () => {
 		const fingerprint = `${FORMAT_VERSION_PREFIX}tampered`;
 		writeEnrichedRegistrySnapshot(liveRegistry(), fingerprint, dbPath);
 		const snapshotPath = path.join(path.dirname(dbPath), "bundled-models.json");
-		const parsed = JSON.parse(fs.readFileSync(snapshotPath, "utf8")) as {
-			registry: Record<string, Record<string, Model<Api>>>;
-		};
-		const provider = Object.keys(parsed.registry)[0]!;
-		const model = Object.keys(parsed.registry[provider]!)[0]!;
-		parsed.registry[provider]![model]!.contextWindow = 1;
-		fs.writeFileSync(snapshotPath, JSON.stringify(parsed));
+		const bytes = fs.readFileSync(snapshotPath, "utf8");
+		const split = bytes.indexOf("\n");
+		const registry = JSON.parse(bytes.slice(split + 1)) as Record<string, Record<string, Model<Api>>>;
+		const provider = Object.keys(registry)[0]!;
+		const model = Object.keys(registry[provider]!)[0]!;
+		registry[provider]![model]!.contextWindow = 1;
+		fs.writeFileSync(snapshotPath, `${bytes.slice(0, split)}\n${JSON.stringify(registry)}`);
 
 		expect(readEnrichedRegistrySnapshot(fingerprint, dbPath)).toBeNull();
 	});
@@ -116,15 +117,22 @@ describe("the enriched catalog snapshot is exact or ignored", () => {
 		const snapshotPath = path.join(path.dirname(dbPath), "bundled-models.json");
 		fs.mkdirSync(path.dirname(snapshotPath), { recursive: true });
 		const registry = { anthropic: "not-a-record" };
+		writeJsonSnapshotSync(snapshotPath, `${FORMAT_VERSION_PREFIX}x`, registry);
+		expect(readEnrichedRegistrySnapshot(`${FORMAT_VERSION_PREFIX}x`, dbPath)).toBeNull();
+	});
+
+	it("rejects the retired v2 object envelope with a valid old digest", () => {
+		const registry = { example: {} };
 		fs.writeFileSync(
-			snapshotPath,
+			path.join(path.dirname(dbPath), "bundled-models.json"),
 			JSON.stringify({
-				fingerprint: `${FORMAT_VERSION_PREFIX}x`,
+				fingerprint: "v2:test",
 				registryDigest: createHash("sha256").update(JSON.stringify(registry)).digest("hex"),
 				registry,
 			}),
 		);
-		expect(readEnrichedRegistrySnapshot(`${FORMAT_VERSION_PREFIX}x`, dbPath)).toBeNull();
+		expect(readEnrichedRegistrySnapshot("v2:test", dbPath)).toBeNull();
+		expect(readEnrichedRegistrySnapshot(`${FORMAT_VERSION_PREFIX}test`, dbPath)).toBeNull();
 	});
 
 	it("serves records indistinguishable from what buildModel produces for the same spec", () => {

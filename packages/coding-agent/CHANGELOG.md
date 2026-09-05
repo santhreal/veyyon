@@ -30,6 +30,7 @@
 
 ### Changed
 
+- Resolved model snapshots use shared byte-integrity checks and atomic replacement without durability flushes; obsolete snapshots rebuild before model selection.
 - Startup imports AI streaming helpers and usage registration without evaluating the AI package barrel; usage providers and credential ranking remain available.
 - Evaluator implementations load on the first enabled request instead of session or tool construction, and loaded runtimes register their own process-exit cleanup.
 - URL reader initialization is deferred until an enabled URL read or search; local tools and transcript previews no longer initialize it.
@@ -185,6 +186,8 @@
 - An MCP tool describes its call and result cards as a `ToolView` instead of building terminal components in `mcp/render.ts`, which is deleted; the terminal states the same arguments, structure walk, raw rows, held-back count and spill warning, indented two columns under the row that heads them and without the branch glyph the call row opened with.
 
 ### Fixed
+
+- The launch composer shows the same linked-worktree location and draft-token estimate as the mounted session, avoiding a late footline repaint.
 
 - `bun run gen:tool-views` in the coding-agent package uses the relocated `clients/web` generator.
 
