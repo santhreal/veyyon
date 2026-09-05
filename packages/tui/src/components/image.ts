@@ -1,11 +1,13 @@
 import { SGR_RESET } from "../ansi";
 import { getKittyGraphics } from "../kitty-graphics";
 import {
+	encodeDirectPlacementLine,
 	getCellDimensions,
 	getImageDimensions,
 	type ImageDimensions,
 	type ImageFallbackReason,
 	imageFallback,
+	type KittyDirectPlacement,
 	renderImage,
 	TERMINAL,
 } from "../terminal-capabilities";
@@ -38,8 +40,6 @@ export interface ImageOptions {
 
 const EMPTY_IDS: readonly number[] = [];
 const EMPTY_TRANSMITS: readonly string[] = [];
-const SAVE_CURSOR = "\x1b7";
-const RESTORE_CURSOR = "\x1b8";
 // Direct placements reserve height with leading zero-width rows. Keep them
 // non-plain so transcript blank-edge trimming does not collapse image-only blocks.
 // A reserved row carries nothing but an attribute reset, so the terminal leaves the cells alone.
@@ -106,6 +106,12 @@ export class ImageBudget {
 	// id so a partial pass reproduces the on-screen live/text split without a
 	// full, correctly-ordered walk.
 	#suppressedIds = new Set<number>();
+	// The geometry behind each live direct-placement line, keyed by the exact
+	// line an Image returns, so the renderer can re-derive a placement it must
+	// rewrite at a viewport row above the block's origin. One line per image id;
+	// re-registering an id (a width change) drops its previous line.
+	#directPlacements = new Map<string, KittyDirectPlacement>();
+	#directPlacementLineById = new Map<number, string>();
 
 	constructor(cap: number = DEFAULT_MAX_INLINE_IMAGES, requestRender: () => void = () => {}) {
 		this.#cap = normalizeCap(cap);
@@ -202,6 +208,7 @@ export class ImageBudget {
 				// d=I frees the data too, so the image must re-transmit if it returns.
 				this.#transmitted.delete(id);
 				this.#forgetKeyForId(id);
+				this.#forgetDirectPlacement(id);
 			}
 			this.#onTerminal = this.#planned;
 			this.#applyingReset = false;
@@ -233,6 +240,8 @@ export class ImageBudget {
 		this.#pendingTransmits = [];
 		this.#keyToId.clear();
 		this.#idToKey.clear();
+		this.#directPlacements.clear();
+		this.#directPlacementLineById.clear();
 		return ids;
 	}
 
@@ -291,6 +300,27 @@ export class ImageBudget {
 		if (this.#transmitted.size === 0 && this.#pendingTransmits.length === 0) return;
 		this.#transmitted.clear();
 		this.#pendingTransmits = [];
+	}
+
+	/** Record the geometry behind `line`, the last row of a direct-placement block. */
+	recordDirectPlacement(line: string, placement: KittyDirectPlacement): void {
+		const previous = this.#directPlacementLineById.get(placement.imageId);
+		if (previous === line) return;
+		if (previous !== undefined) this.#directPlacements.delete(previous);
+		this.#directPlacements.set(line, placement);
+		this.#directPlacementLineById.set(placement.imageId, line);
+	}
+
+	/** The geometry behind a direct-placement line, or undefined for any other line. */
+	directPlacement(line: string): KittyDirectPlacement | undefined {
+		return this.#directPlacements.get(line);
+	}
+
+	#forgetDirectPlacement(id: number): void {
+		const line = this.#directPlacementLineById.get(id);
+		if (line === undefined) return;
+		this.#directPlacementLineById.delete(id);
+		this.#directPlacements.delete(line);
 	}
 
 	#forgetKeyForId(id: number): void {
@@ -420,18 +450,19 @@ export class Image implements Component {
 			} else if (result) {
 				// Direct placement: return `rows` lines so TUI accounts for image
 				// height. First (rows-1) lines are empty (TUI clears them); the last
-				// saves the final-row cursor, moves up to the image origin, emits the
-				// image sequence, then restores the final-row cursor. Save/restore is
-				// required because CUU clamps at the viewport top when leading rows are
-				// clipped away.
+				// climbs to the image origin, emits the image sequence, and restores
+				// the final-row cursor. The renderer re-derives that line from the
+				// registered geometry when it must rewrite it at a viewport row above
+				// the origin, where the climb would clamp.
 				lines = [];
 				for (let i = 0; i < result.rows - 1; i++) {
 					lines.push(RESERVED_IMAGE_ROW);
 				}
-				const cursorRows = result.rows - 1;
-				const moveUp = cursorRows > 0 ? `\x1b[${cursorRows}A` : "";
-				const placement = moveUp + (result.sequence ?? "");
-				lines.push(cursorRows > 0 ? SAVE_CURSOR + placement + RESTORE_CURSOR : placement);
+				const placementLine = encodeDirectPlacementLine(result.rows, result.sequence ?? "");
+				lines.push(placementLine);
+				if (result.direct && this.#budget !== undefined) {
+					this.#budget.recordDirectPlacement(placementLine, result.direct);
+				}
 			} else {
 				fallback = "unsupported-format";
 				lines = this.#fallbackLines(fallback);

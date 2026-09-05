@@ -30,6 +30,7 @@ import { LoopWatchdog } from "./loop-watchdog";
 import { type MouseRoutable, parseSgrMouse, type SgrMouseEvent } from "./mouse";
 import { isConPTYHosted, setAltScreenActive, type Terminal } from "./terminal";
 import {
+	encodeKittyClippedPlacementLine,
 	encodeKittyDeleteImage,
 	ImageProtocol,
 	isInsideTerminalMultiplexer,
@@ -3000,7 +3001,7 @@ export class TUI extends Container {
 		buffer += "\r";
 		for (let i = firstChanged; i <= lastChanged; i++) {
 			if (i > firstChanged) buffer += "\r\n";
-			buffer += this.#lineRewriteSequence(this.#preparedFrame[segment.start + i] ?? "", width);
+			buffer += this.#lineRewriteSequence(this.#preparedFrame[segment.start + i] ?? "", width, screenStart + i);
 		}
 		const cursorControl = this.#cursorControlSequence(
 			cursorPos,
@@ -3928,10 +3929,32 @@ export class TUI extends Container {
 		};
 	}
 
-	#terminalLine(line: string): string {
-		if (TERMINAL.isImageLine(line)) return line;
+	/**
+	 * A line as the terminal receives it. `screenRow` is the viewport row the
+	 * line is written at, when the caller knows it; an image line rewritten
+	 * there is clipped to the rows it has above it, see {@link #imageLineAt}.
+	 */
+	#terminalLine(line: string, screenRow?: number): string {
+		if (TERMINAL.isImageLine(line)) return this.#imageLineAt(line, screenRow);
 		const coalesced = coalesceAdjacentSgr(line);
 		return coalesced + (line.includes("\x1b]8;") ? LINE_TERMINATOR : SGR_RESET);
+	}
+
+	/**
+	 * The bytes for an image line written at viewport row `screenRow`. A direct
+	 * placement is the LAST row of its block and climbs `rows-1` to the origin;
+	 * written at a row above that origin (its first rows already scrolled into
+	 * native scrollback, or an alt-screen frame that starts inside the block),
+	 * the climb clamps at row 0 and the picture lands over the text below it.
+	 * Such a line is re-derived from the geometry the budget holds: it climbs to
+	 * row 0 and shows only the rows that fit. Sequential replays (history rows)
+	 * pass no row and keep the line, since the block's own rows precede it.
+	 */
+	#imageLineAt(line: string, screenRow: number | undefined): string {
+		if (screenRow === undefined) return line;
+		const placement = this.#imageBudget.directPlacement(line);
+		if (placement === undefined || placement.rows - 1 <= screenRow) return line;
+		return encodeKittyClippedPlacementLine(placement, screenRow);
 	}
 
 	/**
@@ -4862,8 +4885,8 @@ export class TUI extends Container {
 		return col;
 	}
 
-	#lineRewriteSequence(line: string, width: number): string {
-		if (TERMINAL.isImageLine(line)) return ERASE_LINE + line;
+	#lineRewriteSequence(line: string, width: number, screenRow?: number): string {
+		if (TERMINAL.isImageLine(line)) return ERASE_LINE + this.#imageLineAt(line, screenRow);
 		const terminalLine = this.#terminalLine(line);
 		const asciiWidth = this.#ansiAsciiLineWidth(line, width);
 		if (asciiWidth !== undefined) {
@@ -5061,13 +5084,18 @@ export class TUI extends Container {
 			for (let screenRow = 0; screenRow < height; screenRow++) {
 				if (chunkTo + screenRow > 0) buffer += "\r\n";
 				const line = visibleTexts ? (visibleTexts[screenRow] ?? "") : (window[screenRow] ?? "");
-				buffer += options.clearScrollback ? this.#lineRewriteSequence(line, width) : this.#terminalLine(line);
+				buffer += options.clearScrollback
+					? this.#lineRewriteSequence(line, width, screenRow)
+					: this.#terminalLine(line, screenRow);
 			}
 		} else {
 			for (let i = 0; i < paintLines.length; i++) {
 				if (i > 0) buffer += "\r\n";
 				const line = visibleTexts && i >= visibleStart ? visibleTexts[i - visibleStart] : (paintLines[i] ?? "");
-				buffer += options.clearScrollback ? this.#lineRewriteSequence(line, width) : this.#terminalLine(line);
+				const screenRow = i >= visibleStart ? i - visibleStart : undefined;
+				buffer += options.clearScrollback
+					? this.#lineRewriteSequence(line, width, screenRow)
+					: this.#terminalLine(line, screenRow);
 			}
 		}
 		buffer += fillSequence;
@@ -5242,7 +5270,7 @@ export class TUI extends Container {
 		let buffer = `${this.#paintBeginSequence + this.#enterResizeAltSequence()}\x1b[H`;
 		for (let r = 0; r < height; r++) {
 			if (r > 0) buffer += "\r\n";
-			buffer += this.#lineRewriteSequence(window[r] ?? "", width);
+			buffer += this.#lineRewriteSequence(window[r] ?? "", width, r);
 		}
 		// Park the hardware cursor at the real content bottom, not the padded
 		// viewport bottom: a later height shrink would otherwise scroll the live
@@ -5349,7 +5377,7 @@ export class TUI extends Container {
 		let buffer = `${this.#paintBeginSequence}\x1b[H`;
 		for (let r = 0; r < height; r++) {
 			if (r > 0) buffer += "\r\n";
-			buffer += this.#lineRewriteSequence(fitted[r], width);
+			buffer += this.#lineRewriteSequence(fitted[r], width, r);
 		}
 		if (cursor !== undefined) {
 			// Rows/cols are 0-based internally and 1-based on the wire.
@@ -5441,7 +5469,7 @@ export class TUI extends Container {
 				const moveToBottom = height - 1 - currentScreenRow;
 				if (moveToBottom > 0) buffer += `\x1b[${moveToBottom}B`;
 				for (let r = height - scroll; r < height; r++) {
-					buffer += `\r\n${this.#lineRewriteSequence(window[r] ?? "", width)}`;
+					buffer += `\r\n${this.#lineRewriteSequence(window[r] ?? "", width, r)}`;
 				}
 				// Rewrite any remaining changed rows after the shift.
 				let firstChanged = -1;
@@ -5458,7 +5486,7 @@ export class TUI extends Container {
 					buffer += "\r";
 					for (let r = firstChanged; r <= lastChanged; r++) {
 						if (r > firstChanged) buffer += "\r\n";
-						buffer += this.#lineRewriteSequence(window[r] ?? "", width);
+						buffer += this.#lineRewriteSequence(window[r] ?? "", width, r);
 					}
 					cursorFromRow = windowTop + lastChanged;
 				}
@@ -5527,7 +5555,7 @@ export class TUI extends Container {
 			}
 			for (let r = firstChanged; r <= lastChanged; r++) {
 				if (r > firstChanged) buffer += "\r\n";
-				buffer += this.#lineRewriteSequence(fillTexts ? fillTexts[r - firstChanged] : (window[r] ?? ""), width);
+				buffer += this.#lineRewriteSequence(fillTexts ? fillTexts[r - firstChanged] : (window[r] ?? ""), width, r);
 			}
 			buffer += fillSequence;
 			// Never park below real content (a height shrink would scroll live
@@ -5563,7 +5591,7 @@ export class TUI extends Container {
 		}
 		for (let screenRow = 0; screenRow < height; screenRow++) {
 			if (wroteLine) buffer += "\r\n";
-			buffer += this.#lineRewriteSequence(window[screenRow] ?? "", width);
+			buffer += this.#lineRewriteSequence(window[screenRow] ?? "", width, screenRow);
 			wroteLine = true;
 		}
 		const parkUp = height - 1 - (contentBottomRow - windowTop);
