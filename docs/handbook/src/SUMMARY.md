@@ -45,6 +45,9 @@
 - [Non-interactive mode](./features/exec.md)
 - [Themes and identity](./using/themes.md)
 - [Live collaboration](./features/collab.md)
+- [Native desktop](./desktop/index.md)
+  - [Surfaces and interactions](./desktop/surfaces.md)
+  - [Motion](./desktop/motion.md)
 - [Task guides](./using/task-guides.md)
 - [Examples](./using/examples.md)
 

@@ -78,8 +78,8 @@ pub fn drawer_chrome(
 					tokens.color(ColorRole::Secondary)
 				})
 				.id(("drawer-tab", idx))
-				.on_click(cx.listener(move |view, _event: &ClickEvent, _window, _cx| {
-					view.dispatch(Intent::SelectDrawerTab(idx));
+				.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
+					view.dispatch(Intent::SelectDrawerTab(idx), cx);
 				}))
 				.child(label);
 
@@ -116,16 +116,16 @@ pub fn drawer_chrome(
 				Button::new("Clear")
 					.id("clear-terminal-btn")
 					.variant(ButtonVariant::Ghost)
-					.on_click(cx.listener(|view, _event: &ClickEvent, _window, _cx| {
-						view.dispatch(Intent::ClearTerminal);
+					.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
+						view.dispatch(Intent::ClearTerminal, cx);
 					})),
 			)
 			.child(
 				Button::new("Restart")
 					.id("restart-terminal-btn")
 					.variant(ButtonVariant::Ghost)
-					.on_click(cx.listener(|view, _event: &ClickEvent, _window, _cx| {
-						view.dispatch(Intent::RestartTerminal);
+					.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
+						view.dispatch(Intent::RestartTerminal, cx);
 					})),
 			);
 	}

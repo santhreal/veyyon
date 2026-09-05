@@ -1,4 +1,4 @@
-//! WHY: §6.7 adopts a 41-primitive kit so that a surface never reinvents a
+//! WHY: §6.7 defines the primitive kit so that a surface never reinvents a
 //! control, and §8.25 states the surfaces each primitive serves. The tree held
 //! the kit and the surfaces side by side, with the surfaces drawing their own
 //! rows, dots, meters, scrims and dialogs while the kit's versions had a scene

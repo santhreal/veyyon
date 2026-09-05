@@ -8,7 +8,6 @@ pub mod segmented;
 pub mod select;
 mod selection;
 pub mod slider;
-pub mod split_button;
 pub mod toggle;
 
 pub use button::*;
@@ -19,5 +18,4 @@ pub use segmented::*;
 pub use select::*;
 pub use selection::*;
 pub use slider::*;
-pub use split_button::*;
 pub use toggle::*;

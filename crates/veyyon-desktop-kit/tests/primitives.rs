@@ -5,12 +5,12 @@ use strum::IntoEnumIterator;
 use veyyon_desktop_kit::{PrimitiveGroup, PrimitiveKind};
 
 #[test]
-fn the_primitive_kind_enumeration_has_exactly_forty_one_variants_within_ceiling() {
+fn the_primitive_kind_enumeration_has_exactly_forty_variants_within_ceiling() {
 	let kinds: Vec<PrimitiveKind> = PrimitiveKind::iter().collect();
 	assert_eq!(
 		kinds.len(),
-		41,
-		"Expected exactly 41 primitive components in the kit, got {}",
+		40,
+		"Expected exactly 40 primitive components in the kit, got {}",
 		kinds.len()
 	);
 	assert!(kinds.len() <= 44, "Primitive component count {} exceeds ceiling of 44", kinds.len());

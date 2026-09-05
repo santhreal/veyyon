@@ -144,11 +144,11 @@ fn render_terminal_grid(
 		.overflow_hidden()
 		.px(tokens.spacing(SpacingStep::S3))
 		.py(tokens.spacing(SpacingStep::S2))
-		.on_key_down(cx.listener(|view, event: &KeyDownEvent, _window, _cx| {
+		.on_key_down(cx.listener(|view, event: &KeyDownEvent, _window, cx| {
 			if let Some(bytes) =
 				keystroke_to_terminal_bytes(&event.keystroke.key, event.keystroke.modifiers.control)
 			{
-				view.dispatch(Intent::TerminalInput(bytes));
+				view.dispatch(Intent::TerminalInput(bytes), cx);
 			}
 		}));
 

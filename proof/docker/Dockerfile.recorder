@@ -162,7 +162,7 @@ RUN set -eux; \
 		swaybg grim slurp wf-recorder wl-clipboard \
 		libwlroots-0.18 libseat1 libinput10 libdisplay-info2 libliftoff0 \
 		libjson-c5 libpcre2-8-0 libcairo2 libpango-1.0-0 libpangocairo-1.0-0 \
-		libgdk-pixbuf-2.0-0 libevdev2 libvulkan1 libxkbcommon0 libpixman-1-0 \
+		libgdk-pixbuf-2.0-0 libevdev2 libvulkan1 mesa-vulkan-drivers libxkbcommon0 libpixman-1-0 \
 		libgbm1 libegl1 libgles2 xwayland; \
 	apt-get clean; \
 	rm -rf /var/lib/apt/lists/*; \

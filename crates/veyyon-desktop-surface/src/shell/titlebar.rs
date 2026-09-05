@@ -62,8 +62,8 @@ pub fn titlebar(
 			IconName::PanelLeft,
 			!state.queue_collapsed,
 			cx,
-			|view| {
-				view.dispatch(Intent::ToggleQueue);
+			|view, cx| {
+				view.dispatch(Intent::ToggleQueue, cx);
 			},
 		));
 
@@ -80,7 +80,7 @@ pub fn titlebar(
 			IconName::PanelRight,
 			!state.panel_collapsed,
 			cx,
-			|view| view.dispatch(Intent::TogglePanel),
+			|view, cx| view.dispatch(Intent::TogglePanel, cx),
 		));
 	}
 	trailing = trailing.child(toggle_control(
@@ -88,9 +88,9 @@ pub fn titlebar(
 		IconName::Terminal,
 		state.drawer_open,
 		cx,
-		|view| {
+		|view, cx| {
 			let open = !view.state().drawer_open;
-			view.dispatch(Intent::SetDrawer { open });
+			view.dispatch(Intent::SetDrawer { open }, cx);
 		},
 	));
 
@@ -143,7 +143,7 @@ fn toggle_control(
 	icon: IconName,
 	shown: bool,
 	cx: &Context<ShellView>,
-	on_click: impl Fn(&mut ShellView) + 'static,
+	on_click: impl Fn(&mut ShellView, &mut Context<ShellView>) + 'static,
 ) -> impl IntoElement {
 	let variant = if shown {
 		IconButtonVariant::Subtle
@@ -155,8 +155,7 @@ fn toggle_control(
 		.size(IconSize::Size14)
 		.variant(variant)
 		.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
-			on_click(view);
-			cx.notify();
+			on_click(view, cx);
 		}))
 }
 

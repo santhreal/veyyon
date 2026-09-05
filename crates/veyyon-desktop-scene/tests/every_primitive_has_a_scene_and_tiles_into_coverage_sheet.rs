@@ -1,7 +1,7 @@
 //! WHY THIS SUITE EXISTS:
 //! Section 6.7 mandates that every kit primitive owns a scene and that a
 //! primitive with no scene does not ship. This suite asserts the completeness
-//! coverage gate across all 41 primitive variants at runtime, verifies that
+//! coverage gate across all primitive variants at runtime, verifies that
 //! every primitive renders non-empty visual content (> 1 distinct pixel values)
 //! on the GPU host, and generates the full kit coverage contact sheet.
 //!
@@ -89,7 +89,7 @@ fn every_primitive_renders_distinct_pixels_on_headless_surface() {
 		}
 	}
 
-	assert_eq!(rendered_count, 41, "expected exactly 41 primitives rendered, got {rendered_count}");
+	assert_eq!(rendered_count, 40, "expected exactly 40 primitives rendered, got {rendered_count}");
 	assert!(
 		uniform_failures.is_empty(),
 		"The following primitive(s) rendered uniform/empty frames without drawing content:\n{}",
@@ -108,12 +108,12 @@ fn generate_and_save_kit_coverage_contact_sheet() {
 
 	assert!(
 		sheet.width() > 1000,
-		"sheet width {} is unexpectedly small for 41 primitives",
+		"sheet width {} is unexpectedly small for 40 primitives",
 		sheet.width()
 	);
 	assert!(
 		sheet.height() > 1000,
-		"sheet height {} is unexpectedly small for 41 primitives",
+		"sheet height {} is unexpectedly small for 40 primitives",
 		sheet.height()
 	);
 

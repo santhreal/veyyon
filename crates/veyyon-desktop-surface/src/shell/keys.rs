@@ -4,11 +4,11 @@
 //! transcript action listeners that dispatch typed `Intent`s into the shell
 //! view.
 
-use veyyon_gpui::{Context, Div, InteractiveElement};
+use veyyon_gpui::{Context, Div, InteractiveElement, KeyDownEvent};
 
 use crate::{
-	Intent, Overlay, PaletteState, Section, ShellView,
-	composer::{QueueMode, SecondaryAction, ThinkingControl, TurnPhase, primary_action},
+	Intent, Overlay, Section, ShellView,
+	composer::{QueueMode, ThinkingControl, TurnPhase},
 	keymap::actions::{
 		AbortTurn, AttachFile, CloseTabOrPark, FilterQueue, FindInTranscript, FocusLive, ModelPicker,
 		MoveSelection, NewSession, NextSession, NextTurn, OpenPalette, OpenSelectedSession,
@@ -23,26 +23,43 @@ use crate::{
 pub fn bind_global_keys(root: Div, cx: &Context<ShellView>) -> Div {
 	root
 		.key_context("Shell")
-		.on_action(cx.listener(|view, _: &OpenPalette, _window, _cx| {
-			view.dispatch(Intent::OpenOverlay(Box::new(Overlay::Palette(PaletteState::default()))));
+		.capture_key_down(cx.listener(|view, event: &KeyDownEvent, _window, cx| {
+			if let Some(palette) = view
+				.state_mut()
+				.overlay
+				.as_mut()
+				.and_then(Overlay::as_palette_mut)
+			{
+				let delta = match event.keystroke.key.as_str() {
+					"up" => -1,
+					"down" => 1,
+					_ => return,
+				};
+				palette.move_selection(delta);
+				cx.stop_propagation();
+				cx.notify();
+			}
 		}))
-		.on_action(cx.listener(|view, _: &NewSession, _window, _cx| {
-			view.dispatch(Intent::NewSession);
+		.on_action(cx.listener(|view, _: &OpenPalette, window, cx| {
+			view.open_command_palette(window, cx);
 		}))
-		.on_action(cx.listener(|view, _: &OpenSettings, _window, _cx| {
-			view.dispatch(Intent::OpenOverlay(Box::new(Overlay::Settings(Box::default()))));
+		.on_action(cx.listener(|view, _: &NewSession, _window, cx| {
+			view.dispatch(Intent::NewSession, cx);
 		}))
-		.on_action(cx.listener(|view, _: &ToggleQueue, _window, _cx| {
-			view.dispatch(Intent::ToggleQueue);
+		.on_action(cx.listener(|view, _: &OpenSettings, _window, cx| {
+			view.dispatch(Intent::OpenOverlay(Box::new(Overlay::Settings(Box::default()))), cx);
 		}))
-		.on_action(cx.listener(|view, _: &ToggleDrawer, _window, _cx| {
+		.on_action(cx.listener(|view, _: &ToggleQueue, _window, cx| {
+			view.dispatch(Intent::ToggleQueue, cx);
+		}))
+		.on_action(cx.listener(|view, _: &ToggleDrawer, _window, cx| {
 			let open = !view.state().drawer_open;
-			view.dispatch(Intent::SetDrawer { open });
+			view.dispatch(Intent::SetDrawer { open }, cx);
 		}))
-		.on_action(cx.listener(|view, _: &TogglePanel, _window, _cx| {
-			view.dispatch(Intent::TogglePanel);
+		.on_action(cx.listener(|view, _: &TogglePanel, _window, cx| {
+			view.dispatch(Intent::TogglePanel, cx);
 		}))
-		.on_action(cx.listener(|view, action: &FocusLive, _window, _cx| {
+		.on_action(cx.listener(|view, action: &FocusLive, _window, cx| {
 			if let Some((_, rows)) = view
 				.state()
 				.sections
@@ -51,63 +68,63 @@ pub fn bind_global_keys(root: Div, cx: &Context<ShellView>) -> Div {
 			{
 				let idx = (action.index as usize).saturating_sub(1);
 				if let Some(row) = rows.get(idx) {
-					view.dispatch(Intent::SelectSession(row.id));
+					view.dispatch(Intent::SelectSession(row.id), cx);
 				}
 			}
 		}))
-		.on_action(cx.listener(|view, _: &PreviousSession, _window, _cx| {
-			view.dispatch(Intent::MoveQueueSelection(-1));
+		.on_action(cx.listener(|view, _: &PreviousSession, _window, cx| {
+			view.dispatch(Intent::MoveQueueSelection(-1), cx);
 		}))
-		.on_action(cx.listener(|view, _: &NextSession, _window, _cx| {
-			view.dispatch(Intent::MoveQueueSelection(1));
+		.on_action(cx.listener(|view, _: &NextSession, _window, cx| {
+			view.dispatch(Intent::MoveQueueSelection(1), cx);
 		}))
-		.on_action(cx.listener(|view, _: &CloseTabOrPark, _window, _cx| {
-			view.dispatch(Intent::CloseTabOrPark);
+		.on_action(cx.listener(|view, _: &CloseTabOrPark, _window, cx| {
+			view.dispatch(Intent::CloseTabOrPark, cx);
 		}))
-		.on_action(cx.listener(|view, action: &MoveSelection, _window, _cx| {
-			view.dispatch(Intent::MoveQueueSelection(action.delta));
+		.on_action(cx.listener(|view, action: &MoveSelection, _window, cx| {
+			view.dispatch(Intent::MoveQueueSelection(action.delta), cx);
 		}))
-		.on_action(cx.listener(|view, _: &OpenSelectedSession, _window, _cx| {
+		.on_action(cx.listener(|view, _: &OpenSelectedSession, _window, cx| {
 			let current = view.state().current_id;
 			if current != 0 {
-				view.dispatch(Intent::SelectSession(current));
+				view.dispatch(Intent::SelectSession(current), cx);
 			}
 		}))
-		.on_action(cx.listener(|view, _: &TogglePinSelected, _window, _cx| {
+		.on_action(cx.listener(|view, _: &TogglePinSelected, _window, cx| {
 			let current = view.state().current_id;
 			if current != 0 {
-				view.dispatch(Intent::PinSession(current));
+				view.dispatch(Intent::PinSession(current), cx);
 			}
 		}))
-		.on_action(cx.listener(|view, _: &ToggleDeferSelected, _window, _cx| {
+		.on_action(cx.listener(|view, _: &ToggleDeferSelected, _window, cx| {
 			let current = view.state().current_id;
 			if current != 0 {
-				view.dispatch(Intent::DeferSession(current));
+				view.dispatch(Intent::DeferSession(current), cx);
 			}
 		}))
-		.on_action(cx.listener(|view, _: &ToggleParkSelected, _window, _cx| {
+		.on_action(cx.listener(|view, _: &ToggleParkSelected, _window, cx| {
 			let current = view.state().current_id;
 			if current != 0 {
-				view.dispatch(Intent::ParkSession(current));
+				view.dispatch(Intent::ParkSession(current), cx);
 			}
 		}))
-		.on_action(cx.listener(|view, _: &FilterQueue, _window, _cx| {
-			view.dispatch(Intent::FilterQueue(String::new()));
+		.on_action(cx.listener(|view, _: &FilterQueue, _window, cx| {
+			view.dispatch(Intent::FilterQueue(String::new()), cx);
 		}))
-		.on_action(cx.listener(|view, action: &Scroll, _window, _cx| {
-			view.dispatch(Intent::ScrollTranscript(action.by));
+		.on_action(cx.listener(|view, action: &Scroll, _window, cx| {
+			view.dispatch(Intent::ScrollTranscript(action.by), cx);
 		}))
-		.on_action(cx.listener(|view, _: &FindInTranscript, _window, _cx| {
-			view.dispatch(Intent::FindInTranscript);
+		.on_action(cx.listener(|view, _: &FindInTranscript, _window, cx| {
+			view.dispatch(Intent::FindInTranscript, cx);
 		}))
-		.on_action(cx.listener(|view, _: &PreviousTurn, _window, _cx| {
-			view.dispatch(Intent::StepTurn(-1));
+		.on_action(cx.listener(|view, _: &PreviousTurn, _window, cx| {
+			view.dispatch(Intent::StepTurn(-1), cx);
 		}))
-		.on_action(cx.listener(|view, _: &NextTurn, _window, _cx| {
-			view.dispatch(Intent::StepTurn(1));
+		.on_action(cx.listener(|view, _: &NextTurn, _window, cx| {
+			view.dispatch(Intent::StepTurn(1), cx);
 		}))
-		.on_action(cx.listener(|view, _: &ToggleBlock, _window, _cx| {
-			view.dispatch(Intent::ToggleBlock);
+		.on_action(cx.listener(|view, _: &ToggleBlock, _window, cx| {
+			view.dispatch(Intent::ToggleBlock, cx);
 		}))
 }
 
@@ -121,27 +138,20 @@ pub fn bind_composer_keys(composer: Div, cx: &Context<ShellView>) -> Div {
 	composer
 		.on_action(cx.listener(|view, _: &AbortTurn, _window, cx| {
 			if view.state().turn.is_running() {
-				view.dispatch(Intent::AbortTurn);
+				view.dispatch(Intent::AbortTurn, cx);
 			} else {
 				cx.propagate();
 			}
 		}))
-		.on_action(cx.listener(|view, _: &ToggleQueueMode, _window, _cx| {
+		.on_action(cx.listener(|view, _: &ToggleQueueMode, _window, cx| {
 			let other = match view.state().composer.queue_mode {
 				QueueMode::Steer => QueueMode::Queue,
 				QueueMode::Queue => QueueMode::Steer,
 			};
-			view.dispatch(Intent::SetQueueMode(other));
+			view.dispatch(Intent::SetQueueMode(other), cx);
 		}))
-		// The split button's second half exists only while a turn runs, where
-		// it switches to the mode the primary is not.
 		.on_action(cx.listener(|view, _: &SplitHalf, _window, cx| {
-			let has_text = view.has_composer_text();
-			match primary_action(&view.state().turn, has_text).1 {
-				Some(SecondaryAction::Queue) => view.dispatch(Intent::SetQueueMode(QueueMode::Queue)),
-				Some(SecondaryAction::Steer) => view.dispatch(Intent::SetQueueMode(QueueMode::Steer)),
-				_ => cx.propagate(),
-			}
+			view.submit_alternate_turn_action(cx);
 		}))
 		// A digit answers the open question while the composer is empty;
 		// with text in it, the digit is text.
@@ -155,22 +165,10 @@ pub fn bind_composer_keys(composer: Div, cx: &Context<ShellView>) -> Div {
 				cx.propagate();
 				return;
 			}
-			view.dispatch(Intent::Answer { card: 0, option });
+			view.dispatch(Intent::Answer { card: 0, option }, cx);
 		}))
-		.on_action(cx.listener(|view, _: &ModelPicker, _window, cx| {
-			let palette = view
-				.state()
-				.composer
-				.model
-				.as_ref()
-				.filter(|model| model.selectable && !model.options.is_empty())
-				.map(PaletteState::from_models);
-			match palette {
-				Some(palette) => {
-					view.dispatch(Intent::OpenOverlay(Box::new(Overlay::Palette(palette))));
-				},
-				None => cx.propagate(),
-			}
+		.on_action(cx.listener(|view, _: &ModelPicker, window, cx| {
+			view.open_model_picker(window, cx);
 		}))
 		.on_action(cx.listener(|view, _: &CycleThinkingLevel, _window, cx| {
 			let next = view
@@ -181,7 +179,7 @@ pub fn bind_composer_keys(composer: Div, cx: &Context<ShellView>) -> Div {
 				.and_then(ThinkingControl::next)
 				.map(crate::composer::ThinkingLevel::new);
 			match next {
-				Some(level) => view.dispatch(Intent::SetThinking(level)),
+				Some(level) => view.dispatch(Intent::SetThinking(level), cx),
 				None => cx.propagate(),
 			}
 		}))

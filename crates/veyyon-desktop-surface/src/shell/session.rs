@@ -5,9 +5,13 @@
 //! the composer's measure, so a decision, the reply to it and the line stating
 //! what the session is doing all sit in one column rather than three.
 
+use std::{cell::Cell, rc::Rc};
+
 use veyyon_desktop_kit::{SpacingStep, input::Editor};
 use veyyon_desktop_tokens::DrawerPlacement;
-use veyyon_gpui::{Context, Div, Entity, InteractiveElement, ParentElement, Styled, div, px};
+use veyyon_gpui::{
+	Context, Div, Entity, InteractiveElement, ParentElement, Pixels, Point, Styled, div, point, px,
+};
 
 use super::keys::bind_composer_keys;
 use crate::{
@@ -35,9 +39,11 @@ pub fn session_surface(
 	widths: &ShellWidths,
 	installed: &InstalledTokens,
 	laid_out: &LaidOut,
+	palette_anchor: Rc<Cell<Point<Pixels>>>,
 	cx: &Context<ShellView>,
 ) -> Div {
 	let tokens = &installed.set;
+	let composer_width = px(widths.composer_px);
 	let surface = &installed.surface;
 
 	// The transcript is anchored to the bottom of its region, so a short run
@@ -118,6 +124,14 @@ pub fn session_surface(
 				.key_context("Composer")
 				.w_full()
 				.px(tokens.spacing(SpacingStep::S4))
+				.on_children_prepainted(move |children, _window, _cx| {
+					if let Some(bounds) = children.first() {
+						palette_anchor.set(point(
+							bounds.origin.x + (bounds.size.width - composer_width) / 2.0,
+							bounds.origin.y,
+						));
+					}
+				})
 				.child(composer(
 					editor,
 					&state.turn,

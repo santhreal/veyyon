@@ -15,11 +15,7 @@
 mod support;
 
 use support::{send, state};
-use veyyon_desktop_surface::{
-	Card, Intent, PanelTab,
-	composer::{QueueMode, TurnPhase},
-	intent::Intents,
-};
+use veyyon_desktop_surface::{Card, Intent, PanelTab, composer::TurnPhase, intent::Intents};
 
 #[test]
 fn opening_a_session_moves_the_highlight_the_title_and_tells_the_host() {
@@ -163,7 +159,7 @@ fn an_empty_send_changes_nothing_and_is_never_reported() {
 }
 
 #[test]
-fn a_send_transitions_turn_phase_and_is_drained_in_the_order_it_happened() {
+fn a_send_preserves_host_turn_phase_and_is_drained_in_submission_order() {
 	let mut state = state();
 	state.turn = TurnPhase::Idle;
 	let mut intents = Intents::new();
@@ -173,8 +169,8 @@ fn a_send_transitions_turn_phase_and_is_drained_in_the_order_it_happened() {
 
 	assert_eq!(
 		state.turn,
-		TurnPhase::Running { queue_mode: QueueMode::Steer },
-		"send did not transition to running turn phase"
+		TurnPhase::Idle,
+		"a request attempt changed the host-confirmed turn phase"
 	);
 
 	let drained = intents.drain();

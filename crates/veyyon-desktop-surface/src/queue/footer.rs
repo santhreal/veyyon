@@ -33,8 +33,7 @@ pub fn queue_footer(
 				.variant(IconButtonVariant::Ghost)
 				.size(IconSize::Size16)
 				.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
-					view.dispatch(Intent::OpenOverlay(Box::new(Overlay::Settings(Box::default()))));
-					cx.notify();
+					view.dispatch(Intent::OpenOverlay(Box::new(Overlay::Settings(Box::default()))), cx);
 				})),
 		)
 }

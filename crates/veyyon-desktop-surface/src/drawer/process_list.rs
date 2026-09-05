@@ -123,16 +123,16 @@ fn process_row(
 					Button::new("Stop")
 						.id(("process-stop", idx))
 						.variant(ButtonVariant::Ghost)
-						.on_click(cx.listener(move |view, _event: &ClickEvent, _window, _cx| {
-							view.dispatch(Intent::ProcessStop(name_for_stop.clone()));
+						.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
+							view.dispatch(Intent::ProcessStop(name_for_stop.clone()), cx);
 						})),
 				)
 				.child(
 					Button::new("Restart")
 						.id(("process-restart", idx))
 						.variant(ButtonVariant::Ghost)
-						.on_click(cx.listener(move |view, _event: &ClickEvent, _window, _cx| {
-							view.dispatch(Intent::ProcessRestart(name_for_restart.clone()));
+						.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
+							view.dispatch(Intent::ProcessRestart(name_for_restart.clone()), cx);
 						})),
 				),
 		);

@@ -2,7 +2,7 @@
 members = ["crates/veyyon-*", "crates/vendor/*"]
 # Vendored third-party trees are path dependencies, not gate members: their own
 # repositories test them. The GPUI closure is the 23 crates scripts/vendor-gpui.ts
-# extracts from santhreal/zed; edit them there and re-vendor.
+# extracts from the private santhreal/gpui repository; edit them there and re-vendor.
 exclude = [
 	"crates/vendor/brush-core",
 	"crates/vendor/brush-builtins",
@@ -487,9 +487,9 @@ tree-sitter-zig = "1.1"
 # ──────────────────────────────────────────────────────────────────────────────
 # GUI & Renderer
 # ──────────────────────────────────────────────────────────────────────────────
-# GPUI renderer, vendored under crates/vendor from santhreal/zed at the commit recorded in
+# GPUI renderer, vendored under crates/vendor from the private santhreal/gpui repository at the commit recorded in
 # crates/vendor/GPUI_VENDOR_REV. Regenerate with
-# `bun scripts/vendor-gpui.ts --source <zed checkout> --rev <commit>`.
+# `bun scripts/vendor-gpui.ts --source <GPUI fork checkout> --rev <commit>`.
 # The tree carries the renderer patch series the front end requires: affine transforms, animator
 # identity, native delay, backdrop blur, inner shadow and inset hairline, per-corner radii, damage
 # scoped redraw, rounded and path content masks, the persistent text advance cache, and the

@@ -21,7 +21,8 @@ use veyyon_desktop_kit::{
 };
 use veyyon_desktop_model::{Gate, SurfaceId};
 use veyyon_gpui::{
-	ClickEvent, CursorStyle, ElementId, InteractiveElement, IntoElement, ParentElement, Styled, div,
+	AnyElement, ClickEvent, CursorStyle, ElementId, InteractiveElement, IntoElement, ParentElement,
+	Styled, div,
 };
 
 use crate::{Intent, ShellView};
@@ -43,6 +44,26 @@ pub enum Availability {
 	/// Connectivity not yet established. Rendered at rest; activation attaches
 	/// then acts.
 	Unknown,
+}
+
+impl Availability {
+	/// The host's reason while the control is unavailable, which is readable
+	/// at the control (§4.3).
+	#[must_use]
+	pub fn reason(&self) -> Option<&str> {
+		match self {
+			Self::Unavailable { reason } => Some(reason),
+			Self::Enabled | Self::Pending | Self::Unknown => None,
+		}
+	}
+
+	/// Whether a surface this availability enables as a whole is drawn at
+	/// all: one absent for want of a capability is not rendered, never
+	/// rendered disabled (§5.13). Pending and unknown surfaces are drawn.
+	#[must_use]
+	pub const fn is_drawn(&self) -> bool {
+		!matches!(self, Self::Unavailable { .. })
+	}
 }
 
 impl From<&Gate> for Availability {
@@ -220,8 +241,8 @@ pub fn error_hairline(
 		let retry_btn = Button::new("Retry")
 			.variant(ButtonVariant::Danger)
 			.size(ButtonSize::Small)
-			.on_click(cx.listener(move |view, _event: &ClickEvent, _window, _cx| {
-				view.dispatch(Intent::RetryControl(retry_id.clone()));
+			.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
+				view.dispatch(Intent::RetryControl(retry_id.clone()), cx);
 			}));
 		row = row.child(retry_btn);
 	}
@@ -230,10 +251,24 @@ pub fn error_hairline(
 	let dismiss_btn = Button::new("Dismiss")
 		.variant(ButtonVariant::Ghost)
 		.size(ButtonSize::Small)
-		.on_click(cx.listener(move |view, _event: &ClickEvent, _window, _cx| {
-			view.dispatch(Intent::DismissError(dismiss_id.clone()));
+		.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
+			view.dispatch(Intent::DismissError(dismiss_id.clone()), cx);
 		}));
 	row = row.child(dismiss_btn);
 
 	row
+}
+
+/// The failure that landed on a control, as the hairline drawn under it, or
+/// nothing while it has none (§4.4).
+#[must_use]
+pub fn hairline_for(
+	controls: &ControlStates,
+	id: &SurfaceId,
+	tokens: &TokenSet,
+	cx: &veyyon_gpui::Context<ShellView>,
+) -> Option<AnyElement> {
+	controls
+		.error(id)
+		.map(|err| error_hairline(err, id.clone(), tokens, cx).into_any_element())
 }

@@ -99,15 +99,15 @@ const CARD_WIDTH_PX: f32 = 420.0;
 
 /// The click that asks the host to attach again.
 fn retry(cx: &Context<ShellView>) -> impl Fn(&ClickEvent, &mut Window, &mut App) + 'static {
-	cx.listener(|view, _event: &ClickEvent, _window, _cx| {
-		view.dispatch(Intent::RetryConnection);
+	cx.listener(|view, _event: &ClickEvent, _window, cx| {
+		view.dispatch(Intent::RetryConnection, cx);
 	})
 }
 
 /// The click that abandons the auth flow in progress.
 fn cancel_auth(cx: &Context<ShellView>) -> impl Fn(&ClickEvent, &mut Window, &mut App) + 'static {
-	cx.listener(|view, _event: &ClickEvent, _window, _cx| {
-		view.dispatch(Intent::CancelAuthFlow);
+	cx.listener(|view, _event: &ClickEvent, _window, cx| {
+		view.dispatch(Intent::CancelAuthFlow, cx);
 	})
 }
 
@@ -183,11 +183,11 @@ pub fn render_attach_screen(
 			Dialog::new(format!("Authenticate {provider}"), body)
 				.action_on_click(
 					DialogButtonSpec::new("Submit", ButtonVariant::Primary),
-					cx.listener(move |view, _event: &ClickEvent, _window, _cx| {
-						view.dispatch(Intent::SubmitAuthSecret {
-							provider: prov.clone(),
-							secret:   String::new(),
-						});
+					cx.listener(move |view, _event: &ClickEvent, _window, cx| {
+						view.dispatch(
+							Intent::SubmitAuthSecret { provider: prov.clone(), secret: String::new() },
+							cx,
+						);
 					}),
 				)
 				.action_on_click(DialogButtonSpec::new("Cancel", ButtonVariant::Ghost), cancel_auth(cx))
@@ -200,8 +200,8 @@ pub fn render_attach_screen(
 			)
 			.action_on_click(
 				DialogButtonSpec::new("Open in Browser", ButtonVariant::Primary),
-				cx.listener(move |view, _event: &ClickEvent, _window, _cx| {
-					view.dispatch(Intent::OpenAuthUrl(target_url.clone()));
+				cx.listener(move |view, _event: &ClickEvent, _window, cx| {
+					view.dispatch(Intent::OpenAuthUrl(target_url.clone()), cx);
 				}),
 			)
 			.action_on_click(DialogButtonSpec::new("Cancel", ButtonVariant::Ghost), cancel_auth(cx))

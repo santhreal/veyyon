@@ -69,16 +69,13 @@ pub fn right_panel(
 	div()
 		.id("right-panel")
 		.on_action(cx.listener(move |view, _: &PreviousTab, _window, cx| {
-			view.dispatch(Intent::SelectTab(prev_idx));
-			cx.notify();
+			view.dispatch(Intent::SelectTab(prev_idx), cx);
 		}))
 		.on_action(cx.listener(move |view, _: &NextTab, _window, cx| {
-			view.dispatch(Intent::SelectTab(next_idx));
-			cx.notify();
+			view.dispatch(Intent::SelectTab(next_idx), cx);
 		}))
 		.on_action(cx.listener(move |view, _: &ToggleDiffMode, _window, cx| {
-			view.dispatch(Intent::SetDiffMode(next_diff_mode));
-			cx.notify();
+			view.dispatch(Intent::SetDiffMode(next_diff_mode), cx);
 		}))
 		.flex()
 		.flex_col()

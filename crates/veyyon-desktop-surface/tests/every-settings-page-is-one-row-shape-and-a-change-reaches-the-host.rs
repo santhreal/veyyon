@@ -27,12 +27,13 @@ use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_model::SurfaceId;
 use veyyon_desktop_scene::{
 	HeadlessSession, RgbaColor, RgbaFrame,
-	headless::{RenderOptions, headless_context, render_view_captured},
+	headless::{RenderOptions, headless_context},
 };
 use veyyon_desktop_surface::{
 	ConnectionPhase, Intent, Overlay, SettingsPage, SettingsState, ShellState, ShellView,
 	controls::Availability, install_tokens,
 };
+use veyyon_desktop_tokens::MotionModel;
 use veyyon_gpui::{App, AppContext};
 
 const WIDTH: u32 = 1440;
@@ -59,20 +60,6 @@ fn general_with(key: &str, availability: Availability) -> ShellState {
 		.controls
 		.set_availability(SurfaceId::SettingsField(key.to_owned()), availability);
 	state
-}
-
-/// Renders one state to a frame.
-fn frame_of(state: ShellState) -> RgbaFrame {
-	let mut cx = headless_context().expect("a headless renderer is required to render the shell");
-	let tokens = load_bundled_tokens().expect("the bundled tokens load");
-	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");
-	render_view_captured(&mut cx, &options(), move |_window, app: &mut App| {
-		let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
-			.expect("the bundled tokens and theme install");
-		app.new(|_| ShellView::new(installed, state))
-	})
-	.expect("the shell renders offscreen")
-	.frame
 }
 
 /// The box the pixels two frames disagree on lie in, and the mean ink of those
@@ -128,14 +115,48 @@ fn differing_ink(a: &RgbaFrame, b: &RgbaFrame) -> Option<(u32, f32, f32)> {
 #[test]
 fn a_gated_control_dims_its_own_row_and_no_other() {
 	let key = "drawer.copy_on_select";
-	let tokens = load_bundled_tokens().expect("the bundled tokens load");
+	let mut tokens = load_bundled_tokens().expect("the bundled tokens load");
+	// Compare control ink independently of the float entrance animation.
+	let MotionModel::SpringFade(float) = &mut tokens.motion.float.model else {
+		panic!("the float role must use its spring-fade model");
+	};
+	float.rise_px = 0.0;
+	float.fade_duration_ms = 0;
+	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");
 	let row_px = tokens.surface.settings.row_height_px as u32;
 
-	let enabled = frame_of(general_with(key, Availability::Enabled));
-	let pending = frame_of(general_with(key, Availability::Pending));
-	let unavailable = frame_of(general_with(key, Availability::Unavailable {
-		reason: "host has no terminal".to_owned(),
-	}));
+	let mut cx = headless_context().expect("a headless renderer is required to render the shell");
+	let mut session = HeadlessSession::open(&mut cx, &options(), move |_window, app: &mut App| {
+		let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
+			.expect("the bundled tokens and theme install");
+		let state = general_with(key, Availability::Enabled);
+		app.new(|_| ShellView::new(installed, state))
+	})
+	.expect("the shell renders offscreen");
+
+	let enabled = session.frame().expect("enabled frame renders").frame;
+
+	session
+		.update(|view, _window, cx| {
+			view
+				.state_mut()
+				.controls
+				.set_availability(SurfaceId::SettingsField(key.to_owned()), Availability::Pending);
+			cx.notify();
+		})
+		.expect("pending availability set");
+	let pending = session.frame().expect("pending frame renders").frame;
+
+	session
+		.update(|view, _window, cx| {
+			view.state_mut().controls.set_availability(
+				SurfaceId::SettingsField(key.to_owned()),
+				Availability::Unavailable { reason: "host has no terminal".to_owned() },
+			);
+			cx.notify();
+		})
+		.expect("unavailable availability set");
+	let unavailable = session.frame().expect("unavailable frame renders").frame;
 
 	let (height, ink_enabled, ink_pending) = differing_ink(&enabled, &pending)
 		.expect("a pending control drew the same pixels as an enabled one");
@@ -185,10 +206,10 @@ fn every_page_draws_its_seeded_rows_when_opened_by_dispatch() {
 			.map(|settings| {
 				session
 					.update(|view, _window, cx| {
-						view.dispatch(Intent::OpenOverlay(Box::new(Overlay::Settings(Box::new(
-							settings,
-						)))));
-						cx.notify();
+						view.dispatch(
+							Intent::OpenOverlay(Box::new(Overlay::Settings(Box::new(settings)))),
+							cx,
+						);
 					})
 					.expect("the page opens by dispatch");
 				session.frame().expect("the page renders").frame

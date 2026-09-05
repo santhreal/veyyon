@@ -54,7 +54,7 @@ fn test_enum_iteration_exhausts_all_protocol_domains() {
 	assert_eq!(row_shape_count, 2);
 
 	let primitive_count = PrimitiveKind::iter().count();
-	assert_eq!(primitive_count, 41);
+	assert_eq!(primitive_count, 40);
 
 	let total_expected = connection_count
 		+ (capability_count * (gate_count - 1))
@@ -67,7 +67,7 @@ fn test_enum_iteration_exhausts_all_protocol_domains() {
 		+ row_shape_count
 		+ primitive_count;
 
-	assert_eq!(total_expected, 223);
+	assert_eq!(total_expected, 222);
 	assert_eq!(required_states().len(), total_expected);
 }
 

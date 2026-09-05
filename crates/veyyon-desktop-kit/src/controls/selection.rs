@@ -70,8 +70,8 @@ impl Checkbox {
 
 impl RenderOnce for Checkbox {
 	fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let default_tokens = TokenSet::default();
-		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
+		let resolved_tokens = TokenSet::for_app(cx);
+		let tokens: &TokenSet = &resolved_tokens;
 
 		let box_size = tokens.spacing(SpacingStep::S6);
 		let radius = tokens.radius(RadiusStep::Sm);
@@ -200,8 +200,8 @@ impl Radio {
 
 impl RenderOnce for Radio {
 	fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let default_tokens = TokenSet::default();
-		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
+		let resolved_tokens = TokenSet::for_app(cx);
+		let tokens: &TokenSet = &resolved_tokens;
 
 		let outer_size = tokens.spacing(SpacingStep::S6);
 		let inner_size = tokens.spacing(SpacingStep::S2);

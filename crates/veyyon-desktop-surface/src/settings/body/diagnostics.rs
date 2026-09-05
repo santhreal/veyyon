@@ -44,8 +44,7 @@ pub fn render_diagnostics_page(
 		.variant(ButtonVariant::Default)
 		.size(ButtonSize::Small)
 		.on_click(cx.listener(|view, _e: &ClickEvent, _w, cx| {
-			view.dispatch(Intent::RefreshDiagnostics);
-			cx.notify();
+			view.dispatch(Intent::RefreshDiagnostics, cx);
 		}));
 	container = container.child(setting_row(
 		"Diagnostics Telemetry",
@@ -88,8 +87,7 @@ pub fn render_diagnostics_page(
 					.id(ElementId::Name(format!("diag-retry-{name}").into()))
 					.size(ButtonSize::Small)
 					.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {
-						view.dispatch(Intent::RetryDiagnosticSource(source_name.clone()));
-						cx.notify();
+						view.dispatch(Intent::RetryDiagnosticSource(source_name.clone()), cx);
 					}))
 					.into_any_element();
 

@@ -61,8 +61,8 @@ pub fn connection_banner(
 				.id("banner-retry-btn")
 				.variant(ButtonVariant::Ghost)
 				.size(ButtonSize::Small)
-				.on_click(cx.listener(|view, _event: &ClickEvent, _window, _cx| {
-					view.dispatch(Intent::RetryConnection);
+				.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
+					view.dispatch(Intent::RetryConnection, cx);
 				}));
 
 			let banner = div()
@@ -102,8 +102,8 @@ pub fn connection_banner(
 				.id("banner-reattach-btn")
 				.variant(ButtonVariant::Danger)
 				.size(ButtonSize::Small)
-				.on_click(cx.listener(|view, _event: &ClickEvent, _window, _cx| {
-					view.dispatch(Intent::RetryConnection);
+				.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
+					view.dispatch(Intent::RetryConnection, cx);
 				}));
 
 			let banner = div()

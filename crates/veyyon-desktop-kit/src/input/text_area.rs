@@ -76,8 +76,8 @@ impl TextArea {
 
 impl RenderOnce for TextArea {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let default_tokens = TokenSet::default();
-		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
+		let resolved_tokens = TokenSet::for_app(cx);
+		let tokens: &TokenSet = &resolved_tokens;
 
 		let is_entity_focused = self
 			.editor

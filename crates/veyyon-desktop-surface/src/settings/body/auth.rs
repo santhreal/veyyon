@@ -47,16 +47,14 @@ pub fn render_auth_page(
 				.variant(ButtonVariant::Primary)
 				.size(ButtonSize::Small)
 				.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {
-					view.dispatch(Intent::OpenAuthUrl(url_for_open.clone()));
-					cx.notify();
+					view.dispatch(Intent::OpenAuthUrl(url_for_open.clone()), cx);
 				}));
 
 			let cancel_btn = Button::new("Cancel")
 				.id("auth-cancel-btn")
 				.size(ButtonSize::Small)
 				.on_click(cx.listener(|view, _e: &ClickEvent, _w, cx| {
-					view.dispatch(Intent::CancelAuthFlow);
-					cx.notify();
+					view.dispatch(Intent::CancelAuthFlow, cx);
 				}));
 
 			let desc = flow
@@ -96,16 +94,14 @@ pub fn render_auth_page(
 				.size(ButtonSize::Small)
 				.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {
 					let secret = sec_for_submit.lock().map(|b| b.clone()).unwrap_or_default();
-					view.dispatch(Intent::SubmitAuthSecret { provider: prov_clone.clone(), secret });
-					cx.notify();
+					view.dispatch(Intent::SubmitAuthSecret { provider: prov_clone.clone(), secret }, cx);
 				}));
 
 			let cancel_btn = Button::new("Cancel")
 				.id("auth-cancel-btn")
 				.size(ButtonSize::Small)
 				.on_click(cx.listener(|view, _e: &ClickEvent, _w, cx| {
-					view.dispatch(Intent::CancelAuthFlow);
-					cx.notify();
+					view.dispatch(Intent::CancelAuthFlow, cx);
 				}));
 
 			let desc = flow
@@ -132,16 +128,14 @@ pub fn render_auth_page(
 				.variant(ButtonVariant::Primary)
 				.size(ButtonSize::Small)
 				.on_click(cx.listener(|view, _e: &ClickEvent, _w, cx| {
-					view.dispatch(Intent::RetryAuthFlow);
-					cx.notify();
+					view.dispatch(Intent::RetryAuthFlow, cx);
 				}));
 
 			let cancel_btn = Button::new("Dismiss")
 				.id("auth-cancel-btn")
 				.size(ButtonSize::Small)
 				.on_click(cx.listener(|view, _e: &ClickEvent, _w, cx| {
-					view.dispatch(Intent::CancelAuthFlow);
-					cx.notify();
+					view.dispatch(Intent::CancelAuthFlow, cx);
 				}));
 
 			let desc = flow
@@ -164,8 +158,7 @@ pub fn render_auth_page(
 				.id("auth-retry-btn")
 				.size(ButtonSize::Small)
 				.on_click(cx.listener(|view, _e: &ClickEvent, _w, cx| {
-					view.dispatch(Intent::RetryAuthFlow);
-					cx.notify();
+					view.dispatch(Intent::RetryAuthFlow, cx);
 				}));
 
 			container = container.child(setting_row(

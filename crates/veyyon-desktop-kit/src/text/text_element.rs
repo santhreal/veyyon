@@ -58,8 +58,8 @@ impl Text {
 
 impl RenderOnce for Text {
 	fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let default_tokens = TokenSet::default();
-		let tokens = cx.try_global::<TokenSet>().unwrap_or(&default_tokens);
+		let resolved_tokens = TokenSet::for_app(cx);
+		let tokens: &TokenSet = &resolved_tokens;
 
 		let font_size = tokens.font_size(self.ramp);
 		let line_h = tokens.line_height(self.ramp);

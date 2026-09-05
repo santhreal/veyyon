@@ -134,8 +134,10 @@ fn palette_moves_runs_and_ascends_in_headless_session() {
 	// 2. Open palette overlay in commands mode.
 	session
 		.update(|view, _window, cx| {
-			view.dispatch(Intent::OpenOverlay(Box::new(Overlay::Palette(PaletteState::commands()))));
-			cx.notify();
+			view.dispatch(
+				Intent::OpenOverlay(Box::new(Overlay::Palette(PaletteState::commands()))),
+				cx,
+			);
 		})
 		.expect("overlay opened");
 
@@ -148,8 +150,7 @@ fn palette_moves_runs_and_ascends_in_headless_session() {
 	// 3. Filter with query.
 	session
 		.update(|view, _window, cx| {
-			view.dispatch(Intent::PaletteQuery("Theme".to_string()));
-			cx.notify();
+			view.dispatch(Intent::PaletteQuery("Theme".to_string()), cx);
 		})
 		.expect("query updated");
 
@@ -162,15 +163,17 @@ fn palette_moves_runs_and_ascends_in_headless_session() {
 			assert_eq!(palette.query, "Theme");
 			let filtered = palette.filtered_items();
 			assert!(!filtered.is_empty(), "matching items found");
-			assert!(filtered[0].title.contains("Theme"), "top result must match query");
+			assert!(
+				filtered[0].title.to_lowercase().contains("theme"),
+				"top result must match the query without case sensitivity"
+			);
 		})
 		.expect("filtered items verified");
 
 	// 4. Move selection index down and up.
 	session
 		.update(|view, _window, cx| {
-			view.dispatch(Intent::PaletteMove(1));
-			cx.notify();
+			view.dispatch(Intent::PaletteMove(1), cx);
 		})
 		.expect("moved selection down");
 
@@ -180,8 +183,7 @@ fn palette_moves_runs_and_ascends_in_headless_session() {
 			let mut browse = PaletteState::new(PaletteMode::Browse);
 			browse.items =
 				vec![PaletteItem::directory(1, "crates"), PaletteItem::directory(2, "packages")];
-			view.dispatch(Intent::OpenOverlay(Box::new(Overlay::Palette(browse))));
-			cx.notify();
+			view.dispatch(Intent::OpenOverlay(Box::new(Overlay::Palette(browse))), cx);
 		})
 		.expect("switched to browse mode");
 
@@ -205,8 +207,7 @@ fn palette_moves_runs_and_ascends_in_headless_session() {
 
 	session
 		.update(|view, _window, cx| {
-			view.dispatch(Intent::PaletteAscend);
-			cx.notify();
+			view.dispatch(Intent::PaletteAscend, cx);
 		})
 		.expect("ascended directory");
 
@@ -220,8 +221,7 @@ fn palette_moves_runs_and_ascends_in_headless_session() {
 	// 6. Close overlay.
 	session
 		.update(|view, _window, cx| {
-			view.dispatch(Intent::CloseOverlay);
-			cx.notify();
+			view.dispatch(Intent::CloseOverlay, cx);
 		})
 		.expect("overlay closed");
 

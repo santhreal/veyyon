@@ -35,7 +35,7 @@ fn expected_fallback(scope: ErrorScope, session: &SessionId) -> SurfaceId {
 		ErrorScope::Tool => SurfaceId::QueueSessionRow(session.clone()),
 		ErrorScope::Interaction | ErrorScope::Plan => SurfaceId::ComposerSendButton(session.clone()),
 		ErrorScope::Terminal => SurfaceId::TerminalCreateButton(session.clone()),
-		ErrorScope::Usage => SurfaceId::RightPanelUsageTab(session.clone()),
+		ErrorScope::Usage => SurfaceId::UsageRefreshButton,
 		ErrorScope::Mcp => SurfaceId::SettingsField("mcp".to_string()),
 		ErrorScope::Extension => SurfaceId::SettingsField("extensions".to_string()),
 		ErrorScope::Settings => SurfaceId::SettingsField("general".to_string()),
@@ -50,7 +50,6 @@ const fn is_session_scoped(surface: &SurfaceId) -> bool {
 		SurfaceId::QueueSessionRow(_)
 			| SurfaceId::ComposerSendButton(_)
 			| SurfaceId::TerminalCreateButton(_)
-			| SurfaceId::RightPanelUsageTab(_)
 	)
 }
 

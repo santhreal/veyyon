@@ -165,13 +165,9 @@ pub fn fallback_surface(scope: ErrorScope, session_id: Option<&SessionId>) -> Su
 		ErrorScope::Task => SurfaceId::GlobalTitlebarLine,
 		ErrorScope::Settings => SurfaceId::SettingsField("general".to_string()),
 		ErrorScope::Diagnostic => SurfaceId::DiagnosticRefreshButton,
-		ErrorScope::Usage => {
-			if let Some(session) = session_id {
-				SurfaceId::RightPanelUsageTab(session.clone())
-			} else {
-				SurfaceId::GlobalTitlebarLine
-			}
-		},
+		// The usage numbers are fetched from the settings usage page; the
+		// right panel has no usage tab.
+		ErrorScope::Usage => SurfaceId::UsageRefreshButton,
 		ErrorScope::Authentication => SurfaceId::GlobalTitlebarLine,
 		ErrorScope::Lifecycle => SurfaceId::GlobalTitlebarLine,
 	}

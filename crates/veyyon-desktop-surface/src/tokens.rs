@@ -23,6 +23,8 @@ pub struct InstalledTokens {
 	pub set:              TokenSet,
 	/// The geometry the §5 surfaces read.
 	pub surface:          SurfaceTokens,
+	/// Motion parameters converted from the same validated token load.
+	pub motion:           veyyon_desktop_motion::MotionTokens,
 	/// The role named by `transcript.user_turn_ground`, resolved once here so
 	/// the render path indexes a role instead of matching a string per frame.
 	pub user_turn_ground: ColorRole,
@@ -55,5 +57,10 @@ pub fn install_tokens(
 		})?;
 
 	cx.set_global(set.clone());
-	Ok(InstalledTokens { set, surface: tokens.surface.clone(), user_turn_ground })
+	Ok(InstalledTokens {
+		set,
+		surface: tokens.surface.clone(),
+		motion: tokens.motion.clone().into(),
+		user_turn_ground,
+	})
 }

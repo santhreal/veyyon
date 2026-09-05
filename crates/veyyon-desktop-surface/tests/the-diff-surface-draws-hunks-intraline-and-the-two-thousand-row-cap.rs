@@ -176,14 +176,17 @@ fn diff_surface_renders_in_shell_view_and_toggles_mode() {
 	let installed = cx
 		.update(|app| install_tokens(app, &tokens, &theme, Path::new("surface")))
 		.expect("installed");
-	let mut view = ShellView::new(installed, state.clone());
-	view.dispatch(Intent::SetDiffMode(DiffMode::Split));
-	assert_eq!(
-		view.state().panel.diff_mode,
-		DiffMode::Split,
-		"SetDiffMode must switch to Split mode"
-	);
-
+	cx.update(|app| {
+		let entity = app.new(|_| ShellView::new(installed, state.clone()));
+		entity.update(app, |view, cx| {
+			view.dispatch(Intent::SetDiffMode(DiffMode::Split), cx);
+			assert_eq!(
+				view.state().panel.diff_mode,
+				DiffMode::Split,
+				"SetDiffMode must switch to Split mode"
+			);
+		});
+	});
 	state.panel.diff_mode = DiffMode::Split;
 
 	// 3. Render in split mode

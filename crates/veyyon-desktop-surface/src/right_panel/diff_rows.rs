@@ -224,8 +224,7 @@ pub fn render_collapsed_row(
 	div()
 		.id(veyyon_gpui::ElementId::Name(format!("collapsed-row-{file_index}-{row_index}").into()))
 		.on_click(cx.listener(move |view, _event, _window, cx| {
-			view.dispatch(Intent::ExpandContext { file: file_index, row: row_index });
-			cx.notify();
+			view.dispatch(Intent::ExpandContext { file: file_index, row: row_index }, cx);
 		}))
 		.h(px(geometry.diff_row_height_px))
 		.w_full()

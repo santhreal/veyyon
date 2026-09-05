@@ -94,7 +94,7 @@ impl ShellView {
 					Ok(Ok(Some(paths))) => {
 						if let Some(path) = paths.into_iter().next() {
 							let value = serde_json::Value::String(path.display().to_string());
-							view.dispatch(Intent::SettingChanged { key, value });
+							view.dispatch(Intent::SettingChanged { key, value }, cx);
 						}
 					},
 					Ok(Ok(None)) => {},
@@ -129,7 +129,7 @@ impl ShellView {
 			let results = read.await;
 			let _ = this.update(cx, |view, cx| {
 				for result in results {
-					view.attach(result);
+					view.attach(result, cx);
 				}
 				cx.notify();
 			});
@@ -155,7 +155,7 @@ impl ShellView {
 						},
 						None => Err(AttachmentError::ClipboardFormat { format: image.format() }),
 					};
-					self.attach(result);
+					self.attach(result, cx);
 				},
 				ClipboardEntry::ExternalPaths(external) => {
 					paths.extend(external.paths().iter().cloned());
@@ -169,13 +169,13 @@ impl ShellView {
 
 	/// Admits one read attachment against the prompt's ceiling and records
 	/// it, or records why it was refused.
-	pub fn attach(&mut self, result: Result<Attachment, AttachmentError>) {
+	pub fn attach(&mut self, result: Result<Attachment, AttachmentError>, cx: &mut Context<Self>) {
 		let admitted =
 			result.and_then(|attachment| self.state.composer.admit(&attachment).map(|()| attachment));
 		match admitted {
 			Ok(attachment) => {
 				self.attach.notice = None;
-				self.dispatch(Intent::Attach(attachment));
+				self.dispatch(Intent::Attach(attachment), cx);
 			},
 			Err(error) => self.attach.notice = Some(error.to_string()),
 		}

@@ -1,100 +1,46 @@
 //! WHY: The composer is the primary execution control surface. The defect class
-//! closed here is a turn action that becomes unreachable, miswired to the wrong
-//! intent, or displays the incorrect primary/secondary split button
-//! configuration for the active turn phase.
+//! closed here is a turn action becoming unreachable, miswired to the wrong
+//! intent, or displaying an incorrect primary action, stop control, or model
+//! trigger for the active turn phase.
 //!
 //! The suite defends:
 //! 1. Every one of the 7 turn actions (Send, Steer, Queue, Answer, Approve,
 //!    Accept, Refine) is reachable and dispatches its respective intent.
-//! 2. `SetQueueMode` round-trips and flips the primary/secondary slot on the
-//!    split button.
-//! 3. The composer footer holds exactly five controls across 480, 600, 800, and
-//!    1180 px widths.
+//! 2. `SetQueueMode` round-trips and flips the primary action between Steer and
+//!    Queue in running turns.
+//! 3. The composer footer renders the integrated model trigger and up-arrow
+//!    primary action across breakpoints, and presents the separate stop control
+//!    only when running.
 //! 4. Submitting or clicking Send with an empty editor dispatches no intent.
-//! 5. Composer grows from 70px rest height up to 200px growth cap.
+//! 5. Composer float height respects rest height (70px) and growth cap (200px)
+//!    in layout bounds.
 //!
 //! Gap left: Does not assert physical GPU texture presentation or font
 //! rasterization.
 
+#[path = "support/composer-layout/mod.rs"]
+mod composer_layout;
+#[path = "support/composer-submission.rs"]
+mod composer_submission;
+
 use std::path::Path;
 
+use composer_layout::{TurnPhaseDiscriminant, build_state_for_phase};
 use strum::IntoEnumIterator;
 use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
-use veyyon_desktop_model::{InteractionId, QueueMode};
+use veyyon_desktop_model::QueueMode;
 use veyyon_desktop_scene::{
 	headless::{RenderOptions, headless_context},
 	session::HeadlessSession,
 };
 use veyyon_desktop_surface::{
-	Card, Intent, ShellState, ShellView,
+	Intent, Overlay, PaletteMode, ShellState, ShellView,
 	composer::{PrimaryAction, SecondaryAction, TurnPhase, primary_action},
 	fixture, install_tokens,
 };
-use veyyon_gpui::{App, AppContext, Pixels};
+use veyyon_gpui::{App, AppContext, Pixels, Point};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumIter)]
-enum TurnPhaseDiscriminant {
-	Idle,
-	RunningSteer,
-	RunningQueue,
-	QuestionPending,
-	ApprovalPending,
-	PlanPendingEmpty,
-	PlanPendingWithText,
-}
-
-fn build_state_for_phase(discriminant: TurnPhaseDiscriminant) -> (ShellState, bool) {
-	let mut state = fixture::populated();
-	match discriminant {
-		TurnPhaseDiscriminant::Idle => {
-			state.turn = TurnPhase::Idle;
-			(state, true)
-		},
-		TurnPhaseDiscriminant::RunningSteer => {
-			state.turn = TurnPhase::Running { queue_mode: QueueMode::Steer };
-			(state, true)
-		},
-		TurnPhaseDiscriminant::RunningQueue => {
-			state.turn = TurnPhase::Running { queue_mode: QueueMode::Queue };
-			(state, true)
-		},
-		TurnPhaseDiscriminant::QuestionPending => {
-			state.turn =
-				TurnPhase::QuestionPending { interaction: InteractionId::from("q"), options: 3 };
-			state.cards = vec![Card::Question {
-				prompt:  "Select option".to_string(),
-				options: vec!["A".to_string(), "B".to_string(), "C".to_string()],
-			}];
-			(state, false)
-		},
-		TurnPhaseDiscriminant::ApprovalPending => {
-			state.turn = TurnPhase::ApprovalPending { interaction: InteractionId::from("a") };
-			state.cards = vec![Card::Approval {
-				tool:   "bash".to_string(),
-				detail: vec!["cargo check".to_string()],
-			}];
-			(state, false)
-		},
-		TurnPhaseDiscriminant::PlanPendingEmpty => {
-			state.turn = TurnPhase::PlanPending { interaction: InteractionId::from("p") };
-			state.cards = vec![Card::Plan {
-				title: "Refactor plan".to_string(),
-				body:  vec!["line 1".to_string()],
-			}];
-			(state, false)
-		},
-		TurnPhaseDiscriminant::PlanPendingWithText => {
-			state.turn = TurnPhase::PlanPending { interaction: InteractionId::from("p") };
-			state.cards = vec![Card::Plan {
-				title: "Refactor plan".to_string(),
-				body:  vec!["line 1".to_string()],
-			}];
-			(state, true)
-		},
-	}
-}
-
-fn render_session<R>(
+pub(crate) fn render_session<R>(
 	state: ShellState,
 	seed_text: Option<&str>,
 	width: u32,
@@ -116,9 +62,7 @@ fn render_session<R>(
 
 	if let Some(text) = seed_text {
 		session
-			.update(|view, _window, cx| {
-				view.set_composed(text, cx);
-			})
+			.update(|view, _window, cx| view.set_composed(text, cx))
 			.expect("composed text set");
 	}
 
@@ -172,9 +116,7 @@ fn every_turn_action_is_reachable_and_dispatches_expected_intent() {
 
 			// Trigger primary submission
 			session
-				.update(|view, _win, cx| {
-					view.submit_primary_turn_action(cx);
-				})
+				.update(|view, _win, cx| view.submit_primary_turn_action(cx))
 				.expect("primary action submits");
 
 			let intents = session
@@ -240,8 +182,7 @@ fn set_queue_mode_round_trips_and_moves_primary_slot() {
 		// Dispatch SetQueueMode(Queue)
 		session
 			.update(|view, _win, cx| {
-				view.dispatch(Intent::SetQueueMode(QueueMode::Queue));
-				cx.notify();
+				view.dispatch(Intent::SetQueueMode(QueueMode::Queue), cx);
 			})
 			.expect("set queue mode dispatches");
 
@@ -254,8 +195,7 @@ fn set_queue_mode_round_trips_and_moves_primary_slot() {
 		// Dispatch SetQueueMode(Steer)
 		session
 			.update(|view, _win, cx| {
-				view.dispatch(Intent::SetQueueMode(QueueMode::Steer));
-				cx.notify();
+				view.dispatch(Intent::SetQueueMode(QueueMode::Steer), cx);
 			})
 			.expect("set queue mode dispatches");
 
@@ -274,9 +214,7 @@ fn empty_send_dispatches_no_intent() {
 
 	render_session(state, Some("   \t\n "), 1440, 900, |session| {
 		session
-			.update(|view, _win, cx| {
-				view.submit_primary_turn_action(cx);
-			})
+			.update(|view, _win, cx| view.submit_primary_turn_action(cx))
 			.expect("submit primary action");
 
 		let pending = session
@@ -288,24 +226,126 @@ fn empty_send_dispatches_no_intent() {
 }
 
 #[test]
-fn footer_renders_five_controls_across_breakpoints() {
+fn footer_renders_integrated_model_trigger_and_up_arrow_action_across_breakpoints() {
 	for width in [480, 600, 800, 1180] {
-		let state = fixture::populated();
-		render_session(state, None, width, 900, |session| {
+		// 1. Idle state: model trigger and primary up-arrow action are reachable; stop
+		//    is absent
+		let mut state = fixture::populated();
+		state.keymap.panel_collapsed = true;
+		render_session(state, Some("test message"), width, 900, |session| {
+			let (f_left, _f_top, f_right, f_bottom) =
+				composer_layout::composer_float_bounds(session, width, 900);
 			let captured = session.frame().expect("frame renders");
-			assert!(
-				!captured.hitboxes.is_empty(),
-				"frame at width {width} rendered no interactive controls"
-			);
+
+			let model_hitbox = composer_layout::find_model_trigger_hitbox(
+				&captured.hitboxes,
+				f_left,
+				f_right,
+				f_bottom,
+			)
+			.expect("model trigger hitbox must exist in footer");
+
+			let primary_hitbox =
+				composer_layout::find_primary_action_hitbox(&captured.hitboxes, f_right, f_bottom)
+					.unwrap_or_else(|| {
+						panic!(
+							"primary action absent at width {width}; \
+							 float=({f_left},{f_right},{f_bottom}); hitboxes={:?}",
+							captured.hitboxes
+						)
+					});
+
+			let stop_hitbox =
+				composer_layout::find_stop_control_hitbox(&captured.hitboxes, f_right, f_bottom);
+			assert!(stop_hitbox.is_none(), "separate stop button must not render when idle");
+
+			// Clicking model trigger opens model picker overlay
+			let model_click = Point {
+				x: model_hitbox.origin.x + model_hitbox.size.width / 2.0,
+				y: model_hitbox.origin.y + model_hitbox.size.height / 2.0,
+			};
+			session.click(model_click).expect("click model selector");
+			session
+				.update(|view, _window, cx| {
+					assert!(
+						matches!(
+							view.state().overlay.as_ref().and_then(Overlay::as_palette),
+							Some(palette) if palette.mode == PaletteMode::Models
+						),
+						"clicking model trigger at width {width} must open model picker overlay"
+					);
+					// Close the opened palette overlay before subsequent primary action click
+					view.close_palette(cx);
+				})
+				.expect("overlay verified and closed");
+
+			// Clicking primary action submits the composed draft
+			let primary_click = Point {
+				x: primary_hitbox.origin.x + primary_hitbox.size.width / 2.0,
+				y: primary_hitbox.origin.y + primary_hitbox.size.height / 2.0,
+			};
+			session.click(primary_click).expect("click primary action");
+			session
+				.update(|view, _window, _cx| {
+					assert!(
+						matches!(
+							view.pending().first(),
+							Some(Intent::Send { text, .. }) if text == "test message"
+						),
+						"clicking primary action at width {width} must dispatch Send intent"
+					);
+				})
+				.expect("send intent verified");
+		});
+
+		// 2. Running state: separate stop control is present and active
+		let mut running_state = fixture::populated();
+		running_state.keymap.panel_collapsed = true;
+		running_state.turn = TurnPhase::Running { queue_mode: QueueMode::Steer };
+		render_session(running_state, Some("test message"), width, 900, |session| {
+			let (_f_left, _f_top, f_right, f_bottom) =
+				composer_layout::composer_float_bounds(session, width, 900);
+			let captured = session.frame().expect("frame renders");
+
+			let stop_hitbox =
+				composer_layout::find_stop_control_hitbox(&captured.hitboxes, f_right, f_bottom)
+					.expect("stop control hitbox must render when turn is running");
+
+			let stop_click = Point {
+				x: stop_hitbox.origin.x + stop_hitbox.size.width / 2.0,
+				y: stop_hitbox.origin.y + stop_hitbox.size.height / 2.0,
+			};
+			session.click(stop_click).expect("click stop control");
+			session
+				.update(|view, _window, _cx| {
+					assert!(
+						matches!(view.pending().first(), Some(Intent::AbortTurn)),
+						"clicking stop control at width {width} must dispatch AbortTurn intent"
+					);
+				})
+				.expect("abort intent verified");
 		});
 	}
 }
 
 #[test]
 fn composer_height_respects_rest_height_and_growth_cap() {
+	let tokens = load_bundled_tokens().expect("tokens load");
+	let rest_cap = tokens.surface.composer.rest_height_px;
+	let growth_cap = tokens.surface.composer.growth_cap_px;
+
 	let state = fixture::populated();
 	render_session(state, Some("single line text"), 1440, 900, |session| {
-		let rest_h = session
+		let (_f_left, f_top_rest, _f_right, f_bottom_rest) =
+			composer_layout::composer_float_bounds(session, 1440, 900);
+		let rest_layout_h = f_bottom_rest - f_top_rest;
+
+		assert!(
+			rest_layout_h >= rest_cap - 1.0,
+			"rest layout height {rest_layout_h} must be at least rest height {rest_cap}"
+		);
+
+		let rest_content_h = session
 			.update(|view, _win, cx| {
 				view
 					.composer()
@@ -320,12 +360,14 @@ fn composer_height_respects_rest_height_and_growth_cap() {
 			.join("\n");
 
 		session
-			.update(|view, _win, cx| {
-				view.set_composed(multiline, cx);
-			})
+			.update(|view, _win, cx| view.set_composed(multiline, cx))
 			.expect("multiline set");
 
-		let expanded_h = session
+		let (_f_left, f_top_exp, _f_right, f_bottom_exp) =
+			composer_layout::composer_float_bounds(session, 1440, 900);
+		let exp_layout_h = f_bottom_exp - f_top_exp;
+
+		let exp_content_h = session
 			.update(|view, _win, cx| {
 				view
 					.composer()
@@ -334,8 +376,17 @@ fn composer_height_respects_rest_height_and_growth_cap() {
 			.expect("expanded content height");
 
 		assert!(
-			expanded_h >= rest_h,
-			"expanded height {expanded_h:?} is smaller than rest height {rest_h:?}"
+			exp_content_h > rest_content_h,
+			"expanded content height {exp_content_h:?} should exceed rest content height \
+			 {rest_content_h:?}"
+		);
+		assert!(
+			exp_layout_h >= rest_layout_h,
+			"expanded layout height {exp_layout_h} must be >= rest layout height {rest_layout_h}"
+		);
+		assert!(
+			exp_layout_h <= growth_cap + 1.0,
+			"expanded layout height {exp_layout_h} must not exceed growth cap {growth_cap}"
 		);
 	});
 }

@@ -17,7 +17,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/backend-${SCENE_SERVER}.sh"
 # The grid comes from the shell (`stty size`), and the pixel size of a cell from
 # the window divided by that grid. Asking the terminal directly (CSI 16t) only
 # works where window operations are enabled, which xterm disables by default.
-read -r TERM_ROWS TERM_COLS <<<"$(sed -n 's/^stty=//p' /tmp/geom)"
+read -r TERM_ROWS TERM_COLS <<<"$(sed -n 's/^stty=//p' "${SCENE_RUNTIME_DIR:-/tmp}/geom" 2>/dev/null || true)"
 PAD="${SCENE_PADDING:-8}"
 : "${TERM_ROWS:=40}" "${TERM_COLS:=150}"
 read -r WIN_W WIN_H <<<"$(_be_window_px)"
@@ -96,7 +96,7 @@ key_repeat() { # key_repeat <key> <count> [delay]
 #
 # The xdotool path remains as a fallback for a terminal without the socket -- an xterm
 # scene, or an image built before this -- and it keeps the delay that behaved best.
-KITTY_SOCKET="${KITTY_SOCKET:-unix:/tmp/kitty.sock}"
+KITTY_SOCKET="${KITTY_SOCKET:-unix:${SCENE_RUNTIME_DIR:-/tmp}/kitty.sock}"
 
 # XTEST fallback used when kitty remote control does not answer. Named so a
 # missing binary fails as `_xdo: command not found` only if this function is
@@ -545,7 +545,7 @@ settle_idle() {
 	sleep "${floor}"
 	local prev="" now="" same=0 changed=0 waited="${floor}"
 	while [ "${waited}" -lt "${ceiling}" ]; do
-		now="$(kitty @ --to "${KITTY_SOCKET}" get-text 2>"${SCENE_OUT:-/tmp}/get-text.err" | tr -d '0-9' || true)"
+		now="$(kitty @ --to "${KITTY_SOCKET}" get-text 2>"${SCENE_OUT:-${SCENE_RUNTIME_DIR:-/tmp}}/get-text.err" | tr -d '0-9' || true)"
 		if [ -z "${now}" ]; then
 			# A WAIT THAT CANNOT SEE IS THE ONE FAILURE THAT MUST NOT BE QUIET. This
 			# branch used to spend the ceiling as a sleep and return without a word, so a
@@ -554,9 +554,9 @@ settle_idle() {
 			# and the reason was invisible in the log. One retry, because a single dump
 			# can lose a race with a redraw, and then the reason in the log.
 			sleep 2
-			now="$(kitty @ --to "${KITTY_SOCKET}" get-text 2>>"${SCENE_OUT:-/tmp}/get-text.err" | tr -d '0-9' || true)"
+			now="$(kitty @ --to "${KITTY_SOCKET}" get-text 2>>"${SCENE_OUT:-${SCENE_RUNTIME_DIR:-/tmp}}/get-text.err" | tr -d '0-9' || true)"
 			if [ -z "${now}" ]; then
-				echo "scene: get-text read nothing from ${KITTY_SOCKET}, falling back to a plain sleep: $(tail -1 "${SCENE_OUT:-/tmp}/get-text.err" 2>/dev/null)" >&2
+				echo "scene: get-text read nothing from ${KITTY_SOCKET}, falling back to a plain sleep: $(tail -1 "${SCENE_OUT:-${SCENE_RUNTIME_DIR:-/tmp}}/get-text.err" 2>/dev/null)" >&2
 				sleep "$((ceiling - waited))"
 				return 0
 			fi

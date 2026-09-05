@@ -81,8 +81,7 @@ pub fn card_row(
 				.size(IconSize::Size12)
 				.variant(IconButtonVariant::Ghost)
 				.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
-					view.dispatch(Intent::ParkSession(park_id));
-					cx.notify();
+					view.dispatch(Intent::ParkSession(park_id), cx);
 				})),
 		)
 		.child(
@@ -91,8 +90,7 @@ pub fn card_row(
 				.size(IconSize::Size12)
 				.variant(IconButtonVariant::Ghost)
 				.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
-					view.dispatch(Intent::DeferSession(defer_id));
-					cx.notify();
+					view.dispatch(Intent::DeferSession(defer_id), cx);
 				})),
 		);
 
@@ -126,8 +124,7 @@ pub fn card_row(
 		.id(("queue-card", id as usize))
 		.relative()
 		.on_click(cx.listener(move |view, _event, _window, cx| {
-			view.dispatch(Intent::SelectSession(id));
-			cx.notify();
+			view.dispatch(Intent::SelectSession(id), cx);
 		}))
 		// A right-click opens the row's answers as a menu at the pointer.
 		.on_mouse_down(

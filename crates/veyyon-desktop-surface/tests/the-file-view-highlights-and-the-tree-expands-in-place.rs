@@ -82,39 +82,43 @@ fn tree_expands_and_collapses_in_place_and_opens_file() {
 	let tokens = load_bundled_tokens().expect("tokens");
 	let theme = load_bundled_theme("dark").expect("theme");
 
-	// 1. Toggle tree node "src" (collapse)
-	let installed = cx
-		.update(|app| install_tokens(app, &tokens, &theme, Path::new("surface")))
-		.expect("installed");
-	let mut view = ShellView::new(installed, state.clone());
-	view.dispatch(Intent::ToggleTreeNode("src".to_string()));
-	assert!(
-		!view.state().panel.tree.expanded_paths.contains("src"),
-		"expanded_paths must remove collapsed node"
-	);
-	assert!(!view.state().panel.tree.rows[0].is_expanded, "row is_expanded must be false");
+	let view_entity = cx.update(|app| {
+		let installed =
+			install_tokens(app, &tokens, &theme, Path::new("surface")).expect("installed");
+		app.new(|_| ShellView::new(installed, state.clone()))
+	});
+	cx.update(|app| {
+		view_entity.update(app, |view, cx| {
+			// 1. Toggle tree node "src" (collapse)
+			view.dispatch(Intent::ToggleTreeNode("src".to_string()), cx);
+			assert!(
+				!view.state().panel.tree.expanded_paths.contains("src"),
+				"expanded_paths must remove collapsed node"
+			);
+			assert!(!view.state().panel.tree.rows[0].is_expanded, "row is_expanded must be false");
 
-	// 2. Toggle tree node "src" again (expand)
-	view.dispatch(Intent::ToggleTreeNode("src".to_string()));
-	assert!(
-		view.state().panel.tree.expanded_paths.contains("src"),
-		"expanded_paths must contain re-expanded node"
-	);
-	assert!(view.state().panel.tree.rows[0].is_expanded, "row is_expanded must be true");
+			// 2. Toggle tree node "src" again (expand)
+			view.dispatch(Intent::ToggleTreeNode("src".to_string()), cx);
+			assert!(
+				view.state().panel.tree.expanded_paths.contains("src"),
+				"expanded_paths must contain re-expanded node"
+			);
+			assert!(view.state().panel.tree.rows[0].is_expanded, "row is_expanded must be true");
 
-	// 3. Open file "src/lib.rs"
-	view.dispatch(Intent::OpenFile("src/lib.rs".to_string()));
-	assert_eq!(
-		view.state().panel.active_tab,
-		PanelTab::File,
-		"OpenFile must switch active tab to File"
-	);
-	assert_eq!(
-		view.state().panel.tree.selected_path.as_deref(),
-		Some("src/lib.rs"),
-		"OpenFile must update selected_path"
-	);
-
+			// 3. Open file "src/lib.rs"
+			view.dispatch(Intent::OpenFile("src/lib.rs".to_string()), cx);
+			assert_eq!(
+				view.state().panel.active_tab,
+				PanelTab::File,
+				"OpenFile must switch active tab to File"
+			);
+			assert_eq!(
+				view.state().panel.tree.selected_path.as_deref(),
+				Some("src/lib.rs"),
+				"OpenFile must update selected_path"
+			);
+		});
+	});
 	// 4. Render Tree tab headlessly
 	let captured_tree = render_view_captured(
 		&mut cx,

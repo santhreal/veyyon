@@ -23,10 +23,11 @@ H="${SCENE_HEIGHT}"
 FPS="${SCENE_FPS}"
 OUT="/out"
 mkdir -p "${OUT}"
-# magick (backdrop) and import (stills) leave magick-* in /tmp when killed.
+mkdir -p "${SCENE_RUNTIME_DIR}"
+# magick (backdrop) and import (stills) leave magick-* in SCENE_RUNTIME_DIR when killed.
 # shellcheck source=proof/docker/magick-tmpdir.sh
 source "$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)/magick-tmpdir.sh"
-magick_tmpdir_scope /tmp
+magick_tmpdir_scope "${SCENE_RUNTIME_DIR}"
 
 # kitty/glfw refuse to open a window without a machine-id. Some recorder images
 # ship without /etc/machine-id, and the first thing the operator sees is
@@ -53,9 +54,13 @@ trap cleanup EXIT
 # they are asked for, and picom without them starts, stays alive, and never
 # claims the manager selection, which reads exactly like a theme that did not
 # apply.
+if xdpyinfo -display "${DISPLAY}" >/dev/null 2>&1; then
+	echo "display ${DISPLAY} is already in use" >&2
+	exit 1
+fi
 Xvfb "${DISPLAY}" -screen 0 "${W}x${H}x24" -nolisten tcp \
 	+extension COMPOSITE +extension RENDER +extension DAMAGE \
-	>/tmp/xvfb.log 2>&1 &
+	>"${SCENE_RUNTIME_DIR}/xvfb.log" 2>&1 &
 XVFB_PID=$!
 for _ in $(seq 1 50); do
 	xdpyinfo -display "${DISPLAY}" >/dev/null 2>&1 && break
@@ -65,7 +70,7 @@ xdpyinfo -display "${DISPLAY}" >/dev/null
 
 # Session bus after the display exists. dbus-launch (which kitty/glfw will
 # spawn if this is missing) dies without $DISPLAY, and the window never appears.
-export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-runtime}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-${SCENE_RUNTIME_DIR}/xdg-runtime}"
 mkdir -p "${XDG_RUNTIME_DIR}"
 chmod 700 "${XDG_RUNTIME_DIR}" || true
 if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && command -v dbus-daemon >/dev/null 2>&1; then
@@ -95,9 +100,9 @@ xset -display "${DISPLAY}" r rate 60000 60000 >/dev/null 2>&1 || true
 # The terminal answers CSI 16t with its cell size in pixels and CSI 18t with its
 # size in cells. Asking it beats guessing from font metrics, and the scene needs
 # both to aim the pointer at a row and column.
-cat >/tmp/bootstrap.sh <<'BOOT'
+cat >"${SCENE_RUNTIME_DIR}/bootstrap.sh" <<'BOOT'
 #!/usr/bin/env bash
-exec 2>/tmp/boot.err
+exec 2>"${SCENE_RUNTIME_DIR:-/tmp}/boot.err"
 # xterm does not hand COLORTERM to its child, so the app under test resolved
 # terminal id "base" and turned every truecolor-gated surface off -- including
 # the overlay unfold, which is one of the things these recordings exist to show.
@@ -110,11 +115,11 @@ export COLORTERM=truecolor
 # vault through the environment never appears in the transcript at all, so what the
 # recording shows spending is a placeholder and nothing else.
 export RELEASE_SIGNATURE="${SCENE_SIGNING_NUMBER}"
-printf 'stty=%s\n' "$(stty size </dev/tty)" >/tmp/geom
+printf 'stty=%s\n' "$(stty size </dev/tty 2>/dev/null || true)" >"${SCENE_RUNTIME_DIR:-/tmp}/geom"
 cd "${SCENE_CWD}"
 exec ${SCENE_COMMAND:?}
 BOOT
-chmod +x /tmp/bootstrap.sh
+chmod +x "${SCENE_RUNTIME_DIR}/bootstrap.sh"
 
 # A themed capture: a neutral backdrop behind the window, a compositor to round its
 # corners, frost what shows through it and cast a shadow, and an inset window so all of
@@ -138,8 +143,8 @@ if [ "${SCENE_THEME}" != "plain" ]; then
 	# different pictures. xwallpaper sets a root pixmap, which is drawn once and
 	# costs nothing per frame, so the backdrop is in the capture even when no
 	# compositor is running.
-	scene_backdrop "${W}" "${H}" /tmp/backdrop.png
-	xwallpaper --stretch /tmp/backdrop.png >/tmp/wallpaper.log 2>&1 || true
+	scene_backdrop "${W}" "${H}" "${SCENE_RUNTIME_DIR}/backdrop.png"
+	xwallpaper --stretch "${SCENE_RUNTIME_DIR}/backdrop.png" >"${SCENE_RUNTIME_DIR}/wallpaper.log" 2>&1 || true
 
 	# `xprop -root _NET_WM_CM_S0` cannot answer whether this worked: the compositing manager
 	# owns a SELECTION, not a root property, and xprop exits 0 while printing "not found".
@@ -149,11 +154,11 @@ if [ "${SCENE_THEME}" != "plain" ]; then
 	start_compositor() {
 		local label="$1"
 		shift
-		: >/tmp/picom.log
-		picom "$@" --log-level=debug --log-file=/tmp/picom.log >/tmp/picom.out 2>&1 &
+		: >"${SCENE_RUNTIME_DIR}/picom.log"
+		picom "$@" --log-level=debug --log-file="${SCENE_RUNTIME_DIR}/picom.log" >"${SCENE_RUNTIME_DIR}/picom.out" 2>&1 &
 		PICOM_PID=$!
 		for _ in $(seq 1 100); do
-			if grep -q "Screen redirected" /tmp/picom.log 2>/dev/null; then
+			if grep -q "Screen redirected" "${SCENE_RUNTIME_DIR}/picom.log" 2>/dev/null; then
 				echo "chrome: ${label} redirected the screen" >&2
 				return 0
 			fi
@@ -163,7 +168,7 @@ if [ "${SCENE_THEME}" != "plain" ]; then
 		kill "${PICOM_PID}" 2>/dev/null || true
 		wait "${PICOM_PID}" 2>/dev/null || true
 		echo "chrome: ${label} never redirected the screen" >&2
-		tail -5 /tmp/picom.log /tmp/picom.out >&2 2>/dev/null || true
+		tail -5 "${SCENE_RUNTIME_DIR}/picom.log" "${SCENE_RUNTIME_DIR}/picom.out" >&2 2>/dev/null || true
 		return 1
 	}
 
@@ -290,7 +295,10 @@ xterm)
 		-xrm "XTerm*utf8: 2" \
 		-xrm "XTerm*directColor: true" \
 		-xrm "XTerm*saveLines: 20000" \
-		-e /tmp/bootstrap.sh >/tmp/term.log 2>&1 &
+		-e "${SCENE_RUNTIME_DIR}/bootstrap.sh" >"${SCENE_RUNTIME_DIR}/term.log" 2>&1 &
+	;;
+native)
+	"${SCENE_RUNTIME_DIR}/bootstrap.sh" >"${SCENE_RUNTIME_DIR}/term.log" 2>&1 &
 	;;
 *)
 	kitty \
@@ -312,8 +320,8 @@ xterm)
 		--override "enable_audio_bell=no" \
 		--override "focus_follows_mouse=yes" \
 		--override "allow_remote_control=socket-only" \
-		--listen-on "unix:/tmp/kitty.sock" \
-		/tmp/bootstrap.sh >/tmp/term.log 2>&1 &
+		--listen-on "unix:${SCENE_RUNTIME_DIR}/kitty.sock" \
+		"${SCENE_RUNTIME_DIR}/bootstrap.sh" >"${SCENE_RUNTIME_DIR}/term.log" 2>&1 &
 	;;
 esac
 KITTY_PID=$!
@@ -330,9 +338,30 @@ KITTY_PID=$!
 # resolved id, and the run is aborted rather than recorded if the window will not
 # sit where the theme needs it.
 pick_window() {
-	local found="" candidate
-	for candidate in $(xdotool search --class "kitty|XTerm" 2>/dev/null); do
-		if xdotool getwindowgeometry "${candidate}" 2>/dev/null | grep -qE "Geometry: [1-9][0-9]*x[1-9]"; then
+	local found="" candidate candidates="" width height
+	case "${SCENE_TERMINAL}" in
+	xterm)
+		candidates="$(xdotool search --class "XTerm" 2>/dev/null || true)"
+		;;
+	kitty)
+		candidates="$(xdotool search --class "kitty" 2>/dev/null || true)"
+		;;
+	native)
+		candidates="$(xwininfo -root -children | sed -n 's/^ *\(0x[0-9a-fA-F]*\) .*/\1/p')"
+		;;
+	*)
+		candidates="$(xdotool search --class "${SCENE_TERMINAL}" 2>/dev/null || xdotool search --onlyvisible --maxdepth 2 "" 2>/dev/null || true)"
+		;;
+	esac
+
+	if [ -z "${candidates}" ] && [ "${SCENE_TERMINAL}" != "native" ]; then
+		candidates="$(xdotool search --onlyvisible --maxdepth 2 "" 2>/dev/null || xdotool search --maxdepth 2 "" 2>/dev/null || true)"
+	fi
+
+	for candidate in ${candidates}; do
+		[ "${candidate}" = "0" ] && continue
+		read -r width height <<<"$(xdotool getwindowgeometry "${candidate}" 2>/dev/null | sed -n 's/.*Geometry: \([0-9]*\)x\([0-9]*\)/\1 \2/p')"
+		if [ "${width:-0}" -gt 1 ] && [ "${height:-0}" -gt 1 ]; then
 			found="${candidate}"
 		fi
 	done
@@ -364,14 +393,14 @@ for _ in $(seq 1 40); do
 	fi
 done
 if [ -z "${WINDOW}" ]; then
-	echo "no terminal window with a geometry appeared" >&2
-	tail -40 /tmp/term.log >&2 2>/dev/null || true
-	tail -40 /tmp/boot.err >&2 2>/dev/null || true
+	echo "no window with a geometry appeared" >&2
+	tail -40 "${SCENE_RUNTIME_DIR}/term.log" >&2 2>/dev/null || true
+	tail -40 "${SCENE_RUNTIME_DIR}/boot.err" >&2 2>/dev/null || true
 	exit 1
 fi
 [ "${PLACED}" = "1" ] || {
-	echo "terminal window would not move to +${MARGIN}+${MARGIN} (last origin: ${WX:-none},${WY:-none})" >&2
-	tail -20 /tmp/term.log >&2 2>/dev/null
+	echo "window would not move to +${MARGIN}+${MARGIN} (last origin: ${WX:-none},${WY:-none})" >&2
+	tail -20 "${SCENE_RUNTIME_DIR}/term.log" >&2 2>/dev/null
 	exit 1
 }
 xdotool windowactivate "${WINDOW}" 2>/dev/null || true
@@ -393,7 +422,7 @@ ffmpeg -loglevel error -y -thread_queue_size 2048 -f x11grab -draw_mouse 1 -fram
 	-video_size "${W}x${H}" -i "${DISPLAY}" \
 	-c:v libx264 -preset ultrafast -tune zerolatency -crf 18 -pix_fmt yuv420p \
 	-r "${FPS}" \
-	"${OUT}/${NAME}.mp4" >/tmp/ffmpeg.log 2>&1 &
+	"${OUT}/${NAME}.mp4" >"${SCENE_RUNTIME_DIR}/ffmpeg.log" 2>&1 &
 FFMPEG_PID=$!
 # The recording's own zero, in milliseconds, so a still can name the second of the
 # video it belongs to. ffmpeg's first frame lands a moment after the fork, and that
