@@ -13,6 +13,7 @@ pub mod layout_bridge;
 pub mod metrics;
 pub mod primitive_scenes;
 pub mod registry;
+pub mod required_state;
 pub mod session;
 
 pub use contact_sheet::{SheetCell, SheetGrid, tile};
@@ -23,8 +24,9 @@ pub use fixtures::{
 };
 pub use frame::{FrameError, PerceptualDiff, RgbaColor, RgbaFrame};
 pub use headless::{
-	Appearance, Captured, Headless, RenderError, RenderOptions, distinct_pixel_values,
-	headless_context, render_view, render_view_captured, render_view_with_layout, write_png,
+	Appearance, Captured, Headless, RenderError, RenderOptions, capture_window,
+	distinct_pixel_values, headless_context, render_view, render_view_captured,
+	render_view_with_layout, write_png,
 };
 pub use layout::{
 	BorderPaint, BoxBounds, BoxId, DividerAxis, LayoutBox, LayoutBoxSpec, LayoutBoxTree,
@@ -42,8 +44,9 @@ pub use primitive_scenes::{
 	PrimitiveSceneView, generate_kit_coverage_sheet, render_all_primitive_scenes, render_primitive,
 	render_primitive_scene,
 };
-pub use registry::{
-	ConnectionStateKind, FixtureSelection, GateVariant, PrimitiveKind, RequiredState, RowShape,
-	Scene, SceneError, SceneRegistry, StateDescriptor, required_states,
+pub use registry::{FixtureSelection, Scene, SceneError, SceneRegistry, StateDescriptor};
+pub use required_state::{
+	ConnectionStateKind, GateVariant, PrimitiveKind, RequiredState, RowShape, gated_capabilities,
+	required_states,
 };
 pub use session::HeadlessSession;

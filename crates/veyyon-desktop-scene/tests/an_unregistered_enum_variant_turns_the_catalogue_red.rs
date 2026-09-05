@@ -17,7 +17,8 @@ use veyyon_desktop_model::{
 	BadgeKind, BlockKind, Capability, ErrorScope, MessageRole, QueuePartition,
 };
 use veyyon_desktop_scene::{
-	ConnectionStateKind, GateVariant, PrimitiveKind, RowShape, SceneRegistry, required_states,
+	ConnectionStateKind, GateVariant, PrimitiveKind, RowShape, SceneRegistry, gated_capabilities,
+	required_states,
 };
 
 #[test]
@@ -28,8 +29,11 @@ fn test_enum_iteration_exhausts_all_protocol_domains() {
 	let capability_count = Capability::iter().count();
 	assert_eq!(capability_count, 30);
 
+	// Pending is required only for a capability some action reaches.
 	let gate_count = GateVariant::iter().count();
 	assert_eq!(gate_count, 4);
+	let gated_count = gated_capabilities().len();
+	assert_eq!(gated_count, 24);
 
 	let role_count = MessageRole::iter().count();
 	assert_eq!(role_count, 12);
@@ -53,7 +57,8 @@ fn test_enum_iteration_exhausts_all_protocol_domains() {
 	assert_eq!(primitive_count, 41);
 
 	let total_expected = connection_count
-		+ (capability_count * gate_count)
+		+ (capability_count * (gate_count - 1))
+		+ gated_count
 		+ role_count
 		+ block_count
 		+ error_count
@@ -62,7 +67,7 @@ fn test_enum_iteration_exhausts_all_protocol_domains() {
 		+ row_shape_count
 		+ primitive_count;
 
-	assert_eq!(total_expected, 229);
+	assert_eq!(total_expected, 223);
 	assert_eq!(required_states().len(), total_expected);
 }
 

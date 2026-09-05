@@ -16,7 +16,7 @@ use std::{
 	io::BufWriter,
 	ops::{Deref, DerefMut},
 	path::{Path, PathBuf},
-	sync::{Arc, Mutex, MutexGuard, PoisonError},
+	sync::{Mutex, MutexGuard, PoisonError},
 };
 
 use veyyon_gpui::{
@@ -33,14 +33,14 @@ use crate::{
 /// Why a headless render or its encoding did not produce a frame.
 #[derive(Debug, thiserror::Error)]
 pub enum RenderError {
-	/// The platform reported no headless renderer. Without one the render path
-	/// returns an empty frame and reports success, so this is an error rather
-	/// than a uniformly transparent image discovered later.
-	#[error(
-		"this platform supplies no headless renderer, so no offscreen frame can be produced; a GPU \
-		 with a Vulkan ICD is required"
-	)]
-	NoRenderer,
+	/// The platform supplied no offscreen renderer. Without one the render
+	/// path returns an empty frame and reports success, so this is an error
+	/// rather than a uniformly transparent image discovered later.
+	#[error("no offscreen frame can be produced; a GPU with a Vulkan ICD is required: {source}")]
+	NoRenderer {
+		#[source]
+		source: veyyon_desktop_kit::headless::NoOffscreenRenderer,
+	},
 
 	/// A sheet with no cells has no size, and an empty image is not a useful
 	/// report: the caller asked for a comparison and supplied nothing.
@@ -179,8 +179,8 @@ pub fn distinct_pixel_values(frame: &RgbaFrame) -> usize {
 
 /// One live headless context at a time, process-wide.
 ///
-/// `gpui_platform::current_headless_renderer` resolves to a renderer owned by
-/// the process, not by the caller. Building a third context while two are live
+/// The kit's offscreen renderer draws through a device the process owns, not
+/// the caller. Building a third context while two are live
 /// aborts with SIGSEGV, and a test binary runs its tests on parallel threads,
 /// so concurrent callers have to queue rather than race. The permit is taken
 /// when a context is built and released when it drops.
@@ -210,7 +210,7 @@ impl DerefMut for Headless {
 	}
 }
 
-/// A context wired to this platform's headless renderer.
+/// A context wired to the kit's offscreen renderer.
 ///
 /// `HeadlessAppContext::new` hands back a context with no renderer attached,
 /// which renders nothing and reports success, so the renderer is supplied
@@ -221,13 +221,8 @@ impl DerefMut for Headless {
 /// failed render does not turn every later one into a panic of its own.
 pub fn headless_context() -> Result<Headless, RenderError> {
 	let permit = RENDERER.lock().unwrap_or_else(PoisonError::into_inner);
-	if gpui_platform::current_headless_renderer().is_none() {
-		return Err(RenderError::NoRenderer);
-	}
-	let text_system = Arc::new(gpui_wgpu::CosmicTextSystem::new("sans-serif"));
-	let cx = HeadlessAppContext::with_platform(text_system, Arc::new(()), || {
-		gpui_platform::current_headless_renderer()
-	});
+	let cx = veyyon_desktop_kit::headless::app_context()
+		.map_err(|source| RenderError::NoRenderer { source })?;
 	Ok(Headless { cx, _permit: permit })
 }
 
