@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { Context, Model, SimpleStreamOptions } from "@veyyon/ai";
-import * as ai from "@veyyon/ai";
+import * as ai from "@veyyon/ai/stream";
 import { Effort } from "@veyyon/catalog/effort";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import {

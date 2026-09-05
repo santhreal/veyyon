@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from "bun:
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { ApiKey, Context, Model, SimpleStreamOptions } from "@veyyon/ai";
-import * as ai from "@veyyon/ai";
+import * as ai from "@veyyon/ai/stream";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { startMemoryStartupTask } from "@veyyon/coding-agent/memory/local";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";

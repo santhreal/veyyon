@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import type { Api, Model } from "@veyyon/ai";
-import * as ai from "@veyyon/ai";
+import * as ai from "@veyyon/ai/stream";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { isSubcommand } from "@veyyon/coding-agent/cli-commands";
 import { getDefault, getEnumValues, getUi } from "@veyyon/coding-agent/config/settings-schema";

@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { Model } from "@veyyon/ai";
-import * as ai from "@veyyon/ai";
+import * as ai from "@veyyon/ai/stream";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { startMemoryStartupTask } from "@veyyon/coding-agent/memory/local";
 import * as memoryStorage from "@veyyon/coding-agent/memory/storage";

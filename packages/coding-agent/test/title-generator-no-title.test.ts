@@ -17,7 +17,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import type { Api, Model } from "@veyyon/ai";
-import * as ai from "@veyyon/ai";
+import * as ai from "@veyyon/ai/stream";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { autoTitleDisabled, generateSessionTitle } from "@veyyon/coding-agent/utils/title-generator";
 

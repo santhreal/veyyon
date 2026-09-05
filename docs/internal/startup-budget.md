@@ -4,6 +4,11 @@ Startup latency is the interval from process launch to a visually settled, edita
 
 Mode-specific Vibe tools load through the agent tool manifest on `/vibe` activation, not during runtime warmup. Activation awaits tool construction before changing the registry or active toolset. A failed load leaves both unchanged; first-use measurements include this deferred work.
 
+Session initialization and runtime warmup import streaming helpers from `@veyyon/ai/stream`
+and register usage backends through `@veyyon/ai/usage/defaults`. They do not evaluate the
+`@veyyon/ai` package barrel. Usage providers and credential-ranking strategies remain
+available to direct session construction, the SDK and terminal startup.
+
 ## Measure it
 
 ```sh

@@ -94,43 +94,36 @@ import {
 	readToolSupersedeKey,
 } from "@veyyon/agent-core/compaction/pruning";
 import type { ProtectedToolMatcher } from "@veyyon/agent-core/compaction/tool-protection";
-import {
-	type Api,
-	type AssistantMessage,
-	type AssistantMessageEvent,
-	type AssistantRetryRecovery,
-	type AssistantRetryRecoveryKind,
-	type CodexCompactionContext,
-	type Context,
-	calculateRateLimitBackoffMs,
-	clearAnthropicFastModeFallback,
-	deriveClaudeDeviceId,
-	type ImageContent,
-	type InstrumentationLevel,
-	type Message,
-	type Model,
-	type ProviderResponseMetadata,
-	type ProviderSessionState,
-	parseRateLimitReason,
-	type ResetCreditAccountStatus,
-	type ResetCreditRedeemOutcome,
-	type ResetCreditTarget,
-	realizesPriorityServiceTier,
-	resolveModelServiceTier,
-	type ServiceTier,
-	type ServiceTierByFamily,
-	type ServiceTierFamily,
-	type SimpleStreamOptions,
-	serviceTierFamily,
-	streamSimple,
-	type TextContent,
-	type ToolCall,
-	type ToolChoice,
-	type ToolResultMessage,
-	type Usage,
-	type UsageReport,
+import type {
+	Api,
+	AssistantMessage,
+	AssistantMessageEvent,
+	AssistantRetryRecovery,
+	AssistantRetryRecoveryKind,
+	CodexCompactionContext,
+	Context,
+	ImageContent,
+	InstrumentationLevel,
+	Message,
+	Model,
+	ProviderResponseMetadata,
+	ProviderSessionState,
+	ResetCreditAccountStatus,
+	ResetCreditRedeemOutcome,
+	ResetCreditTarget,
+	ServiceTier,
+	ServiceTierByFamily,
+	ServiceTierFamily,
+	SimpleStreamOptions,
+	TextContent,
+	ToolCall,
+	ToolChoice,
+	ToolResultMessage,
+	Usage,
+	UsageReport,
 } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
+import { calculateRateLimitBackoffMs, parseRateLimitReason } from "@veyyon/ai/error/rate-limit";
 import {
 	assistantTurnMetricsForPersistence,
 	assistantTurnRequestForPersistence,
@@ -138,8 +131,12 @@ import {
 	sessionTelemetryDetail,
 	toolCallMetricsForPersistence,
 } from "@veyyon/ai/instrumentation";
+import { clearAnthropicFastModeFallback, deriveClaudeDeviceId } from "@veyyon/ai/providers/anthropic";
 import { elidedSignatureBytes, signaturePolicy } from "@veyyon/ai/providers/google-shared";
 import { resetOpenAICodexHistoryAfterCompaction } from "@veyyon/ai/providers/openai-codex-responses";
+import { streamSimple } from "@veyyon/ai/stream";
+// Session initialization registers usage backends without loading the AI package barrel.
+import "@veyyon/ai/usage/defaults";
 import { type CursorExecResolvedCarrier, kCursorExecResolved } from "@veyyon/ai/utils/block-symbols";
 import { assistantText } from "@veyyon/ai/utils/message-text";
 import { toolWireSchema } from "@veyyon/ai/utils/schema";
@@ -149,6 +146,11 @@ import type { Effort } from "@veyyon/catalog/effort";
 import { isFireworksFastModelId, toFireworksBaseModelId } from "@veyyon/catalog/fireworks-model-id";
 import { modelsAreEqual } from "@veyyon/catalog/models";
 import { ANTIGRAVITY_PRIMARY_ENDPOINT, ANTIGRAVITY_SANDBOX_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
+import {
+	realizesPriorityServiceTier,
+	resolveModelServiceTier,
+	serviceTierFamily,
+} from "@veyyon/catalog/provider-models/service-tier";
 import type { InMemorySnapshotStore } from "@veyyon/hashline";
 import {
 	COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION,

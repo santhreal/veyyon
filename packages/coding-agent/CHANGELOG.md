@@ -30,6 +30,7 @@
 
 ### Changed
 
+- Startup imports AI streaming helpers and usage registration without evaluating the AI package barrel; usage providers and credential ranking remain available.
 - Evaluator implementations load on the first enabled request instead of session or tool construction, and loaded runtimes register their own process-exit cleanup.
 - URL reader initialization is deferred until an enabled URL read or search; local tools and transcript previews no longer initialize it.
 - Vibe tools load on `/vibe` activation rather than during startup, and failed loading preserves the session toolset.

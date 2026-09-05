@@ -46,7 +46,8 @@ export const WARMUP_STAGES: readonly WarmupStage[] = [
 	// rather than inside the provider graph below.
 	{ name: "@veyyon/catalog/models", load: () => import("@veyyon/catalog/models") },
 	{ name: "@veyyon/catalog/provider-models", load: () => import("@veyyon/catalog/provider-models") },
-	{ name: "@veyyon/ai", load: () => import("@veyyon/ai") },
+	{ name: "@veyyon/ai/stream", load: () => import("@veyyon/ai/stream") },
+	{ name: "@veyyon/ai/usage/defaults", load: () => import("@veyyon/ai/usage/defaults") },
 	{ name: "@veyyon/agent-core", load: () => import("@veyyon/agent-core") },
 	{ name: "@veyyon/tui", load: () => import("@veyyon/tui") },
 	{ name: "advisor", load: () => import("../advisor") },

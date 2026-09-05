@@ -13,7 +13,8 @@
  * Throws on any failure (no model, no key, unparseable output, abort/timeout);
  * the caller falls back to a concrete level and continues the turn.
  */
-import { type ApiKeyResolver, type Context, completeSimple, type Model } from "@veyyon/ai";
+import type { ApiKeyResolver, Context, Model } from "@veyyon/ai";
+import { completeSimple } from "@veyyon/ai/stream";
 import { assistantText } from "@veyyon/ai/utils/message-text";
 import { Effort } from "@veyyon/catalog/effort";
 import { REASONING_SAFE_MAX_TOKENS } from "@veyyon/kernel/session/classifier-tokens";

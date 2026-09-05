@@ -11,7 +11,8 @@
  * and OpenRouter response-cache hits across advisor calls.
  */
 import type { StreamFn } from "@veyyon/agent-core";
-import { type SimpleStreamOptions, streamSimple } from "@veyyon/ai";
+import type { SimpleStreamOptions } from "@veyyon/ai";
+import { streamSimple } from "@veyyon/ai/stream";
 import { isAnthropicFableOrMythosModel } from "@veyyon/catalog/identity";
 import { type Settings, validateProviderMaxInFlightRequests } from "../config/settings";
 

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as ai from "@veyyon/ai";
+import * as aiStream from "@veyyon/ai/stream";
 import { Effort } from "@veyyon/catalog/effort";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { generateCommitMessage } from "@veyyon/coding-agent/utils/commit-message-generator";
@@ -103,7 +104,7 @@ describe("role thinking helper propagation", () => {
 			getApiKey: async () => "test-key",
 			resolver: vi.fn(() => async () => "test-key"),
 		};
-		const completeSimpleMock = vi.spyOn(ai, "completeSimple").mockResolvedValue({
+		const completeSimpleMock = vi.spyOn(aiStream, "completeSimple").mockResolvedValue({
 			stopReason: "end_turn",
 			content: [{ type: "text", text: "<title>Investigate resolver</title>" }],
 		} as never);

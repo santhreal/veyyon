@@ -2,14 +2,8 @@
  * Generate session titles using a smol, fast model.
  */
 import * as path from "node:path";
-import {
-	type Api,
-	type ApiKeyResolver,
-	type AssistantMessage,
-	type Context,
-	completeSimple,
-	type Model,
-} from "@veyyon/ai";
+import type { Api, ApiKeyResolver, AssistantMessage, Context, Model } from "@veyyon/ai";
+import { completeSimple } from "@veyyon/ai/stream";
 import { StreamMarkupHealing } from "@veyyon/ai/utils/stream-markup-healing";
 import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
 import { $env, isTerminalHeadless, logger, prompt } from "@veyyon/utils";
