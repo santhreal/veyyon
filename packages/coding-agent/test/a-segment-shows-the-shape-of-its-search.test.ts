@@ -65,14 +65,7 @@ function runtimeWith(results: readonly ExperimentResult[]): AutoresearchRuntime 
 	return runtime;
 }
 
-/**
- * A descending series of `count` runs: the shape of a loop that keeps winning.
- *
- * Every value is positive whatever the length, because a metric of zero or less
- * is what the row treats as unmeasured: a fixture that walked down through zero
- * made a long series draw as a row of gaps and suppressed itself, so the
- * assertion about a long series was passing on an absent row.
- */
+/** A descending series of `count` runs: the shape of a loop that keeps winning. */
 function descending(count: number): ExperimentResult[] {
 	return Array.from({ length: count }, (_, index) => {
 		const metric = (count - index) * 5;

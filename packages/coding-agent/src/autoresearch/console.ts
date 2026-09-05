@@ -255,7 +255,17 @@ export class LoopConsoleModel {
 			const spec = specs[arm];
 			assigned.push(`a${arm} ${spec && spec.length > 0 ? spec : "session model"}`);
 		}
-		return `${assigned.join(" · ")}.`;
+		// A spec past the last arm was dropped without a word: the setup this row
+		// persists keeps one spec per arm, since the session's prompt lists every
+		// entry as an arm, so a spec typed at breadth 3 was gone after the
+		// breadth stepper came down and the console was reopened. Naming it here
+		// is what lets the reader raise breadth back or delete it on purpose.
+		const spare = specs.slice(this.breadth).filter(spec => spec.length > 0);
+		const unused =
+			spare.length === 0
+				? ""
+				: ` ${spare.map(spec => `"${spec}"`).join(", ")} ${spare.length === 1 ? "has" : "have"} no arm at breadth ${this.breadth}.`;
+		return `${assigned.join(" · ")}.${unused}`;
 	}
 
 	/** The harness, as the first turn finds it. */

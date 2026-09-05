@@ -22,6 +22,7 @@ import {
 	effectiveBreadth,
 	findBaselineMetric,
 	findBestKeptResult,
+	metricLabel,
 	reconstructControlState,
 } from "./state";
 import { type AutoresearchStorage, openAutoresearchStorageIfExists, type RunRow, type SessionRow } from "./storage";
@@ -866,7 +867,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 				asi_summary: asiSummary,
 				description: result.description,
 				has_asi_summary: Boolean(asiSummary),
-				metric_display: formatNum(result.metric, state.metricUnit),
+				metric_display: metricLabel(result, state.metricUnit),
 				run_number: result.runNumber ?? state.results.indexOf(result) + 1,
 				status: result.status,
 				has_deviations: result.scopeDeviations.length > 0,

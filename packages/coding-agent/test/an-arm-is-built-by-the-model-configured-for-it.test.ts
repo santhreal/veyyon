@@ -326,7 +326,12 @@ describe("an arm is built by the model configured for it", () => {
 		}
 	});
 
-	it("hands back one spec per arm, trimmed to the configured breadth", () => {
+	it("hands back one spec per arm, trimmed to the configured breadth, and names the spec that lost its arm", () => {
+		// The persisted setup carries one spec per arm because the session prompt
+		// lists every entry as an arm. A third spec at breadth 2 is therefore not
+		// kept, and the row says so instead of dropping it in silence: the reader
+		// raises breadth or deletes the spec, rather than finding it gone on the
+		// next open.
 		const model = new LoopConsoleModel(
 			{
 				goal: "faster",
@@ -339,6 +344,11 @@ describe("an arm is built by the model configured for it", () => {
 			stubHost(),
 		);
 		expect(model.setup().armModels).toEqual(["sonnet", "gpt-5"]);
+		expect(model.modelSummary()).toBe('a0 sonnet · a1 gpt-5. "glm" has no arm at breadth 2.');
+		// A blank past the last arm is nothing to report; a second spare joins the list.
+		model.models = "sonnet, gpt-5, , glm, opus";
+		expect(model.modelSummary()).toBe('a0 sonnet · a1 gpt-5. "glm", "opus" have no arm at breadth 2.');
+		model.models = "sonnet, gpt-5, ,";
 		expect(model.modelSummary()).toBe("a0 sonnet · a1 gpt-5.");
 	});
 

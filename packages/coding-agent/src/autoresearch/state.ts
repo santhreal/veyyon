@@ -1,5 +1,5 @@
 import type { SessionEntry } from "../session/session-entries";
-import { inferMetricUnitFromName, isBetter } from "./helpers";
+import { formatNum, inferMetricUnitFromName, isBetter } from "./helpers";
 import type { RunRow, SessionRow } from "./storage";
 import type {
 	AutoresearchControlEntryData,
@@ -109,6 +109,31 @@ export function findBaselineMetric(results: ExperimentResult[], segment: number)
 }
 
 /**
+ * The metric this run measured, or null when it holds only the placeholder.
+ *
+ * The log call requires a number on every status, so a crash that measured
+ * nothing is logged with zero; what the harness itself printed, kept beside it,
+ * is what tells that zero from a measurement. A sign test cannot: a session
+ * that minimises `failures` reaches zero as its goal, and a signed delta is
+ * negative on its best run. Both were invisible to Best, to the keep gate, to
+ * confidence and to the trend row while the math read `metric > 0`.
+ *
+ * A crash reads from the harness alone, since its logged number is the
+ * placeholder by contract. Every other status logged the number on purpose, and
+ * that number is the measurement whatever its sign. Every surface that shows,
+ * ranks or compares a run's metric reads it through here.
+ */
+export function measuredMetric(result: ExperimentResult): number | null {
+	return result.status === "crash" ? result.measuredPrimary : result.metric;
+}
+
+/** The measurement as the screen and the prompt print it, or the word for none. */
+export function metricLabel(result: ExperimentResult, unit: string): string {
+	const measured = measuredMetric(result);
+	return measured === null ? "no metric" : formatNum(measured, unit);
+}
+
+/**
  * The best run of a segment: kept, unflagged, and holding a measurement.
  *
  * Four copies of this scan existed — here, in the status row, in the run screen
@@ -126,8 +151,10 @@ export function findBestKeptResult(
 ): ExperimentResult | null {
 	let best: ExperimentResult | null = null;
 	for (const result of currentResults(results, segment)) {
-		if (result.status !== "keep" || result.flagged || result.metric <= 0) continue;
-		if (best === null || isBetter(result.metric, best.metric, direction)) {
+		if (result.status !== "keep" || result.flagged) continue;
+		const metric = measuredMetric(result);
+		if (metric === null) continue;
+		if (best === null || isBetter(metric, best.metric, direction)) {
 			best = result;
 		}
 	}
@@ -186,10 +213,13 @@ export function computeConfidence(
 	segment: number,
 	direction: MetricDirection,
 ): number | null {
-	const current = currentResults(results, segment).filter(result => !result.flagged && result.metric > 0);
+	const current = currentResults(results, segment)
+		.filter(result => !result.flagged)
+		.map(result => ({ result, metric: measuredMetric(result) }))
+		.filter((entry): entry is { result: ExperimentResult; metric: number } => entry.metric !== null);
 	if (current.length < 3) return null;
 
-	const values = current.map(result => result.metric);
+	const values = current.map(entry => entry.metric);
 	const median = sortedMedian(values);
 	const mad = sortedMedian(values.map(value => Math.abs(value - median)));
 	if (mad === 0) return null;
@@ -198,10 +228,10 @@ export function computeConfidence(
 	if (baseline === null) return null;
 
 	let bestKept: number | null = null;
-	for (const result of current) {
-		if (result.status !== "keep" || result.metric <= 0) continue;
-		if (bestKept === null || isBetter(result.metric, bestKept, direction)) {
-			bestKept = result.metric;
+	for (const { result, metric } of current) {
+		if (result.status !== "keep") continue;
+		if (bestKept === null || isBetter(metric, bestKept, direction)) {
+			bestKept = metric;
 		}
 	}
 	if (bestKept === null || bestKept === baseline) return null;

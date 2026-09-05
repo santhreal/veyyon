@@ -55,6 +55,8 @@ import {
 	findBaselineRunNumber,
 	findBaselineSecondary,
 	findBestKeptResult,
+	measuredMetric,
+	metricLabel,
 } from "./state";
 import type { AutoresearchRuntime, ExperimentResult, ExperimentState } from "./types";
 
@@ -121,25 +123,6 @@ function statusPaint(status: ExperimentResult["status"], flagged: boolean): Them
 /** What a run row reports as its outcome: the verdict outranks the status. */
 export function runOutcome(result: ExperimentResult): string {
 	return result.flagged ? "flagged" : result.status;
-}
-
-/**
- * What a run's metric column contains.
- *
- * A crash that produced no measurement still has to log a number, because
- * `log_experiment` requires one, so the loop records the only number it has:
- * zero. Formatted like any other value that read `#6  0ms` in a session where
- * lower is better — the fastest row on the screen was the run that segfaulted.
- * Best and baseline math already skips a crash, so this is where the display
- * states what the number is worth.
- *
- * A harness that printed its metric and then died did measure, and that number
- * is the one the run is worth reading for: it comes from the harness's own
- * output rather than from the logged placeholder.
- */
-export function metricLabel(result: ExperimentResult, unit: string): string {
-	if (result.status !== "crash") return formatNum(result.metric, unit);
-	return result.measuredPrimary === null ? "no metric" : formatNum(result.measuredPrimary, unit);
 }
 
 /**
@@ -271,10 +254,10 @@ export function runScreenRows(runtime: AutoresearchRuntime, sidebarWidth: number
 		const number = result.runNumber ?? index + 1;
 		const isBaseline = findBaselineRunNumber(state.results, segment) === number;
 		const isBest = bests.get(segment) === result;
-		// The change a crash shows is the change of the number it shows: a run that
+		// The change a run shows is the change of the number it shows: a run that
 		// measured nothing is compared against nothing, and the baseline row is the
 		// reference rather than a reading of it.
-		const shown = result.status === "crash" ? result.measuredPrimary : result.metric;
+		const shown = measuredMetric(result);
 		const delta = isBaseline || shown === null ? undefined : formatPercentChange(shown, baseline);
 		runRows.push({
 			value: `run:${number}`,
@@ -496,17 +479,15 @@ function metricTrend(current: readonly ExperimentResult[], best: ExperimentResul
 	// label column and read as a second, shorter series.
 	const budget = current.length > room ? room - 1 : room;
 	const shown = current.length > budget ? current.slice(current.length - budget) : current;
-	const values: Array<number | null> = shown.map(result =>
-		result.status === "crash" ? result.measuredPrimary : result.metric,
-	);
-	const measured = values.filter((value): value is number => value !== null && value > 0);
+	const values: Array<number | null> = shown.map(measuredMetric);
+	const measured = values.filter((value): value is number => value !== null);
 	if (measured.length < 3) return null;
 	const low = Math.min(...measured);
 	const high = Math.max(...measured);
 	const span = high - low;
 	const bars = values.map((value, index) => {
 		const result = shown[index];
-		if (value === null || value <= 0) return theme.fg("dim", "·");
+		if (value === null) return theme.fg("dim", "·");
 		// A flat segment is mid-height, not a row of floors: every run measured the
 		// same number, which is a real and legible answer.
 		const level = span === 0 ? 3 : Math.min(7, Math.floor(((value - low) / span) * 8));
@@ -605,10 +586,10 @@ function runDetail(result: ExperimentResult, state: ExperimentState, width: numb
 	const baselineSecondary = findBaselineSecondary(state.results, result.segment, state.secondaryMetrics);
 	const isBaseline = findBaselineRunNumber(state.results, result.segment) === result.runNumber;
 	const isBest = findBestKeptResult(state.results, result.segment, state.bestDirection) === result;
-	// The comparison is against the number the row shows: a crash that measured
+	// The comparison is against the number the row shows: a run that measured
 	// nothing has none, and reading its logged zero against a 205ms baseline
 	// printed `0ms  -100.0%`, a claim about a run that never finished.
-	const shown = result.status === "crash" ? result.measuredPrimary : result.metric;
+	const shown = measuredMetric(result);
 	const change = shown === null ? undefined : formatPercentChange(shown, baseline);
 	const lines: string[] = [];
 	// The verdict and the reviewer on one row: kept, certified by c, is one fact,

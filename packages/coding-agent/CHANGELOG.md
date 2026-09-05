@@ -22,6 +22,8 @@
 ### Fixed
 
 - Interrupting Claude mid-thinking no longer fails every later turn with `Refusal (reasoning_extraction)` on an endpoint that enforces the classifier: the hidden continuity message that carries the unfinished reasoning states which turn it came from, and the request drops it on same-model replay to a signing Anthropic endpoint, and after one refusal on any other, instead of re-sending it on the retry and for the rest of the session.
+- A logged metric of zero or below is a measurement: a session minimising a count tags the kept run that reached zero as best, and a signed metric's negative runs are ranked by direction in the Best row, the keep gate of `log_experiment`, the confidence figure, the `Trend` row and the prompt's recent-run rows; only a crash's logged placeholder reads as unmeasured, and it prints `no metric` in the prompt as it does on screen.
+- The setup form's models note states a spec past the last arm (`"glm" has no arm at breadth 2.`), which the persisted setup dropped without a word when breadth came down.
 
 ## [1.4.0] - 2026-09-04
 
