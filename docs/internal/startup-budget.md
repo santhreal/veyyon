@@ -31,10 +31,13 @@ container configuration before either executable starts.
 Bundled and resolved model snapshots use `@veyyon/utils/json-snapshot`. Each write
 serializes its payload once; each read verifies the fingerprint and payload bytes
 before parsing. Replacement is atomic without a durability flush because a missing
-or invalid snapshot rebuilds from its inputs. Bundled format v3 and resolved-stage
-format v8 reject snapshots from preceding formats. The resolved stage stores only
+or invalid snapshot rebuilds from its inputs. Bundled format v4 and resolved-stage
+format v9 reject snapshots from preceding formats. The resolved stage stores only
 discovery-derived models and provider state; bundled records use the catalog cache.
 Provider overrides are applied after loading the bundled records on each launch.
+
+Endpoint host markers compile once as literal, case-insensitive patterns. Matching
+does not allocate a normalized URL and does not fold punctuation or control characters.
 
 ## Measure it
 

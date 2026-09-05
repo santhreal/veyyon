@@ -283,14 +283,14 @@ describe("static model stage snapshot", () => {
 		const payloadDigest = createHash("sha256").update(payload).digest("hex");
 		const staleHeader =
 			variant === "fingerprint"
-				? { fingerprint: header.fingerprint.replace(/^[^:]+/, "7"), payloadDigest }
+				? { fingerprint: header.fingerprint.replace(/^[^:]+/, "8"), payloadDigest }
 				: { fingerprint: header.fingerprint, stageDigest: payloadDigest };
 		fs.writeFileSync(snapshotPath, `${JSON.stringify(staleHeader)}\n${payload}`);
 
 		launch();
 
 		expect(readSnapshot().stage.cachedStandard.authoritativeFreshProviders).toEqual(expectedProviders);
-		expect(readSnapshot().header.fingerprint.split(":")[0]).toBe("8");
+		expect(readSnapshot().header.fingerprint.split(":")[0]).toBe("9");
 	});
 
 	it("a snapshot naming another fingerprint misses rather than serving", async () => {

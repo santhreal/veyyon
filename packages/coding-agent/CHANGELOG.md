@@ -30,6 +30,7 @@
 
 ### Changed
 
+- Model discovery snapshots from earlier host-classification rules rebuild before model selection.
 - Resolved model snapshots no longer duplicate the bundled catalog; model selection and provider overrides are unchanged.
 - Resolved model snapshots use shared byte-integrity checks and atomic replacement without durability flushes; obsolete snapshots rebuild before model selection.
 - Startup imports AI streaming helpers and usage registration without evaluating the AI package barrel; usage providers and credential ranking remain available.

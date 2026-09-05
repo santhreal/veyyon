@@ -10,6 +10,7 @@
  * positive is dangerous, e.g. the Anthropic official-endpoint OAuth gate —
  * parse the URL and compare the hostname themselves.
  */
+import { escapeRegExp } from "@veyyon/utils/regex";
 
 interface HostClassSpec {
 	/** Provider ids that imply this host class regardless of baseUrl. */
@@ -71,12 +72,20 @@ export const KNOWN_HOSTS = {
 
 export type KnownHost = keyof typeof KNOWN_HOSTS;
 
+// Non-global, non-Unicode patterns preserve ASCII case folding without allocating
+// a normalized URL on every lookup or folding punctuation into control characters.
+const HOST_URL_PATTERNS = Object.fromEntries(
+	Object.entries(KNOWN_HOSTS).map(([host, spec]) => [
+		host,
+		spec.urlMarkers.map(marker => new RegExp(escapeRegExp(marker), "i")),
+	]),
+) as Record<KnownHost, readonly RegExp[]>;
+
 /** URL-only host check (for call sites that have no provider id, e.g. raw env config). */
 export function hostMatchesUrl(baseUrl: string | undefined, host: KnownHost): boolean {
 	if (!baseUrl) return false;
-	const spec: HostClassSpec = KNOWN_HOSTS[host];
-	for (const marker of spec.urlMarkers) {
-		if (includesAsciiCaseInsensitive(baseUrl, marker)) return true;
+	for (const pattern of HOST_URL_PATTERNS[host]) {
+		if (pattern.test(baseUrl)) return true;
 	}
 	return false;
 }
@@ -176,19 +185,6 @@ export function modelMatchesHost(model: { provider: string; baseUrl: string }, h
 		}
 	}
 	return hostMatchesUrl(model.baseUrl, host);
-}
-
-function includesAsciiCaseInsensitive(value: string, lowerNeedle: string): boolean {
-	const needleLength = lowerNeedle.length;
-	const end = value.length - needleLength;
-	for (let start = 0; start <= end; start++) {
-		let offset = 0;
-		for (; offset < needleLength; offset++) {
-			if ((value.charCodeAt(start + offset) | 0x20) !== lowerNeedle.charCodeAt(offset)) break;
-		}
-		if (offset === needleLength) return true;
-	}
-	return false;
 }
 
 // --- Endpoint-shape predicates (URL path/verb shapes, not vendor hosts) ---

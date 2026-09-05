@@ -35,7 +35,7 @@ const modelsSource = modelsSourceJson as unknown as string;
  * Bump this version whenever the resolved record's contract changes, the same
  * way `CACHE_SCHEMA_VERSION` is bumped in `model-cache.ts` for cached specs.
  */
-const ENRICHED_REGISTRY_FORMAT_VERSION = 3;
+const ENRICHED_REGISTRY_FORMAT_VERSION = 4;
 let modelRegistry: Map<string, Map<string, Model<Api>>> | undefined;
 let parsedModels: BundledModelsJson | undefined;
 let catalogDigest: string | undefined;

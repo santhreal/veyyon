@@ -31,7 +31,7 @@ import { createEnrichedRegistrySnapshotStore } from "../src/registry-snapshot";
 import type { Api, Model } from "../src/types";
 
 /** Pinned so an unrecorded format change cannot silently reuse old snapshots. */
-const FORMAT_VERSION_PREFIX = "v3:";
+const FORMAT_VERSION_PREFIX = "v4:";
 
 function writeEnrichedRegistrySnapshot(
 	registry: Map<string, Map<string, Model<Api>>>,
@@ -88,7 +88,13 @@ describe("the enriched catalog snapshot is exact or ignored", () => {
 
 	it("refuses a snapshot whose fingerprint names another catalog or format", () => {
 		writeEnrichedRegistrySnapshot(liveRegistry(), `${FORMAT_VERSION_PREFIX}test`, dbPath);
-		expect(readEnrichedRegistrySnapshot("v3:different", dbPath)).toBeNull();
+		expect(readEnrichedRegistrySnapshot(`${FORMAT_VERSION_PREFIX}different`, dbPath)).toBeNull();
+	});
+
+	it("rejects the previous resolved format even when catalog bytes are unchanged", () => {
+		const current = enrichedRegistryFingerprint();
+		writeEnrichedRegistrySnapshot(liveRegistry(), current.replace(/^v4:/, "v3:"), dbPath);
+		expect(readEnrichedRegistrySnapshot(current, dbPath)).toBeNull();
 	});
 
 	it("refuses a corrupt file instead of serving partial records", () => {

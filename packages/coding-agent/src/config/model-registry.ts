@@ -835,7 +835,7 @@ function getDisabledProviderIdsFromSettings(): Set<string> {
  * state produced under retired rules — the same discipline as
  * `CACHE_SCHEMA_VERSION` in `@veyyon/catalog/model-cache`.
  */
-const REGISTRY_SNAPSHOT_VERSION = 8;
+const REGISTRY_SNAPSHOT_VERSION = 9;
 
 interface StaticModelStage {
 	createdAt: number;
