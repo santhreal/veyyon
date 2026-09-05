@@ -337,7 +337,7 @@ import { normalizeDiff, ParseError } from "../edit/diff";
 import { getFileSnapshotStore } from "../edit/file-snapshot-store";
 import { previewPatch } from "../edit/modes/patch";
 import { normalizeToLF, stripBom } from "../edit/normalize";
-import { executePython as executePythonCommand, type PythonResult } from "../eval/py/executor";
+import type { PythonResult } from "../eval/py/executor";
 // The leaf, not `../eval/py`: that module declares the Python backend descriptor and reaches
 // hundreds of modules, and all this needs is the id prefix.
 import { namespaceSessionId as namespacePythonSessionId } from "../eval/py/session-namespace";
@@ -467,6 +467,7 @@ import { clampTimeout } from "../tools/core/tool-timeouts";
 import { assertEditableFile } from "../tools/fs/auto-generated-guard";
 import type { CheckpointState, CompletedRewindState } from "../tools/fs/checkpoint";
 import type { BashExecutionMessage, PythonExecutionMessage } from "../tools/shell/execution-messages";
+import { loadPythonExecutor } from "../tools/shell/manifest";
 import { parseCommandArgs } from "../utils/command-args";
 import { type EditMode, resolveEditMode } from "../utils/edit-mode";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
@@ -16170,6 +16171,8 @@ export class AgentSession {
 					cwd,
 					getSessionFile: () => this.sessionManager.getSessionFile() ?? null,
 				});
+			const { executePython: executePythonCommand } = await loadPythonExecutor();
+			this.assertEvalExecutionAllowed();
 			const result = await executePythonCommand(code, {
 				cwd,
 				sessionId: namespacePythonSessionId(sessionId),

@@ -19,6 +19,7 @@ import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import { abortDetached } from "@veyyon/kernel/session/detached-abort";
 import { createInterruptedTurnAbortMessage } from "@veyyon/kernel/session/exit-diagnostics";
 import { OperatorNotices, stderrNoticeSink } from "@veyyon/kernel/session/operator-notices";
+import { disposeOwnedResources } from "@veyyon/kernel/session/owned-resources";
 import { getRestorableSessionModels } from "@veyyon/kernel/session/session-context";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { optionalNumber } from "@veyyon/kernel/settings/optional-number";
@@ -88,10 +89,6 @@ import {
 	selectDiscoverableToolNamesByServer,
 	summarizeDiscoverableTools,
 } from "./discovery/tool-index";
-import { disposeAllJuliaKernelSessions, disposeJuliaKernelSessionsByOwner } from "./eval/jl/executor";
-import { disposeAllVmContexts, disposeVmContextsByOwner } from "./eval/js/context-manager";
-import { disposeAllKernelSessions, disposeKernelSessionsByOwner } from "./eval/py/executor";
-import { disposeAllRubyKernelSessions, disposeRubyKernelSessionsByOwner } from "./eval/rb/executor";
 import { defaultEvalSessionId } from "./eval/session-id";
 import { getExaMcpTools } from "./exa/tools";
 import { TtsrManager } from "./export/ttsr";
@@ -323,19 +320,6 @@ function registerSshCleanup(): void {
 	postmortem.register("ssh-cleanup", cleanupSshResources);
 }
 
-let evalCleanupRegistered = false;
-
-function registerEvalCleanup(): void {
-	if (evalCleanupRegistered) return;
-	evalCleanupRegistered = true;
-	postmortem.register("python-cleanup", disposeAllKernelSessions);
-	postmortem.register("ruby-cleanup", disposeAllRubyKernelSessions);
-	postmortem.register("julia-cleanup", disposeAllJuliaKernelSessions);
-	// JS eval worker/subprocess: reap on hard process exit too, the same as the
-	// kernels above, so it cannot outlive the process (GRAN-11).
-	postmortem.register("js-eval-cleanup", disposeAllVmContexts);
-}
-
 // Factory
 
 /**
@@ -376,7 +360,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	const eventBus = options.eventBus ?? new EventBus();
 
 	registerSshCleanup();
-	registerEvalCleanup();
 
 	// Pin authStorage to modelRegistry.authStorage: ModelRegistry.getApiKey() routes refresh
 	// failures through that instance, so any divergent storage handed to the bridge / mcpManager
@@ -3829,10 +3812,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					await asyncJobManager.dispose({ timeoutMs: 3_000 });
 				}
 				if (evalKernelOwnerId) {
-					await disposeKernelSessionsByOwner(evalKernelOwnerId);
-					await disposeRubyKernelSessionsByOwner(evalKernelOwnerId);
-					await disposeJuliaKernelSessionsByOwner(evalKernelOwnerId);
-					await disposeVmContextsByOwner(evalKernelOwnerId);
+					await disposeOwnedResources("eval-kernel-owner", evalKernelOwnerId);
 				}
 				if (mcpManager && mcpManager !== options.mcpManager) {
 					await mcpManager.disconnectAll();

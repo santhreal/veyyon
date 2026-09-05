@@ -2,7 +2,6 @@ import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallb
 import type { ImageContent, ToolExample } from "@veyyon/ai";
 import { errorMessage, formatCount, logger, prompt, truncate } from "@veyyon/utils";
 import { type } from "arktype";
-import { jsBackend, juliaBackend, pythonBackend, rubyBackend } from "../../eval";
 import type { ExecutorBackend, ExecutorBackendResult } from "../../eval/backend";
 import { EVAL_TIMEOUT_PAUSE_OP, EVAL_TIMEOUT_RESUME_OP } from "../../eval/bridge-timeout";
 import { IdleTimeout } from "../../eval/idle-timeout";
@@ -34,6 +33,7 @@ import { toolResult } from "../core/tool-result";
 import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice, TOOL_TIMEOUTS } from "../core/tool-timeouts";
 import { type EvalBackendsAllowance, resolveEvalBackends } from "./eval-backends";
 import { evalToolView } from "./eval-view";
+import { evalBackendLoaders } from "./manifest";
 
 /** Language tokens the eval tool accepts, in stable display order. */
 export type EvalLanguageToken = "py" | "js" | "rb" | "jl";
@@ -306,6 +306,7 @@ async function resolveBackend(session: ToolSession, language: EvalLanguage): Pro
 
 	if (language === "python") {
 		if (!allowPy) throw new ToolError("Python backend is disabled (VEYYON_PY=0 or eval.py = false).");
+		const pythonBackend = await evalBackendLoaders.python();
 		if (!(await pythonBackend.isAvailable(session))) {
 			const alternatives = [allowJs ? '"js"' : null, allowRb ? '"rb"' : null, allowJl ? '"jl"' : null].filter(
 				Boolean,
@@ -320,6 +321,7 @@ async function resolveBackend(session: ToolSession, language: EvalLanguage): Pro
 	}
 	if (language === "ruby") {
 		if (!allowRb) throw new ToolError("Ruby backend is disabled (VEYYON_RB=0 or eval.rb = false).");
+		const rubyBackend = await evalBackendLoaders.ruby();
 		if (!(await rubyBackend.isAvailable(session))) {
 			const alternatives = [allowJs ? '"js"' : null, allowPy ? '"py"' : null, allowJl ? '"jl"' : null].filter(
 				Boolean,
@@ -334,6 +336,7 @@ async function resolveBackend(session: ToolSession, language: EvalLanguage): Pro
 	}
 	if (language === "julia") {
 		if (!allowJl) throw new ToolError("Julia backend is disabled (VEYYON_JL=0 or eval.jl = false).");
+		const juliaBackend = await evalBackendLoaders.julia();
 		if (!(await juliaBackend.isAvailable(session))) {
 			const alternatives = [allowJs ? '"js"' : null, allowPy ? '"py"' : null, allowRb ? '"rb"' : null].filter(
 				Boolean,
@@ -347,6 +350,7 @@ async function resolveBackend(session: ToolSession, language: EvalLanguage): Pro
 		return { backend: juliaBackend };
 	}
 	if (!allowJs) throw new ToolError("JavaScript backend is disabled (VEYYON_JS=0 or eval.js = false).");
+	const jsBackend = await evalBackendLoaders.js();
 	return { backend: jsBackend };
 }
 function formatEvalInputLanguage(value: string): string {

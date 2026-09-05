@@ -38,6 +38,12 @@ The tool is `concurrency = "exclusive"` for a session, so calls do not overlap.
 
 Each Python kernel is a single subprocess: `<resolved-python> -u <runner.py>`. The runner is bundled with the host binary (Bun text import), written to a `veyyon-python-runner` cache under the OS temp directory once per script hash, and reused by subsequent spawns.
 
+Importing the SDK or session class does not load evaluator implementations. The first `$` Python command
+loads its executor through the shell domain manifest. Constructing `eval` and reading its metadata do
+not load evaluators; the first enabled request loads only its selected language.
+Each loaded evaluator registers process-exit cleanup beside its resource pool. Session disposal
+releases that session's resources without loading unused evaluators.
+
 Kernel startup sequence:
 
 1. Availability check (`checkPythonKernelAvailability`): verifies that a Python interpreter resolves and runs.

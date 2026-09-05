@@ -30,6 +30,7 @@
 
 ### Changed
 
+- Evaluator implementations load on the first enabled request instead of session or tool construction, and loaded runtimes register their own process-exit cleanup.
 - URL reader initialization is deferred until an enabled URL read or search; local tools and transcript previews no longer initialize it.
 - Vibe tools load on `/vibe` activation rather than during startup, and failed loading preserves the session toolset.
 - The settings schema registry is `@veyyon/kernel/settings/schema` and `config/optional-number` is `@veyyon/kernel/settings/optional-number`; `config/settings-schema` composes the domain tables through `declareSettings` and still exports the queries (`getDefault`, `getType`, `getUi`, `hasUi`, `getPathsForTab`, `retiredBy`, `isSettingPath`, `getEnumValues`, `isUnsetNumberPath`, `describeSettingTypeMismatch`), the `SettingPath` and `SettingValue` types, `SETTINGS_SCHEMA`, the tab metadata and the typed groups, so importing a query loads the tables it reads. No setting, default or config file changes.

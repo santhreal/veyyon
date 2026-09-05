@@ -9,6 +9,8 @@
  * one of the six the dynamic-import baseline names for it.
  */
 import type { ToolDomainManifest } from "@veyyon/kernel/registry/tool-domain";
+import type { ExecutorBackend } from "../../eval/backend";
+import type { EvalLanguage } from "../../eval/types";
 import type { BuiltinToolName } from "../core/builtin-names";
 import type { ToolFactory } from "../index";
 import { bashExecutionKind, pythonExecutionKind } from "./execution-messages";
@@ -21,6 +23,19 @@ export const shellTools = {
 	eval: async s => (await import("./eval")).EvalTool.create(s),
 	ssh: async s => (await import("./ssh")).loadSshTool(s),
 } satisfies Partial<Record<BuiltinToolName, ToolFactory>>;
+
+/** Load Python execution only when a session reaches a Python command. */
+export function loadPythonExecutor() {
+	return import("../../eval/py/executor");
+}
+
+/** Runtime dispatch occurs after the requested language passes its session allowance. */
+export const evalBackendLoaders = {
+	python: async () => (await import("../../eval/py")).default,
+	js: async () => (await import("../../eval/js")).default,
+	ruby: async () => (await import("../../eval/rb")).default,
+	julia: async () => (await import("../../eval/jl")).default,
+} satisfies Record<EvalLanguage, () => Promise<ExecutorBackend>>;
 
 /**
  * The two roles the domain records, a `!` command and a `$` run, ride on the manifest as kinds: they

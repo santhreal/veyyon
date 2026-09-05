@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { registerOwnedResourceDisposer } from "@veyyon/kernel/session/owned-resources";
-import { errorMessage, getProjectDir, isCancellation, isTimeoutError, logger } from "@veyyon/utils";
+import { errorMessage, getProjectDir, isCancellation, isTimeoutError, logger, postmortem } from "@veyyon/utils";
 import { Settings } from "../config/settings";
 import { gateSessionCpuSpawn } from "../session/cpu-limit";
 import { OutputSink } from "../session/streaming-output";
@@ -1090,6 +1090,7 @@ export function createKernelExecutionDriver<
 		scope: "eval-kernel-owner",
 		dispose: disposeByOwner,
 	});
+	postmortem.register(`${logLabel}-cleanup`, disposeAll);
 
 	return {
 		pool,

@@ -792,3 +792,4 @@ registerOwnedResourceDisposer({
 	scope: "eval-kernel-owner",
 	dispose: disposeVmContextsByOwner,
 });
+postmortem.register("js-eval-cleanup", disposeAllVmContexts);
