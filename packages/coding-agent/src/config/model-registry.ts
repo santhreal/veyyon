@@ -737,9 +737,7 @@ function applyStandaloneCustomModelPolicies(model: CustomModelOverlay): CustomMo
 
 function finalizeCustomModel(model: CustomModelOverlay, options: CustomModelBuildOptions): Model<Api> {
 	const resolvedModel = options.useDefaults ? applyStandaloneCustomModelPolicies(model) : model;
-	const reference = options.useDefaults
-		? resolveBundledModelReference(resolvedModel.id)
-		: undefined;
+	const reference = options.useDefaults ? resolveBundledModelReference(resolvedModel.id) : undefined;
 	const cost =
 		resolvedModel.cost ??
 		reference?.cost ??

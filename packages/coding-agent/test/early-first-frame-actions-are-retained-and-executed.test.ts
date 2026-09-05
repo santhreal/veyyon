@@ -33,12 +33,8 @@
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
-import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides, setAgentDir } from "@veyyon/utils/dirs";
-import { resetKeybindingsForTests } from "@veyyon/utils/keybindings";
-import type { KeyId } from "@veyyon/utils/keys";
-import { YAML } from "bun";
+import * as path from "node:path";
 import { Agent, type AgentMessage } from "@veyyon/agent-core";
 import type { ImageContent } from "@veyyon/ai";
 import { createMockModel, type MockModel, type MockResponse } from "@veyyon/ai/providers/mock";
@@ -69,6 +65,10 @@ import { canonicalizeImageContent } from "@veyyon/coding-agent/utils/image-resiz
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
+import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides, setAgentDir } from "@veyyon/utils/dirs";
+import { resetKeybindingsForTests } from "@veyyon/utils/keybindings";
+import type { KeyId } from "@veyyon/utils/keys";
+import { YAML } from "bun";
 
 const TINY_PNG_1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
 const TINY_PNG_2 =
@@ -956,7 +956,11 @@ describe("early first-frame actions are retained and executed", () => {
 		const picker = mode.ui.getFocused();
 		expect(picker).toBeInstanceOf(ModelPickerComponent);
 
-		const { promise: focusReturned, resolve: onFocusReturned, reject: onFocusTimeout } = Promise.withResolvers<void>();
+		const {
+			promise: focusReturned,
+			resolve: onFocusReturned,
+			reject: onFocusTimeout,
+		} = Promise.withResolvers<void>();
 		const startCheckTime = Date.now();
 		const timeoutMs = 2000;
 		const checkFocus = () => {

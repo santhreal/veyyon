@@ -488,7 +488,6 @@ export class TtsrManager {
 		if (scope.allowText) this.#canMatchText = true;
 		if (scope.allowThinking) this.#canMatchThinking = true;
 
-
 		return true;
 	}
 

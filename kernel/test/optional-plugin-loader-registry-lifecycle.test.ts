@@ -551,7 +551,6 @@ describe("Optional Plugin Manifest & Loader Invariants", () => {
 				/no message kind for role "undeclaredRole"/,
 			);
 		});
-
 	});
 
 	describe("9. Tool Proxy & Legacy Definition Markers", () => {

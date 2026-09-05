@@ -7,11 +7,11 @@
  * ({@link buildModelReferenceIndex}).
  */
 import {
+	type GeneratedProvider,
 	getBundledModel,
 	getBundledModels,
 	getBundledProviders,
 	iterateBundledModelMetadata,
-	type GeneratedProvider,
 } from "../models";
 import type { Api, Model } from "../types";
 import {

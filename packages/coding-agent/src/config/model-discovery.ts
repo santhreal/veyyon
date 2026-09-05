@@ -656,7 +656,7 @@ export async function discoverOpenAIModelsList(
 		? await withAuth(apiKey, key => attempt({ ...baseHeaders, Authorization: `Bearer ${key}` }))
 		: await attempt(baseHeaders);
 	const models = payload.data ?? [];
-	
+
 	const discovered: Model<Api>[] = [];
 	for (const item of models) {
 		const id = item.id;
@@ -722,7 +722,7 @@ export async function discoverLiteLLMModels(
 	ctx: DiscoveryContext,
 ): Promise<Model<Api>[]> {
 	const baseUrl = normalizeLiteLLMDiscoveryBaseUrl(providerConfig.baseUrl);
-	
+
 	const resolveReference = (id: string) => resolveBundledModelReference(id) as ModelSpec<Api> | undefined;
 	const baseHeaders: Record<string, string> = { ...(providerConfig.headers ?? {}) };
 	let headers = baseHeaders;

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { buildModel } from "./build";
-import modelsSourceJson from "./models.json" with { type: "text" };
 import type { ModelReferenceCandidate } from "./identity/reference";
+import modelsSourceJson from "./models.json" with { type: "text" };
 import type { Api, Model, ModelSpec, Usage } from "./types";
 
 /**
