@@ -51,9 +51,9 @@ button states why it cannot start while it cannot: `needs a goal` or
 | Field | Keys |
 |---|---|
 | Goal | Type to edit; a click places the caret; `ctrl+u` clears the row. Enter starts the swarm. |
-| Preset | `←` `→` or space pick the next preset; a click picks the one under the pointer. The preset the fields equal is painted as in force; `delete` removes it when it is a saved one. |
+| Preset | `←` `→` or space pick the next preset; a click picks the one under the pointer. The preset the fields equal is painted as in force; `delete` removes it when it is a saved one. A row of presets wider than the card scrolls to keep the one in force on it, with `…` where presets are hidden. |
 | Breadth | `←` `→`, or a digit, between 2 and 8; a click on `◂` or `▸` steps. |
-| Models | Type one spec per arm, comma separated; `ctrl+u` clears the row. |
+| Models | Type one spec per arm, comma separated; `ctrl+u` clears the row. Enter moves to Attempts. |
 | Attempts | `←` `→`, or a digit, between 1 and 5: retries before an arm is abandoned. |
 | Certify | `←`, `→`, space, Enter or a click toggles cross-review. |
 | Iterations | `←` `→` or typed digits, appending as typed; backspace drops the last digit; `0` is `auto`, which leaves the cap to the model. |

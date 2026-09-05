@@ -18,14 +18,15 @@
  *   digit, and the arrow glyphs are click targets.
  * - `toggle`: a switch. Space, Enter, ←→ and a click flip it.
  * - `segmented`: one of a few options in a row. ←→ walk them, a click on an
- *   option picks it.
+ *   option picks it. A strip wider than the row is windowed so the chosen
+ *   option is on it.
  * - `button`: Enter or a click presses it; a disabled button states why.
  * - `note`: prose that takes no focus, wrapped to the form.
  *
  * Keys the ring owns: ↑↓ and Tab/Shift+Tab move focus over the fields that
- * take it; Escape is {@link Form.onCancel}; Enter on a text field is
- * {@link Form.onSubmit} (the dialog's default action) when the field has no
- * submit of its own.
+ * take it; Escape is {@link Form.onCancel}; Enter on a text field is the
+ * field's own submit, else {@link Form.onSubmit} (the dialog's default
+ * action), else it moves the ring to the next field.
  */
 import { extractPrintableText, matchesKey } from "../keys";
 import type { MouseRoutable, SgrMouseEvent } from "../mouse";
@@ -47,7 +48,7 @@ export interface FormTextField extends FormFieldBase {
 	/** Shown dimmed in place of an empty value. */
 	placeholder?: string;
 	onChange: (value: string) => void;
-	/** Enter on this field. Absent, Enter is the form's submit. */
+	/** Enter on this field. Absent, Enter is the form's submit, or moves on when the form has none. */
 	onSubmit?: () => void;
 }
 
@@ -147,6 +148,8 @@ const LABEL_GAP = 2;
 const MARKER_WIDTH = 2;
 /** Columns between the chips of a segmented field. */
 const SEGMENT_GAP = 2;
+/** Columns the leading ellipsis of a windowed chip strip takes. */
+const ELLIPSIS_WIDTH = 1;
 
 export class Form implements Component, Focusable, MouseRoutable {
 	focused = false;
@@ -304,8 +307,11 @@ export class Form implements Component, Focusable, MouseRoutable {
 		const input = this.#inputs.get(field.id);
 		if (!input) return;
 		if (isEnter(data)) {
+			// Enter submits where something takes the submit; otherwise it moves
+			// on, since a field that swallows Enter reads as a form that is stuck.
 			if (field.onSubmit) field.onSubmit();
-			else this.onSubmit?.();
+			else if (this.onSubmit) this.onSubmit();
+			else this.#move(1);
 			return;
 		}
 		const before = input.getValue();
@@ -326,7 +332,6 @@ export class Form implements Component, Focusable, MouseRoutable {
 	#stepperKey(field: FormStepperField, data: string): void {
 		const delta = matchesKey(data, "left") ? -1 : matchesKey(data, "right") ? 1 : 0;
 		if (delta !== 0) {
-			this.#typingInto = null;
 			this.#step(field, delta);
 			return;
 		}
@@ -357,6 +362,9 @@ export class Form implements Component, Focusable, MouseRoutable {
 	}
 
 	#step(field: FormStepperField, delta: number): void {
+		// A step ends a run of typed digits, whether it came by key or by click:
+		// the next digit replaces the stepped value rather than appending to it.
+		this.#typingInto = null;
 		const next = clampLow(field.value + delta, field.min, field.max);
 		if (next !== field.value) field.onChange(next);
 	}
@@ -365,7 +373,15 @@ export class Form implements Component, Focusable, MouseRoutable {
 		const delta = matchesKey(data, "left") ? -1 : matchesKey(data, "right") || data === " " ? 1 : 0;
 		if (delta === 0 || field.options.length === 0) return;
 		const current = field.options.findIndex(option => option.value === field.value);
-		const next = field.options[(current + delta + field.options.length) % field.options.length]!;
+		// With nothing chosen, → is the first option and ← the last; the walk
+		// from -1 would otherwise land ← on the second to last.
+		const index =
+			current < 0
+				? delta > 0
+					? 0
+					: field.options.length - 1
+				: (current + delta + field.options.length) % field.options.length;
+		const next = field.options[index]!;
 		if (next.value !== field.value) field.onChange(next.value);
 	}
 
@@ -499,13 +515,29 @@ export class Form implements Component, Focusable, MouseRoutable {
 				}
 				case "segmented": {
 					// Chips from the column, two cells apart; the chosen one is painted.
+					// A strip wider than the value area is windowed so the chosen chip
+					// is on the row: the chips before the window are one ellipsis.
+					const widths = field.options.map(option => visibleWidth(option.label));
+					const chosen = field.options.findIndex(option => option.value === field.value);
+					let first = 0;
+					const chosenEnd = (): number => {
+						let end = first > 0 ? ELLIPSIS_WIDTH + SEGMENT_GAP : 0;
+						for (let index = first; index <= chosen; index++)
+							end += widths[index]! + (index > first ? SEGMENT_GAP : 0);
+						return end;
+					};
+					while (first < chosen && chosenEnd() > valueWidth) first++;
 					const parts: string[] = [];
 					let col = valueCol;
-					for (const option of field.options) {
-						const optionWidth = visibleWidth(option.label);
-						targets.push({ value: option.value, col, width: optionWidth });
+					if (first > 0) {
+						parts.push(theme.muted("…"));
+						col += ELLIPSIS_WIDTH + SEGMENT_GAP;
+					}
+					for (let index = first; index < field.options.length; index++) {
+						const option = field.options[index]!;
+						targets.push({ value: option.value, col, width: widths[index]! });
 						parts.push(option.value === field.value ? theme.active(option.label) : theme.control(option.label));
-						col += optionWidth + SEGMENT_GAP;
+						col += widths[index]! + SEGMENT_GAP;
 					}
 					body = truncateToWidth(parts.join(padding(SEGMENT_GAP)), valueWidth);
 					break;

@@ -199,6 +199,17 @@ describe("a form field answers the keys and the pointer its kind takes", () => {
 		expect(state.text).toBe("hello,  world ");
 	});
 
+	it("moves the ring on Enter from a text field that has no submit of its own on a form with none", () => {
+		const { form } = fixture();
+		form.onSubmit = undefined;
+		form.setFields([
+			{ kind: "text", id: "a", label: "A", value: "", onChange: () => {} },
+			{ kind: "text", id: "b", label: "B", value: "", onChange: () => {} },
+		]);
+		form.handleInput(ENTER);
+		expect(form.focusedField?.id).toBe("b");
+	});
+
 	it("submits on Enter from a text field: the field's own submit first, the form's otherwise", () => {
 		const { form, state, press } = fixture();
 		press("text", ENTER);
@@ -272,6 +283,36 @@ describe("a form field answers the keys and the pointer its kind takes", () => {
 		expect(value).toBe(0);
 	});
 
+	it("ends a run of typed digits on a clicked arrow, so the next digit replaces the stepped value", () => {
+		const { form } = fixture();
+		let value = 0;
+		const wide = (): FormField[] => [
+			{
+				kind: "stepper",
+				id: "n",
+				label: "N",
+				value,
+				min: 0,
+				max: 999,
+				onChange: next => {
+					value = next;
+				},
+			},
+		];
+		form.setFields(wide());
+		form.handleInput("2");
+		form.setFields(wide());
+		expect(value).toBe(2);
+		// `◂ 2 ▸` from the value column 5: the increment arrow is cell 9.
+		form.render(40);
+		form.routeMouse(click(9), 0, 9);
+		form.setFields(wide());
+		expect(value).toBe(3);
+		// Appended, this would be 34.
+		form.handleInput("4");
+		expect(value).toBe(4);
+	});
+
 	it("flips a switch on Space, Enter and ←→, and nothing else", () => {
 		const { state, press } = fixture();
 		press("on", " ");
@@ -296,6 +337,70 @@ describe("a form field answers the keys and the pointer its kind takes", () => {
 		expect(state.choice).toBe("c");
 		press("choice", "a");
 		expect(state.choice).toBe("c");
+	});
+
+	it("walks a segmented field with nothing chosen onto its first option with → and its last with ←", () => {
+		const { form } = fixture();
+		const state: { choice: string | null } = { choice: null };
+		const fields = (): FormField[] => [
+			{
+				kind: "segmented",
+				id: "c",
+				label: "C",
+				options: [
+					{ value: "a", label: "A" },
+					{ value: "b", label: "B" },
+					{ value: "c", label: "C" },
+				],
+				value: state.choice,
+				onChange: value => {
+					state.choice = value;
+				},
+			},
+		];
+		const chosen = (): string | null => state.choice;
+		form.setFields(fields());
+		form.handleInput(LEFT);
+		expect(chosen()).toBe("c");
+		state.choice = null;
+		form.setFields(fields());
+		form.handleInput(RIGHT);
+		expect(chosen()).toBe("a");
+	});
+
+	it("windows a chip strip wider than the row so the chosen chip is painted and clickable", () => {
+		const { form } = fixture();
+		let choice = "opt-8";
+		const options = Array.from({ length: 9 }, (_, index) => ({ value: `opt-${index}`, label: `opt-${index}` }));
+		const fields = (): FormField[] => [
+			{
+				kind: "segmented",
+				id: "c",
+				label: "C",
+				options,
+				value: choice,
+				onChange: value => {
+					choice = value;
+				},
+			},
+		];
+		form.setFields(fields());
+		// Value column 5 (marker 2, label 1, gap 2); 25 cells of chips at 30 wide
+		// hold three `opt-N` chips and the ellipsis, so the strip starts at
+		// opt-6 and the chosen opt-8 is on the row.
+		const row = form.render(30)[0] ?? "";
+		expect(row).toBe("▸ C  …  opt-6  opt-7  opt-8");
+		// The chips are click targets where they were painted, not where an
+		// unwindowed strip would have put them.
+		form.routeMouse(click(15), 0, 15);
+		expect(choice).toBe("opt-7");
+		form.setFields(fields());
+		// The window follows the choice: opt-7 chosen, the strip starts at opt-5
+		// and the chip after the window is the trailing ellipsis.
+		expect(form.render(30)[0]).toBe("▸ C  …  opt-5  opt-6  opt-7  …");
+		choice = "opt-0";
+		form.setFields(fields());
+		expect(form.render(30)[0]).toMatch(/^▸ C {2}opt-0 {2}opt-1 {2}opt-2/);
 	});
 
 	it("presses a button on Enter or Space, and never a disabled one", () => {
