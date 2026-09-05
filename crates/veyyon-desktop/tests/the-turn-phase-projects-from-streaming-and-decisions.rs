@@ -151,7 +151,9 @@ fn pending_decisions_take_precedence_over_active_streaming() {
 		});
 
 	let phase_approval = project_turn_phase(&store, Some(&session_id));
-	assert_eq!(phase_approval, TurnPhase::ApprovalPending);
+	assert_eq!(phase_approval, TurnPhase::ApprovalPending {
+		interaction: InteractionId::from("a1"),
+	});
 
 	// 2. Question pending (clearing approvals)
 	store
@@ -168,7 +170,10 @@ fn pending_decisions_take_precedence_over_active_streaming() {
 	}];
 
 	let phase_question = project_turn_phase(&store, Some(&session_id));
-	assert_eq!(phase_question, TurnPhase::QuestionPending { options: 3 });
+	assert_eq!(phase_question, TurnPhase::QuestionPending {
+		interaction: InteractionId::from("q1"),
+		options:     3,
+	});
 
 	// 3. Plan pending (clearing questions)
 	store
@@ -184,11 +189,12 @@ fn pending_decisions_take_precedence_over_active_streaming() {
 	}];
 
 	let phase_plan = project_turn_phase(&store, Some(&session_id));
-	assert_eq!(phase_plan, TurnPhase::PlanPending);
+	let plan = TurnPhase::PlanPending { interaction: InteractionId::from("p1") };
+	assert_eq!(phase_plan, plan);
 
 	let mut state = ShellState::default();
 	project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
-	assert_eq!(state.turn, TurnPhase::PlanPending);
+	assert_eq!(state.turn, plan);
 }
 
 #[test]

@@ -1,11 +1,13 @@
 pub mod app;
 pub mod bridge;
+pub mod cli;
 pub mod damage;
 pub mod endpoint;
 pub mod framing;
 pub mod link;
 pub mod project;
 pub mod reconnect;
+pub mod scene;
 pub mod transport;
 
 pub use app::{
@@ -25,8 +27,9 @@ pub use endpoint::{
 pub use framing::{FrameDecoder, FramingError, MAX_FRAME_BYTES, encode_request};
 pub use link::{HostLink, TRANSPORT_THREAD_NAME};
 pub use project::{
-	PANE_LINE_CEILING, SessionIndex, actions_for, drawer_lines, elapsed_label, project,
-	project_turn_phase, strip_control_sequences, tree_rows_from_changes,
+	NO_SESSION_OPEN, PANE_LINE_CEILING, SessionIndex, actions_for, drawer_lines, elapsed_label,
+	land_failure, project, project_controls, project_turn_phase, strip_control_sequences,
+	tree_rows_from_changes,
 };
 pub use reconnect::{
 	DeterministicJitter, FATAL_MESSAGE, INITIAL_DELAY_MS, JITTER_PCT, JitterSource, MAX_ATTEMPTS,

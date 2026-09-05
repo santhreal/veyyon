@@ -46,3 +46,22 @@ pub fn connection_phase(store: &Store) -> ConnectionPhase {
 		ConnectionState::Fatal { message } => ConnectionPhase::Fatal { message: message.clone() },
 	}
 }
+
+/// What the attention strip says about a connection state, or `None` when
+/// the connection needs no attention.
+#[must_use]
+pub fn connection_notice(state: &ConnectionState) -> Option<String> {
+	match state {
+		ConnectionState::Connected { .. } => None,
+		ConnectionState::Detached => Some("not attached to a host".to_string()),
+		ConnectionState::Connecting { attempt } => Some(format!("connecting (attempt {attempt})")),
+		ConnectionState::Syncing { received, expected } => Some(match expected {
+			Some(expected) => format!("syncing {received}/{expected}"),
+			None => format!("syncing ({received} received)"),
+		}),
+		ConnectionState::Reconnecting { attempt, message, .. } => {
+			Some(format!("reconnecting (attempt {attempt}): {message}"))
+		},
+		ConnectionState::Fatal { message } => Some(format!("host unreachable: {message}")),
+	}
+}
