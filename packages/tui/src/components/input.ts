@@ -2,6 +2,7 @@ import { BracketedPasteHandler, decodeReencodedPasteControls } from "../brackete
 import { getKeybindings } from "../keybindings";
 import { extractPrintableText, isLoneLineFeed } from "../keys";
 import { KillRing } from "../kill-ring";
+import type { MouseRoutable, SgrMouseEvent } from "../mouse";
 import { type Component, CURSOR_MARKER, type Focusable } from "../tui";
 import {
 	clampLow,
@@ -9,6 +10,7 @@ import {
 	getWordNavKind,
 	moveWordLeft,
 	moveWordRight,
+	offsetAtVisualCol,
 	padding,
 	replaceTabs,
 	sliceWithWidth,
@@ -46,10 +48,18 @@ export function maskValue(value: string, cursor: number, maskChar: string): { va
 /**
  * Input component - single-line text input with horizontal scrolling
  */
-export class Input implements Component, Focusable {
+export class Input implements Component, Focusable, MouseRoutable {
 	#value: string = "";
 	#cursor: number = 0; // Cursor position in the value
 	#useTerminalCursor = false;
+	/**
+	 * The viewport of the last paint: the prompt's columns and the first value
+	 * column shown after them. A click is resolved against the paint the
+	 * pointer was over, so a scrolled field lands the caret under the pointer
+	 * rather than that many columns from the value's start.
+	 */
+	#lastPromptWidth = 0;
+	#lastStartCol = 0;
 	/**
 	 * When set, the value is rendered as this character repeated, never as itself.
 	 *
@@ -99,6 +109,11 @@ export class Input implements Component, Focusable {
 		this.#value = value;
 		// Callers seed or replace the value wholesale; typing continues at the end.
 		this.#cursor = value.length;
+	}
+
+	/** Caret offset into the value, in code units. */
+	getCursor(): number {
+		return this.#cursor;
 	}
 
 	setUseTerminalCursor(useTerminalCursor: boolean): void {
@@ -454,6 +469,40 @@ export class Input implements Component, Focusable {
 		// No cached state to invalidate currently
 	}
 
+	/**
+	 * A left click places the caret under the pointer. The field is one row, so
+	 * only its row answers; a click past the end of the text lands at the end.
+	 * Wheel and motion are not this field's: the host scrolls with the wheel and
+	 * a text field has no hover.
+	 */
+	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
+		if (!event.leftClick || line !== 0) return;
+		const wanted = col - this.#lastPromptWidth + this.#lastStartCol;
+		if (wanted < 0) {
+			this.#cursor = 0;
+			return;
+		}
+		const effectiveMask = this.credentialMode ? (this.mask ?? DEFAULT_MASK_CHAR) : this.mask;
+		if (effectiveMask === undefined) {
+			this.#cursor = offsetAtVisualCol(this.#value, wanted);
+			return;
+		}
+		// A masked field shows one mask glyph per grapheme, so the pointer's
+		// column is a grapheme count, mapped back to the source offset.
+		const maskWidth = Math.max(1, visibleWidth(effectiveMask));
+		const graphemeIndex = Math.floor(wanted / maskWidth);
+		let cursor = this.#value.length;
+		let seen = 0;
+		for (const { index } of segmenter.segment(this.#value)) {
+			if (seen === graphemeIndex) {
+				cursor = index;
+				break;
+			}
+			seen += 1;
+		}
+		this.#cursor = cursor;
+	}
+
 	render(width: number): readonly string[] {
 		// Calculate visible window
 		const prompt = this.prompt;
@@ -495,6 +544,8 @@ export class Input implements Component, Focusable {
 				startCol = clampLow(cursorCols - maxCursorRel, 0, maxStart);
 			}
 		}
+		this.#lastPromptWidth = visibleWidth(prompt);
+		this.#lastStartCol = startCol;
 
 		const visibleText = sliceWithWidth(displayValue, startCol, availableWidth, true).text;
 		const prefixText = sliceWithWidth(displayValue, startCol, Math.max(0, cursorCols - startCol), true).text;

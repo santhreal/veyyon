@@ -576,6 +576,20 @@ export interface OverlayOptions {
 	fullscreen?: boolean;
 }
 
+/** One overlay on the stack. */
+interface OverlayEntry {
+	component: Component;
+	options?: OverlayOptions;
+	preFocus: Component | null;
+	hidden: boolean;
+	/**
+	 * The card is playing itself out: still PAINTED, no longer INTERACTIVE. Focus has already
+	 * gone back to whatever the overlay took it from, so the transcript answers a keystroke
+	 * during the fade rather than a card the operator has already dismissed.
+	 */
+	exiting: boolean;
+}
+
 /**
  * Handle returned by showOverlay for controlling the overlay
  */
@@ -1484,18 +1498,24 @@ export class TUI extends Container {
 	#preparedValidRows = 0;
 
 	// Overlay stack for modal components rendered on top of base content
-	overlayStack: {
-		component: Component;
-		options?: OverlayOptions;
-		preFocus: Component | null;
-		hidden: boolean;
-		/**
-		 * The card is playing itself out: still PAINTED, no longer INTERACTIVE. Focus has already
-		 * gone back to whatever the overlay took it from, so the transcript answers a keystroke
-		 * during the fade rather than a card the operator has already dismissed.
-		 */
-		exiting: boolean;
-	}[] = [];
+	overlayStack: OverlayEntry[] = [];
+
+	/**
+	 * Where each painted overlay landed on the last composed frame, in screen
+	 * cells. A non-fullscreen overlay draws over the normal screen, where every
+	 * mouse report is owned by scroll isolation; this is what lets a report be
+	 * handed to the card under it instead. Rebuilt on every composite, so it
+	 * describes the frame the operator is looking at and nothing older.
+	 */
+	#overlayFrames: Array<{
+		entry: OverlayEntry;
+		row: number;
+		col: number;
+		width: number;
+		height: number;
+		/** Component lines dropped above the first painted row when the card overflowed. */
+		lineOffset: number;
+	}> = [];
 
 	constructor(terminal: Terminal, showHardwareCursor?: boolean, options?: TUIOptions) {
 		super();
@@ -2038,6 +2058,31 @@ export class TUI extends Container {
 		return false;
 	}
 
+	/**
+	 * The topmost interactive overlay on the normal screen that takes mouse
+	 * reports, with the cells it painted last frame.
+	 *
+	 * A fullscreen overlay is not one: it holds the alternate screen, where the
+	 * full tracking set is already grabbed and every report goes straight to the
+	 * focused component's `handleInput`. This is for the card that sits over the
+	 * transcript — a console above the composer, a bottom-anchored picker — whose
+	 * reports scroll isolation used to swallow. A component that answers
+	 * `wantsPointer()` with false has nothing to click right now and is skipped,
+	 * the same contract a pinned-footer child has.
+	 */
+	#overlayPointerTarget():
+		| { component: MouseRoutable; row: number; col: number; width: number; height: number; lineOffset: number }
+		| undefined {
+		const entry = this.#getTopmostInteractiveOverlay();
+		if (!entry || entry.options?.fullscreen === true) return undefined;
+		const component = entry.component as Component & Partial<MouseRoutable>;
+		if (typeof component.routeMouse !== "function") return undefined;
+		if (component.wantsPointer?.() === false) return undefined;
+		const frame = this.#overlayFrames.find(candidate => candidate.entry === entry);
+		if (!frame) return undefined;
+		return { component: component as MouseRoutable, ...frame };
+	}
+
 	/** Apply or tear down wheel/button mouse tracking for scroll isolation.
 	 * Alt-screen overlays own the full tracking set while active, so this is
 	 * a no-op then; the alt-exit path re-syncs.
@@ -2054,7 +2099,7 @@ export class TUI extends Container {
 			!this.#stopped &&
 			this.#hasEverRendered &&
 			!this.#altActive &&
-			(this.#frameScrollable || this.#footerWantsPointer());
+			(this.#frameScrollable || this.#footerWantsPointer() || this.#overlayPointerTarget() !== undefined);
 		if (want === this.#wheelTrackingActive) return;
 		this.#wheelTrackingActive = want;
 		// A press whose release lands after tracking flips would pair a stale cell
@@ -2280,7 +2325,7 @@ export class TUI extends Container {
 	}
 
 	/** Check if an overlay entry is currently PAINTED. An exiting card is: that is the whole point. */
-	#isOverlayVisible(entry: (typeof this.overlayStack)[number]): boolean {
+	#isOverlayVisible(entry: OverlayEntry): boolean {
 		if (entry.hidden) return false;
 		if (entry.options?.visible) {
 			return entry.options.visible(this.terminal.columns, this.terminal.rows);
@@ -2293,12 +2338,12 @@ export class TUI extends Container {
 	 * exactly the length of an exit: the card is on screen, and it is already gone as far as the
 	 * keyboard, the mouse and `hasOverlay()` are concerned.
 	 */
-	#isOverlayInteractive(entry: (typeof this.overlayStack)[number]): boolean {
+	#isOverlayInteractive(entry: OverlayEntry): boolean {
 		return !entry.exiting && this.#isOverlayVisible(entry);
 	}
 
 	/** The topmost overlay that is PAINTED, including one that is playing itself out. */
-	#getTopmostVisibleOverlay(): (typeof this.overlayStack)[number] | undefined {
+	#getTopmostVisibleOverlay(): OverlayEntry | undefined {
 		for (let i = this.overlayStack.length - 1; i >= 0; i--) {
 			if (this.#isOverlayVisible(this.overlayStack[i])) {
 				return this.overlayStack[i];
@@ -2308,7 +2353,7 @@ export class TUI extends Container {
 	}
 
 	/** The topmost overlay that can hold focus, which an exiting card cannot. */
-	#getTopmostInteractiveOverlay(): (typeof this.overlayStack)[number] | undefined {
+	#getTopmostInteractiveOverlay(): OverlayEntry | undefined {
 		for (let i = this.overlayStack.length - 1; i >= 0; i--) {
 			if (this.#isOverlayInteractive(this.overlayStack[i])) {
 				return this.overlayStack[i];
@@ -3402,6 +3447,23 @@ export class TUI extends Container {
 		if (this.#wheelTrackingActive && !this.#altActive && data.startsWith("\x1b[<")) {
 			const event = parseSgrMouse(data);
 			if (event) {
+				// A report inside a card drawn over the transcript belongs to the
+				// card: its list scrolls under the wheel and its rows take the
+				// click. Outside the card the report keeps its old meaning, so a
+				// wheel over the transcript beside a console still scrolls it.
+				const target = this.#overlayPointerTarget();
+				if (
+					target &&
+					event.row >= target.row &&
+					event.row < target.row + target.height &&
+					event.col >= target.col &&
+					event.col < target.col + target.width
+				) {
+					this.#pressCell = null;
+					target.component.routeMouse(event, event.row - target.row + target.lineOffset, event.col - target.col);
+					this.requestRender();
+					return;
+				}
 				if (event.wheel) {
 					this.#pressCell = null;
 					this.#handleIsolationWheel(event.wheel);
@@ -3672,6 +3734,7 @@ export class TUI extends Container {
 	 */
 	#compositeOverlaysIntoWindow(window: string[], termWidth: number, termHeight: number, footerTop: number): string[] {
 		const result = [...window];
+		this.#overlayFrames.length = 0;
 		for (const entry of this.overlayStack) {
 			if (!this.#isOverlayVisible(entry)) continue;
 			const { component, options } = entry;
@@ -3679,6 +3742,7 @@ export class TUI extends Container {
 			// (width and maxHeight don't depend on overlay height).
 			const { width, maxHeight } = this.#resolveOverlayLayout(options, 0, termWidth, termHeight, footerTop);
 			let overlayLines = component.render(width);
+			const renderedRows = overlayLines.length;
 			if (overlayLines.length > maxHeight) {
 				const anchor = options?.anchor ?? "center";
 				overlayLines =
@@ -3693,6 +3757,16 @@ export class TUI extends Container {
 				termHeight,
 				footerTop,
 			);
+			// A bottom-anchored card that overflowed lost its TOP rows, so the
+			// first painted row is not the component's line 0.
+			this.#overlayFrames.push({
+				entry,
+				row,
+				col,
+				width,
+				height: overlayLines.length,
+				lineOffset: renderedRows - overlayLines.length,
+			});
 			for (let i = 0; i < overlayLines.length; i++) {
 				const idx = row + i;
 				if (idx < 0 || idx >= result.length) continue;
@@ -4396,6 +4470,8 @@ export class TUI extends Container {
 				cursorPos = { row: windowTop + overlayMarkers[0]!.row, col: overlayMarkers[0]!.col };
 			}
 			window = this.#prepareLinesArray(window, width);
+		} else {
+			this.#overlayFrames.length = 0;
 		}
 		const cursorTrackingLineCount = hasVisibleOverlay ? Math.max(frame.length, windowTop + height) : frame.length;
 

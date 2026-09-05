@@ -16,8 +16,8 @@
  *   4. Neither throws on adversarial Unicode.
  */
 import { describe, expect, it } from "bun:test";
-import { maxSegmentVisualCol, offsetAtVisualCol, visualColAtOffset } from "@veyyon/tui/components/editor";
-import { getSegmenter, visibleWidth } from "@veyyon/tui/utils";
+import { maxSegmentVisualCol } from "@veyyon/tui/components/editor";
+import { getSegmenter, offsetAtVisualCol, visibleWidth, visualColAtOffset } from "@veyyon/tui/utils";
 import { fuzzSeed, lcg } from "@veyyon/utils/adversarial-strings";
 
 /** Grapheme-cluster boundaries (code-unit indices, incl. 0 and length). */

@@ -21,12 +21,14 @@ import {
 	getWordNavKind,
 	moveWordLeft,
 	moveWordRight,
+	offsetAtVisualCol,
 	padding,
 	reopenBackgroundAfterResets,
 	replaceTabs,
 	sliceByColumn,
 	truncateToWidth,
 	visibleWidth,
+	visualColAtOffset,
 } from "../utils";
 import { type SelectItem, SelectList, type SelectListLayoutOptions, type SelectListTheme } from "./select-list";
 
@@ -298,30 +300,6 @@ export function wordWrapLine(line: string, maxWidth: number): TextChunk[] {
 	}
 
 	return chunks.length > 0 ? chunks : [{ text: "", startIndex: 0, endIndex: 0 }];
-}
-
-/** Visual cell column of code-unit `offset` within `text`, counted by grapheme walk. */
-export function visualColAtOffset(text: string, offset: number): number {
-	if (offset <= 0) return 0;
-	let col = 0;
-	for (const seg of segmenter.segment(text)) {
-		if (seg.index >= offset) break;
-		col += visibleWidth(seg.segment);
-	}
-	return col;
-}
-
-/** Code-unit offset of visual cell `col` within `text`, snapped to a grapheme
- *  boundary so the result never splits a surrogate pair or cluster. */
-export function offsetAtVisualCol(text: string, col: number): number {
-	if (col <= 0) return 0;
-	let current = 0;
-	for (const seg of segmenter.segment(text)) {
-		const width = visibleWidth(seg.segment);
-		if (current + width > col) return seg.index;
-		current += width;
-	}
-	return text.length;
 }
 
 /** Highest visual column the cursor may occupy on a wrap segment: the full width
