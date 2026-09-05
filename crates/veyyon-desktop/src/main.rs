@@ -8,16 +8,18 @@
 
 use std::{cell::RefCell, collections::HashMap, env, process, rc::Rc};
 
+use clap::Parser as _;
 use veyyon_desktop::{
-	HostLink, SessionIndex, actions_for, connect_or_spawn, current_timestamp_ms,
-	discover_asset_paths, load_startup_bundle, project, request_frame, start_token_supervision,
+	HostLink, SessionIndex, actions_for,
+	cli::{Cli, Command},
+	connect_or_spawn, current_timestamp_ms, discover_asset_paths, land_failure, load_startup_bundle,
+	project,
+	project::connection_notice,
+	project_controls, request_frame, scene, start_token_supervision,
 };
-use veyyon_desktop_model::{
-	ConnectionState, HostEvent, RequestRegistry, SessionId, Store, SurfaceId, is_scope_retryable,
-	reduce, route_error,
-};
+use veyyon_desktop_model::{HostEvent, RequestRegistry, SessionId, Store, SurfaceId, reduce};
 use veyyon_desktop_surface::{
-	ControlError, Intent, Keymap, ShellState, ShellView, damage::regions_changed, install_tokens,
+	Intent, Keymap, ShellState, ShellView, damage::regions_changed, install_tokens,
 	terminal::TerminalEmulator,
 };
 use veyyon_desktop_tokens::TokenReloadMessage;
@@ -37,38 +39,6 @@ struct Host {
 	/// The state the window drew last, so a batch's projection can be
 	/// diffed region by region and repainted inside what changed (P5).
 	drawn:     ShellState,
-}
-
-/// The `--endpoint <addr>` or `--endpoint=<addr>` argument, if given.
-fn endpoint_argument() -> Option<String> {
-	let mut args = env::args().skip(1);
-	while let Some(arg) = args.next() {
-		if arg == "--endpoint" {
-			return args.next();
-		}
-		if let Some(value) = arg.strip_prefix("--endpoint=") {
-			return Some(value.to_string());
-		}
-	}
-	None
-}
-
-/// What the attention strip says about a connection state, or `None` when
-/// the connection needs no attention.
-fn connection_notice(state: &ConnectionState) -> Option<String> {
-	match state {
-		ConnectionState::Connected { .. } => None,
-		ConnectionState::Detached => Some("not attached to a host".to_string()),
-		ConnectionState::Connecting { attempt } => Some(format!("connecting (attempt {attempt})")),
-		ConnectionState::Syncing { received, expected } => Some(match expected {
-			Some(expected) => format!("syncing {received}/{expected}"),
-			None => format!("syncing ({received} received)"),
-		}),
-		ConnectionState::Reconnecting { attempt, message, .. } => {
-			Some(format!("reconnecting (attempt {attempt}): {message}"))
-		},
-		ConnectionState::Fatal { message } => Some(format!("host unreachable: {message}")),
-	}
 }
 
 /// Resolves the initiating surface for an operator intent.
@@ -102,6 +72,7 @@ fn surface_for_intent(intent: &Intent, active_session: Option<&SessionId>) -> Su
 	}
 }
 fn main() {
+	let cli = Cli::parse();
 	let paths = discover_asset_paths();
 	let bundle = match load_startup_bundle(paths) {
 		Ok(bundle) => bundle,
@@ -111,6 +82,13 @@ fn main() {
 		},
 	};
 
+	let endpoint_argument = match cli.command {
+		Some(Command::Scene(command)) => process::exit(scene::run_scene(&bundle, command)),
+		Some(Command::Sweep(command)) => process::exit(scene::run_sweep(&bundle, command)),
+		Some(Command::Tokens(command)) => process::exit(scene::run_tokens(&bundle, command)),
+		None => cli.endpoint,
+	};
+
 	let min_width = bundle.tokens.surface.shell.window_min_width_px;
 	let min_height = bundle.tokens.surface.shell.window_min_height_px;
 
@@ -118,7 +96,6 @@ fn main() {
 	let theme = bundle.theme.clone();
 	let surface_path = bundle.surface_path.clone();
 	let tokens_dir = bundle.paths.tokens_dir;
-	let endpoint_argument = endpoint_argument();
 
 	let platform = gpui_platform::current_platform(false);
 	let app = Application::with_platform(platform);
@@ -301,14 +278,10 @@ fn main() {
 								},
 								HostEvent::RequestFailed { error, .. } => {
 									let active = host.store.persisted.shell.active_session.as_ref();
-									let surface = route_error(error, &host.registry, active);
-									let is_retryable = is_scope_retryable(error.scope);
-									view.state_mut().controls.set_error(
-										surface.clone(),
-										ControlError::new(&error.message, is_retryable),
-									);
-									if surface == SurfaceId::GlobalTitlebarLine {
-										notice = Some(Some(error.message.clone()));
+									if let Some(line) =
+										land_failure(error, &host.registry, active, view.state_mut())
+									{
+										notice = Some(Some(line));
 									}
 								},
 								HostEvent::RequestSucceeded { request } => {
@@ -343,6 +316,7 @@ fn main() {
 						}
 						let now_ms = current_timestamp_ms();
 						project(&host.store, &mut host.index, &host.terminals, now_ms, view.state_mut());
+						project_controls(&host.store, &host.registry, &host.index, view.state_mut());
 						// The clock the queue's elapsed labels and the connection
 						// banner are measured against is the batch's, not the last
 						// frame's.

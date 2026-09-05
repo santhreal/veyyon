@@ -18,7 +18,9 @@ mod actions;
 mod cards;
 mod composer;
 mod connection;
+mod controls;
 mod drawer;
+mod failure;
 mod overlay;
 mod panel;
 mod queue;
@@ -31,8 +33,10 @@ use veyyon_desktop_surface::{Badge, ShellState, terminal::TerminalEmulator};
 pub use self::{
 	actions::actions_for,
 	composer::{project_composer, project_turn_phase},
-	connection::connection_phase,
+	connection::{connection_notice, connection_phase},
+	controls::{NO_SESSION_OPEN, project_controls},
 	drawer::{drawer_lines, project_drawer, strip_control_sequences},
+	failure::land_failure,
 	overlay::project_overlay,
 	panel::{project_panel, tree_rows_from_changes},
 	queue::elapsed_label,
@@ -73,6 +77,12 @@ impl SessionIndex {
 		let row = self.sessions.len() as u64;
 		self.rows.insert(session.clone(), row);
 		row
+	}
+
+	/// The row id already minted for a session, if any.
+	#[must_use]
+	pub fn row_id(&self, session: &SessionId) -> Option<u64> {
+		self.rows.get(session).copied()
 	}
 
 	/// The session a row id stands for, if one was minted for it.

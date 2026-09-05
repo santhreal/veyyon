@@ -18,16 +18,20 @@ pub fn project_turn_phase(store: &Store, session: Option<&SessionId>) -> TurnPha
 		return TurnPhase::Idle;
 	};
 
-	// 1. Attached decisions take precedence (§5.4, §5.5).
+	// 1. Attached decisions take precedence (§5.4, §5.5). The phase names the
+	// first card of its kind, which is the card the primary action answers.
 	if let Some(decisions) = store.interactions.get(session_id) {
-		if !decisions.approvals.is_empty() {
-			return TurnPhase::ApprovalPending;
+		if let Some(approval) = decisions.approvals.first() {
+			return TurnPhase::ApprovalPending { interaction: approval.id.clone() };
 		}
-		if let Some(first_question) = decisions.questions.first() {
-			return TurnPhase::QuestionPending { options: first_question.options.len() };
+		if let Some(question) = decisions.questions.first() {
+			return TurnPhase::QuestionPending {
+				interaction: question.id.clone(),
+				options:     question.options.len(),
+			};
 		}
-		if !decisions.plans.is_empty() {
-			return TurnPhase::PlanPending;
+		if let Some(plan) = decisions.plans.first() {
+			return TurnPhase::PlanPending { interaction: plan.id.clone() };
 		}
 	}
 

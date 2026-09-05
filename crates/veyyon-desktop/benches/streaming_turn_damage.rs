@@ -3,15 +3,13 @@
 //! (OFF) across a deterministic streaming turn corpus rendered headlessly on
 //! GPU.
 
-use std::{
-	collections::HashMap,
-	fs,
-	io::Write,
-	path::PathBuf,
-	time::{Duration, Instant},
-};
+mod damage_report;
 
-use serde::Serialize;
+use std::{collections::HashMap, fs, io::Write, path::PathBuf, time::Instant};
+
+use damage_report::{
+	BenchComparison, BenchSummary, FrameSample, compute_stats, detect_gpu_name, print_report,
+};
 use veyyon_desktop::{
 	SessionIndex, StartupBundle, discover_asset_paths, load_startup_bundle, project, request_frame,
 };
@@ -36,53 +34,6 @@ const WORDS: &str = "# Damage Scoped Invalidation The renderer fork keeps previo
 enum Arm {
 	DamageOn,
 	DamageOff,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct FrameSample {
-	raster_time:         Duration,
-	repainted_device_px: u64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct ArmReport {
-	arm: &'static str,
-	frames_drawn: usize,
-	total_repainted_device_pixels: u64,
-	mean_repainted_device_pixels_per_frame: f64,
-	total_frame_raster_time_ms: f64,
-	mean_frame_raster_time_ms: f64,
-	p95_frame_raster_time_ms: f64,
-	min_frame_raster_time_ms: f64,
-	max_frame_raster_time_ms: f64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct BenchComparison {
-	pixel_savings_percent:            f64,
-	pixel_reduction_device_px:        u64,
-	raster_time_reduction_percent:    f64,
-	raster_time_savings_ms:           f64,
-	verified_damage_on_less_than_off: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct BenchSummary {
-	benchmark:              &'static str,
-	seed:                   String,
-	gpu:                    String,
-	prior_entries:          usize,
-	streaming_deltas:       usize,
-	total_events:           usize,
-	window_width:           u32,
-	window_height:          u32,
-	scale_factor:           f32,
-	viewport_device_pixels: u64,
-	warmup_iterations:      usize,
-	measurement_iterations: usize,
-	damage_on:              ArmReport,
-	damage_off:             ArmReport,
-	comparison:             BenchComparison,
 }
 
 fn entry(id: &str, role: MessageRole, text: &str, revision: u64) -> TranscriptEntry {
@@ -216,173 +167,6 @@ fn device_area(logical_area: f64, scale: f64) -> u64 {
 	(logical_area * scale * scale).round() as u64
 }
 
-fn compute_stats(arm_name: &'static str, runs: &[Vec<FrameSample>]) -> ArmReport {
-	let frames_drawn = runs[0].len();
-	let total_repainted_device_pixels: u64 = runs[0].iter().map(|s| s.repainted_device_px).sum();
-	let mean_repainted_device_pixels_per_frame =
-		total_repainted_device_pixels as f64 / frames_drawn as f64;
-	let mut times: Vec<Duration> = runs
-		.iter()
-		.flat_map(|r| r.iter().map(|s| s.raster_time))
-		.collect();
-	times.sort();
-	let n = times.len();
-	let p95_idx = ((n as f64 * 0.95).round() as usize).min(n - 1);
-	let sum_times: Duration = times.iter().copied().sum();
-	let sum_run_times: Duration = runs
-		.iter()
-		.map(|r| r.iter().map(|s| s.raster_time).sum::<Duration>())
-		.sum();
-
-	ArmReport {
-		arm: arm_name,
-		frames_drawn,
-		total_repainted_device_pixels,
-		mean_repainted_device_pixels_per_frame,
-		total_frame_raster_time_ms: (sum_run_times / runs.len() as u32).as_secs_f64() * 1e3,
-		mean_frame_raster_time_ms: (sum_times / n as u32).as_secs_f64() * 1e3,
-		p95_frame_raster_time_ms: times[p95_idx].as_secs_f64() * 1e3,
-		min_frame_raster_time_ms: times[0].as_secs_f64() * 1e3,
-		max_frame_raster_time_ms: times[n - 1].as_secs_f64() * 1e3,
-	}
-}
-
-fn detect_gpu_name() -> String {
-	fs::read_dir("/proc/driver/nvidia/gpus")
-		.ok()
-		.and_then(|mut entries| entries.next())
-		.and_then(Result::ok)
-		.and_then(|e| fs::read_to_string(e.path().join("information")).ok())
-		.and_then(|info| {
-			info.lines().find_map(|l| {
-				l.strip_prefix("Model:")
-					.map(|m| format!("{} (Vulkan)", m.trim()))
-			})
-		})
-		.unwrap_or_else(|| "unknown GPU (Vulkan; /proc/driver/nvidia unreadable)".to_string())
-}
-
-fn fmt_k(n: u64) -> String {
-	let s = n.to_string();
-	let mut out = String::new();
-	let rem = s.len() % 3;
-	for (i, ch) in s.chars().enumerate() {
-		if i > 0 && (i % 3 == rem || (rem == 0 && i % 3 == 0)) {
-			out.push(',');
-		}
-		out.push(ch);
-	}
-	out
-}
-
-fn print_report(
-	gpu: &str,
-	corpus_len: usize,
-	opt: &RenderOptions,
-	vp_px: u64,
-	on: &ArmReport,
-	off: &ArmReport,
-	cmp: &BenchComparison,
-) {
-	let sep = "-".repeat(80);
-	println!("\n{}", "=".repeat(80));
-	println!("VEYYON DESKTOP §11 FORK BENCHMARK: STREAMING TURN DAMAGE-SCOPED REPAINT");
-	println!("{}", "=".repeat(80));
-	println!("Host GPU          : {gpu}");
-	println!("Seed              : {SEED:#x}");
-	println!(
-		"Corpus            : {PRIOR_ENTRIES} prior entries, {DELTAS} streaming deltas ({corpus_len} \
-		 events)"
-	);
-	println!(
-		"Window            : {}x{} @ {:.1}x (Viewport: {} device px)",
-		opt.width,
-		opt.height,
-		opt.scale_factor,
-		fmt_k(vp_px)
-	);
-	println!(
-		"Harness           : {WARMUP_RUNS} warmup, {MEASURE_RUNS} measurement ({} frames/arm)",
-		MEASURE_RUNS * corpus_len
-	);
-	println!("Summary written   : .internal/bench/fork-damage.json\n{sep}");
-	println!(
-		"{:<33} {:>18} {:>18} {:>18}\n{sep}",
-		"Metric", "Damage ON (Scoped)", "Damage OFF (Full)", "Delta / Savings"
-	);
-
-	let p95_delta = (on.p95_frame_raster_time_ms - off.p95_frame_raster_time_ms)
-		/ off.p95_frame_raster_time_ms
-		* 100.0;
-	let rows = [
-		(
-			"Total Repainted Pixels / Turn",
-			format!("{} px", fmt_k(on.total_repainted_device_pixels)),
-			format!("{} px", fmt_k(off.total_repainted_device_pixels)),
-			format!("{:.2}%", -cmp.pixel_savings_percent),
-		),
-		(
-			"Mean Repainted Pixels / Frame",
-			format!("{} px", fmt_k(on.mean_repainted_device_pixels_per_frame.round() as u64)),
-			format!("{} px", fmt_k(off.mean_repainted_device_pixels_per_frame.round() as u64)),
-			format!("{:.2}%", -cmp.pixel_savings_percent),
-		),
-		(
-			"Total Frame Raster Time (turn)",
-			format!("{:.2} ms", on.total_frame_raster_time_ms),
-			format!("{:.2} ms", off.total_frame_raster_time_ms),
-			format!(
-				"{:.2} ms ({:.2}%)",
-				-cmp.raster_time_savings_ms, -cmp.raster_time_reduction_percent
-			),
-		),
-		(
-			"Mean Frame Raster Time",
-			format!("{:.2} ms", on.mean_frame_raster_time_ms),
-			format!("{:.2} ms", off.mean_frame_raster_time_ms),
-			format!("{:.2}%", -cmp.raster_time_reduction_percent),
-		),
-		(
-			"p95 Frame Raster Time",
-			format!("{:.2} ms", on.p95_frame_raster_time_ms),
-			format!("{:.2} ms", off.p95_frame_raster_time_ms),
-			format!("{p95_delta:.2}%"),
-		),
-		(
-			"Min Frame Raster Time",
-			format!("{:.2} ms", on.min_frame_raster_time_ms),
-			format!("{:.2} ms", off.min_frame_raster_time_ms),
-			"-".into(),
-		),
-		(
-			"Max Frame Raster Time",
-			format!("{:.2} ms", on.max_frame_raster_time_ms),
-			format!("{:.2} ms", off.max_frame_raster_time_ms),
-			"-".into(),
-		),
-	];
-	for (name, o, f, d) in rows {
-		println!("{name:<33} {o:>18} {f:>18} {d:>18}");
-	}
-	println!("{sep}");
-	if cmp.verified_damage_on_less_than_off {
-		println!(
-			"VERDICT: PASS (Damage ON repainted strictly fewer pixels: {} < {})\n{}",
-			fmt_k(on.total_repainted_device_pixels),
-			fmt_k(off.total_repainted_device_pixels),
-			"=".repeat(80)
-		);
-	} else {
-		println!(
-			"VERDICT: FAIL (Damage ON repainted {} >= OFF {})\n{}",
-			on.total_repainted_device_pixels,
-			off.total_repainted_device_pixels,
-			"=".repeat(80)
-		);
-		std::process::exit(1);
-	}
-}
-
 fn main() {
 	let mut cx = headless_context().expect("headless context on GPU host");
 	let opt = RenderOptions::default();
@@ -431,21 +215,21 @@ fn main() {
 	let vp_px =
 		device_area(f64::from(opt.width) * f64::from(opt.height), f64::from(opt.scale_factor));
 	let summary = BenchSummary {
-		benchmark:              "streaming_turn_damage",
-		seed:                   format!("{SEED:#x}"),
-		gpu:                    gpu.clone(),
-		prior_entries:          PRIOR_ENTRIES,
-		streaming_deltas:       DELTAS,
-		total_events:           corpus.len(),
-		window_width:           opt.width,
-		window_height:          opt.height,
-		scale_factor:           opt.scale_factor,
+		benchmark: "streaming_turn_damage",
+		seed: format!("{SEED:#x}"),
+		gpu,
+		prior_entries: PRIOR_ENTRIES,
+		streaming_deltas: DELTAS,
+		total_events: corpus.len(),
+		window_width: opt.width,
+		window_height: opt.height,
+		scale_factor: opt.scale_factor,
 		viewport_device_pixels: vp_px,
-		warmup_iterations:      WARMUP_RUNS,
+		warmup_iterations: WARMUP_RUNS,
 		measurement_iterations: MEASURE_RUNS,
-		damage_on:              on.clone(),
-		damage_off:             off.clone(),
-		comparison:             cmp.clone(),
+		damage_on: on,
+		damage_off: off,
+		comparison: cmp,
 	};
 
 	let summary_path =
@@ -456,5 +240,5 @@ fn main() {
 	fs::write(&summary_path, serde_json::to_string_pretty(&summary).expect("serialize summary"))
 		.expect("write summary");
 
-	print_report(&gpu, corpus.len(), &opt, vp_px, &on, &off, &cmp);
+	print_report(&summary);
 }
