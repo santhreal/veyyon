@@ -407,21 +407,17 @@ export function resolvePublishedFloorFromList(
 		}));
 
 	const ordered = orderReleasesByPublication(candidates);
-	const floorCandidate = ordered.find(r => r.version !== target);
-	const floor = floorCandidate ? floorCandidate.version : null;
-
-	if (floor === null) {
+	const floorIdx = ordered.findIndex(r => r.version !== target);
+	if (floorIdx === -1) {
 		return { floor: null, versionsInRange: [target] };
 	}
 
-	const floorIdx = ordered.indexOf(floorCandidate);
 	const publishedAfterFloor = ordered
 		.slice(0, floorIdx)
 		.map(r => r.version)
 		.filter(v => v !== target);
 
-	const versionsInRange = [target, ...publishedAfterFloor];
-	return { floor, versionsInRange };
+	return { floor: ordered[floorIdx]!.version, versionsInRange: [target, ...publishedAfterFloor] };
 }
 
 /**
