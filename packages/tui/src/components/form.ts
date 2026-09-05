@@ -30,7 +30,7 @@
 import { extractPrintableText, matchesKey } from "../keys";
 import type { MouseRoutable, SgrMouseEvent } from "../mouse";
 import type { Component, Focusable } from "../tui";
-import { clampLow, padding, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "../utils";
+import { clampLow, offsetAtVisualCol, padding, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "../utils";
 import { Input } from "./input";
 
 interface FormFieldBase {
@@ -135,6 +135,8 @@ interface FieldGeometry {
 	valueCol: number;
 	/** For a segmented field: each option's column span; for a stepper: the two arrows. */
 	targets: readonly { value: string; col: number; width: number }[];
+	/** A text field the input painted, scrolled to its caret; else the form painted it from its first column. */
+	byInput: boolean;
 }
 
 const DEFAULT_SYMBOLS = { on: "●", off: "○", decrement: "◂", increment: "▸", marker: "▸" } as const;
@@ -387,7 +389,12 @@ export class Form implements Component, Focusable, MouseRoutable {
 		switch (field.kind) {
 			case "text": {
 				const input = this.#inputs.get(field.id);
-				if (input && col >= hit.valueCol) input.routeMouse(event, 0, col - hit.valueCol);
+				if (!input || col < hit.valueCol) return;
+				// The input painted the field with the ring, scrolled to its caret;
+				// the form painted any other from its first column. The click
+				// resolves against the paint it landed on.
+				if (hit.byInput) input.routeMouse(event, 0, col - hit.valueCol);
+				else input.setCursor(offsetAtVisualCol(field.value, col - hit.valueCol));
 				return;
 			}
 			case "stepper": {
@@ -423,7 +430,14 @@ export class Form implements Component, Focusable, MouseRoutable {
 				const wrapped = wrapTextWithAnsi(field.text, Math.max(1, width - MARKER_WIDTH));
 				const top = lines.length;
 				for (const row of wrapped) lines.push(padding(MARKER_WIDTH) + theme.muted(row));
-				geometry.push({ id: field.id, top, rows: wrapped.length, valueCol: MARKER_WIDTH, targets: [] });
+				geometry.push({
+					id: field.id,
+					top,
+					rows: wrapped.length,
+					valueCol: MARKER_WIDTH,
+					targets: [],
+					byInput: false,
+				});
 				continue;
 			}
 			const focused = field.id === this.#focusedId;
@@ -431,11 +445,13 @@ export class Form implements Component, Focusable, MouseRoutable {
 			const label = truncateToWidth(field.label, labelWidth, null, true);
 			const head = `${marker}${focused ? theme.focusedLabel(label) : theme.label(label)}${padding(LABEL_GAP)}`;
 			const targets: { value: string; col: number; width: number }[] = [];
+			let byInput = false;
 			let body: string;
 			switch (field.kind) {
 				case "text": {
 					const input = this.#inputs.get(field.id);
 					if (focused && this.focused && input) {
+						byInput = true;
 						if (field.value.length === 0 && field.placeholder && valueWidth > 1) {
 							// An empty field with the ring shows its caret, then what it
 							// is for: a bare inverse cell on a row named "Goal" is not
@@ -506,10 +522,10 @@ export class Form implements Component, Focusable, MouseRoutable {
 			if (field.kind === "button") {
 				// A button has no label column: the label is the button.
 				lines.push(`${marker}${body}`);
-				geometry.push({ id: field.id, top, rows: 1, valueCol: MARKER_WIDTH, targets });
+				geometry.push({ id: field.id, top, rows: 1, valueCol: MARKER_WIDTH, targets, byInput });
 			} else {
 				lines.push(`${head}${body}`);
-				geometry.push({ id: field.id, top, rows: 1, valueCol, targets });
+				geometry.push({ id: field.id, top, rows: 1, valueCol, targets, byInput });
 			}
 		}
 		this.#geometry = geometry;

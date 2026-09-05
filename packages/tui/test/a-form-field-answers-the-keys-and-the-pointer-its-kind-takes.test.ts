@@ -390,6 +390,30 @@ describe("a form field answers the keys and the pointer its kind takes", () => {
 		expect(state.on).toBe(true);
 	});
 
+	it("resolves a click that moves the ring onto a text field against the unscrolled paint", () => {
+		const { form, state, fields, clickOn } = fixture();
+		// Sixty cells in a thirty-cell value area: with the ring on it and the
+		// caret at the end, the input paints the tail. With the ring elsewhere
+		// the form paints the head, and a click on cell 2 of that paint is
+		// offset 2, not 2 plus the input's last scroll.
+		state.text = `HEAD${"x".repeat(52)}TAIL`;
+		form.setFields(fields());
+		form.focus("text");
+		expect(form.caretOf("text")).toBe(60);
+		expect(form.render(40)[0]).toContain("TAIL");
+		form.handleInput(DOWN);
+		expect(form.render(40)[0]).toContain("HEAD");
+		clickOn("text", 12);
+		expect(form.focusedField?.id).toBe("text");
+		expect(form.caretOf("text")).toBe(2);
+		// With the ring on it the paint is scrolled, and the click follows that
+		// paint: cell 2 of a tail painted from column 31 is offset 33.
+		form.handleInput("\x05");
+		expect(form.caretOf("text")).toBe(60);
+		clickOn("text", 12);
+		expect(form.caretOf("text")).toBe(33);
+	});
+
 	it("walks the ring with the wheel, and leaves the note out", () => {
 		const { form } = fixture();
 		form.focus("choice");

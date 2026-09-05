@@ -116,6 +116,11 @@ export class Input implements Component, Focusable, MouseRoutable {
 		return this.#cursor;
 	}
 
+	/** Put the caret at `offset` code units, clamped to the value. */
+	setCursor(offset: number): void {
+		this.#cursor = clampLow(offset, 0, this.#value.length);
+	}
+
 	setUseTerminalCursor(useTerminalCursor: boolean): void {
 		this.#useTerminalCursor = useTerminalCursor;
 	}
