@@ -23,6 +23,11 @@
 - `ctx.ui.custom(..., { overlay })` accepts `OverlayOptions` beside `true`, so an extension can place and size its own card over the transcript.
 - `visualColAtOffset` and `offsetAtVisualCol` are exported from `@veyyon/tui` utils, shared by `Editor` and `Input`.
 
+### Fixed
+
+- Interrupting Claude mid-thinking no longer fails every later turn with `Refusal (reasoning_extraction)` on an endpoint that enforces the classifier: the hidden continuity message that carries the unfinished reasoning states which turn it came from, and the request drops it on same-model replay to a signing Anthropic endpoint, and after one refusal on any other, instead of re-sending it on the retry and for the rest of the session.
+- A user or developer message that carries prior-turn reasoning as prose declares its origin through `demotedReasoningSource`, and `transformMessages` holds it to the unsigned-thinking replay policy: a signing Anthropic endpoint drops it on same-model replay, and every `anthropic-messages` target drops it once `replayDemotedPriorReasoning` is off by catalog or learned from a `reasoning_extraction` refusal, instead of re-sending the same prose on the retry and on every later turn of the session.
+
 ## [1.4.0] - 2026-09-04
 
 ### Added
