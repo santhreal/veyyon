@@ -835,11 +835,10 @@ function getDisabledProviderIdsFromSettings(): Set<string> {
  * state produced under retired rules — the same discipline as
  * `CACHE_SCHEMA_VERSION` in `@veyyon/catalog/model-cache`.
  */
-const REGISTRY_SNAPSHOT_VERSION = 7;
+const REGISTRY_SNAPSHOT_VERSION = 8;
 
 interface StaticModelStage {
 	createdAt: number;
-	builtIn: Model<Api>[];
 	// Persisted as an array: JSON.stringify turns a Set into `{}` and the
 	// reader's Array.isArray guard would then reject every restore.
 	cachedStandard: { models: Model<Api>[]; authoritativeFreshProviders: string[] };
@@ -849,7 +848,6 @@ interface StaticModelStage {
 
 /** What the reader hands back: the persisted array is a `Set` again by here. */
 interface RestoredStaticStage {
-	builtIn: Model<Api>[];
 	cachedStandard: { models: Model<Api>[]; authoritativeFreshProviders: Set<string> };
 	cachedDiscoveries: Model<Api>[];
 	discoveryStates: ProviderDiscoveryState[];
@@ -1131,19 +1129,17 @@ export class ModelRegistry {
 
 		this.#addImplicitDiscoverableProviders(configuredProviders);
 
-		// The three data layers below are a pure function of the bundled catalog
-		// bytes, the discovery cache database and the custom-config structures —
-		// nothing auth- or runtime-derived enters them. That makes the stage
-		// safe to persist: a fingerprint over exactly those inputs either names
-		// this exact state or misses, and a miss rebuilds through the same code.
+		// Bundled records have one cache, in the catalog. Provider overrides are
+		// applied on every load; only discovery-derived layers are stored here.
+		// Custom-model reference lookup uses the same catalog registry rather than
+		// restoring another copy of its records from this stage.
 		const staticFingerprint = this.#staticModelStageFingerprint();
 		const restored = this.#snapshotIo ? this.#readStaticModelStage(staticFingerprint) : null;
-		let builtInModels: Model<Api>[];
+		let builtInModels = this.#applyHardcodedModelPolicies(this.#loadBuiltInModels(overrides));
 		let cachedStandardModels: Model<Api>[];
 		let cachedDiscoveries: Model<Api>[];
 		let authoritativeFreshProviders: Set<string>;
 		if (restored) {
-			builtInModels = restored.builtIn;
 			cachedStandardModels = restored.cachedStandard.models;
 			cachedDiscoveries = restored.cachedDiscoveries;
 			authoritativeFreshProviders = restored.cachedStandard.authoritativeFreshProviders;
@@ -1151,7 +1147,6 @@ export class ModelRegistry {
 				this.#providerDiscoveryStates.set(state.provider, state);
 			}
 		} else {
-			builtInModels = this.#applyHardcodedModelPolicies(this.#loadBuiltInModels(overrides));
 			const cachedStandardResult = this.#loadCachedStandardProviderModels();
 			cachedStandardModels = this.#applyHardcodedModelPolicies(cachedStandardResult.models);
 			cachedDiscoveries = this.#applyHardcodedModelPolicies(this.#loadCachedDiscoverableModels());
@@ -1159,7 +1154,6 @@ export class ModelRegistry {
 			if (this.#snapshotIo) {
 				this.#writeStaticModelStage(staticFingerprint, {
 					createdAt: Date.now(),
-					builtIn: builtInModels,
 					cachedStandard: {
 						models: cachedStandardModels,
 						authoritativeFreshProviders: Array.from(authoritativeFreshProviders),
@@ -1254,10 +1248,9 @@ export class ModelRegistry {
 				return null;
 			}
 			if (!isRecord(stage.cachedStandard)) return null;
-			const builtIn = this.#snapshotModelArray(stage.builtIn);
 			const cachedStandard = this.#snapshotModelArray(stage.cachedStandard.models);
 			const cachedDiscoveries = this.#snapshotModelArray(stage.cachedDiscoveries);
-			if (!builtIn || !cachedStandard || !cachedDiscoveries) return null;
+			if (!cachedStandard || !cachedDiscoveries) return null;
 			if (!Array.isArray(stage.cachedStandard.authoritativeFreshProviders)) return null;
 			const authoritativeFreshProviders = stage.cachedStandard.authoritativeFreshProviders.filter(
 				(provider): provider is string => typeof provider === "string",
@@ -1267,7 +1260,6 @@ export class ModelRegistry {
 			const discoveryStates = this.#snapshotDiscoveryStateArray(stage.discoveryStates);
 			if (!discoveryStates) return null;
 			return {
-				builtIn,
 				cachedStandard: {
 					models: cachedStandard,
 					authoritativeFreshProviders: new Set(authoritativeFreshProviders),

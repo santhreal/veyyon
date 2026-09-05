@@ -32,7 +32,9 @@ Bundled and resolved model snapshots use `@veyyon/utils/json-snapshot`. Each wri
 serializes its payload once; each read verifies the fingerprint and payload bytes
 before parsing. Replacement is atomic without a durability flush because a missing
 or invalid snapshot rebuilds from its inputs. Bundled format v3 and resolved-stage
-format v7 reject snapshots from preceding formats.
+format v8 reject snapshots from preceding formats. The resolved stage stores only
+discovery-derived models and provider state; bundled records use the catalog cache.
+Provider overrides are applied after loading the bundled records on each launch.
 
 ## Measure it
 

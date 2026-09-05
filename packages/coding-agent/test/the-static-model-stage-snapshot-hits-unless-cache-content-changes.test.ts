@@ -8,7 +8,8 @@
  * `Array.isArray` guard rejected EVERY restore regardless. The class this
  * closes: a persisted snapshot whose validity is decided by anything other
  * than the content it mirrors, or whose parseable payload can change without
- * detection.
+ * detection. Discovery snapshots must not duplicate the bundled catalog, and
+ * restoring them must preserve every model and configured provider override.
  *
  * What it does not catch: a new fingerprint input that remains stable across
  * these launches while changing in production (none known).
@@ -19,6 +20,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { writeModelCache } from "@veyyon/catalog/model-cache";
+import { getBundledModels } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
@@ -32,7 +34,7 @@ interface SnapshotHeader {
 
 interface SnapshotStage {
 	createdAt: number;
-	builtIn: Array<{ contextWindow: number }>;
+	cachedStandard: { models: unknown[]; authoritativeFreshProviders: string[] };
 }
 
 describe("static model stage snapshot", () => {
@@ -42,13 +44,14 @@ describe("static model stage snapshot", () => {
 	let snapshotPath: string;
 
 	/** Fresh profile state with one cold launch already written. */
-	const coldLaunch = async (): Promise<void> => {
+	const coldLaunch = async (config?: string): Promise<ModelRegistry> => {
 		tempDir = path.join(os.tmpdir(), `pi-reg-snap-${Snowflake.next()}`);
 		fs.mkdirSync(tempDir, { recursive: true });
 		modelsPath = path.join(tempDir, "models.yml");
 		snapshotPath = path.join(tempDir, "resolved-models.json");
+		if (config !== undefined) fs.writeFileSync(modelsPath, config);
 		authStorage = await AuthStorage.create(path.join(tempDir, "auth.db"));
-		new ModelRegistry(authStorage, modelsPath, { snapshotIo: true });
+		return new ModelRegistry(authStorage, modelsPath, { snapshotIo: true });
 	};
 	const launch = (): void => {
 		new ModelRegistry(authStorage!, modelsPath, { snapshotIo: true });
@@ -92,6 +95,44 @@ describe("static model stage snapshot", () => {
 
 		launch();
 
+		expect(mtime()).toBe(before);
+	});
+
+	it("stores discovery layers without duplicating the catalog or losing configured models", async () => {
+		const reference = getBundledModels("openai")[0]!;
+		const cold = await coldLaunch(
+			JSON.stringify({
+				providers: {
+					anthropic: { baseUrl: "https://example.invalid/anthropic" },
+					"snapshot-custom": {
+						api: "openai-completions",
+						baseUrl: "https://example.invalid/v1",
+						auth: "none",
+						models: [{ id: reference.id, name: "Custom reference", contextWindow: 64000, maxTokens: 4000 }],
+					},
+				},
+			}),
+		);
+		expect(cold.getError()).toBeUndefined();
+		const expected = cold.getAll();
+		const before = mtime();
+		expect(Object.keys(readSnapshot().stage).sort()).toEqual([
+			"cachedDiscoveries",
+			"cachedStandard",
+			"createdAt",
+			"discoveryStates",
+		]);
+
+		const warm = new ModelRegistry(authStorage!, modelsPath, { snapshotIo: true });
+		expect(warm.getAll()).toEqual(expected);
+		expect(warm.find("snapshot-custom", reference.id)).toMatchObject({
+			name: "Custom reference",
+			contextWindow: 64000,
+			maxTokens: 4000,
+		});
+		const overridden = warm.getAll().filter(model => model.provider === "anthropic");
+		expect(overridden.length).toBeGreaterThan(0);
+		expect(overridden.every(model => model.baseUrl === "https://example.invalid/anthropic")).toBe(true);
 		expect(mtime()).toBe(before);
 	});
 
@@ -213,12 +254,12 @@ describe("static model stage snapshot", () => {
 	it("a parseable stage whose content does not match its digest is rebuilt", async () => {
 		await coldLaunch();
 		const { header, stage } = readSnapshot();
-		stage.builtIn[0]!.contextWindow = 1;
+		stage.cachedStandard.authoritativeFreshProviders.push("synthetic-corruption");
 		writeSnapshot(header, stage);
 
 		launch();
 
-		expect(readSnapshot().stage.builtIn[0]!.contextWindow).not.toBe(1);
+		expect(readSnapshot().stage.cachedStandard.authoritativeFreshProviders).not.toContain("synthetic-corruption");
 	});
 
 	it("a snapshot in the retired single-object format misses rather than serving", async () => {
@@ -230,26 +271,26 @@ describe("static model stage snapshot", () => {
 		launch();
 
 		expect(mtime()).not.toBe(before);
-		expect(readSnapshot().stage.builtIn.length).toBeGreaterThan(0);
+		expect(readSnapshot().stage.cachedStandard).toEqual(stage.cachedStandard);
 	});
 
 	it.each(["fingerprint", "framing"])("rebuilds a retired stage with obsolete %s", async variant => {
 		await coldLaunch();
 		const { header, stage } = readSnapshot();
-		const expectedWindow = stage.builtIn[0]!.contextWindow;
-		stage.builtIn[0]!.contextWindow = 1;
+		const expectedProviders = [...stage.cachedStandard.authoritativeFreshProviders];
+		stage.cachedStandard.authoritativeFreshProviders.push("synthetic-corruption");
 		const payload = JSON.stringify(stage);
 		const payloadDigest = createHash("sha256").update(payload).digest("hex");
 		const staleHeader =
 			variant === "fingerprint"
-				? { fingerprint: header.fingerprint.replace(/^[^:]+/, "6"), payloadDigest }
+				? { fingerprint: header.fingerprint.replace(/^[^:]+/, "7"), payloadDigest }
 				: { fingerprint: header.fingerprint, stageDigest: payloadDigest };
 		fs.writeFileSync(snapshotPath, `${JSON.stringify(staleHeader)}\n${payload}`);
 
 		launch();
 
-		expect(readSnapshot().stage.builtIn[0]!.contextWindow).toBe(expectedWindow);
-		expect(readSnapshot().header.fingerprint.split(":")[0]).toBe("7");
+		expect(readSnapshot().stage.cachedStandard.authoritativeFreshProviders).toEqual(expectedProviders);
+		expect(readSnapshot().header.fingerprint.split(":")[0]).toBe("8");
 	});
 
 	it("a snapshot naming another fingerprint misses rather than serving", async () => {
