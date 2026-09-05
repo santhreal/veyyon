@@ -10,10 +10,11 @@
 //! rather than a list of unrelated rows.
 
 use veyyon_desktop_kit::{
-	ColorRole, MonoSizeStep, RadiusStep, SpacingStep, TextRamp, TextWeight, TokenSet,
+	CodeBlock, ColorRole, Markdown, MonoSizeStep, SpacingStep, TextRamp, TextWeight, TokenSet,
+	Truncate,
 };
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
-use veyyon_gpui::{Div, IntoElement, ParentElement, Styled, div, px};
+use veyyon_gpui::{Div, IntoElement, ParentElement, SharedString, Styled, div, px};
 
 use crate::{
 	damage::{LaidOut, Region},
@@ -101,12 +102,12 @@ fn agent_turn(blocks: &[Block], geometry: &TranscriptSurfaceTokens, tokens: &Tok
 
 	for (index, block) in blocks.iter().enumerate() {
 		let mut rendered = match block {
-			Block::Prose(text) => prose_block(text, geometry, tokens),
+			Block::Prose(text) => prose_block(text, geometry),
 			Block::Invoke { tool, target, result } => {
 				invoke_line(tool, target, result.as_deref(), geometry, tokens)
 			},
 			Block::Reason(summary) => reason_line(summary, geometry, tokens),
-			Block::Pane { caption, lines } => pane_block(caption, lines, geometry, tokens),
+			Block::Pane { caption, lines } => pane_block(caption, lines, geometry),
 		};
 
 		if index > 0 {
@@ -138,14 +139,14 @@ const fn same_kind(left: &Block, right: &Block) -> bool {
 	)
 }
 
-/// Prose, at the reading size.
-fn prose_block(text: &str, geometry: &TranscriptSurfaceTokens, tokens: &TokenSet) -> Div {
+/// Prose, at the reading size, read as Markdown.
+fn prose_block(text: &str, geometry: &TranscriptSurfaceTokens) -> Div {
 	div()
 		.w_full()
-		.text_size(px(geometry.assistant_turn_type_size.size))
-		.line_height(px(geometry.assistant_turn_type_size.line_height))
-		.text_color(tokens.color(ColorRole::Foreground))
-		.child(text.to_owned())
+		.child(Markdown::new(text.to_owned()).prose_size(
+			px(geometry.assistant_turn_type_size.size),
+			px(geometry.assistant_turn_type_size.line_height),
+		))
 }
 
 /// One invocation, collapsed to a single line.
@@ -177,16 +178,11 @@ fn invoke_line(
 			// The target is the part that grows without bound, so it is the
 			// part that gives way. The tool name and the outcome stay legible
 			// at any width.
-			div()
-				.flex_1()
-				.min_w_0()
-				.overflow_hidden()
-				.whitespace_nowrap()
-				.truncate()
-				.text_size(tokens.mono_font_size(MonoSizeStep::Small))
-				.line_height(tokens.mono_line_height(MonoSizeStep::Small))
-				.text_color(tokens.color(ColorRole::Secondary))
-				.child(target.to_owned()),
+			div().flex_1().min_w_0().child(
+				Truncate::new(target.to_owned())
+					.mono(MonoSizeStep::Small)
+					.color(ColorRole::Secondary),
+			),
 		);
 
 	if let Some(result) = result {
@@ -221,53 +217,11 @@ fn reason_line(summary: &str, geometry: &TranscriptSurfaceTokens, tokens: &Token
 }
 
 /// A mono pane: a captioned, height-capped excerpt.
-fn pane_block(
-	caption: &str,
-	lines: &[String],
-	geometry: &TranscriptSurfaceTokens,
-	tokens: &TokenSet,
-) -> Div {
-	let mut body = div()
-		.w_full()
-		.max_h(px(geometry.chrome_invoke_mono_pane_max_height_px))
-		.overflow_hidden()
-		.bg(tokens.color(ColorRole::Inset))
-		.rounded(tokens.radius(RadiusStep::Sm))
-		.p(tokens.spacing(SpacingStep::S2))
-		.flex()
-		.flex_col();
-
-	for line in lines {
-		body = body.child(
-			div()
-				.w_full()
-				.min_w_0()
-				.overflow_hidden()
-				.whitespace_nowrap()
-				.truncate()
-				.text_size(tokens.mono_font_size(MonoSizeStep::Small))
-				.line_height(tokens.mono_line_height(MonoSizeStep::Small))
-				.text_color(tokens.color(ColorRole::Secondary))
-				.child(line.clone()),
-		);
-	}
-
-	div()
-		.w_full()
-		.flex()
-		.flex_col()
-		.gap(tokens.spacing(SpacingStep::S1))
-		.child(
-			div()
-				.w_full()
-				.min_w_0()
-				.overflow_hidden()
-				.whitespace_nowrap()
-				.truncate()
-				.text_size(tokens.font_size(TextRamp::Micro))
-				.line_height(tokens.line_height(TextRamp::Micro))
-				.text_color(tokens.color(ColorRole::Muted))
-				.child(caption.to_owned()),
-		)
-		.child(body)
+fn pane_block(caption: &str, lines: &[String], geometry: &TranscriptSurfaceTokens) -> Div {
+	div().w_full().child(
+		CodeBlock::lines(lines.iter().map(|line| SharedString::from(line.clone())))
+			.caption(caption.to_owned())
+			.size(MonoSizeStep::Small)
+			.max_height(px(geometry.chrome_invoke_mono_pane_max_height_px)),
+	)
 }

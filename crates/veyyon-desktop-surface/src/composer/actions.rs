@@ -10,7 +10,7 @@ use veyyon_desktop_kit::{
 	Button, ButtonSize, ButtonVariant, ColorRole, Icon, IconName, IconSize, InteractiveState,
 	RadiusStep, SpacingStep, SplitButton, TokenSet,
 };
-use veyyon_desktop_model::{InteractionId, QueueMode, SessionId, SurfaceId};
+use veyyon_desktop_model::{QueueMode, SessionId, SurfaceId};
 use veyyon_gpui::{
 	ClickEvent, Context, ElementId, InteractiveElement, IntoElement, ParentElement,
 	StatefulInteractiveElement, Styled, div, px,
@@ -21,25 +21,6 @@ use crate::{
 	Intent, ShellView,
 	controls::{ControlStates, availability_style},
 };
-
-/// Resolves the corresponding `SurfaceId` for a primary action kind.
-#[must_use]
-pub fn primary_surface_id(action: PrimaryAction, session_id: &SessionId) -> SurfaceId {
-	let dummy_interaction = InteractionId::from("current");
-	match action {
-		PrimaryAction::Send => SurfaceId::ComposerSendButton(session_id.clone()),
-		PrimaryAction::Steer => SurfaceId::ComposerSteerButton(session_id.clone()),
-		PrimaryAction::Queue => SurfaceId::ComposerQueueButton(session_id.clone()),
-		PrimaryAction::Answer => {
-			SurfaceId::QuestionSubmitButton(session_id.clone(), dummy_interaction)
-		},
-		PrimaryAction::Approve => {
-			SurfaceId::ApprovalApproveButton(session_id.clone(), dummy_interaction)
-		},
-		PrimaryAction::Accept => SurfaceId::PlanAcceptButton(session_id.clone(), dummy_interaction),
-		PrimaryAction::Refine => SurfaceId::PlanRefineButton(session_id.clone(), dummy_interaction),
-	}
-}
 
 /// Builds the right-aligned container with the abort button (if running) and
 /// primary/split button.
@@ -54,7 +35,7 @@ pub fn turn_action_controls(
 ) -> impl IntoElement {
 	let sid = SessionId::from(session_id.to_string());
 	let (primary, secondary) = primary_action(turn, has_text);
-	let primary_id = primary_surface_id(primary, &sid);
+	let primary_id = turn.primary_surface(has_text, &sid);
 	let av = controls.availability(&primary_id);
 	let (opacity, _cursor, allowed) = availability_style(&av, tokens);
 

@@ -98,7 +98,9 @@ fn expected_controls(state: &ShellState) -> usize {
 
 	// A tab is a control only while the panel it sits in is present, and the
 	// diff surface adds its unified/split toggle and the click target that
-	// covers its scroll area while it is the active tab.
+	// covers its scroll area while it is the active tab. At this width the
+	// panel docks, and the split it docks into answers two more: the handle
+	// the operator drags, and the split container that follows the drag.
 	let panel = if state.panel.is_empty() {
 		0
 	} else {
@@ -107,7 +109,7 @@ fn expected_controls(state: &ShellState) -> usize {
 				2
 			} else {
 				0
-			}
+			} + 2
 	};
 
 	// A card past the stack cap is collapsed into a count and offers nothing.
@@ -208,8 +210,9 @@ fn closing_the_right_panel_takes_its_tabs_out_of_reach() {
 	let after = capture(closed.clone()).hitboxes.len();
 
 	// The panel owns its tabs, the diff surface's two controls while the diff
-	// tab is active, and the titlebar toggle that exists only while the panel
-	// has something to show; closing it takes exactly those out of reach.
+	// tab is active, the split handle and container it docks into, and the
+	// titlebar toggle that exists only while the panel has something to show;
+	// closing it takes exactly those out of reach.
 	let owned = expected_controls(&open) - expected_controls(&closed);
 	assert_eq!(
 		before - after,

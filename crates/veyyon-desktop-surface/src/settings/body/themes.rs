@@ -7,6 +7,7 @@ use veyyon_gpui::{ClickEvent, Context, Div, ElementId, IntoElement, ParentElemen
 
 use crate::{
 	Intent, ShellView,
+	controls::ControlStates,
 	settings::{
 		SettingsState,
 		row::{empty_state_row, setting_row},
@@ -16,6 +17,7 @@ use crate::{
 /// Renders the Themes selection page rows.
 pub fn render_themes_page(
 	state: &SettingsState,
+	controls: &ControlStates,
 	geometry: &SettingsSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
@@ -33,8 +35,7 @@ pub fn render_themes_page(
 		return container.child(empty_state_row("No themes reported by host.", geometry, tokens));
 	}
 
-	let shell_state = cx.entity().read(cx).state();
-	let av = shell_state.controls.availability(&SurfaceId::ThemeSelector);
+	let av = controls.availability(&SurfaceId::ThemeSelector);
 
 	for theme in &themes_view.themes {
 		let is_selected = theme.id == themes_view.current;

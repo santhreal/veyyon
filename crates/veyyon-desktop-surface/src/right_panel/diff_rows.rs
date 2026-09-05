@@ -39,7 +39,7 @@ pub fn render_unified_row(
 				.items_center()
 				.text_size(tokens.font_size(TextRamp::Micro))
 				.line_height(px(geometry.diff_row_height_px))
-				.font_family("mono")
+				.font_family(tokens.mono_family())
 				.child(gutter_cell(&line_no, geometry, tokens))
 				.child(sign_cell(" ", geometry, tokens, ColorRole::Secondary))
 				.child(content_cell(text, &[], tokens, None))
@@ -61,7 +61,7 @@ pub fn render_unified_row(
 				.bg(row_bg)
 				.text_size(tokens.font_size(TextRamp::Micro))
 				.line_height(px(geometry.diff_row_height_px))
-				.font_family("mono")
+				.font_family(tokens.mono_family())
 				.child(gutter_cell(&line_no, geometry, tokens))
 				.child(sign_cell("+", geometry, tokens, ColorRole::Foreground))
 				.child(content_cell(text, intraline, tokens, Some(hl_bg)))
@@ -83,7 +83,7 @@ pub fn render_unified_row(
 				.bg(row_bg)
 				.text_size(tokens.font_size(TextRamp::Micro))
 				.line_height(px(geometry.diff_row_height_px))
-				.font_family("mono")
+				.font_family(tokens.mono_family())
 				.child(gutter_cell(&line_no, geometry, tokens))
 				.child(sign_cell("-", geometry, tokens, ColorRole::Foreground))
 				.child(content_cell(text, intraline, tokens, Some(hl_bg)))
@@ -125,7 +125,7 @@ pub fn render_hunk_header(
 		.line_height(px(geometry.diff_hunk_header_height_px))
 		.font_weight(tokens.font_weight(TextWeight::Medium))
 		.text_color(tokens.color(ColorRole::Secondary))
-		.font_family("mono")
+		.font_family(tokens.mono_family())
 		.child(range_text);
 
 	if let Some(sym) = symbol {

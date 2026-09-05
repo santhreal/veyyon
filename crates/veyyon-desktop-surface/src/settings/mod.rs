@@ -21,7 +21,7 @@ use veyyon_gpui::{
 };
 
 pub use self::{body::*, pages::*, row::*};
-use crate::{Intent, ShellView};
+use crate::{Intent, ShellView, controls::ControlStates};
 
 /// Runtime view model for the settings overlay (§5.9).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,6 +101,7 @@ impl SettingsState {
 /// (§5.9).
 pub fn settings_surface(
 	state: &SettingsState,
+	controls: &ControlStates,
 	geometry: &SettingsSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
@@ -224,7 +225,7 @@ pub fn settings_surface(
 	content = content.child(header);
 
 	// Page body rows container.
-	let body = render_page_body(state, geometry, tokens, cx);
+	let body = render_page_body(state, controls, geometry, tokens, cx);
 	content = content.child(body);
 
 	dialog.child(content)

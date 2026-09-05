@@ -1,6 +1,6 @@
 //! Shell rendering implementation (§4.2).
 
-use veyyon_desktop_kit::{ColorRole, SpacingStep};
+use veyyon_desktop_kit::{Axis, ColorRole, Resizable, Sheet, SpacingStep};
 use veyyon_desktop_model::SurfaceId;
 use veyyon_gpui::{
 	Context, InteractiveElement, IntoElement, ParentElement, Styled, Window, div, px,
@@ -19,7 +19,7 @@ use crate::{
 	damage::Region,
 	layout::{RightPanelPlacement, ShedInput, shell_widths},
 	panel::right_panel,
-	queue::queue_rail,
+	queue::{queue_rail, row_menu_layer},
 };
 
 /// Renders the root shell view.
@@ -46,6 +46,7 @@ pub fn render_shell(
 			gutter_px:          f32::from(view.installed().set.spacing(SpacingStep::S4)),
 			queue_collapsed:    keymap.queue_collapsed,
 			panel_open:         panel_available && !keymap.panel_collapsed,
+			panel_width:        view.panel_width(),
 			labels:             view.labels(),
 		},
 		&view.installed().surface,
@@ -155,7 +156,7 @@ pub fn render_shell(
 	column_regions.push(None);
 
 	let has_text = view.has_composer_text();
-	columns = columns.child(session_surface(
+	let session = session_surface(
 		view.state(),
 		view.composer(),
 		view.composer_local(),
@@ -164,21 +165,48 @@ pub fn render_shell(
 		view.installed(),
 		view.laid_out(),
 		cx,
-	));
+	);
 
 	let panel = &view.state().panel;
 	columns = match widths.right_panel {
-		RightPanelPlacement::Absent => columns,
+		RightPanelPlacement::Absent => columns.child(session),
+		// A docked panel is the second pane of a split whose handle the
+		// operator drags (§5.6). The handle sits inside the panel's measure,
+		// so the session surface keeps the width the shed gave it, and the
+		// panel's own box is recorded from inside the split.
 		RightPanelPlacement::Inline { width_px } => {
-			column_regions.push(Some(Region::Panel));
-			columns.child(right_panel(panel, width_px, panels, &tokens, cx))
+			let grip_px = f32::from(Resizable::handle_extent(&tokens));
+			let body = right_panel(panel, width_px - grip_px, panels, &tokens, cx);
+			let tracked = view
+				.laid_out()
+				.track_children(div().h_full().w_full().flex().child(body), |index| {
+					(index == 0).then_some(Region::Panel)
+				});
+			let split_px = widths.session_px + width_px;
+			let shell = cx.weak_entity();
+			columns.child(
+				Resizable::new(Axis::Horizontal, session, tracked)
+					.id("shell-split")
+					.ratio(widths.session_px / split_px)
+					.on_resize(move |ratio, _window, cx| {
+						let asked_px = (1.0 - ratio) * split_px;
+						// A released view has no handle to move; the drag
+						// ends with the window.
+						let _ = shell.update(cx, |view, cx| {
+							view.set_panel_width(asked_px);
+							cx.notify();
+						});
+					}),
+			)
 		},
 		// The panel takes its width from the window rather than from the
-		// transcript, over a blurred scrim stating that what it covers is
-		// still there (§5.6).
+		// transcript, as a sheet docked to the trailing edge over a blurred
+		// scrim stating that what it covers is still there (§5.6).
 		RightPanelPlacement::Overlay { width_px } => {
 			column_regions.push(Some(Region::Panel));
-			columns.child(
+			let inset_px = f32::from(Sheet::inset(&tokens));
+			let body = right_panel(panel, inset_px.mul_add(-2.0, width_px), panels, &tokens, cx);
+			columns.child(session).child(
 				div()
 					.absolute()
 					.inset_0()
@@ -187,7 +215,7 @@ pub fn render_shell(
 					.justify_end()
 					.backdrop_blur(px(panels.right_panel_overlay_scrim_blur_px))
 					.bg(tokens.scrim())
-					.child(right_panel(panel, width_px, panels, &tokens, cx)),
+					.child(Sheet::right(body)),
 			)
 		},
 	};
@@ -195,7 +223,11 @@ pub fn render_shell(
 		.laid_out()
 		.track_children(columns, move |index| column_regions.get(index).copied().flatten());
 	if let Some(overlay) = &view.state().overlay {
-		columns = columns.child(overlay_scrim(overlay, panels, &surface, &tokens, cx));
+		let controls = &view.state().controls;
+		columns = columns.child(overlay_scrim(overlay, controls, panels, &surface, &tokens, cx));
+	}
+	if let Some(menu) = view.row_menu() {
+		columns = columns.child(row_menu_layer(menu, cx));
 	}
 
 	root.child(columns)

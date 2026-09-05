@@ -20,7 +20,7 @@ use std::path::Path;
 
 use strum::IntoEnumIterator;
 use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
-use veyyon_desktop_model::QueueMode;
+use veyyon_desktop_model::{InteractionId, QueueMode};
 use veyyon_desktop_scene::{
 	headless::{RenderOptions, headless_context},
 	session::HeadlessSession,
@@ -59,7 +59,8 @@ fn build_state_for_phase(discriminant: TurnPhaseDiscriminant) -> (ShellState, bo
 			(state, true)
 		},
 		TurnPhaseDiscriminant::QuestionPending => {
-			state.turn = TurnPhase::QuestionPending { options: 3 };
+			state.turn =
+				TurnPhase::QuestionPending { interaction: InteractionId::from("q"), options: 3 };
 			state.cards = vec![Card::Question {
 				prompt:  "Select option".to_string(),
 				options: vec!["A".to_string(), "B".to_string(), "C".to_string()],
@@ -67,7 +68,7 @@ fn build_state_for_phase(discriminant: TurnPhaseDiscriminant) -> (ShellState, bo
 			(state, false)
 		},
 		TurnPhaseDiscriminant::ApprovalPending => {
-			state.turn = TurnPhase::ApprovalPending;
+			state.turn = TurnPhase::ApprovalPending { interaction: InteractionId::from("a") };
 			state.cards = vec![Card::Approval {
 				tool:   "bash".to_string(),
 				detail: vec!["cargo check".to_string()],
@@ -75,7 +76,7 @@ fn build_state_for_phase(discriminant: TurnPhaseDiscriminant) -> (ShellState, bo
 			(state, false)
 		},
 		TurnPhaseDiscriminant::PlanPendingEmpty => {
-			state.turn = TurnPhase::PlanPending;
+			state.turn = TurnPhase::PlanPending { interaction: InteractionId::from("p") };
 			state.cards = vec![Card::Plan {
 				title: "Refactor plan".to_string(),
 				body:  vec!["line 1".to_string()],
@@ -83,7 +84,7 @@ fn build_state_for_phase(discriminant: TurnPhaseDiscriminant) -> (ShellState, bo
 			(state, false)
 		},
 		TurnPhaseDiscriminant::PlanPendingWithText => {
-			state.turn = TurnPhase::PlanPending;
+			state.turn = TurnPhase::PlanPending { interaction: InteractionId::from("p") };
 			state.cards = vec![Card::Plan {
 				title: "Refactor plan".to_string(),
 				body:  vec!["line 1".to_string()],

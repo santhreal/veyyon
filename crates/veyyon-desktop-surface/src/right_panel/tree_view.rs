@@ -1,13 +1,16 @@
 //! Hierarchical directory tree view (§5.6).
 //!
 //! Displays workspace files with inline indentation, directory expansion,
-//! git modification badges, and file opening intents.
+//! git modification badges, and file opening intents. Every row is a kit
+//! `TreeRow` whose geometry comes from the panel tokens, inside a kit `Tree`
+//! that scrolls.
 
-use veyyon_desktop_kit::{ColorRole, RadiusStep, SpacingStep, TintRole, TokenSet};
+use veyyon_desktop_kit::{
+	ColorRole, IconName, SpacingStep, TintRole, TokenSet, Tree, TreeNodeMetrics, TreeRow,
+};
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
 use veyyon_gpui::{
-	Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
-	div, px,
+	AnyElement, Context, InteractiveElement, IntoElement, ParentElement, Styled, div, px,
 };
 
 use crate::{
@@ -22,7 +25,7 @@ pub fn tree_view(
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
-) -> impl IntoElement {
+) -> AnyElement {
 	if tree.rows.is_empty() {
 		return div()
 			.id("right-panel-tree-empty")
@@ -32,28 +35,30 @@ pub fn tree_view(
 			.justify_center()
 			.text_size(px(geometry.tree_font_size.size))
 			.text_color(tokens.color(ColorRole::Muted))
-			.child("No files in workspace");
+			.child("No files in workspace")
+			.into_any_element();
 	}
 
-	let mut container = div()
-		.id("right-panel-tree")
-		.flex_1()
-		.w_full()
-		.flex()
-		.flex_col()
-		.overflow_y_scroll();
-	for (index, row) in tree.rows.iter().enumerate() {
-		container = container.child(render_tree_row(
-			index,
-			row,
-			tree.selected_path.as_deref(),
-			geometry,
-			tokens,
-			cx,
-		));
-	}
-
-	container
+	// The builder is called once per row while the tree renders, on the same
+	// frame, so the rows are built here and handed over in order.
+	let rows: Vec<Option<AnyElement>> = tree
+		.rows
+		.iter()
+		.enumerate()
+		.map(|(index, row)| {
+			Some(render_tree_row(index, row, tree.selected_path.as_deref(), geometry, tokens, cx))
+		})
+		.collect();
+	let rows = std::cell::RefCell::new(rows);
+	Tree::new(tree.rows.len(), move |index, _window, _cx| {
+		rows
+			.borrow_mut()
+			.get_mut(index)
+			.and_then(Option::take)
+			.unwrap_or_else(|| div().into_any_element())
+	})
+	.id("right-panel-tree")
+	.into_any_element()
 }
 
 fn render_tree_row(
@@ -63,96 +68,62 @@ fn render_tree_row(
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
-) -> impl IntoElement {
-	let depth = u16::try_from(row.depth).unwrap_or(u16::MAX);
-	let indent = geometry
-		.tree_indent_step_px
-		.mul_add(f32::from(depth), geometry.tree_indent_base_px);
-
+) -> AnyElement {
 	let is_selected = selected_path == Some(&row.path);
-	let ground = if is_selected {
-		tokens.row_selected()
-	} else {
-		tokens.transparent()
-	};
-
 	let row_path = row.path.clone();
 	let is_dir = row.is_dir;
+	let entity = cx.entity();
 
-	let mut line = div()
+	let mut node = TreeRow::new(row.name.clone(), row.depth)
 		.id(("tree-row", index))
-		.on_click(cx.listener(move |view, _event, _window, cx| {
-			if is_dir {
-				view.dispatch(Intent::ToggleTreeNode(row_path.clone()));
-			} else {
-				view.dispatch(Intent::OpenFile(row_path.clone()));
-			}
-			cx.notify();
-		}))
-		.h(px(geometry.tree_row_height_px))
-		.w_full()
-		.flex_shrink_0()
-		.flex()
-		.flex_row()
-		.items_center()
-		.gap(tokens.spacing(SpacingStep::S2))
-		.pl(px(indent))
-		.pr(tokens.spacing(SpacingStep::S4))
-		.bg(ground)
-		.hover(|s| s.bg(tokens.row_hover()))
-		.rounded(tokens.radius(RadiusStep::Sm))
-		.overflow_hidden();
-
-	let icon = if row.is_dir {
-		if row.is_expanded { "▾ " } else { "▸ " }
-	} else {
-		"  "
-	};
-
-	line = line.child(
-		div()
-			.text_size(px(geometry.tree_font_size.size))
-			.line_height(px(geometry.tree_font_size.line_height))
-			.text_color(tokens.color(ColorRole::Muted))
-			.child(icon),
-	);
-
-	line = line.child(
-		div()
-			.flex_1()
-			.min_w_0()
-			.overflow_hidden()
-			.whitespace_nowrap()
-			.truncate()
-			.text_size(px(geometry.tree_font_size.size))
-			.line_height(px(geometry.tree_font_size.line_height))
-			.text_color(tokens.color(if is_selected {
-				ColorRole::Foreground
-			} else {
-				ColorRole::Secondary
-			}))
-			.child(row.name.clone()),
-	);
-
-	if let Some((added, removed)) = row.changed {
-		line = line
-			.child(
-				div()
-					.flex_shrink_0()
-					.text_size(px(geometry.diff_font_size.size))
-					.line_height(px(geometry.diff_font_size.line_height))
-					.text_color(tokens.tint(TintRole::Done).fill)
-					.child(format!("+{added}")),
-			)
-			.child(
-				div()
-					.flex_shrink_0()
-					.text_size(px(geometry.diff_font_size.size))
-					.line_height(px(geometry.diff_font_size.line_height))
-					.text_color(tokens.tint(TintRole::Error).fill)
-					.child(format!("-{removed}")),
-			);
+		.branch(row.is_dir)
+		.expanded(row.is_expanded)
+		.selected(is_selected)
+		.metrics(TreeNodeMetrics {
+			row_height:  Some(px(geometry.tree_row_height_px)),
+			indent_base: Some(px(geometry.tree_indent_base_px)),
+			indent_step: Some(px(geometry.tree_indent_step_px)),
+			font:        Some((
+				px(geometry.tree_font_size.size),
+				px(geometry.tree_font_size.line_height),
+			)),
+		})
+		.on_click(move |_event, _window, app| {
+			let () = entity.update(app, |view, cx| {
+				if is_dir {
+					view.dispatch(Intent::ToggleTreeNode(row_path.clone()));
+				} else {
+					view.dispatch(Intent::OpenFile(row_path.clone()));
+				}
+				cx.notify();
+			});
+		});
+	if !row.is_dir {
+		node = node.icon(IconName::File);
 	}
 
-	line
+	if let Some((added, removed)) = row.changed {
+		node = node.trailing(
+			div()
+				.flex()
+				.flex_row()
+				.items_center()
+				.gap(tokens.spacing(SpacingStep::S2))
+				.pr(tokens.spacing(SpacingStep::S2))
+				.text_size(px(geometry.diff_font_size.size))
+				.line_height(px(geometry.diff_font_size.line_height))
+				.child(
+					div()
+						.text_color(tokens.tint(TintRole::Done).fill)
+						.child(format!("+{added}")),
+				)
+				.child(
+					div()
+						.text_color(tokens.tint(TintRole::Error).fill)
+						.child(format!("-{removed}")),
+				),
+		);
+	}
+
+	node.into_any_element()
 }

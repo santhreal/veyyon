@@ -7,13 +7,13 @@
 //! manager's own decorations sit above the bar.
 
 use veyyon_desktop_kit::{
-	ColorRole, IconButton, IconButtonVariant, IconName, IconSize, SpacingStep, StrokeStep, TextRamp,
-	TextWeight, TokenSet,
+	ColorRole, Dot, IconButton, IconButtonVariant, IconName, IconSize, SpacingStep, Spinner,
+	SpinnerSize, StrokeStep, TextRamp, TextWeight, TokenSet,
 };
 use veyyon_desktop_tokens::ShellSurfaceTokens;
 use veyyon_gpui::{
-	ClickEvent, Context, Div, InteractiveElement, IntoElement, MouseMoveEvent, ParentElement,
-	StatefulInteractiveElement, Styled, div, px,
+	AnyElement, ClickEvent, Context, Div, InteractiveElement, IntoElement, MouseMoveEvent,
+	ParentElement, StatefulInteractiveElement, Styled, div, px,
 };
 
 use crate::{Intent, ShellView, attach::ConnectionPhase};
@@ -160,20 +160,26 @@ fn toggle_control(
 		}))
 }
 
-/// The connection state as a dot, with a word beside it only while something
+/// The connection state as a mark, with a word beside it only while something
 /// is not settled: a bar that says "Connected" all day is a bar nobody reads.
+/// A phase that is waiting on the host draws a spinner; one that has landed
+/// draws a dot in the ink of where it landed.
 fn connection_state(connection: &ConnectionPhase, tokens: &TokenSet) -> Div {
-	let (ink, label): (ColorRole, Option<String>) = match connection {
-		ConnectionPhase::Attached => (ColorRole::DoneInk, None),
-		ConnectionPhase::Connecting { .. } => (ColorRole::WorkingInk, Some("Connecting".into())),
-		ConnectionPhase::Syncing { .. } => (ColorRole::WorkingInk, Some("Syncing".into())),
+	let (mark, label): (AnyElement, Option<String>) = match connection {
+		ConnectionPhase::Attached => (Dot::role(ColorRole::DoneInk).into_any_element(), None),
+		ConnectionPhase::Connecting { .. } => (waiting(), Some("Connecting".into())),
+		ConnectionPhase::Syncing { .. } => (waiting(), Some("Syncing".into())),
 		ConnectionPhase::Reconnecting { attempt, .. } => {
-			(ColorRole::WorkingInk, Some(format!("Reconnecting, attempt {attempt}")))
+			(waiting(), Some(format!("Reconnecting, attempt {attempt}")))
 		},
-		ConnectionPhase::Fatal { .. } => (ColorRole::ErrorInk, Some("Host unreachable".into())),
-		ConnectionPhase::Detached => (ColorRole::Muted, Some("Offline".into())),
+		ConnectionPhase::Fatal { .. } => {
+			(Dot::role(ColorRole::ErrorInk).into_any_element(), Some("Host unreachable".into()))
+		},
+		ConnectionPhase::Detached => {
+			(Dot::role(ColorRole::Muted).into_any_element(), Some("Offline".into()))
+		},
 		ConnectionPhase::NeedsSecret { .. } | ConnectionPhase::AwaitingExternalUrl { .. } => {
-			(ColorRole::AttentionInk, Some("Signing in".into()))
+			(Dot::role(ColorRole::AttentionInk).into_any_element(), Some("Signing in".into()))
 		},
 	};
 
@@ -183,7 +189,7 @@ fn connection_state(connection: &ConnectionPhase, tokens: &TokenSet) -> Div {
 		.items_center()
 		.gap(tokens.spacing(SpacingStep::S2))
 		.px(tokens.spacing(SpacingStep::S2))
-		.child(div().size(px(6.0)).rounded_full().bg(tokens.color(ink)))
+		.child(mark)
 		.children(label.map(|label| {
 			div()
 				.whitespace_nowrap()
@@ -192,6 +198,11 @@ fn connection_state(connection: &ConnectionPhase, tokens: &TokenSet) -> Div {
 				.text_color(tokens.color(ColorRole::Secondary))
 				.child(label)
 		}))
+}
+
+/// The mark for a phase that is waiting on the host.
+fn waiting() -> AnyElement {
+	Spinner::new().size(SpinnerSize::Small).into_any_element()
 }
 
 /// What the attention strip takes off the top of the window.

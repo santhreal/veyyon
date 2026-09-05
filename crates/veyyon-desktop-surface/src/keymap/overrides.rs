@@ -10,7 +10,7 @@ use veyyon_desktop_model::KeybindingView;
 use veyyon_gpui::{InvalidKeystrokeError, Keystroke};
 
 use crate::keymap::{
-	actions::Command,
+	command::Command,
 	table::{Keymap, ResolvedBinding, build_action, resolve_chord},
 };
 

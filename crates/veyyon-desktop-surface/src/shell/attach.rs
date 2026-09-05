@@ -76,6 +76,41 @@ impl ShellView {
 		.detach();
 	}
 
+	/// Opens the platform's path prompt for the setting `key` and writes the
+	/// one path the operator picks to it. A cancelled prompt writes nothing;
+	/// a prompt the platform could not open is reported on the attention
+	/// strip, as for an attachment.
+	pub fn pick_setting_path(&mut self, key: String, cx: &mut Context<Self>) {
+		let receiver = cx.prompt_for_paths(PathPromptOptions {
+			files:       true,
+			directories: true,
+			multiple:    false,
+			prompt:      Some("Choose".into()),
+		});
+		cx.spawn(async move |this, cx| {
+			let picked = receiver.await;
+			let _ = this.update(cx, |view, cx| {
+				match picked {
+					Ok(Ok(Some(paths))) => {
+						if let Some(path) = paths.into_iter().next() {
+							let value = serde_json::Value::String(path.display().to_string());
+							view.dispatch(Intent::SettingChanged { key, value });
+						}
+					},
+					Ok(Ok(None)) => {},
+					Ok(Err(error)) => {
+						view.set_notice(Some(format!("Path prompt failed: {error:#}")));
+					},
+					Err(_cancelled) => {
+						view.set_notice(Some("Path prompt closed before answering".to_owned()));
+					},
+				}
+				cx.notify();
+			});
+		})
+		.detach();
+	}
+
 	/// Reads `paths` off the main thread and attaches each that is an image
 	/// or a clip within the ceilings, in the order given.
 	pub fn attach_paths(&mut self, paths: Vec<PathBuf>, cx: &mut Context<Self>) {

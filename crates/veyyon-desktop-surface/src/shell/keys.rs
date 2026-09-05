@@ -146,8 +146,8 @@ pub fn bind_composer_keys(composer: Div, cx: &Context<ShellView>) -> Div {
 		// A digit answers the open question while the composer is empty;
 		// with text in it, the digit is text.
 		.on_action(cx.listener(|view, action: &SelectOption, _window, cx| {
-			let options = match view.state().turn {
-				TurnPhase::QuestionPending { options } => options,
+			let options = match &view.state().turn {
+				TurnPhase::QuestionPending { options, .. } => *options,
 				_ => 0,
 			};
 			let option = usize::from(action.index).wrapping_sub(1);

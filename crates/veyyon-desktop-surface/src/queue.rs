@@ -19,11 +19,13 @@ pub mod fill;
 pub mod footer;
 pub mod header;
 pub mod line;
+pub mod menu;
 pub mod motion;
 pub mod rows;
 
 pub use fill::{RailFill, rail_fill, visible_rows};
 pub use footer::queue_footer;
+pub use menu::{RowMenu, row_menu_layer};
 pub use motion::RailMotion;
 pub use rows::{card_row, line_row, more_row, section_header};
 

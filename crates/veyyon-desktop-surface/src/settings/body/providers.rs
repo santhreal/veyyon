@@ -7,6 +7,7 @@ use veyyon_gpui::{ClickEvent, Context, Div, ElementId, IntoElement, ParentElemen
 
 use crate::{
 	Intent, ShellView,
+	controls::ControlStates,
 	settings::{
 		SettingsState,
 		row::{empty_state_row, setting_row},
@@ -16,6 +17,7 @@ use crate::{
 /// Renders the AI model providers configuration page rows.
 pub fn render_providers_page(
 	state: &SettingsState,
+	controls: &ControlStates,
 	geometry: &SettingsSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
@@ -29,13 +31,9 @@ pub fn render_providers_page(
 		return container.child(empty_state_row("No model providers configured.", geometry, tokens));
 	}
 
-	let shell_state = cx.entity().read(cx).state();
-
 	for provider in &state.providers {
 		let provider_id = provider.id.clone();
-		let av = shell_state
-			.controls
-			.availability(&SurfaceId::ProviderAuthStartButton(provider_id.clone()));
+		let av = controls.availability(&SurfaceId::ProviderAuthStartButton(provider_id.clone()));
 
 		let control_el = if provider.authenticated {
 			Badge::new("Connected", TintRole::Done).into_any_element()

@@ -1,6 +1,6 @@
 //! Extensions settings page body rendering (§5.9).
 
-use veyyon_desktop_kit::{Badge, TintRole, TokenSet};
+use veyyon_desktop_kit::{Avatar, AvatarSize, Badge, Row, SpacingStep, TintRole, TokenSet};
 use veyyon_desktop_tokens::SettingsSurfaceTokens;
 use veyyon_gpui::{Context, Div, ParentElement, Styled, div};
 
@@ -39,7 +39,6 @@ pub fn render_extensions_page(
 			"error" | "failed" => TintRole::Error,
 			_ => TintRole::Plan,
 		};
-		let chip = Badge::new(&agent.status, tint);
 		let av = Availability::Enabled;
 
 		let label = if agent.display_name.is_empty() {
@@ -49,8 +48,26 @@ pub fn render_extensions_page(
 		};
 		let desc = format!("Role: {} | Scope: {}", agent.kind, agent.scope);
 
-		container = container.child(setting_row(label, Some(&desc), chip, &av, geometry, tokens));
+		// The avatar shows the agent's initials, so a row is told apart from
+		// its neighbours at a glance; the badge beside it states its status.
+		let control = Row::new(SpacingStep::S2)
+			.child(Avatar::new(initials(label)).size(AvatarSize::Small))
+			.child(Badge::new(&agent.status, tint));
+
+		container = container.child(setting_row(label, Some(&desc), control, &av, geometry, tokens));
 	}
 
 	container
+}
+
+/// The first letter of the first two words of `name`, upper-cased: `Code
+/// Reviewer` is `CR`, `scout` is `S`.
+fn initials(name: &str) -> String {
+	name
+		.split(|c: char| !c.is_alphanumeric())
+		.filter(|word| !word.is_empty())
+		.take(2)
+		.filter_map(|word| word.chars().next())
+		.flat_map(char::to_uppercase)
+		.collect()
 }

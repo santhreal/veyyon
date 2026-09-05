@@ -7,9 +7,15 @@
 
 use serde::{Deserialize, Serialize};
 pub use veyyon_desktop_model::QueueMode;
+use veyyon_desktop_model::{InteractionId, SessionId, SurfaceId};
 
 /// Active conversational lifecycle phase for the open session.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+///
+/// A pending phase carries the id of the decision it waits on, which is the
+/// first card of its kind in the session's stack: the composer's primary
+/// action answers that card, and its control is gated and its error is
+/// routed under that id (§4.4, §5.5).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub enum TurnPhase {
 	/// No turn is currently executing or awaiting operator decision.
 	#[default]
@@ -21,13 +27,14 @@ pub enum TurnPhase {
 	},
 	/// The assistant is awaiting an answer to a question.
 	QuestionPending {
+		interaction: InteractionId,
 		/// Number of discrete options offered.
-		options: usize,
+		options:     usize,
 	},
 	/// A tool execution approval is pending operator decision.
-	ApprovalPending,
+	ApprovalPending { interaction: InteractionId },
 	/// A plan proposal is awaiting acceptance or refinement.
-	PlanPending,
+	PlanPending { interaction: InteractionId },
 }
 
 impl TurnPhase {
@@ -40,7 +47,38 @@ impl TurnPhase {
 	/// Whether this phase is blocked waiting for an operator decision.
 	#[must_use]
 	pub const fn is_decision_pending(&self) -> bool {
-		matches!(self, Self::QuestionPending { .. } | Self::ApprovalPending | Self::PlanPending)
+		matches!(
+			self,
+			Self::QuestionPending { .. } | Self::ApprovalPending { .. } | Self::PlanPending { .. }
+		)
+	}
+
+	/// The control the composer's primary action is, for gating and error
+	/// routing: the send, steer or queue button, or the first pending card's
+	/// answer button.
+	#[must_use]
+	pub fn primary_surface(&self, has_text: bool, session: &SessionId) -> SurfaceId {
+		match self {
+			Self::Idle => SurfaceId::ComposerSendButton(session.clone()),
+			Self::Running { queue_mode: QueueMode::Steer } => {
+				SurfaceId::ComposerSteerButton(session.clone())
+			},
+			Self::Running { queue_mode: QueueMode::Queue } => {
+				SurfaceId::ComposerQueueButton(session.clone())
+			},
+			Self::QuestionPending { interaction, .. } => {
+				SurfaceId::QuestionSubmitButton(session.clone(), interaction.clone())
+			},
+			Self::ApprovalPending { interaction } => {
+				SurfaceId::ApprovalApproveButton(session.clone(), interaction.clone())
+			},
+			Self::PlanPending { interaction } if has_text => {
+				SurfaceId::PlanRefineButton(session.clone(), interaction.clone())
+			},
+			Self::PlanPending { interaction } => {
+				SurfaceId::PlanAcceptButton(session.clone(), interaction.clone())
+			},
+		}
 	}
 }
 
@@ -124,13 +162,13 @@ pub const fn primary_action(
 		TurnPhase::Running { queue_mode: QueueMode::Queue } => {
 			(PrimaryAction::Queue, Some(SecondaryAction::Steer))
 		},
-		TurnPhase::QuestionPending { options } => {
+		TurnPhase::QuestionPending { options, .. } => {
 			(PrimaryAction::Answer, Some(SecondaryAction::OptionKeys { count: *options }))
 		},
-		TurnPhase::ApprovalPending => {
+		TurnPhase::ApprovalPending { .. } => {
 			(PrimaryAction::Approve, Some(SecondaryAction::ApprovalChoices))
 		},
-		TurnPhase::PlanPending => {
+		TurnPhase::PlanPending { .. } => {
 			if has_text {
 				(PrimaryAction::Refine, None)
 			} else {

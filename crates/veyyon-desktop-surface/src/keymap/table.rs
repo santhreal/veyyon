@@ -15,13 +15,16 @@ use veyyon_gpui::{
 	Keystroke,
 };
 
-use crate::keymap::actions::{
-	AbortTurn, AttachFile, CloseTabOrPark, Command, Dismiss, FilterQueue, FindInTranscript,
-	FocusLive, ModelPicker, MoveSelection, NewSession, Newline, NextSession, NextTab, NextTurn,
-	OpenPalette, OpenSelectedSession, OpenSettings, PreviousSession, PreviousTab, PreviousTurn,
-	Primary, Scope, Scroll, ScrollBy, SelectOption, SplitHalf, ThinkingLevel, ToggleBlock,
-	ToggleDeferSelected, ToggleDiffMode, ToggleDrawer, TogglePanel, ToggleParkSelected,
-	TogglePinSelected, ToggleQueue, ToggleQueueMode,
+use crate::keymap::{
+	actions::{
+		AbortTurn, AttachFile, CloseTabOrPark, Dismiss, FilterQueue, FindInTranscript, FocusLive,
+		ModelPicker, MoveSelection, NewSession, Newline, NextSession, NextTab, NextTurn, OpenPalette,
+		OpenSelectedSession, OpenSettings, PreviousSession, PreviousTab, PreviousTurn, Primary,
+		Scope, Scroll, ScrollBy, SelectOption, SplitHalf, ThinkingLevel, ToggleBlock,
+		ToggleDeferSelected, ToggleDiffMode, ToggleDrawer, TogglePanel, ToggleParkSelected,
+		TogglePinSelected, ToggleQueue, ToggleQueueMode,
+	},
+	command::Command,
 };
 
 /// Default embedded keymap configuration table.

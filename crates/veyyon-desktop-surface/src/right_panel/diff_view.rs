@@ -4,7 +4,8 @@
 //! pinned gutters, intraline highlights, and mode switching.
 
 use veyyon_desktop_kit::{
-	ColorRole, RadiusStep, SpacingStep, StrokeStep, TextRamp, TextWeight, TintRole, TokenSet,
+	ColorRole, Divider, RadiusStep, SpacingStep, StrokeStep, TextRamp, TextWeight, TintRole,
+	TokenSet,
 };
 use veyyon_desktop_model::DiffMode;
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
@@ -59,6 +60,11 @@ pub fn diff_view(
 		.flex_col()
 		.overflow_y_scroll();
 	for (file_idx, file) in files.iter().enumerate() {
+		// A hairline closes each file above the next one's header, so the last
+		// row of one file is not read as the first of the next.
+		if file_idx > 0 {
+			container = container.child(Divider::horizontal());
+		}
 		container = container.child(file_header(file, effective_mode, geometry, tokens, cx));
 		container = container.child(file_body(file_idx, file, effective_mode, geometry, tokens, cx));
 	}
@@ -200,7 +206,7 @@ fn render_split_rows(
 						.items_center()
 						.text_size(tokens.font_size(TextRamp::Micro))
 						.line_height(px(geometry.diff_row_height_px))
-						.font_family("mono")
+						.font_family(tokens.mono_family())
 						// Left side (Old)
 						.child(
 							div()
@@ -259,7 +265,7 @@ fn render_split_rows(
 						.items_center()
 						.text_size(tokens.font_size(TextRamp::Micro))
 						.line_height(px(geometry.diff_row_height_px))
-						.font_family("mono")
+						.font_family(tokens.mono_family())
 						.child(
 							div()
 								.flex_1()
@@ -309,7 +315,7 @@ fn render_split_rows(
 						.items_center()
 						.text_size(tokens.font_size(TextRamp::Micro))
 						.line_height(px(geometry.diff_row_height_px))
-						.font_family("mono")
+						.font_family(tokens.mono_family())
 						.child(
 							div()
 								.flex_1()

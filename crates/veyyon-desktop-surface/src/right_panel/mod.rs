@@ -86,8 +86,8 @@ pub fn right_panel(
 		.w(px(width))
 		.flex_shrink_0()
 		.bg(tokens.color(ColorRole::Rail))
-		.border_l(px(geometry.chrome_resize_handle_line_px))
-		.border_color(tokens.color(ColorRole::Hairline))
+		// The leading edge is the container's: the split handle's line when
+		// the panel is docked, the sheet's frame when it overlays (§5.6).
 		.overflow_hidden()
 		.child(tab_strip(panel, geometry, tokens, cx))
 		.child(active_content)

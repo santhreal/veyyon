@@ -12,11 +12,11 @@
 
 use serde::{Deserialize, Serialize};
 use veyyon_desktop_kit::{
-	Button, ButtonSize, ButtonVariant, ColorRole, RadiusStep, SpacingStep, StrokeStep, TextField,
-	TextRamp, TokenSet,
+	ButtonVariant, ColorRole, Dialog, DialogButtonSpec, SpacingStep, TextField, TextRamp, TokenSet,
 };
 use veyyon_gpui::{
-	ClickEvent, Div, ElementId, InteractiveElement, IntoElement, ParentElement, Styled, div,
+	App, ClickEvent, Context, Div, ElementId, InteractiveElement, IntoElement, ParentElement,
+	Styled, Window, div, px,
 };
 
 use crate::{Intent, ShellView};
@@ -93,11 +93,43 @@ impl ConnectionPhase {
 	}
 }
 
+/// The width every attach card draws at: one measure, so the screens read as
+/// one surface changing state rather than six.
+const CARD_WIDTH_PX: f32 = 420.0;
+
+/// The click that asks the host to attach again.
+fn retry(cx: &Context<ShellView>) -> impl Fn(&ClickEvent, &mut Window, &mut App) + 'static {
+	cx.listener(|view, _event: &ClickEvent, _window, _cx| {
+		view.dispatch(Intent::RetryConnection);
+	})
+}
+
+/// The click that abandons the auth flow in progress.
+fn cancel_auth(cx: &Context<ShellView>) -> impl Fn(&ClickEvent, &mut Window, &mut App) + 'static {
+	cx.listener(|view, _event: &ClickEvent, _window, _cx| {
+		view.dispatch(Intent::CancelAuthFlow);
+	})
+}
+
+/// One line of body copy in the read ramp, in `ink`.
+fn line(text: impl Into<String>, ink: ColorRole, tokens: &TokenSet) -> Div {
+	div()
+		.text_size(tokens.font_size(TextRamp::Read))
+		.line_height(tokens.line_height(TextRamp::Read))
+		.text_color(tokens.color(ink))
+		.child(text.into())
+}
+
 /// Renders the full-surface attach or authentication screen (§5.9, §8.12).
+///
+/// Every phase is one dialog: a title, a body and an action row, so the
+/// operator finds the action in the same place whatever the transport is
+/// doing. A waiting phase has no action; an authentication phase has its
+/// step and a cancel.
 pub fn render_attach_screen(
 	phase: &ConnectionPhase,
 	tokens: &TokenSet,
-	cx: &veyyon_gpui::Context<ShellView>,
+	cx: &Context<ShellView>,
 ) -> impl IntoElement {
 	let container = div()
 		.id(ElementId::Name(format!("attach-screen-{}", phase.scene_slug()).into()))
@@ -109,254 +141,76 @@ pub fn render_attach_screen(
 		.bg(tokens.color(ColorRole::Ground))
 		.p(tokens.spacing(SpacingStep::S8));
 
-	let card_radius = tokens.radius(RadiusStep::Lg);
-	let card_pad = tokens.spacing(SpacingStep::S6);
-	let card_stroke = tokens.stroke(StrokeStep::Hairline);
-	let border_color = tokens.color(ColorRole::Hairline);
-	let card_bg = tokens.color(ColorRole::Canvas);
-
-	let card = div()
-		.flex()
-		.flex_col()
-		.items_center()
-		.w(veyyon_gpui::px(420.0))
-		.p(card_pad)
-		.rounded(card_radius)
-		.bg(card_bg)
-		.border(card_stroke)
-		.border_color(border_color)
-		.gap(tokens.spacing(SpacingStep::S4));
-
-	let content = match phase {
-		ConnectionPhase::Detached => render_detached_card(card, tokens, cx),
-		ConnectionPhase::Connecting { attempt } => render_connecting_card(card, *attempt, tokens),
+	let dialog = match phase {
+		ConnectionPhase::Detached => Dialog::new(
+			"Disconnected from Host",
+			line("No active connection to the veyyon host engine.", ColorRole::Muted, tokens),
+		)
+		.action_on_click(DialogButtonSpec::new("Attach", ButtonVariant::Primary), retry(cx)),
+		ConnectionPhase::Connecting { attempt } => Dialog::new(
+			format!("Connecting (attempt {attempt})..."),
+			line("Establishing communication with the host socket.", ColorRole::Muted, tokens),
+		),
 		ConnectionPhase::Syncing { received, expected } => {
-			render_syncing_card(card, *received, *expected, tokens)
+			let status = match expected {
+				Some(total) => format!("Received {received} of {total} initial snapshots..."),
+				None => format!("Received {received} snapshots..."),
+			};
+			Dialog::new("Synchronizing Session State", line(status, ColorRole::Muted, tokens))
 		},
-		ConnectionPhase::Attached => card,
-		ConnectionPhase::Reconnecting { attempt, message, .. } => {
-			render_reconnecting_card(card, *attempt, message, tokens, cx)
+		ConnectionPhase::Attached => Dialog::new("Attached", div()),
+		ConnectionPhase::Reconnecting { attempt, message, .. } => Dialog::new(
+			format!("Reconnecting (attempt {attempt})..."),
+			line(message.clone(), ColorRole::Accent, tokens),
+		)
+		.action_on_click(DialogButtonSpec::new("Retry Now", ButtonVariant::Primary), retry(cx)),
+		ConnectionPhase::Fatal { message } => {
+			Dialog::new("Connection Error", line(message.clone(), ColorRole::ErrorInk, tokens))
+				.action_on_click(DialogButtonSpec::new("Re-attach", ButtonVariant::Danger), retry(cx))
 		},
-		ConnectionPhase::Fatal { message } => render_fatal_card(card, message, tokens, cx),
 		ConnectionPhase::NeedsSecret { provider } => {
-			render_needs_secret_card(card, provider, tokens, cx)
+			let prov = provider.clone();
+			let body = div()
+				.flex()
+				.flex_col()
+				.gap(tokens.spacing(SpacingStep::S3))
+				.child(line(
+					"Enter API key or secret token to complete authentication.",
+					ColorRole::Muted,
+					tokens,
+				))
+				.child(TextField::new("secret-key-field").placeholder("API Key / Token"));
+			Dialog::new(format!("Authenticate {provider}"), body)
+				.action_on_click(
+					DialogButtonSpec::new("Submit", ButtonVariant::Primary),
+					cx.listener(move |view, _event: &ClickEvent, _window, _cx| {
+						view.dispatch(Intent::SubmitAuthSecret {
+							provider: prov.clone(),
+							secret:   String::new(),
+						});
+					}),
+				)
+				.action_on_click(DialogButtonSpec::new("Cancel", ButtonVariant::Ghost), cancel_auth(cx))
 		},
 		ConnectionPhase::AwaitingExternalUrl { provider, url } => {
-			render_awaiting_url_card(card, provider, url, tokens, cx)
+			let target_url = url.clone();
+			Dialog::new(
+				format!("Authorize {provider}"),
+				line("Complete OAuth authorization in your web browser.", ColorRole::Muted, tokens),
+			)
+			.action_on_click(
+				DialogButtonSpec::new("Open in Browser", ButtonVariant::Primary),
+				cx.listener(move |view, _event: &ClickEvent, _window, _cx| {
+					view.dispatch(Intent::OpenAuthUrl(target_url.clone()));
+				}),
+			)
+			.action_on_click(DialogButtonSpec::new("Cancel", ButtonVariant::Ghost), cancel_auth(cx))
 		},
 	};
-	container.child(content)
-}
-fn render_detached_card(card: Div, tokens: &TokenSet, cx: &veyyon_gpui::Context<ShellView>) -> Div {
-	let title = div()
-		.text_size(tokens.font_size(TextRamp::Head))
-		.line_height(tokens.line_height(TextRamp::Head))
-		.text_color(tokens.color(ColorRole::Foreground))
-		.child("Disconnected from Host");
 
-	let desc = div()
-		.text_size(tokens.font_size(TextRamp::Read))
-		.line_height(tokens.line_height(TextRamp::Read))
-		.text_color(tokens.color(ColorRole::Muted))
-		.child("No active connection to the veyyon host engine.");
-
-	let attach_btn = Button::new("Attach")
-		.id("attach-btn")
-		.variant(ButtonVariant::Primary)
-		.size(ButtonSize::Medium)
-		.on_click(cx.listener(|view, _event: &ClickEvent, _window, _cx| {
-			view.dispatch(Intent::RetryConnection);
-		}));
-
-	card.child(title).child(desc).child(attach_btn)
-}
-
-fn render_connecting_card(card: Div, attempt: u32, tokens: &TokenSet) -> Div {
-	let title = div()
-		.text_size(tokens.font_size(TextRamp::Head))
-		.line_height(tokens.line_height(TextRamp::Head))
-		.text_color(tokens.color(ColorRole::Foreground))
-		.child(format!("Connecting (attempt {attempt})..."));
-
-	let desc = div()
-		.text_size(tokens.font_size(TextRamp::Read))
-		.line_height(tokens.line_height(TextRamp::Read))
-		.text_color(tokens.color(ColorRole::Muted))
-		.child("Establishing communication with the host socket.");
-
-	card.child(title).child(desc)
-}
-
-fn render_syncing_card(card: Div, received: u32, expected: Option<u32>, tokens: &TokenSet) -> Div {
-	let title = div()
-		.text_size(tokens.font_size(TextRamp::Head))
-		.line_height(tokens.line_height(TextRamp::Head))
-		.text_color(tokens.color(ColorRole::Foreground))
-		.child("Synchronizing Session State");
-
-	let status = match expected {
-		Some(total) => format!("Received {received} of {total} initial snapshots..."),
-		None => format!("Received {received} snapshots..."),
-	};
-
-	let desc = div()
-		.text_size(tokens.font_size(TextRamp::Read))
-		.line_height(tokens.line_height(TextRamp::Read))
-		.text_color(tokens.color(ColorRole::Muted))
-		.child(status);
-
-	card.child(title).child(desc)
-}
-
-fn render_reconnecting_card(
-	card: Div,
-	attempt: u32,
-	message: &str,
-	tokens: &TokenSet,
-	cx: &veyyon_gpui::Context<ShellView>,
-) -> Div {
-	let title = div()
-		.text_size(tokens.font_size(TextRamp::Head))
-		.line_height(tokens.line_height(TextRamp::Head))
-		.text_color(tokens.color(ColorRole::Accent))
-		.child(format!("Reconnecting (attempt {attempt})..."));
-
-	let desc = div()
-		.text_size(tokens.font_size(TextRamp::Read))
-		.line_height(tokens.line_height(TextRamp::Read))
-		.text_color(tokens.color(ColorRole::Muted))
-		.child(message.to_string());
-
-	let retry_btn = Button::new("Retry Now")
-		.id("retry-btn")
-		.variant(ButtonVariant::Primary)
-		.size(ButtonSize::Medium)
-		.on_click(cx.listener(|view, _event: &ClickEvent, _window, _cx| {
-			view.dispatch(Intent::RetryConnection);
-		}));
-
-	card.child(title).child(desc).child(retry_btn)
-}
-
-fn render_fatal_card(
-	card: Div,
-	message: &str,
-	tokens: &TokenSet,
-	cx: &veyyon_gpui::Context<ShellView>,
-) -> Div {
-	let title = div()
-		.text_size(tokens.font_size(TextRamp::Head))
-		.line_height(tokens.line_height(TextRamp::Head))
-		.text_color(tokens.color(ColorRole::ErrorInk))
-		.child("Connection Error");
-
-	let desc = div()
-		.text_size(tokens.font_size(TextRamp::Read))
-		.line_height(tokens.line_height(TextRamp::Read))
-		.text_color(tokens.color(ColorRole::Muted))
-		.child(message.to_string());
-
-	let retry_btn = Button::new("Re-attach")
-		.id("reattach-btn")
-		.variant(ButtonVariant::Danger)
-		.size(ButtonSize::Medium)
-		.on_click(cx.listener(|view, _event: &ClickEvent, _window, _cx| {
-			view.dispatch(Intent::RetryConnection);
-		}));
-
-	card.child(title).child(desc).child(retry_btn)
-}
-
-fn render_needs_secret_card(
-	card: Div,
-	provider: &str,
-	tokens: &TokenSet,
-	cx: &veyyon_gpui::Context<ShellView>,
-) -> Div {
-	let title = div()
-		.text_size(tokens.font_size(TextRamp::Head))
-		.line_height(tokens.line_height(TextRamp::Head))
-		.text_color(tokens.color(ColorRole::Foreground))
-		.child(format!("Authenticate {provider}"));
-
-	let desc = div()
-		.text_size(tokens.font_size(TextRamp::Read))
-		.line_height(tokens.line_height(TextRamp::Read))
-		.text_color(tokens.color(ColorRole::Muted))
-		.child("Enter API key or secret token to complete authentication.");
-
-	let input = TextField::new("secret-key-field").placeholder("API Key / Token");
-
-	let prov = provider.to_string();
-	let submit_btn = Button::new("Submit")
-		.id("submit-secret-btn")
-		.variant(ButtonVariant::Primary)
-		.size(ButtonSize::Medium)
-		.on_click(cx.listener(move |view, _event: &ClickEvent, _window, _cx| {
-			view
-				.dispatch(Intent::SubmitAuthSecret { provider: prov.clone(), secret: String::new() });
-		}));
-
-	let cancel_btn = Button::new("Cancel")
-		.id("cancel-auth-btn")
-		.variant(ButtonVariant::Ghost)
-		.size(ButtonSize::Medium)
-		.on_click(cx.listener(|view, _event: &ClickEvent, _window, _cx| {
-			view.dispatch(Intent::CancelAuthFlow);
-		}));
-
-	let actions = div()
-		.flex()
-		.flex_row()
-		.gap(tokens.spacing(SpacingStep::S2))
-		.child(submit_btn)
-		.child(cancel_btn);
-
-	card.child(title).child(desc).child(input).child(actions)
-}
-
-fn render_awaiting_url_card(
-	card: Div,
-	provider: &str,
-	url: &str,
-	tokens: &TokenSet,
-	cx: &veyyon_gpui::Context<ShellView>,
-) -> Div {
-	let title = div()
-		.text_size(tokens.font_size(TextRamp::Head))
-		.line_height(tokens.line_height(TextRamp::Head))
-		.text_color(tokens.color(ColorRole::Foreground))
-		.child(format!("Authorize {provider}"));
-
-	let desc = div()
-		.text_size(tokens.font_size(TextRamp::Read))
-		.line_height(tokens.line_height(TextRamp::Read))
-		.text_color(tokens.color(ColorRole::Muted))
-		.child("Complete OAuth authorization in your web browser.");
-
-	let target_url = url.to_string();
-	let open_btn = Button::new("Open in Browser")
-		.id("open-auth-url-btn")
-		.variant(ButtonVariant::Primary)
-		.size(ButtonSize::Medium)
-		.on_click(cx.listener(move |view, _event: &ClickEvent, _window, _cx| {
-			view.dispatch(Intent::OpenAuthUrl(target_url.clone()));
-		}));
-
-	let cancel_btn = Button::new("Cancel")
-		.id("cancel-auth-url-btn")
-		.variant(ButtonVariant::Ghost)
-		.size(ButtonSize::Medium)
-		.on_click(cx.listener(|view, _event: &ClickEvent, _window, _cx| {
-			view.dispatch(Intent::CancelAuthFlow);
-		}));
-
-	let actions = div()
-		.flex()
-		.flex_row()
-		.gap(tokens.spacing(SpacingStep::S2))
-		.child(open_btn)
-		.child(cancel_btn);
-
-	card.child(title).child(desc).child(actions)
+	container.child(
+		div()
+			.w(px(CARD_WIDTH_PX))
+			.child(dialog.id(ElementId::Name(format!("attach-{}", phase.scene_slug()).into()))),
+	)
 }

@@ -7,6 +7,7 @@ use veyyon_gpui::{Context, Div, ElementId, IntoElement, ParentElement, Styled, d
 
 use crate::{
 	Intent, ShellView,
+	controls::ControlStates,
 	settings::{
 		SettingsState,
 		row::{empty_state_row, setting_row_with_secondary},
@@ -16,6 +17,7 @@ use crate::{
 /// Renders the Model Context Protocol servers configuration page rows.
 pub fn render_mcp_page(
 	state: &SettingsState,
+	controls: &ControlStates,
 	geometry: &SettingsSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
@@ -29,13 +31,10 @@ pub fn render_mcp_page(
 		return container.child(empty_state_row("No MCP servers configured.", geometry, tokens));
 	}
 
-	let shell_state = cx.entity().read(cx).state();
 	let entity = cx.entity();
 
 	for server in &state.mcp {
-		let av = shell_state
-			.controls
-			.availability(&SurfaceId::McpEnableToggle(server.name.clone()));
+		let av = controls.availability(&SurfaceId::McpEnableToggle(server.name.clone()));
 
 		let (status_text, status_tint) = match &server.status {
 			McpServerStatus::Connected => ("Connected".to_string(), TintRole::Done),

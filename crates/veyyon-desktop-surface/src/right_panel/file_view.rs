@@ -103,7 +103,7 @@ pub fn file_view(
 			.items_center()
 			.text_size(tokens.font_size(TextRamp::Micro))
 			.line_height(px(geometry.diff_row_height_px))
-			.font_family("mono")
+			.font_family(tokens.mono_family())
 			.child(gutter_cell(&line_no, geometry, tokens));
 
 		let mut content_line = div()

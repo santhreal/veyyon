@@ -4,19 +4,20 @@
 //! hover actions.
 
 use veyyon_desktop_kit::{
-	ColorRole, RadiusStep, SpacingStep, TextRamp, TextWeight, TokenSet,
+	ColorRole, Dot, RadiusStep, SpacingStep, Text, TextRamp, TokenSet, Truncate,
 	controls::{IconButton, IconButtonVariant},
 	icons::{IconName, IconSize},
 };
 use veyyon_desktop_tokens::QueueSurfaceTokens;
 use veyyon_gpui::{
-	ClickEvent, Context, ElementId, InteractiveElement, IntoElement, ParentElement,
-	StatefulInteractiveElement, Styled, div, px,
+	ClickEvent, Context, ElementId, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
+	ParentElement, StatefulInteractiveElement, Styled, div, px,
 };
 
 use crate::{
 	Intent, ShellView,
 	model::{Badge, Row},
+	queue::RowMenu,
 };
 
 /// Renders a line row (36px): leading tint dot, title, trailing meta, and hover
@@ -39,7 +40,6 @@ pub fn line_row(
 		tokens.transparent()
 	};
 
-	let dot_size = tokens.spacing(SpacingStep::S2);
 	let hover_bg = tokens.row_hover();
 
 	let has_attention_strip = row.badge.is_some_and(Badge::blocks_on_operator)
@@ -47,7 +47,7 @@ pub fn line_row(
 
 	let dot = row
 		.badge
-		.map_or_else(|| tokens.transparent(), |badge| tokens.tint(badge.tint()).fill);
+		.map_or_else(Dot::empty, |badge| Dot::new(badge.tint()));
 
 	let unpark_id = id;
 	let recall_id = id;
@@ -87,6 +87,14 @@ pub fn line_row(
 			view.dispatch(Intent::SelectSession(id));
 			cx.notify();
 		}))
+		// A right-click opens the row's answers as a menu at the pointer.
+		.on_mouse_down(
+			MouseButton::Right,
+			cx.listener(move |view, event: &MouseDownEvent, _window, cx| {
+				view.open_row_menu(RowMenu { id, origin: event.position, card: false });
+				cx.notify();
+			}),
+		)
 		.hover(move |style| style.bg(hover_bg))
 		.flex_shrink_0()
 		.h(px(geometry.line_px))
@@ -99,37 +107,21 @@ pub fn line_row(
 		.items_center()
 		.gap(tokens.spacing(SpacingStep::S2))
 		.overflow_hidden()
-		.child(
-			div()
-				.flex_shrink_0()
-				.w(dot_size)
-				.h(dot_size)
-				.rounded_full()
-				.bg(dot),
-		)
+		.child(dot)
 		.child(
 			div()
 				.flex_1()
 				.min_w_0()
-				.overflow_hidden()
-				.whitespace_nowrap()
-				.truncate()
-				.text_size(tokens.font_size(TextRamp::Body))
-				.line_height(tokens.line_height(TextRamp::Body))
-				.font_weight(tokens.font_weight(TextWeight::Regular))
-				.text_color(tokens.color(ColorRole::Secondary))
-				.child(row.title.clone()),
+				.child(Truncate::new(row.title.clone()).color(ColorRole::Secondary)),
 		);
 
 	if let Some(meta) = &row.meta {
 		line = line.child(
-			div()
-				.flex_shrink_0()
-				.text_size(tokens.font_size(TextRamp::Small))
-				.line_height(tokens.line_height(TextRamp::Small))
-				.font_weight(tokens.font_weight(TextWeight::Regular))
-				.text_color(tokens.color(ColorRole::Muted))
-				.child(meta.clone()),
+			div().flex_shrink_0().child(
+				Text::new(meta.clone())
+					.ramp(TextRamp::Small)
+					.color(ColorRole::Muted),
+			),
 		);
 	}
 
