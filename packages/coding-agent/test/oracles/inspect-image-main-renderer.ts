@@ -1,9 +1,151 @@
 /**
- * Differential oracle: inspect-image-main-renderer from origin/main.
+ * Differential oracle: the inspect_image tool renderer from origin/main.
+ *
  * Source SHA: 90ac7c1e589ad3ca068f7b95da560839f469b9bb
+ * Frozen: never edited to make a test pass.
+ *
+ * On main this was `src/tools/inspect-image-renderer.ts`; only its import specifiers are rewritten
+ * to the package subpaths this branch publishes, so the bytes it draws are main's.
  */
-import { type LegacyRenderer, loadHistoricalOracle } from "./historical-loader";
 
-const oracle = loadHistoricalOracle("inspect-image-main-renderer");
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { framedBlock, renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import {
+	formatErrorDetail,
+	formatExpandHint,
+	replaceTabs,
+	shortenPath,
+	truncateToWidth,
+} from "@veyyon/coding-agent/tools/core/render-utils";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
+import { formatMoreLines } from "@veyyon/utils/format";
 
-export const inspectImageToolRenderer = oracle.inspectImageToolRenderer as LegacyRenderer;
+interface InspectImageRenderArgs {
+	path?: string;
+	question?: string;
+}
+
+interface InspectImageRendererDetails {
+	model: string;
+	imagePath: string;
+	mimeType: string;
+}
+
+interface InspectImageRendererResult {
+	content: Array<{ type: string; text?: string }>;
+	details?: InspectImageRendererDetails;
+	isError?: boolean;
+}
+
+const INSPECT_QUESTION_PREVIEW_WIDTH = 100;
+const INSPECT_OUTPUT_COLLAPSED_LINES = 4;
+const INSPECT_OUTPUT_EXPANDED_LINES = 16;
+const INSPECT_OUTPUT_LINE_WIDTH = 120;
+
+function questionLine(question: string, uiTheme: Theme): string {
+	return `${uiTheme.fg("dim", "Question:")} ${uiTheme.fg("accent", truncateToWidth(replaceTabs(question), INSPECT_QUESTION_PREVIEW_WIDTH))}`;
+}
+
+export const inspectImageToolRenderer = {
+	renderCall(args: InspectImageRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
+		const rawPath = typeof args.path === "string" ? args.path : "";
+		const pathDisplay = rawPath ? shortenPath(rawPath) : "…";
+		const header = renderStatusLine({ icon: "pending", title: "Inspect", description: pathDisplay }, uiTheme);
+		const question = typeof args.question === "string" ? args.question.trim() : "";
+		// Call is at most a status line plus a one-line question — too small to box.
+		// The container renders a lone Text cleanly with no chrome, and the
+		// transcript frame supplies the block's only left edge, so the question
+		// row is indented rather than hung off a connector glyph.
+		if (!question) return new Text(header, 0, 0);
+		return new Text(`${header}\n  ${questionLine(question, uiTheme)}`, 0, 0);
+	},
+
+	renderResult(
+		result: InspectImageRendererResult,
+		options: RenderResultOptions,
+		uiTheme: Theme,
+		args?: InspectImageRenderArgs,
+	): Component {
+		const details = result.details;
+		const rawPath =
+			typeof details?.imagePath === "string" ? details.imagePath : typeof args?.path === "string" ? args.path : "";
+		const pathDisplay = rawPath ? shortenPath(rawPath) : "image";
+		const success = !result.isError;
+		const header = renderStatusLine(
+			success
+				? {
+						iconOverride: uiTheme.styledSymbol("tool.inspectImage", "accent"),
+						title: "Inspect",
+						description: pathDisplay,
+					}
+				: {
+						icon: "error",
+						title: "Inspect",
+						description: pathDisplay,
+					},
+			uiTheme,
+		);
+
+		const question = typeof args?.question === "string" ? args.question.trim() : "";
+		const outputText = result.content.find(content => content.type === "text")?.text?.trimEnd() ?? "";
+
+		if (result.isError) {
+			return framedBlock(uiTheme, width => {
+				const bodyLines: string[] = [];
+				if (question) bodyLines.push(questionLine(question, uiTheme));
+				bodyLines.push(formatErrorDetail(outputText || "inspection failed", uiTheme));
+				return {
+					header,
+					sections: [{ lines: bodyLines }],
+					state: "error",
+					borderColor: "error",
+					applyBg: false,
+					width,
+				};
+			});
+		}
+
+		const metaParts: string[] = [];
+		if (details?.model) metaParts.push(details.model);
+		if (details?.mimeType) metaParts.push(details.mimeType);
+		const metaLine = metaParts.length > 0 ? uiTheme.fg("dim", metaParts.join(" · ")) : "";
+
+		// No answer text: nothing worth boxing — keep it to a clean status line
+		// (plus a trailing meta line, when present).
+		if (!outputText) {
+			return new Text(metaLine ? `${header}\n${metaLine}` : header, 0, 0);
+		}
+
+		return framedBlock(uiTheme, width => {
+			const bodyLines: string[] = [];
+			if (question) {
+				bodyLines.push(questionLine(question, uiTheme));
+				bodyLines.push("");
+			}
+
+			const outputLines = replaceTabs(outputText).split("\n");
+			const maxLines = options.expanded ? INSPECT_OUTPUT_EXPANDED_LINES : INSPECT_OUTPUT_COLLAPSED_LINES;
+			for (const line of outputLines.slice(0, maxLines)) {
+				bodyLines.push(uiTheme.fg("toolOutput", truncateToWidth(line, INSPECT_OUTPUT_LINE_WIDTH)));
+			}
+			if (outputLines.length > maxLines) {
+				const remaining = outputLines.length - maxLines;
+				const hint = formatExpandHint(uiTheme, options.expanded, true);
+				bodyLines.push(`${uiTheme.fg("dim", `… ${formatMoreLines(remaining)}`)}${hint ? ` ${hint}` : ""}`);
+			}
+
+			return {
+				header,
+				headerMeta: metaLine || undefined,
+				sections: [{ lines: bodyLines }],
+				state: "success",
+				borderColor: "borderMuted",
+				applyBg: false,
+				width,
+			};
+		});
+	},
+	mergeCallAndResult: true,
+};

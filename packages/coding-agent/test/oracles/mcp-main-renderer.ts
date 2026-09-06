@@ -1,23 +1,161 @@
 /**
- * Differential oracle: mcp-main-renderer from origin/main.
- * Source SHA: 51082ac1cb086c13f8e00672dab66b4fc8042a7c
+ * Differential oracle: the MCP tool card renderer from before the conversion.
+ *
+ * Source SHA: 51082ac1cb086c13f8e00672dab66b4fc8042a7c, where the card was drawn by `src/mcp/render.ts` and both MCP tool classes
+ * called it from their own `renderCall`/`renderResult`. Carried over verbatim apart from the
+ * import paths, which name the package rather than a sibling. Frozen: never edited to make a test
+ * pass.
  */
+
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
 import type { MCPToolDetails } from "@veyyon/coding-agent/mcp/tool-bridge";
-import type { Theme } from "@veyyon/coding-agent/theme/theme-class";
+import { renderStatusLine, WidthAwareText } from "@veyyon/coding-agent/modes/terminal/draw";
+import type { Theme } from "@veyyon/coding-agent/theme/theme";
+import {
+	formatArgsInline,
+	JSON_TREE_MAX_DEPTH_COLLAPSED,
+	JSON_TREE_MAX_DEPTH_EXPANDED,
+	JSON_TREE_MAX_LINES_COLLAPSED,
+	JSON_TREE_MAX_LINES_EXPANDED,
+	JSON_TREE_SCALAR_LEN_COLLAPSED,
+	JSON_TREE_SCALAR_LEN_EXPANDED,
+	renderJsonTreeLines,
+} from "@veyyon/coding-agent/tools/core/json-tree-render";
+import { formatStyledTruncationWarning, stripOutputNotice } from "@veyyon/coding-agent/tools/core/output-meta";
+import { formatExpandHint, truncateToWidth } from "@veyyon/coding-agent/tools/core/render-utils";
 import type { Component } from "@veyyon/tui";
-import { loadHistoricalOracle } from "./historical-loader";
+import { formatMoreLines } from "@veyyon/utils/format";
 
-const oracle = loadHistoricalOracle("mcp-main-renderer");
+/**
+ * Render MCP tool call.
+ */
+export function renderMCPCall(args: Record<string, unknown>, theme: Theme, label: string): Component {
+	return new WidthAwareText(
+		contentWidth => {
+			const lines: string[] = [];
+			lines.push(renderStatusLine({ icon: "pending", title: label }, theme));
 
-export const renderMCPCall = oracle.renderMCPCall as (
-	args: Record<string, unknown>,
-	theme: Theme,
-	label: string,
-) => Component;
-export const renderMCPResult = oracle.renderMCPResult as (
+			if (args && typeof args === "object" && Object.keys(args).length > 0) {
+				// Inline preview budgeted against the render width, leaving room for
+				// the ` └─ ` connector prefix instead of a fixed cap.
+				const inlineBudget = Math.max(20, contentWidth - Bun.stringWidth(theme.tree.last) - 2);
+				const preview = formatArgsInline(args, inlineBudget);
+				if (preview) {
+					lines.push(` ${theme.fg("dim", theme.tree.last)} ${theme.fg("dim", preview)}`);
+				}
+			}
+
+			return lines.join("\n");
+		},
+		0,
+		0,
+	);
+}
+
+/**
+ * Render MCP tool result.
+ */
+export function renderMCPResult(
 	result: { content: Array<{ type: string; text?: string }>; details?: MCPToolDetails; isError?: boolean },
 	options: RenderResultOptions,
 	theme: Theme,
 	args?: Record<string, unknown>,
-) => Component;
+): Component {
+	const { expanded } = options;
+	return new WidthAwareText(
+		contentWidth => {
+			const lines: string[] = [];
+			const isError = result.isError ?? result.details?.isError ?? false;
+			const title = result.details ? `${result.details.serverName}/${result.details.mcpToolName}` : "MCP";
+			const success = !isError;
+			lines.push(
+				renderStatusLine(
+					success ? { iconOverride: theme.styledSymbol("tool.mcp", "accent"), title } : { icon: "error", title },
+					theme,
+				),
+			);
+
+			// Args section (when expanded)
+			if (expanded && args && typeof args === "object" && Object.keys(args).length > 0) {
+				lines.push(`${theme.fg("dim", "Args")}`);
+				const maxDepth = JSON_TREE_MAX_DEPTH_EXPANDED;
+				const maxLines = JSON_TREE_MAX_LINES_EXPANDED;
+				const tree = renderJsonTreeLines(args, theme, maxDepth, maxLines, JSON_TREE_SCALAR_LEN_EXPANDED);
+				for (const line of tree.lines) {
+					lines.push(line);
+				}
+				if (tree.truncated) {
+					lines.push(theme.fg("dim", "…"));
+				}
+				lines.push(""); // Blank line before output
+			}
+
+			// Output section
+			const textContent = result.content?.find(c => c.type === "text")?.text ?? "";
+			// Strip the LLM-facing spill notice before parsing/rendering: a spilled
+			// result appends `[Showing… artifact://N]` to the body, which would break
+			// JSON detection and bury the recovery link. Surface it as a styled warning
+			// instead, mirroring the built-in read/bash/ssh/browser renderers.
+			const trimmedOutput = stripOutputNotice(textContent, result.details?.meta).trimEnd();
+			const truncationWarning = result.details?.meta?.truncation
+				? formatStyledTruncationWarning(result.details.meta, theme)
+				: null;
+
+			if (!trimmedOutput) {
+				lines.push(theme.fg("dim", "(no output)"));
+				return lines.join("\n");
+			}
+
+			// Try to parse as JSON for structured display
+			if (trimmedOutput.startsWith("{") || trimmedOutput.startsWith("[")) {
+				try {
+					const parsed = JSON.parse(trimmedOutput);
+					const maxDepth = expanded ? JSON_TREE_MAX_DEPTH_EXPANDED : JSON_TREE_MAX_DEPTH_COLLAPSED;
+					const maxLines = expanded ? JSON_TREE_MAX_LINES_EXPANDED : JSON_TREE_MAX_LINES_COLLAPSED;
+					const maxScalarLen = expanded ? JSON_TREE_SCALAR_LEN_EXPANDED : JSON_TREE_SCALAR_LEN_COLLAPSED;
+					const tree = renderJsonTreeLines(parsed, theme, maxDepth, maxLines, maxScalarLen);
+
+					if (tree.lines.length > 0) {
+						for (const line of tree.lines) {
+							lines.push(line);
+						}
+						// Always show expand hint when collapsed (expanded view shows longer values and deeper nesting)
+						if (!expanded) {
+							lines.push(formatExpandHint(theme, expanded, true));
+						} else if (tree.truncated) {
+							lines.push(theme.fg("dim", "…"));
+						}
+						if (truncationWarning) lines.push(truncationWarning);
+						return lines.join("\n");
+					}
+				} catch {
+					// Fall through to raw output
+				}
+			}
+
+			// Raw text output
+			const outputLines = trimmedOutput.split("\n");
+			const maxOutputLines = expanded ? 12 : 4;
+			const displayLines = outputLines.slice(0, maxOutputLines);
+
+			for (const line of displayLines) {
+				lines.push(theme.fg("toolOutput", truncateToWidth(line, contentWidth)));
+			}
+
+			if (outputLines.length > maxOutputLines) {
+				const remaining = outputLines.length - maxOutputLines;
+				lines.push(
+					`${theme.fg("dim", `… ${formatMoreLines(remaining)}`)} ${formatExpandHint(theme, expanded, true)}`,
+				);
+			} else if (!expanded) {
+				// Show expand hint when collapsed even if all lines shown (lines may be truncated)
+				lines.push(formatExpandHint(theme, expanded, true));
+			}
+
+			if (truncationWarning) lines.push(truncationWarning);
+			return lines.join("\n");
+		},
+		0,
+		0,
+	);
+}
