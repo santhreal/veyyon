@@ -62,7 +62,7 @@ operator manual.
 |`crates/veyyon-desktop-scene`|Deterministic scene construction, headless rasterization and clutter metric evaluation (private)|
 |`crates/veyyon-desktop-surface`|The desktop surfaces: queue, session transcript, composer, run bar, right panel and terminal drawer|
 |`crates/veyyon-desktop-tokens`|Token file loaders and validators: scale, elevation, motion, ceilings, theme and the surface files, with hot reload|
-|`crates/veyyon-gpui`|The desktop front end's view of GPUI, vendored under `crates/vendor`|
+|`crates/veyyon-gpui`|Desktop integration with the revision-pinned Santh GPUI framework|
 
 `kernel/` and every `contracts/*`, `hosts/*`, `packages/*`, `plugins/*`, `apps/*`, `clients/*` and
 `tests/*` member is TypeScript. First-party Rust is grouped by purpose under `natives/`, with

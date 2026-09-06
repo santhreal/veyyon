@@ -1,17 +1,16 @@
 # veyyon-gpui
 
-Contains the GPUI renderer snapshot and patch extension interfaces for the veyyon desktop surface.
+Integrates Santh GPUI with the Veyyon desktop crates.
 
 ## Upstream and Fork Topology
 
-The canonical GPUI fork is the private [`santhreal/gpui`](https://github.com/santhreal/gpui) repository on branch `veyyon`, derived from `zed-industries/zed`.
-The workspace consumes a snapshot of that branch: `scripts/vendor-gpui.ts` extracts the 23-crate
-GPUI closure from one commit into `crates/vendor/<crate>` and records the commit in
-`crates/vendor/GPUI_VENDOR_REV`. The vendored crates are excluded from the workspace and from
-`cargo fmt --all`; their own suite runs in the fork. A renderer change is made in the fork, gated
-there, pushed, and re-vendored. An edit made directly under `crates/vendor` is lost on the next run.
-The vendor directory is a generated dependency snapshot, not a separately maintained fork.
-Reusable renderer changes belong in `santhreal/gpui`; Veyyon-specific surfaces and tokens remain in the desktop crates here.
+The canonical framework repository is the private
+[`santhreal/gpui`](https://github.com/santhreal/gpui), derived from `zed-industries/zed`.
+The workspace manifest pins one Git revision for `gpui`, `gpui_platform`, and `gpui_wgpu`.
+Cargo resolves their dependencies from that repository; no framework source is copied here.
+Git authentication with access to the private repository is required to build.
+Reusable renderer changes are maintained in Santh GPUI. Veyyon surfaces and tokens remain in
+the desktop crates.
 
 ## Rebase Policy
 
@@ -19,7 +18,7 @@ Reusable renderer changes belong in `santhreal/gpui`; Veyyon-specific surfaces a
 2. The branch contains no merge commits and no squashed patch sequences.
 3. Rebases occur on demand when upstream capabilities or fixes are required.
 4. Each rebase reapplies the landed patches, in the order the status table below lists them, on top of the target upstream revision.
-5. The commit advancing the snapshot lists any patch adjustments required during the rebase.
+5. The commit advancing the dependency revision lists any patch adjustments required during the rebase.
 
 ## Patch Series Specification
 
@@ -51,7 +50,7 @@ Every patch has a corresponding golden test or invariant assertion in the reposi
 
 ## Patch Series Status
 
-The snapshot revision is recorded in `crates/vendor/GPUI_VENDOR_REV`. The patch series is based on upstream
+The framework revision is pinned in the workspace `Cargo.toml`. The patch series is based on upstream
 `399258feeaf90ad8a3a208c99221ee87b6452f38`:
 
 |series patch|commit|
@@ -76,10 +75,10 @@ Read the table above, not the subject lines. A rebase reapplies the capabilities
 does not reproduce those numbers. P5 and P8 share `window.rs`, `scene.rs`, `shaders.wgsl` and
 `wgpu_renderer.rs` and landed as one commit.
 
-P5 renders every frame into a retained texture whenever the target accepts `COPY_DST`. A scene
-that declares damage is drawn under a device-pixel scissor: the rectangle is cleared by a scissored
-full-screen pipeline, only the affected primitives are drawn, and the retained frame is copied to
-the acquired target. `Context::notify_within`, `Window::declare_damage`,
+P5 renders every frame into a retained texture. A scene that declares damage is drawn under a
+device-pixel scissor: the rectangle is cleared by a scissored full-screen pipeline and only the
+affected primitives are drawn. Presentation copies the retained frame when the target accepts
+`COPY_DST`, otherwise a fullscreen texture-load pass presents it. `Context::notify_within`, `Window::declare_damage`,
 `Window::request_animation_frame_at_paint` and `Window::notify_at_paint` declare bounded
 invalidation; `refresh`, plain `notify` and a resize repaint the whole viewport.
 

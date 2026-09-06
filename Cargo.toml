@@ -472,19 +472,12 @@ tree-sitter-zig = "1.1"
 # ──────────────────────────────────────────────────────────────────────────────
 # GUI & Renderer
 # ──────────────────────────────────────────────────────────────────────────────
-# GPUI renderer, vendored under crates/vendor from the private santhreal/gpui repository at the commit recorded in
-# crates/vendor/GPUI_VENDOR_REV. Regenerate with
-# `bun scripts/vendor-gpui.ts --source <GPUI fork checkout> --rev <commit>`.
-# The tree carries the renderer patch series the front end requires: affine transforms, animator
-# identity, native delay, backdrop blur, inner shadow and inset hairline, per-corner radii, damage
-# scoped redraw, rounded and path content masks, the persistent text advance cache, and the
-# headless deterministic offscreen surface with surfaceless wgpu context, offscreen render target,
-# RGBA8 readback, and text-run and hitbox metadata.
-gpui = { path = "crates/vendor/gpui" }
+# Santh GPUI is shared with other native applications through one pinned repository.
+gpui = { git = "https://github.com/santhreal/gpui.git", rev = "d9a8bdbcc23b4c619e186a193d147bcad82b8e69" }
 # The headless offscreen path needs the platform crate, which builds the renderer for the current
 # OS, and the wgpu crate, which supplies the text system.
-gpui_platform = { path = "crates/vendor/gpui_platform" }
-gpui_wgpu = { path = "crates/vendor/gpui_wgpu" }
+gpui_platform = { git = "https://github.com/santhreal/gpui.git", rev = "d9a8bdbcc23b4c619e186a193d147bcad82b8e69" }
+gpui_wgpu = { git = "https://github.com/santhreal/gpui.git", rev = "d9a8bdbcc23b4c619e186a193d147bcad82b8e69" }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Unsorted (added by `cargo add` - move into a section above)

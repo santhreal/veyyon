@@ -1,27 +1,17 @@
 //! The desktop front end's view of GPUI.
 //!
-//! GPUI is a vendored snapshot of the private `santhreal/gpui` fork, branch
-//! `veyyon`, under `crates/vendor`, at the commit recorded in
-//! `crates/vendor/GPUI_VENDOR_REV`. That branch carries the patch series;
-//! `scripts/vendor-gpui.ts` extracts one commit of it. The golden tests under
-//! `tests/` prove each patch through the snapshot.
-//!
-//! Every patch extension gets a module here WHEN the patch exists on the
-//! branch. Until then this crate is a re-export and nothing more, so that the
-//! absence of a capability is visible as a missing symbol at the call site
-//! rather than as a module that compiles and does nothing.
+//! Santh GPUI is resolved from the canonical `santhreal/gpui` repository.
+//! The workspace manifest pins one revision for GPUI and its companion crates.
+//! Integration tests exercise the renderer capabilities used by the desktop.
 
 pub use gpui::*;
 
 #[cfg(test)]
 mod tests {
-	/// The snapshot is only useful if the symbols the desktop front end builds
-	/// on are actually reachable through this crate. A re-export that resolves
-	/// to nothing still compiles, so name the types the surfaces are written
-	/// against and let a failed re-vendor break here rather than in every
-	/// consumer.
+	/// The renderer types used by the desktop must remain available through
+	/// this crate when the shared framework revision changes.
 	#[test]
-	fn the_vendored_renderer_exports_the_types_the_surfaces_are_built_on() {
+	fn the_shared_renderer_exports_the_types_the_surfaces_are_built_on() {
 		use crate::{Bounds, Hsla, Pixels, Point, Size, px};
 
 		let origin = Point { x: px(12.0), y: px(52.0) };
