@@ -62,8 +62,7 @@ export const GENERAL_SETTINGS = {
 			tab: "interaction",
 			group: "Power (macOS)",
 			label: "Sleep Prevention",
-			description:
-				"Prevent macOS sleep while a session is active. Each level includes the levels below it.",
+			description: "Prevent macOS sleep while a session is active. Each level includes the levels below it.",
 			options: [
 				{
 					value: "off",

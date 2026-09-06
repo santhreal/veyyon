@@ -192,8 +192,7 @@ export const GLOBAL_SETTINGS = {
 			// key someone finds in ~/.veyyon/config.yml.
 			hidden: true,
 			label: "Onboarding Version",
-			description:
-				"Setup version completed on this machine. Stored in ~/.veyyon/config.yml.",
+			description: "Setup version completed on this machine. Stored in ~/.veyyon/config.yml.",
 		},
 	},
 

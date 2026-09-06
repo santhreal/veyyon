@@ -455,7 +455,8 @@ export const AGENTS_SETTINGS = {
 			tab: "agents",
 			group: "Idle Agents",
 			label: "Prune After",
-			description: "How long a parked agent stays in the roster before it is pruned, counted from when it was parked.",
+			description:
+				"How long a parked agent stays in the roster before it is pruned, counted from when it was parked.",
 			options: [
 				{ value: "900000", label: "15 minutes" },
 				{ value: "1800000", label: "30 minutes" },
