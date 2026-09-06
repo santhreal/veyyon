@@ -8,13 +8,16 @@ import { type TodoPhase, USER_TODO_EDIT_CUSTOM_TYPE } from "@veyyon/coding-agent
 import { removeWithRetries } from "@veyyon/utils";
 
 function createContext(cwd: string, phases: TodoPhase[]): InteractiveModeContext {
+	let currentPhases = phases;
 	return {
 		agent: {
 			appendMessage: vi.fn(),
 		},
 		session: {
-			getTodoPhases: () => phases,
-			setTodoPhases: vi.fn(),
+			getTodoPhases: () => currentPhases,
+			setTodoPhases: vi.fn((next: TodoPhase[]) => {
+				currentPhases = next;
+			}),
 		},
 		sessionManager: {
 			appendCustomEntry: vi.fn(),
@@ -230,13 +233,43 @@ describe("TodoCommandController", () => {
 		await controller.handleTodoCommand("pending Scaffold crate");
 		expect(ctx.showStatus).toHaveBeenCalledWith("Reset to pending: Scaffold crate");
 		expect(ctx.session.setTodoPhases).toHaveBeenCalled();
+		expect(ctx.session.getTodoPhases()[0]!.tasks[0]!.status).toBe("pending");
+		expect(ctx.session.getTodoPhases()[0]!.tasks[1]!.status).toBe("completed");
+		expect(ctx.session.getTodoPhases()[1]!.tasks[0]!.status).toBe("in_progress");
 
 		// 2. Reset phase
 		await controller.handleTodoCommand("pending Security");
 		expect(ctx.showStatus).toHaveBeenCalledWith("Reset phase Security to pending.");
+		expect(ctx.session.getTodoPhases()[1]!.tasks[0]!.status).toBe("pending");
+		expect(ctx.session.getTodoPhases()[0]!.tasks[0]!.status).toBe("pending");
 
 		// 3. Reset all
 		await controller.handleTodoCommand("pending");
 		expect(ctx.showStatus).toHaveBeenCalledWith("Reset all tasks to pending.");
+		expect(ctx.session.getTodoPhases()[0]!.tasks.every(t => t.status !== "in_progress")).toBe(true);
+		expect(ctx.session.getTodoPhases()[1]!.tasks.every(t => t.status !== "in_progress")).toBe(true);
+	});
+
+	it("handles /todo reset alias identically to pending", async () => {
+		tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pi-tui-todo-reset-"));
+		const phases: TodoPhase[] = [
+			{
+				name: "Core",
+				tasks: [
+					{ content: "Task A", status: "in_progress" },
+					{ content: "Task B", status: "completed" },
+				],
+			},
+		];
+		const ctx = createContext(tempRoot, phases);
+		const controller = new TodoCommandController(ctx);
+
+		await controller.handleTodoCommand("reset Task A");
+		expect(ctx.showStatus).toHaveBeenCalledWith("Reset to pending: Task A");
+		expect(ctx.session.getTodoPhases()[0]!.tasks[0]!.status).toBe("pending");
+
+		await controller.handleTodoCommand("reset");
+		expect(ctx.showStatus).toHaveBeenCalledWith("Reset all tasks to pending.");
+		expect(ctx.session.getTodoPhases()[0]!.tasks.every(t => t.status !== "in_progress")).toBe(true);
 	});
 });

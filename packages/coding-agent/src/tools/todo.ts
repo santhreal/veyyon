@@ -996,13 +996,18 @@ export function adaptTodoWriteBatch(
 			}
 		}
 	}
+	if (replace && todos.length > 0 && !todos.some(t => t.status === "in_progress") && todos.every(t => t.status === "pending")) {
+		ops.push({ op: "pending" });
+	}
 	return { ops, notes };
 }
 
 function applyParams(phases: TodoPhase[], params: TodoParams): TodoOpReport & { phases: TodoPhase[] } {
 	const report: TodoOpReport = { errors: [], notes: [] };
 	const next = applyEntry(phases, params, report);
-	normalizeInProgressTask(next);
+	if (params.op !== "pending") {
+		normalizeInProgressTask(next);
+	}
 	return { phases: next, ...report };
 }
 
@@ -1020,7 +1025,10 @@ export function applyOpsToPhases(
 	for (const op of ops) {
 		next = applyEntry(next, op, report);
 	}
-	normalizeInProgressTask(next);
+	const lastOp = ops.at(-1)?.op;
+	if (lastOp !== "pending") {
+		normalizeInProgressTask(next);
+	}
 	return { phases: next, ...report };
 }
 

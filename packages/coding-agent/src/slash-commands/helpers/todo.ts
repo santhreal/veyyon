@@ -74,6 +74,7 @@ const TODO_HELP_TEXT = [
 	"  /todo drop   [<task|phase>]        Mark task/phase/all abandoned",
 	"  /todo rm     [<task|phase>]        Remove task/phase/all",
 	"  /todo pending [<task|phase>]        Reset task/phase to pending",
+	"  /todo reset   [<task|phase>]        Reset task/phase to pending (alias for pending)",
 	"  /todo help                         Show this help",
 ].join("\n");
 
@@ -248,7 +249,8 @@ export async function handleTodoAcp(
 		case "drop":
 		case "rm":
 		case "pending":
-			return await handleTodoMutationCommand(verb, rest, runtime);
+		case "reset":
+			return await handleTodoMutationCommand(verb === "reset" ? "pending" : verb, rest, runtime);
 		case "edit":
 			return usage(
 				"/todo edit requires the TUI editor; use /todo export then /todo import for non-interactive edits.",
@@ -260,7 +262,7 @@ export async function handleTodoAcp(
 			return commandConsumed();
 		default:
 			return usage(
-				"Unknown /todo subcommand.\nUse append, start, done, drop, rm, copy, export, import, edit, or help.",
+				"Unknown /todo subcommand.\nUse append, start, done, drop, rm, pending, reset, copy, export, import, edit, or help.",
 				runtime,
 			);
 	}

@@ -39,12 +39,15 @@ export function renderTodoStatePreview(phases: readonly TodoPhase[]): string {
 	const inProgress = items.filter(item => item.status === "in_progress");
 	if (inProgress.length > 1) {
 		lines.push(`Active items (${inProgress.length} in progress):`);
-		for (const entry of inProgress.slice(0, TODO_REMINDER_PREVIEW_LIMIT)) {
-			const prefix = "- [/] ";
-			const text = boundedTodoPreviewText(`${entry.content} (${entry.phase})`, TODO_ITEM_PREVIEW_WIDTH - prefix.length);
-			lines.push(`${prefix}${text}`);
+		const preview = createBoundedTodoPreview(TODO_TOTAL_PREVIEW_WIDTH, TODO_ITEM_PREVIEW_WIDTH);
+		let shown = 0;
+		for (const entry of inProgress) {
+			if (shown >= TODO_REMINDER_PREVIEW_LIMIT) break;
+			if (!preview.push("- [/] ", `${entry.content} (${entry.phase})`)) break;
+			shown++;
 		}
-		const hidden = inProgress.length - TODO_REMINDER_PREVIEW_LIMIT;
+		lines.push(...preview.lines);
+		const hidden = inProgress.length - shown;
 		if (hidden > 0) lines.push(`- … ${hidden} more active item(s)`);
 		return lines.join("\n");
 	}
@@ -133,12 +136,15 @@ export function renderTodoContinuationReminder(options: {
 		const inProgress = items.filter(entry => entry.status === "in_progress");
 		if (inProgress.length > 1) {
 			lines.push(`Active items (${inProgress.length} in progress):`);
-			for (const entry of inProgress.slice(0, TODO_REMINDER_PREVIEW_LIMIT)) {
-				const prefix = "  [/] ";
-				const text = boundedTodoPreviewText(`${entry.content} (${entry.phase})`, itemWidth - prefix.length);
-				lines.push(`${prefix}${text}`);
+			const preview = createBoundedTodoPreview(TODO_TOTAL_PREVIEW_WIDTH, itemWidth);
+			let shown = 0;
+			for (const entry of inProgress) {
+				if (shown >= TODO_REMINDER_PREVIEW_LIMIT) break;
+				if (!preview.push("  [/] ", `${entry.content} (${entry.phase})`)) break;
+				shown++;
 			}
-			const hidden = inProgress.length - TODO_REMINDER_PREVIEW_LIMIT;
+			lines.push(...preview.lines);
+			const hidden = inProgress.length - shown;
 			if (hidden > 0) lines.push(`  … ${hidden} more active item(s)`);
 		} else {
 			const item = prioritizeTodoItems(items)[0];

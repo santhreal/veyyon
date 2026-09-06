@@ -1,7 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
-	activeTodoPhaseIndex,
 	renderTodoBoardLines,
 	type TodoBoardOptions,
 	todoBoardIsLive,
@@ -15,13 +14,13 @@ import {
 } from "@veyyon/coding-agent/session/todo-reminder";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import {
-	adaptTodoWriteBatch,
-	applyOpsToPhases,
 	getLatestTodoPhasesFromEntries,
 	markdownToPhases,
 	nextActionableTask,
 	phasesToMarkdown,
 	type TodoPhase,
+	TODO_ITEM_PREVIEW_WIDTH,
+	TODO_TOTAL_PREVIEW_WIDTH,
 	TodoTool,
 	USER_TODO_EDIT_CUSTOM_TYPE,
 } from "@veyyon/coding-agent/tools/todo";
@@ -446,5 +445,133 @@ describe("concurrent todo tasks: production-path regression and backtest", () =>
 
 		// Must display bounded overflow notice naming the active phase beyond cap
 		expect(text).toContain("… 1 more active phase(s) (Phase 7)");
+	});
+
+	/**
+	 * Explicit pending operations (sole-task, last-active phase, all-task, TodoWrite)
+	 * must persist an all-pending state without auto-promoting a task to in_progress.
+	 */
+	it("preserves all-pending state on sole-task, last-active phase, all-task, and TodoWrite pending resets", async () => {
+		const { session, phases } = createSession();
+		const tool = new TodoTool(session);
+
+		// 1. Initialize with single task
+		await tool.execute("call-1", {
+			op: "init",
+			list: [{ phase: "Solo", items: ["Only Task"] }],
+		});
+		expect(phases()[0]!.tasks[0]!.status).toBe("in_progress");
+
+		// Reset the sole active task to pending
+		const soleRes = await tool.execute("call-2", {
+			op: "pending",
+			task: "Only Task",
+		});
+		expect(soleRes.isError).toBeUndefined();
+		expect(phases()[0]!.tasks[0]!.status).toBe("pending");
+		expect(phases().flatMap(p => p.tasks).some(t => t.status === "in_progress")).toBe(false);
+
+		// 2. Multiple phases: Phase 1 completed, Phase 2 in_progress
+		await tool.execute("call-3", {
+			op: "init",
+			list: [
+				{ phase: "DonePhase", items: ["Completed Task"] },
+				{ phase: "ActivePhase", items: ["Pending Task", "Active Task"] },
+			],
+		});
+		await tool.execute("call-4", { op: "done", task: "Completed Task" });
+		await tool.execute("call-5", { op: "start", task: "Active Task" });
+		expect(phases()[1]!.tasks[1]!.status).toBe("in_progress");
+
+		// Reset the only phase holding an active task
+		const phaseRes = await tool.execute("call-6", { op: "pending", phase: "ActivePhase" });
+		expect(phaseRes.isError).toBeUndefined();
+		expect(phases()[1]!.tasks[0]!.status).toBe("pending");
+		expect(phases()[1]!.tasks[1]!.status).toBe("pending");
+		expect(phases().flatMap(p => p.tasks).some(t => t.status === "in_progress")).toBe(false);
+
+		// 3. Reset all tasks
+		await tool.execute("call-7", { op: "start", task: "Pending Task" });
+		expect(phases()[1]!.tasks[0]!.status).toBe("in_progress");
+		const allRes = await tool.execute("call-8", { op: "pending" });
+		expect(allRes.isError).toBeUndefined();
+		expect(phases().flatMap(p => p.tasks).every(t => t.status !== "in_progress")).toBe(true);
+
+		// 4. TodoWrite compatibility with all pending tasks
+		const writeRes = await tool.execute("call-9", {
+			todos: [
+				{ content: "Write A", status: "pending" },
+				{ content: "Write B", status: "pending" },
+			],
+			merge: false,
+		} as unknown as Parameters<typeof tool.execute>[1]);
+		expect(writeRes.isError).toBeUndefined();
+		expect(phases().flatMap(p => p.tasks).every(t => t.status === "pending")).toBe(true);
+	});
+
+	/**
+	 * Multi-active reminders must enforce TODO_TOTAL_PREVIEW_WIDTH and TODO_REMINDER_PREVIEW_LIMIT together.
+	 */
+	it("bounds multi-active reminders by row limit and total preview width", () => {
+		const longName = "A".repeat(100);
+		const phases: TodoPhase[] = Array.from({ length: 10 }, (_, i) => ({
+			name: `Phase ${i + 1}`,
+			tasks: [{ content: `Long task ${i + 1} ${longName}`, status: "in_progress" }],
+		}));
+
+		const statePreview = renderTodoStatePreview(phases);
+		expect(statePreview).toContain("Active items (10 in progress):");
+		expect(statePreview.length).toBeLessThanOrEqual(TODO_TOTAL_PREVIEW_WIDTH + 200);
+		expect(statePreview).toContain("more active item(s)");
+
+		const reminder = renderTodoContinuationReminder({
+			items: incompleteTodoItems(phases),
+			attempt: 1,
+			maxAttempts: 3,
+			previewItemWidth: TODO_ITEM_PREVIEW_WIDTH,
+		});
+		expect(reminder).toContain("Active items (10 in progress):");
+		const activeLines = reminder.split("\n").filter(l => l.trim().startsWith("[/]"));
+		const itemsLength = activeLines.reduce((acc, l) => acc + l.length, 0);
+		expect(itemsLength).toBeLessThanOrEqual(TODO_TOTAL_PREVIEW_WIDTH);
+		expect(reminder.length).toBeLessThanOrEqual(TODO_TOTAL_PREVIEW_WIDTH + 400);
+		expect(reminder).toContain("more active item(s)");
+	});
+
+	/**
+	 * Collapsed todo board row cap: nonblank rows must never exceed maxRows.
+	 */
+	it("strictly caps collapsed todo board rows at maxRows under overflow conditions", () => {
+		const phases: TodoPhase[] = [
+			{ name: "P1", tasks: [{ content: "T1", status: "in_progress" }] },
+			{ name: "P2", tasks: [{ content: "T2", status: "pending" }] },
+			{ name: "P3", tasks: [{ content: "T3", status: "pending" }] },
+			{ name: "P4", tasks: [{ content: "T4", status: "pending" }] },
+			{ name: "P5", tasks: [{ content: "T5", status: "pending" }] },
+			{ name: "P6", tasks: [{ content: "T6", status: "pending" }] },
+			{ name: "P7", tasks: [{ content: "T7", status: "in_progress" }] },
+		];
+
+		// Case 1: body.length === budget and a later active phase requires notice
+		const maxRows = 6;
+		const lines = renderTodoBoardLines(phases, boardOptions({ expanded: false, maxRows }));
+		const nonBlankLines = lines.filter(l => l.trim() !== "");
+		expect(nonBlankLines.length).toBeLessThanOrEqual(maxRows);
+		const text = lines.map(l => Bun.stripANSI(l)).join("\n");
+		expect(text).toContain("more active phase(s) (P7)");
+
+		// Case 2: Very small maxRows (e.g. 1 or 2)
+		const smallLines1 = renderTodoBoardLines(phases, boardOptions({ expanded: false, maxRows: 1 }));
+		expect(smallLines1.filter(l => l.trim() !== "").length).toBeLessThanOrEqual(1);
+
+		const smallLines2 = renderTodoBoardLines(phases, boardOptions({ expanded: false, maxRows: 2 }));
+		expect(smallLines2.filter(l => l.trim() !== "").length).toBeLessThanOrEqual(2);
+
+		// Case 3: Both unrendered active phases AND hidden rows overflow
+		const linesWithBoth = renderTodoBoardLines(phases, boardOptions({ expanded: false, maxRows: 4 }));
+		expect(linesWithBoth.filter(l => l.trim() !== "").length).toBeLessThanOrEqual(4);
+		const textBoth = linesWithBoth.map(l => Bun.stripANSI(l)).join("\n");
+		expect(textBoth).toContain("more active phase(s)");
+		expect(textBoth).toContain("more");
 	});
 });

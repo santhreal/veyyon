@@ -31,7 +31,7 @@ The params object **is** a single op, the discriminator and its fields live at t
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `op` | `"init" | "start" | "done" | "rm" | "drop" | "append" | "view" | "pending"` | Yes | Operation discriminator. |
+| `op` | `"init" \| "start" \| "done" \| "rm" \| "drop" \| "append" \| "view" \| "pending"` | Yes | Operation discriminator. |
 | `list` | `{ phase: string; items: string[] }[]` | For `init` (unless a flat `items` list is given) | Full replacement payload. Each `items` array has `minItems: 1`. |
 | `task` | `string` | For `start`; for task-targeted `done`/`drop`/`rm` | Exact task content match. |
 | `phase` | `string` | For `append`; for phase-targeted `done`/`drop`/`rm`; optional for a flat `init` | Exact phase name match, except `append` lazily creates a missing phase and a flat `init` synthesizes one (default `Tasks`). |
