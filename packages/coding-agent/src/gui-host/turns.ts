@@ -233,12 +233,10 @@ function clearStreaming(socket: net.Socket, state: ClientSessionState): void {
 }
 
 /**
- * Start a prompt turn and settle once the session has accepted it: the turn
- * has begun (`agent_start`), or it was queued behind a running turn, or the
- * prompt resolved without a turn (a slash command handled locally). A
- * rejection before that point is the caller's failure; one after it is a
- * turn error, which the session records on the transcript entry itself.
- * Returns whether a turn was started.
+ * Start a prompt turn and settle when the prompt finishes or is queued. An
+ * idle turn that ends with a provider error rejects with the provider's real
+ * detail, so the request registry and native GUI cannot mistake acceptance for
+ * completion and then wait forever. Returns whether a turn was started.
  */
 export class AttachmentValidationError extends Error {
 	constructor(message: string) {
@@ -303,43 +301,25 @@ export async function executePromptTurn(
 		);
 	}
 
-	const accepted = Promise.withResolvers<boolean>();
-	let settled = false;
-	const settle = (outcome: { started: boolean } | { error: unknown }) => {
-		if (settled) {
-			// A turn error after acceptance lands on the transcript entry; here
-			// it is only kept out of the unhandled-rejection path.
-			if ("error" in outcome) {
-				const message = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
-				logger.warn("GUI host turn ended in error", { error: message });
-			}
-			return;
-		}
-		settled = true;
-		if ("error" in outcome) accepted.reject(outcome.error);
-		else accepted.resolve(outcome.started);
-	};
-	const unsubscribe = session.subscribe(event => {
-		if (event.type === "agent_start") settle({ started: true });
-	});
 	const promptPromise = session.prompt(promptText, {
 		images: images.length > 0 ? images : undefined,
 		videos: videos.length > 0 ? videos : undefined,
 		streamingBehavior,
 	});
 	state.activeTurnPromise = promptPromise;
-	void promptPromise
-		.then(
-			started => settle({ started }),
-			(error: unknown) => settle({ error }),
-		)
-		.finally(() => {
-			if (state.activeTurnPromise === promptPromise) state.activeTurnPromise = undefined;
-		});
 	try {
-		return await accepted.promise;
+		const started = await promptPromise;
+		if (started && streamingBehavior === undefined) {
+			const failed = session.messages.findLast(
+				message => message.role === "assistant" && message.stopReason === "error",
+			);
+			if (failed?.role === "assistant") {
+				throw new Error(failed.errorMessage ?? "Model turn failed without provider error detail");
+			}
+		}
+		return started;
 	} finally {
-		unsubscribe();
+		if (state.activeTurnPromise === promptPromise) state.activeTurnPromise = undefined;
 	}
 }
 

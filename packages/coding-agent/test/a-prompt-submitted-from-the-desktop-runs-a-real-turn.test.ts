@@ -314,6 +314,66 @@ describe("a prompt submitted from the desktop runs a real turn", () => {
 		client.destroy();
 	});
 
+	test("a provider error after turn acceptance is returned with its real detail", async () => {
+		vi.spyOn(ai, "streamSimple").mockImplementation(() => {
+			const stream = new AssistantMessageEventStream();
+			const error: AssistantMessage = {
+				role: "assistant",
+				content: [],
+				api: "openai-chat",
+				provider: "openai",
+				model: "gpt-4o-mini",
+				stopReason: "error",
+				errorMessage: "provider rejected the credential",
+				usage: {
+					input: 0,
+					output: 0,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 0,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				timestamp: Date.now(),
+			};
+			queueMicrotask(() => {
+				stream.push({ type: "start", partial: error });
+				stream.push({ type: "error", reason: "error", error });
+			});
+			return stream;
+		});
+
+		server = await startGuiHostServer({
+			endpoint,
+			cwd: tempDir.path(),
+			agentDir: tempDir.path(),
+		});
+		const client = await TestSocketClient.connect(server.endpoint);
+		await client.nextFrame();
+		await client.nextFrame();
+
+		client.send({
+			id: 102,
+			action: {
+				SubmitPrompt: {
+					session: "error-session",
+					text: "Trigger the provider error",
+					attachments: [],
+				},
+			},
+		});
+
+		let failure: Extract<HostEvent, { RequestFailed: unknown }> | undefined;
+		while (!failure) {
+			const frame = (await client.nextFrame()) as HostEvent;
+			if ("RequestFailed" in frame && frame.RequestFailed.request === 102) {
+				failure = frame;
+			}
+		}
+		expect(failure.RequestFailed.error.code).toBe("PROMPT_REJECTED");
+		expect(failure.RequestFailed.error.message).toBe("provider rejected the credential");
+		client.destroy();
+	});
+
 	test("AbortTurn with nothing in flight is refused with RequestFailed (scope: Session, code: NOT_RUNNING)", async () => {
 		server = await startGuiHostServer({
 			endpoint,
