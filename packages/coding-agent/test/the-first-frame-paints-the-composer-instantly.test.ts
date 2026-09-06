@@ -27,6 +27,7 @@ import { segmentSeparator } from "@veyyon/coding-agent/modes/terminal/components
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { getEditorTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
+
 import { branchLabelFromFiles } from "@veyyon/coding-agent/utils/git-head";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { Component } from "@veyyon/tui";

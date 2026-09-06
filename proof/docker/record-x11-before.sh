@@ -47,7 +47,6 @@ def resolve_base():
             return ref
     raise SystemExit("no origin/main and no main: name the hold point in PROOF_BASE_REF")
 
-
 base = resolve_base()
 
 # Source lives under every first-party root, not `packages/` alone: a member under
@@ -90,13 +89,11 @@ def sha(path):
     with open(path, "rb") as fh:
         return hashlib.sha256(fh.read()).hexdigest()
 
-
 def read_or_none(path):
     if not os.path.exists(path):
         return None
     with open(path, "rb") as fh:
         return fh.read()
-
 
 # The base tree decides what the arm holds: content when the base has the file,
 # absence when it does not. That covers a modification, a file the branch added, a

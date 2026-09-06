@@ -34,6 +34,38 @@
 
 ### Fixed
 
+### Added
+
+- `closeModelCache()` closes the shared model-cache database and permits reopening it at the current cache path.
+
+### Changed
+
+- `Effort`, `ThinkingConfig` and the model and message types are re-exported from `@veyyon/model`, which is their single definition; the exported names and values are unchanged.
+- Bundled models resolve on demand per provider while explicitly installed full-registry snapshot stores remain supported.
+- Provider cache namespaces resolve without constructing discovery options; persisted cache keys are unchanged.
+- Bundled model snapshots use the shared integrity-framed format without repeated JSON serialization or durability flushes, and obsolete snapshots rebuild on load.
+- The model row, thinking config, effort ladder and service-tier vocabulary are defined in `@veyyon/model`; `@veyyon/catalog/types`, `@veyyon/catalog/effort` and `@veyyon/catalog/provider-models/wire-capabilities` re-export every name they exported before, so no caller changes.
+- Typed tuple copies use spreads rather than `.concat()`, which a `as const` array does not define. No user-visible behavior changes.
+- A comment on `OPENROUTER_BASE_URL` names the Perplexity auth module at `tools/web/search/providers/perplexity-auth.ts`. No behavior change.
+
+### Fixed
+
+- Case-insensitive host classification no longer treats control characters as URL punctuation.
+
+## [1.4.0] - 2026-09-04
+
+### Added
+
+- A model's thinking config carries `prefixBinding`, set for Claude 5.1 and later, stating that its thinking blocks are bound to the conversation prefix they were produced against.
+- An `anthropic-messages` model's compat carries `replayDemotedPriorReasoning`, which drops prior-turn reasoning on a signing endpoint instead of replaying it as demoted prose.
+- The bundled ChatGPT Codex catalog carries `gpt-6-astra` and `gpt-reserve`, each with the low-through-max effort ladder and the freeform `apply_patch` tool the endpoint declares.
+
+### Changed
+
+- The server-side compaction capability comment states the route the ChatGPT Codex backend actually serves. No behavior change.
+
+### Fixed
+
 - The Claude Code fingerprint version is 2.1.257, so Anthropic OAuth requests for current models are no longer rejected with `claude_code_version_too_old`.
 - ChatGPT Codex discovery identifies as Codex CLI 0.153.2, the floor `gpt-6-astra` requires, so a subscription that has the model lists it instead of receiving the pre-0.153 model set.
 - A ChatGPT Codex model's effort ladder and `apply_patch` tool type come from the `supported_reasoning_levels` and `apply_patch_tool_type` the endpoint declares for that row, so a newly listed SKU offers effort control at once instead of arriving with none until models.dev catalogs it.

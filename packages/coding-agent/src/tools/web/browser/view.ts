@@ -28,7 +28,7 @@ import type {
 	ViewSection,
 } from "@veyyon/view";
 import { formatTruncationMetaNotice, stripOutputNotice } from "../../core/output-notice";
-import { LINE_NOUN, replaceTabs, screenRows, shortenPath } from "../../core/render-utils";
+import { LINE_NOUN, replaceTabs, screenRows, shortenEmbeddedPaths, shortenPath } from "../../core/render-utils";
 import type { BrowserToolDetails } from "../browser";
 
 /** The tool's own mark, which a settled row is titled by instead of an outcome icon. */
@@ -140,22 +140,27 @@ function codeSection(code: string, expanded: boolean): ViewSection | undefined {
  * terminal replays the styles it trusts and a host that can replay none keeps the words. Every other
  * row is output the card colours as output, which is the tool stating what the row IS.
  */
-function outputSection(output: string, expanded: boolean, label: string | undefined): ViewSection | undefined {
+function outputSection(
+	output: string,
+	expanded: boolean,
+	label: string | undefined,
+	isError?: boolean,
+): ViewSection | undefined {
 	if (!output) return undefined;
 	const rows = screenRows(output);
 	const kept = rows.slice(0, Math.min(rows.length, ceiling(expanded)));
 	const held = rows.length - kept.length;
 	return {
 		...(label === undefined ? {} : { label }),
-		lines: kept.map(row => outputRow(row)),
+		lines: kept.map(row => outputRow(row, isError)),
 		...(held > 0 ? { hidden: { count: held, noun: LINE_NOUN, revealable: !expanded } } : {}),
 	};
 }
 
 /** One row of output, verbatim when it is a screen row and toned as output when it is text. */
-function outputRow(row: string): ViewLine {
-	const text = replaceTabs(row);
-	return row.includes("\x1b[") ? [{ text, captured: true }] : [{ text, tone: "output" }];
+function outputRow(row: string, isError?: boolean): ViewLine {
+	const text = replaceTabs(shortenEmbeddedPaths(row));
+	return row.includes("\x1b[") ? [{ text, captured: true }] : [{ text, tone: isError ? "error" : "output" }];
 }
 
 /**
@@ -261,7 +266,7 @@ function tabCard(
 		title,
 		...(meta.length > 0 ? { meta } : {}),
 	};
-	const printed = outputSection(output, context.expanded, undefined);
+	const printed = outputSection(output, context.expanded, undefined, isError);
 	if (printed === undefined) return header;
 	return {
 		kind: "headedBlock",

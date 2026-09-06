@@ -14,7 +14,7 @@
 import { truncateToWidth } from "@veyyon/utils/width";
 import type { FramedBlockView, StatusRowView, ToolViewRenderer, ViewLine, ViewSection } from "@veyyon/view";
 import { formatSessionSnapshot } from "../../debug/session-snapshot";
-import { PREVIEW_LIMITS, replaceTabs, shortenPath, TRUNCATE_LENGTHS } from "../core/render-utils";
+import { PREVIEW_LIMITS, replaceTabs, shortenEmbeddedPaths, shortenPath, TRUNCATE_LENGTHS } from "../core/render-utils";
 import type { DebugParams, DebugToolDetails } from "./debug";
 
 /** The arguments the card reads off a debug call, which is any subset the model has sent so far. */
@@ -74,7 +74,7 @@ function outputSection(result: DebugViewResult, expanded: boolean): ViewSection 
 	const limit = expanded ? PREVIEW_LIMITS.EXPANDED_LINES : PREVIEW_LIMITS.COLLAPSED_LINES;
 	const lines = rawLines
 		.slice(0, limit)
-		.map((line): ViewLine => [{ text: truncateToWidth(line, TRUNCATE_LENGTHS.LINE) }]);
+		.map((line): ViewLine => [{ text: truncateToWidth(shortenEmbeddedPaths(line), TRUNCATE_LENGTHS.LINE) }]);
 	const remaining = rawLines.length - lines.length;
 	return {
 		label: "Output",

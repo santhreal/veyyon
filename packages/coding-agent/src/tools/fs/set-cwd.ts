@@ -139,8 +139,8 @@ export const setCwdToolView: Required<ToolViewRenderer<SetCwdToolInput, AgentToo
 		const line = !details
 			? "cwd"
 			: details.previous !== details.cwd
-				? `${details.previous} → ${details.cwd}`
-				: `${details.cwd} (already here)`;
+				? `${shortenPath(details.previous)} → ${shortenPath(details.cwd)}`
+				: `${shortenPath(details.cwd)} (already here)`;
 		// The rule delta is the part of a re-root that changes how the agent behaves,
 		// so it belongs on the header rather than only in the model's copy of the
 		// result. A move that silently swapped the governing AGENTS.md looked

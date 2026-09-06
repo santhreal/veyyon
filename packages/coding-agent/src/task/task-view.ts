@@ -44,7 +44,14 @@ import {
 	type SubmitReviewDetails,
 } from "../tools/agent/review";
 import { jsonTreeViewLines } from "../tools/core/json-tree-view";
-import { formatDuration, formatMoreItems, previewLine, replaceTabs, truncateToWidth } from "../tools/core/render-utils";
+import {
+	formatDuration,
+	formatMoreItems,
+	previewLine,
+	replaceTabs,
+	shortenEmbeddedPaths,
+	truncateToWidth,
+} from "../tools/core/render-utils";
 import { appendAgentStats, sanitizeRecentOutput, span } from "./agent-stats";
 import { classifySubagentOutcome } from "./outcome";
 import { repairDoubleEncodedJsonString, repairTaskParams } from "./repair-args";
@@ -1265,7 +1272,11 @@ function renderResult(result: TaskViewResult, context: ToolViewContext, rawArgs?
 		if (contextSection) sections.push(contextSection);
 		if (assignmentSection) sections.push(assignmentSection);
 		if (fallbackText)
-			sections.push({ separator: true, lines: [[span(fallbackText, errored ? "error" : "dim")]], clip: true });
+			sections.push({
+				separator: true,
+				lines: [[span(replaceTabs(shortenEmbeddedPaths(fallbackText)), errored ? "error" : "dim")]],
+				clip: true,
+			});
 		return {
 			kind: "framedBlock",
 			header: errored ? header("error", undefined, agentLabel) : header(undefined, "status.done", agentLabel),
@@ -1374,7 +1385,7 @@ function renderResult(result: TaskViewResult, context: ToolViewContext, rawArgs?
 	if (assignmentSection) sections.push(assignmentSection);
 
 	if (rows.length === 0) {
-		const text = fallbackText.trim() ? fallbackText : "No results";
+		const text = fallbackText.trim() ? replaceTabs(shortenEmbeddedPaths(fallbackText)) : "No results";
 		sections.push({ separator: true, lines: [[span(text, refused ? "warning" : "dim")]], clip: true });
 		return { kind: "framedBlock", header: headerRow, state, sections };
 	}
@@ -1392,7 +1403,7 @@ function renderResult(result: TaskViewResult, context: ToolViewContext, rawArgs?
 		if (markerIndex >= 0) {
 			for (const line of summaryLines.slice(markerIndex)) {
 				if (!line.trim()) continue;
-				rows.push(openRow(TOP, [span(line, "dim")]));
+				rows.push(openRow(TOP, [span(replaceTabs(shortenEmbeddedPaths(line)), "dim")]));
 			}
 		}
 	}

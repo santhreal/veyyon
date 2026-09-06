@@ -19,7 +19,7 @@ import { truncateToWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "@veyyon/utils/wrap";
 import type { StatusRowView, ToolView, ToolViewRenderer, ViewLine, ViewSection, ViewSpan } from "@veyyon/view";
 import { PREVIEW_LIMITS } from "../../core/render-limits";
-import { getDomain } from "../../core/render-utils";
+import { getDomain, shortenEmbeddedPaths } from "../../core/render-utils";
 import { getSearchProviderLabel } from "./provider";
 import type { SearchRenderDetails, SearchResponse, SearchSource } from "./types";
 
@@ -79,7 +79,7 @@ function errorView(message: string, details: SearchRenderDetails | undefined): T
 		kind: "framedBlock",
 		header: errorHeader(details),
 		state: "error",
-		sections: [{ lines: [[{ text: `Error: ${replaceTabs(message)}`, tone: "error" }]] }],
+		sections: [{ lines: [[{ text: `Error: ${replaceTabs(shortenEmbeddedPaths(message))}`, tone: "error" }]] }],
 	};
 }
 
@@ -102,7 +102,9 @@ function fallbackView(contentText: string, expanded: boolean): ToolView {
 			{
 				lines:
 					shown.length > 0
-						? shown.map((line): ViewLine => [{ text: line.trim(), tone: "dim" }])
+						? shown.map(
+								(line): ViewLine => [{ text: replaceTabs(shortenEmbeddedPaths(line.trim())), tone: "dim" }],
+							)
 						: [[{ text: "No response data", tone: "muted" }]],
 				clip: true,
 				hidden:
@@ -208,8 +210,11 @@ export const webSearchToolView: Required<ToolViewRenderer<WebSearchViewArgs, Web
 
 	renderResult(result, context, args): ToolView {
 		const details = result.details;
-		if (details?.error) return errorView(details.error, details);
 		const rawText = result.content?.find(block => block.type === "text")?.text?.trim() ?? "";
+		if (result.isError || details?.error) {
+			const errorMessage = details?.error || rawText || "Web search failed";
+			return errorView(errorMessage, details);
+		}
 		const response = details?.response;
 		if (!response) return fallbackView(rawText, context.expanded);
 

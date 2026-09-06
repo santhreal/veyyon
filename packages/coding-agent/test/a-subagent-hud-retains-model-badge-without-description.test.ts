@@ -47,4 +47,23 @@ describe("subagent HUD retains model badge when session has no description", () 
 		expect(plain).toContain("a1b2c3d4");
 		expect(plain).toContain("o3");
 	});
+
+	it("drops model badge when description exists and remaining space is under description floor", () => {
+		const sessionWithDesc: ObservableSession = {
+			id: "task-1",
+			kind: "subagent",
+			status: "active",
+			detached: true,
+			description: "Refactoring database migration schema",
+			progress: { resolvedModel: "gpt-4o" },
+		} as unknown as ObservableSession;
+
+		// At width 30 with a description, the badge is dropped to prioritize the description
+		const lines = renderSubagentHudLines([sessionWithDesc], { columns: 30, showModelBadge: true });
+		expect(lines.length).toBe(3);
+		const rowText = stripAnsi(lines[2] ?? "");
+		expect(rowText).toContain("task-1");
+		expect(rowText).toContain("Refactoring");
+		expect(rowText).not.toContain("gpt-4o");
+	});
 });

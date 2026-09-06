@@ -15,11 +15,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { createAutoresearchExtension } from "@veyyon/coding-agent/autoresearch";
+import { registerAutoresearchUi } from "@veyyon/coding-agent/autoresearch/dashboard";
 import { closeAllAutoresearchStorages, openAutoresearchStorage } from "@veyyon/coding-agent/autoresearch/storage";
 import { DEFAULT_SWARM_BREADTH } from "@veyyon/coding-agent/autoresearch/swarm";
 import * as initExperimentTool from "@veyyon/coding-agent/autoresearch/tools/init-experiment";
 import type { AutoresearchRuntime } from "@veyyon/coding-agent/autoresearch/types";
 import type { ExtensionAPI, ExtensionContext } from "@veyyon/coding-agent/extensibility/extensions";
+import { terminalAutoresearchUi } from "@veyyon/coding-agent/modes/terminal/controllers/extension-ui-controller";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import * as git from "@veyyon/coding-agent/utils/git";
 import "@veyyon/coding-agent/modes/terminal/controllers/extension-ui-controller";
@@ -27,6 +29,11 @@ import { stripAnsi, TempDir } from "@veyyon/utils";
 import type { AutocompleteItem } from "@veyyon/utils/autocomplete";
 import { $ } from "bun";
 import { useTruecolorTheme } from "./helpers/theme-assertions";
+
+// The console reaches the terminal through the delegate the terminal host registers when it
+// loads; this suite drives the command without booting the host, so it installs the same
+// delegate by name, which is what routes the console into `ui.terminal.custom`.
+registerAutoresearchUi(terminalAutoresearchUi);
 
 interface CommandSpec {
 	description: string;

@@ -26,7 +26,15 @@ import type {
 	ViewTone,
 } from "@veyyon/view";
 import { stripTaskResultEnvelope } from "@veyyon/wire/task-result";
-import { Ellipsis, formatDuration, getPreviewLines, replaceTabs, truncateToWidth } from "../core/render-utils";
+import {
+	Ellipsis,
+	formatDuration,
+	getPreviewLines,
+	replaceTabs,
+	sanitizeErrorText,
+	shortenEmbeddedPaths,
+	truncateToWidth,
+} from "../core/render-utils";
 import { type AgentActivitySnapshot, COLLAPSED_LIST_LIMIT, type JobSnapshot, type JobToolDetails } from "./job";
 
 /** The columns a job's label may spend before it is cut. */
@@ -244,12 +252,25 @@ function summaryRow(
 
 /** The card a snapshot with neither a job nor an agent in it falls back to. */
 function emptyCard(result: JobViewResult, args: JobRenderArgs | undefined): HeadedBlockView {
+	if (result.isError) {
+		const fallback = result.content?.find(part => part.type === "text")?.text || "Job operation failed";
+		const sanitized = sanitizeErrorText(fallback);
+		return {
+			kind: "headedBlock",
+			header: { kind: "statusRow", status: "error", title: describeTarget(args) || "Job" },
+			lines: sanitized.split("\n").map(line => [{ text: line, tone: "error" }]),
+		};
+	}
 	const fallback = result.content?.find(part => part.type === "text")?.text || "No jobs to process";
 	return {
 		kind: "headedBlock",
 		header: { kind: "statusRow", status: "warning", title: describeTarget(args) || "Job" },
 		lines: [
-			[{ text: "", symbol: "status.warning", tone: "warning" }, { text: " " }, { text: fallback, tone: "muted" }],
+			[
+				{ text: "", symbol: "status.warning", tone: "warning" },
+				{ text: " " },
+				{ text: replaceTabs(shortenEmbeddedPaths(fallback)), tone: "muted" },
+			],
 		],
 	};
 }

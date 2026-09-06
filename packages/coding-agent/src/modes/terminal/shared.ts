@@ -35,5 +35,4 @@ export function interruptHint(): string {
 	return ` ${theme.format.bracketLeft}esc${theme.format.bracketRight}`;
 }
 
-export { sanitizeStatusText, sanitizeStyledStatusText } from "@veyyon/utils/sanitize-status-text";
 export { parseCommandArgs } from "../../utils/command-args";

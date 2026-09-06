@@ -107,6 +107,7 @@ export class SignInTab implements SetupTab {
 	#statusLines: string[] = [];
 	#authUrl: string | undefined;
 	#authLaunchUrl: string | undefined;
+
 	#authCredential: LoginCredential = "oauth";
 	#prompt: PromptState | undefined;
 	#promptResolve: ((value: string) => void) | undefined;
@@ -338,6 +339,7 @@ export class SignInTab implements SetupTab {
 			}
 			this.#loggingInProvider = undefined;
 			this.#loginAbort = undefined;
+
 			this.#selector.dispose();
 			this.#selector = this.#createSelector();
 			this.host.restoreFocus();

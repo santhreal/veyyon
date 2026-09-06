@@ -208,15 +208,17 @@ describe("the status row keeps the chord that opens it", () => {
 	it("never counts runs since a best it is not showing", () => {
 		// The count and the metric come from one scan, so the gap always belongs to
 		// the run whose metric is beside it. Two best-finders, one admitting the
-		// placeholder zero a run that never measured is logged with and one not,
+		// placeholder zero a crash that never measured is logged with and one not,
 		// disagree about which run leads and put a gap of the wrong length on the
 		// row. Where lower is better that zero is the best value there is, so it is
-		// the case that diverges.
+		// the case that diverges. A crash is the one status whose logged number is
+		// the placeholder by contract; any other status logged its number on
+		// purpose, and a kept zero would be a measurement.
 		const runtime = loudestRuntime();
 		runtime.state.results = [
 			result({ runNumber: 1, metric: 120 }),
 			result({ runNumber: 2, metric: 90 }),
-			result({ runNumber: 3, metric: 0, measuredPrimary: null }),
+			result({ runNumber: 3, status: "crash", metric: 0, measuredPrimary: null }),
 			result({ runNumber: 4, metric: 110 }),
 		];
 		// Run 2 holds the best measurement, and runs 3 and 4 followed it. Admitting
@@ -224,7 +226,7 @@ describe("the status row keeps the chord that opens it", () => {
 		expect(segmentsOf(runtime, 400)).toContain("2 since best");
 
 		// With no measured run at all there is no best, so there is no gap either.
-		runtime.state.results = [result({ runNumber: 1, metric: 0, measuredPrimary: null })];
+		runtime.state.results = [result({ runNumber: 1, status: "crash", metric: 0, measuredPrimary: null })];
 		const unmeasured = segmentsOf(runtime, 400);
 		expect(unmeasured.some(segment => segment.startsWith("best "))).toBe(false);
 		expect(unmeasured.some(segment => segment.includes("since best"))).toBe(false);

@@ -30,7 +30,12 @@ import { stripOutputNotice, stripRawOutputArtifactNotice } from "../core/output-
 // The words a truncation is named by, from the leaf that owns them rather than from the styled
 // helper beside it: a view states the sentence and never the colour it is drawn in.
 import { formatTruncationMetaNotice } from "../core/output-notice";
-import { collapseProgressRuns, formatToolWorkingDirectory, replaceTabs } from "../core/render-utils";
+import {
+	collapseProgressRuns,
+	formatToolWorkingDirectory,
+	replaceTabs,
+	shortenEmbeddedPaths,
+} from "../core/render-utils";
 import { clampTimeout } from "../core/tool-timeouts";
 import { BASH_DEFAULT_PREVIEW_LINES, type BashToolDetails, formatBackgroundNotice } from "./bash";
 
@@ -183,7 +188,7 @@ export function bashEnvForDisplay(args: BashViewArgs): Record<string, string> | 
  * a prompt over a command nobody has is a row that says nothing.
  */
 function commandSection(args: BashViewArgs | undefined, expanded: boolean): ViewSection {
-	const command = replaceTabs(args?.command || "…");
+	const command = replaceTabs(shortenEmbeddedPaths(args?.command || "…"));
 	const workdir = formatToolWorkingDirectory(args?.cwd, getProjectDir());
 	const assignments = formatBashEnvAssignments(args === undefined ? undefined : bashEnvForDisplay(args));
 	const prefix = [PROMPT, ...(workdir ? [`cd ${workdir} &&`] : []), ...(assignments ? [assignments] : [])].join(" ");
@@ -248,7 +253,10 @@ function programOutput(result: BashViewResult): { text: string; artifactId?: str
 	const withoutOutputNotice = stripOutputNotice(withoutBackground, details?.meta);
 	const withoutExit = stripExitCodeNotice(withoutOutputNotice, details?.exitCode, details?.signal);
 	const artifact = stripRawOutputArtifactNotice(stripWallTimeNotice(withoutExit, details?.wallTimeMs));
-	return { text: artifact.text.trimEnd(), ...(artifact.artifactId ? { artifactId: artifact.artifactId } : {}) };
+	return {
+		text: shortenEmbeddedPaths(artifact.text).trimEnd(),
+		...(artifact.artifactId ? { artifactId: artifact.artifactId } : {}),
+	};
 }
 
 /**
@@ -327,13 +335,17 @@ function outputSections(
 		// An image is as tall as it is: condensing or windowing the rows it occupies would cut the
 		// payload in half, so the whole capture is stated and no window is asked for.
 		for (const [index, row] of rows.entries()) {
-			lines.push(imageMask[index] === true ? [{ text: row }] : [{ text: replaceTabs(row), tone: "output" }]);
+			lines.push(
+				imageMask[index] === true
+					? [{ text: row }]
+					: [{ text: replaceTabs(shortenEmbeddedPaths(row)), tone: "output" }],
+			);
 		}
 	} else if (expanded) {
-		for (const row of rows) lines.push([{ text: replaceTabs(row), tone: "output" }]);
+		for (const row of rows) lines.push([{ text: replaceTabs(shortenEmbeddedPaths(row)), tone: "output" }]);
 	} else {
 		for (const run of collapseProgressRuns(rows)) {
-			const body: ViewSpan = { text: replaceTabs(run.text), tone: "output" };
+			const body: ViewSpan = { text: replaceTabs(shortenEmbeddedPaths(run.text)), tone: "output" };
 			lines.push(run.hidden === 0 ? [body] : [body, { text: ` … +${run.hidden} earlier`, tone: "dim" }]);
 		}
 	}

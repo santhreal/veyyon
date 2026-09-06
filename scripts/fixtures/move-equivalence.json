@@ -10,11 +10,35 @@
 		"binary": 26
 	},
 	"deviations": {
+		"apps/stats/CHANGELOG.md": {
+			"old": "packages/stats/CHANGELOG.md",
+			"group": "changelog-or-readme",
+			"hash": "cdb2495002f2040c649dfac15e20215689058559d7e4ec47efcaf26505c4b888",
+			"structuralHash": "1212d50ba50b0c318e32dcdec97283ace370a945d12b2bfa76561ffd0f6c2644"
+		},
+		"hosts/terminal/engine/src/core/image-budget.ts": {
+			"old": "packages/tui/src/components/image.ts",
+			"group": "extracted-to-utils",
+			"hash": "dd58a4270ac5a2f0bf3701ce30b853b5ef95c43f21936f97369545d795355377",
+			"structuralHash": "49b46e8d9c50842399bd032ae13a026f801c32009feb040697ff348dc6f1973e"
+		},
+		"hosts/terminal/engine/test/settings-list.test.ts": {
+			"old": "packages/tui/test/settings-list.test.ts",
+			"group": "extracted-to-utils",
+			"hash": "b934508be1ef4cc58b79855b429cf9c100d1f807d0aaf3980f7c4fef5a544721",
+			"structuralHash": "7eb3d9808ef008d33a79f11e31f8827b61e8c7c202a607863cde2dfa5c0815b2"
+		},
 		"packages/coding-agent/src/cli/launch-card.ts": {
 			"old": "packages/coding-agent/src/startup/launch-card.ts",
 			"group": "engine-consumer",
 			"hash": "5548773909db6c3c09357414eef062951ca1b19ef19cd62000c5ed49b190d7bb",
 			"structuralHash": "d596b722e494356430156e67a305b028c6f770885577236edb089f571e9b5cf1"
+		},
+		"packages/coding-agent/src/modes/terminal/components/dialogs/login-dialog.ts": {
+			"old": "packages/coding-agent/src/modes/components/login-dialog.ts",
+			"group": "host-boundary",
+			"hash": "eec35ab4219bd9f786036b63c88b900eacc5b2f5fb3bdb7eb5592f9917dc9eab",
+			"structuralHash": "23735959110c81fb211487314cf0b188bc5bc7df5dfeefd7d8fef0d7e6788f47"
 		},
 		"packages/coding-agent/src/modes/terminal/components/selectors/hook-selector.ts": {
 			"old": "packages/coding-agent/src/modes/components/hook-selector.ts",
@@ -22,11 +46,35 @@
 			"hash": "ef3d2b36f1b2f01986818205487763bcbf88e0cf2bd5e489bc6731b050205c4d",
 			"structuralHash": "3e888a9fa37dc141ebdd11e207b5737d6c496442c33e2c37765a3f2ba2cb2f4d"
 		},
+		"packages/coding-agent/src/modes/terminal/components/selectors/oauth-selector.ts": {
+			"old": "packages/coding-agent/src/modes/components/oauth-selector.ts",
+			"group": "host-boundary",
+			"hash": "69f3e9f51f46a2c533c78ee14b63eb75393e213ea9da76f5e70f8e02677cef3f",
+			"structuralHash": "8a20be4255390982604c946a3d6791f35b2f6a44ffae115d0e424ab21951b38b"
+		},
+		"packages/coding-agent/src/modes/terminal/components/status-line/session-facts.ts": {
+			"old": "packages/coding-agent/src/modes/components/status-line/session-facts.ts",
+			"group": "startup-initialization",
+			"hash": "abe8646cf3decf42a942ed869d5d784f715a515bd0b2b227e642e885864b67c5",
+			"structuralHash": "991e70d887d18c4b413c580751356376c45e80942fdd1dc4fd087aeda61e543e"
+		},
+		"packages/coding-agent/src/modes/terminal/controllers/extension-ui-controller.ts": {
+			"old": "packages/coding-agent/src/modes/controllers/extension-ui-controller.ts",
+			"group": "host-boundary",
+			"hash": "55fbcffcb87d2f5db25ac1902c610baef28d0540e81b7316eeabf33273bf62ac",
+			"structuralHash": "85b0c254e2ab583f41e6d8a2c905a35a49cc376373a9b1ae38202e5529fca947"
+		},
 		"packages/coding-agent/src/modes/terminal/first-frame.ts": {
 			"old": "packages/coding-agent/src/modes/first-frame.ts",
 			"group": "startup-initialization",
 			"hash": "ce3a75748667122a62ef49e9dd18d9425b6a6b6589108d046dd31cc00ca61c87",
 			"structuralHash": "8ca5a25353a4b3fae476d2de979cd4814ccdc303202adf93788123ce1de09493"
+		},
+		"packages/coding-agent/src/modes/terminal/setup-wizard/scenes/sign-in.ts": {
+			"old": "packages/coding-agent/src/modes/setup-wizard/scenes/sign-in.ts",
+			"group": "host-boundary",
+			"hash": "8cf12e5af7c06379d971a71115f240736113f77a2bcab3ce443c13c0e54f22e7",
+			"structuralHash": "2382d9914b4e16614a728bbb113d01cf16a37ee20ec38b501232cf22ce6b1f8b"
 		},
 		"packages/coding-agent/src/tools/agent/learn.ts": {
 			"old": "packages/coding-agent/src/tools/learn.ts",
@@ -75,6 +123,12 @@
 			"group": "engine-consumer",
 			"hash": "ccc90df0a2c4433cfa850bcd9d8048da6c098f40b8e14134e9f8c9a1e7c79908",
 			"structuralHash": "050adaa1174c66c30a4dbac35f78f034d9752768e3cd27ed0f6ffd8f3d881b67"
+		},
+		"packages/coding-agent/src/tools/fs/set-cwd.ts": {
+			"old": "packages/coding-agent/src/tools/set-cwd.ts",
+			"group": "view-conversion",
+			"hash": "af4d7f3717da8cfa3fc2258c563ee116e2bcb5c43eba00a9aeda01dc3210baa6",
+			"structuralHash": "9e217ce491e549e069279260d26eda279435603630a0b6a45d4879a804422f83"
 		},
 		"packages/coding-agent/src/tools/web/search/providers/duckduckgo.ts": {
 			"old": "packages/coding-agent/src/web/search/providers/duckduckgo.ts",
@@ -139,8 +193,8 @@
 		"packages/coding-agent/test/oracles/irc-main-renderer.ts": {
 			"old": "packages/coding-agent/src/tools/irc-render.ts",
 			"group": "oracle-freeze",
-			"hash": "b7916a25df93b69674c1db41018d6c95d8a0dac9b51bc02d26ce83da58ba58a6",
-			"structuralHash": "d2e92ac3b06e1d78e150677c4b06307599b6f6ff39fa7d1aba961b0fdc3ab77a"
+			"hash": "80aef5ded257e53349b6840f806a40880d6999256982684e334d96f5b7f98859",
+			"structuralHash": "8989497ae574cf40e5eac259fd60e292030e56c0f5a09a17136028e2e689d2ea"
 		},
 		"packages/coding-agent/test/oracles/lsp-main-renderer.ts": {
 			"old": "packages/coding-agent/src/lsp/render.ts",
@@ -151,8 +205,8 @@
 		"packages/coding-agent/test/oracles/mcp-main-renderer.ts": {
 			"old": "packages/coding-agent/src/mcp/render.ts",
 			"group": "oracle-freeze",
-			"hash": "c3c5b2669b3c8657c555a1f2abbfd3a9097d6eebcd5ecfeea312c2169cb14c46",
-			"structuralHash": "94af1ab90ef631270f4d9375e7ce881566e60dfc10f8ceced75f275f0d205e93"
+			"hash": "3a552756688f72476ad7d17fc702f60b13e791b2acfbde19da9decb78a3fffc7",
+			"structuralHash": "44e43d63caeb5c524e2320da63a5270b5dd9111185ebb8cfd9bbe7c885630ae4"
 		},
 		"packages/coding-agent/test/oracles/memory-main-renderer.ts": {
 			"old": "packages/coding-agent/src/tools/memory-render.ts",

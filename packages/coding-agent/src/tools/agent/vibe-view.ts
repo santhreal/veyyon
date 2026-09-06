@@ -27,6 +27,7 @@ import type {
 } from "@veyyon/view";
 import type { VibeCli, VibeScreenSnapshot, VibeSessionState } from "../../session/vibe-runtime";
 import { oneLineLabel } from "../../task/types";
+import { shortenEmbeddedPaths } from "../core/render-utils";
 import type { VibeOp, VibeToolDetails } from "./vibe";
 
 const COMPOSER_LINE_MAX = 96;
@@ -90,7 +91,7 @@ function stateTone(state: VibeSessionState): ViewTone {
 
 /** One-line, tab-free fragment for a row inside a card. */
 function rowText(text: string, max: number): string {
-	return oneLineLabel(replaceTabs(text), max);
+	return oneLineLabel(replaceTabs(shortenEmbeddedPaths(text)), max);
 }
 
 /** The literal separator between two runs of a row, which the tool states and the host never adds. */

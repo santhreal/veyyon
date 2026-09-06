@@ -78,9 +78,9 @@ export class LoginDialogComponent implements Component {
 	#escapeMode: "cancel" | "skip" = "cancel";
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
-	/** Body line the field was painted on in the last frame, or -1 while no question is asked. */
-	#inputBodyLine = -1;
 	#getTerminalRows: () => number;
+	/** Body line containing the input in the last rendered frame. */
+	#inputBodyLine = -1;
 
 	constructor(
 		tui: TUI,

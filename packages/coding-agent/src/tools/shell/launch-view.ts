@@ -31,6 +31,7 @@ import {
 	pluralize,
 	previewLine,
 	replaceTabs,
+	shortenEmbeddedPaths,
 	shortenPath,
 	TRUNCATE_LENGTHS,
 } from "../core/render-utils";
@@ -149,7 +150,7 @@ function header(
 /** The result's plain text as body lines, for an op whose structured detail did not arrive. */
 function textLines(text: string): ViewLine[] {
 	if (!text.trim()) return [];
-	return replaceTabs(text.trimEnd())
+	return replaceTabs(shortenEmbeddedPaths(text.trimEnd()))
 		.split("\n")
 		.map(line => [{ text: line, tone: "output" as const }] as ViewLine);
 }
@@ -303,7 +304,7 @@ export const launchToolView: Required<ToolViewRenderer<LaunchRenderArgs, LaunchV
 		let description = params.name ?? daemon?.name;
 
 		if (isError) {
-			body = replaceTabs(text.trimEnd())
+			body = replaceTabs(shortenEmbeddedPaths(text.trimEnd()))
 				.split("\n")
 				.map(line => [{ text: line, tone: "error" as const }] as ViewLine);
 		} else {

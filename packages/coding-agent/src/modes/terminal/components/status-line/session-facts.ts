@@ -188,6 +188,7 @@ export interface LaunchContextRequest {
  * a measurement and a clean tree would be a claim, so the gauge spells `? left` and the branch
  * renders without its marker until the session's first paint replaces the block.
  */
+
 export function launchSegmentContext(request: LaunchContextRequest): SegmentContext {
 	const launchFacts = readLaunchFacts();
 	return {
