@@ -2,6 +2,12 @@ import type { TabBarTheme } from "@veyyon/tui";
 import { hoverBand, theme } from "../../theme/theme";
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Text Sanitization
+// ═══════════════════════════════════════════════════════════════════════════
+
+export { sanitizeStatusText, sanitizeStyledStatusText } from "@veyyon/utils/sanitize-status-text";
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Tab Bar Theme
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -35,5 +41,4 @@ export function interruptHint(): string {
 	return ` ${theme.format.bracketLeft}esc${theme.format.bracketRight}`;
 }
 
-export { sanitizeStatusText, sanitizeStyledStatusText } from "@veyyon/utils/sanitize-status-text";
 export { parseCommandArgs } from "../../utils/command-args";

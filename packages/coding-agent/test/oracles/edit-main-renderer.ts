@@ -1,7 +1,7 @@
 /**
  * Differential oracle: the edit tool renderer from origin/main.
  *
- * Source SHA: d0cb967888303de02e573bb8b0f3c5ba6fe66377 (`src/edit/renderer.ts`).
+ * Source SHA: a26096e501ae452fde11e821655dd65c519c9c40 (`src/edit/renderer.ts`).
  * Frozen: never edited to make a test pass.
  *
  * The branch moved the detail types out of it and rewrote its import specifiers for this file's
@@ -42,6 +42,7 @@ import {
 	previewWindowRows,
 	type RenderedStringCache,
 	replaceTabs,
+	shortenEmbeddedPaths,
 	shortenPath,
 	truncateDiffByHunk,
 } from "@veyyon/coding-agent/tools/core/render-utils";
@@ -672,22 +673,10 @@ function renderErrorSection(
 	uiTheme: Theme,
 	linkPath?: string,
 ): string {
-	let sanitized = errorText;
+	let sanitized = shortenEmbeddedPaths(errorText);
 	for (const p of [rawPath, linkPath]) {
 		if (p) sanitized = sanitized.replaceAll(p, shortenPath(p));
 	}
-	sanitized = sanitized
-		.split("\n")
-		.map(line =>
-			line
-				.split(" ")
-				.map(w => {
-					const m = /^([("'`[]*)(.*?)([)"'`,.;:\]]*)$/.exec(w);
-					return m ? `${m[1]}${shortenPath(m[2])}${m[3]}` : w;
-				})
-				.join(" "),
-		)
-		.join("\n");
 
 	const lines = sanitized.split("\n");
 	if (expanded || lines.length <= PREVIEW_LIMITS.DIFF_COLLAPSED_LINES) {

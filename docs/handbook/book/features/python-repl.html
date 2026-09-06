@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f235412c.js";
+            window.path_to_searchindex_js = "../searchindex-0bd7ae1a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -225,6 +225,11 @@ operational failure modes.</p>
 <p>The tool is <code>concurrency = "exclusive"</code> for a session, so calls do not overlap.</p>
 <h2 id="kernel-lifecycle"><a class="header" href="#kernel-lifecycle">Kernel lifecycle</a></h2>
 <p>Each Python kernel is a single subprocess: <code>&lt;resolved-python&gt; -u &lt;runner.py&gt;</code>. The runner is bundled with the host binary (Bun text import), written to a <code>veyyon-python-runner</code> cache under the OS temp directory once per script hash, and reused by subsequent spawns.</p>
+<p>Importing the SDK or session class does not load evaluator implementations. The first <code>$</code> Python command
+loads its executor through the shell domain manifest. Constructing <code>eval</code> and reading its metadata do
+not load evaluators; the first enabled request loads only its selected language.
+Each loaded evaluator registers process-exit cleanup beside its resource pool. Session disposal
+releases that session’s resources without loading unused evaluators.</p>
 <p>Kernel startup sequence:</p>
 <ol>
 <li>Availability check (<code>checkPythonKernelAvailability</code>): verifies that a Python interpreter resolves and runs.</li>

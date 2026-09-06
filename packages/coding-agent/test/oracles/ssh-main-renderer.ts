@@ -1,7 +1,7 @@
 /**
  * Differential oracle: the ssh renderer this branch deleted.
  *
- * Source: `packages/coding-agent/src/tools/shell/ssh-render.ts` at `912a1936b7`.
+ * Source SHA: a26096e501ae452fde11e821655dd65c519c9c40.
  * Frozen: never edited to make a test pass.
  *
  * The only edits against that source are the import paths, which are absolute here because the file
@@ -19,7 +19,12 @@ import { renderStatusLine } from "@veyyon/coding-agent/modes/terminal/draw/statu
 import { expandHintSuffix } from "@veyyon/coding-agent/modes/terminal/utils/key-hint";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import { formatStyledTruncationWarning, stripOutputNotice } from "@veyyon/coding-agent/tools/core/output-meta";
-import { capPreviewLines, PREVIEW_LIMITS, replaceTabs } from "@veyyon/coding-agent/tools/core/render-utils";
+import {
+	capPreviewLines,
+	PREVIEW_LIMITS,
+	replaceTabs,
+	shortenEmbeddedPaths,
+} from "@veyyon/coding-agent/tools/core/render-utils";
 import type { SSHToolDetails } from "@veyyon/coding-agent/tools/shell/ssh";
 import type { Component } from "@veyyon/tui";
 
@@ -50,7 +55,7 @@ interface SshRenderContext {
 }
 
 function formatSshCommandLines(command: string, uiTheme: Theme): string[] {
-	const sanitized = replaceTabs(command);
+	const sanitized = replaceTabs(shortenEmbeddedPaths(command));
 	const rawLines = sanitized.length > 0 ? sanitized.split("\n") : ["…"];
 	const prefix = uiTheme.fg("dim", "$ ");
 	return rawLines.map((line, i) => (i === 0 ? `${prefix}${line}` : line));
@@ -127,7 +132,13 @@ export const sshMainRenderer = {
 
 				if (output) {
 					if (expanded) {
-						outputLines.push(...output.split("\n").map(line => uiTheme.fg("toolOutput", replaceTabs(line))));
+						outputLines.push(
+							...output
+								.split("\n")
+								.map(line =>
+									uiTheme.fg(isError ? "error" : "toolOutput", replaceTabs(shortenEmbeddedPaths(line))),
+								),
+						);
 					} else {
 						// Measured at the box's inner width, the same way `bash` measures
 						// its own tail, so a wrapped remote line spends the lines it
@@ -136,7 +147,10 @@ export const sshMainRenderer = {
 						// `ssh` — the render context is built for `bash` only — so every
 						// collapsed remote result fell through to a flat five-line slice
 						// with tabs left in it, opening holes in the frame.
-						const sanitized = output.split("\n").map(replaceTabs).join("\n");
+						const sanitized = output
+							.split("\n")
+							.map(line => replaceTabs(shortenEmbeddedPaths(line)))
+							.join("\n");
 						const result = truncateToVisualLines(
 							sanitized,
 							PREVIEW_LIMITS.OUTPUT_COLLAPSED,
@@ -150,7 +164,9 @@ export const sshMainRenderer = {
 								),
 							);
 						}
-						outputLines.push(...result.visualLines.map(line => uiTheme.fg("toolOutput", line)));
+						outputLines.push(
+							...result.visualLines.map(line => uiTheme.fg(isError ? "error" : "toolOutput", line)),
+						);
 					}
 				}
 

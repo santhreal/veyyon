@@ -170,7 +170,6 @@ export function createCertifyArmsTool(
 
 			const runtime = options.getRuntime(ctx);
 			options.dashboard.update(ctx, runtime);
-			options.dashboard.requestRender();
 
 			return {
 				content: [{ type: "text", text: lines.join("\n") }],

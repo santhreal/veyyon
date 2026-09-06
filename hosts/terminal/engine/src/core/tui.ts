@@ -45,7 +45,6 @@ import {
 	type FrameSegment,
 	getNativeScrollbackLiveRegionStart,
 	getRenderStablePrefixRows,
-	hasNativeScrollbackLiveRegion,
 	isFocusable,
 	isOverlayFocusTarget,
 	type NativeScrollbackCommittedRows,
@@ -146,7 +145,6 @@ const DEFAULT_RENDER_SCHEDULER: RenderScheduler = {
 };
 
 /**
-
  * Render intent. `#doRender` classifies each frame, and the matching `#emit*`
  * method owns the bytes written and the state update.
  *
@@ -2377,7 +2375,6 @@ export class TUI extends Container {
 	}
 
 	/**
-
 	 * Render one frame.
 	 *
 	 * Append-only pipeline: compose the frame, derive the commit boundary from
@@ -2725,18 +2722,6 @@ export class TUI extends Container {
 		// instead of recommitting the final form below the stale fragment
 		// (a visibly duplicated block). Multiplexer panes cannot ED3 safely
 		// and keep the repair-below fallback in the branches under this one.
-		// A plain component declares no finalization transition. Its positional
-		// edits must not erase native history; only an explicit replay may do so.
-		// Components with a live/final seam permit automatic final-form repair.
-		let declaredFinalization = hasNewlyFinalRows;
-		if (!declaredFinalization && committedRowsResynced) {
-			for (const segment of this.#frameSegments) {
-				if (segment.start <= this.#committedRows && this.#committedRows < segment.start + segment.rowCount) {
-					declaredFinalization = hasNativeScrollbackLiveRegion(segment.component);
-					break;
-				}
-			}
-		}
 		const divergenceRebuild =
 			this.#scrollbackRebuildEnabled &&
 			!firstPaint &&
@@ -2744,8 +2729,7 @@ export class TUI extends Container {
 			!geometryChanged &&
 			!isMultiplexerSession() &&
 			!frameSqueezed &&
-			(committedRowsResynced || frameLength <= this.#committedRows) &&
-			declaredFinalization;
+			(committedRowsResynced || frameLength <= this.#committedRows);
 		const fullPaint = firstPaint || replaceRequested || geometryRebuild || divergenceRebuild;
 		// A destructive rebuild erases native scrollback and replays THIS frame.
 		// When a virtualized root has dropped its committed rows, this frame is

@@ -45,6 +45,7 @@ import {
 	sizingForArea,
 } from "../chrome/modal-shell";
 import { renderSliderLines } from "../chrome/segment-track";
+import { stripInlineMarkdown } from "../dialogs/plan-toc";
 import { hoverBandAt } from "./selector-helpers";
 
 /** One segment of a {@link HookSelectorSlider} — a label and an optional
@@ -223,7 +224,10 @@ export class HookSelectorComponent extends Container {
 		this.#helpText = opts?.helpText;
 		if (opts?.onRequestRender) this.#useRequestRender(opts.onRequestRender);
 		this.#baseTitle = title;
-		this.#cardTitle = firstTitleLine;
+		// The title is markdown (an approval card opens `## Permission required`),
+		// and the body renders it as such; the title bar draws text, so a heading
+		// marker or emphasis left in it is printed as source.
+		this.#cardTitle = stripInlineMarkdown(firstTitleLine.replace(/^#{1,6}[ \t]+/, ""));
 		this.#onLeftCallback = opts?.onLeft;
 		this.#onRightCallback = opts?.onRight;
 		this.#onExternalEditorCallback = opts?.onExternalEditor;

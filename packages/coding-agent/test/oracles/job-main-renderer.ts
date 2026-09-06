@@ -1,7 +1,7 @@
 /**
  * Differential oracle: the job tool renderer from origin/main.
  *
- * Source SHA: d0cb967888303de02e573bb8b0f3c5ba6fe66377 (`src/tools/job.ts`, lines 566-834).
+ * Source SHA: a26096e501ae452fde11e821655dd65c519c9c40 (`src/tools/job.ts`, lines 566-834).
  * Frozen: never edited to make a test pass.
  *
  * On main this was the renderer half of `src/tools/job.ts`, which this branch extracted to
@@ -26,6 +26,7 @@ import {
 	formatBadge,
 	formatDuration,
 	formatEmptyMessage,
+	formatErrorDetail,
 	formatStatusIcon,
 	getPreviewLines,
 	PREVIEW_LIMITS,
@@ -129,6 +130,11 @@ export const jobToolRenderer = {
 		const agents = result.details?.agents ?? [];
 
 		if (jobs.length === 0 && agents.length === 0) {
+			if (result.isError) {
+				const fallback = result.content?.find(c => c.type === "text")?.text || "Job operation failed";
+				const header = renderStatusLine({ icon: "error", title: describeTarget(args) || "Job" }, uiTheme);
+				return new Text([header, formatErrorDetail(fallback, uiTheme)].join("\n"), 0, 0);
+			}
 			const fallback = result.content?.find(c => c.type === "text")?.text || "No jobs to process";
 			const header = renderStatusLine({ icon: "warning", title: describeTarget(args) || "Job" }, uiTheme);
 			return new Text([header, formatEmptyMessage(fallback, uiTheme)].join("\n"), 0, 0);

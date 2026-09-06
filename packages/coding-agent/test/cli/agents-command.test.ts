@@ -1,7 +1,14 @@
 /**
  * `veyyon agents unpack` e2e: bundled agent definitions land on disk as
- * frontmatter markdown, re-running skips existing files unless --force, and
- * --user/--project together is rejected.
+ * frontmatter markdown, re-running skips existing files unless --force, and the
+ * default target is the directory `discoverAgents` reads.
+ *
+ * The target path is the contract, not a detail. Unpack wrote into the active
+ * profile's `agent/agents`, which no loader reads: every unpacked definition was
+ * absent from `/agents` and from `task`, silently. `~/.veyyon/subagents` is the
+ * reader's directory, pinned from the reader's side by
+ * `test/task/user-subagents-are-global-and-their-tools-are-checked.test.ts`, so a
+ * writer that drifts from it fails one of the two.
  */
 import { describe, expect, it } from "bun:test";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -89,6 +96,13 @@ describe("veyyon agents unpack", () => {
 		expect(result.targetDir).toBe(target);
 		expect(result.written.every(file => file.startsWith(target))).toBe(true);
 	}, 30_000);
+	it("rejects a scope flag that no longer has a reader", async () => {
+		const home = makeTempDir2();
+		const { stderr, exitCode } = await runAgents(makeEnv(home), ["unpack", "--project"]);
+		expect(exitCode).not.toBe(0);
+		expect(stderr).toContain("--project");
+	}, 30_000);
+
 	it("rejects a scope flag that no longer has a reader", async () => {
 		const home = makeTempDir2();
 		const { stderr, exitCode } = await runAgents(makeEnv(home), ["unpack", "--project"]);

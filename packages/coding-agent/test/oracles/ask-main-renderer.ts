@@ -1,7 +1,7 @@
 /**
  * Differential oracle: the ask tool renderer from origin/main.
  *
- * Source SHA: d0cb967888303de02e573bb8b0f3c5ba6fe66377 (`src/tools/ask.ts`, where the renderer sat
+ * Source SHA: a26096e501ae452fde11e821655dd65c519c9c40 (`src/tools/ask.ts`, where the renderer sat
  * before this branch split it into `src/tools/agent/ask-render.ts` unchanged).
  * Frozen: never edited to make a test pass.
  *
@@ -15,7 +15,13 @@ import { framedBlock, renderStatusLine } from "@veyyon/coding-agent/modes/termin
 import { getMarkdownTheme } from "@veyyon/coding-agent/theme/markdown-theme";
 import type { Theme } from "@veyyon/coding-agent/theme/theme-class";
 import { type AskToolDetails, optionMarker } from "@veyyon/coding-agent/tools/agent/ask";
-import { formatErrorMessage, formatMeta, formatTitle } from "@veyyon/coding-agent/tools/core/render-utils";
+import {
+	formatErrorDetail,
+	formatErrorMessage,
+	formatMeta,
+	formatTitle,
+	shortenEmbeddedPaths,
+} from "@veyyon/coding-agent/tools/core/render-utils";
 import { type Component, Markdown, type MarkdownTheme, renderInlineMarkdown, Text } from "@veyyon/tui";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "@veyyon/utils/wrap";
@@ -244,10 +250,22 @@ export const askMainRenderer = {
 	},
 
 	renderResult(
-		result: { content: Array<{ type: string; text?: string }>; details?: AskToolDetails },
+		result: { content: Array<{ type: string; text?: string }>; details?: AskToolDetails; isError?: boolean },
 		_options: RenderResultOptions,
 		uiTheme: Theme,
 	): Component {
+		if (result.isError) {
+			const fallback = result.content?.find(c => c.type === "text")?.text ?? "Ask failed";
+			const header = renderStatusLine({ icon: "error", title: "Ask" }, uiTheme);
+			return framedBlock(uiTheme, width => ({
+				header,
+				sections: [{ lines: formatErrorDetail(fallback, uiTheme).split("\n") }],
+				state: "error",
+				borderColor: "error",
+				width,
+			}));
+		}
+
 		const { details } = result;
 		const mdTheme = getMarkdownTheme();
 		const accentStyle = { color: (t: string) => uiTheme.fg("accent", t) };
@@ -258,7 +276,7 @@ export const askMainRenderer = {
 			const txt = result.content[0];
 			const fallback = txt?.type === "text" && txt.text ? txt.text : "";
 			const header = renderStatusLine({ icon: "warning", title: "Ask" }, uiTheme);
-			const body = fallback ? `\n${uiTheme.fg("dim", fallback)}` : "";
+			const body = fallback ? `\n${uiTheme.fg("dim", replaceTabs(shortenEmbeddedPaths(fallback)))}` : "";
 			return new Text(`${header}${body}`, 0, 0);
 		}
 
@@ -323,7 +341,7 @@ export const askMainRenderer = {
 		// Single question result
 		if (!details.question) {
 			const txt = result.content[0];
-			const fallback = txt?.type === "text" && txt.text ? txt.text : "";
+			const fallback = txt?.type === "text" && txt.text ? replaceTabs(shortenEmbeddedPaths(txt.text)) : "";
 			return new Text(fallback, 0, 0);
 		}
 

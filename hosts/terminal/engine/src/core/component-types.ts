@@ -96,15 +96,6 @@ export interface NativeScrollbackLiveRegion {
 	getNativeScrollbackLiveRegionStart(): number | undefined;
 }
 
-export function hasNativeScrollbackLiveRegion(
-	component: Component,
-): component is Component & NativeScrollbackLiveRegion {
-	return (
-		typeof (component as Component & Partial<NativeScrollbackLiveRegion>).getNativeScrollbackLiveRegionStart ===
-		"function"
-	);
-}
-
 export function getNativeScrollbackLiveRegionStart(component: Component): number | undefined {
 	return (component as Component & Partial<NativeScrollbackLiveRegion>).getNativeScrollbackLiveRegionStart?.();
 }

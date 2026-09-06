@@ -358,8 +358,8 @@ export class OAuthSelectorComponent implements Component {
 							const isSelected = i === this.#selectedIndex;
 							const isAvailable = provider.available;
 							const statusIndicator = this.#getStatusIndicator(provider.id);
-
 							const credential = theme.fg("muted", ` · ${CREDENTIAL_LABELS[provider.credential]}`);
+
 							let line: string;
 							if (isSelected) {
 								const prefix = theme.fg("accent", `${theme.nav.cursor} `);

@@ -42,17 +42,17 @@ export function maskValue(value: string, cursor: number, maskChar: string): { va
  * Input component - single-line text input with horizontal scrolling
  */
 export class Input implements Component, Focusable, MouseRoutable {
+	#value: string = "";
+	#cursor: number = 0; // Cursor position in the value
+	#useTerminalCursor = false;
 	/**
 	 * The viewport of the last paint: the prompt's columns and the first value
 	 * column shown after them. A click is resolved against the paint the
 	 * pointer was over, so a scrolled field lands the caret under the pointer
-	 * rather than offset by the hidden prefix.
+	 * rather than that many columns from the value's start.
 	 */
 	#lastPromptWidth = 0;
 	#lastStartCol = 0;
-	#value: string = "";
-	#cursor: number = 0; // Cursor position in the value
-	#useTerminalCursor = false;
 	/**
 	 * When set, the value is rendered as this character repeated, never as itself.
 	 *

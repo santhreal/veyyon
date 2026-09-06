@@ -8,8 +8,8 @@
  * toned.
  */
 
-import { replaceTabs } from "@veyyon/utils/wrap";
 import type { StatusRowView, ToolView, ToolViewContext, ViewLine, ViewSection } from "@veyyon/view";
+import { replaceTabs, sanitizeErrorText, shortenEmbeddedPaths } from "../core/render-utils";
 import type { AskToolDetails, QuestionResult } from "./ask";
 
 /** One choice offered by a call, as the streamed arguments carry it. */
@@ -33,6 +33,7 @@ export interface AskRenderArgs {
 export interface AskViewResult {
 	content?: Array<{ type: string; text?: string }>;
 	details?: AskToolDetails;
+	isError?: boolean;
 }
 
 /** The glyph a card's own emblem names, for a settled answer. */
@@ -293,13 +294,24 @@ function callView(args: AskRenderArgs): ToolView {
 
 /** What came back: an answer, a redirect to chat, or the tool's own message. */
 function resultView(result: AskViewResult): ToolView {
+	if (result.isError) {
+		const fallback = fallbackText(result) || "Ask failed";
+		const sanitized = sanitizeErrorText(fallback);
+		return {
+			kind: "framedBlock",
+			header: { kind: "statusRow", status: "error", title: "Ask" },
+			state: "error",
+			sections: [{ lines: sanitized.split("\n").map(line => [{ text: line, tone: "error" }]) }],
+		};
+	}
+
 	const details = result.details;
 	if (!details) {
 		const fallback = fallbackText(result);
 		return {
 			kind: "headedBlock",
 			header: { kind: "statusRow", status: "warning", title: "Ask" },
-			lines: fallback ? [[{ text: fallback, tone: "dim" }]] : [],
+			lines: fallback ? [[{ text: replaceTabs(shortenEmbeddedPaths(fallback)), tone: "dim" }]] : [],
 		};
 	}
 
@@ -338,7 +350,7 @@ function resultView(result: AskViewResult): ToolView {
 
 	if (!details.question) {
 		const fallback = fallbackText(result);
-		return { kind: "textBlock", spans: fallback ? [{ text: fallback }] : [] };
+		return { kind: "textBlock", spans: fallback ? [{ text: replaceTabs(shortenEmbeddedPaths(fallback)) }] : [] };
 	}
 
 	const hasSelection = answered(details);

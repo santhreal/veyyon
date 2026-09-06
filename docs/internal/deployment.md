@@ -18,7 +18,8 @@ draft, then rebuilds `veyyon.dev` so the changelog records the now-public releas
 
 The site is a static tree under `apps/site/`, deployed to Cloudflare Pages. There is no
 build framework. Most marketing HTML is authored directly, while the build rewrites
-shared navigation and generates the changelog, the models data and the installer trees.
+shared navigation and generates the changelog, the models catalog, and the installer
+trees.
 
 ### Build
 
@@ -46,14 +47,13 @@ bun run site:build      # = node apps/site/build.mjs
    fetches that file, and the live page reads it from jsDelivr's `@main` mirror, so
    a committed catalog regen reaches veyyon.dev without a deploy.
 5. Stages `assets/demo-hd.webp`, and `assets/agents-cockpit.webp` when it exists,
-   into the site tree, so the site cannot serve a clip the repository does not have.
-6. Generates `website-get/` at the repository root for the separate `veyyon-get`
-   Pages project, including the two installer scripts, root rewrite, and response
-   headers.
+   at the site root. The clip has one source; a dirty copy under `apps/site/` after a
+   build means the committed one is behind.
+6. Generates `website-get/` for the separate `veyyon-get` Pages project,
+   including the two installer scripts, root rewrite, and response headers.
 7. Scans the hard-coded page list in `apps/site/build.mjs` for leaked old product
    names, allowing the MIT oh-my-pi attribution and marked `OMP_` legacy aliases,
-   then writes `apps/site/.buildinfo`. This scan does not cover arbitrary handbook
-   pages.
+   then writes `apps/site/.buildinfo`. This scan does not cover handbook pages.
 
 The handbook at `apps/site/docs` is a **symlink** to `docs/handbook/book` (mdBook's
 build output). If handbook sources under `docs/handbook/src/` changed, rebuild the

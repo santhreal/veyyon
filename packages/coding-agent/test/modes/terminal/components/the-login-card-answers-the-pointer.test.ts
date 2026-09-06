@@ -36,10 +36,7 @@ function makeCard(): {
 } {
 	const tui = { requestRender: vi.fn() } as unknown as TUI;
 	const completed = vi.fn();
-	const dialog = new LoginDialogComponent(tui, "Groq", completed, {
-		browserLogin: false,
-		getTerminalRows: () => ROWS,
-	});
+	const dialog = new LoginDialogComponent(tui, "groq", completed, { getTerminalRows: () => ROWS });
 	return { dialog, completed, rows: () => dialog.render(WIDTH) };
 }
 

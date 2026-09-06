@@ -92,9 +92,7 @@ function createControllerContext() {
 		editorContainer,
 		ui,
 		hookEditor: undefined,
-		session: {
-			isStreaming: false,
-		},
+		session: { isStreaming: false },
 		clearWorkingLoader: vi.fn(() => false),
 		focusActiveEditorArea: () => ui.setFocus(editor),
 	} as unknown as TestContext;

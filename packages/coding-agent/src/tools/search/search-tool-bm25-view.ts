@@ -17,7 +17,7 @@ import type {
 	ViewLine,
 	ViewSpan,
 } from "@veyyon/view";
-import { formatCount, replaceTabs, TRUNCATE_LENGTHS } from "../core/render-utils";
+import { formatCount, replaceTabs, shortenEmbeddedPaths, TRUNCATE_LENGTHS } from "../core/render-utils";
 import type { SearchToolBm25Details, SearchToolBm25Match, SearchToolBm25Params } from "./search-tool-bm25";
 
 /** Matches a collapsed card lists before it says how many more it found. */
@@ -68,9 +68,15 @@ function fallbackCard(text: string): HeadedBlockView {
 	return {
 		kind: "headedBlock",
 		header: { kind: "statusRow", status: "warning", title: TOOL_DISCOVERY_TITLE },
-		lines: (text || "Tool discovery completed")
-			.split("\n")
-			.map(line => [{ text: truncateToWidth(replaceTabs(line), TRUNCATE_LENGTHS.LINE), tone: "dim" }] as ViewLine),
+		lines: (text || "Tool discovery completed").split("\n").map(
+			line =>
+				[
+					{
+						text: truncateToWidth(replaceTabs(shortenEmbeddedPaths(line)), TRUNCATE_LENGTHS.LINE),
+						tone: "dim",
+					},
+				] as ViewLine,
+		),
 	};
 }
 

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f235412c.js";
+            window.path_to_searchindex_js = "../searchindex-0bd7ae1a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -321,6 +321,8 @@ files, but the shared auth store stays at the global config root so every profil
 <p>By default every profile reads one machine-wide set of provider logins, so signing in once works everywhere.
 The first time a profile opens the shared store, any login already saved in that profile is promoted into it,
 so turning sharing on never signs you out.</p>
+<p>Concurrent launches wait for temporary database locks during credential-store initialization.
+If the database remains locked after the bounded retries, startup reports the database path and SQLite error.</p>
 <p>To give a profile its own private credentials instead, turn sharing off in the global config
 <code>~/.veyyon/config.yml</code>:</p>
 <pre><code class="language-yaml">profileSharing: false

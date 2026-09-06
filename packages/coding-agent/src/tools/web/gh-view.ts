@@ -29,7 +29,13 @@ import type {
 	ViewSpan,
 	ViewTone,
 } from "@veyyon/view";
-import { PREVIEW_LIMITS, replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../core/render-utils";
+import {
+	PREVIEW_LIMITS,
+	replaceTabs,
+	shortenEmbeddedPaths,
+	TRUNCATE_LENGTHS,
+	truncateToWidth,
+} from "../core/render-utils";
 import type {
 	GhRunWatchFailedLogDetails,
 	GhRunWatchJobDetails,
@@ -364,7 +370,7 @@ function watchCard(watch: GhRunWatchViewDetails, isError: boolean, expanded: boo
 
 /** The rows the tool's text becomes, with the blank lines at either end of it dropped. */
 function bodyLines(text: string): string[] {
-	const lines = replaceTabs(text).split("\n");
+	const lines = replaceTabs(shortenEmbeddedPaths(text)).split("\n");
 	while (lines.length > 0 && lines[0].trim() === "") lines.shift();
 	while (lines.length > 0 && lines[lines.length - 1].trim() === "") lines.pop();
 	return lines;

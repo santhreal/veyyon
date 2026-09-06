@@ -10,7 +10,7 @@
 import { truncateToWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "@veyyon/utils/wrap";
 import type { HeadedBlockView, StatusRowView, TextBlockView, ToolViewRenderer, ViewLine } from "@veyyon/view";
-import { PREVIEW_LIMITS, sanitizeErrorText } from "../core/render-utils";
+import { PREVIEW_LIMITS, sanitizeErrorText, shortenEmbeddedPaths } from "../core/render-utils";
 
 /** The bullet a stored memory is marked with, resolved by the host from its own glyph table. */
 const BULLET = "format.bullet";
@@ -23,7 +23,7 @@ const QUERY_WIDTH = 80;
 
 /** A tool result's text content, trimmed, or the empty string when it carries none. */
 export function memoryResultText(result: { content?: Array<{ type: string; text?: string }> }): string {
-	return (result.content?.find(part => part.type === "text")?.text ?? "").trim();
+	return replaceTabs(shortenEmbeddedPaths((result.content?.find(part => part.type === "text")?.text ?? "").trim()));
 }
 
 /**
@@ -38,7 +38,7 @@ export function memoryQueryRow(
 	query: string | undefined,
 	row: Pick<StatusRowView, "status" | "emblem" | "meta">,
 ): StatusRowView {
-	const trimmed = replaceTabs((query ?? "").trim());
+	const trimmed = replaceTabs(shortenEmbeddedPaths((query ?? "").trim()));
 	return {
 		kind: "statusRow",
 		title,
@@ -51,7 +51,9 @@ export function memoryQueryRow(
 export function retainedContents(
 	args: { items?: Array<{ content?: string; context?: string }> } | undefined,
 ): string[] {
-	return (args?.items ?? []).map(item => replaceTabs((item?.content ?? "").trim())).filter(line => line.length > 0);
+	return (args?.items ?? [])
+		.map(item => replaceTabs(shortenEmbeddedPaths((item?.content ?? "").trim())))
+		.filter(line => line.length > 0);
 }
 
 /** The row a `retain` shows while it is still storing: the tool's title and nothing settled yet. */

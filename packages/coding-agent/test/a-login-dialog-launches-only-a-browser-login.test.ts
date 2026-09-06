@@ -19,13 +19,12 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import type { AuthStorage } from "@veyyon/ai";
-import { getLoginCredential, getOAuthProviders } from "@veyyon/ai/oauth";
+import { getOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthLoginCallbacks, OAuthProviderId, OAuthProviderInfo } from "@veyyon/ai/oauth/types";
 import { LoginDialogComponent } from "@veyyon/coding-agent/modes/terminal/components/dialogs/login-dialog";
 import { OAuthSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/oauth-selector";
 import { SignInTab } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/sign-in";
 import type { SetupSceneHost } from "@veyyon/coding-agent/modes/terminal/setup-wizard/scenes/types";
-import { formatProviderName } from "@veyyon/coding-agent/session/account-format";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import * as clipboard from "@veyyon/coding-agent/utils/clipboard";
 import * as openModule from "@veyyon/coding-agent/utils/open";
@@ -56,9 +55,7 @@ function makeDialog(providerId: string): { dialog: LoginDialogComponent; opened:
 		opened.push(target);
 	});
 	const tui = { requestRender: vi.fn() } as unknown as TUI;
-	const dialog = new LoginDialogComponent(tui, formatProviderName(providerId), () => {}, {
-		browserLogin: getLoginCredential(providerId) === "oauth",
-	});
+	const dialog = new LoginDialogComponent(tui, providerId, () => {});
 	return { dialog, opened, frame: () => plain(dialog.render(100)) };
 }
 

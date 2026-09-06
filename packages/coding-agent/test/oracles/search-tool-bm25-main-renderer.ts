@@ -1,8 +1,7 @@
 /**
  * Differential oracle: the search_tool_bm25 tool renderer from origin/main.
  *
- * Source SHA: 26dc69529c717ffa597feeb29244386afb511fa1, whose bytes are the bytes at
- * 9636f6161beaa0522368820c4a1735eca63ac18e.
+ * Source SHA: a26096e501ae452fde11e821655dd65c519c9c40.
  * Frozen: never edited to make a test pass.
  *
  * On main this was the renderer half of `src/tools/search-tool-bm25.ts`; only its import specifiers
@@ -19,6 +18,7 @@ import {
 	formatExpandHint,
 	formatMoreItems,
 	replaceTabs,
+	shortenEmbeddedPaths,
 	TRUNCATE_LENGTHS,
 } from "@veyyon/coding-agent/tools/core/render-utils";
 import type { Component } from "@veyyon/tui";
@@ -93,7 +93,7 @@ function renderFallbackResult(text: string, theme: Theme): Component {
 	const header = renderStatusLine({ icon: "warning", title: TOOL_DISCOVERY_TITLE }, theme);
 	const bodyLines = (text || "Tool discovery completed")
 		.split("\n")
-		.map(line => theme.fg("dim", truncateToWidth(replaceTabs(line), TRUNCATE_LENGTHS.LINE)));
+		.map(line => theme.fg("dim", truncateToWidth(replaceTabs(shortenEmbeddedPaths(line)), TRUNCATE_LENGTHS.LINE)));
 	return new Text([header, ...bodyLines].join("\n"), 0, 0);
 }
 

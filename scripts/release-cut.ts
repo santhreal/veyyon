@@ -174,6 +174,9 @@ async function main(argv: readonly string[]): Promise<void> {
 
 	// `git describe` exits 128 when no tag matches, which must not abort the
 	// first release; `.nothrow()` has no execFile equivalent, so catch it.
+	// The latest tag is the bump base for `major`/`minor`/`patch`; the full tag
+	// list is what a requested version is checked against, since a number that
+	// an older release used is as taken as the latest one.
 	const described = await git("describe", "--tags", "--abbrev=0", "--match", "v*").catch(() => "");
 	const latestTag = described.trim() || NO_TAG_BASELINE;
 	const existingTags = (await git("tag", "--list", "v*")).split("\n").filter(tag => tag.length > 0);

@@ -373,6 +373,15 @@ wait_for_screen() {
 	return 1
 }
 
+# True while the window the session handed the scene still exists. The X session
+# exports SCENE_WINDOW; the Wayland one has no window id and no xdotool, so an
+# unanswerable question is answered "alive" and changes no message.
+scene_terminal_alive() {
+	[ -n "${SCENE_WINDOW:-}" ] || return 0
+	command -v xdotool >/dev/null 2>&1 || return 0
+	xdotool getwindowgeometry "${SCENE_WINDOW}" >/dev/null 2>&1
+}
+
 # Abandon the take now, naming the guard that did not arrive.
 #
 # A scene used to record a miss in MISSED and walk on to the next guard. A take with five

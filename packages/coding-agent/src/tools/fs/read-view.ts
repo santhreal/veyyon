@@ -34,7 +34,7 @@ import { stripOutputNotice } from "../core/output-meta";
 // tool wrapper: this file needs the words a truncation and an artifact are named by.
 import { formatFullOutputReference, formatTruncationMetaNotice } from "../core/output-notice";
 import { isReadableUrlPath, splitInternalUrlSel, splitPathAndSel } from "../core/path-utils";
-import { formatBytes, replaceTabs, shortenPath } from "../core/render-utils";
+import { formatBytes, replaceTabs, shortenEmbeddedPaths, shortenPath } from "../core/render-utils";
 import type { ReadUrlToolDetails } from "../web/fetch";
 import { readUrlToolView } from "../web/fetch-view";
 import { isRawSelector, parseSel, type ReadRenderArgs, type ReadToolDetails, readSourceFsPath } from "./read";
@@ -359,7 +359,11 @@ export const readToolView: Required<ToolViewRenderer<ReadRenderArgs, ReadViewRes
 				// a hole in the card rather than a column: the rows of a code section are widened by the
 				// host's own highlighter, and a row of prose is widened here.
 				sections: [
-					{ lines: screenRows(text).map(row => [{ text: replaceTabs(row), tone: "error" as const }] as ViewLine) },
+					{
+						lines: screenRows(text).map(
+							row => [{ text: replaceTabs(shortenEmbeddedPaths(row)), tone: "error" as const }] as ViewLine,
+						),
+					},
 				],
 			};
 		}
@@ -375,7 +379,7 @@ export const readToolView: Required<ToolViewRenderer<ReadRenderArgs, ReadViewRes
 		if (hasImage(result)) {
 			const detail = screenRows(content)
 				.filter(row => row.length > 0)
-				.map(row => [{ text: replaceTabs(row), tone: "output" as const }] as ViewLine);
+				.map(row => [{ text: replaceTabs(shortenEmbeddedPaths(row)), tone: "output" as const }] as ViewLine);
 			const notices = noticeLines(details);
 			const lines = [...detail, ...notices];
 			sections.push({

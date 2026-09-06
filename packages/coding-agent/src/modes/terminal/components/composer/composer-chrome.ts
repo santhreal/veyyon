@@ -249,11 +249,11 @@ export function mountComposerZone(ui: { addChild(component: Component): void }, 
 export function mountLaunchComposer(
 	ui: { addChild(component: Component): void },
 	editorContainer: Component,
-	getDraft: () => string,
+	readDraft?: () => string,
 ): number {
 	ui.addChild(new LaunchComposerHead());
 	ui.addChild(editorContainer);
-	ui.addChild(new LaunchComposerFoot(getDraft));
+	ui.addChild(new LaunchComposerFoot(readDraft));
 	return 3;
 }
 
@@ -283,7 +283,6 @@ export class QuietZoneLine implements Component, MouseRoutable {
 	/**
 	 * Optional click handler for the line's content. `col` is 0-based within
 	 * the line as the provider rendered it (the indent is already subtracted),
-	 * matching the coordinate space of StatusLineComponent.quietSegmentAt.
 	 */
 	onClick?: (col: number) => void;
 
@@ -461,11 +460,11 @@ export class LaunchComposerHead implements Component {
  * written was missing here and nothing failed.
  */
 export class LaunchComposerFoot implements Component {
-	readonly #getDraft: () => string;
+	readonly #readDraft: () => string;
 	#location: LocationContext | undefined;
 
-	constructor(getDraft: () => string) {
-		this.#getDraft = getDraft;
+	constructor(readDraft?: () => string) {
+		this.#readDraft = readDraft ?? (() => "");
 	}
 
 	render(width: number): string[] {
@@ -536,15 +535,16 @@ export class LaunchComposerFoot implements Component {
 				// hands the live provider (terminal minus the inset), so both rows shed at the
 				// same column and the handover moves nothing.
 				width: avail,
+				expansion: 0,
 				// No focus badge and no run clock exist before a session: both are live state the
 				// row only positions, and an empty string is how the composer spells their absence.
 				badge: "",
 				clock: "",
-				locationRight: draftTokenZone(this.#getDraft()),
-				// The path expansion is a click-driven animation on the live row. Nothing has been
-				// clicked yet, so the row is at rest and the expanded half is never consulted.
-				expansion: 0,
 				expandedHalf: "path",
+				// The right zone is the draft's token estimate, read from the same editor
+				// the mode goes on mounting, so the row keeps it through the handover
+				// instead of growing it a second later.
+				locationRight: draftTokenZone(this.#readDraft()),
 				// `null` is "nothing worth a row", which the live footline answers by drawing no
 				// row at all. The card owns a fixed four-row block, so its row is blank instead.
 			}).line ?? ""

@@ -96,7 +96,6 @@ export interface RollbackRow {
 	current: boolean;
 	/** True when this version was published later than the running one, so choosing it moves forward. */
 	newer: boolean;
-	/** True when the history file records having run this version before. */
 	visited: boolean;
 	changelogUrl: string;
 }

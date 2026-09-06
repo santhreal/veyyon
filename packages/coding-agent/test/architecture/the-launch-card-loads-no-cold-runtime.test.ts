@@ -72,6 +72,15 @@ const ADMITTED_ON_THE_CARD_PATH = [
 	"node:worker_threads",
 ];
 
+/**
+ * The first frame is the card minus the settings store: it reads the settings slot, not the module
+ * that fills it, so the store's `bun:sqlite` migration leaf and the process manager's
+ * `node:timers/promises` sleep are not on its path. Everything else it evaluates is the card's.
+ */
+const ADMITTED_ON_THE_FIRST_FRAME = ADMITTED_ON_THE_CARD_PATH.filter(
+	specifier => specifier !== "bun:sqlite" && specifier !== "node:timers/promises",
+);
+
 /** What was removed, named so a failure says which one came back rather than only that one did. */
 const REMOVED_FROM_THE_CARD_PATH = [
 	"node:assert/strict",
@@ -108,16 +117,16 @@ describe("the launch card loads no cold runtime", () => {
 		expect(onATool).toContain("node:crypto");
 	});
 
-	for (const [label, entry] of [
-		["the launch card", "cli/launch-card.ts"],
-		["the first frame", "modes/terminal/first-frame.ts"],
+	for (const [label, entry, admitted] of [
+		["the launch card", "cli/launch-card.ts", ADMITTED_ON_THE_CARD_PATH],
+		["the first frame", "modes/terminal/first-frame.ts", ADMITTED_ON_THE_FIRST_FRAME],
 	] as const) {
 		/** One case per entry, so a failure names the path that regained the runtime. */
 		it(`${label} evaluates nothing but the platform it uses`, () => {
 			const reached = platformSpecifiersOn(entry);
 
 			expect(reached.filter(specifier => REMOVED_FROM_THE_CARD_PATH.includes(specifier))).toEqual([]);
-			expect(reached).toEqual(ADMITTED_ON_THE_CARD_PATH);
+			expect(reached).toEqual(admitted);
 		});
 	}
 });

@@ -26,7 +26,13 @@ import type {
 	ViewSection,
 } from "@veyyon/view";
 import { diagnosticsSection } from "../tools/core/diagnostics";
-import { getDiffStats, PREVIEW_LIMITS, shortenPath, truncateDiffByHunk } from "../tools/core/render-utils";
+import {
+	getDiffStats,
+	PREVIEW_LIMITS,
+	shortenEmbeddedPaths,
+	shortenPath,
+	truncateDiffByHunk,
+} from "../tools/core/render-utils";
 import type { EditMode } from "../utils/edit-mode";
 import { getLanguageFromPath } from "../utils/lang-from-path";
 import type { EditToolDetails, EditToolPerFileResult } from "./details";
@@ -334,22 +340,10 @@ function errorSection(
 	linkPath: string | undefined,
 	expanded: boolean,
 ): ViewSection {
-	let sanitized = errorText;
+	let sanitized = shortenEmbeddedPaths(errorText);
 	for (const candidate of [rawPath, linkPath]) {
 		if (candidate) sanitized = sanitized.replaceAll(candidate, shortenPath(candidate));
 	}
-	sanitized = sanitized
-		.split("\n")
-		.map(line =>
-			line
-				.split(" ")
-				.map(word => {
-					const match = /^([("'`[]*)(.*?)([)"'`,.;:\]]*)$/.exec(word);
-					return match ? `${match[1]}${shortenPath(match[2])}${match[3]}` : word;
-				})
-				.join(" "),
-		)
-		.join("\n");
 	const lines = sanitized.split("\n");
 	const kept = expanded ? lines : lines.slice(0, PREVIEW_LIMITS.DIFF_COLLAPSED_LINES);
 	const held = lines.length - kept.length;

@@ -1,7 +1,7 @@
 /**
  * Differential oracle: the bash tool renderer from origin/main.
  *
- * Source SHA: d0cb967888303de02e573bb8b0f3c5ba6fe66377 (`src/tools/bash.ts`, its renderer half).
+ * Source SHA: a26096e501ae452fde11e821655dd65c519c9c40 (`src/tools/bash.ts`, its renderer half).
  * Frozen: never edited to make a test pass.
  *
  * The branch split that half into `src/tools/shell/bash-render.ts` and rewrote its import
@@ -34,6 +34,7 @@ import {
 	previewWindowRows,
 	renderCollapsedOutputLines,
 	replaceTabs,
+	shortenEmbeddedPaths,
 } from "@veyyon/coding-agent/tools/core/render-utils";
 import {
 	BASH_DEFAULT_PREVIEW_LINES,
@@ -242,7 +243,7 @@ export function getBashEnvForDisplay(args: BashRenderArgs): Record<string, strin
  * `theme.fg("dim", ...)` form render only the first line as dim.
  */
 export function formatBashCommandLines(args: BashRenderArgs, uiTheme: Theme): string[] {
-	const command = replaceTabs(args.command || "…");
+	const command = replaceTabs(shortenEmbeddedPaths(args.command || "…"));
 	const cwd = getProjectDir();
 	const displayWorkdir = formatToolWorkingDirectory(args.cwd, cwd);
 	const envAssignments = formatBashEnvAssignments(getBashEnvForDisplay(args));
@@ -389,7 +390,7 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 					const withoutExit = stripExitCodeNotice(strippedOutput, details?.exitCode, details?.signal);
 					const withoutWall = stripWallTimeNotice(withoutExit, details?.wallTimeMs);
 					const rawOutputArtifact = stripRawOutputArtifactNotice(withoutWall);
-					const output = rawOutputArtifact.text;
+					const output = shortenEmbeddedPaths(rawOutputArtifact.text);
 					const displayOutput = output.trimEnd();
 					const showingFullOutput = expanded && renderContext?.isFullOutput === true;
 

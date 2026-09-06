@@ -133,7 +133,6 @@ export function mergePackageSection(content: string, versionsInRange: readonly s
 	}
 
 	if (selectedSpans.length === 0) return "";
-
 	const lines = content.split("\n");
 	const seenCategories: string[] = []; // first-seen order
 	const buckets = new Map<string, string[]>();

@@ -1,7 +1,7 @@
 /**
  * Differential oracle: the debug renderer from origin/main.
  *
- * Source SHA: 80cf11d2f49c9535a7e4d51a38506619035b4720, `packages/coding-agent/src/tools/debug.ts`.
+ * Source SHA: a26096e501ae452fde11e821655dd65c519c9c40, `packages/coding-agent/src/tools/debug.ts`.
  * Frozen: never edited to make a test pass.
  *
  * The edits against that source are the theme parameter, which defaulted to the module-level theme
@@ -19,6 +19,7 @@ import {
 	formatExpandHint,
 	PREVIEW_LIMITS,
 	replaceTabs,
+	shortenEmbeddedPaths,
 	shortenPath,
 	TRUNCATE_LENGTHS,
 } from "@veyyon/coding-agent/tools/core/render-utils";
@@ -92,7 +93,7 @@ export const debugToolRenderer = {
 				const previewLimit = options.expanded ? PREVIEW_LIMITS.EXPANDED_LINES : PREVIEW_LIMITS.COLLAPSED_LINES;
 				const displayedLines = rawLines
 					.slice(0, previewLimit)
-					.map(line => truncateToWidth(line, TRUNCATE_LENGTHS.LINE));
+					.map(line => truncateToWidth(shortenEmbeddedPaths(line), TRUNCATE_LENGTHS.LINE));
 				const remaining = rawLines.length - displayedLines.length;
 				if (remaining > 0) {
 					displayedLines.push(

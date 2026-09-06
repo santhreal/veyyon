@@ -12,39 +12,41 @@ describe("subagent HUD retains model badge when session has no description", () 
 		await initTheme();
 	});
 
-	it.each([20, 24, 28])("keeps a fitting badge without reserving description columns at width %i", columns => {
+	it("keeps model badge when task id and badge fit on the line with no description", () => {
 		const session: ObservableSession = {
-			id: "a1b2c3d4",
+			id: "task-1",
 			kind: "subagent",
-			label: "Worker",
-			agent: "Worker",
 			status: "active",
 			detached: true,
-			lastUpdate: Date.now(),
-			description: "",
-			progress: {
-				index: 0,
-				id: "a1b2c3d4",
-				agent: "Worker",
-				agentSource: "bundled",
-				status: "running",
-				task: "",
-				recentTools: [],
-				recentOutput: [],
-				toolCount: 0,
-				requests: 0,
-				tokens: 0,
-				cost: 0,
-				durationMs: 0,
-				description: "",
-				resolvedModel: "openai/o3",
-			},
-		};
+			description: undefined,
+			progress: { resolvedModel: "gpt-4o" },
+		} as unknown as ObservableSession;
 
-		const lines = renderSubagentHudLines([session], { columns, showModelBadge: true });
+		// At width 30: id="task-1", badge="gpt-4o".
+		// No description exists, so room should not be reserved for a description floor.
+		const lines = renderSubagentHudLines([session], { columns: 30, showModelBadge: true });
 		expect(lines.length).toBe(3);
-		const plain = stripAnsi(lines[2]!);
-		expect(plain).toContain("a1b2c3d4");
-		expect(plain).toContain("o3");
+		const rowText = stripAnsi(lines[2] ?? "");
+		expect(rowText).toContain("task-1");
+		expect(rowText).toContain("gpt-4o");
+	});
+
+	it("drops model badge when description exists and remaining space is under description floor", () => {
+		const sessionWithDesc: ObservableSession = {
+			id: "task-1",
+			kind: "subagent",
+			status: "active",
+			detached: true,
+			description: "Refactoring database migration schema",
+			progress: { resolvedModel: "gpt-4o" },
+		} as unknown as ObservableSession;
+
+		// At width 30 with a description, the badge is dropped to prioritize the description
+		const lines = renderSubagentHudLines([sessionWithDesc], { columns: 30, showModelBadge: true });
+		expect(lines.length).toBe(3);
+		const rowText = stripAnsi(lines[2] ?? "");
+		expect(rowText).toContain("task-1");
+		expect(rowText).toContain("Refactoring");
+		expect(rowText).not.toContain("gpt-4o");
 	});
 });

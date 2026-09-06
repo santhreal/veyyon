@@ -117,7 +117,6 @@ describe("a running loop repaints its own clock", () => {
 		expect(rows.at(-1)).toBeUndefined();
 		expect(rows.length).toBe(cleared);
 	});
-
 	it("ticks the screen's render callback while the screen is open and stands down on close", async () => {
 		let renderCount = 0;
 		let closeDialog!: () => void;

@@ -42,6 +42,7 @@ import {
 	previewWindowRows,
 	renderCollapsedOutputLines,
 	replaceTabs,
+	shortenEmbeddedPaths,
 	shortenPath,
 	truncateToWidth,
 	wrapBrackets,
@@ -472,7 +473,7 @@ function formatCellOutputLines(
 	}
 
 	const styleLine = (line: string): string => {
-		const cleaned = replaceTabs(line);
+		const cleaned = replaceTabs(shortenEmbeddedPaths(line));
 		return cell.status === "error" ? theme.fg("error", cleaned) : theme.fg("toolOutput", cleaned);
 	};
 	const outputLines = cell.output.split("\n");
@@ -680,7 +681,7 @@ export const evalToolRenderer = {
 			});
 		}
 
-		const displayOutput = output;
+		const displayOutput = replaceTabs(shortenEmbeddedPaths(output));
 		const combinedOutput = [displayOutput, ...jsonLines].filter(Boolean).join("\n");
 
 		const statusEvents = details?.statusEvents ?? [];

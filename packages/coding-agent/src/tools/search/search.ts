@@ -23,6 +23,7 @@ import {
 } from "../core/path-utils";
 import { ToolError } from "../core/tool-errors";
 import { executeFileSearch, type FileSearchDetails } from "./file-search";
+
 import { executeStructureSearch, type StructureSearchDetails } from "./structure-search";
 import { executeTextSearch, type TextSearchDetails, textSearchApproval } from "./text-search";
 

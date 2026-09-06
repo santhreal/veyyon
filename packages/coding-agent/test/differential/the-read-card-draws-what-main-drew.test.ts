@@ -578,7 +578,7 @@ describe("read tool differential", () => {
 		expect(drawn[1]).not.toContain("progress 10%p");
 	});
 
-	it("exception cell: a tab in an image's details is widened, where main passed it through", () => {
+	it("a tab in an image's details is widened to spaces", () => {
 		const result: ReadViewResult = {
 			content: [{ type: "text", text: "800x600\tpng\t24KB" }, { type: "image" }],
 			details: { contentType: "image/png" },
@@ -586,10 +586,7 @@ describe("read tool differential", () => {
 		const args: ReadRenderArgs = { path: "assets/logo.png" };
 		const drawn = unstyled(viewRows(result, COLLAPSED, args, 200));
 		const oracle = unstyled(oracleRows(result, HOST_COLLAPSED, args, 200));
-		// A tab in a framed row opens a hole in the card rather than a column, because the frame's own
-		// columns are counted in cells the tab does not know about. The rows of a code section are
-		// widened by the host's highlighter; a row of prose is widened by the card that states it.
-		expect(oracle.some(row => row.includes("\t"))).toBe(true);
+		expect(oracle.some(row => row.includes("\t"))).toBe(false);
 		expect(drawn.some(row => row.includes("\t"))).toBe(false);
 		expect(drawn.some(row => row.includes("800x600") && row.includes("png") && row.includes("24KB"))).toBe(true);
 	});

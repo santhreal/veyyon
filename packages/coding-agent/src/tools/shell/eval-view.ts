@@ -49,10 +49,10 @@ import {
 	Ellipsis,
 	formatDuration,
 	replaceTabs,
+	shortenEmbeddedPaths,
 	shortenPath,
 	truncateToWidth,
 } from "../core/render-utils";
-
 /** The rows a collapsed cell's output may spend, which a host may narrow to its own window. */
 export const EVAL_DEFAULT_PREVIEW_LINES = 10;
 
@@ -149,7 +149,7 @@ function callCells(args: EvalRenderArgs | undefined): EvalViewCell[] {
 function textRows(text: string): string[] {
 	return text.split(/\r?\n/).map(line => {
 		const at = line.lastIndexOf("\r");
-		return replaceTabs(at < 0 ? line : line.slice(at + 1));
+		return replaceTabs(shortenEmbeddedPaths(at < 0 ? line : line.slice(at + 1)));
 	});
 }
 

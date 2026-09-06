@@ -221,7 +221,6 @@ export function createInitExperimentTool(
 			runtime.lastRunArtifactDir = null;
 			runtime.lastRunNumber = null;
 			runtime.lastRunSummary = null;
-
 			options.dashboard.update(ctx, runtime);
 			options.dashboard.requestRender();
 
@@ -268,9 +267,10 @@ export function createInitExperimentTool(
 			if (session.secondaryMetrics.length > 0) {
 				lines.push(`Secondary metrics: ${session.secondaryMetrics.join(", ")}`);
 			}
+			lines.push(`Benchmark entrypoint: ${DEFAULT_HARNESS_COMMAND}`);
 			lines.push(
 				session.breadth > 1
-					? `Breadth: ${formatCount("arm", session.breadth)} per iteration, ${formatCount("attempt", session.attempts)} each, certification ${session.certify ? "on" : "off"}.`
+					? `Breadth: ${formatCount("arm", session.breadth)} per iteration, ${formatCount("attempt", session.attempts)} each, certification ${session.certify ? "on" : "off"}. Start every arm with \`start_arm\` and measure it with \`run_experiment\`.`
 					: "Breadth: 1 (serial, no arms).",
 			);
 			if (overriddenByConsole) {

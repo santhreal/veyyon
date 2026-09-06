@@ -811,6 +811,7 @@ function makeAskHostContext(): InteractiveModeContext {
 		editorContainer: { clear: () => {}, addChild: () => {} },
 		editor: { getText: () => "", setText: () => {} },
 		focusActiveEditorArea: () => {},
+		clearWorkingLoader: () => false,
 		ui: {
 			requestRender: () => {},
 			setFocus: () => {},

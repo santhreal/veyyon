@@ -1,8 +1,11 @@
+import { getLoginCredential } from "@veyyon/ai/oauth";
+import type { LoginCredential } from "@veyyon/ai/registry/types";
 import { type Component, Input, type TUI } from "@veyyon/tui";
 import { getKeybindings } from "@veyyon/utils/keybindings";
 import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
 import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
+import { formatProviderName } from "../../../../session/account-format";
 import { theme } from "../../../../theme/theme";
 import { openPath } from "../../../../utils/open";
 import {
@@ -61,14 +64,16 @@ export class LoginDialogComponent implements Component {
 	#input: Input;
 	#tui: TUI;
 	#title: string;
-	/** Whether authorization URLs should open a browser rather than identify a key dashboard. */
-	#browserLogin: boolean;
+	/** What this provider's login asks for; decides whether an `onAuth` URL is launched or shown. */
+	#credential: LoginCredential;
 	#abortController = new AbortController();
 	#inputResolver?: (value: string) => void;
 	#inputRejecter?: (error: Error) => void;
+	/** Body line the field was painted on in the last frame, or -1 while no question is asked. */
+	#inputBodyLine = -1;
 	#auth?: AuthState;
-	#status?: string;
 	#prompt?: PromptState;
+	#status?: string;
 	/**
 	 * What Esc does to the prompt on screen. `cancel` aborts the whole login, which is right while a
 	 * flow is still waiting for a credential. `skip` answers the question with nothing, for the
@@ -78,20 +83,21 @@ export class LoginDialogComponent implements Component {
 	#escapeMode: "cancel" | "skip" = "cancel";
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
-	/** Body line the field was painted on in the last frame, or -1 while no question is asked. */
-	#inputBodyLine = -1;
 	#getTerminalRows: () => number;
 
 	constructor(
 		tui: TUI,
-		providerLabel: string,
+		providerId: string,
 		private onComplete: (success: boolean, message?: string) => void,
-		options: { browserLogin: boolean; getTerminalRows?: () => number },
+		options?: { getTerminalRows?: () => number },
 	) {
 		this.#tui = tui;
-		this.#title = `Login to ${providerLabel}`;
-		this.#browserLogin = options.browserLogin;
-		this.#getTerminalRows = options.getTerminalRows ?? (() => process.stdout.rows || 40);
+		// One label owner for provider names, the same one the status line, the account card and the
+		// logout dialog use. Reading the browser-login table here printed a raw slug (`Login to groq`)
+		// for every provider that authenticates with a pasted key, since that table has no row for one.
+		this.#title = `Login to ${formatProviderName(providerId)}`;
+		this.#credential = getLoginCredential(providerId);
+		this.#getTerminalRows = options?.getTerminalRows ?? (() => process.stdout.rows || 40);
 		this.#input = new Input();
 		this.#input.onSubmit = () => {
 			this.#settlePrompt(this.#input.getValue());
@@ -168,7 +174,7 @@ export class LoginDialogComponent implements Component {
 		};
 		const auth = this.#auth;
 		if (auth) {
-			if (!this.#browserLogin) {
+			if (this.#credential === "api-key") {
 				// A dashboard where a key is obtained, not a page this login waits on.
 				say(theme.fg("dim", "Get an API key at"));
 			}
@@ -285,7 +291,7 @@ export class LoginDialogComponent implements Component {
 	showAuth(url: string, instructions?: string, launchUrl?: string): void {
 		this.#auth = { url, ...(launchUrl ? { launchUrl } : {}), ...(instructions ? { instructions } : {}) };
 		this.#tui.requestRender();
-		if (this.#browserLogin) {
+		if (this.#credential === "oauth") {
 			// Best-effort: a relayout must never open a second tab.
 			openPath(url);
 		}

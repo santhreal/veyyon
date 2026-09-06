@@ -72,13 +72,13 @@ export class ImageBudget {
 	// id so a partial pass reproduces the on-screen live/text split without a
 	// full, correctly-ordered walk.
 	#suppressedIds = new Set<number>();
-
 	// The geometry behind each live direct-placement line, keyed by the exact
 	// line an Image returns, so the renderer can re-derive a placement it must
 	// rewrite at a viewport row above the block's origin. One line per image id;
 	// re-registering an id (a width change) drops its previous line.
 	#directPlacements = new Map<string, KittyDirectPlacement>();
 	#directPlacementLineById = new Map<number, string>();
+
 	constructor(cap: number = DEFAULT_MAX_INLINE_IMAGES, requestRender: () => void = () => {}) {
 		this.#cap = normalizeCap(cap);
 		this.#requestRender = requestRender;
@@ -174,6 +174,7 @@ export class ImageBudget {
 				// d=I frees the data too, so the image must re-transmit if it returns.
 				this.#transmitted.delete(id);
 				this.#forgetKeyForId(id);
+				this.#forgetDirectPlacement(id);
 			}
 			this.#onTerminal = this.#planned;
 			this.#applyingReset = false;

@@ -32,6 +32,7 @@ import type {
 import {
 	replaceTabs,
 	sanitizeDiagnosticDisplayText,
+	shortenEmbeddedPaths,
 	shortenPath,
 	TRUNCATE_LENGTHS,
 	truncateToWidth,
@@ -113,7 +114,9 @@ function severityTone(severity: string): ViewTone {
 
 /** One line of text with no leading or trailing control characters a host would draw as a hole. */
 function row(text: string, tone?: ViewTone): ViewLine {
-	return tone === undefined ? [{ text: replaceTabs(text) }] : [{ text: replaceTabs(text), tone }];
+	return tone === undefined
+		? [{ text: replaceTabs(shortenEmbeddedPaths(text)) }]
+		: [{ text: replaceTabs(shortenEmbeddedPaths(text)), tone }];
 }
 
 /** What a card kept back, or nothing when it kept back none of it. */
@@ -374,7 +377,7 @@ function describeCall(args: LspParams | undefined): { description: string; meta:
 function requestSection(request: LspParams | undefined): ViewSection | undefined {
 	if (request === undefined) return undefined;
 	const lines: ViewLine[] = [];
-	if (request.file) lines.push(row(request.file, "output"));
+	if (request.file) lines.push(row(shortenPath(request.file), "output"));
 	if (request.line !== undefined) lines.push(row(`line ${request.line}`, "dim"));
 	if (request.symbol) lines.push(row(`symbol: ${replaceTabs(request.symbol).replaceAll(/\r?\n/g, " ")}`, "dim"));
 	if (request.query) lines.push(row(`query: ${request.query}`, "dim"));

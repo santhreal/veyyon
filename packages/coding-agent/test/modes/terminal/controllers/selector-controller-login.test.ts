@@ -164,7 +164,7 @@ describe("SelectorController login", () => {
 	});
 	it("routes enhanced paste into a direct API-key prompt", async () => {
 		const tui = { requestRender: vi.fn() } as unknown as TUI;
-		const dialog = new LoginDialogComponent(tui, "OpenRouter", vi.fn(), { browserLogin: false });
+		const dialog = new LoginDialogComponent(tui, "openrouter", vi.fn());
 		const prompt = dialog.showPrompt({ message: "Paste your OpenRouter API key", secret: true });
 
 		dialog.pasteText("VEYYON_PASTE_TEST_123");

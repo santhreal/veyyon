@@ -187,7 +187,12 @@ export interface LaunchContextRequest {
  * state them before anything has been measured. With nothing recorded both are null: `0%` would be
  * a measurement and a clean tree would be a claim, so the gauge spells `? left` and the branch
  * renders without its marker until the session's first paint replaces the block.
+ *
+ * `activeRepo` and `worktree` are resolved here rather than left to the session, because the path
+ * segment reads both: the worktree marker and the truncation it forces are structural, and a card
+ * that paints the plain path would be rewritten the moment the row mounts.
  */
+
 export function launchSegmentContext(request: LaunchContextRequest): SegmentContext {
 	const launchFacts = readLaunchFacts();
 	return {

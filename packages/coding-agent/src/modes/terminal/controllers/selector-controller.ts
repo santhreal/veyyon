@@ -2,7 +2,6 @@ import { ThinkingLevel } from "@veyyon/agent-core";
 import type { CredentialHealthResult, UsageReport } from "@veyyon/ai";
 import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome } from "@veyyon/ai/auth-storage";
 import type { InstrumentationLevel } from "@veyyon/ai/instrumentation";
-import { getLoginCredential } from "@veyyon/ai/oauth";
 import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 // The derived provider set from the registry that derives it (164 modules) rather than the
 // barrel (346).
@@ -1556,14 +1555,14 @@ export class SelectorController {
 		};
 		const dialog = new LoginDialogComponent(
 			this.ctx.ui,
-			providerLabel,
+			providerId,
 			(_success, message) => {
 				// Fires on Esc: unblock the editor immediately; the aborted flow's
 				// rejection settles the awaited login below.
 				restoreEditor();
 				if (message) this.ctx.showStatus(message);
 			},
-			{ browserLogin: getLoginCredential(providerId) === "oauth", getTerminalRows: () => this.ctx.ui.terminal.rows },
+			{ getTerminalRows: () => this.ctx.ui.terminal.rows },
 		);
 		overlayHandle = this.ctx.ui.showOverlay(dialog, {
 			anchor: "top-left",

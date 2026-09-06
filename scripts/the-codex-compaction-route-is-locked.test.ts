@@ -30,6 +30,12 @@
  * below failed: you changed a locked file. Revert it. If the change is genuinely
  * required, make a live call of your own, get the operator to say so out loud,
  * then update the hash IN THE SAME COMMIT as the change and say why here.
+ *
+ * Re-locked 2026-09-03 with operator permission. The OpenCode request-identity
+ * fix threads `conversationIdForOpenCode(request)` into the official-host
+ * branch (`resolveOpenAiCompactRequest`) so a compaction sends the same
+ * `x-opencode-session` as the turns around it. The Codex branch, its endpoint,
+ * its trigger item and its SSE reader are byte-identical to the 2026-09-01 lock.
  */
 
 import { describe, expect, it } from "bun:test";

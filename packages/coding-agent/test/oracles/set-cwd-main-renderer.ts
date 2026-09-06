@@ -1,7 +1,7 @@
 /**
  * Differential oracle: set_cwd tool renderer from origin/main.
  *
- * Source SHA: e9467ab12c976cd830eb7a61e30bfd6adc4bff1f, where the renderer was declared in-place at
+ * Source SHA: a26096e501ae452fde11e821655dd65c519c9c40, where the renderer was declared in-place at
  * the foot of `src/tools/set-cwd.ts`. Only the members this suite compares are carried over:
  * `renderArguments` returns a string and `renderPending` was never reachable for a converted tool.
  * Frozen: never edited to make a test pass.
@@ -34,8 +34,8 @@ export function renderResult(
 	const line = !details
 		? "cwd"
 		: details.previous !== details.cwd
-			? `${details.previous} → ${details.cwd}`
-			: `${details.cwd} (already here)`;
+			? `${shortenPath(details.previous)} → ${shortenPath(details.cwd)}`
+			: `${shortenPath(details.cwd)} (already here)`;
 	// The rule delta is the part of a re-root that changes how the agent behaves,
 	// so it belongs on the status line rather than only in the model's copy of the
 	// result. A move that silently swapped the governing AGENTS.md looked

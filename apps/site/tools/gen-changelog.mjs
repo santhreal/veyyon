@@ -608,7 +608,6 @@ export function buildChangelogHtml(reconciledReleases, { unreleased = null, fork
 		if (!anyPublishedSignal) return veyyon.length ? 0 : -1; // lookup skipped → mark newest
 		return -1; // published signal exists but nothing published yet → no latest
 	})();
-
 	const parts = [];
 	if (unreleased) parts.push(renderUnreleased(unreleased));
 	for (let i = 0; i < veyyon.length; i++) {

@@ -10,7 +10,7 @@ import { formatMoreLines, isRecord } from "@veyyon/utils";
 import { buildTreePrefix } from "../../modes/terminal/draw/utils";
 import type { Theme } from "../../theme/theme";
 import { formatScalar, HIDDEN_JSON_TREE_KEYS } from "./json-tree-view";
-import { truncateToWidth } from "./render-utils";
+import { replaceTabs, shortenEmbeddedPaths, truncateToWidth } from "./render-utils";
 
 export {
 	formatArgsInline,
@@ -71,7 +71,7 @@ export function renderJsonTreeLines(
 					const continuePrefix = buildTreePrefix(ancestors, theme);
 
 					// First line with label
-					const firstLine = truncateToWidth(strLines[0], maxScalarLen);
+					const firstLine = truncateToWidth(replaceTabs(shortenEmbeddedPaths(strLines[0])), maxScalarLen);
 					pushLine(`${prefix}${iconScalar} ${label}: ${theme.fg("dim", `"${firstLine}`)}`);
 
 					// Subsequent lines indented
@@ -80,7 +80,7 @@ export function renderJsonTreeLines(
 							truncated = true;
 							break;
 						}
-						const line = truncateToWidth(strLines[i], maxScalarLen);
+						const line = truncateToWidth(replaceTabs(shortenEmbeddedPaths(strLines[i])), maxScalarLen);
 						pushLine(`${continuePrefix}   ${theme.fg("dim", ` ${line}`)}`);
 					}
 

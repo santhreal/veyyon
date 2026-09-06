@@ -98,7 +98,8 @@ takes two required ordered fields followed by type-specific options:
 
 Options are strictly validated per `type`; cross-type fields are rejected with an actionable error:
 
-- **`type: "files"`** accepts `hidden`, `gitignore`, and `limit`:
+- **`type: "files"`** accepts `path`, `hidden`, `gitignore`, and `limit`:
+  - **`path`** is one directory the `input` globs are searched under. Each entry of `input` keeps its own meaning there: `{ input: "*.ts", path: "src" }` is `src/**/*.ts`, `{ input: "app/*.ts", path: "src" }` is `src/app/*.ts`, and `{ input: ".", path: "src" }` lists `src`. A glob or internal URL in `path`, or an absolute or internal-URL `input` under a `path`, is rejected with the spelling that works.
   - **`hidden` (default `true`)** includes dotfiles.
   - **`gitignore` (default `true`)** respects `.gitignore` rules; set `false` to search ignored paths.
   - **`limit` (default `200`, max `200`)** bounds returned paths; output is sorted by `mtime` descending and grouped under `# <dir>/` directory headers.

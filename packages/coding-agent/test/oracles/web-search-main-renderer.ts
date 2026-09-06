@@ -23,6 +23,7 @@ import {
 	getDomain,
 	PREVIEW_LIMITS,
 	replaceTabs,
+	shortenEmbeddedPaths,
 	truncateToWidth,
 } from "@veyyon/coding-agent/tools/core/render-utils";
 import { getSearchProviderLabel } from "@veyyon/coding-agent/tools/web/search/provider";
@@ -45,7 +46,9 @@ function renderFallbackText(contentText: string, expanded: boolean, theme: Theme
 	return framedBlock(theme, width => {
 		const maxLines = expanded ? lines.length : 6;
 		const contentWidth = outputBlockContentWidth(width);
-		const displayLines = lines.slice(0, maxLines).map(line => truncateToWidth(line.trim(), contentWidth));
+		const displayLines = lines
+			.slice(0, maxLines)
+			.map(line => truncateToWidth(replaceTabs(shortenEmbeddedPaths(line.trim())), contentWidth));
 		const remaining = lines.length - displayLines.length;
 		const bodyLines: string[] = [];
 		if (displayLines.length === 0) {
@@ -75,7 +78,7 @@ export interface SearchRenderDetails {
 /** Render a web search failure as a framed error panel, matching the success layout. */
 function renderSearchErrorPanel(message: string, providerLabel: string | undefined, theme: Theme): Component {
 	const header = renderStatusLine({ icon: "error", title: "Web Search", description: providerLabel }, theme);
-	const body = theme.fg("error", `Error: ${replaceTabs(message)}`);
+	const body = theme.fg("error", `Error: ${replaceTabs(shortenEmbeddedPaths(message))}`);
 	return framedBlock(theme, width => ({
 		header,
 		state: "error",
@@ -86,7 +89,7 @@ function renderSearchErrorPanel(message: string, providerLabel: string | undefin
 
 /** Render web search result with tree-based layout */
 export function renderSearchResult(
-	result: { content: Array<{ type: string; text?: string }>; details?: SearchRenderDetails },
+	result: { content: Array<{ type: string; text?: string }>; details?: SearchRenderDetails; isError?: boolean },
 	options: RenderResultOptions,
 	theme: Theme,
 	args?: {
@@ -95,16 +98,17 @@ export function renderSearchResult(
 	},
 ): Component {
 	const details = result.details;
+	const rawText = result.content?.find(block => block.type === "text")?.text?.trim() ?? "";
 
 	// Handle error case as a framed panel, matching the success layout.
-	if (details?.error) {
-		const errorProvider = details.response?.provider;
+	if (result.isError || details?.error) {
+		const errorMessage = details?.error || rawText || "Web search failed";
+		const errorProvider = details?.response?.provider;
 		const errorProviderLabel =
 			errorProvider && errorProvider !== "none" ? getSearchProviderLabel(errorProvider) : undefined;
-		return renderSearchErrorPanel(details.error, errorProviderLabel, theme);
+		return renderSearchErrorPanel(errorMessage, errorProviderLabel, theme);
 	}
 
-	const rawText = result.content?.find(block => block.type === "text")?.text?.trim() ?? "";
 	const response = details?.response;
 	if (!response) {
 		return renderFallbackText(rawText, options.expanded, theme);

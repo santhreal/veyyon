@@ -185,7 +185,6 @@ describe("update closes by pointing at the rest of the mechanism", () => {
 		spyOn(console, "log").mockImplementation((...args: unknown[]) => {
 			logs.push(args.map(String).join(" "));
 		});
-
 		updateCli.printUpdateHelp();
 
 		const help = logs.join("\n");

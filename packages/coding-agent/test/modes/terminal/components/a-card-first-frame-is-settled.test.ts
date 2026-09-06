@@ -260,11 +260,7 @@ const OVERLAY_SPECS: readonly OverlaySpec[] = [
 	},
 	{
 		name: "LoginDialogComponent",
-		create: () =>
-			new LoginDialogComponent(DUMMY_UI, "GitHub", () => {}, {
-				browserLogin: true,
-				getTerminalRows: () => 30,
-			}),
+		create: () => new LoginDialogComponent(DUMMY_UI, "github", () => {}, { getTerminalRows: () => 30 }),
 	},
 	{
 		name: "MCPAddWizard",

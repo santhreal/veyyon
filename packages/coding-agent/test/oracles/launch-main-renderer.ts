@@ -1,7 +1,7 @@
 /**
  * Differential oracle: the launch tool renderer from origin/main.
  *
- * Source SHA: e9467ab12c976cd830eb7a61e30bfd6adc4bff1f.
+ * Source SHA: a26096e501ae452fde11e821655dd65c519c9c40.
  * Frozen: never edited to make a test pass.
  *
  * On main this was the renderer half of `src/tools/launch.ts` (lines 501-817), which this branch
@@ -32,6 +32,7 @@ import {
 	pluralize,
 	previewLine,
 	replaceTabs,
+	shortenEmbeddedPaths,
 	shortenPath,
 	TRUNCATE_LENGTHS,
 	truncateToWidth,
@@ -141,7 +142,8 @@ function callMeta(args: LaunchRenderArgs): string[] {
  */
 function pushTextLines(body: string[], text: string, theme: Theme): void {
 	if (!text.trim()) return;
-	for (const line of replaceTabs(text.trimEnd()).split("\n")) body.push(theme.fg("toolOutput", line));
+	for (const line of replaceTabs(shortenEmbeddedPaths(text.trimEnd())).split("\n"))
+		body.push(theme.fg("toolOutput", line));
 }
 
 /** TUI renderer: one status header per op, meta from structured details, capped body lines. */
@@ -203,7 +205,8 @@ export const launchToolRenderer = {
 		let description = params.name ?? daemon?.name;
 
 		if (isError) {
-			for (const line of replaceTabs(text.trimEnd()).split("\n")) body.push(theme.fg("error", line));
+			for (const line of replaceTabs(shortenEmbeddedPaths(text.trimEnd())).split("\n"))
+				body.push(theme.fg("error", line));
 		} else {
 			switch (op) {
 				case "start": {

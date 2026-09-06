@@ -147,8 +147,10 @@ describe("a summary request never replays the model's reasoning", () => {
 			assistant([{ type: "text", text: "[Interrupted by user]" }]),
 			{
 				role: "developer",
-				content: [{ type: "text", text: `The user interrupted. Prior reasoning:\n${REASONING}` }],
-				demotedReasoningSource: { provider: "anthropic", model: "claude-sonnet-4-5" },
+				content: [
+					{ type: "text", text: `Your previous turn was interrupted while you were thinking.\n${REASONING}` },
+				],
+				demotedReasoningSource: { provider: "mock", model: "mock" },
 				timestamp: 2,
 			},
 			{ role: "user", content: [{ type: "text", text: "second question" }], timestamp: 3 },

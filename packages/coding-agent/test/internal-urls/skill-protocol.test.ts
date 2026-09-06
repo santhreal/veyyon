@@ -119,11 +119,12 @@ describe("SkillProtocolHandler resolve", () => {
 	});
 
 	/**
-	 * The loader has parsed the declared entry file, including a SKILL.md symlink
-	 * into a source tree. Both entry URL forms remain readable without allowing
-	 * other child symlinks to resolve outside the installed directory.
+	 * A skill installed as a directory holding one `SKILL.md` symlink into a
+	 * source tree is the common operator layout. The loader parsed that file to
+	 * make the skill exist, so both spellings of it are served, while a sibling
+	 * symlink out of the root is still an escape.
 	 */
-	it("serves a linked entry file without allowing other external children", async () => {
+	it("serves a skill whose entry file is a symlink out of the root, and nothing else there", async () => {
 		const outside = await fs.mkdtemp(path.join(os.tmpdir(), "skill-protocol-source-"));
 		const installed = await fs.mkdtemp(path.join(os.tmpdir(), "skill-protocol-installed-"));
 		try {

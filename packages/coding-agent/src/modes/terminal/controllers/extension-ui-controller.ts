@@ -13,7 +13,7 @@ import {
 import { clampLow, errorMessage } from "@veyyon/utils";
 import type { SgrMouseEvent } from "@veyyon/utils/mouse";
 import type { CollabUiRequestDraft, CollabUiSelectItem } from "@veyyon/wire";
-import { registerAutoresearchUi } from "../../../autoresearch/dashboard";
+import { type AutoresearchUiDelegate, registerAutoresearchUi } from "../../../autoresearch/dashboard";
 import { KeybindingsManager } from "../../../config/keybindings";
 import type {
 	CompactOptions,
@@ -1350,9 +1350,6 @@ export class ExtensionUiController {
 		return promise;
 	}
 
-	#advanceDialogQueue(): void {
-		this.#dialogQueue.shift()?.();
-	}
 	/**
 	 * A hook UI that waits on the user is not the agent working. A slash command
 	 * mounts the `Working…` loader on submit and keeps it until its handler
@@ -1364,8 +1361,13 @@ export class ExtensionUiController {
 		if (this.ctx.session.isStreaming) return;
 		this.ctx.clearWorkingLoader();
 	}
+
+	#advanceDialogQueue(): void {
+		this.#dialogQueue.shift()?.();
+	}
 }
-registerAutoresearchUi({
+/** The terminal host's autoresearch surfaces: the run screen and the launcher, each a `custom` overlay. */
+export const terminalAutoresearchUi: AutoresearchUiDelegate = {
 	async showScreen(ctx, runtime, model, options) {
 		const terminal = ctx.ui.terminal;
 		if (!terminal) {
@@ -1417,4 +1419,5 @@ registerAutoresearchUi({
 			{ overlay: LAUNCHER_OVERLAY },
 		);
 	},
-});
+};
+registerAutoresearchUi(terminalAutoresearchUi);

@@ -31,14 +31,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { createAutoresearchExtension } from "@veyyon/coding-agent/autoresearch";
+import { registerAutoresearchUi } from "@veyyon/coding-agent/autoresearch/dashboard";
 import { closeAllAutoresearchStorages, openAutoresearchStorage } from "@veyyon/coding-agent/autoresearch/storage";
 import type { ExtensionAPI, ExtensionContext } from "@veyyon/coding-agent/extensibility/extensions";
+import { terminalAutoresearchUi } from "@veyyon/coding-agent/modes/terminal/controllers/extension-ui-controller";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import * as git from "@veyyon/coding-agent/utils/git";
 import { stripAnsi, TempDir } from "@veyyon/utils";
 import type { AutocompleteItem } from "@veyyon/utils/autocomplete";
 import { $ } from "bun";
 import { useTruecolorTheme } from "./helpers/theme-assertions";
+
+// The run screen and the launcher reach the terminal through the delegate the terminal host
+// registers when it loads; this suite drives the command without booting the host, so it
+// installs the same delegate by name, which is what routes the surfaces into `ui.terminal.custom`.
+registerAutoresearchUi(terminalAutoresearchUi);
 
 interface CommandSpec {
 	description: string;

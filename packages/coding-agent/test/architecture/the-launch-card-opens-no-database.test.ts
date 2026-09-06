@@ -84,6 +84,14 @@ const DATABASE_OWNERS = workspaceSources().filter(relative => {
 const ADMITTED_ON_THE_CARD_PATH = [path.join("coding-agent", "src", "config", "legacy-agent-db-settings.ts")];
 
 /**
+ * The first frame reaches the settings SLOT (`config/settings-instance.ts`) and never the store that
+ * fills it: the composer paints from the launch-facts cache and the keybindings table, and the
+ * store, with the migration leaf above, loads in the deferred initialization after the frame is
+ * on screen. Pinned empty so a frame that starts reading the store again turns this red.
+ */
+const ADMITTED_ON_THE_FIRST_FRAME: readonly string[] = [];
+
+/**
  * What the card costs, measured 2026-08-31 with the workspace resolved to source, down from 311 when
  * the settings store still carried a storage handle, and up from 290 when the card stopped
  * hand-writing its own `path · git` row and started rendering the real status row through
@@ -137,10 +145,10 @@ describe("the launch card opens no database", () => {
 		);
 	});
 
-	for (const [label, entry] of [
-		["the launch card", "cli/launch-card.ts"],
-		["the first frame", "modes/terminal/first-frame.ts"],
-		["the settings store", "config/settings.ts"],
+	for (const [label, entry, admitted] of [
+		["the launch card", "cli/launch-card.ts", ADMITTED_ON_THE_CARD_PATH],
+		["the first frame", "modes/terminal/first-frame.ts", ADMITTED_ON_THE_FIRST_FRAME],
+		["the settings store", "config/settings.ts", ADMITTED_ON_THE_CARD_PATH],
 	] as const) {
 		/**
 		 * One case per entry so a failure names which path regained the database, and the message
@@ -150,7 +158,7 @@ describe("the launch card opens no database", () => {
 		it(`${label} reaches no store`, () => {
 			const reached = new Set(reachedNames(entry));
 
-			expect(DATABASE_OWNERS.filter(owner => reached.has(owner))).toEqual(ADMITTED_ON_THE_CARD_PATH);
+			expect(DATABASE_OWNERS.filter(owner => reached.has(owner))).toEqual([...admitted]);
 		});
 	}
 

@@ -16,6 +16,7 @@ import { formatMoreLines, isRecord } from "@veyyon/utils";
 import { truncateToWidth } from "@veyyon/utils/width";
 import type { ViewLine, ViewSpan } from "@veyyon/view";
 import { INTENT_FIELD } from "@veyyon/wire";
+import { shortenEmbeddedPaths } from "./render-utils";
 
 /** Max depth for JSON tree rendering. */
 export const JSON_TREE_MAX_DEPTH_COLLAPSED = 2;
@@ -45,7 +46,8 @@ export function formatScalar(value: unknown, maxLen: number): string {
 	if (typeof value === "boolean") return String(value);
 	if (typeof value === "number") return String(value);
 	if (typeof value === "string") {
-		const escaped = value.replace(/\n/g, "\\n").replace(/\t/g, "\\t");
+		const shortened = shortenEmbeddedPaths(value);
+		const escaped = shortened.replace(/\n/g, "\\n").replace(/\t/g, "\\t");
 		const truncated = truncateToWidth(escaped, maxLen);
 		return `"${truncated}"`;
 	}

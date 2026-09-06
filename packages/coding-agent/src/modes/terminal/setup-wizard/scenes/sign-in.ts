@@ -107,6 +107,7 @@ export class SignInTab implements SetupTab {
 	#statusLines: string[] = [];
 	#authUrl: string | undefined;
 	#authLaunchUrl: string | undefined;
+	/** What the login in progress asks for; an API-key login's URL is shown, never launched or copied. */
 	#authCredential: LoginCredential = "oauth";
 	#prompt: PromptState | undefined;
 	#promptResolve: ((value: string) => void) | undefined;
@@ -284,6 +285,9 @@ export class SignInTab implements SetupTab {
 						this.#statusLines.push(theme.fg("dim", "Paste the returned code or redirect URL when prompted."));
 					}
 					if (credential === "oauth") {
+						// Only a login that waits on the browser is launched and copied. An
+						// API-key login's URL is the dashboard where a key is obtained, and
+						// launching it opened a platform login page over the paste prompt.
 						void this.#copyAuthUrl();
 						this.host.ctx.openInBrowser(info.url);
 					}
@@ -338,6 +342,8 @@ export class SignInTab implements SetupTab {
 			}
 			this.#loggingInProvider = undefined;
 			this.#loginAbort = undefined;
+			// A cancelled or failed login returns to the list with the search that found the
+			// provider still typed, so the next keystroke appended to it and matched nothing.
 			this.#selector.dispose();
 			this.#selector = this.#createSelector();
 			this.host.restoreFocus();

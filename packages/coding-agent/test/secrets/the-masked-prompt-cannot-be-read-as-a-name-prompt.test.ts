@@ -125,9 +125,9 @@ function hookHost(): {
 		editorContainer: { clear() {}, addChild() {} },
 		editor: {},
 		focusActiveEditorArea() {},
-		hookInput: undefined as HookInputComponent | undefined,
 		session: { isStreaming: false },
 		clearWorkingLoader: () => false,
+		hookInput: undefined as HookInputComponent | undefined,
 	};
 	return { overlays, ctx };
 }

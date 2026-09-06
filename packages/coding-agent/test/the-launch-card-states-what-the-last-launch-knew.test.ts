@@ -820,7 +820,6 @@ describe("the row the card can afford", () => {
 		expect(factsAtLaunch().model).toBeNull();
 		expect(launchModelLabel()).toBe("");
 	});
-
 	/**
 	 * The provider label is the cold answer for the hero's provider: a role is
 	 * stored `provider/id` and a provider id never contains a slash, so the
@@ -870,7 +869,6 @@ describe("the row the card can afford", () => {
 			resetGroundTintsForTest();
 		}
 	});
-
 	/**
 	 * A listener unsubscribing stops receiving notification turns.
 	 */

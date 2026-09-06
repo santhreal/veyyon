@@ -52,6 +52,7 @@ import {
 	previewLine,
 	previewWindowRows,
 	replaceTabs,
+	shortenEmbeddedPaths,
 	type ToolUIStatus,
 	truncateToWidth,
 } from "@veyyon/coding-agent/tools/core/render-utils";
@@ -1521,7 +1522,19 @@ export function renderResult(
 			sections: [
 				...(contextSection ? [contextSection(width)] : []),
 				...(assignmentSection ? [assignmentSection(width)] : []),
-				...(text ? [{ separator: true, lines: [theme.fg("dim", truncateToWidth(text, width))] }] : []),
+				...(text
+					? [
+							{
+								separator: true,
+								lines: [
+									theme.fg(
+										errored ? "error" : "dim",
+										truncateToWidth(replaceTabs(shortenEmbeddedPaths(text)), width),
+									),
+								],
+							},
+						]
+					: []),
 			],
 			state: errored ? "error" : "success",
 			borderColor: errored ? "error" : "borderMuted",

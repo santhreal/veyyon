@@ -1255,6 +1255,11 @@ export function getSelectListTheme(): SelectListTheme {
 	};
 }
 
+/**
+ * The form's paint: the ring is the same live accent the select list's cursor
+ * is, so a focused field and a selected row read as the same thing; the
+ * primary button is the accent band, a disabled one the muted text.
+ */
 export function getFormTheme(): FormTheme {
 	return {
 		focusedLabel: (text: string) => theme.bold(theme.fg("accent", text)),

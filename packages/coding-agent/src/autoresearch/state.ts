@@ -153,7 +153,7 @@ export function findBestKeptResult(
 	for (const result of currentResults(results, segment)) {
 		if (result.status !== "keep" || result.flagged) continue;
 		const metric = measuredMetric(result);
-		if (metric === null || (result.metric === 0 && result.measuredPrimary === null)) continue;
+		if (metric === null) continue;
 		if (best === null || isBetter(metric, best.metric, direction)) {
 			best = result;
 		}
@@ -230,7 +230,6 @@ export function computeConfidence(
 	let bestKept: number | null = null;
 	for (const { result, metric } of current) {
 		if (result.status !== "keep") continue;
-		if (result.metric === 0 && result.measuredPrimary === null) continue;
 		if (bestKept === null || isBetter(metric, bestKept, direction)) {
 			bestKept = metric;
 		}

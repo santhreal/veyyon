@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f235412c.js";
+            window.path_to_searchindex_js = "../searchindex-0bd7ae1a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -238,6 +238,11 @@ notebooks (editable cell text), images, URLs (reader-mode by default), and inter
 files (PNG, JPEG, GIF, WEBP) inline for direct visual analysis. When <code>inspect_image.enabled</code> is set,
 <code>read</code> returns image metadata instead and the model inspects the image by calling <code>inspect_image</code>
 with a question.</p>
+<p>URL reads and URL-scoped text or structural searches require <code>fetch.enabled: true</code>.
+The URL reader initializes on the first URL operation, which waits for initialization before
+fetching. Local reads, local searches, and transcript previews do not initialize the URL reader.
+With <code>fetch.enabled: false</code>, URL operations fail with <code>URL reads are disabled by settings.</code>;
+local operations remain available.</p>
 <h2 id="path-mentions-utilsfile-mentionsts"><a class="header" href="#path-mentions-utilsfile-mentionsts"><code>@path</code> mentions (<code>utils/file-mentions.ts</code>)</a></h2>
 <p>A <code>@path</code> token in a prompt auto-reads the file or lists the directory it names, and the result is
 bounded by <code>tools.artifactSpillThreshold</code>, the same budget a tool result carries, because the
@@ -284,8 +289,9 @@ takes two required ordered fields followed by type-specific options:</p>
 <h3 id="type-specific-options-and-validation"><a class="header" href="#type-specific-options-and-validation">Type-specific options and validation</a></h3>
 <p>Options are strictly validated per <code>type</code>; cross-type fields are rejected with an actionable error:</p>
 <ul>
-<li><strong><code>type: "files"</code></strong> accepts <code>hidden</code>, <code>gitignore</code>, and <code>limit</code>:
+<li><strong><code>type: "files"</code></strong> accepts <code>path</code>, <code>hidden</code>, <code>gitignore</code>, and <code>limit</code>:
 <ul>
+<li><strong><code>path</code></strong> is one directory the <code>input</code> globs are searched under. Each entry of <code>input</code> keeps its own meaning there: <code>{ input: "*.ts", path: "src" }</code> is <code>src/**/*.ts</code>, <code>{ input: "app/*.ts", path: "src" }</code> is <code>src/app/*.ts</code>, and <code>{ input: ".", path: "src" }</code> lists <code>src</code>. A glob or internal URL in <code>path</code>, or an absolute or internal-URL <code>input</code> under a <code>path</code>, is rejected with the spelling that works.</li>
 <li><strong><code>hidden</code> (default <code>true</code>)</strong> includes dotfiles.</li>
 <li><strong><code>gitignore</code> (default <code>true</code>)</strong> respects <code>.gitignore</code> rules; set <code>false</code> to search ignored paths.</li>
 <li><strong><code>limit</code> (default <code>200</code>, max <code>200</code>)</strong> bounds returned paths; output is sorted by <code>mtime</code> descending and grouped under <code># &lt;dir&gt;/</code> directory headers.</li>

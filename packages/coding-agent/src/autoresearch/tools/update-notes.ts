@@ -54,7 +54,6 @@ export function createUpdateNotesTool(
 				runtime.state = buildExperimentState(refreshed, loggedRuns);
 			}
 			options.dashboard.update(ctx, runtime);
-			options.dashboard.requestRender();
 
 			return {
 				content: [

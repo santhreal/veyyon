@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f235412c.js";
+            window.path_to_searchindex_js = "../searchindex-0bd7ae1a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b613f6a6.js"></script>
@@ -212,6 +212,13 @@ tool calls, and the final assistant message.</p>
 <li>Blob store: <code>~/.veyyon/profiles/default/agent/blobs/&lt;sha256&gt;</code></li>
 </ul>
 <p>Sessions run in-process; there is no separate session daemon.</p>
+<h2 id="input-during-startup"><a class="header" href="#input-during-startup">Input during startup</a></h2>
+<p>Type or paste into the launch composer before session initialization finishes.
+Submitted prompts and slash commands execute in order after initialization, without
+a second Enter. Each submission retains its text and attachments; subsequent typing
+remains in a separate draft.</p>
+<p>Model-selector shortcuts use the configured keybindings during startup. The selectors
+open after initialization and preserve the draft. See <a href="../reference/keybindings-config.html">Keybindings</a>.</p>
 <p>User guide: <a href="../using/sessions.html">Sessions</a>.</p>
 
                     </main>

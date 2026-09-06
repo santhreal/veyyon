@@ -39,6 +39,7 @@ describe("independent offscreen edits preserve committed history", () => {
 		async withFinalization => {
 			const term = new VirtualTerminal(32, 4);
 			const tui = new TUI(term);
+			tui.setScrollbackRebuild(false);
 			let leading = Array.from({ length: 16 }, (_, index) => `leading-${index}`);
 			const following = Array.from({ length: 8 }, (_, index) => `following-${index}`);
 			try {

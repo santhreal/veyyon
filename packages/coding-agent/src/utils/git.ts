@@ -592,6 +592,11 @@ async function writeTempPatch(content: string): Promise<string> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// The repository walk and the worktree resolution moved to `git-head.ts`,
+// beside the rest of the from-files answer: a caller that must not reach this
+// module's process layer imports them there. This module composes them with
+// the subprocess half.
+// ════════════════════════════════════════════════════════════════════════════
 // Internal: Ref resolution
 // ════════════════════════════════════════════════════════════════════════════
 

@@ -1,7 +1,7 @@
 /**
  * Differential oracle: the read tool renderer from origin/main.
  *
- * Source SHA: d0cb967888303de02e573bb8b0f3c5ba6fe66377 (`src/tools/fs/read-render.ts`).
+ * Source SHA: a26096e501ae452fde11e821655dd65c519c9c40 (`src/tools/fs/read-render.ts`).
  * Frozen: never edited to make a test pass.
  *
  * Only the import specifiers are rewritten to the package subpaths this branch publishes.
@@ -22,7 +22,13 @@ import {
 	stripOutputNotice,
 } from "@veyyon/coding-agent/tools/core/output-meta";
 import { isReadableUrlPath, splitInternalUrlSel, splitPathAndSel } from "@veyyon/coding-agent/tools/core/path-utils";
-import { formatBytes, replaceTabs, shortenPath, wrapBrackets } from "@veyyon/coding-agent/tools/core/render-utils";
+import {
+	formatBytes,
+	replaceTabs,
+	shortenEmbeddedPaths,
+	shortenPath,
+	wrapBrackets,
+} from "@veyyon/coding-agent/tools/core/render-utils";
 import {
 	isRawSelector,
 	parseSel,
@@ -144,7 +150,9 @@ export const readToolRenderer = {
 				title += `:${startLine}${endLine ? `-${endLine}` : ""}`;
 			}
 			const header = renderStatusLine({ icon: "error", title }, uiTheme);
-			const errorLines = errorText.split("\n").map(line => uiTheme.fg("error", replaceTabs(line)));
+			const errorLines = errorText
+				.split("\n")
+				.map(line => uiTheme.fg("error", replaceTabs(shortenEmbeddedPaths(line))));
 			const outputBlock = new CachedOutputBlock();
 			return markFramedBlockComponent({
 				render: (width: number) =>
@@ -199,7 +207,9 @@ export const readToolRenderer = {
 				{ icon: suffix ? "warning" : "success", title: "Read", description: `${displayPath}${correction}` },
 				uiTheme,
 			);
-			const detailLines = contentText ? contentText.split("\n").map(line => uiTheme.fg("toolOutput", line)) : [];
+			const detailLines = contentText
+				? contentText.split("\n").map(line => uiTheme.fg("toolOutput", replaceTabs(line)))
+				: [];
 			const lines = [...detailLines, ...warningLines];
 			const outputBlock = new CachedOutputBlock();
 			return markFramedBlockComponent({

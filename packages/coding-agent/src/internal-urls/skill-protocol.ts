@@ -77,8 +77,10 @@ export class SkillProtocolHandler implements ProtocolHandler {
 			}
 			throw error;
 		}
-		// The declared entry file was already parsed by the skill loader and may be a
-		// SKILL.md symlink into a source tree. Other children must remain inside the root.
+		// The declared entry file is what the loader parsed to make this skill exist, so it is
+		// served wherever it really lives: an operator commonly installs a skill as a directory
+		// holding one `SKILL.md` symlink into a source tree. Every other child still has to
+		// resolve inside the root, or a symlink turns the skill into an arbitrary-file reader.
 		if (resolvedTargetPath !== resolvedEntryPath) {
 			ensureWithinRoot(resolvedTargetPath, resolvedBaseDir, "skill");
 		}
