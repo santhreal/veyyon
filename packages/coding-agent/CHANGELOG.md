@@ -19,6 +19,7 @@
 - The dashboard hydrates the session on the branch from the store when the runtime has not loaded it, so its detail pane states the session's goal and runs instead of `(not stated)`.
 - A click on a single-line field places its caret under the pointer in the hook prompt, the login dialog, the MCP add wizard, the history search, the text and config rows of the settings screens, and the setup form; the rollback panel's list takes the pointer through the settings host.
 - `ctx.ui.custom(..., { overlay })` accepts `OverlayOptions` beside `true`, so an extension can place and size its own card over the transcript.
+- The `/agents` card ships as it did in 1.4.0; the flat frame and the roster detail pane added after that release were withdrawn before this one.
 
 ### Fixed
 
