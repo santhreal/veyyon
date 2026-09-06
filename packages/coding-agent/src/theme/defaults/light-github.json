@@ -35,7 +35,7 @@
 		"untrackedColor": "#0969da",
 		"outputColor": "#cf222e",
 		"costColor": "#cf222e",
-		"subagentsColor": "#9a6700"
+		"agentsColor": "#9a6700"
 	},
 	"colors": {
 		"accent": "accent",
@@ -103,7 +103,7 @@
 		"statusLineUntracked": "untrackedColor",
 		"statusLineOutput": "outputColor",
 		"statusLineCost": "costColor",
-		"statusLineSubagents": "subagentsColor",
+		"statusLineAgents": "agentsColor",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

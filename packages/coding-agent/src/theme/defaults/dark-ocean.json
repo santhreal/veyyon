@@ -89,7 +89,7 @@
 		"statusLineUntracked": 87,
 		"statusLineOutput": 204,
 		"statusLineCost": 204,
-		"statusLineSubagents": "coral",
+		"statusLineAgents": "coral",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

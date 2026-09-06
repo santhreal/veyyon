@@ -22,9 +22,9 @@ import { stripAnsi } from "@veyyon/utils/strip-ansi";
  * Two tables, no compiler relationship, so they drift the moment someone adds a
  * setter without adding a descriptor. When this suite was written they had, and
  * seven working flags were invisible in help: `--fork`, `--session`,
- * `--subagent-model`, `--compaction-model`, `--plugin-dir`,
- * `--provider-session-id`, and `--prompt-cache-key`. `--subagent-model` has
- * since been removed, because a model chosen once for every subagent is exactly
+ * `--agent-model`, `--compaction-model`, `--plugin-dir`,
+ * `--provider-session-id`, and `--prompt-cache-key`. `--agent-model` has
+ * since been removed, because a model chosen once for every agent is exactly
  * the cross-agent control this product no longer has; the other six are asserted
  * below. An undocumented flag is not
  * a cosmetic problem. Nobody can use a capability they cannot discover, and

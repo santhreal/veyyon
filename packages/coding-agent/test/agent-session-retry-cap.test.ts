@@ -46,7 +46,7 @@ function resolveInitialApiKey(
  * state and skipping the long sleep entirely.
  *
  * Without this defense, an Anthropic `429 rate_limit_error` with
- * `retry-after-ms=11180000` (≈3 hours) pinned a subagent in the retry
+ * `retry-after-ms=11180000` (≈3 hours) pinned an agent in the retry
  * sleep, leaving the parent task tool stuck on the review phase for hours
  * (see GitHub issue #607).
  */

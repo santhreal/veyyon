@@ -24,7 +24,7 @@ import { getMemoriesDir } from "@veyyon/utils/dirs";
 /**
  * A project's memory root: `<agentDir>/memories/--<encoded cwd>--`.
  *
- * The cwd is part of the path because a worktree is a different project. Subagents running in one see a
+ * The cwd is part of the path because a worktree is a different project. Agents running in one see a
  * different root from the main session, which is why the memory protocol takes a snapshot per registered
  * session rather than assuming one root per process.
  */

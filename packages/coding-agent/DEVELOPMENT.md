@@ -93,7 +93,7 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 | `tools/` | Built-in tool implementations, grouped one directory per domain: `core/` is the shared plumbing every domain reads, then `fs/`, `search/`, `shell/`, `web/` and `agent/`. Each domain declares a `manifest.ts` (lazy tool factories, no terminal import) and a `renderers.ts` (its TUI renderers); `index.ts` and `renderers.ts` at the root compose them | [custom-tools.md](../../docs/handbook/src/using/custom-tools.md), [`tools/`](../../docs/tools/) |
 | `exec/`, `eval/`, `ssh/`, `debug/` | Execution backends (shell, py/js kernels, ssh, debugger; `debug/dap/` is the adapter protocol) | [bash-tool-runtime.md](../../docs/internal/bash-tool-runtime.md), [python-repl.md](../../docs/handbook/src/features/python-repl.md) |
 | `lsp/` | Language-server client/runtime | [lsp-config.md](../../docs/handbook/src/features/lsp.md), [tools/lsp.md](../../docs/tools/lsp.md) |
-| `task/`, `goals/`, `plan-mode/` | Subagent delegation, parallelism, inter-agent IRC (`task/irc-bus.ts`), plan mode | [task-agent-discovery.md](../../docs/internal/task-agent-discovery.md), [tools/task.md](../../docs/tools/task.md) |
+| `task/`, `goals/`, `plan-mode/` | Agent delegation, parallelism, inter-agent IRC (`task/irc-bus.ts`), plan mode | [task-agent-discovery.md](../../docs/internal/task-agent-discovery.md), [tools/task.md](../../docs/tools/task.md) |
 | `exa/` | Exa MCP researcher and websets tools. Fetch, browser automation and search providers live under `tools/web/`. Site scrapers are `@veyyon/web` and run against a `ScrapeServices` object `tools/web/scrape-services.ts` builds | [tools/web_search.md](../../docs/tools/web_search.md), [tools/browser.md](../../docs/tools/browser.md) |
 | `mcp/` | MCP transport / manager / loader / tool bridge | [mcp-config.md](../../docs/handbook/src/reference/mcp-config.md), [mcp-runtime-lifecycle.md](../../docs/internal/mcp-runtime-lifecycle.md) |
 | `extensibility/`, `slash-commands/` | Extensions, hooks, custom tools/commands, skills, and host shims (loader and registry live in `@veyyon/kernel`) | [extensions.md](../../docs/handbook/src/features/extensions.md), [hooks.md](../../docs/handbook/src/reference/hooks.md), [skills.md](../../docs/handbook/src/reference/skills.md) |
@@ -203,7 +203,7 @@ Center dashboard's.
 - [tools/ssh.md](../../docs/tools/ssh.md)
 - [tools/debug.md](../../docs/tools/debug.md), [tools/lsp.md](../../docs/tools/lsp.md), [lsp-config.md](../../docs/handbook/src/features/lsp.md)
 
-### Task delegation and subagents
+### Task delegation and agents
 - [task-agent-discovery.md](../../docs/internal/task-agent-discovery.md), [tools/task.md](../../docs/tools/task.md)
 - [collab.md](../../docs/handbook/src/features/collab.md), [tools/irc.md](../../docs/tools/irc.md)
 

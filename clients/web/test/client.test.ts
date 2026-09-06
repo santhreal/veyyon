@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "bun:test";
 import type {
+	AgentProgressPayload,
 	AgentSnapshot,
 	GuestFrame,
 	HostFrame,
 	SessionState,
-	SubagentProgressPayload,
 	WireAssistantMessage,
 	WireMessage,
 	WireSessionEntry,
@@ -200,7 +200,7 @@ describe("GuestClient frame apply", () => {
 
 	it("bus progress frames update the progress map", () => {
 		const client = liveClient();
-		const payload: SubagentProgressPayload = {
+		const payload: AgentProgressPayload = {
 			index: 0,
 			agent: "task",
 			task: "do things",
@@ -219,7 +219,7 @@ describe("GuestClient frame apply", () => {
 				durationMs: 1000,
 			},
 		};
-		client.applyFrameForTest({ t: "bus", channel: "task:subagent:progress", data: payload });
+		client.applyFrameForTest({ t: "bus", channel: "task:agent:progress", data: payload });
 		expect(client.getSnapshot().progress.get("Sub1")).toEqual(payload);
 	});
 

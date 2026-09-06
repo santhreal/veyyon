@@ -390,7 +390,7 @@ export async function loadProjectContextFilesWithWarnings(
 	//
 	// This used to rank global FIRST, which is the WEAKEST recency position, putting every
 	// project file above it. The operator hit the consequence: a repository's AGENTS.md saying
-	// "do not use subagents for this repository" was obeyed over their own global rules AND over
+	// "do not use agents for this repository" was obeyed over their own global rules AND over
 	// a live instruction to use them. The prose in `prompts/session/context-file-authority.md`
 	// ranked global highest while this sort put it lowest, and position won.
 	//
@@ -523,7 +523,7 @@ export interface BuildSystemPromptOptions extends Partial<GateInputs> {
 	 *
 	 * So `contextFiles: someArray` at a call site is never harmless data passing. Handing this a
 	 * list that a filter reduced to `[]` disables every scope the operator wrote, which is how
-	 * three spawn sites silently stripped every `AGENTS.md` from every subagent. A caller that
+	 * three spawn sites silently stripped every `AGENTS.md` from every agent. A caller that
 	 * cannot resolve its own list passes `undefined`, never `[]`; see
 	 * `task/context-inheritance.ts`, which returns `undefined` for exactly this reason. Taking the
 	 * empty branch is logged, so an accidental `[]` is visible in the operator's log instead of
@@ -721,7 +721,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		taskBatch = OMITTED_GATE_DEFAULTS.taskBatch,
 		taskMaxConcurrency = OMITTED_GATE_DEFAULTS.taskMaxConcurrency,
 		taskIrcEnabled = OMITTED_GATE_DEFAULTS.taskIrcEnabled,
-		subagentNames = OMITTED_GATE_DEFAULTS.subagentNames,
+		agentNames = OMITTED_GATE_DEFAULTS.agentNames,
 		secretsEnabled = false,
 		// `argotPreamble`, `argotHandles` and `secretInventory` are deliberately NOT
 		// destructured here. They are option-backed runtime sections, so the assembler
@@ -1035,17 +1035,17 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		taskBatch,
 		MAX_CONCURRENCY: normalizeConcurrencyLimit(taskMaxConcurrency),
 		taskIrcEnabled,
-		subagentNames,
+		agentNames,
 		// Whether ANYTHING can be spawned, which gates the delegation guidance as a whole.
 		//
-		// The task tool is built whenever `subagent.enabled` is on, and it stays built with every agent
+		// The task tool is built whenever `agent.enabled` is on, and it stays built with every agent
 		// row disabled ON PURPOSE, because an ephemeral `/` command that names an agent is the operator
 		// asking directly and is granted per turn. The model-facing PROSE is a different matter: with
 		// nothing the model may choose, "fan the work out" is an instruction it can only fail, and the
 		// agent-typing bullet interpolated an empty list and read "Only one agent type is enabled here
 		// (``)" while telling the model to delegate for parallelism. `resolveDelegation` has always
 		// computed this state and named it `blockedBy: "no-enabled-agents"`; nothing consumed it.
-		hasSpawnableSubagent: subagentNames.length > 0,
+		hasSpawnableAgent: agentNames.length > 0,
 		secretsEnabled,
 		hasMemoryRoot: memoryRootEnabled,
 		hasObsidian: hasObsidian(),

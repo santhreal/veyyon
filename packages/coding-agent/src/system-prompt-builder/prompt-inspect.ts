@@ -74,9 +74,9 @@ export interface InspectedSection {
  * The half an inspection could not report. `sections` answers "what is in this
  * prompt", which cannot distinguish a feature being off from assembly having
  * broken — and the system prompt is the one where that matters most, since half
- * its rules are conditional. The subagent prompt has had
+ * its rules are conditional. The agent prompt has had
  * this distinction since its registry was written (`veyyon prompt --prompt
- * subagent` marks each section optional or always); the system prompt, the larger
+ * agent` marks each section optional or always); the system prompt, the larger
  * and far more conditional of the two, did not.
  */
 export interface MissingSection {

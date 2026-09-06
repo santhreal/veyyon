@@ -98,14 +98,14 @@ describe("task.batch schema gating", () => {
 	it("swaps between the flat and batch wire shapes", async () => {
 		mockDiscovery();
 
-		const off = await TaskTool.create(createSession({ settings: { "subagent.batch": false } }));
+		const off = await TaskTool.create(createSession({ settings: { "agent.batch": false } }));
 		const offProperties = getSchemaProperties(off);
 		expect(offProperties.tasks).toBeUndefined();
 		expect(offProperties.context).toBeUndefined();
 		expect(offProperties.task).toBeDefined();
 		expect(offProperties.name).toBeDefined();
 
-		const on = await TaskTool.create(createSession({ settings: { "subagent.batch": true } }));
+		const on = await TaskTool.create(createSession({ settings: { "agent.batch": true } }));
 		const onProperties = getSchemaProperties(on);
 		expect(onProperties.tasks).toBeDefined();
 		expect(onProperties.context).toBeDefined();
@@ -124,7 +124,7 @@ describe("task.batch schema gating", () => {
 		mockDiscovery();
 
 		const tool = await TaskTool.create(
-			createSession({ settings: { "subagent.batch": true, "subagent.isolation.mode": "auto" } }),
+			createSession({ settings: { "agent.batch": true, "agent.isolation.mode": "auto" } }),
 		);
 		const properties = getSchemaProperties(tool);
 		expect(properties.isolated).toBeUndefined();
@@ -135,7 +135,7 @@ describe("task.batch schema gating", () => {
 	it("never exposes a per-call schema input", async () => {
 		mockDiscovery();
 
-		for (const settings of [{ "subagent.batch": false }, { "subagent.batch": true }]) {
+		for (const settings of [{ "agent.batch": false }, { "agent.batch": true }]) {
 			const tool = await TaskTool.create(createSession({ settings }));
 			expect(getSchemaProperties(tool).schema).toBeUndefined();
 		}
@@ -158,14 +158,14 @@ describe("task.batch validation", () => {
 		for (const batch of [false, true]) {
 			const text = await executeText(
 				{ agent: "task", task: "Work.", schema: '{"properties":{}}' },
-				{ "subagent.batch": batch },
+				{ "agent.batch": batch },
 			);
 			expect(text).toContain("does not accept `schema`");
 		}
 	});
 
 	it("rejects tasks and context while task.batch is disabled", async () => {
-		const disabled = { "subagent.batch": false };
+		const disabled = { "agent.batch": false };
 		const text = await executeText({ agent: "task", tasks: [{ task: "Work." }] }, disabled);
 		expect(text).toContain("task.batch is disabled");
 
@@ -174,20 +174,20 @@ describe("task.batch validation", () => {
 	});
 
 	it("rejects top-level task in the batch shape", async () => {
-		const text = await executeText({ task: "Work.", tasks: [{ task: "Other." }] }, { "subagent.batch": true });
+		const text = await executeText({ task: "Work.", tasks: [{ task: "Other." }] }, { "agent.batch": true });
 		expect(text).toContain("not part of the batch shape");
 	});
 
 	it("rejects empty task arrays and items without tasks", async () => {
-		const empty = await executeText({ tasks: [] }, { "subagent.batch": true });
+		const empty = await executeText({ tasks: [] }, { "agent.batch": true });
 		expect(empty).toContain("Missing `tasks`");
 
-		const missing = await executeText({ tasks: [{ task: "Work." }, { name: "Beta" }] }, { "subagent.batch": true });
+		const missing = await executeText({ tasks: [{ task: "Work." }, { name: "Beta" }] }, { "agent.batch": true });
 		expect(missing).toContain("Task 2 (`Beta`) is missing `task`");
 	});
 
 	it("requires a shared context for batch calls", async () => {
-		const text = await executeText({ tasks: [{ task: "Work." }] }, { "subagent.batch": true });
+		const text = await executeText({ tasks: [{ task: "Work." }] }, { "agent.batch": true });
 		expect(text).toContain("Missing `context`");
 	});
 
@@ -199,7 +199,7 @@ describe("task.batch validation", () => {
 					{ name: "anna", task: "B." },
 				],
 			},
-			{ "subagent.batch": true },
+			{ "agent.batch": true },
 		);
 		expect(text).toContain("Duplicate task name");
 	});
@@ -243,7 +243,7 @@ describe("task.batch spawning", () => {
 
 		const manager = createManager();
 		const tool = await TaskTool.create(
-			createSession({ manager, agentId: "ParentA", settings: { "async.enabled": true, "subagent.batch": true } }),
+			createSession({ manager, agentId: "ParentA", settings: { "async.enabled": true, "agent.batch": true } }),
 		);
 
 		const result = await tool.execute("tc-batch", {
@@ -293,7 +293,7 @@ describe("task.batch spawning", () => {
 
 		const manager = createManager();
 		const tool = await TaskTool.create(
-			createSession({ manager, settings: { "async.enabled": true, "subagent.batch": true } }),
+			createSession({ manager, settings: { "async.enabled": true, "agent.batch": true } }),
 		);
 
 		const result = await tool.execute("tc-single", {
@@ -316,7 +316,7 @@ describe("task.batch spawning", () => {
 
 		const manager = createManager();
 		const tool = await TaskTool.create(
-			createSession({ manager, settings: { "async.enabled": true, "subagent.batch": true } }),
+			createSession({ manager, settings: { "async.enabled": true, "agent.batch": true } }),
 		);
 
 		const result = await tool.execute("tc-flat", {
@@ -341,7 +341,7 @@ describe("task.batch spawning", () => {
 
 		const manager = createManager();
 		const tool = await TaskTool.create(
-			createSession({ manager, settings: { "async.enabled": false, "subagent.batch": true } }),
+			createSession({ manager, settings: { "async.enabled": false, "agent.batch": true } }),
 		);
 
 		const result = await tool.execute("tc-sync-batch", {
@@ -380,7 +380,7 @@ describe("task.batch spawning", () => {
 		const tool = await TaskTool.create(
 			createSession({
 				manager,
-				settings: { "async.enabled": true, "subagent.batch": true, "subagent.maxConcurrency": 1 },
+				settings: { "async.enabled": true, "agent.batch": true, "agent.maxConcurrency": 1 },
 			}),
 		);
 

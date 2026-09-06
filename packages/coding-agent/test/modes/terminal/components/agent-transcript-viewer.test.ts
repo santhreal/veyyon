@@ -1,5 +1,5 @@
 /**
- * The read-only transcript drill-in: the fallback the subagent dashboard opens
+ * The read-only transcript drill-in: the fallback the agent dashboard opens
  * for the two agents it cannot hand the main view over to, an advisor transcript
  * and a collab guest whose sessions live on the host.
  *

@@ -247,7 +247,7 @@ describe("AgentLifecycleManager", () => {
 			model: "anthropic/claude-sonnet-4-5",
 		});
 		let factoryCalls = 0;
-		lifecycle.setPersistedSubagentReviverFactory(
+		lifecycle.setPersistedAgentReviverFactory(
 			async () => {
 				factoryCalls++;
 				return async () => revived.session;
@@ -277,7 +277,7 @@ describe("AgentLifecycleManager", () => {
 	 *
 	 * It used to be cold-adopted with both prune budgets hardcoded to zero, so an agent
 	 * restored from disk and woken once parked on its idle TTL and then stayed listed for
-	 * the rest of the session whatever `subagent.prune.*` said. Resume a session,
+	 * the rest of the session whatever `agent.prune.*` said. Resume a session,
 	 * message a few old agents, and the roster grew monotonically, which is the one thing
 	 * the prune stage exists to prevent. Locks the budgets travelling through the same
 	 * injected seam as the idle TTL.
@@ -293,7 +293,7 @@ describe("AgentLifecycleManager", () => {
 			sessionFile: "/tmp/Cold-Prunes.jsonl",
 			status: "parked",
 		});
-		lifecycle.setPersistedSubagentReviverFactory(async () => async () => revived.session, TTL, {
+		lifecycle.setPersistedAgentReviverFactory(async () => async () => revived.session, TTL, {
 			afterMs: TTL * 3,
 			waitingAfterMs: TTL * 3,
 		});
@@ -333,7 +333,7 @@ describe("AgentLifecycleManager", () => {
 			sessionFile: "/tmp/Cold-Waits.jsonl",
 			status: "parked",
 		});
-		lifecycle.setPersistedSubagentReviverFactory(async () => async () => revived.session, TTL, {
+		lifecycle.setPersistedAgentReviverFactory(async () => async () => revived.session, TTL, {
 			afterMs: TTL * 2,
 			waitingAfterMs: TTL * 6,
 		});
@@ -374,7 +374,7 @@ describe("AgentLifecycleManager", () => {
 			sessionFile: "/tmp/Cold-Stays.jsonl",
 			status: "parked",
 		});
-		lifecycle.setPersistedSubagentReviverFactory(async () => async () => revived.session, TTL);
+		lifecycle.setPersistedAgentReviverFactory(async () => async () => revived.session, TTL);
 
 		await lifecycle.ensureLive("Cold-Stays");
 		vi.advanceTimersByTime(TTL);
@@ -395,7 +395,7 @@ describe("AgentLifecycleManager", () => {
 			sessionFile: "/tmp/7-Sub.jsonl",
 			status: "parked",
 		});
-		lifecycle.setPersistedSubagentReviverFactory(async () => undefined, TTL);
+		lifecycle.setPersistedAgentReviverFactory(async () => undefined, TTL);
 
 		await expect(lifecycle.ensureLive("7-Sub")).rejects.toThrow(/cannot be revived.*no reviver registered/);
 	});
@@ -411,7 +411,7 @@ describe("AgentLifecycleManager", () => {
 			status: "parked",
 		});
 		let factoryCalls = 0;
-		lifecycle.setPersistedSubagentReviverFactory(async () => {
+		lifecycle.setPersistedAgentReviverFactory(async () => {
 			factoryCalls++;
 			const failFirst = factoryCalls === 1;
 			return async () => {
@@ -530,7 +530,7 @@ describe("AgentLifecycleManager", () => {
 			status: "parked",
 		});
 		let factoryCalls = 0;
-		lifecycle.setPersistedSubagentReviverFactory(async () => {
+		lifecycle.setPersistedAgentReviverFactory(async () => {
 			factoryCalls++;
 			if (factoryCalls === 1) await gate.promise;
 			return async () => revived.session;

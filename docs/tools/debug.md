@@ -235,7 +235,7 @@ Example `.veyyon/dap.json`:
 ## Side Effects
 - Filesystem
   - Resolves program/file/cwd paths against the session cwd.
-  - Report creation writes `.tar.gz` bundles and may read the session JSONL, artifact files, subagent session JSONLs, and log files.
+  - Report creation writes `.tar.gz` bundles and may read the session JSONL, artifact files, agent session JSONLs, and log files.
   - Work-profile export writes `/tmp/work-profile-<timestamp>.svg`.
   - Log source reads daily log files from the logs dir.
   - Artifact-cache cleanup removes session artifact directories older than the cutoff.
@@ -284,7 +284,7 @@ Example `.veyyon/dap.json`:
   - `MAX_LOG_LINES = 5000` for interactive log reading
   - `MAX_BUNDLED_LOG_TAIL_BYTES = 2 * 1024 * 1024` tail-read ceiling
   - report bundles include only the last `1000` log lines
-  - subagent session inclusion is capped at the most recent `10` JSONL files
+  - agent session inclusion is capped at the most recent `10` JSONL files
 - Interactive profiling windows in `packages/coding-agent/src/debug/index.ts`: both performance and work reports request `getWorkProfile(30)`.
 - Artifact cache pruning default: `30` days in `clearArtifactCache()` and the selector confirmation text.
 
@@ -316,7 +316,7 @@ Example `.veyyon/dap.json`:
   - profiler start/stop, report bundling, log reading, system-info collection, cache clearing, and artifact opening use `ctx.showError(...)` / `ctx.showWarning(...)`
   - empty logs and empty artifact caches are warnings/status messages, not failures
   - copy failures in log/raw-SSE viewers become status/error text in the UI
-- Report-bundle helpers are intentionally best-effort for many file reads: missing session files, missing artifact dirs, unreadable artifact files, missing log dirs, inaccessible cache dirs, and missing subagent files are skipped silently.
+- Report-bundle helpers are intentionally best-effort for many file reads: missing session files, missing artifact dirs, unreadable artifact files, missing log dirs, inaccessible cache dirs, and missing agent files are skipped silently.
 - `collectSystemInfo()` is best-effort for CPU probing; failure there falls back to `Unknown CPU`.
 
 ## Notes

@@ -9,7 +9,7 @@
  *      against the budget left by the widest right group, and a `locationShortened` latch then
  *      stopped it being fitted again. Two parts of that group were shed afterwards -- the session
  *      name and the context gauge -- and the cells they freed went nowhere. The row showed a
- *      model, a mode and a subagent count, and nothing at all about where the session was.
+ *      model, a mode and an agent count, and nothing at all about where the session was.
  *   2. What was left rendered against the LEFT margin. The right group was placed at
  *      `budget - width(right)` only when a location survived to be placed beside; with the zone
  *      empty the offset was zero and the state chips sat in the far left corner of a wide row.
@@ -27,7 +27,7 @@
  *     narrowest zone this same sweep painted, and the blanking is the narrow END of the row
  *     rather than a band in the middle of it. A latch anywhere in either ladder leaves cells in
  *     front of the group and fails all three.
- *   - The running-subagent count is NOT among what the floor may spend -- it is the part the row
+ *   - The running-agent count is NOT among what the floor may spend -- it is the part the row
  *     sheds last of everything -- so at six and seven columns the whole row is the count and no
  *     zone is possible there. That band is the only place a blank zone is right, and the three
  *     bounds above are what confine it to it.
@@ -120,7 +120,7 @@ function footlineEndingOnAMode(): StatusLineComponent {
 
 /**
  * A row that runs out of spendable parts BEFORE the fit ladder is done shedding. `compact` puts
- * the model and the mode in the right group and has no subagent count, so by the time the
+ * the model and the mode in the right group and has no agent count, so by the time the
  * ranking gets to the model chip the gauge and the session name are already gone and the floor
  * ladder has nothing left to sell. The cells the chip frees reach the zone only if the fit
  * ladder hands them over itself, which is the case the reported defect was a symptom of: the
@@ -341,7 +341,7 @@ describe("a narrow footline spends a readout before it blanks the location", () 
 		expect(offenders).toEqual([]);
 		// Every row has to have been under the clip, or it proved nothing. The three presets put
 		// different tails on the right group -- `compact` ends on the model chip and a mode,
-		// `minimal` on a mode, `default` on a subagent count -- so between them the sweep covers
+		// `minimal` on a mode, `default` on an agent count -- so between them the sweep covers
 		// a row the floor ladder can pay for and rows where it has nothing to sell.
 		expect(clipped.sort()).toEqual(["compact", "default", "minimal"]);
 	});

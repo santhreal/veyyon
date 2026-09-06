@@ -30,7 +30,7 @@ each is for. An id is the file's path under that directory without the `.md`, so
 Then look at one:
 
 ```
-veyyon prompt --prompt subagent/system-prompt
+veyyon prompt --prompt agent/system-prompt
 ```
 
 The lookup spans every registry, so an id from any of them works without specifying its package.
@@ -75,7 +75,7 @@ and the command still exits 0, because a rule being off is a configuration and n
 that does not exist exits non-zero and quotes the ids of the section you named.
 
 Both read your real configuration. The settings the prompt is gated on -- your personality, whether
-subagent delegation is preferred or required, whether Mermaid diagrams are rendered, which tool
+agent delegation is preferred or required, whether Mermaid diagrams are rendered, which tool
 dialect applies -- are resolved from your profile `config.yml` before the prompt is
 assembled, so what you see is what a session would send. Change a setting, run it
 again, and the difference is visible.

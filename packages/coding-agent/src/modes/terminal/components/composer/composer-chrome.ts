@@ -24,11 +24,11 @@ import { branchLabelFromFiles } from "../../../../utils/git-head";
 import { EMBER } from "../chrome/sun";
 import { type LocationContext, resolveLocationContext } from "../status-line/location-context";
 import {
+	agentBadgeText,
 	composeQuietRow,
 	effectiveStatusLineSettings,
 	gatherQuietSegments,
 	statusLineSettingsFromConfig,
-	subagentBadgeText,
 } from "../status-line/quiet-row";
 import { launchSegmentContext } from "../status-line/session-facts";
 
@@ -49,8 +49,8 @@ export interface ComposerAccentState {
 	pythonMode: boolean;
 	/** Plan mode, active (enabled and not paused). */
 	planMode: boolean;
-	/** A focused subagent view borrows the composer; its chrome dims. */
-	focusedSubagent: boolean;
+	/** A focused agent view borrows the composer; its chrome dims. */
+	focusedAgent: boolean;
 	/** The named-session identity accent, already resolved (or undefined when
 	 * the accent is disabled or the session is unnamed). */
 	sessionAccentAnsi: string | undefined;
@@ -90,8 +90,8 @@ export function resolveComposerAccents(state: ComposerAccentState): ComposerAcce
 	} else {
 		borderColor = theme.getThinkingBorderColor(state.thinkingLevel);
 	}
-	if (state.focusedSubagent) {
-		// Focused subagent view: faint the outline so the borrowed session is
+	if (state.focusedAgent) {
+		// Focused agent view: faint the outline so the borrowed session is
 		// visually distinct from the main one.
 		const base = borderColor;
 		borderColor = (str: string) => `\x1b[2m${base(str)}\x1b[22m`;
@@ -113,7 +113,7 @@ export function resolveComposerAccents(state: ComposerAccentState): ComposerAcce
 		const open = state.sessionAccentAnsi ?? theme.getFgAnsi("borderAccent");
 		gutter = `${open}›\x1b[39m`;
 	}
-	if (state.focusedSubagent) gutter = `\x1b[2m${gutter}\x1b[22m`;
+	if (state.focusedAgent) gutter = `\x1b[2m${gutter}\x1b[22m`;
 
 	const inset = " ".repeat(COMPOSER_INSET_COLS);
 	return {
@@ -128,7 +128,7 @@ export function resolveComposerAccents(state: ComposerAccentState): ComposerAcce
 
 /**
  * The accent state of a composer nothing has happened to yet: no approval
- * bypass, no bash or python prefix, no plan mode, no borrowed subagent view,
+ * bypass, no bash or python prefix, no plan mode, no borrowed agent view,
  * no named session and no thinking level. It is what the launch composer
  * resolves its chrome from, and what every field of {@link ComposerAccentState}
  * falls back to before a session exists to answer for it.
@@ -138,7 +138,7 @@ export const PRISTINE_COMPOSER_ACCENT_STATE: ComposerAccentState = {
 	bashMode: false,
 	pythonMode: false,
 	planMode: false,
-	focusedSubagent: false,
+	focusedAgent: false,
 	sessionAccentAnsi: undefined,
 	thinkingLevel: ThinkingLevel.Off,
 };
@@ -525,7 +525,7 @@ export class LaunchComposerFoot implements Component {
 					location,
 				});
 			},
-			subagentBadge: subagentBadgeText(0),
+			agentBadge: agentBadgeText(0),
 			badgeSlot: null,
 		});
 		return (

@@ -78,7 +78,7 @@ describe("shouldAutoloadArgotAtStartup: the startup load happens only with all t
 	});
 
 	/**
-	 * `createArgotSession` returns `undefined` for a subagent set to `off`, so this
+	 * `createArgotSession` returns `undefined` for an agent set to `off`, so this
 	 * is a real state a running session reaches with the feature enabled. There is
 	 * no codec to load a dictionary into, and asking for one would be a crash.
 	 */
@@ -149,7 +149,7 @@ describe("argot.autoload changes when a dictionary is built, and nothing else", 
 	 * silently mean "off" and the second knob would be redundant.
 	 */
 	it("leaves the codec built, so the agent can still load a project itself", () => {
-		const session = createArgotSession({ enabled: true, isSubagent: false, subagentMode: "off" });
+		const session = createArgotSession({ enabled: true, isSpawned: false, agentMode: "off" });
 		expect(session).toBeDefined();
 		expect(session?.loaded).toBe(false);
 		expect(shouldAutoloadArgotAtStartup({ enabled: true, autoload: false, argot: session })).toBe(false);

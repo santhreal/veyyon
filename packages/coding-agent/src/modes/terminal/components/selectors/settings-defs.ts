@@ -89,7 +89,7 @@ export interface ProviderLimitsSettingDef extends BaseSettingDef {
 	type: "providerLimits";
 }
 
-/** Searchable model picker (auth badges). Used for subagent/compaction model slots. */
+/** Searchable model picker (auth badges). Used for agent/compaction model slots. */
 export interface ModelSelectorSettingDef extends BaseSettingDef {
 	type: "modelSelector";
 }
@@ -100,17 +100,17 @@ export interface ModelRolesSettingDef extends BaseSettingDef {
 }
 
 /**
- * The `subagent.agents` table: one row per discovered agent, each carrying
+ * The `agent.agents` table: one row per discovered agent, each carrying
  * whether it is offered, its model, and its effort.
  *
  * A dedicated type rather than the generic record-as-text control because the
  * keys are not free-form — they are the agents this project actually has, and an
  * operator editing JSON by hand cannot see which names exist or what a blank
- * model resolves to. The editor reads `task/subagent-settings.ts` for both, so
+ * model resolves to. The editor reads `task/agent-settings.ts` for both, so
  * the settings tab and `/agents` cannot disagree about precedence.
  */
-export interface SubagentAgentsSettingDef extends BaseSettingDef {
-	type: "subagentAgents";
+export interface AgentsSettingDef extends BaseSettingDef {
+	type: "agents";
 }
 
 /**
@@ -123,22 +123,22 @@ export interface DefaultEffortSettingDef extends BaseSettingDef {
 }
 
 /**
- * `subagent.thinkingLevel`: the effort every agent runs at while the roster is
+ * `agent.thinkingLevel`: the effort every agent runs at while the roster is
  * on shared scope.
  *
  * A dedicated type rather than the generic text control because the levels a
  * model accepts are not free-form, and a stored level no endpoint declares is
  * clamped away at dispatch and reads as the picker having done nothing. The
- * ladder narrows against `subagent.model`, which is the model those agents
+ * ladder narrows against `agent.model`, which is the model those agents
  * actually run, so the row and the spawn cannot disagree.
  */
-export interface SubagentSharedEffortSettingDef extends BaseSettingDef {
-	type: "subagentSharedEffort";
+export interface AgentSharedEffortSettingDef extends BaseSettingDef {
+	type: "agentSharedEffort";
 }
 
 /**
  * The profile's DEFAULT model — the model each new session starts on. Rendered
- * with the same searchable model+effort picker as the role/subagent slots, but
+ * with the same searchable model+effort picker as the role/agent slots, but
  * backed by the `default` model-role slot (the slot the interactive `/model`
  * choice writes to and startup restores from), so it has no schema key of its
  * own and never duplicates that source of truth.
@@ -190,9 +190,9 @@ export type SettingDef =
 	| ProviderLimitsSettingDef
 	| ModelSelectorSettingDef
 	| ModelRolesSettingDef
-	| SubagentAgentsSettingDef
+	| AgentsSettingDef
 	| DefaultEffortSettingDef
-	| SubagentSharedEffortSettingDef
+	| AgentSharedEffortSettingDef
 	| DefaultModelSettingDef
 	| AdvisorModelSettingDef
 	| RulesSettingDef
@@ -272,19 +272,19 @@ const CONDITIONS: Record<string, () => boolean> = {
 	cacheRejectionReported: () => whenSettingsSay(() => Settings.instance.get("cache.reportRejection") === true),
 	// Both close budgets are meaningless while nothing closes, and a visible timer
 	// that does not run reads as a bug in the feature rather than an off switch.
-	subagentPruneEnabled: () => whenSettingsSay(() => Settings.instance.get("subagent.prune.enabled") === true),
+	agentPruneEnabled: () => whenSettingsSay(() => Settings.instance.get("agent.prune.enabled") === true),
 	// The blanket model and effort exist only while the roster is on one scope.
 	// Shown while the switch is off they are two rows that decide nothing, which
 	// is exactly how the retired version of this switch confused people.
-	subagentSharedModel: () => whenSettingsSay(() => Settings.instance.get("subagent.sharedModel") === true),
+	agentSharedModel: () => whenSettingsSay(() => Settings.instance.get("agent.sharedModel") === true),
 	// Isolation ships off, and the merge strategy and commit style only describe
 	// how an isolated run's changes come back. Shown while no backend is selected
 	// they are two choices with no case where either applies.
-	subagentIsolationEnabled: () => whenSettingsSay(() => Settings.instance.get("subagent.isolation.mode") !== "none"),
+	agentIsolationEnabled: () => whenSettingsSay(() => Settings.instance.get("agent.isolation.mode") !== "none"),
 	// The wrap-up notice announces crossing a budget; with the guard at 0 there is
 	// no crossing, so the row would be a switch over nothing.
-	subagentSoftRequestBudgetEnabled: () =>
-		whenSettingsSay(() => (Settings.instance.get("subagent.softRequestBudget") ?? 0) > 0),
+	agentSoftRequestBudgetEnabled: () =>
+		whenSettingsSay(() => (Settings.instance.get("agent.softRequestBudget") ?? 0) > 0),
 	bashAutoBackgroundEnabled: () =>
 		whenSettingsSay(() => Settings.instance.get("bash.autoBackground.enabled") === true),
 	bashStallDetectionEnabled: () =>
@@ -458,7 +458,7 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 	}
 
 	if (schemaType === "string") {
-		if (path === "subagent.thinkingLevel") return { ...base, type: "subagentSharedEffort" };
+		if (path === "agent.thinkingLevel") return { ...base, type: "agentSharedEffort" };
 		if (path === "compaction.threshold") {
 			return { ...base, type: "compactionThreshold", options: options && options !== "runtime" ? options : [] };
 		}
@@ -475,7 +475,7 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 	if (schemaType === "record") {
 		if (path === "providers.maxInFlightRequests") return { ...base, type: "providerLimits" };
 		if (path === "modelRoles") return { ...base, type: "modelRoles" };
-		if (path === "subagent.agents") return { ...base, type: "subagentAgents" };
+		if (path === "agent.agents") return { ...base, type: "agents" };
 		if (path === "defaultEffort") return { ...base, type: "defaultEffort" };
 		return { ...base, type: "text" };
 	}

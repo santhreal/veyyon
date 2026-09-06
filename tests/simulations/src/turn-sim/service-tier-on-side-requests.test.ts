@@ -61,7 +61,7 @@
  *     which may inherit the session's) through the advisor agent's own resolver,
  *     and the branch summary of a tree navigation resolves the session's. Both
  *     sites now pass it; neither is reachable from this shape.
- *   - `tier.subagent` applies to spawned subagents, which run out of process and
+ *   - `tier.agent` applies to spawned agents, which run out of process and
  *     are not simulated.
  */
 import { afterEach, describe, expect, it } from "bun:test";

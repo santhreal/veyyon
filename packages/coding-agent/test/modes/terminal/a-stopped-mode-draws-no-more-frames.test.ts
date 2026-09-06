@@ -1,13 +1,13 @@
 /**
  * A stopped interactive mode runs no more anchored frames.
  *
- * WHY THIS SUITE EXISTS. The anchored HUD (the todo board and the subagent lane block) steps on
+ * WHY THIS SUITE EXISTS. The anchored HUD (the todo board and the agent lane block) steps on
  * one `setInterval`, and that interval was `unref()`ed, which was mistaken for cleanup. `unref`
  * only says the timer will not hold the process open; it goes on firing for as long as the loop
  * runs. Nothing disarmed it on teardown, so a mode that had been stopped kept stepping, kept
  * rendering, and kept reading the settings singleton — inside one `bun test` process that is a
  * mode from a finished FILE painting into the next one, and the symptom was
- * `Settings not initialized. Call Settings.init() first.` thrown from `#renderSubagentList` and
+ * `Settings not initialized. Call Settings.init() first.` thrown from `#renderAgentList` and
  * attributed to whichever unrelated suite happened to be running when the frame landed.
  *
  * THE CLASS THIS CLOSES is "a chrome animation outlives the surface it animates". Two ways in,

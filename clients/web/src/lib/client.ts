@@ -9,13 +9,13 @@
  */
 
 import type {
+	AgentLifecyclePayload,
+	AgentProgressPayload,
 	AgentSnapshot,
 	CollabUiRequest,
 	CollabUiResponseValue,
 	HostFrame,
 	SessionState,
-	SubagentLifecyclePayload,
-	SubagentProgressPayload,
 	WireAssistantMessage,
 	WireSessionEntry,
 	WireSessionHeader,
@@ -51,9 +51,9 @@ export interface GuestSnapshot {
 	state: SessionState | null;
 	agents: readonly AgentSnapshot[];
 	/** Keyed by `payload.progress.id`. */
-	progress: ReadonlyMap<string, SubagentProgressPayload>;
+	progress: ReadonlyMap<string, AgentProgressPayload>;
 	/** Keyed by `payload.id`. */
-	lifecycle: ReadonlyMap<string, SubagentLifecyclePayload>;
+	lifecycle: ReadonlyMap<string, AgentLifecyclePayload>;
 	/** Streaming assistant ghost; held until the matching entry lands. */
 	stream: WireAssistantMessage | null;
 	streamDone: boolean;
@@ -108,8 +108,8 @@ export class GuestClient {
 	#entries: readonly WireSessionEntry[] = [];
 	#state: SessionState | null = null;
 	#agents: readonly AgentSnapshot[] = [];
-	#progress: ReadonlyMap<string, SubagentProgressPayload> = new Map();
-	#lifecycle: ReadonlyMap<string, SubagentLifecyclePayload> = new Map();
+	#progress: ReadonlyMap<string, AgentProgressPayload> = new Map();
+	#lifecycle: ReadonlyMap<string, AgentLifecyclePayload> = new Map();
 	#stream: WireAssistantMessage | null = null;
 	#streamDone = false;
 	#activeTools: ReadonlyMap<string, ActiveTool> = new Map();
@@ -190,7 +190,7 @@ export class GuestClient {
 	}
 
 	/**
-	 * Incremental subagent-transcript read. Resolves a {@link TranscriptResult}
+	 * Incremental agent-transcript read. Resolves a {@link TranscriptResult}
 	 * (`rows` or terminal `error`), or `null` on transient failure (10s timeout,
 	 * session end) where re-polling from the same cursor is correct.
 	 */
@@ -346,11 +346,11 @@ export class GuestClient {
 				this.#agents = frame.agents.slice();
 				break;
 			case "bus":
-				if (frame.channel === "task:subagent:progress") {
-					const payload = frame.data as SubagentProgressPayload;
+				if (frame.channel === "task:agent:progress") {
+					const payload = frame.data as AgentProgressPayload;
 					this.#progress = new Map(this.#progress).set(payload.progress.id, payload);
-				} else if (frame.channel === "task:subagent:lifecycle") {
-					const payload = frame.data as SubagentLifecyclePayload;
+				} else if (frame.channel === "task:agent:lifecycle") {
+					const payload = frame.data as AgentLifecyclePayload;
 					this.#lifecycle = new Map(this.#lifecycle).set(payload.id, payload);
 				}
 				break;

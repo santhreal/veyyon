@@ -35,7 +35,7 @@ Parsing comes from frontmatter via `parseAgentFields()` (`src/discovery/helpers.
 - `spawns` accepts `*`, CSV, or array
 - backward-compat behavior: if `spawns` missing but `tools` includes `task`, `spawns` becomes `*`
 - `output` is passed through as opaque schema data
-- `read-summarize: false` (parsed as `readSummarize`) forces the subagent's `read` tool to return verbatim file content instead of structural summaries: `runSubprocess` applies it as a `read.summarize.enabled: false` override on the subagent's isolated settings (`src/task/executor.ts`). `scout` and `librarian` ship with it disabled. Defaults to enabled when the field is absent.
+- `read-summarize: false` (parsed as `readSummarize`) forces the agent's `read` tool to return verbatim file content instead of structural summaries: `runSubprocess` applies it as a `read.summarize.enabled: false` override on the agent's isolated settings (`src/task/executor.ts`). `scout` and `librarian` ship with it disabled. Defaults to enabled when the field is absent.
 
 ## Bundled agents
 
@@ -46,7 +46,7 @@ Bundled agents are embedded at build time (`src/task/agents.ts`) using text impo
 - `scout`, `designer`, `reviewer`, `librarian` from their own prompt files, frontmatter included
 - `deep` (`agents/deep.md`) and `sonic` (`agents/sonic.md`) from their own prompt bodies plus frontmatter injected in code, because `name`, `description`, `spawns` and `thinkingLevel` are the cost-ladder rungs and are written next to each other rather than in two files
 
-`task` was renamed `deep` (`RETIRED_AGENT_NAMES` in `src/task/spawn-policy.ts`). The old name still resolves through `currentAgentName`, so a `subagent.agents.task` row, a saved transcript, or an SDK caller passing `agent: "task"` keeps working. An alias never shadows a real agent: resolution tries the literal name first, so a hand-written `task.md` still wins.
+`task` was renamed `deep` (`RETIRED_AGENT_NAMES` in `src/task/spawn-policy.ts`). The old name still resolves through `currentAgentName`, so a `agent.agents.task` row, a saved transcript, or an SDK caller passing `agent: "task"` keeps working. An alias never shadows a real agent: resolution tries the literal name first, so a hand-written `task.md` still wins.
 
 Loading path:
 
@@ -62,14 +62,14 @@ Because bundled parsing uses `level: "fatal"`, malformed bundled frontmatter thr
 
 ### Discovery inputs
 
-1. Authored definitions dir: `getGlobalSubagentsDir()`, `~/.veyyon/subagents` at the base config root, read whatever profile is active. `veyyon agents unpack` writes there. A repository's `.veyyon/agents/` is not read: an agent definition carries a system prompt, a tool allowlist, a model, and a `spawns` field, so a checked-in one could shadow a bundled agent by name. `discoverAgents` returns `projectAgentsDir: null` unconditionally; the field survives only because `task/index.ts` plumbs it into `TaskToolDetails` for display.
+1. Authored definitions dir: `getGlobalAgentsDir()`, `~/.veyyon/agents` at the base config root, read whatever profile is active. `veyyon agents unpack` writes there. A repository's `.veyyon/agents/` is not read: an agent definition carries a system prompt, a tool allowlist, a model, and a `spawns` field, so a checked-in one could shadow a bundled agent by name. `discoverAgents` returns `projectAgentsDir: null` unconditionally; the field survives only because `task/index.ts` plumbs it into `TaskToolDetails` for display.
 2. Veyyon extension-package `agents/` dirs (`listVeyyonExtensionRoots`): only when `isProviderEnabled("veyyon-plugins")`; consumed in source-precedence order (CLI roots > user `extensions:` settings > installed npm/link plugins, marketplace installs excluded by realpath)
 3. Claude marketplace plugin roots (`listClaudePluginRoots(home, cwd)`) with `agents/` subdirs: only when `isProviderEnabled("claude-plugins")`; project-scope plugin installs are filtered out
 4. Bundled agents (`loadBundledAgents()`)
 
 ### Actual source order
 
-1. `~/.veyyon/subagents`
+1. `~/.veyyon/agents`
 2. Veyyon extension-package `agents/` dirs (CLI > user settings > installed plugins)
 3. Claude plugin `agents/` dirs (user-scope only)
 4. bundled agents last
@@ -92,7 +92,7 @@ Implications:
 
 Per directory (`loadAgentsFromDir`):
 
-- a missing directory contributes nothing and says nothing; one that exists and cannot be listed is reported through `readdirIfPresent(dir, "agent definitions")`, because a user's subagents vanishing from `/agents` with no sign of why is a different failure from having no directory
+- a missing directory contributes nothing and says nothing; one that exists and cannot be listed is reported through `readdirIfPresent(dir, "agent definitions")`, because a user's agents vanishing from `/agents` with no sign of why is a different failure from having no directory
 - a file that cannot be read or parsed is reported through `reportFault({ source: "agents", … })` and skipped, so the loss reaches the operator rather than only a log file
 - parse path uses `parseAgent(..., level: "warn")`
 
@@ -128,14 +128,14 @@ The roster the model reads is built in `renderDescription` (`src/task/index.ts`)
 
 The agents are a cost ladder, not a taxonomy. Each description states how much is unknown and how large a change the lane carries, because those are the only two axes the model can route on with the information it has. The routing instruction above the list says to take the cheapest lane that can carry the work, to move up only when the outcome is vague enough that the agent must discover, build and verify it alone, and never to substitute a wider lane for a disabled one. The same axis is repeated once in the system prompt (`src/system-prompt-builder/statements/tool-policy/delegation-gates.md`) so the two surfaces cannot drift into saying different things.
 
-This replaced a rule that read "spawn the one whose description covers the task". The general-purpose lane is enabled by default, and its description was "General-purpose subagent with full capabilities for delegated multi-step tasks", which covers every task by construction, so the rule resolved to it every time. Turning an agent off did not remove the work it was doing: the work rerouted there, at whatever the session model is, with a larger prompt, and the operator got no signal that the cheaper path was gone.
+This replaced a rule that read "spawn the one whose description covers the task". The general-purpose lane is enabled by default, and its description was "General-purpose agent with full capabilities for delegated multi-step tasks", which covers every task by construction, so the rule resolved to it every time. Turning an agent off did not remove the work it was doing: the work rerouted there, at whatever the session model is, with a larger prompt, and the operator got no signal that the cheaper path was gone.
 
 Two related facts still hold and still bound how much the descriptions can do:
 
-- `deep` is the only agent enabled by default (`DEFAULT_ENABLED_BUNDLED_AGENT` in `src/config/settings-domains/subagents.ts`, read by `subagentEnabledByDefault`) and the default spawn target (`DEFAULT_SPAWN_AGENT`). An operator can turn it off with `subagent.agents.deep.enabled: false`, but on a stock install it is where every unqualified spawn lands, so the descriptions are what keep work off it, not the enablement set.
+- `deep` is the only agent enabled by default (`DEFAULT_ENABLED_BUNDLED_AGENT` in `src/config/settings-domains/agents.ts`, read by `agentEnabledByDefault`) and the default spawn target (`DEFAULT_SPAWN_AGENT`). An operator can turn it off with `agent.agents.deep.enabled: false`, but on a stock install it is where every unqualified spawn lands, so the descriptions are what keep work off it, not the enablement set.
 - The only pressure toward a narrower agent is advisory and rarely fires: `buildSpecializationAdvisory`, reached through `composeSpawnAdvisory` (`src/task/index.ts`), nudges only when one call resolves two or more items to `deep` or `sonic` (`GENERIC_SPAWN_AGENTS`), the spawner still holds spawn capacity, and at least one non-generic agent is enabled. A single spawn gets nothing.
 
-`sonic` owns `src/prompts/agents/sonic.md` and `deep` owns `src/prompts/agents/deep.md`. They are separate bodies, so a change to one no longer silently changes the other; `sonic` used to render the general-purpose body byte for byte and so told a contained worker it had "FULL access to all tools" and nothing about staying contained. `sonic` runs at `Effort.Medium` with a 100-request soft budget (`SOFT_REQUEST_BUDGET` in `src/task/executor.ts`, which `scout` also carries; every other agent gets 200), and `deep` inherits the parent's thinking level. Neither pins a model, so both resolve through `resolveSubagentModel` to the session model unless the operator fills in an agent row.
+`sonic` owns `src/prompts/agents/sonic.md` and `deep` owns `src/prompts/agents/deep.md`. They are separate bodies, so a change to one no longer silently changes the other; `sonic` used to render the general-purpose body byte for byte and so told a contained worker it had "FULL access to all tools" and nothing about staying contained. `sonic` runs at `Effort.Medium` with a 100-request soft budget (`SOFT_REQUEST_BUDGET` in `src/task/executor.ts`, which `scout` also carries; every other agent gets 200), and `deep` inherits the parent's thinking level. Neither pins a model, so both resolve through `resolveAgentModel` to the session model unless the operator fills in an agent row.
 
 Any change here is measured against one question: does enabling or disabling this agent move where work lands, or only what the prompt says?
 
@@ -167,7 +167,7 @@ An agent can be discoverable but still unavailable to run because of execution g
 
 ### Per-agent profile settings
 
-`TaskTool.#executeSync` checks `subagent.agents.<name>.enabled` after resolving the agent, through `isSubagentEnabled` — one predicate, and the same one that decides what goes in the tool description, so the set the model is offered and the set it may spawn cannot diverge. A disabled agent is refused, and the refusal names the setting and lists the enabled agents. The one thing that also passes is a per-turn grant: a `/` command declares the agents its prompt names (`CustomCommand.spawnsAgents`), the session grants them for the turn that prompt starts, and `TaskTool` consults `session.agentGrantedThisTurn`. That is how `/review` spawns `reviewer` on a stock install where every other agent is disabled.
+`TaskTool.#executeSync` checks `agent.agents.<name>.enabled` after resolving the agent, through `isAgentEnabled` — one predicate, and the same one that decides what goes in the tool description, so the set the model is offered and the set it may spawn cannot diverge. A disabled agent is refused, and the refusal names the setting and lists the enabled agents. The one thing that also passes is a per-turn grant: a `/` command declares the agents its prompt names (`CustomCommand.spawnsAgents`), the session grants them for the turn that prompt starts, and `TaskTool` consults `session.agentGrantedThisTurn`. That is how `/review` spawns `reviewer` on a stock install where every other agent is disabled.
 
 ### Parent spawn policy
 
@@ -188,7 +188,7 @@ If denied: immediate `Cannot spawn '...'. Allowed: ...` response.
 In `runSubprocess` (`src/task/executor.ts`):
 
 - depth computed from `taskDepth`
-- `subagent.maxNestedSpawnDepth` controls the cutoff
+- `agent.maxNestedSpawnDepth` controls the cutoff
 - when at max depth:
   - `task` tool is removed from child tool list
   - child `spawns` env is set to empty
@@ -199,7 +199,7 @@ So deeper levels cannot spawn further tasks even if the agent definition include
 
 When parent plan mode is enabled, `TaskTool.#runSpawn` builds an `effectiveAgent` before launching subprocesses:
 
-- prepends the plan-mode subagent system prompt
+- prepends the plan-mode agent system prompt
 - restricts tools to `read`, `search`, `lsp`, and `web_search`, plus `report_finding` when the agent's own tool list declares it (`PLAN_MODE_AGENT_TOOL_ALLOWLIST`)
 - clears child spawns
 

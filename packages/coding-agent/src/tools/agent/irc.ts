@@ -148,7 +148,7 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 		// ONE call, and the registry owns what it means. This is the roster the
 		// MODEL reads, and the ids it hands back are the ids the model then
 		// messages, so an unfiltered list is not a display bug: it is how a
-		// subagent from a conversation the operator closed gets woken to answer a
+		// spawned agent from a conversation the operator closed gets woken to answer a
 		// question about work it never did.
 		//
 		// `listAddressableBy` is built on the same `canAddress` decision that the
@@ -259,7 +259,7 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 
 		try {
 			// Broadcasts fan out to running peers only; reviving every parked agent or
-			// waking completed/idle agents on a broadcast would restart finished subagents
+			// waking completed/idle agents on a broadcast would restart finished spawned agents
 			// and cause stampedes. Direct sends still go through the bus so an idle
 			// recipient is woken and a parked recipient is revived, but only where
 			// `canAddress` says the caller may reach it: `bus.send` revives whatever

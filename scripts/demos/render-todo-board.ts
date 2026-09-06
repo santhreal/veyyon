@@ -35,7 +35,7 @@ const expanded = hasFlag("expanded");
 const frame = Number.parseInt(flag("frame", "0"), 10);
 const settleFrame = hasFlag("settle") ? Number.parseInt(flag("settle", "0"), 10) : undefined;
 
-/** The pending task a detached subagent picked up. */
+/** The pending task a detached agent picked up. */
 const DELEGATED = "Audit the secrets subsystem for dead exports";
 /** The task the driving agent is on. */
 const IN_FLIGHT = "Refresh a stored token before it expires";
@@ -43,7 +43,7 @@ const IN_FLIGHT = "Refresh a stored token before it expires";
 /**
  * A plan mid-flight: one phase closed, the active phase carrying a completed
  * task, the task the agent itself is on, and two pending — one of which a
- * detached subagent picked up.
+ * detached agent picked up.
  */
 function phases(): TodoPhase[] {
 	const active: TodoItem[] = [

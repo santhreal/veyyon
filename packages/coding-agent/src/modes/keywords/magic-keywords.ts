@@ -35,7 +35,7 @@ export function highlightMagicKeywords(text: string, resetTo?: string, phase?: n
  * notice into the turn that changes how the model works, and the operator never
  * sees the notice, so a token that doubles as an ordinary word steers a session
  * that never asked for it: `orchestrate` was one until "orchestrate the release"
- * turned into a parallel subagent run. `ultrathink` is not a word, and the other
+ * turned into a parallel agent run. `ultrathink` is not a word, and the other
  * two carry a `z` that no sentence does.
  */
 export const MAGIC_KEYWORD_TOKENS: readonly string[] = ["ultrathink", "orchestratez", "workflowz"];

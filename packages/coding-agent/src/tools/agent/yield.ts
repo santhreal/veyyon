@@ -1,7 +1,7 @@
 /**
- * Result submission tool for subagent output.
+ * Result submission tool for agent output.
  *
- * Subagents can call this tool incrementally or terminally depending on `type`.
+ * Agents can call this tool incrementally or terminally depending on `type`.
  */
 
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
@@ -32,7 +32,7 @@ export interface YieldDetails {
 	 * (MAX_SCHEMA_RETRIES) and accepted the data anyway. Surfaced so the
 	 * executor's post-mortem finalizer can honor the override instead of
 	 * re-rejecting the same payload with `schema_violation` — keeping the
-	 * subagent's acceptance and the parent's view of the result in lockstep.
+	 * agent's acceptance and the parent's view of the result in lockstep.
 	 */
 	schemaOverridden?: boolean;
 }
@@ -247,7 +247,7 @@ export class YieldTool implements AgentTool<TSchema, YieldDetails> {
 	readonly approval = "read" as const;
 	readonly label = "Submit Result";
 	readonly description =
-		"Submit subagent output. Omit `type` for the usual final structured result.\n\n" +
+		"Submit agent output. Omit `type` for the usual final structured result.\n\n" +
 		'Pass `type: ["section"]` to submit an incremental, non-terminal section that accumulates. Pass `type: "result"` to finalize; when `data` is omitted, your last assistant turn becomes the raw final result.\n' +
 		'Use `result: { data: <your output> }` for success, or `result: { error: "message" }` for failure. Keep the `result` wrapper.';
 	readonly parameters: TSchema;

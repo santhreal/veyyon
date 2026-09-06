@@ -4,7 +4,7 @@
  * WHY THIS SUITE EXISTS. `execution-workflow/commit-often` shipped this to every session that
  * had a bash tool: "You do NOT need permission to commit your own work, and you NEVER wait for
  * the user to ask. Frequent small commits are the expected default, not an escalation." The
- * subagent orchestrator notice carried the same two sentences. Whether committing without being
+ * agent orchestrator notice carried the same two sentences. Whether committing without being
  * asked is the behaviour a user wants is that user's call to make about their own repository, and
  * a prompt cannot make it for them; stating it as a permission the agent already holds also
  * generalises past the one command it was written for, because an agent that has been told it
@@ -152,11 +152,11 @@ describe("the prompts the product ships", () => {
 
 	it("report a grant in a prompt registry row", () => {
 		const registry: ScannedRegistry = {
-			ids: ["subagent/example"],
+			ids: ["agent/example"],
 			require: () => ({ text: GRANT_SENTENCE }),
 		};
 		expect(scan([], [["example-package", registry]])).toEqual([
-			"example-package:subagent/example — says permission is not needed",
+			"example-package:agent/example — says permission is not needed",
 		]);
 	});
 });

@@ -6,7 +6,7 @@ Features, in two groups: the surfaces of an everyday session, then what extends 
 
 These are the parts of the TUI you touch every session:
 
-- [Status line and multi-agent UI](./cockpit.md) covers the status segments, the subagent dashboard (`/agents`), jobs, and the swarm view.
+- [Status line and multi-agent UI](./cockpit.md) covers the status segments, the agent dashboard (`/agents`), jobs, and the swarm view.
 - [Keybindings](../reference/keybindings-config.md) covers the chords.
 - The composer gives you prompt history, `@` and `/` completion, and `Esc` to interrupt. See [Quickstart](../using/quickstart.md) and [Keybindings](../reference/keybindings-config.md).
 - [Web search](./web-search.md) covers searching from inside a session.
@@ -23,7 +23,7 @@ These add capabilities or change how the agent runs:
 | [Hooks](../reference/hooks.md) | TypeScript modules that run on events with `pi.on(...)` |
 | [MCP](./mcp.md) | Model Context Protocol servers and tools |
 | [Branching](./branching.md) | Forking a session into parallel lines of work |
-| [Subagents](./subagents.md) | Delegating work to background agents |
+| [Agents](./agents.md) | Delegating work to background agents |
 | [Memory](../architecture/memory.md) | Project-scoped recall across sessions |
 | [Profiles](./profiles.md) | Isolated config, sessions, and state per name |
 | [Personalities](./personalities.md) | Named voice and behavior presets |

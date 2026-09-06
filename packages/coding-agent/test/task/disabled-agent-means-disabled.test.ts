@@ -1,10 +1,10 @@
 /**
- * A disabled subagent is disabled, and a `/` command can still name one.
+ * A disabled agent is disabled, and a `/` command can still name one.
  *
- * WHY THIS SUITE EXISTS (SUBAGENT-TRISTATE-IS-A-SWITCH-THAT-LIES). The enable
+ * WHY THIS SUITE EXISTS (AGENT-TRISTATE-IS-A-SWITCH-THAT-LIES). The enable
  * setting used to have four display states over two predicates:
- * `isSubagentAdvertised` decided what went in the task tool description, and
- * `isSubagentSpawnable` decided what a named spawn was allowed to run. The gap
+ * `isAgentAdvertised` decided what went in the task tool description, and
+ * `isAgentSpawnable` decided what a named spawn was allowed to run. The gap
  * between them was a state shown to users as "Not offered (default) — still runs
  * when named". A switch labelled off that still runs is not a switch, and an
  * operator who pressed `space` until the row read off had not turned the agent
@@ -26,7 +26,7 @@
 import { describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { ReviewCommand } from "@veyyon/coding-agent/extensibility/custom-commands/bundled/review";
-import { filterEnabledAgents, isSubagentEnabled } from "@veyyon/coding-agent/task/subagent-settings";
+import { filterEnabledAgents, isAgentEnabled } from "@veyyon/coding-agent/task/agent-settings";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
 
 function bundled(name: string): AgentDefinition {
@@ -50,9 +50,9 @@ describe("a disabled agent is disabled on every model-driven path", () => {
 	it("reports every bundled specialist as disabled on a stock install", () => {
 		const settings = Settings.isolated();
 		for (const name of SPECIALISTS) {
-			expect(isSubagentEnabled(settings, bundled(name)), `${name} must be disabled by default`).toBe(false);
+			expect(isAgentEnabled(settings, bundled(name)), `${name} must be disabled by default`).toBe(false);
 		}
-		expect(isSubagentEnabled(settings, bundled("task"))).toBe(true);
+		expect(isAgentEnabled(settings, bundled("task"))).toBe(true);
 	});
 
 	/**
@@ -66,7 +66,7 @@ describe("a disabled agent is disabled on every model-driven path", () => {
 		const agents = [bundled("task"), ...SPECIALISTS.map(bundled), userAgent("mine")];
 
 		const offered = filterEnabledAgents(settings, agents).map(agent => agent.name);
-		const spawnable = agents.filter(agent => isSubagentEnabled(settings, agent)).map(agent => agent.name);
+		const spawnable = agents.filter(agent => isAgentEnabled(settings, agent)).map(agent => agent.name);
 
 		expect(offered).toEqual(["task"]);
 		expect(spawnable).toEqual(offered);
@@ -78,8 +78,8 @@ describe("a disabled agent is disabled on every model-driven path", () => {
 	 */
 	it("keeps user-authored and project agents disabled with no settings row", () => {
 		const settings = Settings.isolated();
-		expect(isSubagentEnabled(settings, userAgent("mine"))).toBe(false);
-		expect(isSubagentEnabled(settings, { ...userAgent("proj"), source: "project" })).toBe(false);
+		expect(isAgentEnabled(settings, userAgent("mine"))).toBe(false);
+		expect(isAgentEnabled(settings, { ...userAgent("proj"), source: "project" })).toBe(false);
 	});
 
 	/**
@@ -88,8 +88,8 @@ describe("a disabled agent is disabled on every model-driven path", () => {
 	 * default in the same direction the row is written.
 	 */
 	it("disables the worker when the operator says so", () => {
-		const settings = Settings.isolated({ "subagent.agents": { task: { enabled: false } } });
-		expect(isSubagentEnabled(settings, bundled("task"))).toBe(false);
+		const settings = Settings.isolated({ "agent.agents": { task: { enabled: false } } });
+		expect(isAgentEnabled(settings, bundled("task"))).toBe(false);
 		expect(filterEnabledAgents(settings, [bundled("task")])).toEqual([]);
 	});
 });
@@ -114,7 +114,7 @@ describe("the command grant that replaced the third state", () => {
 	 * ships enabled, this test says so, and the declaration can go.
 	 */
 	it("declares an agent that a stock install actually disables", () => {
-		expect(isSubagentEnabled(Settings.isolated(), bundled("reviewer"))).toBe(false);
+		expect(isAgentEnabled(Settings.isolated(), bundled("reviewer"))).toBe(false);
 	});
 
 	/**

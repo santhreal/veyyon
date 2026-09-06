@@ -3,7 +3,7 @@ import type { YieldItem } from "@veyyon/coding-agent/task/types";
 import { assembleYieldResult } from "@veyyon/coding-agent/task/yield-assembly";
 
 /**
- * assembleYieldResult folds a subagent's sequence of `yield` calls into the single payload that
+ * assembleYieldResult folds an agent's sequence of `yield` calls into the single payload that
  * output-schema validation then checks. It is pure and has several subtle, load-bearing rules that the
  * tool-level yield.test.ts exercises only indirectly through the running tool. Each rule here maps to a
  * concrete failure it prevents:
@@ -16,7 +16,7 @@ import { assembleYieldResult } from "@veyyon/coding-agent/task/yield-assembly";
  *   - a data-less terminal finalize keeps the accumulated sections; only with no sections at all does
  *     the last assistant turn become the raw result (rawText);
  *   - aborted yields are skipped, and schemaOverridden / missingData propagate from the folded items.
- * A regression in any of these corrupts what the caller receives back from a subagent run.
+ * A regression in any of these corrupts what the caller receives back from an agent run.
  */
 
 function item(overrides: Partial<YieldItem>): YieldItem {

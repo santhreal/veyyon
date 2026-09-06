@@ -161,9 +161,9 @@ import {
 import { resolveGateInputs, resolveIntentField } from "./system-prompt-builder/gate-inputs";
 import { renderSecretInventory } from "./system-prompt-builder/secret-inventory";
 import { ARGOT_HANDLES_BANNER } from "./system-prompt-builder/section-registry";
+import { delegationStrength } from "./task/agent-settings";
 import { AgentOutputManager } from "./task/output-manager";
 import { wrapStreamFnWithProviderConcurrency } from "./task/provider-concurrency";
-import { delegationStrength } from "./task/subagent-settings";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,
@@ -299,7 +299,7 @@ import {
 	type CreateAgentSessionOptions,
 	type CreateAgentSessionResult,
 	isInProcessChildSession,
-	isSubagentSession,
+	isSpawnedSession,
 } from "./session/factory-options";
 import {
 	createCustomToolsExtension,
@@ -423,7 +423,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		}
 		// Kick off workspace tree discovery early. The native workspace scan returns
 		// both the rendered-tree input and the AGENTS.md directory-context index, so
-		// startup does not perform a second recursive filesystem search. Subagents
+		// startup does not perform a second recursive filesystem search. Spawned agents
 		// inherit the parent's resolved values via options.
 		const STARTUP_SCAN_DEADLINE_MS = 5000;
 		const startupIncludeWorkspaceTree = settings.get("includeWorkspaceTree") ?? false;
@@ -576,8 +576,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 		// Give `@veyyon/utils` somewhere to put a filesystem fault. Those helpers are free functions a
 		// layer below this one, so they cannot reach a per-session channel and had nothing but
-		// `logger.warn`, which is file-only: a subagents directory that exists and cannot be listed
-		// reported "no subagents" to the operator and the reason to a file nobody opens. Attached here
+		// `logger.warn`, which is file-only: a agents directory that exists and cannot be listed
+		// reported "no agents" to the operator and the reason to a file nobody opens. Attached here
 		// rather than in each mode because every mode wants it and forgetting it is silent.
 		//
 		// Detached on dispose, and on the startup-failure path below, by the handle this returns. The
@@ -1007,16 +1007,16 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// content before display — so the cheap handle stays in history (the
 		// token win) while everything outside history sees full text.
 		const argotEnabled = settings.get("argot.enabled") === true;
-		// A subagent (task-spawned child) follows the `argot.subagents` policy instead
+		// A spawned agent (task-spawned child) follows the `argot.agents` policy instead
 		// of always starting empty: `off` gets no codec, `fresh` gets its own empty
 		// session and loads its task's project itself, `inherit` forks the parent's
 		// codec. Correctness never rests on this (the boundary rule expands every
 		// emitted seam); the policy trades tokens.
-		const sessionIsSubagent = isSubagentSession(options);
+		const sessionIsSpawned = isSpawnedSession(options);
 		const argot = createArgotSession({
 			enabled: argotEnabled,
-			isSubagent: sessionIsSubagent,
-			subagentMode: settings.get("argot.subagents"),
+			isSpawned: sessionIsSpawned,
+			agentMode: settings.get("argot.agents"),
 			parentArgot: options.parentArgot,
 		});
 		// Encode gate: which models may WRITE shorthand and an optional context-size
@@ -1386,7 +1386,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			return preview;
 		};
 		// Only the first top-level session in a process owns an AsyncJobManager.
-		// Subagents inherit the parent's manager via `AsyncJobManager.instance()`
+		// Spawned agents inherit the parent's manager via `AsyncJobManager.instance()`
 		// (set below), and any additional top-level session spun up in-process
 		// (e.g. the agent-creation architect in `agent-dashboard.ts`) must share
 		// the live singleton — otherwise its dispose path would clobber the
@@ -1419,9 +1419,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const resolvedAgentId =
 			options.agentId ??
 			options.parentTaskPrefix ??
-			(!sessionIsSubagent && conversationId ? mainAgentIdFor(conversationId) : MAIN_AGENT_ID);
-		const resolvedAgentDisplayName = options.agentDisplayName ?? (sessionIsSubagent ? "sub" : "main");
-		const agentKind = sessionIsSubagent ? ("sub" as const) : ("main" as const);
+			(!sessionIsSpawned && conversationId ? mainAgentIdFor(conversationId) : MAIN_AGENT_ID);
+		const resolvedAgentDisplayName = options.agentDisplayName ?? (sessionIsSpawned ? "sub" : "main");
+		const agentKind = sessionIsSpawned ? ("sub" as const) : ("main" as const);
 		/**
 		 * Forget the agent ref on teardown — unless the agent is being parked (or is
 		 * already parked). Parking disposes the session but keeps the ref addressable
@@ -1460,14 +1460,14 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		 * advisor's held byte-identical bodies, and the `setProjectDir` below is
 		 * exactly the kind of line that gets fixed in one of a pair and not the other.
 		 * It is guarded for the same reason `AgentSession.rescopeToCwd` guards its
-		 * process-global half: a subagent shares this process with its parent and its
+		 * process-global half: a spawned agent shares this process with its parent and its
 		 * siblings, and may not move their working directory.
 		 */
 		const setCwdBeforeSessionExists: NonNullable<ToolSession["setCwd"]> = async (resolvedPath, options) => {
 			const previous = sessionManager.getCwd();
 			const cwd = await sessionManager.setCwd(resolvedPath, options);
 			if (cwd !== previous) {
-				if (!sessionIsSubagent) setProjectDir(cwd);
+				if (!sessionIsSpawned) setProjectDir(cwd);
 				const note = `Session working directory changed: ${previous} → ${cwd}`;
 				sessionManager.appendCustomMessageEntry("cwd_changed", note, true, { previous, cwd }, "agent");
 			}
@@ -1485,7 +1485,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			setCwd: async (resolvedPath, options) =>
 				session ? session.setCwd(resolvedPath, options) : setCwdBeforeSessionExists(resolvedPath, options),
 			obfuscateProviderText: text => secretRuntimeLease.obfuscateText(text),
-			// A generated subagent label is a side request of THIS session, so it
+			// A generated spawned agent label is a side request of THIS session, so it
 			// rides the session's side transport and inherits its watchdogs and
 			// concurrency bracket. Read live: the session is constructed after this
 			// literal, and no tool can run before it exists.
@@ -1544,7 +1544,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			getGoalRuntime: () => session?.goalRuntime,
 			getUsageStatistics: () => sessionManager.getUsageStatistics(),
 			getTurnBudget: () => sessionManager.getTurnBudget(),
-			recordEvalSubagentUsage: output => sessionManager.recordEvalSubagentOutput(output),
+			recordEvalAgentUsage: output => sessionManager.recordEvalAgentOutput(output),
 			getClientBridge: () => session?.clientBridge,
 			queueDeferredDiagnostics: entry => session?.yieldQueue.enqueue(LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE, entry),
 			bumpFileMutationVersion: path => {
@@ -1601,12 +1601,12 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				}
 			},
 			getArtifactManager: () => sessionManager.getArtifactManager(),
-			recordSubagentSpawn: record => sessionManager.appendSubagentSpawn(record),
+			recordAgentSpawn: record => sessionManager.appendAgentSpawn(record),
 			settings,
 			authStorage,
 			modelRegistry,
 			getTelemetry: () => agent?.telemetry,
-			// Subagents inherit the singleton (the parent's manager) so their bash/task
+			// Spawned agents inherit the singleton (the parent's manager) so their bash/task
 			// completions still flow into the spawning conversation's yieldQueue.
 			// Secondary in-process top-level sessions (no parentTaskPrefix, no
 			// constructed manager because the singleton was already installed) leave
@@ -1616,10 +1616,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		};
 
 		// Wire process-wide internal URL singletons owned by their real classes.
-		// Top-level sessions install the active snapshots; subagents inherit them.
+		// Top-level sessions install the active snapshots; spawned agents inherit them.
 		// Artifact and agent-output URLs resolve via `AgentRegistry.global()` —
 		// the protocol handlers walk each ref's `sessionManager.getArtifactsDir()`,
-		// which collapses to the parent's dir for subagents (they adopt the
+		// which collapses to the parent's dir for spawned agents (they adopt the
 		// parent's ArtifactManager) so one lookup hits everything.
 		const getArtifactsDir = () => sessionManager.getArtifactsDir();
 		if (!isInProcessChildSession(options)) {
@@ -1759,7 +1759,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				}
 			}
 		}
-		// Only top-level sessions own the global MCPManager. Subagents already
+		// Only top-level sessions own the global MCPManager. Spawned agents already
 		// receive the parent's manager via `options.mcpManager`, and reassigning
 		// the singleton to the same value is a no-op — keep the gate explicit
 		// to mirror the AsyncJobManager ownership rule.
@@ -1815,7 +1815,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		}
 
 		// Discover custom tools from `.veyyon/tools/`, `.claude/tools/`, plugins, etc.
-		// Subagents reuse the parent's scan via `preloadedCustomToolPaths` to skip
+		// Spawned agents reuse the parent's scan via `preloadedCustomToolPaths` to skip
 		// the FS walk, but ALWAYS re-call `loadCustomTools` here so factories bind
 		// to THIS session's `CustomToolAPI` (cwd, exec, pushPendingAction, UI).
 		// Forwarding the parent's `LoadedCustomTool[]` directly would route tool
@@ -1849,7 +1849,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		if (customToolsLoadResult.tools.length > 0) {
 			customTools.push(...customToolsLoadResult.tools.map(loaded => loaded.tool));
 		}
-		// Forward the path list (NOT the loaded tools) to subagents so they
+		// Forward the path list (NOT the loaded tools) to spawned agents so they
 		// re-bind under their own `CustomToolAPI` while skipping the FS scan.
 		toolSession.customToolPaths = customToolPaths;
 
@@ -1864,7 +1864,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		//      Extension instances. Shallow-clone `extensions` so the inline
 		//      push below cannot mutate the caller's array. `runtime` is shared
 		//      so flag values set pre-creation flow into the live session.
-		//   2. `preloadedExtensionPaths` (subagent): caller resolved paths;
+		//   2. `preloadedExtensionPaths` (spawned agent): caller resolved paths;
 		//      skip the FS scan but always re-call `loadExtensions` here so
 		//      each `Extension` binds to THIS session's `ExtensionAPI`
 		//      (cwd, eventBus, runtime).
@@ -1930,7 +1930,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			);
 			reportExtensionLoadFailures(extensionsResult, operatorNotices);
 		}
-		// Forward the source-path list (NOT the loaded instances) so subagents
+		// Forward the source-path list (NOT the loaded instances) so spawned agents
 		// rebuild their own session-scoped extensions.
 		toolSession.extensionPaths = extensionPaths;
 		toolSession.namedExtensionPaths = namedExtensionPaths;
@@ -2019,7 +2019,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				}
 			}
 		}
-		// Resolve deferred --model/subagent patterns now that extension models are
+		// Resolve deferred --model/agent patterns now that extension models are
 		// registered. Expand role aliases (`@smol`) and comma chains to concrete
 		// selectors first so deferred resolution accepts everything the immediate
 		// path (resolveModelOverride → resolveModelRoleValue) accepts.
@@ -2666,7 +2666,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			});
 			// Ask the live task tool which agents this session may spawn, rather than
 			// re-running discovery here: it already filtered its discovered set
-			// through `subagent.agents`, and the prompt must describe exactly the
+			// through `agent.agents`, and the prompt must describe exactly the
 			// agents the tool will accept. Absent when delegation is off.
 			// Every settings-fed prompt gate, from the ONE resolver the inspection path
 			// (`veyyon prompt`) also calls. These twelve reads used to live here and nowhere else,
@@ -2690,7 +2690,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			// Drive guidance off the auto-learn BUILTINS that createTools actually built
 			// (provenance, not just an active name): `builtInToolNames` excludes a
 			// custom/extension tool that merely shares the name, and reflects the
-			// session-start build — so a subagent that filtered them out, a mid-session
+			// session-start build — so a spawned agent that filtered them out, a mid-session
 			// enable that never built them, or a same-named custom tool while auto-learn
 			// is off all get no guidance.
 			const autoLearnInstructions = buildAutoLearnInstructions({
@@ -2741,7 +2741,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				// drives provider-schema pruning below, so a model switch cannot
 				// retain the previous model family's more expensive representation.
 				includeWorkspaceTree: settings.get("includeWorkspaceTree") ?? false,
-				// A subagent gets no personality regardless of the setting. That is a fact about
+				// A spawned agent gets no personality regardless of the setting. That is a fact about
 				// this caller, not about the configuration, so it does not belong in the resolver.
 				personality: agentKind === "sub" ? "none" : gateInputs.personality,
 				cwd: promptInputCwd,
@@ -2797,7 +2797,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 		const toolNamesFromRegistry = Array.from(toolRegistry.keys());
 		const explicitlyRequestedToolNames = options.toolNames ? normalizeToolNames(options.toolNames) : undefined;
-		// When `requireYieldTool` is set, the subagent's prompts and idle-reminders demand a
+		// When `requireYieldTool` is set, the spawned agent's prompts and idle-reminders demand a
 		// `yield` call to terminate. The tool registry already includes `yield` (see
 		// `createTools`), but an explicit `toolNames` list would otherwise drop it from the
 		// active set — leaving the model unable to satisfy the contract. Mirror the same
@@ -2895,7 +2895,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			parentId: options.parentAgentId,
 			session: null,
 			sessionFile: sessionManager.getSessionFile() ?? null,
-			// The conversation this agent belongs to. A subagent inherits its
+			// The conversation this agent belongs to. A spawned agent inherits its
 			// parent's, so only a root session states one: its session id, which
 			// exists before the transcript has ever been written and survives a
 			// `/move` that rewrites the path.
@@ -3032,7 +3032,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// Keeps OpenRouter sticky-routing variants, antigravity endpoint routing,
 		// in-flight caps, and the loop guard consistent across every provider call
 		// the session drives. Wrapped in a per-provider concurrency limiter so
-		// each LLM HTTP request — not the whole subagent lifecycle — holds the
+		// each LLM HTTP request — not the whole spawned agent lifecycle — holds the
 		// slot, preventing the nested-spawn deadlock from issue #3749.
 		const settingsAwareStreamFn = wrapStreamFnWithProviderConcurrency(
 			settings,
@@ -3326,7 +3326,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// primary agent gets in its system prompt, so the read-only reviewer judges
 		// against the instruction files instead of advising blind.
 		const advisorContextPrompt = formatAdvisorContextPrompt(contextFiles);
-		// Owned only when this session created the manager; subagents receive a
+		// Owned only when this session created the manager; spawned agents receive a
 		// parent's manager via `options.mcpManager` and MUST NOT disconnect it.
 		const ownedMcpManager = options.mcpManager ? undefined : mcpManager;
 		session = new AgentSession({
@@ -3349,7 +3349,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			evalKernelOwnerId,
 			// Defined only for top-level sessions (creation is gated above).
 			// AgentSession uses this to decide whether it may dispose the global
-			// AsyncJobManager on teardown; subagents inherit the parent's and
+			// AsyncJobManager on teardown; spawned agents inherit the parent's and
 			// **MUST NOT** tear it down.
 			ownedAsyncJobManager: asyncJobManager,
 			asyncJobManager: scopedAsyncJobManager,
@@ -3363,11 +3363,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			skillsSettings: settings.getGroup("skills"),
 			modelRegistry,
 			toolRegistry,
-			createVibeTools: sessionIsSubagent ? undefined : () => createVibeModeTools(toolSession),
-			// A subagent shares this process with its parent and its siblings, so its
+			createVibeTools: sessionIsSpawned ? undefined : () => createVibeModeTools(toolSession),
+			// A spawned agent shares this process with its parent and its siblings, so its
 			// re-root may not move the process working directory or any other
 			// process-global project state. See `AgentSession.rescopeToCwd`.
-			isSubagent: sessionIsSubagent,
+			isSpawned: sessionIsSpawned,
 			builtInToolNames: builtInRegistryToolNames,
 			transformContext,
 			transformProviderContext,
@@ -3534,7 +3534,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		}
 
 		// Record the top-level session's exact system prompt + active tools at start,
-		// reusing the SAME `session_init` entry a subagent writes (ONE PLACE — see
+		// reusing the SAME `session_init` entry a spawned agent writes (ONE PLACE — see
 		// task/executor.ts). This makes the main agent's run replayable/backtestable at
 		// full fidelity: the exact prompt bytes AS SENT are in the record, not merely
 		// reconstructable from config (GRAN-4). Written once on a NEW session only —
@@ -3548,7 +3548,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		}
 
 		// Record the complete effective config that governs this run (every Tier-A
-		// setting AS RESOLVED), for EVERY new session — main and subagent alike — so a
+		// setting AS RESOLVED), for EVERY new session — main and spawned agent alike — so a
 		// backtest can reproduce the exact configuration, not guess it from current
 		// defaults (GRAN-3). Written once per new session; resumed sessions keep the
 		// snapshot they were created with. The few settings that change interactively
@@ -3576,7 +3576,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// messages here. Refresh sessionFile in case it was unavailable at pre-register
 		// time. The dispose wrapper below unregisters on teardown (unless parked).
 		agentRegistry.attachSession(resolvedAgentId, session, sessionManager.getSessionFile() ?? null);
-		// Keep the driving session's own ref alive in the roster. Only subagents
+		// Keep the driving session's own ref alive in the roster. Only spawned agents
 		// were ever wired to the registry (`task/executor.ts` on agent_start /
 		// agent_end, `persisted-revive.ts` for a revived one), so the main agent's
 		// row was whatever registration wrote and nothing after it: the Agent
@@ -3602,8 +3602,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 							session.beginDispose();
 							if (agentKind === "main") {
 								// Top-level teardown owns the global agent lifecycle: park timers,
-								// adopted subagent sessions, revivers. Tear it down while shared
-								// resources (kernels, MCP, LSP) are still live. Subagent disposal
+								// adopted spawned agent sessions, revivers. Tear it down while shared
+								// resources (kernels, MCP, LSP) are still live. Spawned agent disposal
 								// must NOT touch the global lifecycle.
 								await AgentLifecycleManager.global().dispose();
 							}
@@ -3733,7 +3733,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// session's state, and no frame reads either. It used to be awaited here for an auto-learn
 		// session, which put both in front of the first frame so that a tool call minutes later would
 		// find the state already installed. `deferStartupWork` keeps that guarantee at the only place
-		// that needs it — a turn awaits it before running, and every tool call and subagent spawn is
+		// that needs it — a turn awaits it before running, and every tool call and spawned agent spawn is
 		// inside a turn — while the frame paints without it. A session with auto-learn off already ran
 		// this unawaited.
 		//

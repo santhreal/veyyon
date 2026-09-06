@@ -16,7 +16,7 @@
  * nothing left to receive the response.
  *
  * WHY PARKED AGENTS ARE HERE. The registry only knows agents this PROCESS
- * started. Restart, or come back tomorrow, and every subagent is absent from it
+ * started. Restart, or come back tomorrow, and every agent is absent from it
  * while its transcript is still on disk, so the card seeds them from the session
  * tree and shows them as parked instead of pretending the session never had any.
  */
@@ -343,9 +343,9 @@ describe("Agents persisted by earlier runs", () => {
 	/**
 	 * The restart case. The registry starts empty in a fresh process, so without
 	 * this scan the card would report "Nothing running" for a session with a dozen
-	 * subagent transcripts sitting next to it on disk.
+	 * agent transcripts sitting next to it on disk.
 	 */
-	test("registers a previous run's subagents as parked and shows them", async () => {
+	test("registers a previous run's agents as parked and shows them", async () => {
 		using tempDir = TempDir.createSync("@veyyon-dashboard-persisted-");
 		const sessionFile = path.join(tempDir.path(), "main.jsonl");
 		const workerSessionFile = path.join(tempDir.path(), "main", "Worker.jsonl");
@@ -354,7 +354,7 @@ describe("Agents persisted by earlier runs", () => {
 		const registry = new AgentRegistry();
 		const dashboard = new AgentDashboard({ terminalHeight: 40, registry, sessionFile });
 
-		await dashboard.persistedSubagentsReady;
+		await dashboard.persistedAgentsReady;
 
 		const shown = frameOf(dashboard);
 		expect(shown).toContain("Kestrel");
@@ -379,7 +379,7 @@ describe("Agents persisted by earlier runs", () => {
 	});
 
 	/** And stops reporting empty once a persisted agent lands, which is what un-gates the gesture. */
-	test("stops reporting empty once the persisted scan finds a subagent", async () => {
+	test("stops reporting empty once the persisted scan finds an agent", async () => {
 		using tempDir = TempDir.createSync("@veyyon-dashboard-require-content-");
 		const sessionFile = path.join(tempDir.path(), "main.jsonl");
 		await Bun.write(sessionFile, "");
@@ -389,7 +389,7 @@ describe("Agents persisted by earlier runs", () => {
 		const dashboard = new AgentDashboard({ terminalHeight: 40, registry, sessionFile });
 		expect(dashboard.isEmpty).toBe(true);
 
-		await dashboard.persistedSubagentsReady;
+		await dashboard.persistedAgentsReady;
 
 		expect(dashboard.isEmpty).toBe(false);
 		dashboard.dispose();
@@ -414,7 +414,7 @@ describe("Agents persisted by earlier runs", () => {
 		};
 		const dashboard = new AgentDashboard({ terminalHeight: 40, registry, remote, sessionFile });
 
-		await dashboard.persistedSubagentsReady;
+		await dashboard.persistedAgentsReady;
 
 		expect(registry.get("Worker")).toBeUndefined();
 		dashboard.dispose();

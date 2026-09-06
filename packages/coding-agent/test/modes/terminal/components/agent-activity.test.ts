@@ -56,10 +56,10 @@ describe("call signs are stable names, not decoration", () => {
 
 	/**
 	 * The main session is always `Main`, wherever it sits in the ref list, and it
-	 * consumes no call sign: if it did, the first real subagent would be `Otter`
+	 * consumes no call sign: if it did, the first real agent would be `Otter`
 	 * and every roster would be off by one from the list a reader can see.
 	 */
-	it("labels the driving session Main and starts subagents at the first call sign", () => {
+	it("labels the driving session Main and starts agents at the first call sign", () => {
 		const agents = collectLiveAgents([
 			ref({ id: "sub-a", createdAt: 20 }),
 			ref({ id: MAIN_AGENT_ID, kind: "main", createdAt: 5 }),

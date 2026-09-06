@@ -103,8 +103,8 @@ describe("AgentSession eager task prelude", () => {
 	 * The agent types the mock task tool will accept.
 	 *
 	 * Not decoration. Delegation strength is resolved against the agents a session can ACTUALLY
-	 * spawn (`enabledSubagentNames` reads `enabledAgentNames` off the live task tool), so a mock
-	 * without this models a session whose task tool refuses everything, and `subagent.delegation:
+	 * spawn (`enabledAgentNames` reads `enabledAgentNames` off the live task tool), so a mock
+	 * without this models a session whose task tool refuses everything, and `agent.delegation:
 	 * "required"` correctly resolves to no delegation at all. Every prelude case in this file was
 	 * asserting against that mock and passing only because the resolution used to ignore the tool.
 	 */
@@ -127,7 +127,7 @@ describe("AgentSession eager task prelude", () => {
 		const modelRegistry = new ModelRegistry(authStorage, path.join(tempDir.path(), `models-${harnesses.length}.yml`));
 		const settings = Settings.isolated({
 			"compaction.enabled": false,
-			"subagent.delegation": "required",
+			"agent.delegation": "required",
 			"todo.enabled": false,
 			"todo.eager": "default",
 			...settingsOverride,
@@ -214,7 +214,7 @@ describe("AgentSession eager task prelude", () => {
 			agentKind,
 			rebuildSystemPrompt: async () => {
 				if (promptRefreshGate) await promptRefreshGate;
-				return { systemPrompt: [`subagent.batch:${settings.get("subagent.batch")}`] };
+				return { systemPrompt: [`agent.batch:${settings.get("agent.batch")}`] };
 			},
 		});
 
@@ -243,10 +243,10 @@ describe("AgentSession eager task prelude", () => {
 	 * A prompt started immediately after a task-prompt setting write must wait for
 	 * the queued rebuild rather than sending stale system-prompt bytes.
 	 */
-	it("applies a subagent setting change before the immediately following turn", async () => {
+	it("applies an agent setting change before the immediately following turn", async () => {
 		const refresh = Promise.withResolvers<void>();
 		const { session, settings, observedCalls } = await createHarness(
-			{ "subagent.delegation": "off" },
+			{ "agent.delegation": "off" },
 			undefined,
 			undefined,
 			undefined,
@@ -254,7 +254,7 @@ describe("AgentSession eager task prelude", () => {
 			refresh.promise,
 		);
 
-		settings.set("subagent.batch", false);
+		settings.set("agent.batch", false);
 		const pendingPrompt = session.prompt("continue the work");
 		await Promise.resolve();
 		expect(observedCalls).toHaveLength(0);
@@ -262,7 +262,7 @@ describe("AgentSession eager task prelude", () => {
 		refresh.resolve();
 		await pendingPrompt;
 		expect(observedCalls).toHaveLength(1);
-		expect(observedCalls[0]?.systemPrompt).toBe("subagent.batch:false");
+		expect(observedCalls[0]?.systemPrompt).toBe("agent.batch:false");
 	});
 
 	it("skips eager task prelude for prompts ending with a question mark", async () => {
@@ -306,7 +306,7 @@ describe("AgentSession eager task prelude", () => {
 	});
 
 	it("skips the delegation reminder when delegation is merely allowed", async () => {
-		const { session, observedCalls } = await createHarness({ "subagent.delegation": "allowed" });
+		const { session, observedCalls } = await createHarness({ "agent.delegation": "allowed" });
 
 		await session.prompt("refactor the parser across modules");
 
@@ -316,7 +316,7 @@ describe("AgentSession eager task prelude", () => {
 	});
 
 	it("skips the delegation reminder when delegation is preferred (prompt section only)", async () => {
-		const { session, observedCalls } = await createHarness({ "subagent.delegation": "preferred" });
+		const { session, observedCalls } = await createHarness({ "agent.delegation": "preferred" });
 
 		await session.prompt("refactor the parser across modules");
 
@@ -325,8 +325,8 @@ describe("AgentSession eager task prelude", () => {
 		expect(turn(observedCalls[0]).texts).toEqual(["refactor the parser across modules"]);
 	});
 
-	it("skips eager task prelude for subagent sessions", async () => {
-		const { session, observedCalls } = await createHarness({}, "SubAgent", undefined, "sub");
+	it("skips eager task prelude for agent sessions", async () => {
+		const { session, observedCalls } = await createHarness({}, "Agent", undefined, "sub");
 
 		await session.prompt("refactor the parser across modules");
 
@@ -366,7 +366,7 @@ describe("AgentSession eager task prelude", () => {
 	});
 
 	it("omits batch-call guidance from the eager task reminder when task.batch is disabled", async () => {
-		const { session, observedCalls } = await createHarness({ "subagent.batch": false });
+		const { session, observedCalls } = await createHarness({ "agent.batch": false });
 
 		await session.prompt("refactor the parser across modules");
 
@@ -391,8 +391,8 @@ describe("AgentSession eager task prelude", () => {
 	 * The negative twin every case above was missing, and the reason they all broke at once.
 	 *
 	 * Delegation strength is resolved against the agents the task tool will actually accept, so a
-	 * session with `subagent.delegation: "required"` and NOTHING to delegate to must send no
-	 * reminder at all. Telling a model it MUST fan work out to subagents, in a session where every
+	 * session with `agent.delegation: "required"` and NOTHING to delegate to must send no
+	 * reminder at all. Telling a model it MUST fan work out to agents, in a session where every
 	 * `task` call will be refused, is worse than saying nothing: it spends context asking for the
 	 * one action guaranteed to fail.
 	 *

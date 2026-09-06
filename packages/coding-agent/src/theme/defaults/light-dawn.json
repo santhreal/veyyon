@@ -79,7 +79,7 @@
 		"statusLineUntracked": "sky",
 		"statusLineOutput": "ink",
 		"statusLineCost": "sunrise",
-		"statusLineSubagents": "gold",
+		"statusLineAgents": "gold",
 		"pythonMode": "gold"
 	},
 	"export": {

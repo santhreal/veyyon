@@ -60,9 +60,9 @@ export interface CreateAgentSessionOptions {
 	/** Raw model pattern(s) (e.g. from --model CLI flag) to resolve after extensions load.
 	 * Used when model lookup is deferred because extension-provided models aren't registered yet. */
 	modelPattern?: string | string[];
-	/** Authenticated fallback selector for deferred subagent model patterns. */
+	/** Authenticated fallback selector for deferred agent model patterns. */
 	modelPatternAuthFallback?: string;
-	/** Role name used to install retry fallbacks after deferred subagent patterns resolve. */
+	/** Role name used to install retry fallbacks after deferred agent patterns resolve. */
 	modelPatternFallbackRole?: string;
 	/** Thinking selector. Default: from settings, else unset */
 	thinkingLevel?: ConfiguredThinkingLevel;
@@ -119,10 +119,10 @@ export interface CreateAgentSessionOptions {
 	 * flags — the same process owns the returned instances, so reusing them is
 	 * safe.
 	 *
-	 * NEVER pass this across session boundaries (e.g. parent → subagent).
+	 * NEVER pass this across session boundaries (e.g. parent → agent).
 	 * `Extension` instances close over a parent-bound `ExtensionAPI` (cwd,
 	 * eventBus, runtime), and reusing them would route tools/handlers/commands
-	 * back through the parent. For subagents, forward
+	 * back through the parent. For agents, forward
 	 * {@link preloadedExtensionPaths} instead.
 	 *
 	 * @internal
@@ -134,7 +134,7 @@ export interface CreateAgentSessionOptions {
 	 * `loadExtensions()` itself so each `Extension` is bound to THIS session's
 	 * `ExtensionAPI` (cwd, eventBus, runtime).
 	 *
-	 * This is the safe pass-through for parent → subagent forwarding.
+	 * This is the safe pass-through for parent → agent forwarding.
 	 */
 	preloadedExtensionPaths?: string[];
 	/**
@@ -142,14 +142,14 @@ export interface CreateAgentSessionOptions {
 	 * flags and `extensions:` entries.
 	 *
 	 * The project-trust gate exempts a path the operator named and withholds one the project scan
-	 * found. A subagent inherits the parent's path list and cannot tell those apart, so without
+	 * found. An agent inherits the parent's path list and cannot tell those apart, so without
 	 * this it re-gated the operator's own file and started without it.
 	 */
 	preloadedNamedExtensionPaths?: string[];
 	/**
 	 * Pre-discovered custom-tool source paths from `.veyyon/tools/`, `.claude/tools/`,
 	 * plugins, etc. When provided, the filesystem-scan inside
-	 * `discoverCustomToolPaths()` is skipped — subagents inherit the parent's
+	 * `discoverCustomToolPaths()` is skipped — agents inherit the parent's
 	 * scan result and call `loadCustomTools()` themselves so each session binds
 	 * tools to its OWN `CustomToolAPI` (cwd, exec, pushPendingAction, UI).
 	 *
@@ -183,7 +183,7 @@ export interface CreateAgentSessionOptions {
 	 * project (the walk up from `cwd`).
 	 */
 	contextFiles?: Array<{ path: string; content: string }>;
-	/** Pre-built workspace tree (skips re-scanning; passed by parents to subagents). */
+	/** Pre-built workspace tree (skips re-scanning; passed by parents to agents). */
 	workspaceTree?: WorkspaceTree;
 	/** Prompt templates. Default: discovered from cwd/.veyyon/prompts/ + agentDir/prompts/ */
 	promptTemplates?: PromptTemplate[];
@@ -202,24 +202,24 @@ export interface CreateAgentSessionOptions {
 	/** Tool names explicitly requested (enables disabled-by-default tools) */
 	toolNames?: string[];
 
-	/** Output schema for structured completion (subagents) */
+	/** Output schema for structured completion (agents) */
 	outputSchema?: unknown;
 	/** Whether to include the yield tool by default */
 	requireYieldTool?: boolean;
-	/** Task recursion depth (for subagent sessions). Default: 0 */
+	/** Task recursion depth (for agent sessions). Default: 0 */
 	taskDepth?: number;
 	/** Resolved absolute spawn-depth cap for this session's agent type. */
 	maxNestedSpawnDepth?: number;
-	/** Parent Hindsight state to alias for subagent memory tools. */
+	/** Parent Hindsight state to alias for agent memory tools. */
 	parentHindsightSessionState?: HindsightSessionState;
 	/**
-	 * Parent session's Argot codec, forked into this subagent when
-	 * `argot.subagents` is `inherit`. Absent for a top-level session or when the
+	 * Parent session's Argot codec, forked into this agent when
+	 * `argot.agents` is `inherit`. Absent for a top-level session or when the
 	 * parent has Argot off; `createArgotSession` then arms fresh (never silently
 	 * empty). Correctness never depends on this: it is a token optimization.
 	 */
 	parentArgot?: ArgotSession;
-	/** Parent Mnemopi state to alias for subagent memory tools. */
+	/** Parent Mnemopi state to alias for agent memory tools. */
 	parentMnemopiSessionState?: MnemopiSessionState;
 	/** Pre-allocated agent identity for IRC routing. Default: "Main" for top-level, parentTaskPrefix-derived for sub. */
 	agentId?: string;
@@ -230,20 +230,20 @@ export interface CreateAgentSessionOptions {
 	/** Parent task ID prefix for nested artifact naming (e.g., "Extensions") */
 	parentTaskPrefix?: string;
 	/**
-	 * Registry id of the spawning agent, recorded as this subagent's parent in
+	 * Registry id of the spawning agent, recorded as this agent's parent in
 	 * the agent registry. Distinct from `parentTaskPrefix`, which is this agent's
 	 * own artifact/output-id prefix (the executor passes the child's own id
 	 * there, so it must never double as the parent link). Undefined for the
 	 * top-level "Main" session, which has no parent.
 	 */
 	parentAgentId?: string;
-	/** Inherited eval executor session id for subagents sharing parent eval state. */
+	/** Inherited eval executor session id for agents sharing parent eval state. */
 	parentEvalSessionId?: string;
 
 	/** Session manager. Default: session stored under the configured agentDir sessions root */
 	sessionManager?: SessionManager;
 
-	/** Override local:// protocol options for subagent local:// sharing. Default: uses the session's own artifacts dir and session ID. */
+	/** Override local:// protocol options for agent local:// sharing. Default: uses the session's own artifacts dir and session ID. */
 	localProtocolOptions?: LocalProtocolOptions;
 
 	/** Settings instance. Default: Settings.init({ cwd, agentDir }) */
@@ -271,7 +271,7 @@ export interface CreateAgentSessionOptions {
 	/**
 	 * Fired once, when the agent loop hands its first request to the provider
 	 * transport (i.e. the `streamFn` wrapper is first invoked). Used to measure
-	 * subagent launch latency — the boundary between "session built" and "model
+	 * agent launch latency — the boundary between "session built" and "model
 	 * call dispatched". This is the loop's dispatch point, slightly before the
 	 * actual provider HTTP call (per-request prep, identical across all
 	 * requests, follows it), which is the right granularity for launch timing.
@@ -289,7 +289,7 @@ export interface CreateAgentSessionOptions {
 	bypassAllApprovals?: boolean;
 
 	/**
-	 * A subagent's live view of its parent's bypass. `bypassAllApprovals` above
+	 * An agent's live view of its parent's bypass. `bypassAllApprovals` above
 	 * is a snapshot taken at spawn, so without this a parent that turns `/yolo`
 	 * off leaves an already-running child bypassing approvals to the end of its
 	 * run. Consulted on every check, and it can only narrow: a child whose own
@@ -299,24 +299,24 @@ export interface CreateAgentSessionOptions {
 }
 
 /**
- * Whether these options describe a SUBAGENT: a session another session spawned
+ * Whether these options describe a SPAWNED AGENT: a session another session spawned
  * inside this same process, rather than the top-level session the process was
  * started for.
  *
  * Both signals are needed. `taskDepth` counts task recursion and is what the task
  * executor sets; `parentTaskPrefix` names the spawning agent's artifact prefix and
  * is what the IRC and registry path sets. A session can arrive carrying one and
- * not the other, so asking about either alone misses a real subagent.
+ * not the other, so asking about either alone misses a real spawned agent.
  *
  * ONE owner because the answer decides four separate things: which Argot policy
  * the session follows, whether it is displayed as "sub", whether it is given the
  * vibe tools, and whether re-rooting it may move the PROCESS working directory.
  * Those were four inline copies of this expression, which is three chances for
- * them to disagree about what a subagent is. The last of the four is the one with
- * teeth, because a subagent that re-roots the process moves the working directory
+ * them to disagree about what a spawned agent is. The last of the four is the one with
+ * teeth, because a spawned agent that re-roots the process moves the working directory
  * out from under its parent and every sibling sharing the process.
  */
-export function isSubagentSession(options: Pick<CreateAgentSessionOptions, "taskDepth" | "parentTaskPrefix">): boolean {
+export function isSpawnedSession(options: Pick<CreateAgentSessionOptions, "taskDepth" | "parentTaskPrefix">): boolean {
 	return (options.taskDepth ?? 0) > 0 || Boolean(options.parentTaskPrefix);
 }
 
@@ -324,8 +324,8 @@ export function isSubagentSession(options: Pick<CreateAgentSessionOptions, "task
  * Whether another session in THIS process spawned this one, and therefore already
  * owns the process-global singletons it should inherit rather than replace.
  *
- * Deliberately NOT `isSubagentSession`, and the difference is the point. That
- * predicate answers "is this a subagent", and takes `taskDepth` into account
+ * Deliberately NOT `isSpawnedSession`, and the difference is the point. That
+ * predicate answers "is this a spawned agent", and takes `taskDepth` into account
  * because a session can be one without carrying a parent's prefix. This one
  * answers a narrower question about OWNERSHIP, and only a `parentTaskPrefix` can
  * answer it: the prefix is what names the spawning agent, so it is the only signal
@@ -333,7 +333,7 @@ export function isSubagentSession(options: Pick<CreateAgentSessionOptions, "task
  * greater than zero says the session sits at some recursion depth, which does not
  * imply anyone here owns anything.
  *
- * Swapping in `isSubagentSession` here would change behaviour for a session
+ * Swapping in `isSpawnedSession` here would change behaviour for a session
  * carrying depth but no prefix. It would stop installing the skills, rules and
  * MCP singletons, and it would take `AsyncJobManager.instance()` as its scoped
  * manager, which is `undefined` when nothing installed one. That session would

@@ -14,7 +14,7 @@ sessions and context resets:
 
 - `BACKLOG.md`'s own header states the row shape and the lifecycle. Read it there; it is
   the ledger's contract, not this page's.
-- Every finding — an agent's own, a subagent's, a test failure, a doc drift — is appended
+- Every finding — an agent's own, an agent's, a test failure, a doc drift — is appended
   **the moment it is found**. A finding that lives only in chat context is lost work.
 - There is one ledger and one plan. Never a second notes/findings/report file, never a
   competing roadmap.

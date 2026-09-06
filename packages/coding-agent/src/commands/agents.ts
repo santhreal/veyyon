@@ -20,7 +20,7 @@ export default class Agents extends Command {
 		force: Flags.boolean({ char: "f", description: "Overwrite existing agent files" }),
 		json: Flags.boolean({ description: "Output JSON" }),
 		dir: Flags.string({ description: "Output directory (overrides --user)" }),
-		user: Flags.boolean({ description: "Write to ~/.veyyon/subagents (default)" }),
+		user: Flags.boolean({ description: "Write to ~/.veyyon/agents (default)" }),
 	};
 
 	static examples = [

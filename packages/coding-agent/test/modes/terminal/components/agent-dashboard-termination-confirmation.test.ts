@@ -1,5 +1,5 @@
 /**
- * Termination is a deliberate two-step interaction in the subagent dashboard.
+ * Termination is a deliberate two-step interaction in the agent dashboard.
  *
  * WHY. A single stray `x` used to abort a live provider turn and remove the
  * agent immediately. The confirmation keeps that destructive action reversible
@@ -156,7 +156,7 @@ function recordingLifecycle(events: string[]): {
 	return { lifecycle: () => manager, firstRelease: released.promise };
 }
 
-/** Register the running subagent used by the keyboard interaction cases. */
+/** Register the running agent used by the keyboard interaction cases. */
 function registerWorker(events: string[]): void {
 	AgentRegistry.global().register({
 		id: "Worker",
@@ -275,7 +275,7 @@ describe("Agent dashboard termination confirmation", () => {
 	 * row-local target asks for confirmation, while an ordinary row click keeps
 	 * its existing meaning of opening the agent.
 	 */
-	test("reveals and clicks a row-local [x] only for a terminable subagent", () => {
+	test("reveals and clicks a row-local [x] only for a terminable agent", () => {
 		const events: string[] = [];
 		const opened: string[] = [];
 		const overlays = new OverlayHarness();

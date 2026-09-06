@@ -1,6 +1,6 @@
 /**
  * WHY: `/share` redacts the transcript before it leaves the machine, through a typed walk that
- * covers tool-result output and subagent transcripts. `/export` wrote the same transcript into a
+ * covers tool-result output and agent transcripts. `/export` wrote the same transcript into a
  * self-contained HTML file and redacted nothing, so a secret that landed in a tool output (a
  * `.env` read, a curl with a token) shipped verbatim in the file the operator attaches to a bug
  * report. Both egress paths now run the same walk.
@@ -8,7 +8,7 @@
  * The contract these tests defend:
  *   - a configured secret appearing in a primary-session tool result is replaced in the exported
  *     snapshot;
- *   - so is one appearing in an embedded subagent transcript, which is a separate branch of the
+ *   - so is one appearing in an embedded agent transcript, which is a separate branch of the
  *     walk and the one a partial fix would miss;
  *   - with no obfuscator the snapshot is unchanged, so export is not silently lossy;
  *   - non-secret transcript text survives redaction, so this is not a blanket scrub.
@@ -60,7 +60,7 @@ afterEach(async () => {
 });
 
 describe("HTML export secret redaction", () => {
-	it("replaces a secret in the primary transcript and in an embedded subagent transcript", async () => {
+	it("replaces a secret in the primary transcript and in an embedded agent transcript", async () => {
 		const obfuscator = new SecretObfuscator([{ type: "plain", origin: "config", content: SECRET }]);
 		const placeholder = obfuscator.obfuscate(SECRET);
 		const outputPath = path.join(root, "redacted.html");

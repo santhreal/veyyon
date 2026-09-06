@@ -82,7 +82,7 @@ export class CheckpointTool implements AgentTool<typeof checkpointSchema, Checkp
 		_context?: AgentToolContext,
 	): Promise<AgentToolResult<CheckpointToolDetails>> {
 		if (!isTopLevelSession(this.session)) {
-			throw new ToolError("Checkpoint not available in subagents.");
+			throw new ToolError("Checkpoint not available in spawned agents.");
 		}
 		if (this.session.getCheckpointState?.()) {
 			throw new ToolError("Checkpoint already active.");
@@ -128,7 +128,7 @@ export class RewindTool implements AgentTool<typeof rewindSchema, RewindToolDeta
 		_context?: AgentToolContext,
 	): Promise<AgentToolResult<RewindToolDetails>> {
 		if (!isTopLevelSession(this.session)) {
-			throw new ToolError("Checkpoint not available in subagents.");
+			throw new ToolError("Checkpoint not available in spawned agents.");
 		}
 		if (!this.session.getCheckpointState?.()) {
 			if (this.session.getLastCompletedRewind?.()) {

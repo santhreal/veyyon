@@ -225,6 +225,6 @@ In current wiring, explicit teardown is used in MCP command flows (for reload/re
 - [`src/mcp/tool-bridge.ts`](../../packages/coding-agent/src/mcp/tool-bridge.ts): `MCPTool` and `DeferredMCPTool` runtime behavior.
 - [`src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts): `refreshMCPTools` live rebinding.
 - [`src/modes/terminal/controllers/mcp-command-controller.ts`](../../packages/coding-agent/src/modes/terminal/controllers/mcp-command-controller.ts): interactive reload/reconnect flows.
-- [`src/task/executor.ts`](../../packages/coding-agent/src/task/executor.ts): subagent MCP proxying via parent manager connections.
+- [`src/task/executor.ts`](../../packages/coding-agent/src/task/executor.ts): agent MCP proxying via parent manager connections.
 
 *Verified against `7d6f18e4f51d` on 2026-08-28.*

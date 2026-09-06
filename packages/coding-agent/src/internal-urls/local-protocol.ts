@@ -185,7 +185,7 @@ async function buildListing(url: InternalUrl, localRoot: string): Promise<Intern
 	const listing = files.length === 0 ? "(empty)" : files.map(file => `- [${file}](local://${file})`).join("\n");
 	const content =
 		`# Local\n\n` +
-		`Session-scoped scratch space for large intermediate data, subagent handoffs, and reusable planning artifacts.\n\n` +
+		`Session-scoped scratch space for large intermediate data, agent handoffs, and reusable planning artifacts.\n\n` +
 		`Root: ${localRoot}\n\n` +
 		`${formatCount("file", files.length)} available:\n\n` +
 		`${listing}\n`;
@@ -420,7 +420,7 @@ export class LocalProtocolHandler implements ProtocolHandler {
 	/**
 	 * Install a process-global override that wins over the AgentRegistry-based
 	 * derivation. Used by SDK consumers that wire `localProtocolOptions` on
-	 * `createAgentSession` and by subagents that share their parent's root.
+	 * `createAgentSession` and by agents that share their parent's root.
 	 */
 	static setOverride(value: LocalProtocolOptions | undefined): void {
 		LocalProtocolHandler.#override = value;

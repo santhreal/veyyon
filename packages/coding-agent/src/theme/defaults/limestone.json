@@ -83,7 +83,7 @@
 		"statusLineUntracked": 94,
 		"statusLineOutput": 130,
 		"statusLineCost": 130,
-		"statusLineSubagents": "amber",
+		"statusLineAgents": "amber",
 		"pythonMode": "amber"
 	},
 	"export": {

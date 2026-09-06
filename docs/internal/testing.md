@@ -826,7 +826,7 @@ narrative comment.
 | `packages/coding-agent/test/helpers/corpus-loader.ts` | Load/validate corpus (rejects missing expect / weak contract text) |
 | `packages/<pkg>/test/fixtures/` | Local JSON/JSONL/TOML tables for one package |
 | `packages/coding-agent/test/helpers/integration-workspace.ts` | Multi-file trees for edit/grep/glob/hashline: a REAL temp workspace driven through the real agent loop, not a checked-in tree |
-| `packages/coding-agent/test/helpers/subagent-session.ts` | The fake `AgentSession` a `runSubprocess` test spawns, plus the message and yield-event builders |
+| `packages/coding-agent/test/helpers/agent-session.ts` | The fake `AgentSession` a `runSubprocess` test spawns, plus the message and yield-event builders |
 | `plugins/hashline/test/*` | Model for pure contract + adversarial multi-file suites |
 | `packages/coding-agent/test/rpc-command-contracts.test.ts` | RPC frame id/parse/background contracts (no provider keys) |
 | `natives/**/tests/fixtures/` | Shared inputs for native crate tests |
@@ -837,7 +837,7 @@ the runner knows, and exact `expect`. Shape-only rows fail at load time.
 Name files and ids for the **behavior** (`list-limit-equals-ceiling`,
 `rpc-unknown-command-drops-id`), never for an implementation strategy or port.
 
-### Testing a subagent run
+### Testing an agent run
 
 `runSubprocess` runs an agent in-process. It calls `createAgentSession`, prompts the
 session, and reads the session's EVENTS to decide what happened, so a test drives it by
@@ -845,7 +845,7 @@ deciding what the child emits. Use the shared fake rather than writing another s
 literal:
 
 ```ts
-import { createMockSession, createSessionResult, yieldSuccessEvent } from "../helpers/subagent-session";
+import { createMockSession, createSessionResult, yieldSuccessEvent } from "../helpers/agent-session";
 
 const session = createMockSession(({ emit }) => {
 	emit(yieldSuccessEvent({ ok: true }));
@@ -1181,7 +1181,7 @@ Two things to get right, because both produce convincing lies:
   what you are proving, instead of reading the placeholder box as a rendering fault.
 
 This is how the `⟳` in the running-agent status was found. It is U+27F3, no plain
-monospace face carries it, and every busy row in the subagent dashboard drew a
+monospace face carries it, and every busy row in the agent dashboard drew a
 tofu box on a machine without a Nerd Font. Three hundred passing assertions on
 that component said nothing, because the string was correct the whole time.
 

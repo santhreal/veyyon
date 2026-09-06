@@ -1,4 +1,4 @@
-import type { AgentProgress, AgentSnapshot, SubagentLifecyclePayload, SubagentProgressPayload } from "@veyyon/wire";
+import type { AgentLifecyclePayload, AgentProgress, AgentProgressPayload, AgentSnapshot } from "@veyyon/wire";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { fmtCost, fmtDuration, fmtTokens, relTime } from "../../lib/format";
@@ -29,7 +29,7 @@ function toolStartMs(p: AgentProgress): number | null {
 function activityLine(
 	agent: AgentSnapshot,
 	p: AgentProgress | undefined,
-	lc: SubagentLifecyclePayload | undefined,
+	lc: AgentLifecyclePayload | undefined,
 	now: number,
 ): string {
 	if (p?.currentTool) {
@@ -44,8 +44,8 @@ function activityLine(
 
 function AgentRow(props: {
 	agent: AgentSnapshot;
-	payload: SubagentProgressPayload | undefined;
-	lifecycle: SubagentLifecyclePayload | undefined;
+	payload: AgentProgressPayload | undefined;
+	lifecycle: AgentLifecyclePayload | undefined;
 	selected: boolean;
 	now: number;
 	onSelect(id: string | null): void;
@@ -75,8 +75,8 @@ function AgentRow(props: {
 
 export function AgentsPanel(props: {
 	agents: readonly AgentSnapshot[];
-	progress: ReadonlyMap<string, SubagentProgressPayload>;
-	lifecycle: ReadonlyMap<string, SubagentLifecyclePayload>;
+	progress: ReadonlyMap<string, AgentProgressPayload>;
+	lifecycle: ReadonlyMap<string, AgentLifecyclePayload>;
 	selectedId: string | null;
 	onSelect(id: string | null): void;
 }): ReactNode {
@@ -120,7 +120,7 @@ export function AgentsPanel(props: {
 					onSelect={onSelect}
 				/>
 			))}
-			{sorted.subs.length === 0 ? <div className="ag-empty">no subagents</div> : null}
+			{sorted.subs.length === 0 ? <div className="ag-empty">no agents</div> : null}
 		</div>
 	);
 }

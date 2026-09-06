@@ -21,7 +21,7 @@
  * `!record.started` branch and `createAbortedToolResult`, Cursor's three
  * exec-channel emitters, the ACP replay, the collab relay, the RPC forwarder),
  * plus `message_start`+`message_update` resynthesis on collab resync and
- * subagent focus re-attach. The UI is the single consumer of all of them, so
+ * agent focus re-attach. The UI is the single consumer of all of them, so
  * idempotence is the UI's job.
  *
  * THE INVARIANT THESE TESTS DEFEND, at the choke point every case crosses:
@@ -155,7 +155,7 @@ const MOUNT_RISK = {
 /**
  * The replay each `can-mount` event needs to actually reach its mount site.
  * `message_update` is preceded by `message_start` because that is exactly how a
- * collab resync and a subagent focus re-attach resynthesize an orphaned delta —
+ * collab resync and an agent focus re-attach resynthesize an orphaned delta —
  * without the re-opened stream the controller has no `streamingMessage` to walk.
  */
 function replayFor(kind: keyof typeof MOUNT_RISK, toolName: string): AgentSessionEvent[] {

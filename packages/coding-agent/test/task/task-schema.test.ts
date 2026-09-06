@@ -113,8 +113,8 @@ describe("task spawn validation", () => {
 			hasUI: false,
 			settings: Settings.isolated({
 				"async.enabled": false,
-				"subagent.isolation.mode": "none",
-				"subagent.batch": false,
+				"agent.isolation.mode": "none",
+				"agent.batch": false,
 			}),
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
@@ -182,8 +182,8 @@ describe("task enabled-agent schema", () => {
 
 	it("offers and accepts only enabled agents", async () => {
 		const settings = Settings.isolated({
-			"subagent.batch": false,
-			"subagent.agents": { reviewer: { enabled: false } },
+			"agent.batch": false,
+			"agent.agents": { reviewer: { enabled: false } },
 		});
 		const tool = await createTool(settings);
 
@@ -195,8 +195,8 @@ describe("task enabled-agent schema", () => {
 
 	it("never automatically routes to a disabled default", async () => {
 		const settings = Settings.isolated({
-			"subagent.batch": false,
-			"subagent.agents": {
+			"agent.batch": false,
+			"agent.agents": {
 				task: { enabled: false },
 				reviewer: { enabled: true },
 			},
@@ -211,12 +211,12 @@ describe("task enabled-agent schema", () => {
 
 	it("reloads enabled choices from the live settings object", async () => {
 		const settings = Settings.isolated();
-		settings.set("subagent.batch", false);
-		settings.set("subagent.agents", { reviewer: { enabled: false } });
+		settings.set("agent.batch", false);
+		settings.set("agent.agents", { reviewer: { enabled: false } });
 		const tool = await createTool(settings);
 		expect(agentChoices(tool)).toEqual(["task"]);
 
-		settings.set("subagent.agents", {
+		settings.set("agent.agents", {
 			task: { enabled: false },
 			reviewer: { enabled: true },
 		});

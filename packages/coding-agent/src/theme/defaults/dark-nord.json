@@ -85,7 +85,7 @@
 		"statusLineUntracked": "nord8",
 		"statusLineOutput": "nord12",
 		"statusLineCost": "nord12",
-		"statusLineSubagents": "nord8",
+		"statusLineAgents": "nord8",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

@@ -85,7 +85,7 @@
 		"statusLineUntracked": "lichen",
 		"statusLineOutput": "walnut",
 		"statusLineCost": "earth",
-		"statusLineSubagents": "moss",
+		"statusLineAgents": "moss",
 		"pythonMode": "amber"
 	},
 	"export": {

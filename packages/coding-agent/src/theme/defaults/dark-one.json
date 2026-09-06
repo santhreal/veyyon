@@ -88,7 +88,7 @@
 		"statusLineUntracked": "hue2",
 		"statusLineOutput": "hue3",
 		"statusLineCost": "hue5",
-		"statusLineSubagents": "hue62",
+		"statusLineAgents": "hue62",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

@@ -494,7 +494,7 @@ if "__veyyon_prelude_loaded__" not in globals():
             output('explore_0', offset=10, limit=20)  # Lines 10-29
             output('explore_0', 'reviewer_1')  # Read multiple outputs
         """
-        # Prefer VEYYON_ARTIFACTS_DIR so subagents resolve through the parent's
+        # Prefer VEYYON_ARTIFACTS_DIR so spawned agents resolve through the parent's
         # shared artifacts dir; fall back to deriving from VEYYON_SESSION_FILE
         # for legacy callers / top-level sessions where the two coincide.
         artifacts_dir = os.environ.get("VEYYON_ARTIFACTS_DIR")
@@ -816,16 +816,16 @@ if "__veyyon_prelude_loaded__" not in globals():
         merge=None,
         handle=False,
     ):
-        """Run a subagent and return its final output.
+        """Run a spawned agent and return its final output.
 
-        `agent` selects the subagent definition; omitted, it resolves to the
+        `agent` selects the agent definition; omitted, it resolves to the
         session's configured default agent from the enabled catalog. Pass
         `model` to override that agent's model, `label` for the output artifact
         id, and `schema` to request structured JSON output; when `schema` is
         supplied the parsed object is returned. Share background by writing a
         local:// file and referencing it in the prompt.
 
-        Pass `isolated=True` to run the subagent inside an isolation worktree
+        Pass `isolated=True` to run the spawned agent inside an isolation worktree
         (copy-on-write of the parent repo) so parallel `agent()` spawns can
         edit overlapping files safely. Strict opt-in, mirroring the `task`
         tool: the default is non-isolated regardless of `task.isolation.mode`.
@@ -908,7 +908,7 @@ if "__veyyon_prelude_loaded__" not in globals():
         return node
 
     def _concurrency_limit():
-        """Worker-pool ceiling from the host ``subagent.maxConcurrency`` setting.
+        """Worker-pool ceiling from the host ``agent.maxConcurrency`` setting.
 
         An eval fan-out runs as wide as a ``task`` batch would. Returns ``0`` for
         unbounded (run every item at once); falls back to ``0`` if the host
@@ -928,7 +928,7 @@ if "__veyyon_prelude_loaded__" not in globals():
         lowest-index exception if any task failed. Each task runs inside a copy
         of the submitting thread's context so the ``_CURRENT_RID`` ContextVar
         propagates and bridge calls (agent(), tool.*, etc.) keep working. The
-        pool width tracks ``subagent.maxConcurrency`` (0 = run every item at once).
+        pool width tracks ``agent.maxConcurrency`` (0 = run every item at once).
         """
         import concurrent.futures, contextvars
 
@@ -958,7 +958,7 @@ if "__veyyon_prelude_loaded__" not in globals():
         """Run zero-arg callables through a bounded pool, preserving input order.
 
         Barriers until all finish; re-raises the lowest-index exception if any
-        thunk raised. Pool width tracks the task tool's ``subagent.maxConcurrency``.
+        thunk raised. Pool width tracks the task tool's ``agent.maxConcurrency``.
         """
         thunks = list(thunks)
         for t in thunks:
@@ -971,7 +971,7 @@ if "__veyyon_prelude_loaded__" not in globals():
 
         Every item clears stage N before any item enters stage N+1 (barrier per
         stage). Stage 1 receives the original item; later stages receive the
-        previous stage's result. Pool width tracks ``subagent.maxConcurrency``.
+        previous stage's result. Pool width tracks ``agent.maxConcurrency``.
         """
         current = list(items)
         for stage in stages:

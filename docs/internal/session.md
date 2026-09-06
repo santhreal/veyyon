@@ -89,7 +89,7 @@ What you need to know before using it:
 - A sink that throws does not break the caller, because these run inside helpers whose contract is to carry on. It does not block the other sinks either, and the throw is recorded on its own line.
 - Detach in test teardown with the handle `attachFaultSink` returned. A sink that outlives the test that installed it collects another test's faults and reports them against the wrong subject.
 
-`fs-optional.ts` is the reason this exists. Its header promised that a directory that exists and cannot be listed "is not allowed to be silent", and it reported that with `logger.warn`, so an unreadable `~/.veyyon/agents` showed the operator "no subagents" and put the cause in a file nobody opens.
+`fs-optional.ts` is the reason this exists. Its header promised that a directory that exists and cannot be listed "is not allowed to be silent", and it reported that with `logger.warn`, so an unreadable `~/.veyyon/agents` showed the operator "no agents" and put the cause in a file nobody opens.
 
 ## On-Disk Layout
 
@@ -429,7 +429,7 @@ Append-only audit record of a session title change (`setSessionName`). The mutab
 
 ### `subagent_spawn`
 
-A navigable parent to child index entry: one per subagent a session spawned. It lets a study enumerate every subagent of a run ("including subagents, everything") without scraping tool-result prose or scanning the artifacts directory. The authoritative per-subagent record is the child transcript at `sessionFile`; this entry is the index over them.
+A navigable parent to child index entry: one per agent a session spawned. It lets a study enumerate every agent of a run ("including agents, everything") without scraping tool-result prose or scanning the artifacts directory. The authoritative per-agent record is the child transcript at `sessionFile`; this entry is the index over them.
 
 ```json
 {
@@ -473,7 +473,7 @@ The complete resolved Tier-A config that governed the run, keyed by dotted setti
   "kind": "full",
   "values": {
     "compaction.strategy": "summary",
-    "subagent.maxConcurrency": 4,
+    "agent.maxConcurrency": 4,
     "thinkingBudgets.high": 8000,
     "session.instrumentation": "ultra"
   }
@@ -709,7 +709,7 @@ jq -r 'select(.message.metrics.argsHash) | .message.metrics.argsHash' session.js
 # The resolved config the run used.
 jq -c 'select(.type=="settings_snapshot" and .kind=="full") | .values' session.jsonl
 
-# Enumerate the run's subagents with outcome and cost.
+# Enumerate the run's agents with outcome and cost.
 jq -c 'select(.type=="subagent_spawn")
        | {agent: .agentName, status, exitCode, ms: .durationMs, out: .usage.output}' session.jsonl
 ```

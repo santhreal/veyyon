@@ -437,7 +437,7 @@ export class EventController {
 	 * before the first orphaned update; every other handler is tolerant of
 	 * unknown anchors (guarded by streamingComponent/pendingTools lookups).
 	 *
-	 * Both re-pointing paths come through here — viewing a subagent, and `/new`
+	 * Both re-pointing paths come through here — viewing an agent, and `/new`
 	 * or `/resume` swapping the session the UI displays — so neither grows its
 	 * own copy of the guard.
 	 */
@@ -1312,7 +1312,7 @@ export class EventController {
 		// A transient overlay (auto-compaction / auto-retry / handoff) that ran
 		// between this tool's start and end could have detached the working
 		// loader. `tool_execution_update` already reconciles this so the spinner
-		// reappears mid-tool; mirror it here so subagent (`task`) completions —
+		// reappears mid-tool; mirror it here so agent (`task`) completions —
 		// which only fire `tool_execution_end`, never `_update` — do not leave
 		// the UI looking idle while the session keeps streaming (#3857).
 		this.#ensureWorkingLoaderWhileStreaming();
@@ -1526,7 +1526,7 @@ export class EventController {
 	}
 
 	/**
-	 * Trailing Esc hint for live maintenance loaders. While a subagent is
+	 * Trailing Esc hint for live maintenance loaders. While an agent is
 	 * focused, Esc returns to main instead of cancelling its maintenance
 	 * (#2819), so the loader drops the hint entirely rather than advertise a
 	 * cancel that no longer happens. Includes the leading space so the focused

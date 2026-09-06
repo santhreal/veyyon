@@ -139,8 +139,8 @@ const TINY_TITLE_PROGRESS_DONE_TTL_MS = 3_000;
 // events for seconds. Only reveal the bar once a still-incomplete event arrives after
 // this grace window, so an already-downloaded model never flashes the bar.
 const TINY_TITLE_PROGRESS_REVEAL_DELAY_MS = 1_000;
-// Double-tap ← on an empty editor opens the subagent dashboard (and, in a
-// focused subagent view, ←← returns to the main session). The upper bound is
+// Double-tap ← on an empty editor opens the agent dashboard (and, in a
+// focused agent view, ←← returns to the main session). The upper bound is
 // AGENT_VIEW_LEFT_TAP_WINDOW_MS, imported rather than restated: it is the same
 // gesture window the agent views were built around, and a second copy of the
 // number here is how the two ends of one gesture drift apart. The lower bound
@@ -371,9 +371,9 @@ export class InputController {
 			// → /compact → auto end → manual finally), leaving Esc wired to a
 			// stale no-op closure until restart.
 			//
-			// While a subagent is focused, Esc honors the advertised view action
+			// While an agent is focused, Esc honors the advertised view action
 			// ("Esc returns to main") instead of cancelling maintenance —
-			// accidentally killing a focused subagent's compaction on the way out
+			// accidentally killing a focused agent's compaction on the way out
 			// was #2819. The auto-maintenance loaders relabel their hint to match
 			// (see EventController). Main-session maintenance still owns Esc and
 			// stays cancellable from the main view (focused submit gates /compact
@@ -565,10 +565,10 @@ export class InputController {
 			this.ctx.editor.setCustomKeyHandler(key, () => this.ctx.showAgentsDashboard());
 		}
 
-		// Double-tap left arrow on an empty editor: opens the subagent dashboard
-		// from the main session, or returns the focused subagent view to the main
+		// Double-tap left arrow on an empty editor: opens the agent dashboard
+		// from the main session, or returns the focused agent view to the main
 		// session. Focused ←← intentionally matches Esc. From the main session the
-		// gesture stays inert when there are no subagents (requireContent); the
+		// gesture stays inert when there are no agents (requireContent); the
 		// explicit hub key still opens the empty roster. The card closes with Esc or
 		// the same key that opened it, so the gesture needs no close-tap handoff:
 		// inside the card the arrows switch views.
@@ -612,7 +612,7 @@ export class InputController {
 	 * (`[LEFT_DOUBLE_TAP_MIN_GAP_MS, AGENT_VIEW_LEFT_TAP_WINDOW_MS)`). Taps closer
 	 * than the lower bound, or any third-and-later tap before a quiet gap, are a
 	 * burst and never fire — so a stray click that makes the terminal emit a run
-	 * of ← keys can no longer pop the subagent dashboard.
+	 * of ← keys can no longer pop the agent dashboard.
 	 */
 	#detectLeftDoubleTap(): boolean {
 		const now = Date.now();
@@ -739,7 +739,7 @@ export class InputController {
 				: undefined;
 		const hasPendingImages = (inputImages?.length ?? 0) > 0;
 		if ((!isSettingsInitialized() || settings.get("emojiAutocomplete")) && text) text = expandEmoticons(text);
-		// Focused subagent session: the editor is a plain chat box for it.
+		// Focused agent session: the editor is a plain chat box for it.
 		// Everything below (continue shortcuts, slash/bash/python, loop,
 		// compaction queueing) is main-session-only.
 		if (this.ctx.focusedAgentId) {
@@ -1064,7 +1064,7 @@ export class InputController {
 		this.ctx.editor.addToHistory(text);
 	}
 
-	/** Submit editor text to the focused subagent session (chat-only focus policy). */
+	/** Submit editor text to the focused agent session (chat-only focus policy). */
 	async #submitToFocusedSession(text: string, streamingBehavior: "steer" | "followUp"): Promise<void> {
 		const target = this.ctx.viewSession;
 		const images = this.ctx.editor.pendingImages.length > 0 ? this.ctx.editor.pendingImages.slice() : undefined;
@@ -1412,7 +1412,7 @@ export class InputController {
 			images && this.ctx.editor.pendingImageLinks.length > 0 ? this.ctx.editor.pendingImageLinks.slice() : undefined;
 		if (!text && !images) return;
 
-		// Focused subagent session: follow-ups go to it; non-chat input is gated.
+		// Focused agent session: follow-ups go to it; non-chat input is gated.
 		if (this.ctx.focusedAgentId) {
 			await this.#submitToFocusedSession(text, "followUp");
 			return;

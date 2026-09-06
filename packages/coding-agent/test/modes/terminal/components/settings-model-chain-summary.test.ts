@@ -46,7 +46,7 @@ function createSelector(): SettingsSelectorComponent {
 	);
 }
 
-function rowText(component: SettingsSelectorComponent, tab: "model" | "subagents", label: string): string {
+function rowText(component: SettingsSelectorComponent, tab: "model" | "agents", label: string): string {
 	component.openTab(tab);
 	return (
 		component
@@ -61,9 +61,9 @@ describe("settings model-chain summaries", () => {
 	 * YAML list form is a first-class model-chain encoding and must never be
 	 * mislabeled as inheritance.
 	 *
-	 * Only the compaction chain is a tab row. The subagent chain is drawn inside
+	 * Only the compaction chain is a tab row. The agent chain is drawn inside
 	 * the roster page, and its summary is asserted where it renders, in
-	 * `subagent-agents-surface.test.ts`.
+	 * `agents-surface.test.ts`.
 	 */
 	it("summarizes an array-encoded compaction chain", async () => {
 		await Settings.instance.set("compaction.model", [PRIMARY, FALLBACK]);

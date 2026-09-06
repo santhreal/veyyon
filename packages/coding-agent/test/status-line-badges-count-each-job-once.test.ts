@@ -1,10 +1,10 @@
 /**
  * The status line's two right-hand badges must never count the same work twice.
  *
- * A `task` spawn is BOTH a running subagent and a registered async job (`type: "task"`, written by
+ * A `task` spawn is BOTH a running agent and a registered async job (`type: "task"`, written by
  * `task/index.ts`). The job badge used to count `snapshot.running.length` outright, so three
- * subagents rendered as `3 · 3`: two adjacent numbers that moved together and neither of which
- * named what it counted. These tests pin the rule that fixed it: the subagent badge owns subagent
+ * agents rendered as `3 · 3`: two adjacent numbers that moved together and neither of which
+ * named what it counted. These tests pin the rule that fixed it: the agent badge owns agent
  * work, the job badge owns everything else, and a `task` job is never counted by both.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
@@ -65,15 +65,15 @@ afterEach(() => {
 
 describe("status line badges count each unit of work once", () => {
 	/**
-	 * The reported bug, verbatim: three `task` subagents rendered `3 · 3`. The subagent badge is
+	 * The reported bug, verbatim: three `task` agents rendered `3 · 3`. The agent badge is
 	 * the one that owns them, so the count must appear exactly ONCE on the bar. Reverting the job
 	 * badge to `running.length` makes this fail with two 3s.
 	 */
-	it("shows three task subagents as one count, not two", () => {
+	it("shows three task agents as one count, not two", () => {
 		const statusLine = new StatusLineComponent(
 			makeSession([job("job_a", "task"), job("job_b", "task"), job("job_c", "task")]),
 		);
-		statusLine.setSubagentCount(3);
+		statusLine.setAgentCount(3);
 
 		const threes = settledNumbersOnBar(statusLine).filter(value => value === 3);
 		expect(threes).toEqual([3]);
@@ -81,37 +81,37 @@ describe("status line badges count each unit of work once", () => {
 
 	/**
 	 * A `task` job must not reach the job badge even when it is the ONLY running job. Without the
-	 * filter the bar carries a job badge with no non-subagent work behind it, which is a badge
+	 * filter the bar carries a job badge with no non-agent work behind it, which is a badge
 	 * that means nothing.
 	 */
-	it("renders no job badge when every running job is a task subagent", () => {
+	it("renders no job badge when every running job is a task agent", () => {
 		const statusLine = new StatusLineComponent(makeSession([job("job_a", "task")]));
-		statusLine.setSubagentCount(1);
+		statusLine.setAgentCount(1);
 
 		expect(settledNumbersOnBar(statusLine).filter(value => value === 1)).toEqual([1]);
 	});
 
 	/**
 	 * The opposite failure mode: over-filtering. Async bash, debug and launch jobs have no
-	 * subagent standing for them, so the job badge is the only thing that reports them and it MUST
+	 * agent standing for them, so the job badge is the only thing that reports them and it MUST
 	 * still count them. A fix that dropped every job would pass the test above and hide real work.
 	 */
-	it("still counts background jobs that are not subagents", () => {
+	it("still counts background jobs that are not agents", () => {
 		const statusLine = new StatusLineComponent(makeSession([job("job_a", "bash"), job("job_b", "debug")]));
-		statusLine.setSubagentCount(0);
+		statusLine.setAgentCount(0);
 
 		expect(settledNumbersOnBar(statusLine)).toContain(2);
 	});
 
 	/**
-	 * Mixed load is the case the two badges exist to tell apart: two subagents and one async bash
+	 * Mixed load is the case the two badges exist to tell apart: two agents and one async bash
 	 * must read as 2 and 1, never as 2 and 3 (double-counting) and never as 2 alone (over-filtering).
 	 */
-	it("reports subagents and non-subagent jobs as separate counts", () => {
+	it("reports agents and non-agent jobs as separate counts", () => {
 		const statusLine = new StatusLineComponent(
 			makeSession([job("job_a", "task"), job("job_b", "task"), job("job_c", "bash")]),
 		);
-		statusLine.setSubagentCount(2);
+		statusLine.setAgentCount(2);
 
 		const numbers = settledNumbersOnBar(statusLine);
 		expect(numbers).toContain(2);

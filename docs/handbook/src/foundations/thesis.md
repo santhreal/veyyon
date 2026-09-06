@@ -5,7 +5,7 @@ Model quality depends on the agent harness: tool schemas, edit format, context h
 ## Primary mechanisms
 
 1. **Edit format.** Formats that are hard to emit cause apply failures and retries. Hashline (and model-specific edit prompts) is the main write path in `packages/coding-agent`.
-2. **Control flow.** Stop when verification passes; bound retries; budget context and subagent fan-out. Plan mode, goal mode, and tool-approval tiers encode parts of this in the engine.
+2. **Control flow.** Stop when verification passes; bound retries; budget context and agent fan-out. Plan mode, goal mode, and tool-approval tiers encode parts of this in the engine.
 
 ## Design consequences
 

@@ -27,6 +27,7 @@
  */
 
 import { isUtf8 } from "node:buffer";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -279,6 +280,12 @@ export const GROUPS: readonly { name: string; matches: (relative: string) => boo
 		reason: "A moved package records the move in its own changelog or names its new path in its readme.",
 	},
 	{
+		name: "agent-vocabulary-prose",
+		matches: relative => relative.endsWith(".md"),
+		reason:
+			"A moved document names spawned agents with the `agent` vocabulary; `subagent` is kept only for the persisted session tags, the on-disk directory and the wire frames it still denotes.",
+	},
+	{
 		name: "rust-path-expectation",
 		matches: relative => relative.endsWith(".rs") || relative.endsWith(".raw"),
 		reason:
@@ -321,7 +328,7 @@ export const GROUPS: readonly { name: string; matches: (relative: string) => boo
 		name: "shared-mode-seed",
 		matches: relative => /test\/vibe\/a-vibe-worker-inherits-the-parents-effort-and-policy\.test\.ts$/.test(relative),
 		reason:
-			"An arm that asserts the shared model chain seeds `subagent.sharedModel`, the switch that makes `subagent.model` and `subagent.thinkingLevel` live. Without it the arm pinned a blanket value the resolver never read.",
+			"An arm that asserts the shared model chain seeds `agent.sharedModel`, the switch that makes `agent.model` and `agent.thinkingLevel` live. Without it the arm pinned a blanket value the resolver never read.",
 	},
 	{
 		name: "overflow-rescue-row",
@@ -442,6 +449,41 @@ export function branchPathOf(
 }
 
 /**
+ * Rename pairs from the historical snapshot commit to the working tree, old path to new.
+ *
+ * The ledger records each moved file under the path it had when the snapshot was approved. A file
+ * renamed again after that (the `subagent` to `agent` rename of test and prompt files) is looked up
+ * through this map so its approval follows it. A git failure propagates: an empty map would make the
+ * gate pass every renamed file as new.
+ */
+export function getPostSnapshotRenames(
+	repoRoot: string = REPO_ROOT,
+	snapshotCommit: string = HISTORICAL_SNAPSHOT_COMMIT,
+): Map<string, string> {
+	const raw = execFileSync(
+		"git",
+		["diff", "-z", "--find-renames=20%", "-l0", "--diff-filter=R", "--name-status", snapshotCommit],
+		{ cwd: repoRoot, maxBuffer: 64 * 1024 * 1024 },
+	);
+	const renames = new Map<string, string>();
+	let offset = 0;
+	while (offset < raw.length) {
+		const statusEnd = raw.indexOf(0, offset);
+		if (statusEnd === -1) break;
+		offset = statusEnd + 1;
+		const oldEnd = raw.indexOf(0, offset);
+		if (oldEnd === -1) break;
+		const oldPath = raw.subarray(offset, oldEnd).toString("utf-8");
+		offset = oldEnd + 1;
+		const newEnd = raw.indexOf(0, offset);
+		if (newEnd === -1) break;
+		renames.set(oldPath, raw.subarray(offset, newEnd).toString("utf-8"));
+		offset = newEnd + 1;
+	}
+	return renames;
+}
+
+/**
  * Pairs manifests and single files with the member package they moved with.
  */
 export function pairedWithTheMemberItMovedWith(
@@ -449,18 +491,22 @@ export function pairedWithTheMemberItMovedWith(
 	pairs: readonly [string, string][],
 	deleted: readonly string[] = [],
 ): [string, string][] {
+	const postRenames = getPostSnapshotRenames(repoRoot);
 	const rewrites = derivePrefixRewrites(pairs);
 	const predictedFor = (oldPath: string): string | undefined => {
 		const rule = rewrites.find(([oldPrefix]) => oldPath.startsWith(`${oldPrefix}/`));
 		return rule === undefined ? undefined : `${rule[1]}${oldPath.slice(rule[0].length)}`;
 	};
-	const reconciled: [string, string][] = pairs.map(pair => [pair[0], pair[1]]);
+	const reconciled: [string, string][] = pairs.map(pair => [pair[0], postRenames.get(pair[1]) ?? pair[1]]);
 	const claimed = new Set(reconciled.map(([, destination]) => destination));
 	for (;;) {
 		let moved = false;
 		for (const pair of reconciled) {
 			const [oldPath, newPath] = pair;
-			const predicted = predictedFor(oldPath);
+			let predicted = predictedFor(oldPath);
+			if (predicted !== undefined && postRenames.has(predicted)) {
+				predicted = postRenames.get(predicted);
+			}
 			if (predicted === undefined || predicted === newPath || claimed.has(predicted)) continue;
 			if (!fs.existsSync(path.join(repoRoot, predicted))) continue;
 			claimed.delete(newPath);
@@ -471,7 +517,10 @@ export function pairedWithTheMemberItMovedWith(
 		if (!moved) break;
 	}
 	for (const oldPath of deleted) {
-		const predicted = predictedFor(oldPath);
+		let predicted = predictedFor(oldPath);
+		if (predicted !== undefined && postRenames.has(predicted)) {
+			predicted = postRenames.get(predicted);
+		}
 		if (predicted === undefined || claimed.has(predicted)) continue;
 		if (!fs.existsSync(path.join(repoRoot, predicted))) continue;
 		claimed.add(predicted);
@@ -548,10 +597,16 @@ export function loadExpandedMoveEquivalenceLedger(
 	) {
 		throw new Error("Historical move ledger has an invalid baseline or missing metadata");
 	}
+	const postRenames = getPostSnapshotRenames(repoRoot);
+	const postRenamesInverse = new Map<string, string>();
+	for (const [from, to] of postRenames) {
+		postRenamesInverse.set(to, from);
+	}
 	const changed: Record<string, ApprovedChangedRecord> = {};
 	for (const [newPath, entry] of Object.entries(history.files)) {
+		const targetPath = postRenames.get(newPath) ?? newPath;
 		if (entry.differs === "changed") {
-			changed[newPath] = {
+			changed[targetPath] = {
 				old: entry.old,
 				group: entry.group,
 				hash: entry.hash,
@@ -567,7 +622,10 @@ export function loadExpandedMoveEquivalenceLedger(
 		if (!Object.hasOwn(GROUPS_TABLE, record.group)) {
 			throw new Error(`File ${newPath} references unknown group '${record.group}'`);
 		}
-		if (!history.files[newPath] || history.files[newPath].old !== record.old) {
+		const histEntry =
+			history.files[newPath] ??
+			(postRenamesInverse.has(newPath) ? history.files[postRenamesInverse.get(newPath)!] : undefined);
+		if (!histEntry || histEntry.old !== record.old) {
 			throw new Error(`Move deviation ${newPath} does not match its approved original path`);
 		}
 		if (
@@ -581,6 +639,11 @@ export function loadExpandedMoveEquivalenceLedger(
 		}
 		changed[newPath] = record;
 	}
+	const mappedImportAttributes: Record<string, string[]> = {};
+	for (const [pathKey, attrs] of Object.entries(history.importAttributes)) {
+		const target = postRenames.get(pathKey) ?? pathKey;
+		mappedImportAttributes[target] = attrs;
+	}
 	return {
 		schemaVersion: MOVE_EQUIVALENCE_SCHEMA_VERSION,
 		generatedFrom: PINNED_BASELINE_COMMIT,
@@ -589,7 +652,7 @@ export function loadExpandedMoveEquivalenceLedger(
 		counts: fixture.counts,
 		groups: GROUPS_TABLE,
 		changed,
-		importAttributes: history.importAttributes,
+		importAttributes: mappedImportAttributes,
 	};
 }
 
@@ -671,19 +734,24 @@ export async function generateSparseLedger(
 	const baseSha = baseRef;
 	const { pairs: reported, deleted } = getRenamePairs(baseSha, headRef, repoRoot, 20);
 	const pairs = pairedWithTheMemberItMovedWith(repoRoot, reported, deleted);
-	const rewrites = derivePrefixRewrites(pairs);
-
 	const histText = readGitFileText(HISTORICAL_SNAPSHOT_PATH, histCommit, repoRoot);
 	if (!histText) {
 		throw new Error(`Failed to read historical snapshot from ${histCommit}:${HISTORICAL_SNAPSHOT_PATH}`);
 	}
 	const histLedger = JSON.parse(histText) as {
 		files?: Record<string, HistoricalMoveRecord>;
+		rewrites?: [string, string][];
 	};
+	const rewrites = histLedger.rewrites ?? derivePrefixRewrites(pairs);
 
 	const specs = pairs.map(([oldPath]) => `${baseSha}:${oldPath}`);
 	const blobMap = await batchReadGitBlobs(specs, repoRoot);
 
+	const postRenames = getPostSnapshotRenames(repoRoot);
+	const postRenamesInverse = new Map<string, string>();
+	for (const [from, to] of postRenames) {
+		postRenamesInverse.set(to, from);
+	}
 	const changed: Record<string, ApprovedChangedRecord> = {};
 	const deviations: Record<string, ApprovedChangedRecord> = {};
 	let noneCount = 0;
@@ -718,7 +786,9 @@ export async function generateSparseLedger(
 					hash,
 				};
 				changed[newPath] = record;
-				const histEntry = histLedger.files?.[newPath];
+				const histEntry =
+					histLedger.files?.[newPath] ??
+					(postRenamesInverse.has(newPath) ? histLedger.files?.[postRenamesInverse.get(newPath)!] : undefined);
 				if (histEntry?.differs !== "changed" || !sameApproval(histEntry, record)) {
 					deviations[newPath] = record;
 				}
@@ -754,7 +824,9 @@ export async function generateSparseLedger(
 			structuralHash: structural,
 		};
 		changed[newPath] = record;
-		const histEntry = histLedger.files?.[newPath];
+		const histEntry =
+			histLedger.files?.[newPath] ??
+			(postRenamesInverse.has(newPath) ? histLedger.files?.[postRenamesInverse.get(newPath)!] : undefined);
 		if (histEntry?.differs !== "changed" || !sameApproval(histEntry, record)) {
 			deviations[newPath] = record;
 		}

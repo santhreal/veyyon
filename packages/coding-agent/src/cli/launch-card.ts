@@ -3,7 +3,7 @@
  *
  * `main.ts` imports the whole agent runtime at module scope — the SDK, the
  * model registry, the builtin slash commands, the system-prompt loader, the
- * subagent reviver. Evaluating that graph costs ~0.7s in the compiled binary,
+ * agent reviver. Evaluating that graph costs ~0.7s in the compiled binary,
  * and until this module existed `commands/launch.ts` awaited `import("../main")`
  * before anything reached the terminal, so the operator watched a blank screen
  * for the whole of it and the card arrived at ~760ms.

@@ -142,15 +142,15 @@ Do not document inline `[profiles.<name>]` tables or standalone `<name>.config.y
 
 ## Model policies and roles (per profile)
 
-Each profile's `config.yml` defines its interactive default, optional roles, subagent policy, and compaction policy:
+Each profile's `config.yml` defines its interactive default, optional roles, agent policy, and compaction policy:
 
 ```yaml
 modelRoles:
   default: openai/gpt-5             # interactive (also set live with /model)
   plan: openai/o3
   smol: deepseek/deepseek-chat
-subagent:
-  model: deepseek/deepseek-chat     # blanket model chain for subagents
+agent:
+  model: deepseek/deepseek-chat     # blanket model chain for agents
   thinkingLevel: high
   agents:
     scout:
@@ -163,7 +163,7 @@ compaction:
   threshold: "80%"
 ```
 
-Unset roles and model chains inherit the live main model at use time, so switching with `/model` changes them immediately. Per-agent subagent settings override the blanket subagent model and effort; an unset per-agent value falls back to that blanket policy. Only an explicit assignment pins a different model. Switching profiles switches all of these assignments with the profile.
+Unset roles and model chains inherit the live main model at use time, so switching with `/model` changes them immediately. Per-agent settings override the blanket agent model and effort; an unset per-agent value falls back to that blanket policy. Only an explicit assignment pins a different model. Switching profiles switches all of these assignments with the profile.
 
 ## See also
 

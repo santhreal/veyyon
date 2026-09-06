@@ -54,7 +54,7 @@ export interface HindsightSessionStateOptions {
 	lastRetainedTurn?: number;
 	hasRecalledForFirstTurn?: boolean;
 	/**
-	 * When set, this entry is a subagent alias that reuses the parent's bank,
+	 * When set, this entry is an agent alias that reuses the parent's bank,
 	 * scope, config, client, and banksSet. Aliases skip auto-recall and
 	 * auto-retain — those run on the parent only — but the recall/retain/reflect
 	 * tools resolve via the alias so they persist to the same bank as the parent.

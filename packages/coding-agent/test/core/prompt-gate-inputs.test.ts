@@ -8,7 +8,7 @@
  * `inspectSystemPrompt` three things: tools, tool names, and cwd.
  *
  * So every settings-fed gate fell to the omitted-option default in `system-prompt.ts`.
- * Reproduced before the fix, with `subagent.delegation=required` and `personality=none`: the
+ * Reproduced before the fix, with `agent.delegation=required` and `personality=none`: the
  * rendered prompt had NO Eager Tasks section, which a real session with `required` does have,
  * and DID have a personality block, which a session with `none` does not. Both the opposite of
  * the configuration. The one surface built to show you the prompt was the surface that could
@@ -39,7 +39,7 @@ import { statementById } from "@veyyon/coding-agent/system-prompt-builder/statem
  * Delegation strength is resolved against the agents the tool will actually accept, so without
  * this the whole delegation family reads as off and five gates would look static for a reason
  * that has nothing to do with the wiring under test. `enabledAgentNames` is the property
- * `enabledSubagentNames` reads.
+ * `enabledAgentNames` reads.
  */
 const TASK_TOOL = { name: "task", enabledAgentNames: ["scout", "worker"], description: "delegate work" };
 const TOOLS = new Map<string, unknown>([["task", TASK_TOOL]]);
@@ -48,16 +48,16 @@ const MODEL = { id: "anthropic/claude-opus-4", supportsTools: true };
 /**
  * A non-default value per live gate, chosen to actually flip the text rather than to be tidy.
  *
- * `subagent.maxConcurrency: 1` is not cosmetic: the number is quoted in the delegation guidance,
+ * `agent.maxConcurrency: 1` is not cosmetic: the number is quoted in the delegation guidance,
  * so any value but the default moves bytes.
  */
 const FLIPS: Readonly<Record<string, unknown>> = {
 	personality: "none",
 	"tui.renderMermaid": false,
-	"subagent.delegation": "required",
-	"subagent.batch": false,
-	"subagent.maxConcurrency": 1,
-	"subagent.agents": {},
+	"agent.delegation": "required",
+	"agent.batch": false,
+	"agent.maxConcurrency": 1,
+	"agent.agents": {},
 	// Defaults to FALSE (the model name is the prompt's only turn-volatile field, and it
 	// sits in the cached PROJECT block), so the flip is ON and the model joins the prompt.
 	includeModelInPrompt: true,
@@ -70,10 +70,10 @@ const FLIPS: Readonly<Record<string, unknown>> = {
 /**
  * Two gates reach the prompt through the TOOL, not through the resolver.
  *
- * `subagent.agents`: the resolver asks the task tool which agents it will accept
+ * `agent.agents`: the resolver asks the task tool which agents it will accept
  * (`enabledAgentNames`); the setting is what the tool builds that list from.
  *
- * `subagent.enabled`: off means the task tool is never built at all, so the whole
+ * `agent.enabled`: off means the task tool is never built at all, so the whole
  * `{{#has tools "task"}}` Delegation section leaves the prompt. Nothing about it passes through
  * the resolver.
  *
@@ -82,7 +82,7 @@ const FLIPS: Readonly<Record<string, unknown>> = {
  * gates because in a real session they do change the prompt, and a rebuild is what carries them
  * there.
  */
-const REACHES_THE_PROMPT_VIA_THE_TOOL = new Set(["subagent.agents", "subagent.enabled"]);
+const REACHES_THE_PROMPT_VIA_THE_TOOL = new Set(["agent.agents", "agent.enabled"]);
 
 /** Render the prompt the way `veyyon prompt` does, under `overrides`. */
 async function renderUnder(overrides: Record<string, unknown>, tools: Map<string, unknown> = TOOLS): Promise<string> {
@@ -145,7 +145,7 @@ const CLAIMS: Readonly<Record<string, GateClaim>> = {
 	"tui.renderMermaid": { kind: "presence", statements: [{ id: "role/mermaid-diagrams", underTheFlip: "absent" }] },
 	// The one gate whose flip is a SWAP rather than a removal, and the reason a claim holds a list:
 	// asserting only that the required wording arrives would pass if both arms rendered at once.
-	"subagent.delegation": {
+	"agent.delegation": {
 		kind: "presence",
 		statements: [
 			{ id: "tool-policy/delegation-required", underTheFlip: "present" },
@@ -165,17 +165,17 @@ const CLAIMS: Readonly<Record<string, GateClaim>> = {
 	// Parallelize bullet as the one place `taskBatch` chooses wording. A wording claim therefore rots in
 	// two ways, not one: the quoted arm can be reworded, and the statement holding it can move. The
 	// suite's own checks catch both, one by name and one by quotation.
-	"subagent.batch": {
+	"agent.batch": {
 		kind: "wording",
 		statement: "tool-policy/delegation-gates",
 		inTheBaseline: ", in one `tasks[]` batch",
 		underTheFlip: ", in parallel calls",
 	},
-	"subagent.maxConcurrency": {
+	"agent.maxConcurrency": {
 		kind: "wording",
 		statement: "tool-policy/delegation-concurrency-cap",
 		inTheBaseline: null,
-		underTheFlip: "At most 1 subagent",
+		underTheFlip: "At most 1 spawned agent",
 	},
 	// The gate that only became live once the TOOL SCHEMAS followed it. It was
 	// `frozen-by-placement` because `sdk.ts` captured the value above `rebuildSystemPrompt`, and
@@ -366,11 +366,11 @@ describe("the two reproductions from the broken inspection path", () => {
 		expect(baseline.length - withNone.length).toBeGreaterThan(500);
 	});
 
-	it("uses the hard delegation wording when subagent.delegation is required", async () => {
+	it("uses the hard delegation wording when agent.delegation is required", async () => {
 		// It USED to render neither: `eagerTasks` and `eagerTasksAlways` both fell to `false`, so
 		// the section was absent whatever the setting said.
-		const required = await renderUnder({ "subagent.delegation": "required" });
-		const allowed = await renderUnder({ "subagent.delegation": "allowed" });
+		const required = await renderUnder({ "agent.delegation": "required" });
+		const allowed = await renderUnder({ "agent.delegation": "allowed" });
 
 		expect(required).not.toBe(allowed);
 		expect(required.length).toBeGreaterThan(allowed.length);
@@ -382,21 +382,21 @@ describe("delegation is resolved against the agents that can actually be spawned
 		// Not a gate-wiring check: the prompt must not instruct the model to delegate to an agent
 		// this session cannot spawn, because that is an instruction it can only fail.
 		const noAgents = new Map<string, unknown>([["task", { name: "task", enabledAgentNames: [] }]]);
-		const settings = Settings.isolated({ "subagent.delegation": "required" } as never);
+		const settings = Settings.isolated({ "agent.delegation": "required" } as never);
 
 		const gates = resolveGateInputs(settings, { tools: noAgents as never, model: MODEL });
 
 		expect(gates.eagerTasks).toBe(false);
 		expect(gates.eagerTasksAlways).toBe(false);
-		expect(gates.subagentNames).toEqual([]);
+		expect(gates.agentNames).toEqual([]);
 	});
 
 	it("carries the spawnable agents through when there are some", () => {
-		const settings = Settings.isolated({ "subagent.delegation": "required" } as never);
+		const settings = Settings.isolated({ "agent.delegation": "required" } as never);
 
 		const gates = resolveGateInputs(settings, { tools: TOOLS as never, model: MODEL });
 
-		expect(gates.subagentNames).toEqual(["scout", "worker"]);
+		expect(gates.agentNames).toEqual(["scout", "worker"]);
 		expect(gates.eagerTasksAlways).toBe(true);
 	});
 
@@ -451,13 +451,13 @@ describe("delegation is resolved against the agents that can actually be spawned
 	});
 
 	/**
-	 * The tool-borne half of `subagent.enabled`, and the whole point of that setting: with
-	 * subagents off the task tool is never built, so the ENTIRE Delegation section leaves the
+	 * The tool-borne half of `agent.enabled`, and the whole point of that setting: with
+	 * agents off the task tool is never built, so the ENTIRE Delegation section leaves the
 	 * prompt rather than merely softening its wording.
 	 *
 	 * Asserted as the section's disappearance rather than as "the text differs", because
 	 * differing text is what the strength dial does, and confusing the two is the bug this
-	 * setting was split out to fix. `subagent.delegation` used to carry an `off` value that
+	 * setting was split out to fix. `agent.delegation` used to carry an `off` value that
 	 * removed the tool, so one setting answered both questions and a master switch that only
 	 * reworded would be that bug returning.
 	 */
@@ -506,10 +506,10 @@ describe("the builder's omitted-option defaults against a default-configured ses
 
 		// Pinned by value, because these are the numbers the comparison below is about. Every one of
 		// them differs from the fallback `system-prompt.ts` uses when the option is omitted
-		// (`eagerTasks = false`, `subagentNames = []`, `taskIrcEnabled = false`).
+		// (`eagerTasks = false`, `agentNames = []`, `taskIrcEnabled = false`).
 		expect(gates.eagerTasks).toBe(true);
 		expect(gates.eagerTasksAlways).toBe(false);
-		expect(gates.subagentNames).toEqual(["scout", "worker"]);
+		expect(gates.agentNames).toEqual(["scout", "worker"]);
 		expect(gates.taskIrcEnabled).toBe(true);
 		expect(gates.taskBatch).toBe(true);
 	});
@@ -537,7 +537,7 @@ describe("the builder's omitted-option defaults against a default-configured ses
 			...OMITTED_GATE_DEFAULTS,
 			// The name list is `readonly` in the table and mutable in the options, so it is copied
 			// rather than shared with the builder.
-			subagentNames: [...OMITTED_GATE_DEFAULTS.subagentNames],
+			agentNames: [...OMITTED_GATE_DEFAULTS.agentNames],
 			tools: TOOLS as never,
 			toolNames: [...TOOLS.keys()],
 			model: MODEL.id,
@@ -553,7 +553,7 @@ describe("the builder's omitted-option defaults against a default-configured ses
 	 * The divergence itself is intended: an omitted option means the caller has no configuration to
 	 * offer, which is not the same as a default configuration. What must not happen is a new
 	 * divergence appearing unnoticed, because that is how `eagerTasks: false` came to contradict a
-	 * shipped `subagent.delegation: preferred` with nothing reporting it. `personality` is excluded
+	 * shipped `agent.delegation: preferred` with nothing reporting it. `personality` is excluded
 	 * from the comparison rather than listed: the resolver returns `undefined` for "unset" and the
 	 * builder maps that to the table's `"default"`, so the two agree by construction.
 	 */
@@ -567,19 +567,19 @@ describe("the builder's omitted-option defaults against a default-configured ses
 				return JSON.stringify(fallback) !== JSON.stringify(resolved);
 			});
 
-		expect(disagreeing.sort()).toEqual(["eagerTasks", "subagentNames", "taskIrcEnabled", "taskMaxConcurrency"]);
+		expect(disagreeing.sort()).toEqual(["agentNames", "eagerTasks", "taskIrcEnabled", "taskMaxConcurrency"]);
 
 		expect([OMITTED_GATE_DEFAULTS.eagerTasks, session.eagerTasks]).toEqual([false, true]);
 		expect([OMITTED_GATE_DEFAULTS.taskIrcEnabled, session.taskIrcEnabled]).toEqual([false, true]);
 		expect([OMITTED_GATE_DEFAULTS.taskMaxConcurrency, session.taskMaxConcurrency]).toEqual([0, 32]);
-		expect([[...OMITTED_GATE_DEFAULTS.subagentNames], session.subagentNames]).toEqual([[], ["scout", "worker"]]);
+		expect([[...OMITTED_GATE_DEFAULTS.agentNames], session.agentNames]).toEqual([[], ["scout", "worker"]]);
 	});
 
 	it("names which text the omitted-option prompt is missing", async () => {
 		const omitted = await renderWithNoGateOptions();
 		const resolved = await renderUnder({});
 
-		// The softer SHOULD delegation wording, which a default session (`subagent.delegation:
+		// The softer SHOULD delegation wording, which a default session (`agent.delegation:
 		// preferred`) receives and an omitting caller does not, because the builder's `eagerTasks`
 		// fallback is `false`. Named by statement id and derived from its text, so a rewording of the
 		// rule does not turn this into a test asserting bytes the prompt no longer contains.
@@ -624,11 +624,11 @@ describe("the gate slice itself", () => {
 	 * nested-spawn setting. Cap 0 still permits this root to spawn a direct child.
 	 */
 	it("enables root IRC exactly when the resolved session can spawn through task", () => {
-		const canSpawn = resolveGateInputs(Settings.isolated({ "subagent.maxNestedSpawnDepth": 0 } as never), {
+		const canSpawn = resolveGateInputs(Settings.isolated({ "agent.maxNestedSpawnDepth": 0 } as never), {
 			tools: TOOLS as never,
 			model: MODEL,
 		});
-		const cannotSpawn = resolveGateInputs(Settings.isolated({ "subagent.maxNestedSpawnDepth": 0 } as never), {
+		const cannotSpawn = resolveGateInputs(Settings.isolated({ "agent.maxNestedSpawnDepth": 0 } as never), {
 			tools: new Map() as never,
 			model: MODEL,
 		});
@@ -638,11 +638,11 @@ describe("the gate slice itself", () => {
 	});
 
 	/**
-	 * A subagent already has its parent as a peer, so IRC remains available even when that
+	 * An agent already has its parent as a peer, so IRC remains available even when that
 	 * depth-1 session is a leaf and has no task tool of its own.
 	 */
 	it("keeps IRC enabled for a depth-1 leaf because it still has peers", () => {
-		const nested = resolveGateInputs(Settings.isolated({ "subagent.maxNestedSpawnDepth": 0 } as never), {
+		const nested = resolveGateInputs(Settings.isolated({ "agent.maxNestedSpawnDepth": 0 } as never), {
 			tools: new Map() as never,
 			model: MODEL,
 			taskDepth: 1,

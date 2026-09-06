@@ -78,7 +78,7 @@
 		"statusLineUntracked": "ice",
 		"statusLineOutput": "moonlight",
 		"statusLineCost": "glow",
-		"statusLineSubagents": "moonlight",
+		"statusLineAgents": "moonlight",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

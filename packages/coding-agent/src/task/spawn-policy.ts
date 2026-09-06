@@ -11,7 +11,7 @@ export const DEFAULT_SPAWN_AGENT = "deep";
  * words apart.
  *
  * The old name keeps resolving rather than going quietly inert, because it is
- * written down in places this repository does not own: a `subagent.agents.task`
+ * written down in places this repository does not own: a `agent.agents.task`
  * row in someone's settings, a hand-written `.veyyon/agents/task.md`, a saved
  * transcript being resumed, an SDK caller passing `agent: "task"`. Dropping it
  * would turn every one of those into either an "Unknown agent" error or, worse,
@@ -29,7 +29,7 @@ export function currentAgentName(name: string): string {
 
 /** Spawn policy derived from a parent agent's `spawns` frontmatter. */
 export interface ResolvedSpawnPolicy {
-	/** True when at least one subagent may be spawned. */
+	/** True when at least one agent may be spawned. */
 	enabled: boolean;
 	/** Agent used when the caller omits the agent field. */
 	defaultAgent: string;

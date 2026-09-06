@@ -10,9 +10,9 @@
  * an inspection would report a truncated prompt as a correct minimal one.
  *
  * The system prompt went without the flag entirely. `prompts/registry.ts` has
- * carried it since it was written, and `veyyon prompt --prompt subagent` has
- * always marked each subagent section optional or always, so the product could
- * tell a subagent prompt that rendered three of five sections from one that lost
+ * carried it since it was written, and `veyyon prompt --prompt agent` has
+ * always marked each agent section optional or always, so the product could
+ * tell an agent prompt that rendered three of five sections from one that lost
  * two. It could not do that for the system prompt — the larger document, and the
  * one where it matters most, since 86 of its 272 template lines carry conditional
  * syntax and 54 of those open a conditional.

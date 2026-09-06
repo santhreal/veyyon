@@ -44,7 +44,7 @@ describe("foreground bash wait registry", () => {
 		expect(resolved).toBe(1);
 	});
 
-	/** Nested foreground waits (a sub-agent's bash inside a turn): the NEWEST
+	/** Nested foreground waits (an agent's bash inside a turn): the NEWEST
 	 * wait wins — the innermost command is the one on screen. */
 	it("resolves the newest wait when several are registered", () => {
 		const order: string[] = [];

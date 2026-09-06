@@ -1,10 +1,10 @@
 /**
  * The `job` tool's snapshot contract: `list` and empty-poll results must never
- * come back as empty text, and they must surface running subagents that have
+ * come back as empty text, and they must surface running agents that have
  * no backing job (irc-woken/revived agents, spawns owned by another agent) so
  * the tool's picture matches the UI's running-agent count. Regression for the
  * QA report "job list returned no status output despite known running
- * background jobs and subagents".
+ * background jobs and agents".
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { AsyncJobManager } from "@veyyon/coding-agent/async";
@@ -66,7 +66,7 @@ describe("job list snapshot", () => {
 		expect(result.details?.jobs).toEqual([]);
 	});
 
-	test("list surfaces running subagents that have no backing job", async () => {
+	test("list surfaces running agents that have no backing job", async () => {
 		const registry = new AgentRegistry();
 		registerRunningSub(registry, "Worker");
 		registerRunningSub(registry, "Idler");

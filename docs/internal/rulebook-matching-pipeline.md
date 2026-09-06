@@ -273,7 +273,7 @@ This is advisory/contextual: prompt text asks the model to read applicable rules
 
 ## 8. `rule://` internal URL behavior
 
-`RuleProtocolHandler` resolves against the process-global active-rule snapshot. A top-level session installs the snapshot initially in `sdk.ts` and refreshes it when live cwd/project prompt inputs are re-discovered and TTSR rules are re-bucketed. Subagents do not install independent snapshots:
+`RuleProtocolHandler` resolves against the process-global active-rule snapshot. A top-level session installs the snapshot initially in `sdk.ts` and refreshes it when live cwd/project prompt inputs are re-discovered and TTSR rules are re-bucketed. Agents do not install independent snapshots:
 
 ```ts
 setActiveRules([...rulebookRules, ...alwaysApplyRules, ...ttsrManager.getRules()]);

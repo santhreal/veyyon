@@ -46,12 +46,12 @@ export interface ModelRoleInfo {
 export const ROLE_INHERIT_LABEL = "inherit (follows main model)";
 
 /**
- * There is deliberately NO `task` role. The model a subagent runs lives in the
- * Subagents settings area (`subagent.model`, and `subagent.agents.<name>.model`
+ * There is deliberately NO `task` role. The model a spawned agent runs lives in the
+ * Agents settings area (`agent.model`, and `agent.agents.<name>.model`
  * per agent), which is its one owner. A `modelRoles.task` entry beside those was
- * a second owner for the same value, and it is what made "I changed the subagent
+ * a second owner for the same value, and it is what made "I changed the spawned agent
  * model" fail to take: role expansion answered first. Old configs are migrated
- * onto `subagent.model`; see `#migrateSubagentSettings`.
+ * onto `agent.model`; see `#migrateAgentSettings`.
  */
 export const MODEL_ROLES: Record<ModelRole, ModelRoleInfo> = {
 	/** Legacy only — not selectable; interactive model is the session model, not a role. */

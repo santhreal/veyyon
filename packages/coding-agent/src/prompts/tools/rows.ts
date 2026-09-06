@@ -123,7 +123,7 @@ export const toolsPrompts = definePromptRows({
 	"tools/set-cwd": { text: toolsSetCwd, purpose: "the set_cwd tool description" },
 	"tools/ssh": { text: toolsSsh, purpose: "the ssh tool description" },
 	"tools/task": { text: toolsTask, purpose: "the task tool description" },
-	"tools/task-summary": { text: toolsTaskSummary, purpose: "renders a finished subagent's result back to its caller" },
+	"tools/task-summary": { text: toolsTaskSummary, purpose: "renders a finished agent's result back to its caller" },
 	"tools/todo": { text: toolsTodo, purpose: "the todo tool description" },
 	"tools/vibe-kill": { text: toolsVibeKill, purpose: "the vibe_kill tool description" },
 	"tools/vibe-list": { text: toolsVibeList, purpose: "the vibe_list tool description" },

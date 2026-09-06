@@ -267,7 +267,7 @@ export class GoalRuntime {
 	 * A goal stops counting the moment the `goal` tool completes it, which is the
 	 * middle of a turn rather than the end of one. Every token the rest of that
 	 * turn spends — the results of the sibling tool calls in the same batch, a
-	 * subagent among them, and the closing message the model writes once they
+	 * agent among them, and the closing message the model writes once they
 	 * return — is spent on the goal and lands after it stopped counting, so the
 	 * total reported for a completed goal omits the work that finished it.
 	 * Reconcile once at the end of that turn against the usage recorded when the

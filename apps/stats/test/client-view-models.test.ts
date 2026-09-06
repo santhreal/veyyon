@@ -50,15 +50,15 @@ function agentStats(
 }
 
 describe("buildAgentTokenShare", () => {
-	it("orders segments main -> subagent -> advisor and shares sum to 1", () => {
+	it("orders segments main -> spawn -> advisor and shares sum to 1", () => {
 		// Insertion order is intentionally scrambled to prove the fixed ordering.
 		const view = buildAgentTokenShare([
 			agentStats("advisor", { input: 10, output: 10 }),
 			agentStats("main", { input: 50, output: 30, cacheRead: 20 }),
-			agentStats("subagent", { input: 40, output: 20 }),
+			agentStats("spawn", { input: 40, output: 20 }),
 		]);
 
-		expect(view.segments.map(s => s.agentType)).toEqual(["main", "subagent", "advisor"]);
+		expect(view.segments.map(s => s.agentType)).toEqual(["main", "spawn", "advisor"]);
 		// Denominator is input+output+cacheRead+cacheWrite: 100 + 60 + 20 = 180.
 		expect(view.totalTokens).toBe(180);
 		expect(view.segments[0].tokens).toBe(100);

@@ -337,7 +337,7 @@ describe("the generated handbook contains source-owned text and links", () => {
 		expect(pages.length).toBeGreaterThan(50);
 		expect(checked).toBeGreaterThan(1000);
 		expect(checkedTargets).toBeGreaterThan(100);
-		expect(pages.some(page => path.basename(page) === "subagents.md")).toBe(true);
+		expect(pages.some(page => path.basename(page) === "agents.md")).toBe(true);
 	});
 
 	it("has no source text or destination missing from its built page", () => {
@@ -386,11 +386,10 @@ describe("the source contract extractor follows visible Markdown semantics", () 
 
 	/** Inline presentation disappears while its visible label and code remain. */
 	it("normalizes inline markdown into the rendered sentence", () => {
-		const source =
-			"The setting `subagent.model` decides which [model](./models.md) a spawned agent runs on by default.";
+		const source = "The setting `agent.model` decides which [model](./models.md) a spawned agent runs on by default.";
 
 		expect(sourceTextRuns(source)).toEqual([
-			"The setting subagent model decides which model a spawned agent runs on by default",
+			"The setting agent model decides which model a spawned agent runs on by default",
 		]);
 		expect(sourceTargets(source)).toEqual([{ attribute: "href", target: "./models.html" }]);
 	});
@@ -400,7 +399,7 @@ describe("the source contract extractor follows visible Markdown semantics", () 
 	 * generated en dashes compare with their ASCII source.
 	 */
 	it("folds smart punctuation so an apostrophe is not a difference", () => {
-		const source = "A subagent inherits that project's configuration when it starts there.";
+		const source = "An agent inherits that project's configuration when it starts there.";
 
 		expect(sourceTextRuns(source)[0]).toContain("project's");
 		expect(foldPunctuation("project’s")).toBe("project's");
@@ -504,7 +503,7 @@ describe("the source contract extractor follows visible Markdown semantics", () 
 	 * would make the rule above pass forever.
 	 */
 	it("reports a run the page does not contain", () => {
-		const page = readableText(fs.readFileSync(bookPageFor(path.join(SRC, "features", "subagents.md")), "utf8"));
+		const page = readableText(fs.readFileSync(bookPageFor(path.join(SRC, "features", "agents.md")), "utf8"));
 
 		expect(page).not.toContain("this sentence has never appeared in the handbook at all");
 	});

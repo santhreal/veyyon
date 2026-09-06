@@ -138,7 +138,7 @@ async function writeFile(filePath: string, values: Record<string, unknown>): Pro
 
 /**
  * Open the store for one session under `root` (the session's artifacts directory). The session id
- * is the whole scope: two sessions never share a file, and a subagent that should share uses its
+ * is the whole scope: two sessions never share a file, and a spawned agent that should share uses its
  * parent's id, the same rule the artifact manager already follows.
  */
 export function openKernelStore(root: string, sessionId: string): KernelStore {

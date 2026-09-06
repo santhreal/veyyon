@@ -30,7 +30,7 @@ export const OPENAI_HEADERS = {
 	WINDOW_ID: "x-codex-window-id",
 	TURN_METADATA: "x-codex-turn-metadata",
 	PARENT_THREAD_ID: "x-codex-parent-thread-id",
-	SUBAGENT: "x-openai-subagent",
+	AGENT: "x-openai-agent",
 	/** Responses Lite transport marker (codex-rs `add_responses_lite_header`); value is always `"true"`. */
 	RESPONSES_LITE: "x-openai-internal-codex-responses-lite",
 } as const;

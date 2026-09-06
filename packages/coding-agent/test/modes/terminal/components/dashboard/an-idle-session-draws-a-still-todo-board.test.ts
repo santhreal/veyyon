@@ -19,7 +19,7 @@
  * breathing/rail motion across turn boundaries."
  *
  * WHAT IT DOES NOT CATCH.
- * Subagent HUD lane motion (owned by `test/modes/terminal/components/subagent-agents-surface.test.ts`),
+ * Agent HUD lane motion (owned by `test/modes/terminal/components/agents-surface.test.ts`),
  * the completion strike envelope countdown (owned by `test/modes/terminal/a-stopped-mode-draws-no-more-frames.test.ts`),
  * and static glyph monochrome assertions (owned by `test/modes/terminal/components/dashboard/todo-hud-states.test.ts`).
  */

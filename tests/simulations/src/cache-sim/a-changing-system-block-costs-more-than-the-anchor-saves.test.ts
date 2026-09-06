@@ -6,7 +6,7 @@
  * WHY THIS FILE EXISTS. `applyPromptCaching` spends one of its four markers on
  * the FIRST of veyyon's own system blocks, deliberately, so that a changing
  * project, assignment or Argot block cannot invalidate the harness shared with
- * subagents (`packages/ai/src/providers/anthropic.ts:3181-3195`). The other
+ * agents (`packages/ai/src/providers/anthropic.ts:3181-3195`). The other
  * system marker goes on the LAST block. Both halves of that are sound in
  * isolation and the pair has a consequence nobody priced: a provider matches
  * prefixes sequentially, so once block N changes, EVERY prefix that contains
@@ -27,7 +27,7 @@
  *   - Nothing here says which block is stable in production. A request cannot
  *     know that; the simulation is told. Turning this into a patch needs the
  *     builder to learn stability from somewhere, and that is not this file.
- *   - The subagent-sharing argument for anchoring block 0 is real and is NOT
+ *   - The agent-sharing argument for anchoring block 0 is real and is NOT
  *     modelled: one session runs here, so the harness prefix has no second reader
  *     to be worth anything to. A deeper anchor keeps the shallow prefix cached
  *     too (a marker closes a prefix; it does not open one), so the sharing

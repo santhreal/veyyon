@@ -11,7 +11,7 @@
  * same inputs a real session resolves" and justifies resolving the tool set for real because
  * "a prompt inspected against an imagined tool list is a prompt nobody will ever be sent". It
  * then passed exactly three things: tools, tool names, and cwd. Every settings-fed gate fell
- * to the omitted-option default in `system-prompt.ts`, so with `subagent.delegation=required`
+ * to the omitted-option default in `system-prompt.ts`, so with `agent.delegation=required`
  * and `personality=none` the tool rendered a prompt with no Eager Tasks section and a
  * personality block, both the opposite of what a session with those settings sends.
  *
@@ -34,7 +34,7 @@ import { INTENT_FIELD } from "@veyyon/wire";
 import { resolveDialect } from "../config/dialect-format";
 import { shouldInlineToolDescriptors } from "../config/inline-tool-descriptors-mode";
 import type { Settings } from "../config/settings";
-import { enabledSubagentNames, resolveDelegation } from "../task/subagent-settings";
+import { enabledAgentNames, resolveDelegation } from "../task/agent-settings";
 import { isIrcEnabled } from "../tools/agent/irc-enabled";
 
 /**
@@ -70,7 +70,7 @@ export interface GateInputs {
 	readonly personality: string | undefined;
 	/** Whether Mermaid fenced blocks are described as rendering to terminal ASCII diagrams. */
 	readonly renderMermaid: boolean;
-	/** Whether `subagent.batch` is on, which selects the delegation guidance's call shape. */
+	/** Whether `agent.batch` is on, which selects the delegation guidance's call shape. */
 	readonly taskBatch: boolean;
 	/** The concurrency limit the delegation guidance quotes. Zero means unlimited. */
 	readonly taskMaxConcurrency: number;
@@ -78,16 +78,16 @@ export interface GateInputs {
 	readonly taskIrcEnabled: boolean;
 	/** Ask the model to delegate through tasks unless the change is trivial. */
 	readonly eagerTasks: boolean;
-	/** Use the hard MUST/ONLY delegation wording (`subagent.delegation: required`) over the softer nudge. */
+	/** Use the hard MUST/ONLY delegation wording (`agent.delegation: required`) over the softer nudge. */
 	readonly eagerTasksAlways: boolean;
 	/**
-	 * The agent types this session may spawn (`subagent.agents`), in discovery order.
+	 * The agent types this session may spawn (`agent.agents`), in discovery order.
 	 *
 	 * Delegation prose names a specialist only when it is in this list: the bundled specialists ship
 	 * off, and telling the model to route research to a `scout` it cannot spawn is an instruction it
 	 * can only fail.
 	 */
-	readonly subagentNames: string[];
+	readonly agentNames: string[];
 	/** Whether the active model is surfaced in the workstation block. Prompt policy still uses it. */
 	readonly includeModelInPrompt: boolean;
 	/** Whether the workspace directory tree is included in the PROJECT section. */
@@ -122,7 +122,7 @@ export interface GateInputs {
  * SECOND owner independent of the setting's own default in `config/settings-domains/`, and nothing
  * compared them. The fallbacks were not one rule either. Some matched the settings default
  * (`taskBatch`, `renderMermaid`), some were the opposite of it (`eagerTasks: false` against a
- * shipped `subagent.delegation: preferred`), and reading them meant reading a 40-line destructure.
+ * shipped `agent.delegation: preferred`), and reading them meant reading a 40-line destructure.
  *
  * WHAT AN OMITTED OPTION MEANS, stated once: the caller has no configuration to offer, so the gate
  * renders as if it were off or empty. That is deliberately NOT the same as "as a default session
@@ -131,7 +131,7 @@ export interface GateInputs {
  * session's resolved values and asserts they differ, naming the text an omitting caller loses.
  * That divergence is why `veyyon prompt` could not be built by omission and calls
  * {@link resolveGateInputs} instead. Four entries differ from a default session and the test names
- * all four: `eagerTasks`, `taskIrcEnabled` and `subagentNames` are off or empty where a default
+ * all four: `eagerTasks`, `taskIrcEnabled` and `agentNames` are off or empty where a default
  * session has them on, and `taskMaxConcurrency` is 0 (quote no cap) against the shipped 32.
  *
  * So this table is the answer to "what does the builder do when told nothing", and the test above is
@@ -142,7 +142,7 @@ export const OMITTED_GATE_DEFAULTS = {
 	/** The named default personality, which is a personality: `none` is the way to have none. */
 	personality: "default",
 	renderMermaid: true,
-	/** The batch call shape, matching `subagent.batch`, because the non-batch shape is the legacy one. */
+	/** The batch call shape, matching `agent.batch`, because the non-batch shape is the legacy one. */
 	taskBatch: true,
 	/** Zero means unlimited, so an omitting caller quotes no cap rather than inventing one. */
 	taskMaxConcurrency: 0,
@@ -150,7 +150,7 @@ export const OMITTED_GATE_DEFAULTS = {
 	eagerTasks: false,
 	eagerTasksAlways: false,
 	/** No spawnable agent, so delegation prose names none: it cannot route work to an unknown agent. */
-	subagentNames: [] as readonly string[],
+	agentNames: [] as readonly string[],
 	/** Off, matching the setting: the model name is the one turn-volatile field in the prompt. */
 	includeModelInPrompt: false,
 	includeWorkspaceTree: false,
@@ -171,7 +171,7 @@ export interface GateInputContext {
 	 */
 	readonly model?: (Pick<Model, "supportsTools"> & Partial<Pick<Model, "id">>) | undefined;
 	/**
-	 * How deep this session already is. A subagent always has peers, so IRC coordination is on
+	 * How deep this session already is. An agent always has peers, so IRC coordination is on
 	 * regardless of the recursion limit; only a top-level session has to check it.
 	 */
 	readonly taskDepth?: number;
@@ -190,19 +190,19 @@ export function resolveGateInputs(settings: Settings, context: GateInputContext)
 	// for delegation this session has nowhere to send. With every agent disabled, `preferred`
 	// and `required` both come back false.
 	const taskTool = context.tools.get("task");
-	const subagentNames = enabledSubagentNames(taskTool);
-	const delegation = resolveDelegation(settings, subagentNames);
+	const agentNames = enabledAgentNames(taskTool);
+	const delegation = resolveDelegation(settings, agentNames);
 
 	return {
 		personality: settings.get("personality"),
 		renderMermaid: settings.get("tui.renderMermaid"),
-		taskBatch: settings.get("subagent.batch"),
-		taskMaxConcurrency: settings.get("subagent.maxConcurrency"),
+		taskBatch: settings.get("agent.batch"),
+		taskMaxConcurrency: settings.get("agent.maxConcurrency"),
 		taskIrcEnabled:
 			(context.taskDepth ?? 0) > 0 || (delegation.possible && isIrcEnabled(settings, context.taskDepth ?? 0)),
 		eagerTasks: delegation.preferred,
 		eagerTasksAlways: delegation.required,
-		subagentNames,
+		agentNames,
 		includeModelInPrompt: settings.get("includeModelInPrompt"),
 		includeWorkspaceTree: settings.get("includeWorkspaceTree") ?? false,
 		// `auto` enforces the per-model policy (inline for Gemini, off otherwise).

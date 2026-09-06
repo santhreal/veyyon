@@ -347,21 +347,21 @@ describe("template expansion fallback", () => {
 });
 
 // ============================================================================
-// renderYieldSchema helper + subagent-system-prompt.md
+// renderYieldSchema helper + agent-system-prompt.md
 // ============================================================================
 
 describe("renderYieldSchema", () => {
 	// prompt-templates is imported for its Handlebars helper registration side-effect
 	// (jtdToTypeScript + renderYieldSchema); the render calls below rely on it.
-	const templatePath = path.resolve(import.meta.dir, "../src/prompts/subagent/system-prompt.md");
+	const templatePath = path.resolve(import.meta.dir, "../src/prompts/agent/system-prompt.md");
 
-	async function renderSubagentPrompt(outputSchema: unknown): Promise<string> {
+	async function renderAgentPrompt(outputSchema: unknown): Promise<string> {
 		const templateSource = await fs.readFile(templatePath, "utf-8");
 		return prompt.render(templateSource, { agent: "test-agent", outputSchema });
 	}
 
 	test("wraps a JTD properties schema inside result.data so the model matches the yield envelope", async () => {
-		const rendered = await renderSubagentPrompt({
+		const rendered = await renderAgentPrompt({
 			properties: {
 				status: { enum: ["goal_complete", "plan_created"] },
 				plan_path: { type: "string" },
@@ -376,19 +376,19 @@ describe("renderYieldSchema", () => {
 	});
 
 	test("wraps a scalar schema on the same line as data so the model matches the yield envelope", async () => {
-		const rendered = await renderSubagentPrompt({ type: "string" });
+		const rendered = await renderAgentPrompt({ type: "string" });
 		expect(rendered).toContain("```ts\nresult: {\n  data: string;\n}\n```");
 	});
 
 	test("wraps an array-of-object schema without breaking the result.data envelope", async () => {
-		const rendered = await renderSubagentPrompt({
+		const rendered = await renderAgentPrompt({
 			elements: { properties: { title: { type: "string" }, count: { type: "int32" } } },
 		});
 		expect(rendered).toContain("```ts\nresult: {\n  data: { title: string; count: number; }[];\n}\n```");
 	});
 
 	test("omits the schema section entirely when outputSchema is absent", async () => {
-		const rendered = await renderSubagentPrompt(undefined);
+		const rendered = await renderAgentPrompt(undefined);
 		expect(rendered).not.toContain("result: {");
 		expect(rendered).not.toContain("Your terminal `yield` MUST use exactly this shape");
 	});

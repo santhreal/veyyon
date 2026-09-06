@@ -377,8 +377,8 @@ describe("createArgotSession starts unarmed (agent-driven loading)", () => {
 		// decodes wrong and nothing leaks.
 		const session = createArgotSession({
 			enabled: true,
-			isSubagent: false,
-			subagentMode: "off",
+			isSpawned: false,
+			agentMode: "off",
 		});
 		expect(session).toBeDefined();
 		expect(session!.loaded).toBe(false);

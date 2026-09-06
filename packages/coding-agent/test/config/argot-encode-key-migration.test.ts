@@ -112,14 +112,14 @@ describe("argot encode keys migrate from their flat spelling", () => {
 					models: [MODEL],
 					autoload: false,
 					tokenBudget: 2000,
-					subagents: "inherit",
+					agents: "inherit",
 				},
 			});
 
 			expect(settings.get("argot.enabled")).toBe(true);
 			expect(settings.get("argot.autoload")).toBe(false);
 			expect(settings.get("argot.tokenBudget")).toBe(2000);
-			expect(settings.get("argot.subagents")).toBe("inherit");
+			expect(settings.get("argot.agents")).toBe("inherit");
 		});
 	});
 
@@ -228,7 +228,7 @@ describe("argot encode keys migrate from their flat spelling", () => {
 		 * because reading goes through the new path either way. What breaks is the FILE. A surviving
 		 * `argot.models` is a second copy of the truth that no longer drives anything, so the next
 		 * person to change the allowlist has even odds of editing the dead line and concluding the
-		 * setting does not work. The same reasoning is why the subagent migration strips its legacy
+		 * setting does not work. The same reasoning is why the agent migration strips its legacy
 		 * `task` block, and it is checked the same way: write back, then read what is on disk.
 		 */
 		it("removes the retired keys from the file it writes back", async () => {

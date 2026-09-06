@@ -17,17 +17,17 @@ export const MAX_OUTPUT_BYTES = $envpos("VEYYON_TASK_MAX_OUTPUT_BYTES", 500_000)
 /** Maximum output lines per agent */
 export const MAX_OUTPUT_LINES = $envpos("VEYYON_TASK_MAX_OUTPUT_LINES", 5000);
 
-/** EventBus channel for raw subagent events */
-export const TASK_SUBAGENT_EVENT_CHANNEL = "task:subagent:event";
+/** EventBus channel for raw agent events */
+export const TASK_AGENT_EVENT_CHANNEL = "task:agent:event";
 
-/** EventBus channel for aggregated subagent progress */
-export const TASK_SUBAGENT_PROGRESS_CHANNEL = "task:subagent:progress";
+/** EventBus channel for aggregated agent progress */
+export const TASK_AGENT_PROGRESS_CHANNEL = "task:agent:progress";
 
-/** EventBus channel for subagent lifecycle (start/end) */
-export const TASK_SUBAGENT_LIFECYCLE_CHANNEL = "task:subagent:lifecycle";
+/** EventBus channel for agent lifecycle (start/end) */
+export const TASK_AGENT_LIFECYCLE_CHANNEL = "task:agent:lifecycle";
 
-/** Payload emitted on TASK_SUBAGENT_PROGRESS_CHANNEL */
-export interface SubagentProgressPayload {
+/** Payload emitted on TASK_AGENT_PROGRESS_CHANNEL */
+export interface AgentProgressPayload {
 	index: number;
 	agent: string;
 	agentSource: AgentSource;
@@ -36,18 +36,18 @@ export interface SubagentProgressPayload {
 	assignment?: string;
 	progress: AgentProgress;
 	sessionFile?: string;
-	/** See {@link SubagentLifecyclePayload.detached}. */
+	/** See {@link AgentLifecyclePayload.detached}. */
 	detached?: boolean;
 }
 
-/** Payload emitted on TASK_SUBAGENT_EVENT_CHANNEL */
-export interface SubagentEventPayload {
+/** Payload emitted on TASK_AGENT_EVENT_CHANNEL */
+export interface AgentEventPayload {
 	id: string;
 	event: AgentSessionEvent;
 }
 
-/** Payload emitted on TASK_SUBAGENT_LIFECYCLE_CHANNEL */
-export interface SubagentLifecyclePayload {
+/** Payload emitted on TASK_AGENT_LIFECYCLE_CHANNEL */
+export interface AgentLifecyclePayload {
 	id: string;
 	agent: string;
 	agentSource: AgentSource;
@@ -60,7 +60,7 @@ export interface SubagentLifecyclePayload {
 	 * Spawn runs as a detached background job: the parent turn keeps working
 	 * while this agent runs. Sync task spawns (parent blocked on the call) and
 	 * eval `agent()` bridge spawns (rendered inside their eval cell) leave this
-	 * unset — surfaces like the subagent HUD only list detached spawns.
+	 * unset — surfaces like the agent HUD only list detached spawns.
 	 */
 	detached?: boolean;
 }
@@ -242,7 +242,7 @@ export interface TaskParams {
 	agent?: string;
 	/** The work (flat form). */
 	task?: string;
-	/** Batch form (`task.batch`): one subagent per item. */
+	/** Batch form (`task.batch`): one agent per item. */
 	tasks?: TaskItem[];
 	/** Batch form: shared background prepended to every assignment; required by the batch schema. */
 	context?: string;
@@ -278,7 +278,7 @@ export function oneLineLabel(text: string, max = LABEL_MAX): string {
 
 /**
  * Whether an agent at `taskDepth` may still spawn children. The configured
- * value counts nested subagent levels, so zero allows the root session at depth
+ * value counts nested agent levels, so zero allows the root session at depth
  * zero to spawn direct children, but those children at depth one are leaves.
  * `maxNestedSpawnDepth < 0` disables the cap entirely.
  */
@@ -328,7 +328,7 @@ export interface AgentDefinition {
 	filePath?: string;
 }
 
-/** Details extracted from a subagent `yield` tool call for final-result assembly and task rendering. */
+/** Details extracted from an agent `yield` tool call for final-result assembly and task rendering. */
 export interface YieldItem {
 	data?: unknown;
 	status?: "success" | "aborted";
@@ -398,7 +398,7 @@ export interface AgentProgress {
 	/** Data extracted by registered subprocess tool handlers (keyed by tool name) */
 	extractedToolData?: Record<string, unknown[]>;
 	/**
-	 * Auto-retry state when the subagent is sleeping between provider retries
+	 * Auto-retry state when the agent is sleeping between provider retries
 	 * (e.g. 429 rate-limit with retry-after). Cleared when the retry resolves
 	 * or fails. Surfacing this to the parent prevents the task tool from
 	 * looking indefinitely "in progress" when a child is actually blocked on
@@ -414,7 +414,7 @@ export interface AgentProgress {
 		mode?: RetryRecoveryMode;
 	};
 	/**
-	 * Terminal recovery failure surfaced once the subagent gave up (retry-after
+	 * Terminal recovery failure surfaced once the agent gave up (retry-after
 	 * exceeded the cap, all attempts exhausted, or a continuation that ran out
 	 * of allowance). Carries the final error and which recovery gave up, so the
 	 * parent UI can name what happened instead of waiting for a status that
@@ -429,7 +429,7 @@ export interface AgentProgress {
 	/**
 	 * Snapshot of the most recent `task` tool call's in-flight `TaskToolDetails`,
 	 * captured from `tool_execution_update`. Lets the parent UI surface live
-	 * nested-subagent progress while this agent is still inside its own `task`
+	 * nested-agent progress while this agent is still inside its own `task`
 	 * call. Cleared when the call ends — finalized data lives in
 	 * `extractedToolData.task` after that.
 	 */
@@ -484,7 +484,7 @@ export interface SingleResult {
 	/** Data extracted by registered subprocess tool handlers (keyed by tool name) */
 	extractedToolData?: Record<string, unknown[]>;
 	/**
-	 * Terminal recovery failure, when the subagent exited because a recovery
+	 * Terminal recovery failure, when the agent exited because a recovery
 	 * gave up (retry-after exceeded the cap, all attempts exhausted, or a
 	 * continuation that ran out of allowance). The parent copies this onto the
 	 * progress row it renders, so `mode` has to cross the boundary with it: a
@@ -505,7 +505,7 @@ export interface TaskToolDetails {
 	projectAgentsDir: string | null;
 	results: SingleResult[];
 	totalDurationMs: number;
-	/** Aggregated usage across all subagents. */
+	/** Aggregated usage across all agents. */
 	usage?: Usage;
 	outputPaths?: string[];
 	progress?: AgentProgress[];

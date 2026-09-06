@@ -69,9 +69,9 @@ describe("task tool homogeneous triage enforcement", () => {
 			hasUI: false,
 			settings: Settings.isolated({
 				"async.enabled": false,
-				"subagent.agents": enabled,
-				"subagent.batch": true,
-				"subagent.isolation.mode": "none",
+				"agent.agents": enabled,
+				"agent.batch": true,
+				"agent.isolation.mode": "none",
 			}),
 			getSessionFile: () => path.join(tempRoot, "parent.jsonl"),
 			getSessionSpawns: () => "*",

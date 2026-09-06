@@ -186,8 +186,7 @@ export const PROVIDERS_SETTINGS = {
 			tab: "providers",
 			group: "Services",
 			label: "Ollama Cloud Max Concurrency",
-			description:
-				"Maximum concurrent Ollama Cloud subagent runs per process; 0 disables the provider-specific limit",
+			description: "Maximum concurrent Ollama Cloud agent runs per process; 0 disables the provider-specific limit",
 		},
 	},
 	"providers.webSearch": {

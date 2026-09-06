@@ -240,7 +240,7 @@ model is actually told, and why enablement is inert". Read it before touching th
 - Before adding, renaming or re-describing an agent, name which spawns move to it and which move off
   it. A row that changes no behavior does not ship.
 - Two agents that share a prompt body are one agent. Diff the prompts the workers receive and the
-  models they resolve through `resolveSubagentModel` before claiming the prompt distinguishes them.
+  models they resolve through `resolveAgentModel` before claiming the prompt distinguishes them.
 
 ## Code Quality
 
@@ -408,20 +408,20 @@ argot. Never hand-roll handle logic here.
 
 - Every seam is wired in `packages/coding-agent/src/argot-wire.ts`, the only veyyon module that
   touches the codec: `expandToolArguments` (tool args), `expandAssistantContent` (finished display),
-  `createSubagentStreamDecoder` (the live streamed preview, feeding `StreamDecoder.push`/`flush` and
-  never a raw delta), `expandSessionContext` (transcript, export, resume), and `expandSubagentReturn`
-  (a subagent's result to its parent).
-- A user never sees a raw `§handle`. That includes the live subagent HUD preview
+  `createAgentStreamDecoder` (the live streamed preview, feeding `StreamDecoder.push`/`flush` and
+  never a raw delta), `expandSessionContext` (transcript, export, resume), and `expandAgentReturn`
+  (an agent's result to its parent).
+- A user never sees a raw `§handle`. That includes the live agent HUD preview
   (`progress.recentOutput` in `task/executor.ts`). A raw handle in any display, tool, transcript, or
   parent return is a defect.
 - A new place the model's text crosses out of its history is a new seam. Route it through an
   `argot-wire.ts` function, adding a thin delegate there if none fits.
-- `test/argot-subagent-*.test.ts` drive the real executor and prove each seam with a negative control
+- `test/argot-agent-*.test.ts` drive the real executor and prove each seam with a negative control
   (revert the expand, the handle leaks). A new seam gets the same treatment.
 - Argot's proof artifacts: the settings differential from `proof/scenes/settings-pointer.sh` carried
   in the pull request (off arm at the default, on arm with `SCENE_SETTINGS='argot.enabled: true'`) —
   off shows only the "Argot Shorthand" master toggle, on shows it plus Models, Dictionary Budget,
-  Context Cutoff and Subagents — and the bench
+  Context Cutoff and Agents — and the bench
   `tests/evals/suites/typescript-edit/argot-bench.ts`, which runs the edit tasks with encoding on
   and off and certifies the token delta. `test/argot-settings-e2e.test.ts` asserts every Argot
   setting end to end, including that the knobs are hidden while off. Keep all of it current.

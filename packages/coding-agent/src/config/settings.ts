@@ -370,7 +370,7 @@ class CodingAgentSettingsHooks implements SettingsStoreHooks {
 	}
 
 	/**
-	 * Fold every retired subagent key onto the `subagent.*` area, in place.
+	 * Fold every retired agent key onto the `agent.*` area, in place.
 	 *
 	 * Runs on every read of a settings source, so it must be a FIXED POINT:
 	 * applying it to its own output changes nothing. That holds because each
@@ -379,17 +379,17 @@ class CodingAgentSettingsHooks implements SettingsStoreHooks {
 	 * stale legacy one).
 	 *
 	 * `task.eager` mapped three values onto delegation strength; the new
-	 * `subagent.delegation` adds `off` at the bottom, so `default` becomes
+	 * `agent.delegation` adds `off` at the bottom, so `default` becomes
 	 * `allowed` and `always` becomes `required`. `task.disabledAgents` becomes one
-	 * row per agent in `subagent.agents`; `task.agentModelOverrides` named a per-agent
+	 * row per agent in `agent.agents`; `task.agentModelOverrides` named a per-agent
 	 * model, which no longer exists as a concept, so it is dropped with a report
 	 * rather than folded into a row nothing reads.
 	 */
-	#migrateSubagentSettings(raw: RawSettings): void {
+	#migrateAgentSettings(raw: RawSettings): void {
 		// Every value in a settings source is NESTED — the loader builds the tree
 		// with `setByPath` and `get` reads it back segment by segment — so a dotted
 		// key written at the top level here would be stored but never read. That is
-		// not theoretical: writing `raw["subagent.delegation"]` made this whole
+		// not theoretical: writing `raw["agent.delegation"]` made this whole
 		// migration a no-op, and only a test that loaded a legacy config and read the
 		// new setting back caught it.
 		const read = (segments: string[]): unknown => getByPath(raw, segments);
@@ -402,9 +402,31 @@ class CodingAgentSettingsHooks implements SettingsStoreHooks {
 			if (value === undefined) return;
 			// An explicit new-key value already on disk is authoritative: an operator
 			// who has set the new setting is never overwritten by a stale legacy key.
-			if (read(["subagent", ...key]) !== undefined) return;
-			setByPath(raw, ["subagent", ...key], value);
+			if (read(["agent", ...key]) !== undefined) return;
+			setByPath(raw, ["agent", ...key], value);
 		};
+
+		// The area itself was `subagent.*` before it was `agent.*`. Fold it first,
+		// leaf for leaf, so the older migrations below see one tree: a legacy
+		// `subagent.autoClose.parkedMs` becomes `agent.autoClose.parkedMs` here and
+		// `agent.prune.afterMs` a few lines down. `advisor.subagents` and
+		// `argot.subagents` moved with it; `tier.subagent` is folded with the other
+		// tier keys further down.
+		const legacyArea = raw.subagent;
+		if (isRecord(legacyArea)) {
+			const fold = (node: Record<string, unknown>, path: string[]): void => {
+				for (const [key, value] of Object.entries(node)) {
+					if (isRecord(value)) fold(value, path.concat(key));
+					else setNew(path.concat(key), value);
+				}
+			};
+			fold(legacyArea, []);
+			delete raw.subagent;
+		}
+		for (const area of ["advisor", "argot"] as const) {
+			const value = take([area, "subagents"]);
+			if (value !== undefined && read([area, "agents"]) === undefined) setByPath(raw, [area, "agents"], value);
+		}
 
 		const eager = take(["task", "eager"]);
 		if (typeof eager === "string") {
@@ -416,17 +438,17 @@ class CodingAgentSettingsHooks implements SettingsStoreHooks {
 			setNew(["delegation"], delegation);
 		}
 
-		// `subagent.delegation: off` was the kill switch before `subagent.enabled`
-		// existed, so one setting answered two questions: whether subagents exist, and
-		// how hard to push them. Someone who wrote `off` was turning subagents OFF —
+		// `agent.delegation: off` was the kill switch before `agent.enabled`
+		// existed, so one setting answered two questions: whether agents exist, and
+		// how hard to push them. Someone who wrote `off` was turning agents OFF —
 		// that is the half to preserve — so it becomes `enabled: false` and the
 		// strength falls back to its default, ready for when they turn it back on.
 		// Deleted rather than left in place because `off` is no longer a legal value:
 		// leaving it would fail validation and read as a corrupt config.
-		if (read(["subagent", "delegation"]) === "off") {
-			deleteByPath(raw, ["subagent", "delegation"]);
-			if (read(["subagent", "enabled"]) === undefined) {
-				setByPath(raw, ["subagent", "enabled"], false);
+		if (read(["agent", "delegation"]) === "off") {
+			deleteByPath(raw, ["agent", "delegation"]);
+			if (read(["agent", "enabled"]) === undefined) {
+				setByPath(raw, ["agent", "enabled"], false);
 			}
 		}
 
@@ -447,26 +469,26 @@ class CodingAgentSettingsHooks implements SettingsStoreHooks {
 		// read as the opposite of park, when the two are consecutive stages of one
 		// lifecycle: parking releases the session and keeps the row, pruning drops the
 		// row. The container is deleted with the leaves so a migrated file carries no
-		// empty `subagent.autoClose` block.
+		// empty `agent.autoClose` block.
 		for (const [legacy, next] of [
 			["enabled", "enabled"],
 			["parkedMs", "afterMs"],
 			["waitingMs", "waitingAfterMs"],
 		] as const) {
-			setNew(["prune", next], take(["subagent", "autoClose", legacy]));
+			setNew(["prune", next], take(["agent", "autoClose", legacy]));
 		}
-		if (read(["subagent", "autoClose"]) !== undefined) deleteByPath(raw, ["subagent", "autoClose"]);
+		if (read(["agent", "autoClose"]) !== undefined) deleteByPath(raw, ["agent", "autoClose"]);
 
 		// The old depth counted the root as level 1. The replacement counts only
-		// nested subagent levels, so old 1 becomes new 0. Old 0 disabled even the
+		// nested agent levels, so old 1 becomes new 0. Old 0 disabled even the
 		// root task tool; preserve that behavior through the dedicated master
-		// switch. Both legacy paths are consumed, with the newer subagent path
+		// switch. Both legacy paths are consumed, with the newer agent path
 		// winning when a file somehow contains both.
 		const legacyTaskDepth = take(["task", "maxRecursionDepth"]);
-		const legacySubagentDepth = take(["subagent", "maxRecursionDepth"]);
-		const legacyDepth = legacySubagentDepth ?? legacyTaskDepth;
+		const legacyAgentDepth = take(["agent", "maxRecursionDepth"]);
+		const legacyDepth = legacyAgentDepth ?? legacyTaskDepth;
 		if (legacyDepth !== undefined) {
-			if (legacyDepth === 0) setByPath(raw, ["subagent", "enabled"], false);
+			if (legacyDepth === 0) setByPath(raw, ["agent", "enabled"], false);
 			const nestedDepth =
 				typeof legacyDepth === "number" && Number.isInteger(legacyDepth)
 					? legacyDepth < 0
@@ -476,7 +498,7 @@ class CodingAgentSettingsHooks implements SettingsStoreHooks {
 			setNew(["maxNestedSpawnDepth"], nestedDepth);
 		}
 
-		// task.isolation.* -> subagent.isolation.*
+		// task.isolation.* -> agent.isolation.*
 		for (const key of ["mode", "merge", "commits"] as const) {
 			setNew(["isolation", key], take(["task", "isolation", key]));
 		}
@@ -493,9 +515,9 @@ class CodingAgentSettingsHooks implements SettingsStoreHooks {
 			}
 		}
 		// Per-agent models are NOT carried over. They were a third owner of the
-		// subagent model question, above the blanket setting and invisible from it,
+		// agent model question, above the blanket setting and invisible from it,
 		// and they are gone; writing them into the new section would only recreate
-		// the drift in a new spelling. Folding them into `subagent.model` instead is
+		// the drift in a new spelling. Folding them into `agent.model` instead is
 		// not available either — several agents could name several models and there
 		// is no honest way to pick one. So the values are dropped and named, once,
 		// with the setting that replaced them.
@@ -507,7 +529,7 @@ class CodingAgentSettingsHooks implements SettingsStoreHooks {
 			if (dropped.length > 0) {
 				logger.warn(
 					`Settings: task.agentModelOverrides (${dropped.join(", ")}) is no longer read — a per-agent model ` +
-						`is set on that agent's own page. Open Subagents → Roster, pick the agent, and set its Model, or ` +
+						`is set on that agent's own page. Open Agents → Roster, pick the agent, and set its Model, or ` +
 						`give the agent file its own \`model:\` frontmatter.`,
 					{ setting: "task.agentModelOverrides", dropped },
 				);
@@ -517,10 +539,10 @@ class CodingAgentSettingsHooks implements SettingsStoreHooks {
 		// row written here carries exactly one fact: whether the agent runs.
 		if (Object.keys(agents).length > 0) setNew(["agents"], agents);
 
-		// modelRoles.task was the "model for subagents" knob before this section
-		// existed. It folds into the blanket subagent model AND the role entry goes:
+		// modelRoles.task was the "model for agents" knob before this section
+		// existed. It folds into the blanket agent model AND the role entry goes:
 		// leaving it would restore two owners for one value, with role expansion
-		// answering first, which is exactly why a subagent model setting used to have
+		// answering first, which is exactly why an agent model setting used to have
 		// no effect.
 		const legacyRoleModel = read(["modelRoles", "task"]);
 		if (typeof legacyRoleModel === "string" && legacyRoleModel.trim()) {
@@ -695,15 +717,15 @@ class CodingAgentSettingsHooks implements SettingsStoreHooks {
 			}
 		}
 
-		// task.* / modelRoles.task -> the subagent.* settings area.
+		// task.* / modelRoles.task -> the agent.* settings area.
 		//
 		// Everything about spawned agents used to be spread across `task.*`
-		// operational keys, `subagent.model` under Models, `modelRoles.task` in the
+		// operational keys, `agent.model` under Models, `modelRoles.task` in the
 		// role table, and two UI-less maps (`task.agentModelOverrides`,
 		// `task.disabledAgents`). This rewrites the old keys onto the one section so
 		// the file has a single owner per value — no dual-read, which is how the
 		// precedence tangle grew in the first place.
-		this.#migrateSubagentSettings(raw);
+		this.#migrateAgentSettings(raw);
 
 		// edit.mode: removed "atom" and "vim" variants map back to "hashline"
 		const editObj = raw.edit as Record<string, unknown> | undefined;
@@ -1017,7 +1039,7 @@ class CodingAgentSettingsHooks implements SettingsStoreHooks {
 
 		// serviceTier (single enum with scoped openai-only/claude-only sentinels)
 		// → per-family tier.openai/tier.anthropic/tier.google; serviceTierSubagent
-		// → tier.subagent; serviceTierAdvisor → tier.advisor. `fastModeScope` is
+		// → tier.agent; serviceTierAdvisor → tier.advisor. `fastModeScope` is
 		// dropped — per-family scoping is now expressed by the three tier settings.
 		const tierObj = isRecord(raw.tier) ? raw.tier : {};
 		let tierTouched = false;
@@ -1052,8 +1074,17 @@ class CodingAgentSettingsHooks implements SettingsStoreHooks {
 		const mapInheritTier = (value: unknown): unknown =>
 			value === "openai-only" || value === "claude-only" ? "priority" : value;
 		if ("serviceTierSubagent" in raw) {
-			setTier("subagent", mapInheritTier(raw.serviceTierSubagent));
+			setTier("agent", mapInheritTier(raw.serviceTierSubagent));
 			delete raw.serviceTierSubagent;
+		}
+		// The `subagent` vocabulary became `agent`: the whole `subagent.*` area
+		// moved to `agent.*` leaf for leaf, and the three keys other areas kept
+		// under the old word moved with it. New wins, legacy is deleted, so this is
+		// a fixed point like the rest of this method.
+		if ("subagent" in tierObj) {
+			setTier("agent", tierObj.subagent);
+			delete tierObj.subagent;
+			tierTouched = true;
 		}
 		if ("serviceTierAdvisor" in raw) {
 			setTier("advisor", mapInheritTier(raw.serviceTierAdvisor));
@@ -1068,7 +1099,7 @@ class CodingAgentSettingsHooks implements SettingsStoreHooks {
 		// belong to, the way `read.summarize.*` and `bash.autoBackground.*` are.
 		// They are the only two of Argot's six settings that decide whether the
 		// model is taught to WRITE shorthand; `enabled`, `autoload`, `tokenBudget`
-		// and `subagents` decide whether the feature runs, when a dictionary is
+		// and `agents` decide whether the feature runs, when a dictionary is
 		// built, how large it is, and what a child agent starts with. Reading a
 		// flat `argot.models` gave no hint that it governs one side of the feature
 		// while decoding is unconditional, which is the distinction an operator has

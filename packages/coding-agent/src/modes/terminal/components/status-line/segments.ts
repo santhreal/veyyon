@@ -468,20 +468,20 @@ const prSegment: StatusLineSegment = {
 	},
 };
 
-const subagentsSegment: StatusLineSegment = {
-	id: "subagents",
+const agentsSegment: StatusLineSegment = {
+	id: "agents",
 	render(ctx) {
-		if (ctx.subagentCount === 0) {
+		if (ctx.agentCount === 0) {
 			return { content: "", visible: false };
 		}
-		const content = withIcon(theme.icon.agents, `${ctx.subagentCount}`);
-		return { content: theme.fg("statusLineSubagents", content), visible: true };
+		const content = withIcon(theme.icon.agents, `${ctx.agentCount}`);
+		return { content: theme.fg("statusLineAgents", content), visible: true };
 	},
 };
 /**
  * Conversations running with nothing drawing them.
  *
- * The only signal that a handed-off `/new` is still spending. A subagent is at
+ * The only signal that a handed-off `/new` is still spending. An agent is at
  * least visible in the transcript that spawned it; a backgrounded conversation
  * has no surface at all, so this count is the whole of what an operator can see
  * about it. Hidden at zero, like every other conditional segment.
@@ -905,7 +905,7 @@ export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
 	path: pathSegment,
 	git: gitSegment,
 	pr: prSegment,
-	subagents: subagentsSegment,
+	agents: agentsSegment,
 	background: backgroundSegment,
 	token_in: tokenInSegment,
 	token_out: tokenOutSegment,

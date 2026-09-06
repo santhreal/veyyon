@@ -99,14 +99,14 @@ export const GENERAL_SETTINGS = {
 				"Pair a second model that passively reviews each turn and injects notes. Which model it runs is Advisor Model, directly below.",
 		},
 	},
-	"advisor.subagents": {
+	"advisor.agents": {
 		type: "boolean",
 		default: false,
 		ui: {
 			tab: "model",
 			group: "Advisor",
-			label: "Advisor for Subagents",
-			description: "Also enable the advisor on spawned task/eval subagents.",
+			label: "Advisor for Spawned Agents",
+			description: "Also enable the advisor on spawned task/eval agents.",
 			condition: "advisorEnabled",
 		},
 	},
@@ -218,7 +218,7 @@ export const GENERAL_SETTINGS = {
 			group: "Roles",
 			label: "Role Models",
 			description:
-				"Assign a model to each role (Fast, Thinking, Vision, Architect, Designer, Commit, Tiny). Opens a searchable picker with auth status. The advisor's model is asked for in the Advisor group, and a subagent's in Subagents → Roster, so neither appears here. Scoped to the active profile — never edit config by hand.",
+				"Assign a model to each role (Fast, Thinking, Vision, Architect, Designer, Commit, Tiny). Opens a searchable picker with auth status. The advisor's model is asked for in the Advisor group, and a spawned agent's in Agents → Roster, so neither appears here. Scoped to the active profile — never edit config by hand.",
 		},
 	},
 

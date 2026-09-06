@@ -262,7 +262,7 @@ export interface CredentialOrigin {
 }
 
 /**
- * Serialized representation of AuthStorage for passing to subagent workers.
+ * Serialized representation of AuthStorage for passing to agent workers.
  * Contains only the essential credential data, not runtime state.
  */
 export interface SerializedAuthStorage {
@@ -2342,7 +2342,7 @@ export class AuthStorage {
 		sessionId: string | undefined,
 	): { type: AuthCredential["type"]; index: number } | undefined {
 		// No early return on a missing session id: the GLOBAL selection is not session state, and a
-		// caller with no session (a one-shot CLI, a subagent role resolving outside a session) must
+		// caller with no session (a one-shot CLI, an agent role resolving outside a session) must
 		// still route to the account the user picked.
 		const pinned = this.#getSessionCredentialPin(provider, sessionId);
 		if (pinned) return { type: pinned.type, index: pinned.index };
@@ -2423,7 +2423,7 @@ export class AuthStorage {
 	 * Route this session's requests for one provider to one specific credential.
 	 *
 	 * PER PROVIDER, deliberately. Several providers serve one session at the same time
-	 * (the main model, subagent roles, web search), so there is no single "current
+	 * (the main model, agent roles, web search), so there is no single "current
 	 * account" to switch: pinning Anthropic must leave the Codex and Gemini routing
 	 * exactly as it was. Cross-provider movement is a MODEL choice, not an account one.
 	 *
@@ -2573,7 +2573,7 @@ export class AuthStorage {
 	 * and a choice recorded per profile would disagree with the account list it was made from.
 	 *
 	 * PER PROVIDER, deliberately. Several providers serve one session at the same time (the main
-	 * model, subagent roles, web search), so there is no single "current account" to switch:
+	 * model, agent roles, web search), so there is no single "current account" to switch:
 	 * choosing an Anthropic account must leave Codex and Gemini exactly as they were.
 	 *
 	 * The session's sticky routing record is dropped as part of the same call, so the next resolve

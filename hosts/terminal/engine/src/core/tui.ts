@@ -2682,7 +2682,7 @@ export class TUI extends Container {
 			// byte for byte. Nothing in history changed and nothing is duplicated,
 			// so the erase-and-replay this used to request repaints the whole
 			// screen on every frame of a live turn — a strobe, and it is the reason
-			// a tall todo list or a busy subagent HUD makes the screen flash.
+			// a tall todo list or a busy agent HUD makes the screen flash.
 			// Rebase the index either way (rows the frame no longer draws are not
 			// committed), but report a resync ONLY when the surviving rows really
 			// disagree with the record, which is the duplicate-block case this
@@ -2835,7 +2835,7 @@ export class TUI extends Container {
 			// history; the next frame's audit reads that as a prefix violation and
 			// repairs it by erasing native scrollback and replaying the whole
 			// transcript, on every frame of the turn. That is the screen strobing,
-			// and a tall todo list or a busy subagent HUD is all it takes: once the
+			// and a tall todo list or a busy agent HUD is all it takes: once the
 			// pinned chrome outgrows the viewport, `frameLength - height` lands
 			// inside the live band. Freeze commits for such a frame — the window
 			// still paints in place, and the only rows that miss native scrollback
@@ -3085,7 +3085,7 @@ export class TUI extends Container {
 	 * Frame row where HISTORY ends. Root children that implement the native
 	 * scrollback contract are the transcript — the only rows that belong in the
 	 * terminal's own scrollback. Anything mounted after the last of them is
-	 * chrome: a todo or subagent HUD, the composer, the status line. Chrome
+	 * chrome: a todo or agent HUD, the composer, the status line. Chrome
 	 * rewrites itself every frame, so a chrome row that reached the committed
 	 * prefix is a prefix violation waiting to happen, and the repair for that is
 	 * an erase-and-replay of the whole screen.

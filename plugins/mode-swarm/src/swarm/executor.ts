@@ -1,5 +1,5 @@
 /**
- * Swarm agent execution via Veyyon's subagent infrastructure.
+ * Swarm agent execution via Veyyon's agent infrastructure.
  *
  * Wraps `runSubprocess` to spawn individual swarm agents with full tool access.
  * Each agent runs in the swarm workspace with its task instructions as the user prompt.
@@ -31,7 +31,7 @@ export interface SwarmExecutorOptions {
 }
 
 /**
- * Execute a single swarm agent as a Veyyon subagent.
+ * Execute a single swarm agent as a Veyyon agent.
  *
  * The agent receives:
  * - System prompt: built from role + extra_context

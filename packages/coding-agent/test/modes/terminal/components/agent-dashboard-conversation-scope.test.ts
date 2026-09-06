@@ -1,9 +1,9 @@
 /**
- * The Live roster of the subagent dashboard, scoped to one conversation.
+ * The Live roster of the agent dashboard, scoped to one conversation.
  *
  * WHY THESE TESTS. The registry is process-global, so a session that re-roots
  * to a different transcript (`/new`, `/resume`) left the previous
- * conversation's subagents in this card: rows an operator could select and
+ * conversation's agents in this card: rows an operator could select and
  * press Enter on, handing the main view to an agent working from context the
  * current conversation never had. The card now builds its roster from
  * `listInScope(deps.scope)`.
@@ -34,8 +34,8 @@ beforeEach(async () => {
 	AgentLifecycleManager.resetGlobalForTests();
 	IrcBus.resetGlobalForTests();
 	const registry = AgentRegistry.global();
-	// Two conversations, each a driving session with one subagent below it. The
-	// subagents state no scope and inherit it from the parent, the way the task
+	// Two conversations, each a driving session with one agent below it. The
+	// agents state no scope and inherit it from the parent, the way the task
 	// executor registers them.
 	registry.register({
 		id: "Main-A",
@@ -84,7 +84,7 @@ describe("Live roster scoping", () => {
 	 * session replaced. The in-scope row is asserted present in the same test, so
 	 * a filter that emptied the roster fails here rather than looking like a fix.
 	 *
-	 * Call signs are positional, so the other conversation's subagent leaking in
+	 * Call signs are positional, so the other conversation's agent leaking in
 	 * would add a SECOND sub row and print `Otter` next to `Kestrel`; the agent
 	 * types name which agent each row actually is.
 	 */
@@ -100,7 +100,7 @@ describe("Live roster scoping", () => {
 		dashboard.dispose();
 	});
 
-	/** The other direction, from the other conversation: each card shows its own subagent. */
+	/** The other direction, from the other conversation: each card shows its own agent. */
 	test("renders the other conversation's rows when opened for that conversation", () => {
 		const dashboard = new AgentDashboard({ terminalHeight: 40, scope: "session-b" });
 

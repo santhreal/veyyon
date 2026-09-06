@@ -89,7 +89,7 @@ function gaugeContext(overrides: GaugeOverrides = {}): SegmentContext {
 		contextLimit,
 		contextLimitKind: overrides.contextLimitKind ?? "window",
 		autoCompactEnabled: overrides.autoCompactEnabled ?? false,
-		subagentCount: 0,
+		agentCount: 0,
 		activeMs: 0,
 		activeRepo: null,
 		worktree: null,

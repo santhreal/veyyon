@@ -9,11 +9,11 @@
 			"expect": { "default": "none", "isolated": "none" }
 		},
 		{
-			"id": "settings-tier-subagent-default-inherit",
-			"contract": "Default tier.subagent is inherit",
+			"id": "settings-tier-agent-default-inherit",
+			"contract": "Default tier.agent is inherit",
 			"surface": "settings-get-default",
 			"tags": ["positive"],
-			"input": { "path": "tier.subagent" },
+			"input": { "path": "tier.agent" },
 			"expect": { "default": "inherit", "isolated": "inherit" }
 		},
 		{

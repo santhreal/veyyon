@@ -4,7 +4,7 @@
  * WHY THIS IS A CONTRACT AND NOT A DETAIL. One module WRITES a transcript path and several others DISCOVER
  * transcripts by scanning a directory for the extension. `session/session-manager.ts` builds
  * `<timestamp>_<id>.jsonl` in four places; `session/session-listing.ts`, `cli/gc-cli.ts`, `export/html`,
- * `registry/persisted-subagents.ts`, `debug/report-bundle.ts`, `internal-urls/registry-helpers.ts` and
+ * `registry/persisted-agents.ts`, `debug/report-bundle.ts`, `internal-urls/registry-helpers.ts` and
  * `@veyyon/stats`'s parser each scan for it. A drift between the writer and any scanner is silent in the
  * worst direction: sessions keep being written and simply stop being listed, resumed, garbage-collected or
  * counted, and no error is raised because an empty directory listing is a valid answer.
@@ -111,10 +111,10 @@ export function sessionBackupPrimaryName(name: string): string | undefined {
  * a transcript as the advisor's by matching the name. Stats cannot import the coding agent, so it had
  * declared `"__advisor.jsonl"` itself, and the roster's persisted scan had spelled `"__advisor."` inline
  * a third time to slice the prefix off. If the stem ever moved, the writer would move and the classifiers
- * would not: advisor transcripts would be counted as ordinary subagent sessions, which is a wrong number
+ * would not: advisor transcripts would be counted as ordinary agent sessions, which is a wrong number
  * rather than an error.
  *
- * The leading underscores keep it out of the task-subagent id namespace, so a subagent can never be handed
+ * The leading underscores keep it out of the task-agent id namespace, so an agent can never be handed
  * an id that produces this filename.
  */
 export const ADVISOR_TRANSCRIPT_STEM = "__advisor";

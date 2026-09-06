@@ -1210,7 +1210,7 @@ pub static PLANS: [Plan; 16] = [
 				"truncated",
 			]),
 			Axis::new("argot", &["disabled", "handle", "handle-split", "unknown-handle", "nested"]),
-			Axis::new("seam", &["tool-args", "display", "stream", "transcript", "subagent-return"]),
+			Axis::new("seam", &["tool-args", "display", "stream", "transcript", "agent-return"]),
 			Axis::new("version", &["current", "older", "newer", "unknown"]),
 			Axis::new("fault", &[
 				"none",

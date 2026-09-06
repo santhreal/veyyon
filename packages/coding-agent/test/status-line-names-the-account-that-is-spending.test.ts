@@ -166,7 +166,7 @@ describe("the footline names the account that is spending", () => {
 	it("says nothing when the provider stores one credential", async () => {
 		await storeAccounts("only@example.com");
 
-		// The line is never literally empty — it carries the persistent subagent count — so what is
+		// The line is never literally empty — it carries the persistent agent count — so what is
 		// asserted is that the account contributed nothing to it.
 		expect(accountOnly().line()).not.toContain("only@example.com");
 		expect(accountOnly().line()).not.toContain("as ");

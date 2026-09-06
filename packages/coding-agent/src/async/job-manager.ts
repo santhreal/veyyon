@@ -32,7 +32,7 @@ interface PollEscalationState {
 
 /**
  * What produced a background job: a backgrounded `bash` command, a `task`
- * subagent, or a supervised process from `launch` whose exit is reported when
+ * agent, or a supervised process from `launch` whose exit is reported when
  * it happens.
  */
 export type AsyncJobType = "bash" | "task" | "launch";
@@ -49,13 +49,13 @@ export interface AsyncJob {
 	errorText?: string;
 	/**
 	 * Registry id of the agent that registered the job (e.g. "Main",
-	 * "AuthLoader"). Used by scoped cancel/list APIs so a subagent's teardown
+	 * "AuthLoader"). Used by scoped cancel/list APIs so an agent's teardown
 	 * does not cancel its parent's jobs. Undefined for callers that don't
 	 * supply an id (e.g. legacy tests, SDK consumers without an agent context).
 	 */
 	ownerId?: string;
 	/**
-	 * Registry id of the subagent this job runs (task/tan/vibe jobs). Lets
+	 * Registry id of the agent this job runs (task/tan/vibe jobs). Lets
 	 * job-view code link a job row to its AgentRegistry ref even when the job
 	 * id differs from the agent id (vibe turn jobs, tan clones).
 	 */
@@ -101,7 +101,7 @@ export interface AsyncJobRegisterOptions {
 	id?: string;
 	/** Registry id of the agent that owns this job; used to scope cancelAll. */
 	ownerId?: string;
-	/** Registry id of the subagent this job runs; see {@link AsyncJob.agentId}. */
+	/** Registry id of the agent this job runs; see {@link AsyncJob.agentId}. */
 	agentId?: string;
 	/** Tool call that started this job; see {@link AsyncJob.toolCallId}. */
 	toolCallId?: string;
@@ -347,7 +347,7 @@ export class AsyncJobManager {
 	 * in-flight, not retained for later. Before this, lifting the watch simply
 	 * forgot about it, and the child's report survived only inside the return value
 	 * of whatever call installed the watch. Any path that dropped that return value
-	 * dropped the subagent's entire output, permanently and silently, and nothing
+	 * dropped the agent's entire output, permanently and silently, and nothing
 	 * could recover it: `resumeDeliveries` lifts `#suppressedDeliveries` and has
 	 * never been able to see a watch.
 	 *

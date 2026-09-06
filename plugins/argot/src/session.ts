@@ -161,7 +161,7 @@ export class ArgotSession {
 	 * handle can be split across chunk boundaries and {@link expand} on each chunk
 	 * would leak or mis-decode it. Feed every chunk to `push`, render only what it
 	 * returns, and call `flush` once at end of stream. Build a fresh one per message
-	 * (or per subagent stream). Identity pass-through until a dictionary loads.
+	 * (or per agent stream). Identity pass-through until a dictionary loads.
 	 */
 	streamDecoder(): StreamDecoder {
 		return new StreamDecoder(this.vocabulary());
@@ -184,7 +184,7 @@ export class ArgotSession {
 	}
 
 	/**
-	 * A detached copy of this session, for handing a subagent the parent's
+	 * A detached copy of this session, for handing an agent the parent's
 	 * shorthand at spawn (the `inherit` mode).
 	 *
 	 * Correctness never rests on this. Every agent expands its own output at every
@@ -192,7 +192,7 @@ export class ArgotSession {
 	 * it hands a spawned child, and the result it returns to a parent. Because each
 	 * side only ever emits fully expanded text to the other, a handle never crosses
 	 * the parent-child wire, and no child ever needs the parent's vocabulary to be
-	 * correct. A subagent that starts empty ({@link ArgotSession} with no load) is
+	 * correct. An agent that starts empty ({@link ArgotSession} with no load) is
 	 * already correct.
 	 *
 	 * Forking is purely a token optimization: the child begins already knowing the

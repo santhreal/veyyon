@@ -2,7 +2,7 @@
  * Chrome never becomes history, however tall it gets.
  *
  * WHAT THIS CLOSES. Native scrollback is for the transcript. A todo list, a
- * subagent roster, a status row and the composer are chrome: they rewrite
+ * agent roster, a status row and the composer are chrome: they rewrite
  * themselves every frame. The engine committed whatever sat above the window
  * top, and once the chrome outgrew the viewport that boundary landed inside the
  * chrome — so chrome rows entered the committed prefix, disagreed with

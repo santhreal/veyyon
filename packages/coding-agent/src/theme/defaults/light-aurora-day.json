@@ -80,7 +80,7 @@
 		"statusLineUntracked": "sky",
 		"statusLineOutput": "ink",
 		"statusLineCost": "rose",
-		"statusLineSubagents": "mint",
+		"statusLineAgents": "mint",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

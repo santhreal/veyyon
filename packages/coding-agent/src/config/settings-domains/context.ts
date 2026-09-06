@@ -332,7 +332,7 @@ export const CONTEXT_SETTINGS = {
 	//
 	// UNDER `encode.` WITH ITS SIBLING, because these two are the only Argot settings
 	// that decide whether the model is taught to write shorthand, and the grouping is
-	// what says so. `enabled`, `autoload`, `tokenBudget` and `subagents` decide whether
+	// what says so. `enabled`, `autoload`, `tokenBudget` and `agents` decide whether
 	// the feature runs, when a dictionary is built, how big it is, and what a child
 	// agent starts with. The flat spelling migrates on load (settings.ts), so an
 	// existing `argot.models` keeps working and moves itself into place.
@@ -400,18 +400,18 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// How a subagent starts out with Argot shorthand. Correctness never depends on
+	// How an agent starts out with Argot shorthand. Correctness never depends on
 	// this: every agent expands its own output at every boundary (a spawned child's
 	// prompt, a returned result), so a handle never crosses the parent/child wire
-	// and a subagent that starts empty is already correct. This only trades tokens.
-	//   off     — the subagent gets no shorthand (cheapest; the parent's prompt to
+	// and an agent that starts empty is already correct. This only trades tokens.
+	//   off     — the agent gets no shorthand (cheapest; the parent's prompt to
 	//             it is already expanded, so it reads and writes full text).
-	//   fresh   — the subagent gets its own empty session and loads the project of
+	//   fresh   — the agent gets its own empty session and loads the project of
 	//             its task itself through argot_load, independent of the parent
 	//             (use when the child works a different project than the parent).
-	//   inherit — the subagent starts from a copy of the parent's loaded shorthand
+	//   inherit — the agent starts from a copy of the parent's loaded shorthand
 	//             (ArgotSession.fork), so it writes the same handles from turn one.
-	"argot.subagents": {
+	"argot.agents": {
 		type: "enum",
 		values: ["off", "fresh", "inherit"] as const,
 		default: "off",
@@ -419,20 +419,20 @@ export const CONTEXT_SETTINGS = {
 			tab: "experimental",
 			group: "Argot",
 			condition: "argotEnabled",
-			label: "Argot in Subagents",
+			label: "Argot in Spawned Agents",
 			description:
-				"How a subagent starts with Argot shorthand. Correctness never depends on this (handles never cross the parent/child wire); it only trades tokens. off: no shorthand in subagents. fresh: the subagent loads its task's project itself through argot_load. inherit: the subagent starts from a copy of the parent's loaded shorthand.",
+				"How a spawned agent starts with Argot shorthand. Correctness never depends on this (handles never cross the parent/child wire); it only trades tokens. off: no shorthand in spawned agents. fresh: the spawned agent loads its task's project itself through argot_load. inherit: the spawned agent starts from a copy of the parent's loaded shorthand.",
 			options: [
-				{ value: "off", label: "Off", description: "Subagents get no Argot shorthand" },
+				{ value: "off", label: "Off", description: "Spawned agents get no Argot shorthand" },
 				{
 					value: "fresh",
 					label: "Fresh",
-					description: "Subagent loads its task's project itself through argot_load",
+					description: "Spawned agent loads its task's project itself through argot_load",
 				},
 				{
 					value: "inherit",
 					label: "Inherit",
-					description: "Subagent starts from a copy of the parent's loaded shorthand",
+					description: "Spawned agent starts from a copy of the parent's loaded shorthand",
 				},
 			],
 		},

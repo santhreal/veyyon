@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { prompt } from "@veyyon/utils";
 import { planModePrompts } from "../../src/prompts/plan-mode/rows";
-import { preferredSubagentName } from "../../src/task/subagent-settings";
+import { preferredAgentName } from "../../src/task/agent-settings";
 
 /**
  * Plan mode's research step tells the model which agent type to launch, and the
@@ -28,7 +28,7 @@ import { preferredSubagentName } from "../../src/task/subagent-settings";
 
 /** Render the real plan-mode prompt the way the session does, and read back the agent it names. */
 function agentPlanModeNames(enabled: readonly string[]): string | undefined {
-	const researchAgent = preferredSubagentName(enabled, "scout");
+	const researchAgent = preferredAgentName(enabled, "scout");
 	const rendered = prompt.render(planModePrompts["plan-mode/active"].text, {
 		planFilePath: "local://x-plan.md",
 		planExists: false,
@@ -42,7 +42,7 @@ function agentPlanModeNames(enabled: readonly string[]): string | undefined {
 		reentry: false,
 		iterative: false,
 	});
-	return /Launch parallel `([^`]+)` subagents/.exec(rendered)?.[1];
+	return /Launch parallel `([^`]+)` spawned agents/.exec(rendered)?.[1];
 }
 
 describe("plan mode's research step", () => {
@@ -63,7 +63,7 @@ describe("plan mode's research step", () => {
 	});
 
 	it("emits no launch instruction at all when nothing is spawnable", () => {
-		expect(preferredSubagentName([], "scout")).toBeUndefined();
+		expect(preferredAgentName([], "scout")).toBeUndefined();
 		expect(agentPlanModeNames([])).toBeUndefined();
 	});
 });

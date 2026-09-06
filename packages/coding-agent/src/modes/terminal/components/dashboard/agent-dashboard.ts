@@ -1,5 +1,5 @@
 /**
- * AgentDashboard - the subagent dashboard. THE subagent surface.
+ * AgentDashboard - the agent dashboard. THE agent surface.
  *
  * Two views, one card, both about a run in progress:
  * - Live: every agent that exists right now, what TYPE of agent each one is,
@@ -15,24 +15,24 @@
  * BOTH VIEWS ARE SCOPED TO ONE CONVERSATION. The registry and the bus are
  * process-global, and this card is not: `deps.scope` is the session id the card
  * was opened for, and the roster and the stream are filtered to it. Without
- * that, `/resume` in a long-lived process listed the subagents of every
+ * that, `/resume` in a long-lived process listed the agents of every
  * conversation the process had ever driven, and the stream opened on their
  * chatter.
  *
  * WHY ONE CARD. This surface was FOUR. `/agents` carried a configuration list
- * that duplicated the Subagents settings table. `/cockpit` (alias `/hub`, and
+ * that duplicated the Agents settings table. `/cockpit` (alias `/hub`, and
  * the `app.agents.hub` key, and the `←←` gesture) opened a separate "Agent Hub"
  * overlay with its own roster, its own ordering, its own status glyphs and its
- * own drill-in. A third roster, the "subagent inbox", sat behind a
- * `display.subagentInbox` flag with a fourth drill-in. Three of them showed the
+ * own drill-in. A third roster, the "agent inbox", sat behind a
+ * `display.agentInbox` flag with a fourth drill-in. Three of them showed the
  * same registry through three different renderings, and only one of them opened
  * something you could reply to, so "which agents are running" had three answers
  * that could disagree and the operator had to know which screen they were on.
  * They are one component now, and every entry point opens it.
  *
  * What each of the folded surfaces contributed, and where it went:
- * - The hub's persisted-subagent scan (agents from previous runs, registered
- *   `parked` so they survive a restart) is now `registry/persisted-subagents.ts`,
+ * - The hub's persisted-agent scan (agents from previous runs, registered
+ *   `parked` so they survive a restart) is now `registry/persisted-agents.ts`,
  *   called here.
  * - The hub's model badge is `agent-model-badge.ts`, shared with the task widget.
  * - The hub's kill (`x`) is here. Its revive (`r`) is gone as a separate key:
@@ -63,7 +63,7 @@ import type { KeyId } from "../../../../config/keybindings";
 import type { MessageRenderer } from "../../../../extensibility/extensions/types";
 import { AgentLifecycleManager } from "../../../../registry/agent-lifecycle";
 import { AgentRegistry } from "../../../../registry/agent-registry";
-import { registerPersistedSubagents } from "../../../../registry/persisted-subagents";
+import { registerPersistedAgents } from "../../../../registry/persisted-agents";
 import { USER_INTERRUPT_LABEL } from "../../../../session/messages";
 import { IrcBus, type IrcLogEntry } from "../../../../task/irc-bus";
 import { withIcon } from "../../../../theme/icon-label";
@@ -290,7 +290,7 @@ class LiveRosterPane implements Component {
 			return [
 				theme.fg("muted", "  Nothing running."),
 				"",
-				theme.fg("dim", "  Subagents appear here the moment they spawn,"),
+				theme.fg("dim", "  Spawned agents appear here the moment they spawn,"),
 				theme.fg("dim", "  and the ones from earlier runs appear parked."),
 				theme.fg("dim", "  Enter opens one in the main view, where you can talk to it."),
 			];
@@ -310,7 +310,7 @@ class LiveRosterPane implements Component {
 			this.agents.reduce((width, agent) => Math.max(width, visibleWidth(measure(agent))), 0);
 		// No column may take more than a quarter of the row. Status and age are
 		// short words and cap themselves, but the two NAME columns are whatever an
-		// agent was called: one subagent spawned as
+		// agent was called: one agent spawned as
 		// `a-very-long-agent-type-name` padded the type column to 27 cells on every
 		// row, and on a 56-column card that left nothing for the status, the model
 		// or the activity. A name long enough to cost the row its content is
@@ -621,7 +621,7 @@ interface CommsPaneOptions {
 /**
  * The Comms stream: agent-to-agent traffic as it happens.
  *
- * The bus is the source, not the session files. A subagent's transcript shows
+ * The bus is the source, not the session files. An agent's transcript shows
  * what IT received; only {@link IrcBus} sees every leg, including the ones that
  * failed to land, and only it keeps them after delivery has consumed the
  * mailbox. Reading anything else here would show a partial conversation and
@@ -779,7 +779,7 @@ export interface AgentDashboardDeps {
 	lifecycle?: () => AgentLifecycleManager;
 	/** Spawn descriptions and executor-reported models. Absent in render-only tests. */
 	observers?: SessionObserverRegistry;
-	/** `subagent.showResolvedModelBadge`: whether rows carry the model badge. */
+	/** `agent.showResolvedModelBadge`: whether rows carry the model badge. */
 	showModelBadge?: boolean;
 	/** Current main session file; seeds parked agents from previous runs. */
 	sessionFile?: string | null;
@@ -891,7 +891,7 @@ export class AgentDashboard extends Container {
 	readonly #ui: TUI;
 
 	/** Resolves once agents persisted by previous runs have been registered and the roster refreshed. */
-	readonly persistedSubagentsReady: Promise<void>;
+	readonly persistedAgentsReady: Promise<void>;
 
 	onClose?: () => void;
 	onRequestRender?: () => void;
@@ -944,11 +944,11 @@ export class AgentDashboard extends Container {
 		// Agents from previous runs are on disk, not in this process's registry.
 		// A guest's roster is the host's, mirrored over the wire, so it does not
 		// scan a local session tree that is not its own.
-		this.persistedSubagentsReady = deps.remote
+		this.persistedAgentsReady = deps.remote
 			? Promise.resolve()
-			: registerPersistedSubagents(this.#registry, deps.sessionFile, deps.scope).then(registered => {
+			: registerPersistedAgents(this.#registry, deps.sessionFile, deps.scope).then(registered => {
 					// Only when the scan actually added something. A session with no
-					// subagents on disk would otherwise rebuild the roster and repaint the
+					// agents on disk would otherwise rebuild the roster and repaint the
 					// card one microtask after opening it, to draw the same rows again.
 					if (registered === 0) return;
 					// And only while the card is still open. The scan walks a session
@@ -968,9 +968,9 @@ export class AgentDashboard extends Container {
 	 * Whether the roster has nothing worth opening the card for.
 	 *
 	 * The driving session is always registered, so it does not count: a card
-	 * raised by the `←←` gesture must stay inert until there is a SUBAGENT to
+	 * raised by the `←←` gesture must stay inert until there is a spawned agent to
 	 * look at. Agents persisted by previous runs arrive later; callers that need
-	 * those included wait for {@link persistedSubagentsReady} first.
+	 * those included wait for {@link persistedAgentsReady} first.
 	 */
 	get isEmpty(): boolean {
 		return this.#liveAgents.every(agent => agent.kind === "main");
@@ -1076,7 +1076,7 @@ export class AgentDashboard extends Container {
 		if (!resolved) return undefined;
 		const badge = modelBadgeFromSelector(resolved, theme);
 		// A dim arrow when this is not the model the agent started on, the same
-		// mark the Subagents HUD block uses, so the two surfaces read alike.
+		// mark the Agents HUD block uses, so the two surfaces read alike.
 		return observed?.progress?.fellBackFrom ? `${theme.fg("dim", "↓")}${badge}` : badge;
 	}
 
@@ -1266,7 +1266,7 @@ export class AgentDashboard extends Container {
 
 		const body = super.render(dims.contentWidth);
 		const shell = renderModalShell({
-			title: "Subagent Dashboard",
+			title: "Agent Dashboard",
 			sizing,
 			areaWidth: width,
 			areaHeight: area,
@@ -1447,7 +1447,7 @@ export class AgentDashboard extends Container {
 	 * one running off it: stopping a conversation ends a turn, closes a provider
 	 * stream and settles a transcript, which is the owning session's job and is
 	 * what `session.newKeepsBackground` decides. An advisor is a read-only
-	 * transcript rather than a running peer. Every real subagent opens the same
+	 * transcript rather than a running peer. Every real agent opens the same
 	 * focused confirmation card whether the request came from the keyboard or
 	 * the row-local [x].
 	 */
@@ -1528,7 +1528,7 @@ export class AgentDashboard extends Container {
 			try {
 				await this.#lifecycle().terminate(agent.id, USER_INTERRUPT_LABEL);
 			} catch (error) {
-				logger.warn("Subagent dashboard: termination failed", { id: agent.id, error: String(error) });
+				logger.warn("Agent dashboard: termination failed", { id: agent.id, error: String(error) });
 				this.#notice = actionFailedNotice("terminate", agent.callSign, error);
 			}
 			this.#refreshLiveAgents();
@@ -1638,7 +1638,7 @@ export class AgentDashboard extends Container {
 	 *
 	 * Four is the smallest floor that still buys the stability the floor is FOR:
 	 * a one-agent card and a four-agent card are the same card, so the batch of
-	 * subagents a run usually spawns lands without moving the panel. Below four
+	 * agents a run usually spawns lands without moving the panel. Below four
 	 * the card twitches on the second spawn; above four it pays in empty rows for
 	 * agents that are not there.
 	 */

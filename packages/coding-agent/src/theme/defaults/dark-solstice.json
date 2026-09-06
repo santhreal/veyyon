@@ -79,7 +79,7 @@
 		"statusLineUntracked": "frost",
 		"statusLineOutput": "ice",
 		"statusLineCost": "aurora",
-		"statusLineSubagents": "aurora",
+		"statusLineAgents": "aurora",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

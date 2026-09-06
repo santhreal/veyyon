@@ -14,7 +14,7 @@
  *       | bun scripts/demos/render-proof.ts --out /tmp/wizard --width 100 --scale 3
  *
  * `--phase` is `scene` (default) or `splash`. `--scene` names the step to show
- * (`providers`, `subagents`, `glyphs`, `theme`, `import`); the wizard is walked
+ * (`providers`, `agents`, `glyphs`, `theme`, `import`); the wizard is walked
  * to it with its own forward key, so the progress breadcrumb reads as a user
  * sees it. `--rows` sets the viewport height, which the overlay reads from the
  * terminal to fill edge to edge; that filler is exactly where a hardcoded ground
@@ -52,7 +52,7 @@ const hoverText = flag("hover", "");
 
 // The real onboarding order, so the progress breadcrumb in a proof reads exactly
 // as a user sees it. Padding the list with repeats of one scene made the
-// breadcrumb say "Subagents › Glyphs › Glyphs › Glyphs".
+// breadcrumb say "Agents › Glyphs › Glyphs › Glyphs".
 const SCENES: readonly SetupScene[] = [
 	providersSetupScene,
 	agentsSetupScene,
@@ -109,7 +109,7 @@ try {
 		const names = SCENES.map(candidate => (candidate.stepLabel ?? candidate.id).toLowerCase()).join(", ");
 		throw new Error(`unknown scene "${sceneName}"; expected one of ${names}`);
 	}
-	// A scene that discovers its rows (subagents, import) fills them in
+	// A scene that discovers its rows (agents, import) fills them in
 	// `shouldRun`, so the proof runs every gate before mounting or those lists
 	// render empty.
 	for (const candidate of SCENES) {

@@ -1,7 +1,7 @@
 Run one step of code in a persistent kernel.
 
 <instruction>
-**One eval call = one cell = one logical step.** State persists per language across eval calls, tool calls, and `task` subagents, so imports go in one call, definitions in the next, then the test, then the use, each its own call. Parallelize *within* a cell with `parallel(thunks)`, never by batching steps.
+**One eval call = one cell = one logical step.** State persists per language across eval calls, tool calls, and `task` spawned agents, so imports go in one call, definitions in the next, then the test, then the use, each its own call. Parallelize *within* a cell with `parallel(thunks)`, never by batching steps.
 
 Fields:
 
@@ -28,7 +28,7 @@ print(value, ...) → None
 read(path, offset?=1, limit?=None) → str
     File/resource text; offset/limit = 1-indexed lines. `local://…` works everywhere; Python/JS also accept top-level `read` URI schemes.
 write(path, content) → str
-    Write file (creates parents) → resolved path. `local://…` persists across turns/subagents.
+    Write file (creates parents) → resolved path. `local://…` persists across turns/spawned agents.
 env(key?=None, value?=None) → str | None | dict
     No args → full env dict; one → value of `key`; two → set `key=value`, return value.
 kv.get(key, default?=None) / kv.set(key, value) / kv.delete(key) / kv.list()
@@ -43,8 +43,8 @@ completion(prompt, model?="default", system?=None, schema?=None) → str | dict
     Oneshot, stateless (no history/tools). `model`: "smol" | "default" | "slow". `schema` (JSON-Schema) → parsed structured output.
 {{#if spawns}}
 {{#if hasSpawnDefaultAgent}}agent(prompt, agent?="{{spawnDefaultAgent}}", model?=None, label?=None, schema?=None, handle?=False) → str | dict
-    Run a subagent → final output. `agent` picks another enabled agent; omit it to use `{{spawnDefaultAgent}}`.{{else}}agent(prompt, agent, model?=None, label?=None, schema?=None, handle?=False) → str | dict
-    Run a subagent → final output. `agent` must name an enabled agent.{{/if}}{{#if spawnAllowedAgentsText}} {{spawnAgentListLabel}}: {{spawnAllowedAgentsText}}.{{/if}} `schema` as in completion(). Background via `local://` files named in the prompt. `handle` → DAG node dict { text, output, handle: "agent://<id>", id, agent } (parsed under `data` when `schema` set).
+    Run a spawned agent → final output. `agent` picks another enabled agent; omit it to use `{{spawnDefaultAgent}}`.{{else}}agent(prompt, agent, model?=None, label?=None, schema?=None, handle?=False) → str | dict
+    Run a spawned agent → final output. `agent` must name an enabled agent.{{/if}}{{#if spawnAllowedAgentsText}} {{spawnAgentListLabel}}: {{spawnAllowedAgentsText}}.{{/if}} `schema` as in completion(). Background via `local://` files named in the prompt. `handle` → DAG node dict { text, output, handle: "agent://<id>", id, agent } (parsed under `data` when `schema` set).
 {{#if js}}    JS: options are ONE trailing object — agent(prompt, { agent, schema, handle }).
 {{/if}}
 {{/if}}

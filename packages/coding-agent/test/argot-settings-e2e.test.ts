@@ -4,28 +4,28 @@
  *
  * Why this suite exists:
  *   The codec is unit-tested (lossless expand), the encode gate is tested with
- *   literal arguments (`argot-gate.test.ts`), and the subagent policy is tested by
- *   calling `createArgotSession` with literals (`argot-subagent-boundary.test.ts`).
+ *   literal arguments (`argot-gate.test.ts`), and the agent policy is tested by
+ *   calling `createArgotSession` with literals (`argot-agent-boundary.test.ts`).
  *   None of those proves the SETTINGS LAYER binds: that when an operator writes
  *   `argot.enabled`, `argot.encode.models`, `argot.encode.disableAboveTokens`, `argot.tokenBudget`,
- *   `argot.autoload` or `argot.subagents` into config, `settings.get(...)` returns that value and it
+ *   `argot.autoload` or `argot.agents` into config, `settings.get(...)` returns that value and it
  *   flows into `buildArgotGate` / `createArgotSession` (and `loadArgotFolder` for the budget) the way the SDK wires it. A
  *   setting that appears in the defaults table but never reaches behavior is a dead
  *   knob, the exact "settings don't actually work" failure this suite forbids.
  *
  * The contract these tests lock in (one row per shipped Argot setting):
  *   - The shipped DEFAULTS produce the safe inert state: off, nobody encodes, no
- *     cutoff, default dictionary budget, no subagent shorthand.
+ *     cutoff, default dictionary budget, no agent shorthand.
  *   - Each setting, overridden, changes an OBSERVABLE outcome: the gate encodes or
  *     not, for the right model, up to the right context size; the session is built
- *     or withheld (always unarmed until the agent loads); the subagent forks the parent or starts empty.
+ *     or withheld (always unarmed until the agent loads); the agent forks the parent or starts empty.
  *   - `getEffectiveSnapshot()` carries every Argot key, so a recorded run can be
  *     reproduced from the config that governed it.
  *
  * How it stays honest:
  *   `sdkArgotReads` reproduces the EXACT `settings.get(...)` calls the SDK makes at
  *   session construction (sdk.ts: `argot.enabled`, `argot.encode.models`,
- *   `argot.encode.disableAboveTokens`, `argot.subagents`, `argot.tokenBudget`, `argot.autoload`).
+ *   `argot.encode.disableAboveTokens`, `argot.agents`, `argot.tokenBudget`, `argot.autoload`).
  *   The startup-load decision that `argot.autoload` feeds has its own suite
  *   (`argot-autoload-startup-load.test.ts`); what this file owns for it is the
  *   Settings round trip and the default. The test
@@ -59,7 +59,7 @@ function sdkArgotReads(settings: Settings) {
 		enabled,
 		models: (settings.get("argot.encode.models") as string[] | undefined) ?? [],
 		disableAboveTokens: settings.get("argot.encode.disableAboveTokens") as number,
-		subagentMode: settings.get("argot.subagents") as "off" | "fresh" | "inherit",
+		agentMode: settings.get("argot.agents") as "off" | "fresh" | "inherit",
 		tokenBudget: settings.get("argot.tokenBudget") as number | undefined,
 		autoload: settings.get("argot.autoload") === true,
 	};
@@ -83,7 +83,7 @@ describe("Argot defaults: the shipped config is the safe inert state", () => {
 		expect(r.enabled).toBe(false);
 		expect(r.models).toEqual([]);
 		expect(r.disableAboveTokens).toBe(-1);
-		expect(r.subagentMode).toBe("off");
+		expect(r.agentMode).toBe("off");
 		expect(r.tokenBudget).toBe(DEFAULT_TOKEN_BUDGET);
 		expect(r.autoload).toBe(true);
 	});
@@ -114,12 +114,12 @@ describe("Argot defaults: the shipped config is the safe inert state", () => {
 		expect(shouldEncode(gate, { model: MODEL, contextTokens: 5_000_000 })).toBe(false);
 	});
 
-	it("the default builds no codec (feature off), top-level or subagent", () => {
+	it("the default builds no codec (feature off), top-level or agent", () => {
 		const r = sdkArgotReads(Settings.isolated());
 		const top = createArgotSession({
 			enabled: r.enabled,
-			isSubagent: false,
-			subagentMode: r.subagentMode,
+			isSpawned: false,
+			agentMode: r.agentMode,
 		});
 		expect(top).toBeUndefined();
 	});
@@ -130,7 +130,7 @@ describe("Argot defaults: the shipped config is the safe inert state", () => {
 		expect(snap["argot.encode.models"]).toEqual([]);
 		expect(snap["argot.encode.disableAboveTokens"]).toBe(-1);
 		expect(snap["argot.tokenBudget"]).toBe(DEFAULT_TOKEN_BUDGET);
-		expect(snap["argot.subagents"]).toBe("off");
+		expect(snap["argot.agents"]).toBe("off");
 		expect(snap["argot.autoload"]).toBe(true);
 	});
 });
@@ -150,8 +150,8 @@ describe("argot.enabled binds: the master switch turns the gate and codec on", (
 		// Loading is agent-driven: the session starts unarmed until the agent loads a folder.
 		const session = createArgotSession({
 			enabled: r.enabled,
-			isSubagent: false,
-			subagentMode: r.subagentMode,
+			isSpawned: false,
+			agentMode: r.agentMode,
 		});
 		expect(session).toBeDefined();
 		expect(session?.loaded).toBe(false);
@@ -211,8 +211,8 @@ describe("argot.tokenBudget binds: the operator's budget reaches dictionary gene
 		// Enabling still yields a real, unarmed session object.
 		const session = createArgotSession({
 			enabled: r.enabled,
-			isSubagent: false,
-			subagentMode: r.subagentMode,
+			isSpawned: false,
+			agentMode: r.agentMode,
 		});
 		expect(session).toBeDefined();
 		expect(session?.loaded).toBe(false);
@@ -224,40 +224,40 @@ describe("argot.tokenBudget binds: the operator's budget reaches dictionary gene
 	});
 });
 
-describe("argot.subagents binds: the setting selects the child's codec policy", () => {
-	it("the default `off` gives a subagent no codec even with a forkable parent", () => {
+describe("argot.agents binds: the setting selects the child's codec policy", () => {
+	it("the default `off` gives an agent no codec even with a forkable parent", () => {
 		const r = sdkArgotReads(Settings.isolated({ "argot.enabled": true }));
-		expect(r.subagentMode).toBe("off");
+		expect(r.agentMode).toBe("off");
 		const child = createArgotSession({
 			enabled: r.enabled,
-			isSubagent: true,
-			subagentMode: r.subagentMode,
+			isSpawned: true,
+			agentMode: r.agentMode,
 			parentArgot: parentCodec(),
 		});
 		expect(child).toBeUndefined();
 	});
 
 	it("`inherit` forks the parent so the child writes the parent's handles", () => {
-		const r = sdkArgotReads(Settings.isolated({ "argot.enabled": true, "argot.subagents": "inherit" }));
-		expect(r.subagentMode).toBe("inherit");
+		const r = sdkArgotReads(Settings.isolated({ "argot.enabled": true, "argot.agents": "inherit" }));
+		expect(r.agentMode).toBe("inherit");
 		// Loading is agent-driven; inherit starts as a detached fork of the parent's loaded shorthand.
 		const child = createArgotSession({
 			enabled: r.enabled,
-			isSubagent: true,
-			subagentMode: r.subagentMode,
+			isSpawned: true,
+			agentMode: r.agentMode,
 			parentArgot: parentCodec(),
 		});
 		expect(child?.expand("§dbconn")).toBe("packages/server/database/connection.ts");
 	});
 
 	it("`fresh` ignores the parent and starts its own unarmed codec", () => {
-		const r = sdkArgotReads(Settings.isolated({ "argot.enabled": true, "argot.subagents": "fresh" }));
-		expect(r.subagentMode).toBe("fresh");
+		const r = sdkArgotReads(Settings.isolated({ "argot.enabled": true, "argot.agents": "fresh" }));
+		expect(r.agentMode).toBe("fresh");
 		// Loading is agent-driven: fresh starts empty; the child loads its project itself.
 		const child = createArgotSession({
 			enabled: r.enabled,
-			isSubagent: true,
-			subagentMode: r.subagentMode,
+			isSpawned: true,
+			agentMode: r.agentMode,
 			parentArgot: parentCodec(),
 		});
 		expect(child).toBeDefined();
@@ -277,7 +277,7 @@ describe("argot.subagents binds: the setting selects the child's codec policy", 
  * do anything. Off exposes only the master toggle; turning it on (a permanent
  * settings change, distinct from an ephemeral preview) reveals the four dependent
  * knobs. `argot.encode.models`, `argot.tokenBudget`, `argot.encode.disableAboveTokens`, and
- * `argot.subagents` gate on the `argotEnabled` condition; `argot.enabled` never
+ * `argot.agents` gate on the `argotEnabled` condition; `argot.enabled` never
  * does. Mirrors the selector's own visibility rule (`!def.condition ||
  * def.condition()`), so this asserts exactly what the screen renders.
  */
@@ -286,7 +286,7 @@ const ARGOT_SETTING_PATHS = [
 	"argot.encode.models",
 	"argot.tokenBudget",
 	"argot.encode.disableAboveTokens",
-	"argot.subagents",
+	"argot.agents",
 ] as const;
 
 /**
@@ -361,7 +361,7 @@ describe("the Argot settings group is a disabled-vs-enabled differential", () =>
 			"argot.encode.models",
 			"argot.tokenBudget",
 			"argot.encode.disableAboveTokens",
-			"argot.subagents",
+			"argot.agents",
 		]);
 	});
 

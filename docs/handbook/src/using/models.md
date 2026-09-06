@@ -79,9 +79,9 @@ explicit `models.yml` entry for one of these ids replaces its built-in discovery
 
 | Action | What it changes | What it does **not** change |
 | --- | --- | --- |
-| `/model` (or restart with `--model`) | The **interactive** model for subsequent turns | The subagent and compaction models |
+| `/model` (or restart with `--model`) | The **interactive** model for subsequent turns | The agent and compaction models |
 
-Switching the interactive model mid-session never blends through a fallback chain into the subagent or
+Switching the interactive model mid-session never blends through a fallback chain into the agent or
 compaction model. `/model` shows the current interactive model; `/session info` shows session stats.
 `veyyon plugin doctor` checks plugin installation health.
 
@@ -98,7 +98,7 @@ $ veyyon --model openai/gpt-5
 | --- | --- | --- |
 | **Interactive model** | Main conversation | `/model`, `--model`; persisted as `modelRoles.default` |
 | **Roles** | Named assignments (`smol`, `slow`, `plan`, `advisor`, …) | `modelRoles` / Settings → Model → Roles |
-| **Subagent policy** | Per-agent choices, or one pair for the whole roster | `subagent.agents`, or `subagent.sharedModel` with `subagent.model` and `subagent.thinkingLevel` |
+| **Agent policy** | Per-agent choices, or one pair for the whole roster | `agent.agents`, or `agent.sharedModel` with `agent.model` and `agent.thinkingLevel` |
 | **Compaction override** | Compaction / handoff | `compaction.model` (else inherit interactive) |
 
 ```yaml
@@ -108,7 +108,7 @@ modelRoles:
   smol: openai/gpt-4.1-mini
   slow: anthropic/claude-opus-4-5:high
   plan: anthropic/claude-sonnet-5
-subagent:
+agent:
   model: deepseek/deepseek-chat:high
   agents:
     reviewer:
@@ -165,7 +165,7 @@ $ veyyon --model openrouter/anthropic/claude-sonnet-4
 | Constraint | Typical choice |
 | --- | --- |
 | Tool-heavy refactors | Hosted model with tool calling |
-| Long sessions / subagents | Choose cheaper models under `subagent` and `compaction.model` |
+| Long sessions / agents | Choose cheaper models under `agent` and `compaction.model` |
 | Low latency | Local or flash-tier cloud |
 | Offline / private code | Ollama, LM Studio, llama.cpp |
 | CI | Pin exact `provider/id` with `--model` |

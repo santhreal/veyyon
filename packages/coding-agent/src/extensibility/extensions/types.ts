@@ -274,7 +274,7 @@ export interface ExtensionUIContext {
 	 * Screen takeover, when the host is a terminal that offers it.
 	 *
 	 * Undefined on every host that cannot hand out a live `TUI` — print, RPC,
-	 * ACP and subagents. Reach it as `ctx.ui.terminal?.custom(...)`; an
+	 * ACP and agents. Reach it as `ctx.ui.terminal?.custom(...)`; an
 	 * extension that needs it unconditionally should check `terminal` and say
 	 * what it cannot do rather than assume a terminal is there.
 	 */
@@ -306,7 +306,7 @@ export interface ExtensionUIContext {
 	 * Stack additional autocomplete behavior on top of the built-in provider
 	 * (pi-compatible). Interactive mode rebuilds the editor's provider through
 	 * every registered factory, in registration order; headless modes (print,
-	 * RPC, ACP, subagents) accept and ignore the factory.
+	 * RPC, ACP, agents) accept and ignore the factory.
 	 */
 	addAutocompleteProvider(factory: AutocompleteProviderFactory): void;
 

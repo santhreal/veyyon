@@ -2430,7 +2430,7 @@ export class ModelRegistry {
 	 * Check whether auth is configured for a model's provider.
 	 *
 	 * Mirrors the upstream `@mariozechner/pi-coding-agent` API surface so that
-	 * external plugins/extensions and downstream wrappers (e.g. subagent launch
+	 * external plugins/extensions and downstream wrappers (e.g. spawned agent launch
 	 * paths that pre-flight auth before model resolution) can probe a model
 	 * without resolving an API key. Returns true for keyless providers as well
 	 * as providers with stored credentials. See issue #993.

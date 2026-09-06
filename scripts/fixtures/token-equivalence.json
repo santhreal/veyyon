@@ -42,7 +42,7 @@
 		"packages/coding-agent/src/prompts/side-channel/rows.ts": "057186380110282f9a880063e777be8ec53eb4384ecc5aa6b0d8463d4c592eee",
 		"packages/coding-agent/src/prompts/skills/rows.ts": "46019a57b41d9f5b85855b85dbd196a889cb68e8f7af83f546a115e9ac71801f",
 		"packages/coding-agent/src/prompts/steering/rows.ts": "ed55897d57400a1c53b902ded30be640e8818d7a7050d858c11b49d0ed82d549",
-		"packages/coding-agent/src/prompts/subagent/rows.ts": "1f1612409a59239c4354f394ad4e5853abaf342eda6da5ffca02c6d74764e58d",
+		"packages/coding-agent/src/prompts/agent/rows.ts": "1f1612409a59239c4354f394ad4e5853abaf342eda6da5ffca02c6d74764e58d",
 		"packages/coding-agent/src/prompts/thinking/rows.ts": "28586b92fe82485740a47703fab593dd510384ca79970c53ad380e206056c29f",
 		"packages/coding-agent/src/prompts/titles/rows.ts": "e8c6e2645848acf233755aad096beaf3a79f52049445a3671d4d19b8410ef287",
 		"packages/coding-agent/src/prompts/tools/rows.ts": "dfe1f21658e26a63a77a050445515b4fe7bdba5ca1ba52c83aa7d39e3cf5d004",

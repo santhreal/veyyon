@@ -43,7 +43,7 @@ import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive
 import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { type SubagentLifecyclePayload, TASK_SUBAGENT_LIFECYCLE_CHANNEL } from "@veyyon/coding-agent/task";
+import { type AgentLifecyclePayload, TASK_AGENT_LIFECYCLE_CHANNEL } from "@veyyon/coding-agent/task";
 import { initTheme, setTheme, stopThemeWatcher } from "@veyyon/coding-agent/theme/theme";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
@@ -154,12 +154,12 @@ describe("session-scoped surfaces while the view is focused on an agent", () => 
 		id: string,
 		index: number,
 		description: string,
-		status: SubagentLifecyclePayload["status"],
+		status: AgentLifecyclePayload["status"],
 	): Promise<void> {
 		const { mode: m, terminal: t } = booted();
 		if (!eventBus) throw new Error("eventBus not booted");
 		vi.useFakeTimers();
-		eventBus.emit(TASK_SUBAGENT_LIFECYCLE_CHANNEL, {
+		eventBus.emit(TASK_AGENT_LIFECYCLE_CHANNEL, {
 			id,
 			index,
 			agent: "task",
@@ -168,7 +168,7 @@ describe("session-scoped surfaces while the view is focused on an agent", () => 
 			status,
 			parentToolCallId: `call-${id}`,
 			detached: true,
-		} satisfies SubagentLifecyclePayload);
+		} satisfies AgentLifecyclePayload);
 		vi.advanceTimersByTime(150);
 		vi.useRealTimers();
 		m.ui.requestRender();
@@ -255,7 +255,7 @@ describe("session-scoped surfaces while the view is focused on an agent", () => 
 		});
 
 		/**
-		 * Leak 1, WRITE side. `#reconcileTodosWithSubagents` auto-completes a todo
+		 * Leak 1, WRITE side. `#reconcileTodosWithAgents` auto-completes a todo
 		 * whose wording matches a finished spawn. It read the whole observer list
 		 * and persisted the result into `session`, so once the board on screen
 		 * became the focused agent's, one observer event copied that agent's board
@@ -343,12 +343,12 @@ describe("session-scoped surfaces while the view is focused on an agent", () => 
 
 			// AuthLoader is registered by focusChild, so the conversation holds three
 			// running spawns; only one of them is below the viewed agent.
-			expect(m.statusLine.subagentCount).toBe(1);
+			expect(m.statusLine.agentCount).toBe(1);
 
 			await m.unfocusSession();
 			await t.waitForRender();
 
-			expect(m.statusLine.subagentCount).toBe(3);
+			expect(m.statusLine.agentCount).toBe(3);
 		});
 
 		/** A leaf agent's honest answer is zero, not the parent's tally. */
@@ -357,7 +357,7 @@ describe("session-scoped surfaces while the view is focused on an agent", () => 
 			registerRunning("SchemaMigrator", MAIN_AGENT_ID);
 			await focusChild();
 
-			expect(m.statusLine.subagentCount).toBe(0);
+			expect(m.statusLine.agentCount).toBe(0);
 		});
 	});
 
@@ -403,7 +403,7 @@ describe("session-scoped surfaces while the view is focused on an agent", () => 
  * the registry's own answer about its spawn tree, and the interactive suite
  * above only proves the wiring reaches it.
  */
-describe("AgentRegistry.runningSubagentCount", () => {
+describe("AgentRegistry.runningAgentCount", () => {
 	function seed(): AgentRegistry {
 		const registry = new AgentRegistry();
 		for (const [id, parentId] of [
@@ -418,21 +418,21 @@ describe("AgentRegistry.runningSubagentCount", () => {
 	}
 
 	it("counts every running spawn when no agent is focused", () => {
-		expect(seed().runningSubagentCount(undefined, undefined)).toBe(4);
+		expect(seed().runningAgentCount(undefined, undefined)).toBe(4);
 	});
 
 	it("counts the whole subtree below a focused agent, not just its direct children", () => {
-		expect(seed().runningSubagentCount(undefined, "Anna")).toBe(2);
+		expect(seed().runningAgentCount(undefined, "Anna")).toBe(2);
 	});
 
 	it("excludes the focused agent itself, which is the view rather than work inside it", () => {
-		expect(seed().runningSubagentCount(undefined, "Anna.Bob")).toBe(1);
-		expect(seed().runningSubagentCount(undefined, "Anna.Bob.Carol")).toBe(0);
+		expect(seed().runningAgentCount(undefined, "Anna.Bob")).toBe(1);
+		expect(seed().runningAgentCount(undefined, "Anna.Bob.Carol")).toBe(0);
 	});
 
 	it("ignores spawns that are not running", () => {
 		const registry = seed();
 		registry.setStatus("Anna.Bob", "parked");
-		expect(registry.runningSubagentCount(undefined, "Anna")).toBe(1);
+		expect(registry.runningAgentCount(undefined, "Anna")).toBe(1);
 	});
 });

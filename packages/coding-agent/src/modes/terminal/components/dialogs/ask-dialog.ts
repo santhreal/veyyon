@@ -355,7 +355,7 @@ function isAskText(value: unknown): boolean {
  * header renderer and took the process down with `undefined is not an object
  * (evaluating 'text.replaceAll')` — an uncaught exception thrown from inside a
  * render pass, so there was no tool error and no notice, just a dead session and
- * every live subagent with it.
+ * every live agent with it.
  *
  * The precondition is therefore checked once, where the dialog is built, and a
  * violation is an ordinary rejection: `#presentDialog` catches a throwing

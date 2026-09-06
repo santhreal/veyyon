@@ -61,7 +61,7 @@ export function accountLoadBalancingSetting(): boolean {
  * Process-lifetime memo for {@link resolveAuthBrokerConfig}. Keyed on the env
  * inputs (plus agent dir, which decides which config.yml is read) so tests
  * that flip `VEYYON_AUTH_BROKER_*` between cases still observe the change, while
- * repeated resolution within one CLI invocation (startup, subagent sessions)
+ * repeated resolution within one CLI invocation (startup, agent sessions)
  * skips the config.yml read and any `!command` token resolution.
  */
 let cachedConfigKey: string | null = null;
@@ -98,7 +98,7 @@ export function resolveAuthBrokerConfig(): Promise<AuthBrokerClientConfig | null
 /**
  * Create an AuthStorage instance, using the broker when configured and falling
  * back to the local SQLite store otherwise. Delegates to the shared resolver in
- * pi-ai so the CLI, subagents, and the catalog generator all see the same
+ * pi-ai so the CLI, agents, and the catalog generator all see the same
  * credentials.
  *
  * When the global `profileSharing` posture is on (the default), the LOCAL

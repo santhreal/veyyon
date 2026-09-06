@@ -430,16 +430,16 @@ export const MODEL_SETTINGS = {
 		},
 	},
 
-	"tier.subagent": {
+	"tier.agent": {
 		type: "enum",
 		values: SERVICE_TIER_INHERIT_SETTING_VALUES,
 		default: "inherit",
 		ui: {
 			tab: "model",
 			group: "Sampling",
-			label: "Service Tier — Subagent",
+			label: "Service Tier — Spawned Agents",
 			description:
-				"How spawned task/eval subagent requests are queued and served. Inherit matches the main agent's live per-family tiers (tracks /fast); pick a value to apply it to whichever family the subagent's model belongs to.",
+				"How spawned task/eval agent requests are queued and served. Inherit matches the main agent's live per-family tiers (tracks /fast); pick a value to apply it to whichever family the spawned agent's model belongs to.",
 			keywords: ["fast", "priority", "queue", "latency", "serving"],
 			options: SERVICE_TIER_INHERIT_OPTIONS,
 		},

@@ -802,7 +802,7 @@ export class SelectList implements Component, MouseRoutable {
 	 * The status row IS the search's only user interface: it is where the query
 	 * appears. A budget too small to afford that row therefore also cannot afford
 	 * the search, and accepting keystrokes there filtered the list with nothing
-	 * on screen saying why the rows had changed. The subagents step at a short
+	 * on screen saying why the rows had changed. The agents step at a short
 	 * terminal is the case: one item row for six roles, where typing silently
 	 * narrowed them with no visible cause and no visible way back.
 	 */

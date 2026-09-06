@@ -80,7 +80,7 @@
 		"statusLineUntracked": "riverTeal",
 		"statusLineOutput": "ironRed",
 		"statusLineCost": "sunsetOrange",
-		"statusLineSubagents": "ironRed",
+		"statusLineAgents": "ironRed",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

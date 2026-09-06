@@ -83,7 +83,7 @@ export interface DebugLogSource {
  * Bundle contents:
  * - session.jsonl: Current session transcript
  * - artifacts/: Session artifacts directory
- * - subagents/: Subagent sessions + artifacts
+ * - agents/: Agent sessions + artifacts
  * - logs.txt: Recent log entries
  * - system.json: OS, arch, CPU, memory, versions
  * - env.json: Sanitized environment variables
@@ -149,10 +149,10 @@ export async function createReportBundle(options: ReportBundleOptions): Promise<
 		const artifactsDir = options.sessionFile.slice(0, -6);
 		await addDirectoryToArchive(data, files, artifactsDir, "artifacts");
 
-		// Look for subagent sessions in the same directory
+		// Look for agent sessions in the same directory
 		const sessionDir = path.dirname(options.sessionFile);
 		const sessionBasename = sessionFileStem(path.basename(options.sessionFile));
-		await addSubagentSessions(data, files, sessionDir, sessionBasename);
+		await addAgentSessions(data, files, sessionDir, sessionBasename);
 	}
 
 	// CPU profile
@@ -213,14 +213,14 @@ async function addDirectoryToArchive(
 	}
 }
 
-/** Find and add subagent session files */
-async function addSubagentSessions(
+/** Find and add agent session files */
+async function addAgentSessions(
 	data: Record<string, string>,
 	files: string[],
 	sessionDir: string,
 	parentBasename: string,
 ): Promise<void> {
-	// Subagent sessions are named with task IDs in the same directory
+	// Agent sessions are named with task IDs in the same directory
 	// They follow the pattern: {timestamp}_{sessionId}.jsonl
 	// We look for any sessions created after the parent session
 	try {
@@ -229,20 +229,20 @@ async function addSubagentSessions(
 			.filter(e => e.isFile() && isSessionFileName(e.name) && e.name !== sessionFileName(parentBasename))
 			.map(e => e.name);
 
-		// Limit to most recent 10 subagent sessions
+		// Limit to most recent 10 agent sessions
 		const sortedFiles = sessionFiles.sort().slice(-10);
 
 		for (const filename of sortedFiles) {
 			const filePath = path.join(sessionDir, filename);
-			const archivePath = `subagents/${filename}`;
+			const archivePath = `agents/${filename}`;
 			try {
 				const content = await Bun.file(filePath).text();
 				data[archivePath] = content;
 				files.push(archivePath);
 
-				// Also add artifacts for this subagent session
+				// Also add artifacts for this agent session
 				const artifactsDir = filePath.slice(0, -6);
-				await addDirectoryToArchive(data, files, artifactsDir, `subagents/${filename.slice(0, -6)}`);
+				await addDirectoryToArchive(data, files, artifactsDir, `agents/${filename.slice(0, -6)}`);
 			} catch {
 				// Skip files we can't read
 			}

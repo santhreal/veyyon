@@ -370,7 +370,7 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 	 * The chip rows for this frame, wrapped to the width instead of cut.
 	 *
 	 * It used to be one row, truncated. At 80 columns the six hints of the
-	 * subagents and import steps ran past the frame, and what fell off the end
+	 * agents and import steps ran past the frame, and what fell off the end
 	 * was `esc leave setup`: the one hint a stuck user needs was the first to
 	 * go, on exactly the terminal size where being stuck is most likely. The
 	 * shared chip packer breaks between chips, never inside one, and it is the

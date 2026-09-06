@@ -82,7 +82,7 @@
 		"statusLineUntracked": 74,
 		"statusLineOutput": 173,
 		"statusLineCost": 173,
-		"statusLineSubagents": "ember",
+		"statusLineAgents": "ember",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

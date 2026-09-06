@@ -12,7 +12,7 @@
  * Only the interactive TUI ever repaired that. Its `cwd_changed` handler runs
  * `applyCwdChange`, which reloads project settings and rebuilds the base system
  * prompt for the new directory. An SDK session, an ACP session, a headless run
- * and every subagent re-rooted with no rule reload at all, so they kept following
+ * and every agent re-rooted with no rule reload at all, so they kept following
  * the previous project's instructions for the rest of the session, and nothing in
  * the transcript said so. Even in the TUI the repair lands on the NEXT prompt,
  * after the turn that called `set_cwd` has already continued working under the

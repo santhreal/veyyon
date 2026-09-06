@@ -23,7 +23,7 @@ import { makeToolSession } from "../helpers/tool-session";
  * re-runs the work that was just cancelled on purpose, and the three transcripts
  * it did receive sit underneath a claim that something went wrong. The tool knew
  * the difference the whole time and threw it away one line later: the async path
- * already wrote `status = "aborted"`, and `classifySubagentOutcome` already had
+ * already wrote `status = "aborted"`, and `classifyAgentOutcome` already had
  * an `aborted` kind.
  *
  * WHY NOT THROW, which is how the sibling cancellation bugs were fixed. For eval
@@ -34,7 +34,7 @@ import { makeToolSession } from "../helpers/tool-session";
  * it says what happened instead.
  *
  * The suite drives the real `TaskTool` down to the executor seam rather than
- * testing the summary function, which `subagent-failure-surfaced.test.ts` covers.
+ * testing the summary function, which `agent-failure-surfaced.test.ts` covers.
  * What is asserted here is the end-to-end tool result: the flag, the headline,
  * and that the completed children's output is still in it.
  */
@@ -60,8 +60,8 @@ function createSession(settings: Record<string, unknown> = {}): ToolSession {
 		// then there is no such thing as a spawn cancelled before it started.
 		settings: Settings.isolated({
 			"async.enabled": false,
-			"subagent.batch": true,
-			"subagent.maxConcurrency": 1,
+			"agent.batch": true,
+			"agent.maxConcurrency": 1,
 			...settings,
 		}),
 		getSessionFile: () => null,

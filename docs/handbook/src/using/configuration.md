@@ -154,13 +154,13 @@ and change the setting again, and nothing further is reported.
 
 ## Pick models and providers
 
-Configure the interactive model, subagent policy, compaction model, and optional roles separately:
+Configure the interactive model, agent policy, compaction model, and optional roles separately:
 
 | Goal | What to set |
 | --- | --- |
 | Choose the model you talk to | `--model` / `/model` (persisted as `modelRoles.default`) |
-| Run every subagent on one model and effort | `subagent.sharedModel`, then `subagent.model` and `subagent.thinkingLevel` |
-| Customize one subagent | `subagent.agents.<name>` or Settings → Subagents → Agents |
+| Run every agent on one model and effort | `agent.sharedModel`, then `agent.model` and `agent.thinkingLevel` |
+| Customize one agent | `agent.agents.<name>` or Settings → Agents → Agents |
 | Choose the model for context compaction | `compaction.model` |
 | Add named model assignments | `modelRoles`, per profile (Settings → Model → Roles) |
 | Add a local or BYOK provider | a `providers:` entry in `models.yml` (see [Models](../reference/models-yml.md)) |
@@ -170,7 +170,7 @@ Configure the interactive model, subagent policy, compaction model, and optional
 modelRoles:
   default: openai/gpt-5           # interactive model (persisted default)
   smol: openai/gpt-4.1-mini
-subagent:
+agent:
   model: deepseek/deepseek-chat
   thinkingLevel: high
   agents:
@@ -337,7 +337,7 @@ leaves a raw handle behind.
 The two settings under `encode` are the two that decide whether a model is taught
 to write shorthand: this list, and the context cutoff described below. Everything
 else about Argot sits directly under `argot`, because it sets whether the
-feature runs, when a dictionary is built, how large it is, and what a subagent
+feature runs, when a dictionary is built, how large it is, and what an agent
 starts with. The split is there to make one thing obvious: nothing under `encode`
 affects reading. A handle already in the conversation expands whatever these hold.
 
@@ -418,10 +418,10 @@ Handles written earlier still expand losslessly, because the cutoff stops only
 the teaching, never the expansion. The default is `-1`, which never stops on
 size.
 
-### Choose how subagents start
+### Choose how agents start
 
-A subagent (a child veyyon spawns for a task) can start with its own shorthand,
-or none. Set that with `argot.subagents`:
+An agent (a child veyyon spawns for a task) can start with its own shorthand,
+or none. Set that with `argot.agents`:
 
 ```yaml
 argot:
@@ -429,24 +429,24 @@ argot:
   encode:
     models:
       - anthropic/claude-opus-4
-  subagents: fresh
+  agents: fresh
 ```
 
 The three values are:
 
-- `off` (the default): a subagent gets no shorthand. It reads full text and
+- `off` (the default): an agent gets no shorthand. It reads full text and
   writes full text.
-- `fresh`: a subagent gets its own shorthand session and loads the project of
+- `fresh`: an agent gets its own shorthand session and loads the project of
   its own task through `argot_load`, independent of the parent. Use this when a
-  subagent works a different project than its parent, for example a parent in a
+  agent works a different project than its parent, for example a parent in a
   monorepo and a child scoped to one crate.
-- `inherit`: a subagent starts from a copy of the parent's loaded shorthand, so it
+- `inherit`: an agent starts from a copy of the parent's loaded shorthand, so it
   writes the parent's handles from its first turn.
 
 This setting only trades tokens; it never changes what the agents agree on. Every
 agent expands its own output before it reaches a tool, the saved transcript, a
 prompt it hands to a child, or the result it returns to a parent, so a handle
-never crosses between a parent and a child in either direction. A subagent that
+never crosses between a parent and a child in either direction. An agent that
 starts with no shorthand is already correct: it simply writes in full. That is why
 `off` is a safe default and the other two are optimizations.
 

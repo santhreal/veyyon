@@ -84,7 +84,7 @@ export interface SegmentContext {
 	 * into a session, which is what lets the launch card render this same row.
 	 */
 	facts: SessionFacts;
-	/** Focused subagent id while the view is proxied at its session, undefined otherwise. */
+	/** Focused agent id while the view is proxied at its session, undefined otherwise. */
 	focusedAgentId?: string | undefined;
 	activeRepo: ActiveRepoContext | null;
 	width: number;
@@ -144,15 +144,15 @@ export interface SegmentContext {
 	contextLimit: number;
 	contextLimitKind: "window" | "compaction";
 	autoCompactEnabled: boolean;
-	subagentCount: number;
+	agentCount: number;
 	/**
 	 * Conversations this process is still running that no screen is showing —
 	 * `/new` handoffs that have not settled.
 	 *
-	 * Separate from {@link subagentCount}, which counts spawns INSIDE the
+	 * Separate from {@link agentCount}, which counts spawns INSIDE the
 	 * conversation on screen. A handed-off conversation is a peer of the one
 	 * being displayed, not a child of it, and it is the one that is invisible:
-	 * a subagent draws a widget in the transcript it belongs to, and a
+	 * an agent draws a widget in the transcript it belongs to, and a
 	 * backgrounded conversation draws nothing anywhere.
 	 */
 	backgroundSessionCount: number;

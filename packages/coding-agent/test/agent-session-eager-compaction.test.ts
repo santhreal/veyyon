@@ -181,7 +181,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 		const settings = Settings.isolated({
 			"compaction.enabled": true,
 			"compaction.autoContinue": true,
-			"subagent.delegation": "required",
+			"agent.delegation": "required",
 			"todo.enabled": false,
 			"todo.eager": "default",
 			"todo.reminders": false,
@@ -200,8 +200,8 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 		const sessionManager = SessionManager.inMemory(tempDir.path());
 
 		// `enabledAgentNames` is what makes this a task tool that can actually spawn something.
-		// Delegation strength resolves against it (`enabledSubagentNames`), so a mock without it
-		// describes a session where every `task` call would be refused, and `subagent.delegation:
+		// Delegation strength resolves against it (`enabledAgentNames`), so a mock without it
+		// describes a session where every `task` call would be refused, and `agent.delegation:
 		// "required"` correctly produces no reminder to re-inject. See the negative twin in
 		// `agent-session-eager-task.test.ts`.
 		const mockTaskTool = {
@@ -313,7 +313,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 	});
 
 	it("does not re-inject the delegation reminder when delegation is merely allowed", async () => {
-		const { session, waitForCall } = await createHarness({ "subagent.delegation": "allowed" });
+		const { session, waitForCall } = await createHarness({ "agent.delegation": "allowed" });
 		stubCompaction();
 
 		const continuation = await runToContinuation(session, waitForCall);
@@ -322,7 +322,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 	});
 
 	it("does not re-inject the delegation reminder when delegation is preferred", async () => {
-		const { session, waitForCall } = await createHarness({ "subagent.delegation": "preferred" });
+		const { session, waitForCall } = await createHarness({ "agent.delegation": "preferred" });
 		stubCompaction();
 
 		const continuation = await runToContinuation(session, waitForCall);
@@ -330,8 +330,8 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 		expect(reinjected(continuation, "delegation is enabled")).toBe(false);
 	});
 
-	it("does not re-inject the eager task reminder for subagent sessions", async () => {
-		const { session, waitForCall } = await createHarness({}, { agentId: "SubAgent", agentKind: "sub" });
+	it("does not re-inject the eager task reminder for agent sessions", async () => {
+		const { session, waitForCall } = await createHarness({}, { agentId: "Agent", agentKind: "sub" });
 		stubCompaction();
 
 		const continuation = await runToContinuation(session, waitForCall);
@@ -351,7 +351,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 
 	it("re-injects the eager todo reminder on the auto-continuation turn (todo.eager preferred)", async () => {
 		const { session, waitForCall } = await createHarness({
-			"subagent.delegation": "allowed",
+			"agent.delegation": "allowed",
 			"todo.enabled": true,
 			"todo.eager": "preferred",
 		});
@@ -365,7 +365,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 
 	it("re-injects the eager todo reminder reminder-only for todo.eager always (no forced tool)", async () => {
 		const { session, waitForCall } = await createHarness({
-			"subagent.delegation": "allowed",
+			"agent.delegation": "allowed",
 			"todo.enabled": true,
 			"todo.eager": "always",
 		});
@@ -382,7 +382,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 	/** Persisted todo state must suppress a duplicate eager reminder after summary recovery resumes. */
 	it("does not re-inject the eager todo reminder when todos survived compaction", async () => {
 		const { session, sessionManager, waitForCall } = await createHarness({
-			"subagent.delegation": "allowed",
+			"agent.delegation": "allowed",
 			"todo.enabled": true,
 			"todo.eager": "preferred",
 		});

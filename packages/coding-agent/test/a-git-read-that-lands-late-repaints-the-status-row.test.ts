@@ -400,7 +400,7 @@ describe("the marker the card painted survives the mount", () => {
 		await recordLaunchFacts({ gitStatus: DIRTY });
 		resetLaunchFactsForTest();
 
-		// The row follows the active repo, which a worktree hop or a subagent's cwd moves off the
+		// The row follows the active repo, which a worktree hop or an agent's cwd moves off the
 		// project the recorder keyed on. A marker from there would be a claim about this one.
 		const { component, first } = renderOnce(heldOpen(neverAnswers()), "/repo");
 

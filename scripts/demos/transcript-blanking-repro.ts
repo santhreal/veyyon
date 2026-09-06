@@ -35,7 +35,7 @@ const TURNS = flag("turns", 14);
 const DELAY_MS = flag("delay", 450);
 // Rows of a root child mounted ABOVE the transcript. The shipped layout always
 // has one (`home-anchor-layout` fills the slack with `topFill`, and the todo and
-// subagent HUDs sit in the same band), and the commit slide used to assume the
+// agent HUDs sit in the same band), and the commit slide used to assume the
 // transcript started at frame row 0, so the header is what the defect needs.
 const HEADER = flag("header", 2);
 // Rows of a still-arriving answer streamed after the finalized turns.

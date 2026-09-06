@@ -4,17 +4,161 @@
 	"historicalSnapshotCommit": "de0ccbf5a571d9de1285cb4dddeff1cc23f882aa",
 	"counts": {
 		"total": 4804,
-		"none": 3574,
-		"importsAndCommentsOnly": 773,
-		"changed": 457,
+		"none": 3417,
+		"importsAndCommentsOnly": 763,
+		"changed": 624,
 		"binary": 26
 	},
 	"deviations": {
+		"apps/site/deploy.test.ts": {
+			"old": "website/deploy.test.ts",
+			"group": "relocated-member-path",
+			"hash": "db2ed285506d195c6364f62fa9fdfe43434a89a823eb2a57194b61410f258005",
+			"structuralHash": "93b8359b11b14e820ea58bc8e482c7b6506ade01e04319bb83728cb316fa8c43"
+		},
+		"apps/site/features.html": {
+			"old": "website/features.html",
+			"group": "relocated-member-path",
+			"hash": "94a1a62ede3e1a3e80990fb33ef834873099200b029b2031e37b741504a63b09",
+			"structuralHash": "40dca6fac356b9d808b561438f48a6c4379880e6650e0f2dc596a1702c982a6e"
+		},
+		"apps/site/index.html": {
+			"old": "website/index.html",
+			"group": "relocated-member-path",
+			"hash": "2272b7681c1e91f9ed3f836ff589989e1c17a7e2b77c744f089370f6624279ad",
+			"structuralHash": "9f1483bdc90a6b691d2f1f0451c76fd3aa8132df4cbe4abb0ba2cc7ee741f533"
+		},
 		"apps/stats/CHANGELOG.md": {
 			"old": "packages/stats/CHANGELOG.md",
 			"group": "changelog-or-readme",
-			"hash": "cdb2495002f2040c649dfac15e20215689058559d7e4ec47efcaf26505c4b888",
-			"structuralHash": "1212d50ba50b0c318e32dcdec97283ace370a945d12b2bfa76561ffd0f6c2644"
+			"hash": "381f01e7f428fdc7729be92710f4ff41ebc876e57ce93801ccdf8fc5e258e587",
+			"structuralHash": "b0400d6c2811be2e2452cbada08db73ef058925572a6a9c4a729454acf293a77"
+		},
+		"apps/stats/src/client/components/AgentTokenShare.tsx": {
+			"old": "packages/stats/src/client/components/AgentTokenShare.tsx",
+			"group": "relocated-member-path",
+			"hash": "884a02b063bc04e9b3cf1d3d85a243478631372119549bdd11c179a738050d20",
+			"structuralHash": "4fe2e9a127b46803327dee0d91c1cb00e258e04f92d3c22b42d5879ee1bb621c"
+		},
+		"apps/stats/src/client/data/view-models.ts": {
+			"old": "packages/stats/src/client/data/view-models.ts",
+			"group": "relocated-member-path",
+			"hash": "d51cc2daba873c751982e66b7391a1f0364b53c49e4e612e208d2b32f4247844",
+			"structuralHash": "a41f5ef79e32618ecb3ded065b928155dd0b57c6dc9d9913f7e1c6407ed7e2d9"
+		},
+		"apps/stats/src/client/routes/OverviewRoute.tsx": {
+			"old": "packages/stats/src/client/routes/OverviewRoute.tsx",
+			"group": "relocated-member-path",
+			"hash": "f3ea50914675084242dd600a6a9f6c2952cae1a082c1624026c6a31d13756910",
+			"structuralHash": "449e7352ce0518d23758a0ebd2836556a99de39754aa52a978d3fc3fc1660896"
+		},
+		"apps/stats/src/parser.ts": {
+			"old": "packages/stats/src/parser.ts",
+			"group": "relocated-member-path",
+			"hash": "7a449f2ce46f3afe18ff53d46b0d7d5a4f5200b74067b87460bce87ec710b192",
+			"structuralHash": "d66fe0eb88bfedf9e32d81c66396bf76529588f69e97d20a3da69e8b8a669dad"
+		},
+		"apps/stats/src/shared-types.ts": {
+			"old": "packages/stats/src/shared-types.ts",
+			"group": "relocated-member-path",
+			"hash": "8cf54953fb3eaacb446df158ce11f7b6a118218462d94633f8e5bc2a2867878c",
+			"structuralHash": "3748b6ee343b3760972eb4f3e50e48bd040d04532cf719843a37301ad8397705"
+		},
+		"apps/stats/test/agent-type.test.ts": {
+			"old": "packages/stats/test/agent-type.test.ts",
+			"group": "relocated-member-path",
+			"hash": "a86ecb54d5a753cf2f494d9c9ec4387b5be69653f529e3946e2ef0de97c19df2",
+			"structuralHash": "36903e490feabeef9d7b70ceed5fbd258154938f50d789fc81eab1f22be71eb9"
+		},
+		"apps/stats/test/client-view-models.test.ts": {
+			"old": "packages/stats/test/client-view-models.test.ts",
+			"group": "relocated-member-path",
+			"hash": "d22e34ccb8eab2177b990e8a537ae3845ba6c619ac63521c01e4a42cde2ebdf4",
+			"structuralHash": "fcc5d51e31e845d1f63fa9954913798b53a442419c253b61e2dc7ceb52b08748"
+		},
+		"clients/python/veybot/AGENTS.md": {
+			"old": "python/veybot/AGENTS.md",
+			"group": "agent-vocabulary-prose",
+			"hash": "2f68b2aa5456a852f12c3cd0aad3a22262b8c7de06d5a38578e04212cbc5588a",
+			"structuralHash": "504a60355dc611ff8dc3cd1c1392c7af0e813d57330585d83863f37b7e93b3f5"
+		},
+		"clients/python/veybot/src/prompts/kickoff_ci_repair.md": {
+			"old": "python/veybot/src/prompts/kickoff_ci_repair.md",
+			"group": "agent-vocabulary-prose",
+			"hash": "1337ff804d384d702b5abc06b33dbca1020be90e33ca4dc510e7c94535493026",
+			"structuralHash": "e6055f8a269aedf3cda34c7ee1fb3640b5bdcf10fbca1e16ed63b69956679804"
+		},
+		"clients/python/veybot/src/prompts/kickoff_port_upstream.md": {
+			"old": "python/veybot/src/prompts/kickoff_port_upstream.md",
+			"group": "agent-vocabulary-prose",
+			"hash": "b0121d402469f06a4d1b92955b1de8f074f47417a241836ae549081ac1b588b8",
+			"structuralHash": "a4b7926107abccab24b606d5c5e709492ef6ec67a721714b0ff45405f93954f5"
+		},
+		"clients/web/README.md": {
+			"old": "packages/collab-web/README.md",
+			"group": "changelog-or-readme",
+			"hash": "4a87745211092404f8587105fa75ad58176dc8dbf18b0c13ed1023534340a271",
+			"structuralHash": "4e085f2e7d4e664bdb47aacb9c0eb968e044d6b8eb9633429d5020699015d5bd"
+		},
+		"clients/web/index.html": {
+			"old": "packages/collab-web/index.html",
+			"group": "relocated-member-path",
+			"hash": "b86ac0aceacac45cbe6c4066bbcc07cf8e7a8a47aec25cd58653d5e2fee5b1cb",
+			"structuralHash": "9ca3d017741a813f4b9dc3aa94603314e335474a124ce9595e07b1c5b853ceb3"
+		},
+		"clients/web/public/manifest.webmanifest": {
+			"old": "packages/collab-web/public/manifest.webmanifest",
+			"group": "relocated-member-path",
+			"hash": "bea8b01ad5f492d880e56d681e9315175cef9a81cd9761c0972eae094ee78f60",
+			"structuralHash": "d023a9953011928cbd996a2419c432b34c9131fa19f0ff33f4c4298aa9cf7911"
+		},
+		"clients/web/scripts/fixture.ts": {
+			"old": "packages/collab-web/scripts/fixture.ts",
+			"group": "relocated-member-path",
+			"hash": "8ec812cad1e5671cb705a049cb0ea662b4afbd1b739f9ed99177a03a200ac8ad",
+			"structuralHash": "e7283009a57ac2aa7a7bdc3a205549ad96a8934541083e3f1499ebc70d43caa2"
+		},
+		"clients/web/scripts/mock-host.ts": {
+			"old": "packages/collab-web/scripts/mock-host.ts",
+			"group": "relocated-member-path",
+			"hash": "05ad9d3b0e7b1a472a2c4b54861d010de7ee003cf0a7d69bd704dcc3759c64c2",
+			"structuralHash": "c6d0f0e6dbbfd3a92735aed45e72666232dd002bec1198b60ce04045ddbe0fff"
+		},
+		"clients/web/src/components/agents/AgentDrawer.tsx": {
+			"old": "packages/collab-web/src/components/agents/AgentDrawer.tsx",
+			"group": "relocated-member-path",
+			"hash": "d65ff2f0ecac1337af0177da76c11c2ad79e5ae99120d2cb8d79eab8e74b5324",
+			"structuralHash": "6e67905f49a32c16ef02ee277dff82c046c879d1f788cc6f2b4e5c069ad026f3"
+		},
+		"clients/web/src/components/agents/AgentsPanel.tsx": {
+			"old": "packages/collab-web/src/components/agents/AgentsPanel.tsx",
+			"group": "relocated-member-path",
+			"hash": "75a1f088cc143b1a364fcbfd1107c400d5c06eeea713fbb943ec2bd203308b7d",
+			"structuralHash": "bfb326208735729c9e1eb98e0798023dbf38befd71d4b779a384eec4ac2b3c5c"
+		},
+		"clients/web/src/lib/client.ts": {
+			"old": "packages/collab-web/src/lib/client.ts",
+			"group": "relocated-member-path",
+			"hash": "9ec8b8a28de0b6392bb836fad718e5b8348cf1ff6fea55e010a8b37794a468cc",
+			"structuralHash": "08935d426e37708f690d3a9980ba87fabf9831b14f2732600de4b497a0f4f0c0"
+		},
+		"clients/web/test/client.test.ts": {
+			"old": "packages/collab-web/test/client.test.ts",
+			"group": "relocated-member-path",
+			"hash": "fae86aefc9e7ae3d726f46dd0b79e187044518aac8813ec71a72d2a9eb2444a5",
+			"structuralHash": "1b0ef8bc97d7b004352a2106526260130964b9c8bbedea683a5f5097886b692c"
+		},
+		"contracts/wire/src/index.ts": {
+			"old": "packages/wire/src/index.ts",
+			"group": "contract-extraction",
+			"hash": "663653bf583a4efb8bfaf3a0dbd979e2acee88638b4af2f1bbd8784760b75237",
+			"structuralHash": "c5f3a0a89ee87d8d0139f217e697fa3c016079dfc0077365ea44c4348ad84f0e"
+		},
+		"hosts/terminal/engine/src/components/select-list.ts": {
+			"old": "packages/tui/src/components/select-list.ts",
+			"group": "extracted-to-utils",
+			"hash": "f9e8e91954c831d17c5df5c87061f5ff83bc5609bc5d16f566ff96f84eaaf45d",
+			"structuralHash": "81bc7517cf46fbc214b575fce1c10a9ea5f0f057d767e720a7af701f2f9f4c59"
 		},
 		"hosts/terminal/engine/src/core/image-budget.ts": {
 			"old": "packages/tui/src/components/image.ts",
@@ -22,23 +166,95 @@
 			"hash": "dd58a4270ac5a2f0bf3701ce30b853b5ef95c43f21936f97369545d795355377",
 			"structuralHash": "49b46e8d9c50842399bd032ae13a026f801c32009feb040697ff348dc6f1973e"
 		},
+		"hosts/terminal/engine/src/core/tui.ts": {
+			"old": "packages/tui/src/tui.ts",
+			"group": "extracted-to-utils",
+			"hash": "c55efec25ab2ec983b77b5a7f8661674fc0eaf0773126ca7c14cdff602864d16",
+			"structuralHash": "9cb63e5bfd8e82e2f768bd29da6ebdf809501f6b43203b996fb3943c539fe419"
+		},
 		"hosts/terminal/engine/test/settings-list.test.ts": {
 			"old": "packages/tui/test/settings-list.test.ts",
 			"group": "extracted-to-utils",
 			"hash": "b934508be1ef4cc58b79855b429cf9c100d1f807d0aaf3980f7c4fef5a544721",
 			"structuralHash": "7eb3d9808ef008d33a79f11e31f8827b61e8c7c202a607863cde2dfa5c0815b2"
 		},
+		"kernel/src/session/session-entries.ts": {
+			"old": "packages/coding-agent/src/session/session-entries.ts",
+			"group": "kernel-extraction",
+			"hash": "ea9a533603ea8ed3cb0e01de988d2c06764648ee8b9d8330f920abf1241e7985",
+			"structuralHash": "73059316dabb161293b4aca9ba1d485520093b2bc7edd820cdaba39487f0d1c8"
+		},
+		"kernel/src/session/session-manager.ts": {
+			"old": "packages/coding-agent/src/session/session-manager.ts",
+			"group": "kernel-extraction",
+			"hash": "5164fb7242c1b53153f7c03368c08488024920a83474787be28c319ebb4c08e8",
+			"structuralHash": "487e0ba52939476098e1b8dbb7172ffc96ebbb4da3ba90056233e41aaf84f669"
+		},
 		"packages/coding-agent/src/cli/launch-card.ts": {
 			"old": "packages/coding-agent/src/startup/launch-card.ts",
 			"group": "engine-consumer",
-			"hash": "5548773909db6c3c09357414eef062951ca1b19ef19cd62000c5ed49b190d7bb",
+			"hash": "440286fe3791457c2c482c32536bb5dacb4b9433607f464c005852763d5d752b",
 			"structuralHash": "d596b722e494356430156e67a305b028c6f770885577236edb089f571e9b5cf1"
+		},
+		"packages/coding-agent/src/memory/hindsight/client.ts": {
+			"old": "packages/coding-agent/src/hindsight/client.ts",
+			"group": "engine-consumer",
+			"hash": "bf32ed6e54cc7f8950e324369327fa54c41abf398a93b839fc8d4a993383c3be",
+			"structuralHash": "584324d17868064ae4f07d51886c0868fc91a3fc41ea62519c979bac5b3623ba"
+		},
+		"packages/coding-agent/src/memory/hindsight/state.ts": {
+			"old": "packages/coding-agent/src/hindsight/state.ts",
+			"group": "engine-consumer",
+			"hash": "23a13d34bd310a60c982e9de4b7f0b428d819abb8e846083e0c9e11c5a8ba93c",
+			"structuralHash": "de8af6f61412df0d3f254d9e2a8b0b76019c23b7733f00293f6218cd0de1775c"
+		},
+		"packages/coding-agent/src/memory/mnemopi/state.ts": {
+			"old": "packages/coding-agent/src/mnemopi/state.ts",
+			"group": "engine-consumer",
+			"hash": "e33a4942a66d90e98e2f3fdec3d79922412793dd9ccd080df61d0de505453b15",
+			"structuralHash": "8b00dfff568bbc7d4afdc74d04e5e7b9c062e6ac66022b213211b8448b044a50"
+		},
+		"packages/coding-agent/src/modes/terminal/components/__tests__/pause-screen.test.ts": {
+			"old": "packages/coding-agent/src/modes/components/__tests__/pause-screen.test.ts",
+			"group": "host-boundary",
+			"hash": "169ccc87212870226df8c894a8bfafcbe13ee6fa04dbc6ccfd3720942a724edf",
+			"structuralHash": "0e9bb8578bda9dd614571a727dedf0d27537144273f0f9e11ea112887cec339c"
+		},
+		"packages/coding-agent/src/modes/terminal/components/composer/composer-chrome.ts": {
+			"old": "packages/coding-agent/src/modes/components/composer-chrome.ts",
+			"group": "startup-initialization",
+			"hash": "be9975fd61067229eef2677d347f1cab49edc4bf655ebb480d702f0257ad23a5",
+			"structuralHash": "b4a67ccd457377e21311560a21f81b5a5118da88c096ffb94632eba10bb4d256"
+		},
+		"packages/coding-agent/src/modes/terminal/components/dashboard/agent-dashboard.ts": {
+			"old": "packages/coding-agent/src/modes/components/agent-dashboard.ts",
+			"group": "host-boundary",
+			"hash": "55d8c745f61605aff604da8455337f1fa8da9b9be1e8b7d1d7f261d0fbdd3c0a",
+			"structuralHash": "71f30273004b1266e84d0ca41e4d2c88672917c9a43c4113d5061471e4901ee9"
 		},
 		"packages/coding-agent/src/modes/terminal/components/dashboard/agent-transcript-viewer.ts": {
 			"old": "packages/coding-agent/src/modes/components/agent-transcript-viewer.ts",
 			"group": "host-boundary",
-			"hash": "95317492d52292a4ced2ca2304aa32d2877abe4e47daeb67d8f75037829c2435",
+			"hash": "30ac0fc7ba42c421c4824971222caffacf8d963ef733b91e35dd27b0dfff08ca",
 			"structuralHash": "76cdfa2751f989f5627e794babe6b3aaa0f7e2f485daba3bacdc4ca2591721b3"
+		},
+		"packages/coding-agent/src/modes/terminal/components/dashboard/agent-hud.ts": {
+			"old": "packages/coding-agent/src/modes/components/subagent-hud.ts",
+			"group": "host-boundary",
+			"hash": "204e56ee3d63d86b7d471e338346a72a95c544981f4f9cfc971d7e8ee815726d",
+			"structuralHash": "c31cdf6326551ee90d77122d18b335a462947c6684b60643e3234d9f14df1bb2"
+		},
+		"packages/coding-agent/src/modes/terminal/components/dashboard/todo-board.ts": {
+			"old": "packages/coding-agent/src/modes/components/todo-board.ts",
+			"group": "host-boundary",
+			"hash": "e11d602e3dcf6685a7af818c43854e474dd80b904074f1fbbad66e7cb8b26f4b",
+			"structuralHash": "8dd0bda2bd0d2192cbd53b28f7c63b91350709b6bf64e9211308ab359e8a20d8"
+		},
+		"packages/coding-agent/src/modes/terminal/components/dialogs/ask-dialog.ts": {
+			"old": "packages/coding-agent/src/modes/components/ask-dialog.ts",
+			"group": "host-boundary",
+			"hash": "fead33e47e8fcf7565f9d84a8b5e89892e059fd7e06995cbf57a3e4307007dcf",
+			"structuralHash": "7ca052e30881c4040f9f908f13ed312169b8ac2a560b8210822164fdfcdfa2f3"
 		},
 		"packages/coding-agent/src/modes/terminal/components/dialogs/login-dialog.ts": {
 			"old": "packages/coding-agent/src/modes/components/login-dialog.ts",
@@ -46,11 +262,29 @@
 			"hash": "eec35ab4219bd9f786036b63c88b900eacc5b2f5fb3bdb7eb5592f9917dc9eab",
 			"structuralHash": "23735959110c81fb211487314cf0b188bc5bc7df5dfeefd7d8fef0d7e6788f47"
 		},
+		"packages/coding-agent/src/modes/terminal/components/dialogs/pause-screen.ts": {
+			"old": "packages/coding-agent/src/modes/components/pause-screen.ts",
+			"group": "host-boundary",
+			"hash": "113e0e1d5f1d9368fdb5e75bf3bcac6213125d62f22c9b2fd237db7098a85ee1",
+			"structuralHash": "9279343976bd7bb63540bedd05cde6d79ee04e23492ec5cb05229ef180af8ea3"
+		},
 		"packages/coding-agent/src/modes/terminal/components/selectors/hook-selector.ts": {
 			"old": "packages/coding-agent/src/modes/components/hook-selector.ts",
 			"group": "host-boundary",
 			"hash": "ef3d2b36f1b2f01986818205487763bcbf88e0cf2bd5e489bc6731b050205c4d",
 			"structuralHash": "3e888a9fa37dc141ebdd11e207b5737d6c496442c33e2c37765a3f2ba2cb2f4d"
+		},
+		"packages/coding-agent/src/modes/terminal/components/selectors/model-picker.ts": {
+			"old": "packages/coding-agent/src/modes/components/model-picker.ts",
+			"group": "host-boundary",
+			"hash": "756ab2dc5c309605f079caa634b8863536e9b3788f44ad455ff6b2f26fe8c676",
+			"structuralHash": "61a553ac3978cbd6f90d8cc3b37e1681a85ce3691c79031bd82317a7df9ff3bc"
+		},
+		"packages/coding-agent/src/modes/terminal/components/selectors/model-selector.ts": {
+			"old": "packages/coding-agent/src/modes/components/model-selector.ts",
+			"group": "host-boundary",
+			"hash": "e9ea89aee174d6abc75791c53b52bd289b8489294db03bd660787e9e6254a292",
+			"structuralHash": "a0c9628bd2fbc2b33e90e12c048fcd0a587b462f936d3a9d22c9aa7eb170bcda"
 		},
 		"packages/coding-agent/src/modes/terminal/components/selectors/oauth-selector.ts": {
 			"old": "packages/coding-agent/src/modes/components/oauth-selector.ts",
@@ -58,11 +292,59 @@
 			"hash": "69f3e9f51f46a2c533c78ee14b63eb75393e213ea9da76f5e70f8e02677cef3f",
 			"structuralHash": "8a20be4255390982604c946a3d6791f35b2f6a44ffae115d0e424ab21951b38b"
 		},
+		"packages/coding-agent/src/modes/terminal/components/selectors/settings-defs.ts": {
+			"old": "packages/coding-agent/src/modes/components/settings-defs.ts",
+			"group": "host-boundary",
+			"hash": "72825ddf223f202af465886530d651fcfa3903812de649cf9eb87b49820150dd",
+			"structuralHash": "0175c9f7102cbafe13973920cbd22ed4276509daa533bde7321248c8aa4f9f12"
+		},
+		"packages/coding-agent/src/modes/terminal/components/selectors/settings-selector.ts": {
+			"old": "packages/coding-agent/src/modes/components/settings-selector.ts",
+			"group": "host-boundary",
+			"hash": "fe21148aa301a6ecb41a25dd206736c1e96c75c28e3f075b82a0c47b5b1f1db1",
+			"structuralHash": "d83c02e22011bf0c60c53ae9f3b25b6bd0d32a77c70e11ab952db8815831c25e"
+		},
+		"packages/coding-agent/src/modes/terminal/components/status-line/component.ts": {
+			"old": "packages/coding-agent/src/modes/components/status-line/component.ts",
+			"group": "startup-initialization",
+			"hash": "91a737633492093ec37a2694df6aade9077f6d5b0aed8abe8f2a78de147b7165",
+			"structuralHash": "5096cbede6c34038b83b1aa486999c3d13831853d3fcdd379bf818eff05227d8"
+		},
+		"packages/coding-agent/src/modes/terminal/components/status-line/presets.ts": {
+			"old": "packages/coding-agent/src/modes/components/status-line/presets.ts",
+			"group": "host-boundary",
+			"hash": "d183f76d06567beda9c64149c387a5e8c9e4a5b2f9dc4f441f9f4ec318f4a828",
+			"structuralHash": "3660687d3a46f2878f41ddd634cc80ad1b90678d12f99b2e7590ee9f189a6192"
+		},
+		"packages/coding-agent/src/modes/terminal/components/status-line/quiet-row.ts": {
+			"old": "packages/coding-agent/src/modes/components/status-line/quiet-row.ts",
+			"group": "host-boundary",
+			"hash": "4f44ee5ee594c19e5b9e7b4c3a7be5bced559f7cc880c8af98f46c383e2bcb27",
+			"structuralHash": "70a1786c9f4c37310b9555339f682c7f6d1e4dd02ed1f01689b804c56ffaf498"
+		},
+		"packages/coding-agent/src/modes/terminal/components/status-line/segments.ts": {
+			"old": "packages/coding-agent/src/modes/components/status-line/segments.ts",
+			"group": "host-boundary",
+			"hash": "ebb41b18b16870ba56359c279b34e1637b08b99dc61985418b95c4e4769d6132",
+			"structuralHash": "3d4f3722232f662ce541f501253f32e581e72ae23e33fdba0596a522ec48debe"
+		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/session-facts.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/session-facts.ts",
 			"group": "startup-initialization",
-			"hash": "abe8646cf3decf42a942ed869d5d784f715a515bd0b2b227e642e885864b67c5",
-			"structuralHash": "991e70d887d18c4b413c580751356376c45e80942fdd1dc4fd087aeda61e543e"
+			"hash": "4363337bcc68fd503bd38b4fa19f1c04407748296c0658afacef90d6c95ef141",
+			"structuralHash": "5750b90e6d02eba64b3db07ca49701d8de1c8b12c62ed861825629f6eff68c4d"
+		},
+		"packages/coding-agent/src/modes/terminal/components/status-line/types.ts": {
+			"old": "packages/coding-agent/src/modes/components/status-line/types.ts",
+			"group": "startup-initialization",
+			"hash": "b95eb55cd1f2c5ea4089c96aca31861eb74db0df86cb373a892dafe7cd4aa664",
+			"structuralHash": "bc6133ced1354b9995cf0612beda48d85f0648a4f17ca12105d100d25c401797"
+		},
+		"packages/coding-agent/src/modes/terminal/components/tips.txt": {
+			"old": "packages/coding-agent/src/modes/components/tips.txt",
+			"group": "host-boundary",
+			"hash": "e9233a154f078dfdf3d6c6ce1f451eda647cbbf7de05cd0391566cb9b4f638f3",
+			"structuralHash": "470a78765e3b358f4d25b4e7a0b696ecc3a5ba2f37f01cb1ba602fcb0491d6a8"
 		},
 		"packages/coding-agent/src/modes/terminal/components/transcript/chat-transcript-builder.ts": {
 			"old": "packages/coding-agent/src/modes/components/chat-transcript-builder.ts",
@@ -70,11 +352,35 @@
 			"hash": "f76309e171bd38b7480c61c5ff4e039dff49a69a3bd21420d63e39782af4f02e",
 			"structuralHash": "1f2720e8b4b51127cd32f4cfe943d17fbd22351cf416fdf5f101b61d1c7c10d0"
 		},
+		"packages/coding-agent/src/modes/terminal/controllers/event-controller.ts": {
+			"old": "packages/coding-agent/src/modes/controllers/event-controller.ts",
+			"group": "host-boundary",
+			"hash": "bbbea0359937f16b25e3c55934b65882565a8dfb95eab2ec39f90c8f86d33c79",
+			"structuralHash": "f73daf18b59aaa76a8452b9035a76c87df9e04c4012f121037603fa5407764f3"
+		},
 		"packages/coding-agent/src/modes/terminal/controllers/extension-ui-controller.ts": {
 			"old": "packages/coding-agent/src/modes/controllers/extension-ui-controller.ts",
 			"group": "host-boundary",
 			"hash": "55fbcffcb87d2f5db25ac1902c610baef28d0540e81b7316eeabf33273bf62ac",
 			"structuralHash": "85b0c254e2ab583f41e6d8a2c905a35a49cc376373a9b1ae38202e5529fca947"
+		},
+		"packages/coding-agent/src/modes/terminal/controllers/input-controller.ts": {
+			"old": "packages/coding-agent/src/modes/controllers/input-controller.ts",
+			"group": "startup-initialization",
+			"hash": "cbdde3f297cfeaf2dcd2a11d81ca729ca76108815f9ff7071b03930a9b0b0d34",
+			"structuralHash": "367eda12eef291df56bdf9138c922bb946c741ba07bc90bf8b5ff2bced7cc1be"
+		},
+		"packages/coding-agent/src/modes/terminal/controllers/selector-controller.ts": {
+			"old": "packages/coding-agent/src/modes/controllers/selector-controller.ts",
+			"group": "host-boundary",
+			"hash": "a9c23fa2753ff0577075d1994b5c8fac575845c676dcf6b945921d3281c98a22",
+			"structuralHash": "68cd77160ad9f583ff4bcec96714274aa7d32fd0724203863329301b986bef92"
+		},
+		"packages/coding-agent/src/modes/terminal/controllers/tan-command-controller.ts": {
+			"old": "packages/coding-agent/src/modes/controllers/tan-command-controller.ts",
+			"group": "host-boundary",
+			"hash": "98e1e1a271452f8d0c551a7a51cbfca135755120b0d1521274ebe34b0732a831",
+			"structuralHash": "665e691bb128dac4c3563881887514af59cd0ae2f469b9a8d0e70d68b0def659"
 		},
 		"packages/coding-agent/src/modes/terminal/draw/code-cell.ts": {
 			"old": "packages/coding-agent/src/tui/code-cell.ts",
@@ -82,11 +388,41 @@
 			"hash": "952f06165a5ec5606146b750957c1008af2eb74dddc7b544c269b7dafc027bd9",
 			"structuralHash": "9a58c6a9c6146200c4df41de487f3908b913e0850d5d64a8913d7274f593a65f"
 		},
+		"packages/coding-agent/src/modes/terminal/draw/rail-motion.ts": {
+			"old": "packages/coding-agent/src/tui/rail-motion.ts",
+			"group": "host-boundary",
+			"hash": "7ab02b80284bfad70c229035ab8ebbe210e643edece5499610970d57d37d2ea2",
+			"structuralHash": "749350fc929eb32061316d5151b28bdad2d94bb0c4787aaef0aa311129ba7d4f"
+		},
 		"packages/coding-agent/src/modes/terminal/first-frame.ts": {
 			"old": "packages/coding-agent/src/modes/first-frame.ts",
 			"group": "startup-initialization",
 			"hash": "ce3a75748667122a62ef49e9dd18d9425b6a6b6589108d046dd31cc00ca61c87",
 			"structuralHash": "8ca5a25353a4b3fae476d2de979cd4814ccdc303202adf93788123ce1de09493"
+		},
+		"packages/coding-agent/src/modes/terminal/interactive-mode.ts": {
+			"old": "packages/coding-agent/src/modes/interactive-mode.ts",
+			"group": "startup-initialization",
+			"hash": "9dc493668bc34e9e7c6816b4eb457d99ade55fed8f9c4fe4c621bfbe6c4d09a5",
+			"structuralHash": "37863d776c418cf9c9d161e071bdaa80f93e34024da0cb79353868fccc2c8e30"
+		},
+		"packages/coding-agent/src/modes/terminal/running-agent-badge.ts": {
+			"old": "packages/coding-agent/src/modes/running-subagent-badge.ts",
+			"group": "host-boundary",
+			"hash": "13d5421bdde69c2068b3e16147167199724bcbfaa0eb74a35abc7fe5af3f4071",
+			"structuralHash": "e0a7ea60e13e7488504e09f33c1f59163b206b04a03a3adfb19e5daf25fa3983"
+		},
+		"packages/coding-agent/src/modes/terminal/session-observer-registry.ts": {
+			"old": "packages/coding-agent/src/modes/session-observer-registry.ts",
+			"group": "host-boundary",
+			"hash": "95c053f677bd7c3bdefe840e126162658fc382965c82386bdcf92689ba028605",
+			"structuralHash": "37a40b5baeaf49ef3a07910d30d1db20948802b5ee2fe5329e3ecc2ff8994af2"
+		},
+		"packages/coding-agent/src/modes/terminal/setup-wizard/scenes/agents.ts": {
+			"old": "packages/coding-agent/src/modes/setup-wizard/scenes/agents.ts",
+			"group": "host-boundary",
+			"hash": "7f85bddb5ef156d4ab0e90d2013e46cd9cb8abc78f48b8f667742ba097b7fa65",
+			"structuralHash": "bfc9fd78a04d1ae62e5f6071021e3516214716754dbf0db347ad88cbe361dbfb"
 		},
 		"packages/coding-agent/src/modes/terminal/setup-wizard/scenes/sign-in.ts": {
 			"old": "packages/coding-agent/src/modes/setup-wizard/scenes/sign-in.ts",
@@ -94,11 +430,677 @@
 			"hash": "8cf12e5af7c06379d971a71115f240736113f77a2bcab3ce443c13c0e54f22e7",
 			"structuralHash": "2382d9914b4e16614a728bbb113d01cf16a37ee20ec38b501232cf22ce6b1f8b"
 		},
+		"packages/coding-agent/src/modes/terminal/setup-wizard/wizard-overlay.ts": {
+			"old": "packages/coding-agent/src/modes/setup-wizard/wizard-overlay.ts",
+			"group": "host-boundary",
+			"hash": "74d560354b4ce5be2fb1f47b3e2031edfa8f882e7be80d044c466700a872e358",
+			"structuralHash": "b67981662957dfd9fb1d5cc987e9294294a5f03f5f7aa36eda9b95eab3eca37a"
+		},
+		"packages/coding-agent/src/modes/terminal/types.ts": {
+			"old": "packages/coding-agent/src/modes/types.ts",
+			"group": "host-boundary",
+			"hash": "6909c96782ca1697889dfa9c4f3f67aa06940c3ca802a43ca0ee635814a8a018",
+			"structuralHash": "10a2aebbb1bdc6ad314ed78452812ed509a247293ef11d0b46dfdbebb619bdf9"
+		},
+		"packages/coding-agent/src/modes/terminal/utils/hotkeys-markdown.ts": {
+			"old": "packages/coding-agent/src/modes/utils/hotkeys-markdown.ts",
+			"group": "host-boundary",
+			"hash": "0f7f71ff55a96dd616437c30adcfdd82a20e4ea3a7c3593df98c14e6ea52a667",
+			"structuralHash": "b30c397f6bbe3f1ded5f5695b2e8d5723f8c6a7c5fdfa94c756d039126e27f0a"
+		},
+		"packages/coding-agent/src/modes/terminal/utils/key-hint.ts": {
+			"old": "packages/coding-agent/src/modes/utils/key-hint.ts",
+			"group": "host-boundary",
+			"hash": "15d43921c589d3d43ac04c76c8ffe48b59fd6caae19e4f3476348c2e6c81e186",
+			"structuralHash": "e5fc870970f42031892239f615807cd3b2f5380012ad1dfbb0793f229f9b3ce3"
+		},
 		"packages/coding-agent/src/modes/terminal/utils/ui-helpers.ts": {
 			"old": "packages/coding-agent/src/modes/utils/ui-helpers.ts",
 			"group": "host-boundary",
 			"hash": "0e564da8feb9478e704f7e4d06a054a6dbb5fe0ba72ccba6a22f9ebb405c825a",
 			"structuralHash": "3c66ac26010e7b9b09800e7d5c6a5dc67c58798fb88815fbca2016a6c1c7f3bf"
+		},
+		"packages/coding-agent/src/session/vibe-runtime.ts": {
+			"old": "packages/coding-agent/src/vibe/runtime.ts",
+			"group": "engine-consumer",
+			"hash": "e11c211373112f8b97704916644d542e5da88149f7da922c011eece2395c927e",
+			"structuralHash": "7540f0efd3996cc5947946401f56737d523f4228a12bbcf5646820d901238c5a"
+		},
+		"packages/coding-agent/src/task/irc-bus.ts": {
+			"old": "packages/coding-agent/src/irc/bus.ts",
+			"group": "engine-consumer",
+			"hash": "7d6bd88c0b0de6489538f0aba99a58cc5d1cec8cbaf8f85c3e3b46881c8e9d32",
+			"structuralHash": "3ec5f06ee61e3dd9311e87d625b6dddd23fc3e4e7dfdff5540984904e3b89728"
+		},
+		"packages/coding-agent/src/theme/color.ts": {
+			"old": "packages/coding-agent/src/modes/theme/color.ts",
+			"group": "engine-consumer",
+			"hash": "13c46936c7fae73338b1c50c484adac2cef4f1c98e266dfb355e5629b53ca1ca",
+			"structuralHash": "bdd29ee72e41d2923048d025ec974f8cd0c889812fa0d89513c5ccdaaef2f2f9"
+		},
+		"packages/coding-agent/src/theme/dark.json": {
+			"old": "packages/coding-agent/src/modes/theme/dark.json",
+			"group": "engine-consumer",
+			"hash": "81cc505d66c4e212df48ce9a8979528c77d07d08208b8924335ee3b27b2305c6",
+			"structuralHash": "793d6e670188eb71cb16b53510ede24cd339c1fd64898a88414fe6a2eed9af7c"
+		},
+		"packages/coding-agent/src/theme/defaults/alabaster.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/alabaster.json",
+			"group": "engine-consumer",
+			"hash": "6dcc3fc65e0287b6e0bd8de40b3fd46107c50bfc3a4ee0600d93d999d0c3f627",
+			"structuralHash": "b42cb0280a113e13e9cff9dbbd77e892dbd111fe3ddaf2038a16da2dbd96f665"
+		},
+		"packages/coding-agent/src/theme/defaults/amethyst.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/amethyst.json",
+			"group": "engine-consumer",
+			"hash": "ed3ad27ff5b818182c142d192b5559344c160434cb19e84b836ed816ee1477e0",
+			"structuralHash": "a4f11b1768e1e5d5ab2c98311fdaf002000d789f0e6b08cc1cd702db27495d2b"
+		},
+		"packages/coding-agent/src/theme/defaults/anthracite.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/anthracite.json",
+			"group": "engine-consumer",
+			"hash": "2dda497f1c164e6c75e5a5b8e4662031ee6e4792d30af542e8c9d3f1a1d40b9f",
+			"structuralHash": "c1d42c31b7c84330661dbdb32567d2652533902cf486f7a11b644f43ccf32d8b"
+		},
+		"packages/coding-agent/src/theme/defaults/basalt.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/basalt.json",
+			"group": "engine-consumer",
+			"hash": "82046dd2ccfc7bf9edc0862965556534fde59a1dcf87ebd13b30679ac350dcc7",
+			"structuralHash": "29e17a54c2f3b2205d1896890f82ac82bc1337c26d9c7de241903ab743d04bd1"
+		},
+		"packages/coding-agent/src/theme/defaults/birch.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/birch.json",
+			"group": "engine-consumer",
+			"hash": "a36e1a78528b06c4295ee4e9949c3088047711d458461172daad55069eca67fb",
+			"structuralHash": "a9167f1c28e82e1c49aa4bca9c881f9cc7d3bcb6cd39480b8269050c1d7f170d"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-abyss.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-abyss.json",
+			"group": "engine-consumer",
+			"hash": "8dddf78b9669bd3135a1fc20895f69912f36d982128cf62ca2d2715a36df689b",
+			"structuralHash": "9fd377e92d24f50a939f2e815480cfe672cceda21dc0550a84a83d5087b97d78"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-arctic.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-arctic.json",
+			"group": "engine-consumer",
+			"hash": "d2e2cb34ab33e591fe1611ab25cb7cc37c616269ab45554537f1a8513c2b5717",
+			"structuralHash": "9107353aceedd4c45228fde089adcf1d4cd7fcc041aa9be6cff13d0da9e4d5b0"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-aurora.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-aurora.json",
+			"group": "engine-consumer",
+			"hash": "dda7f3d53021fa7aa214d9026587651493baf31cca223ad19d75997e537152ba",
+			"structuralHash": "fd322608362a5e5575ae937ae5ca370176a1aeb0b10013fdf48a7e249e15e803"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-catppuccin.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-catppuccin.json",
+			"group": "engine-consumer",
+			"hash": "d0862bc137d41709c7511ba5da3ba69e13b7425887ec59736f5f5af76960fa40",
+			"structuralHash": "015614beccb151567d84dd57ccfc6bd65e307d5dbdf9126b546805b2c5839431"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-cavern.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-cavern.json",
+			"group": "engine-consumer",
+			"hash": "de05e4cab335a453a69e18996ec4886fe81a86cd333ea9dd4d32872014b03294",
+			"structuralHash": "d9d03eb7eb9802319c22c721446211dd2e416ee63d745096f5a328e40c5f46dc"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-copper.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-copper.json",
+			"group": "engine-consumer",
+			"hash": "ae18537d1c05eb51e3f331acd09729a820a86b9615cbd3499bbe03fa9632febe",
+			"structuralHash": "f2568120ec6796940eb84299a00f5ec398e2d6536cb83a64b96b8b13930e4347"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-cosmos.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-cosmos.json",
+			"group": "engine-consumer",
+			"hash": "df206f78bf069ee2acb55af98455da854f996a5c365226a423a753a5386977e9",
+			"structuralHash": "2c4ed880b39cd12d21cc8d1306bc919e337c2d80cd1ec05aa1c06655df28ebcd"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-cyberpunk.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-cyberpunk.json",
+			"group": "engine-consumer",
+			"hash": "30980a2c4cbba3696926d25e7b1f25ecf50e2586d185d807983be5d8e5cab1ab",
+			"structuralHash": "5f951dc085c0b1c311b370abeb80ced7eac434df10f97036bfd63001ee2b04ea"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-dracula.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-dracula.json",
+			"group": "engine-consumer",
+			"hash": "2deb3c4a1fc0dc3b442b301b64cacb4882adc7a308268a33781b4eff196af8b1",
+			"structuralHash": "bb17d1b395d6a0bfd9eaa9c28ffed9f4b3c1e6e3b7d3165020d3a375ea229aaf"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-eclipse.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-eclipse.json",
+			"group": "engine-consumer",
+			"hash": "3ee3e5c93f9ce0831f14c78b09764d7f1baf97642344417064637a12217a44a8",
+			"structuralHash": "36f565b0cdc82d23157aede8f54a3c9944362d64852a8bf29e5404ac0a9febc7"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-ember.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-ember.json",
+			"group": "engine-consumer",
+			"hash": "359180fc107b81512576ac5275577707cc823cf66bba66b61f33f51d139df54e",
+			"structuralHash": "aa174c0c1c285a0bbf7dbc69e603c4a43112d52d7746099487ff288adf044318"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-equinox.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-equinox.json",
+			"group": "engine-consumer",
+			"hash": "95c8110ddc0e9b5e9ea284586c6d78a8fd8a67124a5bab9cbea5ce6c01aaed87",
+			"structuralHash": "c796b91f9d8d8da9f0e716ee933514499b2bfefc1139c15f6839833cf784a203"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-forest.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-forest.json",
+			"group": "engine-consumer",
+			"hash": "66d12c4e99c99e1fe5a02e4f114ae4c45e0554ed5602669e5ca00b97d914d355",
+			"structuralHash": "1f432f975088dde7670b579f0525e706c3e437af0c4742c472bf7908b7763c8f"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-github.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-github.json",
+			"group": "engine-consumer",
+			"hash": "c32c49d13c1059235665daab8887b85dca56bf78eaad2f2eeedf666bfaac539f",
+			"structuralHash": "94e2403c107b1bfa517f8b18107b5965bd732917dceb5a27336c688defd14685"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-gruvbox.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-gruvbox.json",
+			"group": "engine-consumer",
+			"hash": "bcecb691a787bda3b4b89a89f7ff11c9ed89c02f915df981a7123475d4727151",
+			"structuralHash": "d892758eacfc5bd229cb6ca4dbbc2052ceae1c06e6d530b7121a9562b20b8d9d"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-lavender.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-lavender.json",
+			"group": "engine-consumer",
+			"hash": "675c80b4d6e0544e861fc883a1690148a3c10ea7e4987bbcf369d95600faf541",
+			"structuralHash": "612b6c5e01954f9291ffaec9c70a0ae63a40a4b122ff84567f1e521cee893cea"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-lunar.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-lunar.json",
+			"group": "engine-consumer",
+			"hash": "57ba36348efe9b4d15e5ecfac6691fb6c851eaccc7b5d4868ff900049b081bb2",
+			"structuralHash": "20d1c482aacca5a53a2bbdcc7ffef1c310af1d35075f16a4c379303335bcaf09"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-midnight.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-midnight.json",
+			"group": "engine-consumer",
+			"hash": "de2e3b11b69aac22eeaa4ed8099dc087a2edbc85c367c0b26f9677e13dd5ba48",
+			"structuralHash": "dd0b8f0dbfc5a3341628980b9d31d5350e677dff9ea6c23690690d6782241c29"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-monochrome.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-monochrome.json",
+			"group": "engine-consumer",
+			"hash": "df1e4221a95c9e8ee6184aa47a8d61097acff4abd38ec1733048ea747392b247",
+			"structuralHash": "bbb7d98adf7c5924cfe1ee52e2e5902bf097b866e33523f21a231000aa894191"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-monokai.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-monokai.json",
+			"group": "engine-consumer",
+			"hash": "30908e5ccc5d300563d79b32fbe843420b20b66cf328d7981226c793b6a1247f",
+			"structuralHash": "b9646f08e5fdcbf09f38fe2c6d1848c38e03f7d75e0f84e7d4dcca2ce6c31906"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-nebula.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-nebula.json",
+			"group": "engine-consumer",
+			"hash": "a04d1501b3ed3dc9d42f5ad53ef9951dbe7b5dca11d6918a5db53a305db0209e",
+			"structuralHash": "6b3768da73bcfe5640994abd5ab4d8638db52d75594c2660ac378f7e653c6011"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-nord.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-nord.json",
+			"group": "engine-consumer",
+			"hash": "9ff7d09a6718877217eaebe8ef2448cd1c8a6f0f0cfc3a165feecb74bb3e1a14",
+			"structuralHash": "8aa91cfca2f1a10470156ecbd325eaa06c392a2bd8682678e62f506cdb33168c"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-ocean.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-ocean.json",
+			"group": "engine-consumer",
+			"hash": "957e9ac80315c77b7028a34cc6540857aed33f0f0909e62281895ee0f7e6ac97",
+			"structuralHash": "986cd35c1d03e6a759a82531bf8b9d3d61dc64ed28a043ff61ec61063421cd72"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-one.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-one.json",
+			"group": "engine-consumer",
+			"hash": "1041348a2a26461f7bb48280103eef31818a811e74d646bd0b25b13320f473ac",
+			"structuralHash": "93b0c013aa154fe363e354fc2aac416cd356077616ffaff6b7fc3ccff4188aa5"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-poimandres.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-poimandres.json",
+			"group": "engine-consumer",
+			"hash": "41fa69f79fe5ee00f9fac758b69407d11581572acae77d641e49de12ae274e5c",
+			"structuralHash": "66a0374b6afaf8d7cdac2ddf7e79942cf731344d7b8f50fbaab652b317d154bc"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-rainforest.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-rainforest.json",
+			"group": "engine-consumer",
+			"hash": "ae8ab880daf79638cca7c467d273960f703261e4672a1d6363ce9093486e5654",
+			"structuralHash": "d8a5a4c20f884f53709bd6c845c9248141c79d2c6d9b34941c1c1044fd854656"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-reef.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-reef.json",
+			"group": "engine-consumer",
+			"hash": "b6be1fac4d1770b296f0a323ab63837289433e77038fe0615fa192a84e7b22ae",
+			"structuralHash": "c14da08982920affcb5323ce17322d8302f81be985707caaf9f1d8e0c0606d70"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-retro.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-retro.json",
+			"group": "engine-consumer",
+			"hash": "9cee3fe3714704a10b1aeb36c69ff8eb3e7c8d210cff8e95f011a242dcb91c71",
+			"structuralHash": "a8e24ac544f24d4526f7223424248ea1a523244795e2fbc5c488b6156571ab93"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-rose-pine.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-rose-pine.json",
+			"group": "engine-consumer",
+			"hash": "785d5ca9e4a120d0f2a5b56552b0b7031154f120bbb902089a6dbf9dca45d3d6",
+			"structuralHash": "2ceb5d89e22d129006325b8faa2817aea70bf8f4966cbe64a30f8688d31e5e8a"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-sakura.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-sakura.json",
+			"group": "engine-consumer",
+			"hash": "c90a5c203fe78cda905d39c01d523c8cec60cae6dde6ad401bc353bd83ac6700",
+			"structuralHash": "a7edb4926445b178771b3b2dacf0ad38b8cdf9dee1d82de1204ed8b6ebf2979a"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-slate.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-slate.json",
+			"group": "engine-consumer",
+			"hash": "076cb3e3f6256af0d56cd318101d77c9a0168d7253d1d50ab58a891d70d7c943",
+			"structuralHash": "dcdab6c0aee1f501ef67beb0e2b40034a2e5ea47b15651c020a571436e9dc6c3"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-solarized.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-solarized.json",
+			"group": "engine-consumer",
+			"hash": "4702896f5941fa87ec9bc8bd1da21c7143b52206d3d0c29eb76fea079b09cc6c",
+			"structuralHash": "73f02b55452f6118080f26e5c3799e75b2ae0ad1fffeffc18fa080ae5fe0d485"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-solstice.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-solstice.json",
+			"group": "engine-consumer",
+			"hash": "1ada8a051b0e01f6e81d7472444988ffef70d03bf1a93dc4ac5d45dac408e813",
+			"structuralHash": "6fa2d57d86b6967f1c5d11d0377160bd1f2b2354d297b4d0c54ad32eb04e694d"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-starfall.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-starfall.json",
+			"group": "engine-consumer",
+			"hash": "b05044215f94a0aa6c543e88c3cb2fe3d3ed8b4c09b2c91e43a388e18df6f8f4",
+			"structuralHash": "a21b81610bb477bd8933bb6e2e1229ccc34298d2061ff62cbad8a890f21dd153"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-sunset.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-sunset.json",
+			"group": "engine-consumer",
+			"hash": "04dbf3110e07e3718afe87cd6412c617fffe42dfb6c4b3d8a6229e234918f2f6",
+			"structuralHash": "1c5920f7c14caec720f0a091d3bcbabf50c75dea3b73be96ed2e68944c401374"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-swamp.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-swamp.json",
+			"group": "engine-consumer",
+			"hash": "23b66d5c38287f3c8d744ae64f2110a734e0ae777ee161ba19fa6b2108bcfa3a",
+			"structuralHash": "cd8816f8bf2b9ebf0465b6e0ec1873adbb39b93e4caf9ebfe5f85e0345e92a23"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-synthwave.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-synthwave.json",
+			"group": "engine-consumer",
+			"hash": "7290618ce7860f43aa382ed9e451da9eeac78909210d8087e772cd1b3ae177dc",
+			"structuralHash": "bceb10fe087081c319ce0936afe2d0479191a903a676ef9c3b39f36e747f0905"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-taiga.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-taiga.json",
+			"group": "engine-consumer",
+			"hash": "fa39ccbe647c8af823e3d4c84ef75207af01906a53d3e62eefc3c617f1b3cf9e",
+			"structuralHash": "b7b614a697d1039faeb6add6930e889cdae698c6cb85d3a5d011d424e365eea6"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-terminal.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-terminal.json",
+			"group": "engine-consumer",
+			"hash": "34c1a5d76d5a5bbd403fb86b2b2e78fa24f254cb3bfb3abd5ff2399366ffea56",
+			"structuralHash": "de91edbad8d802924fd2877c09db712f6777354a671829c5a2face1453a59109"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-tokyo-night.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-tokyo-night.json",
+			"group": "engine-consumer",
+			"hash": "35b4c471b8824fe10d94eaf868576e589602fa07623cda6f98cc1fd567561481",
+			"structuralHash": "e82bce879ad1426e19f2bd98e571921e6c5bc995b2220515213df70408f9e8cc"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-tundra.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-tundra.json",
+			"group": "engine-consumer",
+			"hash": "3d8544c82ba7a213c1c333b18b969035e300e9cb6ffb5d89b64a5bd0b6f68b40",
+			"structuralHash": "19081135cc88d95d8e8f64e5a8d87e0e04471701eb7b40a648538262ba7c95d6"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-twilight.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-twilight.json",
+			"group": "engine-consumer",
+			"hash": "1f5e25377d880049aaf6fc2b9f439767deb34eece1863eaacaaddc7c46bf356b",
+			"structuralHash": "30d510e3f30d42b3e31ff20e0939865314dddbd432c900f02e29bbf796c9e298"
+		},
+		"packages/coding-agent/src/theme/defaults/dark-volcanic.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/dark-volcanic.json",
+			"group": "engine-consumer",
+			"hash": "dac48874f93b2cf857fc05d094b21339af7c480bbc300a299a06cecf1e8b9dd2",
+			"structuralHash": "a29306ba6dbfed74161fb578db439104cd9a3251e8e1e332d9006f58549831d0"
+		},
+		"packages/coding-agent/src/theme/defaults/graphite.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/graphite.json",
+			"group": "engine-consumer",
+			"hash": "93efea0d1426050f80d43fbf7d20852dec586a105294ced3aa33cbbb408167ee",
+			"structuralHash": "fe2dde6786dc1d6d4de831dc6e23c207fa60d2cc4e3202a25511888c1c70b7f6"
+		},
+		"packages/coding-agent/src/theme/defaults/light-arctic.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-arctic.json",
+			"group": "engine-consumer",
+			"hash": "08d26aa9f11068a67e6c3c08f3ab61f23b0db0f09d549ca47da95e9302b86e60",
+			"structuralHash": "cf3ddda582163d14127d5a307d3640159752a2b95e2dc76b057d85e9db454ef9"
+		},
+		"packages/coding-agent/src/theme/defaults/light-aurora-day.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-aurora-day.json",
+			"group": "engine-consumer",
+			"hash": "37769d4b8904f2c53c4c92e82388e5ffa72b01a00f8f56dc6d5f1ce855af22c9",
+			"structuralHash": "d97755d49dfbe222592414416d6b7332b7d67ed3c170988230b145d21d259bce"
+		},
+		"packages/coding-agent/src/theme/defaults/light-canyon.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-canyon.json",
+			"group": "engine-consumer",
+			"hash": "3a80b42b6b4b7e20f5face1d8e2adca74fc9d8a125cd23efc705d88c56d068e3",
+			"structuralHash": "1a6dec09797f42a3c0119eee70c3aca1cdda21df890a731da8fa718dddba3563"
+		},
+		"packages/coding-agent/src/theme/defaults/light-catppuccin.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-catppuccin.json",
+			"group": "engine-consumer",
+			"hash": "87f9df1fe3c07f914ec0854ab1c72a2ee79df7671ad344b80131f55439941aa1",
+			"structuralHash": "ddc76aafad0804a539d27d86f1c8ad74b1a6d47c8516bc559f15d76442f3f4e3"
+		},
+		"packages/coding-agent/src/theme/defaults/light-cirrus.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-cirrus.json",
+			"group": "engine-consumer",
+			"hash": "2bfc5df610c91fdc890199f728ef00ffcc5d3c61afd1f3d68201577ba35f2591",
+			"structuralHash": "61ee98043f1130df7df28eb6f6cd7109e5b132007811dd8cda8f8df4595551fa"
+		},
+		"packages/coding-agent/src/theme/defaults/light-coral.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-coral.json",
+			"group": "engine-consumer",
+			"hash": "c7a8201ac73751fe28234039d69827cd17a7eec235232a1d1df0f2e94a23c6aa",
+			"structuralHash": "3a9d99d9876bd62a575a7048bf71d53f4eb7b9e320a5a6a39090e064238ae91f"
+		},
+		"packages/coding-agent/src/theme/defaults/light-cyberpunk.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-cyberpunk.json",
+			"group": "engine-consumer",
+			"hash": "2a60ef9faaeba57e6bbd9b5b063d89508edd9e2061f049c294354754f30b7fd8",
+			"structuralHash": "9f69473fdba9ccd0ae15b807cb641c4cad48db33c5d7e232a929662cd9340c77"
+		},
+		"packages/coding-agent/src/theme/defaults/light-dawn.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-dawn.json",
+			"group": "engine-consumer",
+			"hash": "0bdda2f6c1498eb500b4bceb2563569e522138e29074e1762e48ad87eaef21c6",
+			"structuralHash": "bad7d4184818df4b5fb41d19f0dd8a6eb96c3a8bc654b5827e6dc9b0a01bad12"
+		},
+		"packages/coding-agent/src/theme/defaults/light-dunes.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-dunes.json",
+			"group": "engine-consumer",
+			"hash": "c9c6a5ef13f1b83186af521a23cdefe1d8bb0d5697ef110a406e2e0c5ea4ac17",
+			"structuralHash": "d2b8e62c4775d5dd4f0305b594c46337c3d04be48f923f257d8ace9cca23fe92"
+		},
+		"packages/coding-agent/src/theme/defaults/light-eucalyptus.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-eucalyptus.json",
+			"group": "engine-consumer",
+			"hash": "3e4facadcfdf545e1d912e61f556d62d5d3aad68c846e3c157d1a232572932d5",
+			"structuralHash": "eb10f28fec6df9d406f5595a9ee9521055d37ffd70823a636591e818f060fa02"
+		},
+		"packages/coding-agent/src/theme/defaults/light-forest.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-forest.json",
+			"group": "engine-consumer",
+			"hash": "a5f6bc1b54d1914b1ee8e19329502fa3e75b2d57e92d6dc0f1752f8a671d244d",
+			"structuralHash": "001c3776400b6cd09edff4573132c58a2b7d2f05082c1caff2d6858549a5eb0b"
+		},
+		"packages/coding-agent/src/theme/defaults/light-frost.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-frost.json",
+			"group": "engine-consumer",
+			"hash": "a9c745a600cc66d7b689296d293e80010e9da5fd3704f5878bd78885300c62da",
+			"structuralHash": "53098630b2fde301a6d47741079bcc0d461cf49143d7892c75fa3de62f7ba192"
+		},
+		"packages/coding-agent/src/theme/defaults/light-github.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-github.json",
+			"group": "engine-consumer",
+			"hash": "5d6c7ad22c1c2929f95e854f29b2b145674a1bc2e53861b29ebba7159937aa68",
+			"structuralHash": "2f1458c51829f3eec4d77b878b4d1453ed5ba01553adbe056b759258ac79b105"
+		},
+		"packages/coding-agent/src/theme/defaults/light-glacier.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-glacier.json",
+			"group": "engine-consumer",
+			"hash": "4da310d94976c91cbcb6135c3cdaebc5be9ceff6dbd123d09d22fa5316f193da",
+			"structuralHash": "aa714b96a39bffc790542f16b41394e108006966d3506c8bc4e28c440ca2bd71"
+		},
+		"packages/coding-agent/src/theme/defaults/light-gruvbox.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-gruvbox.json",
+			"group": "engine-consumer",
+			"hash": "908046a1b26b94e009e003650af0f4e624ea47c4c264193e36f302cda5b82453",
+			"structuralHash": "b3a01642129e749f1c84fb9f5d9c00483d2fedecdc7a02c610dec919826b2154"
+		},
+		"packages/coding-agent/src/theme/defaults/light-haze.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-haze.json",
+			"group": "engine-consumer",
+			"hash": "c31679d9a47fd8165a93a39f9dd7e7d9a1248fca5fc202908638b07db34c1ac5",
+			"structuralHash": "ac3e5b91898ee8f4a835d8cfb76365cfd17d36a775fd4d1a5723d835dc209ee7"
+		},
+		"packages/coding-agent/src/theme/defaults/light-honeycomb.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-honeycomb.json",
+			"group": "engine-consumer",
+			"hash": "372f8356eb5e0e2185f578c1d19324ebde0618eb0458b57382a6f57d3808815f",
+			"structuralHash": "bd8e43f50b2848f03184a7ec543ec59fa5c4002e595ca390466b5e4fa887e3c1"
+		},
+		"packages/coding-agent/src/theme/defaults/light-lagoon.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-lagoon.json",
+			"group": "engine-consumer",
+			"hash": "70cf2ff63e00e3a7e7fcabd7db4be85d8ef56653c16abf47c86247f76d91a4bc",
+			"structuralHash": "9da83f15d055e975c116d442125198c579c8d42b8883ce648c8ec70b1787575a"
+		},
+		"packages/coding-agent/src/theme/defaults/light-lavender.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-lavender.json",
+			"group": "engine-consumer",
+			"hash": "26c98f8c9932c27fb149927ea2a1913629b6bcb7a95bb67e71b8acef8b1e7a95",
+			"structuralHash": "a9a342f69d0b7f124ea0591be56af8a4c7ff4a983caecb0a30fc8974d749b5cb"
+		},
+		"packages/coding-agent/src/theme/defaults/light-meadow.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-meadow.json",
+			"group": "engine-consumer",
+			"hash": "f755ed4f9e27bb2dceea8b0e49cf146b970a659d6ebb67c1efc8000bafaaffee",
+			"structuralHash": "0e3e18a78e5b90508a08aba39a89196030b3e57af083d1f320b761668ecf7713"
+		},
+		"packages/coding-agent/src/theme/defaults/light-mint.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-mint.json",
+			"group": "engine-consumer",
+			"hash": "43dc71f68f8d419ec589d0097dbc83f054ee6eba056d4768f735fdb01bca023b",
+			"structuralHash": "d431841cd3bd28c8f6707f1e5b402a7cd63758f82745892c03807c21c4ca4940"
+		},
+		"packages/coding-agent/src/theme/defaults/light-monochrome.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-monochrome.json",
+			"group": "engine-consumer",
+			"hash": "0183f9b3e6b36cdf2642d94b370e2461b66b385b1384d7161466c18948e8d1bf",
+			"structuralHash": "f78356c043017b5ff8284b742a67c5948daa81bc73e76e342c49d54485512e8f"
+		},
+		"packages/coding-agent/src/theme/defaults/light-ocean.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-ocean.json",
+			"group": "engine-consumer",
+			"hash": "d22e7e96e0926586a25c462b7f25a3c4b307a6898d0c2dd952afc5e1a1f1725f",
+			"structuralHash": "46a4208bd731c73ad85ae2f7315cb3e96ae261cdd854aaa07ab823d3e0ee8a62"
+		},
+		"packages/coding-agent/src/theme/defaults/light-one.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-one.json",
+			"group": "engine-consumer",
+			"hash": "0a80d76730485ccb25f903fc127978369d36171e13c0af7df3788505bd4502b1",
+			"structuralHash": "3bd76773483cac22694cb0988c83ec0bc5ba6d53d2d82f1a06176ec4d0fa86c9"
+		},
+		"packages/coding-agent/src/theme/defaults/light-opal.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-opal.json",
+			"group": "engine-consumer",
+			"hash": "7cf599b43cd5dfebff1a11602e325c04185eb9d90f0ee8714db8c72a32d1a364",
+			"structuralHash": "40154c2559a51c8afc1fcc73703c2d163e189b4c227555f407425db185a267ae"
+		},
+		"packages/coding-agent/src/theme/defaults/light-orchard.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-orchard.json",
+			"group": "engine-consumer",
+			"hash": "a902e80c0a6fe776bd5a429fc3175a943380161fb9b3c599b08d16b8e4260675",
+			"structuralHash": "f813cb8f75da77b1cb2559389f87bbc414e00fd4227acdda70155c1487d760ee"
+		},
+		"packages/coding-agent/src/theme/defaults/light-paper.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-paper.json",
+			"group": "engine-consumer",
+			"hash": "9daffbb60d8cb7ddeb5591f8e051855ddf0b6b6dd88251ff59da8561686a709c",
+			"structuralHash": "7b0cbc4dd4d243e889be02ec7639f35ce05aca5b2323e03b00503a3ac62e0f42"
+		},
+		"packages/coding-agent/src/theme/defaults/light-poimandres.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-poimandres.json",
+			"group": "engine-consumer",
+			"hash": "1feceb6fceffaf9f5165cbdcca3bfb4fdc3ba8e7357d25b0fdf491d60f12d033",
+			"structuralHash": "9b2a0b73e1aff54ff8f590d8d05696e2e1eec8d336af7f53e879a3273785998b"
+		},
+		"packages/coding-agent/src/theme/defaults/light-prism.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-prism.json",
+			"group": "engine-consumer",
+			"hash": "0be64cc5bde4aa0406e546b3e633ac8d7130452bef326c94253b092b722521ef",
+			"structuralHash": "b3f033ec2d264ae01483e7e45cf01cff57868285f4e5b184a6b8a82aae74dd42"
+		},
+		"packages/coding-agent/src/theme/defaults/light-retro.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-retro.json",
+			"group": "engine-consumer",
+			"hash": "0e91fa24ca8f8f303c5165db551f9831737ced9791f56fbc9a73915adf6efa2a",
+			"structuralHash": "3dde764733e5db6878132945ab098a0587304c2ae175312562f04495e845a08d"
+		},
+		"packages/coding-agent/src/theme/defaults/light-sand.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-sand.json",
+			"group": "engine-consumer",
+			"hash": "4a1ece962a67fe7f09fbfe6869fbaf497cf83d691ab71ef910b00ae0ae9ccf51",
+			"structuralHash": "e3f02fb52ffc25d6a0a8f5605f48387ae2aee2419d197de36252d62d8075daf0"
+		},
+		"packages/coding-agent/src/theme/defaults/light-savanna.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-savanna.json",
+			"group": "engine-consumer",
+			"hash": "189f1a1dbcb01a182dea2743b1b083f7103a66a9e40c6e436b64474f7367d885",
+			"structuralHash": "66bbb85d9f98eebf4c66f12638b629aefd1718206298338834d1a0580444c608"
+		},
+		"packages/coding-agent/src/theme/defaults/light-solarized.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-solarized.json",
+			"group": "engine-consumer",
+			"hash": "d1a17a521cdaa3e601a6f8f143b1abae959f127bbdab9fba6a59971ea0dbf19e",
+			"structuralHash": "230ecf460a9bc40bfab150325169f52c68feb78342d4341ee3c6bba6aaeff09f"
+		},
+		"packages/coding-agent/src/theme/defaults/light-soleil.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-soleil.json",
+			"group": "engine-consumer",
+			"hash": "ddc961db1ade523753e9e34ada3e17c3909e4ad0307bc8d095383f7587556d09",
+			"structuralHash": "23d1bc980abc53993618c1bc4987151940a8b9899f60f606661287dce5b8d0ef"
+		},
+		"packages/coding-agent/src/theme/defaults/light-sunset.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-sunset.json",
+			"group": "engine-consumer",
+			"hash": "97833d1c0a971d860e1ee0800f99359c00f150c2d44ec92ff302440946dbb440",
+			"structuralHash": "207b25dbdf799b14a376795a74366592519a242b0733848002b2d1e076ad37c2"
+		},
+		"packages/coding-agent/src/theme/defaults/light-synthwave.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-synthwave.json",
+			"group": "engine-consumer",
+			"hash": "a912dce465d090525e522b6fed7ce420be55bff6eb9c67db3056d85549300642",
+			"structuralHash": "e21ee5293468a272eb48284f6894bf812f4b60f96a0269d79d04dc4d5f63ccf3"
+		},
+		"packages/coding-agent/src/theme/defaults/light-tokyo-night.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-tokyo-night.json",
+			"group": "engine-consumer",
+			"hash": "dcbad52f66196c19eeac7c9ca6cf986dd079b047c4ae419d49761b20bdc26e36",
+			"structuralHash": "4ccfea950ce3636d1afa35f467593d4babc3ab3ce3ee6421905ee6fe133822f6"
+		},
+		"packages/coding-agent/src/theme/defaults/light-wetland.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-wetland.json",
+			"group": "engine-consumer",
+			"hash": "c5e04bdb967c789f604fcf6e35a6f5d28b4aa44e9f8e2484d297f1322c047b66",
+			"structuralHash": "c024b8fb809cc80ead5333fb088bbcc2182cedd348b4a49a04fa8cb6f47c085f"
+		},
+		"packages/coding-agent/src/theme/defaults/light-zenith.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/light-zenith.json",
+			"group": "engine-consumer",
+			"hash": "71834481dbfa3cc23e19eee9935edf3a39a51685e455e4a809c9b409a5fe94bc",
+			"structuralHash": "e31bb55e61048392cd476a42d64c2b8d9e15f149cfc26d7238e332d3bf2856df"
+		},
+		"packages/coding-agent/src/theme/defaults/limestone.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/limestone.json",
+			"group": "engine-consumer",
+			"hash": "ddec2b2e93bab35d95658be1056f8fb733b8bc0b57087d6a74d131fb4133c346",
+			"structuralHash": "a914d660ff1fc29c87225c37430bc6566d3f3da3227f465d1d3ebe702b7dcebb"
+		},
+		"packages/coding-agent/src/theme/defaults/mahogany.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/mahogany.json",
+			"group": "engine-consumer",
+			"hash": "9f21c0c2212769d9420755837dac29f669b20f4242da595a19720ca26cfffa99",
+			"structuralHash": "15df351541de39239497a9983e0ee1f04d6a47fd463f0f769934bd92f7ddb4f5"
+		},
+		"packages/coding-agent/src/theme/defaults/marble.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/marble.json",
+			"group": "engine-consumer",
+			"hash": "f4ebcb58c5d4f01c3c7f19f6eb2a2826256a7f0964db1823a502137b34c2e015",
+			"structuralHash": "80507d699cd318088b00474690cba63e11332a6cd8fbb1c5de589274bb62f056"
+		},
+		"packages/coding-agent/src/theme/defaults/obsidian.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/obsidian.json",
+			"group": "engine-consumer",
+			"hash": "f02c6f3175fdf780815dcb1dcea4c68dbef27bc4b0f3eb7fa307652170f75006",
+			"structuralHash": "3603bdb4f1b0f3f8b230387bf61f29fb83c8003717d8ec4204299276d7df9d3c"
+		},
+		"packages/coding-agent/src/theme/defaults/onyx.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/onyx.json",
+			"group": "engine-consumer",
+			"hash": "97eb1a76e5c12f7074939fa27a0e00b7cc032e332fdc07b465df07f12a23141d",
+			"structuralHash": "5612c3da1316bb7b8640b34a75220759affe9d8389a7b331d86d98aa41709dc3"
+		},
+		"packages/coding-agent/src/theme/defaults/pearl.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/pearl.json",
+			"group": "engine-consumer",
+			"hash": "b1af65a7f60160eeee4ba2be1542bef660f7769194bb9e7ded43bc13939b7708",
+			"structuralHash": "81b584a2e22bbe7cc5a02e02cca866eb9847f1db3c792f94edda1faab86d0ed7"
+		},
+		"packages/coding-agent/src/theme/defaults/porcelain.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/porcelain.json",
+			"group": "engine-consumer",
+			"hash": "5b86d594b583d0c2f4b50e627c086d53d567fd69cfae985a98bd29b8a435a3fa",
+			"structuralHash": "8c93ce893ee25079b71b75a93da81fbe53f81f62737455326f2536e36a15f555"
+		},
+		"packages/coding-agent/src/theme/defaults/quartz.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/quartz.json",
+			"group": "engine-consumer",
+			"hash": "1b6fc39a909d3355e0229a26ef0668c2179f927108f0a4bae538458ab37a309d",
+			"structuralHash": "bced65974454a4c6f4e4a8f7c8f07d3b437fc0c8f15e3927ad51305312cbb8b9"
+		},
+		"packages/coding-agent/src/theme/defaults/sandstone.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/sandstone.json",
+			"group": "engine-consumer",
+			"hash": "dce248439ec2eef7bc25b820359fea2bd9822e10cf5db2234b9c3d8dc33830ff",
+			"structuralHash": "725303bbcc2baaa45d54560cb61c8aa23ce3835e9337b3d0741def5a68dcb1f0"
+		},
+		"packages/coding-agent/src/theme/defaults/titanium.json": {
+			"old": "packages/coding-agent/src/modes/theme/defaults/titanium.json",
+			"group": "engine-consumer",
+			"hash": "40cc546037a46fcc048d0fef101b5074d21e3ebea8518a8082d985cef7127b2a",
+			"structuralHash": "8ce07af7badf7578da862958b38e596329350a2f6bb64357a1c2d7488a2ae316"
+		},
+		"packages/coding-agent/src/theme/light.json": {
+			"old": "packages/coding-agent/src/modes/theme/light.json",
+			"group": "engine-consumer",
+			"hash": "431ad6349992d9a1db027d3c2844fb2845555d93ed1489cec07db2bd9feaf521",
+			"structuralHash": "331df3299821e98d7b8cfbf70f3cdfe62a24496e1c6dc0756affcadfc70b4179"
+		},
+		"packages/coding-agent/src/theme/symbols.ts": {
+			"old": "packages/coding-agent/src/modes/theme/symbols.ts",
+			"group": "engine-consumer",
+			"hash": "7e6cebb0dbf0ce116500dd26e6ff0501721d1a892faf184926f5279a93d32ec0",
+			"structuralHash": "bf2e7bc7fe8a5cfbe467b9d1630dd73a24f3f2fbf3a4355650cc0bcb430bbc98"
+		},
+		"packages/coding-agent/src/theme/theme-schema.json": {
+			"old": "packages/coding-agent/src/modes/theme/theme-schema.json",
+			"group": "engine-consumer",
+			"hash": "835033cb7572b21295893ba11a684c716cb3d3d891847201662c7f51f8175c46",
+			"structuralHash": "7955f79a1dfd848cb26fb38e2f511734c28916bd41dad9096db2e84063e66182"
+		},
+		"packages/coding-agent/src/thinking/index.ts": {
+			"old": "packages/coding-agent/src/thinking.ts",
+			"group": "engine-consumer",
+			"hash": "bc66bb2781fa774c105a102fc0a72fe82b30e1dd2812eb3572500b1a532cf146",
+			"structuralHash": "73a9e3581eeaa419047eeb4ab09fb0d707f1ac11b3ec2db1a01b7595e17502ca"
+		},
+		"packages/coding-agent/src/tools/agent/irc.ts": {
+			"old": "packages/coding-agent/src/tools/irc.ts",
+			"group": "engine-consumer",
+			"hash": "eafb671d7646bdce49f20e357b080128130feb2432a042a0e3f6672bddcd67ac",
+			"structuralHash": "8bcc8e9915454334bdc021a31e0f13c206d75690c25389e5ba9ac99faf40f18c"
 		},
 		"packages/coding-agent/src/tools/agent/learn.ts": {
 			"old": "packages/coding-agent/src/tools/learn.ts",
@@ -130,11 +1132,41 @@
 			"hash": "563ef3e0e2f15fc9d00e94606a917e264c893db4f31ece0f975365f7c85f52f0",
 			"structuralHash": "88de0a2233bbe0d7bfa10c54fdc893fc2a4a2fce696272567a7125eab09fd849"
 		},
+		"packages/coding-agent/src/tools/agent/todo.ts": {
+			"old": "packages/coding-agent/src/tools/todo.ts",
+			"group": "engine-consumer",
+			"hash": "9e98b4ec4bb9674ae6aa13aab64ce275d73f3e7e32094f1ee308c3a4dd9bb34e",
+			"structuralHash": "235615842c2b25871c02240c723990d39f38c1e204319a46e516ace7130ed2ae"
+		},
+		"packages/coding-agent/src/tools/agent/yield.ts": {
+			"old": "packages/coding-agent/src/tools/yield.ts",
+			"group": "engine-consumer",
+			"hash": "cb75969c9802acf767bfac6d0b7824b83d9a796c58dd934f41743944b9b32b5c",
+			"structuralHash": "18b0d57c728c8dde97d52b3718e0f13e928b6feb9cf432d031538557739615c9"
+		},
+		"packages/coding-agent/src/tools/core/approval.ts": {
+			"old": "packages/coding-agent/src/tools/approval.ts",
+			"group": "engine-consumer",
+			"hash": "17d3b28858eef7293225a9bc1898f45a3b44f2c890f56410e96e11e5be7d97c1",
+			"structuralHash": "f5ab9ffde88ca3767997200ed2f1c79425fa3870394399442465ec469206aad1"
+		},
 		"packages/coding-agent/src/tools/core/json-tree-render.ts": {
 			"old": "packages/coding-agent/src/tools/json-tree.ts",
 			"group": "json-walk-split",
 			"hash": "6aacb7ae929356d085ee049122c8dc5a559eccd4ed688ac47103976a5dc62897",
 			"structuralHash": "3488b956a263675381478698de766172cba337793a7988dd2e09a9aefd09316e"
+		},
+		"packages/coding-agent/src/tools/core/loading/policy.ts": {
+			"old": "packages/coding-agent/src/tools/loading/policy.ts",
+			"group": "engine-consumer",
+			"hash": "4ce0be41c6397c343c9b8da7d2f1ab60c0359162a6f1a5b7d3b9f8d55db48b48",
+			"structuralHash": "738a80950ce7029a5989c4bedde7d9f4e26f335462de60d64075166a4d9467b2"
+		},
+		"packages/coding-agent/src/tools/core/output-schema-validator.ts": {
+			"old": "packages/coding-agent/src/tools/output-schema-validator.ts",
+			"group": "engine-consumer",
+			"hash": "bb823e095de7950fe869e1e8a2171006fff15aa9a34965c5a7b4020289c0c0ce",
+			"structuralHash": "d9ef067d341d4bab3130d9e0edefcbdb1d9c924baeb867db5ffdfd265e6cd4b9"
 		},
 		"packages/coding-agent/src/tools/core/render-limits.ts": {
 			"old": "packages/coding-agent/src/tools/render-limits.ts",
@@ -154,11 +1186,47 @@
 			"hash": "ccc90df0a2c4433cfa850bcd9d8048da6c098f40b8e14134e9f8c9a1e7c79908",
 			"structuralHash": "050adaa1174c66c30a4dbac35f78f034d9752768e3cd27ed0f6ffd8f3d881b67"
 		},
+		"packages/coding-agent/src/tools/fs/checkpoint.ts": {
+			"old": "packages/coding-agent/src/tools/checkpoint.ts",
+			"group": "engine-consumer",
+			"hash": "c8659dc90e23f798df9314a01755c081bf4e2ad228f1025dc606c6f8f5158938",
+			"structuralHash": "a87455d63ad8e731259e6637cea681645ab894b805fefa33868af3ae6387e5d4"
+		},
+		"packages/coding-agent/src/tools/fs/reroot-hint.ts": {
+			"old": "packages/coding-agent/src/tools/reroot-hint.ts",
+			"group": "engine-consumer",
+			"hash": "f29f11a0f4331d809fb0207f8f296d928e04d9ab969738552f42c0b86bebc819",
+			"structuralHash": "8d4354909742b310c83d3c04aa3c7882dea816d7dca4aed0742296763188fe5d"
+		},
 		"packages/coding-agent/src/tools/fs/set-cwd.ts": {
 			"old": "packages/coding-agent/src/tools/set-cwd.ts",
 			"group": "view-conversion",
 			"hash": "af4d7f3717da8cfa3fc2258c563ee116e2bcb5c43eba00a9aeda01dc3210baa6",
 			"structuralHash": "9e217ce491e549e069279260d26eda279435603630a0b6a45d4879a804422f83"
+		},
+		"packages/coding-agent/src/tools/shell/bash-guard.ts": {
+			"old": "packages/coding-agent/src/tools/bash-guard.ts",
+			"group": "engine-consumer",
+			"hash": "be7bdcb10fb498d2c7e1f16867e2e8fd211e4db7f0ed383c317dc62e58f4b828",
+			"structuralHash": "3a95225c233d7a4c667945137e41e1473c7bf43f2f7f8de26b2a868b8f19bd70"
+		},
+		"packages/coding-agent/src/tools/shell/eval.ts": {
+			"old": "packages/coding-agent/src/tools/eval.ts",
+			"group": "deferred-tool-initialization",
+			"hash": "b7109f0a665d887b1db5fa053b4e27e012b938aea09946d73f1a7119c4a166e7",
+			"structuralHash": "265d1d4f7756424229c7eb4cfd2cb658b37d20ad27c6138beaf05dcbeeb2c9b4"
+		},
+		"packages/coding-agent/src/tools/shell/job.ts": {
+			"old": "packages/coding-agent/src/tools/job.ts",
+			"group": "engine-consumer",
+			"hash": "8e543419eef6a45d9a1314eb7494ab16d4eac36ef9baa1d60984788e789e2556",
+			"structuralHash": "aeab588ea56004c9e0dd6b72991e8017e36e1884d9e5c24bb5e4e4adbe97d302"
+		},
+		"packages/coding-agent/src/tools/web/browser/tab-supervisor.ts": {
+			"old": "packages/coding-agent/src/tools/browser/tab-supervisor.ts",
+			"group": "web-extraction",
+			"hash": "88eaa56b7317d4e97e77134f0b0484af54d777c7e178ea1fd8d53987b6f50f3e",
+			"structuralHash": "b86728c8a84f82af8de2565cdc101de7fc3d7a6f2a5c63499b083a811feb0e2e"
 		},
 		"packages/coding-agent/src/tools/web/search/providers/duckduckgo.ts": {
 			"old": "packages/coding-agent/src/web/search/providers/duckduckgo.ts",
@@ -189,6 +1257,186 @@
 			"group": "web-extraction",
 			"hash": "f135fe7c929639cb69336e04c391ea4794edf5881d32db34743db096f934f123",
 			"structuralHash": "dc03ed585fe46793caf303657867f392aadfafa8d3eefbc60deee86190ac74f7"
+		},
+		"packages/coding-agent/test/modes/keywords/orchestrate.test.ts": {
+			"old": "packages/coding-agent/test/modes/orchestrate.test.ts",
+			"group": "colocated-test",
+			"hash": "52942a9622ce2a6affc748f01ac2168121194b9ac1fea104896e36da11aebeea",
+			"structuralHash": "3e350e49d318aa0cb4520a5fbc1c83d5f25f1fc8807cb94ad5fd52cdc0590b49"
+		},
+		"packages/coding-agent/test/modes/keywords/workflow.test.ts": {
+			"old": "packages/coding-agent/test/modes/workflow.test.ts",
+			"group": "colocated-test",
+			"hash": "0ee688fb6719c9077268a8af29ebfbaf6b37763bdab43b9aada40c3addb0f6ed",
+			"structuralHash": "6665b6da0b51f50053b183a44bace515d8965f5adc623f4800c851e3c634c1c9"
+		},
+		"packages/coding-agent/test/modes/terminal/components/advisor-model-has-one-owner.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/advisor-model-has-one-owner.test.ts",
+			"group": "colocated-test",
+			"hash": "ef2baf146a6230aa9acf73ed7b5f311eae4e13c0a0c1ec4801e2724c0ff4cd53",
+			"structuralHash": "999dfc582fdb95f78963a811531f3fa306a859f62f264824a98c7fb48aa886b4"
+		},
+		"packages/coding-agent/test/modes/terminal/components/agent-activity.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/agent-activity.test.ts",
+			"group": "colocated-test",
+			"hash": "236058b5cb20b93c14a0bebf9a9f219865233778b136d368dc7747eead2a6b37",
+			"structuralHash": "5188002ee181477aa2ba3778c100406d8e9993368f8eb03893dcf1bfc04ad25a"
+		},
+		"packages/coding-agent/test/modes/terminal/components/agent-dashboard-blocked-and-waiting.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/agent-dashboard-blocked-and-waiting.test.ts",
+			"group": "colocated-test",
+			"hash": "9461ad55f641dc2c666738b3941b7cd1381251323a79abd9a21c4dc4c6c4fc06",
+			"structuralHash": "d60cdb23083bfd1d2b12e40cac970b6b11cd9fbee75b0d4b9d2f3776a227f245"
+		},
+		"packages/coding-agent/test/modes/terminal/components/agent-dashboard-kill-and-fallback.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/agent-dashboard-kill-and-fallback.test.ts",
+			"group": "colocated-test",
+			"hash": "fd715bec70c5e428dab6ce86ab7e0db3d6d05eff8ece95c5e472ed18c8bba2df",
+			"structuralHash": "d058e8ea7a9f151b77c030e10bb16873e255738f1c0d9a5db241cb8c9ca06a7a"
+		},
+		"packages/coding-agent/test/modes/terminal/components/agent-dashboard-live-view.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/agent-dashboard-live-view.test.ts",
+			"group": "colocated-test",
+			"hash": "3f67b09f3315723b314553890945c43da7a8d170c2aa41a028e07273be072d44",
+			"structuralHash": "aa869965b3e91e7a7a898519fd7ff4f8902a90dc4ec09539b883f8c80b384692"
+		},
+		"packages/coding-agent/test/modes/terminal/components/agent-dashboard-model-badge.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/agent-dashboard-model-badge.test.ts",
+			"group": "colocated-test",
+			"hash": "c983a055456b2a30739398ce952a7f9c3799acd21904b1779e2e637d0738b558",
+			"structuralHash": "cca575796237aaacdd73f56f31854b77cf41d2624c629d59ba5538fbb727a058"
+		},
+		"packages/coding-agent/test/modes/terminal/components/agent-dashboard-mouse.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/agent-dashboard-mouse.test.ts",
+			"group": "colocated-test",
+			"hash": "04dd7a3c1b9e081a0e4572d32d56f8048ece4ef50d26c36847c3207b1e4ceac2",
+			"structuralHash": "311c69af328190e0de3b3512154d1c4a96aeaaa8e0431818c56c06389b337dd0"
+		},
+		"packages/coding-agent/test/modes/terminal/components/agent-dashboard-roster-order.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/agent-dashboard-roster-order.test.ts",
+			"group": "colocated-test",
+			"hash": "4c9b3f4e5ac3c8e3f292796f8a2804aeac2c4868c351c24a771f5cce76043f02",
+			"structuralHash": "4b36bc134bceebd69fc6a425f0cad14ca3f45e192036263998a7d80881028877"
+		},
+		"packages/coding-agent/test/modes/terminal/components/agent-dashboard-termination-confirmation.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/agent-dashboard-termination-confirmation.test.ts",
+			"group": "colocated-test",
+			"hash": "9b33943a9f56f0148662326776cad3fec8b712fe5e78f5f5a97c663cb654a6b9",
+			"structuralHash": "93f0c81eed7e36c5c305dd94bb587942d202264dda72c43977586a745add998c"
+		},
+		"packages/coding-agent/test/modes/terminal/components/an-interrupted-agent-turns-red-and-settles.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/an-interrupted-subagent-turns-red-and-settles.test.ts",
+			"group": "colocated-test",
+			"hash": "633899c70ee8a9426bc033db4c074034269c04c5fda08b8d950c861ba1688502",
+			"structuralHash": "8a2f2ad1b1a49ee774c965c5787249f29c72b2d18b06969a81bc6168b29a667a"
+		},
+		"packages/coding-agent/test/modes/terminal/components/composer-accents.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/composer-accents.test.ts",
+			"group": "colocated-test",
+			"hash": "aa84e58755bc547c5bace8c6ec62084e513e0daeaff419e148c9bd589e54b61d",
+			"structuralHash": "ba6792137028d13fc270aeb45f7e780c1cdefea438a61dbf57bd25a637e639d6"
+		},
+		"packages/coding-agent/test/modes/terminal/components/every-settings-submenu-answers-the-pointer.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/every-settings-submenu-answers-the-pointer.test.ts",
+			"group": "colocated-test",
+			"hash": "29e8c8b8d4946dc85057ad64aa8a328544d34f0e80c26421d487ed406b0b365b",
+			"structuralHash": "47a8d3aa783c29dedb9b9e753233f619069ac053f46cbb655609579a06c4bcaa"
+		},
+		"packages/coding-agent/test/modes/terminal/components/model-selector-inherit-clear.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/model-selector-inherit-clear.test.ts",
+			"group": "colocated-test",
+			"hash": "5956fda91b155470297293b432e8da5e85b5cce891b9817a61f06702a6337f6a",
+			"structuralHash": "72223dec4dd3bb2bef7adb2bf32e1e095595f88a441efa3de2ecb298920c5775"
+		},
+		"packages/coding-agent/test/modes/terminal/components/settings-layout.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/settings-layout.test.ts",
+			"group": "colocated-test",
+			"hash": "0df2650744bb7010043f793fd3fa72a2ba7a968bfd9f1c1749394c42be614c4d",
+			"structuralHash": "9523dc36cc0f37f99dc046592296c2d7ee775b03f56a46475abde5310519de8b"
+		},
+		"packages/coding-agent/test/modes/terminal/components/settings-model-chain-summary.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/settings-model-chain-summary.test.ts",
+			"group": "colocated-test",
+			"hash": "b92a54075ffa8d4153c3bd0a0610cf4011f275e9927d96a1fa779fa15a3fd2ab",
+			"structuralHash": "528df9e63396f5af6a620fd401e6a06076f77266f622a642e61d60b8d3694c70"
+		},
+		"packages/coding-agent/test/modes/terminal/components/settings-number-input.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/settings-number-input.test.ts",
+			"group": "colocated-test",
+			"hash": "a016b298fad17f6dd7c8bd0e0d833307b7cbde3d7868ab48b0cfb4d9cc6c962c",
+			"structuralHash": "13782547ebb812b2ae6d30ddc1f3d86acc0068252018555b469df8c2c669c36e"
+		},
+		"packages/coding-agent/test/modes/terminal/components/settings-tab-context.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/settings-tab-context.test.ts",
+			"group": "colocated-test",
+			"hash": "a9545172050b4b247439b991f76dc1209f53b6b7d815003f4ccc9857da7432d8",
+			"structuralHash": "0325bd378a193aa418e24e836499dd3e194bf6f0478f8cc2af24942c8ea5da5b"
+		},
+		"packages/coding-agent/test/modes/terminal/components/settings-value-labels.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/settings-value-labels.test.ts",
+			"group": "colocated-test",
+			"hash": "e78f3d141ce21650e88b4eada2d4cc1c3b8f2a29452f2f4e6a6f06c331faa8df",
+			"structuralHash": "ea85b5344aa67bf7d485ace7622e01c0439ad97b5e749de0728f1d3b8197973a"
+		},
+		"packages/coding-agent/test/modes/terminal/components/status-line/the-footline-path-clips-from-one-end-and-widens-on-a-click.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/status-line/the-footline-path-clips-from-one-end-and-widens-on-a-click.test.ts",
+			"group": "colocated-test",
+			"hash": "e53781160f81c2fd5366c605320e2ee20dd38855e06423e474ce0abbb037117e",
+			"structuralHash": "194392e898e8ef387bdb25949137cfd2fd69b2f6ce254f22f878871eda2cd4bb"
+		},
+		"packages/coding-agent/test/modes/terminal/components/status-line/the-model-segment-survives-long-paths-and-branch-names.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/status-line/the-model-segment-survives-long-paths-and-branch-names.test.ts",
+			"group": "colocated-test",
+			"hash": "74d14c0de80c9172e307eb577aa491a49788ac01ab1cbcbeb678adb79f3dc0c6",
+			"structuralHash": "68ca13b946c3c4c8e43965185088da51be7361898ee2f4f7823a4fd80689b6c2"
+		},
+		"packages/coding-agent/test/modes/terminal/components/agents-surface.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/subagent-agents-surface.test.ts",
+			"group": "colocated-test",
+			"hash": "3b4b3bfff134c684d725da9a23bc0d331a46e50923d323dbff5157f4d822bc1c",
+			"structuralHash": "d9e3bad4b2d8b8eed45522340c3ed7786db43617dc3c6b63f9e2414cdc9a002e"
+		},
+		"packages/coding-agent/test/modes/terminal/components/the-agent-card-shows-one-conversation.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/the-agent-card-shows-one-conversation.test.ts",
+			"group": "colocated-test",
+			"hash": "046cac1bd1b3e9551fdbd39bcbc4d397ca851862e1d78076aff4814e4e526bf1",
+			"structuralHash": "8baf8153c2e78d7ea4c1c892f1671431ae1927f55e38af2ca271dd8946e00368"
+		},
+		"packages/coding-agent/test/modes/terminal/controllers/event-controller-loader-recovery.test.ts": {
+			"old": "packages/coding-agent/test/modes/controllers/event-controller-loader-recovery.test.ts",
+			"group": "colocated-test",
+			"hash": "f586911cbac5ad39d8fe5444dc413573be5435297a696b7ba747433630cdb743",
+			"structuralHash": "250dfaa714638318e435e70163cd79009935dd878e5c4828642db50764741e11"
+		},
+		"packages/coding-agent/test/modes/terminal/controllers/selector-controller-agents-dashboard.test.ts": {
+			"old": "packages/coding-agent/test/modes/controllers/selector-controller-agents-dashboard.test.ts",
+			"group": "colocated-test",
+			"hash": "8cb9fa5ff5a3c6b02a9e5725608981ac7d372cc4d8c39c6a8e0637ae1692aabc",
+			"structuralHash": "3e20310fc8125f55b9fed2f403576bede21edb49cf83316dae5b44d77ea4b7a1"
+		},
+		"packages/coding-agent/test/modes/terminal/controllers/selector-prompt-gate-rebuild.test.ts": {
+			"old": "packages/coding-agent/test/modes/controllers/selector-prompt-gate-rebuild.test.ts",
+			"group": "colocated-test",
+			"hash": "2faec7424d4f2ca9404ddc2638efa35eff527689d94dc8d9f4db43b1afd858ed",
+			"structuralHash": "99e6c3c2eeafde279aad097874aa33a14491fa9f4962e52047575180eeb0535d"
+		},
+		"packages/coding-agent/test/modes/terminal/controllers/tan-command-controller.test.ts": {
+			"old": "packages/coding-agent/test/modes/controllers/tan-command-controller.test.ts",
+			"group": "colocated-test",
+			"hash": "07b18299f538b8f8415681a463cd568bed6285565b40dc9220d0f932ca813a38",
+			"structuralHash": "f98321d2a6a8184e5c58b5ddcf81c69aff38a1aae8dd3a4a0d12f71b19e5fc8d"
+		},
+		"packages/coding-agent/test/modes/terminal/setup-wizard/setup-wizard-list-construction.test.ts": {
+			"old": "packages/coding-agent/test/modes/setup-wizard-list-construction.test.ts",
+			"group": "colocated-test",
+			"hash": "08f67c1636dd93db9c6a8c232646bf67a7fc2f123651a272f558b060b93bf900",
+			"structuralHash": "73c67e5946ad2d177098c32f88b7ebf1a465dfb354afdb457f756b0aba074a64"
+		},
+		"packages/coding-agent/test/modes/terminal/utils/no-surface-writes-a-hint-out-by-hand.test.ts": {
+			"old": "packages/coding-agent/test/modes/utils/no-surface-writes-a-hint-out-by-hand.test.ts",
+			"group": "colocated-test",
+			"hash": "b61850180f7b11e481fc58094ebb6e808dc6dd620152c14ed15567d82bdb9ce0",
+			"structuralHash": "71dd362f9bd96fe4c3da634ddbbfc1b28b649c33e87e0129a5b757f1ec9651fd"
 		},
 		"packages/coding-agent/test/oracles/browser-main-renderer.ts": {
 			"old": "packages/coding-agent/src/tools/browser/render.ts",
@@ -268,6 +1516,54 @@
 			"hash": "016272dfedafb4436657ea64090fbc83d2f7f8cdb2a4f2c9cbcb15952592947a",
 			"structuralHash": "aa7ddbf4eff418812067baf07cc45f5c18023b63528c53b21283e2d19fe181bd"
 		},
+		"packages/coding-agent/test/secrets/a-path-the-operator-named-is-not-repository-code.test.ts": {
+			"old": "packages/coding-agent/test/security/a-path-the-operator-named-is-not-repository-code.test.ts",
+			"group": "colocated-test",
+			"hash": "e48db3ac3e94fcba7ed8b07be9745b32a4611114859ac551a1bce931212c84f8",
+			"structuralHash": "c361a5e68d0ff052f0788be6d9e0a7e820859111272503bc2f4a5c76981497fe"
+		},
+		"packages/coding-agent/test/secrets/the-working-tree-does-not-configure-the-agent.test.ts": {
+			"old": "packages/coding-agent/test/security/the-working-tree-does-not-configure-the-agent.test.ts",
+			"group": "colocated-test",
+			"hash": "29c8d454c6f77b1ead5d07c523ca18fe0e77643787caff5234f08a94e13a6cac",
+			"structuralHash": "a99e91a187ad44ddc67e190c0a0dfb42be246ed4b80488389979f8f29a0f4db4"
+		},
+		"packages/coding-agent/test/task/task-result-render.test.ts": {
+			"old": "packages/coding-agent/src/task/render.test.ts",
+			"group": "view-conversion",
+			"hash": "c1420d65cc776a49653bfbc0e9f4c73d467539c6a930c65abc3c6fe094a45dbe",
+			"structuralHash": "d6d9f0e06e4c6dc637a6e634b4e4f2c4cd84ce1c8e77da785678ad4380cb0a17"
+		},
+		"packages/coding-agent/test/tools/agent/a-vibe-worker-inherits-the-parents-effort-and-policy.test.ts": {
+			"old": "packages/coding-agent/test/vibe/vibe-runtime.test.ts",
+			"group": "colocated-test",
+			"hash": "5a6ece26508125dc6d2dba66c8ef13cf2c4b9b69aa76d4671c83a33e2789839d",
+			"structuralHash": "a85b458185b90e06843409c7236b672a3f210781c3b93b223e1f0e1df6137d01"
+		},
+		"plugins/argot/INTEGRATING.md": {
+			"old": "packages/argot/INTEGRATING.md",
+			"group": "agent-vocabulary-prose",
+			"hash": "c0af0a441575d84ca9c31f0a85cfc491936b087e48d9c9fee3f81fd3ed957bcb",
+			"structuralHash": "5c492948b2622df63e2f0a1d2a8c90069aa86aa60e9a8ab1b97ae46058bf5451"
+		},
+		"plugins/argot/SPEC.md": {
+			"old": "packages/argot/SPEC.md",
+			"group": "agent-vocabulary-prose",
+			"hash": "a63ebfeb322f72d61cca30625f0f4598f979af4d142eb4d12a5530354d7908ed",
+			"structuralHash": "f7dc899b609f0a2f03dcec9746f4eff4aa96405baee0d78706a27ab1087e35de"
+		},
+		"plugins/argot/src/session.ts": {
+			"old": "packages/argot/src/session.ts",
+			"group": "plugin-source",
+			"hash": "eb8ad425373bef35362197ce2025e9c4dddcd88c8b90f9ecebf19028450ae7d3",
+			"structuralHash": "64e737156a16b231859327c5f4391081de83e25f4e140da1d7f6fc78b2b44e47"
+		},
+		"plugins/argot/test/session.test.ts": {
+			"old": "packages/argot/test/session.test.ts",
+			"group": "plugin-path-expectation",
+			"hash": "bb2613de7d84bba512bccc0c6013fbf161e2ba1e1692337891953b0f3a184da6",
+			"structuralHash": "2f9f3807a5f39af854d78279b5788e1d25962f2414230c86d90d87a36d24fbd5"
+		},
 		"plugins/hashline/CHANGELOG.md": {
 			"old": "packages/hashline/CHANGELOG.md",
 			"group": "changelog-or-readme",
@@ -279,6 +1575,54 @@
 			"group": "plugin-source",
 			"hash": "abee0112f72bbb296e24e053620ca408f7ce91b079e0352cc5494a596653f0f5",
 			"structuralHash": "58d276e3f59fc37df0d392a0de3f54e6976379bf284174339a65e3a3744e5735"
+		},
+		"plugins/mode-swarm/README.md": {
+			"old": "packages/swarm-extension/README.md",
+			"group": "changelog-or-readme",
+			"hash": "d0ec1c16aeb76bbad5e7672a9d09426d0bfbca71868e1682e55624add00cd950",
+			"structuralHash": "086d931f01af6e0a0d9a65f313f54f8ae6b1ce7b0dfa96bdb633e5fa30020bed"
+		},
+		"tests/conformance/src/generator/plan.rs": {
+			"old": "crates/veyyon-conformance/src/generator/plan.rs",
+			"group": "rust-path-expectation",
+			"hash": "b6b4f9b8312a994c9634f047e4db8bd820494ad79b97feaf40b6226fd87d356c",
+			"structuralHash": "2d6cc20babc91179db43a87366be25b18629fea351dd82bca1bea198dc1a2d11"
+		},
+		"tests/evals/EVALS.md": {
+			"old": "packages/evals/EVALS.md",
+			"group": "agent-vocabulary-prose",
+			"hash": "75e7f6a119c6b1acc3a44e903f6e1fcb5a509cb9a26291bcf3cdbb13edd61469",
+			"structuralHash": "7673fb7eca994d15248ce873329a5b4092ea71c65d4ec7d4a782fee91edd6ec5"
+		},
+		"tests/evals/agents/pier/oneshot_prompt.md.j2": {
+			"old": "packages/evals/agents/pier/oneshot_prompt.md.j2",
+			"group": "relocated-member-path",
+			"hash": "fd906620549bacdf91e198e23da4fd1d201e1cc9f97e9b0fd113244a9b7f78ab",
+			"structuralHash": "b8faa5a58e510f8d72bde67f9e0308d110e2cd2d4dcc7537b28f3723271857d3"
+		},
+		"tests/evals/agents/pier/veyyon_agent.py": {
+			"old": "packages/evals/agents/pier/veyyon_agent.py",
+			"group": "relocated-member-path",
+			"hash": "7f094e1770261f49b0c68d4eb4680513b96523fea5941fe3617ca6b64b3b2d26",
+			"structuralHash": "f858bec89898eb46829885be98b15c115caddd9b3f8a663dd716852e0c8e8b54"
+		},
+		"tests/evals/arms/decode-budget16k.yml": {
+			"old": "packages/evals/arms/decode-budget16k.yml",
+			"group": "relocated-member-path",
+			"hash": "9112053cc1d1ca985f9630a4823a71ddd4a26bbbc52a4784bb8c82e1dd03386d",
+			"structuralHash": "eb468ec5aeef6008d4821b56dfb57c82d827f6eaa8fed0bda3409c5a94bfe46c"
+		},
+		"tests/evals/arms/decode.yml": {
+			"old": "packages/evals/arms/decode.yml",
+			"group": "relocated-member-path",
+			"hash": "5f11950a4f747fadabf75e200545b9b6de1444a3b1850dc1add11cbe6ccf7de5",
+			"structuralHash": "b0c307e24b03bbf9798923362fba560b2867628fe4d47ccb020733dfc10ef9e8"
+		},
+		"tests/simulations/src/cache-sim/a-shared-harness-prefix-is-only-shared-when-the-marker-says-so.test.ts": {
+			"old": "packages/simulations/src/cache-sim/a-shared-harness-prefix-is-only-shared-when-the-marker-says-so.test.ts",
+			"group": "relocated-member-path",
+			"hash": "5f0660cfe3f2c4c47a9672fc31b0ce02afcad5642881cb964a662a7209df471a",
+			"structuralHash": "3cbd179c1d808ae0f632861d88b9ddeee563008a997792d739b53c41ff27262a"
 		}
 	}
 }

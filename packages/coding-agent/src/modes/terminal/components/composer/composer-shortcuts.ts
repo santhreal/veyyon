@@ -12,7 +12,7 @@ export interface ComposerShortcutContext {
 	hasDraft: boolean;
 	/** Queue holds steered/follow-up messages. */
 	hasQueue: boolean;
-	/** Focused session is a subagent (Esc returns instead of interrupting). */
+	/** Focused session is an agent (Esc returns instead of interrupting). */
 	focused: boolean;
 	/** A foreground bash command is waiting (Ctrl+B moves it to background). */
 	canBackgroundBash: boolean;

@@ -140,7 +140,7 @@ describe("createAgentSession defaultInactive tool activation", () => {
 	});
 
 	it("activates the yield tool when requireYieldTool is set and toolNames is explicit", async () => {
-		// Regression for #1408: plan-mode subagents pass an explicit `toolNames` list
+		// Regression for #1408: plan-mode agents pass an explicit `toolNames` list
 		// (e.g. `["read", "search", "lsp", "web_search"]`). Without this
 		// invariant, `yield` ended up registered but not active, and the model
 		// could not satisfy the idle-reminder contract that demands a `yield` call.

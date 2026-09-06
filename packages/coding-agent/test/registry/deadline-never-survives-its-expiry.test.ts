@@ -18,7 +18,7 @@
  * manager stops arming timers, a spinning one arms them without bound. That count
  * is what these cases assert, alongside the park itself.
  *
- * IF THIS REGRESSES: one adopted subagent pins the event loop at 100% for the
+ * IF THIS REGRESSES: one adopted agent pins the event loop at 100% for the
  * lifetime of the process, and the agent it was supposed to park stays live
  * forever holding its session, MCP clients and file handles.
  */

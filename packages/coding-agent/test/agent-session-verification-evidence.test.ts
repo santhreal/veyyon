@@ -304,7 +304,7 @@ describe("verification evidence ledger", () => {
 		expect(ledger.takeFinalizationReminder()).toContain("/repo/src/a.ts");
 	});
 
-	/** AgentSession must append—not replace—the final candidate, persist the reminder, and exempt subagents. */
+	/** AgentSession must append—not replace—the final candidate, persist the reminder, and exempt agents. */
 	it("integrates at AgentSession finalization while preserving the final candidate", async () => {
 		const tempDir = TempDir.createSync("@veyyon-verification-ledger-");
 		const authStorage = await AuthStorage.create(path.join(tempDir.path(), "auth.db"));
@@ -369,32 +369,32 @@ describe("verification evidence ledger", () => {
 			await session.waitForIdle();
 			expect(continueSpy).toHaveBeenCalledTimes(1);
 
-			const subAgent = new Agent({
+			const spawnedAgent = new Agent({
 				initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] },
 			});
 			const subSession = new AgentSession({
-				agent: subAgent,
+				agent: spawnedAgent,
 				sessionManager: SessionManager.inMemory(),
 				settings: Settings.isolated({ "compaction.enabled": false, "todo.enabled": false }),
 				modelRegistry: new ModelRegistry(authStorage),
-				isSubagent: true,
+				isSpawned: true,
 				agentKind: "sub",
 			});
 			try {
-				const subContinueSpy = vi.spyOn(subAgent, "continue").mockResolvedValue();
-				subAgent.emitExternalEvent({
+				const subContinueSpy = vi.spyOn(spawnedAgent, "continue").mockResolvedValue();
+				spawnedAgent.emitExternalEvent({
 					type: "tool_execution_end",
-					toolCallId: "edit-subagent",
+					toolCallId: "edit-agent",
 					toolName: "edit",
 					result: { content: [], details: { path: "/repo/src/sub.ts" } },
 				});
-				const subFinal = assistantFinal("Subagent final.");
-				subAgent.emitExternalEvent({ type: "message_end", message: subFinal });
-				subAgent.emitExternalEvent({ type: "agent_end", messages: [subFinal] });
+				const subFinal = assistantFinal("Agent final.");
+				spawnedAgent.emitExternalEvent({ type: "message_end", message: subFinal });
+				spawnedAgent.emitExternalEvent({ type: "agent_end", messages: [subFinal] });
 				await subSession.waitForIdle();
 				expect(subContinueSpy).not.toHaveBeenCalled();
 				expect(
-					subAgent.state.messages.some(
+					spawnedAgent.state.messages.some(
 						message => message.role === "custom" && message.customType === VERIFICATION_EVIDENCE_REMINDER_TYPE,
 					),
 				).toBe(false);

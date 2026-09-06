@@ -35,7 +35,7 @@ function isNameChar(ch: string): boolean {
  * streams with zero added latency.
  *
  * The vocabulary is a snapshot taken at construction. A stream decoder is meant
- * to live for one message; build a new one per message (or per subagent stream)
+ * to live for one message; build a new one per message (or per agent stream)
  * from the session's current vocabulary, and it will reflect whatever is loaded
  * when the message begins.
  */

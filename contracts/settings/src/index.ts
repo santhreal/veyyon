@@ -33,7 +33,7 @@ export type SettingTab =
 	| "shell"
 	| "tools"
 	| "tasks"
-	| "subagents"
+	| "agents"
 	| "providers"
 	| "experimental";
 
@@ -178,7 +178,7 @@ interface StringDef extends SettingDefBase {
  * This type exists because declaring the setting a `string` made the validator
  * disagree with every reader: a config written as a list was reported as a value
  * that "does not match its declared type" and shown as invalid, while the runtime
- * read it perfectly well. The docs show the list form for `subagent.model`, so the
+ * read it perfectly well. The docs show the list form for `agent.model`, so the
  * documented spelling was the one being flagged.
  */
 interface ModelChainDef extends SettingDefBase {

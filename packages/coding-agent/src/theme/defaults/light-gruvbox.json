@@ -96,7 +96,7 @@
 		"statusLineUntracked": "aqua",
 		"statusLineOutput": "purple",
 		"statusLineCost": "purple",
-		"statusLineSubagents": "aqua",
+		"statusLineAgents": "aqua",
 		"pythonMode": "yellow"
 	},
 	"export": {

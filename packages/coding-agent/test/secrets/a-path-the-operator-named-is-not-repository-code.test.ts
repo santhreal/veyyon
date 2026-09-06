@@ -174,12 +174,12 @@ describe("a path the operator named is not repository code", () => {
 	});
 
 	/**
-	 * The subagent branch: the child skips discovery and loads the parent's resolved path list.
+	 * The agent branch: the child skips discovery and loads the parent's resolved path list.
 	 * The named subset travels beside it, because a child that cannot tell a named path from a
 	 * discovered one re-gates its parent's `--extension` and starts without it — while a project
 	 * file nobody named stays withheld, which the second half of this case asserts.
 	 */
-	it("a subagent inheriting the parent's paths keeps the named one and still withholds the rest", async () => {
+	it("an agent inheriting the parent's paths keeps the named one and still withholds the rest", async () => {
 		const fixture = await makeFixture();
 		const named = await writeProjectExtension(fixture, "dev/inherited.ts", "inherited-named");
 		const discovered = await writeProjectExtension(fixture, "dev/scanned.ts", "inherited-scan");

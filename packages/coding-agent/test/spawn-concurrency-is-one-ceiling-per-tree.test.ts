@@ -1,13 +1,13 @@
 /**
- * `subagent.maxConcurrency` is ONE ceiling for a session tree, not one per agent
+ * `agent.maxConcurrency` is ONE ceiling for a session tree, not one per agent
  * that happens to spawn.
  *
  * THE DEFECT. The semaphore enforcing the ceiling lived on the `TaskTool`
  * instance, under a comment asserting that one instance meant one session. A
- * subagent gets its own tool set, so every spawning agent held a semaphore of
+ * agent gets its own tool set, so every spawning agent held a semaphore of
  * its own and the operator's ceiling was multiplied by the number of spawners: a
  * cap of 2 admitted 2 per spawner. It stayed invisible because stock installs
- * set `subagent.maxNestedSpawnDepth` to 0, where a child never receives the task
+ * set `agent.maxNestedSpawnDepth` to 0, where a child never receives the task
  * tool and the per-agent and per-session readings coincide. Raising that one
  * setting is what turns the latent bug live.
  *
@@ -58,8 +58,8 @@ function registerRoot(host: FakeHost, sessionId: string): Promise<SessionCpuLimi
 	return initSessionCpuLimit({ sessionId, cores: 1, kill: false, onNotice: () => {}, env: host.env });
 }
 
-/** Register a session the way the executor does for a subagent: inside the spawner's scope. */
-function registerSubagent(host: FakeHost, parentSessionId: string, sessionId: string): Promise<SessionCpuLimit> {
+/** Register a session the way the executor does for an agent: inside the spawner's scope. */
+function registerAgent(host: FakeHost, parentSessionId: string, sessionId: string): Promise<SessionCpuLimit> {
 	return withInheritedBudgetGroup(parentSessionId, () =>
 		initSessionCpuLimit({ sessionId, cores: 1, kill: false, onNotice: () => {}, env: host.env }),
 	);
@@ -79,13 +79,13 @@ describe("one spawn ceiling per session tree", () => {
 	it("hands every spawner in the tree the same semaphore, at any depth", async () => {
 		const host = await makeHost();
 		await registerRoot(host, "root");
-		await registerSubagent(host, "root", "child");
-		await registerSubagent(host, "child", "grandchild");
+		await registerAgent(host, "root", "child");
+		await registerAgent(host, "child", "grandchild");
 
 		const fromRoot = treeSpawnSemaphore("root", 32);
 		expect(fromRoot).toBeDefined();
 		expect(treeSpawnSemaphore("child", 32)).toBe(fromRoot);
-		// Depth 2 resolves through the alias chain, so a subagent of a subagent
+		// Depth 2 resolves through the alias chain, so an agent of an agent
 		// shares the ROOT's ceiling rather than its parent's copy of it.
 		expect(treeSpawnSemaphore("grandchild", 32)).toBe(fromRoot);
 	});
@@ -93,13 +93,13 @@ describe("one spawn ceiling per session tree", () => {
 	/**
 	 * THE contract, and the one the old per-instance semaphore failed. Sharing the
 	 * object is only interesting because it shares the COUNT: with a ceiling of
-	 * one, a subagent that wants to spawn waits for the root's slot instead of
+	 * one, an agent that wants to spawn waits for the root's slot instead of
 	 * being handed a second one.
 	 */
-	it("makes a subagent wait for the tree's slot instead of granting its own", async () => {
+	it("makes an agent wait for the tree's slot instead of granting its own", async () => {
 		const host = await makeHost();
 		await registerRoot(host, "root");
-		await registerSubagent(host, "root", "child");
+		await registerAgent(host, "root", "child");
 
 		const rootSemaphore = treeSpawnSemaphore("root", 1);
 		const childSemaphore = treeSpawnSemaphore("child", 1);
@@ -142,7 +142,7 @@ describe("one spawn ceiling per session tree", () => {
 	it("resizes the shared ceiling in place rather than replacing it", async () => {
 		const host = await makeHost();
 		await registerRoot(host, "root");
-		await registerSubagent(host, "root", "child");
+		await registerAgent(host, "root", "child");
 
 		const atOne = treeSpawnSemaphore("root", 1);
 		if (!atOne) throw new Error("expected a semaphore");
@@ -150,7 +150,7 @@ describe("one spawn ceiling per session tree", () => {
 		const queued = atOne.acquire();
 		expect(await isPending(queued)).toBe(true);
 
-		// The operator raises the cap mid-session. The subagent's own lookup is
+		// The operator raises the cap mid-session. The agent's own lookup is
 		// what applies it, and work already parked in the queue is admitted.
 		const raised = treeSpawnSemaphore("child", 2);
 		expect(raised).toBe(atOne);

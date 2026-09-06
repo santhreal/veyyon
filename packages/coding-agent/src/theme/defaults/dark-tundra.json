@@ -80,7 +80,7 @@
 		"statusLineUntracked": "iceWhite",
 		"statusLineOutput": "auroraGreen",
 		"statusLineCost": "warningGold",
-		"statusLineSubagents": "auroraGreen",
+		"statusLineAgents": "auroraGreen",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

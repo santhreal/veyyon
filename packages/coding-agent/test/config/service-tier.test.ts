@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
 	buildServiceTierByFamily,
-	resolveSubagentServiceTier,
+	resolveAgentServiceTier,
 	serviceTierForAllFamilies,
 	serviceTierSettingToTier,
 } from "@veyyon/coding-agent/config/service-tier";
@@ -91,18 +91,18 @@ describe("serviceTierForAllFamilies — broadcast with per-family clamp", () => 
 	});
 });
 
-describe("resolveSubagentServiceTier", () => {
+describe("resolveAgentServiceTier", () => {
 	it("returns the parent's live per-family map verbatim on 'inherit'", () => {
 		const inherited = { openai: "flex", anthropic: "priority" } as const;
-		expect(resolveSubagentServiceTier("inherit", inherited)).toBe(inherited);
+		expect(resolveAgentServiceTier("inherit", inherited)).toBe(inherited);
 	});
 
 	it("returns the empty inherited map on 'inherit' with no live session tiers", () => {
-		expect(resolveSubagentServiceTier("inherit", {})).toEqual({});
+		expect(resolveAgentServiceTier("inherit", {})).toEqual({});
 	});
 
 	it("ignores the inherited map and broadcasts a concrete tier", () => {
-		expect(resolveSubagentServiceTier("priority", { openai: "flex" })).toEqual({
+		expect(resolveAgentServiceTier("priority", { openai: "flex" })).toEqual({
 			openai: "priority",
 			anthropic: "priority",
 			google: "priority",
@@ -110,10 +110,10 @@ describe("resolveSubagentServiceTier", () => {
 	});
 
 	it("yields an empty map for 'none'", () => {
-		expect(resolveSubagentServiceTier("none", { openai: "flex" })).toEqual({});
+		expect(resolveAgentServiceTier("none", { openai: "flex" })).toEqual({});
 	});
 
 	it("clamps a broadcast 'flex' to OpenAI + Google", () => {
-		expect(resolveSubagentServiceTier("flex", {})).toEqual({ openai: "flex", google: "flex" });
+		expect(resolveAgentServiceTier("flex", {})).toEqual({ openai: "flex", google: "flex" });
 	});
 });

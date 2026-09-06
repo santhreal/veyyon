@@ -2,9 +2,9 @@
  * Vibe mode worker-session runtime.
  *
  * Owns the persistent, addressable worker sessions ("CLIs") the vibe director
- * drives. Each worker is a real task-executor subagent with full tool access:
+ * drives. Each worker is a real task-executor agent with full tool access:
  * spawned once through {@link runSubprocess} (keep-alive), continued
- * turn-by-turn through {@link runSubagentFollowUpTurn}. Between turns the
+ * turn-by-turn through {@link runAgentFollowUpTurn}. Between turns the
  * worker lives in the AgentRegistry / AgentLifecycleManager as an adopted idle
  * agent (TTL park + JSONL revive), so its conversation context survives across
  * turns and even across parking.
@@ -24,20 +24,20 @@ import { mcpManagerInstance } from "../mcp/manager-instance";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
+import {
+	agentModelSourceLabel,
+	agentsEnabled,
+	isAgentEnabled,
+	resolveAgentModel,
+	resolveAgentThinkingLevel,
+	resolveEnabledAgents,
+} from "../task/agent-settings";
 import { inheritContextFiles } from "../task/context-inheritance";
 import { discoverAgents, getAgent } from "../task/discovery";
-import { type ExecutorOptions, runSubagentFollowUpTurn, runSubprocess } from "../task/executor";
+import { type ExecutorOptions, runAgentFollowUpTurn, runSubprocess } from "../task/executor";
 import { inheritResolvedCollection } from "../task/inherited-collections";
 import { generateTaskName } from "../task/name-generator";
 import { AgentOutputManager } from "../task/output-manager";
-import {
-	isSubagentEnabled,
-	resolveEnabledSubagents,
-	resolveSubagentModel,
-	resolveSubagentThinkingLevel,
-	subagentModelSourceLabel,
-	subagentsEnabled,
-} from "../task/subagent-settings";
 import { type AgentDefinition, type AgentProgress, oneLineLabel, type SingleResult } from "../task/types";
 import type { ConfiguredThinkingLevel } from "../thinking";
 import type { ToolSession } from "../tools";
@@ -60,9 +60,9 @@ export type VibeCli = "fast" | "good";
 /**
  * CLI flavor → bundled agent type. `sonic` is the low-reasoning worker (medium
  * effort, mechanical work) and `task` the general-purpose one. Neither pins a
- * model: resolution goes through {@link resolveSubagentModel} exactly like a
- * `task` spawn, so the operator's Subagents settings decide — the agent row
- * first, then the blanket subagent model, then the session's own model.
+ * model: resolution goes through {@link resolveAgentModel} exactly like a
+ * `task` spawn, so the operator's Agents settings decide — the agent row
+ * first, then the blanket agent model, then the session's own model.
  *
  * File-private: the mapping is read once, by `spawn` below. Exporting it invited
  * a second caller to resolve an agent name without going through spawn, which is
@@ -109,10 +109,10 @@ interface VibeRecord {
 	agent: AgentDefinition;
 	modelOverride?: string | string[];
 	/**
-	 * Effort resolved from `subagent.*` when the worker started, held beside
+	 * Effort resolved from `agent.*` when the worker started, held beside
 	 * `modelOverride` so both come from one moment's settings. Reading
 	 * `agent.thinkingLevel` at spawn time instead is what made a vibe worker ignore
-	 * both the blanket subagent effort and its own per-agent row.
+	 * both the blanket agent effort and its own per-agent row.
 	 */
 	thinkingLevel?: ConfiguredThinkingLevel;
 	state: VibeSessionState;
@@ -328,30 +328,30 @@ export class VibeSessionRegistry {
 		const manager = this.#manager(session);
 		const agentName = VIBE_CLI_AGENT[args.cli];
 		const { agents } = await discoverAgents(session.cwd);
-		if (!subagentsEnabled(session.settings)) {
-			throw new ToolError(`Cannot start vibe worker "${agentName}": subagents are disabled in settings.`);
+		if (!agentsEnabled(session.settings)) {
+			throw new ToolError(`Cannot start vibe worker "${agentName}": agents are disabled in settings.`);
 		}
 		const discoveredAgent = getAgent(agents, agentName);
 		if (!discoveredAgent) {
 			throw new ToolError(`Agent "${agentName}" for vibe cli "${args.cli}" is unavailable.`);
 		}
-		const catalog = resolveEnabledSubagents({
+		const catalog = resolveEnabledAgents({
 			settings: session.settings,
 			agents,
 			parentSpawns: session.getSessionSpawns?.() ?? "*",
 		});
 		const agent = getAgent(catalog.agents, agentName);
 		if (!agent) {
-			if (!isSubagentEnabled(session.settings, discoveredAgent)) {
+			if (!isAgentEnabled(session.settings, discoveredAgent)) {
 				throw new ToolError(
-					`Agent "${agentName}" is disabled (subagent.agents.${agentName}.enabled is false). Enable it in the Subagents settings tab (/settings) before starting the "${args.cli}" vibe worker.`,
+					`Agent "${agentName}" is disabled (agent.agents.${agentName}.enabled is false). Enable it in the Agents settings tab (/settings) before starting the "${args.cli}" vibe worker.`,
 				);
 			}
 			const available = catalog.agents.map(candidate => candidate.name).join(", ") || "none";
 			throw new ToolError(`Cannot start vibe worker "${agentName}". Enabled and allowed agents: ${available}.`);
 		}
 
-		const resolvedModel = resolveSubagentModel({
+		const resolvedModel = resolveAgentModel({
 			settings: session.settings,
 			agentName,
 			agentModel: agent.model,
@@ -363,7 +363,7 @@ export class VibeSessionRegistry {
 		if (resolvedModel.unresolved) {
 			const { source, value, depth } = resolvedModel.unresolved;
 			throw new ToolError(
-				`Cannot start vibe worker "${agentName}": ${subagentModelSourceLabel(source, agentName, depth)} is set to "${value}", which matches no available model. Fix that setting in Subagents → Roster → ${agentName} (or clear it to fall back to the default model role) and try again.`,
+				`Cannot start vibe worker "${agentName}": ${agentModelSourceLabel(source, agentName, depth)} is set to "${value}", which matches no available model. Fix that setting in Agents → Roster → ${agentName} (or clear it to fall back to the default model role) and try again.`,
 			);
 		}
 		const modelOverride = resolvedModel.patterns;
@@ -380,7 +380,7 @@ export class VibeSessionRegistry {
 			ownerId: owner,
 			agent,
 			modelOverride,
-			thinkingLevel: resolveSubagentThinkingLevel({
+			thinkingLevel: resolveAgentThinkingLevel({
 				settings: session.settings,
 				agentName,
 				agentThinkingLevel: agent.thinkingLevel,
@@ -598,7 +598,7 @@ export class VibeSessionRegistry {
 			sessionFile,
 			persistArtifacts: Boolean(sessionFile),
 			artifactsDir,
-			enableLsp: (session.enableLsp ?? true) && session.settings.get("subagent.enableLsp"),
+			enableLsp: (session.enableLsp ?? true) && session.settings.get("agent.enableLsp"),
 			signal,
 			eventBus: session.eventBus,
 			onProgress,
@@ -693,7 +693,7 @@ export class VibeSessionRegistry {
 				try {
 					const result = options.first
 						? await runSubprocess(await this.#buildSpawnOptions(session, record, message, signal, onProgress))
-						: await runSubagentFollowUpTurn({
+						: await runAgentFollowUpTurn({
 								id: record.id,
 								agent: record.agent,
 								message,

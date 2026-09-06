@@ -13,7 +13,7 @@ import type { ToolDomainManifest } from "@veyyon/kernel/registry/tool-domain";
 import type { ArtifactManager } from "@veyyon/kernel/session/artifacts";
 import type { ClientBridge } from "@veyyon/kernel/session/client-bridge";
 import { registerAgentMessageKinds } from "@veyyon/kernel/session/message-kinds";
-import type { SubagentSpawnRecord, UsageStatistics } from "@veyyon/kernel/session/session-entries";
+import type { AgentSpawnRecord, UsageStatistics } from "@veyyon/kernel/session/session-entries";
 import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
 import type { ToolChoiceQueue } from "@veyyon/kernel/session/tool-choice-queue";
 import { logger } from "@veyyon/utils";
@@ -38,8 +38,8 @@ import type { MnemopiSessionState } from "../memory/mnemopi/state";
 import type { PlanModeState } from "../plan-mode/state";
 import type { AgentRegistry } from "../registry/agent-registry";
 import type { CustomMessage } from "../session/messages";
+import { delegationEnabled, resolveSessionMaxNestedSpawnDepth } from "../task/agent-settings";
 import type { AgentOutputManager } from "../task/output-manager";
-import { delegationEnabled, resolveSessionMaxNestedSpawnDepth } from "../task/subagent-settings";
 import { canSpawnAtDepth } from "../task/types";
 import type { ConfiguredThinkingLevel } from "../thinking";
 import type { EventBus } from "../utils/event-bus";
@@ -160,7 +160,7 @@ export interface ToolSession {
 	obfuscateProviderText?: (text: string) => string;
 	/**
 	 * The session's side-request transport, handed to a request a tool makes on
-	 * the session's behalf (today the tiny-model label for a spawned subagent).
+	 * the session's behalf (today the tiny-model label for a spawned agent).
 	 * Carries the stream watchdogs, the in-flight cap and the per-provider
 	 * concurrency bracket, so a fan-out of labels cannot outrun them.
 	 */
@@ -188,16 +188,16 @@ export interface ToolSession {
 	skipPythonPreflight?: boolean;
 	/** Pre-loaded context files (AGENTS.md, etc) */
 	contextFiles?: ContextFileEntry[];
-	/** Pre-loaded workspace tree (forwarded to subagents to skip re-scanning) */
+	/** Pre-loaded workspace tree (forwarded to agents to skip re-scanning) */
 	workspaceTree?: WorkspaceTree;
 	/** Pre-loaded skills */
 	skills?: Skill[];
 	/** Pre-loaded prompt templates */
 	promptTemplates?: PromptTemplate[];
-	/** Pre-loaded rules (forwarded to subagents to skip re-discovery). */
+	/** Pre-loaded rules (forwarded to agents to skip re-discovery). */
 	rules?: Rule[];
 	/**
-	 * Pre-discovered extension source paths. Forwarded to subagents so they
+	 * Pre-discovered extension source paths. Forwarded to agents so they
 	 * skip the FS scan but still re-bind extensions to their own session-scoped
 	 * `ExtensionAPI` (cwd, eventBus, runtime). Inline extension factories
 	 * (`<inline-N>`) are NOT included — those are session-local.
@@ -209,13 +209,13 @@ export interface ToolSession {
 	 *
 	 * Forwarded beside the path list because the project-trust gate has to tell the two apart: a
 	 * discovered project extension needs a per-file decision, and a named one is the operator's own
-	 * choice. Without this a subagent re-gated its parent's `--extension ./dev/tool.ts` and ran
+	 * choice. Without this an agent re-gated its parent's `--extension ./dev/tool.ts` and ran
 	 * without it, while a repository extension the parent withheld stayed withheld either way.
 	 */
 	namedExtensionPaths?: string[];
 	/**
 	 * Pre-discovered custom-tool source paths from `.veyyon/tools/`, `.claude/tools/`,
-	 * plugins, etc. Forwarded to subagents so they skip the FS scan but still
+	 * plugins, etc. Forwarded to agents so they skip the FS scan but still
 	 * re-bind tools to their own session-scoped `CustomToolAPI`.
 	 */
 	customToolPaths?: ToolPathWithSource[];
@@ -225,7 +225,7 @@ export interface ToolSession {
 	hasEditTool?: boolean;
 	/** Event bus for tool/extension communication */
 	eventBus?: EventBus;
-	/** Output schema for structured completion (subagents) */
+	/** Output schema for structured completion (agents) */
 	outputSchema?: unknown;
 	/** Whether to include the yield tool by default */
 	requireYieldTool?: boolean;
@@ -233,7 +233,7 @@ export interface ToolSession {
 	taskDepth?: number;
 	/** Resolved absolute spawn-depth cap for this session's agent type. */
 	maxNestedSpawnDepth?: number;
-	/** Get shared eval executor session ID. Subagents inherit this to share JS/Python/Ruby/Julia state. */
+	/** Get shared eval executor session ID. Agents inherit this to share JS/Python/Ruby/Julia state. */
 	getEvalSessionId?: () => string | null;
 	/** Get session file */
 	getSessionFile: () => string | null;
@@ -248,7 +248,7 @@ export interface ToolSession {
 	/**
 	 * Whether a `/` command has granted this agent type for the turn in flight.
 	 *
-	 * `subagent.agents.<name>.enabled` governs THE MODEL: enabled means the model
+	 * `agent.agents.<name>.enabled` governs THE MODEL: enabled means the model
 	 * may pick that agent on its own initiative, disabled means it may not. It does
 	 * not govern the person typing. `/review` names `reviewer` outright, and a user
 	 * running `/review` is asking for a review, not asking the model to decide
@@ -275,12 +275,12 @@ export interface ToolSession {
 	getTurnIndex?: () => number;
 	/** Get Hindsight runtime state for this agent session. */
 	getHindsightSessionState?: () => HindsightSessionState | undefined;
-	/** Get this session's Argot codec, forked into subagents under `argot.subagents: inherit`. */
+	/** Get this session's Argot codec, forked into agents under `argot.agents: inherit`. */
 	getArgotSession?: () => ArgotSession | undefined;
 	/**
 	 * Rebuild the base system prompt after prompt-visible session state changed
 	 * (e.g. the argot teach set), so the next turn teaches the new state.
-	 * Optional: lighter tool sessions (tests, subagents) may omit it.
+	 * Optional: lighter tool sessions (tests, agents) may omit it.
 	 *
 	 * `reason` is REQUIRED, mirroring `AgentSession.refreshBaseSystemPrompt`. A
 	 * rebuild here lands MID-TURN, with the whole conversation already behind the
@@ -323,12 +323,12 @@ export interface ToolSession {
 	/** Get artifacts directory for artifact:// URLs */
 	getArtifactsDir?: () => string | null;
 	/**
-	 * Record a structured parent->child index entry for one subagent this session
-	 * spawned (the task tool calls this once per settled subagent). Absent on
+	 * Record a structured parent->child index entry for one agent this session
+	 * spawned (the task tool calls this once per settled agent). Absent on
 	 * sessions that do not persist; a no-op there.
 	 */
-	recordSubagentSpawn?: (record: SubagentSpawnRecord) => void;
-	/** Get the ArtifactManager backing this session (shared across parent + subagents). */
+	recordAgentSpawn?: (record: AgentSpawnRecord) => void;
+	/** Get the ArtifactManager backing this session (shared across parent + agents). */
 	getArtifactManager?: () => ArtifactManager | null;
 	/** Allocate a new artifact path and ID for session-scoped truncated output. */
 	allocateOutputArtifact?: (toolType: string) => Promise<{ id?: string; path?: string }>;
@@ -338,15 +338,15 @@ export interface ToolSession {
 	getModelString?: () => string | undefined;
 	/** Get the current session model string, regardless of how it was chosen */
 	getActiveModelString?: () => string | undefined;
-	/** Get the current session's configured effort (`auto` remains `auto`) for subagent inheritance. */
+	/** Get the current session's configured effort (`auto` remains `auto`) for agent inheritance. */
 	getActiveThinkingLevel?: () => ConfiguredThinkingLevel | undefined;
 	/** Get the current session model object (provider/api capabilities), regardless of how it was chosen. */
 	getActiveModel?: () => Model | undefined;
-	/** Get the session's live per-family service tiers (undefined = none). Source of truth for subagent `tier.subagent: inherit`. */
+	/** Get the session's live per-family service tiers (undefined = none). Source of truth for agent `tier.agent: inherit`. */
 	getServiceTierByFamily?: () => ServiceTierByFamily | undefined;
-	/** Auth storage for passing to subagents (avoids re-discovery) */
+	/** Auth storage for passing to agents (avoids re-discovery) */
 	authStorage?: AuthStorage;
-	/** Model registry for passing to subagents (avoids re-discovery) */
+	/** Model registry for passing to agents (avoids re-discovery) */
 	modelRegistry?: ModelRegistry;
 	/** Agent output manager for unique agent:// IDs across task invocations */
 	agentOutputManager?: AgentOutputManager;
@@ -354,7 +354,7 @@ export interface ToolSession {
 	 * Async job manager scoped to this session.
 	 *
 	 * - Top-level session that constructed one: its own manager.
-	 * - Subagent (`parentTaskPrefix` set): the parent's manager, so background
+	 * - Agent (`parentTaskPrefix` set): the parent's manager, so background
 	 *   bash/task work and `onJobComplete` deliveries flow into the conversation
 	 *   that spawned it.
 	 * - Secondary in-process top-level session that found a singleton already
@@ -365,11 +365,11 @@ export interface ToolSession {
 	 * session never borrows the owning session's manager by accident.
 	 */
 	asyncJobManager?: AsyncJobManager;
-	/** MCP manager visible to subagents without relying on the process-global singleton. */
+	/** MCP manager visible to agents without relying on the process-global singleton. */
 	mcpManager?: MCPManager;
-	/** Local protocol root to propagate to nested subagents and eval-created agents. */
+	/** Local protocol root to propagate to nested agents and eval-created agents. */
 	localProtocolOptions?: LocalProtocolOptions;
-	/** Settings instance for passing to subagents */
+	/** Settings instance for passing to agents */
 	settings: Settings;
 	/** Plan mode state (if active) */
 	getPlanModeState?: () => PlanModeState | undefined;
@@ -383,8 +383,8 @@ export interface ToolSession {
 	getUsageStatistics?: () => UsageStatistics;
 	/** Current per-turn token budget {total, spent, hard} for the eval `budget` helper. */
 	getTurnBudget?: () => { total: number | null; spent: number; hard: boolean };
-	/** Record output tokens consumed by an eval-spawned subagent toward the current turn budget. */
-	recordEvalSubagentUsage?: (output: number) => void;
+	/** Record output tokens consumed by an eval-spawned agent toward the current turn budget. */
+	recordEvalAgentUsage?: (output: number) => void;
 	/** Bridge to the connected client (e.g. ACP editor host). Tools should route fs/terminal/permission requests through this when available. */
 	getClientBridge?: () => ClientBridge | undefined;
 	/** Get cached todo phases for this session. */
@@ -454,7 +454,7 @@ export interface ToolSession {
 	/** Per-session ledger of consecutive byte-identical no-op edits, keyed by
 	 *  canonical file path. The hashline executor escalates a soft no-op hint
 	 *  to a thrown error once the same payload no-ops `NOOP_HARD_LIMIT` times,
-	 *  breaking subagent loops that ignore the textual hint (issue #2081).
+	 *  breaking agent loops that ignore the textual hint (issue #2081).
 	 *  Lazily initialized by `getNoopLoopGuard`. */
 	noopLoopGuard?: NoopLoopGuard;
 
@@ -469,8 +469,8 @@ export interface ToolSession {
 	bumpFileMutationVersion?(path: string): number;
 	/** Read the current session-global mutation counter for `path` (0 if never mutated). */
 	getFileMutationVersion?(path: string): number;
-	/** Get the active OpenTelemetry config so subagent dispatch can forward
-	 *  the parent's tracer/hooks with the subagent's own identity stamped. */
+	/** Get the active OpenTelemetry config so agent dispatch can forward
+	 *  the parent's tracer/hooks with the agent's own identity stamped. */
 	getTelemetry?: () => AgentTelemetryConfig | undefined;
 	/** Return image attachments visible to tools for resolving labels such as `Image #1`. */
 	getImageAttachments?: () => ImageAttachmentEntry[];
@@ -714,7 +714,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 	}
 
 	// One detector per session, so out-of-cwd activity is counted across the whole
-	// session rather than per tool, and a subagent starts from zero.
+	// session rather than per tool, and a spawned agent starts from zero.
 	const rerootDetector = new RerootDetector();
 	const wrap = (tool: Tool): Tool => wrapToolWithRerootHint(wrapToolWithMetaNotice(tool), rerootDetector, session);
 

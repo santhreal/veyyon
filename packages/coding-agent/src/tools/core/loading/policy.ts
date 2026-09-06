@@ -181,7 +181,7 @@ export interface DiscoveryAllForceActiveInputs {
 	todoEnabled: boolean;
 	/** Whether the completed registry holds a `todo` tool. */
 	hasTodoTool: boolean;
-	/** `subagent.delegation`. */
+	/** `agent.delegation`. */
 	delegationStrength: string;
 	/** Whether the completed registry holds a `task` tool. */
 	hasTaskTool: boolean;
@@ -349,12 +349,12 @@ export function isBuiltinToolAllowed(name: string, inputs: BuiltinToolPermission
 		return inputs.autolearnEnabled && inputs.isTopLevelSession && learnToolBackendEnabled(inputs.memoryBackend);
 	}
 	if (name === TOOL.task) {
-		// `subagent.enabled: false` takes subagents away entirely, so the tool
+		// `agent.enabled: false` takes spawned agents away entirely, so the tool
 		// itself is absent rather than present-but-discouraged: a prompt that says
-		// "do not spawn subagents" while still shipping the tool description
+		// "do not spawn agents" while still shipping the tool description
 		// spends tokens describing something the operator turned off.
 		//
-		// Delegation STRENGTH (`subagent.delegation`) does NOT reach this table.
+		// Delegation STRENGTH (`agent.delegation`) does NOT reach this table.
 		// Its three levels (`allowed`, `preferred`, `required`) all keep the tool,
 		// because every one of them must leave an explicit operator request to
 		// delegate possible; strength only changes how hard the Delegation section
@@ -410,7 +410,7 @@ export function augmentRequestedToolNames(
 	// tools above, must also be force-included into an explicit requestedTools
 	// list so a restricted top-level session whose controller/guidance is
 	// active still exposes the tools the nudge points at. Gated to top-level
-	// (taskDepth 0): the controller only runs there, so a subagent's explicit
+	// (taskDepth 0): the controller only runs there, so an agent's explicit
 	// tool whitelist must never be silently widened with write-capable tools.
 	if (inputs.autolearnEnabled && inputs.isTopLevelSession) {
 		push(TOOL.manage_skill);

@@ -1,7 +1,7 @@
 /**
- * Shared output-schema validation for subagent yield + executor finalization.
+ * Shared output-schema validation for spawned agent yield + executor finalization.
  *
- * Both the in-process `yield` tool (subagent side) and the executor's post-mortem
+ * Both the in-process `yield` tool (spawned agent side) and the executor's post-mortem
  * finalize path (parent side) need to validate yield payloads against the agent's
  * declared output schema. This module is the single source of truth for that
  * pipeline — keeping the two callsites in lockstep so a schema accepted in-tool

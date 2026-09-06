@@ -3,7 +3,7 @@
  * input layer and the AgentSession it displays.
  *
  * Focusing re-points the transcript, streaming event subscription, status
- * line, and editor prompt/interrupt at a subagent's live AgentSession (from
+ * line, and editor prompt/interrupt at an agent's live AgentSession (from
  * AgentRegistry) without touching the main session underneath; unfocusing
  * re-attaches the main session and rebuilds the transcript from its
  * authoritative state.

@@ -11,7 +11,7 @@ operational failure modes.
 - Subprocess kernel client: `src/eval/py/kernel.ts`
 - Python wrapper / NDJSON server: `src/eval/py/runner.py`
 - Prelude helpers loaded into every kernel: `src/eval/py/prelude.py`
-- Host-side subagent helper bridge: `src/eval/agent-bridge.ts`
+- Host-side agent helper bridge: `src/eval/agent-bridge.ts`
 - MIME bundle renderer (text + structured outputs): `src/eval/py/display.ts`
 - Interactive-mode renderer for user-triggered Python runs: `src/modes/terminal/components/transcript/eval-execution.ts`
 - Runtime/env filtering and Python resolution: `src/eval/py/runtime.ts`
@@ -161,7 +161,7 @@ The runner additionally receives `PYTHONUNBUFFERED=1` and `PYTHONIOENCODING=utf-
 
 If Python preflight fails and `eval.js` is enabled, `eval` remains available for `js` cells; `py` cells fail with a Python-backend availability error.
 
-Python prelude helpers include `agent(prompt, *, agent="deep", model=None, label=None, schema=None, handle=False, isolated=None, apply=None, merge=None)`. It synchronously calls the host bridge, runs one subagent through the task executor, and returns the final text. When `schema` is supplied, the helper parses the subagent's JSON output and returns the object. When `handle=True`, it instead returns a DAG node dict (`{"text", "output", "handle", "id", "agent"}`) whose `handle` is the spawned agent's recoverable `agent://<id>` URI (the parsed object lands under `"data"` when `schema` is also set), so a downstream `pipeline`/`parallel` stage can reference the transcript by handle instead of re-inlining it.
+Python prelude helpers include `agent(prompt, *, agent="deep", model=None, label=None, schema=None, handle=False, isolated=None, apply=None, merge=None)`. It synchronously calls the host bridge, runs one agent through the task executor, and returns the final text. When `schema` is supplied, the helper parses the agent's JSON output and returns the object. When `handle=True`, it instead returns a DAG node dict (`{"text", "output", "handle", "id", "agent"}`) whose `handle` is the spawned agent's recoverable `agent://<id>` URI (the parsed object lands under `"data"` when `schema` is also set), so a downstream `pipeline`/`parallel` stage can reference the transcript by handle instead of re-inlining it.
 
 ### Persisted helper state
 

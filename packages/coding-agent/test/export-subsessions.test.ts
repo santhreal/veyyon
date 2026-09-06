@@ -6,7 +6,7 @@ import { removeWithRetries } from "@veyyon/utils";
 import { collectSubSessions } from "../src/export/html";
 
 /**
- * Contract: a session at `<dir>/<name>.jsonl` embeds subagent transcripts from
+ * Contract: a session at `<dir>/<name>.jsonl` embeds agent transcripts from
  * `<dir>/<name>/<AgentId>.jsonl` (recursively) under slash-joined keys, with
  * parent links and last-entry leaf ids. Empty, backup, and unrelated files are
  * skipped. Corrupt transcripts refuse the export rather than silently producing
@@ -47,7 +47,7 @@ describe("collectSubSessions", () => {
 		await removeWithRetries(root);
 	});
 
-	test("collects nested subagent sessions with parent links and leaf ids", async () => {
+	test("collects nested agent sessions with parent links and leaf ids", async () => {
 		await Bun.write(path.join(root, "main/Alpha.jsonl"), sessionJsonl("alpha", ["a1", "a2"]));
 		await Bun.write(path.join(root, "main/Alpha/Child.jsonl"), sessionJsonl("child", ["c1"]));
 		await Bun.write(path.join(root, "main/Beta.jsonl"), sessionJsonl("beta", ["b1"]));
@@ -64,7 +64,7 @@ describe("collectSubSessions", () => {
 
 	/**
 	 * Empty and unrelated files are not transcripts, and backup files would duplicate the live
-	 * session. They must not create phantom subagents in an otherwise complete export.
+	 * session. They must not create phantom agents in an otherwise complete export.
 	 */
 	test("skips empty, backup, and non-jsonl files", async () => {
 		await Bun.write(path.join(root, "main/Good.jsonl"), sessionJsonl("good", ["g1"]));
@@ -81,7 +81,7 @@ describe("collectSubSessions", () => {
 	 * A corrupt child transcript means the export cannot be complete. Surfacing the exact file and
 	 * parse failure prevents a share artifact from silently omitting part of the recorded session.
 	 */
-	test("refuses a corrupt subagent transcript", async () => {
+	test("refuses a corrupt agent transcript", async () => {
 		const corruptPath = path.join(root, "main/corrupt.jsonl");
 		await Bun.write(corruptPath, "{not json\n");
 
@@ -90,7 +90,7 @@ describe("collectSubSessions", () => {
 		);
 	});
 
-	test("returns empty record when no subagent dir exists", async () => {
+	test("returns empty record when no agent dir exists", async () => {
 		expect(await collectSubSessions(mainFile)).toEqual({});
 		expect(await collectSubSessions(path.join(root, "not-a-session"))).toEqual({});
 	});

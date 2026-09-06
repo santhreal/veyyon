@@ -1,5 +1,5 @@
 /**
- * The Live view of the subagent dashboard: who is running, what kind of agent
+ * The Live view of the agent dashboard: who is running, what kind of agent
  * each one is, and what happens when you open one.
  *
  * WHY THESE TESTS. Two things about this view were wrong in ways no type check
@@ -21,7 +21,7 @@ import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../../helpers
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 
 /**
- * Register a subagent the way the task executor does: `displayName` is the
+ * Register an agent the way the task executor does: `displayName` is the
  * agent definition's name (`task/executor.ts` passes `agent.name`), which is
  * what the roster shows as the agent type.
  */
@@ -254,7 +254,7 @@ describe("Opening an agent", () => {
 describe("Card chrome", () => {
 	/**
 	 * Two tabs, and the third is gone for good. The configuration list duplicated
-	 * the Subagents settings table, so the same two facts had two homes that had
+	 * the Agents settings table, so the same two facts had two homes that had
 	 * to be kept in step; `/settings` owns it now.
 	 */
 	test("offers Live and Comms, and no configuration tab", () => {
@@ -323,7 +323,7 @@ describe("Card chrome", () => {
 
 		expect(lines.length).toBe(30);
 		const plain = lines.map(line => line.replace(ANSI_PATTERN, "")).join("\n");
-		expect(plain).toContain("Subagent Dashboard");
+		expect(plain).toContain("Agent Dashboard");
 		expect(plain).toContain("esc close");
 		dashboard.dispose();
 	});

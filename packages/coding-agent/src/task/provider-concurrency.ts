@@ -2,7 +2,7 @@
  * Per-provider LLM concurrency cap, applied around each provider HTTP request.
  *
  * The semaphore brackets only the streaming request itself, not the whole
- * agent lifetime: a parent subagent releases its slot the moment its LLM
+ * agent lifetime: a parent agent releases its slot the moment its LLM
  * stream finishes producing, so children spawned during tool execution can
  * acquire slots for their own turns. Holding the slot across the parent's
  * full conversation deadlocks any spawn tree whose width exceeds

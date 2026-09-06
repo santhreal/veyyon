@@ -32,10 +32,10 @@ describe("task cwd input via resolveSpawnCwd", () => {
 	});
 
 	it("resolves a relative path against the parent cwd (cd-from-parent semantics)", async () => {
-		// A parent agent spawning a subagent in `libs/scanner/rulec` should land in
+		// A parent agent spawning an agent in `libs/scanner/rulec` should land in
 		// <parentCwd>/libs/scanner/rulec, not be rejected. This is the exact case
 		// that used to fail with "task cwd must be absolute" and blocked per-crate
-		// subagents from being addressed by their relative repo path.
+		// agents from being addressed by their relative repo path.
 		const parent = makeTempDir("@pi-task-cwd-parent-");
 		const nested = path.join(parent, "libs", "scanner", "rulec");
 		fs.mkdirSync(nested, { recursive: true });

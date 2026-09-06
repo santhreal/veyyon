@@ -2,7 +2,7 @@
  * Protocol handler for agent:// URLs.
  *
  * Resolves agent output IDs against the artifacts directories of every active
- * session. Parents and subagents share outputs via this registry: a subagent
+ * session. Parents and agents share outputs via this registry: an agent
  * can read its parent's output IDs because both sessions are registered in
  * the shared context.
  *

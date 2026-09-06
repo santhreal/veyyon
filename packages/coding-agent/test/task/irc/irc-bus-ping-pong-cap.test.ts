@@ -2,7 +2,7 @@
  * The bus refuses to carry a closed two-agent loop past a bounded number of
  * turns.
  *
- * WHY IT EXISTS. Two subagents that answer each other and nothing else cannot
+ * WHY IT EXISTS. Two agents that answer each other and nothing else cannot
  * stop on their own. Every inbound message wakes the recipient, a wake is
  * indistinguishable from progress, and neither agent can see the pattern
  * because each one only ever sees the single message in front of it. Nothing
@@ -148,7 +148,7 @@ describe("IRC ping-pong cap", () => {
 	/**
 	 * The concurrency hole, and the reason this cap did not work in practice.
 	 *
-	 * The log is global and several subagents run at once, so the tail of it is
+	 * The log is global and several agents run at once, so the tail of it is
 	 * interleaved. Ending the pair's chain at any foreign line meant a message
 	 * between two OTHER agents reset Alpha and Beta's budget, even though it says
 	 * nothing about whether Alpha and Beta are looping. With four agents live

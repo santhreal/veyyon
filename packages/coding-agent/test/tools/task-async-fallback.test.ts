@@ -149,7 +149,7 @@ describe("task execution mode and authorization failures", () => {
 			.mockImplementation(async options => ({ ...makeResult(options.id ?? "unknown"), agent: "blocking" }));
 		const tool = await TaskTool.create(
 			createSession({
-				settings: { "async.enabled": true, "subagent.agents": { blocking: { enabled: true } } },
+				settings: { "async.enabled": true, "agent.agents": { blocking: { enabled: true } } },
 				spawns: "blocking",
 			}),
 		);

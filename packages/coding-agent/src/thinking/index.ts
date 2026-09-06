@@ -225,7 +225,7 @@ export function configuredThinkingLevelsForModel(model: Model | undefined): read
  * declare, in canonical order.
  *
  * Two rows have no single model and never will — Default Effort's any-model `*`
- * row and `subagent.thinkingLevel` with no chain — and each stores a level that
+ * row and `agent.thinkingLevel` with no chain — and each stores a level that
  * is clamped against whatever model later runs. They still may not invent: the
  * union is what SOME model in this session's catalog actually accepts, so every
  * row offered is addressable somewhere, and a catalog that declares nothing

@@ -1,8 +1,8 @@
 /**
  * Regression for [#3749](https://github.com/can1357/oh-my-pi/issues/3749):
- * the per-provider concurrency cap used to bracket the whole subagent
+ * the per-provider concurrency cap used to bracket the whole agent
  * lifecycle (acquired before session creation, released only after the
- * subagent yielded), so any spawn tree wider than `maxConcurrency`
+ * agent yielded), so any spawn tree wider than `maxConcurrency`
  * deadlocked — parents held every slot while they waited for children
  * that were queued on the same cap. The fix moves the bracket to each
  * LLM HTTP request; this file exercises the new contract.

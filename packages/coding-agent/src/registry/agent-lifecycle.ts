@@ -1,6 +1,6 @@
 /**
  * AgentLifecycleManager - Owns the idle → parked → revived lifecycle of
- * adopted subagents.
+ * adopted spawned agents.
  *
  * The task executor hands a finished agent over via {@link AgentLifecycleManager.adopt};
  * from then on the manager arms a TTL timer whenever the agent goes `idle`,
@@ -17,14 +17,14 @@ import { type AgentRef, AgentRegistry, MAIN_AGENT_ID, type RegistryEvent } from 
 export type AgentReviver = () => Promise<AgentSession>;
 
 /**
- * Builds a reviver for a `parked` ref restored from disk (the persisted-subagent scan,
+ * Builds a reviver for a `parked` ref restored from disk (the persisted-agent scan,
  * collab mirror, resumed process) that carries a sessionFile but no in-memory
  * adoption. Returns undefined when the ref cannot be faithfully rebuilt (no
  * persisted session contract, or its workspace is gone). Injected from the
  * top-level session so this manager stays free of sdk/SessionManager imports.
  */
-export type PersistedSubagentReviverFactory = (ref: AgentRef) => Promise<AgentReviver | undefined>;
-export type PersistedSubagentIdleTtlResolver = (ref: AgentRef) => number;
+export type PersistedAgentReviverFactory = (ref: AgentRef) => Promise<AgentReviver | undefined>;
+export type PersistedAgentIdleTtlResolver = (ref: AgentRef) => number;
 
 /**
  * Prune budgets for a ref the manager adopts on demand rather than at hand-over.
@@ -36,11 +36,11 @@ export type PersistedSubagentIdleTtlResolver = (ref: AgentRef) => number;
  * the same injected seam as the idle TTL because the reason they were missing was
  * plumbing rather than policy.
  */
-export interface PersistedSubagentPruneBudget {
+export interface PersistedAgentPruneBudget {
 	afterMs: number;
 	waitingAfterMs: number;
 }
-export type PersistedSubagentPruneBudgetResolver = (ref: AgentRef) => PersistedSubagentPruneBudget;
+export type PersistedAgentPruneBudgetResolver = (ref: AgentRef) => PersistedAgentPruneBudget;
 
 export interface AdoptOptions {
 	/** TTL before an idle agent is parked. <= 0 disables parking. */
@@ -100,7 +100,7 @@ function disarm(adopted: AdoptedAgent): void {
 function normalizePruneBudgets(
 	afterMs: number | undefined,
 	waitingAfterMs: number | undefined,
-): PersistedSubagentPruneBudget {
+): PersistedAgentPruneBudget {
 	const parked = Math.max(0, afterMs ?? 0);
 	return { afterMs: parked, waitingAfterMs: parked === 0 ? 0 : Math.max(parked, waitingAfterMs ?? parked) };
 }
@@ -147,11 +147,11 @@ export class AgentLifecycleManager {
 	/** In-flight revives, so concurrent {@link ensureLive} calls coalesce. */
 	readonly #revivals = new Map<string, Promise<AgentSession>>();
 	#unsubscribe: (() => void) | undefined;
-	#persistedReviverFactory: PersistedSubagentReviverFactory | undefined;
+	#persistedReviverFactory: PersistedAgentReviverFactory | undefined;
 	/** One process-wide next-deadline timer; never one poller/timer per agent. */
 	#timer: NodeJS.Timeout | undefined;
 	/** TTL policy applied when a cold-revived ref is adopted on demand. */
-	#persistedReviveTtl: number | PersistedSubagentIdleTtlResolver = 0;
+	#persistedReviveTtl: number | PersistedAgentIdleTtlResolver = 0;
 	/**
 	 * Prune budgets applied when a cold-revived ref is adopted on demand.
 	 *
@@ -159,7 +159,7 @@ export class AgentLifecycleManager {
 	 * never-prune behaviour rather than silently acquiring a prune stage it did not ask
 	 * for. The non-ACP bootstrap passes the operator's resolved budgets.
 	 */
-	#persistedRevivePruneBudget: PersistedSubagentPruneBudget | PersistedSubagentPruneBudgetResolver = {
+	#persistedRevivePruneBudget: PersistedAgentPruneBudget | PersistedAgentPruneBudgetResolver = {
 		afterMs: 0,
 		waitingAfterMs: 0,
 	};
@@ -171,14 +171,14 @@ export class AgentLifecycleManager {
 
 	/**
 	 * Install the factory used to cold-revive `parked` refs restored from disk
-	 * (the persisted-subagent scan, collab mirror, resumed process) — they carry a sessionFile
+	 * (the persisted-agent scan, collab mirror, resumed process) — they carry a sessionFile
 	 * but no adoption. Set by the top-level session, which owns the ambient deps
 	 * (auth, models, MCP, artifacts) the factory needs at revive time.
 	 */
-	setPersistedSubagentReviverFactory(
-		factory: PersistedSubagentReviverFactory,
-		idleTtl: number | PersistedSubagentIdleTtlResolver,
-		pruneBudget: PersistedSubagentPruneBudget | PersistedSubagentPruneBudgetResolver = {
+	setPersistedAgentReviverFactory(
+		factory: PersistedAgentReviverFactory,
+		idleTtl: number | PersistedAgentIdleTtlResolver,
+		pruneBudget: PersistedAgentPruneBudget | PersistedAgentPruneBudgetResolver = {
 			afterMs: 0,
 			waitingAfterMs: 0,
 		},
@@ -189,7 +189,7 @@ export class AgentLifecycleManager {
 	}
 
 	/**
-	 * Take ownership of a finished subagent. Caller has already set registry
+	 * Take ownership of a finished spawned agent. Caller has already set registry
 	 * status to "idle". Arms the TTL timer (idleTtlMs <= 0 adopts without one).
 	 *
 	 * Two stages, one timer. An idle agent is parked when `idleTtlMs` elapses, which
@@ -338,7 +338,7 @@ export class AgentLifecycleManager {
 	/**
 	 * Resolve a reviver and bring the agent back to a live session. A ref
 	 * restored from disk is `parked` with a sessionFile but no in-memory
-	 * adoption; build a reviver via the injected persisted-subagent factory and
+	 * adoption; build a reviver via the injected persisted-agent factory and
 	 * adopt it so the agent rejoins the normal idle↔parked lifecycle. Throws
 	 * when the agent is not revivable or no reviver can be produced.
 	 */
@@ -677,13 +677,13 @@ export class AgentLifecycleManager {
 	}
 
 	/**
-	 * Put a subagent restored from disk under the same prune budget as one this
+	 * Put a spawned agent restored from disk under the same prune budget as one this
 	 * process parked itself.
 	 *
-	 * Adoption used to happen only at hand-over, so a ref the persisted-subagent
+	 * Adoption used to happen only at hand-over, so a ref the persisted-agent
 	 * scan registered was `parked` with no adoption and therefore no deadline of
 	 * any kind: nothing ever re-derived one, because `parked` is a stable state
-	 * and only a status change re-derives. Every subagent of every previous run
+	 * and only a status change re-derives. Every agent of every previous run
 	 * stayed in the roster for the whole session however long it had been quiet,
 	 * while the operator's "Prune After" governed only the agents this process
 	 * happened to spawn. One roster held eighty of them.

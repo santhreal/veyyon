@@ -9,11 +9,11 @@ import { getBundledAgent, loadBundledAgents } from "@veyyon/coding-agent/task/ag
 describe("bundled agent parsing", () => {
 	/**
 	 * The reviewer states no effort of its own, so an `:effort` suffix on whichever
-	 * model the operator gave its subagents survives all the way to the request.
+	 * model the operator gave its agents survives all the way to the request.
 	 * A level here would silently outrank that suffix (see
-	 * `resolveEffectiveSubagentThinkingLevel`).
+	 * `resolveEffectiveAgentThinkingLevel`).
 	 */
-	it("lets reviewer inherit thinking effort from the resolved subagent model", () => {
+	it("lets reviewer inherit thinking effort from the resolved agent model", () => {
 		const reviewer = getBundledAgent("reviewer");
 
 		expect(reviewer).toBeDefined();
@@ -26,10 +26,10 @@ describe("bundled agent parsing", () => {
 	 *
 	 * They used to: the default lane carried `@task`, `scout`/`sonic` carried
 	 * `@smol`, `reviewer` carried `@slow`, `designer` carried `@designer`. Those
-	 * aliases resolved through role expansion before any subagent model setting was
-	 * consulted, so a stock install fanned its subagents across several different
-	 * models and changing the subagent model appeared to do nothing. The models now
-	 * come from the Subagents settings area, which inherits the session model when
+	 * aliases resolved through role expansion before any agent model setting was
+	 * consulted, so a stock install fanned its agents across several different
+	 * models and changing the agent model appeared to do nothing. The models now
+	 * come from the Agents settings area, which inherits the session model when
 	 * unset, so a definition that names a model here is a regression of that bug.
 	 * A thinking level is still fine: it is not a model choice.
 	 *
@@ -38,7 +38,7 @@ describe("bundled agent parsing", () => {
 	 * `getBundledAgent(name)?.model` undefined and the case passes for the wrong
 	 * reason, and a NEW lane that pins a model is never asked about at all.
 	 */
-	it("ships no model on any bundled agent, so the subagent settings decide", () => {
+	it("ships no model on any bundled agent, so the agent settings decide", () => {
 		const bundled = loadBundledAgents();
 
 		expect(bundled.map(agent => agent.name).sort()).toEqual([
@@ -54,7 +54,7 @@ describe("bundled agent parsing", () => {
 			expect(agent.source, agent.name).toBe("bundled");
 		}
 		// `deep` is the lane that states `inherit`, so it runs at whatever effort the
-		// resolved subagent model already carries rather than on the `auto` ladder.
+		// resolved agent model already carries rather than on the `auto` ladder.
 		expect(getBundledAgent("deep")?.thinkingLevel).toBe(ThinkingLevel.Inherit);
 	});
 
@@ -62,7 +62,7 @@ describe("bundled agent parsing", () => {
 	// suffix must survive agent-pattern expansion and model resolution for the
 	// bundled agents routed at that role. The executor prefers an explicit
 	// resolved suffix over the agent-definition default (task/executor.ts), so
-	// the resolved level below is what the subagent runs at.
+	// the resolved level below is what the agent runs at.
 	it("resolves the configured slow-role effort suffix for reviewer", () => {
 		const gpt55 = buildModel({
 			id: "gpt-5.5",
@@ -84,7 +84,7 @@ describe("bundled agent parsing", () => {
 
 		const agent = getBundledAgent("reviewer");
 		expect(agent?.thinkingLevel).toBeUndefined();
-		// The operator's subagent model is what a bundled specialist runs now, so the
+		// The operator's agent model is what a bundled specialist runs now, so the
 		// role's `:xhigh` suffix has to survive expansion of THAT value. The bundled
 		// definitions carry no `model:` of their own; see the test below.
 		const patterns = resolveConfiguredModelPatterns("@slow", settings);

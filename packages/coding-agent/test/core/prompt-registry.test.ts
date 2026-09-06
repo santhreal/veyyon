@@ -4,7 +4,7 @@
  * The section registry reached exactly one prompt. The main system prompt got
  * banner sections, a declared order, source tracking, overrides, reordering and
  * an inspection command; roughly ten other assemblers hand-rolled their own with
- * none of that. The subagent prompt — the one a delegated task actually runs
+ * none of that. The agent prompt — the one a delegated task actually runs
  * under, and so the one doing most of the work in a large session — was the
  * least inspectable of them.
  *
@@ -32,18 +32,18 @@ import { splitPromptSections } from "@veyyon/coding-agent/system-prompt-builder/
 import { prompt } from "@veyyon/utils";
 
 /**
- * The subagent prompt comes from the registry, not from a direct `.md` import.
+ * The agent prompt comes from the registry, not from a direct `.md` import.
  *
  * That is the same rule production code follows, and it makes this suite test
  * what ships: a registration that pointed at the wrong file would be invisible
  * to a test that reached around the registry to read the file itself.
  */
-const SUBAGENT_PROMPT = PROMPTS["subagent/system-prompt"];
-const SUBAGENT_SECTIONS = SUBAGENT_PROMPT.sections ?? [];
-const template = SUBAGENT_PROMPT.text;
+const AGENT_PROMPT = PROMPTS["agent/system-prompt"];
+const AGENT_SECTIONS = AGENT_PROMPT.sections ?? [];
+const template = AGENT_PROMPT.text;
 
-/** The subagent prompt's own banner table, which is what makes it splittable. */
-const SUBAGENT_BANNERS = bannerTable(SUBAGENT_SECTIONS);
+/** The agent prompt's own banner table, which is what makes it splittable. */
+const AGENT_BANNERS = bannerTable(AGENT_SECTIONS);
 
 /** The context a plain delegated task renders with: no plan, no worktree, no IRC. */
 const MINIMAL = {
@@ -76,7 +76,7 @@ describe("the registry agrees with the template file", () => {
 		// A registry naming a banner the file does not have describes a document
 		// that is not there, and every consumer keyed off it silently finds
 		// nothing.
-		for (const section of SUBAGENT_SECTIONS) {
+		for (const section of AGENT_SECTIONS) {
 			if (section.name === null) continue;
 			// The rendered banner, underline included: the registry declares only the
 			// name, so matching the name alone would pass on a file that lost its
@@ -89,7 +89,7 @@ describe("the registry agrees with the template file", () => {
 		// Order is not decorative: it is what a reorder consumer permutes and what
 		// a splitter walks. Declared out of order, the registry would cut the file
 		// at the wrong boundaries.
-		const positions = SUBAGENT_SECTIONS.filter(section => section.name !== null).map(section =>
+		const positions = AGENT_SECTIONS.filter(section => section.name !== null).map(section =>
 			template.indexOf(renderBanner(section.name as string)),
 		);
 
@@ -101,7 +101,7 @@ describe("the registry agrees with the template file", () => {
 		// The other direction. Registering a subset would leave real sections
 		// unaddressable while the tests above still passed.
 		const bannersInFile = [...template.matchAll(/^([A-Z][A-Z ]*)\n={3,}$/gm)].map(match => match[1]);
-		const declared = SUBAGENT_SECTIONS.map(section => section.id.toUpperCase().replace(/-/g, " "));
+		const declared = AGENT_SECTIONS.map(section => section.id.toUpperCase().replace(/-/g, " "));
 
 		expect([...new Set(bannersInFile)].sort()).toEqual([...new Set(declared)].sort());
 	});
@@ -113,9 +113,9 @@ describe("a real render splits into the declared sections", () => {
 		// output: the template is a program, and its conditionals decide what
 		// actually appears.
 		const rendered = prompt.render(template, MINIMAL);
-		const found = new Set(splitPromptSections(rendered, SUBAGENT_BANNERS).map(section => section.name));
+		const found = new Set(splitPromptSections(rendered, AGENT_BANNERS).map(section => section.name));
 
-		for (const section of SUBAGENT_SECTIONS) {
+		for (const section of AGENT_SECTIONS) {
 			if (section.optional) continue;
 			expect(found).toContain(section.id);
 		}
@@ -126,7 +126,7 @@ describe("a real render splits into the declared sections", () => {
 		// and the registry records the difference precisely so a consumer can tell
 		// them apart.
 		const rendered = prompt.render(template, MINIMAL);
-		const found = new Set(splitPromptSections(rendered, SUBAGENT_BANNERS).map(section => section.name));
+		const found = new Set(splitPromptSections(rendered, AGENT_BANNERS).map(section => section.name));
 
 		expect(found).not.toContain("context");
 		expect(found).not.toContain("plan");
@@ -136,9 +136,9 @@ describe("a real render splits into the declared sections", () => {
 		// The differential proving the omission above is the inputs, not a
 		// splitter that cannot find those sections at all.
 		const rendered = prompt.render(template, MAXIMAL);
-		const found = new Set(splitPromptSections(rendered, SUBAGENT_BANNERS).map(section => section.name));
+		const found = new Set(splitPromptSections(rendered, AGENT_BANNERS).map(section => section.name));
 
-		for (const section of SUBAGENT_SECTIONS) expect(found).toContain(section.id);
+		for (const section of AGENT_SECTIONS) expect(found).toContain(section.id);
 	});
 });
 
@@ -193,7 +193,7 @@ describe("registration preserves the rendered bytes", () => {
 
 describe("looking a prompt up", () => {
 	it("returns the registered prompt by id", () => {
-		expect(requirePrompt("subagent/system-prompt")).toBe(SUBAGENT_PROMPT);
+		expect(requirePrompt("agent/system-prompt")).toBe(AGENT_PROMPT);
 	});
 
 	it("throws on an unknown id, saying how ids are formed and where they live", () => {
@@ -210,6 +210,6 @@ describe("looking a prompt up", () => {
 		// The reason the shared lookup does the suggesting: every registry's
 		// unknown-id error is the same error, and a bare refusal in a table this
 		// large sends the reader to grep for a name they already almost typed.
-		expect(() => requirePrompt("subagent/system-promt")).toThrow(/Did you mean "subagent\/system-prompt"/);
+		expect(() => requirePrompt("agent/system-promt")).toThrow(/Did you mean "agent\/system-prompt"/);
 	});
 });

@@ -4,7 +4,7 @@
  * WHY THIS EXISTS. Half the tree scans an optional directory, and the shape everybody reaches for is
  * `await fs.readdir(dir).catch(() => [])`. It is right about the common case -- `~/.veyyon/agents` usually
  * does not exist, and a project with no `.veyyon/` is not an error -- and wrong about every other one. A
- * directory that exists and cannot be LISTED collapses to the same empty array: the user's subagents
+ * directory that exists and cannot be LISTED collapses to the same empty array: the user's agents
  * silently vanish, a memories sweep silently sees nothing to keep, a plugin scan silently finds no
  * plugins. Nothing fails, so nobody looks, and the recall loss is invisible (Law 10).
  *

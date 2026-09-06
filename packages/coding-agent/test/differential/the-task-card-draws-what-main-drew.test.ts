@@ -4,7 +4,7 @@
  *
  * The rows are compared as terminal bytes -- the tree connectors, the outcome badges, the per-agent
  * counts, the context gauge, the cost, the model badge and the colour the reasoning level is drawn
- * in included. What a subagent row says is the card's whole subject, so this sweeps a pending row, a
+ * in included. What an agent row says is the card's whole subject, so this sweeps a pending row, a
  * running row with a tool under it, a retrying row, a done row, a failed row and an aborted row, at
  * both disclosures and frozen.
  *
@@ -40,7 +40,7 @@
  * identically by both arms. It compares one theme and one set of ANSI capabilities, and it says
  * nothing about the transcript component around the card -- merging a call with its result, and the
  * streamed argument buffer a preview is decoded from, are the component's. The nested-task rows a
- * subagent's own `task` call contributes are drawn from data another suite proves is extracted.
+ * agent's own `task` call contributes are drawn from data another suite proves is extracted.
  *
  * The comparison is taken through `test/differential/harness.ts`, whose header states the frozen
  * oracle, the shared defect class and the styling policy every cell here runs under.

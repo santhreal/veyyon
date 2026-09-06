@@ -96,8 +96,8 @@ export const WEB_SEARCH_CREDENTIAL_PROVIDERS: Readonly<Record<string, readonly s
 export interface AccountRoleSources {
 	/** The session's main model, when one is resolved. */
 	mainModel?: { provider: string; id: string };
-	/** Providers of the models subagents run on, in role order. */
-	subagentProviders?: readonly string[];
+	/** Providers of the models agents run on, in role order. */
+	agentProviders?: readonly string[];
 	/** The configured `providers.webSearch` preference, `auto` included. */
 	webSearchPreference?: string;
 }
@@ -121,7 +121,7 @@ export function accountRoleAnnotations(sources: AccountRoleSources): Map<string,
 	};
 
 	if (sources.mainModel) add(sources.mainModel.provider, `main model  (${sources.mainModel.id})`);
-	for (const provider of sources.subagentProviders ?? []) add(provider, "subagents");
+	for (const provider of sources.agentProviders ?? []) add(provider, "agents");
 	// `auto` is deliberately absent from the table: it resolves across every engine at call time, so
 	// no single provider can be said to serve search. The table is the only authority here.
 	for (const provider of WEB_SEARCH_CREDENTIAL_PROVIDERS[sources.webSearchPreference ?? ""] ?? []) {

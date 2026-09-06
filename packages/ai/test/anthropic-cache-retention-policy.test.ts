@@ -19,7 +19,7 @@
  * The tradeoff, for whoever revisits it: a 5m marker is cheaper per write and
  * expires during ordinary agent work. A measured 469-turn session had
  * inter-turn gaps of 787s, 248s, 196s, 168s and 111s, because a turn spans tool
- * calls, subagent batches and human replies. Every gap past the TTL costs a
+ * calls, agent batches and human replies. Every gap past the TTL costs a
  * re-read of the prefix as fresh input plus another write, so 2x once can beat
  * 1.25x repeatedly. The honest fix is to choose the TTL from the observed gap
  * distribution rather than from the credential type, which is a policy change

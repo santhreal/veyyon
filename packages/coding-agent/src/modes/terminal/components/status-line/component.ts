@@ -27,6 +27,7 @@ import { isTreeDirty } from "./branch";
 import { canReuseCachedPr, createPrCacheContext, isSamePrCacheContext, type PrCacheContext } from "./git-utils";
 import { type LocationContext, resolveLocationContext } from "./location-context";
 import {
+	agentBadgeText,
 	composeQuietLines,
 	composeQuietRow,
 	effectiveStatusLineSettings,
@@ -35,7 +36,6 @@ import {
 	hasPrSegment,
 	type QuietRowInput,
 	type QuietSegmentBounds,
-	subagentBadgeText,
 } from "./quiet-row";
 import { focusExitBadge, type SegmentContext } from "./segments";
 import type { SessionFacts } from "./session-facts";
@@ -283,12 +283,12 @@ export class StatusLineComponent implements Component {
 	#disposed = false;
 	#autoCompactEnabled: boolean = true;
 	#hookStatuses: Map<string, string> = new Map();
-	#subagentCount: number = 0;
+	#agentCount: number = 0;
 	#backgroundSessionCount: number = 0;
 	/**
 	 * Active-processing accounting for the `time_spent` segment, keyed per
 	 * {@link AgentSession} so the focus-controller mid-turn attach path
-	 * cannot leak an unmatched synthesized `agent_start` from a subagent
+	 * cannot leak an unmatched synthesized `agent_start` from an agent
 	 * into the main session's meter.
 	 *
 	 * Each meter is `{ activeMs, activeStartedAt }`: `activeMs` is the union
@@ -299,7 +299,7 @@ export class StatusLineComponent implements Component {
 	 * currently-attached session, so the counter ticks live during a turn
 	 * and freezes the instant the agent yields.
 	 *
-	 * WeakMap so meters die with their session (e.g. a parked subagent
+	 * WeakMap so meters die with their session (e.g. a parked agent
 	 * dropped from the registry); the main session's meter survives focus
 	 * round-trips because the same {@link AgentSession} ref is reused.
 	 */
@@ -415,7 +415,7 @@ export class StatusLineComponent implements Component {
 
 	/**
 	 * Re-point the status line at another session (focus proxy). Invalidate: model/context/usage all derive
-	 * from it. `focusedAgentId` is the focused subagent id while the view is proxied, undefined for main.
+	 * from it. `focusedAgentId` is the focused agent id while the view is proxied, undefined for main.
 	 */
 	setSession(session: AgentSession, focusedAgentId?: string): void {
 		const sessionChanged = this.session !== session;
@@ -460,13 +460,13 @@ export class StatusLineComponent implements Component {
 		this.#autoCompactEnabled = enabled;
 	}
 
-	setSubagentCount(count: number): void {
-		this.#subagentCount = Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0;
+	setAgentCount(count: number): void {
+		this.#agentCount = Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0;
 	}
 
-	/** Currently executing subagents shown on every interactive status surface. */
-	get subagentCount(): number {
-		return this.#subagentCount;
+	/** Currently executing agents shown on every interactive status surface. */
+	get agentCount(): number {
+		return this.#agentCount;
 	}
 
 	setBackgroundSessionCount(count: number): void {
@@ -756,7 +756,7 @@ export class StatusLineComponent implements Component {
 	 * silent, and the scan below still runs and still repaints if the tree really did move.
 	 *
 	 * SPENT ON THE FIRST RENDER, recorded marker or not, and only for the directory the facts
-	 * describe. `gitCwd` follows the active repo, which a worktree hop or a subagent's cwd can move
+	 * describe. `gitCwd` follows the active repo, which a worktree hop or an agent's cwd can move
 	 * off the project the recorder keyed on. Reading the file again later would let a record another
 	 * veyyon process wrote in this project land on a row that has already painted, which is the
 	 * arriving marker this seed exists to remove rather than a second copy of it.
@@ -1383,7 +1383,7 @@ export class StatusLineComponent implements Component {
 			contextLimit,
 			contextLimitKind,
 			autoCompactEnabled: this.#autoCompactEnabled,
-			subagentCount: this.#subagentCount,
+			agentCount: this.#agentCount,
 			backgroundSessionCount: this.#backgroundSessionCount,
 			activeMs: this.getActiveMs(),
 			git: {
@@ -1408,17 +1408,17 @@ export class StatusLineComponent implements Component {
 		return effectiveStatusLineSettings(this.#settings);
 	}
 
-	#subagentBadgeText(): string {
-		return subagentBadgeText(this.#subagentCount);
+	#agentBadgeText(): string {
+		return agentBadgeText(this.#agentCount);
 	}
 
 	/**
-	 * Running background jobs the SUBAGENT badge does not already stand for.
+	 * Running background jobs the AGENT badge does not already stand for.
 	 *
 	 * A `task` spawn registers an async job (`type: "task"`, see `task/index.ts`) AND counts as a
-	 * running subagent, so counting every job here printed the same three agents twice: the bar
+	 * running agent, so counting every job here printed the same three agents twice: the bar
 	 * read `3 · 3`, two badges whose numbers moved together and neither of which said what it
-	 * was counting. Async bash, debug and launch jobs are real background work with no subagent
+	 * was counting. Async bash, debug and launch jobs are real background work with no agent
 	 * behind them, and those are what this badge is for.
 	 */
 	#backgroundJobBadgeCount(): number {
@@ -1474,7 +1474,7 @@ export class StatusLineComponent implements Component {
 
 	// Background-job badge animation state. Jobs ease in/out over
 	// BADGE_ANIM_MS so a start or finish reads as an intentional merge instead
-	// of the right group jumping sideways. The running-subagent count does not
+	// of the right group jumping sideways. The running-agent count does not
 	// enter this slot: it is persistent state and must update synchronously.
 	// Between animations the slot is exactly the job badge's width, so there is
 	// no permanent dead space either.
@@ -1585,7 +1585,7 @@ export class StatusLineComponent implements Component {
 		const runningBackgroundJobs = this.#backgroundJobBadgeCount();
 		const badgeParts: string[] = [];
 		if (runningBackgroundJobs > 0) {
-			badgeParts.push(theme.fg("statusLineSubagents", withIcon(theme.icon.job, `${runningBackgroundJobs}`)));
+			badgeParts.push(theme.fg("statusLineAgents", withIcon(theme.icon.job, `${runningBackgroundJobs}`)));
 		}
 		const expansion = this.#expansionProgress();
 		const groups = gatherQuietSegments({
@@ -1602,7 +1602,7 @@ export class StatusLineComponent implements Component {
 					request.includeGit,
 					request.includePr,
 				),
-			subagentBadge: this.#subagentBadgeText(),
+			agentBadge: this.#agentBadgeText(),
 			badgeSlot: this.#animatedBadgeSlot(badgeParts),
 		});
 		const { runningMs, lastRunMs } = this.getRunClock();

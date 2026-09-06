@@ -23,7 +23,7 @@ Behavior notes:
 
 - `@file` CLI arguments are rejected in RPC mode.
 - RPC mode disables automatic session title generation by default to avoid an extra model call.
-- RPC mode host-defaults a small set of settings so embedders inherit Veyyon's neutral defaults: `subagent.isolation.mode`/`merge`/`commits`, `subagent.delegation`, `subagent.batch`, `subagent.maxConcurrency`, `subagent.maxNestedSpawnDepth`, `subagent.agents`, `memory.backend`, and `memories.enabled`, plus `async.enabled`, `async.maxJobs`, `bash.autoBackground.enabled`, and `bash.autoBackground.thresholdMs`. The default is only applied when the path is unset: any explicit configuration (caller overrides, `--config` overlays, or the profile `config.yml`) is preserved. `todo.*` settings are always caller-controlled in protocol modes.
+- RPC mode host-defaults a small set of settings so embedders inherit Veyyon's neutral defaults: `agent.isolation.mode`/`merge`/`commits`, `agent.delegation`, `agent.batch`, `agent.maxConcurrency`, `agent.maxNestedSpawnDepth`, `agent.agents`, `memory.backend`, and `memories.enabled`, plus `async.enabled`, `async.maxJobs`, `bash.autoBackground.enabled`, and `bash.autoBackground.thresholdMs`. The default is only applied when the path is unset: any explicit configuration (caller overrides, `--config` overlays, or the profile `config.yml`) is preserved. `todo.*` settings are always caller-controlled in protocol modes.
 - The process reads stdin as JSONL (`readJsonl(Bun.stdin.stream())`).
 - At startup it writes `{ "type": "ready" }` before processing commands.
 - When stdin closes, pending host-tool calls and host-URI requests are rejected and the process exits with code `0`.
@@ -46,7 +46,7 @@ There is no envelope beyond the object shape itself.
 7. Extension errors (`{ type: "extension_error", extensionPath, event, error }`)
 8. Available-commands updates (`{ type: "available_commands_update", commands }`), emitted at startup and whenever command metadata changes
 9. Prompt lifecycle hints (`{ type: "prompt_result", id?, agentInvoked }`) for scheduled prompts that later resolve without invoking the agent
-10. Subagent frames (`subagent_lifecycle`, `subagent_progress`, `subagent_event`), gated by `set_subagent_subscription`
+10. Agent frames (`subagent_lifecycle`, `subagent_progress`, `subagent_event`), gated by `set_subagent_subscription`
 11. Builtin slash-command side channels (`command_output`, `session_info_update`, `config_update`)
 
 ### Inbound frame categories (stdin)
@@ -93,7 +93,7 @@ Important edge behavior from runtime:
 - `{ id?, type: "set_host_uri_schemes", schemes: RpcHostUriSchemeDefinition[] }`
 - `{ id?, type: "set_subagent_subscription", level: "off" | "progress" | "events" }`
 - `{ id?, type: "get_subagents" }`
-- `{ id?, type: "get_subagent_messages", subagentId?: string, sessionFile?: string, fromByte?: number }`
+- `{ id?, type: "get_subagent_messages", agentId?: string, sessionFile?: string, fromByte?: number }`
 
 ### Model
 

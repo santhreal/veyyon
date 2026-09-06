@@ -53,7 +53,7 @@ import {
 	truncateToWidth,
 } from "../tools/core/render-utils";
 import { appendAgentStats, sanitizeRecentOutput, span } from "./agent-stats";
-import { classifySubagentOutcome } from "./outcome";
+import { classifyAgentOutcome } from "./outcome";
 import { repairDoubleEncodedJsonString, repairTaskParams } from "./repair-args";
 import { DEFAULT_SPAWN_AGENT } from "./spawn-policy";
 import { YIELD_TOOL_NAME } from "./subprocess-tool-registry";
@@ -612,7 +612,7 @@ function progressRows(
 		line.push(span(" "), { text: progress.status === "failed" ? "failed" : "aborted", badge: true, tone: iconTone });
 	}
 
-	const showBadge = settings.get("subagent.showResolvedModelBadge");
+	const showBadge = settings.get("agent.showResolvedModelBadge");
 	if (progress.status === "running") {
 		if (!description) {
 			line.push(
@@ -856,7 +856,7 @@ function resultRows(
 	const { warning: missingYieldWarning, rest: outputWithoutWarning } = extractMissingYieldWarning(result.output);
 	// The same classification the wire uses, so a row cannot read as done while the tool result is
 	// marked an error, or the reverse.
-	const outcome = classifySubagentOutcome(result);
+	const outcome = classifyAgentOutcome(result);
 	const aborted = outcome.kind === "aborted";
 	const mergeFailed = outcome.kind === "merge-failed";
 	const success = outcome.kind === "completed";
@@ -902,7 +902,7 @@ function resultRows(
 		contextWindow: result.contextWindow,
 		cost: result.usage?.cost.total ?? 0,
 		resolvedModel: result.resolvedModel,
-		showResolvedModelBadge: settings.get("subagent.showResolvedModelBadge"),
+		showResolvedModelBadge: settings.get("agent.showResolvedModelBadge"),
 	});
 	line.push(DOT, span(formatDuration(result.durationMs), "dim"));
 	if (result.truncated) line.push(span(" "), span("[truncated]", "warning"));
@@ -1014,7 +1014,7 @@ function resultRows(
 /** Output rows an expanded settled agent shows. */
 const SETTLED_OUTPUT_ROWS = 12;
 
-const MISSING_YIELD_WARNING_PREFIX = "SYSTEM WARNING: Subagent exited without calling yield tool";
+const MISSING_YIELD_WARNING_PREFIX = "SYSTEM WARNING: Agent exited without calling yield tool";
 
 function extractMissingYieldWarning(output: string): { warning?: string; rest: string } {
 	const lines = output.split("\n");
@@ -1296,7 +1296,7 @@ function renderResult(result: TaskViewResult, context: ToolViewContext, rawArgs?
 	if (hasResults) {
 		for (const r of details.results) {
 			requestTotal += r.requests ?? 0;
-			switch (classifySubagentOutcome(r).kind) {
+			switch (classifyAgentOutcome(r).kind) {
 				case "aborted":
 					abortedCount++;
 					break;

@@ -226,7 +226,7 @@ describe("inlineOutputPricing", () => {
 	});
 
 	/**
-	 * A session that cannot report its turn (a subagent, a test harness, an
+	 * A session that cannot report its turn (an agent, a test harness, an
 	 * embedding host) must fall back to the flat cap, not to turn 0. Turn 0 is the
 	 * most expensive turn there is, so defaulting to it would hold every unpriced
 	 * session to the tightest cap in the table.

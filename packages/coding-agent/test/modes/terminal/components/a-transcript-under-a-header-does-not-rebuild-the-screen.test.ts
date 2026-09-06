@@ -7,7 +7,7 @@
  * recorded prefix, which is only correct when the virtualized child is the
  * first root child. It is not: `home-anchor-layout` mounts a `topFill` above
  * the transcript whenever a conversation exists, and every HUD (todos,
- * subagents) sits in that band too. With a header of two rows the prefix ended
+ * agents) sits in that band too. With a header of two rows the prefix ended
  * up misaligned by exactly the header height, the next audit read that as a
  * committed-prefix divergence, and the repair erased native scrollback and
  * replayed the transcript — measured here at 20 full redraws and 20 ED3 erases

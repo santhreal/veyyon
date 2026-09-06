@@ -7,7 +7,7 @@ This document describes how coding-agent stores large payloads outside session J
 The runtime uses two different persistence mechanisms for different data shapes:
 
 - **Content-addressed blobs** (`blob:sha256:<hash>` for images, `blobtext:sha256:<hash>` for text): global storage used to externalize large payloads out of persisted session entries — image base64 and provider image data URLs (`blob:`), and any oversized string field such as a large tool result (`blobtext:`). The two namespaces are disjoint (`blobtext:` does not start with `blob:`) but share one on-disk store, so both are protected together by GC. Externalization is lossless: the full bytes live in the blob file and the JSONL line keeps only the short ref, restored exactly on load.
-- **Session-scoped artifacts** (files under `<sessionFile-without-.jsonl>/`): per-session text files used for full tool outputs and subagent outputs.
+- **Session-scoped artifacts** (files under `<sessionFile-without-.jsonl>/`): per-session text files used for full tool outputs and agent outputs.
 
 They are intentionally separate:
 
@@ -42,10 +42,10 @@ Implications:
 Artifact types share this directory:
 
 - truncated tool output files: `<numericId>.<toolType>.log` (for `artifact://`)
-- subagent output files: `<outputId>.md` (for `agent://`)
-- subagent session JSONL sidecars: `<outputId>.jsonl` when task execution receives an artifacts directory
+- agent output files: `<outputId>.md` (for `agent://`)
+- agent session JSONL sidecars: `<outputId>.jsonl` when task execution receives an artifacts directory
 
-Subagents can adopt the parent `ArtifactManager`; in that case parent and subagent tree share one artifact directory and numeric artifact ID space.
+Agents can adopt the parent `ArtifactManager`; in that case parent and agent tree share one artifact directory and numeric artifact ID space.
 
 ## ID and name allocation schemes
 
@@ -77,7 +77,7 @@ Non-persistent sessions without an adopted manager can store `saveArtifact(...)`
 
 ### Agent output IDs (`agent://`)
 
-`AgentOutputManager` allocates IDs for subagent outputs from the requested name, used verbatim the first time and suffixed (`-2`, `-3`, …) only when the same name repeats (e.g. `Anna`, `Anna-2`). Nested outputs are grouped under the parent prefix (e.g. `Parent.Child`). It scans existing `.md` files on initialization so a resumed session never reuses a name that would clobber a prior output.
+`AgentOutputManager` allocates IDs for agent outputs from the requested name, used verbatim the first time and suffixed (`-2`, `-3`, …) only when the same name repeats (e.g. `Anna`, `Anna-2`). Nested outputs are grouped under the parent prefix (e.g. `Parent.Child`). It scans existing `.md` files on initialization so a resumed session never reuses a name that would clobber a prior output.
 
 ## Persistence dataflow
 
@@ -230,7 +230,7 @@ Blob implications after fork:
 ## Binary blob externalization vs text-output artifacts
 
 - **Blob externalization** is for image payloads (`blob:`) and oversized text fields (`blobtext:`) inside persisted session entry content and provider image data URLs; it replaces inline payload strings in JSONL with stable content refs. Garbage collection scans every session root (active, archived, backup, compressed) for both ref kinds through one regex (`\bblob(?:text)?:sha256:([a-f0-9]{64})\b`), so a blob referenced by any on-disk session — including a large tool result kept as `blobtext:` — is never collected while referenced.
-- **Artifacts** are plain text files for execution output and subagent output; file-backed artifacts are addressable by session-local IDs through internal URLs.
+- **Artifacts** are plain text files for execution output and agent output; file-backed artifacts are addressable by session-local IDs through internal URLs.
 
 The two systems intersect only indirectly: both reduce session JSONL bloat, but they have different identity, lifetime, and retrieval paths.
 
@@ -247,6 +247,6 @@ The two systems intersect only indirectly: both reduce session JSONL bloat, but 
 - [`src/internal-urls/agent-protocol.ts`](../../packages/coding-agent/src/internal-urls/agent-protocol.ts): `agent://` resolver + JSON extraction.
 - [`src/internal-urls/router.ts`](../../packages/coding-agent/src/internal-urls/router.ts): internal URL router wiring.
 - [`src/task/output-manager.ts`](../../packages/coding-agent/src/task/output-manager.ts): session-scoped agent output ID allocation for `agent://`.
-- [`src/task/executor.ts`](../../packages/coding-agent/src/task/executor.ts): subagent output artifact writes (`<id>.md`) and session JSONL sidecars.
+- [`src/task/executor.ts`](../../packages/coding-agent/src/task/executor.ts): agent output artifact writes (`<id>.md`) and session JSONL sidecars.
 
 *Verified against `946d75b873` on 2026-09-04.*

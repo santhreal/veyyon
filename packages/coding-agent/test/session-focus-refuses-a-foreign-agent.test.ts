@@ -54,7 +54,7 @@ function harness(): { controller: SessionFocusController; registry: AgentRegistr
 		},
 	} as unknown as AgentLifecycleManager;
 
-	// The driving agent of conversation A, plus a subagent of each conversation.
+	// The driving agent of conversation A, plus an agent of each conversation.
 	registry.register({ id: MAIN_AGENT_ID, displayName: "main", kind: "main", session: main, scope: "session-a" });
 	registry.register({
 		id: "Scout-A",

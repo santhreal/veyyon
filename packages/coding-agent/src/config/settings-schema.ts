@@ -1,5 +1,6 @@
 import { declareSettings, type SettingPath, type SettingValue } from "@veyyon/kernel/settings/schema";
 import type { SettingTab } from "@veyyon/settings";
+import { AGENTS_SETTINGS } from "./settings-domains/agents";
 import { APPEARANCE_SETTINGS } from "./settings-domains/appearance";
 import { CONTEXT_SETTINGS } from "./settings-domains/context";
 import { EDITING_SETTINGS } from "./settings-domains/editing";
@@ -9,7 +10,6 @@ import { INTERACTION_SETTINGS } from "./settings-domains/interaction";
 import { MODEL_SETTINGS } from "./settings-domains/model";
 import { PROVIDERS_SETTINGS } from "./settings-domains/providers";
 import { RESOURCES_SETTINGS } from "./settings-domains/resources";
-import { SUBAGENTS_SETTINGS } from "./settings-domains/subagents";
 import { TASKS_SETTINGS } from "./settings-domains/tasks";
 import { TOOLS_SETTINGS } from "./settings-domains/tools";
 
@@ -78,7 +78,7 @@ export const SETTING_TABS: SettingTab[] = [
 	"shell",
 	"tools",
 	"tasks",
-	"subagents",
+	"agents",
 	"providers",
 	"experimental",
 	"global",
@@ -98,7 +98,7 @@ export const TAB_METADATA: Record<SettingTab, { label: string; icon: `tab.${stri
 	shell: { label: "Shell", icon: "tab.shell" },
 	tools: { label: "Tools", icon: "tab.tools" },
 	tasks: { label: "Tasks", icon: "tab.tasks" },
-	subagents: { label: "Subagents", icon: "tab.subagents" },
+	agents: { label: "Agents", icon: "tab.agents" },
 	providers: { label: "Providers", icon: "tab.providers" },
 	experimental: { label: "Experimental", icon: "tab.experimental" },
 };
@@ -156,7 +156,7 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 		"Developer",
 	],
 	tasks: ["Modes", "Commands & Skills"],
-	subagents: ["Delegation", "Subagents", "Limits", "Park", "Prune", "Isolation", "Coordination"],
+	agents: ["Delegation", "Agents", "Limits", "Park", "Prune", "Isolation", "Coordination"],
 	providers: ["Accounts", "Services", "Discovery", "Fireworks", "Tiny Model", "Protocol", "Timeouts", "Privacy"],
 	experimental: ["Argot", "Tool Calling", "Auto-Learn"],
 };
@@ -170,7 +170,7 @@ export type StatusLineSegmentId =
 	| "path"
 	| "git"
 	| "pr"
-	| "subagents"
+	| "agents"
 	| "background"
 	| "token_in"
 	| "token_out"
@@ -228,7 +228,7 @@ export const SETTINGS_DOMAIN_SLICES: Record<string, Record<string, unknown>> = {
 	resources: RESOURCES_SETTINGS,
 	tools: TOOLS_SETTINGS,
 	tasks: TASKS_SETTINGS,
-	subagents: SUBAGENTS_SETTINGS,
+	agents: AGENTS_SETTINGS,
 	providers: PROVIDERS_SETTINGS,
 };
 
@@ -243,7 +243,7 @@ export const SETTINGS_SCHEMA = declareSettings({
 	...RESOURCES_SETTINGS,
 	...TOOLS_SETTINGS,
 	...TASKS_SETTINGS,
-	...SUBAGENTS_SETTINGS,
+	...AGENTS_SETTINGS,
 	...PROVIDERS_SETTINGS,
 } as const);
 

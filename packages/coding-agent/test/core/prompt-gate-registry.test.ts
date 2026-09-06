@@ -5,8 +5,8 @@
  * to six places (see `system-prompt-builder/gate-registry.ts` for the list). The one that
  * failed quietly was the last: `modes/terminal/controllers/selector-controller.ts` carried a
  * hand-written `case` per setting deciding which flips rebuild the prompt, and it had exactly
- * two of the settings. Flipping `subagent.batch`, `subagent.delegation`, `subagent.maxConcurrency`,
- * `subagent.agents`, `includeModelInPrompt` or `tools.format` changed the setting and left the
+ * two of the settings. Flipping `agent.batch`, `agent.delegation`, `agent.maxConcurrency`,
+ * `agent.agents`, `includeModelInPrompt` or `tools.format` changed the setting and left the
  * prompt describing the previous configuration, with nothing
  * logged, until an unrelated rebuild happened to fire.
  *
@@ -23,7 +23,7 @@
  *     and no session reads that file. Not accurate, because the regular expression had a
  *     silent hole: it matched `{{#if}}`, `{{#unless}}`, `{{#each}}`, `{{#ifAny}}` and
  *     `{{#has}}`, so `{{#when MAX_CONCURRENCY ">" 0}}` was a gate it could not see, and
- *     `subagent.maxConcurrency` was therefore partitioned over a set that omitted the one
+ *     `agent.maxConcurrency` was therefore partitioned over a set that omitted the one
  *     variable it gates. A statement's condition names its variable structurally, so the
  *     hole cannot exist on this side. The rows are read for block-level gates and the
  *     statement TEXT for the intra-line ones Handlebars still owns, which together are
@@ -84,11 +84,11 @@ const NON_SETTINGS_GATES: Readonly<Record<string, string>> = {
 	hasMCPDiscoveryServers: "whether any discoverable MCP server summaries were produced",
 	hasMemoryRoot: "which memory backend resolved, not a setting read directly",
 	hasObsidian: "whether an Obsidian vault was discovered",
-	hasSpawnableSubagent: "derived from the enabled subagent names for this session",
+	hasSpawnableAgent: "derived from the enabled agent names for this session",
 	useCodexTaskPrompt: "a per-model policy decision keyed off the active model",
-	eagerTasks: "delegation strength, gated by subagent.delegation",
-	eagerTasksAlways: "delegation strength, gated by subagent.delegation",
-	taskBatch: "registered under subagent.batch",
+	eagerTasks: "delegation strength, gated by agent.delegation",
+	eagerTasksAlways: "delegation strength, gated by agent.delegation",
+	taskBatch: "registered under agent.batch",
 	taskIrcEnabled: "derived from whether IRC coordination is available to this session",
 	intentTracing: "registered under tools.intentTracing",
 	personality: "registered under personality",
@@ -181,7 +181,7 @@ describe("the prompt gate registry", () => {
 	/**
 	 * Every variable a gate names is one the TEMPLATE actually reads.
 	 *
-	 * This check found three wrong rows the moment it existed. `subagent.maxConcurrency` named
+	 * This check found three wrong rows the moment it existed. `agent.maxConcurrency` named
 	 * `taskMaxConcurrency`, which is the builder OPTION's name; `system-prompt.ts` hands the template
 	 * `MAX_CONCURRENCY`, so the row described a variable no `{{#if}}` could ever read. The other two
 	 * named themselves as though a `{{#if includeWorkspaceTree}}` existed, when both actually decide
@@ -234,7 +234,7 @@ describe("the prompt gate registry", () => {
 	});
 
 	it("finds a row by setting path and nothing for a setting that does not gate the prompt", () => {
-		expect(promptGateFor("subagent.batch")?.variables).toEqual(["taskBatch"]);
+		expect(promptGateFor("agent.batch")?.variables).toEqual(["taskBatch"]);
 		// `theme` is a real setting that changes the TUI and not one byte of the prompt.
 		expect(promptGateFor("theme")).toBeUndefined();
 	});
@@ -243,14 +243,14 @@ describe("the prompt gate registry", () => {
 describe("which flips reach the model", () => {
 	it("treats every live gate as one that rebuilds the prompt", () => {
 		expect([...LIVE_PROMPT_GATE_SETTINGS].sort()).toEqual([
+			"agent.agents",
+			"agent.batch",
+			"agent.delegation",
+			"agent.enabled",
+			"agent.maxConcurrency",
 			"includeModelInPrompt",
 			"inlineToolDescriptors",
 			"personality",
-			"subagent.agents",
-			"subagent.batch",
-			"subagent.delegation",
-			"subagent.enabled",
-			"subagent.maxConcurrency",
 			"tools.format",
 			// Joined 2026-07-26. See "keeps tools.intentTracing registered, and live" below for what
 			// had to change: the schema injection follows the setting now, not just the prompt text.
@@ -266,10 +266,10 @@ describe("which flips reach the model", () => {
 		// The switch had `personality` and `tui.renderMermaid`. These six changed the setting
 		// and left the prompt behind, which is the failure this registry exists to end.
 		for (const setting of [
-			"subagent.batch",
-			"subagent.delegation",
-			"subagent.maxConcurrency",
-			"subagent.agents",
+			"agent.batch",
+			"agent.delegation",
+			"agent.maxConcurrency",
+			"agent.agents",
 			"includeModelInPrompt",
 			"tools.format",
 		]) {

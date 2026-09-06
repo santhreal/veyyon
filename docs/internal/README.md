@@ -80,7 +80,7 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 | [slash-command-internals.md](slash-command-internals.md) | How slash commands are registered and dispatched. |
 | [handoff-generation-pipeline.md](handoff-generation-pipeline.md) | The `/handoff` generation pipeline. |
 | [ttsr-injection-lifecycle.md](ttsr-injection-lifecycle.md) | Time-traveling stream-rule injection lifecycle. |
-| [task-agent-discovery.md](task-agent-discovery.md) | How `task` subagents are discovered and selected. |
+| [task-agent-discovery.md](task-agent-discovery.md) | How `task` agents are discovered and selected. |
 
 ## MCP
 

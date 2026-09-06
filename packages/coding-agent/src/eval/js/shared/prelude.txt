@@ -165,7 +165,7 @@ if (!globalThis.__veyyon_js_prelude_loaded__) {
 		return node;
 	};
 
-	// Pool ceiling mirrors the task tool's `subagent.maxConcurrency` setting so an
+	// Pool ceiling mirrors the task tool's `agent.maxConcurrency` setting so an
 	// eval fan-out runs as wide as a `task` batch would. 0 (and any non-finite
 	// reply) means unbounded — run every item at once.
 	const __concurrencyLimit = async () => {
@@ -187,7 +187,7 @@ if (!globalThis.__veyyon_js_prelude_loaded__) {
 		// Barrier semantics (mirrors the Python _pool_map): every item settles
 		// before we return or throw, then the lowest-index error propagates.
 		// Early-rejecting would orphan in-flight thunks (e.g. live agent()
-		// subagents) whose worker-side promises would never be observed.
+		// spawns) whose worker-side promises would never be observed.
 		const errors = new Map();
 		let next = 0;
 		const worker = async () => {

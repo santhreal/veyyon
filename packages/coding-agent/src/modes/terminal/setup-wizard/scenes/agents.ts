@@ -1,8 +1,8 @@
 import type { SelectItem, SelectList } from "@veyyon/tui";
 import { routeSelectListMouse, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
+import { isAgentEnabled } from "../../../../task/agent-settings";
 import { discoverAgents } from "../../../../task/discovery";
-import { isSubagentEnabled } from "../../../../task/subagent-settings";
 import type { AgentDefinition } from "../../../../task/types";
 import { theme } from "../../../../theme/theme";
 import type { SetupKeyHint, SetupScene, SetupSceneController, SetupSceneHost, SetupWizardContext } from "./types";
@@ -12,7 +12,7 @@ const CONTINUE_VALUE = "__continue";
 const MAX_VISIBLE = 10;
 
 export class AgentsSceneController implements SetupSceneController {
-	title = "Choose subagents";
+	title = "Choose agents";
 	subtitle = "Enable only the roles you want the model to start on its own.";
 	#selected: Set<string>;
 	#list: SelectList;
@@ -26,7 +26,7 @@ export class AgentsSceneController implements SetupSceneController {
 		private readonly agents: readonly AgentDefinition[],
 	) {
 		this.#selected = new Set(
-			agents.filter(agent => isSubagentEnabled(host.ctx.settings, agent)).map(agent => agent.name),
+			agents.filter(agent => isAgentEnabled(host.ctx.settings, agent)).map(agent => agent.name),
 		);
 		this.#list = this.#buildList(0);
 	}
@@ -34,7 +34,7 @@ export class AgentsSceneController implements SetupSceneController {
 	#buildList(selectedIndex: number): SelectList {
 		// No description column. Every role's description is a full sentence that
 		// cannot fit beside the name at this width: inline it arrived cut
-		// ("General-purpose subagent with full capab"), and wrapping it in place
+		// ("General-purpose agent with full capab"), and wrapping it in place
 		// cost three rows per role, so four of seven roles fit on screen. The list
 		// stays one row per role, so you see every role you are choosing between,
 		// and `#renderDetail` prints the highlighted role's whole description
@@ -59,7 +59,7 @@ export class AgentsSceneController implements SetupSceneController {
 		const text =
 			value === CONTINUE_VALUE
 				? this.#selected.size === 0
-					? "No subagents enabled: every task stays with the main agent."
+					? "No agents enabled: every task stays with the main agent."
 					: `${this.#selected.size} enabled. The model may start these on its own.`
 				: this.agents.find(agent => agent.name === value)?.description;
 		if (!text) return [];
@@ -93,12 +93,12 @@ export class AgentsSceneController implements SetupSceneController {
 	async #commit(): Promise<void> {
 		if (this.#committing) return;
 		this.#committing = true;
-		const current = this.host.ctx.settings.get("subagent.agents") ?? {};
+		const current = this.host.ctx.settings.get("agent.agents") ?? {};
 		const next = { ...current };
 		for (const agent of this.agents) {
 			next[agent.name] = { ...next[agent.name], enabled: this.#selected.has(agent.name) };
 		}
-		this.host.ctx.settings.set("subagent.agents", next);
+		this.host.ctx.settings.set("agent.agents", next);
 		await this.host.ctx.settings.flush();
 		this.host.finish("done");
 	}
@@ -149,7 +149,7 @@ export class AgentsSceneController implements SetupSceneController {
 		// the subtitle and the footer's "space toggle" already say.
 		const lines = [
 			...wrapTextWithAnsi(
-				"Disabled roles stay with the main agent. Change this later in Settings → Subagents.",
+				"Disabled roles stay with the main agent. Change this later in Settings → Agents.",
 				width,
 			).map(line => theme.fg("dim", line)),
 			"",
@@ -180,15 +180,15 @@ export class AgentsSceneController implements SetupSceneController {
  *
  * A context with no entry has had no discovery, which is the same thing to this
  * scene as discovering nothing, and it renders that state explicitly: the only
- * row is "Continue with 0 enabled", detailed as "No subagents enabled: every
+ * row is "Continue with 0 enabled", detailed as "No agents enabled: every
  * task stays with the main agent."
  */
 const discoveredAgents = new WeakMap<SetupWizardContext, AgentDefinition[]>();
 
 export const agentsSetupScene: SetupScene = {
-	id: "subagents",
-	stepLabel: "Subagents",
-	title: "Choose subagents",
+	id: "agents",
+	stepLabel: "Agents",
+	title: "Choose agents",
 	minVersion: 1,
 	shouldRun: async ctx => {
 		const agents = (await discoverAgents(ctx.settings.getCwd())).agents.toSorted((left, right) =>

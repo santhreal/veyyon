@@ -17,9 +17,9 @@ import type {
 import { formatExitCodeNotice } from "../../exec/exit-notice";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import { DEFAULT_MAX_BYTES, OutputSink, type OutputSummary, TailBuffer } from "../../session/streaming-output";
+import { type EnabledAgentCatalog, resolveEnabledAgents } from "../../task/agent-settings";
 import { discoverAgents } from "../../task/discovery";
 import { resolveSpawnPolicy } from "../../task/spawn-policy";
-import { type EnabledSubagentCatalog, resolveEnabledSubagents } from "../../task/subagent-settings";
 import type { AgentDefinition } from "../../task/types";
 import { webpExclusionForModel } from "../../utils/image-loading";
 import { formatDimensionNote, resizeImage } from "../../utils/image-resize";
@@ -380,7 +380,7 @@ export class EvalTool implements AgentTool<typeof evalSchema, EvalToolDetails> {
 	get description(): string {
 		if (!this.session) return getEvalToolDescription();
 		const backends = resolveEvalBackends(this.session);
-		const catalog = this.#enabledSubagents();
+		const catalog = this.#enabledAgents();
 		return getEvalToolDescription({
 			py: backends.python,
 			js: backends.js,
@@ -462,11 +462,11 @@ export class EvalTool implements AgentTool<typeof evalSchema, EvalToolDetails> {
 		return this.session ? enabledEvalLanguages(resolveEvalBackends(this.session)) : ["py", "js"];
 	}
 
-	#enabledSubagents(): EnabledSubagentCatalog {
+	#enabledAgents(): EnabledAgentCatalog {
 		if (!this.session) {
-			throw new ToolError("Eval tool requires a session to resolve enabled subagents");
+			throw new ToolError("Eval tool requires a session to resolve enabled agents");
 		}
-		return resolveEnabledSubagents({
+		return resolveEnabledAgents({
 			settings: this.session.settings,
 			agents: this.#discoveredAgents,
 			parentSpawns: this.session.getSessionSpawns?.() ?? "*",

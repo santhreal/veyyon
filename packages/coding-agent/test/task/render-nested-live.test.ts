@@ -27,7 +27,7 @@ describe("task renderer: nested live rendering", () => {
 	});
 
 	// Defends the live-rendering contract for the `task` tool: while a Level-1
-	// subagent is still mid-flight, any nested `task` activity it has produced
+	// agent is still mid-flight, any nested `task` activity it has produced
 	// (already-completed sub-calls in `extractedToolData.task`, plus the in-flight
 	// snapshot in `inflightTaskDetails`) MUST surface in the parent's streaming
 	// output — same way it surfaces in the finished result.

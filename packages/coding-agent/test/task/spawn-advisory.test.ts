@@ -11,7 +11,7 @@ import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 import { makeToolSession } from "../helpers/tool-session";
 
 // The gating cases below drive a REAL spawn through `TaskTool.execute` with a session that has
-// no session file, and a fileless parent routes its subagent transcripts to the ACTIVE PROFILE's
+// no session file, and a fileless parent routes its agent transcripts to the ACTIVE PROFILE's
 // durable sessions dir (`getSessionsDir()`). Without this the spawn tries to mkdir inside the
 // developer's real `~/.veyyon/profiles/<profile>/agent/sessions` and the real-data tripwire
 // refuses it, which surfaced as the advisory text being a tripwire error instead of the nudge.
@@ -89,13 +89,13 @@ describe("task tool advisory gating via suppressSpawnAdvisory", () => {
 			suppressSpawnAdvisory: suppress,
 			settings: Settings.isolated({
 				"async.enabled": false,
-				"subagent.isolation.mode": "none",
-				"subagent.batch": true,
+				"agent.isolation.mode": "none",
+				"agent.batch": true,
 				// The advisory names a SPECIFIC alternative drawn from the enabled catalog, and only
-				// the general-purpose delegate ships enabled (`subagentEnabledByDefault`). Without
+				// the general-purpose delegate ships enabled (`agentEnabledByDefault`). Without
 				// this row `scout` is not in the catalog, the nudge has nothing to suggest, and the
 				// case silently measures enablement policy instead of the advisory it is about.
-				"subagent.agents": { scout: { enabled: true } },
+				"agent.agents": { scout: { enabled: true } },
 			}),
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",

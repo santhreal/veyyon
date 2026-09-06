@@ -2,7 +2,7 @@
  * With no interactive UI, a tool call that needs approval FAILS. It is never
  * quietly approved.
  *
- * WHY THIS SUITE EXISTS (PERM-1). Print mode, ACP, headless runs and subagents
+ * WHY THIS SUITE EXISTS (PERM-1). Print mode, ACP, headless runs and agents
  * all execute tools with nobody to answer a prompt. There are only two possible
  * designs at that moment: refuse the call, or approve it because no one objected.
  * The second is the dangerous one and it is dangerous precisely because it looks
@@ -24,7 +24,7 @@
  * calls. Without that, a change that broke every non-interactive tool call would
  * satisfy every other assertion here.
  *
- * Subagents are covered by assertion rather than by spawning one: `task/executor`
+ * Agents are covered by assertion rather than by spawning one: `task/executor`
  * pins `tools.approvalMode: yolo` deliberately, so the parent `task` approval is
  * the authorization boundary. That is a real decision and it is asserted as such,
  * so a silent change to it fails here.

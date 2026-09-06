@@ -75,7 +75,7 @@ describe("context file scope resolution", () => {
 	 * declared the parameter as `_agentDir` and never forwarded it, so profile
 	 * scope was always resolved from the process-global active profile. Any
 	 * caller running under one agent dir while the process global points at
-	 * another (a session created with an explicit agentDir, a spawned subagent,
+	 * another (a session created with an explicit agentDir, a spawned agent,
 	 * the eval bridge) silently got a STRANGER'S profile rules. If this
 	 * regresses, the parameter goes back to being decorative and the resolved
 	 * profile scope stops being a function of its inputs.
@@ -131,7 +131,7 @@ describe("context file scope resolution", () => {
 	 * convention. A project file is content checked into a repository the operator
 	 * may not have written, so letting one hold the highest-recency slot lets any
 	 * cloned repo rewrite the rules the operator set for themselves. That is
-	 * exactly what happened: a repo's "do not use subagents for this repository"
+	 * exactly what happened: a repo's "do not use agents for this repository"
 	 * was obeyed over the operator's global file AND over their live instruction.
 	 *
 	 * Asserting only that all four files are present would pass under any

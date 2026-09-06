@@ -80,7 +80,7 @@
 		"statusLineUntracked": "seaBlue",
 		"statusLineOutput": "sunBakedOrange",
 		"statusLineCost": "warningGold",
-		"statusLineSubagents": "seaFoam",
+		"statusLineAgents": "seaFoam",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

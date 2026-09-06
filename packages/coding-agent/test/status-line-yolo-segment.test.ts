@@ -63,7 +63,7 @@ function createModeContext(opts: {
 		contextLimit: 0,
 		contextLimitKind: "window" as const,
 		autoCompactEnabled: false,
-		subagentCount: 0,
+		agentCount: 0,
 		backgroundSessionCount: 0,
 		activeMs: 0,
 		activeRepo: null,

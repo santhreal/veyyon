@@ -80,7 +80,7 @@
 		"statusLineUntracked": "lagoonTeal",
 		"statusLineOutput": "turquoise",
 		"statusLineCost": "coral",
-		"statusLineSubagents": "turquoise",
+		"statusLineAgents": "turquoise",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

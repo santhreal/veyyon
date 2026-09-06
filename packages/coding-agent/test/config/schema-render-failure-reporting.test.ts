@@ -1,5 +1,5 @@
 /**
- * Regression: a subagent output schema that cannot be rendered must be reported.
+ * Regression: an agent output schema that cannot be rendered must be reported.
  *
  * The `jtdToTypeScript` and `renderYieldSchema` prompt helpers each wrapped the
  * renderer in `catch { return "unknown" }`. Substituting `unknown` is not a
@@ -7,7 +7,7 @@
  * prevent: the rendered type is what tells the model the shape it must submit,
  * and with `unknown` in its place the model has nothing to pattern-match on,
  * returns an arbitrary shape, and fails output validation over and over. The
- * operator watches a subagent loop with no indication that its schema never
+ * operator watches an agent loop with no indication that its schema never
  * made it into the prompt (Law 10).
  *
  * A RECURSIVE schema used to be the reachable cause: the renderer recursed with
@@ -36,9 +36,9 @@ function recursiveSchema(): Record<string, unknown> {
 }
 
 const RENDER_FAILED =
-	"A subagent output schema could not be rendered, so the model is not being told what shape to return";
+	"A spawned agent output schema could not be rendered, so the model is not being told what shape to return";
 
-describe("rendering a subagent output schema into a prompt", () => {
+describe("rendering an agent output schema into a prompt", () => {
 	let warnings: Array<{ message: string; fields: Record<string, unknown> }>;
 
 	beforeEach(() => {
@@ -166,7 +166,7 @@ describe("rendering a subagent output schema into a prompt", () => {
 		});
 
 		it("tells the operator what to do and what the symptom will look like", () => {
-			// The symptom is a subagent failing validation in a loop, which points
+			// The symptom is an agent failing validation in a loop, which points
 			// nowhere near the schema, so the message has to bridge that gap.
 			render("{{renderYieldSchema outputSchema}}", tooDeep());
 
@@ -175,7 +175,7 @@ describe("rendering a subagent output schema into a prompt", () => {
 		});
 
 		it("still renders a usable prompt rather than throwing", () => {
-			// Rendering happens while building a subagent's system prompt. Throwing
+			// Rendering happens while building an agent's system prompt. Throwing
 			// would take down the whole launch for a schema problem the model may
 			// still work around, so the fallback stays; only its silence is fixed.
 			const output = render("{{renderYieldSchema outputSchema}}", tooDeep());
@@ -191,7 +191,7 @@ describe("rendering a subagent output schema into a prompt", () => {
 			expect(failures()).toHaveLength(1);
 		});
 
-		it("reports at warn, not debug, because the subagent is now unable to succeed", () => {
+		it("reports at warn, not debug, because the agent is now unable to succeed", () => {
 			// The original silence is one demotion away from returning.
 			const debug = vi.spyOn(logger, "debug").mockImplementation(() => {});
 

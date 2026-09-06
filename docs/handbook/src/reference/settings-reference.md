@@ -76,7 +76,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `modelRoles` | Role Models | record | `{}` | Assign a model to each role (Fast, Thinking, Vision, Architect, Designer, Commit, Tiny). Opens a searchable picker with auth status. The advisor's model is asked for in the Advisor group, and a subagent's in Subagents → Roster, so neither appears here. Scoped to the active profile — never edit config by hand. |
+| `modelRoles` | Role Models | record | `{}` | Assign a model to each role (Fast, Thinking, Vision, Architect, Designer, Commit, Tiny). Opens a searchable picker with auth status. The advisor's model is asked for in the Advisor group, and an agent's in Agents → Roster, so neither appears here. Scoped to the active profile — never edit config by hand. |
 
 ### Thinking
 
@@ -109,7 +109,7 @@ veyyon config get compaction.threshold
 | `tier.openai` | Service Tier — OpenAI | enum | `none` | How your OpenAI / OpenAI-Codex requests are queued and served, including OpenAI-family models routed via OpenRouter (none = omit the field). Sent as `service_tier`. This is serving speed and cost, not reasoning depth; depth is Default Effort. Values: `none`, `auto`, `default`, `flex`, `scale`, `priority`. |
 | `tier.anthropic` | Service Tier — Anthropic | enum | `none` | How your Claude requests are queued and served. `priority` realizes fast mode (`speed: "fast"`) on supported direct Anthropic models, and is ignored on Bedrock/Vertex Claude and via OpenRouter. This is serving speed and cost, not reasoning depth; depth is Default Effort. Values: `none`, `priority`. |
 | `tier.google` | Service Tier — Google | enum | `none` | How your Gemini (Google AI Studio + Vertex) requests are queued and served, including Google-family models routed via OpenRouter (none = omit the field). Sent as the top-level `serviceTier` field. This is serving speed and cost, not reasoning depth; depth is Default Effort. Values: `none`, `flex`, `priority`. |
-| `tier.subagent` | Service Tier — Subagent | enum | `inherit` | How spawned task/eval subagent requests are queued and served. Inherit matches the main agent's live per-family tiers (tracks /fast); pick a value to apply it to whichever family the subagent's model belongs to. Values: `inherit`, `none`, `auto`, `default`, `flex`, `scale`, `priority`. |
+| `tier.agent` | Service Tier — Agent | enum | `inherit` | How spawned task/eval agent requests are queued and served. Inherit matches the main agent's live per-family tiers (tracks /fast); pick a value to apply it to whichever family the agent's model belongs to. Values: `inherit`, `none`, `auto`, `default`, `flex`, `scale`, `priority`. |
 | `tier.advisor` | Service Tier — Advisor | enum | `none` | How advisor-model requests are queued and served. None is standard processing, Inherit matches the main agent's live per-family tiers, and picking a value applies it to the advisor model's family. Values: `inherit`, `none`, `auto`, `default`, `flex`, `scale`, `priority`. |
 
 ### Prompt
@@ -138,7 +138,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `advisor.enabled` | Enable Advisor | boolean | `false` | Pair a second model that passively reviews each turn and injects notes. Which model it runs is Advisor Model, directly below. |
-| `advisor.subagents` | Advisor for Subagents | boolean | `false` | Also enable the advisor on spawned task/eval subagents. |
+| `advisor.agents` | Advisor for Agents | boolean | `false` | Also enable the advisor on spawned task/eval agents. |
 | `advisor.syncBacklog` | Advisor Sync Backlog | enum | `off` | Pause the main agent for up to 30 seconds if the advisor falls behind by this many turns. Off disables catch-up delays. Values: `off`, `1`, `3`, `5`. |
 | `advisor.immuneTurns` | Advisor Immune Turns | number | `3` | After an advisor concern or blocker interrupts, route further concerns/blockers non-interruptingly for this many primary turns. |
 
@@ -277,20 +277,20 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `session.memoryLimitGb` | Session Memory Limit | number | `0` | Maximum resident memory the session tree may hold at once, in gigabytes (0 = off). The session tree is this session, every subagent under it at any depth, and every process any of them spawned: they share one budget group, so delegating work cannot multiply the allowance. This is a kernel cap, not a polite refusal: on Linux it is cgroup v2 memory.max on the session budget group, so a group at the limit is reclaimed first and then a process INSIDE it is OOM-killed by the kernel, whichever process the kernel picks, with no warning and no chance to finish. Set it where an OOM kill is preferable to the machine swapping, and leave it off if a killed command would cost more than the memory does. A host without a memory controller reports the limit as unenforceable once at startup rather than pretending to hold it. |
+| `session.memoryLimitGb` | Session Memory Limit | number | `0` | Maximum resident memory the session tree may hold at once, in gigabytes (0 = off). The session tree is this session, every agent under it at any depth, and every process any of them spawned: they share one budget group, so delegating work cannot multiply the allowance. This is a kernel cap, not a polite refusal: on Linux it is cgroup v2 memory.max on the session budget group, so a group at the limit is reclaimed first and then a process INSIDE it is OOM-killed by the kernel, whichever process the kernel picks, with no warning and no chance to finish. Set it where an OOM kill is preferable to the machine swapping, and leave it off if a killed command would cost more than the memory does. A host without a memory controller reports the limit as unenforceable once at startup rather than pretending to hold it. |
 
 ### Disk
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `session.writeBudgetGb` | Session Write Budget | number | `0` | Cumulative gigabytes the session tree may WRITE to disk before further writes are refused (0 = off). The session tree is this session, every subagent under it at any depth, and every process any of them spawned: they share one budget group, so delegating work cannot multiply the allowance. Writes are metered by the same group that meters CPU (cgroup v2 io accounting on Linux, Job Object I/O accounting on Windows). Once the total is reached, a new command is refused with an error naming the budget and how much it has written; already running commands keep running unless Kill Over-Budget Writers is on. A host where write accounting cannot be read reports the limit as unenforceable once at startup rather than pretending to hold it. |
+| `session.writeBudgetGb` | Session Write Budget | number | `0` | Cumulative gigabytes the session tree may WRITE to disk before further writes are refused (0 = off). The session tree is this session, every agent under it at any depth, and every process any of them spawned: they share one budget group, so delegating work cannot multiply the allowance. Writes are metered by the same group that meters CPU (cgroup v2 io accounting on Linux, Job Object I/O accounting on Windows). Once the total is reached, a new command is refused with an error naming the budget and how much it has written; already running commands keep running unless Kill Over-Budget Writers is on. A host where write accounting cannot be read reports the limit as unenforceable once at startup rather than pretending to hold it. |
 | `session.writeBudgetKill` | Kill Over-Budget Writers | boolean | `false` | What happens when the session tree passes its write budget. Off (default): new commands are refused, and whatever is already writing runs to completion. On: the over-budget group is also sent SIGTERM, and the kill is reported as a budget action rather than a crash, so a command that vanished mid-write is explained instead of looking like a failure. Hidden while the write budget is 0, because a kill policy for a budget that does not exist is a knob with nothing behind it. |
 
 ### Processes
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `session.maxProcesses` | Session Max Processes | number | `0` | Hard cap on how many processes may be alive at once across the session tree (0 = off). The session tree is this session, every subagent under it at any depth, and every process any of them spawned, all in one budget group, so the cap is not multiplied by delegating. Enforced by the kernel where it can be: cgroup v2 pids.max on Linux and a Job Object process limit on Windows both refuse the fork itself, so a runaway loop stops instead of filling the process table. Elsewhere the cap is policy-only, refusing a new spawn with an error naming the limit and the current count, and a startup notice says the kernel is not holding it. |
+| `session.maxProcesses` | Session Max Processes | number | `0` | Hard cap on how many processes may be alive at once across the session tree (0 = off). The session tree is this session, every agent under it at any depth, and every process any of them spawned, all in one budget group, so the cap is not multiplied by delegating. Enforced by the kernel where it can be: cgroup v2 pids.max on Linux and a Job Object process limit on Windows both refuse the fork itself, so a runaway loop stops instead of filling the process table. Elsewhere the cap is policy-only, refusing a new spawn with an error naming the limit and the current count, and a startup notice says the kernel is not holding it. |
 
 ## Context
 
@@ -576,65 +576,65 @@ veyyon config get compaction.threshold
 | `commands.enableClaudeUser` | Claude User Commands | boolean | `true` | Load commands from ~/.claude/commands/. |
 | `commands.enableOpencodeUser` | OpenCode User Commands | boolean | `true` | Load commands from ~/.config/opencode/commands/. |
 
-## Subagents
+## Agents
 
 ### Delegation
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.enabled` | Subagents | boolean | `true` | Whether this session may use subagents at all. Off removes the task tool and every delegation instruction from the prompt, so nothing can be spawned. This is the only setting that takes the ability away: Subagent Delegation below decides how hard the model is PUSHED to delegate, never whether it may. Your delegation strength and your Roster are kept while this is off and take effect again when you turn it back on. |
-| `subagent.delegation` | Subagent Delegation | enum | `preferred` | How strongly this session routes work to the subagent types you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Roster is the routing policy: each name is a distinct type that owns only work matching its description, no type is a fallback for another, and work no enabled type covers stays with the main agent. Turn Subagents off above to remove delegation entirely. Values: `allowed`, `preferred`, `required`. |
-| `subagent.batch` | Batch Task Calls | boolean | `true` | Switch the task tool to its batch shape: one call carries { agent, context, tasks[] } — one subagent per item (with per-item isolation) and a required shared context prepended to every assignment. With async.enabled=true, each spawn runs as an independent background agent with the normal idle/parked lifecycle; otherwise the call blocks for merged results. Disable to restore the flat single-spawn schema. Shown under the tab's Advanced fold. |
+| `agent.enabled` | Agents | boolean | `true` | Whether this session may use agents at all. Off removes the task tool and every delegation instruction from the prompt, so nothing can be spawned. This is the only setting that takes the ability away: Agent Delegation below decides how hard the model is PUSHED to delegate, never whether it may. Your delegation strength and your Roster are kept while this is off and take effect again when you turn it back on. |
+| `agent.delegation` | Agent Delegation | enum | `preferred` | How strongly this session routes work to the agent types you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Roster is the routing policy: each name is a distinct type that owns only work matching its description, no type is a fallback for another, and work no enabled type covers stays with the main agent. Turn Agents off above to remove delegation entirely. Values: `allowed`, `preferred`, `required`. |
+| `agent.batch` | Batch Task Calls | boolean | `true` | Switch the task tool to its batch shape: one call carries { agent, context, tasks[] } — one agent per item (with per-item isolation) and a required shared context prepended to every assignment. With async.enabled=true, each spawn runs as an independent background agent with the normal idle/parked lifecycle; otherwise the call blocks for merged results. Disable to restore the flat single-spawn schema. Shown under the tab's Advanced fold. |
 
-### Subagents
+### Agents
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.agents` | Roster | record | `{}` | Which subagent types the model may choose, and what each one runs. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. Each subagent's page carries its own Model and Effort, and a Subagents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above, and an agent that names nothing runs the default model role. Same Model for All Subagents below replaces the per-agent Model and Effort rows with one pair for the whole roster. |
-| `subagent.maxNestedSpawnDepth` | Max Nested Spawn Depth | number | `0` | How many nested levels subagents may spawn, for every level no roster chain decides. 0 still lets this session spawn direct subagents, but those children do not receive the task tool. Open Roster above, pick a subagent, then Subagents, to turn individual levels on or off for that one; this number answers from the first level its chain does not name. |
-| `subagent.sharedModel` | Same Model for All Subagents | boolean | `false` | Run every subagent on one model and one effort instead of choosing per agent. Off, each agent's page decides. On, the two rows below decide for the whole roster and the per-agent Model and Effort rows are hidden; what those rows hold is kept and comes back when this goes off. |
-| `subagent.model` | Shared Model | modelChain | _(unset)_ | The model chain every subagent runs while Same Model for All Subagents is on. Unset falls back to the default model role, the same model a new session starts on. |
-| `subagent.thinkingLevel` | Shared Effort | string | _(unset)_ | The effort every subagent runs at while Same Model for All Subagents is on. Narrowed to what the model above declares; a `:level` suffix on the chain still wins. Inherit leaves the documented default. |
-| `subagent.showResolvedModelBadge` | Show Resolved Model Badge | boolean | `true` | Show each subagent's resolved model, and the setting that decided it, in the task widget status line and the agent surfaces. Shown under the tab's Advanced fold. |
+| `agent.agents` | Roster | record | `{}` | Which agent types the model may choose, and what each one runs. Enabled means the model can pick that agent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and agents you add are opt-in through onboarding or this roster. Each agent's page carries its own Model and Effort, and a Agents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above, and an agent that names nothing runs the default model role. Same Model for All Agents below replaces the per-agent Model and Effort rows with one pair for the whole roster. |
+| `agent.maxNestedSpawnDepth` | Max Nested Spawn Depth | number | `0` | How many nested levels agents may spawn, for every level no roster chain decides. 0 still lets this session spawn direct agents, but those children do not receive the task tool. Open Roster above, pick an agent, then Agents, to turn individual levels on or off for that one; this number answers from the first level its chain does not name. |
+| `agent.sharedModel` | Same Model for All Agents | boolean | `false` | Run every agent on one model and one effort instead of choosing per agent. Off, each agent's page decides. On, the two rows below decide for the whole roster and the per-agent Model and Effort rows are hidden; what those rows hold is kept and comes back when this goes off. |
+| `agent.model` | Shared Model | modelChain | _(unset)_ | The model chain every agent runs while Same Model for All Agents is on. Unset falls back to the default model role, the same model a new session starts on. |
+| `agent.thinkingLevel` | Shared Effort | string | _(unset)_ | The effort every agent runs at while Same Model for All Agents is on. Narrowed to what the model above declares; a `:level` suffix on the chain still wins. Inherit leaves the documented default. |
+| `agent.showResolvedModelBadge` | Show Resolved Model Badge | boolean | `true` | Show each agent's resolved model, and the setting that decided it, in the task widget status line and the agent surfaces. Shown under the tab's Advanced fold. |
 
 ### Limits
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.maxConcurrency` | Max Concurrent Subagents | number | `32` | Maximum number of subagents running concurrently. |
-| `subagent.maxRuntimeMs` | Max Subagent Runtime | number | `0` | Hard wall-clock limit per subagent (ms). 0 disables it. Defense-in-depth against provider-side stream hangs that escape the inference-layer watchdog; triggers a normal subagent abort with a 'timed out' reason. |
-| `subagent.softRequestBudget` | Soft Request Budget | number | `200` | Soft per-subagent request budget (assistant requests per run). Crossing it injects a wrap-up steering notice (see the notice setting below); at 1.5x the budget the run is force-stopped and the agent must yield its partial findings. 0 disables the guard. Bundled scout/sonic agents use a lower built-in budget. |
-| `subagent.softRequestBudgetNotice` | Soft Request Budget Notice | boolean | `true` | Inject one steering notice when a subagent crosses its soft request budget, asking it to wrap up before the 1.5x forced-yield stop. |
-| `subagent.enableLsp` | LSP in Subagents | boolean | `false` | Allow spawned subagents to use the lsp tool. Off by default to keep subagents cheap; enable when LSP-aware delegation is worth the extra tokens. |
+| `agent.maxConcurrency` | Max Concurrent Agents | number | `32` | Maximum number of agents running concurrently. |
+| `agent.maxRuntimeMs` | Max Agent Runtime | number | `0` | Hard wall-clock limit per agent (ms). 0 disables it. Defense-in-depth against provider-side stream hangs that escape the inference-layer watchdog; triggers a normal agent abort with a 'timed out' reason. |
+| `agent.softRequestBudget` | Soft Request Budget | number | `200` | Soft per-agent request budget (assistant requests per run). Crossing it injects a wrap-up steering notice (see the notice setting below); at 1.5x the budget the run is force-stopped and the agent must yield its partial findings. 0 disables the guard. Bundled scout/sonic agents use a lower built-in budget. |
+| `agent.softRequestBudgetNotice` | Soft Request Budget Notice | boolean | `true` | Inject one steering notice when an agent crosses its soft request budget, asking it to wrap up before the 1.5x forced-yield stop. |
+| `agent.enableLsp` | LSP in Agents | boolean | `false` | Allow spawned agents to use the lsp tool. Off by default to keep agents cheap; enable when LSP-aware delegation is worth the extra tokens. |
 
 ### Park
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.idleTtlMs` | Park After | number | `300000` | Stage one. How long a finished subagent stays live before it parks (ms). Parking releases the live session — the process, its MCP clients, its memory — and keeps everything else: the row stays in the roster and the agent rebuilds itself when messaged or opened. Counted from the agent's last activity, so a revived agent starts this budget again from the revival. 'Until exit' keeps idle agents live for the whole session. |
+| `agent.idleTtlMs` | Park After | number | `300000` | Stage one. How long a finished agent stays live before it parks (ms). Parking releases the live session — the process, its MCP clients, its memory — and keeps everything else: the row stays in the roster and the agent rebuilds itself when messaged or opened. Counted from the agent's last activity, so a revived agent starts this budget again from the revival. 'Until exit' keeps idle agents live for the whole session. |
 
 ### Prune
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.prune.enabled` | Prune Parked Subagents | boolean | `true` | Stage two, and a different thing from parking. Pruning takes a parked subagent out of the roster and gives up the ability to wake it; parking only released its session. Nothing on disk is touched: the transcript stays where it is and stays readable at `history://\<agent>`. Off keeps every parked subagent listed and wakeable until you exit. |
-| `subagent.prune.afterMs` | Prune After | number | `3600000` | How long a parked subagent stays in the roster before it is pruned (ms). Counted from its last activity, so a subagent read back from a previous run is judged on when its transcript was last written rather than on when this session found it. |
-| `subagent.prune.waitingAfterMs` | Prune After While Waiting | number | `7200000` | The same budget for a subagent whose last message said it was waiting on another agent (ms). It stopped on purpose to let a peer finish, so it keeps its row longer than one that simply went quiet: pruning it on the ordinary budget would drop the agent you are most likely to message next. Set it equal to Prune After to treat both the same; a shorter value is raised to it. |
+| `agent.prune.enabled` | Prune Parked Agents | boolean | `true` | Stage two, and a different thing from parking. Pruning takes a parked agent out of the roster and gives up the ability to wake it; parking only released its session. Nothing on disk is touched: the transcript stays where it is and stays readable at `history://\<agent>`. Off keeps every parked agent listed and wakeable until you exit. |
+| `agent.prune.afterMs` | Prune After | number | `3600000` | How long a parked agent stays in the roster before it is pruned (ms). Counted from its last activity, so an agent read back from a previous run is judged on when its transcript was last written rather than on when this session found it. |
+| `agent.prune.waitingAfterMs` | Prune After While Waiting | number | `7200000` | The same budget for an agent whose last message said it was waiting on another agent (ms). It stopped on purpose to let a peer finish, so it keeps its row longer than one that simply went quiet: pruning it on the ordinary budget would drop the agent you are most likely to message next. Set it equal to Prune After to treat both the same; a shorter value is raised to it. |
 
 ### Isolation
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.isolation.mode` | Isolation Mode | enum | `none` | Isolation backend for subagents. "auto" lets the native PAL pick the best available backend (CoW-aware filesystems, then overlayfs/ProjFS, then a git worktree / recursive-copy fallback). Values: `none`, `auto`, `apfs`, `btrfs`, `zfs`, `reflink`, `overlayfs`, `projfs`, `block-clone`, `rcopy`. |
-| `subagent.isolation.merge` | Isolation Merge Strategy | enum | `patch` | How isolated subagent changes are integrated (patch apply or branch merge). Values: `patch`, `branch`. |
-| `subagent.isolation.commits` | Isolation Commit Style | enum | `generic` | Commit message style for nested repo changes (generic or AI-generated). Values: `generic`, `ai`. |
-| `worktree.base` | Worktree Base Directory | string | _(unset)_ | Base directory for agent-managed worktrees: subagent isolation copies, `github` PR checkouts, and `veyyon worktree` cleanup all live here. Unset uses the active profile's `wt/` directory (~/.veyyon/profiles/\<name>/wt, or its XDG data equivalent). Must be an absolute or ~-relative path; relative paths are ignored. The VEYYON_WORKTREE_DIR env var overrides this. |
+| `agent.isolation.mode` | Isolation Mode | enum | `none` | Isolation backend for agents. "auto" lets the native PAL pick the best available backend (CoW-aware filesystems, then overlayfs/ProjFS, then a git worktree / recursive-copy fallback). Values: `none`, `auto`, `apfs`, `btrfs`, `zfs`, `reflink`, `overlayfs`, `projfs`, `block-clone`, `rcopy`. |
+| `agent.isolation.merge` | Isolation Merge Strategy | enum | `patch` | How isolated agent changes are integrated (patch apply or branch merge). Values: `patch`, `branch`. |
+| `agent.isolation.commits` | Isolation Commit Style | enum | `generic` | Commit message style for nested repo changes (generic or AI-generated). Values: `generic`, `ai`. |
+| `worktree.base` | Worktree Base Directory | string | _(unset)_ | Base directory for agent-managed worktrees: agent isolation copies, `github` PR checkouts, and `veyyon worktree` cleanup all live here. Unset uses the active profile's `wt/` directory (~/.veyyon/profiles/\<name>/wt, or its XDG data equivalent). Must be an absolute or ~-relative path; relative paths are ignored. The VEYYON_WORKTREE_DIR env var overrides this. |
 
 ### Coordination
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `irc.timeoutMs` | IRC Timeout | number | `120000` | Default timeout for irc wait (and send await:true) in milliseconds; 0 disables the timeout. IRC is how a parent and its subagents talk, which is why it is configured here. |
+| `irc.timeoutMs` | IRC Timeout | number | `120000` | Default timeout for irc wait (and send await:true) in milliseconds; 0 disables the timeout. IRC is how a parent and its agents talk, which is why it is configured here. |
 
 ## Providers
 
@@ -649,7 +649,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `providers.maxInFlightRequests` | Max In-Flight Requests | record | `{}` | Maximum concurrent LLM requests per provider id (for example "openai" or "anthropic"), shared across local veyyon processes with this config root. Omitted providers are unlimited. |
-| `providers.ollama-cloud.maxConcurrency` | Ollama Cloud Max Concurrency | number | `3` | Maximum concurrent Ollama Cloud subagent runs per process; 0 disables the provider-specific limit. |
+| `providers.ollama-cloud.maxConcurrency` | Ollama Cloud Max Concurrency | number | `3` | Maximum concurrent Ollama Cloud agent runs per process; 0 disables the provider-specific limit. |
 | `providers.webSearch` | Web Search Provider | enum | `auto` | The provider web_search uses; auto tries each in turn. Values: `auto`, `perplexity`, `gemini`, `anthropic`, `codex`, `xai`, `zai`, `exa`, `tinyfish`, `jina`, `kagi`, `tavily`, `firecrawl`, `brave`, `kimi`, `parallel`, `synthetic`, `searxng`, `startpage`, `duckduckgo`, `google`, `mojeek`, `public`. |
 | `providers.webSearchExclude` | Excluded Web Search Providers | array | `[]` | Providers that web_search should never use, even as fallbacks. |
 | `providers.webSearchGeminiModel` | Gemini web_search model | string | _(unset)_ | Model ID for Gemini Google Search grounding. Defaults to gemini-2.5-flash. |
@@ -731,7 +731,7 @@ veyyon config get compaction.threshold
 | `argot.encode.models` | Argot Models | array | `[]` | Models allowed to write Argot shorthand, by model id. Empty (the default) means no model does, so turning Argot on alone stays inert until you add one here. A model left off this list is never taught the shorthand; handles already in history still expand. |
 | `argot.tokenBudget` | Argot Dictionary Budget | number | `1000` | How many tokens the generated Argot dictionary may spend on its handle table. A larger budget teaches more handles (more transcript savings) but adds a longer preamble each turn; a smaller budget teaches only the most central strings. Changing it regenerates the dictionary. |
 | `argot.encode.disableAboveTokens` | Argot Context Cutoff | number | `-1` | Stop teaching Argot shorthand once context passes this many tokens (the model then writes in full). Handles already written still expand losslessly. -1 disables the cutoff. |
-| `argot.subagents` | Argot in Subagents | enum | `off` | How a subagent starts with Argot shorthand. Correctness never depends on this (handles never cross the parent/child wire); it only trades tokens. off: no shorthand in subagents. fresh: the subagent loads its task's project itself through argot_load. inherit: the subagent starts from a copy of the parent's loaded shorthand. Values: `off`, `fresh`, `inherit`. |
+| `argot.agents` | Argot in Agents | enum | `off` | How an agent starts with Argot shorthand. Correctness never depends on this (handles never cross the parent/child wire); it only trades tokens. off: no shorthand in agents. fresh: the agent loads its task's project itself through argot_load. inherit: the agent starts from a copy of the parent's loaded shorthand. Values: `off`, `fresh`, `inherit`. |
 
 ### Tool Calling
 
@@ -783,6 +783,7 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
+| `agent.modelByDepth` | record | `{}` | Retired: use `agent.agents` instead. |
 | `async.maxJobs` | number | `100` |  |
 | `auth.broker.token` | string | _(unset)_ |  |
 | `auth.broker.url` | string | _(unset)_ |  |
@@ -893,7 +894,6 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `statusLine.separator` | enum | `pipe` | Values: `powerline`, `powerline-thin`, `slash`, `pipe`, `block`, `none`, `ascii`. |
 | `statusLine.transparent` | boolean | `true` |  |
 | `stt.language` | string | `en` |  |
-| `subagent.modelByDepth` | record | `{}` | Retired: use `subagent.agents` instead. |
 | `thinkingBudgets.high` | number | `16384` |  |
 | `thinkingBudgets.low` | number | `2048` |  |
 | `thinkingBudgets.max` | number | `32768` |  |

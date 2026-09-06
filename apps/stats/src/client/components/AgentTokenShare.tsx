@@ -10,7 +10,7 @@ import type { AgentType, AgentTypeStats } from "../types";
  */
 const AGENT_META: Record<AgentType, { label: string; color: string }> = {
 	main: { label: "Main agent", color: "#f0862e" },
-	subagent: { label: "Subagents", color: "#c6cbd4" },
+	spawn: { label: "Spawned agents", color: "#c6cbd4" },
 	advisor: { label: "Advisor", color: "#7fb98a" },
 };
 

@@ -582,11 +582,11 @@ export const TOOLS_SETTINGS = {
 		type: "number",
 		default: 120_000,
 		ui: {
-			tab: "subagents",
+			tab: "agents",
 			group: "Coordination",
 			label: "IRC Timeout",
 			description:
-				"Default timeout for irc wait (and send await:true) in milliseconds; 0 disables the timeout. IRC is how a parent and its subagents talk, which is why it is configured here.",
+				"Default timeout for irc wait (and send await:true) in milliseconds; 0 disables the timeout. IRC is how a parent and its agents talk, which is why it is configured here.",
 			options: [
 				{ value: "0", label: "Disabled" },
 				{ value: "30000", label: "30 seconds" },

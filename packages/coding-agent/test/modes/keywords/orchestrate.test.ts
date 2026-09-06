@@ -4,7 +4,7 @@
  *
  * WHY THE VERB ROWS EXIST. The trigger used to be `orchestrate`, which is a word
  * operators write all day, and the notice it appends tells the model to drive the
- * work as a multi-phase parallel subagent run and to override any tendency to do
+ * work as a multi-phase parallel agent run and to override any tendency to do
  * it inline. So "orchestrate the release" and even "do not orchestrate anything,
  * just fix it" changed how the turn ran, invisibly, because the notice does not
  * display. Those sentences are pinned here as NON-triggers.

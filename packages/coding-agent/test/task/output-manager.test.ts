@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { AgentOutputManager } from "@veyyon/coding-agent/task/output-manager";
 import { TempDir } from "@veyyon/utils";
 
-// Contract: subagent output ids are the requested name, used verbatim the first
+// Contract: agent output ids are the requested name, used verbatim the first
 // time and suffixed (`-2`, `-3`, …) only when the same name recurs. A parent
 // prefix nests ids under it. On resume the manager scans existing `.md` outputs
 // so it never reuses a name that would clobber a previously written output.
@@ -68,7 +68,7 @@ describe("AgentOutputManager", () => {
 
 	it("reserves the advisor transcript stem so a task can't clobber __advisor.jsonl", async () => {
 		const mgr = new AgentOutputManager(() => null);
-		// A subagent allocated `__advisor` would write `__advisor.jsonl`, colliding with
+		// An agent allocated `__advisor` would write `__advisor.jsonl`, colliding with
 		// the advisor transcript in the same artifacts dir; the stem is pre-reserved.
 		expect(await mgr.allocate("__advisor")).toBe("__advisor-2");
 		// Unrelated names sharing the prefix are unaffected.

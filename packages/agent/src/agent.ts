@@ -604,9 +604,9 @@ export class Agent {
 
 	/**
 	 * Read the active OpenTelemetry configuration. Returns `undefined` when
-	 * instrumentation is disabled. Callers spawning child runs (e.g. subagent
+	 * instrumentation is disabled. Callers spawning child runs (e.g. agent
 	 * dispatch) forward this to the child's loop so its spans appear under the
-	 * parent's active context with the subagent's own identity stamped.
+	 * parent's active context with the agent's own identity stamped.
 	 */
 	get telemetry(): AgentLoopConfig["telemetry"] | undefined {
 		return this.#telemetry;

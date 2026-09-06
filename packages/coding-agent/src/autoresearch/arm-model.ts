@@ -74,7 +74,7 @@ export function closeModels(spec: string, models: readonly { id: string; name: s
  * Put the session on the model configured for `arm` and remember what to return
  * to.
  *
- * An arm is built by the session model itself rather than by a subagent, so the
+ * An arm is built by the session model itself rather than by an agent, so the
  * only way one arm can differ from another in model is to switch the session
  * between them. The switch is announced rather than inferred: nothing else in
  * the loop knows which arm the next edit belongs to.

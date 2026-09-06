@@ -61,7 +61,7 @@
 - Discovery-mode gating:
   - `tools.discoveryMode = "auto"` (default): searches hidden discoverable built-ins and eligible first-party heavyweight local tools. It also hides and searches MCP tools when the registered tool set has more than 40 tools.
   - `tools.discoveryMode = "all"`: searches hidden discoverable built-ins, first-party heavyweight tools such as `generate_image`, and hidden MCP tools at every tool-set size.
-    - Two built-ins survive local hiding under `"auto"` and `"all"` because a request without them contradicts the prompt: `todo` when `todo.eager` is not `default` (a forced named tool_choice must reference a tool that is present, or the provider rejects the request), and `task` at `subagent.delegation` `preferred` or `required`. At `allowed` `task` is hidden like the rest and you activate it from here.
+    - Two built-ins survive local hiding under `"auto"` and `"all"` because a request without them contradicts the prompt: `todo` when `todo.eager` is not `default` (a forced named tool_choice must reference a tool that is present, or the provider rejects the request), and `task` at `agent.delegation` `preferred` or `required`. At `allowed` `task` is hidden like the rest and you activate it from here.
   - `tools.discoveryMode = "mcp-only"`: searches hidden MCP tools only.
   - legacy `mcp.discoveryMode = true`: same as MCP-only.
 - Search-index source:

@@ -32,7 +32,7 @@ Model configuration separates model selection from subsystem roles:
 
 - **The interactive model** is set with `/model` or `--model` and persists as `modelRoles.default`.
 - **Roles** pin a model to specific workloads, such as `smol` for lightweight operations or `advisor` for review. Custom roles are defined in `modelRoles`. See [Models, roles, and profiles](../using/roles-and-profiles.md).
-- **Overrides** are explicit subsystem policies. `compaction.model` overrides the interactive model for compaction, otherwise compaction inherits it. Subagent models are configured via subagent policies in settings.
+- **Overrides** are explicit subsystem policies. `compaction.model` overrides the interactive model for compaction, otherwise compaction inherits it. Agent models are configured via agent policies in settings.
 - **Cycling** rotates through `cycleOrder` (defaulting to `smol` then `slow`), bound to `app.model.cycleForward`.
 
 ## Provider-neutral loop
@@ -41,7 +41,7 @@ The agent loop, TUI, session format, MCP, skills, hooks, and extensions operate 
 
 ## Engine modes
 
-Compaction, goal continuation, plan mode, vibe mode, and task subagents live in the session and tool layer, not only in prompt text. Goal mode can keep an idle session moving toward a stored objective. Plan mode writes a plan file and holds back mutation until the resolve and approval paths complete.
+Compaction, goal continuation, plan mode, vibe mode, and task agents live in the session and tool layer, not only in prompt text. Goal mode can keep an idle session moving toward a stored objective. Plan mode writes a plan file and holds back mutation until the resolve and approval paths complete.
 
 ## Profiles
 

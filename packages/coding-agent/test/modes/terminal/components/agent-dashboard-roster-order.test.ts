@@ -10,7 +10,7 @@
  * pins that: heartbeats, activity updates and new spawns must all leave the
  * existing rows exactly where they were.
  *
- * WHY REFRESH IS A CONTRACT. A subagent starting emits several registry events
+ * WHY REFRESH IS A CONTRACT. An agent starting emits several registry events
  * in immediate succession. Repainting per event flickers the roster, so a burst
  * is coalesced into one repaint, and the rows that appear after it are the rows
  * the burst produced, not a stale snapshot.
@@ -98,7 +98,7 @@ describe("Roster order", () => {
 	 * fixed at registration, while every recency-based order rewrites itself every
 	 * time an agent breathes.
 	 */
-	test("lists the driving session first, then subagents oldest first", () => {
+	test("lists the driving session first, then agents oldest first", () => {
 		vi.useFakeTimers();
 		setSystemTime(1000);
 		registerSub("A", "alpha");

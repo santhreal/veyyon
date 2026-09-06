@@ -45,12 +45,12 @@ import { computeUserMessageMetrics } from "./user-metrics";
 /**
  * Classify which agent produced a transcript from its path within the sessions
  * directory. Layout: `<sessionsDir>/<project>/<file>.jsonl` is the `main`
- * agent; subagent and advisor transcripts live nested one level deeper inside
+ * agent; spawned agent and advisor transcripts live nested one level deeper inside
  * the session's artifacts dir (`<project>/<session>/<id>.jsonl`,
  * `<project>/<session>/__advisor.jsonl`). Any advisor transcript
  * (`__advisor.jsonl` or `__advisor.<slug>.jsonl`) — at any depth, including a
- * subagent's own advisor — counts as `advisor`; every other nested transcript
- * is a task `subagent`.
+ * spawned agent's own advisor — counts as `advisor`; every other nested transcript
+ * is a task spawn.
  */
 export function classifyAgentType(sessionPath: string): AgentType {
 	const base = path.basename(sessionPath);
@@ -58,8 +58,8 @@ export function classifyAgentType(sessionPath: string): AgentType {
 		return "advisor";
 	}
 	const rel = path.relative(getSessionsDir(), sessionPath);
-	// `<project>/<file>.jsonl` -> 2 segments. Deeper nesting is a subagent.
-	return rel.split(path.sep).length <= 2 ? "main" : "subagent";
+	// `<project>/<file>.jsonl` -> 2 segments. Deeper nesting is a spawned agent.
+	return rel.split(path.sep).length <= 2 ? "main" : "spawn";
 }
 
 /**

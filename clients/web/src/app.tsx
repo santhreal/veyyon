@@ -141,7 +141,7 @@ function Session({ client, onLeave, onRejoin }: SessionProps): ReactNode {
 		[agentIds],
 	);
 
-	// Auto-open the rail the first time a subagent appears.
+	// Auto-open the rail the first time an agent appears.
 	useEffect(() => {
 		if (subCount > 0 && !autoOpenedRef.current) {
 			autoOpenedRef.current = true;

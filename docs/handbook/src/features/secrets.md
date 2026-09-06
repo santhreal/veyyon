@@ -792,7 +792,7 @@ Nothing important goes only to the log file. That was the previous behaviour and
 
 The provider boundary is applied again whenever a local transcript is sent. Resuming a session can restore placeholders for display without giving the resumed raw text a path back to the provider.
 
-Changing the working directory is transactional. Veyyon loads the destination runtime before committing the move, and restores both the old directory and old runtime if loading fails. A resumed session or persisted subagent starts from its recorded directory before loading project-scoped secrets.
+Changing the working directory is transactional. Veyyon loads the destination runtime before committing the move, and restores both the old directory and old runtime if loading fails. A resumed session or persisted agent starts from its recorded directory before loading project-scoped secrets.
 
 ## What this does not protect
 

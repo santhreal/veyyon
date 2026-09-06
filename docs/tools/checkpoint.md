@@ -31,8 +31,8 @@ The tool returns a single text result plus structured details:
 No checkpoint ID, artifact URI, job handle, file path, or restore token is returned.
 
 ## Flow
-1. `CheckpointTool.createIf()` in `packages/coding-agent/src/tools/fs/checkpoint.ts` returns `null` for subagents by checking `session.taskDepth`; only top-level sessions can see the tool.
-2. `CheckpointTool.execute()` rejects subagent calls again with `ToolError("Checkpoint not available in subagents.")`.
+1. `CheckpointTool.createIf()` in `packages/coding-agent/src/tools/fs/checkpoint.ts` returns `null` for agents by checking `session.taskDepth`; only top-level sessions can see the tool.
+2. `CheckpointTool.execute()` rejects agent calls again with `ToolError("Checkpoint not available in agents.")`.
 3. It rejects nested checkpoints with `ToolError("Checkpoint already active.")` when `session.getCheckpointState?.()` is already set.
 4. It creates `startedAt = new Date().toISOString()` and returns a normal `toolResult()` payload. The tool itself does not persist anything.
 5. On the checkpoint tool result's `message_end` event, `AgentSession` in `packages/coding-agent/src/session/agent-session.ts` detects successful `checkpoint` execution and captures three in-memory fields:
@@ -64,7 +64,7 @@ You are in an active checkpoint. You MUST call rewind with your investigation fi
 - Session persistence still applies to the ordinary checkpoint tool call message. Global session persistence truncation is `MAX_PERSIST_CHARS = 500_000` in `kernel/src/session/session-persistence.ts`.
 
 ## Errors
-- `ToolError("Checkpoint not available in subagents.")`: thrown for subagent sessions.
+- `ToolError("Checkpoint not available in agents.")`: thrown for agent sessions.
 - `ToolError("Checkpoint already active.")`: thrown when a prior checkpoint has not been rewound or cleared.
 - The tool body has no local `try/catch`; unexpected exceptions propagate.
 

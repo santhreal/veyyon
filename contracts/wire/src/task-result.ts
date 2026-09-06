@@ -1,5 +1,5 @@
 /**
- * The `<task-result>` envelope a finished subagent returns, and how to read a human
+ * The `<task-result>` envelope a finished agent returns, and how to read a human
  * preview out of it.
  *
  * The envelope is written by `packages/coding-agent/src/prompts/tools/task-summary.md`

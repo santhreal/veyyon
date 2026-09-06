@@ -20,7 +20,7 @@
  *
  * WHY IT NAMES `veyyon auth-broker login` AND NOT `/login`. `/login` is
  * TUI-only: it opens the account manager card via `showLogin`, which an ACP client, `-p`, `veyyon
- * commit` and a subagent's tool result cannot reach. Six of the nine throw
+ * commit` and a spawned agent's tool result cannot reach. Six of the nine throw
  * sites are reachable headlessly, and a message that names a remedy its reader
  * cannot perform costs more than one that names none. `veyyon auth-broker
  * login <provider>` drives the same OAuth flow over readline and persists into

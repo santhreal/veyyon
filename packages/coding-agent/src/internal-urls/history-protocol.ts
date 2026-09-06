@@ -6,8 +6,8 @@
  * retained) load read-only from the JSONL session file — no writer, no lock.
  *
  * Agents that are no longer in the `AgentRegistry` — one-shot helpers
- * unregistered after `finalizeSubagentLifecycle` (`keepAlive: false`, e.g. the
- * `eval` `agent()` bridge), agents released via the subagent dashboard / vibe kill, or
+ * unregistered after `finalizeAgentLifecycle` (`keepAlive: false`, e.g. the
+ * `eval` `agent()` bridge), agents released via the agent dashboard / vibe kill, or
  * any agent after a session resume — remain reachable: `resolve`, `complete`,
  * and the index all fall back to scanning artifacts dirs for `<id>.jsonl`,
  * mirroring how `agent://` reads `.md` outputs straight off disk.
@@ -79,7 +79,7 @@ export class HistoryProtocolHandler implements ProtocolHandler {
 					`Read the transcript from the session that spawned the agent, or open its session file directly.`,
 			);
 		}
-		// Advisor transcripts are observability-only — surfaced in the subagent dashboard, never
+		// Advisor transcripts are observability-only — surfaced in the agent dashboard, never
 		// in the agent-facing roster. Hide them from the index, lookup, and completions.
 		const visible = registry.list().filter(ref => ref.kind !== "advisor");
 

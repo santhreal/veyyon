@@ -3,8 +3,8 @@
  *
  * WHY THIS SUITE EXISTS. `AgentRef` is written once, by `register`, and the
  * driving session was wired to nothing after that: `task/executor.ts` reports a
- * subagent's status and activity, `persisted-revive.ts` reports a revived one's,
- * and no caller reported the main agent's. So its subagent dashboard row was
+ * agent's status and activity, `persisted-revive.ts` reports a revived one's,
+ * and no caller reported the main agent's. So its agent dashboard row was
  * frozen at process start — it named the model the process booted on however
  * many times the operator had switched since, and its age counted from the
  * process rather than from the work. A session a day old, mid-turn, on a model
@@ -18,7 +18,7 @@
  * `setModel`, `setModelTemporary`, `cycleModel`, the retry fallback and the
  * overflow promotion is covered by construction rather than by a call site.
  *
- * WHAT IT DOES NOT CATCH. The dashboard's own preference for a subagent's
+ * WHAT IT DOES NOT CATCH. The dashboard's own preference for an agent's
  * executor-reported selector (`agent-dashboard-model-badge.test.ts` owns that),
  * and the rendering of the age string (`agent-dashboard-age-ticker.test.ts`).
  * This suite is about what the roster row is handed.

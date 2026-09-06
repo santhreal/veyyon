@@ -85,6 +85,11 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 		const blockZero = systemPrompt[0] as string;
 
 		expect({ sha: sha(blockZero), length: blockZero.length }).toEqual({
+			// Updated 2026-09-06, deliberately: `eaca56aa5c352dfe` / 10_743 ->
+			// `909a57db336489da` / 10_748 (+5).
+			//
+			// WHAT THE +5 IS. Vocabulary rename subagent -> agent across system prompt statements.
+			//
 			// Updated 2026-08-23, deliberately: `202098222aec1f01` / 10_413 ->
 			// `eaca56aa5c352dfe` / 10_743 (+330).
 			//
@@ -161,7 +166,7 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 			// deliverable is complete" and "NEVER punt half-solved work back" as redundant against
 			// "the `<critical>` line saying there is no stopping condition other than completion".
 			// That line is not in `<critical>` and never was: it lives in `prompts/session/
-			// project-prompt.md`, which is the SUBAGENT prompt. So the main-session prompt lost both
+			// project-prompt.md`, which is the AGENT prompt. So the main-session prompt lost both
 			// prohibitions and gained nothing, and the justification named text that does not render
 			// here. `packages/coding-agent/test/system-prompt-never-stops-early.test.ts` now asserts
 			// each restored line against the composed bytes, so the next trim has to argue with an
@@ -176,7 +181,7 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 			// NOT the delegation gating, which is the change this digest looks like it should be. The
 			// fixture grants `toolNames: ["read","write","bash"]` and therefore no `task` tool, so the
 			// whole delegation section is closed in this render: block 0 is byte-identical with and
-			// without `subagentNames`, measured both ways at this digest. A future change to delegation
+			// without `agentNames`, measured both ways at this digest. A future change to delegation
 			// prose will not move this number, and if it does, something is rendering that section
 			// unconditionally.
 			//
@@ -188,8 +193,8 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 			//
 			// The one-time cost this gate exists to surface is real and was accepted:
 			// every conversation re-reads its prefix once after the release.
-			sha: "eaca56aa5c352dfe",
-			length: 10_743,
+			sha: "909a57db336489da",
+			length: 10_748,
 		});
 	});
 
@@ -198,20 +203,20 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 	 * failure of it as "the shared prompt text changed".
 	 *
 	 * This exists because the digest bump beside it was misdiagnosed for exactly this reason. The
-	 * delegation section had just been put behind `hasSpawnableSubagent`, and a 731-byte drop in
+	 * delegation section had just been put behind `hasSpawnableAgent`, and a 731-byte drop in
 	 * block 0 is about the size of that section, so the gating looked like the obvious cause and was
 	 * not. `fixedOptions()` grants no `task` tool, so the section is closed no matter what the
-	 * subagent configuration says, and the bytes came from the redundancy trim instead.
+	 * agent configuration says, and the bytes came from the redundancy trim instead.
 	 *
 	 * Pinning it turns that measurement into a standing fact. If someone renders delegation prose
 	 * unconditionally, or moves it out from behind the task-tool gate, this fails and names the
 	 * reason rather than leaving the next reader to re-derive it from a digest that moved.
 	 */
-	it("renders an identical block 0 whether or not subagents are configured", async () => {
+	it("renders an identical block 0 whether or not agents are configured", async () => {
 		const bare = await buildSystemPrompt(fixedOptions());
 		const withAgents = await buildSystemPrompt({
 			...fixedOptions(),
-			subagentNames: ["task", "scout"],
+			agentNames: ["task", "scout"],
 		} as BuildOptions);
 
 		const blockZero = bare.systemPrompt[0] as string;
@@ -293,7 +298,7 @@ describe("one banner grammar reaches the model", () => {
 	 * Every banner in every shipped prompt is underlined the same way.
 	 *
 	 * Three widths used to ship: 14 in `session/system-prompt.md`, 35 in
-	 * `subagent/system-prompt.md`, and 35 again from the assembler, which pasted
+	 * `agent/system-prompt.md`, and 35 again from the assembler, which pasted
 	 * `"=".repeat(33)` onto a registry field ending in `==`. So one system prompt
 	 * showed the model 14-wide banners for its template sections and 35-wide ones
 	 * for its runtime sections, with the width owned in three places and written

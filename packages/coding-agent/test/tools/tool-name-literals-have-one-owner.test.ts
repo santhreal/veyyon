@@ -177,11 +177,11 @@ describe("what the constant must not change", () => {
 	});
 
 	/**
-	 * `subagent.output: "yield"` is a SETTING VALUE that happens to share a spelling with the tool.
-	 * It selects how a subagent reports, not which tool exists, and folding the two together would
+	 * `agent.output: "yield"` is a SETTING VALUE that happens to share a spelling with the tool.
+	 * It selects how an agent reports, not which tool exists, and folding the two together would
 	 * mean renaming the tool silently changed a user's configuration file.
 	 */
-	it("leaves the subagent.output yield VALUE a literal", () => {
+	it("leaves the agent.output yield VALUE a literal", () => {
 		const providers = read("config/settings-domains/providers.ts");
 
 		expect(providers).toContain('"yield"');

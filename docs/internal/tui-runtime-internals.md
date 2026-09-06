@@ -34,13 +34,13 @@ Boundary rule: the TUI engine is message-agnostic. It only knows `Component.rend
 - `chatContainer` (a `TranscriptContainer`)
 - `pendingMessagesContainer`
 - `todoContainer`
-- `subagentContainer`
+- `agentContainer`
 - `btwContainer`
 - `omfgContainer`
 - `errorBannerContainer`
 - `modelCycleContainer` (ctrl+p model-role cycle chip track)
 - a bottom-anchor fill spacer (sinks the status + composer block to the viewport bottom on the home screen)
-- `statusContainer` (transient loaders; sits below the sticky todo/subagent HUDs, above the editor)
+- `statusContainer` (transient loaders; sits below the sticky todo/agent HUDs, above the editor)
 - `statusLine` (hook statuses only; quiet status renders around the composer)
 - `hookWidgetContainerAbove`
 - the location line and composer hairline

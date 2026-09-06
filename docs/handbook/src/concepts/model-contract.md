@@ -143,14 +143,14 @@ under `modelRoles`:
 
 - `modelRoles.tiny` (or `smol`): lightweight background work (titles, memory, auto-thinking).
 
-Subagent models are not roles. They live in the Subagents settings area, on two exclusive scopes.
-With **Same Model for All Subagents** off, the first of these names the model: that agent's row in
-`subagent.agents`, then the agent definition's own `model:`, otherwise the `default` model role.
-With it on, `subagent.model` names it for every agent and the rows above are not read. There is no
+Agent models are not roles. They live in the Agents settings area, on two exclusive scopes.
+With **Same Model for All Agents** off, the first of these names the model: that agent's row in
+`agent.agents`, then the agent definition's own `model:`, otherwise the `default` model role.
+With it on, `agent.model` names it for every agent and the rows above are not read. There is no
 silent blend, and a configured value that matches no available model rejects the spawn instead of
 quietly handing the decision to the next layer. `/agents` shows the resolved model and which
 setting decided.
-See [Settings: Subagents](../reference/settings.md#subagents) and
+See [Settings: Agents](../reference/settings.md#agents) and
 [Models, roles, and profiles](../using/roles-and-profiles.md).
 
 ## Automation note

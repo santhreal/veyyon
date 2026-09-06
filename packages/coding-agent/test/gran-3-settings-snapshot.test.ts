@@ -5,7 +5,7 @@
  * Why this suite exists:
  *   The session recorded model/thinking/tier/mode CHANGES but never the FULL
  *   effective settings that governed a run (compaction strategy, reserve tokens,
- *   advisor/subagent config, tool config, every Tier-A knob). A backtest could not
+ *   advisor/agent config, tool config, every Tier-A knob). A backtest could not
  *   reproduce behavior because the config that produced it was not in the record.
  *   The user named this a co-equal pillar: "the session file AND the settings for
  *   the levels of richness." A `settings_snapshot` entry captures every resolved
@@ -31,7 +31,7 @@ import type { SettingsSnapshotEntry } from "@veyyon/kernel/session/session-entri
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 
-const KNOWN_PATH = "subagent.maxConcurrency";
+const KNOWN_PATH = "agent.maxConcurrency";
 const KNOWN_VALUE = 7;
 
 function assistantMessage(text: string) {

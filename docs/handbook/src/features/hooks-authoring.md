@@ -257,7 +257,7 @@ export default function contextFilter(veyyon: HookAPI): void {
 
 Pass `{ promptStyle: true }` as the fourth argument when Enter should submit and Shift+Enter should insert a newline. The default hook editor behavior keeps Enter as newline and submits on the `app.message.followUp` chord (`Ctrl+Q` or `Ctrl+Enter`).
 
-`ctx.hasUI` is `false` in headless/print/subagent mode, always guard interactive calls.
+`ctx.hasUI` is `false` in headless/print/agent mode, always guard interactive calls.
 
 ## Further reading
 
