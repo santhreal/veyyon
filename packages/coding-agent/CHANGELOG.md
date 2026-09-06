@@ -42,6 +42,9 @@
 
 ### Changed
 
+- Interactive chat and the transcript viewer use one replay implementation without changing displayed content or live-tool lifecycle.
+- Settings group types derive from the settings schema while preserving their existing optional fields and value types.
+- JSON tree projections share bounded traversal, and code and Markdown cells share output assembly, with unchanged rendering.
 - Handbook HTML and search assets are generated during documentation and website builds instead of being tracked in Git.
 - Startup reads setting-change signals and terminal formatting without constructing the settings store or unrelated tool modules.
 - The terminal host constructs autoresearch screens and styled slash-command reports; headless command execution no longer imports those terminal components.
@@ -153,6 +156,7 @@
 
 ### Fixed
 
+- Custom tools retain their declared call and result views when converted into extension tool definitions.
 - Terminal tool cards shorten home-directory paths and replace tabs in metadata, notices, code, diffs, and generic argument previews before width fitting.
 - Failed task results without agent details retain error text styling.
 - Launch model context estimates exclude project context and clamp the remaining percentage to zero.

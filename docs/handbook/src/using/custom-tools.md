@@ -171,6 +171,12 @@ Tool definitions may also declare `strict`, `hidden`, `deferrable`, `mcpServerNa
 
 ## Rendering hooks
 
+For host-independent cards, set `view.renderCall`, `view.renderResult`, or both on
+the tool definition. These callbacks return `ToolView` values from `@veyyon/view`.
+Custom-tool adaptation and conversion to an extension definition preserve both
+callbacks. Terminal-specific `renderCall` and `renderResult` hooks take precedence
+over the corresponding `view` callback when both are declared.
+
 Optional rendering hooks:
 
 - `renderCall(args, options, theme)`

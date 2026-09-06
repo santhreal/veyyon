@@ -64,6 +64,21 @@ export interface CodeCellOptions {
 	codeLineNumbers?: Array<number | null>;
 }
 
+export interface MarkdownCellOptions {
+	content: string;
+	index?: number;
+	total?: number;
+	title?: string;
+	status?: "pending" | "running" | "warning" | "complete" | "error";
+	spinnerFrame?: number;
+	duration?: number;
+	output?: string;
+	outputMaxLines?: number;
+	contentMaxLines?: number;
+	expanded?: boolean;
+	width: number;
+}
+
 function getState(status?: CodeCellOptions["status"]): State | undefined {
 	if (!status) return undefined;
 	if (status === "complete") return "success";
@@ -73,8 +88,10 @@ function getState(status?: CodeCellOptions["status"]): State | undefined {
 	return "pending";
 }
 
-function formatHeader(options: CodeCellOptions, theme: Theme): { title: string; meta?: string } {
-	const { index, total, title, status, spinnerFrame, duration, language, showLanguage } = options;
+function formatHeader(options: CodeCellOptions | MarkdownCellOptions, theme: Theme): { title: string; meta?: string } {
+	const { index, total, title, status, spinnerFrame, duration } = options;
+	const language = "language" in options ? options.language : undefined;
+	const showLanguage = "showLanguage" in options ? options.showLanguage : undefined;
 	const parts: string[] = [];
 	if (showLanguage && language) {
 		const langIcon = theme.getLangIconStyled(language);
@@ -124,27 +141,53 @@ function formatHeader(options: CodeCellOptions, theme: Theme): { title: string; 
  * Splits on `\n` and returns the cleaned lines.
  */
 function sanitizeTerminalLines(text: string): string[] {
-	return text.split(/\r?\n/).map(collapseCarriageReturns);
+	return text.split(/\r?\n/).map(line => {
+		const idx = line.lastIndexOf("\r");
+		return idx < 0 ? line : line.slice(idx + 1);
+	});
 }
 
-function collapseCarriageReturns(line: string): string {
-	const idx = line.lastIndexOf("\r");
-	return idx < 0 ? line : line.slice(idx + 1);
+function formatOutputLines(
+	output: string | undefined,
+	expanded: boolean,
+	outputMaxLines: number,
+	theme: Theme,
+): string[] {
+	if (!output?.trim()) return [];
+	const rawLines = sanitizeTerminalLines(output);
+	const maxLines = Math.min(rawLines.length, expanded ? EXPANDED_MAX_LINES : outputMaxLines);
+	const displayLines = rawLines
+		.slice(0, maxLines)
+		.map(line => (line.includes("\x1b[") ? replaceTabs(line) : theme.fg("toolOutput", replaceTabs(line))));
+	const remaining = rawLines.length - maxLines;
+	if (remaining > 0) {
+		const hint = formatExpandHint(theme, expanded, true);
+		const moreLine = `${formatMoreItems(remaining, "line")}${hint ? ` ${hint}` : ""}`;
+		displayLines.push(theme.fg("dim", moreLine));
+	}
+	return displayLines;
 }
-export function renderCodeCell(options: CodeCellOptions, theme: Theme): string[] {
-	const {
-		code,
-		language,
-		output,
-		expanded = false,
-		outputMaxLines = 6,
-		codeMaxLines = 12,
-		width,
-		codeStartLine,
-		codeLineNumbers,
-	} = options;
+
+function renderCellBlock(
+	options: CodeCellOptions | MarkdownCellOptions,
+	contentLines: string[],
+	theme: Theme,
+): string[] {
+	const { output, outputMaxLines = 6, expanded = false, width } = options;
 	const { title, meta } = formatHeader(options, theme);
 	const state = getState(options.status);
+	const outputLines = formatOutputLines(output, expanded, outputMaxLines, theme);
+
+	const sections: Array<{ label?: string; lines: string[] }> = [{ lines: contentLines }];
+	if (outputLines.length > 0) {
+		sections.push({ label: theme.fg("toolTitle", "Output"), lines: outputLines });
+	}
+
+	return renderOutputBlock({ header: title, headerMeta: meta, state, sections, width }, theme);
+}
+
+export function renderCodeCell(options: CodeCellOptions, theme: Theme): string[] {
+	const { code, language, expanded = false, codeMaxLines = 12, codeStartLine, codeLineNumbers } = options;
 
 	const normalizedCode = replaceTabs(code ?? "");
 	const rawCodeLines = sanitizeTerminalLines(normalizedCode);
@@ -196,60 +239,11 @@ export function renderCodeCell(options: CodeCellOptions, theme: Theme): string[]
 		}
 	}
 
-	const outputLines: string[] = [];
-	if (output?.trim()) {
-		const rawLines = sanitizeTerminalLines(output);
-		const maxLines = Math.min(rawLines.length, expanded ? EXPANDED_MAX_LINES : outputMaxLines);
-		const displayLines = rawLines
-			.slice(0, maxLines)
-			.map(line => (line.includes("\x1b[") ? replaceTabs(line) : theme.fg("toolOutput", replaceTabs(line))));
-		outputLines.push(...displayLines);
-		const remaining = rawLines.length - maxLines;
-		if (remaining > 0) {
-			const hint = formatExpandHint(theme, expanded, remaining > 0);
-			const moreLine = `${formatMoreItems(remaining, "line")}${hint ? ` ${hint}` : ""}`;
-			outputLines.push(theme.fg("dim", moreLine));
-		}
-	}
-
-	const sections: Array<{ label?: string; lines: string[] }> = [{ lines: codeLines }];
-	if (outputLines.length > 0) {
-		sections.push({ label: theme.fg("toolTitle", "Output"), lines: outputLines });
-	}
-
-	return renderOutputBlock({ header: title, headerMeta: meta, state, sections, width }, theme);
-}
-
-export interface MarkdownCellOptions {
-	content: string;
-	index?: number;
-	total?: number;
-	title?: string;
-	status?: "pending" | "running" | "warning" | "complete" | "error";
-	spinnerFrame?: number;
-	duration?: number;
-	output?: string;
-	outputMaxLines?: number;
-	contentMaxLines?: number;
-	expanded?: boolean;
-	width: number;
+	return renderCellBlock(options, codeLines, theme);
 }
 
 export function renderMarkdownCell(options: MarkdownCellOptions, theme: Theme): string[] {
-	const { content, output, expanded = false, outputMaxLines = 6, contentMaxLines = 12, width } = options;
-	const codeOptions: CodeCellOptions = {
-		code: "",
-		index: options.index,
-		total: options.total,
-		title: options.title,
-		status: options.status,
-		spinnerFrame: options.spinnerFrame,
-		duration: options.duration,
-		width,
-	};
-	const { title, meta } = formatHeader(codeOptions, theme);
-	const state = getState(options.status);
-
+	const { content, expanded = false, contentMaxLines = 12, width } = options;
 	// Markdown component manages its own wrapping at the inner content width.
 	// `renderOutputBlock` spends 3 columns on the left: the rail, the space after it,
 	// and one column of content padding.
@@ -264,26 +258,5 @@ export function renderMarkdownCell(options: MarkdownCellOptions, theme: Theme): 
 		contentLines.push(theme.fg("dim", moreLine));
 	}
 
-	const outputLines: string[] = [];
-	if (output?.trim()) {
-		const rawLines = sanitizeTerminalLines(output);
-		const maxLines = Math.min(rawLines.length, expanded ? EXPANDED_MAX_LINES : outputMaxLines);
-		const displayLines = rawLines
-			.slice(0, maxLines)
-			.map(line => (line.includes("\x1b[") ? replaceTabs(line) : theme.fg("toolOutput", replaceTabs(line))));
-		outputLines.push(...displayLines);
-		const remaining = rawLines.length - maxLines;
-		if (remaining > 0) {
-			const hint = formatExpandHint(theme, expanded, remaining > 0);
-			const moreLine = `${formatMoreItems(remaining, "line")}${hint ? ` ${hint}` : ""}`;
-			outputLines.push(theme.fg("dim", moreLine));
-		}
-	}
-
-	const sections: Array<{ label?: string; lines: string[] }> = [{ lines: contentLines }];
-	if (outputLines.length > 0) {
-		sections.push({ label: theme.fg("toolTitle", "Output"), lines: outputLines });
-	}
-
-	return renderOutputBlock({ header: title, headerMeta: meta, state, sections, width }, theme);
+	return renderCellBlock(options, contentLines, theme);
 }

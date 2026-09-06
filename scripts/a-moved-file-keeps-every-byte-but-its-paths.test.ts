@@ -6,15 +6,15 @@
  *
  * THE CLASS THIS CLOSES. A moved file whose content changed without anybody saying so.
  *
- * All derivable move rows (3574 unchanged files and 774 import-only files) are enumerated and verified
+ * All derivable move rows (3574 unchanged files and 773 import-only files) are enumerated and verified
  * directly from the immutable pinned Git baseline object store (`aa14e0da82494dac5a06d240180cec88038a105f`).
- * Real approved deviations (456 files) are recorded in the sparse ledger with exact cryptographic hashes,
+ * Real approved deviations (457 files) are recorded in the sparse ledger with exact cryptographic hashes,
  * group classifications, and justifications.
  *
  * Three buckets are verified against exact pinned totals:
  *   `none`                      -- 3574 files: byte-identical once path renames are applied.
- *   `imports-and-comments-only` -- 774 files: identical in every line that is not a comment or import.
- *   `changed`                   -- 456 files: content really changed, carrying an approved group and reason.
+ *   `imports-and-comments-only` -- 773 files: identical in every line that is not a comment or import.
+ *   `changed`                   -- 457 files: content really changed, carrying an approved group and reason.
  *
  * READING BYTES IS THE SUBJECT HERE, NOT A SOURCE GREP. The banned pattern asserts on the prose or
  * shape of an implementation; this compares a file against a recorded measurement of the same file,
@@ -90,11 +90,11 @@ describe("a moved file keeps every byte but its paths", () => {
 		expect(ledger.generatedFrom).toBe(PINNED_BASELINE_COMMIT);
 		expect(ledger.counts.total).toBe(4804);
 		expect(ledger.counts.none).toBe(3574);
-		expect(ledger.counts.importsAndCommentsOnly).toBe(774);
-		expect(ledger.counts.changed).toBe(456);
+		expect(ledger.counts.importsAndCommentsOnly).toBe(773);
+		expect(ledger.counts.changed).toBe(457);
 		expect(ledger.counts.binary).toBe(ledger.counts.binary);
 		expect(ledger.counts.binary).toBeGreaterThanOrEqual(18);
-		expect(Object.keys(ledger.changed).length).toBe(456);
+		expect(Object.keys(ledger.changed).length).toBe(457);
 		expect(rewrites.length).toBeGreaterThan(50);
 	});
 
@@ -186,14 +186,14 @@ describe("a moved file keeps every byte but its paths", () => {
 		expect(unapproved).toEqual([]);
 		expect(drifted).toEqual([]);
 		expect(counts.none).toBe(3574);
-		expect(counts.importsAndCommentsOnly).toBe(774);
-		expect(counts.changed).toBe(456);
+		expect(counts.importsAndCommentsOnly).toBe(773);
+		expect(counts.changed).toBe(457);
 		expect(counts.total).toBe(4804);
 	});
 
 	it("explains every file whose content really changed and verifies fingerprints", async () => {
 		const changedEntries = Object.entries(ledger.changed);
-		expect(changedEntries.length).toBe(456);
+		expect(changedEntries.length).toBe(457);
 		const baselineBlobs = await batchReadGitBlobs(
 			changedEntries.map(([, record]) => `${ledger.generatedFrom}:${record.old}`),
 			REPO_ROOT,
@@ -546,10 +546,10 @@ describe("a moved file keeps every byte but its paths", () => {
 		const expanded = loadExpandedMoveEquivalenceLedger(sparse);
 		expect(expanded.counts.total).toBe(4804);
 		expect(expanded.counts.none).toBe(3574);
-		expect(expanded.counts.importsAndCommentsOnly).toBe(774);
-		expect(expanded.counts.changed).toBe(456);
+		expect(expanded.counts.importsAndCommentsOnly).toBe(773);
+		expect(expanded.counts.changed).toBe(457);
 		expect(expanded.counts.binary).toBe(26);
-		expect(Object.keys(expanded.changed).length).toBe(456);
+		expect(Object.keys(expanded.changed).length).toBe(457);
 		expect(expanded.rewrites.length).toBe(157);
 		expect(Object.keys(expanded.importAttributes).length).toBe(92);
 		const measured = await generateSparseLedger();

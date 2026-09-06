@@ -5,8 +5,8 @@
 	"counts": {
 		"total": 4804,
 		"none": 3574,
-		"importsAndCommentsOnly": 774,
-		"changed": 456,
+		"importsAndCommentsOnly": 773,
+		"changed": 457,
 		"binary": 26
 	},
 	"deviations": {
@@ -34,6 +34,12 @@
 			"hash": "5548773909db6c3c09357414eef062951ca1b19ef19cd62000c5ed49b190d7bb",
 			"structuralHash": "d596b722e494356430156e67a305b028c6f770885577236edb089f571e9b5cf1"
 		},
+		"packages/coding-agent/src/modes/terminal/components/dashboard/agent-transcript-viewer.ts": {
+			"old": "packages/coding-agent/src/modes/components/agent-transcript-viewer.ts",
+			"group": "host-boundary",
+			"hash": "95317492d52292a4ced2ca2304aa32d2877abe4e47daeb67d8f75037829c2435",
+			"structuralHash": "76cdfa2751f989f5627e794babe6b3aaa0f7e2f485daba3bacdc4ca2591721b3"
+		},
 		"packages/coding-agent/src/modes/terminal/components/dialogs/login-dialog.ts": {
 			"old": "packages/coding-agent/src/modes/components/login-dialog.ts",
 			"group": "host-boundary",
@@ -58,11 +64,23 @@
 			"hash": "abe8646cf3decf42a942ed869d5d784f715a515bd0b2b227e642e885864b67c5",
 			"structuralHash": "991e70d887d18c4b413c580751356376c45e80942fdd1dc4fd087aeda61e543e"
 		},
+		"packages/coding-agent/src/modes/terminal/components/transcript/chat-transcript-builder.ts": {
+			"old": "packages/coding-agent/src/modes/components/chat-transcript-builder.ts",
+			"group": "host-boundary",
+			"hash": "f76309e171bd38b7480c61c5ff4e039dff49a69a3bd21420d63e39782af4f02e",
+			"structuralHash": "1f2720e8b4b51127cd32f4cfe943d17fbd22351cf416fdf5f101b61d1c7c10d0"
+		},
 		"packages/coding-agent/src/modes/terminal/controllers/extension-ui-controller.ts": {
 			"old": "packages/coding-agent/src/modes/controllers/extension-ui-controller.ts",
 			"group": "host-boundary",
 			"hash": "55fbcffcb87d2f5db25ac1902c610baef28d0540e81b7316eeabf33273bf62ac",
 			"structuralHash": "85b0c254e2ab583f41e6d8a2c905a35a49cc376373a9b1ae38202e5529fca947"
+		},
+		"packages/coding-agent/src/modes/terminal/draw/code-cell.ts": {
+			"old": "packages/coding-agent/src/tui/code-cell.ts",
+			"group": "host-boundary",
+			"hash": "952f06165a5ec5606146b750957c1008af2eb74dddc7b544c269b7dafc027bd9",
+			"structuralHash": "9a58c6a9c6146200c4df41de487f3908b913e0850d5d64a8913d7274f593a65f"
 		},
 		"packages/coding-agent/src/modes/terminal/first-frame.ts": {
 			"old": "packages/coding-agent/src/modes/first-frame.ts",
@@ -75,6 +93,12 @@
 			"group": "host-boundary",
 			"hash": "8cf12e5af7c06379d971a71115f240736113f77a2bcab3ce443c13c0e54f22e7",
 			"structuralHash": "2382d9914b4e16614a728bbb113d01cf16a37ee20ec38b501232cf22ce6b1f8b"
+		},
+		"packages/coding-agent/src/modes/terminal/utils/ui-helpers.ts": {
+			"old": "packages/coding-agent/src/modes/utils/ui-helpers.ts",
+			"group": "host-boundary",
+			"hash": "0e564da8feb9478e704f7e4d06a054a6dbb5fe0ba72ccba6a22f9ebb405c825a",
+			"structuralHash": "3c66ac26010e7b9b09800e7d5c6a5dc67c58798fb88815fbca2016a6c1c7f3bf"
 		},
 		"packages/coding-agent/src/tools/agent/learn.ts": {
 			"old": "packages/coding-agent/src/tools/learn.ts",
@@ -105,6 +129,12 @@
 			"group": "view-conversion",
 			"hash": "563ef3e0e2f15fc9d00e94606a917e264c893db4f31ece0f975365f7c85f52f0",
 			"structuralHash": "88de0a2233bbe0d7bfa10c54fdc893fc2a4a2fce696272567a7125eab09fd849"
+		},
+		"packages/coding-agent/src/tools/core/json-tree-render.ts": {
+			"old": "packages/coding-agent/src/tools/json-tree.ts",
+			"group": "json-walk-split",
+			"hash": "6aacb7ae929356d085ee049122c8dc5a559eccd4ed688ac47103976a5dc62897",
+			"structuralHash": "3488b956a263675381478698de766172cba337793a7988dd2e09a9aefd09316e"
 		},
 		"packages/coding-agent/src/tools/core/render-limits.ts": {
 			"old": "packages/coding-agent/src/tools/render-limits.ts",

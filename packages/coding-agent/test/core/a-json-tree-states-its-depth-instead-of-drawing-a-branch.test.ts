@@ -179,4 +179,49 @@ describe("a json tree states its depth instead of drawing a branch", () => {
 			}
 		}
 	});
+
+	it("bounds container closers and multiline continuation rows in both projections", async () => {
+		await initTheme();
+		const values = [
+			{ node: [] },
+			{ node: {} },
+			{ node: { child: 1 } },
+			"one\ntwo\nthree",
+			{ node: "one\ntwo\nthree" },
+		];
+		for (const value of values) {
+			for (const maxLines of [0, 1, 2]) {
+				const bounds = { ...BOUNDS, maxDepth: 1, maxLines };
+				const view = jsonTreeViewLines(value, bounds);
+				const terminal = renderJsonTreeLines(value, theme, bounds.maxDepth, maxLines, bounds.maxScalarLen);
+				expect(view.lines.length).toBeLessThanOrEqual(maxLines);
+				expect(terminal.lines.length).toBeLessThanOrEqual(maxLines);
+				expect(view.truncated).toBe(true);
+				expect(terminal.truncated).toBe(true);
+			}
+		}
+	});
+
+	it("preserves each projection's empty-object depth precedence", async () => {
+		await initTheme();
+		const value = { node: {} };
+		expect(lines(value, { maxDepth: 1 })).toEqual(["icon.folder node", "  {}"]);
+		expect(renderJsonTreeLines(value, theme, 1, 200, 80).lines.map(plainLabels)).toEqual(["node", "…"]);
+	});
+
+	it("preserves own view keys and inherited terminal keys", async () => {
+		await initTheme();
+		const value = Object.assign(Object.create({ inherited: 3 }), { constructor: 1, own: 2 });
+		expect(lines(value)).toEqual(["icon.file constructor: 1", "icon.file own: 2"]);
+		expect(renderJsonTreeLines(value, theme, 6, 200, 80).lines.map(plainLabels)).toEqual(["own: 2", "inherited: 3"]);
+	});
+
+	it("keeps multiline view text raw while replacing terminal tabs", async () => {
+		await initTheme();
+		const value = { node: "a\tb\nc\td" };
+		expect(lines(value)).toEqual(['icon.file node: "a\tb', '  c\td"']);
+		const terminal = renderJsonTreeLines(value, theme, 6, 200, 80).lines;
+		expect(terminal.join("\n")).not.toContain("\t");
+		expect(terminal.map(plainLabels)).toEqual(['node: "a b', 'c d"']);
+	});
 });

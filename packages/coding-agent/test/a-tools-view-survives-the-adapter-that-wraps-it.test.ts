@@ -10,10 +10,9 @@
  * proxy skips, so each forwarding is written out and each is asserted here through the predicate a
  * host actually reads.
  *
- * THE DEFECT CLASS THIS CLOSES. An adapter that forwards the render pair and forgets the view, and
- * an adapter that reports a card for a tool that describes none. Both adapters are swept, so adding
- * a third authoring path with its own adapter leaves this suite covering two of three and the cell
- * below states which two.
+ * THE DEFECT CLASS THIS CLOSES. A registered or custom tool adapter, including the custom-tool
+ * definition conversion, that drops a declared call or result view or invents one for a tool
+ * without a view. Additional authoring routes require an entry in ADAPTERS.
  *
  * WHAT IT DOES NOT CATCH. Nothing here draws anything: that a forwarded view describes the card
  * correctly is what `test/differential/` proves per tool. It also says nothing about which renderer
@@ -27,6 +26,7 @@ import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensi
 import type { RegisteredTool, ToolDefinition } from "@veyyon/coding-agent/extensibility/extensions/types";
 import { RegisteredToolAdapter } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
 import { toolDrawsItself } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
+import { customToolToDefinition } from "@veyyon/coding-agent/session/factory-tools";
 import { Type } from "@veyyon/kernel/registry/typebox";
 import type { ToolView, ToolViewRenderer } from "@veyyon/view";
 
@@ -58,7 +58,7 @@ function extensionTool(view?: ToolViewRenderer<{ input: string }, typeof OK>): V
 		...(view === undefined ? {} : { view }),
 	} as unknown as ToolDefinition;
 	return new RegisteredToolAdapter(
-		{ definition, extensionName: "x" } as unknown as RegisteredTool,
+		{ definition, extensionPath: "fixture-extension.ts" } satisfies RegisteredTool,
 		RUNNER,
 	) as ViewBearer;
 }
@@ -74,23 +74,45 @@ function customTool(view?: ToolViewRenderer<{ input: string }, typeof OK>): View
 	return new CustomToolAdapter(tool, () => ({}) as never) as unknown as ViewBearer;
 }
 
-/** The two adapters, so a claim below is made of both rather than of whichever came to mind. */
+function convertedCustomTool(view?: ToolViewRenderer<{ input: string }, typeof OK>): ViewBearer {
+	const tool = {
+		name: "wrapped",
+		description: "d",
+		parameters: PARAMETERS,
+		execute: async () => OK,
+		...(view === undefined ? {} : { view }),
+	} as unknown as CustomTool;
+	return new RegisteredToolAdapter(
+		{ definition: customToolToDefinition(tool), extensionPath: "fixture-extension.ts" } satisfies RegisteredTool,
+		RUNNER,
+	) as ViewBearer;
+}
+
+/** Direct extension registration, direct custom adaptation, and custom-tool conversion. */
 const ADAPTERS = [
 	["an extension tool", extensionTool],
 	["a custom tool", customTool],
+	["a custom tool converted to an extension", convertedCustomTool],
 ] as const;
+const VIEW_SHAPES: readonly [string, ToolViewRenderer<{ input: string }, typeof OK>][] = [
+	["call only", { renderCall: VIEW.renderCall }],
+	["result only", { renderResult: VIEW.renderResult }],
+	["call and result", VIEW],
+];
 
 describe("a tool's view survives the adapter that wraps it", () => {
-	it("wraps both authoring paths, and no third path is silently uncovered", () => {
-		expect(ADAPTERS.map(([label]) => label)).toEqual(["an extension tool", "a custom tool"]);
-	});
-
 	for (const [label, wrap] of ADAPTERS) {
-		it(`hands a host the view ${label} declared`, () => {
-			const wrapped = wrap(VIEW);
-			expect(wrapped.view).toBe(VIEW);
-			expect(toolDrawsItself(wrapped)).toBe(true);
-		});
+		for (const [shape, view] of VIEW_SHAPES) {
+			it(`draws the declared ${shape} view through ${label}`, () => {
+				const wrapped = wrap(view);
+				expect(toolDrawsItself(wrapped)).toBe(true);
+				const context = { expanded: false };
+				expect(wrapped.view?.renderCall?.({ input: "input" }, context)).toEqual(
+					view.renderCall?.({ input: "input" }, context),
+				);
+				expect(wrapped.view?.renderResult?.(OK, context)).toEqual(view.renderResult?.(OK, context));
+			});
+		}
 
 		it(`reports no card of its own when ${label} describes none`, () => {
 			const wrapped = wrap();

@@ -306,7 +306,7 @@ pi.registerTool({
 });
 ```
 
-`tool_call`/`tool_result` intercept all tools once the registry is wrapped in `sdk.ts`, including built-ins and extension/custom tools. `ToolDefinition` also supports optional `hidden`, `defaultInactive`, `deferrable`, `approval`, `mcpServerName`, `mcpToolName`, `renderCall`, and `renderResult` fields.
+`tool_call`/`tool_result` intercept all tools once the registry is wrapped in `sdk.ts`, including built-ins and extension/custom tools. `ToolDefinition` also supports optional `hidden`, `defaultInactive`, `deferrable`, `approval`, `mcpServerName`, `mcpToolName`, `view`, `renderCall`, and `renderResult` fields.
 
 ## UI integration points
 
@@ -418,6 +418,10 @@ Used by interactive rendering to add display-only supplemental UI below each vis
 ## Tool call/result renderer
 
 Provide `renderCall` / `renderResult` on `registerTool` definitions for custom tool visualization in TUI.
+
+Set `view.renderCall` and `view.renderResult` for host-independent cards instead of
+terminal components. See [custom tool rendering hooks](../using/custom-tools.md#rendering-hooks)
+for callback precedence and custom-tool conversion.
 
 ## Constraints and pitfalls
 

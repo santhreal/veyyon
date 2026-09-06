@@ -1,67 +1,17 @@
 import type { AgentMessage } from "@veyyon/agent-core";
-import type { AssistantMessage, ImageContent, Message, Usage } from "@veyyon/ai";
-import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
-import type { SessionContext, StrippedToolCallsMarker } from "@veyyon/kernel/session/session-context";
+import type { AssistantMessage, ImageContent, Message } from "@veyyon/ai";
+import type { SessionContext } from "@veyyon/kernel/session/session-context";
 import { type Component, Spacer, Text, TruncatedText } from "@veyyon/tui";
-import { APP_NAME, errorMessage, formatCount } from "@veyyon/utils";
-import type { AdvisorMessageDetails } from "../../../advisor";
-import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../../collab/protocol";
+import { APP_NAME, errorMessage } from "@veyyon/utils";
 import { type SettingsSaveFailure, settings } from "../../../config/settings";
 import { getFileSnapshotStore } from "../../../edit/file-snapshot-store";
-import {
-	BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE,
-	type CustomMessage,
-	LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE,
-	SKILL_PROMPT_MESSAGE_TYPE,
-	type SkillPromptDetails,
-} from "../../../session/messages";
 import { theme } from "../../../theme/theme";
 import { replaceTabs } from "../../../tools/core/render-utils";
-import { createAdvisorMessageCard } from "../components/transcript/advisor-message";
-import { AssistantMessageComponent } from "../components/transcript/assistant-message";
-import { createBackgroundTanDispatchBlock } from "../components/transcript/background-tan-message";
-import { BashExecutionComponent } from "../components/transcript/bash-execution";
-import { detectCacheInvalidation, usesExplicitPromptCache } from "../components/transcript/cache-invalidation-marker";
-import { CollabPromptMessageComponent } from "../components/transcript/collab-prompt-message";
-import {
-	BranchSummaryMessageComponent,
-	CompactionSummaryMessageComponent,
-	createHandoffSummaryMessageComponent,
-} from "../components/transcript/compaction-summary-message";
-import { CustomMessageComponent } from "../components/transcript/custom-message";
-import { EvalExecutionComponent } from "../components/transcript/eval-execution";
-import {
-	type LateDiagnosticsFile,
-	LateDiagnosticsMessageComponent,
-} from "../components/transcript/late-diagnostics-message";
-import {
-	ReadToolGroupComponent,
-	readArgsHaveTarget,
-	readArgsTargetInternalUrl,
-} from "../components/transcript/read-tool-group";
-import { SkillMessageComponent } from "../components/transcript/skill-message";
-import { ToolExecutionComponent, turnFailedToolResult } from "../components/transcript/tool-execution";
+import { ChatTranscriptBuilder, userMessageText } from "../components/transcript/chat-transcript-builder";
 import { TranscriptBlock } from "../components/transcript/transcript-container";
-import { createUsageRowBlock } from "../components/transcript/usage-row";
-import { UserMessageComponent } from "../components/transcript/user-message";
-import { decodeStreamedToolArgs, streamingStringKeysForTool } from "../controllers/tool-args-reveal";
 import { materializeImageReferenceLinksSync } from "../image-references";
 import { buildSkillCommandPrompt, invokeSkillCommandFromText, isKnownSkillCommand } from "../skill-command";
 import type { CompactionQueuedMessage, InteractiveModeContext } from "../types";
-import { isLiveBackgroundTask } from "./async-tool-state";
-import { createAssistantMessageComponent } from "./interactive-context-helpers";
-import {
-	assistantHasVisibleContent,
-	assistantUsageIsBilled,
-	buildAsyncResultBlock,
-	buildFileMentionBlock,
-	buildIrcMessageCard,
-	ledgerMarkerLine,
-	normalizeToolArgs,
-	resolveAssistantErrorPresentation,
-	splitAssistantMessageToolTimeline,
-} from "./transcript-render-helpers";
-
 /**
  * The slice of the interactive context this uses: 34 members of the 215
  * `InteractiveModeContext` requires. Still a slice, and naming it is what lets a
@@ -110,7 +60,6 @@ export type UiHelpersContext = Pick<
 	| "withLocalSubmission"
 >;
 
-type TextBlock = { type: "text"; text: string };
 interface RenderInitialMessagesOptions {
 	preserveExistingChat?: boolean;
 	clearTerminalHistory?: boolean;
@@ -137,17 +86,49 @@ export class UiHelpers {
 	/** The warning line most recently appended, so an identical repeat can be recognised. */
 	#lastWarningText: Text | undefined;
 	#lastWarningMessage: string | undefined;
+	readonly #builder: ChatTranscriptBuilder;
 
-	constructor(private ctx: UiHelpersContext) {}
+	constructor(private ctx: UiHelpersContext) {
+		this.#builder = new ChatTranscriptBuilder({
+			ui: ctx.ui,
+			container: () => this.ctx.chatContainer,
+			pendingTools: () => this.ctx.pendingTools,
+			settledToolCalls: () => this.ctx.settledToolCalls,
+			cwd: () => this.ctx.viewSession.sessionManager.getCwd(),
+			getSettings: () => this.ctx.settings,
+			getTool: name => ctx.viewSession.getToolByName(name),
+			getMessageRenderer: customType => ctx.viewSession.extensionRunner?.getMessageRenderer(customType),
+			getThinkingRenderers: () => ctx.viewSession.extensionRunner?.getAssistantThinkingRenderers(),
+			getSnapshots: () => getFileSnapshotStore(ctx.viewSession),
+			getArgotSession: () => ctx.viewSession.getArgotSession?.(),
+			isStreaming: () => ctx.viewSession.isStreaming,
+			retryAttempt: () => ctx.viewSession.retryAttempt,
+			hideThinkingBlock: () => ctx.effectiveHideThinkingBlock,
+			proseOnlyThinking: () => ctx.proseOnlyThinking,
+			requestRender: () => ctx.ui.requestRender(),
+			resolveImageLinks: message =>
+				imageLinksForMessage(
+					message,
+					ctx.viewSession.sessionManager.putBlobSync.bind(ctx.viewSession.sessionManager),
+				),
+			onPopulateHistory: text => {
+				ctx.editor.addToHistory(text);
+			},
+			onInheritDisplaceableTodo: component => {
+				ctx.eventController?.inheritDisplaceableTodo(component);
+			},
+			getLastAssistantUsage: () => ctx.lastAssistantUsage,
+			setLastAssistantUsage: usage => {
+				ctx.lastAssistantUsage = usage;
+			},
+			initialExpanded: ctx.toolOutputExpanded,
+			indentFileMentions: 0,
+		});
+	}
 
 	/** Extract text content from a user message */
 	getUserMessageText(message: Message): string {
-		if (message.role !== "user") return "";
-		const textBlocks =
-			typeof message.content === "string"
-				? [{ type: "text", text: message.content }]
-				: message.content.filter((content): content is TextBlock => content.type === "text");
-		return textBlocks.map(block => block.text).join("");
+		return message.role === "user" ? userMessageText(message) : "";
 	}
 
 	/**
@@ -180,155 +161,8 @@ export class UiHelpers {
 		message: AgentMessage,
 		options?: { populateHistory?: boolean; imageLinks?: readonly (string | undefined)[] },
 	): Component[] {
-		switch (message.role) {
-			case "bashExecution": {
-				const component = new BashExecutionComponent(message.command, this.ctx.ui, message.excludeFromContext);
-				if (message.output) {
-					component.appendOutput(message.output);
-				}
-				component.setComplete(message.exitCode, message.cancelled, {
-					truncation: message.meta?.truncation,
-				});
-				this.ctx.chatContainer.addChild(component);
-				break;
-			}
-			case "pythonExecution": {
-				const component = new EvalExecutionComponent(message.code, this.ctx.ui, message.excludeFromContext);
-				if (message.output) {
-					component.appendOutput(message.output);
-				}
-				component.setComplete(message.exitCode, message.cancelled, {
-					truncation: message.meta?.truncation,
-				});
-				this.ctx.chatContainer.addChild(component);
-				break;
-			}
-			case "hookMessage":
-			case "custom": {
-				if (message.display) {
-					if (message.customType === "async-result") {
-						this.ctx.chatContainer.addChild(buildAsyncResultBlock(message));
-						break;
-					}
-					if (message.customType === LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE) {
-						const details = (
-							message as CustomMessage<{
-								files?: LateDiagnosticsFile[];
-							}>
-						).details;
-						const component = new LateDiagnosticsMessageComponent(details?.files ?? []);
-						component.setExpanded(this.ctx.toolOutputExpanded);
-						this.ctx.chatContainer.addChild(component);
-						break;
-					}
-					if (message.customType === COLLAB_PROMPT_MESSAGE_TYPE) {
-						const component = new CollabPromptMessageComponent(message as CustomMessage<CollabPromptDetails>);
-						this.ctx.chatContainer.addChild(component);
-						break;
-					}
-					if (message.customType === SKILL_PROMPT_MESSAGE_TYPE) {
-						const component = new SkillMessageComponent(message as CustomMessage<SkillPromptDetails>);
-						component.setExpanded(this.ctx.toolOutputExpanded);
-						this.ctx.chatContainer.addChild(component);
-						break;
-					}
-					if (
-						message.customType === "irc:incoming" ||
-						message.customType === "irc:autoreply" ||
-						message.customType === "irc:relay"
-					) {
-						const card = buildIrcMessageCard(message, () => this.ctx.toolOutputExpanded);
-						this.ctx.chatContainer.addChild(card);
-						return [card];
-					}
-					if (message.customType === "advisor") {
-						const details = (message as CustomMessage<AdvisorMessageDetails>).details;
-						this.ctx.chatContainer.addChild(
-							createAdvisorMessageCard(details, () => this.ctx.toolOutputExpanded, theme),
-						);
-						break;
-					}
-					if (message.customType === BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE) {
-						this.ctx.chatContainer.addChild(createBackgroundTanDispatchBlock(message as CustomMessage<unknown>));
-						break;
-					}
-					const handoffComponent = createHandoffSummaryMessageComponent(
-						message as CustomMessage<unknown>,
-						this.ctx.toolOutputExpanded,
-					);
-					if (handoffComponent) {
-						this.ctx.chatContainer.addChild(handoffComponent);
-						break;
-					}
-					const renderer = this.ctx.viewSession.extensionRunner?.getMessageRenderer(message.customType);
-					// Both HookMessage and CustomMessage have the same structure, cast for compatibility
-					const component = new CustomMessageComponent(message as CustomMessage<unknown>, renderer);
-					component.setExpanded(this.ctx.toolOutputExpanded);
-					this.ctx.chatContainer.addChild(component);
-				}
-				break;
-			}
-			case "compactionSummary": {
-				const component = new CompactionSummaryMessageComponent(message);
-				component.setExpanded(this.ctx.toolOutputExpanded);
-				this.ctx.chatContainer.addChild(component);
-				break;
-			}
-			case "branchSummary": {
-				const component = new BranchSummaryMessageComponent(message);
-				component.setExpanded(this.ctx.toolOutputExpanded);
-				this.ctx.chatContainer.addChild(component);
-				break;
-			}
-			case "fileMention": {
-				// Render compact file mention display
-				const block = buildFileMentionBlock(message.files, 0);
-				if (block.children.length > 0) this.ctx.chatContainer.addChild(block);
-				break;
-			}
-			case "user":
-			case "developer": {
-				const textContent = this.ctx.getUserMessageText(message);
-				if (textContent) {
-					// A turn-level batch ledger is a standing instruction to the
-					// model, not operator prose: collapse it to a one-line marker.
-					const ledgerMarker = ledgerMarkerLine(textContent);
-					if (ledgerMarker !== null) {
-						this.ctx.chatContainer.addChild(new Text(ledgerMarker, 0, 0));
-						break;
-					}
-					const isSynthetic = message.role === "developer" ? true : (message.synthetic ?? false);
-					const imageLinks =
-						options?.imageLinks ??
-						imageLinksForMessage(
-							message,
-							this.ctx.viewSession.sessionManager.putBlobSync.bind(this.ctx.viewSession.sessionManager),
-						);
-					const userComponent = new UserMessageComponent(textContent, isSynthetic, imageLinks);
-					this.ctx.chatContainer.addChild(userComponent);
-					if (options?.populateHistory && message.role === "user" && !isSynthetic) {
-						this.ctx.editor.addToHistory(textContent);
-					}
-				}
-				break;
-			}
-			case "assistant": {
-				const assistantComponent = createAssistantMessageComponent(
-					this.ctx,
-					splitAssistantMessageToolTimeline(message).beforeTools,
-				);
-				this.ctx.chatContainer.addChild(assistantComponent);
-				break;
-			}
-			case "toolResult": {
-				// Tool results are rendered inline with tool calls, handled separately
-				break;
-			}
-			default: {
-				message satisfies never;
-			}
-		}
-		return [];
+		this.#builder.setExpanded(this.ctx.toolOutputExpanded);
+		return this.#builder.appendMessage(message, options);
 	}
 
 	/**
@@ -341,401 +175,12 @@ export class UiHelpers {
 		sessionContext: SessionContext,
 		options: { updateFooter?: boolean; populateHistory?: boolean } = {},
 	): void {
-		// Preserved: message_start handler owns this lifecycle (see #783)
-		this.ctx.pendingTools.clear();
-		// The transcript is being torn down and re-derived from messages, so the
-		// settled ledger is re-derived with it: every paired toolResult below
-		// re-settles its call. This is the ONLY place it is cleared — clearing it
-		// per turn would let a post-turn replay resurrect a finished card, which
-		// is the ghost this ledger exists to stop.
-		this.ctx.settledToolCalls.clear();
-		// Reseed the cache-invalidation baseline: this rebuild re-derives every
-		// turn's marker from usage, and the last turn becomes the live baseline.
-		this.ctx.lastAssistantUsage = undefined;
-
 		if (options.updateFooter) {
 			this.ctx.statusLine.invalidate();
 			this.ctx.updateEditorBorderColor();
 		}
-
-		let readGroup: ReadToolGroupComponent | null = null;
-		const readToolCallArgs = new Map<string, Record<string, unknown>>();
-		const readToolCallAssistantComponents = new Map<string, AssistantMessageComponent>();
-		// The per-turn token-usage row (display.showTokenUsage) must land below the
-		// turn's tool blocks. Read tool blocks are only created when their toolResult
-		// message is processed (below), so appending the row in the assistant branch
-		// would place it above a read run. Defer instead: stash the usage on the
-		// assistant message, then flush it once the turn's tools are placed — right
-		// before the next non-toolResult message and at end of rebuild — sealing the
-		// read run so the row sits under it. Mirrors the live path, where the read
-		// group is created during streaming and the row is appended below it.
-		let pendingUsage: Usage | undefined;
-		let pendingUsageDuration: number | undefined;
-		let pendingUsageTtft: number | undefined;
-		const flushPendingUsage = () => {
-			if (!pendingUsage) return;
-			readGroup?.seal();
-			readGroup = null;
-			this.ctx.chatContainer.addChild(createUsageRowBlock(pendingUsage, pendingUsageDuration, pendingUsageTtft));
-			pendingUsage = undefined;
-			pendingUsageDuration = undefined;
-			pendingUsageTtft = undefined;
-		};
-		// Rebuild-time mirror of the event controller's displaceable-poll
-		// bookkeeping: a `job` poll that found every watched job still running is
-		// superseded by the next `job` call, so a rebuilt transcript collapses a
-		// repeated-poll run to its final snapshot instead of replaying the spam.
-		let waitingPoll: ToolExecutionComponent | null = null;
-		const resolveWaitingPoll = (nextToolName?: string) => {
-			const previous = waitingPoll;
-			if (!previous) return;
-			waitingPoll = null;
-			if (
-				nextToolName === "job" &&
-				previous.isDisplaceableBlock() &&
-				this.ctx.chatContainer.isBlockUncommitted(previous)
-			) {
-				this.ctx.chatContainer.removeChild(previous);
-			}
-			// Sealing freezes the block and stops the waiting-poll spinner that
-			// updateResult armed.
-			previous.seal();
-		};
-		// Calls whose recorded result says the work is still running. The trailing
-		// sweep below seals whatever is left pending on the premise that no result
-		// is coming; for a backgrounded subagent one is, from the job rather than
-		// from the stream, so these are held back from it.
-		const liveBackgroundCalls = new Set<string>();
-		let todoSnapshot: ToolExecutionComponent | null = null;
-		const resolveTodoSnapshot = (nextToolName?: string) => {
-			const previous = todoSnapshot;
-			if (!previous) return;
-			if (!previous.isDisplaceableBlock()) {
-				todoSnapshot = null;
-				return;
-			}
-			if (previous.canBeDisplacedBy(nextToolName)) {
-				todoSnapshot = null;
-				if (this.ctx.chatContainer.isBlockUncommitted(previous)) {
-					this.ctx.chatContainer.removeChild(previous);
-				}
-				previous.seal();
-				return;
-			}
-			if (nextToolName !== undefined) return;
-			todoSnapshot = null;
-			previous.seal();
-		};
-		const messages = sessionContext.messages;
-		const count = messages.length;
-		for (let i = 0; i < count; i++) {
-			const message = messages[i]!;
-			if (message.role !== "toolResult") flushPendingUsage();
-			// Assistant messages need special handling for tool calls
-			if (message.role === "assistant") {
-				const timeline = splitAssistantMessageToolTimeline(message);
-				this.ctx.addMessageToChat(message);
-				const lastChild = this.ctx.chatContainer.children[this.ctx.chatContainer.children.length - 1];
-				const assistantComponent = lastChild instanceof AssistantMessageComponent ? lastChild : undefined;
-				if (assistantComponent) {
-					const usage = message.usage;
-					const explained = sessionContext.cacheMissExplainedAt?.[i] ?? false;
-					if (this.ctx.settings.get("display.cacheMissMarker") && !explained) {
-						const invalidation = detectCacheInvalidation(this.ctx.lastAssistantUsage, usage, undefined, {
-							explicitCache: usesExplicitPromptCache(message.api, message.model),
-						});
-						if (invalidation) assistantComponent.setCacheInvalidation(invalidation);
-					}
-					if (usage.cacheRead + usage.cacheWrite + usage.input > 0) {
-						this.ctx.lastAssistantUsage = usage;
-					}
-				}
-				const hasVisibleAssistantContent = assistantHasVisibleContent(message);
-				if (hasVisibleAssistantContent) {
-					// Rebuild reconstructs immutable history; seal (not finalize) so the
-					// group freezes even if a read's result was never persisted —
-					// finalize alone keeps a pending entry live and would stop the whole
-					// transcript below it from committing to native scrollback.
-					readGroup?.seal();
-					readGroup = null;
-				}
-				const errorPresentation = resolveAssistantErrorPresentation(message, this.ctx.viewSession.retryAttempt);
-				const hasErrorStop = errorPresentation.kind === "full";
-				const errorMessage = hasErrorStop ? errorPresentation.text : null;
-				const appendAssistantSegment = (segment: AssistantMessage | undefined) => {
-					if (!segment || !assistantHasVisibleContent(segment)) return;
-					const component = createAssistantMessageComponent(this.ctx, segment);
-					this.ctx.chatContainer.addChild(component);
-				};
-
-				// Render tool call components
-				for (const content of message.content) {
-					if (content.type !== "toolCall") {
-						continue;
-					}
-					resolveWaitingPoll(content.name);
-					const afterToolSegment = timeline.afterToolCalls.get(content.id);
-
-					if (
-						content.name === "read" &&
-						readArgsHaveTarget(content.arguments) &&
-						!readArgsTargetInternalUrl(content.arguments)
-					) {
-						if (hasErrorStop && errorMessage) {
-							if (!readGroup) {
-								readGroup = new ReadToolGroupComponent({
-									showContentPreview: this.ctx.settings.get("read.toolResultPreview"),
-								});
-								readGroup.setExpanded(this.ctx.toolOutputExpanded);
-								this.ctx.chatContainer.addChild(readGroup);
-							}
-							readGroup.updateArgs(content.arguments, content.id);
-							readGroup.updateResult(turnFailedToolResult(errorMessage), false, content.id);
-							// The turn ended in an error, so this row carries its final
-							// content and no result is ever coming for it. That makes it
-							// history exactly like a paired toolResult, and it settles for
-							// the same reason: the ledger is what stops a later replay of
-							// this call from mounting a live card beside it.
-							this.ctx.settledToolCalls.add(content.id);
-						} else if (afterToolSegment) {
-							if (!readGroup) {
-								readGroup = new ReadToolGroupComponent({
-									showContentPreview: this.ctx.settings.get("read.toolResultPreview"),
-								});
-								readGroup.setExpanded(this.ctx.toolOutputExpanded);
-								this.ctx.chatContainer.addChild(readGroup);
-							}
-							readGroup.updateArgs(content.arguments, content.id);
-							this.ctx.pendingTools.set(content.id, readGroup);
-							if (assistantComponent) {
-								readToolCallAssistantComponents.set(content.id, assistantComponent);
-							}
-						} else {
-							const normalizedArgs = normalizeToolArgs(content.arguments);
-							readToolCallArgs.set(content.id, normalizedArgs);
-							if (assistantComponent) {
-								readToolCallAssistantComponents.set(content.id, assistantComponent);
-							}
-						}
-						appendAssistantSegment(afterToolSegment);
-						continue;
-					}
-
-					readGroup?.seal();
-					readGroup = null;
-					const tool = this.ctx.viewSession.getToolByName(content.name);
-					const partialJson = getStreamingPartialJson(content);
-					// Mid-stream rebuild (theme change, settings, focus replay): decode
-					// display args from the raw stream exactly like the live reveal path.
-					// The provider-parsed `arguments` lag the stream by up to a throttled
-					// parse window, so spreading them alone would freeze a long write/edit
-					// preview at its last full parse.
-					const rawInput = content.customWireName !== undefined;
-					const renderArgs = partialJson
-						? decodeStreamedToolArgs(partialJson, {
-								rawInput,
-								fullArgs: content.arguments,
-								streamingStringKeys: streamingStringKeysForTool(content.name, rawInput),
-								// Same reason as the live path: a rebuilt preview of an
-								// in-flight call still holds unexpanded handles.
-								argot: this.ctx.viewSession.getArgotSession?.(),
-							})
-						: content.arguments;
-					const component = new ToolExecutionComponent(
-						content.name,
-						renderArgs,
-						{
-							snapshots: getFileSnapshotStore(this.ctx.viewSession),
-							showImages: settings.get("terminal.showImages"),
-							editFuzzyThreshold: settings.get("edit.fuzzyThreshold"),
-							editAllowFuzzy: settings.get("edit.fuzzyMatch"),
-							liveRegion: this.ctx.chatContainer,
-						},
-						tool,
-						this.ctx.ui,
-						this.ctx.viewSession.sessionManager.getCwd(),
-						content.id,
-					);
-					component.setExpanded(this.ctx.toolOutputExpanded);
-					this.ctx.chatContainer.addChild(component);
-
-					if (hasErrorStop && errorMessage) {
-						component.updateResult(turnFailedToolResult(errorMessage), false, content.id);
-						// Same reason as the read branch above. A card is settled when it
-						// is final, and there are three ways to be final on this path: a
-						// recorded result, a turn-ending error, and the trailing seal.
-						// Missing any one of them reopens the ghost.
-						this.ctx.settledToolCalls.add(content.id);
-					} else {
-						this.ctx.pendingTools.set(content.id, component);
-					}
-					appendAssistantSegment(afterToolSegment);
-				}
-				// Dangling toolCalls (no result on the resolved path — failed or
-				// retried turns, results on sibling branches) were stripped by the
-				// context build; surface a placeholder so the turn's activity is
-				// visibly elided instead of silently vanishing (the "bare thinking
-				// lines" transcript trap).
-				const strippedToolCalls = (message as AgentMessage & StrippedToolCallsMarker).strippedToolCalls ?? 0;
-				if (strippedToolCalls > 0) {
-					this.ctx.chatContainer.addChild(
-						new Text(
-							theme.fg(
-								"dim",
-								theme.italic(
-									`${formatCount("tool call", strippedToolCalls)} elided — no result on this branch`,
-								),
-							),
-							1,
-							0,
-						),
-					);
-				}
-				pendingUsage =
-					this.ctx.settings.get("display.showTokenUsage") && assistantUsageIsBilled(message.usage)
-						? message.usage
-						: undefined;
-				pendingUsageDuration = message.duration;
-				pendingUsageTtft = message.ttft;
-			} else if (message.role === "toolResult") {
-				// A recorded result means this call's card is final in the rebuilt
-				// transcript, whichever branch below paints it. Settle before the
-				// branching so a new branch cannot be added without the ledger entry.
-				// A backgrounded subagent's first result is the exception: the work
-				// continues, so the card is not history and must stay re-mountable.
-				const backgroundStillRunning = isLiveBackgroundTask(message.toolName, message.details);
-				if (backgroundStillRunning) liveBackgroundCalls.add(message.toolCallId);
-				else this.ctx.settledToolCalls.add(message.toolCallId);
-				const pendingReadComponent = this.ctx.pendingTools.get(message.toolCallId);
-				const isReadGroupResult =
-					message.toolName === "read" &&
-					(!pendingReadComponent || pendingReadComponent instanceof ReadToolGroupComponent);
-				if (isReadGroupResult) {
-					const assistantComponent = readToolCallAssistantComponents.get(message.toolCallId);
-					const images: ImageContent[] = message.content.filter(
-						(content): content is ImageContent => content.type === "image",
-					);
-					if (images.length > 0 && assistantComponent && settings.get("terminal.showImages")) {
-						assistantComponent.setToolResultImages(message.toolCallId, images);
-						const hasText = message.content.some(c => c.type === "text");
-						if (!hasText) {
-							readToolCallArgs.delete(message.toolCallId);
-							readToolCallAssistantComponents.delete(message.toolCallId);
-							continue;
-						}
-					}
-					let component = this.ctx.pendingTools.get(message.toolCallId);
-					if (!component) {
-						if (!readGroup) {
-							readGroup = new ReadToolGroupComponent({
-								showContentPreview: this.ctx.settings.get("read.toolResultPreview"),
-							});
-							readGroup.setExpanded(this.ctx.toolOutputExpanded);
-							this.ctx.chatContainer.addChild(readGroup);
-						}
-						const args = readToolCallArgs.get(message.toolCallId);
-						if (args) {
-							readGroup.updateArgs(args, message.toolCallId);
-						}
-						component = readGroup;
-						this.ctx.pendingTools.set(message.toolCallId, readGroup);
-					}
-					component.updateResult(message, false, message.toolCallId);
-					this.ctx.pendingTools.delete(message.toolCallId);
-					readToolCallArgs.delete(message.toolCallId);
-					readToolCallAssistantComponents.delete(message.toolCallId);
-					continue;
-				}
-
-				// Match tool results to pending tool components
-				const component = this.ctx.pendingTools.get(message.toolCallId);
-				if (component) {
-					// A subagent still running is not history. Settling it here sealed
-					// the card mid-flight on every resize, theme switch and session
-					// switch, and dropping it from `pendingTools` left its later
-					// progress with nowhere to land. The live event path in
-					// `event-controller.ts` reads the same predicate.
-					component.updateResult(message, backgroundStillRunning, message.toolCallId);
-					if (backgroundStillRunning) continue;
-					this.ctx.pendingTools.delete(message.toolCallId);
-					if (
-						message.toolName === "job" &&
-						component instanceof ToolExecutionComponent &&
-						component.isDisplaceableBlock()
-					) {
-						waitingPoll = component;
-					} else if (
-						message.toolName === "todo" &&
-						component instanceof ToolExecutionComponent &&
-						component.canBeDisplacedBy("todo")
-					) {
-						// A successful todo result supersedes the prior live snapshot. Failed
-						// follow-ups return false from canBeDisplacedBy("todo"), so the
-						// last-good panel stays on screen.
-						resolveTodoSnapshot("todo");
-						todoSnapshot = component;
-					}
-				}
-			} else {
-				// A user prompt closes the displacement window, same as the live path.
-				if (message.role === "user") resolveWaitingPoll();
-				if (message.role === "user") resolveTodoSnapshot();
-				// All other messages use standard rendering
-				this.ctx.addMessageToChat(message, options);
-			}
-		}
-		flushPendingUsage();
-
-		// The trailing read run has no following break to close it; seal so the
-		// rebuilt group freezes (even with a never-persisted result) and commits to
-		// native scrollback like every other historical block.
-		readGroup?.seal();
-		// A trailing waiting poll is final history on rebuild; seal it so it
-		// freezes (and its spinner timer stops) like every other block.
-		resolveWaitingPoll();
-		// A trailing todo snapshot is live state, not history: when the rebuild
-		// runs mid-turn (settings overlay close, focus attach during streaming),
-		// hand it back to the controller so a follow-up `todo` update keeps
-		// displacing instead of stacking. Idle rebuilds (resume / compaction)
-		// fall through to the seal path so the snapshot freezes as history.
-		if (todoSnapshot && this.ctx.viewSession.isStreaming) {
-			this.ctx.eventController?.inheritDisplaceableTodo(todoSnapshot);
-			todoSnapshot = null;
-		} else {
-			resolveTodoSnapshot();
-		}
-
-		// Entries still in `pendingTools` are toolCalls whose result never landed
-		// during the replay — with `keepDanglingToolCalls` these are exactly the
-		// turn's in-flight calls (assistant turn persisted at message_end, tool
-		// still executing). While the viewed session streams, keep them tracked so
-		// the live event stream routes `tool_execution_update`/`_end` into the
-		// rebuilt components instead of dropping the result; their args are final,
-		// so mark them complete. Idle rebuilds have no result coming: seal so the
-		// blocks freeze as history instead of pinning the live region, then clear
-		// so reconstructed historical components never leak into live tracking.
-		// (`rebuildChatFromMessages` builds its context WITHOUT dangling calls and
-		// restores its own preserved live components afterwards — for that caller
-		// the map is empty here either way.)
-		if (this.ctx.viewSession.isStreaming) {
-			for (const [toolCallId, component] of this.ctx.pendingTools) {
-				component.setArgsComplete(toolCallId);
-			}
-		} else {
-			for (const [toolCallId, component] of this.ctx.pendingTools) {
-				// A backgrounded subagent is the one pending entry with a result
-				// still coming while the viewed session sits idle — it arrives from
-				// the job, not the stream. Sealing it here undid the whole point of
-				// keeping it: the card froze mid-flight and its id left the map.
-				if (liveBackgroundCalls.has(toolCallId)) continue;
-				component.seal();
-				// Sealed as history: no result is coming, so nothing may re-mount
-				// this call as a live card later.
-				this.ctx.settledToolCalls.add(toolCallId);
-				this.ctx.pendingTools.delete(toolCallId);
-			}
-		}
-		this.ctx.ui.requestRender();
+		this.#builder.setExpanded(this.ctx.toolOutputExpanded);
+		this.#builder.rebuild(sessionContext, options);
 	}
 
 	renderInitialMessages(options: RenderInitialMessagesOptions = {}): void {

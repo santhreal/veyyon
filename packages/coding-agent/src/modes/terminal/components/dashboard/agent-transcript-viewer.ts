@@ -209,6 +209,7 @@ export class AgentTranscriptViewer implements Component {
 			hideThinkingBlock: deps.hideThinkingBlock,
 			proseOnlyThinking: deps.proseOnlyThinking,
 			requestRender: deps.requestRender,
+			indentFileMentions: 1,
 		});
 		this.#scrollView = new ScrollView([], {
 			height: 10,

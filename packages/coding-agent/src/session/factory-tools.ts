@@ -61,6 +61,7 @@ export function customToolToDefinition(
 		onSession: tool.onSession
 			? (event, ctx) => tool.onSession?.(event, createCustomToolContext(ctx, obfuscateProviderText))
 			: undefined,
+		view: tool.view,
 		renderCall: tool.renderCall,
 		renderResult: tool.renderResult
 			? (result, options, theme) => {

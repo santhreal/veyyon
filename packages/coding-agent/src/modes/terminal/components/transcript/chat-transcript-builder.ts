@@ -1,25 +1,23 @@
 /**
- * Builds transcript components from persisted session message entries — the
- * file/remote-backed counterpart to {@link UiHelpers.addMessageToChat} (which is
- * bound to the live InteractiveModeContext). Used by the fullscreen transcript
- * viewer ({@link AgentTranscriptViewer}) to render a parked subagent / advisor /
- * collab-guest transcript that has no live session.
- *
- * Unlike the old incremental hub sync, {@link ChatTranscriptBuilder.rebuild}
- * always discards prior components and rebuilds the whole transcript from the
- * supplied entries. Re-rendering a growing transcript is therefore O(n) in the
- * entry count, but it cannot duplicate or misorder rows the way incremental
- * component reuse could.
+ * Shared transcript rendering for interactive chat and read-only viewers.
+ * `rebuild` reconstructs persisted history; `append` consumes new persisted entries.
+ * Live `appendMessage` excludes tool mounting, which the event controller performs.
  */
 import type { AgentMessage, AgentTool } from "@veyyon/agent-core";
-import type { Usage } from "@veyyon/ai";
+import type { ImageContent, Message, Usage } from "@veyyon/ai";
+import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
+import type { SnapshotStore } from "@veyyon/hashline";
+import type { SessionContext } from "@veyyon/kernel/session/session-context";
 import type { SessionMessageEntry } from "@veyyon/kernel/session/session-entries";
-import { Text, type TUI } from "@veyyon/tui";
+import { type Component, Text, type TUI } from "@veyyon/tui";
+import { formatCount } from "@veyyon/utils";
+import type { ArgotSession } from "argot/session";
 import type { AdvisorMessageDetails } from "../../../../advisor";
 import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../../../collab/protocol";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
+import type { Settings } from "../../../../config/settings";
 import { settings } from "../../../../config/settings-instance";
-import type { MessageRenderer } from "../../../../extensibility/extensions/types";
+import type { AssistantThinkingRenderer, MessageRenderer } from "../../../../extensibility/extensions/types";
 import {
 	BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE,
 	type CustomMessage,
@@ -28,6 +26,8 @@ import {
 	type SkillPromptDetails,
 } from "../../../../session/messages";
 import { theme } from "../../../../theme/theme";
+import { decodeStreamedToolArgs, streamingStringKeysForTool } from "../../controllers/tool-args-reveal";
+import { isLiveBackgroundTask } from "../../utils/async-tool-state";
 import {
 	assistantHasVisibleContent,
 	assistantUsageIsBilled,
@@ -55,23 +55,50 @@ import { EvalExecutionComponent } from "./eval-execution";
 import { type LateDiagnosticsFile, LateDiagnosticsMessageComponent } from "./late-diagnostics-message";
 import { ReadToolGroupComponent, readArgsHaveTarget, readArgsTargetInternalUrl } from "./read-tool-group";
 import { SkillMessageComponent } from "./skill-message";
-import { ToolExecutionComponent, turnFailedToolResult } from "./tool-execution";
+import { ToolExecutionComponent, type ToolExecutionHandle, turnFailedToolResult } from "./tool-execution";
 import { TranscriptContainer } from "./transcript-container";
 import { createUsageRowBlock } from "./usage-row";
 import { UserMessageComponent } from "./user-message";
 
 export interface ChatTranscriptBuilderDeps {
 	ui: TUI;
+	container?: TranscriptContainer | (() => TranscriptContainer);
+	pendingTools?: Map<string, ToolExecutionHandle> | (() => Map<string, ToolExecutionHandle>);
+	settledToolCalls?: Set<string> | (() => Set<string>);
+	getSettings?: () => Pick<Settings, "get">;
 	getTool?: (name: string) => AgentTool | undefined;
 	getMessageRenderer?: (customType: string) => MessageRenderer | undefined;
-	cwd: string;
+	getThinkingRenderers?: () => AssistantThinkingRenderer[] | undefined;
+	getSnapshots?: () => SnapshotStore | undefined;
+	getArgotSession?: () => ArgotSession | undefined;
+	cwd: string | (() => string);
 	hideThinkingBlock?: () => boolean;
 	proseOnlyThinking?: () => boolean;
 	requestRender: () => void;
+	resolveImageLinks?: (
+		message: Extract<AgentMessage, { role: "developer" | "user" }>,
+	) => readonly (string | undefined)[] | undefined;
+	onPopulateHistory?: (text: string) => void;
+	onInheritDisplaceableTodo?: (component: ToolExecutionComponent) => void;
+	isStreaming?: () => boolean;
+	retryAttempt?: () => number;
+	getLastAssistantUsage?: () => Usage | undefined;
+	setLastAssistantUsage?: (usage: Usage | undefined) => void;
+	initialExpanded?: boolean;
+	indentFileMentions?: number;
+}
+
+function extractMessagesAndCacheMiss(
+	input: SessionContext | readonly SessionMessageEntry[] | readonly AgentMessage[],
+): { messages: readonly AgentMessage[]; cacheMissExplainedAt?: boolean[] } {
+	if ("messages" in input) {
+		return { messages: input.messages, cacheMissExplainedAt: input.cacheMissExplainedAt };
+	}
+	return { messages: input.map(item => ("message" in item ? item.message : item)) };
 }
 
 /** Extracts the plain-text content of a user message (string or text blocks). */
-function userMessageText(message: Extract<AgentMessage, { role: "user" }>): string {
+export function userMessageText(message: Extract<AgentMessage, { role: "developer" | "user" }> | Message): string {
 	if (typeof message.content === "string") return message.content;
 	return message.content
 		.filter((block): block is { type: "text"; text: string } => block.type === "text")
@@ -80,9 +107,12 @@ function userMessageText(message: Extract<AgentMessage, { role: "user" }>): stri
 }
 
 export class ChatTranscriptBuilder {
-	readonly container = new TranscriptContainer();
-	#pendingTools = new Map<string, ToolExecutionComponent | ReadToolGroupComponent>();
-	#readArgs = new Map<string, Record<string, unknown>>();
+	#ownContainer: TranscriptContainer | undefined;
+	#ownPendingTools: Map<string, ToolExecutionHandle> | undefined;
+	#ownSettledToolCalls: Set<string> | undefined;
+	readonly #readArgs = new Map<string, Record<string, unknown>>();
+	readonly #readToolCallAssistantComponents = new Map<string, AssistantMessageComponent>();
+	readonly #liveBackgroundCalls = new Set<string>();
 	#readGroup: ReadToolGroupComponent | null = null;
 	#pendingUsage: Usage | undefined;
 	#pendingUsageDuration: number | undefined;
@@ -93,31 +123,101 @@ export class ChatTranscriptBuilder {
 	#expandables: Array<{ setExpanded(expanded: boolean): void }> = [];
 	#expanded = false;
 
-	constructor(private readonly deps: ChatTranscriptBuilderDeps) {}
+	constructor(private readonly deps: ChatTranscriptBuilderDeps) {
+		this.#expanded = deps.initialExpanded ?? false;
+		this.#lastAssistantUsage = deps.getLastAssistantUsage?.();
+	}
+
+	get container(): TranscriptContainer {
+		if (typeof this.deps.container === "function") return this.deps.container();
+		if (this.deps.container) return this.deps.container;
+		this.#ownContainer ??= new TranscriptContainer();
+		return this.#ownContainer;
+	}
+
+	get #pendingTools(): Map<string, ToolExecutionHandle> {
+		if (typeof this.deps.pendingTools === "function") return this.deps.pendingTools();
+		if (this.deps.pendingTools) return this.deps.pendingTools;
+		this.#ownPendingTools ??= new Map();
+		return this.#ownPendingTools;
+	}
+
+	get #settledToolCalls(): Set<string> {
+		if (typeof this.deps.settledToolCalls === "function") return this.deps.settledToolCalls();
+		if (this.deps.settledToolCalls) return this.deps.settledToolCalls;
+		this.#ownSettledToolCalls ??= new Set();
+		return this.#ownSettledToolCalls;
+	}
+
+	get #cwd(): string {
+		return typeof this.deps.cwd === "function" ? this.deps.cwd() : this.deps.cwd;
+	}
+	get #settings(): Pick<Settings, "get"> {
+		return this.deps.getSettings?.() ?? settings;
+	}
 
 	/** Whether the transcript currently holds any rendered rows. */
 	get isEmpty(): boolean {
 		return this.container.children.length === 0;
 	}
-
-	/** Discard all components and rebuild the whole transcript from `entries`. */
-	rebuild(entries: SessionMessageEntry[]): void {
+	/** Discard all components and rebuild the whole transcript from `input`. */
+	rebuild(
+		input: SessionContext | readonly SessionMessageEntry[] | readonly AgentMessage[],
+		options: { updateFooter?: boolean; populateHistory?: boolean } = {},
+	): void {
 		this.reset();
-		for (const entry of entries) this.#appendChatMessage(entry.message);
-		// Flush the trailing turn's usage row only once its tools are materialized
-		// (a read whose result has not arrived stays pending); otherwise the row
-		// would sit above its tools. The drain happens here at the end of the pass.
-		if (this.#readArgs.size === 0 && this.#pendingTools.size === 0) this.#flushPendingUsage();
+		const { messages, cacheMissExplainedAt } = extractMessagesAndCacheMiss(input);
+		const count = messages.length;
+		for (let i = 0; i < count; i++) {
+			const message = messages[i]!;
+			this.#appendPersistedMessage(message, {
+				populateHistory: options.populateHistory,
+				cacheMissExplained: cacheMissExplainedAt?.[i] ?? false,
+			});
+		}
+		this.#finalizeRebuild();
 	}
 
 	/** Append newly persisted entries without rebuilding already rendered rows. */
-	append(entries: SessionMessageEntry[]): void {
-		for (const entry of entries) this.#appendChatMessage(entry.message);
+	append(
+		input: SessionContext | readonly SessionMessageEntry[] | readonly AgentMessage[],
+		options: { populateHistory?: boolean } = {},
+	): void {
+		const { messages, cacheMissExplainedAt } = extractMessagesAndCacheMiss(input);
+		const count = messages.length;
+		for (let i = 0; i < count; i++) {
+			const message = messages[i]!;
+			this.#appendPersistedMessage(message, {
+				populateHistory: options.populateHistory,
+				cacheMissExplained: cacheMissExplainedAt?.[i] ?? false,
+			});
+		}
 		if (this.#readArgs.size === 0 && this.#pendingTools.size === 0) this.#flushPendingUsage();
+	}
+
+	/** Append a single message to the transcript (live dispatch). */
+	appendMessage(
+		message: AgentMessage,
+		options?: { populateHistory?: boolean; imageLinks?: readonly (string | undefined)[] },
+	): Component[] {
+		switch (message.role) {
+			case "assistant": {
+				const timeline = splitAssistantMessageToolTimeline(message);
+				const assistantComponent = this.#createAssistantComponent(timeline.beforeTools);
+				this.container.addChild(assistantComponent);
+				return [];
+			}
+			case "toolResult":
+				// Live tool results are rendered inline with tool calls, handled by eventController.
+				return [];
+			default:
+				return this.#appendCommonMessage(message, options);
+		}
 	}
 
 	/** Toggle tool-output expansion across every expandable component. */
 	setExpanded(expanded: boolean): void {
+		if (this.#expanded === expanded) return;
 		this.#expanded = expanded;
 		for (const component of this.#expandables) component.setExpanded(expanded);
 	}
@@ -128,18 +228,23 @@ export class ChatTranscriptBuilder {
 
 	/** Tear down components (sealing pending spinners) and clear build state. */
 	reset(): void {
-		for (const pending of this.#pendingTools.values()) pending.seal();
+		if (this.deps.pendingTools === undefined && this.#ownPendingTools) {
+			for (const pending of this.#ownPendingTools.values()) pending.seal();
+		}
 		this.#pendingTools.clear();
+		this.#settledToolCalls.clear();
 		this.#readArgs.clear();
+		this.#readToolCallAssistantComponents.clear();
+		this.#liveBackgroundCalls.clear();
 		this.#readGroup = null;
 		this.#pendingUsage = undefined;
 		this.#pendingUsageDuration = undefined;
 		this.#pendingUsageTtft = undefined;
 		this.#lastAssistantUsage = undefined;
+		this.deps.setLastAssistantUsage?.(undefined);
 		this.#waitingPoll = null;
 		this.#todoSnapshot = null;
 		this.#expandables = [];
-		this.container.dispose();
 		this.container.clear();
 	}
 
@@ -186,7 +291,7 @@ export class ChatTranscriptBuilder {
 	#ensureReadGroup(): ReadToolGroupComponent {
 		if (!this.#readGroup) {
 			this.#readGroup = new ReadToolGroupComponent({
-				showContentPreview: settings.get("read.toolResultPreview"),
+				showContentPreview: this.#settings.get("read.toolResultPreview"),
 			});
 			this.#trackExpandable(this.#readGroup);
 			this.container.addChild(this.#readGroup);
@@ -194,10 +299,6 @@ export class ChatTranscriptBuilder {
 		return this.#readGroup;
 	}
 
-	// The per-turn token-usage row must land below the turn's tool blocks, but
-	// normal `read` calls only materialize their group in #appendToolResult. Defer
-	// the row: stash it on the assistant message and flush once the turn's tools
-	// are placed, sealing the read run so the row sits under it.
 	#flushPendingUsage(): void {
 		if (!this.#pendingUsage) return;
 		this.#readGroup?.seal();
@@ -210,124 +311,145 @@ export class ChatTranscriptBuilder {
 		this.#pendingUsageTtft = undefined;
 	}
 
-	#appendChatMessage(message: AgentMessage): void {
+	#appendPersistedMessage(
+		message: AgentMessage,
+		options?: {
+			populateHistory?: boolean;
+			imageLinks?: readonly (string | undefined)[];
+			cacheMissExplained?: boolean;
+		},
+	): void {
 		if (message.role !== "toolResult") this.#flushPendingUsage();
 		switch (message.role) {
 			case "assistant":
-				this.#appendAssistantMessage(message);
+				this.#appendAssistantMessage(message, options?.cacheMissExplained ?? false);
 				break;
 			case "toolResult":
 				this.#appendToolResult(message);
 				break;
+			default:
+				this.#appendCommonMessage(message, options);
+				break;
+		}
+	}
+
+	#appendCommonMessage(
+		message: AgentMessage,
+		options?: {
+			populateHistory?: boolean;
+			imageLinks?: readonly (string | undefined)[];
+		},
+	): Component[] {
+		switch (message.role) {
 			case "user":
 			case "developer": {
-				// A user prompt closes the poll-displacement window, same as the live path.
-				if (message.role === "user") this.#resolveWaitingPoll();
-				if (message.role === "user") this.#resolveTodoSnapshot();
-				const textContent = message.role === "user" ? userMessageText(message) : "";
+				if (message.role === "user") {
+					this.#resolveWaitingPoll();
+					this.#resolveTodoSnapshot();
+				}
+				const textContent = userMessageText(message);
 				if (textContent) {
-					// A turn-level batch ledger is a standing instruction to the
-					// model, not operator prose: collapse it to a one-line marker.
 					const ledgerMarker = ledgerMarkerLine(textContent);
 					if (ledgerMarker !== null) {
 						this.container.addChild(new Text(ledgerMarker, 0, 0));
-						break;
+						return [];
 					}
 					const isSynthetic = message.role === "developer" ? true : (message.synthetic ?? false);
-					this.container.addChild(new UserMessageComponent(textContent, isSynthetic));
+					const imageLinks = options?.imageLinks ?? this.deps.resolveImageLinks?.(message);
+					const userComponent = new UserMessageComponent(textContent, isSynthetic, imageLinks);
+					this.container.addChild(userComponent);
+					if (options?.populateHistory && message.role === "user" && !isSynthetic) {
+						this.deps.onPopulateHistory?.(textContent);
+					}
 				}
-				break;
+				return [];
 			}
 			case "bashExecution": {
 				const component = new BashExecutionComponent(message.command, this.deps.ui, message.excludeFromContext);
 				if (message.output) component.appendOutput(message.output);
 				component.setComplete(message.exitCode, message.cancelled, { truncation: message.meta?.truncation });
 				this.container.addChild(component);
-				break;
+				return [];
 			}
 			case "pythonExecution": {
 				const component = new EvalExecutionComponent(message.code, this.deps.ui, message.excludeFromContext);
 				if (message.output) component.appendOutput(message.output);
 				component.setComplete(message.exitCode, message.cancelled, { truncation: message.meta?.truncation });
 				this.container.addChild(component);
-				break;
+				return [];
 			}
 			case "hookMessage":
 			case "custom":
-				this.#appendCustomMessage(message);
-				break;
+				return this.#appendCustomMessage(message);
 			case "compactionSummary": {
 				const component = new CompactionSummaryMessageComponent(message);
 				this.#trackExpandable(component);
 				this.container.addChild(component);
-				break;
+				return [];
 			}
 			case "branchSummary": {
 				const component = new BranchSummaryMessageComponent(message);
 				this.#trackExpandable(component);
 				this.container.addChild(component);
-				break;
+				return [];
 			}
 			case "fileMention": {
-				// Indent one column to match the transcript's other rows (the viewer renders
-				// body rows without an outer gutter; rows own their left pad).
-				const block = buildFileMentionBlock(message.files, 1);
+				const indent = this.deps.indentFileMentions ?? 0;
+				const block = buildFileMentionBlock(message.files, indent);
 				if (block.children.length > 0) this.container.addChild(block);
-				break;
+				return [];
 			}
 			default:
-				message satisfies never;
+				return [];
 		}
 	}
 
-	#appendAssistantMessage(message: Extract<AgentMessage, { role: "assistant" }>): void {
+	#createAssistantComponent(message?: Extract<AgentMessage, { role: "assistant" }>): AssistantMessageComponent {
 		const hideThinkingBlock = this.deps.hideThinkingBlock?.() ?? false;
 		const proseOnlyThinking = this.deps.proseOnlyThinking ? this.deps.proseOnlyThinking() : true;
-		const timeline = splitAssistantMessageToolTimeline(message);
-		const assistantComponent = new AssistantMessageComponent(
-			timeline.beforeTools,
+		const thinkingRenderers = this.deps.getThinkingRenderers?.() ?? (this.deps.getMessageRenderer ? undefined : []);
+		const assistantComponent: AssistantMessageComponent = new AssistantMessageComponent(
+			message,
 			hideThinkingBlock,
 			() => this.deps.requestRender(),
-			this.deps.getMessageRenderer ? undefined : [], // placeholder for thinkingRenderers
+			thinkingRenderers,
 			this.deps.ui.imageBudget,
 			proseOnlyThinking,
-			// Scoped repaint for the streaming shimmer ticker: repaint just this row,
-			// never the whole transcript, so the 30fps liquid flow stays cheap (#4377).
 			() => this.deps.ui.requestComponentRender(assistantComponent),
 		);
+		return assistantComponent;
+	}
+
+	#appendAssistantMessage(message: Extract<AgentMessage, { role: "assistant" }>, cacheMissExplained: boolean): void {
+		const timeline = splitAssistantMessageToolTimeline(message);
+		const assistantComponent = this.#createAssistantComponent(timeline.beforeTools);
 		this.container.addChild(assistantComponent);
 
-		if (settings.get("display.cacheMissMarker")) {
-			const invalidation = detectCacheInvalidation(this.#lastAssistantUsage, message.usage, undefined, {
+		const usage = message.usage;
+		if (this.#settings.get("display.cacheMissMarker") && !cacheMissExplained) {
+			const invalidation = detectCacheInvalidation(this.#lastAssistantUsage, usage, undefined, {
 				explicitCache: usesExplicitPromptCache(message.api, message.model),
 			});
 			if (invalidation) assistantComponent.setCacheInvalidation(invalidation);
 		}
-		if (message.usage.cacheRead + message.usage.cacheWrite + message.usage.input > 0) {
-			this.#lastAssistantUsage = message.usage;
+		if (usage.cacheRead + usage.cacheWrite + usage.input > 0) {
+			this.#lastAssistantUsage = usage;
+			this.deps.setLastAssistantUsage?.(usage);
 		}
 
 		const hasVisibleAssistantContent = assistantHasVisibleContent(message);
 		if (hasVisibleAssistantContent) {
-			// New visible turn content closes the current read run (mirrors rebuild).
 			this.#readGroup?.seal();
 			this.#readGroup = null;
 		}
 
-		const errorPresentation = resolveAssistantErrorPresentation(message);
+		const retryAttempt = this.deps.retryAttempt?.() ?? 0;
+		const errorPresentation = resolveAssistantErrorPresentation(message, retryAttempt);
 		const hasErrorStop = errorPresentation.kind === "full";
 		const errorMessage = hasErrorStop ? errorPresentation.text : null;
 		const appendAssistantSegment = (segment: Extract<AgentMessage, { role: "assistant" }> | undefined) => {
 			if (!segment || !assistantHasVisibleContent(segment)) return;
-			const component = new AssistantMessageComponent(
-				segment,
-				hideThinkingBlock,
-				() => this.deps.requestRender(),
-				this.deps.getMessageRenderer ? undefined : [],
-				undefined,
-				proseOnlyThinking,
-				() => this.deps.ui.requestComponentRender(component),
-			);
+			const component = this.#createAssistantComponent(segment);
 			this.container.addChild(component);
 		};
 
@@ -345,13 +467,16 @@ export class ChatTranscriptBuilder {
 					const group = this.#ensureReadGroup();
 					group.updateArgs(content.arguments, content.id);
 					group.updateResult(turnFailedToolResult(errorMessage), false, content.id);
+					this.#settledToolCalls.add(content.id);
 				} else if (afterToolSegment) {
 					const group = this.#ensureReadGroup();
 					group.updateArgs(content.arguments, content.id);
 					this.#pendingTools.set(content.id, group);
+					this.#readToolCallAssistantComponents.set(content.id, assistantComponent);
 				} else {
 					const normalizedArgs = normalizeToolArgs(content.arguments);
 					this.#readArgs.set(content.id, normalizedArgs);
+					this.#readToolCallAssistantComponents.set(content.id, assistantComponent);
 				}
 				appendAssistantSegment(afterToolSegment);
 				continue;
@@ -359,20 +484,32 @@ export class ChatTranscriptBuilder {
 
 			this.#readGroup?.seal();
 			this.#readGroup = null;
+
+			const tool = this.deps.getTool?.(content.name);
+			const partialJson = getStreamingPartialJson(content);
+			const rawInput = content.customWireName !== undefined;
+			const renderArgs = partialJson
+				? decodeStreamedToolArgs(partialJson, {
+						rawInput,
+						fullArgs: content.arguments,
+						streamingStringKeys: streamingStringKeysForTool(content.name, rawInput),
+						argot: this.deps.getArgotSession?.(),
+					})
+				: content.arguments;
+
 			const component = new ToolExecutionComponent(
 				content.name,
-				content.arguments,
+				renderArgs,
 				{
-					// Stable ids and Kitty placeholder cells keep images anchored
-					// while the transcript viewport scrolls and reflows.
+					snapshots: this.deps.getSnapshots?.(),
 					showImages: settings.get("terminal.showImages"),
 					editFuzzyThreshold: settings.get("edit.fuzzyThreshold"),
 					editAllowFuzzy: settings.get("edit.fuzzyMatch"),
 					liveRegion: this.container,
 				},
-				this.deps.getTool?.(content.name),
+				tool,
 				this.deps.ui,
-				this.deps.cwd,
+				this.#cwd,
 				content.id,
 			);
 			this.#trackExpandable(component);
@@ -380,37 +517,83 @@ export class ChatTranscriptBuilder {
 
 			if (hasErrorStop && errorMessage) {
 				component.updateResult(turnFailedToolResult(errorMessage), false, content.id);
+				this.#settledToolCalls.add(content.id);
 			} else {
 				this.#pendingTools.set(content.id, component);
 			}
 			appendAssistantSegment(afterToolSegment);
 		}
 
+		const strippedToolCalls =
+			"strippedToolCalls" in message && typeof message.strippedToolCalls === "number"
+				? message.strippedToolCalls
+				: 0;
+		if (strippedToolCalls > 0) {
+			this.container.addChild(
+				new Text(
+					theme.fg(
+						"dim",
+						theme.italic(`${formatCount("tool call", strippedToolCalls)} elided — no result on this branch`),
+					),
+					1,
+					0,
+				),
+			);
+		}
+
 		this.#pendingUsage =
-			settings.get("display.showTokenUsage") && assistantUsageIsBilled(message.usage) ? message.usage : undefined;
+			this.#settings.get("display.showTokenUsage") && assistantUsageIsBilled(message.usage)
+				? message.usage
+				: undefined;
 		this.#pendingUsageDuration = message.duration;
 		this.#pendingUsageTtft = message.ttft;
 	}
 
 	#appendToolResult(message: Extract<AgentMessage, { role: "toolResult" }>): void {
+		const backgroundStillRunning = isLiveBackgroundTask(message.toolName, message.details);
+		if (backgroundStillRunning) {
+			this.#liveBackgroundCalls.add(message.toolCallId);
+		} else {
+			this.#settledToolCalls.add(message.toolCallId);
+		}
+
 		const pending = this.#pendingTools.get(message.toolCallId);
 		const isReadGroupResult = message.toolName === "read" && (!pending || pending instanceof ReadToolGroupComponent);
 		if (isReadGroupResult) {
+			const assistantComponent = this.#readToolCallAssistantComponents.get(message.toolCallId);
+			const images: ImageContent[] = message.content.filter(
+				(content): content is ImageContent => content.type === "image",
+			);
+			if (images.length > 0 && assistantComponent && settings.get("terminal.showImages")) {
+				assistantComponent.setToolResultImages(message.toolCallId, images);
+				const hasText = message.content.some(c => c.type === "text");
+				if (!hasText) {
+					this.#readArgs.delete(message.toolCallId);
+					this.#readToolCallAssistantComponents.delete(message.toolCallId);
+					return;
+				}
+			}
+
 			let component = pending;
 			if (!component) {
 				const group = this.#ensureReadGroup();
 				const args = this.#readArgs.get(message.toolCallId);
 				if (args) group.updateArgs(args, message.toolCallId);
 				component = group;
+				this.#pendingTools.set(message.toolCallId, group);
 			}
 			component.updateResult(message, false, message.toolCallId);
 			this.#pendingTools.delete(message.toolCallId);
 			this.#readArgs.delete(message.toolCallId);
+			this.#readToolCallAssistantComponents.delete(message.toolCallId);
 			return;
 		}
+
 		if (!pending) return;
-		pending.updateResult(message, false, message.toolCallId);
+		pending.updateResult(message, backgroundStillRunning, message.toolCallId);
+		if (backgroundStillRunning) return;
 		this.#pendingTools.delete(message.toolCallId);
+
 		if (message.toolName === "job" && pending instanceof ToolExecutionComponent && pending.isDisplaceableBlock()) {
 			this.#waitingPoll = pending;
 		} else if (
@@ -418,59 +601,66 @@ export class ChatTranscriptBuilder {
 			pending instanceof ToolExecutionComponent &&
 			pending.canBeDisplacedBy("todo")
 		) {
-			// A successful todo result supersedes the prior live snapshot. Failed
-			// follow-ups return false from canBeDisplacedBy("todo"), so the
-			// last-good panel stays on screen.
 			this.#resolveTodoSnapshot("todo");
 			this.#todoSnapshot = pending;
 		}
 	}
 
-	#appendCustomMessage(message: Extract<AgentMessage, { role: "custom" | "hookMessage" }>): void {
-		if (!message.display) return;
+	#appendCustomMessage(message: Extract<AgentMessage, { role: "custom" | "hookMessage" }>): Component[] {
+		if (!message.display) return [];
 		if (message.customType === "async-result") {
 			this.container.addChild(buildAsyncResultBlock(message));
-			return;
+			return [];
 		}
 		if (message.customType === LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE) {
-			const details = (message as CustomMessage<{ files?: LateDiagnosticsFile[] }>).details;
-			const component = new LateDiagnosticsMessageComponent(details?.files ?? []);
+			const files =
+				message.details &&
+				typeof message.details === "object" &&
+				"files" in message.details &&
+				Array.isArray(message.details.files)
+					? (message.details.files as LateDiagnosticsFile[])
+					: [];
+			const component = new LateDiagnosticsMessageComponent(files);
 			this.#trackExpandable(component);
 			this.container.addChild(component);
-			return;
+			return [];
 		}
 		if (message.customType === COLLAB_PROMPT_MESSAGE_TYPE) {
 			this.container.addChild(new CollabPromptMessageComponent(message as CustomMessage<CollabPromptDetails>));
-			return;
+			return [];
 		}
 		if (message.customType === SKILL_PROMPT_MESSAGE_TYPE) {
 			const component = new SkillMessageComponent(message as CustomMessage<SkillPromptDetails>);
 			this.#trackExpandable(component);
 			this.container.addChild(component);
-			return;
+			return [];
 		}
 		if (
 			message.customType === "irc:incoming" ||
 			message.customType === "irc:autoreply" ||
 			message.customType === "irc:relay"
 		) {
-			this.container.addChild(buildIrcMessageCard(message, () => this.#expanded));
-			return;
+			const card = buildIrcMessageCard(message, () => this.#expanded);
+			this.container.addChild(card);
+			return [card];
 		}
 		if (message.customType === "advisor") {
-			const details = (message as CustomMessage<AdvisorMessageDetails>).details;
-			this.container.addChild(createAdvisorMessageCard(details, () => this.#expanded, theme));
-			return;
+			const advisorDetails =
+				message.details && typeof message.details === "object"
+					? (message.details as AdvisorMessageDetails)
+					: undefined;
+			this.container.addChild(createAdvisorMessageCard(advisorDetails, () => this.#expanded, theme));
+			return [];
 		}
 		if (message.customType === BACKGROUND_TAN_DISPATCH_MESSAGE_TYPE) {
 			this.container.addChild(createBackgroundTanDispatchBlock(message as CustomMessage<unknown>));
-			return;
+			return [];
 		}
 		const handoffComponent = createHandoffSummaryMessageComponent(message as CustomMessage<unknown>, this.#expanded);
 		if (handoffComponent) {
 			this.#trackExpandable(handoffComponent);
 			this.container.addChild(handoffComponent);
-			return;
+			return [];
 		}
 		const component = new CustomMessageComponent(
 			message as CustomMessage<unknown>,
@@ -478,5 +668,34 @@ export class ChatTranscriptBuilder {
 		);
 		this.#trackExpandable(component);
 		this.container.addChild(component);
+		return [];
+	}
+
+	#finalizeRebuild(): void {
+		this.#flushPendingUsage();
+		this.#readGroup?.seal();
+		this.#resolveWaitingPoll();
+
+		const isStreaming = this.deps.isStreaming?.() ?? false;
+		if (this.#todoSnapshot && isStreaming) {
+			this.deps.onInheritDisplaceableTodo?.(this.#todoSnapshot);
+			this.#todoSnapshot = null;
+		} else {
+			this.#resolveTodoSnapshot();
+		}
+
+		if (isStreaming) {
+			for (const [toolCallId, component] of this.#pendingTools) {
+				component.setArgsComplete(toolCallId);
+			}
+		} else {
+			for (const [toolCallId, component] of this.#pendingTools) {
+				if (this.#liveBackgroundCalls.has(toolCallId)) continue;
+				component.seal();
+				this.#settledToolCalls.add(toolCallId);
+				this.#pendingTools.delete(toolCallId);
+			}
+		}
+		this.deps.requestRender();
 	}
 }

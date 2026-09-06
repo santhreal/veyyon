@@ -34,7 +34,7 @@ const picked = await terminal.custom<string | undefined>((tui, theme, keybinding
 
 ## Core component contract (`@veyyon/tui`)
 
-`hosts/terminal/engine/src/tui.ts` defines:
+`hosts/terminal/engine/src/core/component-types.ts` defines:
 
 ```ts
 export interface Component {
@@ -144,7 +144,7 @@ Behavior in interactive mode (`extension-ui-controller.ts`):
 
 ## 2) Hook/custom-tool UI context (legacy typing)
 
-`HookUIContext.custom` is typed as `(tui, theme, done)` in hook/custom-tool types.
+`HookUIContext.terminal.custom` is typed as `(tui, theme, done)` in `extensibility/terminal-capability.ts`.
 Underlying interactive implementation calls factories with `(tui, theme, keybindings, done)`. JS consumers can use the extra arg; type-level compatibility still reflects the 3-arg legacy signature.
 
 Custom tools typically use the same UI entrypoint via the factory-scoped `pi.ui` object, then return the selected value in normal tool content:
@@ -180,6 +180,9 @@ Custom tools and extension tools define two optional renderers:
 
 Both return `HostView`, which is whatever the active host draws. In the terminal
 that is a `@veyyon/tui` `Component`, and `ToolExecutionComponent` mounts it.
+
+The `view` alternative returns host-independent `ToolView` values; see
+[custom tool rendering hooks](../using/custom-tools.md#rendering-hooks).
 
 ## Lifecycle and cancellation
 
@@ -276,7 +279,7 @@ export default function extension(pi: ExtensionAPI): void {
 
 ## Key implementation files
 
-- `hosts/terminal/engine/src/tui.ts`: `Component`, `Focusable`, cursor marker, focus, overlay, input dispatch.
+- `hosts/terminal/engine/src/core/tui.ts`: terminal rendering, focus, overlays, and input dispatch.
 - `packages/utils/src/width.ts`: width/truncation/sanitization primitives.
 - `packages/utils/src/keys.ts` / `keybindings.ts`: key parsing and configurable action mapping.
 - `packages/coding-agent/src/modes/terminal/controllers/extension-ui-controller.ts`: interactive mounting/unmounting for extension/hook/custom-tool UI.
@@ -284,4 +287,5 @@ export default function extension(pi: ExtensionAPI): void {
 - `packages/coding-agent/src/extensibility/hooks/types.ts`: hook UI contract (legacy custom signature).
 - `packages/coding-agent/src/extensibility/custom-tools/types.ts`: custom tool execute/render contracts.
 - `packages/coding-agent/src/modes/terminal/components/transcript/tool-execution.ts`: mounting `renderCall`/`renderResult` components and partial-state options.
+- `packages/coding-agent/src/modes/terminal/components/transcript/chat-transcript-builder.ts`: shared persisted-message replay and live-message dispatch for interactive chat and transcript viewers.
 - `packages/coding-agent/src/tools/core/context.ts`: tool UI context propagation (`hasUI`, `ui`).
