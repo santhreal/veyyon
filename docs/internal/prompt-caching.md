@@ -543,4 +543,4 @@ than we do, and the comparison is included because it makes the gap concrete.
 | Operator settings | `packages/coding-agent/src/config/settings-domains/context.ts` |
 | Cache-aligned compaction request | `packages/agent/src/compaction/cache-aligned-context.ts` |
 
-*Verified against `23e2a7938b9f` on 2026-08-28.*
+*Verified against `63ffc8131ffb8d35ccbbb1c5de69531a7016eff4` on 2026-09-06.*

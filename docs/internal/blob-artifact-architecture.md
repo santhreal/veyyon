@@ -249,4 +249,4 @@ The two systems intersect only indirectly: both reduce session JSONL bloat, but 
 - [`src/task/output-manager.ts`](../../packages/coding-agent/src/task/output-manager.ts): session-scoped agent output ID allocation for `agent://`.
 - [`src/task/executor.ts`](../../packages/coding-agent/src/task/executor.ts): agent output artifact writes (`<id>.md`) and session JSONL sidecars.
 
-*Verified against `946d75b873` on 2026-09-04.*
+*Verified against `63ffc8131ffb8d35ccbbb1c5de69531a7016eff4` on 2026-09-06.*

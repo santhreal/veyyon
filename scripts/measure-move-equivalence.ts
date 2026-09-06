@@ -370,6 +370,20 @@ export const GROUPS: readonly { name: string; matches: (relative: string) => boo
 		reason: "A plugin left packages/ for plugins/. Relative imports and array copies follow the move.",
 	},
 	{
+		name: "focused-agent-pin",
+		matches: relative => relative === "packages/coding-agent/src/modes/terminal/controllers/session-focus-controller.ts",
+		reason:
+			"The focus controller pins the agent it views through `AgentLifecycleManager.pin` before reviving it and releases the pin on unfocus, so a park whose flush is in flight cannot dispose the session on screen. It also moved under `modes/terminal/` with the rest of the terminal host.",
+	},
+	{
+		name: "agent-settings-wording",
+		matches: relative =>
+			relative === "packages/coding-agent/src/modes/terminal/components/selectors/settings-selector.ts" ||
+			relative === "packages/coding-agent/test/modes/terminal/components/settings-value-labels.test.ts",
+		reason:
+			"The Agents settings pages and the suite that reads their labels use the `agent` vocabulary, state each row in plain sentences and no longer call a per-agent page a lane. Both also moved under `modes/terminal/` with the rest of the terminal host.",
+	},
+	{
 		name: "host-boundary",
 		matches: relative => relative.startsWith("packages/coding-agent/src/modes/terminal/"),
 		reason:

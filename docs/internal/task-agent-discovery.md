@@ -205,4 +205,4 @@ When parent plan mode is enabled, `TaskTool.#runSpawn` builds an `effectiveAgent
 
 The same `effectiveAgent` is used for subprocess launch, model/thinking overrides, and output-schema selection.
 
-*Verified against `ad6db3fa` on 2026-08-31.*
+*Verified against `63ffc8131ffb8d35ccbbb1c5de69531a7016eff4` on 2026-09-06.*

@@ -101,7 +101,7 @@ describe("token equivalence differential suite", () => {
 	it("states which commit it was measured against, and how many rows it carries (cell e)", () => {
 		expect(ledger.schemaVersion).toBe(TOKEN_EQUIVALENCE_SCHEMA_VERSION);
 		expect(ledger.generatedFrom).toBe(BASELINE_COMMIT);
-		expect(formattingEntries).toHaveLength(72);
+		expect(formattingEntries).toHaveLength(118);
 		expect(importReorderEntries).toHaveLength(0);
 	});
 	it("passes anti-vacuity: a token mutation in a verified file changes its hash (cell f)", () => {

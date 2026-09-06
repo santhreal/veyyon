@@ -493,6 +493,9 @@ export const repoScriptTests = [
 	"scripts/a-published-surface-survives-the-move.test.ts",
 	"scripts/every-command-and-flag-survives-the-move.test.ts",
 	"scripts/the-kernel-names-no-tool-and-no-host.test.ts",
+	// The shared git reader those four proofs stand on: pinned baseline reachability,
+	// batched blob streaming and rename detection. A broken reader reads as a clean move.
+	"scripts/git-baseline.test.ts",
 	// The ChatGPT Codex compaction route has been broken and re-fixed 50+ times, and
 	// each break falls back to paid local compaction that busts the prompt cache. The
 	// suite hashes the file, so editing it at all fails CI until an operator records

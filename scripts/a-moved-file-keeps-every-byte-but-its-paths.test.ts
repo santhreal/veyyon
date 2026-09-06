@@ -91,11 +91,11 @@ describe("a moved file keeps every byte but its paths", () => {
 		expect(ledger.generatedFrom).toBe(PINNED_BASELINE_COMMIT);
 		expect(ledger.counts.total).toBe(4804);
 		expect(ledger.counts.none).toBe(3417);
-		expect(ledger.counts.importsAndCommentsOnly).toBe(763);
-		expect(ledger.counts.changed).toBe(624);
+		expect(ledger.counts.importsAndCommentsOnly).toBe(762);
+		expect(ledger.counts.changed).toBe(625);
 		expect(ledger.counts.binary).toBe(ledger.counts.binary);
 		expect(ledger.counts.binary).toBeGreaterThanOrEqual(18);
-		expect(Object.keys(ledger.changed).length).toBe(624);
+		expect(Object.keys(ledger.changed).length).toBe(625);
 		expect(rewrites.length).toBeGreaterThan(50);
 	});
 
@@ -187,14 +187,14 @@ describe("a moved file keeps every byte but its paths", () => {
 		expect(unapproved).toEqual([]);
 		expect(drifted).toEqual([]);
 		expect(counts.none).toBe(3417);
-		expect(counts.importsAndCommentsOnly).toBe(763);
-		expect(counts.changed).toBe(624);
+		expect(counts.importsAndCommentsOnly).toBe(762);
+		expect(counts.changed).toBe(625);
 		expect(counts.total).toBe(4804);
 	});
 
 	it("explains every file whose content really changed and verifies fingerprints", async () => {
 		const changedEntries = Object.entries(ledger.changed);
-		expect(changedEntries.length).toBe(624);
+		expect(changedEntries.length).toBe(625);
 		const baselineBlobs = await batchReadGitBlobs(
 			changedEntries.map(([, record]) => `${ledger.generatedFrom}:${record.old}`),
 			REPO_ROOT,
@@ -234,6 +234,7 @@ describe("a moved file keeps every byte but its paths", () => {
 
 	it("draws every group from the recorded vocabulary", () => {
 		expect([...GROUP_NAMES].sort()).toEqual([
+			"agent-settings-wording",
 			"agent-vocabulary-prose",
 			"bindings-path-expectation",
 			"changelog-or-readme",
@@ -243,6 +244,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			"diagnostic-grouping-owner",
 			"engine-consumer",
 			"extracted-to-utils",
+			"focused-agent-pin",
 			"host-boundary",
 			"json-walk-split",
 			"kernel-absorption",
@@ -556,10 +558,10 @@ describe("a moved file keeps every byte but its paths", () => {
 		const expanded = loadExpandedMoveEquivalenceLedger(sparse);
 		expect(expanded.counts.total).toBe(4804);
 		expect(expanded.counts.none).toBe(3417);
-		expect(expanded.counts.importsAndCommentsOnly).toBe(763);
-		expect(expanded.counts.changed).toBe(624);
+		expect(expanded.counts.importsAndCommentsOnly).toBe(762);
+		expect(expanded.counts.changed).toBe(625);
 		expect(expanded.counts.binary).toBe(26);
-		expect(Object.keys(expanded.changed).length).toBe(624);
+		expect(Object.keys(expanded.changed).length).toBe(625);
 		expect(expanded.rewrites.length).toBe(157);
 		expect(Object.keys(expanded.importAttributes).length).toBe(92);
 		const measured = await generateSparseLedger();

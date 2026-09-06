@@ -5,8 +5,8 @@
 	"counts": {
 		"total": 4804,
 		"none": 3417,
-		"importsAndCommentsOnly": 763,
-		"changed": 624,
+		"importsAndCommentsOnly": 762,
+		"changed": 625,
 		"binary": 26
 	},
 	"deviations": {
@@ -31,8 +31,8 @@
 		"apps/stats/CHANGELOG.md": {
 			"old": "packages/stats/CHANGELOG.md",
 			"group": "changelog-or-readme",
-			"hash": "381f01e7f428fdc7729be92710f4ff41ebc876e57ce93801ccdf8fc5e258e587",
-			"structuralHash": "b0400d6c2811be2e2452cbada08db73ef058925572a6a9c4a729454acf293a77"
+			"hash": "ff199a745fa9bf6801301e0a80e9ca93f10778513d7b338bb6c5b6375466a344",
+			"structuralHash": "aebbc50a0827a4f26aeffb3dfb5fe234493b1265f713f5f60607c6d2362164e9"
 		},
 		"apps/stats/src/client/components/AgentTokenShare.tsx": {
 			"old": "packages/stats/src/client/components/AgentTokenShare.tsx",
@@ -121,8 +121,8 @@
 		"clients/web/scripts/mock-host.ts": {
 			"old": "packages/collab-web/scripts/mock-host.ts",
 			"group": "relocated-member-path",
-			"hash": "05ad9d3b0e7b1a472a2c4b54861d010de7ee003cf0a7d69bd704dcc3759c64c2",
-			"structuralHash": "c6d0f0e6dbbfd3a92735aed45e72666232dd002bec1198b60ce04045ddbe0fff"
+			"hash": "922987faf2e5822e0aaec08a2234ae5baa69041436aea901d7295d33e385366e",
+			"structuralHash": "17fb55ef3297cc2e9ecc950ddeec58624d422304804d10b819b9e126037090b9"
 		},
 		"clients/web/src/components/agents/AgentDrawer.tsx": {
 			"old": "packages/collab-web/src/components/agents/AgentDrawer.tsx",
@@ -139,20 +139,32 @@
 		"clients/web/src/lib/client.ts": {
 			"old": "packages/collab-web/src/lib/client.ts",
 			"group": "relocated-member-path",
-			"hash": "9ec8b8a28de0b6392bb836fad718e5b8348cf1ff6fea55e010a8b37794a468cc",
-			"structuralHash": "08935d426e37708f690d3a9980ba87fabf9831b14f2732600de4b497a0f4f0c0"
+			"hash": "33107e7525cbc3cd94dabd69a68f03280ea9d3827a1c9d91cb6c5694ce38a49c",
+			"structuralHash": "f085cf195ac03c693684c9ae58ef4edba5d5b2e74563aed272eabfafd6d834f7"
 		},
 		"clients/web/test/client.test.ts": {
 			"old": "packages/collab-web/test/client.test.ts",
 			"group": "relocated-member-path",
-			"hash": "fae86aefc9e7ae3d726f46dd0b79e187044518aac8813ec71a72d2a9eb2444a5",
-			"structuralHash": "1b0ef8bc97d7b004352a2106526260130964b9c8bbedea683a5f5097886b692c"
+			"hash": "2e13c33be0c4489dcd25edb1e88cbff120c2dd1fe45f319cb3b6ce52d8bdaa47",
+			"structuralHash": "5faf1d380008333b768bf8a7cabe64773e9512247a92c964e1390732be045154"
+		},
+		"contracts/wire/CHANGELOG.md": {
+			"old": "packages/wire/CHANGELOG.md",
+			"group": "changelog-or-readme",
+			"hash": "2c0f2668b18cede3b060a5311f6a74ee9b14a0a2d7ff25d509ee2fbdd4f2841f",
+			"structuralHash": "9a74338e2245894ea286b8497c741169bdd09582729a2e4c9f6e1b2670955be0"
 		},
 		"contracts/wire/src/index.ts": {
 			"old": "packages/wire/src/index.ts",
 			"group": "contract-extraction",
-			"hash": "663653bf583a4efb8bfaf3a0dbd979e2acee88638b4af2f1bbd8784760b75237",
-			"structuralHash": "c5f3a0a89ee87d8d0139f217e697fa3c016079dfc0077365ea44c4348ad84f0e"
+			"hash": "07d42487626cb17089e9bc5458fea4b6556f6957f78a0cbb088524673895338d",
+			"structuralHash": "075d0f6a94f6a8d459e22a86273242f693f736efc0286198271f44f1095a643a"
+		},
+		"hosts/terminal/engine/CHANGELOG.md": {
+			"old": "packages/tui/CHANGELOG.md",
+			"group": "changelog-or-readme",
+			"hash": "1fcc6b317985ea7798f9d245f1209dcb701320979c82a15f35697fcc0d84616d",
+			"structuralHash": "a5bac47cee476f113d189154c46457f856629601e46009beb4ea0c8a37368d99"
 		},
 		"hosts/terminal/engine/src/components/select-list.ts": {
 			"old": "packages/tui/src/components/select-list.ts",
@@ -300,9 +312,9 @@
 		},
 		"packages/coding-agent/src/modes/terminal/components/selectors/settings-selector.ts": {
 			"old": "packages/coding-agent/src/modes/components/settings-selector.ts",
-			"group": "host-boundary",
-			"hash": "fe21148aa301a6ecb41a25dd206736c1e96c75c28e3f075b82a0c47b5b1f1db1",
-			"structuralHash": "d83c02e22011bf0c60c53ae9f3b25b6bd0d32a77c70e11ab952db8815831c25e"
+			"group": "agent-settings-wording",
+			"hash": "bfa29203dd1ad232b3e0f9006b9d140fb3999375ee7b3bf1297c2436294c020e",
+			"structuralHash": "16c6922ed37d3b93c044a4e4d25d56e886bae8169b1785bc9a028079176b85e2"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/component.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/component.ts",
@@ -375,6 +387,12 @@
 			"group": "host-boundary",
 			"hash": "a9c23fa2753ff0577075d1994b5c8fac575845c676dcf6b945921d3281c98a22",
 			"structuralHash": "68cd77160ad9f583ff4bcec96714274aa7d32fd0724203863329301b986bef92"
+		},
+		"packages/coding-agent/src/modes/terminal/controllers/session-focus-controller.ts": {
+			"old": "packages/coding-agent/src/modes/controllers/session-focus-controller.ts",
+			"group": "focused-agent-pin",
+			"hash": "67157f5f09dd0be69cb196cfcf44543f79da1d8253714d6ece4ee68ff66c096f",
+			"structuralHash": "bd0795ae9fbead3bc61f914b85f33b8318ee7b9f757393e5c211c2001f98a27d"
 		},
 		"packages/coding-agent/src/modes/terminal/controllers/tan-command-controller.ts": {
 			"old": "packages/coding-agent/src/modes/controllers/tan-command-controller.ts",
@@ -1374,9 +1392,9 @@
 		},
 		"packages/coding-agent/test/modes/terminal/components/settings-value-labels.test.ts": {
 			"old": "packages/coding-agent/test/modes/components/settings-value-labels.test.ts",
-			"group": "colocated-test",
-			"hash": "e78f3d141ce21650e88b4eada2d4cc1c3b8f2a29452f2f4e6a6f06c331faa8df",
-			"structuralHash": "ea85b5344aa67bf7d485ace7622e01c0439ad97b5e749de0728f1d3b8197973a"
+			"group": "agent-settings-wording",
+			"hash": "a06b227322a081883ff2f4806bc0aa6936880675b2e9c9de19c60cfbb759e000",
+			"structuralHash": "16077bc85a290fa8acd00e391ca52479a543b8b7318bd47fb5a752d12a3797a4"
 		},
 		"packages/coding-agent/test/modes/terminal/components/status-line/the-footline-path-clips-from-one-end-and-widens-on-a-click.test.ts": {
 			"old": "packages/coding-agent/test/modes/components/status-line/the-footline-path-clips-from-one-end-and-widens-on-a-click.test.ts",
@@ -1531,14 +1549,20 @@
 		"packages/coding-agent/test/task/task-result-render.test.ts": {
 			"old": "packages/coding-agent/src/task/render.test.ts",
 			"group": "view-conversion",
-			"hash": "c1420d65cc776a49653bfbc0e9f4c73d467539c6a930c65abc3c6fe094a45dbe",
-			"structuralHash": "d6d9f0e06e4c6dc637a6e634b4e4f2c4cd84ce1c8e77da785678ad4380cb0a17"
+			"hash": "b27019639928925c30e60d07c4d7e836c2a05f653ec73da140cc1b6bb7d27791",
+			"structuralHash": "9644000e3811393a9d962278b9948b071de3548d8f507ef933f082bd21eed618"
 		},
 		"packages/coding-agent/test/tools/agent/a-vibe-worker-inherits-the-parents-effort-and-policy.test.ts": {
 			"old": "packages/coding-agent/test/vibe/vibe-runtime.test.ts",
 			"group": "colocated-test",
 			"hash": "5a6ece26508125dc6d2dba66c8ef13cf2c4b9b69aa76d4671c83a33e2789839d",
 			"structuralHash": "a85b458185b90e06843409c7236b672a3f210781c3b93b223e1f0e1df6137d01"
+		},
+		"plugins/argot/CHANGELOG.md": {
+			"old": "packages/argot/CHANGELOG.md",
+			"group": "changelog-or-readme",
+			"hash": "401881adbf4bd3b89727a8a4e866038770d0c665f694ba17b3ed74c04c6d608c",
+			"structuralHash": "b4df5e18df2c15755103d26b33c7827566451d328ff17e7f2e01e07974cb20b6"
 		},
 		"plugins/argot/INTEGRATING.md": {
 			"old": "packages/argot/INTEGRATING.md",
@@ -1575,6 +1599,12 @@
 			"group": "plugin-source",
 			"hash": "abee0112f72bbb296e24e053620ca408f7ce91b079e0352cc5494a596653f0f5",
 			"structuralHash": "58d276e3f59fc37df0d392a0de3f54e6976379bf284174339a65e3a3744e5735"
+		},
+		"plugins/mode-swarm/CHANGELOG.md": {
+			"old": "packages/swarm-extension/CHANGELOG.md",
+			"group": "changelog-or-readme",
+			"hash": "0ffa814e136de99092123a987673db7906f65209f1f468c22994b8a207b1f145",
+			"structuralHash": "23926fce63e51f1779fbe3fb8811148d4760664e0f47a22562b619b8d5a4508f"
 		},
 		"plugins/mode-swarm/README.md": {
 			"old": "packages/swarm-extension/README.md",

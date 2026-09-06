@@ -947,4 +947,4 @@ The conformance migration is complete when all the following quantitative criter
 - [ ] **CI Performance**: Direct-Rust p95 is <= 1.5 ms, compiled-product p95 is <= 500 ms, three cold calibrations of every exact shard finish in <= 144 seconds, and the complete 250,000-case CI run finishes in < 180 seconds across eight runners.
 - [ ] **Zero Unresolved Mismatches**: Every corpus mismatch is fixed or represented by an explicit reviewed contract change across Linux x86_64, Linux aarch64, macOS x86_64, macOS aarch64, and Windows x86_64.
 
-*Verified against `954eace449` on 2026-08-31.*
+*Verified against `63ffc8131ffb8d35ccbbb1c5de69531a7016eff4` on 2026-09-06.*

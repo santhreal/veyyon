@@ -550,7 +550,7 @@ describe("tool loading resolves to identical outcomes after consolidation", () =
 	 * It cannot police the constant's VALUE: both cells size themselves from
 	 * `TOOL_DISCOVERY_AUTO_THRESHOLD`, so raising 40 to 4000 moves them with it and this
 	 * suite stays green (verified by mutation). That is pinned by
-	 * `tool-discovery/agent.test.ts`, which passes the count to `resolveEffectiveMode`
+	 * `discovery/tool-discovery-mode-resolves-from-tools-and-mcp-settings.test.ts`, which passes the count to `resolveEffectiveMode`
 	 * directly; changing `>` to `>=` turns that suite red.
 	 *
 	 * Both counts and both expected lists are derived. The pair previously wrote out 40 and

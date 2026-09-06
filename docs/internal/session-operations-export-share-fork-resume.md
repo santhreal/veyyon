@@ -376,4 +376,4 @@ When session manager is created with `SessionManager.inMemory()` (`--no-session`
 - `/share` custom-share failures do not degrade to the default encrypted share flow; they terminate the command with error.
 - `/export` argument tokenization is simplistic and does not preserve quoted paths with spaces.
 
-*Verified against `23e2a7938b9f` on 2026-08-28.*
+*Verified against `63ffc8131ffb8d35ccbbb1c5de69531a7016eff4` on 2026-09-06.*
