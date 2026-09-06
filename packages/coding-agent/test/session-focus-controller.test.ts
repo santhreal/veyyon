@@ -256,9 +256,11 @@ describe("SessionFocusController", () => {
 		await flushAsync();
 		expect(h.controller.focusedAgentId).toBe("Worker");
 
-		// Agent is revived with a new session
+		// Agent is revived with a new session: the lifecycle attaches it and reports
+		// `idle`, then the turn's own agent_start reports `running`.
 		const workerRevived = makeSessionStub({ isStreaming: true });
 		h.registry.attachSession("Worker", workerRevived.session);
+		h.registry.setStatus("Worker", "idle");
 		h.registry.setStatus("Worker", "running");
 		await flushAsync();
 

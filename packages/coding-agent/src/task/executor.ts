@@ -58,7 +58,7 @@ import type { MCPManager } from "../mcp/manager";
 import type { HindsightSessionState } from "../memory/hindsight/state";
 import type { MnemopiSessionState } from "../memory/mnemopi/state";
 import { agentPrompts } from "../prompts/agent/rows";
-import { AgentLifecycleManager } from "../registry/agent-lifecycle";
+import { AgentLifecycleManager, syncStatusWithTurns } from "../registry/agent-lifecycle";
 import { AgentRegistry } from "../registry/agent-registry";
 // `createAgentSession` is loaded on demand, further down, where an agent is
 // actually spawned. `../sdk` is the composition root and imports the whole
@@ -2929,18 +2929,10 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 	const progress = monitor.progress;
 	let unsubscribe: (() => void) | null = null;
 	let reviveSession: (() => Promise<AgentSession>) | null = null;
-	// Adopted (kept-alive) agents flip registry status from session events on
-	// later turns: revive/wake → running, turn drained → idle. The subscription
-	// intentionally survives this run; a disposed session emits nothing, so it
-	// needs no teardown.
+	// Adopted (kept-alive) agents report later turns to the registry through the
+	// session's own events; the subscription survives this run.
 	const installRegistryStatusSync = (target: AgentSession): void => {
-		target.subscribe(event => {
-			if (event.type === "agent_start") {
-				AgentRegistry.global().setStatus(id, "running");
-			} else if (event.type === "agent_end") {
-				AgentRegistry.global().setStatus(id, "idle");
-			}
-		});
+		syncStatusWithTurns(AgentRegistry.global(), id, target);
 	};
 
 	const runAgent = async (): Promise<DriveOutcome & { durationMs: number }> => {

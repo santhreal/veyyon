@@ -48,6 +48,7 @@ function harness(): { controller: SessionFocusController; registry: AgentRegistr
 	const registry = new AgentRegistry();
 	const revivals: string[] = [];
 	const spied = {
+		pin: () => () => {},
 		ensureLive: async (id: string) => {
 			revivals.push(id);
 			return registry.get(id)?.session ?? sessionStub();

@@ -305,6 +305,20 @@ when this session found it.
 A `running` or `aborted` agent has no deadline. An agent waiting on an approval prompt is
 mid-turn and stays `running`, so no park or prune timer applies to it.
 
+### An agent on screen is not parked
+
+Opening an agent's session from the `/agents` dashboard keeps it live for as long as the
+main view points at it. A park deadline that elapses meanwhile is deferred; the idle TTL
+counts again from the moment Esc returns the view to your own session.
+
+### The status graph
+
+An agent is `running`, `idle`, `parked` or `aborted`. `running` moves to `idle` when the
+turn drains, to `parked` when a run finishes with no session to keep, or to `aborted` when
+killed. `idle` moves to `running` on the next turn, to `parked` on the idle TTL, or to
+`aborted`. `parked` moves to `idle` on revival or to `aborted`. `aborted` is terminal. Any
+other move is rejected, so a turn event that arrives after a kill cannot revive the agent.
+
 ### Turning it off
 
 `agent.prune.afterMs` set to `0` disables pruning for every parked agent, including one

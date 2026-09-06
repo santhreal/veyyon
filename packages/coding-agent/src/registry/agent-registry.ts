@@ -56,6 +56,39 @@ export function mainAgentIdFor(sessionId: string): string {
  */
 export const AGENT_STATUSES = ["running", "idle", "parked", "aborted"] as const;
 export type AgentStatus = (typeof AGENT_STATUSES)[number];
+
+/**
+ * The status transitions a live process may perform, keyed by the current status.
+ *
+ * - `running → idle`: the turn drained. `running → parked`: the run finished with
+ *   no session to keep (isolated run, tan clone). `running → aborted`: killed.
+ * - `idle → running`: a follow-up turn started. `idle → parked`: the idle TTL
+ *   elapsed. `idle → aborted`: killed.
+ * - `parked → idle`: revived. `parked → aborted`: killed while parked.
+ * - `aborted` is terminal.
+ *
+ * `parked → running` is absent because a parked ref has no session to run a turn
+ * on: a revive attaches the session and reports `idle` first, and the turn's own
+ * `agent_start` then reports `running`.
+ */
+export const AGENT_TRANSITIONS: Readonly<Record<AgentStatus, readonly AgentStatus[]>> = {
+	running: ["idle", "parked", "aborted"],
+	idle: ["running", "parked", "aborted"],
+	parked: ["idle", "aborted"],
+	aborted: [],
+};
+
+/** Thrown by {@link AgentRegistry.setStatus} for a transition {@link AGENT_TRANSITIONS} does not list. */
+export class AgentTransitionError extends Error {
+	constructor(
+		readonly id: string,
+		readonly from: AgentStatus,
+		readonly to: AgentStatus,
+	) {
+		super(`Agent "${id}" is ${from} and cannot become ${to}`);
+		this.name = "AgentTransitionError";
+	}
+}
 /**
  * - `main`/`sub`: the user-facing agent tree (driving agent + spawned task agents).
  * - `advisor`: a passive review transcript persisted like a spawned agent for usage
@@ -263,9 +296,35 @@ export class AgentRegistry {
 		return input.kind === "main" ? (input.sessionFile ?? undefined) : undefined;
 	}
 
+	/**
+	 * Move an agent to `status`. The only writer of {@link AgentRef.status}: the
+	 * lifecycle manager, the task executor, the tan controller and a revived
+	 * session's event sync all call this, so the transition table is checked once,
+	 * here. A same-status write is a no-op. A transition {@link AGENT_TRANSITIONS}
+	 * does not list throws {@link AgentTransitionError} and changes nothing.
+	 */
 	setStatus(id: string, status: AgentStatus): void {
 		const ref = this.#refs.get(id);
 		if (!ref || ref.status === status) return;
+		if (!AGENT_TRANSITIONS[ref.status].includes(status)) {
+			throw new AgentTransitionError(id, ref.status, status);
+		}
+		this.#applyStatus(ref, status);
+	}
+
+	/**
+	 * Copy a status reported by another process, without the transition check. A
+	 * collab guest mirrors the host's roster from snapshots that may skip states
+	 * (a host that went `running → idle → parked` between two snapshots reports
+	 * `parked`), and the host is the authority on its own agents.
+	 */
+	mirrorStatus(id: string, status: AgentStatus): void {
+		const ref = this.#refs.get(id);
+		if (!ref || ref.status === status) return;
+		this.#applyStatus(ref, status);
+	}
+
+	#applyStatus(ref: AgentRef, status: AgentStatus): void {
 		ref.status = status;
 		// Activity describes current work; it is meaningless once the agent
 		// leaves `running`, so drop it to avoid showing stale work in rosters.

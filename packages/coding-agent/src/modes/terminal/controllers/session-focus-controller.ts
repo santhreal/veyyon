@@ -41,6 +41,8 @@ export class SessionFocusController {
 	#attachedSession: AgentSession | undefined;
 	#registryUnsubscribe: (() => void) | undefined;
 	#focusGeneration = 0;
+	/** Releases the lifecycle pin on the focused agent; undefined when unfocused. */
+	#unpin: (() => void) | undefined;
 	constructor(
 		private ctx: SessionFocusControllerContext,
 		private registry: AgentRegistry = AgentRegistry.global(),
@@ -88,20 +90,37 @@ export class SessionFocusController {
 			throw new Error(`Agent ${id} belongs to a different conversation and cannot be viewed from this one.`);
 		}
 		const gen = ++this.#focusGeneration;
-		const session = await this.lifecycle().ensureLive(id);
-		if (gen !== this.#focusGeneration) return;
-		const current = this.registry.get(id);
-		if (!current || current.status === "aborted") {
-			throw new Error(
-				current
-					? `Agent "${id}" was terminated and cannot be viewed.`
-					: `Unknown agent "${id}" — it was never registered or has been released.`,
-			);
+		// Pinned BEFORE the revive so a park whose flush is already in flight is
+		// refused rather than disposing the session this screen is about to attach.
+		const unpin = this.lifecycle().pin(id);
+		let session: AgentSession;
+		try {
+			session = await this.lifecycle().ensureLive(id);
+			if (gen !== this.#focusGeneration) {
+				unpin();
+				return;
+			}
+			const current = this.registry.get(id);
+			if (!current || current.status === "aborted") {
+				throw new Error(
+					current
+						? `Agent "${id}" was terminated and cannot be viewed.`
+						: `Unknown agent "${id}" — it was never registered or has been released.`,
+				);
+			}
+			if (!AgentRegistry.sameScope(current.scope, scope)) {
+				throw new Error(`Agent ${id} belongs to a different conversation and cannot be viewed from this one.`);
+			}
+		} catch (error) {
+			unpin();
+			throw error;
 		}
-		if (!AgentRegistry.sameScope(current.scope, scope)) {
-			throw new Error(`Agent ${id} belongs to a different conversation and cannot be viewed from this one.`);
+		if (id === this.#focusedAgentId && session === this.#attachedSession) {
+			unpin();
+			return;
 		}
-		if (id === this.#focusedAgentId && session === this.#attachedSession) return;
+		this.#unpin?.();
+		this.#unpin = unpin;
 		this.#focusedAgentId = id;
 		this.#attachedSession = session;
 		this.#registryUnsubscribe ??= this.registry.onChange(e => this.#onRegistryEvent(e));
@@ -127,6 +146,8 @@ export class SessionFocusController {
 		if (!this.#focusedAgentId) return;
 		this.#focusedAgentId = undefined;
 		this.#attachedSession = undefined;
+		this.#unpin?.();
+		this.#unpin = undefined;
 		await this.#attach(this.ctx.session);
 		if (gen !== this.#focusGeneration) return;
 		this.ctx.showStatus("Returned to main session");
@@ -138,6 +159,8 @@ export class SessionFocusController {
 		this.#registryUnsubscribe = undefined;
 		this.#focusedAgentId = undefined;
 		this.#attachedSession = undefined;
+		this.#unpin?.();
+		this.#unpin = undefined;
 	}
 
 	#onRegistryEvent(event: RegistryEvent): void {

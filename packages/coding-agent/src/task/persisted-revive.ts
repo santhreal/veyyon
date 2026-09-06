@@ -4,7 +4,7 @@ import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { ModelRegistry } from "../config/model-registry";
 import type { Settings } from "../config/settings";
 import { mcpManagerInstance } from "../mcp/manager-instance";
-import type { PersistedAgentReviverFactory } from "../registry/agent-lifecycle";
+import { type PersistedAgentReviverFactory, syncStatusWithTurns } from "../registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 // Loaded on demand where the revive happens. See the note in `./executor`: a
 // static import of `../sdk`, the composition root, is what put this module in a
@@ -142,14 +142,9 @@ export function createPersistedAgentReviverFactory(ctx: PersistedAgentReviveCont
 			// `alwaysInclude` can re-add non-defaultInactive extension/custom tools
 			// the original run didn't carry. Unknown/missing names are ignored.
 			await session.setActiveToolsByName(init.tools);
-			// Cold revives must drive registry status themselves — createAgentSession
-			// doesn't wire this generically (the live path does it in the executor).
-			// Without it the idle-TTL timer never clears on a turn and the lifecycle
-			// could park the agent mid-run.
-			session.subscribe(event => {
-				if (event.type === "agent_start") registry.setStatus(ref.id, "running");
-				else if (event.type === "agent_end") registry.setStatus(ref.id, "idle");
-			});
+			// A cold revive installs the turn sync itself; the live path does it in the
+			// executor. Without it the idle TTL would park the agent mid-turn.
+			syncStatusWithTurns(registry, ref.id, session);
 			return session;
 		};
 	};

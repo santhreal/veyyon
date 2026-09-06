@@ -115,6 +115,25 @@ function normalizePruneBudgets(
  */
 const REVIVE_RECHECK_MS = 1_000;
 
+/**
+ * Report a session's turns to the registry: `agent_start` on an `idle` ref makes
+ * it `running`, `agent_end` on a `running` ref makes it `idle`. Installed once per
+ * live session by the executor at hand-over and by a cold revive; the
+ * subscription needs no teardown because a disposed session emits nothing.
+ *
+ * Both writes are conditional on the current status so a turn event that arrives
+ * after a kill (`aborted`) or a park (`parked`) is dropped rather than rejected
+ * by the transition table: the event describes a session the registry has
+ * already let go of.
+ */
+export function syncStatusWithTurns(registry: AgentRegistry, id: string, session: AgentSession): void {
+	session.subscribe(event => {
+		const status = registry.get(id)?.status;
+		if (event.type === "agent_start" && status === "idle") registry.setStatus(id, "running");
+		else if (event.type === "agent_end" && status === "running") registry.setStatus(id, "idle");
+	});
+}
+
 export class AgentLifecycleManager {
 	static #global: AgentLifecycleManager | undefined;
 
@@ -135,6 +154,7 @@ export class AgentLifecycleManager {
 			current.#adopted.clear();
 			current.#revivals.clear();
 			current.#parking.clear();
+			current.#pinned.clear();
 			current.#persistedReviverFactory = undefined;
 		}
 		AgentLifecycleManager.#global = undefined;
@@ -146,6 +166,14 @@ export class AgentLifecycleManager {
 	readonly #parking = new Set<string>();
 	/** In-flight revives, so concurrent {@link ensureLive} calls coalesce. */
 	readonly #revivals = new Map<string, Promise<AgentSession>>();
+	/**
+	 * Ids a screen is attached to, with the number of holders. A pinned agent is
+	 * never parked: the park that its idle TTL fires is dropped and re-armed from
+	 * the last unpin. Without this a focus could attach to the session a concurrent
+	 * park was flushing and disposing, leaving the transcript, the status line and
+	 * the editor's interrupt on a dead session.
+	 */
+	readonly #pinned = new Map<string, number>();
 	#unsubscribe: (() => void) | undefined;
 	#persistedReviverFactory: PersistedAgentReviverFactory | undefined;
 	/** One process-wide next-deadline timer; never one poller/timer per agent. */
@@ -241,6 +269,40 @@ export class AgentLifecycleManager {
 	}
 
 	/**
+	 * Keep an agent's session live while something is attached to it. Returns the
+	 * release, which is idempotent. Pinning is independent of adoption so a screen
+	 * can attach to a running agent before the executor hands it over.
+	 */
+	pin(id: string): () => void {
+		this.#pinned.set(id, (this.#pinned.get(id) ?? 0) + 1);
+		let released = false;
+		return () => {
+			if (released) return;
+			released = true;
+			const holders = this.#pinned.get(id);
+			if (holders === undefined) return;
+			if (holders > 1) {
+				this.#pinned.set(id, holders - 1);
+				return;
+			}
+			this.#pinned.delete(id);
+			const adopted = this.#adopted.get(id);
+			const ref = this.#registry.get(id);
+			if (!adopted || ref?.status !== "idle" || !ref.session || adopted.idleTtlMs <= 0) return;
+			// Counted from the unpin, not from `lastActivity`: the agent was idle on
+			// screen for as long as the operator was reading it, and a park that fires
+			// the instant the screen leaves would drop the session they just left.
+			arm(adopted, Date.now() + adopted.idleTtlMs, "park");
+			this.#scheduleNext();
+		};
+	}
+
+	/** True while a screen is attached to this agent's session. */
+	isPinned(id: string): boolean {
+		return this.#pinned.has(id);
+	}
+
+	/**
 	 * Persist the live idle session, dispose only its live resources, detach it,
 	 * and mark the agent `parked`. Running agents are never parked. No-op unless
 	 * the id is adopted, idle, and live.
@@ -259,6 +321,9 @@ export class AgentLifecycleManager {
 		if (!ref || !session) return;
 		disarm(adopted);
 		this.#scheduleNext();
+		// A pinned agent is on screen. The deadline stays disarmed; the unpin re-arms
+		// it, so the park is deferred rather than lost.
+		if (this.#pinned.has(id)) return;
 
 		this.#parking.add(id);
 		let parked = false;
@@ -272,10 +337,11 @@ export class AgentLifecycleManager {
 				});
 				return;
 			}
-			// A follow-up may have started while the durable flush was in flight.
-			// Re-check both identity and status before closing any live resources.
+			// A follow-up may have started, or a screen attached, while the durable
+			// flush was in flight. Re-check identity, status and pin before closing any
+			// live resources.
 			const current = this.#registry.get(id);
-			if (current?.status !== "idle" || current.session !== session) return;
+			if (current?.status !== "idle" || current.session !== session || this.#pinned.has(id)) return;
 			try {
 				await session.dispose();
 			} catch (error) {
@@ -289,7 +355,13 @@ export class AgentLifecycleManager {
 			if (!parked) {
 				const current = this.#registry.get(id);
 				const currentAdoption = this.#adopted.get(id);
-				if (current?.status === "idle" && current.session && currentAdoption && currentAdoption.idleTtlMs > 0) {
+				if (
+					current?.status === "idle" &&
+					current.session &&
+					currentAdoption &&
+					currentAdoption.idleTtlMs > 0 &&
+					!this.#pinned.has(id)
+				) {
 					// Re-armed through `arm` so the stage travels with it: the expiry that fired
 					// this park cleared both, and a deadline it cannot classify is one it cannot
 					// act on.
@@ -528,6 +600,7 @@ export class AgentLifecycleManager {
 		await Promise.all(ids.map(id => this.release(id)));
 		this.#revivals.clear();
 		this.#parking.clear();
+		this.#pinned.clear();
 		this.#persistedReviverFactory = undefined;
 	}
 
@@ -587,7 +660,7 @@ export class AgentLifecycleManager {
 	 */
 	#refreshDeadline(id: string, adopted: AdoptedAgent): void {
 		const ref = this.#registry.get(id);
-		if (ref?.status === "idle" && adopted.idleTtlMs > 0) {
+		if (ref?.status === "idle" && adopted.idleTtlMs > 0 && !this.#pinned.has(id)) {
 			arm(adopted, ref.lastActivity + adopted.idleTtlMs, "park");
 			return;
 		}

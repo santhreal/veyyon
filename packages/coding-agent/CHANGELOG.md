@@ -43,7 +43,8 @@
 
 ### Changed
 
-- Every setting on the Agents tab states what it does and what each value does in one to three sentences; the idle timeout row is labelled "Park Idle Agents After".
+- Every setting in every domain states what it does and what each value selects in one to three sentences, with no design history or internal vocabulary; the idle timeout row is labelled "Park Idle Agents After" and the Park and Prune groups are one "Idle Agents" group.
+- `AgentRegistry.setStatus` consults `AGENT_TRANSITIONS` and throws `AgentTransitionError` for a status move the lifecycle does not perform, so a turn event that arrives after a kill or a park no longer revives the agent; a collab guest mirrors the host's roster through `mirrorStatus`.
 - Interactive chat and the transcript viewer use one replay implementation without changing displayed content or live-tool lifecycle.
 - Settings group types derive from the settings schema while preserving their existing optional fields and value types.
 - JSON tree projections share bounded traversal, and code and Markdown cells share output assembly, with unchanged rendering.
@@ -158,6 +159,7 @@
 
 ### Fixed
 
+- An agent whose session is on screen is no longer parked under it: opening an agent pins it for as long as the main view points at it, a park deadline that elapses meanwhile is deferred, and the idle TTL counts again from the return to the main session.
 - Custom tools retain their declared call and result views when converted into extension tool definitions.
 - Terminal tool cards shorten home-directory paths and replace tabs in metadata, notices, code, diffs, and generic argument previews before width fitting.
 - Failed task results without agent details retain error text styling.

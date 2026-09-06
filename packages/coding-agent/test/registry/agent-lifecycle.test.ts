@@ -538,9 +538,10 @@ describe("AgentLifecycleManager", () => {
 
 		const waking = lifecycle.ensureLive("Cold");
 		await flushAsync();
-		// A collab mirror update / re-registration flips the ref out of `parked` while
-		// the factory is still building a reviver from the ref as it was.
-		registry.setStatus("Cold", "running");
+		// A collab mirror update flips the ref out of `parked` while the factory is
+		// still building a reviver from the ref as it was. A mirror copies the host's
+		// status without the transition check, so `parked → running` is reachable here.
+		registry.mirrorStatus("Cold", "running");
 		gate.resolve();
 
 		await expect(waking).rejects.toThrow(

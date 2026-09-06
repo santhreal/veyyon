@@ -592,7 +592,7 @@ export class CollabGuestLink {
 		}
 		for (const snap of agents) {
 			if (this.agentRegistry.get(snap.id)) {
-				this.agentRegistry.setStatus(snap.id, snap.status);
+				this.agentRegistry.mirrorStatus(snap.id, snap.status);
 			} else {
 				this.agentRegistry.register({
 					id: snap.id,
