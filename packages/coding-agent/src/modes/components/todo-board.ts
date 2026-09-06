@@ -246,7 +246,13 @@ export function renderTodoBoardLines(phases: readonly TodoPhase[], options: Todo
 		{
 			items: slice,
 			expanded: true,
-			renderItem: (phase, ctx) => phaseLines(phase, baseIdx + ctx.index + 1, baseIdx + ctx.index === activeIdx),
+			renderItem: (phase, ctx) => {
+				const isEarliestOpen = baseIdx + ctx.index === activeIdx;
+				const hasActiveWork = phase.tasks.some(
+					task => task.status === "in_progress" || (task.status === "pending" && options.owned.has(task.content)),
+				);
+				return phaseLines(phase, baseIdx + ctx.index + 1, isEarliestOpen || hasActiveWork);
+			},
 		},
 		theme,
 	);

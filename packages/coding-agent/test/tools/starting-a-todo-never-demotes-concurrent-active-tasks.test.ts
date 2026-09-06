@@ -8,6 +8,11 @@ import {
 	todoBoardRailTravels,
 } from "@veyyon/coding-agent/modes/components/todo-board";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import {
+	incompleteTodoItems,
+	renderTodoContinuationReminder,
+	renderTodoStatePreview,
+} from "@veyyon/coding-agent/session/todo-reminder";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import {
 	adaptTodoWriteBatch,
@@ -271,5 +276,94 @@ describe("concurrent todo tasks: production-path regression and backtest", () =>
 		expect(phases()[0]!.tasks[0]!.status).toBe("in_progress");
 		expect(phases()[1]!.tasks[0]!.status).toBe("in_progress");
 		expect(phases()[2]!.tasks[0]!.status).toBe("pending");
+	});
+
+	/**
+	 * B1: TodoWrite explicit incoming pending resets targeted active tasks while
+	 * preserving omitted active items under merge.
+	 */
+	it("TodoWrite explicit pending resets targeted active tasks without demoting omitted items", async () => {
+		const { session, phases } = createSession([
+			{
+				name: "Phase 1",
+				tasks: [
+					{ content: "Task A", status: "in_progress" },
+					{ content: "Task B", status: "pending" },
+				],
+			},
+			{
+				name: "Phase 2",
+				tasks: [{ content: "Task C", status: "in_progress" }],
+			},
+		]);
+		const tool = new TodoTool(session);
+
+		// Incoming write explicitly marks Task A as pending, Task B as in_progress, and omits Task C
+		const result = await tool.execute("compat-explicit-pending", {
+			merge: true,
+			todos: [
+				{ content: "Task A", status: "pending" },
+				{ content: "Task B", status: "in_progress" },
+			],
+		});
+		expect(result.isError).toBeUndefined();
+
+		const current = phases();
+		// Task A: was in_progress, explicitly sent as pending -> MUST be pending (no stale active accumulated)
+		expect(current[0]!.tasks.find(t => t.content === "Task A")?.status).toBe("pending");
+		// Task B: was pending, explicitly sent as in_progress -> MUST be in_progress
+		expect(current[0]!.tasks.find(t => t.content === "Task B")?.status).toBe("in_progress");
+		// Task C: was in_progress, omitted from incoming list with merge: true -> MUST remain in_progress (merge semantics preserved)
+		expect(current[1]!.tasks.find(t => t.content === "Task C")?.status).toBe("in_progress");
+	});
+
+	/**
+	 * N1: Default collapsed board renders tasks for ALL active phases with in-progress work.
+	 */
+	it("default collapsed board renders tasks for all phases holding in-progress tasks", () => {
+		const phases: TodoPhase[] = [
+			{ name: "Phase 1", tasks: [{ content: "Task 1", status: "in_progress" }] },
+			{ name: "Phase 2", tasks: [{ content: "Task 2", status: "in_progress" }] },
+			{ name: "Phase 3", tasks: [{ content: "Task 3", status: "pending" }] },
+		];
+
+		// Render in default collapsed mode (expanded: false)
+		const lines = renderTodoBoardLines(phases, boardOptions({ expanded: false }));
+		const text = lines.map(l => Bun.stripANSI(l)).join("\n");
+
+		// Both Phase 1 and Phase 2 tasks MUST be drawn, not hidden
+		expect(text).toContain("Task 1");
+		expect(text).toContain("Task 2");
+
+		// Phase 3 has only pending tasks and is not activeIdx, so its tasks are not drawn when collapsed
+		expect(text).not.toContain("Task 3");
+		expect(text).toContain("Phase 3"); // But its header is present
+	});
+
+	/**
+	 * N2: Agent-session state preview and continuation reminder represent concurrent active tasks truthfully.
+	 */
+	it("agent-session state preview and continuation reminder represent multiple active tasks truthfully", () => {
+		const phases: TodoPhase[] = [
+			{ name: "Phase 1", tasks: [{ content: "Active Task 1", status: "in_progress" }] },
+			{ name: "Phase 2", tasks: [{ content: "Active Task 2", status: "in_progress" }] },
+			{ name: "Phase 3", tasks: [{ content: "Pending Task 3", status: "pending" }] },
+		];
+
+		const preview = renderTodoStatePreview(phases);
+		// Truthful multi-active representation: lists active tasks with [/], does not falsely reduce to single Active/next
+		expect(preview).toContain("Active items (2 in progress):");
+		expect(preview).toContain("- [/] Active Task 1 (Phase 1)");
+		expect(preview).toContain("- [/] Active Task 2 (Phase 2)");
+
+		const reminder = renderTodoContinuationReminder({
+			items: incompleteTodoItems(phases),
+			attempt: 1,
+			maxAttempts: 3,
+			echoFullList: false,
+		});
+		expect(reminder).toContain("Active items (2 in progress):");
+		expect(reminder).toContain("[/] Active Task 1 (Phase 1)");
+		expect(reminder).toContain("[/] Active Task 2 (Phase 2)");
 	});
 });

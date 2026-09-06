@@ -10172,6 +10172,14 @@ export class AgentSession {
 					task.status === "pending" || task.status === "in_progress",
 			),
 		);
+		const inProgressItems = openItems
+			.filter(item => item.status === "in_progress")
+			.map(item => ({
+				status: item.status,
+				text: this.#sanitizeGoalTodoText(
+					boundedTodoPreviewText(`${item.content} (${item.phase})`, TODO_ITEM_PREVIEW_WIDTH),
+				),
+			}));
 		const next = openItems[0];
 		const nextItem = next
 			? {
@@ -10186,7 +10194,8 @@ export class AgentSession {
 			canCallTodoTool,
 			canActivateTodoTool,
 			closed: String(closed),
-			nextItem,
+			activeItems: inProgressItems.length > 1 ? inProgressItems : undefined,
+			nextItem: inProgressItems.length <= 1 ? nextItem : undefined,
 			open: String(openItems.length),
 			total: String(tasks.length),
 		});
