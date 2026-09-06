@@ -226,6 +226,40 @@ describe("task live progress rendering", () => {
 		expect(text).not.toContain("\r");
 	});
 
+	// A session file written before the `subagent` vocabulary was retired carries the runtime's old
+	// spelling of the missing-yield warning. Both spellings lift out of the output and turn a
+	// successful row's status to `warning`; a first line that is not the warning leaves it `done`.
+	for (const spelling of ["Agent", "Subagent"]) {
+		it(`lifts the ${spelling} spelling of the missing-yield warning out of a finished agent's output`, () => {
+			const warning = `SYSTEM WARNING: ${spelling} exited without calling yield tool after 3 reminders.`;
+			const details: TaskToolDetails = {
+				projectAgentsDir: null,
+				results: [makeSingleResult(0, { output: `${warning}\n\nthe migration is already applied` })],
+				totalDurationMs: 1,
+			};
+
+			const text = renderResultText(details, true, uiTheme);
+
+			expect(text).toContain("⟦warning⟧");
+			expect(text).not.toContain("⟦done⟧");
+			expect(text).toContain(warning);
+			expect(text).toContain("the migration is already applied");
+		});
+	}
+
+	it("keeps a first line that is not the missing-yield warning inside the output", () => {
+		const details: TaskToolDetails = {
+			projectAgentsDir: null,
+			results: [makeSingleResult(0, { output: "SYSTEM NOTICE: the agent yielded early\n\nok" })],
+			totalDurationMs: 1,
+		};
+
+		const text = renderResultText(details, true, uiTheme);
+
+		expect(text).toContain("⟦done⟧");
+		expect(text).toContain("SYSTEM NOTICE: the agent yielded early");
+	});
+
 	it("caps collapsed nested task progress at four rows plus an elision line", () => {
 		setViewportRows(40);
 		const text = renderProgressText(makeParentWithNestedProgress(6), false, uiTheme);

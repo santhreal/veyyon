@@ -4,7 +4,11 @@ import { AgentLink, Badge, Note, Output, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderHost, ToolRenderProps } from "../types";
 import { detailsRecord, isRecord, normalizeWs, num, str, truncate } from "../util";
 
-const MISSING_YIELD_PREFIX = "SYSTEM WARNING: Agent exited without calling yield tool";
+/** The runtime's spelling and the one a session file recorded before the `subagent` vocabulary was retired. */
+const MISSING_YIELD_PREFIXES = [
+	"SYSTEM WARNING: Agent exited without calling yield tool",
+	"SYSTEM WARNING: Subagent exited without calling yield tool",
+];
 
 /** One spawned unit of work, normalized across the batch and flat/legacy arg shapes. */
 interface TaskItemView {
@@ -100,7 +104,7 @@ function AgentResult({ res, host }: { res: Record<string, unknown>; host?: ToolR
 	let warning: string | null = null;
 	const nl = output.indexOf("\n");
 	const firstLine = (nl === -1 ? output : output.slice(0, nl)).trim();
-	if (firstLine.startsWith(MISSING_YIELD_PREFIX)) {
+	if (MISSING_YIELD_PREFIXES.some(prefix => firstLine.startsWith(prefix))) {
 		warning = firstLine;
 		output = nl === -1 ? "" : output.slice(nl + 1).replace(/^\s*\n+/, "");
 	}

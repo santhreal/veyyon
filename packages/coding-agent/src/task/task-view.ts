@@ -1014,12 +1014,16 @@ function resultRows(
 /** Output rows an expanded settled agent shows. */
 const SETTLED_OUTPUT_ROWS = 12;
 
-const MISSING_YIELD_WARNING_PREFIX = "SYSTEM WARNING: Agent exited without calling yield tool";
+/** The runtime's spelling and the one a session file recorded before the `subagent` vocabulary was retired. */
+const MISSING_YIELD_WARNING_PREFIXES = [
+	"SYSTEM WARNING: Agent exited without calling yield tool",
+	"SYSTEM WARNING: Subagent exited without calling yield tool",
+];
 
 function extractMissingYieldWarning(output: string): { warning?: string; rest: string } {
 	const lines = output.split("\n");
 	const firstLine = lines[0]?.trim() ?? "";
-	if (!firstLine.startsWith(MISSING_YIELD_WARNING_PREFIX)) return { rest: output };
+	if (!MISSING_YIELD_WARNING_PREFIXES.some(prefix => firstLine.startsWith(prefix))) return { rest: output };
 	const rest = lines
 		.slice(1)
 		.join("\n")
