@@ -20136,7 +20136,7 @@
 			"differs": "changed",
 			"group": "colocated-test",
 			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
-			"hash": "3baca206b9dd1747e2ac5bf96397a8b7eb51542cd5040db6565d2bd1bfd53a02",
+			"hash": "5d513e644caa9e4607a84cbb258db54528501f804e8c6b78c0e592c7421d41c2",
 			"mainHash": "47e40cf94e3faa35e6d1b1d412486fadeca40d56be60445fbb09831f407142a1",
 			"structuralHash": "fd3ca4e9325c80e998d95d28f4bbd0763b2295386dab78e1391fc82717175513",
 			"mainStructuralHash": "a4949f2f00de9c35f94f07ac7d90dfa4122a8c37a21e9e927aacb2da0efe26f4"
@@ -22143,9 +22143,9 @@
 			"differs": "changed",
 			"group": "oracle-freeze",
 			"reason": "A renderer this branch replaced with a ToolView is frozen here as the differential oracle its suite compares the card against. The rows it draws are main's drawing byte for byte, adapted to the published package subpaths, with live tool rendering and TUI sanitization verified against the oracle card.",
-			"hash": "4f160cb6dae57ef8ff10befc66bd22a5d34d1e62a5503bbd31eb7bedea90839d",
+			"hash": "68edfef9803fbfeac1865deab317e537b7b8dd6ddd535759562268c2202b0653",
 			"mainHash": "07658bc4f82070db1847de306177b01f50b0abdec9aa7dd4171a36aeed472ee3",
-			"structuralHash": "f9300e11e17ba363cd3d85f2cea1394315cb18537ad534803fd27dac594f0966",
+			"structuralHash": "21e6f9b4aabc7f9cfc6668991d014e8afeaff14774ffa30eb665d4d161762d2f",
 			"mainStructuralHash": "29fafe13a3f4640e90c93cf45e511cbc70afca64c936af874234a62dc1a3125d"
 		},
 		"packages/coding-agent/test/oracles/vibe-main-renderer.ts": {

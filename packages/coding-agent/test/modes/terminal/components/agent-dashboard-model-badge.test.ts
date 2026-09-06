@@ -51,8 +51,7 @@ function observersReporting(id: string, resolvedModel: string, fellBackFrom?: st
 			label: "Subagent",
 			status: "active",
 			lastUpdate: Date.now(),
-			// The detail pane under the roster reads the rest of the record, so it
-			// is a whole one; only the two model fields vary between tests.
+			// Keep a complete progress record; only the model fields vary between cases.
 			progress: {
 				index: 0,
 				id,
