@@ -397,7 +397,6 @@ export const repoScriptTests = [
 	"website/tools/gen-changelog.test.ts",
 	"scripts/tracked-but-deleted-paths.test.ts",
 	"website/tools/undocumented-release-ratchet.test.ts",
-	"website/tools/gen-blog.test.ts",
 	"website/tools/nav.test.ts",
 	"scripts/demos/lib/png.test.ts",
 	"scripts/demos/lib/ansi-grid.test.ts",
@@ -466,6 +465,11 @@ export const repoScriptTests = [
 	// No source file the build reads is ignored, and no unanchored pattern names
 	// a directory that holds source.
 	"scripts/every-source-file-the-build-reads-is-in-the-repository.test.ts",
+	// The ChatGPT Codex compaction route has been broken and re-fixed 50+ times, and
+	// each break falls back to paid local compaction that busts the prompt cache. The
+	// suite hashes the file, so editing it at all fails CI until an operator records
+	// the new hash.
+	"scripts/the-codex-compaction-route-is-locked.test.ts",
 ];
 
 /**

@@ -327,7 +327,11 @@ function classifiedExports(): { producers: string[]; narrowing: string[]; fixed:
  * per-model case wants; a blanket row (`subagent.thinkingLevel`, Default Effort's `*`) reads it
  * instead of a model, so those cases pass a corpus explicitly.
  */
-function buildSelector(model: Model<Api> | undefined, scope?: ReadonlyArray<Model<Api>>): SettingsSelectorComponent {
+function buildSelector(
+	model: Model<Api> | undefined,
+	scope?: ReadonlyArray<Model<Api>>,
+	requestRender?: () => void,
+): SettingsSelectorComponent {
 	return new SettingsSelectorComponent(
 		{
 			model,
@@ -339,6 +343,7 @@ function buildSelector(model: Model<Api> | undefined, scope?: ReadonlyArray<Mode
 			cwd: process.cwd(),
 			modelRegistry,
 			availableModels: scope ?? (model ? [model] : []),
+			requestRender,
 		},
 		{ onChange: () => {}, onCancel: () => {} },
 	);
@@ -373,6 +378,19 @@ function openSettingsRow(path: SettingPath, model: Model<Api> | undefined, scope
 	expect(component.selectSetting(path)).toBe(true);
 	component.handleInput(ENTER);
 	return stripVTControlCharacters(component.render(PANEL_WIDTH).join("\n"));
+}
+
+/**
+ * The shared subagent effort, opened the way a user reaches it: Subagents tab →
+ * Shared Effort, the row that appears once Same Model for All Subagents is on.
+ *
+ * The switch goes on first because the row carries the `subagentSharedModel`
+ * condition and is not drawn without it, which is the same gate a user passes
+ * through.
+ */
+function openSubagentEffortRow(model: Model<Api> | undefined, scope?: ReadonlyArray<Model<Api>>): string {
+	settings.set("subagent.sharedModel", true);
+	return openSettingsRow("subagent.thinkingLevel", model, scope);
 }
 
 /** Open Settings → Model → Default Effort on a row already stored for `model`. */
@@ -446,8 +464,13 @@ interface EffortSurface {
 	readonly id: string;
 	/** The narrowing export from the vocabulary owner this surface reads. Ties SURFACES to enumeration 1. */
 	readonly reads: string;
-	/** The levels this surface offers for `model`. */
-	offered(model: Model<Api>): string[];
+	/**
+	 * The levels this surface offers for `model`.
+	 *
+	 * A surface reached through a page that loads before it draws answers with a
+	 * promise; every call site awaits, so a synchronous surface needs no wrapper.
+	 */
+	offered(model: Model<Api>): string[] | Promise<string[]>;
 	/**
 	 * The levels this surface COULD offer at all. RPC speaks `ThinkingLevel`, which has no `auto`
 	 * sentinel, so its expected answer is the declared ladder intersected with what it can express.
@@ -456,18 +479,18 @@ interface EffortSurface {
 	/** The sentence this surface owes a user when it has narrowed to nothing. */
 	readonly emptyNotice?: string;
 	/** The full frame this surface draws, for surfaces that draw one. Only rendered surfaces owe a notice. */
-	render?(model: Model<Api>): string;
+	render?(model: Model<Api>): string | Promise<string>;
 }
 
 const RPC_EXPRESSIBLE: readonly string[] = Object.values(ThinkingLevel).map(String);
 
 const SURFACES: readonly EffortSurface[] = [
 	{
-		id: "settings row Subagents → Subagent Effort",
+		id: "settings row Subagents → Shared Effort",
 		reads: "configuredThinkingLevelOptions",
-		offered: model => effortWordsIn(openSettingsRow("subagent.thinkingLevel", model)),
+		offered: model => effortWordsIn(openSubagentEffortRow(model)),
 		emptyNotice: thinking.noSelectableEffortNotice(SETTINGS_INHERIT_LABEL),
-		render: model => openSettingsRow("subagent.thinkingLevel", model),
+		render: model => openSubagentEffortRow(model),
 	},
 	{
 		id: "settings row Model → Default Effort, per-model row",
@@ -562,12 +585,19 @@ describe("every settings row that leaves its options to the runtime is an effort
 		return effortWordsIn(rendered).join(",") === declaredWords(model).join(",");
 	}
 
+	/**
+	 * No TAB ROW is an effort picker any more: the one that was, the shared
+	 * subagent effort, moved inside the roster page and gave up its `ui` block.
+	 * The sweep still ratchets — a runtime row added anywhere must be either a
+	 * correctly narrowing effort picker or recorded above — and the roster's own
+	 * picker keeps its coverage as a SURFACE, driven through the page.
+	 */
 	it("classifies every runtime row, and the non-effort ones are recorded exactly", () => {
 		const effortRows = runtimeRows.filter(isEffortPicker);
 		const others = runtimeRows.filter(path => !effortRows.includes(path));
 
 		expect(others.map(String).sort()).toEqual([...NON_EFFORT_RUNTIME_ROWS].sort());
-		expect(effortRows).toEqual(["subagent.thinkingLevel"]);
+		expect(effortRows).toEqual([]);
 	});
 
 	/**
@@ -605,11 +635,11 @@ describe("every settings row that leaves its options to the runtime is an effort
 describe("every effort surface offers exactly the levels the model declares", () => {
 	for (const shape of Object.keys(LADDER_SHAPES) as LadderShape[]) {
 		for (const surface of SURFACES) {
-			it(`${surface.id} · a model that ${shape.replace(/-/g, " ")}`, () => {
+			it(`${surface.id} · a model that ${shape.replace(/-/g, " ")}`, async () => {
 				const model = shapeModel(shape);
 				const expected = expectedFor(surface, model);
 
-				expect(surface.offered(model).sort()).toEqual([...expected].sort());
+				expect((await surface.offered(model)).sort()).toEqual([...expected].sort());
 			});
 		}
 	}
@@ -632,8 +662,8 @@ describe("a surface that has narrowed to nothing says why", () => {
 	for (const surface of SURFACES) {
 		const { emptyNotice, render } = surface;
 		if (emptyNotice === undefined || render === undefined) continue;
-		it(`${surface.id} explains its one-row list`, () => {
-			const rendered = paneText(render(shapeModel("declares-nothing")));
+		it(`${surface.id} explains its one-row list`, async () => {
+			const rendered = paneText(await render(shapeModel("declares-nothing")));
 
 			expect(rendered).toContain(emptyNotice);
 			// The heading a one-row list must NOT carry: it reads as a truncated list.
@@ -653,7 +683,7 @@ describe("a surface that has narrowed to nothing says why", () => {
 
 		expect(explaining).toEqual(drawn);
 		expect(drawn).toEqual([
-			"settings row Subagents → Subagent Effort",
+			"settings row Subagents → Shared Effort",
 			"settings row Model → Default Effort, per-model row",
 			"model selector effort step",
 		]);
@@ -666,7 +696,7 @@ describe("a surface that has narrowed to nothing says why", () => {
 	it("says nothing of the kind for a model that has a ladder", () => {
 		const withLadder = shapeModel("declares-a-strict-subset");
 
-		expect(openSettingsRow("subagent.thinkingLevel", withLadder)).not.toContain(
+		expect(openSubagentEffortRow(withLadder)).not.toContain(
 			thinking.noSelectableEffortNotice(SETTINGS_INHERIT_LABEL),
 		);
 		expect(openEffortStep(withLadder)).toContain("Valid effort variants");
@@ -726,9 +756,7 @@ describe("a row with no single model offers the union its catalog declares, and 
 	});
 
 	it("offers the catalog's union on the subagent effort row with no session model", () => {
-		expect(effortWordsIn(openSettingsRow("subagent.thinkingLevel", undefined, BLANKET_SCOPE)).sort()).toEqual(
-			[...UNION].sort(),
-		);
+		expect(effortWordsIn(openSubagentEffortRow(undefined, BLANKET_SCOPE)).sort()).toEqual([...UNION].sort());
 	});
 
 	it("offers the catalog's union on the any-model default-effort row", () => {
@@ -753,7 +781,7 @@ describe("a row with no single model offers the union its catalog declares, and 
 	it("offers no level at all when nothing in the catalog declares one", () => {
 		const barren = [shapeModel("declares-nothing")];
 		expect(thinking.configuredThinkingLevelsInScope(barren)).toEqual([]);
-		expect(effortWordsIn(openSettingsRow("subagent.thinkingLevel", undefined, barren))).toEqual([]);
+		expect(effortWordsIn(openSubagentEffortRow(undefined, barren))).toEqual([]);
 	});
 
 	it("refuses nothing over RPC when there is no model to narrow against", () => {

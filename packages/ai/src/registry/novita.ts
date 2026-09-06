@@ -19,4 +19,5 @@ export const novitaProvider = {
 	id: "novita",
 	name: "Novita",
 	login: loginNovita,
+	credential: "api-key",
 } satisfies ProviderDefinition & { readonly id: "novita" };

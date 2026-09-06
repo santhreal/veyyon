@@ -12,6 +12,7 @@ import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { lookupBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
 import type { LspStartupServerInfo } from "@veyyon/coding-agent/tools";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
+import type { Component } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 
 describe("InteractiveMode LSP startup welcome banner", () => {
@@ -74,7 +75,7 @@ describe("InteractiveMode LSP startup welcome banner", () => {
 		// Starting a real fs.watch on the repo HEAD in a parallel Bun worker is
 		// enough to trigger a Bun SIGTRAP in unrelated workers during the
 		// 4-worker suite reproducer, so keep the watcher out of this contract.
-		vi.spyOn(mode.statusLine, "watchBranch").mockImplementation(() => {});
+		vi.spyOn(mode.statusLine, "watchGitState").mockImplementation(() => {});
 	});
 
 	afterEach(async () => {
@@ -100,6 +101,9 @@ describe("InteractiveMode LSP startup welcome banner", () => {
 				editor: { setText: () => {} },
 				showStatus: (text: string) => {
 					outputs.push(text);
+				},
+				present: (block: Component) => {
+					outputs.push(block.render(100).join("\n"));
 				},
 			},
 		} as unknown as Parameters<NonNullable<typeof lspCommand.handleTui>>[1];

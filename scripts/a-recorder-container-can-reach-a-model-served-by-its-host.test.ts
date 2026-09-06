@@ -76,12 +76,17 @@ async function recorderArgv(recorder: string, endpoint: string | undefined): Pro
 		// one before it spawns anything, so the wayland arm needs a path that exists.
 		const renderNode = path.join(dir, "renderD128");
 		await fs.writeFile(renderNode, "");
+		// Likewise the napi addon the recorded product loads: a stub docker never
+		// starts a container, so a staged path stands in for a built addon.
+		const addon = path.join(dir, "veyyon_natives.linux-x64-gnu.node");
+		await fs.writeFile(addon, "");
 		const env: Record<string, string> = {
 			...process.env,
 			ARGV_FILE: argvFile,
 			PATH: `${dir}${path.delimiter}${process.env.PATH ?? ""}`,
 			OUT_DIR: path.join(dir, "out"),
 			RENDER_NODE: renderNode,
+			PROOF_NATIVE_ADDON: addon,
 		};
 		if (endpoint === undefined) delete env.PROOF_LLM_BASE_URL;
 		else env.PROOF_LLM_BASE_URL = endpoint;

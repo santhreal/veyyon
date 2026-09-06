@@ -33,7 +33,7 @@ import {
 } from "../../hindsight";
 import { buildMemoryPayloadForDisplay, resolveMemoryBackend } from "../../memory-backend";
 import { BashExecutionComponent } from "../../modes/components/bash-execution";
-import { compactionActionLabel, willCompactRemotely } from "../../modes/components/compaction-summary-message";
+import { compactionActionLabel, resolveCompactionKind } from "../../modes/components/compaction-summary-message";
 import { COMPOSER_INSET_COLS } from "../../modes/components/composer-chrome";
 import { ComposerLoader } from "../../modes/components/composer-loader";
 import { EvalExecutionComponent } from "../../modes/components/eval-execution";
@@ -1250,7 +1250,7 @@ export class CommandController {
 		this.ctx.clearWorkingLoader();
 		this.ctx.statusContainer.disposeChildren();
 
-		const label = `${compactionActionLabel(isAuto, willCompactRemotely(this.ctx.session))} (esc to cancel)`;
+		const label = `${compactionActionLabel(isAuto, resolveCompactionKind(this.ctx.session))} (esc to cancel)`;
 		const compactingLoader = new Loader(
 			this.ctx.ui,
 			spinner => theme.fg("accent", spinner),

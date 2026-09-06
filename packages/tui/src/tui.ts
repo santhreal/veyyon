@@ -30,10 +30,10 @@ import { LoopWatchdog } from "./loop-watchdog";
 import { type MouseRoutable, parseSgrMouse, type SgrMouseEvent } from "./mouse";
 import { isConPTYHosted, setAltScreenActive, type Terminal } from "./terminal";
 import {
+	encodeKittyClippedPlacementLine,
 	encodeKittyDeleteImage,
 	ImageProtocol,
 	isInsideTerminalMultiplexer,
-	planSixelProbe,
 	setCellDimensions,
 	setTerminalImageProtocol,
 	shouldEnableSynchronizedOutputByDefault,
@@ -556,6 +556,14 @@ export interface OverlayOptions {
 	 * Called each render cycle with current terminal dimensions.
 	 */
 	visible?: (termWidth: number, termHeight: number) => boolean;
+	/**
+	 * Keep the pinned footer (see {@link TUI.setPinnedFooterChildCount}) on
+	 * screen: the footer's current row span is added to the bottom margin, so
+	 * a bottom-anchored overlay sits on the transcript region and the composer
+	 * and status rows under it stay painted. Defaults off. Without a pinned
+	 * footer this is a no-op.
+	 */
+	aboveFooter?: boolean;
 
 	// === Fullscreen ===
 	/**
@@ -567,6 +575,20 @@ export interface OverlayOptions {
 	 * unchanged and still draw over the transcript on the normal screen.
 	 */
 	fullscreen?: boolean;
+}
+
+/** One overlay on the stack. */
+interface OverlayEntry {
+	component: Component;
+	options?: OverlayOptions;
+	preFocus: Component | null;
+	hidden: boolean;
+	/**
+	 * The card is playing itself out: still PAINTED, no longer INTERACTIVE. Focus has already
+	 * gone back to whatever the overlay took it from, so the transcript answers a keystroke
+	 * during the fade rather than a card the operator has already dismissed.
+	 */
+	exiting: boolean;
 }
 
 /**
@@ -761,6 +783,31 @@ interface CursorControlResult extends HardwareCursorUpdate {
 	seq: string;
 	toCol: number;
 	visible: boolean;
+}
+
+/**
+ * A composed frame as the terminal is showing it: the rows, the geometry they were composed at,
+ * and the two positions an incremental update writes relative to.
+ *
+ * Exported because it crosses a process boundary. A launch records one, the next launch replays
+ * its bytes and hands this back through {@link TUI.adoptPaintedWindow}, and the engine picks up
+ * where the recording left off instead of repainting.
+ */
+export interface AdoptedScreen {
+	readonly window: readonly string[];
+	/**
+	 * Rows the frame composed to, which is not `window.length`: the window is padded to the
+	 * viewport and the frame is not. `composedFrameRows` reports this, and the home anchor sizes
+	 * the gap between the content and the composer from it, so a window length here is a composer
+	 * placed against a frame that is mostly padding.
+	 */
+	readonly frameLength: number;
+	readonly width: number;
+	readonly height: number;
+	/** Frame row the terminal cursor is parked on. */
+	readonly cursorRow: number;
+	/** Frame row the visible window starts at. */
+	readonly windowTopRow: number;
 }
 
 /**
@@ -1327,6 +1374,8 @@ export class TUI extends Container {
 	#clearScrollbackOnNextRender = false;
 	#forceViewportRepaintOnNextRender = false;
 	#hasEverRendered = false;
+	/** An {@link adoptPaintedWindow} screen no frame has diffed against yet. */
+	#adoptedScreenUnconsumed = false;
 	// Erase-and-replay history when a block's final form replaces the live
 	// preview that already scrolled off.
 	//
@@ -1450,18 +1499,24 @@ export class TUI extends Container {
 	#preparedValidRows = 0;
 
 	// Overlay stack for modal components rendered on top of base content
-	overlayStack: {
-		component: Component;
-		options?: OverlayOptions;
-		preFocus: Component | null;
-		hidden: boolean;
-		/**
-		 * The card is playing itself out: still PAINTED, no longer INTERACTIVE. Focus has already
-		 * gone back to whatever the overlay took it from, so the transcript answers a keystroke
-		 * during the fade rather than a card the operator has already dismissed.
-		 */
-		exiting: boolean;
-	}[] = [];
+	overlayStack: OverlayEntry[] = [];
+
+	/**
+	 * Where each painted overlay landed on the last composed frame, in screen
+	 * cells. A non-fullscreen overlay draws over the normal screen, where every
+	 * mouse report is owned by scroll isolation; this is what lets a report be
+	 * handed to the card under it instead. Rebuilt on every composite, so it
+	 * describes the frame the operator is looking at and nothing older.
+	 */
+	#overlayFrames: Array<{
+		entry: OverlayEntry;
+		row: number;
+		col: number;
+		width: number;
+		height: number;
+		/** Component lines dropped above the first painted row when the card overflowed. */
+		lineOffset: number;
+	}> = [];
 
 	constructor(terminal: Terminal, showHardwareCursor?: boolean, options?: TUIOptions) {
 		super();
@@ -1492,8 +1547,15 @@ export class TUI extends Container {
 			// subtree provably did not change (content mutations route through
 			// a render request, which would have made this frame a full one) —
 			// reuse its previous rows and seam report without calling render().
+			// A layout child is the exception: the sizing pass at the top of this
+			// frame resized it against the children about to render, and it
+			// requested nothing (see markLayoutSized).
 			const reuse =
-				partialRoots !== null && previous !== undefined && previous.component === child && !partialRoots.has(child);
+				partialRoots !== null &&
+				previous !== undefined &&
+				previous.component === child &&
+				!partialRoots.has(child) &&
+				!this.#layoutSizedChildren.has(child);
 			let childLines: readonly string[];
 			let liveLocalStart: number | undefined;
 			let reported: number | undefined;
@@ -1780,6 +1842,34 @@ export class TUI extends Container {
 	onBeforeCompose?: () => void;
 
 	/**
+	 * Declare that `component`'s height is sized in {@link onBeforeCompose} from
+	 * its siblings' heights, so the compositor must re-render it on a
+	 * component-scoped frame as well.
+	 *
+	 * A component-scoped frame re-renders only the root subtrees whose repaint
+	 * was requested and reuses the previous rows of every other root child. A
+	 * layout child is resized by the sizing pass at the top of THIS frame, which
+	 * requested nothing, so reusing its previous rows composes the frame with the
+	 * height the previous frame's content called for: a streamed chunk repainting
+	 * its own block alone (`ChatBlock.requestRender`) grows the frame by the rows
+	 * it gained while the fill above it still reserves the rows it had, the frame
+	 * composes past the viewport, and the engine moves the window to fit. Nothing
+	 * downstream can repair it either — the sizing pass already wrote the right
+	 * height into the component, so the post-commit correction compares equal and
+	 * requests nothing.
+	 *
+	 * Registration is by reference and held weakly, so an unmounted child is
+	 * collected as usual.
+	 */
+	markLayoutSized(component: Component): void {
+		this.#layoutSizedChildren.add(component);
+	}
+
+	// Root children whose height the onBeforeCompose sizing pass owns; never
+	// segment-reused on a component-scoped frame (see markLayoutSized).
+	#layoutSizedChildren = new WeakSet<Component>();
+
+	/**
 	 * Invoked after every frame commit, once the freshly composed row count is
 	 * readable via {@link composedFrameRows}. Lets a bottom-anchoring owner
 	 * correct its fill against the exact frame instead of a stale estimate; the
@@ -1923,6 +2013,11 @@ export class TUI extends Container {
 		this.#pinnedFooterChildCount = Math.max(0, count);
 	}
 
+	/** Row span of the pinned footer in the last composed frame; 0 without one. */
+	get pinnedFooterRows(): number {
+		return this.#pinnedFooterRows;
+	}
+
 	/** True while the transcript region shows a frozen, scrolled-up slice. */
 	get virtualScrollActive(): boolean {
 		return this.#virtualScrollTop !== null;
@@ -1964,6 +2059,31 @@ export class TUI extends Container {
 		return false;
 	}
 
+	/**
+	 * The topmost interactive overlay on the normal screen that takes mouse
+	 * reports, with the cells it painted last frame.
+	 *
+	 * A fullscreen overlay is not one: it holds the alternate screen, where the
+	 * full tracking set is already grabbed and every report goes straight to the
+	 * focused component's `handleInput`. This is for the card that sits over the
+	 * transcript — a console above the composer, a bottom-anchored picker — whose
+	 * reports scroll isolation used to swallow. A component that answers
+	 * `wantsPointer()` with false has nothing to click right now and is skipped,
+	 * the same contract a pinned-footer child has.
+	 */
+	#overlayPointerTarget():
+		| { component: MouseRoutable; row: number; col: number; width: number; height: number; lineOffset: number }
+		| undefined {
+		const entry = this.#getTopmostInteractiveOverlay();
+		if (!entry || entry.options?.fullscreen === true) return undefined;
+		const component = entry.component as Component & Partial<MouseRoutable>;
+		if (typeof component.routeMouse !== "function") return undefined;
+		if (component.wantsPointer?.() === false) return undefined;
+		const frame = this.#overlayFrames.find(candidate => candidate.entry === entry);
+		if (!frame) return undefined;
+		return { component: component as MouseRoutable, ...frame };
+	}
+
 	/** Apply or tear down wheel/button mouse tracking for scroll isolation.
 	 * Alt-screen overlays own the full tracking set while active, so this is
 	 * a no-op then; the alt-exit path re-syncs.
@@ -1980,7 +2100,7 @@ export class TUI extends Container {
 			!this.#stopped &&
 			this.#hasEverRendered &&
 			!this.#altActive &&
-			(this.#frameScrollable || this.#footerWantsPointer());
+			(this.#frameScrollable || this.#footerWantsPointer() || this.#overlayPointerTarget() !== undefined);
 		if (want === this.#wheelTrackingActive) return;
 		this.#wheelTrackingActive = want;
 		// A press whose release lands after tracking flips would pair a stale cell
@@ -2206,7 +2326,7 @@ export class TUI extends Container {
 	}
 
 	/** Check if an overlay entry is currently PAINTED. An exiting card is: that is the whole point. */
-	#isOverlayVisible(entry: (typeof this.overlayStack)[number]): boolean {
+	#isOverlayVisible(entry: OverlayEntry): boolean {
 		if (entry.hidden) return false;
 		if (entry.options?.visible) {
 			return entry.options.visible(this.terminal.columns, this.terminal.rows);
@@ -2219,12 +2339,12 @@ export class TUI extends Container {
 	 * exactly the length of an exit: the card is on screen, and it is already gone as far as the
 	 * keyboard, the mouse and `hasOverlay()` are concerned.
 	 */
-	#isOverlayInteractive(entry: (typeof this.overlayStack)[number]): boolean {
+	#isOverlayInteractive(entry: OverlayEntry): boolean {
 		return !entry.exiting && this.#isOverlayVisible(entry);
 	}
 
 	/** The topmost overlay that is PAINTED, including one that is playing itself out. */
-	#getTopmostVisibleOverlay(): (typeof this.overlayStack)[number] | undefined {
+	#getTopmostVisibleOverlay(): OverlayEntry | undefined {
 		for (let i = this.overlayStack.length - 1; i >= 0; i--) {
 			if (this.#isOverlayVisible(this.overlayStack[i])) {
 				return this.overlayStack[i];
@@ -2234,7 +2354,7 @@ export class TUI extends Container {
 	}
 
 	/** The topmost overlay that can hold focus, which an exiting card cannot. */
-	#getTopmostInteractiveOverlay(): (typeof this.overlayStack)[number] | undefined {
+	#getTopmostInteractiveOverlay(): OverlayEntry | undefined {
 		for (let i = this.overlayStack.length - 1; i >= 0; i--) {
 			if (this.#isOverlayInteractive(this.overlayStack[i])) {
 				return this.overlayStack[i];
@@ -2246,6 +2366,57 @@ export class TUI extends Container {
 	override invalidate(): void {
 		super.invalidate();
 		for (const overlay of this.overlayStack) overlay.component.invalidate?.();
+	}
+
+	/**
+	 * Take the screen as already showing `screen`, so the next render diffs against it instead of
+	 * repainting the viewport.
+	 *
+	 * WHO NEEDS THIS. Something outside the engine wrote a frame this engine did not compose, and
+	 * the engine is about to compose the same one. Without adoption the first render is a full
+	 * paint by definition (`firstPaint = !#hasEverRendered`), which erases and rewrites every row
+	 * the caller just wrote, and the operator watches an assembled screen blink and reassemble.
+	 *
+	 * WHAT THE CALLER PROMISES. That `screen` is exactly what the terminal shows: the same rows the
+	 * engine would have composed, at the same geometry, styles included. A caller that cannot
+	 * promise that must not adopt, because the next render writes only the rows that DIFFER from
+	 * these and a wrong row here is a row that never gets corrected. The bytes a caller replays and
+	 * the screen it adopts come from one recording for that reason.
+	 *
+	 * THE POSITIONS ARE PART OF THE SCREEN. An update writes RELATIVE cursor motion, from the row
+	 * the engine believes the cursor is on and against the frame row it believes the window starts
+	 * at. Adopting rows without adopting both puts every subsequent row at an offset, and a card
+	 * that reappears one row down the screen is what each of them looked like when it was missing.
+	 *
+	 * WHAT IT DOES NOT COVER. Only a chrome-only frame: nothing here seeds the commit ledger, the
+	 * scroll tape or the committed prefix, all of which stay empty, so an adopted screen must hold
+	 * no transcript history. The launch card is the case that exists, and it is entirely chrome.
+	 */
+	adoptPaintedWindow(screen: AdoptedScreen): void {
+		this.#previousWindow = [...screen.window];
+		this.#previousFrameLength = screen.frameLength;
+		this.#previousWidth = screen.width;
+		this.#previousHeight = screen.height;
+		this.#hardwareCursorRow = screen.cursorRow;
+		this.#windowTopRow = screen.windowTopRow;
+		this.#hasEverRendered = true;
+		this.#adoptedScreenUnconsumed = true;
+	}
+
+	/**
+	 * Everything about the last frame that {@link adoptPaintedWindow} needs to take it as given:
+	 * the rows, the geometry they were composed at, and the two accounting positions an update
+	 * writes relative to.
+	 */
+	paintedScreen(): AdoptedScreen {
+		return {
+			window: this.#previousWindow,
+			frameLength: this.#previousFrameLength,
+			width: this.#previousWidth,
+			height: this.#previousHeight,
+			cursorRow: this.#hardwareCursorRow,
+			windowTopRow: this.#windowTopRow,
+		};
 	}
 
 	start(options?: TUIStartOptions): void {
@@ -2331,41 +2502,18 @@ export class TUI extends Container {
 		this.#inputListeners.delete(listener);
 	}
 
-	/**
-	 * Ask the terminal whether it renders sixel, when static detection did not
-	 * already name a protocol.
-	 *
-	 * `KNOWN_TERMINALS` grants an image protocol to five terminals, all of them
-	 * Kitty or iTerm2; `ImageProtocol.Sixel` is never assigned by static
-	 * detection at all. Everything else falls to `base`/`trueColor`, whose
-	 * protocol is null, and a null protocol makes `renderImage` return null, so
-	 * a sixel-capable terminal that is not one of those five renders no image
-	 * and says nothing about why. Primary DA is the standard way to settle it:
-	 * every VT100-family terminal answers `CSI ? <attrs> c`, and attribute 4 is
-	 * sixel.
-	 *
-	 * DA is universal, so it goes to every TTY. XTSMGRAPHICS is an xterm
-	 * extension, so it stays on Windows Terminal, where it is the response this
-	 * probe was originally written against; elsewhere DA alone decides, and
-	 * `#sixelProbePendingGraphics` starts false so a DA without attribute 4
-	 * settles the probe instead of waiting out the timeout.
-	 *
-	 * A terminal already carrying a protocol never reaches here, which keeps
-	 * kitty, ghostty, wezterm, iterm2, warp and the tmux/screen Kitty fallback
-	 * on the path they already take. Nothing awaits this: the probe writes,
-	 * listens, and re-renders from `#finishSixelProbe` if the answer is yes.
-	 */
 	#querySixelSupport(): void {
-		const isTty = Boolean(process.stdin.isTTY && process.stdout.isTTY);
-		const plan = planSixelProbe(TERMINAL.imageProtocol, isTty);
-		if (!plan) return;
+		if (TERMINAL.imageProtocol) return;
+		if (process.platform !== "win32") return;
+		if (!Bun.env.WT_SESSION) return;
+		if (!process.stdin.isTTY || !process.stdout.isTTY) return;
 
 		this.#clearSixelProbeState();
 		this.#sixelProbePendingDa = true;
-		this.#sixelProbePendingGraphics = plan.xtsmgraphics;
+		this.#sixelProbePendingGraphics = true;
 		this.#sixelProbeUnsubscribe = this.addInputListener(data => this.#handleSixelProbeInput(data));
 		this.terminal.write("\x1b[c");
-		if (plan.xtsmgraphics) this.terminal.write("\x1b[?2;1;0S");
+		this.terminal.write("\x1b[?2;1;0S");
 		this.#sixelProbeTimeout = setTimeout(() => {
 			this.#finishSixelProbe(false);
 		}, 250);
@@ -2853,7 +3001,7 @@ export class TUI extends Container {
 		buffer += "\r";
 		for (let i = firstChanged; i <= lastChanged; i++) {
 			if (i > firstChanged) buffer += "\r\n";
-			buffer += this.#lineRewriteSequence(this.#preparedFrame[segment.start + i] ?? "", width);
+			buffer += this.#lineRewriteSequence(this.#preparedFrame[segment.start + i] ?? "", width, screenStart + i);
 		}
 		const cursorControl = this.#cursorControlSequence(
 			cursorPos,
@@ -3300,6 +3448,23 @@ export class TUI extends Container {
 		if (this.#wheelTrackingActive && !this.#altActive && data.startsWith("\x1b[<")) {
 			const event = parseSgrMouse(data);
 			if (event) {
+				// A report inside a card drawn over the transcript belongs to the
+				// card: its list scrolls under the wheel and its rows take the
+				// click. Outside the card the report keeps its old meaning, so a
+				// wheel over the transcript beside a console still scrolls it.
+				const target = this.#overlayPointerTarget();
+				if (
+					target &&
+					event.row >= target.row &&
+					event.row < target.row + target.height &&
+					event.col >= target.col &&
+					event.col < target.col + target.width
+				) {
+					this.#pressCell = null;
+					target.component.routeMouse(event, event.row - target.row + target.lineOffset, event.col - target.col);
+					this.requestRender();
+					return;
+				}
 				if (event.wheel) {
 					this.#pressCell = null;
 					this.#handleIsolationWheel(event.wheel);
@@ -3419,13 +3584,17 @@ export class TUI extends Container {
 
 	/**
 	 * Resolve overlay layout from options.
-	 * Returns { width, row, col, maxHeight } for rendering.
+	 * Returns { width, row, col, maxHeight } for rendering. `footerTop` is the
+	 * screen row where the pinned footer starts in the window being painted
+	 * (`termHeight` when there is none); `aboveFooter` reserves everything
+	 * from that row down.
 	 */
 	#resolveOverlayLayout(
 		options: OverlayOptions | undefined,
 		overlayHeight: number,
 		termWidth: number,
 		termHeight: number,
+		footerTop: number,
 	): { width: number; row: number; col: number; maxHeight: number } {
 		const opt = options ?? {};
 
@@ -3436,7 +3605,11 @@ export class TUI extends Container {
 				: (opt.margin ?? {});
 		const marginTop = Math.max(0, margin.top ?? 0);
 		const marginRight = Math.max(0, margin.right ?? 0);
-		const marginBottom = Math.max(0, margin.bottom ?? 0);
+		// The reserve is measured from where the footer is on screen, not from
+		// its row count: on a frame shorter than the viewport the footer sits
+		// right after the transcript, and the overlay must still end above it.
+		const footerReserve = opt.aboveFooter ? clampLow(termHeight - footerTop, 0, Math.max(0, termHeight - 1)) : 0;
+		const marginBottom = Math.max(0, margin.bottom ?? 0) + footerReserve;
 		const marginLeft = Math.max(0, margin.left ?? 0);
 
 		// Available space after margins
@@ -3560,15 +3733,17 @@ export class TUI extends Container {
 	 * frozen while an overlay is visible, so overlay pixels can never enter
 	 * native scrollback.
 	 */
-	#compositeOverlaysIntoWindow(window: string[], termWidth: number, termHeight: number): string[] {
+	#compositeOverlaysIntoWindow(window: string[], termWidth: number, termHeight: number, footerTop: number): string[] {
 		const result = [...window];
+		this.#overlayFrames.length = 0;
 		for (const entry of this.overlayStack) {
 			if (!this.#isOverlayVisible(entry)) continue;
 			const { component, options } = entry;
 			// Get layout with height=0 first to determine width and maxHeight
 			// (width and maxHeight don't depend on overlay height).
-			const { width, maxHeight } = this.#resolveOverlayLayout(options, 0, termWidth, termHeight);
+			const { width, maxHeight } = this.#resolveOverlayLayout(options, 0, termWidth, termHeight, footerTop);
 			let overlayLines = component.render(width);
+			const renderedRows = overlayLines.length;
 			if (overlayLines.length > maxHeight) {
 				const anchor = options?.anchor ?? "center";
 				overlayLines =
@@ -3576,7 +3751,23 @@ export class TUI extends Container {
 						? overlayLines.slice(overlayLines.length - maxHeight)
 						: overlayLines.slice(0, maxHeight);
 			}
-			const { row, col } = this.#resolveOverlayLayout(options, overlayLines.length, termWidth, termHeight);
+			const { row, col } = this.#resolveOverlayLayout(
+				options,
+				overlayLines.length,
+				termWidth,
+				termHeight,
+				footerTop,
+			);
+			// A bottom-anchored card that overflowed lost its TOP rows, so the
+			// first painted row is not the component's line 0.
+			this.#overlayFrames.push({
+				entry,
+				row,
+				col,
+				width,
+				height: overlayLines.length,
+				lineOffset: renderedRows - overlayLines.length,
+			});
 			for (let i = 0; i < overlayLines.length; i++) {
 				const idx = row + i;
 				if (idx < 0 || idx >= result.length) continue;
@@ -3738,10 +3929,32 @@ export class TUI extends Container {
 		};
 	}
 
-	#terminalLine(line: string): string {
-		if (TERMINAL.isImageLine(line)) return line;
+	/**
+	 * A line as the terminal receives it. `screenRow` is the viewport row the
+	 * line is written at, when the caller knows it; an image line rewritten
+	 * there is clipped to the rows it has above it, see {@link #imageLineAt}.
+	 */
+	#terminalLine(line: string, screenRow?: number): string {
+		if (TERMINAL.isImageLine(line)) return this.#imageLineAt(line, screenRow);
 		const coalesced = coalesceAdjacentSgr(line);
 		return coalesced + (line.includes("\x1b]8;") ? LINE_TERMINATOR : SGR_RESET);
+	}
+
+	/**
+	 * The bytes for an image line written at viewport row `screenRow`. A direct
+	 * placement is the LAST row of its block and climbs `rows-1` to the origin;
+	 * written at a row above that origin (its first rows already scrolled into
+	 * native scrollback, or an alt-screen frame that starts inside the block),
+	 * the climb clamps at row 0 and the picture lands over the text below it.
+	 * Such a line is re-derived from the geometry the budget holds: it climbs to
+	 * row 0 and shows only the rows that fit. Sequential replays (history rows)
+	 * pass no row and keep the line, since the block's own rows precede it.
+	 */
+	#imageLineAt(line: string, screenRow: number | undefined): string {
+		if (screenRow === undefined) return line;
+		const placement = this.#imageBudget.directPlacement(line);
+		if (placement === undefined || placement.rows - 1 <= screenRow) return line;
+		return encodeKittyClippedPlacementLine(placement, screenRow);
 	}
 
 	/**
@@ -4235,6 +4448,10 @@ export class TUI extends Container {
 		// caret whose frame row sits in the frozen history above has no screen row
 		// at all and must not be drawn at a stale one.
 		let altCaret: { row: number; col: number } | null = null;
+		// Screen row where the pinned footer starts in this window, for overlays
+		// that stay above it. `height` when nothing is pinned or the footer is
+		// below the window's last row.
+		let overlayFooterTop = height;
 		if (virtualScrollSlice) {
 			// Frozen transcript rows above, live footer rows below. The region
 			// reads the scroll-space snapshot (tape + this frame's uncommitted
@@ -4247,6 +4464,7 @@ export class TUI extends Container {
 			const snapshot = this.#scrollSnapshot;
 			const footerRows = Math.min(this.#pinnedFooterRows, height - 1);
 			const regionRows = height - footerRows;
+			overlayFooterTop = regionRows;
 			const viewTop = this.#virtualScrollTop!;
 			for (let r = 0; r < height; r++) {
 				window[r] =
@@ -4261,17 +4479,22 @@ export class TUI extends Container {
 			}
 		} else {
 			for (let r = 0; r < height; r++) window[r] = frame[windowTop + r] ?? "";
+			if (this.#pinnedFooterRows > 0) {
+				overlayFooterTop = Math.min(height, Math.max(0, frameLength - this.#pinnedFooterRows - windowTop));
+			}
 			if (cursorPos !== null && cursorPos.row >= windowTop && cursorPos.row < windowTop + height) {
 				altCaret = { row: cursorPos.row - windowTop, col: cursorPos.col };
 			}
 		}
 		if (hasVisibleOverlay) {
-			window = this.#compositeOverlaysIntoWindow(window, width, height);
+			window = this.#compositeOverlaysIntoWindow(window, width, height, overlayFooterTop);
 			const overlayMarkers = this.#extractCursorMarkers(window);
 			if (overlayMarkers.length > 0) {
 				cursorPos = { row: windowTop + overlayMarkers[0]!.row, col: overlayMarkers[0]!.col };
 			}
 			window = this.#prepareLinesArray(window, width);
+		} else {
+			this.#overlayFrames.length = 0;
 		}
 		const cursorTrackingLineCount = hasVisibleOverlay ? Math.max(frame.length, windowTop + height) : frame.length;
 
@@ -4334,6 +4557,15 @@ export class TUI extends Container {
 			this.#publishCommittedRows();
 			return;
 		}
+		// `start()` ends in `requestRender(true)`, so the frame that follows an adoption arrives
+		// with the forced-repaint flag set and would rewrite every row of the window -- the exact
+		// cost adoption exists to avoid, and invisible in a screen comparison because a full
+		// rewrite of the right rows looks identical. The force flag is what keeps that first frame
+		// from being downgraded to a viewport-only or throttled paint, which the adopted frame
+		// still wants; only its rewrite-everything effect is dropped, and only once.
+		const adoptedFirstFrame = this.#adoptedScreenUnconsumed;
+		this.#adoptedScreenUnconsumed = false;
+		if (adoptedFirstFrame) this.#forceViewportRepaintOnNextRender = false;
 		// 6. Emit.
 		if (intent.kind === "fullPaint") {
 			this.#emitFullPaint(frame, window, width, height, cursorPos, purgeSequence, imageTransmitBuffer, {
@@ -4653,8 +4885,8 @@ export class TUI extends Container {
 		return col;
 	}
 
-	#lineRewriteSequence(line: string, width: number): string {
-		if (TERMINAL.isImageLine(line)) return ERASE_LINE + line;
+	#lineRewriteSequence(line: string, width: number, screenRow?: number): string {
+		if (TERMINAL.isImageLine(line)) return ERASE_LINE + this.#imageLineAt(line, screenRow);
 		const terminalLine = this.#terminalLine(line);
 		const asciiWidth = this.#ansiAsciiLineWidth(line, width);
 		if (asciiWidth !== undefined) {
@@ -4852,13 +5084,18 @@ export class TUI extends Container {
 			for (let screenRow = 0; screenRow < height; screenRow++) {
 				if (chunkTo + screenRow > 0) buffer += "\r\n";
 				const line = visibleTexts ? (visibleTexts[screenRow] ?? "") : (window[screenRow] ?? "");
-				buffer += options.clearScrollback ? this.#lineRewriteSequence(line, width) : this.#terminalLine(line);
+				buffer += options.clearScrollback
+					? this.#lineRewriteSequence(line, width, screenRow)
+					: this.#terminalLine(line, screenRow);
 			}
 		} else {
 			for (let i = 0; i < paintLines.length; i++) {
 				if (i > 0) buffer += "\r\n";
 				const line = visibleTexts && i >= visibleStart ? visibleTexts[i - visibleStart] : (paintLines[i] ?? "");
-				buffer += options.clearScrollback ? this.#lineRewriteSequence(line, width) : this.#terminalLine(line);
+				const screenRow = i >= visibleStart ? i - visibleStart : undefined;
+				buffer += options.clearScrollback
+					? this.#lineRewriteSequence(line, width, screenRow)
+					: this.#terminalLine(line, screenRow);
 			}
 		}
 		buffer += fillSequence;
@@ -5033,7 +5270,7 @@ export class TUI extends Container {
 		let buffer = `${this.#paintBeginSequence + this.#enterResizeAltSequence()}\x1b[H`;
 		for (let r = 0; r < height; r++) {
 			if (r > 0) buffer += "\r\n";
-			buffer += this.#lineRewriteSequence(window[r] ?? "", width);
+			buffer += this.#lineRewriteSequence(window[r] ?? "", width, r);
 		}
 		// Park the hardware cursor at the real content bottom, not the padded
 		// viewport bottom: a later height shrink would otherwise scroll the live
@@ -5063,7 +5300,8 @@ export class TUI extends Container {
 	 */
 	#renderAltFrame(width: number, height: number): void {
 		const base: string[] = new Array(Math.max(0, height)).fill("");
-		let lines = this.#compositeOverlaysIntoWindow(base, width, height);
+		// A fullscreen modal paints over a blank base: there is no footer under it.
+		let lines = this.#compositeOverlaysIntoWindow(base, width, height, height);
 		this.#extractCursorMarkers(lines);
 		lines = this.#prepareLinesArray(lines, width);
 		this.#emitAltFrame(lines, width, height);
@@ -5139,7 +5377,7 @@ export class TUI extends Container {
 		let buffer = `${this.#paintBeginSequence}\x1b[H`;
 		for (let r = 0; r < height; r++) {
 			if (r > 0) buffer += "\r\n";
-			buffer += this.#lineRewriteSequence(fitted[r], width);
+			buffer += this.#lineRewriteSequence(fitted[r], width, r);
 		}
 		if (cursor !== undefined) {
 			// Rows/cols are 0-based internally and 1-based on the wire.
@@ -5231,7 +5469,7 @@ export class TUI extends Container {
 				const moveToBottom = height - 1 - currentScreenRow;
 				if (moveToBottom > 0) buffer += `\x1b[${moveToBottom}B`;
 				for (let r = height - scroll; r < height; r++) {
-					buffer += `\r\n${this.#lineRewriteSequence(window[r] ?? "", width)}`;
+					buffer += `\r\n${this.#lineRewriteSequence(window[r] ?? "", width, r)}`;
 				}
 				// Rewrite any remaining changed rows after the shift.
 				let firstChanged = -1;
@@ -5248,7 +5486,7 @@ export class TUI extends Container {
 					buffer += "\r";
 					for (let r = firstChanged; r <= lastChanged; r++) {
 						if (r > firstChanged) buffer += "\r\n";
-						buffer += this.#lineRewriteSequence(window[r] ?? "", width);
+						buffer += this.#lineRewriteSequence(window[r] ?? "", width, r);
 					}
 					cursorFromRow = windowTop + lastChanged;
 				}
@@ -5317,7 +5555,7 @@ export class TUI extends Container {
 			}
 			for (let r = firstChanged; r <= lastChanged; r++) {
 				if (r > firstChanged) buffer += "\r\n";
-				buffer += this.#lineRewriteSequence(fillTexts ? fillTexts[r - firstChanged] : (window[r] ?? ""), width);
+				buffer += this.#lineRewriteSequence(fillTexts ? fillTexts[r - firstChanged] : (window[r] ?? ""), width, r);
 			}
 			buffer += fillSequence;
 			// Never park below real content (a height shrink would scroll live
@@ -5353,7 +5591,7 @@ export class TUI extends Container {
 		}
 		for (let screenRow = 0; screenRow < height; screenRow++) {
 			if (wroteLine) buffer += "\r\n";
-			buffer += this.#lineRewriteSequence(window[screenRow] ?? "", width);
+			buffer += this.#lineRewriteSequence(window[screenRow] ?? "", width, screenRow);
 			wroteLine = true;
 		}
 		const parkUp = height - 1 - (contentBottomRow - windowTop);

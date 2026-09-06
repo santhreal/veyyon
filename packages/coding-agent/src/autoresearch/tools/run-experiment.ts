@@ -22,7 +22,12 @@ import {
 } from "../helpers";
 import { buildExperimentState } from "../state";
 import { openAutoresearchStorageIfExists } from "../storage";
-import type { AutoresearchToolFactoryOptions, RunDetails, RunExperimentProgressDetails } from "../types";
+import type {
+	AutoresearchToolFactoryOptions,
+	RunDetails,
+	RunExperimentProgressDetails,
+	RunningExperiment,
+} from "../types";
 import { DEFAULT_HARNESS_COMMAND } from "./init-experiment";
 
 const runExperimentSchema = type({
@@ -101,6 +106,13 @@ export function createRunExperimentTool(
 			}
 
 			const startedAt = Date.now();
+			// What actually built and measured this arm. `start_arm` has already put
+			// the session on the arm's model by now, so the model in force here is
+			// the one that wrote the diff being measured. It is recorded on the row
+			// rather than at log time, when a certified round has moved on to the
+			// last arm's model.
+			const currentModel = ctx.models?.current();
+			const measuredArm = params.arm?.trim() || undefined;
 			const insertedRun = storage.insertRun({
 				sessionId: session.id,
 				segment: session.currentSegment,
@@ -108,7 +120,8 @@ export function createRunExperimentTool(
 				logPath: "", // patched after we know the run id
 				preRunDirtyPaths,
 				startedAt,
-				arm: params.arm?.trim() || undefined,
+				arm: measuredArm,
+				model: currentModel ? `${currentModel.provider}/${currentModel.id}` : null,
 			});
 
 			const runDirectory = path.join(storage.projectDir, "runs", String(insertedRun.id).padStart(4, "0"));
@@ -121,13 +134,15 @@ export function createRunExperimentTool(
 			runtime.lastRunArtifactDir = runDirectory;
 			runtime.lastRunNumber = insertedRun.id;
 			runtime.lastRunSummary = null;
-			runtime.runningExperiment = {
+			const running: RunningExperiment = {
 				startedAt,
 				command: resolvedCommand,
 				runDirectory,
 				runNumber: insertedRun.id,
+				tail: "",
 			};
-			options.dashboard.updateWidget(ctx, runtime);
+			runtime.runningExperiment = running;
+			options.dashboard.update(ctx, runtime);
 			options.dashboard.requestRender();
 
 			const timeoutMs = Math.max(0, Math.floor((params.timeout_seconds ?? 600) * 1000));
@@ -141,6 +156,9 @@ export function createRunExperimentTool(
 					cpuSessionId: ctx.sessionManager.getSessionId(),
 					signal,
 					onProgress: details => {
+						// The screen's clock repaints the pane once a second; this is
+						// what it repaints from.
+						running.tail = details.tailOutput;
 						onUpdate?.({
 							content: [{ type: "text", text: details.tailOutput }],
 							details: {
@@ -155,7 +173,7 @@ export function createRunExperimentTool(
 				});
 			} finally {
 				runtime.runningExperiment = null;
-				options.dashboard.updateWidget(ctx, runtime);
+				options.dashboard.update(ctx, runtime);
 				options.dashboard.requestRender();
 			}
 
@@ -234,12 +252,30 @@ export function createRunExperimentTool(
 			if (refreshedSession) {
 				runtime.state = buildExperimentState(refreshedSession, storage.listLoggedRuns(session.id));
 			}
-			options.dashboard.updateWidget(ctx, runtime);
+			options.dashboard.update(ctx, runtime);
 			options.dashboard.requestRender();
 
 			const headerLines: string[] = [];
 			if (abandonedPriorRun !== null) {
 				headerLines.push(`Note: abandoned prior pending run #${abandonedPriorRun} before starting this run.`);
+			}
+			// A per-arm model only takes effect through `start_arm`. Measuring an arm
+			// that was never started, or measuring one arm while another is in
+			// flight, means the diff was written by the wrong model, and the row
+			// records which one. Silence here would leave the comparison looking
+			// like a contest between models it never ran on.
+			if (measuredArm !== undefined && session.armModels.some(spec => spec.length > 0)) {
+				const inFlight = runtime.activeArm?.arm;
+				const builtOn = currentModel ? `${currentModel.provider}/${currentModel.id}` : "the session model";
+				if (inFlight === undefined) {
+					headerLines.push(
+						`Warning: measured as ${measuredArm} with no arm in flight, so it was built on ${builtOn} rather than the model configured for ${measuredArm}. Call start_arm before the first edit of an arm.`,
+					);
+				} else if (inFlight !== measuredArm) {
+					headerLines.push(
+						`Warning: measured as ${measuredArm} while ${inFlight} was in flight, so it was built on ${builtOn}, which is ${inFlight}'s model.`,
+					);
+				}
 			}
 			const warningPrefix = headerLines.length > 0 ? `${headerLines.join("\n")}\n\n` : "";
 

@@ -3,8 +3,8 @@
  *
  * Discovers agent definitions from:
  *   - Bundled agents (shipped with the veyyon coding agent)
- *   - ~/.veyyon/agent/agents/*.md (user-level)
- *   - .veyyon/agents/*.md (project-level)
+ *   - ~/.veyyon/subagents/*.md (authored once, read by every profile)
+ *   - agents/*.md shipped by an extension package or a marketplace plugin
  *
  * Supports:
  *   - Single agent spawn per call (parallelism = parallel task calls)
@@ -1454,17 +1454,20 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				}
 			: agent;
 
-		// Resolve the model through the ONE owner: the spawn's depth row, then the
-		// blanket subagent model, then the definition's frontmatter, then inherit. A
+		// Resolve the model through the ONE owner, whose only scope is this agent:
+		// the lane row governing this spawn, then the definition's frontmatter, then
+		// the default model role. The parent's live model is not a layer, so a
+		// keystroke aimed at this session cannot move a child. A
 		// configured-but-unresolvable pattern refuses the spawn instead of quietly
 		// running whatever the next layer names.
+		// Not a resolution layer: the executor uses it only when the model this
+		// agent resolved to has no working credentials, and warns when it does.
 		const parentActiveModelPattern = this.session.getActiveModelString?.();
 		const parentThinkingLevel = this.session.getActiveThinkingLevel?.();
 		const resolvedModel = resolveSubagentModel({
 			settings: this.session.settings,
 			agentName,
 			agentModel: effectiveAgent.model,
-			activeModelPattern: parentActiveModelPattern,
 			fallbackModelPattern: this.session.getModelString?.(),
 			// The spawned child runs one level below this session; depth rows key
 			// on the CHILD's depth, matching the executor's `childDepth`.
@@ -1476,7 +1479,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				content: [
 					{
 						type: "text",
-						text: `Cannot spawn "${agentName}": ${subagentModelSourceLabel(source, agentName, depth)} is set to "${value}", which matches no available model. Fix that setting (or clear it to inherit the session model) and try again.`,
+						text: `Cannot spawn "${agentName}": ${subagentModelSourceLabel(source, agentName, depth)} is set to "${value}", which matches no available model. Fix that setting in Subagents → Roster → ${agentName} (or clear it to fall back to the default model role) and try again.`,
 					},
 				],
 				details: { projectAgentsDir, results: [], totalDurationMs: Date.now() - startTime },
@@ -1487,6 +1490,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			settings: this.session.settings,
 			agentName,
 			agentThinkingLevel: effectiveAgent.thinkingLevel,
+			taskDepth: taskDepth + 1,
 		});
 
 		// Output schema priority: agent frontmatter > inherited parent session.

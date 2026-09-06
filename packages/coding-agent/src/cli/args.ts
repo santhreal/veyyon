@@ -35,7 +35,6 @@ export interface Args {
 	smol?: string;
 	slow?: string;
 	plan?: string;
-	subagentModel?: string;
 	compactionModel?: string;
 	prewalk?: boolean;
 	noPrewalk?: boolean;
@@ -552,9 +551,9 @@ export function getExtraHelpText(): string {
 			[
 				[
 					"veyyon agents unpack",
-					`Export bundled subagents to the active profile's agent dir, ~/${CONFIG_DIR_NAME}/profiles/<name>/agent/agents (default)`,
+					`Export bundled subagents to ~/${CONFIG_DIR_NAME}/subagents, which every profile reads`,
 				],
-				["veyyon agents unpack --project", "Export bundled subagents to ./.veyyon/agents"],
+				["veyyon agents unpack --dir <path>", "Export bundled subagents to a directory of your own"],
 			],
 			{ indent: "  " },
 		),

@@ -9,8 +9,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ToolCallContext } from "@veyyon/agent-core";
 import type { Ellipsis } from "@veyyon/natives";
-import type { Component } from "@veyyon/tui";
-import { getKeybindings, replaceTabs, truncateToWidth } from "@veyyon/tui";
+import { getKeybindings } from "@veyyon/tui/keybindings";
+import type { Component } from "@veyyon/tui/tui";
+import { replaceTabs, truncateToWidth } from "@veyyon/tui/utils";
 // Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { formatCount, pluralize } from "@veyyon/utils/format";
@@ -22,9 +23,12 @@ import type { Theme } from "../modes/theme/theme";
 import { Hasher } from "../tui/utils";
 import { formatDimensionNote, type ResizedImage } from "../utils/image-resize";
 import { isPathWithinCwd } from "./path-utils";
+import { TRUNCATE_LENGTHS } from "./render-limits";
+import { shortenPath } from "./shorten-path";
 
 export { Ellipsis } from "@veyyon/natives";
-export { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui";
+export { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui/utils";
+export * from "./render-limits";
 
 // =============================================================================
 // Standardized Display Constants
@@ -48,47 +52,6 @@ export function resolveImageOptions(): { maxWidthCells: number; maxHeightCells?:
 	}
 	return { maxWidthCells, maxHeightCells };
 }
-
-/** Preview limits for collapsed/expanded views */
-export const PREVIEW_LIMITS = {
-	/** Lines shown in collapsed view */
-	COLLAPSED_LINES: 3,
-	/** Lines shown in expanded view */
-	EXPANDED_LINES: 12,
-	/** Items (files, results) shown in collapsed view */
-	COLLAPSED_ITEMS: 8,
-	/** Output preview lines in collapsed view */
-	OUTPUT_COLLAPSED: 3,
-	/** Output preview lines in expanded view */
-	OUTPUT_EXPANDED: 10,
-	/** Max hunks shown when collapsed (edit tool) */
-	DIFF_COLLAPSED_HUNKS: 8,
-	/** Max diff lines shown when collapsed (edit tool) */
-	DIFF_COLLAPSED_LINES: 40,
-} as const;
-
-/** Default number of terminal output rows shown before expansion. */
-export const DEFAULT_TERMINAL_PREVIEW_LINES = 10;
-
-/** Truncation lengths for different content types */
-export const TRUNCATE_LENGTHS = {
-	/** Short titles, labels */
-	TITLE: 60,
-	/** Medium-length content (messages, previews) */
-	CONTENT: 80,
-	/** Longer content (code, explanations) */
-	LONG: 100,
-	/** Full line content */
-	LINE: 110,
-	/** Very short (task previews, badges) */
-	SHORT: 40,
-	/** Status-line chips (session name in the footline) — the footline shares
-	 *  one row with model, mode, path, git, and the context bar, so a chip may
-	 *  never dominate it */
-	CHIP: 24,
-	/** Idle recap status line (~40-word LLM reply) */
-	RECAP: 280,
-} as const;
 
 /** Keybinding action that toggles tool-output expansion. */
 const EXPAND_ACTION = "app.tools.expand";
@@ -252,7 +215,7 @@ export function collapseProgressRuns(
 export function renderCollapsedOutputLines(
 	lines: readonly string[],
 	theme: Theme,
-	styleLine: (line: string) => string = line => theme.fg("toolOutput", replaceTabs(line)),
+	styleLine: (line: string) => string = line => theme.fg("toolOutput", replaceTabs(shortenEmbeddedPaths(line))),
 ): string[] {
 	return collapseProgressRuns(lines).map(row => {
 		const text = styleLine(row.text);
@@ -376,7 +339,10 @@ function sanitizeErrorText(message: string | undefined): string {
 	if (!clean) return "Unknown error";
 	// Shorten before truncating: an error that opens with an absolute home path would otherwise
 	// spend the whole line budget on the prefix and leak the home directory into the error card.
-	return replaceTabs(truncateToWidth(shortenEmbeddedPaths(clean), TRUNCATE_LENGTHS.LINE));
+	return clean
+		.split("\n")
+		.map(line => replaceTabs(truncateToWidth(shortenEmbeddedPaths(line), TRUNCATE_LENGTHS.LINE)))
+		.join("\n");
 }
 
 export function formatErrorMessage(message: string | undefined, theme: Theme): string {
@@ -391,7 +357,11 @@ export function formatErrorMessage(message: string | undefined, theme: Theme): s
  * errors, indenting two columns to sit under the header title instead.
  */
 export function formatErrorDetail(message: string | undefined, theme: Theme): string {
-	return `  ${theme.fg("error", sanitizeErrorText(message))}`;
+	const sanitized = sanitizeErrorText(message);
+	return sanitized
+		.split("\n")
+		.map(line => `  ${theme.fg("error", line)}`)
+		.join("\n");
 }
 
 export function formatEmptyMessage(message: string, theme: Theme): string {
@@ -770,25 +740,9 @@ export function truncateDiffByHunk(
 // Path Utilities
 // =============================================================================
 
-// Node-side path shortener: collapses the *real* home dir (`os.homedir()`, or
-// an explicit `homeDir`) to `~`, normalizes Win32 separators, and tolerates
-// non-string input. The browser packages cannot call `os.homedir()`, so they
-// share a separate `/Users|/home`-heuristic owner in `@veyyon/tool-render`
-// (`src/util.ts`). Two owners, one per runtime boundary, is deliberate here —
-// not an accidental duplicate.
-export function shortenPath(filePath: unknown, homeDir?: string): string {
-	if (typeof filePath !== "string") {
-		return "";
-	}
-	const home = homeDir ?? os.homedir();
-	if (home && filePath.startsWith(home)) {
-		const suffix = filePath.slice(home.length);
-		if (suffix === "" || suffix.startsWith(path.posix.sep) || suffix.startsWith(path.win32.sep)) {
-			return `~${suffix.replaceAll(path.win32.sep, path.posix.sep)}`;
-		}
-	}
-	return filePath;
-}
+// Re-exported so every existing importer of `render-utils` is unchanged; the
+// launch card reaches the same function through `./shorten-path` directly.
+export { shortenPath };
 
 /**
  * The comma-separated path list a tool's status line shows.
@@ -815,16 +769,19 @@ export function formatScopeMeta(paths: string | readonly string[]): string {
  * {@link shortenPath}.
  */
 export function shortenEmbeddedPaths(text: string, homeDir?: string): string {
-	return text
-		.split(" ")
-		.map(segment => {
-			const leading = segment.match(/^[("'`[]*/)?.[0] ?? "";
-			const trailing = segment.match(/[)"'`,.;:\]]*$/)?.[0] ?? "";
-			const end = segment.length - trailing.length;
-			if (leading.length >= end) return segment;
-			return `${leading}${shortenPath(segment.slice(leading.length, end), homeDir)}${trailing}`;
-		})
-		.join(" ");
+	const home = homeDir ?? os.homedir();
+	if (!home) return text;
+	const escapedHome = home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const normalizedHomePattern = escapedHome.replace(/\\\\/g, "[/\\\\]");
+	const regex = new RegExp(`(^|[^a-zA-Z0-9_])(${normalizedHomePattern})((?:[/\\\\][^\\s"'\`)\\]}>]*?)?)`, "g");
+	return text.replace(regex, (_match, prefix, _h, suffix) => {
+		const rawSuffix = suffix ?? "";
+		const trailingPunctMatch = rawSuffix.match(/[)"'`,.;:\]]+$/);
+		const trailingPunct = trailingPunctMatch ? trailingPunctMatch[0] : "";
+		const pathSuffix = trailingPunct ? rawSuffix.slice(0, -trailingPunct.length) : rawSuffix;
+		const normalizedSuffix = pathSuffix.replaceAll(path.win32.sep, path.posix.sep);
+		return `${prefix}~${normalizedSuffix}${trailingPunct}`;
+	});
 }
 
 export function formatToolWorkingDirectory(workdir: string | undefined, projectDir: string): string | undefined {

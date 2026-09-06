@@ -260,6 +260,7 @@ describe("Nous Portal OAuth", () => {
 			id: "nous-research",
 			name: "Nous Research",
 			available: true,
+			credential: "oauth",
 			storeCredentialsAs: undefined,
 		});
 		expect(typeof definition.refreshToken).toBe("function");

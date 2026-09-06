@@ -22,7 +22,7 @@ import type { ToolSession } from ".";
 import { truncateForPrompt } from "./approval";
 import { inlineBudgetFor } from "./output-artifact";
 import { formatStyledTruncationWarning, type OutputMeta, stripOutputNotice } from "./output-meta";
-import { capPreviewLines, PREVIEW_LIMITS, replaceTabs } from "./render-utils";
+import { capPreviewLines, PREVIEW_LIMITS, replaceTabs, shortenEmbeddedPaths } from "./render-utils";
 import { ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
 import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice } from "./tool-timeouts";
@@ -279,7 +279,7 @@ interface SshRenderContext {
 }
 
 function formatSshCommandLines(command: string, uiTheme: Theme): string[] {
-	const sanitized = replaceTabs(command);
+	const sanitized = replaceTabs(shortenEmbeddedPaths(command));
 	const rawLines = sanitized.length > 0 ? sanitized.split("\n") : ["…"];
 	const prefix = uiTheme.fg("dim", "$ ");
 	return rawLines.map((line, i) => (i === 0 ? `${prefix}${line}` : line));
@@ -356,7 +356,13 @@ export const sshToolRenderer = {
 
 				if (output) {
 					if (expanded) {
-						outputLines.push(...output.split("\n").map(line => uiTheme.fg("toolOutput", replaceTabs(line))));
+						outputLines.push(
+							...output
+								.split("\n")
+								.map(line =>
+									uiTheme.fg(isError ? "error" : "toolOutput", replaceTabs(shortenEmbeddedPaths(line))),
+								),
+						);
 					} else {
 						// Measured at the box's inner width, the same way `bash` measures
 						// its own tail, so a wrapped remote line spends the lines it
@@ -365,7 +371,10 @@ export const sshToolRenderer = {
 						// `ssh` — the render context is built for `bash` only — so every
 						// collapsed remote result fell through to a flat five-line slice
 						// with tabs left in it, opening holes in the frame.
-						const sanitized = output.split("\n").map(replaceTabs).join("\n");
+						const sanitized = output
+							.split("\n")
+							.map(line => replaceTabs(shortenEmbeddedPaths(line)))
+							.join("\n");
 						const result = truncateToVisualLines(
 							sanitized,
 							PREVIEW_LIMITS.OUTPUT_COLLAPSED,
@@ -379,7 +388,9 @@ export const sshToolRenderer = {
 								),
 							);
 						}
-						outputLines.push(...result.visualLines.map(line => uiTheme.fg("toolOutput", line)));
+						outputLines.push(
+							...result.visualLines.map(line => uiTheme.fg(isError ? "error" : "toolOutput", line)),
+						);
 					}
 				}
 

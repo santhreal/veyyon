@@ -39,4 +39,5 @@ export const kagiProvider = {
 	id: "kagi",
 	name: "Kagi",
 	login: (cb: OAuthLoginCallbacks) => loginKagi(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

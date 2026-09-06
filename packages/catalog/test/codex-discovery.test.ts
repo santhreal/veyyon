@@ -5,6 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { buildModel } from "@veyyon/catalog/build";
 import { fetchCodexModels } from "@veyyon/catalog/discovery/codex";
+import { Effort } from "@veyyon/catalog/effort";
 import { writeModelCache } from "@veyyon/catalog/model-cache";
 import { resolveProviderModels } from "@veyyon/catalog/model-manager";
 import type { ModelSpec } from "@veyyon/catalog/types";
@@ -93,6 +94,89 @@ describe("Codex model discovery", () => {
 		expect(terra).toMatchObject({ preferWebsockets: true, useResponsesLite: true });
 		const legacy = result?.models.find(model => model.id === "gpt-5.5");
 		expect(legacy?.useResponsesLite).toBeUndefined();
+	});
+
+	// WHY: GPT-6 Astra and GPT-Reserve reached the picker with no effort control
+	// because discovery read `supported_reasoning_levels` only as a boolean and
+	// left the ladder to a models.dev overlay that lags new Codex SKUs. The class
+	// closed: every Codex row's ladder and apply_patch tool type come from what
+	// the endpoint declares for that row, so a new SKU is controllable the moment
+	// it is listed. Not caught: a level Veyyon has no Effort name for (`ultra`)
+	// is dropped rather than offered, by design, until the tier is learned.
+	it("carries the declared effort ladder and apply_patch tool type onto the model spec", async () => {
+		const level = (effort: string) => ({ effort, description: `${effort} reasoning` });
+		const fetchFn: typeof fetch = Object.assign(
+			async () =>
+				new Response(
+					JSON.stringify({
+						models: [
+							{
+								slug: "gpt-6-astra",
+								display_name: "GPT-6-Astra",
+								context_window: 272_000,
+								default_reasoning_level: "medium",
+								// Declared out of order with a tier Veyyon does not know.
+								supported_reasoning_levels: [
+									level("ultra"),
+									level("max"),
+									level("xhigh"),
+									level("high"),
+									level("medium"),
+									level("low"),
+								],
+								apply_patch_tool_type: "freeform",
+								input_modalities: ["text", "image"],
+								supported_in_api: true,
+							},
+							{
+								slug: "gpt-5.5",
+								display_name: "GPT-5.5",
+								context_window: 272_000,
+								default_reasoning_level: "medium",
+								supported_reasoning_levels: [level("low"), level("medium"), level("high"), level("xhigh")],
+								apply_patch_tool_type: "freeform",
+								input_modalities: ["text", "image"],
+								supported_in_api: true,
+							},
+							{
+								slug: "gpt-future",
+								display_name: "GPT-Future",
+								context_window: 272_000,
+								default_reasoning_level: "ultra",
+								// Only unknown tiers: the row reasons, but declares no ladder Veyyon can offer.
+								supported_reasoning_levels: [level("ultra")],
+								apply_patch_tool_type: "hologram",
+								input_modalities: ["text"],
+								supported_in_api: true,
+							},
+						],
+					}),
+				),
+			{ preconnect() {} },
+		);
+		const result = await fetchCodexModels({
+			accessToken: "test-token",
+			baseUrl: "https://codex.example/backend-api",
+			clientVersion: "0.153.2",
+			fetchFn,
+		});
+
+		const toMax = [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max];
+		const toXHigh = [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh];
+		const astra = result?.models.find(model => model.id === "gpt-6-astra");
+		expect(astra?.reasoningOptions).toEqual({ efforts: toMax });
+		expect(astra?.applyPatchToolType).toBe("freeform");
+		// The declared ladder is what the resolved model offers the picker.
+		expect(astra ? buildModel(astra).thinking?.efforts : undefined).toEqual(toMax);
+
+		const gpt55 = result?.models.find(model => model.id === "gpt-5.5");
+		expect(gpt55?.reasoningOptions).toEqual({ efforts: toXHigh });
+		expect(gpt55 ? buildModel(gpt55).thinking?.efforts : undefined).toEqual(toXHigh);
+
+		const future = result?.models.find(model => model.id === "gpt-future");
+		expect(future?.reasoning).toBe(true);
+		expect(future?.reasoningOptions).toBeUndefined();
+		expect(future?.applyPatchToolType).toBeUndefined();
 	});
 
 	it("floors GPT-5.6 SKUs to 372K when upstream actively reports 272000 (#6259)", async () => {

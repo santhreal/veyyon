@@ -10,12 +10,14 @@
  * is `{ file: true }` with no console transport, so that report reached a file nobody opens;
  * `utils/fault-sink.ts` exists because of exactly this asymmetry.
  *
- * WHERE THE FIXTURES LIVE. The profile's `agents/` dir, reached by passing `agentDir` to
- * `discoverAgents`. They used to live in `<cwd>/.veyyon/agents`, which stopped being a source
- * when project definitions were removed so a repository could not shadow a bundled role. That
- * left both cases writing into a directory nothing reads, so they raised no faults and had been
- * failing since. The operator-facing contract is unchanged: it is the same loader and the same
- * `reportFault` channel, exercised through a scope that is actually scanned.
+ * WHERE THE FIXTURES LIVE. The GLOBAL user-authored definitions dir, `<configRoot>/subagents`,
+ * isolated by pointing `VEYYON_CONFIG_DIR` at this suite's temp root. They used to live in
+ * `<cwd>/.veyyon/agents`, which stopped being a source when project definitions were removed so
+ * a repository could not shadow a bundled role, and then in the profile's `agents/` dir, which
+ * stopped being one when user definitions became global and profile-independent. Each move left
+ * the fixtures in a directory nothing reads, so they raised no faults and the suite passed
+ * having proved nothing. The operator-facing contract is unchanged: it is the same loader and
+ * the same `reportFault` channel, exercised through the scope that is actually scanned.
  *
  * WHAT THIS LOCKS. Both file-level failures now go through `reportFault`, the same channel the
  * directory-level failure already used, and `test/sdk-fault-sink-follows-the-session.test.ts`
@@ -43,18 +45,21 @@ const UNUSABLE_AGENT_MD = ["---", "name: auditor", "---", "You audit."].join("\n
 describe("a broken agent definition is reported rather than dropped", () => {
 	let tempHome = "";
 	let projectDir = "";
-	let profileDir = "";
+	let configRoot = "";
 	let agentsDir = "";
 	let faults: Fault[] = [];
 	let detach: DetachFaultSink | undefined;
+	let previousConfigDir: string | undefined;
 
 	beforeEach(async () => {
 		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-broken-agent-def-"));
 		projectDir = path.join(tempHome, "project");
-		profileDir = path.join(tempHome, "profile");
-		agentsDir = path.join(profileDir, "agents");
+		configRoot = path.join(tempHome, "config");
+		agentsDir = path.join(configRoot, "subagents");
 		await fs.mkdir(projectDir, { recursive: true });
 		await fs.mkdir(agentsDir, { recursive: true });
+		previousConfigDir = process.env.VEYYON_CONFIG_DIR;
+		process.env.VEYYON_CONFIG_DIR = configRoot;
 		faults = [];
 		detach = attachFaultSink(fault => faults.push(fault));
 	});
@@ -62,6 +67,8 @@ describe("a broken agent definition is reported rather than dropped", () => {
 	afterEach(async () => {
 		detach?.();
 		detach = undefined;
+		if (previousConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
+		else process.env.VEYYON_CONFIG_DIR = previousConfigDir;
 		clearFsCache();
 		await removeWithRetries(tempHome);
 	});
@@ -79,7 +86,7 @@ describe("a broken agent definition is reported rather than dropped", () => {
 		await fs.writeFile(path.join(agentsDir, "diff-reader.md"), HEALTHY_AGENT_MD);
 		await fs.writeFile(path.join(agentsDir, "auditor.md"), UNUSABLE_AGENT_MD);
 
-		const { agents } = await discoverAgents(projectDir, tempHome, profileDir);
+		const { agents } = await discoverAgents(projectDir, tempHome);
 		const names = agents.map(agent => agent.name);
 
 		// Soft failure preserved: the healthy sibling still loads.
@@ -103,7 +110,7 @@ describe("a broken agent definition is reported rather than dropped", () => {
 	test("reports a definition that cannot be read from disk", async () => {
 		await fs.symlink(path.join(tempHome, "no-such-agent-source.md"), path.join(agentsDir, "ghost.md"));
 
-		const { agents } = await discoverAgents(projectDir, tempHome, profileDir);
+		const { agents } = await discoverAgents(projectDir, tempHome);
 
 		expect(agents.map(agent => agent.name)).not.toContain("ghost");
 

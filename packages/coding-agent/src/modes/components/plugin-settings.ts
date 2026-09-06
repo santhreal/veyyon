@@ -609,9 +609,8 @@ class ConfigInputSubmenu extends MouseRoutedSubmenu {
 	}
 
 	mouseTarget(): TrackedMouseTarget | undefined {
-		// A text field has no rows to hit: the pointer is swallowed, which is the
-		// settings-list contract for a submenu without a route.
-		return undefined;
+		// A click on the field places its caret; the prose above it takes nothing.
+		return this.#input;
 	}
 
 	handleInput(data: string): void {

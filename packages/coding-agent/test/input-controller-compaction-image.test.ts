@@ -26,7 +26,7 @@ import { InputController } from "@veyyon/coding-agent/modes/controllers/input-co
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { CompactionQueuedMessage, InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import { UiHelpers } from "@veyyon/coding-agent/modes/utils/ui-helpers";
-import type { RestoredQueuedMessage } from "@veyyon/coding-agent/session/agent-session";
+import type { RestoredQueuedMessage } from "@veyyon/coding-agent/session/queued-message";
 
 beforeAll(() => {
 	initTheme();

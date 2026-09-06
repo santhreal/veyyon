@@ -18,6 +18,10 @@ OUT="${OUT_DIR:-${REPO_ROOT}/proof/captures/x11}"
 mkdir -p "${OUT}"
 OUT="$(cd "${OUT}" && pwd)"
 
+# shellcheck source=proof/docker/native-addon.sh
+source "${REPO_ROOT}/proof/docker/native-addon.sh"
+require_native_addon "${REPO_ROOT}"
+
 # A model served by this host answers on loopback here and on the gateway alias in
 # there. proof/docker/host-endpoint.sh owns the substitution.
 # shellcheck source=proof/docker/host-endpoint.sh
@@ -96,8 +100,8 @@ docker run --rm \
 			cp -a /host-auth/. /sandbox/home/.veyyon/shared-auth/
 			cp -a /host-auth/. /sandbox/home/.veyyon/profiles/default/agent/
 		fi
-		# A recorder on another machine cannot resolve the llama.cpp container by the
-		# name it has on this daemon, so the base URL is overridable at record time.
+		chown -R "$(id -u):$(id -g)" /sandbox/home || true
+		chmod -R 777 /sandbox/home/.veyyon || true
 		if [ -n "${PROOF_LLM_BASE_URL}" ]; then
 			sed -i "s|baseUrl: .*|baseUrl: ${PROOF_LLM_BASE_URL}|" /sandbox/home/.veyyon/profiles/default/agent/models.yml
 		fi
@@ -120,6 +124,6 @@ docker run --rm \
 			printf '"'"'%s\n'"'"' "${SCENE_SETTINGS}" \
 				>> /sandbox/home/.veyyon/profiles/default/agent/config.yml
 		fi
-		bash /repo/proof/docker/seed-demo.sh /sandbox/home/demo
+		bash /repo/proof/docker/seed-demo.sh /sandbox/home/demo "/repo/'"${SCENE}"'"
 		exec /repo/proof/docker/xsession.sh "/repo/'"${SCENE}"'"
 	'

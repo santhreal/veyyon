@@ -72,27 +72,28 @@ other way is not evidence and satisfies no gate here.
 
 ### Recording UI captures
 
-Record all visual proof through the containerized X11 capture harness on the private display:
+Record all PR visual proof through the unified harness (`proof/record.sh`, see [`proof/AGENTS.md`](proof/AGENTS.md)):
 
 ```sh
-# UI change: record After and Before pair
-proof/docker/record-x11.sh proof/scenes/<name>.sh        # writes After to proof/captures/x11/
-proof/docker/record-x11-before.sh proof/scenes/<name>.sh # writes Before to proof/captures/x11/before/
+# UI change: record After and Before pair (or use --pair)
+proof/record.sh proof/scenes/<name>.sh          # writes After to proof/captures/x11/
+proof/record.sh --before proof/scenes/<name>.sh # writes Before to proof/captures/x11/before/
+
+# Or record both arms in one command:
+proof/record.sh --pair proof/scenes/<name>.sh
 
 # Settings change: record Off and On differential
-OUT_DIR=proof/captures/x11/off proof/docker/record-x11.sh proof/scenes/<name>.sh
-OUT_DIR=proof/captures/x11/on SCENE_SETTINGS='<setting>: <val>' proof/docker/record-x11.sh proof/scenes/<name>.sh
+proof/record.sh proof/scenes/<name>.sh
+proof/record.sh --settings '<setting>: <val>' proof/scenes/<name>.sh
 
-# Degradation change: one pair per terminal width. OUT_DIR is a docker bind mount, so it
-# has to be absolute, and both arms take it, since one directory cannot hold two arms
-# whose frames share the scene's mark names. About 12 pixels per column.
+# Degradation change: one pair per terminal width (about 12 pixels per column)
 for px in 960 1200 1440; do
-	SCENE_WIDTH=${px} OUT_DIR="${PWD}/proof/captures/x11/w${px}" \
-		proof/docker/record-x11.sh proof/scenes/<name>.sh
-	SCENE_WIDTH=${px} OUT_DIR="${PWD}/proof/captures/x11/before/w${px}" \
-		proof/docker/record-x11-before.sh proof/scenes/<name>.sh
+	proof/record.sh --width ${px} --before proof/scenes/<name>.sh
+	proof/record.sh --width ${px} proof/scenes/<name>.sh
 done
 ```
+
+> **For product landing-page hero demos:** The demo pipeline is dedicated in [`demo/`](demo/AGENTS.md). The single command to build and record is `./demo/record.sh`.
 
 ### What is NOT evidence
 

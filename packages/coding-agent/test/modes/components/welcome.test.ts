@@ -103,11 +103,9 @@ describe("WelcomeComponent hero layout", () => {
 		const metaIdx = lines.findIndex(
 			line => line.includes("v1.2.3") && line.includes("gpt-5") && line.includes("openai"),
 		);
-		const valueIdx = lines.findIndex(line => line.includes("Hashline edits that land"));
 		expect(sunIdx).toBeGreaterThanOrEqual(0);
 		expect(wordIdx).toBeGreaterThan(sunIdx);
 		expect(metaIdx).toBeGreaterThan(wordIdx);
-		expect(valueIdx).toBeGreaterThan(metaIdx);
 		// One shared metadata slot — neither name repeats on a second row.
 		expect(lines.filter(line => line.includes("gpt-5")).length).toBe(1);
 		expect(lines.filter(line => line.includes("openai")).length).toBe(1);
@@ -118,7 +116,7 @@ describe("WelcomeComponent hero layout", () => {
 		for (const width of [40, 60, 80, 120, 200]) {
 			const lines = new WelcomeComponent("1.2.3", "gpt-5", "openai").render(width);
 			// Sun budget is capped by the terminal rows (test env: the 60-row
-			// fallback), plus the fixed header tail (wordmark, meta, value, hint).
+			// fallback), plus the fixed header tail (wordmark, meta, hint).
 			expect(lines.length).toBeLessThanOrEqual(44);
 		}
 	});
@@ -132,7 +130,7 @@ describe("WelcomeComponent hero layout", () => {
 		expect(frame).not.toContain("Unknown");
 	});
 
-	it("points the home at /welcome, and the full page carries the menu and recents", () => {
+	it("keeps the recent session off the home, and carries it on the full page", () => {
 		vi.spyOn(Math, "random").mockReturnValue(0.99);
 		const sessions = [{ name: "fix-the-parser", timeAgo: "2h ago" }];
 
@@ -140,9 +138,15 @@ describe("WelcomeComponent hero layout", () => {
 		expect(compact).toContain("/welcome");
 		expect(compact).toContain("/resume");
 		expect(compact).not.toContain("Resume session");
-		// DS-13 (2026-07-22): the home shows a one-line continue affordance for
-		// the most recent session; the full menu still lives behind /welcome.
-		expect(compact).toContain("fix-the-parser · 2h ago — /resume");
+		// The home names the commands and nothing else. A one-line continue
+		// affordance was here and arrived with the asynchronous session list
+		// rather than with the frame, so the block changed height under a
+		// composer that had already been drawn beneath it.
+		expect(compact).not.toContain("fix-the-parser");
+		// The hint is the same whether or not a session exists, because a hint
+		// that depends on the list is a hint that can arrive late.
+		const noSessions = plain(new WelcomeComponent("1.2.3", "gpt-5", "openai", []).render(80));
+		expect(noSessions).toBe(compact);
 
 		const full = plain(new WelcomeComponent("1.2.3", "gpt-5", "openai", sessions, [], true).render(80));
 		expect(full).toContain("Resume session");

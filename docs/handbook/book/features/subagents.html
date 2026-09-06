@@ -22,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="Operator handbook for Veyyon: terminal and native desktop interfaces, installation, configuration, tools, approvals, edit formats, providers, and harness structure.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ff3d8e07.js";
+            window.path_to_searchindex_js = "../searchindex-695ab59a.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-d6acdfa6.js"></script>
+        <script src="../toc-b613f6a6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -209,8 +209,9 @@ other. It does not configure anything.</p>
 <pre><code class="language-yaml">subagent:
   delegation: preferred   # the default; the prompt requests that substantial work be delegated
 </code></pre>
-<p>Every subagent runs the model you are working with. Change the model you are talking
-to and your subagents follow it.</p>
+<p>Each subagent runs the model and effort set on its own page in the roster. An agent
+that names neither runs the profile’s default model at medium effort. Changing the
+model you are talking to moves that session and nothing else.</p>
 <p>Veyyon also ships five specialists (<code>scout</code>, <code>reviewer</code>, <code>designer</code>, <code>librarian</code>,
 <code>sonic</code>), and they are <strong>disabled</strong> by default. During first-run setup, the
 <strong>Choose subagents</strong> step shows every available role with only <code>task</code> checked.
@@ -249,7 +250,7 @@ These are separate settings.</p>
 the tools an agent can call. For example, <code>designer</code> remains a designer and
 <code>reviewer</code> remains a reviewer. The model chooses the closest matching
 specialist for each independent slice:</p>
-<pre><code class="language-yaml"># agents/accessibility-reviewer.md frontmatter
+<pre><code class="language-yaml"># ~/.veyyon/subagents/accessibility-reviewer.md frontmatter
 name: accessibility-reviewer
 description: Reviews terminal interfaces for accessibility problems and reports findings
 tools: read, search
@@ -266,13 +267,22 @@ because no closer role is available.</p>
 <h2 id="choosing-agents"><a class="header" href="#choosing-agents">Choosing agents</a></h2>
 <p><code>subagent.agents</code> holds one row per agent name. You choose initial permissions in
 the first-run <strong>Choose subagents</strong> step, then edit them through <strong><code>/settings</code> →
-Subagents → Agents</strong>. The settings screen lists every discovered agent with its
-state, resolved model, and deciding setting. Enter opens one agent to set its
-state, model, and effort, or reset it to defaults.</p>
-<p>To add an agent, put a markdown definition in your own or the project’s
-<code>agents/</code> directory, or start from the shipped definitions by running
-<code>veyyon agents unpack</code>. The definition makes the role available. Enable its row
-before the model may start it.</p>
+Subagents → Roster</strong>. The roster lists every discovered agent with its state,
+resolved model, and deciding setting. Enter opens one agent to set its state,
+model, and effort, or reset it to defaults.</p>
+<p>To add an agent, put a markdown definition in <code>~/.veyyon/subagents/</code>, or start
+from the shipped definitions by running <code>veyyon agents unpack</code>. The definition
+makes the role available. Enable its row before the model may start it.
+<a href="./subagents-authoring.html">Writing a subagent</a> covers the frontmatter fields, the
+system prompt and enabling the result.</p>
+<p>That directory is read by every profile, and the file is the whole definition.
+Which profile may spawn the agent is a separate, per-profile answer:
+<code>subagent.agents.&lt;name&gt;.enabled</code>. Write the agent once, enable it where you want
+it.</p>
+<p>A definition that lists a tool veyyon does not recognize is reported at startup
+rather than ignored. The tool grants nothing, and the guidance for it is left out
+of the agent’s system prompt, so a typo used to read as an agent that simply
+chose to do nothing.</p>
 <p>A row has two states:</p>
 <div class="table-wrapper">
 <table>
@@ -291,47 +301,75 @@ you (“use the scout agent to map the parser”).</p>
 <p>Writing an agent file makes the role available but does not grant spawn
 permission. Enable the role during setup or in the Agents settings table.</p>
 <h2 id="choosing-models"><a class="header" href="#choosing-models">Choosing models</a></h2>
-<p>Four things can set the model a subagent runs. The first that specifies one wins:</p>
+<p>Two scopes choose a subagent’s model and effort, and <strong>Subagents → Same Model for All
+Agents</strong> selects which one is in force. They are exclusive, not layered: the rows of the
+scope that is off are not drawn.</p>
+<p>Off, the default, each agent decides. Open <strong>Subagents → Roster</strong>, press Enter on an
+agent, and set the model and the effort on that agent’s own page. The first of these
+that names a model wins:</p>
 <ol>
-<li>that agent’s own row, <code>subagent.agents.&lt;name&gt;.model</code></li>
-<li>the blanket <code>subagent.model</code></li>
+<li>that agent’s lane, <code>subagent.agents.&lt;name&gt;.model</code>, and for a nested spawn the
+<code>subagents</code> level under it that governs that depth</li>
 <li>the agent definition’s own <code>model:</code> frontmatter, for an agent you wrote</li>
-<li>otherwise the subagent inherits the model you are working with</li>
+<li>the profile’s <code>default</code> model role</li>
 </ol>
 <pre><code class="language-yaml">subagent:
-  model: openai/gpt-5:high             # every subagent
   agents:
     reviewer:
       enabled: true
-      model: anthropic/claude-opus-4-5 # except this one
+      model: anthropic/claude-opus-4-5
+      thinkingLevel: high
 </code></pre>
-<p>No bundled agent pins a model, so layer 4 is the normal case and <code>subagent.model</code>
-moves all of them together. <code>subagent.thinkingLevel</code> does the same for effort. <strong>Inherit</strong> passes the
-current session’s effective effort into the child, while an explicit <code>auto</code> requests that the provider
-choose. An explicit <code>:effort</code> suffix on a model pattern always wins over an agent’s own default.</p>
-<h3 id="fallback-models"><a class="header" href="#fallback-models">Fallback models</a></h3>
-<p>Every one of those four places takes a list, not just one model:</p>
+<p>Effort resolves on the same three layers, ending at <code>medium</code>. An explicit <code>:effort</code>
+suffix on the resolved model pattern outranks all of them.</p>
+<p>On, one pair decides for the whole roster, and the per-agent Model and Effort rows are
+hidden. <strong>Shared Model</strong> (<code>subagent.model</code>) and <strong>Shared Effort</strong>
+(<code>subagent.thinkingLevel</code>) sit under the switch; an unset chain runs every agent on the
+<code>default</code> model role:</p>
 <pre><code class="language-yaml">subagent:
-  model: anthropic/claude-opus-4-5,openai/gpt-5
+  sharedModel: true
+  model: openai/gpt-5
+  thinkingLevel: high
 </code></pre>
-<p>The first entry is what subagents run on. The rest are held in reserve: when a run errors on the
+<p>A lane keeps whatever it holds while the switch is on, and decides again the moment the
+switch goes off.</p>
+<p>The <code>default</code> model role is the model the main assistant starts on, and it is the
+one keystroke path for the common case: <code>/model</code> writes it, and every agent with no
+model of its own follows it. A temporary pick, role cycling and plan mode move the
+live session model only, so an agent never changes model because of a keystroke
+aimed at the main assistant.</p>
+<p><code>subagent.modelByDepth</code> bound a chain to a spawn depth rather than to an agent and no
+longer applies. A config still holding it is reported once, naming the roster page that
+replaces it.</p>
+<h3 id="fallback-models"><a class="header" href="#fallback-models">Fallback models</a></h3>
+<p>Every one of those places takes a list, not just one model:</p>
+<pre><code class="language-yaml">subagent:
+  agents:
+    reviewer:
+      model: anthropic/claude-opus-4-5,openai/gpt-5
+</code></pre>
+<p>The first entry is what that agent runs on. The rest are held in reserve: when a run errors on the
 model in use, that agent retries on the next entry rather than failing. The settings picker writes
 the value for you: open the model row, add a fallback, and press Enter on any entry to move it up
 the list.</p>
 <p>A longer chain reads better as a list, and both spellings mean the same thing:</p>
 <pre><code class="language-yaml">subagent:
-  model:
-    - anthropic/claude-opus-4-5
-    - openai/gpt-5
+  agents:
+    reviewer:
+      model:
+        - anthropic/claude-opus-4-5
+        - openai/gpt-5
 </code></pre>
 <p>Write it whichever way suits the file. <code>compaction.model</code> takes a chain the same two ways.</p>
 <p>A chain only covers errors at run time. A model pattern that matches nothing is still a
 configuration mistake, so veyyon will not spawn the agent and states the setting, rather than
-quietly running it on the next entry: a typo must not silently downgrade every subagent you spawn.</p>
+quietly running it on the next entry: a typo must not silently downgrade the agent you spawn.</p>
 <p>In the <code>Subagents</code> block above the composer, an agent that fell back is marked with <code>↓</code> before its
 model badge, so you can tell a deliberate model from a retried one at a glance.</p>
 <p>Effort is chosen from a list: <code>off</code>, <code>minimal</code> through <code>max</code>, <code>auto</code>, or <code>Inherit</code>.
-The same list appears in both places, so you cannot set a level that does not exist. If a hand-written config
+<code>Inherit</code> on an agent’s own page means the default effort; on a nested page it means the
+page above it. <code>auto</code> requests that the provider choose. The same list appears in both
+places, so you cannot set a level that does not exist. If a hand-written config
 holds one that does not, veyyon reports the levels that work, rather than
 treating it as <code>Inherit</code> and leaving you with a setting that reads as configured and
 changes nothing.</p>
@@ -339,7 +377,7 @@ changes nothing.</p>
 the next layer. The spawn is rejected and the message states the setting to fix, because
 falling through is indistinguishable from your setting having no effect. Both agent
 surfaces show, for the selected agent, the pattern, the model it resolves to, and
-which of the four layers decided.</p>
+which of the three layers decided.</p>
 <h2 id="watching-a-run"><a class="header" href="#watching-a-run">Watching a run</a></h2>
 <p>While a spawn is in flight, the <code>Subagents</code> block sits above the composer with one
 lane per agent. A lane reads left to right: a rail, the agent’s id, what it is doing,
@@ -468,7 +506,7 @@ your own session instead when you want that project’s configuration to apply.<
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../features/cockpit.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../features/subagents-authoring.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -482,7 +520,7 @@ your own session instead when you want that project’s configuration to apply.<
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../features/cockpit.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../features/subagents-authoring.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

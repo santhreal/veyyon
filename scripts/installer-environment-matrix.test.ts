@@ -545,20 +545,36 @@ describe("the ownership receipt vouches for the file, not for the path", () => {
 		expect(fs.existsSync(receipt)).toBe(true);
 	});
 
-	it("refuses even while its own alias still points at the path", () => {
-		// The realistic shape of the same accident: `rm ~/.local/bin/veyyon` leaves
-		// our `vey` symlink behind, and `vey` is installer-specific evidence that
-		// survives any replacement of the file beside it. A receipt this installer
-		// wrote and cannot match now settles the question BEFORE that evidence is
-		// consulted, or the alias would hand a stranger's file straight back.
+	it("displaces a drifted file to a printed path instead of deleting it", () => {
+		// `rm ~/.local/bin/veyyon` then a file of your own at the name leaves the
+		// same bytes on disk as a local build copied over the install, so the
+		// installer cannot tell the two apart and takes the name back. What makes
+		// that acceptable is only that it is reversible, so this asserts the whole
+		// of that: the file survives, at a path the run names, with its mode, and
+		// the uninstall that follows still does not touch it. A v2 receipt is what
+		// distinguishes this from the orphaned-receipt case above, which refuses.
 		const { run, binary, alias } = freshInstall();
 		replaceBinaryByHand(binary);
 		expect(fs.lstatSync(alias).isSymbolicLink()).toBe(true);
 
 		const rerun = runInstall(ownershipCase, run);
-		expect(rerun.exitCode).not.toBe(0);
+		expect(rerun.exitCode).toBe(0);
 		expect(rerun.output).toContain("it has changed since this installer wrote it");
-		expect(fs.readFileSync(binary, "utf8")).toBe(FOREIGN);
+		expect(rerun.output).toContain("nothing was deleted");
+
+		const displaced = /moved it aside to (\S+)/.exec(rerun.output)?.[1];
+		if (displaced === undefined) throw new Error(`the installer did not name where it moved ${binary}`);
+		expect(fs.readFileSync(displaced, "utf8")).toBe(FOREIGN);
+		expect(fs.statSync(displaced).mode & 0o777).toBe(0o751);
+
+		// The name now holds this installer's binary, vouched for by a fresh receipt.
+		expect(fs.readFileSync(binary, "utf8")).not.toBe(FOREIGN);
+		expect(fs.existsSync(ownerReceiptFor(binary))).toBe(true);
+
+		// "nothing was deleted" has to survive the next command, or it was only
+		// true until the user uninstalled.
+		uninstall(run);
+		expect(fs.readFileSync(displaced, "utf8")).toBe(FOREIGN);
 	});
 
 	it("reinstalls over its own install and re-stamps the receipt", () => {

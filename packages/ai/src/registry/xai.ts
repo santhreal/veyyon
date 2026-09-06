@@ -21,4 +21,5 @@ export const xaiProvider = {
 	id: "xai",
 	name: "xAI",
 	login: (cb: OAuthLoginCallbacks) => login(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 // for the import-cycle TDZ (see the getKnownRoleIds describe below). If model-roles ever re-enters
 // the config/model-resolver cycle, this import throws "Cannot access 'MODEL_ROLE_ALIAS_PREFIX'
 // before initialization" and the whole file fails to load.
-import { getKnownRoleIds, getRoleInfo } from "@veyyon/coding-agent/config/model-roles";
+import { getKnownRoleIds, getRoleInfo, MODEL_ROLE_IDS } from "@veyyon/coding-agent/config/model-roles";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 
 describe("getRoleInfo", () => {
@@ -97,9 +97,11 @@ describe("getRoleInfo", () => {
  * routes the color import through the leaf modes/theme/color. The `it loads` behavior below only
  * passes if that import edge stays off the cycle.
  *
- * The ordering contract pinned here: built-in selectable roles come first in MODEL_ROLE_IDS order,
+ * The ordering contract pinned here: built-in SELECTABLE roles come first in MODEL_ROLE_IDS order,
  * then extra roles introduced by cycleOrder, then modelRoles keys, then modelTags keys, each added
- * once (deduped) and never the legacy "default" role.
+ * once (deduped) and never the legacy "default" role. `advisor` is a slot rather than a selectable
+ * role -- the advisor feature asks for its model itself -- so it is absent from every list below and
+ * the last case pins that as a decision rather than an omission.
  */
 describe("getKnownRoleIds", () => {
 	test("loads without an import-cycle error and lists the built-in roles first in order", () => {
@@ -111,7 +113,6 @@ describe("getKnownRoleIds", () => {
 			"designer",
 			"commit",
 			"tiny",
-			"advisor",
 		]);
 	});
 
@@ -123,18 +124,7 @@ describe("getKnownRoleIds", () => {
 				modelTags: { taggedRole: { name: "T" }, smol: { name: "x" } },
 			}),
 		);
-		expect(roles).toEqual([
-			"smol",
-			"slow",
-			"vision",
-			"plan",
-			"designer",
-			"commit",
-			"tiny",
-			"advisor",
-			"myCustom",
-			"taggedRole",
-		]);
+		expect(roles).toEqual(["smol", "slow", "vision", "plan", "designer", "commit", "tiny", "myCustom", "taggedRole"]);
 	});
 
 	test("appends custom roles assigned in modelRoles, skipping the legacy 'default'", () => {
@@ -143,6 +133,15 @@ describe("getKnownRoleIds", () => {
 				modelRoles: { default: "gpt", extraRole: "claude" },
 			}),
 		);
-		expect(roles).toEqual(["smol", "slow", "vision", "plan", "designer", "commit", "tiny", "advisor", "extraRole"]);
+		expect(roles).toEqual(["smol", "slow", "vision", "plan", "designer", "commit", "tiny", "extraRole"]);
+	});
+
+	test("keeps the advisor slot addressable while leaving it out of the selector", () => {
+		// Both directions: a slot that disappeared would break `@advisor`, and a slot that reappeared
+		// among the built-ins would put a second surface for the advisor's model beside the one that
+		// owns it. Naming it in `cycleOrder` still adds it, exactly as any other custom role.
+		expect(MODEL_ROLE_IDS).toContain("advisor");
+		expect(getKnownRoleIds(Settings.isolated({}))).not.toContain("advisor");
+		expect(getKnownRoleIds(Settings.isolated({ cycleOrder: ["advisor"] }))).toContain("advisor");
 	});
 });

@@ -609,15 +609,14 @@ export function buildOpenAIResponsesCompat(spec: OpenAIResponsesSpecLike): Resol
 		// the official OpenAI API (Compaction guide) and for Azure OpenAI's v1
 		// API (Microsoft Learn,
 		// `{resource}.openai.azure.com/openai/v1/responses/compact`). The
-		// ChatGPT Codex backend serves no compact route at all — that path,
-		// `/codex/compact` and `/responses/compact` each answer 404 — and
-		// compacts through an input item instead: an ordinary streaming
-		// `chatgpt.com/backend-api/codex/responses` request whose last input
-		// item is `{ type: "compaction_trigger" }`, answered with one
-		// `compaction` item carrying the encrypted window. That is what
-		// codex-rs does for a ChatGPT OAuth session, and the host is admitted
-		// here because the endpoint is stateless there too: the window is the
-		// client's to store and replay. A compatible gateway opts in with a
+		// ChatGPT Codex backend serves no compact route — that path answers 404
+		// — and compacts through a streaming `{base}/codex/responses` request
+		// whose last input item is `compaction_trigger`, declared
+		// `responses_compaction_v2`; the route and the declaration are one
+		// decision, pinned by
+		// `packages/agent/test/the-codex-compaction-wire-does-not-regress.test.ts`.
+		// The host is admitted here because the window is still the client's to
+		// store and replay. A compatible gateway opts in with a
 		// `supportsServerCompaction` override.
 		supportsServerCompaction: isOfficialOpenAIEndpoint(spec.provider, baseUrl) || isAzure || isCodexBackend,
 		stripDeepseekSpecialTokens:

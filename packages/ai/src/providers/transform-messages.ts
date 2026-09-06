@@ -1,5 +1,19 @@
+import * as logger from "@veyyon/utils/logger";
+import { escapeXmlAttribute } from "@veyyon/utils/sanitize-text";
+import { isRecord } from "@veyyon/utils/type-guards";
 import { renderDemotedThinking } from "../dialect/demotion";
-import type { Api, AssistantMessage, Message, Model, ToolCall, ToolResultMessage, UserMessage } from "../types";
+import type {
+	Api,
+	AssistantMessage,
+	DemotedReasoningSource,
+	Message,
+	Model,
+	ProviderPayload,
+	TextContent,
+	ToolCall,
+	ToolResultMessage,
+	UserMessage,
+} from "../types";
 import { isDemotedThinking, kDemotedThinking } from "../utils/block-symbols";
 
 const enum ToolCallStatus {
@@ -7,6 +21,173 @@ const enum ToolCallStatus {
 	Resolved = 1,
 	/** A synthetic aborted result was emitted; later real results must be skipped. */
 	Aborted = 2,
+}
+
+/**
+ * Wrap a tool result whose originating tool call is no longer in the request.
+ *
+ * Compaction, session-tree branching, a locally rejected call and a
+ * `providerPayload` splice all produce a result with no call to pair it to.
+ * Every provider rejects the unpaired block, and dropping it loses output the
+ * model needs, so the payload is preserved as an ordinary message instead.
+ *
+ * A caller MUST attach this to `role: "user"`, never `role: "assistant"`.
+ * The assistant role puts tool output in the model's own voice, and a model
+ * that reads its own prior turn ending in a note shaped like a tool result
+ * reproduces that shape: `grok-4.6` on `openai-responses` emitted a whole
+ * `search` result as visible prose, with a provider `textSignature` proving it
+ * generated the text token by token rather than the note being echoed back.
+ * The user role also keeps stale, model-untrusted output from gaining
+ * instruction priority: `developer` maps to `system` on Ollama and stays above
+ * user priority on OpenAI reasoning models, while `user` is plain content
+ * everywhere.
+ *
+ * The tag matters as much as the role. An XML envelope reads as data the model
+ * quotes from, where a bare `[Orphan tool result; call_id=…]: ` prefix reads as
+ * a message template it can imitate.
+ */
+export function staleToolResultNote(options: {
+	toolName: string;
+	toolCallId: string;
+	text: string;
+	isError?: boolean;
+}): string {
+	const errorAttr = options.isError ? ' is-error="true"' : "";
+	// Attributes are escaped through the one owner; the body stays raw, matching
+	// `<tool_response>` in dialect/rendering.ts, because escaping a tool payload
+	// turns every `<` in the code the model is reading into `&lt;`.
+	const tool = escapeXmlAttribute(options.toolName);
+	const id = escapeXmlAttribute(options.toolCallId);
+	return `<stale-tool-result tool="${tool}" id="${id}"${errorAttr}>\n${options.text}\n</stale-tool-result>`;
+}
+
+/**
+ * The note format persisted before the repair moved to `role: "user"`:
+ * `[Orphan <tool> result; call_id=<id>]: <output>` from the Responses repair,
+ * and `[Previous …]` from the Codex one.
+ */
+const LEGACY_STALE_TOOL_NOTE = /^\[(?:Orphan|Previous) [^\]]*result; call_id=[^\]]*\]: /;
+
+/**
+ * Text of every tool result the model read between the previous assistant turn
+ * and `index`. An imitated note copies one of these verbatim, so they are the
+ * only evidence of where the copy ends and the model's own reply begins.
+ */
+function precedingToolOutputs(messages: readonly Message[], index: number): string[] {
+	const outputs: string[] = [];
+	for (let i = index - 1; i >= 0; i--) {
+		const message = messages[i]!;
+		if (message.role === "assistant") break;
+		if (message.role !== "toolResult") continue;
+		const text = message.content
+			.filter((block): block is TextContent => block.type === "text")
+			.map(block => block.text)
+			.join("\n");
+		if (text.length > 0) outputs.push(text);
+	}
+	return outputs;
+}
+
+/**
+ * Strip a legacy note from one assistant text.
+ *
+ * Returns the text unchanged when it holds no note, the reply that followed the
+ * copied payload when the copy is byte-equal to one of `priorToolOutputs`, and
+ * `undefined` when nothing of the model's own can be separated from the copy.
+ * A copy that drifts from the tool output (paraphrased, truncated) cannot be
+ * split soundly, so the block goes in full rather than keeping tool output in
+ * the assistant's voice; measured over recorded sessions, about a third of the
+ * notes are exact copies and a quarter of those carry a reply after them.
+ */
+function stripLegacyStaleToolNote(text: string, priorToolOutputs: readonly string[]): string | undefined {
+	const match = LEGACY_STALE_TOOL_NOTE.exec(text);
+	if (!match) return text;
+	const rest = text.slice(match[0].length);
+	for (const output of priorToolOutputs) {
+		if (!rest.startsWith(output)) continue;
+		const reply = rest.slice(output.length).trim();
+		return reply.length > 0 ? reply : undefined;
+	}
+	return undefined;
+}
+
+/**
+ * Apply {@link stripLegacyStaleToolNote} to the transport-native copy of the
+ * turn. A Responses-family provider replays `providerPayload.items` verbatim
+ * once its session is warm, in preference to `content`, so a note left in an
+ * `output_text` part would keep priming the model on the live path no matter
+ * what `content` says.
+ */
+function stripLegacyStaleToolNotesFromPayload(
+	payload: ProviderPayload,
+	priorToolOutputs: readonly string[],
+): ProviderPayload {
+	const items = payload.items.flatMap(item => {
+		const parts: unknown = item.content;
+		if (item.type !== "message" || item.role !== "assistant" || !Array.isArray(parts)) return [item];
+		const content = parts.flatMap((part: unknown) => {
+			if (!isRecord(part) || part.type !== "output_text" || typeof part.text !== "string") return [part];
+			const text = stripLegacyStaleToolNote(part.text, priorToolOutputs);
+			if (text === part.text) return [part];
+			return text === undefined ? [] : [{ ...part, text }];
+		});
+		return content.length > 0 ? [{ ...item, content }] : [];
+	});
+	return { ...payload, items };
+}
+
+/**
+ * Remove legacy stale-tool notes from assistant history.
+ *
+ * The payload is not re-emitted as a user note. It is truncated output from a
+ * call that left the request many turns ago, and a message inserted between an
+ * assistant `tool_use` and its `tool_result` would break the contiguity
+ * Anthropic requires, so the cost of keeping it exceeds what it can inform.
+ */
+function dropLegacyStaleToolNotes(messages: Message[]): Message[] {
+	// This runs on every request for every provider, and all but a handful of
+	// sessions hold no such note, so the common path must not copy the history:
+	// scan first and hand back the same array. `content` is the detector for
+	// `providerPayload` too: both come from the same response, so a note in one
+	// is in the other.
+	let hasNote = false;
+	for (const message of messages) {
+		if (message.role !== "assistant") continue;
+		if (message.content.some(block => block.type === "text" && LEGACY_STALE_TOOL_NOTE.test(block.text))) {
+			hasNote = true;
+			break;
+		}
+	}
+	if (!hasNote) return messages;
+
+	const result: Message[] = [];
+	for (const [index, message] of messages.entries()) {
+		if (message.role !== "assistant") {
+			result.push(message);
+			continue;
+		}
+		if (!message.content.some(block => block.type === "text" && LEGACY_STALE_TOOL_NOTE.test(block.text))) {
+			result.push(message);
+			continue;
+		}
+		const priorToolOutputs = precedingToolOutputs(messages, index);
+		const kept = message.content.flatMap((block): AssistantMessage["content"] => {
+			if (block.type !== "text") return [block];
+			const text = stripLegacyStaleToolNote(block.text, priorToolOutputs);
+			if (text === block.text) return [block];
+			// The signature covered the text as generated; the shortened text no
+			// longer matches it, so it must not be replayed as signed.
+			return text === undefined ? [] : [{ ...block, text, textSignature: undefined }];
+		});
+		// An assistant turn holding nothing but the note has no tool call and no
+		// reply left, so replaying it contributes an empty turn.
+		if (kept.length === 0) continue;
+		const providerPayload = message.providerPayload
+			? stripLegacyStaleToolNotesFromPayload(message.providerPayload, priorToolOutputs)
+			: undefined;
+		result.push({ ...message, content: kept, ...(providerPayload ? { providerPayload } : {}) });
+	}
+	return result;
 }
 
 /**
@@ -218,6 +399,47 @@ function sanitizeMalformedToolCalls(messages: Message[]): Message[] {
 	return result;
 }
 
+/**
+ * True when `model` would refuse or reject prior-turn reasoning that is already
+ * demoted to prose. This is the unsigned-thinking replay policy of the
+ * assistant branch below, applied to a text message that carries the same
+ * reasoning: a signing Anthropic endpoint drops it on same-model replay, and
+ * any `anthropic-messages` target drops it once `replayDemotedPriorReasoning`
+ * is off, whether by catalog or learned from a `reasoning_extraction` refusal
+ * (the transport clones the compat with the flag cleared before retrying, so
+ * the retry and every later request of the session take this branch).
+ */
+function dropsDemotedPriorReasoning(source: DemotedReasoningSource, model: Model): boolean {
+	if (!isAnthropicMessagesModel(model)) return false;
+	if (!model.compat.replayDemotedPriorReasoning) return true;
+	return model.compat.signingEndpoint && source.provider === model.provider && source.model === model.id;
+}
+
+/**
+ * Drop text messages whose body is demoted prior reasoning the target cannot be
+ * sent. The message carries the run outside the assistant turn, so the
+ * per-block thinking policy never sees it; without this pass the prose reaches
+ * the classifier on every request of the session, and the refusal retry that
+ * clears `replayDemotedPriorReasoning` re-sends the same bytes.
+ */
+function dropUndeliverableDemotedReasoning(messages: Message[], model: Model): Message[] {
+	let drops = false;
+	for (const message of messages) {
+		if (message.role !== "user" && message.role !== "developer") continue;
+		if (message.demotedReasoningSource && dropsDemotedPriorReasoning(message.demotedReasoningSource, model)) {
+			drops = true;
+			break;
+		}
+	}
+	if (!drops) return messages;
+	return messages.filter(
+		message =>
+			(message.role !== "user" && message.role !== "developer") ||
+			!message.demotedReasoningSource ||
+			!dropsDemotedPriorReasoning(message.demotedReasoningSource, model),
+	);
+}
+
 function shouldDropTruncatedThinkingOnlyAssistant(msg: AssistantMessage): boolean {
 	const isTruncatedStop = msg.stopReason === "length" || msg.stopReason === "error" || msg.stopReason === "aborted";
 	return isTruncatedStop && !msg.content.some(block => block.type === "toolCall" || block.type === "text");
@@ -294,16 +516,58 @@ export function transformMessages<TApi extends Api>(
 	duplicateToolCallIdSuffixPrefix = "_dup",
 	targetCompat: Model<TApi>["compat"] = model.compat,
 ): Message[] {
+	// Sessions recorded before the repair rode `role: "user"` hold the note as
+	// real assistant text, because the model reproduced it and the reply was
+	// persisted like any other. Replaying one primes the same imitation again,
+	// so a resumed session would keep emitting tool results as prose long after
+	// the repair was fixed. Strip it on the way out of storage.
+	messages = dropLegacyStaleToolNotes(messages);
+
 	// Drop assistant `toolCall` blocks with empty/whitespace `id` or `name`
 	// (and their matched `toolResult` messages) before anything else looks at
 	// the history. Replays of these would 400 every provider — see
 	// `sanitizeMalformedToolCalls`.
 	messages = sanitizeMalformedToolCalls(messages);
 
+	// Prior reasoning carried as prose is subject to the same replay policy as
+	// an unsigned thinking block, and the target is only known here.
+	messages = dropUndeliverableDemotedReasoning(messages, model);
+
 	// Build a map of original tool call IDs to normalized IDs
 	const toolCallIdMap = new Map<string, string>();
 
 	const latestSurvivingAssistantIndex = getLatestSurvivingAssistantIndex(messages);
+	// Preserved thinking (Fable 5.1+): a thinking block's signature is bound to
+	// the exact bytes of every message before it, so reasoning recorded before a
+	// client-side history rewrite — a compaction or branch summary replacing the
+	// turns it was produced against, or a tool result pruned in place — can no
+	// longer be replayed. Anthropic rejects such a block with 400 unless the
+	// request opts into `drop_block`; dropping it here keeps the request
+	// append-only from the API's point of view and costs only reasoning the
+	// summary already subsumes.
+	const orphanedThinkingAssistantIndexes = new Set<number>();
+	if (model.thinking?.prefixBinding) {
+		let latestRewriteAt: number | undefined;
+		for (let index = 0; index < messages.length; index++) {
+			const message = messages[index];
+			if (!message) continue;
+			const rewriteAt =
+				message.role === "user" || message.role === "developer"
+					? message.historyRewriteAt
+					: message.role === "toolResult"
+						? message.prunedAt
+						: undefined;
+			if (rewriteAt !== undefined) {
+				latestRewriteAt = latestRewriteAt === undefined ? rewriteAt : Math.max(latestRewriteAt, rewriteAt);
+			} else if (
+				message.role === "assistant" &&
+				latestRewriteAt !== undefined &&
+				message.timestamp <= latestRewriteAt
+			) {
+				orphanedThinkingAssistantIndexes.add(index);
+			}
+		}
+	}
 	// First pass: transform messages (thinking blocks, tool call ID normalization)
 	const normalizedMessages = messages.map((msg, index) => {
 		// User and developer messages pass through unchanged
@@ -429,6 +693,12 @@ export function transformMessages<TApi extends Api>(
 				!assistantMsg.content.some(anthropicVisibleThinkingSurvivesReplay);
 
 			const transformedContent = assistantMsg.content.flatMap((block, blockIndex) => {
+				if (
+					orphanedThinkingAssistantIndexes.has(index) &&
+					(block.type === "thinking" || block.type === "redactedThinking")
+				) {
+					return [];
+				}
 				if (block.type === "thinking") {
 					// Only an aborted/errored turn's final (mid-stream) block can hold a
 					// partial signature; abandoned tool-use turns strip all. Drop the
@@ -462,15 +732,34 @@ export function transformMessages<TApi extends Api>(
 						if (!sanitized.thinkingSignature && (!sanitized.thinking || sanitized.thinking.trim() === "")) {
 							return [];
 						}
-						// Same-model Anthropic replay to a signature-enforcing endpoint
-						// requires valid signatures to natively replay thinking blocks.
-						// Both undefined and empty string signatures are invalid and must
-						// be dropped entirely — not demoted to text. Demotion would cause
-						// the reasoning_extraction safety classifier to refuse the response.
+						// An unsigned thinking block cannot be replayed natively where the
+						// endpoint enforces Anthropic's signature protocol, so it is dropped
+						// entirely rather than demoted to text. Both undefined and empty
+						// string signatures are invalid. Demotion would cause the
+						// reasoning_extraction safety classifier to refuse the response.
+						//
+						// Same-model replay to a statically known signing endpoint always
+						// drops: there is no reasoning to preserve across a switch that did
+						// not happen.
+						//
+						// Otherwise the block keeps demoting by default, so cross-vendor
+						// reasoning survives a model switch (#3434, #3528), and drops once
+						// this endpoint has answered `reasoning_extraction` for it. That
+						// second condition is keyed on the endpoint demoting unsigned
+						// thinking rather than on `signingEndpoint`, because the prose the
+						// classifier reads is produced by the demotion: it covers an
+						// endpoint recognised up front, one learned from a live signing 400
+						// (#4297, which clears `replayUnsignedThinking` and never
+						// `signingEndpoint`), and a gateway that fronts Claude under its own
+						// host, such as OpenCode Zen's `/zen/v1/messages`. The model
+						// identity the block came from is invisible to the classifier, which
+						// reads only the request.
+						const signatureIsInvalid = !sanitized.thinkingSignature || sanitized.thinkingSignature.trim() === "";
+						const demotesUnsignedThinking = !model.compat.replayUnsignedThinking;
 						if (
-							isSameModel &&
-							isSigningAnthropicTarget &&
-							(!sanitized.thinkingSignature || sanitized.thinkingSignature.trim() === "")
+							signatureIsInvalid &&
+							((isSameModel && isSigningAnthropicTarget) ||
+								(demotesUnsignedThinking && !model.compat.replayDemotedPriorReasoning))
 						) {
 							return [];
 						}
@@ -806,29 +1095,27 @@ export function transformMessages<TApi extends Api>(
 					continue;
 				}
 				// No pending tool-call window: safe to preserve the text payload so the
-				// model still sees what the tool returned.
-				//
-				// The note is emitted with `role: "user"` rather than `role: "developer"`
-				// because the developer role is elevated by some providers:
-				//
-				// * Ollama maps `developer` -> `system` (highest instruction priority).
-				// * OpenAI chat-completions reasoning models forward `developer` as
-				//   `developer` (above-user instruction priority).
-				//
-				// Stale, model-untrusted tool output must not gain instruction priority
-				// above user/developer messages it lived alongside before compaction.
-				// `user` role is mapped to plain user content by every provider, so the
-				// content survives without ever being treated as an instruction the
-				// model should obey.
+				// model still sees what the tool returned. staleToolResultNote owns both
+				// the envelope and the rule that it rides on `role: "user"`.
 				const textParts: string[] = [];
 				for (const part of msg.content) {
 					if (part.type === "text" && part.text.trim() !== "") textParts.push(part.text);
 				}
 				if (textParts.length > 0) {
-					const errorAttr = msg.isError ? ' is-error="true"' : "";
+					logger.warn("transform-messages: folding a tool result whose call is missing from the history", {
+						provider: model.provider,
+						model: model.id,
+						toolName: msg.toolName,
+						toolCallId: msg.toolCallId,
+					});
 					result.push({
 						role: "user",
-						content: `<stale-tool-result tool="${msg.toolName}" id="${msg.toolCallId}"${errorAttr}>\n${textParts.join("\n")}\n</stale-tool-result>`,
+						content: staleToolResultNote({
+							toolName: msg.toolName,
+							toolCallId: msg.toolCallId,
+							text: textParts.join("\n"),
+							isError: msg.isError,
+						}),
 						timestamp: messageTimestamp,
 					} as UserMessage);
 				}

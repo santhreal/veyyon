@@ -26,14 +26,13 @@ describe("settings model pickers", () => {
 	});
 
 	/**
-	 * The subagent model is a picker too, but it lives on the Subagents tab beside
-	 * the per-agent rows and the delegation switch that decide alongside it. It sat
-	 * on the Model tab while the per-agent overrides sat behind `/agents` and a role
-	 * called "Subtask" sat in the role table: three places to look for one decision,
-	 * which is how an operator could set a subagent model and watch something else
-	 * win.
+	 * The shared subagent model is a picker on the Subagents tab and nowhere else, drawn under the
+	 * switch that turns it on. It also sat on the Model tab while the per-agent overrides sat behind
+	 * `/agents` and a role called "Subtask" sat in the role table: three places to look for one
+	 * decision, which is how an operator could set a subagent model and watch something else win. A
+	 * Model-tab row is that split reopening.
 	 */
-	it("exposes subagent.model as a model selector on the subagents tab", () => {
+	it("exposes subagent.model on the Subagents tab only", () => {
 		invalidateSettingDefsCache();
 		expect(getSettingsForTab("subagents").find(def => def.path === "subagent.model")?.type).toBe("modelSelector");
 		expect(getSettingsForTab("model").find(def => def.path === "subagent.model")).toBeUndefined();

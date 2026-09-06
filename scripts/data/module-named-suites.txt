@@ -274,7 +274,6 @@ packages/coding-agent/test/modes/controllers/todo-command-controller.test.ts
 packages/coding-agent/test/modes/controllers/transcript-composer.test.ts
 packages/coding-agent/test/modes/controllers/welcome-controller.test.ts
 packages/coding-agent/test/modes/github-ref-autocomplete.test.ts
-packages/coding-agent/test/modes/image-references.test.ts
 packages/coding-agent/test/modes/internal-url-autocomplete.test.ts
 packages/coding-agent/test/modes/magic-keyword-boundary.test.ts
 packages/coding-agent/test/modes/magic-keywords.test.ts
@@ -319,7 +318,6 @@ packages/coding-agent/test/session-focus-controller.test.ts
 packages/coding-agent/test/session-manager/session-id.test.ts
 packages/coding-agent/test/session-storage.test.ts
 packages/coding-agent/test/session/blob-store.test.ts
-packages/coding-agent/test/session/content-text.test.ts
 packages/coding-agent/test/session/detached-abort.test.ts
 packages/coding-agent/test/session/operator-notices.test.ts
 packages/coding-agent/test/session/owned-resources.test.ts
@@ -492,7 +490,6 @@ packages/mnemopi/test/text-similarity.test.ts
 packages/mnemopi/test/vector-index.test.ts
 packages/mnemopi/test/veracity-consolidation.test.ts
 packages/natives/test/sha256-sidecar.test.ts
-packages/stats/test/format.test.ts
 packages/stats/test/user-metrics.test.ts
 packages/swarm-extension/src/swarm/__tests__/dag.test.ts
 packages/swarm-extension/src/swarm/__tests__/executor.test.ts
@@ -536,7 +533,6 @@ packages/utils/test/bytes.test.ts
 packages/utils/test/collapse-whitespace.test.ts
 packages/utils/test/color.test.ts
 packages/utils/test/conformance.test.ts
-packages/utils/test/content-text.test.ts
 packages/utils/test/dirs.test.ts
 packages/utils/test/env.test.ts
 packages/utils/test/fault-sink.test.ts

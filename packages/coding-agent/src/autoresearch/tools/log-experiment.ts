@@ -7,6 +7,7 @@ import type { ToolDefinition } from "../../extensibility/extensions";
 import type { Theme } from "../../modes/theme/theme";
 import { replaceTabs, truncateToWidth } from "../../tools/render-utils";
 import * as git from "../../utils/git";
+import { leaveArm } from "../arm-model";
 import { computeRunModifiedPaths, getCurrentAutoresearchBranch, parseWorkDirDirtyPaths, tryReadHeadSha } from "../git";
 import {
 	ensureNumericMetricMap,
@@ -14,6 +15,7 @@ import {
 	formatPercentChange,
 	gitStatusPorcelain,
 	gitWorkDirPrefix,
+	isBetter,
 	mergeAsi,
 	pathMatchesSpec,
 	sanitizeAsi,
@@ -24,6 +26,7 @@ import {
 	currentResults,
 	findBaselineSecondary,
 	findBestKeptMetric,
+	findBestKeptResult,
 } from "../state";
 import { openAutoresearchStorageIfExists, type SessionRow } from "../storage";
 import type {
@@ -34,7 +37,7 @@ import type {
 	LogDetails,
 	NumericMetricMap,
 } from "../types";
-import { EXPERIMENT_TOOL_NAMES } from ".";
+import { activeToolsFor } from ".";
 
 const logExperimentSchema = type({
 	metric: type("number").describe("primary metric value"),
@@ -44,6 +47,8 @@ const logExperimentSchema = type({
 	"asi?": type({ "[string]": "unknown" }).describe("free-form structured metadata"),
 	"commit?": type("string").describe("override recorded commit hash"),
 	"justification?": type("string").describe("required when keeping a scope-deviating run"),
+	"arm?": type("string").describe("candidate arm this result came from, when breadth > 1"),
+	"certified_by?": type("string").describe("arm or `director` that certified this result"),
 	"flag_runs?": type({
 		run_id: type("number.integer").describe("run id to flag"),
 		reason: type("string").describe("why this run is suspect"),
@@ -132,6 +137,32 @@ export function createLogExperimentTool(
 			const justification = params.justification?.trim() || null;
 			const warnings: string[] = [];
 
+			// `keep` commits the change onto the branch. A change that did not move
+			// the metric past the segment's best is churn on that branch: one loop
+			// kept eight flat runs in a row, each a commit that changed nothing the
+			// harness could see. The rules the model runs under say a flat run is a
+			// discard; a keep that is groundwork for a later step is still allowed,
+			// but has to say so. Nothing is logged or reverted here, so the pending
+			// run can be logged again with the other status.
+			if (params.status === "keep") {
+				const best = findBestKeptResult(
+					buildExperimentState(session, storage.listLoggedRuns(session.id)).results,
+					session.currentSegment,
+					session.direction,
+				);
+				if (best !== null && !isBetter(params.metric, best.metric, session.direction) && justification === null) {
+					const unit = session.metricUnit;
+					return {
+						content: [
+							{
+								type: "text",
+								text: `Error: not logged. ${session.primaryMetric}=${formatNum(params.metric, unit)} does not improve on the segment's best, ${formatNum(best.metric, unit)} (run ${best.runNumber ?? "?"}), and \`keep\` would commit a change the metric cannot see. Log it as \`discard\`, or pass \`justification\` if the change is groundwork a later step needs.`,
+							},
+						],
+					};
+				}
+			}
+
 			const headSha = await tryReadHeadSha(ctx.cwd);
 			const explicitCommit = params.commit?.trim();
 			let commitHash = explicitCommit && explicitCommit.length > 0 ? explicitCommit : headSha;
@@ -200,6 +231,13 @@ export function createLogExperimentTool(
 				);
 			}
 
+			// The model is recorded on the measurement, by `run_experiment`, and is
+			// not touched here. A certified round logs the winner after every arm
+			// has been measured, so the arm in flight at this call is the last arm
+			// built, not the one being logged: reading the session model here would
+			// stamp the wrong arm's model on the row.
+			const loggedArm = params.arm?.trim() || undefined;
+
 			const loggedAt = Date.now();
 			const tentativeRun = storage.markRunLogged({
 				runId: pendingRun.id,
@@ -214,6 +252,8 @@ export function createLogExperimentTool(
 				scopeDeviations,
 				justification,
 				loggedAt,
+				arm: loggedArm,
+				certifiedBy: params.certified_by?.trim() || undefined,
 			});
 
 			// Recompute confidence with this run included
@@ -237,11 +277,23 @@ export function createLogExperimentTool(
 			runtime.lastRunNumber = null;
 			runtime.autoResumeArmed = true;
 			runtime.lastAutoResumePendingRunNumber = null;
+			// The arm this result belongs to is over. Whatever comes next -- the next
+			// arm, triage, the next hypothesis -- runs on the session's own model
+			// until another `start_arm` says otherwise.
+			const armExit = await leaveArm(options.pi, runtime);
+			if (armExit.strandedOn) {
+				// The next arm would otherwise be built on this arm's model and read
+				// as a comparison it is not.
+				warnings.push(
+					`The session could not be returned to its own model and is still on ${armExit.strandedOn}. Re-select your model before the next arm.`,
+				);
+			}
 
 			const experiment: ExperimentResult = {
 				runNumber: tentativeRun.id,
 				commit: (commitHash ?? "").slice(0, 12),
 				metric,
+				measuredPrimary: pendingRun.parsedPrimary,
 				metrics: secondaryMetrics,
 				status: params.status,
 				description: params.description,
@@ -252,8 +304,13 @@ export function createLogExperimentTool(
 				modifiedPaths: allModified,
 				scopeDeviations,
 				justification,
-				flagged: false,
-				flaggedReason: null,
+				// The verdict is whatever the row carries: `certify_arms` may already
+				// have flagged this arm's measurement before it was logged.
+				flagged: tentativeRun.flagged,
+				flaggedReason: tentativeRun.flaggedReason,
+				arm: tentativeRun.arm,
+				certifiedBy: tentativeRun.certifiedBy,
+				model: tentativeRun.model,
 			};
 
 			const segmentRunCount = currentResults(finalState.results, finalState.currentSegment).length;
@@ -263,12 +320,10 @@ export function createLogExperimentTool(
 					"autoresearch-control",
 					runtime.goal ? { mode: "off", goal: runtime.goal } : { mode: "off" },
 				);
-				await options.pi.setActiveTools(
-					options.pi.getActiveTools().filter(name => !EXPERIMENT_TOOL_NAMES.includes(name)),
-				);
+				await options.pi.setActiveTools(activeToolsFor(options.pi.getActiveTools(), false, finalState.breadth));
 			}
 
-			options.dashboard.updateWidget(ctx, runtime);
+			options.dashboard.update(ctx, runtime);
 			options.dashboard.requestRender();
 
 			const wallClockSeconds = pendingRun.durationMs !== null ? pendingRun.durationMs / 1000 : null;
@@ -443,6 +498,7 @@ function mergeMetrics(
 		merged[name] = value;
 	}
 	for (const [name, value] of Object.entries(ensureNumericMetricMap(overrides))) {
+		if (name === primaryMetricName) continue;
 		merged[name] = value;
 	}
 	return merged;

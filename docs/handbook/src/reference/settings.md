@@ -672,46 +672,52 @@ list above is the complete list. If you ask for an agent in plain prose instead 
 through a command ("use the scout agent"), that is the model choosing, and a disabled
 scout is rejected.
 
-A row contains whether the agent is enabled and how deep it may nest its own spawns. It
-does **not** carry a model or an effort: those have one owner, described next.
+A row contains whether the agent is enabled, how deep it may nest its own spawns, and
+the model and effort that agent runs. Every one of those is edited on the agent's own
+page inside **Roster**.
 
 #### Which model a subagent runs
 
-Three things can set the model a subagent runs. The first one that specifies a model wins:
+The first row of **Roster** is **Same Model for All Agents**, and it picks which of two
+chains decides. It is off by default.
 
-1. `subagent.model`: the blanket model for every subagent.
-2. the agent definition's own `model:` frontmatter, for an agent you wrote.
-3. otherwise the subagent inherits the model you are working with.
+Off, each agent answers for itself. The first layer that specifies a model wins:
 
-There is no per-agent model row. There was one, above the blanket setting, and it is
-the reason this section used to have four layers: the agent editor showed a Model row
-and an Effort row for one agent while `subagent.model` and `subagent.thinkingLevel`
-showed the same two facts for all of them, and the two screens could disagree on
-screen. A `subagent.agents.<name>.model` or `.thinkingLevel` still sitting in a config
-is ignored, and named once in the log with the setting that replaced it, rather than
-being honored invisibly or dropped in silence.
+1. the agent's own lane, `subagent.agents.<name>.model`, edited on that agent's page.
+2. `subagent.modelByDepth.<n>`, for a spawn at exactly that depth.
+3. the agent definition's own `model:` frontmatter, for an agent you wrote.
+4. otherwise the subagent inherits the model you are working with.
+
+On, one model answers for every agent: `subagent.model`, else the model you are working
+with. Nothing per-agent is read, so the lanes, the depth rows and an agent file's own
+`model:` all stop applying. The agent rows stay listed and go grey, because which agents
+are enabled is still decided there.
+
+The shared model and its effort appear on screen only while the switch is on. Off, they
+are not shown at all: a greyed row displaying a model nobody runs is the duplication the
+switch exists to end. There is no Subagent Model row on the Models tab and none on the
+Subagents tab; one page owns the question.
 
 None of the bundled agents pin a model, so on a fresh install every subagent runs the
-model you are looking at. Change `subagent.model` and they all move together. To give
-one agent its own model, write it in that agent's own `model:` frontmatter, which is
-where an agent's identity already lives.
+model you are looking at. To move them all at once, turn the switch on and set the model
+under it. To give one agent its own, open that agent in **Roster**, or write it in the
+agent's `model:` frontmatter.
 
 A configured value that matches no available model does **not** fall through to the
 next layer. The spawn is rejected and the message states the setting to fix, because a
 silent fall-through is indistinguishable from your setting having no effect.
 
-Effort works the same way, through `subagent.thinkingLevel`. The levels offered are the
-ones the model in scope actually exposes, so a model that routes effort through
-separate model ids offers **Inherit** alone and states why, rather than listing levels it
-would reject. A value that matches no level (from a hand-written config) is reported with
-the setting and the accepted levels, then ignored. It is never rounded to a
-neighbouring effort: running at an effort you did not choose costs money and would not
-show up anywhere.
+Effort rides the same switch, through `subagent.thinkingLevel` when shared and the
+agent's own lane when not. The levels offered are the ones the model in scope actually
+exposes, so a model that routes effort through separate model ids offers **Inherit**
+alone and states why, rather than listing levels it would reject. A value that matches
+no level (from a hand-written config) is reported with the setting and the accepted
+levels, then ignored. It is never rounded to a neighbouring effort: running at an effort
+you did not choose costs money and would not show up anywhere.
 
-The Agents table names, for the selected agent, the model it will run on and the
-setting that decided, and the agent editor repeats it as a read-only line pointing at
-**Subagent Model** and **Subagent Effort**. What decided is visible, in one place, so
-an agent running something you did not expect is a question you can answer.
+Every surface that shows a subagent's model also names the setting that decided it —
+`subagent.agents.deep.subagents`, `subagent.modelByDepth.2`, `subagent.model` — so an
+agent running something you did not expect is a question you can answer.
 
 #### The two views in `/agents`
 
@@ -737,10 +743,11 @@ They used to open a separate screen with its own roster, which meant two answers
 |---|---|---|---|
 | `subagent.enabled` | boolean | `true` | The master switch. `false` removes subagents entirely: no `task` tool, no delegation guidance. See above. |
 | `subagent.delegation` | enum | `preferred` | `allowed`, `preferred`, `required`. How hard the prompt pushes; it never removes the ability to delegate. See above. |
-| `subagent.agents` | record | `{}` | One row per agent: `enabled`, `maxNestedSpawnDepth`. Edit in the Agents row of the Subagents tab. Model and effort are not per-agent; see `subagent.model`. |
-| `subagent.model` | modelChain | unset | Models for every subagent that has no model of its own, tried in order, written as a comma-separated string or as a YAML list: the later entries are used when a run errors on the one in use. Unset means inherit: subagents follow the model you are working with. May carry a `:effort` suffix, and an explicit suffix wins over the agent's own default. A pattern that matches no model rejects the spawn rather than falling through to the next entry. |
-| `subagent.modelByDepth` | record | `{}` | One row per spawn depth (`"1"` is a direct child, `"2"` a grandchild), each a chain in the same shape as `subagent.model`. A row outranks `subagent.model` for a spawn at exactly that depth; depths without a row follow `subagent.model`. A row whose chain matches no model rejects the spawn and states the row. Edit in the Models by Depth row of the Subagents tab. |
-| `subagent.thinkingLevel` | string | unset | Blanket subagent effort, picked from the levels the model in scope exposes. Unset or **Inherit** passes the current session's effective effort into the child. It does not request `auto` from the provider. |
+| `subagent.agents` | record | `{}` | One row per agent: `enabled`, `model`, `thinkingLevel`, `maxNestedSpawnDepth`, and a nested `subagents` row per level below. Edit in the Roster row of the Subagents tab. Ignored while `subagent.sharedModel` is on. |
+| `subagent.sharedModel` | boolean | `false` | Whether one model and effort answer for every subagent. On, `subagent.model` and `subagent.thinkingLevel` decide and nothing per-agent is read. Off, each agent runs what its own Roster page names. The first row of Roster; it has no row of its own on the tab. |
+| `subagent.model` | modelChain | unset | The shared model chain, live only while `subagent.sharedModel` is on. Tried in order, written as a comma-separated string or as a YAML list: the later entries are used when a run errors on the one in use. Unset means inherit: subagents follow the model you are working with. May carry a `:effort` suffix, and an explicit suffix wins over the agent's own default. A pattern that matches no model rejects the spawn rather than falling through to the next entry. Edit inside Roster. |
+| `subagent.modelByDepth` | record | `{}` | One row per spawn depth (`"1"` is a direct child, `"2"` a grandchild), each a chain in the same shape as `subagent.model`. Applies only while `subagent.sharedModel` is off, and outranks the agent's own frontmatter for a spawn at exactly that depth; other depths are unaffected. A row whose chain matches no model rejects the spawn and states the row. Edit in the Models by Depth row of the Subagents tab. |
+| `subagent.thinkingLevel` | string | unset | The shared effort, live only while `subagent.sharedModel` is on, picked from the levels the model in scope exposes. Unset or **Inherit** passes the current session's effective effort into the child. It does not request `auto` from the provider. Edit inside Roster. |
 | `subagent.batch` | boolean | `true` | Batch shape for the `task` tool: one call, many items. |
 | `subagent.maxConcurrency` | number | `32` | Subagents running at once. |
 | `subagent.maxNestedSpawnDepth` | number | `0` | Nested levels that subagents may spawn. Direct children receive no `task` tool at `0`; an agent-specific override may raise the limit. |

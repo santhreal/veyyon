@@ -234,7 +234,9 @@ class BashInteractiveOverlayComponent implements Component {
 	render(width: number): readonly string[] {
 		const safeWidth = Math.max(20, width);
 		const innerWidth = Math.max(1, safeWidth - 2);
-		const maxOverlayRows = Math.max(5, Math.floor(this.getTerminalRows() * 0.8));
+		// The host reports the rows above the pinned composer zone, so the box
+		// fills what the overlay can paint without covering the prompt.
+		const maxOverlayRows = Math.max(5, this.getTerminalRows());
 		const chromeRows = 4;
 		const maxContentRows = Math.max(1, maxOverlayRows - chromeRows);
 		// Propagate terminal resize to PTY session
@@ -325,7 +327,7 @@ export async function runInteractiveBashPty(
 			const component = new BashInteractiveOverlayComponent(
 				options.command,
 				uiTheme,
-				() => tui.terminal.rows,
+				() => tui.terminal.rows - tui.pinnedFooterRows,
 				XtermTerminal,
 			);
 			component.setSession(session);

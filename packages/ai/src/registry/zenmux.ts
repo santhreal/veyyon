@@ -19,4 +19,5 @@ export const zenmuxProvider = {
 	id: "zenmux",
 	name: "ZenMux",
 	login: (cb: OAuthLoginCallbacks) => loginZenMux(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

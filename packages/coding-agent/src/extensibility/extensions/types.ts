@@ -30,7 +30,15 @@ import type {
 	TSchema,
 } from "@veyyon/ai";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "@veyyon/ai/oauth/types";
-import type { AutocompleteItem, AutocompleteProvider, Component, EditorTheme, KeyId, TUI } from "@veyyon/tui";
+import type {
+	AutocompleteItem,
+	AutocompleteProvider,
+	Component,
+	EditorTheme,
+	KeyId,
+	OverlayOptions,
+	TUI,
+} from "@veyyon/tui";
 import type { logger as PiLogger } from "@veyyon/utils";
 import type { Type as arktype } from "arktype";
 import type * as zod from "zod/v4";
@@ -278,7 +286,7 @@ export interface ExtensionUIContext {
 			keybindings: KeybindingsManager,
 			done: (result: T) => void,
 		) => ExtensionUiComponent | Promise<ExtensionUiComponent>,
-		options?: { overlay?: boolean },
+		options?: { overlay?: boolean | OverlayOptions },
 	): Promise<T>;
 
 	/** Set the text in the core input editor. */
@@ -1215,8 +1223,14 @@ export interface ExtensionAPI {
 	/** Get available slash commands in the current session. */
 	getCommands(): SlashCommandInfo[];
 
-	/** Set the current model. Returns false if no API key available. */
-	setModel(model: Model): Promise<boolean>;
+	/**
+	 * Set the current model. Returns false if no API key available.
+	 *
+	 * `ephemeral` records the switch as a fallback rather than as the session's model, so
+	 * resuming the session returns to the model it had before: for a model the caller will
+	 * put back itself, such as the model an autoswarm arm builds on.
+	 */
+	setModel(model: Model, options?: SetModelOptions): Promise<boolean>;
 
 	/** Get current thinking level. */
 	getThinkingLevel(): ThinkingLevel | undefined;
@@ -1406,7 +1420,12 @@ export type GetCommandsHandler = () => SlashCommandInfo[];
 
 export type SetActiveToolsHandler = (toolNames: string[]) => Promise<void>;
 
-export type SetModelHandler = (model: Model) => Promise<boolean>;
+export interface SetModelOptions {
+	/** Record the switch as a fallback, so a resumed session opens on the model before it. */
+	ephemeral?: boolean;
+}
+
+export type SetModelHandler = (model: Model, options?: SetModelOptions) => Promise<boolean>;
 
 export type GetThinkingLevelHandler = () => ThinkingLevel | undefined;
 

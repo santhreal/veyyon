@@ -1,14 +1,11 @@
 /* Veyyon — editorial identity.
-   JetBrains Mono as the display/brand voice, Inter for reading.
-   Near-black ground, silver structure, ember-sun accent (veyyōn = the sun). Sharp edges, no gradients. */
+   JetBrains Mono across the entire site. Near-black ground, silver structure,
+   ember-sun accent (veyyōn = the sun). Sharp edges, no gradients. */
 
-@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-Regular.woff2) format("woff2");font-weight:400;font-display:swap}
-@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-Medium.woff2) format("woff2");font-weight:500;font-display:swap}
-@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-SemiBold.woff2) format("woff2");font-weight:600;font-display:swap}
-@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-Bold.woff2) format("woff2");font-weight:700;font-display:swap}
-@font-face{font-family:"InterV";src:url(./fonts/Inter-Regular.woff2) format("woff2");font-weight:400;font-display:swap}
-@font-face{font-family:"InterV";src:url(./fonts/Inter-Medium.woff2) format("woff2");font-weight:500;font-display:swap}
-@font-face{font-family:"InterV";src:url(./fonts/Inter-SemiBold.woff2) format("woff2");font-weight:600;font-display:swap}
+@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-Regular.woff2) format("woff2");font-weight:400;font-display:block}
+@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-Medium.woff2) format("woff2");font-weight:500;font-display:block}
+@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-SemiBold.woff2) format("woff2");font-weight:600;font-display:block}
+@font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-Bold.woff2) format("woff2");font-weight:700;font-display:block}
 
 :root{
   --bg:#000000; --raised:#000000; --inset:#000000; --hover:#000000;
@@ -20,7 +17,7 @@
      teal = session, violet = modes, indigo = share, rose = info, gold = match */
   --gold:#f5b841; --teal:#3fb6a8; --violet:#9b7ede; --indigo:#6478d8; --rose:#e88aa8;
   --line:rgba(198,203,212,.12); --line-2:rgba(198,203,212,.21);
-  --sans:"InterV",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --sans:"JBM",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   --mono:"JBM",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   --maxw:1120px; --pad:32px;
   --ease:cubic-bezier(.22,1,.36,1); --dur:.72s;
@@ -29,7 +26,7 @@
 html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{animation:none!important;transition:none!important}}
 body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);
-  font-size:16px;line-height:1.62;letter-spacing:-.011em;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  font-size:15px;line-height:1.7;letter-spacing:0;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 ::selection{background:rgba(240,134,46,.30);color:#fff}
 a{color:var(--sun-hi);text-decoration:none;transition:color .14s}
 a:hover{color:var(--silver-hi)}
@@ -40,11 +37,9 @@ img{max-width:100%;display:block}
 .mono,.inline{font-family:var(--mono)}
 .accent{color:var(--sun-hi)}
 
-/* kicker — mono, spaced, leading diamond */
+/* kicker — mono, spaced label */
 .kicker{display:inline-flex;align-items:center;gap:12px;font-family:var(--mono);font-weight:500;
   font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--silver)}
-.kicker::before{content:"";width:6px;height:6px;background:var(--sun);transform:rotate(45deg);
-  box-shadow:0 0 9px rgba(240,134,46,.45);flex:none}
 
 /* ---------- header ---------- */
 header.site{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--bg) 80%,transparent);
@@ -55,6 +50,7 @@ header.site{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--
 .nav nav{display:flex;gap:30px;align-items:center;font-size:14px}
 .nav nav a{color:var(--muted);font-weight:500}
 .nav nav a:hover{color:var(--fg)}
+.nav-icon{width:16px;height:16px;display:inline-block;vertical-align:-2px}
 .nav nav a[aria-current="page"]{color:var(--silver-hi)}
 .btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line-2);color:var(--fg);
   padding:9px 17px;font-size:14px;font-weight:500;background:transparent;font-family:var(--sans);
@@ -157,7 +153,7 @@ h3{text-wrap:balance;letter-spacing:-.015em}
 .panel .copy ul{list-style:none;padding:0;margin:0}
 .panel .copy li{padding:17px 0 17px 24px;position:relative;color:var(--fg-2);border-top:1px solid var(--line);font-size:15px;line-height:1.5}
 .panel .copy li:first-child{border-top:none}
-.panel .copy li::before{content:"";position:absolute;left:0;top:24px;width:6px;height:6px;background:var(--silver);transform:rotate(45deg)}
+.panel .copy li::before{content:"";position:absolute;left:0;top:24px;width:4px;height:4px;background:var(--silver)}
 .panel .copy li b{color:var(--fg);font-weight:600}
 .panel .demo{background:var(--inset);border-left:1px solid var(--line-2);padding:34px 32px;
   font-family:var(--mono);font-size:13px;line-height:2.05;color:var(--fg-2);overflow-x:auto;
@@ -286,9 +282,6 @@ html{scrollbar-color:#232327 #000}
 .cta-band .cta{justify-content:center;margin:36px 0 0}
 
 /* ——— the sun as a brand, outside the journey ——— */
-/* header progress sun: the header hairline is the horizon; the sun glides along it */
-.suntrack{position:absolute;left:0;right:0;bottom:0;height:0;pointer-events:none}
-.suntrack canvas{position:absolute;bottom:-6px;left:10px;transform:translateX(-50%);display:block}
 /* the sunset: a blood-orange pixel sky closing the page; the ember horizon line is
    drawn in-canvas, so the footer's own hairline is dropped when they meet */
 .sunset{position:relative;height:250px;overflow:hidden}
@@ -338,11 +331,7 @@ footer.site{border-top:1px solid var(--line);padding:52px 0;color:var(--dim);fon
   .term .body{font-size:11px}
 }
 
-/* motion — silky reveals + interactions. reveal is added by motion.js only, so
-   no-JS renders everything visible; the global reduced-motion rule disables it. */
-.reveal{opacity:0;transform:translateY(20px);
-  transition:opacity var(--dur) var(--ease),transform var(--dur) var(--ease);transition-delay:var(--d,0ms)}
-.reveal.in{opacity:1;transform:none}
+/* interactions — link arrows and card hovers only, no scroll reveal. */
 .section-link::after,.btn.arrow::after{transition:transform .22s var(--ease)}
 .section-link:hover::after,.btn.arrow:hover::after{transform:translateX(5px)}
 .card{transition:border-color .25s var(--ease),background .25s var(--ease)}
@@ -351,50 +340,61 @@ footer.site{border-top:1px solid var(--line);padding:52px 0;color:var(--dim);fon
 /* reduced motion: the hero is already a static section, so only the sun's
    animation stops (sun.js draws a single frame). Nothing to collapse. */
 
-/* ---- blog ---------------------------------------------------------------
-   A reading column for design essays. Mono headings (the brand voice), Inter
-   body, ember links, bordered inset code blocks. Matches the near-black ground
-   and hairline structure of the rest of the site. */
-.post{max-width:none;padding:0}
-.post-head{padding:88px 0 44px;border-bottom:1px solid var(--line)}
-.post-head .kicker{margin-bottom:20px}
-.post-head .pill{display:inline-block;margin-left:14px;font-family:var(--mono);font-weight:600;font-size:10px;
-  letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line-2);
-  border-radius:2px;padding:3px 8px;vertical-align:middle;translate:0 -2px}
-.post-head h1{font-family:var(--mono);font-weight:700;font-size:clamp(30px,4.4vw,46px);letter-spacing:-.036em;
-  margin:14px 0 18px;max-width:22ch;line-height:1.08;text-wrap:balance}
-.post-meta{font-family:var(--mono);font-size:13px;color:var(--muted);letter-spacing:.01em}
 
-.post-body{max-width:66ch;padding:52px 0 40px;font-size:17px;line-height:1.72;color:var(--fg-2)}
-.post-body>*:first-child{margin-top:0}
-.post-body h2{font-family:var(--mono);font-weight:700;color:var(--fg);font-size:clamp(22px,2.6vw,27px);
-  letter-spacing:-.02em;line-height:1.2;margin:60px 0 20px;text-wrap:balance}
-.post-body h3{font-family:var(--mono);font-weight:600;color:var(--fg);font-size:19px;
-  margin:44px 0 14px;letter-spacing:-.01em}
-.post-body p{margin:0 0 22px;text-wrap:pretty}
-.post-body strong{color:var(--fg);font-weight:600}
-.post-body a{color:var(--sun-hi)}
-.post-body a:hover{color:var(--silver-hi)}
-.post-body ul,.post-body ol{margin:0 0 22px;padding-left:26px}
-.post-body li{margin:0 0 10px;padding-left:4px}
-.post-body li::marker{color:var(--dim)}
-.post-body code.inline{font-family:var(--mono);font-size:.87em;color:var(--silver-hi);
-  background:color-mix(in srgb,var(--silver) 9%,transparent);border:1px solid var(--line);
-  border-radius:3px;padding:.08em .34em}
-.post-body pre.code{margin:0 0 26px;padding:20px 22px;background:#050506;border:1px solid var(--line-2);
-  border-radius:2px;overflow-x:auto;font-family:var(--mono);font-size:13.5px;line-height:1.75;
-  color:var(--fg-2);tab-size:2}
-.post-body pre.code code{font-family:inherit;color:inherit;background:none;border:0;padding:0}
-.post-foot{padding:20px 0 8px;border-top:1px solid var(--line);font-family:var(--mono);font-size:13px}
-
-/* blog index */
-.post-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
-  border-top:1px solid var(--line)}
-.post-card{border-bottom:1px solid var(--line)}
-.post-card a{display:block;padding:34px 0;color:inherit;transition:opacity .16s}
-.post-card a:hover{opacity:.82}
-.post-card-meta{font-family:var(--mono);font-size:12.5px;color:var(--muted);margin-bottom:12px;letter-spacing:.02em}
-.post-card h2{font-family:var(--mono);font-weight:700;color:var(--fg);font-size:clamp(20px,2.4vw,26px);
-  letter-spacing:-.024em;margin:0 0 12px;line-height:1.16;text-wrap:balance}
-.post-card p{margin:0;color:var(--fg-2);max-width:62ch;font-size:16px;line-height:1.55;text-wrap:pretty}
-.post-empty{color:var(--muted);font-family:var(--mono);font-size:15px;max-width:62ch;line-height:1.75}
+/* ---------- models catalog ---------- */
+.cat-controls{padding:40px 0 0}
+.cat-search{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.cat-search input[type="search"]{
+  flex:1;min-width:200px;max-width:420px;
+  background:var(--inset);border:1px solid var(--line-2);color:var(--fg);
+  font-family:var(--mono);font-size:14px;padding:11px 16px;
+  transition:border-color .14s,box-shadow .14s}
+.cat-search input[type="search"]:focus{outline:none;border-color:var(--sun-hi);
+  box-shadow:0 0 0 1px var(--sun-hi)}
+.cat-search input[type="search"]::placeholder{color:var(--dim)}
+.cat-filters{display:flex;gap:8px;flex-wrap:wrap}
+.cat-chip{
+  border:1px solid var(--line-2);background:transparent;color:var(--muted);
+  padding:7px 14px;font:500 12px/1 var(--mono);letter-spacing:.04em;
+  cursor:pointer;transition:.14s}
+.cat-chip:hover{border-color:var(--silver);color:var(--silver-hi)}
+.cat-chip[aria-pressed="true"]{border-color:var(--sun-hi);background:rgba(240,134,46,.12);color:var(--fg)}
+.cat-meta{margin:18px 0 0;font-family:var(--mono);font-size:12px;color:var(--dim);letter-spacing:.02em}
+.cat-results{padding-top:24px}
+.catalog{display:flex;flex-direction:column;gap:0}
+.cat-prov{border-top:1px solid var(--line)}
+.cat-prov:last-child{border-bottom:1px solid var(--line)}
+.cat-prov-head{
+  display:flex;align-items:center;gap:14px;padding:16px 4px;cursor:pointer;
+  transition:background .14s;user-select:none}
+.cat-prov-head:hover{background:rgba(255,255,255,.015)}
+.cat-prov-head:focus-visible{outline:2px solid var(--sun);outline-offset:2px}
+.cat-prov-name{font-weight:600;font-size:15.5px;color:var(--fg);flex:none}
+.cat-prov-count{
+  font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.06em;
+  border:1px solid var(--line);padding:3px 8px;flex:none}
+.cat-prov-chevron{font-family:var(--mono);font-size:16px;color:var(--dim);flex:none;width:18px;text-align:center;margin-left:auto}
+.cat-prov-body{padding:0 4px 20px;overflow-x:auto}
+.cat-tbl{width:100%;border-collapse:collapse;font-size:13.5px;min-width:560px}
+.cat-tbl th{text-align:left;padding:8px 14px 10px;border-bottom:1px solid var(--line);
+  color:var(--silver);font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;font-weight:500}
+.cat-tbl th:nth-child(n+3){text-align:right}
+.cat-tbl td{padding:7px 14px;border-bottom:1px solid rgba(198,203,212,.06);color:var(--fg-2)}
+.cat-tbl td:nth-child(n+3){text-align:right}
+.cat-tbl tr:last-child td{border-bottom:none}
+.cat-tbl tr:hover td{background:rgba(255,255,255,.02)}
+.m-name{color:var(--fg);font-weight:500}
+.m-id{font-family:var(--mono);font-size:11px;color:var(--dim);margin-left:8px}
+.m-num{font-family:var(--mono);font-size:12.5px;color:var(--silver)}
+.mb{display:inline-block;font-family:var(--mono);font-size:9.5px;font-weight:600;
+  padding:2px 5px;margin-right:4px;letter-spacing:.05em;vertical-align:1px}
+.mb-r{background:rgba(240,134,46,.14);color:var(--sun-hi)}
+.mb-v{background:rgba(63,182,168,.14);color:var(--teal)}
+.cat-local{color:var(--muted);font-size:14px;line-height:1.6;max-width:52ch;margin:4px 0 0}
+.cat-empty{color:var(--muted);font-family:var(--mono);font-size:15px;padding:40px 0}
+.cat-loading{color:var(--muted);font-family:var(--mono);font-size:15px;padding:40px 0}
+@media(max-width:860px){
+  .cat-search{flex-direction:column;align-items:stretch}
+  .cat-search input[type="search"]{max-width:none}
+}

@@ -11,9 +11,10 @@
  */
 
 import { beforeAll, describe, expect, it } from "bun:test";
-import { containsOrchestrate, highlightOrchestrate, ORCHESTRATE_NOTICE } from "@veyyon/coding-agent/modes/orchestrate";
+import { containsOrchestrate, highlightOrchestrate } from "@veyyon/coding-agent/modes/orchestrate";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { containsUltrathink, highlightUltrathink } from "@veyyon/coding-agent/modes/ultrathink";
+import { ORCHESTRATE_NOTICE } from "@veyyon/coding-agent/session/magic-keyword-notices";
 import { clearBundledCommandsCache, loadBundledCommands } from "@veyyon/coding-agent/task/commands";
 
 beforeAll(() => {

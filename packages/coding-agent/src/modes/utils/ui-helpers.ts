@@ -135,6 +135,10 @@ function imageLinksForMessage(
 }
 
 export class UiHelpers {
+	/** The warning line most recently appended, so an identical repeat can be recognised. */
+	#lastWarningText: Text | undefined;
+	#lastWarningMessage: string | undefined;
+
 	constructor(private ctx: UiHelpersContext) {}
 
 	/** Extract text content from a user message */
@@ -806,8 +810,24 @@ export class UiHelpers {
 		this.ctx.present([new Spacer(1), new Text(theme.fg("error", `Error: ${errorMessage}`), 1, 0)]);
 	}
 
+	/**
+	 * Show a warning in the chat.
+	 *
+	 * The same warning twice with nothing else added between them is one warning: a compaction
+	 * dead end is reported by the prompt-time check and again by the continuation it schedules
+	 * 100ms later, and the second line told the reader nothing the first had not. A different
+	 * warning, or the same one after other content, still gets its own line.
+	 */
 	showWarning(warningMessage: string): void {
-		this.ctx.present([new Spacer(1), new Text(theme.fg("warning", `Warning: ${warningMessage}`), 1, 0)]);
+		const children = this.ctx.chatContainer.children;
+		const last = children.length > 0 ? children[children.length - 1] : undefined;
+		if (last !== undefined && last === this.#lastWarningText && this.#lastWarningMessage === warningMessage) {
+			return;
+		}
+		const text = new Text(theme.fg("warning", `Warning: ${warningMessage}`), 1, 0);
+		this.ctx.present([new Spacer(1), text]);
+		this.#lastWarningText = text;
+		this.#lastWarningMessage = warningMessage;
 	}
 
 	showUpdateReadyNotification(newVersion: string, warnings: readonly string[] = []): void {

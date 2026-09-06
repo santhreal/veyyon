@@ -9,6 +9,7 @@
  * regenerated models.json keeps the correct routing.
  */
 import { describe, expect, test } from "bun:test";
+import { getBundledModels } from "@veyyon/catalog/models";
 import {
 	MODELS_DEV_PROVIDER_DESCRIPTORS,
 	type ModelsDevModel,
@@ -42,24 +43,32 @@ describe("opencode-go resolver routes 404-ing ids to openai-completions (issue #
 		expect(resolved).toEqual({ api: "openai-completions", baseUrl: OPENCODE_GO_BASE });
 	});
 
-	test("runtime /v1/models refresh preserves qwen3.7-max Anthropic transport", async () => {
+	// The subject is read from the bundle rather than hardcoded. A model's
+	// `provider.npm` hint on models.dev moves: qwen3.7-max carried
+	// `@ai-sdk/anthropic` when this test was written and now carries none, so
+	// regeneration correctly gave it the openai-completions default, and a
+	// hardcoded id turned that upstream edit into a red suite. What has to hold is
+	// that a runtime refresh reuses the reference transport instead of collapsing
+	// every id onto the openai-completions default, which only a subject whose
+	// transport is NOT that default can prove.
+	test("a runtime /v1/models refresh preserves a bundled non-default transport", async () => {
+		const reference = getBundledModels("opencode-go").find(model => model.api === "anthropic-messages");
+		if (!reference) throw new Error("no bundled opencode-go model resolves to anthropic-messages");
+
 		let requestedUrl = "";
 		const fetchMock = (async (input: string | Request | URL): Promise<Response> => {
 			requestedUrl = input instanceof Request ? input.url : String(input);
-			return new Response(
-				JSON.stringify({
-					data: [{ id: "qwen3.7-max", name: "Qwen3.7 Max", context_length: 1000000 }],
-				}),
-				{ headers: { "content-type": "application/json" } },
-			);
+			return new Response(JSON.stringify({ data: [{ id: reference.id, name: reference.name }] }), {
+				headers: { "content-type": "application/json" },
+			});
 		}) as typeof fetch;
 
 		const options = opencodeGoModelManagerOptions({ apiKey: "opencode-test-key", fetch: fetchMock });
 		const models = await options.fetchDynamicModels?.();
-		const qwenMax = models?.find(model => model.id === "qwen3.7-max");
+		const refreshed = models?.find(model => model.id === reference.id);
 
 		expect(requestedUrl).toBe("https://opencode.ai/zen/go/v1/models");
-		expect(qwenMax?.api).toBe("anthropic-messages");
-		expect(qwenMax?.baseUrl).toBe("https://opencode.ai/zen/go");
+		expect(refreshed?.api).toBe("anthropic-messages");
+		expect(refreshed?.baseUrl).toBe("https://opencode.ai/zen/go");
 	});
 });

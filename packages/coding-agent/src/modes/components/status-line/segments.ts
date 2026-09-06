@@ -1,34 +1,30 @@
 import * as os from "node:os";
-import * as path from "node:path";
-import { ThinkingLevel } from "@veyyon/agent-core";
-import { normalizePremiumRequests } from "@veyyon/stats/format";
-import { sliceWithWidth, TERMINAL, visibleWidth } from "@veyyon/tui";
-import {
-	clamp01,
-	DEFAULT_PROFILE_DIR_NAME,
-	formatDuration,
-	formatNumber,
-	getActiveProfileOrDefault,
-	getProjectDir,
-	logger,
-	pathIsWithin,
-	relativePathWithinRoot,
-} from "@veyyon/utils";
+// The one-enum leaf, not the `@veyyon/agent-core` barrel: the barrel is the whole agent runtime,
+// 69ms of module evaluation, and the status row draws before a session exists.
+import { ThinkingLevel } from "@veyyon/agent-core/thinking";
+import { TERMINAL } from "@veyyon/tui/terminal-capabilities";
+import { truncateToWidth } from "@veyyon/tui/utils";
+import { DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault, getProjectDir } from "@veyyon/utils/dirs";
+import { formatDuration, formatNumber, normalizePremiumRequests } from "@veyyon/utils/format";
+import { clamp01 } from "@veyyon/utils/math";
 import { PRIORITY_TIER_LABEL } from "../../../config/service-tier";
 import { withIcon } from "../../../modes/theme/icon-label";
 import { type ThemeColor, theme } from "../../../modes/theme/theme";
-import { describeMsLeft } from "../../../secrets/vault";
 import { normalizeApprovalMode } from "../../../tools/approval";
 import { AUTONOMY_LABEL } from "../../../tools/approval-modes";
-import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../../../tools/render-utils";
+// The limits leaf, not `tools/render-utils`: that module reaches the tool renderers,
+// path helpers and image resizing, and this row needs two numbers from it.
+import { TRUNCATE_LENGTHS } from "../../../tools/render-limits";
 import { getSessionAccentAnsi, getSessionAccentHex } from "../../../utils/session-color";
 import { sanitizeStatusText } from "../../shared";
+import { isTreeDirty, renderBranch } from "./branch";
 import {
 	type ContextUsageLevel,
 	formatContextRemainingPercent,
 	getContextUsageLevel,
 	getContextUsageThemeColor,
 } from "./context-thresholds";
+import { renderLocation } from "./location";
 import { joinStates } from "./state-grammar";
 import type { RenderedSegment, SegmentContext, StatusLineSegment, StatusLineSegmentId } from "./types";
 
@@ -39,42 +35,6 @@ export type { SegmentContext } from "./types";
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * How close a secret's deadline has to be before the secrets chip prints it.
- *
- * One hour. Inside it the operator can still finish what the credential is for, or give it a fresh
- * lease with `/secret extend`, which is the whole reason to say anything; outside it the deadline is
- * a fact about next week and belongs in the EXPIRES column of `/secret list`. A chip that always
- * shows a countdown is a chip nobody reads by the time the countdown means something.
- */
-const SECRET_EXPIRY_CHIP_WINDOW_MS = 60 * 60 * 1000;
-
-/**
- * Clamp a path/label to `maxLen` CELLS, prepending an ellipsis when clipped.
- *
- * CLIPPED FROM ONE END, AND IT IS THE HEAD. A path's identifying end is its last
- * segment -- the directory the session is actually in -- so that is the end that
- * survives. The width-driven shortening in the component clips the joined location
- * the same direction, which is what stops the two of them putting an ellipsis on
- * BOTH ends of one path: `…orm-services/ingest-pipeline/norm…` named neither the
- * project it sits under nor the directory it is in. A clipped path now carries
- * exactly one ellipsis, at the front, and reads as a suffix of the real path.
- *
- * CELLS, not UTF-16 units. `maxLen` is compared against the columns the row will
- * spend, so a path holding wide characters -- a CJK directory name, an emoji in a
- * project folder -- was clamped at roughly half the width it then painted, and
- * `String.prototype.slice` could cut a surrogate pair or a grapheme cluster in
- * half and hand the row a lone code unit to render.
- */
-function clampPathLength(pwd: string, maxLen: number): string {
-	const total = visibleWidth(pwd);
-	if (total <= maxLen) return pwd;
-	const ellipsis = "…";
-	const room = Math.max(0, maxLen - visibleWidth(ellipsis));
-	if (room === 0) return ellipsis;
-	return `${ellipsis}${sliceWithWidth(pwd, total - room, room, true).text}`;
-}
-
-/**
  * Leading glyph of a thinking-level display string (e.g. "◉ xhigh" → "◉").
  * Compact mode promotes this glyph to the model-segment icon so the level
  * stays visible without the verbose " · <level>" tail.
@@ -82,115 +42,6 @@ function clampPathLength(pwd: string, maxLen: number): string {
 function thinkingGlyph(display: string): string {
 	const space = display.indexOf(" ");
 	return space === -1 ? display : display.slice(0, space);
-}
-
-/**
- * Workspace roots the path segment shows a project RELATIVE to, when no root is configured.
- *
- * Two conventions, and that is all they are: a `Projects` directory in the home directory, and
- * a `/work` mount. They are the default because they are what this segment has always
- * stripped, not because they are anyone's layout -- `path.displayRoots` is how a session names
- * its own, and `/work` on Windows resolves against whichever drive the process is on, which is
- * an accident of `path.resolve` rather than a place anything lives.
- *
- * READ WHEN USED, NOT AT IMPORT. As a module const this joined the home directory once, at the
- * moment the module loaded, and a home resolved after that -- a different `HOME` in a worker, a
- * test that answers `os.homedir()` for a fixture -- never matched a default root again, so the
- * whole default silently stopped stripping. `os.homedir()` reads an environment variable; a
- * render can afford it.
- */
-export function defaultDisplayRoots(): readonly string[] {
-	return [path.join(os.homedir(), "Projects"), "/work"];
-}
-
-/** Display roots already reported as unusable, so a bad entry is named once and not per frame. */
-const warnedDisplayRoots = new Set<string>();
-
-/**
- * Expand `~` and reject a root that cannot contain anything.
- *
- * A relative or empty entry never matches a working directory, so left alone it would be a
- * setting that reads as applied and does nothing. It is dropped and named instead. Named to the
- * log rather than thrown: this runs inside a render, and a status line that raises takes the
- * composer down over a typo in a display preference.
- *
- * Both separators are accepted after the tilde. A Windows config is written with the separator
- * that platform uses, and `~\code` silently falling through as a relative entry would be the
- * same setting-that-does-nothing this rejects loudly.
- */
-export function resolveDisplayRoots(roots: readonly string[]): string[] {
-	const resolved: string[] = [];
-	for (const root of roots) {
-		const trimmed = typeof root === "string" ? root.trim() : "";
-		const afterTilde = trimmed.startsWith("~/") || trimmed.startsWith("~\\") ? trimmed.slice(2) : null;
-		const expanded =
-			trimmed === "~" ? os.homedir() : afterTilde === null ? trimmed : path.join(os.homedir(), afterTilde);
-		if (expanded !== "" && path.isAbsolute(expanded)) {
-			resolved.push(expanded);
-			continue;
-		}
-		if (warnedDisplayRoots.has(trimmed)) continue;
-		warnedDisplayRoots.add(trimmed);
-		logger.warn("Status line path display root ignored: not an absolute path", { root });
-	}
-	return resolved;
-}
-
-/**
- * One slot, because the row re-renders on every keystroke and every animation frame while the
- * working directory changes a handful of times a session. Each root costs a `realpath` inside
- * `relativePathWithinRoot`, so an uncached list of four roots is four syscalls a frame.
- */
-let displayRootCache: { pwd: string; key: string; result: string } | null = null;
-
-function stripDisplayRoot(pwd: string, roots: readonly string[] | undefined): string {
-	const declared = roots ?? defaultDisplayRoots();
-	const key = declared.join("\u0000");
-	if (displayRootCache?.pwd === pwd && displayRootCache.key === key) return displayRootCache.result;
-	let result = pwd;
-	for (const root of resolveDisplayRoots(declared)) {
-		const relative = relativePathWithinRoot(root, pwd);
-		if (relative) {
-			result = relative;
-			break;
-		}
-	}
-	displayRootCache = { pwd, key, result };
-	return result;
-}
-
-/**
- * Directories a project is shown relative to with the scratch icon instead of a display root.
- *
- * Read when used, for the reason {@link defaultDisplayRoots} states: `os.tmpdir()` and the home
- * directory both come from the environment, and a list built at import time answers for the
- * environment the process started in rather than the one it is rendering.
- */
-function scratchRoots(): readonly string[] {
-	const roots = new Set<string>([os.tmpdir(), path.join(os.homedir(), "tmp")]);
-	if (process.platform === "win32") {
-		const { TEMP, TMP, SystemRoot } = process.env;
-		if (TEMP) roots.add(TEMP);
-		if (TMP) roots.add(TMP);
-		if (SystemRoot) roots.add(path.join(SystemRoot, "Temp"));
-	} else {
-		roots.add("/tmp");
-		roots.add("/var/tmp");
-		if (process.platform === "darwin") {
-			roots.add("/private/tmp");
-			roots.add("/private/var/tmp");
-		}
-	}
-	return [...roots];
-}
-
-function classifyProjectDir(pwd: string): { scratch: boolean; relative: string | null } {
-	for (const root of scratchRoots()) {
-		if (pathIsWithin(root, pwd)) {
-			return { scratch: true, relative: relativePathWithinRoot(root, pwd) };
-		}
-	}
-	return { scratch: false, relative: null };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -252,12 +103,12 @@ const piSegment: StatusLineSegment = {
 const modelSegment: StatusLineSegment = {
 	id: "model",
 	render(ctx) {
-		const state = ctx.session.state;
+		const { model, thinkingLevel, autoThinking, advisorActive } = ctx.facts;
 		const opts = ctx.options.model ?? {};
 
 		// A model name is provider text: it arrives from a `/models` listing or from a custom
 		// endpoint's config, so it is no more trusted than a directory name.
-		let modelName = sanitizeStatusText(state.model?.name || state.model?.id || "") || "no-model";
+		let modelName = sanitizeStatusText(model?.name || model?.id || "") || "no-model";
 		if (modelName.startsWith("Claude ")) {
 			modelName = modelName.slice(7);
 		}
@@ -265,19 +116,15 @@ const modelSegment: StatusLineSegment = {
 		// Resolve the current thinking-level display ("◉ xhigh", "◐ auto", …)
 		// when the model supports thinking and the segment isn't hiding it.
 		let thinkingDisplay = "";
-		if (opts.showThinkingLevel !== false && state.model?.thinking) {
-			if (ctx.session.isAutoThinking) {
+		if (opts.showThinkingLevel !== false && model?.supportsThinking) {
+			if (autoThinking) {
 				// Pending (no turn classified yet / classifying) shows a symbol-theme
 				// question-box marker; once resolved it shows `<level>`.
-				const resolved = ctx.session.autoResolvedThinkingLevel();
-				thinkingDisplay = resolved
-					? (theme.thinking[resolved as keyof typeof theme.thinking] ?? resolved)
+				thinkingDisplay = autoThinking.resolved
+					? (theme.thinking[autoThinking.resolved as keyof typeof theme.thinking] ?? autoThinking.resolved)
 					: `${theme.thinking.autoPending} auto`;
-			} else {
-				const level = state.thinkingLevel ?? ThinkingLevel.Off;
-				if (level !== ThinkingLevel.Off) {
-					thinkingDisplay = theme.thinking[level as keyof typeof theme.thinking] ?? "";
-				}
+			} else if (thinkingLevel !== ThinkingLevel.Off) {
+				thinkingDisplay = theme.thinking[thinkingLevel as keyof typeof theme.thinking] ?? "";
 			}
 		}
 
@@ -302,7 +149,7 @@ const modelSegment: StatusLineSegment = {
 		// `statusLineModel` is aliased to `accent` in many themes, so the badge
 		// uses `success` to stay visibly distinct from the model name color.
 		let content = theme.fg("statusLineModel", withIcon(modelIcon, modelName));
-		if (ctx.session.isAdvisorActive()) {
+		if (advisorActive) {
 			content += theme.fg("success", "++");
 		}
 		if (tail) {
@@ -315,7 +162,7 @@ const modelSegment: StatusLineSegment = {
 		// its own `warning`-colored chip, and it names itself wherever there is room,
 		// so it reads as a serving choice. Naming it also makes the tier visible in
 		// symbol themes whose `icon.fast` is empty, where it used to show nothing.
-		if (ctx.session.isFastModeActive()) {
+		if (ctx.facts.fastMode) {
 			content += theme.fg("warning", ` ${formatServiceTierChip(compact)}`);
 		}
 
@@ -377,8 +224,7 @@ function goalSpinnerIcon(activeMs: number): string {
 }
 
 function renderGoalMode(ctx: SegmentContext, mode: { enabled: boolean; paused: boolean }): string {
-	const goal = ctx.session.getGoalModeState()?.goal;
-	const modelBudgetsEnabled = ctx.session.settings.get("goal.modelBudgetsEnabled");
+	const { goal, goalModelBudgets: modelBudgetsEnabled } = ctx.facts;
 	const persistedStatus = goal?.status ?? (mode.paused ? "paused" : "active");
 	const status = !modelBudgetsEnabled && persistedStatus === "budget-limited" ? "active" : persistedStatus;
 
@@ -419,12 +265,12 @@ function renderGoalMode(ctx: SegmentContext, mode: { enabled: boolean; paused: b
 	if (running && nearBudget) color = "warning";
 
 	// Live motion while the agent streams under a running goal; steady otherwise.
-	if (running && ctx.session.isStreaming) icon = goalSpinnerIcon(ctx.activeMs);
+	if (running && ctx.facts.streaming) icon = goalSpinnerIcon(ctx.activeMs);
 
 	// The goal's own values are bound to it with a plain space: the budget and
 	// percent are this state's readout, not further states, and the separator
 	// grammar reserves `·` for a boundary between independent states.
-	const verbose = ctx.session.settings.get("goal.statusInFooter") === true;
+	const verbose = ctx.facts.goalVerbose;
 	const parts: string[] = [withIcon(icon, "Goal")];
 	if (goal) parts.push(formatGoalProgress(tokensUsed, tokenBudget, verbose));
 	return theme.fg(color, parts.join(" "));
@@ -531,10 +377,10 @@ function renderApprovalRung(ctx: SegmentContext): string {
 	// nothing, and the whole segment disappeared — in the one state where every
 	// write tool is denied and the operator most needs to know why.
 	if (ctx.planMode?.enabled) return "";
-	// A host that supplies no session accessor gets no rung rather than a thrown
-	// status line. The accessor is non-optional on `AgentSession`; this guard is
-	// for the embedders and stubs that satisfy the narrower `SegmentContext`.
-	const level = normalizeApprovalMode(ctx.session.effectiveApprovalMode?.());
+	// An absent mode is the ordinary launch state, not an error: config may name
+	// no rung, and `normalizeApprovalMode` answers `undefined` with the default
+	// the session will enforce. The row states a rung from the first frame.
+	const level = normalizeApprovalMode(ctx.facts.approvalMode);
 	const color: ThemeColor =
 		level === "yolo" ? "error" : level === "auto" ? "warning" : level === "plan" ? "warning" : "modeAccent";
 	return theme.fg(color, AUTONOMY_LABEL[level]);
@@ -551,7 +397,7 @@ function renderApprovalRung(ctx: SegmentContext): string {
  * the always-on guarantee and this text is the label.
  */
 function renderBypassMarker(ctx: SegmentContext): string {
-	if (!ctx.session.isApprovalBypassed()) return "";
+	if (!ctx.facts.approvalBypassed) return "";
 	// `withIcon`, not a template: a symbol preset is allowed to render this glyph
 	// as the empty string, and the hand-written form then emitted a leading space
 	// that the join above would carry into the middle of the line.
@@ -581,66 +427,18 @@ const modeSegment: StatusLineSegment = {
 	},
 };
 
-/**
- * The cells `withIcon` spends on the glyph and the space after it, which is what a front clip
- * has to step over to keep the icon. Zero for the symbol presets whose icons are empty --
- * there is nothing to keep and nothing to step over.
- */
-function iconPin(icon: string): number {
-	return icon ? visibleWidth(icon) + 1 : 0;
-}
-
 const pathSegment: StatusLineSegment = {
 	id: "path",
 	render(ctx) {
-		const opts = ctx.options.path ?? {};
-		const stripPrefix = opts.stripWorkPrefix !== false;
-
-		// Linked git worktree: the on-disk path nests the worktree base, the
-		// project, and a worktree dir that usually duplicates the branch (already
-		// shown by the git segment). Collapse to the project name, appending the
-		// worktree dir only when it diverges from the branch.
-		if (stripPrefix && ctx.worktree) {
-			const { projectName, worktreeName } = ctx.worktree;
-			const label = ctx.git.branch === worktreeName ? projectName : `${projectName}/${worktreeName}`;
-			const content = withIcon(
-				theme.icon.worktree,
-				clampPathLength(sanitizeStatusText(label), opts.maxLength ?? 40),
-			);
-			return { content: theme.fg("statusLinePath", content), visible: true, pin: iconPin(theme.icon.worktree) };
-		}
-
-		const projectDir = ctx.session.sessionManager?.getCwd?.() ?? ctx.activeRepo?.cwd ?? getProjectDir();
-		const { scratch, relative } = classifyProjectDir(projectDir);
-		let pwd = projectDir;
-
-		if (stripPrefix) {
-			if (scratch) {
-				if (relative) pwd = relative;
-			} else {
-				pwd = stripDisplayRoot(pwd, opts.displayRoots);
-			}
-		}
-		const repoSuffix = ctx.activeRepo ? ` ↳ ${sanitizeStatusText(ctx.activeRepo.relativeRepoRoot)}` : "";
-		if (opts.abbreviate !== false) {
-			pwd = shortenPath(pwd);
-		}
-
-		// A directory name is arbitrary bytes on every platform veyyon runs on except Windows: a
-		// tab opens a hole the width arithmetic cannot see, a CR rewinds the row over itself, a
-		// BEL rings on every repaint, and an ESC in a directory name is an escape sequence this
-		// row would hand the terminal. Sanitized BEFORE the clamp, so the budget is measured on
-		// the cells that reach the screen. The same treatment the PR title and the account label
-		// already get; the path and the branch were reading straight from the filesystem.
-		pwd = clampPathLength(sanitizeStatusText(pwd), opts.maxLength ?? 40);
-		if (repoSuffix) {
-			pwd = `${pwd}${repoSuffix}`;
-		}
-
-		const showScratchIcon = scratch && stripPrefix;
-		const icon = showScratchIcon ? theme.icon.scratchFolder : theme.icon.folder;
-		const content = withIcon(icon, pwd);
-		return { content: theme.fg("statusLinePath", content), visible: true, pin: iconPin(icon) };
+		const projectDir = ctx.facts.cwd ?? ctx.activeRepo?.cwd ?? getProjectDir();
+		const { content, pin } = renderLocation({
+			projectDir,
+			worktree: ctx.worktree,
+			branch: ctx.git.branch,
+			activeRepoRelativeRoot: ctx.activeRepo?.relativeRepoRoot ?? null,
+			options: ctx.options.path,
+		});
+		return { content, visible: true, pin };
 	},
 };
 
@@ -650,28 +448,11 @@ const gitSegment: StatusLineSegment = {
 		const { branch, status } = ctx.git;
 		if (!branch && !status) return { content: "", visible: false };
 
-		const opts = ctx.options.git ?? {};
-		const gitStatus = status;
-		const isDirty = gitStatus && (gitStatus.staged > 0 || gitStatus.unstaged > 0 || gitStatus.untracked > 0);
-
-		const showBranch = opts.showBranch !== false;
-		let content = "";
-		if (showBranch && branch) {
-			// `.git/HEAD` is read as a file rather than through `git check-ref-format`, so the
-			// refname on the row is whatever a checkout put there.
-			content = withIcon(theme.icon.branch, sanitizeStatusText(branch));
-		}
-
-		// Branch plus one bare dirty marker. There used to be a second mode here
-		// that broke the dirt out into per-kind counts (`*2 +1 ?3`), gated on
-		// `compact` plus three `show*` flags the presets all set. Nothing could
-		// reach it: the composer footline is the only renderer of any segment and
-		// it asks for the compact form unconditionally, so the counts, the flags
-		// and the presets' settings for them were configuration over dead code.
-		if (isDirty) content = `${content} ${theme.fg("statusLineDirty", "*")}`;
+		const showBranch = ctx.options.git?.showBranch !== false;
+		const dirty = isTreeDirty(status);
+		const content = renderBranch(showBranch ? branch : null, dirty);
 		if (!content) return { content: "", visible: false };
-		const colorName = isDirty ? "statusLineGitDirty" : "statusLineGitClean";
-		return { content: theme.fg(colorName, content), visible: true };
+		return { content, visible: true };
 	},
 };
 
@@ -770,8 +551,7 @@ const costSegment: StatusLineSegment = {
 	render(ctx) {
 		const { cost, premiumRequests } = ctx.usageStats;
 		const normalizedPremiumRequests = normalizePremiumRequests(premiumRequests);
-		const state = ctx.session.state;
-		const usingSubscription = state.model ? ctx.session.modelRegistry.isUsingOAuth(state.model) : false;
+		const usingSubscription = ctx.facts.subscription;
 
 		if (!cost && !usingSubscription && !normalizedPremiumRequests) {
 			return { content: "", visible: false };
@@ -853,7 +633,7 @@ const contextPctSegment: StatusLineSegment = {
 		// footline is the only renderer and it always asked for the bar, so the
 		// readout, both options and the ramp were unreachable.
 		const remainingRatio = pct === null || pct === undefined ? 1 : Math.max(0, 100 - pct) / 100;
-		const bar = renderContextBar(remainingRatio, level, Date.now(), ctx.session.isStreaming);
+		const bar = renderContextBar(remainingRatio, level, Date.now(), ctx.facts.streaming);
 		const pctText = formatContextRemainingPercent(pct);
 		const autoIcon =
 			ctx.autoCompactEnabled && theme.icon.auto ? ` ${theme.fg("sessionAccent", theme.icon.auto)}` : "";
@@ -924,9 +704,7 @@ const timeSegment: StatusLineSegment = {
 const sessionSegment: StatusLineSegment = {
 	id: "session",
 	render(ctx) {
-		const sessionManager = ctx.session.sessionManager;
-		const sessionId = sessionManager?.getSessionId?.();
-		const display = sessionId?.slice(0, 8) || "new";
+		const display = ctx.facts.sessionId?.slice(0, 8) || "new";
 
 		// Session identity reads in the cool arc's session hue (teal on titanium).
 		return { content: theme.fg("sessionAccent", withIcon(theme.icon.session, display)), visible: true };
@@ -983,56 +761,6 @@ const accountSegment: StatusLineSegment = {
 	},
 };
 
-/**
- * That a credential is live HERE, and when the first of them stops being live.
- *
- * NOTHING OUTSIDE THE CARD SAID A SECRET EXISTED. A vault is per directory and expansion is per
- * placeholder, so the two questions an operator has while typing are whether `#GITHUB_TOKEN#` will
- * turn into anything in THIS session and whether it still will in an hour, and both were answerable
- * only by opening `/secret`. The consequence was not confusion but pasted plaintext: a credential
- * typed into the composer because the reader had no reason to believe a placeholder was live.
- *
- * COUNTED FROM THE EXPANSION AUTHORITY, never from the vault file. `SecretObfuscator.liveSecrets`
- * answers with the set the tool boundary would actually substitute from, so a credential scoped to
- * another directory, one this process retired, and one that expired ten minutes ago are all absent
- * from the count. A chip that overstates what will expand is worse than no chip, because the
- * operator plans around it.
- *
- * NAMED CREDENTIALS AND AUTO-DETECTED VALUES ARE COUNTED APART, because adding them up printed a
- * number the operator could not reconcile with anything: a session protects `secrets.yml`, the
- * vault, AND every environment variable whose name matches an env keyword, so one stored
- * credential beside two keyword-matching variables read `3 secrets` here while `/secret list`
- * answered one active secret. An environment value is registered without a name, so it is masked
- * on the way out but cannot be spent as `#NAME#` and the list has nothing to call it. `1 secret ·
- * 2 masked` says both facts, and the leading number now agrees with the list. `·` is the
- * separator because these are two independent states, per the grammar at `renderGoalMode`.
- *
- * Silent when nothing is live, on the same terms as the account chip: a user with no vault pays
- * nothing for it, and the decluttered footline stays quiet.
- *
- * The deadline is shown only once it is CLOSE, within {@link SECRET_EXPIRY_CHIP_WINDOW_MS}. A
- * credential with six days left is not news, and printing `6d left` on every frame trains the
- * reader to ignore the field that matters at forty minutes.
- */
-const secretsSegment: StatusLineSegment = {
-	id: "secrets",
-	render(ctx) {
-		const live = ctx.session.obfuscator?.liveSecrets();
-		if (!live || live.count === 0) return { content: "", visible: false };
-		const masked = live.count - live.named;
-		const parts: string[] = [];
-		if (live.named > 0) parts.push(`${live.named} ${live.named === 1 ? "secret" : "secrets"}`);
-		if (masked > 0) parts.push(`${masked} masked`);
-		const body = theme.fg("muted", parts.join(" · "));
-		const left = live.nextExpiryAt === undefined ? undefined : live.nextExpiryAt - Date.now();
-		if (left === undefined || left > SECRET_EXPIRY_CHIP_WINDOW_MS) return { content: body, visible: true };
-		// The parentheses carry the body's colour and the phrase inside carries the warning, so the
-		// deadline is the only thing on the chip that changes weight when it starts to matter.
-		const deadline = `${theme.fg("muted", "(")}${theme.fg("warning", describeMsLeft(left))}${theme.fg("muted", ")")}`;
-		return { content: `${body} ${deadline}`, visible: true };
-	},
-};
-
 const cacheReadSegment: StatusLineSegment = {
 	id: "cache_read",
 	render(ctx) {
@@ -1082,8 +810,7 @@ const cacheHitSegment: StatusLineSegment = {
 const sessionNameSegment: StatusLineSegment = {
 	id: "session_name",
 	render(ctx) {
-		const sessionManager = ctx.session.sessionManager;
-		const name = sessionManager?.getSessionName();
+		const name = ctx.facts.sessionName;
 		if (!name) return { content: "", visible: false };
 
 		const ansi =
@@ -1174,7 +901,6 @@ export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
 	pi: piSegment,
 	model: modelSegment,
 	account: accountSegment,
-	secrets: secretsSegment,
 	mode: modeSegment,
 	path: pathSegment,
 	git: gitSegment,

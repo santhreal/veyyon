@@ -7,6 +7,7 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { TRUNCATION_MIN_TEXT_TOKENS } from "@veyyon/coding-agent/session/compaction-policy";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 
@@ -520,9 +521,20 @@ describe("AgentSession context promotion", () => {
 		// summarized by that model at all, because the summarization request carries
 		// the conversation it is summarizing. The recovery has to say so and leave the
 		// overflow in place, rather than reporting a compaction that never ran.
+		//
+		// The history is MANY small messages rather than one enormous one, and that is
+		// the whole fixture. A single oversized text is what the truncation tier exists
+		// to cut, so a session wedged that way is rescued rather than parked, and this
+		// case then measured the rescue and not the refusal. Every message here is under
+		// `TRUNCATION_MIN_TEXT_TOKENS`, so no tier has anything eligible to reduce and
+		// the dead end is the real one.
 		const model = modelRegistry.find("openai-codex", "gpt-5.3-codex-spark");
 		if (!model) {
 			throw new Error("Expected codex spark model to exist");
+		}
+		const contextWindow = model.contextWindow;
+		if (contextWindow === null) {
+			throw new Error("Expected codex spark model to state a context window");
 		}
 		const settings = Settings.isolated({
 			"compaction.enabled": true,
@@ -541,9 +553,16 @@ describe("AgentSession context promotion", () => {
 			settings,
 			modelRegistry,
 		});
-		// Roughly twice the window, so no candidate can hold the request.
-		session.sessionManager.appendMessage(createUserMessage("old context ".repeat(80_000)));
-		session.sessionManager.appendMessage(createAssistantMessage(model, "old response"));
+		// Roughly twice the window, so no candidate can hold the request, spread over
+		// messages the truncation tier will not touch. `"old context "` is 12 characters
+		// and tokenizes at about three tokens, so each message is well under the
+		// truncation floor and the pile is well over the window.
+		const perMessageTokens = Math.floor(TRUNCATION_MIN_TEXT_TOKENS / 2);
+		const messageCount = Math.ceil((2 * contextWindow) / perMessageTokens);
+		for (let index = 0; index < messageCount; index++) {
+			session.sessionManager.appendMessage(createUserMessage("old context ".repeat(perMessageTokens / 3)));
+			session.sessionManager.appendMessage(createAssistantMessage(model, `old response ${index}`));
+		}
 		session.sessionManager.appendMessage(createUserMessage("current request"));
 		session.agent.replaceMessages(session.sessionManager.buildSessionContext().messages);
 		const events: Array<Extract<AgentSessionEvent, { type: "auto_compaction_end" }>> = [];

@@ -1,27 +1,14 @@
 /**
- * Noticing that the session is working somewhere other than its working
- * directory, and saying so once.
+ * Appends a one-line `set_cwd` suggestion to a tool result when the session repeatedly reads or
+ * edits under a directory outside its working directory.
  *
- * WHY THIS EXISTS. `set_cwd` re-roots the session, which makes read/edit headers
- * relative instead of absolute and loads the destination project's `AGENTS.md`.
- * Both matter, and neither happens unless something calls the tool. Nothing did,
- * reliably: the only text describing when to re-root lived in the tool's own
- * description, and `set_cwd` is a `discoverable` tool, so it is not in the initial
- * toolset. A model that has not gone looking for the tool has never read the
- * advice, and a model that has not read the advice does not go looking. Asking it
- * to notice on its own is asking it to infer a policy from an absence.
+ * `set_cwd` is a `discoverable` tool, so it is absent from the initial toolset and its description
+ * goes unread until something surfaces it. Filesystem tool calls already declare their targets for
+ * the cwd boundary, so the hint is derived from those targets rather than from the model electing
+ * to look the tool up.
  *
- * So the harness notices instead. Every filesystem tool call already declares its
- * targets for the cwd boundary; this watches those targets and, once a directory
- * outside cwd has been touched enough times to be the real subject of the session,
- * appends one short line to that tool's result. Deterministic input, deterministic
- * trigger, delivered where the model is already reading.
- *
- * IT MUST NOT NAG. A hint that repeats is worse than no hint: it burns context on
- * every call and trains the model to skim past it. Each directory is mentioned at
- * most once, the session emits at most {@link MAX_HINTS} in total, and a directory
- * the model has already re-rooted into can never be suggested because it stops
- * being outside cwd.
+ * Each directory is named at most once and a session emits at most {@link MAX_HINTS}. A directory
+ * that has been re-rooted into is no longer outside cwd and cannot be suggested again.
  */
 
 import type { Dirent } from "node:fs";
@@ -37,43 +24,34 @@ import { isPathWithinCwd, resolveToCwd, splitPathAndSel } from "./path-utils";
 /**
  * Distinct files under one directory before it is worth mentioning.
  *
- * Two is a coincidence: reading a config file and a type declaration from another
- * project while working here is ordinary and re-rooting for it would be wrong.
- * Three files in one place is a pattern, and by then the absolute paths in every
- * header have already cost more than the hint will.
+ * Two files is ordinary incidental access from another project; three in one place is a pattern.
  */
 export const REROOT_FILE_THRESHOLD = 3;
 
 /**
- * Distinct files under one directory before it is worth mentioning, when the session is rooted
- * somewhere that is not a project at all.
+ * The threshold when the session is rooted somewhere that is not a project, such as `$HOME` or a
+ * mount point.
  *
- * One, because the evidence the normal threshold is gathering has already been supplied. Three
- * files exist to tell "the work has moved" apart from "a file was read in passing", and that is a
- * real question when the session is properly rooted in a project. It is not a question when the
- * session is sitting in `$HOME` or on a mount point: there is no project here for the read to be
- * incidental TO, so the first file touched anywhere else is the work. Waiting for two more means
- * the first several calls are all paid at full absolute-path price for nothing.
+ * One, because no project exists here for a read to be incidental to, so the first file touched
+ * elsewhere is the work. The higher threshold only distinguishes "the work moved" from "a file was
+ * read in passing", which is not a question when the root is not a project.
  */
 export const MISROOTED_FILE_THRESHOLD = 1;
 
 /**
- * The name of the re-root tool, owned here because this is the module that has to
- * NAME it in prose and ACTIVATE it, and `set-cwd.ts` is far too heavy to import
- * from a leaf that every tool call passes through. `SetCwdTool.name` and the
- * renderer read it from here, so the string the hint prints and the string the
- * model can call are the same string by construction.
+ * The name of the re-root tool.
+ *
+ * Owned here rather than in `set-cwd.ts`, which is too heavy to import from a leaf that every tool
+ * call passes through. `SetCwdTool.name` and the renderer read it from here, so the string printed
+ * and the string the model can call are the same by construction.
  */
 export const SET_CWD_TOOL_NAME = "set_cwd";
 
 /**
- * Ancestors credited for each touched file.
+ * Ancestors credited for each touched file, so a nested file can nominate its project root and not
+ * only its immediate directory.
  *
- * A file at `<root>/packages/thing/src/a.ts` should be able to nominate `<root>`,
- * not only its immediate directory, because the project root is what a user means
- * by "work over there". The cap keeps a deeply nested path from nominating `/`,
- * which is never a useful suggestion and would let files from unrelated trees
- * accumulate against the same bucket.
+ * The cap stops a deeply nested path nominating `/` and pooling unrelated trees in one bucket.
  */
 const MAX_ANCESTOR_DEPTH = 6;
 
@@ -155,31 +133,22 @@ const CONTAINER_SCAN_SKIP = new Set([
 ]);
 
 /**
- * Whether a repository root is really a CONTAINER of projects rather than a project.
+ * Whether a repository root contains projects rather than being one.
  *
- * WHY A REPOSITORY BOUNDARY IS NOT ENOUGH. `.git` was treated as decisive, on the reasoning that a
- * repository boundary settles what counts as one project. It does not, because a tree can be under
- * version control for a reason that has nothing to do with being a project: a whole working tree
- * mirrored for disaster recovery is one repository holding dozens of unrelated projects, and
- * re-rooting a session there is worse than never re-rooting at all. Every path in the project the
- * session actually cares about stays long, and the rules that load are the container's, not the
- * project's.
+ * A `.git` boundary does not settle it. A tree can be under version control for a reason unrelated
+ * to being a project, such as a whole working tree mirrored for backup, and re-rooting into such a
+ * container leaves every path in the real project long and loads the container's rules rather than
+ * the project's.
  *
- * WHAT DOES NOT SEPARATE THEM: counting nested repositories. That was the first answer here and it
- * is wrong, because a perfectly ordinary project can carry many. The project that prompted this
- * carries a benchmark corpus of forty-odd checkouts under `packages/evals/datasets/repo-cache/`, so
- * a count classifies it as a container, which is exactly backwards. Neither manifests nor child
- * count separate them either: the container and the project inside it both carry `AGENTS.md` and
- * `Cargo.toml` at their roots and have 59 and 47 direct children.
+ * Counting nested repositories does not separate the two, because an ordinary project may vendor or
+ * cache many. Manifests and child count do not separate them either: a container and a project
+ * inside it can both carry `AGENTS.md` and `Cargo.toml` at their roots with comparable child counts.
  *
- * WHAT DOES SEPARATE THEM: whether the outer repository IGNORES the nested one. That is not a
- * statistical signal, it is the maintainer's own statement. A project that vendors, caches, or
- * fixtures another repository gitignores it, saying "this is not part of me" -- both of the nested
- * repositories in the project above are ignored, by `repo-cache/` and `deep-swe/` entries. A tree
- * that merely HOLDS other projects ignores none of them, because they are not its content in the
- * first place: not one of the container's forty-one is ignored. So one unignored nested repository
- * is enough, and it costs a bounded directory scan plus a single batched `git check-ignore`, at
- * most {@link MAX_HINTS} times in a session.
+ * The discriminator is whether the outer repository ignores the nested one. A project that vendors,
+ * caches or fixtures another repository gitignores it; a tree that merely holds unrelated projects
+ * ignores none of them. One unignored nested repository is therefore enough, at a cost of one
+ * bounded directory scan plus a single batched `git check-ignore`, at most {@link MAX_HINTS} times
+ * per session.
  */
 export async function isRepositoryContainer(directory: string): Promise<boolean> {
 	const root = path.resolve(directory);
@@ -388,29 +357,22 @@ export const NON_PROJECT_REASON_TEXT: Record<NonProjectReason, string> = {
 /**
  * The project root a qualifying directory belongs to.
  *
- * WHY THIS EXISTS. {@link RerootDetector} ranks candidates deepest-first, and that is right for
- * choosing WHICH activity to report: every ancestor of a busy directory is credited the same
- * evidence, so an evidence-first rule would name the common ancestor of two unrelated projects.
- * It is wrong for choosing WHERE TO POINT. Three reads under
- * `keyhog/crates/cli/src/subcommands/` made that directory the winner, and the hint then advised
- * re-rooting five levels inside a project the user thinks of as one thing. Re-rooting there is
- * actively worse than not re-rooting: every other file in the same project becomes an absolute
- * path again, and the project's own root `AGENTS.md` is no longer the nearest rule file. The rule
- * markdown had said "re-root to that project's ROOT, not the directory the file happens to sit in"
- * since it was written; the detector simply never did it.
+ * {@link RerootDetector} ranks candidates deepest-first, which is correct for choosing which
+ * activity to report, since every ancestor of a busy directory is credited the same evidence. It is
+ * wrong for choosing where to point: the deepest directory can sit several levels inside a project
+ * that is one thing to the user, and re-rooting there is worse than not re-rooting, because every
+ * other file in that project becomes absolute again and the project's root `AGENTS.md` is no longer
+ * the nearest rule file.
  *
- * So the deepest directory decides WHAT to report and this decides WHERE. The walk stops at the
- * first `.git`, because a repository boundary settles the question, and otherwise returns the
- * OUTERMOST manifest-bearing directory found: in a workspace, the member manifests are the deep
- * answer and the workspace manifest is the one the user means.
+ * The deepest directory decides what to report; this decides where to point. The walk stops at the
+ * first `.git`, and otherwise returns the outermost manifest-bearing directory, since in a
+ * workspace the member manifests are the deep answer and the workspace manifest is the intended one.
  *
- * A directory containing `cwd` is never returned. Re-rooting to an ancestor of the working
- * directory widens the session's reach rather than moving it, and turns every path that is
- * currently relative into an absolute one.
+ * A directory containing `cwd` is never returned: re-rooting to an ancestor widens the session's
+ * reach rather than moving it, and makes every currently-relative path absolute.
  *
- * Returns `directory` unchanged when nothing above it is marked, which is a real answer and not a
- * fallback: an unmarked tree has no root to prefer, and the observed directory is still where the
- * work is.
+ * Returns `directory` unchanged when nothing above it is marked, which is a real answer rather than
+ * a fallback: an unmarked tree has no root to prefer and the observed directory is where the work is.
  */
 export async function resolveProjectRoot(directory: string, cwd: string): Promise<string> {
 	let current = path.resolve(directory);

@@ -22,6 +22,7 @@ import {
 	matchesSelectUp,
 } from "../utils/keybinding-matchers";
 import {
+	CARD_BODY_COL_INSET,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
@@ -360,6 +361,12 @@ export class HistorySearchComponent implements Component {
 				this.#resultsList.setSelectedIndex(this.#selectedIndex);
 				this.#onRequestRender?.();
 			}
+			return true;
+		}
+		const geometry = this.#shellGeometry;
+		if (event.leftClick && geometry && geometry.searchRow >= 0 && event.row === geometry.searchRow) {
+			this.#searchInput.routeMouse(event, 0, event.col - geometry.cardColStart - CARD_BODY_COL_INSET);
+			this.#onRequestRender?.();
 			return true;
 		}
 		const line = event.row - this.#listRowStart;

@@ -248,13 +248,14 @@ export async function resolvePublicationState(
  */
 export function reconcile(releases, ghReleases) {
 	if (ghReleases == null) {
-		return { releases: releases.map(r => ({ ...r, published: null, githubUrl: null, publishedDate: "" })), unmatchedPublished: [] };
+		return { releases: releases.map(r => ({ ...r, published: null, githubUrl: null, publishedDate: "", publishedAt: null })), unmatchedPublished: [] };
 	}
 	const publishedByVersion = new Map();
 	for (const gh of ghReleases) {
 		if (!gh || gh.draft || !gh.published_at || !gh.tag_name) continue;
 		publishedByVersion.set(normalizeVersion(gh.tag_name), {
 			publishedDate: String(gh.published_at).slice(0, 10),
+			publishedAt: gh.published_at,
 			githubUrl: gh.html_url || "",
 			prerelease: Boolean(gh.prerelease),
 		});
@@ -267,6 +268,7 @@ export function reconcile(releases, ghReleases) {
 			published: Boolean(hit),
 			githubUrl: hit ? hit.githubUrl : null,
 			publishedDate: hit ? hit.publishedDate : "",
+			publishedAt: hit ? hit.publishedAt : null,
 		};
 	});
 	// A published release with no CHANGELOG entry means the two sources disagree.
@@ -281,16 +283,6 @@ export function reconcile(releases, ghReleases) {
 	return { releases: annotated, unmatchedPublished };
 }
 
-/** Compare two `X.Y.Z` versions numerically; returns -1/0/1. */
-export function compareVersions(a, b) {
-	const pa = normalizeVersion(a).split(".").map(n => parseInt(n, 10) || 0);
-	const pb = normalizeVersion(b).split(".").map(n => parseInt(n, 10) || 0);
-	for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-		const d = (pa[i] || 0) - (pb[i] || 0);
-		if (d !== 0) return d < 0 ? -1 : 1;
-	}
-	return 0;
-}
 
 /**
  * Render one section of a release: its tag and every bullet it has.
@@ -410,20 +402,6 @@ function sectionRank(name) {
 	return index === -1 ? SECTION_ORDER.length : index;
 }
 
-/** Compare two version strings newest-first; `Unreleased` always sorts first. */
-function compareVersionsDesc(a, b) {
-	if (a === b) return 0;
-	if (a.toLowerCase() === "unreleased") return -1;
-	if (b.toLowerCase() === "unreleased") return 1;
-	const pa = a.split(".").map(Number);
-	const pb = b.split(".").map(Number);
-	for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-		const da = pa[i] ?? 0;
-		const db = pb[i] ?? 0;
-		if (da !== db) return db - da;
-	}
-	return a < b ? 1 : -1;
-}
 
 /**
  * Take the veyyon releases from one package's entries, dropping inherited
@@ -561,8 +539,19 @@ export function renderRootChangelog(sources, { forkPointVersion = FORK_POINT_VER
 	// next regeneration deleted them. `sync-root-changelog.ts` refuses to write over an
 	// unclaimed bullet now, which catches it, but only AFTER the entry has been written in the
 	// wrong place -- twice in one day. Saying so at the top is the part that stops it happening.
+	// Version order is first-appearance order across package changelogs.
+	// packages/coding-agent/CHANGELOG.md is processed first (index 0 in list),
+	// making its document order authoritative for version sequence.
+	// Unreleased always stays first.
+	const orderedVersions = (() => {
+		const keys = [...byVersion.keys()];
+		const unreleased = keys.filter(v => v.toLowerCase() === "unreleased");
+		const rest = keys.filter(v => v.toLowerCase() !== "unreleased");
+		return [...unreleased, ...rest];
+	})();
+
 	const parts = ["# Changelog", "", ROOT_GENERATED_BANNER, ""];
-	for (const version of [...byVersion.keys()].sort(compareVersionsDesc)) {
+	for (const version of orderedVersions) {
 		const sections = byVersion.get(version);
 		const date = dates.get(version);
 		parts.push(date ? `## [${version}] - ${date}` : `## [${version}]`, "");
@@ -585,9 +574,10 @@ export function renderRootChangelog(sources, { forkPointVersion = FORK_POINT_VER
  * splits the list, veyyon's line renders as cards, and everything at/below the
  * fork point is collapsed into a single credit note (`upstreamNote`) that
  * links to oh-my-pi for the pre-fork history. The `[Unreleased]` block renders
- * first as an "Unreleased" card so there is real veyyon news before 1.0.0 is
- * cut. The "latest" pill goes to the newest *published* veyyon release (or, when
- * the GitHub lookup was skipped, the newest veyyon CHANGELOG entry).
+ * first as an "Unreleased" card, so work that has landed since the last tag is
+ * visible on the page. The "latest" pill goes to the newest *published* veyyon
+ * release (or, when the GitHub lookup was skipped, the newest veyyon CHANGELOG
+ * entry).
  */
 export function buildChangelogHtml(reconciledReleases, { unreleased = null, forkPointVersion = FORK_POINT_VERSION, maxReleases = MAX_RELEASES } = {}) {
 	const forkIdx = reconciledReleases.findIndex(r => r.version === forkPointVersion);
@@ -600,12 +590,24 @@ export function buildChangelogHtml(reconciledReleases, { unreleased = null, fork
 	// when we have no published signal at all.
 	const anyPublishedSignal = veyyon.some(r => r.published === true) || veyyon.some(r => r.published === false);
 	const latestIdx = (() => {
-		const firstPublished = veyyon.findIndex(r => r.published === true);
-		if (firstPublished !== -1) return firstPublished;
+		const publishedIndices = veyyon
+			.map((r, i) => ({ r, i }))
+			.filter(({ r }) => r.published === true);
+		if (publishedIndices.length > 0) {
+			let best = publishedIndices[0];
+			for (let k = 1; k < publishedIndices.length; k++) {
+				const cur = publishedIndices[k];
+				const bestTime = best.r.publishedAt || best.r.publishedDate || "";
+				const curTime = cur.r.publishedAt || cur.r.publishedDate || "";
+				if (curTime > bestTime) {
+					best = cur;
+				}
+			}
+			return best.i;
+		}
 		if (!anyPublishedSignal) return veyyon.length ? 0 : -1; // lookup skipped → mark newest
 		return -1; // published signal exists but nothing published yet → no latest
 	})();
-
 	const parts = [];
 	if (unreleased) parts.push(renderUnreleased(unreleased));
 	for (let i = 0; i < veyyon.length; i++) {

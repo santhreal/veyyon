@@ -7,11 +7,29 @@
  * the frame.
  */
 
-import type { ThinkingLevel } from "@veyyon/agent-core";
-import type { Component, MouseRoutable, SgrMouseEvent } from "@veyyon/tui";
-import { Spacer, sliceByColumn, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { ThinkingLevel } from "@veyyon/agent-core/thinking";
+import { Spacer } from "@veyyon/tui/components/spacer";
+import type { MouseRoutable, SgrMouseEvent } from "@veyyon/tui/mouse";
+import { TERMINAL } from "@veyyon/tui/terminal-capabilities";
+import type { Component } from "@veyyon/tui/tui";
+import { truncateToWidth } from "@veyyon/tui/utils";
+import { getProjectDir } from "@veyyon/utils/dirs";
+import { clampLow } from "@veyyon/utils/math";
+import { estimateTokensFromText } from "@veyyon/utils/tokens";
+import { isThresholdCompactionDisabled } from "../../config/compaction-strategy";
+import { settings } from "../../config/settings-instance";
+import { branchLabelFromFiles } from "../../utils/git-head";
 import { groundHairlineHex, groundTintFgAnsi } from "../theme/ground-tints";
 import { theme } from "../theme/theme";
+import { isBranchOnTheRow } from "./status-line/branch";
+import {
+	composeQuietRow,
+	effectiveStatusLineSettings,
+	gatherQuietSegments,
+	statusLineSettingsFromConfig,
+	subagentBadgeText,
+} from "./status-line/quiet-row";
+import { launchSegmentContext } from "./status-line/session-facts";
 import { EMBER } from "./sun";
 
 /**
@@ -109,6 +127,57 @@ export function resolveComposerAccents(state: ComposerAccentState): ComposerAcce
 }
 
 /**
+ * The accent state of a composer nothing has happened to yet: no approval
+ * bypass, no bash or python prefix, no plan mode, no borrowed subagent view,
+ * no named session and no thinking level. It is what the launch composer
+ * resolves its chrome from, and what every field of {@link ComposerAccentState}
+ * falls back to before a session exists to answer for it.
+ */
+export const PRISTINE_COMPOSER_ACCENT_STATE: ComposerAccentState = {
+	bypass: false,
+	bashMode: false,
+	pythonMode: false,
+	planMode: false,
+	focusedSubagent: false,
+	sessionAccentAnsi: undefined,
+	thinkingLevel: ThinkingLevel.Off,
+};
+
+/**
+ * The editor surface the composer's chrome is written to. Structural rather
+ * than `CustomEditor`, so this module stays a leaf of the component it dresses
+ * instead of importing it back.
+ */
+export interface ComposerChromeTarget {
+	borderColor: (str: string) => string;
+	setBorderVisible(visible: boolean): void;
+	setPlaceholder(placeholder: string | undefined): void;
+	setPromptGutter(gutter: string): void;
+	setPromptGutterContinuation(gutter: string): void;
+	setRowBackground(background: string | undefined): void;
+}
+
+/**
+ * Dress a composer editor: the borderless card, the ghost prompt, and the
+ * resolved accents.
+ *
+ * Every composer in the process goes through here — the one the launch card
+ * paints, the one the mode adopts, and the replacement an extension supplies —
+ * so a composer that exists before the session cannot drift from the one that
+ * exists after it. The border is hidden and the row background cleared because
+ * the design has no composer card: the input renders on the terminal's own
+ * ground.
+ */
+export function applyComposerChrome(editor: ComposerChromeTarget, accents: ComposerAccents): void {
+	editor.setBorderVisible(false);
+	editor.setPlaceholder(COMPOSER_PLACEHOLDER);
+	editor.borderColor = accents.borderColor;
+	editor.setPromptGutter(accents.promptGutter);
+	editor.setPromptGutterContinuation(accents.promptGutterContinuation);
+	editor.setRowBackground(undefined);
+}
+
+/**
  * A small breathing margin below the whole composer block so the prompt never
  * sits flush against the terminal's bottom edge — jammed there it read as "too
  * low". One row lifts it just off the floor in every state (home anchor and
@@ -165,6 +234,30 @@ export function mountComposerZone(ui: { addChild(component: Component): void }, 
 }
 
 /**
+ * Mount the launch composer: the same live editor container, wrapped in the
+ * only chrome that has an owner before the session exists.
+ *
+ * It sits beside {@link mountComposerZone} because the two are one contract in
+ * two states. Both compose to {@link COMPOSER_RESTING_ROWS} on the home screen,
+ * so the mode's zone lands on the rows the card already reserved and the
+ * handover changes text rather than position; a row added to one shape and not
+ * the other is visible here, on the next screen of the same file.
+ *
+ * Returns the number of root children mounted, for the same reason
+ * {@link mountComposerZone} does.
+ */
+export function mountLaunchComposer(
+	ui: { addChild(component: Component): void },
+	editorContainer: Component,
+	readDraft?: () => string,
+): number {
+	ui.addChild(new LaunchComposerHead());
+	ui.addChild(editorContainer);
+	ui.addChild(new LaunchComposerFoot(readDraft));
+	return 3;
+}
+
+/**
  * One optional dim line of composer metadata. Renders nothing when the
  * provider has nothing to say — no empty chrome rows. `indent` shifts the
  * content off the terminal's left edge so the composer zone shares one
@@ -174,7 +267,6 @@ export class QuietZoneLine implements Component, MouseRoutable {
 	/**
 	 * Optional click handler for the line's content. `col` is 0-based within
 	 * the line as the provider rendered it (the indent is already subtracted),
-	 * matching the coordinate space of StatusLineComponent.quietSegmentAt.
 	 */
 	onClick?: (col: number) => void;
 
@@ -278,65 +370,172 @@ export class ComposerHairline implements Component {
  * finishes (the real zone mounts into exactly this height). */
 export const COMPOSER_RESTING_ROWS = 8;
 
-/** The ghost prompt the real composer shows when its draft is empty. Owned
- * here so the first frame's static composer and the live editor show the same
- * sentence — the swap between them must be invisible. */
+const EDITOR_MAX_HEIGHT_MIN = 6;
+const EDITOR_MAX_HEIGHT_MAX = 18;
+const EDITOR_RESERVED_ROWS = 12;
+const EDITOR_FALLBACK_ROWS = 24;
+const EDITOR_MIN_CHROME_ROWS = 4; // rows reserved for transcript + status on small terms
+const EDITOR_MIN_RENDERED_ROWS = 3; // bordered editor floor: top+bottom border + 1 content row
+
+/**
+ * Editor max-height cap for a terminal of `terminalRows` rows.
+ *
+ * Roomy terminals get the comfortable [6, 18] band. Small terminals shrink the
+ * cap so the editor leaves at least EDITOR_MIN_CHROME_ROWS rows for the
+ * transcript + status line. The editor is bordered, so it never renders fewer
+ * than EDITOR_MIN_RENDERED_ROWS rows; once the terminal is too small for both
+ * (terminalRows < EDITOR_MIN_RENDERED_ROWS + EDITOR_MIN_CHROME_ROWS) the cap is
+ * pinned to that floor — returning a smaller number would not shrink the editor
+ * any further, it would only misreport the rows it actually occupies.
+ */
+export function computeEditorMaxHeight(terminalRows: number): number {
+	const rows = Number.isFinite(terminalRows) && terminalRows > 0 ? terminalRows : EDITOR_FALLBACK_ROWS;
+	const comfortable = clampLow(rows - EDITOR_RESERVED_ROWS, EDITOR_MAX_HEIGHT_MIN, EDITOR_MAX_HEIGHT_MAX);
+	return clampLow(comfortable, EDITOR_MIN_RENDERED_ROWS, rows - EDITOR_MIN_CHROME_ROWS);
+}
+
+/** The ghost prompt the composer shows when its draft is empty. Owned here
+ * because {@link applyComposerChrome} is the one place it is applied. */
 export const COMPOSER_PLACEHOLDER = "ask anything · / for commands";
 
 /**
- * The composer at rest, painted by the FIRST frame so the prompt is on screen
- * from the first paint instead of arriving when the mode's init finishes.
- * It mirrors mountComposerZone's resting shape with static bytes — empty
- * status row, hairline, pad, one ghost input row, pad, footline row,
- * shortcuts row — no state, no animation, nothing to settle. The real zone
- * mounts into the same rows, so the handover changes text, not position:
- * nothing slides.
+ * The footline's right zone at rest: the live draft's token estimate, gold, so
+ * the row the card paints and the row the mode mounts state the same thing
+ * about the same editor. Blank and bare slash-command drafts render nothing,
+ * exactly as the mode's zone does.
  */
-export class StaticComposerFrame implements Component {
-	#draft = "";
+export function draftTokenZone(draft: string | undefined): string | null {
+	const trimmed = (draft ?? "").trim();
+	if (trimmed.length === 0) return null;
+	// A bare slash-command token ("/se…") is menu navigation, not a draft —
+	// counting its characters is noise. The counter returns the moment the
+	// command takes arguments or the text is prose.
+	if (trimmed.startsWith("/") && !/\s/.test(trimmed)) return null;
+	return theme.fg("matchHighlight", `~${estimateTokensFromText(draft ?? "")} tok`);
+}
 
-	/**
-	 * Show text that was typed before the live composer exists.
-	 *
-	 * The card paints this frame and session startup then runs for the better
-	 * part of a second, so the composer looks ready for the whole window. The
-	 * first frame's gate keeps what is typed there and hands it over at mount,
-	 * but a keystroke that produces nothing on screen reads as a dropped one:
-	 * the draft has to be visible here or the card is a picture of a composer.
-	 *
-	 * One row, tail-anchored. The live editor wraps and this frame's row count
-	 * is a layout contract the mounted zone swaps into, so a draft wider than
-	 * the row keeps its END on screen — that is where the next character lands,
-	 * and it is what a typist is looking at.
-	 */
-	setDraft(text: string): void {
-		this.#draft = text;
+/**
+ * The launch composer's chrome above the input: an empty status row, the
+ * hairline, and one pad row.
+ *
+ * The input itself is not here. The launch card mounts the REAL editor between
+ * these rows and {@link LaunchComposerFoot}, so what is on screen from the
+ * first paint takes keystrokes; the mode's own zone then mounts the live
+ * status line, footline and shortcuts around that same editor. These two
+ * components are the rows that have no owner yet, and nothing else.
+ *
+ * Three rows here plus one input row plus four in the foot is
+ * {@link COMPOSER_RESTING_ROWS}, which is what `mountComposerZone` composes to
+ * at rest: the handover changes text, not position, so nothing slides.
+ */
+export class LaunchComposerHead implements Component {
+	render(width: number): string[] {
+		const w = Math.max(1, width);
+		return ["", truncateToWidth(new ComposerHairline().render(w)[0] ?? "", w), ""];
+	}
+
+	invalidate(): void {}
+}
+
+/**
+ * The launch composer's chrome below the input: one pad row, the metadata
+ * footline, the shortcuts row and the bottom margin.
+ *
+ * THE FOOTLINE ROW IS THE REAL STATUS ROW, rendered before a session exists.
+ * It resolves the configured preset, gathers the same segments in the same
+ * order and hands them to the same fitter the live row uses
+ * ({@link statusLineSettingsFromConfig}, {@link gatherQuietSegments},
+ * {@link composeQuietRow}), differing only in the facts it can supply:
+ * {@link launchSegmentContext} reads config, so the row states where you are,
+ * what branch you are on, which profile is live, which model config names and
+ * which approval rung is enforced, and leaves the measured values — the context
+ * gauge, the live secret count, the session name — in their own absent states
+ * until the session replaces the whole block.
+ *
+ * It was a hand-written `path · git`, and the session's row landed on top of it
+ * about a second later: measured on a pty, the card and its composer at
+ * 84-102ms and the status row at 1067-1083ms. Half a row for a second was the
+ * visible half of the defect. The invisible half was that the copy had to be
+ * kept in step with the real row by hand, so every segment added after it was
+ * written was missing here and nothing failed.
+ */
+export class LaunchComposerFoot implements Component {
+	#readDraft: () => string;
+
+	constructor(readDraft?: () => string) {
+		this.#readDraft = readDraft ?? (() => "");
 	}
 
 	render(width: number): string[] {
 		const w = Math.max(1, width);
-		const clip = (row: string): string => truncateToWidth(row, w);
-		const hairline = new ComposerHairline().render(w)[0] ?? "";
 		const inset = " ".repeat(COMPOSER_INSET_COLS);
-		const gutter = `${theme.getFgAnsi("borderAccent")}›\x1b[39m`;
-		return [
-			"",
-			clip(hairline),
-			"",
-			clip(`${inset}${gutter} ${this.#body(w - COMPOSER_INSET_COLS - 2)}`),
-			"",
-			"",
-			"",
-			"",
-		];
+		return ["", truncateToWidth(`${inset}${this.#footline(w - COMPOSER_INSET_COLS)}`, w), "", ""];
 	}
 
-	/** The ghost prompt, or the tail of the draft when one has been typed. */
-	#body(avail: number): string {
-		if (!this.#draft) return theme.fg("dim", COMPOSER_PLACEHOLDER);
-		if (avail < 1) return "";
-		const drawn = visibleWidth(this.#draft);
-		return drawn > avail ? sliceByColumn(this.#draft, drawn - avail, avail) : this.#draft;
+	/**
+	 * The status row at rest, from config alone.
+	 *
+	 * `QuietZoneLine` indents the live footline by the same inset and hands the
+	 * segments the width that leaves, so the two rows are clipped against the
+	 * same budget and the path breaks at the same column.
+	 *
+	 * The branch is read from `.git/HEAD` and its ref files, never by running
+	 * git: this is the frame the terminal is already owed, and a subprocess on
+	 * it costs more than the row is worth. A repository whose refs live in a
+	 * reftable has no ref files to read, so it has no branch here and the live
+	 * row fills it in when it arrives.
+	 *
+	 * Dirtiness is `false` because that is what the live row renders until its
+	 * own asynchronous `git status` lands, so the handover is byte-identical.
+	 * Both are optimistic before the lookup answers; that is one defect in one
+	 * place, not a difference between two rows.
+	 */
+	#footline(avail: number): string {
+		const effectiveSettings = effectiveStatusLineSettings(statusLineSettingsFromConfig());
+		const gitEnabled = isBranchOnTheRow();
+		const branch = gitEnabled ? branchLabelFromFiles(getProjectDir()) : null;
+		// The endless-session `∞` is a CONFIGURED fact, not a measured one, so the
+		// row states it now rather than letting it appear beside the gauge a
+		// second later. Same predicate the session mirrors into the live row.
+		const compaction = settings.getGroup("compaction");
+		const autoCompactEnabled = !isThresholdCompactionDisabled(compaction.enabled, compaction.strategy);
+		const groups = gatherQuietSegments({
+			width: avail,
+			effectiveSettings,
+			gitEnabled,
+			expansion: 0,
+			buildContext: request =>
+				launchSegmentContext({
+					width: request.width,
+					options: request.options,
+					compactThinkingLevel: effectiveSettings.compactThinkingLevel ?? false,
+					branch,
+					autoCompactEnabled,
+				}),
+			subagentBadge: subagentBadgeText(0),
+			badgeSlot: null,
+		});
+		return (
+			composeQuietRow({
+				...groups,
+				// The same width the gather measured against, and the same width `QuietZoneLine`
+				// hands the live provider (terminal minus the inset), so both rows shed at the
+				// same column and the handover moves nothing.
+				width: avail,
+				expansion: 0,
+				// No focus badge and no run clock exist before a session: both are live state the
+				// row only positions, and an empty string is how the composer spells their absence.
+				badge: "",
+				clock: "",
+				expandedHalf: "path",
+				// The right zone is the draft's token estimate, read from the same editor
+				// the mode goes on mounting, so the row keeps it through the handover
+				// instead of growing it a second later.
+				locationRight: draftTokenZone(this.#readDraft()),
+				// `null` is "nothing worth a row", which the live footline answers by drawing no
+				// row at all. The card owns a fixed four-row block, so its row is blank instead.
+			}).line ?? ""
+		);
 	}
 
 	invalidate(): void {}

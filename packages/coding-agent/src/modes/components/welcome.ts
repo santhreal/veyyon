@@ -1,16 +1,10 @@
-import {
-	type Component,
-	centerLine,
-	Ellipsis,
-	padding,
-	replaceTabs,
-	TERMINAL,
-	truncateToWidth,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "@veyyon/tui";
-import { APP_NAME, clamp01, DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault } from "@veyyon/utils";
+import { TERMINAL } from "@veyyon/tui/terminal-capabilities";
+import type { Component } from "@veyyon/tui/tui";
+import { visibleWidth } from "@veyyon/tui/tui";
+import { centerLine, Ellipsis, padding, replaceTabs, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui/utils";
+import { APP_NAME, DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault } from "@veyyon/utils/dirs";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
+import { clamp01 } from "@veyyon/utils/math";
 import { isSettingsInitialized, settings } from "../../config/settings-instance";
 import { theme } from "../../modes/theme/theme";
 
@@ -65,9 +59,6 @@ export const WELCOME_SESSION_SLOTS = 3;
  * welcome hero (operational noise; it belongs in `/lsp` or the status line).
  */
 export const WELCOME_LSP_SLOTS = 0;
-
-/** One-line value prop under the wordmark — shipped strengths only. */
-export const VEYYON_VALUE_LINE = "Hashline edits that land. Your keys.";
 
 /** Action rows: label left, shortcut right. The composer is the primary affordance. */
 const WELCOME_ACTIONS: ReadonlyArray<readonly [label: string, shortcut: string]> = [
@@ -242,26 +233,17 @@ export class WelcomeComponent implements Component {
 		const lines = this.#sunriseHeader(termWidth);
 		if (!this.full) {
 			lines.push("");
-			// Continue where you left off: the most recent session, one quiet
-			// line. The data was always fetched for the hero; before this it was
-			// only ever shown behind /welcome — the single most useful thing at
-			// launch stayed hidden.
-			const recent = this.recentSessions[0];
-			if (recent) {
-				const nameBudget = Math.max(8, Math.min(40, termWidth - 30));
-				const name =
-					visibleWidth(recent.name) > nameBudget ? truncateToWidth(recent.name, nameBudget) : recent.name;
-				lines.push(
-					centerLine(
-						theme.fg("muted", name) + theme.fg("dim", ` · ${recent.timeAgo} — `) + theme.fg("accent", "/resume"),
-						termWidth,
-					),
-				);
-			}
-			// The /resume hint dedups against the continue line above.
-			const more = recent ? "  ·  /settings" : "  ·  /resume  ·  /settings";
+			// The hero names the commands and nothing else. A most-recent-session
+			// line was here, and it arrived with the asynchronous session list
+			// rather than with the frame, so the block it sits in changed height
+			// after the composer had already been drawn under it.
 			lines.push(
-				centerLine(theme.fg("dim", "more: ") + theme.fg("accent", "/welcome") + theme.fg("dim", more), termWidth),
+				centerLine(
+					theme.fg("dim", "more: ") +
+						theme.fg("accent", "/welcome") +
+						theme.fg("dim", "  ·  /resume  ·  /settings"),
+					termWidth,
+				),
 			);
 			for (const tipLine of this.#centeredTipBlock(termWidth)) lines.push(tipLine);
 			return lines;
@@ -337,7 +319,6 @@ export class WelcomeComponent implements Component {
 		const metaLine =
 			profile === DEFAULT_PROFILE_DIR_NAME ? meta : theme.fg("muted", profile) + theme.fg("dim", " · ") + meta;
 		lines.push(centerLine(metaLine, termWidth));
-		lines.push(centerLine(theme.fg("muted", VEYYON_VALUE_LINE), termWidth));
 		return lines;
 	}
 

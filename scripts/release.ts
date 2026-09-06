@@ -41,24 +41,28 @@ export function parseReleaseRequest(args: readonly string[]): string {
 }
 
 /**
- * What to tell an operator whose requested version is not newer than the latest tag.
+ * What to tell an operator whose requested version is already a tag.
  *
- * Two very different situations reach this point and they need opposite advice.
- * Asking for a version OLDER than the tag is a mistake, and "pick a higher one"
- * is right. Asking for the version that is already tagged is usually not a
+ * Release order is publication order and the version string is a label, so the
+ * only version a cut refuses is one that is already tagged: a tag is a name in
+ * the repository and in every installer and updater that resolved it, and it
+ * is used once. Two situations reach this point and they need opposite advice.
+ * Asking for a version that an OLDER release used is a mistake, and "pick one
+ * that is not tagged" is right. Asking for the LATEST tag is usually not a
  * mistake: it is the documented recovery from a publish that died after the tag
- * was pushed. `prepareReleaseTree` is idempotent for exactly that reason, and the
- * commit step tags the existing HEAD when the bump commit already landed.
+ * was pushed. `prepareReleaseTree` is idempotent for exactly that reason, and
+ * the commit step tags the existing HEAD when the bump commit already landed.
  *
- * That recovery was unreachable. The only message here was "must be greater than
- * latest tag", which reads as "pick a higher version", and cutting a fresh
- * version is the one thing an operator recovering a failed publish must not do:
- * it burns a version number and leaves the dead tag behind. The recovery is named
- * here rather than left to be rediscovered from a comment further down the file.
+ * That recovery used to be unreachable. The only message here was "must be
+ * greater than latest tag", which reads as "pick a higher version", and cutting
+ * a fresh version is the one thing an operator recovering a failed publish must
+ * not do: it burns a version number and leaves the dead tag behind. The
+ * recovery is named here rather than left to be rediscovered from a comment
+ * further down the file.
  */
-export function versionNotNewerFailure(version: string, latestTag: string): string[] {
+export function versionAlreadyTaggedFailure(version: string, latestTag: string): string[] {
 	if (`v${version}` !== latestTag) {
-		return [`Error: Version ${version} must be greater than latest tag ${latestTag}`];
+		return [`Error: v${version} is already a tag. A version number is used once; pick one that has not been tagged.`];
 	}
 	return [
 		`Error: ${latestTag} is already tagged.`,
@@ -544,9 +548,7 @@ export async function prepareReleaseTree(version: string, latestTag: string): Pr
 	console.log(`Bumping veyyon-natives version sentinel to v${version}…`);
 	const { from: prevSentinelName, to: sentinelName } = planSentinelRewrite(latestTag, version);
 	if (prevSentinelName === sentinelName) {
-		throw new Error(
-			`previous sentinel ${prevSentinelName} equals the new one — version ${version} is not ahead of ${latestTag}.`,
-		);
+		throw new Error(`previous sentinel ${prevSentinelName} equals the new one — version ${version} is ${latestTag}.`);
 	}
 	const sentinelGlob = new Bun.Glob("{crates,packages}/**/*.{rs,ts,mts,cts,js,mjs,cjs}");
 	const sentinelFiles: Array<{ path: string; content: string }> = [];

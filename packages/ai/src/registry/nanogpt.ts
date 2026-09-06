@@ -19,4 +19,5 @@ export const nanogptProvider = {
 	id: "nanogpt",
 	name: "NanoGPT",
 	login: (cb: OAuthLoginCallbacks) => loginNanoGPT(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

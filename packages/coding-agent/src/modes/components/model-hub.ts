@@ -33,6 +33,7 @@ import { clampLow, errorMessage } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";
 import { getKnownRoleIds, getRoleInfo, ROLE_INHERIT_LABEL } from "../../config/model-roles";
 import type { Settings } from "../../config/settings";
+import { AgentStorage } from "../../session/agent-storage";
 import {
 	type ConfiguredThinkingLevel,
 	configuredThinkingLevelsForModel,
@@ -367,7 +368,7 @@ export class ModelHubComponent implements Component {
 		this.#reloadRoles(availableModels);
 		this.#buildRolesRows();
 
-		const storage = this.#settings.getStorage();
+		const storage = AgentStorage.forAgentDir(this.#settings.getAgentDir());
 		const mruOrder = storage?.getModelUsageOrder() ?? [];
 		this.#availableItems = buildBrowserItems(availableModels);
 		sortModelItems(this.#availableItems, { roles: this.#roles, mruOrder });

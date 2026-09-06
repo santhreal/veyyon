@@ -83,9 +83,6 @@ if (available.length === 0) {
 }
 const packageJson = (await Bun.file(packageJsonPath).json()) as { version: string };
 
-const archiveFilename = `${archivePrefix}${platformTag}${archiveSuffix}`;
-const archivePath = path.join(nativeDir, archiveFilename);
-const archiveEntries: Record<string, Uint8Array> = {};
 const addonBytes = await Promise.all(
 	available.map(async addon => ({ filename: addon.filename, bytes: await fs.readFile(addon.path) })),
 );
@@ -104,19 +101,34 @@ const stale = findStaleAddon(addonBytes, packageJson.version);
 if (stale) {
 	throw new Error(staleAddonMessage(stale, packageJson.version));
 }
-for (const addon of addonBytes) {
-	archiveEntries[addon.filename] = addon.bytes;
-}
-await Bun.write(archivePath, await new Bun.Archive(archiveEntries, { compress: "gzip", level: 9 }).bytes());
 
-// The archive above is written unconditionally; only the metadata module is a choice, and the
+// One archive per variant. A single archive holding every variant is one gzip stream, so the
+// loader had to inflate all of them to reach the one it loads; splitting them means a cold launch
+// decompresses only the variant this host runs.
+const bytesByFilename = new Map(addonBytes.map(addon => [addon.filename, addon.bytes]));
+const archiveNameFor = (addon: AvailableAddon): string =>
+	`${archivePrefix}${platformTag}-${addon.variant}${archiveSuffix}`;
+await Promise.all(
+	available.map(async addon => {
+		const bytes = bytesByFilename.get(addon.filename);
+		if (!bytes) throw new Error(`No bytes read for ${addon.filename}`);
+		const archive = new Bun.Archive({ [addon.filename]: bytes }, { compress: "gzip", level: 9 });
+		await Bun.write(path.join(nativeDir, archiveNameFor(addon)), await archive.bytes());
+	}),
+);
+
+// The archives above are written unconditionally; only the metadata module is a choice, and the
 // choice lives in one importable place so a test can exercise it without running this script.
 await Bun.write(
 	outputPath,
 	metadataModuleFor(process.argv, {
 		platformTag,
 		version: packageJson.version,
-		archiveFilename,
-		files: available.map(addon => ({ variant: addon.variant, filename: addon.filename, size: addon.size })),
+		files: available.map(addon => ({
+			variant: addon.variant,
+			filename: addon.filename,
+			size: addon.size,
+			archiveFilename: archiveNameFor(addon),
+		})),
 	}),
 );

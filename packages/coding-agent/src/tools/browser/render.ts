@@ -12,7 +12,7 @@ import type { Theme } from "../../modes/theme/theme";
 import { Hasher, isFramedBlockComponent, markFramedBlockComponent, renderCodeCell, renderStatusLine } from "../../tui";
 import type { BrowserToolDetails } from "../browser";
 import { formatStyledTruncationWarning, stripOutputNotice } from "../output-meta";
-import { replaceTabs, shortenPath } from "../render-utils";
+import { replaceTabs, shortenEmbeddedPaths, shortenPath } from "../render-utils";
 
 const BROWSER_DEFAULT_PREVIEW_LINES = 10;
 
@@ -91,6 +91,7 @@ function renderRunCell(
 	theme: Theme,
 ): Component {
 	const code = dropTrailingBlankLines(args.code ?? "");
+	const safeOutput = shortenEmbeddedPaths(output);
 	const status = cellStatus(options.isPartial, isError);
 
 	const titleParts: string[] = [tabLabel(args, details)];
@@ -113,7 +114,7 @@ function renderRunCell(
 				.str(status)
 				.str(title)
 				.str(code)
-				.str(output)
+				.str(safeOutput)
 				.digest();
 			if (cached && cached.width === width && cached.key === key) {
 				return cached.lines;
@@ -125,7 +126,7 @@ function renderRunCell(
 					title,
 					status,
 					spinnerFrame: options.spinnerFrame,
-					output: output.length > 0 ? output : undefined,
+					output: safeOutput.length > 0 ? safeOutput : undefined,
 					outputMaxLines: expanded ? Number.POSITIVE_INFINITY : previewLines,
 					codeMaxLines: expanded ? Number.POSITIVE_INFINITY : previewLines,
 					expanded,
@@ -175,7 +176,9 @@ function renderOpenOrCloseLine(
 			? renderStatusLine({ iconOverride: theme.styledSymbol("tool.browser", "accent"), title, meta }, theme)
 			: renderStatusLine({ icon, title, meta }, theme);
 	if (!output) return new Text(header, 0, 0);
-	const outputLines = output.split("\n").map(line => theme.fg("toolOutput", replaceTabs(line)));
+	const outputLines = output
+		.split("\n")
+		.map(line => theme.fg(isError ? "error" : "toolOutput", replaceTabs(shortenEmbeddedPaths(line))));
 	return new Text([header, ...outputLines].join("\n"), 0, 0);
 }
 

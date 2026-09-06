@@ -16,7 +16,7 @@
  * `welcome.ts` reads the tip through {@link takeLaunchTip} instead of holding a second copy.
  */
 
-import { APP_NAME } from "@veyyon/utils";
+import { APP_NAME } from "@veyyon/utils/dirs";
 
 /**
  * The tip this launch must show instead of a random one.

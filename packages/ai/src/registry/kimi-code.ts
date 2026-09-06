@@ -9,6 +9,7 @@ export const kimiCodeProvider = {
 		const { loginKimi } = await import("./oauth/kimi");
 		return loginKimi(cb);
 	},
+	credential: "oauth",
 	refreshToken: async (credentials: OAuthCredentials) => {
 		// Lazy import: keep heavy OAuth flow modules out of the eager registry graph.
 		const { refreshKimiToken } = await import("./oauth/kimi");

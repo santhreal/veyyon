@@ -1318,7 +1318,7 @@ describe("OpenAI responses history payload", () => {
 		});
 	});
 
-	it("converts orphan function_call_output replayed from providerPayload into an assistant note (issue #1351)", async () => {
+	it("converts orphan function_call_output replayed from providerPayload into a user note (issue #1351)", async () => {
 		// Reproduces the symptom: a previous turn's snapshot carries a
 		// `function_call_output` whose matching `function_call` was wiped by an
 		// earlier `dt: false` splice (or never landed because the call was
@@ -1377,11 +1377,19 @@ describe("OpenAI responses history payload", () => {
 			const candidate = item as { type?: unknown; role?: unknown; content?: unknown };
 			return (
 				candidate.type === "message" &&
-				candidate.role === "assistant" &&
+				candidate.role === "user" &&
 				typeof candidate.content === "string" &&
-				(candidate.content as string).includes(orphanCallId)
+				candidate.content.includes(orphanCallId)
 			);
 		}) as { content?: string } | undefined;
 		expect(note?.content).toContain(orphanOutput);
+		// The payload never travels in the assistant's voice: a model that reads
+		// its own prior turn shaped like a tool result reproduces one as prose.
+		const assistantNotes = (payload.input ?? []).filter(item => {
+			if (!item || typeof item !== "object") return false;
+			const candidate = item as { role?: unknown; content?: unknown };
+			return candidate.role === "assistant" && typeof candidate.content === "string";
+		});
+		expect(assistantNotes).toEqual([]);
 	});
 });

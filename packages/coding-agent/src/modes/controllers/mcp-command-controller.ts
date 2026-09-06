@@ -4,7 +4,8 @@
  * Handles /mcp subcommands for managing MCP servers.
  */
 import { type Component, type OverlayHandle, replaceTabs, Spacer, Text } from "@veyyon/tui";
-import { errorMessage, getMCPConfigPath, getProjectDir, isAbortError } from "@veyyon/utils";
+import { errorMessage, getMCPConfigPath, getProjectDir, isAbortError, withTimeout } from "@veyyon/utils";
+import { raceWithTimeout } from "@veyyon/utils/scoped-timeout";
 import type { SourceMeta } from "../../capability/types";
 import { expandEnvVarsDeep, unresolvedRefusedDownstream } from "../../discovery/env-expansion";
 import {
@@ -87,14 +88,6 @@ export type McpCommandControllerContext = Pick<
 
 const MCP_MANUAL_INPUT_PROVIDER_ID = "mcp";
 const MCP_MANUAL_LOGIN_TIP = "Headless? Paste the redirect URL or code with /login <value>.";
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string, onTimeout?: () => void): Promise<T> {
-	const { promise: timeoutPromise, reject } = Promise.withResolvers<T>();
-	const timer = setTimeout(() => {
-		onTimeout?.();
-		reject(new Error(message));
-	}, timeoutMs);
-	return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
-}
 function raceAbortSignal<T>(promise: Promise<T>, signal: AbortSignal, createError: () => Error): Promise<T> {
 	if (signal.aborted) return Promise.reject(createError());
 
@@ -877,11 +870,11 @@ export class MCPCommandController {
 			// against the abort signal because Esc/external abort may fire before
 			// MCPOAuthFlow reaches OAuthCallbackFlow.#waitForCallback, where the
 			// underlying callback server normally observes the signal.
-			const credentials = await withTimeout(
+			const credentials = await raceWithTimeout(
 				raceAbortSignal(flow.login(), oauthTimeout.signal, createAbortError),
 				5 * 60 * 1000,
-				"OAuth flow timed out after 5 minutes",
-				() => oauthTimeout.abort("MCP OAuth flow timed out"),
+				() => new Error("OAuth flow timed out after 5 minutes"),
+				{ onTimeout: async () => oauthTimeout.abort("MCP OAuth flow timed out") },
 			);
 
 			this.ctx.present([

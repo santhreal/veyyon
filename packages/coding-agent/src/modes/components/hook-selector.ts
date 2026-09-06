@@ -46,6 +46,7 @@ import {
 	SELECT_LIST_SHORTCUTS,
 	sizingForArea,
 } from "./modal-shell";
+import { stripInlineMarkdown } from "./plan-toc";
 import { renderSliderLines } from "./segment-track";
 import { hoverBandAt } from "./selector-helpers";
 
@@ -225,7 +226,10 @@ export class HookSelectorComponent extends Container {
 		this.#helpText = opts?.helpText;
 		if (opts?.onRequestRender) this.#useRequestRender(opts.onRequestRender);
 		this.#baseTitle = title;
-		this.#cardTitle = firstTitleLine;
+		// The title is markdown (an approval card opens `## Permission required`),
+		// and the body renders it as such; the title bar draws text, so a heading
+		// marker or emphasis left in it is printed as source.
+		this.#cardTitle = stripInlineMarkdown(firstTitleLine.replace(/^#{1,6}[ \t]+/, ""));
 		this.#onLeftCallback = opts?.onLeft;
 		this.#onRightCallback = opts?.onRight;
 		this.#onExternalEditorCallback = opts?.onExternalEditor;

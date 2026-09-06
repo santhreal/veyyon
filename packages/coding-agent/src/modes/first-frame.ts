@@ -10,37 +10,54 @@
  * known as soon as settings and the theme are up.
  *
  * So the frame is painted here, and the mode adopts what this module built
- * instead of building its own: the same TUI, and the same card, whose model
- * line and recent session arrive through `WelcomeComponent.setModel` and
- * `setRecentSessions` once the session resolves them.
+ * instead of building its own: the same TUI, the same card -- whose model line
+ * starts from what the last launch of this project recorded and is confirmed
+ * through `WelcomeComponent.setModel` once the session resolves it, and whose
+ * recent sessions arrive through `setRecentSessions` -- and the same composer.
+ *
+ * The composer is the REAL one. An earlier shape painted a static picture of a
+ * composer and held every keystroke in a gate until the mode could build the
+ * editor, which meant the rows on screen were a promise rather than an input:
+ * the draft had to be echoed by hand, backspace had to be reimplemented, and
+ * the held text had to be transplanted at mount. Building the editor here
+ * costs a few milliseconds and deletes all of it. What is on screen at the
+ * first paint takes keystrokes, and the mode's own zone mounts its status
+ * line, footline and shortcuts AROUND that editor without ever replacing it.
  *
  * One TUI per process is a hard constraint -- `terminal.start` puts stdin in
  * raw mode and installs the reader, so a second instance reads the same fd --
- * and the tty handover moves here with it: the queue is flushed, a swallow gate
- * is installed, and that gate releases only once the composer is mounted and a
- * keystroke has somewhere to land. The mode reads the frame through
+ * and the tty handover moves here with it. The mode reads the frame through
  * {@link takeFirstFrame} rather than a constructor argument, for the same
  * reason the terminal layer keeps its active instance at module level: there is
  * one screen, and whoever owns it owns it for the process.
  */
-
-import {
-	matchesKey,
-	ProcessTerminal,
-	planPaintGround,
-	Spacer,
-	setTerminalTextSizing,
-	setTuiTight,
-	TERMINAL,
-	TUI,
-} from "@veyyon/tui";
-import { logger } from "@veyyon/utils";
+import { Spacer } from "@veyyon/tui/components/spacer";
+// Leaves, not the `@veyyon/tui` barrel. The barrel re-exports every component in the library, and
+// the first frame paints before any of them exist.
+import { matchesKey } from "@veyyon/tui/keys";
+import { planPaintGround } from "@veyyon/tui/paint-ground";
+import { ProcessTerminal } from "@veyyon/tui/terminal";
+import { setTerminalTextSizing, TERMINAL } from "@veyyon/tui/terminal-capabilities";
+import { type Component, Container, TUI } from "@veyyon/tui/tui";
+import { setTuiTight } from "@veyyon/tui/utils";
+import * as logger from "@veyyon/utils/logger";
 import { settings } from "../config/settings-instance";
-import { StaticComposerFrame } from "./components/composer-chrome";
+import { clearFirstFrameRecording, recordFirstFrame } from "../startup/first-frame-recorder";
+import { takeReplayedFirstFrame } from "../startup/first-frame-replay";
+import {
+	applyComposerChrome,
+	computeEditorMaxHeight,
+	mountLaunchComposer,
+	PRISTINE_COMPOSER_ACCENT_STATE,
+	resolveComposerAccents,
+} from "./components/composer-chrome";
+import { CustomEditor } from "./components/custom-editor";
+import { setLaunchTip } from "./components/launch-tip";
 import { WelcomeComponent } from "./components/welcome";
 import { HomeAnchorLayout } from "./controllers/home-anchor-layout";
+import { launchModelLabel, launchProviderLabel, onLaunchFactsRecorded, readLaunchFacts } from "./launch-facts";
 import { applyGroundPaint, setDetectedTerminalGround } from "./theme/ground-tints";
-import { theme } from "./theme/theme";
+import { getEditorTheme, theme } from "./theme/theme";
 import { consumeRelaunchMarker, flushPendingTtyInput } from "./tty-input-flush";
 
 /** Inputs used to decide whether the launch card may be painted this early. */
@@ -77,63 +94,47 @@ export interface FirstFrame {
 	 * the operator when the session lands.
 	 */
 	readonly hero: WelcomeComponent;
-	/** Drop the placeholder rows, leaving an empty root for the mode's own tree. Idempotent. */
+	/**
+	 * The composer on screen, focused and taking keystrokes. The mode adopts
+	 * this editor instead of building one, so a character typed at the card is
+	 * already in the draft the session comes up behind -- there is nothing to
+	 * hold and nothing to transplant.
+	 */
+	readonly editor: CustomEditor;
+	/**
+	 * The container {@link editor} is mounted in. `mountComposerZone` takes it
+	 * as the zone's `editorContainer`, so the editor moves from the launch
+	 * chrome to the mode's zone without being detached from its parent.
+	 */
+	readonly editorContainer: Container;
+	/**
+	 * Settle what the next launch replays: record this card, keep a recording this card confirmed,
+	 * or drop one it corrected.
+	 *
+	 * Called once the paint has reached the terminal, because that is when the bytes are complete
+	 * and the composed rows are final.
+	 */
+	settleReplayRecording(): void;
+	/** Drop the launch rows, leaving an empty root for the mode's own tree. Idempotent. */
 	release(): void;
 	/**
-	 * Let input through to the composer, which is mounted by the time this runs,
-	 * and return the text typed at the card while the gate held it. The caller
-	 * places that text in the composer. Idempotent: a second call returns "".
+	 * Spend the loop turns that let input queued before the card reach the
+	 * composer, and report whether anything arrived.
+	 *
+	 * The card is composed inside {@link paintFirstFrame} and its bytes are
+	 * queued, so the frame the operator sees was built before the reader ever
+	 * produced data: a key pressed during exec is still sitting in the tty
+	 * buffer at that point, and one check-phase turn does not collect it
+	 * because the loop has not reached poll. The caller then evaluates the main
+	 * module, which holds the loop long enough that a pty measured the card at
+	 * 156ms and the character typed before it at 312ms — a composer that is on
+	 * screen and visibly ignoring the operator for a sixth of a second.
+	 *
+	 * Awaiting this spends one loop turn so the reader delivers, and a second
+	 * so the redraw is written. When nothing was typed it costs those two turns
+	 * and draws nothing.
 	 */
-	releaseInput(): string;
-}
-
-/**
- * How much of what is typed at the launch card carries into the composer. A
- * held key repeats, and no startup draft needs more than this; past the cap
- * the remainder is dropped rather than grown without bound.
- */
-const STARTUP_TYPEAHEAD_LIMIT = 4096;
-
-/**
- * True when a chunk is ordinary typed text rather than a control sequence.
- *
- * The gate receives everything the terminal sends, and during startup that
- * includes the terminal's own answers to the probes the screen just issued
- * (OSC 11 for the ground, the DA query, the sixel query), as well as arrow
- * keys, mouse reports and bracketed-paste wrappers. Each of those carries ESC
- * or another C0 byte, so accepting only printable characters keeps a probe
- * reply out of the draft without enumerating the sequences. It also excludes
- * the carriage return the gate exists to stop, so a queued newline still
- * cannot submit a turn.
- *
- * Backspace is the exception the printable rule cannot express. It is a C0
- * byte, so a chunk carrying one used to be rejected whole: a character typed
- * by mistake at the card could not be taken back, the correction did nothing
- * on screen, and the typo was what the composer received on mount. It is
- * accepted here and applied by {@link applyTypedEdit}, which is safe because
- * a probe reply opens with ESC and is still refused by the printable rule.
- *
- * An empty chunk answers true and appends nothing, which is why there is no
- * guard for it: the guard could not be observed failing.
- */
-function isTypedText(data: string): boolean {
-	for (let i = 0; i < data.length; i++) {
-		const code = data.charCodeAt(i);
-		if (code === 0x7f || code === 0x08) continue;
-		if (code < 0x20) return false;
-	}
-	return true;
-}
-
-/** Apply one accepted chunk to the held draft: text appends, a backspace takes one character off. */
-function applyTypedEdit(draft: string, data: string): string {
-	let next = draft;
-	for (let i = 0; i < data.length; i++) {
-		const code = data.charCodeAt(i);
-		if (code === 0x7f || code === 0x08) next = next.slice(0, -1);
-		else next += data[i];
-	}
-	return next;
+	settleQueuedInput(): Promise<boolean>;
 }
 
 let painted: FirstFrame | undefined;
@@ -151,25 +152,62 @@ export function paintFirstFrame(version: string): FirstFrame {
 	ui.setScrollbackRebuild(settings.get("tui.scrollbackRebuild"));
 	ui.setScrollIsolation(settings.get("tui.scrollIsolation"));
 
-	const hero = new WelcomeComponent(version, "", "");
+	// The model line the last launch recorded. Resolving a display name needs the
+	// catalog, which this path may not load, and the empty strings this used to
+	// pass rendered as `no model yet · /login` -- an alarming thing to tell an
+	// operator who is logged in, and a row the session then rewrote 600ms later.
+	// Absent a recording the configured role's own tail is stated instead, so the
+	// placeholder is reached only when no model is configured and it is true.
+	// The screen the replay left, if this launch replayed one. Taken here, before the card is built,
+	// because the card has to be built to MATCH it: same tip, or the three tip rows rewrite
+	// themselves the moment the real card composes.
+	const replayed = takeReplayedFirstFrame();
+	const adopted =
+		replayed !== undefined &&
+		replayed.screen.width === ui.terminal.columns &&
+		replayed.screen.height === ui.terminal.rows
+			? replayed
+			: undefined;
+	if (adopted) setLaunchTip(adopted.tip);
+	const { providerName, terminalGround } = readLaunchFacts();
+	// The provider the recording states, and on a cold launch — no recording
+	// yet — the one the configured role names, parsed from `provider/id`. The
+	// session records the same value, so warm and cold state the same fact; the
+	// role only stands in for the machine's first launch of the model, where
+	// `· huggingface` used to grow onto the hero a second later.
+	const launchProvider = providerName || launchProviderLabel();
+	// The ground every structural color is derived from is settled below, before the first paint,
+	// out of what this terminal last reported.
+	const hero = new WelcomeComponent(version, launchModelLabel(), launchProvider);
 	const layout = new HomeAnchorLayout({ ui, transcriptChildCount: () => 0, hasHero: () => true });
-	const composerFrame = new StaticComposerFrame();
-	const children = [
-		layout.topFill,
-		new Spacer(1),
-		hero,
-		new Spacer(1),
-		layout.bottomFill,
-		// The composer at rest, painted NOW. Centring is a share of the slack
-		// below the card (HomeAnchorLayout), so the zone's height has to be on
-		// screen before the zone exists: this paints the resting zone's exact
-		// row count with its real chrome, and the mounted zone swaps text into
-		// those rows rather than arriving under them.
-		composerFrame,
-	];
+	// The composer, live. Dressed through the one chrome owner and sized through
+	// the one height policy, so it is the same composer the mode goes on using
+	// rather than a lookalike that has to be reconciled with one.
+	const editor = new CustomEditor(getEditorTheme());
+	applyComposerChrome(editor, resolveComposerAccents(PRISTINE_COMPOSER_ACCENT_STATE));
+	editor.setUseTerminalCursor(ui.getShowHardwareCursor());
+	editor.setMaxHeight(computeEditorMaxHeight(ui.terminal.rows));
+	const editorContainer = new Container();
+	editorContainer.addChild(editor);
+	const children: Component[] = [layout.topFill, new Spacer(1), hero, new Spacer(1), layout.bottomFill];
+	// The composer zone at rest, painted NOW. Centring is a share of the slack
+	// below the card (HomeAnchorLayout), so the zone's height has to be on
+	// screen before the mode's zone exists: the launch composer occupies the
+	// resting zone's exact row count, and `mountComposerZone` swaps its own
+	// chrome into those rows around this same editor rather than arriving
+	// under them.
+	mountLaunchComposer({ addChild: child => children.push(child) }, editorContainer, () => editor.getText());
 	for (const child of children) ui.addChild(child);
-	// No frame has been composed, so this measures the children directly.
-	layout.sync(true);
+	// Keystrokes have somewhere to land from here on: `TUI` forwards input to
+	// the focused component, and the focused component is the composer the
+	// operator is looking at.
+	ui.setFocus(editor);
+	// The sizing pass, one frame early: the children are on the tree and no
+	// frame has composed yet.
+	layout.sync();
+
+	// Set only by the Windows relaunch degrade below; released at mount.
+	let discardUntilMount: (() => void) | undefined;
 
 	// The tty handover, which `InteractiveMode.init` used to own. Two different
 	// things can be sitting in the kernel's input queue by now, and the bytes do
@@ -187,64 +225,146 @@ export function paintFirstFrame(version: string): FirstFrame {
 	//   the session read as unresponsive.
 	//
 	// Only who started the process separates them, which is what the relaunch
-	// marker records. On an ordinary launch the queue is handed to the gate
-	// below, where `isTypedText` keeps the printable text and swallows control
-	// input — including the carriage return the flush existed to catch.
+	// marker records. An ordinary launch installs no gate at all: the composer
+	// below is live, so the queue lands in the draft the operator is looking at.
 	const relaunched = consumeRelaunchMarker();
 	const flushed = relaunched ? flushPendingTtyInput() : false;
-	// Hold what is typed and swallow the rest, except ctrl+c, which stays live
-	// so a launch can be aborted, until the composer is mounted.
-	let typeahead = "";
-	let inputGate: (() => void) | undefined = ui.addInputListener(data => {
-		if (matchesKey(data, "ctrl+c")) return undefined;
-		// A relaunch that could not flush (Windows has no termios) cannot tell
-		// the stale queue from typing, so it degrades to discarding both.
-		if ((flushed || !relaunched) && isTypedText(data)) {
-			typeahead = applyTypedEdit(typeahead, data).slice(0, STARTUP_TYPEAHEAD_LIMIT);
-			// Echo it. Holding the text is only half of the handover: the card
-			// paints a composer for the whole of startup, and one that shows
-			// nothing back reads as a composer that is not listening. Forced,
-			// because the ordinary path waits for the next throttle frame and a
-			// keystroke that appears a frame late is the lag this exists to
-			// remove; the card is a handful of rows, so the repaint is cheap.
-			composerFrame.setDraft(typeahead);
-			ui.requestRender(true);
-		}
-		return { consume: true };
-	});
+	// A relaunch that could not flush (Windows has no termios) cannot tell the
+	// stale queue from typing, so it degrades to discarding both: everything is
+	// swallowed until the mode releases the gate, except ctrl+c, which stays
+	// live so a launch can be aborted.
 	if (relaunched && !flushed) {
 		logger.debug("No tty input flush available at startup; discarding buffered input until mount completes");
+		discardUntilMount = ui.addInputListener(data => (matchesKey(data, "ctrl+c") ? undefined : { consume: true }));
 	}
+	// Set only while the card owns the screen; the mode takes the ground over at mount.
+	let mounted = true;
+	// The ground, and everything that resolves against it, settled in one place.
+	//
+	// `ui.start()` below is what SENDS the OSC 11 query, so the terminal cannot have answered when
+	// the card is painted, and the answer decides three things at once: the hairline above the
+	// composer, the composer outline and the transcript rules, which are mixed out of the ground;
+	// and, under `auto`, whether the theme ground is painted over the terminal's own at all.
+	//
+	// Nothing consumed that answer until the mode subscribed, half a second later. Measured on a
+	// pty that answers OSC 11 like a terminal: the hairline was drawn from the static `borderMuted`
+	// token, `#202329`, at 46ms and restyled to the ground-derived `#2a2e33` at 615ms, so one line
+	// on a settled screen changed shade under the operator.
+	//
+	// So the card states the ground its terminal reported last time and settles the whole decision
+	// BEFORE the paint. The recording is per terminal and this is the same value the answer is
+	// about to confirm; when it does not confirm it, the answer wins on the very next frame rather
+	// than at mount.
+	const settleGround = (): void => {
+		const ground = ui.terminal.backgroundColor ?? terminalGround ?? undefined;
+		setDetectedTerminalGround(ground);
+		applyGroundPaint(planPaintGround(settings.get("tui.paintGround"), theme.getGroundHex(), ground), ui.terminal);
+	};
+	settleGround();
+	ui.terminal.onBackgroundColorChange?.(() => {
+		if (!mounted) return;
+		settleGround();
+		ui.requestRender();
+	});
+	// Adopting the replayed screen makes the render below a DIFF against those rows instead of a
+	// full paint, so an unchanged launch writes nothing at all and a changed one writes only the
+	// rows that changed.
+	if (adopted) ui.adoptPaintedWindow(adopted.screen);
 	// The first paint always clears the viewport (ED 2) so the card never
 	// appends over the previous run's frame. Erasing the terminal's saved
 	// scrollback (ED 3) also takes whatever the operator had on screen before
-	// launch, so it happens only when they asked for it.
-	ui.start({ clearScrollback: settings.get("startup.clearScrollback") });
-	// The theme ground goes on with the card, not 300ms after it. `auto` needs
-	// the terminal's OSC 11 answer, which has not arrived this early, so it
-	// paints nothing here and the mode applies it when the report lands; the
-	// modes that need no report (`always`, `never`) are settled now.
-	setDetectedTerminalGround(ui.terminal.backgroundColor);
-	applyGroundPaint(
-		planPaintGround(settings.get("tui.paintGround"), theme.getGroundHex(), ui.terminal.backgroundColor),
-		ui.terminal,
-	);
+	// launch, so it happens only when they asked for it. An adopted screen was
+	// cleared by the replayed bytes themselves, and clearing again would be the
+	// full repaint the adoption exists to avoid.
+	ui.start({ clearScrollback: adopted === undefined && settings.get("startup.clearScrollback") });
+	// Everything the render writes from here, which is the recording the next launch replays. The
+	// wrapper goes on AFTER `start`, so the terminal setup it emits -- the capability queries above
+	// all -- stays out: replaying a query means a second answer arriving with nobody expecting it.
+	let captured = "";
+	const terminal = ui.terminal;
+	const passThrough = terminal.write.bind(terminal);
+	terminal.write = (data: string): void => {
+		captured += data;
+		passThrough(data);
+	};
+	const stopCapture = (): void => {
+		terminal.write = passThrough;
+	};
 
-	let mounted = true;
+	// The session records the at-rest facts the moment they exist; the card
+	// reads them on every render, so the only thing a record needs is a render.
+	// Without this, a cold launch states the placeholder until the session's
+	// own row mounts, even though the fact was on disk well before. The
+	// subscription dies with the card: once the mode mounts, its row renders
+	// the facts itself and the notify has no surface left to serve.
+	const unsubscribeFacts = onLaunchFactsRecorded(() => {
+		if (!mounted) return;
+		const facts = readLaunchFacts();
+		hero.setModel(launchModelLabel(), facts.providerName || launchProviderLabel());
+		ui.requestRender();
+	});
+
 	const frame: FirstFrame = {
 		ui,
 		hero,
+		editor,
+		editorContainer,
 		release(): void {
+			unsubscribeFacts();
+			discardUntilMount?.();
+			discardUntilMount = undefined;
 			if (!mounted) return;
 			mounted = false;
 			for (const child of children) ui.removeChild(child);
 		},
-		releaseInput(): string {
-			inputGate?.();
-			inputGate = undefined;
-			const typed = typeahead;
-			typeahead = "";
-			return typed;
+		settleReplayRecording(): void {
+			stopCapture();
+			const screen = ui.paintedScreen();
+			if (adopted === undefined) {
+				recordFirstFrame({
+					bytes: captured,
+					cols: ui.terminal.columns,
+					rows: ui.terminal.rows,
+					screen,
+					tip: hero.tip ?? "",
+				});
+				return;
+			}
+			const window = screen.window;
+			const previous = adopted.screen.window;
+			// The screen was replayed and the real card agrees with it row for row, so the recording
+			// still describes what a launch paints and stays.
+			if (window.length === previous.length && window.every((row, at) => row === previous[at])) return;
+			// It disagreed, so the operator just watched those rows correct themselves. The bytes that
+			// would record the NEW card were never emitted -- only the diff was -- so the recording is
+			// dropped and the next launch composes one and records it. One corrected launch, not a run
+			// of them.
+			const at = window.findIndex((row, index) => row !== previous[index]);
+			logger.debug("First-frame recording dropped: the composed card disagreed with the replay", {
+				row: at === -1 ? window.length : at,
+				replayed: at === -1 ? undefined : previous[at],
+				composed: at === -1 ? undefined : window[at],
+				replayedRows: previous.length,
+				composedRows: window.length,
+			});
+			clearFirstFrameRecording();
+		},
+		async settleQueuedInput(): Promise<boolean> {
+			// A check-phase turn, so the loop reaches poll and the reader hands
+			// over anything the operator typed before the card existed. The
+			// editor takes it as ordinary input and asks for a render.
+			const delivered = Promise.withResolvers<void>();
+			setImmediate(delivered.resolve);
+			await delivered.promise;
+			if (editor.getText().length === 0) return false;
+			// Forced rather than trusted: the editor's own render request is
+			// subject to the throttle, and this call is the one that has to be
+			// on screen before the caller blocks the loop again.
+			ui.requestRender(true);
+			const written = Promise.withResolvers<void>();
+			setImmediate(written.resolve);
+			await written.promise;
+			return true;
 		},
 	};
 	painted = frame;

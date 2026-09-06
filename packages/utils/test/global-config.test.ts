@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {
 	getGlobalConfigRootDir,
+	getGlobalSubagentsDir,
 	getSharedAuthDir,
 	migrateLegacyDefaultProfileLayout,
 	profileEnvIsSet,
@@ -11,6 +12,7 @@ import {
 	resolveGlobalDefaultProfile,
 	resolveGlobalProfileSharing,
 	resolveStartupProfile,
+	SUBAGENTS_DIR_NAME,
 	writeGlobalDefaultProfile,
 	writeGlobalProfileSharing,
 } from "@veyyon/utils/dirs";
@@ -304,6 +306,8 @@ describe("migrateLegacyDefaultProfileLayout", () => {
 		fs.writeFileSync(path.join(root, "install-id"), "11111111-2222-3333-4444-555555555555\n");
 		fs.writeFileSync(path.join(root, "config.yml"), "defaultProfile: work\n");
 		fs.writeFileSync(path.join(root, "stats.db"), "stats");
+		fs.mkdirSync(path.join(root, SUBAGENTS_DIR_NAME), { recursive: true });
+		fs.writeFileSync(path.join(root, SUBAGENTS_DIR_NAME, "auditor.md"), "---\nname: auditor\n---\nbody\n");
 
 		const result = migrateLegacyDefaultProfileLayout();
 
@@ -313,9 +317,18 @@ describe("migrateLegacyDefaultProfileLayout", () => {
 		expect(fs.readFileSync(path.join(root, "AGENTS.md"), "utf8")).toContain("global rules");
 		expect(fs.readFileSync(path.join(root, "vault.json"), "utf8")).toBe('{"sealed":true}');
 		expect(fs.readFileSync(path.join(root, "vault.key"), "utf8")).toBe("keybytes");
-		for (const name of ["shared-auth", "AGENTS.md", "vault.json", "vault.key", "install-id", "config.yml"]) {
+		for (const name of [
+			"shared-auth",
+			"AGENTS.md",
+			"vault.json",
+			"vault.key",
+			"install-id",
+			"config.yml",
+			SUBAGENTS_DIR_NAME,
+		]) {
 			expect(fs.existsSync(path.join(result.targetDir, name))).toBe(false);
 		}
+		expect(fs.readFileSync(path.join(root, SUBAGENTS_DIR_NAME, "auditor.md"), "utf8")).toContain("name: auditor");
 	});
 
 	/** The exemption follows the accessor, not a literal that can drift from it. */
@@ -331,6 +344,31 @@ describe("migrateLegacyDefaultProfileLayout", () => {
 
 		expect(fs.existsSync(shared)).toBe(true);
 		expect(result.movedEntries).not.toContain(path.basename(shared));
+	});
+
+	/**
+	 * The exemption follows the accessor, for the same reason as shared-auth, and
+	 * this one would have failed silently: a `subagents/` moved under
+	 * `profiles/default/` still resolves for whoever ran the migration, because
+	 * that is the profile they are on. Every other profile loses every
+	 * user-authored agent, and nothing reports it — discovery reads an absent
+	 * directory as an empty one.
+	 */
+	it("exempts the directory getGlobalSubagentsDir resolves to", () => {
+		const root = getGlobalConfigRootDir();
+		const subagents = getGlobalSubagentsDir();
+		expect(path.dirname(subagents)).toBe(root);
+		fs.mkdirSync(path.join(root, "agent"), { recursive: true });
+		fs.writeFileSync(path.join(root, "agent", "agent.db"), "db");
+		fs.mkdirSync(subagents, { recursive: true });
+		fs.writeFileSync(path.join(subagents, "auditor.md"), "---\nname: auditor\n---\nbody\n");
+
+		const result = migrateLegacyDefaultProfileLayout();
+
+		expect(result.migrated).toBe(true);
+		expect(result.movedEntries).not.toContain(path.basename(subagents));
+		expect(fs.existsSync(path.join(result.targetDir, path.basename(subagents)))).toBe(false);
+		expect(fs.readFileSync(path.join(subagents, "auditor.md"), "utf8")).toContain("name: auditor");
 	});
 
 	it("leaves named profiles untouched under profiles/", () => {

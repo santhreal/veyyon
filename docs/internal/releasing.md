@@ -97,8 +97,8 @@ still a commit `main` tested.
 (`bun run release:dry`) it decides the same things and writes none of them.
 
 1. **Preflight.** Require the `main` branch and a clean tree, so the bump commit
-   contains the bump and nothing else. Require the new version to be greater than
-   the latest tag; a repository with no `v*` tags reads as a `0.0.0` baseline.
+   contains the bump and nothing else. The version is a label. The only refusal
+   is a version that already exists as a tag, and the no-tag baseline stays `0.0.0`.
 2. **Documented.** Assert `packages/coding-agent/CHANGELOG.md` has something to
    release: a bullet under `## [Unreleased]`, or a `## [version]` section already
    written by an earlier cut of the same version.
@@ -228,6 +228,10 @@ a release, and no release invokes it. `bun run check-spoofed-versions` compares 
 external tool versions veyyon impersonates against their upstream releases; it is
 maintenance, unrelated to cutting one.
 
+### Release order is publication order
+
+Release order is publication order. A version string such as `0.0.1` or `1.4.0` is a label. Release B is newer than release A if and only if B was published after A. No tool sorts changelog sections by version number. Changelog document order preserves publication order, with `## [Unreleased]` first and released sections newest first.
+
 ## What a release produces
 
 Three surfaces, and all three are required.
@@ -304,7 +308,7 @@ The cut refused, or `main`'s CI went red on the bump commit. No remote
 tag exists, so nothing was published and nothing needs undoing remotely.
 
 If it refused before it wrote anything, it named the reason: a
-dirty tree, the wrong branch, a version that is not ahead of the latest tag, or
+dirty tree, the wrong branch, a version that already exists as a tag, or
 an undocumented package. Fix it and run it again — the tree is untouched.
 
 If it failed part-way — an unreconcilable natives sentinel, a changelog the
@@ -574,4 +578,4 @@ the checked-in state. All three copies are gitignored and the assets are declare
 in `types/assets/index.d.ts`, so the generated state still type checks and cannot
 be committed by accident.
 
-*Verified against `61c974a6c` on 2026-08-21.*
+*Verified against `e7a2288347` on 2026-09-05.*

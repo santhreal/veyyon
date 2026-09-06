@@ -9,4 +9,5 @@ export const perplexityProvider = {
 		const { loginPerplexity } = await import("./oauth/perplexity");
 		return loginPerplexity(cb);
 	},
+	credential: "oauth",
 } as const satisfies ProviderDefinition;

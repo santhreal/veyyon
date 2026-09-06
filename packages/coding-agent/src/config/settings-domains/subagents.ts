@@ -11,9 +11,11 @@
  *
  * Two rules hold this shape together:
  *
- *  1. UNSET MEANS INHERIT. A per-agent model left blank follows the session's
- *     live main model. No agent carries a private model chain, so turning one on
- *     never silently introduces a second (billed) model.
+ *  1. ONE SCOPE, THE AGENT. A model or an effort is chosen for one agent, on
+ *     that agent's page. An agent that names neither runs the `default` model
+ *     role at the documented default effort. Nothing here answers for the whole
+ *     roster at once, and the session model the operator is looking at reaches
+ *     no agent but the main assistant.
  *  2. ONLY TASK DELEGATION IS ON BY DEFAULT. The bundled specialists are listed
  *     but disabled, because most sessions need a general delegate and nothing
  *     else, and every extra agent type costs tokens in the tool description and
@@ -53,7 +55,8 @@
  *  1. UNSET MEANS THE LEVEL ABOVE. Not the session, not a default table: the
  *     lane that spawned you. Change what `deep` runs and everything under `deep`
  *     follows, which is the only reading under which a nested page needs no
- *     absolute value to be understood.
+ *     absolute value to be understood. The top level has no lane above it, so
+ *     unset there is the `default` model role.
  *  2. `subagents.enabled` IS THE DEPTH LIMIT. Turning a level on grants it; the
  *     first level nobody turned on is where `subagent.maxNestedSpawnDepth`
  *     resumes answering. A separate per-agent number is gone: two controls over
@@ -91,45 +94,12 @@ export interface SubagentLaneSettings {
 export type SubagentAgentSettings = SubagentLaneSettings;
 
 /**
- * A `subagent.modelByDepth` key is a positive integer spawn depth: "1" for a
- * direct child, "2" for a grandchild, and so on. "0" is refused because no
- * spawn runs at the root session's own depth, and a zero-padded or non-numeric
- * key can never match the number the resolver asks with. Shared by the entry
- * validator below and the one reader (`task/subagent-settings.ts`) so the two
- * can never disagree about which keys are real.
- */
-export function isModelByDepthKey(key: string): boolean {
-	return /^[1-9]\d*$/.test(key);
-}
-
-/**
- * Validate one `subagent.modelByDepth` entry: the key is a depth and the value
- * is a chain in the same two spellings `subagent.model` accepts. Reported
- * through `describeSettingTypeMismatch`, so a bad entry is surfaced with its
- * file at load instead of sitting in the map looking configured and deciding
- * nothing.
- */
-function validateModelByDepthEntry(key: string, value: unknown): string | undefined {
-	if (!isModelByDepthKey(key)) {
-		return `subagent.modelByDepth.${key}: depth keys are positive integers ("1", "2", …), found "${key}"`;
-	}
-	if (typeof value === "string") return undefined;
-	if (Array.isArray(value)) {
-		const bad = value.findIndex(entry => typeof entry !== "string");
-		return bad === -1
-			? undefined
-			: `subagent.modelByDepth.${key}: expected model patterns, found ${typeof value[bad]} at index ${bad}`;
-	}
-	return `subagent.modelByDepth.${key}: expected a model pattern, or a list of them`;
-}
-
-/**
  * The one bundled agent enabled out of the box: the end-to-end delegate.
  *
  * The other bundled agents (scout, reviewer, librarian, designer, sonic) stay
  * off until the operator turns them on. They are still LISTED while off, each
  * with a line saying what it is for, because an agent you cannot see is one you
- * will never enable. A user-authored agent under `.veyyon/agents/` is on by
+ * will never enable. A user-authored agent under `~/.veyyon/subagents/` is on by
  * default: writing the file is the opt-in.
  */
 export const DEFAULT_ENABLED_BUNDLED_AGENT = "deep";
@@ -195,7 +165,7 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Delegation",
 			label: "Subagents",
 			description:
-				"Whether this session may use subagents at all. Off removes the task tool and every delegation instruction from the prompt, so nothing can be spawned. This is the only setting that takes the ability away: Subagent Delegation below decides how hard the model is PUSHED to delegate, never whether it may. Your delegation strength and Subagent Roster are kept while this is off and take effect again when you turn it back on.",
+				"Whether this session may use subagents at all. Off removes the task tool and every delegation instruction from the prompt, so nothing can be spawned. This is the only setting that takes the ability away: Subagent Delegation below decides how hard the model is PUSHED to delegate, never whether it may. Your delegation strength and your Roster are kept while this is off and take effect again when you turn it back on.",
 			keywords: ["subagent", "spawn", "delegate", "off", "disable"],
 		},
 	},
@@ -209,7 +179,7 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Delegation",
 			label: "Subagent Delegation",
 			description:
-				"How strongly this session routes work to the subagent types you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Subagent Roster is the routing policy: each name is a distinct type that owns only work matching its description, no type is a fallback for another, and work no enabled type covers stays with the main agent. Turn Subagents off above to remove delegation entirely.",
+				"How strongly this session routes work to the subagent types you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Roster is the routing policy: each name is a distinct type that owns only work matching its description, no type is a fallback for another, and work no enabled type covers stays with the main agent. Turn Subagents off above to remove delegation entirely.",
 			keywords: ["subagent", "spawn", "fan out", "parallel", "eager"],
 			options: [
 				{ value: "allowed", label: "Allowed", description: "Offered, never asked for — the model decides" },
@@ -259,6 +229,16 @@ export const SUBAGENTS_SETTINGS = {
 	 * inherits from sits in this same section for that reason: a spawn ceiling
 	 * edited two sections apart from the overrides that outrank it is how an
 	 * operator changes one and reads the other.
+	 *
+	 * IT IS THE ONLY PER-AGENT SURFACE FOR A MODEL OR AN EFFORT. The same value
+	 * used to be reachable from three screens — a `Subagent Model` row on this
+	 * tab, a blanket `Model` row at the top of the roster, and each agent's own
+	 * page — so the tab showed one model, the roster header showed the same one
+	 * again, and the per-agent rows showed a third answer inherited from it. One
+	 * blanket scope is back as {@link SUBAGENTS_SETTINGS}`["subagent.sharedModel"]`,
+	 * and the two scopes are exclusive rather than layered: while the switch is
+	 * on, the per-agent Model and Effort rows are not drawn at all, so exactly
+	 * one screen shows a model and that screen is the one that changes it.
 	 */
 	"subagent.agents": {
 		type: "record",
@@ -266,11 +246,12 @@ export const SUBAGENTS_SETTINGS = {
 		ui: {
 			tab: "subagents",
 			group: "Subagents",
-			label: "Subagent Roster",
+			label: "Roster",
 			description:
-				"Which subagent types the model may choose, and what each one runs. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. Each subagent's page carries its own Model and Effort, and a Subagents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above. The roster also carries Subagent Model and Subagent Effort, which decide what a subagent with no row of its own runs.",
+				"Which subagent types the model may choose, and what each one runs. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. Each subagent's page carries its own Model and Effort, and a Subagents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above, and an agent that names nothing runs the default model role. Same Model for All Subagents below replaces the per-agent Model and Effort rows with one pair for the whole roster.",
 			keywords: [
 				"agents",
+				"roster",
 				"scout",
 				"designer",
 				"reviewer",
@@ -280,6 +261,8 @@ export const SUBAGENTS_SETTINGS = {
 				"enable",
 				"disable",
 				"per-agent",
+				"model",
+				"effort",
 			],
 		},
 	},
@@ -292,61 +275,82 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Subagents",
 			label: "Max Nested Spawn Depth",
 			description:
-				"How many nested levels subagents may spawn, for every level no roster chain decides. 0 still lets this session spawn direct subagents, but those children do not receive the task tool. Open Subagent Roster above, pick a subagent, then Subagents, to turn individual levels on or off for that one; this number answers from the first level its chain does not name.",
+				"How many nested levels subagents may spawn, for every level no roster chain decides. 0 still lets this session spawn direct subagents, but those children do not receive the task tool. Open Roster above, pick a subagent, then Subagents, to turn individual levels on or off for that one; this number answers from the first level its chain does not name.",
 			keywords: ["depth", "nested", "recursion", "spawn", "roster"],
 			options: SUBAGENT_RECURSION_DEPTH_OPTIONS,
 		},
 	},
 
+	/**
+	 * Which scope decides a subagent's model and effort: the agent, or the whole
+	 * roster.
+	 *
+	 * Off, the default, is per agent — a lane under `subagent.agents`, then the
+	 * agent's frontmatter, then the default model role. On, `subagent.model` and
+	 * `subagent.thinkingLevel` answer for every agent and outrank both.
+	 *
+	 * The two scopes are EXCLUSIVE, not layered, which is the whole difference
+	 * from the version of this switch that was retired. That one left the
+	 * per-agent rows on screen and outranked by them, so the roster and the
+	 * blanket row each showed a model and neither said which one a spawn would
+	 * use. Here the switch decides which rows exist: on, the per-agent Model and
+	 * Effort rows are not drawn, and the two rows below are. A lane that already
+	 * names a model keeps its value in the file and gets it back when the switch
+	 * goes off.
+	 */
+	"subagent.sharedModel": {
+		type: "boolean",
+		default: false,
+		ui: {
+			tab: "subagents",
+			group: "Subagents",
+			label: "Same Model for All Subagents",
+			description:
+				"Run every subagent on one model and one effort instead of choosing per agent. Off, each agent's page decides. On, the two rows below decide for the whole roster and the per-agent Model and Effort rows are hidden; what those rows hold is kept and comes back when this goes off.",
+			keywords: ["shared", "blanket", "all agents", "one model", "roster", "model", "effort"],
+		},
+	},
+
+	/** The model chain every agent runs while `subagent.sharedModel` is on. */
 	"subagent.model": {
 		type: "modelChain",
 		default: undefined,
 		ui: {
 			tab: "subagents",
 			group: "Subagents",
-			label: "Subagent Model",
+			label: "Shared Model",
 			description:
-				"Models every enabled subagent runs, tried in order: the rest are used when an earlier one errors. Each entry carries its own effort. Unset means inherit: subagents follow the session's live main model. An agent whose own file names a `model:` uses that when this is unset. Editable from the roster as well, which is the same setting and not a copy.",
-			keywords: ["task", "deep", "subagent", "spawn", "delegate", "worker", "effort", "model"],
+				"The model chain every subagent runs while Same Model for All Subagents is on. Unset falls back to the default model role, the same model a new session starts on.",
+			condition: "subagentSharedModel",
+			keywords: ["shared", "model", "all agents", "chain"],
 		},
 	},
 
+	/** The effort every agent runs at while `subagent.sharedModel` is on. */
 	"subagent.thinkingLevel": {
 		type: "string",
 		default: undefined,
 		ui: {
 			tab: "subagents",
 			group: "Subagents",
-			label: "Subagent Effort",
+			label: "Shared Effort",
 			description:
-				"Thinking level for every enabled subagent, applied when the model above names no effort of its own. Inherit follows the session's effort. An explicit `:level` suffix on a model pattern still wins. Editable from the roster as well, which is the same setting and not a copy.",
-			keywords: ["thinking", "reasoning", "effort"],
-			// Narrowed at render time to the levels the model these subagents will
-			// actually run accepts, exactly as `/effort` does — a fixed list here is
-			// how this screen came to offer levels a model has no wire field for. A
-			// free-text field came before that and accepted anything, and an
-			// unrecognized value resolved to "inherited": configured, and doing
-			// nothing.
-			options: "runtime",
+				"The effort every subagent runs at while Same Model for All Subagents is on. Narrowed to what the model above declares; a `:level` suffix on the chain still wins. Inherit leaves the documented default.",
+			condition: "subagentSharedModel",
+			keywords: ["shared", "effort", "thinking", "all agents"],
 		},
 	},
 
+	/**
+	 * RETIRED: a model chain keyed by spawn depth, which decided for whatever
+	 * agent happened to run at that depth. A lane level under
+	 * `subagent.agents.<name>.subagents` is the per-agent spelling of the same
+	 * shape.
+	 */
 	"subagent.modelByDepth": {
 		type: "record",
 		default: {} as Record<string, string | string[]>,
-		validateEntry: validateModelByDepthEntry,
-		ui: {
-			tab: "subagents",
-			group: "Subagents",
-			label: "Models by Depth",
-			description:
-				"Model chains chosen by spawn depth: depth 1 is a direct child, depth 2 a grandchild, and so on. A row outranks Subagent Model for a spawn at exactly that depth and leaves every other depth to Subagent Model. A row whose chain matches no model refuses the spawn and names the row, exactly like an unresolvable Subagent Model.",
-			keywords: ["subagent", "depth", "nested", "grandchild", "model", "chain"],
-			// Advanced: a depth-keyed chain is a rare shape, and it outranks the row
-			// above it, so it belongs behind the fold rather than beside the setting
-			// most sessions use.
-			advanced: true,
-		},
+		retiredBy: "subagent.agents",
 	},
 
 	"subagent.showResolvedModelBadge": {

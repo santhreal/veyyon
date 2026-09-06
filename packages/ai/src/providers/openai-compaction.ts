@@ -37,6 +37,18 @@
  * `{ type: "compaction_trigger" }`. `./openai-codex/compaction-v2.ts` owns that
  * wire, `resolveCodexCompactRequest` resolves its identity, and
  * `a-compaction-route-matches-the-host-that-serves-it.test.ts` pins both.
+ *
+ * That split is a live measurement, not a reading of the guide. Re-measured on
+ * 2026-09-01 against a ChatGPT account on `gpt-5.6-sol` with a valid OAuth
+ * token: `POST {base}/codex/responses/compact` answered `404 Not Found`, and
+ * the same span sent to `POST {base}/codex/responses` with a trailing
+ * `compaction_trigger` item answered `200` with exactly one `compaction` item
+ * carrying a 1740-character `encrypted_content`. An earlier session read the
+ * opposite and moved this module to the compact route; that shipped a wire the
+ * host does not serve, so every codex compaction 404'd into a paid local pass.
+ * Move the route only with a live call of your own, and move the
+ * `implementation` declaration in `@veyyon/agent-core/compaction/remote-compaction`
+ * in the same commit — the two are one decision.
  */
 
 import type { ResolvedOpenAIResponsesCompat } from "@veyyon/catalog/types";
@@ -44,6 +56,7 @@ import { $env, logger, scopedTimeoutSignal, stringifyJson } from "@veyyon/utils"
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { boundProviderErrorDetail, ProviderHttpError, readProviderErrorDetail } from "../error";
 import type { Api, CodexCompactionRequestContext, FetchImpl, Message, Model, ProviderSessionState } from "../types";
+import { conversationIdForOpenCode } from "../utils/opencode-headers";
 import {
 	buildCodexCompactionV2Window,
 	CODEX_COMPACTION_TRIGGER_ITEM,
@@ -86,6 +99,13 @@ export interface ServerCompactionRequest {
 	 * the stateless official and Azure routes ignore it.
 	 */
 	sessionId?: string;
+	/**
+	 * The session's prompt cache key, when it differs from the session id. A
+	 * turn keys its cache on `promptCacheKey ?? sessionId`, so a compaction that
+	 * used the session id alone would open a second cache lineage for the same
+	 * conversation and the next turn would re-pay full uncached input.
+	 */
+	promptCacheKey?: string;
 	/** Provider-owned per-session transport state, for the same identity. */
 	providerSessionState?: Map<string, ProviderSessionState>;
 	/** Canonical Codex compaction classification for this pass; ignored elsewhere. */
@@ -121,17 +141,38 @@ export const SERVER_COMPACTION_WIRE_APIS: Record<string, true> = {
 };
 
 /**
- * Models whose compact route answered 404. A 404 is not a transient failure
- * and not a credential problem: the route is absent for that model on that
- * host, so every later attempt costs a round trip, a warning and a fallback to
- * reach the same answer. Recording it turns the negative into data discovered
- * at run time instead of a hand-maintained predicate.
+ * How long an observed 404 keeps a model out of server-side compaction before
+ * the route is tried once more.
  *
- * Scope is the process, keyed by `provider/api/id`. A host that gains the
- * route serves it again on the next launch; nothing here is persisted, so a
- * stale negative cannot outlive the run that observed it.
+ * A permanent latch is the wrong shape even though a 404 is a capability
+ * answer. The negative is observed once, from one request, and it survives a
+ * deploy that adds the route, a proxy that answers 404 while it reloads, and a
+ * gateway that mis-routes one call. Every compaction after that runs LOCALLY —
+ * a paid summarization pass on every compaction for the rest of the run — so a
+ * single wrong negative is not a silent no-op, it is a recurring charge.
+ *
+ * Re-arming costs one request per model per window, which is bounded and
+ * cheap; the latch it replaces was unbounded in the other direction.
  */
-const routeAbsentForModel = new Set<string>();
+const ROUTE_ABSENT_REARM_MS = 30 * 60_000;
+
+/**
+ * Models whose compact route answered 404, and when. A 404 is not a transient
+ * failure and not a credential problem: the route is absent for that model on
+ * that host, so every later attempt costs a round trip, a warning and a
+ * fallback to reach the same answer. Recording it turns the negative into data
+ * discovered at run time instead of a hand-maintained predicate.
+ *
+ * Scope is the process, keyed by `provider/api/id`, and the value is the
+ * observation time so the negative expires after {@link ROUTE_ABSENT_REARM_MS}.
+ * Nothing here is persisted, so a stale negative cannot outlive the run that
+ * observed it either.
+ */
+const routeAbsentForModel = new Map<string, number>();
+
+function routeCacheKey(model: Model<Api>): string {
+	return `${model.provider}/${model.api}/${model.id}`;
+}
 
 /** Forget every observed 404 so a test starts from the declared capability data. */
 export function resetServerCompactionRouteCache(): void {
@@ -139,9 +180,9 @@ export function resetServerCompactionRouteCache(): void {
 }
 
 /**
- * Whether this model's compact route was observed absent in this process, so
- * {@link resolveServerCompactionTransport} now resolves undefined for a model
- * whose capability data still says it is supported.
+ * Whether this model's compact route was observed absent recently enough to
+ * still be believed, so {@link resolveServerCompactionTransport} resolves
+ * undefined for a model whose capability data still says it is supported.
  *
  * The caller needs the two cases apart. A model that never supported
  * server-side compaction is INERT: the setting does not apply to it and saying
@@ -149,9 +190,17 @@ export function resetServerCompactionRouteCache(): void {
  * took it away is a DOWNGRADE the operator chose the opposite of, and the only
  * evidence used to be one warning on the first compaction of each process,
  * after which every later compaction ran locally in silence.
+ *
+ * Reading is what expires the entry, so the negative cannot outlive its window
+ * even if no compaction happens for hours.
  */
 export function serverCompactionRouteAbsent(model: Model<Api>): boolean {
-	return routeAbsentForModel.has(`${model.provider}/${model.api}/${model.id}`);
+	const key = routeCacheKey(model);
+	const observedAt = routeAbsentForModel.get(key);
+	if (observedAt === undefined) return false;
+	if (Date.now() - observedAt < ROUTE_ABSENT_REARM_MS) return true;
+	routeAbsentForModel.delete(key);
+	return false;
 }
 
 /**
@@ -168,7 +217,7 @@ export function resolveServerCompactionTransport(model: Model<Api>): ServerCompa
 	// resolved responses compat record.
 	const compat = model.compat as ResolvedOpenAIResponsesCompat;
 	if (compat.supportsServerCompaction !== true) return undefined;
-	if (routeAbsentForModel.has(`${model.provider}/${model.api}/${model.id}`)) return undefined;
+	if (serverCompactionRouteAbsent(model)) return undefined;
 	return openAIResponsesServerCompaction;
 }
 
@@ -185,10 +234,11 @@ function resolveOpenAiCompactRequest(
 	model: Model<Api>,
 	apiKey: string,
 	messages: Message[],
+	conversationId: string | undefined,
 ): { url: string; headers: Record<string, string> } {
 	const setup = resolveOpenAIRequestSetup(
 		{ provider: model.provider, id: model.id, baseUrl: model.baseUrl, headers: model.headers },
-		{ apiKey, messages },
+		{ apiKey, messages, conversationId },
 	);
 	const baseUrl = trimTrailingSlashes(setup.baseUrl ?? "https://api.openai.com/v1");
 	return { url: `${baseUrl}/responses/compact`, headers: setup.headers };
@@ -263,15 +313,15 @@ function buildCompactInputItems(model: Model<Api>, messages: Message[]): Respons
 
 /**
  * Resolve the compaction endpoint and headers for the ChatGPT Codex backend.
- * The route is the plain codex responses path
- * (`chatgpt.com/backend-api/codex/responses`), reached with the ChatGPT OAuth
- * access token and the same request identity a turn carries.
  *
- * There is no `/compact` suffix, here or anywhere on this host: that path,
- * `/codex/compact` and `/responses/compact` each answer 404. The client
- * metadata's `compaction` request kind marks the turn, and the
- * `compaction_trigger` input item the transport appends is what makes the
- * backend compact rather than answer.
+ * The route is the ordinary codex responses path
+ * (`chatgpt.com/backend-api/codex/responses`), reached with the ChatGPT OAuth
+ * access token and the same request identity a turn carries. There is no
+ * `/compact` suffix: the host answers that path with 404, and the compaction is
+ * requested by the trailing `compaction_trigger` input item instead.
+ *
+ * The cache key is the turn's, not a compaction-specific one: the request rides
+ * the same conversation and must land on the same cached prefix.
  */
 function resolveCodexCompactRequest(
 	model: Model<Api>,
@@ -283,6 +333,7 @@ function resolveCodexCompactRequest(
 		accessToken: apiKey,
 		requestKind: "compaction",
 		sessionId: request.sessionId,
+		promptCacheKey: request.promptCacheKey,
 		providerSessionState: request.providerSessionState,
 		compaction: request.codexCompaction,
 		responsesLite: resolveCodexResponsesLite(model, undefined),
@@ -299,7 +350,7 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 				? resolveAzureCompactRequest(model, apiKey)
 				: isCodex
 					? resolveCodexCompactRequest(model, apiKey, request)
-					: resolveOpenAiCompactRequest(model, apiKey, request.messages);
+					: resolveOpenAiCompactRequest(model, apiKey, request.messages, conversationIdForOpenCode(request));
 		const { url, headers } = resolved;
 
 		const input: Array<Record<string, unknown>> = [
@@ -307,9 +358,9 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 			...(buildCompactInputItems(model, request.messages) as unknown as Array<Record<string, unknown>>),
 		];
 
-		// Body exactly per the compact method reference: model, input,
-		// instructions. No store: the endpoint is stateless. The Codex host is
-		// not that route and shapes its own body below.
+		// Body per the compact method reference: model, input, instructions. No
+		// store: the official endpoint is stateless. The Codex host serves a
+		// different wire and shapes its own body below.
 		const body: Record<string, unknown> = {
 			model: resolveCompactWireModel(model),
 			input,
@@ -318,20 +369,36 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 			body.instructions = request.instructions;
 		}
 		if (isCodex) {
-			// Codex compaction v2 is an ordinary streaming turn ending in a
-			// `compaction_trigger` item; the backend answers it with one
-			// `compaction` output item and nothing else. It rejects a
-			// non-streaming body with 400 `Stream must be set to true`, and the
-			// encrypted reasoning has to be asked for or the window loses it.
-			// The rest matches a turn body, lite rewrite included, because
-			// codex-rs builds both through one builder.
+			// The codex host has no compact route. A compaction is an ordinary
+			// streaming turn whose last input item is `compaction_trigger`, which
+			// makes the backend answer exactly one `compaction` output item and
+			// nothing else. codex-rs does this in `core/src/compact_remote_v2.rs`.
+			//
+			// `stream` is not optional: a body without it is rejected with 400
+			// `{"detail":"Stream must be set to true"}`, which is why the request
+			// builder already sends `accept: text/event-stream`.
+			//
+			// The trigger is appended to `input` rather than replacing it, so the
+			// span the host compacts is the span the caller asked to compact.
+			input.push({ ...CODEX_COMPACTION_TRIGGER_ITEM });
 			const clientMetadata = "clientMetadata" in resolved ? resolved.clientMetadata : undefined;
 			if (clientMetadata) body.client_metadata = clientMetadata;
-			body.store = false;
 			body.stream = true;
-			body.include = ["reasoning.encrypted_content"];
-			input.push(CODEX_COMPACTION_TRIGGER_ITEM);
-			if (resolveCodexResponsesLite(model, undefined)) applyCodexResponsesLiteShape(body);
+			body.store = false;
+			// A turn sends `prompt_cache_key`, so a compaction without it is a
+			// cache miss on the session's own prefix, and the turn after it pays
+			// full uncached input again. Same key, same lineage, one cache.
+			const cacheKey = "promptCacheKey" in resolved ? resolved.promptCacheKey : undefined;
+			if (cacheKey) body.prompt_cache_key = cacheKey;
+			if (resolveCodexResponsesLite(model, undefined)) {
+				applyCodexResponsesLiteShape(body);
+				body.include = Array.from(
+					new Set([
+						...(Array.isArray(body.include) ? (body.include as string[]) : []),
+						"reasoning.encrypted_content",
+					]),
+				);
+			}
 		}
 		const applyCallerSanitizer = (text: string): string => {
 			if (!request.sanitizeErrorText) return text;
@@ -366,7 +433,7 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 				// it so the next compaction skips the request instead of
 				// repeating it once per compaction for the rest of the run.
 				const routeAbsent = response.status === 404;
-				if (routeAbsent) routeAbsentForModel.add(`${model.provider}/${model.api}/${model.id}`);
+				if (routeAbsent) routeAbsentForModel.set(routeCacheKey(model), Date.now());
 				logger.warn("Server-side compaction failed", {
 					url,
 					provider: model.provider,
@@ -388,21 +455,25 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 			if (isCodex) {
 				if (!response.body) {
 					throw new Error(
-						"Codex compaction answered without a body. The history was NOT compacted; the caller falls back to local compaction.",
+						"Codex compaction returned no response body. The history was NOT compacted; the caller falls back to local compaction.",
 					);
 				}
-				// `body.input` is read back rather than `input`: the lite rewrite
-				// prepends its developer items to a NEW array, and the window
-				// must be built from what was actually sent.
-				const sent = Array.isArray(body.input) ? body.input : input;
-				const collected = await collectCodexCompactionV2Stream(
+				// The reader requires exactly one compaction item: zero means the
+				// trigger did not take and the host ran the span as an ordinary
+				// paid turn, more than one means the window is ambiguous. Either
+				// way the caller compacts locally rather than storing a history
+				// that does not compact.
+				const stream = await collectCodexCompactionV2Stream(
 					response.body,
 					requestTimeout?.signal ?? request.signal,
 					sanitize,
 				);
 				return {
-					window: buildCodexCompactionV2Window(sent, collected.compactionItem),
-					usage: collected.usage,
+					// The codex host answers `response.completed` with an empty
+					// `output`, so the window is assembled here: the span's
+					// retained real user messages followed by the compaction item.
+					window: buildCodexCompactionV2Window(input, stream.compactionItem),
+					usage: stream.usage,
 				};
 			}
 
@@ -415,6 +486,11 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 			}
 			// A window without a compaction item is not compacted: it would replay
 			// at full size on every turn while claiming the history was reduced.
+			// More than one is legitimate here and only here — the guide states the
+			// compacted window may retain items from the previous window, and a
+			// chained compaction retains the prior compaction item — so the JSON
+			// route requires at least one where the codex stream requires exactly
+			// one.
 			if (
 				!output.some(
 					item =>

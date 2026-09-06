@@ -38,6 +38,7 @@
 - [Models and providers](./using/models.md)
 - [Sessions](./using/sessions.md)
 - [Subagents](./features/subagents.md)
+- [Writing a subagent](./features/subagents-authoring.md)
 - [Multi-agent monitoring](./features/cockpit.md)
 - [Keybindings and Vim mode](./features/keybindings.md)
 - [Web search](./features/web-search.md)

@@ -1,4 +1,8 @@
 #!/usr/bin/env bun
+// FIRST, and it has to stay first: this import writes the previous bare launch's card to the
+// terminal during its own evaluation, which is the only position from which it beats the ~33ms of
+// import below it. It reaches node builtins only. See ./startup/first-frame-replay.
+import "./startup/first-frame-replay-entry";
 // Subpath, NOT the "@veyyon/utils" barrel: the barrel re-exports ./env, which
 // eagerly parses the agent-directory .env at import time (env.ts). Pulling that
 // in here would load the .env BEFORE runCli() calls setProfile(), so
@@ -35,6 +39,7 @@ import {
 	setProfile,
 	VERSION,
 } from "@veyyon/utils/dirs";
+import * as logger from "@veyyon/utils/logger";
 import { declareWorkerHostEntry, installWorkerInbox } from "@veyyon/utils/worker-host";
 import { EXIT_FAILURE, EXIT_USAGE } from "./cli/exit-codes";
 import { installProfileAlias, resolveProfileAliasCommandFromProcess } from "./cli/profile-alias";
@@ -51,6 +56,13 @@ import {
 	TINY_WORKER_ARG,
 	TTS_WORKER_ARG,
 } from "./worker-args";
+
+// The earliest point this process can mark. Everything before it -- Bun's own
+// start and the evaluation of this file's static import graph -- is what the
+// tree reports as `(before instrumentation)`; everything after is attributed to
+// a span. Idempotent, so the later calls in `runCli` and `runRootCommand` are
+// no-ops, and nothing is recorded unless VEYYON_TIMING is set.
+logger.startTiming();
 
 if (Bun.semver.order(Bun.version, MIN_BUN_VERSION) < 0) {
 	process.stderr.write(
@@ -321,6 +333,10 @@ async function runTinyWorker(): Promise<void> {
 
 /** Run the CLI with the given argv (no `process.argv` prefix). */
 export async function runCli(argv: string[]): Promise<void> {
+	// A second start for an embedder that calls `runCli` without going through
+	// this module's entry (the SDK, a profile test). Idempotent, so the module
+	// scope call above wins in a real process.
+	logger.startTiming();
 	let resolvedArgv = argv;
 	try {
 		const extracted = extractProfileFlags(resolvedArgv);
@@ -402,10 +418,9 @@ export async function runCli(argv: string[]): Promise<void> {
 		await runSmokeTest();
 		return;
 	}
-	const [{ run }, { commands, resolveCliArgv }] = await Promise.all([
-		import("@veyyon/utils/cli"),
-		import("./cli-commands"),
-	]);
+	const [{ run }, { commands, resolveCliArgv }] = await logger.time("import:cli-runner", () =>
+		Promise.all([import("@veyyon/utils/cli"), import("./cli-commands")]),
+	);
 	// --help and --version are handled by run() directly, don't rewrite those.
 	// Everything else that isn't a known subcommand routes to "launch".
 	const resolved = resolveCliArgv(resolvedArgv);
@@ -417,7 +432,13 @@ export async function runCli(argv: string[]): Promise<void> {
 		process.exitCode = EXIT_USAGE;
 		return;
 	}
-	return run({ bin: APP_NAME, version: VERSION, argv: resolved.argv, commands, help: showHelp });
+	return logger.time("cliRun", run, {
+		bin: APP_NAME,
+		version: VERSION,
+		argv: resolved.argv,
+		commands,
+		help: showHelp,
+	});
 }
 
 /**

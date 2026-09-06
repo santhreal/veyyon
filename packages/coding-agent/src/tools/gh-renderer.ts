@@ -19,6 +19,7 @@ import {
 	formatStatusIcon,
 	PREVIEW_LIMITS,
 	replaceTabs,
+	shortenEmbeddedPaths,
 	type ToolUIColor,
 	type ToolUIStatus,
 	TRUNCATE_LENGTHS,
@@ -321,7 +322,7 @@ function renderFallbackComponent(
 		return new Text(`${header}\n${theme.fg("dim", empty)}`, 0, 0);
 	}
 
-	const allLines = replaceTabs(text).split("\n");
+	const allLines = replaceTabs(shortenEmbeddedPaths(text)).split("\n");
 	while (allLines.length > 0 && allLines[0].trim() === "") allLines.shift();
 	while (allLines.length > 0 && allLines[allLines.length - 1].trim() === "") allLines.pop();
 

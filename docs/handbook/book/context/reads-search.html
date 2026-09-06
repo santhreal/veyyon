@@ -22,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="Operator handbook for Veyyon: terminal and native desktop interfaces, installation, configuration, tools, approvals, edit formats, providers, and harness structure.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ff3d8e07.js";
+            window.path_to_searchindex_js = "../searchindex-695ab59a.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-d6acdfa6.js"></script>
+        <script src="../toc-b613f6a6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -284,8 +284,9 @@ takes two required ordered fields followed by type-specific options:</p>
 <h3 id="type-specific-options-and-validation"><a class="header" href="#type-specific-options-and-validation">Type-specific options and validation</a></h3>
 <p>Options are strictly validated per <code>type</code>; cross-type fields are rejected with an actionable error:</p>
 <ul>
-<li><strong><code>type: "files"</code></strong> accepts <code>hidden</code>, <code>gitignore</code>, and <code>limit</code>:
+<li><strong><code>type: "files"</code></strong> accepts <code>path</code>, <code>hidden</code>, <code>gitignore</code>, and <code>limit</code>:
 <ul>
+<li><strong><code>path</code></strong> is one directory the <code>input</code> globs are searched under. Each entry of <code>input</code> keeps its own meaning there: <code>{ input: "*.ts", path: "src" }</code> is <code>src/**/*.ts</code>, <code>{ input: "app/*.ts", path: "src" }</code> is <code>src/app/*.ts</code>, and <code>{ input: ".", path: "src" }</code> lists <code>src</code>. A glob or internal URL in <code>path</code>, or an absolute or internal-URL <code>input</code> under a <code>path</code>, is rejected with the spelling that works.</li>
 <li><strong><code>hidden</code> (default <code>true</code>)</strong> includes dotfiles.</li>
 <li><strong><code>gitignore</code> (default <code>true</code>)</strong> respects <code>.gitignore</code> rules; set <code>false</code> to search ignored paths.</li>
 <li><strong><code>limit</code> (default <code>200</code>, max <code>200</code>)</strong> bounds returned paths; output is sorted by <code>mtime</code> descending and grouped under <code># &lt;dir&gt;/</code> directory headers.</li>

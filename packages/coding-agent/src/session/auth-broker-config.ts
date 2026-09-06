@@ -44,6 +44,20 @@ import type { AuthStorage } from "./auth-storage";
 export { type AuthBrokerClientConfig, getAuthBrokerTokenFilePath };
 
 /**
+ * Whether the product may move a provider between accounts, read per decision.
+ *
+ * A resolver, not a snapshot: `discoverAuthStorage` runs before `Settings.init` on the boot path,
+ * and the operator can flip the toggle mid-session from `/settings`. Reading per decision is what
+ * makes both of those work without a restart. Absent settings mean the DECLARED default, read
+ * from the schema rather than written here: a hardcoded polarity on this line is how an embedder
+ * that never initializes settings ends up with the opposite of the shipped behaviour, silently,
+ * on the one path no operator ever sees. Every `AuthStorage` this package constructs passes this.
+ */
+export function accountLoadBalancingSetting(): boolean {
+	return settingsOrNull()?.get("accounts.loadBalancing") ?? getDefault("accounts.loadBalancing");
+}
+
+/**
  * Process-lifetime memo for {@link resolveAuthBrokerConfig}. Keyed on the env
  * inputs (plus agent dir, which decides which config.yml is read) so tests
  * that flip `VEYYON_AUTH_BROKER_*` between cases still observe the change, while
@@ -116,12 +130,6 @@ export function discoverAuthStorage(
 		storeAgentDir,
 		seedSourceDbPaths,
 		configValueResolver: resolveConfigValue,
-		// A resolver, not a snapshot: this runs before `Settings.init` on the boot path, and the
-		// operator can flip the toggle mid-session from `/settings`. Reading per decision is what
-		// makes both of those work without a restart. Absent settings mean the DECLARED default,
-		// read from the schema rather than written here: a hardcoded polarity on this line is how
-		// an embedder that never initializes settings ends up with the opposite of the shipped
-		// behaviour, silently, on the one path no operator ever sees.
-		loadBalancing: () => settingsOrNull()?.get("accounts.loadBalancing") ?? getDefault("accounts.loadBalancing"),
+		loadBalancing: accountLoadBalancingSetting,
 	});
 }

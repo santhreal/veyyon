@@ -43,4 +43,5 @@ export const cloudflareAiGatewayProvider = {
 	id: "cloudflare-ai-gateway",
 	name: "Cloudflare AI Gateway",
 	login: (cb: OAuthLoginCallbacks) => loginCloudflareAiGateway(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

@@ -7,15 +7,23 @@ What veyyon does before a person sees anything, what it costs, and how to measur
 ```sh
 bun scripts/bench-startup.ts --runs 5                          # bun source, warm agent home
 bun scripts/bench-startup.ts --runs 5 --bin ~/.local/bin/veyyon # the shipped binary
-bun scripts/bench-startup.ts --runs 5 --cold                    # install-day, caches thrown away
+bun scripts/bench-startup.ts --runs 5 --cold                    # the first launch after an install
 ```
 
-The bench seeds its own agent home under `.captures/bench-startup/`, marked onboarded, so no run
-measures the setup wizard and no run touches the machine's profile, sessions, or vault. `--cold`
-deletes that home before every arm, because one arm otherwise warms the GPU cache and the model
-catalog for the next.
+The bench seeds its own agent home under `.captures/bench-startup/`, marked onboarded and with the
+native addon already extracted, so no run measures the setup wizard, no run touches the machine's
+profile, sessions, or vault, and no run pays a write an install has already done. `--cold` deletes
+that home before every arm and re-seeds it, because one arm otherwise warms the GPU cache and the
+model catalog for the next.
 
-Six arms:
+Extraction belongs to the seed because every install path performs it: `install.sh` runs
+`doctor_natives`, `install.ps1` runs its mirror, and the self-updater runs the same search probe. A
+compiled binary cannot `dlopen` the addon it carries, so the first native call writes it to
+`<home>/.veyyon/natives/<version>/`. A seed that skipped that step charged every cold launch 264ms
+of extraction against a 293ms frame, and no user reaches that state without deleting the agent home
+from under an installed binary.
+
+Thirteen arms:
 
 | Arm | Measures |
 | --- | --- |
@@ -25,6 +33,22 @@ Six arms:
 | `ready:boot` | The timing tree's `Total`: every boot phase from the first marker to the TUI handoff. |
 | `ready` | Wall time of an interactive launch under `VEYYON_TIMING=x`, which prints the tree and exits where the TUI would start. |
 | `first-frame` | Wall time from spawn to the first byte the process writes to a pty. This is what a person waits for. |
+| `composer` | The composer's placeholder row on screen. A first byte is not a screen anyone can read. |
+| `editable` | A character typed after the first byte coming back echoed: the moment the terminal answers. |
+| `statusrow` | The status row on screen, matched by the approval rung between two of the row's separator dots. |
+| `replay` | The first byte of a launch that replays the recording the launch before it wrote, rather than composing the card. |
+| `replay:composer` | The composer's placeholder row on that replayed launch. |
+| `replay:editable` | The echo on that replayed launch: how long the replayed card is a picture. |
+| `replay:statusrow` | The status row on that replayed launch. |
+
+`first-frame` and `replay` are the off and on arms of the first-frame replay, at exact parity: one
+binary, one seeded home, one terminal size, two consecutive launches, and the recording is the only
+difference between them.
+
+The `statusrow` marker keys on the approval rung because the context gauge is the row's last
+segment, and the bench's eighty-column pty sheds it: the arm reported nothing at all while the
+gauge was the marker. `packages/coding-agent/test/the-startup-bench-sees-the-status-row.test.ts`
+holds the marker against the row the card renders.
 
 `VEYYON_TIMING=x veyyon` prints the phase tree on its own, without the bench, and exits. `full`
 adds every module-load span.
@@ -75,6 +99,12 @@ module load, optimistic on `version` because the entry module alone is small.
 A first launch on a machine whose page cache holds neither the binary nor the agent home measured
 3028ms to first byte. The bench cannot isolate that state, so it is recorded here and not in the
 table.
+
+The cold column predates the seed fix and does not compare to a cold run today. It measured a home
+with no native addon, so every cold arm paid an extraction that an install performs. Measured again
+after the fix, 5 runs each on the same machine, the binary reports a 79ms cold first frame against
+84ms warm. Those are the same number, which is the result: extraction was the whole of the
+difference, and nothing else in the pre-paint path depends on a warm agent home.
 
 ## Where the time goes
 
@@ -148,12 +178,14 @@ Techniques taken from openai/codex's own startup work, each with what it maps on
 
 ## Budget
 
-- First frame within 150ms warm and 300ms cold, on the shipped binary.
+- First frame within 150ms on the shipped binary. A cold home carries no separate target, because a
+  seed that models an install measures the same as a warm one.
 - Nothing that probes hardware, the network, or an external process runs before the first frame.
 - A phase added to the pre-paint path states its measured cost in the change that adds it.
 
-The current binary misses the first target by 4.5x and the second by 4x, so the budget is a target
-and not yet a gate. Wiring it to CI needs a runner whose timings are stable enough that a red build
-means a regression; the numbers above vary by 30% across repetitions on an idle workstation.
+The binary meets the first target at 84ms warm and 79ms cold, medians of 5 on an idle workstation.
+It is still a target and not a gate. Wiring it to CI needs a runner whose timings are stable enough
+that a red build means a regression, and a first-frame median here moves by more than 50% between
+repetitions, and by more than that when a type check shares the machine.
 
-*Verified against `a6d3fa8e4` on 2026-08-22.*
+*Verified against `c00398374` on 2026-09-01.*

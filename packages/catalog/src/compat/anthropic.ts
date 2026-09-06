@@ -134,6 +134,12 @@ export function buildAnthropicCompat(spec: ModelSpec<"anthropic-messages">): Res
 		// are excluded automatically because they can be recognised by provider
 		// id or baseUrl marker.
 		replayUnsignedThinking: !signingEndpoint && (Boolean(spec.reasoning) || modelMatchesHost(spec, "deepseekFamily")),
+		// Demoted prior reasoning replays by default, so cross-vendor reasoning
+		// survives a model switch (#3434, #3528). The transport revokes this for
+		// the rest of the session the first time the endpoint answers
+		// `stop_reason: "refusal"` with category `reasoning_extraction`, which is
+		// the only reliable signal that this endpoint enforces the classifier.
+		replayDemotedPriorReasoning: true,
 		escapeBuiltinToolNames: modelMatchesHost(spec, "umans"),
 	};
 	applyCompatOverrides(compat, spec.compat);

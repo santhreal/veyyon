@@ -12,6 +12,7 @@
  */
 
 import * as fs from "node:fs";
+import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 // The caps' own module, not the streaming engine that reads them. `@veyyon/ai/stream` re-exports
 // this setter and importing it there cost 285 modules for one function; ~530 test files import
@@ -20,7 +21,6 @@ import { configureProviderMaxInFlightRequests } from "@veyyon/ai/provider-inflig
 import { atomicWriteFile } from "@veyyon/utils/atomic-write";
 import {
 	findShadowedGlobalConfigFiles,
-	getAgentDbPath,
 	getAgentDir,
 	getGlobalConfigFilePath,
 	getLastChangelogVersionPath,
@@ -54,10 +54,10 @@ import type { ModelRole } from "../config/model-roles";
 // them again to every one of the ~1,500 files that import `Settings`. `theme-luminance` owns the same
 // boolean as a table and carries no theme JSON.
 import { isLightTheme } from "../modes/theme/theme-luminance";
-import { AgentStorage } from "../session/agent-storage";
 import { normalizeToolName } from "../tools/builtin-names";
 import { type EditMode, normalizeEditMode } from "../utils/edit-mode";
 import { type CompactionStrategySetting, migrateCompactionStrategyValue } from "./compaction-strategy";
+import { readLegacyAgentDbSettings } from "./legacy-agent-db-settings";
 import { UNSET_NUMBER } from "./optional-number";
 import { GLOBAL_SETTING_BINDINGS } from "./settings-domains/global";
 // The slot, not a second copy of it: this module FILLS the slot that `./settings-instance.ts` owns, and
@@ -428,7 +428,6 @@ export class Settings {
 	#configPath: string | null;
 	#cwd: string;
 	#agentDir: string;
-	#storage: AgentStorage | null = null;
 
 	#configFiles: string[] = [];
 	/** Global settings from config.yml/config.yaml */
@@ -945,7 +944,6 @@ export class Settings {
 			agentDir: this.#agentDir,
 			inMemory: !this.#persist,
 		});
-		cloned.#storage = this.#storage;
 		cloned.#configPath = this.#configPath;
 		cloned.#activateProcessHooks = this.#activateProcessHooks;
 		cloned.#global = structuredClone(this.#global);
@@ -985,10 +983,6 @@ export class Settings {
 	// ─────────────────────────────────────────────────────────────────────────
 	// Accessors
 	// ─────────────────────────────────────────────────────────────────────────
-
-	getStorage(): AgentStorage | null {
-		return this.#storage;
-	}
 
 	getCwd(): string {
 		return this.#cwd;
@@ -1224,7 +1218,6 @@ export class Settings {
 
 	async #load(): Promise<Settings> {
 		if (this.#persist) {
-			this.#storage = await AgentStorage.open(getAgentDbPath(this.#agentDir));
 			const existingConfig = await this.#loadExistingMainYaml();
 			if (existingConfig) {
 				this.#global = existingConfig;
@@ -1480,7 +1473,7 @@ export class Settings {
 
 		// 2. Migrate from agent.db
 		try {
-			const dbSettings = this.#storage?.getSettings();
+			const dbSettings = readLegacyAgentDbSettings(this.#agentDir);
 			if (dbSettings) {
 				settings = this.#deepMerge(settings, this.#migrateRawSettings(dbSettings as RawSettings));
 				migrated = true;
@@ -1749,9 +1742,9 @@ export class Settings {
 				.map(([name, model]) => `${name}=${String(model).trim()}`);
 			if (dropped.length > 0) {
 				logger.warn(
-					`Settings: task.agentModelOverrides (${dropped.join(", ")}) is no longer read — per-agent models were ` +
-						`unified into one subagent model setting. Set Subagents → Subagent Model, or give the agent file its ` +
-						`own \`model:\` frontmatter.`,
+					`Settings: task.agentModelOverrides (${dropped.join(", ")}) is no longer read — a per-agent model ` +
+						`is set on that agent's own page. Open Subagents → Roster, pick the agent, and set its Model, or ` +
+						`give the agent file its own \`model:\` frontmatter.`,
 					{ setting: "task.agentModelOverrides", dropped },
 				);
 			}
@@ -2514,6 +2507,11 @@ export class Settings {
 		this.#modified.clear();
 
 		try {
+			// The lock is a directory beside the config file, and its parent check refuses a parent
+			// that is not there. A profile that has never been launched interactively has no agent
+			// directory yet, so the first `veyyon config set` on it failed with the lock's ENOENT
+			// before the writer that creates the tree ever ran.
+			await fsp.mkdir(path.dirname(configPath), { recursive: true });
 			await withFileLock(configPath, async () => {
 				// Re-read to preserve external changes. Strict: an unreadable file
 				// fails the save rather than being written over as if it were empty.

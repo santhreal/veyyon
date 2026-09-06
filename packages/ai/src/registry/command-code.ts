@@ -19,4 +19,5 @@ export const commandCodeProvider = {
 	id: "command-code",
 	name: "Command Code",
 	login: loginCommandCode,
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

@@ -19,8 +19,9 @@ subagent:
   delegation: preferred   # the default; the prompt requests that substantial work be delegated
 ```
 
-Every subagent runs the model you are working with. Change the model you are talking
-to and your subagents follow it.
+Each subagent runs the model and effort set on its own page in the roster. An agent
+that names neither runs the profile's default model at medium effort. Changing the
+model you are talking to moves that session and nothing else.
 
 Veyyon also ships five specialists (`scout`, `reviewer`, `designer`, `librarian`,
 `sonic`), and they are **disabled** by default. During first-run setup, the
@@ -64,7 +65,7 @@ the tools an agent can call. For example, `designer` remains a designer and
 specialist for each independent slice:
 
 ```yaml
-# agents/accessibility-reviewer.md frontmatter
+# ~/.veyyon/subagents/accessibility-reviewer.md frontmatter
 name: accessibility-reviewer
 description: Reviews terminal interfaces for accessibility problems and reports findings
 tools: read, search
@@ -88,14 +89,25 @@ An agent role is routing guidance, not a security boundary. Use the
 
 `subagent.agents` holds one row per agent name. You choose initial permissions in
 the first-run **Choose subagents** step, then edit them through **`/settings` →
-Subagents → Agents**. The settings screen lists every discovered agent with its
-state, resolved model, and deciding setting. Enter opens one agent to set its
-state, model, and effort, or reset it to defaults.
+Subagents → Roster**. The roster lists every discovered agent with its state,
+resolved model, and deciding setting. Enter opens one agent to set its state,
+model, and effort, or reset it to defaults.
 
-To add an agent, put a markdown definition in your own or the project's
-`agents/` directory, or start from the shipped definitions by running
-`veyyon agents unpack`. The definition makes the role available. Enable its row
-before the model may start it.
+To add an agent, put a markdown definition in `~/.veyyon/subagents/`, or start
+from the shipped definitions by running `veyyon agents unpack`. The definition
+makes the role available. Enable its row before the model may start it.
+[Writing a subagent](./subagents-authoring.md) covers the frontmatter fields, the
+system prompt and enabling the result.
+
+That directory is read by every profile, and the file is the whole definition.
+Which profile may spawn the agent is a separate, per-profile answer:
+`subagent.agents.<name>.enabled`. Write the agent once, enable it where you want
+it.
+
+A definition that lists a tool veyyon does not recognize is reported at startup
+rather than ignored. The tool grants nothing, and the guidance for it is left out
+of the agent's system prompt, so a typo used to read as an agent that simply
+chose to do nothing.
 
 A row has two states:
 
@@ -113,37 +125,68 @@ permission. Enable the role during setup or in the Agents settings table.
 
 ## Choosing models
 
-Four things can set the model a subagent runs. The first that specifies one wins:
+Two scopes choose a subagent's model and effort, and **Subagents → Same Model for All
+Agents** selects which one is in force. They are exclusive, not layered: the rows of the
+scope that is off are not drawn.
 
-1. that agent's own row, `subagent.agents.<name>.model`
-2. the blanket `subagent.model`
-3. the agent definition's own `model:` frontmatter, for an agent you wrote
-4. otherwise the subagent inherits the model you are working with
+Off, the default, each agent decides. Open **Subagents → Roster**, press Enter on an
+agent, and set the model and the effort on that agent's own page. The first of these
+that names a model wins:
+
+1. that agent's lane, `subagent.agents.<name>.model`, and for a nested spawn the
+   `subagents` level under it that governs that depth
+2. the agent definition's own `model:` frontmatter, for an agent you wrote
+3. the profile's `default` model role
 
 ```yaml
 subagent:
-  model: openai/gpt-5:high             # every subagent
   agents:
     reviewer:
       enabled: true
-      model: anthropic/claude-opus-4-5 # except this one
+      model: anthropic/claude-opus-4-5
+      thinkingLevel: high
 ```
 
-No bundled agent pins a model, so layer 4 is the normal case and `subagent.model`
-moves all of them together. `subagent.thinkingLevel` does the same for effort. **Inherit** passes the
-current session's effective effort into the child, while an explicit `auto` requests that the provider
-choose. An explicit `:effort` suffix on a model pattern always wins over an agent's own default.
+Effort resolves on the same three layers, ending at `medium`. An explicit `:effort`
+suffix on the resolved model pattern outranks all of them.
 
-### Fallback models
-
-Every one of those four places takes a list, not just one model:
+On, one pair decides for the whole roster, and the per-agent Model and Effort rows are
+hidden. **Shared Model** (`subagent.model`) and **Shared Effort**
+(`subagent.thinkingLevel`) sit under the switch; an unset chain runs every agent on the
+`default` model role:
 
 ```yaml
 subagent:
-  model: anthropic/claude-opus-4-5,openai/gpt-5
+  sharedModel: true
+  model: openai/gpt-5
+  thinkingLevel: high
 ```
 
-The first entry is what subagents run on. The rest are held in reserve: when a run errors on the
+A lane keeps whatever it holds while the switch is on, and decides again the moment the
+switch goes off.
+
+The `default` model role is the model the main assistant starts on, and it is the
+one keystroke path for the common case: `/model` writes it, and every agent with no
+model of its own follows it. A temporary pick, role cycling and plan mode move the
+live session model only, so an agent never changes model because of a keystroke
+aimed at the main assistant.
+
+`subagent.modelByDepth` bound a chain to a spawn depth rather than to an agent and no
+longer applies. A config still holding it is reported once, naming the roster page that
+replaces it.
+
+### Fallback models
+
+Every one of those places takes a list, not just one model:
+
+```yaml
+subagent:
+  agents:
+    reviewer:
+      model: anthropic/claude-opus-4-5,openai/gpt-5
+```
+
+The first entry is what that agent runs on. The rest are held in reserve: when a run errors on the
 model in use, that agent retries on the next entry rather than failing. The settings picker writes
 the value for you: open the model row, add a fallback, and press Enter on any entry to move it up
 the list.
@@ -152,22 +195,26 @@ A longer chain reads better as a list, and both spellings mean the same thing:
 
 ```yaml
 subagent:
-  model:
-    - anthropic/claude-opus-4-5
-    - openai/gpt-5
+  agents:
+    reviewer:
+      model:
+        - anthropic/claude-opus-4-5
+        - openai/gpt-5
 ```
 
 Write it whichever way suits the file. `compaction.model` takes a chain the same two ways.
 
 A chain only covers errors at run time. A model pattern that matches nothing is still a
 configuration mistake, so veyyon will not spawn the agent and states the setting, rather than
-quietly running it on the next entry: a typo must not silently downgrade every subagent you spawn.
+quietly running it on the next entry: a typo must not silently downgrade the agent you spawn.
 
 In the `Subagents` block above the composer, an agent that fell back is marked with `↓` before its
 model badge, so you can tell a deliberate model from a retried one at a glance.
 
 Effort is chosen from a list: `off`, `minimal` through `max`, `auto`, or `Inherit`.
-The same list appears in both places, so you cannot set a level that does not exist. If a hand-written config
+`Inherit` on an agent's own page means the default effort; on a nested page it means the
+page above it. `auto` requests that the provider choose. The same list appears in both
+places, so you cannot set a level that does not exist. If a hand-written config
 holds one that does not, veyyon reports the levels that work, rather than
 treating it as `Inherit` and leaving you with a setting that reads as configured and
 changes nothing.
@@ -176,7 +223,7 @@ A configured model that matches nothing available does **not** quietly fall thro
 the next layer. The spawn is rejected and the message states the setting to fix, because
 falling through is indistinguishable from your setting having no effect. Both agent
 surfaces show, for the selected agent, the pattern, the model it resolves to, and
-which of the four layers decided.
+which of the three layers decided.
 
 ## Watching a run
 

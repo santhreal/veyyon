@@ -4,9 +4,9 @@
  * Handles `veyyon stats` subcommand for viewing AI usage statistics.
  */
 
-import { formatCostTiered as formatCost, normalizePremiumRequests } from "@veyyon/stats/format";
 import { truncateToWidth } from "@veyyon/tui/utils";
 import { formatDuration, formatNumber, formatPercent } from "@veyyon/utils";
+import { formatCostTiered as formatCost, normalizePremiumRequests } from "@veyyon/utils/format";
 import chalk from "chalk";
 import { openPath } from "../utils/open";
 

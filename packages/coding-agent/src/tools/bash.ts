@@ -76,6 +76,7 @@ import {
 	previewWindowRows,
 	renderCollapsedOutputLines,
 	replaceTabs,
+	shortenEmbeddedPaths,
 	shortenPath,
 } from "./render-utils";
 import { ToolAbortError, ToolError } from "./tool-errors";
@@ -1643,7 +1644,7 @@ export function getBashEnvForDisplay(args: BashRenderArgs): Record<string, strin
  * `theme.fg("dim", ...)` form render only the first line as dim.
  */
 export function formatBashCommandLines(args: BashRenderArgs, uiTheme: Theme): string[] {
-	const command = replaceTabs(args.command || "…");
+	const command = replaceTabs(shortenEmbeddedPaths(args.command || "…"));
 	const cwd = getProjectDir();
 	const displayWorkdir = formatToolWorkingDirectory(args.cwd, cwd);
 	const envAssignments = formatBashEnvAssignments(getBashEnvForDisplay(args));
@@ -1790,7 +1791,7 @@ export function createShellRenderer<TArgs>(config: ShellRendererConfig<TArgs>) {
 					const withoutExit = stripExitCodeNotice(strippedOutput, details?.exitCode, details?.signal);
 					const withoutWall = stripWallTimeNotice(withoutExit, details?.wallTimeMs);
 					const rawOutputArtifact = stripRawOutputArtifactNotice(withoutWall);
-					const output = rawOutputArtifact.text;
+					const output = shortenEmbeddedPaths(rawOutputArtifact.text);
 					const displayOutput = output.trimEnd();
 					const showingFullOutput = expanded && renderContext?.isFullOutput === true;
 

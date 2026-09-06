@@ -1,4 +1,4 @@
-import type { Component, OverlayHandle, TUI } from "@veyyon/tui";
+import type { Component, OverlayHandle, OverlayOptions, TUI } from "@veyyon/tui";
 import { Container, Spacer, Text } from "@veyyon/tui";
 import { clampLow, errorMessage } from "@veyyon/utils";
 import type { CollabUiRequestDraft, CollabUiSelectItem } from "@veyyon/wire";
@@ -21,6 +21,7 @@ import type {
 	SendUserMessageHandler,
 	TerminalInputHandler,
 } from "../../extensibility/extensions";
+import { runExtensionSetModel } from "../../extensibility/extensions/compact-handler";
 import { getSessionSlashCommands } from "../../extensibility/extensions/get-commands-handler";
 import { createExtensionModelQuery } from "../../extensibility/extensions/model-api";
 import { AskDialogComponent, boundPromptTitle } from "../../modes/components/ask-dialog";
@@ -43,6 +44,7 @@ import { setSessionTerminalTitle, setTerminalTitle } from "../../utils/title-gen
 export type ExtensionUiControllerContext = Pick<
 	InteractiveModeContext,
 	| "addAutocompleteProvider"
+	| "clearWorkingLoader"
 	| "clearTransientSessionUi"
 	| "collabHost"
 	| "editor"
@@ -196,12 +198,7 @@ export class ExtensionUiController {
 			getActiveTools: () => this.ctx.session.getActiveToolNames(),
 			getAllTools: () => this.ctx.session.getAllToolNames(),
 			setActiveTools: toolNames => this.ctx.session.setActiveToolsByName(toolNames),
-			setModel: async model => {
-				const key = await this.ctx.session.modelRegistry.getApiKey(model);
-				if (!key) return false;
-				await this.ctx.session.setModel(model);
-				return true;
-			},
+			setModel: (model, options) => runExtensionSetModel(this.ctx.session, model, options),
 			getThinkingLevel: () => this.ctx.session.thinkingLevel,
 			setThinkingLevel: (level, persist) => this.ctx.session.setThinkingLevel(level, persist),
 			getCommands: () => getSessionSlashCommands(this.ctx.session),
@@ -430,12 +427,7 @@ export class ExtensionUiController {
 			getActiveTools: () => this.ctx.session.getActiveToolNames(),
 			getAllTools: () => this.ctx.session.getAllToolNames(),
 			setActiveTools: toolNames => this.ctx.session.setActiveToolsByName(toolNames),
-			setModel: async model => {
-				const key = await this.ctx.session.modelRegistry.getApiKey(model);
-				if (!key) return false;
-				await this.ctx.session.setModel(model);
-				return true;
-			},
+			setModel: (model, options) => runExtensionSetModel(this.ctx.session, model, options),
 			getThinkingLevel: () => this.ctx.session.thinkingLevel,
 			setThinkingLevel: (level, persist) => this.ctx.session.setThinkingLevel(level, persist),
 			getCommands: () => getSessionSlashCommands(this.ctx.session),
@@ -1136,7 +1128,7 @@ export class ExtensionUiController {
 			keybindings: KeybindingsManager,
 			done: (result: T) => void,
 		) => (Component & { dispose?(): void }) | Promise<Component & { dispose?(): void }>,
-		options?: { overlay?: boolean },
+		options?: { overlay?: boolean | OverlayOptions },
 	): Promise<T> {
 		const savedText = this.ctx.editor.getText();
 		const keybindings = KeybindingsManager.inMemory();
@@ -1162,6 +1154,7 @@ export class ExtensionUiController {
 			resolve(result);
 		};
 
+		this.#restWorkingLoaderWhileIdle();
 		Promise.try(() => factory(this.ctx.ui, theme, keybindings, close)).then(c => {
 			if (closed) {
 				c.dispose?.();
@@ -1169,12 +1162,16 @@ export class ExtensionUiController {
 			}
 			component = c;
 			if (options?.overlay) {
-				overlayHandle = this.ctx.ui.showOverlay(component, {
-					anchor: "bottom-center",
-					width: "100%",
-					maxHeight: "100%",
-					margin: 0,
-				});
+				// `true` is the transcript-region card: the composer zone (prompt,
+				// status line, footline) stays painted under it, so a running console
+				// or dashboard never takes the whole screen. A caller with a shape of
+				// its own (a centered launcher) passes the geometry.
+				overlayHandle = this.ctx.ui.showOverlay(
+					component,
+					options.overlay === true
+						? { anchor: "bottom-center", width: "100%", maxHeight: "100%", margin: 0, aboveFooter: true }
+						: options.overlay,
+				);
 				return;
 			}
 			this.ctx.editorContainer.clear();
@@ -1299,6 +1296,7 @@ export class ExtensionUiController {
 			}
 			started = true;
 			this.#dialogActive = true;
+			this.#restWorkingLoaderWhileIdle();
 			try {
 				hide = present(settle);
 			} catch (error) {
@@ -1322,6 +1320,18 @@ export class ExtensionUiController {
 			startPresentation();
 		}
 		return promise;
+	}
+
+	/**
+	 * A hook UI that waits on the user is not the agent working. A slash command
+	 * mounts the `Working…` loader on submit and keeps it until its handler
+	 * returns, so a command that opens a console sat under `Working… · 0:19
+	 * ⟦esc⟧` for as long as the user read the console. Mid-turn the loader is
+	 * the turn's and stays: a tool asking a question is still a turn in flight.
+	 */
+	#restWorkingLoaderWhileIdle(): void {
+		if (this.ctx.session.isStreaming) return;
+		this.ctx.clearWorkingLoader();
 	}
 
 	#advanceDialogQueue(): void {

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
-import type { Api, AssistantMessage, Model, ThinkingContent } from "@veyyon/ai";
+import type { Api, AssistantMessage, Context, Model, ThinkingContent } from "@veyyon/ai";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
@@ -118,6 +118,7 @@ describe("AgentSession interrupted thinking persistence", () => {
 		model: Model<Api>;
 		sessionManager: SessionManager;
 		session: AgentSession;
+		providerContextHook: (context: Context, model: Model) => Context | Promise<Context>;
 	} {
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
 		const agent = new Agent({
@@ -125,6 +126,14 @@ describe("AgentSession interrupted thinking persistence", () => {
 			initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] },
 			convertToLlm,
 		});
+		// Captured the way the session publishes it; reading a private field would
+		// pass while the session installed no hook at all.
+		let providerContextHook: ((context: Context, model: Model) => Context | Promise<Context>) | undefined;
+		const install = agent.setTransformProviderContext.bind(agent);
+		agent.setTransformProviderContext = fn => {
+			providerContextHook = fn ?? undefined;
+			install(fn);
+		};
 		const settings = Settings.isolated({
 			"advisor.enabled": false,
 			"compaction.enabled": false,
@@ -140,7 +149,8 @@ describe("AgentSession interrupted thinking persistence", () => {
 			modelRegistry: new ModelRegistry(authStorage, path.join(tempDir.path(), "models.yml")),
 			extensionRunner,
 		});
-		return { model, sessionManager, session };
+		if (!providerContextHook) throw new Error("AgentSession installed no transformProviderContext hook");
+		return { model, sessionManager, session, providerContextHook };
 	}
 
 	it("retains native thinking on a user-interrupted assistant for replay and demotes a copy into hidden context", async () => {
@@ -194,7 +204,10 @@ describe("AgentSession interrupted thinking persistence", () => {
 
 		// The thinking is stripped from the provider request only: the LLM sees the
 		// assistant turn without the demoted run, plus the reasoning as a hidden
-		// developer continuity turn.
+		// developer continuity turn that declares where the run came from, so the
+		// provider layer can hold it to the unsigned-thinking replay policy
+		// (a signing Anthropic endpoint drops it rather than earning a
+		// `reasoning_extraction` refusal on every turn of the session).
 		const llm = convertToLlm(messages);
 		const assistantLlm = llm.find(entry => entry.role === "assistant");
 		expect(assistantLlm).toBeDefined();
@@ -202,7 +215,20 @@ describe("AgentSession interrupted thinking persistence", () => {
 			Array.isArray(assistantLlm?.content) && assistantLlm.content.some(block => block.type === "thinking"),
 		).toBe(false);
 		const developerLlm = llm.filter(entry => entry.role === "developer");
-		expect(developerLlm.some(entry => JSON.stringify(entry.content).includes(REASONING_TEXT))).toBe(true);
+		const continuity = developerLlm.find(entry => JSON.stringify(entry.content).includes(REASONING_TEXT));
+		expect(continuity?.demotedReasoningSource).toEqual({ provider: "anthropic", model: "claude-sonnet-4-5" });
+		// Memoized: an unchanged message converts to the same object, which is
+		// what keeps the provider prefix byte-stable across turns.
+		expect(convertToLlm(messages).find(entry => entry === continuity)).toBe(continuity);
+		// The tag survives the session's own pre-provider shaping (path
+		// canonicalization, blob recovery, image policy, obfuscation), which is
+		// the seam between convertToLlm and the provider transform.
+		const shaped = await harness.providerContextHook(
+			{ systemPrompt: ["Test"], messages: llm, tools: [] },
+			harness.model,
+		);
+		const shapedContinuity = shaped.messages.find(entry => entry.role === "developer");
+		expect(shapedContinuity?.demotedReasoningSource).toEqual({ provider: "anthropic", model: "claude-sonnet-4-5" });
 	});
 
 	it("makes hidden continuity available in agent state before awaited message_end delivery finishes", async () => {

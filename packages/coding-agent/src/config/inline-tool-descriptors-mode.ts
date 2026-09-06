@@ -1,4 +1,7 @@
-import { modelFamilyToken } from "@veyyon/catalog/identity";
+// From the leaf that declares it, not `@veyyon/catalog/identity`: that index re-exports
+// `identity/bundled.ts`, which parses the whole bundled model catalog, and the status row
+// reaches this module through `session/context-usage.ts` before the composer takes a keystroke.
+import { modelFamilyToken } from "@veyyon/catalog/identity/family";
 
 /**
  * Resolves whether full tool descriptors should be inlined into the system

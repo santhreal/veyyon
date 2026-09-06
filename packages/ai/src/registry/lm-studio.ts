@@ -29,4 +29,5 @@ export const lmStudioProvider = {
 	id: "lm-studio",
 	name: "LM Studio (Local OpenAI-compatible)",
 	login: (cb: OAuthLoginCallbacks) => loginLmStudio(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

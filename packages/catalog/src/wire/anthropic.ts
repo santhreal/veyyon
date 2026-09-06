@@ -35,4 +35,4 @@ export const ANTHROPIC_WEB_SEARCH_TOOL = "web_search";
  * fingerprint that does not match the one the other two send, which is exactly
  * the inconsistency a server-side check looks for.
  */
-export const CLAUDE_CODE_VERSION = "2.1.165";
+export const CLAUDE_CODE_VERSION = "2.1.257";

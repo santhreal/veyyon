@@ -16,6 +16,7 @@ import {
 import { errorMessage } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
+import { AgentStorage } from "../../session/agent-storage";
 import { theme } from "../theme/theme";
 import {
 	computeModalDims,
@@ -115,7 +116,7 @@ export class ModelPickerComponent implements Component {
 			callbacks.onPick(item.model, item.selector);
 		};
 		this.#browser.onCancel = () => callbacks.onCancel();
-		this.#browser.onQueryChange = () => this.#syncFromRegistryState();
+		this.#browser.onQueryChange = () => this.#tui.requestRender();
 		// The browser paints inside this card's frame and owns no repaint, so its band fades on the
 		// card's clock or not at all. Same ambient gate as the open unfold.
 		this.#browser.setHoverMotion({
@@ -164,7 +165,7 @@ export class ModelPickerComponent implements Component {
 
 		const allModels = this.#scopedModels.length > 0 ? models : this.#registry.getAll();
 		const roles = resolveRoleAssignments(this.#settings, allModels);
-		const storage = this.#settings.getStorage();
+		const storage = AgentStorage.forAgentDir(this.#settings.getAgentDir());
 		const mruOrder = storage?.getModelUsageOrder() ?? [];
 		this.#modelItems = buildBrowserItems(models);
 		sortModelItems(this.#modelItems, { roles, mruOrder });

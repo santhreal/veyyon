@@ -9,7 +9,7 @@
  * {@link SegmentContext.contextWindow}.
  */
 
-import { formatNumber } from "@veyyon/utils";
+import { formatNumber } from "@veyyon/utils/format";
 import type { ThemeColor } from "../../../modes/theme/theme";
 
 export type ContextUsageLevel = "normal" | "warning" | "high" | "error";
@@ -61,7 +61,21 @@ export function formatContextRemaining(usedTokens: number, limitTokens: number):
 }
 
 /**
- * The percentage still available, as a whole number: `76% left`.
+ * The width every percentage state is padded to: the widest member, `100%`.
+ *
+ * This segment sits at the right end of a justified row, so a column the text
+ * gains is a column the gap loses and the whole right-hand group slides. The
+ * launch card renders the gauge before any count exists and the session
+ * replaces that reading about half a second later, which moved the row under a
+ * composer that had already been drawn; `9%` to `10%` and `99%` to `100%` did
+ * the same thing mid-session. At one width a value arriving or changing
+ * repaints in place.
+ */
+const PERCENT_FIELD_COLS = "100%".length;
+
+/**
+ * The percentage still available, as a whole number in a fixed-width field:
+ * ` 76% left`, `   ? left`, `100% left`.
  *
  * Whole numbers only. A tenth of a percent decides nothing and moved on every
  * turn, so the digit was jitter on the one surface users already called
@@ -69,8 +83,11 @@ export function formatContextRemaining(usedTokens: number, limitTokens: number):
  * read as consumption by default, and that ambiguity is the bug.
  */
 export function formatContextRemainingPercent(usedPercent: number | null | undefined): string {
-	if (usedPercent === null || usedPercent === undefined || !Number.isFinite(usedPercent)) return "? left";
-	return `${Math.max(0, Math.min(100, Math.round(100 - usedPercent)))}% left`;
+	const field =
+		usedPercent === null || usedPercent === undefined || !Number.isFinite(usedPercent)
+			? "?"
+			: `${Math.max(0, Math.min(100, Math.round(100 - usedPercent)))}%`;
+	return `${field.padStart(PERCENT_FIELD_COLS)} left`;
 }
 
 export function getContextUsageThemeColor(level: ContextUsageLevel): ThemeColor {

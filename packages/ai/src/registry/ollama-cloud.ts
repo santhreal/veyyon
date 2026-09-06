@@ -34,4 +34,5 @@ export const ollamaCloudProvider = {
 	id: "ollama-cloud",
 	name: "Ollama Cloud",
 	login: (cb: OAuthLoginCallbacks) => loginOllamaCloud(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

@@ -29,5 +29,6 @@ export const nousResearchApiKeyProvider = {
 	id: "nous-research-api-key",
 	name: "Nous Research (API key)",
 	login: loginNousResearchApiKey,
+	credential: "api-key",
 	storeCredentialsAs: "nous-research",
 } as const satisfies ProviderDefinition;

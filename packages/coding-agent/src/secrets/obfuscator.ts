@@ -1126,45 +1126,6 @@ export class SecretObfuscator {
 	}
 
 	/**
-	 * What is spendable HERE, RIGHT NOW: how many values would expand, how many of those carry a
-	 * name a caller can spend by, and when the first deadline lands.
-	 *
-	 * A surface that reports "3 secrets" has to be counting the same thing the tool boundary
-	 * expands, or it becomes the least trustworthy thing on the screen: a count read off the vault
-	 * file names credentials scoped to another directory, and a count read off the configuration
-	 * names ones this process already retired. Both are answered by {@link #deobfuscateMap}, after
-	 * the expiry sweep, which is exactly the set {@link knowsPlaceholder} answers from.
-	 *
-	 * COUNTED BY VALUE, not by placeholder, because a value that carries a readable name and an
-	 * opaque alias is one credential the operator stored once and would otherwise be reported
-	 * twice. `nextExpiryAt` is absent when nothing expires, which is the ordinary shape for
-	 * `secrets.yml` and environment entries.
-	 *
-	 * `named` IS SPLIT OUT BECAUSE THE TOTAL IS NOT WHAT `/secret list` SHOWS, and a footer that
-	 * said `3 secrets` beside a list saying one active secret was read as a broken count. Neither
-	 * number was wrong: a session builds its protection from `secrets.yml`, the vault, AND every
-	 * environment variable whose name matches an env keyword, and an auto-detected environment
-	 * value is registered without a name ({@link collectEnvSecrets} sets none), so it is masked
-	 * on the way out but cannot be spent as `#NAME#` and has nothing for the list to name. The
-	 * two facts are counted apart here so a caller can say both instead of adding them up.
-	 */
-	liveSecrets(): { count: number; named: number; nextExpiryAt: number | undefined } {
-		if (!this.#hasAny) return { count: 0, named: 0, nextExpiryAt: undefined };
-		this.#forgetExpired();
-		const values = new Set<string>();
-		const named = new Set<string>();
-		for (const [placeholder, value] of this.#deobfuscateMap) {
-			values.add(value);
-			if (placeholderSecretName(placeholder) !== undefined) named.add(value);
-		}
-		return {
-			count: values.size,
-			named: named.size,
-			nextExpiryAt: Number.isFinite(this.#nextExpiryAt) ? this.#nextExpiryAt : undefined,
-		};
-	}
-
-	/**
 	 * Names of every secret currently protected under a name placeholder, sorted.
 	 *
 	 * Exists so a caller can reconcile against the vault: whatever is here and no longer live
@@ -1193,13 +1154,16 @@ export class SecretObfuscator {
 	/**
 	 * What is being masked that nothing can name: how many values, and what to call them.
 	 *
-	 * THE COUNT IS THE ONE THE FOOTER PRINTS, counted the same way — by distinct VALUE, after the
-	 * expiry sweep — because two surfaces reporting the same protection through two counters is how
-	 * `10 masked` came to sit beside "No active secrets. Nothing is being substituted right now."
-	 * `sources` is what a person searches for (an environment variable name), and it is not required
-	 * to match `count` in either direction: a value protected by a source-less entry is masked and
-	 * counted with nothing to name it, and one value declared both in `secrets.yml` and in the
-	 * environment is one masked value with two places to look. Sorted, for a stable report.
+	 * COUNTED BY DISTINCT VALUE, after the expiry sweep, from {@link #deobfuscateMap}: the set the
+	 * tool boundary actually substitutes from, so a credential scoped to another directory, one
+	 * this process retired, and one that expired ten minutes ago are all absent. A count read off
+	 * the vault file or the configuration instead is how `10 masked` came to sit beside "No active
+	 * secrets. Nothing is being substituted right now."
+	 *
+	 * `sources` is what a person searches for (an environment variable name), and it is not
+	 * required to match `count` in either direction: a value protected by a source-less entry is
+	 * masked and counted with nothing to name it, and one value declared both in `secrets.yml` and
+	 * in the environment is one masked value with two places to look. Sorted, for a stable report.
 	 *
 	 * NEVER RETURNS A VALUE, and never a name: a named secret belongs to `/secret list`, which
 	 * reads the vault.
@@ -1209,8 +1173,8 @@ export class SecretObfuscator {
 		// TWO PASSES, because one credential can be registered twice: stored in the vault under a name
 		// AND detected in the environment under the same bytes. It is spendable, `/secret list` names
 		// it, and reporting it here as well would tell the operator they have one secret and one
-		// unnameable masked value when they have one credential. The value, not the placeholder,
-		// decides -- that is what `liveSecrets` counts, and the two must not disagree.
+		// unnameable masked value when they have one credential. The value decides, not the
+		// placeholder, so a credential with both forms is counted once and named by the list.
 		const nameable = new Set<string>();
 		for (const [placeholder, value] of this.#deobfuscateMap) {
 			if (placeholderSecretName(placeholder) !== undefined) nameable.add(value);

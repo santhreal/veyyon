@@ -61,8 +61,16 @@ import { PACKAGES, reach, reachedNames } from "../helpers/module-reach-gate";
  * So the leaf is admitted on the same terms as `json.ts` above: one module, zero imports of its own,
  * so the edge cannot grow, and no measurable time. A raise for a module that pulls a graph behind it
  * is a different question and this precedent does not cover it.
+ *
+ * 37 from 2026-09-01. The module is `startup/first-frame-replay-entry.ts`, and it is on this path
+ * by design rather than by accident: it writes the previous launch's recorded card to fd 1 from the
+ * first import of `cli.ts`, so a lazy edge would mean the screen stays empty until the graph is
+ * evaluated, which is the whole cost the replay exists to hide. It is listed in `ON_THE_BOOT_PATH`
+ * below, so making it lazy fails here rather than silently disabling the replay. The recording
+ * reader it pulls (`startup/first-frame-replay.ts`) reads the file and the terminal size and
+ * nothing else; no settings store, no theme, no session.
  */
-const BOOT_CEILING = 36;
+const BOOT_CEILING = 37;
 
 /** The same measurement as a floor, so a broken walk fails instead of passing quietly. */
 const BOOT_FLOOR = 25;
@@ -103,6 +111,7 @@ const ON_THE_BOOT_PATH = [
 	"coding-agent/src/cli/flag-tables.ts",
 	"coding-agent/src/cli-commands.ts",
 	"coding-agent/src/worker-args.ts",
+	"coding-agent/src/startup/first-frame-replay-entry.ts",
 ] as const;
 
 /**

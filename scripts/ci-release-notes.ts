@@ -29,15 +29,6 @@
  */
 
 import { $, Glob } from "bun";
-// Import compareSemver by RELATIVE PATH, not the "@veyyon/utils/semver"
-// workspace specifier. The release_github job that runs this script checks out
-// the repo and sets up bun but does NOT `bun install`, so the workspace symlink
-// `node_modules/@veyyon/utils` does not exist and the package specifier fails to
-// resolve ("Cannot find module '@veyyon/utils/semver'"). That crashed the very
-// first release_github run to completion (v1.0.20) and blocked the publish.
-// semver.ts is self-contained (no imports of its own), so a direct file import
-// needs no install and cannot regress this way.
-import { compareSemver } from "../packages/utils/src/semver.ts";
 import { versionHeadings } from "./changelog-unreleased.ts";
 
 const changelogGlob = new Glob("packages/*/CHANGELOG.md");
@@ -55,19 +46,6 @@ export const RELEASE_NOTES_BODY_LIMIT = 120_000;
 // Canonical ordering used by `fix-changelogs`; unknown categories sort
 // alphabetically after these.
 const CATEGORY_ORDER = ["Breaking Changes", "Added", "Changed", "Fixed", "Removed"] as const;
-
-/**
- * Compare two version strings, accepting a leading `v` on either side.
- *
- * Delegates to the repo-wide comparator rather than matching `X.Y.Z` here. The
- * local version this replaced returned 0 for anything that did not match that
- * exact shape, which read as "these are the same version". A prerelease target
- * such as `1.2.1-rc.1` therefore compared equal to every entry in the
- * changelog, and the release notes for it merged the project's entire history.
- */
-export function compareVersions(a: string, b: string): number {
-	return compareSemver(a.trim(), b.trim());
-}
 
 export interface ChangelogVersionSpan {
 	version: string;
@@ -103,30 +81,34 @@ export function enumerateChangelogVersions(content: string): ChangelogVersionSpa
 }
 
 /**
- * Merge `(floorExclusive, targetInclusive]` version sections from a single
- * package's changelog into one combined body, grouped by `### <category>`.
+ * Merge the version sections in `versionsInRange` from a single package's
+ * changelog into one combined body, grouped by `### <category>`.
  *
- * Versions iterate newest → oldest so newer phrasing wins when a bullet was
- * flattened forward by `fix-changelogs` and ends up in both sections.
- * `floorExclusive === null` → take only the target version (legacy behavior).
+ * `versionsInRange` is the publication window `resolvePublishedFloorTag`
+ * computes: the target first, then every silent tag published after the floor,
+ * newest first. Iterating newest → oldest means newer phrasing wins when a
+ * bullet was flattened forward by `fix-changelogs` and ends up in both
+ * sections. A version with no section in this changelog contributes nothing.
  * Returns "" when no in-range version contributes any bullet.
  */
-export function mergePackageSection(content: string, floorExclusive: string | null, targetInclusive: string): string {
-	const spans = enumerateChangelogVersions(content)
-		.filter(v => {
-			if (compareVersions(v.version, targetInclusive) > 0) return false;
-			if (floorExclusive === null) return compareVersions(v.version, targetInclusive) === 0;
-			return compareVersions(v.version, floorExclusive) > 0;
-		})
-		.sort((a, b) => compareVersions(b.version, a.version));
-	if (spans.length === 0) return "";
+export function mergePackageSection(content: string, versionsInRange: readonly string[]): string {
+	if (versionsInRange.length === 0) return "";
 
+	const allSpans = enumerateChangelogVersions(content);
+	const spansByVersion = new Map(allSpans.map(s => [s.version, s]));
+	const selectedSpans: ChangelogVersionSpan[] = [];
+	for (const v of versionsInRange) {
+		const span = spansByVersion.get(v.replace(/^v/, "").trim());
+		if (span) selectedSpans.push(span);
+	}
+
+	if (selectedSpans.length === 0) return "";
 	const lines = content.split("\n");
 	const seenCategories: string[] = []; // first-seen order
 	const buckets = new Map<string, string[]>();
 	const seenLines = new Set<string>();
 
-	for (const span of spans) {
+	for (const span of selectedSpans) {
 		let currentCat: string | null = null;
 		let buf: string[] = [];
 		const flushCurrent = () => {
@@ -396,28 +378,82 @@ async function loadPackageName(pkgDir: string): Promise<string> {
 }
 
 /**
- * Resolve the highest published, non-prerelease, non-draft semver tag strictly
- * below `targetVersion` via `gh release list`.
+ * Stable sort: order releases by publication date descending.
+ * Entries without a date keep the API's order.
+ */
+function orderReleasesByPublication<T extends { publishedAt?: unknown }>(releases: readonly T[]): T[] {
+	return [...releases].sort((a, b) => {
+		const dateA = typeof a.publishedAt === "string" ? a.publishedAt : "";
+		const dateB = typeof b.publishedAt === "string" ? b.publishedAt : "";
+		if (dateA && dateB && dateA !== dateB) {
+			return dateB.localeCompare(dateA);
+		}
+		return 0;
+	});
+}
+
+export function resolvePublishedFloorFromList(
+	rawReleases: readonly { tagName?: unknown; isDraft?: unknown; isPrerelease?: unknown; publishedAt?: unknown }[],
+	targetVersion: string,
+): { floor: string | null; versionsInRange: string[] } {
+	const target = targetVersion.replace(/^v/, "").trim();
+	const candidates = rawReleases
+		.filter(t => t.isDraft !== true && t.isPrerelease !== true)
+		.filter(t => typeof t.tagName === "string" && /^v\d+\.\d+\.\d+$/.test(t.tagName))
+		.map(t => ({
+			tagName: t.tagName as string,
+			version: (t.tagName as string).replace(/^v/, "").trim(),
+			publishedAt: typeof t.publishedAt === "string" ? t.publishedAt : undefined,
+		}));
+
+	const ordered = orderReleasesByPublication(candidates);
+	const floorIdx = ordered.findIndex(r => r.version !== target);
+	if (floorIdx === -1) {
+		return { floor: null, versionsInRange: [target] };
+	}
+
+	const publishedAfterFloor = ordered
+		.slice(0, floorIdx)
+		.map(r => r.version)
+		.filter(v => v !== target);
+
+	return { floor: ordered[floorIdx]!.version, versionsInRange: [target, ...publishedAfterFloor] };
+}
+
+/**
+ * Resolve the release published most recently before `targetVersion` via
+ * `gh release list`, and the window of versions whose changelog sections the
+ * notes cover: the target plus every tag published after that floor. Order is
+ * publication order; a version number is a label, so `0.0.1` cut after `1.4.0`
+ * has floor `1.4.0`.
  *
  * Failure semantics:
- *   - `VEYYON_RELEASE_NOTES_FLOOR` set → honored verbatim (`""` forces null).
- *   - `gh` succeeded, no candidate < target → `null` (legitimate first-ever
- *     publish; legacy single-version output is correct).
+ *   - `VEYYON_RELEASE_NOTES_FLOOR` set → honored verbatim (`""` forces null),
+ *     and the window is the target alone.
+ *   - `gh` succeeded, no other published release → `null` (legitimate
+ *     first-ever publish; single-version output is correct).
  *   - `gh` itself failed (missing binary, missing `GH_TOKEN` in Actions,
  *     network/auth error) → throws. Letting this degrade to single-version
  *     output silently re-strands silent-tag entries (#2596 review); the CI
  *     step must die loudly so the release is rebuilt with the token wired.
  *     Local runs without `gh` should set `VEYYON_RELEASE_NOTES_FLOOR=` to opt
- *     into legacy mode explicitly.
+ *     into single-version mode explicitly.
  */
-async function resolvePublishedFloorTag(targetVersion: string): Promise<string | null> {
+export async function resolvePublishedFloorTag(
+	targetVersion: string,
+): Promise<{ floor: string | null; versionsInRange: string[] }> {
+	const target = targetVersion.replace(/^v/, "").trim();
 	const override = process.env.VEYYON_RELEASE_NOTES_FLOOR;
 	if (override !== undefined) {
 		const stripped = override.replace(/^v/, "").trim();
-		return stripped.length === 0 ? null : stripped;
+		const floor = stripped.length === 0 ? null : stripped;
+		if (floor !== null && floor === target) {
+			return { floor, versionsInRange: [] };
+		}
+		return { floor, versionsInRange: [target] };
 	}
 	const res =
-		await $`gh release list --repo ${REPO} --limit 200 --exclude-drafts --exclude-pre-releases --json tagName,isDraft,isPrerelease`
+		await $`gh release list --repo ${REPO} --limit 200 --exclude-drafts --exclude-pre-releases --json tagName,isDraft,isPrerelease,publishedAt`
 			.quiet()
 			.nothrow();
 	if (res.exitCode !== 0) {
@@ -437,13 +473,7 @@ async function resolvePublishedFloorTag(targetVersion: string): Promise<string |
 	if (!Array.isArray(raw)) {
 		throw new Error(`gh release list returned a non-array payload: ${typeof raw}`);
 	}
-	const candidates = (raw as Array<{ tagName?: unknown; isDraft?: unknown; isPrerelease?: unknown }>)
-		.filter(t => t.isDraft !== true && t.isPrerelease !== true)
-		.map(t => (typeof t.tagName === "string" ? t.tagName : ""))
-		.filter(tag => /^v\d+\.\d+\.\d+$/.test(tag))
-		.filter(tag => compareVersions(tag, targetVersion) < 0)
-		.sort((a, b) => compareVersions(b, a));
-	return candidates[0]?.replace(/^v/, "") ?? null;
+	return resolvePublishedFloorFromList(raw, target);
 }
 
 async function main(): Promise<void> {
@@ -454,9 +484,9 @@ async function main(): Promise<void> {
 	}
 	const version = tagInput.replace(/^v/, "").trim();
 	const outputPath = process.argv[3] ?? "release-notes.md";
-	const floor = await resolvePublishedFloorTag(version);
+	const { floor, versionsInRange } = await resolvePublishedFloorTag(version);
 	if (floor) {
-		console.log(`Aggregating CHANGELOG sections in (${floor}, ${version}].`);
+		console.log(`Aggregating CHANGELOG sections for [${versionsInRange.join(", ")}] (floor: ${floor}).`);
 	} else {
 		console.log(`No prior published release resolved; emitting only ## [${version}] sections.`);
 	}
@@ -466,7 +496,7 @@ async function main(): Promise<void> {
 	changelogPaths.sort();
 	for (const changelogPath of changelogPaths) {
 		const content = await Bun.file(changelogPath).text();
-		const merged = mergePackageSection(content, floor, version);
+		const merged = mergePackageSection(content, versionsInRange);
 		if (merged === "") continue;
 		const pkgDir = changelogPath.replace(/\/CHANGELOG\.md$/, "");
 		const name = await loadPackageName(pkgDir);

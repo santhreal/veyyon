@@ -14,12 +14,13 @@
 
 import type { CommandEntry } from "@veyyon/utils/cli";
 import { levenshteinDistance } from "@veyyon/utils/levenshtein";
+import * as logger from "@veyyon/utils/logger";
 import { flagConsumesValue } from "./cli/flag-tables";
 
 export const commands: CommandEntry[] = [
 	{
 		name: "launch",
-		load: () => import("./commands/launch").then(m => m.default),
+		load: () => logger.time("import:commands/launch", () => import("./commands/launch").then(m => m.default)),
 		summary: { description: "AI coding assistant", hidden: true },
 	},
 	{

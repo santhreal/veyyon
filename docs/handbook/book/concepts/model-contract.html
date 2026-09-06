@@ -22,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="Operator handbook for Veyyon: terminal and native desktop interfaces, installation, configuration, tools, approvals, edit formats, providers, and harness structure.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ff3d8e07.js";
+            window.path_to_searchindex_js = "../searchindex-695ab59a.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-d6acdfa6.js"></script>
+        <script src="../toc-b613f6a6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -326,11 +326,13 @@ under <code>modelRoles</code>:</p>
 <ul>
 <li><code>modelRoles.tiny</code> (or <code>smol</code>): lightweight background work (titles, memory, auto-thinking).</li>
 </ul>
-<p>Subagent models are not roles. They live in the Subagents settings area, where four layers can
-name one, highest first: that agent’s row in <code>subagent.agents</code>, the blanket <code>subagent.model</code>, the
-agent definition’s own <code>model:</code>, otherwise the conversation model. There is no silent blend, and a
-configured value that matches no available model rejects the spawn instead of quietly handing the
-decision to the next layer. <code>/agents</code> shows the resolved model and which of the four decided.
+<p>Subagent models are not roles. They live in the Subagents settings area, on two exclusive scopes.
+With <strong>Same Model for All Subagents</strong> off, the first of these names the model: that agent’s row in
+<code>subagent.agents</code>, then the agent definition’s own <code>model:</code>, otherwise the <code>default</code> model role.
+With it on, <code>subagent.model</code> names it for every agent and the rows above are not read. There is no
+silent blend, and a configured value that matches no available model rejects the spawn instead of
+quietly handing the decision to the next layer. <code>/agents</code> shows the resolved model and which
+setting decided.
 See <a href="../reference/settings.html#subagents">Settings: Subagents</a> and
 <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</p>
 <h2 id="automation-note"><a class="header" href="#automation-note">Automation note</a></h2>

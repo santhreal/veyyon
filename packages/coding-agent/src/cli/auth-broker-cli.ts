@@ -21,6 +21,7 @@ import {
 	type AuthCredential,
 	type CredentialDisabledEvent,
 	getEnvApiKey,
+	getLoginCredential,
 	getOAuthProviders,
 	listProvidersWithEnvKey,
 	type OAuthCredential,
@@ -166,9 +167,13 @@ async function runLocalLogin(provider: OAuthProvider): Promise<void> {
 		// `AuthStorage.login` independently refuses to synthesize the default prompt
 		// for non-paste-code providers, so this is defense-in-depth on the same gate.
 		const usesManualInput = PASTE_CODE_LOGIN_PROVIDERS.has(provider);
+		// An API-key login's URL is where a key is obtained; the flow is not waiting on it.
+		const credential = getLoginCredential(provider);
 		await storage.login(provider, {
 			onAuth({ url, launchUrl, instructions }) {
-				process.stdout.write("\nOpen this URL in your browser:\n");
+				process.stdout.write(
+					credential === "api-key" ? "\nGet an API key at:\n" : "\nOpen this URL in your browser:\n",
+				);
 				// Full URL first so the CLI works from any machine, including SSH
 				// sessions where a `launchUrl` (loopback `/launch` on the veyyon
 				// host) would resolve against the caller's browser and fail.

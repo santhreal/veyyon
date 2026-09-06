@@ -1,38 +1,90 @@
 #!/usr/bin/env bash
-# The autoswarm setup console, driven the way a user reaches it.
+# The autoswarm launcher, driven the way a user reaches it.
 #
-# `/autoswarm` used to take its configuration as command arguments, so a run was
-# started by typing `/autoswarm breadth 4` and hoping the number landed. It now
-# opens a console: four fields, arrow keys, Enter to start, Escape to leave.
+# `/autoswarm` used to open a modal setup form that took the goal as a command
+# argument and closed on Enter, with the loop's other controls spread over
+# subcommands (`off`, `resume`, `clear --keep-tree`). On a branch with no
+# session it now opens a centered launcher card: a form with the goal, the
+# preset switch, breadth, the per-arm models, attempts, certification and the
+# iteration cap, a Start button and a Save-as row. Nothing is typed after the
+# command. Over a session the same command opens the run dashboard instead,
+# which autoswarm-run-resume-keeps-goal.sh records.
 #
-# The scene proves the console is reachable, that the keys move the values on
-# screen, and that Escape leaves without starting a run. It deliberately does
-# not press Enter at the end: starting a real swarm needs an `autoresearch.sh`
-# harness in the tree and a model that will spend an hour in it, and neither
-# belongs in a capture.
+# The scene proves the launcher is reachable with no arguments, that the keys
+# move the values on screen, that an arm can be put on its own model and that
+# a model nothing matches blocks the start, that a preset rewrites the rows in
+# one keystroke, and that Escape leaves without starting a run. It deliberately
+# does not press Enter on Start: starting a real swarm needs an
+# `autoresearch.sh` harness in the tree and a model that will spend an hour in
+# it, and neither belongs in a capture.
 #
-# The goal field is prefilled from the text typed after the command, so the
-# first frame already carries a goal and the empty-goal warning is reached by
-# deleting it rather than by opening a second session.
+# The card holds still between keystrokes and the take measures under 1 fps of
+# real change, so both arms turn the motion gate off:
+#
+#   SCENE_MOTION_FLOOR=0 proof/record.sh proof/scenes/autoswarm-setup.sh
+#   SCENE_MOTION_FLOOR=0 proof/record.sh --before proof/scenes/autoswarm-setup.sh
+#
+# The before arm is main's modal form. Its rows are Goal, Breadth, Models,
+# Attempts and Certification with the cursor opening on Goal; the launcher opens
+# on Goal too, with Preset between Goal and Breadth. From Breadth down the two
+# walks are the same keys, and the frames share a name where the state
+# corresponds. `iterations-set`, `preset-wide` and `start-ready` are rows the
+# form never had and exist on the after arm only.
 
 settle 20
 
-# Open the console with a goal typed after the command.
-slash "/autoswarm make the tokenizer faster"
+# Open the console with nothing after the command.
+slash "/autoswarm"
 settle 3
+if [ "${SCENE_ARM:-after}" = "after" ]; then
+	expect_screen "Iterations" 30 "console"
+fi
 shot open
 
-# Down to Breadth, then raise it. The summary line under the fields restates
-# what the number buys, so the frame shows the value and its consequence.
-k Down
+# Type a goal. The Start pane stops reading "Needs a goal" as soon as the row
+# holds text; the form's legend stops reading "enter needs a goal".
+t "make the tokenizer faster"
+settle 1
+shot goal-typed
+
+# Down to Breadth, then raise it. The row shows the value between its arrows,
+# and the note under the form restates what the number buys, so the frame
+# shows the value and its consequence. The after arm has the Preset row
+# between Goal and Breadth.
+if [ "${SCENE_ARM:-after}" = "after" ]; then
+	key_repeat Down 2 0.15
+else
+	k Down
+fi
 settle 1
 shot breadth-focused
 key_repeat Right 3 0.25
 settle 1
 shot breadth-raised
 
-# Down past Attempts to Certification, and toggle it off. The summary changes
-# from a review ring to uncertified, which is the differential this field has.
+# The models row: one spec per arm, in arm order. The pane reads the
+# assignment back as arms, so the frame shows which model each arm gets rather
+# than a comma list the reader has to count. The two ids are rows the
+# recorder's own model file declares, so the console resolves them through the
+# resolver `--model` uses rather than accepting any string that was typed.
+k Down
+settle 1
+shot models-focused
+t "qwen2.5-1.5b-q8, qwen2.5-1.5b-q4"
+settle 1
+shot models-assigned
+
+# A model nothing matches must block the start rather than quietly falling
+# back to the session model.
+t ", nope"
+settle 1
+shot models-unknown
+key_repeat BackSpace 6 0.05
+settle 1
+shot models-restored
+
+# Attempts, then Certify. Toggling certification changes the pane from a
+# review ring to uncertified, which is the differential this row has.
 k Down
 settle 1
 key_repeat Right 2 0.25
@@ -47,25 +99,31 @@ k space
 settle 1
 shot certification-on
 
-# Back to the goal and empty it. Enter must not start a run with nothing to
-# optimize, so the warning appears and the console stays open.
-k Up
-k Up
-k Up
-settle 1
-key_repeat BackSpace 26 0.05
-settle 1
-shot goal-empty
+if [ "${SCENE_ARM:-after}" = "after" ]; then
+	# Iterations: typed digits replace `auto`, and a second digit appends.
+	k Down
+	settle 1
+	t "12"
+	settle 1
+	shot iterations-set
 
-# Enter here must do nothing. A frame of the refusal is byte-identical to the
-# one above -- which is the point, and which the recorder rejects as a failed
-# take -- so the proof is the frame after it: the console is still open, still
-# holding the values set above, and the warning clears as soon as a goal exists.
-k Return
-settle 2
-t "make the tokenizer faster"
-settle 1
-shot goal-restored
+	# The preset switch, five rows up. The rows match no preset by now, so
+	# Right lands on `swarm` and a second Right on `wide`, which rewrites
+	# breadth, attempts, certification, the models and the cap in one key and
+	# is painted as the shape in force afterwards.
+	key_repeat Up 5 0.1
+	settle 1
+	key_repeat Right 2 0.25
+	settle 1
+	shot preset-wide
+
+	# Down to the Start button: six rows from Preset, past the notes, which
+	# take no focus. The footer states what Enter would do with the rows as
+	# they stand; nothing is pressed.
+	key_repeat Down 6 0.1
+	settle 1
+	shot start-ready
+fi
 
 # Escape leaves without starting anything, and the composer comes back.
 k Escape

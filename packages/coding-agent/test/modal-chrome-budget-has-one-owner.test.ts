@@ -35,6 +35,7 @@ import { stripVTControlCharacters } from "node:util";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { MODEL_ROLES, SELECTABLE_MODEL_ROLE_IDS } from "@veyyon/coding-agent/config/model-roles";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	computeModalDims,
@@ -516,9 +517,23 @@ describe("ModelHub roles list windowing", () => {
 		return Array.from({ length: CHAIN_COUNT }, (_, i) => makeModel("test", `model-${i}`));
 	}
 
-	/** The rows the roles view draws, top to bottom, for {@link chainSettings}. */
+	/**
+	 * The rows the roles view draws, top to bottom, for {@link chainSettings}.
+	 *
+	 * Read from `SELECTABLE_MODEL_ROLE_IDS` rather than written out, because the table's membership
+	 * is a decision the source records: `advisor` owns a slot and is deliberately kept off this
+	 * screen, and a list typed out here claimed a row for it and failed against a hub that was
+	 * right. A role added or withdrawn now moves this list with the screen.
+	 */
 	function chainRowLabels(): string[] {
-		const rows = ["SMOL", "SLOW", "VISION", "PLAN", "DESIGNER", "COMMIT", "TINY", "ADVISOR", "+ New role…"];
+		const rows = SELECTABLE_MODEL_ROLE_IDS.map(role => {
+			// A selectable role with no tag has no bytes to find its row by, which would silently
+			// drop it from the sweep. Fail instead: the sweep is the reason this list is derived.
+			const tag = MODEL_ROLES[role].tag;
+			if (tag === undefined) throw new Error(`selectable role ${role} carries no tag`);
+			return tag;
+		});
+		rows.push("+ New role…");
 		for (let i = 0; i < CHAIN_COUNT; i++) rows.push(`test/pattern-${i}`, `↳ test/model-${i}`);
 		rows.push("+ New fallback…");
 		return rows;

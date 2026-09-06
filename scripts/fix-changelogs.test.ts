@@ -454,3 +454,32 @@ describe("fixChangelogContent merges duplicate version sections", () => {
 		expect(bulletCount).toBe(1);
 	});
 });
+
+describe("fixChangelogContent preserves document order", () => {
+	it("leaves a 0.0.1 section placed above 1.4.0 above it without numeric re-sorting", () => {
+		const content = [
+			"# Changelog",
+			"",
+			"## [Unreleased]",
+			"",
+			"## [0.0.1] - 2026-09-05",
+			"",
+			"### Fixed",
+			"",
+			"- A fix in 0.0.1.",
+			"",
+			"## [1.4.0] - 2026-08-01",
+			"",
+			"### Added",
+			"",
+			"- An addition in 1.4.0.",
+			"",
+		].join("\n");
+
+		const result = fixChangelogContent(content, new Set());
+
+		const headings = result.content.split("\n").filter(line => line.startsWith("## ["));
+		expect(headings).toEqual(["## [Unreleased]", "## [0.0.1] - 2026-09-05", "## [1.4.0] - 2026-08-01"]);
+		expect(result.content).toBe(content);
+	});
+});

@@ -22,6 +22,7 @@ import { EXPERIMENT_TOOL_NAMES } from "@veyyon/coding-agent/autoresearch/tools/i
 import { createInitExperimentTool } from "@veyyon/coding-agent/autoresearch/tools/init-experiment";
 import { createLogExperimentTool } from "@veyyon/coding-agent/autoresearch/tools/log-experiment";
 import { createRunExperimentTool } from "@veyyon/coding-agent/autoresearch/tools/run-experiment";
+import { createStartArmTool } from "@veyyon/coding-agent/autoresearch/tools/start-arm";
 import { createUpdateNotesTool } from "@veyyon/coding-agent/autoresearch/tools/update-notes";
 import type { AutoresearchToolFactoryOptions } from "@veyyon/coding-agent/autoresearch/types";
 import type { ExtensionAPI } from "@veyyon/coding-agent/extensibility/extensions";
@@ -40,6 +41,7 @@ const FACTORIES = [
 	createLogExperimentTool,
 	createUpdateNotesTool,
 	createCertifyArmsTool,
+	createStartArmTool,
 ];
 
 describe("EXPERIMENT_TOOL_NAMES (F7)", () => {

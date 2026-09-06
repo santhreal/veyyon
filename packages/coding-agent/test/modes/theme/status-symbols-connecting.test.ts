@@ -15,7 +15,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ThemeJson } from "@veyyon/coding-agent/modes/theme/color";
-import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
+import { getDefaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
 import { SYMBOL_PRESETS } from "@veyyon/coding-agent/modes/theme/symbols";
 import { createTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
@@ -45,7 +45,7 @@ describe("status.connecting / status.active symbols", () => {
 	});
 
 	it("surface through the Theme.status getter with preset values", () => {
-		const unicode = createTheme(defaultThemes.titanium as ThemeJson, {
+		const unicode = createTheme(getDefaultThemes().titanium as ThemeJson, {
 			mode: "truecolor",
 			symbolPresetOverride: "unicode",
 		});
@@ -53,7 +53,7 @@ describe("status.connecting / status.active symbols", () => {
 		// combining-mark placeholder glyph and read as a rendering artifact.
 		expect(unicode.status.connecting).toBe("◦");
 		expect(unicode.status.active).toBe("●");
-		const ascii = createTheme(defaultThemes.titanium as ThemeJson, {
+		const ascii = createTheme(getDefaultThemes().titanium as ThemeJson, {
 			mode: "truecolor",
 			symbolPresetOverride: "ascii",
 		});

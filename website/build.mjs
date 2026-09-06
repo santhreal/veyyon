@@ -4,22 +4,19 @@
  *
  *   node website/build.mjs
  *
- * Steps:
  *  1. Regenerate changelog.html from the real CHANGELOG (single source of truth).
- *  2. Render the blog from website/blog/*.md and fold published posts into the
- *     sitemap. Drafts render (for a review link) but stay out of the sitemap.
- *  3. Stage the install scripts at the site root so `veyyon.dev/install.sh` and
+ *  2. Stage the install scripts at the site root so `veyyon.dev/install.sh` and
  *     `veyyon.dev/install.ps1` resolve. Source of truth stays in scripts/; the
  *     copies here are gitignored build artifacts.
- *
+ *  3. Regenerate models-data.json from the bundled model catalog so the models
+ *     page reflects every provider and model veyyon currently supports.
  * The handbook (website/docs) is a symlink to docs/handbook/book — rebuild it
  * with `mdbook build` in docs/handbook before deploying if the docs changed.
  */
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { buildBlog } from "./tools/gen-blog.mjs";
 import { renderNav } from "./tools/nav.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -27,7 +24,7 @@ const REPO = join(HERE, "..");
 
 // 0. Navigation. The hand-authored pages each carry two header navs (desktop plus
 // the mobile disclosure) and a footer nav, which used to be nine hand-copied
-// blocks that drifted: 404.html lost the Blog link and nobody noticed. The links
+// blocks that drifted: 404.html lost a link and nobody noticed. The links
 // now live in tools/nav.mjs and get written into each page's <!--NAV:START--> /
 // <!--NAV:END--> region here, so adding a link is a one-line change and no page
 // can fall behind. `current` marks aria-current="page" for that page's own link.
@@ -69,31 +66,20 @@ console.log(`nav: wrote ${NAV_PAGES.length * 3} nav region(s) from tools/nav.mjs
 // 1. Changelog.
 execFileSync(process.execPath, [join(HERE, "tools", "gen-changelog.mjs")], { stdio: "inherit" });
 
-// 2. Blog → HTML, then reconcile the sitemap's blog region with what published.
-const { publishedUrls, indexUrl } = buildBlog();
-{
-	const path = join(HERE, "sitemap.xml");
-	const xml = readFileSync(path, "utf8");
-	const urls = [indexUrl, ...publishedUrls]
-		.map((u) => `  <url><loc>${u}</loc><priority>0.6</priority></url>`)
-		.join("\n");
-	const region = `<!--BLOG:START-->\n${urls}\n  <!--BLOG:END-->`;
-	const next = xml.replace(/<!--BLOG:START-->[\s\S]*?<!--BLOG:END-->/, region);
-	if (next === xml && !/<!--BLOG:START-->/.test(xml)) {
-		console.error("sitemap.xml is missing the <!--BLOG:START-->/<!--BLOG:END--> markers");
-		process.exit(1);
-	}
-	writeFileSync(path, next);
-	console.log(`sitemap: ${publishedUrls.length} published post(s) + blog index`);
-}
-
-// 3. Install scripts → site root (build artifacts; real source lives in scripts/).
+// 2. Install scripts → site root (build artifacts; real source lives in scripts/).
 for (const name of ["install.sh", "install.ps1"]) {
 	const src = join(REPO, "scripts", name);
 	const dst = join(HERE, name);
 	copyFileSync(src, dst);
 	console.log(`staged ${name}`);
 }
+
+// 3. Models catalog → models-data.json (read by models.html client-side). The
+// generator states that a site build regenerates this file, and models.html and
+// the changelog both describe the page as auto-synced from the bundled catalog;
+// the call was missing, so the committed copy only moved when somebody ran the
+// tool by hand.
+execFileSync(process.execPath, [join(HERE, "tools", "gen-models.mjs")], { stdio: "inherit" });
 
 // 3a. The hero clip has ONE source: `assets/demo-hd.webp`, the file the recorder
 // publishes and the README links. The site held a second copy that nothing but a
@@ -106,8 +92,12 @@ for (const name of ["install.sh", "install.ps1"]) {
 	const src = join(REPO, "assets", "demo-hd.webp");
 	copyFileSync(src, join(HERE, "demo-hd.webp"));
 	console.log("staged demo-hd.webp");
+	const cockpitSrc = join(REPO, "assets", "agents-cockpit.webp");
+	if (existsSync(cockpitSrc)) {
+		copyFileSync(cockpitSrc, join(HERE, "agents-cockpit.webp"));
+		console.log("staged agents-cockpit.webp");
+	}
 }
-
 // 3b. get.veyyon.dev is the `curl -fsSL https://get.veyyon.dev | sh` endpoint. It
 // deploys to a SEPARATE Pages project (veyyon-get) from a SEPARATE tree so its
 // root can serve install.sh while veyyon.dev's root serves the marketing site.
@@ -132,7 +122,7 @@ console.log("staged website-get/ (get.veyyon.dev root -> install.sh)");
 // Sanity: the pages must not leak the old product name (only the MIT oh-my-pi
 // attribution and clearly-marked OMP_ legacy env aliases are allowed).
 const OFFENDERS = /\bomp[ -]|omp\.exe|%LOCALAPPDATA%\\omp\b/i;
-const pages = ["index.html", "features.html", "models.html", "install.html", "changelog.html", "blog/index.html", "blog/argot.html"];
+const pages = ["index.html", "features.html", "models.html", "install.html", "changelog.html"];
 for (const page of pages) {
 	const html = readFileSync(join(HERE, page), "utf8");
 	const bad = html.split("\n").filter(l => OFFENDERS.test(l) && !/oh-my-pi/.test(l));

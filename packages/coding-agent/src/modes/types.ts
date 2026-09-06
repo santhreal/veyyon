@@ -1,7 +1,7 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { CompactionOutcome } from "@veyyon/agent-core/compaction";
 import type { AssistantMessage, ImageContent, Message, Usage, UsageReport } from "@veyyon/ai";
-import type { Component, Container, EditorTheme, Loader, Spacer, Text, TUI } from "@veyyon/tui";
+import type { Component, Container, EditorTheme, Loader, OverlayOptions, Spacer, Text, TUI } from "@veyyon/tui";
 import type { CollabGuestLink } from "../collab/guest";
 import type { CollabHost } from "../collab/host";
 import type { KeybindingsManager } from "../config/keybindings";
@@ -543,7 +543,7 @@ export interface InteractiveModeContext {
 			keybindings: KeybindingsManager,
 			done: (result: T) => void,
 		) => (Component & { dispose?(): void }) | Promise<Component & { dispose?(): void }>,
-		options?: { overlay?: boolean },
+		options?: { overlay?: boolean | OverlayOptions },
 	): Promise<T>;
 	showExtensionError(extensionPath: string, error: string): void;
 	showToolError(toolName: string, error: string): void;

@@ -23,7 +23,6 @@ import {
 	type SubmenuOption,
 	TAB_GROUPS,
 } from "../../config/settings-schema";
-import { SUBAGENT_MODEL_BY_DEPTH_PATH } from "../../task/subagent-settings";
 import { AUTO_THINKING } from "../../thinking";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -117,25 +116,26 @@ export interface SubagentAgentsSettingDef extends BaseSettingDef {
 }
 
 /**
- * The `subagent.modelByDepth` map: one row per configured spawn depth, each
- * edited with the same ordered-chain picker as `subagent.model`, bound to that
- * depth's row.
- *
- * A dedicated type rather than the generic record-as-text control because the
- * keys are not free-form — they are positive integer depths, and an operator
- * typing JSON by hand cannot see which depths exist or what a row resolves to.
- */
-export interface SubagentModelByDepthSettingDef extends BaseSettingDef {
-	type: "subagentModelByDepth";
-}
-
-/**
  * The profile's default effort per model: rows of `provider/id` (or `*` for any
  * model) to an effort, edited as a list. The one persisted effort surface, so a
  * second row writing the same axis cannot reappear.
  */
 export interface DefaultEffortSettingDef extends BaseSettingDef {
 	type: "defaultEffort";
+}
+
+/**
+ * `subagent.thinkingLevel`: the effort every agent runs at while the roster is
+ * on shared scope.
+ *
+ * A dedicated type rather than the generic text control because the levels a
+ * model accepts are not free-form, and a stored level no endpoint declares is
+ * clamped away at dispatch and reads as the picker having done nothing. The
+ * ladder narrows against `subagent.model`, which is the model those agents
+ * actually run, so the row and the spawn cannot disagree.
+ */
+export interface SubagentSharedEffortSettingDef extends BaseSettingDef {
+	type: "subagentSharedEffort";
 }
 
 /**
@@ -147,6 +147,17 @@ export interface DefaultEffortSettingDef extends BaseSettingDef {
  */
 export interface DefaultModelSettingDef extends BaseSettingDef {
 	type: "defaultModel";
+}
+
+/**
+ * The model the advisor runs. Rendered with the same searchable model+effort
+ * picker as the role slots and backed by the `advisor` model-role slot, so it
+ * has no schema key of its own. That slot is what `resolveAdvisorRoleSelection`
+ * reads and what `@advisor` names; this row is the only place it is edited,
+ * which is why `advisor` is not in `SELECTABLE_MODEL_ROLE_IDS`.
+ */
+export interface AdvisorModelSettingDef extends BaseSettingDef {
+	type: "advisorModel";
 }
 
 /**
@@ -182,9 +193,10 @@ export type SettingDef =
 	| ModelSelectorSettingDef
 	| ModelRolesSettingDef
 	| SubagentAgentsSettingDef
-	| SubagentModelByDepthSettingDef
 	| DefaultEffortSettingDef
+	| SubagentSharedEffortSettingDef
 	| DefaultModelSettingDef
+	| AdvisorModelSettingDef
 	| RulesSettingDef
 	| LspSettingDef;
 
@@ -205,6 +217,17 @@ export type SettingDef =
  * intentionally not one of the schema-derived paths; the cast records that.
  */
 export const DEFAULT_MODEL_SETTING_ID = "defaultModel" as SettingPath;
+
+/**
+ * Synthetic settings id for the {@link AdvisorModelSettingDef}. Not a real
+ * config key either: the value lives in the `advisor` model-role slot, read and
+ * written via `settings.getModelRole("advisor")` / `setModelRole`, which is
+ * what `resolveAdvisorRoleSelection` resolves and what `@advisor` names.
+ */
+export const ADVISOR_MODEL_SETTING_ID = "advisorModel" as SettingPath;
+
+/** The model-role slot {@link ADVISOR_MODEL_SETTING_ID} edits. */
+export const ADVISOR_MODEL_SLOT = "advisor" as const;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Condition Functions
@@ -252,6 +275,10 @@ const CONDITIONS: Record<string, () => boolean> = {
 	// Both close budgets are meaningless while nothing closes, and a visible timer
 	// that does not run reads as a bug in the feature rather than an off switch.
 	subagentPruneEnabled: () => whenSettingsSay(() => Settings.instance.get("subagent.prune.enabled") === true),
+	// The blanket model and effort exist only while the roster is on one scope.
+	// Shown while the switch is off they are two rows that decide nothing, which
+	// is exactly how the retired version of this switch confused people.
+	subagentSharedModel: () => whenSettingsSay(() => Settings.instance.get("subagent.sharedModel") === true),
 	// Isolation ships off, and the merge strategy and commit style only describe
 	// how an isolated run's changes come back. Shown while no backend is selected
 	// they are two choices with no case where either applies.
@@ -433,6 +460,7 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 	}
 
 	if (schemaType === "string") {
+		if (path === "subagent.thinkingLevel") return { ...base, type: "subagentSharedEffort" };
 		if (path === "compaction.threshold") {
 			return { ...base, type: "compactionThreshold", options: options && options !== "runtime" ? options : [] };
 		}
@@ -450,7 +478,6 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 		if (path === "providers.maxInFlightRequests") return { ...base, type: "providerLimits" };
 		if (path === "modelRoles") return { ...base, type: "modelRoles" };
 		if (path === "subagent.agents") return { ...base, type: "subagentAgents" };
-		if (path === SUBAGENT_MODEL_BY_DEPTH_PATH) return { ...base, type: "subagentModelByDepth" };
 		if (path === "defaultEffort") return { ...base, type: "defaultEffort" };
 		return { ...base, type: "text" };
 	}
@@ -506,6 +533,26 @@ export function getAllSettingDefs(): SettingDef[] {
 		label: "Default Model",
 		description:
 			"The model each new session starts on, restored on launch. This picker stores only the model; set its saved effort in Default Effort. Scoped to the active profile.",
+	});
+	// Synthetic entry: the advisor's model has no schema key of its own either (it
+	// lives in the `advisor` model-role slot). Spliced directly after Enable
+	// Advisor rather than appended, because the group's rows are rendered in this
+	// order and "which model reviews my turns?" is the next question after
+	// turning the feature on. The group sort in getSettingsForTab is stable, so
+	// this position survives it.
+	// A missing Enable Advisor row means the group is gone; append rather than
+	// land at index 0, where the row would head an unrelated group.
+	const advisorEnabledIndex = defs.findIndex(def => def.path === "advisor.enabled");
+	const advisorModelIndex = advisorEnabledIndex >= 0 ? advisorEnabledIndex + 1 : defs.length;
+	defs.splice(advisorModelIndex, 0, {
+		path: ADVISOR_MODEL_SETTING_ID,
+		type: "advisorModel",
+		tab: "model",
+		group: "Advisor",
+		label: "Advisor Model",
+		description:
+			"The model that reviews each turn. Unset: the advisor runs the live main model. A per-advisor override in WATCHDOG.yml still wins over this for that advisor. Scoped to the active profile.",
+		condition: CONDITIONS.advisorEnabled,
 	});
 	cachedDefs = defs;
 	return defs;

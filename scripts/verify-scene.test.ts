@@ -95,6 +95,15 @@ describe("a scene guard has to resolve to something that produces it", () => {
 		).toEqual([]);
 	});
 
+	it("accepts a declaration indented inside the arm whose guard it explains", () => {
+		expect(
+			problems({
+				// biome-ignore lint/suspicious/noTemplateCurlyInString: bash parameter expansion in a scene fixture
+				scene: 'if [ "${SCENE_ARM:-after}" = "before" ]; then\n\t# needle-source: WARP CORE -- printed by the compiled binary\n\texpect_screen "WARP CORE" 60 "core"\nfi\n',
+			}),
+		).toEqual([]);
+	});
+
 	it("ignores a needle assembled from a shell variable, which only run time can resolve", () => {
 		// biome-ignore lint/suspicious/noTemplateCurlyInString: bash parameter expansion in a scene fixture
 		expect(problems({ scene: 'expect_model_screen "${SCENE_SIGNING_NUMBER}" 60\n' })).toEqual([]);

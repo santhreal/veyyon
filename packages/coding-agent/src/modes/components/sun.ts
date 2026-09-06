@@ -14,7 +14,7 @@
  */
 
 import { SGR_RESET } from "@veyyon/tui/ansi";
-import { clamp01 } from "@veyyon/utils";
+import { clamp01 } from "@veyyon/utils/math";
 
 /**
  * The disc's shape: where it fades out, and how it dims toward the limb.

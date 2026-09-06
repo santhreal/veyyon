@@ -14,7 +14,7 @@
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { CardPadRow, ComposerHairline } from "@veyyon/coding-agent/modes/components/composer-chrome";
 import type { ThemeJson } from "@veyyon/coding-agent/modes/theme/color";
-import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
+import { getDefaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
 import {
 	getDetectedTerminalGround,
 	groundHairlineHex,
@@ -120,7 +120,7 @@ describe("composer card ground derivation", () => {
 	// whose empty bg maps to black, which is itself a declared card.
 	beforeAll(async () => {
 		await initTheme(false);
-		setThemeInstance(createTheme(defaultThemes.titanium as ThemeJson, { mode: "truecolor" }));
+		setThemeInstance(createTheme(getDefaultThemes().titanium as ThemeJson, { mode: "truecolor" }));
 	});
 
 	afterEach(() => {

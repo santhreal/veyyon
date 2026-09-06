@@ -24,6 +24,7 @@ import autoresearchCommandResume from "./command-resume.md" with { type: "text" 
 import autoresearchPrompt from "./prompt.md" with { type: "text" };
 import autoresearchPromptSetup from "./prompt-setup.md" with { type: "text" };
 import autoresearchResumeMessage from "./resume-message.md" with { type: "text" };
+import autoresearchStallNudge from "./stall-nudge.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/autoresearch/`, keyed by its id (the path under `src/prompts/`). */
 export const autoresearchPrompts = definePromptRows({
@@ -42,5 +43,9 @@ export const autoresearchPrompts = definePromptRows({
 	"autoresearch/resume-message": {
 		text: autoresearchResumeMessage,
 		purpose: "the steer that continues the autoresearch loop",
+	},
+	"autoresearch/stall-nudge": {
+		text: autoresearchStallNudge,
+		purpose: "the steer that names a loop which ended a turn without advancing",
 	},
 } satisfies Record<string, PromptEntry>);

@@ -1,4 +1,4 @@
-import { escapeRegExp } from "@veyyon/utils";
+import { escapeRegExp } from "@veyyon/utils/regex";
 
 /** Characters that bind a magic keyword into an identifier or path segment. */
 const LEFT_BOUNDARY = String.raw`(?<![\p{L}\p{N}_./\\-])(?<!::)`;

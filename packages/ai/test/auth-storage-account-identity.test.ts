@@ -16,7 +16,8 @@ describe("AuthStorage.getOAuthAccountIdentity", () => {
 	beforeEach(async () => {
 		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-ai-auth-identity-"));
 		store = await SqliteAuthCredentialStore.open(path.join(tempDir, "agent.db"));
-		authStorage = new AuthStorage(store);
+		// Rotation across sibling accounts is movement; the library holds it off unless a host opts in.
+		authStorage = new AuthStorage(store, { loadBalancing: true });
 	});
 
 	afterEach(async () => {

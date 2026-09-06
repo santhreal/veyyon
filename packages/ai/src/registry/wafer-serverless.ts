@@ -9,4 +9,5 @@ export const waferServerlessProvider = {
 		const { loginWaferServerless } = await import("./oauth/wafer");
 		return loginWaferServerless(cb);
 	},
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

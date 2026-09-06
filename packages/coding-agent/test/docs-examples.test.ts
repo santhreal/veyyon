@@ -466,6 +466,25 @@ describe("docs examples — documented slash commands exist in the builtin regis
 		);
 		for (const m of loaderSrc.matchAll(/path: "bundled:([a-z][a-z0-9_-]*)"/g)) registered.add(m[1]);
 	}
+	// Commands an inline extension registers (`/autoresearch`, `/autoswarm`) are
+	// reachable from the composer and documented like any other, but they carry
+	// their own handler and so are declared where that handler lives rather than
+	// in the builtin table. Sweep the source for the registration call, the way
+	// the bundled list above is swept, so a new one is covered on the day it
+	// lands.
+	{
+		const listed = spawnSync("git", ["ls-files", "packages/coding-agent/src/**/*.ts"], {
+			cwd: REPO_ROOT,
+			encoding: "utf-8",
+			maxBuffer: 64 * 1024 * 1024,
+		});
+		if (listed.status !== 0) throw new Error(`git ls-files failed: ${listed.stderr}`);
+		for (const file of listed.stdout.split("\n").filter(Boolean)) {
+			const source = fs.readFileSync(path.join(REPO_ROOT, file), "utf-8");
+			if (!source.includes("registerCommand(")) continue;
+			for (const m of source.matchAll(/registerCommand\(\s*"([a-z][a-z0-9_-]*)"/g)) registered.add(m[1]);
+		}
+	}
 
 	it("the registry is alive", () => {
 		expect(registered.size).toBeGreaterThan(30);
@@ -568,6 +587,22 @@ describe("docs examples — inline dotted settings mentions are registered paths
 	 * suffix, so excluding one is not a loosening of what the gate checks.
 	 */
 	const HOSTNAME_RE = /\.(?:com|org|net|io|dev|sh|app|ai|co|gov|edu|local)$/;
+	/**
+	 * cgroup v2 control files share the dotted shape, and `memory` is a settings
+	 * root, so `memory.max` — the kernel file the memory cap is written to — was
+	 * reported as an unregistered setting. The names come from the kernel, not
+	 * from veyyon, so they are listed rather than pattern-matched: a token that
+	 * merely starts with `memory.` is still checked.
+	 */
+	const CGROUP_CONTROL_FILES = new Set([
+		"memory.current",
+		"memory.high",
+		"memory.max",
+		"memory.peak",
+		"memory.stat",
+		"memory.swap.current",
+		"memory.swap.max",
+	]);
 	const NEGATION_RE = /\bnot?\s+(?:a\s+)?`|\*\*not\*\*|does not exist|not shipped|never existed|removed|is gone/i;
 
 	const schemaPaths = new Set(Object.keys(SETTINGS_SCHEMA));
@@ -645,6 +680,7 @@ describe("docs examples — inline dotted settings mentions are registered paths
 					const token = match[1];
 					if (FILE_EXT_RE.test(token)) continue;
 					if (HOSTNAME_RE.test(token)) continue;
+					if (CGROUP_CONTROL_FILES.has(token)) continue;
 					if (!schemaRoots.has(token.split(".")[0])) continue;
 					mentions++;
 					if (!isKnownDotted(token)) {

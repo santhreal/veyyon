@@ -78,6 +78,7 @@ import { isPreResponseStall, openStallLadderBudget } from "../utils/first-event-
 import { isFoundryEnabled } from "../utils/foundry";
 import { finalizeErrorMessage, materializeDumpBody, type RawHttpRequestDump } from "../utils/http-inspector";
 import { getStreamFirstEventTimeoutMs, getStreamIdleTimeoutMs, iterateWithIdleTimeout } from "../utils/idle-iterator";
+import { conversationIdForOpenCode, getOpenCodeHeaders, isOpenCodeProvider } from "../utils/opencode-headers";
 import { notifyProviderResponse } from "../utils/provider-response";
 import { COMBINATOR_KEYS, NO_STRICT, toolWireSchema } from "../utils/schema";
 import { spillToDescription } from "../utils/schema/spill";
@@ -408,6 +409,15 @@ type AnthropicProviderSessionState = ProviderSessionState & {
 	 */
 	replayUnsignedThinkingDisabled: boolean;
 	/**
+	 * Runtime-learned: this endpoint answered `stop_reason: "refusal"` with
+	 * category `reasoning_extraction` for a request carrying prior-turn
+	 * reasoning demoted to text, so that prose must be dropped rather than
+	 * replayed from now on. All subsequent requests to this (baseUrl, modelId)
+	 * omit demoted prior reasoning, same behavior as an explicit
+	 * `compat.replayDemotedPriorReasoning: false`. Cleared on session close.
+	 */
+	priorReasoningReplayDisabled: boolean;
+	/**
 	 * Prompt-cache observations for this endpoint+model, so a miss can be judged
 	 * against the previous turn rather than guessed at. Kept here because the
 	 * cache identity is the conversation prefix, which is exactly what this key
@@ -421,11 +431,13 @@ function createAnthropicProviderSessionState(): AnthropicProviderSessionState {
 		strictToolsDisabled: false,
 		fastModeDisabled: false,
 		replayUnsignedThinkingDisabled: false,
+		priorReasoningReplayDisabled: false,
 		cacheTracker: createCacheTrackerState(),
 		close: () => {
 			state.strictToolsDisabled = false;
 			state.fastModeDisabled = false;
 			state.replayUnsignedThinkingDisabled = false;
+			state.priorReasoningReplayDisabled = false;
 			state.cacheTracker = createCacheTrackerState();
 		},
 	};
@@ -519,7 +531,7 @@ function getCacheControl(
  * This re-export keeps the name callers already import.
  */
 export { CLAUDE_CODE_VERSION as claudeCodeVersion } from "@veyyon/catalog/wire/anthropic";
-export const claudeAgentSdkVersion = "0.3.165";
+export const claudeAgentSdkVersion = "0.3.257";
 export const claudeClientVersion = "1.11187.4";
 export const claudeToolPrefix: string = "_";
 export const claudeCodeSystemInstruction = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
@@ -1210,6 +1222,13 @@ export type AnthropicClientOptionsArgs = {
 	disableStrictTools?: boolean;
 	fetch?: FetchImpl;
 	claudeCodeSessionId?: string;
+	/**
+	 * The conversation this request belongs to, for the OpenCode session header.
+	 * Not `claudeCodeSessionId`: a side-channel turn gives provider routing a
+	 * unique per-request session id while keeping the conversation's prompt-cache
+	 * key, so routing on it would send a new session per recap.
+	 */
+	conversationId?: string;
 };
 
 export type AnthropicClientOptionsResult = {
@@ -1920,6 +1939,7 @@ const streamAnthropicOnce = (
 				(providerSessionState?.strictToolsDisabled ?? false) || (model.compat?.disableStrictTools ?? false);
 			let dropFastMode = providerSessionState?.fastModeDisabled ?? false;
 			let forceDemoteUnsignedThinking = providerSessionState?.replayUnsignedThinkingDisabled ?? false;
+			let omitDemotedPriorReasoning = providerSessionState?.priorReasoningReplayDisabled ?? false;
 			const mergedCallerHeaders = mergeHeaders(model.headers, options?.headers);
 			const umansGatewayWebSearchHeader = getUmansWebSearchHeader(model, mergedCallerHeaders);
 
@@ -2016,6 +2036,7 @@ const streamAnthropicOnce = (
 					thinkingDisplay: options?.thinkingDisplay,
 					fetch: options?.fetch,
 					claudeCodeSessionId: options?.sessionId ?? extractClaudeMetadataSessionId(options?.metadata?.user_id),
+					conversationId: conversationIdForOpenCode(options),
 					disableStrictTools,
 				});
 				client = created.client;
@@ -2031,6 +2052,7 @@ const streamAnthropicOnce = (
 					disableStrictTools,
 					umansGatewayWebSearchHeader !== undefined,
 					forceDemoteUnsignedThinking,
+					omitDemotedPriorReasoning,
 				);
 				if (disableStrictTools) {
 					dropAnthropicStrictTools(nextParams);
@@ -2749,6 +2771,40 @@ const streamAnthropicOnce = (
 						firstTokenTime = undefined;
 						continue;
 					}
+					// Anthropic's `reasoning_extraction` classifier answered
+					// `stop_reason: "refusal"`, so this endpoint read the prior-turn
+					// reasoning this request replayed as demoted prose as extracted
+					// reasoning. The prose is the request's, not the model's, so the fix
+					// is to stop sending it: drop prior reasoning that cannot be replayed
+					// under signature, then retry. Learned for the session so the rest of
+					// the conversation does not pay for the discovery again, mirroring the
+					// signing-400 path above. Bounded to one extra attempt by the flag.
+					if (
+						!omitDemotedPriorReasoning &&
+						firstTokenTime === undefined &&
+						!streamedReplayUnsafeContent &&
+						output.stopDetails?.type === "refusal" &&
+						output.stopDetails.category === "reasoning_extraction"
+					) {
+						logger.warn(
+							"anthropic: reasoning_extraction refusal, dropping demoted prior reasoning and retrying",
+							{
+								provider: model.provider,
+								model: model.id,
+								baseUrl,
+								error: output.errorMessage,
+							},
+						);
+						if (providerSessionState) {
+							providerSessionState.priorReasoningReplayDisabled = true;
+						}
+						omitDemotedPriorReasoning = true;
+						params = await prepareParams();
+						providerRetryAttempt = 0;
+						discardAnthropicAttempt(model, output, copilotDynamicHeaders?.premiumRequests);
+						firstTokenTime = undefined;
+						continue;
+					}
 					if (
 						!dropFastMode &&
 						realizesPriorityServiceTier(options?.serviceTier, model) &&
@@ -2968,6 +3024,7 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 		thinkingDisplay,
 		isOAuth,
 		claudeCodeSessionId,
+		conversationId,
 		disableStrictTools: disableStrictToolsOverride,
 	} = args;
 	const compat = model.compat;
@@ -3029,6 +3086,8 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 		betaFeatures.push(interleavedThinkingBeta);
 	}
 
+	// First in the merge below, so a caller-supplied header still wins.
+	const openCodeHeaders = isOpenCodeProvider(model.provider) ? getOpenCodeHeaders(conversationId) : undefined;
 	const defaultHeaders = buildAnthropicHeaders({
 		apiKey,
 		baseUrl,
@@ -3036,6 +3095,7 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 		extraBetas: betaFeatures,
 		stream,
 		modelHeaders: mergeHeaders(
+			openCodeHeaders,
 			model.headers,
 			foundryCustomHeaders,
 			getUmansWebSearchHeader(model, mergeHeaders(model.headers, headers)),
@@ -3496,14 +3556,27 @@ function buildParams(
 	disableStrictTools = false,
 	useUmansGatewayWebSearch = false,
 	forceDemoteUnsignedThinking = false,
+	omitDemotedPriorReasoning = false,
 ): MessageCreateParamsStreaming {
 	// A session-scoped auto-demote (learned from a live signing 400) clones the
 	// resolved compat with `replayUnsignedThinking: false` so every subsequent
 	// downstream read (convertAnthropicMessages, transformMessages) sees the
-	// demoted default without mutating the shared `model` reference.
+	// demoted default without mutating the shared `model` reference. A learned
+	// `reasoning_extraction` refusal clears `replayDemotedPriorReasoning` the
+	// same way, which makes the transform drop prior reasoning it would
+	// otherwise hand over as prose.
+	const demoteUnsigned = forceDemoteUnsignedThinking && model.compat.replayUnsignedThinking;
+	const dropPriorReasoning = omitDemotedPriorReasoning && model.compat.replayDemotedPriorReasoning;
 	const effectiveModel =
-		forceDemoteUnsignedThinking && model.compat.replayUnsignedThinking
-			? { ...model, compat: { ...model.compat, replayUnsignedThinking: false } }
+		demoteUnsigned || dropPriorReasoning
+			? {
+					...model,
+					compat: {
+						...model.compat,
+						...(demoteUnsigned ? { replayUnsignedThinking: false } : {}),
+						...(dropPriorReasoning ? { replayDemotedPriorReasoning: false } : {}),
+					},
+				}
 			: model;
 	const { cacheControl } = getCacheControl(model, options?.cacheRetention, isOAuthToken);
 
@@ -3853,6 +3926,12 @@ export function convertAnthropicMessages(
 				} else if (block.type === "thinking") {
 					if (hasSignedThinking) {
 						if (!block.thinkingSignature || block.thinkingSignature.trim().length === 0) {
+							// An unsigned block cannot ride alongside a signed one, so it
+							// would otherwise demote to prose here. Once this endpoint has
+							// refused demoted prior reasoning it is dropped instead:
+							// re-sending the prose earns the same `reasoning_extraction`
+							// refusal, and the one retry that learned the flag is spent.
+							if (!model.compat.replayDemotedPriorReasoning) continue;
 							if (block.thinking.trim().length === 0) continue;
 							blocks.push({
 								type: "text",

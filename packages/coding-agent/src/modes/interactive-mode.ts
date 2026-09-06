@@ -23,6 +23,7 @@ import type {
 	LoaderMessageColorFn,
 	NativeScrollbackLiveRegion,
 	OverlayHandle,
+	OverlayOptions,
 	SlashCommand,
 } from "@veyyon/tui";
 import {
@@ -45,9 +46,7 @@ import { isInsideTerminalMultiplexer } from "@veyyon/tui/terminal-capabilities";
 import {
 	APP_NAME,
 	adjustHsv,
-	clampLow,
 	errorMessage,
-	estimateTokensFromText,
 	formatClock,
 	formatCount,
 	formatNumber,
@@ -152,10 +151,13 @@ import type { AssistantMessageComponent } from "./components/assistant-message";
 import type { BashExecutionComponent } from "./components/bash-execution";
 import { ChatBlock, type ChatBlockHost } from "./components/chat-block";
 import {
+	applyComposerChrome,
 	COMPOSER_INSET_COLS,
-	COMPOSER_PLACEHOLDER,
 	ComposerHairline,
+	computeEditorMaxHeight,
+	draftTokenZone,
 	mountComposerZone,
+	PRISTINE_COMPOSER_ACCENT_STATE,
 	QuietZoneLine,
 	resolveComposerAccents,
 } from "./components/composer-chrome";
@@ -197,6 +199,7 @@ import { TodoCommandController } from "./controllers/todo-command-controller";
 import { TranscriptComposer } from "./controllers/transcript-composer";
 import { WelcomeController } from "./controllers/welcome-controller";
 import { type FirstFrame, takeFirstFrame } from "./first-frame";
+import { recordLaunchFacts } from "./launch-facts";
 import {
 	consumeLoopLimitIteration,
 	createLoopLimitRuntime,
@@ -212,7 +215,7 @@ import { type SessionObserverChangeKind, SessionObserverRegistry } from "./sessi
 import { createSessionTeardown, type SessionTeardown } from "./session-teardown";
 import { runProviderSetupWizard } from "./setup-wizard/lazy";
 import { interruptHint } from "./shared";
-import { applyGroundPaint, setDetectedTerminalGround } from "./theme/ground-tints";
+import { applyGroundPaint, getDetectedTerminalGround, setDetectedTerminalGround } from "./theme/ground-tints";
 import { setMarkdownMermaidRendering } from "./theme/markdown-theme";
 import { clearMermaidCache } from "./theme/mermaid-cache";
 import {
@@ -309,13 +312,6 @@ function renderWorkingMessage(message: string, accent?: WorkingMessageAccent, cl
 	return shimmerSegments(segments, theme);
 }
 
-const EDITOR_MAX_HEIGHT_MIN = 6;
-const EDITOR_MAX_HEIGHT_MAX = 18;
-const EDITOR_RESERVED_ROWS = 12;
-const EDITOR_FALLBACK_ROWS = 24;
-const EDITOR_MIN_CHROME_ROWS = 4; // rows reserved for transcript + status on small terms
-const EDITOR_MIN_RENDERED_ROWS = 3; // bordered editor floor: top+bottom border + 1 content row
-
 /**
  * Consecutive provider-killed goal turns tolerated before goal mode stops
  * driving on its own. A transport fault is routinely retried and recovered, so
@@ -371,23 +367,6 @@ function goalTurnEndedInError(event: Extract<AgentSessionEvent, { type: "agent_e
 		.reverse()
 		.find((message): message is AssistantMessage => message.role === "assistant");
 	return lastAssistant?.stopReason === "error";
-}
-
-/**
- * Editor max-height cap for a terminal of `terminalRows` rows.
- *
- * Roomy terminals get the comfortable [6, 18] band. Small terminals shrink the
- * cap so the editor leaves at least EDITOR_MIN_CHROME_ROWS rows for the
- * transcript + status line. The editor is bordered, so it never renders fewer
- * than EDITOR_MIN_RENDERED_ROWS rows; once the terminal is too small for both
- * (terminalRows < EDITOR_MIN_RENDERED_ROWS + EDITOR_MIN_CHROME_ROWS) the cap is
- * pinned to that floor — returning a smaller number would not shrink the editor
- * any further, it would only misreport the rows it actually occupies.
- */
-export function computeEditorMaxHeight(terminalRows: number): number {
-	const rows = Number.isFinite(terminalRows) && terminalRows > 0 ? terminalRows : EDITOR_FALLBACK_ROWS;
-	const comfortable = clampLow(rows - EDITOR_RESERVED_ROWS, EDITOR_MAX_HEIGHT_MIN, EDITOR_MAX_HEIGHT_MAX);
-	return clampLow(comfortable, EDITOR_MIN_RENDERED_ROWS, rows - EDITOR_MIN_CHROME_ROWS);
 }
 
 type GoalSubcommand = "set" | "show" | "pause" | "resume" | "drop";
@@ -888,7 +867,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			chatContainer: this.chatContainer,
 			topFillRows: width => this.#layout.topFillRows(width),
 			onHeroDismissed: removedRows => this.#layout.onHeroDismissed(removedRows),
-			remeasureAnchor: () => this.#layout.sync(true),
+			remeasureAnchor: () => this.#layout.sync(),
 		});
 		this.pendingMessagesContainer = new AnchoredLiveContainer();
 		this.statusContainer = new AnchoredLiveContainer();
@@ -898,7 +877,12 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.omfgContainer = new AnchoredLiveContainer();
 		this.errorBannerContainer = new AnchoredLiveContainer();
 		this.modelCycleContainer = new AnchoredLiveContainer();
-		this.editor = new CustomEditor(getEditorTheme());
+		// Adopted, not built: the launch card already mounted a live composer and
+		// the operator may have typed into it. Building a second one here would
+		// throw that draft away and remount the input the session is coming up
+		// behind. Everything below is wiring the mode adds to whichever editor
+		// it ended up with.
+		this.editor = this.#firstFrame?.editor ?? new CustomEditor(getEditorTheme());
 		this.editor.setUseTerminalCursor(this.ui.getShowHardwareCursor());
 		this.editor.setAutocompleteMaxVisible(settings.get("autocompleteMaxVisible"));
 		this.editor.onAutocompleteCancel = () => {
@@ -916,15 +900,12 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.ui.requestRender();
 		};
 		process.stdout.on("resize", this.#resizeHandler);
-		// Home-screen anchor self-correction: content mounted or resized after the
-		// fill was seeded (e.g. the async MCP status line) would otherwise leave
-		// the composer drifting off the viewport bottom until the next resize.
-		this.ui.onFrameComposed = () => this.#layout.onFrameComposed();
-		// Size the anchor from the children of the frame about to compose. A turn
-		// that grows in place between one frame and the next has no other moment
-		// to be measured in: the post-commit correction below reads a frame that
-		// already composed too tall, so on its own it moves the window to fit and
-		// back on every chunk of a streaming answer.
+		// Size the anchor from the children of the frame about to compose: a turn
+		// that grows or collapses in place between one frame and the next has no
+		// other moment to be measured in. There is no post-commit correction to
+		// pair with it — a fill sized from a frame that already composed is a
+		// second paint that moves the same rows to a different row, once per
+		// chunk of a streaming answer.
 		this.ui.onBeforeCompose = () => this.#layout.sync();
 		try {
 			this.historyStorage = HistoryStorage.open();
@@ -936,8 +917,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.hookWidgetContainerAbove = new Container();
 		this.hookWidgetContainerAbove.addChild(new Spacer(1));
 		this.hookWidgetContainerBelow = new Container();
-		this.editorContainer = new Container();
-		this.editorContainer.addChild(this.editor);
+		// The launch card's container, when there was one: the zone re-mounts it
+		// under the mode's chrome, so the editor inside never leaves its parent
+		// and the draft on screen never blinks.
+		this.editorContainer = this.#firstFrame?.editorContainer ?? new Container();
+		if (!this.#firstFrame) this.editorContainer.addChild(this.editor);
 		// Before the composer chip band: the band's contents depend on whether the
 		// view is proxied onto an agent, and `focusedAgentId` reads through this
 		// controller. Everything else it needs from the host is read lazily.
@@ -974,8 +958,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// ONE quiet metadata footline below the input — location (path · git)
 		// left, capability (model · mode · context · MCP health) right. The
 		// chrome is silent; motion belongs to content.
-		this.editor.setBorderVisible(false);
-		this.editor.setPlaceholder(COMPOSER_PLACEHOLDER);
+		applyComposerChrome(this.editor, resolveComposerAccents(PRISTINE_COMPOSER_ACCENT_STATE));
 		this.composerHairline = new ComposerHairline();
 		this.capabilityLine = new QuietZoneLine(width => this.#composerFootline(width), COMPOSER_INSET_COLS);
 		// GMI-2b: the goal readout in the footline (the `mode` segment while goal
@@ -992,13 +975,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			const segmentId = this.statusLine.quietSegmentAt(col);
 			if (segmentId === "mode" && (this.goalModeEnabled || this.goalModePaused)) {
 				void this.openGoalDetail();
-				return;
-			}
-			// The chip says a credential is live here, and clicking it answers WHICH: the same list
-			// `/secret list` prints, without leaving the screen the reader is already looking at. A
-			// reader who notices the chip should not have to remember a command name to act on it.
-			if (segmentId === "secrets") {
-				this.showSecretList();
 				return;
 			}
 			// A click on either half of the location widens the row and spends the readouts on the
@@ -1117,25 +1093,8 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * itself (see {@link ComposerHairline}), not a glyph parked at the edge.
 	 */
 	#locationRightZone(): string | null {
-		const zones = [this.#draftTokenZone(), this.#mcpZoneText()].filter((z): z is string => z !== null);
+		const zones = [draftTokenZone(this.editor.getText()), this.#mcpZoneText()].filter((z): z is string => z !== null);
 		return zones.length > 0 ? zones.join(theme.fg("dim", " · ")) : null;
-	}
-
-	/**
-	 * DS-6 dock: live draft size in the footline's right zone, gold
-	 * (matchHighlight) so the growing draft reads as "the found thing you are
-	 * about to send". Shown only while a non-blank draft exists; uses the one
-	 * shared byte-aware estimator, so the number matches budget math elsewhere.
-	 */
-	#draftTokenZone(): string | null {
-		const draft = this.editor.getText();
-		const trimmed = draft.trim();
-		if (trimmed.length === 0) return null;
-		// A bare slash-command token ("/se…") is menu navigation, not a draft —
-		// counting its characters is noise. The counter returns the moment the
-		// command takes arguments or the text is prose.
-		if (trimmed.startsWith("/") && !/\s/.test(trimmed)) return null;
-		return theme.fg("matchHighlight", `~${estimateTokensFromText(draft)} tok`);
 	}
 
 	/**
@@ -1307,21 +1266,12 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Load initial todos
 		this.#syncTodoSurfaceToView();
 
-		// The tty handover. Owned by whoever started the screen: when the launch
-		// card was painted before this mode existed, `first-frame.ts` already
-		// flushed the queue, installed the gate and started the UI, and the gate
-		// has been holding input for the whole of session startup. It releases
-		// here, where the composer exists to receive the next keystroke.
-		//
-		// Startup takes over a second, and the card shows a composer frame for
-		// all of it, so an operator who starts typing straight away is typing at
-		// something that looks live. The gate kept that text instead of dropping
-		// it; it goes into the composer now, unsubmitted, so the draft reads as
-		// though the composer had been listening the whole time.
-		if (this.#firstFrame) {
-			const typedAtCard = this.#firstFrame.releaseInput();
-			if (typedAtCard) this.editor.insertText(typedAtCard);
-		} else {
+		// The tty handover, for a mode that started its own screen. When the
+		// launch card painted one, `first-frame.ts` owns all of this: it flushed
+		// the queue, started the UI, and mounted a live composer that has been
+		// taking keystrokes for the whole of session startup, so there is
+		// nothing to release and nothing to transplant.
+		if (!this.#firstFrame) {
 			// This process may be a relaunch (`/profile <name>` respawns the CLI),
 			// and between the parent restoring the terminal and the line below
 			// resuming stdin nothing is reading fd 0, so the kernel queues
@@ -1391,7 +1341,16 @@ export class InteractiveMode implements InteractiveModeContext {
 		);
 		this.#syncEditorMaxHeight();
 		this.isInitialized = true;
-		this.ui.requestRender(true);
+		// THE HANDOVER IS A DIFF, NOT A REPAINT. A forced render rewrites every row of the viewport,
+		// and on a terminal without synchronized output the operator watches 25 rows get erased and
+		// redrawn: the branch, the hero and the composer darken for a frame on a screen whose
+		// content did not change. Nothing here needs that. The launch card painted through THIS
+		// `TUI`, so the rows it left are the window the engine diffs against and a clean handover
+		// writes nothing at all; without a card, `ui.start()` above has already claimed the viewport
+		// with its own ED 2, so this render only has to put the finished tree over a screen the
+		// engine already describes. Either way an ordinary render writes exactly the rows that
+		// differ, which is the whole job.
+		this.ui.requestRender();
 
 		// Initialize hooks with TUI-based UI context
 		await this.initHooksAndCustomTools();
@@ -1532,16 +1491,28 @@ export class InteractiveMode implements InteractiveModeContext {
 			// outlines): every derived chrome color re-resolves against the REAL
 			// terminal ground the moment it is known or changes.
 			setDetectedTerminalGround(hex);
+			// And record it, because the NEXT launch's card is painted before this
+			// query can be answered. The card seeds its derived chrome from this
+			// value; without it the hairline is drawn from the static token and
+			// restyled once the report lands, half a second into a settled screen.
+			void recordLaunchFacts({ terminalGround: hex });
 			this.updateEditorBorderColor();
 			this.ui.requestRender();
 		});
-		setDetectedTerminalGround(this.ui.terminal.backgroundColor);
+		// Only when the terminal has actually answered. The card seeds the recorded
+		// ground before its first paint, and overwriting that with `undefined` here
+		// would drop the chrome back onto the static token at mount -- the same
+		// restyle on a settled screen, in the other direction.
+		if (this.ui.terminal.backgroundColor !== undefined) {
+			setDetectedTerminalGround(this.ui.terminal.backgroundColor);
+		}
 		this.#applyPaintGround();
 
-		// A branch change (checkout, worktree switch, `git switch`) invalidates
-		// the status-line git segments; the lazy top-border provider picks up
-		// the fresh branch on the next painted frame.
-		this.statusLine.watchBranch(() => {
+		// A checkout, worktree switch or `git switch` changes the branch, and the
+		// default-branch, pull-request and `git status` lookups land after the
+		// frame that asked for them. All four make the painted row stale, and a
+		// resting session has no other reason to repaint.
+		this.statusLine.watchGitState(() => {
 			this.ui.requestRender();
 		});
 	}
@@ -1556,12 +1527,18 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * startup, on a committed theme change, and when the terminal reports an
 	 * external background change. The paint is reset on exit by the terminal layer
 	 * (OSC 111), including after a crash, so this never has to undo it here.
+	 *
+	 * The ground comes from the tint owner and not from the terminal directly, because the launch
+	 * card settles one before this runs: it seeds the ground its terminal reported on the previous
+	 * launch, and planning against a terminal that has not answered yet would undo that decision at
+	 * mount -- repainting the whole background half a second into a settled screen, which is the
+	 * defect the seed exists to remove.
 	 */
 	#applyPaintGround(): void {
 		const plan = planPaintGround(
 			this.settings.get("tui.paintGround"),
 			theme.getGroundHex(),
-			this.ui.terminal.backgroundColor,
+			this.ui.terminal.backgroundColor ?? getDetectedTerminalGround(),
 		);
 		if (plan.unhonoredAlways) {
 			// `always` is the one setting the user explicitly asked to paint that a
@@ -2008,12 +1985,10 @@ export class InteractiveMode implements InteractiveModeContext {
 		// As the conversation begins the anchor slack moves ABOVE the transcript
 		// (see HomeAnchorLayout.sync): the first message renders directly above
 		// the composer at the viewport bottom and climbs as replies land, until
-		// content fills the screen and the anchor latches off. Remeasure directly
-		// — the just-added user message and the working indicator are not in the
-		// committed frame yet, so trusting the stale composed height would reserve
-		// empty-home slack on top of them and overflow, jumping the message above
-		// the fold (the old first-message jerk).
-		this.#layout.sync(true);
+		// content fills the screen and the anchor latches off. Sized here as well
+		// as at the top of the next frame so the message is placed by the paint
+		// this submit requests rather than the one after it.
+		this.#layout.sync();
 		this.ui.requestRender();
 		return submission;
 	}
@@ -2123,13 +2098,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			sessionAccentAnsi: getSessionAccentAnsi(hex),
 			thinkingLevel: this.session.thinkingLevel ?? ThinkingLevel.Off,
 		});
-		this.editor.borderColor = accents.borderColor;
-		this.editor.setPromptGutter(accents.promptGutter);
-		this.editor.setPromptGutterContinuation(accents.promptGutterContinuation);
-		// No composer card: the input renders on the terminal's own ground.
-		// (the tinted box is gone entirely; the composer
-		// is hairline + text + footline, nothing painted behind it.)
-		this.editor.setRowBackground(undefined);
+		applyComposerChrome(this.editor, accents);
 		this.ui.requestRender();
 	}
 
@@ -4517,8 +4486,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#lendPopupMotion(nextEditor);
 		previousEditor.disposeAutocompleteMotion();
 		nextEditor.setShimmerRepaintHandler(() => this.ui.requestComponentRender(this.editor));
-		nextEditor.setBorderVisible(false);
-		nextEditor.setPlaceholder(COMPOSER_PLACEHOLDER);
+		applyComposerChrome(nextEditor, resolveComposerAccents(PRISTINE_COMPOSER_ACCENT_STATE));
 		nextEditor.setMaxHeight(this.#computeEditorMaxHeight());
 		if (this.historyStorage) {
 			nextEditor.setHistoryStorage(this.historyStorage);
@@ -5560,7 +5528,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			keybindings: KeybindingsManager,
 			done: (result: T) => void,
 		) => (Component & { dispose?(): void }) | Promise<Component & { dispose?(): void }>,
-		options?: { overlay?: boolean },
+		options?: { overlay?: boolean | OverlayOptions },
 	): Promise<T> {
 		return this.#extensionUiController.showHookCustom(factory, options);
 	}

@@ -9,4 +9,5 @@ export const xiaomiProvider = {
 		const { loginXiaomi } = await import("./oauth/xiaomi");
 		return loginXiaomi(cb);
 	},
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

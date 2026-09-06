@@ -56,6 +56,8 @@ export function createApiKeyLogin(config: ApiKeyLoginConfig): (options: OAuthCon
 			throw new AIError.OnPromptRequiredError(config.providerLabel);
 		}
 
+		// The dashboard where a key is obtained, not a page the flow waits on. The
+		// row's `credential: "api-key"` is what stops a UI from launching it.
 		options.onAuth?.({
 			url: config.authUrl,
 			instructions: config.instructions,

@@ -124,10 +124,41 @@ export async function compileCodingAgent(options: CodingAgentCompileOptions): Pr
 				"process.env.VEYYON_TINY_TRANSFORMERS_VERSION": JSON.stringify(options.transformersVersion),
 				"process.env.VEYYON_DOCS_EMBED": JSON.stringify((await buildDocsIndexPayload()).payload),
 			},
+			// Whitespace and syntax minification are startup latency, not disk
+			// hygiene. Bun's standalone loader links the whole bytecode blob
+			// before the entry's first statement, so the blob's size is the time
+			// the operator waits for the launch card: turning both on takes the
+			// local binary from 303.9MB to 296.9MB and the window before the
+			// entry's first statement from 82-88ms to 73.6ms, with the card
+			// landing at 119-128ms instead of 124-138ms. `keepNames` stays on
+			// either way, so a stack trace still names its functions, and
+			// `--smoke-test`, `--version` and `--help` are unchanged.
 			minify: {
 				identifiers: options.minifyIdentifiers ?? false,
+				whitespace: true,
+				syntax: true,
 				keepNames: true,
 			},
+			// One chunk per dynamic-import boundary instead of one chunk for the
+			// product. Bun's standalone loader maps and links a chunk before the
+			// first statement in it runs, so a single chunk makes the launch card
+			// wait for the bytecode of every subcommand, every tool and the whole
+			// agent runtime — none of which the card draws. Split, the entry
+			// chunk carries the CLI entry and the prologue, and the rest is
+			// linked at the `import()` that needs it.
+			//
+			// Measured on this machine, warm, on a pty with the kernel's own echo
+			// disabled: the binary goes from 296.9MB to 231.7MB and the launch
+			// card's first byte from 138-151ms to 67-74ms, with the first
+			// keystroke echoing at 131ms instead of 188-207ms. A binary built
+			// from a launch-path-only entry reaches its first byte in 47ms, which
+			// is the floor this approach converges on as more of the runtime
+			// moves behind an `import()`.
+			//
+			// `format: "esm"` is not a preference: Bun rejects `splitting` for any
+			// other format. Bytecode still applies, per chunk.
+			splitting: true,
+			format: "esm",
 			...((options.bytecode ?? Bun.env.VEYYON_BUILD_BYTECODE !== "0") ? { bytecode: true } : {}),
 			plugins: [
 				await createLegacyPiVirtualModulePlugin(),

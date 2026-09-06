@@ -530,3 +530,26 @@ git -C "${WIDE}" config user.name "demo"
 git -C "${WIDE}" config user.email "demo@example.invalid"
 git -C "${WIDE}" add -A
 git -C "${WIDE}" -c commit.gpgsign=false commit -q -m "seed the normalizer"
+
+# A SESSION FOR THE SCENES THAT PHOTOGRAPH ONE.
+#
+# The autoresearch surfaces -- the status row, the run screen, and the widget
+# they replaced -- render from a stored session and its logged runs. A scene
+# cannot produce those: the loop needs a harness in the tree and a model willing
+# to spend an hour in it, which is why the console scene never presses Start.
+# The session is seeded through the product's own storage API instead,
+# and the scene reaches it the way a user reaches yesterday's run.
+#
+# Keyed off the scene name rather than a knob the caller passes: a re-record
+# that forgets the knob would photograph an empty screen and look like a
+# regression in the screen. The name also picks the fixture, since a serial loop
+# and a swarm are different surfaces -- one title, no arm rows, no reviewer.
+SCENE_NAME="$(basename "${2:-}" .sh)"
+case "${SCENE_NAME}" in
+autoresearch-serial-*) SEED_KIND=serial ;;
+autoresearch-* | autoswarm-run-*) SEED_KIND=swarm ;;
+*) SEED_KIND="" ;;
+esac
+if [ -n "${SEED_KIND}" ]; then
+	(cd /repo && bun proof/docker/seed-autoresearch.ts "${DEMO}" "${SEED_KIND}")
+fi

@@ -15,7 +15,7 @@ Configure under **Settings → Appearance → Status Line** (`/statusline` jumps
 | `statusLine.sessionAccent` | Tint the editor border with the session color |
 | `statusLine.showHookStatus` | Show active hook status when hooks run |
 
-Built-in segment IDs include: `pi` (legacy product mark segment), `profile`, `model`, `account`, `secrets`, `mode`, `path`, `git`, `pr`, `subagents`, `token_in`, `token_out`, `token_total`, `token_rate`, `cost`, `context_pct`, `context_total`, `time_spent`, `time`, `session`, `hostname`, `cache_read`, `cache_write`, `cache_hit`, `session_name`, `usage`, `collab`.
+Built-in segment IDs include: `pi` (legacy product mark segment), `profile`, `model`, `account`, `mode`, `path`, `git`, `pr`, `subagents`, `token_in`, `token_out`, `token_total`, `token_rate`, `cost`, `context_pct`, `context_total`, `time_spent`, `time`, `session`, `hostname`, `cache_read`, `cache_write`, `cache_hit`, `session_name`, `usage`, `collab`.
 
 The `model` segment shows the model you are working with, then two things that are easy to confuse, so they are drawn differently:
 
@@ -69,12 +69,44 @@ named in the log once. `stripWorkPrefix: false` turns the whole step off.
 A project inside a temporary directory is shown relative to that temporary directory instead,
 with its own icon, whatever `displayRoots` says.
 
-The `secrets` segment shows that a stored credential is live where you are working: `2 secrets`. It counts
-what would actually expand at the tool boundary in this directory, not what is in the vault file, so
-a credential scoped elsewhere or already expired is not counted. It hides itself when nothing is
-live, so a session with no vault shows nothing. When the soonest deadline is under an hour it appends
-the time left in the warning color, `2 secrets (34m left)`, which is the window in which extending it
-with `e` in `/secret` still helps; a deadline further out belongs to the card's EXPIRES column.
+The launch card draws the whole row before the session mounts. The working directory comes from the
+process, the branch from `.git/HEAD` and its ref files, and the mode from config. The model name,
+the effort beside it, the dirty marker (`*`) and the context gauge are what a previous launch
+recorded, in `cache/launch-facts.json`.
+
+That file records three kinds of fact. The model's display name, its provider, the effort and the
+at-rest context reading belong to the model, so they are stated in every project you use it in,
+including one you open for the first time. The dirty marker belongs to the project, because it
+describes that working tree. The gauge is recorded under both, as two different numbers: the
+project keeps the whole reading measured in that directory, and the model keeps the same reading
+with that project's context files subtracted. A project that has never been measured states the
+model's number, so it starts from a cost every project shares rather than from the last
+directory's `AGENTS.md`. Those two maps are keyed by the release as well.
+
+The third fact is the terminal's background color, keyed by the terminal and by nothing else. A new
+release does not change what an emulator draws, and it is the same window whichever directory is
+open in it. Veyyon queries the background at startup and the reply arrives after the card is on
+screen, so the card mixes the composer hairline, the composer outline and the transcript rules out
+of the background this terminal reported last time. A reply that contradicts the record takes
+effect on the next frame. Each of the three maps holds its 24 most recently written entries.
+
+Each recorded fact is replaced by a measured one as the session mounts. A tree committed from
+another terminal since the last launch keeps the recorded marker until `git status` answers, about
+130ms in. A project you open for the first time has no dirty marker. The gauge reads `?` only
+until this model has idled somewhere once; after that a new project starts at the model's
+subtracted reading and the session adds what this project's own context costs, so the bar fills
+rather than empties when the session lands. Configuring a different model resets it to `?` again,
+because a reading is a fraction of the window it was taken against. A model you have never run
+states its configured id's last path segment until the catalog supplies a display name.
+
+A repository whose refs are in a reftable has no ref files to read, so its branch appears with the
+session rather than with the card, as does a detached HEAD with no operation to name.
+
+`/secret list` states what is live where you are working: the credentials the vault holds here, and
+a count of the values being masked that nothing can name, with the environment variable or
+`secrets.yml` path each came from. The status row does not carry a count. It reported one that
+nothing else in the product agreed with, and a number a reader cannot reconcile with `/secret list`
+is worse than no number.
 
 The `context_pct` segment answers one question: how much room is left before the context runs out. "Runs out" means whichever comes first, auto-compaction firing or the model's window filling, so with auto-compaction on the segment measures against the compaction trigger, not the window. The window itself is what `context_total` prints.
 

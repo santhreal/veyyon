@@ -46,7 +46,7 @@ import type { ToolSession } from ".";
 // populate the reserved-label record, while the module that actually renders and compares them is the extension
 // UI controller. That split is why the values were spelled twice.
 import { ASK_OTHER_OPTION_LABEL, isReservedAskOptionLabel } from "./ask-option-labels";
-import { formatErrorMessage, formatMeta, formatTitle } from "./render-utils";
+import { formatErrorDetail, formatErrorMessage, formatMeta, formatTitle, shortenEmbeddedPaths } from "./render-utils";
 import { ToolAbortError } from "./tool-errors";
 
 // =============================================================================
@@ -1340,10 +1340,22 @@ export const askToolRenderer = {
 	},
 
 	renderResult(
-		result: { content: Array<{ type: string; text?: string }>; details?: AskToolDetails },
+		result: { content: Array<{ type: string; text?: string }>; details?: AskToolDetails; isError?: boolean },
 		_options: RenderResultOptions,
 		uiTheme: Theme,
 	): Component {
+		if (result.isError) {
+			const fallback = result.content?.find(c => c.type === "text")?.text ?? "Ask failed";
+			const header = renderStatusLine({ icon: "error", title: "Ask" }, uiTheme);
+			return framedBlock(uiTheme, width => ({
+				header,
+				sections: [{ lines: formatErrorDetail(fallback, uiTheme).split("\n") }],
+				state: "error",
+				borderColor: "error",
+				width,
+			}));
+		}
+
 		const { details } = result;
 		const mdTheme = getMarkdownTheme();
 		const accentStyle = { color: (t: string) => uiTheme.fg("accent", t) };
@@ -1354,7 +1366,7 @@ export const askToolRenderer = {
 			const txt = result.content[0];
 			const fallback = txt?.type === "text" && txt.text ? txt.text : "";
 			const header = renderStatusLine({ icon: "warning", title: "Ask" }, uiTheme);
-			const body = fallback ? `\n${uiTheme.fg("dim", fallback)}` : "";
+			const body = fallback ? `\n${uiTheme.fg("dim", replaceTabs(shortenEmbeddedPaths(fallback)))}` : "";
 			return new Text(`${header}${body}`, 0, 0);
 		}
 
@@ -1419,7 +1431,7 @@ export const askToolRenderer = {
 		// Single question result
 		if (!details.question) {
 			const txt = result.content[0];
-			const fallback = txt?.type === "text" && txt.text ? txt.text : "";
+			const fallback = txt?.type === "text" && txt.text ? replaceTabs(shortenEmbeddedPaths(txt.text)) : "";
 			return new Text(fallback, 0, 0);
 		}
 

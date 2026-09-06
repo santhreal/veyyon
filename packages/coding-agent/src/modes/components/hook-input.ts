@@ -19,6 +19,7 @@ import { theme } from "../../modes/theme/theme";
 import { matchesAppInterrupt } from "../../modes/utils/keybinding-matchers";
 import { CountdownTimer } from "./countdown-timer";
 import {
+	CARD_BODY_COL_INSET,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
@@ -69,6 +70,8 @@ export class HookInputComponent extends Container {
 	#onRequestRender: (() => void) | undefined;
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
+	/** Body line the field was painted on in the last frame; context text can sit above it. */
+	#inputBodyLine = 0;
 
 	constructor(
 		title: string,
@@ -176,6 +179,19 @@ export class HookInputComponent extends Container {
 			this.#onSubmitCallback(this.#input.getValue());
 			return true;
 		}
+		// A click on the field itself places the caret under the pointer.
+		const geo = this.#shellGeometry;
+		if (geo && event.leftClick) {
+			const bodyLine = event.row - geo.bodyRowStart;
+			if (bodyLine >= 0 && bodyLine < geo.bodyRowCount) {
+				this.#input.routeMouse(
+					event,
+					bodyLine - this.#inputBodyLine,
+					event.col - geo.cardColStart - CARD_BODY_COL_INSET,
+				);
+				this.#onRequestRender?.();
+			}
+		}
 		return true;
 	}
 
@@ -230,6 +246,7 @@ export class HookInputComponent extends Container {
 
 		const body: string[] = [];
 		for (const child of this.children) {
+			if (child === this.#input) this.#inputBodyLine = body.length;
 			for (const line of child.render(dims.contentWidth)) body.push(line);
 		}
 

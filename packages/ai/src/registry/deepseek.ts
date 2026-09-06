@@ -43,4 +43,5 @@ export const deepseekProvider = {
 	id: "deepseek",
 	name: "DeepSeek",
 	login: (cb: OAuthLoginCallbacks) => loginDeepSeek(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

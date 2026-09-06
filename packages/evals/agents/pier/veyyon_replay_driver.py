@@ -149,8 +149,6 @@ def _run_print_mode(
         model,
         "--compaction-model",
         model,
-        "--subagent-model",
-        model,
         "--auto-approve",
         "--config",
         str(config),

@@ -22,6 +22,7 @@ describe("the retired-setting marker", () => {
 			"compaction.thresholdTokens",
 			"defaultThinkingLevel",
 			"setupVersion",
+			"subagent.modelByDepth",
 		]);
 	});
 

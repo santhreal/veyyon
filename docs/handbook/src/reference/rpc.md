@@ -417,7 +417,11 @@ Extensions in RPC mode use request/response UI frames.
 
 - `select`, `confirm`, `input`, `editor`, `cancel`
 - `notify`, `setStatus`, `setWidget`, `setTitle`, `set_editor_text`
-- `open_url` (emitted by RPC login flows)
+- `open_url` (emitted by RPC login flows). Carries `url`, optional `launchUrl`
+  and `instructions`, and `credential`: `"oauth"` when the flow waits on the
+  URL and the host opens it in a browser, `"api-key"` when the URL is where a
+  key is obtained and the flow is about to prompt for a paste, so the host
+  shows it without opening it.
 
 Runtime note:
 

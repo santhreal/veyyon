@@ -29,6 +29,13 @@ mkdir -p "${SCENE_RUNTIME_DIR}"
 source "$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)/magick-tmpdir.sh"
 magick_tmpdir_scope "${SCENE_RUNTIME_DIR}"
 
+# Before anything is drawn: the product imports a gitignored bundle at parse
+# time, and a worktree without it records a black screen with no error in the
+# capture path.
+# shellcheck source=proof/docker/session-artifacts.sh
+source "$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)/session-artifacts.sh"
+ensure_session_artifacts /repo
+
 # kitty/glfw refuse to open a window without a machine-id. Some recorder images
 # ship without /etc/machine-id, and the first thing the operator sees is
 # "no terminal window with a geometry appeared" plus a dbus error in the log.

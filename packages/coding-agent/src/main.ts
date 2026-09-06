@@ -16,7 +16,6 @@ import {
 	errorMessage,
 	getLogPath,
 	getProjectDir,
-	isNewerVersion,
 	isUuid,
 	logger,
 	normalizePathForComparison,
@@ -120,23 +119,16 @@ export function writeStartupNotice(parsedArgs: Pick<Args, "mode">, text: string)
  */
 const STARTUP_VERSION_CHECK_TIMEOUT_MS = 5_000;
 
-async function checkForNewVersion(currentVersion: string): Promise<ReleaseInfo | undefined> {
+export async function checkForNewVersion(currentVersion: string): Promise<ReleaseInfo | undefined> {
 	if (!settings.get("startup.checkUpdate")) {
 		return undefined;
 	}
-	// Delegates to the single registry lookup and the single version comparator.
-	// This used to hand-roll both, which meant a launch made two round trips for
-	// the same answer, and the two comparisons could disagree: the check used
-	// `Bun.semver.order` while the update path used a split/Number comparator
-	// that mis-ranked prereleases, so a prerelease could be announced here and
-	// then judged "already up to date" by the installer.
 	try {
 		const release = await getLatestRelease(STARTUP_VERSION_CHECK_TIMEOUT_MS);
-		return isNewerVersion(release.version, currentVersion) ? release : undefined;
+		return release.version !== currentVersion ? release : undefined;
 	} catch (error) {
-		// Not reachable, rate-limited, offline, or a version string we cannot
-		// order. None of that should interrupt a launch, but none of it is
-		// allowed to vanish either (Law 10).
+		// Not reachable, rate-limited, or offline. None of that should interrupt a launch,
+		// but none of it is allowed to vanish either.
 		logger.debug("Startup version check did not complete", { error: errorMessage(error) });
 		return undefined;
 	}
@@ -1505,9 +1497,6 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 			slow: slowModel,
 			plan: planModel,
 		});
-	}
-	if (parsedArgs.subagentModel) {
-		settingsInstance.override("subagent.model", parsedArgs.subagentModel);
 	}
 	if (parsedArgs.compactionModel) {
 		settingsInstance.override("compaction.model", parsedArgs.compactionModel);

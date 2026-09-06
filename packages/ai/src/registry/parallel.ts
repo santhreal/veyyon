@@ -42,4 +42,5 @@ export const parallelProvider = {
 	id: "parallel",
 	name: "Parallel",
 	login: (cb: OAuthLoginCallbacks) => loginParallel(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

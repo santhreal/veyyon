@@ -1,10 +1,15 @@
 #!/usr/bin/env bun
 
 import { parseArgs } from "node:util";
-import { formatDuration, formatNumber, formatPercent } from "@veyyon/utils";
+import {
+	formatCostTiered as formatCost,
+	formatDuration,
+	formatNumber,
+	formatPercent,
+	normalizePremiumRequests,
+} from "@veyyon/utils";
 import { getDashboardStats, getTotalMessageCount, syncAllSessions } from "./aggregator";
 import { closeDb } from "./db";
-import { formatCostTiered as formatCost, normalizePremiumRequests } from "./format";
 import { startServer } from "./server";
 
 export {

@@ -8,6 +8,7 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent } from "@veyyon/ai";
 import { logger, sanitizeText } from "@veyyon/utils";
+import { EXIT_FAILURE, EXIT_INTERRUPTED } from "../cli/exit-codes";
 import { transformProviderPayload } from "../provider-boundary";
 import { SECRET_SPEND_NOTICE_SOURCE } from "../secrets/notices";
 import type { AgentSession, AgentSessionEvent } from "../session/agent-session";
@@ -256,11 +257,12 @@ export async function runPrintMode(session: PrintModeSession, options: PrintMode
 				// in main(), and the postmortem `exit` handler can't await, so the error
 				// spans would otherwise stay buffered in the batch processor and drop.
 				await flushTelemetryExport();
+				const exitCode = assistantMsg.stopReason === "aborted" ? EXIT_INTERRUPTED : EXIT_FAILURE;
 				const flushed = process.stderr.write(`${errorLine}\n`);
 				if (flushed) {
-					process.exit(1);
+					process.exit(exitCode);
 				} else {
-					process.stderr.once("drain", () => process.exit(1));
+					process.stderr.once("drain", () => process.exit(exitCode));
 				}
 			}
 

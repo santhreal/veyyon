@@ -100,7 +100,7 @@ describe("InteractiveMode startup scrollback", () => {
 			startOptions = options;
 			realStart(options);
 		});
-		vi.spyOn(createdMode.statusLine, "watchBranch").mockImplementation(() => {});
+		vi.spyOn(createdMode.statusLine, "watchGitState").mockImplementation(() => {});
 
 		await createdMode.init();
 		await createdTerminal.waitForRender();

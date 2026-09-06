@@ -1,5 +1,9 @@
 import { dlopen, FFIType, ptr } from "bun:ffi";
-import { execFileSync } from "node:child_process";
+// `node:child_process` is required inside `querySystemTextSync` rather than imported here. A lock
+// owner's boot identity is read from `/proc` on Linux and only falls back to a subprocess
+// elsewhere, and this module is on the first-frame path through `file-lock`, where the import cost
+// 2ms of module evaluation for a call most launches never make.
+import type * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 
 /**
@@ -80,6 +84,7 @@ function readBoundedTextFileSync(filePath: string): string | null {
 
 function querySystemTextSync(executable: string, args: readonly string[]): string | null {
 	try {
+		const { execFileSync } = require("node:child_process") as typeof childProcess;
 		const output = execFileSync(executable, [...args], {
 			encoding: "utf8",
 			env: { ...process.env, LC_ALL: "C", LANG: "C" },

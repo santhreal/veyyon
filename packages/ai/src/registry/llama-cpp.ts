@@ -32,4 +32,5 @@ export const llamaCppProvider = {
 	id: PROVIDER_ID,
 	name: "llama.cpp (Local OpenAI-compatible)",
 	login: (cb: OAuthLoginCallbacks) => loginLlamaCpp(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

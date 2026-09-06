@@ -20,4 +20,5 @@ export const cerebrasProvider = {
 	id: "cerebras",
 	name: "Cerebras",
 	login: (cb: OAuthLoginCallbacks) => loginCerebras(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

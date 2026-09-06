@@ -281,7 +281,6 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/modes/components/pause-screen.ts",
 	"packages/coding-agent/src/modes/components/select-list-mouse-routing.ts",
 	"packages/coding-agent/src/modes/components/skill-message.ts",
-	"packages/coding-agent/src/modes/setup-wizard/scenes/outro.ts",
 	"packages/coding-agent/src/modes/setup-wizard/scenes/wizard-list.ts",
 	"packages/coding-agent/src/modes/skill-command.ts",
 	"packages/coding-agent/src/modes/theme/before-markdown-theme.ts",

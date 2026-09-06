@@ -388,6 +388,13 @@ export type RpcExtensionUIRequest =
 			 */
 			launchUrl?: string;
 			instructions?: string;
+			/**
+			 * What the login asks for. `oauth`: the flow waits on this URL and the
+			 * host opens it. `api-key`: the URL is where a key is obtained and the
+			 * flow is about to prompt for a paste; the host shows it and does not
+			 * open it.
+			 */
+			credential: "api-key" | "oauth";
 	  };
 
 // ============================================================================

@@ -22,8 +22,8 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { ImageContent, TextContent, UserMessage, VideoContent } from "@veyyon/ai";
 import { prompt } from "@veyyon/utils";
+import { contentText } from "@veyyon/utils/content-text";
 import { steeringPrompts } from "../prompts/steering/rows";
-import { contentText } from "./content-text";
 
 function isSteeringUserMessage(message: AgentMessage | undefined): message is UserMessage & { steering: true } {
 	return message?.role === "user" && message.steering === true;
