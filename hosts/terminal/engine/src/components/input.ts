@@ -512,6 +512,7 @@ export class Input implements Component, Focusable, MouseRoutable {
 		}
 		this.#cursor = cursor;
 	}
+
 	render(width: number): readonly string[] {
 		// Calculate visible window
 		const prompt = this.prompt;

@@ -69,15 +69,12 @@ there; 23 entries across several packages were written into it and would have be
 render. The write path now refuses when the root holds an unreleased entry the render does not
 produce, and names each one.
 
-## The rendered handbook is checked, not deployed on demand
+## The handbook is generated at build time, not committed
 
-`docs/handbook/book` is committed, and the `Docs` workflow rebuilds it with mdbook and fails when the
-result differs from the tree. A handbook edit therefore lands in two parts: the source page, and the
-render (`cd docs/handbook && mdbook build`) in the same change. `apps/site/docs` is a symlink to that
-directory, so a source-only change would publish the previous text at the next deploy.
+`docs/handbook/book` is gitignored build output. The `Docs` workflow builds the handbook with pinned
+mdbook v0.5.2, verifies search assets and links, and checks source contracts against the generated
+HTML. The `Site` workflow builds the handbook before deploying to Cloudflare Pages.
 
-The version is pinned. mdbook v0.5.2 renders the search index under a content-hashed filename, so a
-different mdbook writes a different file name for identical prose and the gate reports the whole book
-as stale.
-
+The mdbook version is pinned to v0.5.2. A different version renders content-hashed filenames
+differently, so CI and local builds use the same pinned version.
 *Verified against `eeffc5978d` on 2026-09-04.*

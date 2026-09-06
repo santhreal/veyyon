@@ -21,12 +21,7 @@ import { isEnoent } from "@veyyon/utils/fs-error";
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 
-import {
-	type GitRepository,
-	linkedWorktreeSync,
-	resolveRepository as resolveRepositoryFromFiles,
-	resolveRepositorySync as resolveRepositoryFromFilesSync,
-} from "./git-head";
+import { type GitRepository, linkedWorktreeSync, resolveRepository, resolveRepositorySync } from "./git-head";
 
 export interface ActiveRepoContext {
 	cwd: string;
@@ -35,15 +30,18 @@ export interface ActiveRepoContext {
 	source: "single-direct-child-repo";
 }
 
-/** Project and worktree directory names for a linked git worktree. */
+/** Project + worktree dir names when a cwd is a linked git worktree, else null. */
 export interface WorktreeContext {
+	/** Primary-checkout (project) name shown by the path segment. */
 	projectName: string;
+	/** Worktree directory name — suppressed from the path when it equals the branch. */
 	worktreeName: string;
 }
 
 /**
- * Resolve the primary checkout and worktree names without starting git.
- * Bare-repository worktrees use the shared directory with its `.git` suffix removed.
+ * Project + worktree-dir names when `cwd` is a linked git worktree, else null.
+ * The project name comes from the shared primary checkout; bare-repo worktrees
+ * resolve to the shared `foo.git` dir, so a trailing `.git` is stripped.
  */
 export function resolveWorktreeContext(cwd: string): WorktreeContext | null {
 	const worktree = linkedWorktreeSync(cwd);
@@ -100,9 +98,9 @@ function reportUnlistableCwd(cwd: string, error: unknown): void {
 	});
 }
 
-async function resolveRepository(cwd: string): Promise<GitRepository | null> {
+async function resolveRepositoryQuiet(cwd: string): Promise<GitRepository | null> {
 	try {
-		return await resolveRepositoryFromFiles(cwd);
+		return await resolveRepository(cwd);
 	} catch {
 		// Null means "cwd is not inside a repository", and this resolution is a filesystem walk up the
 		// directory chain, so a failure at any level means the same thing to the caller: keep looking for a
@@ -111,9 +109,9 @@ async function resolveRepository(cwd: string): Promise<GitRepository | null> {
 	}
 }
 
-function resolveRepositorySync(cwd: string): GitRepository | null {
+function resolveRepositorySyncQuiet(cwd: string): GitRepository | null {
 	try {
-		return resolveRepositoryFromFilesSync(cwd);
+		return resolveRepositorySync(cwd);
 	} catch {
 		// Same verdict as the asynchronous twin above.
 		return null;
@@ -219,12 +217,12 @@ function findSingleDirectChildRepoSync(cwd: string): ActiveRepoContext | null {
 
 export async function resolveActiveRepoContext(cwd: string): Promise<ActiveRepoContext | null> {
 	const resolvedCwd = path.resolve(cwd);
-	if (await resolveRepository(resolvedCwd)) return null;
+	if (await resolveRepositoryQuiet(resolvedCwd)) return null;
 	return findSingleDirectChildRepo(resolvedCwd);
 }
 
 export function resolveActiveRepoContextSync(cwd: string): ActiveRepoContext | null {
 	const resolvedCwd = path.resolve(cwd);
-	if (resolveRepositorySync(resolvedCwd)) return null;
+	if (resolveRepositorySyncQuiet(resolvedCwd)) return null;
 	return findSingleDirectChildRepoSync(resolvedCwd);
 }

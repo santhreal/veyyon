@@ -283,7 +283,6 @@ export class QuietZoneLine implements Component, MouseRoutable {
 	/**
 	 * Optional click handler for the line's content. `col` is 0-based within
 	 * the line as the provider rendered it (the indent is already subtracted),
-	 * matching the coordinate space of StatusLineComponent.quietSegmentAt.
 	 */
 	onClick?: (col: number) => void;
 

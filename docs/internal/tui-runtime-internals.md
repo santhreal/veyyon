@@ -106,7 +106,7 @@ This keeps key parsing/editor mechanics in `hosts/terminal/engine` and mode sema
 
 `TUI.requestRender()` coalesces render requests and rate-limits ordinary frames:
 
-- forced renders (`requestRender(true, ...)`) schedule an immediate frame and force a full window rewrite; with `clearScrollback`, they trigger a destructive full paint (ED3 outside multiplexers)
+- forced renders (`requestRender(true, ...)`) schedule an immediate frame and force a full window rewrite; with `clearScrollback`, they trigger a destructive full paint (ED3 outside multiplexers); `resetDisplay()` invalidates all components and forces a full replay, which explicit expansion uses to surface updated layout across history
 - ordinary renders schedule through `#scheduleRender()` and respect `TUI.#MIN_RENDER_INTERVAL_MS` (30fps)
 - repeated requests while a render is pending collapse into the same scheduled frame
 - the cadence is adaptive, not fixed. `#scheduleRender()` takes the largest of three delays: the 30fps cadence, twice the cost of the LAST frame, and any input grace window still open. The second one exists because the plain cadence collapses to zero as soon as a frame takes longer than the interval, which busy-loops the CPU through a run of slow frames; it is capped at `#MAX_ADAPTIVE_RENDER_MS` (200ms, about 5fps), below which the UI reads as dead and no further saving is worth it.
@@ -122,7 +122,7 @@ This keeps key parsing/editor mechanics in `hosts/terminal/engine` and mode sema
 3. Extract and strip `CURSOR_MARKER`, normalize lines, slice the visible window, composite overlays into the window slice (screen coordinates; overlays freeze commits).
 4. Emit one of: gesture-driven full paint (initial / session replace / resize), scroll-append (chunk rows only), in-window row diff, or seam rewrite (chunk + full window).
 
-Native scrollback always equals the committed frame prefix, rows enter history exactly once, in order, when the seam says they are final. There are no viewport probes and no deferred reconciliation; see [`tui-core-renderer.md`](./tui-core-renderer.md).
+Native scrollback always equals the committed frame prefix, rows enter history exactly once, in order, when the seam says they are final. Divergence repair rebuilds scrollback only when authorized by a segment at the resync row declaring `NativeScrollbackLiveRegion` or `NativeScrollbackReplay` (plain components preserve committed history); there are no viewport probes and no deferred reconciliation; see [`tui-core-renderer.md`](./tui-core-renderer.md).
 
 Render writes use synchronized output mode (`CSI ? 2026 h/l`) when enabled; capability detection, DECRQM, or `VEYYON_NO_SYNC_OUTPUT` can disable the wrappers while leaving autowrap discipline on.
 

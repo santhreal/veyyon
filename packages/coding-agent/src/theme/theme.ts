@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { detectMacOSAppearance, MacAppearanceObserver } from "@veyyon/natives";
-import type { FormTheme } from "@veyyon/tui";
 import type { EditorTheme } from "@veyyon/tui/components/editor";
+import type { FormTheme } from "@veyyon/tui/components/form";
 import type { SelectListTheme } from "@veyyon/tui/components/select-list";
 import type { SettingsListTheme } from "@veyyon/tui/components/settings-list";
 import { colorEnabled, TERMINAL } from "@veyyon/tui/terminal-capabilities";

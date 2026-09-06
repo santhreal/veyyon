@@ -6,19 +6,18 @@
 
 - The package directory is `apps/stats` instead of `packages/stats`; the published package name, entry points and behavior are unchanged.
 - Array copies that allocated with a spread now use `.slice()`, `.concat()` or `Array.from()`. No user-visible behavior changes.
-
 - Repointed a doc comment at `@veyyon/kernel/session/session-entries`, where the session header type now lives; no behavior change.
+
+
+## [1.4.0] - 2026-09-04
+
+### Changed
+
 - The session parser passes `contentText` an options object rather than a bare separator, following that helper's consolidation in `@veyyon/utils`. No change to the text it extracts.
 
 ### Removed
 
 - The `@veyyon/stats/format` entry point. `formatCostTiered` and `normalizePremiumRequests` are now exported by `@veyyon/utils/format`.
-
-## [1.3.0] - 2026-08-28
-
-### Changed
-
-- Migrated dashboard theme toggle to shared `ThemeToggle` from `@veyyon/tool-render`.
 
 ## [16.4.7] - 2026-07-12
 
@@ -241,6 +240,12 @@
 ### Fixed
 
 - Include subtask session files in usage stats ([#250](https://github.com/can1357/oh-my-pi/issues/250))
+
+## [1.3.0] - 2026-08-28
+
+### Changed
+
+- Migrated dashboard theme toggle to shared `ThemeToggle` from `@veyyon/tool-render`.
 
 ## [1.2.0] - 2026-08-23
 

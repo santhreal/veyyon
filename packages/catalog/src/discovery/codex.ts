@@ -257,6 +257,7 @@ function normalizeCodexModelEntry(entry: unknown, baseUrl: string): NormalizedCo
 	const maxTokens = Math.min(CODEX_DEFAULT_MAX_TOKENS, contextWindow);
 	const reasoning = supportsReasoning(payload.default_reasoning_level, payload.supported_reasoning_levels);
 	const reasoningOptions = reasoning ? declaredReasoningOptions(payload.supported_reasoning_levels) : undefined;
+
 	const input = normalizeInputModalities(payload.input_modalities);
 	const preferWebsockets = toBoolean(payload.prefer_websockets) === true;
 	const useResponsesLite = toBoolean(payload.use_responses_lite) === true;

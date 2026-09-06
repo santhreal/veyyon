@@ -9,7 +9,7 @@ Review surfaces:
 
 ## `/review`
 
-Bundled custom command (`packages/coding-agent/src/extensibility/custom-commands/bundled/review`).
+Bundled custom command (`packages/coding-agent/src/extensibility/custom-commands/bundled/review.ts`).
 Launches a review flow over a chosen target and uses the review tool surface (`report_finding`, …).
 See the command help in-session and `docs/handbook` task guides for example prompts.
 

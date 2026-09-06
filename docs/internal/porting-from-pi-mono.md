@@ -305,8 +305,8 @@ Our fork has architectural decisions that differ from upstream. **Do not port th
 | Upstream                                    | Our Fork                                                  | Reason                                                                |
 | ------------------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------- |
 | `FooterDataProvider` class                  | `StatusLineComponent`                                     | Simpler, integrated status line                                       |
-| `ctx.ui.setHeader()` / `ctx.ui.setFooter()` | No-op stubs in current extension contexts                 | Not currently wired to replace the TUI status/header UI               |
-| `ctx.ui.setEditorComponent()`               | Wired in interactive mode; no-op stubs in ACP/RPC/headless contexts | Custom editor replacement works in the interactive TUI; non-TUI runtimes keep stubs |
+| `ctx.ui.setHeader()` / `ctx.ui.setFooter()` | Removed entirely (neither member exists on `ExtensionUIContext` / `HookUIContext`) | Every host implemented both as empty functions, so dead members were removed |
+| `ctx.ui.setEditorComponent()`               | Moved to optional `ui.terminal` capability (`ctx.ui.terminal?.setEditorComponent(...)`) in interactive mode; omitted in non-terminal contexts | Custom editor replacement requires TUI/terminal access; non-terminal hosts omit `ui.terminal` |
 | `ctx.ui.addAutocompleteProvider()`          | Wired in interactive mode; no-op stubs in ACP/RPC/headless contexts | Factory wrapping matches upstream; veyyon's editor has no custom `triggerCharacters`, so wrapped providers surface at the built-in trigger points |
 | `InteractiveModeOptions` options object     | Positional constructor args (options type still exported) | Keep constructor signature; update the type when upstream adds fields |
 

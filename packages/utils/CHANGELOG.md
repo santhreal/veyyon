@@ -16,6 +16,7 @@
 - `@veyyon/utils/host-notification` states `HostNotification`, the out-of-band message a tool asks its host to deliver, and `HostNotifier`, the delivery a host installs. Neither names a terminal, so a GUI host can honour one.
 - `@veyyon/utils/sanitize-status-text` reduces text to one line a terminal draws as text, stripping escape sequences, mapping the remaining controls to spaces and collapsing space runs, so domain code that names a value in a single-line surface no longer imports the terminal host to sanitize it.
 - `@veyyon/utils/markdown-table` renders and escapes GFM tables, `@veyyon/utils/turndown` builds the Turndown instance and normalizes a `<td>`-first table, and `@veyyon/utils/html-markdown` converts HTML to markdown through both. All three are subpaths and none is on the barrel, so a document converter or a scraper reaches them without importing the coding agent.
+- `workspaceModuleReachResolution()` resolves every workspace member declared by the root manifest, at whatever depth it sits, instead of the direct children of `packages/`, so a cross-package specifier into `@veyyon/kernel`, `@veyyon/tui`, a contract or a plugin resolves again and every module-reach ceiling built on it measures what it claims.
 
 ### Changed
 
@@ -24,55 +25,35 @@
 - Source-path comments in `dirs.ts` name the website changelog generator at `apps/site/tools/gen-changelog.mjs`; behavior is unchanged.
 - Typed tuple and Set copies use spreads rather than `.concat()` or `.slice()`, which those types do not define. No user-visible behavior changes.
 - Root help lists subcommands from the registry summaries when those are present, and from the loaded command classes otherwise.
-
 - Source-path comments in `ansi.ts` and `sgr.ts` name the terminal output-block at `src/modes/terminal/draw/output-block.ts`. No user-visible behavior changes.
 - Source-path comments in `ansi.ts` and `eval-prompt-overrides.ts` name the benchmark modules they cite at their new paths under `tests/evals/`; behavior is unchanged.
 - `sanitize-text.ts` imports the escape byte from `@veyyon/utils/ansi` rather than declaring a second copy of it.
 - Source-path comments in `sanitize-text.ts`, `strip-ansi.ts`, `tab-spacing.ts` and `width.ts` name the Rust modules they cite at their new paths under `natives/`. No user-visible behavior changes.
 - Source-path comments in `adversarial-strings.ts`, `ansi.ts`, `tab-spacing.ts` and `width.ts` name the modules they cite at the paths those modules occupy: `visibleWidth`, `sliceWithWidth` and the ansi escape are `packages/utils` modules and their locks are `packages/utils` suites, while the adversarial-string helpers are `hosts/terminal/engine` test helpers. No user-visible behavior changes.
+- `stripAnsiExceptSgr()` strips every escape sequence `stripAnsi()` strips except SGR, for a surface that admits styled text.
+
+### Fixed
+
+- `stripAnsi` removes a CSI sequence written with colon subparameters. The parameter class was `[0-9;?]`, but the spec's parameter bytes are the whole `0x30-0x3f` range, so `:` `<` `=` `>` were not matched: a true-color SGR of the form `ESC [ 38:2:255:0:0 m`, which libvte and several test runners emit, left `38:2:255:0:0m` behind as visible text in captured output. The class is now the spec's, and the three byte classes are disjoint so the pattern accepts exactly what a greedy scanner accepts. The behaviour is pinned against `tests/fixtures/ansi-strip-corpus.json`, which the Rust `strip_ansi` in the shell minimizer reads too, so the two implementations answer the same cases instead of drifting apart.
+
+### Removed
+
+- Removed `isNewerVersion` in favor of publication-order comparison and equality checks.
+
+
+## [1.4.0] - 2026-09-04
+
+### Added
+
 - `getLaunchFactsCachePath()` resolves the cache file the launch card reads the previous launch's model, git state and context percentage from.
+- `formatCostTiered()` and `normalizePremiumRequests()`, moved here from `@veyyon/stats/format` so the status row reaches a terminal formatter without the stats package.
 - `getGlobalSubagentsDir()` resolves `~/.veyyon/subagents`, and the legacy-layout migration leaves that directory at the config root instead of moving it under `profiles/default/`.
-- `workspaceModuleReachResolution()` resolves every workspace member declared by the root manifest, at whatever depth it sits, instead of the direct children of `packages/`, so a cross-package specifier into `@veyyon/kernel`, `@veyyon/tui`, a contract or a plugin resolves again and every module-reach ceiling built on it measures what it claims.
 
 ### Changed
 
 - `AbortError`, the file lock and the postmortem handler no longer load `node:assert/strict`, `node:crypto` or `node:inspector` at import, which the launch path waited on for one assertion, one identifier and one signal handler.
 - The doc comments on `resolveHomeDirOrThrow()` and `getConfigRootOverride()` state the refusal rules and the sandbox exception without the surrounding narrative; no behavior changes.
 - `contentText()` is the single owner of content-block flattening across every package: it takes the `separator`, `image` placeholder, `trimBlocks` and `trimString` options the coding agent's own copy carried, and its second argument is now that options object rather than a bare separator string. A block that carries no text — a thinking block, a tool call, a loose non-object, or a text block whose `text` is absent or not a string — contributes nothing rather than an empty part between two separators.
-
-## [1.3.0] - 2026-08-28
-
-### Added
-
-- `run()` accepts verified command summaries for root help and falls back to loading the full registry when any summary is absent.
-- `source-declarations.ts`: `exportedDeclarationsIn` and `declarersOfName` report which modules declare a name, so a one-owner gate no longer matches the declaration's own bytes; a reflowed signature, a signature quoted in a comment and a second module declaring the same name are now all answered correctly.
-
-### Changed
-
-- The prompt registry and the eval prompt-override loader read benchmark prompts from `packages/evals/src/suites/typescript-edit/adapter/prompts/`, the path the consolidated evals package holds them at. No behavior change.
-- `definePromptRows` and `definePromptRegistry` re-read `VEYYON_EVAL_PROMPTS` when it changes instead of applying it once at import, so a prompt variant set per arm reaches the model in a process that runs several arms. The evals harness's in-process backend builds a session without spawning, so every arm after the first was served the first arm's prompt text while the run reported a variant. A read while the variable is unchanged costs one string comparison and allocates nothing.
-- The `prompt-variables` documentation examples name the `search` tool, which is the workspace-search tool that now exists, instead of the retired `grep` tool. No behavior change.
-- `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`. The barrel does not re-export them, so a consumer reaching them through `@veyyon/utils` names the module instead.
-- `relativePathWithinRoot` returns the candidate's own spelling instead of the case-folded copy the containment check used, so on Windows a path under `C:\Users\dev\Projects` no longer comes back lowercased, and a root configured in a different case than the directory on disk resolves to the tail rather than to a `..` walk.
-- `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`, which the barrel does not re-export, so a consumer reaching them names the module instead.
-- `winston` and `winston-daily-rotate-file` are resolved on the first log write instead of at module load, taking 4.7ms off every process that imports the logger without logging, which is every entry point.
-- A blocked event loop names the phase that spent the time rather than the phase that happened to be open: `takeLoopPhaseProfile` banks elapsed time per phase and reports the costliest one with its cost, replacing `takeRecentLoopPhase`, which returned the most recent label and blamed `ui.render` for a stall the render pass never took part in.
-- No user-visible change: doc comments name the subagent dashboard, the surface `/agents` opens, instead of the Agent Control Center.
-- Prompt-variable documentation now uses canonical `toolRefs.search` examples instead of the retired `toolRefs.grep` name. No runtime behavior changed.
-
-### Fixed
-
-- An empty `~/.veyyon/agent` beside a migrated `profiles/default` no longer refuses to start; a directory holding nothing is not a second candidate profile, so it is removed and startup continues, while one holding data still fails closed.
-- The legacy-layout migration leaves cross-profile state at the config root instead of sweeping it into `profiles/default`: `shared-auth/`, the global `AGENTS.md`, `vault.json` and `vault.key` stay where every profile reads them.
-- `extractHttpStatusFromError` reads the status line a message opens with whatever wording follows it, so `401 Your session has expired`, `403 You have run out of credits` and `503 {"type":"error",...}` report their codes again; pinning a reason phrase to its own code had also stopped a status line naming its own reason from reporting anything, and 401 is what credential rotation reads.
-- `extractHttpStatusFromError` reads a status field anywhere in an error's cause chain before falling back to prose anywhere in it, and matches the `status_code: 503` and `429 Too Many Requests` spellings it previously missed.
-- `extractHttpStatusFromError` reads a reason phrase only when it is the phrase that belongs to the code beside it, so `Processed 200 Total Records` and `gave up after 401 Failed Attempts` no longer report a status, the second of which reached credential rotation.
-- `extractRetryHint` reads `x-ratelimit-reset` through the same owner as `x-ratelimit-reset-ms`, so the common delta form `x-ratelimit-reset: 60` waits the 60 seconds the server asked for instead of computing a negative delay from it and falling back to the caller's default backoff.
-- `onProcessExit` honors its `AbortSignal` for every process shape: waiting on a `Subprocess` ends when the caller cancels instead of running to the child's exit, and a cancelled wait on a pid returns `false` rather than throwing.
-- Ending a child process no longer throws on a host where the native addon cannot load, such as a container whose glibc predates the modern build; the direct child is terminated through the runtime and process liveness falls back to signal 0, so the tree walk is the only capability lost ([#917](https://github.com/santhreal/veyyon/issues/917)).
-- `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
-- `discarded-fault.ts`: `bestEffort` and `optionalResult` state which contract discarded a promise's failure, one for a step nobody waits on and one for a probe whose failure is the answer, each taking a mandatory reason.
-- `ChildProcess.kill()` falls back to Bun's built-in `proc.kill()` (SIGTERM) when the native `Process` class cannot load, instead of throwing an uncaught exception that crashes the host. This fixes a crash in containers with older glibc where the native addon fails to load ([#917](https://github.com/santhreal/veyyon/issues/917)).
 
 ## [16.5.2] - 2026-07-14
 
@@ -371,6 +352,40 @@
 
 - Added an XDG-aware tiny-title model cache directory helper for coding-agent local title models.
 
+## [1.3.0] - 2026-08-28
+
+### Added
+
+- `run()` accepts verified command summaries for root help and falls back to loading the full registry when any summary is absent.
+- `source-declarations.ts`: `exportedDeclarationsIn` and `declarersOfName` report which modules declare a name, so a one-owner gate no longer matches the declaration's own bytes; a reflowed signature, a signature quoted in a comment and a second module declaring the same name are now all answered correctly.
+
+### Changed
+
+- The prompt registry and the eval prompt-override loader read benchmark prompts from `packages/evals/src/suites/typescript-edit/adapter/prompts/`, the path the consolidated evals package holds them at. No behavior change.
+- `definePromptRows` and `definePromptRegistry` re-read `VEYYON_EVAL_PROMPTS` when it changes instead of applying it once at import, so a prompt variant set per arm reaches the model in a process that runs several arms. The evals harness's in-process backend builds a session without spawning, so every arm after the first was served the first arm's prompt text while the run reported a variant. A read while the variable is unchanged costs one string comparison and allocates nothing.
+- The `prompt-variables` documentation examples name the `search` tool, which is the workspace-search tool that now exists, instead of the retired `grep` tool. No behavior change.
+- `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`. The barrel does not re-export them, so a consumer reaching them through `@veyyon/utils` names the module instead.
+- `relativePathWithinRoot` returns the candidate's own spelling instead of the case-folded copy the containment check used, so on Windows a path under `C:\Users\dev\Projects` no longer comes back lowercased, and a root configured in a different case than the directory on disk resolves to the tail rather than to a `..` walk.
+- `bestEffort` and `optionalResult` are imported from `@veyyon/utils/discarded-fault`, which the barrel does not re-export, so a consumer reaching them names the module instead.
+- `winston` and `winston-daily-rotate-file` are resolved on the first log write instead of at module load, taking 4.7ms off every process that imports the logger without logging, which is every entry point.
+- A blocked event loop names the phase that spent the time rather than the phase that happened to be open: `takeLoopPhaseProfile` banks elapsed time per phase and reports the costliest one with its cost, replacing `takeRecentLoopPhase`, which returned the most recent label and blamed `ui.render` for a stall the render pass never took part in.
+- No user-visible change: doc comments name the subagent dashboard, the surface `/agents` opens, instead of the Agent Control Center.
+- Prompt-variable documentation now uses canonical `toolRefs.search` examples instead of the retired `toolRefs.grep` name. No runtime behavior changed.
+
+### Fixed
+
+- An empty `~/.veyyon/agent` beside a migrated `profiles/default` no longer refuses to start; a directory holding nothing is not a second candidate profile, so it is removed and startup continues, while one holding data still fails closed.
+- The legacy-layout migration leaves cross-profile state at the config root instead of sweeping it into `profiles/default`: `shared-auth/`, the global `AGENTS.md`, `vault.json` and `vault.key` stay where every profile reads them.
+- `extractHttpStatusFromError` reads the status line a message opens with whatever wording follows it, so `401 Your session has expired`, `403 You have run out of credits` and `503 {"type":"error",...}` report their codes again; pinning a reason phrase to its own code had also stopped a status line naming its own reason from reporting anything, and 401 is what credential rotation reads.
+- `extractHttpStatusFromError` reads a status field anywhere in an error's cause chain before falling back to prose anywhere in it, and matches the `status_code: 503` and `429 Too Many Requests` spellings it previously missed.
+- `extractHttpStatusFromError` reads a reason phrase only when it is the phrase that belongs to the code beside it, so `Processed 200 Total Records` and `gave up after 401 Failed Attempts` no longer report a status, the second of which reached credential rotation.
+- `extractRetryHint` reads `x-ratelimit-reset` through the same owner as `x-ratelimit-reset-ms`, so the common delta form `x-ratelimit-reset: 60` waits the 60 seconds the server asked for instead of computing a negative delay from it and falling back to the caller's default backoff.
+- `onProcessExit` honors its `AbortSignal` for every process shape: waiting on a `Subprocess` ends when the caller cancels instead of running to the child's exit, and a cancelled wait on a pid returns `false` rather than throwing.
+- Ending a child process no longer throws on a host where the native addon cannot load, such as a container whose glibc predates the modern build; the direct child is terminated through the runtime and process liveness falls back to signal 0, so the tree walk is the only capability lost ([#917](https://github.com/santhreal/veyyon/issues/917)).
+- `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
+- `discarded-fault.ts`: `bestEffort` and `optionalResult` state which contract discarded a promise's failure, one for a step nobody waits on and one for a probe whose failure is the answer, each taking a mandatory reason.
+- `ChildProcess.kill()` falls back to Bun's built-in `proc.kill()` (SIGTERM) when the native `Process` class cannot load, instead of throwing an uncaught exception that crashes the host. This fixes a crash in containers with older glibc where the native addon fails to load ([#917](https://github.com/santhreal/veyyon/issues/917)).
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes
@@ -560,7 +575,7 @@
   without reading `normalizePrefix` got the bad one. An absolute prefix is still honoured exactly as
   given, and the `@` spelling still works and still strips the sigil.
 - File-lock recovery no longer lets an old stale-lock reaper delete a newer writer's lock. The reaper carries the owner token it observed and removes the lock only while that owner still matches. An aged ownerless lock is recoverable after its publication grace period, malformed owner metadata is refused, and a valid replacement owner survives a delayed cleanup.
-- `stripAnsi` removes a CSI sequence written with colon subparameters. The parameter class was `[0-9;?]`, but the spec's parameter bytes are the whole `0x30-0x3f` range, so `:` `<` `=` `>` were not matched: a true-color SGR of the form `ESC [ 38:2:255:0:0 m`, which libvte and several test runners emit, left `38:2:255:0:0m` behind as visible text in captured output. The class is now the spec's, and the three byte classes are disjoint so the pattern accepts exactly what a greedy scanner accepts. The behaviour is pinned against `tests/fixtures/ansi-strip-corpus.json`, which the Rust `strip_ansi` in the shell minimizer reads too, so the two implementations answer the same cases instead of drifting apart.
+- `stripAnsi` removes a CSI sequence written with colon subparameters. The parameter class was `[0-9;?]`, but the spec's parameter bytes are the whole `0x30-0x3f` range, so `:` `<` `=` `>` were not matched: a true-color SGR of the form `ESC [ 38:2:255:0:0 m`, which libvte and several test runners emit, left `38:2:255:0:0m` behind as visible text in captured output. The class is now the spec's, and the three byte classes are disjoint so the pattern accepts exactly what a greedy scanner accepts. The behaviour is pinned against `fixtures/ansi-strip-corpus.json`, which the Rust `strip_ansi` in the shell minimizer reads too, so the two implementations answer the same cases instead of drifting apart.
 - `SQLITE_NOW_EPOCH` is exported from `src/sqlite.ts`. The expression `CAST(strftime('%s','now') AS INTEGER)` was declared in three modules across `@veyyon/ai` and `@veyyon/coding-agent`, each writing a column another module reads, and it had to land here because neither package can own a value both of them write. The unit is what makes a copy dangerous: an edit to milliseconds, or to a Julian day, puts values a thousand times out of range into one table while every reader keeps interpreting them as seconds, and nothing throws. `test/sqlite.test.ts` asserts what SQLite actually computes rather than the string, since the string is interpolated into SQL: seconds bracketed against the JavaScript clock, `typeof` integer with the bare `strftime` TEXT as the control, usable as a column DEFAULT, and one value per statement so a row cannot look edited the moment it is created.
 - `moduleReach`, `moduleReachCount` and `moduleGraph` take an optional per-run memo, `createModuleReachCache()`, so a caller that walks many entries over one graph reads each file once. The architecture gates walk one entry per test file, 1,891 of them in `packages/coding-agent`, over a graph whose files overlap almost completely, and every walk was re-reading and re-scanning the same modules: the same read, the same regex pass, the same resolution, thousands of times for one number. It was tolerable while the walk resolved four packages and stopped at every other boundary; resolving the whole workspace took that gate from about forty seconds to minutes, and a gate too slow to run stops catching anything. It is now about one second. The memo is explicit and per-run rather than module-level, because these values come off disk and a process that edits a file and re-walks has to see the edit; `packages/utils/test/module-reach-cache.test.ts` pins that a cached walk answers exactly what an uncached one answers, that a stale entry lives only in the cache that saw it, and that files really are read once, proven by deleting the fixture between two walks rather than by timing anything.
 - Added `module-reach-workspace.ts`, which derives the module-reach resolution table from every workspace package's `exports` field, and four architecture gates that used to write that table out by hand now read it. The copies had drifted, and the drift was invisible because every one of those gates is an upper bound: a specifier the table does not know resolves to nothing, the walk stops, and the ceiling passes while measuring less. Two of them listed `@veyyon/agent`, which is not the name of any package here (the directory is `packages/agent`, the package is `@veyyon/agent-core`, and its barrel is 406 modules), so all 569 imports of it were invisible, along with `@veyyon/mnemopi` (398 modules), `@veyyon/stats` (365), `@veyyon/natives` and `@veyyon/tool-render`. One gate recorded `packages/coding-agent/src/thinking.ts` at 6 modules when it was 407. Deriving from `exports` means the gate resolves what the runtime resolves, a package that adds a subpath export is covered without an edit, and a new package cannot join the workspace unresolved and quietly lower every ceiling in the repository. `packages/utils/test/module-reach-workspace.test.ts` tests the derivation against fixture manifests and holds the completeness check.

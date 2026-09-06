@@ -24,8 +24,12 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { AsyncJobManager } from "@veyyon/coding-agent/async";
-import { closeDaemonClients } from "@veyyon/coding-agent/launch/client";
-import { resetLaunchExitWatchesForTests } from "@veyyon/coding-agent/tools/shell/launch-exit-watch";
+import { closeDaemonClients, daemonClientForProject } from "@veyyon/coding-agent/launch/client";
+import { DAEMON_STATES, type DaemonState } from "@veyyon/coding-agent/launch/protocol";
+import {
+	resetLaunchExitWatchesForTests,
+	watchLaunchedProcessExit,
+} from "@veyyon/coding-agent/tools/shell/launch-exit-watch";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../../utils/test/helpers/isolated-config-root";
 import { LaunchTool } from "../../src/tools/shell/launch";
 import { makeToolSession } from "../helpers/tool-session";
@@ -97,7 +101,7 @@ describe("a launched process that ends reports its exit", () => {
 		const { dir, scriptPath } = await projectWith(
 			'console.log("first line");\nconsole.log("TAIL MARKER");\nprocess.exit(0);\n',
 		);
-		const { tool, delivered } = harness(dir);
+		const { tool, manager, delivered } = harness(dir);
 
 		const started = await tool.execute("call-1", {
 			op: "start",
@@ -114,11 +118,12 @@ describe("a launched process that ends reports its exit", () => {
 		expect(notice?.status).toBe("completed");
 		expect(notice?.text).toContain("Launched process finite exited 0");
 		expect(notice?.text).toContain("TAIL MARKER");
+		expect(manager.getRunningJobs()).toHaveLength(0);
 	}, 30_000);
 
 	it("delivers a non-zero exit as a failed background job naming the code", async () => {
 		const { dir, scriptPath } = await projectWith('console.log("BOOM");\nprocess.exit(3);\n');
-		const { tool, delivered } = harness(dir);
+		const { tool, manager, delivered } = harness(dir);
 
 		await tool.execute("call-1", {
 			op: "start",
@@ -131,6 +136,87 @@ describe("a launched process that ends reports its exit", () => {
 		expect(await until(() => delivered.length > 0, 20_000)).toBeTrue();
 		expect(delivered[0]?.status).toBe("failed");
 		expect(delivered[0]?.text).toContain("Launched process broken exited 3");
+		expect(manager.getRunningJobs()).toHaveLength(0);
+	}, 30_000);
+
+	it("delivers completion across every terminal daemon state even if reached before the watch registered", async () => {
+		// Non-terminal states that never report an end: starting, running, ready, restarting, stopping.
+		// Documented opt-out set pinned by exact equality so adding a new daemon state fails until classified.
+		const NON_TERMINAL_STATES: readonly DaemonState[] = ["starting", "running", "ready", "restarting", "stopping"];
+		expect(DAEMON_STATES.filter(state => NON_TERMINAL_STATES.includes(state))).toEqual([
+			"starting",
+			"running",
+			"ready",
+			"restarting",
+			"stopping",
+		]);
+		const terminalStates = DAEMON_STATES.filter(state => !NON_TERMINAL_STATES.includes(state));
+		expect(terminalStates).toEqual(["exited", "failed"]);
+
+		const cases: Array<{
+			name: string;
+			exitCode: number;
+			expectedDaemonState: DaemonState;
+			expectedJobStatus: string;
+		}> = [
+			{
+				name: "early-exit-clean",
+				exitCode: 0,
+				expectedDaemonState: "exited",
+				expectedJobStatus: "completed",
+			},
+			{
+				name: "early-exit-error",
+				exitCode: 3,
+				expectedDaemonState: "failed",
+				expectedJobStatus: "failed",
+			},
+		];
+
+		for (const testCase of cases) {
+			const marker = `TAIL_MARKER_${testCase.name.toUpperCase().replaceAll("-", "_")}`;
+			const { dir, scriptPath } = await projectWith(
+				`console.log("${marker}");\nprocess.exit(${testCase.exitCode});\n`,
+			);
+			const { manager, delivered } = harness(dir);
+
+			const client = await daemonClientForProject(dir);
+			const started = await client.request({
+				op: "start",
+				spec: {
+					name: testCase.name,
+					application: process.execPath,
+					args: [scriptPath],
+					cwd: dir,
+					env: {},
+					pty: false,
+					restart: "no",
+					persist: false,
+					detached: false,
+				},
+			});
+			expect(started.op).toBe("start");
+			if (started.op !== "start") continue;
+
+			const waitResult = await client.request({ op: "wait", name: testCase.name, for: "exit", timeoutMs: 5_000 });
+			expect(waitResult.op).toBe("wait");
+			if (waitResult.op !== "wait") continue;
+			expect(waitResult.daemon.state).toBe(testCase.expectedDaemonState);
+
+			const session = makeToolSession({ cwd: dir, asyncJobManager: manager });
+			// Call watchLaunchedProcessExit twice before delivery to exercise deduplication
+			watchLaunchedProcessExit({ session, client, daemon: waitResult.daemon });
+			watchLaunchedProcessExit({ session, client, daemon: waitResult.daemon });
+
+			expect(await until(() => delivered.length > 0, 5_000)).toBeTrue();
+			expect(delivered).toHaveLength(1);
+			const [notice] = delivered;
+			expect(notice?.type).toBe("launch");
+			expect(notice?.status).toBe(testCase.expectedJobStatus);
+			expect(notice?.text).toContain(`Launched process ${testCase.name} exited ${testCase.exitCode}`);
+			expect(notice?.text).toContain(marker);
+			expect(manager.getRunningJobs()).toHaveLength(0);
+		}
 	}, 30_000);
 
 	it("says nothing about an exit the caller asked for", async () => {

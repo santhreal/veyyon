@@ -19,9 +19,9 @@
  * and `veyyon-get` serves get.veyyon.dev from `website-get/`. Select the latter
  * with `VEYYON_PAGES_PROJECT=veyyon-get`.
  *
- * The handbook (`apps/site/docs` → `docs/handbook/book`) is a symlink. Rebuild it
- * with `mdbook build` in `docs/handbook` first. Deployment copies the tree with
- * symlinks dereferenced so Wrangler hashes the rebuilt handbook files.
+ * The handbook (`apps/site/docs` → `docs/handbook/book`) is a symlink to generated
+ * mdBook output. Deployment copies the tree with symlinks dereferenced so Wrangler
+ * hashes the rebuilt handbook files. Build with `mdbook build docs/handbook` (v0.5.2).
  */
 import { execFileSync } from "node:child_process";
 import * as path from "node:path";

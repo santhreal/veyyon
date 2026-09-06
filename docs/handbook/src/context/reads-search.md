@@ -8,7 +8,7 @@ The point of these tools is bounds. An unbounded `cat`, `find`, or `grep -r` in 
 can dump enough text to fill the whole context window. These tools apply line, byte, and
 result caps instead, and they surface truncation rather than dropping output silently. This
 page documents each tool's parameters and the limits it enforces. The implementations live
-under `packages/coding-agent/src/tools/{read,search,write}.ts`.
+under `packages/coding-agent/src/tools/` (`fs/read.ts`, `search/search.ts`, `fs/write.ts`).
 
 ## The `read` tool (`tools/fs/read.ts`)
 
@@ -98,7 +98,8 @@ takes two required ordered fields followed by type-specific options:
 
 Options are strictly validated per `type`; cross-type fields are rejected with an actionable error:
 
-- **`type: "files"`** accepts `hidden`, `gitignore`, and `limit`:
+- **`type: "files"`** accepts `path`, `hidden`, `gitignore`, and `limit`:
+  - **`path`** is one directory the `input` globs are searched under. Each entry of `input` keeps its own meaning there: `{ input: "*.ts", path: "src" }` is `src/**/*.ts`, `{ input: "app/*.ts", path: "src" }` is `src/app/*.ts`, and `{ input: ".", path: "src" }` lists `src`. A glob or internal URL in `path`, or an absolute or internal-URL `input` under a `path`, is rejected with the spelling that works.
   - **`hidden` (default `true`)** includes dotfiles.
   - **`gitignore` (default `true`)** respects `.gitignore` rules; set `false` to search ignored paths.
   - **`limit` (default `200`, max `200`)** bounds returned paths; output is sorted by `mtime` descending and grouped under `# <dir>/` directory headers.

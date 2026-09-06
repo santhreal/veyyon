@@ -8,18 +8,31 @@
 - The message envelope, content blocks, `AssistantMessageEvent`, `StopDetails`, the turn and tool-call study records and the streaming partial-JSON symbol are defined in `@veyyon/model`; `@veyyon/ai` re-exports every name it exported before, so no caller changes.
 - A source comment in the OAuth callback page names the shared sun source at `apps/site/sun-field.js`; behavior is unchanged.
 - Typed tuple copies use spreads rather than `.concat()`, which a `as const` array does not define. No user-visible behavior changes.
-
 - A source-path comment in `register-builtins.ts` names the benchmark module it cites at its new path under `tests/evals/`; behavior is unchanged.
 - A source-path comment in `message-text.ts` names the coding-agent module its caller moved to; behavior is unchanged.
 - `CONTEXTUAL_USER_PREFIXES` is exported from the codex compaction module so the retained-window rule is asserted against the real list rather than a copy of it.
 - A source-path comment and the barrel-shortcut suite name the Perplexity search provider at `tools/web/search/providers/perplexity.ts`. No behavior change.
+
+### Fixed
+
+- A user or developer message that carries prior-turn reasoning as prose declares its origin through `demotedReasoningSource`, and `transformMessages` holds it to the unsigned-thinking replay policy: a signing Anthropic endpoint drops it on same-model replay, and every `anthropic-messages` target drops it once `replayDemotedPriorReasoning` is off by catalog or learned from a `reasoning_extraction` refusal, instead of re-sending the same prose on the retry and on every later turn of the session.
+- Credential-store startup applies SQLite busy handling and WAL mode before initializing refresh leases, allowing concurrent launches to wait for database locks.
+
+
+## [1.4.0] - 2026-09-04
+
 ### Added
 
 - Every OpenCode request carries a `Veyyon/<version>` user agent and an `x-opencode-session` header derived from the conversation id, on the `anthropic-messages`, `openai-completions` and `openai-responses` transports and on server-side compaction, under every cache-retention setting, which the gateway requires to identify the client and route a conversation to its warm prompt cache.
 
+### Changed
+
+- Every provider row with a `login` declares `credential: "api-key" | "oauth"`, and `OAuthProviderInfo` and `getLoginCredential(providerId)` expose it, so a login surface can tell a dashboard URL from an authorization it must open; `OpenAI` is named `OpenAI Platform` and `OpenAI Codex` is named `ChatGPT (Codex subscription)`.
+- The compaction transport and codex request comments state the route each host family serves. No behavior change.
+
 ### Fixed
 
-- Credential-store startup applies SQLite busy handling and WAL mode before initializing refresh leases, allowing concurrent launches to wait for database locks.
+- The Alibaba Coding Plan and Qwen Portal logins validate the pasted key through the controller's `fetch` when one is supplied, instead of always using the global `fetch` and bypassing a configured proxy.
 - Reasoning recorded behind a rewritten history prefix is dropped before the request on a model that binds thinking blocks to their prefix, instead of being replayed and answered with a 400.
 - ChatGPT Codex server-side compaction streams a trailing `compaction_trigger` item to `{base}/codex/responses`, instead of posting to `{base}/codex/responses/compact`, which answers 404 and turned every compaction into a paid local pass for the rest of the session.
 - A Codex compaction stream carrying a `compaction` item with no `encrypted_content` is refused instead of being stored as a window every later turn discards.
@@ -28,6 +41,7 @@
 - A Codex server-side compaction sends the session's `prompt_cache_key`, so it lands on the session's cached prefix instead of missing it and making the next turn re-pay full uncached input.
 - A Codex server-side compaction with no session id is refused instead of minting a random conversation identity, which opened a second cache lineage and left the post-compaction history reset with nothing to find.
 - The Claude Code user-agent reports `agent-sdk/0.3.257`, the Agent SDK release paired with the Claude Code version the same request sends.
+- With `accounts.loadBalancing` off, one account per provider and credential type serves every session: the explicit choice, else the session's sticky account, else the first stored row. The resolver no longer hashes a new session across accounts, ranks accounts by headroom, or skips a rate-limited or out-of-quota account for a sibling; the session waits on its own account, and only a refused grant moves it, announced through `onCredentialFailover`. Turning the setting on restores the previous rotation and ranking.
 - A signing Anthropic endpoint that answers `stop_reason: "refusal"` with category `reasoning_extraction` has prior-turn reasoning dropped from an immediate retry and from the rest of the session, instead of failing the turn with `Refusal (reasoning_extraction)` every time reasoning demoted to prose is replayed.
 - A tool result whose originating call is no longer in the request reaches the model as a `user`-role `<stale-tool-result>` note instead of as assistant text, so a model no longer reads a tool result in its own voice and reproduces one as a visible message.
 - A resumed session drops an `[Orphan …]` or `[Previous …]` tool-result note already persisted as assistant text, so history recorded before that repair was fixed stops prompting the same visible tool-result message on every later turn.
@@ -35,78 +49,6 @@
 - Stripping a persisted note keeps the reply the model wrote after its byte-exact copy of the tool output, instead of dropping the whole block with the reply in it.
 - Every fold of a tool result whose call is missing from the request is logged with the call id and the ids the request does carry, so the loss of a pairing can be traced from the log instead of only from its symptom.
 - A `<stale-tool-result>` note escapes the tool name and call id it reports, so a call id carrying a quote cannot close the attribute and hand the model forged markup.
-
-### Changed
-
-- The compaction transport and codex request comments state the route each host family serves. No behavior change.
-
-## [1.3.0] - 2026-08-28
-
-### Breaking Changes
-
-- `StreamOptions.cursorRules` and the exported `CursorRuleInput` type are removed, and `buildCursorRules` takes only the system prompt: the Cursor provider builds exactly one request-context rule, the assembled prompt.
-
-### Added
-
-- `ToolCallLoopGuard` detects consecutive redundant reads of unchanged files whose requested line ranges are already fully present in recent context, steering runaway exploration loops while preserving prompt cache prefixes.
-- Added Command Code API-key login through the Studio Provider page, with validation against its Provider API, and Nous Research Portal OAuth device login with rotating refresh tokens and short-lived inference JWTs.
-- `explain(error)` in `@veyyon/ai/error/flags` returns the classification id together with the names of the rules that produced it, and every classification rule states a name.
-- Added `nous-research-api-key`, a second way into Nous Research that takes a key pasted from the Portal instead of running the device flow, validated against the inference API and stored as the same `nous-research` credential.
-
-### Changed
-
-- The assistant-text extractor's one-owner check names the consolidated evals package path instead of the retired metaharness path. No behavior change.
-- `ToolCallLoopGuard` waits for a third consecutive subsumed read before steering, up from the second, so two narrowing reads of one file are no longer treated as a loop; `model.toolCallLoopGuard.readSubsumptionThreshold` still sets it.
-- Formatted tool-call loop guard whitespace; behavior is unchanged.
-- The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
-- `ToolCall.arguments` is a `Readonly<Record<string, unknown>>`, so a producer replaces the object instead of writing into one a streaming snapshot already shares.
-- A streaming request no longer pins a parsed clone of its wire payload for the life of the stream: every provider's diagnostic dump retains only the exact sent bytes and materializes a body when a 400/413 dump is built.
-- The OpenAI-family, pi-native and Codex request builders serialize the request body once instead of deep-cloning the request graph, which took attempt preparation on a 32MiB context from 82ms to 9ms.
-- A message that names a dead socket reads the same everywhere: `namesDeadSocket` in `@veyyon/ai/error/flags` is the one list of errnos and phrases, and `ENETUNREACH`, `EHOSTUNREACH` and `EAI_AGAIN` now count as transient transport failures like the rest of them.
-- Formatted source files for Biome compliance.
-- `withAuth` imports the two error classes it throws from their owning modules instead of the `@veyyon/ai/error` barrel, so a consumer of the auth-retry wrapper no longer loads the provider-error registry and every error domain behind it; behavior is unchanged.
-
-### Fixed
-
-- An auth-broker snapshot containing an API key or OAuth credential stored by an interactive login validates again; the `source` field on either credential type made every client reject the whole credential pool.
-- A long name whose tail cycles is no longer read as a runaway sampler: a folder, path segment, hex digest or identifier that repeats a short group past the 180-character threshold ended the turn with `Thinking loop detected: repeated "…" N× back-to-back` and re-sampled a prompt that produced the same name for the same reason. A whitespace-free run that continues a longer token is data, on both the streamed detector and the completed-text scanner; a run that begins at a token boundary still trips.
-- A `cursor-agent` model receives the operator's instructions again: the server rebuilds the prompt head with its own system prompt and applies none of the request-context rules, so the assembled prompt now rides on the active user turn inside an `<operator-instructions>` block.
-- A `cursor-agent` request uploads the operator's instructions once instead of three times: the request-context rule payload and the prompt-head blobs, both discarded by that server, no longer carry a copy, and a request that would send any count other than one fails before it is written.
-- Each tool call in a `cursor-agent` batch keeps its own arguments: updates route by the frame's `call_id` instead of a single "current call" pointer, which let a completing call overwrite the arguments of the one opened after it and left the first call with `{}`.
-- A `cursor-agent` turn that ends with tool calls still streaming closes every open call rather than only the one the pointer last named, so a second call of a batch is no longer dropped as unfinished, and each closed call keeps its own parsed arguments and carries no streaming marker.
-- A `503 auth_unavailable` refusal is classified as an authentication failure rather than a bare server status, so compaction falls back to an authenticated model instead of failing the whole compaction ([#986](https://github.com/santhreal/veyyon/issues/986)).
-- A llama.cpp tool-call JSON parse failure explains itself and names the fix on every route to a local server, not only when the provider id is `ollama`, so an LM Studio or llama-cpp user sees why the turn stopped instead of a bare HTTP 500 whose retry was already being suppressed.
-- A llama.cpp tool-call JSON parse failure stops the retry ladder whether it arrives thrown from a request or recorded on an assistant message; the two classifier entry points share one post-walk latch instead of each deciding, so the same 500 no longer burned every attempt on one route while surfacing immediately on the other.
-- A bare `502 Bad Gateway` or `504 Gateway Timeout` is read as the upstream failure it is and costs a twenty-second retry, matching `500`; both previously matched no rule, came back as an unreadable body, and suppressed the failing model for five minutes over a gateway blip.
-- A rate-limit message reads `503`, `529` and `500` as the status codes they are rather than as digits inside a longer number, so an exhausted balance reporting `5030 credits remaining` rotates the credential instead of retrying the same account after a 45-second capacity backoff.
-- A Gemini or Cloud Code Assist body that carried a whole turn and then ended without a `finishReason` settles on what arrived rather than failing as a truncated response, matching the four dialects that already read the shared end-of-stream judgement; a body carrying nothing usable is still refused.
-- A stream that ended without a terminal finish reason is classified as the truncation it is whatever the provider called it, so an OpenAI completions turn that stopped early is retried like the identically-worded Cloud Code Assist one instead of ending the turn; an empty response body is the same fault and is classified with it.
-- A turn that ended on an error finish reason is retried whichever provider reported it: Amazon Bedrock said "Generation failed with stop reason: error" and both Google paths "Generation failed with finish reason: error", neither of which the turn domain's pattern matched, so the identical failure retried on OpenAI and ended the turn on the other three.
-- A refusal spelled as a finish reason (`PROHIBITED_CONTENT`, `SAFETY`, `RECITATION`, `BLOCKLIST`, `SPII` and their `IMAGE_` forms), as `finish_reason: sensitive`, or as a Codex event carrying `code=cyber_policy` is classified as a content verdict and vetoes a retry, where only `MALFORMED_FUNCTION_CALL` had a rule.
-- An abnormal WebSocket closure is transport vocabulary, so a Codex stream that died with code 1006 is retried rather than reported.
-- A 5xx is no longer read as an authentication failure because its body names an authentication service, so Anthropic's `503 overloaded_error: Authentication service is temporarily unavailable. Retry the request.` is retried instead of walling the turn and pointing credential recovery at an account with nothing wrong with it.
-- A Cursor MCP tool call the exec channel already dispatched is marked resolved on the assistant message, so the agent loop no longer runs the same call a second time after the turn closes and appends a duplicate `toolResult` under an id that already had one.
-- A compact route that answers 404 is recorded as absent for that model for the rest of the process, so server-side compaction is asked once instead of once per compaction, and the error names the model rather than repeating "Server-side compaction failed".
-- `AIError.status` and `extractHttpStatusFromError` are one reader, so a provider message spelled `error(503)`, `status_code: 429` or `429 Too Many Requests` yields the same status to the auth ladder and the retry ladder instead of one of the two seeing nothing; a status field anywhere in the cause chain now outranks prose anywhere in it.
-- A Nous Portal call that a gateway answers with an HTML 502, 503 or 504 reports the gateway status instead of "returned invalid JSON".
-- A `pi-native` payload hook rejection names the reason it gave rather than only the seam it came from, and an error may declare its text describes a local decision so a quoted `401` does not rotate the operator's credential.
-- OpenAI Codex request diagnostics redact every credential header rather than `authorization` alone, so a Codex request carrying `x-api-key`, `proxy-authorization` or a provider-specific key spelling no longer writes it in plaintext to the debug log.
-- A first-event stall is retried once on every provider that does not run its own stall ladder, so a single silent connect on OpenAI completions, OpenAI Responses, Azure Responses or Ollama no longer ends the turn unretried.
-- A persisted 400/413 request dump redacts `x-goog-api-key`, so a rejected Google Generative AI or Vertex request no longer writes the operator's plaintext API key into `logs/http-400-requests/`.
-- A failed Amazon Bedrock turn reports its elapsed duration again, instead of carrying time-to-first-token with no total while a successful turn reported both.
-- Normalized cumulative tool-call argument delta snapshots for OpenAI Codex streams while preserving true incremental deltas on standard OpenAI Responses streams via declared per-provider wire shapes.
-- The Cursor HTTP/2 client session handles error and close events directly so connection drops, DNS resolution failures and socket resets reject the turn with a classified error instead of raising an unhandled exception.
-- A read of several ranges, such as `:5-16,960-973`, is judged already-read only when every one of its ranges was read before, instead of keeping the first range, discarding the rest and steering the model away from lines nobody had read.
-- Streamed tool-call argument deltas in OpenAI Responses streams append incrementally rather than truncating on coincidental prefix matches.
-- Fixed `ToolCallLoopGuard` deciding read subsumption from rendered result text and summary phrases, preventing follow-up range reads of summarized files from being falsely blocked.
-- Fixed read tool target parsing in `ToolCallLoopGuard` to correctly handle URI schemes, Windows drive prefixes, compound raw-range selectors, and open-ended ranges without falsely subsuming distinct reads.
-- Fixed OpenAI server-side compaction requests omitting the `Authorization` header when constructing headers from request setup.
-- Supported server-side compaction on the ChatGPT Codex backend with OAuth credential and turn identity headers.
-- API option mapping preserves side-request conversation IDs, preventing Cursor and Devin requests from falling back to the live session ID.
-- Cursor turns fail immediately when an asynchronous exec-server handler fails; malformed grep line or count values and oversized Connect frames fail before protobuf or buffer exhaustion; and success waits for queued handlers and gRPC trailers so quota and availability statuses are preserved.
-- A rejected API key reports the provider's own sentence from its JSON error envelope, so Command Code's plan-limit refusal reads as "Your Go plan doesn't include API access. Upgrade to Provider or higher at https://commandcode.ai/billing to use these endpoints." instead of the raw body.
-- An API-key login for a provider that declares `storeCredentialsAs` now stores the credential under that provider id, as an OAuth login already did, instead of filing it under the login mechanism's id where nothing reads it.
-- Anthropic strict-tool planning now recognizes the unified `search` tool instead of the retired `find` identity, so canonical workspace search receives strict schema enforcement without reviving a legacy tool name.
 
 ## [16.5.2] - 2026-07-14
 
@@ -4302,6 +4244,74 @@
 ## [1.337.0] - 2026-01-02
 
 Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mono](https://github.com/badlogic/pi-mono).
+
+## [1.3.0] - 2026-08-28
+
+### Breaking Changes
+
+- `StreamOptions.cursorRules` and the exported `CursorRuleInput` type are removed, and `buildCursorRules` takes only the system prompt: the Cursor provider builds exactly one request-context rule, the assembled prompt.
+
+### Added
+
+- `ToolCallLoopGuard` detects consecutive redundant reads of unchanged files whose requested line ranges are already fully present in recent context, steering runaway exploration loops while preserving prompt cache prefixes.
+- Added Command Code API-key login through the Studio Provider page, with validation against its Provider API, and Nous Research Portal OAuth device login with rotating refresh tokens and short-lived inference JWTs.
+- `explain(error)` in `@veyyon/ai/error/flags` returns the classification id together with the names of the rules that produced it, and every classification rule states a name.
+- Added `nous-research-api-key`, a second way into Nous Research that takes a key pasted from the Portal instead of running the device flow, validated against the inference API and stored as the same `nous-research` credential.
+
+### Changed
+
+- The assistant-text extractor's one-owner check names the consolidated evals package path instead of the retired metaharness path. No behavior change.
+- `ToolCallLoopGuard` waits for a third consecutive subsumed read before steering, up from the second, so two narrowing reads of one file are no longer treated as a loop; `model.toolCallLoopGuard.readSubsumptionThreshold` still sets it.
+- Formatted tool-call loop guard whitespace; behavior is unchanged.
+- The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
+- `ToolCall.arguments` is a `Readonly<Record<string, unknown>>`, so a producer replaces the object instead of writing into one a streaming snapshot already shares.
+- A streaming request no longer pins a parsed clone of its wire payload for the life of the stream: every provider's diagnostic dump retains only the exact sent bytes and materializes a body when a 400/413 dump is built.
+- The OpenAI-family, pi-native and Codex request builders serialize the request body once instead of deep-cloning the request graph, which took attempt preparation on a 32MiB context from 82ms to 9ms.
+- A message that names a dead socket reads the same everywhere: `namesDeadSocket` in `@veyyon/ai/error/flags` is the one list of errnos and phrases, and `ENETUNREACH`, `EHOSTUNREACH` and `EAI_AGAIN` now count as transient transport failures like the rest of them.
+- Formatted source files for Biome compliance.
+- `withAuth` imports the two error classes it throws from their owning modules instead of the `@veyyon/ai/error` barrel, so a consumer of the auth-retry wrapper no longer loads the provider-error registry and every error domain behind it; behavior is unchanged.
+
+### Fixed
+
+- An auth-broker snapshot containing an API key or OAuth credential stored by an interactive login validates again; the `source` field on either credential type made every client reject the whole credential pool.
+- A long name whose tail cycles is no longer read as a runaway sampler: a folder, path segment, hex digest or identifier that repeats a short group past the 180-character threshold ended the turn with `Thinking loop detected: repeated "…" N× back-to-back` and re-sampled a prompt that produced the same name for the same reason. A whitespace-free run that continues a longer token is data, on both the streamed detector and the completed-text scanner; a run that begins at a token boundary still trips.
+- A `cursor-agent` model receives the operator's instructions again: the server rebuilds the prompt head with its own system prompt and applies none of the request-context rules, so the assembled prompt now rides on the active user turn inside an `<operator-instructions>` block.
+- A `cursor-agent` request uploads the operator's instructions once instead of three times: the request-context rule payload and the prompt-head blobs, both discarded by that server, no longer carry a copy, and a request that would send any count other than one fails before it is written.
+- Each tool call in a `cursor-agent` batch keeps its own arguments: updates route by the frame's `call_id` instead of a single "current call" pointer, which let a completing call overwrite the arguments of the one opened after it and left the first call with `{}`.
+- A `cursor-agent` turn that ends with tool calls still streaming closes every open call rather than only the one the pointer last named, so a second call of a batch is no longer dropped as unfinished, and each closed call keeps its own parsed arguments and carries no streaming marker.
+- A `503 auth_unavailable` refusal is classified as an authentication failure rather than a bare server status, so compaction falls back to an authenticated model instead of failing the whole compaction ([#986](https://github.com/santhreal/veyyon/issues/986)).
+- A llama.cpp tool-call JSON parse failure explains itself and names the fix on every route to a local server, not only when the provider id is `ollama`, so an LM Studio or llama-cpp user sees why the turn stopped instead of a bare HTTP 500 whose retry was already being suppressed.
+- A llama.cpp tool-call JSON parse failure stops the retry ladder whether it arrives thrown from a request or recorded on an assistant message; the two classifier entry points share one post-walk latch instead of each deciding, so the same 500 no longer burned every attempt on one route while surfacing immediately on the other.
+- A bare `502 Bad Gateway` or `504 Gateway Timeout` is read as the upstream failure it is and costs a twenty-second retry, matching `500`; both previously matched no rule, came back as an unreadable body, and suppressed the failing model for five minutes over a gateway blip.
+- A rate-limit message reads `503`, `529` and `500` as the status codes they are rather than as digits inside a longer number, so an exhausted balance reporting `5030 credits remaining` rotates the credential instead of retrying the same account after a 45-second capacity backoff.
+- A Gemini or Cloud Code Assist body that carried a whole turn and then ended without a `finishReason` settles on what arrived rather than failing as a truncated response, matching the four dialects that already read the shared end-of-stream judgement; a body carrying nothing usable is still refused.
+- A stream that ended without a terminal finish reason is classified as the truncation it is whatever the provider called it, so an OpenAI completions turn that stopped early is retried like the identically-worded Cloud Code Assist one instead of ending the turn; an empty response body is the same fault and is classified with it.
+- A turn that ended on an error finish reason is retried whichever provider reported it: Amazon Bedrock said "Generation failed with stop reason: error" and both Google paths "Generation failed with finish reason: error", neither of which the turn domain's pattern matched, so the identical failure retried on OpenAI and ended the turn on the other three.
+- A refusal spelled as a finish reason (`PROHIBITED_CONTENT`, `SAFETY`, `RECITATION`, `BLOCKLIST`, `SPII` and their `IMAGE_` forms), as `finish_reason: sensitive`, or as a Codex event carrying `code=cyber_policy` is classified as a content verdict and vetoes a retry, where only `MALFORMED_FUNCTION_CALL` had a rule.
+- An abnormal WebSocket closure is transport vocabulary, so a Codex stream that died with code 1006 is retried rather than reported.
+- A 5xx is no longer read as an authentication failure because its body names an authentication service, so Anthropic's `503 overloaded_error: Authentication service is temporarily unavailable. Retry the request.` is retried instead of walling the turn and pointing credential recovery at an account with nothing wrong with it.
+- A Cursor MCP tool call the exec channel already dispatched is marked resolved on the assistant message, so the agent loop no longer runs the same call a second time after the turn closes and appends a duplicate `toolResult` under an id that already had one.
+- A compact route that answers 404 is recorded as absent for that model for the rest of the process, so server-side compaction is asked once instead of once per compaction, and the error names the model rather than repeating "Server-side compaction failed".
+- `AIError.status` and `extractHttpStatusFromError` are one reader, so a provider message spelled `error(503)`, `status_code: 429` or `429 Too Many Requests` yields the same status to the auth ladder and the retry ladder instead of one of the two seeing nothing; a status field anywhere in the cause chain now outranks prose anywhere in it.
+- A Nous Portal call that a gateway answers with an HTML 502, 503 or 504 reports the gateway status instead of "returned invalid JSON".
+- A `pi-native` payload hook rejection names the reason it gave rather than only the seam it came from, and an error may declare its text describes a local decision so a quoted `401` does not rotate the operator's credential.
+- OpenAI Codex request diagnostics redact every credential header rather than `authorization` alone, so a Codex request carrying `x-api-key`, `proxy-authorization` or a provider-specific key spelling no longer writes it in plaintext to the debug log.
+- A first-event stall is retried once on every provider that does not run its own stall ladder, so a single silent connect on OpenAI completions, OpenAI Responses, Azure Responses or Ollama no longer ends the turn unretried.
+- A persisted 400/413 request dump redacts `x-goog-api-key`, so a rejected Google Generative AI or Vertex request no longer writes the operator's plaintext API key into `logs/http-400-requests/`.
+- A failed Amazon Bedrock turn reports its elapsed duration again, instead of carrying time-to-first-token with no total while a successful turn reported both.
+- Normalized cumulative tool-call argument delta snapshots for OpenAI Codex streams while preserving true incremental deltas on standard OpenAI Responses streams via declared per-provider wire shapes.
+- The Cursor HTTP/2 client session handles error and close events directly so connection drops, DNS resolution failures and socket resets reject the turn with a classified error instead of raising an unhandled exception.
+- A read of several ranges, such as `:5-16,960-973`, is judged already-read only when every one of its ranges was read before, instead of keeping the first range, discarding the rest and steering the model away from lines nobody had read.
+- Streamed tool-call argument deltas in OpenAI Responses streams append incrementally rather than truncating on coincidental prefix matches.
+- Fixed `ToolCallLoopGuard` deciding read subsumption from rendered result text and summary phrases, preventing follow-up range reads of summarized files from being falsely blocked.
+- Fixed read tool target parsing in `ToolCallLoopGuard` to correctly handle URI schemes, Windows drive prefixes, compound raw-range selectors, and open-ended ranges without falsely subsuming distinct reads.
+- Fixed OpenAI server-side compaction requests omitting the `Authorization` header when constructing headers from request setup.
+- Supported server-side compaction on the ChatGPT Codex backend with OAuth credential and turn identity headers.
+- API option mapping preserves side-request conversation IDs, preventing Cursor and Devin requests from falling back to the live session ID.
+- Cursor turns fail immediately when an asynchronous exec-server handler fails; malformed grep line or count values and oversized Connect frames fail before protobuf or buffer exhaustion; and success waits for queued handlers and gRPC trailers so quota and availability statuses are preserved.
+- A rejected API key reports the provider's own sentence from its JSON error envelope, so Command Code's plan-limit refusal reads as "Your Go plan doesn't include API access. Upgrade to Provider or higher at https://commandcode.ai/billing to use these endpoints." instead of the raw body.
+- An API-key login for a provider that declares `storeCredentialsAs` now stores the credential under that provider id, as an OAuth login already did, instead of filing it under the login mechanism's id where nothing reads it.
+- Anthropic strict-tool planning now recognizes the unified `search` tool instead of the retired `find` identity, so canonical workspace search receives strict schema enforcement without reviving a legacy tool name.
 
 ## [1.2.0] - 2026-08-23
 

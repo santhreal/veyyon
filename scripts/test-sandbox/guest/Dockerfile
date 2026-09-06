@@ -116,6 +116,26 @@ RUN set -eux; \
     rm -rf /tmp/gh.tgz "/tmp/gh_${GH_VERSION}_linux_amd64"; \
     gh --version
 
+# mdbook is pinned to v0.5.2 across docs.yml, site.yml, ci.yml, and deployment.md.
+ARG MDBOOK_VERSION=0.5.2
+RUN set -eux; \
+    mkdir -p /var/cache/mdbook; \
+    curl -fsSL -o /var/cache/mdbook/mdbook.tar.gz \
+        "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-musl.tar.gz"; \
+    tar -xzf /var/cache/mdbook/mdbook.tar.gz -C /usr/local/bin; \
+    rm -rf /var/cache/mdbook; \
+    mdbook --version
+
+# Node 22 is required for Cloudflare Pages deploy tooling outside Bun.
+ARG NODE_VERSION=22.14.0
+RUN set -eux; \
+    mkdir -p /var/cache/node; \
+    curl -fsSL -o /var/cache/node/node.tar.xz \
+        "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz"; \
+    tar -xJf /var/cache/node/node.tar.xz -C /usr/local --strip-components=1 --no-same-owner; \
+    rm -rf /var/cache/node; \
+    node --version; \
+    npm --version
 # The kernel opens /dev/console to give PID 1 its stdio, and it does that BEFORE
 # /init can mount devtmpfs. So this node has to exist in the initramfs itself.
 RUN set -eux; \

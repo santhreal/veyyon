@@ -12,6 +12,13 @@
  * Fp/Fs, and their 8-bit C1 variants) are stripped without publishing escape
  * bytes or payloads to the single-line status output.
  *
+ * The styled variant, `sanitizeStyledStatusText`, is what the footer's hook
+ * status row uses: `ctx.ui.setStatus` promises a hook it may style its text
+ * with the theme, and the row stripped every SGR anyway, so the autoresearch
+ * status row (kept in green, flagged in yellow, best in the tool colour)
+ * rendered uniformly grey. The sweep below runs the same family table through
+ * it and pins that SGR, and only SGR, survives.
+ *
  * WHAT IT DOES NOT CATCH:
  *
  * This suite does not test multi-line layout formatting, full TUI component

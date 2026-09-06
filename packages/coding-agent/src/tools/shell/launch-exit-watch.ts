@@ -76,9 +76,9 @@ async function exitNotice(client: DaemonBrokerClient, daemon: DaemonSnapshot, si
 
 /**
  * Report the exit of `daemon` as a background job on the session that started
- * it. A process already in a terminal state is not watched (the start result
- * carried its outcome), and neither is a detached one, which outlives the
- * session that would receive the notice.
+ * it. A detached process outlives the session that would receive the notice,
+ * so it is not watched. A process that already reached a terminal state before
+ * the watch registered still reports its exit.
  */
 export function watchLaunchedProcessExit(options: {
 	session: ToolSession;
@@ -89,7 +89,6 @@ export function watchLaunchedProcessExit(options: {
 	const manager = session.asyncJobManager;
 	if (!manager) return;
 	if (daemon.detached) return;
-	if (daemon.state === "exited" || daemon.state === "failed") return;
 	const key = watchKey(client.projectDir, daemon.name);
 	if (watches.has(key)) return;
 	// A watch must never be the reason a start fails: the job cap, a disposed

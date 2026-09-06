@@ -74,6 +74,7 @@ import {
 	resolveConfiguredModelPatterns,
 	resolveModelRoleValue,
 } from "./config/model-resolver";
+
 import { DEFAULT_MODEL_SLOT } from "./config/model-roles";
 import { buildServiceTierByFamily } from "./config/service-tier";
 import { Settings } from "./config/settings";

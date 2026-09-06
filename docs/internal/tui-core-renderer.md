@@ -111,11 +111,13 @@ scrolled reader could be looking at.
    tail re-anchors at the first changed row.
    Frozen snapshots past the verified zone are exempt while live and hard-scanned in
    full, once, when the boundary rises past them. Automatic erase-and-replay
-   requires a newly finalized snapshot or a changed component implementing
-   `NativeScrollbackLiveRegion`, with `tui.scrollbackRebuild` enabled on a
-   non-multiplexer terminal. Removing a live barrier still finalizes the frozen
-   rows below it. An unrelated component's capability does not permit rebuilding
-   plain component history. Other changes recommit below the retained history.
+   requires that the current or previous segment at the resync row declares
+   `NativeScrollbackLiveRegion` or `NativeScrollbackReplay` (a declared live/final
+   transition authorizing repair for its own segment, including a fully finalized
+   segment whose live boundary is now absent), with `tui.scrollbackRebuild` enabled
+   on a non-multiplexer terminal. Plain components preserve committed history.
+   Explicit expansion uses `resetDisplay()`, which requests full replay.
+   Other changes recommit below the retained history.
 3. Classify: **fullPaint** (first paint, `clearScrollback` session replace, a
    geometry change on a terminal that does not repaint resizes in place, or
    the divergence rebuild) or **update**. `resizeRepaintsInPlace()` is what
@@ -234,8 +236,10 @@ see it.
    window drops below the old boundary, and it lowers `C` to the new `W` first
    rather than painting under it. The gesture full paint replays `[0, C')`
    from home by design, and is not covered by this rule. When a *component*
-   violates immutability, the audit (§2) degrades to a rebuild or to
-   duplication, never silently skip rows, never erase history.
+   violates immutability, the audit (§2) degrades to a rebuild (when authorized
+   by a segment at the resync row declaring `NativeScrollbackLiveRegion` or
+   `NativeScrollbackReplay`) or to duplication (plain components preserve
+   committed history), never silently skip rows, never erase history.
 3. **Commits are exactly the chunk.** Any byte shape that scrolls the screen
    must scroll *only* rows accounted for by `C' − C`, that is what makes
    scrollback provably `frame[0..C)`.

@@ -1269,7 +1269,8 @@ function renderResult(result: TaskViewResult, context: ToolViewContext, rawArgs?
 		const sections: ViewSection[] = [];
 		if (contextSection) sections.push(contextSection);
 		if (assignmentSection) sections.push(assignmentSection);
-		if (fallbackText) sections.push({ separator: true, lines: [[span(fallbackText, "dim")]], clip: true });
+		if (fallbackText)
+			sections.push({ separator: true, lines: [[span(fallbackText, errored ? "error" : "dim")]], clip: true });
 		return {
 			kind: "framedBlock",
 			header: errored ? header("error", undefined, agentLabel) : header(undefined, "status.done", agentLabel),

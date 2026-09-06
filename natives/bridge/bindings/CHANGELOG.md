@@ -7,34 +7,19 @@
 - Typed tuple copies use spreads rather than `.concat()`, which those types do not define. No user-visible behavior changes.
 - The loader's diagnostic comment names the addon crate at `natives/bridge/addon/src/lib.rs`, the path it moved to. No user-visible behavior changes.
 - The rebuild instruction in the stale-addon refusal reads `bun --cwd=natives/bridge/bindings run build`, the package's path after it moved out of `packages/`. The package name `@veyyon/natives` and every import specifier are unchanged.
-### Fixed
 
-- The addon loader resolves `node:child_process` and `node:zlib` when it loads an addon rather than when it is imported, so importing `@veyyon/natives` for its types or enum values costs 3ms less.
-- A compiled binary's first launch of a version extracts only the native addon variant the host loads, instead of every variant the binary carries, so a cold start writes about 135MB rather than 270MB before the first frame; the skipped variants are written on demand if the selected one fails to load.
-- A compiled binary carries one embedded archive per native addon variant instead of one archive holding all of them, so a cold launch inflates only the variant it loads; cold first paint on linux-x64 drops from 361ms to 229ms.
+
+## [1.4.0] - 2026-09-04
 
 ### Added
 
 - `VEYYON_DEBUG_STARTUP` emits a `native:firstCall:<export>` marker naming the native call that first loads the addon, so a launch that pays extraction before its first frame states which call pulled it in.
 
-## [1.3.0] - 2026-08-28
-
 ### Fixed
 
-- A load failure carries `code: "VEYYON_NATIVE_ADDON_UNAVAILABLE"`, exported as `NATIVE_ADDON_UNAVAILABLE_CODE` with `isNativeAddonUnavailable` from `@veyyon/natives/loader-state`, so a caller that catches a native call can tell an unavailable addon from a scan that found nothing.
-- The tracked-process renice test states which direction it can move a nice value on the host running it, so a host whose cargo wrapper already starts the test binary at nice 19 lowers where it can, raises where the host permits it, and reports a skip naming the reason where it can do neither, instead of failing an assertion about headroom that host never had.
-- A `cargo` run under `--message-format=json` that fails before rustc, such as a build script exiting non-zero, reports the text cargo printed, so the `Caused by:` chain and the script's own stderr reach the operator instead of a bare failure verdict.
-- A `cargo nextest` run whose profile sets `failure-output = "final"` keeps its panic bodies, so the assertion diff, message, file and line survive the summary instead of being dropped and leaving a failure count with no evidence.
-- A native addon load that fails is reported once instead of once per native call; the failed pipeline is memoized, so a run that reached a hundred native calls no longer prints a hundred copies of the candidate report ([#917](https://github.com/santhreal/veyyon/issues/917)).
-- Fixed stock Windows AVX2 detection by trying PowerShell 7 before an isolated modern-addon trial; only explicit shell answers or illegal-instruction exits become verdicts, while missing, incompatible, timed-out, and unexpectedly crashing addons remain unknown.
-- Persisted AVX2 verdicts are schema-versioned and keyed by platform, architecture, and CPU model, so copied or stale caches cannot select a native variant for different hardware.
-- The AVX2 trial load answers from the addon loader's first import and exits, so a compiled host, whose `process.execPath` is the product binary rather than a JavaScript runtime, reports a verdict instead of booting the whole CLI and spawning a trial child of its own at every level.
-- A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
-- An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
-- Native text context rows now report truncation explicitly, and mixed-language structure searches suppress pattern-compilation diagnostics from unrelated languages when another candidate language accepts the pattern.
-- The native addon loader memoizes a load failure. A failed `loadNative()` re-throws the cached error on subsequent calls instead of re-running the full candidate scan and printing every GLIBC/version warning again on each native access, which produced ~1000 lines of warning spam in containers with older glibc ([#917](https://github.com/santhreal/veyyon/issues/917)).
-- A tab-indented row hangs its wrapped continuations under the tab, instead of counting only spaces as indent and continuing at column zero.
-- The Darwin process list is sized from the count the kernel reports rather than a fixed 4096 entries, so a host past that many live processes no longer loses whole branches of a tracked process tree out of its CPU budget.
+- The addon loader resolves `node:child_process` and `node:zlib` when it loads an addon rather than when it is imported, so importing `@veyyon/natives` for its types or enum values costs 3ms less.
+- A compiled binary's first launch of a version extracts only the native addon variant the host loads, instead of every variant the binary carries, so a cold start writes about 135MB rather than 270MB before the first frame; the skipped variants are written on demand if the selected one fails to load.
+- A compiled binary carries one embedded archive per native addon variant instead of one archive holding all of them, so a cold launch inflates only the variant it loads; cold first paint on linux-x64 drops from 361ms to 229ms.
 
 ## [16.5.2] - 2026-07-14
 
@@ -1013,6 +998,25 @@
 ### Fixed
 
 - Fixed potential crashes when updating native binaries by using safe copy strategy that avoids overwriting in-memory binaries
+
+## [1.3.0] - 2026-08-28
+
+### Fixed
+
+- A load failure carries `code: "VEYYON_NATIVE_ADDON_UNAVAILABLE"`, exported as `NATIVE_ADDON_UNAVAILABLE_CODE` with `isNativeAddonUnavailable` from `@veyyon/natives/loader-state`, so a caller that catches a native call can tell an unavailable addon from a scan that found nothing.
+- The tracked-process renice test states which direction it can move a nice value on the host running it, so a host whose cargo wrapper already starts the test binary at nice 19 lowers where it can, raises where the host permits it, and reports a skip naming the reason where it can do neither, instead of failing an assertion about headroom that host never had.
+- A `cargo` run under `--message-format=json` that fails before rustc, such as a build script exiting non-zero, reports the text cargo printed, so the `Caused by:` chain and the script's own stderr reach the operator instead of a bare failure verdict.
+- A `cargo nextest` run whose profile sets `failure-output = "final"` keeps its panic bodies, so the assertion diff, message, file and line survive the summary instead of being dropped and leaving a failure count with no evidence.
+- A native addon load that fails is reported once instead of once per native call; the failed pipeline is memoized, so a run that reached a hundred native calls no longer prints a hundred copies of the candidate report ([#917](https://github.com/santhreal/veyyon/issues/917)).
+- Fixed stock Windows AVX2 detection by trying PowerShell 7 before an isolated modern-addon trial; only explicit shell answers or illegal-instruction exits become verdicts, while missing, incompatible, timed-out, and unexpectedly crashing addons remain unknown.
+- Persisted AVX2 verdicts are schema-versioned and keyed by platform, architecture, and CPU model, so copied or stale caches cannot select a native variant for different hardware.
+- The AVX2 trial load answers from the addon loader's first import and exits, so a compiled host, whose `process.execPath` is the product binary rather than a JavaScript runtime, reports a verdict instead of booting the whole CLI and spawning a trial child of its own at every level.
+- A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
+- An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
+- Native text context rows now report truncation explicitly, and mixed-language structure searches suppress pattern-compilation diagnostics from unrelated languages when another candidate language accepts the pattern.
+- The native addon loader memoizes a load failure. A failed `loadNative()` re-throws the cached error on subsequent calls instead of re-running the full candidate scan and printing every GLIBC/version warning again on each native access, which produced ~1000 lines of warning spam in containers with older glibc ([#917](https://github.com/santhreal/veyyon/issues/917)).
+- A tab-indented row hangs its wrapped continuations under the tab, instead of counting only spaces as indent and continuing at column zero.
+- The Darwin process list is sized from the count the kernel reports rather than a fixed 4096 entries, so a host past that many live processes no longer loses whole branches of a tracked process tree out of its CPU budget.
 
 ## [1.2.0] - 2026-08-23
 

@@ -58,7 +58,11 @@ export function formatScalar(value: unknown, maxLen: number): string {
 }
 
 /** Format args inline for a collapsed preview. */
-export function formatArgsInline(args: Record<string, unknown>, maxWidth: number): string {
+export function formatArgsInline(
+	args: Record<string, unknown>,
+	maxWidth: number,
+	formatText?: (text: string) => string,
+): string {
 	const keys: string[] = [];
 	for (const key in args) {
 		if (key in HIDDEN_JSON_TREE_KEYS) continue;
@@ -87,7 +91,7 @@ export function formatArgsInline(args: Record<string, unknown>, maxWidth: number
 		// nothing and fills the line.
 		const pieceBudget = Math.min(cap, maxWidth - current - tailReserve);
 		const valueMaxLen = Math.max(1, pieceBudget - Bun.stringWidth(key) - 3);
-		const valueStr = formatScalar(value, valueMaxLen);
+		const valueStr = formatScalar(typeof value === "string" && formatText ? formatText(value) : value, valueMaxLen);
 		const piece = `${key}=${valueStr}`;
 		const pieceW = Bun.stringWidth(piece);
 		if (pieceW > pieceBudget) {

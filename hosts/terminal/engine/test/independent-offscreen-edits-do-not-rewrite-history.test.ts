@@ -34,19 +34,20 @@ function buffer(term: VirtualTerminal): string[] {
 }
 
 describe("independent offscreen edits preserve committed history", () => {
-	it.each([false, true])(
+	it.each(["absent", "before", "after"] as const)(
 		"preserves plain history with an unrelated finalization component: %s",
-		async withFinalization => {
+		async finalizationPosition => {
 			const term = new VirtualTerminal(32, 4);
 			const tui = new TUI(term);
 			let leading = Array.from({ length: 16 }, (_, index) => `leading-${index}`);
 			const following = Array.from({ length: 8 }, (_, index) => `following-${index}`);
+			const unrelated = new Rows();
+			unrelated.lines = [];
 			try {
+				if (finalizationPosition === "before") tui.addChild(unrelated);
 				tui.addChild({ render: () => leading, invalidate() {} });
 				tui.addChild({ render: () => following, invalidate() {} });
-				if (withFinalization) {
-					const unrelated = new Rows();
-					unrelated.lines = [];
+				if (finalizationPosition === "after") {
 					tui.addChild(unrelated);
 				}
 				tui.start();

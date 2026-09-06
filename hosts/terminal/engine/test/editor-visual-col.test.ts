@@ -16,6 +16,7 @@
  *   4. Neither throws on adversarial Unicode.
  */
 import { describe, expect, it } from "bun:test";
+
 import { fuzzSeed, lcg } from "@veyyon/utils/adversarial-strings";
 import { getSegmenter, offsetAtVisualCol, visibleWidth, visualColAtOffset } from "@veyyon/utils/width";
 import { maxSegmentVisualCol } from "../src/components/editor";

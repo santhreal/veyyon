@@ -68,6 +68,8 @@ Your `render(width)` output must be terminal-safe:
 3. **Truncate/wrap ANSI-aware text** with `truncateToWidth()` / `wrapTextWithAnsi()`.
 4. **Sanitize tabs/content** from external sources using `replaceTabs()` (and higher-level sanitizers in coding-agent render paths).
 
+The terminal `ToolView` renderer replaces tabs and shortens embedded home-directory paths in text spans, metadata, notices, and generic argument previews. Path shortening precedes syntax highlighting, diff rendering, and argument-preview truncation. Captured terminal rows use `styleTerminalRow()`.
+
 Minimal pattern:
 
 ```ts

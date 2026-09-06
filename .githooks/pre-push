@@ -150,29 +150,49 @@ for sha in $shas; do
 		exit 1
 	fi
 
-	# mdbook names every asset by content hash, so a rebuild writes a NEW
-	# `searchindex-<hash>.js` and deletes the old one. `git commit --only -- docs/handbook/book`
-	# stages the deletion and NOT the new file, which produces a book whose every page
-	# loads an asset the commit does not carry: the published search box fetches a 404,
-	# and the Docs workflow reports it a full run later. Comparing what the pages ask for
-	# against what the commit ships answers it here in milliseconds and needs no mdbook.
-	book="$checkout/docs/handbook/book"
-	if [ -d "$book" ]; then
-		refs="${TMPDIR:-/tmp}/veyyon-prepush-refs-$$"
-		grep -ohE '"[^"]*-[0-9a-f]{8}\.(js|css)"' "$book"/*.html 2>/dev/null | tr -d '"' | sort -u >"$refs" || true
-		absent=""
-		while read -r asset; do
-			[ -z "$asset" ] && continue
-			[ -e "$book/$asset" ] || absent="$absent $asset"
-		done <"$refs"
-		rm -f "$refs"
-		if [ -n "$absent" ]; then
+	# docs/handbook/book is a gitignored build output and must never be committed.
+	# Catch any tracked files under docs/handbook/book/ in the commit being pushed.
+	if git -C "$checkout" ls-files --error-unmatch docs/handbook/book >/dev/null 2>&1; then
+		echo >&2
+		echo "pre-push: REFUSED. Commit $short tracks generated files under docs/handbook/book/." >&2
+		echo "          docs/handbook/book is a gitignored build artifact and must not be committed." >&2
+		echo "          Run: git rm -r --cached docs/handbook/book, then commit" >&2
+		exit 1
+	fi
+
+	# When handbook sources changed, build the book and verify that all generated
+	# content-hashed assets (*-[0-9a-f]{8}.(js|css)) and search index are complete.
+	if git -C "$repo_root" diff-tree -m -r --no-commit-id --name-only "$sha" | grep -qE '^docs/handbook/(src/|book\.toml)'; then
+		if ! command -v mdbook >/dev/null 2>&1; then
 			echo >&2
-			echo "pre-push: REFUSED. Commit $short has handbook pages that load assets it does" >&2
-			echo "          not carry:$absent" >&2
-			echo "          A rebuild renames a hashed asset, and --only does not stage a new file." >&2
-			echo "          Run: git add -- docs/handbook/book, then commit" >&2
+			echo "pre-push: REFUSED. Commit $short changes handbook sources, but 'mdbook' is not on PATH." >&2
+			echo "          Install mdbook v0.5.2 to verify handbook builds before pushing:" >&2
+			echo "            curl -fsSL https://github.com/rust-lang/mdBook/releases/download/v0.5.2/mdbook-v0.5.2-x86_64-unknown-linux-musl.tar.gz | tar -xz -C ~/.local/bin" >&2
 			exit 1
+		fi
+		if ! (cd "$checkout" && mdbook build docs/handbook >/dev/null 2>&1); then
+			echo >&2
+			echo "pre-push: REFUSED. Commit $short fails 'mdbook build docs/handbook'." >&2
+			exit 1
+		fi
+		book="$checkout/docs/handbook/book"
+		if [ -d "$book" ]; then
+			refs="${TMPDIR:-/tmp}/veyyon-prepush-refs-$$"
+			grep -ohE '"[^"]*-[0-9a-f]{8}\.(js|css)"' "$book"/*.html "$book"/**/*.html 2>/dev/null | tr -d '"' | sort -u >"$refs" || true
+			absent=""
+			while read -r asset; do
+				[ -z "$asset" ] && continue
+				base="${asset##*/}"
+				if [ ! -e "$book/$asset" ] && [ ! -e "$book/$base" ]; then
+					absent="$absent $asset"
+				fi
+			done <"$refs"
+			rm -f "$refs"
+			if [ -n "$absent" ]; then
+				echo >&2
+				echo "pre-push: REFUSED. Commit $short generates handbook pages that load missing assets:$absent" >&2
+				exit 1
+			fi
 		fi
 	fi
 	cleanup

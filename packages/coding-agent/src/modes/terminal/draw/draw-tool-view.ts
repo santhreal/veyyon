@@ -50,6 +50,7 @@ import {
 	formatStatusIcon,
 	previewWindowRows,
 	replaceTabs,
+	shortenEmbeddedPaths,
 } from "../../../tools/core/render-utils";
 import type { ToolUIStatus } from "../../../tools/core/tool-ui-status";
 import type { FirstResultViewportRepaint } from "../../../tools/renderers";
@@ -201,8 +202,9 @@ export function drawSpan(span: ViewSpan, theme: Theme, frame?: number): string {
 			formatStatusIcon(STATUS_ICONS[span.status], theme, span.status === "running" ? frame : undefined),
 		);
 	}
+	const spanText = span.captured ? span.text : replaceTabs(shortenEmbeddedPaths(span.text));
 	if (span.badge === true) {
-		return linked(span, formatBadge(span.text, TONE_COLORS[span.tone ?? "accent"], theme));
+		return linked(span, formatBadge(spanText, TONE_COLORS[span.tone ?? "accent"], theme));
 	}
 	if (span.captured) return styleTerminalRow(span.text, theme.getFgAnsi(TONE_COLORS.output));
 	// A live run of ANOTHER PROGRAM's output is the follow rather than a shimmer: the newest
@@ -215,7 +217,7 @@ export function drawSpan(span: ViewSpan, theme: Theme, frame?: number): string {
 		return linked(
 			span,
 			paintHotTail(
-				theme.fg(TONE_COLORS.output, span.text),
+				theme.fg(TONE_COLORS.output, spanText),
 				theme,
 				TERMINAL.trueColor,
 				"toolOutput",
@@ -227,7 +229,7 @@ export function drawSpan(span: ViewSpan, theme: Theme, frame?: number): string {
 	// layering over it: a shimmer opened inside a colour ends its last tier in that colour's reset and
 	// leaves the rest of the run drawn in whatever the row opened with.
 	if (span.live === true && frame !== undefined && shimmerEnabled()) {
-		return linked(span, shimmerText(span.text, theme));
+		return linked(span, shimmerText(spanText, theme));
 	}
 	const ground = span.tone === undefined ? undefined : TONE_COLORS[span.tone];
 	// A markdown run is rendered rather than styled: the tone is the ground its words sit on, and
@@ -236,13 +238,13 @@ export function drawSpan(span: ViewSpan, theme: Theme, frame?: number): string {
 	// here and a tool that set both would be answering the same question twice.
 	if (span.markdown) {
 		const rendered = renderInlineMarkdown(
-			span.text,
+			spanText,
 			getMarkdownTheme(),
 			ground === undefined ? undefined : text => theme.fg(ground, text),
 		);
 		return linked(span, rendered);
 	}
-	let text = span.text;
+	let text = spanText;
 	if (span.bold) text = theme.bold(text);
 	if (span.italic) text = theme.italic(text);
 	if (span.strike) text = theme.strikethrough(text);
@@ -307,10 +309,12 @@ export function drawStatusRow(view: StatusRowView, theme: Theme, spinnerFrame?: 
 	// The tone is applied INSIDE the link and inside the status line's own colouring of the
 	// description, which is the order every hand-written header used: the escape that opens the link
 	// carries no colour, and the row's secondary colour is the ground a toned run sits on.
+	const rawDescription =
+		view.description === undefined ? undefined : replaceTabs(shortenEmbeddedPaths(view.description));
 	const toned =
-		view.description === undefined || view.descriptionTone === undefined
-			? view.description
-			: theme.fg(TONE_COLORS[view.descriptionTone], view.description);
+		rawDescription === undefined || view.descriptionTone === undefined
+			? rawDescription
+			: theme.fg(TONE_COLORS[view.descriptionTone], rawDescription);
 	const described =
 		toned === undefined
 			? undefined
@@ -329,10 +333,16 @@ export function drawStatusRow(view: StatusRowView, theme: Theme, spinnerFrame?: 
 			icon: view.status === undefined ? undefined : STATUS_ICONS[view.status],
 			iconOverride: emblem,
 			spinnerFrame,
-			title: view.title,
+			title: replaceTabs(shortenEmbeddedPaths(view.title)),
 			titleColor: view.titleTone === undefined ? undefined : TONE_COLORS[view.titleTone],
 			description,
-			badge: view.badge === undefined ? undefined : { label: view.badge.label, color: TONE_COLORS[view.badge.tone] },
+			badge:
+				view.badge === undefined
+					? undefined
+					: {
+							label: replaceTabs(shortenEmbeddedPaths(view.badge.label)),
+							color: TONE_COLORS[view.badge.tone],
+						},
 			meta: view.meta?.map(entry => drawSpans(entry, theme, spinnerFrame)),
 		},
 		theme,
@@ -378,7 +388,9 @@ export function drawToolViewText(view: LineToolView, theme: Theme, spinnerFrame?
 function drawMarkdownRows(source: string, width: number, theme: Theme, tone: ViewTone | undefined): readonly string[] {
 	if (!source.trim()) return [];
 	const ground = tone === undefined ? undefined : { color: (text: string) => theme.fg(TONE_COLORS[tone], text) };
-	return new Markdown(source, 0, 0, getMarkdownTheme(), ground).render(Math.max(1, width));
+	return new Markdown(replaceTabs(shortenEmbeddedPaths(source)), 0, 0, getMarkdownTheme(), ground).render(
+		Math.max(1, width),
+	);
 }
 
 /** The rail glyph, the space after it and one column of air, which a header row never spends. */
@@ -405,7 +417,8 @@ function drawFittedHeader(view: StatusRowView, theme: Theme, width: number, fram
 	if (description === undefined || view.descriptionFits !== true) return drawn;
 	const overflow = visibleWidth(drawn) - Math.max(0, width - HEADER_CHROME);
 	if (overflow <= 0) return drawn;
-	const descriptionWidth = visibleWidth(description);
+	const sanitizedDesc = replaceTabs(shortenEmbeddedPaths(description));
+	const descriptionWidth = visibleWidth(sanitizedDesc);
 	const fitted = Math.max(1, descriptionWidth - overflow);
 	if (fitted >= descriptionWidth) return drawn;
 	const head = Math.floor((fitted - 1) / 2);
@@ -413,8 +426,8 @@ function drawFittedHeader(view: StatusRowView, theme: Theme, width: number, fram
 	const shortened =
 		fitted <= 1
 			? "…"
-			: `${sliceWithWidth(description, 0, head, true).text}…${
-					sliceWithWidth(description, Math.max(0, descriptionWidth - tail), tail, true).text
+			: `${sliceWithWidth(sanitizedDesc, 0, head, true).text}…${
+					sliceWithWidth(sanitizedDesc, Math.max(0, descriptionWidth - tail), tail, true).text
 				}`;
 	return drawStatusRow({ ...view, description: shortened }, theme, frame);
 }
@@ -447,7 +460,10 @@ export function drawFramedBlock(view: FramedBlockView, theme: Theme, spinnerFram
 		const drawnHere =
 			section.list || section.code !== undefined || diff !== undefined || markdown || tree !== undefined;
 		return {
-			label: section.label === undefined ? undefined : theme.fg("toolTitle", section.label),
+			label:
+				section.label === undefined
+					? undefined
+					: theme.fg("toolTitle", replaceTabs(shortenEmbeddedPaths(section.label))),
 			separator: section.separator === true,
 			lines: section.list
 				? drawItemList(section.lines, section.hidden, theme, spinnerFrame)
@@ -636,7 +652,7 @@ function drawCodeLines(lines: readonly ViewLine[], code: ViewCodeLines, theme: T
 	) {
 		return codeMemo.rows;
 	}
-	const highlighted = highlightCode(source, code.language);
+	const highlighted = highlightCode(shortenEmbeddedPaths(source), code.language);
 	const rows =
 		numbers !== undefined
 			? (() => {
@@ -665,7 +681,11 @@ function drawCodeLines(lines: readonly ViewLine[], code: ViewCodeLines, theme: T
 	// command nobody has states nothing.
 	const lead = code.lead;
 	const led =
-		lead === undefined ? rows : rows.map((row, index) => (index === 0 ? `${theme.fg("dim", lead)}${row}` : row));
+		lead === undefined
+			? rows
+			: rows.map((row, index) =>
+					index === 0 ? `${theme.fg("dim", replaceTabs(shortenEmbeddedPaths(lead)))}${row}` : row,
+				);
 	codeMemo.theme = theme;
 	codeMemo.language = language;
 	codeMemo.shape = shape;
@@ -721,7 +741,9 @@ function drawDiffLines(lines: readonly ViewLine[], diff: ViewDiffLines, theme: T
 		.join("\n");
 	const path = diff.path ?? "";
 	if (diffMemo.theme === theme && diffMemo.path === path && diffMemo.source === source) return diffMemo.rows;
-	const rows = renderDiff(source, diff.path === undefined ? {} : { filePath: diff.path }).split("\n");
+	const rows = renderDiff(shortenEmbeddedPaths(source), diff.path === undefined ? {} : { filePath: diff.path }).split(
+		"\n",
+	);
 	diffMemo.theme = theme;
 	diffMemo.path = path;
 	diffMemo.source = source;
@@ -889,7 +911,8 @@ function drawLineToWidth(line: ViewLine, theme: Theme, width: number, frame?: nu
 			used += visibleWidth(replayed);
 			continue;
 		}
-		const text = truncateToWidth(span.text, remaining, Ellipsis.Unicode);
+		const sanitizedText = replaceTabs(shortenEmbeddedPaths(span.text));
+		const text = truncateToWidth(sanitizedText, remaining, Ellipsis.Unicode);
 		drawn += drawSpan({ ...span, text }, theme, frame);
 		used += visibleWidth(text);
 	}
@@ -994,7 +1017,7 @@ function drawNoticeSpan(span: ViewSpan, theme: Theme): string {
 	if (span.symbol !== undefined && Object.hasOwn(UNICODE_SYMBOLS, span.symbol)) {
 		return theme.symbol(span.symbol as SymbolKey);
 	}
-	let text = span.text;
+	let text = span.captured ? span.text : replaceTabs(shortenEmbeddedPaths(span.text));
 	if (span.bold) text = theme.bold(text);
 	if (span.italic) text = theme.italic(text);
 	return text;
@@ -1024,7 +1047,7 @@ export function drawNotice(view: NoticeView, theme: Theme): Component {
 	const tag =
 		view.tag === undefined
 			? ""
-			: ` ${theme.bold(`${theme.format.bracketLeft}${view.tag}${theme.format.bracketRight}`)}`;
+			: ` ${theme.bold(`${theme.format.bracketLeft}${replaceTabs(shortenEmbeddedPaths(view.tag))}${theme.format.bracketRight}`)}`;
 	const lines = ["", `${mark}${drawNoticeLine(view.headline, theme)}${tag}`];
 	// The blank row is the gap between the headline and what follows it, so a notice that is a
 	// headline alone is three rows rather than a headline with two empty rows under it.

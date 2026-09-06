@@ -9,6 +9,8 @@ import {
 	openAutoresearchStorage,
 	type SessionRow,
 } from "@veyyon/coding-agent/autoresearch/storage";
+import { MAX_ATTEMPTS, MAX_BREADTH, MIN_ATTEMPTS, MIN_BREADTH } from "@veyyon/coding-agent/autoresearch/swarm";
+import { SWARM_TOOL_NAMES } from "@veyyon/coding-agent/autoresearch/tools/index";
 import { createInitExperimentTool } from "@veyyon/coding-agent/autoresearch/tools/init-experiment";
 import { createLogExperimentTool } from "@veyyon/coding-agent/autoresearch/tools/log-experiment";
 import { createRunExperimentTool } from "@veyyon/coding-agent/autoresearch/tools/run-experiment";
@@ -361,6 +363,173 @@ describe("init_experiment", () => {
 		// Harness file is still in the worktree, untracked.
 		expect(fs.existsSync(path.join(dir, "autoresearch.sh"))).toBe(true);
 	});
+
+	it("prefers parked swarm setup from console over tool arguments and emits override notice", async () => {
+		const dir = freshRepo().dir;
+		await writeHarnessStub(dir);
+		const runtime = createSessionRuntime();
+		runtime.pendingSwarm = {
+			breadth: 4,
+			attempts: 2,
+			certify: false,
+			armModels: ["gpt-4o", ""],
+			maxIterations: 12,
+		};
+		const tool = createInitExperimentTool({
+			dashboard: dashboardStub(),
+			getRuntime: () => runtime,
+			pi: createPiHarness().api,
+		});
+
+		const result = await tool.execute(
+			"call-1",
+			{
+				name: "parked-override",
+				primary_metric: "tokens",
+				breadth: 1,
+				attempts: 1,
+				certify: true,
+				max_iterations: 50,
+			},
+			undefined,
+			undefined,
+			createCtx(dir),
+		);
+
+		expect(result.details?.state.breadth).toBe(4);
+		expect(runtime.pendingSwarm).toBeNull();
+		const storage = await openAutoresearchStorage(dir);
+		const session = storage.getActiveSession()!;
+		expect(session.breadth).toBe(4);
+		expect(session.attempts).toBe(2);
+		expect(session.certify).toBe(false);
+		expect(session.maxIterations).toBe(12);
+		expect(session.armModels).toEqual(["gpt-4o", ""]);
+		expect(firstTextBlockText(result.content)).toContain(
+			"The breadth, attempts and certification arguments were ignored: the console the user configured this run in decides them.",
+		);
+	});
+
+	/**
+	 * WHY: `breadth` and `attempts` parameter bounds prevent unbounded fork bombs or negative
+	 * loop allocations, while fractional values must truncate to integer floors.
+	 * GAPS NOT CAUGHT: Runtime behavior of the child worker execution engine itself.
+	 */
+	it("clamps breadth and attempts across lower, upper, fractional, and boundary inputs", async () => {
+		const dir = freshRepo().dir;
+		await writeHarnessStub(dir);
+
+		const cases = [
+			{ breadth: 20, attempts: 10, expectedBreadth: MAX_BREADTH, expectedAttempts: MAX_ATTEMPTS, label: "overflow" },
+			{ breadth: 0, attempts: -5, expectedBreadth: MIN_BREADTH, expectedAttempts: MIN_ATTEMPTS, label: "underflow" },
+			{ breadth: 4.8, attempts: 2.9, expectedBreadth: 4, expectedAttempts: 2, label: "fractional truncation" },
+			{ breadth: 1, attempts: 1, expectedBreadth: 1, expectedAttempts: 1, label: "exact min" },
+			{ breadth: 8, attempts: 5, expectedBreadth: 8, expectedAttempts: 5, label: "exact max" },
+		];
+
+		for (const tc of cases) {
+			const runtime = createSessionRuntime();
+			const tool = createInitExperimentTool({
+				dashboard: dashboardStub(),
+				getRuntime: () => runtime,
+				pi: createPiHarness().api,
+			});
+
+			const result = await tool.execute(
+				`call-${tc.label}`,
+				{
+					name: `clamped-${tc.label}`,
+					primary_metric: "ms",
+					breadth: tc.breadth,
+					attempts: tc.attempts,
+				},
+				undefined,
+				undefined,
+				createCtx(dir),
+			);
+
+			expect(result.details?.state.breadth).toBe(tc.expectedBreadth);
+			const storage = await openAutoresearchStorage(dir);
+			const session = storage.getActiveSession()!;
+			expect(session.breadth).toBe(tc.expectedBreadth);
+			expect(session.attempts).toBe(tc.expectedAttempts);
+		}
+	});
+
+	it("normalizes metric_unit to empty string when identical to primary_metric", async () => {
+		const dir = freshRepo().dir;
+		await writeHarnessStub(dir);
+		const runtime = createSessionRuntime();
+		const tool = createInitExperimentTool({
+			dashboard: dashboardStub(),
+			getRuntime: () => runtime,
+			pi: createPiHarness().api,
+		});
+
+		await tool.execute(
+			"call-1",
+			{
+				name: "dup-unit",
+				primary_metric: "comparisons",
+				metric_unit: "COMPARISONS",
+			},
+			undefined,
+			undefined,
+			createCtx(dir),
+		);
+
+		const storage = await openAutoresearchStorage(dir);
+		const session = storage.getActiveSession()!;
+		expect(session.metricUnit).toBe("");
+	});
+
+	/**
+	 * WHY: Swarm-only tools must only be attached to multi-arm swarms (breadth > 1) and must be
+	 * removed on transition to serial (breadth 1) without discarding unrelated active tools.
+	 * GAPS NOT CAUGHT: Execution of individual detached tools while disabled.
+	 */
+	it("activates swarm tools when breadth > 1 and deactivates them when breadth is 1, preserving unrelated tools", async () => {
+		const dir = freshRepo().dir;
+		await writeHarnessStub(dir);
+		const runtime = createSessionRuntime();
+		const initialTools = ["bash", "read", "custom_inspector"];
+		const harness = createPiHarness(initialTools);
+		const tool = createInitExperimentTool({
+			dashboard: dashboardStub(),
+			getRuntime: () => runtime,
+			pi: harness.api,
+		});
+
+		// Breadth > 1: attaches all SWARM_TOOL_NAMES and retains initialTools
+		await tool.execute(
+			"call-swarm",
+			{ name: "swarm", primary_metric: "ms", breadth: 3 },
+			undefined,
+			undefined,
+			createCtx(dir),
+		);
+		for (const swarmTool of SWARM_TOOL_NAMES) {
+			expect(harness.activeTools).toContain(swarmTool);
+		}
+		for (const initial of initialTools) {
+			expect(harness.activeTools).toContain(initial);
+		}
+
+		// Breadth === 1: drops all SWARM_TOOL_NAMES and retains initialTools
+		await tool.execute(
+			"call-serial",
+			{ name: "swarm", primary_metric: "ms", breadth: 1 },
+			undefined,
+			undefined,
+			createCtx(dir),
+		);
+		for (const swarmTool of SWARM_TOOL_NAMES) {
+			expect(harness.activeTools).not.toContain(swarmTool);
+		}
+		for (const initial of initialTools) {
+			expect(harness.activeTools).toContain(initial);
+		}
+	});
 });
 
 describe("run_experiment", () => {
@@ -452,6 +621,116 @@ describe("run_experiment", () => {
 		expect(details.abandonedPriorRun).not.toBeNull();
 		expect(details.runNumber).not.toBe(details.abandonedPriorRun);
 	});
+
+	/**
+	 * WHY: `gitStatusPorcelain` failure must abort before run insertion to prevent attributing
+	 * uncommitted worktree changes to the experiment.
+	 * GAPS NOT CAUGHT: Remote git server protocol errors.
+	 */
+	it("fails closed when git status fails, starting no run and recording no preRunDirtyPaths", async () => {
+		const dir = freshRepo().dir;
+		await writeHarnessStub(dir);
+		const runtime = createSessionRuntime();
+		const init = createInitExperimentTool({
+			dashboard: dashboardStub(),
+			getRuntime: () => runtime,
+			pi: createPiHarness().api,
+		});
+		await init.execute("i", { name: "x", primary_metric: "m" }, undefined, undefined, createCtx(dir));
+
+		const run = createRunExperimentTool({
+			dashboard: dashboardStub(),
+			getRuntime: () => runtime,
+			pi: createPiHarness().api,
+		});
+
+		vi.spyOn(git, "status").mockRejectedValue(new Error("git status failed"));
+
+		const result = await run.execute("r", {}, undefined, undefined, createCtx(dir));
+		expect(firstTextBlockText(result.content)).toContain("Error: git status failed, so no run was started");
+
+		const storage = await openAutoresearchStorage(dir);
+		const session = storage.getActiveSession()!;
+		expect(storage.getRunsForSession(session.id)).toHaveLength(0);
+	});
+
+	/**
+	 * WHY: `runtime.runningExperiment` drives the status row and dashboard live tail. It MUST be
+	 * accurately populated during execution and guaranteed to be reset to `null` in `finally` across
+	 * success, command crash, and signal cancellation, within strict execution bounds.
+	 * Parameterized as distinct cases so a mutation in `finally` fails independently for every mode.
+	 * GAPS NOT CAUGHT: Terminal canvas repainting frequency.
+	 */
+	for (const mode of ["success", "crash", "cancellation"] as const) {
+		it(`tracks runningExperiment lifecycle and cleans up in finally across ${mode}`, async () => {
+			const dir = freshRepo().dir;
+			const runtime = createSessionRuntime();
+			const init = createInitExperimentTool({
+				dashboard: dashboardStub(),
+				getRuntime: () => runtime,
+				pi: createPiHarness().api,
+			});
+			await writeHarnessStub(dir, "echo METRIC m=1");
+			await init.execute("i", { name: "x", primary_metric: "m" }, undefined, undefined, createCtx(dir));
+
+			let observedRunningDuringExec = false;
+			let observedCommand = "";
+			const dashboard: DashboardController = {
+				...dashboardStub(),
+				update: (_ctx, rt) => {
+					if (rt.runningExperiment !== null) {
+						observedRunningDuringExec = true;
+						observedCommand = rt.runningExperiment.command;
+					}
+				},
+			};
+
+			const run = createRunExperimentTool({
+				dashboard,
+				getRuntime: () => runtime,
+				pi: createPiHarness().api,
+			});
+
+			const startTime = Date.now();
+			if (mode === "success") {
+				await writeHarnessStub(dir, "echo METRIC m=1");
+				const result = await run.execute("r-success", {}, undefined, undefined, createCtx(dir));
+				expect((result.details as RunDetails).passed).toBe(true);
+				expect((result.details as RunDetails).crashed).toBe(false);
+			} else if (mode === "crash") {
+				await writeHarnessStub(dir, "echo METRIC m=0; exit 3");
+				const result = await run.execute("r-fail", {}, undefined, undefined, createCtx(dir));
+				expect((result.details as RunDetails).passed).toBe(false);
+				expect((result.details as RunDetails).crashed).toBe(true);
+				expect((result.details as RunDetails).exitCode).toBe(3);
+			} else {
+				await writeHarnessStub(dir, "echo STARTING; sleep 10; echo METRIC m=1");
+				const controller = new AbortController();
+				let thrownError: unknown;
+				try {
+					await run.execute(
+						"r-cancel",
+						{ timeout_seconds: 5 },
+						controller.signal,
+						() => {
+							controller.abort();
+						},
+						createCtx(dir),
+					);
+				} catch (err) {
+					thrownError = err;
+				}
+				expect(thrownError).toBeInstanceOf(Error);
+				expect((thrownError as Error).message).toContain("aborted");
+			}
+
+			const duration = Date.now() - startTime;
+			expect(duration).toBeLessThan(5000);
+			expect(observedRunningDuringExec).toBe(true);
+			expect(observedCommand).toBe("bash autoresearch.sh");
+			expect(runtime.runningExperiment).toBeNull();
+		});
+	}
 });
 
 describe("log_experiment", () => {
@@ -972,5 +1251,41 @@ describe("update_notes", () => {
 		);
 		expect(append.details?.notes).toContain("- try caching");
 		expect(runtime.state.notes).toContain("- try caching");
+	});
+
+	it("inserts ideas into an existing ## Ideas section before subsequent headings", async () => {
+		const dir = freshRepo().dir;
+		await writeHarnessStub(dir);
+		const runtime = createSessionRuntime();
+		const harness = createPiHarness();
+		const init = createInitExperimentTool({
+			dashboard: dashboardStub(),
+			getRuntime: () => runtime,
+			pi: harness.api,
+		});
+		await init.execute("i", { name: "x", primary_metric: "m" }, undefined, undefined, createCtx(dir));
+		const notes = createUpdateNotesTool({
+			dashboard: dashboardStub(),
+			getRuntime: () => runtime,
+			pi: harness.api,
+		});
+		await notes.execute(
+			"n1",
+			{ body: "## Ideas\n- first idea\n\n## Future\n- some future plan\n" },
+			undefined,
+			undefined,
+			createCtx(dir),
+		);
+
+		const result = await notes.execute("n2", { append_idea: "second idea" }, undefined, undefined, createCtx(dir));
+		const text = result.details?.notes ?? "";
+		expect(text).toContain("- second idea");
+		expect(text).toContain("## Future\n- some future plan");
+		const ideasIndex = text.indexOf("## Ideas");
+		const secondIndex = text.indexOf("- second idea");
+		const futureIndex = text.indexOf("## Future");
+		expect(ideasIndex).toBeGreaterThanOrEqual(0);
+		expect(secondIndex).toBeGreaterThan(ideasIndex);
+		expect(futureIndex).toBeGreaterThan(secondIndex);
 	});
 });

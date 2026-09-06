@@ -12,6 +12,7 @@
 
 - Array copies that allocated with a spread now use `.slice()`, `.concat()` or `Array.from()`. No user-visible behavior changes.
 
+
 ## [1.3.0] - 2026-08-28
 
 ### Added

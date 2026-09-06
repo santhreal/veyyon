@@ -4,6 +4,8 @@ import {
 	type Component,
 	CURSOR_MARKER,
 	type Focusable,
+	type NativeScrollbackLiveRegion,
+	type NativeScrollbackReplay,
 	setTerminalScreenToScrollback,
 	TERMINAL,
 	TUI,
@@ -30,6 +32,61 @@ class MutableLinesComponent implements Component {
 
 	render(width: number): string[] {
 		return this.#lines.map(line => line.slice(0, width));
+	}
+}
+class FinalizingLinesComponent implements Component, NativeScrollbackLiveRegion {
+	#lines: string[];
+	#liveRegionStart: number | undefined;
+
+	constructor(lines: string[], liveRegionStart?: number) {
+		this.#lines = [...lines];
+		this.#liveRegionStart = liveRegionStart;
+	}
+
+	setLines(lines: string[], liveRegionStart?: number): void {
+		this.#lines = [...lines];
+		this.#liveRegionStart = liveRegionStart;
+	}
+
+	getNativeScrollbackLiveRegionStart(): number | undefined {
+		return this.#liveRegionStart;
+	}
+
+	invalidate(): void {}
+
+	render(width: number): string[] {
+		return this.#lines.map(line => line.slice(0, width));
+	}
+}
+
+class ReplayableVirtualLinesComponent implements Component, NativeScrollbackReplay {
+	#fullHistory: string[];
+	#visibleLines: string[];
+	#rehydrated = false;
+
+	constructor(lines: string[]) {
+		this.#fullHistory = [...lines];
+		this.#visibleLines = [...lines];
+	}
+
+	setLines(lines: string[], visibleOnly?: string[]): void {
+		this.#fullHistory = [...lines];
+		this.#visibleLines = visibleOnly !== undefined ? [...visibleOnly] : [...lines];
+	}
+
+	prepareNativeScrollbackReplay(): void {
+		this.#rehydrated = true;
+		this.#visibleLines = [...this.#fullHistory];
+	}
+
+	isRehydrated(): boolean {
+		return this.#rehydrated;
+	}
+
+	invalidate(): void {}
+
+	render(width: number): string[] {
+		return this.#visibleLines.map(line => line.slice(0, width));
 	}
 }
 
@@ -1854,7 +1911,7 @@ describe("TUI terminal-state regressions", () => {
 				// the committed-prefix audit re-anchors and the engine erases and
 				// replays — history holds the expanded frame exactly once.
 				component.setLines(["status-1", "expanded-details", ...rows("line-", 12)]);
-				tui.requestRender();
+				tui.resetDisplay();
 				await settle(term, tui);
 
 				expect(visible(term).map(line => line.trim())).toEqual([
@@ -1878,40 +1935,47 @@ describe("TUI terminal-state regressions", () => {
 			}
 		});
 
-		it("does not duplicate the viewport-top row when an offscreen edit repeats the tail", async () => {
-			// 6 rows over height 4: scrollback ["E0","E1"], viewport ["a","b","c","d"].
-			const term = new VirtualTerminal(32, 4);
-			const tui = new TUI(term);
-			const component = new MutableLinesComponent(["E0", "E1", "a", "b", "c", "d"]);
-			tui.addChild(component);
+		it.each(["absent", "before", "after"] as const)(
+			"does not duplicate the viewport-top row when an offscreen edit repeats the tail (peer: %s)",
+			async peerPosition => {
+				// 6 rows over height 4: scrollback ["E0","E1"], viewport ["a","b","c","d"].
+				const term = new VirtualTerminal(32, 4);
+				const tui = new TUI(term);
+				const component = new MutableLinesComponent(["E0", "E1", "a", "b", "c", "d"]);
+				const unrelatedFinalizer = new FinalizingLinesComponent([]);
+				if (peerPosition === "before") tui.addChild(unrelatedFinalizer);
+				tui.addChild(component);
+				if (peerPosition === "after") tui.addChild(unrelatedFinalizer);
 
-			try {
-				tui.start();
-				await settle(term, tui);
-				expect(term.isNativeViewportAtBottom()).toBe(true);
-				expect(visible(term).map(line => line.trim())).toEqual(["a", "b", "c", "d"]);
+				try {
+					tui.start();
+					await settle(term, tui);
+					expect(term.isNativeViewportAtBottom()).toBe(true);
+					expect(visible(term).map(line => line.trim())).toEqual(["a", "b", "c", "d"]);
 
-				// An offscreen edit (E0 -> E0x, above the commit boundary) lands
-				// together with a tail append whose rows make the prior last line "d"
-				// recur one row early. The seam must advance by exactly the growth —
-				// committing one row — without duplicating the viewport-top row "b".
-				component.setLines(["E0x", "E1", "a", "b", "d", "e", "f"]);
-				tui.requestRender();
-				await settle(term, tui);
+					// An offscreen edit (E0 -> E0x, above the commit boundary) lands
+					// together with a tail append whose rows make the prior last line "d"
+					// recur one row early. The seam must advance by exactly the growth —
+					// committing one row — without duplicating the viewport-top row "b".
+					// An unrelated empty finalization peer must not grant replay for component.
+					component.setLines(["E0x", "E1", "a", "b", "d", "e", "f"]);
+					tui.requestRender();
+					await settle(term, tui);
 
-				expect(visible(term).map(line => line.trim())).toEqual(["b", "d", "e", "f"]);
-				const buffer = term.getScrollBuffer().map(line => line.trimEnd());
-				for (const line of ["E1", "a", "b", "d", "e", "f"]) {
-					expect(buffer.filter(row => row === line).length, `${line} should appear exactly once`).toBe(1);
+					expect(visible(term).map(line => line.trim())).toEqual(["b", "d", "e", "f"]);
+					const buffer = term.getScrollBuffer().map(line => line.trimEnd());
+					for (const line of ["E1", "a", "b", "d", "e", "f"]) {
+						expect(buffer.filter(row => row === line).length, `${line} should appear exactly once`).toBe(1);
+					}
+					// Committed rows are immutable: the stale "E0" copy survives in
+					// history and the offscreen edit "E0x" never paints anywhere.
+					expect(buffer.filter(row => row === "E0").length).toBe(1);
+					expect(buffer).not.toContain("E0x");
+				} finally {
+					tui.stop();
 				}
-				// Committed rows are immutable: the stale "E0" copy survives in
-				// history and the offscreen edit "E0x" never paints anywhere.
-				expect(buffer.filter(row => row === "E0").length).toBe(1);
-				expect(buffer).not.toContain("E0x");
-			} finally {
-				tui.stop();
-			}
-		});
+			},
+		);
 
 		it("erases stale collapsed ctrl-o markers and rebuilds history with the expanded rows", async () => {
 			// A Ctrl+O expansion mutates committed rows, so the committed-prefix
@@ -1946,7 +2010,7 @@ describe("TUI terminal-state regressions", () => {
 					"status",
 					"editor",
 				]);
-				tui.requestRender();
+				tui.resetDisplay();
 				await settle(term, tui);
 
 				expect(visible(term).map(line => line.trim())).toEqual([
@@ -2012,7 +2076,7 @@ describe("TUI terminal-state regressions", () => {
 					"status",
 					"editor",
 				]);
-				tui.requestRender();
+				tui.resetDisplay();
 				await settle(term, tui);
 
 				expect((writes.join("").match(/\x1b\[3J/g) ?? []).length).toBe(1);
@@ -2089,7 +2153,7 @@ describe("TUI terminal-state regressions", () => {
 			const highWaterFrame = [...rows("base-", 8), ...rows("preview-", 10)];
 			const finalFrame = [...rows("base-", 8), "result-0", "result-1"];
 			const tui = new TUI(term);
-			const component = new MutableLinesComponent(highWaterFrame);
+			const component = new FinalizingLinesComponent(highWaterFrame);
 			tui.addChild(component);
 
 			try {
@@ -2125,6 +2189,161 @@ describe("TUI terminal-state regressions", () => {
 					.slice(0, term.getBufferPosition().baseY)
 					.map(line => line.trimEnd());
 				expect(grownHistory).toEqual(finalFrame);
+			} finally {
+				tui.stop();
+			}
+		});
+
+		it("rebuilds history on divergence when a declared segment becomes fully final (undefined live boundary)", async () => {
+			const term = new VirtualTerminal(40, 5);
+			const tui = new TUI(term);
+			const liveComponent = new FinalizingLinesComponent([...rows("base-", 8), ...rows("streaming-", 6)], 8);
+			tui.addChild(liveComponent);
+
+			try {
+				tui.start();
+				await settle(term, tui);
+
+				// When the component completes, its live region start becomes undefined (fully final)
+				// and its rows collapse to the final form. The engine treats undefined live region on
+				// a declared component as an authorized final transition.
+				const writes = captureWrites(term);
+				liveComponent.setLines([...rows("base-", 8), "final-0", "final-1"], undefined);
+				tui.requestRender();
+				await settle(term, tui);
+
+				expect((writes.join("").match(/\x1b\[3J/g) ?? []).length).toBe(1);
+				expect(term.getScrollBuffer().map(line => line.trimEnd())).toEqual([
+					...rows("base-", 8),
+					"final-0",
+					"final-1",
+				]);
+				expect(visible(term).map(line => line.trim())).toEqual([
+					"base-5",
+					"base-6",
+					"base-7",
+					"final-0",
+					"final-1",
+				]);
+			} finally {
+				tui.stop();
+			}
+		});
+
+		it("authorizes divergence repair when current segment at resync row implements LiveRegion (current-only)", async () => {
+			const term = new VirtualTerminal(40, 5);
+			const tui = new TUI(term);
+			const plain = new MutableLinesComponent(rows("line-", 10));
+			tui.addChild(plain);
+
+			try {
+				tui.start();
+				await settle(term, tui);
+
+				// Replace plain component (which had no capability in previous frame)
+				// with a FinalizingLinesComponent that collapses to a short final form.
+				// previousSegment was plain (authorizesRepair = false), but currentSegment
+				// has LiveRegion (authorizesRepair = true).
+				const writes = captureWrites(term);
+				tui.removeChild(plain);
+				const finalizer = new FinalizingLinesComponent(["final-0", "final-1"]);
+				tui.addChild(finalizer);
+				tui.requestRender();
+				await settle(term, tui);
+
+				expect((writes.join("").match(/\x1b\[3J/g) ?? []).length).toBe(1);
+				expect(term.getScrollBuffer().map(line => line.trimEnd())).toEqual(["final-0", "final-1", "", "", ""]);
+				expect(visible(term).map(line => line.trim())).toEqual(["final-0", "final-1", "", "", ""]);
+			} finally {
+				tui.stop();
+			}
+		});
+
+		it("authorizes divergence repair when previous segment at resync row implemented LiveRegion (previous-only)", async () => {
+			const term = new VirtualTerminal(40, 5);
+			const tui = new TUI(term);
+			const finalizer = new FinalizingLinesComponent(rows("streaming-", 10));
+			tui.addChild(finalizer);
+
+			try {
+				tui.start();
+				await settle(term, tui);
+
+				// Replace the LiveRegion component with a plain component with fewer rows.
+				// currentSegment is plain (authorizesRepair = false), but previousSegment
+				// had LiveRegion (authorizesRepair = true).
+				const writes = captureWrites(term);
+				tui.removeChild(finalizer);
+				const plain = new MutableLinesComponent(["settled-0", "settled-1"]);
+				tui.addChild(plain);
+				tui.requestRender();
+				await settle(term, tui);
+
+				expect((writes.join("").match(/\x1b\[3J/g) ?? []).length).toBe(1);
+				expect(term.getScrollBuffer().map(line => line.trimEnd())).toEqual(["settled-0", "settled-1", "", "", ""]);
+				expect(visible(term).map(line => line.trim())).toEqual(["settled-0", "settled-1", "", "", ""]);
+			} finally {
+				tui.stop();
+			}
+		});
+
+		it("authorizes divergence repair and rehydrates history when current segment implements Replay (current-only)", async () => {
+			const term = new VirtualTerminal(40, 5);
+			const tui = new TUI(term);
+			const plain = new MutableLinesComponent(rows("seed-", 10));
+			tui.addChild(plain);
+
+			try {
+				tui.start();
+				await settle(term, tui);
+
+				// Replace plain with a ReplayableVirtualLinesComponent whose visible lines are compacted,
+				// but whose full history has 10 rows. Current segment has Replay capability,
+				// which authorizes repair and triggers prepareNativeScrollbackReplay() during rebuild.
+				const writes = captureWrites(term);
+				tui.removeChild(plain);
+				const replayable = new ReplayableVirtualLinesComponent(rows("history-", 10));
+				replayable.setLines(rows("history-", 10), rows("history-", 10).slice(6));
+				tui.addChild(replayable);
+				tui.requestRender();
+				await settle(term, tui);
+
+				expect((writes.join("").match(/\x1b\[3J/g) ?? []).length).toBe(1);
+				expect(replayable.isRehydrated()).toBe(true);
+				expect(term.getScrollBuffer().map(line => line.trimEnd())).toEqual(rows("history-", 10));
+				const history = term
+					.getScrollBuffer()
+					.slice(0, term.getBufferPosition().baseY)
+					.map(line => line.trimEnd());
+				expect(history).toEqual(rows("history-", 5));
+				expect(visible(term).map(line => line.trim())).toEqual(rows("history-", 10).slice(5));
+			} finally {
+				tui.stop();
+			}
+		});
+
+		it("authorizes divergence repair when previous segment implemented Replay (previous-only)", async () => {
+			const term = new VirtualTerminal(40, 5);
+			const tui = new TUI(term);
+			const replayable = new ReplayableVirtualLinesComponent(rows("history-", 10));
+			tui.addChild(replayable);
+
+			try {
+				tui.start();
+				await settle(term, tui);
+
+				// Replace the ReplayableVirtualLinesComponent with a plain component.
+				// previousSegment had Replay capability, authorizing divergence rebuild.
+				const writes = captureWrites(term);
+				tui.removeChild(replayable);
+				const plain = new MutableLinesComponent(["short-0", "short-1"]);
+				tui.addChild(plain);
+				tui.requestRender();
+				await settle(term, tui);
+
+				expect((writes.join("").match(/\x1b\[3J/g) ?? []).length).toBe(1);
+				expect(term.getScrollBuffer().map(line => line.trimEnd())).toEqual(["short-0", "short-1", "", "", ""]);
+				expect(visible(term).map(line => line.trim())).toEqual(["short-0", "short-1", "", "", ""]);
 			} finally {
 				tui.stop();
 			}
@@ -2176,7 +2395,7 @@ describe("TUI terminal-state regressions", () => {
 
 				const writes = captureWrites(term);
 				component.setLines(["line-0", "line-1", "expanded-0", "expanded-1", ...rows("line-", 12).slice(2)]);
-				tui.requestRender();
+				tui.resetDisplay();
 				await settle(term, tui);
 
 				expect((writes.join("").match(/\x1b\[3J/g) ?? []).length).toBe(1);
@@ -2383,7 +2602,7 @@ describe("TUI terminal-state regressions", () => {
 			const term = new UnknownViewportTerminal(40, 10);
 			const tui = new TUI(term);
 			const body = rows("line-", 99);
-			const component = new MutableLinesComponent([...body, "prompt-row"]);
+			const component = new FinalizingLinesComponent([...body, "prompt-row"]);
 			tui.addChild(component);
 
 			try {
@@ -2425,7 +2644,7 @@ describe("TUI terminal-state regressions", () => {
 			const term = new UnknownViewportTerminal(40, 10);
 			const tui = new TUI(term);
 			const body = rows("line-", 99);
-			const component = new MutableLinesComponent([...body, "prompt-row"]);
+			const component = new FinalizingLinesComponent([...body, "prompt-row"]);
 			tui.addChild(component);
 
 			try {
@@ -2472,7 +2691,7 @@ describe("TUI terminal-state regressions", () => {
 			const term = new UnknownViewportTerminal(40, 10);
 			const tui = new TUI(term);
 			const initial = rows("line-", 19);
-			const component = new MutableLinesComponent([...initial, "prompt-row"]);
+			const component = new FinalizingLinesComponent([...initial, "prompt-row"]);
 			tui.addChild(component);
 
 			try {

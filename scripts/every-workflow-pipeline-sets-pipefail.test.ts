@@ -288,8 +288,12 @@ describe("every pipeline in .github runs with pipefail", () => {
 			"ci.yml::release_github_publish::Publish the exact verified draft",
 			"ci.yml::release_github_verify_windows::Launch the published windows-x64 binary (forces native-addon load)",
 			"ci.yml::release_metadata::Detect release tag at HEAD",
+			"ci.yml::release_site::Install mdbook",
+			"ci.yml::release_site_finalize::Install mdbook",
 			"ci.yml::release_train_alert::File or clear the pinned release-train issue",
 			"docs.yml::book-staleness::Install mdbook",
+			"docs.yml::book-staleness::Verify handbook assets and search index",
+			"site.yml::build_and_deploy::Install mdbook",
 		]);
 	});
 

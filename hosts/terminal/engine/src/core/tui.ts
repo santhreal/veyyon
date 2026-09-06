@@ -545,6 +545,7 @@ export class TUI extends Container {
 	#composedFrame: string[] = [];
 	// Per-root-child segment ledger backing the stable-prefix computation.
 	#frameSegments: FrameSegment[] = [];
+	#previousFrameSegments: FrameSegment[] = [];
 	#composeWidth = -1;
 	// Cursor markers stripped at ingestion, ascending by frame row.
 	#frameCursorMarkers: { row: number; col: number }[] = [];
@@ -589,6 +590,7 @@ export class TUI extends Container {
 		this.#frameDroppedAt = undefined;
 		const children = this.children;
 		const previousSegments = this.#frameSegments;
+		this.#previousFrameSegments = previousSegments;
 		const segments: FrameSegment[] = new Array(children.length);
 		// A width change re-renders every child; nothing carries over.
 		let chainStable = this.#composeWidth === width;
@@ -2725,17 +2727,21 @@ export class TUI extends Container {
 		// instead of recommitting the final form below the stale fragment
 		// (a visibly duplicated block). Multiplexer panes cannot ED3 safely
 		// and keep the repair-below fallback in the branches under this one.
-		// A plain component declares no finalization transition. Its positional
-		// edits must not erase native history; only an explicit replay may do so.
-		// Components with a live/final seam permit automatic final-form repair.
-		let declaredFinalization = hasNewlyFinalRows;
-		if (!declaredFinalization && committedRowsResynced) {
-			for (const segment of this.#frameSegments) {
-				if (segment.start <= this.#committedRows && this.#committedRows < segment.start + segment.rowCount) {
-					declaredFinalization = hasNativeScrollbackLiveRegion(segment.component);
-					break;
-				}
-			}
+		// A declared live/final transition authorizes repair for its own segment,
+		// including a fully finalized segment whose live boundary is now absent.
+		// Ordinary updates from plain components preserve committed history.
+		// Explicit expansion uses resetDisplay(), which requests full replay.
+		let declaredFinalization = false;
+		if (committedRowsResynced || frameLength <= this.#committedRows) {
+			const resyncRow = this.#committedRows;
+			const ownsResyncRow = (segment: FrameSegment): boolean =>
+				segment.start <= resyncRow && resyncRow < segment.start + segment.rowCount;
+			const currentSegment = this.#frameSegments.find(ownsResyncRow);
+			const previousSegment = this.#previousFrameSegments.find(ownsResyncRow);
+			const authorizesRepair = (segment: FrameSegment | undefined): boolean =>
+				segment !== undefined &&
+				(hasNativeScrollbackLiveRegion(segment.component) || canPrepareNativeScrollbackReplay(segment.component));
+			declaredFinalization = authorizesRepair(currentSegment) || authorizesRepair(previousSegment);
 		}
 		const divergenceRebuild =
 			this.#scrollbackRebuildEnabled &&

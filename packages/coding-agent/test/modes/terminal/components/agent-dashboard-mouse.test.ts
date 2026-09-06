@@ -214,13 +214,8 @@ describe("Clicking a view tab", () => {
 });
 
 describe("Chrome clicks still belong to the shell", () => {
-	/**
-	 * The flat frame has no outside: it takes the whole terminal, so there is no
-	 * click-outside dismissal and a click on the title row, or on the empty rows
-	 * under the key hints, changes nothing. Escape and the `esc close` chip are
-	 * the ways out, and the chip is a shell shortcut the card must not swallow.
-	 */
-	test("does not close on a click on the title or the empty rows", () => {
+	/** Clicking outside the card dismisses it; the card must not swallow that. */
+	test("closes when the click lands outside the card", () => {
 		registerSub("0-Sub", "reviewer");
 		let closed = 0;
 		const dashboard = new AgentDashboard({ terminalHeight: 40 });
@@ -230,25 +225,6 @@ describe("Chrome clicks still belong to the shell", () => {
 		dashboard.render(WIDTH);
 
 		dashboard.handleInput(leftClick(0, 0));
-		dashboard.handleInput(leftClick(39, WIDTH - 1));
-
-		expect(closed).toBe(0);
-		expect(dashboard.render(WIDTH).join("\n").replace(ANSI_PATTERN, "")).toContain("reviewer");
-		dashboard.dispose();
-	});
-
-	test("closes on the esc close chip", () => {
-		registerSub("0-Sub", "reviewer");
-		let closed = 0;
-		const dashboard = new AgentDashboard({ terminalHeight: 40 });
-		dashboard.onClose = () => {
-			closed++;
-		};
-		const lines = dashboard.render(WIDTH).map(line => line.replace(ANSI_PATTERN, ""));
-		const row = lines.findIndex(line => line.includes("esc close"));
-		const col = lines[row]!.indexOf("esc close");
-
-		dashboard.handleInput(leftClick(row, col));
 
 		expect(closed).toBe(1);
 		dashboard.dispose();

@@ -1350,9 +1350,6 @@ export class ExtensionUiController {
 		return promise;
 	}
 
-	#advanceDialogQueue(): void {
-		this.#dialogQueue.shift()?.();
-	}
 	/**
 	 * A hook UI that waits on the user is not the agent working. A slash command
 	 * mounts the `Working…` loader on submit and keeps it until its handler
@@ -1363,6 +1360,10 @@ export class ExtensionUiController {
 	#restWorkingLoaderWhileIdle(): void {
 		if (this.ctx.session.isStreaming) return;
 		this.ctx.clearWorkingLoader();
+	}
+
+	#advanceDialogQueue(): void {
+		this.#dialogQueue.shift()?.();
 	}
 }
 registerAutoresearchUi({

@@ -55,6 +55,19 @@ const PROOF_LEDGERS = [
 	"token-equivalence.json",
 	"cli-surface.json",
 ] as const;
+/**
+ * Import attributes added on this branch past the pinned baseline commit (`aa14e0da82494dac5a06d240180cec88038a105f`).
+ * Pinned by exact relative path and exact expected attributes on disk so any new or unexplained addition fails.
+ */
+const LEGITIMATE_IMPORT_ATTRIBUTE_ADDITIONS: Readonly<Record<string, readonly string[]>> = {
+	"packages/coding-agent/src/prompts/autoresearch/rows.ts": [
+		'{ type: "text" }',
+		'{ type: "text" }',
+		'{ type: "text" }',
+		'{ type: "text" }',
+		'{ type: "text" }',
+	],
+};
 
 function readNormalized(relative: string): string {
 	return normalizeWithRewrites(fs.readFileSync(path.join(REPO_ROOT, relative), "utf-8"), rewrites);
@@ -92,12 +105,12 @@ describe("a moved file keeps every byte but its paths", () => {
 	 */
 	it("reads a ledger covering the whole move", () => {
 		expect(ledger.generatedFrom).toMatch(/^[0-9a-f]{40}$/);
-		expect(rows.length).toBe(4803);
+		expect(rows.length).toBe(4804);
 		const buckets = new Map<string, number>();
 		for (const [, record] of rows) buckets.set(record.differs, (buckets.get(record.differs) ?? 0) + 1);
 		expect([...buckets].sort()).toEqual([
-			["changed", 440],
-			["imports-and-comments-only", 789],
+			["changed", 443],
+			["imports-and-comments-only", 787],
 			["none", 3574],
 		]);
 		expect(rewrites.length).toBeGreaterThan(50);
@@ -265,7 +278,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.structuralHash || hash !== record.mainStructuralHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(importOnly).toBe(789);
+		expect(importOnly).toBe(787);
 	});
 
 	/**
@@ -275,7 +288,7 @@ describe("a moved file keeps every byte but its paths", () => {
 	 */
 	it("explains every file whose content really changed", () => {
 		const changed = rows.filter(([, record]) => record.differs === "changed");
-		expect(changed.length).toBe(440);
+		expect(changed.length).toBe(443);
 		const unexplained: string[] = [];
 		const drifted: string[] = [];
 		for (const [relative, record] of changed) {
@@ -362,12 +375,13 @@ describe("a moved file keeps every byte but its paths", () => {
 		expect(inventory.length).toBeGreaterThan(80);
 
 		const lost: string[] = [];
-		for (const [relative, expected] of inventory) {
+		for (const [relative, baselineAttributes] of inventory) {
 			const onDisk = path.join(REPO_ROOT, relative);
 			if (!fs.existsSync(onDisk)) {
 				lost.push(`${relative}: file is gone`);
 				continue;
 			}
+			const expected = LEGITIMATE_IMPORT_ATTRIBUTE_ADDITIONS[relative] ?? baselineAttributes;
 			const actual = [...fs.readFileSync(onDisk, "utf-8").matchAll(/\bfrom\s*"[^"]+"\s*with\s*(\{[^}]*\})/g)]
 				.map(found => found[1].replace(/\s+/g, " "))
 				.sort();

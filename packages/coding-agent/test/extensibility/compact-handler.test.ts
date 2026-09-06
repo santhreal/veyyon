@@ -68,6 +68,7 @@ describe("runExtensionSetModel", () => {
 			},
 			setCount: () => setCount,
 			temporaryCalls,
+			temporaryCount: () => temporaryCalls.length,
 		};
 	};
 
@@ -75,6 +76,13 @@ describe("runExtensionSetModel", () => {
 		const { session, setCount } = makeSession("sk-x");
 		expect(await runExtensionSetModel(session, model)).toBe(true);
 		expect(setCount()).toBe(1);
+	});
+
+	it("switches through the temporary path, and only there, when the switch is ephemeral", async () => {
+		const { session, setCount, temporaryCount } = makeSession("sk-x");
+		expect(await runExtensionSetModel(session, model, { ephemeral: true })).toBe(true);
+		expect(setCount()).toBe(0);
+		expect(temporaryCount()).toBe(1);
 	});
 
 	it("returns false and does not switch when there is no key", async () => {

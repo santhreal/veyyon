@@ -283,7 +283,6 @@ export function createLogExperimentTool(
 			runtime.lastRunNumber = null;
 			runtime.autoResumeArmed = true;
 			runtime.lastAutoResumePendingRunNumber = null;
-
 			// The arm this result belongs to is over. Whatever comes next -- the next
 			// arm, triage, the next hypothesis -- runs on the session's own model
 			// until another `start_arm` says otherwise.

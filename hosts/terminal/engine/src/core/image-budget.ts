@@ -72,7 +72,6 @@ export class ImageBudget {
 	// id so a partial pass reproduces the on-screen live/text split without a
 	// full, correctly-ordered walk.
 	#suppressedIds = new Set<number>();
-
 	// The geometry behind each live direct-placement line, keyed by the exact
 	// line an Image returns, so the renderer can re-derive a placement it must
 	// rewrite at a viewport row above the block's origin. One line per image id;

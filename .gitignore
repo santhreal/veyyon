@@ -58,6 +58,7 @@ veyyon-*.html
 # Generated files
 packages/coding-agent/src/export/html/tool-views.generated.js
 natives/bridge/bindings/npm/
+docs/handbook/book/
 # The three files `coding-agent/scripts/embed-mupdf-wasm.ts --generate` copies next
 # to `src/utils/mupdf-wasm-embed.ts`. All three, not just the wasm: the two JS
 # copies were trackable, so a broad `git add` committed 130KB of vendored mupdf

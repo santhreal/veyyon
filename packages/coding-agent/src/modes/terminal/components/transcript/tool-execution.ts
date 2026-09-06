@@ -1822,9 +1822,9 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			// indented rather than hung off a connector: a flat row is not a
 			// hierarchy and the rail is already the block's left edge.
 			const inlineBudget = Math.max(20, contentWidth - 2);
-			const preview = formatArgsInline(argsObject, inlineBudget);
+			const preview = formatArgsInline(argsObject, inlineBudget, shortenEmbeddedPaths);
 			if (preview) {
-				lines.push(` ${theme.fg("dim", preview)}`);
+				lines.push(` ${theme.fg("dim", replaceTabs(shortenEmbeddedPaths(preview)))}`);
 			}
 		}
 

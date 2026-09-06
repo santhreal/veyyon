@@ -32,29 +32,19 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
+import { typeScriptMembers } from "../../../../scripts/workspace-layout";
 import { PACKAGES, reach, reachedNames } from "../helpers/module-reach-gate";
 
-/**
- * Every `.ts` file under a workspace package's `src/`, plus the kernel's, as a path relative to
- * `packages/`, which is what `reachedNames` reports. The kernel sits beside `packages/` and holds
- * the credential store the session spine took with it, so a sweep of `packages/` alone would find
- * one owner fewer and the intersections below would be about less.
- */
+/** Every workspace member's source, relative to the same root as reachedNames. */
 function workspaceSources(): string[] {
 	const found: string[] = [];
-	const roots = [
-		...fs
-			.readdirSync(PACKAGES, { withFileTypes: true })
-			.filter(member => member.isDirectory())
-			.map(member => member.name),
-		path.join("..", "kernel"),
-	];
-	for (const member of roots) {
-		const src = path.join(PACKAGES, member, "src");
+	const repoRoot = path.dirname(PACKAGES);
+	for (const member of typeScriptMembers()) {
+		const src = path.join(repoRoot, member, "src");
 		if (!fs.existsSync(src)) continue;
 		for (const file of fs.readdirSync(src, { recursive: true, encoding: "utf8" })) {
 			if (!file.endsWith(".ts") || file.endsWith(".d.ts")) continue;
-			found.push(path.join(member, "src", file));
+			found.push(path.relative(PACKAGES, path.join(src, file)));
 		}
 	}
 	return found.sort();
@@ -120,6 +110,7 @@ describe("the launch card opens no database", () => {
 		expect(DATABASE_OWNERS).toContain(path.join("..", "kernel", "src", "session", "agent-storage.ts"));
 		expect(DATABASE_OWNERS).toContain(path.join("ai", "src", "auth-storage-sqlite.ts"));
 		expect(DATABASE_OWNERS).toContain(ADMITTED_ON_THE_CARD_PATH[0]);
+		expect(DATABASE_OWNERS).toContain(path.join("..", "plugins", "mnemopi", "src", "db.ts"));
 		expect(reach("cli/launch-card.ts")).toBeGreaterThan(LAUNCH_CARD_FLOOR);
 	});
 
@@ -137,11 +128,12 @@ describe("the launch card opens no database", () => {
 		);
 	});
 
-	for (const [label, entry] of [
-		["the launch card", "cli/launch-card.ts"],
-		["the first frame", "modes/terminal/first-frame.ts"],
-		["the settings store", "config/settings.ts"],
-	] as const) {
+	for (const [label, entry, admitted] of [
+		["the launch card", "cli/launch-card.ts", ADMITTED_ON_THE_CARD_PATH],
+		// Rendering reads settings signals and existing values without importing the store.
+		["the first frame", "modes/terminal/first-frame.ts", []],
+		["the settings store", "config/settings.ts", ADMITTED_ON_THE_CARD_PATH],
+	] satisfies [label: string, entry: string, admitted: string[]][]) {
 		/**
 		 * One case per entry so a failure names which path regained the database, and the message
 		 * lists the owners rather than a count, because the fix is to remove the edge that reached
@@ -150,7 +142,7 @@ describe("the launch card opens no database", () => {
 		it(`${label} reaches no store`, () => {
 			const reached = new Set(reachedNames(entry));
 
-			expect(DATABASE_OWNERS.filter(owner => reached.has(owner))).toEqual(ADMITTED_ON_THE_CARD_PATH);
+			expect(DATABASE_OWNERS.filter(owner => reached.has(owner))).toEqual(admitted);
 		});
 	}
 

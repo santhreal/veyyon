@@ -22,6 +22,7 @@ import type { AutoresearchRuntime } from "@veyyon/coding-agent/autoresearch/type
 import type { ExtensionAPI, ExtensionContext } from "@veyyon/coding-agent/extensibility/extensions";
 import { theme } from "@veyyon/coding-agent/theme/theme";
 import * as git from "@veyyon/coding-agent/utils/git";
+import "@veyyon/coding-agent/modes/terminal/controllers/extension-ui-controller";
 import { stripAnsi, TempDir } from "@veyyon/utils";
 import type { AutocompleteItem } from "@veyyon/utils/autocomplete";
 import { $ } from "bun";

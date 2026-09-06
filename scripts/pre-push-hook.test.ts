@@ -17,6 +17,7 @@ import { TempDir } from "@veyyon/utils";
 
 const HOOK = path.join(import.meta.dir, "..", ".githooks", "pre-push");
 const ZERO = "0".repeat(40);
+const DOCS_WORKFLOW = path.join(import.meta.dir, "..", ".github", "workflows", "docs.yml");
 /** Replaced with the temp repo's real HEAD, which the hook must be able to check out. */
 const SHA = "__SHA__";
 
@@ -55,11 +56,19 @@ async function runHook(options: {
 	/** Leave uncommitted and untracked files behind before the hook runs. */
 	dirty?: boolean;
 	/**
-	 * Commit a handbook book whose pages load a content-hashed asset. `"complete"`
-	 * commits the asset too; `"missing-asset"` commits only the page, which is what a
-	 * rebuild followed by `git commit --only` produces.
+	 * Commit a handbook book artifact into the repository to test tracked output refusal,
+	 * commit handbook source changes to test mdbook build requirements,
+	 * or create a merge commit introducing handbook source changes.
 	 */
-	handbook?: "complete" | "missing-asset";
+	handbook?: "tracked-book" | "source-change" | "merge-source-change";
+	/**
+	 * Stub mdbook behavior on PATH:
+	 * - undefined / "missing": no mdbook binary on PATH
+	 * - "success": mdbook stub that builds book and creates referenced content-hashed assets
+	 * - "missing-assets": mdbook stub that creates HTML referencing non-existent content-hashed assets
+	 * - "failing": mdbook stub that exits with error code 1
+	 */
+	mdbook?: "missing" | "success" | "missing-assets" | "failing";
 }): Promise<HookRun> {
 	using dir = TempDir.createSync("veyyon-hooktest-");
 	// TempDir.path() is relative to the process cwd. The hook runs as a child
@@ -68,6 +77,41 @@ async function runHook(options: {
 	// the "bun is not on PATH" branch instead of the one under test.
 	const root = path.resolve(dir.path());
 	const binDir = path.join(root, "bin");
+	await fs.mkdir(binDir, { recursive: true });
+	const systemBin = path.join(root, "system-bin");
+	await fs.mkdir(systemBin, { recursive: true });
+	const UTILS = [
+		"git",
+		"bash",
+		"sh",
+		"rm",
+		"mkdir",
+		"ln",
+		"readlink",
+		"grep",
+		"tr",
+		"sort",
+		"sed",
+		"cat",
+		"dirname",
+		"mktemp",
+		"chmod",
+		"basename",
+		"env",
+		"which",
+		"head",
+		"tail",
+		"wc",
+	];
+	for (const util of UTILS) {
+		for (const candidate of [`/usr/bin/${util}`, `/bin/${util}`]) {
+			try {
+				await fs.access(candidate);
+				await fs.symlink(candidate, path.join(systemBin, util));
+				break;
+			} catch {}
+		}
+	}
 	const marker = path.join(root, "check-ran");
 	const linkMarker = path.join(root, "workspace-link");
 	if (options.withBun !== false) {
@@ -76,6 +120,25 @@ async function runHook(options: {
 			`#!/usr/bin/env bash\nif [ "$1" = "run" ] && [ "$2" = "check:ts" ]; then\n  pwd > ${JSON.stringify(marker)}\n  readlink -f node_modules/@veyyon/pkg > ${JSON.stringify(linkMarker)} 2>/dev/null || true\nfi\nexit ${options.bunExit ?? 0}\n`,
 		);
 		await Bun.$`chmod +x ${path.join(binDir, "bun")}`.quiet();
+	}
+	if (options.mdbook === "success") {
+		await Bun.write(
+			path.join(binDir, "mdbook"),
+			`#!/usr/bin/env bash\nif [ "$1" = "build" ]; then\n  book="$2/book"\n  mkdir -p "$book"\n  echo '<html><head><script src="searchindex-12345678.js"></script><link rel="stylesheet" href="theme-abcdef01.css"></head><body>built</body></html>' > "$book/index.html"\n  echo '/* search */' > "$book/searchindex-12345678.js"\n  echo '/* theme */' > "$book/theme-abcdef01.css"\n  exit 0\nfi\nexit 0\n`,
+		);
+		await Bun.$`chmod +x ${path.join(binDir, "mdbook")}`.quiet();
+	} else if (options.mdbook === "missing-assets") {
+		await Bun.write(
+			path.join(binDir, "mdbook"),
+			`#!/usr/bin/env bash\nif [ "$1" = "build" ]; then\n  book="$2/book"\n  mkdir -p "$book"\n  echo '<html><head><script src="searchindex-12345678.js"></script></head><body>built</body></html>' > "$book/index.html"\n  # Deliberately omit searchindex-12345678.js\n  exit 0\nfi\nexit 0\n`,
+		);
+		await Bun.$`chmod +x ${path.join(binDir, "mdbook")}`.quiet();
+	} else if (options.mdbook === "failing") {
+		await Bun.write(
+			path.join(binDir, "mdbook"),
+			`#!/usr/bin/env bash\necho "mdbook: failed to parse book.toml" >&2\nexit 1\n`,
+		);
+		await Bun.$`chmod +x ${path.join(binDir, "mdbook")}`.quiet();
 	}
 	// A real repo with a real commit: the hook checks out the pushed sha, so
 	// there has to be something to check out.
@@ -93,20 +156,29 @@ async function runHook(options: {
 	await fs.symlink("../../packages/pkg", path.join(root, "node_modules", "@veyyon", "pkg"));
 	await Bun.$`git -C ${root} add packages/pkg/index.ts`.quiet();
 	await Bun.$`git -C ${root} commit -qm workspace`.quiet();
-	if (options.handbook) {
+	if (options.handbook === "tracked-book") {
 		const book = path.join(root, "docs", "handbook", "book");
-		await Bun.write(
-			path.join(book, "index.html"),
-			'<html><head><link rel="stylesheet" href="css/general-2459343d.css">\n' +
-				'<script>window.path_to_searchindex_js = "searchindex-deadbeef.js";</script>\n' +
-				"</head><body>page</body></html>\n",
-		);
-		await Bun.write(path.join(book, "css", "general-2459343d.css"), "body{}\n");
-		if (options.handbook === "complete") {
-			await Bun.write(path.join(book, "searchindex-deadbeef.js"), "window.search = {};\n");
-		}
+		await Bun.write(path.join(book, "index.html"), "<html><body>generated book</body></html>\n");
 		await Bun.$`git -C ${root} add docs/handbook/book`.quiet();
 		await Bun.$`git -C ${root} commit -qm handbook`.quiet();
+	} else if (options.handbook === "source-change") {
+		const src = path.join(root, "docs", "handbook", "src");
+		await fs.mkdir(src, { recursive: true });
+		await Bun.write(path.join(src, "chapter.md"), "# Chapter\n");
+		await Bun.$`git -C ${root} add docs/handbook/src/chapter.md`.quiet();
+		await Bun.$`git -C ${root} commit -qm "docs: chapter"`.quiet();
+	} else if (options.handbook === "merge-source-change") {
+		await Bun.$`git -C ${root} checkout -q -b docs-branch`.quiet();
+		const src = path.join(root, "docs", "handbook", "src");
+		await fs.mkdir(src, { recursive: true });
+		await Bun.write(path.join(src, "merged-chapter.md"), "# Merged Chapter\n");
+		await Bun.$`git -C ${root} add docs/handbook/src/merged-chapter.md`.quiet();
+		await Bun.$`git -C ${root} commit -qm "docs: add merged chapter"`.quiet();
+		await Bun.$`git -C ${root} checkout -q main`.quiet();
+		await Bun.write(path.join(root, "seed.txt"), "main branch advance\n");
+		await Bun.$`git -C ${root} add seed.txt`.quiet();
+		await Bun.$`git -C ${root} commit -qm "main advance"`.quiet();
+		await Bun.$`git -C ${root} merge --no-ff -qm "Merge docs-branch into main" docs-branch`.quiet();
 	}
 	const head = (await Bun.$`git -C ${root} rev-parse HEAD`.text()).trim();
 	if (options.dirty) {
@@ -124,7 +196,7 @@ async function runHook(options: {
 			// `withBun: false` drops the stub and leaves a PATH that still has git
 			// and coreutils but no bun (bun installs to ~/.bun/bin), which is how
 			// the missing-tool branch is reached without breaking the shell itself.
-			PATH: options.withBun === false ? "/usr/bin:/bin" : `${binDir}:/usr/bin:/bin`,
+			PATH: options.withBun === false ? systemBin : `${binDir}:${systemBin}`,
 			...options.env,
 		},
 	});
@@ -295,31 +367,114 @@ describe("pre-push hook", () => {
 	});
 
 	/**
-	 * mdbook renames a hashed asset on every rebuild that changes its content, so the
-	 * new `searchindex-<hash>.js` is an UNTRACKED file and `git commit --only` stages
-	 * only the old one's deletion. The pushed book then loads an asset it does not
-	 * carry, which is a 404 on the published search box; the Docs workflow reports it a
-	 * full run later, and it has.
+	 * docs/handbook/book is a gitignored build output. A commit must not track
+	 * generated book files.
 	 */
-	it("refuses a handbook whose pages load an asset the commit does not carry", async () => {
+	it("refuses a commit that tracks generated docs/handbook/book files", async () => {
 		const run = await runHook({
 			stdin: `refs/heads/main ${SHA} refs/heads/main ${SHA}\n`,
 			bunExit: 0,
-			handbook: "missing-asset",
+			handbook: "tracked-book",
 		});
 		expect(run.exitCode).not.toBe(0);
-		expect(run.stderr).toContain("searchindex-deadbeef.js");
+		expect(run.stderr).toContain("docs/handbook/book");
 		expect(run.leftoverWorktrees).toEqual([]);
 	});
 
-	/** And the same book with the asset committed goes through. */
-	it("allows a handbook that ships every asset its pages load", async () => {
+	/**
+	 * When handbook sources change, pre-push requires mdbook to build and verify them.
+	 */
+	it("refuses a commit changing handbook sources when mdbook is missing", async () => {
+		const docsWorkflow = await Bun.file(DOCS_WORKFLOW).text();
+		const expectedMdbookVersion = docsWorkflow.match(/mdbook[- ]v(\d+\.\d+\.\d+)/)?.[1];
+		expect(expectedMdbookVersion).toBeDefined();
+
 		const run = await runHook({
 			stdin: `refs/heads/main ${SHA} refs/heads/main ${SHA}\n`,
 			bunExit: 0,
-			handbook: "complete",
+			handbook: "source-change",
+		});
+		expect(run.exitCode).not.toBe(0);
+		expect(run.stderr).toContain("changes handbook sources, but 'mdbook' is not on PATH");
+		expect(run.stderr).toContain(`Install mdbook v${expectedMdbookVersion}`);
+		expect(run.leftoverWorktrees).toEqual([]);
+	});
+
+	/**
+	 * Merge commits changing handbook sources must also be detected via git diff-tree -m
+	 * and require mdbook verification.
+	 */
+	it("refuses a merge commit changing handbook sources when mdbook is missing", async () => {
+		const docsWorkflow = await Bun.file(DOCS_WORKFLOW).text();
+		const expectedMdbookVersion = docsWorkflow.match(/mdbook[- ]v(\d+\.\d+\.\d+)/)?.[1];
+		expect(expectedMdbookVersion).toBeDefined();
+
+		const run = await runHook({
+			stdin: `refs/heads/main ${SHA} refs/heads/main ${SHA}\n`,
+			bunExit: 0,
+			handbook: "merge-source-change",
+		});
+		expect(run.exitCode).not.toBe(0);
+		expect(run.stderr).toContain("changes handbook sources, but 'mdbook' is not on PATH");
+		expect(run.stderr).toContain(`Install mdbook v${expectedMdbookVersion}`);
+		expect(run.leftoverWorktrees).toEqual([]);
+	});
+
+	/**
+	 * When mdbook build fails (e.g. invalid syntax or configuration), pre-push must refuse.
+	 */
+	it("refuses a commit changing handbook sources when mdbook build fails", async () => {
+		const run = await runHook({
+			stdin: `refs/heads/main ${SHA} refs/heads/main ${SHA}\n`,
+			bunExit: 0,
+			handbook: "source-change",
+			mdbook: "failing",
+		});
+		expect(run.exitCode).not.toBe(0);
+		expect(run.stderr).toContain("fails 'mdbook build docs/handbook'");
+		expect(run.leftoverWorktrees).toEqual([]);
+	});
+
+	/**
+	 * When mdbook builds pages that reference missing content-hashed assets (*-[0-9a-f]{8}.(js|css)),
+	 * pre-push must refuse to prevent shipping broken search index or style assets.
+	 */
+	it("refuses a commit when built handbook pages reference missing content-hashed assets", async () => {
+		const run = await runHook({
+			stdin: `refs/heads/main ${SHA} refs/heads/main ${SHA}\n`,
+			bunExit: 0,
+			handbook: "source-change",
+			mdbook: "missing-assets",
+		});
+		expect(run.exitCode).not.toBe(0);
+		expect(run.stderr).toContain("generates handbook pages that load missing assets");
+		expect(run.stderr).toContain("searchindex-12345678.js");
+		expect(run.leftoverWorktrees).toEqual([]);
+	});
+
+	/**
+	 * When handbook sources change and mdbook builds cleanly with all assets present,
+	 * the push is allowed.
+	 */
+	it("allows a commit changing handbook sources when mdbook builds complete assets", async () => {
+		const run = await runHook({
+			stdin: `refs/heads/main ${SHA} refs/heads/main ${SHA}\n`,
+			bunExit: 0,
+			handbook: "source-change",
+			mdbook: "success",
 		});
 		expect(run.exitCode).toBe(0);
-		expect(run.stderr).not.toContain("searchindex-deadbeef.js");
+		expect(run.stderr).not.toContain("REFUSED");
+		expect(run.leftoverWorktrees).toEqual([]);
+	});
+
+	/** A clean commit that does not track generated handbook files goes through. */
+	it("allows a commit that does not track generated handbook files", async () => {
+		const run = await runHook({
+			stdin: `refs/heads/main ${SHA} refs/heads/main ${SHA}\n`,
+			bunExit: 0,
+		});
+		expect(run.exitCode).toBe(0);
+		expect(run.stderr).not.toContain("docs/handbook/book");
 	});
 });

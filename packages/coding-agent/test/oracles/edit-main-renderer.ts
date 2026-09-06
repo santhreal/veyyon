@@ -42,6 +42,7 @@ import {
 	previewWindowRows,
 	type RenderedStringCache,
 	replaceTabs,
+	shortenEmbeddedPaths,
 	shortenPath,
 	truncateDiffByHunk,
 } from "@veyyon/coding-agent/tools/core/render-utils";
@@ -672,22 +673,10 @@ function renderErrorSection(
 	uiTheme: Theme,
 	linkPath?: string,
 ): string {
-	let sanitized = errorText;
+	let sanitized = shortenEmbeddedPaths(errorText);
 	for (const p of [rawPath, linkPath]) {
 		if (p) sanitized = sanitized.replaceAll(p, shortenPath(p));
 	}
-	sanitized = sanitized
-		.split("\n")
-		.map(line =>
-			line
-				.split(" ")
-				.map(w => {
-					const m = /^([("'`[]*)(.*?)([)"'`,.;:\]]*)$/.exec(w);
-					return m ? `${m[1]}${shortenPath(m[2])}${m[3]}` : w;
-				})
-				.join(" "),
-		)
-		.join("\n");
 
 	const lines = sanitized.split("\n");
 	if (expanded || lines.length <= PREVIEW_LIMITS.DIFF_COLLAPSED_LINES) {

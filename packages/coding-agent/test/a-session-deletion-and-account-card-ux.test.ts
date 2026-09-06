@@ -5,7 +5,7 @@ import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { SqliteAuthCredentialStore } from "@veyyon/ai/auth-storage-sqlite";
 import type { SessionInfo, SessionStatus } from "@veyyon/kernel/session/session-listing";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
-import { stripAnsi } from "@veyyon/utils";
+import { stripAnsi, TempDir } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
 import {
 	type AccountManagerCallbacks,
@@ -505,14 +505,22 @@ describe("AccountManager UX audit", () => {
 });
 
 describe("On-disk SessionManager and AuthStorage UX audit", () => {
-	const testWorkspace = path.join(import.meta.dirname, `.tmp-audit-workspace-${Math.random().toString(36).slice(2)}`);
-	const sessionDir = path.join(testWorkspace, "sessions");
-	const otherProjectDir = path.join(testWorkspace, "other-project");
-	const otherSessionDir = path.join(testWorkspace, "other-sessions");
-	const agentDir = path.join(testWorkspace, "agent");
+	let tempDir: TempDir;
+	let testWorkspace: string;
+	let sessionDir: string;
+	let otherProjectDir: string;
+	let otherSessionDir: string;
+	let agentDir: string;
+	const sessions: SessionManager[] = [];
 	let authStore: SqliteAuthCredentialStore | undefined;
 
 	beforeAll(async () => {
+		tempDir = await TempDir.create("session-account-audit-");
+		testWorkspace = tempDir.path();
+		sessionDir = tempDir.join("sessions");
+		otherProjectDir = tempDir.join("other-project");
+		otherSessionDir = tempDir.join("other-sessions");
+		agentDir = tempDir.join("agent");
 		await fs.mkdir(sessionDir, { recursive: true });
 		await fs.mkdir(otherProjectDir, { recursive: true });
 		await fs.mkdir(otherSessionDir, { recursive: true });
@@ -520,13 +528,15 @@ describe("On-disk SessionManager and AuthStorage UX audit", () => {
 	});
 
 	afterAll(async () => {
+		await Promise.all(sessions.map(session => session.close()));
 		authStore?.close();
-		await fs.rm(testWorkspace, { recursive: true, force: true });
+		await tempDir.remove();
 	});
 
 	it("handles corrupted/truncated jsonl, cross-cwd sessions, and missing files gracefully in SessionSelector", async () => {
 		// 1. Create a valid session in sessionDir
 		const sm1 = SessionManager.create(testWorkspace, sessionDir);
+		sessions.push(sm1);
 		sm1.appendMessage({
 			role: "user",
 			content: [{ type: "text", text: "How do I build a compiler?" }],
@@ -552,6 +562,7 @@ describe("On-disk SessionManager and AuthStorage UX audit", () => {
 
 		// 2. Create a session from another cwd in otherSessionDir
 		const sm2 = SessionManager.create(otherProjectDir, otherSessionDir);
+		sessions.push(sm2);
 		sm2.appendMessage({
 			role: "user",
 			content: [{ type: "text", text: "Other project question about Rust" }],

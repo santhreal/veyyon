@@ -86,7 +86,6 @@ if manifest_drift and os.environ.get("PROOF_ALLOW_MANIFEST_DRIFT") != "1":
         + " with OUT_DIR pointing at proof/captures/x11/before, or set PROOF_ALLOW_MANIFEST_DRIFT=1"
     )
 
-
 def sha(path):
     with open(path, "rb") as fh:
         return hashlib.sha256(fh.read()).hexdigest()

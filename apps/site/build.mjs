@@ -10,8 +10,9 @@
  *     copies here are gitignored build artifacts.
  *  3. Regenerate models-data.json from the bundled model catalog so the models
  *     page reflects every provider and model veyyon currently supports.
- * The handbook (apps/site/docs) is a symlink to docs/handbook/book — rebuild it
- * with `mdbook build` in docs/handbook before deploying if the docs changed.
+ * The handbook at apps/site/docs is a symlink to docs/handbook/book.
+ * mdBook v0.5.2 must be on PATH; every site build rebuilds the handbook and
+ * fails if mdBook is missing or the handbook build fails.
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -118,6 +119,28 @@ writeFileSync(
 	`# Root installer endpoint: correct content type, never cache stale installers.\n/\n  Content-Type: application/x-sh; charset=utf-8\n  Cache-Control: no-cache, must-revalidate\n${readFileSync(join(HERE, "_headers"), "utf8")}`,
 );
 console.log("staged website-get/ (get.veyyon.dev root -> install.sh)");
+
+// 3c. Handbook. The handbook at apps/site/docs is a symlink to docs/handbook/book.
+// A site build requires a successful mdbook build so the deployed site serves
+// freshly built documentation.
+try {
+	execFileSync("mdbook", ["build", join(REPO, "docs", "handbook")], { stdio: "inherit" });
+	console.log("built handbook (docs/handbook/book)");
+} catch (error) {
+	if (error?.code === "ENOENT") {
+		console.error(
+			"site build FAILED: 'mdbook' is not on PATH.\n" +
+				"Install mdbook v0.5.2 (pinned in docs.yml and site.yml) before building apps/site:\n" +
+				"  curl -fsSL https://github.com/rust-lang/mdBook/releases/download/v0.5.2/mdbook-v0.5.2-x86_64-unknown-linux-musl.tar.gz | tar -xz -C ~/.local/bin",
+		);
+		process.exit(1);
+	}
+	throw error;
+}
+if (!existsSync(join(REPO, "docs", "handbook", "book", "index.html"))) {
+	console.error("site build FAILED: mdbook build did not generate docs/handbook/book/index.html");
+	process.exit(1);
+}
 
 // Sanity: the pages must not leak the old product name (only the MIT oh-my-pi
 // attribution and clearly-marked OMP_ legacy env aliases are allowed).

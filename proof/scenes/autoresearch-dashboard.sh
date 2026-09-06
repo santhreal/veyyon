@@ -2,8 +2,8 @@
 # The autoresearch dashboard: the collapsed widget over the composer, and the
 # full-screen overlay behind alt+x.
 #
-# Needs SCENE_SEED_AUTORESEARCH=1, which writes one session and six logged runs
-# through the product's own storage API before veyyon starts. The dashboard then
+# The scene name selects a stored session and logged runs, written through the
+# storage API before veyyon starts. The dashboard then
 # reads real rows: a baseline, two kept improvements, a crash, a run whose checks
 # failed, and a flagged run whose metric moved because work left the timed
 # region. That spread is deliberate, so every status the dashboard renders is on

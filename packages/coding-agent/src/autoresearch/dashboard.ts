@@ -46,7 +46,6 @@ export function createDashboardController(delegate?: AutoresearchUiDelegate): Da
 	let ticking: { ctx: ExtensionContext; runtime: AutoresearchRuntime } | null = null;
 	/** The last row painted, so a resize can rebuild it against the new width. */
 	let painted: { ctx: ExtensionContext; runtime: AutoresearchRuntime } | null = null;
-
 	/**
 	 * A row shed for 120 columns is the wrong row at 40, and nothing else
 	 * rebuilds it: the host re-prints the string it already holds and truncates

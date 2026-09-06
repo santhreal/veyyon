@@ -17,7 +17,7 @@ import {
 } from "@veyyon/coding-agent/modes/terminal/draw";
 import type { Theme } from "@veyyon/coding-agent/theme/theme";
 import { formatStyledTruncationWarning, stripOutputNotice } from "@veyyon/coding-agent/tools/core/output-meta";
-import { replaceTabs, shortenPath } from "@veyyon/coding-agent/tools/core/render-utils";
+import { replaceTabs, shortenEmbeddedPaths, shortenPath } from "@veyyon/coding-agent/tools/core/render-utils";
 import type { BrowserToolDetails } from "@veyyon/coding-agent/tools/web/browser";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
@@ -99,6 +99,7 @@ function renderRunCell(
 	theme: Theme,
 ): Component {
 	const code = dropTrailingBlankLines(args.code ?? "");
+	const safeOutput = shortenEmbeddedPaths(output);
 	const status = cellStatus(options.isPartial, isError);
 
 	const titleParts: string[] = [tabLabel(args, details)];
@@ -121,7 +122,7 @@ function renderRunCell(
 				.str(status)
 				.str(title)
 				.str(code)
-				.str(output)
+				.str(safeOutput)
 				.digest();
 			if (cached && cached.width === width && cached.key === key) {
 				return cached.lines;
@@ -133,7 +134,7 @@ function renderRunCell(
 					title,
 					status,
 					spinnerFrame: options.spinnerFrame,
-					output: output.length > 0 ? output : undefined,
+					output: safeOutput.length > 0 ? safeOutput : undefined,
 					outputMaxLines: expanded ? Number.POSITIVE_INFINITY : previewLines,
 					codeMaxLines: expanded ? Number.POSITIVE_INFINITY : previewLines,
 					expanded,
@@ -183,7 +184,9 @@ function renderOpenOrCloseLine(
 			? renderStatusLine({ iconOverride: theme.styledSymbol("tool.browser", "accent"), title, meta }, theme)
 			: renderStatusLine({ icon, title, meta }, theme);
 	if (!output) return new Text(header, 0, 0);
-	const outputLines = output.split("\n").map(line => theme.fg("toolOutput", replaceTabs(line)));
+	const outputLines = output
+		.split("\n")
+		.map(line => theme.fg(isError ? "error" : "toolOutput", replaceTabs(shortenEmbeddedPaths(line))));
 	return new Text([header, ...outputLines].join("\n"), 0, 0);
 }
 

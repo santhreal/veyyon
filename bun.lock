@@ -233,6 +233,7 @@
         "fast-check": "catalog:",
       },
     },
+
     "packages/catalog": {
       "name": "@veyyon/catalog",
       "version": "1.4.0",
@@ -494,6 +495,7 @@
         "arktype": "catalog:",
       },
     },
+
   },
   "patchedDependencies": {
     "puppeteer-core@25.3.0": "patches/puppeteer-core@25.3.0.patch",

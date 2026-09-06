@@ -340,10 +340,10 @@ describe("task tool differential", () => {
 		expect(sameRows(viewResult(card, context, CALL))).toEqual(sameRows(mainResult(card, context, CALL)));
 	});
 
-	it("draws a call that failed before anything spawned", () => {
+	it.each([true, false, undefined])("draws a result before anything spawned (isError=%s)", isError => {
 		const card: TaskCardResult = {
 			content: [{ type: "text", text: "task failed: no such agent 'ghost'" }],
-			isError: true,
+			isError,
 		};
 		const context: ToolViewContext = { expanded: false };
 		expect(body(viewResult(card, context, CALL))).toEqual(body(mainResult(card, context, CALL)));

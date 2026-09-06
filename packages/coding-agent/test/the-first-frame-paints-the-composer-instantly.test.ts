@@ -1,5 +1,4 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, setSystemTime, vi } from "bun:test";
-import * as fs from "node:fs";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import { AuthStorage } from "@veyyon/ai/auth-storage";
@@ -28,12 +27,13 @@ import { segmentSeparator } from "@veyyon/coding-agent/modes/terminal/components
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { getEditorTheme, initTheme } from "@veyyon/coding-agent/theme/theme";
-import { branchLabelFromFiles, HEAD_REF_PREFIX, LOCAL_BRANCH_PREFIX } from "@veyyon/coding-agent/utils/git-head";
+import { branchLabelFromFiles } from "@veyyon/coding-agent/utils/git-head";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { Component } from "@veyyon/tui";
-import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
+import { getProjectDir, TempDir } from "@veyyon/utils";
 import { visibleWidth } from "@veyyon/utils/width";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";
+import { useFixtureCheckout } from "./helpers/fixture-checkout";
 
 /**
  * WHY: startup used to paint eight BLANK rows where the composer would live,
@@ -106,58 +106,6 @@ function launchRows(width: number): string[] {
 	return launchComposer().flatMap(child => child.render(width));
 }
 
-/**
- * The branch the fixture checkout's HEAD names. Short on purpose, like the fixture directory: the
- * card now paints the whole status row, so the left group competes for the row with every other
- * segment, and a 32-character temp directory plus a 19-character branch is clipped out of the row
- * this asserts on.
- */
-const FIXTURE_BRANCH = "card-fixture";
-
-/**
- * Run `body` with the project directory pointed at a fresh checkout, so a cell that asserts the
- * location bytes reads a path this file decides rather than the one the machine happens to have
- * checked out.
- *
- * The ambient checkout cannot be the subject. The location is clipped to the preset's budget and
- * then competes for the row with every other segment, so on a 63-character worktree path the card
- * sheds it and a cell looking for those bytes finds no row at all, while the same cell passes on a
- * 12-character CI checkout. Neither reading says anything about the card.
- */
-function inAFixtureCheckout(body: (dir: string) => void): void {
-	const dir = TempDir.createSync("vy-card-");
-	const previous = getProjectDir();
-	setProjectDir(dir.path());
-	try {
-		body(dir.path());
-	} finally {
-		// The project directory moves the process working directory with it, so it is restored BEFORE
-		// the directory is removed: leaving the process inside a deleted cwd breaks every relative
-		// path a later suite in this file resolves.
-		setProjectDir(previous);
-		dir.removeSync();
-	}
-}
-
-/**
- * Run `body` inside {@link inAFixtureCheckout}, with the checkout's HEAD naming {@link
- * FIXTURE_BRANCH}, written as files rather than by running git — which is how the card reads it.
- *
- * A pull-request CI job checks out the merge commit with a DETACHED HEAD, so `branchLabelFromFiles`
- * answers null there and a cell that read the branch off the ambient repository proved the row only
- * on a machine that happened to sit on a branch, and asserted nothing everywhere else. The fixture
- * names the branch, so both the shown and the withheld case are decided by this file.
- */
-function onABranch(body: (branch: string) => void): void {
-	inAFixtureCheckout(dir => {
-		const gitDir = path.join(dir, ".git");
-		fs.mkdirSync(path.join(gitDir, "refs", "heads"), { recursive: true });
-		fs.writeFileSync(path.join(gitDir, "HEAD"), `ref: refs/heads/${FIXTURE_BRANCH}\n`);
-		fs.writeFileSync(path.join(gitDir, "refs", "heads", FIXTURE_BRANCH), `${"0".repeat(40)}\n`);
-		expect(branchLabelFromFiles(getProjectDir())).toBe(FIXTURE_BRANCH);
-		body(FIXTURE_BRANCH);
-	});
-}
 /** The location segment at the budget the preset sets for it, before any row competes for width. */
 function budgetedLocation(): string {
 	return renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
@@ -186,31 +134,14 @@ function widthThatFitsTheLocation(): number {
 	throw new Error("the launch row carried the budgeted location at no width between 40 and 400 columns");
 }
 /**
- * Run `body` against a project directory long enough for the row to have to fit it, on a branch.
- *
- * Not the checkout the suite runs in. That path is `/srv/veyyon` on the CI runner, short enough to
- * survive whole at the scan floor above and short enough that the row keeps it and sheds the branch
- * instead, so every case that pins CLIPPING or the ORDER of the left group passed on a long
- * checkout and proved nothing on a short one. This directory exceeds any preset budget on every
- * machine, and it carries the one file `branchLabelFromFiles` reads, so the branch on the row comes
- * from the fixture rather than from wherever the tree happens to sit.
+ * The checkout the card describes, so the branch and the path are this file's facts rather than
+ * the directory the run started in. Nested deep enough that the rendered location is shorter than
+ * the path itself, which is what the budget cases below measure.
  */
-function withDeepProject<T>(body: (project: string) => T): T {
-	const deep = TempDir.createSync("@pi-first-frame-deep-project-");
-	const nested = deep.join("a-directory-named-at-length", "and-another-one-below-it", "leaf");
-	fs.mkdirSync(nested, { recursive: true });
-	fs.mkdirSync(deep.join(".git"), { recursive: true });
-	fs.writeFileSync(deep.join(".git", "HEAD"), `${HEAD_REF_PREFIX} ${LOCAL_BRANCH_PREFIX}${FIXTURE_BRANCH}\n`);
-	const previousProjectDir = getProjectDir();
-	setProjectDir(nested);
-	try {
-		return body(nested);
-	} finally {
-		setProjectDir(previousProjectDir);
-		deep.removeSync();
-	}
-}
-
+const CHECKOUT = useFixtureCheckout({
+	branch: "launch-card-fixture",
+	nested: ["platform-services", "ingest-pipeline", "normalizer"],
+});
 let isolated: IsolatedConfigRoot;
 
 beforeAll(async () => {
@@ -266,13 +197,7 @@ describe("the launch composer", () => {
 	});
 
 	it("says where you are, on the row the live status line takes over", () => {
-		inAFixtureCheckout(() => {
-			const expected = renderLocation({
-				projectDir: getProjectDir(),
-				options: resolveLocationOptions(),
-			}).content;
-			expect(launchRows(100).some(row => row.includes(expected))).toBe(true);
-		});
+		expect(launchRows(widthThatFitsTheLocation()).some(row => row.includes(budgetedLocation()))).toBe(true);
 	});
 
 	/**
@@ -287,18 +212,16 @@ describe("the launch composer", () => {
 	 * worktree and red on the runner, and neither reading was about the card.
 	 */
 	it("shortens the path rather than dropping it when the row cannot afford the budget", () => {
-		withDeepProject(project => {
-			const fits = widthThatFitsTheLocation();
-			// Above the scan floor, or `fits - 1` is a width the search never looked at and the case
-			// below measures a row that was never asked to give anything up.
-			expect(fits).toBeGreaterThan(LOCATION_SCAN_FLOOR);
-			const tail = path.basename(project);
-			const row = launchRows(fits - 1).find(candidate => candidate.includes(tail));
+		const fits = widthThatFitsTheLocation();
+		// Above the scan floor, or `fits - 1` is a width the search never looked at and the case
+		// below measures a row that was never asked to give anything up.
+		expect(fits).toBeGreaterThan(LOCATION_SCAN_FLOOR);
+		const tail = path.basename(getProjectDir());
+		const row = launchRows(fits - 1).find(candidate => candidate.includes(tail));
 
-			expect(row).toBeDefined();
-			expect(row).not.toContain(budgetedLocation());
-			expect(row).toStartWith(" ".repeat(COMPOSER_INSET_COLS));
-		});
+		expect(row).toBeDefined();
+		expect(row).not.toContain(budgetedLocation());
+		expect(row).toStartWith(" ".repeat(COMPOSER_INSET_COLS));
 	});
 
 	it("clips the location to the preset's budget, not to the terminal", () => {
@@ -309,71 +232,69 @@ describe("the launch composer", () => {
 		// The ROW is 300 wide, because the row is now the real status row and its
 		// right-hand group sits against the right edge exactly as the live one
 		// does. The location inside it is what the budget governs.
-		//
-		// The directory is the deep fixture rather than this checkout, because the
-		// budget only bites on a path longer than it: on a short checkout
-		// (`/srv/veyyon` on the CI runner) the clipped and unclipped spellings are
-		// the same string, and the case passed having proved nothing while failing
-		// wherever the checkout was long enough to clip.
-		withDeepProject(nested => {
-			const expected = renderLocation({ projectDir: nested, options: resolveLocationOptions() }).content;
-			const row = launchRows(300).find(candidate => candidate.includes(expected));
-			expect(row).toBeDefined();
-			expect(visibleWidth(row as string)).toBeLessThanOrEqual(300);
-			// The clip happened at all: the segment is shorter than the directory it names.
-			expect(visibleWidth(expected)).toBeLessThan(nested.length);
-			// The unclipped path is absent: a row that had simply been given more room
-			// would carry it, and would then shrink at the handover.
-			expect(row).not.toContain(nested);
-		});
+		const narrowOptions = resolveLocationOptions();
+		const expected = renderLocation({ projectDir: getProjectDir(), options: narrowOptions }).content;
+		// The same path with room for the whole terminal, which is what a card clipping to the
+		// terminal instead of the budget would paint. Compared against the render rather than
+		// against the raw path, so the check holds wherever the fixture lives: a directory the
+		// row shows relative to a root it strips never carries its own absolute path.
+		const unbudgeted = renderLocation({
+			projectDir: getProjectDir(),
+			options: { ...narrowOptions, maxLength: 300 },
+		}).content;
+		// The budget bit at all. The fixture checkout is nested deeper than any preset's path
+		// budget, so the two renders differ and the absence below is the budget's work rather
+		// than a short path that fit whole either way.
+		expect(visibleWidth(unbudgeted)).toBeGreaterThan(visibleWidth(expected));
+		const row = launchRows(300).find(candidate => candidate.includes(expected));
+		expect(row).toBeDefined();
+		expect(visibleWidth(row as string)).toBeLessThanOrEqual(300);
+		expect(visibleWidth(expected)).toBeLessThan(300);
+		expect(row).not.toContain(unbudgeted);
 	});
 
 	it("honors a path budget the session overrides the preset with", () => {
 		settings.set("statusLine.segmentOptions", { path: { maxLength: 12 } });
-		withDeepProject(() => {
-			try {
-				const { content: located, pin } = renderLocation({
-					projectDir: getProjectDir(),
-					options: resolveLocationOptions(),
-				});
-				expect(visibleWidth(located) - pin).toBe(12);
-				const row = launchRows(100).find(candidate => candidate.includes(located));
-				expect(row).toBeDefined();
-				expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located}`);
-			} finally {
-				settings.set("statusLine.segmentOptions", {});
-			}
-		});
+		try {
+			const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() });
+			// `pin` is the icon and the space after it, which the clamp never counted: the budget
+			// governs the path, and a directory the row marks with an icon must not read as one
+			// that blew the budget by the width of that icon.
+			expect(visibleWidth(located.content) - located.pin).toBeLessThanOrEqual(12);
+			const row = launchRows(100).find(candidate => candidate.includes(located.content));
+			expect(row).toBeDefined();
+			expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located.content}`);
+		} finally {
+			settings.set("statusLine.segmentOptions", {});
+		}
 	});
 
 	it("names the branch, after the location, joined the way the live row joins segments", () => {
-		withDeepProject(project => {
-			const branch = renderBranch(branchLabelFromFiles(project), false);
-			// The fixture wrote the HEAD this reads, so a row without a branch is the card's doing.
-			expect(branch).toContain(FIXTURE_BRANCH);
-			const located = budgetedLocation();
-			const row = launchRows(widthThatFitsTheLocation()).find(candidate => candidate.includes(located));
-			// `toStartWith`, not `toBe`: the rest of the row is the preset's remaining
-			// segments, which is the point of the card rendering the real row. What is
-			// pinned here is the left group's content and its order.
-			expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located}${segmentSeparator()}${branch}`);
-		});
+		const label = branchLabelFromFiles(getProjectDir());
+		// Read from the fixture checkout's own `.git/HEAD`, so the card has a branch to name on
+		// any machine and on the detached checkout a pull-request run hands the suite.
+		expect(label).toBe(CHECKOUT.branch);
+		const branch = renderBranch(label, false);
+		const located = budgetedLocation();
+		const row = launchRows(widthThatFitsTheLocation()).find(candidate => candidate.includes(located));
+		// `toStartWith`, not `toBe`: the rest of the row is the preset's remaining
+		// segments, which is the point of the card rendering the real row. What is
+		// pinned here is the left group's content and its order.
+		expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located}${segmentSeparator()}${branch}`);
 	});
 
 	it("leaves the branch off the card when the row will not show one", () => {
-		onABranch(fixtureBranch => {
-			settings.set("git.enabled", false);
-			try {
-				const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
-				const row = launchRows(100).find(candidate => candidate.includes(located));
-				expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located}`);
-				// Nothing after the location is a branch: no separator-then-label, and
-				// no bare label anywhere else on the row.
-				expect(row).not.toContain(fixtureBranch);
-			} finally {
-				settings.set("git.enabled", true);
-			}
-		});
+		settings.set("git.enabled", false);
+		try {
+			const located = renderLocation({ projectDir: getProjectDir(), options: resolveLocationOptions() }).content;
+			const row = launchRows(100).find(candidate => candidate.includes(located));
+			expect(row).toStartWith(`${" ".repeat(COMPOSER_INSET_COLS)}${located}`);
+			// Nothing after the location is a branch: no separator-then-label, and
+			// no bare label anywhere else on the row.
+			expect(row).not.toContain(CHECKOUT.branch);
+		} finally {
+			settings.set("git.enabled", true);
+		}
 	});
 
 	it("shows no dirty marker for a project that has recorded none", () => {
@@ -382,12 +303,11 @@ describe("the launch composer", () => {
 		// lookup lands: clean, unmarked. What it does when a launch DID record a scan is held in
 		// `the-launch-card-states-what-the-last-launch-knew.test.ts`; the config root is isolated
 		// above so that file's recordings cannot answer for this one.
-		onABranch(fixtureBranch => {
-			const row = launchRows(100).find(candidate => candidate.includes(fixtureBranch));
-			expect(row).toBeDefined();
-			expect(row).toContain(renderBranch(fixtureBranch, false));
-			expect(row).not.toContain("*");
-		});
+		const label = branchLabelFromFiles(getProjectDir());
+		const row = launchRows(100).find(candidate => candidate.includes(CHECKOUT.branch));
+		expect(row).toBeDefined();
+		expect(row).toContain(renderBranch(label, false));
+		expect(row).not.toContain("*");
 	});
 });
 
@@ -482,26 +402,22 @@ describe("the mounted composer zone occupies the launch composer's rows", () => 
 	}
 
 	it("paints the location on the row the live footline occupies", () => {
-		inAFixtureCheckout(() => {
-			const width = 100;
-			const live: string[] = [];
-			let liveFootline = -1;
-			for (const child of mountedZone()) {
-				const rendered = child.render(width);
-				if (child === mode.capabilityLine && rendered.length > 0) liveFootline = live.length;
-				live.push(...rendered);
-			}
-			expect(liveFootline, "the live footline must render a row at rest").toBeGreaterThanOrEqual(0);
+		// The width the budgeted path survives at, so the row is found by the bytes the preset asks
+		// for rather than by whatever the fitter shortened them to.
+		const width = widthThatFitsTheLocation();
+		const live: string[] = [];
+		let liveFootline = -1;
+		for (const child of mountedZone()) {
+			const rendered = child.render(width);
+			if (child === mode.capabilityLine && rendered.length > 0) liveFootline = live.length;
+			live.push(...rendered);
+		}
+		expect(liveFootline, "the live footline must render a row at rest").toBeGreaterThanOrEqual(0);
 
-			const expected = renderLocation({
-				projectDir: getProjectDir(),
-				options: resolveLocationOptions(),
-			}).content;
-			const restingRowList = launchRows(width);
-			const restingFootline = restingRowList.findIndex(row => row.includes(expected));
-			expect(restingFootline, "the launch composer must paint the location somewhere").toBeGreaterThanOrEqual(0);
+		const restingRowList = launchRows(width);
+		const restingFootline = restingRowList.findIndex(row => row.includes(budgetedLocation()));
+		expect(restingFootline, "the launch composer must paint the location somewhere").toBeGreaterThanOrEqual(0);
 
-			expect(rowFromEnd(restingRowList, restingFootline)).toBe(rowFromEnd(live, liveFootline));
-		});
+		expect(rowFromEnd(restingRowList, restingFootline)).toBe(rowFromEnd(live, liveFootline));
 	});
 });

@@ -18,6 +18,7 @@ import {
 	formatExpandHint,
 	PREVIEW_LIMITS,
 	replaceTabs,
+	shortenEmbeddedPaths,
 	type ToolUIStatus,
 } from "@veyyon/coding-agent/tools/core/render-utils";
 import type { Component } from "@veyyon/tui";
@@ -36,11 +37,13 @@ interface QueryRenderArgs {
 }
 
 function retainContents(args: RetainRenderArgs | undefined): string[] {
-	return (args?.items ?? []).map(item => replaceTabs((item?.content ?? "").trim())).filter(line => line.length > 0);
+	return (args?.items ?? [])
+		.map(item => replaceTabs(shortenEmbeddedPaths((item?.content ?? "").trim())))
+		.filter(line => line.length > 0);
 }
 
 function resultText(result: { content?: Array<{ type: string; text?: string }> }): string {
-	return (result.content?.find(c => c.type === "text")?.text ?? "").trim();
+	return replaceTabs(shortenEmbeddedPaths((result.content?.find(c => c.type === "text")?.text ?? "").trim()));
 }
 
 /** Single-line query header used by `recall`/`reflect` calls and results. */

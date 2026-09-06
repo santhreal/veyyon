@@ -150,7 +150,7 @@ tag, asks once, then:
 
 Every way this can stop leaves the bump commit on `main` and prints the tag
 command to finish by hand, because a half-finished cut must never need archaeology
-to complete. That covers a red gate, a wait that exceeds ninety minutes, and
+to complete. That covers a red gate, a wait that exceeds sixty minutes, and
 answering no at the prompt (which stops before the push, with the bump still
 local).
 

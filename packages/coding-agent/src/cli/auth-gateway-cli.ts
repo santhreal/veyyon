@@ -77,6 +77,10 @@ async function fetchBrokerSnapshot(client: AuthBrokerClient): Promise<SnapshotRe
 }
 
 async function runServe(flags: AuthGatewayCommandArgs["flags"]): Promise<void> {
+	// The gateway selects an account per request through `getApiKey`, so it is held to the same
+	// `accounts.loadBalancing` the interactive session is. The setting is read from the operator's
+	// config here; without this init the resolver below sees no settings and answers the default.
+	await Settings.init();
 	const brokerConfig = await resolveAuthBrokerConfig();
 	if (!brokerConfig) {
 		throw new Error(

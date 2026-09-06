@@ -167,6 +167,12 @@ export function resolveRepositorySync(startDir: string): GitRepository | null {
 	}
 }
 
+/**
+ * The same repository walk and worktree resolution, asynchronous. `git.ts`
+ * imports these rather than keeping a second copy, and a caller that must not
+ * reach `git.ts`'s process layer imports them from here.
+ */
+
 export async function retryOnEintr<T>(op: () => Promise<T>): Promise<T | null> {
 	for (let attempt = 0; attempt <= EINTR_MAX_RETRIES; attempt += 1) {
 		try {
@@ -209,32 +215,6 @@ export async function resolveCommonDir(gitDir: string): Promise<string> {
 	return path.resolve(gitDir, relative);
 }
 
-function isLinkedWorktree(repository: GitRepository): boolean {
-	return (
-		repository.gitDir !== repository.commonDir &&
-		getEntryTypeSync(path.join(repository.gitDir, "commondir")) === "file"
-	);
-}
-
-async function isLinkedWorktreeAsync(repository: GitRepository): Promise<boolean> {
-	return (
-		repository.gitDir !== repository.commonDir &&
-		(await getEntryType(path.join(repository.gitDir, "commondir"))) === "file"
-	);
-}
-
-export function primaryRootFromRepositorySync(repository: GitRepository): string {
-	if (path.basename(repository.commonDir) === ".git") return path.dirname(repository.commonDir);
-	if (isLinkedWorktree(repository)) return repository.commonDir;
-	return repository.repoRoot;
-}
-
-export async function primaryRootFromRepository(repository: GitRepository): Promise<string> {
-	if (path.basename(repository.commonDir) === ".git") return path.dirname(repository.commonDir);
-	if (await isLinkedWorktreeAsync(repository)) return repository.commonDir;
-	return repository.repoRoot;
-}
-
 async function resolveRepoFromEntry(
 	repoRoot: string,
 	gitEntryPath: string,
@@ -266,7 +246,41 @@ export async function resolveRepository(startDir: string): Promise<GitRepository
 	}
 }
 
-/** Linked-checkout metadata from repository files, without the subprocess API. */
+function isLinkedWorktree(repository: GitRepository): boolean {
+	return (
+		repository.gitDir !== repository.commonDir &&
+		getEntryTypeSync(path.join(repository.gitDir, "commondir")) === "file"
+	);
+}
+
+async function isLinkedWorktreeAsync(repository: GitRepository): Promise<boolean> {
+	return (
+		repository.gitDir !== repository.commonDir &&
+		(await getEntryType(path.join(repository.gitDir, "commondir"))) === "file"
+	);
+}
+
+/** Resolve the primary checkout root from an already-resolved repository, synchronously. */
+export function primaryRootFromRepositorySync(repository: GitRepository): string {
+	if (path.basename(repository.commonDir) === ".git") return path.dirname(repository.commonDir);
+	if (isLinkedWorktree(repository)) return repository.commonDir;
+	return repository.repoRoot;
+}
+
+/** The asynchronous twin of {@link primaryRootFromRepositorySync}. */
+export async function primaryRootFromRepository(repository: GitRepository): Promise<string> {
+	if (path.basename(repository.commonDir) === ".git") return path.dirname(repository.commonDir);
+	if (await isLinkedWorktreeAsync(repository)) return repository.commonDir;
+	return repository.repoRoot;
+}
+
+/**
+ * Linked-worktree metadata for `cwd`, or `null` when `cwd` is the primary
+ * checkout (or outside a repository). `root` is the worktree's own checkout
+ * root; `primaryRoot` is the shared main checkout that names the project.
+ * Resolves purely via on-disk `.git`/`commondir` walking — no subprocess —
+ * so the status line may call it on every render.
+ */
 export function linkedWorktreeSync(cwd: string): { root: string; primaryRoot: string } | null {
 	const repository = resolveRepositorySync(cwd);
 	if (!repository || !isLinkedWorktree(repository)) return null;

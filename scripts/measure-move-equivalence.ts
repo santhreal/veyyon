@@ -226,7 +226,7 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 				relative,
 			),
 		reason:
-			"The launch composer and initialized session share location and token metadata, retain input during handover, and defer runtime initialization. Behavioral and visual startup checks establish preservation; these rows record the source changes.",
+			"The launch composer and initialized session share location and token metadata, retain input during handover, launch context subtracts non-message project context, and runtime initialization is deferred. Behavioral and visual startup checks establish preservation; these rows record the source changes.",
 	},
 	{
 		name: "deferred-tool-initialization",
@@ -277,7 +277,7 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 		name: "extracted-to-utils",
 		matches: relative => relative.startsWith("packages/utils/") || relative.startsWith("hosts/terminal/engine/"),
 		reason:
-			"Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
+			"Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist, and managed terminal replay is authorized by the divergent segment's live/replay capability. The engine keeps what draws.",
 	},
 	{
 		name: "view-conversion",
@@ -286,7 +286,7 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 				relative,
 			),
 		reason:
-			"A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. A suite that named the deleted renderer module reads the registry entry instead. Byte identity of the drawn output is proved by the oracle suite, not here.",
+			"A renderer that built a terminal component now returns a `ToolView`, the card that draws it reads the view, and generic tool previews sanitize visible home paths and tabs. A suite that named the deleted renderer module reads the registry entry instead. Byte identity of the drawn output is proved by the oracle suite, not here.",
 	},
 	{
 		name: "terminal-readout",
@@ -298,7 +298,7 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 		name: "oracle-freeze",
 		matches: relative => /^packages\/coding-agent\/test\/oracles\/[a-z0-9-]+\.ts$/.test(relative),
 		reason:
-			"A renderer this branch replaced with a `ToolView` is frozen here as the differential oracle its suite compares the card against. The search dispatcher reached the three sub-views this branch declares rather than the terminal components main built, which is the change recorded: the rows it draws itself are main's, and the suite beside it proves the card byte for byte.",
+			"A renderer this branch replaced with a ToolView is frozen here as the differential oracle its suite compares the card against. The rows it draws are main's drawing byte for byte, adapted to the published package subpaths, with live tool rendering and TUI sanitization verified against the oracle card.",
 	},
 	{
 		name: "shared-mode-seed",
@@ -322,7 +322,7 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 		name: "relocated-member-path",
 		matches: relative => /^(apps|clients)\/|^tests\/(evals|simulations)\//.test(relative),
 		reason:
-			"A member that left `packages/`, `python/` or `website/` for `apps/`, `clients/` or `tests/` states its own directory in a usage string, a command, a registry key or a comment, and climbs to the repository root by a relative path that gained one level. The move itself spells only the new location. A row here can also carry an edit this branch made before the move and every unmoved sibling carries too -- the array-spread rewrite, the `natives/` path spelling, a site page's nav fix -- each recorded in the commit that made it, none made by the relocation -- or the formatter's reflow of a call whose shorter path now fits one line.",
+			"A member that left `packages/`, `python/` or `website/` for `apps/`, `clients/` or `tests/` states its own directory in a usage string, a command, a registry key or a comment, climbs to the repository root by a relative path that gained one level, and deploy fixtures build in disposable sandbox paths. The move itself spells only the new location. A row here can also carry an edit this branch made before the move and every unmoved sibling carries too -- the array-spread rewrite, the `natives/` path spelling, a site page's nav fix -- each recorded in the commit that made it, none made by the relocation -- or the formatter's reflow of a call whose shorter path now fits one line.",
 	},
 	{
 		name: "plugin-path-expectation",
@@ -366,7 +366,8 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 	{
 		name: "engine-consumer",
 		matches: relative => relative.startsWith("packages/coding-agent/src/"),
-		reason: "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
+		reason:
+			"A coding-agent module reads a value that moved out of the engine or launch watchers deliver already-terminal exits via broker wait, so the call site names its new owner.",
 	},
 	{
 		name: "colocated-test",
@@ -639,13 +640,16 @@ function assertWorktreeIs(repoRoot: string, headRef: string, paths: readonly str
 	}
 }
 
-export function generateLedger(repoRoot: string, headRef = "HEAD"): MoveEquivalenceLedger {
+export function generateLedger(repoRoot: string, headRef = "HEAD", baseRef?: string): MoveEquivalenceLedger {
 	// The MERGE BASE, not the tip of main. `renamePairs` asks git for `base...head`, which is already
 	// the merge base by definition, and every row then reads the old path out of `baseSha`. While
 	// this named the tip, the two disagreed the moment main moved: main deleted
 	// `packages/coding-agent/src/modes/magic-keyword-notices.ts` five commits past the base, and the
 	// generator died on `git show <tip>:<a path only the base has>`. One commit answers both halves.
-	const baseSha = git(repoRoot, ["merge-base", "origin/main", headRef]).toString("utf-8").trim();
+	const baseSha =
+		baseRef ??
+		process.env.MOVE_EQUIVALENCE_BASE ??
+		git(repoRoot, ["merge-base", "origin/main", headRef]).toString("utf-8").trim();
 	const pairs = renamePairs(repoRoot, baseSha, headRef);
 	const importAttributes = baselineImportAttributes(repoRoot, baseSha, pairs);
 	if (headRef !== "HEAD") {
@@ -711,7 +715,7 @@ export function generateLedger(repoRoot: string, headRef = "HEAD"): MoveEquivale
 
 if (import.meta.main) {
 	const repoRoot = path.resolve(import.meta.dirname, "..");
-	const ledger = generateLedger(repoRoot, process.argv[2] ?? "HEAD");
+	const ledger = generateLedger(repoRoot, process.argv[2] ?? "HEAD", process.argv[3]);
 	const target = path.join(repoRoot, "scripts", "fixtures", "move-equivalence.json");
 	fs.writeFileSync(target, `${JSON.stringify(ledger, null, "\t")}\n`);
 	const rows = Object.values(ledger.files);
