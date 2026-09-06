@@ -216,14 +216,14 @@ export default class Index extends Command {
 	static strict = false;
 
 	async run(): Promise<void> {
-		// Loaded HERE, not at module scope: this module's flag table is the only
-		// thing root help needs, and `../main` pulls the entire runtime graph
-		// (~0.7s of module load) that `veyyon --help` must not pay for.
-		const { prepareAcpTerminalAuthArgs } = await logger.time(
-			"import:acp-terminal-auth",
-			() => import("../modes/acp/terminal-auth"),
-		);
-		const { args } = prepareAcpTerminalAuthArgs(this.argv);
+		let args = this.argv;
+		if (args.includes("--acp-terminal-auth")) {
+			const { prepareAcpTerminalAuthArgs } = await logger.time(
+				"import:acp-terminal-auth",
+				() => import("../modes/acp/terminal-auth"),
+			);
+			args = prepareAcpTerminalAuthArgs(args).args;
+		}
 		let parsed: ParsedArgs;
 		try {
 			parsed = logger.time("parseArgs", parseArgs, args);

@@ -4,14 +4,14 @@ import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import { parseHTML } from "linkedom";
 import type { Page } from "puppeteer-core";
 import { resolveProviderTextTransform, transformProviderPayload } from "../../../../provider-boundary";
-import type { SearchResponse, SearchSource } from "../types";
+import type { SearchResponse } from "../types";
 import { SearchProviderError } from "../types";
 import { clampNumResults, collapseWhitespace, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import type { LoadedHtmlPage } from "./browser-page";
 import { browserFetch } from "./browser-page";
-import { classifyProviderHttpError, resolveExternalResultUrl } from "./utils";
+import { classifyProviderHttpError, resolveExternalResultUrl, toSearchSources } from "./utils";
 
 const MOJEEK_ORIGIN = "https://www.mojeek.de";
 const MOJEEK_HOME_URL = `${MOJEEK_ORIGIN}/?arc=none&lang=en&lb=en&theme=dark`;
@@ -180,16 +180,7 @@ export async function searchMojeek(params: SearchParams): Promise<SearchResponse
 	const html = await callMojeekHtml(params, numResults);
 	const parsed = parseHtmlResults(html);
 
-	const sources: SearchSource[] = [];
-	const seen = new Set<string>();
-	for (const result of parsed) {
-		if (seen.has(result.url)) continue;
-		seen.add(result.url);
-		sources.push({ title: result.title, url: result.url, snippet: result.snippet });
-		if (sources.length >= numResults) break;
-	}
-
-	return { provider: "mojeek", sources };
+	return { provider: "mojeek", sources: toSearchSources(parsed, numResults, { deduplicate: true }) };
 }
 
 /** Search provider for Mojeek (independent index, no API key required). */

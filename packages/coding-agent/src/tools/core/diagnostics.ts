@@ -83,7 +83,7 @@ const NEST_INDENT = "  ";
  * Insertion order across files, which is the order the compiler reported them in: a card that
  * re-sorted the files would move a group a reader is looking at as more diagnostics arrive.
  */
-function groupByFile(messages: string[]): { byFile: Map<string, ParsedDiagnostic[]>; unparsed: string[] } {
+export function groupByFile(messages: string[]): { byFile: Map<string, ParsedDiagnostic[]>; unparsed: string[] } {
 	const byFile = new Map<string, ParsedDiagnostic[]>();
 	const unparsed: string[] = [];
 	for (const msg of messages) {

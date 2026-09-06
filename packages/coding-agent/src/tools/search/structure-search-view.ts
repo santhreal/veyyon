@@ -24,9 +24,11 @@ import type {
 import { classifyGroupedLines, groupLineIndicesByBlank } from "../core/grouped-file-output";
 import { toPathList } from "../core/path-utils";
 import {
+	emptyStatusLine as emptyLine,
 	formatCount,
 	formatParseErrorsCountLabel,
 	formatScopeMeta,
+	MATCH_NOUN,
 	PARSE_ERRORS_LIMIT,
 	replaceTabs,
 	sanitizeErrorText,
@@ -43,9 +45,6 @@ const STRUCTURE_SEARCH_TITLE = "Search structure";
 
 /** The tool's own mark, which a settled card is titled by instead of an outcome icon. */
 const STRUCTURE_SEARCH_EMBLEM = "icon.search";
-
-/** The unit every held-back count on this card is in, which the host words. */
-const MATCH_NOUN = { one: "match", many: "matches" } as const;
 
 /** The prefix of the group the tool writes when it stopped at its match cap, which is not a match. */
 const PARSE_ISSUES_PREFIX = "Parse issues:";
@@ -79,11 +78,6 @@ function header(
 		...(description === undefined ? {} : { description }),
 		meta: options.meta,
 	};
-}
-
-/** The empty answer, which is a warning mark and the words that say what was searched for nothing. */
-function emptyLine(label: string): ViewLine {
-	return [{ text: "", symbol: "status.warning", tone: "warning" }, { text: " " }, { text: label, tone: "muted" }];
 }
 
 /**

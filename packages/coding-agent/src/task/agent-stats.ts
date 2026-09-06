@@ -17,7 +17,7 @@ import { splitModelSelector } from "./model-selector";
 const MODEL_BADGE_WIDTH = 30;
 
 /** A run of the card's own words. */
-function span(text: string, tone?: ViewTone): ViewSpan {
+export function span(text: string, tone?: ViewTone): ViewSpan {
 	return tone === undefined ? { text } : { text, tone };
 }
 

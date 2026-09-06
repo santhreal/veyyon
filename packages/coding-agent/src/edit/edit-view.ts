@@ -28,6 +28,7 @@ import type {
 import { diagnosticsSection } from "../tools/core/diagnostics";
 import {
 	getDiffStats,
+	LINE_NOUN,
 	PREVIEW_LIMITS,
 	shortenEmbeddedPaths,
 	shortenPath,
@@ -54,9 +55,6 @@ const EDIT_STREAMING_HEADROOM = 4;
 
 /** Lines of replacement text a call card shows before it says how many it kept back. */
 const CALL_TEXT_PREVIEW_LINES = 6;
-
-/** The unit a held-back count is in, which the host words. */
-const LINE_NOUN = { one: "line", many: "lines" } as const;
 
 /** What the card is titled for each operation. */
 function operationTitle(op: Operation | undefined): string {

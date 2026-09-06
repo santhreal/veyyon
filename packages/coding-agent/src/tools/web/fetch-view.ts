@@ -19,6 +19,7 @@ import { formatFullOutputReference } from "../core/output-notice";
 import { getDomain } from "../core/render-utils";
 import type { ReadUrlToolDetails } from "./fetch";
 import { parseReadUrlTarget } from "./read-url-target";
+import { metadataLine } from "./search/view";
 
 /** The arguments the card reads off a read_url call, which is the path and how it was asked for. */
 export interface ReadUrlViewArgs {
@@ -69,11 +70,6 @@ function describeUrl(input: string | undefined): Pick<StatusRowView, "descriptio
 	if (!input) return {};
 	const { label, target } = readUrlDescription(input);
 	return { description: label, descriptionLink: target };
-}
-
-/** `Name: value`, where the name is secondary detail and the value is the text it introduces. */
-function metadataLine(name: string, value: string): ViewLine {
-	return [{ text: `${name}:`, tone: "muted" }, { text: ` ${value}` }];
 }
 
 function errorView(result: ReadUrlViewResult): FramedBlockView {

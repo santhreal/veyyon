@@ -45,7 +45,7 @@ import {
 } from "../tools/agent/review";
 import { jsonTreeViewLines } from "../tools/core/json-tree-view";
 import { formatDuration, formatMoreItems, previewLine, replaceTabs, truncateToWidth } from "../tools/core/render-utils";
-import { appendAgentStats, sanitizeRecentOutput } from "./agent-stats";
+import { appendAgentStats, sanitizeRecentOutput, span } from "./agent-stats";
 import { classifySubagentOutcome } from "./outcome";
 import { repairDoubleEncodedJsonString, repairTaskParams } from "./repair-args";
 import { DEFAULT_SPAWN_AGENT } from "./spawn-policy";
@@ -100,11 +100,6 @@ function openRow(place: NodePlace, spans: ViewSpan[]): TaskRow {
 
 function detailRow(place: NodePlace, spans: ViewSpan[]): TaskRow {
 	return { spans, depth: place.depth, last: place.last, opens: false };
-}
-
-/** A run of the card's own words. */
-function span(text: string, tone?: ViewTone): ViewSpan {
-	return tone === undefined ? { text } : { text, tone };
 }
 
 /**

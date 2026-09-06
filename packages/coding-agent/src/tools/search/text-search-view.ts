@@ -25,7 +25,13 @@ import type {
 import { tryResolveInternalUrlSync } from "../../internal-urls/resolve-sync";
 import { classifyGroupedLines, groupLineIndicesByBlank } from "../core/grouped-file-output";
 import { toPathList } from "../core/path-utils";
-import { formatCount, formatScopeMeta, replaceTabs, sanitizeErrorText } from "../core/render-utils";
+import {
+	emptyStatusLine as emptyLine,
+	formatCount,
+	formatScopeMeta,
+	replaceTabs,
+	sanitizeErrorText,
+} from "../core/render-utils";
 import {
 	COLLAPSED_TEXT_LIMIT,
 	EXPANDED_TEXT_LIMIT,
@@ -101,11 +107,6 @@ function scopeMeta(details: TextSearchDetails | undefined): ViewLine | undefined
 		{ text: "in " },
 		{ text: details.scopePath, ...(details.searchPath === undefined ? {} : { file: details.searchPath }) },
 	];
-}
-
-/** The empty answer, which is a warning mark and the words that say which kind of empty it is. */
-function emptyLine(label: string): ViewLine {
-	return [{ text: "", symbol: "status.warning", tone: "warning" }, { text: " " }, { text: label, tone: "muted" }];
 }
 
 /** What the search never reached, or nothing when it reached everything it was given. */

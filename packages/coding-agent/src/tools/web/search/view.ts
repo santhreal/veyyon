@@ -53,7 +53,7 @@ export interface WebSearchViewResult {
 }
 
 /** `Name: value`, where the name is secondary detail and the value is the text it introduces. */
-function metadataLine(name: string, value: string): ViewLine {
+export function metadataLine(name: string, value: string): ViewLine {
 	return [{ text: `${name}:`, tone: "muted" }, { text: ` ${value}` }];
 }
 

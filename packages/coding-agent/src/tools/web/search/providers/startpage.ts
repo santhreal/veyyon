@@ -2,14 +2,14 @@ import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import { parseHTML } from "linkedom";
 import { resolveProviderTextTransform, transformProviderPayload } from "../../../../provider-boundary";
-import type { SearchResponse, SearchSource } from "../types";
+import type { SearchResponse } from "../types";
 import { SearchProviderError } from "../types";
 import { clampNumResults, collapseWhitespace, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import type { LoadedHtmlPage } from "./browser-page";
 import { browserFetch } from "./browser-page";
-import { classifyProviderHttpError, resolveExternalResultUrl } from "./utils";
+import { classifyProviderHttpError, resolveExternalResultUrl, toSearchSources } from "./utils";
 
 /**
  * Startpage proxies Google's index behind a privacy frontend and serves fully
@@ -242,16 +242,7 @@ export async function searchStartpage(params: SearchParams): Promise<SearchRespo
 	const html = await callStartpageHtml(params);
 	const parsed = parseHtmlResults(html);
 
-	const sources: SearchSource[] = [];
-	const seen = new Set<string>();
-	for (const result of parsed) {
-		if (seen.has(result.url)) continue;
-		seen.add(result.url);
-		sources.push({ title: result.title, url: result.url, snippet: result.snippet });
-		if (sources.length >= numResults) break;
-	}
-
-	return { provider: "startpage", sources };
+	return { provider: "startpage", sources: toSearchSources(parsed, numResults, { deduplicate: true }) };
 }
 
 /** Search provider for Startpage (no API key required). */

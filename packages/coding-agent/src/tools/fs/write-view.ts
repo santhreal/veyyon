@@ -22,7 +22,7 @@ import type {
 } from "@veyyon/view";
 import { getLanguageFromPath } from "../../utils/lang-from-path";
 import { diagnosticsSection } from "../core/diagnostics";
-import { sanitizeErrorText, shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../core/render-utils";
+import { LINE_NOUN, sanitizeErrorText, shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../core/render-utils";
 import { normalizeDisplayText, WRITE_STREAMING_PREVIEW_LINES, type WriteToolDetails } from "./write";
 
 /** What every card of this tool is titled. */
@@ -33,9 +33,6 @@ const WRITE_EMBLEM = "tool.write";
 
 /** Lines of the file a collapsed settled card shows before it says how many it kept back. */
 const WRITE_PREVIEW_LINES = 6;
-
-/** The unit the held-back count is in, which the host words. */
-const LINE_NOUN = { one: "line", many: "lines" } as const;
 
 /** The arguments the card reads off the call, which are the path under either name and the text. */
 export interface WriteViewArgs {

@@ -42,7 +42,7 @@ function unquoteHashlinePath(pathText: string): string {
 const APPLY_PATCH_PATH_NOISE_RE =
 	/^\*{0,3}\s*(?:(?:update|add|delete|move)[^A-Za-z0-9]*(?:file|to)?[^A-Za-z0-9]*:)?\s*\*{0,3}\s*/i;
 
-function stripApplyPatchPathNoise(pathText: string): string {
+export function stripApplyPatchPathNoise(pathText: string): string {
 	return pathText.replace(APPLY_PATCH_PATH_NOISE_RE, "");
 }
 

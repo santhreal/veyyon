@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Exported `stripApplyPatchPathNoise` from `@veyyon/hashline` for shared header-path normalization across streaming and patch parsing.
+
 ### Changed
 
 - Array copies that allocated with a spread now use `.slice()`, `.concat()` or `Array.from()`. No user-visible behavior changes.

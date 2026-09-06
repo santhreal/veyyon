@@ -34,6 +34,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { expandExportFloor } from "./package-export-floor";
 import {
 	exportedNames,
 	publishableMembers,
@@ -41,8 +42,8 @@ import {
 } from "./package-exports-surface";
 import { REPO_ROOT } from "./workspace-layout";
 
-const baseline: Record<string, string[]> = JSON.parse(
-	readFileSync(join(REPO_ROOT, "scripts", "package-exports-baseline.json"), "utf8"),
+const baseline = expandExportFloor(
+	JSON.parse(readFileSync(join(REPO_ROOT, "scripts", "package-exports-baseline.json"), "utf8")),
 );
 
 const members = publishableMembers();

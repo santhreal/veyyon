@@ -190,6 +190,9 @@ export function paintFirstFrame(version: string, keybindings?: KeybindingsManage
 	// rather than a lookalike that has to be reconciled with one.
 	const keybindingsManager = keybindings ?? KeybindingsManager.create();
 	const editor = new CustomEditor(getEditorTheme());
+	// Typeahead must paint before the next runtime import can occupy the event loop.
+	const renderInput = (): void => ui.requestRender(true);
+	editor.onChange = renderInput;
 	editor.applyKeybindings(keybindingsManager);
 	applyComposerChrome(editor, resolveComposerAccents(PRISTINE_COMPOSER_ACCENT_STATE));
 	editor.setUseTerminalCursor(ui.getShowHardwareCursor());
@@ -318,6 +321,7 @@ export function paintFirstFrame(version: string, keybindings?: KeybindingsManage
 		editorContainer,
 		keybindings: keybindingsManager,
 		release(): void {
+			if (editor.onChange === renderInput) editor.onChange = undefined;
 			unsubscribeFacts();
 			discardUntilMount?.();
 			discardUntilMount = undefined;

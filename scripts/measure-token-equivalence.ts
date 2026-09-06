@@ -30,12 +30,35 @@ export interface TokenizeResult {
 	readonly tokens: readonly TokenWithRange[];
 }
 
+export const TOKEN_EQUIVALENCE_SCHEMA_VERSION = 2;
+
 export interface TokenEquivalenceLedger {
+	readonly schemaVersion: number;
 	readonly generatedFrom: string;
 	readonly formattingOnly: Readonly<Record<string, string>>;
 	readonly importReorder: Readonly<Record<string, string>>;
-	readonly changedCount: number;
-	readonly changed: readonly string[];
+}
+
+export function validateTokenEquivalenceLedger(raw: unknown): TokenEquivalenceLedger {
+	if (raw === null || typeof raw !== "object") {
+		throw new Error("Token equivalence ledger is not an object");
+	}
+	const ledger = raw as Partial<TokenEquivalenceLedger>;
+	if (ledger.schemaVersion !== TOKEN_EQUIVALENCE_SCHEMA_VERSION) {
+		throw new Error(
+			`Token equivalence ledger schema is stale or unversioned (expected version ${TOKEN_EQUIVALENCE_SCHEMA_VERSION}, got ${ledger.schemaVersion ?? "unversioned v1"})`,
+		);
+	}
+	if (!ledger.generatedFrom || typeof ledger.generatedFrom !== "string") {
+		throw new Error("Token equivalence ledger is missing generatedFrom commit hash");
+	}
+	if (!ledger.formattingOnly || typeof ledger.formattingOnly !== "object" || Array.isArray(ledger.formattingOnly)) {
+		throw new Error("Token equivalence ledger is missing formattingOnly map");
+	}
+	if (!ledger.importReorder || typeof ledger.importReorder !== "object" || Array.isArray(ledger.importReorder)) {
+		throw new Error("Token equivalence ledger is missing importReorder map");
+	}
+	return raw as TokenEquivalenceLedger;
 }
 
 export interface MeasureOptions {
@@ -268,8 +291,8 @@ export function measureTokenEquivalence(options: MeasureOptions = {}): TokenEqui
 
 	const candidatePaths = diffOutput
 		.split("\n")
-		.map(s => s.trim())
-		.filter(s => (s.endsWith(".ts") || s.endsWith(".tsx")) && !s.endsWith(".d.ts"))
+		.map((s: string) => s.trim())
+		.filter((s: string) => (s.endsWith(".ts") || s.endsWith(".tsx")) && !s.endsWith(".d.ts"))
 		.sort();
 
 	const formattingOnly: Record<string, string> = {};
@@ -327,11 +350,10 @@ export function measureTokenEquivalence(options: MeasureOptions = {}): TokenEqui
 	}
 
 	return {
+		schemaVersion: TOKEN_EQUIVALENCE_SCHEMA_VERSION,
 		generatedFrom: baseSha,
 		formattingOnly,
 		importReorder,
-		changedCount: changed.length,
-		changed,
 	};
 }
 
@@ -353,6 +375,6 @@ export function generateLedger(options: MeasureOptions = {}): TokenEquivalenceLe
 if (import.meta.main) {
 	const ledger = generateLedger({ baseRef: process.argv[2], headRef: process.argv[3] });
 	console.log(
-		`wrote the token ledger against ${ledger.generatedFrom}: ${Object.keys(ledger.formattingOnly).length} formatting-only, ${Object.keys(ledger.importReorder).length} import-reorder, ${ledger.changedCount} changed`,
+		`wrote the token ledger against ${ledger.generatedFrom}: ${Object.keys(ledger.formattingOnly).length} formatting-only, ${Object.keys(ledger.importReorder).length} import-reorder`,
 	);
 }

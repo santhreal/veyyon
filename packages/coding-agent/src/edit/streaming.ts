@@ -16,6 +16,7 @@ import {
 	type PatchSection as HashlineInputSection,
 	Patch as HashlinePatch,
 	type SnapshotStore,
+	stripApplyPatchPathNoise,
 } from "@veyyon/hashline";
 import { errorMessage } from "@veyyon/utils";
 import { type EditMode, resolveEditMode } from "../utils/edit-mode";
@@ -235,17 +236,6 @@ function extractHashlineHeaderPaths(input: string): string[] {
 		if (candidate.length > 0) paths.push(candidate);
 	}
 	return paths;
-}
-
-/**
- * Strip the `*** Add/Update/Delete File:` / `*** Move to:` noise that the
- * model sometimes pastes into a hashline header (the hashline tokenizer does
- * the same in its recovery path).
- */
-function stripApplyPatchPathNoise(value: string): string {
-	return value
-		.replace(/^\s*\*{3}\s*(?:Add|Update|Delete)\s+File\s*:\s*/i, "")
-		.replace(/^\s*\*{3}\s*Move\s+to\s*:\s*/i, "");
 }
 
 /** Extract `*** Add/Update/Delete File:` paths from a (possibly partial) apply_patch envelope. */

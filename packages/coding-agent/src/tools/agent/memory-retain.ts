@@ -9,6 +9,7 @@ import { toolsPrompts } from "../../prompts/tools/rows";
 import type { ToolSession } from "..";
 import { abortedPartway } from "../core/aborted-partway";
 import { throwIfAborted } from "../core/tool-errors";
+import { requireMnemopiSessionState } from "./memory-session";
 import { retainToolView } from "./memory-view";
 
 const memoryRetainSchema = type({
@@ -110,10 +111,7 @@ export class MemoryRetainTool implements AgentTool<typeof memoryRetainSchema> {
 		assertMemoryRetainLimits(params.items);
 		const backend = this.session.settings.get("memory.backend");
 		if (backend === "mnemopi") {
-			const state = this.session.getMnemopiSessionState?.();
-			if (!state) {
-				throw new Error("Mnemopi backend is not initialised for this session.");
-			}
+			const state = requireMnemopiSessionState(this.session);
 
 			const stored: string[] = [];
 			for (const [index, item] of params.items.entries()) {

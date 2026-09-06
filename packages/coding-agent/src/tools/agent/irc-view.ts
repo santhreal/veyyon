@@ -22,7 +22,14 @@ import type {
 	ViewTone,
 } from "@veyyon/view";
 import type { IrcDeliveryReceipt } from "../../task/irc-bus";
-import { Ellipsis, getPreviewLines, PREVIEW_LIMITS, replaceTabs, sanitizeErrorText } from "../core/render-utils";
+import {
+	Ellipsis,
+	getPreviewLines,
+	LINE_NOUN,
+	PREVIEW_LIMITS,
+	replaceTabs,
+	sanitizeErrorText,
+} from "../core/render-utils";
 import type { IrcDetails, IrcParams } from "./irc";
 
 /** The arguments the card reads off the call, which are the ones the model sends. */
@@ -42,7 +49,6 @@ const BODY_LINES_EXPANDED = 12;
 /** The columns a body line is cut to, which bounds a pasted paragraph before any host sees it. */
 const BODY_LINE_WIDTH = 100;
 
-const LINE_NOUN = { one: "line", many: "lines" } as const;
 const RECIPIENT_NOUN = { one: "recipient", many: "recipients" } as const;
 const MESSAGE_NOUN = { one: "message", many: "messages" } as const;
 const PEER_NOUN = { one: "peer", many: "peers" } as const;

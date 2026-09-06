@@ -1,261 +1,28 @@
 /**
- * Differential oracle: the web_search tool renderer from origin/main.
- *
- * Source SHA: d0cb967888303de02e573bb8b0f3c5ba6fe66377 (`src/tools/web/search/render.ts`).
- * Frozen: never edited to make a test pass.
- *
- * Only the import specifiers are rewritten to the package subpaths this branch publishes.
+ * Differential oracle: web-search-main-renderer from origin/main.
+ * Source SHA: d0cb967888303de02e573bb8b0f3c5ba6fe66377
  */
-
 import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
-import {
-	framedBlock,
-	outputBlockContentWidth,
-	renderStatusLine,
-	urlHyperlink,
-} from "@veyyon/coding-agent/modes/terminal/draw";
-import { getMarkdownTheme } from "@veyyon/coding-agent/theme/markdown-theme";
-import type { Theme } from "@veyyon/coding-agent/theme/theme";
-import {
-	formatAge,
-	formatCount,
-	formatMoreItems,
-	getDomain,
-	PREVIEW_LIMITS,
-	replaceTabs,
-	shortenEmbeddedPaths,
-	truncateToWidth,
-} from "@veyyon/coding-agent/tools/core/render-utils";
-import { getSearchProviderLabel } from "@veyyon/coding-agent/tools/web/search/provider";
-import type { SearchResponse } from "@veyyon/coding-agent/tools/web/search/types";
+import type { Theme } from "@veyyon/coding-agent/theme/theme-class";
 import type { Component } from "@veyyon/tui";
-import { Markdown, Text } from "@veyyon/tui";
+import { type LegacyRenderer, loadHistoricalOracle } from "./historical-loader";
 
-const MAX_COLLAPSED_ITEMS = PREVIEW_LIMITS.COLLAPSED_ITEMS;
-
-function renderFallbackText(contentText: string, expanded: boolean, theme: Theme): Component {
-	const header = renderStatusLine(
-		{
-			icon: "warning",
-			title: "Web Search",
-			description: "Response",
-		},
-		theme,
-	);
-	const lines = contentText.split("\n").filter(line => line.trim());
-	return framedBlock(theme, width => {
-		const maxLines = expanded ? lines.length : 6;
-		const contentWidth = outputBlockContentWidth(width);
-		const displayLines = lines
-			.slice(0, maxLines)
-			.map(line => truncateToWidth(replaceTabs(shortenEmbeddedPaths(line.trim())), contentWidth));
-		const remaining = lines.length - displayLines.length;
-		const bodyLines: string[] = [];
-		if (displayLines.length === 0) {
-			bodyLines.push(theme.fg("muted", "No response data"));
-		} else {
-			for (const l of displayLines) {
-				bodyLines.push(theme.fg("dim", l));
-			}
-			if (!expanded && remaining > 0) {
-				bodyLines.push(theme.fg("muted", formatMoreItems(remaining, "line")));
-			}
-		}
-		return {
-			header,
-			state: "warning",
-			sections: [{ lines: bodyLines }],
-			width,
-		};
-	});
-}
+const oracle = loadHistoricalOracle("web-search-main-renderer");
 
 export interface SearchRenderDetails {
-	response: SearchResponse;
+	response?: unknown;
 	error?: string;
 }
 
-/** Render a web search failure as a framed error panel, matching the success layout. */
-function renderSearchErrorPanel(message: string, providerLabel: string | undefined, theme: Theme): Component {
-	const header = renderStatusLine({ icon: "error", title: "Web Search", description: providerLabel }, theme);
-	const body = theme.fg("error", `Error: ${replaceTabs(shortenEmbeddedPaths(message))}`);
-	return framedBlock(theme, width => ({
-		header,
-		state: "error",
-		sections: [{ lines: [body] }],
-		width,
-	}));
-}
-
-/** Render web search result with tree-based layout */
-export function renderSearchResult(
-	result: { content: Array<{ type: string; text?: string }>; details?: SearchRenderDetails; isError?: boolean },
+export const renderSearchResult = oracle.renderSearchResult as (
+	result: unknown,
 	options: RenderResultOptions,
 	theme: Theme,
-	args?: {
-		query?: string;
-		maxAnswerLines?: number;
-	},
-): Component {
-	const details = result.details;
-	const rawText = result.content?.find(block => block.type === "text")?.text?.trim() ?? "";
-
-	// Handle error case as a framed panel, matching the success layout.
-	if (result.isError || details?.error) {
-		const errorMessage = details?.error || rawText || "Web search failed";
-		const errorProvider = details?.response?.provider;
-		const errorProviderLabel =
-			errorProvider && errorProvider !== "none" ? getSearchProviderLabel(errorProvider) : undefined;
-		return renderSearchErrorPanel(errorMessage, errorProviderLabel, theme);
-	}
-
-	const response = details?.response;
-	if (!response) {
-		return renderFallbackText(rawText, options.expanded, theme);
-	}
-
-	const sources = Array.isArray(response.sources) ? response.sources : [];
-	const sourceCount = sources.length;
-	const searchQueries = Array.isArray(response.searchQueries)
-		? response.searchQueries.filter(item => typeof item === "string")
-		: [];
-	const provider = response.provider;
-
-	// Get answer text
-	const answerText = typeof response.answer === "string" ? response.answer.trim() : "";
-	const contentText = answerText || rawText;
-
-	const providerLabel = provider !== "none" ? getSearchProviderLabel(provider) : "None";
-	const queryPreview = args?.query
-		? truncateToWidth(args.query, 80)
-		: searchQueries[0]
-			? truncateToWidth(searchQueries[0], 80)
-			: undefined;
-	const success = sourceCount > 0;
-	const header = renderStatusLine(
-		success
-			? {
-					iconOverride: theme.styledSymbol("tool.webSearch", "accent"),
-					title: "Web Search",
-					description: providerLabel,
-					meta: [formatCount("source", sourceCount)],
-				}
-			: {
-					icon: "warning",
-					title: "Web Search",
-					description: providerLabel,
-					meta: [formatCount("source", sourceCount)],
-				},
-		theme,
-	);
-
-	const authShort =
-		response.authMode === "oauth" ? "OAuth" : response.authMode === "api_key" ? "API" : response.authMode;
-	let providerInfo = response.model ? `${response.model} @ ${providerLabel}` : providerLabel;
-	if (authShort) providerInfo += ` (${authShort})`;
-	const metaLines: string[] = [`${theme.fg("muted", "Provider:")} ${theme.fg("text", providerInfo)}`];
-	if (response.usage) {
-		const usageParts: string[] = [];
-		if (response.usage.inputTokens !== undefined) usageParts.push(`in ${response.usage.inputTokens}`);
-		if (response.usage.outputTokens !== undefined) usageParts.push(`out ${response.usage.outputTokens}`);
-		if (response.usage.totalTokens !== undefined) usageParts.push(`total ${response.usage.totalTokens}`);
-		if (response.usage.searchRequests !== undefined) usageParts.push(`search ${response.usage.searchRequests}`);
-		if (usageParts.length > 0)
-			metaLines.push(`${theme.fg("muted", "Usage:")} ${theme.fg("text", usageParts.join(theme.sep.dot))}`);
-	}
-
-	const answerMarkdown = contentText ? new Markdown(contentText, 0, 0, getMarkdownTheme()) : undefined;
-
-	return framedBlock(theme, width => {
-		// Read mutable state at render time
-		const { expanded } = options;
-
-		// Answer lines: full markdown when expanded, capped markdown preview when collapsed.
-		const contentWidth = outputBlockContentWidth(width);
-		const renderedAnswer = answerMarkdown ? answerMarkdown.render(contentWidth) : [];
-		let answerLines: readonly string[];
-		if (renderedAnswer.length === 0) {
-			answerLines = [theme.fg("muted", "No answer text returned")];
-		} else if (args?.maxAnswerLines !== undefined && !expanded) {
-			// CLI compact mode (`veyyon q`) caps the answer; the TUI passes no cap and shows it in full.
-			// `renderedAnswer` is the Markdown component's shared cache — slice copies before appending.
-			const capped = renderedAnswer.slice(0, args.maxAnswerLines);
-			const remaining = renderedAnswer.length - capped.length;
-			if (remaining > 0) {
-				capped.push(theme.fg("muted", formatMoreItems(remaining, "line")));
-			}
-			answerLines = capped;
-		} else {
-			answerLines = renderedAnswer;
-		}
-
-		const maxSources = expanded ? sources.length : Math.min(sources.length, MAX_COLLAPSED_ITEMS);
-		const sourceLines: string[] = [];
-		for (let i = 0; i < maxSources; i++) {
-			const src = sources[i]!;
-			const titleText =
-				typeof src.title === "string" && src.title.trim()
-					? src.title
-					: typeof src.url === "string" && src.url.trim()
-						? src.url
-						: "Untitled";
-			const url = typeof src.url === "string" ? src.url : "";
-			const domain = url ? getDomain(url) : "";
-			const age = formatAge(src.ageSeconds) || (typeof src.publishedDate === "string" ? src.publishedDate : "");
-			const metaParts: string[] = [];
-			if (domain) metaParts.push(theme.fg("dim", `(${domain})`));
-			if (age) metaParts.push(theme.fg("muted", age));
-			const metaSep = theme.fg("dim", theme.sep.dot);
-			const metaSuffix = metaParts.length > 0 ? ` ${metaParts.join(metaSep)}` : "";
-			const titleBudget = Math.max(12, contentWidth - Bun.stringWidth(metaSuffix));
-			const title = theme.fg("accent", truncateToWidth(titleText, titleBudget));
-			const linkedTitle = url ? urlHyperlink(url, title) : title;
-			sourceLines.push(`${linkedTitle}${metaSuffix}`);
-		}
-		const remainingSources = sources.length - maxSources;
-		if (!expanded && remainingSources > 0) {
-			sourceLines.push(theme.fg("muted", formatMoreItems(remainingSources, "source")));
-		}
-
-		return {
-			header,
-			state: sourceCount > 0 ? "success" : "warning",
-			sections: [
-				...(queryPreview
-					? [
-							{
-								lines: [`${theme.fg("muted", "Query:")} ${theme.fg("text", queryPreview)}`],
-							},
-						]
-					: []),
-				{
-					label: theme.fg("toolTitle", "Answer"),
-					lines: answerLines,
-				},
-				{
-					label: theme.fg("toolTitle", "Sources"),
-					lines: sourceLines.length > 0 ? sourceLines : [theme.fg("muted", "No sources returned")],
-				},
-				{ label: theme.fg("toolTitle", "Metadata"), lines: metaLines },
-			],
-			width,
-		};
-	});
-}
-
-/** Render web search call (query preview) */
-export function renderSearchCall(
-	args: { query?: string; [key: string]: unknown },
-	_options: RenderResultOptions,
+	args?: unknown,
+) => Component;
+export const renderSearchCall = oracle.renderSearchCall as (
+	args: unknown,
+	options: RenderResultOptions,
 	theme: Theme,
-): Component {
-	const query = truncateToWidth(args.query ?? "", 80);
-	const text = renderStatusLine({ icon: "pending", title: "Web Search", description: query }, theme);
-	return new Text(text, 0, 0);
-}
-
-export const webSearchToolRenderer = {
-	renderCall: renderSearchCall,
-	renderResult: renderSearchResult,
-	mergeCallAndResult: true,
-};
+) => Component;
+export const webSearchToolRenderer = oracle.webSearchToolRenderer as LegacyRenderer;

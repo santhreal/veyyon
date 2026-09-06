@@ -13,14 +13,34 @@ export function toSearchSources(
 		publishedDate?: string;
 	}>,
 	numResults: number,
+	options?: { deduplicate?: boolean },
 ): SearchSource[] {
-	return sources.slice(0, numResults).map(source => ({
-		title: source.title,
-		url: source.url,
-		snippet: source.snippet,
-		publishedDate: source.publishedDate,
-		ageSeconds: dateToAgeSeconds(source.publishedDate),
-	}));
+	if (!options?.deduplicate) {
+		return sources.slice(0, numResults).map(source => ({
+			title: source.title,
+			url: source.url,
+			snippet: source.snippet,
+			publishedDate: source.publishedDate,
+			ageSeconds: dateToAgeSeconds(source.publishedDate),
+		}));
+	}
+	const max = Math.max(0, Math.floor(numResults) || 0);
+	if (max === 0) return [];
+	const out: SearchSource[] = [];
+	const seen = new Set<string>();
+	for (const source of sources) {
+		if (seen.has(source.url)) continue;
+		seen.add(source.url);
+		out.push({
+			title: source.title,
+			url: source.url,
+			snippet: source.snippet,
+			publishedDate: source.publishedDate,
+			ageSeconds: dateToAgeSeconds(source.publishedDate),
+		});
+		if (out.length >= max) break;
+	}
+	return out;
 }
 
 /**

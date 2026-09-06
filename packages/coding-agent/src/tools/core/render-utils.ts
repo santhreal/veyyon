@@ -16,17 +16,13 @@ import { getKeybindings } from "@veyyon/utils/keybindings";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { truncateToWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "@veyyon/utils/wrap";
+import type { ViewLine } from "@veyyon/view";
 import { formatKeyHints, type KeyId } from "../../config/keybindings";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../config/settings-instance";
 import type { Theme, ThemeColor } from "../../theme/theme";
 import { formatDimensionNote, type ResizedImage } from "../../utils/image-resize";
-import {
-	getSeverityRank,
-	type ParsedDiagnostic,
-	parseDiagnosticMessage,
-	sanitizeDiagnosticDisplayText,
-} from "./diagnostics";
+import { groupByFile, sanitizeDiagnosticDisplayText } from "./diagnostics";
 import { isPathWithinCwd } from "./path-utils";
 import { TRUNCATE_LENGTHS } from "./render-limits";
 import { shortenPath } from "./shorten-path";
@@ -94,6 +90,21 @@ export function getPreviewLines(text: string, maxLines: number, maxLineLen: numb
  */
 export function previewLine(text: string, maxWidth: number, ellipsis?: Ellipsis): string {
 	return truncateToWidth(collapseWhitespace(text), maxWidth, ellipsis);
+}
+
+/**
+ * Split text into lines, collapsing trailing carriage-return overwrite artifacts (\r).
+ */
+export function screenRows(text: string): string[] {
+	return text.split(/\r?\n/).map(row => {
+		const at = row.lastIndexOf("\r");
+		return at < 0 ? row : row.slice(at + 1);
+	});
+}
+
+/** Single-line warning span pair for empty or zero-result tool views */
+export function emptyStatusLine(label: string): ViewLine {
+	return [{ text: "", symbol: "status.warning", tone: "warning" }, { text: " " }, { text: label, tone: "muted" }];
 }
 
 // =============================================================================
@@ -438,29 +449,7 @@ export function formatDiagnostics(
 ): string {
 	if (diag.messages.length === 0) return "";
 
-	const byFile = new Map<string, ParsedDiagnostic[]>();
-	const unparsed: string[] = [];
-
-	for (const msg of diag.messages) {
-		const parsed = parseDiagnosticMessage(msg);
-		if (parsed) {
-			const existing = byFile.get(parsed.filePath) ?? [];
-			existing.push(parsed);
-			byFile.set(parsed.filePath, existing);
-		} else {
-			unparsed.push(sanitizeDiagnosticDisplayText(msg));
-		}
-	}
-
-	for (const diagnostics of byFile.values()) {
-		diagnostics.sort((a, b) => {
-			const severityCompare = getSeverityRank(a.severity) - getSeverityRank(b.severity);
-			if (severityCompare !== 0) return severityCompare;
-			if (a.line !== b.line) return a.line - b.line;
-			if (a.col !== b.col) return a.col - b.col;
-			return a.message.localeCompare(b.message);
-		});
-	}
+	const { byFile, unparsed } = groupByFile(diag.messages);
 
 	const headerIcon = diag.errored
 		? theme.styledSymbol("status.error", "error")

@@ -2,13 +2,13 @@ import type { AuthStorage } from "@veyyon/ai";
 import { withHardTimeout } from "@veyyon/web/hard-timeout";
 import { decodeHtmlEntities } from "@veyyon/web/scrapers/types";
 import { resolveProviderTextTransform, transformProviderPayload } from "../../../../provider-boundary";
-import type { SearchResponse, SearchSource } from "../types";
+import type { SearchResponse } from "../types";
 import { SearchProviderError } from "../types";
 import { clampNumResults, SEARCH_DEFAULT_NUM_RESULTS } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import { browserFetch } from "./browser-page";
-import { classifyProviderHttpError } from "./utils";
+import { classifyProviderHttpError, toSearchSources } from "./utils";
 
 /**
  * DuckDuckGo's no-JS HTML search frontend. POST `q=…` to receive a static
@@ -186,16 +186,7 @@ export async function searchDuckDuckGo(params: SearchParams): Promise<SearchResp
 	const html = await callDuckDuckGoHtml(params);
 	const parsed = parseHtmlResults(html);
 
-	const sources: SearchSource[] = [];
-	const seen = new Set<string>();
-	for (const result of parsed) {
-		if (seen.has(result.url)) continue;
-		seen.add(result.url);
-		sources.push({ title: result.title, url: result.url, snippet: result.snippet });
-		if (sources.length >= numResults) break;
-	}
-
-	return { provider: "duckduckgo", sources };
+	return { provider: "duckduckgo", sources: toSearchSources(parsed, numResults, { deduplicate: true }) };
 }
 
 /** Search provider for DuckDuckGo (no API key required). */

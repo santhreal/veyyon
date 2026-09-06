@@ -25,7 +25,7 @@ import type {
 } from "@veyyon/view";
 import { getLanguageFromPath } from "../../utils/lang-from-path";
 import { formatFullOutputReference } from "../core/output-meta";
-import { sanitizeErrorText } from "../core/render-utils";
+import { emptyStatusLine as emptyLine, FILE_NOUN, sanitizeErrorText } from "../core/render-utils";
 import { COLLAPSED_LIST_LIMIT, type FileSearchDetails, type FileSearchRenderArgs } from "./file-search";
 
 /** What every card of this tool is titled. */
@@ -33,9 +33,6 @@ const FILE_SEARCH_TITLE = "Search files";
 
 /** The tool's own mark, which a settled card is titled by instead of an outcome icon. */
 const FILE_SEARCH_EMBLEM = "icon.search";
-
-/** The unit every held-back count on this card is in, which the host words. */
-const FILE_NOUN = { one: "file", many: "files" } as const;
 
 /** The result the card reads, which is the tool's own result shape narrowed to what a card shows. */
 export interface FileSearchViewResult {
@@ -123,11 +120,6 @@ function noteSection(details: FileSearchDetails | undefined, truncated: boolean)
 		lines.push([{ text: `skipped missing: ${missingPaths.join(", ")}`, tone: "warning" }]);
 	}
 	return lines.length === 0 ? undefined : { lines, clip: true };
-}
-
-/** The empty answer, which is a warning mark and the words that say which kind of empty it is. */
-function emptyLine(label: string): ViewLine {
-	return [{ text: "", symbol: "status.warning", tone: "warning" }, { text: " " }, { text: label, tone: "muted" }];
 }
 
 export const fileSearchToolView: Required<ToolViewRenderer<FileSearchRenderArgs, FileSearchViewResult>> = {

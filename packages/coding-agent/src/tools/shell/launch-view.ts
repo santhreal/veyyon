@@ -26,6 +26,7 @@ import type { DaemonSnapshot, DaemonState } from "../../launch/protocol";
 import {
 	DEFAULT_TERMINAL_PREVIEW_LINES,
 	formatDuration,
+	LINE_NOUN,
 	PREVIEW_LIMITS,
 	pluralize,
 	previewLine,
@@ -40,9 +41,6 @@ const LAUNCH_TITLE = "Launch";
 
 /** The tool's own mark, which a settled card is titled by instead of an outcome icon. */
 const LAUNCH_EMBLEM = "tool.launch";
-
-/** The unit a held-back output count is in, which the host words. */
-const LINE_NOUN = { one: "line", many: "lines" } as const;
 
 /** The unit a held-back `list` count is in: the rows of that card are processes, not lines. */
 const PROCESS_NOUN = { one: "process", many: "processes" } as const;

@@ -1,23 +1,17 @@
 /**
  * Measure the published surface area (manifest identity, entrypoints, subpath exports,
- * and barrel export declarations) across all workspace packages from a base git ref,
- * and record additions and relocations on HEAD into the committed ledger fixture.
+ * and barrel exports) across git revisions and workspace members.
  *
- * WHY THIS SCRIPT EXISTS. Workspace reorganizations (such as PR #927 "Everything as a Plugin")
- * relocate packages across top-level directories, restructure subpath exports, and split barrels.
- * To guarantee that no consumer-visible package name, bin key, exports subpath, or barrel export
- * was dropped accidentally, this generator measures the baseline published surface at the branch
- * point, records it into `scripts/fixtures/published-surface.json`, and records every addition and
- * relocation so the test suite can enforce exact parity without invoking git in CI.
+ * All baseline package records are measured dynamically from the pinned Git baseline commit
+ * (`aa14e0da82494dac5a06d240180cec88038a105f`) in batched reads via `scripts/git-baseline.ts`.
+ * The sparse approval fixture records approved additions, documented key relocations,
+ * resolved subpaths, and star-edge relocations under schema version 2.
  *
- * The baseline is the merge base, not `origin/main`: main keeps moving, and a module main added
- * after the branch point is not a surface the branch removed.
- *
- * Run: bun scripts/measure-published-surface.ts [base-ref]
+ * Run: bun scripts/measure-published-surface.ts [base-ref] [head-ref]
  */
 
-import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, posix, resolve } from "node:path";
 import { parse as parseBabel } from "@babel/parser";
 import type {
@@ -31,6 +25,16 @@ import type {
 	ObjectPattern,
 	RestElement,
 } from "@babel/types";
+import {
+	batchReadGitBlobs,
+	ensureBaselineAvailable,
+	PINNED_BASELINE_COMMIT,
+	REPO_ROOT,
+	readGitTree,
+} from "./git-baseline";
+import { typeScriptMembersOf } from "./workspace-layout";
+
+export const PUBLISHED_SURFACE_SCHEMA_VERSION = 2;
 
 export interface PackageManifestRecord {
 	readonly name: string;
@@ -48,10 +52,26 @@ export interface PackageManifestRecord {
 	readonly starEdges: readonly string[];
 }
 
+export interface PackageAddedResolvedSubpaths {
+	readonly subpaths?: readonly string[];
+	readonly pairedJsSubpaths?: readonly string[];
+}
+
+export type RawPackageAddedResolvedSubpaths = readonly string[] | PackageAddedResolvedSubpaths;
+
 export interface AdditionsRecord {
 	readonly packages: readonly string[];
 	readonly exportsKeys: Readonly<Record<string, readonly string[]>>;
 	readonly resolvedSubpaths: Readonly<Record<string, readonly string[]>>;
+	readonly namedExports: Readonly<Record<string, readonly string[]>>;
+	readonly starEdges: Readonly<Record<string, readonly string[]>>;
+	readonly binKeys: Readonly<Record<string, readonly string[]>>;
+}
+
+export interface AdditionsApprovalRecord {
+	readonly packages: readonly string[];
+	readonly exportsKeys: Readonly<Record<string, readonly string[]>>;
+	readonly resolvedSubpaths: Readonly<Record<string, RawPackageAddedResolvedSubpaths>>;
 	readonly namedExports: Readonly<Record<string, readonly string[]>>;
 	readonly starEdges: Readonly<Record<string, readonly string[]>>;
 	readonly binKeys: Readonly<Record<string, readonly string[]>>;
@@ -68,6 +88,18 @@ export interface RelocationNote {
 	readonly why: string;
 }
 
+export interface PackageResolvedSubpathsRelocations {
+	readonly records: Readonly<Record<string, RelocationNote>>;
+	readonly jsAliases?: {
+		readonly suffixReason?: readonly string[];
+		readonly sameReason?: readonly string[];
+	};
+}
+
+export type RawPackageResolvedSubpathsRelocations =
+	| Readonly<Record<string, RelocationNote>>
+	| PackageResolvedSubpathsRelocations;
+
 export interface RelocationsRecord {
 	readonly exportsKeys: Readonly<Record<string, Readonly<Record<string, RelocationNote>>>>;
 	/**
@@ -79,50 +111,75 @@ export interface RelocationsRecord {
 	readonly starEdges: Readonly<Record<string, Readonly<Record<string, string>>>>;
 }
 
+export interface RelocationsApprovalRecord {
+	readonly exportsKeys: Readonly<Record<string, Readonly<Record<string, RelocationNote>>>>;
+	readonly resolvedSubpaths: Readonly<Record<string, RawPackageResolvedSubpathsRelocations>>;
+	readonly starEdges: Readonly<Record<string, Readonly<Record<string, string>>>>;
+}
+
 export interface PublishedSurfaceLedger {
+	readonly schemaVersion: number;
 	readonly generatedFrom: string;
 	readonly packages: Readonly<Record<string, PackageManifestRecord>>;
 	readonly additions: AdditionsRecord;
 	readonly relocations: RelocationsRecord;
 }
 
-const REPO_ROOT = resolve(import.meta.dirname, "..");
-const FIXTURE_PATH = join(REPO_ROOT, "scripts", "fixtures", "published-surface.json");
-
-/** Extract git file text from a specific git ref. */
-export function readGitFile(ref: string, relativePath: string): string | null {
-	try {
-		return execSync(`git show ${ref}:${relativePath}`, {
-			cwd: REPO_ROOT,
-			encoding: "utf-8",
-			maxBuffer: 16 * 1024 * 1024,
-			stdio: ["pipe", "pipe", "ignore"],
-		});
-	} catch {
-		return null;
-	}
+export interface PublishedSurfaceApprovalLedger {
+	readonly schemaVersion: number;
+	readonly generatedFrom: string;
+	readonly additions: AdditionsApprovalRecord;
+	readonly relocations: RelocationsApprovalRecord;
 }
 
-const REF_FILE_LISTS = new Map<string, readonly string[]>();
+export interface WorkspacePackageSnapshot {
+	readonly name: string;
+	readonly directory: string;
+	readonly private: boolean;
+	readonly version: string | null;
+	readonly main: string | null;
+	readonly module: string | null;
+	readonly types: string | null;
+	readonly binKeys: readonly string[];
+	readonly exportsKeys: readonly string[];
+	readonly resolvedSubpaths: readonly string[];
+	readonly entrypoint: string | null;
+	readonly entrypointFilePath: string | null;
+	readonly namedExports: readonly string[];
+	readonly starEdges: readonly string[];
+}
 
-/** Every path a ref tracks, listed once per ref. */
-export function refFiles(ref: string): readonly string[] {
-	const cached = REF_FILE_LISTS.get(ref);
-	if (cached) return cached;
-	const listed = execSync(`git ls-tree -r --name-only ${ref}`, {
-		cwd: REPO_ROOT,
-		encoding: "utf-8",
-		maxBuffer: 16 * 1024 * 1024,
-	})
-		.trim()
-		.split("\n")
-		.filter(Boolean);
-	REF_FILE_LISTS.set(ref, listed);
-	return listed;
+export const FIXTURE_PATH = join(REPO_ROOT, "scripts", "fixtures", "published-surface.json");
+
+/**
+ * Every file under one member, repository-relative.
+ */
+export function filesUnderMember(member: string, repoRoot: string = REPO_ROOT): string[] {
+	let stdout: Buffer;
+	try {
+		stdout = execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", member], {
+			cwd: repoRoot,
+			encoding: "buffer",
+			maxBuffer: 32 * 1024 * 1024,
+		});
+	} catch (error) {
+		throw new Error(
+			`Failed to enumerate files under "${member}" via git ls-files at ${repoRoot}: ${error instanceof Error ? error.message : String(error)}`,
+		);
+	}
+	const raw = stdout.toString("utf-8");
+	if (raw.length === 0) return [];
+	return raw
+		.split("\0")
+		.filter(entry => entry.length > 0)
+		.filter(entry => {
+			const full = join(repoRoot, entry);
+			return existsSync(full) && statSync(full).isFile();
+		});
 }
 
 /** The file an `exports` condition object or string points at, preferring what an importer resolves. */
-function exportTarget(value: unknown): string | null {
+export function exportTarget(value: unknown): string | null {
 	if (typeof value === "string") return value;
 	if (value === null || typeof value !== "object") return null;
 	const record = value as Record<string, unknown>;
@@ -140,15 +197,6 @@ function exportTarget(value: unknown): string | null {
 /**
  * Every subpath a consumer can import from one package, with each `exports` pattern expanded against
  * the files that exist beside it.
- *
- * WHY A KEY IS NOT A SUBPATH. `"./session/*"` is one key and served 36 importable modules. Moving
- * those modules to another package leaves the key in place and removes every subpath it served, so a
- * ledger of keys reports no change at all. That is how 55 published modules left
- * `@veyyon/coding-agent` in this branch without one key changing, and it is why the parity claim is
- * stated over resolved subpaths instead.
- *
- * `files` is the repository-relative file list of the tree being measured, so the same expansion runs
- * against a git ref's listing and against the working tree without a second implementation.
  */
 export function expandExportsToFileMap(
 	exportsField: unknown,
@@ -210,7 +258,7 @@ export function resolveEntrypoint(pkgData: { exports?: unknown; main?: string; m
 	return null;
 }
 
-function extractPatternIdentifiers(patternNode: Node | null | undefined, names: Set<string>): void {
+export function extractPatternIdentifiers(patternNode: Node | null | undefined, names: Set<string>): void {
 	if (!patternNode) return;
 	if (patternNode.type === "Identifier") {
 		names.add((patternNode as Identifier).name);
@@ -283,9 +331,6 @@ export function parseBarrelSource(code: string): {
 				}
 			}
 		} else if (node.type === "ExportAllDeclaration") {
-			// A bare `export * from "./x"` is a star edge. `export * as ns from "./x"` is not an
-			// `ExportAllDeclaration` at all: Babel reports it as a named export carrying an
-			// `ExportNamespaceSpecifier`, which the branch above records by its local name.
 			starEdges.add(node.source.value);
 		}
 	}
@@ -296,19 +341,57 @@ export function parseBarrelSource(code: string): {
 	};
 }
 
-/** Resolve a relative star export specifier (e.g. `./foo`) to an actual file on disk. */
-export function resolveStarSpecifierToDisk(fromFile: string, specifier: string): string | null {
-	const dir = dirname(fromFile);
+let workspaceDirectoriesByRepo: Map<string, Map<string, string>> | undefined;
+
+export function memberDirectoryOf(packageName: string, repoRoot: string = REPO_ROOT): string | undefined {
+	if (workspaceDirectoriesByRepo === undefined) {
+		workspaceDirectoriesByRepo = new Map();
+	}
+	let dirs = workspaceDirectoriesByRepo.get(repoRoot);
+	if (dirs === undefined) {
+		dirs = new Map();
+		for (const member of typeScriptMembersOf(repoRoot)) {
+			const manifestPath = join(repoRoot, member, "package.json");
+			if (!existsSync(manifestPath)) continue;
+			const data = JSON.parse(readFileSync(manifestPath, "utf-8")) as { name?: unknown };
+			if (typeof data.name === "string") dirs.set(data.name, join(repoRoot, member));
+		}
+		workspaceDirectoriesByRepo.set(repoRoot, dirs);
+	}
+	return dirs.get(packageName);
+}
+
+/** Resolve a star export specifier (e.g. `./foo` or `@veyyon/kernel/session/...`) to an actual file on disk. */
+export function resolveStarSpecifierToDisk(
+	fromFile: string,
+	specifier: string,
+	repoRoot: string = REPO_ROOT,
+): string | null {
+	let base = dirname(fromFile);
+	let body = specifier;
+	if (!specifier.startsWith(".")) {
+		const scoped = specifier.startsWith("@");
+		const parts = specifier.split("/");
+		const packageName = scoped ? parts.slice(0, 2).join("/") : parts[0];
+		const rest = parts.slice(scoped ? 2 : 1).join("/");
+		const memberDir = packageName === undefined ? undefined : memberDirectoryOf(packageName, repoRoot);
+		if (memberDir === undefined) return null;
+		base = existsSync(join(memberDir, "src")) ? join(memberDir, "src") : memberDir;
+		body = (rest === "" ? "index" : rest).replace(/\.js$/, "");
+	}
+	const dir = base;
+	const cleanBody = body.replace(/\.js$/, "");
 	const candidates = [
-		resolve(dir, specifier),
-		resolve(dir, `${specifier}.ts`),
-		resolve(dir, `${specifier}.tsx`),
-		resolve(dir, `${specifier}.d.ts`),
-		resolve(dir, `${specifier}.js`),
-		resolve(dir, specifier, "index.ts"),
-		resolve(dir, specifier, "index.tsx"),
-		resolve(dir, specifier, "index.d.ts"),
-		resolve(dir, specifier, "index.js"),
+		resolve(dir, body),
+		resolve(dir, cleanBody),
+		resolve(dir, `${cleanBody}.ts`),
+		resolve(dir, `${cleanBody}.tsx`),
+		resolve(dir, `${cleanBody}.d.ts`),
+		resolve(dir, `${cleanBody}.js`),
+		resolve(dir, cleanBody, "index.ts"),
+		resolve(dir, cleanBody, "index.tsx"),
+		resolve(dir, cleanBody, "index.d.ts"),
+		resolve(dir, cleanBody, "index.js"),
 	];
 	for (const candidate of candidates) {
 		if (existsSync(candidate) && statSync(candidate).isFile()) {
@@ -318,57 +401,86 @@ export function resolveStarSpecifierToDisk(fromFile: string, specifier: string):
 	return null;
 }
 
-/** Discover workspace member package manifests from a git ref. */
-export function discoverWorkspaceManifests(
+/**
+ * Measure the published surface of a given git ref using batched Git blob reading.
+ */
+export async function measurePublishedSurface(
 	ref: string,
-): Array<{ dir: string; manifestPath: string; data: Record<string, unknown> }> {
-	const rootManifestRaw = readGitFile(ref, "package.json");
-	if (!rootManifestRaw) throw new Error(`Could not read root package.json at ${ref}`);
-	const rootManifest = JSON.parse(rootManifestRaw) as {
-		workspaces?: { packages?: string[] };
-	};
-	const globs = rootManifest.workspaces?.packages ?? [];
-	const allFiles = refFiles(ref);
+	repoRoot: string = REPO_ROOT,
+): Promise<Record<string, PackageManifestRecord>> {
+	ensureBaselineAvailable(repoRoot, ref);
+	const tree = readGitTree(ref, repoRoot);
+	const allFiles = [...tree.keys()];
 
-	const manifests: Array<{ dir: string; manifestPath: string; data: Record<string, unknown> }> = [];
-	for (const f of allFiles) {
-		if (f.endsWith("/package.json") && f !== "package.json") {
-			const d = f.slice(0, -"/package.json".length);
-			let matched = false;
-			for (const g of globs) {
-				if (g.endsWith("/*")) {
-					const prefix = g.slice(0, -2);
-					if (d.startsWith(`${prefix}/`) && !d.slice(prefix.length + 1).includes("/")) {
-						matched = true;
-						break;
-					}
-				} else if (g === d) {
+	// 1. Discover all candidate package.json files
+	const candidateManifestPaths = allFiles.filter(f => f.endsWith("/package.json") && f !== "package.json");
+
+	// 2. Batch read root package.json + all candidate manifests
+	const manifestSpecs = ["package.json", ...candidateManifestPaths].map(p => `${ref}:${p}`);
+	const manifestBlobs = await batchReadGitBlobs(manifestSpecs, repoRoot);
+
+	const rootManifestBuffer = manifestBlobs.get(`${ref}:package.json`);
+	if (!rootManifestBuffer) {
+		throw new Error(`Could not read root package.json at ${ref}`);
+	}
+	const rootManifest = JSON.parse(rootManifestBuffer.toString("utf-8")) as {
+		workspaces?: { packages?: string[] } | string[];
+	};
+	const globs = Array.isArray(rootManifest.workspaces)
+		? rootManifest.workspaces
+		: (rootManifest.workspaces?.packages ?? []);
+
+	// Filter matched manifests
+	const matchedManifests: Array<{ dir: string; manifestPath: string; data: Record<string, unknown> }> = [];
+	for (const f of candidateManifestPaths) {
+		const d = f.slice(0, -"/package.json".length);
+		let matched = false;
+		for (const g of globs) {
+			if (g.endsWith("/*")) {
+				const prefix = g.slice(0, -2);
+				if (d.startsWith(`${prefix}/`) && !d.slice(prefix.length + 1).includes("/")) {
 					matched = true;
 					break;
 				}
+			} else if (g === d) {
+				matched = true;
+				break;
 			}
-			if (matched) {
-				const content = readGitFile(ref, f);
-				if (content) {
-					manifests.push({
-						dir: d,
-						manifestPath: f,
-						data: JSON.parse(content) as Record<string, unknown>,
-					});
-				}
+		}
+		if (matched) {
+			const buf = manifestBlobs.get(`${ref}:${f}`);
+			if (buf) {
+				matchedManifests.push({
+					dir: d,
+					manifestPath: f,
+					data: JSON.parse(buf.toString("utf-8")) as Record<string, unknown>,
+				});
+			}
+		}
+	}
+	matchedManifests.sort((a, b) => a.dir.localeCompare(b.dir));
+
+	// 3. Collect entrypoint file paths to batch read
+	const entrypointSpecs: string[] = [];
+	const memberEntrypoints: Map<string, string> = new Map();
+	for (const member of matchedManifests) {
+		const entry = resolveEntrypoint(member.data);
+		if (entry) {
+			const entryRelative = entry.replace(/^\.\//, "");
+			const entryFilePath = posix.join(member.dir, entryRelative);
+			if (tree.has(entryFilePath)) {
+				entrypointSpecs.push(`${ref}:${entryFilePath}`);
+				memberEntrypoints.set(member.dir, entryFilePath);
 			}
 		}
 	}
 
-	return manifests.sort((a, b) => a.dir.localeCompare(b.dir));
-}
+	// 4. Batch read all entrypoints
+	const entryBlobs = await batchReadGitBlobs(entrypointSpecs, repoRoot);
 
-/** Measure the published surface of a given git ref. */
-export function measurePublishedSurface(ref: string): Record<string, PackageManifestRecord> {
-	const workspaceManifests = discoverWorkspaceManifests(ref);
+	// 5. Construct PackageManifestRecord for each workspace package
 	const packages: Record<string, PackageManifestRecord> = {};
-
-	for (const member of workspaceManifests) {
+	for (const member of matchedManifests) {
 		const data = member.data;
 		const name = typeof data.name === "string" ? data.name : member.dir;
 		const priv = Boolean(data.private);
@@ -378,31 +490,29 @@ export function measurePublishedSurface(ref: string): Record<string, PackageMani
 		const types = typeof data.types === "string" ? data.types : null;
 
 		const binKeys =
-			typeof data.bin === "object" && data.bin !== null
+			typeof data.bin === "object" && data.bin !== null && !Array.isArray(data.bin)
 				? Object.keys(data.bin as Record<string, unknown>).sort()
 				: typeof data.bin === "string"
 					? [name.split("/").pop() ?? name]
 					: [];
 
 		const exportsKeys =
-			typeof data.exports === "object" && data.exports !== null
+			typeof data.exports === "object" && data.exports !== null && !Array.isArray(data.exports)
 				? Object.keys(data.exports as Record<string, unknown>).sort()
 				: typeof data.exports === "string"
 					? ["."]
 					: [];
-
-		const resolvedSubpaths = expandExportsToSubpaths(data.exports, member.dir, refFiles(ref));
+		const resolvedSubpaths = expandExportsToSubpaths(data.exports, member.dir, allFiles);
 
 		const entrypoint = resolveEntrypoint(data);
 		let namedExports: string[] = [];
 		let starEdges: string[] = [];
 
-		if (entrypoint) {
-			const entryRelative = entrypoint.replace(/^\.\//, "");
-			const entryFilePath = posix.join(member.dir, entryRelative);
-			const code = readGitFile(ref, entryFilePath);
-			if (code) {
-				const parsed = parseBarrelSource(code);
+		const entryFilePath = memberEntrypoints.get(member.dir);
+		if (entryFilePath) {
+			const buf = entryBlobs.get(`${ref}:${entryFilePath}`);
+			if (buf) {
+				const parsed = parseBarrelSource(buf.toString("utf-8"));
 				namedExports = parsed.namedExports;
 				starEdges = parsed.starEdges;
 			}
@@ -428,302 +538,667 @@ export function measurePublishedSurface(ref: string): Record<string, PackageMani
 	return packages;
 }
 
-/**
- * The commit this branch started from, which is the tree the claim is about.
- *
- * `origin/main` was the baseline until main gained a module the branch had never seen. The generator
- * read it as a subpath the branch stopped serving, found no rename for it, and aborted — a real
- * answer to the wrong question. A surface claim about a branch compares the branch against what it
- * branched from, which is what a pull request diffs and what `merge-base` names.
- */
-function mergeBaseWithMain(): string {
-	return execSync("git merge-base origin/main HEAD", { cwd: REPO_ROOT, encoding: "utf-8" }).trim();
+export function loadHeadPackages(repoRoot: string = REPO_ROOT): Map<string, WorkspacePackageSnapshot> {
+	const members = typeScriptMembersOf(repoRoot);
+	const packages = new Map<string, WorkspacePackageSnapshot>();
+
+	for (const member of members) {
+		const manifestPath = join(repoRoot, member, "package.json");
+		if (!existsSync(manifestPath)) continue;
+
+		const raw = readFileSync(manifestPath, "utf-8");
+		const data = JSON.parse(raw) as Record<string, unknown>;
+		const name = typeof data.name === "string" ? data.name : member;
+		const priv = Boolean(data.private);
+		const version = typeof data.version === "string" ? data.version : null;
+		const main = typeof data.main === "string" ? data.main : null;
+		const module = typeof data.module === "string" ? data.module : null;
+		const types = typeof data.types === "string" ? data.types : null;
+
+		const binKeys =
+			typeof data.bin === "object" && data.bin !== null && !Array.isArray(data.bin)
+				? Object.keys(data.bin as Record<string, unknown>).sort()
+				: typeof data.bin === "string"
+					? [name.split("/").pop() ?? name]
+					: [];
+
+		const exportsKeys =
+			typeof data.exports === "object" && data.exports !== null && !Array.isArray(data.exports)
+				? Object.keys(data.exports as Record<string, unknown>).sort()
+				: typeof data.exports === "string"
+					? ["."]
+					: [];
+
+		const resolvedSubpaths = expandExportsToSubpaths(data.exports, member, filesUnderMember(member, repoRoot));
+
+		const entrypoint = resolveEntrypoint(data);
+		let namedExports: string[] = [];
+		let starEdges: string[] = [];
+		let entrypointFilePath: string | null = null;
+
+		if (entrypoint) {
+			const entryRelative = entrypoint.replace(/^\.\//, "");
+			const resolvedPath = resolve(repoRoot, member, entryRelative);
+			if (existsSync(resolvedPath)) {
+				entrypointFilePath = resolvedPath;
+				const code = readFileSync(resolvedPath, "utf-8");
+				const parsed = parseBarrelSource(code);
+				namedExports = parsed.namedExports;
+				starEdges = parsed.starEdges;
+			}
+		}
+
+		packages.set(name, {
+			name,
+			directory: member,
+			private: priv,
+			version,
+			main,
+			module,
+			types,
+			binKeys,
+			exportsKeys,
+			resolvedSubpaths,
+			entrypoint,
+			entrypointFilePath,
+			namedExports,
+			starEdges,
+		});
+	}
+
+	return packages;
 }
 
-/**
- * The `exports` keys this branch relocated, with the successor each one resolves to.
- *
- * Hoisted out of the ledger body because the resolved-subpath layer reads the same rows: a subpath
- * served by a relocated key relocates with it, and a git rename cannot see that move when the key
- * changed and the file did not.
- */
-const DOCUMENTED_KEY_RELOCATIONS: Readonly<Record<string, Readonly<Record<string, RelocationNote>>>> = {
-	"@veyyon/coding-agent": {
-		"./capability": {
-			to: "./discovery/capability",
-			why: "the same modules are published at ./discovery/capability after the move",
-		},
-		"./capability/*": {
-			to: "./discovery/capability/*",
-			why: "the same modules are published at ./discovery/capability/* after the move",
-		},
-		"./cli/commands/*": {
-			to: "./cli/*",
-			why: "the command dispatchers sit directly under src/cli/, which ./cli/* serves",
-		},
-		"./commit/git/*": {
-			to: "./commit/*",
-			why: "the git helpers sit directly under src/commit/, which ./commit/* serves",
-		},
-		"./dap": { to: "./debug/dap", why: "the same modules are published at ./debug/dap after the move" },
-		"./dap/*": { to: "./debug/dap/*", why: "the same modules are published at ./debug/dap/* after the move" },
-		"./hindsight": {
-			to: "./memory/hindsight",
-			why: "the same modules are published at ./memory/hindsight after the move",
-		},
-		"./hindsight/*": {
-			to: "./memory/hindsight/*",
-			why: "the same modules are published at ./memory/hindsight/* after the move",
-		},
-		"./markit": {
-			to: "./export/markit",
-			why: "the same modules are published at ./export/markit after the move",
-		},
-		"./markit/*": {
-			to: "./export/markit/*",
-			why: "the same modules are published at ./export/markit/* after the move",
-		},
-		"./memories": {
-			to: "./memory/*",
-			why: "the memory modules are flat under src/memory/, which ./memory/* serves",
-		},
-		"./memories/*": {
-			to: "./memory/*",
-			why: "the memory modules are flat under src/memory/, which ./memory/* serves",
-		},
-		"./memory-backend": {
-			to: "./memory/*",
-			why: "the backend modules are flat under src/memory/, which ./memory/* serves",
-		},
-		"./memory-backend/*": {
-			to: "./memory/*",
-			why: "the backend modules are flat under src/memory/, which ./memory/* serves",
-		},
-		"./modes/components": {
-			to: "./modes/terminal/components",
-			why: "the same modules are published at ./modes/terminal/components after the move",
-		},
-		"./modes/components/*": {
-			to: "./modes/terminal/components/*",
-			why: "the same modules are published at ./modes/terminal/components/* after the move",
-		},
-		"./modes/components/extensions": {
-			to: "./modes/terminal/components/extensions",
-			why: "the same modules are published at ./modes/terminal/components/extensions after the move",
-		},
-		"./modes/components/extensions/*": {
-			to: "./modes/terminal/components/extensions/*",
-			why: "the same modules are published at ./modes/terminal/components/extensions/* after the move",
-		},
-		"./modes/components/status-line": {
-			to: "./modes/terminal/components/status-line",
-			why: "the same modules are published at ./modes/terminal/components/status-line after the move",
-		},
-		"./modes/components/status-line/*": {
-			to: "./modes/terminal/components/status-line/*",
-			why: "the same modules are published at ./modes/terminal/components/status-line/* after the move",
-		},
-		"./modes/controllers/*": {
-			to: "./modes/terminal/controllers/*",
-			why: "the same modules are published at ./modes/terminal/controllers/* after the move",
-		},
-		"./modes/setup-wizard": {
-			to: "./modes/terminal/setup-wizard",
-			why: "the same modules are published at ./modes/terminal/setup-wizard after the move",
-		},
-		"./modes/setup-wizard/*": {
-			to: "./modes/terminal/setup-wizard/*",
-			why: "the same modules are published at ./modes/terminal/setup-wizard/* after the move",
-		},
-		"./modes/theme/*": { to: "./theme/*", why: "the same modules are published at ./theme/* after the move" },
-		"./modes/theme/defaults": {
-			to: "./theme/defaults",
-			why: "the same modules are published at ./theme/defaults after the move",
-		},
-		"./modes/utils/*": {
-			to: "./modes/terminal/utils/*",
-			why: "the same modules are published at ./modes/terminal/utils/* after the move",
-		},
-		"./stt": { to: "./speech/stt", why: "the same modules are published at ./speech/stt after the move" },
-		"./stt/*": { to: "./speech/stt/*", why: "the same modules are published at ./speech/stt/* after the move" },
-		"./tool-discovery/*": {
-			to: "./discovery/*",
-			why: "the discovery modules are flat under src/discovery/, which ./discovery/* serves",
-		},
-		"./tui": {
-			to: "./modes/terminal/draw",
-			why: "the same modules are published at ./modes/terminal/draw after the move",
-		},
-		"./tui/*": {
-			to: "./modes/terminal/draw/*",
-			why: "the same modules are published at ./modes/terminal/draw/* after the move",
-		},
-		"./web/*": {
-			to: "./tools/web/*",
-			why: "the same modules are published at ./tools/web/* after the move",
-		},
-		"./web/search": {
-			to: "./tools/web/search",
-			why: "the same modules are published at ./tools/web/search after the move",
-		},
-		"./web/search/*": {
-			to: "./tools/web/search/*",
-			why: "the same modules are published at ./tools/web/search/* after the move",
-		},
-		"./web/search/providers/*": {
-			to: "./tools/web/search/providers/*",
-			why: "the same modules are published at ./tools/web/search/providers/* after the move",
-		},
-		"./web/scrapers": {
-			to: "@veyyon/web/scrapers",
-			why: "the site handlers moved to plugins/web, which @veyyon/web publishes as ./scrapers",
-		},
-		"./web/scrapers/*": {
-			to: "@veyyon/web/scrapers/*",
-			why: "the site handlers moved to plugins/web, which @veyyon/web publishes as ./scrapers/*",
-		},
-	},
-};
+const REASON_RULES = [
+	{ key: "suffixReason" as const, transform: (why: string) => `${why}.js` },
+	{ key: "sameReason" as const, transform: (why: string) => why },
+] as const;
 
-/**
- * A module whose contents were absorbed into another module, which is a relocation no rename can
- * show: the destination already existed and grew, or the successor was rewritten far past the point
- * git pairs two files, so the diff reads as a deletion beside an edit.
- *
- * Every row was measured, not assumed. `vibe/state.ts` was a four-line `VibeModeState` interface and
- * `session/vibe-runtime.ts` declares it now. The four `motion-*` modules of the terminal engine were
- * folded into `packages/utils/src/motion.ts`, which holds `BlockReveal`, `HoverFade`,
- * `fadeLineTowards` and `SettleValue` today. `tools/memory-render.ts` built terminal components for
- * the three memory tools and `tools/agent/memory-view.ts` states the same cards as `ToolView`s.
- *
- * A row here is checked against the head like any other successor, so it cannot describe a surface
- * that is not served.
- */
-const ABSORBED_SUBPATHS: Readonly<Record<string, Readonly<Record<string, RelocationNote>>>> = {
-	"@veyyon/coding-agent": {
-		"./autoresearch/setup-console": {
-			to: "./autoresearch/console",
-			why: "the autoswarm console setup and dashboard forms are declared in src/autoresearch/console.ts, which @veyyon/coding-agent publishes as ./autoresearch/console",
+export function expandResolvedSubpathsRecord(
+	rawPkgRelocations: RawPackageResolvedSubpathsRelocations,
+	pkgName: string,
+): Record<string, RelocationNote> {
+	if (rawPkgRelocations === null || typeof rawPkgRelocations !== "object" || Array.isArray(rawPkgRelocations)) {
+		throw new Error(`Resolved subpaths relocations for package "${pkgName}" must be an object`);
+	}
+
+	if ("records" in rawPkgRelocations || "jsAliases" in rawPkgRelocations) {
+		if (
+			!("records" in rawPkgRelocations) ||
+			typeof rawPkgRelocations.records !== "object" ||
+			rawPkgRelocations.records === null ||
+			Array.isArray(rawPkgRelocations.records)
+		) {
+			throw new Error(`Resolved subpaths relocations for package "${pkgName}" is missing valid "records" object`);
+		}
+
+		const rawRecords = rawPkgRelocations.records as Record<string, unknown>;
+		const expanded: Record<string, RelocationNote> = {};
+		for (const [key, val] of Object.entries(rawRecords)) {
+			if (
+				val === null ||
+				typeof val !== "object" ||
+				Array.isArray(val) ||
+				typeof (val as RelocationNote).to !== "string" ||
+				typeof (val as RelocationNote).why !== "string"
+			) {
+				throw new Error(
+					`Invalid relocation record for "${key}" in package "${pkgName}": must have string "to" and "why"`,
+				);
+			}
+			expanded[key] = { to: (val as RelocationNote).to, why: (val as RelocationNote).why };
+		}
+
+		if ("jsAliases" in rawPkgRelocations) {
+			if (
+				rawPkgRelocations.jsAliases === null ||
+				typeof rawPkgRelocations.jsAliases !== "object" ||
+				Array.isArray(rawPkgRelocations.jsAliases)
+			) {
+				throw new Error(`jsAliases in package "${pkgName}" must be an object`);
+			}
+			const jsAliases = rawPkgRelocations.jsAliases as Record<string, unknown>;
+			for (const key of Object.keys(jsAliases)) {
+				if (key !== "suffixReason" && key !== "sameReason") {
+					throw new Error(`Unknown key "${key}" in jsAliases for package "${pkgName}"`);
+				}
+			}
+			const seenAliases = new Set<string>();
+
+			for (const rule of REASON_RULES) {
+				const list = jsAliases[rule.key];
+				if (list === undefined) continue;
+				if (!Array.isArray(list)) {
+					throw new Error(`jsAliases.${rule.key} in package "${pkgName}" must be an array`);
+				}
+				for (const baseKey of list) {
+					if (typeof baseKey !== "string") {
+						throw new Error(`jsAliases.${rule.key} in package "${pkgName}" must contain only strings`);
+					}
+					if (seenAliases.has(baseKey)) {
+						throw new Error(`Duplicate alias membership for "${baseKey}" in package "${pkgName}"`);
+					}
+					seenAliases.add(baseKey);
+					const base = expanded[baseKey];
+					if (!base) {
+						throw new Error(`Missing base record for alias "${baseKey}" in package "${pkgName}"`);
+					}
+					const aliasKey = `${baseKey}.js`;
+					if (aliasKey in rawRecords) {
+						throw new Error(
+							`Collision: alias "${aliasKey}" is already present in explicit records for package "${pkgName}"`,
+						);
+					}
+					expanded[aliasKey] = {
+						to: `${base.to}.js`,
+						why: rule.transform(base.why),
+					};
+				}
+			}
+		}
+
+		for (const key of Object.keys(rawPkgRelocations)) {
+			if (key !== "records" && key !== "jsAliases") {
+				throw new Error(`Unknown property "${key}" in resolved subpaths relocations for package "${pkgName}"`);
+			}
+		}
+
+		return expanded;
+	}
+
+	// Plain record map
+	const plainMap = rawPkgRelocations as Record<string, unknown>;
+	const expanded: Record<string, RelocationNote> = {};
+	for (const [key, val] of Object.entries(plainMap)) {
+		if (
+			val === null ||
+			typeof val !== "object" ||
+			Array.isArray(val) ||
+			typeof (val as RelocationNote).to !== "string" ||
+			typeof (val as RelocationNote).why !== "string"
+		) {
+			throw new Error(
+				`Invalid relocation record for "${key}" in package "${pkgName}": must have string "to" and "why"`,
+			);
+		}
+		expanded[key] = { to: (val as RelocationNote).to, why: (val as RelocationNote).why };
+	}
+	return expanded;
+}
+
+export function normalizeResolvedSubpathsRecord(
+	rawMap: Record<string, RelocationNote>,
+): PackageResolvedSubpathsRelocations | Record<string, RelocationNote> {
+	const records: Record<string, RelocationNote> = {};
+	const jsAliases: {
+		suffixReason: string[];
+		sameReason: string[];
+	} = {
+		suffixReason: [],
+		sameReason: [],
+	};
+
+	const keys = Object.keys(rawMap).sort();
+	const normalizedJsKeys = new Set<string>();
+
+	for (const jsKey of keys) {
+		if (!jsKey.endsWith(".js")) continue;
+		const baseKey = jsKey.slice(0, -3);
+		const jsRecord = rawMap[jsKey];
+		const baseRecord = rawMap[baseKey];
+		if (!baseRecord) continue;
+		if (jsRecord.to !== `${baseRecord.to}.js`) continue;
+
+		if (jsRecord.why === `${baseRecord.why}.js`) {
+			jsAliases.suffixReason.push(baseKey);
+			normalizedJsKeys.add(jsKey);
+		} else if (jsRecord.why === baseRecord.why) {
+			jsAliases.sameReason.push(baseKey);
+			normalizedJsKeys.add(jsKey);
+		}
+	}
+
+	if (normalizedJsKeys.size === 0) {
+		return rawMap;
+	}
+
+	jsAliases.suffixReason.sort();
+	jsAliases.sameReason.sort();
+
+	for (const k of keys) {
+		if (!normalizedJsKeys.has(k)) {
+			records[k] = rawMap[k];
+		}
+	}
+
+	const result: PackageResolvedSubpathsRelocations = {
+		records,
+		...(jsAliases.suffixReason.length > 0 || jsAliases.sameReason.length > 0
+			? {
+					jsAliases: {
+						...(jsAliases.suffixReason.length > 0 ? { suffixReason: jsAliases.suffixReason } : {}),
+						...(jsAliases.sameReason.length > 0 ? { sameReason: jsAliases.sameReason } : {}),
+					},
+				}
+			: {}),
+	};
+
+	return result;
+}
+export function expandAddedResolvedSubpaths(rawPkgAdded: RawPackageAddedResolvedSubpaths, pkgName: string): string[] {
+	if (Array.isArray(rawPkgAdded)) {
+		const seen = new Set<string>();
+		for (const item of rawPkgAdded) {
+			if (typeof item !== "string") {
+				throw new Error(`Invalid item in added resolvedSubpaths for package "${pkgName}": must be a string`);
+			}
+			if (seen.has(item)) {
+				throw new Error(`Duplicate subpath "${item}" in added resolvedSubpaths for package "${pkgName}"`);
+			}
+			seen.add(item);
+		}
+		return [...rawPkgAdded].sort();
+	}
+
+	if (rawPkgAdded !== null && typeof rawPkgAdded === "object") {
+		for (const key of Object.keys(rawPkgAdded)) {
+			if (key !== "subpaths" && key !== "pairedJsSubpaths") {
+				throw new Error(`Unknown property "${key}" in added resolvedSubpaths for package "${pkgName}"`);
+			}
+		}
+		const subpaths = (rawPkgAdded as PackageAddedResolvedSubpaths).subpaths ?? [];
+		const paired = (rawPkgAdded as PackageAddedResolvedSubpaths).pairedJsSubpaths ?? [];
+
+		if (!Array.isArray(subpaths)) {
+			throw new Error(`Added resolvedSubpaths.subpaths for package "${pkgName}" must be an array`);
+		}
+		if (!Array.isArray(paired)) {
+			throw new Error(`Added resolvedSubpaths.pairedJsSubpaths for package "${pkgName}" must be an array`);
+		}
+
+		const seenExplicit = new Set<string>();
+		for (const item of subpaths) {
+			if (typeof item !== "string") {
+				throw new Error(`Invalid subpath in added resolvedSubpaths for package "${pkgName}": must be a string`);
+			}
+			if (seenExplicit.has(item)) {
+				throw new Error(`Duplicate explicit subpath "${item}" in added resolvedSubpaths for package "${pkgName}"`);
+			}
+			seenExplicit.add(item);
+		}
+
+		const expanded: string[] = [...subpaths];
+		const seenPaired = new Set<string>();
+
+		for (const base of paired) {
+			if (typeof base !== "string") {
+				throw new Error(
+					`Invalid base in added resolvedSubpaths.pairedJsSubpaths for package "${pkgName}": must be a string`,
+				);
+			}
+			if (seenPaired.has(base)) {
+				throw new Error(`Duplicate paired base "${base}" in added resolvedSubpaths for package "${pkgName}"`);
+			}
+			seenPaired.add(base);
+
+			const jsKey = `${base}.js`;
+			if (seenExplicit.has(base)) {
+				throw new Error(
+					`Collision: base "${base}" is in both subpaths and pairedJsSubpaths for package "${pkgName}"`,
+				);
+			}
+			if (seenExplicit.has(jsKey)) {
+				throw new Error(
+					`Collision: alias "${jsKey}" is in explicit subpaths while base is in pairedJsSubpaths for package "${pkgName}"`,
+				);
+			}
+
+			expanded.push(base);
+			expanded.push(jsKey);
+		}
+
+		return expanded.sort();
+	}
+
+	throw new Error(`Invalid added resolvedSubpaths entry for package "${pkgName}"`);
+}
+
+export function normalizeAddedResolvedSubpaths(rawList: readonly string[]): RawPackageAddedResolvedSubpaths {
+	const rawSet = new Set<string>(rawList);
+	const pairedJsSubpaths: string[] = [];
+	const consumed = new Set<string>();
+
+	for (const item of rawList) {
+		if (item.endsWith(".js")) continue;
+		const jsSibling = `${item}.js`;
+		if (rawSet.has(jsSibling)) {
+			pairedJsSubpaths.push(item);
+			consumed.add(item);
+			consumed.add(jsSibling);
+		}
+	}
+
+	const subpaths = rawList.filter(item => !consumed.has(item)).sort();
+	pairedJsSubpaths.sort();
+
+	if (pairedJsSubpaths.length === 0) {
+		return subpaths;
+	}
+
+	const result: PackageAddedResolvedSubpaths = {
+		...(subpaths.length > 0 ? { subpaths } : {}),
+		...(pairedJsSubpaths.length > 0 ? { pairedJsSubpaths } : {}),
+	};
+	return result;
+}
+
+export function validatePublishedSurfaceLedger(raw: unknown): PublishedSurfaceApprovalLedger {
+	if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+		throw new Error("Published surface ledger is not an object");
+	}
+	const ledger = raw as Partial<PublishedSurfaceApprovalLedger>;
+	if (typeof ledger.schemaVersion !== "number" || ledger.schemaVersion !== PUBLISHED_SURFACE_SCHEMA_VERSION) {
+		throw new Error(
+			`Published surface ledger schema is stale or unversioned (expected version ${PUBLISHED_SURFACE_SCHEMA_VERSION}, got ${ledger.schemaVersion ?? "unversioned v1"})`,
+		);
+	}
+	if (typeof ledger.generatedFrom !== "string" || ledger.generatedFrom !== PINNED_BASELINE_COMMIT) {
+		throw new Error(
+			`Published surface ledger generatedFrom commit mismatch: expected pinned baseline ${PINNED_BASELINE_COMMIT}, got ${ledger.generatedFrom ?? "missing"}`,
+		);
+	}
+	if (!ledger.additions || typeof ledger.additions !== "object" || Array.isArray(ledger.additions)) {
+		throw new Error("Published surface ledger is missing additions record");
+	}
+	if (!Array.isArray(ledger.additions.packages)) {
+		throw new Error("Published surface ledger additions.packages must be an array");
+	}
+	for (const pkg of ledger.additions.packages) {
+		if (typeof pkg !== "string") {
+			throw new Error("Published surface ledger additions.packages elements must be strings");
+		}
+	}
+	if (
+		!ledger.additions.exportsKeys ||
+		typeof ledger.additions.exportsKeys !== "object" ||
+		Array.isArray(ledger.additions.exportsKeys)
+	) {
+		throw new Error("Published surface ledger additions.exportsKeys must be an object");
+	}
+	for (const [pkg, keys] of Object.entries(ledger.additions.exportsKeys)) {
+		if (!Array.isArray(keys)) {
+			throw new Error(`Published surface ledger additions.exportsKeys["${pkg}"] must be an array`);
+		}
+		for (const key of keys) {
+			if (typeof key !== "string") {
+				throw new Error(`Published surface ledger additions.exportsKeys["${pkg}"] elements must be strings`);
+			}
+		}
+	}
+	if (
+		!ledger.additions.resolvedSubpaths ||
+		typeof ledger.additions.resolvedSubpaths !== "object" ||
+		Array.isArray(ledger.additions.resolvedSubpaths)
+	) {
+		throw new Error("Published surface ledger additions.resolvedSubpaths must be an object");
+	}
+	for (const [pkgName, pkgAdded] of Object.entries(ledger.additions.resolvedSubpaths)) {
+		expandAddedResolvedSubpaths(pkgAdded as RawPackageAddedResolvedSubpaths, pkgName);
+	}
+	if (
+		!ledger.additions.namedExports ||
+		typeof ledger.additions.namedExports !== "object" ||
+		Array.isArray(ledger.additions.namedExports)
+	) {
+		throw new Error("Published surface ledger additions.namedExports must be an object");
+	}
+	for (const [pkg, keys] of Object.entries(ledger.additions.namedExports)) {
+		if (!Array.isArray(keys)) {
+			throw new Error(`Published surface ledger additions.namedExports["${pkg}"] must be an array`);
+		}
+		for (const key of keys) {
+			if (typeof key !== "string") {
+				throw new Error(`Published surface ledger additions.namedExports["${pkg}"] elements must be strings`);
+			}
+		}
+	}
+	if (
+		!ledger.additions.starEdges ||
+		typeof ledger.additions.starEdges !== "object" ||
+		Array.isArray(ledger.additions.starEdges)
+	) {
+		throw new Error("Published surface ledger additions.starEdges must be an object");
+	}
+	for (const [pkg, keys] of Object.entries(ledger.additions.starEdges)) {
+		if (!Array.isArray(keys)) {
+			throw new Error(`Published surface ledger additions.starEdges["${pkg}"] must be an array`);
+		}
+		for (const key of keys) {
+			if (typeof key !== "string") {
+				throw new Error(`Published surface ledger additions.starEdges["${pkg}"] elements must be strings`);
+			}
+		}
+	}
+	if (
+		!ledger.additions.binKeys ||
+		typeof ledger.additions.binKeys !== "object" ||
+		Array.isArray(ledger.additions.binKeys)
+	) {
+		throw new Error("Published surface ledger additions.binKeys must be an object");
+	}
+	for (const [pkg, keys] of Object.entries(ledger.additions.binKeys)) {
+		if (!Array.isArray(keys)) {
+			throw new Error(`Published surface ledger additions.binKeys["${pkg}"] must be an array`);
+		}
+		for (const key of keys) {
+			if (typeof key !== "string") {
+				throw new Error(`Published surface ledger additions.binKeys["${pkg}"] elements must be strings`);
+			}
+		}
+	}
+	if (!ledger.relocations || typeof ledger.relocations !== "object" || Array.isArray(ledger.relocations)) {
+		throw new Error("Published surface ledger is missing relocations record");
+	}
+	if (
+		!ledger.relocations.exportsKeys ||
+		typeof ledger.relocations.exportsKeys !== "object" ||
+		Array.isArray(ledger.relocations.exportsKeys)
+	) {
+		throw new Error("Published surface ledger relocations.exportsKeys must be an object");
+	}
+	for (const [pkg, map] of Object.entries(ledger.relocations.exportsKeys)) {
+		if (!map || typeof map !== "object" || Array.isArray(map)) {
+			throw new Error(`Published surface ledger relocations.exportsKeys["${pkg}"] must be an object`);
+		}
+		for (const [subpath, note] of Object.entries(map as Record<string, unknown>)) {
+			if (
+				!note ||
+				typeof note !== "object" ||
+				Array.isArray(note) ||
+				typeof (note as RelocationNote).to !== "string" ||
+				typeof (note as RelocationNote).why !== "string"
+			) {
+				throw new Error(
+					`Invalid relocation note for "${subpath}" in relocations.exportsKeys["${pkg}"]: must have string "to" and "why"`,
+				);
+			}
+		}
+	}
+	if (
+		!ledger.relocations.resolvedSubpaths ||
+		typeof ledger.relocations.resolvedSubpaths !== "object" ||
+		Array.isArray(ledger.relocations.resolvedSubpaths)
+	) {
+		throw new Error("Published surface ledger relocations.resolvedSubpaths must be an object");
+	}
+	for (const [pkgName, pkgRel] of Object.entries(ledger.relocations.resolvedSubpaths)) {
+		expandResolvedSubpathsRecord(pkgRel, pkgName);
+	}
+	if (
+		!ledger.relocations.starEdges ||
+		typeof ledger.relocations.starEdges !== "object" ||
+		Array.isArray(ledger.relocations.starEdges)
+	) {
+		throw new Error("Published surface ledger relocations.starEdges must be an object");
+	}
+	for (const [pkg, map] of Object.entries(ledger.relocations.starEdges)) {
+		if (!map || typeof map !== "object" || Array.isArray(map)) {
+			throw new Error(`Published surface ledger relocations.starEdges["${pkg}"] must be an object`);
+		}
+		for (const [fromEdge, toEdge] of Object.entries(map as Record<string, unknown>)) {
+			if (typeof toEdge !== "string") {
+				throw new Error(
+					`Invalid starEdge relocation for "${fromEdge}" in relocations.starEdges["${pkg}"]: target must be a string`,
+				);
+			}
+		}
+	}
+	for (const key of Object.keys(ledger)) {
+		if (key !== "schemaVersion" && key !== "generatedFrom" && key !== "additions" && key !== "relocations") {
+			throw new Error(`Unknown top-level property "${key}" in published surface ledger`);
+		}
+	}
+	return raw as PublishedSurfaceApprovalLedger;
+}
+
+export async function loadPublishedSurfaceLedger(
+	fixturePath: string = FIXTURE_PATH,
+	repoRoot: string = REPO_ROOT,
+): Promise<PublishedSurfaceLedger> {
+	if (!existsSync(fixturePath)) {
+		throw new Error(
+			`Published surface ledger fixture not found at ${fixturePath}.\n` +
+				`Corrective action: Run 'bun scripts/measure-published-surface.ts' to generate the ledger.`,
+		);
+	}
+	const raw = JSON.parse(readFileSync(fixturePath, "utf-8")) as unknown;
+	const approval = validatePublishedSurfaceLedger(raw);
+	ensureBaselineAvailable(repoRoot, approval.generatedFrom);
+
+	const basePackages = await measurePublishedSurface(approval.generatedFrom, repoRoot);
+
+	const expandedAddedResolvedSubpaths: Record<string, string[]> = {};
+	for (const [pkgName, pkgAdded] of Object.entries(approval.additions.resolvedSubpaths)) {
+		expandedAddedResolvedSubpaths[pkgName] = expandAddedResolvedSubpaths(pkgAdded, pkgName);
+	}
+
+	const expandedRelocatedResolvedSubpaths: Record<string, Record<string, RelocationNote>> = {};
+	for (const [pkgName, pkgRel] of Object.entries(approval.relocations.resolvedSubpaths)) {
+		expandedRelocatedResolvedSubpaths[pkgName] = expandResolvedSubpathsRecord(pkgRel, pkgName);
+	}
+
+	return {
+		schemaVersion: approval.schemaVersion,
+		generatedFrom: approval.generatedFrom,
+		packages: basePackages,
+		additions: {
+			packages: approval.additions.packages,
+			exportsKeys: approval.additions.exportsKeys as Record<string, string[]>,
+			resolvedSubpaths: expandedAddedResolvedSubpaths,
+			namedExports: approval.additions.namedExports as Record<string, string[]>,
+			starEdges: approval.additions.starEdges as Record<string, string[]>,
+			binKeys: approval.additions.binKeys as Record<string, string[]>,
 		},
-		"./session/auth-storage": {
-			to: "@veyyon/ai/auth-storage",
-			why: "Credential storage imports use @veyyon/ai/auth-storage directly; SqliteAuthCredentialStore is exported by @veyyon/ai/auth-storage-sqlite and SnapshotResponse by @veyyon/ai/auth-broker/types.",
+		relocations: {
+			exportsKeys: approval.relocations.exportsKeys as Record<string, Record<string, RelocationNote>>,
+			resolvedSubpaths: expandedRelocatedResolvedSubpaths,
+			starEdges: approval.relocations.starEdges as Record<string, Record<string, string>>,
 		},
-		"./edit/renderer": {
-			to: "./edit/edit-view",
-			why: "the edit call row, hunk preview, diff sections, snapshot notices and failure card are declared in edit/edit-view.ts as views the host draws, so the module that built their terminal components is gone",
+	};
+}
+
+export function writeApprovalFixture(
+	ledger: PublishedSurfaceLedger | PublishedSurfaceApprovalLedger,
+	fixturePath: string = FIXTURE_PATH,
+): void {
+	const normalizedAddedResolvedSubpaths: Record<string, RawPackageAddedResolvedSubpaths> = {};
+	for (const [pkg, added] of Object.entries(ledger.additions.resolvedSubpaths)) {
+		if (Array.isArray(added)) {
+			normalizedAddedResolvedSubpaths[pkg] = normalizeAddedResolvedSubpaths(added);
+		} else if (added !== null && typeof added === "object") {
+			const expanded = expandAddedResolvedSubpaths(added as RawPackageAddedResolvedSubpaths, pkg);
+			normalizedAddedResolvedSubpaths[pkg] = normalizeAddedResolvedSubpaths(expanded);
+		} else {
+			normalizedAddedResolvedSubpaths[pkg] = added as RawPackageAddedResolvedSubpaths;
+		}
+	}
+
+	const normalizedRelocatedResolvedSubpaths: Record<string, RawPackageResolvedSubpathsRelocations> = {};
+	for (const [pkg, rel] of Object.entries(ledger.relocations.resolvedSubpaths)) {
+		if (rel !== null && typeof rel === "object" && ("records" in rel || "jsAliases" in rel)) {
+			const expanded = expandResolvedSubpathsRecord(rel as RawPackageResolvedSubpathsRelocations, pkg);
+			normalizedRelocatedResolvedSubpaths[pkg] = normalizeResolvedSubpathsRecord(expanded);
+		} else if (rel !== null && typeof rel === "object") {
+			normalizedRelocatedResolvedSubpaths[pkg] = normalizeResolvedSubpathsRecord(
+				rel as Record<string, RelocationNote>,
+			);
+		} else {
+			normalizedRelocatedResolvedSubpaths[pkg] = rel as RawPackageResolvedSubpathsRelocations;
+		}
+	}
+
+	const approvalLedger: PublishedSurfaceApprovalLedger = {
+		schemaVersion: PUBLISHED_SURFACE_SCHEMA_VERSION,
+		generatedFrom: ledger.generatedFrom,
+		additions: {
+			packages: [...ledger.additions.packages].sort(),
+			exportsKeys: Object.fromEntries(
+				Object.entries(ledger.additions.exportsKeys)
+					.map(([k, v]) => [k, [...v].sort()] as const)
+					.sort(([a], [b]) => a.localeCompare(b)),
+			),
+			resolvedSubpaths: Object.fromEntries(
+				Object.entries(normalizedAddedResolvedSubpaths).sort(([a], [b]) => a.localeCompare(b)),
+			),
+			namedExports: Object.fromEntries(
+				Object.entries(ledger.additions.namedExports)
+					.map(([k, v]) => [k, [...v].sort()] as const)
+					.sort(([a], [b]) => a.localeCompare(b)),
+			),
+			starEdges: Object.fromEntries(
+				Object.entries(ledger.additions.starEdges)
+					.map(([k, v]) => [k, [...v].sort()] as const)
+					.sort(([a], [b]) => a.localeCompare(b)),
+			),
+			binKeys: Object.fromEntries(
+				Object.entries(ledger.additions.binKeys)
+					.map(([k, v]) => [k, [...v].sort()] as const)
+					.sort(([a], [b]) => a.localeCompare(b)),
+			),
 		},
-		"./lsp/render": {
-			to: "./lsp/view",
-			why: "the lsp call row, hover, diagnostics, reference, symbol and output cards are declared in lsp/view.ts as views the host draws, so the module that built their terminal components is gone",
+		relocations: {
+			exportsKeys: Object.fromEntries(
+				Object.entries(ledger.relocations.exportsKeys).sort(([a], [b]) => a.localeCompare(b)),
+			),
+			resolvedSubpaths: Object.fromEntries(
+				Object.entries(normalizedRelocatedResolvedSubpaths).sort(([a], [b]) => a.localeCompare(b)),
+			),
+			starEdges: Object.fromEntries(
+				Object.entries(ledger.relocations.starEdges).sort(([a], [b]) => a.localeCompare(b)),
+			),
 		},
-		"./mcp/render": {
-			to: "./mcp/view",
-			why: "the mcp call row, resource listing, tool result card and error panel are declared in mcp/view.ts as views the host draws, so the module that built their terminal components is gone",
-		},
-		"./modes/sanitize-status-text": {
-			to: "@veyyon/utils/sanitize-status-text",
-			why: "sanitizeStatusText is declared in packages/utils/src/sanitize-status-text.ts, which @veyyon/utils publishes as ./sanitize-status-text; it is text over stripAnsi and names no host, and the goal tool reduces an objective to one line while building a view model in the domain package",
-		},
-		"./task/render": {
-			to: "./task/task-view",
-			why: "the task call preview, agent progress rows, per-agent results and failure card are declared in task/task-view.ts as views the host draws, so the module that built their terminal components is gone",
-		},
-		"./task/render.test": {
-			to: "./task/task-view",
-			why: "the colocated suite asserted the terminal components task/render.ts built; the task cards are declared in task/task-view.ts and their assertions are under test/task/task-result-render.test.ts, which the package does not publish",
-		},
-		"./task/renderer": {
-			to: "./task/task-view",
-			why: "the task tool renderer is the card the host draws from task/task-view.ts, so the module that registered a terminal-only renderer is gone",
-		},
-		"./tools/__tests__/vibe-render.test": {
-			to: "./tools/agent/vibe-view",
-			why: "the colocated suite asserted the terminal components tools/agent/vibe-render.ts built; the five cards are declared in tools/agent/vibe-view.ts and their assertions are under test/, which the package does not publish",
-		},
-		"./tools/browser/render": {
-			to: "./tools/web/browser/view",
-			why: "the browser open, close and run cards are declared in tools/web/browser/view.ts as views the host draws, so the module that built their terminal components is gone",
-		},
-		"./tools/eval-render": {
-			to: "./tools/shell/eval-view",
-			why: "the eval call preview, cell cards, helper log, subagent rows and cell-less fallback are declared in tools/shell/eval-view.ts as views the host draws, so the module that built their terminal components is gone",
-		},
-		"./tools/fs/read-render": {
-			to: "./tools/fs/read-view",
-			why: "the read file row, code and document sections, notices, image card and error card are declared in tools/fs/read-view.ts as views the host draws, so the module that built their terminal components is gone",
-		},
-		"./tools/gh-renderer": {
-			to: "./tools/web/gh-view",
-			why: "the github call row, run-watch panel, failed-log group and failure card are declared in tools/web/gh-view.ts as views the host draws, so the module that built their terminal components is gone",
-		},
-		"./tools/inspect-image-renderer": {
-			to: "./tools/fs/inspect-image-view",
-			why: "the inspect_image call row, answer panel and failure card are declared in tools/fs/inspect-image-view.ts as views the host draws, so the module that built their terminal components is gone",
-		},
-		"./tools/irc-render": {
-			to: "./tools/agent/irc-view",
-			why: "the irc send, wait, inbox and roster cards are declared in tools/agent/irc-view.ts as views the host draws, and the live transcript card is a terminal component in modes/terminal/components/transcript/irc-message.ts, so the module that built both is gone",
-		},
-		"./tools/memory-render": {
-			to: "./tools/agent/memory-view",
-			why: "the retain, recall and reflect cards are declared in tools/agent/memory-view.ts as views the host draws, so the module that built their terminal components is gone",
-		},
-		"./tools/search-renderer": {
-			to: "./tools/search/search-view",
-			why: "the search card is one dispatcher over the file, text and structure cards, declared in tools/search/search-view.ts as views the host draws, so the module that dispatched terminal components is gone",
-		},
-		"./tools/shell/job-render": {
-			to: "./tools/shell/job-view",
-			why: "the job call row, snapshot card and empty fallback are declared in tools/shell/job-view.ts as views the host draws, so the module that built their terminal components is gone",
-		},
-		"./tools/vibe-render": {
-			to: "./tools/agent/vibe-view",
-			why: "the vibe spawn, send, wait, kill and list cards are declared in tools/agent/vibe-view.ts as views the host draws, so the module that built their terminal components is gone",
-		},
-		"./vibe/state": {
-			to: "./session/vibe-runtime",
-			why: "VibeModeState is declared in session/vibe-runtime.ts, which publishes it",
-		},
-		"./web/search/render": {
-			to: "./tools/web/search/view",
-			why: "the web_search pending row, answer card, unreadable-response fallback and error panel are declared in tools/web/search/view.ts as views the host draws, so the module that built their terminal components is gone",
-		},
-	},
-	"@veyyon/stats": {
-		"./format": {
-			to: "@veyyon/utils/format",
-			why: "formatCostTiered and normalizePremiumRequests are declared in packages/utils/src/format.ts, which @veyyon/utils publishes as ./format; the status row read them and put the whole dashboard package on the startup graph",
-		},
-	},
-	"@veyyon/tui": {
-		"./motion-grow": {
-			to: "@veyyon/utils/motion",
-			why: "BlockReveal is declared in packages/utils/src/motion.ts, which @veyyon/utils publishes as ./motion",
-		},
-		"./motion-hover": {
-			to: "@veyyon/utils/motion",
-			why: "HoverFade is declared in packages/utils/src/motion.ts, which @veyyon/utils publishes as ./motion",
-		},
-		"./motion-paint": {
-			to: "@veyyon/utils/motion",
-			why: "fadeLineTowards is declared in packages/utils/src/motion.ts, which @veyyon/utils publishes as ./motion",
-		},
-		"./motion-settle": {
-			to: "@veyyon/utils/motion",
-			why: "SettleValue is declared in packages/utils/src/motion.ts, which @veyyon/utils publishes as ./motion",
-		},
-	},
-};
+	};
+	mkdirSync(dirname(fixturePath), { recursive: true });
+	writeFileSync(fixturePath, `${JSON.stringify(approvalLedger, null, "\t")}\n`, "utf-8");
+}
 
 /** Generate the full differential ledger. */
-export function generateLedger(baseRef = mergeBaseWithMain(), headRef = "HEAD"): PublishedSurfaceLedger {
-	const basePackages = measurePublishedSurface(baseRef);
-	const headPackages = measurePublishedSurface(headRef);
-
-	const addedPackageNames = Object.keys(headPackages)
-		.filter(name => !(name in basePackages))
-		.sort();
+export async function generateLedger(
+	baseRef: string = PINNED_BASELINE_COMMIT,
+	headRef: string = "HEAD",
+	repoRoot: string = REPO_ROOT,
+): Promise<PublishedSurfaceLedger> {
+	const fixturePath = join(repoRoot, "scripts", "fixtures", "published-surface.json");
+	const previous = existsSync(fixturePath) ? await loadPublishedSurfaceLedger(fixturePath, repoRoot) : undefined;
+	const basePackages =
+		previous?.generatedFrom === baseRef ? previous.packages : await measurePublishedSurface(baseRef, repoRoot);
+	const headPackages =
+		headRef === "HEAD"
+			? loadHeadPackages(repoRoot)
+			: new Map<string, WorkspacePackageSnapshot | PackageManifestRecord>(
+					Object.entries(await measurePublishedSurface(headRef, repoRoot)),
+				);
+	const addedPackageNames = [...headPackages.keys()].filter(name => !(name in basePackages)).sort();
 
 	const addedExportsKeys: Record<string, string[]> = {};
 	const addedNamedExports: Record<string, string[]> = {};
@@ -731,7 +1206,7 @@ export function generateLedger(baseRef = mergeBaseWithMain(), headRef = "HEAD"):
 	const addedBinKeys: Record<string, string[]> = {};
 	const addedResolvedSubpaths: Record<string, string[]> = {};
 
-	for (const [name, headPkg] of Object.entries(headPackages)) {
+	for (const [name, headPkg] of headPackages.entries()) {
 		const basePkg = basePackages[name];
 		if (!basePkg) continue;
 
@@ -751,196 +1226,15 @@ export function generateLedger(baseRef = mergeBaseWithMain(), headRef = "HEAD"):
 		if (addedBins.length > 0) addedBinKeys[name] = [...addedBins].sort();
 	}
 
-	// A subpath the head no longer serves is either relocated or removed, and the difference is not a
-	// judgement call: git already recorded it. Every rename between the two refs is read once, so the
-	// file a lost subpath resolved to is followed to wherever it landed, and whichever package
-	// publishes it there names the successor. Typing the rule out by hand instead went stale on the
-	// first relocation that was not the one being written about: 110 kernel subpaths were described
-	// and `./auto-thinking/classifier`, moved in an earlier step of the same branch, aborted the run.
-	//
-	// A lost subpath with no rename, or one whose destination no package publishes, falls through to
-	// the documented key relocations and then aborts the generator: an undescribed removal must not
-	// reach the fixture as an absence.
-	//
-	// The similarity threshold is 25%, not git's default 50%, because a module that moves between
-	// directories also has every relative import rewritten. `modes/components/overlay-box.ts` measures
-	// 39% similar to where it landed, so the default read it as a deletion beside an unrelated
-	// addition. `-l0` removes the rename-detection cap, which a diff this size otherwise exceeds.
-	const renamedFiles = new Map<string, string>();
-	const renameLines = execSync(`git diff --find-renames=25% -l0 --diff-filter=R --name-status ${baseRef} ${headRef}`, {
-		cwd: REPO_ROOT,
-		encoding: "utf-8",
-		maxBuffer: 64 * 1024 * 1024,
-	})
-		.split("\n")
-		.filter(Boolean);
-	for (const line of renameLines) {
-		const [, from, to] = line.split("\t");
-		if (from !== undefined && to !== undefined) renamedFiles.set(from, to);
-	}
-
-	const baseSubpathFiles = new Map<string, Map<string, string>>();
-	const headFileSubpaths = new Map<string, Array<{ pkg: string; subpath: string }>>();
-	for (const ref of [baseRef, headRef]) {
-		for (const member of discoverWorkspaceManifests(ref)) {
-			const pkg = typeof member.data.name === "string" ? member.data.name : member.dir;
-			const expanded = expandExportsToFileMap(member.data.exports, member.dir, refFiles(ref));
-			if (ref === baseRef) {
-				baseSubpathFiles.set(pkg, expanded);
-				continue;
-			}
-			for (const [subpath, file] of expanded) {
-				const rows = headFileSubpaths.get(file) ?? [];
-				rows.push({ pkg, subpath });
-				headFileSubpaths.set(file, rows);
-			}
-		}
-	}
-
-	/**
-	 * The subpath a documented key relocation carries this one to, when the key moved and the file did
-	 * not. `./modes/components` is one: the barrel was rewritten past the point a rename is detected,
-	 * and the row that describes the move is already in {@link DOCUMENTED_KEY_RELOCATIONS}. The
-	 * successor is accepted only if the head really serves it, so a stale row cannot describe a loss
-	 * into existence, and a successor in another package is checked against that package's surface:
-	 * `./web/scrapers/*` left `@veyyon/coding-agent` for `@veyyon/web` entirely.
-	 */
-	function documentedSuccessor(pkgName: string, subpath: string, served: ReadonlySet<string>): RelocationNote | null {
-		const rows = DOCUMENTED_KEY_RELOCATIONS[pkgName];
-		if (rows === undefined) return null;
-		for (const [key, note] of Object.entries(rows)) {
-			if (!key.includes("*")) {
-				if (key !== subpath || !isServed(note.to, served)) continue;
-				return note;
-			}
-			const star = key.indexOf("*");
-			const head = key.slice(0, star);
-			const tail = key.slice(star + 1);
-			if (!subpath.startsWith(head) || !subpath.endsWith(tail)) continue;
-			const middle = subpath.slice(head.length, subpath.length - tail.length);
-			if (middle.length === 0) continue;
-			const candidate = note.to.replace("*", middle);
-			if (!isServed(candidate, served)) continue;
-			return { to: candidate, why: note.why };
-		}
-		return null;
-	}
-
-	/**
-	 * Whether the head serves a successor, in this package or, when it is a full specifier, another. A
-	 * bare package name is that package's root subpath: `@veyyon/web` is `.`, not an empty tail.
-	 */
-	function isServed(to: string, served: ReadonlySet<string>): boolean {
-		if (!to.startsWith("@")) return served.has(to);
-		const successorPackage = to.split("/").slice(0, 2).join("/");
-		const tail = to.split("/").slice(2).join("/");
-		const successorSubpath = tail === "" ? "." : `./${tail}`;
-		return headPackages[successorPackage]?.resolvedSubpaths.includes(successorSubpath) === true;
-	}
-
-	/**
-	 * The successor of an absorbed module, with the `.js` alias carried across so both shapes of the
-	 * lost subpath resolve. A cross-package successor is checked against that package's own surface.
-	 */
-	function absorbedSuccessor(pkgName: string, subpath: string, served: ReadonlySet<string>): RelocationNote | null {
-		const rows = ABSORBED_SUBPATHS[pkgName];
-		if (rows === undefined) return null;
-		const alias = subpath.endsWith(".js") ? ".js" : "";
-		const bare = alias === "" ? subpath : subpath.slice(0, -alias.length);
-		const note = rows[bare];
-		if (note === undefined) return null;
-		const to = `${note.to}${alias}`;
-		if (!isServed(to, served)) return null;
-		return { to, why: note.why };
-	}
-
-	/**
-	 * The successor of a lost subpath, by three routes: the rename git recorded for the file it
-	 * resolved to, then a documented key relocation, then a module that absorbed it. Each answer is
-	 * verified against the head's own surface, so no route can name a subpath nobody serves.
-	 */
-	function successorOf(pkgName: string, subpath: string, served: ReadonlySet<string>): RelocationNote | null {
-		const fallback = (): RelocationNote | null =>
-			documentedSuccessor(pkgName, subpath, served) ?? absorbedSuccessor(pkgName, subpath, served);
-		const from = baseSubpathFiles.get(pkgName)?.get(subpath);
-		const to = from === undefined ? undefined : renamedFiles.get(from);
-		const candidates = to === undefined ? undefined : headFileSubpaths.get(to);
-		if (from === undefined || to === undefined || candidates === undefined || candidates.length === 0) {
-			return fallback();
-		}
-		// An `exports` map publishes the same file twice, extensionless and under a `.js` alias. The
-		// successor keeps the shape the lost subpath had, so `./session/x.js` relocates to a `.js`
-		// alias and never silently to the extensionless neighbour.
-		const wantsAlias = subpath.endsWith(".js");
-		const chosen = candidates.find(row => row.subpath.endsWith(".js") === wantsAlias) ?? candidates[0];
-		if (chosen === undefined) return fallback();
-		const target = chosen.subpath.replace(/^\.\//, "");
-		return {
-			to: target === "." ? chosen.pkg : `${chosen.pkg}/${target}`,
-			why: `${from} moved to ${to}, which ${chosen.pkg} publishes as ${chosen.subpath}`,
-		};
-	}
-
-	const relocatedResolvedSubpaths: Record<string, Record<string, RelocationNote>> = {};
-	for (const [name, basePkg] of Object.entries(basePackages)) {
-		const headPkg = headPackages[name];
-		if (!headPkg) continue;
-		const served = new Set(headPkg.resolvedSubpaths);
-		const rows: Record<string, RelocationNote> = {};
-		for (const subpath of basePkg.resolvedSubpaths) {
-			if (served.has(subpath)) continue;
-			const note = successorOf(name, subpath, served);
-			if (note === null) {
-				throw new Error(
-					`${name} no longer serves ${subpath}: no rename and no documented key relocation names a successor`,
-				);
-			}
-			rows[subpath] = note;
-		}
-		if (Object.keys(rows).length > 0) relocatedResolvedSubpaths[name] = rows;
-	}
-
-	const relocations: RelocationsRecord = {
-		exportsKeys: DOCUMENTED_KEY_RELOCATIONS,
-		resolvedSubpaths: relocatedResolvedSubpaths,
-		starEdges: {
-			"@veyyon/coding-agent": {
-				"./modes/components": "replaced by ./modes/terminal/components in decoupled TUI layout",
-				"./modes/theme/theme": "replaced by ./theme/theme in decoupled theme layout",
-			},
-			"@veyyon/tui": {
-				"./autocomplete": "string/math utilities moved to @veyyon/utils directly",
-				"./deccara": "DECCARA optimization moved to @veyyon/utils directly",
-				"./editor-component": "moved to ./components/editor-component",
-				"./fuzzy": "fuzzy matching moved to @veyyon/utils directly",
-				"./keybindings": "keybinding parser moved to @veyyon/utils directly",
-				"./keys": "Kitty keyboard parser moved to @veyyon/utils directly",
-				"./kitty-graphics": "Kitty graphics encoding moved to @veyyon/utils directly",
-				"./latex-block": "LaTeX block parsing moved to @veyyon/utils directly",
-				"./latex-to-unicode": "LaTeX unicode conversion moved to @veyyon/utils directly",
-				"./motion": "motion curves moved to @veyyon/utils directly",
-				"./motion-grow": "motion animation curves moved to @veyyon/utils directly",
-				"./motion-hover": "motion hover curves moved to @veyyon/utils directly",
-				"./motion-paint": "motion painting moved to @veyyon/utils directly",
-				"./motion-settle": "motion settle curves moved to @veyyon/utils directly",
-				"./mouse": "mouse event decoding moved to @veyyon/utils directly",
-				"./paint-columns": "column painting moved to @veyyon/utils directly",
-				"./paint-ground": "background fill math moved to @veyyon/utils directly",
-				"./paint-surface": "surface painting moved to @veyyon/utils directly",
-				"./sub-cell-bar": "sub-cell rendering moved to @veyyon/utils directly",
-				"./symbols": "symbol tables moved to @veyyon/utils directly",
-				"./ttyid": "terminal ID queries moved to @veyyon/utils directly",
-				"./utils": "shared TUI utilities moved to @veyyon/utils directly",
-			},
-		},
+	const existingRelocations: RelocationsRecord = previous?.relocations ?? {
+		exportsKeys: {},
+		resolvedSubpaths: {},
+		starEdges: {},
 	};
 
-	// The commit, not the ref that named it: `origin/main` moves and a stamped ref name cannot say
-	// which tree the rows were measured against.
-	const baseSha = execSync(`git rev-parse ${baseRef}`, { cwd: REPO_ROOT, encoding: "utf-8" }).trim();
-
 	return {
-		generatedFrom: baseSha,
+		schemaVersion: PUBLISHED_SURFACE_SCHEMA_VERSION,
+		generatedFrom: baseRef,
 		packages: basePackages,
 		additions: {
 			packages: addedPackageNames,
@@ -950,30 +1244,24 @@ export function generateLedger(baseRef = mergeBaseWithMain(), headRef = "HEAD"):
 			starEdges: addedStarEdges,
 			binKeys: addedBinKeys,
 		},
-		relocations,
+		relocations: existingRelocations,
 	};
 }
 
 /**
  * Main execution function when run directly.
- *
- * The first argument names the base commit. It exists because `merge-base` needs both histories, and
- * a partial or shallow clone has neither: the regeneration then names the commit outright rather
- * than reporting every module the shallow boundary hid as a removed surface. The second names the
- * head, for the same reason in reverse: both sides are read from git, so the measurement does not
- * need the commit checked out.
  */
-export function main(): void {
-	const baseRef = process.argv[2] ?? mergeBaseWithMain();
-	const ledger = generateLedger(baseRef, process.argv[3] ?? "HEAD");
-	mkdirSync(dirname(FIXTURE_PATH), { recursive: true });
-	writeFileSync(FIXTURE_PATH, `${JSON.stringify(ledger, null, "\t")}\n`, "utf-8");
+export async function main(): Promise<void> {
+	const baseRef = process.argv[2] ?? PINNED_BASELINE_COMMIT;
+	const headRef = process.argv[3] ?? "HEAD";
+	const ledger = await generateLedger(baseRef, headRef);
+	writeApprovalFixture(ledger, FIXTURE_PATH);
 	process.stdout.write(
-		`Wrote the published-surface ledger for ${Object.keys(ledger.packages).length} packages, ` +
+		`Wrote the published-surface approval ledger for ${Object.keys(ledger.packages).length} packages, ` +
 			`measured against ${ledger.generatedFrom}, to ${FIXTURE_PATH}\n`,
 	);
 }
 
 if (import.meta.main || process.argv[1]?.endsWith("measure-published-surface.ts")) {
-	main();
+	void main();
 }

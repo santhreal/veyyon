@@ -19,14 +19,26 @@
  * robustly without fragile text patterns.
  */
 
-import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parse } from "@babel/parser";
 import type { ArrayExpression, Node } from "@babel/types";
+import { PINNED_BASELINE_COMMIT, REPO_ROOT, readGitFileText } from "./git-baseline";
 
-/** Repository root path derived from this script's location. */
-export const REPO_ROOT = resolve(import.meta.dirname, "..");
+export { REPO_ROOT };
+
+export const CLI_SURFACE_SCHEMA_VERSION = 2;
+
+export const DEFAULT_CLI_SURFACE_FIXTURE_PATH = join(REPO_ROOT, "scripts", "fixtures", "cli-surface.json");
+
+export const CLI_SURFACE_SOURCE_PATHS = [
+	"packages/coding-agent/src/cli-commands.ts",
+	"packages/coding-agent/src/cli/flag-tables.ts",
+	"packages/coding-agent/src/cli/profile-bootstrap.ts",
+	"packages/coding-agent/src/cli.ts",
+	"packages/coding-agent/src/worker-args.ts",
+	"packages/coding-agent/src/launch/protocol.ts",
+] as const;
 
 export interface FlagSpec {
 	takesValue: boolean;
@@ -44,7 +56,14 @@ export interface CliSurfaceAdditions {
 	workerSelectors: string[];
 }
 
+export interface CliSurfaceApprovalLedger {
+	schemaVersion: number;
+	generatedFrom: string;
+	additions: CliSurfaceAdditions;
+}
+
 export interface CliSurfaceLedger {
+	schemaVersion: number;
 	generatedFrom: string;
 	commands: string[];
 	flags: Record<string, FlagSpec>;
@@ -52,6 +71,14 @@ export interface CliSurfaceLedger {
 	additions: CliSurfaceAdditions;
 }
 
+export interface CliSurfaceSources {
+	commandsSource: string;
+	flagTablesSource: string;
+	profileBootstrapSource: string;
+	cliSource: string;
+	workerArgsSource: string;
+	protocolSource: string;
+}
 /**
  * Extracts command names from `packages/coding-agent/src/cli-commands.ts`.
  * Parses the exported `commands` array of `CommandEntry` objects.
@@ -323,28 +350,13 @@ export function extractProtocolWorkerArgsFromSource(source: string): string[] {
 }
 
 /**
- * Derives the complete CLI surface from the given repository root directory.
+ * Derives the complete CLI surface from raw source strings of the six CLI registry files.
  */
-export function deriveCliSurface(root = REPO_ROOT): CliSurface {
-	const codingAgentSrc = join(root, "packages", "coding-agent", "src");
-
-	// 1. Commands
-	const commandsPath = join(codingAgentSrc, "cli-commands.ts");
-	const commandsSource = readFileSync(commandsPath, "utf-8");
-	const commands = extractCommandsFromSource(commandsSource);
-
-	// 2. Flags
-	const flagTablesPath = join(codingAgentSrc, "cli", "flag-tables.ts");
-	const flagTablesSource = readFileSync(flagTablesPath, "utf-8");
-	const { stringFlags, optionalFlags, valuelessFlags } = extractFlagTablesFromSource(flagTablesSource);
-
-	const profileBootstrapPath = join(codingAgentSrc, "cli", "profile-bootstrap.ts");
-	const profileBootstrapSource = readFileSync(profileBootstrapPath, "utf-8");
-	const profileFlags = extractProfileFlagsFromSource(profileBootstrapSource);
-
-	const cliPath = join(codingAgentSrc, "cli.ts");
-	const cliSource = readFileSync(cliPath, "utf-8");
-	const cliFlags = extractCliFlagsFromSource(cliSource);
+export function deriveCliSurfaceFromSources(sources: CliSurfaceSources): CliSurface {
+	const commands = extractCommandsFromSource(sources.commandsSource);
+	const { stringFlags, optionalFlags, valuelessFlags } = extractFlagTablesFromSource(sources.flagTablesSource);
+	const profileFlags = extractProfileFlagsFromSource(sources.profileBootstrapSource);
+	const cliFlags = extractCliFlagsFromSource(sources.cliSource);
 
 	const flags: Record<string, FlagSpec> = {};
 	for (const flag of stringFlags) {
@@ -365,18 +377,10 @@ export function deriveCliSurface(root = REPO_ROOT): CliSurface {
 		}
 	}
 
-	// 3. Worker selectors
-	const workerArgsPath = join(codingAgentSrc, "worker-args.ts");
-	const workerArgsSource = readFileSync(workerArgsPath, "utf-8");
-	const workerArgs = extractWorkerArgsFromSource(workerArgsSource);
-
-	const protocolPath = join(codingAgentSrc, "launch", "protocol.ts");
-	const protocolSource = readFileSync(protocolPath, "utf-8");
-	const protocolWorkerArgs = extractProtocolWorkerArgsFromSource(protocolSource);
-
+	const workerArgs = extractWorkerArgsFromSource(sources.workerArgsSource);
+	const protocolWorkerArgs = extractProtocolWorkerArgsFromSource(sources.protocolSource);
 	const workerSelectors = [...new Set([...workerArgs, ...protocolWorkerArgs])].sort();
 
-	// Sort flags alphabetically
 	const sortedFlags: Record<string, FlagSpec> = {};
 	for (const key of Object.keys(flags).sort()) {
 		sortedFlags[key] = flags[key];
@@ -390,12 +394,122 @@ export function deriveCliSurface(root = REPO_ROOT): CliSurface {
 }
 
 /**
- * Builds a ledger comparing origin/main baseline against the current surface.
+ * Derives the complete CLI surface from the given repository root directory on disk.
+ */
+export function deriveCliSurface(root = REPO_ROOT): CliSurface {
+	const codingAgentSrc = join(root, "packages", "coding-agent", "src");
+	return deriveCliSurfaceFromSources({
+		commandsSource: readFileSync(join(codingAgentSrc, "cli-commands.ts"), "utf-8"),
+		flagTablesSource: readFileSync(join(codingAgentSrc, "cli", "flag-tables.ts"), "utf-8"),
+		profileBootstrapSource: readFileSync(join(codingAgentSrc, "cli", "profile-bootstrap.ts"), "utf-8"),
+		cliSource: readFileSync(join(codingAgentSrc, "cli.ts"), "utf-8"),
+		workerArgsSource: readFileSync(join(codingAgentSrc, "worker-args.ts"), "utf-8"),
+		protocolSource: readFileSync(join(codingAgentSrc, "launch", "protocol.ts"), "utf-8"),
+	});
+}
+
+/**
+ * Measures the baseline CLI surface dynamically from a Git commit using immutable historical blobs.
+ */
+export function measureCliSurfaceFromGit(commit = PINNED_BASELINE_COMMIT, repoRoot = REPO_ROOT): CliSurface {
+	const readSource = (relativePath: string): string => {
+		const source = readGitFileText(relativePath, commit, repoRoot);
+		if (source === null) {
+			throw new Error(`Required CLI surface source file ${relativePath} is missing in git commit ${commit}`);
+		}
+		return source;
+	};
+	return deriveCliSurfaceFromSources({
+		commandsSource: readSource(CLI_SURFACE_SOURCE_PATHS[0]),
+		flagTablesSource: readSource(CLI_SURFACE_SOURCE_PATHS[1]),
+		profileBootstrapSource: readSource(CLI_SURFACE_SOURCE_PATHS[2]),
+		cliSource: readSource(CLI_SURFACE_SOURCE_PATHS[3]),
+		workerArgsSource: readSource(CLI_SURFACE_SOURCE_PATHS[4]),
+		protocolSource: readSource(CLI_SURFACE_SOURCE_PATHS[5]),
+	});
+}
+
+/**
+ * Validates the raw JSON payload of the sparse CLI surface approval ledger.
+ * Enforces fail-closed rejection on malformed, unversioned, stale, or corrupt structures.
+ */
+export function validateCliSurfaceApprovalLedger(raw: unknown): CliSurfaceApprovalLedger {
+	if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+		throw new Error("CLI surface ledger is not an object");
+	}
+	const ledger = raw as Partial<CliSurfaceApprovalLedger>;
+	if (ledger.schemaVersion !== CLI_SURFACE_SCHEMA_VERSION) {
+		throw new Error(
+			`CLI surface ledger schema is stale or unversioned (expected version ${CLI_SURFACE_SCHEMA_VERSION}, got ${ledger.schemaVersion ?? "unversioned v1"})`,
+		);
+	}
+	if (ledger.generatedFrom !== PINNED_BASELINE_COMMIT) {
+		throw new Error(
+			`CLI surface ledger generatedFrom commit mismatch: expected pinned baseline ${PINNED_BASELINE_COMMIT}, got ${ledger.generatedFrom ?? "missing"}`,
+		);
+	}
+	if (!ledger.additions || typeof ledger.additions !== "object" || Array.isArray(ledger.additions)) {
+		throw new Error("CLI surface ledger is missing additions record");
+	}
+	if (
+		!Array.isArray(ledger.additions.commands) ||
+		!ledger.additions.commands.every(command => typeof command === "string")
+	) {
+		throw new Error("CLI surface ledger additions.commands must be an array");
+	}
+	if (!ledger.additions.flags || typeof ledger.additions.flags !== "object" || Array.isArray(ledger.additions.flags)) {
+		throw new Error("CLI surface ledger additions.flags must be an object");
+	}
+	for (const [flag, spec] of Object.entries(ledger.additions.flags)) {
+		if (!spec || typeof spec !== "object" || typeof (spec as FlagSpec).takesValue !== "boolean") {
+			throw new Error(`CLI surface ledger flag spec for "${flag}" must have boolean takesValue`);
+		}
+	}
+	if (
+		!Array.isArray(ledger.additions.workerSelectors) ||
+		!ledger.additions.workerSelectors.every(selector => typeof selector === "string")
+	) {
+		throw new Error("CLI surface ledger additions.workerSelectors must be an array");
+	}
+
+	return raw as CliSurfaceApprovalLedger;
+}
+
+/**
+ * Loads the CLI surface ledger from fixture, validating the approval ledger and
+ * dynamically reconstructing baseline commands, flags, and worker selectors from immutable Git.
+ */
+export function loadCliSurfaceLedger(
+	fixturePath = DEFAULT_CLI_SURFACE_FIXTURE_PATH,
+	repoRoot = REPO_ROOT,
+): CliSurfaceLedger {
+	if (!existsSync(fixturePath)) {
+		throw new Error(
+			`CLI surface ledger fixture not found at ${fixturePath}.\n` +
+				`Corrective action: Run 'bun scripts/measure-cli-surface.ts' to generate the ledger.`,
+		);
+	}
+	const raw = JSON.parse(readFileSync(fixturePath, "utf-8")) as unknown;
+	const approval = validateCliSurfaceApprovalLedger(raw);
+	const baseSurface = measureCliSurfaceFromGit(approval.generatedFrom, repoRoot);
+
+	return {
+		schemaVersion: approval.schemaVersion,
+		generatedFrom: approval.generatedFrom,
+		commands: baseSurface.commands,
+		flags: baseSurface.flags,
+		workerSelectors: baseSurface.workerSelectors,
+		additions: approval.additions,
+	};
+}
+
+/**
+ * Builds a full ledger comparing base surface against the current surface.
  */
 export function buildLedger(
 	baseSurface: CliSurface,
 	currentSurface: CliSurface,
-	generatedFrom: string,
+	generatedFrom: string = PINNED_BASELINE_COMMIT,
 ): CliSurfaceLedger {
 	const baseCommandSet = new Set(baseSurface.commands);
 	const addedCommands = currentSurface.commands.filter(c => !baseCommandSet.has(c));
@@ -411,6 +525,7 @@ export function buildLedger(
 	const addedWorkerSelectors = currentSurface.workerSelectors.filter(w => !baseWorkerSet.has(w));
 
 	return {
+		schemaVersion: CLI_SURFACE_SCHEMA_VERSION,
 		generatedFrom,
 		commands: baseSurface.commands,
 		flags: baseSurface.flags,
@@ -424,37 +539,57 @@ export function buildLedger(
 }
 
 /**
- * The commit the ledger's rows are attributed to. Every ledger in this proof set is measured against
- * the merge base with `main`, and a suite asserts all four name the same commit, so a literal
- * default here goes stale the moment the base moves and stamps a ledger with a tree it did not read.
+ * Builds a sparse approval ledger comparing base surface against current surface.
  */
-function mergeBaseWithMain(): string {
-	return execFileSync("git", ["merge-base", "origin/main", "HEAD"], { cwd: REPO_ROOT, encoding: "utf-8" }).trim();
+export function buildApprovalLedger(
+	baseSurface: CliSurface,
+	currentSurface: CliSurface,
+	generatedFrom: string = PINNED_BASELINE_COMMIT,
+): CliSurfaceApprovalLedger {
+	const full = buildLedger(baseSurface, currentSurface, generatedFrom);
+	return {
+		schemaVersion: full.schemaVersion,
+		generatedFrom: full.generatedFrom,
+		additions: full.additions,
+	};
 }
 
 if (import.meta.main) {
-	// The ledger's rows are main's surface, so they cannot be read from this tree. A baseline root
-	// holding main's checkout of the six extracted modules is required: deriving both sides from the
-	// working tree would re-baseline the ledger on every regeneration and could never see a removal.
 	const args = process.argv.slice(2);
 	const baseFlag = args.indexOf("--base");
 	const shaFlag = args.indexOf("--from");
-	if (baseFlag === -1 || args[baseFlag + 1] === undefined) {
-		process.stderr.write("usage: measure-cli-surface.ts --base <main-checkout-root> [--from <sha>]\n");
-		process.exit(2);
-	}
-	const baseRoot = resolve(args[baseFlag + 1]);
-	const generatedFrom = shaFlag === -1 ? mergeBaseWithMain() : (args[shaFlag + 1] ?? "");
+	const fullFlag = args.includes("--full");
+
+	const generatedFrom = shaFlag === -1 ? PINNED_BASELINE_COMMIT : (args[shaFlag + 1] ?? "");
 	if (generatedFrom === "") {
 		process.stderr.write("--from needs a sha\n");
 		process.exit(2);
 	}
 
-	const ledger = buildLedger(deriveCliSurface(baseRoot), deriveCliSurface(REPO_ROOT), generatedFrom);
-	const outPath = join(REPO_ROOT, "scripts", "fixtures", "cli-surface.json");
-	writeFileSync(outPath, `${JSON.stringify(ledger, null, "\t")}\n`, "utf-8");
-	process.stdout.write(
-		`Wrote CLI surface ledger to ${outPath}: ${ledger.commands.length} commands, ` +
-			`${Object.keys(ledger.flags).length} flags, ${ledger.workerSelectors.length} worker selectors from ${baseRoot}\n`,
-	);
+	let baseSurface: CliSurface;
+	if (baseFlag !== -1 && args[baseFlag + 1] !== undefined) {
+		const baseRoot = resolve(args[baseFlag + 1]);
+		baseSurface = deriveCliSurface(baseRoot);
+	} else {
+		baseSurface = measureCliSurfaceFromGit(generatedFrom, REPO_ROOT);
+	}
+
+	const currentSurface = deriveCliSurface(REPO_ROOT);
+	const outPath = DEFAULT_CLI_SURFACE_FIXTURE_PATH;
+
+	if (fullFlag) {
+		const fullLedger = buildLedger(baseSurface, currentSurface, generatedFrom);
+		writeFileSync(outPath, `${JSON.stringify(fullLedger, null, "\t")}\n`, "utf-8");
+		process.stdout.write(
+			`Wrote full CLI surface ledger to ${outPath}: ${fullLedger.commands.length} commands, ` +
+				`${Object.keys(fullLedger.flags).length} flags, ${fullLedger.workerSelectors.length} worker selectors (from ${generatedFrom})\n`,
+		);
+	} else {
+		const approvalLedger = buildApprovalLedger(baseSurface, currentSurface, generatedFrom);
+		writeFileSync(outPath, `${JSON.stringify(approvalLedger, null, "\t")}\n`, "utf-8");
+		process.stdout.write(
+			`Wrote sparse CLI surface approval fixture to ${outPath}: ${approvalLedger.additions.commands.length} added commands, ` +
+				`${Object.keys(approvalLedger.additions.flags).length} added flags, ${approvalLedger.additions.workerSelectors.length} added worker selectors (pinned to ${generatedFrom})\n`,
+		);
+	}
 }

@@ -168,6 +168,8 @@
 - The setup form's models note states a spec past the last arm (`"glm" has no arm at breadth 2.`), which the persisted setup dropped without a word when breadth came down.
 - Autoresearch best-result and confidence calculations exclude unmeasured placeholder zeros while retaining measured zero values.
 - Configured shortcuts apply from the first editable frame, and model-selector shortcuts entered during startup preserve the draft through initialization.
+- The launch composer repaints typed input before runtime initialization continues and preserves the mounted editor's change handler.
+- Ordinary CLI launches no longer evaluate ACP authentication, and startup applies the configured theme once.
 - Submissions entered during startup execute after initialization without waiting for a model turn, preserving later drafts and attachments through command handling and editor replacement.
 - The launch composer shows the same linked-worktree location and draft-token estimate as the mounted session, avoiding a late footline repaint.
 - `bun run gen:tool-views` in the coding-agent package uses the relocated `clients/web` generator.

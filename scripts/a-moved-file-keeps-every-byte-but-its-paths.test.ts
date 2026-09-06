@@ -1,51 +1,52 @@
 /**
- * WHY. This branch renames 3206 tracked files. A reviewer cannot read a diff that size, and the
- * failure mode of a wide move is silent: one file arrives with an accidental edit, a helper is copied
- * instead of moved, or a hunk from another lane lands inside the rename. Nothing about a green type
- * check would catch it, because a stale copy of a helper compiles.
+ * WHY. This branch renames 1563+ tracked files (4804 total move relationships). A reviewer cannot
+ * read a diff that size, and the failure mode of a wide move is silent: one file arrives with an
+ * accidental edit, a helper is copied instead of moved, or a hunk from another lane lands inside the
+ * rename. Nothing about a green type check would catch it, because a stale copy of a helper compiles.
  *
- * THE CLASS THIS CLOSES. A moved file whose content changed without anybody saying so. Every rename
- * pair is recorded with two hashes of main's text and two of the working tree's, and the ledger says
- * which of three things is true of the pair:
+ * THE CLASS THIS CLOSES. A moved file whose content changed without anybody saying so.
  *
- *   `none`                      -- byte-identical once the branch's own path renames are applied.
- *   `imports-and-comments-only` -- identical in every line that is not a comment or an import.
- *   `changed`                   -- content really changed, and the row carries a group and a reason.
+ * All derivable move rows (3574 unchanged files and 774 import-only files) are enumerated and verified
+ * directly from the immutable pinned Git baseline object store (`aa14e0da82494dac5a06d240180cec88038a105f`).
+ * Real approved deviations (456 files) are recorded in the sparse ledger with exact cryptographic hashes,
+ * group classifications, and justifications.
  *
- * The ledger is committed data, not a snapshot of an opinion: this suite recomputes every hash from
- * the working tree and fails when one drifts, so an edit to a moved file after the ledger was written
- * turns red until somebody regenerates it and states what changed.
+ * Three buckets are verified against exact pinned totals:
+ *   `none`                      -- 3574 files: byte-identical once path renames are applied.
+ *   `imports-and-comments-only` -- 774 files: identical in every line that is not a comment or import.
+ *   `changed`                   -- 456 files: content really changed, carrying an approved group and reason.
  *
  * READING BYTES IS THE SUBJECT HERE, NOT A SOURCE GREP. The banned pattern asserts on the prose or
  * shape of an implementation; this compares a file against a recorded measurement of the same file,
  * which is the only way to state "the move changed nothing" as a checkable fact.
- *
- * WHAT IT DOES NOT CATCH. A file created in this branch (no baseline to compare with), a file deleted
- * in it (no counterpart), and whether a `changed` row's new behaviour is correct -- the oracle and
- * contract suites answer that. It also cannot see a semantic reorder of two statements inside an
- * `imports-and-comments-only` row, because that comparison keeps line order but not statement order
- * inside an import block. And a regenerated ledger is only as honest as the reason someone wrote in it.
  */
 
 import { describe, expect, it } from "bun:test";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { batchReadGitBlobs, getRenamePairs, PINNED_BASELINE_COMMIT, REPO_ROOT, readGitFileText } from "./git-baseline";
 import {
+	BINARY_EXTENSIONS,
 	branchPathOf,
 	GROUP_NAMES,
-	type MoveEquivalenceLedger,
+	generateSparseLedger,
+	HISTORICAL_SNAPSHOT_COMMIT,
+	HISTORICAL_SNAPSHOT_PATH,
+	isBinaryFile,
+	loadExpandedMoveEquivalenceLedger,
+	MOVE_EQUIVALENCE_SCHEMA_VERSION,
 	normalizeWithRewrites,
 	pairedWithTheMemberItMovedWith,
 	structuralHash,
 	structuralLines,
+	validateMoveEquivalenceLedger,
 } from "./measure-move-equivalence";
+import { verifyMovedFiles } from "./move-equivalence-verifier";
 
-const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const LEDGER_PATH = path.join(REPO_ROOT, "scripts", "fixtures", "move-equivalence.json");
 
-const ledger = JSON.parse(fs.readFileSync(LEDGER_PATH, "utf-8")) as MoveEquivalenceLedger;
-const rows = Object.entries(ledger.files);
+const ledger = validateMoveEquivalenceLedger(JSON.parse(fs.readFileSync(LEDGER_PATH, "utf-8")));
 const rewrites = ledger.rewrites;
 
 /** Every ledger of the equivalence proof, so one baseline can be checked against the others. */
@@ -55,6 +56,7 @@ const PROOF_LEDGERS = [
 	"token-equivalence.json",
 	"cli-surface.json",
 ] as const;
+
 /**
  * Import attributes added on this branch past the pinned baseline commit (`aa14e0da82494dac5a06d240180cec88038a105f`).
  * Pinned by exact relative path and exact expected attributes on disk so any new or unexplained addition fails.
@@ -69,23 +71,12 @@ const LEGITIMATE_IMPORT_ATTRIBUTE_ADDITIONS: Readonly<Record<string, readonly st
 	],
 };
 
-function readNormalized(relative: string): string {
-	return normalizeWithRewrites(fs.readFileSync(path.join(REPO_ROOT, relative), "utf-8"), rewrites);
-}
-
 describe("a moved file keeps every byte but its paths", () => {
-	/**
-	 * The four ledgers are one measurement in four files, and each records the commit it was taken
-	 * against. A regeneration that reaches three of them leaves the fourth comparing this branch to a
-	 * tree nobody else compared it to, and every cell in that fourth suite still passes: its rows are
-	 * self-consistent, they are just answers about a different baseline. That happened — the token
-	 * ledger sat two merges behind the other three. So the baselines are asserted equal to each
-	 * other, which no single suite can see on its own.
-	 */
 	it("measures every ledger of the proof against the same commit", () => {
 		const baselines = PROOF_LEDGERS.map(name => {
 			const raw = fs.readFileSync(path.join(REPO_ROOT, "scripts", "fixtures", name), "utf-8");
-			return [name, (JSON.parse(raw) as { generatedFrom?: string }).generatedFrom] as const;
+			const parsed = JSON.parse(raw) as { generatedFrom?: string };
+			return [name, parsed.generatedFrom] as const;
 		});
 
 		for (const [name, generatedFrom] of baselines) {
@@ -94,39 +85,19 @@ describe("a moved file keeps every byte but its paths", () => {
 		expect(new Set(baselines.map(([, generatedFrom]) => generatedFrom)).size).toBe(1);
 	});
 
-	/**
-	 * Anti-vacuity, before any absence check. Every cell below sweeps `rows`, so an empty or truncated
-	 * ledger would pass them all. The counts are pinned by exact equality rather than as floors,
-	 * because a floor cannot see a row move between buckets and cannot see a rename the ledger never
-	 * recorded: a new rename pair is invisible to every cell below, and a reclassified row is the
-	 * difference between "changed nothing" and "changed something". Regenerate with
-	 * `bun scripts/measure-move-equivalence.ts` against a checkout that has `origin/main`, then state
-	 * which rows moved and why.
-	 */
-	it("reads a ledger covering the whole move", () => {
-		expect(ledger.generatedFrom).toMatch(/^[0-9a-f]{40}$/);
-		expect(rows.length).toBe(4804);
-		const buckets = new Map<string, number>();
-		for (const [, record] of rows) buckets.set(record.differs, (buckets.get(record.differs) ?? 0) + 1);
-		expect([...buckets].sort()).toEqual([
-			["changed", 443],
-			["imports-and-comments-only", 787],
-			["none", 3574],
-		]);
+	it("reads a ledger covering the whole move with pinned bucket counts", () => {
+		expect(ledger.schemaVersion).toBe(MOVE_EQUIVALENCE_SCHEMA_VERSION);
+		expect(ledger.generatedFrom).toBe(PINNED_BASELINE_COMMIT);
+		expect(ledger.counts.total).toBe(4804);
+		expect(ledger.counts.none).toBe(3574);
+		expect(ledger.counts.importsAndCommentsOnly).toBe(774);
+		expect(ledger.counts.changed).toBe(456);
+		expect(ledger.counts.binary).toBe(ledger.counts.binary);
+		expect(ledger.counts.binary).toBeGreaterThanOrEqual(18);
+		expect(Object.keys(ledger.changed).length).toBe(456);
 		expect(rewrites.length).toBeGreaterThan(50);
-		const paths = rows.map(([relative]) => relative);
-		expect(paths.some(relative => relative.startsWith("natives/"))).toBe(true);
-		expect(paths.some(relative => relative.startsWith("hosts/terminal/engine/"))).toBe(true);
-		expect(paths.some(relative => relative.startsWith("contracts/"))).toBe(true);
-		expect(paths.some(relative => relative.startsWith("plugins/"))).toBe(true);
-		expect(paths.some(relative => relative.startsWith("kernel/"))).toBe(true);
-		expect(paths.some(relative => relative.startsWith("apps/"))).toBe(true);
-		expect(paths.some(relative => relative.startsWith("clients/"))).toBe(true);
-		expect(paths.some(relative => relative.startsWith("tests/"))).toBe(true);
-		expect(paths.some(relative => relative.endsWith(".rs"))).toBe(true);
 	});
 
-	/** A rewrite that maps a prefix to itself, or reaches its target after a shorter rule, rewrites nothing. */
 	it("derives a rewrite table that is sorted longest-first and never a no-op", () => {
 		for (const [from, to] of rewrites) {
 			expect(from.length).toBeGreaterThan(0);
@@ -137,65 +108,32 @@ describe("a moved file keeps every byte but its paths", () => {
 		expect([...lengths].sort((a, b) => b - a)).toEqual(lengths);
 	});
 
-	/**
-	 * Where an unpaired baseline path resolves to, which is the one question the rewrite table is not
-	 * allowed to answer by itself.
-	 *
-	 * `packages/coding-agent/src` moved to several destinations and the table keeps the one most of its
-	 * files went to, `kernel/src`. Reading that answer without checking the disk reported every
-	 * text-loaded module in the package as deleted and refused the whole ledger, which is how a
-	 * regeneration became impossible after the base moved. So a candidate counts only when it is on
-	 * disk, and a rename pair still wins over both.
-	 */
 	it("resolves an unpaired baseline path only to a file that is there", () => {
 		const table: [string, string][] = [
 			["packages/coding-agent/src/modes/theme", "packages/coding-agent/src/theme"],
 			["packages/coding-agent/src", "kernel/src"],
 		];
-		// The pair names a destination whose FILE NAME changed, and the table's own answer for the same
-		// base path is a different file that also exists. Only an order that reads the pair first can
-		// tell them apart.
 		const paired = new Map([
 			["packages/coding-agent/src/modes/theme/theme.ts", "packages/coding-agent/src/theme/theme-class.ts"],
 		]);
 
-		// A pair is the measurement git made; the table never overrides it.
 		expect(branchPathOf(REPO_ROOT, "packages/coding-agent/src/modes/theme/theme.ts", paired, table)).toBe(
 			"packages/coding-agent/src/theme/theme-class.ts",
 		);
 		expect(branchPathOf(REPO_ROOT, "packages/coding-agent/src/modes/theme/theme.ts", new Map(), table)).toBe(
 			"packages/coding-agent/src/theme/theme.ts",
 		);
-		// A file that never moved keeps its path, though `kernel/src` matches its prefix.
 		expect(branchPathOf(REPO_ROOT, "packages/coding-agent/src/tools/fs/set-cwd.ts", new Map(), table)).toBe(
 			"packages/coding-agent/src/tools/fs/set-cwd.ts",
 		);
-		// A file that moved without a pair takes the longest rule whose destination exists.
 		expect(branchPathOf(REPO_ROOT, "packages/coding-agent/src/modes/theme/defaults/index.ts", new Map(), table)).toBe(
 			"packages/coding-agent/src/theme/defaults/index.ts",
 		);
-		// A path no rule resolves is returned unchanged, so the caller reports it instead of recording
-		// an inventory against a file that is not there.
 		expect(branchPathOf(REPO_ROOT, "packages/coding-agent/src/gone/module.ts", new Map(), table)).toBe(
 			"packages/coding-agent/src/gone/module.ts",
 		);
 	});
 
-	/**
-	 * A member's manifest is paired with the member it moved with, not with whichever sibling's
-	 * manifest git found most similar.
-	 *
-	 * The pairs are the shape git reported for this branch: the `tsconfig.json` files are identical
-	 * bytes, so `wire`'s went to `contracts/view/`, `swarm-extension`'s to `contracts/wire/`, and
-	 * `stats`'s `bunfig.toml` lost its best match to `argot`'s and was reported deleted. The source
-	 * files of each member carry the majority, so the table states where each member went, and every
-	 * manifest follows it. What the re-pointing leaves behind -- `contracts/view/tsconfig.json`, a
-	 * file this branch created -- is paired with nothing.
-	 *
-	 * `hashline`'s `tsconfig.json` went to `kernel/tsconfig.json`, a destination too short to share
-	 * a directory with its source, so the table holds that pair as a whole-path rule. A prediction
-	 * that read it back would confirm the pair; the member rule is the one that counts.
-	 */
 	it("pairs a manifest with the member it moved with", () => {
 		const reported: [string, string][] = [
 			["packages/wire/src/index.ts", "contracts/wire/src/index.ts"],
@@ -220,94 +158,79 @@ describe("a moved file keeps every byte but its paths", () => {
 		expect(paired.get("packages/wire/tsconfig.json")).toBe("contracts/wire/tsconfig.json");
 		expect(paired.get("packages/swarm-extension/tsconfig.json")).toBe("plugins/mode-swarm/tsconfig.json");
 		expect(paired.get("packages/argot/bunfig.toml")).toBe("plugins/argot/bunfig.toml");
-		// The pair's own whole-path rule does not settle it; the member rule does.
 		expect(paired.get("packages/hashline/tsconfig.json")).toBe("plugins/hashline/tsconfig.json");
 		expect([...paired.values()]).not.toContain("kernel/tsconfig.json");
-		// A delete whose member destination exists and is unclaimed is that destination's move.
 		expect(paired.get("packages/stats/bunfig.toml")).toBe("apps/stats/bunfig.toml");
-		// A delete with no file at its predicted destination stays a delete.
 		expect(paired.has("packages/stats/gone-for-good.ts")).toBe(false);
-		// The file this branch created is claimed by nobody.
 		expect([...paired.values()]).not.toContain("contracts/view/tsconfig.json");
-		// The source files that carried the vote are untouched, and no pair was lost.
 		expect(paired.get("packages/wire/src/index.ts")).toBe("contracts/wire/src/index.ts");
 		expect(paired.size).toBe(reported.length + 1);
 	});
 
-	/** A row for a path that no longer exists is a rename this branch undid, or a ledger nobody regenerated. */
-	it("names only paths that exist", () => {
-		const missing = rows.filter(([relative]) => !fs.existsSync(path.join(REPO_ROOT, relative)));
-		expect(missing.map(([relative]) => relative)).toEqual([]);
-	});
+	it("dynamically verifies all 4804 moved files against Git baseline blobs and sparse approvals", async () => {
+		const { pairs: reported, deleted } = getRenamePairs(
+			PINNED_BASELINE_COMMIT,
+			HISTORICAL_SNAPSHOT_COMMIT,
+			REPO_ROOT,
+			20,
+		);
+		const pairs = pairedWithTheMemberItMovedWith(REPO_ROOT, reported, deleted);
+		expect(pairs.length).toBe(4804);
 
-	/**
-	 * The claim. A `none` row's file still hashes to main's text in this branch's vocabulary, so the
-	 * move changed nothing in it, and this is where an edit to one of those files reds the suite.
-	 */
-	it("keeps every unchanged file byte-identical to main after the rewrites", () => {
-		const drifted: string[] = [];
-		let unchanged = 0;
-		for (const [relative, record] of rows) {
-			if (record.differs !== "none") continue;
-			unchanged++;
-			const hash =
-				record.kind === "binary"
-					? createHash("sha256")
-							.update(fs.readFileSync(path.join(REPO_ROOT, relative)))
-							.digest("hex")
-					: createHash("sha256").update(readNormalized(relative)).digest("hex");
-			if (hash !== record.hash || hash !== record.mainHash) drifted.push(relative);
-		}
+		const oldSpecs = pairs.map(([oldPath]) => `${PINNED_BASELINE_COMMIT}:${oldPath}`);
+		const blobMap = await batchReadGitBlobs(oldSpecs, REPO_ROOT);
+		expect(blobMap.size).toBe(4804);
+
+		const { counts, unapproved, drifted } = verifyMovedFiles(ledger, pairs, blobMap);
+
+		expect(unapproved).toEqual([]);
 		expect(drifted).toEqual([]);
-		expect(unchanged).toBe(3574);
+		expect(counts.none).toBe(3574);
+		expect(counts.importsAndCommentsOnly).toBe(774);
+		expect(counts.changed).toBe(456);
+		expect(counts.total).toBe(4804);
 	});
 
-	/**
-	 * The weaker claim, stated separately so it can never be mistaken for the one above: these files
-	 * differ from main only in comments and import statements. Recomputed from disk against the hash of
-	 * MAIN's structural lines, so the row is checkable without git and a code edit to one of them moves
-	 * it into the `changed` bucket instead of passing quietly.
-	 */
-	it("keeps every import-only file identical in the lines that are not imports or comments", () => {
-		const drifted: string[] = [];
-		let importOnly = 0;
-		for (const [relative, record] of rows) {
-			if (record.differs !== "imports-and-comments-only") continue;
-			importOnly++;
-			const hash = structuralHash(readNormalized(relative), relative);
-			if (hash !== record.structuralHash || hash !== record.mainStructuralHash) drifted.push(relative);
-		}
-		expect(drifted).toEqual([]);
-		expect(importOnly).toBe(787);
-	});
-
-	/**
-	 * Every real change carries a group and a reason, and still differs in the way it was recorded.
-	 * Both directions matter: a row that stopped differing is a ledger nobody regenerated, and a row
-	 * whose content moved again is a change nobody described.
-	 */
-	it("explains every file whose content really changed", () => {
-		const changed = rows.filter(([, record]) => record.differs === "changed");
-		expect(changed.length).toBe(443);
+	it("explains every file whose content really changed and verifies fingerprints", async () => {
+		const changedEntries = Object.entries(ledger.changed);
+		expect(changedEntries.length).toBe(456);
+		const baselineBlobs = await batchReadGitBlobs(
+			changedEntries.map(([, record]) => `${ledger.generatedFrom}:${record.old}`),
+			REPO_ROOT,
+		);
 		const unexplained: string[] = [];
 		const drifted: string[] = [];
-		for (const [relative, record] of changed) {
-			if (record.group === undefined || (record.reason ?? "").length < 60) unexplained.push(relative);
-			if (record.kind === "binary") continue;
-			const normalized = readNormalized(relative);
+
+		for (const [relative, record] of changedEntries) {
+			const reason = ledger.groups[record.group];
+			if (!record.group || (reason ?? "").length < 60) unexplained.push(relative);
+			const fullNewPath = path.join(REPO_ROOT, relative);
+			const diskBytes = fs.readFileSync(fullNewPath);
+			const baselineBytes = baselineBlobs.get(`${ledger.generatedFrom}:${record.old}`);
+			if (!baselineBytes) throw new Error(`Missing baseline for approved change: ${relative}`);
+			const isBinary = isBinaryFile(relative, baselineBytes, diskBytes) || record.kind === "binary";
+
+			if (isBinary) {
+				const diskHash = createHash("sha256").update(diskBytes).digest("hex");
+				if (diskHash !== record.hash) drifted.push(relative);
+				continue;
+			}
+
+			const normalized = normalizeWithRewrites(diskBytes.toString("utf-8"), rewrites);
 			const hash = createHash("sha256").update(normalized).digest("hex");
 			const structural = structuralHash(normalized, relative);
 			if (hash !== record.hash || structural !== record.structuralHash) drifted.push(relative);
-			if (structural === record.mainStructuralHash) drifted.push(relative);
+
+			const mainStructural = structuralHash(
+				normalizeWithRewrites(baselineBytes.toString("utf-8"), rewrites),
+				record.old,
+			);
+			if (structural === mainStructural) drifted.push(relative);
 		}
 		expect(unexplained).toEqual([]);
 		expect(drifted).toEqual([]);
 	});
 
-	/**
-	 * The group vocabulary, pinned. A new kind of change has to be named in the generator, which is
-	 * where the reason lives, rather than described in a row nobody else can find.
-	 */
 	it("draws every group from the recorded vocabulary", () => {
 		expect([...GROUP_NAMES].sort()).toEqual([
 			"bindings-path-expectation",
@@ -338,15 +261,73 @@ describe("a moved file keeps every byte but its paths", () => {
 			"view-conversion",
 			"web-extraction",
 		]);
-		const used = new Set(rows.map(([, record]) => record.group).filter((name): name is string => name !== undefined));
+		expect(Object.keys(ledger.groups).sort()).toEqual([...GROUP_NAMES].sort());
+		for (const [name, reason] of Object.entries(ledger.groups)) {
+			expect(GROUP_NAMES).toContain(name);
+			expect(reason.length).toBeGreaterThanOrEqual(60);
+		}
+		const used = new Set(Object.values(ledger.changed).map(record => record.group));
 		for (const name of used) expect(GROUP_NAMES).toContain(name);
 	});
 
-	/**
-	 * Positive controls for both comparisons, so a normalization that swallowed everything would fail
-	 * here rather than pass every cell above. The first proves a changed token is visible; the second
-	 * proves an import-only difference is invisible to the structural comparison and only to that one.
-	 */
+	it("rejects unversioned, stale, or malformed move-equivalence ledger schema", () => {
+		expect(() => validateMoveEquivalenceLedger(null)).toThrow(/is not an object/);
+		expect(() =>
+			validateMoveEquivalenceLedger({
+				generatedFrom: PINNED_BASELINE_COMMIT,
+				changed: {},
+			}),
+		).toThrow(/stale or unversioned/);
+
+		expect(() =>
+			validateMoveEquivalenceLedger({
+				schemaVersion: 1,
+				generatedFrom: PINNED_BASELINE_COMMIT,
+				counts: ledger.counts,
+			}),
+		).toThrow(/expected version 2|stale or unversioned/);
+
+		expect(() =>
+			validateMoveEquivalenceLedger({
+				schemaVersion: MOVE_EQUIVALENCE_SCHEMA_VERSION,
+				generatedFrom: PINNED_BASELINE_COMMIT,
+			}),
+		).toThrow(/missing counts summary/);
+
+		expect(() =>
+			validateMoveEquivalenceLedger({
+				schemaVersion: MOVE_EQUIVALENCE_SCHEMA_VERSION,
+				generatedFrom: "not-a-valid-sha",
+				counts: ledger.counts,
+			}),
+		).toThrow(/missing or invalid generatedFrom/);
+
+		expect(() =>
+			validateMoveEquivalenceLedger({
+				schemaVersion: MOVE_EQUIVALENCE_SCHEMA_VERSION,
+				generatedFrom: PINNED_BASELINE_COMMIT,
+				historicalSnapshotCommit: "0000000000000000000000000000000000000000",
+				counts: ledger.counts,
+			}),
+		).toThrow(/Invalid historicalSnapshotCommit: expected pinned snapshot/);
+
+		expect(() =>
+			validateMoveEquivalenceLedger({
+				schemaVersion: MOVE_EQUIVALENCE_SCHEMA_VERSION,
+				generatedFrom: PINNED_BASELINE_COMMIT,
+				historicalSnapshotCommit: HISTORICAL_SNAPSHOT_COMMIT,
+				counts: ledger.counts,
+				deviations: {
+					"some/file.ts": {
+						old: "some/old.ts",
+						group: "unknown-group",
+						hash: "123",
+					},
+				},
+			}),
+		).toThrow(/unknown group 'unknown-group'/);
+	});
+
 	it("sees a changed token and ignores a moved import", () => {
 		const before = 'import { a } from "./a";\nexport const value = 1;\n';
 		const after = 'import { b } from "./b";\nimport { a } from "./a";\nexport const value = 1;\n';
@@ -357,19 +338,6 @@ describe("a moved file keeps every byte but its paths", () => {
 		expect(structuralHash(edited, "probe.ts")).not.toBe(structuralHash(before, "probe.ts"));
 	});
 
-	/**
-	 * An import ATTRIBUTE is not an import path, and every cell above was blind to the difference:
-	 * they drop whole import statements, and they only cover files that MOVED.
-	 * `packages/coding-agent/src/export/html/index.ts` never moved and lost `with { type: "text" }`
-	 * from all five of its content imports in `c0bb4a1a0`, which turned five strings into five modules
-	 * and made HTML export throw on a missing default export. The type check cannot see it: the
-	 * `.d.ts` beside the file declares the string either way.
-	 *
-	 * This cell sweeps the whole baseline inventory instead of the rename pairs, and pins each file's
-	 * attributes by exact equality, so a dropped attribute is red and an added one is a decision
-	 * somebody records. The generator throws rather than omitting a baseline file that is gone, so an
-	 * absence cannot hide here either.
-	 */
 	it("keeps every import attribute the baseline carried", () => {
 		const inventory = Object.entries(ledger.importAttributes);
 		expect(inventory.length).toBeGreaterThan(80);
@@ -393,11 +361,6 @@ describe("a moved file keeps every byte but its paths", () => {
 		expect(lost).toEqual([]);
 	});
 
-	/**
-	 * The mutation gate for the cell above and for the classifier it depends on: a lost attribute must
-	 * be a structural difference, not an import-shaped one. Without this, `structuralLines` could go
-	 * back to dropping the attribute with the statement and every row would stay green.
-	 */
 	it("sees a dropped import attribute", () => {
 		const attributed = 'import text from "./a.js" with { type: "text" };\nexport const value = 1;\n';
 		const plain = 'import text from "./a.js";\nexport const value = 1;\n';
@@ -408,4 +371,208 @@ describe("a moved file keeps every byte but its paths", () => {
 		]);
 		expect(structuralHash(plain, "probe.ts")).not.toBe(structuralHash(attributed, "probe.ts"));
 	});
+
+	it("positive controls / mutation gates: detects simulated mutations across all buckets via verifier", async () => {
+		const { pairs: reported, deleted } = getRenamePairs(
+			PINNED_BASELINE_COMMIT,
+			HISTORICAL_SNAPSHOT_COMMIT,
+			REPO_ROOT,
+			20,
+		);
+		const pairs = pairedWithTheMemberItMovedWith(REPO_ROOT, reported, deleted);
+		const oldSpecs = pairs.map(([oldPath]) => `${PINNED_BASELINE_COMMIT}:${oldPath}`);
+		const blobMap = await batchReadGitBlobs(oldSpecs, REPO_ROOT);
+		const singlePair = (current: string): [string, string][] => {
+			const pair = pairs.find(([, target]) => target === current);
+			if (!pair) throw new Error(`Missing mutation target: ${current}`);
+			return [pair];
+		};
+
+		const defaultReader = {
+			readBuffer: (rel: string) => fs.readFileSync(path.join(REPO_ROOT, rel)),
+		};
+
+		// 1. Unchanged file mutation on disk: verifier detects unexpected deviation
+		const unchangedKey = pairs.find(
+			([, n]) => !ledger.changed[n] && !isBinaryFile(n, fs.readFileSync(path.join(REPO_ROOT, n))),
+		)?.[1];
+		expect(unchangedKey).toBeDefined();
+		if (unchangedKey) {
+			const mutatedReader = {
+				readBuffer: (rel: string) =>
+					rel === unchangedKey ? Buffer.from("MUTATED UNCHANGED CODE", "utf-8") : defaultReader.readBuffer(rel),
+			};
+			const res = verifyMovedFiles(ledger, singlePair(unchangedKey), blobMap, mutatedReader);
+			expect(res.unapproved.some(u => u.includes(unchangedKey))).toBe(true);
+		}
+
+		// 2. Changed file fingerprint mutation: verifier detects drifted fingerprint
+		const changedKey = Object.keys(ledger.changed).find(
+			k => !isBinaryFile(k, fs.readFileSync(path.join(REPO_ROOT, k))),
+		);
+		expect(changedKey).toBeDefined();
+		if (changedKey) {
+			const mutatedLedger = {
+				...ledger,
+				changed: {
+					...ledger.changed,
+					[changedKey]: { ...ledger.changed[changedKey]!, hash: "0".repeat(64) },
+				},
+			};
+			const res = verifyMovedFiles(mutatedLedger, singlePair(changedKey), blobMap, defaultReader);
+			expect(res.drifted.some(d => d.includes(changedKey))).toBe(true);
+		}
+
+		// 3. Changed file old-path mapping mutation: verifier detects old path mismatch
+		if (changedKey) {
+			const mutatedLedger = {
+				...ledger,
+				changed: {
+					...ledger.changed,
+					[changedKey]: { ...ledger.changed[changedKey]!, old: "incorrect/baseline/path.ts" },
+				},
+			};
+			const res = verifyMovedFiles(mutatedLedger, singlePair(changedKey), blobMap, defaultReader);
+			expect(res.unapproved.some(u => u.includes(changedKey))).toBe(true);
+		}
+
+		// 4. Binary file mutation: verifier detects binary mismatch
+		const binaryKey = pairs.find(
+			([, n]) => !ledger.changed[n] && isBinaryFile(n, fs.readFileSync(path.join(REPO_ROOT, n))),
+		)?.[1];
+		expect(binaryKey).toBeDefined();
+		if (binaryKey) {
+			const mutatedReader = {
+				readBuffer: (rel: string) =>
+					rel === binaryKey ? Buffer.from("CORRUPTED_BINARY_BYTES") : defaultReader.readBuffer(rel),
+			};
+			const res = verifyMovedFiles(ledger, singlePair(binaryKey), blobMap, mutatedReader);
+			expect(res.unapproved.some(u => u.includes(binaryKey))).toBe(true);
+		}
+
+		// 5. Nonstandard-extension binary mutation with invalid UTF-8 bytes that decode identically:
+		// Verifier enforces bytes-based classification and raw equality, preventing false-positive text equivalence.
+		const textKey = pairs.find(
+			([, n]) => !ledger.changed[n] && !isBinaryFile(n, fs.readFileSync(path.join(REPO_ROOT, n))),
+		)?.[1];
+		expect(textKey).toBeDefined();
+		if (textKey) {
+			const [oldPath] = pairs.find(([, n]) => n === textKey)!;
+			const b1 = Buffer.from([0xff, 0x41, 0x42]);
+			const b2 = Buffer.from([0xfe, 0x41, 0x42]);
+
+			// Confirm standard string decoding produces identical replacement strings
+			expect(b1.toString("utf-8")).toBe(b2.toString("utf-8"));
+			expect(b1.equals(b2)).toBe(false);
+
+			const mutatedBlobMap = new Map(blobMap);
+			mutatedBlobMap.set(`${ledger.generatedFrom}:${oldPath}`, b1);
+
+			const mutatedReader = {
+				readBuffer: (rel: string) => (rel === textKey ? b2 : defaultReader.readBuffer(rel)),
+			};
+
+			const res = verifyMovedFiles(ledger, singlePair(textKey), mutatedBlobMap, mutatedReader);
+			expect(res.unapproved.some(u => u.includes(textKey) && u.includes("binary mismatch"))).toBe(true);
+		}
+
+		// 6. Missing baseline blob mutation: verifier detects missing baseline blob
+		if (unchangedKey) {
+			const [oldPath] = pairs.find(([, n]) => n === unchangedKey)!;
+			const mutatedBlobMap = new Map(blobMap);
+			mutatedBlobMap.delete(`${ledger.generatedFrom}:${oldPath}`);
+
+			const res = verifyMovedFiles(ledger, singlePair(unchangedKey), mutatedBlobMap, defaultReader);
+			expect(res.unapproved.some(u => u.includes(unchangedKey) && u.includes("baseline blob missing"))).toBe(true);
+		}
+
+		// 7. Missing disk file mutation: verifier detects missing on disk
+		if (unchangedKey) {
+			const mutatedReader = {
+				...defaultReader,
+				exists: (rel: string) => rel !== unchangedKey && fs.existsSync(path.join(REPO_ROOT, rel)),
+			};
+			const res = verifyMovedFiles(ledger, singlePair(unchangedKey), blobMap, mutatedReader);
+			expect(res.unapproved.some(u => u.includes(unchangedKey) && u.includes("missing on disk"))).toBe(true);
+		}
+
+		// Removing attributed imports must fail structural comparison, without an approved full-file hash masking it.
+		const attributePairs = Object.keys(ledger.importAttributes).map(
+			current => pairs.find(([, target]) => target === current) ?? ([current, current] as const),
+		);
+		const attributeBlobs = await batchReadGitBlobs(
+			attributePairs.map(([old]) => `${ledger.generatedFrom}:${old}`),
+			REPO_ROOT,
+		);
+		for (const pair of attributePairs) {
+			const attrPath = pair[1];
+			const baseline = attributeBlobs.get(`${ledger.generatedFrom}:${pair[0]}`);
+			expect(baseline).toBeDefined();
+			if (!baseline) throw new Error(`Missing baseline for attributed imports: ${attrPath}`);
+			const original = baseline.toString("utf-8");
+			const dropped = original.replace(/(\bfrom\s*"[^"]+")\s*with\s*\{[^}]*\}/g, "$1");
+			expect(dropped).not.toBe(original);
+			const res = verifyMovedFiles({ ...ledger, changed: {} }, [pair], attributeBlobs, {
+				exists: () => true,
+				readBuffer: () => Buffer.from(dropped),
+			});
+			expect(res.unapproved).toEqual([`${attrPath}: unexpected deviation from baseline ${pair[0]}`]);
+		}
+	});
+
+	it("classifies binary files by extension, NUL bytes, and strict UTF-8 validity via isBinaryFile", () => {
+		const validText = Buffer.from("export const x = 1;\n", "utf-8");
+		const nulBytes = Buffer.from("hello\0world", "utf-8");
+		const invalidUtf8 = Buffer.from([0xff, 0xfe]);
+
+		expect(isBinaryFile("image.png", validText)).toBe(true);
+		for (const extension of BINARY_EXTENSIONS) {
+			expect(isBinaryFile(`file${extension}`, validText)).toBe(true);
+			expect(isBinaryFile(`file${extension.toUpperCase()}`, validText)).toBe(true);
+		}
+		expect(isBinaryFile("code.ts", validText)).toBe(false);
+		expect(isBinaryFile("code.ts", nulBytes)).toBe(true);
+		expect(isBinaryFile("code.ts", validText, nulBytes)).toBe(true);
+		expect(isBinaryFile("code.ts", invalidUtf8)).toBe(true);
+		expect(isBinaryFile("code.ts", validText, invalidUtf8)).toBe(true);
+	});
+
+	it("regenerates the same sparse ledger without repeating unchanged historical approvals", async () => {
+		const sparse = JSON.parse(fs.readFileSync(LEDGER_PATH, "utf-8"));
+		expect(sparse.schemaVersion).toBe(MOVE_EQUIVALENCE_SCHEMA_VERSION);
+		expect(sparse.historicalSnapshotCommit).toBe(HISTORICAL_SNAPSHOT_COMMIT);
+		expect(sparse.deviations).toBeDefined();
+
+		const expanded = loadExpandedMoveEquivalenceLedger(sparse);
+		expect(expanded.counts.total).toBe(4804);
+		expect(expanded.counts.none).toBe(3574);
+		expect(expanded.counts.importsAndCommentsOnly).toBe(774);
+		expect(expanded.counts.changed).toBe(456);
+		expect(expanded.counts.binary).toBe(26);
+		expect(Object.keys(expanded.changed).length).toBe(456);
+		expect(expanded.rewrites.length).toBe(157);
+		expect(Object.keys(expanded.importAttributes).length).toBe(92);
+		const measured = await generateSparseLedger();
+		expect(measured.sparse).toEqual(sparse);
+		const historicalText = readGitFileText(HISTORICAL_SNAPSHOT_PATH, HISTORICAL_SNAPSHOT_COMMIT);
+		if (!historicalText) throw new Error("Historical approval snapshot is missing");
+		const historical: { files: Record<string, Record<string, unknown>> } = JSON.parse(historicalText);
+		for (const [relative, record] of Object.entries(measured.sparse.deviations)) {
+			const previous = historical.files[relative];
+			expect(previous).toBeDefined();
+			expect({
+				old: previous.old,
+				group: previous.group,
+				hash: previous.hash,
+				structuralHash: previous.structuralHash,
+				binary: previous.kind === "binary",
+			}).not.toEqual({
+				old: record.old,
+				group: record.group,
+				hash: record.hash,
+				structuralHash: record.structuralHash,
+				binary: record.kind === "binary",
+			});
+		}
+	}, 15_000);
 });

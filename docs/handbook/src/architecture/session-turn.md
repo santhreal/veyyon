@@ -21,6 +21,7 @@ Sessions run in-process; there is no separate session daemon.
 ## Input during startup
 
 Type or paste into the launch composer before session initialization finishes.
+Typed input repaints before runtime initialization continues.
 Submitted prompts and slash commands execute in order after initialization, without
 a second Enter. Each submission retains its text and attachments; subsequent typing
 remains in a separate draft.

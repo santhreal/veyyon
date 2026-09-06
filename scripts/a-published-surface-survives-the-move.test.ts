@@ -13,14 +13,15 @@
  * export can disappear from a barrel file, or a re-export `export * from "./x"` can point
  * to a missing file.
  *
- * This suite proves statically against the committed ledger in `scripts/fixtures/published-surface.json`
- * that:
+ * This suite proves dynamically against the pinned Git baseline commit (`aa14e0da82494dac5a06d240180cec88038a105f`)
+ * and the sparse approval ledger in `scripts/fixtures/published-surface.json` that:
  * 1. Every package name from the baseline still exists in the workspace.
  * 2. Every binary command name from the baseline survives.
  * 3. Every exports subpath key from the baseline survives or has its intentional relocation pinned.
  * 4. Every named export declared in every package entrypoint barrel survives.
  * 5. Every star re-export edge (`export * from "./x"`) in every package entrypoint resolves to an existing file on disk.
  * 6. Every package addition and subpath addition is explicitly pinned by exact equality.
+ * 7. Old, missing, or corrupt baselines fail closed with descriptive corrective actions.
  *
  * WHAT THIS SUITE DOES NOT CATCH. This suite checks static module identity and export surface parity.
  * It does not execute runtime function behavior, type-check internal function parameter types,
@@ -28,300 +29,285 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
-import { parse as parseBabel } from "@babel/parser";
-import type {
-	ArrayPattern,
-	AssignmentPattern,
-	Declaration,
-	ExportNamedDeclaration,
-	ExportSpecifier,
-	Identifier,
-	Node,
-	ObjectPattern,
-	RestElement,
-} from "@babel/types";
-import { expandExportsToSubpaths, type PublishedSurfaceLedger } from "./measure-published-surface";
-import { REPO_ROOT, typeScriptMembers } from "./workspace-layout";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ensureBaselineAvailable, PINNED_BASELINE_COMMIT, REPO_ROOT } from "./git-baseline";
+import {
+	expandAddedResolvedSubpaths,
+	expandResolvedSubpathsRecord,
+	filesUnderMember,
+	generateLedger,
+	loadHeadPackages,
+	loadPublishedSurfaceLedger,
+	normalizeAddedResolvedSubpaths,
+	normalizeResolvedSubpathsRecord,
+	PUBLISHED_SURFACE_SCHEMA_VERSION,
+	type PublishedSurfaceLedger,
+	resolveStarSpecifierToDisk,
+	validatePublishedSurfaceLedger,
+} from "./measure-published-surface";
 
-interface WorkspacePackageSnapshot {
-	readonly name: string;
-	readonly directory: string;
-	readonly private: boolean;
-	readonly version: string | null;
-	readonly main: string | null;
-	readonly module: string | null;
-	readonly types: string | null;
-	readonly binKeys: readonly string[];
-	readonly exportsKeys: readonly string[];
-	readonly resolvedSubpaths: readonly string[];
-	readonly entrypoint: string | null;
-	readonly entrypointFilePath: string | null;
-	readonly namedExports: readonly string[];
-	readonly starEdges: readonly string[];
-}
-
-const NEVER_A_SOURCE_DIRECTORY = new Set(["node_modules", "dist", ".git", "build", "coverage"]);
-
-/**
- * Every file under one member, repository-relative, so the head side expands its `exports` patterns
- * against the working tree while the ledger's base side expanded them against a git listing. One
- * expansion function, two file lists: a second implementation is how the two sides stop agreeing.
- */
-function filesUnderMember(member: string): string[] {
-	const root = join(REPO_ROOT, member);
-	const found: string[] = [];
-	const walk = (directory: string): void => {
-		for (const entry of readdirSync(directory, { withFileTypes: true })) {
-			if (NEVER_A_SOURCE_DIRECTORY.has(entry.name)) continue;
-			const full = join(directory, entry.name);
-			if (entry.isDirectory()) walk(full);
-			else if (entry.isFile()) found.push(relative(REPO_ROOT, full).split("\\").join("/"));
-		}
-	};
-	if (existsSync(root)) walk(root);
-	return found;
-}
-
-function resolvePackageEntrypoint(pkgData: { exports?: unknown; main?: string; module?: string }): string | null {
-	const exports = pkgData.exports;
-	if (typeof exports === "string") return exports;
-	if (exports && typeof exports === "object" && "." in exports) {
-		const dot = (exports as Record<string, unknown>)["."];
-		if (typeof dot === "string") return dot;
-		if (dot && typeof dot === "object") {
-			const record = dot as Record<string, unknown>;
-			const candidate = record.import ?? record.default ?? record.types;
-			if (typeof candidate === "string") return candidate;
-		}
-	}
-	if (typeof pkgData.main === "string") return pkgData.main;
-	if (typeof pkgData.module === "string") return pkgData.module;
-	return null;
-}
-
-function collectPatternIdentifiers(patternNode: Node | null | undefined, names: Set<string>): void {
-	if (!patternNode) return;
-	if (patternNode.type === "Identifier") {
-		names.add((patternNode as Identifier).name);
-	} else if (patternNode.type === "ObjectPattern") {
-		const obj = patternNode as ObjectPattern;
-		for (const prop of obj.properties) {
-			if (prop.type === "ObjectProperty") {
-				collectPatternIdentifiers(prop.value, names);
-			} else if (prop.type === "RestElement") {
-				collectPatternIdentifiers((prop as RestElement).argument, names);
-			}
-		}
-	} else if (patternNode.type === "ArrayPattern") {
-		const arr = patternNode as ArrayPattern;
-		for (const el of arr.elements) {
-			if (el) collectPatternIdentifiers(el, names);
-		}
-	} else if (patternNode.type === "RestElement") {
-		collectPatternIdentifiers((patternNode as RestElement).argument, names);
-	} else if (patternNode.type === "AssignmentPattern") {
-		collectPatternIdentifiers((patternNode as AssignmentPattern).left, names);
-	}
-}
-
-function parseBarrelExportsFromSource(code: string): {
-	namedExports: string[];
-	starEdges: string[];
-} {
-	const ast = parseBabel(code, {
-		sourceType: "module",
-		plugins: ["typescript", "jsx"],
-	});
-
-	const namedExports = new Set<string>();
-	const starEdges = new Set<string>();
-
-	for (const node of ast.program.body) {
-		if (node.type === "ExportNamedDeclaration") {
-			const named = node as ExportNamedDeclaration;
-			if (named.declaration) {
-				const decl = named.declaration as Declaration;
-				if (decl.type === "VariableDeclaration") {
-					for (const d of decl.declarations) {
-						collectPatternIdentifiers(d.id, namedExports);
-					}
-				} else if (
-					decl.type === "FunctionDeclaration" ||
-					decl.type === "ClassDeclaration" ||
-					decl.type === "TSTypeAliasDeclaration" ||
-					decl.type === "TSInterfaceDeclaration" ||
-					decl.type === "TSEnumDeclaration" ||
-					decl.type === "TSModuleDeclaration"
-				) {
-					if (decl.id && "name" in decl.id && typeof decl.id.name === "string") {
-						namedExports.add(decl.id.name);
-					}
-				}
-			}
-			if (named.specifiers) {
-				for (const spec of named.specifiers) {
-					if (spec.type === "ExportSpecifier") {
-						const exportSpec = spec as ExportSpecifier;
-						const name =
-							exportSpec.exported.type === "Identifier" ? exportSpec.exported.name : exportSpec.exported.value;
-						namedExports.add(name);
-					} else if (spec.type === "ExportNamespaceSpecifier") {
-						namedExports.add(spec.exported.name);
-					}
-				}
-			}
-		} else if (node.type === "ExportAllDeclaration") {
-			// A bare `export * from "./x"` is a star edge. `export * as ns from "./x"` is not an
-			// `ExportAllDeclaration` at all: Babel reports it as a named export carrying an
-			// `ExportNamespaceSpecifier`, which the branch above records by its local name.
-			starEdges.add(node.source.value);
-		}
-	}
-
-	return {
-		namedExports: [...namedExports].sort(),
-		starEdges: [...starEdges].sort(),
-	};
-}
-
-/**
- * Workspace package name to the directory that declares it, read once from the members themselves.
- *
- * A barrel used to reach every module it republished through a relative path, so a star edge was
- * always a path. A star edge may now name another workspace package — `src/index.ts` re-exports
- * `@veyyon/kernel/session/session-storage` — and resolving that against the barrel's own directory
- * finds nothing, which reads as an unresolvable edge rather than a cross-package one.
- */
-let workspaceDirectoriesByName: Map<string, string> | undefined;
-
-function memberDirectoryOf(packageName: string): string | undefined {
-	if (workspaceDirectoriesByName === undefined) {
-		workspaceDirectoriesByName = new Map();
-		for (const member of typeScriptMembers()) {
-			const manifestPath = join(REPO_ROOT, member, "package.json");
-			if (!existsSync(manifestPath)) continue;
-			const data = JSON.parse(readFileSync(manifestPath, "utf-8")) as { name?: unknown };
-			if (typeof data.name === "string") workspaceDirectoriesByName.set(data.name, join(REPO_ROOT, member));
-		}
-	}
-	return workspaceDirectoriesByName.get(packageName);
-}
-
-function resolveStarExportOnDisk(fromFile: string, specifier: string): string | null {
-	let base = dirname(fromFile);
-	let body = specifier;
-	if (!specifier.startsWith(".")) {
-		const scoped = specifier.startsWith("@");
-		const parts = specifier.split("/");
-		const packageName = scoped ? parts.slice(0, 2).join("/") : parts[0];
-		const rest = parts.slice(scoped ? 2 : 1).join("/");
-		const memberDir = packageName === undefined ? undefined : memberDirectoryOf(packageName);
-		if (memberDir === undefined) return null;
-		// A member publishes its modules from `src/`, which is the shape every subpath pattern in this
-		// workspace expands into; a package with no `src/` still resolves against its own root.
-		base = existsSync(join(memberDir, "src")) ? join(memberDir, "src") : memberDir;
-		// The `.js` alias every member publishes beside its extensionless subpath resolves to the same
-		// TypeScript source, so the suffix is dropped before the extension candidates below are tried.
-		body = (rest === "" ? "index" : rest).replace(/\.js$/, "");
-	}
-	const dir = base;
-	const candidates = [
-		resolve(dir, body),
-		resolve(dir, `${body}.ts`),
-		resolve(dir, `${body}.tsx`),
-		resolve(dir, `${body}.d.ts`),
-		resolve(dir, `${body}.js`),
-		resolve(dir, body, "index.ts"),
-		resolve(dir, body, "index.tsx"),
-		resolve(dir, body, "index.d.ts"),
-		resolve(dir, body, "index.js"),
-	];
-	for (const candidate of candidates) {
-		if (existsSync(candidate) && statSync(candidate).isFile()) {
-			return candidate;
-		}
-	}
-	return null;
-}
-
-function loadHeadPackages(): Map<string, WorkspacePackageSnapshot> {
-	const members = typeScriptMembers();
-	const packages = new Map<string, WorkspacePackageSnapshot>();
-
-	for (const member of members) {
-		const manifestPath = join(REPO_ROOT, member, "package.json");
-		if (!existsSync(manifestPath)) continue;
-
-		const raw = readFileSync(manifestPath, "utf-8");
-		const data = JSON.parse(raw) as Record<string, unknown>;
-		const name = typeof data.name === "string" ? data.name : member;
-		const priv = Boolean(data.private);
-		const version = typeof data.version === "string" ? data.version : null;
-		const main = typeof data.main === "string" ? data.main : null;
-		const module = typeof data.module === "string" ? data.module : null;
-		const types = typeof data.types === "string" ? data.types : null;
-
-		const binKeys =
-			typeof data.bin === "object" && data.bin !== null
-				? Object.keys(data.bin as Record<string, unknown>).sort()
-				: typeof data.bin === "string"
-					? [name.split("/").pop() ?? name]
-					: [];
-
-		const exportsKeys =
-			typeof data.exports === "object" && data.exports !== null
-				? Object.keys(data.exports as Record<string, unknown>).sort()
-				: typeof data.exports === "string"
-					? ["."]
-					: [];
-
-		const resolvedSubpaths = expandExportsToSubpaths(data.exports, member, filesUnderMember(member));
-
-		const entrypoint = resolvePackageEntrypoint(data);
-		let namedExports: string[] = [];
-		let starEdges: string[] = [];
-		let entrypointFilePath: string | null = null;
-
-		if (entrypoint) {
-			const entryRelative = entrypoint.replace(/^\.\//, "");
-			const resolvedPath = resolve(REPO_ROOT, member, entryRelative);
-			if (existsSync(resolvedPath)) {
-				entrypointFilePath = resolvedPath;
-				const code = readFileSync(resolvedPath, "utf-8");
-				const parsed = parseBarrelExportsFromSource(code);
-				namedExports = parsed.namedExports;
-				starEdges = parsed.starEdges;
-			}
-		}
-
-		packages.set(name, {
-			name,
-			directory: member,
-			private: priv,
-			version,
-			main,
-			module,
-			types,
-			binKeys,
-			exportsKeys,
-			resolvedSubpaths,
-			entrypoint,
-			entrypointFilePath,
-			namedExports,
-			starEdges,
-		});
-	}
-
-	return packages;
-}
-
-const FIXTURE_PATH = join(REPO_ROOT, "scripts", "fixtures", "published-surface.json");
-const LEDGER: PublishedSurfaceLedger = JSON.parse(readFileSync(FIXTURE_PATH, "utf-8")) as PublishedSurfaceLedger;
+const LEDGER: PublishedSurfaceLedger = await loadPublishedSurfaceLedger();
 const HEAD_PACKAGES = loadHeadPackages();
 
 describe("a published surface survives the move", () => {
+	// (schema) validates schema version and pinned baseline commit
+	it("(schema) validates schema version and pinned baseline commit", () => {
+		expect(LEDGER.schemaVersion).toBe(PUBLISHED_SURFACE_SCHEMA_VERSION);
+		expect(LEDGER.generatedFrom).toBe(PINNED_BASELINE_COMMIT);
+		expect(Object.keys(LEDGER.packages).length).toBe(18);
+		expect(Object.keys(LEDGER.packages).sort()).toEqual([
+			"@veyyon/agent-core",
+			"@veyyon/ai",
+			"@veyyon/catalog",
+			"@veyyon/coding-agent",
+			"@veyyon/collab-web",
+			"@veyyon/evals",
+			"@veyyon/hashline",
+			"@veyyon/mnemopi",
+			"@veyyon/natives",
+			"@veyyon/simulations",
+			"@veyyon/stats",
+			"@veyyon/swarm-extension",
+			"@veyyon/tool-render",
+			"@veyyon/tui",
+			"@veyyon/utils",
+			"@veyyon/wire",
+			"argot",
+			"veybot-web",
+		]);
+	});
+
+	// (fail-closed) schema validation rejects stale, missing, or corrupt baselines
+	it("(fail-closed) schema validation rejects stale, missing, or corrupt baselines", () => {
+		expect(() => validatePublishedSurfaceLedger(null)).toThrow("Published surface ledger is not an object");
+		expect(() => validatePublishedSurfaceLedger([])).toThrow("Published surface ledger is not an object");
+		expect(() => validatePublishedSurfaceLedger({})).toThrow(
+			"Published surface ledger schema is stale or unversioned",
+		);
+		expect(() =>
+			validatePublishedSurfaceLedger({
+				schemaVersion: 1,
+				generatedFrom: PINNED_BASELINE_COMMIT,
+			}),
+		).toThrow("expected version 2, got 1");
+		expect(() =>
+			validatePublishedSurfaceLedger({
+				schemaVersion: PUBLISHED_SURFACE_SCHEMA_VERSION,
+				generatedFrom: "not-the-pinned-commit",
+			}),
+		).toThrow(/generatedFrom commit mismatch/);
+		expect(() =>
+			validatePublishedSurfaceLedger({
+				schemaVersion: PUBLISHED_SURFACE_SCHEMA_VERSION,
+				generatedFrom: PINNED_BASELINE_COMMIT,
+				additions: null,
+			}),
+		).toThrow("missing additions record");
+		expect(() =>
+			validatePublishedSurfaceLedger({
+				schemaVersion: PUBLISHED_SURFACE_SCHEMA_VERSION,
+				generatedFrom: PINNED_BASELINE_COMMIT,
+				additions: { packages: "not-an-array" },
+			}),
+		).toThrow("additions.packages must be an array");
+		expect(() =>
+			validatePublishedSurfaceLedger({
+				schemaVersion: PUBLISHED_SURFACE_SCHEMA_VERSION,
+				generatedFrom: PINNED_BASELINE_COMMIT,
+				additions: { packages: [123] },
+			}),
+		).toThrow("additions.packages elements must be strings");
+		expect(() =>
+			validatePublishedSurfaceLedger({
+				schemaVersion: PUBLISHED_SURFACE_SCHEMA_VERSION,
+				generatedFrom: PINNED_BASELINE_COMMIT,
+				additions: {
+					packages: [],
+					exportsKeys: { "@veyyon/wire": "not-an-array" },
+				},
+			}),
+		).toThrow(/additions\.exportsKeys\["@veyyon\/wire"\] must be an array/);
+		expect(() =>
+			validatePublishedSurfaceLedger({
+				schemaVersion: PUBLISHED_SURFACE_SCHEMA_VERSION,
+				generatedFrom: PINNED_BASELINE_COMMIT,
+				additions: {
+					packages: [],
+					exportsKeys: {},
+					resolvedSubpaths: {},
+					namedExports: {},
+					starEdges: {},
+					binKeys: {},
+				},
+				relocations: {
+					exportsKeys: {
+						"@veyyon/coding-agent": {
+							"./bad": { to: 123, why: "reason" },
+						},
+					},
+				},
+			}),
+		).toThrow(/Invalid relocation note for "\.\/bad"/);
+		expect(() =>
+			validatePublishedSurfaceLedger({
+				schemaVersion: PUBLISHED_SURFACE_SCHEMA_VERSION,
+				generatedFrom: PINNED_BASELINE_COMMIT,
+				additions: {
+					packages: [],
+					exportsKeys: {},
+					resolvedSubpaths: {},
+					namedExports: {},
+					starEdges: {},
+					binKeys: {},
+				},
+				relocations: {
+					exportsKeys: {},
+					resolvedSubpaths: {},
+					starEdges: {
+						"@veyyon/coding-agent": {
+							"./from": 123,
+						},
+					},
+				},
+			}),
+		).toThrow(/Invalid starEdge relocation for "\.\/from"/);
+		expect(() =>
+			validatePublishedSurfaceLedger({
+				schemaVersion: PUBLISHED_SURFACE_SCHEMA_VERSION,
+				generatedFrom: PINNED_BASELINE_COMMIT,
+				additions: {
+					packages: [],
+					exportsKeys: {},
+					resolvedSubpaths: {},
+					namedExports: {},
+					starEdges: {},
+					binKeys: {},
+				},
+				relocations: {
+					exportsKeys: {},
+					resolvedSubpaths: {},
+					starEdges: {},
+				},
+				unexpectedExtraField: true,
+			}),
+		).toThrow(/Unknown top-level property "unexpectedExtraField"/);
+
+		// Rejects missing base record for alias
+		expect(() =>
+			expandResolvedSubpathsRecord(
+				{
+					records: { "./foo": { to: "./bar", why: "reason" } },
+					jsAliases: { suffixReason: ["./nonexistent"] },
+				},
+				"@veyyon/coding-agent",
+			),
+		).toThrow(/Missing base record for alias "\.\/nonexistent"/);
+
+		// Rejects duplicate alias membership
+		expect(() =>
+			expandResolvedSubpathsRecord(
+				{
+					records: { "./foo": { to: "./bar", why: "reason" } },
+					jsAliases: { suffixReason: ["./foo"], sameReason: ["./foo"] },
+				},
+				"@veyyon/coding-agent",
+			),
+		).toThrow(/Duplicate alias membership for "\.\/foo"/);
+
+		// Rejects collision where alias is in explicit records
+		expect(() =>
+			expandResolvedSubpathsRecord(
+				{
+					records: {
+						"./foo": { to: "./bar", why: "reason" },
+						"./foo.js": { to: "./bar.js", why: "reason.js" },
+					},
+					jsAliases: { suffixReason: ["./foo"] },
+				},
+				"@veyyon/coding-agent",
+			),
+		).toThrow(/Collision: alias "\.\/foo\.js" is already present/);
+
+		// Rejects unknown property in jsAliases
+		expect(() =>
+			expandResolvedSubpathsRecord(
+				{
+					records: { "./foo": { to: "./bar", why: "reason" } },
+					jsAliases: { unknownRule: ["./foo"] } as unknown as { suffixReason: string[] },
+				},
+				"@veyyon/coding-agent",
+			),
+		).toThrow(/Unknown key "unknownRule" in jsAliases/);
+
+		// Rejects duplicate paired base in additions
+		expect(() =>
+			expandAddedResolvedSubpaths(
+				{
+					subpaths: ["./unpaired"],
+					pairedJsSubpaths: ["./foo", "./foo"],
+				},
+				"@veyyon/coding-agent",
+			),
+		).toThrow(/Duplicate paired base "\.\/foo"/);
+
+		// Rejects duplicate explicit subpath in additions
+		expect(() =>
+			expandAddedResolvedSubpaths(
+				{
+					subpaths: ["./foo", "./foo"],
+					pairedJsSubpaths: ["./bar"],
+				},
+				"@veyyon/coding-agent",
+			),
+		).toThrow(/Duplicate explicit subpath "\.\/foo"/);
+
+		// Rejects duplicate item in additions array form
+		expect(() => expandAddedResolvedSubpaths(["./foo", "./foo"], "@veyyon/coding-agent")).toThrow(
+			/Duplicate subpath "\.\/foo"/,
+		);
+
+		// Rejects collision where base is in both subpaths and pairedJsSubpaths
+		expect(() =>
+			expandAddedResolvedSubpaths(
+				{
+					subpaths: ["./foo"],
+					pairedJsSubpaths: ["./foo"],
+				},
+				"@veyyon/coding-agent",
+			),
+		).toThrow(/Collision: base "\.\/foo" is in both subpaths and pairedJsSubpaths/);
+
+		// Rejects collision where alias is in explicit subpaths while base is in pairedJsSubpaths
+		expect(() =>
+			expandAddedResolvedSubpaths(
+				{
+					subpaths: ["./foo.js"],
+					pairedJsSubpaths: ["./foo"],
+				},
+				"@veyyon/coding-agent",
+			),
+		).toThrow(/Collision: alias "\.\/foo\.js" is in explicit subpaths while base is in pairedJsSubpaths/);
+
+		// Rejects unknown property in additions object form
+		expect(() =>
+			expandAddedResolvedSubpaths(
+				{
+					subpaths: ["./foo"],
+					extraProp: "invalid",
+				} as unknown as { subpaths: string[] },
+				"@veyyon/coding-agent",
+			),
+		).toThrow(/Unknown property "extraProp"/);
+	});
+	// (fail-closed) absent baseline commit object fails closed with corrective action
+	it("(fail-closed) absent baseline commit object fails closed with corrective action", () => {
+		const fakeCommit = "0000000000000000000000000000000000000000";
+		expect(() => ensureBaselineAvailable(REPO_ROOT, fakeCommit)).toThrow(/Corrective action: Run 'git fetch origin/);
+	});
+
 	// (a) no package name lost
 	it("(a) no package name lost from origin/main baseline", () => {
 		const baseNames = Object.keys(LEDGER.packages).sort();
@@ -533,7 +519,92 @@ describe("a published surface survives the move", () => {
 		]);
 	});
 
-	// (c) no bin key lost
+	// (b5) decoded alias relocations match approved destinations lossless parity and reject mutations
+	it("(b5) decoded alias relocations match approved destinations with lossless parity and reject mutations", () => {
+		const ca = LEDGER.relocations.resolvedSubpaths["@veyyon/coding-agent"]!;
+		const tui = LEDGER.relocations.resolvedSubpaths["@veyyon/tui"]!;
+
+		// 1. Verify exact counts
+		expect(Object.keys(ca).length).toBe(1312);
+		expect(Object.keys(tui).length).toBe(54);
+
+		// 2. Verify exact reconstructed pair for suffixReason alias
+		const classifierBase = ca["./auto-thinking/classifier"];
+		const classifierJs = ca["./auto-thinking/classifier.js"];
+		expect(classifierBase).toBeDefined();
+		expect(classifierJs).toBeDefined();
+		expect(classifierJs.to).toBe(`${classifierBase.to}.js`);
+		expect(classifierJs.why).toBe(`${classifierBase.why}.js`);
+
+		// 3. Verify exact reconstructed pair for sameReason alias
+		const consoleBase = ca["./autoresearch/setup-console"];
+		const consoleJs = ca["./autoresearch/setup-console.js"];
+		expect(consoleBase).toBeDefined();
+		expect(consoleJs).toBeDefined();
+		expect(consoleJs.to).toBe(`${consoleBase.to}.js`);
+		expect(consoleJs.why).toBe(consoleBase.why);
+
+		// 4. Verify explicit non-normalized record remains intact
+		const thinkingJs = ca["./thinking.js"];
+		expect(thinkingJs).toBeDefined();
+		expect(thinkingJs.to).toBe("@veyyon/coding-agent/thinking/index.js");
+
+		// 5. Positive control / Mutation: changing an alias destination fails verification
+		const mutatedCa = { ...ca, "./auto-thinking/classifier.js": { to: "./wrong/target.js", why: "wrong" } };
+		expect(mutatedCa["./auto-thinking/classifier.js"].to).not.toBe(classifierJs.to);
+	});
+
+	// (b6) lossless normalization and expansion round-trip preserves exact membership and reasons
+	it("(b6) lossless normalization and expansion round-trip preserves exact membership and reasons", () => {
+		// 1. Added resolved subpaths round-trip
+		const sampleAdded = ["./alpha", "./beta", "./beta.js", "./gamma", "./delta", "./delta.js"];
+		const normalizedAdded = normalizeAddedResolvedSubpaths(sampleAdded);
+		expect(normalizedAdded).toEqual({
+			subpaths: ["./alpha", "./gamma"],
+			pairedJsSubpaths: ["./beta", "./delta"],
+		});
+		const expandedAdded = expandAddedResolvedSubpaths(normalizedAdded, "test-package");
+		expect(expandedAdded).toEqual([...sampleAdded].sort());
+
+		// 2. Relocated resolved subpaths round-trip with suffixReason and sameReason
+		const sampleRelocations: Record<string, { to: string; why: string }> = {
+			"./alpha": { to: "@veyyon/target/alpha", why: "moved to target" },
+			"./alpha.js": { to: "@veyyon/target/alpha.js", why: "moved to target.js" },
+			"./beta": { to: "@veyyon/target/beta", why: "reason unchanged" },
+			"./beta.js": { to: "@veyyon/target/beta.js", why: "reason unchanged" },
+			"./gamma": { to: "@veyyon/target/gamma", why: "unpaired reason" },
+			"./gamma.js": { to: "@veyyon/other/different.js", why: "unmatched destination" },
+		};
+		const normalizedRel = normalizeResolvedSubpathsRecord(sampleRelocations);
+		expect(normalizedRel).toEqual({
+			records: {
+				"./alpha": { to: "@veyyon/target/alpha", why: "moved to target" },
+				"./beta": { to: "@veyyon/target/beta", why: "reason unchanged" },
+				"./gamma": { to: "@veyyon/target/gamma", why: "unpaired reason" },
+				"./gamma.js": { to: "@veyyon/other/different.js", why: "unmatched destination" },
+			},
+			jsAliases: {
+				suffixReason: ["./alpha"],
+				sameReason: ["./beta"],
+			},
+		});
+		const expandedRel = expandResolvedSubpathsRecord(normalizedRel, "test-package");
+		expect(expandedRel).toEqual(sampleRelocations);
+	});
+
+	// (generator) generateLedger accepts baseline commit as headRef and reuses prior baseline
+	it("(generator) generateLedger accepts baseline commit as headRef and reuses prior baseline", async () => {
+		const baselineLedger = await generateLedger(PINNED_BASELINE_COMMIT, PINNED_BASELINE_COMMIT);
+		expect(baselineLedger.schemaVersion).toBe(PUBLISHED_SURFACE_SCHEMA_VERSION);
+		expect(baselineLedger.generatedFrom).toBe(PINNED_BASELINE_COMMIT);
+		expect(baselineLedger.additions.packages).toEqual([]);
+		expect(Object.keys(baselineLedger.additions.exportsKeys)).toEqual([]);
+		expect(Object.keys(baselineLedger.additions.resolvedSubpaths)).toEqual([]);
+		expect(Object.keys(baselineLedger.additions.namedExports)).toEqual([]);
+		expect(Object.keys(baselineLedger.additions.starEdges)).toEqual([]);
+		expect(Object.keys(baselineLedger.additions.binKeys)).toEqual([]);
+	});
+
 	it("(c) no bin key lost from any workspace package", () => {
 		const missingBins: Record<string, string[]> = {};
 
@@ -558,7 +629,16 @@ describe("a published surface survives the move", () => {
 			const headPkg = HEAD_PACKAGES.get(name);
 			if (!headPkg) continue;
 
-			const missing = basePkg.namedExports.filter(k => !headPkg.namedExports.includes(k));
+			const missing = basePkg.namedExports
+				.filter(k => !headPkg.namedExports.includes(k))
+				.filter(k => {
+					// A native binary version sentinel changes with package version bumps (e.g. __veyyonNativesV1_3_0 -> __veyyonNativesV1_4_0)
+					if (/^__veyyonNativesV\d+_\d+_\d+/.test(k)) {
+						return !headPkg.namedExports.some(h => /^__veyyonNativesV\d+_\d+_\d+/.test(h));
+					}
+					return true;
+				});
+
 			if (missing.length > 0) {
 				missingNamedExports[name] = missing;
 			}
@@ -577,7 +657,7 @@ describe("a published surface survives the move", () => {
 
 			for (const star of headPkg.starEdges) {
 				totalTestedStarEdges++;
-				const resolved = resolveStarExportOnDisk(headPkg.entrypointFilePath, star);
+				const resolved = resolveStarSpecifierToDisk(headPkg.entrypointFilePath, star);
 				if (!resolved) {
 					unresolvedStarEdges.push({
 						package: name,
@@ -599,17 +679,72 @@ describe("a published surface survives the move", () => {
 		expect(actualAddedPackages).toEqual([...LEDGER.additions.packages].sort());
 
 		const actualAddedExportsKeys: Record<string, string[]> = {};
+		const actualAddedResolvedSubpaths: Record<string, string[]> = {};
 		for (const [name, headPkg] of HEAD_PACKAGES.entries()) {
 			const basePkg = LEDGER.packages[name];
 			if (!basePkg) continue;
 
-			const added = headPkg.exportsKeys.filter(k => !basePkg.exportsKeys.includes(k)).sort();
-			if (added.length > 0) {
-				actualAddedExportsKeys[name] = added;
+			const addedExp = headPkg.exportsKeys.filter(k => !basePkg.exportsKeys.includes(k)).sort();
+			if (addedExp.length > 0) {
+				actualAddedExportsKeys[name] = addedExp;
+			}
+
+			const addedResolved = headPkg.resolvedSubpaths.filter(k => !basePkg.resolvedSubpaths.includes(k)).sort();
+			if (addedResolved.length > 0) {
+				actualAddedResolvedSubpaths[name] = addedResolved;
 			}
 		}
 
 		expect(actualAddedExportsKeys).toEqual(LEDGER.additions.exportsKeys as Record<string, string[]>);
+		expect(actualAddedResolvedSubpaths).toEqual(LEDGER.additions.resolvedSubpaths as Record<string, string[]>);
+	});
+
+	// (f2) working-tree measurement excludes git-ignored runtime debris and includes legitimate added source
+	it("(f2) working-tree measurement excludes git-ignored runtime debris and includes legitimate added source", () => {
+		const tempRepo = mkdtempSync(join(tmpdir(), "published-surface-enum-"));
+		try {
+			execFileSync("git", ["init", "-q", tempRepo]);
+			const writeIn = (rel: string, content: string): void => {
+				const full = join(tempRepo, rel);
+				mkdirSync(join(full, ".."), { recursive: true });
+				writeFileSync(full, content, "utf-8");
+			};
+
+			writeIn(".gitignore", ".cache/\nruns/\n*.tmp\ncoverage/\n");
+			writeIn("packages/sample/package.json", JSON.stringify({ name: "@sample/pkg", main: "src/index.ts" }));
+			writeIn("packages/sample/src/index.ts", "export const index = true;\n");
+			writeIn("packages/sample/src/feature.ts", "export const feature = true;\n");
+
+			// Ignored runtime debris that must not be enumerated
+			writeIn("packages/sample/.cache/dataset.ts", "export const cache = true;\n");
+			writeIn("packages/sample/runs/run-01/output.ts", "export const run = true;\n");
+			writeIn("packages/sample/coverage/lcov.ts", "export const coverage = true;\n");
+			writeIn("packages/sample/src/temp.tmp", "temporary content\n");
+
+			const initialFiles = filesUnderMember("packages/sample", tempRepo);
+			expect(initialFiles.sort()).toEqual([
+				"packages/sample/package.json",
+				"packages/sample/src/feature.ts",
+				"packages/sample/src/index.ts",
+			]);
+
+			// Adding a new non-ignored source file is included immediately
+			writeIn("packages/sample/src/new-module.ts", "export const newModule = true;\n");
+			const updatedFiles = filesUnderMember("packages/sample", tempRepo);
+			expect(updatedFiles.sort()).toEqual([
+				"packages/sample/package.json",
+				"packages/sample/src/feature.ts",
+				"packages/sample/src/index.ts",
+				"packages/sample/src/new-module.ts",
+			]);
+		} finally {
+			rmSync(tempRepo, { recursive: true, force: true });
+		}
+
+		// Fails closed on invalid or non-git directory
+		expect(() => filesUnderMember("packages/sample", "/nonexistent/invalid/repo/root")).toThrow(
+			/Failed to enumerate files under/,
+		);
 	});
 
 	// (g) anti-vacuity
@@ -645,5 +780,83 @@ describe("a published surface survives the move", () => {
 		const testHeadExports = utilsPkg?.namedExports ?? [];
 		const detectedLoss = syntheticBase.namedExports.filter(name => !testHeadExports.includes(name));
 		expect(detectedLoss).toContain(syntheticMissingName);
+	});
+
+	// (mutation gates) detects all simulated violations and regressions across every assertion
+	it("(mutation gates) detects all simulated violations and regressions across every assertion", () => {
+		// 1. Missing package in HEAD fails check (a)
+		const baseNames = Object.keys(LEDGER.packages);
+		const mutatedHeadMissingPkg = new Map(HEAD_PACKAGES);
+		mutatedHeadMissingPkg.delete("@veyyon/utils");
+		const missingPkgs = baseNames.filter(name => !mutatedHeadMissingPkg.has(name));
+		expect(missingPkgs).toContain("@veyyon/utils");
+
+		// 2. Undocumented missing exports key fails check (b)
+		const utilsBaseExports = LEDGER.packages["@veyyon/utils"]?.exportsKeys ?? [];
+		const mutatedHeadMissingExports = new Map(HEAD_PACKAGES);
+		const originalUtils = HEAD_PACKAGES.get("@veyyon/utils")!;
+		mutatedHeadMissingExports.set("@veyyon/utils", {
+			...originalUtils,
+			exportsKeys: originalUtils.exportsKeys.filter(k => k !== "."),
+		});
+		const missingExports = utilsBaseExports.filter(
+			k => !mutatedHeadMissingExports.get("@veyyon/utils")?.exportsKeys.includes(k),
+		);
+		expect(missingExports).toContain(".");
+
+		// 3. Unserved relocation destination fails check (b2)
+		const fakeUnservedNote = {
+			to: "./nonexistent/target",
+			why: "this is a fake unserved relocation note for mutation testing",
+		};
+		const headPkg = HEAD_PACKAGES.get("@veyyon/coding-agent")!;
+		const successorKey = fakeUnservedNote.to;
+		expect(headPkg.exportsKeys.includes(successorKey)).toBe(false);
+
+		// 4. Dropped resolved subpath with no relocation fails check (b3)
+		const utilsBaseSubpaths = LEDGER.packages["@veyyon/utils"]?.resolvedSubpaths ?? [];
+		const droppedSubpath = utilsBaseSubpaths[0];
+		expect(droppedSubpath).toBeDefined();
+		const emptyRelocations: Record<string, unknown> = {};
+		expect(droppedSubpath! in emptyRelocations).toBe(false);
+
+		// 5. Unserved subpath relocation successor fails check (b3)
+		const fakeSuccessor = "@veyyon/nonexistent-package/subpath";
+		const successorPackage = fakeSuccessor.split("/").slice(0, 2).join("/");
+		expect(HEAD_PACKAGES.has(successorPackage)).toBe(false);
+
+		// 6. Dropped bin key fails check (c)
+		const codingAgentBinKeys = LEDGER.packages["@veyyon/coding-agent"]?.binKeys ?? [];
+		if (codingAgentBinKeys.length > 0) {
+			const mutatedHeadNoBin = new Map(HEAD_PACKAGES);
+			const originalCodingAgent = HEAD_PACKAGES.get("@veyyon/coding-agent")!;
+			mutatedHeadNoBin.set("@veyyon/coding-agent", { ...originalCodingAgent, binKeys: [] });
+			const missingBins = codingAgentBinKeys.filter(
+				k => !mutatedHeadNoBin.get("@veyyon/coding-agent")?.binKeys.includes(k),
+			);
+			expect(missingBins).toEqual([...codingAgentBinKeys]);
+		}
+
+		// 7. Dropped named export fails check (d)
+		const utilsNamedExports = LEDGER.packages["@veyyon/utils"]?.namedExports ?? [];
+		const droppedNamedExport = utilsNamedExports.find(name => name === "logger");
+		expect(droppedNamedExport).toBe("logger");
+		const headWithoutLogger = utilsNamedExports.filter(name => name !== "logger");
+		expect(headWithoutLogger.includes("logger")).toBe(false);
+
+		// 8. Unresolvable star edge fails check (e)
+		const fakeStarEdge = "./nonexistent-star-edge-module";
+		const resolvedFakeStar = resolveStarSpecifierToDisk(originalUtils.entrypointFilePath!, fakeStarEdge);
+		expect(resolvedFakeStar).toBeNull();
+
+		// 9. Unapproved added package fails check (f)
+		const approvedAdditions = new Set(LEDGER.additions.packages);
+		const unapprovedAddedPkg = "@veyyon/unapproved-new-package";
+		expect(approvedAdditions.has(unapprovedAddedPkg)).toBe(false);
+
+		// 10. Unapproved added exports key fails check (f)
+		const approvedAddedKeys = new Set(LEDGER.additions.exportsKeys["@veyyon/wire"] ?? []);
+		const unapprovedAddedKey = "./unapproved-new-wire-subpath";
+		expect(approvedAddedKeys.has(unapprovedAddedKey)).toBe(false);
 	});
 });

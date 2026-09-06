@@ -23,13 +23,16 @@
 import { describe, expect, it } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { PINNED_BASELINE_COMMIT } from "./git-baseline";
 import {
 	hashNormalizedImportTokens,
 	hashTokenStream,
 	REPO_ROOT,
+	TOKEN_EQUIVALENCE_SCHEMA_VERSION,
 	type TokenEquivalenceLedger,
 	type TokenRepresentation,
 	tokenize,
+	validateTokenEquivalenceLedger,
 } from "./measure-token-equivalence";
 
 const LEDGER_PATH = resolve(REPO_ROOT, "scripts/fixtures/token-equivalence.json");
@@ -39,11 +42,11 @@ const LEDGER_PATH = resolve(REPO_ROOT, "scripts/fixtures/token-equivalence.json"
  * `main`, not the tip of `main`. A tip moves under the measurement, and a ledger measured half
  * against one tree and half against another charges main's own edits to this branch.
  */
-const BASELINE_COMMIT = "aa14e0da82494dac5a06d240180cec88038a105f";
+const BASELINE_COMMIT = PINNED_BASELINE_COMMIT;
 
 function loadLedger(): TokenEquivalenceLedger {
 	const raw = readFileSync(LEDGER_PATH, "utf-8");
-	return JSON.parse(raw) as TokenEquivalenceLedger;
+	return validateTokenEquivalenceLedger(JSON.parse(raw));
 }
 
 describe("token equivalence differential suite", () => {
@@ -55,8 +58,8 @@ describe("token equivalence differential suite", () => {
 		for (const [relPath, expectedHash] of formattingEntries) {
 			const fullPath = resolve(REPO_ROOT, relPath);
 			const code = readFileSync(fullPath, "utf-8");
-			const { tokens } = tokenize(code);
-			const actualHash = hashTokenStream(tokens);
+			const { tokens: headTokens } = tokenize(code);
+			const actualHash = hashTokenStream(headTokens);
 			expect(actualHash).toBe(expectedHash);
 		}
 	});
@@ -65,8 +68,8 @@ describe("token equivalence differential suite", () => {
 		for (const [relPath, expectedHash] of importReorderEntries) {
 			const fullPath = resolve(REPO_ROOT, relPath);
 			const code = readFileSync(fullPath, "utf-8");
-			const { ast, tokens } = tokenize(code);
-			const actualHash = hashNormalizedImportTokens(ast, tokens);
+			const { ast: headAst, tokens: headTokens } = tokenize(code);
+			const actualHash = hashNormalizedImportTokens(headAst, headTokens);
 			expect(actualHash).toBe(expectedHash);
 		}
 	});
@@ -85,31 +88,22 @@ describe("token equivalence differential suite", () => {
 	it("verifies no path appears in multiple buckets (cell d)", () => {
 		const formattingKeys = new Set(Object.keys(ledger.formattingOnly));
 		const importReorderKeys = new Set(Object.keys(ledger.importReorder));
-		const changedKeys = new Set(ledger.changed);
 
 		for (const key of formattingKeys) {
 			expect(importReorderKeys.has(key)).toBe(false);
-			expect(changedKeys.has(key)).toBe(false);
 		}
 
 		for (const key of importReorderKeys) {
 			expect(formattingKeys.has(key)).toBe(false);
-			expect(changedKeys.has(key)).toBe(false);
 		}
-
-		expect(ledger.changedCount).toBe(ledger.changed.length);
 	});
 
 	it("states which commit it was measured against, and how many rows it carries (cell e)", () => {
-		// A ledger stamped with a ref name cannot say which tree its hashes came from, and a row count
-		// asserted as a floor cannot see a new formatting-only file arrive. Both are pinned exactly, so
-		// regenerating the ledger against another commit, or reclassifying a file, needs a decision here.
+		expect(ledger.schemaVersion).toBe(TOKEN_EQUIVALENCE_SCHEMA_VERSION);
 		expect(ledger.generatedFrom).toBe(BASELINE_COMMIT);
 		expect(formattingEntries).toHaveLength(72);
 		expect(importReorderEntries).toHaveLength(0);
-		expect(ledger.changedCount).toBe(5796);
 	});
-
 	it("passes anti-vacuity: a token mutation in a verified file changes its hash (cell f)", () => {
 		const samplePath = formattingEntries[0]?.[0];
 		if (samplePath === undefined) throw new Error("the ledger carries no formatting-only row to control against");
@@ -160,5 +154,29 @@ describe("token equivalence differential suite", () => {
 
 		expect(hash1).toBe(hash2);
 		expect(hash1).not.toBe(hashMod);
+	});
+
+	it("rejects unversioned, stale, or malformed token-equivalence ledger schema (cell h)", () => {
+		expect(() =>
+			validateTokenEquivalenceLedger({
+				generatedFrom: BASELINE_COMMIT,
+				formattingOnly: {},
+			}),
+		).toThrow(/stale or unversioned/);
+
+		expect(() =>
+			validateTokenEquivalenceLedger({
+				schemaVersion: 1,
+				generatedFrom: BASELINE_COMMIT,
+				formattingOnly: {},
+			}),
+		).toThrow(/expected version 2/);
+
+		expect(() =>
+			validateTokenEquivalenceLedger({
+				schemaVersion: 2,
+				generatedFrom: BASELINE_COMMIT,
+			}),
+		).toThrow(/missing formattingOnly/);
 	});
 });

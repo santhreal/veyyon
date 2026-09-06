@@ -5,6 +5,7 @@
  * by code generation tools (protoc, sqlc, buf, swagger, etc.).
  */
 import * as path from "node:path";
+import { stripBom } from "@veyyon/hashline";
 import { isEnoent, peekFile } from "@veyyon/utils";
 import { LRUCache } from "lru-cache/raw";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
@@ -102,13 +103,6 @@ const AUTO_GENERATED_FILENAME_PATTERNS = [
 	/\.mocks?\.(go|ts|js)$/,
 ];
 
-function stripBom(content: string): string {
-	if (content.charCodeAt(0) === 0xfeff) {
-		return content.slice(1);
-	}
-	return content;
-}
-
 function getCommentStylesForPath(filePath: string): readonly CommentStyle[] {
 	const normalizedPath = filePath.toLowerCase();
 	const fileName = path.basename(normalizedPath);
@@ -128,7 +122,7 @@ function extractLeadingHeaderCommentText(content: string, commentStyles: readonl
 	const includeSql = commentStyles.includes("sql");
 	const includeHtml = commentStyles.includes("html");
 
-	const lines = stripBom(content).split(/\r?\n/);
+	const lines = stripBom(content).text.split(/\r?\n/);
 	const headerLines: string[] = [];
 	let started = false;
 	let inSlashBlock = false;

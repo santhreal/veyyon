@@ -29,7 +29,7 @@ import type {
 	ViewSpan,
 	ViewTone,
 } from "@veyyon/view";
-import { PREVIEW_LIMITS, replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../core/render-utils";
+import { LINE_NOUN, PREVIEW_LIMITS, replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../core/render-utils";
 import type {
 	GhRunWatchFailedLogDetails,
 	GhRunWatchJobDetails,
@@ -44,9 +44,6 @@ const GH_EMBLEM = "tool.gh";
 
 /** What a watch card is titled, whichever of the two modes it reports. */
 const WATCH_TITLE = "GitHub Run Watch";
-
-/** The unit the fallback card's held-back count is in, which the host words. */
-const LINE_NOUN = { one: "line", many: "lines" } as const;
 
 /** The unit a failed job's held-back log count is in. */
 const LOG_LINE_NOUN = { one: "log line", many: "log lines" } as const;

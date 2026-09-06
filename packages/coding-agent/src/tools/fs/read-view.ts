@@ -34,7 +34,7 @@ import { stripOutputNotice } from "../core/output-meta";
 // tool wrapper: this file needs the words a truncation and an artifact are named by.
 import { formatFullOutputReference, formatTruncationMetaNotice } from "../core/output-notice";
 import { isReadableUrlPath, splitInternalUrlSel, splitPathAndSel } from "../core/path-utils";
-import { formatBytes, replaceTabs, shortenPath } from "../core/render-utils";
+import { formatBytes, LINE_NOUN, replaceTabs, screenRows, shortenPath } from "../core/render-utils";
 import type { ReadUrlToolDetails } from "../web/fetch";
 import { readUrlToolView } from "../web/fetch-view";
 import { isRawSelector, parseSel, type ReadRenderArgs, type ReadToolDetails, readSourceFsPath } from "./read";
@@ -47,9 +47,6 @@ const CONTENT_LINES = { collapsed: 12, expanded: 200 } as const;
 
 /** Lines of the card's notices shown at each disclosure state, which is what `Output` holds. */
 const NOTICE_LINES = { collapsed: 6, expanded: 200 } as const;
-
-/** The unit a held-back count is in, which the host words. */
-const LINE_NOUN = { one: "line", many: "lines" } as const;
 
 /** The result a card reads, which is the tool's own result shape narrowed to what a card shows. */
 export interface ReadViewResult {
@@ -189,21 +186,6 @@ function resultMeta(details: ReadToolDetails | undefined): ViewLine[] {
 		meta.push([{ text: `warn ${formatCount("conflict", details.conflictCount)}`, tone: "warning" }]);
 	}
 	return meta;
-}
-
-/**
- * Text as the rows a screen would have shown.
- *
- * A carriage return inside a line is a cursor sent back to column one, so what a reader saw is
- * whatever was written after the last one: the same reading the terminal's own cells give, made here
- * because the rows a card states are rows and not a stream of control characters. Tabs are left
- * alone, because how wide a tab is belongs to the host.
- */
-function screenRows(text: string): string[] {
-	return text.split(/\r?\n/).map(row => {
-		const at = row.lastIndexOf("\r");
-		return at < 0 ? row : row.slice(at + 1);
-	});
 }
 
 /**

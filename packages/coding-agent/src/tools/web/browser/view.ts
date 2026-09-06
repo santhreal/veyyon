@@ -28,7 +28,7 @@ import type {
 	ViewSection,
 } from "@veyyon/view";
 import { formatTruncationMetaNotice, stripOutputNotice } from "../../core/output-notice";
-import { replaceTabs, shortenPath } from "../../core/render-utils";
+import { LINE_NOUN, replaceTabs, screenRows, shortenPath } from "../../core/render-utils";
 import type { BrowserToolDetails } from "../browser";
 
 /** The tool's own mark, which a settled row is titled by instead of an outcome icon. */
@@ -48,9 +48,6 @@ const BROWSER_PREVIEW_LINES = 10;
  * ceiling is, because both are decisions about how much a reader is shown and neither is a host's.
  */
 const EXPANDED_MAX_LINES = 200;
-
-/** The unit a held-back count is in, which the host words. */
-const LINE_NOUN = { one: "line", many: "lines" } as const;
 
 /** The call arguments a card reads, which are the tool's own input narrowed to what it shows. */
 export interface BrowserViewArgs {
@@ -116,21 +113,6 @@ function urlOf(args: BrowserViewArgs, details: BrowserToolDetails | undefined): 
 /** Text with the blank tail a script or an output ends in dropped, so the panel ends where it does. */
 function withoutTrailingBlanks(text: string): string {
 	return text.replace(/\s+$/, "");
-}
-
-/**
- * Text as the rows a screen would have shown.
- *
- * A carriage return inside a row is a cursor sent back to column one, which is how every progress
- * bar draws itself, so the row is what was left standing after the last one. Done here rather than
- * left to a host: the rows are what the card SAYS, and a host that split on `\n` alone would be
- * shown one row holding four states of the same progress bar.
- */
-function screenRows(text: string): string[] {
-	return text.split(/\r?\n/).map(row => {
-		const restart = row.lastIndexOf("\r");
-		return restart < 0 ? row : row.slice(restart + 1);
-	});
 }
 
 /** How many rows of a section a reader is shown, which the disclosure decides. */

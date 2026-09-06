@@ -9,10 +9,9 @@
  * would break runtime behavior silently.
  *
  * WHY THE AST DERIVATION IS USED. The CLI surface is defined across `cli-commands.ts`, `flag-tables.ts`,
- * `profile-bootstrap.ts`, `worker-args.ts`, `launch/protocol.ts`, and `cli.ts`. Instead of executing
- * the CLI or shelling out to git at run time, this suite statically parses the TypeScript AST of those
- * source files in the working tree and compares the derived surface against the committed baseline ledger
- * (`scripts/fixtures/cli-surface.json`) generated from `origin/main`.
+ * `profile-bootstrap.ts`, `worker-args.ts`, `launch/protocol.ts`, and `cli.ts`. The suite parses these
+ * source files in the working tree and compares the derived surface against immutable Git blobs
+ * from the pinned baseline, with explicit approved additions in `scripts/fixtures/cli-surface.json`.
  *
  * READING FILE AST IS NOT SOURCE GREP. Reading AST declarations to verify exact contract preservation
  * against a committed differential ledger is structural contract verification, not regex pattern matching on
@@ -23,14 +22,21 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { type CliSurface, type CliSurfaceLedger, deriveCliSurface, REPO_ROOT } from "./measure-cli-surface";
+import { PINNED_BASELINE_COMMIT } from "./git-baseline";
+import {
+	CLI_SURFACE_SCHEMA_VERSION,
+	type CliSurface,
+	type CliSurfaceLedger,
+	deriveCliSurface,
+	loadCliSurfaceLedger,
+	REPO_ROOT,
+	validateCliSurfaceApprovalLedger,
+} from "./measure-cli-surface";
 
 const LEDGER_PATH = join(REPO_ROOT, "scripts", "fixtures", "cli-surface.json");
-const ledger: CliSurfaceLedger = JSON.parse(readFileSync(LEDGER_PATH, "utf-8")) as CliSurfaceLedger;
+const ledger: CliSurfaceLedger = loadCliSurfaceLedger(LEDGER_PATH, REPO_ROOT);
 const currentSurface: CliSurface = deriveCliSurface(REPO_ROOT);
-
 interface SurfaceDiff {
 	missingCommands: string[];
 	unrecordedCommandAdditions: string[];
@@ -93,6 +99,81 @@ function computeSurfaceDiff(surface: CliSurface, baseline: CliSurfaceLedger): Su
 }
 
 describe("CLI surface survives the move", () => {
+	it("(schema) validates schema version and pinned baseline commit", () => {
+		expect(ledger.schemaVersion).toBe(CLI_SURFACE_SCHEMA_VERSION);
+		expect(ledger.generatedFrom).toBe(PINNED_BASELINE_COMMIT);
+		expect(ledger.commands.length).toBe(38);
+		expect(Object.keys(ledger.flags).length).toBe(60);
+		expect(ledger.workerSelectors.length).toBe(9);
+	});
+
+	it.each([
+		{ commands: [1], flags: {}, workerSelectors: [] },
+		{ commands: [], flags: [], workerSelectors: [] },
+		{ commands: [], flags: {}, workerSelectors: [1] },
+	])("rejects malformed addition member types: %j", additions => {
+		expect(() =>
+			validateCliSurfaceApprovalLedger({
+				schemaVersion: CLI_SURFACE_SCHEMA_VERSION,
+				generatedFrom: PINNED_BASELINE_COMMIT,
+				additions,
+			}),
+		).toThrow(/must be an/);
+	});
+
+	it("(fail-closed) schema validation rejects stale, missing, or corrupt baselines", () => {
+		expect(() => validateCliSurfaceApprovalLedger(null)).toThrow("CLI surface ledger is not an object");
+		expect(() => validateCliSurfaceApprovalLedger({})).toThrow("CLI surface ledger schema is stale or unversioned");
+		expect(() =>
+			validateCliSurfaceApprovalLedger({
+				schemaVersion: 1,
+				generatedFrom: PINNED_BASELINE_COMMIT,
+				additions: { commands: [], flags: {}, workerSelectors: [] },
+			}),
+		).toThrow("expected version 2, got 1");
+		expect(() =>
+			validateCliSurfaceApprovalLedger({
+				schemaVersion: CLI_SURFACE_SCHEMA_VERSION,
+				generatedFrom: "not-the-pinned-commit",
+				additions: { commands: [], flags: {}, workerSelectors: [] },
+			}),
+		).toThrow(/generatedFrom commit mismatch/);
+		expect(() =>
+			validateCliSurfaceApprovalLedger({
+				schemaVersion: CLI_SURFACE_SCHEMA_VERSION,
+				generatedFrom: PINNED_BASELINE_COMMIT,
+			}),
+		).toThrow("missing additions record");
+		expect(() =>
+			validateCliSurfaceApprovalLedger({
+				schemaVersion: CLI_SURFACE_SCHEMA_VERSION,
+				generatedFrom: PINNED_BASELINE_COMMIT,
+				additions: { commands: "not-an-array", flags: {}, workerSelectors: [] },
+			}),
+		).toThrow("additions.commands must be an array");
+		expect(() =>
+			validateCliSurfaceApprovalLedger({
+				schemaVersion: CLI_SURFACE_SCHEMA_VERSION,
+				generatedFrom: PINNED_BASELINE_COMMIT,
+				additions: { commands: [], flags: "not-an-object", workerSelectors: [] },
+			}),
+		).toThrow("additions.flags must be an object");
+		expect(() =>
+			validateCliSurfaceApprovalLedger({
+				schemaVersion: CLI_SURFACE_SCHEMA_VERSION,
+				generatedFrom: PINNED_BASELINE_COMMIT,
+				additions: { commands: [], flags: { "--invalid": { takesValue: "yes" } }, workerSelectors: [] },
+			}),
+		).toThrow(/must have boolean takesValue/);
+		expect(() =>
+			validateCliSurfaceApprovalLedger({
+				schemaVersion: CLI_SURFACE_SCHEMA_VERSION,
+				generatedFrom: PINNED_BASELINE_COMMIT,
+				additions: { commands: [], flags: {}, workerSelectors: "not-an-array" },
+			}),
+		).toThrow("additions.workerSelectors must be an array");
+	});
+
 	it("satisfies anti-vacuity floors for commands, flags, and worker selectors", () => {
 		// Measured floors based on actual baseline: 38 commands, 60 flags, 9 worker selectors
 		expect(currentSurface.commands.length).toBeGreaterThan(30);

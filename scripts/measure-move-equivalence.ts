@@ -1,62 +1,100 @@
 /**
- * Rebuilds the ledger that proves a moved file kept its content.
+ * Rebuilds the sparse ledger that proves a moved file kept its content.
  *
- * This PR renames 1563 tracked files: `crates/*` became `natives/*`, `packages/tui` became
+ * This PR renames 1563+ tracked files: `crates/*` became `natives/*`, `packages/tui` became
  * `hosts/terminal/engine`, `packages/wire` became `contracts/wire` and `packages/natives` became
  * `natives/bridge/bindings`. A diff that size hides an accidental edit, a dropped function or a stale
  * copy of a helper, and no reviewer reads it line by line. So the claim is made mechanically: apply
  * the branch's own renames to main's text, and the bytes should not move.
  *
- * Two comparisons per file, both recorded:
+ * Two comparisons per file:
  *
  * 1. NORMALIZED CONTENT. Main's bytes with every prefix rewrite applied and every run of `../`
  *    collapsed, hashed. A file whose hash equals the working tree's is byte-identical modulo the
- *    paths that moved, which is 1160 of them.
+ *    paths that moved, which is 3574 of them.
  * 2. STRUCTURAL LINES. The same text with comments, blank lines, whitespace runs and whole import
  *    statements removed. Two files that agree here differ only in what they import and what their
- *    comments say, which is what a move does to a call site.
+ *    comments say, which is 774 of them.
  *
- * A file that fails both carries a `group` and a written `reason`: the change is real and someone
- * says what it is. `bun scripts/measure-move-equivalence.ts` rewrites the ledger; it needs a fetched
- * `origin/main`, which is why the suite beside it reads the ledger and never runs git.
+ * A file that fails both carries an approved `group` in the sparse ledger: the change is real and
+ * someone says what it is (456 files).
+ *
+ * All derivable move rows (unchanged and import-only) are verified dynamically against the pinned
+ * Git baseline object store (`aa14e0da82494dac5a06d240180cec88038a105f`) via `scripts/git-baseline.ts`.
+ * The sparse ledger records only explicit post-snapshot deviations against the approved historical
+ * baseline snapshot (`de0ccbf5a571d9de1285cb4dddeff1cc23f882aa`), preserving the production baseline
+ * while removing metadata duplication.
  */
 
-import { execFileSync } from "node:child_process";
+import { isUtf8 } from "node:buffer";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import {
+	batchReadGitBlobs,
+	ensureBaselineAvailable,
+	getRenamePairs,
+	PINNED_BASELINE_COMMIT,
+	REPO_ROOT,
+	readGitFileText,
+	readGitTree,
+} from "./git-baseline";
 
-export type DiffersKind = "changed" | "imports-and-comments-only" | "none";
+export const MOVE_EQUIVALENCE_SCHEMA_VERSION = 2;
+export const HISTORICAL_SNAPSHOT_COMMIT = "de0ccbf5a571d9de1285cb4dddeff1cc23f882aa";
+export const HISTORICAL_SNAPSHOT_PATH = "scripts/fixtures/move-equivalence.json";
 
-export interface FileRecord {
-	old: string;
-	kind: "binary" | "normalized";
-	differs: DiffersKind;
-	group?: string;
-	reason?: string;
-	hash: string;
-	mainHash: string;
-	structuralHash?: string;
-	mainStructuralHash?: string;
+export interface MoveEquivalenceCounts {
+	readonly total: number;
+	readonly none: number;
+	readonly importsAndCommentsOnly: number;
+	readonly changed: number;
+	readonly binary: number;
+}
+
+export interface ApprovedChangedRecord {
+	readonly old: string;
+	readonly group: string;
+	readonly hash: string;
+	readonly structuralHash?: string;
+	readonly mainStructuralHash?: string;
+	readonly kind?: "binary";
+}
+
+interface HistoricalMoveRecord extends Omit<ApprovedChangedRecord, "kind"> {
+	readonly differs: string;
+	readonly kind?: "binary" | "normalized";
+}
+
+export interface SparseMoveEquivalenceFixture {
+	readonly schemaVersion: number;
+	readonly generatedFrom: string;
+	readonly historicalSnapshotCommit: string;
+	readonly counts: MoveEquivalenceCounts;
+	readonly deviations: Readonly<Record<string, ApprovedChangedRecord>>;
 }
 
 export interface MoveEquivalenceLedger {
-	generatedFrom: string;
-	rewrites: [string, string][];
-	files: Record<string, FileRecord>;
+	readonly schemaVersion: number;
+	readonly generatedFrom: string;
+	readonly historicalSnapshotCommit?: string;
+	readonly rewrites: readonly [string, string][];
+	readonly counts: MoveEquivalenceCounts;
+	readonly groups: Readonly<Record<string, string>>;
+	readonly changed: Readonly<Record<string, ApprovedChangedRecord>>;
 	/**
 	 * Every import attribute the baseline carried, keyed by the path the file has on this branch.
 	 *
-	 * Separate from `files` because it covers the whole baseline tree rather than the rename pairs: a
+	 * Separate from `changed` because it covers the whole baseline tree rather than the rename pairs: a
 	 * file this branch edited without moving is outside the move ledger, and that is exactly where an
 	 * attribute was lost. The value is each attribute's text, sorted, so a re-ordered import block is
 	 * not a difference and a dropped `with { type: "text" }` is.
 	 */
-	importAttributes: Record<string, string[]>;
+	readonly importAttributes: Readonly<Record<string, readonly string[]>>;
 }
 
 /** A file whose bytes are not text; compared raw, since a rewrite table means nothing inside one. */
-const BINARY_EXTENSIONS = new Set([
+export const BINARY_EXTENSIONS: ReadonlySet<string> = new Set([
 	".png",
 	".jpg",
 	".jpeg",
@@ -73,6 +111,16 @@ const BINARY_EXTENSIONS = new Set([
 	".dll",
 	".wasm",
 ]);
+
+/** Compare non-text bytes directly, including binary files without a recognized suffix. */
+export function isBinaryFile(relative: string, before: Buffer, after?: Buffer): boolean {
+	return (
+		BINARY_EXTENSIONS.has(path.extname(relative).toLowerCase()) ||
+		before.includes(0) ||
+		!isUtf8(before) ||
+		(after !== undefined && (after.includes(0) || !isUtf8(after)))
+	);
+}
 /** The extensions whose comments and imports the structural comparison knows how to drop. */
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".rs"]);
 
@@ -104,18 +152,6 @@ export function normalizeWithRewrites(text: string, rewrites: readonly [string, 
 
 /**
  * The lines that are neither a comment, a blank, nor part of an import statement.
- *
- * A multi-line import is dropped as a whole: the opening line puts the reader inside the statement
- * until a line closes it with `from "..."`, a semicolon or a quote, which is what a re-grouped import
- * block looks like after a package split. Whitespace inside a kept line is collapsed, so a re-wrap
- * that fits a 120-column formatter is not a difference either.
- *
- * An import ATTRIBUTE is not part of the path, so it survives the drop. `import x from "./y.js" with
- * { type: "text" }` loads a file as a string; the same line without the attribute loads it as a
- * module and throws on the missing export. Dropping the whole statement made that a move-shaped
- * difference, and this branch shipped exactly that defect in `export/html/index.ts` for two commits.
- * The attributes are collected and appended in sorted order, so a re-grouped or re-ordered import
- * block is still equivalent while a lost attribute is a difference.
  */
 export function structuralLines(text: string, filePath: string): string[] {
 	const extension = path.extname(filePath);
@@ -156,18 +192,6 @@ export function structuralHash(text: string, filePath: string): string {
 
 /**
  * The prefix rewrite table, derived from the rename pairs rather than written by hand.
- *
- * Each pair contributes the directory prefix that changed once the common suffix is stripped, and a
- * prefix that moved to two places keeps the destination most of its files went to. A hand-written
- * table would go stale on the next move; this one is a function of the move itself.
- *
- * A prefix keeps at least two segments. Stripping the whole shared suffix of
- * `packages/hashline/src/prompts/registry.ts` -> `plugins/hashline/src/prompts/registry.ts` leaves
- * the bare root `packages`, and one root moved to several others in this branch, so the table kept
- * whichever destination had the most files and rewrote `packages/hashline` to `contracts/hashline`
- * in main's text. Every path string in a moved member then read as a real content change: the
- * generator refused the ledger, naming a file whose only difference is the prefix it moved to. A
- * member-scoped rule is unambiguous, because one member moves to one place.
  */
 export function derivePrefixRewrites(pairs: readonly [string, string][]): [string, string][] {
 	const targets = new Map<string, Map<string, number>>();
@@ -210,14 +234,7 @@ export function derivePrefixRewrites(pairs: readonly [string, string][]): [strin
 	return rules;
 }
 
-/**
- * What a real change is, by the part of the tree it lands in.
- *
- * A group is a rule, not a per-file note: forty-six vendored manifests were repointed by one edit and
- * saying so once is the honest description. A path that matches no rule is a finding the generator
- * refuses to swallow, because an unexplained content change in a move is the defect this file hunts.
- */
-const GROUPS: readonly { name: string; matches: (relative: string) => boolean; reason: string }[] = [
+export const GROUPS: readonly { name: string; matches: (relative: string) => boolean; reason: string }[] = [
 	{
 		name: "startup-initialization",
 		matches: relative =>
@@ -392,94 +409,40 @@ const GROUPS: readonly { name: string; matches: (relative: string) => boolean; r
 		reason:
 			"Wire and view types were extracted into contract packages that import nothing that runs, which is where the presentation view-models now live; a wire shape a guest reads is a type-only projection of the one @veyyon/model owns.",
 	},
-];
+] as const;
+
+export const GROUP_NAMES: readonly string[] = GROUPS.map(g => g.name);
+
+export const GROUPS_TABLE: Readonly<Record<string, string>> = Object.fromEntries(GROUPS.map(g => [g.name, g.reason]));
 
 export function groupFor(relative: string): { name: string; reason: string } | undefined {
 	const hit = GROUPS.find(group => group.matches(relative));
 	return hit === undefined ? undefined : { name: hit.name, reason: hit.reason };
 }
 
-/** Every group name a ledger row may carry, for the suite to pin. */
-export const GROUP_NAMES: readonly string[] = GROUPS.map(group => group.name);
-
-function git(repoRoot: string, args: string[]): Buffer {
-	return execFileSync("git", args, { cwd: repoRoot, maxBuffer: 256 * 1024 * 1024 });
-}
-
 /**
- * Build output, which this ledger cannot make a claim about.
- *
- * `docs/handbook/book/` is mdBook's render of `docs/handbook/src/`. Its search index and asset file
- * names carry a content hash, so a rebuild renames the file and rewrites it in the same step, and
- * git pairs the two names as a rename that moved nothing. A row for one of those files is stale the
- * next time the handbook is built, on a branch that renamed nothing further — it reported a missing
- * path and took three cells red for a rebuild. Equivalence for generated output is proved by
- * regenerating it from the source this ledger does compare, not by hashing the render.
+ * Predicts the destination of a baseline path based on the rename pairs and rewrites.
  */
-function isGeneratedOutput(relative: string): boolean {
-	return relative.startsWith("docs/handbook/book/");
-}
+export function branchPathOf(
+	repoRoot: string,
+	baselinePath: string,
+	paired: ReadonlyMap<string, string>,
+	rewrites: readonly [string, string][],
+): string {
+	const direct = paired.get(baselinePath);
+	if (direct !== undefined) return direct;
 
-export function renamePairs(repoRoot: string, baseSha: string, headRef = "HEAD"): [string, string][] {
-	// 25%, not the default 50%: a module that changes directory has every relative import rewritten,
-	// so an honest move can fall under half-similar and then sits outside this ledger entirely, which
-	// is the one place a lost byte would not be seen. `-l0` removes the rename-detection cap.
-	const raw = git(repoRoot, [
-		"diff",
-		"--find-renames=25%",
-		"-l0",
-		"--diff-filter=RD",
-		"--name-status",
-		`${baseSha}...${headRef}`,
-	])
-		.toString("utf-8")
-		.split("\n");
-	const pairs: [string, string][] = [];
-	const deleted: string[] = [];
-	for (const row of raw) {
-		const parts = row.split("\t");
-		if (parts.length === 2 && parts[0] === "D" && !isGeneratedOutput(parts[1])) deleted.push(parts[1]);
-		if (parts.length !== 3 || !parts[0].startsWith("R")) continue;
-		if (isGeneratedOutput(parts[1]) || isGeneratedOutput(parts[2])) continue;
-		pairs.push([parts[1], parts[2]]);
+	for (const [from, to] of rewrites) {
+		if (baselinePath.startsWith(from)) {
+			const candidate = baselinePath.replace(from, to);
+			if (fs.existsSync(path.join(repoRoot, candidate))) return candidate;
+		}
 	}
-	return pairedWithTheMemberItMovedWith(repoRoot, pairs, deleted);
+	return baselinePath;
 }
 
 /**
- * Git's rename pairs, re-pointed to the destination the member move predicts.
- *
- * Rename detection is a similarity test over every deleted and every added path, and a member's
- * small manifests are near-identical across members: fourteen `tsconfig.json` files differ by a
- * line or by nothing. Git pairs those by whichever similarity is highest, which for identical bytes
- * is arbitrary, so `packages/wire/tsconfig.json` was reported moved to `contracts/view/`,
- * `packages/swarm-extension/tsconfig.json` to `contracts/wire/`, and `packages/tui/tsconfig.json` to
- * `hosts/gui/`. Each of those rows compared a file against a member it never belonged to, a member
- * this branch created was recorded as a move, and the manifest that did move with its member had no
- * row at all -- and every new member shuffled the chain again, so the counts moved for a reason
- * nobody could name.
- *
- * The prefix table is the majority vote of the member's own files, so it states where the member
- * went. A pair whose source that table resolves to a path that exists on this branch, is not the
- * pair's destination, and is claimed by no other pair is re-pointed there; the destination it leaves
- * behind is a file this branch created, and it is recorded nowhere, which is what a new file is.
- * Re-pointing one pair frees a destination another pair may need, so this runs to a fixed point.
- *
- * A path git reports deleted gets the same reading afterwards. When a member's manifest lost its
- * best match to a sibling's, git had no second pairing to offer and reported the file gone, so
- * `packages/stats/bunfig.toml` was a delete while `apps/stats/bunfig.toml` was a move from
- * `packages/argot/`. A delete whose predicted destination exists and is still unclaimed once the
- * pairs settle is that destination's move.
- *
- * The prediction reads directory rules only. A pair whose destination is too short to share a
- * directory with its source (`packages/hashline/tsconfig.json` -> `kernel/tsconfig.json`) puts a
- * whole-path rule in the table, and that rule is the pair's own vote: reading it back would
- * predict the pairing under question and settle it.
- *
- * WHAT IT DOES NOT CATCH. A file moved on its own to a place the table does not predict, while a
- * new file with its name appears where the table does predict, is re-pointed to the new file; and a
- * file this branch deleted while creating an unrelated one at its predicted destination is paired
- * with it. Neither is silent: the row lands in the changed bucket and has to be explained.
+ * Pairs manifests and single files with the member package they moved with.
  */
 export function pairedWithTheMemberItMovedWith(
 	repoRoot: string,
@@ -518,66 +481,159 @@ export function pairedWithTheMemberItMovedWith(
 }
 
 /**
- * Where a baseline path lives on this branch: the rename git paired it with, else the path itself
- * while it is still there, else the first destination the derived prefix table names that exists.
- *
- * The prefix fallback is not a convenience. Rename detection is a similarity test, so a module that
- * moved AND was rewritten past the threshold is not paired at all while every module that moved with
- * it is. `packages/coding-agent/src/modes/theme/defaults/index.ts` is the case that forced this: the
- * directory's other files pair, so the table carries the move, and that file's own body was rewritten
- * into lazy getters, so git reports a delete beside an add and the pair list cannot answer for it.
- *
- * A candidate is taken only when it is on disk, because one prefix moved to several destinations and
- * the table keeps the one most of its files went to: `packages/coding-agent/src` resolves to
- * `kernel/src`, which is right for the 53 modules the kernel absorbed and wrong for the thousands it
- * did not. Existence is what tells those apart, and the caller still reports a path that resolves
- * nowhere rather than recording it.
+ * Loads and expands the sparse move equivalence ledger by referencing the immutable historical
+ * approved baseline snapshot (`de0ccbf5a571d9de1285cb4dddeff1cc23f882aa`), overlaying explicit deviations.
  */
-export function branchPathOf(
-	repoRoot: string,
-	basePath: string,
-	destinationOf: ReadonlyMap<string, string>,
-	rewrites: readonly [string, string][],
-): string {
-	const paired = destinationOf.get(basePath);
-	if (paired !== undefined) return paired;
-	if (fs.existsSync(path.join(repoRoot, basePath))) return basePath;
-	for (const [oldPrefix, newPrefix] of rewrites) {
-		if (basePath !== oldPrefix && !basePath.startsWith(`${oldPrefix}/`)) continue;
-		const candidate = `${newPrefix}${basePath.slice(oldPrefix.length)}`;
-		if (fs.existsSync(path.join(repoRoot, candidate))) return candidate;
+export function loadExpandedMoveEquivalenceLedger(
+	rawOrSparse?: unknown,
+	repoRoot: string = REPO_ROOT,
+): MoveEquivalenceLedger {
+	const raw: unknown =
+		rawOrSparse === undefined || typeof rawOrSparse === "string"
+			? JSON.parse(
+					fs.readFileSync(
+						typeof rawOrSparse === "string" ? rawOrSparse : path.join(repoRoot, HISTORICAL_SNAPSHOT_PATH),
+						"utf-8",
+					),
+				)
+			: rawOrSparse;
+	if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+		throw new Error("Move equivalence ledger is not an object");
 	}
-	return basePath;
+	const fixture = raw as Partial<SparseMoveEquivalenceFixture>;
+	if (fixture.schemaVersion !== MOVE_EQUIVALENCE_SCHEMA_VERSION) {
+		throw new Error(
+			`Move equivalence ledger schema is stale or unversioned (expected version ${MOVE_EQUIVALENCE_SCHEMA_VERSION}, got ${fixture.schemaVersion ?? "unversioned v1"})`,
+		);
+	}
+	if (fixture.generatedFrom !== PINNED_BASELINE_COMMIT) {
+		throw new Error("Move equivalence ledger is missing or invalid generatedFrom commit hash");
+	}
+	if (!fixture.counts || typeof fixture.counts !== "object") {
+		throw new Error("Move equivalence ledger is missing counts summary");
+	}
+	const { total, none, importsAndCommentsOnly, changed: changedCount, binary } = fixture.counts;
+	if (
+		![total, none, importsAndCommentsOnly, changedCount, binary].every(
+			value => Number.isSafeInteger(value) && value >= 0,
+		) ||
+		total !== none + importsAndCommentsOnly + changedCount ||
+		binary > total
+	) {
+		throw new Error("Move equivalence ledger has invalid counts summary");
+	}
+	if (fixture.historicalSnapshotCommit !== HISTORICAL_SNAPSHOT_COMMIT) {
+		throw new Error(`Invalid historicalSnapshotCommit: expected pinned snapshot ${HISTORICAL_SNAPSHOT_COMMIT}`);
+	}
+	if (!fixture.deviations || typeof fixture.deviations !== "object" || Array.isArray(fixture.deviations)) {
+		throw new Error("Move equivalence ledger is missing deviations table");
+	}
+	if (["rewrites", "groups", "changed", "importAttributes"].some(key => Object.hasOwn(raw, key))) {
+		throw new Error("Expanded move ledgers are stale; regenerate the sparse fixture");
+	}
+	const historical = readGitFileText(HISTORICAL_SNAPSHOT_PATH, HISTORICAL_SNAPSHOT_COMMIT, repoRoot);
+	if (!historical) throw new Error("Failed to load historical move ledger; fetch the pinned snapshot");
+	const history = JSON.parse(historical) as {
+		generatedFrom: string;
+		rewrites: [string, string][];
+		importAttributes: Record<string, string[]>;
+		files: Record<string, HistoricalMoveRecord>;
+	};
+	if (
+		history.generatedFrom !== PINNED_BASELINE_COMMIT ||
+		!Array.isArray(history.rewrites) ||
+		!history.files ||
+		typeof history.files !== "object" ||
+		!history.importAttributes
+	) {
+		throw new Error("Historical move ledger has an invalid baseline or missing metadata");
+	}
+	const changed: Record<string, ApprovedChangedRecord> = {};
+	for (const [newPath, entry] of Object.entries(history.files)) {
+		if (entry.differs === "changed") {
+			changed[newPath] = {
+				old: entry.old,
+				group: entry.group,
+				hash: entry.hash,
+				...(entry.structuralHash ? { structuralHash: entry.structuralHash } : {}),
+				...(entry.kind === "binary" ? { kind: "binary" } : {}),
+			};
+		}
+	}
+	for (const [newPath, record] of Object.entries(fixture.deviations)) {
+		if (!record || typeof record !== "object" || Array.isArray(record)) {
+			throw new Error(`Invalid move deviation record: ${newPath}`);
+		}
+		if (!Object.hasOwn(GROUPS_TABLE, record.group)) {
+			throw new Error(`File ${newPath} references unknown group '${record.group}'`);
+		}
+		if (!history.files[newPath] || history.files[newPath].old !== record.old) {
+			throw new Error(`Move deviation ${newPath} does not match its approved original path`);
+		}
+		if (
+			typeof record.hash !== "string" ||
+			!/^[0-9a-f]{64}$/.test(record.hash) ||
+			(record.kind !== undefined && record.kind !== "binary") ||
+			(record.kind !== "binary" &&
+				(typeof record.structuralHash !== "string" || !/^[0-9a-f]{64}$/.test(record.structuralHash)))
+		) {
+			throw new Error(`Invalid move deviation fingerprint: ${newPath}`);
+		}
+		changed[newPath] = record;
+	}
+	return {
+		schemaVersion: MOVE_EQUIVALENCE_SCHEMA_VERSION,
+		generatedFrom: PINNED_BASELINE_COMMIT,
+		historicalSnapshotCommit: HISTORICAL_SNAPSHOT_COMMIT,
+		rewrites: history.rewrites,
+		counts: fixture.counts,
+		groups: GROUPS_TABLE,
+		changed,
+		importAttributes: history.importAttributes,
+	};
+}
+
+export function validateMoveEquivalenceLedger(raw: unknown, repoRoot: string = REPO_ROOT): MoveEquivalenceLedger {
+	return loadExpandedMoveEquivalenceLedger(raw, repoRoot);
 }
 
 /**
- * Every import attribute the baseline carried, keyed by the path the file has on this branch.
- *
- * The shortlist comes from `git grep`, so this reads a hundred files instead of eleven thousand. A
- * baseline file that carried an attribute and no longer exists here is not recorded silently: it
- * throws, because deleting a text-loaded module is a decision and not a side effect of a move.
+ * Extracts all baseline import attributes from the pinned commit tree.
  */
-export function baselineImportAttributes(
+export async function baselineImportAttributes(
 	repoRoot: string,
 	baseSha: string,
 	pairs: readonly [string, string][],
-): Record<string, string[]> {
+): Promise<Record<string, string[]>> {
 	const destinationOf = new Map(pairs);
 	const rewrites = derivePrefixRewrites(pairs);
-	const shortlist = git(repoRoot, ["grep", "-I", "--name-only", "-e", "with {", baseSha, "--", "*.ts", "*.tsx"])
-		.toString("utf-8")
-		.split("\n")
-		.map(row => row.replace(`${baseSha}:`, "").trim())
-		.filter(row => row !== "");
+	const tree = readGitTree(baseSha, repoRoot);
+	const candidatePaths: string[] = [];
+	const specs: string[] = [];
+
+	for (const [filePath] of tree) {
+		if ((filePath.endsWith(".ts") || filePath.endsWith(".tsx")) && !filePath.endsWith(".d.ts")) {
+			candidatePaths.push(filePath);
+			specs.push(`${baseSha}:${filePath}`);
+		}
+	}
+
+	const blobMap = await batchReadGitBlobs(specs, repoRoot);
 	const inventory: Record<string, string[]> = {};
 	const vanished: string[] = [];
-	for (const basePath of shortlist) {
-		const text = git(repoRoot, ["show", `${baseSha}:${basePath}`]).toString("utf-8");
-		const attributes = [...text.matchAll(IMPORT_ATTRIBUTE_ALL)].map(found => found[1].replace(/\s+/g, " "));
+
+	for (let i = 0; i < candidatePaths.length; i++) {
+		const filePath = candidatePaths[i]!;
+		const spec = specs[i]!;
+		const buf = blobMap.get(spec);
+		if (!buf) continue;
+		const text = buf.toString("utf-8");
+		if (!text.includes("with {")) continue;
+		const attributes = [...text.matchAll(IMPORT_ATTRIBUTE_ALL)].map(found => found[1]!.replace(/\s+/g, " "));
 		if (attributes.length === 0) continue;
-		const branchPath = branchPathOf(repoRoot, basePath, destinationOf, rewrites);
+		const branchPath = branchPathOf(repoRoot, filePath, destinationOf, rewrites);
 		if (!fs.existsSync(path.join(repoRoot, branchPath))) {
-			vanished.push(`${basePath}${branchPath === basePath ? "" : ` -> ${branchPath}`}`);
+			vanished.push(`${filePath}${branchPath === filePath ? "" : ` -> ${branchPath}`}`);
 			continue;
 		}
 		inventory[branchPath] = attributes.sort();
@@ -588,96 +644,85 @@ export function baselineImportAttributes(
 	return inventory;
 }
 
-/**
- * Prove the working tree IS the commit the rows are attributed to, for the paths the rows read.
- *
- * `git diff <ref>` cannot answer this: it enumerates the index, so a file the checked-out commit
- * never had reads as deleted even while it sits on disk. That is not a corner case here — the whole
- * reason to name a ref is that the commit is not checked out — so the comparison is made against the
- * ref's own tree, object id by object id, over exactly the files this ledger hashes.
- *
- * The working-tree side is hashed by `git hash-object`, not by hashing the bytes: `.gitattributes`
- * gives `*.cmd` `eol=crlf`, so twenty-one fixtures sit on disk with line endings their blob does not
- * have, and a raw hash calls every one of them a difference.
- */
-function assertWorktreeIs(repoRoot: string, headRef: string, paths: readonly string[]): void {
-	const blobs = new Map<string, string>();
-	for (const row of git(repoRoot, ["ls-tree", "-r", headRef]).toString("utf-8").split("\n")) {
-		const [meta, filePath] = row.split("\t");
-		if (filePath === undefined) continue;
-		const parts = meta.split(" ");
-		if (parts[1] === "blob") blobs.set(filePath, parts[2]);
-	}
-
-	const drifted: string[] = [];
-	const present: string[] = [];
-	for (const relative of paths) {
-		if (!blobs.has(relative)) drifted.push(`${relative}: ${headRef} does not carry it`);
-		else if (!fs.existsSync(path.join(repoRoot, relative)))
-			drifted.push(`${relative}: missing from the working tree`);
-		else present.push(relative);
-	}
-
-	for (let start = 0; start < present.length; start += 400) {
-		const chunk = present.slice(start, start + 400);
-		const hashed = git(repoRoot, ["hash-object", "--", ...chunk])
-			.toString("utf-8")
-			.trim()
-			.split("\n");
-		if (hashed.length !== chunk.length)
-			throw new Error(`git hash-object answered ${hashed.length} of ${chunk.length}`);
-		for (const [index, actual] of hashed.entries()) {
-			const recorded = blobs.get(chunk[index]);
-			if (actual !== recorded) drifted.push(`${chunk[index]}: ${actual} on disk, ${recorded} in ${headRef}`);
-		}
-	}
-
-	if (drifted.length > 0) {
-		const shown = drifted.slice(0, 5).join("; ");
-		throw new Error(
-			`the working tree does not match ${headRef} for ${drifted.length} of ${paths.length} files: ${shown}`,
-		);
-	}
+function sameApproval(
+	left: ApprovedChangedRecord | HistoricalMoveRecord | undefined,
+	right: ApprovedChangedRecord,
+): boolean {
+	return (
+		left !== undefined &&
+		left.old === right.old &&
+		left.group === right.group &&
+		left.hash === right.hash &&
+		left.structuralHash === right.structuralHash &&
+		(left.kind ?? "normalized") === (right.kind ?? "normalized")
+	);
 }
 
-export function generateLedger(repoRoot: string, headRef = "HEAD", baseRef?: string): MoveEquivalenceLedger {
-	// The MERGE BASE, not the tip of main. `renamePairs` asks git for `base...head`, which is already
-	// the merge base by definition, and every row then reads the old path out of `baseSha`. While
-	// this named the tip, the two disagreed the moment main moved: main deleted
-	// `packages/coding-agent/src/modes/magic-keyword-notices.ts` five commits past the base, and the
-	// generator died on `git show <tip>:<a path only the base has>`. One commit answers both halves.
-	const baseSha =
-		baseRef ??
-		process.env.MOVE_EQUIVALENCE_BASE ??
-		git(repoRoot, ["merge-base", "origin/main", headRef]).toString("utf-8").trim();
-	const pairs = renamePairs(repoRoot, baseSha, headRef);
-	const importAttributes = baselineImportAttributes(repoRoot, baseSha, pairs);
-	if (headRef !== "HEAD") {
-		// Every row below hashes the working tree, so a ref named here has to BE the tree on disk: a
-		// ledger measured against one commit's renames and another commit's bytes would be wrong in a
-		// way no row could show.
-		assertWorktreeIs(repoRoot, headRef, [...pairs.map(([, newPath]) => newPath), ...Object.keys(importAttributes)]);
-	}
+/**
+ * Generates the schema v2 sparse move equivalence fixture and expanded ledger against the Git baseline.
+ */
+export async function generateSparseLedger(
+	repoRoot: string = REPO_ROOT,
+	headRef = HISTORICAL_SNAPSHOT_COMMIT,
+	baseRef = PINNED_BASELINE_COMMIT,
+	histCommit = HISTORICAL_SNAPSHOT_COMMIT,
+): Promise<{ sparse: SparseMoveEquivalenceFixture; ledger: MoveEquivalenceLedger }> {
+	ensureBaselineAvailable(repoRoot);
+	const baseSha = baseRef;
+	const { pairs: reported, deleted } = getRenamePairs(baseSha, headRef, repoRoot, 20);
+	const pairs = pairedWithTheMemberItMovedWith(repoRoot, reported, deleted);
 	const rewrites = derivePrefixRewrites(pairs);
-	const files: Record<string, FileRecord> = {};
 
-	for (const [oldPath, newPath] of pairs) {
+	const histText = readGitFileText(HISTORICAL_SNAPSHOT_PATH, histCommit, repoRoot);
+	if (!histText) {
+		throw new Error(`Failed to read historical snapshot from ${histCommit}:${HISTORICAL_SNAPSHOT_PATH}`);
+	}
+	const histLedger = JSON.parse(histText) as {
+		files?: Record<string, HistoricalMoveRecord>;
+	};
+
+	const specs = pairs.map(([oldPath]) => `${baseSha}:${oldPath}`);
+	const blobMap = await batchReadGitBlobs(specs, repoRoot);
+
+	const changed: Record<string, ApprovedChangedRecord> = {};
+	const deviations: Record<string, ApprovedChangedRecord> = {};
+	let noneCount = 0;
+	let importCount = 0;
+	let changedCount = 0;
+	let binaryCount = 0;
+
+	for (let i = 0; i < pairs.length; i++) {
+		const [oldPath, newPath] = pairs[i]!;
+		const spec = specs[i]!;
 		const onDisk = path.join(repoRoot, newPath);
 		if (!fs.existsSync(onDisk)) throw new Error(`renamed to a path that does not exist: ${newPath}`);
-		const mainBytes = git(repoRoot, ["show", `${baseSha}:${oldPath}`]);
+		const mainBytes = blobMap.get(spec);
+		if (!mainBytes) throw new Error(`missing baseline object for ${oldPath}`);
 		const currentBytes = fs.readFileSync(onDisk);
+		const isBinary = isBinaryFile(newPath, mainBytes, currentBytes);
 
-		if (BINARY_EXTENSIONS.has(path.extname(newPath))) {
+		if (isBinary) {
+			binaryCount++;
 			const hash = sha256(currentBytes);
 			const mainHash = sha256(mainBytes);
-			files[newPath] = {
-				old: oldPath,
-				kind: "binary",
-				differs: hash === mainHash ? "none" : "changed",
-				hash,
-				mainHash,
-				...(hash === mainHash ? {} : (groupFor(newPath) ?? {})),
-			};
+			if (hash === mainHash) {
+				noneCount++;
+			} else {
+				changedCount++;
+				const group = groupFor(newPath);
+				if (!group) throw new Error(`binary changed with no group to explain it: ${newPath}`);
+				const record: ApprovedChangedRecord = {
+					old: oldPath,
+					kind: "binary",
+					group: group.name,
+					hash,
+				};
+				changed[newPath] = record;
+				const histEntry = histLedger.files?.[newPath];
+				if (histEntry?.differs !== "changed" || !sameApproval(histEntry, record)) {
+					deviations[newPath] = record;
+				}
+			}
 			continue;
 		}
 
@@ -685,42 +730,86 @@ export function generateLedger(repoRoot: string, headRef = "HEAD", baseRef?: str
 		const currentText = normalizeWithRewrites(currentBytes.toString("utf-8"), rewrites);
 		const hash = sha256(currentText);
 		const mainHash = sha256(mainText);
-		const structural = structuralHash(currentText, newPath);
-		const mainStructural = structuralHash(mainText, newPath);
-		const differs: DiffersKind =
-			hash === mainHash ? "none" : structural === mainStructural ? "imports-and-comments-only" : "changed";
-		const group = differs === "changed" ? groupFor(newPath) : undefined;
-		if (differs === "changed" && group === undefined) {
-			throw new Error(`content changed with no group to explain it: ${newPath}`);
+
+		if (hash === mainHash) {
+			noneCount++;
+			continue;
 		}
-		files[newPath] = {
+
+		const structural = structuralHash(currentText, newPath);
+		const mainStructural = structuralHash(mainText, oldPath);
+
+		if (structural === mainStructural) {
+			importCount++;
+			continue;
+		}
+
+		changedCount++;
+		const group = groupFor(newPath);
+		if (!group) throw new Error(`content changed with no group to explain it: ${newPath}`);
+		const record: ApprovedChangedRecord = {
 			old: oldPath,
-			kind: "normalized",
-			differs,
-			...(group === undefined ? {} : { group: group.name, reason: group.reason }),
+			group: group.name,
 			hash,
-			mainHash,
 			structuralHash: structural,
-			mainStructuralHash: mainStructural,
 		};
+		changed[newPath] = record;
+		const histEntry = histLedger.files?.[newPath];
+		if (histEntry?.differs !== "changed" || !sameApproval(histEntry, record)) {
+			deviations[newPath] = record;
+		}
 	}
 
-	return {
+	const sparse: SparseMoveEquivalenceFixture = {
+		schemaVersion: MOVE_EQUIVALENCE_SCHEMA_VERSION,
 		generatedFrom: baseSha,
-		rewrites,
-		files,
-		importAttributes,
+		historicalSnapshotCommit: histCommit,
+		counts: {
+			total: pairs.length,
+			none: noneCount,
+			importsAndCommentsOnly: importCount,
+			changed: changedCount,
+			binary: binaryCount,
+		},
+		deviations,
 	};
+
+	const ledger = loadExpandedMoveEquivalenceLedger(sparse, repoRoot);
+	if (JSON.stringify(ledger.rewrites) !== JSON.stringify(rewrites)) {
+		throw new Error(
+			"Move topology differs from the approved snapshot; review the new path mapping before regeneration",
+		);
+	}
+	if (
+		Object.keys(ledger.changed).length !== Object.keys(changed).length ||
+		Object.entries(changed).some(([name, record]) => !sameApproval(ledger.changed[name], record))
+	) {
+		throw new Error(
+			"Sparse move approvals do not reconstruct the measured changes; review changed bucket membership",
+		);
+	}
+	return { sparse, ledger };
+}
+
+export async function generateLedger(
+	repoRoot: string = REPO_ROOT,
+	headRef = HISTORICAL_SNAPSHOT_COMMIT,
+	baseRef = PINNED_BASELINE_COMMIT,
+	histCommit = HISTORICAL_SNAPSHOT_COMMIT,
+): Promise<MoveEquivalenceLedger> {
+	const { ledger } = await generateSparseLedger(repoRoot, headRef, baseRef, histCommit);
+	return ledger;
 }
 
 if (import.meta.main) {
-	const repoRoot = path.resolve(import.meta.dirname, "..");
-	const ledger = generateLedger(repoRoot, process.argv[2] ?? "HEAD", process.argv[3]);
-	const target = path.join(repoRoot, "scripts", "fixtures", "move-equivalence.json");
-	fs.writeFileSync(target, `${JSON.stringify(ledger, null, "\t")}\n`);
-	const rows = Object.values(ledger.files);
-	const counts = new Map<string, number>();
-	for (const row of rows) counts.set(row.differs, (counts.get(row.differs) ?? 0) + 1);
-	process.stdout.write(`wrote ${rows.length} rows from ${ledger.generatedFrom}\n`);
-	for (const [kind, count] of [...counts].sort()) process.stdout.write(`  ${kind}: ${count}\n`);
+	const destination = path.join(REPO_ROOT, HISTORICAL_SNAPSHOT_PATH);
+	const { sparse, ledger } = await generateSparseLedger(REPO_ROOT);
+	fs.writeFileSync(destination, `${JSON.stringify(sparse, null, "\t")}\n`);
+	console.log(
+		`wrote sparse move ledger (${Object.keys(sparse.deviations).length} explicit post-snapshot deviations, ${ledger.counts.changed} total approved changes across ${ledger.counts.total} moved files) against ${ledger.generatedFrom}`,
+	);
+	console.log(`  none: ${ledger.counts.none}`);
+	console.log(`  imports-and-comments-only: ${ledger.counts.importsAndCommentsOnly}`);
+	console.log(`  changed: ${ledger.counts.changed}`);
+	console.log(`  binary: ${ledger.counts.binary}`);
 }

@@ -64,8 +64,6 @@ export function shouldPrepaintLaunchCard(parsed: Args): boolean {
  * `runRootCommand` used; it moved here whole rather than being split.
  */
 export async function runStartupPrologue(parsed: Args, forceSetupWizard = false): Promise<StartupPrologue> {
-	// Defaults only: CLI symbols need a theme before settings are readable.
-	await logger.time("initTheme:defaults", initTheme);
 	await logger.time("applyStartupCwd", applyStartupCwd, parsed);
 
 	const settings = await logger.time("Settings.init", Settings.init, {
