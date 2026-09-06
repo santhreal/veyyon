@@ -254,6 +254,7 @@
 - Repointed a doc comment at `@veyyon/kernel/session/session-entries`, where the session header type now lives; no behavior change.
 - The package directory is `plugins/mode-swarm` instead of `packages/swarm-extension`; the published package name, entry points and behavior are unchanged.
 - `TerminalNotification` extends `HostNotification` from `@veyyon/utils/host-notification`, so a terminal is one host that can deliver a tool's notification and the two shapes cannot drift apart.
+- The `/agents` card ships as it did in 1.4.0; the flat frame and the roster detail pane added after that release were withdrawn before this one.
 - `visualColAtOffset` and `offsetAtVisualCol` are exported from `@veyyon/tui` utils, shared by `Editor` and `Input`.
 - JSON snapshot parsing uses the shared JSON parser; snapshot validation is unchanged.
 - `HostNotification` and `HostNotifier` are defined in `@veyyon/host`; `@veyyon/utils/host-notification` re-exports both, so no caller changes.
@@ -279,6 +280,7 @@
 - Failed task results without agent details retain error text styling.
 - Launch model context estimates exclude project context and clamp the remaining percentage to zero.
 - Launched processes report completion even when they exit before the completion watch registers.
+- The permission card's title bar reads `Permission required` instead of the markdown source `## Permission required`; a select dialog's title bar draws the heading's text and leaves the markdown to the body.
 - A hook status set through `ctx.ui.setStatus` keeps the theme colours it was painted with, as its contract states, so the autoresearch status row shows its kept count in green, its flagged count in yellow and its best metric in the tool colour instead of one grey line; cursor moves, hyperlinks and graphics in a status are still stripped.
 - Interrupting Claude mid-thinking no longer fails every later turn with `Refusal (reasoning_extraction)` on an endpoint that enforces the classifier: the hidden continuity message that carries the unfinished reasoning states which turn it came from, and the request drops it on same-model replay to a signing Anthropic endpoint, and after one refusal on any other, instead of re-sending it on the retry and for the rest of the session.
 - A logged metric of zero or below is a measurement: a session minimising a count tags the kept run that reached zero as best, and a signed metric's negative runs are ranked by direction in the Best row, the keep gate of `log_experiment`, the confidence figure, the `Trend` row and the prompt's recent-run rows; only a crash's logged placeholder reads as unmeasured, and it prints `no metric` in the prompt as it does on screen.
