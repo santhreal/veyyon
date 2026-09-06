@@ -346,10 +346,10 @@ export class GuestClient {
 				this.#agents = frame.agents.slice();
 				break;
 			case "bus":
-				if (frame.channel === "task:agent:progress") {
+				if (frame.channel === "task:subagent:progress") {
 					const payload = frame.data as AgentProgressPayload;
 					this.#progress = new Map(this.#progress).set(payload.progress.id, payload);
-				} else if (frame.channel === "task:agent:lifecycle") {
+				} else if (frame.channel === "task:subagent:lifecycle") {
 					const payload = frame.data as AgentLifecyclePayload;
 					this.#lifecycle = new Map(this.#lifecycle).set(payload.id, payload);
 				}

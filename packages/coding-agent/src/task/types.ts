@@ -20,11 +20,11 @@ export const MAX_OUTPUT_LINES = $envpos("VEYYON_TASK_MAX_OUTPUT_LINES", 5000);
 /** EventBus channel for raw agent events */
 export const TASK_AGENT_EVENT_CHANNEL = "task:agent:event";
 
-/** EventBus channel for aggregated agent progress */
-export const TASK_AGENT_PROGRESS_CHANNEL = "task:agent:progress";
+/** EventBus channel for aggregated agent progress. The string is a wire spelling a collab guest matches on; it does not change. */
+export const TASK_AGENT_PROGRESS_CHANNEL = "task:subagent:progress";
 
-/** EventBus channel for agent lifecycle (start/end) */
-export const TASK_AGENT_LIFECYCLE_CHANNEL = "task:agent:lifecycle";
+/** EventBus channel for agent lifecycle (start/end). The string is a wire spelling a collab guest matches on; it does not change. */
+export const TASK_AGENT_LIFECYCLE_CHANNEL = "task:subagent:lifecycle";
 
 /** Payload emitted on TASK_AGENT_PROGRESS_CHANNEL */
 export interface AgentProgressPayload {

@@ -219,7 +219,7 @@ describe("GuestClient frame apply", () => {
 				durationMs: 1000,
 			},
 		};
-		client.applyFrameForTest({ t: "bus", channel: "task:agent:progress", data: payload });
+		client.applyFrameForTest({ t: "bus", channel: "task:subagent:progress", data: payload });
 		expect(client.getSnapshot().progress.get("Sub1")).toEqual(payload);
 	});
 

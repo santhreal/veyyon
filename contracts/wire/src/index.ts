@@ -578,6 +578,10 @@ export interface AgentLifecyclePayload {
 	index: number;
 }
 
+/** The names the `task:subagent:*` bus payloads were published under; both stay exported so a guest built against them still compiles. */
+export type SubagentProgressPayload = AgentProgressPayload;
+export type SubagentLifecyclePayload = AgentLifecyclePayload;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Frames (JSON inside the AES-GCM seal)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -623,8 +627,8 @@ export type GuestFrame =
 	| { t: "agent-cmd"; cmd: "chat" | "kill" | "revive"; agentId: string; text?: string }
 	| { t: "fetch-transcript"; reqId: number; agentId: string; fromByte: number };
 
-/** EventBus channels mirrored to guests (task agent traffic only). */
-export type BusChannel = "task:agent:progress" | "task:agent:lifecycle";
+/** EventBus channels mirrored to guests (task agent traffic only). The spellings are frozen wire vocabulary. */
+export type BusChannel = "task:subagent:progress" | "task:subagent:lifecycle";
 
 export type HostFrame =
 	| {

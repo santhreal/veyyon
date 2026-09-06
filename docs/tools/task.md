@@ -126,7 +126,7 @@ Artifacts and side channels:
   - Creates child `AgentSession` instances with isolated settings snapshots; finished sessions stay registered in the process-global `AgentRegistry` as `idle`/`parked` until process teardown or explicit release.
   - With `async.enabled=true`, registers one async job per spawn in `session.asyncJobManager`; completion is injected into the parent as an async-result message.
   - Arms idle-TTL timers in `AgentLifecycleManager` (unref'd; they never hold the process open).
-  - Emits `task:agent:event`, `task:agent:progress`, and `task:agent:lifecycle` on the parent event bus.
+  - Emits `task:agent:event`, `task:subagent:progress`, and `task:subagent:lifecycle` on the parent event bus; the two `subagent` spellings are wire vocabulary a collab guest matches on.
   - Allocates session-scoped output ids through `AgentOutputManager` so `agent://` stays unique across invocations.
   - Shares the parent `local://` root and `ArtifactManager` with agents.
 - Background work / cancellation

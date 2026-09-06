@@ -326,7 +326,7 @@ ws.onclose = event => {
 
 const tickInterval: Timer = setInterval(() => {
 	tick++;
-	sendFrame({ t: "bus", channel: "task:agent:progress", data: makeProbeProgress(tick) });
+	sendFrame({ t: "bus", channel: "task:subagent:progress", data: makeProbeProgress(tick) });
 	const now = Date.now();
 	for (const agent of agents) {
 		if (agent.status === "running") agent.lastActivity = now;
