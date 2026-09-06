@@ -165,7 +165,7 @@ export const AGENTS_SETTINGS = {
 			group: "Delegation",
 			label: "Agents",
 			description:
-				"Whether this session may use spawned agents at all. Off removes the task tool and every delegation instruction from the prompt, so nothing can be spawned. This is the only setting that takes the ability away: Agent Delegation below decides how hard the model is PUSHED to delegate, never whether it may. Your delegation strength and your Roster are kept while this is off and take effect again when you turn it back on.",
+				"Allow this session to spawn agents. Off removes the task tool and the delegation instructions from the system prompt. Agent Delegation and the Roster keep their values and apply again when this is on.",
 			keywords: ["agent", "spawn", "delegate", "off", "disable"],
 		},
 	},
@@ -179,19 +179,19 @@ export const AGENTS_SETTINGS = {
 			group: "Delegation",
 			label: "Agent Delegation",
 			description:
-				"How strongly this session routes work to the agent types you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Roster is the routing policy: each name is a distinct type that owns only work matching its description, no type is a fallback for another, and work no enabled type covers stays with the main agent. Turn Agents off above to remove delegation entirely.",
+				"How strongly the system prompt asks the model to delegate work to enabled agents. Allowed: the task tool is available and the prompt does not ask for delegation. Preferred: the prompt asks for substantial eligible work to be delegated. Required: Preferred plus a reminder on the first turn. Work no enabled agent covers stays with the main agent.",
 			keywords: ["agent", "spawn", "fan out", "parallel", "eager"],
 			options: [
-				{ value: "allowed", label: "Allowed", description: "Offered, never asked for — the model decides" },
+				{ value: "allowed", label: "Allowed", description: "Available; the prompt does not ask for it" },
 				{
 					value: "preferred",
 					label: "Preferred",
-					description: "Default — prompt asks for substantial work to be delegated",
+					description: "Default; the prompt asks for substantial work to be delegated",
 				},
 				{
 					value: "required",
 					label: "Required",
-					description: "Prompt guidance plus a first-turn delegation reminder",
+					description: "Preferred plus a first-turn reminder",
 				},
 			],
 		},
@@ -205,7 +205,7 @@ export const AGENTS_SETTINGS = {
 			group: "Delegation",
 			label: "Batch Task Calls",
 			description:
-				"Switch the task tool to its batch shape: one call carries { agent, context, tasks[] } — one agent per item (with per-item isolation) and a required shared context prepended to every assignment. With async.enabled=true, each spawn runs as an independent background agent with the normal idle/parked lifecycle; otherwise the call blocks for merged results. Disable to restore the flat single-spawn schema.",
+				"Use the batch schema for the task tool: one call carries a shared context and a list of tasks, one agent per task. With async agents on, each task runs as a background agent; otherwise the call blocks until every task returns. Off uses the single-task schema.",
 			// Advanced: it changes the tool's SCHEMA rather than any policy, so it is
 			// a shape an integrator picks once, not a knob a session tunes.
 			advanced: true,
@@ -248,7 +248,7 @@ export const AGENTS_SETTINGS = {
 			group: "Agents",
 			label: "Roster",
 			description:
-				"Which agent types the model may choose, and what each one runs. Enabled means the model can pick that agent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and agents you add are opt-in through onboarding or this roster. Each agent's page carries its own Model and Effort, and an agents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above, and an agent that names nothing runs the default model role. Same Model for All Agents below replaces the per-agent Model and Effort rows with one pair for the whole roster.",
+				"Which agent types the model may spawn and what each one runs. Enabled: the model may pick that agent. Disabled: it may not. With no rows, only the deep agent is enabled. Each agent's page sets its Model, its Effort and which agents it may spawn in turn; an unset value follows the level above, then the default model role.",
 			keywords: [
 				"agents",
 				"roster",
@@ -275,7 +275,7 @@ export const AGENTS_SETTINGS = {
 			group: "Agents",
 			label: "Max Nested Spawn Depth",
 			description:
-				"How many nested levels agents may spawn, for every level no roster chain decides. 0 still lets this session spawn direct agents, but those children do not receive the task tool. Open Roster above, pick an agent, then Agents, to turn individual levels on or off for that one; this number answers from the first level its chain does not name.",
+				"How many levels deep spawned agents may spawn further agents, where an agent's own page does not set it. Parent only: agents this session spawns do not receive the task tool.",
 			keywords: ["depth", "nested", "recursion", "spawn", "roster"],
 			options: AGENT_RECURSION_DEPTH_OPTIONS,
 		},
@@ -306,7 +306,7 @@ export const AGENTS_SETTINGS = {
 			group: "Agents",
 			label: "Same Model for All Agents",
 			description:
-				"Run every spawned agent on one model and one effort instead of choosing per agent. Off, each agent's page decides. On, the two rows below decide for the whole roster and the per-agent Model and Effort rows are hidden; what those rows hold is kept and comes back when this goes off.",
+				"Run every spawned agent on one Model and one Effort. Off: each agent's page sets its own. On: Shared Model and Shared Effort below apply to every agent and the per-agent rows are hidden; their values are kept for when this is off again.",
 			keywords: ["shared", "blanket", "all agents", "one model", "roster", "model", "effort"],
 		},
 	},
@@ -320,7 +320,7 @@ export const AGENTS_SETTINGS = {
 			group: "Agents",
 			label: "Shared Model",
 			description:
-				"The model chain every spawned agent runs while Same Model for All Agents is on. Unset falls back to the default model role, the same model a new session starts on.",
+				"The model chain every spawned agent runs while Same Model for All Agents is on. Unset: the default model role.",
 			condition: "agentSharedModel",
 			keywords: ["shared", "model", "all agents", "chain"],
 		},
@@ -335,7 +335,7 @@ export const AGENTS_SETTINGS = {
 			group: "Agents",
 			label: "Shared Effort",
 			description:
-				"The effort every spawned agent runs at while Same Model for All Agents is on. Narrowed to what the model above declares; a `:level` suffix on the chain still wins. Inherit leaves the documented default.",
+				"The effort every spawned agent runs at while Same Model for All Agents is on. Limited to the levels the shared model supports; a `:level` suffix on the model chain takes precedence. Inherit: the model's default.",
 			condition: "agentSharedModel",
 			keywords: ["shared", "effort", "thinking", "all agents"],
 		},
@@ -361,7 +361,7 @@ export const AGENTS_SETTINGS = {
 			group: "Agents",
 			label: "Show Resolved Model Badge",
 			description:
-				"Show each spawned agent's resolved model, and the setting that decided it, in the task widget status line and the agent surfaces.",
+				"Show each spawned agent's resolved model, and the setting that selected it, in the task widget status line and on the agent surfaces.",
 			advanced: true,
 		},
 	},
@@ -377,7 +377,7 @@ export const AGENTS_SETTINGS = {
 			tab: "agents",
 			group: "Limits",
 			label: "Max Concurrent Agents",
-			description: "Maximum number of spawned agents running concurrently",
+			description: "Maximum number of spawned agents running at once. Unlimited: no cap.",
 			options: [
 				{ value: "0", label: "Unlimited" },
 				{ value: "1", label: "1 agent" },
@@ -399,7 +399,7 @@ export const AGENTS_SETTINGS = {
 			group: "Limits",
 			label: "Max Agent Runtime",
 			description:
-				"Hard wall-clock limit per spawned agent (ms). 0 disables it. Defense-in-depth against provider-side stream hangs that escape the inference-layer watchdog; triggers a normal agent abort with a 'timed out' reason.",
+				"Maximum wall-clock time a spawned agent may run. An agent that reaches it is aborted with a 'timed out' reason. Unlimited: no limit.",
 			options: [
 				{ value: "0", label: "Unlimited", description: "Default" },
 				{ value: "300000", label: "5 minutes" },
@@ -415,16 +415,12 @@ export const AGENTS_SETTINGS = {
 		default: DEFAULT_AGENT_IDLE_TTL_MS,
 		ui: {
 			tab: "agents",
-			// Stage ONE, and its own group. Park and prune answer different questions —
-			// one releases the session, the other drops the row — and one shared "Auto
-			// Close" group asked the operator to read three rows to find out which did
-			// which. Parking is also NOT gated on the prune switch: it happens whether
-			// or not the ref is eventually dropped, so hiding this row when pruning is
-			// off would hide the only control over stage one.
+			// Parking is not conditioned on the prune switch: it happens whether or not
+			// the row is later dropped, so this row stays visible while pruning is off.
 			group: "Park",
-			label: "Park After",
+			label: "Park Idle Agents After",
 			description:
-				"Stage one. How long a finished spawned agent stays live before it parks (ms). Parking releases the live session — the process, its MCP clients, its memory — and keeps everything else: the row stays in the roster and the agent rebuilds itself when messaged or opened. Counted from the agent's last activity, so a revived agent starts this budget again from the revival. 'Until exit' keeps idle agents live for the whole session.",
+				"How long a spawned agent that has finished its turn stays live before it is parked. A parked agent releases its process, MCP clients and memory; it stays in the roster and is rebuilt from its transcript when messaged or opened. Counted from the agent's last activity. Until exit: idle agents stay live for the whole session.",
 			// A numeric setting with no option list is dropped by the UI adapter
 			// (`pathToSettingDef` treats optionless numbers as schema-only), so stage one
 			// of the lifecycle was documented, defaulted and honored while being
@@ -448,7 +444,7 @@ export const AGENTS_SETTINGS = {
 			group: "Prune",
 			label: "Prune Parked Agents",
 			description:
-				"Stage two, and a different thing from parking. Pruning takes a parked agent out of the roster and gives up the ability to wake it; parking only released its session. Nothing on disk is touched: the transcript stays where it is and stays readable at `history://<agent>`. Off keeps every parked agent listed and wakeable until you exit.",
+				"Remove parked agents from the roster after Prune After. A pruned agent cannot be messaged or opened again; its transcript stays on disk and readable at history://<agent>. Off: parked agents stay in the roster until the session exits.",
 		},
 	},
 
@@ -459,8 +455,7 @@ export const AGENTS_SETTINGS = {
 			tab: "agents",
 			group: "Prune",
 			label: "Prune After",
-			description:
-				"How long a parked agent stays in the roster before it is pruned (ms). Counted from its last activity, so an agent read back from a previous run is judged on when its transcript was last written rather than on when this session found it.",
+			description: "How long a parked agent stays in the roster before it is pruned, counted from when it was parked.",
 			options: [
 				{ value: "900000", label: "15 minutes" },
 				{ value: "1800000", label: "30 minutes" },
@@ -480,7 +475,7 @@ export const AGENTS_SETTINGS = {
 			group: "Prune",
 			label: "Prune After While Waiting",
 			description:
-				"The same budget for an agent whose last message said it was waiting on another agent (ms). It stopped on purpose to let a peer finish, so it keeps its row longer than one that simply went quiet: pruning it on the ordinary budget would drop the agent you are most likely to message next. Set it equal to Prune After to treat both the same; a shorter value is raised to it.",
+				"Prune After for a parked agent whose last message was that it is waiting on another agent. A value below Prune After is raised to it.",
 			options: [
 				{ value: "3600000", label: "1 hour" },
 				{ value: "7200000", label: "2 hours", description: "Default" },
@@ -499,7 +494,7 @@ export const AGENTS_SETTINGS = {
 			group: "Limits",
 			label: "Soft Request Budget",
 			description:
-				"Soft per-agent request budget (assistant requests per run). Crossing it injects a wrap-up steering notice (see the notice setting below); at 1.5x the budget the run is force-stopped and the agent must yield its partial findings. 0 disables the guard. Bundled scout/sonic agents use a lower built-in budget.",
+				"Number of model requests a spawned agent may make per run before it is asked to wrap up. At 1.5 times this number the run is stopped and the agent returns what it has. Disabled: no limit. The bundled scout and sonic agents have a lower built-in budget.",
 			options: [
 				{ value: "0", label: "Disabled" },
 				{ value: "90", label: "90 requests" },
@@ -517,7 +512,7 @@ export const AGENTS_SETTINGS = {
 			group: "Limits",
 			label: "Soft Request Budget Notice",
 			description:
-				"Inject one steering notice when an agent crosses its soft request budget, asking it to wrap up before the 1.5x forced-yield stop.",
+				"Send an agent one steering notice when it crosses its Soft Request Budget, asking it to wrap up before the forced stop.",
 			// Only reachable behaviour while a budget exists: with the guard disabled
 			// there is no crossing to announce, so the row is hidden rather than
 			// shown doing nothing.
@@ -532,8 +527,7 @@ export const AGENTS_SETTINGS = {
 			tab: "agents",
 			group: "Limits",
 			label: "LSP in Agents",
-			description:
-				"Allow spawned agents to use the lsp tool. Off by default to keep agents cheap; enable when LSP-aware delegation is worth the extra tokens.",
+			description: "Allow spawned agents to use the lsp tool. Off keeps agents cheaper.",
 		},
 	},
 
@@ -561,7 +555,7 @@ export const AGENTS_SETTINGS = {
 			group: "Isolation",
 			label: "Isolation Mode",
 			description:
-				'Isolation backend for spawned agents. "auto" lets the native PAL pick the best available backend (CoW-aware filesystems, then overlayfs/ProjFS, then a git worktree / recursive-copy fallback).',
+				"Filesystem isolation for spawned agents. Auto picks the best backend available on this host: a copy-on-write filesystem, then overlayfs or ProjFS, then a git worktree or a recursive copy.",
 			options: [
 				{ value: "none", label: "None", description: "No isolation" },
 				{ value: "auto", label: "Auto", description: "Let the PAL pick the best available backend" },
@@ -597,7 +591,7 @@ export const AGENTS_SETTINGS = {
 			tab: "agents",
 			group: "Isolation",
 			label: "Isolation Merge Strategy",
-			description: "How isolated agent changes are integrated (patch apply or branch merge)",
+			description: "How an isolated agent's changes are brought back: as one applied patch, or as a merged branch.",
 			options: [
 				{ value: "patch", label: "Patch", description: "Combine diffs and git apply" },
 				{ value: "branch", label: "Branch", description: "Commit per task, merge with --no-ff" },
@@ -617,7 +611,7 @@ export const AGENTS_SETTINGS = {
 			tab: "agents",
 			group: "Isolation",
 			label: "Isolation Commit Style",
-			description: "Commit message style for nested repo changes (generic or AI-generated)",
+			description: "Commit message style for changes made inside nested repositories.",
 			options: [
 				{ value: "generic", label: "Generic", description: "Static commit message" },
 				{ value: "ai", label: "AI", description: "AI-generated commit message from diff" },
@@ -634,7 +628,7 @@ export const AGENTS_SETTINGS = {
 			group: "Isolation",
 			label: "Worktree Base Directory",
 			description:
-				"Base directory for agent-managed worktrees: agent isolation copies, `github` PR checkouts, and `veyyon worktree` cleanup all live here. Unset uses the active profile's `wt/` directory (~/.veyyon/profiles/<name>/wt, or its XDG data equivalent). Must be an absolute or ~-relative path; relative paths are ignored. The VEYYON_WORKTREE_DIR env var overrides this.",
+				"Base directory for the worktrees this program manages: agent isolation copies, `github` PR checkouts and `veyyon worktree` cleanup. Unset: the active profile's `wt/` directory (~/.veyyon/profiles/<name>/wt, or its XDG data equivalent). Absolute or ~-relative; a relative path is ignored. The VEYYON_WORKTREE_DIR environment variable overrides this.",
 		},
 	},
 

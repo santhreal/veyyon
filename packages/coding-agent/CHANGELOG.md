@@ -43,6 +43,7 @@
 
 ### Changed
 
+- Every setting on the Agents tab states what it does and what each value does in one to three sentences; the idle timeout row is labelled "Park Idle Agents After".
 - Interactive chat and the transcript viewer use one replay implementation without changing displayed content or live-tool lifecycle.
 - Settings group types derive from the settings schema while preserving their existing optional fields and value types.
 - JSON tree projections share bounded traversal, and code and Markdown cells share output assembly, with unchanged rendering.

@@ -277,73 +277,44 @@ before parking (`agent.idleTtlMs`) and how long it stays listed after that
 (`agent.prune.*`), and whether its edits land in an isolated
 copy of the tree first (`agent.isolation.*`, see [Safety](../using/safety.md)).
 
-Park and prune are two stages, and they do different things.
+A spawned agent that has finished its turn is `idle`. After `agent.idleTtlMs` ("Park Idle
+Agents After", five minutes by default) it is `parked`: its process, MCP clients and memory
+are released, its transcript is flushed to disk, and its roster row stays. Messaging or
+opening a parked agent rebuilds it from the transcript. `0` ("Until exit") keeps idle
+agents live until the session exits.
 
-**Park** releases the live session, the process, its MCP clients and its memory. The
-roster row and the transcript stay, and messaging or opening the agent revives it.
-`agent.idleTtlMs` ("Park After") is the budget, five minutes by default for every
-model and provider. Set a positive millisecond value to override it, or `0` to keep
-idle agents live until exit.
+After `agent.prune.afterMs` ("Prune After", one hour by default) a parked agent is pruned:
+its roster row is removed and it can no longer be messaged or opened. Nothing on disk is
+deleted; the transcript stays readable at `history://<name>`. `agent.prune.enabled` off
+keeps every parked agent in the roster until the session exits, and does not affect
+parking.
 
-**Prune** drops the roster row and with it the ability to wake the agent, so a long
-session does not accumulate every agent it ever spawned. It deletes nothing: the
-transcript stays readable at `history://<name>`.
-
-Three settings in the Prune group control stage two. `agent.prune.enabled` is on by
-default; turn it off to keep every parked agent listed and revivable until you exit.
-`agent.prune.afterMs` ("Prune After") is how long a parked agent keeps its row,
-counted from the moment it parked, and defaults to one hour.
-`agent.prune.waitingAfterMs` ("Prune After While Waiting") is the same budget for a
-agent whose last message reported waiting on another agent, and defaults to two hours:
-it stopped on purpose to let a peer finish, so it is the agent you are most likely to
-message next. Set the two equal to treat both the same.
-
-Turning pruning off does not turn parking off. Parking is what releases the session, and
-it happens either way; the prune switch only sets whether the parked row is eventually
-dropped. "Park After" sits in its own Park group for that reason, and the prune switch
-never hides it.
-
-An agent read back from a previous run is judged on the same budgets. Its age comes
-from when its transcript was last written, not from when this session found it, so
-resuming a session does not reset every old agent's clock to zero.
+`agent.prune.waitingAfterMs` ("Prune After While Waiting", two hours by default) replaces
+Prune After for a parked agent whose last message was that it is waiting on another agent.
+A value below Prune After is raised to it.
 
 ### When each budget starts counting
 
-Both budgets count from the agent's last transition, not from when it was spawned. An
-idle agent's park budget starts when it went idle. A parked agent's prune budget starts
-at the moment it parked. A revived agent starts its park budget again from the revival,
-so messaging a parked agent gives it a fresh five minutes rather than resuming a clock
-that was already half spent.
-
-That is why a long-lived session does not prune everything at once: each agent's
-deadline moves with its own activity.
+The park budget counts from the agent's last activity; a revived agent starts it again
+from the revival. The prune budget counts from the moment the agent was parked. An agent
+read back from a previous run is aged from when its transcript was last written, not from
+when this session found it.
 
 ### Only idle and parked agents have a deadline
 
-A `running` agent has no deadline at all, and neither does an `aborted` one. Nothing
-parks or prunes an agent that is mid-turn.
-
-This matters when an agent looks stuck. An agent waiting for you to answer an approval
-prompt is still mid-turn, so it stays `running` and no park or prune timer applies to it.
-If a finished agent is not being cleaned up, check its status first: the lifecycle only
-acts on `idle` and `parked`, so an agent stuck in `running` is a different problem and the
-prune settings will not affect it.
+A `running` or `aborted` agent has no deadline. An agent waiting on an approval prompt is
+mid-turn and stays `running`, so no park or prune timer applies to it.
 
 ### Turning it off
 
-Set `agent.prune.afterMs` to `0` and no parked agent is ever pruned. That also
-forces the waiting budget to `0`, whatever `agent.prune.waitingAfterMs` is.
-
-That coupling is deliberate. If a zero parked budget still honoured a separate waiting
-budget, the only agents that were ever pruned would be the ones that stopped to wait on a
-peer, which are the agents you are most likely to message next. Zero means never prune, for
-both kinds.
+`agent.prune.afterMs` set to `0` disables pruning for every parked agent, including one
+that is waiting on a peer, whatever `agent.prune.waitingAfterMs` is.
 
 ### If the session cannot be saved
 
-Parking flushes the agent's session to disk before releasing it. If that flush fails, the
-park is cancelled and the agent stays live with its timer re-armed. You keep a live agent
-rather than losing unsaved state, and the attempt repeats on the next expiry.
+Parking flushes the agent's session to disk before releasing it. If the flush fails, the
+agent stays live, its timer is re-armed, and the park is attempted again at the next
+expiry.
 
 ### Nesting depth
 

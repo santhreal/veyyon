@@ -229,10 +229,10 @@ describe("the Prune group follows its own switch", () => {
  * the def list is what was already lying: the schema entry existed the whole time.
  */
 describe("stage one of the park/prune lifecycle is on the settings screen", () => {
-	it("renders the Park After row as a duration beside the prune budgets", () => {
+	it("renders the Park Idle Agents After row as a duration beside the prune budgets", () => {
 		const panel = agentsPanel();
 
-		expect(panel).toContain("Park After");
+		expect(panel).toContain("Park Idle Agents After");
 		expect(panel).toContain("5 minutes");
 		expect(panel).not.toContain("300000");
 	});
