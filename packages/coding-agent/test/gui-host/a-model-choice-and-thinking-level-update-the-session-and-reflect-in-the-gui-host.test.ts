@@ -76,6 +76,56 @@ describe("model selection and thinking level gui-host behaviour", () => {
 		client.destroy();
 	});
 
+	// A fresh client must discover profile models before an AgentSession exists.
+	// This covers YAML spellings and legacy JSON migration, not provider discovery.
+	test.each(["yml", "yaml", "json"])(
+		"RefreshModels loads profile models from models.%s before selection",
+		async extension => {
+			await fs.writeFile(
+				path.join(tempDir, `models.${extension}`),
+				JSON.stringify({
+					providers: {
+						fixture: {
+							baseUrl: "http://127.0.0.1:1/v1",
+							api: "openai-completions",
+							apiKey: "none",
+							models: [{ id: "profile-model", name: "Profile Model", contextWindow: 8192, maxTokens: 512 }],
+						},
+					},
+				}),
+			);
+			server = await startGuiHostServer({
+				endpoint: "tcp:127.0.0.1:0",
+				cwd: tempDir,
+				agentDir: tempDir,
+				authStorage,
+			});
+			const client = await TestSocketClient.connect(server.endpoint);
+			try {
+				const { frames, outcome } = await client.request(1, "RefreshModels");
+				expect(outcome).toEqual({ RequestSucceeded: { request: 1 } });
+				const models = frames.find(frame => frame.Snapshot?.Models !== undefined)?.Snapshot?.Models as ModelsView;
+				expect(models.models.find(model => model.provider === "fixture")).toMatchObject({
+					provider: "fixture",
+					id: "profile-model",
+					name: "Profile Model",
+					context_window: 8192,
+					max_output: 512,
+				});
+				expect(models.current).toBeNull();
+				const selected = await client.request(2, {
+					SelectModel: { provider: "fixture", model: "profile-model" },
+				});
+				expect(selected.outcome).toEqual({ RequestSucceeded: { request: 2 } });
+				const selectedModels = selected.frames.find(frame => frame.Snapshot?.Models !== undefined)?.Snapshot
+					?.Models as ModelsView;
+				expect(selectedModels.current).toEqual({ provider: "fixture", id: "profile-model" });
+			} finally {
+				client.destroy();
+			}
+		},
+	);
+
 	test("SelectModel applies model to session and updates Models.current", async () => {
 		await authStorage.set("anthropic", { type: "api_key", key: "sk-ant-test-key-for-select" });
 

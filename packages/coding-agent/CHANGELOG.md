@@ -454,15 +454,26 @@
 - The native desktop composer integrates model selection and an up-arrow primary action, with secondary turn actions in slash commands and a separate stop control during active turns.
 - Native desktop palettes retain their closing transition and reverse from their current position when reopened.
 - Desktop controls reuse installed theme tokens rather than parsing bundled fallback tokens during each render.
+- Native desktop commands group Account and Settings destinations behind shared Back and Close navigation while preserving composer drafts.
+- Native desktop queue cards reveal Park and Defer on hover and place Branch and Delete in their context menu.
 
 ### Fixed
 
+- GUI host catalogs and SDK sessions load profile models from YAML configuration while preserving legacy JSON migration.
+- Native desktop palette search matches visible subtitles, including provider/model identifiers, without duplicating rows.
+- Native desktop transcript navigation scrolls through virtualized history with measured page heights, animated transitions, and manual-scroll interruption.
+- Native desktop command search matches action descriptions, including `new session`.
+- Persisted desktop transcripts display readable session changes and omit hidden metadata without losing branch links or raw records.
+- Native desktop multiline drafts scroll within the composer to keep the caret visible during editing and resizing.
+- Native desktop transcripts distinguish annotations, structural summaries, and execution languages while preserving searchable recorded content.
 - The GUI host omits a setting whose value or schema default resolves to `undefined` from the settings snapshot instead of shipping the entry without the `value` and `default` fields, which the desktop decoder rejected as a fatal protocol error and dropped the connection; observed with `auth.broker.token` on a host with no broker token.
 - A comment in the GUI host frame decoder names the Rust file that mirrors the frame-size bound correctly. No behavior change.
 - The desktop host names one accumulating entry per streamed reply, so the desktop replaces that entry as the reply grows; while unreleased every delta carried a new name and one reply drew as a column of duplicates.
 - Native desktop drafts and attachments clear only after the matching host acknowledgment succeeds, while failed requests retain submitted content.
 - Desktop capability scenes initialize draft text so turn submission availability remains visible in rendered scenes.
 - Desktop keyboard and pointer actions notify the host observer at the shared dispatch boundary without waiting for an unrelated repaint.
+- GUI host branching uses the session lifecycle for both loaded and unloaded sessions, preserving extension cancellation and source transcripts.
+- Native desktop backdrop blur renders on surfaces without texture-copy support instead of leaving the window on its initial frame.
 - A memory limit pins the capped subtree's swap to zero, so the cap bounds the whole anonymous footprint; while unreleased a 256 MB machine cap let a single process reach 5,520 MB by swapping.
 - The machine limit requires a parent that delegates two cgroup levels, so a host that delegates one — a container whose cgroup root holds processes — reports per-session limits held and the machine tier unheld, instead of reporting a machine cap the kernel never applies.
 - The CPU-limit probe and the limiter resolve one environment, so the probe can no longer report support for a cgroup path the limiter does not write to.

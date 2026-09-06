@@ -1,7 +1,8 @@
 import * as os from "node:os";
 import { mcpManagerInstance } from "../../mcp/manager-instance";
 import { computeContextBreakdown } from "../../session/context-usage";
-import { sessionEntryToTranscriptEntry, sessionHeaderToView } from "../session-bridge";
+import { sessionHeaderToView } from "../session-bridge";
+import { sessionEntryToTranscriptEntry } from "../transcript-conversion";
 import { getOrCreateAgentSession } from "../turns";
 import type { UsageTotals } from "../wire";
 import type { ActionHandler, ActionHandlersMap } from "./types";

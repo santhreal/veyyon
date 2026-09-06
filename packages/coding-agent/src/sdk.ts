@@ -373,7 +373,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		options.modelRegistry ??
 		new ModelRegistry(
 			options.authStorage ?? (await logger.time("discoverModels", discoverAuthStorage, agentDir)),
-			path.join(agentDir, "models.json"),
+			path.join(agentDir, "models.yml"),
 		);
 	// Track whether we internally created the authStorage so we can close it
 	// if construction fails before the session takes ownership.

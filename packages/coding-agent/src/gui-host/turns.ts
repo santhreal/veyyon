@@ -18,7 +18,7 @@ import { base64DecodedBytes, MAX_PROMPT_ATTACHMENT_BYTES, MAX_VIDEO_INPUT_BYTES 
 import { writeFrame } from "./frames";
 import { GuiHostUIContext, InteractionLedger } from "./interactions";
 import { enterPlanModeIfConfigured } from "./plan-approval";
-import { agentMessageToTranscriptEntry, sessionEntryToTranscriptEntry } from "./session-bridge";
+import { agentMessageToTranscriptEntry, sessionEntryToTranscriptEntry } from "./transcript-conversion";
 import type { AttachmentSubmission, AuthFlowState, TerminalStatus, TranscriptEntry } from "./wire";
 
 export interface ActiveAuthFlow {

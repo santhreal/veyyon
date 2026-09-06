@@ -15,7 +15,7 @@ const VALID_THINKING_LEVELS: readonly string[] = Object.values(ThinkingLevel);
 async function buildModelsView(ctx: ActionContext): Promise<ModelsView> {
 	const registry =
 		ctx.clientState.agentSession?.modelRegistry ??
-		new ModelRegistry(await ctx.authStorage(), path.join(ctx.agentDir, "models.json"));
+		new ModelRegistry(await ctx.authStorage(), path.join(ctx.agentDir, "models.yml"));
 	const allModels = registry.getAll();
 	const models: ModelView[] = allModels.map(m => ({
 		provider: m.provider,

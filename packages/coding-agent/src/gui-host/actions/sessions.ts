@@ -1,5 +1,7 @@
+import type { SessionEntry } from "../../session/session-entries";
 import { SessionManager } from "../../session/session-manager";
-import { sessionEntryToTranscriptEntry, sessionHeaderToView } from "../session-bridge";
+import { sessionHeaderToView } from "../session-bridge";
+import { sessionEntryToTranscriptEntry } from "../transcript-conversion";
 import { disposeTurnSession, getOrCreateAgentSession } from "../turns";
 import {
 	activateSession as activate,
@@ -155,15 +157,24 @@ const handleDeleteSession: ActionHandler<SessionRef | undefined> = async (ctx, p
 
 interface BranchSessionPayload {
 	session?: string;
-	entry?: string;
+	entry?: string | null;
 }
 
 const handleBranchSession: ActionHandler<BranchSessionPayload | undefined> = async (ctx, payload) => {
-	if (!payload?.session || !payload?.entry) {
+	if (!payload?.session?.trim()) {
 		ctx.reply.failure({
 			scope: "Session",
 			code: "INVALID_ARGUMENTS",
-			message: "BranchSession requires session and entry",
+			message: "BranchSession requires session",
+			retryable: false,
+		});
+		return;
+	}
+	if (payload.entry !== undefined && payload.entry !== null && !payload.entry.trim()) {
+		ctx.reply.failure({
+			scope: "Session",
+			code: "INVALID_ARGUMENTS",
+			message: "BranchSession entry must be non-empty when provided",
 			retryable: false,
 		});
 		return;
@@ -171,22 +182,35 @@ const handleBranchSession: ActionHandler<BranchSessionPayload | undefined> = asy
 	try {
 		const sm = await activate(ctx, payload.session);
 		if (!sm) return;
-		const agent = ctx.clientState.agentSession;
-		if (agent) {
-			const result = await agent.branch(payload.entry);
-			if (result.cancelled) {
+		let targetEntryId = payload.entry ?? undefined;
+		if (!targetEntryId) {
+			const latestUserEntry = sm
+				.getBranch()
+				.findLast((entry): entry is SessionEntry => entry.type === "message" && entry.message?.role === "user");
+			if (!latestUserEntry) {
 				ctx.reply.failure({
 					scope: "Session",
-					code: "SWITCH_CANCELLED",
-					message: "An extension cancelled the branch",
-					retryable: true,
+					code: "NO_USER_MESSAGES",
+					message: "No user message found on active branch to branch from",
+					retryable: false,
 				});
 				return;
 			}
-		} else {
-			sm.branch(payload.entry);
+			targetEntryId = latestUserEntry.id;
 		}
-		emitActiveSessionAndTranscript(ctx, sm);
+		const agent = await getOrCreateAgentSession(ctx.clientState, ctx.socket, ctx);
+		const result = await agent.branch(targetEntryId);
+		if (result.cancelled) {
+			ctx.reply.failure({
+				scope: "Session",
+				code: "SWITCH_CANCELLED",
+				message: "An extension cancelled the branch",
+				retryable: true,
+			});
+			return;
+		}
+		await agent.sessionManager.ensureOnDisk();
+		emitActiveSessionAndTranscript(ctx, agent.sessionManager);
 		await emitSessionList(ctx);
 		ctx.reply.success();
 	} catch (error) {
