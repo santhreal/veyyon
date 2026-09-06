@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ff3d8e07.js";
+            window.path_to_searchindex_js = "../searchindex-28222852.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-d6acdfa6.js"></script>
@@ -203,6 +203,12 @@ composer floats above its lower edge. The right panel displays workspace content
 the terminal drawer displays terminal output below the session.</p>
 <p>The queue collapses when the window cannot fit it beside the transcript. At the
 minimum window width, the composer remains available across the transcript.</p>
+<p>The transcript and composer remain the primary work area. Workspace inspection
+and terminal output use contextual panels rather than permanent command menus.
+Typography, spacing, control sizes, and motion use the shared design tokens.
+Wrapped descriptions expand their rows; adjacent labels and controls do not
+overlap. Focused pages scroll their content without displacing their navigation
+header.</p>
 <p><code>Primary</code> means <code>Cmd</code> on macOS and <code>Ctrl</code> on Linux and Windows. Default bindings are
 in <code>crates/veyyon-desktop-surface/keymap.toml</code>.</p>
 <div class="table-wrapper">
@@ -220,6 +226,69 @@ in <code>crates/veyyon-desktop-surface/keymap.toml</code>.</p>
 </tbody>
 </table>
 </div>
+<h2 id="queue"><a class="header" href="#queue">Queue</a></h2>
+<p>The sidebar is a session queue. Its header contains session search and the
+new-session action. Sessions appear in this order:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Section</th><th>Contents</th><th>Row shape</th></tr>
+</thead>
+<tbody>
+<tr><td>Unsent</td><td>Drafts not yet submitted</td><td>Card</td></tr>
+<tr><td>Pinned</td><td>Sessions retained at the top</td><td>Card</td></tr>
+<tr><td>Live</td><td>Sessions running or awaiting input</td><td>Card</td></tr>
+<tr><td>Deferred</td><td>Sessions set aside until a time or event</td><td>Compact line</td></tr>
+<tr><td>Parked</td><td>Sessions set aside indefinitely</td><td>Compact line</td></tr>
+</tbody>
+</table>
+</div>
+<p>Each section collapses independently. Collapsed sections retain their header
+and count; empty sections are hidden. The session list scrolls between the header
+and the fixed footer.</p>
+<p>Cards display the session title, workspace, status, and relevant timing.
+Secondary actions remain hidden at rest and do not shift the title when revealed.
+Selection, hover, and status have distinct treatments. Compact rows retain
+readable text and usable pointer targets.</p>
+<p>The footer contains one Settings gear. It opens the same group as <code>/settings</code>.
+Settings is the only slash-command destination with a permanent sidebar shortcut.
+Account, Agents, Models, and other command destinations remain in command
+navigation rather than becoming sidebar buttons.</p>
+<p>Card rows show Park and Defer while the pointer is over the row. Parked lines
+provide Unpark; deferred lines provide Recall.</p>
+<p>Right-click a card for Open, Park, Defer, Branch, and Delete. Branch starts a new
+session before the latest user message on the selected session’s active branch,
+without changing the source session. Extensions can cancel the operation.
+Unavailable and pending management actions are disabled in the menu.</p>
+<h2 id="transcript"><a class="header" href="#transcript">Transcript</a></h2>
+<p>Click the transcript to focus keyboard navigation.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Shortcut</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Home</code></td><td>Move to the first turn</td></tr>
+<tr><td><code>End</code></td><td>Move to the live edge and resume following output</td></tr>
+<tr><td><code>PageUp</code> / <code>PageDown</code></td><td>Move by the measured viewport height</td></tr>
+<tr><td><code>Primary-F</code></td><td>Find matching transcript blocks</td></tr>
+</tbody>
+</table>
+</div>
+<p>Keyboard scrolling uses the configured scroll transition. Manual scrolling
+interrupts that transition. Reduced motion applies the destination immediately.
+Reading earlier output pauses tail following; the <strong>Scroll to end</strong> button
+returns to the live edge. Switching sessions restores their saved scroll anchors.</p>
+<p>The find bar displays the selected matching block and total matching blocks.
+<code>Enter</code> advances to the next matching block; <code>Escape</code> closes the bar.</p>
+<p>Persisted model, thinking-level, service-tier, and session changes display their
+recorded values. Hidden custom messages and internal checkpoints do not create
+visible turns. Unknown extension entries retain their original data.</p>
+<p>Developer and custom records display labeled annotations below the assistant
+reading size. File, model, thinking, and lifecycle events use the same annotation
+style. Branch and compaction summaries have distinct labels and a separating
+line. Execution output includes its shell or Python label. Transcript search
+matches annotation labels and recorded content.</p>
 <h2 id="composer"><a class="header" href="#composer">Composer</a></h2>
 <p>The footer contains the model selector and an up-arrow primary action. A separate
 stop control appears while a turn runs. Secondary composer actions are available
@@ -242,6 +311,9 @@ through slash commands rather than a permanent row of buttons.</p>
 </div>
 <p>Host control availability applies to keyboard, pointer, and palette submission.
 An empty or whitespace-only draft does not send a new prompt.</p>
+<p>Multiline drafts grow to the composer height limit, then scroll to keep the
+caret visible. Moving the caret or resizing the field updates the visible text,
+pointer hit testing, and input-method candidate position.</p>
 <ul>
 <li><code>Enter</code> activates the primary action, or the selected slash command while its
 palette is open.</li>
@@ -260,10 +332,14 @@ added afterward remain unless they compare equal to a submitted attachment.
 Unrelated and duplicate acknowledgments do not consume content.</p>
 <h2 id="model-picker"><a class="header" href="#model-picker">Model picker</a></h2>
 <p>Click the model selector or press <code>Primary-Shift-M</code> to open the model picker above
-the composer. Search filters the host model catalog. Use the arrow keys to select
-a row and <code>Enter</code> to confirm. Selection remains subject to host availability.</p>
+the composer. Search matches display names and <code>provider/model</code> identifiers in
+the host catalog. Use the arrow keys to select a row and <code>Enter</code> to confirm.
+Selection remains subject to host availability.</p>
 <p><code>Escape</code> or a click outside closes the picker and returns focus to the composer.
 Opening, filtering, and dismissing it leaves the draft unchanged.</p>
+<p>The GUI host and SDK sessions load profile models from <code>models.yml</code>, with
+<code>models.yaml</code> as the fallback and migration from legacy <code>models.json</code>.
+Configured models are available before the first model selection.</p>
 <h2 id="slash-commands"><a class="header" href="#slash-commands">Slash commands</a></h2>
 <p>Type <code>/</code> at the beginning of the composer to open the anchored command palette.</p>
 <div class="table-wrapper">
@@ -283,9 +359,23 @@ Opening, filtering, and dismissing it leaves the draft unchanged.</p>
 </div>
 <p>The palette also includes session, terminal, settings, provider, and other host
 commands. Attachment admission depends on the host and model input capabilities.</p>
+<p>Command search matches slash names and action descriptions. For example,
+<code>Primary-K</code>, <code>new session</code>, then <code>Enter</code> creates a session.</p>
 <p>Selecting a composer command removes its command prefix while retaining the
 payload and attachments. <code>Escape</code> dismisses the slash palette without deleting
 the typed slash text.</p>
+<h2 id="command-groups"><a class="header" href="#command-groups">Command groups</a></h2>
+<p><code>/account</code> opens the Account group with Account manager and Sign in.
+<code>/settings</code> opens General, Themes, Keybindings, and Diagnostics.
+<code>/agents</code> opens the Agents surface.</p>
+<p>The sidebar Settings gear and <code>/settings</code> use the same destination and navigation
+state.</p>
+<p>Groups and focused pages use the same Back, title, and Close header. Back or
+<code>Escape</code> returns to the parent group and restores its search text. At the root,
+<code>Escape</code> closes the palette. Close dismisses the surface directly.
+Navigation leaves the composer draft and attachments unchanged.</p>
+<p>Command search also accepts <code>/providers</code>, <code>/login</code>, and <code>/extensions</code> for the
+corresponding focused destinations.</p>
 <h2 id="record-native-interactions"><a class="header" href="#record-native-interactions">Record native interactions</a></h2>
 <p>Build the current executable with <code>cargo build -p veyyon-desktop</code> and build the
 recorder with <code>proof/docker/build-recorder.sh</code>. Set <code>DESKTOP_BINARY</code> to the absolute
@@ -304,6 +394,13 @@ the initial session snapshot and waits for the session-creation interaction to
 produce a new host session before entering a draft. It records model-picker
 opening and dismissal, repeated palette transitions, and slash palette opening
 and dismissal. Set <code>SCENE_WIDTH=800</code> for the minimum-width case.</p>
+<p>Use <code>proof/scenes/desktop-navigation.sh</code> with the same capture environment to
+exercise a completed host response, transcript paging, find, contextual panel
+transitions, and session creation through command search. Set
+<code>PROOF_LLM_BASE_URL</code> to an endpoint reachable from the recorder container.</p>
+<p>Use <code>proof/scenes/desktop-surface-navigation.sh</code> with the same capture environment
+to exercise command groups, focused Account and Settings pages, parent navigation,
+and queue action visibility.</p>
 <p>Output is written to <code>proof/captures/x11/</code>, or the absolute directory in <code>OUT_DIR</code>.
 The <a href="../foundations/verification.html">capture requirements</a> specify paired static
 frames and animated clips. Headless scene PNGs do not replace native captures.</p>
