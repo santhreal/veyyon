@@ -91,6 +91,7 @@ import { renderResult, renderCall as renderTaskCall } from "./render";
 import { repairTaskParams } from "./repair-args";
 import { treeSpawnSemaphore } from "./spawn-semaphore";
 import { parseIsolationMode } from "./worktree";
+import { recordNativeDispatch } from "./topic-replenishment";
 
 function renderSubagentUserPrompt(assignment: string): string {
 	return prompt.render(subagentPrompts["subagent/user-prompt"].text, {
@@ -371,6 +372,10 @@ function spawnParamsFor(params: TaskParams, item: TaskItem, defaultAgent: string
 	} else if (params.cwd !== undefined) {
 		spawn.cwd = params.cwd;
 	}
+	if (params.ticketId !== undefined) spawn.ticketId = params.ticketId;
+	if (params.runId !== undefined) spawn.runId = params.runId;
+	if (params.ledgerPath !== undefined) spawn.ledgerPath = params.ledgerPath;
+	if (params.nativeDispatchBound !== undefined) spawn.nativeDispatchBound = params.nativeDispatchBound;
 	return spawn;
 }
 
@@ -903,10 +908,15 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		const failedSchedules: string[] = [];
 		for (const spawn of asyncSpawns) {
 			try {
+				const spawnParams = spawnParamsFor(params, spawn.item, defaultAgent);
+				if (spawnParams.runId) {
+					await recordNativeDispatch(spawnParams.runId, `agent://${spawn.agentId}`, spawnParams.ledgerPath ?? "");
+					spawnParams.nativeDispatchBound = true;
+				}
 				const jobId = this.#registerSpawnJob({
 					manager,
 					toolCallId,
-					spawnParams: spawnParamsFor(params, spawn.item, defaultAgent),
+					spawnParams,
 					agentId: spawn.agentId,
 					progress: spawn.progress,
 					ircEnabled,
@@ -1392,6 +1402,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		const startTime = Date.now();
 		const { agents, projectAgentsDir } = await discoverAgents(this.session.cwd);
 		const agentName = params.agent ?? "";
+		const runId = params.runId;
 		const sharedContext = this.#isBatchEnabled() ? params.context?.trim() || undefined : undefined;
 		const assignment = (params.task ?? "").trim();
 		const isolationMode = this.session.settings.get("subagent.isolation.mode");
@@ -1604,6 +1615,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					details: { projectAgentsDir, results: [], totalDurationMs: Date.now() - startTime },
 				};
 			}
+			if (params.runId && !params.nativeDispatchBound) {
+				await recordNativeDispatch(params.runId, `agent://${agentId}`, params.ledgerPath ?? "");
+			}
 
 			// Resolved here, not before `spawnCwd`: whether the child inherits the
 			// parent's layers or loads its own depends on where it will run.
@@ -1797,18 +1811,42 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			// transcript, so a study/backtest tool can enumerate a session's subagents without
 			// scraping tool-result prose (GRAN-2). The child transcript path is derived exactly
 			// as the executor derives it: `<artifactsDir>/<id>.jsonl` (ONE PLACE).
-			this.session.recordSubagentSpawn?.({
+
+			let structuredResult: Record<string, unknown> | undefined;
+			if (result.output) {
+				try {
+					const trimmed = result.output.trim();
+					if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+						structuredResult = JSON.parse(trimmed) as Record<string, unknown>;
+					}
+				} catch {
+					// Output not JSON
+				}
+			}
+
+			const spawnRecord = {
 				agentId: result.id,
 				agentName: result.agent,
 				task: result.task,
 				sessionFile: path.join(effectiveArtifactsDir, sessionFileName(result.id)),
 				isolation: isIsolated ? isolationMode : "none",
-				status: result.aborted ? "cancelled" : result.exitCode === 0 ? "completed" : "failed",
+				status: (result.aborted ? "cancelled" : result.exitCode === 0 ? "completed" : "failed") as
+					| "completed"
+					| "failed"
+					| "cancelled",
 				exitCode: result.exitCode,
 				durationMs: result.durationMs,
 				usage: result.usage,
 				error: result.error,
-			});
+				ticketId:
+					params && typeof params === "object" && "ticketId" in params && typeof params.ticketId === "string"
+						? params.ticketId
+						: undefined,
+				runId,
+				structuredResult,
+			};
+			this.session.recordSubagentSpawn?.(spawnRecord);
+			this.session.onSubagentComplete?.(spawnRecord);
 
 			return this.#buildResultPayload(result, projectAgentsDir, Date.now() - startTime, mergeSummary);
 		} catch (err) {
@@ -1877,3 +1915,4 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		};
 	}
 }
+export * from "./topic-replenishment";

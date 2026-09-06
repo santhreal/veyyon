@@ -113,6 +113,12 @@ export interface SubagentSpawnRecord {
 	usage?: Usage;
 	/** Terminal error message, when the run failed. */
 	error?: string;
+	/** Associated ledger ticket ID, when spawned from an authorized topic replenishment. */
+	ticketId?: string;
+	/** WorkerBackend run identity paired with the ledger ticket. */
+	runId?: string;
+	/** Parsed terminal result used by canonical stage validation. */
+	structuredResult?: Record<string, unknown>;
 }
 
 /**

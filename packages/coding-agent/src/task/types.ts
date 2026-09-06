@@ -256,6 +256,14 @@ export interface TaskParams {
 	 * must exist and be a directory.
 	 */
 	cwd?: string;
+	/** Internal native-ledger ticket identity; never exposed by the model-facing schema. */
+	ticketId?: string;
+	/** Internal WorkerBackend run identity; never exposed by the model-facing schema. */
+	runId?: string;
+	/** Internal ledger path used to bind WorkerBackend state without touching another ledger. */
+	ledgerPath?: string;
+	/** Internal marker proving the dispatch binding was recorded before execution. */
+	nativeDispatchBound?: boolean;
 }
 
 /**
