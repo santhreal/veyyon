@@ -71,12 +71,14 @@ export function emitActiveSessionAndTranscript(
 	});
 }
 
-export async function emitSessionList(ctx: ActionContext): Promise<void> {
+export async function emitSessionList(ctx: ActionContext) {
 	const sessions = await listSessions(sessionDirFor(ctx.cwd, ctx.agentDir), sessionStorage);
+	const summaries = sessions.map(sessionInfoToSummary);
 	ctx.clientState.revision += 1;
 	ctx.reply.snapshot({
-		Sessions: [{ revision: ctx.clientState.revision, value: sessions.map(sessionInfoToSummary) }, []],
+		Sessions: [{ revision: ctx.clientState.revision, value: summaries }, []],
 	});
+	return summaries;
 }
 
 export function wireSessionManager(ctx: ActionContext, sm: SessionManager): void {

@@ -17,7 +17,12 @@ import {
 import type { ActionHandler, ActionHandlersMap } from "./types";
 
 const handleListSessions: ActionHandler = async ctx => {
-	await emitSessionList(ctx);
+	const sessions = await emitSessionList(ctx);
+	if (!activeManager(ctx) && sessions[0]) {
+		const sm = await activate(ctx, sessions[0].id);
+		if (!sm) return;
+		emitActiveSessionAndTranscript(ctx, sm);
+	}
 	ctx.reply.success();
 };
 
