@@ -2656,8 +2656,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					const activeRoster = AgentRegistry.global().list().map(ref => ({
 						id: ref.id,
 						status: ref.status,
-						role: ref.role,
-						task: ref.task,
+						role: ref.kind,
+						task: ref.activity,
 					}));
 					await engine.onWorkerComplete(
 						{
@@ -2669,9 +2669,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 							durationMs: record.durationMs,
 							error: record.error,
 							ticketId: record.ticketId,
-							runId: (record as Record<string, unknown>).runId as string | undefined,
-							structuredResult: (record as Record<string, unknown>).structuredResult as Record<string, unknown> | undefined,
+							runId: record.runId,
+							structuredResult: record.structuredResult,
 						},
+						activeRoster,
 					);
 				}
 			},
@@ -4508,17 +4509,26 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				(taskTool
 					? async (ticket: ClaimedTicket) => {
 							const toolCallId = `replenish-${ticket.id}-${Date.now().toString(36)}`;
-							return await taskTool.execute(
+							const result = await taskTool.execute(
 								toolCallId,
 								{
-									agent: "fast",
 									task: ticket.prompt,
 									ticketId: ticket.id,
 									runId: ticket.runId,
-									schema: ticket.resultSchema,
+									ledgerPath: ticket.ledgerPath,
 								},
 								undefined,
 							);
+							const spawned =
+								(result.details?.progress?.length ?? 0) > 0 || (result.details?.results?.length ?? 0) > 0;
+							if (result.isError || !spawned) {
+								const message = result.content
+									.filter(part => part.type === "text")
+									.map(part => part.text)
+									.join("\n");
+								throw new Error(message || `Native replenishment did not spawn a worker for ${ticket.id}`);
+							}
+							return result;
 						}
 					: undefined);
 
@@ -4532,8 +4542,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			const activeRoster = AgentRegistry.global().list().map(ref => ({
 				id: ref.id,
 				status: ref.status,
-				role: ref.role,
-				task: ref.task,
+				role: ref.kind,
+				task: ref.activity,
 			}));
 			void engine.onSessionRecovery(activeRoster).catch(err => {
 				logger.warn("TopicReplenishmentEngine: session recovery failed", {

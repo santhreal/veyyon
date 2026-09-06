@@ -104,9 +104,9 @@ export const EXPLICITLY_CANCELLED_TASKS: Readonly<Record<string, string>> = {
 };
 
 export const DEFAULT_FLASH_MODEL = "google-antigravity/gemini-3.8-flash:high";
-export const DEFAULT_MIN_FLOOR = Number(process.env.VEYYON_WORKER_MIN_FLOOR) || 10;
-export const DEFAULT_TARGET_COUNT = Number(process.env.VEYYON_WORKER_TARGET) || 10;
-export const DEFAULT_MAX_CEILING = 20;
+export const DEFAULT_MIN_FLOOR = Number(process.env.VEYYON_WORKER_MIN_FLOOR) || 15;
+export const DEFAULT_TARGET_COUNT = Number(process.env.VEYYON_WORKER_TARGET) || 15;
+export const DEFAULT_MAX_CEILING = Number(process.env.VEYYON_WORKER_MAX_CEILING) || 20;
 export const HARD_RAM_CEILING_PCT = 95.0;
 export const CLEANUP_RAM_PCT = 85.0;
 
@@ -213,6 +213,7 @@ export interface ClaimedTicket {
 	resultSchema?: Record<string, unknown>;
 	stage?: string;
 	repoRoot?: string;
+	ledgerPath?: string;
 	headSha?: string;
 }
 
@@ -303,32 +304,18 @@ export function resolveTopicName(worker: Partial<NativeActorSnapshot>): string {
 // --- Authorization Validation Helper ---
 
 /**
- * Validate that authorization is structured and non-empty.
- * Empty object `{}` or falsy/unverified values are strictly unauthorized.
+ * Accept only the structured authorization written by the request ledger.
+ * Every field is required so an incidental timestamp, actor, scope, or
+ * free-form string can never be mistaken for permission.
  */
 export function isValidAuthorization(auth: unknown): boolean {
-	if (typeof auth === "string") {
-		const cleaned = auth.trim().toLowerCase();
-		if (!cleaned) return false;
-		if (["false", "none", "null", "unauthorized", "denied", "rejected", "no"].includes(cleaned)) {
-			return false;
-		}
-		return true;
-	}
-	if (typeof auth === "object" && auth !== null && !Array.isArray(auth)) {
-		const record = auth as Record<string, unknown>;
-		const keys = Object.keys(record);
-		if (keys.length === 0) {
-			return false;
-		}
-		const ts = typeof record.timestamp === "string" ? record.timestamp.trim() : "";
-		const scope = typeof record.scope === "string" ? record.scope.trim() : "";
-		const by = typeof record.authorized_by === "string" ? record.authorized_by.trim() : "";
-		const status = typeof record.status === "string" ? record.status.trim().toLowerCase() : "";
-		if (status === "authorized") return true;
-		return ts.length > 0 || scope.length > 0 || by.length > 0;
-	}
-	return false;
+	if (typeof auth !== "object" || auth === null || Array.isArray(auth)) return false;
+	const record = auth as Record<string, unknown>;
+	if (record.status !== "authorized") return false;
+	if (typeof record.timestamp !== "string" || Number.isNaN(Date.parse(record.timestamp))) return false;
+	if (typeof record.scope !== "string" || record.scope.trim() === "") return false;
+	if (typeof record.authorized_by !== "string" || record.authorized_by.trim() === "") return false;
+	return true;
 }
 
 // --- Topic Reconciliation ---
@@ -420,8 +407,8 @@ export function reconcileRunningTopics(
 	const uncoveredTopics = eligibleTopics.filter(t => !coveredTopics.includes(t));
 	const eligibleTopicCount = eligibleTopics.length;
 
-	const floorDeficit = Math.max(0, Math.min(minFloor, eligibleTopicCount) - activeUsefulCount);
-	const targetDeficit = Math.max(0, Math.min(targetCount, eligibleTopicCount) - activeUsefulCount);
+	const floorDeficit = Math.max(0, minFloor - activeUsefulCount);
+	const targetDeficit = Math.max(0, targetCount - activeUsefulCount);
 
 	return {
 		activeWorkers,
@@ -771,8 +758,16 @@ export async function rollbackClaimedTicket(
 /**
  * Record native dispatch handle binding in WorkerBackend.
  */
-export async function recordNativeDispatch(runId: string, taskHandle: string): Promise<void> {
-	await runLedgerBridge(["record-dispatch", "--run-id", runId, "--task-handle", taskHandle]);
+export async function recordNativeDispatch(runId: string, taskHandle: string, ledgerPath: string): Promise<void> {
+	await runLedgerBridge([
+		"record-dispatch",
+		"--state-dir",
+		path.dirname(ledgerPath),
+		"--run-id",
+		runId,
+		"--task-handle",
+		taskHandle,
+	]);
 }
 
 /**
@@ -809,15 +804,35 @@ export async function completeClaimedTicket(
 		if (optionsOrStatus.error) args.push("--error", optionsOrStatus.error);
 		if (optionsOrStatus.lockTimeoutMs) args.push("--timeout", (optionsOrStatus.lockTimeoutMs / 1000).toFixed(1));
 	} else if (typeof optionsOrStatus === "string") {
-		args.push("--status", optionsOrStatus);
-		args.push("--exit-code", String(exitCode));
-		if (error) args.push("--error", error);
+		args.push("--exit-code", String(optionsOrStatus === "completed" ? exitCode : exitCode || 1));
+		if (optionsOrStatus !== "completed") args.push("--error", error || `Worker ${optionsOrStatus}`);
+		else if (error) args.push("--error", error);
 		if (options?.lockTimeoutMs) args.push("--timeout", (options.lockTimeoutMs / 1000).toFixed(1));
 	}
 	return await runLedgerBridge(args);
 }
 
 // --- Native Dispatch Engine ---
+
+const replenishmentTails = new Map<string, Promise<void>>();
+const replenishmentReservations = new Map<string, Set<string>>();
+
+async function withReplenishmentLease<T>(key: string, run: () => Promise<T>): Promise<T> {
+	const previous = replenishmentTails.get(key) ?? Promise.resolve();
+	let release!: () => void;
+	const reservation = new Promise<void>(resolve => {
+		release = resolve;
+	});
+	const tail = previous.then(() => reservation);
+	replenishmentTails.set(key, tail);
+	await previous;
+	try {
+		return await run();
+	} finally {
+		release();
+		if (replenishmentTails.get(key) === tail) replenishmentTails.delete(key);
+	}
+}
 
 export class TopicReplenishmentEngine {
 	readonly ledgerPath: string;
@@ -889,6 +904,16 @@ export class TopicReplenishmentEngine {
 			dispatchWorker?: (ticket: ClaimedTicket) => Promise<unknown>;
 		},
 	): Promise<ReplenishmentOutcome> {
+		return await withReplenishmentLease(this.ledgerPath, () => this.#replenishOnce(currentRoster, options));
+	}
+
+	async #replenishOnce(
+		currentRoster: readonly NativeActorSnapshot[] | Record<string, unknown>[],
+		options?: {
+			onCleanup?: () => Promise<void> | void;
+			dispatchWorker?: (ticket: ClaimedTicket) => Promise<unknown>;
+		},
+	): Promise<ReplenishmentOutcome> {
 		const activeExecutor = options?.dispatchWorker ?? this.executor;
 		if (!activeExecutor) {
 			throw new Error(
@@ -919,7 +944,10 @@ export class TopicReplenishmentEngine {
 			};
 		}
 
-		if (reconciliation.targetDeficit <= 0) {
+		const reservations = replenishmentReservations.get(this.ledgerPath) ?? new Set<string>();
+		replenishmentReservations.set(this.ledgerPath, reservations);
+		const effectiveActiveCount = reconciliation.activeUsefulCount + reservations.size;
+		if (effectiveActiveCount >= this.targetCount || effectiveActiveCount >= this.maxCeiling) {
 			return {
 				reconciliation,
 				memoryAdmission,
@@ -927,14 +955,14 @@ export class TopicReplenishmentEngine {
 				dispatchedCount: 0,
 				blockedTopics: [],
 				status: "floor_satisfied",
-				reason: `Worker target (${this.targetCount}) already satisfied with ${reconciliation.activeUsefulCount} running workers.`,
+				reason: `Worker target (${this.targetCount}) already satisfied with ${reconciliation.activeUsefulCount} running and ${reservations.size} reserved workers.`,
 			};
 		}
 
 		const dispatchedTickets: ClaimedTicket[] = [];
 		const allBlockedTopics: BlockedTopicInfo[] = [];
 		const covered = new Set(reconciliation.coveredTopics);
-		let currentRunning = reconciliation.activeUsefulCount;
+		let currentRunning = effectiveActiveCount;
 
 		while (currentRunning < this.targetCount && currentRunning < this.maxCeiling) {
 			const stepMem = await checkMemoryAdmission({ maxPct: this.maxRamPct });
@@ -967,6 +995,7 @@ export class TopicReplenishmentEngine {
 
 			try {
 				await activeExecutor(ticket);
+				reservations.add(ticket.id);
 			} catch (err) {
 				await this.rollbackClaimedTicket(ticket.id, String(err));
 				return {
@@ -1007,6 +1036,7 @@ export class TopicReplenishmentEngine {
 			dispatchWorker?: (ticket: ClaimedTicket) => Promise<unknown>;
 		},
 	): Promise<ReplenishmentOutcome> {
+		replenishmentReservations.delete(this.ledgerPath);
 		if (event.ticketId && fs.existsSync(this.ledgerPath)) {
 			try {
 				await completeClaimedTicket(this.ledgerPath, event.ticketId, {

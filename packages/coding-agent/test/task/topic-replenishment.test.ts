@@ -6,11 +6,12 @@
  */
 
 import * as assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import * as topicReplenishmentModule from "../../src/task/topic-replenishment";
 import {
 	checkMemoryAdmission,
@@ -30,8 +31,32 @@ import {
 	type NativeActorSnapshot,
 	type SubagentCompleteEvent,
 } from "../../src/task/topic-replenishment";
+const scratchHead = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+
+function prepareScratchLedger(ledger: LedgerFileShape): void {
+	for (const request of Object.values(ledger.requests)) {
+		request.head ??= scratchHead;
+		request.repo_root ??= process.cwd();
+	}
+}
+
 async function runTests(): Promise<void> {
 	console.log("Starting topic-replenishment verification suite...\n");
+	const validAuthorization = {
+		status: "authorized",
+		timestamp: "2026-09-06T10:00:00Z",
+		scope: "staging",
+		authorized_by: "operator",
+	} as const;
+	assert.equal(isValidAuthorization(validAuthorization), true);
+	assert.equal(
+		isValidAuthorization({ ...validAuthorization, status: "denied" }),
+		false,
+		"A denied status must win even when every other field looks valid",
+	);
+	assert.equal(isValidAuthorization({ timestamp: validAuthorization.timestamp }), false);
+	assert.equal(isValidAuthorization({ ...validAuthorization, timestamp: "not-a-date" }), false);
+	assert.equal(isValidAuthorization("2026-09-06T10:00:00Z operator"), false);
 
 	// Test 1: reconcileRunningTopics - strict running-only and idle/parked/fake rejection
 	{
@@ -255,41 +280,41 @@ async function runTests(): Promise<void> {
 				"req-forbidden-prod": {
 					prompt: "Deploy directly to target: production and branch main",
 					target: "production",
-					authorization: "2026-09-06T10:00:00Z operator",
+					authorization: validAuthorization,
 					state: "pending",
 				},
 				"req-forbidden-project": {
 					prompt: "Harmless prompt text but forbidden project target",
 					project: "zaraprptkegxqpvnsubu",
-					authorization: "2026-09-06T10:00:00Z operator",
+					authorization: validAuthorization,
 					state: "pending",
 				},
 				"req-forbidden-target": {
 					prompt: "Harmless prompt text but forbidden target field",
 					target: "production",
-					authorization: "2026-09-06T10:00:00Z operator",
+					authorization: validAuthorization,
 					state: "pending",
 				},
 				"req-cancelled-choice-a": {
 					prompt: "Record operator choice A for CI connectivity",
-					authorization: "2026-09-06T10:00:00Z operator",
+					authorization: validAuthorization,
 					state: "pending",
 				},
 				"req-blocked-task": {
 					prompt: "Perform staging migration",
-					authorization: "2026-09-06T10:00:00Z operator",
+					authorization: validAuthorization,
 					state: "blocked",
 					blocker: "Missing database credentials",
 				},
 				"req-dep-blocked": {
 					prompt: "Run scenario QA on staging",
-					authorization: "2026-09-06T10:00:00Z operator",
+					authorization: validAuthorization,
 					dependencies: ["req-blocked-task"],
 					state: "pending",
 				},
 				"req-awaiting-merge": {
 					prompt: "Merge workflow PR to staging",
-					authorization: "2026-09-06T10:00:00Z operator",
+					authorization: validAuthorization,
 					state: "awaiting authorization", // ungranted merge gate - must not auto-dispatch
 				},
 				"req-empty-auth": {
@@ -299,7 +324,7 @@ async function runTests(): Promise<void> {
 				},
 				"req-decision-blocked": {
 					prompt: "Task awaiting human operator decision",
-					authorization: "2026-09-06T10:00:00Z operator",
+					authorization: validAuthorization,
 					decision_blockers: ["staging-ci-access-403"], // human decision blocker -> BLOCKED (Finding 5)
 					state: "pending",
 				},
@@ -308,32 +333,33 @@ async function runTests(): Promise<void> {
 					repo: "Wladefant/super-board",
 					target: "main",
 					topic: "Workflow",
-					authorization: { timestamp: "2026-09-06T10:00:00Z", scope: "staging", authorized_by: "operator" },
+					authorization: validAuthorization,
 					state: "pending",
 					criteria: ["Engine updated"],
 				},
 				"req-prompt-mentioning-main": {
 					prompt: "Notify Main orchestrator regarding completed verification and fix main menu layout",
-					authorization: { timestamp: "2026-09-06T10:00:00Z", scope: "staging", authorized_by: "operator" },
+					authorization: validAuthorization,
 					state: "pending",
 					criteria: ["Menu layout fixed"],
 				},
 				"req-eligible-gui": {
 					prompt: "Fix desktop GUI slider rendering and theme tokens",
-					authorization: "2026-09-06T10:00:00Z operator",
+					authorization: validAuthorization,
 					state: "pending",
 					criteria: ["Slider renders without clipping", "Theme tokens updated"],
 				},
 				"req-eligible-motion": {
 					prompt: "Tune motion curve spring parameters for drawer animation",
 					topic: "Motion",
-					authorization: "2026-09-06T10:00:00Z operator",
+					authorization: validAuthorization,
 					state: "pending",
 					criteria: ["Drawer springs smoothly"],
 				},
 			},
 		};
 
+		prepareScratchLedger(mockLedger);
 		await fs.promises.writeFile(ledgerPath, JSON.stringify(mockLedger, null, 2), "utf-8");
 
 		// Claim 1: Should pick an eligible ticket and skip unauthorized, prod, cancelled, blocked, and awaiting-auth
@@ -412,26 +438,28 @@ async function runTests(): Promise<void> {
 				"req-1": {
 					prompt: "UX design token update",
 					state: "pending",
-					authorization: "2026-09-06T10:00:00Z operator",
+					authorization: validAuthorization,
 				},
 				"req-2": {
 					prompt: "Telegram notification formatting",
 					state: "pending",
-					authorization: "2026-09-06T10:00:00Z operator",
+					authorization: validAuthorization,
 				},
 				"req-3": {
 					prompt: "Staging database query optimization",
 					state: "pending",
-					authorization: "2026-09-06T10:00:00Z operator",
+					authorization: validAuthorization,
 				},
 			},
 		};
+		prepareScratchLedger(testLedger);
 		await fs.promises.writeFile(ledgerPath, JSON.stringify(testLedger, null, 2), "utf-8");
 
 		const engine = new TopicReplenishmentEngine({
 			ledgerPath,
 			minFloor: 3,
 			targetCount: 3,
+			maxRamPct: 100,
 		});
 
 		// Finding 2: Missing native executor must fail before claiming or incrementing counts
@@ -447,8 +475,13 @@ async function runTests(): Promise<void> {
 
 		// Empty roster -> replenish should claim all 3 eligible tickets
 		const dispatched: string[] = [];
+		const claimedTickets = new Map<string, { runId: string; agentId: string }>();
 		const outcome = await engine.replenish([], {
 			dispatchWorker: async ticket => {
+				const agentId = `worker-${ticket.id.slice(-1)}`;
+				assert.ok(ticket.runId, "Canonical WorkerBackend preparation must return a run ID");
+				await recordNativeDispatch(ticket.runId, `agent://${agentId}`, ledgerPath);
+				claimedTickets.set(ticket.id, { runId: ticket.runId, agentId });
 				dispatched.push(ticket.id);
 			},
 		});
@@ -464,8 +497,9 @@ async function runTests(): Promise<void> {
 		curLedger.requests["req-4"] = {
 			prompt: "Desktop GUI modal focus trap",
 			state: "pending",
-			authorization: "2026-09-06T10:00:00Z operator",
+			authorization: validAuthorization,
 		};
+		prepareScratchLedger(curLedger);
 		await fs.promises.writeFile(ledgerPath, JSON.stringify(curLedger, null, 2), "utf-8");
 
 		// Worker 1 finishes!
@@ -477,9 +511,12 @@ async function runTests(): Promise<void> {
 			exitCode: 0,
 			durationMs: 1200,
 			ticketId: "req-1",
+			runId: claimedTickets.get("req-1")?.runId,
 			structuredResult: {
-				stage: "qa",
+				stage: "build",
 				request_id: "req-1",
+				head_sha: scratchHead,
+				artifacts: [{ path: "package.json", role: "verified_existing" }],
 				verdict: "pass",
 				summary: "Tokens updated and verified",
 				checks: [
@@ -504,19 +541,22 @@ async function runTests(): Promise<void> {
 		const newlyDispatched: string[] = [];
 		const completeOutcome = await engine.onWorkerComplete(completeEvent, currentRoster, {
 			dispatchWorker: async ticket => {
+				assert.ok(ticket.runId, "Replenished ticket must retain its native run identity");
+				await recordNativeDispatch(ticket.runId, "agent://worker-4", ledgerPath);
 				newlyDispatched.push(ticket.id);
 			},
 		});
 
-		// Worker 1 completed, so running dropped to 2 -> onWorkerComplete immediately claimed req-4 without prompt!
-		assert.equal(completeOutcome.dispatchedCount, 1, "Must immediately claim next ticket on completion");
-		assert.deepEqual(newlyDispatched, ["req-4"], "Must dispatch req-4 to maintain floor of 3");
+		// The completed request is immediately eligible for its next QA stage,
+		// so stage continuity wins over unrelated pending work.
+		assert.equal(completeOutcome.dispatchedCount, 1, "Must immediately claim the next stage on completion");
+		assert.deepEqual(newlyDispatched, ["req-1"], "Must re-dispatch req-1 for its QA stage");
 
-		// Verify req-1 state advanced to QA in ledger
 		const postRaw = await fs.promises.readFile(ledgerPath, "utf-8");
 		const postLedger = JSON.parse(postRaw) as LedgerFileShape;
-		assert.equal(postLedger.requests["req-1"].state, "QA", "Stage must advance to QA on exitCode 0");
-		assert.equal(postLedger.requests["req-4"].state, "implementation", "New ticket state must be implementation");
+		assert.equal(postLedger.requests["req-1"].state, "QA", "Successful implementation must advance to QA");
+		assert.ok(postLedger.requests["req-1"].owner, "The newly claimed QA stage must have a fresh owner");
+		assert.equal(postLedger.requests["req-4"].state, "pending", "Unrelated pending work remains preserved");
 		// Finding 6: Recover failed spawn claims and prevent ticket leakage
 		// Add failing ticket to ledger
 		const preFailRaw = await fs.promises.readFile(ledgerPath, "utf-8");
@@ -524,31 +564,51 @@ async function runTests(): Promise<void> {
 		preFailLedger.requests["req-fail-test"] = {
 			prompt: "Failing dispatch task",
 			state: "pending",
-			authorization: "2026-09-06T10:00:00Z operator",
+			authorization: validAuthorization,
 		};
+		prepareScratchLedger(preFailLedger);
 		await fs.promises.writeFile(ledgerPath, JSON.stringify(preFailLedger, null, 2), "utf-8");
 
 		const engineFailing = new TopicReplenishmentEngine({
 			ledgerPath,
 			minFloor: 4,
 			targetCount: 4,
+			maxRamPct: 100,
 			executor: async () => {
 				throw new Error("Worker spawn failure: memory limit");
 			},
 		});
 
-		const failOutcome = await engineFailing.replenish(currentRoster);
+		const liveRosterAfterCompletion = currentRoster.filter(worker => worker.id !== "worker-1");
+		const failOutcome = await engineFailing.replenish(liveRosterAfterCompletion);
 		assert.equal(failOutcome.status, "error");
 		assert.ok(failOutcome.reason?.includes("claimed ticket rolled back to pending"));
 
-		// Verify ticket was rolled back to pending, owner cleared, and blocker set
+		// Rollback is retryable: the claim is released and the failure remains in history,
+		// not in the blocker field that eligibility intentionally rejects.
+		const rolledId = failOutcome.dispatchedTickets.at(-1)?.id;
+		assert.ok(rolledId, "Failed dispatch must identify the rolled-back ticket");
 		const postFailRaw = await fs.promises.readFile(ledgerPath, "utf-8");
 		const postFailLedger = JSON.parse(postFailRaw) as LedgerFileShape;
-		const failReq = postFailLedger.requests["req-fail-test"];
+		const failReq = postFailLedger.requests[rolledId];
 		assert.equal(failReq.state, "pending", "Failed dispatch must roll back ticket to pending");
 		assert.equal(failReq.owner, "", "Owner must be cleared on rollback");
-		assert.ok(failReq.blocker?.includes("Worker spawn failure"), "Blocker must be set on ticket");
+		assert.equal(failReq.blocker, null, "Retryable dispatch failure must not permanently block the ticket");
 		assert.ok(Array.isArray(failReq.history) && failReq.history.length >= 2, "History must record claim and rollback");
+
+		const retried: string[] = [];
+		const retryEngine = new TopicReplenishmentEngine({
+			ledgerPath,
+			minFloor: 4,
+			targetCount: 4,
+			maxRamPct: 100,
+			executor: async ticket => {
+				retried.push(ticket.id);
+			},
+		});
+		const retryOutcome = await retryEngine.replenish(liveRosterAfterCompletion);
+		assert.equal(retryOutcome.status, "replenished");
+		assert.deepEqual(retried, [rolledId], "The same rolled-back ticket must be reclaimable");
 
 		// Cleanup
 		await fs.promises.rm(testDir, { recursive: true, force: true }).catch(() => {});
@@ -568,28 +628,30 @@ async function runTests(): Promise<void> {
 				"req-done-1": {
 					prompt: "Completed feature",
 					state: "done",
-					authorization: "2026-09-06T10:00:00Z operator",
+					authorization: validAuthorization,
 					criteria: ["Done criteria"],
 				},
 				"req-in-progress-1": {
 					prompt: "Motion spring physics",
 					state: "implementation",
 					owner: "worker-motion-persisted",
-					authorization: "2026-09-06T10:00:00Z operator",
+					authorization: validAuthorization,
 				},
 				"req-pending-recovered": {
 					prompt: "Staging database read replica",
 					state: "pending",
-					authorization: "2026-09-06T10:00:00Z operator",
+					authorization: validAuthorization,
 				},
 			},
 		};
+		prepareScratchLedger(recoveryLedger);
 		await fs.promises.writeFile(ledgerPath, JSON.stringify(recoveryLedger, null, 2), "utf-8");
 
 		const engine = new TopicReplenishmentEngine({
 			ledgerPath,
 			minFloor: 2,
 			targetCount: 2,
+			maxRamPct: 100,
 		});
 
 		// Recovery with 1 surviving running worker (worker-motion-persisted)
@@ -620,6 +682,8 @@ async function runTests(): Promise<void> {
 	{
 		console.log("Test 8: ToolSession callback wiring & canonical outcome validation");
 		const testDir = path.join(os.tmpdir(), `test-lifecycle-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		const previousWorkflowsDir = process.env.VEYYON_WORKFLOWS_DIR;
+		process.env.VEYYON_WORKFLOWS_DIR = path.join(testDir, "no-worker-backend");
 		await fs.promises.mkdir(testDir, { recursive: true });
 		const ledgerPath = path.join(testDir, "ledger.json");
 
@@ -634,17 +698,18 @@ async function runTests(): Promise<void> {
 					state: "implementation",
 					stage: "qa",
 					owner: "worker-native-1",
-					authorization: { timestamp: "2026-09-06T10:00:00Z", scope: "staging", authorized_by: "operator" },
+					authorization: validAuthorization,
 				},
 				"req-native-2": {
 					id: "req-native-2",
 					prompt: "Fix desktop GUI focus trap",
 					topic: "Desktop GUI",
 					state: "pending",
-					authorization: { timestamp: "2026-09-06T10:00:00Z", scope: "staging", authorized_by: "operator" },
+					authorization: validAuthorization,
 				},
 			},
 		};
+		prepareScratchLedger(lifecycleLedger);
 		await fs.promises.writeFile(ledgerPath, JSON.stringify(lifecycleLedger, null, 2), "utf-8");
 
 		// Focus Test A: exit0 + error stays unadvanced
@@ -725,6 +790,7 @@ async function runTests(): Promise<void> {
 			ledgerPath,
 			minFloor: 2,
 			targetCount: 2,
+			maxRamPct: 100,
 			executor: async ticket => {
 				newlyClaimed.push(ticket.id);
 			},
@@ -754,8 +820,8 @@ async function runTests(): Promise<void> {
 
 		const after1Outcome = await engine.onWorkerComplete(completeEvent, rosterAfter1);
 		assert.equal(after1Outcome.status, "replenished");
-		assert.equal(after1Outcome.dispatchedCount, 1, "Must replenish 1 worker up to floor");
-		assert.deepEqual(newlyClaimed, ["req-native-2"]);
+		assert.equal(after1Outcome.dispatchedCount, 2, "Must replenish both available slots up to floor");
+		assert.deepEqual(newlyClaimed, ["req-native-1", "req-native-2"]);
 
 		// Verify package exports
 		const exported = topicReplenishmentModule;
@@ -766,12 +832,63 @@ async function runTests(): Promise<void> {
 		assert.ok(exported.FileLock, "FileLock must be exported");
 		assert.ok(exported.isValidAuthorization, "isValidAuthorization must be exported");
 
+		if (previousWorkflowsDir === undefined) delete process.env.VEYYON_WORKFLOWS_DIR;
+		else process.env.VEYYON_WORKFLOWS_DIR = previousWorkflowsDir;
 		await fs.promises.rm(testDir, { recursive: true, force: true }).catch(() => {});
 		console.log("  [PASS] ToolSession callback wiring & canonical outcome validation verified\n");
 	}
 
+	// Test 9: concurrent replenishment calls share capacity reservations.
+	{
+		console.log("Test 9: concurrent replenishment never exceeds the configured ceiling");
+		const testDir = path.join(os.tmpdir(), `test-concurrent-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		const ledgerPath = path.join(testDir, "ledger.json");
+		await fs.promises.mkdir(testDir, { recursive: true });
+		const ledger: LedgerFileShape = { version: 2, requests: {} };
+		for (let index = 0; index < 5; index++) {
+			ledger.requests[`concurrent-${index}`] = {
+				prompt: `Independent workflow task ${index}`,
+				state: "pending",
+				authorization: validAuthorization,
+			};
+		}
+		prepareScratchLedger(ledger);
+		await fs.promises.writeFile(ledgerPath, JSON.stringify(ledger, null, 2), "utf8");
+		const previousWorkflowsDir = process.env.VEYYON_WORKFLOWS_DIR;
+		process.env.VEYYON_WORKFLOWS_DIR = path.join(testDir, "no-worker-backend");
+		const dispatched: string[] = [];
+		const dispatchWorker = async (ticket: { id: string }) => {
+			dispatched.push(ticket.id);
+			await delay(10);
+		};
+		const first = new TopicReplenishmentEngine({
+			ledgerPath,
+			minFloor: 2,
+			targetCount: 2,
+			maxCeiling: 2,
+			maxRamPct: 100,
+		});
+		const second = new TopicReplenishmentEngine({
+			ledgerPath,
+			minFloor: 2,
+			targetCount: 2,
+			maxCeiling: 2,
+			maxRamPct: 100,
+		});
+		await Promise.all([
+			first.replenish([], { dispatchWorker }),
+			second.replenish([], { dispatchWorker }),
+			first.replenish([], { dispatchWorker }),
+		]);
+		assert.equal(dispatched.length, 2, "Concurrent cycles must reserve only two worker slots");
+		if (previousWorkflowsDir === undefined) delete process.env.VEYYON_WORKFLOWS_DIR;
+		else process.env.VEYYON_WORKFLOWS_DIR = previousWorkflowsDir;
+		await fs.promises.rm(testDir, { recursive: true, force: true });
+		console.log("  [PASS] concurrent cycles share reservations and respect maxCeiling\n");
+	}
+
 	console.log("=================================================");
-	console.log("ALL 8 TOPIC REPLENISHMENT TESTS PASSED 100%!");
+	console.log("ALL 9 TOPIC REPLENISHMENT TESTS PASSED!");
 	console.log("=================================================");
 }
 

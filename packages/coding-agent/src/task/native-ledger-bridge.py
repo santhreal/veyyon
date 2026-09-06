@@ -199,25 +199,26 @@ def resolve_topic(item_id: str, prompt: str, explicit_topic: Optional[str] = Non
 
 
 def is_valid_authorization(auth: Any) -> bool:
-    """Fail closed on empty or invalid authorizations."""
-    if isinstance(auth, str):
-        cleaned = auth.strip().lower()
-        if not cleaned:
-            return False
-        if cleaned in ("false", "none", "null", "unauthorized", "denied", "rejected", "no"):
-            return False
-        return True
-    if isinstance(auth, dict):
-        if not auth:
-            return False
-        ts = str(auth.get("timestamp") or "").strip()
-        scope = str(auth.get("scope") or "").strip()
-        by = str(auth.get("authorized_by") or "").strip()
-        status = str(auth.get("status") or "").strip().lower()
-        if status == "authorized":
-            return True
-        return bool(ts or scope or by)
-    return False
+    """Accept only a complete, explicitly authorized ledger record."""
+    if not isinstance(auth, dict):
+        return False
+    if auth.get("status") != "authorized":
+        return False
+    timestamp = auth.get("timestamp")
+    scope = auth.get("scope")
+    authorized_by = auth.get("authorized_by")
+    if not isinstance(timestamp, str) or not timestamp.strip():
+        return False
+    try:
+        datetime.datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return (
+        isinstance(scope, str)
+        and bool(scope.strip())
+        and isinstance(authorized_by, str)
+        and bool(authorized_by.strip())
+    )
 
 
 def is_forbidden_target(req: Dict[str, Any]) -> bool:
@@ -405,28 +406,48 @@ def cmd_claim(args: argparse.Namespace) -> int:
 
         if WorkerBackend is not None:
             try:
-                backend = WorkerBackend(state_dir=workflows_dir)
+                backend = WorkerBackend(state_dir=os.path.dirname(ledger_path))
                 wb_req = WorkerRequest(
                     request_id=chosen_id,
                     stage=stage,
                     repo_root=repo_root,
                     head_sha=head_sha,
                     model=str(chosen_req.get("model") or "google-antigravity/gemini-3.8-flash:high"),
-                    agent_role=str(chosen_req.get("agent_role") or "worker"),
+                    agent_role=str(chosen_req.get("agent_role") or "task"),
                     prompt=prepared_prompt,
                     criteria=chosen_req.get("criteria", []),
                     task_type=str(chosen_req.get("task_type") or "feature"),
                 )
                 native_ticket = backend.prepare_native(wb_req)
-                if not native_ticket.blocked_reason:
-                    run_id = native_ticket.run_id
-                    result_schema = native_ticket.result_schema
-                    if native_ticket.prompt:
-                        prepared_prompt = native_ticket.prompt
-            except Exception:
-                pass
-
-        if not run_id:
+            except Exception as exc:
+                print(json.dumps({
+                    "claimed": False,
+                    "reason": f"WorkerBackend preparation failed: {exc}",
+                    "blockedTopics": blocked_topics,
+                    "blocked_topics": blocked_topics,
+                }))
+                return 0
+            if native_ticket.blocked_reason:
+                print(json.dumps({
+                    "claimed": False,
+                    "reason": native_ticket.blocked_reason,
+                    "blockedTopics": blocked_topics + [{
+                        "topic": chosen_topic,
+                        "ticketId": chosen_id,
+                        "reason": native_ticket.blocked_reason,
+                    }],
+                    "blocked_topics": blocked_topics + [{
+                        "topic": chosen_topic,
+                        "ticketId": chosen_id,
+                        "reason": native_ticket.blocked_reason,
+                    }],
+                }))
+                return 0
+            run_id = native_ticket.run_id
+            result_schema = native_ticket.result_schema
+            if native_ticket.prompt:
+                prepared_prompt = native_ticket.prompt
+        else:
             run_id = f"native_{chosen_id}_{int(time.time()*1000)}"
 
         # Write file atomically inside FileLock
@@ -442,7 +463,7 @@ def cmd_claim(args: argparse.Namespace) -> int:
             "task": prepared_prompt,
             "state": to_state,
             "owner": worker_id,
-            "role": "fast",
+            "role": str(chosen_req.get("agent_role") or "task"),
             "criteria": chosen_req.get("criteria", []),
             "dependencies": chosen_req.get("dependencies", []),
             "head": head_sha,
@@ -452,6 +473,7 @@ def cmd_claim(args: argparse.Namespace) -> int:
             "resultSchema": result_schema,
             "stage": stage,
             "repoRoot": repo_root,
+            "ledgerPath": ledger_path,
         }
 
         res = {
@@ -469,7 +491,7 @@ def cmd_record_dispatch(args: argparse.Namespace) -> int:
     task_handle = args.task_handle
     if WorkerBackend is not None:
         try:
-            backend = WorkerBackend(state_dir=workflows_dir)
+            backend = WorkerBackend(state_dir=os.path.abspath(args.state_dir))
             ticket = backend.record_native_dispatch(run_id, task_handle)
             print(json.dumps({"recorded": True, "run_id": run_id, "task_handle": task_handle, "state": ticket.state}))
             return 0
@@ -504,7 +526,7 @@ def cmd_rollback(args: argparse.Namespace) -> int:
         from_state = req.get("state") or "implementation"
         req["state"] = "pending"
         req["owner"] = ""
-        req["blocker"] = f"Dispatch failed: {reason}"
+        req["blocker"] = None
         req["updated_at"] = now_iso
 
         history = req.setdefault("history", [])
@@ -547,15 +569,36 @@ def cmd_complete(args: argparse.Namespace) -> int:
         except Exception as e:
             structured_result = {"error": f"Invalid file: {e}"}
 
-    # 1. Validate through WorkerBackend.complete_native if available
+    # 1. Validate through WorkerBackend.complete_native whenever it is installed.
     outcome_dict = None
-    if WorkerBackend is not None and run_id:
-        try:
-            backend = WorkerBackend(state_dir=workflows_dir)
-            outcome = backend.complete_native(run_id, task_handle, structured_result)
-            outcome_dict = outcome.to_dict()
-        except Exception:
-            outcome_dict = None
+    if WorkerBackend is not None:
+        if not run_id:
+            outcome_dict = {
+                "ok": False,
+                "stage": structured_result.get("stage", "unknown"),
+                "exit_code": args.exit_code,
+                "command": [],
+                "head_sha": structured_result.get("head_sha"),
+                "evidence": structured_result,
+                "artifacts": [],
+                "blocked_reason": "Native run ID is required for WorkerBackend completion",
+            }
+        else:
+            try:
+                backend = WorkerBackend(state_dir=os.path.dirname(ledger_path))
+                outcome = backend.complete_native(run_id, task_handle, structured_result)
+                outcome_dict = outcome.to_dict()
+            except Exception as exc:
+                outcome_dict = {
+                    "ok": False,
+                    "stage": structured_result.get("stage", "unknown"),
+                    "exit_code": args.exit_code,
+                    "command": [],
+                    "head_sha": structured_result.get("head_sha"),
+                    "evidence": structured_result,
+                    "artifacts": [],
+                    "blocked_reason": f"WorkerBackend completion failed: {exc}",
+                }
 
     if args.error:
         outcome_dict = {
@@ -638,6 +681,7 @@ def cmd_complete(args: argparse.Namespace) -> int:
                 req["head"] = outcome_dict["head_sha"]
             req["blocker"] = None
             req["updated_at"] = now_iso
+            req["owner"] = ""
 
             evidence_list = req.setdefault("evidence", [])
             if outcome_dict.get("evidence"):
@@ -655,6 +699,7 @@ def cmd_complete(args: argparse.Namespace) -> int:
             reason = outcome_dict.get("blocked_reason") or "Worker verification failed"
             req["blocker"] = reason
             req["updated_at"] = now_iso
+            req["owner"] = ""
             history.append({
                 "actor": "WorkerBackend",
                 "timestamp": now_iso,
@@ -703,6 +748,7 @@ def main():
     p_claim.add_argument("--timeout", default="15.0", help="Lock timeout in seconds")
 
     p_record = subparsers.add_parser("record-dispatch", help="Record native dispatch binding in WorkerBackend")
+    p_record.add_argument("--state-dir", required=True, help="WorkerBackend state directory")
     p_record.add_argument("--run-id", required=True, help="Native run ID")
     p_record.add_argument("--task-handle", required=True, help="Native task handle (agent://...)")
 

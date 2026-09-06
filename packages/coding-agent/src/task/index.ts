@@ -372,6 +372,10 @@ function spawnParamsFor(params: TaskParams, item: TaskItem, defaultAgent: string
 	} else if (params.cwd !== undefined) {
 		spawn.cwd = params.cwd;
 	}
+	if (params.ticketId !== undefined) spawn.ticketId = params.ticketId;
+	if (params.runId !== undefined) spawn.runId = params.runId;
+	if (params.ledgerPath !== undefined) spawn.ledgerPath = params.ledgerPath;
+	if (params.nativeDispatchBound !== undefined) spawn.nativeDispatchBound = params.nativeDispatchBound;
 	return spawn;
 }
 
@@ -904,10 +908,15 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		const failedSchedules: string[] = [];
 		for (const spawn of asyncSpawns) {
 			try {
+				const spawnParams = spawnParamsFor(params, spawn.item, defaultAgent);
+				if (spawnParams.runId) {
+					await recordNativeDispatch(spawnParams.runId, `agent://${spawn.agentId}`, spawnParams.ledgerPath ?? "");
+					spawnParams.nativeDispatchBound = true;
+				}
 				const jobId = this.#registerSpawnJob({
 					manager,
 					toolCallId,
-					spawnParams: spawnParamsFor(params, spawn.item, defaultAgent),
+					spawnParams,
 					agentId: spawn.agentId,
 					progress: spawn.progress,
 					ircEnabled,
@@ -1393,6 +1402,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		const startTime = Date.now();
 		const { agents, projectAgentsDir } = await discoverAgents(this.session.cwd);
 		const agentName = params.agent ?? "";
+		const runId = params.runId;
 		const sharedContext = this.#isBatchEnabled() ? params.context?.trim() || undefined : undefined;
 		const assignment = (params.task ?? "").trim();
 		const isolationMode = this.session.settings.get("subagent.isolation.mode");
@@ -1605,6 +1615,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					details: { projectAgentsDir, results: [], totalDurationMs: Date.now() - startTime },
 				};
 			}
+			if (params.runId && !params.nativeDispatchBound) {
+				await recordNativeDispatch(params.runId, `agent://${agentId}`, params.ledgerPath ?? "");
+			}
 
 			// Resolved here, not before `spawnCwd`: whether the child inherits the
 			// parent's layers or loads its own depends on where it will run.
@@ -1798,14 +1811,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			// transcript, so a study/backtest tool can enumerate a session's subagents without
 			// scraping tool-result prose (GRAN-2). The child transcript path is derived exactly
 			// as the executor derives it: `<artifactsDir>/<id>.jsonl` (ONE PLACE).
-			const runId =
-				params && typeof params === "object" && "runId" in params && typeof params.runId === "string"
-					? params.runId
-					: undefined;
-
-			if (runId) {
-				void recordNativeDispatch(runId, `agent://${result.id}`).catch(() => {});
-			}
 
 			let structuredResult: Record<string, unknown> | undefined;
 			if (result.output) {
