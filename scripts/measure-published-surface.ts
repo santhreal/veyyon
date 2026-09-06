@@ -609,6 +609,10 @@ const ABSORBED_SUBPATHS: Readonly<Record<string, Readonly<Record<string, Relocat
 			to: "@veyyon/ai/auth-storage",
 			why: "Credential storage imports use @veyyon/ai/auth-storage directly; SqliteAuthCredentialStore is exported by @veyyon/ai/auth-storage-sqlite and SnapshotResponse by @veyyon/ai/auth-broker/types.",
 		},
+		"./extensibility/plugins/runtime-config": {
+			to: "@veyyon/kernel/loader/plugins/runtime-config",
+			why: "normalizePluginRuntimeConfig is declared in kernel/src/loader/plugins/runtime-config.ts, which @veyyon/kernel publishes as ./loader/plugins/runtime-config; the nine-line original was rewritten to accept a null or non-object lockfile value, past the point git pairs the two files",
+		},
 		"./edit/renderer": {
 			to: "./edit/edit-view",
 			why: "the edit call row, hunk preview, diff sections, snapshot notices and failure card are declared in edit/edit-view.ts as views the host draws, so the module that built their terminal components is gone",

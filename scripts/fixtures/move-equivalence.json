@@ -1,5 +1,5 @@
 {
-	"generatedFrom": "aa14e0da82494dac5a06d240180cec88038a105f",
+	"generatedFrom": "a26096e501ae452fde11e821655dd65c519c9c40",
 	"rewrites": [
 		[
 			"packages/coding-agent/src/extensibility/custom-commands/bundled/ci-green/index.ts",
@@ -12,6 +12,10 @@
 		[
 			"packages/coding-agent/test/extensibility/custom-commands/ci-green.test.ts",
 			"packages/coding-agent/test/extensibility/custom-commands/a-green-run-mentions-a-tag-only-when-head-has-one.test.ts"
+		],
+		[
+			"packages/coding-agent/test/extensibility/tool-event-input.test.ts",
+			"packages/coding-agent/test/extensibility/tool-event-input-derives-paths-and-resolves-inputs.test.ts"
 		],
 		[
 			"packages/coding-agent/test/agent-session-retry-fallback.test.ts",
@@ -42,6 +46,10 @@
 			"packages/coding-agent/src/extensibility/extension-state"
 		],
 		[
+			"packages/coding-agent/src/autoresearch/setup-form.ts",
+			"packages/coding-agent/src/modes/terminal/components/dialogs/autoresearch-setup-form.ts"
+		],
+		[
 			"packages/coding-agent/src/jsonrpc/message-framing.ts",
 			"packages/coding-agent/src/utils/jsonrpc-framing.ts"
 		],
@@ -62,6 +70,10 @@
 			"packages/coding-agent/test/tools/an-ssh-block-keeps-its-header-on-one-line.test.ts"
 		],
 		[
+			"packages/coding-agent/src/autoresearch/launcher.ts",
+			"packages/coding-agent/src/modes/terminal/components/dialogs/autoresearch-launcher.ts"
+		],
+		[
 			"packages/coding-agent/src/tools/search-renderer.ts",
 			"packages/coding-agent/test/oracles/search-main-renderer.ts"
 		],
@@ -76,6 +88,10 @@
 		[
 			"packages/coding-agent/src/tools/browser/render.ts",
 			"packages/coding-agent/test/oracles/browser-main-renderer.ts"
+		],
+		[
+			"packages/coding-agent/src/autoresearch/screen.ts",
+			"packages/coding-agent/src/modes/terminal/components/dialogs/autoresearch-screen.ts"
 		],
 		[
 			"packages/coding-agent/src/tools/memory-render.ts",
@@ -684,9 +700,9 @@
 			"group": "relocated-member-path",
 			"reason": "A member that left `packages/`, `python/` or `website/` for `apps/`, `clients/` or `tests/` states its own directory in a usage string, a command, a registry key or a comment, and climbs to the repository root by a relative path that gained one level. The move itself spells only the new location. A row here can also carry an edit this branch made before the move and every unmoved sibling carries too -- the array-spread rewrite, the `natives/` path spelling, a site page's nav fix -- each recorded in the commit that made it, none made by the relocation -- or the formatter's reflow of a call whose shorter path now fits one line.",
 			"hash": "706a45d0ef5511bb5281e1538b3b7efa7bbc69b74b0829e74a1a684e30a23e08",
-			"mainHash": "b3930478f90c7d6c9e8732e98f4ae202150362d51abbb23f5cf8b1bc9b742a31",
+			"mainHash": "a8c6a27621eb73d6b2b547f20a5b4c5ada03e684ea549b699e09b2ca1bda273e",
 			"structuralHash": "4f8380b3c8a4d87cf7c3fd31ac4010d8af35491b89edfa6d12c43b7217aff7c1",
-			"mainStructuralHash": "4fb056aec2bceeb3bdf3e65e3d2dd185421c2fcbd120436bdbe0387ba77d1571"
+			"mainStructuralHash": "3c2ab2f2311ddb6d52d4d894c6f564b663de011516e7e4c57e08d7107315a49d"
 		},
 		"apps/site/changelog.html": {
 			"old": "website/changelog.html",
@@ -694,10 +710,10 @@
 			"differs": "changed",
 			"group": "relocated-member-path",
 			"reason": "A member that left `packages/`, `python/` or `website/` for `apps/`, `clients/` or `tests/` states its own directory in a usage string, a command, a registry key or a comment, and climbs to the repository root by a relative path that gained one level. The move itself spells only the new location. A row here can also carry an edit this branch made before the move and every unmoved sibling carries too -- the array-spread rewrite, the `natives/` path spelling, a site page's nav fix -- each recorded in the commit that made it, none made by the relocation -- or the formatter's reflow of a call whose shorter path now fits one line.",
-			"hash": "642de25595962af9a6db208ab6b9297a7b7d569e2f162ca58a7fbc7187d2ea5a",
-			"mainHash": "826bb6736bad0b94f2c779c1079eb3393a9a03b415cb8efa71f91d99150b8e64",
-			"structuralHash": "e8672b38ce842ef065ca67e285cd9094e9d778e135c42b7cbe7ac229152c7b67",
-			"mainStructuralHash": "4ede66e96af8e6dda9f835ac428d64391ba93b7eef405fa79c3e54fddc5f87f0"
+			"hash": "dad84702ad95393e67858e5d83256cc21ef0b3f2d91c4ddfb7077bb03ef48d77",
+			"mainHash": "c70f78f2bbbba5877b17312231a732743737d84e95af36cb9a050c8d855b3ff5",
+			"structuralHash": "04e856afdf5fd01baa59b2e93de204d8b3e24b55e427e81b370cc14edecb1559",
+			"mainStructuralHash": "cf003d7d3914837fe8fd2a53dd51a26ae4b7d508a481ef18872e2d4214e0220b"
 		},
 		"apps/site/demo-hd.webp": {
 			"old": "website/demo-hd.webp",
@@ -758,13 +774,11 @@
 		"apps/site/features.html": {
 			"old": "website/features.html",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "none",
 			"hash": "0879760c0dc08ba6b3fa082b19b1f9dfec74f9d0e9ccdd716f7e4c4a9d6a58a1",
-			"mainHash": "8b619293e433a9d32a5f5ed25dcda943df0afa92d24e6d68bfa85e08f99f78c5",
+			"mainHash": "0879760c0dc08ba6b3fa082b19b1f9dfec74f9d0e9ccdd716f7e4c4a9d6a58a1",
 			"structuralHash": "cd742c11cebfea5cb318b8d1d6e5463d68d4819c61c417cc4e03d1104fae499f",
-			"mainStructuralHash": "ee0604d2fa7ac513f94fe7ffc0710cd6585cec7fc5a0182ae815588713e06fd4",
-			"group": "relocated-member-path",
-			"reason": "A member that left `packages/`, `python/` or `website/` for `apps/`, `clients/` or `tests/` states its own directory in a usage string, a command, a registry key or a comment, and climbs to the repository root by a relative path that gained one level. The move itself spells only the new location. A row here can also carry an edit this branch made before the move and every unmoved sibling carries too -- the array-spread rewrite, the `natives/` path spelling, a site page's nav fix -- each recorded in the commit that made it, none made by the relocation -- or the formatter's reflow of a call whose shorter path now fits one line."
+			"mainStructuralHash": "cd742c11cebfea5cb318b8d1d6e5463d68d4819c61c417cc4e03d1104fae499f"
 		},
 		"apps/site/fonts/Inter-Medium.woff2": {
 			"old": "website/fonts/Inter-Medium.woff2",
@@ -1038,32 +1052,28 @@
 			"differs": "changed",
 			"group": "relocated-member-path",
 			"reason": "A member that left `packages/`, `python/` or `website/` for `apps/`, `clients/` or `tests/` states its own directory in a usage string, a command, a registry key or a comment, and climbs to the repository root by a relative path that gained one level. The move itself spells only the new location. A row here can also carry an edit this branch made before the move and every unmoved sibling carries too -- the array-spread rewrite, the `natives/` path spelling, a site page's nav fix -- each recorded in the commit that made it, none made by the relocation -- or the formatter's reflow of a call whose shorter path now fits one line.",
-			"hash": "cb501054865f49f01d9f0e1eb6e0488ed6f6e575f759fbd348d4cd6e272f139e",
-			"mainHash": "ffc7be54f3b57e001c99be71f3fb0350e0b90587acbbb3d39bf7ad61482c40a7",
+			"hash": "bb7a526586f4df1eff88b0f56dbbab356685d1612599933923b8d4a09343a04d",
+			"mainHash": "b40a8cc14832722ebd53d8277601f8aaff73a22f18edb6f743d9e322f92c1d6f",
 			"structuralHash": "c6d4427509d4a35cbb1ad79afab8f3163baffa17e72eaf7349ac912106dc8399",
-			"mainStructuralHash": "aa0946885e9eb94bc67ac261949fde7c55a332414f547a18393bb71a76c6fadd"
+			"mainStructuralHash": "4c59f8329582a5122e7cec4a14dcbbbba89f7e51441e6b0db56a2b7fb9e567c5"
 		},
 		"apps/site/tools/gen-changelog.test.js": {
 			"old": "website/tools/gen-changelog.test.js",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "none",
 			"hash": "7364b900460ba80701f96f93f9b3dedeb47a0db711685e9a141e806d74f9dc2a",
-			"mainHash": "d87c753200f97c2e483738cd9aad61cd391a2f25cef8f269d47385dd90d9e902",
+			"mainHash": "7364b900460ba80701f96f93f9b3dedeb47a0db711685e9a141e806d74f9dc2a",
 			"structuralHash": "b4c832f1a583b4f244d2c1158fadcaf8875b6133c2d584b1776ab27e06e8c274",
-			"mainStructuralHash": "6fb3f037ca2317f19f6fd9147d9dc705b12cb4604348fac7cc808bdc5c873eda",
-			"group": "relocated-member-path",
-			"reason": "A member that left `packages/`, `python/` or `website/` for `apps/`, `clients/` or `tests/` states its own directory in a usage string, a command, a registry key or a comment, and climbs to the repository root by a relative path that gained one level. The move itself spells only the new location. A row here can also carry an edit this branch made before the move and every unmoved sibling carries too -- the array-spread rewrite, the `natives/` path spelling, a site page's nav fix -- each recorded in the commit that made it, none made by the relocation -- or the formatter's reflow of a call whose shorter path now fits one line."
+			"mainStructuralHash": "b4c832f1a583b4f244d2c1158fadcaf8875b6133c2d584b1776ab27e06e8c274"
 		},
 		"apps/site/tools/gen-changelog.test.ts": {
 			"old": "website/tools/gen-changelog.test.ts",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "none",
 			"hash": "0c4b4b2956b58145c589c4ccf5ee931c3db79e6f13be14fc94a8101c0c70c71a",
-			"mainHash": "e9b88200a94b7781835561e5f6b719a16c06217c2ab555f2bb31c472a6d8986b",
+			"mainHash": "0c4b4b2956b58145c589c4ccf5ee931c3db79e6f13be14fc94a8101c0c70c71a",
 			"structuralHash": "f0468ec616b06e8888198b5c3c44a620e59bfaae2ce23ca5f547968527bf55e2",
-			"mainStructuralHash": "123ec6de26ffa866c56d5ca330dbf748e3a1b7ec7fa10c0957aa775de85814f7",
-			"group": "relocated-member-path",
-			"reason": "A member that left `packages/`, `python/` or `website/` for `apps/`, `clients/` or `tests/` states its own directory in a usage string, a command, a registry key or a comment, and climbs to the repository root by a relative path that gained one level. The move itself spells only the new location. A row here can also carry an edit this branch made before the move and every unmoved sibling carries too -- the array-spread rewrite, the `natives/` path spelling, a site page's nav fix -- each recorded in the commit that made it, none made by the relocation -- or the formatter's reflow of a call whose shorter path now fits one line."
+			"mainStructuralHash": "f0468ec616b06e8888198b5c3c44a620e59bfaae2ce23ca5f547968527bf55e2"
 		},
 		"apps/site/tools/gen-models.mjs": {
 			"old": "website/tools/gen-models.mjs",
@@ -1122,10 +1132,10 @@
 			"differs": "changed",
 			"group": "changelog-or-readme",
 			"reason": "A moved package records the move in its own changelog or names its new path in its readme.",
-			"hash": "ce9782054468b9ee07950a8d6687c2014e1e0aa02ac7c946a484868336e80a03",
-			"mainHash": "4e2cf48cd63f836ba10d48b40e8a14401214a6c3e42e6fadec971ae3413589e1",
-			"structuralHash": "fb56926fae139571a0e810d565d3ae1e9b39691eb125c236857febee81c8cdec",
-			"mainStructuralHash": "f9596bda2b8037b1c0545e820f3e3540d77fc9e7f2606a11b265f28b587aa58c"
+			"hash": "a9acd6509270aa380f77341fa3c640bf6d766b94721e087e844251bf18e71c8a",
+			"mainHash": "415245f12161f90734c98a948fe8993d40d5f9d3009d345b7f17dcbe6f491921",
+			"structuralHash": "a1a99ff4dd0341fd3f6cfe6fdc5d51bc00c6a0c6370cf71f243b56e8ad3556f1",
+			"mainStructuralHash": "df8a069e1e383c4a28b8b883ee000f292a79c0034d7240d06f8471a6ab13a233"
 		},
 		"apps/stats/README.md": {
 			"old": "packages/stats/README.md",
@@ -1168,13 +1178,11 @@
 		"apps/stats/package.json": {
 			"old": "packages/stats/package.json",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "none",
 			"hash": "34e0841e45fd9c710b474d835eb221e415187f2f56430ed250bf6eafbf71b247",
-			"mainHash": "8796af6064c6da4abcd265425dbaf3ebb1489fadad535a3a78669794d0c77d90",
+			"mainHash": "34e0841e45fd9c710b474d835eb221e415187f2f56430ed250bf6eafbf71b247",
 			"structuralHash": "c5e80fb6f989c11c27badf63b6d1f23ed6451b1fd7fc8fe4f4a19d651dce1fdf",
-			"mainStructuralHash": "7d94fa01c211d124262ac5c49c863110751a64ae6167785894c140329648b957",
-			"group": "manifest-depth",
-			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move."
+			"mainStructuralHash": "c5e80fb6f989c11c27badf63b6d1f23ed6451b1fd7fc8fe4f4a19d651dce1fdf"
 		},
 		"apps/stats/scripts/generate-client-bundle.ts": {
 			"old": "packages/stats/scripts/generate-client-bundle.ts",
@@ -4081,9 +4089,9 @@
 			"group": "manifest-depth",
 			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
 			"hash": "83f29a5016f5f6eb0acc9b4b2daf25b50869f294acbb395ccc10cef1b9bdab40",
-			"mainHash": "31c610f4e631a7efb7cba3526ee1f261cddcfee2cc30b40c5e66abddca68ff79",
+			"mainHash": "3d8bb99a4835f9ad720738f84566cde26bc3eb2f1daa757729141649b1e5f678",
 			"structuralHash": "ec8702f637601865f213331b530a2c8687b6c0509c1f2d725ba3125a0df4f592",
-			"mainStructuralHash": "31b66b4c88f4f6c9c08298f4497d3d4af7f4764b26bcf870cd8250411677b611"
+			"mainStructuralHash": "56937114b86fbbf0b1996f0eca492ce01f63ac54b96e2a3d5eff9971003d71c4"
 		},
 		"contracts/wire/src/index.ts": {
 			"old": "packages/wire/src/index.ts",
@@ -4196,10 +4204,10 @@
 			"differs": "changed",
 			"group": "changelog-or-readme",
 			"reason": "A moved package records the move in its own changelog or names its new path in its readme.",
-			"hash": "1427c5480a6ada5d6a28d78e8d9a847bbc033951f74e8d54dfaf755e91771b93",
-			"mainHash": "031a5db700b0db0a4fe2b000e3a1d90fec50b4ffe3aa3e84a728faff89e91d45",
-			"structuralHash": "ff3d06c370f4b5695f1b6fc81ce7c457003116007162e1db427ff8fbe4fef534",
-			"mainStructuralHash": "a21f78c54cd625ff90fab30b32d9a768de4267669e81f3ca1394511fdd72580a"
+			"hash": "5acf79f2380cba94bf74c60129f5c32cbcc0f7858323328dea4dd06ece531043",
+			"mainHash": "d0e0abf7115a16d9157b7ff684a0ec20b871c0fa55e2d93c5d2cb8ebc336986a",
+			"structuralHash": "38106ae0e255dc4c22a57e77ff3787d945025cfc314f2cdcb79f2f28fe6fc5ea",
+			"mainStructuralHash": "a023228bbe19f6f5f48ca5f1d03df613cf3922609bf2d4e3e6e750d6a48aa31b"
 		},
 		"hosts/terminal/engine/README.md": {
 			"old": "packages/tui/README.md",
@@ -4305,13 +4313,11 @@
 		"hosts/terminal/engine/package.json": {
 			"old": "packages/tui/package.json",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "none",
 			"hash": "cbd23bbb29700e406aadbd6ab341a4bff64f664add370809e3ed0952af146055",
-			"mainHash": "96cea82a6e7b61f2e30876363fffb9f5e05421973444c96f1d9f3aa615a578b3",
+			"mainHash": "cbd23bbb29700e406aadbd6ab341a4bff64f664add370809e3ed0952af146055",
 			"structuralHash": "d12846cea3de4d80868a794188c1d6dd92c8e1dd6b0a28a93ca19ff84d4e45d9",
-			"mainStructuralHash": "b8b13ebb87fbaabb4af267a3f082bb429bae549c7ca08e13b27268e4c557f31f",
-			"group": "manifest-depth",
-			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move."
+			"mainStructuralHash": "d12846cea3de4d80868a794188c1d6dd92c8e1dd6b0a28a93ca19ff84d4e45d9"
 		},
 		"hosts/terminal/engine/scripts/verify-mouse-grab-idle.ts": {
 			"old": "packages/tui/scripts/verify-mouse-grab-idle.ts",
@@ -4356,9 +4362,18 @@
 			"group": "extracted-to-utils",
 			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
 			"hash": "a88b0348fa18d5e65415d701f802bad7f44f8e175064919726c8e03d0468b1d9",
-			"mainHash": "f0d59ba7608e335f87d95a776e15f211247c7ae419d8bd679ea4b2f5eee527c0",
+			"mainHash": "8d6b8b8b033b965bf8f2b9c05ec88a5232c0fcb587c7859aa21f823f2b0e1865",
 			"structuralHash": "14f88a17ce8637da8016e9ca11dbc92c33e6d1864127fef37072e277ba28767b",
-			"mainStructuralHash": "9dfdb48770e17b1e32faa3fa3c8959f4b105aaa35088b0dffd21517fb22c6ee7"
+			"mainStructuralHash": "a4c8e458d076cdf8828cc3b6417e63bbd1dbae6a50db00224054c69f0a4da884"
+		},
+		"hosts/terminal/engine/src/components/form.ts": {
+			"old": "packages/tui/src/components/form.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "519b94706e57fe6ffcf33f974157e8e3ca58ed87c915c06785d301b631d85054",
+			"mainHash": "629c06deb19f7827ce58566d984c1a8b56e66fb1e2d92672ac5c692ddaa7d531",
+			"structuralHash": "2920b2a17af0ab5d711c7e398c9fb889e8e60f7c1c606b6edb60792c3500d89f",
+			"mainStructuralHash": "2920b2a17af0ab5d711c7e398c9fb889e8e60f7c1c606b6edb60792c3500d89f"
 		},
 		"hosts/terminal/engine/src/components/input.ts": {
 			"old": "packages/tui/src/components/input.ts",
@@ -4366,10 +4381,10 @@
 			"differs": "changed",
 			"group": "extracted-to-utils",
 			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
-			"hash": "ba5d83896ec8956474cb986888b9fa1fb91a03f6843874b03ce341ea0b048e07",
-			"mainHash": "60837920ffca4b73adbe4bcfc86f8fd20093329611aa8a5f2c10a995b84a3d85",
+			"hash": "5e80c1156fe4eba70295167b0952f2a2120eb2b3bc292e2cccc778844101329c",
+			"mainHash": "fbaa561b57edf72c60973d91ce0e528a318fd1af919e64ec52b943e9a3661c43",
 			"structuralHash": "0e52dbaeabdfd0b79be792982d7e0cb13072646afea90bf2b47139acd7252856",
-			"mainStructuralHash": "50d97c6b9362055769b9b48de791ea48523d6c7b3a6c03896fb7543b68d0545b"
+			"mainStructuralHash": "84389429dea99c60ca0a5c4dfd41a9f032145a31907adb945157194ee1cbd0b0"
 		},
 		"hosts/terminal/engine/src/components/loader.ts": {
 			"old": "packages/tui/src/components/loader.ts",
@@ -4407,9 +4422,9 @@
 			"group": "extracted-to-utils",
 			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
 			"hash": "0f7fa9abc3ef1e67524c4d75a4c7b156488fc91e99585d8f09ea9e0dfbabf9b5",
-			"mainHash": "9a064080cfe92d4f33747520c442d37e96d0350e36abbf3b7d5a62952cf7c4d8",
+			"mainHash": "b3f040e7736f9f69cff9be75c26f2bc3dd76302026e5be1ed3f563d47eccfd7b",
 			"structuralHash": "81bc7517cf46fbc214b575fce1c10a9ea5f0f057d767e720a7af701f2f9f4c59",
-			"mainStructuralHash": "9629f78028dc284a62827d7b0fbf9c2974d1555db6523618c6d962dbd75fcb5e"
+			"mainStructuralHash": "422e0b388898e3dacd7efff84b798f24a8d409addc7d0bbd30bd8c666ac6092d"
 		},
 		"hosts/terminal/engine/src/components/settings-list.ts": {
 			"old": "packages/tui/src/components/settings-list.ts",
@@ -4418,9 +4433,9 @@
 			"group": "extracted-to-utils",
 			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
 			"hash": "e43e5b5e3fb92cae335e161ca8b770371d55c9bcf02055b5cfdfcbc0d3e68ade",
-			"mainHash": "39c4a94cbbfd7ced37e75d8c98568ed02fa1f7e749e869e3730efe34894be2de",
+			"mainHash": "3d0cf226174750002b9252c999f6a1e0424b0407cad8afc4c921de040500c3de",
 			"structuralHash": "e7b80842878a9295f50a9d5e63d65f7e8d51eedfa731f7a7fce40033d29b0e67",
-			"mainStructuralHash": "864ffddccec8e728a3c6951c349c80b03ca49916b26fab58542efc6c49c46c19"
+			"mainStructuralHash": "ea00137e00dca7b0913c1ce8c33ff8164270117bf529da840ebe6e9b1c3a0331"
 		},
 		"hosts/terminal/engine/src/components/settings-search.ts": {
 			"old": "packages/tui/src/components/settings-search.ts",
@@ -4473,10 +4488,10 @@
 			"differs": "changed",
 			"group": "extracted-to-utils",
 			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
-			"hash": "381bdfb26fa2c8d53731cd9f532386a00e66cd6edf246904e15824eef9dd560a",
-			"mainHash": "361a2b2a047fd9a879bec9feb3eac9764dfd16b82590b1cb2aa90a5c8a00fbc3",
-			"structuralHash": "49b46e8d9c50842399bd032ae13a026f801c32009feb040697ff348dc6f1973e",
-			"mainStructuralHash": "4afb1bebde7038756ec5b528d995a92537bbbc7d439b1298ad6f2b05a754b7c1"
+			"hash": "a27c3456f00e9babb1a74eb692d2bb4b45e6a211a48a75b2d2cf2025df8b58d3",
+			"mainHash": "7934cd2f2fbf9844051f758343c3b56f3ef403c43e96d7bf7e31533616773617",
+			"structuralHash": "d38c8f0cf97634ecfe98ae7c636039fb30f1542f0f193162642a6a69cad641af",
+			"mainStructuralHash": "f135f2037589f72cc82b77119bd32aaf7f4765516b02b3260db6b9e74b2b38a1"
 		},
 		"hosts/terminal/engine/src/core/tui.ts": {
 			"old": "packages/tui/src/tui.ts",
@@ -4484,10 +4499,10 @@
 			"differs": "changed",
 			"group": "extracted-to-utils",
 			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
-			"hash": "0a94d24b0179c4f0b0e67b9de68e81f5a71b06ba547df24bd46da61ff7421122",
-			"mainHash": "034570c838d3db6420f07884dd87a40cfebae38f262727276e309443db661a6e",
-			"structuralHash": "1bd7b453e4f3183aebd6e9a94f69da8e2582fa704cc61506057d2b1659b4e855",
-			"mainStructuralHash": "a57f3d6e312ef49ad95e09c946ca2c45942cc50319cae544ee5d6fa3372fac18"
+			"hash": "53875a59d294de1cd5b4e82f882b46c7050da6cdbd32d049acfb69d5d705359d",
+			"mainHash": "4e0e5b31cd3debbd0b3c774ba6c736467eede8cd86deafc0f6ea5d859df8314f",
+			"structuralHash": "67b22dae7d7f35beeb3e4b3a3840c5579e71f3280463edabf770f0603a1e8ebf",
+			"mainStructuralHash": "776597ec8a27eda7c709afb30764ee556cd299106b1f3d5ee40ab48a735a1cbd"
 		},
 		"hosts/terminal/engine/src/desktop-notify.ts": {
 			"old": "packages/tui/src/desktop-notify.ts",
@@ -4505,7 +4520,7 @@
 			"group": "extracted-to-utils",
 			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
 			"hash": "763104dd0756d796668a54b8796036b5d28b2a3da57543a86fd0f78d57c49166",
-			"mainHash": "d292dc5c27358b9695e7d8f1cc8a5070e4e3129e867f79d97b19a0bc9aa2dfea",
+			"mainHash": "4d07e09877230211909f6dcb6587992a7667f0cfdadcb4bf00aa08c8daae5088",
 			"structuralHash": "b8471fccb540c4579cc3384498a282885f6da05d2c0e33e253f432fda476baee",
 			"mainStructuralHash": "937f2ffb5595fa9d9d2f5f3858d7af31d411ac81ebc229c8f24afeaffd64680b"
 		},
@@ -4525,9 +4540,9 @@
 			"group": "extracted-to-utils",
 			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
 			"hash": "caa2c471a3ceb30157c1a454a684ae21848bf73c6c8f966ee4ac4cabef03fb6d",
-			"mainHash": "a01d73ebd7f323e7f2dc5e4ae04b384d9fe8d18b262f20f516167faae7ca57b6",
+			"mainHash": "626994d372c756fbd5fd3d3aa75093090540a6812daa66836233175db7da252b",
 			"structuralHash": "cf99ece0090654604c9298a579364b81cc520d6b99d259cc2c43546a9ab4e9ed",
-			"mainStructuralHash": "09f27087714dd06a36fe206cbcec5ca14e4732493421f978e714b57b2e74a1a8"
+			"mainStructuralHash": "7e490c52bbe2115877578de39ab6f869beb54f9a70966886ab1603cc6c489ba5"
 		},
 		"hosts/terminal/engine/src/terminal.ts": {
 			"old": "packages/tui/src/terminal.ts",
@@ -4574,6 +4589,15 @@
 			"structuralHash": "dae721fc9a62e3f12b2f4f5bda2045eeb8f2efb913159bf7d25a33e3bad01111",
 			"mainStructuralHash": "dae721fc9a62e3f12b2f4f5bda2045eeb8f2efb913159bf7d25a33e3bad01111"
 		},
+		"hosts/terminal/engine/test/a-click-on-a-card-over-the-transcript-reaches-the-card.test.ts": {
+			"old": "packages/tui/test/a-click-on-a-card-over-the-transcript-reaches-the-card.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "d5f5128f39ef170824a6027192f4968d6a554ea323074c357a6f756799f84e71",
+			"mainHash": "bf0d1c53eaa46fb5953f39094f95890595e0227a3b55215357e6234576e383a9",
+			"structuralHash": "c845930a7bfb692babf7b3891f77c1bea4faf570fc7fb87cac2385a4bc52cf50",
+			"mainStructuralHash": "c845930a7bfb692babf7b3891f77c1bea4faf570fc7fb87cac2385a4bc52cf50"
+		},
 		"hosts/terminal/engine/test/a-click-on-a-suggestion-accepts-the-completion.test.ts": {
 			"old": "packages/tui/test/a-click-on-a-suggestion-accepts-the-completion.test.ts",
 			"kind": "normalized",
@@ -4609,6 +4633,15 @@
 			"mainHash": "ada3cb0d00452be5b3029bfbed8d7effc477911aea0e7d5d418d13cb1fa2999f",
 			"structuralHash": "9f3276046e0b5528816d4caa106804f6b82e8ad773b5b45a2f353e4330d0d8f5",
 			"mainStructuralHash": "9f3276046e0b5528816d4caa106804f6b82e8ad773b5b45a2f353e4330d0d8f5"
+		},
+		"hosts/terminal/engine/test/a-form-field-answers-the-keys-and-the-pointer-its-kind-takes.test.ts": {
+			"old": "packages/tui/test/a-form-field-answers-the-keys-and-the-pointer-its-kind-takes.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "62bcfcd1b8902602951978bb7e074724bfb5d01ccf7f303951f12671bef20c64",
+			"mainHash": "d441d7b100c81a87543192a1ffa6a95532ad4f7c6ef3dfc80c71a38ad5a5274d",
+			"structuralHash": "92ef9fcdf5648c145aaf0be0845f85ade6eee6865ee2d6b84859ef318ee72d31",
+			"mainStructuralHash": "92ef9fcdf5648c145aaf0be0845f85ade6eee6865ee2d6b84859ef318ee72d31"
 		},
 		"hosts/terminal/engine/test/a-hover-band-fades-in-instead-of-switching.test.ts": {
 			"old": "packages/tui/test/a-hover-band-fades-in-instead-of-switching.test.ts",
@@ -4690,6 +4723,15 @@
 			"mainHash": "cb9492cbbd4c0c6ae0c763274421efe7d2a4a831e2857c1fc881472e0366630a",
 			"structuralHash": "b8d71b04fd95dbd0bc0d32c24c7f8b03296622569a2a0a4305f4bc8561536bba",
 			"mainStructuralHash": "b8d71b04fd95dbd0bc0d32c24c7f8b03296622569a2a0a4305f4bc8561536bba"
+		},
+		"hosts/terminal/engine/test/an-image-whose-top-scrolled-away-repaints-only-its-visible-rows.test.ts": {
+			"old": "packages/tui/test/an-image-whose-top-scrolled-away-repaints-only-its-visible-rows.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "0feb84de855b958524891507c3ab2ac7d1d9b26c5c48bf14e310988547adc0a8",
+			"mainHash": "37fdf8dc130ee158300a9e0ad34758844762a1967e61441d9cf71d85a205276b",
+			"structuralHash": "cf8fab4708c629209162de2d71b542388e90487be0e59e80fdebb267069cdc11",
+			"mainStructuralHash": "cf8fab4708c629209162de2d71b542388e90487be0e59e80fdebb267069cdc11"
 		},
 		"hosts/terminal/engine/test/an-overlay-above-the-footer-leaves-the-composer-painted.test.ts": {
 			"old": "packages/tui/test/an-overlay-above-the-footer-leaves-the-composer-painted.test.ts",
@@ -4893,8 +4935,8 @@
 			"old": "packages/tui/test/editor-visual-col.test.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "04d6a818b36369c97a71c5a6d3e0fc6b9f8fb7996c82ca2256bc0b73949fc61b",
-			"mainHash": "c5d8e09db3851119c133daa5a7c8901f6bc4a79027d4a6a75fddcb957414fbab",
+			"hash": "6fc872b145fcbb19f1c56698bff9bb0ff2ffb065f1957d1181fe97ab54975345",
+			"mainHash": "a6e1763e1be418664771bc32ab23e29a6910c428235ea0095b73a7de37db5d1c",
 			"structuralHash": "d498078875cba345d6fe42b9c104c6cce95bba9ee981967d1d9475f4e78264aa",
 			"mainStructuralHash": "d498078875cba345d6fe42b9c104c6cce95bba9ee981967d1d9475f4e78264aa"
 		},
@@ -5363,12 +5405,12 @@
 			"old": "packages/tui/test/render-stress-harness.ts",
 			"kind": "normalized",
 			"differs": "changed",
-			"hash": "bb67edfd324695160eec98d77f40f0e34825db4e5f0b3a391cd794b49d1dec6b",
-			"mainHash": "c88fd2b7d5f276979f76b85ce798ef0e6ab3c47f0247f308d437f7e3384da4a6",
-			"structuralHash": "2e39ac00163350457705c4cd6204e1192ed76d93b748233158420f6b3036fa02",
-			"mainStructuralHash": "c91f693c28fdf9b33f8b43b74284d8488b83e7573504215ce45df4e19ccd0e1e",
 			"group": "extracted-to-utils",
-			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws."
+			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
+			"hash": "bb67edfd324695160eec98d77f40f0e34825db4e5f0b3a391cd794b49d1dec6b",
+			"mainHash": "c5a5b25f5973db1359cb003e5949cd804295096772b090db2ac246116f166303",
+			"structuralHash": "2e39ac00163350457705c4cd6204e1192ed76d93b748233158420f6b3036fa02",
+			"mainStructuralHash": "bb10f46f560646b91f4d737fe0915377234d7fb4f6b42e246f50e91892253443"
 		},
 		"hosts/terminal/engine/test/render-stress-oracles.test.ts": {
 			"old": "packages/tui/test/render-stress-oracles.test.ts",
@@ -5409,13 +5451,11 @@
 		"hosts/terminal/engine/test/render-stress-subprocess.ts": {
 			"old": "packages/tui/test/render-stress-subprocess.ts",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "none",
 			"hash": "9743fbb0462e2efde375c755e0b6c648234cfb86b2d4cea8b10af83ee39bc4fc",
-			"mainHash": "67d5ee77da9b1241549bff34dfb85d914a96b8ad1e1aa1eb4890faff12f62327",
+			"mainHash": "9743fbb0462e2efde375c755e0b6c648234cfb86b2d4cea8b10af83ee39bc4fc",
 			"structuralHash": "c56bd325bbaa3806d0a92d92ee560aa392c8ebd7b2ceb139212cc8243e087434",
-			"mainStructuralHash": "6597f04133bb64bd82f50580bf7ad3465d632ec6d628a29181431e9ed1147b74",
-			"group": "extracted-to-utils",
-			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws."
+			"mainStructuralHash": "c56bd325bbaa3806d0a92d92ee560aa392c8ebd7b2ceb139212cc8243e087434"
 		},
 		"hosts/terminal/engine/test/render-stress.test.ts": {
 			"old": "packages/tui/test/render-stress.test.ts",
@@ -5574,12 +5614,12 @@
 			"old": "packages/tui/test/settings-list.test.ts",
 			"kind": "normalized",
 			"differs": "changed",
-			"hash": "d055c8560ddcb02eadcbe0e06232d2950bb80195f5980654393a313fa6382322",
-			"mainHash": "dc299d676814769ef017aff0e3a36be16863826132627b10bad555f02fb27c7d",
-			"structuralHash": "42cc26309bcfbdd773e6f6d24233bf49c4dae3437742be789bd1c11841e692ac",
-			"mainStructuralHash": "2b6640daa5858126b561b5051dabec453e32172c6163a52612cb89d12dc20a70",
 			"group": "extracted-to-utils",
-			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws."
+			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
+			"hash": "b934508be1ef4cc58b79855b429cf9c100d1f807d0aaf3980f7c4fef5a544721",
+			"mainHash": "e7cc91075897c8f24db548281e50e57476394f17d3865771c254a47440caa04d",
+			"structuralHash": "7eb3d9808ef008d33a79f11e31f8827b61e8c7c202a607863cde2dfa5c0815b2",
+			"mainStructuralHash": "0126e37cb8572bbd9c874fada32a7d9717e65bdc0de008f7993c66c7e1144b8e"
 		},
 		"hosts/terminal/engine/test/settings-search-ranking.test.ts": {
 			"old": "packages/tui/test/settings-search-ranking.test.ts",
@@ -5861,12 +5901,12 @@
 			"old": "packages/coding-agent/src/extensibility/manifest-key.ts",
 			"kind": "normalized",
 			"differs": "changed",
+			"group": "plugin-runtime-validation",
+			"reason": "The plugin loader accepts absent manifest holders and normalizes malformed plugin and settings maps to empty records before discovery reads persisted configuration.",
 			"hash": "bd2ac2ece05be5d2c36ff1aad3e3605077ce1aaddb1f41291b077eed046fae82",
 			"mainHash": "182fa8c9b80535314034199444bde2f651218d19e19da844bba47ff015ba446f",
 			"structuralHash": "1220c1286f8053de3c4e22f5538a1eae95a2e9063399aed6aab09c8aa30b5ce2",
-			"mainStructuralHash": "31218b2ae5dd9d1b3bd3888c359a8b613eceda64d7a8c019676e90e86baca0ec",
-			"group": "plugin-runtime-validation",
-			"reason": "The plugin loader accepts absent manifest holders and normalizes malformed plugin and settings maps to empty records before discovery reads persisted configuration."
+			"mainStructuralHash": "31218b2ae5dd9d1b3bd3888c359a8b613eceda64d7a8c019676e90e86baca0ec"
 		},
 		"kernel/src/loader/plugins/git-url.ts": {
 			"old": "packages/coding-agent/src/extensibility/plugins/git-url.ts",
@@ -5934,17 +5974,6 @@
 			"mainHash": "8392cbe0b55a456614e5b362f36a8c8a520c9916ae787116a67e4a69a7420329",
 			"structuralHash": "092ed5f61dda438e3239f629b1d0e77cd165725c39ade7c9d97f27b7b12f7021",
 			"mainStructuralHash": "092ed5f61dda438e3239f629b1d0e77cd165725c39ade7c9d97f27b7b12f7021"
-		},
-		"kernel/src/loader/plugins/runtime-config.ts": {
-			"old": "packages/coding-agent/src/extensibility/plugins/runtime-config.ts",
-			"kind": "normalized",
-			"differs": "changed",
-			"hash": "2944092062e95de6a0568d91ad1a7a5c0c5a8d17e47be4d66bc93fe199e0dd55",
-			"mainHash": "1c19808e1dd2d635a1e7fb7648ffa8cbb75aeeffadc95b2d5ea0188246098de0",
-			"structuralHash": "bc5d2d758343571469b1e82c2142e801524c45e41f7f1ab661fe46587e7e6eb9",
-			"mainStructuralHash": "714009b8c238e4bae6969d08e26036cf66d7b7f1cfe0b5ec32e9a4777a17dc51",
-			"group": "plugin-runtime-validation",
-			"reason": "The plugin loader accepts absent manifest holders and normalizes malformed plugin and settings maps to empty records before discovery reads persisted configuration."
 		},
 		"kernel/src/loader/plugins/types.ts": {
 			"old": "packages/coding-agent/src/extensibility/plugins/types.ts",
@@ -6556,9 +6585,9 @@
 		"natives/bridge/addon/src/lib.rs": {
 			"old": "crates/veyyon-natives/src/lib.rs",
 			"kind": "normalized",
-			"differs": "imports-and-comments-only",
+			"differs": "none",
 			"hash": "6776878dccaa051a4935225891696bf2f623c59167797f5be52232ebeb2cb9e2",
-			"mainHash": "845c73c0eb4b5ef209baabdb61e0c6c6e9783650e7d84adb9bfdbcef9cb1f01d",
+			"mainHash": "6776878dccaa051a4935225891696bf2f623c59167797f5be52232ebeb2cb9e2",
 			"structuralHash": "90ff9c8ba03b137b1fd246d972edf270c9218491f5457f8766e4e2be364c4b75",
 			"mainStructuralHash": "90ff9c8ba03b137b1fd246d972edf270c9218491f5457f8766e4e2be364c4b75"
 		},
@@ -6730,10 +6759,10 @@
 			"differs": "changed",
 			"group": "changelog-or-readme",
 			"reason": "A moved package records the move in its own changelog or names its new path in its readme.",
-			"hash": "75ad999140e16fd7b6f6b5f3d005995c6db02b51f93a51a4eb1c016aefa6f638",
-			"mainHash": "b815131543f197a9655f5a8f9d95ba8178b0a3d0f31d6396243412673ac920f5",
-			"structuralHash": "3c3698dd94e07c6843d7250dde2b78030f7f9f72ccaa7916ec4fdf2003b181b7",
-			"mainStructuralHash": "4cb351cefdc6587522f23fa0b3e894782a738780d2ad70d7acb0069655b002a5"
+			"hash": "cd743dbf7fcb86210f2f4d4380fcbe10e2f429cb345511a3e39341ec43510318",
+			"mainHash": "426865bd3c683bad18859096561d158fe7e8bba7f2f338c18bb3497c8903b1ee",
+			"structuralHash": "f95915036d6396c8107f133b9ffafc797f638c17ffe33135ca34dfcc2be5910c",
+			"mainStructuralHash": "1446ab55e4821094dfaa5b49c4da2ca01bfeb5b5b5b2c7309176ce63169a32d2"
 		},
 		"natives/bridge/bindings/README.md": {
 			"old": "packages/natives/README.md",
@@ -6794,24 +6823,20 @@
 		"natives/bridge/bindings/native/index.d.ts": {
 			"old": "packages/natives/native/index.d.ts",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "none",
 			"hash": "66fe2bba1eb9e42cb4e816faad0e2e5b252a1f29431623abb228989b5df3cba8",
-			"mainHash": "8d601ff8f2b7b989cf1ce398ba6a9b3c03b942d4f8f5c22a38c1ef8160ebc838",
+			"mainHash": "66fe2bba1eb9e42cb4e816faad0e2e5b252a1f29431623abb228989b5df3cba8",
 			"structuralHash": "b82f2806b8041cde50abc6cc52e71a0555a530b29e93882f25d6ef5169e7037e",
-			"mainStructuralHash": "b83f77bae179f5293bfd03ea9ab999eab42771a8248fca40418b63d82f7970de",
-			"group": "bindings-path-expectation",
-			"reason": "A native-bindings test asserts on the addon's own path, which moved with the package out of `packages/`."
+			"mainStructuralHash": "b82f2806b8041cde50abc6cc52e71a0555a530b29e93882f25d6ef5169e7037e"
 		},
 		"natives/bridge/bindings/native/index.js": {
 			"old": "packages/natives/native/index.js",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "none",
 			"hash": "c652d82e541e06caf1a250b49ab6de953ef032ed03ace446f5db83e58d753fd5",
-			"mainHash": "eef28eb5d5a79f9a28ba42ed7cb5920fe95edf6a02f7be74b8d83425f690ed99",
+			"mainHash": "c652d82e541e06caf1a250b49ab6de953ef032ed03ace446f5db83e58d753fd5",
 			"structuralHash": "8fd09aa8a801118a1b747edd1558d1f644309f0d0a9a45175310a84fb17cc5bd",
-			"mainStructuralHash": "ae8988daafd16c4bf5a6b71b8936500c74557cd82cfd0e9b2bdfea059c3c8a83",
-			"group": "bindings-path-expectation",
-			"reason": "A native-bindings test asserts on the addon's own path, which moved with the package out of `packages/`."
+			"mainStructuralHash": "8fd09aa8a801118a1b747edd1558d1f644309f0d0a9a45175310a84fb17cc5bd"
 		},
 		"natives/bridge/bindings/native/loader-state.d.ts": {
 			"old": "packages/natives/native/loader-state.d.ts",
@@ -6825,22 +6850,20 @@
 		"natives/bridge/bindings/native/loader-state.js": {
 			"old": "packages/natives/native/loader-state.js",
 			"kind": "normalized",
-			"differs": "imports-and-comments-only",
+			"differs": "none",
 			"hash": "6730a0daeff9144f10127c57961b4fcdc18582723af1c396b7ea883a188f3b5d",
-			"mainHash": "5a652f56bbd2c153cba4aa7dc41d7ae9d22edb87a2d083aed75909736ce4bdb3",
+			"mainHash": "6730a0daeff9144f10127c57961b4fcdc18582723af1c396b7ea883a188f3b5d",
 			"structuralHash": "26a04ad74960429472b2e920bac646387d90262cd6a657af2670d7ab57c5eaf8",
 			"mainStructuralHash": "26a04ad74960429472b2e920bac646387d90262cd6a657af2670d7ab57c5eaf8"
 		},
 		"natives/bridge/bindings/package.json": {
 			"old": "packages/natives/package.json",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "none",
 			"hash": "9cff436306d1f8effcb07d88d98ec73570452f1caf6acd4f0754eb5d91692df7",
-			"mainHash": "1e15b7bef49e7c4d1e685ccf681c8a4dfae788ff40b9ed3dac4cd3f8af9e43c3",
+			"mainHash": "9cff436306d1f8effcb07d88d98ec73570452f1caf6acd4f0754eb5d91692df7",
 			"structuralHash": "f859d908d874b0f5a6626c7746b40bac42492b834715c8e544b37ffa3b469646",
-			"mainStructuralHash": "a4e56196764446021360888ce90680b0b6d3d4aa6a6f2c99bd8a38857d43769f",
-			"group": "manifest-depth",
-			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move."
+			"mainStructuralHash": "f859d908d874b0f5a6626c7746b40bac42492b834715c8e544b37ffa3b469646"
 		},
 		"natives/bridge/bindings/scripts/build-native.ts": {
 			"old": "packages/natives/scripts/build-native.ts",
@@ -13790,12 +13813,12 @@
 			"old": "packages/coding-agent/src/capability/rule-buckets.ts",
 			"kind": "normalized",
 			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
 			"hash": "23614b49b2aee4f89ec294fefb32fda2c528364e1e395a96c4bf17fb0fb4121a",
 			"mainHash": "2ac9b2c6998921f04e7dae4dabe062111fe88c326727e20451d59690e4f5d160",
 			"structuralHash": "e5d600ca0bcdb8c9cd94d87d5e62ee27ea1055c2ad977377e52c5077353eaeda",
-			"mainStructuralHash": "1740af23b397265b87b32a8515addf60fe0730e6cb71f8c7f74d2af93763b388",
-			"group": "engine-consumer",
-			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner."
+			"mainStructuralHash": "1740af23b397265b87b32a8515addf60fe0730e6cb71f8c7f74d2af93763b388"
 		},
 		"packages/coding-agent/src/discovery/capability/rule.ts": {
 			"old": "packages/coding-agent/src/capability/rule.ts",
@@ -14605,9 +14628,9 @@
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
 			"hash": "a9ea60d5b2b11707a68dd3cb7883191bc6e2d607b5a769e86da0e1d5d706066c",
-			"mainHash": "f767a648b997749cfef373c984daa270d21ddeeab0bed0b9971787615fb2ed5d",
+			"mainHash": "c677a05063fda836694712c50d2a539a235bb54a542e69c6a26bd71673ba76db",
 			"structuralHash": "1f973a91a0a95d34488557b9a9d117ac0f87d14ea4284d7b647687477f6aeb21",
-			"mainStructuralHash": "6101226827ae6b0b994377a8197291b4ec3bd43e73556eb9a5daf38e57fd735b"
+			"mainStructuralHash": "900d90333647c9eed687be802d8d77d0d2858e9cfc46dc7e80201fa7af29ef0f"
 		},
 		"packages/coding-agent/src/modes/terminal/components/chrome/segment-track.ts": {
 			"old": "packages/coding-agent/src/modes/components/segment-track.ts",
@@ -14640,12 +14663,12 @@
 			"old": "packages/coding-agent/src/modes/components/composer-chrome.ts",
 			"kind": "normalized",
 			"differs": "changed",
-			"hash": "9e495838daebe7c1eba1ac3a3e71fe30e3d66bf6751e131b2f33cda625cd238b",
-			"mainHash": "3b736d2a0ea117a13a9cd8b93718c1cc8cc2a42d1b490250b4db9067cd4e6d19",
-			"structuralHash": "263cfe243d6fb955518e83a72b2e84e460f11b3397839a508c51c1fc9afc3e83",
-			"mainStructuralHash": "6830877e694acd4003a6d3ad1c76c695ea76924e1178221c1f1c254defc93ee8",
 			"group": "startup-initialization",
-			"reason": "The launch composer and initialized session share location and token metadata, retain input during handover, and defer runtime initialization. Behavioral and visual startup checks establish preservation; these rows record the source changes."
+			"reason": "The launch composer and initialized session share location and token metadata, retain input during handover, and defer runtime initialization. Behavioral and visual startup checks establish preservation; these rows record the source changes.",
+			"hash": "81f6cbc3d69d7f064e571b5f019c0599d59b3c25f070382c0d59cdcbcb051983",
+			"mainHash": "582b09156282c89e6520b37fc3397ca38652b68398723548b290ed6d8f0ffaf1",
+			"structuralHash": "93e9796f569d6567f2ad7bccd5000b5cfa4b3fb35377d0fcd9df3801b7793fc3",
+			"mainStructuralHash": "34c057737d9b774e46704fb1b53b1ed7b9a6d59b50fbe634fe25575f04664840"
 		},
 		"packages/coding-agent/src/modes/terminal/components/composer/composer-defect-oracle.ts": {
 			"old": "packages/coding-agent/src/modes/components/composer-defect-oracle.ts",
@@ -14697,13 +14720,11 @@
 		"packages/coding-agent/src/modes/terminal/components/composer/history-search.ts": {
 			"old": "packages/coding-agent/src/modes/components/history-search.ts",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "imports-and-comments-only",
 			"hash": "4d6d9a1a58b9aa19dfa1a982f74675031e8b97f12c79bc61c366d24040eba4b1",
-			"mainHash": "8dcec5badca77ae1ce3a4660970b4d5e2e1bbeda8247dc6614faf4e8903a4d76",
+			"mainHash": "2a0c9e3e0f8ad1ba864bfe8a199b666e557c18e4d732cbdace6a400e3409aa7c",
 			"structuralHash": "0bf73d29b5b3f4781aea38e19f42d248080f50f91d3b31c98ac5fe5e10f93958",
-			"mainStructuralHash": "422481926df68db396a36e56f13c72e826d4a543c4236e097642cd1f1c67dab1",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree."
+			"mainStructuralHash": "0bf73d29b5b3f4781aea38e19f42d248080f50f91d3b31c98ac5fe5e10f93958"
 		},
 		"packages/coding-agent/src/modes/terminal/components/composer/keybinding-hints.ts": {
 			"old": "packages/coding-agent/src/modes/components/keybinding-hints.ts",
@@ -14727,12 +14748,12 @@
 			"old": "packages/coding-agent/src/modes/components/agent-dashboard.ts",
 			"kind": "normalized",
 			"differs": "changed",
+			"group": "host-boundary",
+			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
 			"hash": "bf29322475acc3028c4ca3f05bbfd772a6f98ddfb6b2645a9ec368657fceae20",
 			"mainHash": "5c793d04cb7944cfc2e6cc1a447cdc9a99148bd01c3ceeb5ba5c2cf98cb06949",
 			"structuralHash": "52cef585233bb35bb5efe0477e28e267bd2757048f7a6344dfa76a8fe94dace4",
-			"mainStructuralHash": "978c81fd36c6fbe2f500dbbe2a19bc3950f668a2bd77e2a532afe1011785d751",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree."
+			"mainStructuralHash": "978c81fd36c6fbe2f500dbbe2a19bc3950f668a2bd77e2a532afe1011785d751"
 		},
 		"packages/coding-agent/src/modes/terminal/components/dashboard/agent-model-badge.ts": {
 			"old": "packages/coding-agent/src/modes/components/agent-model-badge.ts",
@@ -14777,13 +14798,11 @@
 		"packages/coding-agent/src/modes/terminal/components/dashboard/subagent-hud.ts": {
 			"old": "packages/coding-agent/src/modes/components/subagent-hud.ts",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "imports-and-comments-only",
 			"hash": "c2e87b170bc5e159b11a031e71d4e0815ef47f0ea8e8bbb41fd939c6e0668872",
-			"mainHash": "beb7586ec8fbab4911c72d0c4617e32af02fff194771df41384586cd1968a9b8",
+			"mainHash": "5c56f0aa12989927a6e9db46513b79a621e8176dd148b2bfc1b6c5934ab31f58",
 			"structuralHash": "0bc43f24c72c00ce14d7dfed7b37221db4ce2a85515e2c8ad7ee84b1ba16c177",
-			"mainStructuralHash": "852b74ab13f8fff7786a8b45d23e8fa381395535e79e4013a8a0d63c46a99a96",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree."
+			"mainStructuralHash": "0bc43f24c72c00ce14d7dfed7b37221db4ce2a85515e2c8ad7ee84b1ba16c177"
 		},
 		"packages/coding-agent/src/modes/terminal/components/dashboard/todo-board.ts": {
 			"old": "packages/coding-agent/src/modes/components/todo-board.ts",
@@ -14827,6 +14846,37 @@
 			"structuralHash": "7ca052e30881c4040f9f908f13ed312169b8ac2a560b8210822164fdfcdfa2f3",
 			"mainStructuralHash": "77882dc8c3b6e9647135eae46374d91d729a324c12eab00d7c38e01ec1f8b255"
 		},
+		"packages/coding-agent/src/modes/terminal/components/dialogs/autoresearch-launcher.ts": {
+			"old": "packages/coding-agent/src/autoresearch/launcher.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "host-boundary",
+			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
+			"hash": "0af40e6ff07b21ebac2bc35ae3c3550fbf200748942b6c9d69153e8fd8527efe",
+			"mainHash": "5a0e0cb0b7c65bc27709c09b7150f15548a564cdfa245621557d78933ab587f3",
+			"structuralHash": "e677c6be49fd2ef70613c7b989b58e3c5a9cf2f612ff05a13169a4007413b796",
+			"mainStructuralHash": "7c5883183618d31884721a1b4ed0d13985d08be0f00ad9d87533e6ee023b4d87"
+		},
+		"packages/coding-agent/src/modes/terminal/components/dialogs/autoresearch-screen.ts": {
+			"old": "packages/coding-agent/src/autoresearch/screen.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "host-boundary",
+			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
+			"hash": "9e1b49149e87bae10d1d13e3f006aa8b702f608d6c9d47fe5ca8d4d821b3e324",
+			"mainHash": "8c9aa358f41fe7a3c67fb629d1ee7b5b64401f97fa02a95a84b6f0854dc44a60",
+			"structuralHash": "f0264df3af04d4eeed38a75aaaa223968ec2fa729a335f2514350e7c676c0d18",
+			"mainStructuralHash": "6116cbc60ca7d1b3b7fc43c82f92a44e5198d0da89b0700c39d4ea21a432b3f8"
+		},
+		"packages/coding-agent/src/modes/terminal/components/dialogs/autoresearch-setup-form.ts": {
+			"old": "packages/coding-agent/src/autoresearch/setup-form.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "a3252d34288c16bb31210901bc33afe80d58595b4789f3a257cf5233314bac4c",
+			"mainHash": "c3803c08b321c67a727fe45a7327b213196349d73f18e1155f5ab8c98e7c2912",
+			"structuralHash": "ff2208f43f4c8ee6f648e3eda28f1e1cb31704fba2b95a6417aaaeabd0e62c10",
+			"mainStructuralHash": "ff2208f43f4c8ee6f648e3eda28f1e1cb31704fba2b95a6417aaaeabd0e62c10"
+		},
 		"packages/coding-agent/src/modes/terminal/components/dialogs/btw-panel.ts": {
 			"old": "packages/coding-agent/src/modes/components/btw-panel.ts",
 			"kind": "normalized",
@@ -14848,13 +14898,11 @@
 		"packages/coding-agent/src/modes/terminal/components/dialogs/hook-input.ts": {
 			"old": "packages/coding-agent/src/modes/components/hook-input.ts",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "imports-and-comments-only",
 			"hash": "9928b713a958ec3155793d68be4db5ff9eac567ff11f9b1a70e2107f3ab8813d",
-			"mainHash": "26de4675854610a083d7b3d5d068d23d16ffc4b897ebd9dde0b0b812d14d5c79",
+			"mainHash": "f72a7ca75a933517eeba056cf5010bc14fcce5df474c783e40a6096ec06177e2",
 			"structuralHash": "ea72077b4f331bb66bb56a93b597ac47404b627e588610e52ac94622164354c6",
-			"mainStructuralHash": "effca7e0e7f56ab0107cd31f06122f9bcad60339eace030517ce2e9c57deeed2",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree."
+			"mainStructuralHash": "ea72077b4f331bb66bb56a93b597ac47404b627e588610e52ac94622164354c6"
 		},
 		"packages/coding-agent/src/modes/terminal/components/dialogs/launch-tip.ts": {
 			"old": "packages/coding-agent/src/modes/components/launch-tip.ts",
@@ -14868,24 +14916,20 @@
 		"packages/coding-agent/src/modes/terminal/components/dialogs/login-dialog.ts": {
 			"old": "packages/coding-agent/src/modes/components/login-dialog.ts",
 			"kind": "normalized",
-			"differs": "changed",
-			"hash": "02b5946f74804bf9c48c888a95c5dd510d0f8edd570f172683ccb16ac5ec2d19",
-			"mainHash": "3f8a2730a9e92ecdecdc9aa94be0e93ae2d5b9e33a08a6aa5228f227ed455dca",
-			"structuralHash": "23735959110c81fb211487314cf0b188bc5bc7df5dfeefd7d8fef0d7e6788f47",
-			"mainStructuralHash": "cffbdca158cf2357351ae7704ba155cceb451c4787aaf4c343f18ec81083cef5",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree."
+			"differs": "imports-and-comments-only",
+			"hash": "0902aab6f1d397c81791d82d3b9b12021f7e3a6892e3affd7e8035553bdda6f8",
+			"mainHash": "8013d5540afbf763ec71f99ee5146cc63a0e417b8c754158e26118ae9854e60f",
+			"structuralHash": "90f794ade26f96bf54806cc88e5509ddf6ee20b0c3dc48f0c27c82e395a953e5",
+			"mainStructuralHash": "90f794ade26f96bf54806cc88e5509ddf6ee20b0c3dc48f0c27c82e395a953e5"
 		},
 		"packages/coding-agent/src/modes/terminal/components/dialogs/mcp-add-wizard.ts": {
 			"old": "packages/coding-agent/src/modes/components/mcp-add-wizard.ts",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "imports-and-comments-only",
 			"hash": "11b94549de58e6be713e0267c1485e29037e7b1db8ba1b376e4c46ce7b3f106b",
-			"mainHash": "96aecbc5391cef742fb1b6f20a7d68fb45fee76c8745f8bc011e5f81ea100861",
+			"mainHash": "894adc5de3bd72962511ce5c77de0e9709eafb801da2b5dfc4c99c7deb23ac9e",
 			"structuralHash": "051209bf44b2b9d511aab3aaea5da005c154412e99f827e7ba903440eab3eb15",
-			"mainStructuralHash": "f729b22744f14107a83034396e07f9f0c53e242c2a189114d8d68aeeec4d51dd",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree."
+			"mainStructuralHash": "051209bf44b2b9d511aab3aaea5da005c154412e99f827e7ba903440eab3eb15"
 		},
 		"packages/coding-agent/src/modes/terminal/components/dialogs/omfg-panel.ts": {
 			"old": "packages/coding-agent/src/modes/components/omfg-panel.ts",
@@ -14932,27 +14976,25 @@
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
 			"hash": "c368899b9e73c36dd3336e45704a29e834d31e4f1d4550e74034283f58368a9c",
-			"mainHash": "5aa85e537e696e0afc448d8267b6bbe9ea0430bf471a3d015fa64b62f2e7dc76",
+			"mainHash": "3796b78a2cb3e4fbfc4f5111ae958480c4afd8a0146db3dceea4a90e73f0ca3c",
 			"structuralHash": "2a5380e1fdc9913f22210f221ea91684e47f5d5bfcb862858f77f00cd39c14e1",
-			"mainStructuralHash": "b78bdc1a3a522895dd5a178e68e326a5d4207af77065961ad2ad91efcdf45c52"
+			"mainStructuralHash": "775702729d758528ced48362b4078d33e1acd2f9d2c325830bd0cdb514fb971f"
 		},
 		"packages/coding-agent/src/modes/terminal/components/dialogs/rollback-panel.ts": {
 			"old": "packages/coding-agent/src/modes/components/rollback-panel.ts",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "imports-and-comments-only",
 			"hash": "37a4c7f6454b77d39aa85065e3f086ab6ac5c36f11c7654eb8386ca8f035f288",
-			"mainHash": "34cf3853c54eb1794bc92694af5e778478b9509f85d0923bc5f1782c232b93d9",
+			"mainHash": "71a4870f906faebef80e445ebf2249696357dac7e00984952af3c46b302c2599",
 			"structuralHash": "5a4c2a62cd740ac2c7ca76613346fa99337e89c2e0ef1d47b1f6a75cf6c49761",
-			"mainStructuralHash": "43f21832be429891fc246d9435aaae298ece33d5bae22067bf69999b4cb07457",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree."
+			"mainStructuralHash": "5a4c2a62cd740ac2c7ca76613346fa99337e89c2e0ef1d47b1f6a75cf6c49761"
 		},
 		"packages/coding-agent/src/modes/terminal/components/dialogs/welcome.ts": {
 			"old": "packages/coding-agent/src/modes/components/welcome.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
 			"hash": "c405efa0b11277c6116a69996b3140228b733bbae546cd345fc015e6354db120",
-			"mainHash": "be9270967a947a3e0d9316cc6adb3a303acd8d0230871fbe30cc3fc419d5d93a",
+			"mainHash": "1c801b118365eb796dd5552bb43de55fa80b79e6cd2f5d027bf5a6e42cbf8501",
 			"structuralHash": "9acad71bbe2a44ce8d9a1c0dba2410067e4cf1122025aeb6a67205d0051a92ea",
 			"mainStructuralHash": "9acad71bbe2a44ce8d9a1c0dba2410067e4cf1122025aeb6a67205d0051a92ea"
 		},
@@ -15014,10 +15056,10 @@
 			"old": "packages/coding-agent/src/modes/components/hook-selector.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "9bcf0e7f818ab64977b87cfb89c645accd61e59f3768cb825517c523703b8cc4",
-			"mainHash": "cd57dfac2870cc89a4b28988f8a3569ff5b4ef4fe452da6a1468f996a04279ea",
-			"structuralHash": "f3e5ee1c788f9743e54f93d885a15635b9134418f0bfe17846e64a373c22aa62",
-			"mainStructuralHash": "f3e5ee1c788f9743e54f93d885a15635b9134418f0bfe17846e64a373c22aa62"
+			"hash": "ef3d2b36f1b2f01986818205487763bcbf88e0cf2bd5e489bc6731b050205c4d",
+			"mainHash": "6a102cbc9b4580d489257c5509bb81299aa9e2d6cb7fe69d58ea1e99d1ec61ab",
+			"structuralHash": "3e888a9fa37dc141ebdd11e207b5737d6c496442c33e2c37765a3f2ba2cb2f4d",
+			"mainStructuralHash": "3e888a9fa37dc141ebdd11e207b5737d6c496442c33e2c37765a3f2ba2cb2f4d"
 		},
 		"packages/coding-agent/src/modes/terminal/components/selectors/modal-select-list.ts": {
 			"old": "packages/coding-agent/src/modes/components/modal-select-list.ts",
@@ -15035,9 +15077,9 @@
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
 			"hash": "be3d2e8cdc9abbe3f99bfd2534459b5e2bf0c68d185033350312039b2f4fa3f8",
-			"mainHash": "3b7f7d5ed7cd1322643df28d0977703b5190ffa4b0b680cc2d1af59a0cbd4153",
+			"mainHash": "f605a2f20ccc4bb5a08cb4a1e7116b8afc3793e4224df6c79feb2be06acbaee5",
 			"structuralHash": "dd1edddfff0c002902da6dbda56eb00d029d9830c36a7d444b0ea4eea131f11d",
-			"mainStructuralHash": "8711005b3e163b47fd14fe3c14a391af21a6bf607363203e6152b3a841c7a102"
+			"mainStructuralHash": "9f2c120105ffb6f38b139ed824ff38aa6aacc6cc78baf9fc7fb57b15fd7f33b0"
 		},
 		"packages/coding-agent/src/modes/terminal/components/selectors/model-hub.ts": {
 			"old": "packages/coding-agent/src/modes/components/model-hub.ts",
@@ -15053,24 +15095,20 @@
 		"packages/coding-agent/src/modes/terminal/components/selectors/model-picker.ts": {
 			"old": "packages/coding-agent/src/modes/components/model-picker.ts",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "imports-and-comments-only",
 			"hash": "b20bea22442cc781f9a60559b99138f77246cb973a307d2f2eb06e4d28d61471",
-			"mainHash": "f56280e29848cb2348a6ebc7e14ab06b0073519cae53d8c0b2c222f531384091",
+			"mainHash": "c77f6e82ac5715b5d8d3742507f21e31524ea8b656d4ad354e0147839ae5ce83",
 			"structuralHash": "7d99e6cb5c73265d905efbd9649ca7e3e17172126e5e97e4dc1c864a367622ab",
-			"mainStructuralHash": "9359293274e50535f5a0cb236179921014b507a2596d81d815b04f13ca75f372",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree."
+			"mainStructuralHash": "7d99e6cb5c73265d905efbd9649ca7e3e17172126e5e97e4dc1c864a367622ab"
 		},
 		"packages/coding-agent/src/modes/terminal/components/selectors/model-selector.ts": {
 			"old": "packages/coding-agent/src/modes/components/model-selector.ts",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "imports-and-comments-only",
 			"hash": "cf171e420f7451fe7c7218727df5b19ddee224aa120e3137ff6cdd9ea9df9afd",
-			"mainHash": "71cd1ff6af4d3a2dedb6a8d46d83aba2361e4a94c31008165b3d4c279a40e808",
+			"mainHash": "191997bcc88a5e1156bb8078742a79549b1982319905355865639edc2493fa35",
 			"structuralHash": "a0c9628bd2fbc2b33e90e12c048fcd0a587b462f936d3a9d22c9aa7eb170bcda",
-			"mainStructuralHash": "60fb37a55dd0b1f3f7b502e145f8c6d835f7d0e7523647edcc35b0954df2f938",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree."
+			"mainStructuralHash": "a0c9628bd2fbc2b33e90e12c048fcd0a587b462f936d3a9d22c9aa7eb170bcda"
 		},
 		"packages/coding-agent/src/modes/terminal/components/selectors/move-overlay.ts": {
 			"old": "packages/coding-agent/src/modes/components/move-overlay.ts",
@@ -15089,10 +15127,10 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "ed52fb7c1e9fafa113df478075f311655e2c7c7f5b59c00d4b5198d70117f8d7",
-			"mainHash": "58fddfbe99e42ba00cc8c3bc1d9b9dc1307c91f9a7376758c0f9ba477de8edb6",
+			"hash": "960c4352329bf2f3051c48df16d1d82157fae89c95acc83202f2531a5c76d765",
+			"mainHash": "7f1b9c8a35ce89dd758cd6d89354dad849fdfd780e79fc7f03489b52b25f69ec",
 			"structuralHash": "b57a124baa059e56cc33eb88e53d5161e578860cc2ada913b8f15590375c97a7",
-			"mainStructuralHash": "11afef99f3fa5eac85349415b0604e35323fe5ad4891a17288bee21170ed5dd7"
+			"mainStructuralHash": "fd9afbe65d22c1588952c8beb54bfe9fe947adf57b5e32e84a8bd4e0c308eaf8"
 		},
 		"packages/coding-agent/src/modes/terminal/components/selectors/queue-mode-selector.ts": {
 			"old": "packages/coding-agent/src/modes/components/queue-mode-selector.ts",
@@ -15145,10 +15183,10 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "0472892bf4187a1143b252a82b619e9fc425160ab3f526e4a96c4aaf80b3db8a",
-			"mainHash": "01f3575a50a08c81c0d16b43fed08fc65456d3e3452251694359595e2ff97223",
-			"structuralHash": "1d868736bec52680cd314b6ce8d4556495fced485b1154f90ba06192624f050b",
-			"mainStructuralHash": "015cff0cbcf4fd17757824a8db998e2288d3269f9d970f3275dd3ebaf892a47d"
+			"hash": "55097143f0a21b522d33cce5e2dacc720a506778fae8982dc00d7fa3e1817fd0",
+			"mainHash": "820c3f57331107aff5de3309ca625a800fe346304891f1ee9d341260a2575cd8",
+			"structuralHash": "67e79536f927514173c46456f43980f18690f6787ee7f9c698ee1c5520a9d09b",
+			"mainStructuralHash": "8749c6ffcfaf59c71d81e2ac120ed43d887ff864fac5e8c60f57aaa2253f0ab6"
 		},
 		"packages/coding-agent/src/modes/terminal/components/selectors/settings-defs.ts": {
 			"old": "packages/coding-agent/src/modes/components/settings-defs.ts",
@@ -15166,9 +15204,9 @@
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
 			"hash": "5df6e7d2047fcdfcfff3668e5471f5e89215b1e5009b00e38d9558cfaea1cc70",
-			"mainHash": "9e36e00a94b136b65cd7a51ea200c1134b14d1b2a7628f51f310e753d9885ec0",
+			"mainHash": "a113bf176aa576173e681a5c73884a3fc22e8fd4cf93a272df6eb58af58d03d2",
 			"structuralHash": "68b94637e9e5c52963fbcea2dc28fb5303e963847d5c26738b79d2362c288d78",
-			"mainStructuralHash": "2a8469bed1c668438006e14d308c40864695be56b01326ca99abe00b01aa15f5"
+			"mainStructuralHash": "d1f93bcb40f1b318c1bbcf2e72cc7dd0f31c5e65db663217a0b6ac82295227c9"
 		},
 		"packages/coding-agent/src/modes/terminal/components/selectors/show-images-selector.ts": {
 			"old": "packages/coding-agent/src/modes/components/show-images-selector.ts",
@@ -15200,13 +15238,11 @@
 		"packages/coding-agent/src/modes/terminal/components/selectors/thinking-selector.ts": {
 			"old": "packages/coding-agent/src/modes/components/thinking-selector.ts",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "imports-and-comments-only",
 			"hash": "07cde91054c2a28fe3548245340e7e6ccd4026c2c69de23b6111c0ab03040fe2",
-			"mainHash": "df293bed50ba4ad1993c75cf9d36043132e2800c8a14684951e81a2b340eaf26",
+			"mainHash": "4fea8d20e1789143928724e4d408fc3c0ba02b6dcafea4cded12c2579f0ec3f5",
 			"structuralHash": "309533ff52c3763d035b416d3259ffc2dbec40a766cef0b89d02798995823822",
-			"mainStructuralHash": "d2e0cb7f47e45496fbae1290b55c9a2696e84b55e5a9521edd4358e6451667f6",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree."
+			"mainStructuralHash": "309533ff52c3763d035b416d3259ffc2dbec40a766cef0b89d02798995823822"
 		},
 		"packages/coding-agent/src/modes/terminal/components/selectors/tree-selector.ts": {
 			"old": "packages/coding-agent/src/modes/components/tree-selector.ts",
@@ -15270,9 +15306,9 @@
 			"differs": "changed",
 			"group": "startup-initialization",
 			"reason": "The launch composer and initialized session share location and token metadata, retain input during handover, and defer runtime initialization. Behavioral and visual startup checks establish preservation; these rows record the source changes.",
-			"hash": "6e6de6409a944feff0a3472017552c40ab730a523e2caa2cfea9c3c56d49e51a",
+			"hash": "66025dfd074c503fdaa51900be3eb86a1017b474c2f6bbf03a6b15d27bd16b88",
 			"mainHash": "ab37c8a243d270b6a7b5e3aa637cd033d0771067281f9dec566b83cdc5a941e7",
-			"structuralHash": "064cf38f796708920a320532a29acb938334be2f7fc4c42396ac6813d20e08b4",
+			"structuralHash": "ede762c86cb19c26a2f3169319f0942ac6d906b9f79ea2bf7981d31e7d8fffc7",
 			"mainStructuralHash": "3e45bb912984857ff710a6cb2dc45e23303f15ee29da2b1182b327053b94d741"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/context-thresholds.ts": {
@@ -15380,12 +15416,12 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/session-facts.ts",
 			"kind": "normalized",
 			"differs": "changed",
-			"hash": "591e8f83f26b18fd0b7c2abd2ab593dfbe929da87128eeb27ecefa398945e07f",
-			"mainHash": "8bd5fcea68f772f84d2a55a194e77abf1b878cbfa2f7fcebe93b680e1313a9ad",
-			"structuralHash": "991e70d887d18c4b413c580751356376c45e80942fdd1dc4fd087aeda61e543e",
-			"mainStructuralHash": "2a56d603315589c19b1910700d9e432837988f9b142a0c028030964386bdb109",
 			"group": "startup-initialization",
-			"reason": "The launch composer and initialized session share location and token metadata, retain input during handover, and defer runtime initialization. Behavioral and visual startup checks establish preservation; these rows record the source changes."
+			"reason": "The launch composer and initialized session share location and token metadata, retain input during handover, and defer runtime initialization. Behavioral and visual startup checks establish preservation; these rows record the source changes.",
+			"hash": "849861617fe8e4b6e7a4d131e75bb94b83f78bfa495a78530c6e8461ea167a54",
+			"mainHash": "e04fe0798c4281d0bfbd5110a4e5b9a0fa9a894c35f08d394a507ee112c38d77",
+			"structuralHash": "991e70d887d18c4b413c580751356376c45e80942fdd1dc4fd087aeda61e543e",
+			"mainStructuralHash": "0c28ab3f180dc7ba0975631b02f2f149be1fe643f4d0bd1de0c3cf68243ce419"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/state-grammar.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/state-grammar.ts",
@@ -15409,12 +15445,12 @@
 			"old": "packages/coding-agent/src/modes/components/status-line/types.ts",
 			"kind": "normalized",
 			"differs": "changed",
+			"group": "startup-initialization",
+			"reason": "The launch composer and initialized session share location and token metadata, retain input during handover, and defer runtime initialization. Behavioral and visual startup checks establish preservation; these rows record the source changes.",
 			"hash": "d6c948a2cd41b2e9e10a2287eb73863a15957280abd947c88838c5cbe0a5c16f",
 			"mainHash": "f93f51d9e1f0ed0589534ac239e4c72e6c8bc4dbf7befa9da049d24adcf98d5d",
 			"structuralHash": "2a01650c5cd50c86f004a44942bbc713162376cf1fe8adc4acd61a2771ea96c8",
-			"mainStructuralHash": "ba88b5d1a42261527a6274bbff4341274f26d25a3f1d76ef78c3d3c5bb05b9ae",
-			"group": "startup-initialization",
-			"reason": "The launch composer and initialized session share location and token metadata, retain input during handover, and defer runtime initialization. Behavioral and visual startup checks establish preservation; these rows record the source changes."
+			"mainStructuralHash": "ba88b5d1a42261527a6274bbff4341274f26d25a3f1d76ef78c3d3c5bb05b9ae"
 		},
 		"packages/coding-agent/src/modes/terminal/components/tips.txt": {
 			"old": "packages/coding-agent/src/modes/components/tips.txt",
@@ -15618,20 +15654,18 @@
 			"group": "view-conversion",
 			"reason": "A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. A suite that named the deleted renderer module reads the registry entry instead. Byte identity of the drawn output is proved by the oracle suite, not here.",
 			"hash": "c516b84487a7218b441fca8897e583b7075be6005aa3df27663cd66e8603beb1",
-			"mainHash": "0975591bf78ca2176c626d5218145393e218eb09f9b4294017454e05c0f7b281",
+			"mainHash": "a8ac7994c8e024af118b9a347b8ba6561cc0cc20504b09ed197aeb879b4b41ac",
 			"structuralHash": "b03c7483c48375ccbb388dc6041edea91619c167cdbe5244577e1b2c91d3d626",
-			"mainStructuralHash": "a2bd3352f9d22f8e9e643b4e4dd30511252de9b17e10dd20a7fd20b84e7066bb"
+			"mainStructuralHash": "4c065b94bfe816e106659164c51ebd181c98e45bc8d5d26cdea165f12d7d1b1e"
 		},
 		"packages/coding-agent/src/modes/terminal/components/transcript/transcript-block-chrome.ts": {
 			"old": "packages/coding-agent/src/modes/components/transcript-block-chrome.ts",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "imports-and-comments-only",
 			"hash": "dfdd7246b8d8ab2cc0dc293b53751c8509e51d3fa84991cf1bc996cfbab82f38",
-			"mainHash": "f9c44e931d6a9a4cf9092663a39ac056ee764a2c4192068c9cbf2e32605f0623",
+			"mainHash": "c179c7a142591f9da68ad86b5e83b3d1af81c53b58fe700b970605aba66e2f57",
 			"structuralHash": "93207cf15868297a30be467847f7632b6a478d5314bdedbf4da31c5f3b3fd924",
-			"mainStructuralHash": "6214e243a7e3929ff6b99a6e5cf400af3129bc0fa974a5511e6087d81053eeb6",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree."
+			"mainStructuralHash": "93207cf15868297a30be467847f7632b6a478d5314bdedbf4da31c5f3b3fd924"
 		},
 		"packages/coding-agent/src/modes/terminal/components/transcript/transcript-container.ts": {
 			"old": "packages/coding-agent/src/modes/components/transcript-container.ts",
@@ -15753,10 +15787,10 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "fa8e1157e1d4197a811831d99a85d473312a04901ef7246f9a0147f93f813f54",
-			"mainHash": "deb9d302429381ff13da3b6be0046dd9edea18a3a53fb911d374586ce2f5ab8f",
-			"structuralHash": "8a1288ef59edf6d95aa2774b8f8280a94cb57559e6ffe1b5d0ddbebc7066b3fa",
-			"mainStructuralHash": "d4435ed984bce2515266c8fdc7de9bac369c8741d066717a3b3f21bfb465e88d"
+			"hash": "55fbcffcb87d2f5db25ac1902c610baef28d0540e81b7316eeabf33273bf62ac",
+			"mainHash": "9bef498ead35057219709a4ed010fe7d28848acd87c06fea1ce41e5ab3c55e5d",
+			"structuralHash": "85b0c254e2ab583f41e6d8a2c905a35a49cc376373a9b1ae38202e5529fca947",
+			"mainStructuralHash": "ab921acc22c6d2eccfc0c0e361fdda69b7a04e9905d22c886016e9c35bafe128"
 		},
 		"packages/coding-agent/src/modes/terminal/controllers/home-anchor-layout.ts": {
 			"old": "packages/coding-agent/src/modes/controllers/home-anchor-layout.ts",
@@ -15813,10 +15847,10 @@
 			"differs": "changed",
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
-			"hash": "e54f007db12f3bcd1ed6c28733699c69499eb0b219b752afa88d8e5ebea074b6",
-			"mainHash": "ad103be1467dc2b543f1b5cc64e9cd8f885e8ad469bda36d363242b28fe9b374",
-			"structuralHash": "4031e75c9ace842712068c647142490b7a6397db67276ec6761bc86c07d17597",
-			"mainStructuralHash": "86eb7b57f181216d63ec8ffca979345ba2464908679e7dd46c117a05ca891fce"
+			"hash": "2436b9466403cdc027d4a9723ead2300bdf26d03987ba4a7914718485e2117d4",
+			"mainHash": "8ca0ec5c5dff15991b493d6cc23a5587cdf5125c85297657fd36c9a5294cbf2f",
+			"structuralHash": "1e17de8e076902793d1ac1fa199226e3c050d8864573ac09a725d45a6fbaff8b",
+			"mainStructuralHash": "04f6b0e9ee892fade78157158c58f89097269260a7b7d8804c88d5b341258685"
 		},
 		"packages/coding-agent/src/modes/terminal/controllers/session-focus-controller.ts": {
 			"old": "packages/coding-agent/src/modes/controllers/session-focus-controller.ts",
@@ -15904,13 +15938,11 @@
 		"packages/coding-agent/src/modes/terminal/draw/code-cell.ts": {
 			"old": "packages/coding-agent/src/tui/code-cell.ts",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "imports-and-comments-only",
 			"hash": "d027825c00709e114324fee290b510d8a2011125bbd33ee35a41e9ab0e9951eb",
-			"mainHash": "c2a516e4f627b77f004649e8008a6bc4d1dbe576e8331f7fb3bbcd5657dd577e",
+			"mainHash": "211054b76f7634a4ec0f7b1c520cc3f983809b38fd3ca8327068aae3660f7996",
 			"structuralHash": "8f8df874d8a93bd04bc6d8e3975c6ad0d7fa487a62217634b133f5518c2519fc",
-			"mainStructuralHash": "440795123e93d747c9aa9f87fc5829ec8374cdfb8baa404d46de4386b6427b1d",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree."
+			"mainStructuralHash": "8f8df874d8a93bd04bc6d8e3975c6ad0d7fa487a62217634b133f5518c2519fc"
 		},
 		"packages/coding-agent/src/modes/terminal/draw/file-list.ts": {
 			"old": "packages/coding-agent/src/tui/file-list.ts",
@@ -16012,12 +16044,12 @@
 			"old": "packages/coding-agent/src/modes/first-frame.ts",
 			"kind": "normalized",
 			"differs": "changed",
-			"hash": "7ff9acb5fe53c66cb11221e743441502c8faee2b55f82a468c3ef07cfc30ced0",
-			"mainHash": "bbdd821035447b648fe4a0923037c620abd8efbb9b585fa491e10a7733aa2764",
-			"structuralHash": "99f089d353a140ee42787b046120947078b2511570204c1db0d89c950e4e15af",
-			"mainStructuralHash": "a16709c55d116589b853eb15bc75d5907da9841312661fe2e9dbef2a48bb3752",
 			"group": "startup-initialization",
-			"reason": "The launch composer and initialized session share location and token metadata, retain input during handover, and defer runtime initialization. Behavioral and visual startup checks establish preservation; these rows record the source changes."
+			"reason": "The launch composer and initialized session share location and token metadata, retain input during handover, and defer runtime initialization. Behavioral and visual startup checks establish preservation; these rows record the source changes.",
+			"hash": "7ff9acb5fe53c66cb11221e743441502c8faee2b55f82a468c3ef07cfc30ced0",
+			"mainHash": "7db4730de57122bb41b68f60d8f4d21a500695cbd40ff8a0a7b08e6de408f8ab",
+			"structuralHash": "99f089d353a140ee42787b046120947078b2511570204c1db0d89c950e4e15af",
+			"mainStructuralHash": "de4c68ab52270cc5a14d943b2c89ff0bc5eaa3b0a5924d67bf6cdea97a92c1e3"
 		},
 		"packages/coding-agent/src/modes/terminal/image-reference-markers.ts": {
 			"old": "packages/coding-agent/src/modes/image-reference-markers.ts",
@@ -16044,9 +16076,9 @@
 			"group": "startup-initialization",
 			"reason": "The launch composer and initialized session share location and token metadata, retain input during handover, and defer runtime initialization. Behavioral and visual startup checks establish preservation; these rows record the source changes.",
 			"hash": "dd7972760e586ef53fd134befb0a29e9044f175e571ac33099c30915dbb7dfe5",
-			"mainHash": "8beccb913d7ae075bb75ff4c1e0f385cea3f156db0e74a5b3c87bb4692959641",
+			"mainHash": "3dc5e1570d35179a03884655f0ef481c7f01a315d740c2ee6ab1189298219bd3",
 			"structuralHash": "ded1ef95810322b833f26700ec3ce5850bfc60c5fbc4dd80c49cfb9b85fd4138",
-			"mainStructuralHash": "3020ff881599604ab15a53720a9151e05747a3506bbca8e6a8c2e6815bc5eec9"
+			"mainStructuralHash": "7eb9dd33484388b540cb7a5ef47f3c9ec6b06f75d0ff20bf89e0b0ea7529ce1c"
 		},
 		"packages/coding-agent/src/modes/terminal/oauth-manual-input.ts": {
 			"old": "packages/coding-agent/src/modes/oauth-manual-input.ts",
@@ -16185,13 +16217,11 @@
 		"packages/coding-agent/src/modes/terminal/setup-wizard/scenes/sign-in.ts": {
 			"old": "packages/coding-agent/src/modes/setup-wizard/scenes/sign-in.ts",
 			"kind": "normalized",
-			"differs": "changed",
-			"hash": "b889d990f1e0fabc9c5f419f919593a4c030063401dad54320c3383821f3b603",
-			"mainHash": "3186d0841b2d8903116b0624b4d8cb88084408a5cf7b4e5adc87022931903736",
+			"differs": "imports-and-comments-only",
+			"hash": "c6f37a72ef3d03e3ec920bf92aa7a624f5adc3720447f984c855ece6aad13792",
+			"mainHash": "fa0112a3badf3e60004417cc7b86a8854f6a98442016a27adbb04d99bb296005",
 			"structuralHash": "2382d9914b4e16614a728bbb113d01cf16a37ee20ec38b501232cf22ce6b1f8b",
-			"mainStructuralHash": "3563559c4b733a8ee417202ffc85e0a8115d7f8c66d51d6226195d11fc439893",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree."
+			"mainStructuralHash": "2382d9914b4e16614a728bbb113d01cf16a37ee20ec38b501232cf22ce6b1f8b"
 		},
 		"packages/coding-agent/src/modes/terminal/setup-wizard/scenes/splash.ts": {
 			"old": "packages/coding-agent/src/modes/setup-wizard/scenes/splash.ts",
@@ -16264,8 +16294,8 @@
 			"old": "packages/coding-agent/src/modes/shared.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "868a1f627927bfa6baf91430778d365e3251ac1a9679d39d7cf56d288d623204",
-			"mainHash": "c80a5b31c5834452cff1034051e59f5e56862ae3c239b7febe0fa852d6ef5bd5",
+			"hash": "7a3e6fa29a8052c69c6352d1059a81ae5d01b84a4dd62398a7081ba3cb146d7c",
+			"mainHash": "954350764048b1c48a0412ec45267e76a8225d44ad3521a5fdd5c7a86122e41b",
 			"structuralHash": "ad7a42ce3f1f88be3b0f552d3ee5225250ae7e96c6fbf404538bc1a8d8c29630",
 			"mainStructuralHash": "ad7a42ce3f1f88be3b0f552d3ee5225250ae7e96c6fbf404538bc1a8d8c29630"
 		},
@@ -16294,9 +16324,9 @@
 			"group": "host-boundary",
 			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree.",
 			"hash": "7eda106cb4480070a40784cd19974a321949f4eeb41060bc88725f6637210223",
-			"mainHash": "a19fab12d838a14e66c2c2e776ca52a84ec0bd2f448d9ad709eea383ec99cc6c",
+			"mainHash": "009b76f2d710c4d5230874616fe069098627a7209b25f2c41afa30e2acfd3d69",
 			"structuralHash": "cf799f6317879cdd2502e3cd3d2e1a440b535b056e8d13153d14d4583a0e381d",
-			"mainStructuralHash": "c28ab6a5eb46a76df1df14a2e41de5a63e004761b1bd0f15ec65b6252295dcbb"
+			"mainStructuralHash": "6f57911f740eb38d0376109ea619d024c4749ad3f097cfcf213f43aae5545b74"
 		},
 		"packages/coding-agent/src/modes/terminal/utils/async-tool-state.ts": {
 			"old": "packages/coding-agent/src/modes/utils/async-tool-state.ts",
@@ -16404,13 +16434,11 @@
 		"packages/coding-agent/src/modes/terminal/utils/ui-helpers.ts": {
 			"old": "packages/coding-agent/src/modes/utils/ui-helpers.ts",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "imports-and-comments-only",
 			"hash": "d5b4965f4243db7b330f2f8621c12faf9c52bace73b25aab29d580d84e6999c0",
-			"mainHash": "b8c3c7b8862f850ae5adb9cda30eaf10d31f5f1b271f63c9db52d2ba4d941b18",
+			"mainHash": "ece7e30b71b3591edc23dd3bb2062f6a4859476c95ef2ef6cbbd858881ebd1d6",
 			"structuralHash": "2bedd5ff540e44bea55d9835c8e5357fd645656e08eeb0b762c5bddfa3ae2375",
-			"mainStructuralHash": "12a2ead70986190aa759197511a2381f697a968cdffc01aedfd84f960572030c",
-			"group": "host-boundary",
-			"reason": "The terminal host's own modules: they moved under `modes/terminal/` and now take presentation view-models and utils subpaths instead of reaching across the tree."
+			"mainStructuralHash": "2bedd5ff540e44bea55d9835c8e5357fd645656e08eeb0b762c5bddfa3ae2375"
 		},
 		"packages/coding-agent/src/registry/model-profile.ts": {
 			"old": "packages/coding-agent/src/harness/model-profile.ts",
@@ -17728,12 +17756,12 @@
 			"old": "packages/coding-agent/src/modes/theme/theme-binding.ts",
 			"kind": "normalized",
 			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
 			"hash": "beb2dae7601e1360462ea093bfef43b6228e79c1034bdc07bec1de08d54dacd9",
 			"mainHash": "05fec0f643b667a305996c2cdf109d1df94c99a3bdfb227202ea5878f49dadf3",
 			"structuralHash": "eb1e260b38126a2038d15eee38cc132ebce4a8e5bd1c428bc75dc1f40ea98edf",
-			"mainStructuralHash": "e65be94842c85a0ef68f295ce0e9ae6db020e5ba519b223b47b72575c2e7cae6",
-			"group": "engine-consumer",
-			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner."
+			"mainStructuralHash": "e65be94842c85a0ef68f295ce0e9ae6db020e5ba519b223b47b72575c2e7cae6"
 		},
 		"packages/coding-agent/src/theme/theme-class.ts": {
 			"old": "packages/coding-agent/src/modes/theme/theme-class.ts",
@@ -17768,10 +17796,10 @@
 			"differs": "changed",
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
-			"hash": "26a116ca153d497fded425f8fc2e0faf68c0cc384ff771321e64058dfa679d29",
-			"mainHash": "58e4d4dccbd6af2c5870cc7df35ab06562d210a37a38bf9b17cd2ec4b30bfc33",
+			"hash": "65198541bcf380b455a75714667f8278593bc085b40ecfda1fa9542c026970cf",
+			"mainHash": "e240aebaaa5df678ee3f800b380198ea59fdd5bd2ca4059b059912414438f057",
 			"structuralHash": "dba3601e2257919865a39add6ddd19223144593ad729c2498f1271d658fcf1a1",
-			"mainStructuralHash": "57ac96fa03542d0c159bd54515c74faaaaa733767976a9ecd8b264d41d8fb0d6"
+			"mainStructuralHash": "1b806e15eebba83b1f47a7eef31d5110ae597229b57631afeebf927014db1315"
 		},
 		"packages/coding-agent/src/thinking/auto-classifier.ts": {
 			"old": "packages/coding-agent/src/auto-thinking/classifier.ts",
@@ -17786,12 +17814,12 @@
 			"old": "packages/coding-agent/src/thinking.ts",
 			"kind": "normalized",
 			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
 			"hash": "e0858003417d623674e937c9cfae356660c10f19a7f0f50bd58ffcd735203026",
 			"mainHash": "2b24cf10ccc4610d6b793529bf982403b41a9ed69d1e606ff8c1eb5df85bac46",
 			"structuralHash": "73a9e3581eeaa419047eeb4ab09fb0d707f1ac11b3ec2db1a01b7595e17502ca",
-			"mainStructuralHash": "39f95163588db471a85b7104c9db84cfcc90fa81f293833450e7b046f6279ef3",
-			"group": "engine-consumer",
-			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner."
+			"mainStructuralHash": "39f95163588db471a85b7104c9db84cfcc90fa81f293833450e7b046f6279ef3"
 		},
 		"packages/coding-agent/src/tools/agent/argot.ts": {
 			"old": "packages/coding-agent/src/tools/argot.ts",
@@ -17818,9 +17846,9 @@
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
 			"hash": "5982165a90b6d3b373b93dd7ae59ef500f78a4b0abde59bcd2ffec2556f12087",
-			"mainHash": "eefe3bacf4d36ccad4ba9454c0be39fd7c0604e86d1a6eaeb2d121e4f56175fd",
+			"mainHash": "679b33d84540ed3c889e146926a4eb5ae19dde3bd60f66d6ddef28a038975818",
 			"structuralHash": "2ad147ae71e71a248b923bb688e76753b0b145a04c8ce8b51171bf3d9c3645a1",
-			"mainStructuralHash": "740d3d8c3c4ae9fe420b6c15603c9b85780df9e0edaeec74ca0a1fda21a45646"
+			"mainStructuralHash": "f1954f20e81836743b01145d26d1f740f3167108203dee26788510d67a9a983b"
 		},
 		"packages/coding-agent/src/tools/agent/irc-enabled.ts": {
 			"old": "packages/coding-agent/src/tools/irc-enabled.ts",
@@ -17995,12 +18023,12 @@
 			"old": "packages/coding-agent/src/tools/approval-modes.ts",
 			"kind": "normalized",
 			"differs": "changed",
+			"group": "engine-consumer",
+			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
 			"hash": "e8e824916516f1b41d79a8b60fe7910e1e1482eacd08cf094cee606f50ecca11",
 			"mainHash": "2c00fd60ee52a7e6a140674ce719c37c4e7d5a022b98b172f9cd5b4f8c55ee4b",
 			"structuralHash": "19f1449e95edaf4b38d060822a75511aba30ecd328faaf616e9ee26ebfb50bd0",
-			"mainStructuralHash": "39022bd3f451ab21d62c340296712a51e24e74bfce00c867f77e5a338f162e41",
-			"group": "engine-consumer",
-			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner."
+			"mainStructuralHash": "39022bd3f451ab21d62c340296712a51e24e74bfce00c867f77e5a338f162e41"
 		},
 		"packages/coding-agent/src/tools/core/approval.ts": {
 			"old": "packages/coding-agent/src/tools/approval.ts",
@@ -18086,10 +18114,10 @@
 			"differs": "changed",
 			"group": "json-walk-split",
 			"reason": "The bounds, the scalar formatter and the one-line argument preview a `ToolView` card reads left this module for `json-tree-view.ts`, which loads without a theme or a tree-rail glyph; this module re-exports every one of them under its old name and keeps the terminal string walk unchanged.",
-			"hash": "3c7868f8f11bcbabcb62119e241973d1b1a238c84c12a5e34c1a38b8544f853a",
-			"mainHash": "ee433523f22c38f391a5f53e980c962ec046bc24132060de0d8740c65c99a3eb",
-			"structuralHash": "47e9c5bf571e09599751f0512c8057b5e626b5584a3a1b170617db1f3e2716b0",
-			"mainStructuralHash": "760d878a884f1a4fd85fb2e2d086f9b4fe3c8efbcfcd49a02fd783ccd0977f2f"
+			"hash": "5a73f88e33c424b58329fd2c4ff747d4299c408aed5ddb316f2805450878ecee",
+			"mainHash": "d2e67b1dc00e9fa3c9920bef77d1ec6bfa586000c487d7a3c5c34c3dde4c82e0",
+			"structuralHash": "00c37958c62531aefbd72040cc2ab0624be6281959dea451e2b01cda60498be2",
+			"mainStructuralHash": "2a37126f70be655e38fa8ba832e23256a2db2af3766d6d6071f2147f9de10dea"
 		},
 		"packages/coding-agent/src/tools/core/jtd-to-json-schema.ts": {
 			"old": "packages/coding-agent/src/tools/jtd-to-json-schema.ts",
@@ -18236,9 +18264,9 @@
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
 			"hash": "6e089cb0bc82ec64f3589aa33d0675593a4ad45c31fa32427ed2edaeb2debd8a",
-			"mainHash": "cc67f3d0401dca1eaae8035fd22b1d2a30e1cdeba2f2bdba80870dc354afed77",
+			"mainHash": "8b6af89e053854183757c9c7860a2f0dca1b446e164cdd960bafd5bf04884be8",
 			"structuralHash": "272fe442ad815ef2ef1fe268a80cd585277a0c0fa37c3d5671cf026654e39f4d",
-			"mainStructuralHash": "9a33bd6baad329cd473c13a893ab7cc870a31c7f7c29d0f38fa6d5c8a7e1e96d"
+			"mainStructuralHash": "2c791c9f592cf6748e8e8b93b8340863f0e012e1b4268a8f94aaf28f75f3f7cd"
 		},
 		"packages/coding-agent/src/tools/core/repair/agent-hook.ts": {
 			"old": "packages/coding-agent/src/repair/agent-hook.ts",
@@ -18385,9 +18413,9 @@
 			"group": "deferred-tool-initialization",
 			"reason": "Tool imports follow the domain split and defer optional execution dependencies until an enabled request. Local reads and transcript previews do not initialize URL readers or evaluator implementations.",
 			"hash": "14fe8b9468f129aed2220ef79c836eb67c6694f0f39264d069b9468481bbd082",
-			"mainHash": "d2e1a93d8a0a5cf65dbbabdb6839e5405ad1363b89c9014b2cd37eabfc9a322b",
+			"mainHash": "74cf52f6c5b20817d5f038ec1b5aaa8216521e2b3767b076586eaa5b6c1d6808",
 			"structuralHash": "f1ac52e0cb9f83daa8ae6808bedacf0eaae3117a5dfdc66ac862ed1c1296e946",
-			"mainStructuralHash": "b83c1037ff21fa6421d977f3d6b7bbb8f57249aa48cbd970bdf2aa48e0e8fcce"
+			"mainStructuralHash": "42aa82f673ca60ef9ee0e7a9de9de73bfaee43699328638df80b44ee274f91e4"
 		},
 		"packages/coding-agent/src/tools/fs/reroot-hint.ts": {
 			"old": "packages/coding-agent/src/tools/reroot-hint.ts",
@@ -18406,10 +18434,10 @@
 			"differs": "changed",
 			"group": "view-conversion",
 			"reason": "A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. A suite that named the deleted renderer module reads the registry entry instead. Byte identity of the drawn output is proved by the oracle suite, not here.",
-			"hash": "a7f3cd8b4e99bd99ad5af0709d6d962fe2ad183b6d815a94678f66cee9dc02b5",
-			"mainHash": "c75107b0348bc52855588ff93f246caf40d367b3570d37f4a7764a90f5f85fbb",
-			"structuralHash": "8258b48f785de40e4f87b19aa198b7c2493d4ef20d1ee79b24ad45aae010efba",
-			"mainStructuralHash": "44f8c7b16083ea460dec4ca8255fb5f7eb138a27f079e3957aad075e0d82dc26"
+			"hash": "af4d7f3717da8cfa3fc2258c563ee116e2bcb5c43eba00a9aeda01dc3210baa6",
+			"mainHash": "5438ba3e69c4068908b442f7360ee07886dd09de8879dd261a936ac7f315352c",
+			"structuralHash": "9e217ce491e549e069279260d26eda279435603630a0b6a45d4879a804422f83",
+			"mainStructuralHash": "2873a109bd0a0b0c0fe093eedd1e0940eb0b093a37427b0883dd60e529a0df31"
 		},
 		"packages/coding-agent/src/tools/fs/write.ts": {
 			"old": "packages/coding-agent/src/tools/write.ts",
@@ -18478,20 +18506,18 @@
 			"group": "view-conversion",
 			"reason": "A renderer that built a terminal component now returns a `ToolView`, and the card that draws it reads the view. A suite that named the deleted renderer module reads the registry entry instead. Byte identity of the drawn output is proved by the oracle suite, not here.",
 			"hash": "ff304e0afac17d1826c1acb3bf3f360c11d1d73b855367f3760fadfb99e421ed",
-			"mainHash": "555bcba12ce1979e93f9315b4c783bb06029405939201ddf6f2ca8ed1b4d6c74",
+			"mainHash": "460c5cabffaa9153ffa39ce6e9bf258a8faa53a81b238aa252c3dab27168e18a",
 			"structuralHash": "1c5191ab0188802c9da84584fb84a452774cfdee04a522830e0ce973a4202a41",
-			"mainStructuralHash": "fea1367d641f98a346849b07ad22f6ecc45bb8963794996a4e77062d7671d208"
+			"mainStructuralHash": "dd1fd62249033bc2f2cd3e08e96bbf04f6c08d9dc853c801a74c533bf7e93e2c"
 		},
 		"packages/coding-agent/src/tools/search/search.ts": {
 			"old": "packages/coding-agent/src/tools/search.ts",
 			"kind": "normalized",
-			"differs": "changed",
-			"hash": "eb16b99557b793910b31bb2c60db0b38a1519153d1e55dd2425ff38efe5132e2",
-			"mainHash": "552898958665b9b67d3bb61ae034221a5f8fd83c960a9d11606b934f8b599159",
+			"differs": "imports-and-comments-only",
+			"hash": "819a8f28593f6438d02043bbca4cbcf95aa53a50cb91cca1472e8fed6f420e18",
+			"mainHash": "f880edaaa5fdf3a82bff137440f2215da385155e3be551aee0f59b01837d86b1",
 			"structuralHash": "fd9b767271b3749c5c2853963b9c38c5c22ccb25404a9a27e98f8ca60346a873",
-			"mainStructuralHash": "95925ce0daa6d349d085c6d322cc2216c97e43100d7ad9610d2205fe91bf775a",
-			"group": "engine-consumer",
-			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner."
+			"mainStructuralHash": "fd9b767271b3749c5c2853963b9c38c5c22ccb25404a9a27e98f8ca60346a873"
 		},
 		"packages/coding-agent/src/tools/search/structure-search.ts": {
 			"old": "packages/coding-agent/src/tools/structure-search.ts",
@@ -18589,9 +18615,9 @@
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
 			"hash": "5aaea52bfe6641cebece072f33a953bfbe64d3e665a7686e1b258551187ea94b",
-			"mainHash": "ae273c2b4ffb218d38cd245112f7c64de3c96a0bf67e68f292d367434bf63d99",
+			"mainHash": "7e59cf507f7a869f03b6001ffa9c33d35c0575afa9246ae217553e314693285c",
 			"structuralHash": "d6fb58f40075b5d770b45097e82bc2103ec46d44bb1508841337a22c58032379",
-			"mainStructuralHash": "2cdb52fe621e16ce0bd49e114646a19f84145eb00070f52ce605c90348eca2fb"
+			"mainStructuralHash": "c8a346a18c48f20c55c50d97ea6a3cd9652322c8c1376ba785a2bac2bffadea7"
 		},
 		"packages/coding-agent/src/tools/shell/debug.ts": {
 			"old": "packages/coding-agent/src/tools/debug.ts",
@@ -18600,9 +18626,9 @@
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
 			"hash": "ee94da150c83d3addfe34ef4f4e60058b1f8d80c08c538f0114a68d5af554392",
-			"mainHash": "49f1a71b91025fc28b505c519e4e43538b949634c9e56074bdbcff2f22d55dd2",
+			"mainHash": "87e98cc41c53425b6392eba7d1d4c40e43bd0b0ba715473def2c43a85c4d8321",
 			"structuralHash": "655128858cf67d617b2080db07021c465497718a1be95d21922dec2c0516b80e",
-			"mainStructuralHash": "f05ffb6a933e83df55411d7b01ff9935d470919c912b2eee34b07613bd57ccc6"
+			"mainStructuralHash": "0f799bc5db2cfc496aeaf20b0baee7ac43801fed1b3e1fadd3ef00f2e70c874d"
 		},
 		"packages/coding-agent/src/tools/shell/eval-backends.ts": {
 			"old": "packages/coding-agent/src/tools/eval-backends.ts",
@@ -18631,9 +18657,9 @@
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
 			"hash": "b97e0850a97aa652d8405039b55f92fc09051df0fa7b611921ad8af6bcc7d80e",
-			"mainHash": "fb2e9c228b423e0613a5a0047f6735190a5f327294b955b1110c78485c2e5fea",
+			"mainHash": "aba0e76a9660b191fefc5a889d4fa585e1f7ac770fb6e6c80e128f72cce82a53",
 			"structuralHash": "aeab588ea56004c9e0dd6b72991e8017e36e1884d9e5c24bb5e4e4adbe97d302",
-			"mainStructuralHash": "e36502a39ef22de20912f3430f5c953bf0555f3bacc9eecb5ff7c204c3b55d84"
+			"mainStructuralHash": "12430c6f38d4664208df9f7af29314a75e7d769b025808dcbab924428a1e629b"
 		},
 		"packages/coding-agent/src/tools/shell/launch-exit-watch.ts": {
 			"old": "packages/coding-agent/src/tools/launch-exit-watch.ts",
@@ -18651,9 +18677,9 @@
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
 			"hash": "3f2c45255ee80ef76fd156f802151af22d50d718eba925bc272ccdce310c52dd",
-			"mainHash": "4d199a0cc010dfb18eb57cb96cdb9c19f19c6de0621a4586de3bcfef5fd4fa9b",
+			"mainHash": "5843389752b92f2166633deca52896377f09113b4e25d94831057e5518ef5e53",
 			"structuralHash": "380745ef522180fe539878a07fb4d67046719e36ce8332d4a0ad34f54f23b7a9",
-			"mainStructuralHash": "3d9c899e4ea01d6b4f4a4a0d762d8e15eebcd9d95cb0b8cbbf01a803e6762d4a"
+			"mainStructuralHash": "a7626109db61cc7baef31504a7c37d7cd294b34b42bd7f94fe6849c65d9dbf18"
 		},
 		"packages/coding-agent/src/tools/shell/ssh.ts": {
 			"old": "packages/coding-agent/src/tools/ssh.ts",
@@ -18662,9 +18688,9 @@
 			"group": "engine-consumer",
 			"reason": "A coding-agent module reads a value that moved out of the engine, so the call site names its new owner.",
 			"hash": "6b3b6fc84a4209d01dbb598ae542a3c4053334f5f10d25559dd5b3ccbbba8f23",
-			"mainHash": "2f05405a70b078623e51951794e9bd5d3e9c823d2fefa678b83fd9ad4cbc3e1b",
+			"mainHash": "8432e893287108b74ef30bf0e545676417d48022281efd3bb3ddef70460b4ed1",
 			"structuralHash": "52dda55c71bffcf5f0ff15bca59f70ac116188891aaa7bff34e598381770ee01",
-			"mainStructuralHash": "11f146b1e8d4930d3e57532c81021bed1bd03e043499563b9f2ac2b0dc81e840"
+			"mainStructuralHash": "bf343a98a4ca46f36186ce4ba95bee92136366f329437daba0fd3c32cfa27307"
 		},
 		"packages/coding-agent/src/tools/shell/terminal-output.ts": {
 			"old": "packages/coding-agent/src/tools/terminal-output.ts",
@@ -18684,9 +18710,9 @@
 			"group": "web-extraction",
 			"reason": "The site scrapers are `@veyyon/web`. A handler states the host capabilities it needs -- the credential store, document conversion, external-tool resolution, the session spawn hook and the fetch preference -- through `ScrapeServices` instead of importing the agent's settings, storage and process modules, and throws a name-preserving `AbortError` rather than the agent's cancellation class. On this side the call sites name the new owner and build the services object.",
 			"hash": "6522a0ef5c4705d8f642b99ed70ef888094bb7913d2e92599bb96ff08b7298b2",
-			"mainHash": "c5cae16a0ed02a173996a7c1e999959f37acbee7b182a6e9be8ea11b3ad89eb9",
+			"mainHash": "5c1233b9184d6197ba963641236d0f341be3fe616fc6cdfd9149751a3b92bf2c",
 			"structuralHash": "d18232a67b8ed35ffb24b039c501ca069794092dbfc11fa52ea8c6721fe43bc6",
-			"mainStructuralHash": "3c3ed6fff7e779c579e4e458ecd492549d5b4d556e05674836aa045290cc36d1"
+			"mainStructuralHash": "c020e8fb03a9c82be6e42a54728634652f1aea746dd3b437956101158f904061"
 		},
 		"packages/coding-agent/src/tools/web/browser/aria-snapshot.bundle.txt": {
 			"old": "packages/coding-agent/src/tools/browser/aria/aria-snapshot.bundle.txt",
@@ -19432,10 +19458,10 @@
 			"differs": "changed",
 			"group": "colocated-test",
 			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
-			"hash": "eb2151035f43f14dfec00aba4b21ea97269ed1d6c55ac641924664587c7c5efd",
-			"mainHash": "d89a2e2bd6de4cdef4448029cdda82932017be6d2f758f88ade2ce858a0aaa47",
-			"structuralHash": "4ed4055eebe07c57c29e4c7e98992a767110b932816e6907fcd4ca48ec1dad21",
-			"mainStructuralHash": "d349fd1dd69e46f534f18904ccc4d56436b164cf9f58f995e93fffea48211851"
+			"hash": "13171fda84418891e03ccd6fa2196bb1561fd74e49f74c46fc9972ef5f63aa1d",
+			"mainHash": "845256ca63a5f892eae3fbed17d9d24ed7bfa1a126020742345bcad68a113516",
+			"structuralHash": "b7ac44e1e8553b64ddc314735902d46a00b44164ecba007100a6814a3717ad43",
+			"mainStructuralHash": "f9a5577ebd246a59fc064adabe55f5351120cd33b761862b8e6cedc30fe6dc46"
 		},
 		"packages/coding-agent/test/cli/startup/the-runtime-graph-loads-without-starving-the-loop.test.ts": {
 			"old": "packages/coding-agent/test/startup/the-runtime-graph-loads-without-starving-the-loop.test.ts",
@@ -19495,12 +19521,12 @@
 			"old": "packages/coding-agent/test/capability/rule-buckets.test.ts",
 			"kind": "normalized",
 			"differs": "changed",
+			"group": "colocated-test",
+			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
 			"hash": "3d84b1f9990554ff540b6e1cf4e48c36c67b391434b4c9c819f0876701060f29",
 			"mainHash": "a3ad0ceaf598dfaa5ecdba5e332bbcb4fa0ddd43028e6bee68356d322099ed1c",
 			"structuralHash": "f6b74e9f90e7266c8fcddd4ea9ef4882b5ecf3cd22cc549894ab54b6d21feb72",
-			"mainStructuralHash": "c8048a0e1e442438512739d49bd17cab4c0fb387b419813c2499e68e9cf33530",
-			"group": "colocated-test",
-			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner."
+			"mainStructuralHash": "c8048a0e1e442438512739d49bd17cab4c0fb387b419813c2499e68e9cf33530"
 		},
 		"packages/coding-agent/test/discovery/capability/rule-condition-scope.test.ts": {
 			"old": "packages/coding-agent/test/capability/rule-condition-scope.test.ts",
@@ -19711,6 +19737,15 @@
 			"structuralHash": "08cefcfd485c233e2c02a2d857bd2c221a10758d282f5011ee11722a44dcaa2b",
 			"mainStructuralHash": "08cefcfd485c233e2c02a2d857bd2c221a10758d282f5011ee11722a44dcaa2b"
 		},
+		"packages/coding-agent/test/extensibility/tool-event-input-derives-paths-and-resolves-inputs.test.ts": {
+			"old": "packages/coding-agent/test/extensibility/tool-event-input.test.ts",
+			"kind": "normalized",
+			"differs": "none",
+			"hash": "e0ae8becb1f1eb9a97028cb9a771d584a6d69b4dfe07f31ea358a27e7250ed91",
+			"mainHash": "e0ae8becb1f1eb9a97028cb9a771d584a6d69b4dfe07f31ea358a27e7250ed91",
+			"structuralHash": "fd411ebd06ac11b84f6e9624bb61759c982cce3d3ac49523cedab092f1ed2c19",
+			"mainStructuralHash": "fd411ebd06ac11b84f6e9624bb61759c982cce3d3ac49523cedab092f1ed2c19"
+		},
 		"packages/coding-agent/test/memory/instructions.test.ts": {
 			"old": "packages/coding-agent/test/memories/instructions.test.ts",
 			"kind": "normalized",
@@ -19873,13 +19908,11 @@
 		"packages/coding-agent/test/modes/terminal/components/a-card-first-frame-is-settled.test.ts": {
 			"old": "packages/coding-agent/test/modes/components/a-card-first-frame-is-settled.test.ts",
 			"kind": "normalized",
-			"differs": "changed",
-			"hash": "ae60e5bfdcaa95be34c75320ce9d59011f45a5eff0d70cc65122fc89c4e809d9",
+			"differs": "imports-and-comments-only",
+			"hash": "421dd5fd602276b8249527b95a1dd1ad88cd006de1619e26486a49ce93288102",
 			"mainHash": "36fe182c47c0e88d1f0c38a5a13353219bb6639bfcf6441e58ccaafabe51a5fd",
-			"structuralHash": "8c32940bd45d79573d374b13692ea496e2754c8a2cd5ef5ed5f2325b8605550d",
-			"mainStructuralHash": "a6ed94b4fac0b842c257d785f8426c44b40098ed2b2a0b9694da3cbdea78ba06",
-			"group": "colocated-test",
-			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner."
+			"structuralHash": "a6ed94b4fac0b842c257d785f8426c44b40098ed2b2a0b9694da3cbdea78ba06",
+			"mainStructuralHash": "a6ed94b4fac0b842c257d785f8426c44b40098ed2b2a0b9694da3cbdea78ba06"
 		},
 		"packages/coding-agent/test/modes/terminal/components/a-clicked-composer-chip-runs-its-action.test.ts": {
 			"old": "packages/coding-agent/test/modes/components/a-clicked-composer-chip-runs-its-action.test.ts",
@@ -19903,12 +19936,12 @@
 			"old": "packages/coding-agent/test/modes/components/a-keystroke-at-the-launch-card-shows-up-there.test.ts",
 			"kind": "normalized",
 			"differs": "changed",
+			"group": "colocated-test",
+			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
 			"hash": "5d906bb2e166a737f7957ebd7be63f8aab962ce7baef55c005d46d7f2bab49a8",
 			"mainHash": "8c27df73c515498450b60cdecf8434a77c04869ebbdd391216167f79add2b0af",
 			"structuralHash": "62c66b9da432457c213397889f3f095b743fe6a6b95f3ba08c56170550bad0b2",
-			"mainStructuralHash": "2107e3e073ed9c5fdd831da2af20e954428809669af9eeaac10e2cf59a0133f2",
-			"group": "colocated-test",
-			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner."
+			"mainStructuralHash": "2107e3e073ed9c5fdd831da2af20e954428809669af9eeaac10e2cf59a0133f2"
 		},
 		"packages/coding-agent/test/modes/terminal/components/a-long-command-keeps-the-approval-options-on-screen.test.ts": {
 			"old": "packages/coding-agent/test/modes/components/a-long-command-keeps-the-approval-options-on-screen.test.ts",
@@ -20067,12 +20100,12 @@
 			"old": "packages/coding-agent/test/modes/components/agent-dashboard-blocked-and-waiting.test.ts",
 			"kind": "normalized",
 			"differs": "changed",
+			"group": "colocated-test",
+			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
 			"hash": "6a38f0ab9c4659a0d1c42f247bfc99e1ccc668a909496d7c4a589b20d8e3b60f",
 			"mainHash": "05655a19d6197c47558a93ff20839bf4648f64ab8b604f53f495ac6db809ba15",
 			"structuralHash": "f0284e28c664b721ec14df8a31ad16e6ffeb6fbf6ef546b045c3f5b7990fa15b",
-			"mainStructuralHash": "2f5c54b72df22df08641257275b89da428910daf3d5b77cf61a7c4d7f3c2c563",
-			"group": "colocated-test",
-			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner."
+			"mainStructuralHash": "2f5c54b72df22df08641257275b89da428910daf3d5b77cf61a7c4d7f3c2c563"
 		},
 		"packages/coding-agent/test/modes/terminal/components/agent-dashboard-comms-conversation-scope.test.ts": {
 			"old": "packages/coding-agent/test/modes/components/agent-dashboard-comms-conversation-scope.test.ts",
@@ -20123,56 +20156,56 @@
 			"old": "packages/coding-agent/test/modes/components/agent-dashboard-live-view.test.ts",
 			"kind": "normalized",
 			"differs": "changed",
+			"group": "colocated-test",
+			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
 			"hash": "bd7d6c87326deda96313ea935305c3261bde148e8ca23dd63064a0209d9e13fb",
 			"mainHash": "059e78a7192b18384cfe500852cb8bc64cec1c79fe6e31af9020262b4a070d2e",
 			"structuralHash": "593a72da6b4f80018e251880ca35de9e90c818f220c521d978b7c1224952d08f",
-			"mainStructuralHash": "c351b7c1916767f22f815d6ed816068f37cf7597cf06c55aac64ef521ce9c61c",
-			"group": "colocated-test",
-			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner."
+			"mainStructuralHash": "c351b7c1916767f22f815d6ed816068f37cf7597cf06c55aac64ef521ce9c61c"
 		},
 		"packages/coding-agent/test/modes/terminal/components/agent-dashboard-model-badge.test.ts": {
 			"old": "packages/coding-agent/test/modes/components/agent-dashboard-model-badge.test.ts",
 			"kind": "normalized",
 			"differs": "changed",
+			"group": "colocated-test",
+			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
 			"hash": "3baca206b9dd1747e2ac5bf96397a8b7eb51542cd5040db6565d2bd1bfd53a02",
 			"mainHash": "47e40cf94e3faa35e6d1b1d412486fadeca40d56be60445fbb09831f407142a1",
 			"structuralHash": "fd3ca4e9325c80e998d95d28f4bbd0763b2295386dab78e1391fc82717175513",
-			"mainStructuralHash": "a4949f2f00de9c35f94f07ac7d90dfa4122a8c37a21e9e927aacb2da0efe26f4",
-			"group": "colocated-test",
-			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner."
+			"mainStructuralHash": "a4949f2f00de9c35f94f07ac7d90dfa4122a8c37a21e9e927aacb2da0efe26f4"
 		},
 		"packages/coding-agent/test/modes/terminal/components/agent-dashboard-mouse.test.ts": {
 			"old": "packages/coding-agent/test/modes/components/agent-dashboard-mouse.test.ts",
 			"kind": "normalized",
 			"differs": "changed",
+			"group": "colocated-test",
+			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
 			"hash": "aa0c0766070815bfa9150cbecc08489fac91d90cceb85e3553eb95fc5c807344",
 			"mainHash": "1baa43ce63704ec8828bf3405fb2dcf5df575695ccd377f42010a4ce7957ff60",
 			"structuralHash": "685720df8145c780ad17897cf363de755784981c08a8fbfa8cc9ba6a0d74de48",
-			"mainStructuralHash": "1e8e20c64b365196b56113eb2e116dcabda32fcafd0373eeca1612333fd479ea",
-			"group": "colocated-test",
-			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner."
+			"mainStructuralHash": "1e8e20c64b365196b56113eb2e116dcabda32fcafd0373eeca1612333fd479ea"
 		},
 		"packages/coding-agent/test/modes/terminal/components/agent-dashboard-paging-and-columns.test.ts": {
 			"old": "packages/coding-agent/test/modes/components/agent-dashboard-paging-and-columns.test.ts",
 			"kind": "normalized",
 			"differs": "changed",
+			"group": "colocated-test",
+			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
 			"hash": "a5f0613dd624f41602eef17013115b05fd1f70ce5823d577b157a926c8d10e7f",
 			"mainHash": "c43a04e4082fb60111ee5d1ec5b00cbab09efa2ea64fa861a5ae5e5cb0c4db56",
 			"structuralHash": "1f310f6f20cb385ec5a72c1b1d464a11d7f7d8c5cea2f433fde00f7e36add788",
-			"mainStructuralHash": "ec0ff99992eaa9102c656089fd9d1f56ed3fb4fa7d843a8442e05602b937e603",
-			"group": "colocated-test",
-			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner."
+			"mainStructuralHash": "ec0ff99992eaa9102c656089fd9d1f56ed3fb4fa7d843a8442e05602b937e603"
 		},
 		"packages/coding-agent/test/modes/terminal/components/agent-dashboard-roster-order.test.ts": {
 			"old": "packages/coding-agent/test/modes/components/agent-dashboard-roster-order.test.ts",
 			"kind": "normalized",
 			"differs": "changed",
+			"group": "colocated-test",
+			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
 			"hash": "1b6e818c57f8a82dc88b0e3ad37b56428f2e8add80527b35864ad915dbc93fc5",
 			"mainHash": "11b08b9e404417df6de9a50c2cee39b14dcafbb92be004807cffa56294bf434b",
 			"structuralHash": "37fa6ccf8c3b4ca64a7744c3c89710a39991f9f24231baead2fa5bedbcd02e7a",
-			"mainStructuralHash": "3c3c496bde7f07b2a29208fbedd2d77b6b98d2185e25fb55eecbee6c4ee8cec5",
-			"group": "colocated-test",
-			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner."
+			"mainStructuralHash": "3c3c496bde7f07b2a29208fbedd2d77b6b98d2185e25fb55eecbee6c4ee8cec5"
 		},
 		"packages/coding-agent/test/modes/terminal/components/agent-dashboard-selection-fill.test.ts": {
 			"old": "packages/coding-agent/test/modes/components/agent-dashboard-selection-fill.test.ts",
@@ -21096,6 +21129,15 @@
 			"structuralHash": "59287568dda8eb2a8a93e2ec4570e675441cea63ab0026afae9a717f66e99595",
 			"mainStructuralHash": "59287568dda8eb2a8a93e2ec4570e675441cea63ab0026afae9a717f66e99595"
 		},
+		"packages/coding-agent/test/modes/terminal/components/subagent-roster-and-unset-settings-visibility.test.ts": {
+			"old": "packages/coding-agent/test/modes/components/subagent-roster-and-unset-settings-visibility.test.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "a7cfb705d70d473a407b9dc2124112633c47d31cf68995579858947b813ba918",
+			"mainHash": "41a8e0a9792f1d01dbfcb0f7b57bc5a9772c6f2f9677bc8a0cca1b0435d79823",
+			"structuralHash": "6ee6745659e280a8f38b367207ad12cc855a05c9c3c89dcca7ca110904e2d001",
+			"mainStructuralHash": "6ee6745659e280a8f38b367207ad12cc855a05c9c3c89dcca7ca110904e2d001"
+		},
 		"packages/coding-agent/test/modes/terminal/components/sun.test.ts": {
 			"old": "packages/coding-agent/test/modes/components/sun.test.ts",
 			"kind": "normalized",
@@ -21162,24 +21204,20 @@
 		"packages/coding-agent/test/modes/terminal/components/the-login-card-answers-the-pointer.test.ts": {
 			"old": "packages/coding-agent/test/modes/components/the-login-card-answers-the-pointer.test.ts",
 			"kind": "normalized",
-			"differs": "changed",
-			"hash": "3d539a647dc68ad5e2afeb0698cd6e8ca3897278e896735d39ba36647e164d52",
+			"differs": "imports-and-comments-only",
+			"hash": "0063ea78f4900cbfb3e5de78e3526b313ece6300333e7bd24986f5db31673b1d",
 			"mainHash": "8a6d2a425365a3f0e752f6a2cb62afdae71e68981b28b3028d36fbd224e52540",
-			"structuralHash": "ce5955ef234a56d9643af382f0d3bef1023b629f6cb74e64c39255d122b9cb7d",
-			"mainStructuralHash": "ce36c0bf6dabd8860c4a202da207224d0fbef9575f6f1d2c33ab37799ac3839b",
-			"group": "colocated-test",
-			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner."
+			"structuralHash": "ce36c0bf6dabd8860c4a202da207224d0fbef9575f6f1d2c33ab37799ac3839b",
+			"mainStructuralHash": "ce36c0bf6dabd8860c4a202da207224d0fbef9575f6f1d2c33ab37799ac3839b"
 		},
 		"packages/coding-agent/test/modes/terminal/components/the-login-screen-is-one-frame.test.ts": {
 			"old": "packages/coding-agent/test/modes/components/the-login-screen-is-one-frame.test.ts",
 			"kind": "normalized",
-			"differs": "changed",
-			"hash": "285e3805cc78342fdb8d0914e7bf0b36849d161322edcffcb97014193b746bf4",
-			"mainHash": "1745b6f0fbcfc1d0a760da2206ca7ec46dacba56044a916c3af084f199e193b8",
-			"structuralHash": "ddd0b69930ac8781b6b58eff3aab15457be53c9d4687e3746d4aa355933065de",
-			"mainStructuralHash": "92a07019cfe2575022c4643c9f12079e7889a3640b7d41a9ab505073cc6318e0",
-			"group": "colocated-test",
-			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner."
+			"differs": "imports-and-comments-only",
+			"hash": "30d538616e2bcde8b4e37897c26a4a70e96563b53c1aac9fee500556adaa2079",
+			"mainHash": "2b18e9d68a351cbfc9aa158cbe373c3d59488d5d1a2d53bd74689cdd46c313fb",
+			"structuralHash": "950c0659c27d359bc11dc67c10496f2ff07bc91678ba2e7d792d6423a519d4da",
+			"mainStructuralHash": "950c0659c27d359bc11dc67c10496f2ff07bc91678ba2e7d792d6423a519d4da"
 		},
 		"packages/coding-agent/test/modes/terminal/components/the-mcp-add-wizard-card-answers-the-pointer.test.ts": {
 			"old": "packages/coding-agent/test/modes/components/the-mcp-add-wizard-card-answers-the-pointer.test.ts",
@@ -21455,12 +21493,12 @@
 			"old": "packages/coding-agent/test/modes/controllers/a-launch-card-handover-does-not-strand-the-composer-mid-screen.test.ts",
 			"kind": "normalized",
 			"differs": "changed",
+			"group": "colocated-test",
+			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner.",
 			"hash": "91729b32a07188cef6702307b790a0fe5d219520f03e22d508eaa58850240758",
 			"mainHash": "ea19bcefe152b1ebf7ae0c60ace0b504c84d73b5aa523e9603740b7525f3b701",
 			"structuralHash": "00e7fe6b6a29a7ea63bfa01fa1b109768f43d69e9ccf3e58dc8ace3ac14d7e3e",
-			"mainStructuralHash": "d385b3f92e0ad2d3af75e10c4687d1fb252e7c9ca774a3bd12a7e4f95f11acb8",
-			"group": "colocated-test",
-			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner."
+			"mainStructuralHash": "d385b3f92e0ad2d3af75e10c4687d1fb252e7c9ca774a3bd12a7e4f95f11acb8"
 		},
 		"packages/coding-agent/test/modes/terminal/controllers/a-new-session-lets-the-running-one-finish.test.ts": {
 			"old": "packages/coding-agent/test/modes/controllers/a-new-session-lets-the-running-one-finish.test.ts",
@@ -21753,13 +21791,11 @@
 		"packages/coding-agent/test/modes/terminal/controllers/selector-controller-login.test.ts": {
 			"old": "packages/coding-agent/test/modes/controllers/selector-controller-login.test.ts",
 			"kind": "normalized",
-			"differs": "changed",
-			"hash": "ef797f76102ca26af1b10981a3f62dafd9155e88e6d7297da87c102c09861a3a",
+			"differs": "imports-and-comments-only",
+			"hash": "17219095a2b6adf84519c23ab4b6c085d8dea2698b149dc66cac8ceb081b0b09",
 			"mainHash": "d95d291f2b5970192ea11a557f997af45f752a53ae5eb6edd0a7525a0d0ca8ec",
-			"structuralHash": "a4608ac12c95c1ac501d4589d50969495088e386a55d5367482a420a9fb08471",
-			"mainStructuralHash": "2ded4fc9db4905b7f7091b8bcdbd998fe32708e59c3a142dbfc7c8d63acc9384",
-			"group": "colocated-test",
-			"reason": "A suite sat next to the source it covers after the layout cutover, so its imports name the new owner."
+			"structuralHash": "2ded4fc9db4905b7f7091b8bcdbd998fe32708e59c3a142dbfc7c8d63acc9384",
+			"mainStructuralHash": "2ded4fc9db4905b7f7091b8bcdbd998fe32708e59c3a142dbfc7c8d63acc9384"
 		},
 		"packages/coding-agent/test/modes/terminal/controllers/selector-controller-logout.test.ts": {
 			"old": "packages/coding-agent/test/modes/controllers/selector-controller-logout.test.ts",
@@ -22043,10 +22079,10 @@
 			"old": "packages/coding-agent/src/tools/browser/render.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "e3b14740f24a05667bb894b533b5f9227b05e6ff8db5015f3367018995741475",
-			"mainHash": "7978dbf0f841d19d403986ac0a03622a108b1b88e5dc2625a94cff895f180d7f",
-			"structuralHash": "17b56f852eebde0066ffc3e4d437b53c11609bef6b3d5f8d24510869de05cd05",
-			"mainStructuralHash": "17b56f852eebde0066ffc3e4d437b53c11609bef6b3d5f8d24510869de05cd05"
+			"hash": "4d044024206563a5d4d95a8dee4ffa79ac15b5fa39b552cec288622fab9bea23",
+			"mainHash": "44a2bbd64979e5275bd59bebf2b02a6b2eeac30e8fc2127c5f7b6c5b95a1a4ec",
+			"structuralHash": "38399d6300444fc6c4b21e76c6b47657e5e53e161ced3252d5853b17dc143bbc",
+			"mainStructuralHash": "38399d6300444fc6c4b21e76c6b47657e5e53e161ced3252d5853b17dc143bbc"
 		},
 		"packages/coding-agent/test/oracles/edit-main-renderer.ts": {
 			"old": "packages/coding-agent/src/edit/renderer.ts",
@@ -22054,28 +22090,28 @@
 			"differs": "changed",
 			"group": "oracle-freeze",
 			"reason": "A renderer this branch replaced with a `ToolView` is frozen here as the differential oracle its suite compares the card against. The search dispatcher reached the three sub-views this branch declares rather than the terminal components main built, which is the change recorded: the rows it draws itself are main's, and the suite beside it proves the card byte for byte.",
-			"hash": "0e35766e59d962ccf754c4c3e52f52fb1293fee19814fea9965031d3b2662f7a",
-			"mainHash": "b44c959ef5254cf986bcbbb014d27246c01336a0bb85f6f47fd80aa9e038b551",
-			"structuralHash": "9e740041ce7720302687f0336aa69b6b74760040fe03b6ef6208cbaa091ecc01",
-			"mainStructuralHash": "e3382b4ca78fc82214d56cb4a7553eee858a2a00dbab19a3114c00339d5be626"
+			"hash": "eec2421ff107c576dd69deeea58a38cdaeac78b74d407a1db7b651d9685e000a",
+			"mainHash": "5b6b45ed4021c5f10a4d96cfe8e4d3dedf14e62c40e411a8b5b9a8c711ac47a6",
+			"structuralHash": "2d5d292ccefcc47fc5a8cfaceafe3d562af15ce6e5dddf99dfcaa033ff6c19ed",
+			"mainStructuralHash": "f5c932d3a5970009a25043f22459c9f13fd0271a26f067fe2e4469361fe0a235"
 		},
 		"packages/coding-agent/test/oracles/eval-main-renderer.ts": {
 			"old": "packages/coding-agent/src/tools/eval-render.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "b2fe317b6960a05b9fc3a8d7ffd3a4a8e2115398c3663358a23b0646fbaa2a8e",
-			"mainHash": "f9e1866fff6b20e600911b81b786168b21f4e082ddac9f72562c72d308b7b598",
-			"structuralHash": "c68fdd852f5ba794cd6e7ddbf17dd1f04530b8b2c7e16f1576050bc97906297e",
-			"mainStructuralHash": "c68fdd852f5ba794cd6e7ddbf17dd1f04530b8b2c7e16f1576050bc97906297e"
+			"hash": "cfa74d2f3f55ca9e838a89be006f1cbf1464e7e884f693d110bef9eca70d4054",
+			"mainHash": "fe36978904e861037711d17e527327106f0360087e1bd95ff1931bc6397d4a0c",
+			"structuralHash": "00ddcc7ee1faa5ed05ac7527953b93e195b2f6e7fd6a3c51d171ac0655b20291",
+			"mainStructuralHash": "00ddcc7ee1faa5ed05ac7527953b93e195b2f6e7fd6a3c51d171ac0655b20291"
 		},
 		"packages/coding-agent/test/oracles/gh-main-renderer.ts": {
 			"old": "packages/coding-agent/src/tools/gh-renderer.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "86137dcd358817b747ac38784b66b407a56cbffdea2640fe52a74110242d3d5e",
-			"mainHash": "553192ee071b5ad3260f5e0b85e3bd148eba5f4b8285b64208eda5e27e49e53a",
-			"structuralHash": "569321ba3aff74132b257d43d0383507aac1af0ac1596297cd8e7fc045dd9192",
-			"mainStructuralHash": "569321ba3aff74132b257d43d0383507aac1af0ac1596297cd8e7fc045dd9192"
+			"hash": "fa03b0d3f50489c62591b3cd84d0c089998da09310a8b3fd6d4fe0d134b0fb7a",
+			"mainHash": "05a72be3747b60ed3cb9cb6668b99c14a8f18e7974c09f27ea67f6a8b0922a3a",
+			"structuralHash": "8e5928bd74910f1923903436b4b03b2380c7a897d9ccfd4648f250e4a2f77047",
+			"mainStructuralHash": "8e5928bd74910f1923903436b4b03b2380c7a897d9ccfd4648f250e4a2f77047"
 		},
 		"packages/coding-agent/test/oracles/inspect-image-main-renderer.ts": {
 			"old": "packages/coding-agent/src/tools/inspect-image-renderer.ts",
@@ -22099,10 +22135,10 @@
 			"old": "packages/coding-agent/src/lsp/render.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "2c01c695107c692b709df7605ca3ecaa303c08773331abd4147d3bbd41c25426",
-			"mainHash": "893b66499ba75db07838c265f0f255c67645d0b917b7eb54050748fc1502fae7",
-			"structuralHash": "7fee490462d7bfcd3555908d168650471d2542ee3834d4e02bb86e45d0427e3f",
-			"mainStructuralHash": "7fee490462d7bfcd3555908d168650471d2542ee3834d4e02bb86e45d0427e3f"
+			"hash": "abeb6a06158d59dd785e866e1f67fc235708a708884003d0da86a8d14b943ac1",
+			"mainHash": "293d030eca75972490cfeda82d010031f42acec42bbdfc7f4eb94d9b5f9e89b2",
+			"structuralHash": "0b23910817ed523d7f507b8d17e2780cb2669e278be700074c6f4f48d572d0cd",
+			"mainStructuralHash": "0b23910817ed523d7f507b8d17e2780cb2669e278be700074c6f4f48d572d0cd"
 		},
 		"packages/coding-agent/test/oracles/mcp-main-renderer.ts": {
 			"old": "packages/coding-agent/src/mcp/render.ts",
@@ -22117,10 +22153,10 @@
 			"old": "packages/coding-agent/src/tools/memory-render.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "58ae119d2cca1363ac8fd9334bd34d13d54efd77554d6a2413337da6ff209e9e",
-			"mainHash": "f9d86832e8cb513f343126a482af9cc848fef58eebf2ad2baa969769e924c68d",
-			"structuralHash": "7d9306e04f57025673ef71c279f3c16de629b756ef4e58d5e4617064e9d2bd67",
-			"mainStructuralHash": "7d9306e04f57025673ef71c279f3c16de629b756ef4e58d5e4617064e9d2bd67"
+			"hash": "67835d9e2f20ee44431d48b4e2aab838b4e71ae971936284d95a808ca8f4072c",
+			"mainHash": "5dbb3495e51284cec041c5ba57f98906fb177d58aec835a80039f6b0491936bd",
+			"structuralHash": "cf86631b03af11e99c05f5441182447ce8cd4cc5fd372b1ac611293db892d5aa",
+			"mainStructuralHash": "cf86631b03af11e99c05f5441182447ce8cd4cc5fd372b1ac611293db892d5aa"
 		},
 		"packages/coding-agent/test/oracles/search-main-renderer.ts": {
 			"old": "packages/coding-agent/src/tools/search-renderer.ts",
@@ -22139,28 +22175,28 @@
 			"differs": "changed",
 			"group": "oracle-freeze",
 			"reason": "A renderer this branch replaced with a `ToolView` is frozen here as the differential oracle its suite compares the card against. The search dispatcher reached the three sub-views this branch declares rather than the terminal components main built, which is the change recorded: the rows it draws itself are main's, and the suite beside it proves the card byte for byte.",
-			"hash": "79e7418d83535fa81db0d863be07f5af521a748f0cbce2f2ac3c83806baa968c",
-			"mainHash": "07658bc4f82070db1847de306177b01f50b0abdec9aa7dd4171a36aeed472ee3",
-			"structuralHash": "ec0c98115c902d08d38b4edbf08366a5c4a1f6cd27209958c50541f35bd0638e",
-			"mainStructuralHash": "29fafe13a3f4640e90c93cf45e511cbc70afca64c936af874234a62dc1a3125d"
+			"hash": "68edfef9803fbfeac1865deab317e537b7b8dd6ddd535759562268c2202b0653",
+			"mainHash": "05ed5276aee1ba0f0ead434d7743dc5eefabaeb96c03da754b2797afdb646595",
+			"structuralHash": "21e6f9b4aabc7f9cfc6668991d014e8afeaff14774ffa30eb665d4d161762d2f",
+			"mainStructuralHash": "99f09bcd55a46f031b0bc2120415676bc670622b6755933dc162ecb411fb1b91"
 		},
 		"packages/coding-agent/test/oracles/vibe-main-renderer.ts": {
 			"old": "packages/coding-agent/src/tools/vibe-render.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "c513471e9007fcef941413a5fb6af50e415308817906f895b981d960176ab210",
-			"mainHash": "9ecc16bdb71e7333bbae26c67fcbc0256938b226aab89e8d3fa8f9c3e74733eb",
-			"structuralHash": "d0293bccbd1994a43247cdc74e6431c43f7c65397d93b39b9b0174139efa2454",
-			"mainStructuralHash": "d0293bccbd1994a43247cdc74e6431c43f7c65397d93b39b9b0174139efa2454"
+			"hash": "30c8bc0483d029f9bda3e8fbbaf0c3ce5336480da02f9725b447a3b75e518d96",
+			"mainHash": "4d149a8dc8c9b952b4f1020918dbdf1083da6badbde507c6d0112d3f89487408",
+			"structuralHash": "a87aebd600b40b5c425b6f4218daa6b55d2b3e80c8297396e2d9f16e308bf9d1",
+			"mainStructuralHash": "a87aebd600b40b5c425b6f4218daa6b55d2b3e80c8297396e2d9f16e308bf9d1"
 		},
 		"packages/coding-agent/test/oracles/web-search-main-renderer.ts": {
 			"old": "packages/coding-agent/src/web/search/render.ts",
 			"kind": "normalized",
 			"differs": "imports-and-comments-only",
-			"hash": "69a0ffadb1dfc55222e74492e8baede5572c3a49bd697a7f2400e436136de838",
-			"mainHash": "69c128b209bbfcf09a8fced7793c5e13c595c728b1e42b9eac4b12a2db4c344f",
-			"structuralHash": "80daafa5183c120f8531df1f94d077be58ad3776ff270b5d23524fb8eaba4623",
-			"mainStructuralHash": "80daafa5183c120f8531df1f94d077be58ad3776ff270b5d23524fb8eaba4623"
+			"hash": "9217cd12aaab7fb8c8e1846c94c1e0618487cb1157a03e48c172a0c6a1f7a585",
+			"mainHash": "5a4c73542eb61bc3ddcfac6935f252d28f2cd282d508e16b1d20314fb62906e5",
+			"structuralHash": "9bf01442682ec05aae61e00991c9f79fa963186cbb564ca574a424fb7fd71a91",
+			"mainStructuralHash": "9bf01442682ec05aae61e00991c9f79fa963186cbb564ca574a424fb7fd71a91"
 		},
 		"packages/coding-agent/test/secrets/a-path-the-operator-named-is-not-repository-code.test.ts": {
 			"old": "packages/coding-agent/test/security/a-path-the-operator-named-is-not-repository-code.test.ts",
@@ -22992,6 +23028,15 @@
 			"structuralHash": "2dc1dd4d15796eac327de916467fefc3795a5fe6ef3dc2b2f6f7d8a2a4afa5e4",
 			"mainStructuralHash": "66a373a5c0be2badd1810feb893b6c3ae9fd6fc49bc2ce6bdf2b2d997731f2f5"
 		},
+		"packages/utils/src/sanitize-status-text.ts": {
+			"old": "packages/coding-agent/src/modes/sanitize-status-text.ts",
+			"kind": "normalized",
+			"differs": "imports-and-comments-only",
+			"hash": "98d2c543ac0aa95dcb30672e12bb1cf15f72722757c6f543e811e29b2d937c6a",
+			"mainHash": "3a4faf3381c4a687820f4cfc7beea9c794e91d3e7157030f6f9b7d23e7831a7b",
+			"structuralHash": "899082f0c6735e73179afcc5272ffb5b93ccf67f405d2043fa229b20eb692421",
+			"mainStructuralHash": "899082f0c6735e73179afcc5272ffb5b93ccf67f405d2043fa229b20eb692421"
+		},
 		"packages/utils/src/symbols.ts": {
 			"old": "packages/tui/src/symbols.ts",
 			"kind": "normalized",
@@ -23035,9 +23080,9 @@
 			"group": "extracted-to-utils",
 			"reason": "Terminal-independent string, key, fuzzy and layout code was extracted out of the engine into `@veyyon/utils` subpaths, so content moved between two files that both still exist. The engine keeps what draws.",
 			"hash": "9c1dc2dd57cb7054da67344afc6f7bbc45ce04d28b431a793b3e0cd3aaf6ee24",
-			"mainHash": "b9b57471d3038e113e4f21eb75100b776102d18e2d22cb46d46db953fb5e579b",
+			"mainHash": "57aea114d16f91d938c31a4a97c473ae4b18308cf6eabed97c014b6c4ff8c263",
 			"structuralHash": "cd20971a5f568cd77e32a7675a4a65a00980239e185ea2b56dd26c1e4fa51322",
-			"mainStructuralHash": "33079c46aaa83309efc5ae6fc27a5294e0208af9cf71dc96c883b6d4347165e3"
+			"mainStructuralHash": "c7ea0fc19e0e8136f33c73044213b13543e041b5a29d956e31d6863a43017cab"
 		},
 		"packages/utils/test/a-bar-moves-in-eighths-of-a-cell.test.ts": {
 			"old": "packages/tui/test/a-bar-moves-in-eighths-of-a-cell.test.ts",
@@ -23598,13 +23643,11 @@
 		"plugins/argot/package.json": {
 			"old": "packages/argot/package.json",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "none",
 			"hash": "7fd56dcaa8599f01d4a0e6108e173b9f3fc7b614d37d31f4e75f9a854c3504d9",
-			"mainHash": "99f3a63eb5069f2ae49251003c15194a19ce10f915a4e98488f8dbc25d437fcc",
+			"mainHash": "7fd56dcaa8599f01d4a0e6108e173b9f3fc7b614d37d31f4e75f9a854c3504d9",
 			"structuralHash": "46ce449889cb1bda1217b754061deeacec30af1a82e7e9f568d86353a39915d3",
-			"mainStructuralHash": "40fe7e352b7eca7e7c24b8b5121e4e11e4d97558df79890e755b558e0ad9e83b",
-			"group": "manifest-depth",
-			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move."
+			"mainStructuralHash": "46ce449889cb1bda1217b754061deeacec30af1a82e7e9f568d86353a39915d3"
 		},
 		"plugins/argot/src/cache.ts": {
 			"old": "packages/argot/src/cache.ts",
@@ -24018,10 +24061,10 @@
 			"differs": "changed",
 			"group": "changelog-or-readme",
 			"reason": "A moved package records the move in its own changelog or names its new path in its readme.",
-			"hash": "b9f5990bc24c7f4311e4043d0d2f43cee400aaa5170e87f0ff889f0b5725dcd2",
-			"mainHash": "7e296590703e456b46b00cb4451612188a7da268597e14118e3902dd18de6866",
-			"structuralHash": "8196e278a7ed957e3f015b32d127f7573b465bf51c44064d2e6518d9da4ab608",
-			"mainStructuralHash": "60926a6093c52873a24e8794214ecf138380b785e1799612cb93cea865156bf0"
+			"hash": "89b18d3c3085e4e4f5a5d4ab4a0430f396f8b9f4c31a45a4cbd87cb8f63bd24a",
+			"mainHash": "5177e882f9b9ce3f4eec5cef7c379ae943264fd2ee69ea34323d2dd8770f52b3",
+			"structuralHash": "5159cc4b3c87babb97b3b6851931f9c07c5d9d3959f4a48e1c5575e8ad7630b2",
+			"mainStructuralHash": "14d1d98bc2e37bf05689591b7ceb2877d1d0315acd9138217c9966d69982ffff"
 		},
 		"plugins/hashline/README.md": {
 			"old": "packages/hashline/README.md",
@@ -24062,13 +24105,11 @@
 		"plugins/hashline/package.json": {
 			"old": "packages/hashline/package.json",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "none",
 			"hash": "67968f3641141ffc1a828f9438ab557b01543367296acb4a21b383c43e49c7bf",
-			"mainHash": "b19a234f5e7c57a5870e65456909e5dc87d398c399f09132223ca4037fd2d59f",
+			"mainHash": "67968f3641141ffc1a828f9438ab557b01543367296acb4a21b383c43e49c7bf",
 			"structuralHash": "f1f23a42c9235a09274f778ec3d38e32d24ad0b2d3a703280acf1d38b3c2d778",
-			"mainStructuralHash": "ec35ff9dd92df0d838dd4e698b6801f8d91088b534a27ad454ba567a5a2edc0e",
-			"group": "manifest-depth",
-			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move."
+			"mainStructuralHash": "f1f23a42c9235a09274f778ec3d38e32d24ad0b2d3a703280acf1d38b3c2d778"
 		},
 		"plugins/hashline/scripts/coverage-floor.ts": {
 			"old": "packages/hashline/scripts/coverage-floor.ts",
@@ -34665,10 +34706,10 @@
 			"differs": "changed",
 			"group": "changelog-or-readme",
 			"reason": "A moved package records the move in its own changelog or names its new path in its readme.",
-			"hash": "b9e3edb8923502f025c334116a1a9cf09cfd07509d77ffeede5ec6a7141f5816",
-			"mainHash": "da6c671c01e00c3f46e6cc300701efdc772f203895b62318cfa6974202a6d6fa",
-			"structuralHash": "ff6e8ac662b89485842e0f1a5aef9ea57ab4b1dae2dd7bc61ca73a791db42ed5",
-			"mainStructuralHash": "719ea30897b59df681a7a847f0fcfb2138043f649e8828705ba99cd3607671f4"
+			"hash": "e1d32979ac9ac92a045e4599d02dea4918fb68824a4ec8f31b0c36a8580a99b1",
+			"mainHash": "d2e3ee6e16c3d183cb8d645d7a472444591128e3d52edbf765bce36b1c267d0b",
+			"structuralHash": "4de1f030645c3e5050dca1e5f92e407e3b38918ea8ae75e503adc41d1f5f96d1",
+			"mainStructuralHash": "1efabaf5c21354c2569540b8a9fffad472b8e86500da229f5d233f02fca2a45e"
 		},
 		"plugins/mnemopi/README.md": {
 			"old": "packages/mnemopi/README.md",
@@ -34693,13 +34734,11 @@
 		"plugins/mnemopi/package.json": {
 			"old": "packages/mnemopi/package.json",
 			"kind": "normalized",
-			"differs": "changed",
+			"differs": "none",
 			"hash": "8007741ec8f30e7657b7bc76aa4fd42d29ec2115de48a95499bc0cc42e3b0ef8",
-			"mainHash": "46e37a1539038a993d4671ee7770ffa1ebabf3463636dd37a11a0ca87e4bdc58",
+			"mainHash": "8007741ec8f30e7657b7bc76aa4fd42d29ec2115de48a95499bc0cc42e3b0ef8",
 			"structuralHash": "c2f7dcebd6e323c692cab6bffde4be79f52eee7d17f4863b6c01d4ab75d5ef4a",
-			"mainStructuralHash": "3edccd6dc8007038e3b31d8762c47bbc8d9e9da92f184142e01f01cf1ac7cb5a",
-			"group": "manifest-depth",
-			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move."
+			"mainStructuralHash": "c2f7dcebd6e323c692cab6bffde4be79f52eee7d17f4863b6c01d4ab75d5ef4a"
 		},
 		"plugins/mnemopi/src/cli.ts": {
 			"old": "packages/mnemopi/src/cli.ts",
@@ -36510,10 +36549,10 @@
 			"differs": "changed",
 			"group": "changelog-or-readme",
 			"reason": "A moved package records the move in its own changelog or names its new path in its readme.",
-			"hash": "123726f31418f72663ecbc6fc7f824a8165fb6f31ae502367af3fa91bfe4bc5c",
-			"mainHash": "3b825b02bfb515bbacf2d343b641f57f1fc17c40671b6b530dcb91d817a69c8a",
-			"structuralHash": "17f63e072f4b33b9bd637e4c1fb72a5f52b471534a1ea1ffc8c3bd4f138833bf",
-			"mainStructuralHash": "1b762366c6b16fe9450145e51276c2a3e85e841812e613f4bf1c06dcf6d7a126"
+			"hash": "0e04b0a2cea04685fe408e3131d5bb765c48f516b780001707b3731c38303c6c",
+			"mainHash": "1c12aa581e832ba8d4e9f09ccb884452f5b109921d682a977e4588e701432725",
+			"structuralHash": "73a80a4267ca963ebe68afba60adb8411722dfddd27bc09db673ed9df1e30328",
+			"mainStructuralHash": "ba8eb533f99d8532968beaec8b601d473d7160057d71fada44a5821dd4e482b1"
 		},
 		"plugins/mode-swarm/README.md": {
 			"old": "packages/swarm-extension/README.md",
@@ -36528,12 +36567,12 @@
 			"old": "packages/swarm-extension/package.json",
 			"kind": "normalized",
 			"differs": "changed",
-			"hash": "45db669274282586d34cb9e5213e7dacedb88646a2791e27d0adc4625115297d",
-			"mainHash": "0ae7cb178c63ccdef6d2dcac59a3524ba1eed741f087f14f70188bb8a6534d6b",
-			"structuralHash": "2f2432bca0e38d71f01092cbfc698a2570da9f4d6b76423418789f5ca1bc3683",
-			"mainStructuralHash": "97197f4b0e53944970290d77041de3148a51d88c253dd0c31605d8813830fc67",
 			"group": "manifest-depth",
-			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move."
+			"reason": "A manifest states its own directory: relative preload and extends depth, and workspace metadata, follow the move.",
+			"hash": "45db669274282586d34cb9e5213e7dacedb88646a2791e27d0adc4625115297d",
+			"mainHash": "412ea83c78a7d46d63a257b47f364aeead27ddf42cbca6654afe895f32cdb38c",
+			"structuralHash": "2f2432bca0e38d71f01092cbfc698a2570da9f4d6b76423418789f5ca1bc3683",
+			"mainStructuralHash": "058859bacb41c72ae93094d300d3cadbb9e7532f2ded3a0ad5ce502fd49046cc"
 		},
 		"plugins/mode-swarm/src/cli.ts": {
 			"old": "packages/swarm-extension/src/cli.ts",
@@ -43530,12 +43569,12 @@
 			"old": "packages/evals/test/suites/typescript-edit/adapter/prompts/a-benchmark-prompt-is-looked-up-by-an-id-held-at-run-time.test.ts",
 			"kind": "normalized",
 			"differs": "changed",
+			"group": "relocated-member-path",
+			"reason": "A member that left `packages/`, `python/` or `website/` for `apps/`, `clients/` or `tests/` states its own directory in a usage string, a command, a registry key or a comment, and climbs to the repository root by a relative path that gained one level. The move itself spells only the new location. A row here can also carry an edit this branch made before the move and every unmoved sibling carries too -- the array-spread rewrite, the `natives/` path spelling, a site page's nav fix -- each recorded in the commit that made it, none made by the relocation -- or the formatter's reflow of a call whose shorter path now fits one line.",
 			"hash": "b1c60df618c24479da674f94287bb8c4d81d87c0ac374ef4f457a268e5a28eb5",
 			"mainHash": "8c073a23233c6d73c0f27bf0442160bf636ee378fc25a25b93dc86b895a8e5f7",
 			"structuralHash": "7ae7154d821c017f600d2a3e72e12bac3ff06d147c5098adca230fbc205c2899",
-			"mainStructuralHash": "e278df429ac26b0fe3b538baab45e76766b835f4bd6fb0b03ed2469aa1a16116",
-			"group": "relocated-member-path",
-			"reason": "A member that left `packages/`, `python/` or `website/` for `apps/`, `clients/` or `tests/` states its own directory in a usage string, a command, a registry key or a comment, and climbs to the repository root by a relative path that gained one level. The move itself spells only the new location. A row here can also carry an edit this branch made before the move and every unmoved sibling carries too -- the array-spread rewrite, the `natives/` path spelling, a site page's nav fix -- each recorded in the commit that made it, none made by the relocation -- or the formatter's reflow of a call whose shorter path now fits one line."
+			"mainStructuralHash": "e278df429ac26b0fe3b538baab45e76766b835f4bd6fb0b03ed2469aa1a16116"
 		},
 		"tests/evals/test/suites/typescript-edit/adapter/task-scheduler-bounds-concurrency-and-isolates-run-failures.test.ts": {
 			"old": "packages/evals/test/suites/typescript-edit/adapter/task-scheduler-bounds-concurrency-and-isolates-run-failures.test.ts",
@@ -44642,6 +44681,17 @@
 			"mainHash": "c2e29a18f6926e6a97ad8155d5ec3ca4e9774af289eb9115b37abb89f664ee41",
 			"structuralHash": "1bbdda07c8a1a11cc25dca6403ccc011ed9d0c26cc19bef0e3bbf391588744d0",
 			"mainStructuralHash": "1bbdda07c8a1a11cc25dca6403ccc011ed9d0c26cc19bef0e3bbf391588744d0"
+		},
+		"kernel/src/loader/plugins/runtime-config.ts": {
+			"old": "packages/coding-agent/src/extensibility/plugins/runtime-config.ts",
+			"kind": "normalized",
+			"differs": "changed",
+			"group": "plugin-runtime-validation",
+			"reason": "The plugin loader accepts absent manifest holders and normalizes malformed plugin and settings maps to empty records before discovery reads persisted configuration.",
+			"hash": "2944092062e95de6a0568d91ad1a7a5c0c5a8d17e47be4d66bc93fe199e0dd55",
+			"mainHash": "1c19808e1dd2d635a1e7fb7648ffa8cbb75aeeffadc95b2d5ea0188246098de0",
+			"structuralHash": "bc5d2d758343571469b1e82c2142e801524c45e41f7f1ab661fe46587e7e6eb9",
+			"mainStructuralHash": "714009b8c238e4bae6969d08e26036cf66d7b7f1cfe0b5ec32e9a4777a17dc51"
 		},
 		"tests/simulations/bunfig.toml": {
 			"old": "packages/simulations/bunfig.toml",
