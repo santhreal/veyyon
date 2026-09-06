@@ -1797,18 +1797,23 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			// transcript, so a study/backtest tool can enumerate a session's subagents without
 			// scraping tool-result prose (GRAN-2). The child transcript path is derived exactly
 			// as the executor derives it: `<artifactsDir>/<id>.jsonl` (ONE PLACE).
-			this.session.recordSubagentSpawn?.({
+			const spawnRecord = {
 				agentId: result.id,
 				agentName: result.agent,
 				task: result.task,
 				sessionFile: path.join(effectiveArtifactsDir, sessionFileName(result.id)),
 				isolation: isIsolated ? isolationMode : "none",
-				status: result.aborted ? "cancelled" : result.exitCode === 0 ? "completed" : "failed",
+				status: (result.aborted ? "cancelled" : result.exitCode === 0 ? "completed" : "failed") as
+					| "completed"
+					| "failed"
+					| "cancelled",
 				exitCode: result.exitCode,
 				durationMs: result.durationMs,
 				usage: result.usage,
 				error: result.error,
-			});
+			};
+			this.session.recordSubagentSpawn?.(spawnRecord);
+			this.session.onSubagentComplete?.(spawnRecord);
 
 			return this.#buildResultPayload(result, projectAgentsDir, Date.now() - startTime, mergeSummary);
 		} catch (err) {
@@ -1877,3 +1882,4 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		};
 	}
 }
+export * from "./topic-replenishment";
