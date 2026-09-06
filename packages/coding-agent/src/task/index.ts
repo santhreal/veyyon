@@ -1811,6 +1811,10 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				durationMs: result.durationMs,
 				usage: result.usage,
 				error: result.error,
+				ticketId:
+					params && typeof params === "object" && "ticketId" in params && typeof params.ticketId === "string"
+						? params.ticketId
+						: undefined,
 			};
 			this.session.recordSubagentSpawn?.(spawnRecord);
 			this.session.onSubagentComplete?.(spawnRecord);

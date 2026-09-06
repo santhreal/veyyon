@@ -113,6 +113,8 @@ export interface SubagentSpawnRecord {
 	usage?: Usage;
 	/** Terminal error message, when the run failed. */
 	error?: string;
+	/** Associated ledger ticket ID, when spawned from an authorized topic replenishment. */
+	ticketId?: string;
 }
 
 /**

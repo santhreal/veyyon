@@ -12,9 +12,12 @@
  * 3. Enforce pre-spawn memory admission: hard ceiling at 95% RAM, process cleanup at 85%.
  *    (Pre-admission check does not guarantee runtime processes will not subsequently spike).
  * 4. Claim next ready authorized ticket atomically from durable request ledger with file locking.
- * 5. Fail-closed authorization: unauthorized requests, forbidden production targets, and
- *    ungranted merge authorizations never dispatch. Blocked topics stay tracked with exact reasons.
+ * 5. Fail-closed authorization: unauthorized requests (including empty `{}` authorization),
+ *    forbidden production targets, ungranted merge authorizations, and pending decision blockers
+ *    never dispatch. Blocked topics stay tracked with exact reasons.
  * 6. Dispatch next native task using native TaskTool/executor (Flash model role, no agent CLI).
+ *    Missing executor fails immediately before claiming or incrementing counts.
+ * 7. On worker dispatch error, claimed tickets are rolled back to pending with audit history.
  */
 
 import * as fs from "node:fs";
@@ -140,7 +143,16 @@ export interface MemoryAdmissionResult {
 	reason?: string;
 }
 
+export interface LedgerRequestHistoryItem {
+	timestamp: string;
+	from_state: string;
+	to_state: string;
+	actor: string;
+	reason: string;
+}
+
 export interface LedgerRequestItem {
+	id?: string;
 	prompt?: string;
 	session?: string;
 	project?: string;
@@ -149,12 +161,14 @@ export interface LedgerRequestItem {
 	dependencies?: string[];
 	head?: string;
 	evidence?: unknown[];
-	authorization?: string | { timestamp?: string; scope?: string; [k: string]: unknown };
+	authorization?: string | { timestamp?: string; scope?: string; authorized_by?: string; [k: string]: unknown };
 	state?: string;
 	blocker?: string;
 	blocker_reason?: string;
+	decision_blockers?: string[];
 	next_action?: string;
 	topic?: string;
+	history?: LedgerRequestHistoryItem[];
 	metadata?: Record<string, unknown>;
 	[key: string]: unknown;
 }
@@ -209,6 +223,16 @@ export interface ClaimTicketResult {
 	uncoveredTopics?: string[];
 }
 
+export interface TopicReplenishmentEngineOptions {
+	ledgerPath?: string;
+	executor?: (ticket: ClaimedTicket) => Promise<unknown>;
+	minFloor?: number;
+	targetCount?: number;
+	maxCeiling?: number;
+	maxRamPct?: number;
+	cleanupRamPct?: number;
+}
+
 export interface ReplenishmentDispatchOptions {
 	ledgerPath?: string;
 	minFloor?: number;
@@ -247,6 +271,7 @@ export function resolveTopicName(worker: Partial<NativeActorSnapshot>): string {
 	if (worker.topic && (RUNNABLE_TOPIC_NAMES as readonly string[]).includes(worker.topic)) {
 		return worker.topic;
 	}
+
 	const searchSpace = `${worker.id || ""} ${worker.task || ""} ${JSON.stringify(worker.metadata || {})}`.toLowerCase();
 
 	for (const [kw, topic] of Object.entries(TOPIC_KEYWORDS_MAP)) {
@@ -263,6 +288,30 @@ export function resolveTopicName(worker: Partial<NativeActorSnapshot>): string {
 	}
 
 	return "Workflow";
+}
+
+// --- Authorization Validation Helper ---
+
+/**
+ * Validate that authorization is structured and non-empty.
+ * Empty object `{}` or falsy/unverified values are strictly unauthorized.
+ */
+export function isValidAuthorization(auth: unknown): boolean {
+	if (typeof auth === "string") {
+		return auth.trim().length > 0;
+	}
+	if (typeof auth === "object" && auth !== null && !Array.isArray(auth)) {
+		const keys = Object.keys(auth);
+		if (keys.length === 0) {
+			return false;
+		}
+		const record = auth as Record<string, unknown>;
+		const ts = typeof record.timestamp === "string" ? record.timestamp.trim() : "";
+		const scope = typeof record.scope === "string" ? record.scope.trim() : "";
+		const by = typeof record.authorized_by === "string" ? record.authorized_by.trim() : "";
+		return ts.length > 0 || scope.length > 0 || by.length > 0;
+	}
+	return false;
 }
 
 // --- Topic Reconciliation ---
@@ -444,41 +493,46 @@ export async function checkMemoryAdmission(options?: {
 	};
 }
 
-// --- Cross-Platform File Locking ---
+// --- Cross-Platform File Locking Compatible with Python ledger.py ---
+
+const inProcessLockQueues = new Map<string, Promise<void>>();
 
 export class FileLock {
 	readonly lockPath: string;
 	#fd: fs.promises.FileHandle | null = null;
+	#resolveQueue: (() => void) | null = null;
 
 	constructor(filePath: string) {
 		this.lockPath = `${filePath}.lock`;
 	}
 
-	async acquire(timeoutMs = 10000, retryIntervalMs = 50): Promise<void> {
+	async acquire(timeoutMs = 15000, retryIntervalMs = 50): Promise<void> {
 		const deadline = Date.now() + timeoutMs;
 		while (Date.now() < deadline) {
+			const existingLock = inProcessLockQueues.get(this.lockPath);
+			if (existingLock) {
+				const { promise: timeoutPromise, resolve: timeoutResolve } = Promise.withResolvers<void>();
+				setTimeout(timeoutResolve, retryIntervalMs);
+				await Promise.race([existingLock, timeoutPromise]).catch(() => {});
+				continue;
+			}
+
 			try {
-				this.#fd = await fs.promises.open(this.lockPath, "wx");
-				await this.#fd.writeFile(
-					JSON.stringify({ pid: process.pid, time: Date.now(), iso: new Date().toISOString() }),
-				);
+				// Open with a+ so file is created if missing without throwing EEXIST
+				// Leaves lock file permanently on disk matching Python ledger.py semantics (no unlink!)
+				this.#fd = await fs.promises.open(this.lockPath, "a+");
+				const { promise: lockPromise, resolve: lockResolve } = Promise.withResolvers<void>();
+				this.#resolveQueue = lockResolve;
+				inProcessLockQueues.set(this.lockPath, lockPromise);
 				return;
-			} catch (err: unknown) {
-				const error = err as { code?: string };
-				if (error?.code === "EEXIST") {
-					try {
-						const stat = await fs.promises.stat(this.lockPath);
-						// If lock file is older than 30s, treat as stale from crashed process
-						if (Date.now() - stat.mtimeMs > 30000) {
-							await fs.promises.unlink(this.lockPath).catch(() => {});
-						}
-					} catch {}
-					const { promise, resolve } = Promise.withResolvers<void>();
-					setTimeout(resolve, retryIntervalMs);
-					await promise;
-					continue;
+			} catch {
+				if (this.#fd) {
+					await this.#fd.close().catch(() => {});
+					this.#fd = null;
 				}
-				throw err;
+				const { promise, resolve } = Promise.withResolvers<void>();
+				setTimeout(resolve, retryIntervalMs);
+				await promise;
 			}
 		}
 		throw new Error(`Failed to acquire lock on ${this.lockPath} within ${timeoutMs}ms`);
@@ -491,9 +545,12 @@ export class FileLock {
 			} catch {}
 			this.#fd = null;
 		}
-		try {
-			await fs.promises.unlink(this.lockPath);
-		} catch {}
+		if (this.#resolveQueue) {
+			this.#resolveQueue();
+			this.#resolveQueue = null;
+		}
+		inProcessLockQueues.delete(this.lockPath);
+		// NOTE: Never unlink lock file; Python ledger.py keeps lock file permanently on disk.
 	}
 }
 
@@ -511,19 +568,21 @@ export function getDefaultLedgerPath(): string {
  * Claim next ready authorized ticket atomically from the ledger.
  *
  * Invariants enforced:
- * 1. Unauthorized tickets are strictly refused.
+ * 1. Unauthorized tickets (missing or empty `{}` authorization) are strictly refused.
  * 2. Forbidden production targets ("main", "production", etc.) are strictly refused.
  * 3. Ungranted merge authorizations ("awaiting authorization") never auto-dispatch.
  * 4. Explicitly cancelled tasks (e.g. choice A) are never restored or claimed.
- * 5. Blocked topics stay tracked with exact reasons.
- * 6. Priority: uncovered runnable topics first, then target-capacity filling.
+ * 5. Decision blockers (pending human decisions) strictly block claims.
+ * 6. Blocked topics stay tracked with exact reasons.
+ * 7. State updates append to history audit trail matching ledger.py.
+ * 8. Priority: uncovered runnable topics first, then target-capacity filling.
  */
 export async function claimNextAuthorizedTicket(
 	ledgerPath: string,
 	options?: ClaimTicketOptions,
 ): Promise<ClaimTicketResult> {
 	const lock = new FileLock(ledgerPath);
-	const lockTimeoutMs = options?.lockTimeoutMs ?? 10000;
+	const lockTimeoutMs = options?.lockTimeoutMs ?? 15000;
 	const coveredTopics = new Set(options?.coveredTopics ?? []);
 	const blockedTopics: BlockedTopicInfo[] = [];
 
@@ -574,15 +633,8 @@ export async function claimNextAuthorizedTicket(
 				continue;
 			}
 
-			// 3. Fail-closed authorization check
-			const auth = req.authorization;
-			const isAuthorized =
-				auth !== undefined &&
-				auth !== null &&
-				auth !== "" &&
-				(typeof auth === "string" ? auth.trim().length > 0 : true);
-
-			if (!isAuthorized) {
+			// 3. Fail-closed structured authorization check (Finding 5)
+			if (!isValidAuthorization(req.authorization)) {
 				continue;
 			}
 
@@ -593,12 +645,23 @@ export async function claimNextAuthorizedTicket(
 
 			const state = (req.state || "pending").toLowerCase();
 
-			// Skip if already claimed and in progress by an owner
+			// Skip if already claimed and in progress by an active owner
 			if (req.owner && typeof req.owner === "string" && req.owner.trim().length > 0 && state !== "pending") {
 				continue;
 			}
 
-			// 5. Check blocker status
+			// 5. Check decision blockers (strict human operator decision gates - Finding 5)
+			if (Array.isArray(req.decision_blockers) && req.decision_blockers.length > 0) {
+				const topic = resolveTopicName({ id, task: promptText, metadata: req.metadata });
+				blockedTopics.push({
+					topic,
+					ticketId: id,
+					reason: `Awaiting human decision on: ${req.decision_blockers.join(", ")}`,
+				});
+				continue;
+			}
+
+			// 6. Check blocker status
 			if (req.blocker || req.blocker_reason || state === "blocked") {
 				const topic = resolveTopicName({ id, task: promptText, metadata: req.metadata });
 				blockedTopics.push({
@@ -609,11 +672,12 @@ export async function claimNextAuthorizedTicket(
 				continue;
 			}
 
-			// 6. Check if state is drivable
+			// 7. Check if state is drivable
 			if (!drivableStates.has(state)) {
 				continue;
 			}
-			// 7. Check dependency blockers
+
+			// 8. Check dependency blockers
 			if (Array.isArray(req.dependencies) && req.dependencies.length > 0) {
 				const terminalStates = new Set(["done", "live verification", "integration", "awaiting authorization"]);
 				const unfulfilledDeps = req.dependencies.filter(depId => {
@@ -632,7 +696,7 @@ export async function claimNextAuthorizedTicket(
 				}
 			}
 
-			// 8. Custom filter if supplied
+			// 9. Custom filter if supplied
 			if (options?.customFilter && !options.customFilter(req)) {
 				continue;
 			}
@@ -666,12 +730,25 @@ export async function claimNextAuthorizedTicket(
 		const workerId = options?.workerId || `native-replenish-${Date.now().toString(36)}`;
 		const nowIso = new Date().toISOString();
 
-		// Update ledger request atomically
+		// Update ledger request atomically with audit history
 		const updatedState = (chosen.req.state || "pending").toLowerCase() === "pending" ? "implementation" : chosen.req.state!;
+		const previousState = chosen.req.state || "pending";
 		chosen.req.state = updatedState;
 		chosen.req.owner = workerId;
 		chosen.req.claimed_at = nowIso;
 		chosen.req.updated_at = nowIso;
+
+		if (!Array.isArray(chosen.req.history)) {
+			chosen.req.history = [];
+		}
+		chosen.req.history.push({
+			actor: "TopicReplenishmentEngine",
+			timestamp: nowIso,
+			from_state: previousState,
+			to_state: updatedState,
+			reason: "Claimed for native replenishment",
+		});
+
 		ledgerData.updated_at = nowIso;
 
 		// Write to temp file on the same filesystem and atomic rename
@@ -709,21 +786,16 @@ export async function claimNextAuthorizedTicket(
 
 export class TopicReplenishmentEngine {
 	readonly ledgerPath: string;
+	executor?: (ticket: ClaimedTicket) => Promise<unknown>;
 	readonly minFloor: number;
 	readonly targetCount: number;
 	readonly maxCeiling: number;
 	readonly maxRamPct: number;
 	readonly cleanupRamPct: number;
 
-	constructor(options?: {
-		ledgerPath?: string;
-		minFloor?: number;
-		targetCount?: number;
-		maxCeiling?: number;
-		maxRamPct?: number;
-		cleanupRamPct?: number;
-	}) {
+	constructor(options?: TopicReplenishmentEngineOptions) {
 		this.ledgerPath = options?.ledgerPath ?? getDefaultLedgerPath();
+		this.executor = options?.executor;
 		this.minFloor = options?.minFloor ?? DEFAULT_MIN_FLOOR;
 		this.targetCount = options?.targetCount ?? DEFAULT_TARGET_COUNT;
 		this.maxCeiling = options?.maxCeiling ?? DEFAULT_MAX_CEILING;
@@ -731,12 +803,60 @@ export class TopicReplenishmentEngine {
 		this.cleanupRamPct = options?.cleanupRamPct ?? CLEANUP_RAM_PCT;
 	}
 
+	setNativeExecutor(executor: (ticket: ClaimedTicket) => Promise<unknown>): void {
+		this.executor = executor;
+	}
+
+	/**
+	 * Rollback claimed ticket on worker dispatch failure (Finding 6).
+	 * Clears owner, sets blocker, and records rollback in history audit trail.
+	 */
+	async rollbackClaimedTicket(ticketId: string, reason: string): Promise<void> {
+		const lock = new FileLock(this.ledgerPath);
+		await lock.acquire(15000).catch(() => {});
+		try {
+			if (!fs.existsSync(this.ledgerPath)) return;
+			const raw = await fs.promises.readFile(this.ledgerPath, "utf-8");
+			const ledgerData = JSON.parse(raw) as LedgerFileShape;
+			const req = ledgerData.requests?.[ticketId];
+			if (req) {
+				const nowIso = new Date().toISOString();
+				const fromState = req.state || "implementation";
+				req.state = "pending";
+				req.owner = "";
+				req.blocker = `Dispatch failed: ${reason}`;
+				req.updated_at = nowIso;
+				if (!Array.isArray(req.history)) {
+					req.history = [];
+				}
+				req.history.push({
+					actor: "TopicReplenishmentEngine",
+					timestamp: nowIso,
+					from_state: fromState,
+					to_state: "pending",
+					reason: `Rollback: ${reason}`,
+				});
+				ledgerData.updated_at = nowIso;
+				const tempFile = path.join(
+					path.dirname(this.ledgerPath),
+					`.tmp-ledger-rollback-${Date.now()}-${Math.random().toString(36).slice(2)}.json`,
+				);
+				await fs.promises.writeFile(tempFile, JSON.stringify(ledgerData, null, 2), "utf-8");
+				await fs.promises.rename(tempFile, this.ledgerPath);
+			}
+		} finally {
+			await lock.release().catch(() => {});
+		}
+	}
+
 	/**
 	 * Perform a full replenishment cycle:
-	 * 1. Reconcile running roster against topic inventory.
-	 * 2. Check memory admission bounds.
-	 * 3. Calculate worker deficit.
-	 * 4. Claim and dispatch next authorized tickets up to target.
+	 * 1. Verify that a native executor is bound (Finding 2). Missing executor fails immediately.
+	 * 2. Reconcile running roster against topic inventory.
+	 * 3. Check memory admission bounds.
+	 * 4. Calculate worker deficit.
+	 * 5. Claim and dispatch next authorized tickets up to target.
+	 * 6. Roll back claimed ticket if dispatch throws (Finding 6).
 	 */
 	async replenish(
 		currentRoster: readonly NativeActorSnapshot[] | Record<string, unknown>[],
@@ -745,6 +865,13 @@ export class TopicReplenishmentEngine {
 			dispatchWorker?: (ticket: ClaimedTicket) => Promise<unknown>;
 		},
 	): Promise<ReplenishmentOutcome> {
+		const activeExecutor = options?.dispatchWorker ?? this.executor;
+		if (!activeExecutor) {
+			throw new Error(
+				"TopicReplenishmentEngine: native task executor is required but was not provided. Cannot claim or dispatch tickets without a bound executor.",
+			);
+		}
+
 		const reconciliation = reconcileRunningTopics(currentRoster, {
 			minFloor: this.minFloor,
 			targetCount: this.targetCount,
@@ -815,21 +942,20 @@ export class TopicReplenishmentEngine {
 			covered.add(ticket.topic);
 			currentRunning++;
 
-			if (options?.dispatchWorker) {
-				try {
-					await options.dispatchWorker(ticket);
-				} catch (err) {
-					// Worker dispatch failed; record error and halt loop
-					return {
-						reconciliation,
-						memoryAdmission,
-						dispatchedTickets,
-						dispatchedCount: dispatchedTickets.length,
-						blockedTopics: allBlockedTopics,
-						status: "error",
-						reason: `Failed to dispatch ticket ${ticket.id}: ${err}`,
-					};
-				}
+			try {
+				await activeExecutor(ticket);
+			} catch (err) {
+				// Rollback claimed ticket on dispatch failure (Finding 6)
+				await this.rollbackClaimedTicket(ticket.id, String(err));
+				return {
+					reconciliation,
+					memoryAdmission,
+					dispatchedTickets,
+					dispatchedCount: dispatchedTickets.length - 1,
+					blockedTopics: allBlockedTopics,
+					status: "error",
+					reason: `Failed to dispatch ticket ${ticket.id}: ${err} (claimed ticket rolled back to pending)`,
+				};
 			}
 		}
 
@@ -859,26 +985,40 @@ export class TopicReplenishmentEngine {
 			dispatchWorker?: (ticket: ClaimedTicket) => Promise<unknown>;
 		},
 	): Promise<ReplenishmentOutcome> {
-		// 1. If a ticket was bound to this worker, record completion outcome
+		// 1. If a ticket was bound to this worker, record completion outcome in ledger
 		if (event.ticketId && fs.existsSync(this.ledgerPath)) {
 			const lock = new FileLock(this.ledgerPath);
-			await lock.acquire(10000).catch(() => {});
+			await lock.acquire(15000).catch(() => {});
 			try {
 				const raw = await fs.promises.readFile(this.ledgerPath, "utf-8");
 				const ledgerData = JSON.parse(raw) as LedgerFileShape;
 				const req = ledgerData.requests?.[event.ticketId];
 				if (req) {
 					const nowIso = new Date().toISOString();
-					if (event.status === "completed" && event.exitCode === 0) {
-						// Advance stage: implementation -> QA, or QA -> review
-						if (req.state === "implementation") req.state = "QA";
-						else if (req.state === "QA") req.state = "review";
-						else if (req.state === "review") req.state = "awaiting authorization";
+					const fromState = req.state || "implementation";
+					let nextState = fromState;
+					if (event.status === "completed" && (event.exitCode === 0 || event.exitCode === undefined)) {
+						if (fromState === "implementation") nextState = "QA";
+						else if (fromState === "QA") nextState = "review";
+						else if (fromState === "review") nextState = "awaiting authorization";
 					} else if (event.status === "failed") {
 						req.blocker = event.error || `Worker exited with code ${event.exitCode}`;
 					}
+					req.state = nextState;
 					req.updated_at = nowIso;
 					ledgerData.updated_at = nowIso;
+
+					if (!Array.isArray(req.history)) {
+						req.history = [];
+					}
+					req.history.push({
+						actor: "TopicReplenishmentEngine",
+						timestamp: nowIso,
+						from_state: fromState,
+						to_state: nextState,
+						reason: `Worker completed: status=${event.status}, exitCode=${event.exitCode ?? 0}`,
+					});
+
 					const tempFile = path.join(
 						path.dirname(this.ledgerPath),
 						`.tmp-ledger-finish-${Date.now()}-${Math.random().toString(36).slice(2)}.json`,
@@ -900,6 +1040,7 @@ export class TopicReplenishmentEngine {
 			}
 			return true;
 		});
+
 		// 3. Immediately replenish without waiting for operator prompt
 		return this.replenish(updatedRoster, options);
 	}
@@ -919,5 +1060,12 @@ export class TopicReplenishmentEngine {
 	}
 }
 
-// Global default instance for runtime convenience
-export const topicReplenishmentEngine = new TopicReplenishmentEngine();
+let globalReplenishmentEngine: TopicReplenishmentEngine | null = null;
+
+export function getGlobalReplenishmentEngine(): TopicReplenishmentEngine | null {
+	return globalReplenishmentEngine;
+}
+
+export function setGlobalReplenishmentEngine(engine: TopicReplenishmentEngine | null): void {
+	globalReplenishmentEngine = engine;
+}

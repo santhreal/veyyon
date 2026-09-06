@@ -198,6 +198,7 @@ import { ARGOT_HANDLES_BANNER } from "./system-prompt-builder/section-registry";
 import { AgentOutputManager } from "./task/output-manager";
 import { wrapStreamFnWithProviderConcurrency } from "./task/provider-concurrency";
 import { delegationStrength } from "./task/subagent-settings";
+import { getGlobalReplenishmentEngine } from "./task/topic-replenishment";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,
@@ -2640,6 +2641,30 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			},
 			getArtifactManager: () => sessionManager.getArtifactManager(),
 			recordSubagentSpawn: record => sessionManager.appendSubagentSpawn(record),
+			onSubagentComplete: async record => {
+				const engine = getGlobalReplenishmentEngine();
+				if (engine) {
+					const activeRoster = AgentRegistry.global().list().map(ref => ({
+						id: ref.id,
+						status: ref.status,
+						role: ref.role,
+						task: ref.task,
+					}));
+					await engine.onWorkerComplete(
+						{
+							agentId: record.agentId,
+							agentName: record.agentName,
+							task: record.task,
+							status: record.status,
+							exitCode: record.exitCode,
+							durationMs: record.durationMs,
+							error: record.error,
+							ticketId: record.ticketId,
+						},
+						activeRoster,
+					);
+				}
+			},
 			settings,
 			authStorage,
 			modelRegistry,

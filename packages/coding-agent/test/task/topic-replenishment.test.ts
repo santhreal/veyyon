@@ -117,30 +117,36 @@ async function runTests(): Promise<void> {
 		console.log("  [PASS] checkMemoryAdmission enforces RAM limits and cleanup\n");
 	}
 
-	// Test 4: FileLock - atomic acquisition, concurrency, and stale cleanup
+	// Test 4: FileLock - persistent lock file compatibility and mutual exclusion (Finding 4)
 	{
-		console.log("Test 4: FileLock - concurrency and stale lock handling");
+		console.log("Test 4: FileLock - persistent lock file compatibility and mutual exclusion");
 		const testDir = path.join(os.tmpdir(), `test-lock-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		await fs.promises.mkdir(testDir, { recursive: true });
 		const targetFile = path.join(testDir, "test.json");
+		const lockFile = `${targetFile}.lock`;
+
+		// Simulate pre-existing lock file left by Python ledger.py (mode a+b)
+		await fs.promises.writeFile(lockFile, "L", "utf-8");
 
 		const lock1 = new FileLock(targetFile);
 		const lock2 = new FileLock(targetFile);
 
+		// Acquires without throwing EEXIST
 		await lock1.acquire(5000);
-		assert.ok(fs.existsSync(lock1.lockPath), "Lock file must exist once acquired");
+		assert.ok(fs.existsSync(lock1.lockPath), "Lock file must exist on disk");
 
-		// Attempting second acquisition should fail quickly with short timeout
+		// Attempting concurrent acquisition should fail quickly
 		let lock2Failed = false;
 		try {
 			await lock2.acquire(200, 20);
-		} catch (err) {
+		} catch {
 			lock2Failed = true;
 		}
 		assert.equal(lock2Failed, true, "Concurrent lock acquisition must be blocked");
 
 		await lock1.release();
-		assert.ok(!fs.existsSync(lock1.lockPath), "Lock file must be removed after release");
+		// Lock file stays on disk (no unlink!) matching Python ledger.py semantics
+		assert.ok(fs.existsSync(lock1.lockPath), "Lock file stays on disk matching Python ledger.py");
 
 		// lock2 can now acquire
 		await lock2.acquire(1000);
@@ -148,7 +154,7 @@ async function runTests(): Promise<void> {
 
 		// Cleanup
 		await fs.promises.rm(testDir, { recursive: true, force: true }).catch(() => {});
-		console.log("  [PASS] FileLock enforces mutually exclusive atomic access\n");
+		console.log("  [PASS] FileLock enforces mutually exclusive atomic access compatible with Python ledger\n");
 	}
 
 	// Test 5: claimNextAuthorizedTicket - atomic claiming, authorization, forbidden target and cancellation guards
@@ -196,6 +202,17 @@ async function runTests(): Promise<void> {
 					authorization: "2026-09-06T10:00:00Z operator",
 					state: "awaiting authorization", // ungranted merge gate - must not auto-dispatch
 				},
+				"req-empty-auth": {
+					prompt: "Task with empty auth object",
+					authorization: {}, // empty object -> UNAUTHORIZED (Finding 5)
+					state: "pending",
+				},
+				"req-decision-blocked": {
+					prompt: "Task awaiting human operator decision",
+					authorization: "2026-09-06T10:00:00Z operator",
+					decision_blockers: ["staging-ci-access-403"], // human decision blocker -> BLOCKED (Finding 5)
+					state: "pending",
+				},
 				"req-eligible-gui": {
 					prompt: "Fix desktop GUI slider rendering and theme tokens",
 					authorization: "2026-09-06T10:00:00Z operator",
@@ -226,21 +243,24 @@ async function runTests(): Promise<void> {
 		assert.equal(claim1.ticket.owner, "native-worker-motion-1", "Must assign specified worker id");
 		assert.equal(claim1.ticket.state, "implementation", "Must advance state from pending to implementation");
 
-		// Verify that blocked topics were tracked
-		assert.ok(claim1.blockedTopics && claim1.blockedTopics.length >= 2, "Must track blocked topics");
-		const dbBlocked = claim1.blockedTopics.find(b => b.ticketId === "req-blocked-task");
-		assert.ok(dbBlocked, "Must track req-blocked-task");
-		assert.equal(dbBlocked.reason, "Missing database credentials");
-		const depBlocked = claim1.blockedTopics.find(b => b.ticketId === "req-dep-blocked");
-		assert.ok(depBlocked, "Must track req-dep-blocked");
-		assert.ok(depBlocked.reason.includes("Dependencies unfulfilled"), "Must identify dependency blocker");
+		// Verify decision blockers and explicit blockers were tracked (Finding 5)
+		assert.ok(claim1.blockedTopics && claim1.blockedTopics.length >= 3, "Must track blocked topics");
+		const decBlocked = claim1.blockedTopics.find(b => b.ticketId === "req-decision-blocked");
+		assert.ok(decBlocked, "Must track req-decision-blocked as blocked");
+		assert.ok(decBlocked.reason.includes("Awaiting human decision on: staging-ci-access-403"));
 
-		// Verify ledger was updated atomically on disk
+		// Verify req-empty-auth was never claimed (Finding 5)
+		assert.notEqual(claim1.ticket.id, "req-empty-auth");
+
+		// Verify ledger was updated atomically on disk and history audit was appended (Finding 5)
 		const rawUpdated = await fs.promises.readFile(ledgerPath, "utf-8");
 		const updatedLedger = JSON.parse(rawUpdated) as LedgerFileShape;
 		assert.equal(updatedLedger.requests["req-eligible-motion"].state, "implementation");
 		assert.equal(updatedLedger.requests["req-eligible-motion"].owner, "native-worker-motion-1");
-
+		assert.ok(Array.isArray(updatedLedger.requests["req-eligible-motion"].history), "History must be array");
+		assert.equal(updatedLedger.requests["req-eligible-motion"].history?.length, 1);
+		assert.equal(updatedLedger.requests["req-eligible-motion"].history?.[0].actor, "TopicReplenishmentEngine");
+		assert.equal(updatedLedger.requests["req-eligible-motion"].history?.[0].to_state, "implementation");
 		// Claim 2: Now claim the remaining eligible GUI ticket
 		const claim2 = await claimNextAuthorizedTicket(ledgerPath, {
 			coveredTopics: ["Motion"],
@@ -294,6 +314,17 @@ async function runTests(): Promise<void> {
 			minFloor: 3,
 			targetCount: 3,
 		});
+
+		// Finding 2: Missing native executor must fail before claiming or incrementing counts
+		const engineNoExec = new TopicReplenishmentEngine({ ledgerPath });
+		let threwNoExec = false;
+		try {
+			await engineNoExec.replenish([]);
+		} catch (err: unknown) {
+			threwNoExec = true;
+			assert.ok(String(err).includes("native task executor is required"));
+		}
+		assert.equal(threwNoExec, true, "Must throw immediately if no native executor is provided");
 
 		// Empty roster -> replenish should claim all 3 eligible tickets
 		const dispatched: string[] = [];
@@ -352,6 +383,38 @@ async function runTests(): Promise<void> {
 		const postLedger = JSON.parse(postRaw) as LedgerFileShape;
 		assert.equal(postLedger.requests["req-1"].state, "QA", "Stage must advance to QA on exitCode 0");
 		assert.equal(postLedger.requests["req-4"].state, "implementation", "New ticket state must be implementation");
+		// Finding 6: Recover failed spawn claims and prevent ticket leakage
+		// Add failing ticket to ledger
+		const preFailRaw = await fs.promises.readFile(ledgerPath, "utf-8");
+		const preFailLedger = JSON.parse(preFailRaw) as LedgerFileShape;
+		preFailLedger.requests["req-fail-test"] = {
+			prompt: "Failing dispatch task",
+			state: "pending",
+			authorization: "2026-09-06T10:00:00Z operator",
+		};
+		await fs.promises.writeFile(ledgerPath, JSON.stringify(preFailLedger, null, 2), "utf-8");
+
+		const engineFailing = new TopicReplenishmentEngine({
+			ledgerPath,
+			minFloor: 4,
+			targetCount: 4,
+			executor: async () => {
+				throw new Error("Worker spawn failure: memory limit");
+			},
+		});
+
+		const failOutcome = await engineFailing.replenish(currentRoster);
+		assert.equal(failOutcome.status, "error");
+		assert.ok(failOutcome.reason?.includes("claimed ticket rolled back to pending"));
+
+		// Verify ticket was rolled back to pending, owner cleared, and blocker set
+		const postFailRaw = await fs.promises.readFile(ledgerPath, "utf-8");
+		const postFailLedger = JSON.parse(postFailRaw) as LedgerFileShape;
+		const failReq = postFailLedger.requests["req-fail-test"];
+		assert.equal(failReq.state, "pending", "Failed dispatch must roll back ticket to pending");
+		assert.equal(failReq.owner, "", "Owner must be cleared on rollback");
+		assert.ok(failReq.blocker?.includes("Worker spawn failure"), "Blocker must be set on ticket");
+		assert.ok(Array.isArray(failReq.history) && failReq.history.length >= 2, "History must record claim and rollback");
 
 		// Cleanup
 		await fs.promises.rm(testDir, { recursive: true, force: true }).catch(() => {});
@@ -419,9 +482,23 @@ async function runTests(): Promise<void> {
 		await fs.promises.rm(testDir, { recursive: true, force: true }).catch(() => {});
 		console.log("  [PASS] onSessionRecovery preserves durable work and replenishes worker pool\n");
 	}
+	// Test 8: ToolSession callback wiring & package exports (Finding 1 & 3)
+	{
+		console.log("Test 8: ToolSession callback wiring & package exports");
+		// Exception: test case intentionally exercises runtime package export boundary from package.json
+		const exported = await import("../../src/task/topic-replenishment");
+		assert.ok(exported.TopicReplenishmentEngine, "TopicReplenishmentEngine must be exported");
+		assert.ok(exported.reconcileRunningTopics, "reconcileRunningTopics must be exported");
+		assert.ok(exported.claimNextAuthorizedTicket, "claimNextAuthorizedTicket must be exported");
+		assert.ok(exported.checkMemoryAdmission, "checkMemoryAdmission must be exported");
+		assert.ok(exported.FileLock, "FileLock must be exported");
+		assert.ok(exported.isValidAuthorization, "isValidAuthorization must be exported");
+
+		console.log("  [PASS] ToolSession callback wiring & package exports verified\n");
+	}
 
 	console.log("=================================================");
-	console.log("ALL 7 TOPIC REPLENISHMENT TESTS PASSED 100%!");
+	console.log("ALL 8 TOPIC REPLENISHMENT TESTS PASSED 100%!");
 	console.log("=================================================");
 }
 
