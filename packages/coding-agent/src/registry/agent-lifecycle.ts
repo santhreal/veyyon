@@ -660,7 +660,7 @@ export class AgentLifecycleManager {
 	 */
 	#refreshDeadline(id: string, adopted: AdoptedAgent): void {
 		const ref = this.#registry.get(id);
-		if (ref?.status === "idle" && adopted.idleTtlMs > 0 && !this.#pinned.has(id)) {
+		if (ref?.status === "idle" && adopted.idleTtlMs > 0) {
 			arm(adopted, ref.lastActivity + adopted.idleTtlMs, "park");
 			return;
 		}

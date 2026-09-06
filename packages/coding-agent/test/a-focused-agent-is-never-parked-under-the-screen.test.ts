@@ -28,6 +28,7 @@ import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 interface SessionStub {
 	session: AgentSession;
 	disposeCalls: () => number;
+	flushCalls: () => number;
 	/** Resolves once `flush()` has been entered; `releaseFlush` lets it return. */
 	flushEntered: Promise<void>;
 	releaseFlush: () => void;
@@ -35,6 +36,7 @@ interface SessionStub {
 
 function makeSessionStub(): SessionStub {
 	let disposeCount = 0;
+	let flushCount = 0;
 	const entered = Promise.withResolvers<void>();
 	const gate = Promise.withResolvers<void>();
 	const stub = {
@@ -42,6 +44,7 @@ function makeSessionStub(): SessionStub {
 		subscribe: () => () => {},
 		sessionManager: {
 			flush: async () => {
+				flushCount++;
 				entered.resolve();
 				await gate.promise;
 			},
@@ -53,6 +56,7 @@ function makeSessionStub(): SessionStub {
 	return {
 		session: stub as unknown as AgentSession,
 		disposeCalls: () => disposeCount,
+		flushCalls: () => flushCount,
 		flushEntered: entered.promise,
 		releaseFlush: gate.resolve,
 	};
@@ -124,6 +128,30 @@ describe("a focused agent is never parked under the screen", () => {
 		expect(controller.target).toBe(stub.session);
 	});
 
+	it("the pin is taken before the revive, so a park that finishes during the revive cannot dispose", async () => {
+		const stub = idleAdopted("Scout-race", 0);
+		const park = lifecycle.park("Scout-race");
+		await stub.flushEntered;
+		// A revive is slow (transcript replay, MCP, auth). Modelled by an ensureLive
+		// that lets the in-flight park run to completion before it returns: only a
+		// pin taken before the revive is seen by the park's post-flush check.
+		const ensureLive = lifecycle.ensureLive.bind(lifecycle);
+		const slow = vi.spyOn(lifecycle, "ensureLive").mockImplementation(async id => {
+			const session = await ensureLive(id);
+			stub.releaseFlush();
+			await park;
+			return session;
+		});
+		try {
+			await controller.focusAgent("Scout-race");
+		} finally {
+			slow.mockRestore();
+		}
+		expect(stub.disposeCalls()).toBe(0);
+		expect(registry.get("Scout-race")?.status).toBe("idle");
+		expect(controller.target).toBe(stub.session);
+	});
+
 	it("an idle TTL elapsing on a focused agent defers the park to the unfocus", async () => {
 		vi.useFakeTimers();
 		const stub = idleAdopted("Scout-ttl", 1_000);
@@ -132,6 +160,8 @@ describe("a focused agent is never parked under the screen", () => {
 		stub.releaseFlush();
 		vi.advanceTimersByTime(5_000);
 		await settle();
+		// Deferred before the flush: a session on screen is not written out under it.
+		expect(stub.flushCalls()).toBe(0);
 		expect(stub.disposeCalls()).toBe(0);
 		expect(registry.get("Scout-ttl")?.status).toBe("idle");
 
