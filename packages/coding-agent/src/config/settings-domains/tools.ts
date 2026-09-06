@@ -179,7 +179,7 @@ export const TOOLS_SETTINGS = {
 			group: "Output Limits",
 			label: "Inline Output Floor",
 			description:
-				"Smallest share of the inline output budget an early tool result may use before the rest spills to an artifact. A result that arrives early is re-read on every later turn, so it is charged more tightly than one that arrives near the end. Lower spills sooner and costs fewer context tokens; 1 keeps the flat cap and never spills early. This governs every tool that streams output, including eval, bash, ssh and the interactive shell, as well as search and the browser.",
+				"Smallest share of the inline output budget a tool result early in the conversation may use before the rest is saved as an artifact. A lower value saves output to an artifact sooner and costs fewer context tokens. 1: every result gets the full budget. Applies to every tool that streams output: bash, eval, ssh, the interactive shell, search and the browser.",
 			options: [
 				{ value: "1", label: "Flat cap (no early spill)" },
 				{ value: "0.5", label: "Half budget" },
@@ -586,7 +586,7 @@ export const TOOLS_SETTINGS = {
 			group: "Coordination",
 			label: "IRC Timeout",
 			description:
-				"Default timeout for irc wait (and send await:true) in milliseconds; 0 disables the timeout. IRC is how a parent and its agents talk, which is why it is configured here.",
+				"How long an irc wait, or an irc send with await, waits for a reply before it returns without one. Disabled: waits until a reply arrives.",
 			options: [
 				{ value: "0", label: "Disabled" },
 				{ value: "30000", label: "30 seconds" },
@@ -617,7 +617,7 @@ export const TOOLS_SETTINGS = {
 			group: "Bash",
 			label: "Auto-Background After",
 			description:
-				"Max wall-clock time a bash call runs in the foreground before it is moved to a background job (result delivered later). Frees the model to keep working and protects the prompt cache, which a long foreground command would otherwise blow past. Fires on elapsed time even while output is streaming. 0 backgrounds immediately.",
+				"How long a bash call runs in the foreground before it is moved to a background job whose result is delivered later. Counted on elapsed time, including while output is streaming. 0: every call is backgrounded at once.",
 			options: [
 				{ value: "0", label: "Immediately" },
 				{ value: "30000", label: "30 seconds" },
@@ -637,7 +637,7 @@ export const TOOLS_SETTINGS = {
 			group: "Bash",
 			label: "Stall After",
 			description:
-				"When stall detection is on, how long a bash call may produce no new output before it is treated as possibly stuck, backgrounded, and flagged so the model can cancel it if it is truly hung. Measures idle time (quiet output), not total run time.",
+				"How long a bash call may produce no output before it is moved to a background job and flagged as possibly stuck. Counted from the last output, not from the start of the call.",
 			options: [
 				{ value: "15000", label: "15 seconds" },
 				{ value: "30000", label: "30 seconds" },
@@ -682,7 +682,7 @@ export const TOOLS_SETTINGS = {
 			tab: "tools",
 			group: "Discovery & MCP",
 			label: "MCP Tool Discovery",
-			description: "Hide MCP tools by default and expose them through a tool discovery tool",
+			description: "Hide MCP tools from the tool list and expose them through a tool discovery tool",
 		},
 	},
 

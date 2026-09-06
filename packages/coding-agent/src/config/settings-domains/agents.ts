@@ -417,7 +417,7 @@ export const AGENTS_SETTINGS = {
 			tab: "agents",
 			// Parking is not conditioned on the prune switch: it happens whether or not
 			// the row is later dropped, so this row stays visible while pruning is off.
-			group: "Park",
+			group: "Idle Agents",
 			label: "Park Idle Agents After",
 			description:
 				"How long a spawned agent that has finished its turn stays live before it is parked. A parked agent releases its process, MCP clients and memory; it stays in the roster and is rebuilt from its transcript when messaged or opened. Counted from the agent's last activity. Until exit: idle agents stay live for the whole session.",
@@ -441,7 +441,7 @@ export const AGENTS_SETTINGS = {
 		default: true,
 		ui: {
 			tab: "agents",
-			group: "Prune",
+			group: "Idle Agents",
 			label: "Prune Parked Agents",
 			description:
 				"Remove parked agents from the roster after Prune After. A pruned agent cannot be messaged or opened again; its transcript stays on disk and readable at history://<agent>. Off: parked agents stay in the roster until the session exits.",
@@ -453,7 +453,7 @@ export const AGENTS_SETTINGS = {
 		default: DEFAULT_AGENT_PRUNE_MS,
 		ui: {
 			tab: "agents",
-			group: "Prune",
+			group: "Idle Agents",
 			label: "Prune After",
 			description: "How long a parked agent stays in the roster before it is pruned, counted from when it was parked.",
 			options: [
@@ -472,7 +472,7 @@ export const AGENTS_SETTINGS = {
 		default: DEFAULT_AGENT_WAITING_PRUNE_MS,
 		ui: {
 			tab: "agents",
-			group: "Prune",
+			group: "Idle Agents",
 			label: "Prune After While Waiting",
 			description:
 				"Prune After for a parked agent whose last message was that it is waiting on another agent. A value below Prune After is raised to it.",
@@ -558,7 +558,7 @@ export const AGENTS_SETTINGS = {
 				"Filesystem isolation for spawned agents. Auto picks the best backend available on this host: a copy-on-write filesystem, then overlayfs or ProjFS, then a git worktree or a recursive copy.",
 			options: [
 				{ value: "none", label: "None", description: "No isolation" },
-				{ value: "auto", label: "Auto", description: "Let the PAL pick the best available backend" },
+				{ value: "auto", label: "Auto", description: "The best backend available on this host" },
 				{ value: "apfs", label: "APFS", description: "macOS clonefile reflink (APFS)" },
 				{ value: "btrfs", label: "btrfs", description: "btrfs subvolume snapshot" },
 				{ value: "zfs", label: "ZFS", description: "ZFS snapshot + clone" },

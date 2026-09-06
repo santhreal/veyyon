@@ -185,7 +185,7 @@ export const APPEARANCE_SETTINGS = {
 			group: "Output Limits",
 			label: "Artifact Spill Threshold (KB)",
 			description:
-				"Tool output above this size is saved as an artifact and the result keeps a head/tail window no larger than this size, plus the artifact:// id that reads the full text back, so a lower threshold costs a re-read rather than losing output. It governs every tool that streams output, including bash, eval, ssh and the interactive shell, as well as search and the browser.",
+				"Tool output above this size is saved as an artifact; the result keeps the start and end of the output up to this size plus the artifact:// id that reads the full text back. Applies to every tool that streams output: bash, eval, ssh, the interactive shell, search and the browser.",
 			options: [
 				{ value: "1", label: "1 KB", description: "~250 tokens" },
 				{ value: "2.5", label: "2.5 KB", description: "~625 tokens" },
@@ -231,7 +231,7 @@ export const APPEARANCE_SETTINGS = {
 			group: "Output Limits",
 			label: "Artifact Head Size (KB)",
 			description:
-				"Amount of head content kept inline alongside the tail when output spills to artifact (middle elision), bounded with the tail by the spill threshold. 0 disables — keep tail only.",
+				"How much of the start of the output is kept inline when the rest is saved as an artifact, in bytes. The start and the end together stay within the Artifact Spill Threshold. 0: keep only the end.",
 			options: [
 				{ value: "0", label: "0 KB", description: "Disabled; tail-only truncation" },
 				{ value: "1", label: "1 KB", description: "~250 tokens" },
@@ -425,7 +425,7 @@ export const APPEARANCE_SETTINGS = {
 			group: "Display",
 			label: "Large Headings (Kitty)",
 			description:
-				"Render Markdown H1 headings at 2x scale using Kitty's OSC 66 text-sizing protocol. Only takes effect on Kitty terminals; ignored everywhere else. Off by default.",
+				"Render Markdown H1 headings at twice the text size with Kitty's OSC 66 text-sizing protocol. Terminals other than Kitty ignore it.",
 			advanced: true,
 		},
 	},
@@ -486,7 +486,7 @@ export const APPEARANCE_SETTINGS = {
 			group: "Display",
 			label: "Rewrite Scrollback",
 			description:
-				"Erase and replay terminal scrollback when a block's final form replaces its live preview. On by default: with it off, the stale preview stays in history and the final content is appended underneath, so the same paragraph appears twice. Terminal multiplexers keep the append-below behaviour either way, because erasing there would take the pane's own history with it.",
+				"Erase and redraw terminal scrollback when a block's final form replaces its live preview. Off: the preview stays in scrollback and the final content is appended below it. Inside a terminal multiplexer the final content is always appended below.",
 			advanced: true,
 		},
 	},
@@ -498,7 +498,7 @@ export const APPEARANCE_SETTINGS = {
 			group: "Display",
 			label: "Scroll Isolation",
 			description:
-				"Read the mouse wheel so the transcript scrolls with the prompt pinned at the bottom, showing the position on the right edge. This costs you drag-select: while it is on, veyyon holds the mouse, so plain dragging selects nothing and you need shift+drag, or `/copy` to pick text and code out of the conversation without the mouse. When off (default), the terminal keeps the wheel and the mouse, so native scrollback, drag-select and copy all behave exactly as they do in any other program, and the prompt still sits at the bottom of the live view.",
+				"Take over the mouse wheel so the transcript scrolls with the prompt pinned at the bottom and a position marker on the right edge. On: veyyon holds the mouse, so selecting text needs shift+drag or `/copy`. Off: the terminal keeps the wheel and the mouse, and native scrollback, drag-select and copy work as in any other program.",
 			advanced: true,
 			keywords: ["scroll", "wheel", "mouse", "copy", "paste", "select", "clipboard", "scrollback"],
 		},

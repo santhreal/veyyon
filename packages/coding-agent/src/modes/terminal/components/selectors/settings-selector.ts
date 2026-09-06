@@ -1697,7 +1697,7 @@ class AgentsSubmenu extends MouseRoutedSubmenu {
 			new Text(
 				theme.fg(
 					"muted",
-					"Which agent types this session offers, and what each one runs. Model and effort are chosen inside an agent's own page and apply to that agent alone; an agent that names neither runs the profile's default model at medium effort.",
+					"Which agents the model may spawn and what each one runs. Open an agent to set its model and effort and which agents it may spawn in turn. An agent with neither set runs the default model at medium effort.",
 				),
 				0,
 				0,
@@ -1822,7 +1822,7 @@ class AgentsSubmenu extends MouseRoutedSubmenu {
 					"muted",
 					depth === 0
 						? agent.description || `${agent.source} agent`
-						: `What ${depth === 1 ? name : "this lane"} may spawn. Unset follows the level above.`,
+						: `What ${depth === 1 ? name : "the agents at this level"} may spawn. Unset follows the level above.`,
 				),
 				0,
 				0,
@@ -1881,7 +1881,7 @@ class AgentsSubmenu extends MouseRoutedSubmenu {
 				label: "Agents",
 				description: spawnAllowed
 					? this.#laneModelSummary(child, depth + 1)
-					: theme.fg("dim", "off · this lane may not spawn"),
+					: theme.fg("dim", "off · may not spawn agents"),
 			},
 		];
 		if (Object.keys(lane).length > 0) {
@@ -1992,8 +1992,8 @@ class AgentsSubmenu extends MouseRoutedSubmenu {
 			notice === undefined
 				? depth === 0
 					? `Effort ${name} runs at. Inherit follows the session's effort; a \`:level\` on the model chain still wins.`
-					: "Effort this lane runs at. Inherit follows the level above."
-				: `Effort this lane runs at. ${notice}`;
+					: "Effort the agents spawned at this level run at. Inherit follows the level above."
+				: `Effort the agents spawned at this level run at. ${notice}`;
 		this.addChild(
 			new SelectSubmenu(
 				depth === 0 ? `Effort · ${name}` : `Effort · what ${name} spawns`,
@@ -2675,7 +2675,7 @@ const MACHINE_LIMITS_POINTER_ROW: SettingItem = {
 	currentValue: "Global tab",
 	readOnly: true,
 	description:
-		"Every limit on this tab bounds one session tree — this session, its agents, and everything they spawn — and is stored in the active profile. The limits that bound every veyyon process on this machine together, across profiles and concurrent instances, are on the Global tab under Machine Limits, stored in ~/.veyyon/config.yml. Session groups are created inside the machine group, so a session limit larger than the machine limit is bounded by it.",
+		"Limits on this tab bound what this session and its agents may consume, and are stored in the active profile. Machine-wide limits covering all sessions across profiles are on the Global tab under Machine Limits, stored in ~/.veyyon/config.yml. A session limit larger than the corresponding machine limit is bounded by it.",
 	keywords: ["machine", "global", "all", "everything", "cross-profile", "system", "wide"],
 };
 

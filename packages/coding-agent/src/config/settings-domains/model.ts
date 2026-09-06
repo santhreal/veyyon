@@ -555,7 +555,7 @@ export const MODEL_SETTINGS = {
 			group: "Retry & Fallback",
 			label: "Anthropic Server-Side Fallback (Fable 5)",
 			description:
-				"When a Claude Fable 5 / Mythos 5 request is blocked by Anthropic's safety classifier, retry it on Claude Opus 4.8 server-side (Anthropic `server-side-fallback-2026-06-01` beta). Opt-in — leaving this off preserves the pre-fallback behavior for every request.",
+				"Retry a Claude Fable 5 or Mythos 5 request that Anthropic's safety classifier blocks on Claude Opus 4.8, on the provider side (the `server-side-fallback-2026-06-01` beta). Off: the request fails.",
 		},
 	},
 } as const;

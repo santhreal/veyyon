@@ -63,7 +63,7 @@ export const CONTEXT_SETTINGS = {
 			group: "Compaction",
 			label: "Remote Compaction",
 			description:
-				"Applies only when the session model is a supported OpenAI Responses model, which includes Azure OpenAI Responses deployments and ChatGPT Codex sessions; every other model ignores this setting and compacts locally. On, veyyon has the provider compact the span and keeps the window it returns, which preserves reasoning state across the cut. That window is the whole compacted context, so the entry stores no summary text and the compaction model chain does not apply. There is no second local summary on purpose: it would pay a model to re-summarize a span the provider already compacted and leave two versions of one range that can disagree. Off, compaction runs locally on the usual summary path and stores readable summary text.",
+				"Compact on the provider instead of locally when the session model is an OpenAI Responses model (including Azure OpenAI Responses deployments and ChatGPT Codex). On: the provider compacts the span, its reasoning state is kept across the cut, no summary text is stored and Compaction Model is not used. Off: compaction runs locally and stores a readable summary. Other models always compact locally.",
 			keywords: ["compaction", "remote", "server", "provider", "openai", "context"],
 		},
 	},
@@ -171,7 +171,7 @@ export const CONTEXT_SETTINGS = {
 			group: "Compaction",
 			label: "Compaction Model",
 			description:
-				"Models used for in-place summary compaction, tried in order. Default: inherit — follows the main model live. Add fallbacks for when the first is unauthenticated or its window is too small.",
+				"Models used to write the compaction summary, tried in order. Inherit: the main model. A later entry is used when an earlier one is unauthenticated or its context window is too small.",
 		},
 	},
 
@@ -299,7 +299,7 @@ export const CONTEXT_SETTINGS = {
 			group: "Argot",
 			label: "Argot Shorthand",
 			description:
-				"Let the agent load token-saving shorthand for the projects it works in, kept in a local cache (nothing is written to the repository). The project you launch in is loaded for you, and the model loads any further project with the argot_load tool; it then writes short handles that the harness expands to full text before any tool runs or the display shows them.",
+				"Load per-project shorthand so the model writes short handles that are expanded to full text before any tool runs or the screen shows them. The launch project is loaded at start; the model loads others with the argot_load tool. Dictionaries are kept in a local cache; nothing is written to the repository.",
 		},
 	},
 
@@ -532,7 +532,7 @@ export const CONTEXT_SETTINGS = {
 			group: "Prompt Cache",
 			label: "Block On Cache Rejection",
 			description:
-				"Anthropic only. Fail the next request after a rejected cache instead of continuing to pay full input rate. Off by default: the verdict is proven against provider usage reporting, so a provider that changes what it reports would stop the session rather than cost money",
+				"Anthropic only. Fail the next request after the provider rejects the prompt cache, instead of continuing at the full input rate. Off: continue.",
 			condition: "cacheRejectionReported",
 		},
 	},
@@ -959,12 +959,12 @@ export const CONTEXT_SETTINGS = {
 				{
 					value: "global",
 					label: "Global",
-					description: "One shared bank — every project sees the same memories",
+					description: "One shared bank: every project reads the same memories",
 				},
 				{
 					value: "per-project",
 					label: "Per project",
-					description: "Isolated bank per cwd basename — projects cannot see each other's memories",
+					description: "One bank per working-directory name: projects do not read each other's memories",
 				},
 				{
 					value: "per-project-tagged",
@@ -1050,7 +1050,7 @@ export const CONTEXT_SETTINGS = {
 			group: "Hindsight",
 			label: "Hindsight Mental Models",
 			description:
-				"Read curated reflect summaries (mental models) into developer instructions at boot. Loads existing models on the bank — does not write. Pair with hindsight.mentalModelAutoSeed to also auto-create the built-in seed set.",
+				"Read the memory bank's mental models into the developer instructions at start. This reads existing models and writes none; Hindsight Mental Model Auto-Seed creates the built-in set.",
 			condition: "hindsightActive",
 		},
 	},
@@ -1198,7 +1198,7 @@ export const CONTEXT_SETTINGS = {
 			group: "General",
 			label: "Thinking Retention",
 			description:
-				"How many of the most recent assistant turns keep their unsigned thinking when the conversation is sent back. Gemini summarises its reasoning for you to read but replays the real reasoning from the signature on the tool call, so an old summary is transcript text the model re-reads and the provider ignores. Keep All resends every summary ever produced. Thinking that does carry a signature is always kept. Other providers ignore this.",
+				"How many of the most recent assistant turns keep their unsigned thinking text when the conversation is resent to Gemini. Signed thinking is always kept. Keep All: every turn keeps it. Other providers ignore this.",
 			advanced: true,
 			options: [
 				{ value: "-1", label: "Keep All", description: "Resend every thinking block (default)." },
@@ -1218,7 +1218,7 @@ export const CONTEXT_SETTINGS = {
 			group: "General",
 			label: "Thought Signature Retention",
 			description:
-				"How many of the most recent assistant turns keep their Gemini thought signature when the conversation is sent back. Signatures let the model replay its own reasoning, and they are large, so the recent ones are the ones worth paying to resend. Keep All resends every signature ever produced, which on a long session is the single biggest thing in the context. Other providers ignore this.",
+				"How many of the most recent assistant turns keep their Gemini thought signature when the conversation is resent. A signature lets the model replay its reasoning for that turn and is large. Keep All: every turn keeps it. Other providers ignore this.",
 			advanced: true,
 			options: [
 				{ value: "-1", label: "Keep All", description: "Resend every signature (default)." },
@@ -1238,7 +1238,7 @@ export const CONTEXT_SETTINGS = {
 			group: "General",
 			label: "Thought Signature Size Limit",
 			description:
-				"Longest Gemini thought signature still worth resending, in characters. Anything longer sends the skip sentinel instead, however recent it is. Signature sizes are lopsided: the largest tenth of them carry roughly two thirds of all signature bytes, so a limit sheds most of the weight while keeping the great majority of the reasoning chain. Use this instead of Thought Signature Retention when you want a gentler trade, or alongside it, in which case a signature is resent only if it is both recent enough and small enough. Other providers ignore this.",
+				"Longest Gemini thought signature that is resent, in characters. A longer signature is replaced by the skip marker whatever its age. With Thought Signature Retention also set, a signature is resent only if it is both recent enough and short enough. Other providers ignore this.",
 			advanced: true,
 			options: [
 				{ value: "-1", label: "No Limit", description: "Resend a signature of any size (default)." },

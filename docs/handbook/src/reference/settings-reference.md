@@ -43,13 +43,13 @@ veyyon config get compaction.threshold
 | `terminal.showImages` | Show Inline Images | boolean | `true` | Render images inline in the terminal. |
 | `images.autoResize` | Auto-Resize Images | boolean | `true` | Resize large images to 2000x2000 max for better model compatibility. Shown under the tab's Advanced fold. |
 | `terminal.showProgress` | Native Terminal Progress | boolean | `false` | Emit OSC 9;4 indeterminate progress while the agent or context maintenance is running. Shown under the tab's Advanced fold. |
-| `tui.textSizing` | Large Headings (Kitty) | boolean | `false` | Render Markdown H1 headings at 2x scale using Kitty's OSC 66 text-sizing protocol. Only takes effect on Kitty terminals; ignored everywhere else. Off by default. Shown under the tab's Advanced fold. |
+| `tui.textSizing` | Large Headings (Kitty) | boolean | `false` | Render Markdown H1 headings at twice the text size with Kitty's OSC 66 text-sizing protocol. Terminals other than Kitty ignore it. Shown under the tab's Advanced fold. |
 | `tui.renderMermaid` | Render Mermaid Diagrams | boolean | `true` | Render Mermaid fenced code blocks as ASCII diagrams. Shown under the tab's Advanced fold. |
 | `tui.hyperlinks` | Terminal Hyperlinks | enum | `auto` | Wrap paths and URLs in OSC 8 hyperlinks for terminal-native click-to-open (auto: detect support; off: never; always: unconditional). Values: `off`, `auto`, `always`. |
 | `tui.paintGround` | Paint Theme Ground | enum | `auto` | Set the terminal background (OSC 11) to the theme's ground color while Veyyon runs, restoring it on exit (auto: only when the terminal background already matches the theme so no seam appears; always: unconditional; never: inherit the terminal background). Values: `auto`, `always`, `never`. |
 | `tui.tight` | Tight Layout | boolean | `false` | Remove the 1-character horizontal padding from the left and right of the terminal output. Shown under the tab's Advanced fold. |
-| `tui.scrollbackRebuild` | Rewrite Scrollback | boolean | `true` | Erase and replay terminal scrollback when a block's final form replaces its live preview. On by default: with it off, the stale preview stays in history and the final content is appended underneath, so the same paragraph appears twice. Terminal multiplexers keep the append-below behaviour either way, because erasing there would take the pane's own history with it. Shown under the tab's Advanced fold. |
-| `tui.scrollIsolation` | Scroll Isolation | boolean | `false` | Read the mouse wheel so the transcript scrolls with the prompt pinned at the bottom, showing the position on the right edge. This costs you drag-select: while it is on, veyyon holds the mouse, so plain dragging selects nothing and you need shift+drag, or `/copy` to pick text and code out of the conversation without the mouse. When off (default), the terminal keeps the wheel and the mouse, so native scrollback, drag-select and copy all behave exactly as they do in any other program, and the prompt still sits at the bottom of the live view. Shown under the tab's Advanced fold. |
+| `tui.scrollbackRebuild` | Rewrite Scrollback | boolean | `true` | Erase and redraw terminal scrollback when a block's final form replaces its live preview. Off: the preview stays in scrollback and the final content is appended below it. Inside a terminal multiplexer the final content is always appended below. Shown under the tab's Advanced fold. |
+| `tui.scrollIsolation` | Scroll Isolation | boolean | `false` | Take over the mouse wheel so the transcript scrolls with the prompt pinned at the bottom and a position marker on the right edge. On: veyyon holds the mouse, so selecting text needs shift+drag or `/copy`. Off: the terminal keeps the wheel and the mouse, and native scrollback, drag-select and copy work as in any other program. Shown under the tab's Advanced fold. |
 | `display.transitions` | Transitions | enum | `on` | Structural motion: overlay open transitions and the moving rail beside a running tool. Values: `on`, `off`. |
 | `display.shimmer` | Shimmer | enum | `disabled` | Animation style for working/loading messages. Values: `classic`, `kitt`, `living`, `disabled`. |
 | `display.smoothStreaming` | Smooth Streaming | boolean | `true` | Reveal assistant text and streamed tool input smoothly while chunks arrive. |
@@ -65,10 +65,10 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `display.collapseCompacted` | Collapse Compacted History | boolean | `true` | Collapse pre-compaction history behind the summary divider on the live transcript; disable to keep the full transcript inline with dividers at each compaction point. |
-| `compaction.remote` | Remote Compaction | boolean | `true` | Applies only when the session model is a supported OpenAI Responses model, which includes Azure OpenAI Responses deployments and ChatGPT Codex sessions; every other model ignores this setting and compacts locally. On, veyyon has the provider compact the span and keeps the window it returns, which preserves reasoning state across the cut. That window is the whole compacted context, so the entry stores no summary text and the compaction model chain does not apply. There is no second local summary on purpose: it would pay a model to re-summarize a span the provider already compacted and leave two versions of one range that can disagree. Off, compaction runs locally on the usual summary path and stores readable summary text. |
+| `compaction.remote` | Remote Compaction | boolean | `true` | Compact on the provider instead of locally when the session model is an OpenAI Responses model (including Azure OpenAI Responses deployments and ChatGPT Codex). On: the provider compacts the span, its reasoning state is kept across the cut, no summary text is stored and Compaction Model is not used. Off: compaction runs locally and stores a readable summary. Other models always compact locally. |
 | `compaction.strategy` | Compaction Type | enum | `summary` | Summary condenses history in place and continues the same session. Values: `summary`. |
 | `compaction.threshold` | Auto-Compaction Threshold | string | `auto` | When auto-compaction triggers. Auto uses the model's window minus the reserve; a percent scales with each model's window; a token amount is the same trigger on every model that can reach it, and a smaller model compacts at its own maximum. |
-| `compaction.model` | Compaction Model | modelChain | _(unset)_ | Models used for in-place summary compaction, tried in order. Default: inherit — follows the main model live. Add fallbacks for when the first is unauthenticated or its window is too small. |
+| `compaction.model` | Compaction Model | modelChain | _(unset)_ | Models used to write the compaction summary, tried in order. Inherit: the main model. A later entry is used when an earlier one is unauthenticated or its context window is too small. |
 | `compaction.modelFallbackStrategy` | Compaction Fallback | enum | `auto` | What to try after the compaction models you configured. Auto stays on models you named: the main model, its same-provider compaction sibling, and your model roles. Any authenticated model also reaches the largest window available, on any provider you have credentials for. Configured only stops at the chain and fails loudly. Values: `auto`, `any-model`, `configured-only`. |
 | `compaction.modelContextWindow` | Compaction Model Context | number | _(unset)_ | Context window in tokens to assume for the compaction model. Unset uses the compaction model's own reported window. Candidates whose window cannot fit the summarization payload are skipped loudly. |
 
@@ -76,7 +76,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `modelRoles` | Role Models | record | `{}` | Assign a model to each role (Fast, Thinking, Vision, Architect, Designer, Commit, Tiny). Opens a searchable picker with auth status. The advisor's model is asked for in the Advisor group, and a spawned agent's in Agents → Roster, so neither appears here. Scoped to the active profile — never edit config by hand. |
+| `modelRoles` | Role Models | record | `{}` | Assign a model to each role (Fast, Thinking, Vision, Architect, Designer, Commit, Tiny). Opens a searchable picker with auth status. The advisor's model is set in the Advisor group and a spawned agent's in Agents → Roster. Stored in the active profile. |
 
 ### Thinking
 
@@ -93,7 +93,7 @@ veyyon config get compaction.threshold
 | `model.toolCallLoopGuard.threshold` | Tool-Call Loop Threshold | number | `5` | Consecutive identical tool calls required before the corrective steer is injected. |
 | `model.toolCallLoopGuard.readSubsumptionThreshold` | Read Subsumption Loop Threshold | number | `3` | Consecutive fully-subsumed or redundant read calls on unchanged files before the corrective steer is injected. |
 | `model.toolCallLoopGuard.exemptTools` | Tool-Call Loop Exempt Tools | array | `["job","irc"]` | Tool names that may repeat consecutively without triggering the cross-turn loop guard. |
-| `providers.autoThinkingModel` | Auto Thinking Model | enum | `online` | Difficulty classifier for the `auto` thinking level: online (the TINY role from /models, else smol) by default, or a local on-device model. Values: `online`, `qwen3-1.7b`, `llama3.2:3b`, `gemma-3-1b`, `qwen2.5-1.5b`, `lfm2-1.2b`. |
+| `providers.autoThinkingModel` | Auto Thinking Model | enum | `online` | Model that rates task difficulty for the `auto` thinking level. Online: the Tiny role from /models, else @smol. Local: an on-device model. Values: `online`, `qwen3-1.7b`, `llama3.2:3b`, `gemma-3-1b`, `qwen2.5-1.5b`, `lfm2-1.2b`. |
 
 ### Sampling
 
@@ -131,7 +131,7 @@ veyyon config get compaction.threshold
 | `retry.fallbackChains` | Retry Fallback Chains | record | `{}` | JSON object mapping model roles, model selectors ("provider/model-id"), or provider wildcards ("provider/*") to ordered fallback selectors, e.g. {"default":["openai/gpt-4o-mini"],"google-antigravity/*":["google/*","google-vertex/*"]}. Model-oriented keys apply whenever that model/provider is active, regardless of role; a "provider/*" entry keeps the failing model's id and swaps the provider. |
 | `retry.perProvider` | Per-Provider Retry | record | `{}` | JSON object overriding retry limits for specific backends, keyed like Retry Fallback Chains: a model selector ("provider/model-id"), a provider wildcard ("provider/*"), or a bare provider name. Each value may set maxRetries, baseDelayMs, and maxDelayMs; anything omitted falls back to the global retry settings. Example: {"cursor":{"maxRetries":3,"baseDelayMs":2000}}. Backends whose retries are intrinsically expensive (cursor, devin) already ship with sensible limits; an entry here overrides those. |
 | `retry.fallbackRevertPolicy` | Fallback Revert Policy | enum | `cooldown-expiry` | When to return to the primary model after a fallback. Values: `cooldown-expiry`, `never`. |
-| `providers.anthropic.serverSideFallback` | Anthropic Server-Side Fallback (Fable 5) | boolean | `false` | When a Claude Fable 5 / Mythos 5 request is blocked by Anthropic's safety classifier, retry it on Claude Opus 4.8 server-side (Anthropic `server-side-fallback-2026-06-01` beta). Opt-in — leaving this off preserves the pre-fallback behavior for every request. |
+| `providers.anthropic.serverSideFallback` | Anthropic Server-Side Fallback (Fable 5) | boolean | `false` | Retry a Claude Fable 5 or Mythos 5 request that Anthropic's safety classifier blocks on Claude Opus 4.8, on the provider side (the `server-side-fallback-2026-06-01` beta). Off: the request fails. |
 
 ### Advisor
 
@@ -146,9 +146,9 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `prewalk.enabled` | Enable Prewalk | boolean | `false` | Plan on the strong model, then switch to the cheap model at the first edit/write after the plan nudge's todo list exists — the strong model commits the todos and starts the implementation before handing off. The cheap model comes from Prewalk Cheap Model; Prewalk Strong Model overrides the start model. Overridable per session with --prewalk / --no-prewalk. |
+| `prewalk.enabled` | Enable Prewalk | boolean | `false` | Start a session on Prewalk Strong Model and switch to Prewalk Cheap Model at the first edit or write after the todo list exists. --prewalk and --no-prewalk override it for one session. |
 | `prewalk.cheapModel` | Prewalk Cheap Model | modelChain | _(unset)_ | Model prewalk hands off to at the first edit/write. Required once prewalk is on: /prewalk and --prewalk fail with a message naming this setting when it is unset. --prewalk-into overrides it per session; only the first entry is used. |
-| `prewalk.strongModel` | Prewalk Strong Model | modelChain | _(unset)_ | Model a prewalk session starts on — the strong model that plans before the handoff. Unset: inherit the normal start model (--model or the remembered default). Only the first entry is used. |
+| `prewalk.strongModel` | Prewalk Strong Model | modelChain | _(unset)_ | Model a prewalk session starts on. Unset: the normal start model (--model or the remembered default). Only the first entry is used. |
 
 ### Vision
 
@@ -176,7 +176,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `session.newKeepsBackground` | /new Keeps The Old Session | boolean | `false` | Requires a restart: switching this on or off changes nothing in the running session. On /new while a response is still streaming, keep the old conversation running in the background and attach the screen to a fresh one. The status line counts running background conversations. Off stops the old turn and closes its provider stream before the new session starts, so nothing keeps billing once it leaves the screen. |
+| `session.newKeepsBackground` | /new Keeps The Old Session | boolean | `false` | What /new does while a response is still streaming. On: the old conversation keeps running in the background and the screen attaches to a new one; the status line counts background conversations. Off: the old turn is stopped and its provider stream closed before the new session starts. Takes effect at the next start. |
 
 ### Approvals
 
@@ -190,7 +190,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `completion.notify` | Completion Notification | enum | `off` | Notify when the agent finishes a turn (off by default: the turn is on your screen). Values: `on`, `off`. |
+| `completion.notify` | Completion Notification | enum | `off` | Notify when the agent finishes a turn. Values: `on`, `off`. |
 | `ask.timeout` | Ask Timeout | number | `0` | Auto-select the recommended ask option after this many seconds (0 disables). |
 | `ask.notify` | Ask Notification | enum | `on` | Notify when the agent is blocked on a question you have not answered. Values: `on`, `off`. |
 | `recap.enabled` | Idle Recap | boolean | `true` | Generate a brief LLM recap of where things stand after the terminal has been idle. |
@@ -244,13 +244,13 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `profile.displayName` | Profile Name | string | _(empty)_ | Display name for the active profile, shown in /profile list and resolvable by /profile \<name>. Stored per profile; empty falls back to the profile's directory name ("default" for the base profile). |
-| `session.workdir` | Default Working Directory | string | _(unset)_ | Per-profile default session working directory used when launching without an explicit --cwd. Precedence: an explicit --cwd wins, then this setting, then the directory you launched from. Use an absolute or ~-relative path; a relative path or a missing directory makes launch fail loudly. The agent can override the live session cwd for that session only via set_cwd / /cwd without writing this setting. |
+| `session.workdir` | Default Working Directory | string | _(unset)_ | Working directory a session starts in when --cwd is not given. --cwd takes precedence, then this setting, then the directory the command was run from. Absolute or ~-relative; a relative path or a missing directory fails the launch. set_cwd and /cwd change the directory for one session without writing this. |
 
 ### Power (macOS)
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `power.sleepPrevention` | Sleep Prevention | enum | `idle` | Prevent macOS sleep during active sessions. Each level is cumulative — it adds the flags of all lower levels. Values: `off`, `idle`, `display`, `system`. |
+| `power.sleepPrevention` | Sleep Prevention | enum | `idle` | Prevent macOS sleep while a session is active. Each level includes the levels below it. Values: `off`, `idle`, `display`, `system`. |
 
 ### Agent
 
@@ -270,27 +270,27 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `session.cpuLimitCores` | Session CPU Limit | number | `0` | Maximum CPU a session's spawned processes may use, in cores (0 = off). This is the per-profile default: every session that profile starts inherits it, and one session can depart from it with /cpu-limit \<cores> or lift it entirely with /cpu-limit remove, neither of which writes this setting. Every process the session starts (bash commands, MCP servers, custom tools, launch tasks, workers) joins a per-session budget group: a cgroup v2 quota on Linux, a Job Object hard cap on Windows, both kernel-enforced, so the group throttles as a whole. While the group runs saturated, new commands are refused with an error naming the budget. On macOS there is no kernel quota, so enforcement is policy-only (refuse new commands, renice, optional kill) and a startup warning says so. The harness's own compute (agent turns, in-process workers) is never capped. |
-| `session.cpuLimitKill` | Kill Over-Budget Commands | boolean | `false` | What happens when spawned commands stay at the CPU limit for seconds at a time. Off (default): new commands are refused until usage drops, running ones keep running (throttled where the OS offers a quota, reniced on macOS). On: the over-budget group is also sent SIGTERM, and the kill is reported as a budget action, not a crash. /cpu-limit kill on\|off changes it for one session without writing this setting. |
+| `session.cpuLimitCores` | Session CPU Limit | number | `0` | Maximum CPU processes spawned by this session and its agents may use, in cores. Off: no limit. Stored in the active profile. |
+| `session.cpuLimitKill` | Kill Over-Budget Commands | boolean | `false` | Controls whether processes running over the session CPU limit are terminated. Off: running processes continue and new commands are refused while over budget. On: processes running over budget receive SIGTERM. |
 
 ### Memory
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `session.memoryLimitGb` | Session Memory Limit | number | `0` | Maximum resident memory the session tree may hold at once, in gigabytes (0 = off). The session tree is this session, every agent under it at any depth, and every process any of them spawned: they share one budget group, so delegating work cannot multiply the allowance. This is a kernel cap, not a polite refusal: on Linux it is cgroup v2 memory.max on the session budget group, so a group at the limit is reclaimed first and then a process INSIDE it is OOM-killed by the kernel, whichever process the kernel picks, with no warning and no chance to finish. Set it where an OOM kill is preferable to the machine swapping, and leave it off if a killed command would cost more than the memory does. A host without a memory controller reports the limit as unenforceable once at startup rather than pretending to hold it. |
+| `session.memoryLimitGb` | Session Memory Limit | number | `0` | Maximum resident memory processes spawned by this session and its agents may use, in gigabytes. Off: no limit. Stored in the active profile. |
 
 ### Disk
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `session.writeBudgetGb` | Session Write Budget | number | `0` | Cumulative gigabytes the session tree may WRITE to disk before further writes are refused (0 = off). The session tree is this session, every agent under it at any depth, and every process any of them spawned: they share one budget group, so delegating work cannot multiply the allowance. Writes are metered by the same group that meters CPU (cgroup v2 io accounting on Linux, Job Object I/O accounting on Windows). Once the total is reached, a new command is refused with an error naming the budget and how much it has written; already running commands keep running unless Kill Over-Budget Writers is on. A host where write accounting cannot be read reports the limit as unenforceable once at startup rather than pretending to hold it. |
-| `session.writeBudgetKill` | Kill Over-Budget Writers | boolean | `false` | What happens when the session tree passes its write budget. Off (default): new commands are refused, and whatever is already writing runs to completion. On: the over-budget group is also sent SIGTERM, and the kill is reported as a budget action rather than a crash, so a command that vanished mid-write is explained instead of looking like a failure. Hidden while the write budget is 0, because a kill policy for a budget that does not exist is a knob with nothing behind it. |
+| `session.writeBudgetGb` | Session Write Budget | number | `0` | Cumulative disk writes permitted for this session and its agents, in gigabytes. Off: no limit. Once reached, subsequent commands and tool writes are refused. |
+| `session.writeBudgetKill` | Kill Over-Budget Writers | boolean | `false` | Controls whether processes are terminated when the session write budget is exceeded. Off: running processes continue and new commands are refused. On: running processes receive SIGTERM. |
 
 ### Processes
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `session.maxProcesses` | Session Max Processes | number | `0` | Hard cap on how many processes may be alive at once across the session tree (0 = off). The session tree is this session, every agent under it at any depth, and every process any of them spawned, all in one budget group, so the cap is not multiplied by delegating. Enforced by the kernel where it can be: cgroup v2 pids.max on Linux and a Job Object process limit on Windows both refuse the fork itself, so a runaway loop stops instead of filling the process table. Elsewhere the cap is policy-only, refusing a new spawn with an error naming the limit and the current count, and a startup notice says the kernel is not holding it. |
+| `session.maxProcesses` | Session Max Processes | number | `0` | Maximum concurrent processes that this session and its agents may run. Off: no limit. Stored in the active profile. |
 
 ## Context
 
@@ -300,16 +300,16 @@ veyyon config get compaction.threshold
 |---|---|---|---|---|
 | `contextPromotion.enabled` | Auto-Promote Context | boolean | `false` | Promote to a larger-context model on context overflow instead of compacting. |
 | `branchSummary.enabled` | Branch Summaries | boolean | `false` | Prompt to summarize when leaving a branch. |
-| `context.thinkingRetention` | Thinking Retention | number | `-1` | How many of the most recent assistant turns keep their unsigned thinking when the conversation is sent back. Gemini summarises its reasoning for you to read but replays the real reasoning from the signature on the tool call, so an old summary is transcript text the model re-reads and the provider ignores. Keep All resends every summary ever produced. Thinking that does carry a signature is always kept. Other providers ignore this. Shown under the tab's Advanced fold. |
-| `context.thoughtSignatureRetention` | Thought Signature Retention | number | `-1` | How many of the most recent assistant turns keep their Gemini thought signature when the conversation is sent back. Signatures let the model replay its own reasoning, and they are large, so the recent ones are the ones worth paying to resend. Keep All resends every signature ever produced, which on a long session is the single biggest thing in the context. Other providers ignore this. Shown under the tab's Advanced fold. |
-| `context.thoughtSignatureMaxLength` | Thought Signature Size Limit | number | `-1` | Longest Gemini thought signature still worth resending, in characters. Anything longer sends the skip sentinel instead, however recent it is. Signature sizes are lopsided: the largest tenth of them carry roughly two thirds of all signature bytes, so a limit sheds most of the weight while keeping the great majority of the reasoning chain. Use this instead of Thought Signature Retention when you want a gentler trade, or alongside it, in which case a signature is resent only if it is both recent enough and small enough. Other providers ignore this. Shown under the tab's Advanced fold. |
+| `context.thinkingRetention` | Thinking Retention | number | `-1` | How many of the most recent assistant turns keep their unsigned thinking text when the conversation is resent to Gemini. Signed thinking is always kept. Keep All: every turn keeps it. Other providers ignore this. Shown under the tab's Advanced fold. |
+| `context.thoughtSignatureRetention` | Thought Signature Retention | number | `-1` | How many of the most recent assistant turns keep their Gemini thought signature when the conversation is resent. A signature lets the model replay its reasoning for that turn and is large. Keep All: every turn keeps it. Other providers ignore this. Shown under the tab's Advanced fold. |
+| `context.thoughtSignatureMaxLength` | Thought Signature Size Limit | number | `-1` | Longest Gemini thought signature that is resent, in characters. A longer signature is replaced by the skip marker whatever its age. With Thought Signature Retention also set, a signature is resent only if it is both recent enough and short enough. Other providers ignore this. Shown under the tab's Advanced fold. |
 
 ### Prompt Cache
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `cache.reportRejection` | Report Cache Rejections | boolean | `true` | Warn when a turn asked the provider to cache a prefix and the provider cached nothing. Anthropic only; other providers do not report cache rejection. |
-| `cache.blockOnRejection` | Block On Cache Rejection | boolean | `false` | Anthropic only. Fail the next request after a rejected cache instead of continuing to pay full input rate. Off by default: the verdict is proven against provider usage reporting, so a provider that changes what it reports would stop the session rather than cost money. |
+| `cache.blockOnRejection` | Block On Cache Rejection | boolean | `false` | Anthropic only. Fail the next request after the provider rejects the prompt cache, instead of continuing at the full input rate. Off: continue. |
 
 ### Session Instrumentation
 
@@ -343,7 +343,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `memory.backend` | Memory Backend | enum | `off` | Off, local summary pipeline, Mnemopi SQLite, or Hindsight remote memory. Values: `off`, `local`, `hindsight`, `mnemopi`. |
-| `providers.memoryModel` | Memory Model | enum | `online` | Mnemopi LLM for fact extraction + consolidation: online (the TINY role from /models, else smol/remote) by default, or a local on-device model. Values: `online`, `qwen3-1.7b`, `llama3.2:3b`, `gemma-3-1b`, `qwen2.5-1.5b`, `lfm2-1.2b`. |
+| `providers.memoryModel` | Memory Model | enum | `online` | Model Mnemopi uses to extract and consolidate facts. Online: the Tiny role from /models, else @smol. Local: an on-device model. Values: `online`, `qwen3-1.7b`, `llama3.2:3b`, `gemma-3-1b`, `qwen2.5-1.5b`, `lfm2-1.2b`. |
 
 ### Mnemopi
 
@@ -377,7 +377,7 @@ veyyon config get compaction.threshold
 | `hindsight.autoRecall` | Hindsight Auto Recall | boolean | `true` | Recall memories on the first turn of each session. |
 | `hindsight.autoRetain` | Hindsight Auto Retain | boolean | `true` | Retain transcript every N turns and at session boundaries. |
 | `hindsight.retainMode` | Hindsight Retain Mode | enum | `full-session` | full-session = upsert one document per session, last-turn = chunked. Values: `full-session`, `last-turn`. |
-| `hindsight.mentalModelsEnabled` | Hindsight Mental Models | boolean | `true` | Read curated reflect summaries (mental models) into developer instructions at boot. Loads existing models on the bank — does not write. Pair with hindsight.mentalModelAutoSeed to also auto-create the built-in seed set. |
+| `hindsight.mentalModelsEnabled` | Hindsight Mental Models | boolean | `true` | Read the memory bank's mental models into the developer instructions at start. This reads existing models and writes none; Hindsight Mental Model Auto-Seed creates the built-in set. |
 | `hindsight.mentalModelAutoSeed` | Hindsight Mental Model Auto-Seed | boolean | `true` | At session start, create any built-in mental models (project-conventions, project-decisions, user-preferences) that do not yet exist on the bank. |
 
 ## Files
@@ -411,7 +411,7 @@ veyyon config get compaction.threshold
 | `read.summarize.minCommentLines` | Read Summary Comment Lines | number | `6` | Minimum multiline block comment length before read summaries collapse it. |
 | `read.summarize.minTotalLines` | Read Summary Minimum File Length | number | `100` | Files with fewer total lines are read verbatim instead of structurally summarized. |
 | `read.summarize.unfoldUntil` | Read Summary Unfold Target | number | `50` | BFS-unfold elidable spans until the summary is at least this many visible lines. 0 keeps only the outermost elisions. |
-| `read.summarize.unfoldLimit` | Read Summary Unfold Ceiling | number | `100` | Hard ceiling on summary size while BFS-unfolding. An unfold whose revealed lines would exceed this is skipped (that span stays folded) and unfolding continues with the remaining spans. |
+| `read.summarize.unfoldLimit` | Read Summary Unfold Ceiling | number | `100` | Maximum number of lines a structural summary may grow to while folded spans are revealed. A span whose lines would exceed it stays folded and the next span is tried. |
 
 ### LSP
 
@@ -437,8 +437,8 @@ veyyon config get compaction.threshold
 | `shellMinimizer.enabled` | Shell Minimizer | boolean | `true` | Compress verbose shell output (git, npm, cargo, etc.) before returning it to the agent. |
 | `shellMinimizer.sourceOutlineLevel` | Shell Minimizer Source Outline | enum | `default` | Source outline mode for cat/read of source files: default or aggressive. Values: `default`, `aggressive`. |
 | `bash.autoBackground.enabled` | Bash Auto-Background | boolean | `true` | Move a long-running bash command to a background job on its own and deliver the result when it lands, instead of holding the turn open. Off, a command holds the foreground until it finishes or times out. Either way you can background the running command yourself with the composer's background key. |
-| `bash.autoBackground.thresholdMs` | Auto-Background After | number | `300000` | Max wall-clock time a bash call runs in the foreground before it is moved to a background job (result delivered later). Frees the model to keep working and protects the prompt cache, which a long foreground command would otherwise blow past. Fires on elapsed time even while output is streaming. 0 backgrounds immediately. |
-| `bash.stallDetection.stallMs` | Stall After | number | `30000` | When stall detection is on, how long a bash call may produce no new output before it is treated as possibly stuck, backgrounded, and flagged so the model can cancel it if it is truly hung. Measures idle time (quiet output), not total run time. |
+| `bash.autoBackground.thresholdMs` | Auto-Background After | number | `300000` | How long a bash call runs in the foreground before it is moved to a background job whose result is delivered later. Counted on elapsed time, including while output is streaming. 0: every call is backgrounded at once. |
+| `bash.stallDetection.stallMs` | Stall After | number | `30000` | How long a bash call may produce no output before it is moved to a background job and flagged as possibly stuck. Counted from the last output, not from the start of the call. |
 
 ### Eval & Runtimes
 
@@ -518,12 +518,12 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `tools.artifactSpillThreshold` | Artifact Spill Threshold (KB) | number | `50` | Tool output above this size is saved as an artifact and the result keeps a head/tail window no larger than this size, plus the artifact:// id that reads the full text back, so a lower threshold costs a re-read rather than losing output. It governs every tool that streams output, including bash, eval, ssh and the interactive shell, as well as search and the browser. |
+| `tools.artifactSpillThreshold` | Artifact Spill Threshold (KB) | number | `50` | Tool output above this size is saved as an artifact; the result keeps the start and end of the output up to this size plus the artifact:// id that reads the full text back. Applies to every tool that streams output: bash, eval, ssh, the interactive shell, search and the browser. |
 | `tools.artifactTailBytes` | Artifact Tail Size (KB) | number | `20` | Amount of tail content kept inline when output spills to artifact, bounded by the spill threshold. |
-| `tools.artifactHeadBytes` | Artifact Head Size (KB) | number | `20` | Amount of head content kept inline alongside the tail when output spills to artifact (middle elision), bounded with the tail by the spill threshold. 0 disables — keep tail only. |
+| `tools.artifactHeadBytes` | Artifact Head Size (KB) | number | `20` | How much of the start of the output is kept inline when the rest is saved as an artifact, in bytes. The start and the end together stay within the Artifact Spill Threshold. 0: keep only the end. |
 | `tools.outputMaxColumns` | Output Column Cap | number | `768` | Per-line byte cap for streaming tool outputs (bash, ssh, python, js eval) and `read`. Lines wider than this are ellipsis-truncated; remaining bytes up to the next newline are dropped. 0 disables. |
 | `tools.artifactTailLines` | Artifact Tail Lines | number | `500` | Maximum lines of tail content kept inline when output spills to artifact. |
-| `tools.inlineOutputFloor` | Inline Output Floor | number | `0.25` | Smallest share of the inline output budget an early tool result may use before the rest spills to an artifact. A result that arrives early is re-read on every later turn, so it is charged more tightly than one that arrives near the end. Lower spills sooner and costs fewer context tokens; 1 keeps the flat cap and never spills early. This governs every tool that streams output, including eval, bash, ssh and the interactive shell, as well as search and the browser. Shown under the tab's Advanced fold. |
+| `tools.inlineOutputFloor` | Inline Output Floor | number | `0.25` | Smallest share of the inline output budget a tool result early in the conversation may use before the rest is saved as an artifact. A lower value saves output to an artifact sooner and costs fewer context tokens. 1: every result gets the full budget. Applies to every tool that streams output: bash, eval, ssh, the interactive shell, search and the browser. Shown under the tab's Advanced fold. |
 
 ### Execution
 
@@ -541,7 +541,7 @@ veyyon config get compaction.threshold
 |---|---|---|---|---|
 | `tools.discoveryMode` | Tool Discovery | enum | `auto` | Hide tools behind a search tool to save tokens. 'auto' hides MCP tools once the tool set has more than 40 tools; 'mcp-only' always hides MCP tools; 'all' also hides non-essential built-ins and first-party heavyweight tools such as generate_image. Values: `auto`, `off`, `mcp-only`, `all`. |
 | `tools.essentialOverride` | Essential Tools Override | array | `[]` | Override the always-loaded built-in tools (default: read, bash, launch, edit, write, search, eval). Leave empty to use defaults. |
-| `mcp.discoveryMode` | MCP Tool Discovery | boolean | `false` | Hide MCP tools by default and expose them through a tool discovery tool. |
+| `mcp.discoveryMode` | MCP Tool Discovery | boolean | `false` | Hide MCP tools from the tool list and expose them through a tool discovery tool. |
 | `mcp.discoveryDefaultServers` | MCP Discovery Default Servers | array | `[]` | Keep MCP tools from these servers visible while discovery mode hides other MCP tools. |
 | `mcp.notifications` | MCP Update Injection | boolean | `false` | Inject MCP resource updates into the agent conversation. |
 | `mcp.notificationDebounceMs` | MCP Notification Debounce | number | `500` | Debounce window in milliseconds for MCP resource updates before injecting them into the conversation. |
@@ -607,16 +607,11 @@ veyyon config get compaction.threshold
 | `agent.softRequestBudgetNotice` | Soft Request Budget Notice | boolean | `true` | Send an agent one steering notice when it crosses its Soft Request Budget, asking it to wrap up before the forced stop. |
 | `agent.enableLsp` | LSP in Agents | boolean | `false` | Allow spawned agents to use the lsp tool. Off keeps agents cheaper. |
 
-### Park
+### Idle Agents
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `agent.idleTtlMs` | Park Idle Agents After | number | `300000` | How long a spawned agent that has finished its turn stays live before it is parked. A parked agent releases its process, MCP clients and memory; it stays in the roster and is rebuilt from its transcript when messaged or opened. Counted from the agent's last activity. Until exit: idle agents stay live for the whole session. |
-
-### Prune
-
-| Key | Setting | Type | Default | What it does |
-|---|---|---|---|---|
 | `agent.prune.enabled` | Prune Parked Agents | boolean | `true` | Remove parked agents from the roster after Prune After. A pruned agent cannot be messaged or opened again; its transcript stays on disk and readable at history://\<agent>. Off: parked agents stay in the roster until the session exits. |
 | `agent.prune.afterMs` | Prune After | number | `3600000` | How long a parked agent stays in the roster before it is pruned, counted from when it was parked. |
 | `agent.prune.waitingAfterMs` | Prune After While Waiting | number | `7200000` | Prune After for a parked agent whose last message was that it is waiting on another agent. A value below Prune After is raised to it. |
@@ -634,7 +629,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `irc.timeoutMs` | IRC Timeout | number | `120000` | Default timeout for irc wait (and send await:true) in milliseconds; 0 disables the timeout. IRC is how a parent and its agents talk, which is why it is configured here. |
+| `irc.timeoutMs` | IRC Timeout | number | `120000` | How long an irc wait, or an irc send with await, waits for a reply before it returns without one. Disabled: waits until a reply arrives. |
 
 ## Providers
 
@@ -677,7 +672,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `discovery.importForeignConfig` | Import Other Tools' Config | boolean | `false` | Auto-discover skills, context files, rules, and MCP servers authored for other AI tools (Claude, Codex, Gemini, Cursor, opencode, and more) found on disk. Off by default: veyyon runs on its own instruction layers only (the system prompt, the global ~/.veyyon/AGENTS.md, the active profile's AGENTS.md, and the project's own AGENTS.md/CLAUDE.md walked from the repo root down to cwd), and never ambiently picks up a foreign tool's own config directory, GEMINI.md, or the skills, rules and MCP servers those tools define. Turn on to import them as a base layer. |
+| `discovery.importForeignConfig` | Import Other Tools' Config | boolean | `false` | Import skills, context files, rules and MCP servers that other AI tools (Claude, Codex, Gemini, Cursor, opencode and others) keep on disk, as a base layer under veyyon's own. Off: only the system prompt, ~/.veyyon/AGENTS.md, the profile's AGENTS.md and the project's AGENTS.md or CLAUDE.md files from the repository root down to the working directory are read. |
 
 ### Fireworks
 
@@ -689,10 +684,10 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `providers.tinyModel` | Session Title Model | enum | `online` | Session-title model: online (the TINY role from /models, else @smol) by default, or a local on-device model. Values: `online`, `lfm2-350m`, `qwen3-0.6b`, `gemma-270m`, `qwen2.5-0.5b`, `lfm2-700m`. |
+| `providers.tinyModel` | Session Title Model | enum | `online` | Model that writes session titles. Online: the Tiny role from /models, else @smol. Local: an on-device model. Values: `online`, `lfm2-350m`, `qwen3-0.6b`, `gemma-270m`, `qwen2.5-0.5b`, `lfm2-700m`. |
 | `providers.tinyModelDevice` | Tiny Model Device | enum | `default` | ONNX execution provider for local tiny models (titles + memory). Default uses CPU-only inference. The VEYYON_TINY_DEVICE env var overrides this. Values: `default`, `gpu`, `cpu`, `metal`, `webgpu`, `cuda`, `dml`, `coreml`, `auto`, `wasm`, `webnn`, `webnn-gpu`, `webnn-cpu`, `webnn-npu`. |
 | `providers.tinyModelDtype` | Tiny Model Precision | enum | `default` | ONNX quantization/precision for local tiny models. Default uses each model's shipped dtype (q4); lower precision is faster, higher is more faithful. The VEYYON_TINY_DTYPE env var overrides this. Values: `default`, `q4`, `q4f16`, `q8`, `fp16`, `fp32`, `int8`, `uint8`, `bnb4`, `q2`, `q2f16`, `q1`, `q1f16`, `auto`. |
-| `providers.unexpectedStopModel` | Unexpected Stop Model | enum | `online` | Classifier for unexpected-stop detection: online (the TINY role from /models, else smol) by default, or a local on-device model. Values: `online`, `qwen3-1.7b`, `llama3.2:3b`, `gemma-3-1b`, `qwen2.5-1.5b`, `lfm2-1.2b`. |
+| `providers.unexpectedStopModel` | Unexpected Stop Model | enum | `online` | Model that classifies whether a turn stopped unexpectedly. Online: the Tiny role from /models, else @smol. Local: an on-device model. Values: `online`, `qwen3-1.7b`, `llama3.2:3b`, `gemma-3-1b`, `qwen2.5-1.5b`, `lfm2-1.2b`. |
 
 ### Protocol
 
@@ -726,7 +721,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `argot.enabled` | Argot Shorthand | boolean | `false` | Let the agent load token-saving shorthand for the projects it works in, kept in a local cache (nothing is written to the repository). The project you launch in is loaded for you, and the model loads any further project with the argot_load tool; it then writes short handles that the harness expands to full text before any tool runs or the display shows them. |
+| `argot.enabled` | Argot Shorthand | boolean | `false` | Load per-project shorthand so the model writes short handles that are expanded to full text before any tool runs or the screen shows them. The launch project is loaded at start; the model loads others with the argot_load tool. Dictionaries are kept in a local cache; nothing is written to the repository. |
 | `argot.autoload` | Argot Startup Load | boolean | `true` | Load the project you started the session in, in the background, so shorthand works without the model spending a turn on it. Off, a session starts with no dictionary until the model calls argot_load itself. Either way a handle already written still expands. |
 | `argot.encode.models` | Argot Models | array | `[]` | Models allowed to write Argot shorthand, by model id. Empty (the default) means no model does, so turning Argot on alone stays inert until you add one here. A model left off this list is never taught the shorthand; handles already in history still expand. |
 | `argot.tokenBudget` | Argot Dictionary Budget | number | `1000` | How many tokens the generated Argot dictionary may spend on its handle table. A larger budget teaches more handles (more transcript savings) but adds a longer preamble each turn; a smaller budget teaches only the most central strings. Changing it regenerates the dictionary. |
@@ -752,29 +747,29 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `machine.cpuLimitCores` | Machine CPU Limit | number | `0` | Maximum CPU every veyyon process on this machine may use TOGETHER, in cores (0 = no limit). Stored in ~/.veyyon/config.yml rather than in a profile, so it covers every profile and every veyyon running at once, which is what makes it a machine limit: held per profile, two profiles would read their own copy and the machine would get the sum. Each session's budget group is created INSIDE this one, so on Linux the kernel caps the whole subtree and no combination of sessions can exceed it. A per-session limit larger than this one is bounded by it and does not raise it. The machine tier therefore needs a parent that delegates two levels; a host that delegates one, such as a container whose cgroup root holds processes, still holds per-session limits and reports the machine tier as unheld. Where the kernel cannot hold it, a notice says so once at startup rather than reporting a cap that does not exist. Stored machine-wide, not per profile. |
-| `machine.memoryLimitGb` | Machine Memory Limit | number | `0` | Maximum memory every veyyon process on this machine may hold together, in gigabytes (0 = no limit). Stored in ~/.veyyon/config.yml, so it spans profiles and concurrent veyyon instances. Every session budget group sits inside this one, so on Linux this is cgroup v2 memory.max on the parent, with memory.swap.max pinned to 0 so the cap is the whole anonymous footprint rather than a resident cap a process escapes by swapping. The kernel reclaims, then OOM-kills, inside the subtree once the total is reached — whichever process the kernel picks, with no warning and no chance to finish. Set it where an OOM kill is preferable to the machine swapping. Where no memory controller is delegated the cap cannot be held, and a notice says so once at startup. Stored machine-wide, not per profile. |
-| `machine.writeBudgetGb` | Machine Write Budget | number | `0` | Cumulative gigabytes every veyyon process on this machine may WRITE before further writes are refused (0 = no limit). Stored in ~/.veyyon/config.yml, so it spans profiles and concurrent veyyon instances. Unlike CPU and memory this is a total that accumulates, not a level: it counts bytes written since the machine budget was last reset, across every session, and refuses new commands and harness writes once the total is reached. A write budget is the one limit no kernel enforces on its own — cgroup io accounting MEASURES bytes and caps rate, not a lifetime total — so this is a refusal, and work already writing runs to completion. Stored machine-wide, not per profile. |
-| `machine.maxProcesses` | Machine Max Processes | number | `0` | Hard cap on how many processes every veyyon on this machine may have alive at once (0 = no limit). Stored in ~/.veyyon/config.yml, so it spans profiles and concurrent veyyon instances. Every session budget group sits inside this one, so on Linux this is cgroup v2 pids.max on the parent and the kernel refuses the fork itself once the subtree is full, whichever session asked. Where pids is not delegated the cap is a refusal at the spawn path instead, and a notice says so once at startup. Stored machine-wide, not per profile. |
+| `machine.cpuLimitCores` | Machine CPU Limit | number | `0` | Maximum CPU all veyyon sessions on this machine may use together, in cores. Off: no limit. Stored in ~/.veyyon/config.yml and bounds the sum across profiles. Stored machine-wide, not per profile. |
+| `machine.memoryLimitGb` | Machine Memory Limit | number | `0` | Maximum resident memory all veyyon sessions on this machine may use together, in gigabytes. Off: no limit. Stored in ~/.veyyon/config.yml and bounds the sum across profiles. Stored machine-wide, not per profile. |
+| `machine.writeBudgetGb` | Machine Write Budget | number | `0` | Cumulative disk writes permitted for all veyyon sessions on this machine, in gigabytes. Off: no limit. Stored in ~/.veyyon/config.yml and bounds the sum across profiles. Stored machine-wide, not per profile. |
+| `machine.maxProcesses` | Machine Max Processes | number | `0` | Maximum concurrent processes that all veyyon sessions on this machine may run together. Off: no limit. Stored in ~/.veyyon/config.yml and bounds the sum across profiles. Stored machine-wide, not per profile. |
 
 ### Profiles
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `defaultProfile` | Default Profile | string | `default` | Profile used when no --profile flag or VEYYON_PROFILE is set. Stored in ~/.veyyon/config.yml. Use the profile name (`default` clears the override). Stored machine-wide, not per profile. |
-| `onboardingVersion` | Onboarding Version | number | `0` | Setup generation this machine has already completed. Stored in ~/.veyyon/config.yml, so switching profile or working directory never re-runs onboarding. Stored machine-wide, not per profile. |
+| `defaultProfile` | Default Profile | string | `default` | Profile used when no --profile flag or VEYYON_PROFILE environment variable is set. Stored in ~/.veyyon/config.yml. Setting to default clears the override. Stored machine-wide, not per profile. |
+| `onboardingVersion` | Onboarding Version | number | `0` | Setup version completed on this machine. Stored in ~/.veyyon/config.yml. Stored machine-wide, not per profile. |
 
 ### Credentials
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `profileSharing` | Share Credentials Across Profiles | boolean | `true` | When on (the default), every profile reads one machine-wide set of provider logins. Turn off to give each profile its own private credential store. Changing this setting shuts down the active session; restart is required before any further model dispatch. Stored machine-wide, not per profile. |
+| `profileSharing` | Share Credentials Across Profiles | boolean | `true` | Share provider logins between profiles. On: every profile reads one machine-wide credential store. Off: each profile has its own. Changing it shuts down the active session; restart before the next model request. Stored machine-wide, not per profile. |
 
 ### Auth Broker
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `authBrokerUrl` | Auth Broker URL | string | _(empty)_ | Base URL of the auth broker that mints provider credentials for this machine. Stored in ~/.veyyon/config.yml under auth.broker.url; empty disables broker discovery via config. Stored machine-wide, not per profile. |
+| `authBrokerUrl` | Auth Broker URL | string | _(empty)_ | Base URL of the auth broker providing credentials for this machine. Stored in ~/.veyyon/config.yml. Leave empty to disable broker discovery. Stored machine-wide, not per profile. |
 | `authBrokerToken` | Auth Broker Token | string | _(empty)_ | Bearer token for the auth broker. Write-only: a stored token shows as a mask and is never echoed. Enter a new value to replace it, leave the mask to keep it, or clear the field to delete it. Stored machine-wide, not per profile. |
 
 ## Configuration file only

@@ -63,7 +63,7 @@ export const GENERAL_SETTINGS = {
 			group: "Power (macOS)",
 			label: "Sleep Prevention",
 			description:
-				"Prevent macOS sleep during active sessions. Each level is cumulative — it adds the flags of all lower levels.",
+				"Prevent macOS sleep while a session is active. Each level includes the levels below it.",
 			options: [
 				{
 					value: "off",
@@ -151,7 +151,7 @@ export const GENERAL_SETTINGS = {
 			group: "Prewalk",
 			label: "Enable Prewalk",
 			description:
-				"Plan on the strong model, then switch to the cheap model at the first edit/write after the plan nudge's todo list exists — the strong model commits the todos and starts the implementation before handing off. The cheap model comes from Prewalk Cheap Model; Prewalk Strong Model overrides the start model. Overridable per session with --prewalk / --no-prewalk.",
+				"Start a session on Prewalk Strong Model and switch to Prewalk Cheap Model at the first edit or write after the todo list exists. --prewalk and --no-prewalk override it for one session.",
 		},
 	},
 	"prewalk.cheapModel": {
@@ -175,7 +175,7 @@ export const GENERAL_SETTINGS = {
 			label: "Prewalk Strong Model",
 			condition: "prewalkEnabled",
 			description:
-				"Model a prewalk session starts on — the strong model that plans before the handoff. Unset: inherit the normal start model (--model or the remembered default). Only the first entry is used.",
+				"Model a prewalk session starts on. Unset: the normal start model (--model or the remembered default). Only the first entry is used.",
 		},
 	},
 	shellPath: { type: "string", default: undefined },
@@ -218,7 +218,7 @@ export const GENERAL_SETTINGS = {
 			group: "Roles",
 			label: "Role Models",
 			description:
-				"Assign a model to each role (Fast, Thinking, Vision, Architect, Designer, Commit, Tiny). Opens a searchable picker with auth status. The advisor's model is asked for in the Advisor group, and a spawned agent's in Agents → Roster, so neither appears here. Scoped to the active profile — never edit config by hand.",
+				"Assign a model to each role (Fast, Thinking, Vision, Architect, Designer, Commit, Tiny). Opens a searchable picker with auth status. The advisor's model is set in the Advisor group and a spawned agent's in Agents → Roster. Stored in the active profile.",
 		},
 	},
 
