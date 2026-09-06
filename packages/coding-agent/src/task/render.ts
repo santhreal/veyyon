@@ -89,11 +89,8 @@ function getStatusIcon(status: AgentProgress["status"], theme: Theme, spinnerFra
 
 /**
  * Append tool-count, context, and cost stats to a status line string.
- *
- * Shared with the Subagent Dashboard's detail pane, so a subagent's numbers read
- * the same under the roster as they do in the task widget.
  */
-export function appendAgentStats(
+function appendAgentStats(
 	line: string,
 	opts: {
 		toolCount?: number;
@@ -473,12 +470,7 @@ function stripRecentOutputNoticeLine(text: string): string {
 	return trimmed.slice(0, lineStart === -1 ? 0 : lineStart).trimEnd();
 }
 
-/**
- * The tail of a subagent's output with the runtime notices the bash tool appends
- * (exit code, wall time, artifact pointer) stripped, so the preview is what the
- * child's tools printed rather than what the harness added.
- */
-export function sanitizeRecentOutput(output: string): string {
+function sanitizeRecentOutput(output: string): string {
 	let text = sanitizeText(output).trimEnd();
 	while (text) {
 		const withoutArtifactNotice = stripRawOutputArtifactNotice(text).text;

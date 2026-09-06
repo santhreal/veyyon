@@ -51,25 +51,9 @@ function observersReporting(id: string, resolvedModel: string, fellBackFrom?: st
 			label: "Subagent",
 			status: "active",
 			lastUpdate: Date.now(),
-			// The detail pane under the roster reads the rest of the record, so it
-			// is a whole one; only the two model fields vary between tests.
-			progress: {
-				index: 0,
-				id,
-				agent: "scout",
-				agentSource: "bundled",
-				status: "running",
-				task: "task",
-				recentTools: [],
-				recentOutput: [],
-				toolCount: 0,
-				requests: 0,
-				tokens: 0,
-				cost: 0,
-				durationMs: 0,
-				resolvedModel,
-				fellBackFrom,
-			} satisfies AgentProgress,
+			// Only the fields the badge reads; the rest of AgentProgress describes the
+			// task widget's own row and has no bearing on which model is shown.
+			progress: { resolvedModel, fellBackFrom } as AgentProgress,
 		},
 	];
 	return observers;
