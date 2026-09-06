@@ -23,6 +23,7 @@
 
 ### Fixed
 
+- Fixed compiled Python bridge script extraction to an OS-accessible cache path before execution ([#4629](https://github.com/santhreal/veyyon/issues/4629)).
 - The permission card's title bar reads `Permission required` instead of the markdown source `## Permission required`; a select dialog's title bar draws the heading's text and leaves the markdown to the body.
 - A hook status set through `ctx.ui.setStatus` keeps the theme colours it was painted with, as its contract states, so the autoresearch status row shows its kept count in green, its flagged count in yellow and its best metric in the tool colour instead of one grey line; cursor moves, hyperlinks and graphics in a status are still stripped.
 - Interrupting Claude mid-thinking no longer fails every later turn with `Refusal (reasoning_extraction)` on an endpoint that enforces the classifier: the hidden continuity message that carries the unfinished reasoning states which turn it came from, and the request drops it on same-model replay to a signing Anthropic endpoint, and after one refusal on any other, instead of re-sending it on the retry and for the rest of the session.

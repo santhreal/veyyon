@@ -24,6 +24,9 @@ import { once } from "node:events";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { atomicWriteFileSync } from "@veyyon/utils/atomic-write";
+import { getAgentDir } from "@veyyon/utils";
+import nativeLedgerBridgeAssetPath from "./native-ledger-bridge.py" with { type: "file" };
 // --- Functional Topics & Keyword Mapping ---
 
 export const TOPIC_KEYWORDS_MAP: Readonly<Record<string, string>> = {
@@ -101,8 +104,8 @@ export const EXPLICITLY_CANCELLED_TASKS: Readonly<Record<string, string>> = {
 };
 
 export const DEFAULT_FLASH_MODEL = "google-antigravity/gemini-3.8-flash:high";
-export const DEFAULT_MIN_FLOOR = 7;
-export const DEFAULT_TARGET_COUNT = 10;
+export const DEFAULT_MIN_FLOOR = Number(process.env.VEYYON_WORKER_MIN_FLOOR) || 10;
+export const DEFAULT_TARGET_COUNT = Number(process.env.VEYYON_WORKER_TARGET) || 10;
 export const DEFAULT_MAX_CEILING = 20;
 export const HARD_RAM_CEILING_PCT = 95.0;
 export const CLEANUP_RAM_PCT = 85.0;
@@ -513,19 +516,91 @@ export async function checkMemoryAdmission(options?: {
  * In development, resolves to source tree. In a compiled binary,
  * extracts to an on-disk temp file if virtual bunfs is detected.
  */
-export function resolveBridgeScriptPath(): string {
-	const sourcePath = path.join(import.meta.dirname, "native-ledger-bridge.py");
-	if (fs.existsSync(sourcePath)) {
-		return sourcePath;
-	}
-	const extractPath = path.join(os.tmpdir(), "veyyon-native-ledger-bridge.py");
+/** Whether the cache file at `target` is byte-for-byte the asset it stands in for. */
+function cachedFileMatches(target: string, bytes: Buffer): boolean {
+	let existing: Buffer;
 	try {
-		const content = fs.readFileSync(sourcePath, "utf-8");
-		fs.writeFileSync(extractPath, content, "utf-8");
-		return extractPath;
+		existing = fs.readFileSync(target);
 	} catch {
-		return sourcePath;
+		return false;
 	}
+	return existing.length === bytes.length && existing.equals(bytes);
+}
+
+/** Get the cache directory where the bridge script is materialized. */
+export function getBridgeCacheDir(): string {
+	try {
+		return path.join(getAgentDir(), "cache", "bridge");
+	} catch {
+		return path.join(os.tmpdir(), "veyyon-cache", "bridge");
+	}
+}
+
+/** Check whether a path resides inside Bun's internal virtual filesystem (bunfs). */
+function isVirtualBunfsPath(filePath: string): boolean {
+	if (
+		filePath.includes("~BUN") ||
+		filePath.includes("$bunfs") ||
+		filePath.startsWith("B:\\") ||
+		filePath.startsWith("B:/")
+	) {
+		return true;
+	}
+	try {
+		fs.realpathSync(filePath);
+		return false;
+	} catch {
+		return true;
+	}
+}
+
+/**
+ * Safely resolve and materialize the native ledger bridge script path.
+ *
+ * In a development checkout, the script is a normal on-disk source file that external
+ * python.exe can execute directly.
+ *
+ * In a compiled standalone binary, native-ledger-bridge.py is bundled as an embedded asset
+ * via static `with { type: "file" }` inclusion. Because external processes cannot access
+ * Bun's virtual bunfs paths (e.g. B:\~BUN\root\... or /$bunfs/...), this function extracts
+ * and verifies the script bytes into an OS-readable file in the agent cache directory,
+ * using atomic writes (atomicWriteFileSync) to ensure concurrent safety and content-verified
+ * integrity.
+ *
+ * Fails explicitly if the asset is missing, empty, or cannot be materialized. Never falls back
+ * to an unresolvable virtual bunfs path.
+ */
+export function resolveBridgeScriptPath(): string {
+	let assetBytes: Buffer;
+	try {
+		assetBytes = fs.readFileSync(nativeLedgerBridgeAssetPath);
+	} catch (err) {
+		throw new Error(
+			`Native ledger bridge asset is missing or unreadable at ${nativeLedgerBridgeAssetPath}`,
+			{ cause: err },
+		);
+	}
+
+	if (!assetBytes || assetBytes.length === 0) {
+		throw new Error(`Native ledger bridge asset is empty at ${nativeLedgerBridgeAssetPath}`);
+	}
+
+	if (!isVirtualBunfsPath(nativeLedgerBridgeAssetPath)) {
+		return nativeLedgerBridgeAssetPath;
+	}
+
+	const cacheDir = getBridgeCacheDir();
+	const targetPath = path.join(cacheDir, "native-ledger-bridge.py");
+
+	if (!cachedFileMatches(targetPath, assetBytes)) {
+		atomicWriteFileSync(targetPath, assetBytes);
+	}
+
+	if (!cachedFileMatches(targetPath, assetBytes)) {
+		throw new Error(`Failed to materialize content-verified bridge script at ${targetPath}`);
+	}
+
+	return targetPath;
 }
 
 /**
@@ -947,14 +1022,14 @@ export class TopicReplenishmentEngine {
 			}
 		}
 
-		const updatedRoster = currentRoster.filter(w => {
+		const updatedRoster: (NativeActorSnapshot | Record<string, unknown>)[] = currentRoster.filter(w => {
 			if (typeof w === "object" && w !== null && "id" in w) {
 				return w.id !== event.agentId;
 			}
 			return true;
 		});
 
-		return this.replenish(updatedRoster, options);
+		return this.replenish(updatedRoster as NativeActorSnapshot[], options);
 	}
 
 	/**
