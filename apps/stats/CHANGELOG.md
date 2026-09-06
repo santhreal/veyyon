@@ -8,18 +8,7 @@
 - The package directory is `apps/stats` instead of `packages/stats`; the published package name, entry points and behavior are unchanged.
 - Array copies that allocated with a spread now use `.slice()`, `.concat()` or `Array.from()`. No user-visible behavior changes.
 - Repointed a doc comment at `@veyyon/kernel/session/session-entries`, where the session header type now lives; no behavior change.
-
-
-## [1.4.0] - 2026-09-04
-
-### Changed
-
-### Changed
-
 - Array spreads over iterators in the dashboard aggregators are `Array.from` calls and source comments reference `apps/stats` and `clients/web`; no user-visible change.
-- The package directory is `apps/stats` instead of `packages/stats`; the published package name, entry points and behavior are unchanged.
-- Array copies that allocated with a spread now use `.slice()`, `.concat()` or `Array.from()`. No user-visible behavior changes.
-- Repointed a doc comment at `@veyyon/kernel/session/session-entries`, where the session header type now lives; no behavior change.
 
 ## [1.4.0] - 2026-09-04
 

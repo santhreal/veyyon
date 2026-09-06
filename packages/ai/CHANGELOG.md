@@ -12,6 +12,7 @@
 - A source-path comment in `message-text.ts` names the coding-agent module its caller moved to; behavior is unchanged.
 - `CONTEXTUAL_USER_PREFIXES` is exported from the codex compaction module so the retained-window rule is asserted against the real list rather than a copy of it.
 - A source-path comment and the barrel-shortcut suite name the Perplexity search provider at `tools/web/search/providers/perplexity.ts`. No behavior change.
+- Doc comments refer to child runs and roles as agents rather than subagents; the Codex protocol header `x-openai-subagent` and its `subagent_kind` metadata key are unchanged.
 
 ### Fixed
 

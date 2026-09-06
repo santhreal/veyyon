@@ -11,6 +11,7 @@
 ### Changed
 
 - `TextContent`, `ImageContent`, `ThinkingContent`, `RedactedThinkingContent`, `ToolCallContent`, `FallbackContent`, `WireStopReason` and `WireUsage` are `Pick` projections of the shapes `@veyyon/model` owns, imported type-only, with the same fields as before; the package declares `@veyyon/model` and no runtime dependency.
+- `AgentProgressPayload` and `AgentLifecyclePayload` are the payloads on the `task:subagent:progress` and `task:subagent:lifecycle` bus channels; `SubagentProgressPayload` and `SubagentLifecyclePayload` remain exported as the same types, and the channel spellings are unchanged.
 
 
 ## [16.3.0] - 2026-07-02
