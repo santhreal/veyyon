@@ -2669,8 +2669,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 							durationMs: record.durationMs,
 							error: record.error,
 							ticketId: record.ticketId,
+							runId: (record as Record<string, unknown>).runId as string | undefined,
+							structuredResult: (record as Record<string, unknown>).structuredResult as Record<string, unknown> | undefined,
 						},
-						activeRoster,
 					);
 				}
 			},
@@ -4513,8 +4514,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 									agent: "fast",
 									task: ticket.prompt,
 									ticketId: ticket.id,
+									runId: ticket.runId,
+									schema: ticket.resultSchema,
 								},
-								undefined,
 								undefined,
 							);
 						}

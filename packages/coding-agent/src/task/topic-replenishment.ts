@@ -206,6 +206,11 @@ export interface ClaimedTicket {
 	head?: string;
 	authorization: string;
 	claimedAt: string;
+	runId?: string;
+	resultSchema?: Record<string, unknown>;
+	stage?: string;
+	repoRoot?: string;
+	headSha?: string;
 }
 
 export interface BlockedTopicInfo {
@@ -263,6 +268,8 @@ export interface SubagentCompleteEvent {
 	durationMs?: number;
 	error?: string;
 	ticketId?: string;
+	runId?: string;
+	structuredResult?: Record<string, unknown>;
 }
 
 // --- Topic Resolution Helper ---
@@ -501,6 +508,25 @@ export async function checkMemoryAdmission(options?: {
 }
 
 // --- Cross-Platform File Locking Backed by Python native-ledger-bridge ---
+/**
+ * Safely resolve the native ledger bridge script path.
+ * In development, resolves to source tree. In a compiled binary,
+ * extracts to an on-disk temp file if virtual bunfs is detected.
+ */
+export function resolveBridgeScriptPath(): string {
+	const sourcePath = path.join(import.meta.dirname, "native-ledger-bridge.py");
+	if (fs.existsSync(sourcePath)) {
+		return sourcePath;
+	}
+	const extractPath = path.join(os.tmpdir(), "veyyon-native-ledger-bridge.py");
+	try {
+		const content = fs.readFileSync(sourcePath, "utf-8");
+		fs.writeFileSync(extractPath, content, "utf-8");
+		return extractPath;
+	} catch {
+		return sourcePath;
+	}
+}
 
 /**
  * Execute the isolated Python ledger bridge module under OS-level FileLock.
@@ -512,7 +538,7 @@ export async function runLedgerBridge<T = unknown>(
 	options?: { timeoutMs?: number; pythonPath?: string; cwd?: string },
 ): Promise<T> {
 	const python = options?.pythonPath || process.env.PYTHON_EXECUTABLE || process.env.PYTHON || "python";
-	const bridgeScript = path.join(import.meta.dirname, "native-ledger-bridge.py");
+	const bridgeScript = resolveBridgeScriptPath();
 	const timeout = options?.timeoutMs ?? 30000;
 
 	const { promise, resolve, reject } = Promise.withResolvers<T>();
@@ -546,7 +572,7 @@ export class FileLock {
 	async acquire(timeoutMs = 15000): Promise<void> {
 		const timeoutSec = (timeoutMs / 1000).toFixed(1);
 		const python = process.env.PYTHON_EXECUTABLE || process.env.PYTHON || "python";
-		const bridgeScript = path.join(import.meta.dirname, "native-ledger-bridge.py");
+		const bridgeScript = resolveBridgeScriptPath();
 
 		const { promise, resolve, reject } = Promise.withResolvers<void>();
 		let settled = false;
@@ -668,35 +694,52 @@ export async function rollbackClaimedTicket(
 }
 
 /**
- * Complete ticket on worker finish.
+ * Record native dispatch handle binding in WorkerBackend.
+ */
+export async function recordNativeDispatch(runId: string, taskHandle: string): Promise<void> {
+	await runLedgerBridge(["record-dispatch", "--run-id", runId, "--task-handle", taskHandle]);
+}
+
+/**
+ * Complete ticket on worker finish through canonical validation.
  * Handled entirely inside the Python bridge with OS-level FileLock.
  */
 export async function completeClaimedTicket(
 	ledgerPath: string,
 	ticketId: string,
-	status: "completed" | "failed" | "cancelled",
+	optionsOrStatus?:
+		| "completed"
+		| "failed"
+		| "cancelled"
+		| {
+				runId?: string;
+				taskHandle?: string;
+				agentId?: string;
+				structuredResult?: Record<string, unknown>;
+				exitCode?: number;
+				error?: string;
+				lockTimeoutMs?: number;
+		  },
 	exitCode = 0,
 	error = "",
 	options?: { lockTimeoutMs?: number },
-): Promise<void> {
-	const args = [
-		"complete",
-		"--ledger",
-		ledgerPath,
-		"--ticket-id",
-		ticketId,
-		"--status",
-		status,
-		"--exit-code",
-		String(exitCode),
-	];
-	if (error) {
-		args.push("--error", error);
+): Promise<{ completed: boolean; ok: boolean; state: string; blocked_reason?: string; head_sha?: string }> {
+	const args = ["complete", "--ledger", ledgerPath, "--ticket-id", ticketId];
+	if (typeof optionsOrStatus === "object" && optionsOrStatus !== null) {
+		if (optionsOrStatus.runId) args.push("--run-id", optionsOrStatus.runId);
+		if (optionsOrStatus.taskHandle) args.push("--task-handle", optionsOrStatus.taskHandle);
+		if (optionsOrStatus.agentId) args.push("--agent-id", optionsOrStatus.agentId);
+		if (optionsOrStatus.structuredResult) args.push("--result-json", JSON.stringify(optionsOrStatus.structuredResult));
+		if (typeof optionsOrStatus.exitCode === "number") args.push("--exit-code", String(optionsOrStatus.exitCode));
+		if (optionsOrStatus.error) args.push("--error", optionsOrStatus.error);
+		if (optionsOrStatus.lockTimeoutMs) args.push("--timeout", (optionsOrStatus.lockTimeoutMs / 1000).toFixed(1));
+	} else if (typeof optionsOrStatus === "string") {
+		args.push("--status", optionsOrStatus);
+		args.push("--exit-code", String(exitCode));
+		if (error) args.push("--error", error);
+		if (options?.lockTimeoutMs) args.push("--timeout", (options.lockTimeoutMs / 1000).toFixed(1));
 	}
-	if (options?.lockTimeoutMs) {
-		args.push("--timeout", (options.lockTimeoutMs / 1000).toFixed(1));
-	}
-	await runLedgerBridge(args);
+	return await runLedgerBridge(args);
 }
 
 // --- Native Dispatch Engine ---
@@ -733,15 +776,26 @@ export class TopicReplenishmentEngine {
 	}
 
 	/**
-	 * Complete claimed ticket under OS FileLock.
+	 * Complete claimed ticket under OS FileLock through canonical validation.
 	 */
 	async completeClaimedTicket(
 		ticketId: string,
-		status: "completed" | "failed" | "cancelled",
+		optionsOrStatus?:
+			| "completed"
+			| "failed"
+			| "cancelled"
+			| {
+					runId?: string;
+					taskHandle?: string;
+					agentId?: string;
+					structuredResult?: Record<string, unknown>;
+					exitCode?: number;
+					error?: string;
+			  },
 		exitCode = 0,
 		error = "",
-	): Promise<void> {
-		await completeClaimedTicket(this.ledgerPath, ticketId, status, exitCode, error);
+	): Promise<{ completed: boolean; ok: boolean; state: string; blocked_reason?: string; head_sha?: string }> {
+		return await completeClaimedTicket(this.ledgerPath, ticketId, optionsOrStatus, exitCode, error);
 	}
 
 	/**
@@ -880,14 +934,16 @@ export class TopicReplenishmentEngine {
 	): Promise<ReplenishmentOutcome> {
 		if (event.ticketId && fs.existsSync(this.ledgerPath)) {
 			try {
-				await this.completeClaimedTicket(
-					event.ticketId,
-					event.status,
-					event.exitCode ?? (event.status === "completed" ? 0 : 1),
-					event.error,
-				);
+				await completeClaimedTicket(this.ledgerPath, event.ticketId, {
+					runId: event.runId,
+					taskHandle: `agent://${event.agentId}`,
+					agentId: event.agentId,
+					structuredResult: event.structuredResult,
+					exitCode: event.exitCode ?? (event.status === "completed" ? 0 : 1),
+					error: event.error,
+				});
 			} catch {
-				// Non-fatal ledger update error
+				// Non-fatal bridge error logged
 			}
 		}
 

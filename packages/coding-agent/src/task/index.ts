@@ -91,6 +91,7 @@ import { renderResult, renderCall as renderTaskCall } from "./render";
 import { repairTaskParams } from "./repair-args";
 import { treeSpawnSemaphore } from "./spawn-semaphore";
 import { parseIsolationMode } from "./worktree";
+import { recordNativeDispatch } from "./topic-replenishment";
 
 function renderSubagentUserPrompt(assignment: string): string {
 	return prompt.render(subagentPrompts["subagent/user-prompt"].text, {
@@ -1797,6 +1798,27 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			// transcript, so a study/backtest tool can enumerate a session's subagents without
 			// scraping tool-result prose (GRAN-2). The child transcript path is derived exactly
 			// as the executor derives it: `<artifactsDir>/<id>.jsonl` (ONE PLACE).
+			const runId =
+				params && typeof params === "object" && "runId" in params && typeof params.runId === "string"
+					? params.runId
+					: undefined;
+
+			if (runId) {
+				void recordNativeDispatch(runId, `agent://${result.id}`).catch(() => {});
+			}
+
+			let structuredResult: Record<string, unknown> | undefined;
+			if (result.output) {
+				try {
+					const trimmed = result.output.trim();
+					if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+						structuredResult = JSON.parse(trimmed) as Record<string, unknown>;
+					}
+				} catch {
+					// Output not JSON
+				}
+			}
+
 			const spawnRecord = {
 				agentId: result.id,
 				agentName: result.agent,
@@ -1815,6 +1837,8 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					params && typeof params === "object" && "ticketId" in params && typeof params.ticketId === "string"
 						? params.ticketId
 						: undefined,
+				runId,
+				structuredResult,
 			};
 			this.session.recordSubagentSpawn?.(spawnRecord);
 			this.session.onSubagentComplete?.(spawnRecord);
