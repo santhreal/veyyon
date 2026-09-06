@@ -246,7 +246,13 @@ export function renderTodoBoardLines(phases: readonly TodoPhase[], options: Todo
 		{
 			items: slice,
 			expanded: true,
-			renderItem: (phase, ctx) => phaseLines(phase, baseIdx + ctx.index + 1, baseIdx + ctx.index === activeIdx),
+			renderItem: (phase, ctx) => {
+				const isEarliestOpen = baseIdx + ctx.index === activeIdx;
+				const hasActiveWork = phase.tasks.some(
+					task => task.status === "in_progress" || (task.status === "pending" && options.owned.has(task.content)),
+				);
+				return phaseLines(phase, baseIdx + ctx.index + 1, isEarliestOpen || hasActiveWork);
+			},
 		},
 		theme,
 	);
@@ -260,17 +266,38 @@ export function renderTodoBoardLines(phases: readonly TodoPhase[], options: Todo
 	// is one, so `maxRows` is the height of the block rather than the height of
 	// its body. The tail is what goes: the rows are the active stage first, so
 	// what a trim drops is the stages furthest ahead of the work.
-	const budget = Math.max(1, options.maxRows - 1);
-	let shown = body;
-	let hidden = 0;
-	if (body.length > budget) {
-		shown = body.slice(0, Math.max(0, budget - 1));
-		hidden = body.length - shown.length;
-	}
+	// Active phases beyond the collapsed slice cap
+	const unrenderedActivePhases = !options.expanded
+		? live
+				.slice(baseIdx + 1 + SUBSEQUENT_PHASE_CAP)
+				.filter(phase =>
+					phase.tasks.some(
+						task => task.status === "in_progress" || (task.status === "pending" && options.owned.has(task.content)),
+					),
+				)
+		: [];
+
+	// The header is inside the row budget, and so is any overflow row, so
+	// `maxRows` is the height of the block rather than the height of its body.
+	const bodyBudget = Math.max(0, options.maxRows - 1);
+	const hasActivePhaseNotice = unrenderedActivePhases.length > 0;
+	const reserveNotice = (hasActivePhaseNotice || body.length > bodyBudget) && bodyBudget > 0;
+	const maxShown = reserveNotice ? bodyBudget - 1 : bodyBudget;
+	const shown = body.slice(0, maxShown);
+	const hidden = body.length - shown.length;
 
 	const lines = [`${railCell} ${header}`, ...shown.map(line => `${railCell} ${line}`.trimEnd())];
-	if (hidden > 0) {
-		lines.push(`${railCell} ${theme.fg("dim", boundedTodoPreviewText(`… ${hidden} more`, content))}`);
+	if (reserveNotice) {
+		if (hasActivePhaseNotice) {
+			const names = unrenderedActivePhases.map(p => p.name).join(", ");
+			const text =
+				hidden > 0
+					? `… ${unrenderedActivePhases.length} more active phase(s) (${names}) · ${hidden} more`
+					: `… ${unrenderedActivePhases.length} more active phase(s) (${names})`;
+			lines.push(`${railCell} ${theme.fg("accent", boundedTodoPreviewText(text, content))}`);
+		} else if (hidden > 0) {
+			lines.push(`${railCell} ${theme.fg("dim", boundedTodoPreviewText(`… ${hidden} more`, content))}`);
+		}
 	}
 	return ["", ...lines];
 }

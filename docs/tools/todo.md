@@ -19,7 +19,8 @@ The params object **is** a single op, the discriminator and its fields live at t
 | Op | Required fields | Optional fields | Effect |
 | --- | --- | --- | --- |
 | `init` | `list` **or** flat `items` | `phase` (names the phase for the flat `items` form; defaults to `Tasks`) | Replaces the entire list, with `list`, uses the given phases; with a flat `items` array, synthesizes one phase. Every new task starts `pending` before normalization. |
-| `start` | `task` | None | Marks one task `in_progress`; any other `in_progress` task is demoted to `pending`. |
+| `start` | `task` | None | Marks one task `in_progress` without demoting other active tasks. |
+| `pending` | `task` or `phase` or neither | None | Marks the target task, phase, or all tasks `pending`. |
 | `done` | `task` or `phase` or neither | None | Marks the target task, phase, or all tasks `completed`. |
 | `drop` | `task` or `phase` or neither | None | Marks the target task, phase, or all tasks `abandoned`. |
 | `rm` | `task` or `phase` or neither | None | Removes the target task, clears the phase's task list, or clears all task lists. |
@@ -30,7 +31,7 @@ The params object **is** a single op, the discriminator and its fields live at t
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `op` | `"init" | "start" | "done" | "rm" | "drop" | "append" | "view"` | Yes | Operation discriminator. |
+| `op` | `"init" \| "start" \| "done" \| "rm" \| "drop" \| "append" \| "view" \| "pending"` | Yes | Operation discriminator. |
 | `list` | `{ phase: string; items: string[] }[]` | For `init` (unless a flat `items` list is given) | Full replacement payload. Each `items` array has `minItems: 1`. |
 | `task` | `string` | For `start`; for task-targeted `done`/`drop`/`rm` | Exact task content match. |
 | `phase` | `string` | For `append`; for phase-targeted `done`/`drop`/`rm`; optional for a flat `init` | Exact phase name match, except `append` lazily creates a missing phase and a flat `init` synthesizes one (default `Tasks`). |
@@ -60,13 +61,13 @@ The TUI renderer (`todoToolRenderer`) merges call and result into one transcript
 2. `applyParams(...)` applies the single op (`params`) with `applyEntry(...)`.
 3. Each op mutates the working phase array:
    - `initPhases(...)` rebuilds the list from scratch.
-   - `start` resolves a task by exact `content`, demotes every other `in_progress` task to `pending`, then marks the target `in_progress`.
+   - `start` resolves a task by exact `content` and marks the target `in_progress` without demoting other active tasks.
    - `done` / `drop` use `getTaskTargets(...)` to target one task, one phase, or every task.
    - `rm` removes one task, clears one phase's `tasks`, or clears all phases' task arrays.
    - `appendItems(...)` resolves or creates the target phase and pushes new `pending` tasks unless the same task content already exists anywhere.
 4. Missing task/phase references are recorded in an `errors` array by `resolveTaskOrError(...)` / `resolvePhaseOrError(...)`; any error discards the op's mutations at the end.
-5. After the op, `normalizeInProgressTask(...)` enforces the single-active-task invariant:
-   - if multiple tasks are `in_progress`, only the first stays active and the rest become `pending`;
+5. After the op, `normalizeInProgressTask(...)` ensures active work is present when open work exists:
+   - preserves multiple `in_progress` tasks without demoting active work to `pending`;
    - if none are `in_progress`, the first `pending` task in phase/task order is auto-promoted to `in_progress`.
 6. `execute(...)` stores the updated phases with `session.setTodoPhases?.(...)` only when the op produced no errors and was not a `view`; a failed op is discarded (persisting a half-applied mutation would make the natural retry hit "already exists"). `storage` is `"session"` when `session.getSessionFile()` exists, else `"memory"`.
 7. `getCompletionTransitions(...)` compares the previous and updated phases (skipped for failed or `view` calls); newly completed tasks are returned in `details.completedTasks`.
@@ -76,17 +77,17 @@ The TUI renderer (`todoToolRenderer`) merges call and result into one transcript
 ## Modes / Variants
 ### State transitions
 
-| Current status | `start` | `done` | `drop` | `rm` | `append` |
-| --- | --- | --- | --- | --- | --- |
-| `pending` | `in_progress` on target | `completed` | `abandoned` | Removed | New tasks enter as `pending` |
-| `in_progress` | Target stays `in_progress`; non-target active tasks become `pending` | `completed` | `abandoned` | Removed | No status change |
-| `completed` | Can be set back to `in_progress` if targeted | Stays `completed` | Becomes `abandoned` if targeted | Removed | No status change |
-| `abandoned` | Can be set back to `in_progress` if targeted | Becomes `completed` if targeted | Stays `abandoned` | Removed | No status change |
+| Current status | `start` | `done` | `drop` | `pending` | `rm` | `append` |
+| --- | --- | --- | --- | --- | --- | --- |
+| `pending` | `in_progress` on target | `completed` | `abandoned` | Stays `pending` | Removed | New tasks enter as `pending` |
+| `in_progress` | Target stays `in_progress`; non-target active tasks remain `in_progress` | `completed` | `abandoned` | `pending` on target | Removed | No status change |
+| `completed` | Can be set back to `in_progress` if targeted | Stays `completed` | Becomes `abandoned` if targeted | Can be set back to `pending` if targeted | Removed | No status change |
+| `abandoned` | Can be set back to `in_progress` if targeted | Becomes `completed` if targeted | Stays `abandoned` | Can be set back to `pending` if targeted | Removed | No status change |
 
-Normalization then re-applies the single-active-task rule after the op runs.
+Normalization ensures `in_progress` tasks are preserved and promotes the first `pending` task only when no active task remains.
 
 ### Op targeting rules
-- `done`, `drop`, `rm`:
+- `done`, `drop`, `pending`, `rm`:
   - `task` set: affect one exact-content task.
   - else `phase` set: affect every task in that exact-name phase.
   - else: affect every task in every phase.
@@ -137,7 +138,7 @@ The same file also exposes non-tool helpers used by `/todo`:
 - Runtime-level tool failure is handled outside the tool body: `agent-session` injects a hidden reminder and the event controller warns the user that visible progress may be stale.
 - Idempotency is op-specific:
   - `init` is a full replacement; replaying the same payload yields the same state.
-  - `start`, `done`, and `drop` are effectively idempotent on an existing target state, but `start` also demotes any other active task.
+  - `start`, `done`, and `drop` are effectively idempotent on an existing target state, and `start` preserves other active tasks concurrently.
   - `rm` is not idempotent for targeted removals: the second call errors because the task or phase is gone.
   - `append` is not idempotent: duplicate task content is rejected with `Task "..." already exists`; the `append` op validates up front, so an op with any duplicate appends nothing.
 

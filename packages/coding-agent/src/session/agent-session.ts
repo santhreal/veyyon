@@ -417,9 +417,12 @@ import { isAutoQaEnabled } from "../tools/report-tool-issue";
 import { buildResolveReminderMessage, type ResolveToolDetails, runResolveInvocation } from "../tools/resolve";
 import {
 	boundedTodoPreviewText,
+	createBoundedTodoPreview,
 	getLatestTodoPhasesFromEntries,
 	prioritizeTodoItems,
 	TODO_ITEM_PREVIEW_WIDTH,
+	TODO_REMINDER_PREVIEW_LIMIT,
+	TODO_TOTAL_PREVIEW_WIDTH,
 	type TodoItem,
 	type TodoPhase,
 	USER_TODO_EDIT_CUSTOM_TYPE,
@@ -10172,6 +10175,19 @@ export class AgentSession {
 					task.status === "pending" || task.status === "in_progress",
 			),
 		);
+		const inProgress = openItems.filter(item => item.status === "in_progress");
+		const preview = createBoundedTodoPreview(TODO_TOTAL_PREVIEW_WIDTH, TODO_ITEM_PREVIEW_WIDTH);
+		let shown = 0;
+		for (const item of inProgress) {
+			if (shown >= TODO_REMINDER_PREVIEW_LIMIT) break;
+			if (!preview.push("- [in_progress] ", `${item.content} (${item.phase})`)) break;
+			shown++;
+		}
+		const inProgressItems = preview.lines.map(line => ({
+			status: "in_progress" as const,
+			text: this.#sanitizeGoalTodoText(line.slice("- [in_progress] ".length)),
+		}));
+		const hiddenActiveCount = inProgress.length - shown;
 		const next = openItems[0];
 		const nextItem = next
 			? {
@@ -10186,7 +10202,10 @@ export class AgentSession {
 			canCallTodoTool,
 			canActivateTodoTool,
 			closed: String(closed),
-			nextItem,
+			activeItems: inProgress.length > 1 ? inProgressItems : undefined,
+			totalActive: inProgress.length > 1 ? String(inProgress.length) : undefined,
+			hiddenActiveCount: inProgress.length > 1 && hiddenActiveCount > 0 ? String(hiddenActiveCount) : undefined,
+			nextItem: inProgress.length <= 1 ? nextItem : undefined,
 			open: String(openItems.length),
 			total: String(tasks.length),
 		});

@@ -36,9 +36,23 @@ export function renderTodoStatePreview(phases: readonly TodoPhase[]): string {
 	const total = phases.reduce((sum, phase) => sum + phase.tasks.length, 0);
 	const closed = total - items.length;
 	const lines = [`Overall: ${closed}/${total} done, ${items.length} open.`];
+	const inProgress = items.filter(item => item.status === "in_progress");
+	if (inProgress.length > 1) {
+		lines.push(`Active items (${inProgress.length} in progress):`);
+		const preview = createBoundedTodoPreview(TODO_TOTAL_PREVIEW_WIDTH, TODO_ITEM_PREVIEW_WIDTH);
+		let shown = 0;
+		for (const entry of inProgress) {
+			if (shown >= TODO_REMINDER_PREVIEW_LIMIT) break;
+			if (!preview.push("- [/] ", `${entry.content} (${entry.phase})`)) break;
+			shown++;
+		}
+		lines.push(...preview.lines);
+		const hidden = inProgress.length - shown;
+		if (hidden > 0) lines.push(`- … ${hidden} more active item(s)`);
+		return lines.join("\n");
+	}
 	const item = items[0];
 	if (!item) return lines[0];
-
 	const marker = item.status === "in_progress" ? "[/]" : "[ ]";
 	const prefix = `Active/next: ${marker} `;
 	const text = boundedTodoPreviewText(`${item.content} (${item.phase})`, TODO_ITEM_PREVIEW_WIDTH - prefix.length);
@@ -119,11 +133,26 @@ export function renderTodoContinuationReminder(options: {
 		const hidden = items.length - shown;
 		if (hidden > 0) lines.push(`  … ${hidden} more item(s) retained in machine todo state.`);
 	} else {
-		const item = prioritizeTodoItems(items)[0];
-		const prefix = "Active/next: ";
-		if (item && itemWidth > prefix.length) {
-			const text = boundedTodoPreviewText(`${item.content} (${item.phase})`, itemWidth - prefix.length);
-			lines.push(`${prefix}${text}`);
+		const inProgress = items.filter(entry => entry.status === "in_progress");
+		if (inProgress.length > 1) {
+			lines.push(`Active items (${inProgress.length} in progress):`);
+			const preview = createBoundedTodoPreview(TODO_TOTAL_PREVIEW_WIDTH, itemWidth);
+			let shown = 0;
+			for (const entry of inProgress) {
+				if (shown >= TODO_REMINDER_PREVIEW_LIMIT) break;
+				if (!preview.push("  [/] ", `${entry.content} (${entry.phase})`)) break;
+				shown++;
+			}
+			lines.push(...preview.lines);
+			const hidden = inProgress.length - shown;
+			if (hidden > 0) lines.push(`  … ${hidden} more active item(s)`);
+		} else {
+			const item = prioritizeTodoItems(items)[0];
+			const prefix = "Active/next: ";
+			if (item && itemWidth > prefix.length) {
+				const text = boundedTodoPreviewText(`${item.content} (${item.phase})`, itemWidth - prefix.length);
+				lines.push(`${prefix}${text}`);
+			}
 		}
 	}
 	lines.push(
