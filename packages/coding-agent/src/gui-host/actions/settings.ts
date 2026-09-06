@@ -246,7 +246,7 @@ const handleLoadThemes: ActionHandler = async ctx => {
 			name,
 			dark: !isLightTheme(name),
 		}));
-		const current = (settings.get("theme" as never) as string) ?? "dark";
+		const current = settings.get("theme.dark") ?? "dark";
 
 		const themesView: ThemesView = {
 			themes,

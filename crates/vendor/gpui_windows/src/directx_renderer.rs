@@ -79,6 +79,15 @@ struct DirectXResources {
     path_intermediate_msaa_texture: ID3D11Texture2D,
     path_intermediate_msaa_view: Option<ID3D11RenderTargetView>,
 
+    // The current frame is copied here before backdrop blur sampling.
+    backdrop_texture: ID3D11Texture2D,
+    backdrop_srv: Option<ID3D11ShaderResourceView>,
+
+    // Path clips use the stencil plane. The clip stack stores paths on the CPU
+    // so EndPathClip can restore the previous nesting level precisely.
+    clip_depth_texture: ID3D11Texture2D,
+    clip_depth_view: Option<ID3D11DepthStencilView>,
+
     // Cached viewport
     viewport: D3D11_VIEWPORT,
 }
@@ -88,16 +97,22 @@ struct DirectXRenderPipelines {
     quad_pipeline: PipelineState<Quad>,
     path_rasterization_pipeline: PipelineState<PathRasterizationSprite>,
     path_sprite_pipeline: PipelineState<PathSprite>,
+    path_clip_pipeline: PipelineState<PathRasterizationSprite>,
+    backdrop_blur_pipeline: PipelineState<BackdropBlur>,
     underline_pipeline: PipelineState<Underline>,
     mono_sprites: PipelineState<MonochromeSprite>,
     subpixel_sprites: PipelineState<SubpixelSprite>,
     poly_sprites: PipelineState<PolychromeSprite>,
+    clip_test_state: ID3D11DepthStencilState,
+    clip_increment_state: ID3D11DepthStencilState,
+    clip_decrement_state: ID3D11DepthStencilState,
 }
 
 struct DirectXGlobalElements {
     global_params_buffer: Option<ID3D11Buffer>,
     batch_params_buffer: Option<ID3D11Buffer>,
     sampler: Option<ID3D11SamplerState>,
+    backdrop_sampler: Option<ID3D11SamplerState>,
 }
 
 struct Annotation<'a>(&'a ID3DUserDefinedAnnotation);
@@ -228,8 +243,20 @@ impl DirectXRenderer {
                     .context("missing render target view")?,
                 clear_color,
             );
-            device_context
-                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
+            device_context.ClearDepthStencilView(
+                resources
+                    .clip_depth_view
+                    .as_ref()
+                    .context("missing clip depth view")?,
+                D3D11_CLEAR_STENCIL.0 as u32,
+                1.0,
+                0,
+            );
+            device_context.OMSetRenderTargets(
+                Some(slice::from_ref(&resources.render_target_view)),
+                resources.clip_depth_view.as_ref(),
+            );
+            device_context.OMSetDepthStencilState(&self.pipelines.clip_test_state, 0);
             device_context.RSSetViewports(Some(slice::from_ref(&resources.viewport)));
             device_context
                 .VSSetConstantBuffers(0, Some(slice::from_ref(&self.globals.global_params_buffer)));
@@ -314,9 +341,10 @@ impl DirectXRenderer {
             .handle_device_lost(&devices.device, &devices.device_context);
 
         unsafe {
-            devices
-                .device_context
-                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
+            devices.device_context.OMSetRenderTargets(
+                Some(slice::from_ref(&resources.render_target_view)),
+                resources.clip_depth_view.as_ref(),
+            );
         }
         self.devices = Some(devices);
         self.resources = Some(resources);
@@ -362,6 +390,7 @@ impl DirectXRenderer {
             .as_ref()
             .and_then(|devices| devices.annotation.clone())
             .filter(|annotation| unsafe { annotation.GetStatus().as_bool() });
+        let mut clip_stack = Vec::new();
         for batch in scene.batches() {
             let _annotation = annotation
                 .as_ref()
@@ -385,6 +414,20 @@ impl DirectXRenderer {
                     self.draw_polychrome_sprites(texture_id, range.start, range.len())
                 }
                 PrimitiveBatch::Surfaces(range) => self.draw_surfaces(&scene.surfaces[range]),
+                PrimitiveBatch::BackdropBlurs(range) => {
+                    self.draw_backdrop_blurs(range.start, range.len())
+                }
+                PrimitiveBatch::StartPathClip(path) => {
+                    self.push_path_clip(&path, clip_stack.len() as u32)?;
+                    clip_stack.push(path);
+                    Ok(())
+                }
+                PrimitiveBatch::EndPathClip => {
+                    let path = clip_stack
+                        .pop()
+                        .context("EndPathClip without matching StartPathClip")?;
+                    self.pop_path_clip(&path, clip_stack.len() as u32)
+                }
             }
             .with_context(|| {
                 format!(
@@ -401,6 +444,7 @@ impl DirectXRenderer {
                 )
             })?;
         }
+        anyhow::ensure!(clip_stack.is_empty(), "unterminated StartPathClip batch");
         Ok(())
     }
 
@@ -577,6 +621,14 @@ impl DirectXRenderer {
             )?;
         }
 
+        if !scene.backdrop_blurs.is_empty() {
+            self.pipelines.backdrop_blur_pipeline.update_buffer(
+                &devices.device,
+                &devices.device_context,
+                &scene.backdrop_blurs,
+            )?;
+        }
+
         Ok(())
     }
 
@@ -641,6 +693,7 @@ impl DirectXRenderer {
                 st_position: v.st_position,
                 color: path.color,
                 bounds: path.clipped_bounds(),
+                transformation: path.transformation,
             }));
         }
 
@@ -666,10 +719,11 @@ impl DirectXRenderer {
                 0,
                 RENDER_TARGET_FORMAT,
             );
-            // Restore main render target
-            devices
-                .device_context
-                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
+            // Restore main render target and its path-clip stencil.
+            devices.device_context.OMSetRenderTargets(
+                Some(slice::from_ref(&resources.render_target_view)),
+                resources.clip_depth_view.as_ref(),
+            );
         }
 
         Ok(())
@@ -807,6 +861,97 @@ impl DirectXRenderer {
         )
     }
 
+    fn draw_backdrop_blurs(&mut self, start: usize, len: usize) -> Result<()> {
+        if len == 0 {
+            return Ok(());
+        }
+        let devices = self.devices.as_ref().context("devices missing")?;
+        let resources = self.resources.as_ref().context("resources missing")?;
+        unsafe {
+            // A resource cannot be an output and copy source simultaneously.
+            devices.device_context.OMSetRenderTargets(None, None);
+            devices
+                .device_context
+                .CopyResource(&resources.backdrop_texture, resources.render_target.as_ref().context("render target missing")?);
+            devices.device_context.OMSetRenderTargets(
+                Some(slice::from_ref(&resources.render_target_view)),
+                resources.clip_depth_view.as_ref(),
+            );
+        }
+        self.pipelines.backdrop_blur_pipeline.draw_range_with_texture(
+            &devices.device_context,
+            slice::from_ref(&resources.backdrop_srv),
+            self.globals
+                .batch_params_buffer
+                .as_ref()
+                .context("batch params buffer missing")?,
+            slice::from_ref(&self.globals.backdrop_sampler),
+            start as u32,
+            len as u32,
+        )
+    }
+
+    fn push_path_clip(&mut self, path: &Path<ScaledPixels>, depth: u32) -> Result<()> {
+        anyhow::ensure!(depth < u8::MAX as u32, "path clip nesting exceeds stencil capacity");
+        let increment_state = self.pipelines.clip_increment_state.clone();
+        self.draw_path_clip_stencil(path, depth, &increment_state)?;
+        let devices = self.devices.as_ref().context("devices missing")?;
+        unsafe {
+            devices
+                .device_context
+                .OMSetDepthStencilState(&self.pipelines.clip_test_state, depth + 1);
+        }
+        Ok(())
+    }
+
+    fn pop_path_clip(&mut self, path: &Path<ScaledPixels>, parent_depth: u32) -> Result<()> {
+        let decrement_state = self.pipelines.clip_decrement_state.clone();
+        self.draw_path_clip_stencil(path, parent_depth + 1, &decrement_state)?;
+        let devices = self.devices.as_ref().context("devices missing")?;
+        unsafe {
+            devices
+                .device_context
+                .OMSetDepthStencilState(&self.pipelines.clip_test_state, parent_depth);
+        }
+        Ok(())
+    }
+
+    fn draw_path_clip_stencil(
+        &mut self,
+        path: &Path<ScaledPixels>,
+        stencil_reference: u32,
+        state: &ID3D11DepthStencilState,
+    ) -> Result<()> {
+        let devices = self.devices.as_ref().context("devices missing")?;
+        let vertices = path
+            .vertices
+            .iter()
+            .map(|vertex| PathRasterizationSprite {
+                xy_position: vertex.xy_position,
+                st_position: vertex.st_position,
+                color: path.color,
+                bounds: path.clipped_bounds(),
+                transformation: path.transformation,
+            })
+            .collect::<Vec<_>>();
+        self.pipelines.path_clip_pipeline.update_buffer(
+            &devices.device,
+            &devices.device_context,
+            &vertices,
+        )?;
+        unsafe {
+            devices
+                .device_context
+                .OMSetDepthStencilState(state, stencil_reference);
+        }
+        self.pipelines.path_clip_pipeline.draw(
+            &devices.device_context,
+            D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST,
+            vertices.len() as u32,
+            1,
+        )
+    }
+
     fn draw_surfaces(&mut self, surfaces: &[PaintSurface]) -> Result<()> {
         if surfaces.is_empty() {
             return Ok(());
@@ -892,6 +1037,10 @@ impl DirectXResources {
             path_intermediate_msaa_view,
             viewport,
         ) = create_resources(devices, &swap_chain, width, height)?;
+        let (backdrop_texture, backdrop_srv) =
+            create_path_intermediate_texture(&devices.device, width, height)?;
+        let (clip_depth_texture, clip_depth_view) =
+            create_clip_depth_texture_and_view(&devices.device, width, height)?;
         set_rasterizer_state(&devices.device, &devices.device_context)?;
 
         Ok(Self {
@@ -902,6 +1051,10 @@ impl DirectXResources {
             path_intermediate_msaa_texture,
             path_intermediate_msaa_view,
             path_intermediate_srv,
+            backdrop_texture,
+            backdrop_srv,
+            clip_depth_texture,
+            clip_depth_view,
             viewport,
         })
     }
@@ -922,12 +1075,20 @@ impl DirectXResources {
             path_intermediate_msaa_view,
             viewport,
         ) = create_resources(devices, &self.swap_chain, width, height)?;
+        let (backdrop_texture, backdrop_srv) =
+            create_path_intermediate_texture(&devices.device, width, height)?;
+        let (clip_depth_texture, clip_depth_view) =
+            create_clip_depth_texture_and_view(&devices.device, width, height)?;
         self.render_target = Some(render_target);
         self.render_target_view = render_target_view;
         self.path_intermediate_texture = path_intermediate_texture;
         self.path_intermediate_msaa_texture = path_intermediate_msaa_texture;
         self.path_intermediate_msaa_view = path_intermediate_msaa_view;
         self.path_intermediate_srv = path_intermediate_srv;
+        self.backdrop_texture = backdrop_texture;
+        self.backdrop_srv = backdrop_srv;
+        self.clip_depth_texture = clip_depth_texture;
+        self.clip_depth_view = clip_depth_view;
         self.viewport = viewport;
         Ok(())
     }
@@ -963,6 +1124,20 @@ impl DirectXRenderPipelines {
             4,
             create_blend_state_for_path_sprite(device)?,
         )?;
+        let path_clip_pipeline = PipelineState::new(
+            device,
+            "path_clip_pipeline",
+            ShaderModule::PathClip,
+            32,
+            create_blend_state_without_color_writes(device)?,
+        )?;
+        let backdrop_blur_pipeline = PipelineState::new(
+            device,
+            "backdrop_blur_pipeline",
+            ShaderModule::BackdropBlur,
+            8,
+            create_blend_state(device)?,
+        )?;
         let underline_pipeline = PipelineState::new(
             device,
             "underline_pipeline",
@@ -992,15 +1167,27 @@ impl DirectXRenderPipelines {
             create_blend_state(device)?,
         )?;
 
+        let clip_test_state =
+            create_clip_depth_stencil_state(device, D3D11_STENCIL_OP_KEEP)?;
+        let clip_increment_state =
+            create_clip_depth_stencil_state(device, D3D11_STENCIL_OP_INCR_SAT)?;
+        let clip_decrement_state =
+            create_clip_depth_stencil_state(device, D3D11_STENCIL_OP_DECR_SAT)?;
+
         Ok(Self {
             shadow_pipeline,
             quad_pipeline,
             path_rasterization_pipeline,
             path_sprite_pipeline,
+            path_clip_pipeline,
+            backdrop_blur_pipeline,
             underline_pipeline,
             mono_sprites,
             subpixel_sprites,
             poly_sprites,
+            clip_test_state,
+            clip_increment_state,
+            clip_decrement_state,
         })
     }
 }
@@ -1050,11 +1237,30 @@ impl DirectXGlobalElements {
             device.CreateSamplerState(&desc, Some(&mut output))?;
             output
         };
+        let backdrop_sampler = unsafe {
+            let desc = D3D11_SAMPLER_DESC {
+                Filter: D3D11_FILTER_MIN_MAG_MIP_LINEAR,
+                AddressU: D3D11_TEXTURE_ADDRESS_CLAMP,
+                AddressV: D3D11_TEXTURE_ADDRESS_CLAMP,
+                AddressW: D3D11_TEXTURE_ADDRESS_CLAMP,
+                MipLODBias: 0.0,
+                MaxAnisotropy: 1,
+                ComparisonFunc: D3D11_COMPARISON_ALWAYS,
+                BorderColor: [0.0; 4],
+                MinLOD: 0.0,
+                MaxLOD: D3D11_FLOAT32_MAX,
+            };
+            let mut output = None;
+            device.CreateSamplerState(&desc, Some(&mut output))?;
+            output
+        };
+
 
         Ok(Self {
             global_params_buffer,
             batch_params_buffer,
             sampler,
+            backdrop_sampler,
         })
     }
 }
@@ -1267,6 +1473,7 @@ struct PathRasterizationSprite {
     st_position: Point<f32>,
     color: Background,
     bounds: Bounds<ScaledPixels>,
+    transformation: TransformationMatrix,
 }
 
 #[derive(Clone, Copy)]
@@ -1370,6 +1577,7 @@ fn create_resources(
     let viewport = D3D11_VIEWPORT {
         TopLeftX: 0.0,
         TopLeftY: 0.0,
+
         Width: width as f32,
         Height: height as f32,
         MinDepth: 0.0,
@@ -1384,6 +1592,35 @@ fn create_resources(
         path_intermediate_msaa_view,
         viewport,
     ))
+}
+
+#[inline]
+fn create_clip_depth_texture_and_view(
+    device: &ID3D11Device,
+    width: u32,
+    height: u32,
+) -> Result<(ID3D11Texture2D, Option<ID3D11DepthStencilView>)> {
+    let desc = D3D11_TEXTURE2D_DESC {
+        Width: width,
+        Height: height,
+        MipLevels: 1,
+        ArraySize: 1,
+        Format: DXGI_FORMAT_D24_UNORM_S8_UINT,
+        SampleDesc: DXGI_SAMPLE_DESC {
+            Count: 1,
+            Quality: 0,
+        },
+        Usage: D3D11_USAGE_DEFAULT,
+        BindFlags: D3D11_BIND_DEPTH_STENCIL.0 as u32,
+        CPUAccessFlags: 0,
+        MiscFlags: 0,
+    };
+    let mut texture = None;
+    unsafe { device.CreateTexture2D(&desc, None, Some(&mut texture))? };
+    let texture = texture.context("creating path clip stencil texture")?;
+    let mut view = None;
+    unsafe { device.CreateDepthStencilView(&texture, None, Some(&mut view))? };
+    Ok((texture, view))
 }
 
 #[inline]
@@ -1501,6 +1738,43 @@ fn create_blend_state(device: &ID3D11Device) -> Result<ID3D11BlendState> {
         device.CreateBlendState(&desc, Some(&mut state))?;
         Ok(state.unwrap())
     }
+}
+
+#[inline]
+fn create_blend_state_without_color_writes(
+    device: &ID3D11Device,
+) -> Result<ID3D11BlendState> {
+    let mut desc = D3D11_BLEND_DESC::default();
+    desc.RenderTarget[0].RenderTargetWriteMask = 0;
+    let mut state = None;
+    unsafe { device.CreateBlendState(&desc, Some(&mut state))? };
+    state.context("creating path clip blend state")
+}
+
+#[inline]
+fn create_clip_depth_stencil_state(
+    device: &ID3D11Device,
+    pass_op: D3D11_STENCIL_OP,
+) -> Result<ID3D11DepthStencilState> {
+    let stencil_face = D3D11_DEPTH_STENCILOP_DESC {
+        StencilFailOp: D3D11_STENCIL_OP_KEEP,
+        StencilDepthFailOp: D3D11_STENCIL_OP_KEEP,
+        StencilPassOp: pass_op,
+        StencilFunc: D3D11_COMPARISON_EQUAL,
+    };
+    let desc = D3D11_DEPTH_STENCIL_DESC {
+        DepthEnable: false.into(),
+        DepthWriteMask: D3D11_DEPTH_WRITE_MASK_ZERO,
+        DepthFunc: D3D11_COMPARISON_ALWAYS,
+        StencilEnable: true.into(),
+        StencilReadMask: u8::MAX,
+        StencilWriteMask: u8::MAX,
+        FrontFace: stencil_face,
+        BackFace: stencil_face,
+    };
+    let mut state = None;
+    unsafe { device.CreateDepthStencilState(&desc, Some(&mut state))? };
+    state.context("creating path clip depth-stencil state")
 }
 
 #[inline]
@@ -1707,6 +1981,8 @@ pub(crate) mod shader_resources {
         Underline,
         PathRasterization,
         PathSprite,
+        PathClip,
+        BackdropBlur,
         MonochromeSprite,
         SubpixelSprite,
         PolychromeSprite,
@@ -1771,6 +2047,14 @@ pub(crate) mod shader_resources {
                 ShaderModule::PathSprite => match target {
                     ShaderTarget::Vertex => PATH_SPRITE_VERTEX_BYTES,
                     ShaderTarget::Fragment => PATH_SPRITE_FRAGMENT_BYTES,
+                },
+                ShaderModule::PathClip => match target {
+                    ShaderTarget::Vertex => PATH_CLIP_VERTEX_BYTES,
+                    ShaderTarget::Fragment => PATH_CLIP_FRAGMENT_BYTES,
+                },
+                ShaderModule::BackdropBlur => match target {
+                    ShaderTarget::Vertex => BACKDROP_BLUR_VERTEX_BYTES,
+                    ShaderTarget::Fragment => BACKDROP_BLUR_FRAGMENT_BYTES,
                 },
                 ShaderModule::MonochromeSprite => match target {
                     ShaderTarget::Vertex => MONOCHROME_SPRITE_VERTEX_BYTES,
@@ -1871,6 +2155,8 @@ pub(crate) mod shader_resources {
                 ShaderModule::Underline => "underline",
                 ShaderModule::PathRasterization => "path_rasterization",
                 ShaderModule::PathSprite => "path_sprite",
+                ShaderModule::PathClip => "path_clip",
+                ShaderModule::BackdropBlur => "backdrop_blur",
                 ShaderModule::MonochromeSprite => "monochrome_sprite",
                 ShaderModule::SubpixelSprite => "subpixel_sprite",
                 ShaderModule::PolychromeSprite => "polychrome_sprite",

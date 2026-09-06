@@ -247,9 +247,28 @@ pub fn spawn_transport(
 						.await
 						.map(tokio_util::either::Either::Left)
 				},
-				Endpoint::Unix { path } => tokio::net::UnixStream::connect(path)
-					.await
-					.map(tokio_util::either::Either::Right),
+				Endpoint::Unix { path } => {
+					#[cfg(unix)]
+					{
+						tokio::net::UnixStream::connect(path)
+							.await
+							.map(tokio_util::either::Either::Right)
+					}
+					#[cfg(windows)]
+					{
+						let _ = path;
+						Err::<
+							tokio_util::either::Either<
+								tokio::net::TcpStream,
+								tokio::net::TcpStream,
+							>,
+							_,
+						>(std::io::Error::new(
+							std::io::ErrorKind::Unsupported,
+							"Unix GUI endpoints are unavailable on Windows; use tcp:<host>:<port>",
+						))
+					}
+				},
 			};
 
 			let stream = match connect_result {

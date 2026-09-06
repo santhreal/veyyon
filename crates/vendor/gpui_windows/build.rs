@@ -34,6 +34,8 @@ mod shader_compilation {
             "shadow",
             "path_rasterization",
             "path_sprite",
+            "path_clip",
+            "backdrop_blur",
             "underline",
             "monochrome_sprite",
             "subpixel_sprite",
