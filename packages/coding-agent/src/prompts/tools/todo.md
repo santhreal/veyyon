@@ -1,6 +1,6 @@
 **Tasks referenced by verbatim content string, NEVER an auto-generated ID — no "task-1"/"task-N" exists. Pass the content text in the `task` field.**
 
-On each completion the earliest still-open task (in phase order) auto-promotes to `in_progress`. Completing tasks out of phase order can move this pointer **back** to an earlier phase — that is expected; completed tasks are never reverted.
+When no active tasks remain, the earliest still-open task (in phase order) auto-promotes to `in_progress`. Multiple tasks may run concurrently in progress without demoting each other. Completing tasks out of phase order can move the auto-promotion pointer to the earliest remaining pending task once all active tasks finish; completed tasks are never reverted.
 
 ## Operations
 

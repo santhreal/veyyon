@@ -30,10 +30,15 @@ describe("todo markdown round-trip property", () => {
 					expect(phases[p]!.tasks.map(t => t.content)).toEqual(original[p]!.tasks.map(t => t.content));
 				}
 				// markdownToPhases runs normalizeInProgressTask: if nothing is
-				// in_progress, the first pending becomes in_progress. Assert that
-				// completed/abandoned are stable and that at most one is in_progress.
+				// in_progress, the first pending becomes in_progress. When original
+				// has in_progress items, all of them remain in_progress.
 				const all = phases.flatMap(p => p.tasks);
-				expect(all.filter(t => t.status === "in_progress").length).toBeLessThanOrEqual(1);
+				const origInProgress = original.flatMap(p => p.tasks).filter(t => t.status === "in_progress");
+				if (origInProgress.length > 0) {
+					expect(all.filter(t => t.status === "in_progress").length).toBe(origInProgress.length);
+				} else {
+					expect(all.filter(t => t.status === "in_progress").length).toBeLessThanOrEqual(1);
+				}
 				for (const t of all) {
 					if (t.status === "completed" || t.status === "abandoned") {
 						const orig = original.flatMap(p => p.tasks).find(o => o.content === t.content);

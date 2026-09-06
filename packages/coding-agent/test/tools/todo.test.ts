@@ -156,11 +156,11 @@ describe("TodoTool operations", () => {
 		const result = await tool.execute("call-2", { op: "start", task: "third" });
 
 		const tasks = result.details?.phases[0]?.tasks ?? [];
-		expect(tasks.map(task => task.status)).toEqual(["pending", "pending", "in_progress"]);
+		expect(tasks.map(task => task.status)).toEqual(["in_progress", "pending", "in_progress"]);
 		expect(result.details?.op).toBe("start");
 	});
 
-	it("demotes the current in_progress task when starting another", async () => {
+	it("preserves the current in_progress task when starting another", async () => {
 		const tool = new TodoTool(createSession());
 		await tool.execute("call-1", {
 			op: "init",
@@ -173,7 +173,7 @@ describe("TodoTool operations", () => {
 		const result = await tool.execute("call-2", { op: "start", task: "b1" });
 
 		const allTasks = result.details?.phases.flatMap(phase => phase.tasks) ?? [];
-		expect(allTasks.map(task => task.status)).toEqual(["pending", "pending", "in_progress"]);
+		expect(allTasks.map(task => task.status)).toEqual(["in_progress", "pending", "in_progress"]);
 	});
 
 	it("appends items to an existing phase", async () => {

@@ -1,0 +1,275 @@
+import { beforeAll, describe, expect, it } from "bun:test";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import {
+	activeTodoPhaseIndex,
+	renderTodoBoardLines,
+	type TodoBoardOptions,
+	todoBoardIsLive,
+	todoBoardRailTravels,
+} from "@veyyon/coding-agent/modes/components/todo-board";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import {
+	adaptTodoWriteBatch,
+	applyOpsToPhases,
+	getLatestTodoPhasesFromEntries,
+	markdownToPhases,
+	nextActionableTask,
+	phasesToMarkdown,
+	type TodoPhase,
+	TodoTool,
+	USER_TODO_EDIT_CUSTOM_TYPE,
+} from "@veyyon/coding-agent/tools/todo";
+
+function createSession(initialPhases: TodoPhase[] = []): { session: ToolSession; phases: () => TodoPhase[] } {
+	let phases = initialPhases;
+	return {
+		session: {
+			cwd: "/tmp/test",
+			hasUI: false,
+			getSessionFile: () => null,
+			getSessionSpawns: () => "*",
+			settings: Settings.isolated(),
+			getTodoPhases: () => phases,
+			setTodoPhases: next => {
+				phases = next;
+			},
+		},
+		phases: () => phases,
+	};
+}
+
+function boardOptions(overrides: Partial<TodoBoardOptions> = {}): TodoBoardOptions {
+	return {
+		columns: 100,
+		maxRows: 14,
+		expanded: true,
+		owned: new Set<string>(),
+		frame: 0,
+		animate: true,
+		live: true,
+		...overrides,
+	};
+}
+
+beforeAll(async () => {
+	await initTheme();
+});
+
+describe("concurrent todo tasks: production-path regression and backtest", () => {
+	/**
+	 * Production reproduction of the reported defect:
+	 * Starting a second task across different phases previously demoted earlier
+	 * active tasks to "pending" at applyEntry(start) and normalizeInProgressTask.
+	 */
+	it("starting a second task across phases preserves both tasks as in_progress", async () => {
+		const { session, phases } = createSession();
+		const tool = new TodoTool(session);
+
+		// Step 1: Initialize 3 phases
+		await tool.execute("call-1", {
+			op: "init",
+			list: [
+				{ phase: "Analysis", items: ["Investigate API surface"] },
+				{ phase: "Core", items: ["Implement concurrent support"] },
+				{ phase: "Verification", items: ["Verify GUI motion across phases"] },
+			],
+		});
+
+		// First task is auto-started on init because no active task exists
+		expect(phases()[0]!.tasks[0]!.status).toBe("in_progress");
+		expect(phases()[1]!.tasks[0]!.status).toBe("pending");
+		expect(phases()[2]!.tasks[0]!.status).toBe("pending");
+
+		// Step 2: Start a task in Phase 2
+		const startResult = await tool.execute("call-2", {
+			op: "start",
+			task: "Implement concurrent support",
+		});
+		expect(startResult.isError).toBeUndefined();
+
+		const current = phases();
+		const taskPhase1 = current[0]!.tasks[0]!;
+		const taskPhase2 = current[1]!.tasks[0]!;
+		const taskPhase3 = current[2]!.tasks[0]!;
+
+		// CRITICAL DEFECT CHECK:
+		// Previously, taskPhase1 was demoted to "pending". Both MUST remain "in_progress".
+		expect(taskPhase1.status).toBe("in_progress");
+		expect(taskPhase2.status).toBe("in_progress");
+		expect(taskPhase3.status).toBe("pending");
+
+		// Summaries distinguish focus (nextActionableTask returns the leading active task) from concurrency
+		expect(nextActionableTask(current)?.content).toBe("Investigate API surface");
+	});
+
+	/**
+	 * GUI + motion across phases:
+	 * When multiple tasks are in progress across different phases, the board renderer
+	 * must draw both with active working marks and animate both without dropping one to [ ].
+	 */
+	it("renders active working marks and pulsing motion across multiple phases", () => {
+		const phases: TodoPhase[] = [
+			{ name: "Analysis", tasks: [{ content: "Investigate API surface", status: "in_progress" }] },
+			{ name: "Core", tasks: [{ content: "Implement concurrent support", status: "in_progress" }] },
+			{ name: "Verification", tasks: [{ content: "Verify GUI motion across phases", status: "pending" }] },
+		];
+
+		expect(todoBoardIsLive(phases, new Set())).toBe(true);
+		expect(todoBoardRailTravels({ transitions: true, agentInMotion: true, live: todoBoardIsLive(phases, new Set()) })).toBe(true);
+
+		// Frame 0 rendering
+		const linesFrame0 = renderTodoBoardLines(phases, boardOptions({ frame: 0, animate: true }));
+		const textFrame0 = linesFrame0.map(l => Bun.stripANSI(l)).join("\n");
+
+		// Both tasks must appear with active glyphs, neither as pending checkbox "[ ]"
+		expect(textFrame0).toContain("Investigate API surface");
+		expect(textFrame0).toContain("Implement concurrent support");
+		expect(textFrame0).toContain("Verify GUI motion across phases");
+
+		// Verification is pending, so it should carry unchecked checkbox glyph
+		const verificationLine = linesFrame0.find(l => Bun.stripANSI(l).includes("Verify GUI motion across phases")) ?? "";
+		expect(verificationLine).toContain(theme.checkbox.unchecked);
+
+		// Both Phase 1 and Phase 2 lines carry the active workingMark (accent), not unchecked checkbox
+		const phase1Line0 = linesFrame0.find(l => Bun.stripANSI(l).includes("Investigate API surface")) ?? "";
+		const phase2Line0 = linesFrame0.find(l => Bun.stripANSI(l).includes("Implement concurrent support")) ?? "";
+		expect(phase1Line0).not.toContain(theme.checkbox.unchecked);
+		expect(phase2Line0).not.toContain(theme.checkbox.unchecked);
+		expect(phase1Line0).toContain(theme.symbol("status.shadowed"));
+		expect(phase2Line0).toContain(theme.symbol("status.shadowed"));
+
+		// Frame 1 rendering: alternation of working mark proves pulsing motion on both
+		const linesFrame1 = renderTodoBoardLines(phases, boardOptions({ frame: 1, animate: true }));
+		const phase1Line1 = linesFrame1.find(l => Bun.stripANSI(l).includes("Investigate API surface")) ?? "";
+		const phase2Line1 = linesFrame1.find(l => Bun.stripANSI(l).includes("Implement concurrent support")) ?? "";
+		expect(phase1Line1).toContain(theme.symbol("status.done"));
+		expect(phase2Line1).toContain(theme.symbol("status.done"));
+	});
+
+	/**
+	 * Completion and drop lifecycle:
+	 * Completing one concurrent active task preserves other active tasks and does NOT
+	 * prematurely auto-promote pending tasks until all active tasks finish.
+	 */
+	it("completion and drop preserve remaining concurrent tasks without premature autopromotion", async () => {
+		const { session, phases } = createSession([
+			{ name: "Phase 1", tasks: [{ content: "Task A", status: "in_progress" }] },
+			{ name: "Phase 2", tasks: [{ content: "Task B", status: "in_progress" }] },
+			{ name: "Phase 3", tasks: [{ content: "Task C", status: "pending" }] },
+		]);
+		const tool = new TodoTool(session);
+
+		// Complete Task A: Task B is still in progress, so Task C MUST NOT be auto-promoted
+		const doneResult = await tool.execute("call-done-a", { op: "done", task: "Task A" });
+		expect(doneResult.isError).toBeUndefined();
+
+		expect(phases()[0]!.tasks[0]!.status).toBe("completed");
+		expect(phases()[1]!.tasks[0]!.status).toBe("in_progress");
+		expect(phases()[2]!.tasks[0]!.status).toBe("pending"); // NOT promoted because Task B is still active
+
+		// Now complete Task B: now NO tasks are active, so Task C is auto-promoted to in_progress
+		const doneResultB = await tool.execute("call-done-b", { op: "done", task: "Task B" });
+		expect(doneResultB.isError).toBeUndefined();
+
+		expect(phases()[0]!.tasks[0]!.status).toBe("completed");
+		expect(phases()[1]!.tasks[0]!.status).toBe("completed");
+		expect(phases()[2]!.tasks[0]!.status).toBe("in_progress"); // Auto-promoted because 0 active tasks remained
+	});
+
+	/**
+	 * Markdown import/export roundtrip must preserve multiple in_progress tasks without demoting to pending.
+	 */
+	it("markdown import/export preserves multiple concurrent in_progress tasks", () => {
+		const md = [
+			"# Phase 1",
+			"- [/] Concurrent Task 1",
+			"# Phase 2",
+			"- [/] Concurrent Task 2",
+			"# Phase 3",
+			"- [ ] Queued Task 3",
+		].join("\n");
+
+		const { phases, errors } = markdownToPhases(md);
+		expect(errors).toEqual([]);
+		expect(phases).toHaveLength(3);
+		// DEFECT CHECK: normalizeInProgressTask previously demoted Concurrent Task 2 to "pending"
+		expect(phases[0]!.tasks[0]!.status).toBe("in_progress");
+		expect(phases[1]!.tasks[0]!.status).toBe("in_progress");
+		expect(phases[2]!.tasks[0]!.status).toBe("pending");
+
+		// Round-trip back to markdown
+		const backMd = phasesToMarkdown(phases);
+		expect(backMd).toContain("- [/] Concurrent Task 1");
+		expect(backMd).toContain("- [/] Concurrent Task 2");
+		expect(backMd).toContain("- [ ] Queued Task 3");
+	});
+
+	/**
+	 * Compatibility TodoWrite batches:
+	 * Whole-board writes with multiple in_progress items must not demote extra active tasks.
+	 */
+	it("TodoWrite compatibility whole-board write retains multiple in_progress tasks", async () => {
+		const { session, phases } = createSession();
+		const tool = new TodoTool(session);
+
+		const result = await tool.execute("compat-1", {
+			merge: false,
+			todos: [
+				{ content: "Worker Alpha task", status: "in_progress" },
+				{ content: "Worker Beta task", status: "in_progress" },
+				{ content: "Pending task", status: "pending" },
+			],
+		});
+		expect(result.isError).toBeUndefined();
+
+		const current = phases();
+		const inProgress = current[0]!.tasks.filter(t => t.status === "in_progress");
+		// DEFECT CHECK: Previously only 1 task remained in_progress
+		expect(inProgress).toHaveLength(2);
+		expect(inProgress.map(t => t.content)).toEqual(["Worker Alpha task", "Worker Beta task"]);
+	});
+
+	/**
+	 * Session persistence & restore:
+	 * Entries with multiple concurrent tasks retain their status on restore, and subsequent
+	 * operations on the restored session do not trigger demotion.
+	 */
+	it("preserves concurrent task status across session entries and subsequent operations", async () => {
+		const initialPhases: TodoPhase[] = [
+			{ name: "Phase 1", tasks: [{ content: "Task 1", status: "in_progress" }] },
+			{ name: "Phase 2", tasks: [{ content: "Task 2", status: "in_progress" }] },
+		];
+
+		const entries = [
+			{
+				type: "custom" as const,
+				id: "entry-1",
+				parentId: null,
+				timestamp: new Date().toISOString(),
+				customType: USER_TODO_EDIT_CUSTOM_TYPE,
+				data: { phases: initialPhases },
+			},
+		];
+
+		const restored = getLatestTodoPhasesFromEntries(entries);
+		expect(restored[0]!.tasks[0]!.status).toBe("in_progress");
+		expect(restored[1]!.tasks[0]!.status).toBe("in_progress");
+
+		// Run a subsequent operation in a session initialized with restored phases
+		const { session, phases } = createSession(restored);
+		const tool = new TodoTool(session);
+
+		// Append a task to Phase 3
+		await tool.execute("call-append", {
+			op: "append",
+			phase: "Phase 3",
+			items: ["Task 3"],
+		});
+
+		// Both Task 1 and Task 2 must remain in_progress
+		expect(phases()[0]!.tasks[0]!.status).toBe("in_progress");
+		expect(phases()[1]!.tasks[0]!.status).toBe("in_progress");
+		expect(phases()[2]!.tasks[0]!.status).toBe("pending");
+	});
+});

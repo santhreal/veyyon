@@ -527,14 +527,8 @@ function normalizeInProgressTask(phases: TodoPhase[]): void {
 	const orderedTasks = phases.flatMap(phase => phase.tasks);
 	if (orderedTasks.length === 0) return;
 
-	const inProgressTasks = orderedTasks.filter(task => task.status === "in_progress");
-	if (inProgressTasks.length > 1) {
-		for (const task of inProgressTasks.slice(1)) {
-			task.status = "pending";
-		}
-	}
-
-	if (inProgressTasks.length > 0) return;
+	const hasInProgress = orderedTasks.some(task => task.status === "in_progress");
+	if (hasInProgress) return;
 
 	const firstPendingTask = orderedTasks.find(task => task.status === "pending");
 	if (firstPendingTask) firstPendingTask.status = "in_progress";
@@ -832,13 +826,6 @@ function applyEntry(phases: TodoPhase[], entry: TodoOpEntryValue, report: TodoOp
 		case "start": {
 			const hit = resolveTaskOrError(phases, entry.task, report.errors);
 			if (!hit) return phases;
-			for (const phase of phases) {
-				for (const candidate of phase.tasks) {
-					if (candidate.status === "in_progress" && candidate !== hit.task) {
-						candidate.status = "pending";
-					}
-				}
-			}
 			hit.task.status = "in_progress";
 			return phases;
 		}
@@ -1234,7 +1221,7 @@ function formatSummaryBody(phases: TodoPhase[], errors: string[], readOnly: bool
 		lines.push(
 			`Active phase ${currentIdx + 1}/${phases.length} "${boundedTodoPreviewText(current.name, TODO_ITEM_PREVIEW_WIDTH)}" (${done}/${current.tasks.length})${
 				workedAhead
-					? " — earliest phase with open tasks; the in-progress pointer auto-advances to the earliest open task on each completion, so it can sit behind out-of-order work (nothing was un-completed)."
+					? " — earliest phase with open tasks; the in-progress pointer auto-advances to the earliest open task when no active task remains, so it can sit behind out-of-order work (nothing was un-completed)."
 					: "."
 			}`,
 		);

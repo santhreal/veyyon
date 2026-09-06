@@ -70,8 +70,8 @@ const OPERATION_CASES: OperationCase[] = [
 		operation: "start",
 		initial: TWO_OPEN,
 		params: { op: "start", task: "two" },
-		counts: { total: 2, open: 2, inProgress: 1, dropped: 0, completed: 0 },
-		transitions: { ...ZERO_TRANSITIONS, total: 2, toPending: 1, toInProgress: 1 },
+		counts: { total: 2, open: 2, inProgress: 2, dropped: 0, completed: 0 },
+		transitions: { ...ZERO_TRANSITIONS, total: 1, toInProgress: 1 },
 	},
 	{
 		name: "done",
@@ -186,7 +186,6 @@ describe("todo task-state telemetry", () => {
 		});
 		expect(rich.details?.telemetry?.affectedPhases).toEqual([{ phase: "Work", phaseOrdinal: 1 }]);
 		expect(rich.details?.telemetry?.affectedTasks).toEqual([
-			{ phase: "Work", task: "one", phaseOrdinal: 1, taskOrdinal: 1 },
 			{ phase: "Work", task: "two", phaseOrdinal: 1, taskOrdinal: 2 },
 		]);
 		expect(rich.details?.telemetry?.taskTransitions).toBeUndefined();
