@@ -207,4 +207,36 @@ describe("TodoCommandController", () => {
 
 		expect(reminderTextFrom(ctx)).not.toMatch(/Do NOT/i);
 	});
+
+	it("handles /todo pending to reset tasks, phases, or all to pending", async () => {
+		tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pi-tui-todo-pending-"));
+		const phases: TodoPhase[] = [
+			{
+				name: "Foundation",
+				tasks: [
+					{ content: "Scaffold crate", status: "in_progress" },
+					{ content: "Wire tests", status: "completed" },
+				],
+			},
+			{
+				name: "Security",
+				tasks: [{ content: "Token store", status: "in_progress" }],
+			},
+		];
+		const ctx = createContext(tempRoot, phases);
+		const controller = new TodoCommandController(ctx);
+
+		// 1. Reset specific task
+		await controller.handleTodoCommand("pending Scaffold crate");
+		expect(ctx.showStatus).toHaveBeenCalledWith("Reset to pending: Scaffold crate");
+		expect(ctx.session.setTodoPhases).toHaveBeenCalled();
+
+		// 2. Reset phase
+		await controller.handleTodoCommand("pending Security");
+		expect(ctx.showStatus).toHaveBeenCalledWith("Reset phase Security to pending.");
+
+		// 3. Reset all
+		await controller.handleTodoCommand("pending");
+		expect(ctx.showStatus).toHaveBeenCalledWith("Reset all tasks to pending.");
+	});
 });

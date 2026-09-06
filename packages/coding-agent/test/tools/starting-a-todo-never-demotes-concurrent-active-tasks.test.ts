@@ -366,4 +366,85 @@ describe("concurrent todo tasks: production-path regression and backtest", () =>
 		expect(reminder).toContain("[/] Active Task 1 (Phase 1)");
 		expect(reminder).toContain("[/] Active Task 2 (Phase 2)");
 	});
+
+	/**
+	 * Real observable tests for op: "pending" (targeted task, targeted phase, no-target all tasks)
+	 * and summary formatting without 'undefined'.
+	 */
+	it("op pending resets targeted task, targeted phase, and all tasks without undefined in summary", async () => {
+		const { session, phases } = createSession([
+			{
+				name: "Phase 1",
+				tasks: [
+					{ content: "Task 1A", status: "in_progress" },
+					{ content: "Task 1B", status: "in_progress" },
+				],
+			},
+			{
+				name: "Phase 2",
+				tasks: [
+					{ content: "Task 2A", status: "in_progress" },
+					{ content: "Task 2B", status: "completed" },
+				],
+			},
+		]);
+		const tool = new TodoTool(session);
+
+		// 1. Target single task
+		const resTask = await tool.execute("call-p-task", { op: "pending", task: "Task 1A" });
+		expect(resTask.isError).toBeUndefined();
+		expect(phases()[0]!.tasks.find(t => t.content === "Task 1A")?.status).toBe("pending");
+		expect(phases()[0]!.tasks.find(t => t.content === "Task 1B")?.status).toBe("in_progress");
+		const summaryTask = resTask.content.find(c => c.type === "text")?.text ?? "";
+		expect(summaryTask).toContain("Reset to pending: Task 1A.");
+		expect(summaryTask).not.toContain("undefined");
+
+		// 2. Target phase
+		const resPhase = await tool.execute("call-p-phase", { op: "pending", phase: "Phase 1" });
+		expect(resPhase.isError).toBeUndefined();
+		expect(phases()[0]!.tasks.every(t => t.status === "pending")).toBe(true);
+		const summaryPhase = resPhase.content.find(c => c.type === "text")?.text ?? "";
+		expect(summaryPhase).toContain("Reset phase to pending: Phase 1.");
+		expect(summaryPhase).not.toContain("undefined");
+
+		// 3. No target: resets all tasks
+		const resAll = await tool.execute("call-p-all", { op: "pending" });
+		expect(resAll.isError).toBeUndefined();
+		const summaryAll = resAll.content.find(c => c.type === "text")?.text ?? "";
+		expect(summaryAll).toContain("Reset all tasks to pending.");
+		expect(summaryAll).not.toContain("undefined");
+
+		// 4. Verify no-target done and drop summaries never contain "undefined"
+		const resDone = await tool.execute("call-d-all", { op: "done" });
+		const summaryDone = resDone.content.find(c => c.type === "text")?.text ?? "";
+		expect(summaryDone).toContain("Completed all tasks.");
+		expect(summaryDone).not.toContain("undefined");
+
+		const resDrop = await tool.execute("call-drop-all", { op: "drop" });
+		const summaryDrop = resDrop.content.find(c => c.type === "text")?.text ?? "";
+		expect(summaryDrop).toContain("Dropped all tasks.");
+		expect(summaryDrop).not.toContain("undefined");
+	});
+
+	/**
+	 * Bounded overflow notice for active phases beyond SUBSEQUENT_PHASE_CAP in collapsed view.
+	 */
+	it("displays bounded overflow notice for active phases beyond cap in collapsed view", () => {
+		const phases: TodoPhase[] = Array.from({ length: 8 }, (_, i) => ({
+			name: `Phase ${i + 1}`,
+			tasks: [
+				{
+					content: `Task ${i + 1}`,
+					// Phase 1 is activeIdx, Phase 7 is beyond SUBSEQUENT_PHASE_CAP (4) and holds in_progress work
+					status: i === 0 || i === 6 ? "in_progress" : "pending",
+				},
+			],
+		}));
+
+		const lines = renderTodoBoardLines(phases, boardOptions({ expanded: false }));
+		const text = lines.map(l => Bun.stripANSI(l)).join("\n");
+
+		// Must display bounded overflow notice naming the active phase beyond cap
+		expect(text).toContain("… 1 more active phase(s) (Phase 7)");
+	});
 });

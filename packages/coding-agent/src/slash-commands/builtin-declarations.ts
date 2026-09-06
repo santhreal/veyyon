@@ -486,6 +486,7 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 			{ name: "done", description: "Mark task/phase/all completed (fuzzy-matched)", usage: "[<task|phase>]" },
 			{ name: "drop", description: "Mark task/phase/all abandoned (fuzzy-matched)", usage: "[<task|phase>]" },
 			{ name: "rm", description: "Remove task/phase/all (fuzzy-matched)", usage: "[<task|phase>]" },
+			{ name: "pending", description: "Reset task/phase/all to pending (fuzzy-matched)", usage: "[<task|phase>]" },
 		],
 		allowArgs: true,
 	},

@@ -13,6 +13,7 @@ When no active tasks remain, the earliest still-open task (in phase order) auto-
 |`drop`|`task` or `phase`|Mark abandoned|
 |`rm`|`task` or `phase` (optional)|Remove task or phase's tasks; omit both to clear the list|
 |`append`|`phase`, `items: string[]`|Append tasks to `phase`; lazily creates phase|
+|`pending`|`task` or `phase` (optional)|Reset task or phase's tasks to pending; omit both to reset all tasks|
 |`view`|—|Read-only: echo the list, no modify|
 
 ## Anatomy

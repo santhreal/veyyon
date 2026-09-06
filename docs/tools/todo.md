@@ -77,17 +77,17 @@ The TUI renderer (`todoToolRenderer`) merges call and result into one transcript
 ## Modes / Variants
 ### State transitions
 
-| Current status | `start` | `done` | `drop` | `rm` | `append` |
-| --- | --- | --- | --- | --- | --- |
-| `pending` | `in_progress` on target | `completed` | `abandoned` | Removed | New tasks enter as `pending` |
-| `in_progress` | Target stays `in_progress`; non-target active tasks remain `in_progress` | `completed` | `abandoned` | Removed | No status change |
-| `completed` | Can be set back to `in_progress` if targeted | Stays `completed` | Becomes `abandoned` if targeted | Removed | No status change |
-| `abandoned` | Can be set back to `in_progress` if targeted | Becomes `completed` if targeted | Stays `abandoned` | Removed | No status change |
+| Current status | `start` | `done` | `drop` | `pending` | `rm` | `append` |
+| --- | --- | --- | --- | --- | --- | --- |
+| `pending` | `in_progress` on target | `completed` | `abandoned` | Stays `pending` | Removed | New tasks enter as `pending` |
+| `in_progress` | Target stays `in_progress`; non-target active tasks remain `in_progress` | `completed` | `abandoned` | `pending` on target | Removed | No status change |
+| `completed` | Can be set back to `in_progress` if targeted | Stays `completed` | Becomes `abandoned` if targeted | Can be set back to `pending` if targeted | Removed | No status change |
+| `abandoned` | Can be set back to `in_progress` if targeted | Becomes `completed` if targeted | Stays `abandoned` | Can be set back to `pending` if targeted | Removed | No status change |
 
 Normalization ensures `in_progress` tasks are preserved and promotes the first `pending` task only when no active task remains.
 
 ### Op targeting rules
-- `done`, `drop`, `rm`:
+- `done`, `drop`, `pending`, `rm`:
   - `task` set: affect one exact-content task.
   - else `phase` set: affect every task in that exact-name phase.
   - else: affect every task in every phase.

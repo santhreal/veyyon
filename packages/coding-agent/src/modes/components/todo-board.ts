@@ -273,9 +273,24 @@ export function renderTodoBoardLines(phases: readonly TodoPhase[], options: Todo
 		shown = body.slice(0, Math.max(0, budget - 1));
 		hidden = body.length - shown.length;
 	}
+	// Active phases beyond the collapsed slice cap
+	const unrenderedActivePhases = !options.expanded
+		? live
+				.slice(baseIdx + 1 + SUBSEQUENT_PHASE_CAP)
+				.filter(phase =>
+					phase.tasks.some(
+						task => task.status === "in_progress" || (task.status === "pending" && options.owned.has(task.content)),
+					),
+				)
+		: [];
 
 	const lines = [`${railCell} ${header}`, ...shown.map(line => `${railCell} ${line}`.trimEnd())];
-	if (hidden > 0) {
+	if (unrenderedActivePhases.length > 0) {
+		const names = unrenderedActivePhases.map(p => p.name).join(", ");
+		lines.push(
+			`${railCell} ${theme.fg("accent", boundedTodoPreviewText(`… ${unrenderedActivePhases.length} more active phase(s) (${names})`, content))}`,
+		);
+	} else if (hidden > 0) {
 		lines.push(`${railCell} ${theme.fg("dim", boundedTodoPreviewText(`… ${hidden} more`, content))}`);
 	}
 	return ["", ...lines];

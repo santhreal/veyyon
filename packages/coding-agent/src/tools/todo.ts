@@ -1145,10 +1145,10 @@ function formatMutationSummary(phases: TodoPhase[], params: TodoParams): string 
 			changed = `Started: ${task}.`;
 			break;
 		case "done":
-			changed = task ? `Completed: ${task}.` : `Completed phase: ${phase}.`;
+			changed = task ? `Completed: ${task}.` : phase ? `Completed phase: ${phase}.` : "Completed all tasks.";
 			break;
 		case "drop":
-			changed = task ? `Dropped: ${task}.` : `Dropped phase: ${phase}.`;
+			changed = task ? `Dropped: ${task}.` : phase ? `Dropped phase: ${phase}.` : "Dropped all tasks.";
 			break;
 		case "append":
 			changed = `Added ${params.items?.length ?? 0} ${(params.items?.length ?? 0) === 1 ? "task" : "tasks"} to ${phase}.`;
@@ -1158,7 +1158,7 @@ function formatMutationSummary(phases: TodoPhase[], params: TodoParams): string 
 			changed = task ? `Removed: ${task}.` : `Removed phase: ${phase}.`;
 			break;
 		case "pending":
-			changed = task ? `Reset to pending: ${task}.` : `Reset phase to pending: ${phase}.`;
+			changed = task ? `Reset to pending: ${task}.` : phase ? `Reset phase to pending: ${phase}.` : "Reset all tasks to pending.";
 			break;
 		case "view":
 			throw new Error("view operations require the full todo summary");
