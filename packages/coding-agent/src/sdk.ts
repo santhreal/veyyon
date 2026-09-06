@@ -198,7 +198,12 @@ import { ARGOT_HANDLES_BANNER } from "./system-prompt-builder/section-registry";
 import { AgentOutputManager } from "./task/output-manager";
 import { wrapStreamFnWithProviderConcurrency } from "./task/provider-concurrency";
 import { delegationStrength } from "./task/subagent-settings";
-import { getGlobalReplenishmentEngine } from "./task/topic-replenishment";
+import {
+	type ClaimedTicket,
+	getGlobalReplenishmentEngine,
+	setGlobalReplenishmentEngine,
+	TopicReplenishmentEngine,
+} from "./task/topic-replenishment";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,
@@ -709,6 +714,10 @@ export interface CreateAgentSessionOptions {
 	 * bypass is off is never granted one by its parent.
 	 */
 	parentApprovalBypassed?: () => boolean;
+	/** Topic replenishment engine instance override. */
+	replenishmentEngine?: TopicReplenishmentEngine;
+	/** Custom executor for topic replenishment. */
+	replenishmentExecutor?: (ticket: ClaimedTicket) => Promise<unknown>;
 }
 
 /**
@@ -4491,6 +4500,45 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			atRestUsage?.tokens == null ? null : atRestLimit > 0 ? (atRestUsage.tokens / atRestLimit) * 100 : null,
 			atRestLimit,
 		);
+		if (!isInProcessChildSession(options) && !isSubagentSession(options)) {
+			const taskTool = toolRegistry.get("task");
+			const productionExecutor =
+				options.replenishmentExecutor ??
+				(taskTool
+					? async (ticket: ClaimedTicket) => {
+							const toolCallId = `replenish-${ticket.id}-${Date.now().toString(36)}`;
+							return await taskTool.execute(
+								toolCallId,
+								{
+									agent: "fast",
+									task: ticket.prompt,
+									ticketId: ticket.id,
+								},
+								undefined,
+								undefined,
+							);
+						}
+					: undefined);
+
+			const engine =
+				options.replenishmentEngine ??
+				new TopicReplenishmentEngine({
+					executor: productionExecutor,
+				});
+			setGlobalReplenishmentEngine(engine);
+
+			const activeRoster = AgentRegistry.global().list().map(ref => ({
+				id: ref.id,
+				status: ref.status,
+				role: ref.role,
+				task: ref.task,
+			}));
+			void engine.onSessionRecovery(activeRoster).catch(err => {
+				logger.warn("TopicReplenishmentEngine: session recovery failed", {
+					error: errorMessage(err),
+				});
+			});
+		}
 
 		if (
 			shouldAutoloadArgotAtStartup({

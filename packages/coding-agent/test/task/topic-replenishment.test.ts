@@ -6,22 +6,27 @@
  */
 
 import * as assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as topicReplenishmentModule from "../../src/task/topic-replenishment";
 import {
 	checkMemoryAdmission,
 	claimNextAuthorizedTicket,
 	FileLock,
+	getGlobalReplenishmentEngine,
+	isValidAuthorization,
 	reconcileRunningTopics,
 	resolveTopicName,
 	RUNNABLE_TOPIC_NAMES,
+	setGlobalReplenishmentEngine,
 	TopicReplenishmentEngine,
 	type LedgerFileShape,
 	type NativeActorSnapshot,
 	type SubagentCompleteEvent,
 } from "../../src/task/topic-replenishment";
-
 async function runTests(): Promise<void> {
 	console.log("Starting topic-replenishment verification suite...\n");
 
@@ -117,44 +122,103 @@ async function runTests(): Promise<void> {
 		console.log("  [PASS] checkMemoryAdmission enforces RAM limits and cleanup\n");
 	}
 
-	// Test 4: FileLock - persistent lock file compatibility and mutual exclusion (Finding 4)
+	// Test 4: FileLock - real two-process mutual exclusion against Python ledger locking (Finding 4)
 	{
-		console.log("Test 4: FileLock - persistent lock file compatibility and mutual exclusion");
+		console.log("Test 4: FileLock - real two-process mutual exclusion against Python ledger locking");
 		const testDir = path.join(os.tmpdir(), `test-lock-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		await fs.promises.mkdir(testDir, { recursive: true });
 		const targetFile = path.join(testDir, "test.json");
 		const lockFile = `${targetFile}.lock`;
+		const python = process.env.PYTHON_EXECUTABLE || process.env.PYTHON || "python";
+		const bridgeScript = path.resolve("packages/coding-agent/src/task/native-ledger-bridge.py");
 
-		// Simulate pre-existing lock file left by Python ledger.py (mode a+b)
-		await fs.promises.writeFile(lockFile, "L", "utf-8");
+		// 1. Start a separate Python process (Process 1) holding the OS lock
+		const p1 = spawn(
+			python,
+			[
+				bridgeScript,
+				"hold-lock",
+				"--lock-path",
+				lockFile,
+				"--duration",
+				"4",
+				"--ready-signal",
+				"LOCKED",
+			],
+			{ stdio: ["ignore", "pipe", "pipe"] },
+		);
 
-		const lock1 = new FileLock(targetFile);
-		const lock2 = new FileLock(targetFile);
+		// Wait for P1 to acquire the lock
+		const { promise: p1Acquired, resolve: p1Resolve, reject: p1Reject } = Promise.withResolvers<void>();
+		p1.stdout?.on("data", (chunk: Buffer) => {
+			if (chunk.toString().includes("LOCKED")) p1Resolve();
+		});
+		p1.on("error", p1Reject);
+		p1.on("close", code => {
+			p1Reject(new Error(`P1 exited prematurely with code ${code}`));
+		});
+		await p1Acquired;
 
-		// Acquires without throwing EEXIST
-		await lock1.acquire(5000);
-		assert.ok(fs.existsSync(lock1.lockPath), "Lock file must exist on disk");
-
-		// Attempting concurrent acquisition should fail quickly
-		let lock2Failed = false;
+		// 2. While Python holds the lock, TypeScript attempt to acquire must fail/timeout
+		const lockTs = new FileLock(targetFile);
+		let tsAcquisitionBlocked = false;
 		try {
-			await lock2.acquire(200, 20);
-		} catch {
-			lock2Failed = true;
+			await lockTs.acquire(400); // short timeout
+		} catch (err) {
+			tsAcquisitionBlocked = true;
+			console.log("  [P1 held lock] TS acquisition correctly timed out:", String(err).slice(0, 70));
 		}
-		assert.equal(lock2Failed, true, "Concurrent lock acquisition must be blocked");
+		assert.equal(tsAcquisitionBlocked, true, "TypeScript must be blocked while Python holds lock");
 
-		await lock1.release();
-		// Lock file stays on disk (no unlink!) matching Python ledger.py semantics
-		assert.ok(fs.existsSync(lock1.lockPath), "Lock file stays on disk matching Python ledger.py");
+		// 3. Release Python process 1
+		p1.kill();
+		await once(p1, "close");
 
-		// lock2 can now acquire
-		await lock2.acquire(1000);
-		await lock2.release();
+		// 4. TypeScript acquires the lock
+		await lockTs.acquire(5000);
+		console.log("  [TS acquired lock]");
 
-		// Cleanup
+		// 5. While TypeScript holds the lock, a concurrent Python child process must be blocked
+		const p2 = spawn(
+			python,
+			[
+				bridgeScript,
+				"hold-lock",
+				"--lock-path",
+				lockFile,
+				"--duration",
+				"0.1",
+				"--timeout",
+				"0.4",
+			],
+			{ stdio: ["ignore", "ignore", "pipe"] },
+		);
+		const [p2ExitCode] = (await once(p2, "close")) as [number];
+		assert.notEqual(p2ExitCode, 0, "Concurrent Python process must fail to acquire while TS holds lock");
+		console.log("  [TS held lock] Concurrent Python child process blocked with non-zero exit code");
+
+		// 6. Release lock from TypeScript
+		await lockTs.release();
+
+		// 7. After release, a new Python process acquires immediately
+		const p3 = spawn(
+			python,
+			[
+				bridgeScript,
+				"hold-lock",
+				"--lock-path",
+				lockFile,
+				"--duration",
+				"0.1",
+				"--timeout",
+				"2.0",
+			],
+			{ stdio: ["ignore", "ignore", "pipe"] },
+		);
+		const [p3ExitCode] = (await once(p3, "close")) as [number];
+		assert.equal(p3ExitCode, 0, "Python process acquires lock successfully after TS release");
 		await fs.promises.rm(testDir, { recursive: true, force: true }).catch(() => {});
-		console.log("  [PASS] FileLock enforces mutually exclusive atomic access compatible with Python ledger\n");
+		console.log("  [PASS] FileLock proves bidirectional two-process OS-level mutual exclusion\n");
 	}
 
 	// Test 5: claimNextAuthorizedTicket - atomic claiming, authorization, forbidden target and cancellation guards
@@ -175,8 +239,30 @@ async function runTests(): Promise<void> {
 					state: "pending",
 					// no authorization field -> UNAUTHORIZED
 				},
+				"req-auth-string-false": {
+					prompt: "Do work with negative string authorization",
+					authorization: "false",
+					state: "pending",
+				},
+				"req-auth-string-unauth": {
+					prompt: "Do work with unapproved string authorization",
+					authorization: "unauthorized",
+					state: "pending",
+				},
 				"req-forbidden-prod": {
 					prompt: "Deploy directly to target: production and branch main",
+					authorization: "2026-09-06T10:00:00Z operator",
+					state: "pending",
+				},
+				"req-forbidden-project": {
+					prompt: "Harmless prompt text but forbidden project target",
+					project: "zaraprptkegxqpvnsubu",
+					authorization: "2026-09-06T10:00:00Z operator",
+					state: "pending",
+				},
+				"req-forbidden-target": {
+					prompt: "Harmless prompt text but forbidden target field",
+					target: "production",
 					authorization: "2026-09-06T10:00:00Z operator",
 					state: "pending",
 				},
@@ -482,11 +568,78 @@ async function runTests(): Promise<void> {
 		await fs.promises.rm(testDir, { recursive: true, force: true }).catch(() => {});
 		console.log("  [PASS] onSessionRecovery preserves durable work and replenishes worker pool\n");
 	}
-	// Test 8: ToolSession callback wiring & package exports (Finding 1 & 3)
+	// Test 8: ToolSession callback wiring & full native execution lifecycle
 	{
-		console.log("Test 8: ToolSession callback wiring & package exports");
-		// Exception: test case intentionally exercises runtime package export boundary from package.json
-		const exported = await import("../../src/task/topic-replenishment");
+		console.log("Test 8: ToolSession callback wiring & full native execution lifecycle");
+		const testDir = path.join(os.tmpdir(), `test-lifecycle-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		await fs.promises.mkdir(testDir, { recursive: true });
+		const ledgerPath = path.join(testDir, "ledger.json");
+
+		const lifecycleLedger: LedgerFileShape = {
+			version: 2,
+			created_at: new Date().toISOString(),
+			requests: {
+				"req-native-1": {
+					prompt: "Implement motion physics spring",
+					topic: "Motion",
+					state: "pending",
+					authorization: { timestamp: "2026-09-06T10:00:00Z", scope: "staging", authorized_by: "operator" },
+				},
+				"req-native-2": {
+					prompt: "Fix desktop GUI focus trap",
+					topic: "Desktop GUI",
+					state: "pending",
+					authorization: { timestamp: "2026-09-06T10:00:00Z", scope: "staging", authorized_by: "operator" },
+				},
+			},
+		};
+		await fs.promises.writeFile(ledgerPath, JSON.stringify(lifecycleLedger, null, 2), "utf-8");
+
+		const executedTickets: string[] = [];
+		const engine = new TopicReplenishmentEngine({
+			ledgerPath,
+			minFloor: 2,
+			targetCount: 2,
+			executor: async ticket => {
+				executedTickets.push(ticket.id);
+			},
+		});
+
+		// 1. Register global engine
+		setGlobalReplenishmentEngine(engine);
+		assert.equal(getGlobalReplenishmentEngine(), engine, "Global engine must be registered");
+
+		// 2. Invoke session recovery on startup
+		const recoveryOutcome = await engine.onSessionRecovery([]);
+		assert.equal(recoveryOutcome.status, "replenished");
+		assert.equal(recoveryOutcome.dispatchedCount, 2, "Must dispatch both tickets to satisfy floor");
+		assert.deepEqual(executedTickets, ["req-native-1", "req-native-2"]);
+
+		// 3. Worker 1 finishes with exitCode 0
+		const completeEvent: SubagentCompleteEvent = {
+			agentId: "worker-native-1",
+			agentName: "fast",
+			task: "Implement motion physics spring",
+			status: "completed",
+			exitCode: 0,
+			ticketId: "req-native-1",
+		};
+
+		const rosterAfter1: NativeActorSnapshot[] = [
+			{ id: "worker-native-1", status: "running", role: "sub", task: "Motion" },
+			{ id: "worker-native-2", status: "running", role: "sub", task: "Desktop GUI" },
+		];
+
+		const after1Outcome = await engine.onWorkerComplete(completeEvent, rosterAfter1);
+
+		// Verify req-native-1 state advanced to QA in ledger under OS FileLock
+		const postRaw = await fs.promises.readFile(ledgerPath, "utf-8");
+		const postLedger = JSON.parse(postRaw) as LedgerFileShape;
+		assert.equal(postLedger.requests["req-native-1"].state, "QA", "Stage must advance to QA on exitCode 0");
+		assert.ok(Array.isArray(postLedger.requests["req-native-1"].history), "History must be recorded");
+
+		// 4. Verify package exports
+		const exported = topicReplenishmentModule;
 		assert.ok(exported.TopicReplenishmentEngine, "TopicReplenishmentEngine must be exported");
 		assert.ok(exported.reconcileRunningTopics, "reconcileRunningTopics must be exported");
 		assert.ok(exported.claimNextAuthorizedTicket, "claimNextAuthorizedTicket must be exported");
@@ -494,7 +647,8 @@ async function runTests(): Promise<void> {
 		assert.ok(exported.FileLock, "FileLock must be exported");
 		assert.ok(exported.isValidAuthorization, "isValidAuthorization must be exported");
 
-		console.log("  [PASS] ToolSession callback wiring & package exports verified\n");
+		await fs.promises.rm(testDir, { recursive: true, force: true }).catch(() => {});
+		console.log("  [PASS] ToolSession callback wiring & full native execution lifecycle verified\n");
 	}
 
 	console.log("=================================================");

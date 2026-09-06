@@ -19,11 +19,11 @@
  *    Missing executor fails immediately before claiming or incrementing counts.
  * 7. On worker dispatch error, claimed tickets are rolled back to pending with audit history.
  */
-
+import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { once } from "node:events";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-
 // --- Functional Topics & Keyword Mapping ---
 
 export const TOPIC_KEYWORDS_MAP: Readonly<Record<string, string>> = {
@@ -298,17 +298,24 @@ export function resolveTopicName(worker: Partial<NativeActorSnapshot>): string {
  */
 export function isValidAuthorization(auth: unknown): boolean {
 	if (typeof auth === "string") {
-		return auth.trim().length > 0;
+		const cleaned = auth.trim().toLowerCase();
+		if (!cleaned) return false;
+		if (["false", "none", "null", "unauthorized", "denied", "rejected", "no"].includes(cleaned)) {
+			return false;
+		}
+		return true;
 	}
 	if (typeof auth === "object" && auth !== null && !Array.isArray(auth)) {
-		const keys = Object.keys(auth);
+		const record = auth as Record<string, unknown>;
+		const keys = Object.keys(record);
 		if (keys.length === 0) {
 			return false;
 		}
-		const record = auth as Record<string, unknown>;
 		const ts = typeof record.timestamp === "string" ? record.timestamp.trim() : "";
 		const scope = typeof record.scope === "string" ? record.scope.trim() : "";
 		const by = typeof record.authorized_by === "string" ? record.authorized_by.trim() : "";
+		const status = typeof record.status === "string" ? record.status.trim().toLowerCase() : "";
+		if (status === "authorized") return true;
 		return ts.length > 0 || scope.length > 0 || by.length > 0;
 	}
 	return false;
@@ -493,68 +500,115 @@ export async function checkMemoryAdmission(options?: {
 	};
 }
 
-// --- Cross-Platform File Locking Compatible with Python ledger.py ---
+// --- Cross-Platform File Locking Backed by Python native-ledger-bridge ---
 
-const inProcessLockQueues = new Map<string, Promise<void>>();
+/**
+ * Execute the isolated Python ledger bridge module under OS-level FileLock.
+ * All ledger claims, rollbacks, and completions are routed through this bridge
+ * to guarantee cross-process mutual exclusion with msvcrt/fcntl locking.
+ */
+export async function runLedgerBridge<T = unknown>(
+	args: string[],
+	options?: { timeoutMs?: number; pythonPath?: string; cwd?: string },
+): Promise<T> {
+	const python = options?.pythonPath || process.env.PYTHON_EXECUTABLE || process.env.PYTHON || "python";
+	const bridgeScript = path.join(import.meta.dirname, "native-ledger-bridge.py");
+	const timeout = options?.timeoutMs ?? 30000;
 
+	const { promise, resolve, reject } = Promise.withResolvers<T>();
+	execFile(python, [bridgeScript, ...args], { timeout, cwd: options?.cwd }, (error, stdout, stderr) => {
+		if (error) {
+			reject(new Error(`native-ledger-bridge failed (${error.message}): ${stderr}`));
+			return;
+		}
+		try {
+			const parsed = JSON.parse(stdout.trim()) as T;
+			resolve(parsed);
+		} catch (parseErr) {
+			reject(new Error(`Failed to parse bridge output: ${stdout}\nstderr: ${stderr}`));
+		}
+	});
+	return promise;
+}
+
+/**
+ * Cross-process OS-level advisory file lock backed by native-ledger-bridge / Python FileLock.
+ * Uses msvcrt.locking on Windows and fcntl.flock on POSIX.
+ */
 export class FileLock {
 	readonly lockPath: string;
-	#fd: fs.promises.FileHandle | null = null;
-	#resolveQueue: (() => void) | null = null;
+	#proc: ChildProcess | null = null;
 
 	constructor(filePath: string) {
-		this.lockPath = `${filePath}.lock`;
+		this.lockPath = filePath.endsWith(".lock") ? filePath : `${filePath}.lock`;
 	}
 
-	async acquire(timeoutMs = 15000, retryIntervalMs = 50): Promise<void> {
-		const deadline = Date.now() + timeoutMs;
-		while (Date.now() < deadline) {
-			const existingLock = inProcessLockQueues.get(this.lockPath);
-			if (existingLock) {
-				const { promise: timeoutPromise, resolve: timeoutResolve } = Promise.withResolvers<void>();
-				setTimeout(timeoutResolve, retryIntervalMs);
-				await Promise.race([existingLock, timeoutPromise]).catch(() => {});
-				continue;
-			}
+	async acquire(timeoutMs = 15000): Promise<void> {
+		const timeoutSec = (timeoutMs / 1000).toFixed(1);
+		const python = process.env.PYTHON_EXECUTABLE || process.env.PYTHON || "python";
+		const bridgeScript = path.join(import.meta.dirname, "native-ledger-bridge.py");
 
-			try {
-				// Open with a+ so file is created if missing without throwing EEXIST
-				// Leaves lock file permanently on disk matching Python ledger.py semantics (no unlink!)
-				this.#fd = await fs.promises.open(this.lockPath, "a+");
-				const { promise: lockPromise, resolve: lockResolve } = Promise.withResolvers<void>();
-				this.#resolveQueue = lockResolve;
-				inProcessLockQueues.set(this.lockPath, lockPromise);
-				return;
-			} catch {
-				if (this.#fd) {
-					await this.#fd.close().catch(() => {});
-					this.#fd = null;
-				}
-				const { promise, resolve } = Promise.withResolvers<void>();
-				setTimeout(resolve, retryIntervalMs);
-				await promise;
+		const { promise, resolve, reject } = Promise.withResolvers<void>();
+		let settled = false;
+		let stderr = "";
+
+		const proc = spawn(
+			python,
+			[
+				bridgeScript,
+				"hold-lock",
+				"--lock-path",
+				this.lockPath,
+				"--duration",
+				"3600",
+				"--timeout",
+				timeoutSec,
+				"--ready-signal",
+				"LOCKED",
+			],
+			{ stdio: ["ignore", "pipe", "pipe"] },
+		);
+		this.#proc = proc;
+
+		proc.stdout?.on("data", (chunk: Buffer) => {
+			if (chunk.toString().includes("LOCKED") && !settled) {
+				settled = true;
+				resolve();
 			}
-		}
-		throw new Error(`Failed to acquire lock on ${this.lockPath} within ${timeoutMs}ms`);
+		});
+
+		proc.stderr?.on("data", (chunk: Buffer) => {
+			stderr += chunk.toString();
+		});
+
+		proc.on("error", err => {
+			if (!settled) {
+				settled = true;
+				reject(err);
+			}
+		});
+
+		proc.on("close", () => {
+			if (!settled) {
+				settled = true;
+				reject(new Error(`Failed to acquire lock on ${this.lockPath} within ${timeoutMs}ms: ${stderr}`));
+			}
+		});
+
+		return promise;
 	}
 
 	async release(): Promise<void> {
-		if (this.#fd !== null) {
-			try {
-				await this.#fd.close();
-			} catch {}
-			this.#fd = null;
+		if (this.#proc) {
+			const proc = this.#proc;
+			this.#proc = null;
+			proc.kill();
+			await once(proc, "close").catch(() => {});
 		}
-		if (this.#resolveQueue) {
-			this.#resolveQueue();
-			this.#resolveQueue = null;
-		}
-		inProcessLockQueues.delete(this.lockPath);
-		// NOTE: Never unlink lock file; Python ledger.py keeps lock file permanently on disk.
 	}
 }
 
-// --- Atomic Ledger Ticket Claiming ---
+// --- Atomic Ledger Ticket Claiming via Python Bridge ---
 
 /**
  * Safely resolve the default ledger file path.
@@ -566,220 +620,83 @@ export function getDefaultLedgerPath(): string {
 
 /**
  * Claim next ready authorized ticket atomically from the ledger.
- *
- * Invariants enforced:
- * 1. Unauthorized tickets (missing or empty `{}` authorization) are strictly refused.
- * 2. Forbidden production targets ("main", "production", etc.) are strictly refused.
- * 3. Ungranted merge authorizations ("awaiting authorization") never auto-dispatch.
- * 4. Explicitly cancelled tasks (e.g. choice A) are never restored or claimed.
- * 5. Decision blockers (pending human decisions) strictly block claims.
- * 6. Blocked topics stay tracked with exact reasons.
- * 7. State updates append to history audit trail matching ledger.py.
- * 8. Priority: uncovered runnable topics first, then target-capacity filling.
+ * Handled entirely inside the Python bridge with OS-level FileLock.
  */
 export async function claimNextAuthorizedTicket(
 	ledgerPath: string,
 	options?: ClaimTicketOptions,
 ): Promise<ClaimTicketResult> {
-	const lock = new FileLock(ledgerPath);
-	const lockTimeoutMs = options?.lockTimeoutMs ?? 15000;
-	const coveredTopics = new Set(options?.coveredTopics ?? []);
-	const blockedTopics: BlockedTopicInfo[] = [];
-
-	await lock.acquire(lockTimeoutMs);
-	try {
-		if (!fs.existsSync(ledgerPath)) {
-			return { claimed: false, reason: `Ledger file does not exist at ${ledgerPath}` };
-		}
-
-		const raw = await fs.promises.readFile(ledgerPath, "utf-8");
-		let ledgerData: LedgerFileShape;
-		try {
-			ledgerData = JSON.parse(raw) as LedgerFileShape;
-		} catch (err) {
-			return { claimed: false, reason: `Malformed ledger JSON: ${err}` };
-		}
-
-		const requests = ledgerData.requests || {};
-		const drivableStates = new Set(["pending", "implementation", "QA", "review"]);
-
-		interface Candidate {
-			id: string;
-			topic: string;
-			req: LedgerRequestItem;
-			priority: number; // 1 = uncovered topic, 2 = covered topic
-		}
-
-		const candidates: Candidate[] = [];
-
-		for (const [id, req] of Object.entries(requests)) {
-			const promptText = req.prompt || "";
-			const canonicalPrompt = promptText.trim().toLowerCase().replace(/\s+/g, " ");
-
-			// 1. Skip explicitly cancelled tasks
-			if (EXPLICITLY_CANCELLED_TASKS[canonicalPrompt]) {
-				continue;
-			}
-			if (req.state === "cancelled" || req.state === "dropped") {
-				continue;
-			}
-
-			// 2. Fail-closed target guard (production & merge)
-			const forbiddenMatch = FORBIDDEN_TARGETS.find(target => {
-				const p = promptText.toLowerCase();
-				return p.includes(`@${target}`) || p.includes(`branch ${target}`) || p.includes(`target: ${target}`);
-			});
-			if (forbiddenMatch) {
-				continue;
-			}
-
-			// 3. Fail-closed structured authorization check (Finding 5)
-			if (!isValidAuthorization(req.authorization)) {
-				continue;
-			}
-
-			// 4. Check for ungranted merge authorization
-			if (req.state === "awaiting authorization") {
-				continue;
-			}
-
-			const state = (req.state || "pending").toLowerCase();
-
-			// Skip if already claimed and in progress by an active owner
-			if (req.owner && typeof req.owner === "string" && req.owner.trim().length > 0 && state !== "pending") {
-				continue;
-			}
-
-			// 5. Check decision blockers (strict human operator decision gates - Finding 5)
-			if (Array.isArray(req.decision_blockers) && req.decision_blockers.length > 0) {
-				const topic = resolveTopicName({ id, task: promptText, metadata: req.metadata });
-				blockedTopics.push({
-					topic,
-					ticketId: id,
-					reason: `Awaiting human decision on: ${req.decision_blockers.join(", ")}`,
-				});
-				continue;
-			}
-
-			// 6. Check blocker status
-			if (req.blocker || req.blocker_reason || state === "blocked") {
-				const topic = resolveTopicName({ id, task: promptText, metadata: req.metadata });
-				blockedTopics.push({
-					topic,
-					ticketId: id,
-					reason: req.blocker || req.blocker_reason || "Task marked blocked",
-				});
-				continue;
-			}
-
-			// 7. Check if state is drivable
-			if (!drivableStates.has(state)) {
-				continue;
-			}
-
-			// 8. Check dependency blockers
-			if (Array.isArray(req.dependencies) && req.dependencies.length > 0) {
-				const terminalStates = new Set(["done", "live verification", "integration", "awaiting authorization"]);
-				const unfulfilledDeps = req.dependencies.filter(depId => {
-					const dep = requests[depId];
-					return !dep || !terminalStates.has((dep.state || "").toLowerCase());
-				});
-				if (unfulfilledDeps.length > 0) {
-					const topic = resolveTopicName({ id, task: promptText, metadata: req.metadata });
-					blockedTopics.push({
-						topic,
-						ticketId: id,
-						reason: `Dependencies unfulfilled: ${unfulfilledDeps.join(", ")}`,
-						dependencies: unfulfilledDeps,
-					});
-					continue;
-				}
-			}
-
-			// 9. Custom filter if supplied
-			if (options?.customFilter && !options.customFilter(req)) {
-				continue;
-			}
-
-			// Derive topic (honoring explicit req.topic or metadata.topic if present)
-			const explicitTopic =
-				typeof req.topic === "string"
-					? req.topic
-					: req.metadata && typeof req.metadata === "object" && "topic" in req.metadata && typeof req.metadata.topic === "string"
-						? req.metadata.topic
-						: undefined;
-			const topic = resolveTopicName({ id, topic: explicitTopic, task: promptText, metadata: req.metadata });
-			const isUncovered = !coveredTopics.has(topic);
-			const priority = isUncovered ? 1 : 2;
-
-			candidates.push({ id, topic, req, priority });
-		}
-
-		if (candidates.length === 0) {
-			return {
-				claimed: false,
-				reason: "No eligible authorized tickets found",
-				blockedTopics,
-			};
-		}
-
-		// Sort by priority (uncovered first), then id
-		candidates.sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
-
-		const chosen = candidates[0];
-		const workerId = options?.workerId || `native-replenish-${Date.now().toString(36)}`;
-		const nowIso = new Date().toISOString();
-
-		// Update ledger request atomically with audit history
-		const updatedState = (chosen.req.state || "pending").toLowerCase() === "pending" ? "implementation" : chosen.req.state!;
-		const previousState = chosen.req.state || "pending";
-		chosen.req.state = updatedState;
-		chosen.req.owner = workerId;
-		chosen.req.claimed_at = nowIso;
-		chosen.req.updated_at = nowIso;
-
-		if (!Array.isArray(chosen.req.history)) {
-			chosen.req.history = [];
-		}
-		chosen.req.history.push({
-			actor: "TopicReplenishmentEngine",
-			timestamp: nowIso,
-			from_state: previousState,
-			to_state: updatedState,
-			reason: "Claimed for native replenishment",
-		});
-
-		ledgerData.updated_at = nowIso;
-
-		// Write to temp file on the same filesystem and atomic rename
-		const dir = path.dirname(ledgerPath);
-		const tempFile = path.join(dir, `.tmp-ledger-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
-		await fs.promises.writeFile(tempFile, JSON.stringify(ledgerData, null, 2), "utf-8");
-		await fs.promises.rename(tempFile, ledgerPath);
-
-		const claimedTicket: ClaimedTicket = {
-			id: chosen.id,
-			topic: chosen.topic,
-			prompt: chosen.req.prompt || "",
-			task: chosen.req.prompt || "",
-			state: updatedState,
-			owner: workerId,
-			role: "fast",
-			criteria: chosen.req.criteria || [],
-			dependencies: chosen.req.dependencies || [],
-			head: chosen.req.head,
-			authorization: typeof chosen.req.authorization === "string" ? chosen.req.authorization : JSON.stringify(chosen.req.authorization),
-			claimedAt: nowIso,
-		};
-
-		return {
-			claimed: true,
-			ticket: claimedTicket,
-			blockedTopics,
-		};
-	} finally {
-		await lock.release().catch(() => {});
+	const args = ["claim", "--ledger", ledgerPath];
+	if (options?.workerId) {
+		args.push("--worker-id", options.workerId);
 	}
+	if (options?.coveredTopics && options.coveredTopics.length > 0) {
+		args.push("--covered-topics", options.coveredTopics.join(","));
+	}
+	if (options?.lockTimeoutMs) {
+		args.push("--timeout", (options.lockTimeoutMs / 1000).toFixed(1));
+	}
+	try {
+		const result = await runLedgerBridge<ClaimTicketResult & { blocked_topics?: BlockedTopicInfo[] }>(args);
+		if (!result.blockedTopics && result.blocked_topics) {
+			result.blockedTopics = result.blocked_topics;
+		}
+		return result;
+	} catch (err) {
+		return {
+			claimed: false,
+			reason: `Bridge execution failed: ${err}`,
+		};
+	}
+}
+
+/**
+ * Rollback claimed ticket on worker dispatch failure.
+ * Handled entirely inside the Python bridge with OS-level FileLock.
+ */
+export async function rollbackClaimedTicket(
+	ledgerPath: string,
+	ticketId: string,
+	reason: string,
+	options?: { lockTimeoutMs?: number },
+): Promise<void> {
+	const args = ["rollback", "--ledger", ledgerPath, "--ticket-id", ticketId, "--reason", reason];
+	if (options?.lockTimeoutMs) {
+		args.push("--timeout", (options.lockTimeoutMs / 1000).toFixed(1));
+	}
+	await runLedgerBridge(args);
+}
+
+/**
+ * Complete ticket on worker finish.
+ * Handled entirely inside the Python bridge with OS-level FileLock.
+ */
+export async function completeClaimedTicket(
+	ledgerPath: string,
+	ticketId: string,
+	status: "completed" | "failed" | "cancelled",
+	exitCode = 0,
+	error = "",
+	options?: { lockTimeoutMs?: number },
+): Promise<void> {
+	const args = [
+		"complete",
+		"--ledger",
+		ledgerPath,
+		"--ticket-id",
+		ticketId,
+		"--status",
+		status,
+		"--exit-code",
+		String(exitCode),
+	];
+	if (error) {
+		args.push("--error", error);
+	}
+	if (options?.lockTimeoutMs) {
+		args.push("--timeout", (options.lockTimeoutMs / 1000).toFixed(1));
+	}
+	await runLedgerBridge(args);
 }
 
 // --- Native Dispatch Engine ---
@@ -809,44 +726,22 @@ export class TopicReplenishmentEngine {
 
 	/**
 	 * Rollback claimed ticket on worker dispatch failure (Finding 6).
-	 * Clears owner, sets blocker, and records rollback in history audit trail.
+	 * Clears owner, sets blocker, and records rollback in history audit trail under OS FileLock.
 	 */
 	async rollbackClaimedTicket(ticketId: string, reason: string): Promise<void> {
-		const lock = new FileLock(this.ledgerPath);
-		await lock.acquire(15000).catch(() => {});
-		try {
-			if (!fs.existsSync(this.ledgerPath)) return;
-			const raw = await fs.promises.readFile(this.ledgerPath, "utf-8");
-			const ledgerData = JSON.parse(raw) as LedgerFileShape;
-			const req = ledgerData.requests?.[ticketId];
-			if (req) {
-				const nowIso = new Date().toISOString();
-				const fromState = req.state || "implementation";
-				req.state = "pending";
-				req.owner = "";
-				req.blocker = `Dispatch failed: ${reason}`;
-				req.updated_at = nowIso;
-				if (!Array.isArray(req.history)) {
-					req.history = [];
-				}
-				req.history.push({
-					actor: "TopicReplenishmentEngine",
-					timestamp: nowIso,
-					from_state: fromState,
-					to_state: "pending",
-					reason: `Rollback: ${reason}`,
-				});
-				ledgerData.updated_at = nowIso;
-				const tempFile = path.join(
-					path.dirname(this.ledgerPath),
-					`.tmp-ledger-rollback-${Date.now()}-${Math.random().toString(36).slice(2)}.json`,
-				);
-				await fs.promises.writeFile(tempFile, JSON.stringify(ledgerData, null, 2), "utf-8");
-				await fs.promises.rename(tempFile, this.ledgerPath);
-			}
-		} finally {
-			await lock.release().catch(() => {});
-		}
+		await rollbackClaimedTicket(this.ledgerPath, ticketId, reason);
+	}
+
+	/**
+	 * Complete claimed ticket under OS FileLock.
+	 */
+	async completeClaimedTicket(
+		ticketId: string,
+		status: "completed" | "failed" | "cancelled",
+		exitCode = 0,
+		error = "",
+	): Promise<void> {
+		await completeClaimedTicket(this.ledgerPath, ticketId, status, exitCode, error);
 	}
 
 	/**
@@ -913,7 +808,6 @@ export class TopicReplenishmentEngine {
 		let currentRunning = reconciliation.activeUsefulCount;
 
 		while (currentRunning < this.targetCount && currentRunning < this.maxCeiling) {
-			// Re-verify RAM before each worker dispatch
 			const stepMem = await checkMemoryAdmission({ maxPct: this.maxRamPct });
 			if (!stepMem.admitted) {
 				break;
@@ -945,7 +839,6 @@ export class TopicReplenishmentEngine {
 			try {
 				await activeExecutor(ticket);
 			} catch (err) {
-				// Rollback claimed ticket on dispatch failure (Finding 6)
 				await this.rollbackClaimedTicket(ticket.id, String(err));
 				return {
 					reconciliation,
@@ -985,55 +878,19 @@ export class TopicReplenishmentEngine {
 			dispatchWorker?: (ticket: ClaimedTicket) => Promise<unknown>;
 		},
 	): Promise<ReplenishmentOutcome> {
-		// 1. If a ticket was bound to this worker, record completion outcome in ledger
 		if (event.ticketId && fs.existsSync(this.ledgerPath)) {
-			const lock = new FileLock(this.ledgerPath);
-			await lock.acquire(15000).catch(() => {});
 			try {
-				const raw = await fs.promises.readFile(this.ledgerPath, "utf-8");
-				const ledgerData = JSON.parse(raw) as LedgerFileShape;
-				const req = ledgerData.requests?.[event.ticketId];
-				if (req) {
-					const nowIso = new Date().toISOString();
-					const fromState = req.state || "implementation";
-					let nextState = fromState;
-					if (event.status === "completed" && (event.exitCode === 0 || event.exitCode === undefined)) {
-						if (fromState === "implementation") nextState = "QA";
-						else if (fromState === "QA") nextState = "review";
-						else if (fromState === "review") nextState = "awaiting authorization";
-					} else if (event.status === "failed") {
-						req.blocker = event.error || `Worker exited with code ${event.exitCode}`;
-					}
-					req.state = nextState;
-					req.updated_at = nowIso;
-					ledgerData.updated_at = nowIso;
-
-					if (!Array.isArray(req.history)) {
-						req.history = [];
-					}
-					req.history.push({
-						actor: "TopicReplenishmentEngine",
-						timestamp: nowIso,
-						from_state: fromState,
-						to_state: nextState,
-						reason: `Worker completed: status=${event.status}, exitCode=${event.exitCode ?? 0}`,
-					});
-
-					const tempFile = path.join(
-						path.dirname(this.ledgerPath),
-						`.tmp-ledger-finish-${Date.now()}-${Math.random().toString(36).slice(2)}.json`,
-					);
-					await fs.promises.writeFile(tempFile, JSON.stringify(ledgerData, null, 2), "utf-8");
-					await fs.promises.rename(tempFile, this.ledgerPath);
-				}
+				await this.completeClaimedTicket(
+					event.ticketId,
+					event.status,
+					event.exitCode ?? (event.status === "completed" ? 0 : 1),
+					event.error,
+				);
 			} catch {
 				// Non-fatal ledger update error
-			} finally {
-				await lock.release().catch(() => {});
 			}
 		}
 
-		// 2. Remove completed worker from roster snapshot
 		const updatedRoster = currentRoster.filter(w => {
 			if (typeof w === "object" && w !== null && "id" in w) {
 				return w.id !== event.agentId;
@@ -1041,7 +898,6 @@ export class TopicReplenishmentEngine {
 			return true;
 		});
 
-		// 3. Immediately replenish without waiting for operator prompt
 		return this.replenish(updatedRoster, options);
 	}
 
