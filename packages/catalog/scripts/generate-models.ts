@@ -310,9 +310,11 @@ function applyPremiumMultiplierOverrides(models: readonly ModelSpec[]): ModelSpe
 	});
 }
 function applyCodexPricingFallback(models: readonly ModelSpec[]): ModelSpec[] {
-	const openAIModels = new Map(
+	const openAIModels = new Map<string, NonNullable<ModelSpec["cost"]>>(
 		models
-			.filter(model => model.provider === "openai" && hasBillableCost(model.cost))
+			.filter((model): model is typeof model & { cost: NonNullable<ModelSpec["cost"]> } =>
+				model.provider === "openai" && model.cost !== undefined && hasBillableCost(model.cost),
+			)
 			.map(model => [model.id, model.cost]),
 	);
 

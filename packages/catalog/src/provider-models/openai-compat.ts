@@ -4483,7 +4483,7 @@ function createCopilotLongContextVariant(
 		contextWindow: variantWindow,
 		// Long-context tier has its own token prices (Gemini/GPT bill ~2x above
 		// the default boundary). cacheWrite is not reported per tier; inherit.
-		...(longCost && { cost: { ...longCost, cacheWrite: base.cost.cacheWrite } }),
+		...(longCost && { cost: { ...longCost, cacheWrite: base.cost?.cacheWrite ?? 0 } }),
 		contextPromotionTarget: undefined,
 	};
 }

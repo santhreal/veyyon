@@ -35,6 +35,22 @@
 
 ### Fixed
 
+- Normalized model pricing defaults at model construction and cost calculation so custom and discovery models without explicit cost fields do not throw on usage streaming.
+
+## [1.3.0] - 2026-08-28
+
+### Added
+
+- Export `normalizeOllamaBaseUrl` and `toOllamaNativeBaseUrl`, the single definition of how an Ollama base URL is spelled for each of its two APIs.
+- Added the Command Code provider catalog, with its documented coding flagships as the offline seed and credentialed discovery for the wider Provider API list.
+- Added the Nous Research provider catalog, whose credentialed discovery keeps tool-capable chat models and excludes embedding, media-generation and non-tool rows.
+- Added the `publishesOwnModelLimits` provider flag, which stops generation from backfilling a context window or output cap from another host's same-family model.
+- `ProviderWireCapabilities.anthropicMessages` declares how a provider serves the Anthropic Messages API — its endpoint, credential placement, rejected request features and retryable model errors — and `declaredProviders()` and `declaredCapabilityNames()` derive the declaring sets from the table.
+- Bundled model resolution persists a content-verified enriched snapshot, and a registry cache stamp moves on every row-content write, and on a row crossing the freshness window it is read under, without treating SQLite sidecar churn or a provider re-verifying models it already had as a change.
+- Added `supportsServerCompaction` capability data for ChatGPT Codex backend models on the Responses API.
+
+### Fixed
+
 - The Claude Code fingerprint version is 2.1.257, so Anthropic OAuth requests for current models are no longer rejected with `claude_code_version_too_old`.
 - ChatGPT Codex discovery identifies as Codex CLI 0.153.2, the floor `gpt-6-astra` requires, so a subscription that has the model lists it instead of receiving the pre-0.153 model set.
 - A ChatGPT Codex model's effort ladder and `apply_patch` tool type come from the `supported_reasoning_levels` and `apply_patch_tool_type` the endpoint declares for that row, so a newly listed SKU offers effort control at once instead of arriving with none until models.dev catalogs it.

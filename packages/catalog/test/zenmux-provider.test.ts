@@ -87,13 +87,13 @@ describe("zenmux provider support", () => {
 		expect(anthropic?.api).toBe("anthropic-messages");
 		expect(anthropic?.baseUrl).toBe("https://zenmux.ai/api/anthropic");
 		expect(anthropic?.input).toEqual(["text", "image"]);
-		expect(anthropic?.cost.input).toBe(15);
-		expect(anthropic?.cost.cacheWrite).toBe(18.75);
+		expect(anthropic?.cost?.input).toBe(15);
+		expect(anthropic?.cost?.cacheWrite).toBe(18.75);
 
 		const openai = models?.find(model => model.id === "openai/gpt-5.2");
 		expect(openai?.api).toBe("openai-completions");
 		expect(openai?.baseUrl).toBe("https://zenmux.ai/api/v1");
-		expect(openai?.cost.output).toBe(10);
+		expect(openai?.cost?.output).toBe(10);
 	});
 
 	test("discovers models without an API key and sends no Authorization header", async () => {
@@ -137,6 +137,6 @@ describe("zenmux provider support", () => {
 		const free = models?.find(model => model.id === "anthropic/claude-fable-5-free");
 		expect(free?.api).toBe("anthropic-messages");
 		expect(free?.baseUrl).toBe("https://zenmux.ai/api/anthropic");
-		expect(free?.cost.input).toBe(0);
+		expect(free?.cost?.input).toBe(0);
 	});
 });
