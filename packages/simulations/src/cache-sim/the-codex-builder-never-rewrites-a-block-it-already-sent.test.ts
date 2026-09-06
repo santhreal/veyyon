@@ -80,6 +80,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { NON_VIDEO_MODEL_PLACEHOLDER } from "@veyyon/ai/providers/vision-content";
 import type { AssistantMessage, Context, Message, ToolResultMessage, UserMessage } from "@veyyon/ai/types";
 import { emptyUsage } from "@veyyon/catalog/models";
 import { captureImplicitBody, implicitBlocksOf, padding, systemPrompt } from "./harness";
@@ -108,6 +109,7 @@ const PART_SENTINEL: Record<PartKind, string> = {
 	redactedThinking: "SENTINEL_REDACTED_be55",
 	fallback: "SENTINEL_FALLBACK_02da",
 	toolCall: "SENTINEL_TOOLCALL_71bc",
+	video: "SENTINEL_VIDEO_3d9a",
 };
 
 /**
@@ -120,8 +122,12 @@ const PART_SENTINEL: Record<PartKind, string> = {
  * (`AnthropicFallbackContent` in `@veyyon/ai/types`). `redactedThinking` has no
  * Responses-family equivalent: reasoning replays as a `reasoning` item rebuilt
  * from the signature, and an opaque redacted block cannot be turned into one.
+ * `video` is not dropped but REPLACED: the Responses converter substitutes
+ * `NON_VIDEO_MODEL_PLACEHOLDER` for the block (`convertResponsesInputContent`),
+ * so the sentinel bytes never cross and the placeholder's presence is what the
+ * sweep asserts for the kind below.
  */
-const STRIPPED_BEFORE_THE_WIRE: readonly PartKind[] = ["fallback", "redactedThinking"];
+const STRIPPED_BEFORE_THE_WIRE: readonly PartKind[] = ["fallback", "redactedThinking", "video"];
 
 /**
  * The fields every assistant turn in this file shares. `usage` is required on the
@@ -179,6 +185,7 @@ function messagesCarryingEveryKind(): Message[] {
 			content: [
 				{ type: "text", text: `open the audit ${PART_SENTINEL.text}` },
 				{ type: "image", data: PART_SENTINEL.image, mimeType: "image/png" },
+				{ type: "video", data: PART_SENTINEL.video, mimeType: "video/mp4" },
 			],
 			timestamp: 0,
 		},
@@ -356,6 +363,10 @@ describe("the Codex builder never rewrites a block it already sent", () => {
 		// wire would otherwise be absorbed by the exemption and the sweep would
 		// keep claiming to cover it.
 		expect(missing).toEqual([...STRIPPED_BEFORE_THE_WIRE].sort());
+
+		// `video` is exempt because its bytes are substituted, and the substitute
+		// is the proof the block was converted rather than dropped.
+		expect(wire.includes(NON_VIDEO_MODEL_PLACEHOLDER)).toBe(true);
 	});
 
 	it("replays a stored reasoning item rather than dropping it", async () => {

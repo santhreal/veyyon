@@ -162,9 +162,10 @@ export function ollamaCloudModelManagerOptions(
 					const thinking = capabilities ? getThinkingConfig(id, capabilities) : reference?.thinking;
 					const input = capabilities
 						? capabilities.includes("vision")
-							? (["text", "image"] as Array<"text" | "image">)
-							: (["text"] as Array<"text">)
-						: ((reference?.input as Array<"text" | "image"> | undefined) ?? (["text"] as Array<"text">));
+							? (["text", "image"] as Array<"text" | "image" | "video">)
+							: (["text"] as Array<"text" | "image" | "video">)
+						: ((reference?.input as Array<"text" | "image" | "video"> | undefined) ??
+							(["text"] as Array<"text" | "image" | "video">));
 					const resolvedName = entry.name && entry.name !== id ? entry.name : (reference?.name ?? id);
 					return {
 						id,

@@ -1,0 +1,20 @@
+[meta]
+version = 1
+name = "surface_palette"
+
+[geometry]
+width_px = 576
+max_height_px = 420
+radius = "xxl"
+elevation_level = 4
+
+[input]
+row_height_px = 40
+inset = "s8"
+search_icon_px = 16
+
+[results]
+row_height_px = 36
+group_header_height_px = 20
+footer_height_px = 32
+key_hint_size = "micro"

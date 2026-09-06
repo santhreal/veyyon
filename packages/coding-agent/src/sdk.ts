@@ -1421,7 +1421,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	// / session would silently miss credential_disabled events.
 	const modelRegistry =
 		options.modelRegistry ??
-		new ModelRegistry(options.authStorage ?? (await logger.time("discoverModels", discoverAuthStorage, agentDir)));
+		new ModelRegistry(
+			options.authStorage ?? (await logger.time("discoverModels", discoverAuthStorage, agentDir)),
+			path.join(agentDir, "models.json"),
+		);
 	// Track whether we internally created the authStorage so we can close it
 	// if construction fails before the session takes ownership.
 	const ownsAuthStorage = !options.authStorage && !options.modelRegistry;

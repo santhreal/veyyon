@@ -30,6 +30,14 @@ export interface ImageContent {
 	mimeType: string;
 }
 
+export interface VideoContent {
+	type: "video";
+	/** Base64-encoded video data. */
+	data: string;
+	/** e.g. "video/mp4". */
+	mimeType: string;
+}
+
 export interface ThinkingContent {
 	type: "thinking";
 	thinking: string;
@@ -114,7 +122,7 @@ export interface WireUsage {
  */
 export interface WireUserMessage {
 	role: "user";
-	content: string | (TextContent | ImageContent)[];
+	content: string | (TextContent | ImageContent | VideoContent)[];
 	/** True if the message was injected by the system (e.g. auto-continue). */
 	synthetic?: boolean;
 	/** Unix timestamp in milliseconds. */
@@ -124,7 +132,7 @@ export interface WireUserMessage {
 /** A developer turn, as a guest receives it. Narrower than `DeveloperMessage` in `@veyyon/ai`. */
 export interface WireDeveloperMessage {
 	role: "developer";
-	content: string | (TextContent | ImageContent)[];
+	content: string | (TextContent | ImageContent | VideoContent)[];
 	timestamp: number;
 }
 
@@ -159,7 +167,7 @@ export interface WireToolResultMessage {
 	role: "toolResult";
 	toolCallId: string;
 	toolName: string;
-	content: (TextContent | ImageContent)[];
+	content: (TextContent | ImageContent | VideoContent)[];
 	details?: unknown;
 	isError: boolean;
 	timestamp: number;
@@ -231,7 +239,7 @@ export interface WirePythonExecutionMessage {
 export interface WireCustomMessage {
 	role: "custom";
 	customType: string;
-	content: string | (TextContent | ImageContent)[];
+	content: string | (TextContent | ImageContent | VideoContent)[];
 	display: boolean;
 	details?: unknown;
 	timestamp: number;
@@ -241,7 +249,7 @@ export interface WireCustomMessage {
 export interface WireHookMessage {
 	role: "hookMessage";
 	customType: string;
-	content: string | (TextContent | ImageContent)[];
+	content: string | (TextContent | ImageContent | VideoContent)[];
 	display: boolean;
 	details?: unknown;
 	timestamp: number;
@@ -377,7 +385,7 @@ export interface MessageEntry extends EntryBase {
 export interface CustomMessageEntry extends EntryBase {
 	type: "custom_message";
 	customType: string;
-	content: string | (TextContent | ImageContent)[];
+	content: string | (TextContent | ImageContent | VideoContent)[];
 	details?: unknown;
 	display: boolean;
 }

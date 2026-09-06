@@ -46,7 +46,7 @@ packages/ai/test/.temp-images/
 .worktrees/
 .worktree/
 compaction-results/
-changes/
+/changes/
 __pycache__/
 
 # Scratch files
@@ -184,6 +184,13 @@ rr-session-*.res.log
 # every worktree that checked it out, because the agent that owned it kept appending.
 # The transcript is the conversation verbatim: prompts, file contents, tool output.
 */sessions/*.jsonl
+
+# The same transcript written to the repository root instead of a sessions directory.
+# The name is the session id, 36 characters of UUID with no extension, so the rule
+# above does not reach it and 21 of them accumulated in one working tree. The first
+# line is a title record and the second declares `"cwd":"."`, which is what puts the
+# file here rather than under an agent directory.
+/????????-????-????-????-????????????
 scratch-settings-probes/
 
 # The release-notes staging buffer. `scripts/ci-release-notes.ts` writes it from

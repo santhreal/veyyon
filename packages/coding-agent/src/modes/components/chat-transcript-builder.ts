@@ -14,6 +14,7 @@
 import type { AgentMessage, AgentTool } from "@veyyon/agent-core";
 import type { Usage } from "@veyyon/ai";
 import { Text, type TUI } from "@veyyon/tui";
+import { formatBytes } from "@veyyon/utils/format";
 import type { AdvisorMessageDetails } from "../../advisor";
 import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../collab/protocol";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
@@ -27,6 +28,7 @@ import {
 	type SkillPromptDetails,
 } from "../../session/messages";
 import type { SessionMessageEntry } from "../../session/session-entries";
+import { base64DecodedBytes } from "../../utils/video-loading";
 import { theme } from "../theme/theme";
 import {
 	assistantHasVisibleContent,
@@ -73,10 +75,17 @@ export interface ChatTranscriptBuilderDeps {
 /** Extracts the plain-text content of a user message (string or text blocks). */
 function userMessageText(message: Extract<AgentMessage, { role: "user" }>): string {
 	if (typeof message.content === "string") return message.content;
-	return message.content
-		.filter((block): block is { type: "text"; text: string } => block.type === "text")
-		.map(block => block.text)
-		.join("");
+	const parts: string[] = [];
+	for (const block of message.content) {
+		if (block.type === "text") {
+			parts.push(block.text);
+		} else if (block.type === "video") {
+			const bytes = base64DecodedBytes(block.data);
+			const marker = `[${block.mimeType} · ${formatBytes(bytes)}]`;
+			parts.push(parts.length > 0 && !parts[parts.length - 1]!.endsWith("\n") ? `\n${marker}` : marker);
+		}
+	}
+	return parts.join("");
 }
 
 export class ChatTranscriptBuilder {

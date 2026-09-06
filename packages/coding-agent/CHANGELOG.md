@@ -4,6 +4,12 @@
 
 ### Added
 
+- Prompt attachments support video inputs alongside images, with input modality validation and desktop wire protocol integration.
+- The GUI host engine server connects desktop clients over unix domain sockets and TCP with live session streaming and capability negotiation via the veyyon gui CLI command.
+- The GUI host engine server runs prompt submissions as real turns, streaming transcript updates and assistant deltas to desktop clients while supporting aborts, session continuation, and truthful capability snapshots.
+- The GUI host serves every desktop domain from the real subsystem: session compaction, handoff, branching and export, the workspace file tree, file contents and search, git changes by scope, PTY terminals with streamed output, supervised processes through the launch daemon, model and thinking-level selection, provider authentication, MCP servers and tool calls, subagent tasks, diagnostics, usage, settings, themes and keybindings; an action that cannot be served fails with a typed error naming why.
+- The GUI host settles a prompt, steer or follow-up once the session accepts it, so the composer clears while the turn streams; a tool cancellation targets the running tool call and fails naming a stale one.
+- `startGuiHostServer` takes the credential store the host reads and writes; the default follows the profile's credential sharing as before.
 - The `/autoswarm` dashboard lists a `New session` action (`n`) over an existing session, which closes it keeping every file and every logged run and starts a fresh one with the setup as it stands.
 - Swarm presets: `swarm` and `wide` are built in, and the console saves the current shape under a name to `presets.json` beside the autoresearch databases, offered in every repository.
 - The run screen's `running` row shows the last twelve lines the harness printed under the command, refreshed once a second, with escapes stripped and a carriage-return progress row shown in its final state.
@@ -85,6 +91,20 @@
 - The status row reads its premium-request formatter from `@veyyon/utils/format` instead of `@veyyon/stats/format`, so painting the card no longer evaluates the stats package. No visible change to the row.
 - The status row's non-message token accounting lives in `session/non-message-tokens.ts`, so painting the launch card no longer evaluates the compaction layer or the tokenizer through `session/context-usage.ts`, and `config/inline-tool-descriptors-mode.ts` reads `modelFamilyToken` from `@veyyon/catalog/identity/family` instead of the identity barrel. No change to the counts the row reports.
 - The host capability probe and the environment it measures against moved out of the session budget module into `session/cgroup-host.ts`, and the capabilities a probe reports no longer carry the field it used to pick a cgroup parent. No behavior change.
+- The desktop host states that profile theme listing is unavailable rather than describing a theme selection it never owned.
+- The desktop renderer repaints only the region a state change declares, keeps unaffected content in a retained texture, clips rounded and path-bounded subtrees, and reuses shaped text across frames; GPUI is vendored from the private canonical `santhreal/gpui` repository.
+- The native desktop composer integrates model selection and an up-arrow primary action, with secondary turn actions in slash commands and a separate stop control during active turns.
+- Native desktop palettes retain their closing transition and reverse from their current position when reopened.
+- Desktop controls reuse installed theme tokens rather than parsing bundled fallback tokens during each render.
+
+### Fixed
+
+- The GUI host omits a setting whose value or schema default resolves to `undefined` from the settings snapshot instead of shipping the entry without the `value` and `default` fields, which the desktop decoder rejected as a fatal protocol error and dropped the connection; observed with `auth.broker.token` on a host with no broker token.
+- A comment in the GUI host frame decoder names the Rust file that mirrors the frame-size bound correctly. No behavior change.
+- The desktop host names one accumulating entry per streamed reply, so the desktop replaces that entry as the reply grows; while unreleased every delta carried a new name and one reply drew as a column of duplicates.
+- Native desktop drafts and attachments clear only after the matching host acknowledgment succeeds, while failed requests retain submitted content.
+- Desktop capability scenes initialize draft text so turn submission availability remains visible in rendered scenes.
+- Desktop keyboard and pointer actions notify the host observer at the shared dispatch boundary without waiting for an unrelated repaint.
 - The first-frame recording is written by `startup/first-frame-recorder.ts` through the shared `atomicWriteFileSync` instead of a hand-rolled temp-and-rename, so the cache file is created owner-readable only; the replay reader on the boot path still reaches node builtins only.
 - A cold launch states the context gauge as soon as the session knows its usage instead of when the live status row mounts: the at-rest context record fires on session construction and the launch card repaints on it. A warm launch repaints nothing.
 - The launch card paints the working directory on the status row instead of leaving it blank until the session mounts. Measured on a pty, the row named the directory at 59-62ms with the card rather than at 1067-1083ms; the model, mode and context gauge still arrive with the session, to the right of it.
@@ -256,6 +276,7 @@
 
 ### Removed
 
+- Removed the unused desktop SplitButton primitive and its registered scene.
 - `subagent.sharedModel`, `subagent.model`, `subagent.thinkingLevel` and `subagent.modelByDepth` decided the model and effort for every subagent at once and are rejected; a config still holding one is reported once, naming the agent page that replaces it.
 - The `--subagent-model` launch flag, which set the model for every subagent in the session.
 - The `--project` flag on `veyyon agents unpack`, which wrote definitions to `./.veyyon/agents`; there is no project scope for subagent discovery, so those files were never loaded.

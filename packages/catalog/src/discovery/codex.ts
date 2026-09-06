@@ -330,15 +330,15 @@ function declaredReasoningOptions(supportedReasoningLevels: unknown): ModelReaso
 	return efforts.length > 0 ? { efforts: canonicalizeEfforts(efforts) } : undefined;
 }
 
-function normalizeInputModalities(inputModalities: unknown): ("text" | "image")[] {
+function normalizeInputModalities(inputModalities: unknown): ("text" | "image" | "video")[] {
 	if (!Array.isArray(inputModalities)) {
 		return ["text", "image"];
 	}
 
-	const set = new Set<"text" | "image">();
+	const set = new Set<"text" | "image" | "video">();
 	for (const modality of inputModalities) {
 		const normalized = toNonEmptyString(modality)?.toLowerCase();
-		if (normalized === "text" || normalized === "image") {
+		if (normalized === "text" || normalized === "image" || normalized === "video") {
 			set.add(normalized);
 		}
 	}
@@ -347,7 +347,7 @@ function normalizeInputModalities(inputModalities: unknown): ("text" | "image")[
 		return ["text", "image"];
 	}
 
-	const canonical: ("text" | "image")[] = ["text", "image"];
+	const canonical: ("text" | "image" | "video")[] = ["text", "image", "video"];
 	return canonical.filter(modality => set.has(modality));
 }
 

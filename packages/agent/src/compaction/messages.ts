@@ -5,6 +5,7 @@ import type {
 	ProviderPayload,
 	TextContent,
 	ToolResultMessage,
+	VideoContent,
 } from "@veyyon/ai";
 import * as prompt from "@veyyon/utils/prompt";
 import { AGENT_PROMPTS } from "../prompts/registry";
@@ -40,7 +41,7 @@ function withoutSummaryPresentationTags(summary: string): string {
 export interface CustomMessage<T = unknown> {
 	role: "custom";
 	customType: string;
-	content: string | (TextContent | ImageContent)[];
+	content: string | (TextContent | ImageContent | VideoContent)[];
 	display: boolean;
 	details?: T;
 	/** Who initiated this message for billing/attribution semantics. */
@@ -52,7 +53,7 @@ export interface CustomMessage<T = unknown> {
 export interface HookMessage<T = unknown> {
 	role: "hookMessage";
 	customType: string;
-	content: string | (TextContent | ImageContent)[];
+	content: string | (TextContent | ImageContent | VideoContent)[];
 	display: boolean;
 	details?: T;
 	/** Who initiated this message for billing/attribution semantics. */
@@ -83,7 +84,7 @@ export interface CompactionSummaryMessage {
 	/** Legacy runtime-only archive blocks from the removed image-archive engine:
 	 *  old text region, imaged middle, then new text region. Never written by new
 	 *  sessions; retained so old persisted summaries still deserialize and count. */
-	blocks?: (TextContent | ImageContent)[];
+	blocks?: (TextContent | ImageContent | VideoContent)[];
 	/** Legacy image-archive blocks, kept for display counts / old-session consumers. */
 	images?: ImageContent[];
 	/** Post-pass dead-end warning attached to this compaction (progress guard). */
@@ -103,7 +104,7 @@ declare module "../types" {
 }
 export type ConvertToLlm = (messages: AgentMessage[]) => Message[];
 
-function getPrunedToolResultContent(message: ToolResultMessage): (TextContent | ImageContent)[] {
+function getPrunedToolResultContent(message: ToolResultMessage): (TextContent | ImageContent | VideoContent)[] {
 	if (message.prunedAt === undefined) {
 		return message.content;
 	}
@@ -136,7 +137,7 @@ export function createCompactionSummaryMessage(
 	shortSummary?: string,
 	providerPayload?: ProviderPayload,
 	images?: ImageContent[],
-	blocks?: (TextContent | ImageContent)[],
+	blocks?: (TextContent | ImageContent | VideoContent)[],
 	warning?: string,
 	compactedBy?: string,
 ): CompactionSummaryMessage {
@@ -159,7 +160,7 @@ export function createCompactionSummaryMessage(
 
 export function createCustomMessage(
 	customType: string,
-	content: string | (TextContent | ImageContent)[],
+	content: string | (TextContent | ImageContent | VideoContent)[],
 	display: boolean,
 	details: unknown | undefined,
 	timestamp: string,

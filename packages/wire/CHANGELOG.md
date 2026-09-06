@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `VideoContent` joins the user, developer, tool-result and custom message content unions so collab guests receive video attachments.
+
 ## [16.3.0] - 2026-07-02
 
 ### Breaking Changes

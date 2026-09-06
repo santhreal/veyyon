@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+
+- Model input capability support includes `"video"` for video-capable models.
 ## [1.4.0] - 2026-09-04
 
 ### Added

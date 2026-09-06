@@ -6,6 +6,12 @@
 
 ### Added
 
+- Prompt attachments support video inputs alongside images, with input modality validation and desktop wire protocol integration.
+- The GUI host engine server connects desktop clients over unix domain sockets and TCP with live session streaming and capability negotiation via the veyyon gui CLI command.
+- The GUI host engine server runs prompt submissions as real turns, streaming transcript updates and assistant deltas to desktop clients while supporting aborts, session continuation, and truthful capability snapshots.
+- The GUI host serves every desktop domain from the real subsystem: session compaction, handoff, branching and export, the workspace file tree, file contents and search, git changes by scope, PTY terminals with streamed output, supervised processes through the launch daemon, model and thinking-level selection, provider authentication, MCP servers and tool calls, subagent tasks, diagnostics, usage, settings, themes and keybindings; an action that cannot be served fails with a typed error naming why.
+- The GUI host settles a prompt, steer or follow-up once the session accepts it, so the composer clears while the turn streams; a tool cancellation targets the running tool call and fails naming a stale one.
+- `startGuiHostServer` takes the credential store the host reads and writes; the default follows the profile's credential sharing as before.
 - The `/autoswarm` dashboard lists a `New session` action (`n`) over an existing session, which closes it keeping every file and every logged run and starts a fresh one with the setup as it stands.
 - Swarm presets: `swarm` and `wide` are built in, and the console saves the current shape under a name to `presets.json` beside the autoresearch databases, offered in every repository.
 - The run screen's `running` row shows the last twelve lines the harness printed under the command, refreshed once a second, with escapes stripped and a carriage-return progress row shown in its final state.
@@ -60,6 +66,10 @@
 - Machine-wide resource limits cap CPU, memory, disk writes and process count across every veyyon process at once, beside the existing per-session limits, in `/settings` under Resources; both scopes default to no limit.
 - The two resource-limit scopes share one definition of each cgroup control-file format, with no user-visible change: the duplicate the machine scope carried while unreleased could write a freeze quota for a very small CPU budget.
 - `bun run test:cgroup-proof` drives both resource-limit scopes against a real kernel outside the test sandbox and reports each cap as held or not, refusing with a named reason on a host that cannot delegate cgroups rather than passing having proved nothing.
+- `VideoContent` support across provider serialization and fallback placeholder handling.
+- Model input capability support includes `"video"` for video-capable models.
+- `SUPPORTED_VIDEO_MIME_TYPES` exports the supported video MIME types (`video/mp4`, `video/webm`, `video/quicktime`).
+- `VideoContent` joins the user, developer, tool-result and custom message content unions so collab guests receive video attachments.
 - The run screen's session pane shows the number of runs since the segment's best one as `Since  8 runs later, none better`, and a `Trend` row of one block per run, oldest on the left, scaled between the segment's lowest and highest measurements; an unmeasured run draws as `·`, and a segment wider than the pane draws its most recent runs behind a leading `…`.
 - The autoresearch status row shows the same gap as `2 since best`, and drops that segment before the best metric when the terminal is too narrow for both.
 - The autoswarm setup console states under its title what Enter does on this branch: resumes the named session with its run count, or starts one, with whether `autoresearch.sh` exists or the first turn writes it; over a session the legend reads `enter resume`.
@@ -114,6 +124,12 @@
 - The status row reads its premium-request formatter from `@veyyon/utils/format` instead of `@veyyon/stats/format`, so painting the card no longer evaluates the stats package. No visible change to the row.
 - The status row's non-message token accounting lives in `session/non-message-tokens.ts`, so painting the launch card no longer evaluates the compaction layer or the tokenizer through `session/context-usage.ts`, and `config/inline-tool-descriptors-mode.ts` reads `modelFamilyToken` from `@veyyon/catalog/identity/family` instead of the identity barrel. No change to the counts the row reports.
 - The host capability probe and the environment it measures against moved out of the session budget module into `session/cgroup-host.ts`, and the capabilities a probe reports no longer carry the field it used to pick a cgroup parent. No behavior change.
+- The desktop host states that profile theme listing is unavailable rather than describing a theme selection it never owned.
+- The desktop renderer repaints only the region a state change declares, keeps unaffected content in a retained texture, clips rounded and path-bounded subtrees, and reuses shaped text across frames; GPUI is vendored from the private canonical `santhreal/gpui` repository.
+- The native desktop composer integrates model selection and an up-arrow primary action, with secondary turn actions in slash commands and a separate stop control during active turns.
+- Native desktop palettes retain their closing transition and reverse from their current position when reopened.
+- Desktop controls reuse installed theme tokens rather than parsing bundled fallback tokens during each render.
+- Custom message, compaction summary and session entry content unions admit `VideoContent` alongside text and images.
 - The first-frame recording is written by `startup/first-frame-recorder.ts` through the shared `atomicWriteFileSync` instead of a hand-rolled temp-and-rename, so the cache file is created owner-readable only; the replay reader on the boot path still reaches node builtins only.
 - A cold launch states the context gauge as soon as the session knows its usage instead of when the live status row mounts: the at-rest context record fires on session construction and the launch card repaints on it. A warm launch repaints nothing.
 - The launch card paints the working directory on the status row instead of leaving it blank until the session mounts. Measured on a pty, the row named the directory at 59-62ms with the card rather than at 1067-1083ms; the model, mode and context gauge still arrive with the session, to the right of it.
@@ -171,8 +187,18 @@
 - The tagline under the wordmark on the session welcome hero, which the launch card and the mounted hero each printed.
 - The `@veyyon/stats/format` entry point. `formatCostTiered` and `normalizePremiumRequests` are now exported by `@veyyon/utils/format`.
 
+### Removed
+
+- Removed the unused desktop SplitButton primitive and its registered scene.
+
 ### Fixed
 
+- The GUI host omits a setting whose value or schema default resolves to `undefined` from the settings snapshot instead of shipping the entry without the `value` and `default` fields, which the desktop decoder rejected as a fatal protocol error and dropped the connection; observed with `auth.broker.token` on a host with no broker token.
+- A comment in the GUI host frame decoder names the Rust file that mirrors the frame-size bound correctly. No behavior change.
+- The desktop host names one accumulating entry per streamed reply, so the desktop replaces that entry as the reply grows; while unreleased every delta carried a new name and one reply drew as a column of duplicates.
+- Native desktop drafts and attachments clear only after the matching host acknowledgment succeeds, while failed requests retain submitted content.
+- Desktop capability scenes initialize draft text so turn submission availability remains visible in rendered scenes.
+- Desktop keyboard and pointer actions notify the host observer at the shared dispatch boundary without waiting for an unrelated repaint.
 - `/login` for a provider that takes a pasted API key (OpenAI Platform, Groq, xAI and every other key provider) shows the dashboard where a key is obtained and prompts for the paste, instead of opening a platform login page in the browser as if it were an OAuth sign-in; the setup wizard likewise neither opens nor copies that URL.
 - The `/login` picker prints `api key` or `browser login` beside every provider, and the two OpenAI rows read `OpenAI Platform` and `ChatGPT (Codex subscription)`, so a key paste and a subscription sign-in are told apart before one is chosen.
 - `vey auth-broker login <provider>` prints `Get an API key at:` for a key provider instead of `Open this URL in your browser:`.

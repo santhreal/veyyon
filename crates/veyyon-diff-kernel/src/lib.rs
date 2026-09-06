@@ -31,7 +31,8 @@ use std::{
 	io::{self, Write},
 };
 
-use similar::{DiffOp, DiffTag};
+use similar::DiffOp;
+pub use similar::DiffTag;
 
 /// The column a tab advances to when `-E` expands one.
 ///
@@ -566,8 +567,8 @@ fn compareseq(xv: &[usize], yv: &[usize]) -> (Vec<bool>, Vec<bool>) {
 /// the start and one past the end of both flag arrays and relies on those reads
 /// answering "not changed"; the accessor below answers that for any index,
 /// which is the same thing GNU gets from its zero-filled guard elements.
-fn shift_one_side(changed: &mut [bool], other_changed: &[bool], equivs: &[usize]) {
-	fn flag(flags: &[bool], index: isize) -> bool {
+const fn shift_one_side(changed: &mut [bool], other_changed: &[bool], equivs: &[usize]) {
+	const fn flag(flags: &[bool], index: isize) -> bool {
 		index >= 0 && (index as usize) < flags.len() && flags[index as usize]
 	}
 
@@ -799,6 +800,115 @@ impl<'a> Unified<'a> {
 		}
 		Ok(())
 	}
+}
+
+/// Split a string into word tokens and their byte ranges.
+///
+/// Words are split into alphanumeric/underscore runs, whitespace runs,
+/// and individual punctuation characters.
+fn tokenize_words(text: &str) -> (Vec<Cow<'_, str>>, Vec<std::ops::Range<usize>>) {
+	let mut words = Vec::new();
+	let mut ranges = Vec::new();
+	let mut char_indices = text.char_indices().peekable();
+
+	while let Some((start, ch)) = char_indices.next() {
+		let is_word = ch.is_alphanumeric() || ch == '_';
+		let is_ws = ch.is_whitespace();
+		let mut end = start + ch.len_utf8();
+
+		if is_word {
+			while let Some(&(_, next_ch)) = char_indices.peek() {
+				if next_ch.is_alphanumeric() || next_ch == '_' {
+					end += next_ch.len_utf8();
+					char_indices.next();
+				} else {
+					break;
+				}
+			}
+		} else if is_ws {
+			while let Some(&(_, next_ch)) = char_indices.peek() {
+				if next_ch.is_whitespace() {
+					end += next_ch.len_utf8();
+					char_indices.next();
+				} else {
+					break;
+				}
+			}
+		}
+		ranges.push(start..end);
+		words.push(Cow::Borrowed(&text[start..end]));
+	}
+	(words, ranges)
+}
+
+/// Align two strings at the word level, returning the op tag and the byte
+/// ranges in `old` and `new`.
+///
+/// Word boundaries split on alphanumeric/underscore runs, whitespace runs,
+/// and individual punctuation characters. The alignment uses GNU diff's
+/// `compareseq` and boundary shifting over word keys.
+#[must_use]
+pub fn align_words(
+	old: &str,
+	new: &str,
+) -> Vec<(DiffTag, std::ops::Range<usize>, std::ops::Range<usize>)> {
+	if old == new {
+		if old.is_empty() {
+			return Vec::new();
+		}
+		return vec![(DiffTag::Equal, 0..old.len(), 0..new.len())];
+	}
+
+	let (old_tokens, old_ranges) = tokenize_words(old);
+	let (new_tokens, new_ranges) = tokenize_words(new);
+
+	if old_tokens.is_empty() && new_tokens.is_empty() {
+		return Vec::new();
+	}
+	if old_tokens.is_empty() {
+		return vec![(DiffTag::Insert, 0..0, 0..new.len())];
+	}
+	if new_tokens.is_empty() {
+		return vec![(DiffTag::Delete, 0..old.len(), 0..0)];
+	}
+
+	let ops = aligned_ops(&old_tokens, &new_tokens);
+	let mut result = Vec::with_capacity(ops.len());
+
+	for op in ops {
+		let (tag, old_range, new_range) = op.as_tag_tuple();
+		let old_byte_range = if old_range.is_empty() {
+			let offset = old_range
+				.start
+				.checked_sub(1)
+				.and_then(|idx| old_ranges.get(idx).map(|r| r.end))
+				.or_else(|| old_ranges.get(old_range.start).map(|r| r.start))
+				.unwrap_or(0);
+			offset..offset
+		} else {
+			let start = old_ranges[old_range.start].start;
+			let end = old_ranges[old_range.end - 1].end;
+			start..end
+		};
+
+		let new_byte_range = if new_range.is_empty() {
+			let offset = new_range
+				.start
+				.checked_sub(1)
+				.and_then(|idx| new_ranges.get(idx).map(|r| r.end))
+				.or_else(|| new_ranges.get(new_range.start).map(|r| r.start))
+				.unwrap_or(0);
+			offset..offset
+		} else {
+			let start = new_ranges[new_range.start].start;
+			let end = new_ranges[new_range.end - 1].end;
+			start..end
+		};
+
+		result.push((tag, old_byte_range, new_byte_range));
+	}
+
+	result
 }
 
 /// Whether every line this ONE change touches has an empty key: GNU's test for

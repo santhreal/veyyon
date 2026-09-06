@@ -462,6 +462,9 @@ export const repoScriptTests = [
 	// it enforces stops being enforced the moment nobody reruns it by hand.
 	"scripts/an-off-screen-raster-never-enters-assets.test.ts",
 	"scripts/one-owner-answers-a-command-lookup.test.ts",
+	// No source file the build reads is ignored, and no unanchored pattern names
+	// a directory that holds source.
+	"scripts/every-source-file-the-build-reads-is-in-the-repository.test.ts",
 	// The ChatGPT Codex compaction route has been broken and re-fixed 50+ times, and
 	// each break falls back to paid local compaction that busts the prompt cache. The
 	// suite hashes the file, so editing it at all fails CI until an operator records

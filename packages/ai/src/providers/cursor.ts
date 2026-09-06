@@ -133,6 +133,7 @@ import type {
 	Tool,
 	ToolCall,
 	ToolResultMessage,
+	VideoContent,
 } from "../types";
 import { normalizeSystemPrompts } from "../utils";
 import {
@@ -149,6 +150,7 @@ import { AssistantMessageEventStream } from "../utils/event-stream";
 import { connectProxiedSocket, getProxyForProvider, shouldBypassProxy } from "../utils/proxy";
 import { createRequestDebugSession, isRequestDebugEnabled, type RequestDebugResponseLog } from "../utils/request-debug";
 import { toolWireSchema } from "../utils/schema/wire";
+import { NON_VIDEO_MODEL_PLACEHOLDER } from "./vision-content";
 
 /**
  * Cursor's API host.
@@ -1906,7 +1908,15 @@ async function applyToolResultHandler(
 }
 
 function toolResultToText(toolResult: ToolResultMessage): string {
-	return toolResult.content.map(item => (item.type === "text" ? item.text : `[${item.mimeType} image]`)).join("\n");
+	return toolResult.content
+		.map(item =>
+			item.type === "text"
+				? item.text
+				: item.type === "video"
+					? NON_VIDEO_MODEL_PLACEHOLDER
+					: `[${item.mimeType} image]`,
+		)
+		.join("\n");
 }
 
 function toolResultWasTruncated(toolResult: ToolResultMessage): boolean {
@@ -2514,6 +2524,14 @@ function buildMcpResultFromToolResult(_mcpCall: CursorMcpCall, toolResult: ToolR
 				},
 			});
 		}
+		if (item.type === "video") {
+			return create(McpToolResultContentItemSchema, {
+				content: {
+					case: "text",
+					value: create(McpTextContentSchema, { text: NON_VIDEO_MODEL_PLACEHOLDER }),
+				},
+			});
+		}
 		return create(McpToolResultContentItemSchema, {
 			content: {
 				case: "text",
@@ -3015,7 +3033,9 @@ function hasUserMessageImages(msg: Message): boolean {
 
 type CursorRootPromptContentPart = { type: "text"; text: string } | { type: "image"; image: string; mediaType: string };
 
-function buildCursorRootPromptContent(content: string | (TextContent | ImageContent)[]): CursorRootPromptContentPart[] {
+export function buildCursorRootPromptContent(
+	content: string | (TextContent | ImageContent | VideoContent)[],
+): CursorRootPromptContentPart[] {
 	if (typeof content === "string") {
 		const text = content.trim();
 		return text ? [{ type: "text", text }] : [];
@@ -3027,6 +3047,8 @@ function buildCursorRootPromptContent(content: string | (TextContent | ImageCont
 			if (text) {
 				parts.push({ type: "text", text });
 			}
+		} else if (item.type === "video") {
+			parts.push({ type: "text", text: NON_VIDEO_MODEL_PLACEHOLDER });
 		} else {
 			parts.push({ type: "image", image: item.data, mediaType: item.mimeType });
 		}
@@ -3034,7 +3056,7 @@ function buildCursorRootPromptContent(content: string | (TextContent | ImageCont
 	return parts;
 }
 
-function cursorUserContentKey(content: string | (TextContent | ImageContent)[]): string {
+export function cursorUserContentKey(content: string | (TextContent | ImageContent | VideoContent)[]): string {
 	if (typeof content === "string") {
 		return content.trim();
 	}
@@ -3276,7 +3298,7 @@ export function buildCursorHistoryForTest(
 	return { rootPromptMessagesJson, turnUserMessagesJson, turnStepMessagesJson };
 }
 function createCursorUserMessage(
-	content: string | (TextContent | ImageContent)[],
+	content: string | (TextContent | ImageContent | VideoContent)[],
 	text: string,
 	messageId = crypto.randomUUID(),
 ) {
@@ -3294,7 +3316,7 @@ function createCursorUserMessage(
 	});
 }
 
-function extractImages(content: (TextContent | ImageContent)[]) {
+function extractImages(content: (TextContent | ImageContent | VideoContent)[]) {
 	return content
 		.filter((item): item is ImageContent => item.type === "image")
 		.map(image =>
@@ -3371,7 +3393,7 @@ export async function buildGrpcRequest(
 	const activeMessage = context.messages[activeUserMessageIndex];
 	const activeUserMessage =
 		activeMessage?.role === "user" || activeMessage?.role === "developer" ? activeMessage : undefined;
-	let userContent: string | (TextContent | ImageContent)[] | undefined;
+	let userContent: string | (TextContent | ImageContent | VideoContent)[] | undefined;
 	let userText = "";
 	let hasUserImages = false;
 	if (activeUserMessage?.role === "user" || activeUserMessage?.role === "developer") {
@@ -3582,12 +3604,17 @@ export async function buildGrpcRequest(
 	};
 }
 
-function hasImages(content: (TextContent | ImageContent)[]): boolean {
+function hasImages(content: (TextContent | ImageContent | VideoContent)[]): boolean {
 	return content.some(item => item.type === "image");
 }
-function extractText(content: (TextContent | ImageContent)[]): string {
-	return content
-		.filter((c): c is TextContent => c.type === "text")
-		.map(c => c.text)
-		.join("\n");
+export function extractText(content: (TextContent | ImageContent | VideoContent)[]): string {
+	const parts: string[] = [];
+	for (const c of content) {
+		if (c.type === "text") {
+			parts.push(c.text);
+		} else if (c.type === "video") {
+			parts.push(NON_VIDEO_MODEL_PLACEHOLDER);
+		}
+	}
+	return parts.join("\n");
 }

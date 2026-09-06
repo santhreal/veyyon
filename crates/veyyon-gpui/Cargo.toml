@@ -1,0 +1,34 @@
+[package]
+name = "veyyon-gpui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+description = "The veyyon desktop front end's view of GPUI, vendored under crates/vendor"
+
+[lints]
+workspace = true
+
+# GPUI is a required dependency, not a feature.
+#
+# It was briefly optional, on the reasoning that a host without Vulkan
+# development libraries could not build it. That reasoning is wrong: the wgpu
+# renderer reaches Vulkan through ash's dynamically loaded entry point, so the
+# build needs no headers, and the loader it dlopens at run time
+# (libvulkan.so.1, package libvulkan1) is present on every host that can run a
+# GPU application at all. The cost of the feature was that the default
+# `cargo check` compiled none of the renderer, so the Rust gate stayed green
+# across a front end that did not build.
+#
+# `gpui_platform` and `gpui_wgpu` come from the same vendored tree. The
+# headless offscreen path needs both: the platform crate builds the renderer
+# for the current OS, and the wgpu crate supplies the text system a frame is
+# shaped with. Without them P10 is reachable only as a type.
+[dependencies]
+gpui = { workspace = true }
+gpui_platform = { workspace = true, features = ["test-support"] }
+gpui_wgpu = { workspace = true }
+[dev-dependencies]
+veyyon-desktop-scene = { workspace = true }

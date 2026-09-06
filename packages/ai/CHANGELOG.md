@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+
+- `VideoContent` support across provider serialization and fallback placeholder handling.
 ### Fixed
 
 - A user or developer message that carries prior-turn reasoning as prose declares its origin through `demotedReasoningSource`, and `transformMessages` holds it to the unsigned-thinking replay policy: a signing Anthropic endpoint drops it on same-model replay, and every `anthropic-messages` target drops it once `replayDemotedPriorReasoning` is off by catalog or learned from a `reasoning_extraction` refusal, instead of re-sending the same prose on the retry and on every later turn of the session.

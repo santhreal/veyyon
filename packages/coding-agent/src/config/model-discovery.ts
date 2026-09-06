@@ -121,20 +121,20 @@ export interface DiscoveryContext {
 
 type OllamaDiscoveredModelMetadata = {
 	reasoning: boolean;
-	input: ("text" | "image")[];
+	input: ("text" | "image" | "video")[];
 	contextWindow?: number;
 };
 
 type LlamaCppDiscoveredServerMetadata = {
 	contextWindow?: number;
-	input?: ("text" | "image")[];
+	input?: ("text" | "image" | "video")[];
 	maxTokens?: "contextWindow";
 };
 
 type LlamaCppDiscoveredModelRuntimeMetadata = {
 	contextWindow?: number;
 	maxTokens?: number;
-	input?: ("text" | "image")[];
+	input?: ("text" | "image" | "video")[];
 };
 
 type LlamaCppModelListEntry = {

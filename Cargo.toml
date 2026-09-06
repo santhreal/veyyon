@@ -1,6 +1,35 @@
 [workspace]
 members = ["crates/veyyon-*", "crates/vendor/*"]
-exclude = ["crates/vendor/brush-core", "crates/vendor/brush-builtins"]
+# Vendored third-party trees are path dependencies, not gate members: their own
+# repositories test them. The GPUI closure is the 23 crates scripts/vendor-gpui.ts
+# extracts from the private santhreal/gpui repository; edit them there and re-vendor.
+exclude = [
+	"crates/vendor/brush-core",
+	"crates/vendor/brush-builtins",
+	"crates/vendor/collections",
+	"crates/vendor/derive_refineable",
+	"crates/vendor/gpui",
+	"crates/vendor/gpui_apple",
+	"crates/vendor/gpui_linux",
+	"crates/vendor/gpui_macos",
+	"crates/vendor/gpui_macros",
+	"crates/vendor/gpui_platform",
+	"crates/vendor/gpui_shared_string",
+	"crates/vendor/gpui_util",
+	"crates/vendor/gpui_web",
+	"crates/vendor/gpui_wgpu",
+	"crates/vendor/gpui_windows",
+	"crates/vendor/http_client",
+	"crates/vendor/media",
+	"crates/vendor/perf",
+	"crates/vendor/refineable",
+	"crates/vendor/scheduler",
+	"crates/vendor/sum_tree",
+	"crates/vendor/util_macros",
+	"crates/vendor/zlog",
+	"crates/vendor/ztracing",
+	"crates/vendor/ztracing_macro",
+]
 resolver = "3"
 
 [workspace.package]
@@ -14,6 +43,14 @@ repository = "https://github.com/santhreal/veyyon"
 [patch.crates-io]
 brush-core = { path = "crates/vendor/brush-core" }
 brush-builtins = { path = "crates/vendor/brush-builtins" }
+# async-task: smol executor tasks used by gpui, gpui_macos, and scheduler
+async-task = { git = "https://github.com/smol-rs/async-task.git", rev = "b4486cd71e4e94fbda54ce6302444de14f4d190e" }
+# async-process: async process spawning used transitively by gpui_linux via smol
+async-process = { git = "https://github.com/zed-industries/async-process.git", rev = "0b6d6713570af61806e1e5cb40e0f757cb93fd9d" }
+# calloop: event loop used by gpui_linux
+calloop = { git = "https://github.com/zed-industries/calloop" }
+# windows-capture: screen capture backend used transitively by gpui_windows and gpui via scap
+windows-capture = { git = "https://github.com/zed-industries/windows-capture.git", rev = "f0d6c1b6691db75461b732f6d5ff56eed002eeb9" }
 
 [profile.release]
 opt-level = 3
@@ -188,6 +225,14 @@ veyyon-uu-diff = { path = "crates/veyyon-uu-diff" }
 veyyon-uu-grep = { path = "crates/veyyon-uu-grep" }
 veyyon-uutils-ctx = { path = "crates/veyyon-uutils-ctx" }
 veyyon-walker = { path = "crates/veyyon-walker" }
+veyyon-desktop-model = { path = "crates/veyyon-desktop-model" }
+veyyon-desktop-motion = { path = "crates/veyyon-desktop-motion" }
+veyyon-desktop-tokens = { path = "crates/veyyon-desktop-tokens" }
+veyyon-desktop-kit = { path = "crates/veyyon-desktop-kit" }
+veyyon-desktop-surface = { path = "crates/veyyon-desktop-surface" }
+veyyon-desktop = { path = "crates/veyyon-desktop" }
+veyyon-gpui = { path = "crates/veyyon-gpui" }
+veyyon-desktop-scene = { path = "crates/veyyon-desktop-scene" }
 brush-core = { path = "crates/vendor/brush-core" }
 brush-builtins = { path = "crates/vendor/brush-builtins" }
 
@@ -209,12 +254,21 @@ base64 = "0.22"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 toml = "1.1"
+# Variant iteration for the desktop protocol enums. Every scene gate and capability sweep
+# enumerates a union at run time, and a hand-written `ALL` array goes stale in silence when
+# someone adds a variant. `EnumIter` and `EnumDiscriminants` derive the space from the enum,
+# so a new variant turns a sweep red instead of being skipped. Already in the lock at this
+# version through the vendored brush crates.
+strum = { version = "0.28", features = ["derive"] }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Error Handling
 # ──────────────────────────────────────────────────────────────────────────────
 anyhow = "1.0"
 bytes = "1"
+# Named error types for the desktop crates. A library API returns a variant a caller can
+# match, so `anyhow` stays at the binary boundary where the context string is the product.
+thiserror = "2"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CLI & Configuration
@@ -328,6 +382,10 @@ grep-regex = "0.1"
 grep-searcher = "0.1"
 ignore = "0.4"
 memchr = "2.8"
+# The token watcher in veyyon-desktop-tokens. Hot reload is the mechanism the whole
+# iteration engine rests on, so the watch is a real filesystem notification rather than a
+# poll: a sweep re-renders on save, and a poll interval is a lower bound on every pass.
+notify = "8"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Image Processing & Syntax Highlighting
@@ -425,6 +483,23 @@ tree-sitter-vue = { version = "0.1.0", package = "tree-sitter-vue-next" }
 tree-sitter-xml = "0.7"
 tree-sitter-yaml = "0.7"
 tree-sitter-zig = "1.1"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# GUI & Renderer
+# ──────────────────────────────────────────────────────────────────────────────
+# GPUI renderer, vendored under crates/vendor from the private santhreal/gpui repository at the commit recorded in
+# crates/vendor/GPUI_VENDOR_REV. Regenerate with
+# `bun scripts/vendor-gpui.ts --source <GPUI fork checkout> --rev <commit>`.
+# The tree carries the renderer patch series the front end requires: affine transforms, animator
+# identity, native delay, backdrop blur, inner shadow and inset hairline, per-corner radii, damage
+# scoped redraw, rounded and path content masks, the persistent text advance cache, and the
+# headless deterministic offscreen surface with surfaceless wgpu context, offscreen render target,
+# RGBA8 readback, and text-run and hitbox metadata.
+gpui = { path = "crates/vendor/gpui" }
+# The headless offscreen path needs the platform crate, which builds the renderer for the current
+# OS, and the wgpu crate, which supplies the text system.
+gpui_platform = { path = "crates/vendor/gpui_platform" }
+gpui_wgpu = { path = "crates/vendor/gpui_wgpu" }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Unsorted (added by `cargo add` - move into a section above)

@@ -75,7 +75,7 @@ interface ModelJson {
 	reasoning: boolean;
 	/** Supported thinking efforts when the model thinks, otherwise null. */
 	thinking: readonly Effort[] | null;
-	input: ("text" | "image")[];
+	input: ("text" | "image" | "video")[];
 	cost: Model<Api>["cost"];
 }
 

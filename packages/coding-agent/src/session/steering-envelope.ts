@@ -20,7 +20,7 @@
  */
 
 import type { AgentMessage } from "@veyyon/agent-core";
-import type { ImageContent, TextContent, UserMessage } from "@veyyon/ai";
+import type { ImageContent, TextContent, UserMessage, VideoContent } from "@veyyon/ai";
 import { prompt } from "@veyyon/utils";
 import { contentText } from "@veyyon/utils/content-text";
 import { steeringPrompts } from "../prompts/steering/rows";
@@ -39,10 +39,10 @@ function renderSteeringEnvelope(message: string): string {
 	return prompt.render(steeringPrompts["steering/user-interjection"].text, { message });
 }
 
-function getArrayContentImages(content: (TextContent | ImageContent)[]): ImageContent[] {
-	let images: ImageContent[] | undefined;
+function getArrayContentMedia(content: (TextContent | ImageContent | VideoContent)[]): (ImageContent | VideoContent)[] {
+	let images: (ImageContent | VideoContent)[] | undefined;
 	for (const part of content) {
-		if (part.type !== "image") continue;
+		if (part.type !== "image" && part.type !== "video") continue;
 		if (images === undefined) images = [];
 		images.push(part);
 	}
@@ -57,8 +57,10 @@ function wrapSteeringUserMessage(message: UserMessage): UserMessage {
 
 	const text = contentText(message.content);
 	if (text.length === 0) return message;
-	const content: (TextContent | ImageContent)[] = [{ type: "text", text: renderSteeringEnvelope(text) }];
-	content.push(...getArrayContentImages(message.content));
+	const content: (TextContent | ImageContent | VideoContent)[] = [
+		{ type: "text", text: renderSteeringEnvelope(text) },
+	];
+	content.push(...getArrayContentMedia(message.content));
 	return { ...userMessageWithoutSteering(message), content };
 }
 

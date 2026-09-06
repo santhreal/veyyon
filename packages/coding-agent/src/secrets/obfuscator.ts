@@ -1,6 +1,6 @@
 import * as crypto from "node:crypto";
 import type { AgentMessage } from "@veyyon/agent-core";
-import type { AssistantMessage, Context, ImageContent, Message, TextContent, Tool } from "@veyyon/ai";
+import type { AssistantMessage, Context, ImageContent, Message, TextContent, Tool, VideoContent } from "@veyyon/ai";
 import { toolWireSchema } from "@veyyon/ai/utils/schema";
 import { isWellFormedUtf16, utf8ByteLength } from "@veyyon/utils/string-length";
 import { errorMessage } from "@veyyon/utils/type-guards";
@@ -1839,10 +1839,10 @@ function assertOpaqueProviderPayloadSafe(obfuscator: SecretObfuscator, payload: 
 /** Obfuscate user/developer/tool-result blocks and validate opaque text signatures. */
 function obfuscateTextBlocks(
 	obfuscator: SecretObfuscator,
-	content: (TextContent | ImageContent)[],
-): (TextContent | ImageContent)[] {
+	content: (TextContent | ImageContent | VideoContent)[],
+): (TextContent | ImageContent | VideoContent)[] {
 	let changed = false;
-	const result = content.map((block): TextContent | ImageContent => {
+	const result = content.map((block): TextContent | ImageContent | VideoContent => {
 		if (block.type !== "text") return block;
 		assertOpaqueProviderFieldSafe(obfuscator, block.textSignature, "text-signature");
 		const text = obfuscator.obfuscate(block.text);
@@ -1902,11 +1902,11 @@ function obfuscateAssistantContentForProvider(
 
 /** Map `text` blocks through `fn`; image and other blocks pass through byte-identical. */
 function mapTextBlockStrings(
-	content: (TextContent | ImageContent)[],
+	content: (TextContent | ImageContent | VideoContent)[],
 	fn: (s: string) => string,
-): (TextContent | ImageContent)[] {
+): (TextContent | ImageContent | VideoContent)[] {
 	let changed = false;
-	const result = content.map((block): TextContent | ImageContent => {
+	const result = content.map((block): TextContent | ImageContent | VideoContent => {
 		if (block.type !== "text") return block;
 		const text = fn(block.text);
 		if (text === block.text) return block;

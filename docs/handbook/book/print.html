@@ -23,7 +23,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
+        <meta name="description" content="Operator handbook for Veyyon: terminal and native desktop interfaces, installation, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -51,10 +51,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-695ab59a.js";
+            window.path_to_searchindex_js = "searchindex-3d1155d0.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-b613f6a6.js"></script>
+        <script src="toc-2d780f09.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -1290,7 +1290,7 @@ original session is never modified.</p>
 <h2 id="context-pressure-and-compaction"><a class="header" href="#context-pressure-and-compaction">Context pressure and compaction</a></h2>
 <p>Models have a finite token window. As a session grows, the raw transcript may no longer fit. Veyyon compacts history into a smaller, information-preserving summary instead of truncating it.</p>
 <p>Compaction preserves the goal card, active user instructions, recent turns, and a deterministic working-set of files touched so a resumed session does not require the full raw transcript.</p>
-<p>Prefer <code>/compact</code> when you need a summary to retain state. Prefer the <code>/new</code> command when prior transcript is no longer useful and you want a clean session without summarization. See <a href="#slash-commands-3">Slash commands</a>.</p>
+<p>Prefer <code>/compact</code> when you need a summary to retain state. Prefer the <code>/new</code> command when prior transcript is no longer useful and you want a clean session without summarization. See <a href="#slash-commands-4">Slash commands</a>.</p>
 <h2 id="the-rollout"><a class="header" href="#the-rollout">The rollout</a></h2>
 <p>Session history lives in one layer: the JSONL rollout. Every event is one line: a user message, an agent response, a tool call, a compaction, a goal update, or a branch summary. The rollout is the only source of truth. Listing and resume read it through the active storage backend, including indexed Redis and SQL storage. A non-empty rollout without a valid header is rejected without changing its bytes; malformed later records are skipped with an operator-visible path, line, byte, and shape warning. Goal cards persist as rollout entries. There is no separate session-state database.</p>
 <h2 id="how-the-pieces-relate"><a class="header" href="#how-the-pieces-relate">How the pieces relate</a></h2>
@@ -1680,7 +1680,7 @@ OpenAI-compatible endpoints.</li>
 </table>
 </div>
 <h2 id="recipes"><a class="header" href="#recipes">Recipes</a></h2>
-<p>For worked examples, see the <a href="#task-guides">Task guides</a>. For the full command and setting reference, see <a href="#reference-1">Reference</a>.</p>
+<p>For worked examples, see the <a href="#task-guides">Task guides</a>. For the full command and setting reference, see <a href="#reference-2">Reference</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="editing-and-repair"><a class="header" href="#editing-and-repair">Editing and repair</a></h1>
 <p>Editing reliably is the core of a coding agent, so it is worth understanding how Veyyon does it. The default edit surface is hashline. In practice that means three things work together: numbered lines that come back from <code>read</code> and <code>search</code>, snapshot tags that identify a known state of a file, and the <code>edit</code> tool with its <code>SWAP</code>, <code>DEL</code>, and <code>INS</code> operations.</p>
@@ -3813,6 +3813,214 @@ reasons; a code outside the table tells a client to come back.</p>
 </ol>
 <p>Guest→host: <code>hello</code>, <code>prompt</code>, <code>abort</code>, <code>agent-cmd</code> (hub chat/kill/revive), and <code>fetch-transcript</code> (incremental subagent-transcript reads answered by targeted <code>transcript</code> frames). The replica loads through the regular <code>/resume</code> machinery, so theming, ctrl+o, and transcript behavior are native by construction; the guest process never chdirs to host paths.</p>
 <div style="break-before: page; page-break-before: always;"></div>
+<h1 id="native-desktop"><a class="header" href="#native-desktop">Native desktop</a></h1>
+<p>The native desktop is a source-built GPUI application in the private
+<code>veyyon-desktop</code> crate. It connects to the Veyyon GUI host. The published
+installer does not install this desktop executable.</p>
+<h2 id="run-from-a-checkout"><a class="header" href="#run-from-a-checkout">Run from a checkout</a></h2>
+<p>From a configured source checkout, with Bun on <code>PATH</code>:</p>
+<pre><code class="language-sh">VEYYON_BIN="$PWD/packages/coding-agent/src/cli.ts" cargo run -p veyyon-desktop
+</code></pre>
+<p><code>VEYYON_BIN</code> selects the executable used to start <code>veyyon gui</code>. Without this
+variable, the desktop searches <code>PATH</code> for <code>veyyon</code>.</p>
+<p>The initial window and minimum window dimensions are 800 × 560 pixels, configured
+in <code>crates/veyyon-desktop-tokens/tokens/surface/shell.toml</code>. Startup validates the
+design tokens and bundled theme. Token directory changes reload while the
+application runs.</p>
+<h2 id="connect-to-a-host"><a class="header" href="#connect-to-a-host">Connect to a host</a></h2>
+<pre><code class="language-sh">cargo run -p veyyon-desktop -- --endpoint tcp:127.0.0.1:17654
+</code></pre>
+<p>Endpoint selection uses <code>--endpoint</code>, then <code>VEYYON_GUI_ENDPOINT</code>, then
+<code>&lt;agent-dir&gt;/gui-host.sock</code>. Use <code>unix:&lt;path&gt;</code> for a Unix socket or
+<code>tcp:&lt;host&gt;:&lt;port&gt;</code> for TCP. An empty TCP host selects <code>127.0.0.1</code>. An endpoint
+without a recognized scheme selects the default socket; it is not a relative
+socket path.</p>
+<p>The default agent directory is <code>~/.veyyon/profiles/&lt;profile&gt;/agent</code>, with
+<code>VEYYON_PROFILE</code> selecting the profile and <code>default</code> used otherwise. Without an
+explicit endpoint, the desktop attaches to the default socket if it accepts a
+connection. Otherwise it starts a host in the current working directory and
+waits up to five seconds for its listening banner. An explicit endpoint disables
+automatic host startup.</p>
+<h2 id="render-scenes"><a class="header" href="#render-scenes">Render scenes</a></h2>
+<pre><code class="language-sh">cargo run -p veyyon-desktop -- scene render 'capability-gate/turn-control-*' --out desktop-scenes
+</code></pre>
+<p><code>scene list</code> prints the scene catalogue. <code>scene render</code> writes PNG files for the
+matching scenes. Capability scenes include draft text so submission controls
+are actionable when the host capability is available.</p>
+<h2 id="reference-1"><a class="header" href="#reference-1">Reference</a></h2>
+<ul>
+<li><a href="#surfaces-and-interactions">Surfaces and interactions</a></li>
+<li><a href="#motion">Motion</a></li>
+<li><a href="#install-1">Source installation</a></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="surfaces-and-interactions"><a class="header" href="#surfaces-and-interactions">Surfaces and interactions</a></h1>
+<h2 id="shell"><a class="header" href="#shell">Shell</a></h2>
+<p>The queue lists sessions beside the active transcript. User messages, assistant
+responses, tool activity, and pending decisions appear in the transcript. The
+composer floats above its lower edge. The right panel displays workspace content;
+the terminal drawer displays terminal output below the session.</p>
+<p>The queue collapses when the window cannot fit it beside the transcript. At the
+minimum window width, the composer remains available across the transcript.</p>
+<p><code>Primary</code> means <code>Cmd</code> on macOS and <code>Ctrl</code> on Linux and Windows. Default bindings are
+in <code>crates/veyyon-desktop-surface/keymap.toml</code>.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Shortcut</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Primary-N</code></td><td>Create a session</td></tr>
+<tr><td><code>Primary-B</code></td><td>Toggle the queue</td></tr>
+<tr><td><code>Primary-J</code></td><td>Toggle the terminal drawer</td></tr>
+<tr><td><code>Primary-\</code></td><td>Toggle the right panel</td></tr>
+<tr><td><code>Primary-K</code></td><td>Open the command palette</td></tr>
+<tr><td><code>Primary-,</code></td><td>Open settings</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="composer"><a class="header" href="#composer">Composer</a></h2>
+<p>The footer contains the model selector and an up-arrow primary action. A separate
+stop control appears while a turn runs. Secondary composer actions are available
+through slash commands rather than a permanent row of buttons.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Session state</th><th>Primary action</th></tr>
+</thead>
+<tbody>
+<tr><td>Idle, nonempty draft</td><td>Send</td></tr>
+<tr><td>Running in steer mode, nonempty draft</td><td>Steer the running turn</td></tr>
+<tr><td>Running in queue mode, nonempty draft</td><td>Queue a follow-up</td></tr>
+<tr><td>Pending question</td><td>Submit the text reply, or the first option when the draft is empty</td></tr>
+<tr><td>Pending approval</td><td>Approve</td></tr>
+<tr><td>Pending plan, empty draft</td><td>Accept the plan</td></tr>
+<tr><td>Pending plan, nonempty draft</td><td>Request refinement</td></tr>
+</tbody>
+</table>
+</div>
+<p>Host control availability applies to keyboard, pointer, and palette submission.
+An empty or whitespace-only draft does not send a new prompt.</p>
+<ul>
+<li><code>Enter</code> activates the primary action, or the selected slash command while its
+palette is open.</li>
+<li><code>Shift-Enter</code> inserts a newline.</li>
+<li><code>Primary-Enter</code> submits nonempty text in the alternate running-turn mode without
+changing the selected mode.</li>
+<li><code>Primary-.</code> requests an abort.</li>
+</ul>
+<h3 id="submitted-drafts"><a class="header" href="#submitted-drafts">Submitted drafts</a></h3>
+<p>Send, steer, and queue requests retain editor content until the matching host
+acknowledgment. A successful acknowledgment clears text only when the active
+session and current text still match the submitted snapshot. Different current
+text remains in the editor. Failed requests do not consume the draft.</p>
+<p>Successful submission removes attachments included in that request. Attachments
+added afterward remain unless they compare equal to a submitted attachment.
+Unrelated and duplicate acknowledgments do not consume content.</p>
+<h2 id="model-picker"><a class="header" href="#model-picker">Model picker</a></h2>
+<p>Click the model selector or press <code>Primary-Shift-M</code> to open the model picker above
+the composer. Search filters the host model catalog. Use the arrow keys to select
+a row and <code>Enter</code> to confirm. Selection remains subject to host availability.</p>
+<p><code>Escape</code> or a click outside closes the picker and returns focus to the composer.
+Opening, filtering, and dismissing it leaves the draft unchanged.</p>
+<h2 id="slash-commands-1"><a class="header" href="#slash-commands-1">Slash commands</a></h2>
+<p>Type <code>/</code> at the beginning of the composer to open the anchored command palette.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Command</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>/attach</code></td><td>Select attachments</td></tr>
+<tr><td><code>/model</code></td><td>Open the model picker</td></tr>
+<tr><td><code>/effort</code></td><td>Select an available thinking level</td></tr>
+<tr><td><code>/queue-mode</code></td><td>Select steer or queue mode</td></tr>
+<tr><td><code>/steer</code></td><td>Steer the running turn with the command payload</td></tr>
+<tr><td><code>/queue</code></td><td>Queue the command payload</td></tr>
+</tbody>
+</table>
+</div>
+<p>The palette also includes session, terminal, settings, provider, and other host
+commands. Attachment admission depends on the host and model input capabilities.</p>
+<p>Selecting a composer command removes its command prefix while retaining the
+payload and attachments. <code>Escape</code> dismisses the slash palette without deleting
+the typed slash text.</p>
+<h2 id="record-native-interactions"><a class="header" href="#record-native-interactions">Record native interactions</a></h2>
+<p>Build the current executable with <code>cargo build -p veyyon-desktop</code> and build the
+recorder with <code>proof/docker/build-recorder.sh</code>. Set <code>DESKTOP_BINARY</code> to the absolute
+path of that executable. The output directory must be writable by the recorder
+container, including on NFS mounts.</p>
+<pre><code class="language-sh">PROOF_HOST_REPO_SOURCE="$DESKTOP_BINARY" \
+PROOF_HOST_REPO_TARGET=/desktop-bin/veyyon-desktop \
+SCENE_TERMINAL=native \
+SCENE_RUNTIME_DIR=/out/runtime \
+SCENE_WIDTH=1180 SCENE_HEIGHT=800 \
+SCENE_COMMAND='env VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json VEYYON_BIN=/repo/packages/coding-agent/src/cli.ts VEYYON_DESKTOP_TOKENS_DIR=/repo/crates/veyyon-desktop-tokens/tokens VEYYON_DESKTOP_THEMES_DIR=/repo/crates/veyyon-desktop-tokens/themes /desktop-bin/veyyon-desktop' \
+proof/docker/record-x11.sh proof/scenes/desktop-composer.sh
+</code></pre>
+<p>The scene uses automatic host startup in the container’s isolated home. It checks
+the initial session snapshot and waits for the session-creation interaction to
+produce a new host session before entering a draft. It records model-picker
+opening and dismissal, repeated palette transitions, and slash palette opening
+and dismissal. Set <code>SCENE_WIDTH=800</code> for the minimum-width case.</p>
+<p>Output is written to <code>proof/captures/x11/</code>, or the absolute directory in <code>OUT_DIR</code>.
+The <a href="#testing-and-verification">capture requirements</a> specify paired static
+frames and animated clips. Headless scene PNGs do not replace native captures.</p>
+<p>See <a href="#motion">Motion</a> for transition behavior.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="motion"><a class="header" href="#motion">Motion</a></h1>
+<p>Motion definitions are in <code>crates/veyyon-desktop-motion</code>. Defaults are configured
+in <code>crates/veyyon-desktop-tokens/tokens/motion.toml</code>.</p>
+<h2 id="palette-transitions"><a class="header" href="#palette-transitions">Palette transitions</a></h2>
+<p>The model picker and slash palette use the <code>float</code> role. Opening combines a
+four-pixel vertical rise with a 90 ms opacity transition. The position uses a
+spring with stiffness 300, damping 24, and mass 1.</p>
+<p>Closing retains the overlay until both position and opacity settle. Pointer
+activation is blocked on the retained closing content. Reopening during a
+transition starts from its sampled position rather than restarting at the hidden
+position. The spring also retains its sampled velocity.</p>
+<p>Animation state persists separately from the rendered element tree. The shell
+requests another frame while the transition is active and stops requesting
+animation frames after it settles.</p>
+<h2 id="role-table"><a class="header" href="#role-table">Role table</a></h2>
+<p>The shared token table defines these timing models. A role definition does not
+by itself animate a surface; the surface must evaluate and apply it.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Role</th><th>Default model</th><th>Reduced-motion resolution</th></tr>
+</thead>
+<tbody>
+<tr><td><code>tint</code></td><td>120 ms, ease out</td><td>Instant</td></tr>
+<tr><td><code>reveal</code></td><td>Spring: stiffness 220, damping 26, mass 1</td><td>60 ms opacity only</td></tr>
+<tr><td><code>float</code></td><td>Spring plus rise and fade</td><td>60 ms opacity only</td></tr>
+<tr><td><code>panel</code></td><td>Direct interaction, then spring: stiffness 180, damping 22, mass 1</td><td>Instant</td></tr>
+<tr><td><code>shift</code></td><td>200 ms layout transition, ease out</td><td>Instant</td></tr>
+<tr><td><code>scroll</code></td><td>240 ms, ease in and out</td><td>Instant</td></tr>
+<tr><td><code>caret</code></td><td>900 ms two-step period</td><td>Steady on</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>resolve_motion</code> selects the reduced variant. For palette floats, reduced motion
+sets vertical displacement to zero and applies the 60 ms opacity transition.</p>
+<h2 id="evaluation-and-interruption"><a class="header" href="#evaluation-and-interruption">Evaluation and interruption</a></h2>
+<p><code>AnimatorRegistry</code> indexes animations by surface, role, and slot. Position and
+opacity use separate slots. Redirecting a target samples the active animation at
+the interruption time and uses that value as the new starting value. Spring
+models use the sampled velocity; duration models evaluate their easing curve from
+the new starting value.</p>
+<p>The spring implementation evaluates a closed-form damped oscillator using
+elapsed time. Rest requires both a position difference below 0.001 and an absolute
+velocity below 0.01 in the animated value’s units. Palette position is normalized
+before conversion to pixels.</p>
+<h2 id="capture"><a class="header" href="#capture">Capture</a></h2>
+<p>Use the <a href="#record-native-interactions">native interaction scene</a> to
+record palette opening, closing, and repeated interruption on the private X11
+display. The scene includes sustained transitions so idle pauses do not constitute
+the entire motion sample.</p>
+<p>Follow the <a href="#testing-and-verification">capture requirements</a> for paired
+animated clips. A still image does not establish transition timing.</p>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="task-guides"><a class="header" href="#task-guides">Task guides</a></h1>
 <p>Short, goal-shaped recipes for common jobs. Each guide points at the deeper feature pages; use those
 when you need full schemas or edge cases.</p>
@@ -4237,7 +4445,7 @@ import it into your profile.</p>
 </code></pre>
 <h2 id="interactive-tui-controls"><a class="header" href="#interactive-tui-controls">Interactive TUI controls</a></h2>
 <p>In the terminal user interface, you can manage and list skills interactively.</p>
-<h3 id="slash-commands-1"><a class="header" href="#slash-commands-1">Slash commands</a></h3>
+<h3 id="slash-commands-2"><a class="header" href="#slash-commands-2">Slash commands</a></h3>
 <ul>
 <li><code>/extensions</code> opens the Extension Control Center, which lists every discovered skill alongside tools and hooks, and lets you enable or disable individual skills.</li>
 </ul>
@@ -4541,7 +4749,7 @@ $ veyyon plugin marketplace update debug
 </code></pre>
 <p>The <code>plugin marketplace</code> subcommands print human-readable output only; <code>--json</code> has no effect on them.</p>
 <h2 id="tui-integration"><a class="header" href="#tui-integration">TUI Integration</a></h2>
-<h3 id="slash-commands-2"><a class="header" href="#slash-commands-2">Slash Commands</a></h3>
+<h3 id="slash-commands-3"><a class="header" href="#slash-commands-3">Slash Commands</a></h3>
 <ul>
 <li><code>/plugins</code>: Lists installed npm and link plugins.</li>
 <li><code>/extensions</code>: Opens the Extension Control Center dashboard, which shows plugin-provided skills, tools, and hooks alongside everything else that is loaded.</li>
@@ -8720,11 +8928,11 @@ rollback, compare your <code>config.yml</code> against the backup from before th
 <li><a href="#diagnostics-and-health">Diagnostics and health</a> covers the diagnostics surface in detail.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="reference-1"><a class="header" href="#reference-1">Reference</a></h1>
+<h1 id="reference-2"><a class="header" href="#reference-2">Reference</a></h1>
 <p>This part is the lookup desk: command flags, environment variables, exit codes, and the files Veyyon creates on your system. Use it when you need the exact name of a flag, the location of a config file, or the meaning of a return code.</p>
 <ul>
 <li><a href="#cli-reference">CLI reference</a>: the <code>veyyon</code> command and every subcommand, plus common flags and config overrides.</li>
-<li><a href="#slash-commands-3">Slash commands</a>: every <code>/</code> command available inside an interactive session, grouped by task.</li>
+<li><a href="#slash-commands-4">Slash commands</a>: every <code>/</code> command available inside an interactive session, grouped by task.</li>
 <li><a href="#tools-reference">Tools reference</a>: model-facing tools (read/edit/write, search, bash/eval, browser, MCP resource access) with params and safety.</li>
 <li><a href="#environment-variables">Environment variables</a>: supported common variables grouped by purpose (location, auth, catalog, TLS, install, repair, terminal), plus descoped names.</li>
 <li><a href="#exit-codes-1">Exit codes</a>: the return codes Veyyon uses and how child-process exit status passes through.</li>
@@ -8847,7 +9055,7 @@ and no top-level <code>resume</code> / <code>fork</code> / <code>archive</code> 
 <h2 id="exit-codes"><a class="header" href="#exit-codes">Exit codes</a></h2>
 <p>See <a href="#exit-codes-1">Exit codes</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="slash-commands-3"><a class="header" href="#slash-commands-3">Slash commands</a></h1>
+<h1 id="slash-commands-4"><a class="header" href="#slash-commands-4">Slash commands</a></h1>
 <p>Slash commands run inside an interactive Veyyon session. Type <code>/</code> in the composer to open the
 picker. Commands below are the <strong>builtin</strong> set; extensions may add more.</p>
 <p>A command nothing can handle is rejected, not sent to the model. If you mistype a name, or type a
@@ -9221,7 +9429,7 @@ argument it opens a picker; <code>/effort high</code> sets the level directly. T
 lives under Settings → Model → Default Effort.</p>
 <p>Unbound by default, remappable: <code>app.session.new</code>, <code>app.session.tree</code>, <code>app.session.fork</code>,
 <code>app.session.resume</code>, and <code>app.stt.toggle</code> (speech-to-text; hold <code>Space</code> to record by default).</p>
-<h2 id="composer"><a class="header" href="#composer">Composer</a></h2>
+<h2 id="composer-1"><a class="header" href="#composer-1">Composer</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -11830,7 +12038,7 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<h2 id="shell"><a class="header" href="#shell">Shell</a></h2>
+<h2 id="shell-1"><a class="header" href="#shell-1">Shell</a></h2>
 <h3 id="bash"><a class="header" href="#bash">Bash</a></h3>
 <div class="table-wrapper">
 <table>

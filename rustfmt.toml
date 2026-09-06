@@ -71,4 +71,33 @@ blank_lines_upper_bound = 1
 force_explicit_abi = true
 hex_literal_case = "Lower"
 newline_style = "Unix"
-ignore = ["crates/vendor/brush-core/**", "crates/vendor/brush-builtins/**"]
+# Vendored third-party trees keep their upstream formatting. The GPUI closure
+# is the 23 crates scripts/vendor-gpui.ts extracts; the list matches
+# `workspace.exclude` in Cargo.toml and a test pins the two together.
+ignore = [
+	"crates/vendor/brush-core/**",
+	"crates/vendor/brush-builtins/**",
+	"crates/vendor/collections/**",
+	"crates/vendor/derive_refineable/**",
+	"crates/vendor/gpui/**",
+	"crates/vendor/gpui_apple/**",
+	"crates/vendor/gpui_linux/**",
+	"crates/vendor/gpui_macos/**",
+	"crates/vendor/gpui_macros/**",
+	"crates/vendor/gpui_platform/**",
+	"crates/vendor/gpui_shared_string/**",
+	"crates/vendor/gpui_util/**",
+	"crates/vendor/gpui_web/**",
+	"crates/vendor/gpui_wgpu/**",
+	"crates/vendor/gpui_windows/**",
+	"crates/vendor/http_client/**",
+	"crates/vendor/media/**",
+	"crates/vendor/perf/**",
+	"crates/vendor/refineable/**",
+	"crates/vendor/scheduler/**",
+	"crates/vendor/sum_tree/**",
+	"crates/vendor/util_macros/**",
+	"crates/vendor/zlog/**",
+	"crates/vendor/ztracing/**",
+	"crates/vendor/ztracing_macro/**",
+]

@@ -61,6 +61,7 @@ import type {
 	ToolCall,
 	ToolResultMessage,
 	Usage,
+	VideoContent,
 } from "../types";
 import { EMPTY_ERROR_TOOL_RESULT_TEXT, realizesPriorityServiceTier } from "../types";
 import { isRecord, normalizeSystemPrompts, normalizeToolCallId, resolveCacheRetention } from "../utils";
@@ -110,7 +111,7 @@ import {
 } from "./github-copilot-headers";
 
 import { transformMessages } from "./transform-messages";
-import { NON_VISION_IMAGE_PLACEHOLDER } from "./vision-guard";
+import { NON_VIDEO_MODEL_PLACEHOLDER, NON_VISION_IMAGE_PLACEHOLDER } from "./vision-content";
 
 export type AnthropicHeaderOptions = {
 	apiKey: string;
@@ -976,10 +977,10 @@ async function resizeAnthropicManyImageBlock(block: ImageContent): Promise<Image
 }
 
 async function resizeAnthropicManyImageContent(
-	content: (TextContent | ImageContent)[],
+	content: (TextContent | ImageContent | VideoContent)[],
 	state: { resized: number },
 	limit: ResizeLimiter,
-): Promise<(TextContent | ImageContent)[]> {
+): Promise<(TextContent | ImageContent | VideoContent)[]> {
 	let changed = false;
 	const next = await Promise.all(
 		content.map(async block => {
@@ -1057,8 +1058,8 @@ type AnthropicToolResultContent =
 /**
  * Convert content blocks to Anthropic API format
  */
-function convertContentBlocks(
-	content: (TextContent | ImageContent)[],
+export function convertContentBlocks(
+	content: (TextContent | ImageContent | VideoContent)[],
 	supportsImages = true,
 ): AnthropicToolResultContent {
 	const blocks: Array<
@@ -1081,6 +1082,11 @@ function convertContentBlocks(
 			if (text.trim().length === 0) continue;
 			sawText = true;
 			blocks.push({ type: "text", text });
+			continue;
+		}
+
+		if (block.type === "video") {
+			blocks.push({ type: "text", text: NON_VIDEO_MODEL_PLACEHOLDER });
 			continue;
 		}
 

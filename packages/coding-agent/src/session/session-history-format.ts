@@ -7,7 +7,7 @@
  * as one-liners. No system prompt, no tool catalog, no config sections.
  */
 import type { AgentMessage } from "@veyyon/agent-core";
-import type { AssistantMessage, ImageContent, TextContent, ToolResultMessage } from "@veyyon/ai";
+import type { AssistantMessage, ImageContent, TextContent, ToolResultMessage, VideoContent } from "@veyyon/ai";
 // Owners, not the `@veyyon/utils` barrel: 3 modules against 74.
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { contentText } from "@veyyon/utils/content-text";
@@ -82,7 +82,7 @@ function oneLine(text: string, max = PRIMARY_ARG_MAX): string {
 /** Join the text blocks of a string-or-blocks content field. Images become `[image]`. */
 // This view renders image blocks as an "[image]" placeholder rather than
 // dropping them, so the reader sees that an image was present.
-const contentToText = (content: string | readonly (TextContent | ImageContent)[]): string =>
+const contentToText = (content: string | readonly (TextContent | ImageContent | VideoContent)[]): string =>
 	contentText(content, { image: "[image]" });
 
 function lineCount(text: string): number {

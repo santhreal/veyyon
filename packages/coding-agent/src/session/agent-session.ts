@@ -124,6 +124,7 @@ import type {
 	ToolResultMessage,
 	Usage,
 	UsageReport,
+	VideoContent,
 } from "@veyyon/ai";
 import {
 	calculateRateLimitBackoffMs,
@@ -618,6 +619,7 @@ interface PendingContextSnapshot {
 /** Abort reason for the Gemini reasoning-header runaway interrupt. Surfaced on the
  *  discarded assistant turn only; never reaches the model. */
 const GEMINI_HEADER_INTERRUPT_REASON = "Interrupted: emit a tool call instead of more planning";
+
 
 // A side-channel assistant response is signed for the hidden prompt/history that
 // produced it. If we persist that response under a different user turn, native
@@ -1134,12 +1136,26 @@ export interface AgentSessionConfig {
 	titleSystemPrompt?: string;
 }
 
+export class UnsupportedModelInputError extends Error {
+	readonly modality: "video";
+	readonly modelId: string;
+
+	constructor(modelId: string, modality: "video" = "video") {
+		super(`Model "${modelId}" does not support ${modality} input.`);
+		this.name = "UnsupportedModelInputError";
+		this.modality = modality;
+		this.modelId = modelId;
+	}
+}
+
 /** Options for AgentSession.prompt() */
 export interface PromptOptions {
 	/** Whether to expand file-based prompt templates (default: true) */
 	expandPromptTemplates?: boolean;
 	/** Image attachments */
 	images?: ImageContent[];
+	/** Video attachments */
+	videos?: VideoContent[];
 	/** When streaming, how to queue the message: "steer" (interrupt) or "followUp" (wait). */
 	streamingBehavior?: "steer" | "followUp";
 	/** Optional tool choice override for the next LLM call. */
@@ -1435,6 +1451,7 @@ function createHandoffFileName(date = new Date()): string {
 // ============================================================================
 // AgentSession Class
 // ============================================================================
+
 
 function mergeLlmCompactionPreserveData(
 	hookPreserveData: Record<string, unknown> | undefined,
@@ -10382,6 +10399,12 @@ export class AgentSession {
 			}
 		}
 
+		if (options?.videos?.length) {
+			if (!this.model?.input.includes("video")) {
+				throw new UnsupportedModelInputError(this.model?.id ?? "unknown", "video");
+			}
+		}
+
 		// Expand file-based prompt templates if requested
 		const expandedText = expandPromptTemplates ? expandPromptTemplate(text, [...this.#promptTemplates]) : text;
 
@@ -10428,9 +10451,9 @@ export class AgentSession {
 				await this.sendCustomMessage(notice, { deliverAs: options.streamingBehavior });
 			}
 			if (options.streamingBehavior === "followUp") {
-				await this.#queueUserMessage(expandedText, options?.images, "followUp");
+				await this.#queueUserMessage(expandedText, options?.images, options?.videos, "followUp");
 			} else {
-				await this.#queueUserMessage(expandedText, options?.images, "steer");
+				await this.#queueUserMessage(expandedText, options?.images, options?.videos, "steer");
 			}
 			return true;
 		}
@@ -10443,9 +10466,12 @@ export class AgentSession {
 			!options?.synthetic && !hasPendingUserDirective ? this.#createEagerTaskPrelude(expandedText) : undefined;
 		const normalizedImages = await this.#normalizeImagesForModel(options?.images);
 
-		const userContent: (TextContent | ImageContent)[] = [{ type: "text", text: expandedText }];
+		const userContent: (TextContent | ImageContent | VideoContent)[] = [{ type: "text", text: expandedText }];
 		if (normalizedImages?.length) {
 			userContent.push(...normalizedImages);
+		}
+		if (options?.videos?.length) {
+			userContent.push(...options.videos);
 		}
 		// Text-only model + image attachment: describe via a vision model and inject the
 		// description as a hidden companion (the image stays in the visible user message).
@@ -10999,13 +11025,16 @@ export class AgentSession {
 	/**
 	 * Queue a steering message to interrupt the agent mid-run.
 	 */
-	async steer(text: string, images?: ImageContent[]): Promise<void> {
+	async steer(text: string, images?: ImageContent[], videos?: VideoContent[]): Promise<void> {
 		if (text.startsWith("/")) {
 			this.#throwIfExtensionCommand(text);
 		}
+		if (videos?.length && !this.model?.input.includes("video")) {
+			throw new UnsupportedModelInputError(this.model?.id ?? "unknown", "video");
+		}
 
 		const expandedText = expandPromptTemplate(text, [...this.#promptTemplates]);
-		await this.#queueUserMessage(expandedText, images, "steer");
+		await this.#queueUserMessage(expandedText, images, videos, "steer");
 	}
 
 	/**
@@ -11015,15 +11044,35 @@ export class AgentSession {
 	 * uses this to land its execution directive behind a queued user turn without
 	 * flipping advisor auto-resume.
 	 */
-	async followUp(text: string, images?: ImageContent[], options?: FollowUpOptions): Promise<void> {
+	async followUp(
+		text: string,
+		images?: ImageContent[],
+		videosOrOptions?: VideoContent[] | FollowUpOptions,
+		options?: FollowUpOptions,
+	): Promise<void> {
 		if (text.startsWith("/")) {
 			this.#throwIfExtensionCommand(text);
 		}
 
+		let videos: VideoContent[] | undefined;
+		let opts: FollowUpOptions | undefined;
+		if (Array.isArray(videosOrOptions)) {
+			videos = videosOrOptions;
+			opts = options;
+		} else if (videosOrOptions && typeof videosOrOptions === "object") {
+			opts = videosOrOptions;
+		} else {
+			opts = options;
+		}
+
+		if (videos?.length && !this.model?.input.includes("video")) {
+			throw new UnsupportedModelInputError(this.model?.id ?? "unknown", "video");
+		}
+
 		const expandedText =
-			options?.expandPromptTemplates === false ? text : expandPromptTemplate(text, [...this.#promptTemplates]);
-		if (!options?.synthetic) {
-			await this.#queueUserMessage(expandedText, images, "followUp");
+			opts?.expandPromptTemplates === false ? text : expandPromptTemplate(text, [...this.#promptTemplates]);
+		if (!opts?.synthetic) {
+			await this.#queueUserMessage(expandedText, images, videos, "followUp");
 			return;
 		}
 		// Synthetic branch: agent-initiated hidden developer message. Bypass
@@ -11031,9 +11080,12 @@ export class AgentSession {
 		// enqueues as a user-attributed message) and place the developer message
 		// directly on the follow-up queue.
 		const normalizedImages = await this.#normalizeImagesForModel(images);
-		const content: (TextContent | ImageContent)[] = [{ type: "text", text: expandedText }];
+		const content: (TextContent | ImageContent | VideoContent)[] = [{ type: "text", text: expandedText }];
 		if (normalizedImages?.length) {
 			content.push(...normalizedImages);
+		}
+		if (videos?.length) {
+			content.push(...videos);
 		}
 		const imageDescriptionNotice = normalizedImages?.length
 			? await this.#buildImageDescriptionNotice(normalizedImages)
@@ -11042,7 +11094,7 @@ export class AgentSession {
 		this.agent.followUp({
 			role: "developer",
 			content,
-			attribution: options.attribution ?? "agent",
+			attribution: opts.attribution ?? "agent",
 			timestamp: Date.now(),
 		});
 		this.#scheduleIdleQueueDrain();
@@ -11051,18 +11103,24 @@ export class AgentSession {
 	async #queueUserMessage(
 		text: string,
 		images: ImageContent[] | undefined,
+		videos: VideoContent[] | undefined,
 		mode: "steer" | "followUp",
 	): Promise<void> {
+		if (videos?.length && !this.model?.input.includes("video")) {
+			throw new UnsupportedModelInputError(this.model?.id ?? "unknown", "video");
+		}
 		// A queued user message (RPC/SDK/collab steer or follow-up, or a typed message
 		// while streaming) is a deliberate resume; re-enable advisor auto-resume that
 		// a user interrupt suppressed.
 		this.#advisorAutoResumeSuppressed = false;
 		const normalizedImages = await this.#normalizeImagesForModel(images);
-		const content: (TextContent | ImageContent)[] = [{ type: "text", text }];
+		const content: (TextContent | ImageContent | VideoContent)[] = [{ type: "text", text }];
 		if (normalizedImages?.length) {
 			content.push(...normalizedImages);
 		}
-		// Text-only model + image attachment: describe via a vision model and enqueue the
+		if (videos?.length) {
+			content.push(...videos);
+		}
 		// description as a hidden companion immediately before the user message.
 		const imageDescriptionNotice = normalizedImages?.length
 			? await this.#buildImageDescriptionNotice(normalizedImages)
@@ -11384,35 +11442,44 @@ export class AgentSession {
 	 * Explicit `deliverAs` queues without starting a turn in either state.
 	 */
 	async sendUserMessage(
-		content: string | (TextContent | ImageContent)[],
+		content: string | (TextContent | ImageContent | VideoContent)[],
 		options?: { deliverAs?: "steer" | "followUp" },
 	): Promise<void> {
-		// Normalize content to text string + optional images
+		// Normalize content to text string + optional images and videos
 		let text: string;
 		let images: ImageContent[] | undefined;
+		let videos: VideoContent[] | undefined;
 
 		if (typeof content === "string") {
 			text = content;
 		} else {
 			const textParts: string[] = [];
 			images = [];
+			videos = [];
 			for (const part of content) {
 				if (part.type === "text") {
 					textParts.push(part.text);
-				} else {
+				} else if (part.type === "image") {
 					images.push(part);
+				} else if (part.type === "video") {
+					videos.push(part);
 				}
 			}
 			text = textParts.join("\n");
 			if (images.length === 0) images = undefined;
+			if (videos.length === 0) videos = undefined;
+		}
+
+		if (videos?.length && !this.model?.input.includes("video")) {
+			throw new UnsupportedModelInputError(this.model?.id ?? "unknown", "video");
 		}
 
 		if (options?.deliverAs === "followUp") {
-			await this.#queueUserMessage(text, images, "followUp");
+			await this.#queueUserMessage(text, images, videos, "followUp");
 			return;
 		}
 		if (options?.deliverAs === "steer") {
-			await this.#queueUserMessage(text, images, "steer");
+			await this.#queueUserMessage(text, images, videos, "steer");
 			return;
 		}
 
@@ -11422,6 +11489,7 @@ export class AgentSession {
 		await this.prompt(text, {
 			expandPromptTemplates: false,
 			images,
+			videos,
 			streamingBehavior: "steer",
 		});
 	}

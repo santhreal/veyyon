@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { convertMessages } from "@veyyon/ai/providers/openai-completions";
-import { NON_VISION_IMAGE_PLACEHOLDER } from "@veyyon/ai/providers/vision-guard";
+import { NON_VISION_IMAGE_PLACEHOLDER } from "@veyyon/ai/providers/vision-content";
 import type { AssistantMessage, Context, Model, ToolResultMessage, Usage } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
 import { getBundledModel } from "@veyyon/catalog/models";

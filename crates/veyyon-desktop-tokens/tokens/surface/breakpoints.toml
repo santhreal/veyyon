@@ -1,0 +1,39 @@
+[meta]
+version = 1
+name = "surface_breakpoints"
+
+[breakpoint.wide]
+min_width_px = 1440
+queue_width_px = 256
+right_panel_mode = "inline_540"
+terminal_drawer_placement = "row"
+terminal_drawer_height_px = 280
+composer_footer_labels = true
+run_bar_labels = true
+
+[breakpoint.standard]
+min_width_px = 1180
+queue_width_px = 256
+right_panel_mode = "inline_360"
+terminal_drawer_placement = "row"
+terminal_drawer_height_px = 280
+composer_footer_labels = true
+run_bar_labels = true
+
+[breakpoint.compact]
+min_width_px = 980
+queue_width_px = 208
+right_panel_mode = "overlay"
+terminal_drawer_placement = "row"
+terminal_drawer_height_px = 180
+composer_footer_labels = false
+run_bar_labels = false
+
+[breakpoint.collapsed]
+min_width_px = 800
+queue_width_px = 0
+right_panel_mode = "overlay"
+terminal_drawer_placement = "overlay"
+terminal_drawer_height_px = 180
+composer_footer_labels = false
+run_bar_labels = false

@@ -1,4 +1,11 @@
-import type { ImageContent, MessageAttribution, ServiceTierByFamily, TextContent, ToolResultMessage } from "@veyyon/ai";
+import type {
+	ImageContent,
+	MessageAttribution,
+	ServiceTierByFamily,
+	TextContent,
+	ToolResultMessage,
+	VideoContent,
+} from "@veyyon/ai";
 import type { AgentMessage } from "../types";
 
 /**
@@ -94,7 +101,7 @@ export interface BranchSummaryEntry<T = unknown> extends SessionEntryBase {
 export interface CustomMessageEntry<T = unknown> extends SessionEntryBase {
 	type: "custom_message";
 	customType: string;
-	content: string | (TextContent | ImageContent)[];
+	content: string | (TextContent | ImageContent | VideoContent)[];
 	details?: T;
 	display: boolean;
 	/** Who initiated this message for billing/attribution semantics. */

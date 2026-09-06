@@ -6,6 +6,9 @@
 
 ### Added
 
+- `SUPPORTED_VIDEO_MIME_TYPES` exports the supported video MIME types (`video/mp4`, `video/webm`, `video/quicktime`).
+
+## [1.3.0] - 2026-08-28
 - `stripAnsiExceptSgr()` strips every escape sequence `stripAnsi()` strips except SGR, for a surface that admits styled text.
 
 ### Removed
