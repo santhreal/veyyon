@@ -407,4 +407,26 @@ describe("HookSelectorComponent", () => {
 		expect(appleRow).not.toContain(openBg);
 		expect(cherryRow).not.toContain(openBg);
 	});
+
+	/** Why this exists: the approval card's title is markdown (`## Permission
+	 * required`, `**Tool:** \`bash\``). The body renders it; the title bar drew
+	 * the first line as source, so every permission prompt was titled
+	 * `## Permission required`. The contract: the title bar carries the heading's
+	 * text, and the markdown under it still renders in the body. */
+	it("titles the card with the heading's text, not its markdown source", () => {
+		const component = new HookSelectorComponent(
+			"## Permission required\n**Tool:** `bash`\n**Scope:** This call only",
+			["Approve", "Deny"],
+			() => {},
+			() => {},
+			{ initialIndex: 0 },
+		);
+
+		const plain = component.render(120).map(line => Bun.stripANSI(line));
+		const titleRow = plain.find(line => line.includes("Permission required"));
+		expect(titleRow).toBeDefined();
+		expect(titleRow).not.toContain("#");
+		expect(plain.join("\n")).not.toContain("## ");
+		expect(plain.some(line => line.includes("Tool:") && line.includes("bash"))).toBe(true);
+	});
 });
