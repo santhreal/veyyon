@@ -31,7 +31,7 @@ fi
 
 # Wait for host state without resending an interaction.
 native_session_ready() {
-python3 - "$1" <<'PY'
+python3 - "$1" "${2:-2}" <<'PY'
 import json
 import os
 from pathlib import Path
@@ -43,8 +43,11 @@ profile = os.environ.get("VEYYON_PROFILE") or "default"
 endpoint = Path.home() / ".veyyon" / "profiles" / profile / "agent" / "gui-host.sock"
 baseline_path = Path(os.environ["SCENE_RUNTIME_DIR"]) / "sessions-before.json"
 mode = sys.argv[1]
-baseline = set(json.loads(baseline_path.read_text())) if mode == "created" else set()
-deadline = time.monotonic() + 10
+minimum_messages = int(sys.argv[2])
+baseline = set(json.loads(baseline_path.read_text())) if mode != "before" else set()
+created_path = Path(os.environ["SCENE_RUNTIME_DIR"]) / "created-session.json"
+created_id = json.loads(created_path.read_text()) if mode == "finished" else None
+deadline = time.monotonic() + (90 if mode == "finished" else 10)
 while time.monotonic() < deadline:
     try:
         with socket.socket(socket.AF_UNIX) as connection:
@@ -67,9 +70,27 @@ while time.monotonic() < deadline:
                             baseline_path.write_text(json.dumps(sorted(identities)))
                             print("native host returned its session snapshot")
                             raise SystemExit(0)
-                        if identities - baseline:
+                        if mode == "created" and identities - baseline:
+                            created_path.write_text(json.dumps(next(iter(identities - baseline))))
                             print("native session-creation interaction reached the host")
                             raise SystemExit(0)
+                        if mode == "finished":
+                            current = next((row for row in sessions["value"] if row["id"] == created_id), None)
+                            last_error = (
+                                f"session status={current.get('status')}, messages={current.get('message_count', 0)}"
+                                if current else "created session missing from host snapshot"
+                            )
+                            if current and current.get("status") in {"Error", "Aborted", "Interrupted"}:
+                                with Path(current["path"]).open() as transcript:
+                                    for entry_line in transcript:
+                                        entry = json.loads(entry_line)
+                                        message = entry.get("message", {})
+                                        if message.get("role") == "assistant" and message.get("errorMessage"):
+                                            print(f"Native provider error: {message['errorMessage']}", file=sys.stderr)
+                                raise SystemExit(f"Native turn ended with status {current['status']}")
+                            if current and current.get("message_count", 0) >= minimum_messages and current.get("status") == "Complete":
+                                print("native turn completed with persisted transcript messages")
+                                raise SystemExit(0)
                         break
     except (OSError, ValueError, RuntimeError) as error:
         last_error = str(error)
