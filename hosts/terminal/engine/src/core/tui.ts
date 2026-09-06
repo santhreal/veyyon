@@ -45,6 +45,7 @@ import {
 	type FrameSegment,
 	getNativeScrollbackLiveRegionStart,
 	getRenderStablePrefixRows,
+	hasNativeScrollbackLiveRegion,
 	isFocusable,
 	isOverlayFocusTarget,
 	type NativeScrollbackCommittedRows,
@@ -67,8 +68,8 @@ import {
 	OverlayStack,
 } from "./overlay";
 import {
+	auditCommittedPrefix,
 	extractCursorMarkers,
-	findCommittedPrefixResync,
 	LINE_TERMINATOR,
 	lineRewriteSequence,
 	PreparedFrameCache,
@@ -326,12 +327,10 @@ export class TUI extends Container {
 	// seam declared them); rows at/after it are frozen visual snapshots that
 	// scrolled off the window top while still live.
 	#committedRows = 0;
-	// Raw rows mirroring [0, #committedRows) — the engine's claim of what it
-	// committed. The audited prefix [0, #committedPrefixAuditRows) is checked
-	// each ordinary frame against the current render to detect components
-	// re-laying-out declared-final content (see #auditCommittedPrefix). Holds
-	// references to component-cached strings, so the audit is a pointer walk
-	// in the common case.
+	// Source-alignment baseline for [0, #committedRows). Verified rows accept
+	// tolerated in-place edits after each audit, so independent edits cannot
+	// accumulate into a false shift. Still-live rows retain their original
+	// snapshots for strict finalization. The physical record is #scrollTape.
 	#committedPrefix: string[] = [];
 	// Rows the current compose's children dropped out of the front of their own
 	// output (see NativeScrollbackCompaction). Consumed once per frame, right
@@ -964,7 +963,7 @@ export class TUI extends Container {
 	}
 
 	/**
-	 * Enable or disable scrollback divergence rebuild (default off).
+	 * Enable or disable scrollback divergence rebuild (default on).
 	 * When enabled, the engine will erase and replay the terminal's
 	 * scrollback (using ED3 / alt buffer / scrollback replay) to avoid
 	 * duplicate blocks when a block's final form replaces its live preview.
@@ -1116,7 +1115,9 @@ export class TUI extends Container {
 			!this.#stopped &&
 			this.#hasEverRendered &&
 			!this.#altActive &&
-			(this.#frameScrollable || footerWantsPointer(this.#frameSegments, this.#pinnedFooterChildCount));
+			(this.#frameScrollable ||
+				footerWantsPointer(this.#frameSegments, this.#pinnedFooterChildCount) ||
+				this.#overlays.pointerTarget() !== undefined);
 		if (want === this.#wheelTrackingActive) return;
 		this.#wheelTrackingActive = want;
 		// A press whose release lands after tracking flips would pair a stale cell
@@ -1849,7 +1850,12 @@ export class TUI extends Container {
 		buffer += "\r";
 		for (let i = firstChanged; i <= lastChanged; i++) {
 			if (i > firstChanged) buffer += "\r\n";
-			buffer += lineRewriteSequence(this.#prepared.rowAt(segment.start + i) ?? "", width);
+			buffer += lineRewriteSequence(
+				this.#prepared.rowAt(segment.start + i) ?? "",
+				width,
+				screenStart + i,
+				this.#imageBudget,
+			);
 		}
 		const cursorControl = this.#cursor.controlSequence(
 			cursorPos,
@@ -2224,6 +2230,19 @@ export class TUI extends Container {
 		if (this.#wheelTrackingActive && !this.#altActive && data.startsWith("\x1b[<")) {
 			const event = parseSgrMouse(data);
 			if (event) {
+				const target = this.#overlays.pointerTarget();
+				if (
+					target &&
+					event.row >= target.row &&
+					event.row < target.row + target.height &&
+					event.col >= target.col &&
+					event.col < target.col + target.width
+				) {
+					this.#pressCell = null;
+					target.component.routeMouse(event, event.row - target.row + target.lineOffset, event.col - target.col);
+					this.requestRender();
+					return;
+				}
 				if (event.wheel) {
 					this.#pressCell = null;
 					this.#handleIsolationWheel(event.wheel);
@@ -2624,12 +2643,12 @@ export class TUI extends Container {
 		if (this.#committedPrefixAuditRows > newlyFinalEnd) {
 			this.#committedPrefixAuditRows = newlyFinalEnd;
 		}
+		const hasNewlyFinalRows = newlyFinalEnd > this.#committedPrefixAuditRows;
 		const auditRan =
 			this.#hasEverRendered &&
 			!geometryChanged &&
 			!this.#clearScrollbackOnNextRender &&
-			(this.#renderStablePrefixRows < this.#committedPrefixAuditRows ||
-				newlyFinalEnd > this.#committedPrefixAuditRows);
+			(this.#renderStablePrefixRows < this.#committedPrefixAuditRows || hasNewlyFinalRows);
 		if (auditRan) {
 			const committedRowsBeforeAudit = this.#committedRows;
 			this.#auditCommittedPrefix(rawFrame, newlyFinalEnd);
@@ -2706,6 +2725,18 @@ export class TUI extends Container {
 		// instead of recommitting the final form below the stale fragment
 		// (a visibly duplicated block). Multiplexer panes cannot ED3 safely
 		// and keep the repair-below fallback in the branches under this one.
+		// A plain component declares no finalization transition. Its positional
+		// edits must not erase native history; only an explicit replay may do so.
+		// Components with a live/final seam permit automatic final-form repair.
+		let declaredFinalization = hasNewlyFinalRows;
+		if (!declaredFinalization && committedRowsResynced) {
+			for (const segment of this.#frameSegments) {
+				if (segment.start <= this.#committedRows && this.#committedRows < segment.start + segment.rowCount) {
+					declaredFinalization = hasNativeScrollbackLiveRegion(segment.component);
+					break;
+				}
+			}
+		}
 		const divergenceRebuild =
 			this.#scrollbackRebuildEnabled &&
 			!firstPaint &&
@@ -2713,7 +2744,8 @@ export class TUI extends Container {
 			!geometryChanged &&
 			!isMultiplexerSession() &&
 			!frameSqueezed &&
-			(committedRowsResynced || frameLength <= this.#committedRows);
+			(committedRowsResynced || frameLength <= this.#committedRows) &&
+			declaredFinalization;
 		const fullPaint = firstPaint || replaceRequested || geometryRebuild || divergenceRebuild;
 		// A destructive rebuild erases native scrollback and replays THIS frame.
 		// When a virtualized root has dropped its committed rows, this frame is
@@ -2893,6 +2925,8 @@ export class TUI extends Container {
 				cursorPos = { row: windowTop + overlayMarkers[0]!.row, col: overlayMarkers[0]!.col };
 			}
 			window = prepareLinesArray(window, width);
+		} else {
+			this.#overlays.clearFrames();
 		}
 		const cursorTrackingLineCount = hasVisibleOverlay ? Math.max(frame.length, windowTop + height) : frame.length;
 
@@ -3030,7 +3064,7 @@ export class TUI extends Container {
 	#auditCommittedPrefix(rawFrame: readonly string[], newlyFinalEnd: number): void {
 		const prefix = this.#committedPrefix;
 		if (prefix.length === 0) return;
-		const resyncTo = findCommittedPrefixResync(rawFrame, prefix, this.#committedPrefixAuditRows, newlyFinalEnd);
+		const resyncTo = auditCommittedPrefix(rawFrame, prefix, this.#committedPrefixAuditRows, newlyFinalEnd);
 		if (resyncTo < 0) return;
 		this.#committedRows = resyncTo;
 		this.#committedPrefixAuditRows = Math.min(this.#committedPrefixAuditRows, resyncTo);
@@ -3213,19 +3247,24 @@ export class TUI extends Container {
 			for (let i = 0; i < chunkTo; i++) {
 				if (i > 0) buffer += "\r\n";
 				buffer += options.clearScrollback
-					? lineRewriteSequence(frame[i] ?? "", width)
-					: terminalLine(frame[i] ?? "");
+					? lineRewriteSequence(frame[i] ?? "", width, undefined, this.#imageBudget)
+					: terminalLine(frame[i] ?? "", undefined, this.#imageBudget);
 			}
 			for (let screenRow = 0; screenRow < height; screenRow++) {
 				if (chunkTo + screenRow > 0) buffer += "\r\n";
 				const line = visibleTexts ? (visibleTexts[screenRow] ?? "") : (window[screenRow] ?? "");
-				buffer += options.clearScrollback ? lineRewriteSequence(line, width) : terminalLine(line);
+				buffer += options.clearScrollback
+					? lineRewriteSequence(line, width, screenRow, this.#imageBudget)
+					: terminalLine(line, screenRow, this.#imageBudget);
 			}
 		} else {
 			for (let i = 0; i < paintLines.length; i++) {
 				if (i > 0) buffer += "\r\n";
 				const line = visibleTexts && i >= visibleStart ? visibleTexts[i - visibleStart] : (paintLines[i] ?? "");
-				buffer += options.clearScrollback ? lineRewriteSequence(line, width) : terminalLine(line);
+				const screenRow = i >= visibleStart ? i - visibleStart : undefined;
+				buffer += options.clearScrollback
+					? lineRewriteSequence(line, width, screenRow, this.#imageBudget)
+					: terminalLine(line, screenRow, this.#imageBudget);
 			}
 		}
 		buffer += fillSequence;
@@ -3398,7 +3437,7 @@ export class TUI extends Container {
 		let buffer = `${this.#paintBeginSequence + this.#enterResizeAltSequence()}\x1b[H`;
 		for (let r = 0; r < height; r++) {
 			if (r > 0) buffer += "\r\n";
-			buffer += lineRewriteSequence(window[r] ?? "", width);
+			buffer += lineRewriteSequence(window[r] ?? "", width, r, this.#imageBudget);
 		}
 		// Park the hardware cursor at the real content bottom, not the padded
 		// viewport bottom: a later height shrink would otherwise scroll the live
@@ -3505,7 +3544,7 @@ export class TUI extends Container {
 		let buffer = `${this.#paintBeginSequence}\x1b[H`;
 		for (let r = 0; r < height; r++) {
 			if (r > 0) buffer += "\r\n";
-			buffer += lineRewriteSequence(fitted[r], width);
+			buffer += lineRewriteSequence(fitted[r], width, r, this.#imageBudget);
 		}
 		if (cursor !== undefined) {
 			// Rows/cols are 0-based internally and 1-based on the wire.
@@ -3597,7 +3636,7 @@ export class TUI extends Container {
 				const moveToBottom = height - 1 - currentScreenRow;
 				if (moveToBottom > 0) buffer += `\x1b[${moveToBottom}B`;
 				for (let r = height - scroll; r < height; r++) {
-					buffer += `\r\n${lineRewriteSequence(window[r] ?? "", width)}`;
+					buffer += `\r\n${lineRewriteSequence(window[r] ?? "", width, r, this.#imageBudget)}`;
 				}
 				// Rewrite any remaining changed rows after the shift.
 				let firstChanged = -1;
@@ -3614,7 +3653,7 @@ export class TUI extends Container {
 					buffer += "\r";
 					for (let r = firstChanged; r <= lastChanged; r++) {
 						if (r > firstChanged) buffer += "\r\n";
-						buffer += lineRewriteSequence(window[r] ?? "", width);
+						buffer += lineRewriteSequence(window[r] ?? "", width, r, this.#imageBudget);
 					}
 					cursorFromRow = windowTop + lastChanged;
 				}
@@ -3683,7 +3722,12 @@ export class TUI extends Container {
 			}
 			for (let r = firstChanged; r <= lastChanged; r++) {
 				if (r > firstChanged) buffer += "\r\n";
-				buffer += lineRewriteSequence(fillTexts ? fillTexts[r - firstChanged] : (window[r] ?? ""), width);
+				buffer += lineRewriteSequence(
+					fillTexts ? fillTexts[r - firstChanged] : (window[r] ?? ""),
+					width,
+					r,
+					this.#imageBudget,
+				);
 			}
 			buffer += fillSequence;
 			// Never park below real content (a height shrink would scroll live
@@ -3719,7 +3763,7 @@ export class TUI extends Container {
 		}
 		for (let screenRow = 0; screenRow < height; screenRow++) {
 			if (wroteLine) buffer += "\r\n";
-			buffer += lineRewriteSequence(window[screenRow] ?? "", width);
+			buffer += lineRewriteSequence(window[screenRow] ?? "", width, screenRow, this.#imageBudget);
 			wroteLine = true;
 		}
 		const parkUp = height - 1 - (contentBottomRow - windowTop);

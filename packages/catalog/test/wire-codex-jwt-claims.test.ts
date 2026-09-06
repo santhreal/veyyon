@@ -199,7 +199,9 @@ describe("the Codex claim namespaces have one owner", () => {
 	const PACKAGE_SOURCES = ["../../ai/src", "../../catalog/src", "../../coding-agent/src"] as const;
 	const OWNER = path.resolve(import.meta.dir, "../src/wire/codex.ts");
 
+	let cachedSources: ReadonlyArray<{ file: string; text: string }> | null = null;
 	async function sources(): Promise<ReadonlyArray<{ file: string; text: string }>> {
+		if (cachedSources) return cachedSources;
 		const collected: Array<{ file: string; text: string }> = [];
 		for (const relative of PACKAGE_SOURCES) {
 			const root = path.resolve(import.meta.dir, relative);
@@ -210,6 +212,7 @@ describe("the Codex claim namespaces have one owner", () => {
 				collected.push({ file: `${relative}/${file}`, text: await Bun.file(full).text() });
 			}
 		}
+		cachedSources = collected;
 		return collected;
 	}
 

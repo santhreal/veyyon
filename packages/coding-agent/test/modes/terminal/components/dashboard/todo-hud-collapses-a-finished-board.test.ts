@@ -36,6 +36,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { viewToolRenderer } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
@@ -44,7 +45,6 @@ import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { initTheme, stopThemeWatcher, theme } from "@veyyon/coding-agent/theme/theme";
 import type { TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
 import { todoToolView } from "@veyyon/coding-agent/tools/agent/todo-view";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";

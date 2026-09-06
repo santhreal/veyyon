@@ -56,6 +56,7 @@ import { AsyncJobManager } from "./async";
 import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
 import { shouldEnableAppendOnlyContext } from "./config/append-only-context-mode";
 import { isAuthenticated, kNoAuth } from "./config/auth-state";
+import { resolveContextLimit } from "./config/compaction-strategy";
 import { resolveDialect } from "./config/dialect-format";
 import { type EffortSource, resolveEffort, withLegacyDefaultEffort } from "./config/effort-resolver";
 import { shouldInlineToolDescriptors } from "./config/inline-tool-descriptors-mode";
@@ -118,6 +119,7 @@ import { LSP_STARTUP_EVENT_CHANNEL, type LspStartupEvent } from "./lsp/startup-e
 import { discoverAndLoadMCPTools, MCPManager, MCPToolCache } from "./mcp";
 import { MCP_CONNECTION_STATUS_EVENT_CHANNEL, type McpConnectionStatusEvent } from "./mcp/startup-events";
 import { createSessionMemoryRuntimeContext, resolveMemoryBackend } from "./memory/backend";
+import { recordRestLaunchFacts } from "./modes/launch-facts";
 import { DEFAULT_PLAN_FILE_URL } from "./plan-mode/plan-file-url";
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID, mainAgentIdFor } from "./registry/agent-registry";
@@ -145,6 +147,7 @@ import { AgentSession, obfuscateProviderPayload } from "./session/agent-session"
 import { discoverAuthStorage } from "./session/auth-broker-config";
 import { sessionCpuExecHooks } from "./session/cpu-limit";
 import { convertToLlm, LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "./session/messages";
+import { computeNonMessageBreakdown } from "./session/non-message-tokens";
 import { createSettingsAwareStreamFn } from "./session/settings-stream-fn";
 import { wrapSteeringForModel } from "./session/steering-envelope";
 import { closeAllConnections } from "./ssh/connection-manager";
@@ -3412,6 +3415,33 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			titleSystemPrompt: options.titleSystemPrompt,
 		});
 		hasSession = true;
+		// Record the at-rest launch facts the moment they exist, not when the
+		// status row first renders. The launch card reads the file on every
+		// render and repaints when a record lands, so on a cold launch — no
+		// recording from a previous session — the hero's model name and provider
+		// and the context gauge arrive with the session rather than with the
+		// mounted row, and the next launch states them from the first frame.
+		// The row re-records the same decision on its own renders; a record that
+		// changes nothing does not write.
+		const atRestUsage = session.getContextUsage();
+		const atRestWindow = atRestUsage?.contextWindow ?? session.model?.contextWindow ?? 0;
+		// The row measures against the compaction fire point when auto-compaction
+		// is on, and against the raw window when it is off; the same predicate the
+		// row is handed at mount.
+		const atRestLimit = session.autoCompactionEnabled
+			? resolveContextLimit(atRestWindow, settings.getGroup("compaction")).tokens
+			: atRestWindow;
+		void recordRestLaunchFacts(
+			{
+				model: session.state.model,
+				thinkingLevel: session.state.thinkingLevel ?? null,
+				isAutoThinking: session.isAutoThinking,
+				messageCount: session.messages?.length ?? 0,
+				systemContextTokens: computeNonMessageBreakdown(session).systemContextTokens,
+			},
+			atRestUsage?.tokens == null ? null : atRestLimit > 0 ? (atRestUsage.tokens / atRestLimit) * 100 : null,
+			atRestLimit,
+		);
 
 		if (
 			shouldAutoloadArgotAtStartup({

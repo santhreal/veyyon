@@ -489,6 +489,7 @@ function makeHostContext(): InteractiveModeContext {
 		ui: { requestRender: () => {} },
 		showStatus: () => {},
 		collabHost: undefined,
+		clearWorkingLoader: () => false,
 		// Required members of the context. Omitting them used to be tolerated by
 		// `?.()` calls in the controller, which meant production silently skipped
 		// the composer refresh and the welcome dismissal whenever either was

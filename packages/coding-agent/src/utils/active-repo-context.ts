@@ -23,6 +23,7 @@ import { errorMessage } from "@veyyon/utils/type-guards";
 
 import {
 	type GitRepository,
+	linkedWorktreeSync,
 	resolveRepository as resolveRepositoryFromFiles,
 	resolveRepositorySync as resolveRepositoryFromFilesSync,
 } from "./git-head";
@@ -32,6 +33,25 @@ export interface ActiveRepoContext {
 	repoRoot: string;
 	relativeRepoRoot: string;
 	source: "single-direct-child-repo";
+}
+
+/** Project and worktree directory names for a linked git worktree. */
+export interface WorktreeContext {
+	projectName: string;
+	worktreeName: string;
+}
+
+/**
+ * Resolve the primary checkout and worktree names without starting git.
+ * Bare-repository worktrees use the shared directory with its `.git` suffix removed.
+ */
+export function resolveWorktreeContext(cwd: string): WorktreeContext | null {
+	const worktree = linkedWorktreeSync(cwd);
+	if (!worktree) return null;
+	const base = path.basename(worktree.primaryRoot);
+	const projectName = base.endsWith(".git") ? base.slice(0, -4) : base;
+	if (!projectName) return null;
+	return { projectName, worktreeName: path.basename(worktree.root) };
 }
 
 function compareEntryNames(left: fs.Dirent, right: fs.Dirent): number {

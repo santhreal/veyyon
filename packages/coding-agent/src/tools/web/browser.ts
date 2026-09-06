@@ -118,6 +118,13 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 	readonly summary = "Control a headless browser to navigate and interact with web pages";
 	readonly parameters = browserSchema;
 	readonly strict = true;
+	/**
+	 * Every action reads or moves one shared tab table, and `run` writes to a
+	 * page's single input stream. Batched as shared, `run` and `close` on the
+	 * same tab started together and the run found its tab gone; exclusive runs
+	 * a batch in the order it was written, which is the order it reads in.
+	 */
+	readonly concurrency = "exclusive";
 
 	readonly examples: readonly ToolExample<typeof browserSchema.infer>[] = [
 		{

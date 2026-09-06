@@ -19,6 +19,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { Agent, type AgentTool } from "@veyyon/agent-core";
 import { z } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { createMockModel, type MockResponse } from "@veyyon/ai/providers/mock";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
@@ -31,7 +32,6 @@ import {
 	type FacadeToolResult,
 } from "@veyyon/coding-agent/session/facade";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import type { ClientBridge } from "@veyyon/kernel/session/client-bridge";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";

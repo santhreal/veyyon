@@ -1,10 +1,10 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { AuthStorage } from "@veyyon/ai/auth-storage";
 import { getOAuthProviders, type OAuthProviderInfo } from "@veyyon/ai/oauth";
 import { PROVIDER_REGISTRY } from "@veyyon/ai/registry";
 import { stripEffortTierSuffix } from "@veyyon/catalog/variant-collapse";
-import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { parseCompactArgs } from "@veyyon/kernel/session/compact-modes";
 import { resolveResumableSession } from "@veyyon/kernel/session/session-listing";
 import { formatShakeSummary, type ShakeMode } from "@veyyon/kernel/session/shake-types";
@@ -75,7 +75,13 @@ import {
 	type BuiltinSlashCommandDeclaration,
 	type BuiltinSlashCommandName,
 } from "./builtin-declarations";
-import { type AccountRoleSources, accountRoleAnnotations, renderAccountStatus } from "./helpers/account-status";
+import {
+	ACCOUNT_STATUS_TITLE,
+	type AccountRoleSources,
+	type AccountStatusStyle,
+	accountRoleAnnotations,
+	renderAccountStatus,
+} from "./helpers/account-status";
 import { CollabQrCodeComponent } from "./helpers/collab-qrcode";
 import { buildContextReportText } from "./helpers/context-report";
 import { applyCpuLimitCommand } from "./helpers/cpu-limit";
@@ -95,6 +101,7 @@ import type {
 	SlashCommandRuntime,
 	SlashCommandSpec,
 	SubcommandDef,
+	TuiSlashCommandHostContext,
 	TuiSlashCommandRuntime,
 } from "./types";
 
@@ -389,14 +396,26 @@ function accountRoleSources(session: AgentSession): AccountRoleSources {
 	};
 }
 
+/** The TUI's colours for the `/account status` block; a text client passes none. */
+const ACCOUNT_STATUS_TUI_STYLE: AccountStatusStyle = {
+	title: text => text,
+	name: text => theme.bold(text),
+	muted: text => theme.fg("dim", text),
+	warn: text => theme.fg("warning", text),
+	command: text => theme.fg("accent", text),
+};
+
 /**
  * The `/account status` block for a session: routing read from disk, usage from the provider.
  *
  * Usage comes through the same `session.fetchUsageReports()` that `/usage` calls, so the two
  * surfaces cannot disagree about a percentage. A failed fetch degrades to the routing-only block
  * rather than failing the command: which account is serving is on disk and still worth printing.
+ *
+ * Returns the block's lines; line one is the title. A text client prints them as they are, the TUI
+ * lifts the title into a transcript block header (see {@link presentAccountStatus}).
  */
-async function buildAccountStatusText(session: AgentSession): Promise<string> {
+async function buildAccountStatusLines(session: AgentSession, style?: AccountStatusStyle): Promise<string[]> {
 	let inventory = await loadAccountInventory(session.modelRegistry.authStorage, { sessionId: session.sessionId });
 	try {
 		const reports = await session.fetchUsageReports();
@@ -404,7 +423,17 @@ async function buildAccountStatusText(session: AgentSession): Promise<string> {
 	} catch (error) {
 		logger.debug("account status: usage fetch failed", { error: errorMessage(error) });
 	}
-	return renderAccountStatus(inventory, Date.now(), accountRoleAnnotations(accountRoleSources(session))).join("\n");
+	return renderAccountStatus(inventory, Date.now(), accountRoleAnnotations(accountRoleSources(session)), style);
+}
+
+/**
+ * The TUI form of `/account status`: a transcript block with the title as its header, not a
+ * paragraph printed as though the assistant had said it.
+ */
+async function presentAccountStatus(ctx: Pick<TuiSlashCommandHostContext, "showReport" | "session">): Promise<void> {
+	const lines = await buildAccountStatusLines(ctx.session, ACCOUNT_STATUS_TUI_STYLE);
+	// Line one is the title and line two the blank under it; the header row carries both.
+	ctx.showReport(ACCOUNT_STATUS_TITLE, lines.slice(2).join("\n"));
 }
 
 /** How a probed credential reads in the `/account refresh` delta. */
@@ -817,13 +846,13 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				const missing = loadConfig(process.cwd()).missingServers;
 				if (missing.length > 0) {
 					const lines = [
-						"No language servers running. Detected for this project but not installed:",
+						theme.fg("dim", "Detected for this project but not installed:"),
 						...missing.map(
 							server =>
 								`${theme.fg("warning", theme.status.pending)} ${server.name} ${theme.fg("dim", `(needs \`${server.command}\` on $PATH · ${server.fileTypes.join(", ")})`)}`,
 						),
 					];
-					runtime.ctx.showStatus(lines.join("\n"), { dim: false });
+					runtime.ctx.showReport("Language Servers", lines.join("\n"));
 				} else {
 					runtime.ctx.showStatus("No language servers configured for this project.");
 				}
@@ -840,7 +869,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 					server =>
 						`${glyph(server.status)} ${server.name} ${theme.fg("dim", `(${server.status} · ${server.fileTypes.join(", ")})`)}`,
 				);
-				runtime.ctx.showStatus(lines.join("\n"), { dim: false });
+				runtime.ctx.showReport("Language Servers", lines.join("\n"));
 			}
 			runtime.ctx.editor.setText("");
 		},
@@ -867,7 +896,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 		handle: async (command, runtime) => {
 			const { verb, rest } = parseSubcommand(command.args);
 			if (!verb || verb === "status") {
-				await runtime.output(await buildAccountStatusText(runtime.session));
+				await runtime.output((await buildAccountStatusLines(runtime.session)).join("\n"));
 				return commandConsumed();
 			}
 			if (verb === "name") {
@@ -903,7 +932,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			const { verb, rest } = parseSubcommand(command.args);
 			runtime.ctx.editor.setText("");
 			if (!verb || verb === "status") {
-				runtime.ctx.showStatus(await buildAccountStatusText(runtime.ctx.session), { dim: false });
+				await presentAccountStatus(runtime.ctx);
 				return;
 			}
 			if (verb === "manager") {
@@ -934,7 +963,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				return;
 			}
 			if (verb === "refresh") {
-				runtime.ctx.showStatus(await refreshActiveAccounts(runtime.ctx.session), { dim: false });
+				runtime.ctx.showReport("Account Refresh", await refreshActiveAccounts(runtime.ctx.session));
 				return;
 			}
 			if (verb === "use") {
@@ -2549,7 +2578,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 				runtime.ctx.settings.getAgentDir(),
 				runtime.ctx.sessionManager.getCwd(),
 			);
-			runtime.ctx.showStatus(report);
+			runtime.ctx.showReport("Trust", report.trimEnd());
 		},
 	},
 	force: {

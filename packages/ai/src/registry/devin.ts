@@ -10,6 +10,7 @@ export const devinProvider = {
 		const credentials = await loginDevin(cb);
 		return credentials.access;
 	},
+	credential: "oauth",
 	callbackPort: 59653,
 	pasteCodeFlow: true,
 } as const satisfies ProviderDefinition;

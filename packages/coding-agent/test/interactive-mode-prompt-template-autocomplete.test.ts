@@ -10,6 +10,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Agent, type AgentTool } from "@veyyon/agent-core";
 import type { Api, Model } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { Effort } from "@veyyon/catalog/effort";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import type { PromptTemplate } from "@veyyon/coding-agent/config/prompt-templates";
@@ -21,7 +22,6 @@ import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/sett
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 import type { AutocompleteProvider } from "@veyyon/utils/autocomplete";

@@ -9,10 +9,12 @@
  * is parsed from the C-quoted porcelain form mints a path that does not exist,
  * so `git add` fails mid-cut with the tree already rewritten.
  *
- * `resolveReleaseVersion` must keep the already-tagged case distinguishable
- * from the too-old case: re-cutting the tagged version is the documented
- * recovery from a publish that died after tagging, and telling that operator to
- * "pick a higher version" burns a version number and strands the dead tag.
+ * `resolveReleaseVersion` never orders versions: release order is publication
+ * order and the number is a label, so `0.0.1` after `v1.4.0` is a valid cut. It
+ * must keep the already-tagged case distinguishable from a number an older
+ * release used: re-cutting the latest tag is the documented recovery from a
+ * publish that died after tagging, and telling that operator to pick another
+ * version burns a number and strands the dead tag.
  *
  * `preparationLeftovers` and `rollbackReport` are the recovery half. Preparation
  * rewrites versions, lockfiles and every changelog before the checks that can
@@ -97,34 +99,44 @@ describe("rollbackReport", () => {
 });
 
 describe("resolveReleaseVersion", () => {
+	const TAGS = ["v1.0.0", "v1.2.3"];
+
 	test("bumps each component against the latest tag", () => {
-		expect(resolveReleaseVersion("patch", "v1.2.3").version).toBe("1.2.4");
-		expect(resolveReleaseVersion("minor", "v1.2.3").version).toBe("1.3.0");
-		expect(resolveReleaseVersion("major", "v1.2.3").version).toBe("2.0.0");
+		expect(resolveReleaseVersion("patch", "v1.2.3", TAGS).version).toBe("1.2.4");
+		expect(resolveReleaseVersion("minor", "v1.2.3", TAGS).version).toBe("1.3.0");
+		expect(resolveReleaseVersion("major", "v1.2.3", TAGS).version).toBe("2.0.0");
 	});
 
-	test("accepts an explicit version ahead of the tag", () => {
-		expect(resolveReleaseVersion("1.5.0", "v1.2.3").version).toBe("1.5.0");
+	test("accepts an explicit version whatever its order against the tag", () => {
+		// THE CONTRACT. A number below the latest tag is a label like any other:
+		// the release published after v1.2.3 is the newer one, whatever it is called.
+		expect(resolveReleaseVersion("1.5.0", "v1.2.3", TAGS).version).toBe("1.5.0");
+		expect(resolveReleaseVersion("0.0.1", "v1.2.3", TAGS).version).toBe("0.0.1");
+		expect(resolveReleaseVersion("1.1.0", "v1.2.3", TAGS).version).toBe("1.1.0");
 	});
 
-	test("refuses a version behind the tag and says to pick a higher one", () => {
-		const { version, failure } = resolveReleaseVersion("1.0.0", "v1.2.3");
+	test("refuses a number an older release used and says to pick one that is not tagged", () => {
+		const { version, failure } = resolveReleaseVersion("1.0.0", "v1.2.3", TAGS);
 		expect(version).toBeUndefined();
-		expect(failure?.join("\n")).toContain("must be greater than latest tag v1.2.3");
+		const text = failure?.join("\n") ?? "";
+		expect(text).toContain("v1.0.0 is already a tag");
+		expect(text).not.toContain("git push origin :refs/tags");
 	});
 
-	test("refuses the already-tagged version with the recovery, not with 'pick a higher one'", () => {
-		const { version, failure } = resolveReleaseVersion("1.2.3", "v1.2.3");
+	test("refuses the latest tag with the recovery, not with 'pick another'", () => {
+		const { version, failure } = resolveReleaseVersion("1.2.3", "v1.2.3", TAGS);
 		expect(version).toBeUndefined();
 		const text = failure?.join("\n") ?? "";
 		expect(text).toContain("git push origin :refs/tags/v1.2.3");
 		expect(text).toContain("git tag -d v1.2.3");
-		expect(text).not.toContain("must be greater than");
+		expect(text).not.toContain("pick one that has not been tagged");
 	});
 
 	test("treats a repository with no tag as a 0.0.0 baseline", () => {
-		expect(resolveReleaseVersion("major", "0.0.0").version).toBe("1.0.0");
-		expect(resolveReleaseVersion("1.0.0", "0.0.0").version).toBe("1.0.0");
+		expect(resolveReleaseVersion("major", "0.0.0", []).version).toBe("1.0.0");
+		expect(resolveReleaseVersion("1.0.0", "0.0.0", []).version).toBe("1.0.0");
+		// The baseline is not a tag, so the first cut may be 0.0.0 itself.
+		expect(resolveReleaseVersion("0.0.0", "0.0.0", []).version).toBe("0.0.0");
 	});
 });
 

@@ -90,10 +90,19 @@ export function fmtNum(value: number, decimals: number = 0): string {
 	return `${value < 0 ? "-" : ""}${commas(Number(whole))}${fraction}`;
 }
 
+/**
+ * A metric with its unit: `192.78ms`, `12MiB`, `1,596,000 comparisons`. A short
+ * symbol or abbreviation attaches to the number; a word gets a space, since
+ * `1,596,000comparisons` reads as one token.
+ */
 export function formatNum(value: number | null, unit: string): string {
 	if (value === null) return "-";
-	if (Number.isInteger(value)) return `${fmtNum(value)}${unit}`;
-	return `${fmtNum(value, 2)}${unit}`;
+	const number = Number.isInteger(value) ? fmtNum(value) : fmtNum(value, 2);
+	return `${number}${unitSeparator(unit)}${unit}`;
+}
+
+function unitSeparator(unit: string): string {
+	return unit.length > 3 && /^\p{L}+$/u.test(unit) ? " " : "";
 }
 
 /**
@@ -174,7 +183,7 @@ export function pathMatchesSpec(pathValue: string, specValue: string): boolean {
  * whitespace-only entry is a value.
  */
 export function dedupeStrings(values: readonly string[]): string[] {
-	return Array.from(new Set(nonEmptyTrimmed(values)));
+	return [...new Set(nonEmptyTrimmed(values))];
 }
 
 export function ensureNumericMetricMap(value: NumericMetricMap | undefined): NumericMetricMap {

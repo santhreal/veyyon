@@ -89,6 +89,12 @@ describe("veyyon agents unpack", () => {
 		expect(result.targetDir).toBe(target);
 		expect(result.written.every(file => file.startsWith(target))).toBe(true);
 	}, 30_000);
+	it("rejects a scope flag that no longer has a reader", async () => {
+		const home = makeTempDir2();
+		const { stderr, exitCode } = await runAgents(makeEnv(home), ["unpack", "--project"]);
+		expect(exitCode).not.toBe(0);
+		expect(stderr).toContain("--project");
+	}, 30_000);
 
 	it("--user names the same directory as the default", async () => {
 		const home = makeTempDir2();

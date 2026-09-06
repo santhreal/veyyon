@@ -1,6 +1,6 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, Model } from "@veyyon/ai";
-import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import type { AuthStorage } from "@veyyon/ai/auth-storage";
 import { collapseWhitespace, prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";

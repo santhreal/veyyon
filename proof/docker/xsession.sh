@@ -23,6 +23,13 @@ H="${SCENE_HEIGHT}"
 FPS="${SCENE_FPS}"
 OUT="/out"
 mkdir -p "${OUT}"
+
+# Before anything is drawn: the product imports a gitignored bundle at parse
+# time, and a worktree without it records a black screen with no error in the
+# capture path.
+# shellcheck source=proof/docker/session-artifacts.sh
+source "$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)/session-artifacts.sh"
+ensure_session_artifacts /repo
 # magick (backdrop) and import (stills) leave magick-* in /tmp when killed.
 # shellcheck source=proof/docker/magick-tmpdir.sh
 source "$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)/magick-tmpdir.sh"

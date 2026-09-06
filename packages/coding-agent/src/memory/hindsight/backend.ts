@@ -9,7 +9,8 @@
 
 import type { AgentMessage } from "@veyyon/agent-core";
 import { logger } from "@veyyon/utils";
-import { onHindsightScopeChanged, type Settings } from "../../config/settings";
+import type { Settings } from "../../config/settings";
+import { onHindsightScopeChanged } from "../../config/settings-signals";
 import type { AgentSession } from "../../session/agent-session";
 import type { MemoryBackend, MemoryBackendStartOptions } from "../types";
 import { type BankScope, computeBankScope } from "./bank";

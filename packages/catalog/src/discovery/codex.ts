@@ -1,7 +1,8 @@
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { normalizeBaseUrl } from "@veyyon/utils/url";
+import { canonicalizeEfforts, type Effort, isEffort } from "../effort";
 import { parseKnownModel, semverEqual } from "../identity/classify";
-import type { ModelSpec } from "../types";
+import type { ModelReasoningOptions, ModelSpec } from "../types";
 import { discoveryFetch, toArray, toBoolean, toFields, toFiniteNumber, toNonEmptyString } from "../utils";
 import { CODEX_BASE_URL, CODEX_CLIENT_VERSION, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "../wire/codex";
 import type { DiscoveryFailure, DiscoveryHooks } from "./failure";
@@ -44,6 +45,7 @@ interface CodexModelEntry {
 	priority?: unknown;
 	prefer_websockets?: unknown;
 	use_responses_lite?: unknown;
+	apply_patch_tool_type?: unknown;
 }
 
 interface NormalizedCodexModel {
@@ -254,9 +256,11 @@ function normalizeCodexModelEntry(entry: unknown, baseUrl: string): NormalizedCo
 		: (reportedContextWindow ?? CODEX_DEFAULT_CONTEXT_WINDOW);
 	const maxTokens = Math.min(CODEX_DEFAULT_MAX_TOKENS, contextWindow);
 	const reasoning = supportsReasoning(payload.default_reasoning_level, payload.supported_reasoning_levels);
+	const reasoningOptions = reasoning ? declaredReasoningOptions(payload.supported_reasoning_levels) : undefined;
 	const input = normalizeInputModalities(payload.input_modalities);
 	const preferWebsockets = toBoolean(payload.prefer_websockets) === true;
 	const useResponsesLite = toBoolean(payload.use_responses_lite) === true;
+	const applyPatchToolType = toNonEmptyString(payload.apply_patch_tool_type)?.toLowerCase();
 	const priority = toFiniteNumber(payload.priority) ?? Number.MAX_SAFE_INTEGER;
 
 	return {
@@ -276,6 +280,8 @@ function normalizeCodexModelEntry(entry: unknown, baseUrl: string): NormalizedCo
 			maxTokens,
 			...(preferWebsockets ? { preferWebsockets: true } : {}),
 			...(useResponsesLite ? { useResponsesLite: true } : {}),
+			...(reasoningOptions !== undefined ? { reasoningOptions } : {}),
+			...(applyPatchToolType === "freeform" || applyPatchToolType === "function" ? { applyPatchToolType } : {}),
 			...(priority !== Number.MAX_SAFE_INTEGER ? { priority } : {}),
 		},
 	};
@@ -299,6 +305,29 @@ function supportsReasoning(defaultReasoningLevel: unknown, supportedReasoningLev
 	}
 
 	return false;
+}
+
+/**
+ * The effort ladder the endpoint declares through `supported_reasoning_levels`.
+ * That list is the one authority on which efforts a Codex SKU accepts: GPT-5.5
+ * stops at xhigh, GPT-6 Astra and GPT-Reserve go to max, and nothing about the
+ * id says which. A level Veyyon has no name for (`ultra`) is dropped from a
+ * mixed list the same way `mapModelsDevReasoningOptions` drops one, so the
+ * declared surface survives until the tier is learned. A list with no known
+ * level declares nothing, and the row falls back to the generator overlay.
+ */
+function declaredReasoningOptions(supportedReasoningLevels: unknown): ModelReasoningOptions | undefined {
+	if (!Array.isArray(supportedReasoningLevels)) {
+		return undefined;
+	}
+	const efforts: Effort[] = [];
+	for (const level of supportedReasoningLevels) {
+		const effort = toNonEmptyString(toFields(level)?.effort)?.toLowerCase();
+		if (isEffort(effort)) {
+			efforts.push(effort);
+		}
+	}
+	return efforts.length > 0 ? { efforts: canonicalizeEfforts(efforts) } : undefined;
 }
 
 function normalizeInputModalities(inputModalities: unknown): ("text" | "image")[] {

@@ -9,4 +9,5 @@ export const opencodeZenProvider = {
 		const { loginOpenCode } = await import("./oauth/opencode");
 		return loginOpenCode(cb);
 	},
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

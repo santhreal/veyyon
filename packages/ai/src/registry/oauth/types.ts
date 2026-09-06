@@ -1,5 +1,6 @@
 import type { FetchImpl } from "../../types";
 import type { OAuthProviderUnion } from "../registry";
+import type { LoginCredential } from "../types";
 
 export type OAuthCredentials = {
 	refresh: string;
@@ -63,6 +64,12 @@ export interface OAuthProviderInfo {
 	id: OAuthProviderId;
 	name: string;
 	available: boolean;
+	/**
+	 * What the login asks for: a pasted key, or a browser/device authorization
+	 * the flow waits on. A custom provider registered by an extension declares
+	 * neither and is treated as `oauth`. See `LoginCredential` in `../types`.
+	 */
+	credential: LoginCredential;
 	/**
 	 * Provider id the login stores credentials under, when it differs from `id`
 	 * (e.g. `openai-codex-device` ⇒ `openai-codex`). Lets callers map a login

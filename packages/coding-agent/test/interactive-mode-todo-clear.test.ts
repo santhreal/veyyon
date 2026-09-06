@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
@@ -9,7 +10,6 @@ import { TASK_SUBAGENT_LIFECYCLE_CHANNEL } from "@veyyon/coding-agent/task";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { NativeScrollbackLiveRegion } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";

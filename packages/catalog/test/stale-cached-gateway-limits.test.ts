@@ -23,14 +23,20 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { captureDirOverrides, getModelDbPath, restoreDirOverrides, setAgentDir } from "@veyyon/utils";
+import {
+	captureDirOverrides,
+	getModelDbPath,
+	removeWithRetries,
+	restoreDirOverrides,
+	setAgentDir,
+} from "@veyyon/utils";
 // Relative imports, not `@veyyon/catalog/...`: the workspace `node_modules` link resolves to the primary
 // checkout rather than to this worktree, so the package specifier would test someone else's source.
 import {
 	AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW,
 	AGENT_GATEWAY_DEFAULT_MAX_TOKENS,
 } from "../src/discovery/default-limits";
-import { readModelCache, writeModelCache } from "../src/model-cache";
+import { closeModelCache, readModelCache, writeModelCache } from "../src/model-cache";
 import { resolveProviderModels } from "../src/model-manager";
 import { getBundledModels } from "../src/models";
 import type { Api, Model } from "../src/types";
@@ -179,8 +185,9 @@ describe("a cached gateway row from before the limits were resolved", () => {
 			expect(readModelCache<Api>("cursor", TTL_MS, Date.now)).toBeNull();
 			expect(rowCount(sharedPath), "the open-time delete refused it, so this case proves nothing").toBe(1);
 		} finally {
+			closeModelCache();
 			restoreDirOverrides(overrides);
-			await fs.rm(agentDir, { recursive: true, force: true });
+			await removeWithRetries(agentDir);
 		}
 	});
 });

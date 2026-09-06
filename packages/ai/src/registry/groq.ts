@@ -19,4 +19,5 @@ export const groqProvider = {
 	id: "groq",
 	name: "Groq",
 	login: (cb: OAuthLoginCallbacks) => login(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

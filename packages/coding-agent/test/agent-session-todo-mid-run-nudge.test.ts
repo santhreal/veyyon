@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { Agent, type AgentTool, type AsideMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, TextContent, ToolCall } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
@@ -10,7 +11,6 @@ import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-sessi
 import type { CustomMessage } from "@veyyon/coding-agent/session/messages";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { TodoTool } from "@veyyon/coding-agent/tools/agent/todo";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 

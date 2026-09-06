@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { bareVersion, compareDottedNumeric, compareSemver, isNewerVersion } from "@veyyon/utils/semver";
+import { bareVersion, compareDottedNumeric, compareSemver } from "@veyyon/utils/semver";
 import { collectPackageSources } from "./support/package-sources";
 
 /**
@@ -123,30 +123,6 @@ describe("compareSemver", () => {
 				expect(sign(compareSemver(a, b))).toBe(sign(handRolledComparator(a, b)));
 			}
 		});
-	});
-});
-
-describe("isNewerVersion", () => {
-	it("is true only for a strictly newer candidate", () => {
-		expect(isNewerVersion("1.2.4", "1.2.3")).toBe(true);
-		expect(isNewerVersion("2.0.0", "1.9.9")).toBe(true);
-	});
-
-	it("is false for the same version, so a poll does not reinstall what is present", () => {
-		expect(isNewerVersion("1.2.3", "1.2.3")).toBe(false);
-		expect(isNewerVersion("v1.2.3", "1.2.3")).toBe(false);
-	});
-
-	it("is false for an older candidate, so a registry that lags cannot force a downgrade", () => {
-		expect(isNewerVersion("1.2.2", "1.2.3")).toBe(false);
-	});
-
-	it("does not treat a prerelease of the installed version as an upgrade", () => {
-		expect(isNewerVersion("1.2.3-rc.1", "1.2.3")).toBe(false);
-	});
-
-	it("treats the release as an upgrade over its own prerelease", () => {
-		expect(isNewerVersion("1.2.3", "1.2.3-rc.1")).toBe(true);
 	});
 });
 

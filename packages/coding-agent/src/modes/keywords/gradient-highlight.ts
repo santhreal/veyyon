@@ -1,5 +1,5 @@
 import { SGR_FG_RESET } from "@veyyon/utils/ansi";
-import { theme } from "../../theme/theme";
+import { theme } from "../../theme/theme-binding";
 import { maskNonProse } from "./markdown-prose";
 
 /** A gradient keyword highlighter.

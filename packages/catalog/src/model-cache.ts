@@ -98,6 +98,14 @@ function getSharedDb(): Database {
 	return db;
 }
 
+export function closeModelCache(): void {
+	if (sharedDb) {
+		sharedDb.close();
+		sharedDb = null;
+		sharedDbPath = null;
+	}
+}
+
 function withModelCacheDb<T>(dbPath: string | undefined, useDb: (db: Database) => T): T {
 	if (!dbPath) return useDb(getSharedDb());
 	const db = openDb(dbPath);

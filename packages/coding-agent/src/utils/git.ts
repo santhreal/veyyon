@@ -19,7 +19,7 @@ import {
 	headLabel,
 	isReftableRepoSync,
 	LOCAL_BRANCH_PREFIX,
-	linkedWorktreeFromFiles,
+	linkedWorktreeSync,
 	normalizeRefValue,
 	parseGitConfigHasReftable,
 	parseHeadStateFromFiles,
@@ -1848,7 +1848,7 @@ export const repo = {
 	 * so the status line may call it on every render.
 	 */
 	linkedWorktreeSync(cwd: string): { root: string; primaryRoot: string } | null {
-		return linkedWorktreeFromFiles(cwd);
+		return linkedWorktreeSync(cwd);
 	},
 
 	/** Full GitRepository metadata (sync). */

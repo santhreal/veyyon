@@ -56,7 +56,7 @@ import {
 	type ExtensionUIDialogOptions,
 	getExtensionUISelectOptionLabel,
 } from "../../extensibility/extensions";
-import { runExtensionCompact } from "../../extensibility/extensions/compact-handler";
+import { runExtensionCompact, runExtensionSetModel } from "../../extensibility/extensions/compact-handler";
 import { getSessionSlashCommands } from "../../extensibility/extensions/get-commands-handler";
 import { buildSkillPromptMessage, parseSkillInvocation } from "../../extensibility/skills";
 import { loadSlashCommands } from "../../extensibility/slash-commands";
@@ -2315,14 +2315,7 @@ export class AcpAgent implements Agent {
 				getAllTools: () => record.session.getAllToolNames(),
 				setActiveTools: toolNames => record.session.setActiveToolsByName(toolNames),
 				getCommands: () => getSessionSlashCommands(record.session),
-				setModel: async model => {
-					const apiKey = await record.session.modelRegistry.getApiKey(model);
-					if (!apiKey) {
-						return false;
-					}
-					await record.session.setModel(model);
-					return true;
-				},
+				setModel: (model, options) => runExtensionSetModel(record.session, model, options),
 				getThinkingLevel: () => record.session.thinkingLevel,
 				setThinkingLevel: (level, persist) => record.session.setThinkingLevel(level, persist),
 				getSessionName: () => record.session.sessionManager.getSessionName(),

@@ -2,9 +2,28 @@ import { HookEditorComponent, HookInputComponent, HookSelectorComponent } from "
 
 // Core session management
 
-export * from "@veyyon/kernel/session/agent-session-compaction-policy";
 // Auth and model registry
-export * from "@veyyon/kernel/session/auth-storage";
+export type { SnapshotResponse } from "@veyyon/ai/auth-broker/types";
+export type {
+	ApiKeyCredential,
+	AuthCredential,
+	AuthCredentialEntry,
+	AuthCredentialStore,
+	AuthStorageData,
+	AuthStorageOptions,
+	CredentialOrigin,
+	CredentialOriginKind,
+	OAuthAccountIdentity,
+	OAuthCredential,
+	ResetCreditAccountStatus,
+	ResetCreditRedeemOutcome,
+	ResetCreditTarget,
+	SerializedAuthStorage,
+	StoredAuthCredential,
+} from "@veyyon/ai/auth-storage";
+export { AuthStorage, REMOTE_REFRESH_SENTINEL } from "@veyyon/ai/auth-storage";
+export { SqliteAuthCredentialStore } from "@veyyon/ai/auth-storage-sqlite";
+export * from "@veyyon/kernel/session/agent-session-compaction-policy";
 export * from "@veyyon/kernel/session/indexed-session-storage";
 export * from "@veyyon/kernel/session/redis-session-storage";
 export * from "@veyyon/kernel/session/session-context";

@@ -12,6 +12,7 @@ import {
 	type SimpleStreamOptions,
 	type TextContent,
 } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { buildModel } from "@veyyon/catalog/build";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -25,7 +26,6 @@ import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
 import { wrapSteeringForModel } from "@veyyon/coding-agent/session/steering-envelope";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 import { createAssistantMessage } from "./helpers/agent-session-setup";

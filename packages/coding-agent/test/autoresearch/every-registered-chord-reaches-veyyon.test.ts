@@ -22,7 +22,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { createAutoresearchExtension } from "@veyyon/coding-agent/autoresearch";
-import { AUTORESEARCH_OVERLAY_KEY, AUTORESEARCH_TOGGLE_KEY } from "@veyyon/coding-agent/autoresearch/shortcuts";
+import { AUTORESEARCH_SCREEN_KEY } from "@veyyon/coding-agent/autoresearch/shortcuts";
 import type { ExtensionAPI, ExtensionFactory } from "@veyyon/coding-agent/extensibility/extensions";
 import { canonicalKeyId } from "@veyyon/utils/keybindings";
 import { type KeyId, parseKey } from "@veyyon/utils/keys";
@@ -63,7 +63,7 @@ describe("every chord veyyon registers reaches veyyon", () => {
 	it("registers the chords the dashboard advertises, and no others", () => {
 		// Exact equality, so a new binding lands here rather than slipping through
 		// the sweep below on the strength of not using ctrl+shift.
-		expect(REGISTERED).toEqual([AUTORESEARCH_TOGGLE_KEY, AUTORESEARCH_OVERLAY_KEY]);
+		expect(REGISTERED).toEqual([AUTORESEARCH_SCREEN_KEY]);
 	});
 
 	it("binds nothing in the ctrl+shift space, which no terminal family delivers", () => {
@@ -85,15 +85,13 @@ describe("every chord veyyon registers reaches veyyon", () => {
 		// 1 + shift(1) + alt(2) + ctrl(4). The same probe emitted NOTHING AT ALL for
 		// `ctrl+shift+x`, which is why that chord is banned above rather than pinned
 		// to bytes here.
-		expect(chordFor("\x1b[120;5u")).toBe("ctrl+x");
-		expect(chordFor("\x1b[120;3u")).toBe("alt+x");
+		expect(chordFor("\x1b[120;5u")).toBe(AUTORESEARCH_SCREEN_KEY);
 	});
 
 	it("parses the bytes a terminal without the kitty protocol emits for each chord", () => {
-		// The legacy encodings. `ctrl+x` is 0x18 and `alt+x` is ESC-prefixed, and they
-		// stay distinct — which `ctrl+shift+x` did not, since a legacy terminal sends
-		// 0x18 for it too and the overlay chord arrived as the collapse toggle.
-		expect(chordFor("\x18")).toBe("ctrl+x");
-		expect(chordFor("\x1bx")).toBe("alt+x");
+		// The legacy encodings. `ctrl+x` is 0x18, and it stays distinct — which
+		// `ctrl+shift+x` did not, since a legacy terminal sends 0x18 for it too
+		// and the overlay chord arrived as the collapse toggle.
+		expect(chordFor("\x18")).toBe(AUTORESEARCH_SCREEN_KEY);
 	});
 });

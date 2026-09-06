@@ -42,8 +42,10 @@ bun run site:build      # = node apps/site/build.mjs
    These copies are build artifacts; edit the originals in `scripts/`, never
    `apps/site/install.*`.
 4. Regenerates `apps/site/models-data.json` from `packages/catalog/src/models.json`
-   via `apps/site/tools/gen-models.mjs`; the models page fetches it client-side.
-5. Stages the hero clips `assets/demo-hd.webp` and `assets/agents-cockpit.webp`
+   and the provider descriptors via `apps/site/tools/gen-models.mjs`. `models.html`
+   fetches that file, and the live page reads it from jsDelivr's `@main` mirror, so
+   a committed catalog regen reaches veyyon.dev without a deploy.
+5. Stages `assets/demo-hd.webp`, and `assets/agents-cockpit.webp` when it exists,
    into the site tree, so the site cannot serve a clip the repository does not have.
 6. Generates `website-get/` at the repository root for the separate `veyyon-get`
    Pages project, including the two installer scripts, root rewrite, and response

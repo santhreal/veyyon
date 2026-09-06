@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import * as path from "node:path";
 import type { ApiKeyResolver, FetchImpl } from "@veyyon/ai";
 import { registerCustomApi, unregisterCustomApis } from "@veyyon/ai/api-registry";
+import type { AuthStorage, OAuthCredential } from "@veyyon/ai/auth-storage";
 import { registerOAuthProvider, unregisterOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "@veyyon/ai/oauth/types";
 import type { Api, Context, Model, ModelSpec, SimpleStreamOptions, ThinkingConfig } from "@veyyon/ai/types";
@@ -24,7 +25,6 @@ import {
 	getVariantAliasSources,
 	resolveVariantAlias,
 } from "@veyyon/catalog/variant-collapse";
-import type { AuthStorage, OAuthCredential } from "@veyyon/kernel/session/auth-storage";
 import {
 	DAY_MS,
 	errorMessage,

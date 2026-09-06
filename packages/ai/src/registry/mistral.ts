@@ -20,4 +20,5 @@ export const mistralProvider = {
 	id: "mistral",
 	name: "Mistral",
 	login: (cb: OAuthLoginCallbacks) => login(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

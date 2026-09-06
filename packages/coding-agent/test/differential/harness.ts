@@ -237,8 +237,9 @@ export function autoresearchOptions(): AutoresearchToolFactoryOptions {
 		dashboard: {
 			clear(): void {},
 			requestRender(): void {},
-			showOverlay: async (): Promise<void> => {},
-			updateWidget(): void {},
+			showScreen: async (): Promise<void> => {},
+			showLauncher: async (): Promise<void> => {},
+			update(): void {},
 		},
 		getRuntime: () => runtime,
 		pi: {} as unknown as ExtensionAPI,

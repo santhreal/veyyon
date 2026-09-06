@@ -4,52 +4,212 @@ Autoswarm is [autoresearch](./autoresearch.md) with breadth. An iteration builds
 several candidate arms instead of one change, rejects the ones that cannot be
 trusted, has the survivors review each other, and keeps at most one.
 
-`/autoswarm` opens a setup console:
+`/autoswarm` opens the console. It takes no arguments: the goal, the breadth
+and everything else are fields on the surface it opens.
 
 ```
 /autoswarm
 ```
 
+## The console
+
+`/autoswarm` opens one of two surfaces, chosen by whether the current branch
+has a session.
+
+### The launcher
+
+With no session on the branch, `/autoswarm` opens a centered card over the
+transcript: the setup form, a Start button and a Save-as row.
+
 ```
-Autoswarm setup
-Autoresearch with breadth. The model derives the metric from your harness.
-
-› Goal          make the tokenizer faster▌  type to edit
-  Breadth       3                           candidate arms per iteration
-  Attempts      1                           retries before an arm is abandoned
-  Certification on                          arms cross-review before one is kept
-
-3 arms in a review ring: each arm is reviewed by another, and no pair reviews each other.
-
-↑↓ field   ←→ adjust   space toggle   enter start   esc cancel
+┌─ Autoswarm ──────────────────────────────────────────────────────────┐
+│ ▸ Goal         what to optimize                                      │
+│   Preset      swarm  wide                                            │
+│   Breadth     ◂ 3 arms ▸                                             │
+│   Models      session model for every arm                            │
+│   Attempts    1 ▸                                                    │
+│   Certify     ● on                                                   │
+│   Iterations  auto ▸                                                 │
+│   3 arms × 1 attempt: up to 3 harness runs per iteration. Each arm   │
+│   is reviewed by another, and no pair reviews each other.            │
+│   Every arm runs on the session model.                               │
+│   No autoresearch.sh yet: the first turn writes and validates one    │
+│   before anything is measured.                                       │
+│   [ Start swarm ]  needs a goal                                      │
+│   Save as     preset name                                            │
+├──────────────────────────────────────────────────────────────────────┤
+│ type the goal · enter starts the swarm   ↑↓ field   esc close        │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-Up and down move between fields, left and right change the focused value, space
-toggles certification, Enter starts the run and Escape leaves without starting
-one. Text typed after the command prefills the goal, so `/autoswarm make the
-tokenizer faster` opens the console with that goal already in the field.
+The shortest path is three keys long: open, type the goal, Enter. The card
+opens with the caret on the Goal row, and Enter on that row starts the swarm
+once it holds text. Enter on the `Start swarm` button does the same. The
+button states why it cannot start while it cannot: `needs a goal` or
+`no model matches "<spec>"`.
 
-The console opens on whatever the current branch is already doing, so running it
-during a session shows that session's breadth rather than the default, and
-starting applies the new values from the next iteration.
+| Field | Keys |
+|---|---|
+| Goal | Type to edit; a click places the caret; `ctrl+u` clears the row. Enter starts the swarm. |
+| Preset | `←` `→` or space pick the next preset; a click picks the one under the pointer. The preset the fields equal is painted as in force; `delete` removes it when it is a saved one. A row of presets wider than the card scrolls to keep the one in force on it, with `…` where presets are hidden. |
+| Breadth | `←` `→`, or a digit, between 2 and 8; a click on `◂` or `▸` steps. |
+| Models | Type one spec per arm, comma separated; `ctrl+u` clears the row. Enter moves to Attempts. |
+| Attempts | `←` `→`, or a digit, between 1 and 5: retries before an arm is abandoned. |
+| Certify | `←`, `→`, space, Enter or a click toggles cross-review. |
+| Iterations | `←` `→` or typed digits, appending as typed; backspace drops the last digit; `0` is `auto`, which leaves the cap to the model. |
+| Save as | Type a name; Enter saves the current shape as a preset. |
+
+`↑` `↓`, `tab` and `shift+tab` move between fields, the wheel walks them, and
+a click puts the ring on the field under the pointer. Escape closes the card.
+Closing starts nothing; a field edited on the card is parked for the start, so
+the next `/autoswarm` opens with it.
+
+The notes under the fields state what one iteration costs and how the arms are
+reviewed: `3 arms × 1 attempt: up to 3 harness runs per iteration.` is a
+ceiling, since an arm that succeeds on its first attempt uses one, and
+`Each arm is reviewed by another, and no pair reviews each other.` is the review
+topology for that breadth. Both change with the fields above them. A third
+note states whether `autoresearch.sh` was found: the first turn measures with
+it, or writes and validates one before anything is measured.
+
+### The dashboard
+
+Over a session, `/autoswarm` opens the run dashboard: the ledger on the left,
+the highlighted row in full on the right, and the actions the swarm's state
+allows on single keys along the footer.
+
+```
+┌─ Autoswarm · tokenizer-thro… ┬───────────────────────────────────────────────────┐
+│   OVERVIEW ───────────────── │ Best        41ms · -18.0% · from 50ms · run 3 ·   │
+│ › Session                    │             arm a2                                │
+│   Playbook                   │ Trend       █▆▁                                   │
+│   SEGMENT 1 ──────────────── │ Metric      duration · lower is better            │
+│   #3 a2 41ms best            │                                                   │
+│   #2 a1 47ms kept            │ Goal        make the tokenizer faster             │
+│   #1 a0 50ms base            │ Session     tokenizer-throughput                  │
+│                              │                                                   │
+│                              │ Segment     1 · 3 runs, 3 kept                    │
+│                              │ ↓ 6 more                                          │
+├──────────────────────────────┴───────────────────────────────────────────────────┤
+│ s resume   e setup   enter detail   n new session   x stop   esc close           │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+The footer sheds hints from its end when the card is narrow, `esc close`
+last, so the primary action, `e setup` and `enter detail` outlive the rest.
+
+| Key | Action |
+|---|---|
+| `s` | Start, or Resume over a session. |
+| `p` | Pause, offered while a turn is streaming. |
+| `n` | New session: closes the session on the branch, keeps every file and every logged run, prints `Closed <name> · N runs kept in the store. Starting a new session.`, and starts a fresh one with the setup as it stands. Blocked by the same conditions as Start. |
+| `x` | Stop, while the mode is on. |
+| `c` | Clear session. |
+| `r` | Reset worktree, when the session has a baseline commit. |
+| `e` | The setup form, over the same fields as the launcher, with the primary action as its button. |
+| Enter | The highlighted row at the full width of the card. |
+
+An action runs after the dashboard closes, so a confirmation or a turn never
+opens under it. An action the situation blocks is refused on the footer with
+its reason. `↑` `↓` move through the ledger, `pgup` `pgdn` page the detail,
+the wheel scrolls the pane under the pointer and a click selects the row under
+it. Escape closes the dashboard, or returns to the ledger from the setup form
+and the detail view. Closing starts nothing and stops nothing; the swarm is
+exactly as it was.
+
+A field edited on the setup form is written to the session as it is typed.
+Breadth changed on a live session applies from the next iteration. Enter on
+the Goal row resumes the swarm.
+
+The dashboard opens on whatever the current branch is already doing, so opening
+it during a session shows that session's setup rather than the default. A
+session started with `/autoresearch <goal>` is a serial loop and is driven by
+that command's subcommands; opening the dashboard over it shows it at breadth
+2, and resuming from there widens it from its next iteration.
+
+A terminal too narrow for two panes stacks the ledger over the detail at the
+full width of the card.
+
+### Presets
+
+A preset is the shape of a swarm without its goal: breadth, attempts,
+certification, per-arm models and the iteration cap. Two are built in:
+
+| Preset | Breadth | Attempts | Certify |
+|---|---|---|---|
+| `swarm` | 3 | 1 | on |
+| `wide` | 5 | 2 | on |
+
+`←` `→` on the Preset row applies the next one, and a click applies the one
+under the pointer. The preset the fields currently equal is painted as in
+force. `Save as` takes a name and Enter saves the current shape under it; a
+saved preset is offered in every repository. A built-in name cannot be saved
+over. Saved presets are kept in `presets.json` beside the autoresearch
+databases. A saved breadth outside 2 to 8 loads at the nearer bound.
 
 Everything autoresearch provides is unchanged underneath: the same
 `autoresearch.sh` harness, the same metric lines, the same segments, the same
 scope rules, the same database. Read that page first; this one covers only what
 breadth adds.
 
-`/autoresearch` is still there and still serial. Autoswarm does not replace it.
-
 ## Breadth
 
-Breadth is 1 to 8 and opens at 3, the fewest arms a review ring needs. The
-dashboard shows `breadth N` whenever it is above 1.
+Breadth is 2 to 8 and opens at 3, the fewest arms a review ring needs. The
+status row states `N arms`, and the run screen states it per session.
 
 Arms share one worktree. They are built one at a time, measured, and reverted,
 so breadth costs iteration time rather than disk. An arm is a different idea:
 two arms that produce the same diff are counted once.
 
-Breadth 1 is the serial loop exactly. No arms, no review, no certification cost.
+One change per iteration, with no arms and no review, is
+[`/autoresearch`](./autoresearch.md).
+
+## Models per arm
+
+The Models row assigns one model to each arm, in arm order, comma separated:
+
+```
+  Models        opus, gpt-5, glm
+```
+
+`a0` runs on Opus, `a1` on GPT-5, `a2` on GLM. The note under the fields reads
+the assignment back as arms, so an arm that is off by one comma is visible
+before the run starts:
+
+```
+a0 opus · a1 gpt-5 · a2 glm.
+```
+
+An entry left empty runs that arm on the session model, so `, gpt-5` puts `a1`
+on GPT-5 and leaves `a0` where the session already is. An arm past the end of
+the list runs on the session model too, and clearing the row puts every arm
+there.
+
+Each spec resolves the way `--model` resolves one: `provider/id`, a bare id, or
+a role alias such as `@slow`. A spec that matches nothing blocks the start: the
+note reads `No model matches "<spec>".` and the `Start swarm` button states
+`no model matches "<spec>"` until it is fixed. When an authenticated model's id
+or name contains the spec, or a run of three or more letters of it, the note
+adds up to three as `Close: anthropic/claude-opus-4, …`, the likeliest first.
+
+`start_arm` performs the switch. The loop calls it before the first edit of each
+arm, which is also what puts the arm on the status row (`a1 on GPT-5`) while it
+is being built. The session returns to its own model when the arm's result is
+logged, so triage, certification and the choice of the next hypothesis run on
+the model you selected rather than on whichever arm ran last. Turning the mode
+off or clearing the session mid-arm restores it too.
+
+A round configured this way compares models as much as ideas: each arm is a
+different model writing a different change, measured by the same harness and
+reviewed by the ring. Certification still applies, and no arm reviews itself.
+
+Each run records the model in force when `run_experiment` measured it, and the
+run screen shows it under the arm as `Built on`. The arm is the attribution the
+loop declares; the model is what the session was on while the arm was built.
+Read one against the other to tell a model comparison from a round that stayed
+on one model. `run_experiment` states it in the result when an arm is measured
+with no arm in flight, or while a different arm is: both mean the diff was
+written by a model other than the one configured for that arm.
 
 ## Why arms are reviewed
 
@@ -126,7 +286,39 @@ reviewer concludes; the judgement on top of them does not.
 
 ## Session state
 
-Breadth, attempts and certification belong to the session rather than the
-installation, so the setup console sets them per investigation and `/settings`
-does not carry them. A run records which arm produced it and which reviewer
-certified it.
+Breadth, attempts, certification and the per-arm models belong to the session
+rather than the installation, so the console sets them per investigation and
+`/settings` does not carry them. A [preset](#presets) saves that shape under a
+name for every repository. A run records which arm produced it and which arm
+certified it, both stated on the dashboard's detail of that run.
+
+A winning arm has to beat the segment's baseline, not merely the other arms of
+its iteration. An iteration where every arm regressed is a null round.
+
+`certify_arms` and `start_arm` attach only while breadth is above 1. A serial
+`/autoresearch` session has one candidate, no ring and no arm to open, so there
+is nothing for either to do.
+
+## Regenerating the console captures
+
+`proof/scenes/autoswarm-setup.sh` opens the launcher, moves through the fields,
+raises the breadth, assigns a model per arm and types one nothing matches,
+toggles certification off and back on, sets an iteration cap, switches to the
+`wide` preset, and leaves with Escape. It is a stills take that measures under 1 fps of real change, so
+both arms turn the motion gate off; at the default the recorder rejects the take
+as a stutter:
+
+```sh
+SCENE_MOTION_FLOOR=0 proof/record.sh proof/scenes/autoswarm-setup.sh
+SCENE_MOTION_FLOOR=0 proof/record.sh --before proof/scenes/autoswarm-setup.sh
+```
+
+`proof/scenes/autoswarm-run-resume-keeps-goal.sh` opens the dashboard over the
+seeded session and leaves with Escape. The `open` frame shows the session's
+goal in the detail pane with `s resume` on the footer; `cancelled` shows the
+loop untouched under the command:
+
+```sh
+SCENE_MOTION_FLOOR=0 proof/record.sh proof/scenes/autoswarm-run-resume-keeps-goal.sh
+SCENE_MOTION_FLOOR=0 proof/record.sh --before proof/scenes/autoswarm-run-resume-keeps-goal.sh
+```

@@ -34,10 +34,12 @@ describe("issue #1020 - ctx.shutdown() in interactive mode", () => {
 		const ctxStub = {
 			shutdownRequested: false,
 			session: {
+				isStreaming: false,
 				extensionRunner: fakeExtensionRunner,
 				// other session fields are only touched lazily by other actions; we
 				// only invoke `shutdown`, so leave them out.
 			},
+			clearWorkingLoader: () => false,
 			// Required members of the context. Omitting them used to be tolerated by
 			// `?.()` calls in the controller, which meant production silently skipped
 			// the composer refresh and the welcome dismissal whenever either was
@@ -76,8 +78,10 @@ describe("issue #1020 - ctx.shutdown() in interactive mode", () => {
 		const ctxStub = {
 			shutdownRequested: false,
 			session: {
+				isStreaming: false,
 				extensionRunner: fakeExtensionRunner,
 			},
+			clearWorkingLoader: () => false,
 			setToolUIContext: () => {},
 			setToolNotifier: () => {},
 			editor: {

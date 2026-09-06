@@ -14,14 +14,19 @@
  */
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, setSystemTime, test, vi } from "bun:test";
+import { stripVTControlCharacters } from "node:util";
 import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
 import * as oauthUtils from "@veyyon/ai/registry/oauth";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
+import { reportBlock } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-block-chrome";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/terminal/types";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/acp-builtins";
 import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
 import type { SlashCommandRuntime } from "@veyyon/coding-agent/slash-commands/types";
+import type { Component } from "@veyyon/tui";
+import { useTruecolorTheme } from "../helpers/theme-assertions";
 
 const PROVIDER = "unit-accounts";
 const OTHER_PROVIDER = "unit-idle";
@@ -39,6 +44,8 @@ interface Harness {
 }
 
 describe("/account verbs", () => {
+	// `/account status` and `/account refresh` print transcript blocks whose header is themed.
+	useTruecolorTheme("dark");
 	let store: SqliteAuthCredentialStore | null = null;
 	let harness: Harness | null = null;
 	let workId = 0;
@@ -63,6 +70,22 @@ describe("/account verbs", () => {
 			session,
 			editor: { setText: (text: string) => editorText.push(text) },
 			showStatus: (text: string) => status.push(text),
+			// A report is a transcript block, not a status line: capture its rendered text, minus the
+			// rail inset, so the assertions below read what the user reads, header row included.
+			present: (block: Component) =>
+				status.push(
+					block
+						.render(120)
+						.map(line => stripVTControlCharacters(line).trimEnd().slice(COMPOSER_INSET_COLS))
+						.join("\n"),
+				),
+			showReport: (title: string, body: string, footer?: string) =>
+				status.push(
+					reportBlock(title, body, footer)
+						.render(120)
+						.map(line => stripVTControlCharacters(line).trimEnd().slice(COMPOSER_INSET_COLS))
+						.join("\n"),
+				),
 			showWarning: (text: string) => warnings.push(text),
 			showAccountManager: async (provider?: string) => {
 				managerOpenedWith.push(provider);
@@ -147,7 +170,8 @@ describe("/account verbs", () => {
 
 		expect(handled).toBe(true);
 		const printed = current().status.join("\n");
-		expect(printed.startsWith("Accounts in use by this session")).toBe(true);
+		// The title is the block's header row, followed by the header gap, then the body.
+		expect(printed.startsWith("Accounts in use by this session\n\n")).toBe(true);
 		expect(printed).toContain("Unit Accounts");
 		expect(printed).toContain("1 of 2 providers in use · /providers to manage accounts");
 		expect(current().managerOpenedWith).toEqual([]);
@@ -297,6 +321,8 @@ describe("/account verbs", () => {
 
 		expect(current().status).toEqual([
 			[
+				"Account Refresh",
+				"",
 				"Re-probed the accounts this session is using",
 				"  Unit Accounts work@example.com: not probed → failed (invalid_grant: refresh token revoked)",
 				"  1 of 1 failed the probe.",

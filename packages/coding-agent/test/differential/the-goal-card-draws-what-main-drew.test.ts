@@ -86,7 +86,7 @@ describe("goal tool differential", () => {
 		expect(viewLines).toEqual(oracleLines);
 	});
 
-	it("exception cell: a continuation line of a multi-line error is toned and aligned like the first", () => {
+	it("renders result with multi-line error with exact framed block byte parity", () => {
 		const res = {
 			content: [{ type: "text" as const, text: "Line 1 failure\nLine 2 secondary reason" }],
 			isError: true,
@@ -96,45 +96,7 @@ describe("goal tool differential", () => {
 
 		const viewLines = renderCompLines(drawToolView(framedView(card), theme));
 		const oracleLines = renderCompLines(oracleComp);
-		const words = (lines: readonly string[]): string[] =>
-			lines.map(line => stripVTControlCharacters(line).replace("▏", "").trim());
-
-		// The words on every row, and their order, are what main drew.
-		expect(words(viewLines)).toEqual(words(oracleLines));
-
-		// The two accepted differences, pinned rather than described. Main split a pre-coloured string,
-		// so only its first line carried the error tone and only its first line carried the indent the
-		// rail's content column expects; the continuation ran two columns left of it, unstyled.
-		const continuation = (lines: readonly string[]): string => {
-			const row = lines.find(line => line.includes("Line 2 secondary reason"));
-			if (row === undefined) throw new Error("no continuation row was drawn");
-			return row;
-		};
-		const indentOf = (row: string): number => {
-			const bare = stripVTControlCharacters(row).replace("▏", "");
-			return bare.length - bare.trimStart().length;
-		};
-		const first = (lines: readonly string[]): string => {
-			const row = lines.find(line => line.includes("Line 1 failure"));
-			if (row === undefined) throw new Error("no first error row was drawn");
-			return row;
-		};
-
-		// What the row does with colour after the rail glyph: the frame's own colours sit before it, the
-		// text's tone after it. Main's continuation opened no colour there, so its words drew in whatever
-		// the frame had left set; every line of the view's card opens the error tone for its own text.
-		//
-		// Either encoding counts. A terminal that reports truecolor gets `38;2;r;g;b` and one that
-		// reports 256 colours gets `38;5;n` for the same tone, so pinning one form asserts the
-		// runner's colour depth rather than what the row does with colour.
-		const tonedAfterRail = (row: string): boolean => /\u258f[^\u258f]*\x1b\[38;(?:5;\d+|2;\d+;\d+;\d+)m/.test(row);
-
-		expect(indentOf(continuation(oracleLines))).toBe(indentOf(first(oracleLines)) - 2);
-		expect(indentOf(continuation(viewLines))).toBe(indentOf(first(viewLines)));
-		expect(tonedAfterRail(first(oracleLines))).toBe(true);
-		expect(tonedAfterRail(continuation(oracleLines))).toBe(false);
-		expect(tonedAfterRail(first(viewLines))).toBe(true);
-		expect(tonedAfterRail(continuation(viewLines))).toBe(true);
+		expect(viewLines).toEqual(oracleLines);
 	});
 
 	it("renders settled active goal result with exact frame and badge parity", () => {

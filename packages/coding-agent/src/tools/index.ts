@@ -6,11 +6,11 @@ import type {
 	ToolCallContext,
 } from "@veyyon/agent-core";
 import type { FetchImpl, ImageContent, Model, ServiceTierByFamily, ToolChoice } from "@veyyon/ai";
+import type { AuthStorage } from "@veyyon/ai/auth-storage";
 import type { InMemorySnapshotStore } from "@veyyon/hashline";
 import type { HostNotifier } from "@veyyon/host";
 import type { ToolDomainManifest } from "@veyyon/kernel/registry/tool-domain";
 import type { ArtifactManager } from "@veyyon/kernel/session/artifacts";
-import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import type { ClientBridge } from "@veyyon/kernel/session/client-bridge";
 import { registerAgentMessageKinds } from "@veyyon/kernel/session/message-kinds";
 import type { SubagentSpawnRecord, UsageStatistics } from "@veyyon/kernel/session/session-entries";

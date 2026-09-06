@@ -169,7 +169,7 @@ function parseDirtyPathsNul(statusOutput: string): string[] {
 			addDirtyPath(unsafePaths, secondPath);
 		}
 	}
-	return Array.from(unsafePaths);
+	return [...unsafePaths];
 }
 
 function parseDirtyPathsLines(statusOutput: string): string[] {
@@ -184,7 +184,7 @@ function parseDirtyPathsLines(statusOutput: string): string[] {
 			addDirtyPath(unsafePaths, renamePart);
 		}
 	}
-	return Array.from(unsafePaths);
+	return [...unsafePaths];
 }
 
 export function normalizeStatusPath(rawPath: string): string {

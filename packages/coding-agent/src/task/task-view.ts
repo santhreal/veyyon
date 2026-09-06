@@ -20,7 +20,7 @@
  */
 
 import path from "node:path";
-import { formatContextUsage, formatCount, formatNumber, isRecord, sanitizeText } from "@veyyon/utils";
+import { formatCount, formatNumber, isRecord, sanitizeText } from "@veyyon/utils";
 import type {
 	FramedBlockView,
 	StatusRowView,
@@ -35,7 +35,6 @@ import type {
 } from "@veyyon/view";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
-import { EXIT_CODE_NOTICE_RE } from "../exec/exit-notice";
 import {
 	type FindingPriority,
 	getPriorityInfo,
@@ -45,9 +44,8 @@ import {
 	type SubmitReviewDetails,
 } from "../tools/agent/review";
 import { jsonTreeViewLines } from "../tools/core/json-tree-view";
-import { stripGeneratedOutputNotice, stripRawOutputArtifactNotice } from "../tools/core/output-meta";
 import { formatDuration, formatMoreItems, previewLine, replaceTabs, truncateToWidth } from "../tools/core/render-utils";
-import { splitModelSelector } from "./model-selector";
+import { appendAgentStats, sanitizeRecentOutput } from "./agent-stats";
 import { classifySubagentOutcome } from "./outcome";
 import { repairDoubleEncodedJsonString, repairTaskParams } from "./repair-args";
 import { DEFAULT_SPAWN_AGENT } from "./spawn-policy";
@@ -148,47 +146,6 @@ function statusOf(status: AgentProgress["status"]): ViewStatus {
 		case "aborted":
 			return "aborted";
 	}
-}
-
-/** The model an agent runs on and the effort it runs at, as the two runs a badge is. */
-function modelBadgeSpans(resolved: string): ViewSpan[] {
-	const { model, level } = splitModelSelector(resolved);
-	const id = truncateToWidth(replaceTabs(model), MODEL_BADGE_WIDTH);
-	if (level === undefined || level === "off" || level === "inherit") return [span(id, "muted")];
-	return [span(id, "muted"), span(" "), { text: level, symbol: `thinking.${level}` }];
-}
-
-/** Columns a model id may spend on a row that already carries the agent's own name. */
-const MODEL_BADGE_WIDTH = 30;
-
-/** The counts, the context reading and the cost a row carries after what it is doing. */
-function appendAgentStats(
-	line: ViewSpan[],
-	opts: {
-		toolCount?: number;
-		requests?: number;
-		tokens: number;
-		contextTokens?: number;
-		contextWindow?: number;
-		cost: number;
-		resolvedModel?: string;
-		showResolvedModelBadge?: boolean;
-	},
-): void {
-	if (opts.toolCount) {
-		line.push(DOT, span(`${formatNumber(opts.toolCount)} `, "dim"), {
-			text: "",
-			symbol: "icon.extensionTool",
-			tone: "dim",
-		});
-	}
-	if (opts.requests) line.push(DOT, span(`${formatNumber(opts.requests)} req`, "dim"));
-	// Current per-turn context — the same tok/tok gauge the status line shows.
-	if (opts.contextTokens && opts.contextTokens > 0) {
-		line.push(DOT, span(formatContextUsage(opts.contextTokens, opts.contextWindow ?? 0), "dim"));
-	}
-	if (opts.cost > 0) line.push(DOT, span(`$${opts.cost.toFixed(2)}`, "cost"));
-	if (opts.resolvedModel && opts.showResolvedModelBadge) line.push(DOT, ...modelBadgeSpans(opts.resolvedModel));
 }
 
 /** One count per priority, and the words for a review that found nothing. */
@@ -349,41 +306,6 @@ function yieldSectionRows(value: unknown, place: NodePlace, expanded: boolean): 
 	}
 	return rows;
 }
-
-const BASH_WALL_TIME_NOTICE_RE = /^Wall time: \d+(?:\.\d+)? seconds$/u;
-
-function stripRecentOutputNoticeLine(text: string): string {
-	const trimmed = text.trimEnd();
-	const lineStart = trimmed.lastIndexOf("\n");
-	const candidateStart = lineStart === -1 ? 0 : lineStart + 1;
-	const line = trimmed.slice(candidateStart);
-	if (!BASH_WALL_TIME_NOTICE_RE.test(line) && !EXIT_CODE_NOTICE_RE.test(line)) return text;
-	return trimmed.slice(0, lineStart === -1 ? 0 : lineStart).trimEnd();
-}
-
-function sanitizeRecentOutput(output: string): string {
-	let text = sanitizeText(output).trimEnd();
-	while (text) {
-		const withoutArtifactNotice = stripRawOutputArtifactNotice(text).text;
-		if (withoutArtifactNotice !== text) {
-			text = withoutArtifactNotice;
-			continue;
-		}
-		const withoutOutputNotice = stripGeneratedOutputNotice(text);
-		if (withoutOutputNotice !== text) {
-			text = withoutOutputNotice;
-			continue;
-		}
-		const withoutRuntimeNotice = stripRecentOutputNoticeLine(text);
-		if (withoutRuntimeNotice !== text) {
-			text = withoutRuntimeNotice;
-			continue;
-		}
-		break;
-	}
-	return text;
-}
-
 /** Columns one line of an agent's output may spend before it is cut. */
 const OUTPUT_LINE_WIDTH = 70;
 

@@ -7,6 +7,7 @@
  * state, while the advisor config overlay embeds it as a plain "pick one
  * model" list.
  */
+import { stripVTControlCharacters } from "node:util";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
@@ -890,7 +891,7 @@ export class ModelBrowser implements Component {
 
 		let line = `${left}${" ".repeat(gap)} ${meta}`;
 		if (disabled) {
-			line = theme.fg("dim", Bun.stripANSI(line));
+			line = theme.fg("dim", stripVTControlCharacters(line));
 		}
 		// The bg band is reserved for the mouse: it marks hover, nothing else.
 		// Keyboard selection is the cursor glyph + accent name.

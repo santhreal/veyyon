@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
+import type { AuthStorage } from "@veyyon/ai/auth-storage";
 import { commitAnalysisSpawnTarget, createCommitTools } from "@veyyon/coding-agent/commit/agentic/tools";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { loadBundledAgents } from "@veyyon/coding-agent/task/agents";
 import { resolveEnabledSubagents } from "@veyyon/coding-agent/task/subagent-settings";
-import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 
 /**
  * The commit agent fans file analysis out to subagents, and the only thing that

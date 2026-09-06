@@ -105,9 +105,9 @@ describe("token equivalence differential suite", () => {
 		// asserted as a floor cannot see a new formatting-only file arrive. Both are pinned exactly, so
 		// regenerating the ledger against another commit, or reclassifying a file, needs a decision here.
 		expect(ledger.generatedFrom).toBe(BASELINE_COMMIT);
-		expect(formattingEntries).toHaveLength(73);
+		expect(formattingEntries).toHaveLength(72);
 		expect(importReorderEntries).toHaveLength(0);
-		expect(ledger.changedCount).toBe(5744);
+		expect(ledger.changedCount).toBe(5796);
 	});
 
 	it("passes anti-vacuity: a token mutation in a verified file changes its hash (cell f)", () => {

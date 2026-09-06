@@ -9,4 +9,5 @@ export const minimaxCodeProvider = {
 		const { loginMiniMaxCode } = await import("./oauth/minimax-code");
 		return loginMiniMaxCode(cb);
 	},
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

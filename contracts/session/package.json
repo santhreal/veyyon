@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/session",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "What a session file is made of: the entry vocabulary and the message union it records",
   "homepage": "https://veyyon.dev",
   "author": "santhreal",

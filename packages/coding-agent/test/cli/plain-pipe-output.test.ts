@@ -45,7 +45,7 @@ describe("themed command output on a pipe (e2e)", () => {
 });
 
 describe("`veyyon search` without a query (e2e)", () => {
-	it("exits 1 with usage naming the command", async () => {
+	it("exits 2 with usage naming the command", async () => {
 		const proc = Bun.spawn([process.execPath, cliEntry, "search"], {
 			cwd: projectDir,
 			stdin: "ignore",
@@ -54,7 +54,7 @@ describe("`veyyon search` without a query (e2e)", () => {
 			env: hermetic.env,
 		});
 		const [stderr, exitCode] = await Promise.all([new Response(proc.stderr as ReadableStream).text(), proc.exited]);
-		expect(exitCode).toBe(1);
+		expect(exitCode).toBe(2);
 		expect(stderr).toContain("Query is required");
 		expect(stderr).toContain("veyyon search <query>");
 	}, 60_000);

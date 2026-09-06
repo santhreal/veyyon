@@ -5,7 +5,7 @@
 import { getKeybindings, type Keybinding } from "@veyyon/utils/keybindings";
 import type { KeyId } from "@veyyon/utils/keys";
 import type { AppKeybinding, KeybindingsManager } from "../../../../config/keybindings";
-import { theme } from "../../../../theme/theme";
+import { theme } from "../../../../theme/theme-binding";
 
 /**
  * Format keys array as display string (e.g., ["ctrl+c", "escape"] -> "ctrl+c/escape").

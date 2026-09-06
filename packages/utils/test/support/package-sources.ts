@@ -255,20 +255,29 @@ export interface CollectPackageSourcesOptions {
 	includeExemptPackages?: boolean;
 }
 
+const filesCache = new Map<string, string[]>();
+const textCache = new Map<string, string>();
+
 /** Absolute paths of every matching `.ts` file across non-exempt members of every root. */
 export async function collectPackageSourceFiles(options: CollectPackageSourcesOptions = {}): Promise<string[]> {
 	const dirs = options.dirs ?? ["src"];
 	const includeTests = options.includeTests ?? false;
+	const includeExemptPackages = options.includeExemptPackages ?? false;
+	const cacheKey = `${dirs.slice().sort().join(",")}:${includeTests}:${includeExemptPackages}`;
+	const cached = filesCache.get(cacheKey);
+	if (cached) return [...cached];
+
 	const files: string[] = [];
-	const exemptDirs = options.includeExemptPackages ? new Set<string>() : await resolveExemptPackageDirs();
+	const exemptDirs = includeExemptPackages ? new Set<string>() : await resolveExemptPackageDirs();
 	for (const member of MEMBERS) {
 		const name = member.slice(member.lastIndexOf("/") + 1);
 		if (exemptDirs.has(name)) continue;
 		for (const sub of dirs) {
-			await walk(path.join(REPO_ROOT, member, sub), includeTests, files, options.includeExemptPackages);
+			await walk(path.join(REPO_ROOT, member, sub), includeTests, files, includeExemptPackages);
 		}
 	}
-	return files;
+	filesCache.set(cacheKey, files);
+	return [...files];
 }
 
 /** One collected file: its repo-relative, forward-slashed path and contents. */
@@ -286,7 +295,12 @@ export async function collectPackageSources(options: CollectPackageSourcesOption
 	const files = await collectPackageSourceFiles(options);
 	const out: PackageSource[] = [];
 	for (const file of files) {
-		out.push({ rel: memberRelative(file), text: await readFile(file, "utf8") });
+		let text = textCache.get(file);
+		if (text === undefined) {
+			text = await readFile(file, "utf8");
+			textCache.set(file, text);
+		}
+		out.push({ rel: memberRelative(file), text });
 	}
 	return out;
 }

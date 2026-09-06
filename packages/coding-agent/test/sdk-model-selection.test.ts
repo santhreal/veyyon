@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { FetchImpl } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { buildModel } from "@veyyon/catalog/build";
 import { writeModelCache } from "@veyyon/catalog/model-cache";
 import { getBundledModel } from "@veyyon/catalog/models";
@@ -10,7 +11,6 @@ import { AsyncJobManager } from "@veyyon/coding-agent/async/job-manager";
 import { ModelRegistry, type ProviderConfigInput } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/sdk";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 

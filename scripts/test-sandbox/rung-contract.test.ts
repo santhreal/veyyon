@@ -399,7 +399,9 @@ describe("the files the remote rung puts back after honouring .gitignore", () =>
 	 */
 	it("puts back nothing but regular files under a package's own src", () => {
 		for (const line of includeLines()) {
-			expect(line).toMatch(/^\+ \/packages\/[^/]+\/src\/[^\n]*[^/]$/);
+			expect(line).toMatch(
+				/^\+ \/((packages|contracts|hosts|apps|clients|plugins|natives)\/[^/]+|kernel)\/src\/[^\n]*[^/]$/,
+			);
 		}
 	});
 });

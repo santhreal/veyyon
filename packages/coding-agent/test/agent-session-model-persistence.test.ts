@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import type { Api, AssistantMessage, Model } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { Effort } from "@veyyon/catalog/effort";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -10,7 +11,6 @@ import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { CreateAgentSessionResult } from "@veyyon/coding-agent/session/factory-options";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { getRestorableSessionModels } from "@veyyon/kernel/session/session-context";
 import { EPHEMERAL_MODEL_CHANGE_ROLE } from "@veyyon/kernel/session/session-entries";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";

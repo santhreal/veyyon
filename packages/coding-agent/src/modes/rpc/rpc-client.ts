@@ -729,17 +729,18 @@ export class RpcClient {
 	 * extension_ui_request; pass `onManualCodeInput` to satisfy it.
 	 * Resolves when login completes or rejects on failure.
 	 *
-	 * @param onOpenUrl Called when the server emits the auth URL. The host must
-	 *   open `url` in a browser. When the flow's callback server hosts a
+	 * @param onOpenUrl Called when the server emits the auth URL. For an
+	 *   `oauth` credential the host must open `url` in a browser; for an
+	 *   `api-key` credential the URL is where a key is obtained and the host
+	 *   shows it without opening it. When the flow's callback server hosts a
 	 *   `/launch` redirect, `launchUrl` is a short loopback URL that 302s to
 	 *   `url` — hosts SHOULD surface it as the truncation-safe copy target so
 	 *   terminal viewport clipping cannot corrupt trailing OAuth query
 	 *   parameters (e.g. `code_challenge_method=S256`).
-	 */
 	async login(
 		providerId: string,
 		options?: {
-			onOpenUrl?: (url: string, instructions?: string, launchUrl?: string) => void;
+			onOpenUrl?: (url: string, instructions?: string, launchUrl?: string, credential?: "api-key" | "oauth") => void;
 			onManualCodeInput?: (prompt: { title: string; placeholder?: string }) => string | Promise<string>;
 		},
 	): Promise<{ providerId: string }> {
@@ -748,7 +749,7 @@ export class RpcClient {
 			onOpenUrl || onManualCodeInput
 				? (req: RpcExtensionUIRequest) => {
 						if (req.method === "open_url") {
-							onOpenUrl?.(req.url, req.instructions, req.launchUrl);
+							onOpenUrl?.(req.url, req.instructions, req.launchUrl, req.credential);
 							return;
 						}
 						if (req.method !== "input" || !onManualCodeInput) return;

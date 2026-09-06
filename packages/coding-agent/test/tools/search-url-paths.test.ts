@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
-import { searchSchema, TYPE_FIELDS } from "@veyyon/coding-agent/tools/search/search";
+import { searchSchema } from "@veyyon/coding-agent/tools/search/search";
 import { removeWithRetries } from "@veyyon/utils";
 import * as scrapers from "@veyyon/web/scrapers/types";
 
@@ -68,12 +68,9 @@ describe("search tools with external URL paths", () => {
 				"URL reads are disabled by settings.",
 			);
 		}
-		const nonUrlTypes = [];
-		for (const type of searchSchema.shape.type.options) {
-			if (!TYPE_FIELDS[type].has("path")) {
-				nonUrlTypes.push(type);
-				continue;
-			}
+		const nonUrlTypes = searchSchema.shape.type.options.filter(type => type === "files");
+		const urlTypes = searchSchema.shape.type.options.filter(type => type !== "files");
+		for (const type of urlTypes) {
 			await expect(search.execute("disabled-search", { type, input: "localNeedle", path: url })).rejects.toThrow(
 				"URL reads are disabled by settings.",
 			);
@@ -84,9 +81,7 @@ describe("search tools with external URL paths", () => {
 		await fs.writeFile(localPath, "export function localNeedle() { return 1; }\n");
 		expect(resultText(await read.execute("local-read", { path: localPath }))).toContain("localNeedle");
 		for (const type of searchSchema.shape.type.options) {
-			const args = TYPE_FIELDS[type].has("path")
-				? { type, input: "localNeedle", path: localPath }
-				: { type, input: localPath };
+			const args = type === "files" ? { type, input: "local.ts" } : { type, input: "localNeedle", path: localPath };
 			expect(resultText(await search.execute("local-search", args))).toContain(
 				type === "files" ? "local.ts" : "localNeedle",
 			);

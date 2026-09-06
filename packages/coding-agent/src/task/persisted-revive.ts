@@ -1,5 +1,5 @@
 import * as fs from "node:fs/promises";
-import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import type { AuthStorage } from "@veyyon/ai/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { ModelRegistry } from "../config/model-registry";
 import type { Settings } from "../config/settings";

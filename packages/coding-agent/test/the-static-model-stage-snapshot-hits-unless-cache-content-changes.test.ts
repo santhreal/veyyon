@@ -19,10 +19,10 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { writeModelCache } from "@veyyon/catalog/model-cache";
 import { getBundledModels } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 const DAY_MS = 24 * 60 * 60 * 1000;

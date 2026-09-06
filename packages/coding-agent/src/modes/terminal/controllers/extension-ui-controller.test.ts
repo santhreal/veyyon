@@ -18,8 +18,10 @@ function makeHarness() {
 			requestRender,
 		},
 		session: {
+			isStreaming: false,
 			extensionRunner: undefined,
 		},
+		clearWorkingLoader: vi.fn(() => false),
 		hookWidgetContainerAbove,
 		hookWidgetContainerBelow: new Container(),
 		setToolUIContext(context: ExtensionUIContext, hasUI: boolean): void {

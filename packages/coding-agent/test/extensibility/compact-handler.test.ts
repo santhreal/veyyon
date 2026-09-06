@@ -4,6 +4,7 @@ import {
 	runExtensionCompact,
 	runExtensionSetModel,
 } from "@veyyon/coding-agent/extensibility/extensions/compact-handler";
+import type { ConfiguredThinkingLevel } from "@veyyon/coding-agent/thinking";
 
 /**
  * These two adapters bridge the extension-facing API shape to AgentSession's method
@@ -46,14 +47,27 @@ describe("runExtensionCompact", () => {
 describe("runExtensionSetModel", () => {
 	const makeSession = (key: string | undefined) => {
 		let setCount = 0;
+		const temporaryCalls: Array<{
+			model: Model;
+			thinkingLevel: ConfiguredThinkingLevel | undefined;
+			options: { ephemeral?: boolean } | undefined;
+		}> = [];
 		return {
 			session: {
 				modelRegistry: { getApiKey: async () => key },
 				setModel: async () => {
 					setCount += 1;
 				},
+				setModelTemporary: async (
+					model: Model,
+					thinkingLevel?: ConfiguredThinkingLevel,
+					options?: { ephemeral?: boolean },
+				) => {
+					temporaryCalls.push({ model, thinkingLevel, options });
+				},
 			},
 			setCount: () => setCount,
+			temporaryCalls,
 		};
 	};
 
@@ -73,5 +87,11 @@ describe("runExtensionSetModel", () => {
 		const { session, setCount } = makeSession("");
 		expect(await runExtensionSetModel(session, model)).toBe(false);
 		expect(setCount()).toBe(0);
+	});
+	it.each([undefined, "", "sk-x"])("uses only an ephemeral switch when authorized with %p", async key => {
+		const { session, setCount, temporaryCalls } = makeSession(key);
+		expect(await runExtensionSetModel(session, model, { ephemeral: true })).toBe(Boolean(key));
+		expect(setCount()).toBe(0);
+		expect(temporaryCalls).toEqual(key ? [{ model, thinkingLevel: undefined, options: { ephemeral: true } }] : []);
 	});
 });

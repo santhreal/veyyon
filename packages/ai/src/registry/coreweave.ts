@@ -37,4 +37,5 @@ export const coreWeaveProvider = {
 	id: "coreweave",
 	name: "CoreWeave Serverless Inference",
 	login: (cb: OAuthLoginCallbacks) => loginCoreWeave(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

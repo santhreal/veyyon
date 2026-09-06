@@ -28,16 +28,7 @@ export enum NotifyProtocol {
 	Osc9 = "\x1b]9;",
 }
 
-export type TerminalId =
-	| "kitty"
-	| "ghostty"
-	| "wezterm"
-	| "iterm2"
-	| "vscode"
-	| "alacritty"
-	| "warp"
-	| "base"
-	| "trueColor";
+import { detectTerminalId, type TerminalId } from "@veyyon/utils/terminal-emulator";
 
 function hasNeedleBefore(line: string, needle: string, limit: number): boolean {
 	const index = line.indexOf(needle);
@@ -540,49 +531,6 @@ export function attributesEnabled(): boolean {
 	return ansiPolicy !== "plain";
 }
 
-/** Resolve terminal identity from environment markers used by common emulators. */
-export function detectTerminalId(env: NodeJS.ProcessEnv = Bun.env): TerminalId {
-	function caseEq(a: string, b: string): boolean {
-		return a.toLowerCase() === b.toLowerCase(); // For compiler to pattern match
-	}
-
-	const {
-		KITTY_WINDOW_ID,
-		GHOSTTY_RESOURCES_DIR,
-		WEZTERM_PANE,
-		ITERM_SESSION_ID,
-		VSCODE_PID,
-		ALACRITTY_WINDOW_ID,
-		TERM_PROGRAM,
-		TERM,
-		COLORTERM,
-	} = env;
-
-	if (KITTY_WINDOW_ID) return "kitty";
-	if (GHOSTTY_RESOURCES_DIR) return "ghostty";
-	if (WEZTERM_PANE) return "wezterm";
-	if (ITERM_SESSION_ID) return "iterm2";
-	if (VSCODE_PID) return "vscode";
-	if (ALACRITTY_WINDOW_ID) return "alacritty";
-
-	if (TERM_PROGRAM) {
-		if (caseEq(TERM_PROGRAM, "kitty")) return "kitty";
-		if (caseEq(TERM_PROGRAM, "ghostty")) return "ghostty";
-		if (caseEq(TERM_PROGRAM, "wezterm")) return "wezterm";
-		if (caseEq(TERM_PROGRAM, "iterm.app")) return "iterm2";
-		if (caseEq(TERM_PROGRAM, "vscode")) return "vscode";
-		if (caseEq(TERM_PROGRAM, "alacritty")) return "alacritty";
-		if (caseEq(TERM_PROGRAM, "warpterminal")) return "warp";
-	}
-
-	if (TERM?.toLowerCase().includes("ghostty")) return "ghostty";
-
-	if (COLORTERM) {
-		if (caseEq(COLORTERM, "truecolor") || caseEq(COLORTERM, "24bit")) return "trueColor";
-	}
-	return "base";
-}
-
 export const TERMINAL_ID: TerminalId = detectTerminalId(Bun.env);
 
 /**
@@ -777,19 +725,71 @@ export function encodeKittyTransmit(base64Data: string, imageId: number): string
  * explicit cursor movement remains the only row accounting. Carrying a stable
  * `placementId` (`p=`) means re-emitting the sequence on a repaint *replaces*
  * the existing placement (moving/resizing it without flicker) rather than
- * stacking a duplicate.
+ * stacking a duplicate. `source` selects a pixel rectangle of the image to
+ * show instead of the whole picture.
  */
 export function encodeKittyPlacement(options: {
 	imageId: number;
 	placementId?: number;
 	columns?: number;
 	rows?: number;
+	source?: { x: number; y: number; w: number; h: number };
 }): string {
 	const params: string[] = ["a=p", "q=2", "C=1", `i=${options.imageId}`];
 	if (options.placementId) params.push(`p=${options.placementId}`);
 	if (options.columns) params.push(`c=${options.columns}`);
 	if (options.rows) params.push(`r=${options.rows}`);
+	if (options.source) {
+		params.push(`x=${options.source.x}`, `y=${options.source.y}`, `w=${options.source.w}`, `h=${options.source.h}`);
+	}
 	return wrapTmuxPassthroughIfNeeded(`\x1b_G${params.join(",")}\x1b\\`);
+}
+
+/** A direct (cursor-positioned) Kitty placement as the renderer needs to re-derive it. */
+export interface KittyDirectPlacement {
+	readonly imageId: number;
+	readonly placementId: number;
+	readonly columns: number;
+	readonly rows: number;
+	readonly widthPx: number;
+	readonly heightPx: number;
+}
+
+const SAVE_CURSOR = "\x1b7";
+const RESTORE_CURSOR = "\x1b8";
+
+/**
+ * The last row of a direct-placement block: it saves the cursor, moves up to
+ * the block's first row, emits the image `sequence` there, and restores the
+ * cursor to the last row so the renderer's row accounting holds. Save/restore
+ * rather than a matching move down, because CUU clamps at the viewport top.
+ */
+export function encodeDirectPlacementLine(rows: number, sequence: string): string {
+	const up = rows - 1;
+	if (up <= 0) return sequence;
+	return `${SAVE_CURSOR}\x1b[${up}A${sequence}${RESTORE_CURSOR}`;
+}
+
+/**
+ * A direct placement rewritten at viewport row `screenRow`, when the block's
+ * first rows are above the viewport: the original line's `CUU rows-1` would
+ * clamp at row 0 and the whole image would land `rows-1-screenRow` rows too
+ * low, over the text below it. This one climbs only to row 0, shows the bottom
+ * `screenRow+1` rows of the picture there via a source rectangle, and takes a
+ * placement id of its own so the rows already in scrollback keep theirs.
+ */
+export function encodeKittyClippedPlacementLine(placement: KittyDirectPlacement, screenRow: number): string {
+	const hidden = placement.rows - 1 - screenRow;
+	const visible = placement.rows - hidden;
+	const y = Math.round((placement.heightPx * hidden) / placement.rows);
+	const sequence = encodeKittyPlacement({
+		imageId: placement.imageId,
+		placementId: placement.placementId + hidden,
+		columns: placement.columns,
+		rows: visible,
+		source: { x: 0, y, w: placement.widthPx, h: placement.heightPx - y },
+	});
+	return encodeDirectPlacementLine(visible, sequence);
 }
 
 /**
@@ -1043,7 +1043,14 @@ export function renderImage(
 	base64Data: string,
 	imageDimensions: ImageDimensions,
 	options: ImageRenderOptions = {},
-): { sequence?: string; lines?: string[]; rows: number; transmit?: string } | null {
+): {
+	sequence?: string;
+	lines?: string[];
+	rows: number;
+	transmit?: string;
+	/** Set on the Kitty direct-placement path: what the renderer needs to re-derive the placement. */
+	direct?: KittyDirectPlacement;
+} | null {
 	if (!TERMINAL.imageProtocol) {
 		return null;
 	}
@@ -1075,13 +1082,16 @@ export function renderImage(
 				return { lines, rows: fit.rows, transmit };
 			}
 			// Direct placement: re-emit only the tiny `a=p` on repaints.
-			const sequence = encodeKittyPlacement({
+			const direct: KittyDirectPlacement = {
 				imageId: options.imageId,
 				placementId,
 				columns: fit.columns,
 				rows: fit.rows,
-			});
-			return { sequence, rows: fit.rows, transmit };
+				widthPx: Math.max(1, Math.round(imageDimensions.widthPx)),
+				heightPx: Math.max(1, Math.round(imageDimensions.heightPx)),
+			};
+			const sequence = encodeKittyPlacement(direct);
+			return { sequence, rows: fit.rows, transmit, direct };
 		}
 		// No stable id (e.g. no budget): self-contained transmit-and-display.
 		const sequence = encodeKitty(base64Data, {

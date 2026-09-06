@@ -1,6 +1,7 @@
 import { AUTO_COMPACTION_THRESHOLD, parseCompactionThreshold, type ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, Effort, Model } from "@veyyon/ai";
 import { UNSET_NUMBER, UNSET_NUMBER_OPTION_VALUE } from "@veyyon/kernel/settings/optional-number";
+import { Ellipsis } from "@veyyon/natives";
 import type { SettingTab, SubmenuOption } from "@veyyon/settings";
 import {
 	type Component,
@@ -174,10 +175,14 @@ export function parseNumberSetting(path: SettingPath, text: string): number | ty
  * Submenu component for free-text string settings.
  * Mirrors the ConfigInputSubmenu pattern from plugin-settings.ts.
  */
-class TextInputSubmenu extends Container {
+class TextInputSubmenu extends MouseRoutedSubmenu {
 	#input: Input;
 	#error: Text;
 
+	/** A click on the field places its caret; the prose above it takes nothing. */
+	mouseTarget(): Input {
+		return this.#input;
+	}
 	constructor(
 		label: string,
 		description: string,
@@ -1753,7 +1758,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 			return;
 		}
 
-		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
+		this.#selectList = new SelectList(items, clamp(items.length, 1, 5), getSelectListTheme());
 		this.#selectList.onSelect = item => {
 			this.#showAgentEditor(item.value);
 			this.requestRender?.();
@@ -1771,7 +1776,6 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		this.#selectList.onSelectionChange = item => {
 			if (detail.setText(this.#detailText(item.value))) this.requestRender?.();
 		};
-		this.addChild(new Spacer(1));
 		this.addChild(detail);
 		this.addChild(new Spacer(1));
 		this.addChild(new Text(theme.fg("muted", `  ${CUSTOM_AGENT_HINT}`), 0, 0));
@@ -2686,7 +2690,7 @@ export interface SettingsCallbacks {
 	/** Called for status line preview while configuring */
 	onStatusLinePreview?: (settings: StatusLinePreviewSettings) => void;
 	/** Get current rendered status line for inline preview */
-	getStatusLinePreview?: () => string;
+	getStatusLinePreview?: (width?: number) => string;
 	/** Called when plugins change */
 	onPluginsChanged?: () => void | Promise<void>;
 	/** Called when settings panel is closed */
@@ -2990,9 +2994,9 @@ export class SettingsSelectorComponent implements Component {
 			? [
 					"",
 					theme.fg("muted", "Preview:"),
-					...this.#getStatusPreviewString()
+					...this.#getStatusPreviewString(paneWidth)
 						.split("\n")
-						.map(line => truncateToWidth(line, paneWidth)),
+						.map(line => truncateToWidth(line, paneWidth, Ellipsis.Omit)),
 				]
 			: [];
 
@@ -3493,6 +3497,7 @@ export class SettingsSelectorComponent implements Component {
 					id: def.path,
 					label: def.label,
 					description: def.description,
+					labelForValue: value => (value.length === 0 ? theme.fg("dim", "(unset)") : value),
 					currentValue: this.#formatTextInputValue(def.path, currentValue),
 					submenu: (cv, done) => this.#createTextInput(def, cv, done),
 					changed,
@@ -4399,9 +4404,9 @@ export class SettingsSelectorComponent implements Component {
 	/**
 	 * Get the status line preview string.
 	 */
-	#getStatusPreviewString(): string {
+	#getStatusPreviewString(width?: number): string {
 		if (this.callbacks.getStatusLinePreview) {
-			return this.callbacks.getStatusLinePreview();
+			return this.callbacks.getStatusLinePreview(width);
 		}
 		return theme.fg("dim", "(preview not available)");
 	}

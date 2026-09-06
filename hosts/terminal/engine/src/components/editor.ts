@@ -17,7 +17,17 @@ import type { MouseRoutable, SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
 import { reopenBackgroundAfterResets } from "@veyyon/utils/sgr";
 import type { SymbolTheme } from "@veyyon/utils/symbols";
-import { getSegmenter, sliceByColumn, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
+import {
+	getSegmenter,
+	offsetAtVisualCol,
+	sliceByColumn,
+	truncateToWidth,
+	visibleWidth,
+	visualColAtOffset,
+} from "@veyyon/utils/width";
+
+export { offsetAtVisualCol, visualColAtOffset };
+
 import { getWordNavKind, moveWordLeft, moveWordRight } from "@veyyon/utils/word-nav";
 import { replaceTabs } from "@veyyon/utils/wrap";
 import { type Component, CURSOR_MARKER, type Focusable } from "../tui";
@@ -291,30 +301,6 @@ export function wordWrapLine(line: string, maxWidth: number): TextChunk[] {
 	}
 
 	return chunks.length > 0 ? chunks : [{ text: "", startIndex: 0, endIndex: 0 }];
-}
-
-/** Visual cell column of code-unit `offset` within `text`, counted by grapheme walk. */
-export function visualColAtOffset(text: string, offset: number): number {
-	if (offset <= 0) return 0;
-	let col = 0;
-	for (const seg of segmenter.segment(text)) {
-		if (seg.index >= offset) break;
-		col += visibleWidth(seg.segment);
-	}
-	return col;
-}
-
-/** Code-unit offset of visual cell `col` within `text`, snapped to a grapheme
- *  boundary so the result never splits a surrogate pair or cluster. */
-export function offsetAtVisualCol(text: string, col: number): number {
-	if (col <= 0) return 0;
-	let current = 0;
-	for (const seg of segmenter.segment(text)) {
-		const width = visibleWidth(seg.segment);
-		if (current + width > col) return seg.index;
-		current += width;
-	}
-	return text.length;
 }
 
 /** Highest visual column the cursor may occupy on a wrap segment: the full width

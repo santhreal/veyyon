@@ -10,7 +10,7 @@
  */
 
 import { formatNumber } from "@veyyon/utils/format";
-import type { ThemeColor } from "../../../../theme/theme";
+import type { ThemeColor } from "../../../../theme/color";
 
 export type ContextUsageLevel = "normal" | "warning" | "high" | "error";
 

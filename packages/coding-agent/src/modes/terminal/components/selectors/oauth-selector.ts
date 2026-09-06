@@ -1,6 +1,6 @@
+import type { AuthStorage, CredentialOriginKind } from "@veyyon/ai";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthProviderInfo } from "@veyyon/ai/oauth/types";
-import type { AuthStorage, CredentialOriginKind } from "@veyyon/kernel/session/auth-storage";
 import type { Component } from "@veyyon/tui";
 import { fuzzyFilter } from "@veyyon/utils/fuzzy";
 import { extractPrintableText, matchesKey } from "@veyyon/utils/keys";
@@ -40,6 +40,16 @@ const ORIGIN_LABELS: Record<CredentialOriginKind, string> = {
 	api_key: "api key",
 	env: "env",
 	fallback: "custom provider",
+};
+
+/**
+ * What choosing a row will ask for, shown beside every provider so "OpenAI Platform" and "ChatGPT
+ * (Codex subscription)" read as a key paste and a browser login before either is chosen. Without
+ * it the two OpenAI rows were told apart only by choosing one and watching what opened.
+ */
+const CREDENTIAL_LABELS: Record<OAuthProviderInfo["credential"], string> = {
+	"api-key": "api key",
+	oauth: "browser login",
 };
 
 /**
@@ -282,7 +292,7 @@ export class OAuthSelectorComponent implements Component {
 	}
 
 	#getProviderSearchText(provider: OAuthProviderInfo): string {
-		let text = `${provider.name} ${provider.id}`;
+		let text = `${provider.name} ${provider.id} ${CREDENTIAL_LABELS[provider.credential]}`;
 		const origin = this.#authStorage.getCredentialOrigin(provider.id);
 		if (origin) {
 			text += ` logged in authenticated ${ORIGIN_LABELS[origin.kind]}`;
@@ -349,14 +359,15 @@ export class OAuthSelectorComponent implements Component {
 							const isAvailable = provider.available;
 							const statusIndicator = this.#getStatusIndicator(provider.id);
 
+							const credential = theme.fg("muted", ` · ${CREDENTIAL_LABELS[provider.credential]}`);
 							let line: string;
 							if (isSelected) {
 								const prefix = theme.fg("accent", `${theme.nav.cursor} `);
 								const text = isAvailable ? theme.fg("accent", provider.name) : theme.fg("dim", provider.name);
-								line = prefix + text + statusIndicator;
+								line = prefix + text + credential + statusIndicator;
 							} else {
 								const text = isAvailable ? `  ${provider.name}` : theme.fg("dim", `  ${provider.name}`);
-								line = text + statusIndicator;
+								line = text + credential + statusIndicator;
 							}
 							// The cursor row answers the pointer like any other: its accent prefix is not a band,
 							// so suppressing the band here left the row the eye was already on feeling dead.

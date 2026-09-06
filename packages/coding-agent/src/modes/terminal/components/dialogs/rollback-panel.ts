@@ -16,6 +16,7 @@
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
 import { errorMessage } from "@veyyon/utils";
+import type { MouseRoutable, SgrMouseEvent } from "@veyyon/utils/mouse";
 import { buildRollbackRows, type RollbackRow, type UrlOpener } from "../../../../cli/rollback-cli";
 import { getAllReleases, readVersionMoves } from "../../../../cli/update-cli";
 import { theme } from "../../../../theme/theme";
@@ -44,7 +45,7 @@ type PanelState =
 	| { kind: "failed"; reason: string }
 	| { kind: "ready"; picker: RollbackPickerComponent };
 
-export class RollbackPanelComponent implements Component {
+export class RollbackPanelComponent implements Component, MouseRoutable {
 	#state: PanelState = { kind: "loading" };
 	#context: RollbackPanelContext;
 
@@ -103,6 +104,11 @@ export class RollbackPanelComponent implements Component {
 		// only way out of a failed fetch would be to close the whole settings
 		// overlay, which loses the operator's place in it.
 		if (data === "\x1b") this.#context.done();
+	}
+
+	/** The settings host routes a report over this pane here; only a drawn list has rows to hit. */
+	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
+		if (this.#state.kind === "ready") this.#state.picker.routeMouse(event, line, col);
 	}
 
 	render(width: number): string[] {

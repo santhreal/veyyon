@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { Agent, type AgentMessage } from "@veyyon/agent-core";
 import { estimateTokens } from "@veyyon/agent-core/compaction/compaction";
 import type { AssistantMessage, Message, Model } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { createMockModel } from "@veyyon/ai/providers/mock";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
@@ -11,7 +12,6 @@ import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { ContextUsageBreakdown } from "@veyyon/coding-agent/session/agent-session-types";
 import { computeContextBreakdown } from "@veyyon/coding-agent/session/context-usage";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 

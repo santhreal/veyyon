@@ -30,6 +30,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AgentTool, AgentToolContext } from "@veyyon/agent-core";
 import { Agent } from "@veyyon/agent-core";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { createMockModel } from "@veyyon/ai/providers/mock";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -39,7 +40,6 @@ import { ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensi
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { APPROVAL_POLICY_VALUES, validateApprovalPolicySettings } from "@veyyon/coding-agent/tools/core/approval";
 import { APPROVAL_MODE_VALUES } from "@veyyon/coding-agent/tools/core/approval-modes";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { type } from "arktype";
 import * as YAML from "yaml";

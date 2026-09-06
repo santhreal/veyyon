@@ -130,10 +130,10 @@ describe("the kernel names no tool and no host", () => {
 		// registered, and the unset-number owner (`settings/optional-number`) it reads. Then the
 		// layered settings store (`settings/store`), the file-backed store every product composes with
 		// its own hook set, and the setting signal (`settings/signal`) a store fires on change.
-		expect(kernelFiles.length).toBe(63);
+		expect(kernelFiles.length).toBe(62);
 		expect(concernCounts.registry).toBe(7);
 		expect(concernCounts.loader).toBe(12);
-		expect(concernCounts.session).toBe(40);
+		expect(concernCounts.session).toBe(39);
 		expect(concernCounts.settings).toBe(4);
 		expect(concernCounts.registry).toBeGreaterThan(0);
 		expect(concernCounts.loader).toBeGreaterThan(0);

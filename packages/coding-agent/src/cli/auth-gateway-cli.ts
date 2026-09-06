@@ -27,7 +27,12 @@ import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { type GeneratedProvider, getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
 import { errorMessage, formatCount, VERSION } from "@veyyon/utils";
 import chalk from "chalk";
-import { type AuthBrokerClientConfig, resolveAuthBrokerConfig } from "../session/auth-broker-config";
+import { Settings } from "../config/settings";
+import {
+	type AuthBrokerClientConfig,
+	accountLoadBalancingSetting,
+	resolveAuthBrokerConfig,
+} from "../session/auth-broker-config";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 import { AuthTokenFile, printToken } from "./auth-token-file";
 
@@ -83,6 +88,10 @@ async function runServe(flags: AuthGatewayCommandArgs["flags"]): Promise<void> {
 
 	// Build a broker-backed AuthStorage — same pattern as discoverAuthStorage()
 	// in sdk.ts. The gateway never touches local SQLite.
+	// The gateway selects an account per request through `getApiKey`, so it is held to the same
+	// `accounts.loadBalancing` the interactive session is. The setting is read from the operator's
+	// config here; without this init the resolver below sees no settings and answers the default.
+	await Settings.init();
 	const client = createBrokerClient(brokerConfig);
 	const initialSnapshot = await fetchBrokerSnapshot(client);
 	const store = new RemoteAuthCredentialStore({ client, initialSnapshot });
@@ -92,6 +101,7 @@ async function runServe(flags: AuthGatewayCommandArgs["flags"]): Promise<void> {
 	// gateway only needs to construct the store and pass it in.
 	const storage = new AuthStorage(store, {
 		sourceLabel: `broker ${brokerConfig.url}`,
+		loadBalancing: accountLoadBalancingSetting,
 	});
 	await storage.reload();
 

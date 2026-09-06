@@ -11,11 +11,11 @@
  * disabled provider disappears from it (its own id, or the id it stores credentials under).
  */
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
+import type { AuthStorage } from "@veyyon/ai/auth-storage";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { OAuthSelectorComponent } from "@veyyon/coding-agent/modes/terminal/components/selectors/oauth-selector";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
-import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 
 beforeAll(async () => {
 	await initTheme();

@@ -468,6 +468,7 @@ describe("a tool draws in place only where it is recorded, wherever it ships fro
 			"autoresearch/tools/init-experiment.ts",
 			"autoresearch/tools/log-experiment.ts",
 			"autoresearch/tools/run-experiment.ts",
+			"autoresearch/tools/start-arm.ts",
 			"autoresearch/tools/update-notes.ts",
 			"edit/edit-view.ts",
 			"goals/goal-tool.ts",

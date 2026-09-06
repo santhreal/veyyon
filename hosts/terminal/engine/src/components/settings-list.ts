@@ -712,9 +712,13 @@ export class SettingsList implements Component {
 			// Reserved fold/cursor gutter (2) + label column + separator (2) —
 			// the always-aligned start of the value column for this frame.
 			this.#valueColStart = 2 + maxLabelWidth + 2;
-			const itemRowsOverflow = this.#filteredItems.length > viewportHeight;
-			const itemRowWidth = Math.max(0, width - (itemRowsOverflow ? 1 : 0));
 			const visibleItems = this.#filteredItems.slice(startIndex, startIndex + viewportHeight);
+			const selectedVisiblePos = this.#selectedIndex - startIndex;
+			const descInView =
+				inlineDesc.length > 0 && selectedVisiblePos >= 0 && selectedVisiblePos < visibleItems.length;
+			const scrollHeight = viewportHeight + (descInView ? inlineDesc.length : 0);
+			const itemRowsOverflow = this.#filteredItems.length > scrollHeight;
+			const itemRowWidth = Math.max(0, width - (itemRowsOverflow ? 2 : 0));
 			// In the flat layout the active section's heading row carries the
 			// section-focus cursor (the split layout shows it in the sidebar).
 			const active = sections[this.#activeSectionIndex(sections)];
@@ -745,9 +749,6 @@ export class SettingsList implements Component {
 			);
 			// Splice the expanded description directly under the selected row;
 			// rows below it shift down by the description height in the hit map.
-			const selectedVisiblePos = this.#selectedIndex - startIndex;
-			const descInView =
-				inlineDesc.length > 0 && selectedVisiblePos >= 0 && selectedVisiblePos < visibleItems.length;
 			if (descInView) {
 				itemRows.splice(selectedVisiblePos + 1, 0, ...inlineDesc);
 			}
@@ -757,7 +758,7 @@ export class SettingsList implements Component {
 				this.#hitRows[index + hitOffset + shift] = item.heading ? undefined : item.id;
 			});
 			const scrollView = new ScrollView(itemRows, {
-				height: viewportHeight + (descInView ? inlineDesc.length : 0),
+				height: scrollHeight,
 				scrollbar: "auto",
 				totalRows: this.#filteredItems.length,
 				theme: {
@@ -852,7 +853,7 @@ export class SettingsList implements Component {
 		// column + separator (2) — the always-aligned start of the value column.
 		this.#valueColStart = sidebarWidth + 2 + 2 + maxLabelWidth + 2;
 		const overflow = this.#filteredItems.length > viewportHeight;
-		const rowWidth = Math.max(0, paneWidth - (overflow ? 1 : 0));
+		const rowWidth = Math.max(0, paneWidth - (overflow ? 2 : 0));
 		const itemRows: string[] = [];
 		for (let r = 0; r < viewportHeight; r++) {
 			const index = startRow + r;

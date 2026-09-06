@@ -41,6 +41,20 @@ const UTILS_SRC = path.join(import.meta.dir, "..", "src");
 const TUI_SRC = memberSrcNamed("@veyyon/tui");
 const CODING_AGENT_SRC = memberSrcNamed("@veyyon/coding-agent");
 
+const treeSourcesCache = new Map<string, Array<{ file: string; full: string; text: string }>>();
+
+async function loadTreeSources(tree: string): Promise<Array<{ file: string; full: string; text: string }>> {
+	let cached = treeSourcesCache.get(tree);
+	if (!cached) {
+		cached = [];
+		for (const file of new Bun.Glob("**/*.ts").scanSync(tree)) {
+			const full = path.join(tree, file);
+			cached.push({ file, full, text: await Bun.file(full).text() });
+		}
+		treeSourcesCache.set(tree, cached);
+	}
+	return cached;
+}
 describe("the ANSI primitives", () => {
 	/** The escape byte. Every sequence in this module and every caller's composition starts with it. */
 	it("uses a single 0x1b byte for ESC", () => {
@@ -195,10 +209,8 @@ describe("the primitives added after the first cut", () => {
 		];
 		const offenders: string[] = [];
 		for (const tree of [UTILS_SRC, TUI_SRC, CODING_AGENT_SRC]) {
-			for (const file of new Bun.Glob("**/*.ts").scanSync(tree)) {
-				const full = path.join(tree, file);
+			for (const { file, full, text } of await loadTreeSources(tree)) {
 				if (full === path.join(UTILS_SRC, "ansi.ts")) continue;
-				const text = await Bun.file(full).text();
 				for (const name of RETIRED) {
 					if (new RegExp(`^\\s*(?:export )?const ${name}\\b`, "m").test(text)) offenders.push(`${file}: ${name}`);
 				}
@@ -349,10 +361,8 @@ describe("primitive ownership", () => {
 			path.resolve(import.meta.dir, "../../../tests/evals/backends/harbor"),
 		];
 		for (const tree of trees) {
-			for (const file of new Bun.Glob("**/*.ts").scanSync(tree)) {
-				const full = path.join(tree, file);
+			for (const { full, text } of await loadTreeSources(tree)) {
 				if (full === path.join(UTILS_SRC, "ansi.ts")) continue;
-				const text = await Bun.file(full).text();
 				if (/^\s*(?:export )?const ESC = "\\x1b\[";/m.test(text)) offenders.push(full);
 			}
 		}
@@ -435,10 +445,8 @@ describe("the SGR sequence pattern", () => {
 		const literal = /\/\\x1b\\\[[^/]*m\//;
 		const offenders: string[] = [];
 		for (const tree of [UTILS_SRC, TUI_SRC, CODING_AGENT_SRC]) {
-			for (const file of new Bun.Glob("**/*.ts").scanSync(tree)) {
-				const full = path.join(tree, file);
+			for (const { full, text } of await loadTreeSources(tree)) {
 				if (full === path.join(UTILS_SRC, "ansi.ts")) continue;
-				const text = await Bun.file(full).text();
 				for (const [index, line] of text.split("\n").entries()) {
 					if (literal.test(line)) offenders.push(`${path.relative(path.join(tree, ".."), full)}:${index + 1}`);
 				}
@@ -502,12 +510,10 @@ describe("nobody writes the reset bytes again", () => {
 	it("declares each reset in one place and imports it everywhere else", async () => {
 		const offenders: string[] = [];
 		for (const tree of [UTILS_SRC, TUI_SRC, CODING_AGENT_SRC]) {
-			for (const file of new Bun.Glob("**/*.ts").scanSync(tree)) {
-				const full = path.join(tree, file);
+			for (const { file, full, text } of await loadTreeSources(tree)) {
 				if (full === path.join(UTILS_SRC, "ansi.ts")) continue;
 				// The dependency-free QR renderer keeps its own, for the reason recorded above.
 				if (full === path.join(CODING_AGENT_SRC, "utils", "qrcode.ts")) continue;
-				const text = await Bun.file(full).text();
 				for (const [line, content] of codeLines(text)) {
 					for (const [bytes, owner] of OWNED) {
 						if (content.includes(bytes)) offenders.push(`${file}:${line} spells ${owner}`);

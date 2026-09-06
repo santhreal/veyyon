@@ -58,10 +58,15 @@ function registerSub(id: string, type: string): void {
 
 describe("an agent blocked on an approval prompt", () => {
 	/**
-	 * The invariant in one assertion: the roster says `blocked`, not `running`,
-	 * while a person is being waited on.
+	 * The LIVE roster's regression suite.
+	 *
+	 * A row in the roster states its status in a word beside the glyph ONLY when
+	 * that state needs a word ({@link WORDED_STATES}). This suite proves it says
+	 * `blocked` when an agent is waiting for a tool approval, says what tool
+	 * is being waited on, and says nothing on the row that is working, because a
+	 * working row is the glyph alone.
 	 */
-	test("reads as blocked rather than running", () => {
+	test("reads as blocked, next to a working row that carries no word", () => {
 		registerSub("0-Sub", "reviewer");
 		registerSub("1-Sub", "scout");
 		AgentRegistry.global().setPendingApproval("1-Sub", { toolName: "bash", since: Date.now() });
@@ -69,7 +74,7 @@ describe("an agent blocked on an approval prompt", () => {
 		try {
 			const working = rowsOf(dashboard, "Kestrel")[0] ?? "";
 			const blocked = rowsOf(dashboard, "Otter")[0] ?? "";
-			expect(working).toContain("running");
+			expect(working).not.toMatch(/\b(running|blocked)\b/);
 			expect(blocked).toContain("blocked");
 			expect(blocked).not.toContain("running");
 		} finally {
@@ -94,7 +99,7 @@ describe("an agent blocked on an approval prompt", () => {
 			// The card coalesces registry events before rebuilding its roster.
 			vi.advanceTimersByTime(1000);
 			const after = rowsOf(dashboard, "Kestrel")[0] ?? "";
-			expect(after).toContain("running");
+			expect(after).not.toContain("running");
 			expect(after).not.toContain("blocked");
 		} finally {
 			vi.useRealTimers();
@@ -164,7 +169,7 @@ describe("an agent parked waiting on a peer", () => {
 		const dashboard = new AgentDashboard({ terminalHeight: 40 });
 		try {
 			const row = rowsOf(dashboard, "Kestrel")[0] ?? "";
-			expect(row).toContain("running");
+			expect(row).toContain("Kestrel");
 			expect(row).not.toContain("waiting");
 		} finally {
 			dashboard.dispose();

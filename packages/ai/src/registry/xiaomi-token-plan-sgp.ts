@@ -9,4 +9,5 @@ export const xiaomiTokenPlanSgpProvider = {
 		const { loginXiaomiTokenPlan } = await import("./oauth/xiaomi");
 		return loginXiaomiTokenPlan(cb, "sgp");
 	},
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

@@ -543,8 +543,8 @@ describe("irc tool differential", () => {
 		);
 	});
 
-	it("exception cell: an error card tones every line, where main coloured the block once", () => {
-		// A failure with one line is byte-identical, rail included: the error edge is the host's too.
+	it("draws an error card with byte parity, for single-line and multi-line errors", () => {
+		// A failure is byte-identical, rail included: the error edge is the host's too.
 		for (const width of [200, WIDTH, 40]) {
 			const single: IrcViewResult = { content: [{ type: "text", text: "bus unavailable" }], isError: true };
 			expect(fitted(viewLines(single, COLLAPSED, { op: "inbox" }, width))).toEqual(
@@ -558,15 +558,11 @@ describe("irc tool differential", () => {
 			expect(fitted(viewLines(listing, COLLAPSED, { op: "list" }, width))).toEqual(
 				fitted(oracleLines(listing, HOST_COLLAPSED, { op: "list" }, width)),
 			);
+			const many: IrcViewResult = { content: [{ type: "text", text: "boom\nsecond line" }], isError: true };
+			expect(fitted(viewLines(many, COLLAPSED, undefined, width))).toEqual(
+				fitted(oracleLines(many, HOST_COLLAPSED, undefined, width)),
+			);
 		}
-		const many: IrcViewResult = { content: [{ type: "text", text: "boom\nsecond line" }], isError: true };
-		const drawn = viewLines(many, COLLAPSED, undefined, 200);
-		const oracle = oracleLines(many, HOST_COLLAPSED, undefined, 200);
-		expect(drawn[1]).toContain(`  ${theme.fg("error", "boom")}`);
-		expect(drawn[2]).toContain(`  ${theme.fg("error", "second line")}`);
-		expect(oracle[2]).not.toContain(theme.fg("error", "second line"));
-		expect(stripVTControlCharacters(oracle[2] ?? "").trimEnd()).toBe(`${rail()}  second line`);
-		expect(stripVTControlCharacters(drawn[2] ?? "").trimEnd()).toBe(`${rail()}    second line`);
 		// A result with neither details nor an op reports the same settled row in both arms.
 		const done: IrcViewResult = { content: [{ type: "text", text: "Done." }] };
 		expect(asMain("dim", viewLines(done, COLLAPSED, undefined, 200))).toEqual(

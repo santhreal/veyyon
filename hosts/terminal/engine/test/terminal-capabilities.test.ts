@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import {
-	detectTerminalId,
 	getTerminalInfo,
 	hyperlinksUserOverride,
 	ImageProtocol,
@@ -10,6 +9,7 @@ import {
 	shouldEnableSynchronizedOutputByDefault,
 	synchronizedOutputUserOverride,
 } from "@veyyon/tui/terminal-capabilities";
+import { detectTerminalId } from "@veyyon/utils/terminal-emulator";
 
 describe("detectTerminalId", () => {
 	it("recognizes Warp before the true-color fallback", () => {

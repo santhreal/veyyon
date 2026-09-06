@@ -142,8 +142,9 @@ function autoresearchOptions(): AutoresearchToolFactoryOptions {
 		dashboard: {
 			clear(): void {},
 			requestRender(): void {},
-			showOverlay: async (): Promise<void> => {},
-			updateWidget(): void {},
+			showScreen: async (): Promise<void> => {},
+			showLauncher: async (): Promise<void> => {},
+			update(): void {},
 		},
 		getRuntime: () => runtime,
 		pi: {} as unknown as ExtensionAPI,
@@ -742,6 +743,7 @@ describe("log_experiment", () => {
 			runNumber: 1,
 			commit: "0".repeat(40),
 			metric: 12,
+			measuredPrimary: 12,
 			metrics: {},
 			status: "keep",
 			description: "made it faster",
@@ -753,6 +755,9 @@ describe("log_experiment", () => {
 			justification: null,
 			flagged: false,
 			flaggedReason: null,
+			arm: null,
+			certifiedBy: null,
+			model: null,
 			...overrides,
 		};
 	}
@@ -921,6 +926,13 @@ describe("run_experiment", () => {
 		expect(drawToolViewText(lineView(timedOut), theme)).toBe(theme.fg("error", "TIMEOUT 1.5s"));
 		expect(drawToolViewText(lineView(failed), theme)).toBe(theme.fg("error", "FAIL exit=2 1.5s"));
 		expect(drawToolViewText(lineView(passed), theme)).toBe(theme.fg("success", "PASS 1.5s runtime=42ms"));
+	});
+
+	it("keeps a measured zero in the successful result header", () => {
+		const view = tool().view?.renderResult?.({ content: [], details: run({ parsedPrimary: 0 }) }, COLLAPSED);
+		expect(view).toBeDefined();
+		if (!view) return;
+		expect(drawToolViewText(lineView(view), theme)).toBe(theme.fg("success", "PASS 1.5s runtime=0ms"));
 	});
 
 	/**

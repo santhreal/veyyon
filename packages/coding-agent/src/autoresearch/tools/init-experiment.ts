@@ -1,7 +1,5 @@
 import * as path from "node:path";
 import { clamp, errorMessage, formatCount, logger } from "@veyyon/utils";
-// The owners in `@veyyon/utils`, not the re-exports in `tools/render-utils`, which is the terminal's
-// render helper module: a tool that describes a view has no reason to reach into a host's helpers.
 import { truncateToWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "@veyyon/utils/wrap";
 import type { TextBlockView } from "@veyyon/view";
@@ -14,6 +12,7 @@ import { buildExperimentState } from "../state";
 import { openAutoresearchStorage, type SessionRow } from "../storage";
 import { MAX_ATTEMPTS, MAX_BREADTH } from "../swarm";
 import type { AutoresearchToolFactoryOptions, ExperimentState } from "../types";
+import { activeToolsChanged, activeToolsFor } from ".";
 
 export const HARNESS_FILENAME = "autoresearch.sh";
 export const DEFAULT_HARNESS_COMMAND = `bash ${HARNESS_FILENAME}`;
@@ -66,13 +65,16 @@ export function createInitExperimentTool(
 			const runtime = options.getRuntime(ctx);
 
 			const direction = params.direction ?? "lower";
-			const metricUnit = params.metric_unit ?? "";
+			// `metric_unit: "comparisons"` beside `primary_metric: "comparisons"` is
+			// the name twice, and printed as `1,596,000comparisons` on every surface.
+			const unitArg = params.metric_unit?.trim() ?? "";
+			const metricUnit = unitArg.toLowerCase() === params.primary_metric.trim().toLowerCase() ? "" : unitArg;
 			const scopePaths = dedupeStrings((params.scope_paths ?? []).map(normalizePathSpec));
 			const offLimits = dedupeStrings((params.off_limits ?? []).map(normalizePathSpec));
 			const constraints = dedupeStrings(params.constraints ?? []);
 			const secondaryMetrics = dedupeStrings(params.secondary_metrics ?? []);
 			const goal = params.goal?.trim() || null;
-			const maxIterations =
+			const argIterations =
 				params.max_iterations !== undefined && Number.isFinite(params.max_iterations) && params.max_iterations > 0
 					? Math.floor(params.max_iterations)
 					: null;
@@ -84,12 +86,27 @@ export function createInitExperimentTool(
 			const requiresHarness = !existing || isNewSegmentInit;
 			// An unset value keeps whatever the session already has, so a plain
 			// reconfigure never silently collapses a swarm back to serial.
-			// The setup console parks its answers before a session exists; an
-			// explicit tool argument still wins over them.
+			// The console parks the operator's answers before a session
+			// exists, and they outrank the tool's arguments on the init that
+			// consumes them: the model never saw the console, so an argument it
+			// passes here is a guess, and a guess of 1 turned a configured swarm
+			// into a serial loop with nothing on screen saying so. A later init,
+			// with nothing parked, may still reconfigure from what the harness
+			// turned out to be.
 			const parked = runtime.pendingSwarm;
-			const breadth = clampCount(params.breadth, MAX_BREADTH) ?? parked?.breadth ?? existing?.breadth ?? 1;
-			const attempts = clampCount(params.attempts, MAX_ATTEMPTS) ?? parked?.attempts ?? existing?.attempts ?? 1;
-			const certify = params.certify ?? parked?.certify ?? existing?.certify ?? true;
+			const maxIterations = parked?.maxIterations ?? argIterations;
+			const breadth = parked?.breadth ?? clampCount(params.breadth, MAX_BREADTH) ?? existing?.breadth ?? 1;
+			const attempts = parked?.attempts ?? clampCount(params.attempts, MAX_ATTEMPTS) ?? existing?.attempts ?? 1;
+			const certify = parked?.certify ?? params.certify ?? existing?.certify ?? true;
+			const overriddenByConsole =
+				parked !== null &&
+				((params.breadth !== undefined && clampCount(params.breadth, MAX_BREADTH) !== parked.breadth) ||
+					(params.attempts !== undefined && clampCount(params.attempts, MAX_ATTEMPTS) !== parked.attempts) ||
+					(params.certify !== undefined && params.certify !== parked.certify));
+			// Per-arm models are the user's choice in the console, never the
+			// model's: this tool takes no argument for them, and a breadth that
+			// lands back at 1 drops them, since there are no arms to spread.
+			const armModels = breadth > 1 ? (parked?.armModels ?? existing?.armModels ?? []).slice(0, breadth) : [];
 			runtime.pendingSwarm = null;
 
 			if (requiresHarness) {
@@ -146,14 +163,16 @@ export function createInitExperimentTool(
 					secondaryMetrics,
 					breadth,
 					attempts,
-					maxParallel: breadth,
 					certify,
+					armModels,
 				});
 				createdSession = true;
-			} else {
-				abandonedRuns = storage.abandonPendingRuns(existing.id);
-				const updates: Parameters<typeof storage.updateSession>[1] = {
+			} else if (isNewSegmentInit) {
+				abandonedRuns = storage.abandonIncompleteRuns(existing.id);
+				storage.bumpSessionSegment(existing.id, baselineCommit);
+				session = storage.updateSession(existing.id, {
 					goal,
+					preferredCommand: DEFAULT_HARNESS_COMMAND,
 					maxIterations,
 					scopePaths,
 					offLimits,
@@ -163,20 +182,31 @@ export function createInitExperimentTool(
 					metricUnit,
 					direction,
 					branch,
+					baselineCommit,
 					breadth,
 					attempts,
-					maxParallel: breadth,
 					certify,
-				};
-				if (isNewSegmentInit) {
-					updates.baselineCommit = baselineCommit;
-				}
-				let updated = storage.updateSession(existing.id, updates);
-				if (isNewSegmentInit) {
-					updated = storage.bumpSegment(existing.id);
-					bumpedSegment = true;
-				}
-				session = updated;
+					armModels,
+				});
+				bumpedSegment = true;
+			} else {
+				session = storage.updateSession(existing.id, {
+					goal: goal ?? existing.goal,
+					maxIterations: maxIterations ?? existing.maxIterations,
+					scopePaths: params.scope_paths !== undefined ? scopePaths : existing.scopePaths,
+					offLimits: params.off_limits !== undefined ? offLimits : existing.offLimits,
+					constraints: params.constraints !== undefined ? constraints : existing.constraints,
+					secondaryMetrics: params.secondary_metrics !== undefined ? secondaryMetrics : existing.secondaryMetrics,
+					primaryMetric: params.primary_metric,
+					metricUnit,
+					direction,
+					branch: branch ?? existing.branch,
+					baselineCommit: baselineCommit ?? existing.baselineCommit,
+					breadth,
+					attempts,
+					certify,
+					armModels,
+				});
 			}
 
 			const loggedRuns = storage.listLoggedRuns(session.id);
@@ -191,30 +221,63 @@ export function createInitExperimentTool(
 			runtime.lastRunArtifactDir = null;
 			runtime.lastRunNumber = null;
 			runtime.lastRunSummary = null;
-			options.dashboard.updateWidget(ctx, runtime);
+
+			options.dashboard.update(ctx, runtime);
 			options.dashboard.requestRender();
 
+			// The stored session is the first place the real breadth exists, so this
+			// is where a swarm gains `certify_arms` and a serial session loses it.
+			// The command path armed the set before the breadth was known.
+			const activeTools = options.pi.getActiveTools();
+			const nextActiveTools = activeToolsFor(activeTools, true, state.breadth);
+			if (activeToolsChanged(activeTools, nextActiveTools)) {
+				await options.pi.setActiveTools(nextActiveTools);
+			}
+
 			const lines: string[] = [];
-			if (abandonedRuns > 0) {
-				lines.push(`Abandoned ${formatCount("pending run", abandonedRuns)} before reconfiguring.`);
-			}
-			if (harnessCommitted && session.baselineCommit) {
-				lines.push(`Committed harness setup at ${session.baselineCommit.slice(0, 12)}.`);
-			}
-			if (commitWarning) {
-				lines.push(commitWarning);
-			}
 			if (createdSession) {
-				lines.push(`Started session #${session.id}: ${session.name}`);
+				lines.push(
+					`Initialized autoresearch session "${session.name}" (ID ${session.id}) for segment ${session.currentSegment}.`,
+				);
 			} else if (bumpedSegment) {
-				lines.push(`Bumped segment to ${session.currentSegment} for session #${session.id}: ${session.name}`);
+				lines.push(
+					`Started new segment ${session.currentSegment} for session "${session.name}" (ID ${session.id}).`,
+				);
+				if (abandonedRuns > 0) {
+					lines.push(`Abandoned ${abandonedRuns} incomplete run(s) from prior segment.`);
+				}
 			} else {
-				lines.push(`Updated session #${session.id} (segment ${session.currentSegment}): ${session.name}`);
+				lines.push(
+					`Reconfigured autoresearch session "${session.name}" (ID ${session.id}) on segment ${session.currentSegment}.`,
+				);
+			}
+
+			if (harnessCommitted) {
+				lines.push(`Auto-committed harness setup (${HARNESS_COMMIT_TITLE}).`);
+			} else if (commitWarning) {
+				lines.push(`Warning: ${commitWarning}`);
+			}
+
+			if (session.goal) {
+				lines.push(`Goal: ${session.goal}`);
+			}
+			lines.push(`Primary metric: ${session.primaryMetric} (direction: ${session.direction})`);
+			if (session.metricUnit) {
+				lines.push(`Metric unit: ${session.metricUnit}`);
+			}
+			if (session.secondaryMetrics.length > 0) {
+				lines.push(`Secondary metrics: ${session.secondaryMetrics.join(", ")}`);
 			}
 			lines.push(
-				`Metric: ${session.primaryMetric} (${session.metricUnit || "unitless"}, ${session.direction} is better)`,
+				session.breadth > 1
+					? `Breadth: ${formatCount("arm", session.breadth)} per iteration, ${formatCount("attempt", session.attempts)} each, certification ${session.certify ? "on" : "off"}.`
+					: "Breadth: 1 (serial, no arms).",
 			);
-			lines.push(`Benchmark entrypoint: ${DEFAULT_HARNESS_COMMAND}`);
+			if (overriddenByConsole) {
+				lines.push(
+					"The breadth, attempts and certification arguments were ignored: the console the user configured this run in decides them.",
+				);
+			}
 			if (session.scopePaths.length > 0) {
 				lines.push(`Files in scope: ${session.scopePaths.join(", ")}`);
 			}
@@ -268,12 +331,10 @@ export function createInitExperimentTool(
 /**
  * The card for a call: the tool's name, then the experiment being started.
  *
- * Host-agnostic on purpose. The terminal draws a `title` tone in its tool-title colour and an
- * `accent` tone in its accent colour, which is what this row said in ANSI before; a host with no
- * terminal draws the same two tones its own way. The separating space is a span of its own with no
- * tone, so it stays unstyled. The width bound stays here because it bounds the SUBJECT — an
- * experiment name is free-form text a caller supplies, and no host should be handed 4 KB of it —
- * whereas fitting the row to a window is the host's business.
+ * `truncateToWidth` takes an explicit length here because the call is shown in the
+ * transcript and on the status row, and a 200-character name wraps and pushes the
+ * result off the visible screen. `replaceTabs` is the second sanitization rule: a
+ * tab character is a hole in differential terminal rendering.
  */
 function initExperimentCallView(name: string): TextBlockView {
 	return {

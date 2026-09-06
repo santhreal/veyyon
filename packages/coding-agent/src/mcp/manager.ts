@@ -7,10 +7,10 @@
 import * as path from "node:path";
 import * as url from "node:url";
 import type { TSchema } from "@veyyon/ai";
+import { type AuthStorage, REMOTE_REFRESH_SENTINEL } from "@veyyon/ai/auth-storage";
 // The owner, not the barrel: classifying an OAuth failure is a string test that
 // belongs to the flag it decides, and `error/flags.ts` is where that flag lives.
 import { isDefinitiveOAuthFailure } from "@veyyon/ai/error/flags";
-import { type AuthStorage, REMOTE_REFRESH_SENTINEL } from "@veyyon/kernel/session/auth-storage";
 import { errorMessage, logger } from "@veyyon/utils";
 import { describeConfigEnvReference } from "../config/config-value-resolution";
 import { invalidateConfigValue, resolveConfigValue } from "../config/resolve-config-value";

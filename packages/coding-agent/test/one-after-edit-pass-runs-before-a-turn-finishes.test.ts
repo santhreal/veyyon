@@ -24,6 +24,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
@@ -36,7 +37,6 @@ import {
 	VERIFICATION_EVIDENCE_REMINDER_TYPE,
 	VerificationEvidenceLedger,
 } from "@veyyon/coding-agent/session/verification-evidence-ledger";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { logger, TempDir } from "@veyyon/utils";
 

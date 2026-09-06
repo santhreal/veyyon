@@ -25,7 +25,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { type OperatorNotice, OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import { ModelRegistry } from "../../src/config/model-registry";
 import { Settings } from "../../src/config/settings";

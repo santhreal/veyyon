@@ -16,12 +16,14 @@ import type { Context } from "@veyyon/ai/types";
 import {
 	getDefault,
 	getEnumValues,
-	onAppendOnlyModeChanged,
-	onStatusLineSessionAccentChanged,
 	resetSettingsForTest,
 	type SettingPath,
 	Settings,
 } from "@veyyon/coding-agent/config/settings";
+import {
+	onAppendOnlyModeChanged,
+	onStatusLineSessionAccentChanged,
+} from "@veyyon/coding-agent/config/settings-signals";
 import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
 import { getProjectAgentDir, logger, TempDir } from "@veyyon/utils";
 import { YAML } from "bun";

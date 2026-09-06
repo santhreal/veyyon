@@ -23,6 +23,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { RAIL_IDLE_STEP_MS, RAIL_SETTLE_FRAMES } from "@veyyon/coding-agent/modes/terminal/draw/rail-motion";
@@ -30,7 +31,6 @@ import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { initTheme, stopThemeWatcher } from "@veyyon/coding-agent/theme/theme";
 import { TODO_STRIKE_TOTAL_FRAMES, type TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 

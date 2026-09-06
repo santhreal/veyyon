@@ -18,6 +18,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { discoverAndLoadExtensions } from "@veyyon/coding-agent/extensibility/extensions/loader";
 import {
@@ -27,7 +28,6 @@ import {
 	testSetExtensionHandlerTimeoutMs,
 	testSetSessionShutdownHandlerTimeoutMs,
 } from "@veyyon/coding-agent/extensibility/extensions/runner";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { getProjectAgentDir, logger, TempDir } from "@veyyon/utils";
 

@@ -5,6 +5,7 @@
 import { decodeJwtPayload } from "@veyyon/utils/jwt";
 import * as AIError from "../../error";
 import { getProviderDefinition, PROVIDER_REGISTRY } from "../registry";
+import type { LoginCredential } from "../types";
 import type {
 	OAuthCredentials,
 	OAuthProvider,
@@ -22,6 +23,7 @@ const builtInOAuthProviders: OAuthProviderInfo[] = PROVIDER_REGISTRY.filter(
 	id: provider.id,
 	name: provider.name,
 	available: provider.available ?? true,
+	credential: provider.credential ?? "oauth",
 	storeCredentialsAs: provider.storeCredentialsAs,
 }));
 
@@ -166,7 +168,19 @@ export function getOAuthProviders(): OAuthProviderInfo[] {
 		id: provider.id,
 		name: provider.name,
 		available: true,
+		credential: "oauth" as const,
 		storeCredentialsAs: provider.storeCredentialsAs,
 	}));
-	return builtInOAuthProviders.concat(customProviders);
+	return [...builtInOAuthProviders, ...customProviders];
+}
+
+/**
+ * What `providerId`'s login asks for. Every login surface reads this before
+ * deciding whether an `onAuth` URL is launched (an authorization the flow
+ * waits on) or only shown (the dashboard where a key is obtained). A provider
+ * the registry does not know, including one registered by an extension, is
+ * treated as a browser login.
+ */
+export function getLoginCredential(providerId: string): LoginCredential {
+	return getProviderDefinition(providerId)?.credential ?? "oauth";
 }

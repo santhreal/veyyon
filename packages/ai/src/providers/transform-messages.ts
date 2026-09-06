@@ -5,6 +5,7 @@ import { renderDemotedThinking } from "../dialect/demotion";
 import type {
 	Api,
 	AssistantMessage,
+	DemotedReasoningSource,
 	Message,
 	Model,
 	ProviderPayload,
@@ -398,6 +399,47 @@ function sanitizeMalformedToolCalls(messages: Message[]): Message[] {
 	return result;
 }
 
+/**
+ * True when `model` would refuse or reject prior-turn reasoning that is already
+ * demoted to prose. This is the unsigned-thinking replay policy of the
+ * assistant branch below, applied to a text message that carries the same
+ * reasoning: a signing Anthropic endpoint drops it on same-model replay, and
+ * any `anthropic-messages` target drops it once `replayDemotedPriorReasoning`
+ * is off, whether by catalog or learned from a `reasoning_extraction` refusal
+ * (the transport clones the compat with the flag cleared before retrying, so
+ * the retry and every later request of the session take this branch).
+ */
+function dropsDemotedPriorReasoning(source: DemotedReasoningSource, model: Model): boolean {
+	if (!isAnthropicMessagesModel(model)) return false;
+	if (!model.compat.replayDemotedPriorReasoning) return true;
+	return model.compat.signingEndpoint && source.provider === model.provider && source.model === model.id;
+}
+
+/**
+ * Drop text messages whose body is demoted prior reasoning the target cannot be
+ * sent. The message carries the run outside the assistant turn, so the
+ * per-block thinking policy never sees it; without this pass the prose reaches
+ * the classifier on every request of the session, and the refusal retry that
+ * clears `replayDemotedPriorReasoning` re-sends the same bytes.
+ */
+function dropUndeliverableDemotedReasoning(messages: Message[], model: Model): Message[] {
+	let drops = false;
+	for (const message of messages) {
+		if (message.role !== "user" && message.role !== "developer") continue;
+		if (message.demotedReasoningSource && dropsDemotedPriorReasoning(message.demotedReasoningSource, model)) {
+			drops = true;
+			break;
+		}
+	}
+	if (!drops) return messages;
+	return messages.filter(
+		message =>
+			(message.role !== "user" && message.role !== "developer") ||
+			!message.demotedReasoningSource ||
+			!dropsDemotedPriorReasoning(message.demotedReasoningSource, model),
+	);
+}
+
 function shouldDropTruncatedThinkingOnlyAssistant(msg: AssistantMessage): boolean {
 	const isTruncatedStop = msg.stopReason === "length" || msg.stopReason === "error" || msg.stopReason === "aborted";
 	return isTruncatedStop && !msg.content.some(block => block.type === "toolCall" || block.type === "text");
@@ -486,6 +528,10 @@ export function transformMessages<TApi extends Api>(
 	// the history. Replays of these would 400 every provider — see
 	// `sanitizeMalformedToolCalls`.
 	messages = sanitizeMalformedToolCalls(messages);
+
+	// Prior reasoning carried as prose is subject to the same replay policy as
+	// an unsigned thinking block, and the target is only known here.
+	messages = dropUndeliverableDemotedReasoning(messages, model);
 
 	// Build a map of original tool call IDs to normalized IDs
 	const toolCallIdMap = new Map<string, string>();

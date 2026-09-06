@@ -1,6 +1,6 @@
 import { THINKING_EFFORTS } from "@veyyon/catalog/effort";
 import { unsetNumberOption } from "@veyyon/kernel/settings/optional-number";
-import { AUTO_THINKING } from "../../thinking";
+import { AUTO_THINKING } from "../../thinking/constants";
 import {
 	SERVICE_TIER_ANTHROPIC_OPTIONS,
 	SERVICE_TIER_ANTHROPIC_VALUES,

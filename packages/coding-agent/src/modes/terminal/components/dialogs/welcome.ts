@@ -8,7 +8,7 @@ import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { replaceTabs, wrapTextWithAnsi } from "@veyyon/utils/wrap";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../../../../config/settings-instance";
-import { theme } from "../../../../theme/theme";
+import { theme } from "../../../../theme/theme-binding";
 
 // The forced-tip state and the post-update message live in `launch-tip.ts`, which `main.ts` can import
 // without pulling this component (and the whole TUI) into the static boot graph. Re-exported here so the

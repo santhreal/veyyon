@@ -7,14 +7,10 @@ import * as path from "node:path";
 import { Settings } from "../../src/config/settings";
 import type { ToolSession } from "../../src/tools";
 import { ReadTool } from "../../src/tools/fs/read";
-import { SearchTool, searchSchema, TYPE_FIELDS } from "../../src/tools/search/search";
+import { SearchTool, searchSchema } from "../../src/tools/search/search";
 
 const firstAction = process.argv[2];
-const urlSearchTypes = searchSchema.shape.type.options.filter(type => TYPE_FIELDS[type].has("path"));
-assert.deepEqual(
-	searchSchema.shape.type.options.filter(type => !TYPE_FIELDS[type].has("path")),
-	["files"],
-);
+const urlSearchTypes = searchSchema.shape.type.options.filter(type => type !== "files");
 assert(firstAction === "read" || urlSearchTypes.some(type => type === firstAction));
 const root = await fs.mkdtemp(path.join(os.tmpdir(), "url-reader-runtime-"));
 const body = "export function localNeedle() {\n\treturn 7;\n}\n";

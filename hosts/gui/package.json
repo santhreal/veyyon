@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/gui-host",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "description": "Graphical host that draws the Veyyon view contract as HTML, the second implementation that proves the contract",
   "homepage": "https://veyyon.dev",

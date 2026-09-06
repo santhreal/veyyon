@@ -1,3 +1,4 @@
+import type { ThemeColor } from "./color";
 import type { Theme } from "./theme-class";
 
 /**
@@ -36,4 +37,9 @@ export var theme: Theme;
  */
 export function setActiveTheme(next: Theme): void {
 	theme = next;
+}
+
+/** Returns unstyled `text` before `initTheme()` assigns the global theme; use only for early-render paths. */
+export function fgOrPlain(color: ThemeColor, text: string, styledText: string = text): string {
+	return typeof theme === "undefined" ? text : theme.fg(color, styledText);
 }

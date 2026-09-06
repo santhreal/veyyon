@@ -37,6 +37,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Agent, countTokens } from "@veyyon/agent-core";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import * as AIError from "@veyyon/ai/error";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -45,7 +46,6 @@ import { loadExtensions } from "@veyyon/coding-agent/extensibility/extensions/lo
 import { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
 import { MAX_JSON_TRANSFORM_STRING_BYTES, SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
 import { AgentSession, obfuscateProviderPayload } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { getProjectAgentDir, TempDir } from "@veyyon/utils";
 

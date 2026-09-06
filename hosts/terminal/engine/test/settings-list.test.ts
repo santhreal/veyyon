@@ -774,4 +774,36 @@ describe("SettingsList", () => {
 		expect(list.routeSubmenuMouse({ leftClick: true } as never, 2, 7)).toBe(true);
 		expect(routed).toEqual([[2, 7, true]]);
 	});
+	it("uses the full row width when an expanded viewport has no scrollbar", () => {
+		const value = "v".repeat(48);
+		const items = [
+			{ id: "1", label: "Item 1", currentValue: value, description: "Expanded description" },
+			{ id: "2", label: "Item 2", currentValue: "val2" },
+			{ id: "3", label: "Item 3", currentValue: "val3" },
+			{ id: "4", label: "Item 4", currentValue: "val4" },
+			{ id: "5", label: "Item 5", currentValue: "val5" },
+		];
+		const list = new SettingsList(
+			items,
+			5,
+			testTheme,
+			() => {},
+			() => {},
+			{
+				layout: "flat",
+				descriptionMode: "expand",
+				expandedIds: new Set(["1"]),
+				typeToSearch: false,
+				hint: "",
+			},
+		);
+
+		const rendered = list.render(60);
+		// A gutter reserved without a painted scrollbar truncates this value by two columns.
+		expect(rendered[0]?.trimEnd()).toBe(`→ Item 1  ${value}`);
+		expect(rendered[1]?.trimEnd()).toBe("    Expanded description");
+		expect(rendered).toHaveLength(5);
+		expect(list.hitTest(1, 0)).toBeUndefined();
+		expect(list.hitTest(2, 0)).toBe("2");
+	});
 });

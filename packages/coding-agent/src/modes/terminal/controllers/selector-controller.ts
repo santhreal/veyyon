@@ -1,11 +1,12 @@
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { CredentialHealthResult, UsageReport } from "@veyyon/ai";
+import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome } from "@veyyon/ai/auth-storage";
 import type { InstrumentationLevel } from "@veyyon/ai/instrumentation";
+import { getLoginCredential } from "@veyyon/ai/oauth";
 import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 // The derived provider set from the registry that derives it (164 modules) rather than the
 // barrel (346).
 import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai/registry/derived";
-import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome } from "@veyyon/kernel/session/auth-storage";
 import type { SessionInfo } from "@veyyon/kernel/session/session-listing";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
@@ -341,10 +342,11 @@ export class SelectorController {
 						});
 						this.ctx.ui.requestRender();
 					},
-					getStatusLinePreview: () => {
+					getStatusLinePreview: (previewWidth?: number) => {
 						// Preview the quiet composer zones (what the operator actually sees),
 						// two rows: location above, capability below.
-						const width = this.ctx.editor.getTopBorderAvailableWidth(this.ctx.ui.terminal.columns);
+						const width =
+							previewWidth ?? this.ctx.editor.getTopBorderAvailableWidth(this.ctx.ui.terminal.columns);
 						const { locationLine, capabilityLine } = this.ctx.statusLine.renderQuietLines(width);
 						return `${locationLine}\n${capabilityLine}`;
 					},
@@ -1554,14 +1556,14 @@ export class SelectorController {
 		};
 		const dialog = new LoginDialogComponent(
 			this.ctx.ui,
-			providerId,
+			providerLabel,
 			(_success, message) => {
 				// Fires on Esc: unblock the editor immediately; the aborted flow's
 				// rejection settles the awaited login below.
 				restoreEditor();
 				if (message) this.ctx.showStatus(message);
 			},
-			{ getTerminalRows: () => this.ctx.ui.terminal.rows },
+			{ browserLogin: getLoginCredential(providerId) === "oauth", getTerminalRows: () => this.ctx.ui.terminal.rows },
 		);
 		overlayHandle = this.ctx.ui.showOverlay(dialog, {
 			anchor: "top-left",

@@ -167,7 +167,7 @@ export function resolveRepositorySync(startDir: string): GitRepository | null {
 	}
 }
 
-async function retryOnEintr<T>(op: () => Promise<T>): Promise<T | null> {
+export async function retryOnEintr<T>(op: () => Promise<T>): Promise<T | null> {
 	for (let attempt = 0; attempt <= EINTR_MAX_RETRIES; attempt += 1) {
 		try {
 			return await op();
@@ -179,7 +179,7 @@ async function retryOnEintr<T>(op: () => Promise<T>): Promise<T | null> {
 	throw new Error("retryOnEintr: exhausted without resolution");
 }
 
-async function getEntryType(gitEntryPath: string): Promise<EntryType | null> {
+export async function getEntryType(gitEntryPath: string): Promise<EntryType | null> {
 	return retryOnEintr(async () => {
 		const stat = await fs.promises.stat(gitEntryPath);
 		if (stat.isDirectory()) return "directory";
@@ -202,7 +202,7 @@ async function resolveGitDir(gitEntryPath: string, entryType: EntryType): Promis
 	return (await getEntryType(gitDir)) === "directory" ? gitDir : null;
 }
 
-async function resolveCommonDir(gitDir: string): Promise<string> {
+export async function resolveCommonDir(gitDir: string): Promise<string> {
 	const content = await readOptionalText(path.join(gitDir, "commondir"));
 	const relative = content?.trim();
 	if (!relative) return gitDir;
@@ -267,7 +267,7 @@ export async function resolveRepository(startDir: string): Promise<GitRepository
 }
 
 /** Linked-checkout metadata from repository files, without the subprocess API. */
-export function linkedWorktreeFromFiles(cwd: string): { root: string; primaryRoot: string } | null {
+export function linkedWorktreeSync(cwd: string): { root: string; primaryRoot: string } | null {
 	const repository = resolveRepositorySync(cwd);
 	if (!repository || !isLinkedWorktree(repository)) return null;
 	return { root: repository.repoRoot, primaryRoot: primaryRootFromRepositorySync(repository) };

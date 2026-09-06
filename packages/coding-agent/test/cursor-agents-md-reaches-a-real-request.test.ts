@@ -34,6 +34,7 @@ import * as fs from "node:fs";
 import * as http2 from "node:http2";
 import * as path from "node:path";
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { buildModel } from "@veyyon/catalog/build";
 import {
 	AgentClientMessageSchema,
@@ -50,7 +51,6 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { ContextFile } from "@veyyon/coding-agent/discovery/capability/context-file";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import {
 	GLOBAL_BODY,

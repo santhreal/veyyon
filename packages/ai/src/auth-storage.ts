@@ -798,15 +798,20 @@ export type AuthStorageOptions = {
 	 */
 	onUsageLimitWithheld?: (event: UsageLimitWithheldEvent) => void | Promise<void>;
 	/**
-	 * Whether QUOTA and RATE-LIMIT exhaustion may move a provider to a different account.
+	 * Whether the product may move a provider between the operator's accounts on its own
+	 * initiative: quota and rate-limit exhaustion, usage-headroom ranking, and the per-session /
+	 * round-robin spread of new sessions across accounts.
 	 *
-	 * Defaults to `true` so every existing embedder — the auth broker, the gateway, the SDK —
-	 * keeps the behaviour it has today. The coding-agent passes the operator's
-	 * `accounts.loadBalancing` setting, which defaults to OFF: spreading one operator's work
-	 * across their accounts is a choice with consequences they must opt into, not a default.
+	 * Defaults to `false`. The coding-agent passes the operator's `accounts.loadBalancing`
+	 * setting, which also defaults to OFF: spreading one operator's work across their accounts
+	 * is a choice with consequences they must opt into, not a default. Off means exactly one
+	 * account per provider and credential type serves — the explicit choice, else the account the
+	 * session last used, else the first in storage order — and it keeps serving while blocked.
 	 *
-	 * This gates ONLY exhaustion-driven movement. Auth death is never gated: a revoked
-	 * credential cannot serve the request at all, so refusing to move would just fail.
+	 * This gates ONLY the product's own movement. Auth death is never gated: a revoked
+	 * credential cannot serve the request at all, so refusing to move would just fail. A plan
+	 * requirement an account cannot meet is treated the same way. An explicit choice (a session
+	 * pin or the provider selection) is never gated either; it is what the caller asked for.
 	 *
 	 * A resolver rather than a plain boolean is accepted because the setting is live-editable;
 	 * reading it per decision means a `/settings` change takes effect without a restart.
@@ -1625,7 +1630,7 @@ export class AuthStorage {
 
 	#bumpGeneration(reason: string): void {
 		this.#generation += 1;
-		for (const listener of Array.from(this.#generationListeners)) {
+		for (const listener of [...this.#generationListeners]) {
 			try {
 				listener(this.#generation);
 			} catch (error) {
@@ -1681,7 +1686,7 @@ export class AuthStorage {
 	}
 
 	#emitCredentialFailover(event: CredentialFailoverEvent): void {
-		for (const listener of Array.from(this.#credentialFailoverListeners)) {
+		for (const listener of [...this.#credentialFailoverListeners]) {
 			const logListenerError = (error: unknown): void => {
 				logger.warn("onCredentialFailover listener threw", { provider: event.provider, error: String(error) });
 			};
@@ -1706,7 +1711,7 @@ export class AuthStorage {
 	}
 
 	#emitUsageLimitWithheld(event: UsageLimitWithheldEvent): void {
-		for (const listener of Array.from(this.#usageLimitWithheldListeners)) {
+		for (const listener of [...this.#usageLimitWithheldListeners]) {
 			const logListenerError = (error: unknown): void => {
 				logger.warn("onUsageLimitWithheld listener threw", { provider: event.provider, error: String(error) });
 			};
@@ -1973,12 +1978,19 @@ export class AuthStorage {
 
 	/**
 	 * Returns credential indices in priority order for selection.
-	 * With sessionId: starts from hashed index (consistent per session).
-	 * Without sessionId: starts from round-robin index (load balancing).
-	 * Order wraps around so all credentials are tried if earlier ones are blocked.
+	 *
+	 * With account movement ON: a session starts from a hash of its id (consistent per session) and
+	 * a sessionless caller from the round-robin cursor, wrapping so every credential is tried.
+	 *
+	 * With account movement OFF: storage order, always. The hash and the cursor exist only to
+	 * spread work across accounts, which is the move the setting forbids: a session that starts on
+	 * whichever account its id hashes to, or a sessionless caller that advances a cursor, has
+	 * already been balanced before any block or ranking is consulted. Off means one account per
+	 * provider and type serves until the operator chooses another.
 	 */
 	#getCredentialOrder(providerKey: string, sessionId: string | undefined, total: number): number[] {
 		if (total <= 1) return [0];
+		if (!this.#loadBalancingEnabled()) return Array.from({ length: total }, (_, i) => i);
 		const start = sessionId
 			? this.#getHashedIndex(sessionId, total)
 			: this.#getNextRoundRobinIndex(providerKey, total);
@@ -2530,6 +2542,30 @@ export class AuthStorage {
 	}
 
 	/**
+	 * Index of the account that leads selection for this provider and type before any automatic
+	 * ordering: the explicit choice when one exists, else — only while account movement is OFF —
+	 * the account this session last used.
+	 *
+	 * With movement off the sticky record is promoted to the rank of a choice because there is
+	 * nothing else that may decide: a hold on that account is a reason to wait, not a reason to
+	 * spend a sibling, so it keeps leading while blocked, exactly as a pin does. With movement on
+	 * the sticky record stays an observation and the ordering below decides, so this answers only
+	 * the explicit choice.
+	 *
+	 * A sticky account whose grant failed authentication is skipped for the same reason a chosen
+	 * one is: the provider has refused it, and holding the request on it would strand the session.
+	 */
+	#homeIndex(provider: string, sessionId: string | undefined, type: AuthCredential["type"]): number | undefined {
+		const chosen = this.#explicitChoiceIndex(provider, sessionId, type);
+		if (chosen !== undefined || this.#loadBalancingEnabled()) return chosen;
+		const sticky = this.#getStickySessionCredential(provider, sessionId);
+		if (sticky?.type !== type) return undefined;
+		const credentialId = this.#getStoredCredentials(provider)[sticky.index]?.id;
+		if (credentialId === undefined || this.#authDeadCredentials.has(credentialId)) return undefined;
+		return sticky.index;
+	}
+
+	/**
 	 * Choose the account a provider uses, for every session and every profile on this machine.
 	 *
 	 * GLOBAL, not session-scoped, because the credentials are: they live in one shared database
@@ -2635,7 +2671,14 @@ export class AuthStorage {
 		// A sticky record is an OBSERVATION and outranks a prediction, but only while the credential
 		// it names can still serve: a blocked one answers "where your traffic went", not "where the
 		// next request goes", and those are different questions on a card that only asks the second.
-		if (sticky && stickyEntry && this.#credentialUsableNow(provider, stickyEntry, sticky.index)) {
+		// With account movement off the two questions have one answer: nothing may move the session
+		// off the account it used, so a blocked sticky account IS what serves next, and it waits.
+		if (
+			sticky &&
+			stickyEntry &&
+			(!this.#loadBalancingEnabled() || this.#credentialUsableNow(provider, stickyEntry, sticky.index)) &&
+			!this.#authDeadCredentials.has(stickyEntry.id)
+		) {
 			routing.activeCredentialId = stickyEntry.id;
 			return routing;
 		}
@@ -2687,10 +2730,15 @@ export class AuthStorage {
 				.filter(candidate => candidate.entry.credential.type === type);
 			if (candidates.length === 0) continue;
 			const providerKey = this.#getProviderTypeKey(provider, type);
-			const start = sessionId
-				? this.#getHashedIndex(sessionId, candidates.length)
-				: ((((this.#providerRoundRobinIndex.get(providerKey) ?? -1) + 1) % candidates.length) + candidates.length) %
-					candidates.length;
+			// The same arithmetic `#getCredentialOrder` runs, without advancing the cursor. With
+			// movement off there is no arithmetic: storage order, as the selector uses.
+			const start = !this.#loadBalancingEnabled()
+				? 0
+				: sessionId
+					? this.#getHashedIndex(sessionId, candidates.length)
+					: ((((this.#providerRoundRobinIndex.get(providerKey) ?? -1) + 1) % candidates.length) +
+							candidates.length) %
+						candidates.length;
 			const rotated = candidates.map((_, offset) => candidates[(start + offset) % candidates.length]!);
 			// No choice promotion here, and none is missing: `sessionCredentialRouting` answers with the
 			// explicit choice (pin, else provider selection) and returns before it ever asks for a
@@ -2784,7 +2832,7 @@ export class AuthStorage {
 				providerKey,
 				order.map(idx => credentials[idx]),
 			),
-			this.#explicitChoiceIndex(provider, sessionId, type),
+			this.#homeIndex(provider, sessionId, type),
 		);
 		return ordered[0] ?? credentials[order[0]];
 	}
@@ -2813,6 +2861,12 @@ export class AuthStorage {
 	 * `#resolveOAuthSelection` (which also weighs a session preference and a plan requirement), and
 	 * `#selectApiKeyCredential`, which returns the chosen entry outright. A second exemption inside
 	 * the sort was one more owner of that rule which no behaviour could distinguish from its absence.
+	 *
+	 * With account movement OFF the incoming order is kept, except that a grant the provider REFUSED
+	 * sorts last. Sorting a usable sibling ahead of a blocked account IS the move the setting
+	 * forbids; the block is still recorded (so the account list can say when the window returns)
+	 * and the caller waits for it. A refusal is a different fact: the provider's verdict on the
+	 * grant itself, which no wait will lift, so an account behind it is the only one that can serve.
 	 */
 	#orderByBlockAvailability<C extends { index: number }>(
 		provider: string,
@@ -2821,6 +2875,14 @@ export class AuthStorage {
 		blockScope?: string,
 	): C[] {
 		const present = candidates.filter((candidate): candidate is C => candidate !== undefined);
+		if (!this.#loadBalancingEnabled()) {
+			const stored = this.#getStoredCredentials(provider);
+			const refused = (candidate: C): boolean => {
+				const id = stored[candidate.index]?.id;
+				return id !== undefined && this.#authDeadCredentials.has(id);
+			};
+			return [...present.filter(candidate => !refused(candidate)), ...present.filter(refused)];
+		}
 		return present
 			.map((candidate, position) => ({
 				candidate,
@@ -2975,11 +3037,15 @@ export class AuthStorage {
 		// An explicitly chosen account is not a candidate in a headroom contest, it is the answer.
 		// Ranking exists to choose among accounts nobody named, so it never runs over a live choice —
 		// with account movement on as much as off, since the setting governs the product's own
-		// initiative and not what a caller may ask for.
-		const chosenIndex = this.#explicitChoiceIndex(provider, sessionId, "api_key");
-		const chosen = chosenIndex === undefined ? undefined : credentials.find(entry => entry.index === chosenIndex);
-		if (chosen) return chosen;
-		if (!strategy) {
+		// initiative and not what a caller may ask for. With movement off the account this session
+		// last used has the same standing (see `#homeIndex`).
+		const homeIndex = this.#homeIndex(provider, sessionId, "api_key");
+		const home = homeIndex === undefined ? undefined : credentials.find(entry => entry.index === homeIndex);
+		if (home) return home;
+		// A headroom contest is a move by another name: whichever key has the most quota left wins,
+		// so the key changes as usage shifts. With movement off it does not run; the first key in
+		// storage order serves until the operator chooses another.
+		if (!strategy || !this.#loadBalancingEnabled()) {
 			const ordered = this.#orderByBlockAvailability(
 				provider,
 				providerKey,
@@ -3040,7 +3106,7 @@ export class AuthStorage {
 		// auth-death mark: the grant the mark described is not the grant this row now holds, and the
 		// an explicit choice of this account becomes honourable again.
 		this.#authDeadCredentials.delete(target.id);
-		const updated = entries.slice();
+		const updated = [...entries];
 		updated[index] = { id: target.id, credential };
 		this.#setStoredCredentials(provider, updated);
 	}
@@ -3139,7 +3205,7 @@ export class AuthStorage {
 			);
 			return this.#getStoredCredentials(provider).findIndex(entry => entry.id === id);
 		}
-		const updated = entries.slice();
+		const updated = [...entries];
 		updated[index] = { id, credential };
 		this.#setStoredCredentials(provider, updated);
 		return index;
@@ -3176,7 +3242,7 @@ export class AuthStorage {
 		}
 		// Snapshot before iteration so a listener that subscribes/unsubscribes during fan-out
 		// can't observe a partially-mutated set or receive an event it just registered for.
-		const listeners = Array.from(this.#credentialDisabledListeners);
+		const listeners = [...this.#credentialDisabledListeners];
 		for (const listener of listeners) {
 			this.#invokeListener(listener, event);
 		}
@@ -3513,7 +3579,7 @@ export class AuthStorage {
 	 * List all providers with credentials.
 	 */
 	list(): string[] {
-		return Array.from(this.#data.keys());
+		return [...this.#data.keys()];
 	}
 
 	/**
@@ -4471,7 +4537,7 @@ export class AuthStorage {
 			const accountId = limit.scope.accountId?.trim();
 			if (accountId) ids.add(accountId);
 		}
-		if (ids.size === 1) return Array.from(ids)[0];
+		if (ids.size === 1) return [...ids][0];
 		return undefined;
 	}
 
@@ -4481,7 +4547,7 @@ export class AuthStorage {
 			const projectId = limit.scope.projectId?.trim();
 			if (projectId) ids.add(projectId);
 		}
-		if (ids.size === 1) return Array.from(ids)[0];
+		if (ids.size === 1) return [...ids][0];
 		return undefined;
 	}
 
@@ -4533,13 +4599,13 @@ export class AuthStorage {
 
 	#mergeUsageReportGroup(reports: UsageReport[]): UsageReport {
 		if (reports.length === 1) return reports[0];
-		const sorted = reports.slice().sort((a, b) => {
+		const sorted = [...reports].sort((a, b) => {
 			const limitDiff = b.limits.length - a.limits.length;
 			if (limitDiff !== 0) return limitDiff;
 			return (b.fetchedAt ?? 0) - (a.fetchedAt ?? 0);
 		});
 		const base = sorted[0];
-		const mergedLimits = base.limits.slice();
+		const mergedLimits = [...base.limits];
 		const limitIds = new Set(mergedLimits.map(limit => limit.id));
 		const mergedMetadata: Record<string, unknown> = { ...(base.metadata ?? {}) };
 		let fetchedAt = base.fetchedAt;
@@ -4727,7 +4793,7 @@ export class AuthStorage {
 		if (requests.length === 0) return [];
 
 		this.#usageLogger?.debug("Usage fetch requested", {
-			providers: Array.from(new Set(requests.map(request => request.provider))).sort(),
+			providers: [...new Set(requests.map(request => request.provider))].sort(),
 		});
 
 		// Per-credential caching with jitter lives in #fetchUsageCached, so we
@@ -5419,7 +5485,12 @@ export class AuthStorage {
 		// it. `sessionPreferredIndex` is not the same thing — it also carries sticky routing, which is
 		// a record of what served last rather than anything anybody asked for.
 		const chosenIndex = this.#explicitChoiceIndex(provider, sessionId, "oauth");
-		const shouldRank = checkUsage && (!sessionPreferredIsAvailable || hasPlanRequirement);
+		const movementAllowed = this.#loadBalancingEnabled();
+		// Ranking is a headroom contest among accounts, i.e. a move. With movement off it runs only
+		// for a plan requirement, where the usage report is what says whether an account can serve
+		// the model at all; a session that already has a working account never re-ranks either way.
+		const shouldRank =
+			checkUsage && (movementAllowed ? !sessionPreferredIsAvailable || hasPlanRequirement : hasPlanRequirement);
 		const rankingOrder = shouldRank && sessionId ? credentials.map((_credential, index) => index) : order;
 		const candidates = shouldRank
 			? await this.#rankOAuthSelections({
@@ -5445,22 +5516,56 @@ export class AuthStorage {
 					blockScope,
 				).map(selection => ({ selection, usage: null, usageChecked: false }));
 
-		// The chosen account leads, hold or no hold. A plan requirement is the one thing that can
-		// still displace it: an account without the entitlement cannot serve the model at all, so
-		// leading with it would fail the request rather than honour anything.
-		const leadIndex = hasPlanRequirement ? undefined : (chosenIndex ?? sessionPreferredIndex);
+		// Enforce a tier only when at least one account is confirmed eligible. If
+		// every report is unknown or ineligible, preserve trial/grandfathered access
+		// by allowing the normal candidate fallback to attempt the request.
+		const enforcePlanRequirement =
+			hasPlanRequirement &&
+			candidates.some(candidate => getOpenAICodexPlanEligibility(candidate.usage, planRequirement) === true);
+
+		// The chosen account leads, hold or no hold. With movement off the session's last-used account
+		// has the same standing, and so does the first account in storage order when the session has
+		// none yet: that is the one account the provider is held to. With movement on the sticky
+		// account leads only while usable, since a hold is then a reason to move.
+		//
+		// A plan requirement is the one thing that can still displace a lead: an account without
+		// the entitlement cannot serve the model at all, so leading with it would fail the request
+		// rather than honour anything. An eligible lead still leads.
+		const leadIndex = movementAllowed
+			? (chosenIndex ?? sessionPreferredIndex)
+			: (this.#homeIndex(provider, sessionId, "oauth") ??
+				// Storage order, not `candidates` order: a plan requirement ranks candidates by headroom,
+				// and the first of THOSE would be a headroom winner, i.e. a move.
+				credentials.find(entry => {
+					const id = this.#getStoredCredentials(provider)[entry.index]?.id;
+					return id === undefined || !this.#authDeadCredentials.has(id);
+				})?.index);
 		if (leadIndex !== undefined) {
 			const leadCandidate = candidates.findIndex(
 				candidate =>
 					candidate.selection.index === leadIndex &&
 					(candidate.selection.index === chosenIndex ||
-						!this.#isCredentialBlocked(provider, providerKey, candidate.selection.index, blockScope)),
+						!movementAllowed ||
+						!this.#isCredentialBlocked(provider, providerKey, candidate.selection.index, blockScope)) &&
+					(!enforcePlanRequirement || getOpenAICodexPlanEligibility(candidate.usage, planRequirement) === true),
 			);
 			if (leadCandidate > 0) {
 				const [lead] = candidates.splice(leadCandidate, 1);
 				candidates.unshift(lead);
 			}
 		}
+		// With movement off, the head of the list is the ONLY account this resolve may spend. A
+		// sibling is reached in exactly two ways, neither of which is a move this setting governs:
+		// the head's grant is refused (auth death, which disables the row and re-resolves without it,
+		// announced through the failover notice) or the head cannot serve the model's plan tier.
+		// Everything else — a hold, a transient refresh failure — is a reason to wait or to fail
+		// this request, never to spend an account nobody offered up.
+		const home = movementAllowed ? undefined : candidates[0];
+		const homeIneligible =
+			home !== undefined &&
+			enforcePlanRequirement &&
+			getOpenAICodexPlanEligibility(home.usage, planRequirement) !== true;
+		if (home && !homeIneligible) candidates.splice(1);
 		// Step (b) of the auth-retry policy: when `forceRefresh` is set, re-mint
 		// the session-preferred credential (or the first candidate when no
 		// session preference exists yet) even if its cached token still looks
@@ -5543,19 +5648,13 @@ export class AuthStorage {
 			}),
 		);
 
-		// Enforce a tier only when at least one account is confirmed eligible. If
-		// every report is unknown or ineligible, preserve trial/grandfathered access
-		// by allowing the normal candidate fallback to attempt the request.
-		const enforcePlanRequirement =
-			hasPlanRequirement &&
-			candidates.some(candidate => getOpenAICodexPlanEligibility(candidate.usage, planRequirement) === true);
-
 		// The strict pass tries a usable account before an exhausted one, which is what makes quota
 		// fallback work. An explicitly chosen account is exempt from it: a hold is our own prediction,
 		// and skipping the chosen account over a prediction is what left a redeemed limit reset
-		// unable to spend the very account it belonged to. Every other account still waits for
-		// the blocked-allowing pass, and a dead grant still falls through to a sibling from either
-		// pass, because auth death is the provider's verdict rather than ours.
+		// unable to spend the very account it belonged to. With movement off the home account is
+		// exempt for the same reason — it is the one account allowed to serve, blocked or not. Every
+		// other account still waits for the blocked-allowing pass, and a dead grant still falls through
+		// to a sibling from either pass, because auth death is the provider's verdict rather than ours.
 		const passes: Array<{ allowBlocked: boolean; enforcePlanRequirement: boolean }> = [
 			{ allowBlocked: false, enforcePlanRequirement },
 			{ allowBlocked: true, enforcePlanRequirement },
@@ -5572,7 +5671,7 @@ export class AuthStorage {
 					options,
 					{
 						checkUsage,
-						allowBlocked: pass.allowBlocked || candidate.selection.index === chosenIndex,
+						allowBlocked: pass.allowBlocked || candidate.selection.index === chosenIndex || candidate === home,
 						prefetchedUsage: candidate.usage,
 						usagePrechecked: candidate.usageChecked,
 						planRequirement,
@@ -6181,6 +6280,21 @@ export class AuthStorage {
 						await this.reload();
 						if (allowFallback) return this.#resolveOAuthSelection(provider, sessionId, options);
 					}
+				}
+				// The row is about to be disabled and the request will re-resolve onto a sibling. That is
+				// a move, and it must be announced like the one `rotateSessionCredential` makes: park the
+				// dying account's label NOW, while the row can still be named, and let the resolve that
+				// serves emit the notice. Without this the move made here — the same auth death, found
+				// by the resolver instead of by a rejected request — was the one silent move left.
+				const siblingRemains = this.#getStoredCredentials(provider).some(
+					row => row.credential.type === "oauth" && row.id !== credentialId,
+				);
+				if (credentialId !== undefined && siblingRemains && allowFallback) {
+					this.#pendingFailover.set(provider, {
+						from: { credentialId, label: this.#accountNoticeLabel(provider, credentialId) },
+						cause: authFailureCause(error),
+						at: Date.now(),
+					});
 				}
 				// Permanently disable invalid credentials with an explicit cause for inspection/debugging.
 				// Use a CAS-style disable conditioned on the row still containing the stale credential
@@ -6861,12 +6975,28 @@ export class AuthStorage {
 		}
 
 		this.#clearSessionCredential(provider, sessionId);
+		// This is the auth-death path (the gateway's usage-limit case never reaches here), so the
+		// grant is refused for the same purposes `rotateSessionCredential` refuses one: an explicit
+		// choice stops pinning traffic to it, ordering with movement off sorts it last, and the move
+		// the next resolve makes is announced rather than silent.
+		this.#authDeadCredentials.add(matched.id);
 		this.#markCredentialBlocked(
 			provider,
 			this.#getProviderTypeKey(provider, matched.type),
 			matched.index,
 			Date.now() + AuthStorage.#defaultBackoffMs,
 		);
+		const failed = matched;
+		const siblingRemains = stored.some(
+			(entry, index) => index !== failed.index && entry.credential.type === failed.type,
+		);
+		if (siblingRemains) {
+			this.#pendingFailover.set(provider, {
+				from: { credentialId: matched.id, label: this.#accountNoticeLabel(provider, matched.id) },
+				cause: "credential rejected",
+				at: Date.now(),
+			});
+		}
 
 		const markSuspect = this.#store.markCredentialSuspect?.bind(this.#store);
 		if (markSuspect) {

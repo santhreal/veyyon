@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/kernel",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "The only Veyyon member that is not a plugin: it loads plugins, resolves their contributions and runs a session, and it names no tool and no host",
   "homepage": "https://veyyon.dev",
   "author": "santhreal",

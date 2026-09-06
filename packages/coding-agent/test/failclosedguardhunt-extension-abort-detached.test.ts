@@ -79,6 +79,7 @@ function publishedAbort(behaviour: AbortBehaviour): {
 	let captured: ExtensionContextActions | undefined;
 	const ctx = {
 		session: {
+			isStreaming: false,
 			extensionRunner: {
 				initialize: (_actions: unknown, contextActions: ExtensionContextActions) => {
 					captured = contextActions;
@@ -89,6 +90,7 @@ function publishedAbort(behaviour: AbortBehaviour): {
 				return behaviour();
 			},
 		},
+		clearWorkingLoader: () => false,
 		// Unchecked by necessity and safe by inspection: `initializeHookRunner`
 		// touches only `session.extensionRunner`, and the members it builds are
 		// lazy arrows, so the 200-odd other context members are never read. A

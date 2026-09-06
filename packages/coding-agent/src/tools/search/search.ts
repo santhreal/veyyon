@@ -6,13 +6,21 @@ import type {
 	ToolTier,
 } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
-import { isRecord, prompt } from "@veyyon/utils";
+import { isRecord, prompt, trimTrailingSlashes } from "@veyyon/utils";
 import { z } from "zod/v4";
 import { toolsPrompts } from "../../prompts/tools/rows";
 import { resolveFileDisplayMode } from "../../utils/file-display-mode";
 import type { ToolSession } from "..";
 import { searchPathFilesystemTargets } from "../core/cwd-boundary";
 import type { OutputMeta } from "../core/output-meta";
+import {
+	expandDelimitedPathEntriesSync,
+	hasGlobPathChars,
+	isInternalUrlPath,
+	normalizePathLikeInput,
+	parseFindPattern,
+	toPathList,
+} from "../core/path-utils";
 import { ToolError } from "../core/tool-errors";
 import { executeFileSearch, type FileSearchDetails } from "./file-search";
 import { executeStructureSearch, type StructureSearchDetails } from "./structure-search";
@@ -33,7 +41,7 @@ export const searchSchema = z.strictObject({
 		.string()
 		.optional()
 		.describe(
-			'TEXT/STRUCTURE ONLY — NEVER use with files; files put the complete scope/glob in input. Narrow scope: file, directory, glob, internal URL, or semicolon-delimited set. ssh:// is text-only. Omitted -> workspace root (".")',
+			'Scope. text/structure: file, directory, glob, internal URL, or semicolon-delimited set; ssh:// is text-only. files: a directory the globs in input are searched under, so { path: "src", input: "*.ts" } is src/**/*.ts. Omitted -> workspace root (".")',
 		),
 	case: z
 		.boolean()
@@ -70,10 +78,69 @@ export type SearchToolDetails =
  * set costs the caller a rejected call and a round trip, so this is the set a
  * pagination or limit notice may name. */
 export const TYPE_FIELDS: Record<SearchType, ReadonlySet<keyof SearchToolInput>> = {
-	files: new Set(["type", "input", "hidden", "gitignore", "limit"]),
+	files: new Set(["type", "input", "path", "hidden", "gitignore", "limit"]),
 	text: new Set(["type", "input", "path", "case", "paths", "gitignore", "skip"]),
 	structure: new Set(["type", "input", "path", "skip"]),
 };
+
+/**
+ * A file search's `path` is the directory its `input` globs are searched
+ * under, the way `path` scopes a text search. Every entry of `input` keeps the
+ * meaning it has on its own: a leading glob stays recursive (`*.ts` under
+ * `src` is `src/**` + `/*.ts`), a directory-prefixed glob keeps its depth, and
+ * a bare directory lists itself. The scope is one directory: a glob, an
+ * internal URL or an absolute `input` has nowhere to be scoped under, and each
+ * is rejected with the spelling that works. Sync, because the approval
+ * boundary reads the same targets before the call runs.
+ */
+export function scopeFilePatterns(scope: string, input: string, cwd: string): string[] {
+	const trimmed = normalizePathLikeInput(scope).replace(/\\/g, "/");
+	// `/` reads as the workspace root here as it does in `input`.
+	const base = /^\/+$/.test(trimmed) ? "." : trimTrailingSlashes(trimmed);
+	if (base.length === 0) {
+		throw new ToolError('File search `path` must name a directory; omit it to search from the workspace root (".")');
+	}
+	if (hasGlobPathChars(base) || isInternalUrlPath(base)) {
+		throw new ToolError(
+			`File search \`path\` is the directory to search under, not a pattern: put ${base} in \`input\` and drop \`path\`, or set \`path\` to the directory and \`input\` to the glob.`,
+		);
+	}
+	const entries = expandDelimitedPathEntriesSync(toPathList(input), cwd, { splitter: parseFindPattern });
+	const scoped: string[] = [];
+	for (const entry of entries) {
+		const pattern = normalizePathLikeInput(entry).replace(/\\/g, "/");
+		if (pattern.length === 0) continue;
+		if (isInternalUrlPath(pattern)) {
+			throw new ToolError(
+				`File search \`input\` ${pattern} is an internal URL and cannot be scoped under \`path\`; drop \`path\`.`,
+			);
+		}
+		if (pattern.startsWith("/") || /^[A-Za-z]:\//.test(pattern)) {
+			throw new ToolError(
+				`File search \`input\` ${pattern} is absolute and cannot be scoped under \`path\` ${base}; make \`input\` relative to \`path\`, or drop \`path\`.`,
+			);
+		}
+		if (pattern === ".") {
+			scoped.push(base);
+			continue;
+		}
+		const parsed = parseFindPattern(pattern);
+		const relative =
+			parsed.basePath === "." ? parsed.globPattern : `${trimTrailingSlashes(parsed.basePath)}/${parsed.globPattern}`;
+		scoped.push(`${base}/${relative}`);
+	}
+	if (scoped.length === 0) {
+		throw new ToolError("`input` must contain non-empty globs or paths");
+	}
+	return scoped;
+}
+
+/** The `input` a file search runs, with `path` folded in when it was given. */
+function fileSearchInput(params: Pick<SearchToolInput, "input" | "path">, cwd: string): string {
+	if (params.path === undefined) return params.input;
+	const scoped = scopeFilePatterns(params.path, params.input, cwd);
+	return scoped.length === 1 ? scoped[0] : JSON.stringify(scoped);
+}
 
 function rejectCrossTypeFields(params: SearchToolInput): void {
 	const allowed = TYPE_FIELDS[params.type];
@@ -105,6 +172,15 @@ function searchFilesystemTargets(args: unknown, cwd?: string): string[] {
 	if (typeof type !== "string") return [];
 	const targetField = SEARCH_TARGET_FIELDS[type];
 	if (!targetField) return [];
+	if (type === "files" && typeof args.path === "string" && typeof args.input === "string") {
+		// The boundary reads what the call will scan. A scope the call rejects
+		// scans nothing, and both fields together are the conservative read.
+		try {
+			return searchPathFilesystemTargets(scopeFilePatterns(args.path, args.input, cwd ?? process.cwd()), cwd);
+		} catch {
+			return searchPathFilesystemTargets([args.path, args.input], cwd);
+		}
+	}
 	return searchPathFilesystemTargets(args[targetField], cwd);
 }
 
@@ -204,7 +280,7 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 			const result = await executeFileSearch(
 				this.session,
 				{
-					path: params.input,
+					path: fileSearchInput(params, this.session.cwd),
 					hidden: params.hidden,
 					gitignore: params.gitignore,
 					limit: params.limit,

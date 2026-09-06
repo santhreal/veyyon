@@ -20,4 +20,5 @@ export const umansProvider = {
 	id: "umans",
 	name: "Umans AI Coding Plan",
 	login: (cb: OAuthLoginCallbacks) => loginUmans(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

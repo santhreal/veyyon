@@ -25,7 +25,12 @@ import {
 } from "../helpers";
 import { buildExperimentState } from "../state";
 import { openAutoresearchStorageIfExists } from "../storage";
-import type { AutoresearchToolFactoryOptions, RunDetails, RunExperimentProgressDetails } from "../types";
+import type {
+	AutoresearchToolFactoryOptions,
+	RunDetails,
+	RunExperimentProgressDetails,
+	RunningExperiment,
+} from "../types";
 import { DEFAULT_HARNESS_COMMAND } from "./init-experiment";
 
 const runExperimentSchema = type({
@@ -78,7 +83,7 @@ export function createRunExperimentTool(
 			const abandonedPriorRun = (() => {
 				const pending = storage.getPendingRun(session.id);
 				if (!pending) return null;
-				storage.abandonPendingRuns(session.id);
+				storage.abandonIncompleteRuns(session.id);
 				return pending.id;
 			})();
 
@@ -104,6 +109,14 @@ export function createRunExperimentTool(
 			}
 
 			const startedAt = Date.now();
+			// What actually built and measured this arm. `start_arm` has already put
+			// the session on the arm's model by now, so the model in force here is
+			// the one that wrote the diff being measured. It is recorded on the row
+			// rather than at log time, when a certified round has moved on to the
+			// last arm's model.
+			const currentModel = ctx.models?.current();
+			const activeArm = runtime.activeArm?.arm ?? null;
+			const measuredArm = params.arm?.trim() || activeArm;
 			const insertedRun = storage.insertRun({
 				sessionId: session.id,
 				segment: session.currentSegment,
@@ -111,7 +124,8 @@ export function createRunExperimentTool(
 				logPath: "", // patched after we know the run id
 				preRunDirtyPaths,
 				startedAt,
-				arm: params.arm?.trim() || undefined,
+				arm: measuredArm,
+				model: currentModel ? `${currentModel.provider}/${currentModel.id}` : null,
 			});
 
 			const runDirectory = path.join(storage.projectDir, "runs", String(insertedRun.id).padStart(4, "0"));
@@ -124,13 +138,15 @@ export function createRunExperimentTool(
 			runtime.lastRunArtifactDir = runDirectory;
 			runtime.lastRunNumber = insertedRun.id;
 			runtime.lastRunSummary = null;
-			runtime.runningExperiment = {
+			const running: RunningExperiment = {
 				startedAt,
 				command: resolvedCommand,
 				runDirectory,
 				runNumber: insertedRun.id,
+				tail: "",
 			};
-			options.dashboard.updateWidget(ctx, runtime);
+			runtime.runningExperiment = running;
+			options.dashboard.update(ctx, runtime);
 			options.dashboard.requestRender();
 
 			const timeoutMs = Math.max(0, Math.floor((params.timeout_seconds ?? 600) * 1000));
@@ -144,6 +160,9 @@ export function createRunExperimentTool(
 					cpuSessionId: ctx.sessionManager.getSessionId(),
 					signal,
 					onProgress: details => {
+						// The screen's clock repaints the pane once a second; this is
+						// what it repaints from.
+						running.tail = details.tailOutput;
 						onUpdate?.({
 							content: [{ type: "text", text: details.tailOutput }],
 							details: {
@@ -158,7 +177,7 @@ export function createRunExperimentTool(
 				});
 			} finally {
 				runtime.runningExperiment = null;
-				options.dashboard.updateWidget(ctx, runtime);
+				options.dashboard.update(ctx, runtime);
 				options.dashboard.requestRender();
 			}
 
@@ -217,42 +236,47 @@ export function createRunExperimentTool(
 			};
 
 			runtime.lastRunSummary = {
+				runNumber: insertedRun.id,
+				runDirectory,
 				command: resolvedCommand,
 				durationSeconds,
-				parsedAsi,
-				parsedMetrics,
-				parsedPrimary,
 				passed,
-				preRunDirtyPaths,
-				runDirectory,
-				runNumber: insertedRun.id,
 				exitCode: execution.exitCode,
 				timedOut: execution.killed,
+				parsedPrimary,
+				parsedMetrics,
+				parsedAsi,
+				preRunDirtyPaths,
 			};
-			runtime.autoResumeArmed = true;
-			runtime.lastAutoResumePendingRunNumber = null;
 
 			// Refresh state to reflect any prior abandonment changes (logged set unchanged).
 			const refreshedSession = storage.getSessionById(session.id);
 			if (refreshedSession) {
 				runtime.state = buildExperimentState(refreshedSession, storage.listLoggedRuns(session.id));
 			}
-			options.dashboard.updateWidget(ctx, runtime);
+			options.dashboard.update(ctx, runtime);
 			options.dashboard.requestRender();
 
-			const headerLines: string[] = [];
-			if (abandonedPriorRun !== null) {
-				headerLines.push(`Note: abandoned prior pending run #${abandonedPriorRun} before starting this run.`);
+			const text = buildRunText(resultDetails, llmTruncation.content, runtime.state.bestMetric);
+			const lines = [text];
+			// A per-arm model only takes effect through `start_arm`. Measuring an arm
+			// that was never started, or measuring one arm while another is in
+			// flight, means the diff was written by the wrong model, and the row
+			// records which one. Silence here would leave the comparison looking
+			// like it ran on the configured models.
+			if (session.breadth > 1 && session.armModels.length > 0) {
+				if (params.arm && !activeArm) {
+					lines.push(
+						`Warning: ${params.arm} was measured without calling \`start_arm\` first — it ran on ${currentModel ? `${currentModel.provider}/${currentModel.id}` : "the session model"}, not its configured model.`,
+					);
+				} else if (params.arm && activeArm && params.arm !== activeArm) {
+					lines.push(
+						`Warning: ${params.arm} was measured while ${activeArm} was in flight on ${runtime.activeArm?.modelLabel}.`,
+					);
+				}
 			}
-			const warningPrefix = headerLines.length > 0 ? `${headerLines.join("\n")}\n\n` : "";
-
 			return {
-				content: [
-					{
-						type: "text",
-						text: warningPrefix + buildRunText(resultDetails, llmTruncation.content, runtime.state.bestMetric),
-					},
-				],
+				content: [{ type: "text", text: lines.join("\n\n") }],
 				details: resultDetails,
 			};
 		},
@@ -266,29 +290,32 @@ export function createRunExperimentTool(
 				],
 			}),
 			renderResult: (result, context) => {
-				if (isProgressDetails(result.details)) {
-					const preview = replaceTabs(result.content.find(part => part.type === "text")?.text ?? "");
-					const spans: ViewSpan[] = [{ text: `Running ${result.details.elapsed}...`, tone: "warning" }];
-					if (preview) spans.push({ text: "\n" }, { text: preview, tone: "dim" });
-					return { kind: "textBlock", spans };
-				}
 				const details = result.details;
-				if (!details || !isRunDetails(details)) {
-					return {
-						kind: "textBlock",
-						spans: [{ text: replaceTabs(result.content.find(part => part.type === "text")?.text ?? "") }],
-					};
-				}
-				const spans: ViewSpan[] = [statusSpan(details)];
-				if (!context.expanded && details.tailOutput.trim().length === 0) {
+				if (isProgressDetails(details)) {
+					const header = `Running ${details.elapsed}...`;
+					const preview = replaceTabs(result.content.find(part => part.type === "text")?.text ?? "");
+					const spans: ViewSpan[] = [{ text: header, tone: "warning" }];
+					if (preview) {
+						spans.push({ text: "\n" }, { text: preview, tone: "dim" });
+					}
 					return { kind: "textBlock", spans };
+				}
+				if (!isRunDetails(details)) {
+					const text = replaceTabs(result.content.find(part => part.type === "text")?.text ?? "");
+					return { kind: "textBlock", spans: [{ text }] };
+				}
+				const statusText = renderStatusText(details);
+				if (!context.expanded && details.tailOutput.trim().length === 0) {
+					return { kind: "textBlock", spans: [{ text: statusText, tone: statusTone(details) }] };
 				}
 				const preview = replaceTabs(
 					context.expanded ? details.tailOutput : details.tailOutput.split("\n").slice(-5).join("\n"),
 				);
-				if (!preview) return { kind: "textBlock", spans };
-				spans.push({ text: "\n" }, { text: preview, tone: "dim" });
-				if (context.expanded && details.truncation && details.fullOutputPath) {
+				const spans: ViewSpan[] = [{ text: statusText, tone: statusTone(details) }];
+				if (preview) {
+					spans.push({ text: "\n" }, { text: preview, tone: "dim" });
+				}
+				if (preview && context.expanded && details.truncation && details.fullOutputPath) {
 					spans.push(
 						{ text: "\n" },
 						{ text: `Full output: ${shortenPath(details.fullOutputPath)}`, tone: "warning" },
@@ -299,6 +326,7 @@ export function createRunExperimentTool(
 		},
 	};
 }
+
 async function executeProcess(opts: {
 	command: string;
 	cwd: string;
@@ -366,7 +394,7 @@ async function executeProcess(opts: {
 			output,
 		};
 	} finally {
-		if (progressTimer) clearInterval(progressTimer);
+		clearInterval(progressTimer);
 		if (!logSinkClosed) {
 			try {
 				await closeLogSink();
@@ -376,7 +404,6 @@ async function executeProcess(opts: {
 		}
 	}
 }
-
 function buildRunText(details: RunDetails, outputPreview: string, bestMetric: number | null): string {
 	const lines: string[] = [];
 	lines.push(`Run #${details.runNumber} directory: ${details.runDirectory}`);
@@ -418,19 +445,25 @@ function buildRunText(details: RunDetails, outputPreview: string, bestMetric: nu
 	return lines.join("\n").trimEnd();
 }
 
-/** How the run ended, as one toned run of text: a timeout, a non-zero exit, or a pass and its metric. */
-function statusSpan(details: RunDetails): ViewSpan {
+function renderStatusText(details: RunDetails): string {
 	if (details.timedOut) {
-		return { text: `TIMEOUT ${details.durationSeconds.toFixed(1)}s`, tone: "error" };
+		return `TIMEOUT ${details.durationSeconds.toFixed(1)}s`;
 	}
 	if (details.exitCode !== 0) {
-		return { text: `FAIL exit=${details.exitCode} ${details.durationSeconds.toFixed(1)}s`, tone: "error" };
+		return `FAIL exit=${details.exitCode} ${details.durationSeconds.toFixed(1)}s`;
 	}
 	const metric =
 		details.parsedPrimary !== null
 			? ` ${details.metricName}=${formatNum(details.parsedPrimary, details.metricUnit)}`
 			: "";
-	return { text: `PASS ${details.durationSeconds.toFixed(1)}s${metric}`, tone: "success" };
+	return `PASS ${details.durationSeconds.toFixed(1)}s${metric}`;
+}
+
+function statusTone(details: RunDetails): ViewSpan["tone"] {
+	if (details.timedOut || details.exitCode !== 0) {
+		return "error";
+	}
+	return "success";
 }
 
 function isRunDetails(value: unknown): value is RunDetails {
@@ -440,5 +473,5 @@ function isRunDetails(value: unknown): value is RunDetails {
 
 function isProgressDetails(value: unknown): value is RunExperimentProgressDetails {
 	if (typeof value !== "object" || value === null) return false;
-	return "phase" in value && (value as { phase: unknown }).phase === "running";
+	return "phase" in value && value.phase === "running";
 }

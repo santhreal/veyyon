@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
-import { __veyyonNativesV1_3_0, Ellipsis } from "@veyyon/natives";
+import { __veyyonNativesV1_4_0, Ellipsis } from "@veyyon/natives";
 import { ProcessTerminal } from "@veyyon/tui/terminal";
 import {
 	type Component,
@@ -3615,10 +3615,15 @@ type ScenarioTemplate = Omit<
 };
 
 function writeReplayLog(scenario: Scenario, operations: readonly OperationLogEntry[]): string {
-	const filePath = path.join(
-		os.tmpdir(),
-		`veyyon-tui-stress-${scenario.name}-${(scenario.seed >>> 0).toString(16)}-${Date.now().toString(36)}.json`,
-	);
+	const filename = `veyyon-tui-stress-${scenario.name}-${(scenario.seed >>> 0).toString(16)}-${Date.now().toString(36)}.json`;
+	const preferredDir = Bun.env.TUI_STRESS_LOG_DIR || path.join(process.cwd(), ".internal", "stress-logs");
+	let dir = preferredDir;
+	try {
+		fs.mkdirSync(dir, { recursive: true });
+	} catch {
+		dir = os.tmpdir();
+	}
+	const filePath = path.join(dir, filename);
 	fs.writeFileSync(filePath, JSON.stringify(operations, null, 2));
 	return filePath;
 }
@@ -4020,7 +4025,7 @@ async function withPatchedPlatform<T>(platform: Scenario["platform"], run: () =>
 	// reuse the host addon instead of demanding a `.node` that cannot exist
 	// here. The patch tests JS render logic; the native width functions are
 	// platform-independent, so the host binding is correct either way.
-	__veyyonNativesV1_3_0();
+	__veyyonNativesV1_4_0();
 	platformPatchDepth += 1;
 	const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
 	Object.defineProperty(process, "platform", { configurable: true, value: platform });

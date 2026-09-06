@@ -105,3 +105,25 @@ export interface SessionToolApprovals {
 	get(toolName: string): "allow" | "deny" | undefined;
 	set(toolName: string, decision: "allow" | "deny"): void;
 }
+
+/**
+ * The rung each ACCEPTED `tools.approvalMode` value maps to.
+ */
+export const RUNG_BY_ACCEPTED_MODE: Record<ApprovalMode, AutonomyLevel> = {
+	plan: "plan",
+	ask: "ask",
+	"ask-command": "ask-command",
+	auto: "auto",
+	yolo: "yolo",
+	"always-ask": "ask",
+	write: "ask-command",
+	"auto-edit": "ask-command",
+};
+
+/**
+ * Map a stored setting / CLI value to the shipped autonomy ladder.
+ */
+export function normalizeApprovalMode(mode: string | undefined): AutonomyLevel {
+	if (mode === undefined) return DEFAULT_APPROVAL_MODE;
+	return isKnownApprovalMode(mode) ? RUNG_BY_ACCEPTED_MODE[mode] : "ask";
+}

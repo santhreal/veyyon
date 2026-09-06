@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { parseArgs } from "@veyyon/coding-agent/cli/args";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { runRootCommand } from "@veyyon/coding-agent/main";
 import type { CreateAgentSessionOptions } from "@veyyon/coding-agent/session/factory-options";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 import { APP_NAME } from "@veyyon/utils/dirs";
 import { enterIsolatedConfigRoot } from "../../utils/test/helpers/isolated-config-root";

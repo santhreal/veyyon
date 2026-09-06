@@ -71,7 +71,6 @@ function enginePackageImporters(kind: "any" | "runtime"): string[] {
  * type-only. Shrink-only.
  */
 const ENGINE_IMPORTERS = [
-	"autoresearch/dashboard.ts",
 	"cli/rollback-picker-host.ts",
 	"cli/session-picker.ts",
 	"cli/setup-model-picker.ts",
@@ -83,7 +82,6 @@ const ENGINE_IMPORTERS = [
 	"extensibility/legacy-pi-coding-agent-shim.ts",
 	"extensibility/legacy-pi-tui-shim.ts",
 	"index.ts",
-	"modes/launch-facts.ts",
 	"theme/theme-class.ts",
 	"theme/theme.ts",
 ];
@@ -96,14 +94,8 @@ const ENGINE_IMPORTERS = [
  * capability leaf, as it does on `main` — the row was omitted when this ledger was first written, not
  * added by an edge this branch created. Cutting that edge means moving two ANSI call sites out of the
  * theme resolver, which is its own change.
- *
- * `modes/launch-facts.ts` is here for the same reason: it arrived from `main` reading `TERMINAL_ID`
- * off the capability leaf to key a launch fact on the emulator the window is running in. The edge is
- * the terminal's identity rather than its renderer, and cutting it means the launch path handing the
- * id in, which is its own change.
  */
 const RUNTIME_ENGINE_IMPORTERS = [
-	"autoresearch/dashboard.ts",
 	"cli/rollback-picker-host.ts",
 	"cli/session-picker.ts",
 	"cli/setup-model-picker.ts",
@@ -115,7 +107,6 @@ const RUNTIME_ENGINE_IMPORTERS = [
 	"extensibility/legacy-pi-coding-agent-shim.ts",
 	"extensibility/legacy-pi-tui-shim.ts",
 	"index.ts",
-	"modes/launch-facts.ts",
 	"theme/theme-class.ts",
 	"theme/theme.ts",
 ];

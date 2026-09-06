@@ -36,9 +36,10 @@ import { settings } from "@veyyon/coding-agent/config/settings-instance";
 import {
 	type LaunchFacts,
 	type LaunchFactsUpdate,
-	launchModelLabel,
+	onLaunchFactsRecorded,
 	readLaunchFacts,
 	recordLaunchFacts,
+	recordRestLaunchFacts,
 	resetLaunchFactsForTest,
 } from "@veyyon/coding-agent/modes/launch-facts";
 import { LaunchComposerFoot } from "@veyyon/coding-agent/modes/terminal/components/composer/composer-chrome";
@@ -48,6 +49,7 @@ import {
 	launchSegmentContext,
 } from "@veyyon/coding-agent/modes/terminal/components/status-line/session-facts";
 import { paintFirstFrame, takeFirstFrame } from "@veyyon/coding-agent/modes/terminal/first-frame";
+import { launchModelLabel, launchProviderLabel } from "@veyyon/coding-agent/modes/terminal/launch-formatting";
 import { computeNonMessageBreakdown } from "@veyyon/coding-agent/session/non-message-tokens";
 import { resetGroundTintsForTest } from "@veyyon/coding-agent/theme/ground-tints";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
@@ -818,6 +820,73 @@ describe("the row the card can afford", () => {
 		expect(factsAtLaunch().model).toBeNull();
 		expect(launchModelLabel()).toBe("");
 	});
+
+	/**
+	 * The provider label is the cold answer for the hero's provider: a role is
+	 * stored `provider/id` and a provider id never contains a slash, so the
+	 * first segment is the provider, and a machine's first launch of a model has
+	 * no recording to name it. A bare id states nothing, correctly.
+	 */
+	it("names the provider the configured role names before any recording exists", () => {
+		settings.setModelRole("default", "nous-research/z-ai/glm-5.1");
+		expect(launchProviderLabel()).toBe("nous-research");
+
+		settings.setModelRole("default", "glm-5.1");
+		expect(launchProviderLabel()).toBe("");
+
+		settings.setModelRole("default", "");
+		expect(launchProviderLabel()).toBe("");
+	});
+
+	/**
+	 * A cold launch paints the card before the session can record anything, so
+	 * the facts the session records at rest must repaint the card when they
+	 * land — the hero is the reader that otherwise keeps its placeholder until
+	 * the mode mounts, even though the fact was on disk well before. Driven
+	 * through the real frame and the real record, because a listener that
+	 * forgets to ask for the render is exactly the defect.
+	 */
+	it("repaints the hero when a record lands after the frame", async () => {
+		await initTheme(false);
+		settings.setModelRole("default", "anthropic/claude-sonnet-4");
+
+		const frame = paintFirstFrame("1.1.1");
+		try {
+			const before = stripAnsi(frame.hero.render(80).join("\n"));
+			// A cold launch paints the role's raw id: no recording exists to name
+			// the model, and the label falls back to the role's tail.
+			expect(before).toContain("claude-sonnet-4");
+			expect(before).not.toContain("Claude Sonnet 4");
+
+			await record({ modelName: "Claude Sonnet 4", providerName: "anthropic" });
+
+			const hero = stripAnsi(frame.hero.render(80).join("\n"));
+			expect(hero).toContain("Claude Sonnet 4");
+			expect(hero).not.toContain("no model yet");
+		} finally {
+			frame.release();
+			frame.ui.stop();
+			takeFirstFrame();
+			resetGroundTintsForTest();
+		}
+	});
+
+	/**
+	 * A listener unsubscribing stops receiving notification turns.
+	 */
+	it("unsubscribes from launch facts notifications", async () => {
+		let notified = 0;
+		const unsubscribe = onLaunchFactsRecorded(() => {
+			notified++;
+		});
+
+		await record({ modelName: "Claude Sonnet 4", providerName: "anthropic" });
+		expect(notified).toBe(1);
+
+		unsubscribe();
+		await record({ modelName: "Claude Opus 4", providerName: "anthropic" });
+		expect(notified).toBe(1);
+	});
 });
 
 /**
@@ -946,6 +1015,56 @@ describe("what a running session records for the next launch", () => {
 		const file = await written(() => new StatusLineComponent(session).renderQuietLine(120));
 
 		expect(Object.values(file.models)[0]?.contextPercent).toBe(0);
+	});
+
+	/**
+	 * An active session with messageCount > 0 skips context percent recording at rest.
+	 */
+	it("does not record at-rest context percentage when message count is non-zero", async () => {
+		await recordRestLaunchFacts(
+			{
+				model: { provider: "anthropic", id: "claude-sonnet-4", name: "Claude Sonnet 4" },
+				thinkingLevel: null,
+				isAutoThinking: false,
+				messageCount: 5,
+				systemContextTokens: 1000,
+			},
+			30,
+			128_000,
+		);
+
+		const facts = readLaunchFacts();
+		expect(facts.modelName).toBe("Claude Sonnet 4");
+		expect(facts.providerName).toBe("anthropic");
+		expect(facts.contextPercent).toBeNull();
+	});
+
+	/**
+	 * A listener reads updated in-memory memo facts immediately during notification callback.
+	 */
+	it("allows listeners to read updated memo before disk write finishes", async () => {
+		let observedInCallback: string | null | undefined;
+		const unsubscribe = onLaunchFactsRecorded(() => {
+			observedInCallback = readLaunchFacts().modelName;
+		});
+
+		try {
+			await recordRestLaunchFacts(
+				{
+					model: { provider: "anthropic", id: "claude-sonnet-4", name: "Claude Sonnet 4" },
+					thinkingLevel: null,
+					isAutoThinking: false,
+					messageCount: 0,
+					systemContextTokens: 0,
+				},
+				25,
+				128_000,
+			);
+
+			expect(observedInCallback).toBe("Claude Sonnet 4");
+		} finally {
+			unsubscribe();
+		}
 	});
 });
 

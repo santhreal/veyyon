@@ -422,6 +422,8 @@ export const repoScriptTests = [
 	"scripts/first-party-docs-are-indexed.test.ts",
 	"scripts/script-tests-coverage.test.ts",
 	"scripts/startup-is-measured-after-the-screen-settles.test.ts",
+	"scripts/a-startup-benchmark-keeps-its-executable-and-config-isolated.test.ts",
+	"scripts/a-startup-benchmark-terminates-child-trees-and-honors-cwd.test.ts",
 	"scripts/a-package-script-runs-in-an-existing-directory.test.ts",
 	"scripts/stray-output-path.test.ts",
 	// The leak tracer's own contract tests. Also run by the `test-leaks` job in

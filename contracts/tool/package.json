@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/tool",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "What a tool states about itself and what it returns: spec, approval tier, result and streaming update",
   "homepage": "https://veyyon.dev",
   "author": "santhreal",

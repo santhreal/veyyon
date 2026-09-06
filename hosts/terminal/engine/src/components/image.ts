@@ -3,6 +3,7 @@ import type { ImageFallbackReason } from "@veyyon/utils/image-fallback";
 import { getKittyGraphics } from "@veyyon/utils/kitty-graphics";
 import type { ImageBudget } from "../core/image-budget";
 import {
+	encodeDirectPlacementLine,
 	getCellDimensions,
 	getImageDimensions,
 	type ImageDimensions,
@@ -11,9 +12,6 @@ import {
 	TERMINAL,
 } from "../terminal-capabilities";
 import type { Component } from "../tui";
-
-const SAVE_CURSOR = "\x1b7";
-const RESTORE_CURSOR = "\x1b8";
 
 // Direct placements reserve height with leading zero-width rows. Keep them
 // non-plain so transcript blank-edge trimming does not collapse image-only blocks.
@@ -145,18 +143,19 @@ export class Image implements Component {
 			} else if (result) {
 				// Direct placement: return `rows` lines so TUI accounts for image
 				// height. First (rows-1) lines are empty (TUI clears them); the last
-				// saves the final-row cursor, moves up to the image origin, emits the
-				// image sequence, then restores the final-row cursor. Save/restore is
-				// required because CUU clamps at the viewport top when leading rows are
-				// clipped away.
+				// climbs to the image origin, emits the image sequence, and restores
+				// the final-row cursor. The renderer re-derives that line from the
+				// registered geometry when it must rewrite it at a viewport row above
+				// the origin, where the climb would clamp.
 				lines = [];
 				for (let i = 0; i < result.rows - 1; i++) {
 					lines.push(RESERVED_IMAGE_ROW);
 				}
-				const cursorRows = result.rows - 1;
-				const moveUp = cursorRows > 0 ? `\x1b[${cursorRows}A` : "";
-				const placement = moveUp + (result.sequence ?? "");
-				lines.push(cursorRows > 0 ? SAVE_CURSOR + placement + RESTORE_CURSOR : placement);
+				const placementLine = encodeDirectPlacementLine(result.rows, result.sequence ?? "");
+				lines.push(placementLine);
+				if (result.direct && this.#budget !== undefined) {
+					this.#budget.recordDirectPlacement(placementLine, result.direct);
+				}
 			} else {
 				fallback = "unsupported-format";
 				lines = this.#fallbackLines(fallback);

@@ -115,6 +115,30 @@ export function getSegmenter(): Intl.Segmenter {
 	return segmenter;
 }
 
+/** Visual cell column of code-unit `offset` within `text`, counted by grapheme walk. */
+export function visualColAtOffset(text: string, offset: number): number {
+	if (offset <= 0) return 0;
+	let col = 0;
+	for (const seg of segmenter.segment(text)) {
+		if (seg.index >= offset) break;
+		col += visibleWidth(seg.segment);
+	}
+	return col;
+}
+
+/** Code-unit offset of visual cell `col` within `text`, snapped to a grapheme
+ *  boundary so the result never splits a surrogate pair or cluster. */
+export function offsetAtVisualCol(text: string, col: number): number {
+	if (col <= 0) return 0;
+	let current = 0;
+	for (const seg of segmenter.segment(text)) {
+		const width = visibleWidth(seg.segment);
+		if (current + width > col) return seg.index;
+		current += width;
+	}
+	return text.length;
+}
+
 // Kitty OSC 66 text-sizing spans: `\x1b]66;<meta>;<payload>` terminated by BEL
 // or ST. `Bun.stringWidth` strips the whole span (payload included) to zero
 // cells, but the payload is visible and scales by the `s=` factor, so each is

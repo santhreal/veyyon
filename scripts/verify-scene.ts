@@ -61,21 +61,29 @@ export async function agentSourceText(): Promise<string> {
 	const parts: string[] = [];
 	const walk = async (dir: string): Promise<void> => {
 		const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+		const subdirs: string[] = [];
+		const files: string[] = [];
 		for (const entry of entries) {
-			const full = path.join(dir, entry.name);
-			// node_modules and dist under a member hold a dependency's or a build's strings, which
-			// prove nothing about what this product draws, and reading them costs more than every
-			// scene put together.
-			if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "coverage") continue;
-			if (entry.isDirectory()) {
-				await walk(full);
+			if (
+				entry.name === "node_modules" ||
+				entry.name === "dist" ||
+				entry.name === "coverage" ||
+				entry.name.startsWith(".")
+			)
 				continue;
+			if (entry.isDirectory()) {
+				subdirs.push(path.join(dir, entry.name));
+			} else if (/\.(ts|tsx|md)$/.test(entry.name)) {
+				files.push(path.join(dir, entry.name));
 			}
-			if (!/\.(ts|tsx|md)$/.test(entry.name)) continue;
-			parts.push(await fs.readFile(full, "utf8"));
 		}
+		const [fileContents] = await Promise.all([
+			Promise.all(files.map(f => fs.readFile(f, "utf8"))),
+			Promise.all(subdirs.map(d => walk(d))),
+		]);
+		parts.push(...fileContents);
 	};
-	for (const root of SOURCE_ROOTS) await walk(root);
+	await Promise.all(SOURCE_ROOTS.map(root => walk(root)));
 	return parts.join("\n");
 }
 
@@ -88,10 +96,13 @@ function promptFiles(scene: string): string[] {
 	return [...found];
 }
 
-/** Needles the scene declares a source for in a comment. */
+/**
+ * Needles the scene declares a source for in a comment. The declaration may sit
+ * inside an `if` arm, indented with the guard it explains.
+ */
 function declaredNeedles(scene: string): Set<string> {
 	const declared = new Set<string>();
-	for (const match of scene.matchAll(/^#\s*needle-source:\s*(.+?)\s*--\s*.+$/gm)) {
+	for (const match of scene.matchAll(/^\s*#\s*needle-source:\s*(.+?)\s*--\s*.+$/gm)) {
 		declared.add(match[1]);
 	}
 	return declared;
@@ -102,7 +113,7 @@ const GUARD_FORMS = ["expect_screen", "expect_model_screen", "wait_for_screen"] 
 
 function verifyTimeouts(scene: string, findings: Finding[], name: string): void {
 	for (const form of GUARD_FORMS) {
-		for (const match of scene.matchAll(new RegExp(`${form}\\s+("[^"]*"|\\S+)(\\s+\\S+)?`, "g"))) {
+		for (const match of scene.matchAll(new RegExp(`${form}\\s+("[^"]*"|'[^']*'|\\S+)(\\s+\\S+)?`, "g"))) {
 			const timeout = match[2]?.trim();
 			if (timeout && /^\d+$/.test(timeout)) continue;
 			if (timeout && /^"?\$\{?\w/.test(timeout)) continue;

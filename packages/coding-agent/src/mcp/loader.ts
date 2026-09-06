@@ -4,8 +4,8 @@
  * Integrates MCP tool discovery with the custom tools system.
  */
 
+import type { AuthStorage } from "@veyyon/ai/auth-storage";
 import { AgentStorage } from "@veyyon/kernel/session/agent-storage";
-import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { errorMessage, logger } from "@veyyon/utils";
 import type { LoadedCustomTool } from "../extensibility/custom-tools/types";
 import { type MCPDiscoverOptions, type MCPLoadResult, MCPManager } from "./manager";

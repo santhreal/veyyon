@@ -13,6 +13,7 @@ export * from "./components/cancellable-loader";
 export * from "./components/editor";
 // Editor component interface (for custom editors)
 export type * from "./components/editor-component";
+export * from "./components/form";
 export * from "./components/image";
 export * from "./components/input";
 export * from "./components/loader";

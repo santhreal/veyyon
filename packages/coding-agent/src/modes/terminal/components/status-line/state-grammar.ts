@@ -35,7 +35,7 @@
  * run time; a constant captured at import would keep the first theme's
  * separator for the life of the process.
  */
-import { theme } from "../../../../theme/theme";
+import { theme } from "../../../../theme/theme-binding";
 
 /** The glyph the active preset divides things with, without its padding. */
 function dot(): string {

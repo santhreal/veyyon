@@ -1,11 +1,13 @@
 /**
  * The inline `/account status` block: which account each provider is serving this session with.
  *
- * WHY IT IS A PURE FUNCTION. The same block is printed by the TUI (`showStatus`) and by text/ACP
- * clients (`runtime.output`), and the two used to be able to disagree. Taking an
+ * WHY IT IS A PURE FUNCTION. The same block is printed by the TUI (as a transcript block) and by
+ * text/ACP clients (`runtime.output`), and the two used to be able to disagree. Taking an
  * {@link AccountInventory}, a clock reading and a role annotation map — and returning lines —
- * means both dispatchers print the same bytes, and a test can pin those bytes against fixed
- * inputs with no store, no probe and no clock behind it.
+ * means both dispatchers print the same bytes apart from colour, and a test can pin those bytes
+ * against fixed inputs with no store, no probe and no clock behind it. Colour comes from an
+ * {@link AccountStatusStyle} the TUI passes; a text client passes none and gets plain text. Every
+ * cell is measured and padded BEFORE it is styled, so the columns line up on both surfaces.
  *
  * WHAT IT DELIBERATELY DOES NOT DO. It never asks who is routed: `activeSessionAccounts` answers
  * that, and this file reports ONE BLOCK PER PROVIDER THAT ACTUALLY ROUTED rather than one per
@@ -47,8 +49,35 @@ const USAGE_BAR_WIDTH = 10;
 
 /** Shown in the NAME column when the user never named the account. */
 export const NO_NAME_PLACEHOLDER = "(no name set)";
+/** The block's title; the TUI prints it as the transcript block header, a text client as line one. */
+export const ACCOUNT_STATUS_TITLE = "Accounts in use by this session";
 /** The invitation that follows an unnamed account. */
 export const NAME_HINT = "/account name <text>";
+
+/**
+ * How the block colours its parts. Each function wraps already-measured text and must not change
+ * its width. The TUI passes theme colours; text and ACP clients pass nothing.
+ */
+export interface AccountStatusStyle {
+	/** The block's title line. */
+	title: (text: string) => string;
+	/** The provider column and the account's name. */
+	name: (text: string) => string;
+	/** Identity, usage windows and counts: true but secondary. */
+	muted: (text: string) => string;
+	/** Something the reader should act on: a rotation, a failed probe, a hold, a signed-out login. */
+	warn: (text: string) => string;
+	/** A command the reader can type as written. */
+	command: (text: string) => string;
+}
+
+const PLAIN_STYLE: AccountStatusStyle = {
+	title: text => text,
+	name: text => text,
+	muted: text => text,
+	warn: text => text,
+	command: text => text,
+};
 
 /**
  * Search-provider preference → the credential providers that preference spends.
@@ -112,7 +141,7 @@ function line(...parts: string[]): string {
 }
 
 /** `5 Hour   [███████▏░░] 71%   resets in 2h` for one usage window. */
-function usageLines(row: AccountRow, now: number): string[] {
+function usageLines(row: AccountRow, now: number, style: AccountStatusStyle): string[] {
 	const lines: string[] = [];
 	const labels = row.usage.map(window => sanitizeText(window.label));
 	const column = usageWindowLabelColumn(labels);
@@ -124,7 +153,9 @@ function usageLines(row: AccountRow, now: number): string[] {
 		lines.push(
 			line(
 				DETAIL_INDENT,
-				formatUsageWindowLine(labels[index] ?? "", window.usedFraction, USAGE_BAR_WIDTH, resets, column),
+				style.muted(
+					formatUsageWindowLine(labels[index] ?? "", window.usedFraction, USAGE_BAR_WIDTH, resets, column),
+				),
 			),
 		);
 	}
@@ -145,15 +176,19 @@ function rotationReason(chosen: AccountRow, now: number): string {
  * chose, so the block reports the swap and how to undo it instead of printing the substitute's
  * name as though they had picked it.
  */
-function divergenceLines(provider: string, chosen: AccountRow, now: number): string[] {
+function divergenceLines(provider: string, chosen: AccountRow, now: number, style: AccountStatusStyle): string[] {
 	const chosenLabel = cell(accountDisplayLabel(chosen), TRUNCATE_LENGTHS.TITLE);
 	const unblocks =
 		chosen.blockedUntilMs !== undefined && chosen.blockedUntilMs > now
 			? ` · ${formatDurationCoarse(chosen.blockedUntilMs - now)} until it unblocks`
 			: "";
 	return [
-		line(DETAIL_INDENT, `you chose ${chosenLabel}, rotated off it (${rotationReason(chosen, now)})`),
-		line(DETAIL_INDENT, `/account use ${provider} ${chosenLabel} to switch back${unblocks}`),
+		line(DETAIL_INDENT, style.warn(`you chose ${chosenLabel}, rotated off it (${rotationReason(chosen, now)})`)),
+		line(
+			DETAIL_INDENT,
+			style.command(`/account use ${provider} ${chosenLabel}`),
+			style.muted(` to switch back${unblocks}`),
+		),
 	];
 }
 
@@ -167,11 +202,13 @@ function divergenceLines(provider: string, chosen: AccountRow, now: number): str
  * @param inventory every stored account with this session's routing folded in
  * @param now epoch ms, so "resets in" and "until it unblocks" are the caller's clock, not a global
  * @param roles provider id → the session roles it serves, from {@link accountRoleAnnotations}
+ * @param style colour for each part; omitted by a text client, which gets plain text
  */
 export function renderAccountStatus(
 	inventory: AccountInventory,
 	now: number,
 	roles: ReadonlyMap<string, readonly string[]>,
+	style: AccountStatusStyle = PLAIN_STYLE,
 ): string[] {
 	const routed = new Map<string, AccountRow[]>();
 	for (const row of activeSessionAccounts(inventory)) {
@@ -180,22 +217,25 @@ export function renderAccountStatus(
 		routed.set(row.provider, rows);
 	}
 
-	const lines: string[] = ["Accounts in use by this session", ""];
+	const lines: string[] = [style.title(ACCOUNT_STATUS_TITLE), ""];
 
 	if (routed.size === 0) {
-		lines.push(line(ROW_INDENT, "No provider has routed a request in this session yet."), "");
+		lines.push(line(ROW_INDENT, style.muted("No provider has routed a request in this session yet.")), "");
 	}
 
 	for (const [provider, rows] of routed) {
 		const row = rows.find(candidate => candidate.activeForSession) ?? rows[0]!;
 		const annotations = roles.get(provider) ?? [];
+		// Padding is measured on the plain cell and trimmed BEFORE colour goes on, so the last cell
+		// of a row never carries invisible padding inside its escape sequence.
+		const providerCell = cell(row.providerLabel, PROVIDER_COLUMN, true);
+		const nameCell = cell(row.name ?? NO_NAME_PLACEHOLDER, NAME_COLUMN, true);
+		const nameStyle = row.name ? style.name : style.muted;
+		const rolesText = annotations.join(" · ");
 		lines.push(
-			line(
-				ROW_INDENT,
-				cell(row.providerLabel, PROVIDER_COLUMN, true),
-				cell(row.name ?? NO_NAME_PLACEHOLDER, NAME_COLUMN, true),
-				annotations.join(" · "),
-			),
+			rolesText
+				? line(ROW_INDENT, style.name(providerCell), nameStyle(nameCell), style.muted(rolesText))
+				: line(ROW_INDENT, style.name(providerCell), nameStyle(nameCell.trimEnd())),
 		);
 
 		// An unnamed row shows `(no name set)` where its label would go, so the label ladder's
@@ -209,30 +249,38 @@ export function renderAccountStatus(
 			...(row.planTier ? [row.planTier] : []),
 		];
 		if (identity.length > 0) {
-			lines.push(line(DETAIL_INDENT, cell(identity.join(" · "), TRUNCATE_LENGTHS.CONTENT)));
+			lines.push(line(DETAIL_INDENT, style.muted(cell(identity.join(" · "), TRUNCATE_LENGTHS.CONTENT))));
 		}
 
 		const rotated = selectedButRotated(inventory, provider);
 		if (rotated) {
-			const dl = divergenceLines(provider, rotated.chosen, now);
+			const dl = divergenceLines(provider, rotated.chosen, now, style);
 			for (let li = 0; li < dl.length; li++) lines.push(dl[li]!);
 		}
 
-		const ul = usageLines(row, now);
+		const ul = usageLines(row, now, style);
 		for (let li = 0; li < ul.length; li++) lines.push(ul[li]!);
 
 		if (row.health === "failed" && row.healthReason) {
-			lines.push(line(DETAIL_INDENT, cell(row.healthReason, TRUNCATE_LENGTHS.CONTENT)));
+			lines.push(line(DETAIL_INDENT, style.warn(cell(row.healthReason, TRUNCATE_LENGTHS.CONTENT))));
 		}
 		if (!rotated && row.blockedUntilMs !== undefined && row.blockedUntilMs > now) {
 			const unblocks = formatDurationCoarse(row.blockedUntilMs - now);
-			lines.push(line(DETAIL_INDENT, `rate limited · ${unblocks} until it unblocks`));
+			lines.push(line(DETAIL_INDENT, style.warn(`rate limited · ${unblocks} until it unblocks`)));
 		}
 		// The same sentence the card prints, with this surface's own remedy: a text client has no
 		// `a` key to press. The fact is one owner's, the offer is the surface's.
 		const credential = credentialStateNote(row, now);
 		if (credential) {
-			lines.push(line(DETAIL_INDENT, `${credential} · /providers to sign in again`));
+			lines.push(
+				line(
+					DETAIL_INDENT,
+					style.warn(credential),
+					style.muted(" · "),
+					style.command("/providers"),
+					style.muted(" to sign in again"),
+				),
+			);
 		}
 		lines.push("");
 	}
@@ -247,7 +295,11 @@ export function renderAccountStatus(
 	).length;
 	if (unnamed > 0) {
 		lines.push(
-			line(ROW_INDENT, `${unnamed === 1 ? "1 account has" : `${unnamed} accounts have`} no name · ${NAME_HINT}`),
+			line(
+				ROW_INDENT,
+				style.muted(`${unnamed === 1 ? "1 account has" : `${unnamed} accounts have`} no name · `),
+				style.command(NAME_HINT),
+			),
 			"",
 		);
 	}
@@ -261,13 +313,20 @@ export function renderAccountStatus(
 		lines.push(
 			line(
 				ROW_INDENT,
-				`${signedOut.length === 1 ? "1 provider has" : `${signedOut.length} providers have`} a signed-out login (${which}) · /providers to sign in again`,
+				style.warn(
+					`${signedOut.length === 1 ? "1 provider has" : `${signedOut.length} providers have`} a signed-out login (${which})`,
+				),
+				style.muted(" · "),
+				style.command("/providers"),
+				style.muted(" to sign in again"),
 			),
 			"",
 		);
 	}
 
 	const footer = `${routed.size} of ${inventory.providers.length} providers in use`;
-	lines.push(line(ROW_INDENT, `${footer} · /providers to manage accounts`));
+	lines.push(
+		line(ROW_INDENT, style.muted(`${footer} · `), style.command("/providers"), style.muted(" to manage accounts")),
+	);
 	return lines;
 }

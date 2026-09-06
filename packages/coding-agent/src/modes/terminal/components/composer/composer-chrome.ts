@@ -19,7 +19,7 @@ import { truncateToWidth } from "@veyyon/utils/width";
 import { isThresholdCompactionDisabled } from "../../../../config/compaction-strategy";
 import { settings } from "../../../../config/settings-instance";
 import { groundHairlineHex, groundTintFgAnsi } from "../../../../theme/ground-tints";
-import { theme } from "../../../../theme/theme";
+import { theme } from "../../../../theme/theme-binding";
 import { branchLabelFromFiles } from "../../../../utils/git-head";
 import { EMBER } from "../chrome/sun";
 import { type LocationContext, resolveLocationContext } from "../status-line/location-context";
@@ -257,12 +257,20 @@ export function mountLaunchComposer(
 	return 3;
 }
 
-/** The same draft estimate before and after the session adopts the composer. */
-export function renderDraftTokenZone(draft: string): string | null {
-	const trimmed = draft.trim();
+/**
+ * The footline's right zone at rest: the live draft's token estimate, gold, so
+ * the row the card paints and the row the mode mounts state the same thing
+ * about the same editor. Blank and bare slash-command drafts render nothing,
+ * exactly as the mode's zone does.
+ */
+export function draftTokenZone(draft: string | undefined): string | null {
+	const trimmed = (draft ?? "").trim();
 	if (trimmed.length === 0) return null;
+	// A bare slash-command token ("/se…") is menu navigation, not a draft —
+	// counting its characters is noise. The counter returns the moment the
+	// command takes arguments or the text is prose.
 	if (trimmed.startsWith("/") && !/\s/.test(trimmed)) return null;
-	return theme.fg("matchHighlight", `~${estimateTokensFromText(draft)} tok`);
+	return theme.fg("matchHighlight", `~${estimateTokensFromText(draft ?? "")} tok`);
 }
 
 /**
@@ -532,7 +540,7 @@ export class LaunchComposerFoot implements Component {
 				// row only positions, and an empty string is how the composer spells their absence.
 				badge: "",
 				clock: "",
-				locationRight: renderDraftTokenZone(this.#getDraft()),
+				locationRight: draftTokenZone(this.#getDraft()),
 				// The path expansion is a click-driven animation on the live row. Nothing has been
 				// clicked yet, so the row is at rest and the expanded half is never consulted.
 				expansion: 0,

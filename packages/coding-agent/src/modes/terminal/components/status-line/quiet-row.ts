@@ -23,7 +23,7 @@ import { sliceWithWidth, truncateToWidth, visibleWidth } from "@veyyon/utils/wid
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../../../config/settings-instance";
 import { withIcon } from "../../../../theme/icon-label";
-import { theme } from "../../../../theme/theme";
+import { theme } from "../../../../theme/theme-binding";
 import { getPreset, resolvePresetSegments } from "./presets";
 import { renderSegment } from "./segments";
 import { segmentSeparator } from "./state-grammar";

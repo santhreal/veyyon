@@ -64,6 +64,11 @@ async function spawnerArgv(script: string): Promise<string[]> {
 		await fs.chmod(stub, 0o755);
 		const renderNode = path.join(dir, "renderD128");
 		await fs.writeFile(renderNode, "");
+		// The recorders refuse to start without the napi addon the product loads,
+		// which a checkout that has never built natives does not have. Same shape as
+		// the render node above: name a staged path, since no container starts here.
+		const addon = path.join(dir, "veyyon_natives.linux-x64-gnu.node");
+		await fs.writeFile(addon, "");
 		const session = path.join(dir, "session.jsonl");
 		await fs.writeFile(session, "");
 		const env = {
@@ -72,6 +77,7 @@ async function spawnerArgv(script: string): Promise<string[]> {
 			PATH: `${dir}${path.delimiter}${process.env.PATH ?? ""}`,
 			OUT_DIR: path.join(dir, "out"),
 			RENDER_NODE: renderNode,
+			PROOF_NATIVE_ADDON: addon,
 		};
 		// Each spawner takes a different first argument; a scene path satisfies the
 		// recorders, and the one that replays a session is given a session file.

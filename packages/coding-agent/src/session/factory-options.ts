@@ -7,8 +7,8 @@
  */
 import type { AgentTelemetryConfig } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
+import type { AuthStorage } from "@veyyon/ai/auth-storage";
 import type { HostNotifier } from "@veyyon/host";
-import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import type { OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import type { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { ArgotSession } from "argot";

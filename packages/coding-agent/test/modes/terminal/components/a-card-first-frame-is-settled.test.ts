@@ -25,8 +25,8 @@
  */
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import type { Model } from "@veyyon/ai";
+import type { AuthStorage } from "@veyyon/ai/auth-storage";
 import { Effort } from "@veyyon/catalog/effort";
-import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import type { HistoryStorage } from "@veyyon/kernel/session/history-storage";
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { type AnsiPolicy, type Component, getAnsiPolicy, setAnsiPolicy, TERMINAL, type TUI } from "@veyyon/tui";
@@ -260,7 +260,11 @@ const OVERLAY_SPECS: readonly OverlaySpec[] = [
 	},
 	{
 		name: "LoginDialogComponent",
-		create: () => new LoginDialogComponent(DUMMY_UI, "github", () => {}, { getTerminalRows: () => 30 }),
+		create: () =>
+			new LoginDialogComponent(DUMMY_UI, "GitHub", () => {}, {
+				browserLogin: true,
+				getTerminalRows: () => 30,
+			}),
 	},
 	{
 		name: "MCPAddWizard",

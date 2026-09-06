@@ -157,7 +157,7 @@ export function renderCodeCell(options: CodeCellOptions, theme: Theme): string[]
 
 	let visibleLineNumbers: Array<number | null> | undefined;
 	let lineNumberWidth = 0;
-	if (codeLineNumbers) {
+	if (Array.isArray(codeLineNumbers)) {
 		visibleLineNumbers = codeLineNumbers.slice(startIndex, startIndex + maxCodeLines);
 	} else if (codeStartLine !== undefined) {
 		visibleLineNumbers = Array.from({ length: maxCodeLines }, (_, i) => codeStartLine + startIndex + i);

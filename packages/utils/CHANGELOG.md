@@ -6,6 +6,7 @@
 
 ### Added
 
+- `@veyyon/utils/terminal-emulator` resolves terminal identity without loading the terminal renderer.
 - `@veyyon/utils/json-snapshot` atomically stores rebuildable JSON snapshots with one serialization and verifies their input fingerprint and exact payload bytes.
 - `@veyyon/utils/format` owns `formatCostTiered` and `normalizePremiumRequests`, the terminal cost and premium-request formatters the status row and the stats CLI read.
 - `@veyyon/utils/format` owns `formatContextUsage`, the `47K/200K` reading of tokens against a limit that the status-line gauge, a subagent progress row and an eval cell's subagent tree all state.

@@ -186,8 +186,8 @@ remote_tree() { printf '%s/%s' "${REMOTE_HOME}" "${REMOTE_TREE_REL}"; }
 # a regular file directly under some packages/<one>/src/ is ever put back.
 remote_generated_sources_filter() {
 	local out
-	out="$(cd "${REPO_ROOT}" && git ls-files --others --ignored --exclude-standard 2>/dev/null)" || return 0
-	printf '%s\n' "$out" | grep -E '^packages/[^/]+/src/.*[^/]$' | sed 's|^|+ /|'
+	out="$(cd "${REPO_ROOT}" && git ls-files --others --ignored --exclude-standard packages/ contracts/ kernel/ hosts/ apps/ clients/ plugins/ natives/ 2>/dev/null)" || return 0
+	printf '%s\n' "$out" | grep -E '^((packages|contracts|hosts|apps|clients|plugins|natives)/[^/]+|kernel)/src/.*[^/]$' | sed 's|^|+ /|'
 	return 0
 }
 

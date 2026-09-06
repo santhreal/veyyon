@@ -35,10 +35,20 @@ scenes = sys.argv[1:]
 if not scenes:
     raise SystemExit("usage: record-x11-before.sh <scene.sh> [<scene.sh>...]")
 
-# The hold point defaults to main, which assumes the branch workflow. A change
-# already committed on local main names its parent here instead, so the before
-# arm still records the tree without the change.
-base = os.environ.get("PROOF_BASE_REF", "main")
+def resolve_base():
+    """The revision the before arm holds at. `origin/main` first: a local `main` is a
+    cached copy of it that goes stale silently, and holding nine files at a tip the
+    remote moved past records a tree no revision ever had."""
+    named = os.environ.get("PROOF_BASE_REF")
+    if named:
+        return named
+    for ref in ("origin/main", "main"):
+        if subprocess.run(["git", "rev-parse", "--verify", "--quiet", ref + "^{commit}"], capture_output=True).returncode == 0:
+            return ref
+    raise SystemExit("no origin/main and no main: name the hold point in PROOF_BASE_REF")
+
+
+base = resolve_base()
 
 # Source lives under every first-party root, not `packages/` alone: a member under
 # kernel/, hosts/, contracts/, plugins/ or natives/ reaches the running product the

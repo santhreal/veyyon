@@ -204,7 +204,8 @@ describe("config/settings stays out of the theme engine", () => {
 		// because the module it now names cannot import the theme barrel back.
 		expect(staticImportTargets(SHIMMER)).toContain("config/settings-instance");
 		expect(staticImportTargets(SHIMMER)).not.toContain("config/settings");
-		expect(staticImportTargets(THEME)).toContain("config/settings");
+		expect(staticImportTargets(THEME)).toContain("config/settings-signals");
+		expect(staticImportTargets(THEME)).not.toContain("config/settings");
 	});
 
 	/**
@@ -215,7 +216,7 @@ describe("config/settings stays out of the theme engine", () => {
 	it("points the dependency from the UI at the configuration, not the reverse", () => {
 		const settingsImports = staticImports(SETTINGS);
 
-		expect(staticImportTargets(THEME)).toContain("config/settings");
+		expect(staticImportTargets(THEME)).toContain("config/settings-signals");
 		// Exact specifiers, for the reason `FORBIDDEN_FROM_SETTINGS` documents: a substring test for
 		// "theme/theme" also matches `theme-luminance`, the leaf settings is SUPPOSED to import.
 		expect(

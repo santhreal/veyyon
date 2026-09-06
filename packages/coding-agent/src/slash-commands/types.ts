@@ -185,6 +185,7 @@ export type TuiSlashCommandHostContext = CollabHostContext &
 		| "showResetUsageSelector"
 		| "showSessionSelector"
 		| "showSettingsSelector"
+		| "showReport"
 		| "showStatus"
 		| "showSubcommandPicker"
 		| "showThinkingSelector"

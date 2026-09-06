@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/settings",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Host-agnostic setting declaration vocabulary a Veyyon package writes its settings schema in",
   "homepage": "https://veyyon.dev",
   "author": "santhreal",

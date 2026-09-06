@@ -23,6 +23,7 @@ import { theme } from "../../../../theme/theme";
 import { shortenPath } from "../../../../tools/core/render-utils";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
 import {
+	CARD_BODY_COL_INSET,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
@@ -154,7 +155,8 @@ export class MCPAddWizard implements Component {
 	#hoveredShortcutId: string | null = null;
 	/** Frame row where the body begins (shell body start). */
 	#bodyRowStart = 0;
-
+	/** Body line the text field was painted on, under the step's prose. */
+	#inputFieldLine = 0;
 	#inputField: Input | null = null;
 	#selectedIndex = 0;
 	#validationError: string | null = null;
@@ -556,9 +558,20 @@ export class MCPAddWizard implements Component {
 			this.handleInput("\n");
 			return true;
 		}
-		// An input step has no rows to pick; the text field owns the body.
-		if (this.#inputField) return true;
 		const line = event.row - this.#bodyRowStart;
+		// An input step has no rows to pick; a click on the field places its caret.
+		if (this.#inputField) {
+			const geometry = this.#shellGeometry;
+			if (event.leftClick && geometry && line >= 0 && line < geometry.bodyRowCount) {
+				this.#inputField.routeMouse(
+					event,
+					line - this.#inputFieldLine,
+					event.col - geometry.cardColStart - CARD_BODY_COL_INSET,
+				);
+				this.#requestRender();
+			}
+			return true;
+		}
 		if (event.wheel !== null) {
 			this.#moveSelection(event.wheel < 0 ? -1 : 1);
 			this.#requestRender();
@@ -611,6 +624,7 @@ export class MCPAddWizard implements Component {
 		this.#hitRows = [];
 		for (const child of this.#contentContainer.children) {
 			const option = this.#optionRows.get(child);
+			if (child === this.#inputField) this.#inputFieldLine = body.length;
 			for (const rendered of child.render(dims.contentWidth)) {
 				if (option !== undefined) {
 					this.#hitRows[body.length] = option;

@@ -17,6 +17,7 @@ const login = createApiKeyLogin({
 
 export const openaiProvider = {
 	id: "openai",
-	name: "OpenAI",
+	name: "OpenAI Platform",
 	login: (cb: OAuthLoginCallbacks) => login(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

@@ -19,4 +19,5 @@ export const togetherProvider = {
 	id: "together",
 	name: "Together",
 	login: (cb: Parameters<typeof loginTogether>[0]) => loginTogether(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

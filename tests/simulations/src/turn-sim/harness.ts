@@ -43,6 +43,7 @@ import type {
 	ToolCall,
 	ToolChoice,
 } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import {
 	setAnthropicProviderModule,
 	setAzureOpenAIResponsesProviderModule,
@@ -72,7 +73,6 @@ import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-sessi
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
 import { createSettingsAwareStreamFn } from "@veyyon/coding-agent/session/settings-stream-fn";
 import { wrapStreamFnWithProviderConcurrency } from "@veyyon/coding-agent/task/provider-concurrency";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { MemorySessionStorage } from "@veyyon/kernel/session/session-storage";
 import { TempDir } from "@veyyon/utils";

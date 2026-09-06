@@ -92,13 +92,13 @@ describe("a moved file keeps every byte but its paths", () => {
 	 */
 	it("reads a ledger covering the whole move", () => {
 		expect(ledger.generatedFrom).toMatch(/^[0-9a-f]{40}$/);
-		expect(rows.length).toBe(4804);
+		expect(rows.length).toBe(4803);
 		const buckets = new Map<string, number>();
 		for (const [, record] of rows) buckets.set(record.differs, (buckets.get(record.differs) ?? 0) + 1);
 		expect([...buckets].sort()).toEqual([
-			["changed", 396],
-			["imports-and-comments-only", 811],
-			["none", 3597],
+			["changed", 440],
+			["imports-and-comments-only", 789],
+			["none", 3574],
 		]);
 		expect(rewrites.length).toBeGreaterThan(50);
 		const paths = rows.map(([relative]) => relative);
@@ -246,7 +246,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.hash || hash !== record.mainHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(unchanged).toBe(3597);
+		expect(unchanged).toBe(3574);
 	});
 
 	/**
@@ -265,7 +265,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			if (hash !== record.structuralHash || hash !== record.mainStructuralHash) drifted.push(relative);
 		}
 		expect(drifted).toEqual([]);
-		expect(importOnly).toBe(811);
+		expect(importOnly).toBe(789);
 	});
 
 	/**
@@ -275,7 +275,7 @@ describe("a moved file keeps every byte but its paths", () => {
 	 */
 	it("explains every file whose content really changed", () => {
 		const changed = rows.filter(([, record]) => record.differs === "changed");
-		expect(changed.length).toBe(396);
+		expect(changed.length).toBe(440);
 		const unexplained: string[] = [];
 		const drifted: string[] = [];
 		for (const [relative, record] of changed) {

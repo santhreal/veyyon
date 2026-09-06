@@ -1,5 +1,3 @@
-// The owners in `@veyyon/utils`, not the re-exports in `tools/render-utils`, which is the terminal's
-// render helper module: a tool that describes a view has no reason to reach into a host's helpers.
 import { truncateToWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "@veyyon/utils/wrap";
 import { type } from "arktype";
@@ -10,7 +8,7 @@ import { openAutoresearchStorageIfExists } from "../storage";
 import type { AutoresearchToolFactoryOptions } from "../types";
 
 const updateNotesSchema = type({
-	body: type("string").describe("replacement notes body"),
+	"body?": type("string").describe("replacement notes body"),
 	"append_idea?": type("string").describe("append as bullet under Ideas instead of replacing body"),
 });
 
@@ -46,7 +44,7 @@ export function createUpdateNotesTool(
 			const nextNotes =
 				params.append_idea !== undefined && params.append_idea.trim().length > 0
 					? appendIdea(session.notes, params.append_idea.trim())
-					: params.body;
+					: (params.body ?? session.notes);
 
 			storage.updateSession(session.id, { notes: nextNotes });
 			const refreshed = storage.getSessionById(session.id);
@@ -55,7 +53,8 @@ export function createUpdateNotesTool(
 			if (refreshed) {
 				runtime.state = buildExperimentState(refreshed, loggedRuns);
 			}
-			options.dashboard.updateWidget(ctx, runtime);
+			options.dashboard.update(ctx, runtime);
+			options.dashboard.requestRender();
 
 			return {
 				content: [
@@ -71,17 +70,17 @@ export function createUpdateNotesTool(
 			};
 		},
 		view: {
-			renderCall: args => ({
-				kind: "textBlock",
-				spans: [
-					{ text: "update_notes", tone: "title", bold: true },
-					{ text: " " },
-					{
-						text: truncateToWidth(replaceTabs(args.append_idea ?? args.body.slice(0, 100)), 100),
-						tone: "muted",
-					},
-				],
-			}),
+			renderCall: args => {
+				const preview = args.append_idea ?? args.body?.slice(0, 100) ?? "";
+				return {
+					kind: "textBlock",
+					spans: [
+						{ text: "update_notes", tone: "title", bold: true },
+						{ text: " " },
+						{ text: truncateToWidth(replaceTabs(preview), 100), tone: "muted" },
+					],
+				};
+			},
 			renderResult: result => ({
 				kind: "textBlock",
 				spans: [

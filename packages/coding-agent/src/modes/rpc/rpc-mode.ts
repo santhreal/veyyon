@@ -1353,6 +1353,7 @@ export async function runRpcMode(
 								url: info.url,
 								launchUrl: info.launchUrl,
 								instructions: info.instructions,
+								credential: knownProvider.credential,
 							} as RpcExtensionUIRequest);
 						},
 						onProgress: message => {

@@ -7,7 +7,7 @@ import { HoverFade, type HoverFadeOptions } from "@veyyon/utils/motion";
 import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
-import { theme } from "../../../../theme/theme";
+import { theme } from "../../../../theme/theme-binding";
 import {
 	matchesAppInterrupt,
 	matchesSelectDown,
@@ -16,6 +16,7 @@ import {
 	matchesSelectUp,
 } from "../../utils/keybinding-matchers";
 import {
+	CARD_BODY_COL_INSET,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
@@ -354,6 +355,12 @@ export class HistorySearchComponent implements Component {
 				this.#resultsList.setSelectedIndex(this.#selectedIndex);
 				this.#onRequestRender?.();
 			}
+			return true;
+		}
+		const geometry = this.#shellGeometry;
+		if (event.leftClick && geometry && geometry.searchRow >= 0 && event.row === geometry.searchRow) {
+			this.#searchInput.routeMouse(event, 0, event.col - geometry.cardColStart - CARD_BODY_COL_INSET);
+			this.#onRequestRender?.();
 			return true;
 		}
 		const line = event.row - this.#listRowStart;

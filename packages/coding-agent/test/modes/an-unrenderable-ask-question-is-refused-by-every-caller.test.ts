@@ -136,7 +136,10 @@ function createHarness(collabHost?: unknown): ControllerHarness {
 		// this suite is about which ask surfaces refuse an unrenderable question, not
 		// about what a notification carries.
 		setToolNotifier: (): void => {},
-		session: {},
+		clearWorkingLoader: (): boolean => false,
+		session: {
+			isStreaming: false,
+		},
 	} as unknown as ExtensionUiControllerContext;
 	return { ctx, controller: new ExtensionUiController(ctx), overlays, focused };
 }

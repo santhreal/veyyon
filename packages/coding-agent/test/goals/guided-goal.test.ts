@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as core from "@veyyon/agent-core";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, ApiKey, Context, Model, SimpleStreamOptions } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { runGuidedGoalTurn } from "@veyyon/coding-agent/goals/guided-setup";
@@ -11,7 +12,6 @@ import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AgentSession as RealAgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { createTools, type Tool, type ToolSession } from "@veyyon/coding-agent/tools";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 

@@ -23,7 +23,7 @@
  * anything from. They are removed rather than carried across.
  */
 import type { ExtensionWidgetContent, ExtensionWidgetOptions } from "@veyyon/kernel/registry/widget";
-import type { Component, EditorTheme, TUI } from "@veyyon/tui";
+import type { Component, EditorTheme, OverlayOptions, TUI } from "@veyyon/tui";
 import type { KeybindingsManager } from "../config/keybindings";
 import type { CustomEditor } from "../modes/terminal/components/composer/custom-editor";
 import type { Theme } from "../theme/theme";
@@ -87,7 +87,7 @@ export interface ExtensionTerminalCapability {
 			keybindings: KeybindingsManager,
 			done: (result: T) => void,
 		) => ExtensionUiComponent | Promise<ExtensionUiComponent>,
-		options?: { overlay?: boolean },
+		options?: { overlay?: boolean | OverlayOptions },
 	): Promise<T>;
 
 	/** Set a widget drawn from a component, above or below the editor. */

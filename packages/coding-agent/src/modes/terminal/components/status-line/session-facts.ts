@@ -23,10 +23,11 @@
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import { settings } from "../../../../config/settings-instance";
 import type { Goal } from "../../../../goals/state";
-import { AUTO_THINKING } from "../../../../thinking";
+import { AUTO_THINKING } from "../../../../thinking/constants";
 import type { ApprovalMode } from "../../../../tools/core/approval-modes";
 import { isKnownApprovalMode } from "../../../../tools/core/approval-modes";
-import { launchModelLabel, readLaunchFacts } from "../../../launch-facts";
+import { readLaunchFacts } from "../../../launch-facts";
+import { launchModelLabel } from "../../launch-formatting";
 import type { LocationContext } from "./location-context";
 import type { SegmentContext, StatusLineSegmentOptions } from "./types";
 

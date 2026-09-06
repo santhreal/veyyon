@@ -154,7 +154,8 @@ export class ModelSelectorPanel extends Container {
 			showProvider: true,
 			currentContextTokens: options.currentContextTokens,
 			disableOverContext: false,
-			emptyText: () => "No models available — configure a provider or /login",
+			emptyText: () =>
+				this.#browser.query.trim() ? undefined : "  No models available — configure a provider or /login",
 		});
 
 		const items = cachedAuthAwareBrowserItems(models, registry);

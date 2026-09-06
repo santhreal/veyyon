@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { Agent, type CompactionPreparation, DEFAULT_COMPACTION_SETTINGS } from "@veyyon/agent-core";
 import * as compactionModule from "@veyyon/agent-core/compaction";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { ProviderHttpError } from "@veyyon/ai/error";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -11,7 +12,6 @@ import type { MemoryBackend } from "@veyyon/coding-agent/memory/backend";
 import * as memoryBackendModule from "@veyyon/coding-agent/memory/backend";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 

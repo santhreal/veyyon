@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "bun:
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import type { ImageContent, TextContent } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
@@ -21,7 +22,6 @@ import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { SKILL_PROMPT_MESSAGE_TYPE, type SkillPromptDetails } from "@veyyon/coding-agent/session/messages";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/theme/theme";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { Container } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";

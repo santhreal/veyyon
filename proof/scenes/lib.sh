@@ -58,6 +58,21 @@ pause() { sleep "${1:-0.5}"; }
 # that loses one key is worth more than no recording, and under `set -e` a stale
 # X11 window id once took the recorder down at the first keystroke, leaving a
 # video that stopped there with no gif and no stats.
+# The key that reaches one state in THIS arm, when the two arms answer different
+# ones.
+#
+#   k "$(arm_key Down ctrl+shift+x)"
+#
+# A pair of frames is named for the STATE it shows, not for the keystroke that
+# reached it, and a surface that was replaced is not always reached the same way:
+# a sidebar cursor has no counterpart in a widget that had one body. Branching on
+# SCENE_ARM around whole blocks names each shot twice, which reads as two frames
+# competing for one file and is refused by scripts/verify-scene.ts. Choosing the
+# key and taking one shot keeps one name per state.
+arm_key() {
+	if [ "${SCENE_ARM:-after}" = "after" ]; then printf '%s' "$1"; else printf '%s' "$2"; fi
+}
+
 k() {
 	_be_key "$@"
 	# WHERE A CLIP MAY REACH BACK TO. A cut that shows the work has to start
@@ -366,8 +381,29 @@ wait_for_screen() {
 # on an edit block, ran past an hour, and published two byte-identical frames under two
 # names. Abandoning at the first miss costs one ceiling, and the reason file is what the
 # host reads to decide whether the scene or the model is at fault.
+# True while the window the session handed the scene still exists. The X session
+# exports SCENE_WINDOW; the Wayland one has no window id and no xdotool, so an
+# unanswerable question is answered "alive" and changes no message.
+scene_terminal_alive() {
+	[ -n "${SCENE_WINDOW:-}" ] || return 0
+	command -v xdotool >/dev/null 2>&1 || return 0
+	xdotool getwindowgeometry "${SCENE_WINDOW}" >/dev/null 2>&1
+}
+
 abandon_take() {
 	local guard="$1" reason="$2"
+	# A take whose terminal is gone was not a scene mistake: the product exited and
+	# every frame after that is the empty root, which reaches the host as "this shot
+	# is byte-identical to the previous one" and reads like a key pressed too early.
+	# One such run cost three takes across two hosts before the cause turned out to
+	# be a missing build artifact the CLI imports at parse time. The window is asked
+	# first, so the product's own stderr is what gets reported.
+	if ! scene_terminal_alive; then
+		echo "scene: the terminal exited mid-take -- every frame after that is an empty screen" >&2
+		tail -20 /tmp/boot.err >&2 2>/dev/null || true
+		tail -10 /tmp/term.log >&2 2>/dev/null || true
+		reason="the terminal exited mid-take, so: ${reason}"
+	fi
 	echo "scene: abandoning the take -- ${guard}: ${reason}" >&2
 	if [ -n "${SCENE_OUT:-}" ]; then
 		printf '%s\t%s\n' "${guard}" "${reason}" >>"${SCENE_OUT}/abandoned.tsv"

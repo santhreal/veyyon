@@ -25,4 +25,5 @@ export const openrouterProvider = {
 	id: "openrouter",
 	name: "OpenRouter",
 	login: (cb: OAuthLoginCallbacks) => loginOpenRouter(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

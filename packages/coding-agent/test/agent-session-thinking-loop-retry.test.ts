@@ -11,6 +11,7 @@ import type {
 	TextContent,
 	ThinkingContent,
 } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import * as AIError from "@veyyon/ai/error";
 import { createMockModel } from "@veyyon/ai/providers/mock";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
@@ -20,7 +21,6 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
 import { type CustomMessage, convertToLlm } from "@veyyon/coding-agent/session/messages";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 

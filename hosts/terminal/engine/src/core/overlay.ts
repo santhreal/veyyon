@@ -13,6 +13,7 @@
  */
 import { SGR_RESET } from "@veyyon/utils/ansi";
 import { clampLow } from "@veyyon/utils/math";
+import type { MouseRoutable } from "@veyyon/utils/mouse";
 import { extractSegments, sliceByColumn, sliceWithWidth, visibleWidth } from "@veyyon/utils/width";
 import { TERMINAL } from "../terminal-capabilities";
 import type { Component } from "./component-types";
@@ -401,6 +402,14 @@ export function drawScrollTrack(
 export class OverlayStack {
 	#entries: OverlayEntry[] = [];
 	readonly #viewport: OverlayViewport;
+	#frames: Array<{
+		entry: OverlayEntry;
+		row: number;
+		col: number;
+		width: number;
+		height: number;
+		lineOffset: number;
+	}> = [];
 
 	constructor(viewport: OverlayViewport) {
 		this.#viewport = viewport;
@@ -475,10 +484,26 @@ export class OverlayStack {
 		return undefined;
 	}
 
+	clearFrames(): void {
+		this.#frames.length = 0;
+	}
+
+	pointerTarget():
+		| { component: MouseRoutable; row: number; col: number; width: number; height: number; lineOffset: number }
+		| undefined {
+		const entry = this.topmostInteractive();
+		if (!entry || entry.options?.fullscreen === true) return undefined;
+		const component = entry.component as Component & Partial<MouseRoutable>;
+		if (typeof component.routeMouse !== "function") return undefined;
+		if (component.wantsPointer?.() === false) return undefined;
+		const frame = this.#frames.find(candidate => candidate.entry === entry);
+		if (!frame) return undefined;
+		return { component: component as MouseRoutable, ...frame };
+	}
+
 	invalidate(): void {
 		for (const entry of this.#entries) entry.component.invalidate?.();
 	}
-
 	/**
 	 * Composite every visible overlay into the window slice (screen coordinates, in stack order,
 	 * later = on top). Overlays never touch the frame: composited rows exist only in the painted
@@ -493,6 +518,7 @@ export class OverlayStack {
 		footerTop: number = termHeight,
 	): string[] {
 		const result = [...window];
+		this.#frames.length = 0;
 		for (const entry of this.#entries) {
 			if (!this.isVisible(entry)) continue;
 			const { component, options } = entry;
@@ -500,6 +526,7 @@ export class OverlayStack {
 			// (width and maxHeight don't depend on overlay height).
 			const { width, maxHeight } = resolveOverlayLayout(options, 0, termWidth, termHeight, footerTop);
 			let overlayLines = component.render(width);
+			const renderedRows = overlayLines.length;
 			if (overlayLines.length > maxHeight) {
 				const anchor = options?.anchor ?? "center";
 				overlayLines =
@@ -508,6 +535,14 @@ export class OverlayStack {
 						: overlayLines.slice(0, maxHeight);
 			}
 			const { row, col } = resolveOverlayLayout(options, overlayLines.length, termWidth, termHeight, footerTop);
+			this.#frames.push({
+				entry,
+				row,
+				col,
+				width,
+				height: overlayLines.length,
+				lineOffset: renderedRows - overlayLines.length,
+			});
 			for (let i = 0; i < overlayLines.length; i++) {
 				const idx = row + i;
 				if (idx < 0 || idx >= result.length) continue;

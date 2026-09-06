@@ -49,7 +49,7 @@ import { KeybindingsManager } from "../../config/keybindings";
 import { settings } from "../../config/settings-instance";
 import { applyGroundPaint, setDetectedTerminalGround } from "../../theme/ground-tints";
 import { getEditorTheme, theme } from "../../theme/theme";
-import { launchModelLabel, readLaunchFacts } from "../launch-facts";
+import { onLaunchFactsRecorded, readLaunchFacts } from "../launch-facts";
 import {
 	applyComposerChrome,
 	computeEditorMaxHeight,
@@ -61,6 +61,7 @@ import { CustomEditor } from "./components/composer/custom-editor";
 import { setLaunchTip } from "./components/dialogs/launch-tip";
 import { WelcomeComponent } from "./components/dialogs/welcome";
 import { HomeAnchorLayout } from "./controllers/home-anchor-layout";
+import { launchModelLabel, launchProviderLabel } from "./launch-formatting";
 import { consumeRelaunchMarker, flushPendingTtyInput } from "./tty-input-flush";
 
 /** Inputs used to decide whether the launch card may be painted this early. */
@@ -174,9 +175,15 @@ export function paintFirstFrame(version: string, keybindings?: KeybindingsManage
 			: undefined;
 	if (adopted) setLaunchTip(adopted.tip);
 	const { providerName, terminalGround } = readLaunchFacts();
+	// The provider the recording states, and on a cold launch — no recording
+	// yet — the one the configured role names, parsed from `provider/id`. The
+	// session records the same value, so warm and cold state the same fact; the
+	// role only stands in for the machine's first launch of the model, where
+	// `· huggingface` used to grow onto the hero a second later.
+	const launchProvider = providerName || launchProviderLabel();
 	// The ground every structural color is derived from is settled below, before the first paint,
 	// out of what this terminal last reported.
-	const hero = new WelcomeComponent(version, launchModelLabel(), providerName ?? "");
+	const hero = new WelcomeComponent(version, launchModelLabel(), launchProvider);
 	const layout = new HomeAnchorLayout({ ui, transcriptChildCount: () => 0, hasHero: () => true });
 	// The composer, live. Dressed through the one chrome owner and sized through
 	// the one height policy, so it is the same composer the mode goes on using
@@ -291,6 +298,19 @@ export function paintFirstFrame(version: string, keybindings?: KeybindingsManage
 		terminal.write = passThrough;
 	};
 
+	// The session records the at-rest facts the moment they exist; the card
+	// reads them on every render, so the only thing a record needs is a render.
+	// Without this, a cold launch states the placeholder until the session's
+	// own row mounts, even though the fact was on disk well before. The
+	// subscription dies with the card: once the mode mounts, its row renders
+	// the facts itself and the notify has no surface left to serve.
+	const unsubscribeFacts = onLaunchFactsRecorded(() => {
+		if (!mounted) return;
+		const facts = readLaunchFacts();
+		hero.setModel(launchModelLabel(), facts.providerName || launchProviderLabel());
+		ui.requestRender();
+	});
+
 	const frame: FirstFrame = {
 		ui,
 		hero,
@@ -298,6 +318,7 @@ export function paintFirstFrame(version: string, keybindings?: KeybindingsManage
 		editorContainer,
 		keybindings: keybindingsManager,
 		release(): void {
+			unsubscribeFacts();
 			discardUntilMount?.();
 			discardUntilMount = undefined;
 			if (!mounted) return;

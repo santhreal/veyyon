@@ -37,13 +37,13 @@ import * as path from "node:path";
 import { Agent, type AgentMessage, type StreamFn } from "@veyyon/agent-core";
 import type { AssistantMessage, Model, Usage } from "@veyyon/ai";
 import { clearCustomApis } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { createMockModel } from "@veyyon/ai/providers/mock";
 import type { Api } from "@veyyon/ai/types";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { ModelRegistry, type ProviderConfigInput } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 

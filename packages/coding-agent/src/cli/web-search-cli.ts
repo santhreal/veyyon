@@ -14,6 +14,7 @@ import { runSearchQuery, type SearchQueryParams } from "../tools/web/search/inde
 import { SEARCH_PROVIDER_ORDER } from "../tools/web/search/provider";
 import type { SearchProviderId } from "../tools/web/search/types";
 import { webSearchToolView } from "../tools/web/search/view";
+import { EXIT_USAGE } from "./exit-codes";
 
 export interface SearchCommandArgs {
 	query: string;
@@ -33,24 +34,28 @@ export async function runSearchCommand(cmd: SearchCommandArgs): Promise<void> {
 	if (!cmd.query) {
 		process.stderr.write(`${chalk.red("Error: Query is required")}\n`);
 		process.stderr.write(`${chalk.dim('Usage: veyyon search <query> — e.g. `veyyon search "bun test filter"`')}\n`);
-		process.exit(1);
+		process.exit(EXIT_USAGE);
+		return;
 	}
 
 	if (cmd.provider && !SEARCH_PROVIDERS.includes(cmd.provider)) {
 		process.stderr.write(`${chalk.red(`Error: Unknown provider "${cmd.provider}"`)}\n`);
 		process.stderr.write(`${chalk.dim(`Valid providers: ${SEARCH_PROVIDERS.join(", ")}`)}\n`);
-		process.exit(1);
+		process.exit(EXIT_USAGE);
+		return;
 	}
 
 	if (cmd.recency && !SEARCH_RECENCY_OPTIONS.includes(cmd.recency)) {
 		process.stderr.write(`${chalk.red(`Error: Invalid recency "${cmd.recency}"`)}\n`);
 		process.stderr.write(`${chalk.dim(`Valid recency values: ${SEARCH_RECENCY_OPTIONS.join(", ")}`)}\n`);
-		process.exit(1);
+		process.exit(EXIT_USAGE);
+		return;
 	}
 
 	if (cmd.limit !== undefined && Number.isNaN(cmd.limit)) {
 		process.stderr.write(`${chalk.red("Error: --limit must be a number")}\n`);
-		process.exit(1);
+		process.exit(EXIT_USAGE);
+		return;
 	}
 
 	const settings = await Settings.init({ cwd: getProjectDir() });

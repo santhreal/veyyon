@@ -43,6 +43,7 @@ import type {
 	MessageRenderer,
 	ProviderConfig,
 	RegisteredCommand,
+	SetModelOptions,
 	ToolDefinition,
 } from "./types";
 
@@ -260,8 +261,8 @@ class ConcreteExtensionAPI implements ExtensionAPI, IExtensionRuntime {
 		return this.runtime.getCommands();
 	}
 
-	setModel(model: Model): Promise<boolean> {
-		return this.runtime.setModel(model);
+	setModel(model: Model, options?: SetModelOptions): Promise<boolean> {
+		return this.runtime.setModel(model, options);
 	}
 
 	getThinkingLevel(): ThinkingLevel | undefined {

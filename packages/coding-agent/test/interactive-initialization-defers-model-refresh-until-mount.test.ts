@@ -150,7 +150,11 @@ export default function(api) {
 			{ columns: 120, rows: 40 },
 		);
 		const started = performance.now();
-		const child = spawn(wrapper.command, wrapper.args, { cwd: project, env, stdio: ["pipe", "pipe", "pipe"] });
+		const child = spawn(wrapper.command || "pty", wrapper.args, {
+			cwd: project,
+			env,
+			stdio: ["pipe", "pipe", "pipe"],
+		});
 		child.once("error", ready.reject);
 		child.once("close", (code, signal) =>
 			ready.reject(new Error(`CLI exited before discovery (${signal ?? code}): ${output}`)),

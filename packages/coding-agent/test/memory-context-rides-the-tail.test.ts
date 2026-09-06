@@ -22,6 +22,7 @@ import * as path from "node:path";
 import type { AgentMessage, AsideMessage } from "@veyyon/agent-core";
 import { Agent, type AgentTool } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { buildModel } from "@veyyon/catalog/build";
 import { getBundledModel } from "@veyyon/catalog/models";
@@ -31,7 +32,6 @@ import { hindsightBackend } from "@veyyon/coding-agent/memory/hindsight/backend"
 import { HindsightApi } from "@veyyon/coding-agent/memory/hindsight/client";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 import { type } from "arktype";

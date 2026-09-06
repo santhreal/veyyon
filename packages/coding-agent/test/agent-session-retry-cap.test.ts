@@ -4,6 +4,7 @@ import { scheduler } from "node:timers/promises";
 import { Agent } from "@veyyon/agent-core";
 import type { ApiKeyResolveContext, AssistantMessage, ToolCall } from "@veyyon/ai";
 import { unregisterCustomApis } from "@veyyon/ai/api-registry";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { createMockModel, registerMockApi } from "@veyyon/ai/providers/mock";
 import * as aiStream from "@veyyon/ai/stream";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
@@ -12,7 +13,6 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session-types";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 

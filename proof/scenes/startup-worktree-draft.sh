@@ -4,6 +4,7 @@
 # use SCENE_COMMAND='env STARTUP_EXECUTABLE=/repo/path/to/binary bash -l'.
 # Both arms require the same seeded settings and terminal dimensions.
 # The clip covers launch through session mounting; the resting still checks the draft.
+# needle-source: startup draft retained while initialization completes -- typed in loop during initialization
 set -euo pipefail
 
 TYPE_DELAY="${TYPE_DELAY:-20}"
@@ -20,8 +21,8 @@ for ((index = 0; index < ${#draft}; index++)); do
 	t "${draft:index:1}"
 	pause 0.04
 done
-expect_screen 'startup draft retained while initialization completes' 20
+expect_screen "startup draft retained while initialization completes" 20
 settle 2
-expect_screen 'Qwen2.5 1.5B (local)' 20
-expect_screen '% left' 20
+expect_screen "Qwen2.5 1.5B (local)" 20
+expect_screen "% left" 20
 shot resting

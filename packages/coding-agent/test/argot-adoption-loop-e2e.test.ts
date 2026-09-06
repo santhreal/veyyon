@@ -34,6 +34,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Agent, type AgentMessage, type AgentTool } from "@veyyon/agent-core";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { createMockModel, type MockResponse } from "@veyyon/ai/providers/mock";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { createArgotSession } from "@veyyon/coding-agent/argot-cache";
@@ -45,7 +46,6 @@ import { convertToLlm } from "@veyyon/coding-agent/session/messages";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { ArgotLoadTool, ArgotUnloadTool } from "@veyyon/coding-agent/tools/agent/argot";
 import { BashTool } from "@veyyon/coding-agent/tools/shell/bash";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import {
 	__resetDirsFromEnvForTests,

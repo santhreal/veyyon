@@ -601,6 +601,14 @@ const DOCUMENTED_KEY_RELOCATIONS: Readonly<Record<string, Readonly<Record<string
  */
 const ABSORBED_SUBPATHS: Readonly<Record<string, Readonly<Record<string, RelocationNote>>>> = {
 	"@veyyon/coding-agent": {
+		"./autoresearch/setup-console": {
+			to: "./autoresearch/console",
+			why: "the autoswarm console setup and dashboard forms are declared in src/autoresearch/console.ts, which @veyyon/coding-agent publishes as ./autoresearch/console",
+		},
+		"./session/auth-storage": {
+			to: "@veyyon/ai/auth-storage",
+			why: "Credential storage imports use @veyyon/ai/auth-storage directly; SqliteAuthCredentialStore is exported by @veyyon/ai/auth-storage-sqlite and SnapshotResponse by @veyyon/ai/auth-broker/types.",
+		},
 		"./edit/renderer": {
 			to: "./edit/edit-view",
 			why: "the edit call row, hunk preview, diff sections, snapshot notices and failure card are declared in edit/edit-view.ts as views the host draws, so the module that built their terminal components is gone",

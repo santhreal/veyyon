@@ -25,8 +25,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as path from "node:path";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { logger, TempDir } from "@veyyon/utils";
 
 const STUB_BASE_URL = "http://127.0.0.1:59107/v1";

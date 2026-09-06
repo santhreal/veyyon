@@ -9,6 +9,7 @@ import type { Model } from "@veyyon/ai";
 // file is on `config/settings`'s path through the settings schema, which ~530 test files import.
 import { Effort, THINKING_EFFORTS } from "@veyyon/catalog/effort";
 import { clampThinkingLevelForModel, getSupportedEfforts } from "@veyyon/catalog/model-thinking";
+import { AUTO_THINKING, type ConfiguredThinkingLevel } from "./constants";
 
 /**
  * Metadata used to render thinking selector values in the coding-agent UI.
@@ -140,10 +141,7 @@ export function resolveThinkingLevelForModel(
  * {@link ThinkingLevel}, so provider mapping/clamping keeps seeing concrete
  * efforts. The session resolves `auto` to a concrete effort each turn.
  */
-export const AUTO_THINKING = "auto" as const;
-
-/** A thinking selector as configured by the user — a concrete level or `auto`. */
-export type ConfiguredThinkingLevel = ThinkingLevel | typeof AUTO_THINKING;
+export { AUTO_THINKING, type ConfiguredThinkingLevel };
 
 /** Maps the session-level `auto` sentinel to `undefined`; concrete levels pass through. */
 export function concreteThinkingLevel(level: ConfiguredThinkingLevel | undefined): ThinkingLevel | undefined {

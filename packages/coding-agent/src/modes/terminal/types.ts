@@ -7,7 +7,7 @@ import type { HistoryStorage } from "@veyyon/kernel/session/history-storage";
 import type { SessionContext } from "@veyyon/kernel/session/session-context";
 import type { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { ShakeMode } from "@veyyon/kernel/session/shake-types";
-import type { Component, Container, EditorTheme, Loader, Spacer, Text, TUI } from "@veyyon/tui";
+import type { Component, Container, EditorTheme, Loader, OverlayOptions, Spacer, Text, TUI } from "@veyyon/tui";
 import type { CollabGuestLink } from "../../collab/guest";
 import type { CollabHost } from "../../collab/host";
 import type { KeybindingsManager } from "../../config/keybindings";
@@ -270,6 +270,11 @@ export interface InteractiveModeContext {
 	 * runs) so their timers/subscriptions start.
 	 */
 	present(content: Component | readonly Component[]): void;
+	/**
+	 * Mount a command's report as a transcript block with an accent title on the
+	 * header row and indented body at the rail.
+	 */
+	showReport(title: string, body: string, footer?: string): void;
 	/**
 	 * Dispose every live block in the transcript (stopping timers/subscriptions)
 	 * and clear it. Used before a full rebuild so animated/streaming blocks do not
@@ -547,7 +552,7 @@ export interface InteractiveModeContext {
 			keybindings: KeybindingsManager,
 			done: (result: T) => void,
 		) => (Component & { dispose?(): void }) | Promise<Component & { dispose?(): void }>,
-		options?: { overlay?: boolean },
+		options?: { overlay?: boolean | OverlayOptions },
 	): Promise<T>;
 	showExtensionError(extensionPath: string, error: string): void;
 	showToolError(toolName: string, error: string): void;

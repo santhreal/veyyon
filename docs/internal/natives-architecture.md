@@ -244,7 +244,7 @@ The scripts have distinct state transitions:
   it is independently present.
 - **Variant**: x64 CPU-specific build flavor (`modern` AVX2, `baseline` fallback).
 - **Generated binding declaration**: `native/index.d.ts` emitted by napi-rs during `build-native.ts`.
-- **Version sentinel**: Rust export named from the package version (for example `__veyyonNativesV1_3_0`) that lets the loader reject a `.node` from a different release.
+- **Version sentinel**: Rust export named from the package version (for example `__veyyonNativesV1_4_0`) that lets the loader reject a `.node` from a different release.
 - **Compiled binary mode**: Runtime mode where the CLI is bundled and native addons are resolved from embedded/cache paths before package-local paths.
 - **Embedded addon**: Build artifact metadata and archive reference generated into `native/embedded-addon.js` so compiled binaries can extract matching `.node` payloads.
 

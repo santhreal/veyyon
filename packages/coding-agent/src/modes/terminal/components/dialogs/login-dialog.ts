@@ -3,10 +3,10 @@ import { getKeybindings } from "@veyyon/utils/keybindings";
 import { routeSgrMouseInput, type SgrMouseEvent } from "@veyyon/utils/mouse";
 import { padding } from "@veyyon/utils/padding";
 import { wrapTextWithAnsi } from "@veyyon/utils/wrap";
-import { formatProviderName } from "../../../../session/account-format";
 import { theme } from "../../../../theme/theme";
 import { openPath } from "../../../../utils/open";
 import {
+	CARD_BODY_COL_INSET,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
@@ -61,6 +61,8 @@ export class LoginDialogComponent implements Component {
 	#input: Input;
 	#tui: TUI;
 	#title: string;
+	/** Whether authorization URLs should open a browser rather than identify a key dashboard. */
+	#browserLogin: boolean;
 	#abortController = new AbortController();
 	#inputResolver?: (value: string) => void;
 	#inputRejecter?: (error: Error) => void;
@@ -76,20 +78,20 @@ export class LoginDialogComponent implements Component {
 	#escapeMode: "cancel" | "skip" = "cancel";
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
+	/** Body line the field was painted on in the last frame, or -1 while no question is asked. */
+	#inputBodyLine = -1;
 	#getTerminalRows: () => number;
 
 	constructor(
 		tui: TUI,
-		providerId: string,
+		providerLabel: string,
 		private onComplete: (success: boolean, message?: string) => void,
-		options?: { getTerminalRows?: () => number },
+		options: { browserLogin: boolean; getTerminalRows?: () => number },
 	) {
 		this.#tui = tui;
-		// One label owner for provider names, the same one the status line, the account card and the
-		// logout dialog use. Reading the browser-login table here printed a raw slug (`Login to groq`)
-		// for every provider that authenticates with a pasted key, since that table has no row for one.
-		this.#title = `Login to ${formatProviderName(providerId)}`;
-		this.#getTerminalRows = options?.getTerminalRows ?? (() => process.stdout.rows || 40);
+		this.#title = `Login to ${providerLabel}`;
+		this.#browserLogin = options.browserLogin;
+		this.#getTerminalRows = options.getTerminalRows ?? (() => process.stdout.rows || 40);
 		this.#input = new Input();
 		this.#input.onSubmit = () => {
 			this.#settlePrompt(this.#input.getValue());
@@ -166,6 +168,10 @@ export class LoginDialogComponent implements Component {
 		};
 		const auth = this.#auth;
 		if (auth) {
+			if (!this.#browserLogin) {
+				// A dashboard where a key is obtained, not a page this login waits on.
+				say(theme.fg("dim", "Get an API key at"));
+			}
 			say(theme.fg("accent", auth.url));
 			const clickHint = process.platform === "darwin" ? "Cmd+click to open" : "Ctrl+click to open";
 			body.push(theme.fg("dim", `\x1b]8;;${auth.url}\x07${clickHint}\x1b]8;;\x07`));
@@ -184,9 +190,11 @@ export class LoginDialogComponent implements Component {
 		}
 
 		const prompt = this.#prompt;
+		this.#inputBodyLine = -1;
 		if (prompt) {
 			if (body.length > 0) body.push("");
 			say(theme.fg("text", prompt.message));
+			this.#inputBodyLine = body.length;
 			body.push(...this.#input.render(dims.contentWidth));
 			if (prompt.placeholder) {
 				body.push(theme.fg("dim", `looks like ${prompt.placeholder}`));
@@ -244,6 +252,20 @@ export class LoginDialogComponent implements Component {
 			this.#escape();
 			return true;
 		}
+		// A click on the field places its caret; the pasted key is then editable
+		// where the pointer landed rather than only at its end.
+		const geometry = this.#shellGeometry;
+		if (geometry && event.leftClick && this.#prompt && this.#inputBodyLine >= 0) {
+			const line = event.row - geometry.bodyRowStart;
+			if (line >= 0 && line < geometry.bodyRowCount) {
+				this.#input.routeMouse(
+					event,
+					line - this.#inputBodyLine,
+					event.col - geometry.cardColStart - CARD_BODY_COL_INSET,
+				);
+				this.#tui.requestRender();
+			}
+		}
 		return true;
 	}
 
@@ -255,12 +277,18 @@ export class LoginDialogComponent implements Component {
 	 * truncation-safe copy target (viewport clipping on a long authorize URL silently drops trailing
 	 * OAuth query parameters, e.g. `code_challenge_method=S256`). The OSC 8 hyperlink carries the full
 	 * URL for terminals that support click-through.
+	 *
+	 * The browser is launched only for a login that waits on it. An API-key login reports the
+	 * dashboard where a key is obtained; launching that opened a platform login page on top of the
+	 * paste prompt, so choosing "OpenAI" read as starting an OAuth login instead of pasting a key.
 	 */
 	showAuth(url: string, instructions?: string, launchUrl?: string): void {
 		this.#auth = { url, ...(launchUrl ? { launchUrl } : {}), ...(instructions ? { instructions } : {}) };
 		this.#tui.requestRender();
-		// Best-effort: a relayout must never open a second tab.
-		openPath(url);
+		if (this.#browserLogin) {
+			// Best-effort: a relayout must never open a second tab.
+			openPath(url);
+		}
 	}
 
 	/**

@@ -19,4 +19,5 @@ export const sakanaProvider = {
 	id: "sakana",
 	name: "Sakana AI",
 	login: (cb: OAuthLoginCallbacks) => loginSakana(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

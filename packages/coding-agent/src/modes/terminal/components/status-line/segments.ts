@@ -9,10 +9,10 @@ import { clamp01 } from "@veyyon/utils/math";
 import { sanitizeStatusText } from "@veyyon/utils/sanitize-status-text";
 import { truncateToWidth } from "@veyyon/utils/width";
 import { PRIORITY_TIER_LABEL } from "../../../../config/service-tier";
+import type { ThemeColor } from "../../../../theme/color";
 import { withIcon } from "../../../../theme/icon-label";
-import { type ThemeColor, theme } from "../../../../theme/theme";
-import { normalizeApprovalMode } from "../../../../tools/core/approval";
-import { AUTONOMY_LABEL } from "../../../../tools/core/approval-modes";
+import { theme } from "../../../../theme/theme-binding";
+import { AUTONOMY_LABEL, normalizeApprovalMode } from "../../../../tools/core/approval-modes";
 // The limits leaf, not `tools/core/render-utils`: that module reaches the tool renderers,
 // path helpers and image resizing, and this row needs two numbers from it.
 import { TRUNCATE_LENGTHS } from "../../../../tools/core/render-limits";

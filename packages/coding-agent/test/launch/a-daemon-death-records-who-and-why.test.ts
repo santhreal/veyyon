@@ -26,6 +26,7 @@
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { Process } from "@veyyon/natives";
@@ -56,7 +57,7 @@ import { toolContent } from "../../src/tools/shell/launch";
 // test/tools/launch.test.ts does.
 let isolatedConfigRoot: IsolatedConfigRoot | undefined;
 
-const TEST_PARENT = path.resolve(import.meta.dirname, "../../../../.internal/launch-lifecycle");
+const TEST_PARENT = path.join(os.tmpdir(), "veyyon-launch-lifecycle");
 let testRoot = "";
 
 beforeAll(async () => {

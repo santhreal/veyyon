@@ -19,7 +19,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { sanitizeStatusText } from "@veyyon/utils/sanitize-status-text";
+import { sanitizeStatusText, sanitizeStyledStatusText } from "@veyyon/utils/sanitize-status-text";
 
 interface EscapeFamilyCase {
 	name: string;
@@ -97,5 +97,49 @@ describe("sanitizeStatusText", () => {
 			expect(sanitizeStatusText("hello\t\t\r\n\x00\x1fworld")).toBe("hello world");
 			expect(sanitizeStatusText("hello\x95world")).toBe("hello world");
 		});
+	});
+});
+
+describe("sanitizeStyledStatusText", () => {
+	/** The families whose sequence is SGR and nothing else: the ones the styled row keeps. */
+	const SGR_FAMILIES = new Set(["CSI (7-bit SGR color/style)", "CSI (8-bit SGR color/style)"]);
+
+	describe("enumerated escape sequence families", () => {
+		for (const { name, sequence, expectedText } of ESCAPE_FAMILIES) {
+			if (SGR_FAMILIES.has(name)) {
+				it(`keeps ${name} in its 7-bit spelling`, () => {
+					expect(sanitizeStyledStatusText(`prefix ${sequence} suffix`)).toBe("prefix \x1b[31mred\x1b[0m suffix");
+				});
+				continue;
+			}
+			it(`strips ${name} without leaking escape bytes or payload`, () => {
+				const expected = expectedText ? `prefix ${expectedText} suffix` : "prefix suffix";
+				expect(sanitizeStyledStatusText(`prefix ${sequence} suffix`)).toBe(expected);
+			});
+		}
+	});
+
+	it("keeps the colours and drops the hyperlink and graphics in one string", () => {
+		const input =
+			"\x1b[32m2 kept\x1b[39m " +
+			"\x1b]8;;https://example.com\x07link\x1b]8;;\x07 " +
+			"\x1b_Ga=T,f=100;PAYLOAD\x1b\\" +
+			"\x1b[38:2:255:0:0mbest\x1b[0m";
+		expect(sanitizeStyledStatusText(input)).toBe("\x1b[32m2 kept\x1b[39m link \x1b[38:2:255:0:0mbest\x1b[0m");
+	});
+
+	it("drops a CSI with intermediate bytes ending in m rather than keeping it as SGR", () => {
+		expect(sanitizeStyledStatusText("a\x1b[?1 mb")).toBe("ab");
+	});
+
+	it("is a fixed point and drops a lone escape at a boundary", () => {
+		const once = sanitizeStyledStatusText("status: \x1b[3");
+		expect(once).toBe("status: [3");
+		expect(sanitizeStyledStatusText(once)).toBe(once);
+		expect(sanitizeStyledStatusText("x \x1b[2K\x1b[31my\x1b[0m")).toBe("x \x1b[31my\x1b[0m");
+	});
+
+	it("maps controls other than the escape byte to spaces", () => {
+		expect(sanitizeStyledStatusText("a\t\x00\x1b[1mb\x1b[0m\x95c")).toBe("a \x1b[1mb\x1b[0m c");
 	});
 });

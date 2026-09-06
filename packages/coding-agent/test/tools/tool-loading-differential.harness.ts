@@ -166,7 +166,7 @@ export class ToolLoadRunner {
  * the registry slides that case across, its real boot registers `search_tool_bm25` where
  * the frozen outcome has none, and the cell goes red carrying the direction to re-count.
  */
-export const FIXTURE_REGISTRY_SIZE = 22;
+export const FIXTURE_REGISTRY_SIZE = 23;
 
 /**
  * Bulk tools that land the fixture registry exactly ON the threshold, so registering one

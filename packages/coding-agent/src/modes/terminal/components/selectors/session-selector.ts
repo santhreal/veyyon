@@ -992,6 +992,10 @@ export class SessionSelectorComponent extends Container {
 						const deleted = await this.#onDelete(session);
 						if (deleted) {
 							this.#sessionList.removeSession(session.path);
+							this.#folderSessions = this.#folderSessions.filter(s => s.path !== session.path);
+							if (this.#globalSessions) {
+								this.#globalSessions = this.#globalSessions.filter(s => s.path !== session.path);
+							}
 						}
 					} catch (err) {
 						this.#showError(errorMessage(err));

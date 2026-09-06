@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import { AgentBusyError, type AgentTelemetryConfig, type Tracer } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai";
+import type { AuthStorage } from "@veyyon/ai/auth-storage";
 import { Effort } from "@veyyon/catalog/effort";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
@@ -14,7 +15,6 @@ import {
 	SUBAGENT_WARNING_MISSING_YIELD,
 } from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
-import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { isRecord, logger } from "@veyyon/utils";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 import {

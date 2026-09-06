@@ -25,13 +25,13 @@ import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { clearCache as clearFsCache } from "@veyyon/coding-agent/discovery/capability/fs";
 import { discoverExtensionPaths, loadExtensions } from "@veyyon/coding-agent/extensibility/extensions";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { type OperatorNotice, OperatorNotices } from "@veyyon/kernel/session/operator-notices";
 import {
 	attachFaultSink,

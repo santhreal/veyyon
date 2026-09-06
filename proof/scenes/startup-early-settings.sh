@@ -11,5 +11,5 @@ pause 0.06
 submit '/settings'
 t 'unsubmitted startup draft'
 settle 3
-expect_screen 'Qwen2.5 1.5B (local)' 20
+expect_screen "Qwen2.5 1.5B (local)" 20
 shot early-settings

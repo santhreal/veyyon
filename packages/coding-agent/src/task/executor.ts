@@ -15,9 +15,9 @@ import {
 } from "@veyyon/agent-core";
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import type { Api, Model, ServiceTierByFamily, Usage } from "@veyyon/ai";
+import type { AuthStorage } from "@veyyon/ai/auth-storage";
 import { emptyUsage } from "@veyyon/catalog/models";
 import type { ArtifactManager } from "@veyyon/kernel/session/artifacts";
-import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
 import {
@@ -3330,7 +3330,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 						setActiveTools: (toolNames: string[]) =>
 							session.setActiveToolsByName(toolNames.filter(name => !parentOwnedToolNames.has(name))),
 						getCommands: () => getSessionSlashCommands(session),
-						setModel: model => runExtensionSetModel(session, model),
+						setModel: (model, options) => runExtensionSetModel(session, model, options),
 						getThinkingLevel: () => session.thinkingLevel,
 						setThinkingLevel: (level, persist) => session.setThinkingLevel(level, persist),
 						getSessionName: () => session.sessionManager.getSessionName(),

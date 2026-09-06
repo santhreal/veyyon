@@ -7,6 +7,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AgentMessage, AgentTool } from "@veyyon/agent-core";
 import type { ImageContent, TextContent } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { discoverAndLoadExtensions } from "@veyyon/coding-agent/extensibility/extensions/loader";
 import {
@@ -17,7 +18,6 @@ import {
 import { APPROVAL_SELECT_OPTIONS, ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
 import { HookRunner } from "@veyyon/coding-agent/extensibility/hooks/runner";
 import { Type } from "@veyyon/kernel/registry/typebox";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { getProjectAgentDir, logger, TempDir } from "@veyyon/utils";
 

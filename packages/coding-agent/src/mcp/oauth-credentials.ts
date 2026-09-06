@@ -1,4 +1,4 @@
-import type { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import type { AuthStorage } from "@veyyon/ai/auth-storage";
 import { getActiveProfile } from "@veyyon/utils/dirs";
 import { expandEnvVarsDeep, unresolvedRefusedDownstream } from "../discovery/env-expansion";
 import {

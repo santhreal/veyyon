@@ -97,22 +97,25 @@ scrolled reader could be looking at.
    if those frames never ran.
 1. Compose the frame (`render(width)`), collecting `liveRegionStart` from the
    root children (absolute row indices; the topmost reporter wins).
-2. **Audit the committed prefix** (`findCommittedPrefixResync`, skipped on
-   geometry frames and on `clearScrollback` frames). Components must never
+2. **Audit the committed prefix** (`auditCommittedPrefix`, skipped on geometry
+   frames and on `clearScrollback` frames). Components must never
    re-layout declared-final rows, but real flows violate it (a TTSR rewind
    truncating a streamed block, an image-cap demotion shrinking a committed
    image) and the violation must not become content loss. The verified zone's
    check samples the prefix *tail* (up to 8 non-blank rows in the last 24
    verified rows, SGR-stripped): an in-place edit or restyle disturbs only the
-   touched rows (≤1 mismatch ⇒ aligned ⇒ ignored, stale styling in history is
-   the accepted artifact), while any insertion/deletion shifts every row below
-   it including the tail (⇒ re-anchor at the first changed row). Frozen
-   snapshots past the verified zone are exempt while live and hard-scanned in
-   full, once, when the boundary rises past them. A re-anchor repairs history
-   by **erase-and-replay rebuild** (`divergenceRebuild`, on by default,
-   `tui.scrollbackRebuild`, non-multiplexer) so history holds the content
-   exactly once, else by recommitting from the changed row, **duplication,
-   never loss**.
+   touched rows (at most one mismatch is accepted). After an aligned audit,
+   the verified tail baseline advances to the current source rows; the physical
+   history does not change. Independent accepted edits therefore cannot
+   accumulate into a false shift. An insertion or deletion that shifts the
+   tail re-anchors at the first changed row.
+   Frozen snapshots past the verified zone are exempt while live and hard-scanned in
+   full, once, when the boundary rises past them. Automatic erase-and-replay
+   requires a newly finalized snapshot or a changed component implementing
+   `NativeScrollbackLiveRegion`, with `tui.scrollbackRebuild` enabled on a
+   non-multiplexer terminal. Removing a live barrier still finalizes the frozen
+   rows below it. An unrelated component's capability does not permit rebuilding
+   plain component history. Other changes recommit below the retained history.
 3. Classify: **fullPaint** (first paint, `clearScrollback` session replace, a
    geometry change on a terminal that does not repaint resizes in place, or
    the divergence rebuild) or **update**. `resizeRepaintsInPlace()` is what

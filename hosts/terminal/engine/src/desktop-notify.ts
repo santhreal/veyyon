@@ -22,9 +22,10 @@
 
 import { APP_DISPLAY_NAME } from "@veyyon/utils/app-identity";
 import * as logger from "@veyyon/utils/logger";
+import type { TerminalId } from "@veyyon/utils/terminal-emulator";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { $which } from "@veyyon/utils/which";
-import type { TerminalId, TerminalNotification } from "./terminal-capabilities";
+import type { TerminalNotification } from "./terminal-capabilities";
 
 /** Application name surfaced as the notification source. */
 

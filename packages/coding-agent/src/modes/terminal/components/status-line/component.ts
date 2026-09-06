@@ -3,12 +3,12 @@ import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { ThinkingLevel } from "@veyyon/agent-core/thinking";
 import type { AssistantMessage, UsageLimit, UsageReport } from "@veyyon/ai";
-import type { OAuthAccountIdentity } from "@veyyon/kernel/session/auth-storage";
+import type { OAuthAccountIdentity } from "@veyyon/ai/auth-storage";
 import type { Component } from "@veyyon/tui/tui";
 import { getProjectDir } from "@veyyon/utils/dirs";
 import { formatClock } from "@veyyon/utils/format";
 import { MOTION, type MotionClock, SettleValue } from "@veyyon/utils/motion";
-import { sanitizeStatusText } from "@veyyon/utils/sanitize-status-text";
+import { sanitizeStyledStatusText } from "@veyyon/utils/sanitize-status-text";
 import { scopedTimeoutSignal, withScopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 import { truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { resolveContextLimit } from "../../../../config/compaction-strategy";
@@ -16,14 +16,12 @@ import { resolveContextLimit } from "../../../../config/compaction-strategy";
 import { settings } from "../../../../config/settings-instance";
 import { accountDisplayLabel, accountsForProvider, buildAccountInventory } from "../../../../session/account-inventory";
 import type { AgentSession } from "../../../../session/agent-session";
-import { computeNonMessageBreakdown } from "../../../../session/non-message-tokens";
 import { limitMatchesActiveAccount } from "../../../../slash-commands/helpers/active-oauth-account";
 import { withIcon } from "../../../../theme/icon-label";
 import { transitionsEnabled } from "../../../../theme/shimmer";
-import { theme } from "../../../../theme/theme";
-import { AUTO_THINKING } from "../../../../thinking";
+import { theme } from "../../../../theme/theme-binding";
 import * as git from "../../../../utils/git";
-import { type LaunchFactsUpdate, readLaunchFacts, recordLaunchFacts } from "../../../launch-facts";
+import { readLaunchFacts, recordLaunchFacts, recordRestLaunchFacts } from "../../../launch-facts";
 import { isTreeDirty } from "./branch";
 import { canReuseCachedPr, createPrCacheContext, isSamePrCacheContext, type PrCacheContext } from "./git-utils";
 import { type LocationContext, resolveLocationContext } from "./location-context";
@@ -1250,69 +1248,21 @@ export class StatusLineComponent implements Component {
 	 */
 	#recordLaunchFacts(contextPercent: number | null, contextLimit: number, isCollabGuest: boolean): void {
 		if (isCollabGuest) return;
-		const update: LaunchFactsUpdate = {};
-
-		// `session.state.model` is the one the row itself renders from, via `#facts()`;
-		// `session.model` is undefined here and recorded nothing at all.
-		//
-		// Both model facts are filed under the DEFAULT ROLE, because that string is what the next
-		// launch keys on, so they are recorded only when the session is running that role's model.
-		// The role is `provider/id` — comparing it to the bare `model.id` never matched and left
-		// the card printing the raw id — and it carries an optional `:thinking` or `@route`
-		// suffix, which is why this tests the qualified id as a PREFIX at a delimiter rather than
-		// splitting on a colon the id is itself allowed to contain.
-		const model = this.session.state.model;
-		const role = settings.getModelRole("default");
-		const qualified = model?.provider ? `${model.provider}/${model.id}` : model?.id;
-		const isDefaultRole =
-			!!role &&
-			!!qualified &&
-			(role === qualified || role.startsWith(`${qualified}:`) || role.startsWith(`${qualified}@`));
-
-		// A percentage is a fraction of the window of the model that measured it. A session runs a
-		// model other than the configured role whenever `--model` names one, `/model` switches
-		// before anything is sent, or the role does not resolve and the fallback answers — and
-		// recording that reading under the role's key hands the next launch a gauge drawn against
-		// a window its model does not have. Left absent, the card states `?` and is right.
-		//
-		// The model's copy is the same reading with this project's context files taken out, so a
-		// project that has never been measured states a floor every project shares rather than the
-		// last directory's `AGENTS.md`. `computeNonMessageBreakdown` is the same cached split the
-		// `/context` panel reads, keyed on the prompt, tool and skill references, so it costs a
-		// map lookup on a resting redraw.
-		if (isDefaultRole && contextPercent !== null && (this.session.messages?.length ?? 0) === 0) {
-			update.contextPercent = contextPercent;
-			const projectContext = computeNonMessageBreakdown(this.session).systemContextTokens;
-			// Not clamped here: `recordLaunchFacts` holds every recorded percentage inside the band
-			// the gauge can draw, and a second clamp on this line would be a second owner of it.
-			update.modelContextPercent =
-				contextLimit > 0 ? contextPercent - (projectContext / contextLimit) * 100 : contextPercent;
-		}
-
-		if (model?.name && isDefaultRole) {
-			update.modelName = model.name;
-			if (model.provider) update.providerName = model.provider;
-		}
-
-		// The effort is model-scoped for the same reason the gauge is: it is clamped to the rungs
-		// this model supports, so the level one model ran at states nothing about another's. Sent as
-		// an explicit `null` when the row printed no tail, so a model whose thinking was turned off
-		// stops the next launch printing the rung it used to run at.
-		if (isDefaultRole && model) {
-			const supportsThinking = Boolean(model.thinking);
-			const level = this.session.state.thinkingLevel ?? ThinkingLevel.Off;
-			if (!supportsThinking) {
-				update.thinking = null;
-			} else if (this.session.isAutoThinking) {
-				update.thinking = AUTO_THINKING;
-			} else {
-				update.thinking = level === ThinkingLevel.Off ? null : level;
-			}
-		}
-
-		if (this.#cachedGitStatus) update.gitStatus = this.#cachedGitStatus;
-
-		if (Object.keys(update).length > 0) void recordLaunchFacts(update);
+		// The record decision lives in launch-facts, shared with the session's
+		// at-rest record, so the two callers cannot drift; this row keeps only
+		// what is its own: the collab-guest guard and the git status it scanned.
+		void recordRestLaunchFacts(
+			{
+				model: this.session.state.model,
+				thinkingLevel: this.session.state.thinkingLevel ?? null,
+				isAutoThinking: this.session.isAutoThinking,
+				messageCount: this.session.messages?.length ?? 0,
+				systemContextTokens: this.session.getContextBreakdown?.()?.systemContextTokens ?? 0,
+			},
+			contextPercent,
+			contextLimit,
+		);
+		if (this.#cachedGitStatus) void recordLaunchFacts({ gitStatus: this.#cachedGitStatus });
 	}
 
 	#buildSegmentContext(
@@ -1737,7 +1687,7 @@ export class StatusLineComponent implements Component {
 		// Same bytes as `join(" ")`: an empty status still contributes its separator.
 		let hookLine = "";
 		for (let si = 0; si < entries.length; si++) {
-			const sanitized = sanitizeStatusText(entries[si]![1]);
+			const sanitized = sanitizeStyledStatusText(entries[si]![1]);
 			hookLine = si === 0 ? sanitized : `${hookLine} ${sanitized}`;
 		}
 		return [truncateToWidth(hookLine, width)];

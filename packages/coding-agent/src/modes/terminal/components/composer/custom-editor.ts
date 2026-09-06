@@ -13,7 +13,7 @@ import { KEYBINDINGS } from "../../../../config/keybinding-defs";
 import type { AppKeybinding } from "../../../../config/keybindings";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../../../../config/settings-instance";
-import { fgOrPlain, theme } from "../../../../theme/theme";
+import { fgOrPlain, theme } from "../../../../theme/theme-binding";
 import { hasMagicKeyword, highlightMagicKeywords } from "../../../keywords/magic-keywords";
 import { imageReferenceHyperlink, PLACEHOLDER_REGEX, renderPlaceholders } from "../../image-reference-markers";
 import { isQueuedMessageList, parseQueueShorthand, QUEUE_LIST_MARKER_RE } from "../../queue-input";

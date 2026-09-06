@@ -163,7 +163,7 @@ function writeModelsJson(fixture: ProviderFixture): void {
 function loadDefaultRegistryModel(lookup: ModelLookup): ModelSnapshot | undefined {
 	const script = `
 		import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
-		import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+		import { AuthStorage } from "@veyyon/ai/auth-storage";
 
 		const authStorage = await AuthStorage.create(":memory:");
 		try {

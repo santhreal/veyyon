@@ -18,7 +18,7 @@
  * Everything here returns its text rather than printing it, so the tests read
  * the real output of the real command instead of capturing a global.
  */
-import { APP_NAME, bareVersion, changelogUrlForVersion, compareSemver, errorMessage, VERSION } from "@veyyon/utils";
+import { APP_NAME, bareVersion, changelogUrlForVersion, errorMessage, VERSION } from "@veyyon/utils";
 import {
 	getAllReleases,
 	type ReleaseListing,
@@ -94,7 +94,7 @@ export interface RollbackRow {
 	publishedAt?: string;
 	/** True for the version running right now, which is not a rollback target. */
 	current: boolean;
-	/** True when this version is newer than the running one, so choosing it moves forward. */
+	/** True when this version was published later than the running one, so choosing it moves forward. */
 	newer: boolean;
 	/** True when the history file records having run this version before. */
 	visited: boolean;
@@ -121,14 +121,23 @@ export function buildRollbackRows(
 		visited.add(move.from);
 		visited.add(move.to);
 	}
-	return releases.map(release => ({
-		version: release.version,
-		publishedAt: release.publishedAt,
-		current: release.version === currentVersion,
-		newer: compareSemver(release.version, currentVersion) > 0,
-		visited: visited.has(release.version),
-		changelogUrl: changelogUrlForVersion(release.version),
-	}));
+	const currentRelease = releases.find(r => r.version === currentVersion);
+	const currentPublishedAt = currentRelease?.publishedAt;
+	const currentTime = currentPublishedAt ? Date.parse(currentPublishedAt) : Number.NaN;
+
+	return releases.map(release => {
+		const releaseTime = release.publishedAt ? Date.parse(release.publishedAt) : Number.NaN;
+		const newer = !Number.isNaN(currentTime) && !Number.isNaN(releaseTime) && releaseTime > currentTime;
+
+		return {
+			version: release.version,
+			publishedAt: release.publishedAt,
+			current: release.version === currentVersion,
+			newer,
+			visited: visited.has(release.version),
+			changelogUrl: changelogUrlForVersion(release.version),
+		};
+	});
 }
 
 /**

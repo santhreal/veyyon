@@ -35,6 +35,7 @@ import { describe, expect, it, setDefaultTimeout } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fromBinary } from "@bufbuild/protobuf";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { buildGrpcRequest } from "@veyyon/ai/providers/cursor";
 import type { Context, ImageContent, Model, TextContent } from "@veyyon/ai/types";
 import { AgentClientMessageSchema } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
@@ -46,7 +47,6 @@ import type { ContextFile } from "@veyyon/coding-agent/discovery/capability/cont
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { discoverContextFiles } from "@veyyon/coding-agent/session/factory-extensions";
 import type { ContextFileEntry } from "@veyyon/coding-agent/tools";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import {
 	GLOBAL_BODY,

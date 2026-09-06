@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { detectMacOSAppearance, MacAppearanceObserver } from "@veyyon/natives";
+import type { FormTheme } from "@veyyon/tui";
 import type { EditorTheme } from "@veyyon/tui/components/editor";
 import type { SelectListTheme } from "@veyyon/tui/components/select-list";
 import type { SettingsListTheme } from "@veyyon/tui/components/settings-list";
@@ -15,12 +16,8 @@ import { blendHex } from "@veyyon/utils/motion";
 import { parseHexColor } from "@veyyon/utils/paint-ground";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { sliceWithWidth, visibleWidth } from "@veyyon/utils/width";
-import {
-	onAutoThemeMappingChanged,
-	onColorBlindModeChanged,
-	onSymbolPresetChanged,
-	registerSettingsTestResetHook,
-} from "../config/settings";
+import { registerSettingsTestResetHook } from "../config/settings-instance";
+import { onAutoThemeMappingChanged, onColorBlindModeChanged, onSymbolPresetChanged } from "../config/settings-signals";
 // The bundled theme JSON lives in `./builtin-themes` and the light/dark classifier in
 // `./theme-luminance`, so `config/settings` can reach `isLightTheme` for its legacy theme migration
 // without importing this module and without paying for a hundred JSON modules. Importing it from here
@@ -316,10 +313,6 @@ export function getCurrentThemeName(): string | undefined {
 	return currentThemeName;
 }
 
-/** Returns unstyled `text` before `initTheme()` assigns the global theme; use only for early-render paths. */
-export function fgOrPlain(color: ThemeColor, text: string, styledText: string = text): string {
-	return typeof theme === "undefined" ? text : theme.fg(color, styledText);
-}
 export interface ThemeChangeEvent {
 	/** Preview/presentation-only changes should repaint live UI without replacing native scrollback. */
 	ephemeral?: boolean;
@@ -1259,6 +1252,21 @@ export function getSelectListTheme(): SelectListTheme {
 		// label with a short rule tail, so the list reads as a map of sections.
 		groupHeader: (name: string) =>
 			theme.fg("borderAccent", `  ${name.toUpperCase()} ${"─".repeat(Math.max(4, 30 - name.length))}`),
+	};
+}
+
+export function getFormTheme(): FormTheme {
+	return {
+		focusedLabel: (text: string) => theme.bold(theme.fg("accent", text)),
+		label: (text: string) => theme.fg("dim", text),
+		value: (text: string) => theme.fg("toolTitle", text),
+		placeholder: (text: string) => theme.fg("dim", text),
+		control: (text: string) => theme.fg("muted", text),
+		active: (text: string) => theme.bold(theme.fg("accent", text)),
+		button: (text: string) => theme.fg("toolTitle", text),
+		primaryButton: (text: string) => theme.bold(theme.fg("accent", text)),
+		disabledButton: (text: string) => theme.fg("dim", text),
+		muted: (text: string) => theme.fg("muted", text),
 	};
 }
 

@@ -3,11 +3,11 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { type OAuthCredential, type UsageProvider, withAuth } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import * as oauth from "@veyyon/ai/oauth";
 import type { OAuthCredentials, OAuthProviderId } from "@veyyon/ai/oauth/types";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { createApiKeyResolver } from "../src/config/api-key-resolver";
 

@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { ConfigFile } from "@veyyon/coding-agent/config/config-file";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { modelsConfigSchemas } from "@veyyon/coding-agent/config/models-config-schema";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 describe("ModelRegistry.create() factory (F6)", () => {

@@ -37,6 +37,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Agent, type AgentMessage } from "@veyyon/agent-core";
 import type { ImageContent } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { createMockModel, type MockModel, type MockResponse } from "@veyyon/ai/providers/mock";
 import { KEYBINDINGS } from "@veyyon/coding-agent/config/keybinding-defs";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -62,7 +63,6 @@ import { USER_INTERRUPT_LABEL } from "@veyyon/coding-agent/session/messages";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import { canonicalizeImageContent } from "@veyyon/coding-agent/utils/image-resize";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides, setAgentDir } from "@veyyon/utils/dirs";
@@ -430,11 +430,14 @@ describe("early first-frame actions are retained and executed", () => {
 
 		const { session: sess } = createControlledSession();
 		const mode = createMode(sess);
-		const showSettingsSpy = vi.spyOn(mode, "showSettingsSelector");
+		let settingsOpened = false;
+		mode.showSettingsSelector = () => {
+			settingsOpened = true;
+		};
 
 		await mode.init();
 
-		expect(showSettingsSpy).toHaveBeenCalledTimes(1);
+		expect(settingsOpened).toBe(true);
 		expect(mode.editor.getText()).toBe("draft after early settings");
 		expect(mode.editor.hasEarlySubmissions()).toBe(false);
 	});
@@ -663,10 +666,13 @@ describe("early first-frame actions are retained and executed", () => {
 
 		const { session: sess2 } = createControlledSession();
 		const mode2 = createMode(sess2);
-		const showSettingsSpy = vi.spyOn(mode2, "showSettingsSelector");
+		let settingsOpened = false;
+		mode2.showSettingsSelector = () => {
+			settingsOpened = true;
+		};
 		await mode2.init();
 
-		expect(showSettingsSpy).toHaveBeenCalledTimes(1);
+		expect(settingsOpened).toBe(true);
 		expect(mode2.editor.getText()).toBe("");
 		expect(mode2.editor.hasEarlySubmissions()).toBe(false);
 	});

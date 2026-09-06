@@ -197,11 +197,19 @@ describe("the registry-lookup pattern", () => {
 		// restricted to SCREAMING_CASE passed while twenty-one camelCase row tables went unmatched.
 		const anyTable = /\b(?:[A-Za-z_][A-Za-z_]*_)?PROMPTS\[\s*"|\b\w*Prompts\[\s*"/g;
 		const inUse = new Set<string>();
+		const files: string[] = [];
 		for await (const relative of new Bun.Glob("packages/**/*.ts").scan({ cwd: REPO_ROOT, onlyFiles: true })) {
 			if (relative.includes("node_modules") || relative.includes("repo-cache")) continue;
-			const text = await Bun.file(path.join(REPO_ROOT, relative)).text();
-			for (const match of text.matchAll(anyTable)) inUse.add(match[0].slice(0, match[0].indexOf("[")));
+			files.push(relative);
 		}
+		await Promise.all(
+			files.map(async relative => {
+				const text = await Bun.file(path.join(REPO_ROOT, relative)).text();
+				if (text.includes("PROMPTS") || text.includes("Prompts")) {
+					for (const match of text.matchAll(anyTable)) inUse.add(match[0].slice(0, match[0].indexOf("[")));
+				}
+			}),
+		);
 
 		expect(inUse.size).toBeGreaterThan(3);
 		for (const table of inUse) {

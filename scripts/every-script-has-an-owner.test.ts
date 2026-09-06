@@ -93,19 +93,23 @@ async function callerText(): Promise<string> {
 	return parts.join("\n");
 }
 
-/** Text of every script and script suite, for "another script runs this one". */
-async function peerText(exclude: string): Promise<string> {
-	const parts: string[] = [];
-	for (const sub of SCANNED_SUBDIRS) {
-		const dir = sub === "" ? SCRIPTS_DIR : path.join(SCRIPTS_DIR, sub);
-		for (const entry of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
-			if (!entry.isFile()) continue;
-			const rel = path.relative(REPO_ROOT, path.join(dir, entry.name));
-			if (rel === exclude) continue;
-			parts.push(await readFile(path.join(dir, entry.name), "utf8").catch(() => ""));
-		}
+/** Text of every script and script suite, cached once. */
+const PEER_TEXTS = new Map<string, string>();
+for (const sub of SCANNED_SUBDIRS) {
+	const dir = sub === "" ? SCRIPTS_DIR : path.join(SCRIPTS_DIR, sub);
+	for (const entry of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+		if (!entry.isFile()) continue;
+		const rel = path.relative(REPO_ROOT, path.join(dir, entry.name));
+		PEER_TEXTS.set(rel, await readFile(path.join(dir, entry.name), "utf8").catch(() => ""));
 	}
-	return parts.join("\n");
+}
+
+function hasPeerReference(file: string, base: string): boolean {
+	for (const [peerFile, text] of PEER_TEXTS) {
+		if (peerFile === file) continue;
+		if (text.includes(file) || text.includes(base)) return true;
+	}
+	return false;
 }
 
 const SCRIPTS = await scriptFiles();
@@ -172,8 +176,7 @@ async function hasAutomatedCaller(file: string): Promise<boolean> {
 	// Matched by path AND by bare filename: workflows spell the full path, while a
 	// sibling script usually spells only the name it sits next to.
 	if (CALLERS.includes(file) || CALLERS.includes(base)) return true;
-	const peers = await peerText(file);
-	if (peers.includes(file) || peers.includes(base)) return true;
+	if (hasPeerReference(file, base)) return true;
 
 	// The extensionless stem, as an import specifier ends in it. A file naming
 	// itself is not a caller.

@@ -1,12 +1,10 @@
 import { formatCount } from "@veyyon/utils";
-// The owners in `@veyyon/utils`, not the re-exports in `tools/render-utils`, which is the terminal's
-// render helper module: a tool that describes a view has no reason to reach into a host's helpers.
 import { truncateToWidth } from "@veyyon/utils/width";
 import { replaceTabs } from "@veyyon/utils/wrap";
 import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
 import * as git from "../../utils/git";
-import { openAutoresearchStorageIfExists } from "../storage";
+import { openAutoresearchStorageIfExists, type RunRow } from "../storage";
 import {
 	type Candidate,
 	certificationDegraded,
@@ -82,7 +80,7 @@ export function createCertifyArmsTool(
 				modifiedPaths: arm.modified_paths,
 			}));
 			const { survivors, rejected } = triage(candidates, session.offLimits);
-			const certifier = certifierFor(survivors.length);
+			const certifier = certifierFor(survivors.length, session.certify);
 			const lines: string[] = [];
 
 			lines.push(
@@ -91,7 +89,7 @@ export function createCertifyArmsTool(
 			for (const entry of rejected) {
 				lines.push(`- rejected ${entry.arm}: ${entry.reason} (${entry.detail})`);
 			}
-			if (certificationDegraded(session.breadth, survivors.length)) {
+			if (certificationDegraded(session.breadth, survivors.length, session.certify)) {
 				lines.push(
 					`Certification degraded: breadth is ${session.breadth} but only ${survivors.length} arms survived, so review falls back to ${certifier}.`,
 				);
@@ -117,7 +115,7 @@ export function createCertifyArmsTool(
 			}
 
 			if (params.verdicts === undefined) {
-				const pairs = certificationPairs(survivors);
+				const pairs = certificationPairs(survivors, session.certify);
 				if (pairs.length === 0) {
 					lines.push("Nothing to certify.");
 				} else {
@@ -157,20 +155,22 @@ export function createCertifyArmsTool(
 				storage.markRunCertified(run.id, verdict.certifiedBy, verdict.flagged, verdict.reason);
 			}
 
-			const baseline = bestBaseline(measured, session.direction);
-			const winner = baseline === null ? null : selectWinner(measured, baseline.worst, session.direction, verdicts);
+			const bar = certificationBar(runs, measured, session.direction);
+			const winner = bar === null ? null : selectWinner(measured, bar.metric, session.direction, verdicts);
 			for (const verdict of verdicts.values()) {
 				if (verdict.flagged)
 					lines.push(`- flagged ${verdict.arm} by ${verdict.certifiedBy}: ${verdict.reason ?? "no reason given"}`);
 			}
+			const barLabel = bar === null ? "baseline" : `${bar.source} of ${bar.metric}`;
 			lines.push(
 				winner === null
-					? "No arm survived certification with an improvement. Log this iteration as a null round and start the next one."
-					: `Winner: ${winner.arm} at ${winner.metric}. Re-apply its diff and log it with log_experiment, passing arm and certified_by.`,
+					? `No arm beat the ${barLabel}. Log this iteration as a null round and start the next one.`
+					: `Winner: ${winner.arm} at ${winner.metric}, against the ${barLabel}. Re-apply its diff and log it with log_experiment, passing arm and certified_by.`,
 			);
 
 			const runtime = options.getRuntime(ctx);
-			options.dashboard.updateWidget(ctx, runtime);
+			options.dashboard.update(ctx, runtime);
+			options.dashboard.requestRender();
 
 			return {
 				content: [{ type: "text", text: lines.join("\n") }],
@@ -183,24 +183,20 @@ export function createCertifyArmsTool(
 			};
 		},
 		view: {
-			renderCall: args => ({
-				kind: "textBlock",
-				spans: [
-					{ text: "certify_arms", tone: "title", bold: true },
-					{ text: " " },
-					{
-						text: truncateToWidth(
-							replaceTabs(
-								args.verdicts === undefined
-									? `triage ${args.arms.length} arms`
-									: `verdicts for ${args.verdicts.length} arms`,
-							),
-							100,
-						),
-						tone: "muted",
-					},
-				],
-			}),
+			renderCall: args => {
+				const summary =
+					args.verdicts === undefined
+						? `triage ${args.arms.length} arms`
+						: `verdicts for ${args.verdicts.length} arms`;
+				return {
+					kind: "textBlock",
+					spans: [
+						{ text: "certify_arms", tone: "title", bold: true },
+						{ text: " " },
+						{ text: truncateToWidth(replaceTabs(summary), 100), tone: "muted" },
+					],
+				};
+			},
 			renderResult: result => ({
 				kind: "textBlock",
 				spans: [
@@ -212,15 +208,28 @@ export function createCertifyArmsTool(
 }
 
 /**
- * The bar an arm has to clear. Without a recorded baseline for the iteration the
- * worst measured arm stands in, so a winner is still the best of what was tried
- * rather than whichever arm happened to be measured first.
+ * The bar an arm has to clear.
+ *
+ * The segment's own baseline — its first kept, unflagged logged run, the same
+ * rule `findBaselineResult` applies to session state — because the question a
+ * breadth iteration answers is whether ANY arm improved on the code that was
+ * already there. Ranking the arms against their own worst sibling answers a
+ * different question and always has an answer: a round where every arm
+ * regressed still elected a winner, which was then logged as an improvement and
+ * re-applied. The sibling floor stands in only when the segment has no logged
+ * baseline yet, where the alternative is electing no winner at all.
  */
-function bestBaseline(
-	measured: { arm: string; metric: number }[],
+function certificationBar(
+	runs: readonly RunRow[],
+	measured: readonly { arm: string; metric: number }[],
 	direction: "lower" | "higher",
-): { worst: number } | null {
+): { metric: number; source: "baseline" | "worst arm" } | null {
+	const baseline = runs.find(run => run.status === "keep" && !run.flagged && run.metric !== null);
+	if (baseline?.metric != null) return { metric: baseline.metric, source: "baseline" };
 	if (measured.length === 0) return null;
 	const metrics = measured.map(entry => entry.metric);
-	return { worst: direction === "higher" ? Math.min(...metrics) : Math.max(...metrics) };
+	return {
+		metric: direction === "higher" ? Math.min(...metrics) : Math.max(...metrics),
+		source: "worst arm",
+	};
 }

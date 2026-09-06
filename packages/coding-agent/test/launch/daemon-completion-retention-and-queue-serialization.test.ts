@@ -29,6 +29,7 @@
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { enterIsolatedConfigRoot, type IsolatedConfigRoot } from "../../../utils/test/helpers/isolated-config-root";
@@ -42,7 +43,7 @@ import {
 import { DAEMON_TERMINATION_OWNERS, type DaemonCompletionRecord, type DaemonSpec } from "../../src/launch/protocol";
 
 let isolatedConfigRoot: IsolatedConfigRoot | undefined;
-const TEST_PARENT = path.resolve(import.meta.dirname, "../../../../.internal/launch-completions-bounds");
+const TEST_PARENT = path.join(os.tmpdir(), "veyyon-launch-completions-bounds");
 let testRoot = "";
 
 beforeAll(async () => {

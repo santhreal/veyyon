@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { AssistantMessage } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
@@ -10,7 +11,6 @@ import type { Rule } from "@veyyon/coding-agent/discovery/capability/rule";
 import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets";
 import { loadOrCreateVaultKey } from "@veyyon/coding-agent/secrets/vault-crypto";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { getSessionsDir, removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 

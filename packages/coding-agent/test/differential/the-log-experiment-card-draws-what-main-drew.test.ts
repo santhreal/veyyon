@@ -48,6 +48,7 @@ describe("log_experiment tool differential", () => {
 			runNumber: 1,
 			commit: "abc1234",
 			metric: 14.2,
+			measuredPrimary: 14.2,
 			metrics: { p99_ms: 18.0 },
 			status: "keep",
 			description: "unroll hot loop in walker",
@@ -59,6 +60,9 @@ describe("log_experiment tool differential", () => {
 			justification: "necessary helper",
 			flagged: false,
 			flaggedReason: null,
+			arm: null,
+			certifiedBy: null,
+			model: null,
 		};
 		const state: ExperimentState = {
 			sessionId: 1,

@@ -20,6 +20,7 @@ import {
 } from "@veyyon/agent-core/tool-batch-ledger";
 import type {
 	AssistantMessage,
+	DemotedReasoningSource,
 	ImageContent,
 	Message,
 	MessageAttribution,
@@ -31,6 +32,7 @@ import * as AIError from "@veyyon/ai/error";
 import { isBlobRef, isTextBlobRef } from "@veyyon/kernel/session/blob-store";
 import { type CustomMessageContent, isCustomMessageContent } from "@veyyon/kernel/session/custom-message-payload";
 import { agentMessageKind } from "@veyyon/kernel/session/message-kinds";
+import { isRecord } from "@veyyon/utils/type-guards";
 // Owner, not the `@veyyon/utils` barrel: 1 module against 74.
 import { ToolAbortError } from "../tools/core/tool-errors";
 import { imageDisplayStateForCall, imageVisibilityNotice, isImageVisibilityNotice } from "./image-visibility";
@@ -139,6 +141,51 @@ export function demoteInterruptedThinking(
 function followedByInterruptedThinking(messages: AgentMessage[], index: number): boolean {
 	const next = messages[index + 1];
 	return next !== undefined && next.role === "custom" && next.customType === INTERRUPTED_THINKING_MESSAGE_TYPE;
+}
+
+/**
+ * The origin of the reasoning a continuity message carries, read from its
+ * persisted details. A message that lost them is still demoted reasoning, so
+ * it is still tagged; the provider layer then applies only the endpoint-level
+ * drop.
+ */
+function interruptedThinkingSource(details: unknown): DemotedReasoningSource {
+	if (!isRecord(details)) return {};
+	return {
+		...(typeof details.provider === "string" ? { provider: details.provider } : {}),
+		...(typeof details.model === "string" ? { model: details.model } : {}),
+	};
+}
+
+/**
+ * LLM view of the hidden continuity message: the developer message every
+ * custom message becomes, tagged with `demotedReasoningSource` so
+ * `transformMessages` can subject the prose to the unsigned-thinking replay
+ * policy of the request's target. Without the tag the run reaches a signing
+ * Anthropic endpoint as plain text, which the `reasoning_extraction`
+ * classifier refuses, and the refusal retry cannot remove it.
+ */
+function convertInterruptedThinkingToLlm(message: CustomMessage): Message[] {
+	const cached = codingAgentMessageCache.get(message);
+	if (
+		cached?.role === "interruptedThinking" &&
+		cached.content === message.content &&
+		cached.details === message.details
+	) {
+		return cached.converted;
+	}
+	const base = convertMessageToLlm(message);
+	const converted: Message[] =
+		base?.role === "developer"
+			? [{ ...base, demotedReasoningSource: interruptedThinkingSource(message.details) }]
+			: [];
+	codingAgentMessageCache.set(message, {
+		role: "interruptedThinking",
+		converted,
+		content: message.content,
+		details: message.details,
+	});
+	return converted;
 }
 
 /**
@@ -750,7 +797,14 @@ interface CachedSkillPrompt {
 	content: unknown;
 }
 
-type CachedCodingAgentMessage = CachedFileMention | CachedSkillPrompt;
+interface CachedInterruptedThinking {
+	role: "interruptedThinking";
+	converted: Message[];
+	content: unknown;
+	details: unknown;
+}
+
+type CachedCodingAgentMessage = CachedFileMention | CachedSkillPrompt | CachedInterruptedThinking;
 
 const codingAgentMessageCache = new WeakMap<AgentMessage, CachedCodingAgentMessage>();
 
@@ -827,6 +881,9 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 						content: m.content,
 					});
 					return converted;
+				}
+				if (m.customType === INTERRUPTED_THINKING_MESSAGE_TYPE) {
+					return convertInterruptedThinkingToLlm(m);
 				}
 				const split = convertImageBearingCustomMessage(m);
 				if (split) return split;

@@ -20,7 +20,7 @@ import * as path from "node:path";
 // this setter and importing it there cost 285 modules for one function; ~530 test files import
 // `Settings`, so this file's graph is the most leveraged one in the package.
 import { configureProviderMaxInFlightRequests } from "@veyyon/ai/provider-inflight-limits";
-import { clearSettingSignals, SettingSignal } from "@veyyon/kernel/settings/signal";
+import { clearSettingSignals } from "@veyyon/kernel/settings/signal";
 import {
 	deepMergeSettings,
 	deleteByPath,
@@ -79,6 +79,15 @@ import {
 	type SettingPath,
 	type SettingValue,
 } from "./settings-schema";
+import {
+	appendOnlyModeSignal,
+	autoThemeMappingSignal,
+	colorBlindModeSignal,
+	hindsightScopeSignal,
+	modelRolesSignal,
+	statusLineSessionAccentSignal,
+	symbolPresetSignal,
+} from "./settings-signals";
 
 export { settingSignalListenerCounts } from "@veyyon/kernel/settings/signal";
 // The store's vocabulary — the raw tree, the options, the provenance, the one-shot migration stamp
@@ -1443,91 +1452,6 @@ const SETTING_HOOKS: Partial<Record<SettingPath, SettingHook<any>>> = {
 		}
 	},
 };
-/**
- * Fires when `theme.dark` or `theme.light` changes at runtime, with the slot that
- * changed and the theme name now in it.
- *
- * WHY THESE FOUR THEME SETTINGS GO THROUGH SIGNALS. This file used to call
- * `setAutoThemeMapping`, `setSymbolPreset` and `setColorBlindMode` directly, which
- * meant settings imported `theme/theme`, which imports `./shimmer`, which
- * imports this file again. That cycle is one strongly connected component, so
- * every module in it had to be instantiated as a unit: importing `config/settings`
- * anywhere cost 51 MB, and since the test runner gives each test file a fresh
- * realm, a full run rebuilt the component about 1,800 times and ran out of memory.
- * The edge was also backwards. Settings is domain configuration and the theme
- * engine is the terminal UI, and domain code does not import UI.
- *
- * NOTHING IS DROPPED WHEN NOBODY IS LISTENING. A hook here only applies a value
- * LIVE to a loaded theme engine; the value itself is written and persisted by
- * `Settings.set` regardless. If the theme module was never imported there is no
- * engine to update, and it reads the committed settings when it does load.
- */
-const autoThemeMappingSignal = new SettingSignal<[slot: "dark" | "light", themeName: string]>("theme mapping");
-
-/**
- * Subscribe to `theme.dark` / `theme.light` changes. Returns an unsubscribe
- * function. `theme/theme` subscribes at its own import.
- */
-export const onAutoThemeMappingChanged = (
-	cb: (slot: "dark" | "light", themeName: string) => void,
-	options?: { readonly permanent?: boolean },
-) => autoThemeMappingSignal.on(cb, options);
-
-/** Fires when `symbolPreset` changes at runtime. */
-const symbolPresetSignal = new SettingSignal<[preset: "unicode" | "nerd" | "ascii"]>("symbolPreset");
-
-/** Subscribe to `symbolPreset` changes. Returns an unsubscribe function. */
-export const onSymbolPresetChanged = (
-	cb: (preset: "unicode" | "nerd" | "ascii") => void,
-	options?: { readonly permanent?: boolean },
-) => symbolPresetSignal.on(cb, options);
-
-/** Fires when `colorBlindMode` changes at runtime. */
-const colorBlindModeSignal = new SettingSignal<[enabled: boolean]>("colorBlindMode");
-
-/** Subscribe to `colorBlindMode` changes. Returns an unsubscribe function. */
-export const onColorBlindModeChanged = (cb: (enabled: boolean) => void, options?: { readonly permanent?: boolean }) =>
-	colorBlindModeSignal.on(cb, options);
-
-/** Fires when `provider.appendOnlyContext` changes at runtime. */
-const appendOnlyModeSignal = new SettingSignal<[value: string]>("provider.appendOnlyContext");
-
-/**
- * Subscribe to append-only mode setting changes.
- * Returns an unsubscribe function. Multiple sessions (main + subagents)
- * can register independently without overwriting each other.
- */
-export const onAppendOnlyModeChanged = (cb: (value: string) => void) => appendOnlyModeSignal.on(cb);
-
-/** Fires when any model role changes at runtime. */
-const modelRolesSignal = new SettingSignal("modelRoles");
-
-/** Subscribe to model role changes. Returns an unsubscribe function. */
-export const onModelRolesChanged: (cb: () => void) => () => void = modelRolesSignal.on.bind(modelRolesSignal);
-
-/** Fires when `statusLine.sessionAccent` changes at runtime. */
-const statusLineSessionAccentSignal = new SettingSignal("statusLine.sessionAccent");
-
-/**
- * Subscribe to session-accent setting changes.
- * Returns an unsubscribe function. Callers should re-read settings in the callback.
- */
-export const onStatusLineSessionAccentChanged = (cb: () => void) => statusLineSessionAccentSignal.on(cb);
-
-/** Fires when any `hindsight.bankId` / `bankIdPrefix` / `scoping` value changes. */
-const hindsightScopeSignal = new SettingSignal("hindsight scope");
-
-/**
- * Subscribe to changes in the Hindsight bank-scoping settings. Lets the
- * Hindsight backend rebuild the active `HindsightSessionState` when the
- * operator switches `hindsight.bankId`, `hindsight.bankIdPrefix`, or
- * `hindsight.scoping` mid-session so subsequent retain/recall calls land in
- * the new bank instead of the one selected at session start.
- *
- * Returns an unsubscribe function. The callback receives no arguments — the
- * caller is expected to re-read the relevant settings via `Settings.get`.
- */
-export const onHindsightScopeChanged = (cb: () => void) => hindsightScopeSignal.on(cb);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Global Singleton

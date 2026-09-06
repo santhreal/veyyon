@@ -401,13 +401,6 @@ describe("the session layer, the next two entries in the same ranking", () => {
 		expect(imports).not.toContain("@veyyon/ai");
 	});
 
-	it("forwards the credential names from their own module, not the barrel", () => {
-		const imports = runtimeImportsOf(path.join(KERNEL_SRC, "session/auth-storage.ts"));
-
-		expect(imports).toContain("@veyyon/ai/auth-storage");
-		expect(imports).not.toContain("@veyyon/ai");
-	});
-
 	/**
 	 * FLOOR for this group, and a control. The session manager legitimately reaches deep into the
 	 * package, so a walk that produced a small number here would mean the resolution table stopped

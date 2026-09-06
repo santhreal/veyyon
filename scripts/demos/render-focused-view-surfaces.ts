@@ -35,7 +35,7 @@
 
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";

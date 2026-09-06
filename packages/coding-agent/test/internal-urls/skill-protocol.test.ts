@@ -118,6 +118,42 @@ describe("SkillProtocolHandler resolve", () => {
 		});
 	});
 
+	/**
+	 * The loader has parsed the declared entry file, including a SKILL.md symlink
+	 * into a source tree. Both entry URL forms remain readable without allowing
+	 * other child symlinks to resolve outside the installed directory.
+	 */
+	it("serves a linked entry file without allowing other external children", async () => {
+		const outside = await fs.mkdtemp(path.join(os.tmpdir(), "skill-protocol-source-"));
+		const installed = await fs.mkdtemp(path.join(os.tmpdir(), "skill-protocol-installed-"));
+		try {
+			await fs.writeFile(path.join(outside, "SKILL.md"), "# Linked skill\n");
+			await fs.writeFile(path.join(outside, "reference.md"), "outside");
+			await fs.symlink(path.join(outside, "SKILL.md"), path.join(installed, "SKILL.md"));
+			await fs.symlink(path.join(outside, "reference.md"), path.join(installed, "reference.md"));
+			const skill: Skill = {
+				name: "linked",
+				description: "linked skill",
+				filePath: path.join(installed, "SKILL.md"),
+				baseDir: installed,
+				source: "test",
+			};
+
+			const entryRealPath = await fs.realpath(path.join(outside, "SKILL.md"));
+			for (const href of ["skill://linked", "skill://linked/SKILL.md"]) {
+				const resource = await handler.resolve(parseInternalUrl(href), { skills: [skill] });
+				expect(resource.content).toBe("# Linked skill\n");
+				expect(resource.sourcePath).toBe(entryRealPath);
+			}
+			await expect(
+				handler.resolve(parseInternalUrl("skill://linked/reference.md"), { skills: [skill] }),
+			).rejects.toThrow(/skill:\/\/ URL escapes skill root/);
+		} finally {
+			await removeWithRetries(installed);
+			await removeWithRetries(outside);
+		}
+	});
+
 	it("never serves content above the skill baseDir for dot-segment URLs", async () => {
 		// WHATWG URL parsing collapses ../ (even percent-encoded) before resolve
 		// runs, so the escape lands inside baseDir and simply does not exist.

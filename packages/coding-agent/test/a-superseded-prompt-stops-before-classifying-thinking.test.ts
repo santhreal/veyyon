@@ -21,6 +21,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { createMockModel } from "@veyyon/ai/providers/mock";
 import { Effort } from "@veyyon/catalog/effort";
 import { getBundledModel } from "@veyyon/catalog/models";
@@ -30,7 +31,6 @@ import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensi
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 import * as classifier from "@veyyon/coding-agent/thinking/auto-classifier";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 

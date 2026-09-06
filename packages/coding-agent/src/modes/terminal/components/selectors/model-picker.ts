@@ -112,7 +112,7 @@ export class ModelPickerComponent implements Component {
 			callbacks.onPick(item.model, item.selector);
 		};
 		this.#browser.onCancel = () => callbacks.onCancel();
-		this.#browser.onQueryChange = () => this.#syncFromRegistryState();
+		this.#browser.onQueryChange = () => this.#tui.requestRender();
 		// The browser paints inside this card's frame and owns no repaint, so its band fades on the
 		// card's clock or not at all. Same ambient gate as the open unfold.
 		this.#browser.setHoverMotion({

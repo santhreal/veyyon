@@ -24,6 +24,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
@@ -35,7 +36,6 @@ import {
 	setImageDisplayProbe,
 } from "@veyyon/coding-agent/session/image-visibility";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { ImageProtocol, imageFallback, setTerminalImageProtocol, TERMINAL } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";

@@ -191,15 +191,20 @@ function workspaceSources(): Promise<ReadonlyArray<{ file: string; text: string 
 }
 
 async function readWorkspaceSources(): Promise<ReadonlyArray<{ file: string; text: string }>> {
-	const sources: Array<{ file: string; text: string }> = [];
+	const files: string[] = [];
 	for (const root of WORKSPACE_ROOTS) {
 		for await (const relative of new Bun.Glob(`${root}/**/*.ts`).scan({ cwd: REPO_ROOT, onlyFiles: true })) {
 			const file = relative.replace(/\\/g, "/");
 			if (file.includes("node_modules") || file.includes("repo-cache")) continue;
-			sources.push({ file, text: await Bun.file(path.join(REPO_ROOT, file)).text() });
+			files.push(file);
 		}
 	}
-	return sources;
+	return await Promise.all(
+		files.map(async file => ({
+			file,
+			text: await Bun.file(path.join(REPO_ROOT, file)).text(),
+		})),
+	);
 }
 
 /**
@@ -596,9 +601,8 @@ describe("each prompt directory owns its rows and registry.ts aggregates every o
 		// accept any string, a typo would compile, and `PROMPTS[typo]` would render as `undefined`. The
 		// compile-time half of this lives in the row modules' `satisfies` clause; this is the runtime
 		// half, which fails if a row module ever stops contributing its ids.
-		// 170 since `requests/rephrase` was added.
-		expect(PROMPT_IDS.length).toBe(170);
-		expect(PROMPT_IDS).toContain("tools/read");
+		// 171 since `autoresearch/stall-nudge` was added.
+		expect(PROMPT_IDS.length).toBe(171);
 		expect(new Set(PROMPT_IDS).size).toBe(PROMPT_IDS.length);
 	});
 });

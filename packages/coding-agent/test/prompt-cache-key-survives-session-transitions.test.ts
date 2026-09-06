@@ -28,12 +28,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import * as compactionModule from "@veyyon/agent-core/compaction";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { createMockModel, type MockModel, registerMockApi } from "@veyyon/ai/providers/mock";
 import { getOpenAIPromptCacheKey } from "@veyyon/ai/providers/openai-shared";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 

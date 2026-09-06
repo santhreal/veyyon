@@ -7,7 +7,7 @@
  *
  *   1. A SHORT OR EMPTY list. A picker showing five versions when fifty are
  *      published looks like a working picker. So the listing must page, must
- *      sort newest-first by semver rather than by the order GitHub returned, and
+ *      sort newest-first by publication date, and
  *      must throw rather than return `[]`.
  *   2. A version that is not installable being offered. Drafts and prereleases
  *      are excluded by `releases/latest`, so offering them here would let you
@@ -53,15 +53,26 @@ function serveReleasePages(pages: FakeRelease[][]): { urls: string[] } {
 }
 
 describe("getAllReleases", () => {
-	it("returns every published version, newest first by semver", async () => {
-		// GitHub returns creation order, which is NOT semver order once a patch is
-		// cut on an older line. Sorting by what arrived would put 1.9.0 above 1.10.0
-		// and offer the wrong "previous version".
+	it("returns every published version, newest first by publication date", async () => {
+		serveReleasePages([
+			[
+				{ tag_name: "v1.9.0", published_at: "2026-01-01T00:00:00Z" },
+				{ tag_name: "v1.10.0", published_at: "2026-02-01T00:00:00Z" },
+				{ tag_name: "v0.0.1", published_at: "2026-03-01T00:00:00Z" },
+			],
+		]);
+
+		const releases = await getAllReleases();
+
+		expect(releases.map(r => r.version)).toEqual(["0.0.1", "1.10.0", "1.9.0"]);
+	});
+
+	it("preserves API order for undated releases", async () => {
 		serveReleasePages([[{ tag_name: "v1.9.0" }, { tag_name: "v1.10.0" }, { tag_name: "v1.2.3" }]]);
 
 		const releases = await getAllReleases();
 
-		expect(releases.map(r => r.version)).toEqual(["1.10.0", "1.9.0", "1.2.3"]);
+		expect(releases.map(r => r.version)).toEqual(["1.9.0", "1.10.0", "1.2.3"]);
 	});
 
 	it("carries the publish date and the v-prefixed tag", async () => {

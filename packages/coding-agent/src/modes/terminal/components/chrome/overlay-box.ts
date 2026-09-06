@@ -31,6 +31,14 @@ function paint(theme: Theme, s: string): string {
 	return theme.fg("borderAccent", s);
 }
 
+/**
+ * Columns a title has inside {@link topBorder}: the rule less its corners, the
+ * one-column lead and the spaces around the title.
+ */
+export function topBorderTitleWidth(width: number): number {
+	return Math.max(0, width - 6);
+}
+
 /** Top border with an optional accent-colored title inset into the rule. */
 export function topBorder(width: number, title: string, theme: Theme): string {
 	const box = theme.boxSharp;
@@ -76,6 +84,13 @@ function splitDividerCol(sidebarWidth: number): number {
 /** Body content width for a two-column overlay of total `width`. */
 export function splitBodyWidth(width: number, sidebarWidth: number): number {
 	return Math.max(0, width - sidebarWidth - 7);
+}
+/**
+ * Columns a title has inside {@link topBorderSplit}: the sidebar segment of
+ * the rule less the corner, the one-column lead and the spaces around it.
+ */
+export function topBorderSplitTitleWidth(sidebarWidth: number): number {
+	return Math.max(0, splitDividerCol(sidebarWidth) - 4);
 }
 
 /** Top border carrying the title, split by a `┬` over the column divider. */

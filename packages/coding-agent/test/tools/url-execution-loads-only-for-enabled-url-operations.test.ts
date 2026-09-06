@@ -10,11 +10,11 @@ import { expect, it } from "bun:test";
 import { execFile } from "node:child_process";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { searchSchema, TYPE_FIELDS } from "../../src/tools/search/search";
+import { searchSchema } from "../../src/tools/search/search";
 import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
 
 const execFileAsync = promisify(execFile);
-const urlSearchTypes = searchSchema.shape.type.options.filter(type => TYPE_FIELDS[type].has("path"));
+const urlSearchTypes = searchSchema.shape.type.options.filter(type => type !== "files");
 const fixture = path.resolve(import.meta.dirname, "../fixtures/url-reader-runtime.ts");
 
 for (const firstAction of ["read", ...urlSearchTypes]) {

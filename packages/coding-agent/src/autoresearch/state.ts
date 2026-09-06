@@ -1,5 +1,5 @@
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
-import { inferMetricUnitFromName, isBetter } from "./helpers";
+import { formatNum, inferMetricUnitFromName, isBetter } from "./helpers";
 import type { RunRow, SessionRow } from "./storage";
 import type {
 	AutoresearchControlEntryData,
@@ -40,9 +40,11 @@ export function createExperimentState(): ExperimentState {
 export function createSessionRuntime(): AutoresearchRuntime {
 	return {
 		autoresearchMode: false,
+		pausedOnBranch: null,
+		interrupted: false,
 		autoResumeArmed: false,
-		dashboardExpanded: false,
 		lastAutoResumePendingRunNumber: null,
+		dispatchedTurnId: null,
 		lastRunDuration: null,
 		lastRunAsi: null,
 		lastRunArtifactDir: null,
@@ -52,7 +54,24 @@ export function createSessionRuntime(): AutoresearchRuntime {
 		state: createExperimentState(),
 		goal: null,
 		pendingSwarm: null,
+		activeArm: null,
+		loopToolRanThisTurn: false,
+		stallNudges: 0,
 	};
+}
+
+/**
+ * The breadth this session runs at, including the one the console just
+ * chose.
+ *
+ * `state.breadth` is read from the stored session, which does not exist until
+ * `init_experiment` creates it — a fresh autoswarm spends the whole first turn
+ * with a state that reports breadth 1 while `pendingSwarm` holds the configured
+ * values. Anything that selects swarm or serial before that first tool call has
+ * to read both.
+ */
+export function effectiveBreadth(runtime: AutoresearchRuntime): number {
+	return Math.max(runtime.state.breadth, runtime.pendingSwarm?.breadth ?? 1);
 }
 
 export function cloneExperimentState(state: ExperimentState): ExperimentState {
@@ -60,9 +79,9 @@ export function cloneExperimentState(state: ExperimentState): ExperimentState {
 		...state,
 		results: state.results.map(cloneResult),
 		secondaryMetrics: state.secondaryMetrics.map(metric => ({ ...metric })),
-		scopePaths: state.scopePaths.slice(),
-		offLimits: state.offLimits.slice(),
-		constraints: state.constraints.slice(),
+		scopePaths: [...state.scopePaths],
+		offLimits: [...state.offLimits],
+		constraints: [...state.constraints],
 	};
 }
 
@@ -71,8 +90,8 @@ function cloneResult(result: ExperimentResult): ExperimentResult {
 		...result,
 		metrics: { ...result.metrics },
 		asi: result.asi ? structuredClone(result.asi) : undefined,
-		modifiedPaths: result.modifiedPaths.slice(),
-		scopeDeviations: result.scopeDeviations.slice(),
+		modifiedPaths: [...result.modifiedPaths],
+		scopeDeviations: [...result.scopeDeviations],
 	};
 }
 
@@ -89,19 +108,65 @@ export function findBaselineMetric(results: ExperimentResult[], segment: number)
 	return baseline ? baseline.metric : null;
 }
 
+/**
+ * The metric this run measured, or null when it holds only the placeholder.
+ *
+ * The log call requires a number on every status, so a crash that measured
+ * nothing is logged with zero; what the harness itself printed, kept beside it,
+ * is what tells that zero from a measurement. A sign test cannot: a session
+ * that minimises `failures` reaches zero as its goal, and a signed delta is
+ * negative on its best run. Both were invisible to Best, to the keep gate, to
+ * confidence and to the trend row while the math read `metric > 0`.
+ *
+ * A crash reads from the harness alone, since its logged number is the
+ * placeholder by contract. Every other status logged the number on purpose, and
+ * that number is the measurement whatever its sign. Every surface that shows,
+ * ranks or compares a run's metric reads it through here.
+ */
+export function measuredMetric(result: ExperimentResult): number | null {
+	return result.status === "crash" ? result.measuredPrimary : result.metric;
+}
+
+/** The measurement as the screen and the prompt print it, or the word for none. */
+export function metricLabel(result: ExperimentResult, unit: string): string {
+	const measured = measuredMetric(result);
+	return measured === null ? "no metric" : formatNum(measured, unit);
+}
+
+/**
+ * The best run of a segment: kept, unflagged, and holding a measurement.
+ *
+ * Four copies of this scan existed — here, in the status row, in the run screen
+ * and in the prompt builder — and they disagreed about a kept run logged with
+ * the placeholder zero the log call requires of a run that measured nothing.
+ * Where lower is better that zero is the best value there is, so the ledger
+ * tagged one run `best` while the pane beside it named another. Every surface
+ * that shows a best, tags one, or counts runs since one calls this, so they
+ * cannot disagree.
+ */
+export function findBestKeptResult(
+	results: ExperimentResult[],
+	segment: number,
+	direction: MetricDirection,
+): ExperimentResult | null {
+	let best: ExperimentResult | null = null;
+	for (const result of currentResults(results, segment)) {
+		if (result.status !== "keep" || result.flagged) continue;
+		const metric = measuredMetric(result);
+		if (metric === null || (result.metric === 0 && result.measuredPrimary === null)) continue;
+		if (best === null || isBetter(metric, best.metric, direction)) {
+			best = result;
+		}
+	}
+	return best;
+}
+
 export function findBestKeptMetric(
 	results: ExperimentResult[],
 	segment: number,
 	direction: MetricDirection,
 ): number | null {
-	let best: number | null = null;
-	for (const result of currentResults(results, segment)) {
-		if (result.status !== "keep" || result.flagged) continue;
-		if (best === null || isBetter(result.metric, best, direction)) {
-			best = result.metric;
-		}
-	}
-	return best;
+	return findBestKeptResult(results, segment, direction)?.metric ?? null;
 }
 
 export function findBaselineRunNumber(results: ExperimentResult[], segment: number): number | null {
@@ -135,7 +200,7 @@ export function findBaselineSecondary(
 
 export function sortedMedian(values: number[]): number {
 	if (values.length === 0) return 0;
-	const sorted = values.slice().sort((left, right) => left - right);
+	const sorted = [...values].sort((left, right) => left - right);
 	const midpoint = Math.floor(sorted.length / 2);
 	if (sorted.length % 2 === 0) {
 		return (sorted[midpoint - 1] + sorted[midpoint]) / 2;
@@ -148,10 +213,13 @@ export function computeConfidence(
 	segment: number,
 	direction: MetricDirection,
 ): number | null {
-	const current = currentResults(results, segment).filter(result => !result.flagged && result.metric > 0);
+	const current = currentResults(results, segment)
+		.filter(result => !result.flagged)
+		.map(result => ({ result, metric: measuredMetric(result) }))
+		.filter((entry): entry is { result: ExperimentResult; metric: number } => entry.metric !== null);
 	if (current.length < 3) return null;
 
-	const values = current.map(result => result.metric);
+	const values = current.map(entry => entry.metric);
 	const median = sortedMedian(values);
 	const mad = sortedMedian(values.map(value => Math.abs(value - median)));
 	if (mad === 0) return null;
@@ -160,10 +228,11 @@ export function computeConfidence(
 	if (baseline === null) return null;
 
 	let bestKept: number | null = null;
-	for (const result of current) {
-		if (result.status !== "keep" || result.metric <= 0) continue;
-		if (bestKept === null || isBetter(result.metric, bestKept, direction)) {
-			bestKept = result.metric;
+	for (const { result, metric } of current) {
+		if (result.status !== "keep") continue;
+		if (result.metric === 0 && result.measuredPrimary === null) continue;
+		if (bestKept === null || isBetter(metric, bestKept, direction)) {
+			bestKept = metric;
 		}
 	}
 	if (bestKept === null || bestKept === baseline) return null;
@@ -178,9 +247,9 @@ export function buildExperimentState(session: SessionRow, loggedRuns: RunRow[]):
 	state.metricName = session.primaryMetric;
 	state.metricUnit = session.metricUnit;
 	state.bestDirection = session.direction;
-	state.scopePaths = session.scopePaths.slice();
-	state.offLimits = session.offLimits.slice();
-	state.constraints = session.constraints.slice();
+	state.scopePaths = [...session.scopePaths];
+	state.offLimits = [...session.offLimits];
+	state.constraints = [...session.constraints];
 	state.notes = session.notes;
 	state.branch = session.branch;
 	state.baselineCommit = session.baselineCommit;
@@ -188,9 +257,6 @@ export function buildExperimentState(session: SessionRow, loggedRuns: RunRow[]):
 	state.maxExperiments = session.maxIterations;
 	state.breadth = session.breadth;
 	state.currentSegment = session.currentSegment;
-	// Same exclusion as `registerSecondaryMetrics`, one step earlier: a session that
-	// declares its primary among `secondaryMetrics` gets the duplicate column from the
-	// declaration instead of from a run, and the filter has to cover both doors.
 	state.secondaryMetrics = session.secondaryMetrics
 		.filter(name => name !== state.metricName)
 		.map(name => ({ name, unit: inferMetricUnitFromName(name) }));
@@ -201,6 +267,7 @@ export function buildExperimentState(session: SessionRow, loggedRuns: RunRow[]):
 			runNumber: run.id,
 			commit: run.commitHash ?? "",
 			metric: run.metric ?? 0,
+			measuredPrimary: run.parsedPrimary,
 			metrics: run.metrics ?? {},
 			status: run.status,
 			description: run.description ?? "",
@@ -213,6 +280,9 @@ export function buildExperimentState(session: SessionRow, loggedRuns: RunRow[]):
 			justification: run.justification,
 			flagged: run.flagged,
 			flaggedReason: run.flaggedReason,
+			arm: run.arm,
+			certifiedBy: run.certifiedBy,
+			model: run.model,
 		};
 		state.results.push(result);
 		if (run.segment === state.currentSegment) {
@@ -259,16 +329,6 @@ export function createRuntimeStore(): RuntimeStore {
 	};
 }
 
-/**
- * Add every metric a run reported, except the primary one, to the secondary column set.
- *
- * THE PRIMARY IS EXCLUDED BECAUSE A RUN REPORTS IT TWICE. `log_experiment` writes the
- * primary reading into `metrics` alongside the secondary ones, so a session whose primary
- * is `ms` grew an `ms` secondary column: the dashboard table carried the same number in
- * two adjacent columns under the same heading, and the summary line read
- * `Secondary: cold_ms 509.40ms +0.3%  ms 318.70ms -22.8%`, where the second reading is the
- * primary already printed one line above it.
- */
 function registerSecondaryMetrics(metrics: MetricDef[], values: NumericMetricMap, primaryName: string): void {
 	for (const name of Object.keys(values)) {
 		if (name === primaryName) continue;

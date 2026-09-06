@@ -36,6 +36,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:
 import * as path from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { Agent } from "@veyyon/agent-core";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { resetLaunchFactsForTest } from "@veyyon/coding-agent/modes/launch-facts";
@@ -43,7 +44,6 @@ import { paintFirstFrame, takeFirstFrame } from "@veyyon/coding-agent/modes/term
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { ProcessTerminal, type RenderRequestOptions, Text, TUI, type TUIStartOptions } from "@veyyon/tui";
 import { setTerminalHeadless, TempDir } from "@veyyon/utils";

@@ -1,3 +1,5 @@
+import type { KittyDirectPlacement } from "../terminal-capabilities";
+
 /**
  * How many inline images may be live terminal graphics at once.
  *
@@ -71,6 +73,12 @@ export class ImageBudget {
 	// full, correctly-ordered walk.
 	#suppressedIds = new Set<number>();
 
+	// The geometry behind each live direct-placement line, keyed by the exact
+	// line an Image returns, so the renderer can re-derive a placement it must
+	// rewrite at a viewport row above the block's origin. One line per image id;
+	// re-registering an id (a width change) drops its previous line.
+	#directPlacements = new Map<string, KittyDirectPlacement>();
+	#directPlacementLineById = new Map<number, string>();
 	constructor(cap: number = DEFAULT_MAX_INLINE_IMAGES, requestRender: () => void = () => {}) {
 		this.#cap = normalizeCap(cap);
 		this.#requestRender = requestRender;
@@ -197,6 +205,8 @@ export class ImageBudget {
 		this.#pendingTransmits = [];
 		this.#keyToId.clear();
 		this.#idToKey.clear();
+		this.#directPlacements.clear();
+		this.#directPlacementLineById.clear();
 		return ids;
 	}
 
@@ -255,9 +265,33 @@ export class ImageBudget {
 		if (this.#transmitted.size === 0 && this.#pendingTransmits.length === 0) return;
 		this.#transmitted.clear();
 		this.#pendingTransmits = [];
+		this.#directPlacements.clear();
+		this.#directPlacementLineById.clear();
+	}
+
+	/** Record the geometry behind `line`, the last row of a direct-placement block. */
+	recordDirectPlacement(line: string, placement: KittyDirectPlacement): void {
+		const previous = this.#directPlacementLineById.get(placement.imageId);
+		if (previous === line) return;
+		if (previous !== undefined) this.#directPlacements.delete(previous);
+		this.#directPlacements.set(line, placement);
+		this.#directPlacementLineById.set(placement.imageId, line);
+	}
+
+	/** The geometry behind a direct-placement line, or undefined for any other line. */
+	directPlacement(line: string): KittyDirectPlacement | undefined {
+		return this.#directPlacements.get(line);
+	}
+
+	#forgetDirectPlacement(id: number): void {
+		const line = this.#directPlacementLineById.get(id);
+		if (line === undefined) return;
+		this.#directPlacementLineById.delete(id);
+		this.#directPlacements.delete(line);
 	}
 
 	#forgetKeyForId(id: number): void {
+		this.#forgetDirectPlacement(id);
 		const key = this.#idToKey.get(id);
 		if (key === undefined) return;
 		this.#idToKey.delete(id);

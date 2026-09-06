@@ -42,6 +42,13 @@ source "$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)/magick-tmpdir.sh"
 magick_tmpdir_scope /tmp
 trap magick_tmpdir_release EXIT
 
+# The same parse-time bundle the X twin guards. This session runs the terminal as
+# an unprivileged user, so the artifact is materialized here, while root still
+# owns the checkout's write path.
+# shellcheck source=proof/docker/session-artifacts.sh
+source "$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)/session-artifacts.sh"
+ensure_session_artifacts /repo
+
 if [ "${SCENE_THEME}" != "plain" ]; then
 	MARGIN="${SCENE_MARGIN}"
 	scene_backdrop "${W}" "${H}" /tmp/backdrop.png

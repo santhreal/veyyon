@@ -39,6 +39,7 @@ export async function loginQwenPortal(options: OAuthController): Promise<string>
 		baseUrl: API_BASE_URL,
 		model: VALIDATION_MODEL,
 		signal: options.signal,
+		fetch: options.fetch,
 	});
 
 	return trimmed;
@@ -48,4 +49,5 @@ export const qwenPortalProvider = {
 	id: "qwen-portal",
 	name: "Qwen Portal",
 	login: (cb: OAuthLoginCallbacks) => loginQwenPortal(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

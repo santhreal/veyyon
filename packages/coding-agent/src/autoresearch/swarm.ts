@@ -10,6 +10,7 @@
  * execution belong to the caller, so every rule here is a pure function that a
  * test can drive without a repository, a model or a benchmark.
  */
+import { normalizePathSpec, pathMatchesSpec } from "./helpers";
 import type { MetricDirection } from "./types";
 
 /** How a segment's candidates get reviewed, chosen by how many survived. */
@@ -84,8 +85,13 @@ export function opaquePayload(diff: string): string | null {
 /** Paths the arm touched that the session declared off limits. */
 export function scopeDeviations(modifiedPaths: readonly string[], offLimits: readonly string[]): string[] {
 	if (offLimits.length === 0) return [];
-	const forbidden = new Set(offLimits);
-	return modifiedPaths.filter(candidate => forbidden.has(candidate)).sort();
+	const normalizedSpecs = offLimits.map(normalizePathSpec);
+	return modifiedPaths
+		.filter(candidate => {
+			const normalized = normalizePathSpec(candidate);
+			return normalizedSpecs.some(spec => pathMatchesSpec(normalized, spec));
+		})
+		.sort();
 }
 
 /**
@@ -132,9 +138,9 @@ export function triage(candidates: readonly Candidate[], offLimits: readonly str
  * reciprocal pair the ring exists to avoid, since it invites mutual approval
  * and mutual destruction. Below three survivors the director reviews instead.
  */
-export function certifierFor(survivors: number): CertifierMode {
+export function certifierFor(survivors: number, certify = true): CertifierMode {
 	if (survivors <= 0) return "void";
-	if (survivors <= 2) return "director";
+	if (!certify || survivors <= 2) return "director";
 	return "ring";
 }
 
@@ -143,8 +149,8 @@ export function certifierFor(survivors: number): CertifierMode {
  * configured for, which happens whenever arms dead-end. Worth reporting once:
  * a run that silently degrades has had less review than its settings claim.
  */
-export function certificationDegraded(configuredArms: number, survivors: number): boolean {
-	return certifierFor(survivors) !== certifierFor(configuredArms);
+export function certificationDegraded(configuredArms: number, survivors: number, certify = true): boolean {
+	return certifierFor(survivors, certify) !== certifierFor(configuredArms, certify);
 }
 
 /**
@@ -153,8 +159,11 @@ export function certificationDegraded(configuredArms: number, survivors: number)
  * pair reviews each other. Under the director every arm is reviewed by the
  * director.
  */
-export function certificationPairs(survivors: readonly Candidate[]): { reviewer: string; target: string }[] {
-	const mode = certifierFor(survivors.length);
+export function certificationPairs(
+	survivors: readonly Candidate[],
+	certify = true,
+): { reviewer: string; target: string }[] {
+	const mode = certifierFor(survivors.length, certify);
 	if (mode === "void") return [];
 	if (mode === "director") {
 		return survivors.map(candidate => ({ reviewer: "director", target: candidate.arm }));
@@ -230,3 +239,5 @@ export const MAX_ATTEMPTS = 5;
 export const MIN_ATTEMPTS = 1;
 /** Breadth `/autoswarm` opens with: the fewest arms a certification ring needs. */
 export const DEFAULT_SWARM_BREADTH = 3;
+/** The fewest arms the autoswarm console accepts: a swarm of one arm is `/autoresearch`. */
+export const MIN_SWARM_BREADTH = 2;

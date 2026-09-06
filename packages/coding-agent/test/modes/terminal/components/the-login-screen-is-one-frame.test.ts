@@ -22,6 +22,7 @@
 
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
+import { getLoginCredential } from "@veyyon/ai/oauth";
 import { LoginDialogComponent } from "@veyyon/coding-agent/modes/terminal/components/dialogs/login-dialog";
 import { formatProviderName } from "@veyyon/coding-agent/session/account-format";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
@@ -50,7 +51,9 @@ function makeDialog(providerId = "groq"): {
 	});
 	const tui = { requestRender: vi.fn() } as unknown as TUI;
 	const completed = vi.fn();
-	const dialog = new LoginDialogComponent(tui, providerId, completed);
+	const dialog = new LoginDialogComponent(tui, formatProviderName(providerId), completed, {
+		browserLogin: getLoginCredential(providerId) === "oauth",
+	});
 	const rows = () => dialog.render(100).map(line => stripVTControlCharacters(line).trimEnd());
 	return { dialog, rows, frame: () => rows().join("\n"), completed, opened };
 }
@@ -151,8 +154,9 @@ describe("the login screen is one frame", () => {
 	});
 
 	it("draws one authorization block however many times the flow reports it", () => {
-		const { dialog, rows, opened } = makeDialog();
-		dialog.showAuth("https://auth.example.test/authorize?code_challenge_method=S256", "Approve the request");
+		// A browser login: the URL is one the flow waits on, so each report opens it.
+		const { dialog, rows, opened } = makeDialog("anthropic");
+		dialog.showAuth("https://auth.example.test/initial", "Initial request");
 		dialog.showAuth("https://auth.example.test/authorize?code_challenge_method=S256", "Approve the request");
 
 		const drawn = rows();

@@ -1,8 +1,10 @@
 import type { AuthStorage } from "@veyyon/ai";
+import { getLoginCredential } from "@veyyon/ai/oauth";
 import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 // The derived provider set from the registry that derives it (164 modules) rather than the
 // barrel (346), which additionally brings the streaming engine and every transport.
 import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai/registry/derived";
+import type { LoginCredential } from "@veyyon/ai/registry/types";
 import { type Component, type Focusable, Input } from "@veyyon/tui";
 import { errorMessage, getActiveAuthDbPath } from "@veyyon/utils";
 import { matchesKey } from "@veyyon/utils/keys";
@@ -14,8 +16,8 @@ import { copyToClipboard } from "../../../../utils/clipboard";
 import { OAuthSelectorComponent } from "../../components/selectors/oauth-selector";
 import type { SetupKeyHint, SetupSceneHost, SetupTab } from "./types";
 
-function loginUrlLink(url: string): string {
-	return `\x1b]8;;${url}\x07Open login URL\x1b]8;;\x07`;
+function loginUrlLink(url: string, label: string): string {
+	return `\x1b]8;;${url}\x07${label}\x1b]8;;\x07`;
 }
 
 function loginCopyHint(): string {
@@ -105,6 +107,7 @@ export class SignInTab implements SetupTab {
 	#statusLines: string[] = [];
 	#authUrl: string | undefined;
 	#authLaunchUrl: string | undefined;
+	#authCredential: LoginCredential = "oauth";
 	#prompt: PromptState | undefined;
 	#promptResolve: ((value: string) => void) | undefined;
 	#loginAbort: AbortController | undefined;
@@ -207,10 +210,11 @@ export class SignInTab implements SetupTab {
 		// URL later printed its first two lines twice).
 		const urlLines = this.#authUrl ? wrapTextWithAnsi(theme.fg("dim", this.#authUrl), width) : [];
 		if (this.#authUrl) {
-			lines.push(
-				theme.fg("accent", `Browser login: ${loginUrlLink(this.#authUrl)} ${loginCopyHint()}`),
-				...(urlLines.length <= 2 ? urlLines : []),
-			);
+			const link =
+				this.#authCredential === "api-key"
+					? `Get an API key at: ${loginUrlLink(this.#authUrl, "open key page")}`
+					: `Browser login: ${loginUrlLink(this.#authUrl, "Open login URL")} ${loginCopyHint()}`;
+			lines.push(theme.fg("accent", link), ...(urlLines.length <= 2 ? urlLines : []));
 			if (this.#authLaunchUrl) {
 				lines.push(theme.fg("dim", `Local shortcut (this machine only): ${this.#authLaunchUrl}`));
 			}
@@ -245,9 +249,13 @@ export class SignInTab implements SetupTab {
 	async #login(providerId: string): Promise<void> {
 		if (this.#loggingInProvider || this.#disposed) return;
 		const useManualInput = PASTE_CODE_LOGIN_PROVIDERS.has(providerId);
+		const credential = getLoginCredential(providerId);
 		this.#selector.stopValidation();
 		this.#loggingInProvider = providerId;
-		this.#statusLines = [theme.fg("dim", "Starting OAuth flow…")];
+		this.#authCredential = credential;
+		this.#statusLines = [
+			theme.fg("dim", credential === "api-key" ? "Waiting for an API key…" : "Starting OAuth flow…"),
+		];
 		this.#authUrl = undefined;
 		this.#authLaunchUrl = undefined;
 		this.#loginAbort = new AbortController();
@@ -275,8 +283,10 @@ export class SignInTab implements SetupTab {
 					if (useManualInput) {
 						this.#statusLines.push(theme.fg("dim", "Paste the returned code or redirect URL when prompted."));
 					}
-					void this.#copyAuthUrl();
-					this.host.ctx.openInBrowser(info.url);
+					if (credential === "oauth") {
+						void this.#copyAuthUrl();
+						this.host.ctx.openInBrowser(info.url);
+					}
 					this.host.requestRender();
 				},
 				onPrompt: prompt => this.#showPrompt(prompt),
@@ -328,6 +338,8 @@ export class SignInTab implements SetupTab {
 			}
 			this.#loggingInProvider = undefined;
 			this.#loginAbort = undefined;
+			this.#selector.dispose();
+			this.#selector = this.#createSelector();
 			this.host.restoreFocus();
 			this.host.requestRender();
 		}

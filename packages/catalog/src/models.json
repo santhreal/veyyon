@@ -73725,7 +73725,27 @@
 			"maxTokens": 128000,
 			"preferWebsockets": true,
 			"useResponsesLite": true,
-			"priority": 43
+			"reasoningOptions": {
+				"efforts": [
+					"low",
+					"medium",
+					"high",
+					"xhigh",
+					"max"
+				]
+			},
+			"applyPatchToolType": "freeform",
+			"priority": 43,
+			"thinking": {
+				"mode": "effort",
+				"efforts": [
+					"low",
+					"medium",
+					"high",
+					"xhigh",
+					"max"
+				]
+			}
 		},
 		"gpt-4": {
 			"id": "gpt-4",
@@ -74470,7 +74490,6 @@
 			"contextWindow": 272000,
 			"maxTokens": 128000,
 			"preferWebsockets": true,
-			"priority": 0,
 			"reasoningOptions": {
 				"efforts": [
 					"low",
@@ -74480,6 +74499,7 @@
 				]
 			},
 			"applyPatchToolType": "freeform",
+			"priority": 0,
 			"thinking": {
 				"mode": "effort",
 				"efforts": [
@@ -74511,7 +74531,6 @@
 			"contextWindow": 272000,
 			"maxTokens": 128000,
 			"preferWebsockets": true,
-			"priority": 1,
 			"reasoningOptions": {
 				"efforts": [
 					"low",
@@ -74521,6 +74540,7 @@
 				]
 			},
 			"applyPatchToolType": "freeform",
+			"priority": 1,
 			"thinking": {
 				"mode": "effort",
 				"efforts": [
@@ -74628,7 +74648,6 @@
 			"contextWindow": 272000,
 			"maxTokens": 128000,
 			"preferWebsockets": true,
-			"priority": 7,
 			"reasoningOptions": {
 				"efforts": [
 					"low",
@@ -74638,6 +74657,7 @@
 				]
 			},
 			"applyPatchToolType": "freeform",
+			"priority": 12,
 			"thinking": {
 				"mode": "effort",
 				"efforts": [
@@ -74748,7 +74768,6 @@
 			"maxTokens": 128000,
 			"preferWebsockets": true,
 			"useResponsesLite": true,
-			"priority": 3,
 			"reasoningOptions": {
 				"efforts": [
 					"low",
@@ -74759,6 +74778,7 @@
 				]
 			},
 			"applyPatchToolType": "freeform",
+			"priority": 8,
 			"thinking": {
 				"mode": "effort",
 				"efforts": [
@@ -74782,17 +74802,16 @@
 				"image"
 			],
 			"cost": {
-				"input": 5,
-				"output": 30,
-				"cacheRead": 0.5,
-				"cacheWrite": 6.25
+				"input": 4,
+				"output": 20,
+				"cacheRead": 0.4,
+				"cacheWrite": 5
 			},
 			"pricing": "unknown",
 			"contextWindow": 372000,
 			"maxTokens": 128000,
 			"preferWebsockets": true,
 			"useResponsesLite": true,
-			"priority": 1,
 			"reasoningOptions": {
 				"efforts": [
 					"low",
@@ -74803,6 +74822,7 @@
 				]
 			},
 			"applyPatchToolType": "freeform",
+			"priority": 6,
 			"thinking": {
 				"mode": "effort",
 				"efforts": [
@@ -74836,7 +74856,6 @@
 			"maxTokens": 128000,
 			"preferWebsockets": true,
 			"useResponsesLite": true,
-			"priority": 2,
 			"reasoningOptions": {
 				"efforts": [
 					"low",
@@ -74847,6 +74866,51 @@
 				]
 			},
 			"applyPatchToolType": "freeform",
+			"priority": 7,
+			"thinking": {
+				"mode": "effort",
+				"efforts": [
+					"low",
+					"medium",
+					"high",
+					"xhigh",
+					"max"
+				]
+			}
+		},
+		"gpt-6-astra": {
+			"id": "gpt-6-astra",
+			"name": "GPT-6-Astra",
+			"api": "openai-codex-responses",
+			"provider": "openai-codex",
+			"baseUrl": "https://chatgpt.com/backend-api",
+			"reasoning": true,
+			"input": [
+				"text",
+				"image"
+			],
+			"cost": {
+				"input": 0,
+				"output": 0,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"pricing": "unknown",
+			"contextWindow": 272000,
+			"maxTokens": 128000,
+			"preferWebsockets": true,
+			"useResponsesLite": true,
+			"reasoningOptions": {
+				"efforts": [
+					"low",
+					"medium",
+					"high",
+					"xhigh",
+					"max"
+				]
+			},
+			"applyPatchToolType": "freeform",
+			"priority": 1,
 			"thinking": {
 				"mode": "effort",
 				"efforts": [
@@ -74880,7 +74944,27 @@
 			"maxTokens": 128000,
 			"preferWebsockets": true,
 			"useResponsesLite": true,
-			"priority": 3
+			"reasoningOptions": {
+				"efforts": [
+					"low",
+					"medium",
+					"high",
+					"xhigh",
+					"max"
+				]
+			},
+			"applyPatchToolType": "freeform",
+			"priority": 10,
+			"thinking": {
+				"mode": "effort",
+				"efforts": [
+					"low",
+					"medium",
+					"high",
+					"xhigh",
+					"max"
+				]
+			}
 		},
 		"gpt-realtime-2.1": {
 			"id": "gpt-realtime-2.1",
@@ -74918,6 +75002,50 @@
 					"medium",
 					"high",
 					"xhigh"
+				]
+			}
+		},
+		"gpt-reserve": {
+			"id": "gpt-reserve",
+			"name": "GPT-Reserve",
+			"api": "openai-codex-responses",
+			"provider": "openai-codex",
+			"baseUrl": "https://chatgpt.com/backend-api",
+			"reasoning": true,
+			"input": [
+				"text",
+				"image"
+			],
+			"cost": {
+				"input": 0,
+				"output": 0,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"pricing": "unknown",
+			"contextWindow": 272000,
+			"maxTokens": 128000,
+			"preferWebsockets": true,
+			"useResponsesLite": true,
+			"reasoningOptions": {
+				"efforts": [
+					"low",
+					"medium",
+					"high",
+					"xhigh",
+					"max"
+				]
+			},
+			"applyPatchToolType": "freeform",
+			"priority": 3,
+			"thinking": {
+				"mode": "effort",
+				"efforts": [
+					"low",
+					"medium",
+					"high",
+					"xhigh",
+					"max"
 				]
 			}
 		},

@@ -20,7 +20,7 @@
 import { sanitizeStatusText } from "@veyyon/utils/sanitize-status-text";
 import { settingsOrNull } from "../../../../config/settings-instance";
 import { withIcon } from "../../../../theme/icon-label";
-import { theme } from "../../../../theme/theme";
+import { theme } from "../../../../theme/theme-binding";
 import type { GitStatusSummary } from "../../../../utils/git";
 import { resolvePresetSegments } from "./presets";
 

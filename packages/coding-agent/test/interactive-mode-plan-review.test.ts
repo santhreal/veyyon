@@ -3,6 +3,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Agent, AgentBusyError, ThinkingLevel } from "@veyyon/agent-core";
 import type { AssistantMessage, Usage } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import * as AIError from "@veyyon/ai/error";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -17,7 +18,6 @@ import { SILENT_ABORT_MARKER, USER_INTERRUPT_LABEL } from "@veyyon/coding-agent/
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 import * as clipboard from "@veyyon/coding-agent/utils/clipboard";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { Text } from "@veyyon/tui";
 import { formatNumber, TempDir } from "@veyyon/utils";

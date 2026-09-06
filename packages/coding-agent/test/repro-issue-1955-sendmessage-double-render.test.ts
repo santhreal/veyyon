@@ -131,6 +131,7 @@ function createHarness(): Harness {
 		setToolNotifier: vi.fn(),
 		setEditorComponent: vi.fn(),
 		setWorkingMessage: vi.fn(),
+		clearWorkingLoader: vi.fn(() => false),
 		setToolsExpanded: vi.fn(),
 		toolOutputExpanded: false,
 		hideThinkingBlock: false,

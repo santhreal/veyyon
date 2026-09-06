@@ -3,11 +3,7 @@
  * live per-account reset-credit status into selector rows, and map a redeem
  * outcome code to a human message.
  */
-import type {
-	ResetCreditAccountStatus,
-	ResetCreditRedeemOutcome,
-	ResetCreditTarget,
-} from "@veyyon/kernel/session/auth-storage";
+import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome, ResetCreditTarget } from "@veyyon/ai/auth-storage";
 
 export const CODEX_PROVIDER_ID = "openai-codex";
 

@@ -28,9 +28,9 @@
  */
 import "./helpers/tool-views-preload";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
@@ -40,17 +40,14 @@ import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { initTheme, setTheme, stopThemeWatcher } from "@veyyon/coding-agent/theme/theme";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TUI } from "@veyyon/tui";
+import { TempDir } from "@veyyon/utils";
 import { VirtualTerminal } from "../../../hosts/terminal/engine/test/virtual-terminal";
 
 const WIDTH = 120;
-const TEST_PARENT = path.resolve(import.meta.dirname, "../../../.internal/running-subagent-rebuild");
 const TASK_CALL_ID = "call_task_running";
 const BASH_CALL_ID = "call_bash_running";
-
-let testRoot = "";
 
 /** An assistant turn that opened `toolName` under `callId`. */
 function assistantToolCall(callId: string, toolName: string, timestamp: number) {
@@ -87,7 +84,7 @@ function runningResult(callId: string, toolName: string, timestamp: number) {
 }
 
 describe("a running subagent survives a transcript rebuild", () => {
-	let tempDir: string | undefined;
+	let tempDir: TempDir | undefined;
 	let authStorage: AuthStorage | undefined;
 	let session: AgentSession | undefined;
 	let mode: InteractiveMode | undefined;
@@ -95,8 +92,6 @@ describe("a running subagent survives a transcript rebuild", () => {
 	let eventBus: EventBus | undefined;
 
 	beforeAll(async () => {
-		await fs.mkdir(TEST_PARENT, { recursive: true });
-		testRoot = await fs.mkdtemp(path.join(TEST_PARENT, "run-"));
 		await initTheme();
 		await setTheme("dark");
 	});
@@ -105,17 +100,18 @@ describe("a running subagent survives a transcript rebuild", () => {
 		resetSettingsForTest();
 		AgentRegistry.resetGlobalForTests();
 		AgentLifecycleManager.resetGlobalForTests();
-		tempDir = await fs.mkdtemp(path.join(testRoot, "main-"));
-		await Settings.init({ inMemory: true, cwd: tempDir, overrides: { "startup.quiet": true } });
+		tempDir = TempDir.createSync("@pi-running-subagent-rebuild-");
+		const dir = tempDir.path();
+		await Settings.init({ inMemory: true, cwd: dir, overrides: { "startup.quiet": true } });
 
-		authStorage = await AuthStorage.create(path.join(tempDir, "testauth.db"));
+		authStorage = await AuthStorage.create(path.join(dir, "testauth.db"));
 		const modelRegistry = new ModelRegistry(authStorage);
 		const model = modelRegistry.find("anthropic", "claude-sonnet-4-5");
 		if (!model) throw new Error("Expected claude-sonnet-4-5 to exist in registry");
 
 		session = new AgentSession({
 			agent: new Agent({ initialState: { model, systemPrompt: ["Main"], tools: [], messages: [] } }),
-			sessionManager: SessionManager.create(tempDir, tempDir),
+			sessionManager: SessionManager.create(dir, dir),
 			settings: Settings.isolated({ "startup.quiet": true }),
 			modelRegistry,
 		});
@@ -133,7 +129,7 @@ describe("a running subagent survives a transcript rebuild", () => {
 		mode?.stop();
 		await session?.dispose();
 		authStorage?.close();
-		if (tempDir) await fs.rm(tempDir, { recursive: true, force: true });
+		tempDir?.removeSync();
 		mode = undefined;
 		session = undefined;
 		terminal = undefined;
@@ -144,9 +140,8 @@ describe("a running subagent survives a transcript rebuild", () => {
 		AgentLifecycleManager.resetGlobalForTests();
 	});
 
-	afterAll(async () => {
+	afterAll(() => {
 		stopThemeWatcher();
-		await fs.rm(testRoot, { recursive: true, force: true });
 	});
 
 	it("keeps a running task pending so its later progress still lands", async () => {

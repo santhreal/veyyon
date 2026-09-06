@@ -24,14 +24,16 @@
  */
 import { beforeEach, describe, expect, it } from "bun:test";
 import {
-	onAutoThemeMappingChanged,
-	onColorBlindModeChanged,
-	onSymbolPresetChanged,
 	registerSettingsTestResetHook,
 	resetSettingsForTest,
 	Settings,
 	settingSignalListenerCounts,
 } from "@veyyon/coding-agent/config/settings";
+import {
+	onAutoThemeMappingChanged,
+	onColorBlindModeChanged,
+	onSymbolPresetChanged,
+} from "@veyyon/coding-agent/config/settings-signals";
 
 /** Total listeners across every signal, which is what has to return to zero. */
 function totalListeners(): number {

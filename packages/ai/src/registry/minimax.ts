@@ -23,4 +23,5 @@ export const minimaxProvider = {
 	id: "minimax",
 	name: "MiniMax",
 	login: (cb: OAuthLoginCallbacks) => login(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

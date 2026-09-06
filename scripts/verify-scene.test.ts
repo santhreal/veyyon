@@ -41,15 +41,28 @@ const problems = (input: Partial<SceneSources> & { scene: string }): string[] =>
 async function rootText(root: string): Promise<string> {
 	const parts: string[] = [];
 	const walk = async (dir: string): Promise<void> => {
-		for (const entry of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
-			if (entry.name === "node_modules" || entry.name === "dist") continue;
-			const full = path.join(dir, entry.name);
-			if (entry.isDirectory()) {
-				await walk(full);
+		const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+		const subdirs: string[] = [];
+		const files: string[] = [];
+		for (const entry of entries) {
+			if (
+				entry.name === "node_modules" ||
+				entry.name === "dist" ||
+				entry.name === "coverage" ||
+				entry.name.startsWith(".")
+			)
 				continue;
+			if (entry.isDirectory()) {
+				subdirs.push(path.join(dir, entry.name));
+			} else if (entry.name.endsWith(".ts")) {
+				files.push(path.join(dir, entry.name));
 			}
-			if (entry.name.endsWith(".ts")) parts.push(await readFile(full, "utf8"));
 		}
+		const [fileContents] = await Promise.all([
+			Promise.all(files.map(f => readFile(f, "utf8"))),
+			Promise.all(subdirs.map(d => walk(d))),
+		]);
+		parts.push(...fileContents);
 	};
 	await walk(root);
 	return parts.join("\n");
@@ -125,6 +138,15 @@ describe("a scene guard has to resolve to something that produces it", () => {
 		expect(
 			problems({
 				scene: '# needle-source: WARP CORE -- printed by the compiled binary\nexpect_model_screen "WARP CORE" 60\n',
+			}),
+		).toEqual([]);
+	});
+
+	it("accepts a declaration indented inside the arm whose guard it explains", () => {
+		expect(
+			problems({
+				// biome-ignore lint/suspicious/noTemplateCurlyInString: bash parameter expansion in a scene fixture
+				scene: 'if [ "${SCENE_ARM:-after}" = "before" ]; then\n\t# needle-source: WARP CORE -- printed by the compiled binary\n\texpect_screen "WARP CORE" 60 "core"\nfi\n',
 			}),
 		).toEqual([]);
 	});

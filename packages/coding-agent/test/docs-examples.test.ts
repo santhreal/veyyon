@@ -383,7 +383,7 @@ describe("docs examples — documented env vars are consumed in source", () => {
 	 * read. A root a scan names and cannot read is a rule that covers less than it claims, so the roots
 	 * that are not members are asserted to exist and to contribute, rather than skipped.
 	 */
-	function collectSourceEnvSuffixes(): Set<string> {
+	async function collectSourceEnvSuffixes(): Promise<Set<string>> {
 		const suffixes = new Set<string>();
 		/** Where a TypeScript member keeps the files that may read an env var. */
 		const typeScriptPatterns = ["src/**/*.{ts,tsx}", "scripts/**/*.ts", "test/**/*.{ts,tsx}", "native/**/*.js"];
@@ -402,6 +402,7 @@ describe("docs examples — documented env vars are consumed in source", () => {
 		scans.push(...looseRoots);
 
 		const readByRoot = new Map<string, number>();
+		const filesToRead: string[] = [];
 		for (const [dir, pattern] of scans) {
 			const root = path.join(REPO_ROOT, dir);
 			if (!fs.existsSync(root)) {
@@ -411,10 +412,7 @@ describe("docs examples — documented env vars are consumed in source", () => {
 			for (const rel of new Bun.Glob(pattern).scanSync({ cwd: root })) {
 				if (rel.includes("node_modules/")) continue;
 				readByRoot.set(dir, (readByRoot.get(dir) ?? 0) + 1);
-				const text = fs.readFileSync(path.join(root, rel), "utf-8");
-				for (const match of text.matchAll(ENV_NAME_RE)) {
-					suffixes.add(envSuffix(match[0]));
-				}
+				filesToRead.push(path.join(root, rel));
 			}
 		}
 		for (const [dir, pattern] of looseRoots) {
@@ -422,6 +420,16 @@ describe("docs examples — documented env vars are consumed in source", () => {
 				throw new Error(`the env-var scan read no file under ${dir} matching ${pattern}`);
 			}
 		}
+		await Promise.all(
+			filesToRead.map(async file => {
+				const text = await fs.promises.readFile(file, "utf-8");
+				if (text.includes("VEYYON_")) {
+					for (const match of text.matchAll(ENV_NAME_RE)) {
+						suffixes.add(envSuffix(match[0]));
+					}
+				}
+			}),
+		);
 		return suffixes;
 	}
 
@@ -433,8 +441,8 @@ describe("docs examples — documented env vars are consumed in source", () => {
 	 */
 	const NEGATION_RE = /\bno\s+`|never existed|removed|is gone|not shipped|does not exist|belonged to the removed/i;
 
-	it("every VEYYON_ env var named in the docs exists in source", () => {
-		const sourceSuffixes = collectSourceEnvSuffixes();
+	it("every VEYYON_ env var named in the docs exists in source", async () => {
+		const sourceSuffixes = await collectSourceEnvSuffixes();
 		expect(sourceSuffixes.size).toBeGreaterThan(20);
 		const failures: string[] = [];
 		for (const file of markdownFiles) {

@@ -79,10 +79,14 @@ describe("SETTINGS_SCHEMA domain composition", () => {
 		expect(files.some(file => file.startsWith("tests/evals/"))).toBe(true);
 
 		const readers: string[] = [];
-		for (const file of files) {
-			const source = await readFile(path.join(REPO_ROOT, file), "utf8");
-			if (moduleSpecifiersIn(source).includes(REGISTRY)) readers.push(file);
-		}
+		await Promise.all(
+			files.map(async file => {
+				const source = await readFile(path.join(REPO_ROOT, file), "utf8");
+				if (source.includes(REGISTRY) && moduleSpecifiersIn(source).includes(REGISTRY)) {
+					readers.push(file);
+				}
+			}),
+		);
 		expect(readers.sort()).toEqual([COMPOSER]);
 	});
 });

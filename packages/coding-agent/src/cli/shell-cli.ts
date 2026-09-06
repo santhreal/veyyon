@@ -11,6 +11,7 @@ import chalk from "chalk";
 import { Settings } from "../config/settings";
 import { buildMinimizerOptions } from "../exec/bash-executor";
 import { getOrCreateSnapshot } from "../utils/shell-snapshot";
+import { EXIT_USAGE } from "./exit-codes";
 
 export interface ShellCommandArgs {
 	cwd?: string;
@@ -21,7 +22,8 @@ export interface ShellCommandArgs {
 export async function runShellCommand(cmd: ShellCommandArgs): Promise<void> {
 	if (!process.stdin.isTTY) {
 		process.stderr.write("Error: shell console requires an interactive TTY.\n");
-		process.exit(1);
+		process.exit(EXIT_USAGE);
+		return;
 	}
 
 	const cwd = cmd.cwd ? path.resolve(cmd.cwd) : getProjectDir();

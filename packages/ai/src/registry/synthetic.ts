@@ -18,4 +18,5 @@ export const syntheticProvider = {
 	id: "synthetic",
 	name: "Synthetic",
 	login: loginSynthetic,
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

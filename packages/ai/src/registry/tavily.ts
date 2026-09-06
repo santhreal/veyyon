@@ -42,4 +42,5 @@ export const tavilyProvider = {
 	id: "tavily",
 	name: "Tavily",
 	login: (cb: OAuthLoginCallbacks) => loginTavily(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

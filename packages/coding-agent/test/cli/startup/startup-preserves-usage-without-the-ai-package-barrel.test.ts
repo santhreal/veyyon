@@ -23,8 +23,7 @@ it.each(["session", "sdk", "warmup"])(
 			const { stdout, stderr } = await run(
 				process.execPath,
 				[
-					path.join(import.meta.dirname, "../../fixtures/startup-ai-leaves.ts"),
-					entry,
+					path.join(import.meta.dirname, `../../fixtures/startup-ai-leaves-${entry}.ts`),
 					JSON.stringify(rankingProviders),
 				],
 				{ env, timeout: 20_000, killSignal: "SIGKILL" },

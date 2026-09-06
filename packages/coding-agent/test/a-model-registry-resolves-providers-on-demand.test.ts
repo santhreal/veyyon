@@ -13,12 +13,12 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { unregisterOAuthProviders } from "@veyyon/ai/oauth";
 import { buildModel } from "@veyyon/catalog/build";
 import { writeModelCache } from "@veyyon/catalog/model-cache";
 import { PROVIDER_DESCRIPTORS } from "@veyyon/catalog/provider-models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 describe("a model registry resolves providers on demand", () => {

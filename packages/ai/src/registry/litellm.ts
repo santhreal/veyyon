@@ -43,4 +43,5 @@ export const litellmProvider = {
 	id: "litellm",
 	name: "LiteLLM",
 	login: (cb: OAuthLoginCallbacks) => loginLiteLLM(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

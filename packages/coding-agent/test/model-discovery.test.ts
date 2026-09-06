@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { FetchImpl, Model } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import type { OAuthCredentials } from "@veyyon/ai/oauth/types";
 import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
@@ -11,7 +12,6 @@ import type { OpenAICompat } from "@veyyon/catalog/types";
 import { kNoAuth } from "@veyyon/coding-agent/config/auth-state";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest } from "@veyyon/coding-agent/config/settings";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 describe("ModelRegistry runtime discovery", () => {

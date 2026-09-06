@@ -10,6 +10,7 @@
 - The render engine is `@veyyon/tui/core/*`: `component-types`, `container`, `cursor`, `image-budget`, `mouse-routing`, `overlay`, `renderer`, `scroll`, `terminal-session` and `tui`. `@veyyon/tui/tui` re-exports all of it, so an existing import path keeps resolving.
 - `TUI.overlayStack` is private. The overlay stack's behavior is `OverlayStack` in `@veyyon/tui/core/overlay`.
 - `getTerminalId` is `@veyyon/utils/ttyid`, and `ImageFallbackReason` is `@veyyon/utils/image-fallback`. Neither is rendering, and a caller that needs a session id or the name of a cause no longer depends on the terminal renderer to get it.
+- `detectTerminalId` and `TerminalId` are exported from `@veyyon/utils/terminal-emulator` instead of `@veyyon/tui/terminal-capabilities`.
 
 ### Added
 
@@ -17,6 +18,7 @@
 - The package is `hosts/terminal/engine` in the repository, beside the other halves of the terminal host. The published package name, exports and entry points are unchanged.
 ### Fixed
 
+- Independent offscreen edits no longer accumulate into a false history rebuild, and changes to plain components preserve committed history until an explicit replay.
 - A sixel-capable terminal now renders inline images on Linux and macOS: the terminal is asked at startup instead of being matched against a list that named no sixel terminal at all, so images no longer silently fail to appear outside kitty, ghostty, wezterm, iTerm2 and Warp.
 - An inline image whose top has scrolled above the viewport, or which is taller than the terminal, is left undrawn until a repaint can reach its origin, instead of being stamped at full size over the top of the live transcript.
 - An inline image is handed pixels at exactly the cell box the terminal will scale it into, so the terminal's own scaler no longer smears a downscaled screenshot; the transmitted payload shrinks by more than half at the same size on screen.

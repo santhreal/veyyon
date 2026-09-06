@@ -37,6 +37,15 @@ export interface ModalSizing {
 	vPad: number;
 	/** Reserved rows for the footer shortcut band (grows when chips wrap). */
 	footerLines: number;
+	/**
+	 * `card` (the default) floats a bordered box in the middle of the area.
+	 * `flat` takes the whole area the way the transcript does: no border, the
+	 * title as a plain line at the top, one hairline above left-aligned key
+	 * hints, and nothing centred. The reservation arithmetic is the same
+	 * ({@link planModalChrome}): the title row stands where the top border was
+	 * and the blank under it where the bottom border was.
+	 */
+	frame?: "card" | "flat";
 }
 
 export const MODAL_SIZING_LARGE: ModalSizing = {
@@ -57,6 +66,26 @@ export const MODAL_SIZING_MEDIUM: ModalSizing = {
 	hPad: 2,
 	vPad: 1,
 	footerLines: 2,
+};
+
+/**
+ * A surface drawn like the transcript rather than as a card over it. Width and
+ * margins are the area's own, so the `widthPct`/`maxWidth`/`minWidth`/`vMargin`
+ * fields are inert; {@link computeModalDims} returns the whole area for it.
+ * `vPad` is 0 because the frame carries its own rhythm (a blank under the
+ * title, the hairline over the hints) and a margin of 0 cannot pay for a pad:
+ * the compact rule would then strip it at 24 rows and restore it at 25, the
+ * one-row cliff {@link sizingForArea} exists to remove.
+ */
+export const MODAL_SIZING_FLAT: ModalSizing = {
+	widthPct: 1,
+	maxWidth: Number.MAX_SAFE_INTEGER,
+	minWidth: 20,
+	vMargin: 0,
+	hPad: 1,
+	vPad: 0,
+	footerLines: 1,
+	frame: "flat",
 };
 
 // Wider than MEDIUM: the vertical category sidebar consumes ~20 columns.
@@ -257,6 +286,16 @@ export interface ModalDims {
  * to paint meaningful chrome (Grok abort gate: w<20 or h<6).
  */
 export function computeModalDims(areaWidth: number, areaHeight: number, sizing: ModalSizing): ModalDims | null {
+	if (sizing.frame === "flat") {
+		if (areaWidth < 20 || areaHeight < 6) return null;
+		return {
+			modalWidth: areaWidth,
+			modalHeight: areaHeight,
+			leftPad: 0,
+			topPad: 0,
+			contentWidth: Math.max(1, areaWidth - 2 - 2 * Math.max(1, sizing.hPad)),
+		};
+	}
 	const maxWidth = clamp(areaWidth - 4, 0, sizing.maxWidth);
 	const preferred = Math.floor(areaWidth * sizing.widthPct);
 	const modalWidth = Math.min(areaWidth, clampLow(preferred, sizing.minWidth, maxWidth));
@@ -638,6 +677,10 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 	const body = [...input.body.slice(0, bodyBudget)];
 	while (body.length < bodyBudget) body.push("");
 
+	if (input.sizing.frame === "flat") {
+		return renderFlatShell(input, plan, body, bodyBudget, contentWidth);
+	}
+
 	const card: string[] = [];
 	let closeColStart = -1;
 	let closeColEnd = -1;
@@ -768,6 +811,96 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 			cardColEnd: leftPad + modalWidth,
 			cardRowStart: cardTopPad,
 			cardRowEnd: cardTopPad + Math.min(clipped.length, cardHeight),
+			shortcutHits,
+		},
+	};
+}
+
+/**
+ * The `flat` frame: the surface drawn the way the transcript is drawn.
+ *
+ * Top-anchored, not centred; no border; the title a bold line with the same
+ * two-column inset the body has; the body; one dim hairline the width of the
+ * content, as the composer's; the key hints left-aligned under it in the same
+ * dim-label grammar the composer's footline uses. The rows charged are the ones
+ * {@link planModalChrome} planned, so a caller that budgets its body against
+ * the plan gets the same answer for either frame.
+ */
+function renderFlatShell(
+	input: ModalShellInput,
+	plan: ModalChromePlan,
+	body: readonly string[],
+	bodyBudget: number,
+	contentWidth: number,
+): ModalShellResult {
+	const { layoutRows, tipText, vPad, tipRows, tipGap, footerBand } = plan;
+	const inset = padding(CARD_BODY_COL_INSET);
+	const line = (content: string) => fit(inset + content, input.areaWidth);
+	const title = input.breadcrumb ? `${input.title}${input.breadcrumb}` : input.title;
+	const frame: string[] = [];
+
+	frame.push(line(theme.bold(truncateToWidth(title, contentWidth))));
+	frame.push(line(""));
+	let searchRow = -1;
+	if (input.searchLine !== undefined) {
+		searchRow = frame.length;
+		frame.push(line(fit(input.searchLine, contentWidth)));
+		frame.push(line(""));
+	}
+	for (let i = 0; i < vPad; i++) frame.push(line(""));
+	const bodyRowStart = frame.length;
+	for (const row of body) frame.push(line(fit(row, contentWidth)));
+	for (let i = 0; i < vPad; i++) frame.push(line(""));
+
+	frame.push(line(theme.fg("dim", theme.boxSharp.horizontal.repeat(contentWidth))));
+	const footerRowStart = frame.length;
+	if (tipText && tipRows > 0) {
+		frame.push(line(theme.italic(theme.fg("dim", tipText))));
+		if (tipGap) frame.push(line(""));
+	}
+	const shortcutRowStart = frame.length;
+	const shortcutHits: ShortcutHitRect[] = [];
+	for (let i = 0; i < layoutRows.length; i++) {
+		const layout = layoutRows[i]!;
+		frame.push(line(layout.styled));
+		for (const chip of layout.chips) {
+			if (!chip.clickable || !chip.id) continue;
+			shortcutHits.push({
+				id: chip.id,
+				row: shortcutRowStart + i,
+				colStart: CARD_BODY_COL_INSET + chip.offset,
+				colEnd: CARD_BODY_COL_INSET + chip.offset + chip.width,
+			});
+		}
+	}
+	while (frame.length < footerRowStart + footerBand) frame.push(line(""));
+	while (frame.length < input.areaHeight) frame.push(padding(input.areaWidth));
+
+	// The surface is the whole area. The rows under the key hints are the
+	// terminal's own, not a margin around a card, so there is no "outside" for
+	// a click to land on and {@link hitTestModalChrome} never reports one.
+	return {
+		lines: frame.slice(0, input.areaHeight),
+		geometry: {
+			leftPad: 0,
+			topPad: 0,
+			modalWidth: input.areaWidth,
+			modalHeight: input.areaHeight,
+			contentWidth,
+			bodyRowStart,
+			bodyRowCount: bodyBudget,
+			searchRow,
+			footerRowStart,
+			shortcutRowStart,
+			closeColStart: -1,
+			closeColEnd: -1,
+			breadcrumbColStart: -1,
+			breadcrumbColEnd: -1,
+			titleRow: 0,
+			cardColStart: 0,
+			cardColEnd: input.areaWidth,
+			cardRowStart: 0,
+			cardRowEnd: input.areaHeight,
 			shortcutHits,
 		},
 	};

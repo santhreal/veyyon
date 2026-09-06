@@ -5,6 +5,7 @@
  * by providing authorization URL, token URL, and client credentials.
  */
 
+import type { OAuthCredential } from "@veyyon/ai/auth-storage";
 import {
 	DEFAULT_CALLBACK_PATH,
 	OAuthCallbackFlow,
@@ -12,7 +13,6 @@ import {
 } from "@veyyon/ai/oauth/callback-server";
 import type { OAuthController, OAuthCredentials } from "@veyyon/ai/oauth/types";
 import type { FetchImpl } from "@veyyon/ai/types";
-import type { OAuthCredential } from "@veyyon/kernel/session/auth-storage";
 import { truncate } from "@veyyon/utils";
 import { getActiveProfile } from "@veyyon/utils/dirs";
 

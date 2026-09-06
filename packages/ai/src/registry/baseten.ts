@@ -19,4 +19,5 @@ export const basetenProvider = {
 	id: "baseten",
 	name: "Baseten",
 	login: (cb: OAuthLoginCallbacks) => loginBaseten(cb),
+	credential: "api-key",
 } as const satisfies ProviderDefinition;

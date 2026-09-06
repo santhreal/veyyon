@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { ApiKeyResolver, Model } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import * as ai from "@veyyon/ai/stream";
 import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
@@ -25,7 +26,6 @@ import {
 } from "@veyyon/coding-agent/thinking/auto-classifier";
 import type { TinyMemoryLocalModelKey } from "@veyyon/coding-agent/tiny/models";
 import { tinyModelClient } from "@veyyon/coding-agent/tiny/title-client";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { TempDir } from "@veyyon/utils";
 
 describe("auto thinking classifier helpers", () => {

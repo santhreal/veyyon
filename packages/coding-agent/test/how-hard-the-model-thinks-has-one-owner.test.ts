@@ -25,6 +25,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, AssistantMessage, Context, Model } from "@veyyon/ai";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { Effort } from "@veyyon/catalog/effort";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -33,7 +34,6 @@ import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-sessi
 import type { ThinkingRuntimeHost, ThinkingSessionStore } from "@veyyon/coding-agent/session/runtime/thinking-runtime";
 import { ThinkingRuntime } from "@veyyon/coding-agent/session/runtime/thinking-runtime";
 import { AUTO_THINKING, type ConfiguredThinkingLevel } from "@veyyon/coding-agent/thinking";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
 import { TempDir } from "@veyyon/utils";
 

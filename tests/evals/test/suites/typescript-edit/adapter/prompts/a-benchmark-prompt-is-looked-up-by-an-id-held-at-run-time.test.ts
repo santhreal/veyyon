@@ -108,7 +108,7 @@ describe("looking a benchmark prompt up by an id held in a variable", () => {
 		// An empty system prompt still produces a run and still produces a score, and
 		// the score is then attributed to the model rather than to the missing brief.
 		expect(() => editBenchmarkPrompts.require("benchmark-sistem")).toThrow(
-			/unknown prompt "benchmark-sistem" in packages\/evals\/suites\/typescript-edit\/prompts/,
+			/unknown prompt "benchmark-sistem" in tests\/evals\/suites\/typescript-edit\/prompts/,
 		);
 	});
 

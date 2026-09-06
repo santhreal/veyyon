@@ -14,6 +14,7 @@ export const githubCopilotProvider = {
 			signal: cb.signal,
 		});
 	},
+	credential: "oauth",
 	refreshToken: async (credentials: OAuthCredentials) => {
 		// Lazy import: keep heavy OAuth flow modules out of the eager registry graph.
 		const { refreshGitHubCopilotToken } = await import("./oauth/github-copilot");

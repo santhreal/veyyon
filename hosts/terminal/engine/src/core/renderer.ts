@@ -12,9 +12,14 @@ import { SGR_RESET, sgrSequence } from "@veyyon/utils/ansi";
 import { $flag } from "@veyyon/utils/env";
 import { normalizeTerminalOutput, truncateToWidth, visibleWidth } from "@veyyon/utils/width";
 import { isConPTYHosted } from "../terminal";
-import { TERMINAL } from "../terminal-capabilities";
+import { encodeKittyClippedPlacementLine, type KittyDirectPlacement, TERMINAL } from "../terminal-capabilities";
 import { type Component, CURSOR_MARKER } from "./component-types";
 import type { Container } from "./container";
+
+/** Geometry lookup required when a direct image placement is clipped. */
+export interface DirectImagePlacementLookup {
+	directPlacement(line: string): KittyDirectPlacement | undefined;
+}
 
 /**
  * Per-line terminator written after every non-image content row. It closes both
@@ -291,6 +296,26 @@ export function findCommittedPrefixResync(
 }
 
 /**
+ * Audit committed source alignment and accept tolerated verified-row changes.
+ * Frozen rows retain their original snapshots until strict finalization.
+ * The physical history remains in ScrollTape; this prefix tracks alignment.
+ */
+export function auditCommittedPrefix(
+	frame: readonly string[],
+	prefix: string[],
+	verifiedTo: number,
+	finalTo: number,
+): number {
+	const resyncTo = findCommittedPrefixResync(frame, prefix, verifiedTo, finalTo);
+	if (resyncTo >= 0) return resyncTo;
+	const verified = Math.min(prefix.length, Math.max(0, Math.trunc(verifiedTo)));
+	for (let i = Math.max(0, verified - RESYNC_TAIL_LOOKBACK); i < verified; i++) {
+		prefix[i] = frame[i]!;
+	}
+	return -1;
+}
+
+/**
  * Strip every CURSOR_MARKER from the rendered lines (markers are internal
  * sentinels and must never reach the terminal, the committed prefix, or
  * the resync audit) and return the positions of the stripped markers,
@@ -362,12 +387,33 @@ export function truncateLargeConptyFrame(
 	};
 }
 
-export function terminalLine(line: string): string {
-	if (TERMINAL.isImageLine(line)) return line;
+/**
+ * The bytes for an image line written at viewport row `screenRow`. A direct
+ * placement is the LAST row of its block and climbs `rows-1` to the origin;
+ * written at a row above that origin (its first rows already scrolled into
+ * native scrollback, or an alt-screen frame that starts inside the block),
+ * the climb clamps at row 0 and the picture lands over the text below it.
+ * Such a line is re-derived from the geometry the budget holds: it climbs to
+ * row 0 and shows only the rows that fit. Sequential replays (history rows)
+ * pass no row and keep the line, since the block's own rows precede it.
+ */
+export function imageLineAt(line: string, screenRow: number | undefined, budget?: DirectImagePlacementLookup): string {
+	if (screenRow === undefined || budget === undefined) return line;
+	const placement = budget.directPlacement(line);
+	if (placement === undefined || placement.rows - 1 <= screenRow) return line;
+	return encodeKittyClippedPlacementLine(placement, screenRow);
+}
+
+/**
+ * A line as the terminal receives it. `screenRow` is the viewport row the
+ * line is written at, when the caller knows it; an image line rewritten
+ * there is clipped to the rows it has above it, see {@link imageLineAt}.
+ */
+export function terminalLine(line: string, screenRow?: number, budget?: DirectImagePlacementLookup): string {
+	if (TERMINAL.isImageLine(line)) return imageLineAt(line, screenRow, budget);
 	const coalesced = coalesceAdjacentSgr(line);
 	return coalesced + (line.includes("\x1b]8;") ? LINE_TERMINATOR : SGR_RESET);
 }
-
 /**
  * Persistent prepared frame, row-aligned with the composed frame. Entries hold
  * normalized, width-fitted content rows without the per-line terminator, which
@@ -592,9 +638,14 @@ function ansiAsciiLineWidth(line: string, maxWidth: number): number | undefined 
 	return col;
 }
 
-export function lineRewriteSequence(line: string, width: number): string {
-	if (TERMINAL.isImageLine(line)) return ERASE_LINE + line;
-	const written = terminalLine(line);
+export function lineRewriteSequence(
+	line: string,
+	width: number,
+	screenRow?: number,
+	budget?: DirectImagePlacementLookup,
+): string {
+	if (TERMINAL.isImageLine(line)) return ERASE_LINE + imageLineAt(line, screenRow, budget);
+	const written = terminalLine(line, screenRow, budget);
 	const asciiWidth = ansiAsciiLineWidth(line, width);
 	if (asciiWidth !== undefined) {
 		// Exact width model: skip the erase only when the row truly fills

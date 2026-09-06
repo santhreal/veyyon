@@ -31,6 +31,7 @@ import {
 	Loader,
 	type NativeScrollbackLiveRegion,
 	type OverlayHandle,
+	type OverlayOptions,
 	ProcessTerminal,
 	Spacer,
 	setTerminalTextSizing,
@@ -61,12 +62,12 @@ import type { CollabHost } from "../../collab/host";
 import { KeybindingsManager } from "../../config/keybindings";
 import {
 	isSettingsInitialized,
-	onStatusLineSessionAccentChanged,
 	type QuarantinedSettingsFile,
 	Settings,
 	type SettingsSaveFailure,
 	settings,
 } from "../../config/settings";
+import { onStatusLineSessionAccentChanged } from "../../config/settings-signals";
 import type {
 	AutocompleteProviderFactory,
 	ContextUsage,
@@ -160,10 +161,10 @@ import {
 	COMPOSER_INSET_COLS,
 	ComposerHairline,
 	computeEditorMaxHeight,
+	draftTokenZone,
 	mountComposerZone,
 	PRISTINE_COMPOSER_ACCENT_STATE,
 	QuietZoneLine,
-	renderDraftTokenZone,
 	resolveComposerAccents,
 } from "./components/composer/composer-chrome";
 import { buildComposerShortcuts, ComposerShortcutsBar } from "./components/composer/composer-shortcuts";
@@ -188,6 +189,7 @@ import { ChatBlock, type ChatBlockHost } from "./components/transcript/chat-bloc
 import { ErrorBannerComponent } from "./components/transcript/error-banner";
 import type { EvalExecutionComponent } from "./components/transcript/eval-execution";
 import type { ToolExecutionHandle } from "./components/transcript/tool-execution";
+import { reportBlock } from "./components/transcript/transcript-block-chrome";
 import { TranscriptContainer } from "./components/transcript/transcript-container";
 import { BtwController } from "./controllers/btw-controller";
 import { CommandController } from "./controllers/command-controller";
@@ -931,9 +933,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * itself (see {@link ComposerHairline}), not a glyph parked at the edge.
 	 */
 	#locationRightZone(): string | null {
-		const zones = [renderDraftTokenZone(this.editor.getText()), this.#mcpZoneText()].filter(
-			(z): z is string => z !== null,
-		);
+		const zones = [draftTokenZone(this.editor.getText()), this.#mcpZoneText()].filter((z): z is string => z !== null);
 		return zones.length > 0 ? zones.join(theme.fg("dim", " · ")) : null;
 	}
 
@@ -3725,6 +3725,9 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 		this.ui.requestRender();
 	}
+	showReport(title: string, body: string, footer?: string): void {
+		this.present(reportBlock(title, body, footer));
+	}
 
 	#mountChatChild(item: Component): void {
 		this.chatContainer.addChild(item);
@@ -4472,7 +4475,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			keybindings: KeybindingsManager,
 			done: (result: T) => void,
 		) => (Component & { dispose?(): void }) | Promise<Component & { dispose?(): void }>,
-		options?: { overlay?: boolean },
+		options?: { overlay?: boolean | OverlayOptions },
 	): Promise<T> {
 		return this.#extensionUiController.showHookCustom(factory, options);
 	}

@@ -177,7 +177,7 @@ export class SelectList implements Component, MouseRoutable {
 	onSelectionChange?: (item: SelectItem) => void;
 
 	constructor(
-		private readonly items: ReadonlyArray<SelectItem>,
+		private items: ReadonlyArray<SelectItem>,
 		private maxVisible: number,
 		private readonly theme: SelectListTheme,
 		private readonly layout: SelectListLayoutOptions = {},
@@ -228,6 +228,38 @@ export class SelectList implements Component, MouseRoutable {
 
 	setFilter(filter: string): void {
 		this.#setFilter(filter, true);
+	}
+
+	/**
+	 * Replace the rows in place, keeping the live search query and the row the
+	 * reader had selected.
+	 *
+	 * A host whose data changes while its list is on screen used to construct a
+	 * new `SelectList`, which is a new list: the query the reader had typed was
+	 * gone, and so was the selection unless the host restored it by hand. In the
+	 * autoresearch run screen that took a filter away every time the loop logged
+	 * a run, which is the moment a reader filtering for one run is most likely to
+	 * be looking at it.
+	 *
+	 * The selection is followed by value rather than by index, because the row
+	 * the reader is on is the row they chose, not the third one. When that row is
+	 * no longer in the list the selection lands on the first row and the change is
+	 * announced, so a host tracking the selection is never left pointing at a row
+	 * that no longer exists.
+	 */
+	setItems(items: ReadonlyArray<SelectItem>): void {
+		const previous = this.getSelectedItem()?.value;
+		this.items = items;
+		// The filter text cache is keyed to the old rows; the next keystroke on an
+		// active filter rebuilds it.
+		this.#searchable = undefined;
+		// The pointer band belongs to a row under the mouse in the OLD list.
+		this.#hoveredIndex = null;
+		this.#hoverFade?.set(null);
+		this.#setFilter(this.#filterQuery, false, this.#filterTypedByUser);
+		const index = previous === undefined ? -1 : this.#filteredItems.findIndex(item => item.value === previous);
+		this.#selectedIndex = clampLow(index, 0, this.#filteredItems.length - 1);
+		if (this.#filteredItems[this.#selectedIndex]?.value !== previous) this.#notifySelectionChange();
 	}
 
 	/**

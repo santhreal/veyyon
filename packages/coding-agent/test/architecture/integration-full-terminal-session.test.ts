@@ -24,13 +24,14 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { createMockModel } from "@veyyon/ai/providers/mock";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { BUILTIN_TOOLS } from "@veyyon/coding-agent/tools/index";
-import { AuthStorage } from "@veyyon/kernel/session/auth-storage";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
+import { TempDir } from "@veyyon/utils";
 import type { UIEvent } from "@veyyon/wire/presentation";
 import { settleFrames } from "../../../../hosts/terminal/engine/test/helpers/settle-frames";
 import { VirtualTerminal } from "../../../../hosts/terminal/engine/test/virtual-terminal";
@@ -41,7 +42,6 @@ import { testTheme } from "./helpers/presentation-theme";
 
 const WIDTH = 80;
 const HEIGHT = 24;
-const TEST_PARENT = path.resolve(import.meta.dirname, "../../../../.internal/full-terminal-session");
 
 interface Rig {
 	cwd: string;
@@ -59,8 +59,8 @@ async function createRig(options: {
 	script: ReadonlyArray<{ content: ReadonlyArray<string | Record<string, unknown>> }>;
 	files?: Record<string, string>;
 }): Promise<Rig> {
-	await fs.mkdir(TEST_PARENT, { recursive: true });
-	const cwd = await fs.mkdtemp(path.join(TEST_PARENT, "run-"));
+	const tempDir = TempDir.createSync("@pi-full-terminal-session-");
+	const cwd = tempDir.path();
 
 	resetSettingsForTest();
 	await Settings.init({ inMemory: true, cwd, overrides: { "startup.quiet": true } });
@@ -115,7 +115,7 @@ async function createRig(options: {
 			driver.stop();
 			await session.dispose();
 			authStorage.close();
-			await fs.rm(cwd, { recursive: true, force: true });
+			tempDir.removeSync();
 			resetSettingsForTest();
 		},
 	};

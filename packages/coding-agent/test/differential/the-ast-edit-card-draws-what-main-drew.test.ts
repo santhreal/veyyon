@@ -1,13 +1,9 @@
 /**
  * The `ast_edit` card draws what main's renderer drew.
  *
- * TWO DIFFERENCES ARE ASSERTED AS EXCEPTION CELLS. The held-back groups, whose count closes the card
+ * ONE DIFFERENCE IS ASSERTED AS AN EXCEPTION CELL. The held-back groups, whose count closes the card
  * in the dim the host writes every held-back note in, with the expand gesture the host offers, where
- * main wrote the same sentence in muted and offered nothing. And the multi-line error card, where main
- * coloured the whole message and then split the coloured string, so the second row started inside a
- * run it never opened and lost the two-column indent; each row now opens and closes its own run and
- * carries its own indent.
- *
+ * main wrote the same sentence in muted and offered nothing.
  * ONE BRANCH IS UNOBSERVABLE RATHER THAN UNTESTED. The row a collapsed card reserves for its
  * held-back note changes nothing at the current budget, since the smallest group the tool writes is
  * three rows and a second group costs seven. Both arms reserve it identically, and the cell asserts
@@ -415,33 +411,17 @@ describe("ast_edit tool differential", () => {
 		expect(stripVTControlCharacters(oracleLines(value, HOST_EXPANDED, 200).join("\n"))).not.toContain("more changes");
 	});
 
-	it("exception cell: an error card tones every line, where main coloured the block once", () => {
-		// One line is the case the string form got right, so that arm is byte-identical.
+	it("draws an error card with exact byte parity, for single-line and multi-line errors", () => {
 		for (const width of [200, WIDTH, 40]) {
 			const single: AstEditViewResult = {
 				content: [{ type: "text", text: "pattern did not parse" }],
 				isError: true,
 			};
 			expect(viewLines(single, COLLAPSED, width)).toEqual(oracleLines(single, HOST_COLLAPSED, width));
+
+			const many: AstEditViewResult = { content: [{ type: "text", text: "first\nsecond" }], isError: true };
+			expect(viewLines(many, COLLAPSED, width)).toEqual(oracleLines(many, HOST_COLLAPSED, width));
 		}
-		const many: AstEditViewResult = { content: [{ type: "text", text: "first\nsecond" }], isError: true };
-		const drawn = viewLines(many, COLLAPSED, 200);
-		const oracle = oracleLines(many, HOST_COLLAPSED, 200);
-		// Main coloured the whole message and split the coloured string, so the run opened on the
-		// first row and closed on the last: the first row ends INSIDE the colour, and the second row
-		// starts inside it, without the two-column indent, and closes a run it never opened. Each row
-		// here opens and closes its own run and carries its own indent.
-		expect(drawn[1]).toContain(`${theme.fg("error", "first")} `);
-		expect(oracle[1]).not.toContain(theme.fg("error", "first"));
-		expect(drawn[2]).toContain(`  ${theme.fg("error", "second")}`);
-		expect(stripVTControlCharacters(oracle[2] ?? "").trimEnd()).toBe(`${theme.symbol("block.rail")}  second`);
-		expect(oracle[2]).not.toContain(theme.fg("error", "second"));
-		// The same two sentences in the same order in both arms; the indent and the run boundaries are
-		// the whole of the difference.
-		const words = (lines: readonly string[]): string[] =>
-			lines.map(line => stripVTControlCharacters(line).replace(theme.symbol("block.rail"), "").trim());
-		expect(words(drawn)).toEqual(words(oracle));
-		expect(stripVTControlCharacters(drawn[2] ?? "").trimEnd()).toBe(`${theme.symbol("block.rail")}    second`);
 		// A failure with no text at all still names the failure in both arms, byte for byte.
 		const bare: AstEditViewResult = { content: [], isError: true };
 		expect(viewLines(bare, COLLAPSED, 200)).toEqual(oracleLines(bare, HOST_COLLAPSED, 200));
