@@ -248,4 +248,4 @@ The scripts have distinct state transitions:
 - **Compiled binary mode**: Runtime mode where the CLI is bundled and native addons are resolved from embedded/cache paths before package-local paths.
 - **Embedded addon**: Build artifact metadata and archive reference generated into `native/embedded-addon.js` so compiled binaries can extract matching `.node` payloads.
 
-*Verified against `4aaaffd0a` on 2026-08-30.*
+*Verified against `9c904aa2db` on 2026-09-05.*

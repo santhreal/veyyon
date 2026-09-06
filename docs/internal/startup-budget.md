@@ -340,4 +340,4 @@ It is still a target and not a gate. Wiring it to CI needs a runner whose timing
 that a red build means a regression, and a first-frame median here moves by more than 50% between
 repetitions, and by more than that when a type check shares the machine.
 
-*Verified against `c00398374` on 2026-09-01.*
+*Verified against `9c904aa2db` on 2026-09-05.*

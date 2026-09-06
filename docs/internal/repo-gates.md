@@ -77,4 +77,4 @@ HTML. The `Site` workflow builds the handbook before deploying to Cloudflare Pag
 
 The mdbook version is pinned to v0.5.2. A different version renders content-hashed filenames
 differently, so CI and local builds use the same pinned version.
-*Verified against `eeffc5978d` on 2026-09-04.*
+*Verified against `9c904aa2db` on 2026-09-05.*
