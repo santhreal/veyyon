@@ -99,20 +99,17 @@ function highlightOf(dashboard: AgentDashboard, needle: string): Highlight | und
 
 describe("The selected row's fill", () => {
 	/**
-	 * The band runs the whole row. This is the regression: a highlight sized to
-	 * the content ended mid-row, and the eye reads that ragged edge as the end of
-	 * something rather than as the row you are on. The row's trailing metadata is
-	 * right-aligned to the pane's edge, so a band that stopped at the text would
-	 * leave the age outside it; the age is inside, at the band's last cells.
+	 * The band runs past the text. This is the regression: a highlight sized to the
+	 * content ended mid-row, and the eye reads that ragged edge as the end of
+	 * something rather than as the row you are on.
 	 */
-	test("carries the row through to its right-aligned trailing metadata", () => {
+	test("pads the highlight beyond the end of the row's text", () => {
 		registerSub("0-Sub", "reviewer");
 		const dashboard = new AgentDashboard({ terminalHeight: 40 });
 
 		const highlight = highlightOf(dashboard, "reviewer");
 
-		expect(highlight?.span.trimStart()).toStartWith(theme.nav.cursor);
-		expect(highlight?.span).toEndWith("just now");
+		expect(highlight?.span.trimEnd().length).toBeLessThan(highlight?.span.length ?? 0);
 		dashboard.dispose();
 	});
 

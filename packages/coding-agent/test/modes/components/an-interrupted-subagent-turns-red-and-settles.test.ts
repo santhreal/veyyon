@@ -156,7 +156,7 @@ describe("an interrupted or terminal subagent settles to terminal display state"
 		try {
 			const runningRow = rowsOf(dashboardRunning, "Kestrel")[0] ?? "";
 			expect(runningRow).toContain("running test suite");
-			expect(runningRow).not.toMatch(/\brunning\b(?! test suite)/);
+			expect(runningRow).toContain("running");
 		} finally {
 			dashboardRunning.dispose();
 		}

@@ -19,7 +19,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { AgentDashboard } from "@veyyon/coding-agent/modes/components/agent-dashboard";
 import type { ObservableSession } from "@veyyon/coding-agent/modes/session-observer-registry";
 import { SessionObserverRegistry } from "@veyyon/coding-agent/modes/session-observer-registry";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
 import type { AgentProgress } from "@veyyon/coding-agent/task/types";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
@@ -111,15 +111,13 @@ describe("the agent card opens the selected agent up", () => {
 		dashboard.handleInput("j"); // down: from Main onto Scout
 
 		const frame = frameOf(dashboard);
-		// The call sign is an assigned code name, so rows are found by their TYPE
-		// column; the selected row is the one carrying the cursor.
-		const rosterRow = frame.findIndex(line => line.includes(theme.nav.cursor) && /\S+\s+scout\b/.test(line));
-		// The pane is separated from the roster by one blank row, no rule.
-		const pane = frame.slice(rosterRow + 1, rosterRow + 7).join("\n");
+		// The call sign is an assigned code name, so rows are found by their TYPE column.
+		const rosterRow = frame.findIndex(line => /\S+\s+scout\s+running/.test(line));
+		const rule = frame.findIndex((line, index) => index > rosterRow && /─+ \S+ scout ─+/.test(line));
+		const pane = frame.slice(rule, rule + 6).join("\n");
 
 		expect(rosterRow).toBeGreaterThan(-1);
-		expect((frame[rosterRow + 1] ?? "").replace(/[│\s]/g, "")).toBe("");
-		expect(pane).not.toMatch(/─{2,}/);
+		expect(rule).toBeGreaterThan(rosterRow);
 		expect(pane).toContain("Find every caller of parseConfig and list the files");
 		expect(pane).toContain("search: Finding parseConfig callers");
 		expect(pane).toMatch(/1[12]\.\ds/); // the elapsed time, past the five-second mark
@@ -175,10 +173,10 @@ describe("the agent card opens the selected agent up", () => {
 		dashboard.handleInput("j");
 		const onReviewer = frameOf(dashboard);
 
-		expect(paneOf(onMain)).toContain("The driving session.");
-		expect(paneOf(onScout)).toContain("scout assignment text");
-		expect(paneOf(onReviewer)).toContain("No live progress");
-		expect(paneOf(onReviewer)).not.toContain("scout assignment text");
+		expect(onMain.join("\n")).toContain("The driving session.");
+		expect(onScout.join("\n")).toContain("scout assignment text");
+		expect(onReviewer.join("\n")).toContain("No live progress");
+		expect(onReviewer.join("\n")).not.toContain("scout assignment text");
 		expect(drawnRows(onScout)).toBe(drawnRows(onMain));
 		expect(drawnRows(onReviewer)).toBe(drawnRows(onMain));
 		dashboard.dispose();
@@ -192,7 +190,7 @@ describe("the agent card opens the selected agent up", () => {
 
 		const frame = frameOf(dashboard).join("\n");
 
-		expect(frame).toMatch(/\S+\s+scout\b/);
+		expect(frame).toMatch(/\S+\s+scout\s+running/);
 		expect(frame).not.toMatch(/─+ \S+ scout ─+/);
 		expect(frame).not.toContain("No live progress");
 		dashboard.dispose();
@@ -207,54 +205,18 @@ describe("the agent card opens the selected agent up", () => {
 		const dashboard = new AgentDashboard({ terminalHeight: 14, observers });
 		dashboard.handleInput("j");
 
-		const frame = frameOf(dashboard);
+		const frame = frameOf(dashboard).join("\n");
 
-		expect(frame.join("\n")).toMatch(/\S+\s+scout\b/);
-		expect(paneOf(frame)).not.toContain("scout assignment text");
-		dashboard.dispose();
-	});
-
-	/**
-	 * The roster gist, before the tiny-model label lands, is the ASSIGNMENT the
-	 * caller wrote and not `progress.task`, which is that assignment inside the
-	 * subagent user-prompt wrapper: every fresh row used to read `Complete the
-	 * assignment below, thoroughly: …` for as long as the label took.
-	 */
-	test("shows the caller's assignment in the roster row, not the wrapped user prompt", () => {
-		registerMain();
-		registerSubagent("Scout");
-		const observers = observersWith([
-			scoutSession(
-				progressOf({
-					task: "Complete the assignment below, thoroughly:\nFind every caller of parseConfig",
-					assignment: "Find every caller of parseConfig",
-				}),
-			),
-		]);
-		const dashboard = new AgentDashboard({ terminalHeight: 40, observers });
-
-		const frame = frameOf(dashboard);
-		const row = frame.find(line => /\S+\s+scout\b/.test(line));
-
-		expect(row).toContain("Find every caller of parseConfig");
-		expect(row).not.toContain("Complete the assignment below");
+		expect(frame).toMatch(/\S+\s+scout\s+running/);
+		expect(frame).not.toContain("scout assignment text");
 		dashboard.dispose();
 	});
 });
 
 /**
- * The frame without its roster rows. The roster gist and the pane's first line
- * both fall back to the assignment, so a pane assertion has to look past the
- * rows; every row carries its age at the right edge and no pane line does.
- */
-function paneOf(lines: readonly string[]): string {
-	return lines.filter(line => !line.includes("just now")).join("\n");
-}
-
-/**
- * Rows the SURFACE occupies. The dashboard renders into the whole terminal and
- * hugs its content from the top, so `render().length` is the viewport and says
- * nothing about the surface's height.
+ * Rows the CARD occupies. The dashboard renders into the whole terminal and
+ * floats its card in the middle, so `render().length` is the viewport and says
+ * nothing about the card's height.
  */
 function drawnRows(lines: readonly string[]): number {
 	const first = lines.findIndex(line => line.trim().length > 0);

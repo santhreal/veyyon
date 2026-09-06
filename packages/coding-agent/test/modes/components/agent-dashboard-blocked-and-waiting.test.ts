@@ -58,11 +58,10 @@ function registerSub(id: string, type: string): void {
 
 describe("an agent blocked on an approval prompt", () => {
 	/**
-	 * The invariant in one assertion: the roster says `blocked` while a person
-	 * is being waited on, and says nothing on the row that is working, because a
-	 * working row is the glyph alone.
+	 * The invariant in one assertion: the roster says `blocked`, not `running`,
+	 * while a person is being waited on.
 	 */
-	test("reads as blocked, next to a working row that carries no word", () => {
+	test("reads as blocked rather than running", () => {
 		registerSub("0-Sub", "reviewer");
 		registerSub("1-Sub", "scout");
 		AgentRegistry.global().setPendingApproval("1-Sub", { toolName: "bash", since: Date.now() });
@@ -70,7 +69,7 @@ describe("an agent blocked on an approval prompt", () => {
 		try {
 			const working = rowsOf(dashboard, "Kestrel")[0] ?? "";
 			const blocked = rowsOf(dashboard, "Otter")[0] ?? "";
-			expect(working).not.toMatch(/\b(running|blocked)\b/);
+			expect(working).toContain("running");
 			expect(blocked).toContain("blocked");
 			expect(blocked).not.toContain("running");
 		} finally {
@@ -95,8 +94,8 @@ describe("an agent blocked on an approval prompt", () => {
 			// The card coalesces registry events before rebuilding its roster.
 			vi.advanceTimersByTime(1000);
 			const after = rowsOf(dashboard, "Kestrel")[0] ?? "";
+			expect(after).toContain("running");
 			expect(after).not.toContain("blocked");
-			expect(after).not.toContain("running");
 		} finally {
 			vi.useRealTimers();
 			dashboard.dispose();
@@ -165,7 +164,7 @@ describe("an agent parked waiting on a peer", () => {
 		const dashboard = new AgentDashboard({ terminalHeight: 40 });
 		try {
 			const row = rowsOf(dashboard, "Kestrel")[0] ?? "";
-			expect(row).toContain("Kestrel");
+			expect(row).toContain("running");
 			expect(row).not.toContain("waiting");
 		} finally {
 			dashboard.dispose();

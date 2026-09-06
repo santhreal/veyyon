@@ -57,10 +57,7 @@ function registerSub(id: string, type: string): void {
 }
 
 /**
- * The rendered rows of the flat frame with ANSI stripped and the nav cursor
- * blanked. The frame has no border: every line is a content line, and the
- * chrome lines (title, tab strip, hairline, key hints) never tokenize to an
- * agent type, so `renderedTypes` skips them by construction.
+ * The text inside the ModalShell card's borders, with the nav cursor blanked.
  *
  * Blanking rather than stripping: the selected row carries the cursor glyph
  * where every other row carries a space of the same width, so replacing it with
@@ -68,9 +65,12 @@ function registerSub(id: string, type: string): void {
  * rendered bytes.
  */
 function cardRows(dashboard: AgentDashboard): string[] {
-	return dashboard
-		.render(120)
-		.map(raw => raw.replace(ANSI_PATTERN, "").replaceAll(theme.nav.cursor, " ".repeat(theme.nav.cursor.length)));
+	const rows: string[] = [];
+	for (const raw of dashboard.render(120)) {
+		const inner = /│(.*)│/.exec(raw.replace(ANSI_PATTERN, ""))?.[1];
+		if (inner !== undefined) rows.push(inner.replaceAll(theme.nav.cursor, " ".repeat(theme.nav.cursor.length)));
+	}
+	return rows;
 }
 
 /**
