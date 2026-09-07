@@ -21,7 +21,7 @@
  */
 
 import { Text, type ViewportSnapshot } from "@veyyon/tui";
-import { normalizePathForComparison } from "@veyyon/utils";
+import { errorMessage, normalizePathForComparison } from "@veyyon/utils";
 import { matchesKey } from "@veyyon/utils/keys";
 import { AgentRegistry, MAIN_AGENT_ID, type RegistryEvent } from "../../../registry/agent-registry";
 import type { AgentSession } from "../../../session/agent-session";
@@ -133,9 +133,7 @@ export class RoomController {
 				`Opened a peer conversation beside ${this.#labelOf(this.registry.get(this.ownId)?.id)} — →→ switches between them`,
 			);
 		} catch (error) {
-			this.ctx.showError(
-				`Could not open a peer conversation: ${error instanceof Error ? error.message : String(error)}`,
-			);
+			this.ctx.showError(`Could not open a peer conversation: ${errorMessage(error)}`);
 		} finally {
 			this.#switching = false;
 		}

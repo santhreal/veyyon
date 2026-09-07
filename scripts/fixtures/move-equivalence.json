@@ -13,8 +13,8 @@
 		"apps/site/deploy.test.ts": {
 			"old": "website/deploy.test.ts",
 			"group": "relocated-member-path",
-			"hash": "db2ed285506d195c6364f62fa9fdfe43434a89a823eb2a57194b61410f258005",
-			"structuralHash": "93b8359b11b14e820ea58bc8e482c7b6506ade01e04319bb83728cb316fa8c43"
+			"hash": "cb06b0aa5307facf437432835e75983743424927c866e944fa05779e29805b7d",
+			"structuralHash": "6c59cdcfe2c5534e589385764b44a40d8ac46dc402805f5c5eaa06dffc8cefb0"
 		},
 		"apps/site/features.html": {
 			"old": "website/features.html",
@@ -163,8 +163,8 @@
 		"hosts/terminal/engine/CHANGELOG.md": {
 			"old": "packages/tui/CHANGELOG.md",
 			"group": "changelog-or-readme",
-			"hash": "32bbff68461796ea4efcf6b02b94295861b333a1edf1e4c5bfb88a37bdaf3781",
-			"structuralHash": "e518a473482d4cb55a15a53f66a6e2a8bf1ca4ccae1d6c97ee2c652019da9b43"
+			"hash": "1eccb4247f1533a82093255d929fcba149aa920e4c01828b805c857837b60209",
+			"structuralHash": "da8d90695f4552779862d734a997015c1c5e4be09e725a9e6738da8cd8a349da"
 		},
 		"hosts/terminal/engine/bench/frame.bench.ts": {
 			"old": "packages/tui/bench/frame.bench.ts",
@@ -187,8 +187,8 @@
 		"hosts/terminal/engine/src/core/tui.ts": {
 			"old": "packages/tui/src/tui.ts",
 			"group": "extracted-to-utils",
-			"hash": "203e4dd288d008b4cd0d71551e715e10c99c8c7858642d15aa87e1508133c462",
-			"structuralHash": "6097470b353388c0865c4fe6aa5769ffa7221d68e662b494d6b2e3576720a2a5"
+			"hash": "9db7e3c954ec91b5a83c50fa054b953583988380ac0e0d617663d2c49ac9c828",
+			"structuralHash": "da6534c57420041801a2ee41981a12db6d6c9e12f13fcedc723be3bd1ef94544"
 		},
 		"hosts/terminal/engine/test/settings-list.test.ts": {
 			"old": "packages/tui/test/settings-list.test.ts",
