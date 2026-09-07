@@ -2,6 +2,7 @@ import { UnsupportedModelInputError } from "../../session/agent-session";
 import { ImageInputTooLargeError } from "../../utils/image-loading";
 import { VideoInputTooLargeError } from "../../utils/video-loading";
 import { writeFrame } from "../frames";
+import { reportQueuedPrompts } from "../queued-prompts";
 import { AttachmentValidationError, abortTurn, executePromptTurn, getOrCreateAgentSession } from "../turns";
 import type { AttachmentSubmission } from "../wire";
 import { activateSession, activeManager, isActive, replyError } from "./active-session";
@@ -59,6 +60,7 @@ async function deliver(
 		// On an idle session a steer or follow-up is the next turn; the session
 		// only queues when one is running.
 		await executePromptTurn(session, ctx.clientState, text, attachments, streaming);
+		reportQueuedPrompts(ctx.socket, ctx.clientState);
 		ctx.reply.success();
 	} catch (error) {
 		if (
@@ -293,12 +295,33 @@ const handleRespondToInteraction: ActionHandler<RespondToInteractionPayload | un
 	ctx.reply.success();
 };
 
+interface DequeueQueuedPromptPayload {
+	session?: string;
+}
+
+const handleDequeueQueuedPrompt: ActionHandler<DequeueQueuedPromptPayload | undefined> = async (ctx, payload) => {
+	if (payload?.session && !(await activateSession(ctx, payload.session))) return;
+	const restored = ctx.clientState.agentSession?.popLastQueuedMessage();
+	if (!restored) {
+		ctx.reply.failure({
+			scope: "Session",
+			code: "NO_QUEUED_PROMPT",
+			message: "There is no queued prompt to take back",
+			retryable: false,
+		});
+		return;
+	}
+	reportQueuedPrompts(ctx.socket, ctx.clientState, { restored: restored.text });
+	ctx.reply.success();
+};
+
 export const turnActionHandlers: ActionHandlersMap = {
 	SubmitPrompt: handleSubmitPrompt as ActionHandler<never>,
 	Steer: handleSteer as ActionHandler<never>,
 	FollowUp: handleFollowUp as ActionHandler<never>,
 	AbortTurn: handleAbortTurn as ActionHandler<never>,
 	SetQueueMode: handleSetQueueMode as ActionHandler<never>,
+	DequeueQueuedPrompt: handleDequeueQueuedPrompt as ActionHandler<never>,
 	CancelTool: handleCancelTool as ActionHandler<never>,
 	SetToolViewExpanded: handleSetToolViewExpanded as ActionHandler<never>,
 	RespondToInteraction: handleRespondToInteraction as ActionHandler<never>,

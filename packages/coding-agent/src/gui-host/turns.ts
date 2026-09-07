@@ -20,6 +20,7 @@ import { writeFrame } from "./frames";
 import { GuiHostUIContext, InteractionLedger } from "./interactions";
 import { enterPlanModeIfConfigured } from "./plan-approval";
 import type { PresentationLedger } from "./presentation";
+import { reportQueuedPrompts } from "./queued-prompts";
 import { agentMessageToTranscriptEntry, sessionEntryToTranscriptEntry } from "./transcript-conversion";
 import type { AttachmentSubmission, AuthFlowState, TerminalStatus, TranscriptEntry } from "./wire";
 
@@ -88,6 +89,11 @@ export interface ClientSessionState {
 	selectedChangeScope?: string;
 	unsubscribeAgents?: () => void;
 	authFlow?: ActiveAuthFlow;
+	/**
+	 * Signature of the last queued prompts frame written for this session, used
+	 * to suppress redundant frames when the queues have not changed.
+	 */
+	lastQueuedPromptsSignature?: string;
 }
 
 /**
@@ -273,6 +279,7 @@ export function handleSessionEvent(event: AgentSessionEvent, socket: net.Socket,
 		case "turn_end":
 		case "agent_end": {
 			clearStreaming(socket, state);
+			reportQueuedPrompts(socket, state);
 			break;
 		}
 		default:
@@ -446,6 +453,7 @@ export async function disposeTurnSession(state: ClientSessionState): Promise<voi
 		state.agentSession = undefined;
 		await session.dispose();
 	}
+	state.lastQueuedPromptsSignature = undefined;
 }
 
 /**

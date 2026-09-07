@@ -3,14 +3,16 @@
 # composer offers while it runs: steer, queue, the queued follow-up, and abort.
 #
 # Records visual evidence for:
-#   1. turn-running-steer    (the turn running, primary action Steer)
-#   2. turn-running-queue    (the same turn after `primary-/`, primary Queue)
-#   3. turn-queued-followup  (a follow-up submitted behind the running turn)
-#   4. turn-aborted          (the turn stopped by `primary-.`)
+#   1. turn-running-steer      (the turn running, primary action Steer)
+#   2. turn-running-queue      (the same turn after `primary-/`, primary Queue)
+#   3. turn-queued-followup    (a follow-up submitted behind the running turn)
+#   4. turn-queue-taken-back   (the same follow-up returned to the draft by alt+Up)
+#   5. turn-aborted            (the turn stopped by `primary-.`)
 #
 # Frames 1 and 2 are a differential of one state: the run bar's primary action is
 # the whole difference, so a single frame of a running turn proves nothing about
-# the mode. Frame 3 is what queue mode is for, and frame 4 is the way out.
+# the mode. Frames 3 and 4 are the queue the operator can read and the way back
+# out of it, each compared against the frame before it, and frame 5 ends the run.
 #
 # The turn is REAL. The prompt asks the local model for output long enough to
 # still be generating while the frames are taken, the queued follow-up reaches
@@ -130,6 +132,16 @@ run_bar_crop() {
 		$(( WIN_W - SIDEBAR_W )) \
 		"${COMPOSER_H}"
 }
+# The composer grows upward once it lists what the session is holding, so the
+# queued frames are compared over a taller strip than the run bar's own.
+QUEUED_H=240
+queued_crop() {
+	use_crop \
+		$(( WIN_X + SIDEBAR_W )) \
+		$(( WIN_Y + WIN_H - QUEUED_H )) \
+		$(( WIN_W - SIDEBAR_W )) \
+		"${QUEUED_H}"
+}
 # A streamed line of words repaints far more than the renderer's own noise,
 # which two settled frames of one state measure at a couple of pixels per
 # thousand.
@@ -141,6 +153,10 @@ STREAMED_PER_MILLE=4
 # A word of it is some hundreds of pixels against a renderer noise floor of a
 # few dozen over the same crop.
 MODE_NAME_PIXELS=300
+# A queued prompt is a count row and a line of its own text, which is a few
+# hundred pixels of ink over the same crop that measures a few dozen between
+# two settled frames of one state.
+QUEUED_STRIP_PIXELS=300
 COMPOSER_X=$(( WIN_X + (WIN_W > 800 ? 400 : WIN_W / 2) ))
 COMPOSER_Y=$(( WIN_Y + WIN_H - 98 ))
 # The up arrow, at the trailing edge of the composer's own column: the right
@@ -201,11 +217,33 @@ if [ "${MODE_MOVED}" -lt "${MODE_NAME_PIXELS}" ]; then
 fi
 
 # ─── A follow-up submitted behind the running turn ───────────────────────────
+# The prompt leaves the draft and the composer lists it, so the queued frame
+# differs from the frame of the same running turn holding nothing. Comparing
+# the two is what separates a queue the operator can read from a prompt that
+# vanished into the runtime.
 t "Then say the word done."
 pause 0.4
 k "Return"
-pause 0.8
+pause 1.2
 shot turn-queued-followup
+queued_crop
+QUEUED_MOVED="$(shots_differ_pixels turn-running-queue turn-queued-followup)"
+echo "scene: the composer moved ${QUEUED_MOVED} pixels when the prompt was queued" >&2
+if [ "${QUEUED_MOVED}" -lt "${QUEUED_STRIP_PIXELS}" ]; then
+	abandon_take "native-queued-prompt-stated" \
+		"the queued prompt moved ${QUEUED_MOVED} pixels, which is renderer noise rather than a prompt the operator can read"
+fi
+
+# ─── The queued prompt taken back (alt+Up) ───────────────────────────────────
+k "alt+Up"
+pause 1.2
+shot turn-queue-taken-back
+TAKEN_BACK="$(shots_differ_pixels turn-queued-followup turn-queue-taken-back)"
+echo "scene: the composer moved ${TAKEN_BACK} pixels when the prompt was taken back" >&2
+if [ "${TAKEN_BACK}" -lt "${QUEUED_STRIP_PIXELS}" ]; then
+	abandon_take "native-queued-prompt-taken-back" \
+		"alt+Up moved ${TAKEN_BACK} pixels, so the queued prompt did not return to the draft"
+fi
 
 # ─── The way out (primary-.) ─────────────────────────────────────────────────
 k "ctrl+period"

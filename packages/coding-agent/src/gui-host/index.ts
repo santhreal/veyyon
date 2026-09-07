@@ -1,6 +1,7 @@
 export * from "./actions";
 export * from "./frames";
 export * from "./presentation";
+export * from "./queued-prompts";
 export * from "./server";
 export * from "./session-bridge";
 export * from "./turns";

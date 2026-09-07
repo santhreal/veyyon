@@ -6,6 +6,7 @@ import { computeDefaultSessionDir } from "@veyyon/kernel/session/session-paths";
 import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import { errorMessage } from "@veyyon/utils";
 import { writeFrame } from "../frames";
+import { reportQueuedPrompts } from "../queued-prompts";
 import { sessionHeaderToView, sessionInfoToSummary } from "../session-bridge";
 import { sessionEntriesToTranscript, sessionEntryToTranscriptEntry } from "../transcript-conversion";
 import { disposeTurnSession } from "../turns";
@@ -73,6 +74,7 @@ export function emitActiveSessionAndTranscript(
 	ctx.reply.snapshot({
 		Transcript: { revision: ctx.clientState.revision, value: transcriptEntries },
 	});
+	reportQueuedPrompts(ctx.socket, ctx.clientState);
 }
 
 export async function emitSessionList(ctx: ActionContext): Promise<void> {

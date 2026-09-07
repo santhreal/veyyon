@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-738aa84a.js";
+            window.path_to_searchindex_js = "../searchindex-5e0d2a79.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-2d780f09.js"></script>
@@ -379,6 +379,9 @@ streamed output does not move the turn being read.</p>
 <p>The footer contains the model selector and an up-arrow primary action. A separate
 stop control appears while a turn runs. Secondary composer actions are available
 through slash commands rather than a permanent row of buttons.</p>
+<p>The arrow glyph is the same in every session state. Hover the button to read
+the name of the action it performs in the current state, which opens above the
+button. A control the host holds back states its reason there instead.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -407,6 +410,9 @@ palette is open.</li>
 <li><code>Primary-Enter</code> submits nonempty text in the alternate running-turn mode without
 changing the selected mode.</li>
 <li><code>Primary-.</code> requests an abort.</li>
+<li><code>Primary-/</code> selects steer or queue mode. The window holds the selection for
+as long as the session is open; a host frame does not change it. A host that
+reports no background submission leaves steer as the only mode.</li>
 </ul>
 <h3 id="submitted-drafts"><a class="header" href="#submitted-drafts">Submitted drafts</a></h3>
 <p>Send, steer, and queue requests retain editor content until the matching host
@@ -416,6 +422,16 @@ text remains in the editor. Failed requests do not consume the draft.</p>
 <p>Successful submission removes attachments included in that request. Attachments
 added afterward remain unless they compare equal to a submitted attachment.
 Unrelated and duplicate acknowledgments do not consume content.</p>
+<h3 id="queued-prompts"><a class="header" href="#queued-prompts">Queued prompts</a></h3>
+<p>A prompt sent while a turn runs waits in the session’s queue, and the composer
+lists what waits above the input: the steering prompts, which enter the running
+turn at its next tool boundary, then the follow-up prompts, which run after the
+turn ends, each oldest first. Each prompt occupies one truncated line under a
+count of what is held.</p>
+<p><code>Alt-Up</code>, and the control at the strip’s trailing edge, take the newest queued
+prompt out of the queue and put its text back in the draft. The queue releases
+prompts newest first, so there is no per-prompt removal control. The strip is
+absent while the queue is empty.</p>
 <h2 id="model-picker"><a class="header" href="#model-picker">Model picker</a></h2>
 <p>Click the model selector or press <code>Primary-Shift-M</code> to open the model picker above
 the composer. Search matches display names and <code>provider/model</code> identifiers in
@@ -534,6 +550,15 @@ settings row’s control column and then a queue card the open dialog covers. It
 counts the lit pixels of the column’s leading half and the pixels of the
 titlebar’s session name that a press behind the scrim moves. Record its other
 arm with <code>PROOF_BASE_REF=HEAD</code>, since the change is inside the executable alone.</p>
+<p>Use <code>proof/scenes/desktop-turn-control.sh</code> to submit a real prompt on a local
+model and photograph the run bar while the turn runs: its primary action as
+steer, the same run after <code>primary-/</code> puts it in queue mode, a follow-up
+submitted behind the running turn, and the turn stopped by <code>primary-.</code>. It waits
+on the host’s own session state rather than on a pause, so an idle composer
+fails the take instead of being photographed as a running turn. The steer and
+queue frames are one differential: the primary action is the whole difference
+between them. Record its other arm with <code>PROOF_BASE_REF=HEAD</code>, since the change
+is inside the executable alone.</p>
 <p>Output is written to <code>proof/captures/x11/</code>, or the absolute directory in <code>OUT_DIR</code>.
 The <a href="../foundations/verification.html">capture requirements</a> specify paired static
 frames and animated clips. Headless scene PNGs do not replace native captures.</p>

@@ -44,6 +44,7 @@
 - A desktop transcript draws no row for a thinking-level or service-tier change that recorded no value, where it previously stated "thinking level not recorded" and "service tier: unset".
 - The desktop composer's primary action draws the same arrow glyph in every session state and states its action name on hover above the button, where the tag previously opened downwards behind the attention strip and past the column's clipped edge.
 - The desktop command palette lists no command whose capability the host has not declared, where `/queue` and `/terminal` were previously offered against a host that refuses them.
+- A prompt sent to the desktop while a turn runs is listed above the composer input until it runs, and `Alt+Up` takes the newest one back into the draft, where the text previously left the composer and appeared nowhere until the turn ended.
 
 ### Changed
 

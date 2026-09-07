@@ -86,6 +86,7 @@ const ACTION_ERROR_SCOPES: Record<string, ErrorScope> = {
 	FollowUp: "Session",
 	AbortTurn: "Session",
 	SetQueueMode: "Session",
+	DequeueQueuedPrompt: "Session",
 	CancelTool: "Tool",
 	SetToolViewExpanded: "Tool",
 	RespondToInteraction: "Interaction",

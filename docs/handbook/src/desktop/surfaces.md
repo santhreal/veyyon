@@ -230,6 +230,19 @@ Successful submission removes attachments included in that request. Attachments
 added afterward remain unless they compare equal to a submitted attachment.
 Unrelated and duplicate acknowledgments do not consume content.
 
+### Queued prompts
+
+A prompt sent while a turn runs waits in the session's queue, and the composer
+lists what waits above the input: the steering prompts, which enter the running
+turn at its next tool boundary, then the follow-up prompts, which run after the
+turn ends, each oldest first. Each prompt occupies one truncated line under a
+count of what is held.
+
+`Alt-Up`, and the control at the strip's trailing edge, take the newest queued
+prompt out of the queue and put its text back in the draft. The queue releases
+prompts newest first, so there is no per-prompt removal control. The strip is
+absent while the queue is empty.
+
 ## Model picker
 
 Click the model selector or press `Primary-Shift-M` to open the model picker above
