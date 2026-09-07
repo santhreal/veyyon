@@ -42,8 +42,8 @@ fn the_window_holds_its_ink_ceilings_at_every_width_in_both_appearances() {
 		let mut cx = headless_context().expect("a headless renderer is required to render the shell");
 		let tokens = load_bundled_tokens().expect("the bundled tokens load");
 		let theme = load_bundled_theme(appearance).expect("the bundled theme loads");
-		let ground = theme_ground(&theme, Path::new("surface"))
-			.expect("the bundled theme states a ground");
+		let ground =
+			theme_ground(&theme, Path::new("surface")).expect("the bundled theme states a ground");
 		for width in WIDTHS {
 			let options =
 				RenderOptions { width, height: HEIGHT, scale_factor: 1.0, ..RenderOptions::default() };

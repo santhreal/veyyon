@@ -251,8 +251,14 @@ impl Render for Sheet {
 
 /// The logical size of the largest cell in the set.
 fn cell_extent(cells: &[SheetCell]) -> (f32, f32) {
-	let width = cells.iter().map(|cell| cell.frame.logical_width()).fold(0.0_f32, f32::max);
-	let height = cells.iter().map(|cell| cell.frame.logical_height()).fold(0.0_f32, f32::max);
+	let width = cells
+		.iter()
+		.map(|cell| cell.frame.logical_width())
+		.fold(0.0_f32, f32::max);
+	let height = cells
+		.iter()
+		.map(|cell| cell.frame.logical_height())
+		.fold(0.0_f32, f32::max);
 	(width, height)
 }
 
@@ -375,8 +381,7 @@ pub fn tile(
 		});
 	}
 
-	let options =
-		RenderOptions { width, height, scale_factor, ..RenderOptions::default() };
+	let options = RenderOptions { width, height, scale_factor, ..RenderOptions::default() };
 
 	let cell_width = cell.0;
 	render_view(cx, &options, move |_window, app: &mut App| {

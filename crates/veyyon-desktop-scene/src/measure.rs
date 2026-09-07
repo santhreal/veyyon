@@ -3,12 +3,13 @@
 //! A capture carries three channels: the quad tree, the shaped text runs and
 //! the registered hit rects. Four metrics read the tree and the frame, and two
 //! read the channels the tree does not carry - a tree recovered from quads has
-//! no text leaves and marks no box interactive, so `compute_distinct_text_sizes`
-//! and `compute_element_density` return zero on that path however much text and
-//! however many controls the frame holds. Reading the metric off the tree alone
-//! therefore reports two absences as measurements of zero and inflates a third,
-//! because a gap that spans a line of prose is content rather than rhythm and
-//! is suppressed only when the runs are supplied.
+//! no text leaves and marks no box interactive, so
+//! `compute_distinct_text_sizes` and `compute_element_density` return zero on
+//! that path however much text and however many controls the frame holds.
+//! Reading the metric off the tree alone therefore reports two absences as
+//! measurements of zero and inflates a third, because a gap that spans a line
+//! of prose is content rather than rhythm and is suppressed only when the runs
+//! are supplied.
 //!
 //! This module is where a capture becomes a measurement, so the CLI's report
 //! and the width gate read the same numbers from one definition.
@@ -35,9 +36,10 @@ pub fn theme_ground(theme: &Theme, surface: &Path) -> Result<RgbaColor, TokenErr
 	Ok(RgbaColor::new(channel(ground.r), channel(ground.g), channel(ground.b), channel(ground.a)))
 }
 
-/// The largest spacing step `scale.toml` authors (s13). §9.3 makes a larger
-/// authored gap impossible, so a span past it is a layout remainder: the canvas
-/// under a short transcript, the rail below its last row.
+/// The largest spacing step `scale.toml` authors (s13).
+///
+/// §9.3 makes a larger authored gap impossible, so a span past it is a layout
+/// remainder: the canvas under a short transcript, the rail below its last row.
 pub const LARGEST_AUTHORED_STEP: i64 = 64;
 
 /// The shaped runs' line boxes, in logical pixels.
@@ -119,11 +121,7 @@ pub fn measure(captured: &Captured, ground: RgbaColor) -> Measured {
 			distinct_text_sizes: cluster_text_sizes(&text_sizes(captured)),
 			edge_count:          compute_edge_count(&captured.layout, &captured.frame),
 			ink_ratio:           compute_ink_ratio(&captured.frame, ground),
-			element_density:     element_density_of_centers(
-				&hitbox_centers(captured),
-				width,
-				height,
-			),
+			element_density:     element_density_of_centers(&hitbox_centers(captured), width, height),
 			alignment_residue:   compute_alignment_residue(&captured.layout, 4),
 		},
 		interactive: captured.hitboxes.len(),

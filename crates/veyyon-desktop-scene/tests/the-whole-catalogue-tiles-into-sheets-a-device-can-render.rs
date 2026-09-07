@@ -7,18 +7,19 @@
 //! neither a size nor a knob.
 //!
 //! THE CLASS THIS CLOSES: a sheet whose size is decided by how many cells were
-//! passed rather than by what the device can carry. The bound is asserted on the
-//! real catalogue's size at the real default frame, the split is asserted to
-//! keep whole rows so two pages stay comparable, and `tile` is asserted to
-//! refuse an over-limit sheet by naming the size and the column count instead of
-//! attempting it. A future frame size, column default or scene count that
+//! passed rather than by what the device can carry. The bound is asserted on
+//! the real catalogue's size at the real default frame, the split is asserted
+//! to keep whole rows so two pages stay comparable, and `tile` is asserted to
+//! refuse an over-limit sheet by naming the size and the column count instead
+//! of attempting it. A future frame size, column default or scene count that
 //! overruns the bound turns the paging arithmetic red here rather than in a
 //! renderer error.
 //!
 //! WHAT IT DOES NOT CATCH: the device's true `maxImageDimension2D` or its free
 //! memory, neither of which is knowable here; `MAX_SHEET_EDGE_PX` is a fixed
 //! bound below every driver in use, not a query. It also does not judge the
-//! sheet's contents - `a_twelve_candidate_sweep_tiles_into_one_sheet` owns that.
+//! sheet's contents - `a_twelve_candidate_sweep_tiles_into_one_sheet` owns
+//! that.
 
 use veyyon_desktop_scene::{
 	MAX_SHEET_EDGE_PX, RenderError, RgbaColor, RgbaFrame, SceneRegistry, SheetCell, SheetGrid,
@@ -141,8 +142,8 @@ fn a_cell_taller_than_the_bound_gets_one_row_rather_than_no_page() {
 #[test]
 fn an_over_limit_sheet_is_refused_by_size_and_not_attempted() {
 	let mut cx = headless_context().expect("a headless context");
-	let tall = RgbaFrame::filled(64, 9000, 1.0, RgbaColor::new(20, 20, 26, 255))
-		.expect("a tall frame");
+	let tall =
+		RgbaFrame::filled(64, 9000, 1.0, RgbaColor::new(20, 20, 26, 255)).expect("a tall frame");
 	let error = tile(&mut cx, vec![SheetCell::new("tall/one", tall)], SheetGrid::new(2), 1.0)
 		.expect_err("a 9000px cell overruns the bound");
 
