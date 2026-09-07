@@ -355,6 +355,11 @@ cursor off the last turn of a transcript that fits the viewport, and count the
 accent pixels the jump button fills with. Record its other arm with
 `PROOF_BASE_REF=HEAD`, since the change is inside the executable alone.
 
+Use `proof/scenes/desktop-queue-badge.sh` to run a real turn and count the
+pixels of the `working` tint the row's badge fills with, while the turn runs and
+after it ends. Record its other arm with `PROOF_BASE_REF=HEAD`, since the change
+is inside the executable alone.
+
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
 The [capture requirements](../foundations/verification.md) specify paired static
 frames and animated clips. Headless scene PNGs do not replace native captures.
