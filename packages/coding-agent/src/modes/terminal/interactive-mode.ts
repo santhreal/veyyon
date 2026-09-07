@@ -686,14 +686,24 @@ export class InteractiveMode implements InteractiveModeContext {
 			isKnownSlashCommand: text => this.isKnownSlashCommand(text),
 			pendingSubmission: () => this.#pendingSubmittedInput,
 		});
+		// Both ports read `ui` on every access rather than holding the screen built
+		// above: a harness assigns its own `TUI` after construction and before
+		// `init`, and the layout must size, and the hero mount on, the screen that
+		// paints. A fill sized against the discarded screen's row count is what
+		// pushed a 24-row board's phase row into scrollback under a 40-row default.
+		const host = this;
 		this.#layout = new HomeAnchorLayout({
-			ui: this.ui,
+			get ui() {
+				return host.ui;
+			},
 			transcriptChildCount: () => this.chatContainer.children.length,
 			// Resolved lazily: the welcome controller is constructed just below.
 			hasHero: () => this.#welcomeController.hasHero,
 		});
 		this.#welcomeController = new WelcomeController({
-			ui: this.ui,
+			get ui() {
+				return host.ui;
+			},
 			chatContainer: this.chatContainer,
 			topFillRows: width => this.#layout.topFillRows(width),
 			onHeroDismissed: removedRows => this.#layout.onHeroDismissed(removedRows),
@@ -730,13 +740,6 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.ui.requestRender();
 		};
 		process.stdout.on("resize", this.#resizeHandler);
-		// Size the anchor from the children of the frame about to compose: a turn
-		// that grows or collapses in place between one frame and the next has no
-		// other moment to be measured in. There is no post-commit correction to
-		// pair with it — a fill sized from a frame that already composed is a
-		// second paint that moves the same rows to a different row, once per
-		// chunk of a streaming answer.
-		this.ui.onBeforeCompose = () => this.#layout.sync();
 		try {
 			this.historyStorage = HistoryStorage.open();
 			this.editor.setHistoryStorage(this.historyStorage);
@@ -1033,7 +1036,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			),
 		);
 
-		const startupQuiet = settings.get("startup.quiet");
+		const startupQuiet = this.settings.get("startup.quiet");
 
 		// The launch card is on screen already when the first frame painted one;
 		// its placeholder rows come off here, and the card itself is remounted
@@ -1044,6 +1047,15 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.ui.addChild(new Text(theme.fg("warning", `Warning: ${warning}`), 1, 0));
 			this.ui.addChild(new Spacer(1));
 		}
+
+		// Size the anchor from the children of the frame about to compose: a turn
+		// that grows or collapses in place between one frame and the next has no
+		// other moment to be measured in. There is no post-commit correction to
+		// pair with it — a fill sized from a frame that already composed is a
+		// second paint that moves the same rows to a different row, once per
+		// chunk of a streaming answer. Bound here, on the screen the fills mount
+		// on, rather than in the constructor, whose screen a harness may replace.
+		this.ui.onBeforeCompose = () => this.#layout.sync();
 
 		// The flexible top margin mounts above the hero AND the transcript: it
 		// centres the hero on the home screen, then (once a conversation starts)

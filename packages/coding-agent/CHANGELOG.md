@@ -159,6 +159,7 @@
 
 ### Fixed
 
+- The home anchor sizes its fills, the welcome hero mounts, and the per-frame sizing pass runs on the screen the interactive mode renders on rather than the one its constructor built, and `startup.quiet` is read from the session's settings like the other startup reads.
 - An agent whose session is on screen is no longer parked under it: opening an agent pins it for as long as the main view points at it, a park deadline that elapses meanwhile is deferred, and the idle TTL counts again from the return to the main session.
 - The task card lifts the missing-yield warning out of an agent's output under both its current spelling, `SYSTEM WARNING: Agent exited without calling yield tool`, and the `Subagent` spelling a session file recorded before it; the `task:subagent:progress` and `task:subagent:lifecycle` bus channels a collab guest matches on keep their spelling.
 - Custom tools retain their declared call and result views when converted into extension tool definitions.

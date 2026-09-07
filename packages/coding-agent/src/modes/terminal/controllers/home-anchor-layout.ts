@@ -44,17 +44,29 @@ export class HomeAnchorLayout {
 	 * while the screen is at rest. Collapses to zero once a conversation
 	 * routes the slack above the transcript. */
 	readonly bottomFill: Spacer = new Spacer(0);
+	/** The screen whose compositor has been told the fills are layout-sized. */
+	#sizedOn: TUI | undefined;
 
-	constructor(private readonly port: HomeAnchorPort) {
-		// Both fills are sized by the pass at the top of the frame that renders
-		// them (`TUI.onBeforeCompose`), and neither ever requests a repaint of
-		// itself. A component-scoped frame — every streamed chunk, which
-		// repaints its own chat block alone — must therefore be told to render
-		// them rather than reuse the rows the previous frame's content called
-		// for, or the frame composes past the viewport and the engine moves the
-		// window to fit.
-		port.ui.markLayoutSized(this.topFill);
-		port.ui.markLayoutSized(this.bottomFill);
+	constructor(private readonly port: HomeAnchorPort) {}
+
+	/**
+	 * Both fills are sized by the pass at the top of the frame that renders them
+	 * (`TUI.onBeforeCompose`), and neither ever requests a repaint of itself. A
+	 * component-scoped frame — every streamed chunk, which repaints its own chat
+	 * block alone — must therefore be told to render them rather than reuse the
+	 * rows the previous frame's content called for, or the frame composes past
+	 * the viewport and the engine moves the window to fit.
+	 *
+	 * Declared against the screen the sizing pass runs on, not the one the port
+	 * held at construction: `InteractiveMode` builds its screen in its
+	 * constructor and a harness replaces it before `init`, and a fill declared
+	 * to the discarded screen is reused stale on the one that paints.
+	 */
+	#declareLayoutSized(ui: TUI): void {
+		if (this.#sizedOn === ui) return;
+		ui.markLayoutSized(this.topFill);
+		ui.markLayoutSized(this.bottomFill);
+		this.#sizedOn = ui;
 	}
 
 	/** Rows the centring top margin currently occupies (the welcome port). */
@@ -84,6 +96,7 @@ export class HomeAnchorLayout {
 		// dismisses the card but the composer must stay at the viewport bottom
 		// in every conversation state, so the fills are recomputed every frame.
 		const ui = this.port.ui;
+		this.#declareLayoutSized(ui);
 		const width = ui.terminal.columns;
 		const rows = ui.terminal.rows;
 		const currentTopFill = this.topFill.render(width).length;
