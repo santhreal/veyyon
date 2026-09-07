@@ -10,12 +10,37 @@ use veyyon_gpui::{
 
 use crate::token_set::{ColorRole, RadiusStep, SpacingStep, TextRamp, TokenSet};
 
+/// Where the tag opens relative to its anchor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TooltipSide {
+	/// Below the anchor, which is the room a row or a header has.
+	#[default]
+	Below,
+	/// Above the anchor. A control at the bottom edge of the window has
+	/// nothing below it: the composer's own row is the last thing drawn there,
+	/// and a tag opening downwards lands under the attention strip.
+	Above,
+}
+
+/// Which edge of the anchor the tag is aligned to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TooltipAlign {
+	/// The tag's left edge meets the anchor's left edge.
+	#[default]
+	Start,
+	/// The tag's right edge meets the anchor's right edge, for an anchor near
+	/// the right edge of its column, where a tag running rightwards is clipped.
+	End,
+}
+
 /// Floating tooltip indicator tag element.
 #[derive(IntoElement)]
 pub struct Tooltip {
 	text:   SharedString,
 	anchor: AnyElement,
 	group:  SharedString,
+	side:   TooltipSide,
+	align:  TooltipAlign,
 }
 
 impl Tooltip {
@@ -25,7 +50,27 @@ impl Tooltip {
 	pub fn new(text: impl Into<SharedString>, anchor: impl IntoElement) -> Self {
 		let text = text.into();
 		let group: SharedString = format!("tooltip:{text}").into();
-		Self { text, anchor: anchor.into_any_element(), group }
+		Self {
+			text,
+			anchor: anchor.into_any_element(),
+			group,
+			side: TooltipSide::Below,
+			align: TooltipAlign::Start,
+		}
+	}
+
+	/// Opens the tag above the anchor.
+	#[must_use]
+	pub const fn above(mut self) -> Self {
+		self.side = TooltipSide::Above;
+		self
+	}
+
+	/// Aligns the tag's right edge to the anchor's right edge.
+	#[must_use]
+	pub const fn aligned_end(mut self) -> Self {
+		self.align = TooltipAlign::End;
+		self
 	}
 
 	/// Names the hover group, for a tooltip whose text is shared by others on
@@ -49,12 +94,16 @@ impl RenderOnce for Tooltip {
 		let pad_y = tokens.spacing(SpacingStep::S1);
 		let font_size = tokens.font_size(TextRamp::Small);
 
-		let tag = div()
-			.absolute()
-			.top_full()
-			.left_0()
-			.mt(pad_y)
-			.invisible()
+		let tag = div().absolute().invisible();
+		let tag = match self.align {
+			TooltipAlign::Start => tag.left_0(),
+			TooltipAlign::End => tag.right_0(),
+		};
+		let tag = match self.side {
+			TooltipSide::Below => tag.top_full().mt(pad_y),
+			TooltipSide::Above => tag.bottom_full().mb(pad_y),
+		};
+		let tag = tag
 			.group_hover(self.group.clone(), |s| s.visible())
 			.bg(bg)
 			.rounded(radius)

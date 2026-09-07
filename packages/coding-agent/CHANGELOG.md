@@ -42,6 +42,7 @@
 - A desktop agent turn ends with a footer naming the model that produced it, revealed while the pointer is over the turn or the turn cursor is on it, and clicking that name opens the session's token and cost accounting on one line in the right panel's Usage tab; the turn header still states none of the seven usage figures.
 - The desktop turn cursor (`Ctrl+Up`, `Ctrl+Down`) stops on the first and last turn instead of stepping past the end, and stepping onto the last turn keeps the transcript following new output instead of raising a "Scroll to end" pill over the end it is already showing.
 - A desktop transcript draws no row for a thinking-level or service-tier change that recorded no value, where it previously stated "thinking level not recorded" and "service tier: unset".
+- The desktop composer's primary action draws the same arrow glyph in every session state and states its action name on hover above the button, where the tag previously opened downwards behind the attention strip and past the column's clipped edge.
 
 ### Changed
 

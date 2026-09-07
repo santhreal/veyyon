@@ -1,16 +1,57 @@
 //! Helper utilities for asserting composer layout geometry, turn state
 //! fixtures, and footer hitboxes across conversational phases and breakpoints.
+//!
+//! Several test binaries include this module and each uses a subset of it, so
+//! an unused helper here is a helper another suite calls.
+#![allow(dead_code, reason = "each including suite calls a subset of these helpers")]
 
-use veyyon_desktop_kit::SpacingStep;
+use std::path::Path;
+
+use veyyon_desktop_kit::{SpacingStep, load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_model::{InteractionId, QueueMode};
-use veyyon_desktop_scene::session::HeadlessSession;
+use veyyon_desktop_scene::{
+	headless::{RenderOptions, headless_context},
+	session::HeadlessSession,
+};
 use veyyon_desktop_surface::{
 	Card, ShellState, ShellView,
 	composer::TurnPhase,
-	fixture,
+	fixture, install_tokens,
 	layout::{ShedInput, shell_widths},
 };
-use veyyon_gpui::{Bounds, Pixels};
+use veyyon_gpui::{App, AppContext, Bounds, Pixels};
+
+/// Opens a headless shell window on the bundled tokens and dark theme at the
+/// given size, optionally seeding composed text, and runs `test` against the
+/// live session.
+pub fn render_session<R>(
+	state: ShellState,
+	seed_text: Option<&str>,
+	width: u32,
+	height: u32,
+	test: impl FnOnce(&mut HeadlessSession<ShellView>) -> R,
+) -> R {
+	let mut cx = headless_context().expect("headless context available");
+	let tokens = load_bundled_tokens().expect("tokens load");
+	let theme = load_bundled_theme("dark").expect("theme loads");
+	let options = RenderOptions { width, height, scale_factor: 1.0, ..RenderOptions::default() };
+
+	let mut session = HeadlessSession::open(&mut cx, &options, move |_window, app: &mut App| {
+		let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
+			.expect("tokens and theme install");
+
+		app.new(|_| ShellView::new(installed, state))
+	})
+	.expect("session opens");
+
+	if let Some(text) = seed_text {
+		session
+			.update(|view, _window, cx| view.set_composed(text, cx))
+			.expect("composed text set");
+	}
+
+	test(&mut session)
+}
 
 /// Turn phase variant discriminant for sweeping all 7 fundamental turn actions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumIter)]

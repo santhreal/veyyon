@@ -79,6 +79,7 @@ pub fn footer_row(
 		.gap(tokens.spacing(SpacingStep::S3))
 		.child(
 			Tooltip::new(availability.reason().unwrap_or(label).to_owned(), model)
+				.above()
 				.group("composer-model-hint"),
 		)
 		.child(turn_action_controls(turn, has_text, session_id, states, tokens, cx))

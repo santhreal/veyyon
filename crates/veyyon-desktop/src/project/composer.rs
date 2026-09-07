@@ -51,7 +51,7 @@ pub fn project_turn_phase(
 
 /// A background submission the host does not accept leaves one mode: a prompt
 /// sent while a turn runs steers it (§5.13).
-fn clamp_queue_mode(store: &Store, mode: QueueMode) -> QueueMode {
+const fn clamp_queue_mode(store: &Store, mode: QueueMode) -> QueueMode {
 	if matches!(
 		store.capabilities.get(Capability::BackgroundSubmission),
 		CapabilityStatus::Unavailable { .. }

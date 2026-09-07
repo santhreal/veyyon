@@ -188,6 +188,10 @@ The footer contains the model selector and an up-arrow primary action. A separat
 stop control appears while a turn runs. Secondary composer actions are available
 through slash commands rather than a permanent row of buttons.
 
+The arrow glyph is the same in every session state. Hover the button to read
+the name of the action it performs in the current state, which opens above the
+button. A control the host holds back states its reason there instead.
+
 | Session state | Primary action |
 | --- | --- |
 | Idle, nonempty draft | Send |

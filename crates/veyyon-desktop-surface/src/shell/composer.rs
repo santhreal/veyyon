@@ -170,6 +170,21 @@ impl ShellView {
 		}
 	}
 
+	/// Selects the other running-turn mode, through the same availability the
+	/// footer's own control reads: a host that accepts no background
+	/// submission holds the toggle back rather than answering the chord with
+	/// an action it refuses (§4.3, §5.13).
+	pub fn toggle_queue_mode(&mut self, cx: &mut Context<Self>) {
+		let other = match self.state.composer.queue_mode {
+			QueueMode::Steer => QueueMode::Queue,
+			QueueMode::Queue => QueueMode::Steer,
+		};
+		let intent = Intent::SetQueueMode(other);
+		if self.composer_action_allowed(&intent) {
+			self.dispatch(intent, cx);
+		}
+	}
+
 	/// Records the accepted transport request without consuming editable draft
 	/// content.
 	pub fn track_submission(&mut self, request: RequestId, intent: &Intent) {

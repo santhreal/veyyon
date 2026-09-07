@@ -156,6 +156,28 @@ impl<'a, V: Render + 'static> HeadlessSession<'a, V> {
 		Ok(())
 	}
 
+	/// Moves the pointer to the given logical coordinates without pressing a
+	/// button, which is how a hover reaches an element: group-hover styling and
+	/// a hover tag are painted from the pointer position the previous frame
+	/// recorded, so the caller draws a frame after this to read them.
+	pub fn hover(&mut self, at: Point<Pixels>) -> Result<(), RenderError> {
+		let mouse_move = PlatformInput::MouseMove(MouseMoveEvent {
+			position:       at,
+			pressed_button: None,
+			modifiers:      Modifiers::default(),
+		});
+
+		self
+			.cx
+			.update_window(self.window.into(), |_, window, cx| {
+				window.dispatch_event(mouse_move, cx);
+			})
+			.map_err(|error| RenderError::Window { message: format!("{error:?}") })?;
+
+		self.cx.run_until_parked();
+		Ok(())
+	}
+
 	/// Dispatches a mouse click (`MouseDown` followed by `MouseUp`) at the given
 	/// logical coordinates.
 	pub fn click(&mut self, at: Point<Pixels>) -> Result<(), RenderError> {
@@ -269,11 +291,8 @@ impl<'a, V: Render + 'static> HeadlessSession<'a, V> {
 	/// arrives where the pointer already is.
 	pub fn scroll(&mut self, at: Point<Pixels>, lines: f32) -> Result<(), RenderError> {
 		let modifiers = Modifiers::default();
-		let mouse_move = PlatformInput::MouseMove(MouseMoveEvent {
-			position: at,
-			pressed_button: None,
-			modifiers,
-		});
+		let mouse_move =
+			PlatformInput::MouseMove(MouseMoveEvent { position: at, pressed_button: None, modifiers });
 		let wheel = PlatformInput::ScrollWheel(ScrollWheelEvent {
 			position: at,
 			delta: ScrollDelta::Lines(Point { x: 0.0, y: -lines }),

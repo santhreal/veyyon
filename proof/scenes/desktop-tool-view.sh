@@ -101,55 +101,21 @@ PY
 # ─── Comparing Two Frames ────────────────────────────────────────────────────
 # What this scene records is that both gestures open the same card and that
 # closing returns it to the collapsed one. That is a statement about pixels, so
-# it is asserted here rather than left to whoever opens the gallery.
+# it is asserted here rather than left to whoever opens the gallery. The
+# counting is `lib.sh`'s; this scene states the rectangle and the thresholds.
 #
-# Whole frames cannot be compared: the session list prints each session's age,
-# so two frames a second apart differ in the sidebar whatever the transcript
-# does. The comparison crops the sidebar off and counts differing pixels per
-# thousand of what is left.
-CROP_X=$(( WIN_X + (WIN_W > 800 ? 256 : 0) ))
-CROP_Y=$(( WIN_Y + 48 ))
-CROP_W=$(( WIN_W - (WIN_W > 800 ? 256 : 0) ))
-CROP_H=$(( WIN_H - 48 ))
+# The sidebar is cropped off because the session list prints each session's age,
+# so two frames a second apart differ there whatever the transcript does.
+use_crop \
+	$(( WIN_X + (WIN_W > 800 ? 256 : 0) )) \
+	$(( WIN_Y + 48 )) \
+	$(( WIN_W - (WIN_W > 800 ? 256 : 0) )) \
+	$(( WIN_H - 48 ))
 # A disclosed card redraws a quarter of that area. Two settled frames of the
 # same state measured 26 pixels apart out of 694,848, which is the software
 # renderer's own noise, so agreement is generous and disclosure is unmistakable.
 DISCLOSED_PER_MILLE=50
 IDENTICAL_PER_MILLE=2
-
-frames_differ_per_mille() { # <png-a> <png-b>
-	local scratch="${SCENE_RUNTIME_DIR}/frame-compare"
-	mkdir -p "${scratch}"
-	local crop="${CROP_W}x${CROP_H}+${CROP_X}+${CROP_Y}" differing
-	magick "$1" -crop "${crop}" +repage "${scratch}/a.png"
-	magick "$2" -crop "${crop}" +repage "${scratch}/b.png"
-	# `compare` exits non-zero whenever the two images differ at all, which is
-	# the ordinary case here, so only the count it prints is read.
-	differing="$(compare -metric AE "${scratch}/a.png" "${scratch}/b.png" null: 2>&1 || true)"
-	case "${differing}" in
-		'' | *[!0-9]*)
-			abandon_take "frames-comparable" \
-				"comparing $(basename "$1") with $(basename "$2") reported '${differing}' instead of a pixel count"
-			;;
-	esac
-	echo $(( differing * 1000 / (CROP_W * CROP_H) ))
-}
-
-shots_differ_per_mille() { # <shot-a> <shot-b>
-	frames_differ_per_mille "${SCENE_OUT}/${SCENE_NAME}-$1.png" "${SCENE_OUT}/${SCENE_NAME}-$2.png"
-}
-
-# What is on screen now, against a frame already recorded. This is how the
-# card's row is found: a click that disclosed it changed the transcript, and a
-# click that landed on prose changed nothing.
-screen_differs_from_shot_per_mille() { # <shot>
-	local probe="${SCENE_RUNTIME_DIR}/pointer-probe.png"
-	mkdir -p "${SCENE_RUNTIME_DIR}"
-	if ! _be_capture "${probe}" 2>&1 || [ ! -s "${probe}" ]; then
-		abandon_take "pointer-probe-captured" "the probe capture wrote nothing or an empty file"
-	fi
-	frames_differ_per_mille "${SCENE_OUT}/${SCENE_NAME}-$1.png" "${probe}"
-}
 
 # ─── A Real Tool Call ────────────────────────────────────────────────────────
 k "ctrl+shift+m"

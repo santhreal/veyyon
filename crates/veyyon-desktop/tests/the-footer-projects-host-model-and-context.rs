@@ -9,8 +9,8 @@ use std::collections::HashMap;
 use support::{NOW_MS, session};
 use veyyon_desktop::{SessionIndex, project};
 use veyyon_desktop_model::{
-	Capability, CapabilityStatus, ContextBreakdownView, InputModality, ModelRef,
-	ModelView, ModelsView, QueueMode, QueuePartition, SessionId, Store,
+	Capability, CapabilityStatus, ContextBreakdownView, InputModality, ModelRef, ModelView,
+	ModelsView, QueueMode, QueuePartition, SessionId, Store,
 };
 use veyyon_desktop_surface::{Attachment, MediaType, ShellState, composer::payload_for};
 
@@ -44,7 +44,7 @@ fn the_footer_shows_the_model_thinking_and_context_the_host_reported() {
 		.domains
 		.context
 		.insert(session_id.clone(), ContextBreakdownView {
-			session:      session_id.clone(),
+			session:      session_id,
 			total_tokens: 82_400,
 			limit_tokens: Some(200_000),
 			categories:   Vec::new(),

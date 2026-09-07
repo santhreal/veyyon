@@ -20,8 +20,7 @@ pub use slot::EditorSlot;
 use veyyon_gpui::{
 	App, Bounds, ClipboardItem, Context, CursorStyle, ElementId, EventEmitter, FocusHandle,
 	Focusable, InteractiveElement, IntoElement, MouseButton, Pixels, Render, SharedString,
-	Subscription, Task,
-	Window, div, prelude::*, relative,
+	Subscription, Task, Window, div, prelude::*, relative,
 };
 
 use super::buffer::TextBuffer;

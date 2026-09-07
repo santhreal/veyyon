@@ -20,9 +20,8 @@ use std::collections::HashMap;
 
 use veyyon_desktop::project::{SessionIndex, project, project_turn_phase};
 use veyyon_desktop_model::{
-	ApprovalInteraction, InteractionId, PendingDecisions, PlanInteraction,
-	QuestionInteraction, QueueMode, QueuePartition, Session, SessionId, SessionStatus, Store,
-	StreamingMessageState,
+	ApprovalInteraction, InteractionId, PendingDecisions, PlanInteraction, QuestionInteraction,
+	QueueMode, QueuePartition, Session, SessionId, SessionStatus, Store, StreamingMessageState,
 };
 use veyyon_desktop_surface::{ShellState, TurnPhase};
 

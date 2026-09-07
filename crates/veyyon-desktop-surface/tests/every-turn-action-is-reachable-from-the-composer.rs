@@ -23,51 +23,16 @@ mod composer_layout;
 #[path = "support/composer-submission.rs"]
 mod composer_submission;
 
-use std::path::Path;
-
-use composer_layout::{TurnPhaseDiscriminant, build_state_for_phase};
+use composer_layout::{TurnPhaseDiscriminant, build_state_for_phase, render_session};
 use strum::IntoEnumIterator;
-use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
+use veyyon_desktop_kit::load_bundled_tokens;
 use veyyon_desktop_model::QueueMode;
-use veyyon_desktop_scene::{
-	headless::{RenderOptions, headless_context},
-	session::HeadlessSession,
-};
 use veyyon_desktop_surface::{
-	Intent, Overlay, PaletteMode, ShellState, ShellView,
+	Intent, Overlay, PaletteMode,
 	composer::{PrimaryAction, SecondaryAction, TurnPhase, primary_action},
-	fixture, install_tokens,
+	fixture,
 };
-use veyyon_gpui::{App, AppContext, Pixels, Point};
-
-pub(crate) fn render_session<R>(
-	state: ShellState,
-	seed_text: Option<&str>,
-	width: u32,
-	height: u32,
-	test: impl FnOnce(&mut HeadlessSession<ShellView>) -> R,
-) -> R {
-	let mut cx = headless_context().expect("headless context available");
-	let tokens = load_bundled_tokens().expect("tokens load");
-	let theme = load_bundled_theme("dark").expect("theme loads");
-	let options = RenderOptions { width, height, scale_factor: 1.0, ..RenderOptions::default() };
-
-	let mut session = HeadlessSession::open(&mut cx, &options, move |_window, app: &mut App| {
-		let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
-			.expect("tokens and theme install");
-
-		app.new(|_| ShellView::new(installed, state))
-	})
-	.expect("session opens");
-
-	if let Some(text) = seed_text {
-		session
-			.update(|view, _window, cx| view.set_composed(text, cx))
-			.expect("composed text set");
-	}
-
-	test(&mut session)
-}
+use veyyon_gpui::{Pixels, Point};
 
 #[test]
 fn every_turn_action_is_reachable_and_dispatches_expected_intent() {

@@ -9,7 +9,7 @@ use veyyon_gpui::{Context, Div, InteractiveElement, KeyDownEvent};
 
 use crate::{
 	Intent, Overlay, Section, ShellView,
-	composer::{QueueMode, ThinkingControl, TurnPhase},
+	composer::{ThinkingControl, TurnPhase},
 	keymap::actions::{
 		AbortTurn, AttachFile, CloseTabOrPark, Dismiss, FilterQueue, FindInTranscript, FocusLive,
 		ModelPicker, MoveSelection, NewSession, NextSession, NextTurn, OpenPalette,
@@ -260,11 +260,7 @@ pub fn bind_composer_keys(composer: Div, cx: &Context<ShellView>) -> Div {
 			}
 		}))
 		.on_action(cx.listener(|view, _: &ToggleQueueMode, _window, cx| {
-			let other = match view.state().composer.queue_mode {
-				QueueMode::Steer => QueueMode::Queue,
-				QueueMode::Queue => QueueMode::Steer,
-			};
-			view.dispatch(Intent::SetQueueMode(other), cx);
+			view.toggle_queue_mode(cx);
 		}))
 		.on_action(cx.listener(|view, _: &SplitHalf, _window, cx| {
 			view.submit_alternate_turn_action(cx);

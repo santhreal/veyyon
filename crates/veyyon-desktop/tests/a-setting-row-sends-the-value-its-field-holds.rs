@@ -233,7 +233,9 @@ fn clicked_then_typed(aim: Aim, text: &str) -> (bool, Vec<Intent>) {
 		session
 			.type_text(text)
 			.expect("typing follows the click into the field");
-		session.keystroke("enter").expect("the field takes a return");
+		session
+			.keystroke("enter")
+			.expect("the field takes a return");
 		session
 			.update(|view, window, cx| {
 				(editor.read(cx).focus_handle().is_focused(window), view.drain_intents())

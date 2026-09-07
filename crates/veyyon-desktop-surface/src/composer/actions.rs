@@ -7,7 +7,7 @@ use veyyon_desktop_kit::{
 use veyyon_desktop_model::{SessionId, SurfaceId};
 use veyyon_gpui::{
 	AnyElement, ClickEvent, Context, ElementId, InteractiveElement, IntoElement, ParentElement,
-	StatefulInteractiveElement, Styled, div, px,
+	SharedString, StatefulInteractiveElement, Styled, div, px,
 };
 
 use super::turn::{PrimaryAction, TurnPhase, primary_action};
@@ -131,17 +131,14 @@ pub fn turn_action_controls(
 			veyyon_gpui::CursorStyle::OperationNotAllowed
 		})
 		.bg(tokens.color(ColorRole::Accent))
+		// §5.4: one up arrow in every turn state. The action the control takes
+		// is stated in its accessible name and its tooltip, and `SetQueueMode`
+		// changes that action rather than the button's shape, so a running turn
+		// in queue mode draws the same arrow as one being steered.
 		.child(
-			Icon::new(match primary {
-				PrimaryAction::Queue => IconName::ArrowDown,
-				PrimaryAction::Approve | PrimaryAction::Accept | PrimaryAction::Answer => {
-					IconName::Check
-				},
-				PrimaryAction::Refine => IconName::Edit,
-				PrimaryAction::Send | PrimaryAction::Steer => IconName::ArrowUp,
-			})
-			.size(IconSize::Size12)
-			.color(tokens.color(ColorRole::AccentForeground)),
+			Icon::new(IconName::ArrowUp)
+				.size(IconSize::Size12)
+				.color(tokens.color(ColorRole::AccentForeground)),
 		);
 	if active {
 		let hover = tokens.color(ColorRole::Focus);
@@ -151,15 +148,33 @@ pub fn turn_action_controls(
 				view.submit_primary_turn_action(cx);
 			}));
 	}
-	container.child(Tooltip::new(label, button).group("composer-primary-hint"))
+	container.child(composer_tag(label, button, "composer-primary-hint"))
+}
+
+/// The composer's hover tag, which is the only thing that states what a
+/// control does: the arrow glyph is the same in every turn state (§5.4).
+///
+/// The composer is the last row of the window and its controls sit at the
+/// right edge of its column, so the tag opens upwards and to the left. Below
+/// these controls is the attention strip, painted after the composer and over
+/// anything the composer put there; to their right is the column's clipped
+/// edge.
+fn composer_tag(
+	text: impl Into<SharedString>,
+	anchor: impl IntoElement,
+	group: impl Into<SharedString>,
+) -> Tooltip {
+	Tooltip::new(text, anchor)
+		.above()
+		.aligned_end()
+		.group(group)
 }
 
 /// Wraps a control in the host's reason for holding it back, readable on
 /// hover, or returns it bare while it is available (§4.3).
 fn with_reason(control: impl IntoElement, reason: Option<&str>, slot: &str) -> AnyElement {
 	match reason {
-		Some(reason) => Tooltip::new(reason.to_owned(), control)
-			.group(format!("composer-reason-{slot}"))
+		Some(reason) => composer_tag(reason.to_owned(), control, format!("composer-reason-{slot}"))
 			.into_any_element(),
 		None => control.into_any_element(),
 	}

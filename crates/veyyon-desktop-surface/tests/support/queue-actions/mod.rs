@@ -8,7 +8,7 @@ use veyyon_desktop_scene::{Captured, HeadlessSession};
 use veyyon_desktop_surface::{
 	Intent, Row, ShellState, ShellView, attach::ConnectionPhase, model::Section, queue::RowMenuKind,
 };
-use veyyon_gpui::{Bounds, Modifiers, MouseMoveEvent, Pixels, PlatformInput, Point, px};
+use veyyon_gpui::{Bounds, Pixels, Point, px};
 
 /// Token metrics for queue rail row heights and action controls.
 pub struct QueueMetrics {
@@ -58,16 +58,7 @@ pub fn center_of(rect: Bounds<Pixels>) -> Point<Pixels> {
 /// Dispatches a mouse move event to simulate real pointer movement onto an
 /// element.
 pub fn move_mouse(session: &mut HeadlessSession<'_, ShellView>, at: Point<Pixels>) {
-	let mouse_move = PlatformInput::MouseMove(MouseMoveEvent {
-		position:       at,
-		pressed_button: None,
-		modifiers:      Modifiers::default(),
-	});
-	session
-		.update(|_view, window, cx| {
-			window.dispatch_event(mouse_move, cx);
-		})
-		.expect("mouse move dispatched");
+	session.hover(at).expect("mouse move dispatched");
 }
 
 /// Finds all queue row bounds in the rail sorted vertically from top to bottom.

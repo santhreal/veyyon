@@ -113,17 +113,21 @@ impl PrimaryAction {
 		Self::Refine,
 	];
 
-	/// The display label for the primary action button.
+	/// The control's accessible name and its tooltip (§5.4).
+	///
+	/// The glyph is an up arrow in every state, so this name is where the
+	/// action lives: it states what pressing the control does, which is what
+	/// tells a running turn being steered from one taking a follow-up.
 	#[must_use]
 	pub const fn label(self) -> &'static str {
 		match self {
-			Self::Send => "Send",
-			Self::Steer => "Steer",
-			Self::Queue => "Queue",
-			Self::Answer => "Answer",
-			Self::Approve => "Approve",
-			Self::Accept => "Accept",
-			Self::Refine => "Refine",
+			Self::Send => "Send message",
+			Self::Steer => "Steer turn",
+			Self::Queue => "Queue message",
+			Self::Answer => "Submit answer",
+			Self::Approve => "Approve request",
+			Self::Accept => "Accept plan",
+			Self::Refine => "Refine plan",
 		}
 	}
 }

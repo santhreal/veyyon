@@ -15,8 +15,11 @@
 # The turn is REAL. The prompt asks the local model for output long enough to
 # still be generating while the frames are taken, the queued follow-up reaches
 # the host as a queued prompt, and the abort ends the turn the host is running.
-# Nothing here fabricates a phase: `TurnPhase::Running` is what the host
-# reported, and the scene fails rather than photographing an idle composer.
+# Nothing here fabricates a phase, and nothing here trusts one either: frame 1
+# waits for the answer to start landing in the transcript, because a submit the
+# host has accepted is not yet a turn the composer draws as running, and the
+# pair is then compared over the run bar so a mode swap that moved no pixels
+# ends the take instead of publishing two frames of an idle composer.
 #
 # Sourced state comes from desktop-composer.sh: the helpers, a created session
 # and its composer frames. This scene adds the model selection it needs, since a
@@ -86,8 +89,65 @@ raise SystemExit(f"Native turn state timed out ({mode}): {last}")
 PY
 }
 
+# The composer draws `Running` from the moment the host STREAMS, which is later
+# than the persisted user message `started` waits for. Under the software
+# renderer this model's first token arrived seconds after the submit reached
+# the host, and the take that motivated this guard photographed an idle
+# composer under both mode names: same up-arrow send button in each, one
+# differential of nothing. Streaming frames go to the socket running the turn,
+# so no second connection can ask; the observable is the transcript column
+# repainting as the answer lands under the prompt.
+streamed_into_the_transcript() { # <baseline-png> <ceiling-seconds>
+	local baseline="$1" ceiling="${2:-180}" waited=0 moved
+	while [ "${waited}" -lt "${ceiling}" ]; do
+		moved="$(screen_differs_from_frame_per_mille "${baseline}")"
+		if [ "${moved}" -ge "${STREAMED_PER_MILLE}" ]; then
+			echo "scene: the transcript repainted ${moved} per mille after ${waited}s, so the turn is generating" >&2
+			return 0
+		fi
+		sleep 1
+		waited=$((waited + 1))
+	done
+	return 1
+}
+
+# The two rectangles this scene compares over, in root coordinates. The sidebar
+# is outside both: it prints each session's age, so it differs a second later
+# whatever the surface under test did.
+SIDEBAR_W=$(( WIN_W > 800 ? 256 : 0 ))
+COMPOSER_H=140
+transcript_crop() {
+	use_crop \
+		$(( WIN_X + SIDEBAR_W )) \
+		$(( WIN_Y + 48 )) \
+		$(( WIN_W - SIDEBAR_W )) \
+		$(( WIN_H - 48 - COMPOSER_H ))
+}
+run_bar_crop() {
+	use_crop \
+		$(( WIN_X + SIDEBAR_W )) \
+		$(( WIN_Y + WIN_H - COMPOSER_H )) \
+		$(( WIN_W - SIDEBAR_W )) \
+		"${COMPOSER_H}"
+}
+# A streamed line of words repaints far more than the renderer's own noise,
+# which two settled frames of one state measure at a couple of pixels per
+# thousand.
+STREAMED_PER_MILLE=4
+# §5.4 draws ONE up arrow in every turn state: the mode changes what the
+# control does and what it is called, never its shape. So the differential is
+# the control's own name, read where an operator reads it -- hovering the arrow
+# -- and the pair is compared over the composer strip that holds the tooltip.
+# A word of it is some hundreds of pixels against a renderer noise floor of a
+# few dozen over the same crop.
+MODE_NAME_PIXELS=300
 COMPOSER_X=$(( WIN_X + (WIN_W > 800 ? 400 : WIN_W / 2) ))
 COMPOSER_Y=$(( WIN_Y + WIN_H - 98 ))
+# The up arrow, at the trailing edge of the composer's own column: the right
+# panel takes the trailing 356px above 980px of window (§5.6), and the control
+# is one 28px square and its gap in from that edge.
+PRIMARY_X=$(( WIN_X + (WIN_W > 980 ? WIN_W - 356 : WIN_W) - 43 ))
+PRIMARY_Y=$(( WIN_Y + WIN_H - 67 ))
 
 # ─── The model the turn runs on ──────────────────────────────────────────────
 move_px "${COMPOSER_X}" "${COMPOSER_Y}"
@@ -109,13 +169,36 @@ k "Return"
 if ! native_turn_state started 30; then
 	abandon_take "native-turn-started" "the submitted prompt never reached the host as a persisted turn"
 fi
-pause 1.0
+transcript_crop
+BASELINE="${SCENE_RUNTIME_DIR}/before-the-first-token.png"
+probe_frame "${BASELINE}"
+if ! streamed_into_the_transcript "${BASELINE}" 180; then
+	abandon_take "native-turn-generating" \
+		"the host accepted the turn but nothing streamed into the transcript within 180s, so the composer was still idle"
+fi
+# The pointer rests on the arrow for both arms, which is where its name is
+# readable. Hovering takes no focus, so the chord between the two shots still
+# reaches the composer.
+move_px "${PRIMARY_X}" "${PRIMARY_Y}"
+pause 1.2
 shot turn-running-steer
 
 # ─── The same run, in queue mode (primary-/) ─────────────────────────────────
 k "ctrl+slash"
-pause 0.6
+pause 1.2
 shot turn-running-queue
+
+# The pair is one differential and the control's name is the whole of it, so
+# the swap is asserted here. The crop is the composer strip alone: the
+# transcript above is still streaming, so a whole-frame comparison would differ
+# by pages of numbers whatever the chord did.
+run_bar_crop
+MODE_MOVED="$(shots_differ_pixels turn-running-steer turn-running-queue)"
+echo "scene: the composer moved ${MODE_MOVED} pixels between the two modes" >&2
+if [ "${MODE_MOVED}" -lt "${MODE_NAME_PIXELS}" ]; then
+	abandon_take "native-queue-mode-differential" \
+		"the control's name moved ${MODE_MOVED} pixels after primary-/, which is renderer noise rather than a mode the operator can read"
+fi
 
 # ─── A follow-up submitted behind the running turn ───────────────────────────
 t "Then say the word done."
