@@ -1,5 +1,8 @@
 //! Fixture generation and headless session setup for queue scroll, paging,
 //! and selection tests.
+//!
+//! Several test binaries include this module and each uses a subset of it, so
+//! each `mod` site carries its own `allow(dead_code)`.
 
 use std::path::Path;
 

@@ -12,7 +12,8 @@
 //! 4. Per-render detached timers causing continuous background redraw at rest.
 //! 5. Search and new-session navigation controls missing or issuing unhandled
 //!    intents.
-//! 6. Sizing degradation at minimum width (208px) clipping navigation controls.
+//! 6. Sizing degradation across the widths that shed the rail is
+//!    `the-rail-footer-gear-is-reachable-at-every-width-that-draws-a-rail`'s.
 
 #[path = "support/large_queue.rs"]
 mod large_queue;
@@ -33,6 +34,7 @@ use veyyon_desktop_surface::{
 	Intent, Overlay, PaletteMode, Section, fixture,
 	queue::{RailMotion, paged_rail_fill},
 };
+
 #[test]
 fn large_queue_lists_render_every_session_in_scrollable_container_beyond_viewport() {
 	let mut cx = headless_context().expect("headless renderer is required");
@@ -263,23 +265,6 @@ fn queue_navigation_and_footer_controls_dispatch_valid_intents() {
 			assert!(matches!(&view.state().overlay, Some(Overlay::Settings(_))));
 		})
 		.expect("settings overlay verified");
-}
-
-#[test]
-fn queue_layout_boundaries_and_narrow_widths() {
-	let mut cx = headless_context().expect("headless renderer is required");
-	let state = fixture::populated();
-	let mut session = open_session(&mut cx, state, 800, 560);
-	let frame = session.frame().expect("shell renders frame at 800px width");
-	let settings_gear = frame
-		.hitboxes
-		.iter()
-		.find(|rect| f32::from(rect.origin.x) < 60.0 && f32::from(rect.origin.y) > 500.0)
-		.copied();
-	assert!(
-		settings_gear.is_some(),
-		"settings gear in rail footer must remain reachable in narrow 800px layout"
-	);
 }
 
 #[test]
