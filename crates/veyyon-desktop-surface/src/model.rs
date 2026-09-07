@@ -157,7 +157,10 @@ pub struct ToolInvocationViews {
 }
 
 /// One block inside an assistant turn (§5.2).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, strum::EnumDiscriminants)]
+#[strum_discriminants(name(BlockShape), derive(Hash, PartialOrd, Ord, strum::EnumIter))]
+#[strum_discriminants(doc = "Fieldless projection of `Block`, so a rhythm sweep can enumerate \
+                             every block a turn can hold.")]
 pub enum Block {
 	/// Prose the assistant wrote.
 	Prose(String),

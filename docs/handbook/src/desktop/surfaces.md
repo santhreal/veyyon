@@ -130,6 +130,11 @@ style. Branch and compaction summaries have distinct labels and a separating
 line. Execution output includes its shell or Python label. Transcript search
 matches annotation labels and recorded content.
 
+Vertical spacing has four steps. Consecutive event lines run with no gap between
+them. Blocks of one kind sit 4px apart. A change of kind starts the next group
+8px down. Turns sit 16px apart. A run of tool calls therefore reads as one band
+and the prose after it as a new subject.
+
 ## Composer
 
 The footer contains the model selector and an up-arrow primary action. A separate

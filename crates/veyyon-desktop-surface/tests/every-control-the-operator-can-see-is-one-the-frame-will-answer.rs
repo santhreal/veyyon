@@ -67,7 +67,9 @@ fn expected_controls(state: &ShellState) -> usize {
 	let columns_px = HEIGHT as f32 - tokens.surface.shell.titlebar_height_px;
 	let bottom = columns_px - queue.footer_height_px;
 	let mut y = queue.content_inset + 32.0 + queue.section_gap_below;
-	let mut queue_controls = 4; // Search wrapper, search icon, new session, list
+	// The rail itself answers a click: it takes focus, which is what puts the
+	// queue chords on the focus path.
+	let mut queue_controls = 5; // Rail, search wrapper, search icon, new session, list
 	for (section, rows) in &state.sections {
 		if rows.is_empty() {
 			continue;

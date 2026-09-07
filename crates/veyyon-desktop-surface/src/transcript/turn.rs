@@ -6,8 +6,9 @@
 //!   trailing corner at 4px.
 //! - Assistant turns sit bare on the canvas at full width without artificial
 //!   speaker framing.
-//! - Gaps strictly enforce adjacent same kind (4px) vs group blocks (12px) vs
-//!   turns (24px).
+//! - Gaps use all four of §5.3's steps: 0 between consecutive muted event
+//!   lines, 4 between blocks of one group, 8 between groups in one turn, and 16
+//!   between turns.
 
 use veyyon_desktop_kit::{ColorRole, TokenSet};
 use veyyon_desktop_motion::MotionTokens;
@@ -203,14 +204,8 @@ pub fn agent_turn(
 			},
 		};
 
-		if block_ix > 0 {
-			let previous = blocks.get(block_ix - 1);
-			let gap = if previous.is_some_and(|prev| same_kind(prev, block)) {
-				geometry.adjacent_same_kind_gap
-			} else {
-				geometry.group_blocks_gap
-			};
-			rendered = rendered.mt(px(gap));
+		if let Some(previous) = block_ix.checked_sub(1).and_then(|ix| blocks.get(ix)) {
+			rendered = rendered.mt(px(block_gap(previous, block, geometry)));
 		}
 
 		turn = turn.child(rendered);
@@ -232,4 +227,24 @@ pub const fn same_kind(left: &Block, right: &Block) -> bool {
 			| (Block::Unknown { .. }, Block::Unknown { .. })
 			| (Block::Artifact(_), Block::Artifact(_))
 	)
+}
+
+/// The gap above a block, from §5.3's ladder. Consecutive muted event lines run
+/// with no gap; blocks of one kind are one group; a change of kind starts the
+/// next group inside the turn. An `Unknown` line is excluded from the zero step
+/// because it expands into a pane, and two expanded panes touching would read
+/// as one.
+#[must_use]
+pub const fn block_gap(
+	previous: &Block,
+	current: &Block,
+	geometry: &TranscriptSurfaceTokens,
+) -> f32 {
+	if matches!((previous, current), (Block::Note { .. }, Block::Note { .. })) {
+		geometry.adjacent_same_kind_gap
+	} else if same_kind(previous, current) {
+		geometry.group_blocks_gap
+	} else {
+		geometry.turn_groups_gap
+	}
 }

@@ -22,16 +22,14 @@
 
 use std::time::{Duration, Instant};
 
-use veyyon_desktop_kit::{ColorRole, TokenSet, load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_scene::{
 	headless::{RenderOptions, headless_context},
 	session::HeadlessSession,
 };
 use veyyon_desktop_surface::{
-	damage::LaidOut,
 	model::{Block, Turn},
-	transcript::{TranscriptFindState, TranscriptViewportState, same_kind, transcript_column},
+	transcript::{TranscriptFindState, TranscriptViewportState},
 };
 use veyyon_gpui::{
 	AppContext, Context, IntoElement, ListOffset, Render, Styled, Window, div, list, px,
@@ -264,49 +262,13 @@ fn the_transcript_motion_drivers_integrate_cleanly() {
 }
 
 #[test]
-fn the_transcript_vertical_rhythm_and_geometry_rules() {
-	let tokens = load_bundled_tokens().expect("the bundled tokens load");
-	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");
-	let set = TokenSet::from_tokens(&tokens, &theme).expect("the bundled token set resolves");
-
-	let prose_a = Block::Prose("a".to_owned());
-	let prose_b = Block::Prose("b".to_owned());
-	let invoke_a = Block::Invoke {
-		call_id: "c".to_owned(),
-		tool:    "t".to_owned(),
-		target:  "x".to_owned(),
-		result:  None,
-		views:   Default::default(),
-	};
-	let reason_a = Block::Reason("r".to_owned());
-	let pane_a = Block::Pane { caption: "c".to_owned(), lines: vec!["l".to_owned()] };
-
-	assert!(same_kind(&prose_a, &prose_b));
-	assert!(same_kind(&invoke_a, &invoke_a));
-	assert!(same_kind(&reason_a, &reason_a));
-	assert!(same_kind(&pane_a, &pane_a));
-
-	assert!(!same_kind(&prose_a, &invoke_a));
-	assert!(!same_kind(&invoke_a, &reason_a));
-	assert!(!same_kind(&reason_a, &pane_a));
-
+fn the_viewport_holds_the_inset_the_composer_reserved() {
+	// The rhythm gaps are measured off frames in
+	// `a-turn-draws-the-four-gaps-and-only-those.rs`.
 	let state = TranscriptViewportState::new();
 	assert_eq!(state.bottom_inset(), 0.0);
 	state.set_bottom_inset(180.0);
 	assert_eq!(state.bottom_inset(), 180.0);
-
-	let turns =
-		vec![Turn::Operator("Hello".to_owned()), Turn::Agent(vec![Block::Prose("World".to_owned())])];
-	let laid_out = LaidOut::default();
-	let _column = transcript_column(
-		&turns,
-		&tokens.surface.transcript,
-		ColorRole::Float,
-		&set,
-		&tokens.motion.clone().into(),
-		&laid_out,
-		768.0,
-	);
 }
 
 #[test]
