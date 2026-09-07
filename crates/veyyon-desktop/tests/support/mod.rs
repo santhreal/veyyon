@@ -61,7 +61,7 @@ pub fn terminal(id: &str, status: TerminalStatus) -> TerminalView {
 
 pub fn agent_blocks(turn: &Turn) -> &[Block] {
 	match turn {
-		Turn::Agent(blocks) => blocks,
+		Turn::Agent { blocks, .. } => blocks,
 		Turn::Operator(text) | Turn::OperatorArtifacts { text, .. } => {
 			panic!("expected an agent turn, got operator turn {text:?}")
 		},

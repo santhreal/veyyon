@@ -45,7 +45,7 @@ fn open_with_keys(cx: &mut Headless, state: ShellState) -> HeadlessSession<'_, S
 
 /// The partition a chord names, for the chords that move a session between
 /// partitions. A chord that does something else returns `None`.
-fn partition_of(command: Command) -> Option<Section> {
+const fn partition_of(command: Command) -> Option<Section> {
 	match command {
 		Command::TogglePinSelected => Some(Section::Pinned),
 		Command::ToggleDeferSelected => Some(Section::Deferred),

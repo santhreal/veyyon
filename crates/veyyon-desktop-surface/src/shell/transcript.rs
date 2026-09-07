@@ -30,6 +30,12 @@ impl ShellView {
 			.transcript_viewport
 			.sync_turns(&self.state.transcript, is_streaming);
 
+		// 2b. Mirror the keyboard's turn cursor: the footer under the turn the
+		//     operator is on names its model without waiting for a pointer.
+		self
+			.transcript_viewport
+			.set_focused_turn(self.state.keymap.focused_turn);
+
 		let reduced = self.rail_motion.is_reduced_motion();
 		let motion = &self.installed.motion;
 
@@ -87,9 +93,18 @@ impl ShellView {
 			if let Some(turn_ix) = self.state.keymap.focused_turn
 				&& turn_ix < self.state.transcript.len()
 			{
-				self
-					.transcript_viewport
-					.scroll_to_turn_animated(turn_ix, motion, reduced, now);
+				if turn_ix + 1 == self.state.transcript.len() {
+					// The last turn is the live edge. Revealing it as an ordinary row
+					// stops following the tail, which raises the "Scroll to end" pill
+					// over a transcript that is already at its end.
+					self
+						.transcript_viewport
+						.scroll_to_end_animated(motion, reduced, now);
+				} else {
+					self
+						.transcript_viewport
+						.scroll_to_turn_animated(turn_ix, motion, reduced, now);
+				}
 			}
 		}
 
@@ -103,7 +118,7 @@ impl ShellView {
 				.unwrap_or_else(|| self.state.transcript.len().saturating_sub(1));
 
 			let block_ix = match self.state.transcript.get(focused_ix) {
-				Some(crate::model::Turn::Agent(blocks)) => blocks.iter().position(|block| {
+				Some(crate::model::Turn::Agent { blocks, .. }) => blocks.iter().position(|block| {
 					matches!(
 						block,
 						Block::Invoke { .. }
@@ -133,7 +148,8 @@ impl ShellView {
 				// click. Expanding the same card from the keyboard and staying silent
 				// opened the body over the collapsed view, so Space and a click on one
 				// card produced two different cards.
-				if let Some(crate::model::Turn::Agent(blocks)) = self.state.transcript.get(focused_ix)
+				if let Some(crate::model::Turn::Agent { blocks, .. }) =
+					self.state.transcript.get(focused_ix)
 					&& let Some(Block::Invoke { call_id, views, .. }) = blocks.get(block_ix)
 					&& (views.result.is_some() || views.call.is_some())
 				{

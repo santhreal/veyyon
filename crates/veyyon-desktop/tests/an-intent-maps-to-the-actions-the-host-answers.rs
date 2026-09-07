@@ -272,6 +272,12 @@ fn settings_diagnostics_usage_and_mcp_intents_map_to_host_actions() {
 		HostAction::GetUsage { session: Some(SessionId::from("s")) },
 		HostAction::GetContextBreakdown { session: SessionId::from("s") }
 	]);
+	// The turn footer opens the accounting, so it fetches the same figures the
+	// refresh control does rather than showing whatever the panel last held.
+	assert_eq!(actions_for(&Intent::OpenUsage, &index, &mut store), [
+		HostAction::GetUsage { session: Some(SessionId::from("s")) },
+		HostAction::GetContextBreakdown { session: SessionId::from("s") }
+	]);
 }
 
 #[test]

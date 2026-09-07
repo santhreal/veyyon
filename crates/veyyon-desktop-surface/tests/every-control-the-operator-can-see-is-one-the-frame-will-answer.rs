@@ -126,7 +126,8 @@ fn expected_controls(state: &ShellState) -> usize {
 			.map(|turn| match turn {
 				veyyon_desktop_surface::Turn::Operator(_) => 0,
 				veyyon_desktop_surface::Turn::OperatorArtifacts { artifacts, .. } => artifacts.len(),
-				veyyon_desktop_surface::Turn::Agent { blocks, model } => blocks
+				veyyon_desktop_surface::Turn::Agent { blocks, model } => {
+					blocks
 					.iter()
 					.map(|block| match block {
 						veyyon_desktop_surface::Block::Prose(_)
@@ -142,7 +143,8 @@ fn expected_controls(state: &ShellState) -> usize {
 					// turn establishes so the name can reveal with it, and the
 					// name itself, which opens the accounting. A turn that names
 					// none establishes no group and draws no footer.
-					+ usize::from(model.is_some()) * 2,
+					+ usize::from(model.is_some()) * 2
+				},
 			})
 			.sum::<usize>();
 

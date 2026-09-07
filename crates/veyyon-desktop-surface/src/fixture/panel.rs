@@ -14,7 +14,7 @@ use crate::right_panel::{
 )]
 pub(super) fn fixture_panel() -> PanelContent {
 	PanelContent {
-		tabs:               vec![PanelTab::Diff, PanelTab::File, PanelTab::Tree],
+		tabs:               vec![PanelTab::Diff, PanelTab::File, PanelTab::Tree, PanelTab::Usage],
 		active_tab:         PanelTab::Diff,
 		diff_status:        DiffStatus::Loaded,
 		unavailable_reason: None,
@@ -83,5 +83,14 @@ pub(super) fn fixture_panel() -> PanelContent {
 			status:         TreeStatus::Loaded,
 		},
 		diff_mode:          veyyon_desktop_model::DiffMode::Unified,
+		usage:              Some(veyyon_desktop_model::UsageTotals {
+			input_tokens:         184_213,
+			output_tokens:        12_940,
+			cache_read_tokens:    1_402_887,
+			cache_write_tokens:   96_004,
+			orchestration_tokens: 3_118,
+			premium_requests:     42,
+			cost_microusd:        Some(3_940_000),
+		}),
 	}
 }

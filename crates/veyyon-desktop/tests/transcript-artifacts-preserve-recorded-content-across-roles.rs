@@ -64,7 +64,7 @@ fn file_metadata_and_images_survive_every_role_and_optional_field_combination() 
 			} else {
 				assert_eq!(
 					state.transcript,
-					vec![Turn::Agent(vec![Block::Artifact(expected)])],
+					vec![Turn::Agent { blocks: vec![Block::Artifact(expected)], model: None }],
 					"{role:?}, {bits}"
 				);
 			}
@@ -104,7 +104,10 @@ fn image_payload_and_alt_survive_in_user_and_agent_turns() {
 				artifacts: vec![expected],
 			}]);
 		} else {
-			assert_eq!(state.transcript, vec![Turn::Agent(vec![Block::Artifact(expected)])]);
+			assert_eq!(state.transcript, vec![Turn::Agent {
+				blocks: vec![Block::Artifact(expected)],
+				model:  None,
+			}]);
 		}
 	}
 }
@@ -141,10 +144,13 @@ fn unknown_records_preserve_raw_values_for_disclosure_and_search() {
 				_ => unreachable!(),
 			};
 			let state = projected(MessageRole::Unknown, vec![content]);
-			assert_eq!(state.transcript, vec![Turn::Agent(vec![Block::Unknown {
-				producer: producer.into(),
-				lines:    vec![value.to_string()],
-			}])]);
+			assert_eq!(state.transcript, vec![Turn::Agent {
+				blocks: vec![Block::Unknown {
+					producer: producer.into(),
+					lines:    vec![value.to_string()],
+				}],
+				model:  None,
+			}]);
 			let mut search = TranscriptFindState::new();
 			search.set_query(&value.to_string(), &state.transcript);
 			assert_eq!(search.match_count(), 1, "{kind:?}: raw payload remains searchable");

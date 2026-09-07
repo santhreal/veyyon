@@ -123,7 +123,7 @@ impl TranscriptFindState {
 						}
 					}
 				},
-				Turn::Agent(blocks) => {
+				Turn::Agent { blocks, .. } => {
 					for (block_ix, block) in blocks.iter().enumerate() {
 						match block {
 							Block::Artifact(artifact) => {

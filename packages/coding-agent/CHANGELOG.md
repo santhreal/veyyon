@@ -166,6 +166,7 @@
 - A desktop transcript no longer shows the runtime's own bookkeeping records — `tool_execution_start`, `session_exit`, todo edits, an extension's stored state — as `Fallback:` rows between the turns.
 - A desktop transcript draws no row for a message that recorded no content, where a `null` content field drew a block captioned `unknown` under the turn it belonged to; a content shape nobody expected is still kept losslessly.
 - A desktop agent turn that names no model establishes no hover group, so the frame registers no hit rect for a reveal with nothing under it.
+- The desktop transcript's **Scroll to end** button is drawn only while the last row is off screen, where stepping the turn cursor back through a transcript shorter than the viewport raised it over the prose it covered and the jump it offered moved nothing.
 - A `modelOverrides` entry that states a thinking ladder is offered on a model whose upstream metadata declares no effort control, or declares a different ladder; the authored ladder replaces the declared surface instead of being discarded.
 - Terminal tool cards shorten home-directory paths and replace tabs in metadata, notices, code, diffs, and generic argument previews before width fitting.
 - Failed task results without agent details retain error text styling.

@@ -88,13 +88,16 @@ fn render_header(result: Option<&str>, streaming: bool, historical: bool) -> Cap
 	let tokens = load_bundled_tokens().expect("bundled tokens");
 	let theme = load_bundled_theme("dark").expect("bundled theme");
 	let state = TranscriptViewportState::new();
-	let mut turns = vec![Turn::Agent(vec![Block::Invoke {
-		call_id: "read-call".into(),
-		tool:    "read".into(),
-		target:  "src/lib.rs".into(),
-		result:  result.map(str::to_owned),
-		views:   Default::default(),
-	}])];
+	let mut turns = vec![Turn::Agent {
+		blocks: vec![Block::Invoke {
+			call_id: "read-call".into(),
+			tool:    "read".into(),
+			target:  "src/lib.rs".into(),
+			result:  result.map(str::to_owned),
+			views:   Default::default(),
+		}],
+		model:  None,
+	}];
 	if historical {
 		turns.push(Turn::Operator("Next turn".into()));
 	}
@@ -143,7 +146,10 @@ fn running_status_requires_both_streaming_and_the_current_turn() {
 #[test]
 fn reveal_preserves_measurement_and_continuity_until_bounded_settlement() {
 	let state = TranscriptViewportState::new();
-	state.sync_turns(&[Turn::Agent(vec![Block::Reason("Details".into())])], false);
+	state.sync_turns(
+		&[Turn::Agent { blocks: vec![Block::Reason("Details".into())], model: None }],
+		false,
+	);
 	let tokens = MotionTokens::reference();
 	let now = Instant::now();
 	assert!(state.record_reveal_height(0, 0, 180.0));
@@ -170,7 +176,10 @@ fn expanded_content_reports_its_natural_height_from_real_prepaint() {
 	let tokens = load_bundled_tokens().expect("bundled tokens");
 	let theme = load_bundled_theme("dark").expect("bundled theme");
 	let state = TranscriptViewportState::new();
-	state.sync_turns(&[Turn::Agent(vec![Block::Reason("Details".into())])], false);
+	state.sync_turns(
+		&[Turn::Agent { blocks: vec![Block::Reason("Details".into())], model: None }],
+		false,
+	);
 	let motion = MotionTokens::reference();
 	let now = Instant::now();
 	state.set_block_expanded(0, 0, true, &motion, true, now);

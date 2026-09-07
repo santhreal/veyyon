@@ -11,8 +11,9 @@
 //! NOT CAUGHT: whether the shell draws the projected state correctly; that is
 //! the surface crate's pixel suites. Whether the host sends what the model
 //! expects; that is the live handshake suite. The transcript half is in
-//! `a-transcript-projects-as-turns-of-blocks.rs`; the intent direction is in
-//! `an-intent-maps-to-the-actions-the-host-answers.rs`.
+//! `a-transcript-projects-as-turns-of-blocks.rs`; the usage half is in
+//! `the-accounting-reaches-the-usage-tab-the-footer-opens.rs`; the intent
+//! direction is in `an-intent-maps-to-the-actions-the-host-answers.rs`.
 
 mod support;
 

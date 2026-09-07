@@ -292,9 +292,20 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 			state.keymap.find_open = !state.keymap.find_open;
 		},
 		Intent::StepTurn(delta) => {
-			let current = state.keymap.focused_turn.unwrap_or(0);
-			state.keymap.focused_turn = Some((current as i64 + *delta as i64).max(0) as usize);
-			state.keymap.pending_turn_focus = true;
+			// The cursor stays on a turn that exists. Stepping past the last one
+			// used to park it outside the transcript, where the focused turn
+			// names no model and `space` disclosed nothing.
+			if let Some(last) = state.transcript.len().checked_sub(1) {
+				let current = state.keymap.focused_turn.unwrap_or(0);
+				let step = usize::try_from(delta.unsigned_abs()).unwrap_or(usize::MAX);
+				let stepped = if *delta < 0 {
+					current.saturating_sub(step)
+				} else {
+					current.saturating_add(step)
+				};
+				state.keymap.focused_turn = Some(stepped.min(last));
+				state.keymap.pending_turn_focus = true;
+			}
 		},
 		Intent::ToggleBlock => {
 			state.keymap.focused_block_collapsed = !state.keymap.focused_block_collapsed;
@@ -312,6 +323,20 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 			state.keymap.panel_collapsed = false;
 			state.panel.active_tab = crate::right_panel::PanelTab::File;
 			state.panel.tree.selected_path = Some(path.clone());
+		},
+		Intent::OpenUsage => {
+			state.keymap.panel_collapsed = false;
+			state.panel.active_tab = crate::right_panel::PanelTab::Usage;
+			// The turn footer can be clicked before the host has listed the tab.
+			// Adding it here keeps the click answerable; a host that reports
+			// usage unavailable drops it again on the next projection.
+			if !state
+				.panel
+				.tabs
+				.contains(&crate::right_panel::PanelTab::Usage)
+			{
+				state.panel.tabs.push(crate::right_panel::PanelTab::Usage);
+			}
 		},
 		Intent::ToggleTreeNode(path) => {
 			if state.panel.tree.expanded_paths.contains(path) {

@@ -200,6 +200,7 @@ fn panel_content_truthful_empty_and_unavailable_reason() {
 	assert!(empty_panel.tabs.is_empty());
 
 	let unavailable_panel = PanelContent {
+		usage: None,
 		unavailable_reason: Some("No filesystem access".to_string()),
 		..Default::default()
 	};

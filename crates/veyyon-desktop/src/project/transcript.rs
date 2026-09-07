@@ -92,12 +92,18 @@ pub(super) fn push_entry(turns: &mut Vec<Turn>, entry: &TranscriptEntry) {
 		return;
 	}
 
-	if !matches!(turns.last(), Some(Turn::Agent(_))) {
-		turns.push(Turn::Agent(Vec::new()));
+	if !matches!(turns.last(), Some(Turn::Agent { .. })) {
+		turns.push(Turn::Agent { blocks: Vec::new(), model: None });
 	}
-	if let Some(Turn::Agent(blocks)) = turns.last_mut() {
+	if let Some(Turn::Agent { blocks, model }) = turns.last_mut() {
 		for block in &entry.content {
 			push_block(blocks, block, entry.role);
+		}
+		// An agent turn is several entries, and each states the model that
+		// produced it. The footer names the one that produced the latest
+		// output in the turn, so a mid-turn switch is what the operator reads.
+		if let Some(named) = entry.meta.as_ref().and_then(|meta| meta.model.clone()) {
+			*model = Some(named);
 		}
 	}
 }

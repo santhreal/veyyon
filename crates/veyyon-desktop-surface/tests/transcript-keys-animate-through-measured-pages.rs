@@ -43,10 +43,10 @@ fn transcript_keys_animate_through_measured_pages() {
 		let tokens = load_bundled_tokens().expect("tokens");
 		let theme = load_bundled_theme("dark").expect("theme");
 		let transcript = if long_response {
-			vec![
-				Turn::Operator("Describe text editors.".into()),
-				Turn::Agent(vec![Block::Prose("Editors support text editing.\n\n".repeat(80))]),
-			]
+			vec![Turn::Operator("Describe text editors.".into()), Turn::Agent {
+				blocks: vec![Block::Prose("Editors support text editing.\n\n".repeat(80))],
+				model:  None,
+			}]
 		} else {
 			(0..60)
 				.map(|i| Turn::Operator(format!("Question {i}: describe text editing and navigation.")))

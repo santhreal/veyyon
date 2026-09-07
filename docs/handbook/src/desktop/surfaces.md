@@ -106,8 +106,10 @@ Click the transcript to focus keyboard navigation.
 
 Keyboard scrolling uses the configured scroll transition. Manual scrolling
 interrupts that transition. Reduced motion applies the destination immediately.
-Reading earlier output pauses tail following; the **Scroll to end** button
-returns to the live edge. Switching sessions restores their saved scroll anchors.
+Reading earlier output pauses tail following. The **Scroll to end** button
+returns to the live edge, and it is shown only while the last row is off
+screen: a transcript shorter than the viewport draws none, whatever stopped it
+following. Switching sessions restores their saved scroll anchors.
 
 The find bar displays the selected matching block and total matching blocks.
 `Enter` advances to the next matching block; `Escape` closes the bar.
@@ -134,6 +136,18 @@ Vertical spacing has four steps. Consecutive event lines run with no gap between
 them. Blocks of one kind sit 4px apart. A change of kind starts the next group
 8px down. Turns sit 16px apart. A run of tool calls therefore reads as one band
 and the prose after it as a new subject.
+
+An agent turn ends with a footer naming the model that produced it, at the
+annotation size. The name is shown while the pointer is over the turn and while
+the turn cursor (`Ctrl+Up`, `Ctrl+Down`) is on it. A turn the host reported no
+model for has no footer. Click the name to open the session's token and cost
+accounting on one line in the right panel's **Usage** tab. The tab is absent
+when the host reports usage unavailable, and the footer then names the model
+only. A tab opened this way stays until the host reports usage unavailable.
+
+The turn cursor stops on the first and last turn. On the last turn the
+transcript keeps following new output; on any earlier turn it stops, so
+streamed output does not move the turn being read.
 
 ## Composer
 

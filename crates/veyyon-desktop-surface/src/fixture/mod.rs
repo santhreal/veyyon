@@ -187,52 +187,55 @@ fn transcript() -> Vec<Turn> {
 			 look at it, not read a report about it."
 				.to_owned(),
 		),
-		Turn::Agent(vec![
-			Block::Reason("Reading the surface token groups and the kit's primitives".to_owned()),
-			Block::Invoke {
-				call_id: "c1".to_owned(),
-				tool:    "read".to_owned(),
-				target:  "crates/veyyon-desktop-tokens/src/surface.rs".to_owned(),
-				result:  Some("207 lines".to_owned()),
-				views:   ToolInvocationViews::default(),
-			},
-			Block::Invoke {
-				call_id: "c2".to_owned(),
-				tool:    "read".to_owned(),
-				target:  "crates/veyyon-desktop-kit/src/token_set.rs".to_owned(),
-				result:  Some("281 lines".to_owned()),
-				views:   ToolInvocationViews::default(),
-			},
-			Block::Invoke {
-				call_id: "c3".to_owned(),
-				tool:    "search".to_owned(),
-				target:  "structure: pub fn $NAME($$$ARGS) -> $RET".to_owned(),
-				result:  Some("38 matches".to_owned()),
-				views:   ToolInvocationViews::default(),
-			},
-			Block::Prose(
-				"The kit already owns the bridge from tokens to renderer types, as a global resolved \
-				 once at construction. The surfaces read the geometry groups directly and take \
-				 colours from that same set, so a primitive and the surface around it cannot disagree \
-				 about what the theme says."
-					.to_owned(),
-			),
-			Block::Pane {
-				caption: "crates/veyyon-desktop-surface/src/queue.rs".to_owned(),
-				lines:   vec![
-					"pub fn queue_rail(".to_owned(),
-					"    sections: &[(Section, Vec<Row>)],".to_owned(),
-					"    geometry: &QueueSurfaceTokens,".to_owned(),
-					"    tokens: &TokenSet,".to_owned(),
-					") -> impl IntoElement {".to_owned(),
-				],
-			},
-			Block::Prose(
-				"Two row shapes carry the density: a card for the sections being worked in, a line \
-				 for the ones that are not."
-					.to_owned(),
-			),
-		]),
+		Turn::Agent {
+			blocks: vec![
+				Block::Reason("Reading the surface token groups and the kit's primitives".to_owned()),
+				Block::Invoke {
+					call_id: "c1".to_owned(),
+					tool:    "read".to_owned(),
+					target:  "crates/veyyon-desktop-tokens/src/surface.rs".to_owned(),
+					result:  Some("207 lines".to_owned()),
+					views:   ToolInvocationViews::default(),
+				},
+				Block::Invoke {
+					call_id: "c2".to_owned(),
+					tool:    "read".to_owned(),
+					target:  "crates/veyyon-desktop-kit/src/token_set.rs".to_owned(),
+					result:  Some("281 lines".to_owned()),
+					views:   ToolInvocationViews::default(),
+				},
+				Block::Invoke {
+					call_id: "c3".to_owned(),
+					tool:    "search".to_owned(),
+					target:  "structure: pub fn $NAME($$$ARGS) -> $RET".to_owned(),
+					result:  Some("38 matches".to_owned()),
+					views:   ToolInvocationViews::default(),
+				},
+				Block::Prose(
+					"The kit already owns the bridge from tokens to renderer types, as a global \
+					 resolved once at construction. The surfaces read the geometry groups directly and \
+					 take colours from that same set, so a primitive and the surface around it cannot \
+					 disagree about what the theme says."
+						.to_owned(),
+				),
+				Block::Pane {
+					caption: "crates/veyyon-desktop-surface/src/queue.rs".to_owned(),
+					lines:   vec![
+						"pub fn queue_rail(".to_owned(),
+						"    sections: &[(Section, Vec<Row>)],".to_owned(),
+						"    geometry: &QueueSurfaceTokens,".to_owned(),
+						"    tokens: &TokenSet,".to_owned(),
+						") -> impl IntoElement {".to_owned(),
+					],
+				},
+				Block::Prose(
+					"Two row shapes carry the density: a card for the sections being worked in, a line \
+					 for the ones that are not."
+						.to_owned(),
+				),
+			],
+			model:  Some("claude-sonnet-4-6".to_owned()),
+		},
 	]
 }
 

@@ -22,11 +22,6 @@
 //! count is not observable here; the drawn and hidden counts it is formatted
 //! from are asserted instead.
 
-#[allow(
-	dead_code,
-	reason = "the queue helper module serves several suites; this one reads rail geometry and \
-	          clicks, and touches neither the menu nor the hover-action helpers"
-)]
 #[path = "support/queue-actions/mod.rs"]
 mod queue_actions;
 #[path = "support/queue-scroll/mod.rs"]

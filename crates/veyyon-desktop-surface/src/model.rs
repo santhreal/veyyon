@@ -208,8 +208,9 @@ pub enum Turn {
 	Operator(String),
 	/// An operator message with recorded attachments or file references.
 	OperatorArtifacts { text: String, artifacts: Vec<Artifact> },
-	/// What the agent produced.
-	Agent(Vec<Block>),
+	/// What the agent produced, and the model that produced it. The model is
+	/// absent when the host reported none for the turn (§5.3).
+	Agent { blocks: Vec<Block>, model: Option<String> },
 }
 
 /// A decision attached above the composer (§5.3).

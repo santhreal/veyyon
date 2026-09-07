@@ -49,23 +49,32 @@ fn the_transcript_viewport_preserves_anchor_during_streaming_revisions_when_scro
 	let state = TranscriptViewportState::new();
 	let mut turns = vec![
 		Turn::Operator("Explain the architecture of the renderer".to_owned()),
-		Turn::Agent(vec![
-			Block::Reason("Analyzing component hierarchy".to_owned()),
-			Block::Prose("The renderer uses a retained variable-height list.".to_owned()),
-		]),
+		Turn::Agent {
+			blocks: vec![
+				Block::Reason("Analyzing component hierarchy".to_owned()),
+				Block::Prose("The renderer uses a retained variable-height list.".to_owned()),
+			],
+			model:  None,
+		},
 		Turn::Operator("What about tool calls?".to_owned()),
-		Turn::Agent(vec![
-			Block::Invoke {
-				call_id: "search-call".to_owned(),
-				tool:    "search".to_owned(),
-				target:  "crates/veyyon-desktop-surface".to_owned(),
-				result:  Some("Found 12 matching files".to_owned()),
-				views:   Default::default(),
-			},
-			Block::Prose("Tools execute asynchronously and report outcomes.".to_owned()),
-		]),
+		Turn::Agent {
+			blocks: vec![
+				Block::Invoke {
+					call_id: "search-call".to_owned(),
+					tool:    "search".to_owned(),
+					target:  "crates/veyyon-desktop-surface".to_owned(),
+					result:  Some("Found 12 matching files".to_owned()),
+					views:   Default::default(),
+				},
+				Block::Prose("Tools execute asynchronously and report outcomes.".to_owned()),
+			],
+			model:  None,
+		},
 		Turn::Operator("Show me the diff".to_owned()),
-		Turn::Agent(vec![Block::Prose("Streaming reply starting...".to_owned())]),
+		Turn::Agent {
+			blocks: vec![Block::Prose("Streaming reply starting...".to_owned())],
+			model:  None,
+		},
 	];
 
 	state.sync_turns(&turns, false);
@@ -75,7 +84,10 @@ fn the_transcript_viewport_preserves_anchor_during_streaming_revisions_when_scro
 	state.scroll_to(ListOffset { item_ix: 1, offset_in_item: px(0.0) });
 	assert!(!state.is_following_tail());
 
-	turns[5] = Turn::Agent(vec![Block::Prose("Streaming reply updated with tokens.".to_owned())]);
+	turns[5] = Turn::Agent {
+		blocks: vec![Block::Prose("Streaming reply updated with tokens.".to_owned())],
+		model:  None,
+	};
 	state.sync_turns(&turns, true);
 	assert!(state.is_streaming());
 
@@ -87,17 +99,18 @@ fn the_transcript_viewport_preserves_anchor_during_streaming_revisions_when_scro
 #[test]
 fn the_transcript_viewport_follows_tail_at_the_end_and_resumes_after_returning() {
 	let state = TranscriptViewportState::new();
-	let mut turns = vec![
-		Turn::Operator("First turn".to_owned()),
-		Turn::Agent(vec![Block::Prose("First response".to_owned())]),
-	];
+	let mut turns = vec![Turn::Operator("First turn".to_owned()), Turn::Agent {
+		blocks: vec![Block::Prose("First response".to_owned())],
+		model:  None,
+	}];
 
 	state.sync_turns(&turns, false);
 	assert_eq!(state.turn_count(), 2);
 	assert!(state.is_following_tail());
 
 	turns.push(Turn::Operator("Second turn".to_owned()));
-	turns.push(Turn::Agent(vec![Block::Prose("Second response".to_owned())]));
+	turns
+		.push(Turn::Agent { blocks: vec![Block::Prose("Second response".to_owned())], model: None });
 	state.sync_turns(&turns, false);
 	assert_eq!(state.turn_count(), 4);
 	assert!(state.is_following_tail());
@@ -160,20 +173,23 @@ fn the_transcript_block_expansion_transitions_and_remeasures_turn_height() {
 	let motion_tokens = MotionTokens::reference();
 	let t0 = Instant::now();
 
-	let turn = Turn::Agent(vec![
-		Block::Reason("Evaluating optimal algorithm".to_owned()),
-		Block::Invoke {
-			call_id: "read-call".to_owned(),
-			tool:    "read".to_owned(),
-			target:  "src/main.rs".to_owned(),
-			result:  Some("fn main() {}\n".to_owned()),
-			views:   Default::default(),
-		},
-		Block::Pane {
-			caption: "Excerpt".to_owned(),
-			lines:   vec!["line 1".to_owned(), "line 2".to_owned(), "line 3".to_owned()],
-		},
-	]);
+	let turn = Turn::Agent {
+		blocks: vec![
+			Block::Reason("Evaluating optimal algorithm".to_owned()),
+			Block::Invoke {
+				call_id: "read-call".to_owned(),
+				tool:    "read".to_owned(),
+				target:  "src/main.rs".to_owned(),
+				result:  Some("fn main() {}\n".to_owned()),
+				views:   Default::default(),
+			},
+			Block::Pane {
+				caption: "Excerpt".to_owned(),
+				lines:   vec!["line 1".to_owned(), "line 2".to_owned(), "line 3".to_owned()],
+			},
+		],
+		model:  None,
+	};
 
 	state.sync_turns(&[turn], false);
 	assert_eq!(state.turn_count(), 1);
@@ -208,7 +224,7 @@ fn repeated_focus_preserves_manual_scroll_in_a_measured_viewport() {
 	let state = TranscriptViewportState::new();
 	let turns = vec![
 		Turn::Operator("Turn 0".to_owned()),
-		Turn::Agent(vec![Block::Prose("Turn 1".to_owned())]),
+		Turn::Agent { blocks: vec![Block::Prose("Turn 1".to_owned())], model: None },
 		Turn::Operator("Turn 2".to_owned()),
 	];
 
@@ -278,9 +294,8 @@ fn the_transcript_find_matches_and_expands_blocks() {
 	let mut find = TranscriptFindState::new();
 	let t0 = Instant::now();
 
-	let turns = vec![
-		Turn::Operator("Find the needle in the haystack".to_owned()),
-		Turn::Agent(vec![
+	let turns = vec![Turn::Operator("Find the needle in the haystack".to_owned()), Turn::Agent {
+		blocks: vec![
 			Block::Reason("Thinking about the needle".to_owned()),
 			Block::Invoke {
 				call_id: "search-call".to_owned(),
@@ -293,8 +308,9 @@ fn the_transcript_find_matches_and_expands_blocks() {
 				caption: "needle results".to_owned(),
 				lines:   vec!["line with needle".to_owned()],
 			},
-		]),
-	];
+		],
+		model:  None,
+	}];
 
 	state.sync_turns(&turns, false);
 	assert!(!state.is_block_expanded(1, 0));

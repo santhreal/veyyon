@@ -248,11 +248,12 @@ pub const fn same_kind(left: &Block, right: &Block) -> bool {
 	)
 }
 
-/// The gap above a block, from §5.3's ladder. Consecutive muted event lines run
-/// with no gap; blocks of one kind are one group; a change of kind starts the
-/// next group inside the turn. An `Unknown` line is excluded from the zero step
-/// because it expands into a pane, and two expanded panes touching would read
-/// as one.
+/// The gap above a block, from §5.3's ladder.
+///
+/// Consecutive muted event lines run with no gap; blocks of one kind are one
+/// group; a change of kind starts the next group inside the turn. An
+/// `Unknown` line is excluded from the zero step because it expands into a
+/// pane, and two expanded panes touching would read as one.
 #[must_use]
 pub const fn block_gap(
 	previous: &Block,

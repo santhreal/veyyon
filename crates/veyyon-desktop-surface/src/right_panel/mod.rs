@@ -9,6 +9,7 @@ pub mod diff_view;
 pub mod file_view;
 pub mod tabs;
 pub mod tree_view;
+pub mod usage_view;
 
 pub use content::{
 	DiffFile, DiffRow, DiffStatus, FileLine, FileView, HighlightSpan, PanelContent, PanelTab,
@@ -17,6 +18,7 @@ pub use content::{
 pub use file_view::{file_view, highlight_source};
 pub use tabs::tab_strip;
 pub use tree_view::tree_view;
+pub use usage_view::usage_view;
 use veyyon_desktop_kit::{ColorRole, SpacingStep, TextRamp, TokenSet};
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
 use veyyon_gpui::{Context, InteractiveElement, IntoElement, ParentElement, Styled, div, px};
@@ -78,6 +80,7 @@ pub fn right_panel(
 		.into_any_element(),
 		PanelTab::File => file_view(&panel.file, geometry, tokens, cx).into_any_element(),
 		PanelTab::Tree => tree_view(&panel.tree, geometry, tokens, cx).into_any_element(),
+		PanelTab::Usage => usage_view(panel.usage.as_ref(), geometry, tokens).into_any_element(),
 	};
 	let tab_count = panel.tabs.len();
 	let current_tab_idx = panel

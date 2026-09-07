@@ -152,6 +152,7 @@ fn diff_surface_renders_in_shell_view_and_toggles_mode() {
 			file:               None,
 			tree:               Default::default(),
 			diff_mode:          DiffMode::Unified,
+			usage:              None,
 			unavailable_reason: None,
 		},
 		..ShellState::default()

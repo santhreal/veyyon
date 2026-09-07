@@ -111,7 +111,7 @@ fn state_with(blocks: Vec<Block>) -> ShellState {
 		connection: ConnectionPhase::Attached,
 		transcript: blocks
 			.into_iter()
-			.map(|block| Turn::Agent(vec![block]))
+			.map(|block| Turn::Agent { blocks: vec![block], model: None })
 			.collect(),
 		..ShellState::default()
 	}

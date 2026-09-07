@@ -2,7 +2,7 @@
 //! tree.
 
 use veyyon_desktop_model::{
-	Capability, CapabilityMap, CapabilityStatus, ChangesView, Domains, FileTreeView,
+	Capability, CapabilityMap, CapabilityStatus, ChangesView, Domains, FileTreeView, SessionId,
 };
 use veyyon_desktop_surface::{
 	DiffFile, DiffStatus, PanelContent, PanelTab, TreeContent, TreeRowItem, TreeStatus,
@@ -16,6 +16,7 @@ use veyyon_desktop_surface::{
 pub fn project_panel(
 	domains: &Domains,
 	capabilities: &CapabilityMap,
+	active: Option<&SessionId>,
 	previous: &PanelContent,
 ) -> PanelContent {
 	let (diff, diff_status) = if let Some(changes) = domains.changes.as_ref() {
@@ -57,7 +58,20 @@ pub fn project_panel(
 		&previous.tree,
 	);
 
-	let mut tabs = Vec::with_capacity(3);
+	// The usage tab is the turn footer's destination. A host that declared usage
+	// unavailable takes the tab away, which is how the footer degrades to naming
+	// the model and nothing else. A host that has not answered yet offers no tab
+	// either, rather than one that opens on nothing — but a tab the operator
+	// already opened from the footer is window state and survives, or the panel
+	// they are reading closes itself on the next unrelated snapshot.
+	let usage = active.and_then(|id| domains.usage.get(id)).cloned();
+	let usage_offered = match capabilities.get(Capability::Usage) {
+		CapabilityStatus::Unavailable { .. } => false,
+		CapabilityStatus::Available => true,
+		_ => usage.is_some() || previous.tabs.contains(&PanelTab::Usage),
+	};
+
+	let mut tabs = Vec::with_capacity(4);
 	if matches!(capabilities.get(Capability::Changes), CapabilityStatus::Available)
 		&& !matches!(capabilities.get(Capability::PendingEdits), CapabilityStatus::Unavailable { .. })
 	{
@@ -66,6 +80,9 @@ pub fn project_panel(
 	if matches!(capabilities.get(Capability::Files), CapabilityStatus::Available) {
 		tabs.push(PanelTab::File);
 		tabs.push(PanelTab::Tree);
+	}
+	if usage_offered {
+		tabs.push(PanelTab::Usage);
 	}
 
 	let unavailable_reason = if tabs.is_empty() {
@@ -102,6 +119,7 @@ pub fn project_panel(
 		file,
 		tree,
 		diff_mode: previous.diff_mode,
+		usage,
 		unavailable_reason,
 	}
 }

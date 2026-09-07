@@ -140,7 +140,7 @@ fn every_pair_of_blocks_sits_at_one_of_the_three_gaps_a_turn_owns() {
 #[test]
 fn permuting_a_turn_moves_its_ink_by_exactly_the_gap_it_changed() {
 	let tokens = load_bundled_tokens().expect("the bundled tokens load");
-	let geometry = tokens.surface.transcript.clone();
+	let geometry = tokens.surface.transcript;
 	let prose = || Block::Prose("prose".to_owned());
 	let note = || Block::Note { label: "note", text: "noted".to_owned(), boundary: false };
 	let invoke = || Block::Invoke {
@@ -156,8 +156,14 @@ fn permuting_a_turn_moves_its_ink_by_exactly_the_gap_it_changed() {
 	// Each pair holds the same blocks, opens with the same kind and closes with
 	// the same kind, so the content between the first and last ink is identical
 	// and the extent delta is the gap delta and nothing else.
-	let grouped = ink_extent(&mut cx, vec![Turn::Agent(vec![invoke(), invoke(), prose(), note()])]);
-	let split = ink_extent(&mut cx, vec![Turn::Agent(vec![invoke(), prose(), invoke(), note()])]);
+	let grouped = ink_extent(&mut cx, vec![Turn::Agent {
+		blocks: vec![invoke(), invoke(), prose(), note()],
+		model:  None,
+	}]);
+	let split = ink_extent(&mut cx, vec![Turn::Agent {
+		blocks: vec![invoke(), prose(), invoke(), note()],
+		model:  None,
+	}]);
 	assert_eq!(
 		round_px(split - grouped),
 		round_px(geometry.turn_groups_gap - geometry.group_blocks_gap),
@@ -165,17 +171,27 @@ fn permuting_a_turn_moves_its_ink_by_exactly_the_gap_it_changed() {
 		 group-change gap",
 	);
 
-	let run = ink_extent(&mut cx, vec![Turn::Agent(vec![note(), note(), invoke(), prose()])]);
-	let broken = ink_extent(&mut cx, vec![Turn::Agent(vec![note(), invoke(), note(), prose()])]);
+	let run = ink_extent(&mut cx, vec![Turn::Agent {
+		blocks: vec![note(), note(), invoke(), prose()],
+		model:  None,
+	}]);
+	let broken = ink_extent(&mut cx, vec![Turn::Agent {
+		blocks: vec![note(), invoke(), note(), prose()],
+		model:  None,
+	}]);
 	assert_eq!(
 		round_px(broken - run),
 		round_px(geometry.turn_groups_gap - geometry.adjacent_same_kind_gap),
 		"consecutive event lines run with no gap between them",
 	);
 
-	let one_turn = ink_extent(&mut cx, vec![Turn::Agent(vec![prose(), prose()])]);
+	let one_turn =
+		ink_extent(&mut cx, vec![Turn::Agent { blocks: vec![prose(), prose()], model: None }]);
 	let two_turns =
-		ink_extent(&mut cx, vec![Turn::Agent(vec![prose()]), Turn::Agent(vec![prose()])]);
+		ink_extent(&mut cx, vec![Turn::Agent { blocks: vec![prose()], model: None }, Turn::Agent {
+			blocks: vec![prose()],
+			model:  None,
+		}]);
 	assert_eq!(
 		round_px(two_turns - one_turn),
 		round_px(geometry.turns_gap - geometry.group_blocks_gap),

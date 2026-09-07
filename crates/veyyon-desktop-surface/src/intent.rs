@@ -133,6 +133,7 @@ pub enum Intent {
 	},
 	SetDiffMode(veyyon_desktop_model::DiffMode),
 	OpenFile(String),
+	OpenUsage,
 	ToggleTreeNode(String),
 	ExpandContext {
 		file: usize,

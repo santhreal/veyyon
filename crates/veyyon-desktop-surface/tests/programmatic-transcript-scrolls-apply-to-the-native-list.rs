@@ -80,10 +80,10 @@ fn scrolling_moves_the_measured_list_and_manual_input_cancels_it() {
 #[test]
 fn home_from_tail_scrolls_to_head_and_pagedown_advances_measured_viewport() {
 	let state = TranscriptViewportState::new();
-	let turns = vec![
-		Turn::Operator("User prompt".to_owned()),
-		Turn::Agent(vec![veyyon_desktop_surface::model::Block::Prose("Line 1\n".repeat(40))]),
-	];
+	let turns = vec![Turn::Operator("User prompt".to_owned()), Turn::Agent {
+		blocks: vec![veyyon_desktop_surface::model::Block::Prose("Line 1\n".repeat(40))],
+		model:  None,
+	}];
 	state.sync_turns(&turns, false);
 	let rendered = state.clone();
 	let mut cx = headless_context().expect("headless renderer");

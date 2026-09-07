@@ -269,6 +269,22 @@ impl TranscriptViewportState {
 		self.0.borrow_mut().last_focused_turn = None;
 	}
 
+	/// Records the turn the keyboard cursor is on, scrolling nothing.
+	///
+	/// The keymap owns that cursor and the scroll it asks for is a separate
+	/// one-shot request, so the viewport only mirrors it — which is what the
+	/// footer under the focused turn reads to reveal its model name for an
+	/// operator who is not using a pointer.
+	pub fn set_focused_turn(&self, turn_ix: Option<usize>) {
+		self.0.borrow_mut().last_focused_turn = turn_ix;
+	}
+
+	/// The turn the keyboard is on, if the operator moved onto one.
+	#[must_use]
+	pub fn focused_turn(&self) -> Option<usize> {
+		self.0.borrow().last_focused_turn
+	}
+
 	/// Scrolls the list so that `turn_ix` is fully visible.
 	pub fn scroll_to_turn(&self, turn_ix: usize) {
 		let inner = self.0.borrow();
@@ -279,6 +295,32 @@ impl TranscriptViewportState {
 	#[must_use]
 	pub fn is_following_tail(&self) -> bool {
 		self.0.borrow().list_state.is_following_tail()
+	}
+
+	/// Whether the transcript's last row is off screen, which is the only
+	/// condition under which a jump to the live edge moves anything.
+	///
+	/// The list measures only the rows it draws, so its own
+	/// `is_scrolled_to_end` reports nothing for the ordinary long transcript
+	/// and cannot be asked; the last row's position relative to the viewport
+	/// answers instead. A row the list anchored past — which is where a list
+	/// resting on its end anchors — is on screen, a row below the viewport is
+	/// not, and a row the list can place neither way was never drawn, which is
+	/// off screen. A list that has not laid out yet has no viewport to compare
+	/// against and reports its end on screen.
+	#[must_use]
+	pub fn is_end_off_screen(&self) -> bool {
+		let inner = self.0.borrow();
+		if inner.list_state.viewport_bounds().size.height <= px(0.0) {
+			return false;
+		}
+		let Some(last) = inner.list_state.item_count().checked_sub(1) else {
+			return false;
+		};
+		inner
+			.list_state
+			.item_is_below_viewport(last)
+			.unwrap_or(true)
 	}
 
 	/// Pauses tail following, keeping the current scroll position stable.

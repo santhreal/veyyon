@@ -22,8 +22,8 @@ use strum::IntoEnumIterator as _;
 use support::{NOW_MS, agent_blocks, entry};
 use veyyon_desktop::{PANE_LINE_CEILING, SessionIndex, project};
 use veyyon_desktop_model::{
-	BlockKind, ContentBlock, EntryId, HostEvent, MessageRole, SessionId, SnapshotSection, Store,
-	StreamingMessageState, Versioned, reduce,
+	BlockKind, ContentBlock, EntryId, EntryMeta, HostEvent, MessageRole, SessionId, SnapshotSection,
+	Store, StreamingMessageState, Versioned, reduce,
 };
 use veyyon_desktop_surface::{Artifact, Badge, Block, ShellState, Turn};
 
@@ -281,4 +281,71 @@ fn a_pane_is_held_to_its_ceiling_with_the_remainder_counted() {
 	assert_eq!(caption, "Shell: seq · exit 2");
 	assert_eq!(lines.len(), PANE_LINE_CEILING + 1);
 	assert_eq!(lines.last().map(String::as_str), Some("… 5 more lines"));
+}
+
+#[test]
+fn an_agent_turn_names_the_model_the_last_entry_in_it_reported() {
+	let mut store = Store::new();
+	store.persisted.shell.active_session = Some(SessionId::from("s"));
+	let tree = store.transcripts.entry(SessionId::from("s")).or_default();
+	tree.append(entry("u1", None, MessageRole::User, vec![ContentBlock::Text {
+		text: "do it".to_string(),
+	}]));
+	let mut first = entry("a1", Some("u1"), MessageRole::Assistant, vec![ContentBlock::Text {
+		text: "reading".to_string(),
+	}]);
+	first.meta = Some(meta_naming("claude-sonnet-4-6"));
+	tree.append(first);
+	let mut second = entry("a2", Some("a1"), MessageRole::Assistant, vec![ContentBlock::Text {
+		text: "done".to_string(),
+	}]);
+	second.meta = Some(meta_naming("claude-opus-4-1"));
+	tree.append(second);
+
+	let mut state = ShellState::default();
+	project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
+
+	let Some(Turn::Agent { model, .. }) = state.transcript.get(1) else {
+		panic!("the reply is one agent turn: {:?}", state.transcript);
+	};
+	assert_eq!(
+		model.as_deref(),
+		Some("claude-opus-4-1"),
+		"the turn's footer names {model:?}: an agent turn is several entries, and the model that \
+		 produced its latest output is the one the operator is reading"
+	);
+}
+
+#[test]
+fn a_turn_the_host_reported_no_model_for_names_none() {
+	let mut store = Store::new();
+	store.persisted.shell.active_session = Some(SessionId::from("s"));
+	let tree = store.transcripts.entry(SessionId::from("s")).or_default();
+	tree.append(entry("a1", None, MessageRole::Assistant, vec![ContentBlock::Text {
+		text: "reading".to_string(),
+	}]));
+
+	let mut state = ShellState::default();
+	project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
+
+	let Some(Turn::Agent { model, .. }) = state.transcript.first() else {
+		panic!("the reply is one agent turn: {:?}", state.transcript);
+	};
+	assert_eq!(
+		model.as_deref(),
+		None,
+		"the turn names {model:?} from an entry that reported no model, so its footer would name a \
+		 model the host never stated"
+	);
+}
+
+/// Entry metadata naming a model and nothing else.
+fn meta_naming(model: &str) -> EntryMeta {
+	EntryMeta {
+		provider:    Some("anthropic".to_string()),
+		model:       Some(model.to_string()),
+		stop_reason: None,
+		error:       None,
+		usage:       None,
+	}
 }

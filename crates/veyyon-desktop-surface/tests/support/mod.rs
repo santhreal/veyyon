@@ -106,6 +106,7 @@ pub fn state() -> ShellState {
 				status:         TreeStatus::Loaded,
 			},
 			diff_mode:          DiffMode::Unified,
+			usage:              None,
 			unavailable_reason: None,
 		},
 		cards: vec![

@@ -322,7 +322,7 @@ fn panel_opening_requests_changes_and_file_tree_only_when_affirmatively_availabl
 	// 4. Panel projection when capabilities are unavailable exposes no active tabs
 	//    rather than infinite loading
 	let projected =
-		project_panel(&Domains::default(), &store.capabilities, &PanelContent::default());
+		project_panel(&Domains::default(), &store.capabilities, None, &PanelContent::default());
 	assert!(projected.tabs.is_empty(), "unavailable capabilities result in no enabled panel tabs");
 	assert_eq!(projected.tree.status, TreeStatus::Failed);
 	assert_eq!(projected.diff_status, DiffStatus::Failed);

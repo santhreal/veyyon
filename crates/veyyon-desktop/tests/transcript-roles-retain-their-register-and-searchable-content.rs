@@ -43,7 +43,7 @@ fn every_role_preserves_text_in_its_display_register() {
 		match expected {
 			Some((expected_label, expected_boundary)) => {
 				assert!(
-					matches!(state.transcript.as_slice(), [Turn::Agent(blocks)]
+					matches!(state.transcript.as_slice(), [Turn::Agent { blocks, .. }]
 					if matches!(blocks.as_slice(), [Block::Note { label, text, boundary }]
 						if *label == expected_label && text == "Recorded text" && *boundary == expected_boundary)),
 					"{role:?}: {:?}",
@@ -60,7 +60,7 @@ fn every_role_preserves_text_in_its_display_register() {
 			},
 			None if role == MessageRole::User => assert!(matches!(state.transcript.as_slice(),
 				[Turn::Operator(text)] if text == "Recorded text")),
-			None => assert!(matches!(state.transcript.as_slice(), [Turn::Agent(blocks)]
+			None => assert!(matches!(state.transcript.as_slice(), [Turn::Agent { blocks, .. }]
 				if matches!(blocks.as_slice(), [Block::Prose(text)] if text == "Recorded text"))),
 		}
 	}
@@ -119,6 +119,10 @@ fn execution_and_summary_records_distinguish_their_protocol_roles() {
 			.append(entry("record", None, role, vec![content]));
 		let mut state = ShellState::default();
 		project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
-		assert_eq!(state.transcript, vec![Turn::Agent(vec![expected])], "{role:?}");
+		assert_eq!(
+			state.transcript,
+			vec![Turn::Agent { blocks: vec![expected], model: None }],
+			"{role:?}"
+		);
 	}
 }

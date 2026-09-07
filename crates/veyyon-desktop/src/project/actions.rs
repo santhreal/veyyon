@@ -201,7 +201,7 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		Intent::RetryDiagnosticSource(source) => {
 			vec![HostAction::RetryDiagnosticSource { source: source.clone() }]
 		},
-		Intent::RefreshUsage => {
+		Intent::RefreshUsage | Intent::OpenUsage => {
 			let mut actions = vec![HostAction::GetUsage { session: active.clone() }];
 			if let Some(session) = active {
 				actions.push(HostAction::GetContextBreakdown { session });

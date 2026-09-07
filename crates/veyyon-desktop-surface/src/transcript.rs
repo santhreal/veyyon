@@ -13,6 +13,7 @@
 pub mod blocks;
 pub mod find;
 pub mod fingerprint;
+pub mod footer;
 pub mod session_store;
 pub mod state;
 pub mod turn;
@@ -21,6 +22,7 @@ pub mod viewport;
 pub use blocks::*;
 pub use find::*;
 pub use fingerprint::*;
+pub use footer::*;
 pub use session_store::*;
 pub use state::*;
 pub use turn::*;

@@ -26,7 +26,7 @@ use veyyon_desktop_model::{
 };
 use veyyon_desktop_surface::{
 	ConnectionPhase, ControlError, Intent, Overlay, PaletteMode, PaletteState, ScrollBy,
-	SettingsState,
+	SettingsState, Turn,
 	composer::{ModelChoice, QueueMode, ThinkingLevel, TurnPhase},
 	intent::Intents,
 };
@@ -117,6 +117,7 @@ fn every_intent() -> Vec<Intent> {
 		Intent::OpenToolTarget(veyyon_desktop_surface::tool_view::ToolViewTarget::Url(
 			"https://example.com".to_owned(),
 		)),
+		Intent::OpenUsage,
 	];
 
 	// The exhaustive match is the gate. Every variant is named, so a new one
@@ -194,7 +195,8 @@ fn every_intent() -> Vec<Intent> {
 			| Intent::ExpandContext { .. }
 			| Intent::SelectChangeScope(_)
 			| Intent::SetToolViewExpanded { .. }
-			| Intent::OpenToolTarget(_) => {},
+			| Intent::OpenToolTarget(_)
+			| Intent::OpenUsage => {},
 		}
 	}
 
@@ -238,6 +240,11 @@ fn every_intent_either_changes_the_state_or_is_reported_and_never_neither() {
 		}
 		if let Intent::TerminalInput(_) = &intent {
 			before.drawer.scroll_offset = 1;
+		}
+		// The turn cursor moves onto a turn that exists, so a transcript with
+		// none is not the step being swept.
+		if let Intent::StepTurn(_) = &intent {
+			before.transcript = vec![Turn::Operator("run the tests".to_owned())];
 		}
 		if let Intent::PaletteQuery(_) | Intent::PaletteMove(_) | Intent::PaletteRun = &intent {
 			before.overlay = Some(Overlay::Palette(PaletteState::commands()));

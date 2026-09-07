@@ -129,9 +129,12 @@ pub fn transcript_viewport(
 		.overflow_hidden()
 		.child(list_el);
 
-	// Floating "Scroll to end" pill when user has scrolled away from live edge
-	// (§5.3)
-	if !state.is_following_tail() && turns_len > 0 {
+	// Floating "Scroll to end" pill, drawn only while the end is off screen
+	// (§5.3). It used to be drawn from tail following alone, which the turn
+	// cursor also stops: stepping back through a transcript that fits its
+	// viewport raised the pill over prose whose last row was already visible,
+	// and the jump it offered moved nothing.
+	if state.is_end_off_screen() && turns_len > 0 {
 		let state_scroll = state.clone();
 		let view_scroll = cx.weak_entity();
 		let motion_scroll = motion_tokens.clone();

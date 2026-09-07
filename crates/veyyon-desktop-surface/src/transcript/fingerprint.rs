@@ -18,7 +18,7 @@ pub fn compute_turn_fingerprint(turn: &Turn) -> u64 {
 			text.hash(&mut hasher);
 			artifacts.hash(&mut hasher);
 		},
-		Turn::Agent(blocks) => {
+		Turn::Agent { blocks, .. } => {
 			1u8.hash(&mut hasher);
 			blocks.len().hash(&mut hasher);
 			for block in blocks {

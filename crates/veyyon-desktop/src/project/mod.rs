@@ -157,7 +157,7 @@ pub fn project<S: std::hash::BuildHasher>(
 		.map(cards)
 		.unwrap_or_default();
 
-	state.panel = project_panel(&store.domains, &store.capabilities, &state.panel);
+	state.panel = project_panel(&store.domains, &store.capabilities, active, &state.panel);
 	state.turn = project_turn_phase(store, active);
 	project_composer(store, active, &mut state.composer);
 	project_drawer(&store.domains, emulators, now_ms, &mut state.drawer);

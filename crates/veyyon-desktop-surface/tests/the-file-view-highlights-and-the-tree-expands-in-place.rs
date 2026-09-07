@@ -76,6 +76,7 @@ fn tree_expands_and_collapses_in_place_and_opens_file() {
 				status:         TreeStatus::Loaded,
 			},
 			diff_mode:          DiffMode::Unified,
+			usage:              None,
 			unavailable_reason: None,
 		},
 		..ShellState::default()

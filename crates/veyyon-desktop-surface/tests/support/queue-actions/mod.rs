@@ -1,4 +1,7 @@
 //! Helper functions for queue hover-action and context-menu interaction tests.
+//! Each suite pulls in only what it uses, so a helper unused by one binary is
+//! expected.
+#![allow(dead_code, reason = "each test binary uses a subset of these helpers")]
 
 use veyyon_desktop_kit::load_bundled_tokens;
 use veyyon_desktop_scene::{Captured, HeadlessSession};

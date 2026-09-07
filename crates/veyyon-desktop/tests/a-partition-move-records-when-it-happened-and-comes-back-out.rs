@@ -115,7 +115,7 @@ impl Rail {
 
 /// The pair of intents that moves a session into a partition and back out to
 /// `Live`, for the partitions an operator moves a session between.
-fn move_pair(partition: QueuePartition, row: u64) -> Option<(Intent, Intent)> {
+const fn move_pair(partition: QueuePartition, row: u64) -> Option<(Intent, Intent)> {
 	match partition {
 		QueuePartition::Pinned => Some((Intent::PinSession(row), Intent::UnpinSession(row))),
 		QueuePartition::Deferred => Some((Intent::DeferSession(row), Intent::RecallSession(row))),

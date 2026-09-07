@@ -5,7 +5,7 @@ use std::{collections::BTreeSet, ops::Range};
 
 use serde::{Deserialize, Serialize};
 use veyyon_desktop_kit::ColorRole;
-use veyyon_desktop_model::{ChangeStatus, DiffMode};
+use veyyon_desktop_model::{ChangeStatus, DiffMode, UsageTotals};
 
 /// The active tenant in the right panel (§5.6, §5.11).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -18,6 +18,8 @@ pub enum PanelTab {
 	File,
 	/// Hierarchical filesystem directory tree.
 	Tree,
+	/// The session's token and cost accounting, on one line (§5.3).
+	Usage,
 }
 
 impl PanelTab {
@@ -28,6 +30,7 @@ impl PanelTab {
 			Self::Diff => "Changes",
 			Self::File => "File",
 			Self::Tree => "Tree",
+			Self::Usage => "Usage",
 		}
 	}
 }
@@ -64,6 +67,8 @@ pub struct PanelContent {
 	pub tree:               TreeContent,
 	/// Layout mode for diff rendering (unified vs split).
 	pub diff_mode:          DiffMode,
+	/// The session's accounting totals for the Usage tab.
+	pub usage:              Option<UsageTotals>,
 	/// Reason if the panel is unavailable.
 	pub unavailable_reason: Option<String>,
 }
@@ -76,6 +81,7 @@ impl PanelContent {
 			&& self.diff.is_empty()
 			&& self.file.is_none()
 			&& self.tree.rows.is_empty()
+			&& self.usage.is_none()
 	}
 
 	/// Total additions across all changed diff files.
