@@ -88,16 +88,41 @@ pub fn transport_gate(action: HostActionKind, connection: &ConnectionState, gate
 	if matches!(action, HostActionKind::RetryConnection) {
 		return gate;
 	}
-	let reason = match connection {
-		ConnectionState::Connected { .. } => return gate,
-		ConnectionState::Detached => "not attached to a host",
-		ConnectionState::Connecting { .. } => "connecting to the host",
-		ConnectionState::Syncing { .. } => "syncing with the host",
-		ConnectionState::Fatal { .. } => "host unreachable",
-		ConnectionState::Reconnecting { .. } => match classify_action(action) {
-			ActionClassification::Mutation => "reconnecting to the host",
-			ActionClassification::Ephemeral => return gate,
+	match transport_reason(connection, classify_action(action)) {
+		Some(reason) => Gate::Unavailable { reason: reason.to_string() },
+		None => gate,
+	}
+}
+
+/// Narrows the gate of a surface no action maps to (`Questions`, `Plans`,
+/// `Extensions`, §1.2), which has no kind to classify.
+///
+/// Such a surface only shows what the client already holds, so it is narrowed
+/// as a read is: withheld wherever nothing can be shown yet, and reachable
+/// while reconnecting over the cache.
+#[must_use]
+pub fn transport_gate_capability(connection: &ConnectionState, gate: Gate) -> Gate {
+	match transport_reason(connection, ActionClassification::Ephemeral) {
+		Some(reason) => Gate::Unavailable { reason: reason.to_string() },
+		None => gate,
+	}
+}
+
+/// Why a transport state carries nothing, or `None` when it carries this
+/// classification.
+const fn transport_reason(
+	connection: &ConnectionState,
+	classification: ActionClassification,
+) -> Option<&'static str> {
+	match connection {
+		ConnectionState::Connected { .. } => None,
+		ConnectionState::Detached => Some("not attached to a host"),
+		ConnectionState::Connecting { .. } => Some("connecting to the host"),
+		ConnectionState::Syncing { .. } => Some("syncing with the host"),
+		ConnectionState::Fatal { .. } => Some("host unreachable"),
+		ConnectionState::Reconnecting { .. } => match classification {
+			ActionClassification::Mutation => Some("reconnecting to the host"),
+			ActionClassification::Ephemeral => None,
 		},
-	};
-	Gate::Unavailable { reason: reason.to_string() }
+	}
 }

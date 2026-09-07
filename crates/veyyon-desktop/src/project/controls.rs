@@ -17,7 +17,10 @@ use veyyon_desktop_model::{
 };
 use veyyon_desktop_surface::{Availability, DiffStatus, ShellState, TreeStatus};
 
-use super::{SessionIndex, connection::transport_gate};
+use super::{
+	SessionIndex,
+	connection::{transport_gate, transport_gate_capability},
+};
 
 /// Resolves the initiating contextual surface for a background or panel host
 /// action.
@@ -247,10 +250,13 @@ pub fn project_controls(
 			}
 		}
 	}
-	let ext_gate = veyyon_desktop_model::gate_capability(
-		veyyon_desktop_model::Capability::Extensions,
-		&store.capabilities,
-		registry,
+	let ext_gate = transport_gate_capability(
+		&store.connection,
+		veyyon_desktop_model::gate_capability(
+			veyyon_desktop_model::Capability::Extensions,
+			&store.capabilities,
+			registry,
+		),
 	);
 	state.controls.set_availability(
 		SurfaceId::SettingsField("extensions".to_string()),

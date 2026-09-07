@@ -144,6 +144,13 @@ impl ControlStates {
 		self.unprojected.borrow().iter().cloned().collect()
 	}
 
+	/// Every control the projection set, with what it was told, in the order
+	/// the ids sort. A test sweeps this rather than a list of ids it wrote
+	/// down, so a control added to the projection is covered by what it is.
+	pub fn projected(&self) -> impl Iterator<Item = (&SurfaceId, &Availability)> {
+		self.availability.iter()
+	}
+
 	/// Returns the active error associated with a given control identifier, if
 	/// any.
 	#[must_use]

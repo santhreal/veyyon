@@ -30,7 +30,7 @@ pub use link::{HostLink, TRANSPORT_THREAD_NAME};
 pub use project::{
 	NO_SESSION_OPEN, PANE_LINE_CEILING, SessionIndex, actions_for, contextual_surface_for_action,
 	drawer_lines, elapsed_label, land_failure, project, project_clock, project_controls,
-	project_turn_phase, strip_control_sequences, transport_gate,
+	project_turn_phase, strip_control_sequences, transport_gate, transport_gate_capability,
 };
 pub use reconnect::{
 	DeterministicJitter, FATAL_MESSAGE, INITIAL_DELAY_MS, JITTER_PCT, JitterSource, MAX_ATTEMPTS,

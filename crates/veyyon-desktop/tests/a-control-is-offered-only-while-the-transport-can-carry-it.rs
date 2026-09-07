@@ -8,20 +8,26 @@
 //! `Reconnecting`, where navigation over cached entries stays permitted.
 //!
 //! THE CLASS THIS CLOSES:
-//! Any host action offered in a transport state that cannot carry it. The
-//! variant space is `HostActionKind::iter()` crossed with
-//! `ConnectionStateKind::iter()`, both derived from the model at run time, so a
-//! new action or a new connection state fails this suite until its answer is
-//! recorded. `transport_gate` and `classify_action` are exhaustive matches, so
-//! neither enum can grow past them without a compile error.
+//! Any host action offered in a transport state that cannot carry it, and any
+//! control the projection leaves offered there. The variant space is
+//! `HostActionKind::iter()` crossed with `ConnectionStateKind::iter()`, both
+//! derived from the model at run time, so a new action or a new connection
+//! state fails this suite until its answer is recorded, and the whole
+//! projected control map is swept rather than a list of ids, so a control
+//! added to `project_controls` is covered by what it is.
+//! `transport_reason` and `classify_action` are exhaustive matches, so neither
+//! enum can grow past them without a compile error.
 //!
 //! WHAT IT DOES NOT CATCH:
 //! It asserts what a control is told, not what the intent path does with a
 //! keystroke: nothing gates an intent before it is sent today, so a shortcut
 //! bound to a mutation still reaches the transport in a state that cannot carry
-//! it. It also does not judge the classification itself — an action filed as
+//! it. It does not judge the classification itself — an action filed as
 //! ephemeral that mutates state is `classify_action`'s defect, and
-//! `egress_action_classification_is_exhaustive` is its suite.
+//! `egress_action_classification_is_exhaustive` is its suite. The sweep reads
+//! the controls this fixture's store reaches: one live session with a pending
+//! question and plan, so a control projected only from a provider, MCP server,
+//! keybinding or terminal the store does not hold is outside it.
 
 use std::collections::HashMap;
 
@@ -211,6 +217,13 @@ fn reconnecting_withholds_a_mutation_and_keeps_navigation() {
 		),
 		"a queue row still opens what the client cached"
 	);
+	assert!(
+		!matches!(
+			controls.availability(&SurfaceId::SettingsField("extensions".to_string())),
+			Availability::Unavailable { .. }
+		),
+		"a settings page over cached state is still readable while reconnecting"
+	);
 }
 
 #[test]
@@ -230,4 +243,25 @@ fn an_answer_to_a_decision_is_withheld_while_the_socket_is_down() {
 			);
 		}
 	}
+}
+
+#[test]
+fn no_control_the_projection_sets_is_left_offered_while_the_host_is_unreachable() {
+	let (controls, _) = projected(state_of(ConnectionStateKind::Fatal), true);
+	let mut swept = 0_usize;
+	let offered: Vec<String> = controls
+		.projected()
+		.inspect(|_| swept += 1)
+		.filter(|(id, availability)| {
+			!matches!(id, SurfaceId::ConnectionRetryButton)
+				&& !matches!(availability, Availability::Unavailable { .. })
+		})
+		.map(|(id, availability)| format!("{id:?} reads {availability:?}"))
+		.collect();
+	assert!(
+		offered.is_empty(),
+		"every control but the way back is withheld while the host is unreachable, and these are \
+		 not: {offered:?}"
+	);
+	assert!(swept > 20, "the sweep read the whole projection, not a handful: {swept} controls");
 }
