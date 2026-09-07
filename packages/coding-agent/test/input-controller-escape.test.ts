@@ -833,13 +833,20 @@ describe("InputController double-tap → gesture", () => {
 	function setup(focusedAgentId?: string) {
 		const { ctx, editor } = createContext();
 		(ctx as { focusedAgentId?: string }).focusedAgentId = focusedAgentId;
-		const open = vi.fn();
-		(ctx as { room: { open: () => void } }).room = { open };
+		// The room is a counter rather than a spy: the assertion is how many times
+		// the strip opened, read as a value.
+		const room = {
+			opens: 0,
+			open() {
+				this.opens++;
+			},
+		};
+		(ctx as { room: { open: () => void } }).room = room;
 		const controller = new InputController(ctx);
 		controller.setupKeyHandlers();
 		return {
-			open,
-			showAgentsDashboard: ctx.showAgentsDashboard as Spy,
+			room,
+			dashboardCalls: (ctx.showAgentsDashboard as Spy).mock.calls,
 			right: () => editor.onRightAtEnd?.(),
 			left: () => editor.onLeftAtStart?.(),
 		};
@@ -847,44 +854,44 @@ describe("InputController double-tap → gesture", () => {
 
 	it("opens the room strip on a deliberate double-tap", () => {
 		const now = vi.spyOn(Date, "now");
-		const { open, showAgentsDashboard, right } = setup();
+		const { room, dashboardCalls, right } = setup();
 		now.mockReturnValue(1_000);
 		right();
 		now.mockReturnValue(1_200);
 		right();
-		expect(open).toHaveBeenCalledTimes(1);
-		expect(showAgentsDashboard).not.toHaveBeenCalled();
+		expect(room.opens).toBe(1);
+		expect(dashboardCalls).toEqual([]);
 	});
 
 	it("ignores a terminal-synthesized burst of → arrows arriving together", () => {
 		const now = vi.spyOn(Date, "now");
-		const { open, right } = setup();
+		const { room, right } = setup();
 		now.mockReturnValue(1_000);
 		for (let i = 0; i < 6; i++) right();
-		expect(open).not.toHaveBeenCalled();
+		expect(room.opens).toBe(0);
 	});
 
 	it("does not complete across arrows: ← then → is two first taps", () => {
 		const now = vi.spyOn(Date, "now");
-		const { open, showAgentsDashboard, left, right } = setup();
+		const { room, dashboardCalls, left, right } = setup();
 		now.mockReturnValue(1_000);
 		left();
 		now.mockReturnValue(1_200);
 		right();
 		now.mockReturnValue(1_400);
 		left();
-		expect(open).not.toHaveBeenCalled();
-		expect(showAgentsDashboard).not.toHaveBeenCalled();
+		expect(room.opens).toBe(0);
+		expect(dashboardCalls).toEqual([]);
 	});
 
 	it("is inert in a focused agent view: a spawn has nothing beside it", () => {
 		const now = vi.spyOn(Date, "now");
-		const { open, right } = setup("Agent1");
+		const { room, right } = setup("Agent1");
 		now.mockReturnValue(1_000);
 		right();
 		now.mockReturnValue(1_200);
 		right();
-		expect(open).not.toHaveBeenCalled();
+		expect(room.opens).toBe(0);
 	});
 });
 

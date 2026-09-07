@@ -4,9 +4,9 @@
 	"historicalSnapshotCommit": "de0ccbf5a571d9de1285cb4dddeff1cc23f882aa",
 	"counts": {
 		"total": 4804,
-		"none": 3416,
+		"none": 3415,
 		"importsAndCommentsOnly": 761,
-		"changed": 627,
+		"changed": 628,
 		"binary": 26
 	},
 	"deviations": {
@@ -163,8 +163,14 @@
 		"hosts/terminal/engine/CHANGELOG.md": {
 			"old": "packages/tui/CHANGELOG.md",
 			"group": "changelog-or-readme",
-			"hash": "1fcc6b317985ea7798f9d245f1209dcb701320979c82a15f35697fcc0d84616d",
-			"structuralHash": "a5bac47cee476f113d189154c46457f856629601e46009beb4ea0c8a37368d99"
+			"hash": "32bbff68461796ea4efcf6b02b94295861b333a1edf1e4c5bfb88a37bdaf3781",
+			"structuralHash": "e518a473482d4cb55a15a53f66a6e2a8bf1ca4ccae1d6c97ee2c652019da9b43"
+		},
+		"hosts/terminal/engine/bench/frame.bench.ts": {
+			"old": "packages/tui/bench/frame.bench.ts",
+			"group": "extracted-to-utils",
+			"hash": "18319e9d71f7681d8b7620f828faabcb3ec7dc493c0228382e2441421fa9a4ea",
+			"structuralHash": "dcec301613db398cd8f848cb0bf0adfd616f6cebf821adba3b315a8f672da260"
 		},
 		"hosts/terminal/engine/src/components/select-list.ts": {
 			"old": "packages/tui/src/components/select-list.ts",
@@ -181,8 +187,8 @@
 		"hosts/terminal/engine/src/core/tui.ts": {
 			"old": "packages/tui/src/tui.ts",
 			"group": "extracted-to-utils",
-			"hash": "c55efec25ab2ec983b77b5a7f8661674fc0eaf0773126ca7c14cdff602864d16",
-			"structuralHash": "9cb63e5bfd8e82e2f768bd29da6ebdf809501f6b43203b996fb3943c539fe419"
+			"hash": "203e4dd288d008b4cd0d71551e715e10c99c8c7858642d15aa87e1508133c462",
+			"structuralHash": "6097470b353388c0865c4fe6aa5769ffa7221d68e662b494d6b2e3576720a2a5"
 		},
 		"hosts/terminal/engine/test/settings-list.test.ts": {
 			"old": "packages/tui/test/settings-list.test.ts",
@@ -237,6 +243,12 @@
 			"group": "startup-initialization",
 			"hash": "be9975fd61067229eef2677d347f1cab49edc4bf655ebb480d702f0257ad23a5",
 			"structuralHash": "b4a67ccd457377e21311560a21f81b5a5118da88c096ffb94632eba10bb4d256"
+		},
+		"packages/coding-agent/src/modes/terminal/components/composer/custom-editor.ts": {
+			"old": "packages/coding-agent/src/modes/components/custom-editor.ts",
+			"group": "startup-initialization",
+			"hash": "d4e594fe9162a6617a4e2251da9a2dab906afeee711dc9ba2a752eea03360cb3",
+			"structuralHash": "fe378cbbf88dfe4c1df8743e06aeb73940ac1d0412b3d8e174e4054f6af6317e"
 		},
 		"packages/coding-agent/src/modes/terminal/components/dashboard/agent-dashboard.ts": {
 			"old": "packages/coding-agent/src/modes/components/agent-dashboard.ts",
@@ -319,38 +331,38 @@
 		"packages/coding-agent/src/modes/terminal/components/status-line/component.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/component.ts",
 			"group": "startup-initialization",
-			"hash": "91a737633492093ec37a2694df6aade9077f6d5b0aed8abe8f2a78de147b7165",
-			"structuralHash": "5096cbede6c34038b83b1aa486999c3d13831853d3fcdd379bf818eff05227d8"
+			"hash": "ef6e5fe721b612168266824b426b6ab6af895e9731a1e832bed9887add7d9c24",
+			"structuralHash": "d4d058d21100e31eced03fdda11cb31674c846dec9392df7a2517fa475edbb5d"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/presets.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/presets.ts",
 			"group": "host-boundary",
-			"hash": "d183f76d06567beda9c64149c387a5e8c9e4a5b2f9dc4f441f9f4ec318f4a828",
-			"structuralHash": "3660687d3a46f2878f41ddd634cc80ad1b90678d12f99b2e7590ee9f189a6192"
+			"hash": "a808db533c252099340e58cb34a9fa0f125a74e4268b5fa443f8d1164bb9ed33",
+			"structuralHash": "fee6e8b0d1d2c18bc2acd1191498260129b9c0e697f838f78bcda01f7a57a095"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/quiet-row.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/quiet-row.ts",
 			"group": "host-boundary",
-			"hash": "4f44ee5ee594c19e5b9e7b4c3a7be5bced559f7cc880c8af98f46c383e2bcb27",
+			"hash": "9c33265f61ca15f73ceacbfb03711d0e0649c9c25365398b5375b9fd899876d1",
 			"structuralHash": "70a1786c9f4c37310b9555339f682c7f6d1e4dd02ed1f01689b804c56ffaf498"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/segments.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/segments.ts",
 			"group": "host-boundary",
-			"hash": "ebb41b18b16870ba56359c279b34e1637b08b99dc61985418b95c4e4769d6132",
-			"structuralHash": "3d4f3722232f662ce541f501253f32e581e72ae23e33fdba0596a522ec48debe"
+			"hash": "ca04d10f71e34908f0ff93205b0152b6fa7c482be2fb2e4ca6682452ce2a517d",
+			"structuralHash": "f8d270a52e26d64e2c358e8efcbf1c011fe1eab9805bb25a0f35960f8c435d1e"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/session-facts.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/session-facts.ts",
 			"group": "startup-initialization",
-			"hash": "4363337bcc68fd503bd38b4fa19f1c04407748296c0658afacef90d6c95ef141",
-			"structuralHash": "5750b90e6d02eba64b3db07ca49701d8de1c8b12c62ed861825629f6eff68c4d"
+			"hash": "5baab84be4f42da0d6f8188aeebdd94a955c336184dffd88df1d7b8c80263b48",
+			"structuralHash": "ba6a2ebd2345420b559f977a30ab980576abb538e680b655787d616f96145b47"
 		},
 		"packages/coding-agent/src/modes/terminal/components/status-line/types.ts": {
 			"old": "packages/coding-agent/src/modes/components/status-line/types.ts",
 			"group": "startup-initialization",
-			"hash": "b95eb55cd1f2c5ea4089c96aca31861eb74db0df86cb373a892dafe7cd4aa664",
-			"structuralHash": "bc6133ced1354b9995cf0612beda48d85f0648a4f17ca12105d100d25c401797"
+			"hash": "ca055c478f3d8c05d947d50121d78a77543778a5246717362d48403f8ef89826",
+			"structuralHash": "4c60ad4b17558328f0a1688b1fdb796e34ddbab383483292b2cb809b938b2ec3"
 		},
 		"packages/coding-agent/src/modes/terminal/components/tips.txt": {
 			"old": "packages/coding-agent/src/modes/components/tips.txt",
@@ -385,8 +397,8 @@
 		"packages/coding-agent/src/modes/terminal/controllers/input-controller.ts": {
 			"old": "packages/coding-agent/src/modes/controllers/input-controller.ts",
 			"group": "startup-initialization",
-			"hash": "cbdde3f297cfeaf2dcd2a11d81ca729ca76108815f9ff7071b03930a9b0b0d34",
-			"structuralHash": "367eda12eef291df56bdf9138c922bb946c741ba07bc90bf8b5ff2bced7cc1be"
+			"hash": "99853517b9263de13cda0e8113789f6fec1fd096e0734cb8aa24564c7742bee9",
+			"structuralHash": "982c0dba5532dbb84adfc1c3bf4a37be8c3ed8f7a7ca8c142af0138df00b1ae7"
 		},
 		"packages/coding-agent/src/modes/terminal/controllers/selector-controller.ts": {
 			"old": "packages/coding-agent/src/modes/controllers/selector-controller.ts",
@@ -427,8 +439,8 @@
 		"packages/coding-agent/src/modes/terminal/interactive-mode.ts": {
 			"old": "packages/coding-agent/src/modes/interactive-mode.ts",
 			"group": "startup-initialization",
-			"hash": "10c36e2aff5fe61b1f57bdbd3d74b77398b20b38d967b3940f90ae3c722c86b3",
-			"structuralHash": "60d63c47c01247b756e40ac176b3456fc3fe93d186523ef48fd376cef6bf01e5"
+			"hash": "1a0e99ceda9af89df8eb0542a880c018ef3014be5c71ea95034e5b12301eff5c",
+			"structuralHash": "f89ce3e5a8b85bf7359f91f7dced4425eebfd5d60ca3d6be2dce9b69a84640ed"
 		},
 		"packages/coding-agent/src/modes/terminal/running-agent-badge.ts": {
 			"old": "packages/coding-agent/src/modes/running-subagent-badge.ts",
@@ -463,8 +475,8 @@
 		"packages/coding-agent/src/modes/terminal/types.ts": {
 			"old": "packages/coding-agent/src/modes/types.ts",
 			"group": "host-boundary",
-			"hash": "6909c96782ca1697889dfa9c4f3f67aa06940c3ca802a43ca0ee635814a8a018",
-			"structuralHash": "10a2aebbb1bdc6ad314ed78452812ed509a247293ef11d0b46dfdbebb619bdf9"
+			"hash": "5cf52585f253b965e49f6ddd83ea2cd9a25fc9caeca1187f5a45cb642281132b",
+			"structuralHash": "06c99bbf4a47fd9006cd23e49774d3e13fab5fefd438b985a4c832d87e6e9fcb"
 		},
 		"packages/coding-agent/src/modes/terminal/utils/hotkeys-markdown.ts": {
 			"old": "packages/coding-agent/src/modes/utils/hotkeys-markdown.ts",
@@ -1123,8 +1135,8 @@
 		"packages/coding-agent/src/tools/agent/irc.ts": {
 			"old": "packages/coding-agent/src/tools/irc.ts",
 			"group": "engine-consumer",
-			"hash": "eafb671d7646bdce49f20e357b080128130feb2432a042a0e3f6672bddcd67ac",
-			"structuralHash": "8bcc8e9915454334bdc021a31e0f13c206d75690c25389e5ba9ac99faf40f18c"
+			"hash": "aeaa98fd2b5f7fe372860cbce8daf5afa8ddec285e023a07dd54cd7e4c7b0f6d",
+			"structuralHash": "b1d58f7815ca0ce0d394f581e5697b5af566abd774569e79fcb8833656a8e006"
 		},
 		"packages/coding-agent/src/tools/agent/learn.ts": {
 			"old": "packages/coding-agent/src/tools/learn.ts",
@@ -1411,8 +1423,8 @@
 		"packages/coding-agent/test/modes/terminal/components/status-line/the-model-segment-survives-long-paths-and-branch-names.test.ts": {
 			"old": "packages/coding-agent/test/modes/components/status-line/the-model-segment-survives-long-paths-and-branch-names.test.ts",
 			"group": "colocated-test",
-			"hash": "74d14c0de80c9172e307eb577aa491a49788ac01ab1cbcbeb678adb79f3dc0c6",
-			"structuralHash": "68ca13b946c3c4c8e43965185088da51be7361898ee2f4f7823a4fd80689b6c2"
+			"hash": "67d3b4b988fffc6995022a31aeaac491b89ec34c8bc401410e951bd1d6d6ebd5",
+			"structuralHash": "87dcb4634f1843b3d501ab84e521fa600e626e2188feb5e2a7c75128173c502d"
 		},
 		"packages/coding-agent/test/modes/terminal/components/agents-surface.test.ts": {
 			"old": "packages/coding-agent/test/modes/components/subagent-agents-surface.test.ts",
