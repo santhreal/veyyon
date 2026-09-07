@@ -156,6 +156,13 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 				state.drawer.active_tab = *index;
 			}
 		},
+		// The tab moves as soon as it is clicked; the log lines it shows arrive
+		// with the host's answer to the request this intent also sends.
+		Intent::OpenProcessLogs(name) => {
+			if let Some(index) = state.drawer.process_tab_index(name) {
+				state.drawer.active_tab = index;
+			}
+		},
 		Intent::ClearTerminal => {
 			for row in &mut state.drawer.grid_rows {
 				for cell in row {

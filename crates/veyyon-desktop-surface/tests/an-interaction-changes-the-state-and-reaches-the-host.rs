@@ -118,6 +118,7 @@ fn every_intent() -> Vec<Intent> {
 			"https://example.com".to_owned(),
 		)),
 		Intent::OpenUsage,
+		Intent::OpenProcessLogs("web".to_owned()),
 	];
 
 	// The exhaustive match is the gate. Every variant is named, so a new one
@@ -196,7 +197,8 @@ fn every_intent() -> Vec<Intent> {
 			| Intent::SelectChangeScope(_)
 			| Intent::SetToolViewExpanded { .. }
 			| Intent::OpenToolTarget(_)
-			| Intent::OpenUsage => {},
+			| Intent::OpenUsage
+			| Intent::OpenProcessLogs(_) => {},
 		}
 	}
 

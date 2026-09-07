@@ -61,6 +61,24 @@ pub fn drawer_chrome(
 					}
 				},
 				DrawerTab::Processes => "Processes".to_string(),
+				DrawerTab::Process { name } => name.clone(),
+			};
+			// A process tab carries its name, so the click states which
+			// process's output to follow rather than a strip position the
+			// projection would have to reconstruct. Its request is gated like
+			// every other control: a transport that cannot carry the
+			// subscription leaves the tab visible and inert (§8.12).
+			let (select, opacity) = match tab {
+				DrawerTab::Process { name } => {
+					let id =
+						SurfaceId::ProcessLogsTab(SessionId::from(session_id.to_string()), name.clone());
+					let (opacity, _, allowed) = availability_style(&controls.availability(&id), tokens);
+					let intent = allowed.then(|| Intent::OpenProcessLogs(name.clone()));
+					(intent, opacity)
+				},
+				DrawerTab::Terminal { .. } | DrawerTab::Processes => {
+					(Some(Intent::SelectDrawerTab(idx)), 1.0)
+				},
 			};
 
 			let mut tab_el = div()
@@ -84,10 +102,14 @@ pub fn drawer_chrome(
 					tokens.color(ColorRole::Secondary)
 				})
 				.id(("drawer-tab", idx))
-				.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
-					view.dispatch(Intent::SelectDrawerTab(idx), cx);
-				}))
+				.opacity(opacity)
 				.child(label);
+
+			if let Some(intent) = select {
+				tab_el = tab_el.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
+					view.dispatch(intent.clone(), cx);
+				}));
+			}
 
 			if is_active {
 				tab_el = tab_el

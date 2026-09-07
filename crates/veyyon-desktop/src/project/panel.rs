@@ -2,10 +2,11 @@
 //! tree.
 
 use veyyon_desktop_model::{
-	Capability, CapabilityMap, CapabilityStatus, ChangesView, Domains, FileTreeView, SessionId,
+	Capability, CapabilityMap, CapabilityStatus, ChangesView, Domains, ExportView, FileTreeView,
+	SessionId,
 };
 use veyyon_desktop_surface::{
-	DiffFile, DiffStatus, PanelContent, PanelTab, TreeContent, TreeRowItem, TreeStatus,
+	DiffFile, DiffStatus, FileView, PanelContent, PanelTab, TreeContent, TreeRowItem, TreeStatus,
 	diff::parse_diff, right_panel::highlight_source,
 };
 
@@ -46,10 +47,15 @@ pub fn project_panel(
 		(Vec::new(), previous.diff_status)
 	};
 
+	// The file the operator opened holds the tab. An export they asked for
+	// takes it only while no file is open, so the answer to `ExportSession` is
+	// on a surface rather than in the store alone, and reading a file after
+	// exporting replaces it rather than fighting it.
 	let file = domains
 		.file_content
 		.as_ref()
-		.map(|fc| highlight_source(&fc.path, &fc.content, fc.truncated, fc.binary));
+		.map(|fc| highlight_source(&fc.path, &fc.content, fc.truncated, fc.binary))
+		.or_else(|| domains.export.as_ref().map(export_view));
 
 	let tree = project_tree(
 		domains.file_tree.as_ref(),
@@ -77,9 +83,13 @@ pub fn project_panel(
 	{
 		tabs.push(PanelTab::Diff);
 	}
+	// An export is a session action, not a file one, so its view is reachable
+	// on a host that offers no file browsing.
 	if matches!(capabilities.get(Capability::Files), CapabilityStatus::Available) {
 		tabs.push(PanelTab::File);
 		tabs.push(PanelTab::Tree);
+	} else if file.is_some() {
+		tabs.push(PanelTab::File);
 	}
 	if usage_offered {
 		tabs.push(PanelTab::Usage);
@@ -122,6 +132,23 @@ pub fn project_panel(
 		usage,
 		unavailable_reason,
 	}
+}
+
+/// The export snapshot as a document: its content when the host returned one,
+/// and the path it was written to when it returned a file instead.
+///
+/// The name carries the format so the view highlights the export the way it
+/// would highlight the same file opened from the tree.
+fn export_view(export: &ExportView) -> FileView {
+	let name = export
+		.path
+		.clone()
+		.unwrap_or_else(|| format!("{}.{}", export.session.0, export.format));
+	let content = export
+		.content
+		.clone()
+		.unwrap_or_else(|| format!("Exported {} to {name}", export.format));
+	highlight_source(&name, &content, false, false)
 }
 
 fn project_tree(

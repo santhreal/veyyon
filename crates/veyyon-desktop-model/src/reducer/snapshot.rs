@@ -67,6 +67,28 @@ fn reduce_session_index(store: &mut Store, summaries: Vec<SessionSummary>) {
 	}
 }
 
+/// Applies the active session's own header to the row the queue draws.
+///
+/// The header is the only section that reports a rename of the open session:
+/// the host re-sends the whole index on create, rename and delete, but a title
+/// the model authored mid-turn arrives here first, and dropping it left the
+/// titlebar and the rail on the previous name until the next listing.
+///
+/// The title is all it carries that the queue draws. The index is the sole
+/// authority on which sessions exist and on the workspace name, so a header
+/// naming a session the index has not listed yet selects it and adds no row;
+/// the listing that follows brings one. `created_at_ms` anchors the Live order
+/// and §5.2 re-anchors on unpark, recall and pin alone, so it is not read here
+/// for the same reason `reduce_session_index` does not re-read it.
+fn reduce_active_header(store: &mut Store, id: &SessionId, title: Option<String>) {
+	let Some(known) = store.sessions.get_mut(id) else {
+		return;
+	};
+	known.title = title
+		.filter(|t| !t.trim().is_empty())
+		.unwrap_or_else(|| "new session".to_string());
+}
+
 /// Reduces a full or partial snapshot synchronization section into store state.
 pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSet {
 	let mut damage = DamageSet::new();
@@ -79,7 +101,9 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 		SnapshotSection::ActiveSession(versioned) => {
 			let header = versioned.value;
 			let session_id = header.id;
+			reduce_active_header(store, &session_id, header.title);
 			store.persisted.shell.active_session = Some(session_id.clone());
+			damage.insert(Damage::QueueAll);
 			damage.insert(Damage::Titlebar);
 			damage.insert(Damage::Composer(session_id.clone()));
 			damage.insert(Damage::RightPanelChrome(session_id));

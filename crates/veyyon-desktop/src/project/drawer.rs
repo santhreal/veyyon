@@ -10,6 +10,13 @@ use veyyon_desktop_surface::{
 
 use super::{PANE_LINE_CEILING, elapsed_label};
 
+/// How many trailing log lines of a supervised process are fed to the grid.
+///
+/// The buffer retains `PROCESS_LOG_CAPACITY_LINES`, the grid draws 24 rows,
+/// and the drawer offers no scrollback of its own, so feeding more than the
+/// tail costs parsing nothing can reach.
+const PROCESS_LOG_TAIL_LINES: usize = 200;
+
 /// Projects domain terminals and processes into the shell state's drawer
 /// content.
 pub fn project_drawer<S: std::hash::BuildHasher>(
@@ -38,6 +45,13 @@ pub fn project_drawer<S: std::hash::BuildHasher>(
 		tabs.push(DrawerTab::Processes);
 	}
 
+	// §5.12: a supervised process's output is the same terminal surface, one
+	// per process, tabbed. The tab is offered for every process the host
+	// lists, so the output is reachable before the first chunk arrives.
+	for process in &domains.processes {
+		tabs.push(DrawerTab::Process { name: process.name.clone() });
+	}
+
 	// The active tab follows its identity, not its index: a terminal that
 	// exited and left the list moves every tab after it. A tab nobody chose,
 	// or one that is gone, gives way to the last running terminal, which is
@@ -62,30 +76,57 @@ pub fn project_drawer<S: std::hash::BuildHasher>(
 		})
 		.collect();
 
-	if let Some(DrawerTab::Terminal { id, .. }) = drawer.tabs.get(drawer.active_tab) {
-		if let Some(emu) = emulators.get(id) {
-			copy_grid(emu, drawer);
-			drawer.selection = emu.grid().selection;
-		} else if let Some(output) = domains.terminal_output.get(id) {
+	match drawer.tabs.get(drawer.active_tab) {
+		Some(DrawerTab::Terminal { id, .. }) => {
+			if let Some(emu) = emulators.get(id) {
+				copy_grid(emu, drawer);
+				drawer.selection = emu.grid().selection;
+			} else if let Some(output) = domains.terminal_output.get(id) {
+				let mut emu = TerminalEmulator::new(80, 24);
+				emu.feed(&output.data);
+				copy_grid(&emu, drawer);
+			}
+		},
+		Some(DrawerTab::Process { name }) => {
+			let name = name.clone();
 			let mut emu = TerminalEmulator::new(80, 24);
-			emu.feed(&output.data);
+			if let Some(logs) = domains.process_logs.get(&name) {
+				// The grid holds 24 rows and the drawer has no scrollback of
+				// its own, so only the tail is reachable. Feeding the last
+				// PROCESS_LOG_TAIL_LINES bounds the work per projection at a
+				// buffer that retains PROCESS_LOG_CAPACITY_LINES.
+				let tail = logs.lines.len().saturating_sub(PROCESS_LOG_TAIL_LINES);
+				for line in &logs.lines[tail..] {
+					emu.feed(line.as_bytes());
+					emu.feed(b"\r\n");
+				}
+			}
 			copy_grid(&emu, drawer);
-		}
-	} else if drawer.grid_rows.is_empty() {
-		for _ in 0..11 {
-			drawer.grid_rows.push(vec![Cell::blank(); 80]);
-		}
+			drawer.title = name;
+			drawer.selection = None;
+		},
+		Some(DrawerTab::Processes) | None => {
+			if drawer.grid_rows.is_empty() {
+				for _ in 0..11 {
+					drawer.grid_rows.push(vec![Cell::blank(); 80]);
+				}
+			}
+		},
 	}
 }
 
-/// Whether two tabs stand for the same terminal or the process list. A
-/// terminal's title changes with every OSC it prints, so identity is its id.
+/// Whether two tabs stand for the same terminal, process or the process list.
+/// A terminal's title changes with every OSC it prints, so identity is its id,
+/// and a process's is its name.
 fn same_tab(a: &DrawerTab, b: &DrawerTab) -> bool {
 	match (a, b) {
 		(DrawerTab::Terminal { id: a, .. }, DrawerTab::Terminal { id: b, .. }) => a == b,
+		(DrawerTab::Process { name: a }, DrawerTab::Process { name: b }) => a == b,
 		(DrawerTab::Processes, DrawerTab::Processes) => true,
-		(DrawerTab::Terminal { .. }, DrawerTab::Processes)
-		| (DrawerTab::Processes, DrawerTab::Terminal { .. }) => false,
+		(DrawerTab::Terminal { .. } | DrawerTab::Process { .. }, DrawerTab::Processes)
+		| (DrawerTab::Processes, DrawerTab::Terminal { .. } | DrawerTab::Process { .. })
+		| (DrawerTab::Terminal { .. }, DrawerTab::Process { .. })
+		| (DrawerTab::Process { .. }, DrawerTab::Terminal { .. }) => false,
 	}
 }
 

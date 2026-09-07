@@ -163,6 +163,10 @@ fn gated_controls(store: &Store, active_row: Option<u64>) -> Vec<(SurfaceId, Hos
 					SurfaceId::ProcessRestartButton(row.clone(), proc.name.clone()),
 					HostActionKind::ProcessRestart,
 				),
+				(
+					SurfaceId::ProcessLogsTab(row.clone(), proc.name.clone()),
+					HostActionKind::ProcessLogs,
+				),
 			]
 		}));
 	}

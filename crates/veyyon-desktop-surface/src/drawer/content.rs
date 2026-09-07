@@ -13,6 +13,8 @@ pub enum DrawerTab {
 	Terminal { id: String, title: String },
 	/// Supervised background processes.
 	Processes,
+	/// One supervised process's output, on the terminal surface (§5.12).
+	Process { name: String },
 }
 
 /// Metadata for a supervised background process row.
@@ -100,5 +102,23 @@ impl DrawerContent {
 	#[must_use]
 	pub fn is_processes_active(&self) -> bool {
 		matches!(self.tabs.get(self.active_tab), Some(DrawerTab::Processes))
+	}
+
+	/// The name of the process whose output tab is active, if one is.
+	#[must_use]
+	pub fn active_process_name(&self) -> Option<&str> {
+		match self.tabs.get(self.active_tab) {
+			Some(DrawerTab::Process { name }) => Some(name),
+			_ => None,
+		}
+	}
+
+	/// The index of the tab holding this process's output.
+	#[must_use]
+	pub fn process_tab_index(&self, name: &str) -> Option<usize> {
+		self
+			.tabs
+			.iter()
+			.position(|tab| matches!(tab, DrawerTab::Process { name: held } if held == name))
 	}
 }

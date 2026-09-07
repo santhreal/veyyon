@@ -71,6 +71,7 @@ pub enum SurfaceId {
 	ProcessStopButton(SessionId, String),
 	ProcessRestartButton(SessionId, String),
 	ProcessSignalButton(SessionId, String),
+	ProcessLogsTab(SessionId, String),
 
 	// Palette (§5.8)
 	PaletteInput,

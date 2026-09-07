@@ -101,6 +101,7 @@ pub enum Intent {
 		rows: u16,
 	},
 	SelectDrawerTab(usize),
+	OpenProcessLogs(String),
 	ClearTerminal,
 	RestartTerminal,
 	ProcessStop(String),

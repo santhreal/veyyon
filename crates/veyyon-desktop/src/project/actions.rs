@@ -264,6 +264,12 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 			})
 		},
 		Intent::SelectDrawerTab(_) => Vec::new(),
+		// Opening a process's output subscribes to it: `follow` keeps the
+		// chunks arriving while the tab is the one on screen, which is the
+		// only place they are drawn.
+		Intent::OpenProcessLogs(name) => {
+			vec![HostAction::ProcessLogs { process_id: name.clone(), follow: true }]
+		},
 		Intent::ProcessStop(name) => vec![HostAction::ProcessStop { process_id: name.clone() }],
 		Intent::ProcessRestart(name) => vec![HostAction::ProcessRestart { process_id: name.clone() }],
 		Intent::ProcessSignal(name) => vec![HostAction::ProcessSignal {
