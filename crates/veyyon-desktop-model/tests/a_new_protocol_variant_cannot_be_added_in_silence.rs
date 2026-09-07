@@ -23,8 +23,8 @@
 
 use strum::IntoEnumIterator;
 use veyyon_desktop_model::{
-	ALL_SECTION_NAMES, BadgeKind, BlockKind, Capability, ErrorScope, HostActionKind, MessageRole,
-	QueuePartition, SnapshotSectionKind,
+	ALL_SECTION_NAMES, BadgeKind, BlockKind, Capability, ErrorScope, HostActionKind, HostEventKind,
+	MessageRole, QueuePartition, SnapshotSectionKind,
 };
 
 /// Assert that a hand-written `ALL` array names every variant of its enum, in
@@ -107,6 +107,16 @@ fn the_field_carrying_unions_project_to_a_sweepable_kind() {
 	);
 
 	assert_eq!(BadgeKind::iter().count(), 8, "the queue has 8 status badges");
+
+	// `HostEvent` is the union the client reduces, so an event nothing sweeps is
+	// an event no invariant is checked against.
+	// `live_queue_ordering_invariant.rs` matches exhaustively on this kind.
+	assert_eq!(
+		HostEventKind::iter().count(),
+		8,
+		"wire.ts sends 8 protocol events. This count is pinned here so an addition needs a decision \
+		 rather than passing in silence."
+	);
 
 	// A projection is only useful if it round-trips from a real value, which is
 	// what the scene gate does when it turns a fixture badge into a scene name.

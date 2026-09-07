@@ -42,7 +42,7 @@ pub use domain::{
 };
 pub use error::{BackendError, ErrorScope, fallback_surface, is_scope_retryable, route_error};
 pub use event::{
-	ALL_SECTION_NAMES, HostEvent, SessionHeaderView, SessionLoadError, SessionStatus,
+	ALL_SECTION_NAMES, HostEvent, HostEventKind, SessionHeaderView, SessionLoadError, SessionStatus,
 	SessionSummary, SnapshotSection, SnapshotSectionKind,
 };
 pub use gate::{Gate, action_to_capability, gate, gate_capability, gate_kind};

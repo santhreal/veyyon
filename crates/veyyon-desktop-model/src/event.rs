@@ -199,9 +199,13 @@ impl SnapshotSection {
 	}
 }
 
-/// Complete enumeration of the eight protocol event variants dispatched by host
+/// Complete enumeration of the protocol event variants dispatched by host
 /// transport.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, strum::EnumDiscriminants)]
+#[strum_discriminants(name(HostEventKind), derive(Hash, PartialOrd, Ord, strum::EnumIter))]
+#[strum_discriminants(
+	doc = "Fieldless projection of `HostEvent`, so a sweep covers every event the host sends."
+)]
 pub enum HostEvent {
 	ConnectionChanged(ConnectionState),
 	Snapshot(SnapshotSection),
