@@ -371,6 +371,13 @@ counts the lit pixels of the column's leading half and the pixels of the
 titlebar's session name that a press behind the scrim moves. Record its other
 arm with `PROOF_BASE_REF=HEAD`, since the change is inside the executable alone.
 
+Use `proof/scenes/desktop-turn-control.sh` to submit a real prompt on a local
+model and photograph the run bar while the turn runs: its primary action as
+steer, the same run after `primary-/` puts it in queue mode, a follow-up
+submitted behind the running turn, and the turn stopped by `primary-.`. It waits
+on the host's own session state rather than on a pause, so an idle composer
+fails the take instead of being photographed as a running turn.
+
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
 The [capture requirements](../foundations/verification.md) specify paired static
 frames and animated clips. Headless scene PNGs do not replace native captures.
