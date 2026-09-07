@@ -198,15 +198,16 @@ executable holds no source at all:
 cargo build -p veyyon-desktop                            # the after build
 proof/docker/record-native.sh proof/scenes/<name>.sh     # the after arm
 
-SCENE_ARM=before PROOF_NATIVE_HOLD=binary \
+SCENE_ARM=before PROOF_BASE_REF=HEAD \
   PROOF_NATIVE_BEFORE_BINARY=<base-build> \
   proof/docker/record-native.sh proof/scenes/<name>.sh   # the before arm
 ```
 
-`PROOF_NATIVE_HOLD=binary` keeps every source file at the recording tree and swaps
-the executable alone. Use it when the base tree cannot serve the window: a branch
-that brings its own GUI host has none in its base, and the source hold then records
-a window attached to nothing rather than the surface under test.
+`PROOF_BASE_REF=HEAD` holds every source file at the recording tree, leaving the
+executable as the whole difference between the arms. Use it when the base tree
+cannot serve the window: a branch that brings its own GUI host has none in its
+base, and the source hold then records a window attached to nothing rather than
+the surface under test.
 
 Both arms record the same scene at the same width and are sampled at the same second
 of the same script, so the only difference between them is the change. Attach the

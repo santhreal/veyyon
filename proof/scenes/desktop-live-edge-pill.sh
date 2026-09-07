@@ -32,9 +32,11 @@
 #
 #   proof/docker/record-native.sh proof/scenes/desktop-live-edge-pill.sh
 #
-# and its other arm, against a build of the base ref, with:
+# and its other arm, against a build of the base ref. The change is entirely
+# inside that executable, so the arm holds no source:
 #
-#   SCENE_ARM=before PROOF_NATIVE_BEFORE_BINARY=<base-build> \
+#   SCENE_ARM=before PROOF_BASE_REF=HEAD \
+#     PROOF_NATIVE_BEFORE_BINARY=<base-build> \
 #     proof/docker/record-native.sh proof/scenes/desktop-live-edge-pill.sh
 set -euo pipefail
 
