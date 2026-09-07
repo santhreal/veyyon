@@ -679,10 +679,12 @@
 					"./core/image-budget",
 					"./core/mouse-routing",
 					"./core/overlay",
+					"./core/render-scheduler",
 					"./core/renderer",
 					"./core/scroll",
 					"./core/terminal-session",
-					"./core/tui"
+					"./core/tui",
+					"./core/viewport-slide"
 				]
 			},
 			"@veyyon/utils": {
