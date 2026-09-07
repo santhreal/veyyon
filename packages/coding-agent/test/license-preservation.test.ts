@@ -33,9 +33,9 @@ describe("license preservation", () => {
 				"natives/bridge/addon/src/fonts/Silver.LICENSE",
 				["Poppy Works", "Creative Commons Attribution 4.0 International"],
 			],
-			["docs/handbook/book/fonts/OPEN-SANS-LICENSE.txt", ["Apache License", "Version 2.0"]],
+			["docs/handbook/fonts/OPEN-SANS-LICENSE.txt", ["Apache License", "Version 2.0"]],
 			[
-				"docs/handbook/book/fonts/SOURCE-CODE-PRO-LICENSE.txt",
+				"docs/handbook/fonts/SOURCE-CODE-PRO-LICENSE.txt",
 				["Adobe Systems Incorporated", "SIL OPEN FONT LICENSE Version 1.1"],
 			],
 			["packages/coding-agent/src/export/markit/NOTICE", ["markit-ai", "@oharato/pdf2md-ts", "MIT License"]],
@@ -66,8 +66,8 @@ describe("license preservation", () => {
 		const requiredPaths = [
 			"natives/shell/NOTICE",
 			"natives/bridge/addon/src/fonts/Silver.LICENSE",
-			"docs/handbook/book/fonts/OPEN-SANS-LICENSE.txt",
-			"docs/handbook/book/fonts/SOURCE-CODE-PRO-LICENSE.txt",
+			"docs/handbook/fonts/OPEN-SANS-LICENSE.txt",
+			"docs/handbook/fonts/SOURCE-CODE-PRO-LICENSE.txt",
 			"packages/coding-agent/src/export/markit/NOTICE",
 			"packages/utils/src/vendor/mermaid-ascii/NOTICE",
 		] as const;
