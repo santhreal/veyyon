@@ -11,7 +11,7 @@
  * 3. Fall back safely to ["text"] for empty or non-array inputs.
  */
 import { describe, expect, it } from "bun:test";
-import { toInputCapabilities } from "@veyyon/catalog/provider-models/openai-compat";
+import { toInputCapabilities } from "../src/provider-models/openai-compat";
 
 describe("toInputCapabilities", () => {
 	it("yields all three modalities when input includes text, image, and video", () => {

@@ -1,20 +1,23 @@
 import type { Effort } from "./effort";
 
-export type KnownApi =
-	| "openai-completions"
-	| "openai-responses"
-	| "openrouter"
-	| "openai-codex-responses"
-	| "azure-openai-responses"
-	| "anthropic-messages"
-	| "bedrock-converse-stream"
-	| "google-generative-ai"
-	| "google-gemini-cli"
-	| "google-vertex"
-	| "ollama-chat"
-	| "cursor-agent"
-	| "gitlab-duo-agent"
-	| "devin-agent";
+export const KNOWN_APIS = [
+	"openai-completions",
+	"openai-responses",
+	"openrouter",
+	"openai-codex-responses",
+	"azure-openai-responses",
+	"anthropic-messages",
+	"bedrock-converse-stream",
+	"google-generative-ai",
+	"google-gemini-cli",
+	"google-vertex",
+	"ollama-chat",
+	"cursor-agent",
+	"gitlab-duo-agent",
+	"devin-agent",
+] as const;
+
+export type KnownApi = (typeof KNOWN_APIS)[number];
 export type Api = KnownApi | (string & {});
 
 /**
