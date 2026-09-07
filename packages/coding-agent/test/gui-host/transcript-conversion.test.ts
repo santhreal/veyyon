@@ -15,12 +15,14 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { SESSION_EXIT_CUSTOM_TYPE, TOOL_EXECUTION_START_CUSTOM_TYPE } from "@veyyon/kernel/session/exit-diagnostics";
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 import { type GuiHostServer, startGuiHostServer } from "../../src/gui-host";
 import { agentMessageToTranscriptEntry, sessionEntryToTranscriptEntry } from "../../src/gui-host/transcript-conversion";
 import type { TranscriptEntry } from "../../src/gui-host/wire";
+import { USER_TODO_EDIT_CUSTOM_TYPE } from "../../src/tools/agent/todo";
 import { TestSocketClient } from "./test-client";
 import { EXHAUSTIVE_FIXTURES, FIXTURE_TIMESTAMP, FIXTURE_TIMESTAMP_MS } from "./transcript-conversion-fixtures";
 
@@ -118,6 +120,32 @@ describe("sessionEntryToTranscriptEntry specific variant contracts", () => {
 		expect(transcript.raw_discriminator).toBe("custom_message");
 		expect(transcript.raw).toBe(entry);
 		expect(transcript.content).toEqual([]);
+	});
+
+	// A real desktop recording put "Fallback: tool_execution_start" in the
+	// transcript between a tool card and the prose after it: the pending-tool
+	// warning's own bookkeeping entry, rendered as content. Every writer of a
+	// `custom` entry is swept, so a new bookkeeping type cannot arrive visible.
+	test.each([
+		[TOOL_EXECUTION_START_CUSTOM_TYPE, { toolCallId: "call-1", toolName: "bash" }],
+		[SESSION_EXIT_CUSTOM_TYPE, { reason: "dispose", kind: "normal" }],
+		[USER_TODO_EDIT_CUSTOM_TYPE, { phases: [] }],
+		["goal-completed", { objective: "ship the desktop" }],
+		["irc:delivery-telemetry", { delivered: 3 }],
+		["ext-state", { flag: true }],
+	])("a %s custom entry shows nothing and keeps its record", (customType, data) => {
+		const entry: SessionEntry = {
+			type: "custom",
+			id: `bookkeeping-${customType}`,
+			parentId: null,
+			timestamp: FIXTURE_TIMESTAMP,
+			customType,
+			data,
+		};
+		const transcript = sessionEntryToTranscriptEntry(entry, 3);
+		expect(transcript.content).toEqual([]);
+		expect(transcript.raw_discriminator).toBe("custom");
+		expect(transcript.raw).toBe(entry);
 	});
 
 	test("unknown extension entries retain lossless Fallback block", () => {

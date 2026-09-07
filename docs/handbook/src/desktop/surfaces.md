@@ -84,8 +84,16 @@ The find bar displays the selected matching block and total matching blocks.
 `Enter` advances to the next matching block; `Escape` closes the bar.
 
 Persisted model, thinking-level, service-tier, and session changes display their
-recorded values. Hidden custom messages and internal checkpoints do not create
-visible turns. Unknown extension entries retain their original data.
+recorded values. Hidden custom messages, internal checkpoints, and the runtime's
+own bookkeeping records — the pending-tool-call warning, the exit diagnostic, a
+todo edit, an extension's stored state — do not create visible turns. Unknown
+extension entries retain their original data.
+
+A tool call occupies one row while it is collapsed: the card's status line, its
+block header, or the section it names, followed by how many lines it is holding
+back. `Space` on the focused turn and a click on the row open the same card, and
+both close it again. An open card states no held-back count on its row, since
+the card below it shows every line.
 
 Developer and custom records display labeled annotations below the assistant
 reading size. File, model, thinking, and lifecycle events use the same annotation
@@ -201,23 +209,23 @@ beneath it.
 ## Record native interactions
 
 Build the current executable with `cargo build -p veyyon-desktop` and build the
-recorder with `proof/docker/build-recorder.sh`. Set `DESKTOP_BINARY` to the absolute
-path of that executable. The output directory must be writable by the recorder
-container, including on NFS mounts.
+recorder with `proof/docker/build-recorder.sh`. The output directory must be
+writable by the recorder container, including on NFS mounts.
 
 ```sh
-PROOF_HOST_REPO_SOURCE="$DESKTOP_BINARY" \
-PROOF_HOST_REPO_TARGET=/desktop-bin/veyyon-desktop \
-SCENE_TERMINAL=native \
-SCENE_RUNTIME_DIR=/out/runtime \
-SCENE_WIDTH=1180 SCENE_HEIGHT=800 \
-SCENE_COMMAND='env VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json VEYYON_BIN=/repo/packages/coding-agent/src/cli.ts VEYYON_DESKTOP_TOKENS_DIR=/repo/crates/veyyon-desktop-tokens/tokens VEYYON_DESKTOP_THEMES_DIR=/repo/crates/veyyon-desktop-tokens/themes /desktop-bin/veyyon-desktop' \
-proof/docker/record-x11.sh proof/scenes/desktop-composer.sh
+proof/docker/record-native.sh proof/scenes/desktop-composer.sh
 ```
 
-For NVIDIA CDI, set `PROOF_GPU_DEVICE=nvidia.com/gpu=all` and use
-`VK_DRIVER_FILES=/etc/vulkan/icd.d/nvidia_icd.json` in `SCENE_COMMAND`.
-The host's CDI specification must match its current driver and device nodes.
+`record-native.sh` runs the window rather than a terminal: it mounts the
+executable into the container, points the session at the checkout's tokens and
+themes, and renders through lavapipe, so a capture needs no GPU. It takes the
+executable from `DESKTOP_BINARY`, or from this workspace's cargo target
+directory, and states the build command when there is none. `SCENE_WIDTH` and
+`SCENE_HEIGHT` default to 1180x800; `OUT_DIR` names the output directory.
+
+For the host's NVIDIA device instead, set `PROOF_GPU_DEVICE=nvidia.com/gpu=all`
+and `VK_ICD=/etc/vulkan/icd.d/nvidia_icd.json`. The host's CDI specification must
+match its current driver and device nodes.
 
 The scene uses automatic host startup in the container's isolated home. It checks
 the initial session snapshot and waits for the session-creation interaction to
@@ -238,14 +246,20 @@ Use `proof/scenes/desktop-terminal.sh` to open the terminal drawer, focus its gr
 and execute a shell command. Set `SCENE_WIDTH` to `800` and `1180` for overlaid and
 docked drawers.
 
+Use `proof/scenes/desktop-tool-view.sh` to record a real tool call and disclose its
+card twice, once with `space` on the focused turn and once by clicking the card's
+row. The two open frames show the same card, which is what a host-held disclosure
+means.
+
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
 The [capture requirements](../foundations/verification.md) specify paired static
 frames and animated clips. Headless scene PNGs do not replace native captures.
 
 Native Before recording also requires `PROOF_NATIVE_BEFORE_BINARY` to identify
-the executable built from the baseline source. The recorder rejects missing,
-non-executable, or byte-identical Before and After binaries.
-For a native-only change, set `PROOF_BASE_REF=HEAD` to retain the same host source
-in both arms.
+the executable built from the baseline source, since holding source files back
+rebuilds no binary. The recorder rejects missing, non-executable, or
+byte-identical Before and After binaries. `SCENE_ARM=before` sends
+`record-native.sh` down that path. For a native-only change, set
+`PROOF_BASE_REF=HEAD` to retain the same host source in both arms.
 
 See [Motion](motion.md) for transition behavior.

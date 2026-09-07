@@ -4,6 +4,7 @@
 
 pub mod settings_seed;
 pub mod shed;
+pub mod tool_cards;
 
 use std::{collections::BTreeSet, path::PathBuf};
 

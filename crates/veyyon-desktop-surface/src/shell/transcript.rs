@@ -10,7 +10,9 @@ use std::time::Instant;
 
 use veyyon_gpui::{ListOffset, px};
 
-use crate::{ShellView, composer::TurnPhase, keymap::actions::ScrollBy, model::Block};
+use crate::{
+	ShellView, composer::TurnPhase, intent::Intent, keymap::actions::ScrollBy, model::Block,
+};
 
 impl ShellView {
 	/// Synchronizes the retained transcript viewport with the current session
@@ -126,6 +128,21 @@ impl ShellView {
 					self.rail_motion.is_reduced_motion(),
 					now,
 				);
+				// The host owns a tool card's disclosure: it regenerates the view with
+				// the hidden lines in it, and the pointer path tells it so on every
+				// click. Expanding the same card from the keyboard and staying silent
+				// opened the body over the collapsed view, so Space and a click on one
+				// card produced two different cards.
+				if let Some(crate::model::Turn::Agent(blocks)) = self.state.transcript.get(focused_ix)
+					&& let Some(Block::Invoke { call_id, views, .. }) = blocks.get(block_ix)
+					&& (views.result.is_some() || views.call.is_some())
+				{
+					let expanded = self
+						.transcript_viewport
+						.is_block_expanded(focused_ix, block_ix);
+					let intent = Intent::SetToolViewExpanded { call_id: call_id.clone(), expanded };
+					self.intents.dispatch(intent, &mut self.state);
+				}
 			}
 		}
 

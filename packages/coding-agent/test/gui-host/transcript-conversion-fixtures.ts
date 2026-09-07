@@ -227,20 +227,6 @@ export const EXHAUSTIVE_FIXTURES = {
 			data: { flag: true },
 		},
 		expectedRole: "Custom",
-		expectedContent: [
-			{
-				Fallback: {
-					producer: "ext-state",
-					value: {
-						type: "custom",
-						id: "entry-custom-1",
-						parentId: "entry-label-1",
-						timestamp: FIXTURE_TIMESTAMP,
-						customType: "ext-state",
-						data: { flag: true },
-					},
-				},
-			},
-		],
+		expectedContent: [],
 	},
 } satisfies Record<SessionEntry["type"], FixtureCase>;

@@ -22,7 +22,7 @@ use super::reveal::render_reveal_container;
 use crate::{
 	Intent, ShellView,
 	model::ToolInvocationViews,
-	tool_view::{ToolViewCallbacks, render_tool_view},
+	tool_view::{ToolViewCallbacks, render_tool_view, render_tool_view_row},
 	transcript::state::TranscriptViewportState,
 };
 
@@ -121,12 +121,18 @@ pub fn render_invoke_block(
 	let collapse_id = call_id.to_owned();
 	let next_expanded = !is_expanded;
 
+	// The collapsed card is the transcript's own collapsed chrome height, and it
+	// clips: a host view is a whole card, and one drawn at its natural height
+	// inside this row spilled over the blocks above and below it. The event line
+	// height this used to state is the height of one line INSIDE a pane, which
+	// is half a row, so even a status row overflowed it.
 	let mut header = div()
-		.h(px(geometry.chrome_event_line_height_px))
+		.h(px(geometry.chrome_collapsed_height_px))
 		.w_full()
 		.flex()
 		.flex_row()
 		.items_center()
+		.overflow_hidden()
 		.gap(tokens.spacing(SpacingStep::S2))
 		.cursor(CursorStyle::PointingHand)
 		.on_mouse_down(veyyon_gpui::MouseButton::Left, move |_event, _window, cx| {
@@ -169,9 +175,12 @@ pub fn render_invoke_block(
 				.min_w_0()
 				.child(match (presentation, callbacks.as_ref()) {
 					// A host-supplied view IS the row's subject, so the recorded target
-					// and the result's first line are not restated beside it.
+					// and the result's first line are not restated beside it. The row
+					// takes the view's one-line projection; the card below takes the
+					// view itself, and while it is open the row states nothing held
+					// back, since the card is showing every line of it.
 					(Some(presentation), Some(callbacks)) => {
-						render_tool_view(&presentation.view, tokens, Some(1), callbacks)
+						render_tool_view_row(&presentation.view, tokens, callbacks, !is_expanded)
 					},
 					_ => div().child(
 						Truncate::new(target.to_owned())

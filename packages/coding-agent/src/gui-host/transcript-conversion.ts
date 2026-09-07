@@ -327,8 +327,16 @@ export function sessionEntryToTranscriptEntry(
 		case "session_checkpoint":
 			content = [];
 			break;
+		// A `custom` entry is the runtime's or an extension's own record, keyed by
+		// `customType` and carrying `data` rather than content: the pending-tool
+		// warning's `tool_execution_start`, the crash diagnostic's `session_exit`,
+		// a todo edit, an extension's state. None of it is anything the session
+		// said, and rendered as a fallback block it put rows like
+		// "Fallback: tool_execution_start" in the transcript between a tool card
+		// and the prose that followed it. `custom_message` is the entry that
+		// carries something to show. `raw` still holds the whole entry.
 		case "custom":
-			content = [{ Fallback: { producer: entry.customType || entry.type, value: entry } }];
+			content = [];
 			break;
 		default:
 			content = [{ Fallback: { producer: (entry as SessionEntry).type, value: entry satisfies never } }];
