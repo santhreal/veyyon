@@ -60,8 +60,11 @@ SOURCE_ROOTS = ("contracts/", "hosts/", "kernel/", "natives/", "packages/", "plu
 CODE_SUFFIXES = (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".rs", ".md", ".json", ".css")
 MANIFESTS = ("package.json", "tsconfig.json", "Cargo.toml", "bun.lock", "package-lock.json")
 
+# `--no-renames`: with rename detection on, a renamed file is listed under its new
+# name only, so the old path was never restored and the base tree imported a module
+# that did not exist.
 changed = subprocess.run(
-    ["git", "diff", "--name-only", f"{base}..HEAD"],
+    ["git", "diff", "--no-renames", "--name-only", f"{base}..HEAD"],
     capture_output=True, text=True, check=True,
 ).stdout.split("\n")
 
