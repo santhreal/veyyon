@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7f0134c8.js";
+            window.path_to_searchindex_js = "../searchindex-738aa84a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-2d780f09.js"></script>
@@ -525,6 +525,15 @@ accent pixels the jump button fills with. Record its other arm with
 pixels of the <code>working</code> tint the row’s badge fills with, while the turn runs and
 after it ends. Record its other arm with <code>PROOF_BASE_REF=HEAD</code>, since the change
 is inside the executable alone.</p>
+<p>Use <code>proof/scenes/desktop-settings-field.sh</code> to type into a real General
+settings row and count the lit pixels of its value column at rest, while a new
+value is typed, and after the host has stored it. Record its other arm with
+<code>PROOF_BASE_REF=HEAD</code>, since the change is inside the executable alone.</p>
+<p>Use <code>proof/scenes/desktop-settings-column.sh</code> to press the leading third of a
+settings row’s control column and then a queue card the open dialog covers. It
+counts the lit pixels of the column’s leading half and the pixels of the
+titlebar’s session name that a press behind the scrim moves. Record its other
+arm with <code>PROOF_BASE_REF=HEAD</code>, since the change is inside the executable alone.</p>
 <p>Output is written to <code>proof/captures/x11/</code>, or the absolute directory in <code>OUT_DIR</code>.
 The <a href="../foundations/verification.html">capture requirements</a> specify paired static
 frames and animated clips. Headless scene PNGs do not replace native captures.</p>
