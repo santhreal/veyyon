@@ -1,6 +1,7 @@
 //! Native command entries for existing desktop surfaces and composer actions.
 
 use strum::{EnumIter, IntoEnumIterator};
+use veyyon_desktop_model::Capability;
 
 use super::{PaletteItem, PaletteItemKind};
 use crate::{Command, Intent, navigation::SurfaceRoute, settings::SettingsPage};
@@ -26,6 +27,24 @@ impl ComposerCommand {
 			Self::QueueMode => "/queue-mode",
 			Self::Steer => "/steer",
 			Self::Queue => "/queue",
+		}
+	}
+
+	/// The capability the command's action needs from the host, for the
+	/// commands whose action a host can decline to carry (§5.13).
+	///
+	/// A command with no capability of its own is `None`: the draft, the
+	/// attachment picker and the steering submission are the window's own or
+	/// ride on the turn control the composer's arrow already gates.
+	#[must_use]
+	pub const fn capability(self) -> Option<Capability> {
+		match self {
+			Self::AttachFiles | Self::Steer => None,
+			Self::Models => Some(Capability::Models),
+			Self::Effort => Some(Capability::Models),
+			// A follow-up behind a running turn, and the mode that chooses it,
+			// are what background submission is.
+			Self::QueueMode | Self::Queue => Some(Capability::BackgroundSubmission),
 		}
 	}
 }

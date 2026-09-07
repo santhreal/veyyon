@@ -62,6 +62,12 @@ fn project_settings_domains(store: &Store, state: &mut SettingsState) {
 	}
 }
 
+/// Whether the host stated it does not carry the capability, as against not
+/// having said yet (§4.3): an unattached host holds nothing back.
+const fn unavailable(store: &Store, capability: Capability) -> bool {
+	matches!(store.capabilities.get(capability), CapabilityStatus::Unavailable { .. })
+}
+
 /// Populates palette items from file tree and search result domains.
 fn project_palette_domains(store: &Store, state: &mut PaletteState) {
 	match state.mode {
@@ -110,19 +116,23 @@ fn project_palette_domains(store: &Store, state: &mut PaletteState) {
 					_ => None,
 				};
 			}
-			// §5.13: the drawer is a surface, so a host offering neither
-			// terminals nor supervised processes offers no command to open it.
-			// The filter runs on every projection, so the command follows the
-			// capability while the palette stays open.
-			if !drawer_offered(&store.capabilities) {
-				state.items.retain(|item| {
-					!matches!(
-						&item.kind,
-						PaletteItemKind::Command { intent }
-							if matches!(**intent, Intent::SetDrawer { open: true })
-					)
-				});
-			}
+			// §5.13: a command whose action the host declines is a surface the
+			// host does not offer, so it is not listed rather than listed and
+			// refused. The filter runs on every projection, so a command
+			// follows its capability while the palette stays open.
+			state.items.retain(|item| match &item.kind {
+				// The drawer is the one command surface gated by two
+				// capabilities at once: either tenant offers it.
+				PaletteItemKind::Command { intent }
+					if matches!(**intent, Intent::SetDrawer { open: true }) =>
+				{
+					drawer_offered(&store.capabilities)
+				},
+				PaletteItemKind::Composer { command } => command
+					.capability()
+					.is_none_or(|capability| !unavailable(store, capability)),
+				_ => true,
+			});
 		},
 		PaletteMode::Sessions | PaletteMode::Models => {},
 	}

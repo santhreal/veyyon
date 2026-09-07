@@ -1,15 +1,17 @@
 //! Surface seeding per capability (§1.2, §4.3, §9.5).
 
 use veyyon_desktop_model::{
-	AgentView, ApprovalInteraction, Capability, ChangeScope, ChangesView,
-	ContextBreakdownView, ContextCategory, EntryId, FileTreeView, InputModality, InteractionId,
-	KeybindingView, McpServerStatus, McpServerView, MessageRole, ModelRef, ModelView, ModelsView,
-	PendingDecisions, PlanInteraction, ProcessView, ProviderView, QuestionInteraction, QueueMode,
-	QueuePartition, SessionId, SettingEntry, SettingKind, StreamingMessageState, TerminalStatus,
-	TerminalView, ThemeView, ThemesView, TranscriptEntry, UsageTotals,
+	AgentView, ApprovalInteraction, Capability, ChangeScope, ChangesView, ContextBreakdownView,
+	ContextCategory, EntryId, FileTreeView, InputModality, InteractionId, KeybindingView,
+	McpServerStatus, McpServerView, MessageRole, ModelRef, ModelView, ModelsView, PendingDecisions,
+	PlanInteraction, ProcessView, ProviderView, QuestionInteraction, QueueMode, QueuePartition,
+	SessionId, SettingEntry, SettingKind, StreamingMessageState, TerminalStatus, TerminalView,
+	ThemeView, ThemesView, TranscriptEntry, UsageTotals,
 };
 use veyyon_desktop_scene::FixtureText;
-use veyyon_desktop_surface::{PanelTab, SettingsPage, navigation::SurfaceRoute};
+use veyyon_desktop_surface::{
+	Overlay, PaletteState, PanelTab, SettingsPage, navigation::SurfaceRoute,
+};
 
 use crate::scene::seed::{SCENE_CLOCK_MS, Seed};
 
@@ -43,6 +45,14 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 		Capability::BackgroundSubmission => {
 			seed.exchange(session, Seed::prose());
 			seed.state.composer.queue_mode = QueueMode::Queue;
+			// Queue mode and the follow-up submission are reached from the
+			// command surface (§5.4), so that is the frame where a host
+			// declining background submission is visible: the two commands are
+			// not listed. The query is on them, because the list is clipped to
+			// its own height and a row dropped past the fold changes no pixel.
+			let mut palette = PaletteState::commands();
+			palette.set_query("queue");
+			seed.state.overlay = Some(Overlay::Palette(palette));
 			seed
 				.store
 				.streaming

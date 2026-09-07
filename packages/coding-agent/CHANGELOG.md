@@ -43,6 +43,7 @@
 - The desktop turn cursor (`Ctrl+Up`, `Ctrl+Down`) stops on the first and last turn instead of stepping past the end, and stepping onto the last turn keeps the transcript following new output instead of raising a "Scroll to end" pill over the end it is already showing.
 - A desktop transcript draws no row for a thinking-level or service-tier change that recorded no value, where it previously stated "thinking level not recorded" and "service tier: unset".
 - The desktop composer's primary action draws the same arrow glyph in every session state and states its action name on hover above the button, where the tag previously opened downwards behind the attention strip and past the column's clipped edge.
+- The desktop command palette lists no command whose capability the host has not declared, where `/queue` and `/terminal` were previously offered against a host that refuses them.
 
 ### Changed
 
