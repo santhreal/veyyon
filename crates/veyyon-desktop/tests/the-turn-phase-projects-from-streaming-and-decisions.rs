@@ -6,8 +6,8 @@
 //! The suite defends:
 //! 1. An idle session with no active streams or decisions projects to
 //!    `TurnPhase::Idle`.
-//! 2. Active generation streams project to `TurnPhase::Running` respecting the
-//!    draft's `QueueMode`.
+//! 2. Active generation streams project to `TurnPhase::Running` carrying the
+//!    queue mode the window holds, which survives the frame.
 //! 3. Pending approvals, questions, and plans take precedence over background
 //!    streaming.
 //! 4. Question option counts accurately project to `TurnPhase::QuestionPending
@@ -20,7 +20,7 @@ use std::collections::HashMap;
 
 use veyyon_desktop::project::{SessionIndex, project, project_turn_phase};
 use veyyon_desktop_model::{
-	ApprovalInteraction, ComposerDraft, InteractionId, PendingDecisions, PlanInteraction,
+	ApprovalInteraction, InteractionId, PendingDecisions, PlanInteraction,
 	QuestionInteraction, QueueMode, QueuePartition, Session, SessionId, SessionStatus, Store,
 	StreamingMessageState,
 };
@@ -53,7 +53,7 @@ fn idle_phase_when_nothing_is_streaming_or_pending() {
 	store.sessions.insert(create_test_session("s1"));
 	store.persisted.shell.active_session = Some(session_id.clone());
 
-	let phase = project_turn_phase(&store, Some(&session_id));
+	let phase = project_turn_phase(&store, Some(&session_id), QueueMode::Steer);
 	assert_eq!(phase, TurnPhase::Idle);
 
 	let mut state = ShellState::default();
@@ -88,25 +88,15 @@ fn streaming_projects_to_running_with_configured_queue_mode() {
 			revision:     1,
 		});
 
-	// Default without explicit composer draft -> Steer
-	let phase = project_turn_phase(&store, Some(&session_id));
+	// The window's mode is what the phase carries, and the frame leaves it.
+	let phase = project_turn_phase(&store, Some(&session_id), QueueMode::Steer);
 	assert_eq!(phase, TurnPhase::Running { queue_mode: QueueMode::Steer });
 
-	// Explicit draft with Queue mode
-	store
-		.composer_drafts
-		.insert(session_id.clone(), ComposerDraft {
-			text:           String::new(),
-			attachments:    Vec::new(),
-			queue_mode:     QueueMode::Queue,
-			selected_model: None,
-			thinking_level: None,
-		});
-
-	let phase_queue = project_turn_phase(&store, Some(&session_id));
+	let phase_queue = project_turn_phase(&store, Some(&session_id), QueueMode::Queue);
 	assert_eq!(phase_queue, TurnPhase::Running { queue_mode: QueueMode::Queue });
 
 	let mut state = ShellState::default();
+	state.composer.queue_mode = QueueMode::Queue;
 	project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
 	assert_eq!(state.turn, TurnPhase::Running { queue_mode: QueueMode::Queue });
 }
@@ -152,7 +142,7 @@ fn pending_decisions_take_precedence_over_active_streaming() {
 			plans:     Vec::new(),
 		});
 
-	let phase_approval = project_turn_phase(&store, Some(&session_id));
+	let phase_approval = project_turn_phase(&store, Some(&session_id), QueueMode::Steer);
 	assert_eq!(phase_approval, TurnPhase::ApprovalPending {
 		interaction: InteractionId::from("a1"),
 	});
@@ -171,7 +161,7 @@ fn pending_decisions_take_precedence_over_active_streaming() {
 		requested_at_ms: NOW_MS,
 	}];
 
-	let phase_question = project_turn_phase(&store, Some(&session_id));
+	let phase_question = project_turn_phase(&store, Some(&session_id), QueueMode::Steer);
 	assert_eq!(phase_question, TurnPhase::QuestionPending {
 		interaction: InteractionId::from("q1"),
 		options:     3,
@@ -190,7 +180,7 @@ fn pending_decisions_take_precedence_over_active_streaming() {
 		requested_at_ms: NOW_MS,
 	}];
 
-	let phase_plan = project_turn_phase(&store, Some(&session_id));
+	let phase_plan = project_turn_phase(&store, Some(&session_id), QueueMode::Steer);
 	let plan = TurnPhase::PlanPending { interaction: InteractionId::from("p1") };
 	assert_eq!(phase_plan, plan);
 
@@ -202,7 +192,7 @@ fn pending_decisions_take_precedence_over_active_streaming() {
 #[test]
 fn absent_active_session_projects_to_idle() {
 	let store = Store::new();
-	let phase = project_turn_phase(&store, None);
+	let phase = project_turn_phase(&store, None, QueueMode::Steer);
 	assert_eq!(phase, TurnPhase::Idle);
 
 	let mut state = ShellState::default();

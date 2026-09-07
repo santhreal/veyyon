@@ -1,7 +1,7 @@
 //! Surface seeding per capability (§1.2, §4.3, §9.5).
 
 use veyyon_desktop_model::{
-	AgentView, ApprovalInteraction, Capability, ChangeScope, ChangesView, ComposerDraft,
+	AgentView, ApprovalInteraction, Capability, ChangeScope, ChangesView,
 	ContextBreakdownView, ContextCategory, EntryId, FileTreeView, InputModality, InteractionId,
 	KeybindingView, McpServerStatus, McpServerView, MessageRole, ModelRef, ModelView, ModelsView,
 	PendingDecisions, PlanInteraction, ProcessView, ProviderView, QuestionInteraction, QueueMode,
@@ -43,16 +43,6 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 		Capability::BackgroundSubmission => {
 			seed.exchange(session, Seed::prose());
 			seed.state.composer.queue_mode = QueueMode::Queue;
-			seed
-				.store
-				.composer_drafts
-				.insert(session.clone(), ComposerDraft {
-					text:           FixtureText::MESSAGE_TYPICAL.to_string(),
-					attachments:    Vec::new(),
-					queue_mode:     QueueMode::Queue,
-					selected_model: None,
-					thinking_level: None,
-				});
 			seed
 				.store
 				.streaming

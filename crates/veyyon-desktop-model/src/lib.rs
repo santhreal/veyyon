@@ -27,7 +27,7 @@ pub use action_kind::HostActionKind;
 pub use badge::session_badge;
 pub use capabilities::{Capability, CapabilityMap, CapabilityStatus};
 pub use coalescer::{EventCoalescer, EventCoalescerError};
-pub use composer::{ComposerDraft, QueueMode};
+pub use composer::QueueMode;
 pub use connection::{
 	ConnectionState, ConnectionStateKind, EntryId, InteractionId, PROTOCOL_VERSION, RequestId,
 	SessionId, Versioned,

@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use crate::{
 	capabilities::CapabilityMap,
-	composer::ComposerDraft,
 	connection::{ConnectionState, SessionId},
 	domain::Domains,
 	interaction::PendingDecisions,
@@ -32,9 +31,6 @@ pub struct Store {
 	/// Single definition of operator decision requests awaiting input, approval,
 	/// or plan review.
 	pub interactions:    HashMap<SessionId, PendingDecisions>,
-	/// Single definition of unsubmitted input text, attachments, and turn
-	/// dispatch modes.
-	pub composer_drafts: HashMap<SessionId, ComposerDraft>,
 	/// Single definition of layout, geometry, panel visibility, and local client
 	/// persistence.
 	pub persisted:       PersistedState,
@@ -60,7 +56,6 @@ impl Store {
 			transcripts:     HashMap::new(),
 			streaming:       HashMap::new(),
 			interactions:    HashMap::new(),
-			composer_drafts: HashMap::new(),
 			persisted:       PersistedState::new(),
 			domains:         Domains::new(),
 		}

@@ -10,10 +10,15 @@ use veyyon_desktop_surface::{
 ///
 /// Operator decisions (approvals, questions, plans) take precedence. When an
 /// execution is actively streaming without a blocking decision, the phase is
-/// `Running` with the session's configured `QueueMode`. Otherwise, the session
-/// is `Idle`.
+/// `Running` carrying `mode`, the queue mode the window holds: no host frame
+/// reports one, so a mode read from the store would revert the toggle on the
+/// next frame the running turn produces.
 #[must_use]
-pub fn project_turn_phase(store: &Store, session: Option<&SessionId>) -> TurnPhase {
+pub fn project_turn_phase(
+	store: &Store,
+	session: Option<&SessionId>,
+	mode: QueueMode,
+) -> TurnPhase {
 	let Some(session_id) = session else {
 		return TurnPhase::Idle;
 	};
@@ -37,30 +42,32 @@ pub fn project_turn_phase(store: &Store, session: Option<&SessionId>) -> TurnPha
 
 	// 2. Active generation or tool streaming (§5.4).
 	if store.streaming.contains_key(session_id) {
-		let queue_mode = if matches!(
-			store.capabilities.get(Capability::BackgroundSubmission),
-			CapabilityStatus::Unavailable { .. }
-		) {
-			QueueMode::Steer
-		} else {
-			store
-				.composer_drafts
-				.get(session_id)
-				.map_or(QueueMode::Steer, |draft| draft.queue_mode)
-		};
-		return TurnPhase::Running { queue_mode };
+		return TurnPhase::Running { queue_mode: clamp_queue_mode(store, mode) };
 	}
 
 	// 3. Neither decision pending nor running.
 	TurnPhase::Idle
 }
 
+/// A background submission the host does not accept leaves one mode: a prompt
+/// sent while a turn runs steers it (§5.13).
+fn clamp_queue_mode(store: &Store, mode: QueueMode) -> QueueMode {
+	if matches!(
+		store.capabilities.get(Capability::BackgroundSubmission),
+		CapabilityStatus::Unavailable { .. }
+	) {
+		QueueMode::Steer
+	} else {
+		mode
+	}
+}
+
 /// Projects the footer's controls from what the host reported (§5.4, §5.13).
 ///
 /// Model, thinking level and context meter are the host's: a frame overwrites
-/// them. The queue mode lives in the session's draft, which the host persists.
-/// What the window owns — the text and the attachments — is left alone, so a
-/// frame arriving mid-keystroke takes neither.
+/// them. What the window owns — the text, the attachments and the queue mode —
+/// is left alone, so a frame arriving mid-keystroke takes none of it. The mode
+/// is still clamped to what the transport can carry.
 pub fn project_composer(store: &Store, session: Option<&SessionId>, composer: &mut ComposerState) {
 	let models = store.domains.models.as_ref();
 	composer.model = models.map(|view| ModelControl {
@@ -94,14 +101,5 @@ pub fn project_composer(store: &Store, session: Option<&SessionId>, composer: &m
 			limit_tokens: breakdown.limit_tokens,
 		});
 
-	composer.queue_mode = if matches!(
-		store.capabilities.get(Capability::BackgroundSubmission),
-		CapabilityStatus::Unavailable { .. }
-	) {
-		QueueMode::Steer
-	} else {
-		session
-			.and_then(|id| store.composer_drafts.get(id))
-			.map_or(QueueMode::Steer, |draft| draft.queue_mode)
-	};
+	composer.queue_mode = clamp_queue_mode(store, composer.queue_mode);
 }

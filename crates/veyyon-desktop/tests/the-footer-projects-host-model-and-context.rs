@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use support::{NOW_MS, session};
 use veyyon_desktop::{SessionIndex, project};
 use veyyon_desktop_model::{
-	Capability, CapabilityStatus, ComposerDraft, ContextBreakdownView, InputModality, ModelRef,
+	Capability, CapabilityStatus, ContextBreakdownView, InputModality, ModelRef,
 	ModelView, ModelsView, QueueMode, QueuePartition, SessionId, Store,
 };
 use veyyon_desktop_surface::{Attachment, MediaType, ShellState, composer::payload_for};
@@ -49,13 +49,12 @@ fn the_footer_shows_the_model_thinking_and_context_the_host_reported() {
 			limit_tokens: Some(200_000),
 			categories:   Vec::new(),
 		});
-	store
-		.composer_drafts
-		.insert(session_id, ComposerDraft { queue_mode: QueueMode::Queue, ..ComposerDraft::new() });
 
 	// What the window owns is not the host's to overwrite: the attachment the
-	// operator added survives the frame that reports a new model.
+	// operator added and the queue mode chosen survive the frame that reports a
+	// new model.
 	let mut state = ShellState::default();
+	state.composer.queue_mode = QueueMode::Queue;
 	state.composer.attachments.push(Attachment::from_clipboard(
 		1,
 		MediaType::Png,
@@ -87,7 +86,7 @@ fn the_footer_shows_the_model_thinking_and_context_the_host_reported() {
 		Some(41),
 		"82.4k of 200k is 41% context"
 	);
-	assert_eq!(state.composer.queue_mode, QueueMode::Queue, "the draft's mode projects");
+	assert_eq!(state.composer.queue_mode, QueueMode::Queue, "the frame left the window's mode");
 	assert_eq!(state.composer.attachments.len(), 1, "the frame left the window's attachments");
 
 	// A host that never answered the Models capability gets a label naming the

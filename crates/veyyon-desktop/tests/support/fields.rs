@@ -13,8 +13,8 @@ use veyyon_desktop::{AssetPaths, StartupBundle, load_startup_bundle};
 use veyyon_desktop_model::{AuthFlowState, AuthFlowView, SettingEntry, SettingKind, SettingsView};
 use veyyon_desktop_scene::{Appearance, HeadlessSession, RenderOptions, headless_context};
 use veyyon_desktop_surface::{
-	ConnectionPhase, Intent, Overlay, SettingsPage, SettingsState, ShellState, ShellView, fixture,
-	install_tokens,
+	ConnectionPhase, Intent, Keymap, Overlay, SettingsPage, SettingsState, ShellState, ShellView,
+	fixture, install_tokens,
 };
 use veyyon_gpui::{App, AppContext, Window};
 
@@ -120,6 +120,28 @@ pub fn driven<R>(
 		HeadlessSession::open(&mut cx, &options, |_window: &mut Window, app: &mut App| {
 			let installed = install_tokens(app, &bundle.tokens, &bundle.theme, &bundle.surface_path)
 				.expect("tokens install");
+			app.new(move |_cx| ShellView::new(installed, state))
+		})
+		.expect("the shell opens a window");
+	session.frame().expect("the shell draws its first frame");
+	drive(&mut session)
+}
+
+/// The same window with the shipped keymap bound, which is what makes a chord
+/// resolve to an action. Kept apart from [`driven`], because a bare-key chord
+/// in a focused region would otherwise reach the suites that only type.
+pub fn driven_with_keys<R>(
+	state: ShellState,
+	drive: impl FnOnce(&mut HeadlessSession<'_, ShellView>) -> R,
+) -> R {
+	let mut cx = headless_context().expect("a headless renderer is required to open the window");
+	let bundle = startup_assets();
+	let options = options();
+	let mut session =
+		HeadlessSession::open(&mut cx, &options, |_window: &mut Window, app: &mut App| {
+			let installed = install_tokens(app, &bundle.tokens, &bundle.theme, &bundle.surface_path)
+				.expect("tokens install");
+			app.bind_keys(Keymap::default().bindings());
 			app.new(move |_cx| ShellView::new(installed, state))
 		})
 		.expect("the shell opens a window");

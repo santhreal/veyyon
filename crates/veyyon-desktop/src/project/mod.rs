@@ -150,7 +150,7 @@ pub fn project<S: std::hash::BuildHasher>(
 		.unwrap_or_default();
 
 	state.panel = project_panel(&store.domains, &store.capabilities, active, &state.panel);
-	state.turn = project_turn_phase(store, active);
+	state.turn = project_turn_phase(store, active, state.composer.queue_mode);
 	project_composer(store, active, &mut state.composer);
 	project_drawer(&store.domains, &store.capabilities, emulators, now_ms, &mut state.drawer);
 	// §5.13: a drawer the host no longer offers leaves the surface rather than
