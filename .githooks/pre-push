@@ -182,8 +182,13 @@ for sha in $shas; do
 			absent=""
 			while read -r asset; do
 				[ -z "$asset" ] && continue
+				# A page under a subdirectory references the shared assets as
+				# ../css/x.css; every hashed asset sits under the book root, so the
+				# ../ climbs resolve to the root and are dropped before the lookup.
+				rel="$asset"
+				while [ "${rel#../}" != "$rel" ]; do rel="${rel#../}"; done
 				base="${asset##*/}"
-				if [ ! -e "$book/$asset" ] && [ ! -e "$book/$base" ]; then
+				if [ ! -e "$book/$rel" ] && [ ! -e "$book/$base" ]; then
 					absent="$absent $asset"
 				fi
 			done <"$refs"
