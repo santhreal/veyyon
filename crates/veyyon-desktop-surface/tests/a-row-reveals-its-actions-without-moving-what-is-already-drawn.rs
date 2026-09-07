@@ -11,23 +11,28 @@
 //! `Pinned`, `Live`) and the line sections (`Deferred`, `Parked`) are found by
 //! the height the tokens give each shape and the width the rail gives a row, so
 //! a section that changes shape is swept in its new shape. The suite holds
-//! three invariants at once, which is what makes the obvious refactor —
-//! dropping the hidden element and adding the buttons conditionally — fail
-//! rather than pass quietly:
+//! four invariants at once, which is what makes the obvious refactors — a
+//! reveal driven from tracked hover state instead of a hidden element, and a
+//! slot taken out of the row's flow so it costs no width — fail rather than
+//! pass quietly:
 //!
 //! 1. Every text box in the rail column keeps its exact rect across the hover.
 //! 2. Every rect the row answers is the same rect before and after, so the
 //!    reveal adds no control and moves none.
 //! 3. The reserved slots gain ink under the pointer, so the reveal is a reveal
-//!    and not a no-op that would satisfy the first two by drawing nothing.
+//!    and not a no-op that would satisfy the others by drawing nothing.
+//! 4. A revealed slot covers none of the rail's text, so a slot that costs the
+//!    row no width is caught by the text it lands on.
 //!
 //! WHAT IT DOES NOT CATCH: the intents those actions dispatch, which
 //! `queue-row-hover-actions-and-menu-dispatch` drives; the motion of a row that
 //! changes partition, which `the-rail-moves-a-row-with-shift-and-settles`
-//! owns; hover reveals outside the rail; and the reachability of a hidden
-//! slot, which is unreachable by construction rather than asserted here — the
-//! reveal is derived from the pointer's position, so a pointer inside the slot
-//! has already painted it.
+//! owns; and hover reveals outside the rail. A hover style cannot move a box in
+//! this element system — layout is computed from the base style and hover
+//! resolves at paint — so invariant 1 guards the state-driven reveal rather
+//! than the styled one, and the reachability of a hidden slot is unreachable by
+//! construction rather than asserted here: the reveal is derived from the
+//! pointer's position, so a pointer inside the slot has already painted it.
 
 #[path = "support/queue-scroll/mod.rs"]
 #[allow(dead_code, reason = "this binary uses a subset of the shared session helpers")]
@@ -229,6 +234,17 @@ fn a_row_of_this_shape_reveals_without_moving(shape: &str, height: f32, actions:
 			"the {shape} row's action slot {slot:?} gains ink under the pointer: {at_rest} \
 			 colour(s) at rest, {under_pointer} hovered"
 		);
+		// A slot out of the row's flow takes no width from the text beside it,
+		// so the reveal lands on top of that text instead of beside it. The
+		// hovered frame is the one that shows it, and the resting frame proves
+		// the slot was never over the text to begin with.
+		for text in rail_texts(&hovered, rail_px) {
+			assert!(
+				text.overlap_x(slot) <= 0.0 || text.overlap_y(slot) <= 0.0,
+				"the {shape} row's revealed action at {slot:?} draws beside the rail's text, not \
+				 over it; {text:?} is underneath"
+			);
+		}
 	}
 }
 
