@@ -59,6 +59,9 @@ Secondary actions remain hidden at rest and do not shift the title when revealed
 Selection, hover, and status have distinct treatments. Compact rows retain
 readable text and usable pointer targets.
 
+A card states the title the host reports for that session, including a rename
+during a turn. A session with no title states `new session`.
+
 The footer contains one Settings gear. It opens the same group as `/settings`.
 Settings is the only slash-command destination with a permanent sidebar shortcut.
 Account, Agents, Models, and other command destinations remain in command
@@ -248,11 +251,24 @@ window height.
 Command search also accepts `/providers`, `/login`, and `/extensions` for the
 corresponding focused destinations.
 
-## Terminal input
+## Terminal and process output
 
 Click the terminal grid to focus it. Terminal input is sent to the host without
 local echo. An overlaid drawer blocks pointer interaction with the composer
 beneath it.
+
+Each supervised process has a drawer tab named after it, beside the terminal
+tabs. The tab displays the last 200 lines of that process's output in the same
+80-column monospace grid, and the drawer has no scrollback of its own. The tab
+is read-only: terminal input reaches a terminal, not a process.
+
+## Right panel content
+
+The **File** tab displays the file opened from the tree, or the exported
+transcript when no file is open. An export is highlighted by its format, so
+Markdown, HTML, and JSON exports read as the same format opened from the tree.
+Opening a file replaces a displayed export. The **File** tab is present without
+file browsing when an export is the only document.
 
 ## Record native interactions
 
