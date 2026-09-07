@@ -5,9 +5,7 @@
 //! and a 240px right-aligned control column. Control availability gates opacity
 //! and activation.
 
-use veyyon_desktop_kit::{
-	ColorRole, Row, Spacer, SpacingStep, Stack, TextRamp, TextWeight, TokenSet,
-};
+use veyyon_desktop_kit::{ColorRole, Spacer, SpacingStep, Stack, TextRamp, TextWeight, TokenSet};
 use veyyon_desktop_tokens::SettingsSurfaceTokens;
 use veyyon_gpui::{Div, IntoElement, ParentElement, Styled, div, px};
 
@@ -91,14 +89,29 @@ pub fn setting_row_with_secondary(
 
 	// The secondary control, when there is one, sits before the control in
 	// one row; the column around the row pins its width and aligns it to the
-	// trailing edge.
+	// trailing edge. The control takes what the secondary leaves, so a field
+	// that asks for its parent's width draws the column's width rather than
+	// collapsing to its own padding, and a control sized by its content
+	// stays on the trailing edge.
 	let right_col = div()
 		.w(px(geometry.control_column_width_px))
 		.flex_shrink_0()
 		.flex()
 		.flex_row()
+		.items_center()
 		.justify_end()
-		.child(Row::new(SpacingStep::S2).children(secondary).child(control));
+		.gap(tokens.spacing(SpacingStep::S2))
+		.children(secondary)
+		.child(
+			div()
+				.flex_1()
+				.min_w_0()
+				.flex()
+				.flex_row()
+				.items_center()
+				.justify_end()
+				.child(control),
+		);
 
 	div()
 		.min_h(px(geometry.row_height_px))

@@ -233,6 +233,7 @@
 - A turn that calls a tool and then stops with text is treated as ending in text: the todo reminder fires again as the board changes instead of falling silent after the first one, and the rewind, plan-mode, verification and code-review checks run at that stop.
 - The goal report from `/goal show` and the goal detail menu states the goal's status once: a paused goal read `Status: paused (paused)`, and a finished one `Status: complete (paused)`. Goal mode being off is now named only where the status does not already carry it, as `active (mode off)`.
 - A goal objective reaches every surface that shows it as one plain line: the `/goal show` report, the `/goal` menu title, the warning a disabled Goal Mode prints over a stored goal, the `/goal` autocomplete row and the goal tool's own card each formatted the objective raw, so an escape sequence in one styled or moved the rest of the surface, a tab opened a hole in it, and a newline split it across two fields.
+- A desktop pointer reaches only what it is over: a press or wheel over an open dialog, palette, menu or the anchored model catalogue no longer also selects or scrolls the queue behind it, and a press inside a dialog is no longer followed in the same pass by a background element taking the focus back. A General settings row's control draws the width of its column, so a string, record, model-chain or free-form array field shows its value and takes a click at the point the pointer landed instead of collapsing to an empty pill on the trailing edge.
 
 ### Removed
 

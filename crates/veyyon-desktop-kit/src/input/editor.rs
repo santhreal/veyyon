@@ -18,8 +18,9 @@ pub use element::EditorElement;
 pub use layout::EditorLayoutState;
 pub use slot::EditorSlot;
 use veyyon_gpui::{
-	App, ClipboardItem, Context, CursorStyle, ElementId, EventEmitter, FocusHandle, Focusable,
-	InteractiveElement, IntoElement, MouseButton, Pixels, Render, SharedString, Subscription, Task,
+	App, Bounds, ClipboardItem, Context, CursorStyle, ElementId, EventEmitter, FocusHandle,
+	Focusable, InteractiveElement, IntoElement, MouseButton, Pixels, Render, SharedString,
+	Subscription, Task,
 	Window, div, prelude::*, relative,
 };
 
@@ -190,6 +191,14 @@ impl Editor {
 	#[must_use]
 	pub const fn content_height(&self) -> Pixels {
 		self.content_height
+	}
+
+	/// The rect the element last drew into, in window coordinates, or `None`
+	/// before the first frame. A pointer aimed here lands on the text the
+	/// editor drew rather than on the padding of the field around it.
+	#[must_use]
+	pub fn drawn_bounds(&self) -> Option<Bounds<Pixels>> {
+		self.last_layout.as_ref().map(|layout| layout.bounds)
 	}
 
 	/// Returns active editor mode.

@@ -126,6 +126,10 @@ pub(super) fn overlay_layer(
 					.child(
 						div()
 							.id("composer-popover")
+							// A popover swallows the pointer over its own rect,
+							// so a press in the palette does not also answer a
+							// card in the transcript behind it.
+							.occlude()
 							.on_mouse_down_out(cx.listener(|view, event: &MouseDownEvent, _window, cx| {
 								if event.button == MouseButton::Left {
 									view.close_palette(cx);

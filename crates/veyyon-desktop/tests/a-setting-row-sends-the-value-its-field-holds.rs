@@ -33,6 +33,7 @@ use support::fields::{SETTING_KEY, driven, general_page_holds};
 use veyyon_desktop_model::SettingKind;
 use veyyon_desktop_scene::HeadlessSession;
 use veyyon_desktop_surface::{FieldKey, Intent, ShellView};
+use veyyon_gpui::{Point, px};
 
 /// What a typed value commits as, per declared kind.
 #[derive(Debug, PartialEq, Eq)]
@@ -187,4 +188,75 @@ fn a_field_unfocused_follows_the_value_the_host_reports() {
 			.expect("the row is redrawn from the newer snapshot")
 	});
 	assert_eq!(drawn, "second", "an unfocused field draws the value the host reports");
+}
+
+/// Where in the field's drawn rect the pointer lands.
+#[derive(Clone, Copy)]
+enum Aim {
+	/// The first pixel of the text, before the value the host reported.
+	Start,
+	/// The last pixel of the field, past the end of that value.
+	End,
+}
+
+/// Clicks `aim` in the drawn field of a String row seeded with `host`, types
+/// `text` there and returns whether the field holds focus with what the
+/// return raised.
+fn clicked_then_typed(aim: Aim, text: &str) -> (bool, Vec<Intent>) {
+	driven(general_page_holds(SettingKind::String, json!("host")), |session| {
+		session.frame().expect("the page draws a frame");
+		let editor = session
+			.update(|view, _window, _cx| {
+				view
+					.retained_field(&FieldKey::Setting(SETTING_KEY.to_owned()))
+					.expect("the drawn row registered an editor under the key it holds")
+			})
+			.expect("the row's editor is read out of the view");
+		// The click is aimed at the rect the editor drew into, so it travels
+		// the window's hit test the way a pointer does rather than going
+		// through the handle this test already holds.
+		let rect = session
+			.update(|_view, _window, cx| {
+				editor
+					.read(cx)
+					.drawn_bounds()
+					.expect("the row's field drew a rect a pointer can reach")
+			})
+			.expect("the field's rect is read out of the editor");
+		let x = match aim {
+			Aim::Start => rect.origin.x + px(1.0),
+			Aim::End => rect.origin.x + rect.size.width - px(1.0),
+		};
+		session
+			.click(Point { x, y: rect.center().y })
+			.expect("the click reaches the window");
+		session
+			.type_text(text)
+			.expect("typing follows the click into the field");
+		session.keystroke("enter").expect("the field takes a return");
+		session
+			.update(|view, window, cx| {
+				(editor.read(cx).focus_handle().is_focused(window), view.drain_intents())
+			})
+			.expect("the view is read after the return")
+	})
+}
+
+#[test]
+fn a_click_in_a_row_field_puts_the_caret_where_the_pointer_landed() {
+	let (focused, raised) = clicked_then_typed(Aim::Start, "typed ");
+	assert!(focused, "a click in the field focuses the field it landed in");
+	assert_eq!(
+		raised,
+		changed(json!("typed host")),
+		"text typed after a click at the start of the value lands before it"
+	);
+
+	let (focused, raised) = clicked_then_typed(Aim::End, " typed");
+	assert!(focused, "a click past the value focuses the field it landed in");
+	assert_eq!(
+		raised,
+		changed(json!("host typed")),
+		"text typed after a click past the end of the value lands after it"
+	);
 }

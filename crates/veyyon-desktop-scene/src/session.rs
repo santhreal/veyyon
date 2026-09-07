@@ -13,7 +13,8 @@ use std::time::Duration;
 
 use veyyon_gpui::{
 	App, Context, Entity, Keystroke, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent,
-	MouseUpEvent, Pixels, PlatformInput, Point, Render, Window, WindowHandle,
+	MouseUpEvent, Pixels, PlatformInput, Point, Render, ScrollDelta, ScrollWheelEvent, TouchPhase,
+	Window, WindowHandle,
 };
 
 use crate::headless::{Captured, Headless, RenderError, RenderOptions, capture_window};
@@ -259,6 +260,29 @@ impl<'a, V: Render + 'static> HeadlessSession<'a, V> {
 		}
 		self.dispatch(mouse_up)?;
 
+		self.cx.run_until_parked();
+		Ok(())
+	}
+
+	/// Turns the wheel by `lines` at `at`, negative upward, as a pointer over
+	/// that position does. A move to `at` precedes the wheel, because a wheel
+	/// arrives where the pointer already is.
+	pub fn scroll(&mut self, at: Point<Pixels>, lines: f32) -> Result<(), RenderError> {
+		let modifiers = Modifiers::default();
+		let mouse_move = PlatformInput::MouseMove(MouseMoveEvent {
+			position: at,
+			pressed_button: None,
+			modifiers,
+		});
+		let wheel = PlatformInput::ScrollWheel(ScrollWheelEvent {
+			position: at,
+			delta: ScrollDelta::Lines(Point { x: 0.0, y: -lines }),
+			modifiers,
+			touch_phase: TouchPhase::Moved,
+		});
+
+		self.dispatch(mouse_move)?;
+		self.dispatch(wheel)?;
 		self.cx.run_until_parked();
 		Ok(())
 	}

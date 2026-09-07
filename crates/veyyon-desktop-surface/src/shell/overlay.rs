@@ -29,10 +29,15 @@ pub fn overlay_scrim_with_opacity(
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
+	// The scrim is modal: it swallows the pointer over the whole window, so a
+	// press cannot reach a control behind the dialog, and a press inside the
+	// dialog is not followed by one from an element underneath it taking the
+	// focus back.
 	div()
 		.id("overlay-scrim")
 		.absolute()
 		.inset_0()
+		.occlude()
 		.flex()
 		.items_center()
 		.justify_center()
