@@ -86,10 +86,10 @@ fn the_text_a_take_back_hands_over_is_not_kept_as_state() {
 
 	let plain = report(&session, &["still held"], &[]);
 	let answer = HostEvent::Snapshot(SnapshotSection::QueuedPrompts(QueuedPromptsView {
-		session:   session.clone(),
-		steering:  vec!["still held".to_owned()],
+		session,
+		steering: vec!["still held".to_owned()],
 		follow_up: Vec::new(),
-		restored:  Some("the prompt taken back".to_owned()),
+		restored: Some("the prompt taken back".to_owned()),
 	}));
 
 	reduce(&mut session_store, plain);
