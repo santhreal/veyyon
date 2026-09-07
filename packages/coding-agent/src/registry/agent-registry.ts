@@ -582,11 +582,14 @@ export class AgentRegistry {
 	 * The other driving agents in `id`'s room, oldest first. Empty when `id` is
 	 * in no room. `aborted` refs are dropped: a peer that was killed has nothing
 	 * to switch to and nothing to message.
+	 *
+	 * One pass over the refs with `id` resolved once, rather than `isPeer` per
+	 * ref: this runs on every turn (`<session-state>`) and on every registry
+	 * event the room strip redraws for, against a registry that holds every
+	 * spawn of every conversation in the process.
 	 */
 	peers(id: string): AgentRef[] {
-		return this.list()
-			.filter(ref => ref.status !== "aborted" && this.isPeer(id, ref.id))
-			.sort((a, b) => a.createdAt - b.createdAt);
+		return this.#room(id, false);
 	}
 
 	/**
@@ -598,10 +601,23 @@ export class AgentRegistry {
 	 * the list reads the same from every member's point of view.
 	 */
 	roomMembers(id: string): AgentRef[] {
-		if (!this.#refs.has(id)) return [];
-		return this.list()
-			.filter(ref => ref.id === id || (ref.status !== "aborted" && this.isPeer(id, ref.id)))
-			.sort((a, b) => a.createdAt - b.createdAt);
+		return this.#room(id, true);
+	}
+
+	/** The peers of `id` per {@link isPeer}, with `id` itself included when `self` is set. */
+	#room(id: string, self: boolean): AgentRef[] {
+		const own = this.#refs.get(id);
+		if (own === undefined) return [];
+		const room = own.kind === "main" ? own.room : undefined;
+		const out: AgentRef[] = [];
+		for (const ref of this.#refs.values()) {
+			if (ref === own) {
+				if (self) out.push(ref);
+			} else if (room !== undefined && ref.kind === "main" && ref.room === room && ref.status !== "aborted") {
+				out.push(ref);
+			}
+		}
+		return out.sort((a, b) => a.createdAt - b.createdAt);
 	}
 
 	/**
