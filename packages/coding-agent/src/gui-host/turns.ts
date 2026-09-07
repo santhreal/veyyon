@@ -7,17 +7,19 @@ import { formatBytes } from "@veyyon/utils/format";
 import { SUPPORTED_IMAGE_MIME_TYPES, SUPPORTED_VIDEO_MIME_TYPES } from "@veyyon/utils/mime";
 import { initializeExtensions } from "../modes/runtime-init";
 import { createAgentSession } from "../sdk";
-import type { AgentSession, AgentSessionEvent } from "../session/agent-session";
+import type { AgentSession } from "../session/agent-session";
+import type { AgentSessionEvent } from "../session/agent-session-types";
 import { USER_INTERRUPT_LABEL } from "../session/messages";
-import type { SessionEntry } from "../session/session-entries";
-import { SessionManager } from "../session/session-manager";
-import { computeDefaultSessionDir } from "../session/session-paths";
-import { FileSessionStorage } from "../session/session-storage";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
+import { computeDefaultSessionDir } from "@veyyon/kernel/session/session-paths";
+import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import { MAX_IMAGE_INPUT_BYTES } from "../utils/image-loading";
 import { base64DecodedBytes, MAX_PROMPT_ATTACHMENT_BYTES, MAX_VIDEO_INPUT_BYTES } from "../utils/video-loading";
 import { writeFrame } from "./frames";
 import { GuiHostUIContext, InteractionLedger } from "./interactions";
 import { enterPlanModeIfConfigured } from "./plan-approval";
+import type { PresentationLedger } from "./presentation";
 import { agentMessageToTranscriptEntry, sessionEntryToTranscriptEntry } from "./transcript-conversion";
 import type { AttachmentSubmission, AuthFlowState, TerminalStatus, TranscriptEntry } from "./wire";
 
@@ -71,6 +73,7 @@ export interface ClientSessionState {
 	streamingToolCallId?: string;
 	/** The last accumulating entry sent, re-sent when only `tool` changes. */
 	streamingAccumulating?: TranscriptEntry;
+	presentationLedger: PresentationLedger;
 	/**
 	 * The decisions the session is waiting on: tool approvals, `ask`
 	 * questions, extension prompts and plan reviews. Created with the session
@@ -142,7 +145,48 @@ export function attachTurnListeners(session: AgentSession, socket: net.Socket, s
 
 	sm.onEntryAppended = (entry: SessionEntry) => {
 		state.revision += 1;
-		const transcriptEntry = sessionEntryToTranscriptEntry(entry, state.revision);
+		const transcriptEntry = sessionEntryToTranscriptEntry(entry, state.revision, {
+			ledger: state.presentationLedger,
+			session: state.agentSession,
+		});
+
+		if (entry.type === "message") {
+			const msg = entry.message as { role?: string; toolCallId?: string; isError?: boolean };
+			if (msg.role === "assistant") {
+				for (const block of transcriptEntry.content) {
+					if ("ToolCall" in block) {
+						state.presentationLedger.recordCall(
+							block.ToolCall.id,
+							block.ToolCall.name,
+							block.ToolCall.arguments,
+							entry.id,
+							transcriptEntry,
+						);
+					}
+				}
+			} else if (msg.role === "toolResult" && typeof msg.toolCallId === "string") {
+				state.presentationLedger.recordResult(
+					msg.toolCallId,
+					entry.message,
+					msg.isError,
+					entry.id,
+					transcriptEntry,
+				);
+				const updatedAssistant = state.presentationLedger.markResultAvailable(
+					msg.toolCallId,
+					name => state.agentSession?.getToolByName(name),
+				);
+				if (updatedAssistant) {
+					writeFrame(socket, {
+						TranscriptUpdated: {
+							revision: state.revision,
+							entry: updatedAssistant,
+						},
+					});
+				}
+			}
+		}
+
 		writeFrame(socket, {
 			TranscriptAppended: {
 				revision: state.revision,
@@ -150,7 +194,6 @@ export function attachTurnListeners(session: AgentSession, socket: net.Socket, s
 			},
 		});
 	};
-
 	const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
 		handleSessionEvent(event, socket, state);
 	});
@@ -174,11 +217,26 @@ export function handleSessionEvent(event: AgentSessionEvent, socket: net.Socket,
 					state.streamingSeq = (state.streamingSeq ?? 0) + 1;
 					state.streamingEntry = `stream-${state.streamingSeq}`;
 				}
-				writeStreaming(
-					socket,
-					state,
-					agentMessageToTranscriptEntry(event.message, state.revision, state.streamingEntry),
+				const accumulating = agentMessageToTranscriptEntry(
+					event.message,
+					state.revision,
+					state.streamingEntry,
+					{
+						ledger: state.presentationLedger,
+						session: state.agentSession,
+						isStreaming: true,
+					},
 				);
+				for (const block of accumulating.content) {
+					if ("ToolCall" in block) {
+						state.presentationLedger.recordCall(
+							block.ToolCall.id,
+							block.ToolCall.name,
+							block.ToolCall.arguments,
+						);
+					}
+				}
+				writeStreaming(socket, state, accumulating);
 			}
 			break;
 		}
@@ -187,13 +245,43 @@ export function handleSessionEvent(event: AgentSessionEvent, socket: net.Socket,
 			// deltas still carries the entry it belongs to.
 			state.streamingTool = event.toolName;
 			state.streamingToolCallId = event.toolCallId;
+			state.presentationLedger.recordCall(event.toolCallId, event.toolName, event.args);
 			if (state.streamingAccumulating) writeStreaming(socket, state, state.streamingAccumulating);
+			break;
+		}
+		case "tool_execution_update": {
+			state.presentationLedger.recordResult(
+				event.toolCallId,
+				event.partialResult,
+				event.partialResult.isError,
+			);
+			if (state.streamingAccumulating) {
+				const updated = state.presentationLedger.regenerateCallEntryPresentation(
+					state.streamingAccumulating,
+					name => state.agentSession?.getToolByName(name),
+					{ partial: true },
+				);
+				if (updated) state.streamingAccumulating = updated;
+				writeStreaming(socket, state, state.streamingAccumulating);
+			}
 			break;
 		}
 		case "tool_execution_end": {
 			state.streamingTool = undefined;
 			state.streamingToolCallId = undefined;
-			if (state.streamingAccumulating) writeStreaming(socket, state, state.streamingAccumulating);
+			state.presentationLedger.recordResult(
+				event.toolCallId,
+				event.result,
+				event.isError,
+			);
+			if (state.streamingAccumulating) {
+				const updated = state.presentationLedger.regenerateCallEntryPresentation(
+					state.streamingAccumulating,
+					name => state.agentSession?.getToolByName(name),
+				);
+				if (updated) state.streamingAccumulating = updated;
+				writeStreaming(socket, state, state.streamingAccumulating);
+			}
 			break;
 		}
 		case "message_end": {
@@ -370,6 +458,7 @@ export async function disposeTurnSession(state: ClientSessionState): Promise<voi
 	// record the result, rather than hanging on a client that is gone.
 	state.interactions?.cancelAll();
 	state.interactions = undefined;
+	state.presentationLedger?.clear();
 	if (state.agentSession) {
 		const session = state.agentSession;
 		state.agentSession = undefined;

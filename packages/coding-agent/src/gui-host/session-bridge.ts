@@ -1,5 +1,5 @@
-import type { SessionHeader } from "../session/session-entries";
-import type { SessionInfo } from "../session/session-listing";
+import type { SessionHeader } from "@veyyon/kernel/session/session-entries";
+import type { SessionInfo } from "@veyyon/kernel/session/session-listing";
 import {
 	ALL_CAPABILITIES,
 	type Capability,
@@ -87,6 +87,7 @@ const ACTION_ERROR_SCOPES: Record<string, ErrorScope> = {
 	AbortTurn: "Session",
 	SetQueueMode: "Session",
 	CancelTool: "Tool",
+	SetToolViewExpanded: "Tool",
 	RespondToInteraction: "Interaction",
 	LoadFileTree: "File",
 	ReadFile: "File",

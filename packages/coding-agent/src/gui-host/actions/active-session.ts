@@ -1,12 +1,12 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { listSessions } from "../../session/session-listing";
-import { SessionManager } from "../../session/session-manager";
-import { computeDefaultSessionDir } from "../../session/session-paths";
-import { FileSessionStorage } from "../../session/session-storage";
+import { listSessions } from "@veyyon/kernel/session/session-listing";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
+import { computeDefaultSessionDir } from "@veyyon/kernel/session/session-paths";
+import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import { writeFrame } from "../frames";
 import { sessionHeaderToView, sessionInfoToSummary } from "../session-bridge";
-import { sessionEntryToTranscriptEntry } from "../transcript-conversion";
+import { sessionEntriesToTranscript, sessionEntryToTranscriptEntry } from "../transcript-conversion";
 import { disposeTurnSession } from "../turns";
 import type { ErrorScope, TranscriptEntry } from "../wire";
 import type { ActionContext } from "./types";
@@ -65,8 +65,10 @@ export function emitActiveSessionAndTranscript(
 		ActiveSession: { revision: ctx.clientState.revision, value: sessionHeaderToView(sm.getHeader()) },
 	});
 	ctx.clientState.revision += 1;
+	const ledger = ctx.clientState.presentationLedger;
+	const session = ctx.clientState.agentSession;
 	const transcriptEntries =
-		entries ?? sm.getEntries().map(e => sessionEntryToTranscriptEntry(e, ctx.clientState.revision));
+		entries ?? sessionEntriesToTranscript(sm.getEntries(), ctx.clientState.revision, { ledger, session });
 	ctx.reply.snapshot({
 		Transcript: { revision: ctx.clientState.revision, value: transcriptEntries },
 	});
@@ -84,7 +86,36 @@ export function wireSessionManager(ctx: ActionContext, sm: SessionManager): void
 	ctx.clientState.sessionManager = sm;
 	sm.onEntryAppended = entry => {
 		ctx.clientState.revision += 1;
-		const transcriptEntry = sessionEntryToTranscriptEntry(entry, ctx.clientState.revision);
+		const ledger = ctx.clientState.presentationLedger;
+		const session = ctx.clientState.agentSession;
+		const transcriptEntry = sessionEntryToTranscriptEntry(entry, ctx.clientState.revision, {
+			ledger,
+			session,
+		});
+
+		const message = entry.type === "message" ? entry.message : undefined;
+		if (message?.role === "assistant") {
+			for (const block of transcriptEntry.content) {
+				if ("ToolCall" in block) {
+					ledger?.recordCall(
+						block.ToolCall.id,
+						block.ToolCall.name,
+						block.ToolCall.arguments,
+						entry.id,
+						transcriptEntry,
+					);
+				}
+			}
+		} else if (message?.role === "toolResult") {
+			ledger?.recordResult(message.toolCallId, message, message.isError, entry.id, transcriptEntry);
+			const updatedAssistant = ledger?.markResultAvailable(message.toolCallId, name => session?.getToolByName(name));
+			if (updatedAssistant) {
+				writeFrame(ctx.socket, {
+					TranscriptUpdated: { revision: ctx.clientState.revision, entry: updatedAssistant },
+				});
+			}
+		}
+
 		writeFrame(ctx.socket, {
 			TranscriptAppended: { revision: ctx.clientState.revision, entries: [transcriptEntry] },
 		});
@@ -111,6 +142,7 @@ export async function activateSession(ctx: ActionContext, session: string): Prom
 
 	const agent = ctx.clientState.agentSession;
 	if (agent) {
+		ctx.clientState.presentationLedger?.clear();
 		if (!(await agent.switchSession(sessionPath))) {
 			ctx.reply.failure({
 				scope: "Session",
@@ -123,6 +155,7 @@ export async function activateSession(ctx: ActionContext, session: string): Prom
 		return agent.sessionManager;
 	}
 
+	ctx.clientState.presentationLedger?.clear();
 	await disposeTurnSession(ctx.clientState);
 	const sm = await SessionManager.open(sessionPath, undefined, undefined, { suppressBreadcrumb: true });
 	wireSessionManager(ctx, sm);

@@ -1,9 +1,20 @@
 import type { AgentMessage } from "@veyyon/agent-core";
-import type { SessionEntry } from "../session/session-entries";
+import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
+import type { ToolViewContext } from "@veyyon/view";
+import type { AgentSession } from "../session/agent-session";
+import { decodeStreamedToolArgs, streamingStringKeysForTool } from "../tools/core/streamed-tool-args";
 import { base64DecodedBytes } from "../utils/video-loading";
+import { buildToolCallPresentation, buildToolResultPresentation, type PresentationLedger } from "./presentation";
 import type { ContentBlock, EntryMeta, MessageRole, TranscriptEntry, UsageTotals } from "./wire";
 
-function mapContentBlocks(content: unknown): ContentBlock[] {
+export interface TranscriptConversionOptions {
+	ledger?: PresentationLedger;
+	session?: AgentSession;
+	isStreaming?: boolean;
+}
+
+function mapContentBlocks(content: unknown, options?: TranscriptConversionOptions): ContentBlock[] {
 	if (typeof content === "string") return [{ Text: { text: content } }];
 	if (!Array.isArray(content)) return [{ Fallback: { producer: "unknown", value: content } }];
 
@@ -36,9 +47,42 @@ function mapContentBlocks(content: unknown): ContentBlock[] {
 			"name" in item &&
 			typeof item.name === "string"
 		) {
-			const args = "arguments" in item ? item.arguments : {};
+			const toolName = item.name;
+			const toolCallId = item.id;
+			const partialJson = getStreamingPartialJson(item);
+			const rawInput = "customWireName" in item && item.customWireName !== undefined;
+			let displayArgs: unknown;
+			if (options?.isStreaming && partialJson !== undefined) {
+				displayArgs = decodeStreamedToolArgs(partialJson, {
+					rawInput,
+					fullArgs:
+						"arguments" in item && item.arguments && typeof item.arguments === "object"
+							? (item.arguments as Record<string, unknown>)
+							: undefined,
+					streamingStringKeys: streamingStringKeysForTool(toolName, rawInput),
+					argot: options.session?.getArgotSession?.(),
+				});
+			} else {
+				displayArgs = "arguments" in item ? item.arguments : {};
+			}
+
+			const tool = options?.session?.getToolByName(toolName);
+			const expanded = options?.ledger?.getDisclosure(toolCallId) ?? false;
+			const hasResult = options?.ledger?.hasResult(toolCallId) ?? false;
+			const context: ToolViewContext = {
+				expanded,
+				...(options?.isStreaming ? { partial: true } : {}),
+				hasResult,
+			};
+			const presentation = buildToolCallPresentation(toolName, displayArgs, tool, context);
+
 			blocks.push({
-				ToolCall: { id: item.id, name: item.name, arguments: args },
+				ToolCall: {
+					id: toolCallId,
+					name: toolName,
+					arguments: displayArgs,
+					presentation,
+				},
 			});
 		} else if (item.type === "tool_result" || item.type === "toolResult") {
 			const toolId =
@@ -49,7 +93,34 @@ function mapContentBlocks(content: unknown): ContentBlock[] {
 						: "tool";
 			const resultContent = "content" in item ? (item.content ?? null) : null;
 			const isError = "isError" in item && item.isError === true;
-			blocks.push({ ToolResult: { tool: toolId, content: resultContent, is_error: isError } });
+			const tracked = options?.ledger?.getCall(toolId);
+			const toolName =
+				"toolName" in item && typeof item.toolName === "string" ? item.toolName : (tracked?.toolName ?? "tool");
+			const callArgs = tracked?.args;
+			const tool = options?.session?.getToolByName(toolName);
+			const expanded = options?.ledger?.getDisclosure(toolId) ?? false;
+			const context: ToolViewContext = {
+				expanded,
+				hasResult: true,
+			};
+			// The recorded block carries text and an error flag; the tool's own
+			// `details` live only on the result the ledger holds, and a resumed
+			// session has none, so a renderer sees whichever is richer.
+			const presentation = buildToolResultPresentation(
+				toolName,
+				tracked?.hasResult ? tracked.result : item,
+				callArgs,
+				tool,
+				context,
+			);
+			blocks.push({
+				ToolResult: {
+					tool: toolId,
+					content: resultContent,
+					is_error: isError,
+					presentation,
+				},
+			});
 		} else {
 			blocks.push({ Unknown: { tag: String(item.type), value: item } });
 		}
@@ -91,7 +162,12 @@ function mapUsage(usage: unknown): UsageTotals | null {
 	};
 }
 
-export function agentMessageToTranscriptEntry(message: AgentMessage, revision: number, id: string): TranscriptEntry {
+export function agentMessageToTranscriptEntry(
+	message: AgentMessage,
+	revision: number,
+	id: string,
+	options?: TranscriptConversionOptions,
+): TranscriptEntry {
 	const role = message.role ? mapMessageRole(message.role) : "Custom";
 	const provider = "provider" in message && typeof message.provider === "string" ? message.provider : null;
 	const model = "model" in message && typeof message.model === "string" ? message.model : null;
@@ -111,7 +187,7 @@ export function agentMessageToTranscriptEntry(message: AgentMessage, revision: n
 				}
 			: null;
 
-	let content = "content" in message ? mapContentBlocks(message.content) : [];
+	let content = "content" in message ? mapContentBlocks(message.content, options) : [];
 	if (message.role === "toolResult") {
 		const text: string[] = [];
 		const media: ContentBlock[] = [];
@@ -119,12 +195,33 @@ export function agentMessageToTranscriptEntry(message: AgentMessage, revision: n
 			if ("Text" in block) text.push(block.Text.text);
 			else media.push(block);
 		}
+		const toolCallId = message.toolCallId;
+		const tracked = options?.ledger?.getCall(toolCallId);
+		const toolName =
+			"toolName" in message && typeof message.toolName === "string"
+				? message.toolName
+				: (tracked?.toolName ?? "tool");
+		const callArgs = tracked?.args;
+		const tool = options?.session?.getToolByName(toolName);
+		const expanded = options?.ledger?.getDisclosure(toolCallId) ?? false;
+		const context: ToolViewContext = {
+			expanded,
+			hasResult: true,
+		};
+		const presentation = buildToolResultPresentation(
+			toolName,
+			tracked?.hasResult ? tracked.result : message,
+			callArgs,
+			tool,
+			context,
+		);
 		content = [
 			{
 				ToolResult: {
-					tool: message.toolCallId,
+					tool: toolCallId,
 					content: text.join("\n"),
 					is_error: message.isError,
+					presentation,
 				},
 			},
 			...media,
@@ -143,10 +240,14 @@ export function agentMessageToTranscriptEntry(message: AgentMessage, revision: n
 	};
 }
 
-export function sessionEntryToTranscriptEntry(entry: SessionEntry, revision: number): TranscriptEntry {
+export function sessionEntryToTranscriptEntry(
+	entry: SessionEntry,
+	revision: number,
+	options?: TranscriptConversionOptions,
+): TranscriptEntry {
 	const timestampMs = entry.timestamp ? new Date(entry.timestamp).getTime() : Date.now();
 	if (entry.type === "message") {
-		const result = agentMessageToTranscriptEntry(entry.message as AgentMessage, revision, entry.id);
+		const result = agentMessageToTranscriptEntry(entry.message as AgentMessage, revision, entry.id, options);
 		result.parent = entry.parentId ?? null;
 		result.timestamp_ms = timestampMs;
 		result.raw_discriminator = entry.type;
@@ -243,4 +344,61 @@ export function sessionEntryToTranscriptEntry(entry: SessionEntry, revision: num
 		raw_discriminator: entry.type,
 		raw: entry,
 	};
+}
+
+/**
+ * Convert a stored session's entries with the presentation ledger filled in
+ * first.
+ *
+ * A tool call card states whether its result has arrived, and a card the
+ * operator expands later is regenerated from the entry it belongs to, so the
+ * ledger has to know every call and result in the transcript before the first
+ * entry is converted, and each converted entry has to be linked back to its
+ * call afterwards. Without the ledger this is `entries.map(...)`.
+ */
+export function sessionEntriesToTranscript(
+	entries: readonly SessionEntry[],
+	revision: number,
+	options?: TranscriptConversionOptions,
+): TranscriptEntry[] {
+	const ledger = options?.ledger;
+	if (!ledger) return entries.map(entry => sessionEntryToTranscriptEntry(entry, revision, options));
+	for (const entry of entries) recordEntryCalls(ledger, entry);
+	const converted = entries.map(entry => sessionEntryToTranscriptEntry(entry, revision, options));
+	for (const [index, entry] of entries.entries()) linkEntryCalls(ledger, entry, converted[index]);
+	return converted;
+}
+
+/** Index the tool call, or the tool result, a stored entry carries. */
+function recordEntryCalls(ledger: PresentationLedger, entry: SessionEntry): void {
+	if (entry.type !== "message") return;
+	const message = entry.message as AgentMessage;
+	if (message.role === "assistant") {
+		for (const block of message.content) {
+			if (block.type === "toolCall") ledger.recordCall(block.id, block.name, block.arguments, entry.id);
+		}
+		return;
+	}
+	if (message.role === "toolResult") {
+		ledger.recordResult(message.toolCallId, message, message.isError, entry.id);
+	}
+}
+
+/** Point each indexed call at the converted entry that renders it. */
+function linkEntryCalls(ledger: PresentationLedger, entry: SessionEntry, converted: TranscriptEntry): void {
+	if (entry.type !== "message") return;
+	const message = entry.message as AgentMessage;
+	if (message.role === "assistant") {
+		for (const block of converted.content) {
+			if ("ToolCall" in block) {
+				const call = ledger.getCall(block.ToolCall.id);
+				if (call) call.assistantEntry = converted;
+			}
+		}
+		return;
+	}
+	if (message.role === "toolResult") {
+		const call = ledger.getCall(message.toolCallId);
+		if (call) call.resultEntry = converted;
+	}
 }

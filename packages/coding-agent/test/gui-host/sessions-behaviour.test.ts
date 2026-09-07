@@ -19,9 +19,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { type GuiHostServer, startGuiHostServer } from "../../src/gui-host";
 import { findSessionPath } from "../../src/gui-host/actions/active-session";
-import { SessionManager } from "../../src/session/session-manager";
-import { computeDefaultSessionDir } from "../../src/session/session-paths";
-import { FileSessionStorage } from "../../src/session/session-storage";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
+import { computeDefaultSessionDir } from "@veyyon/kernel/session/session-paths";
+import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import { type RequestFrame, TestSocketClient } from "./test-client";
 interface SessionRow {
 	id: string;

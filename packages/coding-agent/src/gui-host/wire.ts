@@ -1,3 +1,5 @@
+import type { ToolView } from "@veyyon/view";
+
 /**
  * TypeScript mirror of the Rust wire types the desktop client speaks,
  * `crates/veyyon-desktop-model/src/`:
@@ -20,7 +22,7 @@
  * `test/gui-host/every-snapshot-section-is-one-the-desktop-decodes.test.ts`.
  */
 
-export const PROTOCOL_VERSION = 1;
+export const GUI_HOST_PROTOCOL_VERSION = 1;
 
 export type RequestId = number;
 
@@ -152,8 +154,8 @@ export type ContentBlock =
 	| { Video: { media_type: string; bytes: number } }
 	| { Thinking: { text: string } }
 	| { RedactedThinking: { marker: string } }
-	| { ToolCall: { id: string; name: string; arguments: unknown } }
-	| { ToolResult: { tool: string; content: unknown; is_error: boolean } }
+	| { ToolCall: { id: string; name: string; arguments: unknown; presentation?: ToolPresentation } }
+	| { ToolResult: { tool: string; content: unknown; is_error: boolean; presentation?: ToolPresentation } }
 	| { Execution: { language: string; command: string | null; output: string; exit_code: number | null } }
 	| {
 			FileMention: {
@@ -172,6 +174,11 @@ export type ContentBlock =
 	| { Summary: { kind: string; text: string } }
 	| { Fallback: { producer: string; value: unknown } }
 	| { Unknown: { tag: string; value: unknown } };
+
+export interface ToolPresentation {
+	expanded: boolean;
+	view: ToolView;
+}
 
 export interface UsageTotals {
 	input_tokens: number;
@@ -581,6 +588,7 @@ export type HostAction =
 	| { LoadTranscript: { session: string; before: string | null } }
 	| { SubmitPrompt: { session: string; text: string; attachments: AttachmentSubmission[] } }
 	| { AbortTurn: { session: string } }
+	| { SetToolViewExpanded: { session: string; call_id: string; expanded: boolean } }
 	| string
 	| Record<string, unknown>;
 
@@ -605,6 +613,7 @@ export const ALL_HOST_ACTIONS = [
 	"AbortTurn",
 	"SetQueueMode",
 	"CancelTool",
+	"SetToolViewExpanded",
 	"RespondToInteraction",
 	"LoadFileTree",
 	"ReadFile",
@@ -682,6 +691,7 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	AbortTurn: "TurnControl",
 	SetQueueMode: "TurnControl",
 	CancelTool: "Tools",
+	SetToolViewExpanded: "Tools",
 	RespondToInteraction: "Approvals",
 	LoadFileTree: "Files",
 	ReadFile: "Files",

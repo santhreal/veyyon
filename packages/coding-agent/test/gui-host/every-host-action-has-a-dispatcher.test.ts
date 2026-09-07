@@ -1,7 +1,7 @@
 /**
  * WHY:
  *
- * Every action tag declared in `wire.ts` at `PROTOCOL_VERSION = 1` must have a
+ * Every action tag declared in `wire.ts` at `GUI_HOST_PROTOCOL_VERSION = 1` must have a
  * registered dispatcher and must never fail with `UNIMPLEMENTED_ACTION`.
  * Furthermore, the set of Unavailable capabilities must be pinned by exact equality
  * so any new capability turns the suite red until an implementation decision is made.
@@ -16,7 +16,7 @@ import {
 	ALL_HOST_ACTIONS,
 	type Capability,
 	type GuiHostServer,
-	PROTOCOL_VERSION,
+	GUI_HOST_PROTOCOL_VERSION,
 	startGuiHostServer,
 } from "../../src/gui-host";
 import { TestSocketClient } from "./test-client";
@@ -54,7 +54,7 @@ describe("every host action has a dispatcher", () => {
 			ConnectionChanged: {
 				Connected: {
 					endpoint: server.endpoint,
-					protocol: PROTOCOL_VERSION,
+					protocol: GUI_HOST_PROTOCOL_VERSION,
 				},
 			},
 		});

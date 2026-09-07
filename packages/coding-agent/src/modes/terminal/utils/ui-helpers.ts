@@ -46,7 +46,7 @@ import { ToolExecutionComponent, turnFailedToolResult } from "../components/tran
 import { TranscriptBlock } from "../components/transcript/transcript-container";
 import { createUsageRowBlock } from "../components/transcript/usage-row";
 import { UserMessageComponent } from "../components/transcript/user-message";
-import { decodeStreamedToolArgs, streamingStringKeysForTool } from "../controllers/tool-args-reveal";
+import { decodeStreamedToolArgs, streamingStringKeysForTool } from "../../../tools/core/streamed-tool-args";
 import { materializeImageReferenceLinksSync } from "../image-references";
 import { buildSkillCommandPrompt, invokeSkillCommandFromText, isKnownSkillCommand } from "../skill-command";
 import type { CompactionQueuedMessage, InteractiveModeContext } from "../types";

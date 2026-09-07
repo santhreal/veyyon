@@ -19,8 +19,8 @@ import { TempDir } from "@veyyon/utils";
 import { type GuiHostServer, startGuiHostServer } from "../../src/gui-host";
 import { agentMessageToTranscriptEntry, sessionEntryToTranscriptEntry } from "../../src/gui-host/transcript-conversion";
 import type { TranscriptEntry } from "../../src/gui-host/wire";
-import type { SessionEntry } from "../../src/session/session-entries";
-import { SessionManager } from "../../src/session/session-manager";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TestSocketClient } from "./test-client";
 import { EXHAUSTIVE_FIXTURES, FIXTURE_TIMESTAMP, FIXTURE_TIMESTAMP_MS } from "./transcript-conversion-fixtures";
 
@@ -270,7 +270,22 @@ describe("tool result identity and presentation", () => {
 			};
 			const projected = agentMessageToTranscriptEntry(message, 3, "result-two");
 			expect(projected.content).toEqual([
-				{ ToolResult: { tool: "call-two", content: "first line\nsecond line", is_error: isError } },
+				{
+					ToolResult: {
+						tool: "call-two",
+						content: "first line\nsecond line",
+						is_error: isError,
+						presentation: {
+							expanded: false,
+							view: {
+								kind: "statusRow",
+								status: isError ? "error" : "success",
+								title: "read",
+								description: "first line",
+							},
+						},
+					},
+				},
 				{ Image: { media_type: "image/png", data: [1, 2, 3], alt: null } },
 			]);
 			expect(projected.raw).toBe(message);

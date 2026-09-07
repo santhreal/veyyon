@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import {
 	decodeStreamedToolArgs,
 	streamingStringKeysForTool,
-} from "@veyyon/coding-agent/modes/terminal/controllers/tool-args-reveal";
+} from "@veyyon/coding-agent/tools/core/streamed-tool-args";
 import { drawToolView } from "@veyyon/coding-agent/modes/terminal/draw/draw-tool-view";
 import * as themeModule from "@veyyon/coding-agent/theme/theme";
 import { writeToolView } from "@veyyon/coding-agent/tools/fs/write-view";

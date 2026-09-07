@@ -1,9 +1,10 @@
 import { UnsupportedModelInputError } from "../../session/agent-session";
 import { ImageInputTooLargeError } from "../../utils/image-loading";
 import { VideoInputTooLargeError } from "../../utils/video-loading";
+import { writeFrame } from "../frames";
 import { AttachmentValidationError, abortTurn, executePromptTurn, getOrCreateAgentSession } from "../turns";
 import type { AttachmentSubmission } from "../wire";
-import { activateSession, replyError } from "./active-session";
+import { activateSession, activeManager, isActive, replyError } from "./active-session";
 import type { ActionContext, ActionHandler, ActionHandlersMap } from "./types";
 
 const QUEUE_MODES = ["Steer", "Queue"] as const;
@@ -166,6 +167,108 @@ const handleCancelTool: ActionHandler<CancelToolPayload | undefined> = async (ct
 	}
 };
 
+interface SetToolViewExpandedPayload {
+	session?: string;
+	call_id?: string;
+	expanded?: boolean;
+}
+
+const handleSetToolViewExpanded: ActionHandler<SetToolViewExpandedPayload | undefined> = async (ctx, payload) => {
+	if (
+		!payload ||
+		typeof payload.session !== "string" ||
+		typeof payload.call_id !== "string" ||
+		typeof payload.expanded !== "boolean"
+	) {
+		ctx.reply.failure({
+			scope: "Tool",
+			code: "INVALID_ARGUMENTS",
+			message: "SetToolViewExpanded requires session, call_id and expanded boolean",
+			retryable: false,
+		});
+		return;
+	}
+
+	const sm = activeManager(ctx);
+	if (!isActive(sm, payload.session)) {
+		ctx.reply.failure({
+			scope: "Tool",
+			code: "SESSION_NOT_FOUND",
+			message: `Session '${payload.session}' is not active`,
+			retryable: false,
+		});
+		return;
+	}
+
+	const ledger = ctx.clientState.presentationLedger;
+	if (!ledger || !ledger.hasCall(payload.call_id)) {
+		ctx.reply.failure({
+			scope: "Tool",
+			code: "CALL_NOT_FOUND",
+			message: `Tool call '${payload.call_id}' not found in session '${payload.session}'`,
+			retryable: false,
+		});
+		return;
+	}
+
+	ledger.setDisclosure(payload.call_id, payload.expanded);
+	const session = ctx.clientState.agentSession;
+	const tracked = ledger.getCall(payload.call_id);
+
+	if (ctx.clientState.streamingAccumulating) {
+		const updated = ledger.regenerateCallEntryPresentation(
+			ctx.clientState.streamingAccumulating,
+			name => session?.getToolByName(name),
+			{ partial: true },
+		);
+		if (updated) {
+			ctx.clientState.streamingAccumulating = updated;
+			writeFrame(ctx.socket, {
+				StreamingChanged: {
+					entry: ctx.clientState.streamingEntry ?? "",
+					tool: ctx.clientState.streamingTool ?? null,
+					accumulating: updated,
+					revision: ctx.clientState.revision,
+				},
+			});
+		}
+	}
+
+	if (tracked?.assistantEntry) {
+		const updatedCallEntry = ledger.regenerateCallEntryPresentation(
+			tracked.assistantEntry,
+			name => session?.getToolByName(name),
+		);
+		if (updatedCallEntry) {
+			tracked.assistantEntry = updatedCallEntry;
+			writeFrame(ctx.socket, {
+				TranscriptUpdated: {
+					revision: ctx.clientState.revision,
+					entry: updatedCallEntry,
+				},
+			});
+		}
+	}
+
+	if (tracked?.resultEntry) {
+		const updatedResultEntry = ledger.regenerateResultEntryPresentation(
+			tracked.resultEntry,
+			name => session?.getToolByName(name),
+		);
+		if (updatedResultEntry) {
+			tracked.resultEntry = updatedResultEntry;
+			writeFrame(ctx.socket, {
+				TranscriptUpdated: {
+					revision: ctx.clientState.revision,
+					entry: updatedResultEntry,
+				},
+			});
+		}
+	}
+
+	ctx.reply.success();
+};
+
 interface RespondToInteractionPayload {
 	session?: string;
 	interaction_id?: string;
@@ -199,5 +302,6 @@ export const turnActionHandlers: ActionHandlersMap = {
 	AbortTurn: handleAbortTurn as ActionHandler<never>,
 	SetQueueMode: handleSetQueueMode as ActionHandler<never>,
 	CancelTool: handleCancelTool as ActionHandler<never>,
+	SetToolViewExpanded: handleSetToolViewExpanded as ActionHandler<never>,
 	RespondToInteraction: handleRespondToInteraction as ActionHandler<never>,
 };

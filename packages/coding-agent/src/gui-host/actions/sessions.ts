@@ -1,7 +1,7 @@
-import type { SessionEntry } from "../../session/session-entries";
-import { SessionManager } from "../../session/session-manager";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { sessionHeaderToView } from "../session-bridge";
-import { sessionEntryToTranscriptEntry } from "../transcript-conversion";
+import { sessionEntriesToTranscript } from "../transcript-conversion";
 import { disposeTurnSession, getOrCreateAgentSession } from "../turns";
 import {
 	activateSession as activate,
@@ -359,7 +359,10 @@ const handleLoadTranscript: ActionHandler<LoadTranscriptPayload | undefined> = a
 		const sm = await activate(ctx, payload.session);
 		if (!sm) return;
 		ctx.clientState.revision += 1;
-		const entries = sm.getEntries().map(e => sessionEntryToTranscriptEntry(e, ctx.clientState.revision));
+		const entries = sessionEntriesToTranscript(sm.getEntries(), ctx.clientState.revision, {
+			ledger: ctx.clientState.presentationLedger,
+			session: ctx.clientState.agentSession,
+		});
 		ctx.reply.snapshot({ Transcript: { revision: ctx.clientState.revision, value: entries } });
 		ctx.reply.success();
 	} catch (error) {

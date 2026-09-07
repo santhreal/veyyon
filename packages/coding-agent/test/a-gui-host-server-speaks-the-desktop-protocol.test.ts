@@ -32,9 +32,9 @@ import {
 	ALL_CAPABILITIES,
 	ALL_HOST_ACTIONS,
 	type Capability,
+	GUI_HOST_PROTOCOL_VERSION,
 	type GuiHostServer,
 	MAX_FRAME_BYTES,
-	PROTOCOL_VERSION,
 	SUPPORTED_CAPABILITIES,
 	startGuiHostServer,
 } from "../src/gui-host";
@@ -225,7 +225,7 @@ describe("GUI host server protocol", () => {
 			ConnectionChanged: {
 				Connected: {
 					endpoint: server.endpoint,
-					protocol: PROTOCOL_VERSION,
+					protocol: GUI_HOST_PROTOCOL_VERSION,
 				},
 			},
 		});

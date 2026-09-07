@@ -47,7 +47,8 @@ import {
 	splitAssistantMessageToolTimeline,
 } from "../utils/transcript-render-helpers";
 import { StreamingRevealController } from "./streaming-reveal";
-import { streamingStringKeysForTool, ToolArgsRevealController } from "./tool-args-reveal";
+import { streamingStringKeysForTool } from "../../../tools/core/streamed-tool-args";
+import { ToolArgsRevealController } from "./tool-args-reveal";
 
 /**
  * The slice of the interactive context this controller uses: 51 members of the

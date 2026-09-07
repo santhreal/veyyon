@@ -33,7 +33,7 @@
 
 import { describe, expect, it } from "bun:test";
 import type { DaemonSnapshot } from "@veyyon/coding-agent/launch/protocol";
-import { streamingStringKeysForTool } from "@veyyon/coding-agent/modes/terminal/controllers/tool-args-reveal";
+import { streamingStringKeysForTool } from "@veyyon/coding-agent/tools/core/streamed-tool-args";
 import { getThemeByName } from "@veyyon/coding-agent/theme/theme";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import type { LaunchToolDetails } from "@veyyon/coding-agent/tools/shell/launch";

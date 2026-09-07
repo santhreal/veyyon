@@ -9,12 +9,13 @@ import type { ActionContext, ReplyHelper } from "./actions/types";
 import { FrameDecoder, writeFrame } from "./frames";
 import { buildCapabilitiesSnapshot, mapActionToErrorScope } from "./session-bridge";
 import { type ClientSessionState, disposeClientState } from "./turns";
+import { PresentationLedger } from "./presentation";
 import {
 	type BackendError,
 	getActionTag,
 	type HostAction,
 	type HostActionTag,
-	PROTOCOL_VERSION,
+	GUI_HOST_PROTOCOL_VERSION,
 	type SnapshotSection,
 } from "./wire";
 
@@ -215,7 +216,10 @@ export class GuiHostServer {
 
 	#handleConnection(socket: net.Socket): void {
 		this.#clients.add(socket);
-		const clientState: ClientSessionState = { revision: 0 };
+		const clientState: ClientSessionState = {
+			revision: 0,
+			presentationLedger: new PresentationLedger(),
+		};
 		this.#clientStates.set(socket, clientState);
 
 		// 1. Write greeting frame first
@@ -223,7 +227,7 @@ export class GuiHostServer {
 			ConnectionChanged: {
 				Connected: {
 					endpoint: this.endpoint,
-					protocol: PROTOCOL_VERSION,
+					protocol: GUI_HOST_PROTOCOL_VERSION,
 				},
 			},
 		});

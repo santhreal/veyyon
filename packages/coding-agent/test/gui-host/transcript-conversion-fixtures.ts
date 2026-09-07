@@ -1,5 +1,5 @@
 import type { ContentBlock, MessageRole } from "../../src/gui-host/wire";
-import type { SessionEntry } from "../../src/session/session-entries";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 
 export interface FixtureCase {
 	entry: SessionEntry;
