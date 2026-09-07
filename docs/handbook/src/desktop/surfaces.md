@@ -248,8 +248,9 @@ General settings renders viewport-adjacent rows as the list scrolls. Value updat
 preserve the scroll position. The page header remains visible at the minimum
 window height.
 
-Command search also accepts `/providers`, `/login`, and `/extensions` for the
-corresponding focused destinations.
+Each focused page has its own command name: `/account manager`, `/account login`,
+`/hotkeys`, `/mcp`, `/agents`, `/usage`, `/context`, `/settings themes`, and
+`/settings diagnostics`.
 
 ## Terminal and process output
 
