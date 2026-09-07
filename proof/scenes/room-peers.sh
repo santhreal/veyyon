@@ -21,7 +21,8 @@
 #
 # Off arm (--before): the same take on the base branch, where `/room` is an
 # unknown command and `→→` moves nothing: the frames after step 1 show the
-# same session and no chip.
+# same session and no chip. Each guard is written for the arm it runs in, so
+# both arms reach every shot and a frame keeps one name across the pair.
 #
 # Model and server setup are the ones new-session-keeps-running.sh describes:
 # llama.cpp serving qwen2.5-1.5b on the recorder's docker network, `--no-tools`
@@ -47,11 +48,12 @@ shot a-streaming
 
 # --- 2. /room new while A is answering --------------------------------------
 slash "/room new"
-expect_screen "Opened a peer conversation" 30
+expect_screen "$(arm_key 'Opened a peer conversation' 'Unknown command')" 30 "room-new"
 sleep 1
 shot b-opened-beside-a
 slash "/room"
-expect_screen "Room (2)" 10
+# needle-source: Room (2) -- room-controller.ts prints `Room (${members.length}):` over the listing
+[ "${SCENE_ARM:-after}" = "after" ] && expect_screen "Room (2)" 10
 sleep 1
 shot room-listing
 
@@ -68,19 +70,19 @@ k Right
 pause 0.5
 shot strip-open
 k Return
-expect_screen "terminal emulators" 45
+[ "${SCENE_ARM:-after}" = "after" ] && expect_screen "terminal emulators" 45
 sleep 2
 shot a-switched-still-live
 
 # --- 5. /room 2 back to B by ordinal ----------------------------------------
 slash "/room 2"
-expect_screen "text editors" 45
+[ "${SCENE_ARM:-after}" = "after" ] && expect_screen "text editors" 45
 sleep 2
 shot b-switched-still-live
 
 # --- 6. the peer is an irc peer ---------------------------------------------
 settle_idle 300 6 2 20
 submit "run the irc tool with op list and repeat its output verbatim"
-expect_screen "room peer" 90
+expect_screen "$(arm_key 'room peer' 'IRC peers')" 90 "irc-list"
 sleep 2
 shot irc-lists-the-peer
