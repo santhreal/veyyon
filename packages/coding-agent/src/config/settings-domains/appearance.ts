@@ -183,7 +183,7 @@ export const APPEARANCE_SETTINGS = {
 		ui: {
 			tab: "tools",
 			group: "Output Limits",
-			label: "Artifact Spill Threshold (KB)",
+			label: "Artifact Threshold",
 			description:
 				"Tool output above this size is saved as an artifact; the result keeps the start and end of the output up to this size plus the artifact:// id that reads the full text back. Applies to every tool that streams output: bash, eval, ssh, the interactive shell, search and the browser.",
 			options: [
@@ -208,9 +208,9 @@ export const APPEARANCE_SETTINGS = {
 		ui: {
 			tab: "tools",
 			group: "Output Limits",
-			label: "Artifact Tail Size (KB)",
+			label: "Artifact Tail Size",
 			description:
-				"Amount of tail content kept inline when output spills to artifact, bounded by the spill threshold.",
+				"Amount of the tail kept inline when a tool's output is saved as an artifact, bounded by the Artifact Threshold.",
 			options: [
 				{ value: "1", label: "1 KB", description: "~250 tokens" },
 				{ value: "2.5", label: "2.5 KB", description: "~625 tokens" },
@@ -229,11 +229,11 @@ export const APPEARANCE_SETTINGS = {
 		ui: {
 			tab: "tools",
 			group: "Output Limits",
-			label: "Artifact Head Size (KB)",
+			label: "Artifact Head Size",
 			description:
-				"How much of the start of the output is kept inline when the rest is saved as an artifact, in bytes. The start and the end together stay within the Artifact Spill Threshold. 0: keep only the end.",
+				"How much of the start of the output is kept inline when the rest is saved as an artifact. The start and the end together stay within the Artifact Threshold. 0: keep only the end.",
 			options: [
-				{ value: "0", label: "0 KB", description: "Disabled; tail-only truncation" },
+				{ value: "0", label: "0 KB", description: "Keep only the end" },
 				{ value: "1", label: "1 KB", description: "~250 tokens" },
 				{ value: "2.5", label: "2.5 KB", description: "~625 tokens" },
 				{ value: "5", label: "5 KB", description: "~1.25K tokens" },
@@ -272,7 +272,7 @@ export const APPEARANCE_SETTINGS = {
 			tab: "tools",
 			group: "Output Limits",
 			label: "Artifact Tail Lines",
-			description: "Maximum lines of tail content kept inline when output spills to artifact",
+			description: "Maximum lines of the tail kept inline when a tool's output is saved as an artifact",
 			options: [
 				{ value: "50", label: "50 lines", description: "~250 tokens" },
 				{ value: "100", label: "100 lines", description: "~500 tokens" },

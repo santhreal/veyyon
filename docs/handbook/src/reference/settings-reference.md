@@ -518,18 +518,18 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `tools.artifactSpillThreshold` | Artifact Spill Threshold (KB) | number | `50` | Tool output above this size is saved as an artifact; the result keeps the start and end of the output up to this size plus the artifact:// id that reads the full text back. Applies to every tool that streams output: bash, eval, ssh, the interactive shell, search and the browser. |
-| `tools.artifactTailBytes` | Artifact Tail Size (KB) | number | `20` | Amount of tail content kept inline when output spills to artifact, bounded by the spill threshold. |
-| `tools.artifactHeadBytes` | Artifact Head Size (KB) | number | `20` | How much of the start of the output is kept inline when the rest is saved as an artifact, in bytes. The start and the end together stay within the Artifact Spill Threshold. 0: keep only the end. |
+| `tools.artifactSpillThreshold` | Artifact Threshold | number | `50` | Tool output above this size is saved as an artifact; the result keeps the start and end of the output up to this size plus the artifact:// id that reads the full text back. Applies to every tool that streams output: bash, eval, ssh, the interactive shell, search and the browser. |
+| `tools.artifactTailBytes` | Artifact Tail Size | number | `20` | Amount of the tail kept inline when a tool's output is saved as an artifact, bounded by the Artifact Threshold. |
+| `tools.artifactHeadBytes` | Artifact Head Size | number | `20` | How much of the start of the output is kept inline when the rest is saved as an artifact. The start and the end together stay within the Artifact Threshold. 0: keep only the end. |
 | `tools.outputMaxColumns` | Output Column Cap | number | `768` | Per-line byte cap for streaming tool outputs (bash, ssh, python, js eval) and `read`. Lines wider than this are ellipsis-truncated; remaining bytes up to the next newline are dropped. 0 disables. |
-| `tools.artifactTailLines` | Artifact Tail Lines | number | `500` | Maximum lines of tail content kept inline when output spills to artifact. |
+| `tools.artifactTailLines` | Artifact Tail Lines | number | `500` | Maximum lines of the tail kept inline when a tool's output is saved as an artifact. |
 | `tools.inlineOutputFloor` | Inline Output Floor | number | `0.25` | Smallest share of the inline output budget a tool result early in the conversation may use before the rest is saved as an artifact. A lower value saves output to an artifact sooner and costs fewer context tokens. 1: every result gets the full budget. Applies to every tool that streams output: bash, eval, ssh, the interactive shell, search and the browser. Shown under the tab's Advanced fold. |
 
 ### Execution
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `tools.intentTracing` | Intent Tracing | boolean | `true` | Ask the agent to describe the intent of each tool call before executing it. |
+| `tools.intentTracing` | Intent Tracing | boolean | `true` | Prompt the model to state the intent of each tool call before it runs. |
 | `tools.abortOnFabricatedResult` | Abort On Fabricated Tool Result | boolean | `true` | With in-band tool calls, stop the model immediately when it starts hallucinating a tool result mid-turn. Disable to let the model finish generating and discard the fabricated continuation instead. |
 | `tools.maxTimeout` | Max Tool Timeout | number | `0` | Maximum timeout in seconds the agent can set for any tool (0 = no limit). |
 | `async.enabled` | Async Execution | boolean | `true` | Enable async bash commands and background task execution. |
@@ -544,7 +544,7 @@ veyyon config get compaction.threshold
 | `mcp.discoveryMode` | MCP Tool Discovery | boolean | `false` | Hide MCP tools from the tool list and expose them through a tool discovery tool. |
 | `mcp.discoveryDefaultServers` | MCP Discovery Default Servers | array | `[]` | Keep MCP tools from these servers visible while discovery mode hides other MCP tools. |
 | `mcp.notifications` | MCP Update Injection | boolean | `false` | Inject MCP resource updates into the agent conversation. |
-| `mcp.notificationDebounceMs` | MCP Notification Debounce | number | `500` | Debounce window in milliseconds for MCP resource updates before injecting them into the conversation. |
+| `mcp.notificationDebounceMs` | MCP Notification Delay | number | `500` | Milliseconds of quiet after an MCP resource update before one notification for that resource is added to the conversation; further updates to the same resource inside the window restart it. |
 
 ### Developer
 
@@ -583,7 +583,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `agent.enabled` | Agents | boolean | `true` | Allow this session to spawn agents. Off removes the task tool and the delegation instructions from the system prompt. Agent Delegation and the Roster keep their values and apply again when this is on. |
-| `agent.delegation` | Agent Delegation | enum | `preferred` | How strongly the system prompt asks the model to delegate work to enabled agents. Allowed: the task tool is available and the prompt does not ask for delegation. Preferred: the prompt asks for substantial eligible work to be delegated. Required: Preferred plus a reminder on the first turn. Work no enabled agent covers stays with the main agent. Values: `allowed`, `preferred`, `required`. |
+| `agent.delegation` | Agent Delegation | enum | `preferred` | How strongly the system prompt calls for work to be delegated to enabled agents. Allowed: the task tool is available and the prompt does not call for delegation. Preferred: the prompt calls for substantial eligible work to be delegated. Required: Preferred plus a reminder on the first turn. Work no enabled agent covers stays with the main agent. Values: `allowed`, `preferred`, `required`. |
 | `agent.batch` | Batch Task Calls | boolean | `true` | Use the batch schema for the task tool: one call carries a shared context and a list of tasks, one agent per task. With async agents on, each task runs as a background agent; otherwise the call blocks until every task returns. Off uses the single-task schema. Shown under the tab's Advanced fold. |
 
 ### Agents
@@ -658,7 +658,7 @@ veyyon config get compaction.threshold
 | `speech.enhanced` | Enhanced Speech Rewriting | boolean | `false` | Rewrite assistant output into natural spoken prose with the tiny/smol model before synthesis (describes code, drops links and markdown). Falls back to mechanical cleanup on failure. |
 | `speech.voice` | Speech Vocalization Voice | enum | `af_heart` | Kokoro voice used when speaking the assistant's output aloud. Values: `af_heart`, `af_bella`, `af_nicole`, `af_aoede`, `af_kore`, `af_sarah`, `am_michael`, `am_fenrir`, `am_puck`, `bf_emma`, `bm_george`, `bm_fable`. |
 | `providers.fetch` | Fetch Provider | enum | `auto` | Reader backend priority for the fetch/read URL tool. Values: `auto`, `native`, `trafilatura`, `lynx`, `parallel`, `jina`. |
-| `codexResets.autoRedeem` | Codex Auto-Redeem Saved Resets | enum | `unset` | When a turn is blocked by the Codex weekly limit on the active account and no other account is available, run the conservative saved-reset check. unset asks before spending the first eligible reset, yes spends eligible resets without prompting, and no disables the check entirely. Requires retries enabled. Values: `unset`, `yes`, `no`. |
+| `codexResets.autoRedeem` | Codex Auto-Redeem Saved Resets | enum | `unset` | When a turn is blocked by the Codex weekly limit on the active account and no other account is available, run the saved-reset check. Unset: prompt before spending the first eligible reset. Yes: spend eligible resets without prompting. No: skip the check. Requires retries enabled. Values: `unset`, `yes`, `no`. |
 | `codexResets.minBlockedMinutes` | Codex Auto-Redeem Min Block | number | `60` | Only auto-redeem when the natural weekly reset is at least this many minutes away (don't spend a ~30-day credit to save a short wait). |
 | `codexResets.keepCredits` | Codex Auto-Redeem Reserve | number | `0` | Never auto-spend below this many saved resets (0 = the last credit may be spent automatically). |
 | `exa.enabled` | Exa | boolean | `true` | Master toggle for all Exa search tools. |

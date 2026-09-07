@@ -872,7 +872,11 @@ export const CONTEXT_SETTINGS = {
 					label: "Online (tiny)",
 					description: "Use the online tiny model (the TINY role from /models, else @smol)",
 				},
-				{ value: "remote", label: "Remote", description: "Use the Mnemopi remote LLM settings below" },
+				{
+					value: "remote",
+					label: "Remote",
+					description: "Use the endpoint, key and model from the Mnemopi LLM settings",
+				},
 			],
 		},
 	},

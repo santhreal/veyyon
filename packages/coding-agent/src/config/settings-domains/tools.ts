@@ -67,7 +67,7 @@ export const TOOLS_SETTINGS = {
 				{
 					value: "ask",
 					label: "Ask everything",
-					description: "Every tool call asks first, reads included.",
+					description: "Every tool call prompts for approval, reads included.",
 				},
 				{
 					value: "ask-command",
@@ -147,7 +147,7 @@ export const TOOLS_SETTINGS = {
 			label: "Create Todos Automatically",
 			description: "How strongly to push automatic todo-list creation after the first message",
 			options: [
-				{ value: "default", label: "Default", description: "Model decides; no automatic todo list" },
+				{ value: "default", label: "Default", description: "Left to the model; no automatic todo list" },
 				{
 					value: "preferred",
 					label: "Preferred",
@@ -181,7 +181,7 @@ export const TOOLS_SETTINGS = {
 			description:
 				"Smallest share of the inline output budget a tool result early in the conversation may use before the rest is saved as an artifact. A lower value saves output to an artifact sooner and costs fewer context tokens. 1: every result gets the full budget. Applies to every tool that streams output: bash, eval, ssh, the interactive shell, search and the browser.",
 			options: [
-				{ value: "1", label: "Flat cap (no early spill)" },
+				{ value: "1", label: "Flat cap (full budget for every result)" },
 				{ value: "0.5", label: "Half budget" },
 				{ value: "0.25", label: "Quarter budget" },
 				{ value: "0.1", label: "Tenth budget" },
@@ -496,7 +496,7 @@ export const TOOLS_SETTINGS = {
 			tab: "tools",
 			group: "Execution",
 			label: "Intent Tracing",
-			description: "Ask the agent to describe the intent of each tool call before executing it",
+			description: "Prompt the model to state the intent of each tool call before it runs",
 		},
 	},
 	"tools.abortOnFabricatedResult": {
@@ -715,9 +715,9 @@ export const TOOLS_SETTINGS = {
 			min: 0, // a debounce cannot be negative
 			tab: "tools",
 			group: "Discovery & MCP",
-			label: "MCP Notification Debounce",
+			label: "MCP Notification Delay",
 			description:
-				"Debounce window in milliseconds for MCP resource updates before injecting them into the conversation",
+				"Milliseconds of quiet after an MCP resource update before one notification for that resource is added to the conversation; further updates to the same resource inside the window restart it",
 		},
 	},
 } as const;

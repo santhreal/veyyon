@@ -43,7 +43,7 @@
 
 ### Changed
 
-- Every setting in every domain states what it does and what each value selects in one to three sentences, with no design history or internal vocabulary; the idle timeout row is labelled "Park Idle Agents After" and the Park and Prune groups are one "Idle Agents" group.
+- Every setting in every domain states what it does and what each value selects in one to three sentences, with no design history or internal vocabulary; the idle timeout row is labelled "Park Idle Agents After", the Park and Prune groups are one "Idle Agents" group, the artifact rows are "Artifact Threshold", "Artifact Head Size" and "Artifact Tail Size" with the unit on their options, and the MCP debounce row is "MCP Notification Delay".
 - `AgentRegistry.setStatus` consults `AGENT_TRANSITIONS` and throws `AgentTransitionError` for a status move the lifecycle does not perform, so a turn event that arrives after a kill or a park no longer revives the agent; a collab guest mirrors the host's roster through `mirrorStatus`.
 - Interactive chat and the transcript viewer use one replay implementation without changing displayed content or live-tool lifecycle.
 - Settings group types derive from the settings schema while preserving their existing optional fields and value types.

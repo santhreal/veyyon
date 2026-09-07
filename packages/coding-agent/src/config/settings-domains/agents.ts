@@ -179,14 +179,14 @@ export const AGENTS_SETTINGS = {
 			group: "Delegation",
 			label: "Agent Delegation",
 			description:
-				"How strongly the system prompt asks the model to delegate work to enabled agents. Allowed: the task tool is available and the prompt does not ask for delegation. Preferred: the prompt asks for substantial eligible work to be delegated. Required: Preferred plus a reminder on the first turn. Work no enabled agent covers stays with the main agent.",
+				"How strongly the system prompt calls for work to be delegated to enabled agents. Allowed: the task tool is available and the prompt does not call for delegation. Preferred: the prompt calls for substantial eligible work to be delegated. Required: Preferred plus a reminder on the first turn. Work no enabled agent covers stays with the main agent.",
 			keywords: ["agent", "spawn", "fan out", "parallel", "eager"],
 			options: [
-				{ value: "allowed", label: "Allowed", description: "Available; the prompt does not ask for it" },
+				{ value: "allowed", label: "Allowed", description: "Available; the prompt does not call for it" },
 				{
 					value: "preferred",
 					label: "Preferred",
-					description: "Default; the prompt asks for substantial work to be delegated",
+					description: "Default; the prompt calls for substantial work to be delegated",
 				},
 				{
 					value: "required",
