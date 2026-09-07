@@ -22,9 +22,11 @@
 //! count is not observable here; the drawn and hidden counts it is formatted
 //! from are asserted instead.
 
-// The queue helper module serves several suites; this one reads rail geometry
-// and clicks, and touches neither the menu nor the hover-action helpers.
-#[allow(dead_code)]
+#[allow(
+	dead_code,
+	reason = "the queue helper module serves several suites; this one reads rail geometry and \
+	          clicks, and touches neither the menu nor the hover-action helpers"
+)]
 #[path = "support/queue-actions/mod.rs"]
 mod queue_actions;
 #[path = "support/queue-scroll/mod.rs"]
@@ -81,7 +83,9 @@ fn a_parked_overflow_draws_an_older_row_whose_click_pages_in_the_next_page() {
 		})
 		.expect("first page observed");
 
-	let older = *rail_rows.last().expect("the Older row is the last line in the rail");
+	let older = *rail_rows
+		.last()
+		.expect("the Older row is the last line in the rail");
 	assert_eq!(
 		older.size.height, metrics.line_height,
 		"the Older row draws at the archival line height"
@@ -99,7 +103,8 @@ fn a_parked_overflow_draws_an_older_row_whose_click_pages_in_the_next_page() {
 				"the rail now draws two pages of rows and still offers the remainder"
 			);
 			assert_eq!(
-				view.state().current_id, NO_SELECTION,
+				view.state().current_id,
+				NO_SELECTION,
 				"the Older row is not a session row and selects nothing"
 			);
 			assert!(
@@ -132,7 +137,9 @@ fn a_parked_section_that_fits_one_page_draws_no_older_row() {
 
 	let last = *rail_rows.last().expect("the section drew its rows");
 	let below = Point { x: center_of(last).x, y: last.origin.y + last.size.height + px(18.0) };
-	session.click(below).expect("a click below the last row is answered");
+	session
+		.click(below)
+		.expect("a click below the last row is answered");
 
 	session
 		.update(|view, _window, _cx| {
@@ -161,8 +168,7 @@ fn a_deferred_overflow_draws_every_row_and_never_pages() {
 			assert_eq!(
 				view.rail_motion().list_state().item_count(),
 				1 + 60,
-				"Deferred is bounded by the operator, so the rail builds every row with no Older \
-				 row"
+				"Deferred is bounded by the operator, so the rail builds every row with no Older row"
 			);
 		})
 		.expect("deferred list observed");
