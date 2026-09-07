@@ -565,6 +565,12 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		description: "Agent dashboard: live agent roster and comms stream",
 	},
 	{
+		name: "room",
+		description: "Peer conversations beside this one: list, `new` opens one, a number or id switches",
+		inlineHint: "[new | <n> | <id>]",
+		allowArgs: true,
+	},
+	{
 		name: "branch",
 		description: "Create a new branch from a previous message",
 	},

@@ -20,6 +20,9 @@
 
 ### Added
 
+- `/room new` opens a second driving conversation beside the one on screen, `/room` lists the room and `/room <n>` or `/room <id>` switches to a member; `→→` on an empty composer opens an anchored strip above the composer where `←`/`→` move between members and Enter switches, and a switched-away conversation keeps running under the background keeper.
+- Two driving conversations of one room are `irc` peers: each lists the other under `irc list` marked as a room peer and can message it by id, while `to: "all"` reaches the sender's own spawns only and a spawn cannot reach the conversation next door.
+- The status line carries a `room` segment counting the peer conversations beside the displayed one, in every preset and hidden at zero.
 - `src/presentation/` builds the `@veyyon/wire/presentation` view-models from session state, and `PresentationEventBridge` turns session events into transcript updates, so a renderer draws a session without importing one.
 - `src/modes/terminal/driver.ts` implements `PresentationContext` on `@veyyon/tui`: it renders every transcript block kind, the status line, the composer and the dialogs from view-models alone, and reports operator input back as `UIEvent`s.
 - `/process-manager` opens the Agent Control Center across every conversation this process is running rather than only the one on screen, and `a` switches the roster, the comms stream and the transcript guard between the two scopes together.

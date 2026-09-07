@@ -48,6 +48,8 @@ interface IrcPeerInfo {
 	unread: number;
 	lastActivity: number;
 	activity?: string;
+	/** True for a driving agent in the sender's room. See `AgentRegistry.peers`. */
+	room?: true;
 }
 
 export interface IrcDetails {
@@ -157,6 +159,7 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 		// pair of filters that restated the caller, advisor and scope rules a
 		// second time; two spellings of one rule is how the drift starts. Parked
 		// peers are listed because messaging one revives it, which is supported.
+		const peerIds = new Set(registry.peers(senderId).map(ref => ref.id));
 		const peers = registry.listAddressableBy(senderId).map(ref => ({
 			id: ref.id,
 			displayName: ref.displayName,
@@ -166,6 +169,10 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 			unread: bus.unreadCount(ref.id),
 			lastActivity: ref.lastActivity,
 			activity: ref.activity,
+			// A driving agent beside this one in the terminal. Not a spawn, not a
+			// parent: it has its own conversation and its own spawns, and a message
+			// to it wakes a session the operator can switch to.
+			room: peerIds.has(ref.id) || undefined,
 		}));
 		const lines: string[] = [];
 		if (peers.length === 0) {
@@ -174,6 +181,7 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 			lines.push(`${peers.length} peer(s):`);
 			for (const peer of peers) {
 				const extras = [
+					peer.room ? "room peer: a driving agent beside this conversation, not a subordinate" : undefined,
 					peer.activity || undefined,
 					peer.unread > 0 ? `unread ${peer.unread}` : undefined,
 					peer.parentId ? `parent ${peer.parentId}` : undefined,
@@ -184,6 +192,10 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 			if (peers.some(peer => peer.status === "parked")) {
 				lines.push("");
 				lines.push("Parked agents are revived automatically when you message them.");
+			}
+			if (peerIds.size > 0) {
+				lines.push("");
+				lines.push('`to: "all"` reaches your own spawns only; address a room peer by its id.');
 			}
 		}
 		return {
@@ -278,7 +290,15 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 					{ op: "send", to },
 				);
 			}
-			const targetRefs = isBroadcast ? registry.listVisibleTo(senderId).filter(ref => ref.status === "running") : [];
+			// `to: "all"` is this conversation's spawns. A room peer is reachable by
+			// id and is listed, but a broadcast that woke every driving agent in the
+			// terminal would charge each of them a turn for a message meant for the
+			// sender's own tree.
+			const targetRefs = isBroadcast
+				? registry
+						.listVisibleTo(senderId)
+						.filter(ref => ref.status === "running" && !registry.isPeer(senderId, ref.id))
+				: [];
 			const targets = isBroadcast ? targetRefs.map(ref => ref.id) : [to];
 			// A broadcast that also reaches a driving agent delivers the body to it
 			// directly (its own incoming card); relaying the sibling legs to the

@@ -73,6 +73,7 @@ function contextWith(backgroundSessionCount: number): SegmentContext {
 		autoCompactEnabled: false,
 		agentCount: 0,
 		backgroundSessionCount,
+		roomPeerCount: 0,
 		activeMs: 0,
 		activeRepo: null,
 		worktree: null,

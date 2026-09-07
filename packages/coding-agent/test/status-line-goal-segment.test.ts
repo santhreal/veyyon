@@ -90,6 +90,7 @@ function createGoalContext(opts: {
 		autoCompactEnabled: false,
 		agentCount: 0,
 		backgroundSessionCount: 0,
+		roomPeerCount: 0,
 		activeMs: opts.activeMs ?? 0,
 		activeRepo: null,
 		worktree: null,

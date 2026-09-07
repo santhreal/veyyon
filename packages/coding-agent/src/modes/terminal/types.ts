@@ -44,6 +44,7 @@ import type { EvalExecutionComponent } from "./components/transcript/eval-execut
 import type { ToolExecutionHandle } from "./components/transcript/tool-execution";
 import type { TranscriptContainer } from "./components/transcript/transcript-container";
 import type { EventController } from "./controllers/event-controller";
+import type { RoomController } from "./controllers/room-controller";
 import type { OAuthManualInputManager } from "./oauth-manual-input";
 
 export type CompactionQueuedMessage = {
@@ -104,6 +105,8 @@ export interface InteractiveModeContext {
 	omfgContainer: Container;
 	errorBannerContainer: Container;
 	modelCycleContainer: Container;
+	/** Anchored strip listing the driving conversations in this terminal's room; empty while closed. */
+	roomContainer: Container;
 	editor: CustomEditor;
 	editorContainer: Container;
 	hookWidgetContainerAbove: Container;
@@ -125,6 +128,8 @@ export interface InteractiveModeContext {
 	focusParentSession(): Promise<void>;
 	/** Return the view to the main session (delegates to SessionFocusController.unfocus). */
 	unfocusSession(): Promise<void>;
+	/** The sideways axis: the driving conversations beside this one and the switch between them. */
+	readonly room: RoomController;
 	/**
 	 * Build the session `/new` moves to while the displayed one finishes its
 	 * turn. Absent in a host that cannot create a second session, which makes
@@ -224,7 +229,6 @@ export interface InteractiveModeContext {
 	locallySubmittedUserSignatures: Set<string>;
 	lastSigintTime: number;
 	lastEscapeTime: number;
-	lastLeftTapTime: number;
 	shutdownRequested: boolean;
 	/** True once `shutdown()` has started. Read-only from the context;
 	 *  controllers use this to skip work that races with teardown. */

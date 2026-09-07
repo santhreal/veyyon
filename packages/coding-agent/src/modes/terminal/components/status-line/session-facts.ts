@@ -211,6 +211,7 @@ export function launchSegmentContext(request: LaunchContextRequest): SegmentCont
 		autoCompactEnabled: request.autoCompactEnabled,
 		agentCount: 0,
 		backgroundSessionCount: 0,
+		roomPeerCount: 0,
 		activeMs: 0,
 		git: { branch: request.branch, status: launchFacts.gitStatus, pr: null },
 		worktree: request.location?.worktree ?? null,

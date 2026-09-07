@@ -21,6 +21,7 @@ type FakeEditor = {
 	onSelectModelTemporary?: () => void;
 	onSelectModel?: () => void;
 	onLeftAtStart?: () => void;
+	onRightAtEnd?: () => void;
 	onHistorySearch?: () => void;
 	onPasteImage?: () => void;
 	onCopyPrompt?: () => void;
@@ -612,7 +613,6 @@ describe("InputController escape behavior", () => {
 		const now = vi.spyOn(Date, "now");
 		const { ctx, inputListeners } = createContext();
 		Object.defineProperty(ctx, "focusedAgentId", { value: "Worker", configurable: true });
-		ctx.lastLeftTapTime = 0;
 		const controller = new InputController(ctx);
 
 		controller.setupKeyHandlers();
@@ -766,7 +766,6 @@ describe("InputController Ctrl+C behavior", () => {
 describe("InputController double-tap ← gesture", () => {
 	function setup(focusedAgentId?: string) {
 		const { ctx, editor } = createContext();
-		(ctx as { lastLeftTapTime: number }).lastLeftTapTime = 0;
 		(ctx as { focusedAgentId?: string }).focusedAgentId = focusedAgentId;
 		const controller = new InputController(ctx);
 		controller.setupKeyHandlers();
@@ -822,6 +821,70 @@ describe("InputController double-tap ← gesture", () => {
 		tap();
 		expect(unfocusSession).toHaveBeenCalledTimes(1);
 		expect(showAgentsDashboard).not.toHaveBeenCalled();
+	});
+});
+
+/**
+ * `→→` on an empty composer is the sideways gesture: it opens the room strip.
+ * Same detector class as `←←`, so the burst rejection is the same, but a
+ * separate detector instance: a → after a ← is never the second tap of one.
+ */
+describe("InputController double-tap → gesture", () => {
+	function setup(focusedAgentId?: string) {
+		const { ctx, editor } = createContext();
+		(ctx as { focusedAgentId?: string }).focusedAgentId = focusedAgentId;
+		const open = vi.fn();
+		(ctx as { room: { open: () => void } }).room = { open };
+		const controller = new InputController(ctx);
+		controller.setupKeyHandlers();
+		return {
+			open,
+			showAgentsDashboard: ctx.showAgentsDashboard as Spy,
+			right: () => editor.onRightAtEnd?.(),
+			left: () => editor.onLeftAtStart?.(),
+		};
+	}
+
+	it("opens the room strip on a deliberate double-tap", () => {
+		const now = vi.spyOn(Date, "now");
+		const { open, showAgentsDashboard, right } = setup();
+		now.mockReturnValue(1_000);
+		right();
+		now.mockReturnValue(1_200);
+		right();
+		expect(open).toHaveBeenCalledTimes(1);
+		expect(showAgentsDashboard).not.toHaveBeenCalled();
+	});
+
+	it("ignores a terminal-synthesized burst of → arrows arriving together", () => {
+		const now = vi.spyOn(Date, "now");
+		const { open, right } = setup();
+		now.mockReturnValue(1_000);
+		for (let i = 0; i < 6; i++) right();
+		expect(open).not.toHaveBeenCalled();
+	});
+
+	it("does not complete across arrows: ← then → is two first taps", () => {
+		const now = vi.spyOn(Date, "now");
+		const { open, showAgentsDashboard, left, right } = setup();
+		now.mockReturnValue(1_000);
+		left();
+		now.mockReturnValue(1_200);
+		right();
+		now.mockReturnValue(1_400);
+		left();
+		expect(open).not.toHaveBeenCalled();
+		expect(showAgentsDashboard).not.toHaveBeenCalled();
+	});
+
+	it("is inert in a focused agent view: a spawn has nothing beside it", () => {
+		const now = vi.spyOn(Date, "now");
+		const { open, right } = setup("Agent1");
+		now.mockReturnValue(1_000);
+		right();
+		now.mockReturnValue(1_200);
+		right();
+		expect(open).not.toHaveBeenCalled();
 	});
 });
 

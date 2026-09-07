@@ -171,6 +171,7 @@ export type StatusLineSegmentId =
 	| "git"
 	| "pr"
 	| "agents"
+	| "room"
 	| "background"
 	| "token_in"
 	| "token_out"

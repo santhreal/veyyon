@@ -89,6 +89,9 @@ const RIGHT_GROUP_CAPABLE_SEGMENT_IDS = [
 	"model",
 	"pi",
 	"profile",
+	// Unranked on purpose: a peer count is navigation, not spend, and `/room` names the peers
+	// at any width. It sheds first with the other rank-0 parts.
+	"room",
 	"session",
 	"session_name",
 	"time",

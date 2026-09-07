@@ -2900,6 +2900,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			// exists before the transcript has ever been written and survives a
 			// `/move` that rewrites the path.
 			scope: options.parentAgentId ? undefined : (sessionManager.getSessionId?.() ?? undefined),
+			room: options.parentAgentId ? undefined : options.agentRoom,
 			status: "running",
 			model: getActiveModelString(),
 		});

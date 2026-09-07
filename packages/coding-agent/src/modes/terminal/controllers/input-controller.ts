@@ -45,13 +45,13 @@ import {
 	type DeferredEditorAction,
 	extractImagePathFromText,
 } from "../components/composer/custom-editor";
-import { AGENT_VIEW_LEFT_TAP_WINDOW_MS } from "../components/dashboard/agent-view-timings";
 import { AssistantMessageComponent } from "../components/transcript/assistant-message";
 import { shiftImageMarkers } from "../image-reference-markers";
 import { materializeImageReferenceLinks } from "../image-references";
 import { parseQueueShorthand, splitQueuedMessages } from "../queue-input";
 import { invokeSkillCommandFromText, isKnownSkillCommand, type SkillCommandHost } from "../skill-command";
 import type { InteractiveModeContext } from "../types";
+import { ArrowDoubleTap } from "./arrow-double-tap";
 
 /**
  * Compatibility name for the editor-history policy.
@@ -139,18 +139,9 @@ const TINY_TITLE_PROGRESS_DONE_TTL_MS = 3_000;
 // events for seconds. Only reveal the bar once a still-incomplete event arrives after
 // this grace window, so an already-downloaded model never flashes the bar.
 const TINY_TITLE_PROGRESS_REVEAL_DELAY_MS = 1_000;
-// Double-tap ← on an empty editor opens the agent dashboard (and, in a
-// focused agent view, ←← returns to the main session). The upper bound is
-// AGENT_VIEW_LEFT_TAP_WINDOW_MS, imported rather than restated: it is the same
-// gesture window the agent views were built around, and a second copy of the
-// number here is how the two ends of one gesture drift apart. The lower bound
-// rejects terminal-synthesized arrow-key bursts: "click to move cursor" /
-// pointer features in iTerm2, WezTerm, kitty, and tmux emit several arrow keys
-// in a single stdin read (sub-millisecond apart) on a stray click, which used to
-// pop the card with no key ever pressed. Three or more rapid taps are likewise
-// treated as a burst, not a gesture. A deliberate human double-tap is always
-// tens of milliseconds apart.
-const LEFT_DOUBLE_TAP_MIN_GAP_MS = 40;
+// The arrow double-tap gestures (←← the agent hub, →→ the room strip) share
+// one detector class, `ArrowDoubleTap`, which owns the window and the burst
+// rejection; see its doc comment for the bounds.
 
 // How long the second Esc has to arrive for a double-press to read as one gesture.
 // Both Esc gestures share it: discarding a draft, and `doubleEscapeAction` on an
@@ -197,7 +188,6 @@ export type InputControllerContext = TuiSlashCommandHostContext &
 		| "isShuttingDown"
 		| "keybindings"
 		| "lastEscapeTime"
-		| "lastLeftTapTime"
 		| "lastSigintTime"
 		| "loadingAnimation"
 		| "locallySubmittedUserSignatures"
@@ -206,6 +196,7 @@ export type InputControllerContext = TuiSlashCommandHostContext &
 		| "pauseLoop"
 		| "queueCompactionMessage"
 		| "refreshComposerShortcuts"
+		| "room"
 		| "showHistorySearch"
 		| "showModelCycleTrack"
 		| "startPendingSubmission"
@@ -236,10 +227,10 @@ export class InputController {
 	#btwBranchListenerInstalled = false;
 	#btwCopyListenerInstalled = false;
 	#goalDetailListenerInstalled = false;
-	// Tap counter for the double-← gesture; reset whenever a quiet gap
-	// (>= AGENT_VIEW_LEFT_TAP_WINDOW_MS) starts a fresh sequence. See
-	// #detectLeftDoubleTap.
-	#leftTapCount = 0;
+	// One detector per arrow: a ← after a → is a fresh sequence, never the
+	// second tap of one.
+	#leftTap = new ArrowDoubleTap();
+	#rightTap = new ArrowDoubleTap();
 	// Sequential index for `local://attachment-N` references created by large-paste and
 	// pasted-file attachments. Seeded from 0 and bumped past existing attachment files.
 	#attachmentCounter = 0;
@@ -573,13 +564,25 @@ export class InputController {
 		// the same key that opened it, so the gesture needs no close-tap handoff:
 		// inside the card the arrows switch views.
 		this.ctx.editor.onLeftAtStart = () => {
+			this.#rightTap.reset();
 			if (this.ctx.focusedAgentId) {
 				this.#handleFocusedLeftTap();
 				return;
 			}
-			if (this.#detectLeftDoubleTap()) {
+			if (this.#leftTap.tap()) {
 				this.ctx.showAgentsDashboard({ requireContent: true });
 			}
+		};
+		// Double-tap right arrow on an empty editor: the sideways axis. Opens the
+		// room strip with the cursor on the next peer conversation; with no peer
+		// the controller says so on the status line and the gesture is otherwise
+		// inert. Once the strip is open its own listener owns the arrows, so a
+		// third → moves the cursor rather than restarting the gesture. Inert in a
+		// focused agent view: a spawn is not a room member and has nothing beside it.
+		this.ctx.editor.onRightAtEnd = () => {
+			this.#leftTap.reset();
+			if (this.ctx.focusedAgentId) return;
+			if (this.#rightTap.tap()) this.ctx.room.open();
 		};
 
 		this.#setupEnhancedPaste();
@@ -600,37 +603,9 @@ export class InputController {
 	}
 
 	#handleFocusedLeftTap(): void {
-		if (this.#detectLeftDoubleTap()) {
+		if (this.#leftTap.tap()) {
 			void this.ctx.unfocusSession();
 		}
-	}
-
-	/**
-	 * Detect a deliberate double-← gesture, rejecting terminal-synthesized arrow
-	 * bursts. Returns true only on the *second* tap of a fresh sequence when it
-	 * lands a human-plausible interval after the first
-	 * (`[LEFT_DOUBLE_TAP_MIN_GAP_MS, AGENT_VIEW_LEFT_TAP_WINDOW_MS)`). Taps closer
-	 * than the lower bound, or any third-and-later tap before a quiet gap, are a
-	 * burst and never fire — so a stray click that makes the terminal emit a run
-	 * of ← keys can no longer pop the agent dashboard.
-	 */
-	#detectLeftDoubleTap(): boolean {
-		const now = Date.now();
-		const sinceLast = now - this.ctx.lastLeftTapTime;
-		this.ctx.lastLeftTapTime = now;
-		if (sinceLast >= AGENT_VIEW_LEFT_TAP_WINDOW_MS) {
-			// Quiet gap: this tap starts a fresh sequence.
-			this.#leftTapCount = 1;
-			return false;
-		}
-		this.#leftTapCount += 1;
-		if (this.#leftTapCount === 2 && sinceLast >= LEFT_DOUBLE_TAP_MIN_GAP_MS) {
-			// Exactly two taps, the second a human-plausible interval after the first.
-			this.#leftTapCount = 0;
-			this.ctx.lastLeftTapTime = 0;
-			return true;
-		}
-		return false;
 	}
 
 	#setupEnhancedPaste(): void {

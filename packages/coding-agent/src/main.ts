@@ -1913,14 +1913,16 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 			authStorage.setRuntimeApiKey(session.model.provider, parsedArgs.apiKey);
 		}
 
-		// `/new` while a turn is in flight moves the UI here instead of aborting.
-		// Overridden against the launch options: a fresh SessionManager so the
-		// running turn keeps writing its own transcript, and no inherited
-		// provider state, which `AgentSession.newSession` also drops when it
-		// resets in place. `mcpManager` is passed so the new session reuses the
-		// connected servers rather than re-discovering and re-owning them; the
-		// handed-off session stays their owner for the life of the process.
-		const createNextSession: InteractiveSessionFactory = async () => {
+		// `/new` while a turn is in flight, and `/room new`, move the UI here
+		// instead of aborting or replacing. Overridden against the launch options:
+		// a fresh SessionManager so the running turn keeps writing its own
+		// transcript, and no inherited provider state, which
+		// `AgentSession.newSession` also drops when it resets in place.
+		// `mcpManager` is passed so the new session reuses the connected servers
+		// rather than re-discovering and re-owning them; the handed-off session
+		// stays their owner for the life of the process. `room` registers the new
+		// driving agent as a peer of the one that opened it.
+		const createNextSession: InteractiveSessionFactory = async ({ room } = {}) => {
 			const activeCwd = getProjectDir();
 			const nextSessionManager = SessionManager.create(activeCwd, parsedArgs.sessionDir);
 			const { session: next } = await createSession({
@@ -1931,6 +1933,7 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 				preloadedExtensions: extensionsResult,
 				sessionManager: nextSessionManager,
 				mcpManager,
+				agentRoom: room,
 				providerSessionId: undefined,
 				providerPromptCacheKey: undefined,
 				providerPromptCacheKeySource: undefined,

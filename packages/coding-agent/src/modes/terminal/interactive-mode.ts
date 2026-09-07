@@ -200,6 +200,7 @@ import { HomeAnchorLayout } from "./controllers/home-anchor-layout";
 import { InputController } from "./controllers/input-controller";
 import { MCPCommandController } from "./controllers/mcp-command-controller";
 import { OmfgController } from "./controllers/omfg-controller";
+import { RoomController } from "./controllers/room-controller";
 import { SelectorController } from "./controllers/selector-controller";
 import { SessionFocusController } from "./controllers/session-focus-controller";
 import { SSHCommandController } from "./controllers/ssh-command-controller";
@@ -317,6 +318,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	omfgContainer: Container;
 	errorBannerContainer: Container;
 	modelCycleContainer: Container;
+	roomContainer: Container;
 	editor: CustomEditor;
 	editorContainer: Container;
 	composerShortcuts: ComposerShortcutsBar;
@@ -424,7 +426,6 @@ export class InteractiveMode implements InteractiveModeContext {
 	#pendingSubmittedInput: SubmittedUserInput | undefined;
 	lastSigintTime = 0;
 	lastEscapeTime = 0;
-	lastLeftTapTime = 0;
 	shutdownRequested = false;
 	#isShuttingDown = false;
 	#relaunchSpec: { argv: string[]; env?: Record<string, string | undefined> } | undefined;
@@ -487,6 +488,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	readonly #inputController: InputController;
 	readonly #selectorController: SelectorController;
 	readonly #focusController: SessionFocusController;
+	readonly #roomController: RoomController;
 	get viewSession(): AgentSession {
 		return this.#focusController.target ?? this.session;
 	}
@@ -504,6 +506,9 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 	unfocusSession(): Promise<void> {
 		return this.#focusController.unfocus();
+	}
+	get room(): RoomController {
+		return this.#roomController;
 	}
 	clearTransientSessionUi(): void {
 		this.#workingLoader.abandon();
@@ -717,6 +722,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.omfgContainer = new AnchoredLiveContainer();
 		this.errorBannerContainer = new AnchoredLiveContainer();
 		this.modelCycleContainer = new AnchoredLiveContainer();
+		this.roomContainer = new AnchoredLiveContainer();
 		// Adopted, not built: the launch card already mounted a live composer and
 		// the operator may have typed into it. Building a second one here would
 		// throw that draft away and remount the input the session is coming up
@@ -759,6 +765,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// view is proxied onto an agent, and `focusedAgentId` reads through this
 		// controller. Everything else it needs from the host is read lazily.
 		this.#focusController = new SessionFocusController(this);
+		this.#roomController = new RoomController(this);
 		this.composerShortcuts = new ComposerShortcutsBar();
 		// A chip click runs the same action its keybinding runs; the editor owns
 		// those callbacks (input-controller assigns them with the full panel,
@@ -1078,6 +1085,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.ui.addChild(this.omfgContainer);
 		this.ui.addChild(this.errorBannerContainer);
 		this.ui.addChild(this.modelCycleContainer);
+		this.ui.addChild(this.roomContainer);
 		// Bottom-anchor fill: on the home screen this expands to sink the whole
 		// status + composer block to the viewport bottom (grok placement); it sits
 		// above the status loader so they travel down together.
@@ -1105,6 +1113,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#layout.seedAfterMount();
 
 		this.#inputController.setupKeyHandlers();
+		this.#roomController.install();
 		this.editor.beginEarlySubmissions();
 		if (this.#eventBus) {
 			this.#observerRegistry.subscribeToEventBus(this.#eventBus);
@@ -3563,6 +3572,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#btwController.dispose();
 		this.#omfgController.dispose();
 		this.#focusController.dispose();
+		this.#roomController.dispose();
 
 		// Surface an explicit "Closing session…" line so the user sees a reason
 		// for the pause while `session.dispose()` flushes memory consolidate and
@@ -4032,6 +4042,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	#prepareSessionSwitch(): void {
 		this.#btwController.dispose();
 		this.#omfgController.dispose();
+		this.#roomController.close();
 		this.#extensionUiController.clearExtensionTerminalInputListeners();
 		this.clearPinnedError();
 		this.#hidePlanReview();

@@ -63,6 +63,7 @@ function createPathContext(): SegmentContext {
 		autoCompactEnabled: false,
 		agentCount: 0,
 		backgroundSessionCount: 0,
+		roomPeerCount: 0,
 		activeMs: 0,
 		activeRepo: null,
 		worktree: null,

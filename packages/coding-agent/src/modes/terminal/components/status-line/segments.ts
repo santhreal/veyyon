@@ -496,6 +496,23 @@ const backgroundSegment: StatusLineSegment = {
 		return { content: theme.fg("warning", content), visible: true };
 	},
 };
+/**
+ * Driving conversations beside this one in the terminal's room.
+ *
+ * `→→` switches to them; this chip is what tells the operator there is
+ * anything to switch to. Hidden at zero. Distinct from `background`: a peer
+ * that is idle costs nothing and is still a peer.
+ */
+const roomSegment: StatusLineSegment = {
+	id: "room",
+	render(ctx) {
+		if (ctx.roomPeerCount === 0) {
+			return { content: "", visible: false };
+		}
+		const content = withIcon(theme.icon.agents, `${ctx.roomPeerCount} peer${ctx.roomPeerCount === 1 ? "" : "s"}`);
+		return { content: theme.fg("statusLineAgents", content), visible: true };
+	},
+};
 
 const tokenInSegment: StatusLineSegment = {
 	id: "token_in",
@@ -907,6 +924,7 @@ export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
 	pr: prSegment,
 	agents: agentsSegment,
 	background: backgroundSegment,
+	room: roomSegment,
 	token_in: tokenInSegment,
 	token_out: tokenOutSegment,
 	token_total: tokenTotalSegment,

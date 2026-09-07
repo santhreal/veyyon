@@ -164,6 +164,7 @@ export type TuiSlashCommandHostContext = CollabHostContext &
 		| "present"
 		| "refreshSlashCommandState"
 		| "requestRelaunch"
+		| "room"
 		| "session"
 		| "sessionManager"
 		| "settings"

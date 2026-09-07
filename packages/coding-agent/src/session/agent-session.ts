@@ -8625,19 +8625,26 @@ export class AgentSession {
 	}
 
 	/**
-	 * The date and working directory as they stand now, or null when the model has
-	 * already been told exactly this.
+	 * The date, working directory and room peers as they stand now, or null when
+	 * the model has already been told exactly this.
 	 *
 	 * Deduped against the last block delivered, so a session that never re-roots
 	 * states them once and a session that re-roots restates them on the next turn.
 	 * Re-sending an unchanged block would grow the context every turn for no new
 	 * information, which is the cost this whole arrangement exists to avoid.
+	 *
+	 * Peers ride here rather than in the system prompt for the same reason the
+	 * cwd does: a peer opening or closing beside this conversation is a change
+	 * mid-session, and restating it as a turn message leaves the cached prompt
+	 * prefix intact.
 	 */
 	#buildSessionStateMessage(): CustomMessage | null {
+		const peers = this.#agentId ? AgentRegistry.global().peers(this.#agentId).map(ref => ({ id: ref.id })) : [];
 		const content = prompt
 			.render(sessionPrompts["session/session-state"].text, {
 				date: formatLocalCalendarDate(),
 				cwd: shortenPath(normalizePromptPath(this.sessionManager.getCwd())),
+				peers,
 			})
 			.trim();
 		if (content === this.#deliveredSessionState) return null;

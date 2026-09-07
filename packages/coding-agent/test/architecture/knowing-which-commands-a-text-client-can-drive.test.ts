@@ -253,9 +253,13 @@ describe("the declared flag and the handler table agree", () => {
 	 * through the composer, and a text client already has that: it can send the instruction itself,
 	 * in whatever words it wants. What the command adds is a fixed wording and a refusal when there
 	 * is no reply to work from, and neither is worth an ACP verb.
+	 *
+	 * `/room` moved the total by one and the text-drivable count by none. It opens the room strip and
+	 * switches which conversation the terminal displays, and a text client displays one conversation
+	 * by construction: the peers it can address are already in every turn's session state.
 	 */
-	it("36 of the 75 builtins are text-drivable", () => {
-		expect(DECLARATIONS.length).toBe(75);
+	it("36 of the 76 builtins are text-drivable", () => {
+		expect(DECLARATIONS.length).toBe(76);
 		expect(TEXT_MODE_BUILTIN_DECLARATIONS.length).toBe(36);
 	});
 

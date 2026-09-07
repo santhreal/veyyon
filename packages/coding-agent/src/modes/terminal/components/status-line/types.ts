@@ -157,6 +157,13 @@ export interface SegmentContext {
 	 */
 	backgroundSessionCount: number;
 	/**
+	 * Driving agents beside the displayed one in this terminal's room: the
+	 * conversations `→→` switches to. Not the same count as
+	 * {@link backgroundSessionCount}: a peer is a member whether or not it is
+	 * spending, and a handed-off `/new` that never joined a room is not a peer.
+	 */
+	roomPeerCount: number;
+	/**
 	 * Active processing time accumulated this session, in ms — the union of
 	 * every `agent_start`→`agent_end` window plus the currently-streaming
 	 * window if the agent is running. Idle wall-clock never contributes, so

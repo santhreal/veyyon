@@ -68,6 +68,7 @@ function createCtx(overrides?: { pathMaxLength?: number; branch?: string | null 
 		autoCompactEnabled: false,
 		agentCount: 0,
 		backgroundSessionCount: 0,
+		roomPeerCount: 0,
 		activeMs: 0,
 		activeRepo: null,
 		worktree: null,

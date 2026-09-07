@@ -15,7 +15,9 @@ Configure under **Settings → Appearance → Status Line** (`/statusline` jumps
 | `statusLine.sessionAccent` | Tint the editor border with the session color |
 | `statusLine.showHookStatus` | Show active hook status when hooks run |
 
-Built-in segment IDs include: `pi` (legacy product mark segment), `profile`, `model`, `account`, `mode`, `path`, `git`, `pr`, `agents`, `token_in`, `token_out`, `token_total`, `token_rate`, `cost`, `context_pct`, `context_total`, `time_spent`, `time`, `session`, `hostname`, `cache_read`, `cache_write`, `cache_hit`, `session_name`, `usage`, `collab`.
+Built-in segment IDs include: `pi` (legacy product mark segment), `profile`, `model`, `account`, `mode`, `path`, `git`, `pr`, `agents`, `background`, `room`, `token_in`, `token_out`, `token_total`, `token_rate`, `cost`, `context_pct`, `context_total`, `time_spent`, `time`, `session`, `hostname`, `cache_read`, `cache_write`, `cache_hit`, `session_name`, `usage`, `collab`.
+
+`background` counts conversations that run with nothing drawing them, such as a turn handed off by `/new`. `room` counts the peer conversations opened beside this one with `/room new`; `→→` switches between them. Both are hidden at zero and are in every preset.
 
 The `model` segment shows the model you are working with, then two things that are easy to confuse, so they are drawn differently:
 
@@ -146,6 +148,27 @@ The card is scoped to the conversation on screen: the roster, the Comms stream a
 the transcripts it opens are that conversation's. A conversation this process is
 still running off-screen is counted by the status line's background chip and has no
 card of its own.
+
+### Rooms: conversations side by side
+
+`/room new` opens a second driving conversation beside the one on screen and
+attaches the screen to it. Both are full sessions: each has its own transcript,
+its own spawns and every slash command, and the one you left keeps running.
+`/room` lists the room, with the conversation on screen starred; `/room <n>` or
+`/room <id>` switches to a member. A peer is opened in the displayed session's
+working directory, and a switch to a peer that later moved its own re-roots the
+terminal the way `/resume` does.
+
+A double-tap of the right arrow on an empty composer opens the room strip
+above the composer with the cursor on the next peer. `←` and `→` move the cursor,
+Enter switches, Esc or any other key closes it. With no peer the strip stays
+closed and the status line says how to open one.
+
+The two conversations are `irc` peers: each lists the other under `irc list`
+marked as a room peer and can message it by id. `to: "all"` reaches the sender's
+own spawns only, and a spawn cannot reach the conversation next door or its
+spawns. The status line's `room` segment counts the peers beside the displayed
+conversation and is hidden at zero.
 
 ### The Live roster
 
