@@ -27,7 +27,7 @@ import { LoopWatchdog } from "@veyyon/utils/loop-watchdog";
 import { clampLow } from "@veyyon/utils/math";
 import { parseSgrMouse } from "@veyyon/utils/mouse";
 import { errorMessage } from "@veyyon/utils/type-guards";
-import { visibleWidth } from "@veyyon/utils/width";
+import { sliceByColumn, visibleWidth } from "@veyyon/utils/width";
 import { isConPTYHosted, setAltScreenActive, type Terminal } from "../terminal";
 import {
 	encodeKittyDeleteImage,
@@ -128,6 +128,32 @@ export interface TUIOptions {
 export interface TUIStartOptions {
 	/** Clear saved native scrollback before the first paint. */
 	clearScrollback?: boolean;
+}
+
+/**
+ * The window the terminal shows, captured by {@link TUI.captureViewport} for a
+ * {@link TUI.slideViewport}. Opaque: rows are width-fitted and the geometry is
+ * what the slide checks the terminal still has.
+ */
+export interface ViewportSnapshot {
+	readonly rows: readonly string[];
+	readonly width: number;
+	readonly height: number;
+}
+
+export interface ViewportSlideOptions {
+	/** Frames the slide takes, the last of which is the authoritative full paint. */
+	steps?: number;
+	/** Milliseconds between frames. */
+	stepMs?: number;
+}
+
+/** Pad `line` with spaces to exactly `width` cells; a wider line is cut. */
+function padToWidth(line: string, width: number): string {
+	const w = visibleWidth(line);
+	if (w === width) return line;
+	if (w < width) return line + " ".repeat(width - w);
+	return sliceByColumn(line, 0, width, true);
 }
 
 const DEFAULT_RENDER_SCHEDULER: RenderScheduler = {
@@ -277,6 +303,12 @@ export class TUI extends Container {
 	// the drag has been quiet for this long. Multiplexer sessions keep their own
 	// debounce (`#armMultiplexerResizeTimer`, see #2088) and never take this path.
 	static readonly #RESIZE_VIEWPORT_SETTLE_MS = 120;
+	// A viewport slide (`slideViewport`) reuses the drag's throwaway frame and
+	// its settle paint: seven slid frames 16ms apart, then the authoritative
+	// replay, so the whole move takes about the length of a keystroke repeat
+	// and never outlasts a second key.
+	static readonly #SLIDE_STEPS = 8;
+	static readonly #SLIDE_STEP_MS = 16;
 	// Ghostty can drop Kitty graphics commands sent during its first post-startup
 	// settle window, leaving only Unicode placeholder cells. Hold the first image
 	// paint until that window has passed; later images render normally.
@@ -505,6 +537,13 @@ export class TUI extends Container {
 	// resize frames so width changes truncate the transient viewport instead of
 	// pushing wrapped fragments into native scrollback.
 	#resizeAltActive = false;
+	// A viewport slide in flight (`slideViewport`): the frame timer and the
+	// count of throwaway frames it painted. While the timer is set every
+	// `#doRender` returns without painting, the same way the resize fast path
+	// keeps the commit ledger untouched, and the slide's last step queues the
+	// one authoritative full paint.
+	#slideTimer: RenderTimer | undefined;
+	#slideFrameCount = 0;
 	#stopped = false;
 	// Always-on event-loop lag probe. The high default threshold keeps it quiet;
 	// it only logs `ui.loop-blocked` (with the current loop phase) when a frame
@@ -941,6 +980,16 @@ export class TUI extends Container {
 	/** Whether a non-multiplexer resize drag is currently in flight. */
 	get resizeViewportActive(): boolean {
 		return this.#resizeViewportActive;
+	}
+
+	/** Throwaway frames painted by viewport slides. Counted apart from {@link fullRedraws}. */
+	get viewportSlideFrames(): number {
+		return this.#slideFrameCount;
+	}
+
+	/** Whether a viewport slide is in flight. */
+	get viewportSlideActive(): boolean {
+		return this.#slideTimer !== undefined;
 	}
 
 	/** Shared budget that caps how many inline images render as live graphics. */
@@ -1551,6 +1600,10 @@ export class TUI extends Container {
 			this.#resizeViewportSettleTimer = undefined;
 		}
 		this.#resizeViewportActive = false;
+		if (this.#slideTimer) {
+			this.#slideTimer.cancel();
+			this.#slideTimer = undefined;
+		}
 		this.#clearPostFullPaintSettle();
 		this.#deferredForcedClearScrollback = false;
 		// A resident alt-buffer session holds the transcript nowhere the terminal can
@@ -2390,6 +2443,12 @@ export class TUI extends Container {
 	 */
 	#doRender(): void {
 		if (this.#stopped) return;
+		// A slide owns the screen until its last frame: it paints throwaway
+		// viewport frames on the borrowed alternate screen and ends with a
+		// forced full paint, so a frame requested meanwhile is folded into that
+		// one rather than painted onto the normal screen mid-slide. The forced
+		// flags are not consumed here, so the fold keeps every caller's intent.
+		if (this.#slideTimer) return;
 		const width = this.terminal.columns;
 		const height = this.terminal.rows;
 
@@ -3391,6 +3450,105 @@ export class TUI extends Container {
 		}
 		extractCursorMarkers(window);
 		return { window: prepareLinesArray(window, width), contentRows: count };
+	}
+
+	/**
+	 * Whether a viewport slide can run right now: the engine has painted, the
+	 * normal screen is what the terminal shows (no overlay, no resident alt
+	 * transcript, no resize drag), no slide is in flight, and the host is not a
+	 * multiplexer that repaints in place, which is the one place the borrowed
+	 * alternate screen the slide paints on is not available.
+	 */
+	#canSlideViewport(): boolean {
+		return (
+			!this.#stopped &&
+			this.#hasEverRendered &&
+			!this.#altActive &&
+			!this.#resizeViewportActive &&
+			this.#multiplexerResizeTimer === undefined &&
+			this.#slideTimer === undefined &&
+			this.#overlays.topmostVisible() === undefined &&
+			!resizeRepaintsInPlace()
+		);
+	}
+
+	/**
+	 * Snapshot the window the terminal is showing, for {@link slideViewport} to
+	 * slide away from. Take it BEFORE changing the children: the snapshot is the
+	 * last committed window, and a render scheduled while the caller is between
+	 * the two states would otherwise commit a half-changed frame over it.
+	 * `undefined` when a slide cannot run, in which case the caller's ordinary
+	 * repaint is the whole transition.
+	 */
+	captureViewport(): ViewportSnapshot | undefined {
+		if (!this.#canSlideViewport()) return undefined;
+		return { rows: this.#previousWindow.slice(), width: this.#previousWidth, height: this.#previousHeight };
+	}
+
+	/**
+	 * Slide the viewport from `from` to the window the children compose now.
+	 * `"left"` moves the screen contents left, so the new window enters from
+	 * the right; `"right"` is the mirror. Each step paints one throwaway frame
+	 * on the borrowed alternate screen, exactly as a resize drag does, and the
+	 * last step queues the same authoritative full paint a drag settles with,
+	 * which also lands every render requested while the slide ran. Returns
+	 * false, painting nothing, when a slide cannot run or the terminal has
+	 * changed size since the snapshot; the caller's own repaint then stands.
+	 */
+	slideViewport(from: ViewportSnapshot, direction: "left" | "right", options?: ViewportSlideOptions): boolean {
+		if (!this.#canSlideViewport()) return false;
+		const width = this.terminal.columns;
+		const height = this.terminal.rows;
+		if (width <= 0 || height <= 0 || width !== from.width || height !== from.height) return false;
+		const steps = Math.max(1, Math.floor(options?.steps ?? TUI.#SLIDE_STEPS));
+		const stepMs = Math.max(0, options?.stepMs ?? TUI.#SLIDE_STEP_MS);
+
+		// The incoming window is composed once, the way a resize frame is: the
+		// visible tail only, cursor markers stripped, rows width-fitted. The
+		// image budget pass is a stable one for the same reason the drag's is.
+		this.#imageBudget.beginPass(true);
+		const to = this.#composeResizeViewport(width, height).window;
+		// Every row of both windows is padded to the full width and closed with
+		// a style reset before the two are joined, so the seam sits at exactly
+		// `width` columns and the outgoing row's colours never bleed into the
+		// incoming one. A wide glyph straddling the cut is dropped (strict).
+		const joined: string[] = new Array(height);
+		for (let r = 0; r < height; r++) {
+			const out = padToWidth(from.rows[r] ?? "", width);
+			const inc = padToWidth(to[r] ?? "", width);
+			joined[r] = direction === "left" ? `${out}\x1b[0m${inc}` : `${inc}\x1b[0m${out}`;
+		}
+
+		let step = 0;
+		const paint = (): void => {
+			this.#slideTimer = undefined;
+			if (this.#stopped) return;
+			step += 1;
+			const offset = Math.round((step * width) / steps);
+			if (
+				step >= steps ||
+				this.terminal.columns !== width ||
+				this.terminal.rows !== height ||
+				this.#overlays.topmostVisible() !== undefined
+			) {
+				// The last step is the authoritative paint itself, not one more
+				// throwaway frame: it leaves the borrowed alternate screen and
+				// replays history exactly as a settled resize drag does.
+				this.#resizeEventPending = true;
+				this.requestRender(true, { clearScrollback: true });
+				return;
+			}
+			const start = direction === "left" ? offset : width - offset;
+			const window: string[] = new Array(height);
+			for (let r = 0; r < height; r++) {
+				window[r] = sliceByColumn(joined[r]!, start, width, true);
+			}
+			this.#emitResizeViewport(window, height, height, width);
+			this.#slideFrameCount += 1;
+			this.#slideTimer = this.#renderScheduler.scheduleRender(paint, stepMs);
+		};
+		this.#slideTimer = this.#renderScheduler.scheduleRender(paint, 0);
+		return true;
 	}
 
 	/**

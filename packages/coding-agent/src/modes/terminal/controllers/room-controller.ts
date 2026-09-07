@@ -20,7 +20,7 @@
  * own cwd is re-rooted on switch the way `/resume` re-roots.
  */
 
-import { Text } from "@veyyon/tui";
+import { Text, type ViewportSnapshot } from "@veyyon/tui";
 import { normalizePathForComparison } from "@veyyon/utils";
 import { matchesKey } from "@veyyon/utils/keys";
 import { AgentRegistry, MAIN_AGENT_ID, type RegistryEvent } from "../../../registry/agent-registry";
@@ -125,8 +125,10 @@ export class RoomController {
 		}
 		this.#switching = true;
 		try {
+			// A new peer joins at the end of the room, so it enters from the right.
+			const from = this.ctx.ui.captureViewport();
 			const next = await createNextSession({ room });
-			await this.#attach(next);
+			await this.#attach(next, from, "left");
 			this.ctx.showStatus(
 				`Opened a peer conversation beside ${this.#labelOf(this.registry.get(this.ownId)?.id)} — →→ switches between them`,
 			);
@@ -160,7 +162,13 @@ export class RoomController {
 		try {
 			if (this.ctx.focusedAgentId) await this.ctx.unfocusSession();
 			const label = this.#labelOf(id);
-			await this.#attach(target.session);
+			const members = this.members();
+			const direction =
+				members.findIndex(member => member.ref.id === id) >
+				members.findIndex(member => member.ref.id === this.ownId)
+					? "left"
+					: "right";
+			await this.#attach(target.session, this.ctx.ui.captureViewport(), direction);
 			this.ctx.showStatus(
 				target.session.isStreaming ? `Switched to ${label} — it is still running` : `Switched to ${label}`,
 			);
@@ -310,8 +318,17 @@ export class RoomController {
 	 * Point the screen at `next`. The sequence is the one `/new`'s hand-off and
 	 * `/resume`'s live re-attach already perform, in their order: attach, re-root
 	 * if the peer's cwd differs, then rebuild every session-derived surface.
+	 *
+	 * `from` is the window the caller captured before anything changed. With
+	 * it, the transition is a viewport slide: the screen on show moves off in
+	 * `direction` and the peer's window follows it in, ending in the same
+	 * authoritative paint a switch without one performs. The slide is started
+	 * in the same tick as the rebuild so no render queued by the rebuild
+	 * reaches the screen before it; each one is folded into the slide's last
+	 * frame. Without `from`, or where the engine refuses the slide (a resize
+	 * since the capture, an overlay, a multiplexer), the plain repaint stands.
 	 */
-	async #attach(next: AgentSession): Promise<void> {
+	async #attach(next: AgentSession, from: ViewportSnapshot | undefined, direction: "left" | "right"): Promise<void> {
 		const previousCwd = this.ctx.sessionManager.getCwd();
 		this.close();
 		// A peer still finishing a turn is in the background set from the switch
@@ -330,8 +347,9 @@ export class RoomController {
 		this.ctx.updateEditorBorderColor();
 		this.ctx.clearTransientSessionUi();
 		this.ctx.renderInitialMessages({ clearTerminalHistory: true });
+		const sliding = from !== undefined && this.ctx.ui.slideViewport(from, direction);
 		await this.ctx.reloadTodos();
 		this.#syncPeerCount();
-		this.ctx.ui.requestRender(true, { clearScrollback: true });
+		if (!sliding) this.ctx.ui.requestRender(true, { clearScrollback: true });
 	}
 }

@@ -164,6 +164,12 @@ above the composer with the cursor on the next peer. `←` and `→` move the cu
 Enter switches, Esc or any other key closes it. With no peer the strip stays
 closed and the status line says how to open one.
 
+A switch slides the screen sideways toward the peer: a member later in the room
+enters from the right, an earlier one from the left, and the slide ends in the
+full repaint a `/resume` performs. Under tmux, screen or zellij, under an open
+dialog, or when the terminal was resized between the gesture and the switch, the
+repaint alone stands.
+
 The two conversations are `irc` peers: each lists the other under `irc list`
 marked as a room peer and can message it by id. `to: "all"` reaches the sender's
 own spawns only, and a spawn cannot reach the conversation next door or its

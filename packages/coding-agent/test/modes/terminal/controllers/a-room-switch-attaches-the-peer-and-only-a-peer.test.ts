@@ -66,6 +66,12 @@ interface Harness {
 		focusedAgentId: string | undefined;
 		createNextSession: ((options?: { room?: string }) => Promise<AgentSession>) | undefined;
 	};
+	/** What the engine answers a capture with; undefined refuses the slide. */
+	viewport: { rows: string[]; width: number; height: number } | undefined;
+	/** Directions handed to slideViewport, in order. */
+	slides: Array<"left" | "right">;
+	/** Forced repaints with clearScrollback, counted. */
+	fullRepaints: number;
 	/** Session ids handed to attachMainSession, in order. */
 	attached: string[];
 	/** Cwds handed to applyCwdChange, in order. */
@@ -137,7 +143,15 @@ function harness(): Harness {
 		},
 		ui: {
 			terminal: { columns: 120 },
-			requestRender: () => {},
+			requestRender: (force?: boolean, options?: { clearScrollback?: boolean }) => {
+				if (force && options?.clearScrollback) result.fullRepaints++;
+			},
+			captureViewport: () => result.viewport,
+			slideViewport: (from: unknown, direction: "left" | "right") => {
+				if (from !== result.viewport) throw new Error("slid from a window that was not captured");
+				result.slides.push(direction);
+				return true;
+			},
 			addInputListener(listener: Listener) {
 				listeners.push(listener);
 				return () => {
@@ -148,7 +162,10 @@ function harness(): Harness {
 		},
 	};
 	const controller = new RoomController(ctx as unknown as InteractiveModeContext, registry);
-	return {
+	const result: Harness = {
+		viewport: { rows: [], width: 120, height: 40 },
+		slides: [],
+		fullRepaints: 0,
 		controller,
 		registry,
 		ctx,
@@ -186,6 +203,7 @@ function harness(): Harness {
 			return result;
 		},
 	};
+	return result;
 }
 
 /** Let the `void this.confirm()` behind Enter run its awaits. */
@@ -238,6 +256,40 @@ describe("switchTo", () => {
 		await h.controller.switchTo("main:a");
 		// /repo → /repo: nothing to re-root.
 		expect(h.rerooted).toEqual(["/elsewhere", "/repo"]);
+	});
+
+	/**
+	 * The transition is a viewport slide whose direction follows room order:
+	 * a later member enters from the right, an earlier one from the left. The
+	 * window is captured before the attach changes anything, and where the
+	 * engine refuses a capture the switch settles with the plain forced repaint
+	 * instead, never both.
+	 */
+	it("slides toward the peer in room order, or repaints outright when the engine refuses a capture", async () => {
+		const h = harness();
+		h.driver("main:a", "room:a", h.ctx.session);
+		h.driver("main:b", "room:a");
+		h.driver("main:c", "room:a");
+		h.controller.install();
+
+		await h.controller.switchTo("main:c");
+		expect(h.slides).toEqual(["left"]);
+		expect(h.fullRepaints).toBe(0);
+		await h.controller.switchTo("main:b");
+		expect(h.slides).toEqual(["left", "right"]);
+		await h.controller.cycle(-1);
+		expect(h.attached.at(-1)).toBe("main:a");
+		expect(h.slides).toEqual(["left", "right", "right"]);
+		await h.controller.cycle(1);
+		expect(h.attached.at(-1)).toBe("main:b");
+		expect(h.slides).toEqual(["left", "right", "right", "left"]);
+		expect(h.fullRepaints).toBe(0);
+
+		h.viewport = undefined;
+		await h.controller.switchTo("main:c");
+		expect(h.attached.at(-1)).toBe("main:c");
+		expect(h.slides).toHaveLength(4);
+		expect(h.fullRepaints).toBe(1);
 	});
 
 	/**
