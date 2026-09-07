@@ -18,7 +18,8 @@ pub mod state;
 pub mod turn;
 
 use veyyon_desktop_kit::{
-	Badge as BadgeChip, ColorRole, Icon, IconName, IconSize, SpacingStep, TokenSet, input::Editor,
+	Badge as BadgeChip, ColorRole, Icon, IconName, IconSize, SpacingStep, TextRamp, TokenSet,
+	input::Editor,
 };
 use veyyon_desktop_model::{SessionId, SurfaceId};
 use veyyon_desktop_tokens::ComposerSurfaceTokens;
@@ -84,24 +85,27 @@ pub fn composer(
 		.iter()
 		.filter_map(|id| hairline_for(controls, id, tokens, cx));
 
+	// §6.3 authors every text size, and gpui's own default is 16px, which is not
+	// one of them: an input row that sets no size draws the prompt at a size the
+	// product never authored. The editor shapes at the inherited text style, so
+	// the wrap carries the ramp for both the live editor and the resting
+	// placeholder.
+	let editor_wrap = div()
+		.id("composer-editor-wrap")
+		.w_full()
+		.flex_1()
+		.overflow_hidden()
+		.text_size(tokens.font_size(TextRamp::Body))
+		.line_height(tokens.line_height(TextRamp::Body));
 	let editor_content = if let Some(ed) = editor {
-		div()
-			.id("composer-editor-wrap")
-			.w_full()
-			.flex_1()
-			.overflow_hidden()
-			.child(ed.clone())
+		editor_wrap.child(ed.clone())
 	} else {
 		let (text, ink) = if has_text {
 			("", ColorRole::Foreground)
 		} else {
 			("Ask, or describe a change", ColorRole::Placeholder)
 		};
-		div()
-			.id("composer-editor-wrap")
-			.w_full()
-			.flex_1()
-			.overflow_hidden()
+		editor_wrap
 			.text_color(tokens.color(ink))
 			.child(text.to_owned())
 	};

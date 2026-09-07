@@ -51,11 +51,26 @@ over the limit, startup fails with the path, its size and the limit.
 
 ```sh
 cargo run -p veyyon-desktop -- scene render 'capability-gate/turn-control-*' --out desktop-scenes
+cargo run -p veyyon-desktop -- scene render '*' --contact-sheet --out desktop-scenes
 ```
 
 `scene list` prints the scene catalogue. `scene render` writes PNG files for the
 matching scenes. Capability scenes include draft text so submission controls
 are actionable when the host capability is available.
+
+`--contact-sheet` tiles the matched scenes into one captioned sheet. A set too
+large for one texture and one readback buffer is split across
+`contact-sheet-01.png`, `contact-sheet-02.png` and so on, each holding whole
+rows so a cell keeps the column it would have had on one sheet. Whole-catalogue
+sheets at the default 1180x800 frame page at nine rows.
+
+Each rendered scene prints one line of measurements: the six §9.6 clutter
+metrics, the count of hit rects the frame registered, and `PASS` or `FAIL`
+against the whole-window ceilings. A breach prints a second line naming the
+metric, what it measured, and its ceiling; a text-size breach also lists the
+sizes. Gaps count the rhythm the frame authored: a span larger than the largest
+spacing step, a value backed by one span, and a span a line of prose crosses
+are content or remainder rather than rhythm and are not counted.
 
 ## Reference
 

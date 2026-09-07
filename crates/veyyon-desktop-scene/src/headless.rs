@@ -47,6 +47,21 @@ pub enum RenderError {
 	#[error("a contact sheet needs at least one cell")]
 	EmptySheet,
 
+	/// A sheet larger than one texture and one readback buffer can carry. The
+	/// renderer's own failure for this is `BufferAsyncError`, which names
+	/// neither the size nor the column count that produced it.
+	#[error(
+		"a {cells}-cell sheet at {columns} columns renders {width}x{height} device pixels, over \
+		 the {limit} limit; page it or lower the column count"
+	)]
+	SheetTooLarge {
+		width:   u32,
+		height:  u32,
+		limit:   u32,
+		cells:   usize,
+		columns: u32,
+	},
+
 	#[error("the offscreen render target produced no frame: {message}")]
 	NoFrame { message: String },
 

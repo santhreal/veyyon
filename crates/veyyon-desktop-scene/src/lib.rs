@@ -10,13 +10,16 @@ pub mod frame;
 pub mod headless;
 pub mod layout;
 pub mod layout_bridge;
+pub mod measure;
 pub mod metrics;
 pub mod primitive_scenes;
 pub mod registry;
 pub mod required_state;
 pub mod session;
 
-pub use contact_sheet::{SheetCell, SheetGrid, tile};
+pub use contact_sheet::{
+	MAX_SHEET_EDGE_PX, SheetCell, SheetGrid, page, rows_per_sheet, sheet_device_size, tile,
+};
 pub use fixtures::{
 	FixtureText, Reachability, block_reachability, content_block_fixture, entry_meta_fixture,
 	role_reachability, session_badge_fixture, session_fixture, session_summary_fixture,
@@ -33,6 +36,10 @@ pub use layout::{
 	LayoutBoxTreeBuilder, LayoutError, TextPaint,
 };
 pub use layout_bridge::layout_box_tree_from_quads;
+pub use measure::{
+	LARGEST_AUTHORED_STEP, Measured, hitbox_centers, measure, rhythm_spans, text_boxes, text_sizes,
+	theme_ground,
+};
 pub use metrics::{
 	Ceilings, ClutterMetrics, DENSEST_REGION_CEILING, MetricBreach, MetricReport, SurfaceClass,
 	Verdict, ceilings, check, cluster_text_sizes, compute_alignment_residue, compute_distinct_gaps,

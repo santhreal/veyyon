@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 use veyyon_desktop_scene::{
 	Captured, MetricReport, RenderOptions, SceneRegistry, SheetCell, SheetGrid, SurfaceClass,
-	compute_metrics, headless_context, tile, write_png,
+	headless_context, measure, page, text_sizes, tile, write_png,
 };
 use veyyon_desktop_tokens::{Theme, Tokens, dump_to_dir, load_theme};
 
@@ -118,20 +118,40 @@ fn list(registry: &SceneRegistry, pattern: &str) -> i32 {
 }
 
 /// One rendered scene, labelled and measured.
+///
+/// The measurement reads all three channels the capture carries. Measuring the
+/// quad tree alone reports no text size and no interactive density, because a
+/// recovered tree carries neither, and counts gaps that span prose.
 fn cell(
 	name: &str,
 	captured: Captured,
 	assets: &Assets<'_>,
 ) -> Result<SheetCell, SceneRenderError> {
-	let metrics = compute_metrics(&captured.layout, &captured.frame, assets.ground()?);
-	let report = MetricReport::new(metrics, SurfaceClass::WholeWindow);
+	let measured = measure(&captured, assets.ground()?);
+	let report = MetricReport::new(measured.metrics, SurfaceClass::WholeWindow);
 	println!(
-		"{name}\t{}x{}@{}\t{report}",
+		"{name}\t{}x{}@{}\t{report} | hits: {}",
 		captured.frame.width(),
 		captured.frame.height(),
-		captured.frame.scale_factor()
+		captured.frame.scale_factor(),
+		measured.interactive
 	);
-	Ok(SheetCell::new(name, captured.frame).with_metrics(metrics))
+	for breach in report.verdict.breaches() {
+		println!(
+			"\t{}: {} over the {} ceiling{}",
+			breach.metric,
+			breach.actual,
+			breach.ceiling,
+			if breach.metric == "distinct_text_sizes" {
+				let mut sizes = text_sizes(&captured);
+				sizes.dedup_by(|a, b| (*a - *b).abs() <= 0.1);
+				format!(": {sizes:?}")
+			} else {
+				String::new()
+			}
+		);
+	}
+	Ok(SheetCell::new(name, captured.frame).with_metrics(measured.metrics))
 }
 
 fn render(
@@ -178,10 +198,36 @@ fn render(
 	}
 	drop(window);
 	if command.contact_sheet {
-		let sheet = tile(&mut cx, cells, SheetGrid::new(command.columns), options.scale_factor)?;
-		let path = command.out.join("contact-sheet.png");
+		write_sheets(&mut cx, cells, command)?;
+	}
+	Ok(())
+}
+
+/// Writes the sheet set the cells need.
+///
+/// One sheet holds the whole catalogue only while it fits inside the renderer's
+/// texture and readback limits; past that the set is paged, and each page is
+/// numbered so the file names sort in scene order.
+fn write_sheets(
+	cx: &mut veyyon_gpui::HeadlessAppContext,
+	cells: Vec<SheetCell>,
+	command: &RenderCommand,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let grid = SheetGrid::new(command.columns);
+	let options = command.frame.options();
+	let pages = page(cells, grid, options.scale_factor);
+	let paged = pages.len() > 1;
+	for (index, cells) in pages.into_iter().enumerate() {
+		let count = cells.len();
+		let sheet = tile(cx, cells, grid, options.scale_factor)?;
+		let name = if paged {
+			format!("contact-sheet-{:02}.png", index + 1)
+		} else {
+			"contact-sheet.png".to_owned()
+		};
+		let path = command.out.join(name);
 		write_png(&sheet, &path)?;
-		println!("{rendered} cells -> {}", path.display());
+		println!("{count} cells -> {}", path.display());
 	}
 	Ok(())
 }

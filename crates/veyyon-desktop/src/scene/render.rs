@@ -16,10 +16,10 @@ use std::path::Path;
 use veyyon_desktop_model::SurfaceId;
 use veyyon_desktop_scene::{
 	Captured, PrimitiveSceneView, RenderError, RenderOptions, RgbaColor, Scene, SceneRegistry,
-	capture_window,
+	capture_window, theme_ground,
 };
 use veyyon_desktop_surface::{ShellView, install_tokens};
-use veyyon_desktop_tokens::{ColorRole, Theme, TokenError, Tokens};
+use veyyon_desktop_tokens::{Theme, TokenError, Tokens};
 use veyyon_gpui::{AppContext as _, Entity, HeadlessAppContext, WindowHandle};
 
 use super::{
@@ -50,9 +50,7 @@ pub struct Assets<'a> {
 impl Assets<'_> {
 	/// The theme's ground, as the metrics read it.
 	pub fn ground(&self) -> Result<RgbaColor, TokenError> {
-		let ground = self.theme.role(self.surface_path, ColorRole::Ground)?;
-		let channel = |value: f32| (value.clamp(0.0, 1.0) * 255.0).round() as u8;
-		Ok(RgbaColor::new(channel(ground.r), channel(ground.g), channel(ground.b), channel(ground.a)))
+		theme_ground(self.theme, self.surface_path)
 	}
 }
 

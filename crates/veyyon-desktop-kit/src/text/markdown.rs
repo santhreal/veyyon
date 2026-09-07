@@ -135,9 +135,11 @@ impl RenderOnce for Markdown {
 					};
 					container.child(prose(ramp).child(text))
 				},
+				// The row carries the prose ramp so the marker draws at the size
+				// of the text it marks; a marker that sets none draws at gpui's
+				// 16px default, which §6.3 does not author.
 				MdBlock::Bullet(text) => container.child(
-					div()
-						.w_full()
+					body()
 						.flex()
 						.flex_row()
 						.gap(tokens.spacing(SpacingStep::S2))
@@ -147,7 +149,7 @@ impl RenderOnce for Markdown {
 								.text_color(tokens.color(ColorRole::Muted))
 								.child("•"),
 						)
-						.child(body().flex_1().min_w_0().child(text)),
+						.child(div().flex_1().min_w_0().child(text)),
 				),
 				MdBlock::Paragraph(text) => container.child(body().child(text)),
 				MdBlock::Code { lang, lines } => {

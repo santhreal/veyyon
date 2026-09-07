@@ -18,10 +18,8 @@ use std::path::{Path, PathBuf};
 use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_scene::{
 	headless::{RenderOptions, headless_context, render_view_captured},
-	metrics::{
-		Ceilings, DENSEST_REGION_CEILING, SurfaceClass, ceilings, cluster_text_sizes,
-		compute_edge_count, element_density_of_centers, gap_spans,
-	},
+	measure::{measure, rhythm_spans, text_sizes, theme_ground},
+	metrics::{Ceilings, DENSEST_REGION_CEILING, SurfaceClass, ceilings},
 	write_png,
 };
 use veyyon_desktop_surface::{ShellView, fixture, install_tokens};
@@ -44,6 +42,8 @@ fn the_window_holds_its_ink_ceilings_at_every_width_in_both_appearances() {
 		let mut cx = headless_context().expect("a headless renderer is required to render the shell");
 		let tokens = load_bundled_tokens().expect("the bundled tokens load");
 		let theme = load_bundled_theme(appearance).expect("the bundled theme loads");
+		let ground = theme_ground(&theme, Path::new("surface"))
+			.expect("the bundled theme states a ground");
 		for width in WIDTHS {
 			let options =
 				RenderOptions { width, height: HEIGHT, scale_factor: 1.0, ..RenderOptions::default() };
@@ -57,50 +57,22 @@ fn the_window_holds_its_ink_ceilings_at_every_width_in_both_appearances() {
 			})
 			.expect("the shell renders offscreen");
 
-			// Each channel from the source that carries it on the quad path:
-			// edges and ink from the frame, gaps from the recovered tree, text
-			// sizes from the shaped runs (the tree's text leaves exist only on
-			// the primitive-scene path), interactive from the registered hit
-			// rects, the set a click can reach.
+			// Each channel from the source that carries it: edges and ink from
+			// the frame, gaps from the recovered tree with the shaped runs
+			// suppressing the spans that cross prose, text sizes from those
+			// runs, interactive from the registered hit rects. `measure` owns
+			// that derivation; this gate owns the ceilings.
 			let cell = format!("{width}x{HEIGHT} {appearance}");
 			let ceiling: Ceilings = ceilings(SurfaceClass::WholeWindow);
+			let measured = measure(&captured, ground);
 
-			let edges = compute_edge_count(&captured.layout, &captured.frame);
+			let edges = measured.metrics.edge_count;
 			if edges > ceiling.edges {
 				failures
 					.push(format!("{cell}: {edges:.1} edges over the {:.0} ceiling", ceiling.edges));
 			}
 
-			let text_boxes: Vec<veyyon_desktop_scene::BoxBounds> = captured
-				.text_runs
-				.iter()
-				.map(|run| {
-					let left = f32::from(run.bounds.origin.x);
-					let top = f32::from(run.bounds.origin.y);
-					veyyon_desktop_scene::BoxBounds::new(
-						left,
-						top,
-						left + f32::from(run.bounds.size.width),
-						top + f32::from(run.bounds.size.height),
-					)
-				})
-				.collect();
-			let mut spans = gap_spans(&captured.layout, &text_boxes);
-			// §6.6 caps the rhythm VOCABULARY. Two filters keep the count on
-			// rhythm and off geometry:
-			//
-			// - A span past the largest step `scale.toml` authors (s13 = 64) is a layout
-			//   remainder — the canvas under a short transcript, the rail below its last
-			//   row — because §9.3 makes a bigger AUTHORED gap impossible. Counting one
-			//   would fail a window for being taller than its content.
-			// - A value backed by exactly one span is a placement accident — the slack
-			//   `justify_between` or `justify_end` distributes, the margin a centred column
-			//   leaves — whose size comes from the window, not from a spacing decision. A
-			//   rhythm step is reused.
-			//
-			// What this does not catch: an off-scale gap authored once, in one
-			// place; the scale lint owns that, not this gate.
-			spans.retain(|gap, rects| *gap <= 64 && rects.len() >= 2);
+			let spans = rhythm_spans(&captured);
 			if spans.len() > ceiling.distinct_gaps {
 				failures.push(format!(
 					"{cell}: {} distinct gaps over the {} ceiling: {:?}",
@@ -115,40 +87,24 @@ fn the_window_holds_its_ink_ceilings_at_every_width_in_both_appearances() {
 				}
 			}
 
-			let mut sizes: Vec<f32> = captured
-				.text_runs
-				.iter()
-				.map(|run| f32::from(run.font_size))
-				.collect();
-			sizes.sort_by(f32::total_cmp);
-			let text_sizes = cluster_text_sizes(&sizes);
-			if text_sizes > ceiling.text_sizes {
-				let mut distinct = sizes.clone();
+			let text_sizes_seen = measured.metrics.distinct_text_sizes;
+			if text_sizes_seen > ceiling.text_sizes {
+				let mut distinct = text_sizes(&captured);
 				distinct.dedup_by(|a, b| (*a - *b).abs() <= 0.1);
 				failures.push(format!(
-					"{cell}: {text_sizes} text sizes over the {} ceiling: {distinct:?}",
+					"{cell}: {text_sizes_seen} text sizes over the {} ceiling: {distinct:?}",
 					ceiling.text_sizes
 				));
 			}
 
-			let interactive = captured.hitboxes.len();
+			let interactive = measured.interactive;
 			if interactive > INTERACTIVE_CEILING {
 				failures.push(format!(
 					"{cell}: {interactive} interactive elements over the {INTERACTIVE_CEILING} ceiling"
 				));
 			}
 
-			let centers: Vec<(f32, f32)> = captured
-				.hitboxes
-				.iter()
-				.map(|rect| {
-					(
-						f32::from(rect.origin.x) + f32::from(rect.size.width) / 2.0,
-						f32::from(rect.origin.y) + f32::from(rect.size.height) / 2.0,
-					)
-				})
-				.collect();
-			let density = element_density_of_centers(&centers, width, HEIGHT);
+			let density = measured.metrics.element_density;
 			if density > DENSEST_REGION_CEILING {
 				failures.push(format!(
 					"{cell}: densest region {density:.1} over the {DENSEST_REGION_CEILING} ceiling"

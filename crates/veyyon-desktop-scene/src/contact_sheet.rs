@@ -45,6 +45,17 @@ const CELL_EDGE: u32 = 0x33_33_33;
 const CAPTION_INK: u32 = 0xb8_be_cb;
 const CAPTION_DIM: u32 = 0x77_7e_8b;
 
+/// The largest device-pixel edge one sheet may have.
+///
+/// A sheet is rasterised into one texture and read back through one buffer, so
+/// its cost is `width * height * 4` bytes of device and host memory. Vulkan
+/// guarantees `maxImageDimension2D` of 4096 and the drivers in use raise it to
+/// 16384, but the readback buffer is what fails first: the whole 238-scene
+/// catalogue at six columns is 7212x34584 logical pixels, which asks for a
+/// gigabyte and returns `BufferAsyncError` instead of a sheet. A catalogue that
+/// overruns this is paged across sheets by `page`, one whole row at a time.
+pub const MAX_SHEET_EDGE_PX: u32 = 8192;
+
 /// One cell: a rendered frame, what to call it, and what it measured.
 pub struct SheetCell {
 	pub label:   String,
@@ -238,6 +249,90 @@ impl Render for Sheet {
 	}
 }
 
+/// The logical size of the largest cell in the set.
+fn cell_extent(cells: &[SheetCell]) -> (f32, f32) {
+	let width = cells.iter().map(|cell| cell.frame.logical_width()).fold(0.0_f32, f32::max);
+	let height = cells.iter().map(|cell| cell.frame.logical_height()).fold(0.0_f32, f32::max);
+	(width, height)
+}
+
+/// The logical size of a sheet holding `columns` x `rows` cells of `cell`.
+///
+/// Each pitch is one cell plus its chrome, multiplied by an integer column or
+/// row count, so the sheet size does not drift with the cell count.
+fn sheet_extent(cell: (f32, f32), columns: u32, rows: u32) -> (f32, f32) {
+	let (cell_width, cell_height) = cell;
+	let pitch_w = CELL_BORDER.mul_add(2.0, cell_width) + CELL_GAP;
+	let pitch_h = CELL_BORDER.mul_add(2.0, cell_height) + CAPTION_HEIGHT + CELL_GAP;
+	(
+		pitch_w.mul_add(columns as f32, SHEET_PADDING * 2.0) - CELL_GAP,
+		pitch_h.mul_add(rows as f32, SHEET_PADDING * 2.0) - CELL_GAP,
+	)
+}
+
+/// Device pixels a logical edge occupies at `scale_factor`.
+fn device_edge(logical: f32, scale_factor: f32) -> u32 {
+	(logical * scale_factor).ceil().max(1.0) as u32
+}
+
+/// The device-pixel size of a sheet of `columns` x `rows` cells of the given
+/// logical size, which is what the renderer is asked for and what
+/// [`MAX_SHEET_EDGE_PX`] bounds.
+pub fn sheet_device_size(
+	cell_width: f32,
+	cell_height: f32,
+	columns: u32,
+	rows: u32,
+	scale_factor: f32,
+) -> (u32, u32) {
+	let (width, height) = sheet_extent((cell_width, cell_height), columns.max(1), rows);
+	(device_edge(width, scale_factor), device_edge(height, scale_factor))
+}
+
+/// How many rows of `cell_height` cells one sheet may hold.
+///
+/// Never zero: a cell taller than the whole bound still gets its own sheet,
+/// which `tile` then refuses by size rather than paging forever.
+pub fn rows_per_sheet(cell_height: f32, scale_factor: f32) -> u32 {
+	let mut rows = 0u32;
+	while device_edge(sheet_extent((0.0, cell_height), 1, rows + 1).1, scale_factor)
+		<= MAX_SHEET_EDGE_PX
+	{
+		rows += 1;
+	}
+	rows.max(1)
+}
+
+/// Splits cells into sheets that each render within [`MAX_SHEET_EDGE_PX`].
+///
+/// The split is by whole rows, so a cell keeps the column it would have had on
+/// an unbounded sheet and two pages of the same catalogue stay comparable. A
+/// grid whose single row already overruns the bound is returned whole rather
+/// than silently re-columned: `tile` then reports the overrun and names the
+/// column count that caused it.
+pub fn page(cells: Vec<SheetCell>, grid: SheetGrid, scale_factor: f32) -> Vec<Vec<SheetCell>> {
+	if cells.is_empty() {
+		return Vec::new();
+	}
+	let columns = grid.columns.max(1);
+	let (_, cell_height) = cell_extent(&cells);
+	let rows = rows_per_sheet(cell_height, scale_factor);
+	// `rows_per_sheet` never returns zero and `columns` is at least one, so a
+	// page always holds at least one cell.
+	let per_page = (rows as usize).saturating_mul(columns as usize);
+
+	// Split by moving: a page of frames is tens of megabytes, and every cell
+	// belongs to exactly one page, so nothing here is copied.
+	let mut pages = Vec::with_capacity(cells.len().div_ceil(per_page));
+	let mut rest = cells;
+	while !rest.is_empty() {
+		let tail = rest.split_off(per_page.min(rest.len()));
+		pages.push(rest);
+		rest = tail;
+	}
+	pages
+}
+
 /// Tiles cells into one sheet and returns the rendered frame.
 ///
 /// Cells are laid out at their logical size, so a sheet of 2x frames is not
@@ -252,15 +347,7 @@ pub fn tile(
 		return Err(RenderError::EmptySheet);
 	}
 
-	let cell_logical_width = cells
-		.iter()
-		.map(|cell| cell.frame.logical_width())
-		.fold(0.0_f32, f32::max);
-	let cell_logical_height = cells
-		.iter()
-		.map(|cell| cell.frame.logical_height())
-		.fold(0.0_f32, f32::max);
-
+	let cell = cell_extent(&cells);
 	let views: Vec<SheetCellView> = cells
 		.iter()
 		.map(|cell| SheetCellView {
@@ -275,22 +362,23 @@ pub fn tile(
 
 	let columns = grid.columns.max(1);
 	let rows = grid.rows_for(views.len() as u32);
+	let (sheet_width, sheet_height) = sheet_extent(cell, columns, rows);
+	let width = device_edge(sheet_width, scale_factor);
+	let height = device_edge(sheet_height, scale_factor);
+	if width > MAX_SHEET_EDGE_PX || height > MAX_SHEET_EDGE_PX {
+		return Err(RenderError::SheetTooLarge {
+			width,
+			height,
+			limit: MAX_SHEET_EDGE_PX,
+			cells: views.len(),
+			columns,
+		});
+	}
 
-	// Each pitch is one cell plus its chrome, multiplied by an integer column or
-	// row count, so the sheet size does not drift with the cell count.
-	let cell_pitch_w = CELL_BORDER.mul_add(2.0, cell_logical_width) + CELL_GAP;
-	let cell_pitch_h = CELL_BORDER.mul_add(2.0, cell_logical_height) + CAPTION_HEIGHT + CELL_GAP;
-	let sheet_width = cell_pitch_w.mul_add(columns as f32, SHEET_PADDING * 2.0) - CELL_GAP;
-	let sheet_height = cell_pitch_h.mul_add(rows as f32, SHEET_PADDING * 2.0) - CELL_GAP;
+	let options =
+		RenderOptions { width, height, scale_factor, ..RenderOptions::default() };
 
-	let options = RenderOptions {
-		width: sheet_width.ceil().max(1.0) as u32,
-		height: sheet_height.ceil().max(1.0) as u32,
-		scale_factor,
-		..RenderOptions::default()
-	};
-
-	let cell_width = cell_logical_width;
+	let cell_width = cell.0;
 	render_view(cx, &options, move |_window, app: &mut App| {
 		app.new(move |_| Sheet { cells: views, grid: SheetGrid::new(columns), cell_width })
 	})

@@ -158,6 +158,9 @@
 ### Fixed
 
 - The GUI host binds a socket a client can address: a profile path longer than `sockaddr_un.sun_path` falls back to `<runtime-dir>/veyyon-gui-<digest>.sock`, which the desktop derives the same way, instead of a `/proc/self/fd` bind the desktop could only report as `path must be shorter than SUN_LEN` until its reconnect ceiling ended the session.
+- `scene render --contact-sheet` produces the sheets it was asked for: the whole 238-scene catalogue is split across numbered sheets that each fit one texture and one readback buffer, instead of every cell being rendered and then discarded with `BufferAsyncError`.
+- The desktop's scene report measures the three channels a render produces rather than the quad tree alone, so text sizes and interactive density are the frame's own numbers instead of the zeros a recovered tree always reports, and a gap a line of prose crosses no longer counts as rhythm; 49 scenes that failed the §6.6 ceilings on that inflated count now measure the rhythm they authored.
+- The desktop composer draws the prompt at the authored 13px body size instead of the renderer's own 16px default, which it inherited in every attached window, and a markdown bullet's marker draws at the size of the text it marks.
 - A desktop tool card disclosed with `space` reports the new state to the host, so the keyboard opens the same card a click does instead of opening its body over the collapsed view.
 - A collapsed desktop tool card draws one row: the host's view is projected onto its status line, block header or section label plus what it holds back, instead of the whole card being drawn at its natural height across the blocks above and below it, and the row is the transcript's collapsed chrome height rather than half of it.
 - A disclosed desktop tool card states no held-back line count on its row, which it kept while the card below it was showing every one of those lines.
