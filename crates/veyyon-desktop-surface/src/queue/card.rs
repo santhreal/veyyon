@@ -94,9 +94,13 @@ pub fn card_row(
 		});
 	}
 
+	// Hidden rather than transparent: an opacity-0 control still registers a
+	// hitbox, so a card would answer a click on a button the frame never drew.
+	// Hidden reserves the same layout, paints nothing and hit-tests nothing,
+	// which is how the line rows reveal their own action.
 	let actions = div()
-		.opacity(0.0)
-		.group_hover("queue-card-row", |style| style.opacity(1.0))
+		.invisible()
+		.group_hover("queue-card-row", |style| style.visible())
 		.flex()
 		.flex_row()
 		.items_center()
