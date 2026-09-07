@@ -18,6 +18,7 @@
 
 ### Changed
 
+- A custom message payload and a stored session entry carry `VideoContent` beside text and images, so a video attachment survives `pi.sendMessage`, persistence and rehydration.
 - Plugin runtime configuration uses the shared record validator; behavior is unchanged.
 - Edit-specific event normalization remains in `@veyyon/coding-agent/extensibility/tool-event-input`; event payloads are unchanged.
 - Settings lookups reuse immutable registry key snapshots and refresh derived indexes after registrations or resets.
