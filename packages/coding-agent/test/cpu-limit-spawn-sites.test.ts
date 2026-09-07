@@ -145,6 +145,11 @@ const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 		wired: true,
 		reason: "shared service workers join the root session's budget group",
 	},
+	"packages/coding-agent/src/gui-host/actions/terminal-session.ts": {
+		wired: true,
+		reason:
+			"a desktop terminal outlives the session opened beside it, so PtySession.start receives the root session tree's budget name",
+	},
 	"packages/coding-agent/src/lsp/client.ts": {
 		wired: true,
 		reason: "language servers are the big one: rust-analyzer is a sustained multi-core load, adopted on spawn",

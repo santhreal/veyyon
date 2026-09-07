@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import type * as net from "node:net";
 import { PtySession } from "@veyyon/natives";
 import { logger } from "@veyyon/utils";
+import { rootBudgetGroupOwnerId, sessionCpuBudgetName } from "../../session/cpu-limit";
 import { writeFrame } from "../frames";
 import type { ClientSessionState, TerminalInstance } from "../turns";
 import type { TerminalView } from "../wire";
@@ -151,6 +152,22 @@ export function onPtySpawnError(
 	}
 }
 
+/**
+ * The budget group a desktop terminal's shell joins.
+ *
+ * A terminal opened from the desktop outlives the session it was opened
+ * beside, so no single conversation owns it, and charging it to whichever
+ * session happened to be open would leave a live shell in a retired group.
+ * It joins the root session tree's group, the same one every process-wide
+ * child shares. Before any session registers a limiter there is no group to
+ * join and the shell runs uncapped, which is what every other spawn site
+ * does with an absent budget.
+ */
+function terminalCpuBudgetId(): string | undefined {
+	const owner = rootBudgetGroupOwnerId();
+	return owner === undefined ? undefined : sessionCpuBudgetName(owner);
+}
+
 export async function spawnTerminalPty(ctx: ActionContext, instance: TerminalInstance): Promise<void> {
 	const stat = await fs.stat(instance.cwd);
 	if (!stat.isDirectory()) {
@@ -161,12 +178,14 @@ export async function spawnTerminalPty(ctx: ActionContext, instance: TerminalIns
 	instance.pty = pty;
 	instance.status = "Running";
 
+	const cpuBudgetId = terminalCpuBudgetId();
 	const runPromise = pty.start(
 		{
 			command: instance.shell,
 			cwd: instance.cwd,
 			cols: instance.cols,
 			rows: instance.rows,
+			...(cpuBudgetId ? { cpuBudgetId } : {}),
 		},
 		(error, chunk) => {
 			if (error) {
