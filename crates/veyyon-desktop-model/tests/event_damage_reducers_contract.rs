@@ -129,6 +129,17 @@ fn test_damage_decision_for_every_snapshot_section_sweep() {
 			"Interactions" => {
 				assert!(damage.contains(&Damage::Composer(session_id.clone())));
 			},
+			"QueuedPrompts" => {
+				assert!(damage.contains(&Damage::Composer(session_id.clone())));
+				assert_eq!(
+					store
+						.queued
+						.get(&session_id)
+						.map(|held| held.in_delivery_order().collect::<Vec<_>>()),
+					Some(vec!["check the tests too", "then write the changelog"]),
+					"the section's two queues reach the store in delivery order"
+				);
+			},
 			"Settings" | "Diagnostics" | "Models" | "Providers" | "AuthFlow" | "Mcp"
 			| "McpToolResult" | "Agents" | "Themes" | "Keybindings" => {
 				assert!(damage.contains(&Damage::Palette), "{name} must emit Damage::Palette");

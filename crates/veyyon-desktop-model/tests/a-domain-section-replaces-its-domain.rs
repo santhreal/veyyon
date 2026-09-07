@@ -255,7 +255,9 @@ fn pair(kind: SnapshotSectionKind) -> Option<[SnapshotSection; 2]> {
 		| SnapshotSectionKind::Capabilities
 		| SnapshotSectionKind::Interactions
 		| SnapshotSectionKind::TerminalOutput
-		| SnapshotSectionKind::ProcessLogs => return None,
+		| SnapshotSectionKind::ProcessLogs
+		// Held prompts are per-session state in `Store::queued`, not a domain view.
+		| SnapshotSectionKind::QueuedPrompts => return None,
 		SnapshotSectionKind::Settings => [
 			settings(&[("theme", "light".into())]),
 			settings(&[("theme", "dark".into()), ("argot.enabled", true.into())]),
@@ -341,5 +343,6 @@ fn every_domain_section_replaces_its_domain_and_the_opt_outs_are_named() {
 		SnapshotSectionKind::Interactions,
 		SnapshotSectionKind::TerminalOutput,
 		SnapshotSectionKind::ProcessLogs,
+		SnapshotSectionKind::QueuedPrompts,
 	]);
 }

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
 	capabilities::CapabilityMap,
 	connection::{ConnectionState, SessionId},
-	domain::Domains,
+	domain::{Domains, QueuedPrompts},
 	interaction::PendingDecisions,
 	persistence::PersistedState,
 	session::SessionCollection,
@@ -15,27 +15,30 @@ use crate::{
 pub struct Store {
 	/// Single definition of host transport connection status and handshake
 	/// progress.
-	pub connection:      ConnectionState,
+	pub connection:   ConnectionState,
 	/// Single definition of backend feature availability across all thirty
 	/// protocol capabilities.
-	pub capabilities:    CapabilityMap,
+	pub capabilities: CapabilityMap,
 	/// Single definition of all known sessions partitioned across the five queue
 	/// segments.
-	pub sessions:        SessionCollection,
+	pub sessions:     SessionCollection,
 	/// Single definition of transcript entry trees and node relationships
 	/// indexed by session.
-	pub transcripts:     HashMap<SessionId, TranscriptTree>,
+	pub transcripts:  HashMap<SessionId, TranscriptTree>,
 	/// Single definition of in-flight assistant token generation and active tool
 	/// progress.
-	pub streaming:       HashMap<SessionId, StreamingMessageState>,
+	pub streaming:    HashMap<SessionId, StreamingMessageState>,
 	/// Single definition of operator decision requests awaiting input, approval,
 	/// or plan review.
-	pub interactions:    HashMap<SessionId, PendingDecisions>,
+	pub interactions: HashMap<SessionId, PendingDecisions>,
+	/// Single definition of the prompts each session holds behind a running
+	/// turn, as the host reported them.
+	pub queued:       HashMap<SessionId, QueuedPrompts>,
 	/// Single definition of layout, geometry, panel visibility, and local client
 	/// persistence.
-	pub persisted:       PersistedState,
+	pub persisted:    PersistedState,
 	/// Single definition of all panel-domain views received from the host.
-	pub domains:         Domains,
+	pub domains:      Domains,
 }
 
 impl Default for Store {
@@ -50,14 +53,15 @@ impl Store {
 	#[must_use]
 	pub fn new() -> Self {
 		Self {
-			connection:      ConnectionState::Detached,
-			capabilities:    CapabilityMap::new(),
-			sessions:        SessionCollection::new(),
-			transcripts:     HashMap::new(),
-			streaming:       HashMap::new(),
-			interactions:    HashMap::new(),
-			persisted:       PersistedState::new(),
-			domains:         Domains::new(),
+			connection:   ConnectionState::Detached,
+			capabilities: CapabilityMap::new(),
+			sessions:     SessionCollection::new(),
+			transcripts:  HashMap::new(),
+			streaming:    HashMap::new(),
+			interactions: HashMap::new(),
+			queued:       HashMap::new(),
+			persisted:    PersistedState::new(),
+			domains:      Domains::new(),
 		}
 	}
 }

@@ -26,6 +26,7 @@ pub enum HostActionKind {
 	SetQueueMode,
 	CancelTool,
 	SetToolViewExpanded,
+	DequeueQueuedPrompt,
 	RespondToInteraction,
 	LoadFileTree,
 	ReadFile,
@@ -82,7 +83,7 @@ pub enum HostActionKind {
 
 impl HostActionKind {
 	/// Complete slice of action kinds for runtime test sweeps.
-	pub const ALL: [Self; 73] = [
+	pub const ALL: [Self; 74] = [
 		Self::Attach,
 		Self::Detach,
 		Self::RetryConnection,
@@ -104,6 +105,7 @@ impl HostActionKind {
 		Self::SetQueueMode,
 		Self::CancelTool,
 		Self::SetToolViewExpanded,
+		Self::DequeueQueuedPrompt,
 		Self::RespondToInteraction,
 		Self::LoadFileTree,
 		Self::ReadFile,
@@ -183,6 +185,7 @@ impl HostActionKind {
 			Self::SetQueueMode => "SetQueueMode",
 			Self::CancelTool => "CancelTool",
 			Self::SetToolViewExpanded => "SetToolViewExpanded",
+			Self::DequeueQueuedPrompt => "DequeueQueuedPrompt",
 			Self::RespondToInteraction => "RespondToInteraction",
 			Self::LoadFileTree => "LoadFileTree",
 			Self::ReadFile => "ReadFile",

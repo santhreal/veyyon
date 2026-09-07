@@ -36,6 +36,9 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		Intent::AbortTurn => {
 			active.map_or_else(Vec::new, |session| vec![HostAction::AbortTurn { session }])
 		},
+		Intent::DequeueQueuedPrompt => {
+			active.map_or_else(Vec::new, |session| vec![HostAction::DequeueQueuedPrompt { session }])
+		},
 		Intent::SetToolViewExpanded { call_id, expanded } => {
 			active.map_or_else(Vec::new, |session| {
 				vec![HostAction::SetToolViewExpanded {

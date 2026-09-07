@@ -28,6 +28,7 @@ pub fn request_surface(intent: &Intent, session: &SessionId) -> Option<SurfaceId
 		Intent::SetQueueMode(_) => SurfaceId::ComposerQueueModeToggle(session.clone()),
 		Intent::SelectModel(_) => SurfaceId::ComposerModelSelector(session.clone()),
 		Intent::SetThinking(_) => SurfaceId::ComposerThinkingSelector(session.clone()),
+		Intent::DequeueQueuedPrompt => SurfaceId::ComposerQueuedTakeBack(session.clone()),
 		_ => return None,
 	})
 }

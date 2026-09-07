@@ -25,7 +25,7 @@ pub enum ActionClassification {
 	Mutation,
 }
 
-/// Classifies any of the 73 [`HostActionKind`] variants into
+/// Classifies any of the 74 [`HostActionKind`] variants into
 /// [`ActionClassification`].
 ///
 /// Uses an exhaustive match without wildcard `_` to guarantee that new actions
@@ -54,7 +54,7 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::GetUsage
 		| HostActionKind::GetContextBreakdown => ActionClassification::Ephemeral,
 
-		// Mutations, lifecycle, session modifications, turns, terminals, processes (54 actions)
+		// Mutations, lifecycle, session modifications, turns, terminals, processes (55 actions)
 		HostActionKind::Attach
 		| HostActionKind::Detach
 		| HostActionKind::RetryConnection
@@ -74,6 +74,7 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::SetQueueMode
 		| HostActionKind::CancelTool
 		| HostActionKind::SetToolViewExpanded
+		| HostActionKind::DequeueQueuedPrompt
 		| HostActionKind::RespondToInteraction
 		| HostActionKind::OpenExternal
 		| HostActionKind::SelectChangeScope

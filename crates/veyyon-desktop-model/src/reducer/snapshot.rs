@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use crate::{
 	connection::{InteractionId, SessionId},
 	damage::{Damage, DamageSet},
+	domain::QueuedPrompts,
 	event::{SessionSummary, SnapshotSection},
 	interaction::PendingDecisions,
 	session::{QueuePartition, Session},
@@ -305,6 +306,18 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 		SnapshotSection::Keybindings(views) => {
 			store.domains.keybindings = views;
 			damage.insert(Damage::Palette);
+		},
+		SnapshotSection::QueuedPrompts(view) => {
+			// `restored` is the host's answer to a `DequeueQueuedPrompt`, which
+			// belongs to the window's draft rather than the store: keeping it
+			// would refill the draft on every later frame.
+			let held = QueuedPrompts::from(&view);
+			if held.is_empty() {
+				store.queued.remove(&view.session);
+			} else {
+				store.queued.insert(view.session.clone(), held);
+			}
+			damage.insert(Damage::Composer(view.session));
 		},
 	}
 

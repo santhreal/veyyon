@@ -119,6 +119,7 @@ fn every_intent() -> Vec<Intent> {
 		)),
 		Intent::OpenUsage,
 		Intent::OpenProcessLogs("web".to_owned()),
+		Intent::DequeueQueuedPrompt,
 	];
 
 	// The exhaustive match is the gate. Every variant is named, so a new one
@@ -198,7 +199,8 @@ fn every_intent() -> Vec<Intent> {
 			| Intent::SetToolViewExpanded { .. }
 			| Intent::OpenToolTarget(_)
 			| Intent::OpenUsage
-			| Intent::OpenProcessLogs(_) => {},
+			| Intent::OpenProcessLogs(_)
+			| Intent::DequeueQueuedPrompt => {},
 		}
 	}
 

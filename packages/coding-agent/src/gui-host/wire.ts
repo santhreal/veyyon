@@ -497,6 +497,21 @@ export interface SettingEntryView {
 	hidden: boolean;
 }
 
+/**
+ * The prompts a session holds behind a running turn, as the runtime holds
+ * them: `steering` enters the turn in flight at its next boundary and
+ * `follow_up` runs after it ends, both oldest first. `restored` carries the
+ * text a `DequeueQueuedPrompt` took back out, on the one frame that answers
+ * that action. Mirrors `QueuedPromptsView` in
+ * `crates/veyyon-desktop-model/src/domain/queued.rs`.
+ */
+export interface QueuedPromptsView {
+	session: string;
+	steering: string[];
+	follow_up: string[];
+	restored: string | null;
+}
+
 export type SnapshotSection =
 	| { Sessions: [Versioned<SessionSummary[]>, SessionLoadError[]] }
 	| { ActiveSession: Versioned<SessionHeaderView> }
@@ -523,7 +538,8 @@ export type SnapshotSection =
 	| { ContextBreakdown: ContextBreakdownView }
 	| { Export: ExportView }
 	| { Themes: ThemesView }
-	| { Keybindings: KeybindingView[] };
+	| { Keybindings: KeybindingView[] }
+	| { QueuedPrompts: QueuedPromptsView };
 
 export const ALL_SNAPSHOT_SECTIONS = [
 	"Sessions",
@@ -552,6 +568,7 @@ export const ALL_SNAPSHOT_SECTIONS = [
 	"Export",
 	"Themes",
 	"Keybindings",
+	"QueuedPrompts",
 ] as const;
 
 export type SnapshotSectionTag = (typeof ALL_SNAPSHOT_SECTIONS)[number];
@@ -589,6 +606,7 @@ export type HostAction =
 	| { SubmitPrompt: { session: string; text: string; attachments: AttachmentSubmission[] } }
 	| { AbortTurn: { session: string } }
 	| { SetToolViewExpanded: { session: string; call_id: string; expanded: boolean } }
+	| { DequeueQueuedPrompt: { session: string } }
 	| string
 	| Record<string, unknown>;
 
@@ -614,6 +632,7 @@ export const ALL_HOST_ACTIONS = [
 	"SetQueueMode",
 	"CancelTool",
 	"SetToolViewExpanded",
+	"DequeueQueuedPrompt",
 	"RespondToInteraction",
 	"LoadFileTree",
 	"ReadFile",
@@ -692,6 +711,7 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	SetQueueMode: "TurnControl",
 	CancelTool: "Tools",
 	SetToolViewExpanded: "Tools",
+	DequeueQueuedPrompt: "TurnControl",
 	RespondToInteraction: "Approvals",
 	LoadFileTree: "Files",
 	ReadFile: "Files",

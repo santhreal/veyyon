@@ -200,5 +200,13 @@
 	},
 	{ "Export": { "session": "sess-1", "format": "html", "path": "/repo/.veyyon/exports/sess-1.html", "content": null } },
 	{ "Themes": { "themes": [{ "id": "dark", "name": "Dark", "dark": true }, { "id": "light", "name": "Light", "dark": false }], "current": "dark" } },
-	{ "Keybindings": [{ "action": "composer.send", "keys": ["ctrl+enter"], "source": "default" }] }
+	{ "Keybindings": [{ "action": "composer.send", "keys": ["ctrl+enter"], "source": "default" }] },
+	{
+		"QueuedPrompts": {
+			"session": "sess-1",
+			"steering": ["check the tests too"],
+			"follow_up": ["then write the changelog"],
+			"restored": null
+		}
+	}
 ]

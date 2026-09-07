@@ -35,7 +35,11 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 			}
 		},
 		// Turn state and attachments change on host acknowledgement, not on a request attempt.
-		Intent::Send { .. } | Intent::Steer(_) | Intent::Queue(_) | Intent::AbortTurn => {},
+		Intent::Send { .. }
+		| Intent::Steer(_)
+		| Intent::Queue(_)
+		| Intent::AbortTurn
+		| Intent::DequeueQueuedPrompt => {},
 		Intent::SetQueueMode(mode) => {
 			state.composer.queue_mode = *mode;
 			if let TurnPhase::Running { queue_mode } = &mut state.turn {

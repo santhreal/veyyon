@@ -38,9 +38,10 @@ pub use domain::{
 	ContextBreakdownView, ContextCategory, Domains, ExportView, FileContentView, FileKind, FileNode,
 	FileTreeView, InputModality, KeybindingView, McpServerStatus, McpServerView, McpToolResultView,
 	ModelRef, ModelView, ModelsView, PROCESS_LOG_CAPACITY_LINES, ProcessLogView, ProcessLogsChunk,
-	ProcessView, ProviderView, SearchResultsView, SeqGap, SettingEntry, SettingKind, SettingOption,
-	SettingsView, TERMINAL_SCROLLBACK_CAPACITY_BYTES, TerminalOutputChunk, TerminalScrollback,
-	TerminalStatus, TerminalView, ThemeView, ThemesView, UsageView,
+	ProcessView, ProviderView, QueuedPrompts, QueuedPromptsView, SearchResultsView, SeqGap,
+	SettingEntry, SettingKind, SettingOption, SettingsView, TERMINAL_SCROLLBACK_CAPACITY_BYTES,
+	TerminalOutputChunk, TerminalScrollback, TerminalStatus, TerminalView, ThemeView, ThemesView,
+	UsageView,
 };
 pub use error::{BackendError, ErrorScope, fallback_surface, is_scope_retryable, route_error};
 pub use event::{

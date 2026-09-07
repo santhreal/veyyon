@@ -44,6 +44,7 @@ pub enum Command {
 	ModelPicker,
 	ThinkingLevel,
 	AttachFile,
+	TakeBackQueuedPrompt,
 	PreviousTab,
 	NextTab,
 	ToggleDiffMode,
@@ -85,6 +86,7 @@ impl Command {
 			Self::ModelPicker => "ModelPicker",
 			Self::ThinkingLevel => "ThinkingLevel",
 			Self::AttachFile => "AttachFile",
+			Self::TakeBackQueuedPrompt => "TakeBackQueuedPrompt",
 			Self::PreviousTab => "PreviousTab",
 			Self::NextTab => "NextTab",
 			Self::ToggleDiffMode => "ToggleDiffMode",
@@ -126,6 +128,7 @@ impl Command {
 			Self::ModelPicker => "Open model picker",
 			Self::ThinkingLevel => "Cycle thinking level",
 			Self::AttachFile => "Attach file to composer",
+			Self::TakeBackQueuedPrompt => "Take back queued message",
 			Self::PreviousTab => "Select previous panel tab",
 			Self::NextTab => "Select next panel tab",
 			Self::ToggleDiffMode => "Toggle unified or split diff mode",
@@ -169,8 +172,8 @@ impl Command {
 			| Self::SelectOption
 			| Self::ModelPicker
 			| Self::ThinkingLevel
-			| Self::AttachFile => Scope::Composer,
-
+			| Self::AttachFile
+			| Self::TakeBackQueuedPrompt => Scope::Composer,
 			Self::PreviousTab | Self::NextTab | Self::ToggleDiffMode => Scope::Panel,
 		}
 	}
@@ -210,6 +213,7 @@ impl Command {
 			"ModelPicker" => Some(Self::ModelPicker),
 			"ThinkingLevel" => Some(Self::ThinkingLevel),
 			"AttachFile" => Some(Self::AttachFile),
+			"TakeBackQueuedPrompt" => Some(Self::TakeBackQueuedPrompt),
 			"PreviousTab" => Some(Self::PreviousTab),
 			"NextTab" => Some(Self::NextTab),
 			"ToggleDiffMode" => Some(Self::ToggleDiffMode),

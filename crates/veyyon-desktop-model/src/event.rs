@@ -6,8 +6,8 @@ use crate::{
 	domain::{
 		AgentView, AuthFlowView, ChangesView, ContextBreakdownView, ExportView, FileContentView,
 		FileTreeView, KeybindingView, McpServerView, McpToolResultView, ModelsView, ProcessLogsChunk,
-		ProcessView, ProviderView, SearchResultsView, SettingsView, TerminalOutputChunk,
-		TerminalView, ThemesView, UsageView,
+		ProcessView, ProviderView, QueuedPromptsView, SearchResultsView, SettingsView,
+		TerminalOutputChunk, TerminalView, ThemesView, UsageView,
 	},
 	error::BackendError,
 	interaction::PendingDecisions,
@@ -63,7 +63,7 @@ pub struct SessionHeaderView {
 	pub cwd:            String,
 }
 
-/// Complete list of all 26 snapshot section names defined by the protocol.
+/// Complete list of all 27 snapshot section names defined by the protocol.
 pub const ALL_SECTION_NAMES: &[&str] = &[
 	"Sessions",
 	"ActiveSession",
@@ -91,6 +91,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 	"Export",
 	"Themes",
 	"Keybindings",
+	"QueuedPrompts",
 ];
 
 /// Domain sections received during initial connection or snapshot
@@ -101,7 +102,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, strum::EnumDiscriminants)]
 #[strum_discriminants(name(SnapshotSectionKind), derive(Hash, PartialOrd, Ord, strum::EnumIter))]
 #[strum_discriminants(
-	doc = "Fieldless projection of `SnapshotSection`, so sweeps can verify all 26 section variants."
+	doc = "Fieldless projection of `SnapshotSection`, so sweeps can verify all 27 section variants."
 )]
 pub enum SnapshotSection {
 	/// Session index metadata and deserialization failures.
@@ -162,6 +163,9 @@ pub enum SnapshotSection {
 	Themes(ThemesView),
 	/// Keyboard shortcuts.
 	Keybindings(Vec<KeybindingView>),
+	/// The prompts a session holds behind a running turn, and the one a
+	/// `DequeueQueuedPrompt` handed back.
+	QueuedPrompts(QueuedPromptsView),
 }
 
 impl SnapshotSection {
@@ -195,6 +199,7 @@ impl SnapshotSection {
 			Self::Export(..) => "Export",
 			Self::Themes(..) => "Themes",
 			Self::Keybindings(..) => "Keybindings",
+			Self::QueuedPrompts(..) => "QueuedPrompts",
 		}
 	}
 }

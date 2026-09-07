@@ -7,7 +7,7 @@
 //! socket.
 //!
 //! THE CLASS THIS CLOSES: serde divergence between the TypeScript host wire
-//! types and the Rust desktop model across all 26 snapshot section variants.
+//! types and the Rust desktop model across all 27 snapshot section variants.
 //!
 //! WHAT IT DOES NOT CATCH: semantic validity of values inside the sections, or
 //! layout/rendering logic within GPUI views.

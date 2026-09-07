@@ -183,7 +183,7 @@ scope = "transcript"
 chord = "space"
 action = "ToggleBlock"
 
-# Composer Scope (18 chords)
+# Composer Scope (19 chords)
 [[binding]]
 scope = "composer"
 chord = "enter"
@@ -281,6 +281,11 @@ action = "ThinkingLevel"
 scope = "composer"
 chord = "primary-u"
 action = "AttachFile"
+
+[[binding]]
+scope = "composer"
+chord = "alt-up"
+action = "TakeBackQueuedPrompt"
 
 # Panel Scope (3 chords)
 [[binding]]

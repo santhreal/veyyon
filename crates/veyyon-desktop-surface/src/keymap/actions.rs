@@ -129,6 +129,8 @@ actions!([
 	#[derive(Eq)]
 	AttachFile,
 	#[derive(Eq)]
+	TakeBackQueuedPrompt,
+	#[derive(Eq)]
 	PreviousTab,
 	#[derive(Eq)]
 	NextTab,

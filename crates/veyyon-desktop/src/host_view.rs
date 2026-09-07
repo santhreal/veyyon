@@ -4,7 +4,8 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use veyyon_desktop::{
 	Attachment, HostLink, SessionIndex, actions_for, current_timestamp_ms, land_failure, project,
-	project::connection_notice, project_clock, project_controls, request_frame,
+	project::{connection_notice, restored_draft},
+	project_clock, project_controls, request_frame,
 };
 use veyyon_desktop_model::{HostEvent, RequestRegistry, SessionId, Store, reduce};
 use veyyon_desktop_surface::{
@@ -203,6 +204,18 @@ pub fn attach(attachment: Attachment, window: WindowHandle<ShellView>, cx: &mut 
 									emu.reset();
 								}
 								emu.feed(&chunk.data);
+							},
+							HostEvent::Snapshot(veyyon_desktop_model::SnapshotSection::QueuedPrompts(
+								queued,
+							)) => {
+								// A dequeue answer carries the text back to the composer that
+								// asked for it; a frame for a session the operator has since
+								// left leaves the draft in front of them alone.
+								if let Some(text) =
+									restored_draft(&host.index, view.state().current_id, queued)
+								{
+									view.set_composed(text.to_owned(), cx);
+								}
 							},
 							_ => {},
 						}

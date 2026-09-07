@@ -15,7 +15,7 @@ use strum::IntoEnumIterator as _;
 use veyyon_desktop_model::{
 	AuthFlowState, AuthFlowView, BadgeKind, BlockKind, ConnectionState, ConnectionStateKind,
 	ContextBreakdownView, InputModality, MessageRole, ModelRef, ModelView, ModelsView,
-	QueuePartition, SettingEntry, SettingKind,
+	QueuePartition, QueuedPrompts, SettingEntry, SettingKind,
 };
 use veyyon_desktop_scene::{
 	FixtureText, PrimitiveKind, RequiredState, RowShape, Scene, StateDescriptor,
@@ -141,6 +141,7 @@ fn custom(name: &str, surface: &str, state: &str) -> Result<SceneRoot, SceneBuil
 			seed.finish()
 		},
 		("composer", "footer") => composer_footer(),
+		("composer", "queued") => composer_queued(),
 		("run-bar", "rest") => {
 			let mut seed = Seed::attached();
 			let session = seed.badged_session(QueuePartition::Live, BadgeKind::Working);
@@ -183,6 +184,21 @@ fn queue_row(partition: QueuePartition, badge: &str) -> Result<Built, SceneBuild
 	};
 	seed.exchange(&session, Seed::prose());
 	Ok(seed.finish())
+}
+
+/// The composer of a running turn that is holding two prompts behind it: one
+/// steering prompt, which enters the turn at its next boundary, and one
+/// follow-up, which runs after it ends.
+fn composer_queued() -> Built {
+	let mut seed = Seed::attached();
+	let session = seed.badged_session(QueuePartition::Live, BadgeKind::Working);
+	seed.exchange(&session, Seed::prose());
+	seed.stream(&session, "bash");
+	seed.store.queued.insert(session, QueuedPrompts {
+		steering:  vec!["check the migration path too".to_string()],
+		follow_up: vec!["then summarise what changed".to_string()],
+	});
+	seed.finish()
 }
 
 /// The composer with every footer control the host can report.

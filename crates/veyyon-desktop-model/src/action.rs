@@ -70,7 +70,7 @@ pub enum HostAction {
 		before:  Option<EntryId>,
 	},
 
-	// Turn control family (7 actions)
+	// Turn control family (8 actions)
 	SubmitPrompt {
 		session:     SessionId,
 		text:        String,
@@ -99,6 +99,11 @@ pub enum HostAction {
 		session:  SessionId,
 		call_id:  String,
 		expanded: bool,
+	},
+	/// Takes the newest prompt back out of the session's queue, which is the
+	/// order the runtime releases them in.
+	DequeueQueuedPrompt {
+		session: SessionId,
 	},
 	RespondToInteraction {
 		session:        SessionId,
@@ -303,6 +308,7 @@ impl HostAction {
 			Self::SetQueueMode { .. } => HostActionKind::SetQueueMode,
 			Self::CancelTool { .. } => HostActionKind::CancelTool,
 			Self::SetToolViewExpanded { .. } => HostActionKind::SetToolViewExpanded,
+			Self::DequeueQueuedPrompt { .. } => HostActionKind::DequeueQueuedPrompt,
 			Self::RespondToInteraction { .. } => HostActionKind::RespondToInteraction,
 			Self::LoadFileTree { .. } => HostActionKind::LoadFileTree,
 			Self::ReadFile { .. } => HostActionKind::ReadFile,

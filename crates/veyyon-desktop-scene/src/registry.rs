@@ -128,6 +128,7 @@ impl SceneRegistry {
 			("section-header/rest", "section-header"),
 			("composer/rest", "composer"),
 			("composer/footer", "composer"),
+			("composer/queued", "composer"),
 			("opening-line/rest", "opening-line"),
 			("run-bar/rest", "run-bar"),
 			("palette/rest", "palette"),

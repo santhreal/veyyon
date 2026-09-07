@@ -14,6 +14,7 @@ pub mod actions;
 pub mod attachments;
 pub mod footer;
 pub mod media;
+pub mod queued;
 pub mod state;
 pub mod turn;
 
@@ -28,7 +29,7 @@ use veyyon_gpui::{
 	ParentElement, Styled, div, point, px,
 };
 
-pub use self::{actions::*, attachments::*, footer::*, media::*, state::*, turn::*};
+pub use self::{actions::*, attachments::*, footer::*, media::*, queued::*, state::*, turn::*};
 use crate::{
 	ShellView,
 	controls::{ControlStates, hairline_for},
@@ -76,7 +77,8 @@ pub fn composer(
 		SurfaceId::ComposerAbortButton(session.clone()),
 		SurfaceId::ComposerQueueModeToggle(session.clone()),
 		SurfaceId::ComposerModelSelector(session.clone()),
-		SurfaceId::ComposerThinkingSelector(session),
+		SurfaceId::ComposerThinkingSelector(session.clone()),
+		SurfaceId::ComposerQueuedTakeBack(session),
 	];
 	let primary_error = (!request_ids.contains(&primary_id))
 		.then(|| hairline_for(controls, &primary_id, tokens, cx))
@@ -161,6 +163,10 @@ pub fn composer(
 					view.set_dropping(false);
 					view.attach_paths(paths.paths().to_vec(), cx);
 				}))
+				.children(
+					(!composer.queued.is_empty())
+						.then(|| queued_strip(composer, session_id, controls, tokens, cx)),
+				)
 				.child(editor_content)
 				.children(
 					(!composer.attachments.is_empty())

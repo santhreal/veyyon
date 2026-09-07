@@ -335,6 +335,14 @@ const CORPUS = [
 		},
 	},
 	{ Keybindings: [{ action: "composer.send", keys: ["ctrl+enter"], source: "default" }] },
+	{
+		QueuedPrompts: {
+			session: "sess-1",
+			steering: ["check the tests too"],
+			follow_up: ["then write the changelog"],
+			restored: null,
+		},
+	},
 ] satisfies SnapshotSection[];
 
 describe("every snapshot section is one the desktop decodes", () => {

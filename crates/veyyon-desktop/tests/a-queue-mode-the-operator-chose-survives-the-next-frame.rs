@@ -239,6 +239,7 @@ fn every_field_the_window_owns_survives_the_frame() {
 			queue_mode:  QueueMode::Queue,
 			attachments: Vec::new(),
 			context:     None,
+			queued:      vec!["a prompt the host is not holding".to_string()],
 		},
 		..ShellState::default()
 	};
@@ -255,4 +256,8 @@ fn every_field_the_window_owns_survives_the_frame() {
 	assert!(state.composer.model.is_none(), "no models view, no model control");
 	assert!(state.composer.thinking.is_none(), "no levels, no thinking control");
 	assert!(state.composer.context.is_none(), "no breakdown, no meter");
+	assert!(
+		state.composer.queued.is_empty(),
+		"the held prompts are the host's; a session holding none holds none on the strip"
+	);
 }

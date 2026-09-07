@@ -208,6 +208,8 @@ pub struct ComposerState {
 	pub attachments: Vec<Attachment>,
 	/// The context meter, absent without a breakdown from the host.
 	pub context:     Option<ContextMeter>,
+	/// The prompts waiting behind the running turn, in delivery order.
+	pub queued:      Vec<String>,
 }
 
 impl ComposerState {

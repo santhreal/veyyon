@@ -40,6 +40,7 @@ pub enum SurfaceId {
 	ComposerModelSelector(SessionId),
 	ComposerThinkingSelector(SessionId),
 	ComposerQueueModeToggle(SessionId),
+	ComposerQueuedTakeBack(SessionId),
 	ComposerCancelToolButton(SessionId, String),
 
 	// Decision Cards (§5.5)

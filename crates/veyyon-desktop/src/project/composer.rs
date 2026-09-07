@@ -1,10 +1,14 @@
 //! Projects the store's streaming and interaction state onto the session's turn
 //! phase (§5.4).
 
-use veyyon_desktop_model::{Capability, CapabilityStatus, QueueMode, SessionId, Store};
+use veyyon_desktop_model::{
+	Capability, CapabilityStatus, QueueMode, QueuedPromptsView, SessionId, Store,
+};
 use veyyon_desktop_surface::{
 	ComposerState, ContextMeter, ModelChoice, ModelControl, ModelOption, ThinkingControl, TurnPhase,
 };
+
+use super::SessionIndex;
 
 /// Derives the active turn phase for a session from the store.
 ///
@@ -101,5 +105,27 @@ pub fn project_composer(store: &Store, session: Option<&SessionId>, composer: &m
 			limit_tokens: breakdown.limit_tokens,
 		});
 
+	composer.queued = session
+		.and_then(|id| store.queued.get(id))
+		.map_or_else(Vec::new, |queued| queued.in_delivery_order().map(str::to_owned).collect());
+
 	composer.queue_mode = clamp_queue_mode(store, composer.queue_mode);
+}
+
+/// The text a `DequeueQueuedPrompt` answer hands back to the drawn composer.
+///
+/// The window draws one composer, for the row `current_id` names, and a
+/// dequeue answers one session. A frame for a session the operator has since
+/// left carries text that belongs to no drawn field, so it hands back nothing
+/// rather than overwriting the draft in front of the operator (§5.4).
+#[must_use]
+pub fn restored_draft<'a>(
+	index: &SessionIndex,
+	current_id: u64,
+	queued: &'a QueuedPromptsView,
+) -> Option<&'a str> {
+	if index.row_id(&queued.session) != Some(current_id) {
+		return None;
+	}
+	queued.restored.as_deref()
 }

@@ -102,7 +102,8 @@ const fn prepare_for(kind: SnapshotSectionKind) -> Prepare {
 		| SnapshotSectionKind::Models
 		| SnapshotSectionKind::Usage
 		| SnapshotSectionKind::ContextBreakdown
-		| SnapshotSectionKind::Export => Prepare::Rest,
+		| SnapshotSectionKind::Export
+		| SnapshotSectionKind::QueuedPrompts => Prepare::Rest,
 	}
 }
 

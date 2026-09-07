@@ -60,6 +60,8 @@ pub enum Intent {
 	SetQueueMode(QueueMode),
 	SelectModel(ModelChoice),
 	SetThinking(ThinkingLevel),
+	/// Takes the newest queued prompt back out of the runtime into the composer.
+	DequeueQueuedPrompt,
 	/// An image or clip read and admitted, added to the next prompt.
 	Attach(Attachment),
 	RemoveAttachment(usize),

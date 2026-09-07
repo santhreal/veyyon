@@ -14,9 +14,9 @@ use crate::{
 		AbortTurn, AttachFile, CloseTabOrPark, Dismiss, FilterQueue, FindInTranscript, FocusLive,
 		ModelPicker, MoveSelection, NewSession, NextSession, NextTurn, OpenPalette,
 		OpenSelectedSession, OpenSettings, PreviousSession, PreviousTurn, Scroll, SelectOption,
-		SplitHalf, ThinkingLevel as CycleThinkingLevel, ToggleBlock, ToggleDeferSelected,
-		ToggleDrawer, TogglePanel, ToggleParkSelected, TogglePinSelected, ToggleQueue,
-		ToggleQueueMode,
+		SplitHalf, TakeBackQueuedPrompt, ThinkingLevel as CycleThinkingLevel, ToggleBlock,
+		ToggleDeferSelected, ToggleDrawer, TogglePanel, ToggleParkSelected, TogglePinSelected,
+		ToggleQueue, ToggleQueueMode,
 	},
 };
 
@@ -296,4 +296,13 @@ pub fn bind_composer_keys(composer: Div, cx: &Context<ShellView>) -> Div {
 			}
 		}))
 		.on_action(cx.listener(|view, _: &AttachFile, _window, cx| view.pick_attachments(cx)))
+		.on_action(cx.listener(|view, _: &TakeBackQueuedPrompt, _window, cx| {
+			// Nothing held, nothing to take back: the chord belongs to whatever
+			// else claims it rather than emptying the queue of another surface.
+			if view.state().composer.queued.is_empty() {
+				cx.propagate();
+			} else {
+				view.dispatch(Intent::DequeueQueuedPrompt, cx);
+			}
+		}))
 }

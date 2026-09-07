@@ -48,7 +48,7 @@ fn composer_row(active_row: Option<u64>) -> SessionId {
 }
 
 /// The composer's own controls, with the action each would send.
-fn composer_controls(row: &SessionId) -> [(SurfaceId, HostActionKind); 8] {
+fn composer_controls(row: &SessionId) -> [(SurfaceId, HostActionKind); 9] {
 	[
 		(SurfaceId::ComposerSendButton(row.clone()), HostActionKind::SubmitPrompt),
 		(SurfaceId::ComposerSteerButton(row.clone()), HostActionKind::Steer),
@@ -61,6 +61,7 @@ fn composer_controls(row: &SessionId) -> [(SurfaceId, HostActionKind); 8] {
 		(SurfaceId::ComposerQueueModeToggle(row.clone()), HostActionKind::SetQueueMode),
 		(SurfaceId::ComposerModelSelector(row.clone()), HostActionKind::SelectModel),
 		(SurfaceId::ComposerThinkingSelector(row.clone()), HostActionKind::SetThinkingLevel),
+		(SurfaceId::ComposerQueuedTakeBack(row.clone()), HostActionKind::DequeueQueuedPrompt),
 	]
 }
 
