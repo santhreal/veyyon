@@ -184,10 +184,7 @@ fn the_shape_read_off_the_disk_reaches_the_window_that_opens_next() {
 			.update(|view, _window, _cx| (view.host_shape(), view.session_shape()))
 			.expect("the second window states what it holds");
 		assert!(host.queue_collapsed, "the rail comes back collapsed");
-		assert_eq!(
-			host.parked_page, 2,
-			"the parked rows the operator paged in come back paged in"
-		);
+		assert_eq!(host.parked_page, 2, "the parked rows the operator paged in come back paged in");
 		assert_eq!(shape.active_panel_tab, PanelTab::Tree);
 		assert!(shape.panel_visible, "the panel comes back docked open");
 		assert_eq!(shape.panel_width_px, Some(480.0));

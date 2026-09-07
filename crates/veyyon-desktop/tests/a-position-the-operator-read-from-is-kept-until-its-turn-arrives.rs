@@ -143,26 +143,20 @@ fn a_view_at_the_live_edge_remembers_no_position_and_a_return_to_it_forgets_one(
 			.expect("a transcript longer than the window draws");
 		let at_edge = session
 			.update(|view, _window, _cx| {
-				(
-					view.transcript_viewport().is_following_tail(),
-					view.session_shape().scroll_anchor,
-				)
+				(view.transcript_viewport().is_following_tail(), view.session_shape().scroll_anchor)
 			})
 			.expect("the window states where it is reading");
 		assert!(at_edge.0, "a transcript nothing scrolled follows the live edge");
 		assert_eq!(
 			at_edge.1, None,
-			"a view at the live edge remembers no position, so it comes back at the edge \
-			 however far the turn ran on"
+			"a view at the live edge remembers no position, so it comes back at the edge however far \
+			 the turn ran on"
 		);
 
 		let read_back = session
 			.update(|view, _window, _cx| {
 				view.transcript_viewport().scroll_to_offset(3, 5.0);
-				(
-					view.state().turn_anchors.get(3).cloned(),
-					view.session_shape().scroll_anchor,
-				)
+				(view.state().turn_anchors.get(3).cloned(), view.session_shape().scroll_anchor)
 			})
 			.expect("the window states the position it was read from");
 		assert_eq!(
@@ -196,10 +190,7 @@ fn a_disclosure_naming_an_invocation_that_has_not_arrived_is_kept_until_it_does(
 			})
 			.expect("the keeper adopts the session the host named");
 		let shape = SessionShape {
-			expanded_call_ids: std::iter::once(
-				support::memory::CALL_WITH_VIEWS.to_string(),
-			)
-			.collect(),
+			expanded_call_ids: std::iter::once(support::memory::CALL_WITH_VIEWS.to_string()).collect(),
 			..SessionShape::default()
 		};
 		session
