@@ -426,9 +426,10 @@ export const repoScriptTests = [
 	// `a-startup-benchmark-keeps-its-executable-and-config-isolated`,
 	// `a-startup-benchmark-terminates-child-trees-and-honors-cwd`) import `@veyyon/natives` for a
 	// value, so they load the addon at import time. The `test_scripts` job in checks.yml runs
-	// this list without one and reported all twelve of their cases as "Failed to load
-	// veyyon_natives"; ci.yml's `test_ts_native` job, which downloads the addon, runs them by
-	// path instead, and `script-tests-coverage.test.ts` reads that step as their runner.
+	// this list without one and reported all twelve of their cases as a failed addon load;
+	// ci.yml's `test_ts_native` job, which downloads the addon, runs them by path instead, and
+	// `script-tests-coverage.test.ts` reads that step as their runner. No quoted string in
+	// this comment: the deleted-suite lock reads the array's string literals from source.
 	"scripts/a-package-script-runs-in-an-existing-directory.test.ts",
 	"scripts/stray-output-path.test.ts",
 	// The leak tracer's own contract tests. Also run by the `test-leaks` job in
