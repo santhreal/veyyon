@@ -39,6 +39,14 @@ connection. Otherwise it starts a host in the current working directory and
 waits up to five seconds for its listening banner. An explicit endpoint disables
 automatic host startup.
 
+A Unix socket path is limited by `sockaddr_un.sun_path`: 107 bytes on Linux, 103
+on macOS. When `<agent-dir>/gui-host.sock` is longer, both the desktop and the
+host use `<runtime-dir>/veyyon-gui-<digest>.sock` instead, where `<digest>` is
+the first 16 hex characters of the SHA-256 of the agent directory and
+`<runtime-dir>` is `$XDG_RUNTIME_DIR`, else `/run/user/<uid>` on Linux, else
+`$TMPDIR` on macOS. With no such directory, and for an explicit `unix:` endpoint
+over the limit, startup fails with the path, its size and the limit.
+
 ## Render scenes
 
 ```sh

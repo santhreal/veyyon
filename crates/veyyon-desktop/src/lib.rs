@@ -22,7 +22,8 @@ pub use damage::{Repaint, request_frame};
 pub use endpoint::{
 	AttachError, Attachment, ChildHostHandle, DEFAULT_SOCKET_FILENAME, Endpoint, EndpointError,
 	HostSpawnError, SPAWN_WAIT_MS, VEYYON_BIN_ENV, VEYYON_GUI_ENDPOINT_ENV, VEYYON_PROFILE_ENV,
-	accepts_connection, connect_or_spawn, default_agent_dir, spawn_child_host,
+	accepts_connection, check_unix_path, connect_or_spawn, default_agent_dir, gui_host_socket_path,
+	runtime_directory, runtime_socket_path, spawn_child_host, unix_path_fits, unix_path_limit,
 };
 pub use framing::{FrameDecoder, FramingError, MAX_FRAME_BYTES, encode_request};
 pub use link::{HostLink, TRANSPORT_THREAD_NAME};

@@ -11,19 +11,21 @@ use std::{
 	env, fs,
 	io::{BufRead, BufReader, Write},
 	os::unix::{fs::PermissionsExt, net::UnixListener},
-	path::Path,
+	path::{Path, PathBuf},
 	process::{Child, Command, Stdio},
 	thread,
 	time::{Duration, Instant},
 };
 
-use veyyon_desktop::{HostLink, HostSpawnError, SPAWN_WAIT_MS, connect_or_spawn};
+use veyyon_desktop::{
+	HostLink, HostSpawnError, SPAWN_WAIT_MS, connect_or_spawn, unix_path_fits, unix_path_limit,
+};
 use veyyon_desktop_model::{HostEvent, SnapshotSection};
 use veyyon_test_scratch::scratch_dir;
 
 const CASES: &[&str] =
 	&["ready", "late", "reported", "exited", "malformed", "missing", "no-binary"];
-const SOCKET: &str = "./.veyyon/profiles/p/agent/gui-host.sock";
+const SOCKET: &str = ".veyyon/profiles/p/agent/gui-host.sock";
 
 struct OwnedChild(Child);
 impl Drop for OwnedChild {
@@ -104,12 +106,23 @@ fn connection_probe() {
 		},
 	};
 	assert_eq!(outcome, case);
+	// The window names the default socket absolutely, as the host's own rule
+	// does, so a host started in another directory binds the path this window
+	// connects to. The scratch profile has to stay inside `sun_path` for the
+	// comparison to be about that and not about the fallback.
+	let profile_socket = env::current_dir().expect("probe cwd").join(SOCKET);
+	assert!(
+		unix_path_fits(&profile_socket),
+		"scratch profile socket {} is over the {}-byte limit, so this case asserts the fallback",
+		profile_socket.display(),
+		unix_path_limit()
+	);
 	let target = if case == "reported" {
-		"reported.sock"
+		PathBuf::from("reported.sock")
 	} else {
-		SOCKET
+		profile_socket
 	};
-	assert_eq!(attachment.endpoint.formatted(), format!("unix:{target}"));
+	assert_eq!(attachment.endpoint.formatted(), format!("unix:{}", target.display()));
 	let replacement = if matches!(case.as_str(), "exited" | "malformed" | "missing" | "no-binary") {
 		Some(OwnedChild(
 			Command::new(env::current_exe().expect("executable"))
@@ -160,21 +173,24 @@ fn gui_fixture() {
 		println!("GUI engine host listening at unix:");
 		return;
 	}
+	// The real host names its default socket absolutely, so the fixture does
+	// too: the window compares the endpoint it resolved with the one reported.
 	let target = if case == "reported" {
-		"reported.sock"
+		PathBuf::from("reported.sock")
 	} else {
-		SOCKET
+		env::current_dir().expect("fixture cwd").join(SOCKET)
 	};
+	let written = target.display();
 	if case == "reported" {
-		println!("GUI engine host listening at unix:{target}");
+		println!("GUI engine host listening at unix:{written}");
 	}
 	if matches!(case.as_str(), "late" | "reported") {
 		thread::sleep(Duration::from_millis(SPAWN_WAIT_MS + 400));
 	}
-	let listener = UnixListener::bind(target).expect("fixture endpoint");
+	let listener = UnixListener::bind(&target).expect("fixture endpoint");
 	listener.set_nonblocking(true).expect("bounded accept");
 	if case != "reported" {
-		println!("GUI engine host listening at unix:{target}");
+		println!("GUI engine host listening at unix:{written}");
 	}
 	// A caller returning at the deadline must not close the child's stdout.
 	for _ in 0..128 {
@@ -194,7 +210,7 @@ fn gui_fixture() {
 			.set_read_timeout(Some(Duration::from_secs(2)))
 			.expect("bounded read");
 		let greeting = format!(
-			"{{\"ConnectionChanged\":{{\"Connected\":{{\"endpoint\":\"unix:{target}\",\"protocol\":\
+			"{{\"ConnectionChanged\":{{\"Connected\":{{\"endpoint\":\"unix:{written}\",\"protocol\":\
 			 1}}}}}}\n{{\"Snapshot\":{{\"Capabilities\":[]}}}}\n"
 		);
 		if stream.write_all(greeting.as_bytes()).is_err() {

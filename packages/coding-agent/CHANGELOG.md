@@ -157,6 +157,7 @@
 
 ### Fixed
 
+- The GUI host binds a socket a client can address: a profile path longer than `sockaddr_un.sun_path` falls back to `<runtime-dir>/veyyon-gui-<digest>.sock`, which the desktop derives the same way, instead of a `/proc/self/fd` bind the desktop could only report as `path must be shorter than SUN_LEN` until its reconnect ceiling ended the session.
 - A desktop tool card disclosed with `space` reports the new state to the host, so the keyboard opens the same card a click does instead of opening its body over the collapsed view.
 - A collapsed desktop tool card draws one row: the host's view is projected onto its status line, block header or section label plus what it holds back, instead of the whole card being drawn at its natural height across the blocks above and below it, and the row is the transcript's collapsed chrome height rather than half of it.
 - A disclosed desktop tool card states no held-back line count on its row, which it kept while the card below it was showing every one of those lines.

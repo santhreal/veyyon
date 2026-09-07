@@ -304,6 +304,11 @@ xxhash-rust = { version = "0.8", features = ["xxh64"] }
 # materialization. xxh64 above is a non-cryptographic bucket hash and cannot
 # carry an identity that a committed corpus is keyed by.
 blake3 = "1"
+# SHA-256 names the GUI host's fallback socket after the profile directory it
+# serves. The digest crosses a language boundary — the desktop window and the
+# TypeScript host derive the same path from it — so it has to be a construction
+# `node:crypto` also offers, which the BLAKE3 above is not.
+sha2 = "0.10"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Wire Protocols

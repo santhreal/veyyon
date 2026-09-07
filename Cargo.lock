@@ -2213,7 +2213,7 @@ dependencies = [
  "cc",
  "memchr",
  "rustc_version",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "vswhom",
  "winreg 0.55.0",
 ]
@@ -2685,7 +2685,7 @@ checksum = "ea5190182e6915eb873ddbc16e23b711b6eb1f9c00a0d0a3a91b5f6228475225"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.4",
+ "syn 3.0.5",
 ]
 
 [[package]]
@@ -6991,7 +6991,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "serde_derive_internals",
- "syn 3.0.4",
+ "syn 3.0.5",
 ]
 
 [[package]]
@@ -7093,7 +7093,7 @@ checksum = "f852137cce035d6a4df67ccce505ff6b3e9fd3a10e3e52b24dc71e650bb1a9bd"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.4",
+ "syn 3.0.5",
 ]
 
 [[package]]
@@ -7127,7 +7127,7 @@ checksum = "8d3b1629de253c70a0508c3899572da79ca359fdab27c7920ff00406df418906"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.4",
+ "syn 3.0.5",
 ]
 
 [[package]]
@@ -9852,19 +9852,21 @@ dependencies = [
 
 [[package]]
 name = "veyyon-desktop"
-version = "1.3.0"
+version = "1.4.0"
 dependencies = [
  "bytes",
  "clap",
  "flume 0.11.1",
  "gpui_platform",
+ "libc",
  "serde",
  "serde_json",
+ "sha2",
  "strum",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "veyyon-desktop-model",
  "veyyon-desktop-scene",
  "veyyon-desktop-surface",
@@ -9875,7 +9877,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-desktop-kit"
-version = "1.3.0"
+version = "1.4.0"
 dependencies = [
  "anyhow",
  "gpui_platform",
@@ -9893,7 +9895,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-desktop-model"
-version = "1.3.0"
+version = "1.4.0"
 dependencies = [
  "base64",
  "serde",
@@ -9905,17 +9907,17 @@ dependencies = [
 
 [[package]]
 name = "veyyon-desktop-motion"
-version = "1.3.0"
+version = "1.4.0"
 dependencies = [
  "serde",
  "thiserror 2.0.20",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "veyyon-desktop-tokens",
 ]
 
 [[package]]
 name = "veyyon-desktop-scene"
-version = "1.3.0"
+version = "1.4.0"
 dependencies = [
  "image",
  "png 0.18.1",
@@ -9934,7 +9936,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-desktop-surface"
-version = "1.3.0"
+version = "1.4.0"
 dependencies = [
  "image",
  "serde",
@@ -9943,7 +9945,7 @@ dependencies = [
  "strum",
  "syntect",
  "thiserror 2.0.20",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "unicode-width 0.2.2",
  "veyyon-desktop-kit",
  "veyyon-desktop-model",
@@ -9957,14 +9959,14 @@ dependencies = [
 
 [[package]]
 name = "veyyon-desktop-tokens"
-version = "1.3.0"
+version = "1.4.0"
 dependencies = [
  "flume 0.11.1",
  "notify",
  "parking_lot",
  "serde",
  "thiserror 2.0.20",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "veyyon-ast",
  "veyyon-test-scratch",
 ]
@@ -9985,7 +9987,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-gpui"
-version = "1.3.0"
+version = "1.4.0"
 dependencies = [
  "gpui",
  "gpui_platform",
@@ -10063,7 +10065,7 @@ dependencies = [
  "tiktoken-rs",
  "tokio",
  "tokio-util",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "unicode-segmentation",
  "unicode-width 0.2.2",
  "veyyon-ast",
@@ -10104,7 +10106,7 @@ dependencies = [
  "smallvec",
  "tokio",
  "tokio-util",
- "toml 1.1.4+spec-1.1.0",
+ "toml 1.1.5+spec-1.1.0",
  "uu_b2sum",
  "uu_base64",
  "uu_basename",
@@ -11616,7 +11618,7 @@ dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
- "syn 3.0.4",
+ "syn 3.0.5",
  "zbus_names",
  "zvariant",
  "zvariant_utils",
@@ -11902,7 +11904,7 @@ dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
- "syn 3.0.4",
+ "syn 3.0.5",
  "zvariant_utils",
 ]
 
@@ -11915,7 +11917,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "serde",
- "syn 3.0.4",
+ "syn 3.0.5",
  "winnow 1.0.4",
 ]
 

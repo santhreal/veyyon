@@ -9,6 +9,7 @@ import type { ActionContext, ReplyHelper } from "./actions/types";
 import { FrameDecoder, writeFrame } from "./frames";
 import { PresentationLedger } from "./presentation";
 import { buildCapabilitiesSnapshot, mapActionToErrorScope } from "./session-bridge";
+import { assertUnixPathFits, guiHostSocketPath } from "./socket-path";
 import { type ClientSessionState, disposeClientState } from "./turns";
 import {
 	type BackendError,
@@ -57,10 +58,12 @@ export function parseEndpoint(written: string, defaultAgentDir?: string): Parsed
 		if (socketPath.trim().length === 0) {
 			throw new Error("Unix endpoint path must not be empty");
 		}
+		const resolved = path.resolve(socketPath);
+		assertUnixPathFits(resolved);
 		return {
 			type: "unix",
-			path: path.resolve(socketPath),
-			formatted: `unix:${path.resolve(socketPath)}`,
+			path: resolved,
+			formatted: `unix:${resolved}`,
 		};
 	}
 
@@ -86,7 +89,7 @@ export function parseEndpoint(written: string, defaultAgentDir?: string): Parsed
 
 	// Default fallback to unix socket if no scheme was provided
 	const resolvedAgentDir = defaultAgentDir ?? getAgentDir();
-	const defaultSocketPath = path.join(resolvedAgentDir, "gui-host.sock");
+	const defaultSocketPath = guiHostSocketPath(resolvedAgentDir);
 	return {
 		type: "unix",
 		path: defaultSocketPath,
@@ -111,10 +114,7 @@ export class GuiHostServer {
 		this.#cwd = options.cwd ?? process.cwd();
 		this.#agentDir = options.agentDir ?? getAgentDir();
 		this.#authStorage = options.authStorage ? Promise.resolve(options.authStorage) : null;
-		this.#parsedEndpoint = parseEndpoint(
-			options.endpoint ?? `unix:${path.join(this.#agentDir, "gui-host.sock")}`,
-			this.#agentDir,
-		);
+		this.#parsedEndpoint = parseEndpoint(options.endpoint ?? "", this.#agentDir);
 	}
 
 	/**

@@ -11,6 +11,13 @@ use std::{
 
 use thiserror::Error;
 
+mod socket_path;
+
+pub use socket_path::{
+	check_unix_path, gui_host_socket_path, runtime_directory, runtime_socket_path, unix_path_fits,
+	unix_path_limit,
+};
+
 /// Environment variable used to discover the GUI host endpoint when not passed
 /// explicitly.
 pub const VEYYON_GUI_ENDPOINT_ENV: &str = "VEYYON_GUI_ENDPOINT";
@@ -27,6 +34,17 @@ pub enum EndpointError {
 	MissingTcpPort(String),
 	#[error("Invalid TCP port number: '{0}'")]
 	InvalidTcpPort(String),
+	#[error(
+		"Unix endpoint path is {bytes} bytes, over this platform's {limit}-byte limit, and a client \
+		 cannot connect to it: {path}"
+	)]
+	UnixPathTooLong { path: String, bytes: usize, limit: usize },
+	#[error(
+		"No GUI host socket path fits this platform's {limit}-byte limit: tried {tried}. A client \
+		 cannot connect to a longer path. Set XDG_RUNTIME_DIR to a short directory, or pass an \
+		 explicit endpoint: --endpoint unix:/short/path.sock"
+	)]
+	NoSocketPathFits { tried: String, limit: usize },
 }
 
 /// How long a spawned host is given to print its endpoint and accept a
@@ -70,9 +88,8 @@ pub enum Endpoint {
 
 impl Endpoint {
 	/// Constructs the default unix endpoint for a given agent directory.
-	#[must_use]
-	pub fn default_unix(agent_dir: &Path) -> Self {
-		Self::Unix { path: agent_dir.join(DEFAULT_SOCKET_FILENAME) }
+	pub fn default_unix(agent_dir: &Path) -> Result<Self, EndpointError> {
+		Ok(Self::Unix { path: gui_host_socket_path(agent_dir)? })
 	}
 
 	/// Parses an endpoint string matching the host server grammar.
@@ -87,7 +104,9 @@ impl Endpoint {
 			if socket_path.trim().is_empty() {
 				return Err(EndpointError::EmptyUnixPath);
 			}
-			return Ok(Self::Unix { path: PathBuf::from(socket_path) });
+			let path = PathBuf::from(socket_path);
+			check_unix_path(&path)?;
+			return Ok(Self::Unix { path });
 		}
 
 		if let Some(authority) = written.strip_prefix("tcp:") {
@@ -112,13 +131,11 @@ impl Endpoint {
 			return Ok(Self::Tcp { host, port });
 		}
 
-		// Fallback to default unix socket when no scheme is supplied
-		let socket_path = match default_agent_dir {
-			Some(dir) => dir.join(DEFAULT_SOCKET_FILENAME),
-			None => PathBuf::from(DEFAULT_SOCKET_FILENAME),
-		};
-
-		Ok(Self::Unix { path: socket_path })
+		// Fallback to the default socket, which the host's own rule mirrors.
+		match default_agent_dir {
+			Some(dir) => Self::default_unix(dir),
+			None => Ok(Self::Unix { path: PathBuf::from(DEFAULT_SOCKET_FILENAME) }),
+		}
 	}
 
 	/// Resolves the endpoint following §8.12's priority:
@@ -140,7 +157,7 @@ impl Endpoint {
 			}
 		}
 
-		Ok(Self::default_unix(agent_dir))
+		Self::default_unix(agent_dir)
 	}
 
 	/// Returns canonical formatted wire representation (`unix:<path>` or
@@ -359,7 +376,7 @@ pub fn connect_or_spawn(explicit: Option<&str>, cwd: &Path) -> Result<Attachment
 	}
 
 	let agent_dir = agent_dir.ok_or(AttachError::NoAgentDir)?;
-	let endpoint = Endpoint::default_unix(&agent_dir);
+	let endpoint = Endpoint::default_unix(&agent_dir)?;
 	if accepts_connection(&endpoint) {
 		return Ok(Attachment { endpoint, spawned: Ok(None) });
 	}
