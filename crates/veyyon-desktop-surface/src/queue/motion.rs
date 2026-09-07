@@ -97,6 +97,16 @@ impl RailMotion {
 		self.collapsed.contains(&section)
 	}
 
+	/// Collapses exactly the sections a previous window left collapsed
+	/// (§8.10).
+	///
+	/// No animator is created, so a remembered collapse is drawn collapsed on
+	/// the first frame rather than playing the reveal the operator's own click
+	/// plays.
+	pub fn restore_collapsed(&mut self, sections: impl IntoIterator<Item = Section>) {
+		self.collapsed = sections.into_iter().collect();
+	}
+
 	/// Returns the current page number for archival parked sessions.
 	#[must_use]
 	pub const fn parked_page(&self) -> usize {

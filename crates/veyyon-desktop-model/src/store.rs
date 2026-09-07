@@ -11,7 +11,7 @@ use crate::{
 	transcript::TranscriptTree,
 };
 /// Root state container for the desktop client.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Store {
 	/// Single definition of host transport connection status and handshake
 	/// progress.
@@ -63,5 +63,14 @@ impl Store {
 			persisted:    PersistedState::new(),
 			domains:      Domains::new(),
 		}
+	}
+
+	/// Creates a store whose persisted state is what the last window wrote.
+	///
+	/// The rest starts detached and empty: everything else in the store is the
+	/// host's, and the window has not attached yet (§8.10).
+	#[must_use]
+	pub fn with_persisted(persisted: PersistedState) -> Self {
+		Self { persisted, ..Self::new() }
 	}
 }

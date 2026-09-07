@@ -17,6 +17,23 @@ pub enum DrawerTab {
 	Process { name: String },
 }
 
+impl DrawerTab {
+	/// The name the tab is written under in what the window remembers (§8.10).
+	///
+	/// A tenant's identity, not its position: the drawer's tabs are the
+	/// host's, so an index written here would name a different terminal on the
+	/// next launch. A terminal is named by its id and a process by its name,
+	/// and the title is left out because the host reports it again.
+	#[must_use]
+	pub fn slug(&self) -> String {
+		match self {
+			Self::Terminal { id, .. } => format!("terminal:{id}"),
+			Self::Processes => "processes".to_string(),
+			Self::Process { name } => format!("process:{name}"),
+		}
+	}
+}
+
 /// Metadata for a supervised background process row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProcessRow {

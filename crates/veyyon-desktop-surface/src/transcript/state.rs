@@ -291,6 +291,19 @@ impl TranscriptViewportState {
 		inner.list_state.scroll_to_reveal_item(turn_ix);
 	}
 
+	/// Scrolls the list to a remembered position: `item_ix` at the top of the
+	/// view, `offset_px` into it.
+	///
+	/// Following the live edge stops, because a window told where to open is
+	/// not at the edge; the operator's own jump to the edge starts it again.
+	pub fn scroll_to_offset(&self, item_ix: usize, offset_px: f32) {
+		let inner = self.0.borrow();
+		inner.list_state.set_follow_mode(FollowMode::Normal);
+		inner
+			.list_state
+			.scroll_to(ListOffset { item_ix, offset_in_item: px(offset_px) });
+	}
+
 	/// Returns whether the viewport is currently following the tail.
 	#[must_use]
 	pub fn is_following_tail(&self) -> bool {

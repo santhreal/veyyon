@@ -47,7 +47,7 @@ pub use palette::{PaletteItem, PaletteItemKind, PaletteMode};
 pub use right_panel::*;
 pub use settings::SettingsPage;
 pub use shell::{
-	ShellView,
+	HostShape, ScrollAnchor, SessionShape, ShellView,
 	fields::{FieldKey, FieldSlots},
 };
 pub use terminal::Cell;

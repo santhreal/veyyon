@@ -136,6 +136,10 @@ pub fn regions_changed(last: &ShellState, next: &ShellState) -> Invalidation {
 		title,
 		sections,
 		transcript,
+		// The entry ids beside the turns draw nothing: they are read when the
+		// window records where it is, so a change to them alone repaints
+		// nothing.
+		turn_anchors: _,
 		turn,
 		run_status,
 		panel,

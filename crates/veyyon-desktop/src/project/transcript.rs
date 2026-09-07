@@ -42,17 +42,37 @@ fn active_path(tree: &TranscriptTree) -> Vec<&TranscriptEntry> {
 /// operator entries — its prose, its calls, their results, the runs it made —
 /// is one agent turn, because that is how the operator reads it: what they
 /// said, then what came back.
-pub(super) fn turns(tree: &TranscriptTree) -> Vec<Turn> {
-	let mut turns = Vec::new();
+pub(super) fn turns(tree: &TranscriptTree) -> Turns {
+	let mut turns = Turns::default();
 	for entry in active_path(tree) {
 		push_entry(&mut turns, entry);
 	}
 	turns
 }
 
+/// The turns a transcript reads as, and the entry that opened each one.
+///
+/// The two are index-aligned, and one turn merges every entry the agent
+/// produced, so the anchor is the entry the operator's eye lands on first
+/// (§8.10). Held together rather than derived twice, because a second walk of
+/// the merge rule is a second rule.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(super) struct Turns {
+	pub turns:   Vec<Turn>,
+	pub anchors: Vec<String>,
+}
+
+impl Turns {
+	/// Opens a turn, recording the entry it was opened by.
+	fn open(&mut self, turn: Turn, entry: &TranscriptEntry) {
+		self.turns.push(turn);
+		self.anchors.push(entry.id.0.clone());
+	}
+}
+
 /// Appends an entry to the run of turns, merging agent output into the open
 /// agent turn.
-pub(super) fn push_entry(turns: &mut Vec<Turn>, entry: &TranscriptEntry) {
+pub(super) fn push_entry(turns: &mut Turns, entry: &TranscriptEntry) {
 	if entry.content.is_empty() {
 		return;
 	}
@@ -85,17 +105,17 @@ pub(super) fn push_entry(turns: &mut Vec<Turn>, entry: &TranscriptEntry) {
 			}
 		}
 		if artifacts.is_empty() {
-			turns.push(Turn::Operator(text));
+			turns.open(Turn::Operator(text), entry);
 		} else {
-			turns.push(Turn::OperatorArtifacts { text, artifacts });
+			turns.open(Turn::OperatorArtifacts { text, artifacts }, entry);
 		}
 		return;
 	}
 
-	if !matches!(turns.last(), Some(Turn::Agent { .. })) {
-		turns.push(Turn::Agent { blocks: Vec::new(), model: None });
+	if !matches!(turns.turns.last(), Some(Turn::Agent { .. })) {
+		turns.open(Turn::Agent { blocks: Vec::new(), model: None }, entry);
 	}
-	if let Some(Turn::Agent { blocks, model }) = turns.last_mut() {
+	if let Some(Turn::Agent { blocks, model }) = turns.turns.last_mut() {
 		for block in &entry.content {
 			push_block(blocks, block, entry.role);
 		}

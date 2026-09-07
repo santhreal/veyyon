@@ -9,7 +9,7 @@
 //! surface being read; a window that gets narrower takes width from the panels
 //! and leaves the transcript's line length alone.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use veyyon_desktop_kit::input::Editor;
 use veyyon_gpui::{Context, Entity, FocusHandle, IntoElement, Render, Subscription, Window};
@@ -21,6 +21,7 @@ pub mod connection;
 pub mod fields;
 mod float;
 pub mod keys;
+mod memory;
 pub mod overlay;
 mod palette;
 mod queue_search;
@@ -34,6 +35,7 @@ mod transcript_find;
 pub use self::{
 	attach::AttachState,
 	connection::{connection_banner, error_hairline},
+	memory::{HostShape, ScrollAnchor, SessionShape},
 	overlay::overlay_scrim,
 	titlebar::{
 		TitlebarState, attention_strip, attention_strip_height, platform_inset_left_px, titlebar,
@@ -92,6 +94,13 @@ pub struct ShellView {
 	/// The width the operator dragged the docked right panel to. Window-local
 	/// like the row menu: a snapshot never moves the handle (§5.6).
 	panel_width:           Option<f32>,
+	/// Disclosed tool cards a previous window remembered whose invocations
+	/// this one has not drawn yet, the drawer tenant it last looked at, which
+	/// the host has not reported yet, and where it was reading, which names an
+	/// entry the transcript has not arrived with (§8.10).
+	pending_expanded:      BTreeSet<String>,
+	pending_drawer_tab:    Option<String>,
+	pending_anchor:        Option<ScrollAnchor>,
 	focus_handle:          Option<FocusHandle>,
 	/// The focus the queue rail takes when the pointer lands in it, which is
 	/// what puts the `Queue` key context on the focus path so the scope's
@@ -137,6 +146,9 @@ impl ShellView {
 			split_motion: split::SplitMotions::default(),
 			row_menu: None,
 			panel_width: None,
+			pending_expanded: BTreeSet::new(),
+			pending_drawer_tab: None,
+			pending_anchor: None,
 			focus_handle: None,
 			queue_focus: None,
 			destination_focus: None,

@@ -6,12 +6,15 @@ use veyyon_desktop::{
 	Attachment, HostLink, SessionIndex, actions_for, current_timestamp_ms, land_failure, project,
 	project::{connection_notice, restored_draft},
 	project_clock, project_controls, request_frame,
+	state::Keeper,
 };
-use veyyon_desktop_model::{HostEvent, RequestRegistry, SessionId, Store, reduce};
+use veyyon_desktop_model::{
+	HostAction, HostEvent, PersistedState, RequestRegistry, SessionId, Store, SurfaceId, reduce,
+};
 use veyyon_desktop_surface::{
 	Intent, ShellState, ShellView, damage::regions_changed, terminal::TerminalEmulator,
 };
-use veyyon_gpui::{App, AsyncApp, WindowHandle};
+use veyyon_gpui::{App, AsyncApp, Context, Window, WindowHandle};
 
 use crate::request_surface;
 
@@ -22,9 +25,43 @@ struct Host {
 	registry:  RequestRegistry,
 	terminals: HashMap<String, TerminalEmulator>,
 	drawn:     ShellState,
+	/// What the window remembers, absent when there is no directory to keep it
+	/// in (§8.10).
+	keeper:    Option<Keeper>,
 }
 
-pub fn attach(attachment: Attachment, window: WindowHandle<ShellView>, cx: &mut App) {
+impl Host {
+	/// Records the drawn window's shape and writes what is due, stating a
+	/// store that could not be written on the surface the operator is looking
+	/// at rather than only on stderr.
+	fn keep(
+		&mut self,
+		view: &mut ShellView,
+		window: &Window,
+		now_ms: u64,
+		cx: &mut Context<ShellView>,
+	) {
+		let Some(keeper) = self.keeper.as_mut() else {
+			return;
+		};
+		let failures = keeper.sync(view, &mut self.store, window, now_ms, cx);
+		if let Some(failure) = failures.first() {
+			view.set_notice(Some(format!(
+				"{store} was not saved: {reason}",
+				store = failure.kind.file_name(),
+				reason = failure.reason,
+			)));
+		}
+	}
+}
+
+pub fn attach(
+	attachment: Attachment,
+	persisted: PersistedState,
+	keeper: Option<Keeper>,
+	window: WindowHandle<ShellView>,
+	cx: &mut App,
+) {
 	if window.entity(cx).is_err() {
 		return;
 	}
@@ -53,13 +90,39 @@ pub fn attach(attachment: Attachment, window: WindowHandle<ShellView>, cx: &mut 
 	});
 
 	let host = Rc::new(RefCell::new(Host {
-		store: Store::new(),
+		store: Store::with_persisted(persisted),
 		index: SessionIndex::new(),
 		link,
 		registry: RequestRegistry::new(),
 		terminals: HashMap::new(),
 		drawn: ShellState::default(),
+		keeper,
 	}));
+
+	// A clean shutdown writes what the debounce is still holding, and the
+	// shape the window took on since the last write (§8.10).
+	{
+		let host = Rc::clone(&host);
+		cx.on_app_quit(move |cx: &mut App| {
+			let host = Rc::clone(&host);
+			let _ = window.update(cx, |view, window, cx| {
+				let mut host = host.borrow_mut();
+				let now_ms = current_timestamp_ms();
+				host.keep(view, window, now_ms, cx);
+				if let Some(keeper) = host.keeper.as_mut() {
+					for failure in keeper.flush_all() {
+						eprintln!(
+							"warn: {store} was not saved: {reason}",
+							store = failure.kind.file_name(),
+							reason = failure.reason,
+						);
+					}
+				}
+			});
+			async {}
+		})
+		.detach();
+	}
 
 	// Intents the operator raised go to the host as actions. Every
 	// dispatch notifies the view, so observing it drains them at once.
@@ -112,12 +175,14 @@ pub fn attach(attachment: Attachment, window: WindowHandle<ShellView>, cx: &mut 
 						.timer(std::time::Duration::from_secs(1))
 						.await;
 					if window
-						.update(&mut async_cx, |view, _window, cx| {
-							let host = host.borrow();
+						.update(&mut async_cx, |view, gpui_window, cx| {
+							let mut host = host.borrow_mut();
+							let host = &mut *host;
 							let now_ms = current_timestamp_ms();
 							let changed =
 								project_clock(&host.store, &host.index, now_ms, view.state_mut());
 							view.set_clock_ms(now_ms);
+							host.keep(view, gpui_window, now_ms, cx);
 							if changed
 								|| matches!(
 									view.state().connection,
@@ -226,6 +291,23 @@ pub fn attach(attachment: Attachment, window: WindowHandle<ShellView>, cx: &mut 
 							.flatten()
 							.unwrap_or_else(|| "waiting for connection".to_string());
 						notice = Some(Some(format!("Host startup: {error}; {status}")));
+					}
+					// A session the last window had open is reopened once the
+					// host has listed what it has, and dropped when the host no
+					// longer has it (§8.10).
+					if let Some(session) = host
+						.keeper
+						.as_mut()
+						.and_then(|keeper| keeper.resolve_reopen(&mut host.store))
+					{
+						let now_ms = current_timestamp_ms();
+						let surface = SurfaceId::QueueSessionRow(session.clone());
+						let action = HostAction::OpenSession { session };
+						let kind = action.kind();
+						let req_id = host.link.send(action);
+						host
+							.registry
+							.register(req_id, kind, surface, now_ms, 30_000);
 					}
 					let now_ms = current_timestamp_ms();
 					project(&host.store, &mut host.index, &host.terminals, now_ms, view.state_mut());

@@ -166,5 +166,9 @@ impl ShellView {
 		if self.find_state.has_query() {
 			self.find_state.sync_turns(&self.state.transcript);
 		}
+
+		// 7. Apply the remembered shape that named a card or a drawer tenant the host
+		//    had not reported when it was read (§8.10).
+		self.apply_remembered(now);
 	}
 }

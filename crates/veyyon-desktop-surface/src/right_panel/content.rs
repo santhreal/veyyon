@@ -33,6 +33,31 @@ impl PanelTab {
 			Self::Usage => "Usage",
 		}
 	}
+
+	/// Every tab, so a tab added to the panel is remembered without an edit
+	/// to the reader below.
+	#[must_use]
+	pub const fn all() -> [Self; 4] {
+		[Self::Diff, Self::File, Self::Tree, Self::Usage]
+	}
+
+	/// The name the tab is written under in what the window remembers (§8.10).
+	#[must_use]
+	pub const fn slug(&self) -> &'static str {
+		match self {
+			Self::Diff => "diff",
+			Self::File => "file",
+			Self::Tree => "tree",
+			Self::Usage => "usage",
+		}
+	}
+
+	/// The tab a remembered name stands for, or `None` for a name this binary
+	/// draws no tab for.
+	#[must_use]
+	pub fn from_slug(slug: &str) -> Option<Self> {
+		Self::all().into_iter().find(|tab| tab.slug() == slug)
+	}
 }
 
 /// Status of the diff snapshot.

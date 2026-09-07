@@ -13,7 +13,9 @@ use veyyon_desktop_model::tool_view::ToolPresentation;
 use veyyon_desktop_tokens::ColorRole;
 
 mod artifact;
+mod shell_state;
 pub use artifact::*;
+pub use shell_state::ShellState;
 
 pub use crate::{
 	attach::{ConnectionPhase, ConnectionSurface},
@@ -119,6 +121,33 @@ impl Section {
 			Self::Deferred => "Deferred",
 			Self::Parked => "Parked",
 		}
+	}
+
+	/// The name the section is written under in what the window remembers
+	/// (§8.10).
+	///
+	/// Its own label, lowercased, so the file states which sections are
+	/// collapsed in the words the rail draws.
+	pub const fn slug(self) -> &'static str {
+		match self {
+			Self::Unsent => "unsent",
+			Self::Pinned => "pinned",
+			Self::Live => "live",
+			Self::Deferred => "deferred",
+			Self::Parked => "parked",
+		}
+	}
+
+	/// The section a remembered name stands for, or `None` for a name this
+	/// binary does not draw a section for.
+	///
+	/// Resolved over `all`, so a section added to the queue is readable back
+	/// without an edit here.
+	#[must_use]
+	pub fn from_slug(slug: &str) -> Option<Self> {
+		Self::all()
+			.into_iter()
+			.find(|section| section.slug() == slug)
 	}
 
 	/// Whether rows in this section draw as cards. A card carries a badge, a
@@ -265,118 +294,6 @@ pub struct TreeRow {
 	pub name:    String,
 	/// Added and removed line counts, absent on a directory.
 	pub changed: Option<(u32, u32)>,
-}
-
-/// Everything one shell render draws.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ShellState {
-	/// The window title: the open session's name.
-	pub title:       String,
-	/// The queue's sections and their rows.
-	pub sections:    Vec<(Section, Vec<Row>)>,
-	/// The open session's transcript.
-	pub transcript:  Vec<Turn>,
-	/// The active conversational turn phase.
-	pub turn:        TurnPhase,
-	/// The composer's footer: model, thinking level, queue mode, attachments
-	/// and the context meter, as the host reported them (§5.4).
-	pub composer:    ComposerState,
-	/// The run bar's status line.
-	pub run_status:  Option<(Badge, String)>,
-	/// The right panel's content and tabs (§5.6, §5.11).
-	pub panel:       PanelContent,
-	/// Decisions attached above the composer.
-	pub cards:       Vec<Card>,
-	/// Terminal drawer state and tenants.
-	pub drawer:      DrawerContent,
-	/// Whether the terminal drawer is open.
-	pub drawer_open: bool,
-	/// The open session.
-	pub current_id:  u64,
-	/// Active transport connectivity phase or authentication overlay state.
-	pub connection:  ConnectionPhase,
-	/// Control availability and error states for capability gate resolution.
-	pub controls:    ControlStates,
-	/// Modal floating overlay currently active (Palette or Settings).
-	pub overlay:     Option<Overlay>,
-	/// Keymap and keyboard navigation state (§5.14).
-	pub keymap:      KeymapState,
-}
-
-impl ShellState {
-	/// The row with this id, in whatever section holds it.
-	///
-	/// A row's identity is the session's, not its position, because a section
-	/// re-sorts under the operator and a position taken before a click is not
-	/// the row that was clicked.
-	pub fn row(&self, id: u64) -> Option<&Row> {
-		self
-			.sections
-			.iter()
-			.flat_map(|(_, rows)| rows.iter())
-			.find(|row| row.id == id)
-	}
-
-	/// The section holding the row with this id.
-	///
-	/// A partition move reads it first: parking a session that is already
-	/// parked unparks it, which is what the `queue` chords and the row menu
-	/// both mean by park, defer and pin (§5.14).
-	pub fn section_of(&self, id: u64) -> Option<Section> {
-		self
-			.sections
-			.iter()
-			.find(|(_, rows)| rows.iter().any(|row| row.id == id))
-			.map(|(section, _)| *section)
-	}
-
-	/// Returns the palette state if a palette overlay is open.
-	#[must_use]
-	pub fn overlay_palette(&self) -> Option<&PaletteState> {
-		self.overlay.as_ref().and_then(Overlay::as_palette)
-	}
-
-	/// Returns a mutable reference to the palette state if a palette overlay is
-	/// open.
-	#[must_use]
-	pub fn overlay_palette_mut(&mut self) -> Option<&mut PaletteState> {
-		self.overlay.as_mut().and_then(Overlay::as_palette_mut)
-	}
-
-	/// Returns the settings state if a settings overlay is open.
-	#[must_use]
-	pub fn overlay_settings(&self) -> Option<&SettingsState> {
-		self.overlay.as_ref().and_then(Overlay::as_settings)
-	}
-
-	/// Returns a mutable reference to the settings state if a settings overlay
-	/// is open.
-	#[must_use]
-	pub fn overlay_settings_mut(&mut self) -> Option<&mut SettingsState> {
-		self.overlay.as_mut().and_then(Overlay::as_settings_mut)
-	}
-}
-
-impl Default for ShellState {
-	fn default() -> Self {
-		Self {
-			title:       "veyyon".to_string(),
-			sections:    Vec::new(),
-			transcript:  Vec::new(),
-			turn:        TurnPhase::default(),
-			composer:    ComposerState::default(),
-			run_status:  None,
-			panel:       PanelContent::default(),
-			cards:       Vec::new(),
-			drawer:      DrawerContent::default(),
-			drawer_open: false,
-			current_id:  0,
-			connection:  ConnectionPhase::default(),
-			controls:    ControlStates::default(),
-			overlay:     None,
-			keymap:      KeymapState::default(),
-		}
-	}
 }
 
 /// Resolves a role name from a token file to a role.

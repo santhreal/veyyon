@@ -55,6 +55,52 @@ the first 16 hex characters of the SHA-256 of the agent directory and
 `$TMPDIR` on macOS. With no such directory, and for an explicit `unix:` endpoint
 over the limit, startup fails with the path, its size and the limit.
 
+## What the window remembers
+
+The window reopens in the shape it was closed in. Six documents under
+`<agent-dir>/desktop/` hold it: `window.json` (position, size, maximised state
+and display), `shell.json` (rail collapse and the last open session),
+`queue.json` (collapsed queue sections and how far the parked section is paged
+in), and `panels.json`, `transcript.json` and `composer.json`, keyed by
+session. Per session that is the right panel and drawer visibility, the width
+and height they were dragged to, the tab each was showing, the diff mode, the
+disclosed tool cards, the turn the operator was reading, the queue mode, the
+attachments a draft carries and the draft text itself.
+
+A reading position is the transcript entry the top turn was opened by, not a
+turn index, so it survives the session paging in earlier turns. A transcript
+left at the live edge stores no position and comes back at the live edge. A
+position naming a turn the host has not sent yet is held and applied on the
+frame that turn is drawn.
+
+`VEYYON_DESKTOP_STATE_DIR` selects another directory. With no home directory to
+build a profile path under, the window remembers nothing and writes nothing.
+
+A change reaches the disk 400 milliseconds after the first change of its
+window, and everything waiting is written on quit. Each document is written to a
+sibling `.json.writing` file and renamed over the previous one; `composer.json`
+is fsynced before that rename and the others are not.
+
+A document from a version this build does not write, a truncated document, and
+a document holding a key this build does not write are all replaced by the
+default and reported on stderr at warn level, naming the file, the session for
+a per-session document, what was wrong and the version this build writes.
+Nothing is migrated. One session's rejected entry leaves every other session's
+in place.
+
+A measure the pointer never dragged is absent rather than stored, so the panel
+and drawer follow the breakpoint ladder at the width the window opens at. A
+remembered window whose display this machine no longer has opens centred on a
+display it does have, at the size it had. A remembered size below 800 × 560
+opens at 800 × 560. A remembered session the host no longer lists is dropped
+rather than reopened, and the session is asked for once, so a session closed
+afterwards stays closed.
+
+`shell.json` does not hold the queue rail's width, `panels.json` does not hold
+which tabs the panels offer, and no document holds token overrides. The rail
+has no draggable width, the tabs are the host's and come back with it, and
+tokens are read from their files.
+
 ## Connection states
 
 Each transport state is shown in one place.

@@ -8,6 +8,7 @@ pub mod link;
 pub mod project;
 pub mod reconnect;
 pub mod scene;
+pub mod state;
 pub mod transport;
 
 pub use app::{

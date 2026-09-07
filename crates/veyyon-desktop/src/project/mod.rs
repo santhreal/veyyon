@@ -130,15 +130,17 @@ pub fn project<S: std::hash::BuildHasher>(
 	state.current_id = active.map_or(0, |id| index.row_of(id));
 	state.title = active_session.map_or_else(|| "veyyon".to_string(), |s| s.title.clone());
 
-	state.transcript = active
+	let mut projected = active
 		.and_then(|id| store.transcripts.get(id))
 		.map(turns)
 		.unwrap_or_default();
 
 	let streaming = active.and_then(|id| store.streaming.get(id));
 	if let Some(stream) = streaming {
-		push_entry(&mut state.transcript, &stream.accumulating);
+		push_entry(&mut projected, &stream.accumulating);
 	}
+	state.transcript = projected.turns;
+	state.turn_anchors = projected.anchors;
 
 	state.run_status = active
 		.and_then(|id| session_badge(store, id, now_ms))

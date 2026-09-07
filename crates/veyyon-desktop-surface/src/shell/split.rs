@@ -78,6 +78,16 @@ impl ShellView {
 		motion.set_direct(height, cx.background_executor().now());
 	}
 
+	/// Seeds the drawer at the height a previous window was left at (§8.10).
+	///
+	/// The bounds are the seeded height itself: the shed clamps the drawn
+	/// height to what this window can hold on the next frame, and a later drag
+	/// replaces the bounds with the ones that drag allows.
+	pub(super) fn restore_drawer_height(&mut self, height: f32) {
+		self.split_motion.drawer =
+			Some(PanelMotion::with_bounds(SurfaceId::TerminalDrawer, 0, height, 0.0, height));
+	}
+
 	pub(super) fn release_drawer(&mut self, cx: &Context<Self>) {
 		SplitMotions::release(
 			&mut self.split_motion.drawer,

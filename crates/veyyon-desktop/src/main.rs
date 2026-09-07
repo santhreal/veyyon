@@ -15,11 +15,13 @@ use clap::Parser as _;
 use veyyon_desktop::{
 	cli::{Cli, Command},
 	connect_or_spawn, discover_asset_paths, load_startup_bundle, scene, start_token_supervision,
+	state::{Keeper, StateDir, placement, report_rejections},
 };
+use veyyon_desktop_model::PersistedState;
 use veyyon_desktop_surface::{Keymap, ShellState, ShellView, install_tokens};
 use veyyon_desktop_tokens::TokenReloadMessage;
 use veyyon_gpui::{
-	App, AppContext, Application, AsyncApp, Bounds, Point, Size, TitlebarOptions, WindowBounds,
+	App, AppContext, Application, AsyncApp, Bounds, Pixels, Size, TitlebarOptions, WindowBounds,
 	WindowOptions, point, px,
 };
 
@@ -44,6 +46,16 @@ fn main() {
 	let min_width = bundle.tokens.surface.shell.window_min_width_px;
 	let min_height = bundle.tokens.surface.shell.window_min_height_px;
 
+	// What the last window left behind, read once before anything is drawn
+	// (§8.10). A store this binary does not recognise states itself on stderr
+	// and leaves its default, so the window comes up rather than refusing to.
+	let state_dir = StateDir::discover();
+	let (persisted, rejections) = state_dir
+		.as_ref()
+		.map_or_else(|| (PersistedState::new(), Vec::new()), StateDir::load);
+	report_rejections(&rejections);
+	let keeper = state_dir.map(|dir| Keeper::new(dir, persisted.clone()));
+
 	let tokens = bundle.tokens.clone();
 	let theme = bundle.theme.clone();
 	let surface_path = bundle.surface_path.clone();
@@ -52,10 +64,17 @@ fn main() {
 	let platform = gpui_platform::current_platform(false);
 	let app = Application::with_platform(platform);
 	app.run(move |cx: &mut App| {
-		let window_bounds = WindowBounds::Windowed(Bounds {
-			origin: Point { x: px(0.0), y: px(0.0) },
-			size:   Size { width: px(min_width), height: px(min_height) },
-		});
+		let displays: Vec<Bounds<Pixels>> = cx
+			.displays()
+			.into_iter()
+			.map(|display| display.bounds())
+			.collect();
+		let (bounds, maximized) = placement(&persisted, &displays, min_width, min_height);
+		let window_bounds = if maximized {
+			WindowBounds::Maximized(bounds)
+		} else {
+			WindowBounds::Windowed(bounds)
+		};
 
 		// On macOS the window draws the titlebar itself and the traffic
 		// lights land in the inset the shell's bar leaves for them (§4.1).
@@ -89,6 +108,16 @@ fn main() {
 			},
 		};
 		cx.bind_keys(Keymap::default().bindings());
+
+		// The queue's collapse is the window's, not a session's, so it is put
+		// back before the first frame rather than when a session opens.
+		let mut keeper = keeper;
+		if let Some(keeper) = keeper.as_ref() {
+			let _ = window.update(cx, |view, _window, cx| {
+				keeper.restore_host(view);
+				cx.notify();
+			});
+		}
 
 		// Background token watcher for hot reload (§8.4).
 		match start_token_supervision(&tokens_dir) {
@@ -170,7 +199,7 @@ fn main() {
 							return;
 						},
 					};
-					host_view::attach(attachment, window, cx);
+					host_view::attach(attachment, persisted, keeper.take(), window, cx);
 				});
 			}
 		})
