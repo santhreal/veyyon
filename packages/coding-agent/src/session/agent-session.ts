@@ -3841,6 +3841,30 @@ export class AgentSession {
 		return false;
 	}
 
+	/**
+	 * True when the latest compaction entry on the current branch sits after
+	 * {@link assistantMessage}'s own entry, i.e. the assistant was kept through
+	 * that compaction and its `usage` describes the pre-rewrite prompt. One
+	 * backward walk from the leaf: the first compaction entry met is the latest,
+	 * and the assistant predates it iff its entry is still ahead on the walk.
+	 * A message that is not on the branch predates nothing.
+	 */
+	#assistantPredatesLatestCompaction(assistantMessage: AssistantMessage): boolean {
+		const key = sessionMessagePersistenceKey(assistantMessage);
+		const branch = this.sessionManager.getBranch();
+		let compactionSeen = false;
+		for (let index = branch.length - 1; index >= 0; index--) {
+			const entry = branch[index];
+			if (entry.type === "compaction") {
+				compactionSeen = true;
+				continue;
+			}
+			if (entry.type !== "message" || key === undefined) continue;
+			if (sessionMessagePersistenceKey(entry.message) === key) return compactionSeen;
+		}
+		return false;
+	}
+
 	#appendSessionMessage(
 		message:
 			| Message
@@ -11866,9 +11890,16 @@ export class AgentSession {
 		// The error shouldn't trigger another compaction since we already compacted.
 		// Example: opus fails -> switch to codex -> compact -> switch back to opus -> opus error
 		// is still in context but shouldn't trigger compaction again.
-		const compactionEntry = getLatestCompactionEntry(this.sessionManager.getBranch());
-		const errorIsFromBeforeCompaction =
-			compactionEntry !== null && assistantMessage.timestamp < new Date(compactionEntry.timestamp).getTime();
+		//
+		// Decided by position on the branch, not by timestamp. The scheduled
+		// auto-continue re-enters this check with the kept assistant
+		// (#promptWithMessage -> #checkCompaction) and its stale, pre-rewrite
+		// `usage`; a compaction entry appended in the same millisecond as that
+		// assistant's `timestamp` made a `<` comparison read it as new, the stale
+		// count re-tripped the threshold on a history with nothing left to
+		// summarize, and the "freed too little context" warning fired on a
+		// compaction that had just worked.
+		const errorIsFromBeforeCompaction = this.#assistantPredatesLatestCompaction(assistantMessage);
 		if (sameModel && !errorIsFromBeforeCompaction && AIError.isContextOverflow(assistantMessage, contextWindow)) {
 			// Clear the failed turn from active context so the retry (or the next
 			// user prompt) does not replay it. The persisted branch entry stays
