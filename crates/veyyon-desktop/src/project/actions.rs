@@ -280,15 +280,24 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 			}
 			Vec::new()
 		},
+		Intent::UnpinSession(row) => {
+			if let Some(session) = index.session_of(*row) {
+				store.sessions.unpin(session, crate::current_timestamp_ms());
+			}
+			Vec::new()
+		},
+		// `Parked` orders by when a session was put away, so an epoch timestamp
+		// collapses that ordering onto the id. The rail's defer names no return
+		// time, and records none rather than inventing one.
 		Intent::DeferSession(row) => {
 			if let Some(session) = index.session_of(*row) {
-				store.sessions.defer(session, 0);
+				store.sessions.defer(session, None);
 			}
 			Vec::new()
 		},
 		Intent::ParkSession(row) => {
 			if let Some(session) = index.session_of(*row) {
-				store.sessions.park(session, 0);
+				store.sessions.park(session, crate::current_timestamp_ms());
 			}
 			Vec::new()
 		},

@@ -46,6 +46,11 @@ Each section collapses independently. Collapsed sections retain their header
 and count; empty sections are hidden. The session list scrolls between the header
 and the fixed footer.
 
+Pinned holds the operator's order. Live sorts by its anchor, newest first, and
+agent activity does not reorder it. Deferred sorts by return time, soonest
+first, and a session deferred from the rail names no return time and sorts
+last. Parked sorts by when each session was parked, most recent first.
+
 Parked shows 25 lines and then an `Older (N remaining)` row. Clicking that row
 adds the next 25.
 
@@ -67,10 +72,26 @@ They last until the window closes, and a session index sent while the window is
 open does not move a session out of the section it was placed in. A session the
 agent no longer holds is removed from the queue.
 
-Right-click a card for Open, Park, Defer, Branch, and Delete. Branch starts a new
+Right-click a card for Open, Park, Defer, Branch, and Delete. A pinned card also
+offers Unpin, which a card's two hover actions have no room for. Parked lines
+offer Open and Unpark; deferred lines offer Open and Recall. Branch starts a new
 session before the latest user message on the selected session's active branch,
 without changing the source session. Extensions can cancel the operation.
 Unavailable and pending management actions are disabled in the menu.
+
+Click the queue to focus it for the keyboard.
+
+| Shortcut | Action |
+| --- | --- |
+| `Up` / `Down` | Move the selection |
+| `Enter` | Open the selected session |
+| `P` | Pin the selected session, or unpin it |
+| `D` | Defer the selected session, or recall it |
+| `K` | Park the selected session, or unpark it |
+| `/` | Search the queue |
+
+`P`, `D`, and `K` read the section the session is in: a session already in that
+section returns to Live.
 
 ## Transcript
 

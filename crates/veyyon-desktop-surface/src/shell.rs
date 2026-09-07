@@ -82,6 +82,10 @@ pub struct ShellView {
 	/// like the row menu: a snapshot never moves the handle (§5.6).
 	panel_width:           Option<f32>,
 	focus_handle:          Option<FocusHandle>,
+	/// The focus the queue rail takes when the pointer lands in it, which is
+	/// what puts the `Queue` key context on the focus path so the scope's
+	/// chords resolve (§5.14).
+	queue_focus:           Option<FocusHandle>,
 	destination_focus:     Option<FocusHandle>,
 	general_settings_list: GeneralSettingsListState,
 	now_ms:                u64,
@@ -120,6 +124,7 @@ impl ShellView {
 			row_menu: None,
 			panel_width: None,
 			focus_handle: None,
+			queue_focus: None,
 			destination_focus: None,
 			general_settings_list: GeneralSettingsListState::new(),
 			now_ms: 0,

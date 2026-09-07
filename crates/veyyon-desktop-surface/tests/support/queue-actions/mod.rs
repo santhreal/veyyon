@@ -145,11 +145,25 @@ pub struct SectionContract {
 impl SectionContract {
 	pub fn for_section(section: Section, row_id: u64) -> Self {
 		match section {
-			Section::Unsent | Section::Pinned | Section::Live => Self {
+			Section::Unsent | Section::Live => Self {
 				hover_intents: vec![Intent::ParkSession(row_id), Intent::DeferSession(row_id)],
 				menu_kind:     RowMenuKind::Card,
 				menu_intents:  vec![
 					Intent::SelectSession(row_id),
+					Intent::ParkSession(row_id),
+					Intent::DeferSession(row_id),
+					Intent::BranchSession(row_id),
+					Intent::DeleteSession(row_id),
+				],
+			},
+			// A card carries two hover actions at most (§5.1), so the way out
+			// of `Pinned` is on the menu.
+			Section::Pinned => Self {
+				hover_intents: vec![Intent::ParkSession(row_id), Intent::DeferSession(row_id)],
+				menu_kind:     RowMenuKind::Pinned,
+				menu_intents:  vec![
+					Intent::SelectSession(row_id),
+					Intent::UnpinSession(row_id),
 					Intent::ParkSession(row_id),
 					Intent::DeferSession(row_id),
 					Intent::BranchSession(row_id),

@@ -18,11 +18,12 @@ use super::menu::{RowMenu, RowMenuKind};
 use crate::{
 	Intent, ShellView,
 	controls::ControlStates,
-	model::{Badge, Row},
+	model::{Badge, Row, Section},
 };
 /// Renders a card row (78px): badge, timer, title, subtitle, and hover actions.
 pub fn card_row(
 	row: &Row,
+	section: Section,
 	selected: bool,
 	is_open: bool,
 	shift_y: f32,
@@ -143,7 +144,15 @@ pub fn card_row(
 			})
 			.on_mouse_down(MouseButton::Right, move |event: &MouseDownEvent, _window, app| {
 				let _ = weak_menu.update(app, |view, cx| {
-					view.open_row_menu(RowMenu { id, origin: event.position, kind: RowMenuKind::Card });
+					// A pinned card's menu is the card's menu plus the way back
+					// out of `Pinned`, which no hover action carries: §5.1 caps
+					// a card at two.
+					let kind = if section == Section::Pinned {
+						RowMenuKind::Pinned
+					} else {
+						RowMenuKind::Card
+					};
+					view.open_row_menu(RowMenu { id, origin: event.position, kind });
 					cx.notify();
 				});
 			});

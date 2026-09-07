@@ -86,17 +86,10 @@ pub fn attach(attachment: Attachment, window: WindowHandle<ShellView>, cx: &mut 
 				}
 			}
 			view.update(cx, |view, cx| {
-				if intents.iter().any(|intent| {
-					matches!(
-						intent,
-						Intent::PinSession(_)
-							| Intent::DeferSession(_)
-							| Intent::ParkSession(_)
-							| Intent::UnparkSession(_)
-							| Intent::RecallSession(_)
-							| Intent::Navigate(_)
-					)
-				}) {
+				if intents
+					.iter()
+					.any(|intent| intent.moves_partition() || matches!(intent, Intent::Navigate(_)))
+				{
 					project(&host.store, &mut host.index, &host.terminals, now_ms, view.state_mut());
 				}
 				project_controls(&host.store, &host.registry, &host.index, view.state_mut());

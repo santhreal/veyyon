@@ -83,7 +83,7 @@ fn place(store: &mut Store, id: &SessionId, partition: QueuePartition) {
 		},
 		QueuePartition::Pinned => store.sessions.pin(id, Some("a".to_string())),
 		QueuePartition::Live => {},
-		QueuePartition::Deferred => store.sessions.defer(id, 9_000),
+		QueuePartition::Deferred => store.sessions.defer(id, Some(9_000)),
 		QueuePartition::Parked => store.sessions.park(id, 8_000),
 	}
 }

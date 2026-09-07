@@ -107,6 +107,7 @@ pub enum Intent {
 	ProcessRestart(String),
 	ProcessSignal(String),
 	PinSession(u64),
+	UnpinSession(u64),
 	DeferSession(u64),
 	ParkSession(u64),
 	UnparkSession(u64),
@@ -141,6 +142,24 @@ pub enum Intent {
 }
 
 impl Intent {
+	/// Whether this intent moves a session between queue partitions.
+	///
+	/// The window owns the partitions, so nothing arrives from the host to
+	/// redraw the rail after one of these: the projection is re-run for them
+	/// (§5.2). An intent added to a partition pair and left out here moves the
+	/// session and leaves the rail showing where it was.
+	pub const fn moves_partition(&self) -> bool {
+		matches!(
+			self,
+			Self::PinSession(_)
+				| Self::UnpinSession(_)
+				| Self::DeferSession(_)
+				| Self::RecallSession(_)
+				| Self::ParkSession(_)
+				| Self::UnparkSession(_)
+		)
+	}
+
 	/// Whether the shell can finish this intent alone.
 	pub const fn is_local(&self) -> bool {
 		matches!(

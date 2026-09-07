@@ -172,6 +172,11 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		Intent::PinSession(id) => {
 			state.keymap.pinned_session = Some(*id);
 		},
+		Intent::UnpinSession(id) => {
+			if state.keymap.pinned_session == Some(*id) {
+				state.keymap.pinned_session = None;
+			}
+		},
 		Intent::DeferSession(id) => {
 			state.keymap.deferred_session = Some(*id);
 		},

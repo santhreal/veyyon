@@ -313,6 +313,19 @@ impl ShellState {
 			.find(|row| row.id == id)
 	}
 
+	/// The section holding the row with this id.
+	///
+	/// A partition move reads it first: parking a session that is already
+	/// parked unparks it, which is what the `queue` chords and the row menu
+	/// both mean by park, defer and pin (§5.14).
+	pub fn section_of(&self, id: u64) -> Option<Section> {
+		self
+			.sections
+			.iter()
+			.find(|(_, rows)| rows.iter().any(|row| row.id == id))
+			.map(|(section, _)| *section)
+	}
+
 	/// Returns the palette state if a palette overlay is open.
 	#[must_use]
 	pub fn overlay_palette(&self) -> Option<&PaletteState> {

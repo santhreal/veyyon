@@ -20,6 +20,29 @@ use crate::{
 	},
 };
 
+/// The intent a partition chord dispatches for the session the rail has open.
+///
+/// `P`, `D` and `K` are toggles (§5.14): a session already in the partition
+/// the chord names comes back out to `Live`, and one anywhere else moves in.
+/// Returns `None` when no session is open, and for a partition no chord names,
+/// since there is nothing to move.
+fn partition_toggle(view: &ShellView, into: Section) -> Option<Intent> {
+	let current = view.state().current_id;
+	if current == 0 {
+		return None;
+	}
+	let held = view.state().section_of(current) == Some(into);
+	match (into, held) {
+		(Section::Pinned, false) => Some(Intent::PinSession(current)),
+		(Section::Pinned, true) => Some(Intent::UnpinSession(current)),
+		(Section::Deferred, false) => Some(Intent::DeferSession(current)),
+		(Section::Deferred, true) => Some(Intent::RecallSession(current)),
+		(Section::Parked, false) => Some(Intent::ParkSession(current)),
+		(Section::Parked, true) => Some(Intent::UnparkSession(current)),
+		(Section::Unsent | Section::Live, _) => None,
+	}
+}
+
 /// Binds the root `Shell` key context and registers action handlers.
 #[must_use]
 pub fn bind_global_keys(root: Div, cx: &Context<ShellView>) -> Div {
@@ -187,21 +210,18 @@ pub fn bind_global_keys(root: Div, cx: &Context<ShellView>) -> Div {
 			}
 		}))
 		.on_action(cx.listener(|view, _: &TogglePinSelected, _window, cx| {
-			let current = view.state().current_id;
-			if current != 0 {
-				view.dispatch(Intent::PinSession(current), cx);
+			if let Some(intent) = partition_toggle(view, Section::Pinned) {
+				view.dispatch(intent, cx);
 			}
 		}))
 		.on_action(cx.listener(|view, _: &ToggleDeferSelected, _window, cx| {
-			let current = view.state().current_id;
-			if current != 0 {
-				view.dispatch(Intent::DeferSession(current), cx);
+			if let Some(intent) = partition_toggle(view, Section::Deferred) {
+				view.dispatch(intent, cx);
 			}
 		}))
 		.on_action(cx.listener(|view, _: &ToggleParkSelected, _window, cx| {
-			let current = view.state().current_id;
-			if current != 0 {
-				view.dispatch(Intent::ParkSession(current), cx);
+			if let Some(intent) = partition_toggle(view, Section::Parked) {
+				view.dispatch(intent, cx);
 			}
 		}))
 		.on_action(cx.listener(|view, _: &FilterQueue, window, cx| {

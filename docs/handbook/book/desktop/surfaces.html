@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c35b5b91.js";
+            window.path_to_searchindex_js = "../searchindex-2e2c2509.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-2d780f09.js"></script>
@@ -246,6 +246,8 @@ new-session action. Sessions appear in this order:</p>
 <p>Each section collapses independently. Collapsed sections retain their header
 and count; empty sections are hidden. The session list scrolls between the header
 and the fixed footer.</p>
+<p>Parked shows 25 lines and then an <code>Older (N remaining)</code> row. Clicking that row
+adds the next 25.</p>
 <p>Cards display the session title, workspace, status, and relevant timing.
 Secondary actions remain hidden at rest and do not shift the title when revealed.
 Selection, hover, and status have distinct treatments. Compact rows retain
@@ -256,6 +258,10 @@ Account, Agents, Models, and other command destinations remain in command
 navigation rather than becoming sidebar buttons.</p>
 <p>Card rows show Park and Defer while the pointer is over the row. Parked lines
 provide Unpark; deferred lines provide Recall.</p>
+<p>Park, defer, and pin are window state and are not written to the session file.
+They last until the window closes, and a session index sent while the window is
+open does not move a session out of the section it was placed in. A session the
+agent no longer holds is removed from the queue.</p>
 <p>Right-click a card for Open, Park, Defer, Branch, and Delete. Branch starts a new
 session before the latest user message on the selected session’s active branch,
 without changing the source session. Extensions can cancel the operation.
@@ -282,8 +288,15 @@ returns to the live edge. Switching sessions restores their saved scroll anchors
 <p>The find bar displays the selected matching block and total matching blocks.
 <code>Enter</code> advances to the next matching block; <code>Escape</code> closes the bar.</p>
 <p>Persisted model, thinking-level, service-tier, and session changes display their
-recorded values. Hidden custom messages and internal checkpoints do not create
-visible turns. Unknown extension entries retain their original data.</p>
+recorded values. Hidden custom messages, internal checkpoints, and the runtime’s
+own bookkeeping records — the pending-tool-call warning, the exit diagnostic, a
+todo edit, an extension’s stored state — do not create visible turns. Unknown
+extension entries retain their original data.</p>
+<p>A tool call occupies one row while it is collapsed: the card’s status line, its
+block header, or the section it names, followed by how many lines it is holding
+back. <code>Space</code> on the focused turn and a click on the row open the same card, and
+both close it again. An open card states no held-back count on its row, since
+the card below it shows every line.</p>
 <p>Developer and custom records display labeled annotations below the assistant
 reading size. File, model, thinking, and lifecycle events use the same annotation
 style. Branch and compaction summaries have distinct labels and a separating
@@ -385,20 +398,19 @@ local echo. An overlaid drawer blocks pointer interaction with the composer
 beneath it.</p>
 <h2 id="record-native-interactions"><a class="header" href="#record-native-interactions">Record native interactions</a></h2>
 <p>Build the current executable with <code>cargo build -p veyyon-desktop</code> and build the
-recorder with <code>proof/docker/build-recorder.sh</code>. Set <code>DESKTOP_BINARY</code> to the absolute
-path of that executable. The output directory must be writable by the recorder
-container, including on NFS mounts.</p>
-<pre><code class="language-sh">PROOF_HOST_REPO_SOURCE="$DESKTOP_BINARY" \
-PROOF_HOST_REPO_TARGET=/desktop-bin/veyyon-desktop \
-SCENE_TERMINAL=native \
-SCENE_RUNTIME_DIR=/out/runtime \
-SCENE_WIDTH=1180 SCENE_HEIGHT=800 \
-SCENE_COMMAND='env VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json VEYYON_BIN=/repo/packages/coding-agent/src/cli.ts VEYYON_DESKTOP_TOKENS_DIR=/repo/crates/veyyon-desktop-tokens/tokens VEYYON_DESKTOP_THEMES_DIR=/repo/crates/veyyon-desktop-tokens/themes /desktop-bin/veyyon-desktop' \
-proof/docker/record-x11.sh proof/scenes/desktop-composer.sh
+recorder with <code>proof/docker/build-recorder.sh</code>. The output directory must be
+writable by the recorder container, including on NFS mounts.</p>
+<pre><code class="language-sh">proof/docker/record-native.sh proof/scenes/desktop-composer.sh
 </code></pre>
-<p>For NVIDIA CDI, set <code>PROOF_GPU_DEVICE=nvidia.com/gpu=all</code> and use
-<code>VK_DRIVER_FILES=/etc/vulkan/icd.d/nvidia_icd.json</code> in <code>SCENE_COMMAND</code>.
-The host’s CDI specification must match its current driver and device nodes.</p>
+<p><code>record-native.sh</code> runs the window rather than a terminal: it mounts the
+executable into the container, points the session at the checkout’s tokens and
+themes, and renders through lavapipe, so a capture needs no GPU. It takes the
+executable from <code>DESKTOP_BINARY</code>, or from this workspace’s cargo target
+directory, and states the build command when there is none. <code>SCENE_WIDTH</code> and
+<code>SCENE_HEIGHT</code> default to 1180x800; <code>OUT_DIR</code> names the output directory.</p>
+<p>For the host’s NVIDIA device instead, set <code>PROOF_GPU_DEVICE=nvidia.com/gpu=all</code>
+and <code>VK_ICD=/etc/vulkan/icd.d/nvidia_icd.json</code>. The host’s CDI specification must
+match its current driver and device nodes.</p>
 <p>The scene uses automatic host startup in the container’s isolated home. It checks
 the initial session snapshot and waits for the session-creation interaction to
 produce a new host session before entering a draft. It records model-picker
@@ -414,14 +426,19 @@ parent navigation, draft-focus restoration, and queue action visibility.</p>
 <p>Use <code>proof/scenes/desktop-terminal.sh</code> to open the terminal drawer, focus its grid,
 and execute a shell command. Set <code>SCENE_WIDTH</code> to <code>800</code> and <code>1180</code> for overlaid and
 docked drawers.</p>
+<p>Use <code>proof/scenes/desktop-tool-view.sh</code> to record a real tool call and disclose its
+card twice, once with <code>space</code> on the focused turn and once by clicking the card’s
+row. The two open frames show the same card, which is what a host-held disclosure
+means.</p>
 <p>Output is written to <code>proof/captures/x11/</code>, or the absolute directory in <code>OUT_DIR</code>.
 The <a href="../foundations/verification.html">capture requirements</a> specify paired static
 frames and animated clips. Headless scene PNGs do not replace native captures.</p>
 <p>Native Before recording also requires <code>PROOF_NATIVE_BEFORE_BINARY</code> to identify
-the executable built from the baseline source. The recorder rejects missing,
-non-executable, or byte-identical Before and After binaries.
-For a native-only change, set <code>PROOF_BASE_REF=HEAD</code> to retain the same host source
-in both arms.</p>
+the executable built from the baseline source, since holding source files back
+rebuilds no binary. The recorder rejects missing, non-executable, or
+byte-identical Before and After binaries. <code>SCENE_ARM=before</code> sends
+<code>record-native.sh</code> down that path. For a native-only change, set
+<code>PROOF_BASE_REF=HEAD</code> to retain the same host source in both arms.</p>
 <p>See <a href="motion.html">Motion</a> for transition behavior.</p>
 
                     </main>

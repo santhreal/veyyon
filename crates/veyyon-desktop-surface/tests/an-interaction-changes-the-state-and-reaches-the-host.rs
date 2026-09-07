@@ -82,6 +82,7 @@ fn every_intent() -> Vec<Intent> {
 		Intent::RetryDiagnosticSource("github".to_owned()),
 		Intent::RefreshUsage,
 		Intent::PinSession(7),
+		Intent::UnpinSession(7),
 		Intent::DeferSession(7),
 		Intent::ParkSession(7),
 		Intent::UnparkSession(7),
@@ -162,6 +163,7 @@ fn every_intent() -> Vec<Intent> {
 			| Intent::RetryDiagnosticSource(_)
 			| Intent::RefreshUsage
 			| Intent::PinSession(_)
+			| Intent::UnpinSession(_)
 			| Intent::DeferSession(_)
 			| Intent::ParkSession(_)
 			| Intent::UnparkSession(_)

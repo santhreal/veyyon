@@ -238,7 +238,9 @@ fn test_reanchoring_only_on_unpark_recall_pin() {
 	]);
 
 	// 3. Defer session-a until t=10000
-	store.sessions.defer(&SessionId::from("session-a"), 10000);
+	store
+		.sessions
+		.defer(&SessionId::from("session-a"), Some(10000));
 	assert_eq!(store.sessions.live, vec![
 		SessionId::from("session-b"),
 		SessionId::from("session-c")

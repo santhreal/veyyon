@@ -231,11 +231,17 @@ impl SessionCollection {
 		self.reindex_partition(QueuePartition::Pinned);
 	}
 
-	/// Moves a session into `Deferred` until a specified timestamp.
-	pub fn defer(&mut self, id: &SessionId, until_ms: u64) {
+	/// Moves a session into `Deferred`, returning at `until_ms` when one is
+	/// known.
+	///
+	/// A deferral with no return time sorts after every dated one, which is
+	/// what `soonest return first` means for a session that names no time
+	/// (§5.2). Recording an arbitrary one instead would show a due deferral
+	/// the operator never asked for.
+	pub fn defer(&mut self, id: &SessionId, until_ms: Option<u64>) {
 		if let Some(session) = self.items.get_mut(id) {
 			session.partition = QueuePartition::Deferred;
-			session.defer_until_ms = Some(until_ms);
+			session.defer_until_ms = until_ms;
 		}
 		self.remove_from_all_lists(id);
 		self.deferred.push(id.clone());

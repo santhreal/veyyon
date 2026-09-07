@@ -167,6 +167,10 @@ pub fn render_shell(
 	// its own regions, so its slot is empty here.
 	let mut column_regions: Vec<Option<Region>> = Vec::with_capacity(3);
 	if let Some(queue_px) = widths.queue_px {
+		let queue_focus = view
+			.queue_focus
+			.get_or_insert_with(|| cx.focus_handle())
+			.clone();
 		columns = columns.child(queue_rail(
 			&view.state.sections,
 			view.state.keymap.queue_filter.as_deref(),
@@ -177,6 +181,7 @@ pub fn render_shell(
 			&surface.queue,
 			&tokens,
 			&mut view.rail_motion,
+			&queue_focus,
 			window,
 			cx,
 		));

@@ -21,6 +21,8 @@ use crate::{
 pub enum RowMenuKind {
 	/// Active card row: park and defer.
 	Card,
+	/// Pinned card row: unpin, then what a card offers.
+	Pinned,
 	/// Archival parked line row: unpark.
 	Parked,
 	/// Archival deferred line row: recall.
@@ -40,14 +42,14 @@ impl RowMenu {
 	/// Returns whether this menu is for a card row.
 	#[must_use]
 	pub const fn is_card(&self) -> bool {
-		matches!(self.kind, RowMenuKind::Card)
+		matches!(self.kind, RowMenuKind::Card | RowMenuKind::Pinned)
 	}
 }
 
 /// What the menu's rows dispatch, in the order they are drawn.
 fn choices(menu: &RowMenu, controls: &ControlStates) -> Vec<(MenuItem, Intent)> {
 	match menu.kind {
-		RowMenuKind::Card => {
+		RowMenuKind::Card | RowMenuKind::Pinned => {
 			let sid = SessionId::from(menu.id.to_string());
 			let branch_surface = SurfaceId::SessionBranchButton(sid.clone());
 			let branch_av = controls.availability(&branch_surface);
@@ -67,13 +69,18 @@ fn choices(menu: &RowMenu, controls: &ControlStates) -> Vec<(MenuItem, Intent)> 
 				delete_item = delete_item.disabled(true);
 			}
 
-			vec![
-				(MenuItem::new("Open"), Intent::SelectSession(menu.id)),
+			let mut items = vec![(MenuItem::new("Open"), Intent::SelectSession(menu.id))];
+			if matches!(menu.kind, RowMenuKind::Pinned) {
+				items
+					.push((MenuItem::new("Unpin").icon(IconName::Unpin), Intent::UnpinSession(menu.id)));
+			}
+			items.extend([
 				(MenuItem::new("Park").icon(IconName::Stop), Intent::ParkSession(menu.id)),
 				(MenuItem::new("Defer").icon(IconName::Pause), Intent::DeferSession(menu.id)),
 				(branch_item, Intent::BranchSession(menu.id)),
 				(delete_item, Intent::DeleteSession(menu.id)),
-			]
+			]);
+			items
 		},
 		RowMenuKind::Parked => vec![
 			(MenuItem::new("Open"), Intent::SelectSession(menu.id)),
