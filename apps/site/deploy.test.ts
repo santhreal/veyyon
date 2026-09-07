@@ -120,14 +120,14 @@ function testSubprocessEnv(extra: Record<string, string> = {}): Record<string, s
 	};
 }
 
-function runScript(script: string, project?: string): string {
+function runScript(script: string, project?: string, target: TestWorkspace = workspace): string {
 	const env = testSubprocessEnv();
 	if (project === undefined) delete env.VEYYON_PAGES_PROJECT;
 	else env.VEYYON_PAGES_PROJECT = project;
 
-	const executable = script === workspace.buildScript ? findExternalNodeExecutable() : process.execPath;
-	const run = Bun.spawnSync([executable, script, ...(script === workspace.deployScript ? ["--dry-run"] : [])], {
-		cwd: workspace.workspaceRoot,
+	const executable = script === target.buildScript ? findExternalNodeExecutable() : process.execPath;
+	const run = Bun.spawnSync([executable, script, ...(script === target.deployScript ? ["--dry-run"] : [])], {
+		cwd: target.workspaceRoot,
 		env,
 		stdout: "pipe",
 		stderr: "pipe",
@@ -358,28 +358,38 @@ describe("website response metadata", () => {
 });
 
 describe("website-get staging", () => {
+	// Its own workspace: every dry-run deploy above already built the shared
+	// one's handbook, so "from source alone" can only be measured in a tree
+	// nothing in this file has built yet.
+	let fresh: TestWorkspace;
+
 	beforeAll(() => {
-		expect(fs.existsSync(path.join(workspace.workspaceRoot, "docs", "handbook", "book"))).toBe(false);
-		runScript(workspace.buildScript);
+		fresh = createDisposableWorkspace();
+		expect(fs.existsSync(path.join(fresh.workspaceRoot, "docs", "handbook", "book"))).toBe(false);
+		runScript(fresh.buildScript, undefined, fresh);
 	}, 30_000);
 
+	afterAll(() => {
+		fresh.cleanup();
+	});
+
 	it("builds handbook pages and the site docs link from source alone", () => {
-		const book = path.join(workspace.workspaceRoot, "docs", "handbook", "book");
-		expect(fs.realpathSync(path.join(workspace.siteDir, "docs"))).toBe(fs.realpathSync(book));
+		const book = path.join(fresh.workspaceRoot, "docs", "handbook", "book");
+		expect(fs.realpathSync(path.join(fresh.siteDir, "docs"))).toBe(fs.realpathSync(book));
 		expect(fs.readFileSync(path.join(book, "index.html"), "utf8")).toContain("The Veyyon Harness Handbook");
 	});
 
 	it("stages both installers byte for byte", () => {
 		for (const name of ["install.sh", "install.ps1"]) {
-			expect(fs.readFileSync(path.join(workspace.getDirectory, name))).toEqual(
-				fs.readFileSync(path.join(workspace.workspaceRoot, "scripts", name)),
+			expect(fs.readFileSync(path.join(fresh.getDirectory, name))).toEqual(
+				fs.readFileSync(path.join(fresh.workspaceRoot, "scripts", name)),
 			);
 		}
 	});
 
 	it("stages the root rewrite and explicit no-cache content types", () => {
-		expect(fs.readFileSync(path.join(workspace.getDirectory, "_redirects"), "utf8")).toBe("/  /install.sh  200\n");
-		const headers = fs.readFileSync(path.join(workspace.getDirectory, "_headers"), "utf8");
+		expect(fs.readFileSync(path.join(fresh.getDirectory, "_redirects"), "utf8")).toBe("/  /install.sh  200\n");
+		const headers = fs.readFileSync(path.join(fresh.getDirectory, "_headers"), "utf8");
 		expect(headers).toContain(
 			"/\n  Content-Type: application/x-sh; charset=utf-8\n  Cache-Control: no-cache, must-revalidate",
 		);
