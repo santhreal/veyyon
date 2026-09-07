@@ -211,6 +211,9 @@ pointer hit testing, and input-method candidate position.
 - `Primary-Enter` submits nonempty text in the alternate running-turn mode without
   changing the selected mode.
 - `Primary-.` requests an abort.
+- `Primary-/` selects steer or queue mode. The window holds the selection for
+  as long as the session is open; a host frame does not change it. A host that
+  reports no background submission leaves steer as the only mode.
 
 ### Submitted drafts
 
@@ -376,7 +379,10 @@ model and photograph the run bar while the turn runs: its primary action as
 steer, the same run after `primary-/` puts it in queue mode, a follow-up
 submitted behind the running turn, and the turn stopped by `primary-.`. It waits
 on the host's own session state rather than on a pause, so an idle composer
-fails the take instead of being photographed as a running turn.
+fails the take instead of being photographed as a running turn. The steer and
+queue frames are one differential: the primary action is the whole difference
+between them. Record its other arm with `PROOF_BASE_REF=HEAD`, since the change
+is inside the executable alone.
 
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
 The [capture requirements](../foundations/verification.md) specify paired static
