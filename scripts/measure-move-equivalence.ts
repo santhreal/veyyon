@@ -371,7 +371,8 @@ export const GROUPS: readonly { name: string; matches: (relative: string) => boo
 	},
 	{
 		name: "focused-agent-pin",
-		matches: relative => relative === "packages/coding-agent/src/modes/terminal/controllers/session-focus-controller.ts",
+		matches: relative =>
+			relative === "packages/coding-agent/src/modes/terminal/controllers/session-focus-controller.ts",
 		reason:
 			"The focus controller pins the agent it views through `AgentLifecycleManager.pin` before reviving it and releases the pin on unfocus, so a park whose flush is in flight cannot dispose the session on screen. It also moved under `modes/terminal/` with the rest of the terminal host.",
 	},
