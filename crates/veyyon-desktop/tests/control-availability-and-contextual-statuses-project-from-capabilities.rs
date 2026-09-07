@@ -22,10 +22,10 @@ use veyyon_desktop::{
 	project_controls,
 };
 use veyyon_desktop_model::{
-	ApprovalInteraction, Capability, CapabilityStatus, ChangesView, Domains, FileTreeView,
-	HostAction, HostActionKind, InteractionId, ModelView, ModelsView, PendingDecisions,
-	PlanInteraction, QuestionInteraction, QueuePartition, RequestId, RequestRegistry, SessionId,
-	Store, SurfaceId,
+	ApprovalInteraction, Capability, CapabilityStatus, ChangesView, ConnectionState, Domains,
+	FileTreeView, HostAction, HostActionKind, InteractionId, ModelView, ModelsView,
+	PROTOCOL_VERSION, PendingDecisions, PlanInteraction, QuestionInteraction, QueuePartition,
+	RequestId, RequestRegistry, SessionId, Store, SurfaceId,
 };
 use veyyon_desktop_surface::{
 	Card, ComposerState, ControlError, DiffStatus, Intent, PanelContent, ShellState, TreeStatus,
@@ -34,6 +34,13 @@ use veyyon_desktop_surface::{
 
 fn store_with_decisions() -> (Store, SessionIndex) {
 	let mut store = Store::new();
+	// What this suite reads is the capability map. A store left detached is
+	// narrowed by the transport instead (`transport_gate`, §8.12), which is
+	// `a-control-is-offered-only-while-the-transport-can-carry-it.rs`.
+	store.connection = ConnectionState::Connected {
+		endpoint: "127.0.0.1:47000".to_string(),
+		protocol: PROTOCOL_VERSION,
+	};
 	store
 		.sessions
 		.insert(session("s", QueuePartition::Live, None));

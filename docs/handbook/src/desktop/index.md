@@ -47,6 +47,29 @@ the first 16 hex characters of the SHA-256 of the agent directory and
 `$TMPDIR` on macOS. With no such directory, and for an explicit `unix:` endpoint
 over the limit, startup fails with the path, its size and the limit.
 
+## Connection states
+
+Each transport state is shown in one place.
+
+Before a session loads, the window shows one dialog in place of the queue,
+transcript and panels. Detached states the endpoint is not connected and offers
+**Attach**. Connecting states the attempt number. Syncing states the snapshot
+count, with a bar over the received fraction when the host declares a total and
+an indeterminate indicator when it does not.
+
+After a session loads, a transport failure keeps the queue and the transcript on
+screen and adds a banner under the titlebar. Reconnecting shows the attempt, the
+retry countdown, the reason and **Retry Now**. Fatal shows the failure and
+**Re-attach**. Neither state repeats itself in the window's status line, and
+neither offers a second copy of the button in the banner.
+
+A control is offered only while the transport can carry what it would send.
+Detached, Connecting, Syncing and Fatal disable every control except the one
+that ends the state, each stating the transport as the reason. Reconnecting
+disables the controls that change state — sending a prompt, answering a
+question, accepting a plan, deleting a session — and leaves navigation over
+what the client already holds enabled.
+
 ## Render scenes
 
 ```sh

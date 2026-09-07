@@ -33,7 +33,7 @@ use veyyon_desktop_surface::{Badge, ShellState, terminal::TerminalEmulator};
 pub use self::{
 	actions::actions_for,
 	composer::{project_composer, project_turn_phase},
-	connection::{connection_notice, connection_phase},
+	connection::{connection_notice, connection_phase, transport_gate},
 	controls::{NO_SESSION_OPEN, contextual_surface_for_action, project_controls},
 	drawer::{drawer_lines, project_drawer, strip_control_sequences},
 	failure::land_failure,

@@ -16,7 +16,7 @@ mod artifact;
 pub use artifact::*;
 
 pub use crate::{
-	attach::ConnectionPhase,
+	attach::{ConnectionPhase, ConnectionSurface},
 	composer::{
 		Attachment, ComposerState, ContextMeter, ModelControl, ModelOption, ThinkingControl,
 		TurnPhase,

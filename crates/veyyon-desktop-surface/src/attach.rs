@@ -1,22 +1,27 @@
 //! Connection attach and authentication screens (§4.4, §5.9, §8.12).
 //!
-//! When the transport is not attached, the shell renders one of six dedicated
-//! attach/auth screens in place of the main workspace columns:
+//! A phase with no loaded shell behind it takes the whole surface, in place of
+//! the workspace columns:
 //! - Detached: disconnected prompt with an explicit attach button
-//! - Connecting: attempt indicator and spinner
-//! - Syncing: initial snapshot synchronization progress
-//! - Reconnecting: countdown timer, failure reason, and retry action
-//! - Fatal: unrecoverable protocol error with failure explanation
+//! - Connecting: attempt indicator
+//! - Syncing: initial snapshot progress, determinate when the host declared a
+//!   total and indeterminate when it did not
 //! - `NeedsSecret`: provider authentication secret input
 //! - `AwaitingExternalUrl`: browser OAuth URL prompt with external link action
+//!
+//! `Reconnecting` and `Fatal` draw no screen here. Both arrive over a shell
+//! that already loaded, so the cached queue and transcript stay on screen and
+//! the banner under the titlebar carries the message and the single recovery
+//! action ([`ConnectionSurface`]).
 
 use serde::{Deserialize, Serialize};
 use veyyon_desktop_kit::{
-	ButtonVariant, ColorRole, Dialog, DialogButtonSpec, SpacingStep, TextField, TextRamp, TokenSet,
+	ButtonVariant, ColorRole, Dialog, DialogButtonSpec, Meter, SpacingStep, Spinner, SpinnerSize,
+	TextField, TextRamp, TokenSet,
 };
 use veyyon_gpui::{
-	App, ClickEvent, Context, Div, ElementId, InteractiveElement, IntoElement, ParentElement,
-	Styled, Window, div, px,
+	AnyElement, App, ClickEvent, Context, Div, ElementId, InteractiveElement, IntoElement,
+	ParentElement, Styled, Window, div, px,
 };
 
 use crate::{Intent, ShellView};
@@ -70,11 +75,41 @@ pub enum ConnectionPhase {
 	},
 }
 
+/// Where a phase draws its message and its recovery action (§8.12).
+///
+/// A phase is answered in exactly one place. A transport failure over a shell
+/// that already loaded states itself in the banner and leaves the cached
+/// queue and transcript reachable; a phase with nothing behind it yet takes
+/// the whole surface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConnectionSurface {
+	/// No connection chrome: the attached product draws itself.
+	Silent,
+	/// A persistent banner beneath the titlebar, over the cached shell.
+	Banner,
+	/// A full-surface dialog in place of the workspace columns.
+	Dialog,
+}
+
 impl ConnectionPhase {
 	/// Returns true if the shell is fully attached and operational.
 	#[must_use]
 	pub const fn is_attached(&self) -> bool {
 		matches!(self, Self::Attached)
+	}
+
+	/// Where this phase's message and recovery action are drawn (§8.12).
+	#[must_use]
+	pub const fn surface(&self) -> ConnectionSurface {
+		match self {
+			Self::Attached => ConnectionSurface::Silent,
+			Self::Reconnecting { .. } | Self::Fatal { .. } => ConnectionSurface::Banner,
+			Self::Detached
+			| Self::Connecting { .. }
+			| Self::Syncing { .. }
+			| Self::NeedsSecret { .. }
+			| Self::AwaitingExternalUrl { .. } => ConnectionSurface::Dialog,
+		}
 	}
 
 	/// Returns a stable descriptor name for scene cataloguing.
@@ -120,17 +155,35 @@ fn line(text: impl Into<String>, ink: ColorRole, tokens: &TokenSet) -> Div {
 		.child(text.into())
 }
 
-/// Renders the full-surface attach or authentication screen (§5.9, §8.12).
+/// The snapshot progress indicator: a determinate bar over a declared total,
+/// an indeterminate indicator when the host declared none (§8.12).
+fn sync_progress(received: u32, expected: Option<u32>) -> AnyElement {
+	match expected {
+		Some(total) if total > 0 => {
+			Meter::new(received.min(total) as f32 / total as f32).into_any_element()
+		},
+		_ => Spinner::new().size(SpinnerSize::Small).into_any_element(),
+	}
+}
+
+/// Renders the full-surface attach or authentication screen, or `None` for a
+/// phase the shell answers elsewhere (§5.9, §8.12).
 ///
-/// Every phase is one dialog: a title, a body and an action row, so the
+/// Every dialog phase is one dialog: a title, a body and an action row, so the
 /// operator finds the action in the same place whatever the transport is
 /// doing. A waiting phase has no action; an authentication phase has its
-/// step and a cancel.
+/// step and a cancel. A phase whose surface is [`ConnectionSurface::Banner`]
+/// draws no dialog, because the banner already carries both the message and
+/// the recovery action.
 pub fn render_attach_screen(
 	phase: &ConnectionPhase,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
-) -> impl IntoElement {
+) -> Option<AnyElement> {
+	if phase.surface() != ConnectionSurface::Dialog {
+		return None;
+	}
+
 	let container = div()
 		.id(ElementId::Name(format!("attach-screen-{}", phase.scene_slug()).into()))
 		.size_full()
@@ -156,18 +209,20 @@ pub fn render_attach_screen(
 				Some(total) => format!("Received {received} of {total} initial snapshots..."),
 				None => format!("Received {received} snapshots..."),
 			};
-			Dialog::new("Synchronizing Session State", line(status, ColorRole::Muted, tokens))
+			let body = div()
+				.flex()
+				.flex_col()
+				.gap(tokens.spacing(SpacingStep::S3))
+				.child(line(status, ColorRole::Muted, tokens))
+				.child(sync_progress(*received, *expected));
+			Dialog::new("Synchronizing Session State", body)
 		},
-		ConnectionPhase::Attached => Dialog::new("Attached", div()),
-		ConnectionPhase::Reconnecting { attempt, message, .. } => Dialog::new(
-			format!("Reconnecting (attempt {attempt})..."),
-			line(message.clone(), ColorRole::Accent, tokens),
-		)
-		.action_on_click(DialogButtonSpec::new("Retry Now", ButtonVariant::Primary), retry(cx)),
-		ConnectionPhase::Fatal { message } => {
-			Dialog::new("Connection Error", line(message.clone(), ColorRole::ErrorInk, tokens))
-				.action_on_click(DialogButtonSpec::new("Re-attach", ButtonVariant::Danger), retry(cx))
-		},
+		// The guard above admits the dialog phases alone: the attached
+		// product and the two banner phases reach here only if
+		// `ConnectionPhase::surface` and this match disagree.
+		ConnectionPhase::Attached
+		| ConnectionPhase::Reconnecting { .. }
+		| ConnectionPhase::Fatal { .. } => return None,
 		ConnectionPhase::NeedsSecret { provider } => {
 			let prov = provider.clone();
 			let body = div()
@@ -208,9 +263,13 @@ pub fn render_attach_screen(
 		},
 	};
 
-	container.child(
-		div()
-			.w(px(CARD_WIDTH_PX))
-			.child(dialog.id(ElementId::Name(format!("attach-{}", phase.scene_slug()).into()))),
+	Some(
+		container
+			.child(
+				div()
+					.w(px(CARD_WIDTH_PX))
+					.child(dialog.id(ElementId::Name(format!("attach-{}", phase.scene_slug()).into()))),
+			)
+			.into_any_element(),
 	)
 }

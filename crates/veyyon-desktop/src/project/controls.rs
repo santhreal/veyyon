@@ -2,19 +2,22 @@
 //!
 //! A control never decides its own availability: it reads
 //! `ControlStates::availability` and draws what it is told. This is the one
-//! place that decision is made, for every control that reads it, by the same
-//! `gate_kind` the intent path consults before sending. A control whose
-//! capability the host reported `Unavailable` draws muted with the host's
-//! reason; one whose request is in flight draws pending; one the host has not
-//! answered for draws at rest, because a disabled control before attach states
-//! something false.
+//! place that decision is made, for every control that reads it. A control
+//! whose capability the host reported `Unavailable` draws muted with the
+//! host's reason; one whose request is in flight draws pending; one the host
+//! has not answered for draws at rest, because a disabled control before
+//! attach states something false.
+//!
+//! Every gate is then narrowed by the transport (`transport_gate`, §8.12),
+//! because the capability map holds what the host declared while it was
+//! reachable and says nothing about whether it still is.
 use veyyon_desktop_model::{
 	Capability, CapabilityStatus, ErrorScope, HostActionKind, RequestRegistry, SessionId, Store,
 	SurfaceId, fallback_surface, gate_kind,
 };
 use veyyon_desktop_surface::{Availability, DiffStatus, ShellState, TreeStatus};
 
-use super::SessionIndex;
+use super::{SessionIndex, connection::transport_gate};
 
 /// Resolves the initiating contextual surface for a background or panel host
 /// action.
@@ -194,7 +197,11 @@ pub fn project_controls(
 		.as_ref()
 		.and_then(|id| index.row_id(id));
 	for (surface, action) in gated_controls(store, active_row) {
-		let gate = gate_kind(action, &store.capabilities, registry);
+		let gate = transport_gate(
+			action,
+			&store.connection,
+			gate_kind(action, &store.capabilities, registry),
+		);
 		state
 			.controls
 			.set_availability(surface, Availability::from(gate));
@@ -205,10 +212,14 @@ pub fn project_controls(
 		let row = composer_row(Some(row_id));
 		if let Some(pending) = store.interactions.get(active_id) {
 			if let Some(question) = pending.questions.first() {
-				let gate = veyyon_desktop_model::gate_capability(
-					veyyon_desktop_model::Capability::Questions,
-					&store.capabilities,
-					registry,
+				let gate = transport_gate(
+					HostActionKind::RespondToInteraction,
+					&store.connection,
+					veyyon_desktop_model::gate_capability(
+						Capability::Questions,
+						&store.capabilities,
+						registry,
+					),
 				);
 				state.controls.set_availability(
 					SurfaceId::QuestionSubmitButton(row.clone(), question.id.clone()),
@@ -216,10 +227,14 @@ pub fn project_controls(
 				);
 			}
 			if let Some(plan) = pending.plans.first() {
-				let gate = veyyon_desktop_model::gate_capability(
-					veyyon_desktop_model::Capability::Plans,
-					&store.capabilities,
-					registry,
+				let gate = transport_gate(
+					HostActionKind::RespondToInteraction,
+					&store.connection,
+					veyyon_desktop_model::gate_capability(
+						Capability::Plans,
+						&store.capabilities,
+						registry,
+					),
 				);
 				state.controls.set_availability(
 					SurfaceId::PlanAcceptButton(row.clone(), plan.id.clone()),

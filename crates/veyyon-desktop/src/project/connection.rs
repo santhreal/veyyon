@@ -1,7 +1,9 @@
 //! Connection and authentication state projection (§4.4, §5.9, §8.12).
 
-use veyyon_desktop_model::{AuthFlowState, ConnectionState, Store};
+use veyyon_desktop_model::{AuthFlowState, ConnectionState, Gate, HostActionKind, Store};
 use veyyon_desktop_surface::ConnectionPhase;
+
+use crate::bridge::{ActionClassification, classify_action};
 
 /// Projects the store's connection and auth flow state onto `ConnectionPhase`.
 #[must_use]
@@ -49,19 +51,53 @@ pub fn connection_phase(store: &Store) -> ConnectionPhase {
 
 /// What the attention strip says about a connection state, or `None` when
 /// the connection needs no attention.
+///
+/// `Reconnecting` and `Fatal` return `None`: both draw the persistent
+/// connection banner, which carries the attempt, the reason and the one
+/// recovery button, so a strip repeating it would state one failure twice
+/// (§8.12).
 #[must_use]
 pub fn connection_notice(state: &ConnectionState) -> Option<String> {
 	match state {
-		ConnectionState::Connected { .. } => None,
+		ConnectionState::Connected { .. }
+		| ConnectionState::Reconnecting { .. }
+		| ConnectionState::Fatal { .. } => None,
 		ConnectionState::Detached => Some("not attached to a host".to_string()),
 		ConnectionState::Connecting { attempt } => Some(format!("connecting (attempt {attempt})")),
 		ConnectionState::Syncing { received, expected } => Some(match expected {
 			Some(expected) => format!("syncing {received}/{expected}"),
 			None => format!("syncing ({received} received)"),
 		}),
-		ConnectionState::Reconnecting { attempt, message, .. } => {
-			Some(format!("reconnecting (attempt {attempt}): {message}"))
-		},
-		ConnectionState::Fatal { message } => Some(format!("host unreachable: {message}")),
 	}
+}
+
+/// Narrows a capability gate by what the transport can carry (§8.12).
+///
+/// The capability map holds what the host last declared, so a socket that
+/// dropped leaves every control reading `Available` and a click on one
+/// reaches nothing. A state that carries no traffic reports itself as the
+/// reason instead, and the gate only ever narrows: a capability the host
+/// already refused keeps the host's own reason.
+///
+/// `RetryConnection` is the exception in every state, because it is the
+/// action that ends the state. While `Reconnecting`, a read still answers
+/// from the cache, so navigation stays reachable and only a mutation is
+/// withheld.
+#[must_use]
+pub fn transport_gate(action: HostActionKind, connection: &ConnectionState, gate: Gate) -> Gate {
+	if matches!(action, HostActionKind::RetryConnection) {
+		return gate;
+	}
+	let reason = match connection {
+		ConnectionState::Connected { .. } => return gate,
+		ConnectionState::Detached => "not attached to a host",
+		ConnectionState::Connecting { .. } => "connecting to the host",
+		ConnectionState::Syncing { .. } => "syncing with the host",
+		ConnectionState::Fatal { .. } => "host unreachable",
+		ConnectionState::Reconnecting { .. } => match classify_action(action) {
+			ActionClassification::Mutation => "reconnecting to the host",
+			ActionClassification::Ephemeral => return gate,
+		},
+	};
+	Gate::Unavailable { reason: reason.to_string() }
 }

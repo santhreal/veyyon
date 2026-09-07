@@ -14,7 +14,7 @@ use super::{
 };
 use crate::{
 	ShellView,
-	attach::{ConnectionPhase, render_attach_screen},
+	attach::render_attach_screen,
 	damage::Region,
 	layout::{RightPanelPlacement, ShedInput, shell_widths},
 	panel::right_panel,
@@ -139,10 +139,9 @@ pub fn render_shell(
 		root = root.child(attention_strip(&err.message, &tokens));
 	}
 
-	if !view.state().connection.is_attached()
-		&& !matches!(view.state().connection, ConnectionPhase::Reconnecting { .. })
-	{
-		let attach_screen = render_attach_screen(&view.state().connection, &tokens, cx);
+	// A phase answered by the banner keeps the cached queue and transcript
+	// behind it, so a dialog phase alone replaces the columns (§8.12).
+	if let Some(attach_screen) = render_attach_screen(&view.state().connection, &tokens, cx) {
 		return root.child(attach_screen);
 	}
 
