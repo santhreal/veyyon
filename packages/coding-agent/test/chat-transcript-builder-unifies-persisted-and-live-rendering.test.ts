@@ -8,13 +8,14 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/terminal/components/transcript/tool-execution";
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/terminal/components/transcript/transcript-container";
 import { TranscriptComposer } from "@veyyon/coding-agent/modes/terminal/controllers/transcript-composer";
 import { UiHelpers, type UiHelpersContext } from "@veyyon/coding-agent/modes/terminal/utils/ui-helpers";
 import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import type { SessionContext } from "@veyyon/kernel/session/session-context";
 import { stripAnsi } from "@veyyon/utils";
+import { createToolExecution } from "./helpers/tool-execution";
 
 const containers: TranscriptContainer[] = [];
 function container(): TranscriptContainer {
@@ -180,7 +181,7 @@ describe("shared transcript replay preserves live state", () => {
 
 	it("keeps a detached live tool writable when the composer replays committed messages", () => {
 		const { ctx, helpers } = fixture();
-		const liveTool = new ToolExecutionComponent(
+		const liveTool = createToolExecution(
 			"bash",
 			{ command: "live-command" },
 			{},
