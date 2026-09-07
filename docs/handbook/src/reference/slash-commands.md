@@ -102,6 +102,7 @@ act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal
 | `/new`, `/fresh` | New session (fresh may reset provider stream state) |
 | `/resume` | Resume another saved session |
 | `/fork`, `/branch`, `/tree` | Branching and session tree UI |
+| `/room [new \| <n> \| <id>]` | Peer conversations beside this one: bare lists them, `new` opens one, a number or id switches to it. The screen slides sideways to the peer, which keeps its own transcript, model and tools |
 | `/rename <title>` | Rename session |
 | `/move <dir>` | Relocate the session (including its saved session file) to another working directory and re-root path-scoped settings, secrets, capabilities, and the system-prompt project framing there |
 | `/cwd [path]` | Bare prints the current session cwd; with a path, re-roots the live session at that directory after validating it exists. Reloads the same cwd-scoped state as `/move` (path-scoped settings, secrets, capabilities, the ssh tool, system-prompt framing) but does not relocate the session file. Session-scoped only; does not write profile `session.workdir` |

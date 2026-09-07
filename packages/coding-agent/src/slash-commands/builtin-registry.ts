@@ -3031,6 +3031,7 @@ export const BUILTIN_SLASH_COMMAND_CATEGORIES: Readonly<Record<string, string>> 
 	branch: "session",
 	fork: "session",
 	tree: "session",
+	room: "session",
 	exit: "session",
 	quit: "session",
 	changelog: "info",
