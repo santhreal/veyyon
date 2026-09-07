@@ -53,7 +53,7 @@ pub fn load_scale(path: &Path) -> Result<ScaleTokens, TokenError> {
 	}
 
 	let type_tbl = root.sub("type")?;
-	type_tbl.only(&["size", "weight", "mono"])?;
+	type_tbl.only(&["size", "weight", "mono", "family"])?;
 
 	let size_tbl = type_tbl.sub("size")?;
 	ceiling(&size_tbl, "typographic sizes", 6, "6.3")?;
@@ -98,11 +98,15 @@ pub fn load_scale(path: &Path) -> Result<ScaleTokens, TokenError> {
 		};
 	}
 
+	let family_tbl = type_tbl.sub("family")?;
+	family_tbl.only(&["mono"])?;
+	let mono_family = family_tbl.strings("mono")?;
+
 	let stroke_tbl = root.sub("stroke")?;
 	let mut strokes = [0.0f32; 3];
 	for step in StrokeStep::all() {
 		strokes[step as usize] = stroke_tbl.number(step.as_token())?;
 	}
 
-	Ok(ScaleTokens { spacing, radius, type_sizes, type_weights, mono_sizes, strokes })
+	Ok(ScaleTokens { spacing, radius, type_sizes, type_weights, mono_sizes, mono_family, strokes })
 }

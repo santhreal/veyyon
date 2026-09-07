@@ -1,6 +1,6 @@
 //! Side-by-side split diff row rendering (§5.11).
 
-use veyyon_desktop_kit::{ColorRole, TextRamp, TintRole, TokenSet};
+use veyyon_desktop_kit::{ColorRole, MonoSizeStep, MonoText, TintRole, TokenSet};
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
 use veyyon_gpui::{Context, Div, ParentElement, Styled, div, px};
 
@@ -42,9 +42,8 @@ pub fn render_split_rows(
 						.flex()
 						.flex_row()
 						.items_center()
-						.text_size(tokens.font_size(TextRamp::Micro))
+						.mono_text(tokens, MonoSizeStep::Small)
 						.line_height(px(geometry.diff_row_height_px))
-						.font_family(tokens.mono_family())
 						// Left side (Old)
 						.child(
 							div()
@@ -169,9 +168,8 @@ pub fn render_split_rows(
 							.flex()
 							.flex_row()
 							.items_center()
-							.text_size(tokens.font_size(TextRamp::Micro))
+							.mono_text(tokens, MonoSizeStep::Small)
 							.line_height(px(geometry.diff_row_height_px))
-							.font_family(tokens.mono_family())
 							.child(left_cell)
 							.child(right_cell),
 					);

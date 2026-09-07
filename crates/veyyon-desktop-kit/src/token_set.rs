@@ -114,6 +114,32 @@ fn rgb_to_hsla(rgb: RgbColor) -> Hsla {
 	Hsla { h: hue, s: saturation, l: luminance, a: rgb.a }
 }
 
+/// Monospace size and line height, in pixels.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MonoMetrics {
+	pub size:        Pixels,
+	pub line_height: Pixels,
+}
+
+/// Sets an element's text in the monospace family, at a mono step.
+///
+/// Size, line height and family are one call, so a mono element cannot be
+/// sized as mono and drawn in the proportional UI family: that combination
+/// renders every glyph at a different advance, which breaks the column
+/// alignment mono text exists for, and it looks deliberate.
+pub trait MonoText: veyyon_gpui::Styled + Sized {
+	#[must_use]
+	fn mono_text(self, tokens: &TokenSet, step: MonoSizeStep) -> Self {
+		let metrics = tokens.mono_metrics(step);
+		self
+			.font_family(tokens.mono_family())
+			.text_size(metrics.size)
+			.line_height(metrics.line_height)
+	}
+}
+
+impl<T: veyyon_gpui::Styled + Sized> MonoText for T {}
+
 /// Resolved design token set stored in GPUI context.
 #[derive(Debug, Clone)]
 pub struct TokenSet {
@@ -124,6 +150,7 @@ pub struct TokenSet {
 	scrim:        Hsla,
 	scale:        ScaleTokens,
 	elevation:    Option<ElevationTokens>,
+	mono_family:  SharedString,
 }
 
 impl Default for TokenSet {
@@ -179,6 +206,17 @@ impl TokenSet {
 		let mut scrim = colors[ColorRole::Ground as usize];
 		scrim.a = 0.60;
 
+		let mono_family = tokens
+			.scale
+			.mono_family_chain()
+			.first()
+			.ok_or_else(|| TokenError::MissingKey {
+				path:    PathBuf::from("scale"),
+				section: "type.family".to_string(),
+				key:     "mono".to_string(),
+			})?
+			.clone();
+
 		Ok(Self {
 			colors,
 			row_hover,
@@ -187,6 +225,31 @@ impl TokenSet {
 			scrim,
 			scale: tokens.scale.clone(),
 			elevation: Some(tokens.elevation.clone()),
+			mono_family: SharedString::from(mono_family),
+		})
+	}
+
+	/// Selects the monospace family from the authored chain, given the families
+	/// this machine has, and fails when it has none of them.
+	///
+	/// Monospace text carries column alignment: a terminal row, a diff hunk and
+	/// a code line all read by column. A substituted proportional face still
+	/// draws every character, so the result looks intentional and no error
+	/// reaches the operator (§9.3). The chain states which faces are
+	/// acceptable, this states which one is present, and an install with none
+	/// of them stops here instead of drawing columns that do not line up.
+	pub fn resolve_mono_family(&mut self, available: &[String]) -> Result<(), TokenError> {
+		let chain = self.scale.mono_family_chain();
+		for family in chain {
+			if available.iter().any(|have| have == family) {
+				self.mono_family = SharedString::from(family.clone());
+				return Ok(());
+			}
+		}
+		Err(TokenError::FontUnavailable {
+			path:     PathBuf::from("scale"),
+			key:      "type.family.mono".to_string(),
+			families: chain.join(", "),
 		})
 	}
 
@@ -272,24 +335,21 @@ impl TokenSet {
 		px(self.scale.type_size(ramp.to_size_step()).line_height)
 	}
 
-	/// Resolves monospace font size in pixels.
+	/// Monospace size and line height in pixels, for the layout arithmetic a
+	/// caller does around mono text: a key cap's padding, a pane's clip height.
+	/// Styling the text itself goes through `MonoText::mono_text`, which sets
+	/// the family with the size.
 	#[must_use]
-	pub fn mono_font_size(&self, step: MonoSizeStep) -> Pixels {
-		px(self.scale.mono_size(step).size)
+	pub fn mono_metrics(&self, step: MonoSizeStep) -> MonoMetrics {
+		let size = self.scale.mono_size(step);
+		MonoMetrics { size: px(size.size), line_height: px(size.line_height) }
 	}
 
-	/// Resolves monospace line height in pixels.
-	#[must_use]
-	pub fn mono_line_height(&self, step: MonoSizeStep) -> Pixels {
-		px(self.scale.mono_size(step).line_height)
-	}
-
-	/// The family mono text is set in (§6.3). One accessor, so every mono
-	/// element in the kit and the surfaces asks the same question; the value is
-	/// a generic family until a mono face ships with the product.
+	/// The family monospace text is set in (§6.3), chosen from the authored
+	/// chain by `resolve_mono_family` against the families this machine has.
 	#[must_use]
 	pub fn mono_family(&self) -> SharedString {
-		SharedString::new_static("monospace")
+		self.mono_family.clone()
 	}
 
 	/// Resolves font weight.

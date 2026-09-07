@@ -289,6 +289,11 @@ pub struct ScaleTokens {
 	pub type_sizes:   [TypeSize; 6],
 	pub type_weights: [u16; 3],
 	pub mono_sizes:   [TypeSize; 2],
+	/// The families monospace text is set in, most wanted first. Mono text
+	/// carries column alignment, so a proportional substitute is a defect and
+	/// not a cosmetic difference; the chain states which faces are acceptable
+	/// and `mono_family` on the resolved set states which one the machine has.
+	pub mono_family:  Vec<String>,
 	pub strokes:      [f32; 3],
 }
 
@@ -316,6 +321,11 @@ impl ScaleTokens {
 	/// Resolves monospace font sizing and line height.
 	pub const fn mono_size(&self, step: MonoSizeStep) -> &TypeSize {
 		&self.mono_sizes[step as usize]
+	}
+
+	/// The authored monospace family chain, most wanted first.
+	pub fn mono_family_chain(&self) -> &[String] {
+		&self.mono_family
 	}
 
 	/// Resolves stroke width in pixels.

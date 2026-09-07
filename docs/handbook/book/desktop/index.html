@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-5e0d2a79.js";
+            window.path_to_searchindex_js = "../searchindex-b3b523d6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-2d780f09.js"></script>
@@ -209,6 +209,13 @@ variable, the desktop searches <code>PATH</code> for <code>veyyon</code>.</p>
 in <code>crates/veyyon-desktop-tokens/tokens/surface/shell.toml</code>. Startup validates the
 design tokens and bundled theme. Token directory changes reload while the
 application runs.</p>
+<p>Monospace text — the terminal drawer, diffs, code blocks and file paths — is set
+in the first font family installed on the machine out of the ordered list under
+<code>[type.family]</code> in <code>crates/veyyon-desktop-tokens/tokens/scale.toml</code>. The shipped
+list is JetBrains Mono, DejaVu Sans Mono, Liberation Mono, Menlo, SF Mono,
+Consolas, Courier New. With none of them installed, startup fails and prints the
+whole list; install one of those families, or add a monospaced family the machine
+has to the list.</p>
 <h2 id="connect-to-a-host"><a class="header" href="#connect-to-a-host">Connect to a host</a></h2>
 <pre><code class="language-sh">cargo run -p veyyon-desktop -- --endpoint tcp:127.0.0.1:17654
 </code></pre>

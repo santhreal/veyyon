@@ -20,6 +20,14 @@ in `crates/veyyon-desktop-tokens/tokens/surface/shell.toml`. Startup validates t
 design tokens and bundled theme. Token directory changes reload while the
 application runs.
 
+Monospace text — the terminal drawer, diffs, code blocks and file paths — is set
+in the first font family installed on the machine out of the ordered list under
+`[type.family]` in `crates/veyyon-desktop-tokens/tokens/scale.toml`. The shipped
+list is JetBrains Mono, DejaVu Sans Mono, Liberation Mono, Menlo, SF Mono,
+Consolas, Courier New. With none of them installed, startup fails and prints the
+whole list; install one of those families, or add a monospaced family the machine
+has to the list.
+
 ## Connect to a host
 
 ```sh

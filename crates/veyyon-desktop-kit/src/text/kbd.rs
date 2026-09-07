@@ -4,7 +4,7 @@ use veyyon_gpui::{App, IntoElement, RenderOnce, SharedString, Window, div, prelu
 
 use crate::{
 	state::KeyChord,
-	token_set::{ColorRole, MonoSizeStep, RadiusStep, SpacingStep, TokenSet},
+	token_set::{ColorRole, MonoSizeStep, MonoText, RadiusStep, SpacingStep, TokenSet},
 };
 
 /// Keyboard shortcut indicator element rendering chords and modifier keys.
@@ -36,7 +36,6 @@ impl RenderOnce for Kbd {
 		let border_color = tokens.color(ColorRole::Hairline);
 		let text_color = tokens.color(ColorRole::Foreground);
 		let radius = tokens.radius(RadiusStep::Xs);
-		let font_size = tokens.mono_font_size(MonoSizeStep::Small);
 		let pad_x = tokens.spacing(SpacingStep::S2);
 		let gap = tokens.spacing(SpacingStep::S1);
 
@@ -50,8 +49,7 @@ impl RenderOnce for Kbd {
 					.border_color(border_color)
 					.rounded(radius)
 					.px(pad_x)
-					.font_family(tokens.mono_family())
-					.text_size(font_size)
+					.mono_text(tokens, MonoSizeStep::Small)
 					.text_color(text_color)
 					.child(SharedString::from(modifier));
 				container = container.child(chip);
@@ -63,8 +61,7 @@ impl RenderOnce for Kbd {
 				.border_color(border_color)
 				.rounded(radius)
 				.px(pad_x)
-				.font_family(tokens.mono_family())
-				.text_size(font_size)
+				.mono_text(tokens, MonoSizeStep::Small)
 				.text_color(text_color)
 				.child(chord.key);
 			container = container.child(key_chip);

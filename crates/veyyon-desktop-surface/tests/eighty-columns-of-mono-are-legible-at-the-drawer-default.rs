@@ -10,9 +10,18 @@
 //! 2. Drawer clipping fewer than 11 rows at its 180px minimum height.
 //! 3. Keyboard input erroneously mutating local cells instead of forwarding raw
 //!    bytes.
+//! 4. Grid cells drawn off the column pitch, or in a face whose glyphs each
+//!    have their own advance, which is what the tokens' cell width means and
+//!    what an 80-column line is counted in.
+//! 5. An install that stops asking whether the machine has a monospace face the
+//!    scale authors, which is how the drawer came to be drawn in the
+//!    proportional UI stack with nothing reported (§9.3).
 //!
 //! WHAT THIS DOES NOT CATCH: underlying PTY signal handling or remote process
-//! exit semantics on the host side.
+//! exit semantics on the host side. The family a run was shaped with is not
+//! recorded in a captured frame, so the face is observed through its advance
+//! rather than by name; `mono-text-is-set-in-a-family-this-machine-has` in the
+//! kit owns the resolution rules themselves.
 
 use std::path::Path;
 
@@ -121,4 +130,109 @@ fn typing_while_focused_dispatches_terminal_input_with_no_local_echo() {
 				.expect("terminal forwarding verified");
 		}
 	}
+}
+
+/// Every cell of a grid row is drawn one cell width from the last, and every
+/// glyph occupies the same width. A row counted in columns is only 80 columns
+/// wide if both hold: a proportional face keeps the boxes and moves the ink
+/// inside them, so the advance is the observable that separates the two.
+#[test]
+fn the_grid_draws_every_cell_on_the_column_pitch_at_one_advance() {
+	let mut cx = headless_context().expect("headless context available");
+	let tokens = load_bundled_tokens().expect("tokens load");
+	let pitch = tokens.surface.panels.terminal_cell_width_px;
+
+	let mut session = make_drawer_session(&mut cx, 1180, 600);
+	let captured = session.frame().expect("frame captured");
+
+	// The widest fixture row is the one the grid drew the most runs for.
+	let mut rows: std::collections::BTreeMap<i32, Vec<(f32, f32)>> =
+		std::collections::BTreeMap::new();
+	for run in &captured.text_runs {
+		let key = f32::from(run.bounds.origin.y).round() as i32;
+		rows
+			.entry(key)
+			.or_default()
+			.push((f32::from(run.bounds.origin.x), f32::from(run.bounds.size.width)));
+	}
+	let row = rows
+		.into_values()
+		.max_by_key(Vec::len)
+		.expect("the frame drew text");
+	assert!(row.len() >= 30, "the grid row under test drew only {} cells", row.len());
+
+	let mut cells = row;
+	cells.sort_by(|a, b| a.0.partial_cmp(&b.0).expect("finite origins"));
+
+	let first_width = cells[0].1;
+	for (origin, width) in &cells {
+		assert!(
+			(width - first_width).abs() <= 0.3,
+			"a cell at x={origin} drew {width}px of ink where the first drew {first_width}px, so the \
+			 face advances per glyph"
+		);
+	}
+
+	// A cell box is laid out on whole device pixels, so the drawn advance is
+	// the token's cell width rounded, not the token's number. What the drawer
+	// promises is a single advance for every column and 80 of them inside the
+	// width the geometry reserves, so both are measured from the frame.
+	let mut columns_covered = 0.0f32;
+	for pair in cells.windows(2) {
+		let step = pair[1].0 - pair[0].0;
+		let columns = (step / pitch).round();
+		assert!(columns >= 1.0, "two cells drew at the same column: {step}px apart");
+		columns_covered += columns;
+	}
+	let span = cells[cells.len() - 1].0 - cells[0].0;
+	let drawn_pitch = span / columns_covered;
+	assert!(
+		(drawn_pitch - pitch).abs() <= 0.5,
+		"the row advances {drawn_pitch}px per column where the tokens name {pitch}px"
+	);
+	for pair in cells.windows(2) {
+		let step = pair[1].0 - pair[0].0;
+		let columns = (step / drawn_pitch).round();
+		assert!(
+			(step - columns * drawn_pitch).abs() <= 1.0,
+			"a step of {step}px is not {columns} columns of {drawn_pitch}px"
+		);
+	}
+	let min_columns = tokens.surface.panels.terminal_min_columns as f32;
+	assert!(
+		drawn_pitch * min_columns <= pitch * min_columns,
+		"{min_columns} drawn columns need {}px, more than the {}px the geometry reserves",
+		drawn_pitch * min_columns,
+		pitch * min_columns
+	);
+}
+
+/// The install asks this machine which of the authored monospace families it
+/// has, and stops when it has none. Selecting a face that is absent, or
+/// leaving the question unasked, both end in a terminal drawn proportionally
+/// and stated nowhere.
+#[test]
+fn the_install_refuses_a_machine_without_any_authored_mono_family() {
+	let mut cx = headless_context().expect("headless context available");
+	let mut tokens = load_bundled_tokens().expect("the bundled tokens load");
+	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");
+	tokens.scale.mono_family = vec!["No Such Face".to_string()];
+
+	let options = RenderOptions { width: 800, height: 600, scale_factor: 1.0, ..Default::default() };
+	let outcome = HeadlessSession::open(&mut cx, &options, move |_window, app: &mut App| {
+		let error = install_tokens(app, &tokens, &theme, Path::new("surface"))
+			.expect_err("an install without a mono face must fail");
+		let message = error.to_string();
+		assert!(message.contains("No Such Face"), "the error omits the family: {message}");
+		assert!(message.contains("type.family.mono"), "the error omits the key: {message}");
+		let installed = install_tokens(
+			app,
+			&load_bundled_tokens().expect("bundled tokens load"),
+			&theme,
+			Path::new("surface"),
+		)
+		.expect("the shipped chain installs");
+		app.new(|_| ShellView::new(installed, fixture::with_drawer()))
+	});
+	assert!(outcome.is_ok(), "the fixture window opens once the shipped chain is installed");
 }

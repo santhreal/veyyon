@@ -5,7 +5,9 @@ use syntect::{
 	highlighting::{Style, ThemeSet},
 	parsing::SyntaxSet,
 };
-use veyyon_desktop_kit::{ColorRole, SpacingStep, TextRamp, TextWeight, TokenSet};
+use veyyon_desktop_kit::{
+	ColorRole, MonoSizeStep, MonoText, SpacingStep, TextRamp, TextWeight, TokenSet,
+};
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
 use veyyon_gpui::{
 	Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
@@ -101,9 +103,8 @@ pub fn file_view(
 			.flex()
 			.flex_row()
 			.items_center()
-			.text_size(tokens.font_size(TextRamp::Micro))
+			.mono_text(tokens, MonoSizeStep::Small)
 			.line_height(px(geometry.diff_row_height_px))
-			.font_family(tokens.mono_family())
 			.child(gutter_cell(&line_no, geometry, tokens));
 
 		let mut content_line = div()

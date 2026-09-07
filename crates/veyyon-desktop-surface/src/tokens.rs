@@ -33,17 +33,20 @@ pub struct InstalledTokens {
 /// Resolves the token set, installs it as the kit's global, and returns what
 /// the shell view holds.
 ///
-/// Fails if the theme omits a colour role, or if a token file names a role that
-/// does not exist, before anything is drawn. A theme is edited by hand and a
-/// role can be dropped or misspelled by a typo; the alternative to failing here
-/// is a surface that renders a substituted colour and looks deliberate.
+/// Fails if the theme omits a colour role, if a token file names a role that
+/// does not exist, or if this machine has none of the monospace families the
+/// scale authors, before anything is drawn. A theme is edited by hand and a
+/// role can be dropped or misspelled by a typo; the alternative to failing
+/// here is a surface that renders a substituted colour, or a terminal drawn in
+/// a proportional face, and looks deliberate.
 pub fn install_tokens(
 	cx: &mut App,
 	tokens: &Tokens,
 	theme: &Theme,
 	surface_path: &Path,
 ) -> Result<InstalledTokens, TokenError> {
-	let set = TokenSet::from_tokens(tokens, theme)?;
+	let mut set = TokenSet::from_tokens(tokens, theme)?;
+	set.resolve_mono_family(&cx.text_system().all_font_names())?;
 
 	let ground_name = &tokens.surface.transcript.user_turn_ground;
 	let user_turn_ground =

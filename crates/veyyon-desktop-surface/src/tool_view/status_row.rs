@@ -1,8 +1,8 @@
 //! Native GPUI renderer for `StatusRowView` (§contracts/view).
 
 use veyyon_desktop_kit::{
-	ColorRole, Icon, IconSize, MonoSizeStep, RadiusStep, SpacingStep, TextRamp, TextWeight,
-	TokenSet, indicators::badge::Badge,
+	ColorRole, Icon, IconSize, MonoSizeStep, MonoText, RadiusStep, SpacingStep, TextRamp,
+	TextWeight, TokenSet, indicators::badge::Badge,
 };
 use veyyon_desktop_model::tool_view::StatusRowView;
 use veyyon_gpui::{
@@ -174,7 +174,7 @@ pub fn render_status_row(
 					.py(px(1.0))
 					.rounded(tokens.radius(RadiusStep::Sm))
 					.bg(tokens.color(ColorRole::Inset))
-					.text_size(tokens.mono_font_size(MonoSizeStep::Small))
+					.mono_text(tokens, MonoSizeStep::Small)
 					.text_color(tokens.color(ColorRole::Muted))
 					.child(clean_lang),
 			);

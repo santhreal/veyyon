@@ -199,6 +199,28 @@ impl<'a> Section<'a> {
 			.ok_or_else(|| self.wrong_type(key, "a string", value))
 	}
 
+	/// A non-empty array of strings, in the order the file wrote them. An
+	/// ordered chain is a value, not a formatting choice: the first entry the
+	/// machine can supply is the one used, so an empty array carries no
+	/// preference at all and is rejected here rather than at the point of use.
+	pub fn strings(&self, key: &str) -> Result<Vec<String>, TokenError> {
+		let value = self.get(key)?;
+		let array = value
+			.as_array()
+			.ok_or_else(|| self.wrong_type(key, "an array of strings", value))?;
+		if array.is_empty() {
+			return Err(self.wrong_type(key, "an array of one or more strings", value));
+		}
+		let mut names = Vec::with_capacity(array.len());
+		for entry in array {
+			let name = entry
+				.as_str()
+				.ok_or_else(|| self.wrong_type(key, "an array of strings", value))?;
+			names.push(name.to_string());
+		}
+		Ok(names)
+	}
+
 	pub fn boolean(&self, key: &str) -> Result<bool, TokenError> {
 		let value = self.get(key)?;
 		value

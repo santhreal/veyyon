@@ -7,7 +7,7 @@
 use std::cell::RefCell;
 
 use veyyon_desktop_kit::{
-	ColorRole, Dot, List, ListRow, MonoSizeStep, SpacingStep, TextRamp, TokenSet,
+	ColorRole, Dot, List, ListRow, MonoSizeStep, MonoText, SpacingStep, TextRamp, TokenSet,
 	controls::{Button, ButtonVariant},
 	state::InteractiveState,
 };
@@ -106,8 +106,7 @@ fn process_row(
 		.gap(tokens.spacing(SpacingStep::S3))
 		.child(
 			div()
-				.text_size(tokens.mono_font_size(MonoSizeStep::Small))
-				.line_height(tokens.mono_line_height(MonoSizeStep::Small))
+				.mono_text(tokens, MonoSizeStep::Small)
 				.text_color(tokens.color(ColorRole::Secondary))
 				.child(
 					proc

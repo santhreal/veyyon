@@ -7,8 +7,8 @@
 use std::time::Instant;
 
 use veyyon_desktop_kit::{
-	CodeBlock, ColorRole, Icon, IconName, IconSize, MonoSizeStep, SpacingStep, TextRamp, TextWeight,
-	TokenSet, Truncate,
+	CodeBlock, ColorRole, Icon, IconName, IconSize, MonoSizeStep, MonoText, SpacingStep, TextRamp,
+	TextWeight, TokenSet, Truncate,
 	controls::button::{Button, ButtonSize},
 };
 use veyyon_desktop_motion::MotionTokens;
@@ -163,8 +163,7 @@ pub fn render_invoke_block(
 		.child(
 			div()
 				.flex_shrink_0()
-				.text_size(tokens.mono_font_size(MonoSizeStep::Small))
-				.line_height(tokens.mono_line_height(MonoSizeStep::Small))
+				.mono_text(tokens, MonoSizeStep::Small)
 				.font_weight(tokens.font_weight(TextWeight::Medium))
 				.text_color(tokens.color(ColorRole::Foreground))
 				.child(tool.to_owned()),
@@ -235,7 +234,7 @@ pub fn render_invoke_block(
 		if !target.is_empty() {
 			details = details.child(
 				div()
-					.text_size(tokens.mono_font_size(MonoSizeStep::Small))
+					.mono_text(tokens, MonoSizeStep::Small)
 					.text_color(tokens.color(ColorRole::Secondary))
 					.child(format!("Target: {target}")),
 			);

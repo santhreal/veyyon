@@ -1,6 +1,6 @@
 //! Native GPUI renderer for Code lines in `ViewSection` (§contracts/view).
 
-use veyyon_desktop_kit::{ColorRole, MonoSizeStep, SpacingStep, TokenSet};
+use veyyon_desktop_kit::{ColorRole, MonoSizeStep, MonoText, SpacingStep, TokenSet};
 use veyyon_desktop_model::tool_view::{ViewCodeLines, ViewLine};
 use veyyon_gpui::{Div, ParentElement, Styled, div, px};
 
@@ -20,9 +20,7 @@ pub fn render_code_lines(
 		.flex()
 		.flex_col()
 		.w_full()
-		.font_family(tokens.mono_family())
-		.text_size(tokens.mono_font_size(MonoSizeStep::Small))
-		.line_height(tokens.mono_line_height(MonoSizeStep::Small));
+		.mono_text(tokens, MonoSizeStep::Small);
 
 	// Lead prompt (e.g. $ cd services &&)
 	if let Some(lead) = &code.lead {

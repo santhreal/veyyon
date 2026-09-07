@@ -5,7 +5,7 @@
 //! after. They sit here instead, on one row of tabular figures, reached from
 //! the turn footer that names the model.
 
-use veyyon_desktop_kit::{ColorRole, SpacingStep, TextRamp, TokenSet};
+use veyyon_desktop_kit::{ColorRole, MonoSizeStep, MonoText, SpacingStep, TextRamp, TokenSet};
 use veyyon_desktop_model::UsageTotals;
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
 use veyyon_gpui::{
@@ -104,8 +104,7 @@ pub fn usage_view(
 				)
 				.child(
 					div()
-						.font_family(tokens.mono_family())
-						.text_size(tokens.font_size(TextRamp::Small))
+						.mono_text(tokens, MonoSizeStep::Body)
 						.line_height(tokens.line_height(TextRamp::Small))
 						.text_color(tokens.color(ColorRole::Foreground))
 						.child(value),

@@ -8,7 +8,9 @@
 
 use veyyon_gpui::{App, IntoElement, Pixels, RenderOnce, SharedString, Window, div, prelude::*};
 
-use crate::token_set::{ColorRole, MonoSizeStep, RadiusStep, SpacingStep, TextRamp, TokenSet};
+use crate::token_set::{
+	ColorRole, MonoSizeStep, MonoText, RadiusStep, SpacingStep, TextRamp, TokenSet,
+};
 
 /// A captioned, height-capped pane of monospace lines.
 #[derive(IntoElement)]
@@ -75,8 +77,6 @@ impl RenderOnce for CodeBlock {
 		let resolved_tokens = TokenSet::for_app(cx);
 		let tokens: &TokenSet = &resolved_tokens;
 
-		let font_size = tokens.mono_font_size(self.size);
-		let line_h = tokens.mono_line_height(self.size);
 		let ink = tokens.color(ColorRole::Secondary);
 		let number_ink = tokens.color(ColorRole::Muted);
 		let width = self.lines.len().to_string().len();
@@ -89,9 +89,7 @@ impl RenderOnce for CodeBlock {
 			.p(tokens.spacing(SpacingStep::S2))
 			.flex()
 			.flex_col()
-			.font_family(tokens.mono_family())
-			.text_size(font_size)
-			.line_height(line_h);
+			.mono_text(tokens, self.size);
 		if let Some(max_height) = self.max_height {
 			body = body.max_h(max_height);
 		}

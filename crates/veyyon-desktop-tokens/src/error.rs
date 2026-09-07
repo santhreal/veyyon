@@ -124,4 +124,10 @@ pub enum TokenError {
 		#[source]
 		source: crate::color::ColorParseError,
 	},
+
+	#[error(
+		"[{path}] none of the fonts named by {key:?} is installed on this machine: {families}; \
+		 install one of them, or name a family this machine has"
+	)]
+	FontUnavailable { path: PathBuf, key: String, families: String },
 }

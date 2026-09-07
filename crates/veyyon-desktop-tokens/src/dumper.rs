@@ -57,6 +57,11 @@ fn dump_scale(tokens: &Tokens, path: &Path) -> Result<(), TokenError> {
 		"\n[type.mono]\nsmall = { size = 11, line_height = 16 }\nbody  = { size = 12, line_height = \
 		 18 }\n",
 	);
+	out.push_str("\n[type.family]\nmono = [\n");
+	for family in tokens.scale.mono_family_chain() {
+		let _ = writeln!(out, "\t\"{family}\",");
+	}
+	out.push_str("]\n");
 	out.push_str("\n[stroke]\nhairline = 1.0\nicon     = 1.5\nheavy    = 2.0\n");
 	write_file(path, &out)
 }

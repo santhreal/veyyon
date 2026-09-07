@@ -1,6 +1,6 @@
 //! Native GPUI renderer for Diff lines in `ViewSection` (§contracts/view).
 
-use veyyon_desktop_kit::{ColorRole, MonoSizeStep, SpacingStep, TokenSet};
+use veyyon_desktop_kit::{ColorRole, MonoSizeStep, MonoText, SpacingStep, TokenSet};
 use veyyon_desktop_model::tool_view::{ViewDiffLines, ViewDiffSide, ViewLine};
 use veyyon_gpui::{
 	CursorStyle, Div, InteractiveElement, MouseButton, ParentElement, Styled, div, px,
@@ -24,9 +24,7 @@ pub fn render_diff_lines(
 		.flex()
 		.flex_col()
 		.w_full()
-		.font_family(tokens.mono_family())
-		.text_size(tokens.mono_font_size(MonoSizeStep::Small))
-		.line_height(tokens.mono_line_height(MonoSizeStep::Small));
+		.mono_text(tokens, MonoSizeStep::Small);
 
 	let clean_path = diff.path.as_deref().map(sanitize_control_sequences);
 

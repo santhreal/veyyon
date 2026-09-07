@@ -3,8 +3,8 @@
 use std::time::Instant;
 
 use veyyon_desktop_kit::{
-	ColorRole, Icon, IconName, IconSize, MonoSizeStep, RadiusStep, SpacingStep, StrokeStep,
-	TextRamp, TextWeight, TokenSet,
+	ColorRole, Icon, IconName, IconSize, MonoSizeStep, MonoText, RadiusStep, SpacingStep,
+	StrokeStep, TextRamp, TextWeight, TokenSet,
 	controls::button::{Button, ButtonSize},
 	state::InteractiveState,
 };
@@ -199,7 +199,7 @@ pub fn render_artifact_details(
 					ImageStatus::Valid { width, height, format, gpui_image } => {
 						details = details.child(
 							div()
-								.text_size(tokens.mono_font_size(MonoSizeStep::Small))
+								.mono_text(tokens, MonoSizeStep::Small)
 								.font_weight(tokens.font_weight(TextWeight::Medium))
 								.text_color(tokens.color(ColorRole::Foreground))
 								.child(format!("File: {path}")),
@@ -261,7 +261,7 @@ pub fn render_artifact_details(
 			} else {
 				details = details.child(
 					div()
-						.text_size(tokens.mono_font_size(MonoSizeStep::Small))
+						.mono_text(tokens, MonoSizeStep::Small)
 						.font_weight(tokens.font_weight(TextWeight::Medium))
 						.text_color(tokens.color(ColorRole::Foreground))
 						.child(format!("Path: {path}")),

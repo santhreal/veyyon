@@ -2,7 +2,7 @@
 //! (§contracts/view).
 
 use veyyon_desktop_kit::{
-	ColorRole, Icon, IconName, IconSize, MonoSizeStep, RadiusStep, SpacingStep, TextRamp,
+	ColorRole, Icon, IconName, IconSize, MonoSizeStep, MonoText, RadiusStep, SpacingStep, TextRamp,
 	TextWeight, TokenSet, indicators::badge::Badge,
 };
 use veyyon_desktop_model::tool_view::{TextBlockView, ViewLine, ViewSpan};
@@ -160,7 +160,7 @@ fn render_inline_markdown(
 					.px(tokens.spacing(SpacingStep::S1))
 					.bg(tokens.color(ColorRole::Inset))
 					.rounded(tokens.radius(RadiusStep::Sm))
-					.text_size(tokens.mono_font_size(MonoSizeStep::Small))
+					.mono_text(tokens, MonoSizeStep::Small)
 					.text_color(tokens.color(ColorRole::Secondary))
 					.child(code_str),
 			);

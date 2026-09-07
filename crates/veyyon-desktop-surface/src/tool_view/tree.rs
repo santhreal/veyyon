@@ -1,7 +1,7 @@
 //! Native GPUI renderer for Tree hierarchy lines in `ViewSection`
 //! (§contracts/view).
 
-use veyyon_desktop_kit::{ColorRole, MonoSizeStep, SpacingStep, TokenSet};
+use veyyon_desktop_kit::{ColorRole, MonoSizeStep, MonoText, SpacingStep, TokenSet};
 use veyyon_desktop_model::tool_view::{ViewLine, ViewTreeLines};
 use veyyon_gpui::{Div, ParentElement, Styled, div};
 
@@ -45,8 +45,7 @@ pub fn render_tree_lines(
 			.child(
 				div()
 					.flex_shrink_0()
-					.font_family(tokens.mono_family())
-					.text_size(tokens.mono_font_size(MonoSizeStep::Small))
+					.mono_text(tokens, MonoSizeStep::Small)
 					.text_color(tokens.color(ColorRole::Muted))
 					.child(connector),
 			)

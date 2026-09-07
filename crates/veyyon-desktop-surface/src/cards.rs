@@ -11,8 +11,8 @@
 //! answer anything.
 
 use veyyon_desktop_kit::{
-	ColorRole, MonoSizeStep, RadiusStep, SpacingStep, StrokeStep, TextRamp, TextWeight, TintRole,
-	TokenSet,
+	ColorRole, MonoSizeStep, MonoText, RadiusStep, SpacingStep, StrokeStep, TextRamp, TextWeight,
+	TintRole, TokenSet,
 };
 use veyyon_desktop_tokens::AttachedCardsSurfaceTokens;
 use veyyon_gpui::{
@@ -121,8 +121,7 @@ fn approval(
 				.overflow_hidden()
 				.whitespace_nowrap()
 				.truncate()
-				.text_size(tokens.mono_font_size(MonoSizeStep::Small))
-				.line_height(tokens.mono_line_height(MonoSizeStep::Small))
+				.mono_text(tokens, MonoSizeStep::Small)
 				.text_color(tokens.color(ColorRole::Secondary))
 				.child(line.clone()),
 		);

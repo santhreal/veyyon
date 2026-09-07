@@ -48,6 +48,21 @@ semibold = 600
 small = { size = 11, line_height = 16 }
 body  = { size = 12, line_height = 18 }
 
+# The families monospace text is set in, most wanted first (§6.3). The first
+# family the machine has is the one used, and the desktop refuses to start when
+# it has none of them: a proportional substitute breaks column alignment in the
+# terminal drawer, in a diff and in a code block, and it looks deliberate.
+[type.family]
+mono = [
+	"JetBrains Mono",
+	"DejaVu Sans Mono",
+	"Liberation Mono",
+	"Menlo",
+	"SF Mono",
+	"Consolas",
+	"Courier New",
+]
+
 # Stroke widths for borders, rules, and icon geometry (§6.8).
 [stroke]
 hairline = 1.0

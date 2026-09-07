@@ -6,7 +6,7 @@
 
 use veyyon_gpui::{App, IntoElement, Pixels, RenderOnce, SharedString, Window, div, prelude::*};
 
-use crate::token_set::{ColorRole, MonoSizeStep, TextRamp, TokenSet};
+use crate::token_set::{ColorRole, MonoSizeStep, MonoText, TextRamp, TokenSet};
 
 /// The size a truncated line is set at.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,10 +82,7 @@ impl RenderOnce for Truncate {
 			TruncateSize::Ramp(ramp) => el
 				.text_size(tokens.font_size(ramp))
 				.line_height(tokens.line_height(ramp)),
-			TruncateSize::Mono(size) => el
-				.font_family(tokens.mono_family())
-				.text_size(tokens.mono_font_size(size))
-				.line_height(tokens.mono_line_height(size)),
+			TruncateSize::Mono(size) => el.mono_text(tokens, size),
 		};
 
 		if let Some(mw) = self.max_width {

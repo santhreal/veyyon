@@ -8,7 +8,7 @@ mod chrome;
 mod content;
 mod process_list;
 
-use veyyon_desktop_kit::{ColorRole, MonoSizeStep, SpacingStep, TextWeight, TokenSet};
+use veyyon_desktop_kit::{ColorRole, MonoSizeStep, MonoText, SpacingStep, TextWeight, TokenSet};
 use veyyon_desktop_model::{SessionId, SurfaceId};
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
 use veyyon_gpui::{
@@ -191,8 +191,7 @@ fn render_terminal_grid(
 				.flex()
 				.items_center()
 				.justify_center()
-				.text_size(tokens.mono_font_size(MonoSizeStep::Small))
-				.line_height(tokens.mono_line_height(MonoSizeStep::Small));
+				.mono_text(tokens, MonoSizeStep::Small);
 
 			let fg = resolve_ink(&cell.ink, tokens, true)
 				.unwrap_or_else(|| tokens.color(ColorRole::Secondary));
