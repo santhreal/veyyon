@@ -1183,7 +1183,7 @@ interface TelemetryToolCallSummary {
 type OtelMessagePart =
 	| { readonly type: "text"; readonly content: string }
 	| { readonly type: "reasoning"; readonly content: string }
-	| { readonly type: "blob"; readonly modality: "image"; readonly mime_type: string; readonly content: string }
+	| { readonly type: "blob"; readonly modality: "image" | "video"; readonly mime_type: string; readonly content: string }
 	| { readonly type: "tool_call"; readonly id?: string; readonly name: string; readonly arguments?: unknown }
 	| { readonly type: "tool_call_response"; readonly id?: string; readonly response: unknown }
 	| { readonly type: string; readonly [key: string]: unknown };
@@ -1266,6 +1266,9 @@ function textOrImageContentToOtelParts(content: Message["content"]): OtelMessage
 				break;
 			case "image":
 				parts.push({ type: "blob", modality: "image", mime_type: part.mimeType, content: part.data });
+				break;
+			case "video":
+				parts.push({ type: "blob", modality: "video", mime_type: part.mimeType, content: part.data });
 				break;
 			case "thinking":
 				parts.push({ type: "reasoning", content: part.thinking });

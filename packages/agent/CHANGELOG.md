@@ -5,6 +5,7 @@
 ### Changed
 
 - Custom message, compaction summary and session entry content unions admit `VideoContent` alongside text and images.
+- An exported OpenTelemetry turn carries a video attachment as a `video` blob part; a video block was dropped from the export while images were kept.
 
 ### Fixed
 
