@@ -103,8 +103,8 @@ fn every_command_destination_except_settings_has_no_permanent_rail_control() {
 	);
 	assert!(
 		destinations.len() > 2,
-		"the command table offers the account and page destinations too, which is what makes this \
-		 a sweep; got {destinations:?}"
+		"the command table offers the account and page destinations too, which is what makes this a \
+		 sweep; got {destinations:?}"
 	);
 
 	let mut cx = headless_context().expect("headless renderer is required");
@@ -139,7 +139,8 @@ fn every_command_destination_except_settings_has_no_permanent_rail_control() {
 			.expect("the click reaches the window");
 		let route = session
 			.update(|view, _window, _cx| {
-				view.state()
+				view
+					.state()
 					.overlay
 					.as_ref()
 					.and_then(Overlay::route)
@@ -191,11 +192,7 @@ fn the_one_rail_shortcut_is_the_footer_gear_and_not_a_row_or_a_header() {
 		.filter(|rect| f32::from(rect.origin.y) >= WINDOW_H as f32 - footer_h)
 		.copied()
 		.collect();
-	assert_eq!(
-		footer_band.len(),
-		1,
-		"the footer band holds exactly the gear; got {footer_band:?}"
-	);
+	assert_eq!(footer_band.len(), 1, "the footer band holds exactly the gear; got {footer_band:?}");
 
 	session
 		.click(centre(footer_band[0]))

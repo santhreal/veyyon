@@ -194,7 +194,7 @@ fn the_grid_draws_every_cell_on_the_column_pitch_at_one_advance() {
 		let step = pair[1].0 - pair[0].0;
 		let columns = (step / drawn_pitch).round();
 		assert!(
-			(step - columns * drawn_pitch).abs() <= 1.0,
+			columns.mul_add(-drawn_pitch, step).abs() <= 1.0,
 			"a step of {step}px is not {columns} columns of {drawn_pitch}px"
 		);
 	}

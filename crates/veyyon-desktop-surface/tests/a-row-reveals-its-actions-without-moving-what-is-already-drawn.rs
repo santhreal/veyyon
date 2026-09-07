@@ -136,7 +136,11 @@ fn leaf_controls(captured: &Captured, row: BoxBounds) -> Vec<BoxBounds> {
 	}
 	within
 		.iter()
-		.filter(|slot| !within.iter().any(|other| other != *slot && contains(slot, other)))
+		.filter(|slot| {
+			!within
+				.iter()
+				.any(|other| other != *slot && contains(slot, other))
+		})
 		.copied()
 		.collect()
 }
@@ -151,10 +155,10 @@ fn colours_in(captured: &Captured, area: BoxBounds) -> usize {
 	let bottom = area.bottom.max(0.0) as u32;
 	for y in top..bottom {
 		for x in left..right {
-			if let Some(colour) = captured.frame.pixel(x, y) {
-				if !seen.contains(&colour) {
-					seen.push(colour);
-				}
+			if let Some(colour) = captured.frame.pixel(x, y)
+				&& !seen.contains(&colour)
+			{
+				seen.push(colour);
 			}
 		}
 	}
@@ -163,8 +167,8 @@ fn colours_in(captured: &Captured, area: BoxBounds) -> usize {
 
 fn centre(area: BoxBounds) -> Point<Pixels> {
 	Point {
-		x: Pixels::from((area.left + area.right) / 2.0),
-		y: Pixels::from((area.top + area.bottom) / 2.0),
+		x: Pixels::from(f32::midpoint(area.left, area.right)),
+		y: Pixels::from(f32::midpoint(area.top, area.bottom)),
 	}
 }
 
@@ -201,7 +205,9 @@ fn a_row_of_this_shape_reveals_without_moving(shape: &str, height: f32, actions:
 	session
 		.hover(centre(row))
 		.expect("the pointer reaches the row");
-	let hovered = session.frame().expect("the shell renders under the pointer");
+	let hovered = session
+		.frame()
+		.expect("the shell renders under the pointer");
 
 	assert_eq!(
 		rail_texts(&hovered, rail_px),
@@ -231,8 +237,8 @@ fn a_row_of_this_shape_reveals_without_moving(shape: &str, height: f32, actions:
 		let under_pointer = colours_in(&hovered, *slot);
 		assert!(
 			under_pointer > at_rest,
-			"the {shape} row's action slot {slot:?} gains ink under the pointer: {at_rest} \
-			 colour(s) at rest, {under_pointer} hovered"
+			"the {shape} row's action slot {slot:?} gains ink under the pointer: {at_rest} colour(s) \
+			 at rest, {under_pointer} hovered"
 		);
 		// A slot out of the row's flow takes no width from the text beside it,
 		// so the reveal lands on top of that text instead of beside it. The
@@ -241,8 +247,8 @@ fn a_row_of_this_shape_reveals_without_moving(shape: &str, height: f32, actions:
 		for text in rail_texts(&hovered, rail_px) {
 			assert!(
 				text.overlap_x(slot) <= 0.0 || text.overlap_y(slot) <= 0.0,
-				"the {shape} row's revealed action at {slot:?} draws beside the rail's text, not \
-				 over it; {text:?} is underneath"
+				"the {shape} row's revealed action at {slot:?} draws beside the rail's text, not over \
+				 it; {text:?} is underneath"
 			);
 		}
 	}
@@ -294,7 +300,9 @@ fn the_pointer_leaving_a_row_puts_the_ink_back_without_moving_anything_either() 
 	session
 		.hover(Point { x: Pixels::from(rail_px + 200.0), y: Pixels::from(300.0) })
 		.expect("the pointer leaves the rail");
-	let left = session.frame().expect("the frame after the pointer leaves renders");
+	let left = session
+		.frame()
+		.expect("the frame after the pointer leaves renders");
 
 	assert_eq!(
 		rail_texts(&left, rail_px),
