@@ -18,8 +18,8 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import {
-	renderRoomStripLine,
 	type RoomStripMember,
+	renderRoomStripLine,
 	roomMemberLabel,
 } from "@veyyon/coding-agent/modes/terminal/components/dashboard/room-strip";
 import type { AgentRef } from "@veyyon/coding-agent/registry/agent-registry";
