@@ -325,8 +325,11 @@ export class RoomController {
 	 * authoritative paint a switch without one performs. The slide is started
 	 * in the same tick as the rebuild so no render queued by the rebuild
 	 * reaches the screen before it; each one is folded into the slide's last
-	 * frame. Without `from`, or where the engine refuses the slide (a resize
-	 * since the capture, an overlay, a multiplexer), the plain repaint stands.
+	 * frame. A re-root is awaited before the rebuild, so on that path alone the
+	 * status line may repaint for the new cwd before the transcript slides; the
+	 * transcript itself is unchanged until the rebuild. Without `from`, or
+	 * where the engine refuses the slide (a resize since the capture, an
+	 * overlay, a multiplexer), the plain repaint stands.
 	 */
 	async #attach(next: AgentSession, from: ViewportSnapshot | undefined, direction: "left" | "right"): Promise<void> {
 		const previousCwd = this.ctx.sessionManager.getCwd();
