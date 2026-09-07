@@ -21,6 +21,18 @@
 # holding source files back cannot rebuild a compiled binary) and refuses when it
 # is byte-identical to the after one.
 #
+# WHAT THE BEFORE ARM HOLDS. The source hold also holds the TypeScript back,
+# which is right for a change the host takes part in and wrong for one that is
+# entirely inside the executable: a branch that brings its own GUI host has no
+# host in the base tree, so the held arm records a window that attached to
+# nothing. PROOF_NATIVE_HOLD=binary keeps every source file at this tree and
+# swaps the executable alone, which is the whole differential for a desktop-only
+# change:
+#
+#   SCENE_ARM=before PROOF_NATIVE_HOLD=binary \
+#     PROOF_NATIVE_BEFORE_BINARY=<base-build> \
+#     proof/docker/record-native.sh proof/scenes/<name>.sh
+#
 # THE GPU IS OPTIONAL. lavapipe renders in software, so a take needs no
 # passthrough and every host draws the same frame. Pass PROOF_GPU_DEVICE and
 # VK_ICD to use the host's device instead:
@@ -74,6 +86,29 @@ VEYYON_DESKTOP_THEMES_DIR=/repo/crates/veyyon-desktop-tokens/themes \
 export SCENE_WIDTH SCENE_HEIGHT
 
 if [ "${SCENE_ARM:-after}" = "before" ]; then
+	if [ "${PROOF_NATIVE_HOLD:-source}" = "binary" ]; then
+		BEFORE="${PROOF_NATIVE_BEFORE_BINARY:?PROOF_NATIVE_HOLD=binary needs the base build in PROOF_NATIVE_BEFORE_BINARY}"
+		if [ ! -x "${BEFORE}" ]; then
+			echo "record-native: before-state executable is not executable: ${BEFORE}" >&2
+			exit 2
+		fi
+		BEFORE_SHA="$(sha256sum -- "${BEFORE}" | cut -d' ' -f1)"
+		AFTER_SHA="$(sha256sum -- "${BINARY}" | cut -d' ' -f1)"
+		if [ "${BEFORE_SHA}" = "${AFTER_SHA}" ]; then
+			echo "record-native: Before and After executables are identical; build the base ref" >&2
+			exit 2
+		fi
+		echo "native before sha256: ${BEFORE_SHA}; after sha256: ${AFTER_SHA}" >&2
+		echo "holding no source: the arm is the executable alone" >&2
+		export PROOF_HOST_REPO_SOURCE="${BEFORE}"
+		# OUT_DIR is a docker bind mount, so it has to exist and be absolute
+		# before the recorder is handed it.
+		OUT_DIR="${OUT_DIR:-proof/captures/x11/before}"
+		mkdir -p -- "${OUT_DIR}"
+		OUT_DIR="$(cd -- "${OUT_DIR}" && /bin/pwd -P)"
+		export OUT_DIR
+		exec "${REPO_ROOT}/proof/docker/record-x11.sh" "$@"
+	fi
 	exec "${REPO_ROOT}/proof/docker/record-x11-before.sh" "$@"
 fi
 exec "${REPO_ROOT}/proof/docker/record-x11.sh" "$@"

@@ -187,6 +187,27 @@ copy and proving the restore by sha256. No git mutation command runs and the wor
 tree ends byte-identical. Once the change is on `main`, reproducing the before arm
 means pointing that hold at the commit before it.
 
+A desktop scene records the GPUI window through `proof/docker/record-native.sh`,
+which resolves the executable from the workspace's cargo target directory and
+configures the software Vulkan driver. Source cannot be held back into a compiled
+binary, so its before arm takes the base build in `PROOF_NATIVE_BEFORE_BINARY` and
+refuses a build byte-identical to the after one. A change entirely inside that
+executable holds no source at all:
+
+```sh
+cargo build -p veyyon-desktop                            # the after build
+proof/docker/record-native.sh proof/scenes/<name>.sh     # the after arm
+
+SCENE_ARM=before PROOF_NATIVE_HOLD=binary \
+  PROOF_NATIVE_BEFORE_BINARY=<base-build> \
+  proof/docker/record-native.sh proof/scenes/<name>.sh   # the before arm
+```
+
+`PROOF_NATIVE_HOLD=binary` keeps every source file at the recording tree and swaps
+the executable alone. Use it when the base tree cannot serve the window: a branch
+that brings its own GUI host has none in its base, and the source hold then records
+a window attached to nothing rather than the surface under test.
+
 Both arms record the same scene at the same width and are sampled at the same second
 of the same script, so the only difference between them is the change. Attach the
 labeled Before and After pair to the pull request body. It is never committed: not to
