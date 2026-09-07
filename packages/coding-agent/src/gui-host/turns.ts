@@ -6,7 +6,7 @@ import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { computeDefaultSessionDir } from "@veyyon/kernel/session/session-paths";
 import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import type { PtySession } from "@veyyon/natives";
-import { logger } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import { formatBytes } from "@veyyon/utils/format";
 import { SUPPORTED_IMAGE_MIME_TYPES, SUPPORTED_VIDEO_MIME_TYPES } from "@veyyon/utils/mime";
 import { initializeExtensions } from "../modes/runtime-init";
@@ -380,7 +380,7 @@ export async function executePromptTurn(
 			// A turn error after acceptance lands on the transcript entry; here
 			// it is only kept out of the unhandled-rejection path.
 			if ("error" in outcome) {
-				const message = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
+				const message = errorMessage(outcome.error);
 				logger.warn("GUI host turn ended in error", { error: message });
 			}
 			return;

@@ -1,5 +1,5 @@
 import type { Socket } from "node:net";
-import { logger } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 
 /** Maximum allowed frame size: 32 MiB (mirrored by Rust crates/veyyon-desktop/src/framing.rs). */
 export const MAX_FRAME_BYTES = 32 * 1024 * 1024;
@@ -71,10 +71,10 @@ export class FrameDecoder {
 				this.#onFrame(parsed);
 			} catch (error) {
 				logger.error("GUI host received malformed JSON frame", {
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 					preview: line.slice(0, 120),
 				});
-				this.#fail(new Error(`Malformed JSON frame: ${error instanceof Error ? error.message : String(error)}`));
+				this.#fail(new Error(`Malformed JSON frame: ${errorMessage(error)}`));
 				break;
 			}
 		}

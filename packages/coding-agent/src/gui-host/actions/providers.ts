@@ -2,6 +2,7 @@ import type { AuthStorage } from "@veyyon/ai";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import { PROVIDER_REGISTRY } from "@veyyon/ai/registry";
 import { CATALOG_PROVIDERS } from "@veyyon/catalog/provider-models/descriptors";
+import { errorMessage } from "@veyyon/utils";
 import { formatProviderName } from "../../session/account-format";
 import { openPath } from "../../utils/open";
 import { writeFrame } from "../frames";
@@ -57,7 +58,7 @@ const handleRefreshProviders: ActionHandler = async ctx => {
 		ctx.reply.failure({
 			scope: "Provider",
 			code: "PROVIDER_REFRESH_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}
@@ -184,17 +185,17 @@ const handleStartProviderAuth: ActionHandler<StartProviderAuthPayload | undefine
 					}
 					writeFrame(ctx.socket, { Snapshot: { AuthFlow: cancelledView } });
 				} else {
-					const errorMessage = err instanceof Error ? err.message : String(err);
+					const failure = errorMessage(err);
 					const failedView: AuthFlowView = {
 						provider: providerId,
 						state: "Failed",
 						url: null,
 						prompt: null,
-						message: errorMessage,
+						message: failure,
 					};
 					if (ctx.clientState.authFlow) {
 						ctx.clientState.authFlow.state = "Failed";
-						ctx.clientState.authFlow.message = errorMessage;
+						ctx.clientState.authFlow.message = failure;
 					}
 					writeFrame(ctx.socket, { Snapshot: { AuthFlow: failedView } });
 				}
@@ -231,7 +232,7 @@ const handleRefreshAuth: ActionHandler<RefreshAuthPayload | undefined> = async (
 		ctx.reply.failure({
 			scope: "Provider",
 			code: "PROVIDER_REFRESH_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}
@@ -285,7 +286,7 @@ const handleSubmitAuthSecret: ActionHandler<SubmitAuthSecretPayload | undefined>
 		ctx.reply.failure({
 			scope: "Authentication",
 			code: "SET_API_KEY_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}

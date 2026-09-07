@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { errorMessage } from "@veyyon/utils";
 import { atomicWriteFileSync } from "@veyyon/utils/atomic-write";
 import { syncYamlTextToSettings } from "@veyyon/utils/yaml-sync";
 import { YAML } from "bun";
@@ -124,7 +125,7 @@ const handleLoadSettings: ActionHandler = async ctx => {
 		ctx.reply.failure({
 			scope: "Settings",
 			code: "SETTINGS_LOAD_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}
@@ -182,7 +183,7 @@ const handleSetSetting: ActionHandler<SetSettingPayload | undefined> = async (ct
 		ctx.reply.failure({
 			scope: "Settings",
 			code: "SET_SETTING_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}
@@ -228,7 +229,7 @@ const handleResetSetting: ActionHandler<ResetSettingPayload | undefined> = async
 		ctx.reply.failure({
 			scope: "Settings",
 			code: "RESET_SETTING_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}
@@ -262,7 +263,7 @@ const handleLoadThemes: ActionHandler = async ctx => {
 		ctx.reply.failure({
 			scope: "Settings",
 			code: "THEMES_LOAD_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}
@@ -318,7 +319,7 @@ const handleSetKeybinding: ActionHandler<SetKeybindingPayload | undefined> = (ct
 		ctx.reply.failure({
 			scope: "Settings",
 			code: "SET_KEYBINDING_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}

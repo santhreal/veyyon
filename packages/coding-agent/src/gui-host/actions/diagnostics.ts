@@ -1,4 +1,5 @@
 import * as os from "node:os";
+import { errorMessage } from "@veyyon/utils";
 import { mcpManagerInstance } from "../../mcp/manager-instance";
 import { computeContextBreakdown } from "../../session/context-usage";
 import { sessionHeaderToView } from "../session-bridge";
@@ -209,7 +210,7 @@ const handleClearOutput: ActionHandler<ClearOutputPayload | undefined> = async (
 		ctx.reply.failure({
 			scope: "Session",
 			code: "CLEAR_OUTPUT_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}
@@ -295,7 +296,7 @@ const handleGetContextBreakdown: ActionHandler<GetContextBreakdownPayload | unde
 		ctx.reply.failure({
 			scope: "Diagnostic",
 			code: "CONTEXT_BREAKDOWN_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}

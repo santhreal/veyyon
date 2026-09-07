@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as net from "node:net";
 import * as path from "node:path";
 import type { AuthStorage } from "@veyyon/ai";
-import { getAgentDir, logger } from "@veyyon/utils";
+import { errorMessage, getAgentDir, logger } from "@veyyon/utils";
 import { discoverAuthStorage } from "../session/auth-broker-config";
 import { allActionHandlers } from "./actions";
 import type { ActionContext, ReplyHelper } from "./actions/types";
@@ -287,7 +287,7 @@ export class GuiHostServer {
 			const backendError: BackendError = {
 				scope: mapActionToErrorScope(actionTag),
 				code: "ACTION_FAILED",
-				message: error instanceof Error ? error.message : String(error),
+				message: errorMessage(error),
 				retryable: false,
 				request: requestId,
 				occurred_at_ms: Date.now(),

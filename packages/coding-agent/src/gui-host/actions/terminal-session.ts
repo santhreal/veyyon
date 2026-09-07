@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import type * as net from "node:net";
 import { PtySession } from "@veyyon/natives";
-import { logger } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import { rootBudgetGroupOwnerId, sessionCpuBudgetName } from "../../session/cpu-limit";
 import { writeFrame } from "../frames";
 import type { ClientSessionState, TerminalInstance } from "../turns";
@@ -203,6 +203,6 @@ export async function spawnTerminalPty(ctx: ActionContext, instance: TerminalIns
 			onPtyExit(ctx.socket, ctx.clientState, instance, result.exitCode ?? 0);
 		})
 		.catch(error => {
-			onPtySpawnError(ctx.socket, ctx.clientState, instance, error instanceof Error ? error.message : String(error));
+			onPtySpawnError(ctx.socket, ctx.clientState, instance, errorMessage(error));
 		});
 }

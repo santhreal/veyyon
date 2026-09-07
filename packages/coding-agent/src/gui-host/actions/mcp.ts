@@ -1,3 +1,4 @@
+import { errorMessage } from "@veyyon/utils";
 import { loadAllMCPConfigs } from "../../mcp/config";
 import { MCPManager } from "../../mcp/manager";
 import { mcpManagerInstance } from "../../mcp/manager-instance";
@@ -134,7 +135,7 @@ const handleRefreshMcp: ActionHandler = async ctx => {
 		ctx.reply.failure({
 			scope: "Mcp",
 			code: "MCP_REFRESH_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}
@@ -185,7 +186,7 @@ const handleConnectMcp: ActionHandler<ConnectMcpPayload | undefined> = async (ct
 		ctx.reply.failure({
 			scope: "Mcp",
 			code: "MCP_CONNECT_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}
@@ -230,7 +231,7 @@ const handleDisconnectMcp: ActionHandler<DisconnectMcpPayload | undefined> = asy
 		ctx.reply.failure({
 			scope: "Mcp",
 			code: "MCP_DISCONNECT_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}
@@ -285,7 +286,7 @@ const handleSetMcpEnabled: ActionHandler<SetMcpEnabledPayload | undefined> = asy
 		ctx.reply.failure({
 			scope: "Mcp",
 			code: "MCP_ENABLE_TOGGLE_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}
@@ -355,7 +356,7 @@ const handleCallMcpTool: ActionHandler<CallMcpToolPayload | undefined> = async (
 		ctx.reply.failure({
 			scope: "Mcp",
 			code: "MCP_TOOL_EXECUTION_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}

@@ -2,6 +2,7 @@ import type { Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { FileType, fuzzyFind, type GlobMatch, glob, listWorkspace } from "@veyyon/natives";
+import { errorMessage } from "@veyyon/utils";
 import { openPath } from "../../utils/open";
 import type { FileKind, FileNode } from "../wire";
 import type { ActionHandler, ActionHandlersMap } from "./types";
@@ -165,7 +166,7 @@ const handleLoadFileTree: ActionHandler<LoadFileTreePayload | undefined> = async
 		ctx.reply.failure({
 			scope: "File",
 			code: "DIRECTORY_READ_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}
@@ -265,7 +266,7 @@ const handleReadFile: ActionHandler<ReadFilePayload | undefined> = async (ctx, p
 		ctx.reply.failure({
 			scope: "File",
 			code: "FILE_READ_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}
@@ -329,7 +330,7 @@ const handleSearchFiles: ActionHandler<SearchFilesPayload | undefined> = async (
 		ctx.reply.failure({
 			scope: "File",
 			code: "DIRECTORY_READ_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}
@@ -380,7 +381,7 @@ const handleOpenExternal: ActionHandler<OpenExternalPayload | undefined> = async
 		ctx.reply.failure({
 			scope: "File",
 			code: "OPEN_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}

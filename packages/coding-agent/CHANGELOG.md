@@ -46,6 +46,7 @@
 ### Changed
 
 - Handbook HTML and search assets are generated during documentation and website builds instead of being tracked in Git.
+- The GUI host reports a failed action through the shared `errorMessage` helper rather than its own inline error narrowing in each handler. No user-visible behavior changes.
 - Startup reads setting-change signals and terminal formatting without constructing the settings store or unrelated tool modules.
 - The terminal host constructs autoresearch screens and styled slash-command reports; headless command execution no longer imports those terminal components.
 - Subagent statistics and output sanitization are shared across the task tool's view and dashboard through host-independent presentation helpers in task/agent-stats.ts without terminal imports. No user-visible behavior changes.

@@ -1,4 +1,5 @@
 import type { AgentTool } from "@veyyon/agent-core";
+import { errorMessage } from "@veyyon/utils";
 import type {
 	FramedBlockView,
 	NoticeView,
@@ -262,7 +263,7 @@ export function formatGenericResultView(
  * Visibly surfaces a renderer exception without throwing or suppressing output.
  */
 export function createRendererExceptionView(toolName: string, phase: "call" | "result", error: unknown): NoticeView {
-	const message = error instanceof Error ? error.message : String(error);
+	const message = errorMessage(error);
 	return {
 		kind: "notice",
 		state: "error",

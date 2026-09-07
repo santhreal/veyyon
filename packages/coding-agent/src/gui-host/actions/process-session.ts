@@ -1,3 +1,4 @@
+import { errorMessage } from "@veyyon/utils";
 import type { DaemonBrokerClient } from "../../launch/client";
 import type { ProcessView } from "../wire";
 import type { ActionContext } from "./types";
@@ -21,7 +22,7 @@ export function handleSupervisorError(ctx: ActionContext, error: unknown): void 
 	ctx.reply.failure({
 		scope: "Terminal",
 		code: "PROCESS_SUPERVISOR_UNAVAILABLE",
-		message: error instanceof Error ? error.message : String(error),
+		message: errorMessage(error),
 		retryable: true,
 	});
 }

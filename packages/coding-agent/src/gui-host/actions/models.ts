@@ -2,6 +2,7 @@ import * as path from "node:path";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
+import { errorMessage } from "@veyyon/utils";
 import { ModelRegistry } from "../../config/model-registry";
 import { parseModelString } from "../../config/model-resolver";
 import { DEFAULT_MODEL_SLOT } from "../../config/model-roles";
@@ -74,7 +75,7 @@ const handleRefreshModels: ActionHandler = async ctx => {
 		ctx.reply.failure({
 			scope: "Provider",
 			code: "MODEL_REGISTRY_ERROR",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}
@@ -120,7 +121,7 @@ const handleSelectModel: ActionHandler<SelectModelPayload | undefined> = async (
 		ctx.reply.failure({
 			scope: "Provider",
 			code: "MODEL_SELECTION_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}
@@ -164,7 +165,7 @@ const handleSetThinkingLevel: ActionHandler<SetThinkingLevelPayload | undefined>
 		ctx.reply.failure({
 			scope: "Provider",
 			code: "SET_THINKING_LEVEL_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import * as path from "node:path";
-import { logger } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import { writeFrame } from "../frames";
 import type { TerminalInstance } from "../turns";
 import { ensureTerminalsMap, flushPendingOutput, getAllTerminalsView, spawnTerminalPty } from "./terminal-session";
@@ -43,7 +43,7 @@ const handleCreateTerminal: ActionHandler<CreateTerminalPayload | undefined> = a
 	try {
 		await spawnTerminalPty(ctx, instance);
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		instance.status = { Failed: { message } };
 		terminals.set(id, instance);
 		ctx.clientState.revision += 1;
@@ -136,7 +136,7 @@ const handleWriteTerminal: ActionHandler<WriteTerminalPayload | undefined> = (ct
 		} catch (error) {
 			logger.warn("Terminal write failed on running PTY", {
 				terminalId: instance.id,
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 		}
 	}
@@ -199,7 +199,7 @@ const handleResizeTerminal: ActionHandler<ResizeTerminalPayload | undefined> = (
 		} catch (error) {
 			logger.warn("Terminal resize failed", {
 				terminalId: instance.id,
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 		}
 	}
@@ -249,7 +249,7 @@ const handleRestartTerminal: ActionHandler<RestartTerminalPayload | undefined> =
 	try {
 		await spawnTerminalPty(ctx, instance);
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		instance.status = { Failed: { message } };
 		ctx.clientState.revision += 1;
 		ctx.reply.snapshot({

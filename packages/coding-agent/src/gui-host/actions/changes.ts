@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { errorMessage } from "@veyyon/utils";
 import { diff, repo, status } from "../../utils/git";
 import type { ChangedFile, ChangeScope, ChangeStatus } from "../wire";
 import type { ActionContext, ActionHandler, ActionHandlersMap } from "./types";
@@ -145,7 +146,7 @@ const handleRefreshChanges: ActionHandler = async ctx => {
 		ctx.reply.failure({
 			scope: "Change",
 			code: "VCS_ERROR",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}
@@ -174,7 +175,7 @@ const handleSelectChangeScope: ActionHandler<SelectChangeScopePayload | undefine
 		ctx.reply.failure({
 			scope: "Change",
 			code: "VCS_ERROR",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}

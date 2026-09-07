@@ -4,6 +4,7 @@ import { listSessions } from "@veyyon/kernel/session/session-listing";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { computeDefaultSessionDir } from "@veyyon/kernel/session/session-paths";
 import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
+import { errorMessage } from "@veyyon/utils";
 import { writeFrame } from "../frames";
 import { sessionHeaderToView, sessionInfoToSummary } from "../session-bridge";
 import { sessionEntriesToTranscript, sessionEntryToTranscriptEntry } from "../transcript-conversion";
@@ -41,7 +42,7 @@ export function replyError(ctx: ActionContext, code: string, error: unknown, sco
 	ctx.reply.failure({
 		scope,
 		code,
-		message: error instanceof Error ? error.message : String(error),
+		message: errorMessage(error),
 		retryable: false,
 	});
 }

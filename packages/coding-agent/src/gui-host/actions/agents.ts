@@ -1,3 +1,4 @@
+import { errorMessage } from "@veyyon/utils";
 import { AgentLifecycleManager } from "../../registry/agent-lifecycle";
 import { AgentRegistry } from "../../registry/agent-registry";
 import { TaskTool } from "../../task";
@@ -57,7 +58,7 @@ const handleReviveAgent: ActionHandler<ReviveAgentPayload | undefined> = async (
 		ctx.reply.failure({
 			scope: "Agent",
 			code: "AGENT_REVIVE_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}
@@ -136,7 +137,7 @@ const handleSpawnTask: ActionHandler<SpawnTaskPayload | undefined> = async (ctx,
 		ctx.reply.failure({
 			scope: "Task",
 			code: "TASK_SPAWN_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}
@@ -182,7 +183,7 @@ const handleCancelTask: ActionHandler<CancelTaskPayload | undefined> = async (ct
 		ctx.reply.failure({
 			scope: "Task",
 			code: "TASK_CANCEL_FAILED",
-			message: error instanceof Error ? error.message : String(error),
+			message: errorMessage(error),
 			retryable: false,
 		});
 	}
