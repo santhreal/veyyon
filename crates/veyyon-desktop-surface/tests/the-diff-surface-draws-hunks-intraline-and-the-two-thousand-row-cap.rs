@@ -16,7 +16,8 @@ use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_model::{ChangeStatus, DiffMode};
 use veyyon_desktop_scene::headless::{RenderOptions, headless_context, render_view_captured};
 use veyyon_desktop_surface::{
-	DiffRow, Intent, PanelContent, PanelTab, ShellState, ShellView, diff::parse_diff, install_tokens,
+	DiffRow, DiffStatus, Intent, PanelContent, PanelTab, ShellState, ShellView, diff::parse_diff,
+	install_tokens,
 };
 use veyyon_gpui::{App, AppContext};
 
@@ -144,12 +145,14 @@ fn diff_surface_renders_in_shell_view_and_toggles_mode() {
 
 	let mut state = ShellState {
 		panel: PanelContent {
-			tabs:       vec![PanelTab::Diff, PanelTab::File, PanelTab::Tree],
-			active_tab: PanelTab::Diff,
-			diff:       files,
-			file:       None,
-			tree:       Default::default(),
-			diff_mode:  DiffMode::Unified,
+			tabs:               vec![PanelTab::Diff, PanelTab::File, PanelTab::Tree],
+			active_tab:         PanelTab::Diff,
+			diff:               files,
+			diff_status:        DiffStatus::Loaded,
+			file:               None,
+			tree:               Default::default(),
+			diff_mode:          DiffMode::Unified,
+			unavailable_reason: None,
 		},
 		..ShellState::default()
 	};

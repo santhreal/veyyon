@@ -1,11 +1,11 @@
 //! The transcript's turns: the active branch of the tree, read as what the
 //! operator said and what came back.
 
-use std::fmt::Write as _;
+use std::{fmt::Write as _, sync::Arc};
 
 use serde_json::Value;
 use veyyon_desktop_model::{ContentBlock, MessageRole, TranscriptEntry, TranscriptTree};
-use veyyon_desktop_surface::{Block, Turn};
+use veyyon_desktop_surface::{Artifact, Block, Turn};
 
 /// How many lines a mono pane keeps before the rest is counted, not shown.
 ///
@@ -53,22 +53,42 @@ pub(super) fn turns(tree: &TranscriptTree) -> Vec<Turn> {
 /// Appends an entry to the run of turns, merging agent output into the open
 /// agent turn.
 pub(super) fn push_entry(turns: &mut Vec<Turn>, entry: &TranscriptEntry) {
+	if entry.content.is_empty() {
+		return;
+	}
 	if entry.role == MessageRole::User {
-		let text = entry
-			.content
-			.iter()
-			.filter_map(|block| match block {
-				ContentBlock::Text { text } => Some(text.as_str().to_string()),
-				ContentBlock::FileMention { path, .. } => Some(format!("@{path}")),
-				ContentBlock::Image { alt, media_type, .. } => Some(
-					alt.clone()
-						.unwrap_or_else(|| format!("[image {media_type}]")),
-				),
-				_ => None,
-			})
-			.collect::<Vec<_>>()
-			.join("\n");
-		turns.push(Turn::Operator(text));
+		let mut text = String::new();
+		let mut artifacts = Vec::new();
+		let mut has_segment = false;
+		for block in &entry.content {
+			if let Some(artifact) = artifact_of(block) {
+				artifacts.push(artifact);
+				continue;
+			}
+			if !matches!(block, ContentBlock::Text { .. } | ContentBlock::Video { .. }) {
+				continue;
+			}
+			if has_segment {
+				text.push('\n');
+			}
+			has_segment = true;
+			match block {
+				ContentBlock::Text { text: segment } => text.push_str(segment),
+				ContentBlock::Video { media_type, bytes } => {
+					let _ = write!(
+						text,
+						"[video {media_type}, {}]",
+						veyyon_desktop_surface::composer::human_bytes(*bytes)
+					);
+				},
+				_ => {},
+			}
+		}
+		if artifacts.is_empty() {
+			turns.push(Turn::Operator(text));
+		} else {
+			turns.push(Turn::OperatorArtifacts { text, artifacts });
+		}
 		return;
 	}
 
@@ -77,41 +97,94 @@ pub(super) fn push_entry(turns: &mut Vec<Turn>, entry: &TranscriptEntry) {
 	}
 	if let Some(Turn::Agent(blocks)) = turns.last_mut() {
 		for block in &entry.content {
-			push_block(blocks, block);
+			push_block(blocks, block, entry.role);
 		}
 	}
 }
 
-fn push_block(blocks: &mut Vec<Block>, block: &ContentBlock) {
+fn artifact_of(block: &ContentBlock) -> Option<Artifact> {
 	match block {
-		ContentBlock::Text { text } => blocks.push(Block::Prose(text.clone())),
+		ContentBlock::Image { media_type, data, alt } => Some(Artifact::Image {
+			media_type: media_type.clone(),
+			data:       Arc::from(data.as_slice()),
+			alt:        alt.clone(),
+		}),
+		ContentBlock::FileMention { path, has_content, lines, bytes, unavailable_reason, image } => {
+			Some(Artifact::File {
+				path:               path.clone(),
+				has_content:        *has_content,
+				lines:              *lines,
+				bytes:              *bytes,
+				unavailable_reason: unavailable_reason.clone(),
+				image:              image.as_ref().map(|data| Arc::from(data.as_slice())),
+			})
+		},
+		_ => None,
+	}
+}
+
+fn push_block(blocks: &mut Vec<Block>, block: &ContentBlock, role: MessageRole) {
+	match block {
+		ContentBlock::Text { text } => {
+			let label = match role {
+				MessageRole::User | MessageRole::Assistant => None,
+				MessageRole::Developer => Some("Developer"),
+				MessageRole::Custom => Some("Custom"),
+				MessageRole::ToolResult => Some("Tool result"),
+				MessageRole::BashExecution => Some("Shell execution"),
+				MessageRole::PythonExecution => Some("Python execution"),
+				MessageRole::BranchSummary => Some("Branch summary"),
+				MessageRole::CompactionSummary => Some("Compaction summary"),
+				MessageRole::FileMention => Some("File"),
+				MessageRole::Lifecycle => Some("Lifecycle"),
+				MessageRole::Unknown => Some("Unknown"),
+			};
+			if let Some(label) = label {
+				blocks.push(Block::Note {
+					label,
+					text: text.clone(),
+					boundary: matches!(
+						role,
+						MessageRole::BranchSummary | MessageRole::CompactionSummary
+					),
+				});
+			} else {
+				blocks.push(Block::Prose(text.clone()));
+			}
+		},
 		ContentBlock::Thinking { text } => blocks.push(Block::Reason(text.clone())),
 		ContentBlock::RedactedThinking { marker } => {
 			blocks.push(Block::Reason(format!("redacted ({marker})")));
 		},
-		ContentBlock::ToolCall { name, arguments, .. } => blocks.push(Block::Invoke {
-			tool:   name.clone(),
-			target: target_of(arguments),
-			result: None,
+		ContentBlock::ToolCall { id, name, arguments } => blocks.push(Block::Invoke {
+			call_id: id.clone(),
+			tool:    name.clone(),
+			target:  target_of(arguments),
+			result:  None,
 		}),
 		ContentBlock::ToolResult { tool, content, is_error } => {
-			let outcome = first_line(content, *is_error);
+			let lines = result_lines(content, *is_error);
 			let open = blocks.iter_mut().rev().find_map(|block| match block {
-				Block::Invoke { tool: called, result, .. } if result.is_none() && called == tool => {
+				Block::Invoke { call_id, result, .. } if result.is_none() && call_id == tool => {
 					Some(result)
 				},
 				_ => None,
 			});
 			match open {
-				Some(result) => *result = Some(outcome),
-				None => blocks.push(Block::Pane {
-					caption: tool.clone(),
-					lines:   pane_lines(&value_text(content)),
-				}),
+				Some(result) => *result = Some(lines.join("\n")),
+				None => blocks.push(Block::Pane { caption: tool.clone(), lines }),
 			}
 		},
 		ContentBlock::Execution { language, command, output, exit_code } => {
-			let mut caption = command.clone().unwrap_or_else(|| language.clone());
+			let execution = match role {
+				MessageRole::BashExecution => "Shell",
+				MessageRole::PythonExecution => "Python",
+				_ => language.as_str(),
+			};
+			let mut caption = match command {
+				Some(command) => format!("{execution}: {command}"),
+				None => execution.to_string(),
+			};
 			if let Some(code) = exit_code
 				&& *code != 0
 			{
@@ -119,35 +192,54 @@ fn push_block(blocks: &mut Vec<Block>, block: &ContentBlock) {
 			}
 			blocks.push(Block::Pane { caption, lines: pane_lines(output) });
 		},
-		ContentBlock::FileMention { path, .. } => blocks.push(Block::Prose(format!("@{path}"))),
+		ContentBlock::FileMention { .. } | ContentBlock::Image { .. } => {
+			blocks.extend(artifact_of(block).map(Block::Artifact));
+		},
 		ContentBlock::Diff { raw } => {
 			blocks.push(Block::Pane { caption: "diff".to_string(), lines: pane_lines(raw) });
 		},
 		ContentBlock::ModelChange { provider, model } => {
-			blocks.push(Block::Prose(format!("model: {provider}/{model}")));
+			blocks.push(Block::Note {
+				label:    "Model",
+				text:     format!("{provider}/{model}"),
+				boundary: false,
+			});
 		},
 		ContentBlock::ThinkingChange { level } => {
-			blocks.push(Block::Prose(format!("thinking: {level}")));
+			blocks.push(Block::Note {
+				label:    "Thinking",
+				text:     level.clone(),
+				boundary: false,
+			});
 		},
-		ContentBlock::Lifecycle { phase, reason } => blocks.push(Block::Prose(match reason {
-			Some(reason) => format!("{phase}: {reason}"),
-			None => phase.clone(),
-		})),
+		ContentBlock::Lifecycle { phase, reason } => blocks.push(Block::Note {
+			label:    "Lifecycle",
+			text:     match reason {
+				Some(reason) => format!("{phase}: {reason}"),
+				None => phase.clone(),
+			},
+			boundary: false,
+		}),
 		ContentBlock::Summary { kind, text } => {
-			blocks.push(Block::Pane { caption: kind.clone(), lines: pane_lines(text) });
+			let label = match role {
+				MessageRole::BranchSummary => "Branch summary",
+				MessageRole::CompactionSummary => "Compaction summary",
+				_ => "Summary",
+			};
+			blocks.push(Block::Note { label, text: format!("{kind}: {text}"), boundary: true });
 		},
-		ContentBlock::Image { alt, media_type, .. } => blocks.push(Block::Prose(
-			alt.clone()
-				.unwrap_or_else(|| format!("[image {media_type}]")),
-		)),
 		ContentBlock::Video { media_type, bytes } => blocks.push(Block::Prose(format!(
 			"[video {media_type}, {}]",
 			veyyon_desktop_surface::composer::human_bytes(*bytes)
 		))),
-		ContentBlock::Fallback { producer, .. } => {
-			blocks.push(Block::Prose(format!("[{producer}]")));
-		},
-		ContentBlock::Unknown { tag, .. } => blocks.push(Block::Prose(format!("[{tag}]"))),
+		ContentBlock::Fallback { producer, value } => blocks.push(Block::Unknown {
+			producer: format!("Fallback: {producer}"),
+			lines:    pane_lines(&value.to_string()),
+		}),
+		ContentBlock::Unknown { tag, value } => blocks.push(Block::Unknown {
+			producer: format!("Unknown: {tag}"),
+			lines:    pane_lines(&value.to_string()),
+		}),
 	}
 }
 
@@ -178,14 +270,16 @@ fn value_text(value: &Value) -> String {
 	}
 }
 
-fn first_line(value: &Value, is_error: bool) -> String {
-	let text = value_text(value);
-	let line = text.lines().next().unwrap_or_default();
+fn result_lines(value: &Value, is_error: bool) -> Vec<String> {
+	let mut lines = pane_lines(&value_text(value));
 	if is_error {
-		format!("error: {line}")
-	} else {
-		line.to_string()
+		if let Some(first) = lines.first_mut() {
+			first.insert_str(0, "error: ");
+		} else {
+			lines.push("error: ".to_string());
+		}
 	}
+	lines
 }
 
 /// The lines of a pane, held to the ceiling with the remainder counted.

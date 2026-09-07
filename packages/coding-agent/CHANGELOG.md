@@ -450,7 +450,7 @@
 - A turn that ends on text after a tool call is recognized as finished even while a session subscriber is still running, so the todo reminder, the rewind pass and the session-stop hooks no longer skip a turn whose final message arrived behind a slow subscriber.
 - The GPU front end's theme is the window's own preference rather than an engine request, so a detached window can be themed, and the profile theme list is read-only because a profile theme carries no palette the window could draw.
 - The desktop host states that profile theme listing is unavailable rather than describing a theme selection it never owned.
-- The desktop renderer repaints only the region a state change declares, keeps unaffected content in a retained texture, clips rounded and path-bounded subtrees, and reuses shaped text across frames; GPUI is vendored from the private canonical `santhreal/gpui` repository.
+- The desktop renderer repaints only the region a state change declares, keeps unaffected content in a retained texture, clips rounded and path-bounded subtrees, and reuses shaped text across frames; Santh GPUI is a revision-pinned Git dependency from the private canonical `santhreal/gpui` repository.
 - The native desktop composer integrates model selection and an up-arrow primary action, with secondary turn actions in slash commands and a separate stop control during active turns.
 - Native desktop palettes retain their closing transition and reverse from their current position when reopened.
 - Desktop controls reuse installed theme tokens rather than parsing bundled fallback tokens during each render.
@@ -459,6 +459,8 @@
 
 ### Fixed
 
+- Native terminal drawers retain pointer focus over the composer and consume forwarded keystrokes without local echo.
+- Native desktop General settings renders rows on demand, preserves scroll across value updates, and fits the available window height.
 - GUI host catalogs and SDK sessions load profile models from YAML configuration while preserving legacy JSON migration.
 - Native desktop palette search matches visible subtitles, including provider/model identifiers, without duplicating rows.
 - Native desktop transcript navigation scrolls through virtualized history with measured page heights, animated transitions, and manual-scroll interruption.

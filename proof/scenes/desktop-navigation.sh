@@ -19,7 +19,9 @@ shot navigation-model-filtered
 k "Return"
 pause 0.5
 shot navigation-model-selected
-move_px "$((WIN_X + WIN_W / 2))" "$((WIN_Y + WIN_H - 98))"
+COMPOSER_X=$(( WIN_X + (WIN_W > 800 ? 400 : WIN_W / 2) ))
+COMPOSER_Y=$(( WIN_Y + (WIN_H > 481 ? 408 : WIN_H - 98) ))
+move_px "${COMPOSER_X}" "${COMPOSER_Y}"
 click
 t "Summarize this numbered list about editors in one sentence. Do not call tools."
 # Submitted text exceeds the viewport even if the model replies briefly.
@@ -33,7 +35,7 @@ k "Return"
 if ! native_session_ready finished; then
 	abandon_take "native-transcript-produced" "the submitted turn did not produce a completed persisted transcript within 90s"
 fi
-move_px "$((WIN_X + WIN_W / 2))" "$((WIN_Y + WIN_H - 98))"
+move_px "${COMPOSER_X}" "${COMPOSER_Y}"
 click
 t "Editors: acknowledge this second note in one sentence. Do not call tools."
 k "Return"
@@ -43,7 +45,8 @@ fi
 pause 0.5
 shot transcript-tail
 
-move_px "$((WIN_X + WIN_W / 2))" "$((WIN_Y + WIN_H / 3))"
+TRANSCRIPT_Y=$(( WIN_Y + (WIN_H > 481 ? 481 / 3 : WIN_H / 3) ))
+move_px "$((WIN_X + WIN_W / 2))" "${TRANSCRIPT_Y}"
 click
 k "Home"
 pause 0.5

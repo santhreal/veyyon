@@ -3,6 +3,6 @@
 
 pub use super::{
 	card::card_row,
-	header::{more_row, section_header},
+	header::{more_row, older_row, queue_nav_header, section_header},
 	line::line_row,
 };

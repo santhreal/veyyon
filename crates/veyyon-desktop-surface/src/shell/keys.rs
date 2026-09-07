@@ -4,17 +4,19 @@
 //! transcript action listeners that dispatch typed `Intent`s into the shell
 //! view.
 
+use veyyon_desktop_kit::input::editor::actions::{Backspace, Escape, MoveDown, MoveUp};
 use veyyon_gpui::{Context, Div, InteractiveElement, KeyDownEvent};
 
 use crate::{
 	Intent, Overlay, Section, ShellView,
 	composer::{QueueMode, ThinkingControl, TurnPhase},
 	keymap::actions::{
-		AbortTurn, AttachFile, CloseTabOrPark, FilterQueue, FindInTranscript, FocusLive, ModelPicker,
-		MoveSelection, NewSession, NextSession, NextTurn, OpenPalette, OpenSelectedSession,
-		OpenSettings, PreviousSession, PreviousTurn, Scroll, SelectOption, SplitHalf,
-		ThinkingLevel as CycleThinkingLevel, ToggleBlock, ToggleDeferSelected, ToggleDrawer,
-		TogglePanel, ToggleParkSelected, TogglePinSelected, ToggleQueue, ToggleQueueMode,
+		AbortTurn, AttachFile, CloseTabOrPark, Dismiss, FilterQueue, FindInTranscript, FocusLive,
+		ModelPicker, MoveSelection, NewSession, NextSession, NextTurn, OpenPalette,
+		OpenSelectedSession, OpenSettings, PreviousSession, PreviousTurn, Scroll, SelectOption,
+		SplitHalf, ThinkingLevel as CycleThinkingLevel, ToggleBlock, ToggleDeferSelected,
+		ToggleDrawer, TogglePanel, ToggleParkSelected, TogglePinSelected, ToggleQueue,
+		ToggleQueueMode,
 	},
 };
 
@@ -23,14 +25,107 @@ use crate::{
 pub fn bind_global_keys(root: Div, cx: &Context<ShellView>) -> Div {
 	root
 		.key_context("Shell")
-		.capture_key_down(cx.listener(|view, event: &KeyDownEvent, _window, cx| {
+		.capture_action(cx.listener(|view, _: &MoveUp, _window, cx| {
 			if let Some(palette) = view
 				.state_mut()
 				.overlay
 				.as_mut()
 				.and_then(Overlay::as_palette_mut)
 			{
-				let delta = match event.keystroke.key.as_str() {
+				palette.move_selection(-1);
+				cx.stop_propagation();
+				cx.notify();
+			} else {
+				cx.propagate();
+			}
+		}))
+		.capture_action(cx.listener(|view, _: &MoveDown, _window, cx| {
+			if let Some(palette) = view
+				.state_mut()
+				.overlay
+				.as_mut()
+				.and_then(Overlay::as_palette_mut)
+			{
+				palette.move_selection(1);
+				cx.stop_propagation();
+				cx.notify();
+			} else {
+				cx.propagate();
+			}
+		}))
+		.capture_action(cx.listener(|view, _: &Dismiss, _window, cx| {
+			let routed = view
+				.state()
+				.overlay
+				.as_ref()
+				.and_then(Overlay::route)
+				.is_some();
+			if routed {
+				view.back_surface(cx);
+				cx.stop_propagation();
+				cx.notify();
+			} else if view.state().overlay.is_some() {
+				view.close_palette(cx);
+				cx.stop_propagation();
+				cx.notify();
+			} else {
+				cx.propagate();
+			}
+		}))
+		.capture_action(cx.listener(|view, _: &Escape, _window, cx| {
+			let routed = view
+				.state()
+				.overlay
+				.as_ref()
+				.and_then(Overlay::route)
+				.is_some();
+			if routed {
+				view.back_surface(cx);
+				cx.stop_propagation();
+				cx.notify();
+			} else if view.state().overlay.is_some() {
+				view.close_palette(cx);
+				cx.stop_propagation();
+				cx.notify();
+			} else {
+				cx.propagate();
+			}
+		}))
+		.capture_action(cx.listener(|view, _: &Backspace, _window, cx| {
+			let empty = view
+				.state()
+				.overlay
+				.as_ref()
+				.and_then(Overlay::as_palette)
+				.is_some_and(|p| p.query.is_empty());
+			if empty {
+				view.back_surface(cx);
+				cx.stop_propagation();
+			} else {
+				cx.propagate();
+			}
+		}))
+		.capture_key_down(cx.listener(|view, event: &KeyDownEvent, _window, cx| {
+			let key = event.keystroke.key.as_str();
+			let empty_search = view
+				.state()
+				.overlay
+				.as_ref()
+				.and_then(Overlay::as_palette)
+				.is_some_and(|palette| palette.query.is_empty());
+			if key.eq_ignore_ascii_case("backspace") && empty_search {
+				view.back_surface(cx);
+				cx.stop_propagation();
+				cx.notify();
+				return;
+			}
+			if let Some(palette) = view
+				.state_mut()
+				.overlay
+				.as_mut()
+				.and_then(Overlay::as_palette_mut)
+			{
+				let delta = match key {
 					"up" => -1,
 					"down" => 1,
 					_ => return,
@@ -47,7 +142,7 @@ pub fn bind_global_keys(root: Div, cx: &Context<ShellView>) -> Div {
 			view.dispatch(Intent::NewSession, cx);
 		}))
 		.on_action(cx.listener(|view, _: &OpenSettings, _window, cx| {
-			view.dispatch(Intent::OpenOverlay(Box::new(Overlay::Settings(Box::default()))), cx);
+			view.navigate_surface(crate::navigation::SurfaceRoute::Settings, cx);
 		}))
 		.on_action(cx.listener(|view, _: &ToggleQueue, _window, cx| {
 			view.dispatch(Intent::ToggleQueue, cx);
@@ -57,7 +152,8 @@ pub fn bind_global_keys(root: Div, cx: &Context<ShellView>) -> Div {
 			view.dispatch(Intent::SetDrawer { open }, cx);
 		}))
 		.on_action(cx.listener(|view, _: &TogglePanel, _window, cx| {
-			view.dispatch(Intent::TogglePanel, cx);
+			let open = view.state().keymap.panel_collapsed;
+			view.dispatch(Intent::SetPanel { open }, cx);
 		}))
 		.on_action(cx.listener(|view, action: &FocusLive, _window, cx| {
 			if let Some((_, rows)) = view
@@ -108,14 +204,14 @@ pub fn bind_global_keys(root: Div, cx: &Context<ShellView>) -> Div {
 				view.dispatch(Intent::ParkSession(current), cx);
 			}
 		}))
-		.on_action(cx.listener(|view, _: &FilterQueue, _window, cx| {
-			view.dispatch(Intent::FilterQueue(String::new()), cx);
+		.on_action(cx.listener(|view, _: &FilterQueue, window, cx| {
+			view.open_queue_search(window, cx);
 		}))
 		.on_action(cx.listener(|view, action: &Scroll, _window, cx| {
 			view.dispatch(Intent::ScrollTranscript(action.by), cx);
 		}))
-		.on_action(cx.listener(|view, _: &FindInTranscript, _window, cx| {
-			view.dispatch(Intent::FindInTranscript, cx);
+		.on_action(cx.listener(|view, _: &FindInTranscript, window, cx| {
+			view.open_transcript_find(window, cx);
 		}))
 		.on_action(cx.listener(|view, _: &PreviousTurn, _window, cx| {
 			view.dispatch(Intent::StepTurn(-1), cx);

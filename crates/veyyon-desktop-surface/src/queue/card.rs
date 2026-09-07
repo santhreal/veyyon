@@ -10,25 +10,26 @@ use veyyon_desktop_kit::{
 };
 use veyyon_desktop_tokens::QueueSurfaceTokens;
 use veyyon_gpui::{
-	ClickEvent, Context, ElementId, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
-	ParentElement, StatefulInteractiveElement, Styled, div, px,
+	ElementId, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement,
+	StatefulInteractiveElement, Styled, WeakEntity, div, px,
 };
 
+use super::menu::{RowMenu, RowMenuKind};
 use crate::{
 	Intent, ShellView,
+	controls::ControlStates,
 	model::{Badge, Row},
-	queue::RowMenu,
 };
-
 /// Renders a card row (78px): badge, timer, title, subtitle, and hover actions.
 pub fn card_row(
 	row: &Row,
 	selected: bool,
 	is_open: bool,
 	shift_y: f32,
+	_controls: &ControlStates,
 	geometry: &QueueSurfaceTokens,
 	tokens: &TokenSet,
-	cx: &Context<ShellView>,
+	view: Option<WeakEntity<ShellView>>,
 ) -> impl IntoElement {
 	let id = row.id;
 	let ground = if is_open {
@@ -68,32 +69,39 @@ pub fn card_row(
 
 	let park_id = id;
 	let defer_id = id;
+	let weak_park = view.clone();
+	let weak_defer = view.clone();
+	let mut park_btn = IconButton::new(IconName::Stop)
+		.id(ElementId::NamedInteger("queue-card-park".into(), park_id))
+		.size(IconSize::Size12)
+		.variant(IconButtonVariant::Ghost);
+	if let Some(weak) = weak_park {
+		park_btn = park_btn.on_click(move |_event, _window, app| {
+			app.stop_propagation();
+			let _ = weak.update(app, |view, cx| view.dispatch(Intent::ParkSession(park_id), cx));
+		});
+	}
+
+	let mut defer_btn = IconButton::new(IconName::Pause)
+		.id(ElementId::NamedInteger("queue-card-defer".into(), defer_id))
+		.size(IconSize::Size12)
+		.variant(IconButtonVariant::Ghost);
+	if let Some(weak) = weak_defer {
+		defer_btn = defer_btn.on_click(move |_event, _window, app| {
+			app.stop_propagation();
+			let _ = weak.update(app, |view, cx| view.dispatch(Intent::DeferSession(defer_id), cx));
+		});
+	}
+
 	let actions = div()
-		.invisible()
-		.group_hover("queue-card-row", |style| style.visible())
+		.opacity(0.0)
+		.group_hover("queue-card-row", |style| style.opacity(1.0))
 		.flex()
 		.flex_row()
 		.items_center()
 		.gap(tokens.spacing(SpacingStep::S1))
-		.child(
-			IconButton::new(IconName::Stop)
-				.id(ElementId::NamedInteger("queue-card-park".into(), park_id))
-				.size(IconSize::Size12)
-				.variant(IconButtonVariant::Ghost)
-				.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
-					view.dispatch(Intent::ParkSession(park_id), cx);
-				})),
-		)
-		.child(
-			IconButton::new(IconName::Pause)
-				.id(ElementId::NamedInteger("queue-card-defer".into(), defer_id))
-				.size(IconSize::Size12)
-				.variant(IconButtonVariant::Ghost)
-				.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
-					view.dispatch(Intent::DeferSession(defer_id), cx);
-				})),
-		);
-
+		.child(park_btn)
+		.child(defer_btn);
 	let meta_text = row.meta.clone().unwrap_or_default();
 	let meta_slot = div()
 		.flex_1()
@@ -122,18 +130,26 @@ pub fn card_row(
 	let mut card = div()
 		.group("queue-card-row")
 		.id(("queue-card", id as usize))
-		.relative()
-		.on_click(cx.listener(move |view, _event, _window, cx| {
-			view.dispatch(Intent::SelectSession(id), cx);
-		}))
-		// A right-click opens the row's answers as a menu at the pointer.
-		.on_mouse_down(
-			MouseButton::Right,
-			cx.listener(move |view, event: &MouseDownEvent, _window, cx| {
-				view.open_row_menu(RowMenu { id, origin: event.position, card: true });
-				cx.notify();
-			}),
-		)
+		.relative();
+
+	if let Some(weak) = view.clone() {
+		let weak_select = weak.clone();
+		let weak_menu = weak;
+		card = card
+			.on_click(move |_event, _window, app| {
+				let _ = weak_select.update(app, |view, cx| {
+					view.dispatch(Intent::SelectSession(id), cx);
+				});
+			})
+			.on_mouse_down(MouseButton::Right, move |event: &MouseDownEvent, _window, app| {
+				let _ = weak_menu.update(app, |view, cx| {
+					view.open_row_menu(RowMenu { id, origin: event.position, kind: RowMenuKind::Card });
+					cx.notify();
+				});
+			});
+	}
+
+	let mut card = card
 		.hover(move |style| style.bg(hover_bg))
 		.flex_shrink_0()
 		.h(px(geometry.card_px))

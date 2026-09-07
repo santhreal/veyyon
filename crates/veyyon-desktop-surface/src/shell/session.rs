@@ -7,10 +7,11 @@
 
 use std::{cell::Cell, rc::Rc};
 
-use veyyon_desktop_kit::{SpacingStep, input::Editor};
+use veyyon_desktop_kit::{Axis, Resizable, SpacingStep, input::Editor};
 use veyyon_desktop_tokens::DrawerPlacement;
 use veyyon_gpui::{
-	Context, Div, Entity, InteractiveElement, ParentElement, Pixels, Point, Styled, div, point, px,
+	Context, Div, Entity, InteractiveElement, ParentElement, Pixels, Point, Styled, Window, div,
+	point, px,
 };
 
 use super::keys::bind_composer_keys;
@@ -23,7 +24,7 @@ use crate::{
 	layout::ShellWidths,
 	model::ShellState,
 	tokens::InstalledTokens,
-	transcript::transcript_column,
+	transcript::{TranscriptViewportState, transcript_viewport},
 };
 
 /// Builds the session surface for the state and the resolved widths.
@@ -40,20 +41,18 @@ pub fn session_surface(
 	installed: &InstalledTokens,
 	laid_out: &LaidOut,
 	palette_anchor: Rc<Cell<Point<Pixels>>>,
+	viewport: &TranscriptViewportState,
+	reduced_motion: bool,
+	find_bar: Option<Div>,
+	window: &mut Window,
 	cx: &Context<ShellView>,
 ) -> Div {
 	let tokens = &installed.set;
 	let composer_width = px(widths.composer_px);
 	let surface = &installed.surface;
 
-	// The transcript is anchored to the bottom of its region, so a short run
-	// sits against the composer rather than stranded at the top of the window,
-	// and a long run keeps its most recent end visible.
-	//
-	// A long run's older turns are clipped rather than scrolled. This fork
-	// exposes no scroll on a plain container, so scrolling needs the
-	// virtualized transcript list, which is not built yet; until it is, the
-	// region shows the tail and nothing reaches the turns above it.
+	// The retained list keeps older turns reachable and preserves each session's
+	// anchor.
 	let mut body = div()
 		.key_context("Transcript")
 		.flex()
@@ -72,13 +71,18 @@ pub fn session_surface(
 			tokens,
 		))
 	} else {
-		body.child(transcript_column(
-			&state.transcript,
+		body.child(transcript_viewport(
+			viewport,
 			&surface.transcript,
 			installed.user_turn_ground,
 			tokens,
+			&installed.motion,
+			reduced_motion,
 			laid_out,
 			widths.composer_px,
+			0.0,
+			window,
+			cx,
 		))
 	};
 
@@ -160,13 +164,6 @@ pub fn session_surface(
 					tokens,
 				)),
 		)
-		// A docked drawer is the last row of the column, so the queue and the
-		// right panel keep their full height beside it. An overlaid drawer
-		// covers the column's lower edge instead, because below 980px the
-		// transcript has no height left to give it (§5.7).
-		.children((state.drawer_open && widths.drawer.placement == DrawerPlacement::Row).then(|| {
-			terminal_drawer(&state.drawer, widths.drawer.height_px, &surface.panels, tokens, cx)
-		}))
 		.children((state.drawer_open && widths.drawer.placement == DrawerPlacement::Overlay).then(
 			|| {
 				div()
@@ -177,11 +174,59 @@ pub fn session_surface(
 					.child(terminal_drawer(
 						&state.drawer,
 						widths.drawer.height_px,
+						&state.controls,
+						state.current_id,
 						&surface.panels,
 						tokens,
 						cx,
 					))
 			},
 		));
-	laid_out.track_children(column, move |index| regions.get(index).copied())
+	let column = column.children(find_bar.map(|bar| {
+		div()
+			.absolute()
+			.top(tokens.spacing(SpacingStep::S4))
+			.right(tokens.spacing(SpacingStep::S4))
+			.child(bar)
+	}));
+	let column = laid_out.track_children(column, move |index| regions.get(index).copied());
+	if state.drawer_open && widths.drawer.placement == DrawerPlacement::Row {
+		let extent = widths.columns_px.max(1.0);
+		let maximum = extent * surface.panels.terminal_drawer_max_viewport_ratio;
+		let minimum = surface.panels.terminal_drawer_min_height_px.min(maximum);
+		let grip = f32::from(Resizable::handle_extent(tokens));
+		let drawer = terminal_drawer(
+			&state.drawer,
+			(widths.drawer.height_px - grip).max(0.0),
+			&state.controls,
+			state.current_id,
+			&surface.panels,
+			tokens,
+			cx,
+		);
+		let drawer = laid_out.track_children(div().w_full().h_full().child(drawer), |index| {
+			(index == 0).then_some(Region::Drawer)
+		});
+		let shell = cx.weak_entity();
+		let release_shell = shell.clone();
+		div().flex().flex_1().min_w_0().h_full().child(
+			Resizable::new(Axis::Vertical, column, drawer)
+				.id("session-drawer-split")
+				.ratio((extent - widths.drawer.height_px) / extent)
+				.on_resize(move |ratio, _window, cx| {
+					let _ = shell.update(cx, |view, cx| {
+						view.drag_drawer((1.0 - ratio) * extent, minimum, maximum, cx);
+						cx.notify();
+					});
+				})
+				.on_resize_end(move |_window, cx| {
+					let _ = release_shell.update(cx, |view, cx| {
+						view.release_drawer(cx);
+						cx.notify();
+					});
+				}),
+		)
+	} else {
+		column
+	}
 }

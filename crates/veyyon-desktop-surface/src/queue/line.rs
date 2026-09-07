@@ -10,26 +10,27 @@ use veyyon_desktop_kit::{
 };
 use veyyon_desktop_tokens::QueueSurfaceTokens;
 use veyyon_gpui::{
-	ClickEvent, Context, ElementId, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
-	ParentElement, StatefulInteractiveElement, Styled, div, px,
+	ElementId, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement,
+	StatefulInteractiveElement, Styled, WeakEntity, div, px,
 };
 
+use super::menu::{RowMenu, RowMenuKind};
 use crate::{
 	Intent, ShellView,
-	model::{Badge, Row},
-	queue::RowMenu,
+	model::{Badge, Row, Section},
 };
 
 /// Renders a line row (36px): leading tint dot, title, trailing meta, and hover
 /// actions.
 pub fn line_row(
 	row: &Row,
+	section: Section,
 	selected: bool,
 	is_open: bool,
 	shift_y: f32,
 	geometry: &QueueSurfaceTokens,
 	tokens: &TokenSet,
-	cx: &Context<ShellView>,
+	view: Option<WeakEntity<ShellView>>,
 ) -> impl IntoElement {
 	let id = row.id;
 	let ground = if is_open {
@@ -49,49 +50,80 @@ pub fn line_row(
 		.badge
 		.map_or_else(Dot::empty, |badge| Dot::new(badge.tint()));
 
-	let unpark_id = id;
-	let recall_id = id;
-	let actions = div()
+	let weak_action = view.clone();
+	let action_btn = match section {
+		Section::Deferred => {
+			let recall_id = id;
+			let mut btn = IconButton::new(IconName::Refresh)
+				.id(ElementId::NamedInteger("queue-line-recall".into(), recall_id))
+				.size(IconSize::Size12)
+				.variant(IconButtonVariant::Ghost);
+			if let Some(weak) = weak_action {
+				btn = btn.on_click(move |_event, _window, app| {
+					app.stop_propagation();
+					let _ =
+						weak.update(app, |view, cx| view.dispatch(Intent::RecallSession(recall_id), cx));
+				});
+			}
+			Some(btn)
+		},
+		Section::Parked => {
+			let unpark_id = id;
+			let mut btn = IconButton::new(IconName::Play)
+				.id(ElementId::NamedInteger("queue-line-unpark".into(), unpark_id))
+				.size(IconSize::Size12)
+				.variant(IconButtonVariant::Ghost);
+			if let Some(weak) = weak_action {
+				btn = btn.on_click(move |_event, _window, app| {
+					app.stop_propagation();
+					let _ =
+						weak.update(app, |view, cx| view.dispatch(Intent::UnparkSession(unpark_id), cx));
+				});
+			}
+			Some(btn)
+		},
+		_ => None,
+	};
+
+	let mut actions = div()
 		.invisible()
 		.group_hover("queue-line-row", |style| style.visible())
 		.flex()
 		.flex_row()
 		.items_center()
-		.gap(tokens.spacing(SpacingStep::S1))
-		.child(
-			IconButton::new(IconName::Play)
-				.id(ElementId::NamedInteger("queue-line-unpark".into(), unpark_id))
-				.size(IconSize::Size12)
-				.variant(IconButtonVariant::Ghost)
-				.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
-					view.dispatch(Intent::ParkSession(unpark_id), cx);
-				})),
-		)
-		.child(
-			IconButton::new(IconName::Refresh)
-				.id(ElementId::NamedInteger("queue-line-recall".into(), recall_id))
-				.size(IconSize::Size12)
-				.variant(IconButtonVariant::Ghost)
-				.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
-					view.dispatch(Intent::DeferSession(recall_id), cx);
-				})),
-		);
+		.gap(tokens.spacing(SpacingStep::S1));
 
+	if let Some(btn) = action_btn {
+		actions = actions.child(btn);
+	}
 	let mut line = div()
 		.group("queue-line-row")
 		.id(("queue-line", id as usize))
-		.relative()
-		.on_click(cx.listener(move |view, _event, _window, cx| {
-			view.dispatch(Intent::SelectSession(id), cx);
-		}))
-		// A right-click opens the row's answers as a menu at the pointer.
-		.on_mouse_down(
-			MouseButton::Right,
-			cx.listener(move |view, event: &MouseDownEvent, _window, cx| {
-				view.open_row_menu(RowMenu { id, origin: event.position, card: false });
-				cx.notify();
-			}),
-		)
+		.relative();
+
+	if let Some(weak) = view.clone() {
+		let weak_select = weak.clone();
+		let weak_menu = weak;
+		line = line
+			.on_click(move |_event, _window, app| {
+				let _ = weak_select.update(app, |view, cx| {
+					view.dispatch(Intent::SelectSession(id), cx);
+				});
+			})
+			.on_mouse_down(MouseButton::Right, move |event: &MouseDownEvent, _window, app| {
+				let _ = weak_menu.update(app, |view, cx| {
+					let kind = match section {
+						Section::Deferred => RowMenuKind::Deferred,
+						Section::Parked => RowMenuKind::Parked,
+						_ => RowMenuKind::Card,
+					};
+					view.open_row_menu(RowMenu { id, origin: event.position, kind });
+					cx.notify();
+				});
+			});
+	}
+
+	let mut line = line
 		.hover(move |style| style.bg(hover_bg))
 		.flex_shrink_0()
 		.h(px(geometry.line_px))

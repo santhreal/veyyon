@@ -22,6 +22,7 @@ pub mod intent;
 pub mod keymap;
 pub mod layout;
 pub mod model;
+pub mod navigation;
 pub mod overlay;
 pub mod palette;
 pub mod panel;

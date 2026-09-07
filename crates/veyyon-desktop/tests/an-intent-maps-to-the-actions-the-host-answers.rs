@@ -9,9 +9,10 @@
 //! payload, an option that does not exist, and a card answered twice.
 //!
 //! NOT CAUGHT: whether the host honours the action; that is the live handshake
-//! suite. Projection of sessions, transcript, changes, drawer and footer is in
-//! `the-host-model-projects-onto-the-shell.rs` and
-//! `a-transcript-projects-as-turns-of-blocks.rs`.
+//! suite. Control projection and capability gating are in
+//! `control-availability-and-contextual-statuses-project-from-capabilities.rs`;
+//! session metadata projection is in
+//! `session-titles-and-clock-metadata-project-verbatim.rs`.
 
 mod support;
 
@@ -22,7 +23,7 @@ use veyyon_desktop::{SessionIndex, actions_for, project};
 use veyyon_desktop_model::{
 	ApprovalInteraction, AttachmentSubmission, HostAction, HostEvent, InteractionId,
 	PendingDecisions, PlanInteraction, QuestionInteraction, QueuePartition, SessionId,
-	SnapshotSection, Store, TerminalStatus, reduce,
+	SnapshotSection, Store, SurfaceId, TerminalStatus, reduce,
 };
 use veyyon_desktop_surface::{
 	Attachment, Card, Intent, MediaType, ShellState, composer::payload_for,
@@ -244,4 +245,84 @@ fn a_decision_at_a_position_of_the_wrong_kind_is_dropped_not_misdelivered() {
 		(1, 1, 1),
 		"the mis-kinded answers took nothing; the bad option took its question"
 	);
+}
+
+#[test]
+fn settings_diagnostics_usage_and_mcp_intents_map_to_host_actions() {
+	let (mut store, index) = store_with_decisions();
+
+	assert_eq!(actions_for(&Intent::ResetSetting("editor.tabSize".into()), &index, &mut store), [
+		HostAction::ResetSetting { key: "editor.tabSize".into() }
+	]);
+	assert_eq!(
+		actions_for(
+			&Intent::SetMcpEnabled { server: "fetch".into(), enabled: true },
+			&index,
+			&mut store
+		),
+		[HostAction::SetMcpEnabled { server: "fetch".into(), enabled: true }]
+	);
+	assert_eq!(actions_for(&Intent::RefreshDiagnostics, &index, &mut store), [
+		HostAction::RefreshDiagnostics
+	]);
+	assert_eq!(actions_for(&Intent::RetryDiagnosticSource("eslint".into()), &index, &mut store), [
+		HostAction::RetryDiagnosticSource { source: "eslint".into() }
+	]);
+	assert_eq!(actions_for(&Intent::RefreshUsage, &index, &mut store), [
+		HostAction::GetUsage { session: Some(SessionId::from("s")) },
+		HostAction::GetContextBreakdown { session: SessionId::from("s") }
+	]);
+}
+
+#[test]
+fn retry_control_dispatches_correct_action_for_each_surface() {
+	let (mut store, index) = store_with_decisions();
+
+	assert_eq!(
+		actions_for(&Intent::RetryControl(SurfaceId::DiagnosticRefreshButton), &index, &mut store),
+		[HostAction::RefreshDiagnostics]
+	);
+	assert_eq!(
+		actions_for(&Intent::RetryControl(SurfaceId::UsageRefreshButton), &index, &mut store),
+		[HostAction::GetUsage { session: Some(SessionId::from("s")) }]
+	);
+	assert_eq!(
+		actions_for(
+			&Intent::RetryControl(SurfaceId::ContextBreakdownRefreshButton),
+			&index,
+			&mut store
+		),
+		[HostAction::GetContextBreakdown { session: SessionId::from("s") }]
+	);
+	assert_eq!(
+		actions_for(
+			&Intent::RetryControl(SurfaceId::DiagnosticRetrySourceButton("cargo".into())),
+			&index,
+			&mut store
+		),
+		[HostAction::RetryDiagnosticSource { source: "cargo".into() }]
+	);
+	assert_eq!(
+		actions_for(
+			&Intent::RetryControl(SurfaceId::ProviderAuthStartButton("anthropic".into())),
+			&index,
+			&mut store
+		),
+		[HostAction::StartProviderAuth { provider: "anthropic".into() }]
+	);
+}
+
+#[test]
+fn session_pin_defer_and_park_mutate_store_partitions() {
+	let (mut store, index) = store_with_decisions();
+	let row = index.row_id(&SessionId::from("s")).unwrap();
+
+	assert!(actions_for(&Intent::PinSession(row), &index, &mut store).is_empty());
+	assert!(store.sessions.pinned.contains(&SessionId::from("s")));
+
+	assert!(actions_for(&Intent::DeferSession(row), &index, &mut store).is_empty());
+	assert!(store.sessions.deferred.contains(&SessionId::from("s")));
+
+	assert!(actions_for(&Intent::ParkSession(row), &index, &mut store).is_empty());
+	assert!(store.sessions.parked.contains(&SessionId::from("s")));
 }

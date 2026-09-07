@@ -50,10 +50,14 @@ pub fn initial_sync_actions(capabilities: &[(Capability, CapabilityStatus)]) -> 
 			Capability::Keybindings => Some(HostAction::LoadKeybindings),
 			Capability::Models => Some(HostAction::RefreshModels),
 			Capability::Providers => Some(HostAction::RefreshProviders),
+			// Authentication refresh requires an explicitly selected provider.
+			Capability::Authentication => None,
 			Capability::Mcp => Some(HostAction::RefreshMcp),
 			Capability::Diagnostics => Some(HostAction::RefreshDiagnostics),
 			Capability::Changes => Some(HostAction::RefreshChanges),
 			Capability::ProcessSupervisor => Some(HostAction::RefreshProcesses),
+			Capability::Usage => Some(HostAction::GetUsage { session: None }),
+			Capability::Files => Some(HostAction::LoadFileTree { root: None }),
 			_ => None,
 		};
 

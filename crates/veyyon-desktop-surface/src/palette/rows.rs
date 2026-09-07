@@ -8,7 +8,7 @@ use veyyon_gpui::{Context, IntoElement};
 
 use crate::{
 	Intent, ShellView,
-	model::{Badge, Row},
+	model::{Badge, Row, Section},
 	queue::rows::line_row,
 };
 
@@ -131,5 +131,5 @@ pub fn palette_line_row(
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
-	line_row(row, selected, selected, 0.0, geometry, tokens, cx)
+	line_row(row, Section::Live, selected, selected, 0.0, geometry, tokens, Some(cx.weak_entity()))
 }

@@ -59,6 +59,7 @@ pub fn card_stack(
 	if hidden > 0 {
 		stack = stack.child(
 			div()
+				.id("card-stack-overflow")
 				.h(px(geometry.stack_overflow_collapsed_height_px))
 				.w_full()
 				.flex()
@@ -66,6 +67,7 @@ pub fn card_stack(
 				.px(tokens.spacing(SpacingStep::S3))
 				.rounded(tokens.radius(RadiusStep::Md))
 				.bg(tokens.color(ColorRole::Inset))
+				.hover(|style| style.bg(tokens.row_hover()))
 				.text_size(tokens.font_size(TextRamp::Micro))
 				.line_height(tokens.line_height(TextRamp::Micro))
 				.text_color(tokens.color(ColorRole::Muted))
@@ -184,6 +186,11 @@ fn question(
 	// the question rather than a way to answer it.
 	for (option, label) in options.iter().enumerate() {
 		let hover = tokens.row_hover();
+		let formatted_label = if option < 9 {
+			format!("{}. {}", option + 1, label)
+		} else {
+			label.clone()
+		};
 
 		element = element.child(
 			div()
@@ -206,22 +213,17 @@ fn question(
 				.text_size(tokens.font_size(TextRamp::Small))
 				.line_height(tokens.line_height(TextRamp::Small))
 				.text_color(tokens.color(ColorRole::Secondary))
-				.child(label.clone()),
+				.child(formatted_label),
 		);
 	}
 
-	// A question with no options is answered in prose. The composer is the
-	// place the operator already types, so the answer is what it holds when
-	// the row is clicked, and the card says so rather than growing a second
-	// text field above the first.
-	if options.is_empty() {
-		element = element.child(answers(
-			&[("Reply with the composer's text", Choice::Reply { card })],
-			tokens,
-			cx,
-		));
-	}
-
+	// An operator can also reply with free text in the composer (§5.5).
+	let reply_label = if options.is_empty() {
+		"Reply with the composer's text"
+	} else {
+		"Reply with composer"
+	};
+	element = element.child(answers(&[(reply_label, Choice::Reply { card })], tokens, cx));
 	element
 }
 

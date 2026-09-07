@@ -109,6 +109,7 @@ fn at_the_window_floor_the_session_surface_spans_the_window() {
 	// queue, so the session surface is the whole row.
 	let mut state = fixture::populated();
 	state.panel = veyyon_desktop_surface::PanelContent::default();
+	state.keymap.panel_collapsed = true;
 	state.transcript = Vec::new();
 	state.cards = Vec::new();
 	let widths = shell_widths(shed(width as f32, height as f32, false), &surface);
@@ -248,9 +249,11 @@ fn first_differing_row(closed: &RgbaFrame, open: &RgbaFrame, from_y: u32) -> Opt
 fn drawer_pair(width: u32, height: u32, name: &str) -> (RgbaFrame, RgbaFrame) {
 	let mut closed = fixture::with_drawer();
 	closed.panel = Default::default();
+	closed.keymap.panel_collapsed = true;
 	closed.drawer_open = false;
 	let mut open = fixture::with_drawer();
 	open.panel = Default::default();
+	open.keymap.panel_collapsed = true;
 	(
 		render_at(width, height, closed, &format!("{name}-drawer-closed")),
 		render_at(width, height, open, &format!("{name}-drawer-open")),

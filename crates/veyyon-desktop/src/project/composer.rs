@@ -37,10 +37,17 @@ pub fn project_turn_phase(store: &Store, session: Option<&SessionId>) -> TurnPha
 
 	// 2. Active generation or tool streaming (§5.4).
 	if store.streaming.contains_key(session_id) {
-		let queue_mode = store
-			.composer_drafts
-			.get(session_id)
-			.map_or(QueueMode::Steer, |draft| draft.queue_mode);
+		let queue_mode = if matches!(
+			store.capabilities.get(Capability::BackgroundSubmission),
+			CapabilityStatus::Unavailable { .. }
+		) {
+			QueueMode::Steer
+		} else {
+			store
+				.composer_drafts
+				.get(session_id)
+				.map_or(QueueMode::Steer, |draft| draft.queue_mode)
+		};
 		return TurnPhase::Running { queue_mode };
 	}
 
@@ -80,7 +87,6 @@ pub fn project_composer(store: &Store, session: Option<&SessionId>, composer: &m
 		let level = view.thinking_level.clone()?;
 		Some(ThinkingControl { level, levels: view.thinking_levels.clone() })
 	});
-
 	composer.context = session
 		.and_then(|id| store.domains.context.get(id))
 		.map(|breakdown| ContextMeter {
@@ -88,7 +94,14 @@ pub fn project_composer(store: &Store, session: Option<&SessionId>, composer: &m
 			limit_tokens: breakdown.limit_tokens,
 		});
 
-	composer.queue_mode = session
-		.and_then(|id| store.composer_drafts.get(id))
-		.map_or(QueueMode::Steer, |draft| draft.queue_mode);
+	composer.queue_mode = if matches!(
+		store.capabilities.get(Capability::BackgroundSubmission),
+		CapabilityStatus::Unavailable { .. }
+	) {
+		QueueMode::Steer
+	} else {
+		session
+			.and_then(|id| store.composer_drafts.get(id))
+			.map_or(QueueMode::Steer, |draft| draft.queue_mode)
+	};
 }

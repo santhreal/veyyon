@@ -17,6 +17,14 @@ pub enum Overlay {
 }
 
 impl Overlay {
+	#[must_use]
+	pub const fn route(&self) -> Option<crate::navigation::SurfaceRoute> {
+		match self {
+			Self::Palette(state) => state.route,
+			Self::Settings(state) => state.route,
+		}
+	}
+
 	/// Returns true if this overlay is the command palette.
 	#[must_use]
 	pub const fn is_palette(&self) -> bool {

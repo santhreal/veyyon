@@ -37,14 +37,22 @@ impl TerminalSelection {
 		match self.kind {
 			SelectionKind::Rectangular => row >= min_r && row <= max_r && col >= min_c && col <= max_c,
 			SelectionKind::Linear => {
-				if row < min_r || row > max_r {
+				let (top_row, top_col, bottom_row, bottom_col) = if self.start_row < self.end_row {
+					(self.start_row, self.start_col, self.end_row, self.end_col)
+				} else if self.start_row > self.end_row {
+					(self.end_row, self.end_col, self.start_row, self.start_col)
+				} else {
+					(self.start_row, min_c, self.end_row, max_c)
+				};
+
+				if row < top_row || row > bottom_row {
 					false
-				} else if min_r == max_r {
-					col >= min_c && col <= max_c
-				} else if row == min_r {
-					col >= self.start_col.min(self.end_col)
-				} else if row == max_r {
-					col <= self.start_col.max(self.end_col)
+				} else if top_row == bottom_row {
+					col >= top_col && col <= bottom_col
+				} else if row == top_row {
+					col >= top_col
+				} else if row == bottom_row {
+					col <= bottom_col
 				} else {
 					true
 				}

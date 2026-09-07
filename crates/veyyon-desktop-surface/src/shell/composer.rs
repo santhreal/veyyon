@@ -29,7 +29,7 @@ impl ShellView {
 	/// Submits the current draft, or runs the selected slash command when its
 	/// menu is open.
 	pub fn submit_primary_turn_action(&mut self, cx: &mut Context<Self>) {
-		if self.palette_input.slash && self.state.overlay.is_some() {
+		if self.state.overlay.is_some() {
 			self.run_palette(cx);
 			return;
 		}

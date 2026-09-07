@@ -18,7 +18,14 @@ pub fn land_failure(
 	active: Option<&SessionId>,
 	state: &mut ShellState,
 ) -> Option<String> {
-	let surface = route_error(error, registry, active);
+	let active_ui = active.map(|id| {
+		if state.current_id > 0 {
+			SessionId::from(state.current_id.to_string())
+		} else {
+			id.clone()
+		}
+	});
+	let surface = route_error(error, registry, active_ui.as_ref());
 	state.controls.set_error(
 		surface.clone(),
 		ControlError::new(&error.message, is_scope_retryable(error.scope)),

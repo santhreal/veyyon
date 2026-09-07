@@ -29,7 +29,8 @@ pub struct KeymapState {
 	pub find_open:               bool,
 	/// Currently focused transcript turn index.
 	pub focused_turn:            Option<usize>,
-	/// Whether the focused block inside an assistant turn is collapsed.
+	/// Whether a turn focus change is pending consumption by the viewport.
+	pub pending_turn_focus:      bool,
 	pub focused_block_collapsed: bool,
 	/// Last applied queue selection delta.
 	pub selection_delta:         i32,

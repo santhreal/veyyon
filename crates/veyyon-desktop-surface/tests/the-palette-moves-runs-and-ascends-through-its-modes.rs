@@ -89,7 +89,7 @@ fn fuzzy_matcher_scores_and_ranks_deterministically() {
 
 	// 6. Tie breaking preserves original insertion order.
 	let candidates = vec!["alpha_one", "beta", "alpha_two"];
-	let ranked = fuzzy_rank("alpha", &candidates, |s| s);
+	let ranked = fuzzy_rank("alpha", &candidates, |s| [*s]);
 	assert_eq!(ranked.len(), 2);
 	assert_eq!(*ranked[0].2, "alpha_one");
 	assert_eq!(*ranked[1].2, "alpha_two");

@@ -150,7 +150,15 @@ impl EditorLayoutState {
 		}
 
 		for (idx, vl) in self.visual_lines.iter().enumerate() {
-			if offset <= vl.end_offset || idx == self.visual_lines.len() - 1 {
+			if offset < vl.end_offset || idx == self.visual_lines.len() - 1 {
+				return idx;
+			}
+			if offset == vl.end_offset {
+				if let Some(next_vl) = self.visual_lines.get(idx + 1) {
+					if next_vl.start_offset == offset && next_vl.physical_index == vl.physical_index {
+						continue;
+					}
+				}
 				return idx;
 			}
 		}
@@ -261,5 +269,37 @@ impl EditorLayoutState {
 			point(element_bounds.left() + min_x, element_bounds.top() + start_pt.y - self.scroll_top),
 			Size::new(width, self.line_height),
 		))
+	}
+
+	/// Computes the adjusted scroll offset to keep `caret_offset` visible within
+	/// `bounds` and clamps against `total_height`.
+	#[must_use]
+	pub fn compute_scroll_top(&self, caret_offset: usize, current_scroll: Pixels) -> Pixels {
+		let viewport_height = self.bounds.size.height;
+		if viewport_height <= Pixels::ZERO {
+			return Pixels::ZERO;
+		}
+
+		let max_scroll = (self.total_height - viewport_height).max(Pixels::ZERO);
+		let mut scroll = current_scroll.min(max_scroll).max(Pixels::ZERO);
+
+		let (caret_top, caret_bottom) = if self.visual_lines.is_empty() {
+			(Pixels::ZERO, self.line_height)
+		} else {
+			let vl_idx = self.visual_line_for_offset(caret_offset);
+			if let Some(vl) = self.visual_lines.get(vl_idx) {
+				(vl.y_offset, vl.y_offset + self.line_height)
+			} else {
+				(Pixels::ZERO, self.line_height)
+			}
+		};
+
+		if caret_top < scroll {
+			scroll = caret_top;
+		} else if caret_bottom > scroll + viewport_height {
+			scroll = caret_bottom - viewport_height;
+		}
+
+		scroll.clamp(Pixels::ZERO, max_scroll)
 	}
 }

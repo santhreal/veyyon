@@ -146,6 +146,7 @@ pub fn find_model_trigger_hitbox(
 			y >= f_bottom - 50.0
 				&& y <= f_bottom
 				&& (h - 28.0).abs() <= 6.0
+				&& x >= f_left
 				&& x < (f_right - f_left).mul_add(0.7, f_left)
 				&& w >= 30.0
 		})
@@ -170,6 +171,7 @@ pub fn find_primary_action_hitbox(
 				&& (h - 28.0).abs() <= 6.0
 				&& (w - 28.0).abs() <= 6.0
 				&& x >= f_right - 50.0
+				&& x <= f_right
 		})
 		.copied()
 }
@@ -191,9 +193,9 @@ pub fn find_stop_control_hitbox(
 			y >= f_bottom - 50.0
 				&& y <= f_bottom
 				&& (h - 28.0).abs() <= 6.0
+				&& x >= f_right - 80.0
 				&& x + w < f_right - 32.0
 				&& (w - 28.0).abs() <= 6.0
-				&& x >= f_right - 80.0
 		})
 		.copied()
 }

@@ -27,9 +27,9 @@ pub use endpoint::{
 pub use framing::{FrameDecoder, FramingError, MAX_FRAME_BYTES, encode_request};
 pub use link::{HostLink, TRANSPORT_THREAD_NAME};
 pub use project::{
-	NO_SESSION_OPEN, PANE_LINE_CEILING, SessionIndex, actions_for, drawer_lines, elapsed_label,
-	land_failure, project, project_controls, project_turn_phase, strip_control_sequences,
-	tree_rows_from_changes,
+	NO_SESSION_OPEN, PANE_LINE_CEILING, SessionIndex, actions_for, contextual_surface_for_action,
+	drawer_lines, elapsed_label, land_failure, project, project_clock, project_controls,
+	project_turn_phase, strip_control_sequences,
 };
 pub use reconnect::{
 	DeterministicJitter, FATAL_MESSAGE, INITIAL_DELAY_MS, JITTER_PCT, JitterSource, MAX_ATTEMPTS,

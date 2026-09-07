@@ -13,7 +13,7 @@ use veyyon_gpui::{
 use super::turn::{PrimaryAction, TurnPhase, primary_action};
 use crate::{
 	Intent, ShellView,
-	controls::{ControlStates, availability_style},
+	controls::{Availability, ControlStates, availability_style},
 };
 
 /// The request control for a composer intent; local editor intents have no
@@ -60,10 +60,16 @@ pub fn turn_action_controls(
 	// AbortTurn is an isolated 28px control, shown only while actively running
 	// (§5.4).
 	if turn.is_running() {
-		let abort_id = SurfaceId::ComposerAbortButton(sid);
-		let abort_av = controls.availability(&abort_id);
+		let abort_id = SurfaceId::ComposerAbortButton(sid.clone());
+		let cancel_tool_id = SurfaceId::ComposerCancelToolButton(sid, "bash".to_string());
+		let cancel_tool_av = controls.availability(&cancel_tool_id);
+		let abort_av =
+			if matches!(cancel_tool_av, Availability::Unavailable { .. } | Availability::Pending) {
+				cancel_tool_av
+			} else {
+				controls.availability(&abort_id)
+			};
 		let (abort_opacity, abort_cursor, abort_allowed) = availability_style(&abort_av, tokens);
-		let hover = tokens.row_hover();
 
 		let mut abort_btn = div()
 			.id(ElementId::from("composer-abort-turn"))
@@ -82,12 +88,13 @@ pub fn turn_action_controls(
 					.color(tokens.color(ColorRole::ErrorInk)),
 			);
 
+		let error_fill = tokens.color(ColorRole::ErrorFill);
 		if abort_allowed {
-			abort_btn = abort_btn.hover(move |s| s.bg(hover)).on_click(cx.listener(
-				|view, _event: &ClickEvent, _window, cx| {
+			abort_btn = abort_btn
+				.hover(move |s| s.bg(error_fill))
+				.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
 					view.dispatch(Intent::AbortTurn, cx);
-				},
-			));
+				}));
 		}
 
 		container = container.child(with_reason(abort_btn, abort_av.reason(), "abort"));
@@ -125,9 +132,16 @@ pub fn turn_action_controls(
 		})
 		.bg(tokens.color(ColorRole::Accent))
 		.child(
-			Icon::new(IconName::ArrowUp)
-				.size(IconSize::Size12)
-				.color(tokens.color(ColorRole::AccentForeground)),
+			Icon::new(match primary {
+				PrimaryAction::Queue => IconName::ArrowDown,
+				PrimaryAction::Approve | PrimaryAction::Accept | PrimaryAction::Answer => {
+					IconName::Check
+				},
+				PrimaryAction::Refine => IconName::Edit,
+				PrimaryAction::Send | PrimaryAction::Steer => IconName::ArrowUp,
+			})
+			.size(IconSize::Size12)
+			.color(tokens.color(ColorRole::AccentForeground)),
 		);
 	if active {
 		let hover = tokens.color(ColorRole::Focus);

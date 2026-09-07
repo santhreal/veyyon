@@ -5,9 +5,10 @@
 //! file trees, and search results onto active `Overlay::Settings` and
 //! `Overlay::Palette` state.
 
-use veyyon_desktop_model::{FileKind, Store};
+use veyyon_desktop_model::{Capability, CapabilityStatus, FileKind, Store};
 use veyyon_desktop_surface::{
 	Overlay, PaletteItem, PaletteMode, PaletteState, SettingsState, ShellState,
+	navigation::SurfaceRoute,
 };
 
 /// Projects domain store views onto active overlay state fields.
@@ -97,6 +98,17 @@ fn project_palette_domains(store: &Store, state: &mut PaletteState) {
 				}
 			}
 		},
-		PaletteMode::Commands | PaletteMode::Sessions | PaletteMode::Models => {},
+		// Native navigation does not invoke the host's separate agent-command API,
+		// but reflects its availability notice on the root command surface when unavailable.
+		PaletteMode::Commands => {
+			let is_root = matches!(state.route, None | Some(SurfaceRoute::Commands));
+			if is_root {
+				state.notice = match store.capabilities.get(Capability::AgentCommands) {
+					CapabilityStatus::Unavailable { reason } => Some(reason.clone()),
+					_ => None,
+				};
+			}
+		},
+		PaletteMode::Sessions | PaletteMode::Models => {},
 	}
 }

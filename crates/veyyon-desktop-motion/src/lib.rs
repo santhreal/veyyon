@@ -6,6 +6,7 @@
 //! and remount-resilient animation tracking (§7.3).
 
 pub mod curves;
+pub mod drivers;
 pub mod error;
 pub mod registry;
 pub mod role;
@@ -13,6 +14,9 @@ pub mod spring;
 pub mod tokens;
 
 pub use curves::{CubicBezier, EasingCurve};
+pub use drivers::{
+	CaretMotion, FloatFrame, FloatMotion, PanelMotion, RevealMotion, ScrollMotion, TintMotion,
+};
 pub use error::MotionError;
 pub use registry::{ActiveAnimation, AnimatorKey, AnimatorRegistry, SurfaceId};
 pub use role::{

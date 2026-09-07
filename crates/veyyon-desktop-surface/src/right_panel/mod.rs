@@ -4,20 +4,20 @@
 
 pub mod content;
 pub mod diff_rows;
+pub mod diff_split;
 pub mod diff_view;
 pub mod file_view;
 pub mod tabs;
 pub mod tree_view;
 
 pub use content::{
-	DiffFile, DiffRow, FileLine, FileView, HighlightSpan, PanelContent, PanelTab, TreeContent,
-	TreeRowItem,
+	DiffFile, DiffRow, DiffStatus, FileLine, FileView, HighlightSpan, PanelContent, PanelTab,
+	TreeContent, TreeRowItem, TreeStatus,
 };
-pub use diff_view::diff_view;
 pub use file_view::{file_view, highlight_source};
 pub use tabs::tab_strip;
 pub use tree_view::tree_view;
-use veyyon_desktop_kit::{ColorRole, TokenSet};
+use veyyon_desktop_kit::{ColorRole, SpacingStep, TextRamp, TokenSet};
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
 use veyyon_gpui::{Context, InteractiveElement, IntoElement, ParentElement, Styled, div, px};
 
@@ -35,21 +35,56 @@ pub fn right_panel(
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
+	if panel.tabs.is_empty() {
+		let reason = panel
+			.unavailable_reason
+			.as_deref()
+			.unwrap_or("No panel features available");
+		return div()
+			.id("right-panel")
+			.flex()
+			.flex_col()
+			.h_full()
+			.w(px(width))
+			.flex_shrink_0()
+			.bg(tokens.color(ColorRole::Rail))
+			.overflow_hidden()
+			.child(tab_strip(panel, geometry, tokens, cx))
+			.child(
+				div()
+					.id("right-panel-unavailable")
+					.flex_1()
+					.w_full()
+					.flex()
+					.items_center()
+					.justify_center()
+					.px(tokens.spacing(SpacingStep::S4))
+					.text_size(tokens.font_size(TextRamp::Small))
+					.text_color(tokens.color(ColorRole::Muted))
+					.child(reason.to_string()),
+			);
+	}
+
 	let active_content = match panel.active_tab {
-		PanelTab::Diff => {
-			diff_view(&panel.diff, panel.diff_mode, width, geometry, tokens, cx).into_any_element()
-		},
+		PanelTab::Diff => diff_view::diff_view(
+			&panel.diff,
+			panel.diff_status,
+			panel.diff_mode,
+			width,
+			geometry,
+			tokens,
+			cx,
+		)
+		.into_any_element(),
 		PanelTab::File => file_view(&panel.file, geometry, tokens, cx).into_any_element(),
 		PanelTab::Tree => tree_view(&panel.tree, geometry, tokens, cx).into_any_element(),
 	};
-
 	let tab_count = panel.tabs.len();
 	let current_tab_idx = panel
 		.tabs
 		.iter()
 		.position(|&t| t == panel.active_tab)
 		.unwrap_or(0);
-
 	let prev_idx = if current_tab_idx == 0 {
 		tab_count.saturating_sub(1)
 	} else {

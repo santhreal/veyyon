@@ -185,6 +185,36 @@ impl<'a, V: Render + 'static> HeadlessSession<'a, V> {
 		Ok(())
 	}
 
+	/// Dispatches a right mouse click (`MouseDown` followed by `MouseUp`) at the given
+	/// logical coordinates.
+	pub fn right_click(&mut self, at: Point<Pixels>) -> Result<(), RenderError> {
+		let mouse_down = PlatformInput::MouseDown(MouseDownEvent {
+			button:      MouseButton::Right,
+			position:    at,
+			modifiers:   Modifiers::default(),
+			click_count: 1,
+			first_mouse: false,
+		});
+
+		let mouse_up = PlatformInput::MouseUp(MouseUpEvent {
+			button:      MouseButton::Right,
+			position:    at,
+			modifiers:   Modifiers::default(),
+			click_count: 1,
+		});
+
+		self
+			.cx
+			.update_window(self.window.into(), |_, window, cx| {
+				window.dispatch_event(mouse_down, cx);
+				window.dispatch_event(mouse_up, cx);
+			})
+			.map_err(|error| RenderError::Window { message: format!("{error:?}") })?;
+
+		self.cx.run_until_parked();
+		Ok(())
+	}
+
 	/// Drags the left button from `from` to `to`: a press, a move just past
 	/// the renderer's 2px drag threshold that starts the drag, a move halfway
 	/// and a move to `to` that a drag-move listener sees with the drag active,

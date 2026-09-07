@@ -12,8 +12,9 @@ use std::{collections::HashMap, time::Instant};
 
 use veyyon_desktop_kit::{ColorRole, TokenSet};
 use veyyon_desktop_tokens::QueueSurfaceTokens;
-use veyyon_gpui::{Context, InteractiveElement, IntoElement, ParentElement, Styled, div, px};
-
+use veyyon_gpui::{
+	Context, InteractiveElement, IntoElement, ParentElement, Styled, Window, div, px,
+};
 pub mod card;
 pub mod fill;
 pub mod footer;
@@ -23,17 +24,27 @@ pub mod menu;
 pub mod motion;
 pub mod rows;
 
-pub use fill::{RailFill, rail_fill, visible_rows};
+pub use fill::{RailFill, paged_rail_fill, rail_fill, visible_rows, visible_rows_with_limit};
 pub use footer::queue_footer;
-pub use menu::{RowMenu, row_menu_layer};
+pub use header::{more_row, older_row, queue_nav_header, section_header};
+pub use menu::{RowMenu, RowMenuKind, row_menu_layer};
 pub use motion::RailMotion;
-pub use rows::{card_row, line_row, more_row, section_header};
+pub use rows::{card_row, line_row};
+use veyyon_desktop_model::{SessionId, SurfaceId};
 
 use crate::{
 	ShellView,
-	model::{Badge, Row, Section},
+	controls::{ControlStates, availability_style, hairline_for_weak},
+	model::{Row, Section},
 };
 
+/// A single renderable item in the virtualized queue list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QueueListItem {
+	SectionHeader { section: Section, count: usize, collapsed: bool },
+	Row { row: Row, section: Section, selected: bool, is_open: bool },
+	OlderRow { hidden: usize },
+}
 /// Builds the queue rail at the width and height the shed allots it.
 ///
 /// Neither measure is the rail's own: §5.7 sheds the rail from 256 to 208 and
@@ -41,22 +52,53 @@ use crate::{
 /// which is what decides how many rows there is room to answer a click on.
 pub fn queue_rail(
 	sections: &[(Section, Vec<Row>)],
+	filter_query: Option<&str>,
 	current: u64,
 	width: f32,
-	height: f32,
+	_height: f32,
+	controls: &ControlStates,
 	geometry: &QueueSurfaceTokens,
 	tokens: &TokenSet,
 	motion: &mut RailMotion,
+	window: &mut Window,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
 	let now = Instant::now();
-	let fill = rail_fill(sections, height, geometry);
-
-	let mut positions = HashMap::new();
+	motion.record_selected_id(current);
+	motion.ensure_visible(current, sections, geometry.parked_initial_page_size, now);
+	let parked_limit = motion.parked_limit(geometry.parked_initial_page_size);
+	let filtered_storage;
+	let active_sections: &[(Section, Vec<Row>)] = if let Some(q) = filter_query {
+		let needle = q.trim().to_lowercase();
+		if needle.is_empty() {
+			sections
+		} else {
+			filtered_storage = sections
+				.iter()
+				.map(|(sec, rows)| {
+					let filtered: Vec<Row> = rows
+						.iter()
+						.filter(|r| {
+							r.title.to_lowercase().contains(&needle)
+								|| r.subtitle.to_lowercase().contains(&needle)
+						})
+						.cloned()
+						.collect();
+					(*sec, filtered)
+				})
+				.collect::<Vec<_>>();
+			&filtered_storage
+		}
+	} else {
+		sections
+	};
 	let mut current_y = geometry.content_inset;
+	let mut positions = HashMap::new();
+	let mut items = Vec::new();
+	let mut selected_item_ix = None;
 
-	for ((section, rows), drawn) in sections.iter().zip(&fill.drawn) {
-		if *drawn == 0 {
+	for (section, rows) in active_sections {
+		if rows.is_empty() {
 			continue;
 		}
 		current_y +=
@@ -66,76 +108,163 @@ pub fn queue_rail(
 		} else {
 			geometry.line_px
 		};
-		if !motion.is_collapsed(*section) {
-			for row in rows.iter().take(*drawn) {
+		let is_collapsed = motion.is_collapsed(*section);
+
+		items.push(QueueListItem::SectionHeader {
+			section:   *section,
+			count:     rows.len(),
+			collapsed: is_collapsed,
+		});
+
+		if !is_collapsed {
+			let drawn_count = if *section == Section::Parked {
+				rows.len().min(parked_limit)
+			} else {
+				rows.len()
+			};
+			let hidden_count = if *section == Section::Parked {
+				rows.len().saturating_sub(drawn_count)
+			} else {
+				0
+			};
+
+			for row in rows.iter().take(drawn_count) {
 				positions.insert(row.id, current_y);
 				current_y += row_h;
+				let selected = row.id == current;
+				if selected {
+					selected_item_ix = Some(items.len());
+				}
+				items.push(QueueListItem::Row {
+					row: row.clone(),
+					section: *section,
+					selected,
+					is_open: selected,
+				});
+			}
+
+			if *section == Section::Parked && hidden_count > 0 {
+				current_y += geometry.line_px;
+				items.push(QueueListItem::OlderRow { hidden: hidden_count });
 			}
 		}
 	}
 
 	motion.record_positions(&positions, now);
+	motion.sync_item_count(items.len());
 
-	let mut sections_col = div().flex().flex_col().flex_1().w_full().overflow_hidden();
-
-	for ((section, rows), drawn) in sections.iter().zip(&fill.drawn) {
-		if *drawn == 0 {
-			continue;
+	if motion.should_scroll_to_selected() {
+		if let Some(ix) = selected_item_ix {
+			motion.scroll_to_reveal_item(ix);
+		} else {
+			motion.clear_pending_scroll();
 		}
-		let is_collapsed = motion.is_collapsed(*section);
-		sections_col = sections_col.child(section_header(
-			*section,
-			rows.len(),
-			is_collapsed,
-			geometry,
-			tokens,
-			cx,
-		));
-
-		if !is_collapsed {
-			for row in rows.iter().take(*drawn) {
-				let selected = row.id == current;
-				let is_open = selected;
-				let shift_y = motion.shift_offset(row.id, now);
-				sections_col = if section.draws_cards() {
-					sections_col.child(card_row(row, selected, is_open, shift_y, geometry, tokens, cx))
-				} else {
-					sections_col.child(line_row(row, selected, is_open, shift_y, geometry, tokens, cx))
-				};
-			}
-		}
-	}
-
-	if fill.hidden > 0 {
-		sections_col = sections_col.child(more_row(fill.hidden, geometry, tokens));
-	}
-
-	let has_working = sections
-		.iter()
-		.any(|(_, rows)| rows.iter().any(|r| r.badge == Some(Badge::Working)));
-	if has_working {
-		cx.spawn(async move |this, cx| {
-			cx.background_executor()
-				.timer(std::time::Duration::from_secs(1))
-				.await;
-			let _ = this.update(cx, |_view, cx| {
-				cx.notify();
-			});
-		})
-		.detach();
 	}
 
 	if motion.has_active_animations(now) {
-		cx.spawn(async move |this, cx| {
-			cx.background_executor()
-				.timer(std::time::Duration::from_millis(16))
-				.await;
-			let _ = this.update(cx, |_view, cx| {
-				cx.notify();
-			});
-		})
-		.detach();
+		let view = cx.weak_entity();
+		window.on_next_frame(move |_, app| {
+			let _ = view.update(app, |_, cx| cx.notify());
+		});
 	}
+
+	let nav_header = queue_nav_header(filter_query, controls, geometry, tokens, cx);
+
+	let mut shift_map = HashMap::new();
+	for item in &items {
+		if let QueueListItem::Row { row, .. } = item {
+			shift_map.insert(row.id, motion.shift_offset(row.id, now));
+		}
+	}
+	let shift_offsets: std::rc::Rc<HashMap<u64, f32>> = std::rc::Rc::new(shift_map);
+	let items_snapshot: std::rc::Rc<[QueueListItem]> = std::rc::Rc::from(items);
+	let list_state = motion.list_state().clone();
+	let geometry_copy = geometry.clone();
+	let tokens_copy = tokens.clone();
+	let controls_copy = controls.clone();
+	let weak_view = cx.weak_entity();
+
+	let list_el = veyyon_gpui::list(list_state, move |item_ix, _window, _app| {
+		let Some(item) = items_snapshot.get(item_ix) else {
+			return div().into_any_element();
+		};
+		let row = match item {
+			QueueListItem::SectionHeader { section, count, collapsed } => section_header(
+				*section,
+				*count,
+				*collapsed,
+				&geometry_copy,
+				&tokens_copy,
+				Some(weak_view.clone()),
+			)
+			.into_any_element(),
+			QueueListItem::Row { row, section, selected, is_open } => {
+				let shift_y = shift_offsets.get(&row.id).copied().unwrap_or(0.0);
+				let row_surface = SurfaceId::QueueSessionRow(SessionId::from(row.id.to_string()));
+				let row_error = hairline_for_weak(
+					&controls_copy,
+					&row_surface,
+					&tokens_copy,
+					Some(weak_view.clone()),
+				);
+				let row_el = if section.draws_cards() {
+					card_row(
+						row,
+						*selected,
+						*is_open,
+						shift_y,
+						&controls_copy,
+						&geometry_copy,
+						&tokens_copy,
+						Some(weak_view.clone()),
+					)
+					.into_any_element()
+				} else {
+					line_row(
+						row,
+						*section,
+						*selected,
+						*is_open,
+						shift_y,
+						&geometry_copy,
+						&tokens_copy,
+						Some(weak_view.clone()),
+					)
+					.into_any_element()
+				};
+				let row_av = controls_copy.availability(&row_surface);
+				let (row_opacity, ..) = availability_style(&row_av, &tokens_copy);
+				return div()
+					.w_full()
+					.flex()
+					.flex_col()
+					.opacity(row_opacity)
+					.child(row_el)
+					.children(row_error)
+					.into_any_element();
+			},
+			QueueListItem::OlderRow { hidden } => {
+				older_row(*hidden, &geometry_copy, &tokens_copy, Some(weak_view.clone()))
+					.into_any_element()
+			},
+		};
+		div()
+			.w_full()
+			.flex()
+			.flex_col()
+			.child(row)
+			.into_any_element()
+	})
+	.w_full()
+	.h_full();
+
+	let list_container = div()
+		.id("queue-scroll-container")
+		.flex_1()
+		.w_full()
+		.h_full()
+		.overflow_hidden()
+		.child(list_el);
 
 	div()
 		.id("queue-rail")
@@ -151,6 +280,7 @@ pub fn queue_rail(
 		.border_color(tokens.color(ColorRole::Hairline))
 		.pt(px(geometry.content_inset))
 		.overflow_hidden()
-		.child(sections_col)
+		.child(nav_header)
+		.child(list_container)
 		.child(queue_footer(geometry, tokens, cx))
 }

@@ -21,8 +21,8 @@ use veyyon_desktop_kit::{
 };
 use veyyon_desktop_model::{Gate, SurfaceId};
 use veyyon_gpui::{
-	AnyElement, ClickEvent, CursorStyle, ElementId, InteractiveElement, IntoElement, ParentElement,
-	Styled, div,
+	AnyElement, CursorStyle, ElementId, InteractiveElement, IntoElement, ParentElement, Styled,
+	WeakEntity, div,
 };
 
 use crate::{Intent, ShellView};
@@ -204,6 +204,16 @@ pub fn error_hairline(
 	tokens: &TokenSet,
 	cx: &veyyon_gpui::Context<ShellView>,
 ) -> impl IntoElement {
+	error_hairline_weak(err, id, tokens, Some(cx.weak_entity()))
+}
+
+/// Renders an error hairline decoration using a weak view reference.
+pub fn error_hairline_weak(
+	err: &ControlError,
+	id: SurfaceId,
+	tokens: &TokenSet,
+	weak: Option<WeakEntity<ShellView>>,
+) -> impl IntoElement {
 	let stroke_px = tokens.stroke(StrokeStep::Hairline);
 	let error_color = tokens.color(ColorRole::ErrorInk);
 	let error_ground = tokens.color(ColorRole::ErrorFill);
@@ -238,22 +248,32 @@ pub fn error_hairline(
 
 	if err.retryable {
 		let retry_id = id.clone();
-		let retry_btn = Button::new("Retry")
+		let weak_retry = weak.clone();
+		let mut retry_btn = Button::new("Retry")
 			.variant(ButtonVariant::Danger)
-			.size(ButtonSize::Small)
-			.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
-				view.dispatch(Intent::RetryControl(retry_id.clone()), cx);
-			}));
+			.size(ButtonSize::Small);
+		if let Some(weak) = weak_retry {
+			retry_btn = retry_btn.on_click(move |_event, _window, app| {
+				let _ = weak.update(app, |view, cx| {
+					view.dispatch(Intent::RetryControl(retry_id.clone()), cx);
+				});
+			});
+		}
 		row = row.child(retry_btn);
 	}
 
 	let dismiss_id = id;
-	let dismiss_btn = Button::new("Dismiss")
+	let weak_dismiss = weak;
+	let mut dismiss_btn = Button::new("Dismiss")
 		.variant(ButtonVariant::Ghost)
-		.size(ButtonSize::Small)
-		.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
-			view.dispatch(Intent::DismissError(dismiss_id.clone()), cx);
-		}));
+		.size(ButtonSize::Small);
+	if let Some(weak) = weak_dismiss {
+		dismiss_btn = dismiss_btn.on_click(move |_event, _window, app| {
+			let _ = weak.update(app, |view, cx| {
+				view.dispatch(Intent::DismissError(dismiss_id.clone()), cx);
+			});
+		});
+	}
 	row = row.child(dismiss_btn);
 
 	row
@@ -268,7 +288,18 @@ pub fn hairline_for(
 	tokens: &TokenSet,
 	cx: &veyyon_gpui::Context<ShellView>,
 ) -> Option<AnyElement> {
+	hairline_for_weak(controls, id, tokens, Some(cx.weak_entity()))
+}
+
+/// The failure that landed on a control using a weak view reference.
+#[must_use]
+pub fn hairline_for_weak(
+	controls: &ControlStates,
+	id: &SurfaceId,
+	tokens: &TokenSet,
+	weak: Option<WeakEntity<ShellView>>,
+) -> Option<AnyElement> {
 	controls
 		.error(id)
-		.map(|err| error_hairline(err, id.clone(), tokens, cx).into_any_element())
+		.map(|err| error_hairline_weak(err, id.clone(), tokens, weak).into_any_element())
 }

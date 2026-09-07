@@ -109,24 +109,28 @@ const fn is_word_boundary(chars: &[char], idx: usize) -> bool {
 	false
 }
 
-/// Ranks a slice of candidate items against a query string using fuzzy scoring.
+/// Ranks items by the best fuzzy score across their searchable text fields.
 ///
 /// Returns a vector of tuples `(original_index, score, &item)` sorted by
 /// descending score with ties broken by original index order.
-pub fn fuzzy_rank<'a, T, F>(
+pub fn fuzzy_rank<'a, T, F, I>(
 	query: &str,
 	items: &'a [T],
-	extract_target: F,
+	extract_targets: F,
 ) -> Vec<(usize, i32, &'a T)>
 where
-	F: Fn(&T) -> &str,
+	F: Fn(&'a T) -> I,
+	I: IntoIterator<Item = &'a str>,
 {
 	let mut scored: Vec<(usize, i32, &'a T)> = items
 		.iter()
 		.enumerate()
 		.filter_map(|(idx, item)| {
-			let target = extract_target(item);
-			fuzzy_score(query, target).map(|score| (idx, score, item))
+			extract_targets(item)
+				.into_iter()
+				.filter_map(|target| fuzzy_score(query, target))
+				.max()
+				.map(|score| (idx, score, item))
 		})
 		.collect();
 
@@ -174,7 +178,7 @@ mod tests {
 	#[test]
 	fn ranks_ties_by_original_order() {
 		let items = vec!["alpha", "beta", "alpine"];
-		let ranked = fuzzy_rank("al", &items, |s| s);
+		let ranked = fuzzy_rank("al", &items, |s| [*s]);
 		assert_eq!(ranked.len(), 2);
 		assert_eq!(*ranked[0].2, "alpha");
 		assert_eq!(*ranked[1].2, "alpine");

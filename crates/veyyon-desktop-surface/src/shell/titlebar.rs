@@ -80,7 +80,10 @@ pub fn titlebar(
 			IconName::PanelRight,
 			!state.panel_collapsed,
 			cx,
-			|view, cx| view.dispatch(Intent::TogglePanel, cx),
+			|view, cx| {
+				let open = view.state().keymap.panel_collapsed;
+				view.dispatch(Intent::SetPanel { open }, cx);
+			},
 		));
 	}
 	trailing = trailing.child(toggle_control(

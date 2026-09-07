@@ -185,8 +185,18 @@ Groups and focused pages use the same Back, title, and Close header. Back or
 `Escape` closes the palette. Close dismisses the surface directly.
 Navigation leaves the composer draft and attachments unchanged.
 
+General settings renders viewport-adjacent rows as the list scrolls. Value updates
+preserve the scroll position. The page header remains visible at the minimum
+window height.
+
 Command search also accepts `/providers`, `/login`, and `/extensions` for the
 corresponding focused destinations.
+
+## Terminal input
+
+Click the terminal grid to focus it. Terminal input is sent to the host without
+local echo. An overlaid drawer blocks pointer interaction with the composer
+beneath it.
 
 ## Record native interactions
 
@@ -205,6 +215,10 @@ SCENE_COMMAND='env VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json VEYYON_B
 proof/docker/record-x11.sh proof/scenes/desktop-composer.sh
 ```
 
+For NVIDIA CDI, set `PROOF_GPU_DEVICE=nvidia.com/gpu=all` and use
+`VK_DRIVER_FILES=/etc/vulkan/icd.d/nvidia_icd.json` in `SCENE_COMMAND`.
+The host's CDI specification must match its current driver and device nodes.
+
 The scene uses automatic host startup in the container's isolated home. It checks
 the initial session snapshot and waits for the session-creation interaction to
 produce a new host session before entering a draft. It records model-picker
@@ -217,11 +231,21 @@ transitions, and session creation through command search. Set
 `PROOF_LLM_BASE_URL` to an endpoint reachable from the recorder container.
 
 Use `proof/scenes/desktop-surface-navigation.sh` with the same capture environment
-to exercise command groups, focused Account and Settings pages, parent navigation,
-and queue action visibility.
+to exercise command groups, focused Account and Settings pages, settings scrolling,
+parent navigation, draft-focus restoration, and queue action visibility.
+
+Use `proof/scenes/desktop-terminal.sh` to open the terminal drawer, focus its grid,
+and execute a shell command. Set `SCENE_WIDTH` to `800` and `1180` for overlaid and
+docked drawers.
 
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
 The [capture requirements](../foundations/verification.md) specify paired static
 frames and animated clips. Headless scene PNGs do not replace native captures.
+
+Native Before recording also requires `PROOF_NATIVE_BEFORE_BINARY` to identify
+the executable built from the baseline source. The recorder rejects missing,
+non-executable, or byte-identical Before and After binaries.
+For a native-only change, set `PROOF_BASE_REF=HEAD` to retain the same host source
+in both arms.
 
 See [Motion](motion.md) for transition behavior.

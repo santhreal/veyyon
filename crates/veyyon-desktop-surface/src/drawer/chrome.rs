@@ -7,7 +7,9 @@
 use veyyon_desktop_kit::{
 	ColorRole, SpacingStep, TextRamp, TextWeight, TokenSet,
 	controls::{Button, ButtonVariant},
+	state::InteractiveState,
 };
+use veyyon_desktop_model::{SessionId, SurfaceId};
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
 use veyyon_gpui::{
 	ClickEvent, Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
@@ -15,11 +17,15 @@ use veyyon_gpui::{
 };
 
 use super::content::{DrawerContent, DrawerTab};
-use crate::{Intent, ShellView};
-
+use crate::{
+	Intent, ShellView,
+	controls::{ControlStates, availability_style},
+};
 /// Builds the drawer chrome header bar.
 pub fn drawer_chrome(
 	content: &DrawerContent,
+	controls: &ControlStates,
+	session_id: u64,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
@@ -110,24 +116,42 @@ pub fn drawer_chrome(
 		);
 	}
 
-	if !content.is_processes_active() {
+	if let Some(DrawerTab::Terminal { id: active_term_id, .. }) =
+		content.tabs.get(content.active_tab)
+	{
+		let sid = SessionId::from(session_id.to_string());
+		let clear_av = controls
+			.availability(&SurfaceId::TerminalClearButton(sid.clone(), active_term_id.clone()));
+		let (clear_op, _, clear_allowed) = availability_style(&clear_av, tokens);
+		let mut clear_btn = Button::new("Clear")
+			.id("clear-terminal-btn")
+			.variant(ButtonVariant::Ghost);
+		if clear_allowed {
+			clear_btn = clear_btn.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
+				view.dispatch(Intent::ClearTerminal, cx);
+			}));
+		} else {
+			clear_btn = clear_btn.state(InteractiveState::Disabled);
+		}
+
+		let restart_av =
+			controls.availability(&SurfaceId::TerminalRestartButton(sid, active_term_id.clone()));
+		let (restart_op, _, restart_allowed) = availability_style(&restart_av, tokens);
+		let mut restart_btn = Button::new("Restart")
+			.id("restart-terminal-btn")
+			.variant(ButtonVariant::Ghost);
+		if restart_allowed {
+			restart_btn =
+				restart_btn.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
+					view.dispatch(Intent::RestartTerminal, cx);
+				}));
+		} else {
+			restart_btn = restart_btn.state(InteractiveState::Disabled);
+		}
+
 		right_side = right_side
-			.child(
-				Button::new("Clear")
-					.id("clear-terminal-btn")
-					.variant(ButtonVariant::Ghost)
-					.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
-						view.dispatch(Intent::ClearTerminal, cx);
-					})),
-			)
-			.child(
-				Button::new("Restart")
-					.id("restart-terminal-btn")
-					.variant(ButtonVariant::Ghost)
-					.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
-						view.dispatch(Intent::RestartTerminal, cx);
-					})),
-			);
+			.child(div().opacity(clear_op).child(clear_btn))
+			.child(div().opacity(restart_op).child(restart_btn));
 	}
 
 	div()

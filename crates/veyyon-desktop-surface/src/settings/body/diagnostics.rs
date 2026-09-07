@@ -8,7 +8,7 @@ use veyyon_gpui::{ClickEvent, Context, Div, ElementId, IntoElement, ParentElemen
 
 use crate::{
 	Intent, ShellView,
-	controls::ControlStates,
+	controls::{ControlStates, hairline_for},
 	settings::{
 		SettingsState,
 		row::{empty_state_row, setting_row, setting_row_with_secondary},
@@ -23,10 +23,12 @@ pub fn render_diagnostics_page(
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> Div {
+	let diag_error = hairline_for(controls, &SurfaceId::DiagnosticRefreshButton, tokens, cx);
 	let mut container = div()
 		.flex()
 		.flex_col()
-		.gap(veyyon_gpui::px(geometry.row_gap));
+		.gap(veyyon_gpui::px(geometry.row_gap))
+		.children(diag_error);
 
 	let Some(diag_json) = &state.diagnostics else {
 		return container.child(empty_state_row(

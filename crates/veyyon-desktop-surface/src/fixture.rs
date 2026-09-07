@@ -18,7 +18,9 @@ use crate::{
 	},
 	drawer::{DrawerContent, DrawerTab},
 	model::{Badge, Block, Card, ConnectionPhase, Row, Section, ShellState, Turn},
-	right_panel::{DiffFile, DiffRow, PanelContent, PanelTab, TreeContent, TreeRowItem},
+	right_panel::{
+		DiffFile, DiffRow, DiffStatus, PanelContent, PanelTab, TreeContent, TreeRowItem, TreeStatus,
+	},
 	terminal::{Cell, CellStyle, Ink},
 };
 
@@ -185,19 +187,22 @@ fn transcript() -> Vec<Turn> {
 		Turn::Agent(vec![
 			Block::Reason("Reading the surface token groups and the kit's primitives".to_owned()),
 			Block::Invoke {
-				tool:   "read".to_owned(),
-				target: "crates/veyyon-desktop-tokens/src/surface.rs".to_owned(),
-				result: Some("207 lines".to_owned()),
+				call_id: "c1".to_owned(),
+				tool:    "read".to_owned(),
+				target:  "crates/veyyon-desktop-tokens/src/surface.rs".to_owned(),
+				result:  Some("207 lines".to_owned()),
 			},
 			Block::Invoke {
-				tool:   "read".to_owned(),
-				target: "crates/veyyon-desktop-kit/src/token_set.rs".to_owned(),
-				result: Some("281 lines".to_owned()),
+				call_id: "c2".to_owned(),
+				tool:    "read".to_owned(),
+				target:  "crates/veyyon-desktop-kit/src/token_set.rs".to_owned(),
+				result:  Some("281 lines".to_owned()),
 			},
 			Block::Invoke {
-				tool:   "search".to_owned(),
-				target: "structure: pub fn $NAME($$$ARGS) -> $RET".to_owned(),
-				result: Some("38 matches".to_owned()),
+				call_id: "c3".to_owned(),
+				tool:    "search".to_owned(),
+				target:  "structure: pub fn $NAME($$$ARGS) -> $RET".to_owned(),
+				result:  Some("38 matches".to_owned()),
 			},
 			Block::Prose(
 				"The kit already owns the bridge from tokens to renderer types, as a global resolved \
@@ -234,9 +239,11 @@ fn transcript() -> Vec<Turn> {
 )]
 fn fixture_panel() -> PanelContent {
 	PanelContent {
-		tabs:       vec![PanelTab::Diff, PanelTab::File, PanelTab::Tree],
-		active_tab: PanelTab::Diff,
-		diff:       vec![DiffFile {
+		tabs:               vec![PanelTab::Diff, PanelTab::File, PanelTab::Tree],
+		active_tab:         PanelTab::Diff,
+		diff_status:        DiffStatus::Loaded,
+		unavailable_reason: None,
+		diff:               vec![DiffFile {
 			path:      "crates/veyyon-desktop-surface/src/panel.rs".to_string(),
 			old_path:  None,
 			status:    veyyon_desktop_model::ChangeStatus::Modified,
@@ -268,8 +275,8 @@ fn fixture_panel() -> PanelContent {
 				DiffRow::Context { old_line: 3, new_line: 3, text: "}".to_string() },
 			],
 		}],
-		file:       None,
-		tree:       TreeContent {
+		file:               None,
+		tree:               TreeContent {
 			rows:           vec![
 				TreeRowItem {
 					path:        "crates".to_string(),
@@ -298,8 +305,9 @@ fn fixture_panel() -> PanelContent {
 			],
 			selected_path:  None,
 			expanded_paths: std::collections::BTreeSet::new(),
+			status:         TreeStatus::Loaded,
 		},
-		diff_mode:  veyyon_desktop_model::DiffMode::Unified,
+		diff_mode:          veyyon_desktop_model::DiffMode::Unified,
 	}
 }
 

@@ -52,7 +52,7 @@ pub enum HostAction {
 	},
 	BranchSession {
 		session: SessionId,
-		entry:   EntryId,
+		entry:   Option<EntryId>,
 	},
 	ExportSession {
 		session: SessionId,

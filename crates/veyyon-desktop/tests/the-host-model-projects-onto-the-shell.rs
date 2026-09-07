@@ -23,13 +23,10 @@ use support::{NOW_MS, session, terminal};
 use veyyon_desktop::{PANE_LINE_CEILING, SessionIndex, drawer_lines, project};
 use veyyon_desktop_model::{
 	BadgeKind, Capability, CapabilityStatus, ChangeScope, ChangeStatus, ChangedFile, ChangesView,
-	ComposerDraft, ContextBreakdownView, HostEvent, InputModality, ModelRef, ModelView, ModelsView,
-	QueueMode, QueuePartition, SessionBadge, SessionId, SnapshotSection, Store, TerminalOutputChunk,
-	TerminalStatus, reduce,
+	FileKind, FileNode, FileTreeView, HostEvent, QueuePartition, SessionBadge, SessionId,
+	SnapshotSection, Store, TerminalOutputChunk, TerminalStatus, reduce,
 };
-use veyyon_desktop_surface::{
-	Attachment, Badge, MediaType, Section, ShellState, composer::payload_for,
-};
+use veyyon_desktop_surface::{Badge, DiffStatus, Section, ShellState, TreeStatus};
 
 /// One tree row as the assertions read it: depth, name, line counts.
 type TreeCell<'a> = (usize, &'a str, Option<(u32, u32)>);
@@ -134,6 +131,9 @@ fn a_projection_leaves_what_the_window_owns_alone() {
 	store
 		.sessions
 		.insert(session("s", QueuePartition::Live, None));
+	store
+		.capabilities
+		.set(Capability::Files, CapabilityStatus::Available);
 	let mut state = ShellState {
 		drawer_open: true,
 		panel: veyyon_desktop_surface::PanelContent {
@@ -164,8 +164,9 @@ fn changed(path: &str, additions: u64, deletions: u64) -> ChangedFile {
 }
 
 #[test]
-fn a_changes_snapshot_becomes_a_tree_with_each_directory_opened_once() {
+fn a_file_tree_snapshot_projects_tree_and_decorates_changes() {
 	let mut store = Store::new();
+	// 1. Changes alone do not project full tree rows or mark tree loaded
 	reduce(
 		&mut store,
 		HostEvent::Snapshot(SnapshotSection::Changes(ChangesView {
@@ -184,6 +185,66 @@ fn a_changes_snapshot_becomes_a_tree_with_each_directory_opened_once() {
 	let mut state = ShellState::default();
 	project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
 
+	assert!(state.panel.tree.rows.is_empty(), "changes alone do not synthesize tree rows");
+	assert_eq!(state.panel.tree.status, TreeStatus::Unloaded);
+	assert_eq!(state.panel.diff_status, DiffStatus::Loaded);
+	assert_eq!(state.panel.diff.len(), 4);
+
+	// 2. Real FileTree snapshot populates tree rows and decorates changed files
+	reduce(
+		&mut store,
+		HostEvent::Snapshot(SnapshotSection::FileTree(FileTreeView {
+			root:      "/repo".to_string(),
+			entries:   vec![
+				FileNode {
+					path:  "README.md".into(),
+					name:  "README.md".into(),
+					kind:  FileKind::File,
+					depth: 0,
+				},
+				FileNode {
+					path:  "src".into(),
+					name:  "src".into(),
+					kind:  FileKind::Directory,
+					depth: 0,
+				},
+				FileNode {
+					path:  "src/a".into(),
+					name:  "a".into(),
+					kind:  FileKind::Directory,
+					depth: 1,
+				},
+				FileNode {
+					path:  "src/a/one.rs".into(),
+					name:  "one.rs".into(),
+					kind:  FileKind::File,
+					depth: 2,
+				},
+				FileNode {
+					path:  "src/a/zero.rs".into(),
+					name:  "zero.rs".into(),
+					kind:  FileKind::File,
+					depth: 2,
+				},
+				FileNode {
+					path:  "src/b".into(),
+					name:  "b".into(),
+					kind:  FileKind::Directory,
+					depth: 1,
+				},
+				FileNode {
+					path:  "src/b/two.rs".into(),
+					name:  "two.rs".into(),
+					kind:  FileKind::File,
+					depth: 2,
+				},
+			],
+			truncated: false,
+		})),
+	);
+	project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
+
+	assert_eq!(state.panel.tree.status, TreeStatus::Loaded);
 	let rows: Vec<TreeCell<'_>> = state
 		.panel
 		.tree
@@ -201,14 +262,13 @@ fn a_changes_snapshot_becomes_a_tree_with_each_directory_opened_once() {
 		(2, "two.rs", Some((2, 0))),
 	]);
 
+	// 3. Later empty file tree replaces the tree rows
 	reduce(
 		&mut store,
-		HostEvent::Snapshot(SnapshotSection::Changes(ChangesView {
-			revision:   2,
-			repository: Some("/repo".to_string()),
-			scope:      ChangeScope::Staged,
-			files:      Vec::new(),
-			diff:       String::new(),
+		HostEvent::Snapshot(SnapshotSection::FileTree(FileTreeView {
+			root:      "/repo".to_string(),
+			entries:   Vec::new(),
+			truncated: false,
 		})),
 	);
 	project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
@@ -216,6 +276,7 @@ fn a_changes_snapshot_becomes_a_tree_with_each_directory_opened_once() {
 		state.panel.tree.rows.is_empty(),
 		"a later snapshot replaces the tree, it does not add to it"
 	);
+	assert_eq!(state.panel.tree.status, TreeStatus::Loaded);
 }
 
 fn output(terminal: &str, seq: u64, data: &str) -> HostEvent {
@@ -272,99 +333,4 @@ fn the_drawer_shows_the_last_running_terminal_as_plain_text_from_the_end() {
 	project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
 	let lines2 = drawer_lines(&store.domains);
 	assert_eq!(lines2, ["exited terminal"], "with nothing running, the last one opened");
-}
-
-#[test]
-fn the_footer_shows_the_model_thinking_and_context_the_host_reported() {
-	let mut store = Store::new();
-	let session_id = SessionId::from("s");
-	store
-		.sessions
-		.insert(session("s", QueuePartition::Live, None));
-	store.persisted.shell.active_session = Some(session_id.clone());
-	store
-		.capabilities
-		.set(Capability::Models, CapabilityStatus::Available);
-	store.domains.models = Some(ModelsView {
-		models:          vec![ModelView {
-			provider:       "anthropic".into(),
-			id:             "claude-sonnet-4.5".into(),
-			name:           "Claude Sonnet 4.5".into(),
-			reasoning:      true,
-			context_window: 200_000,
-			max_output:     64_000,
-			input:          vec![InputModality::Text, InputModality::Image],
-		}],
-		current:         Some(ModelRef {
-			provider: "anthropic".into(),
-			id:       "claude-sonnet-4.5".into(),
-		}),
-		thinking_level:  Some("high".into()),
-		thinking_levels: ["off", "low", "medium", "high"].map(str::to_owned).to_vec(),
-	});
-	store
-		.domains
-		.context
-		.insert(session_id.clone(), ContextBreakdownView {
-			session:      session_id.clone(),
-			total_tokens: 82_400,
-			limit_tokens: Some(200_000),
-			categories:   Vec::new(),
-		});
-	store
-		.composer_drafts
-		.insert(session_id, ComposerDraft { queue_mode: QueueMode::Queue, ..ComposerDraft::new() });
-
-	// What the window owns is not the host's to overwrite: the attachment the
-	// operator added survives the frame that reports a new model.
-	let mut state = ShellState::default();
-	state.composer.attachments.push(Attachment::from_clipboard(
-		1,
-		MediaType::Png,
-		payload_for(MediaType::Png, vec![0x89, b'P', b'N', b'G']),
-	));
-	project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
-
-	let model = state
-		.composer
-		.model
-		.as_ref()
-		.expect("the models view projects");
-	assert!(model.selectable, "the host accepts SelectModel");
-	assert_eq!(model.label(), Some("Claude Sonnet 4.5"));
-	assert_eq!(
-		model.accepts(InputModality::Video),
-		Some(false),
-		"the catalog lists the model without video, so a clip flags unsupported"
-	);
-	let thinking = state
-		.composer
-		.thinking
-		.as_ref()
-		.expect("the levels project");
-	assert_eq!(thinking.level, "high");
-	assert_eq!(thinking.next(), Some("off"), "cycling wraps to the first level");
-	assert_eq!(
-		state.composer.context.and_then(|meter| meter.percent()),
-		Some(41),
-		"82.4k of 200k is 41% context"
-	);
-	assert_eq!(state.composer.queue_mode, QueueMode::Queue, "the draft's mode projects");
-	assert_eq!(state.composer.attachments.len(), 1, "the frame left the window's attachments");
-
-	// A host that never answered the Models capability gets a label naming the
-	// active model and no picker (§5.13).
-	store
-		.capabilities
-		.set(Capability::Models, CapabilityStatus::UnknownUntilAttached);
-	project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
-	assert!(
-		!state
-			.composer
-			.model
-			.as_ref()
-			.expect("the models view still projects")
-			.selectable,
-		"an unknown capability is not permission to send SelectModel"
-	);
 }

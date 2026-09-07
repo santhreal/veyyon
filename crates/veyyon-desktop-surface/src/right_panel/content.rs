@@ -32,28 +32,50 @@ impl PanelTab {
 	}
 }
 
+/// Status of the diff snapshot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiffStatus {
+	/// Diff has not been fetched yet (initial unrequested state).
+	#[default]
+	Unloaded,
+	/// Diff request is in flight.
+	Loading,
+	/// Diff snapshot has been loaded from the host.
+	Loaded,
+	/// Diff request failed or is unavailable.
+	Failed,
+}
+
 /// All state rendered by the right panel (§5.6).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PanelContent {
 	/// Available tabs in the panel strip.
-	pub tabs:       Vec<PanelTab>,
+	pub tabs:               Vec<PanelTab>,
 	/// Currently selected active tab.
-	pub active_tab: PanelTab,
+	pub active_tab:         PanelTab,
 	/// Parsed diff files and hunks for the Changes tab.
-	pub diff:       Vec<DiffFile>,
+	pub diff:               Vec<DiffFile>,
+	/// Loading status of the diff.
+	pub diff_status:        DiffStatus,
 	/// Active file snapshot for the File tab.
-	pub file:       Option<FileView>,
+	pub file:               Option<FileView>,
 	/// Filesystem directory tree for the Tree tab.
-	pub tree:       TreeContent,
+	pub tree:               TreeContent,
 	/// Layout mode for diff rendering (unified vs split).
-	pub diff_mode:  DiffMode,
+	pub diff_mode:          DiffMode,
+	/// Reason if the panel is unavailable.
+	pub unavailable_reason: Option<String>,
 }
 
 impl PanelContent {
 	/// Whether the right panel has any content to display.
 	#[must_use]
 	pub const fn is_empty(&self) -> bool {
-		self.diff.is_empty() && self.file.is_none() && self.tree.rows.is_empty()
+		self.tabs.is_empty()
+			&& self.diff.is_empty()
+			&& self.file.is_none()
+			&& self.tree.rows.is_empty()
 	}
 
 	/// Total additions across all changed diff files.
@@ -136,14 +158,29 @@ pub struct FileView {
 	pub binary:    bool,
 }
 
+/// Status of the workspace directory tree snapshot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TreeStatus {
+	/// Tree has not been fetched yet (initial unrequested state).
+	#[default]
+	Unloaded,
+	/// Tree request is in flight.
+	Loading,
+	/// Tree snapshot has been loaded from the host.
+	Loaded,
+	/// Tree request failed or is unavailable.
+	Failed,
+}
+
 /// The directory hierarchy for the Tree tab.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct TreeContent {
 	pub rows:           Vec<TreeRowItem>,
 	pub selected_path:  Option<String>,
 	pub expanded_paths: BTreeSet<String>,
+	pub status:         TreeStatus,
 }
-
 /// An individual row item in the file tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TreeRowItem {

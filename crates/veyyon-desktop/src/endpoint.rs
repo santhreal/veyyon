@@ -58,7 +58,7 @@ pub enum HostSpawnError {
 	#[error("`veyyon gui` printed an endpoint that does not parse: {0}")]
 	BadEndpoint(#[from] EndpointError),
 	#[error("`veyyon gui` reported {endpoint} but it accepted no connection within {waited_ms}ms")]
-	NotListening { endpoint: String, waited_ms: u64 },
+	NotListening { endpoint: Endpoint, waited_ms: u64 },
 }
 
 /// Target socket connection descriptor for the desktop transport.
@@ -263,9 +263,9 @@ pub fn spawn_child_host(cwd: &Path) -> Result<ChildHostHandle, HostSpawnError> {
 		.name("veyyon-gui-stdout".to_string())
 		.spawn(move || {
 			for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-				if lines_tx.send(line).is_err() {
-					break;
-				}
+				// The child may become ready after the startup deadline.
+				// Keep its pipe open even after the waiting caller returns.
+				let _ = lines_tx.send(line);
 			}
 		})
 		.map_err(|err| HostSpawnError::SpawnFailed(bin.clone(), err.to_string()))?;
@@ -317,7 +317,7 @@ pub fn spawn_child_host(cwd: &Path) -> Result<ChildHostHandle, HostSpawnError> {
 	while !accepts_connection(&endpoint) {
 		if Instant::now() >= deadline {
 			return Err(HostSpawnError::NotListening {
-				endpoint:  endpoint.formatted(),
+				endpoint:  endpoint.clone(),
 				waited_ms: SPAWN_WAIT_MS,
 			});
 		}
@@ -332,19 +332,18 @@ pub fn spawn_child_host(cwd: &Path) -> Result<ChildHostHandle, HostSpawnError> {
 pub enum AttachError {
 	#[error(transparent)]
 	Endpoint(#[from] EndpointError),
-	#[error(transparent)]
-	Spawn(#[from] HostSpawnError),
 	#[error(
 		"no home directory, so no default socket; pass --endpoint or set {VEYYON_GUI_ENDPOINT_ENV}"
 	)]
 	NoAgentDir,
 }
 
-/// Where the window attaches, and the host it started to get there.
+/// The target endpoint and the outcome of starting a host when required.
+/// A startup failure does not prevent transport retries against the target.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Attachment {
 	pub endpoint: Endpoint,
-	pub spawned:  Option<ChildHostHandle>,
+	pub spawned:  Result<Option<ChildHostHandle>, HostSpawnError>,
 }
 
 /// Resolves the connect-or-spawn topology (§8.11).
@@ -359,14 +358,19 @@ pub fn connect_or_spawn(explicit: Option<&str>, cwd: &Path) -> Result<Attachment
 	if explicit_given {
 		let endpoint =
 			Endpoint::resolve(explicit, agent_dir.as_deref().unwrap_or_else(|| Path::new(".")))?;
-		return Ok(Attachment { endpoint, spawned: None });
+		return Ok(Attachment { endpoint, spawned: Ok(None) });
 	}
 
 	let agent_dir = agent_dir.ok_or(AttachError::NoAgentDir)?;
 	let endpoint = Endpoint::default_unix(&agent_dir);
 	if accepts_connection(&endpoint) {
-		return Ok(Attachment { endpoint, spawned: None });
+		return Ok(Attachment { endpoint, spawned: Ok(None) });
 	}
-	let spawned = spawn_child_host(cwd)?;
-	Ok(Attachment { endpoint: spawned.endpoint.clone(), spawned: Some(spawned) })
+	let spawned = spawn_child_host(cwd);
+	let endpoint = match &spawned {
+		Ok(child) => child.endpoint.clone(),
+		Err(HostSpawnError::NotListening { endpoint, .. }) => endpoint.clone(),
+		Err(_) => endpoint,
+	};
+	Ok(Attachment { endpoint, spawned: spawned.map(Some) })
 }

@@ -34,17 +34,17 @@ pub use self::{
 	actions::actions_for,
 	composer::{project_composer, project_turn_phase},
 	connection::{connection_notice, connection_phase},
-	controls::{NO_SESSION_OPEN, project_controls},
+	controls::{NO_SESSION_OPEN, contextual_surface_for_action, project_controls},
 	drawer::{drawer_lines, project_drawer, strip_control_sequences},
 	failure::land_failure,
 	overlay::project_overlay,
-	panel::{project_panel, tree_rows_from_changes},
+	panel::project_panel,
 	queue::elapsed_label,
 	transcript::PANE_LINE_CEILING,
 };
 use self::{
 	cards::cards,
-	queue::{badge, partition_ids, row, section},
+	queue::{badge, partition_ids, row, row_meta, section},
 	transcript::{push_entry, turns},
 };
 
@@ -157,10 +157,52 @@ pub fn project<S: std::hash::BuildHasher>(
 		.map(cards)
 		.unwrap_or_default();
 
-	state.panel = project_panel(&store.domains, &state.panel);
+	state.panel = project_panel(&store.domains, &store.capabilities, &state.panel);
 	state.turn = project_turn_phase(store, active);
 	project_composer(store, active, &mut state.composer);
 	project_drawer(&store.domains, emulators, now_ms, &mut state.drawer);
 	state.connection = connection_phase(store);
 	project_overlay(store, state);
+}
+
+/// Updates elapsed and remaining time labels across queue rows and drawer
+/// processes without a full transcript or composer reprojection.
+///
+/// Returns `true` if any visible time label changed, allowing the shell to
+/// repaint only when the elapsed seconds tick over.
+pub fn project_clock(
+	store: &Store,
+	index: &SessionIndex,
+	now_ms: u64,
+	state: &mut ShellState,
+) -> bool {
+	let mut changed = false;
+	for (_section, rows) in &mut state.sections {
+		for row in rows {
+			if let Some(session_id) = index.session_of(row.id)
+				&& let Some(session) = store.sessions.get(session_id)
+			{
+				let new_meta = row_meta(session, now_ms);
+				if row.meta != new_meta {
+					row.meta = new_meta;
+					changed = true;
+				}
+			}
+		}
+	}
+	for process in &mut state.drawer.processes {
+		if let Some(p) = store
+			.domains
+			.processes
+			.iter()
+			.find(|d| d.name == process.name && d.pid == process.pid)
+		{
+			let new_elapsed = elapsed_label(now_ms.saturating_sub(p.started_at_ms));
+			if process.elapsed_label != new_elapsed {
+				process.elapsed_label = new_elapsed;
+				changed = true;
+			}
+		}
+	}
+	changed
 }

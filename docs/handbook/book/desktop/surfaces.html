@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-28222852.js";
+            window.path_to_searchindex_js = "../searchindex-8394baf0.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-d6acdfa6.js"></script>
@@ -374,8 +374,15 @@ state.</p>
 <code>Escape</code> returns to the parent group and restores its search text. At the root,
 <code>Escape</code> closes the palette. Close dismisses the surface directly.
 Navigation leaves the composer draft and attachments unchanged.</p>
+<p>General settings renders viewport-adjacent rows as the list scrolls. Value updates
+preserve the scroll position. The page header remains visible at the minimum
+window height.</p>
 <p>Command search also accepts <code>/providers</code>, <code>/login</code>, and <code>/extensions</code> for the
 corresponding focused destinations.</p>
+<h2 id="terminal-input"><a class="header" href="#terminal-input">Terminal input</a></h2>
+<p>Click the terminal grid to focus it. Terminal input is sent to the host without
+local echo. An overlaid drawer blocks pointer interaction with the composer
+beneath it.</p>
 <h2 id="record-native-interactions"><a class="header" href="#record-native-interactions">Record native interactions</a></h2>
 <p>Build the current executable with <code>cargo build -p veyyon-desktop</code> and build the
 recorder with <code>proof/docker/build-recorder.sh</code>. Set <code>DESKTOP_BINARY</code> to the absolute
@@ -389,6 +396,9 @@ SCENE_WIDTH=1180 SCENE_HEIGHT=800 \
 SCENE_COMMAND='env VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json VEYYON_BIN=/repo/packages/coding-agent/src/cli.ts VEYYON_DESKTOP_TOKENS_DIR=/repo/crates/veyyon-desktop-tokens/tokens VEYYON_DESKTOP_THEMES_DIR=/repo/crates/veyyon-desktop-tokens/themes /desktop-bin/veyyon-desktop' \
 proof/docker/record-x11.sh proof/scenes/desktop-composer.sh
 </code></pre>
+<p>For NVIDIA CDI, set <code>PROOF_GPU_DEVICE=nvidia.com/gpu=all</code> and use
+<code>VK_DRIVER_FILES=/etc/vulkan/icd.d/nvidia_icd.json</code> in <code>SCENE_COMMAND</code>.
+The host’s CDI specification must match its current driver and device nodes.</p>
 <p>The scene uses automatic host startup in the container’s isolated home. It checks
 the initial session snapshot and waits for the session-creation interaction to
 produce a new host session before entering a draft. It records model-picker
@@ -399,11 +409,19 @@ exercise a completed host response, transcript paging, find, contextual panel
 transitions, and session creation through command search. Set
 <code>PROOF_LLM_BASE_URL</code> to an endpoint reachable from the recorder container.</p>
 <p>Use <code>proof/scenes/desktop-surface-navigation.sh</code> with the same capture environment
-to exercise command groups, focused Account and Settings pages, parent navigation,
-and queue action visibility.</p>
+to exercise command groups, focused Account and Settings pages, settings scrolling,
+parent navigation, draft-focus restoration, and queue action visibility.</p>
+<p>Use <code>proof/scenes/desktop-terminal.sh</code> to open the terminal drawer, focus its grid,
+and execute a shell command. Set <code>SCENE_WIDTH</code> to <code>800</code> and <code>1180</code> for overlaid and
+docked drawers.</p>
 <p>Output is written to <code>proof/captures/x11/</code>, or the absolute directory in <code>OUT_DIR</code>.
 The <a href="../foundations/verification.html">capture requirements</a> specify paired static
 frames and animated clips. Headless scene PNGs do not replace native captures.</p>
+<p>Native Before recording also requires <code>PROOF_NATIVE_BEFORE_BINARY</code> to identify
+the executable built from the baseline source. The recorder rejects missing,
+non-executable, or byte-identical Before and After binaries.
+For a native-only change, set <code>PROOF_BASE_REF=HEAD</code> to retain the same host source
+in both arms.</p>
 <p>See <a href="motion.html">Motion</a> for transition behavior.</p>
 
                     </main>

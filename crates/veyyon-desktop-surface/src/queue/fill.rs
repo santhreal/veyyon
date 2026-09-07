@@ -1,26 +1,45 @@
-//! Height budgeting and visibility calculations for the queue rail (§5.1,
+//! Queue rail visibility, paging, and partition layout calculations (§5.1,
 //! §5.2).
 //!
-//! Fits queue sections into available vertical space, accounting for content
-//! insets, section headers, row heights, and the pinned rail footer.
+//! Defines visibility rules for the scrollable queue rail, handling bounded
+//! initial paging for archival sections and height budgeting metrics.
 
 use veyyon_desktop_tokens::QueueSurfaceTokens;
 
 use crate::model::{Row, Section};
 
-/// How many of a section's rows the rail pages in.
+/// How many of a section's rows the rail initially pages in.
 ///
-/// `Parked` is paged because it is unbounded — a queue running for a week holds
-/// more parked sessions than a rail has height, and the rest are reached by the
-/// page control rather than by scrolling past them. Every other section offers
-/// all of its rows to the height budget below.
+/// `Parked` is paged because it is unbounded — a queue running for a long
+/// period holds more parked sessions than an initial view requires, and the
+/// rest are reached through the pagination control and scrollable navigation.
+/// Every other partition offers all of its rows.
 #[must_use]
 pub fn visible_rows(section: Section, count: usize, geometry: &QueueSurfaceTokens) -> usize {
+	visible_rows_with_limit(section, count, geometry.parked_initial_page_size)
+}
+
+/// How many of a section's rows the rail pages in given an explicit parked
+/// limit.
+#[must_use]
+pub fn visible_rows_with_limit(section: Section, count: usize, parked_limit: usize) -> usize {
 	if section == Section::Parked {
-		geometry.parked_initial_page_size.min(count)
+		parked_limit.min(count)
 	} else {
 		count
 	}
+}
+
+/// Computes paged visibility for all sections based on active parked limit.
+#[must_use]
+pub fn paged_rail_fill(sections: &[(Section, Vec<Row>)], parked_limit: usize) -> RailFill {
+	let total: usize = sections.iter().map(|(_, rows)| rows.len()).sum();
+	let drawn: Vec<usize> = sections
+		.iter()
+		.map(|(section, rows)| visible_rows_with_limit(*section, rows.len(), parked_limit))
+		.collect();
+	let shown: usize = drawn.iter().sum();
+	RailFill { drawn, hidden: total.saturating_sub(shown) }
 }
 
 /// How many rows of each section the rail has the height to draw, and how many
@@ -33,17 +52,12 @@ pub struct RailFill {
 	pub hidden: usize,
 }
 
-/// Fits the sections into the rail's height.
+/// Fits the sections into the rail's height budget.
 ///
-/// The rail cannot scroll — this fork exposes no scroll on a plain container —
-/// so a rail holding more rows than it has height must stop drawing rows rather
-/// than lay them out past the window's lower edge, where they are painted
-/// clipped and still answer a click nobody can aim. The remainder is stated in
-/// one row instead, and that row's own height is taken out of the budget before
-/// any section is fitted.
-///
-/// The pinned footer height is subtracted from the budget upfront so the
-/// footer control remains accessible at every height.
+/// Calculates how many rows fit within a given vertical pixel budget, taking
+/// into account content insets, section headers, row heights, and the pinned
+/// footer. The pinned footer height is subtracted from the budget upfront so
+/// the footer control remains accessible at every height.
 #[must_use]
 pub fn rail_fill(
 	sections: &[(Section, Vec<Row>)],

@@ -5,16 +5,21 @@
 //! requiring is a compile error here until it has a state. The sixteen named
 //! scenes past the required set are built by name.
 
+#[path = "capability/mod.rs"]
+mod capability;
+pub use capability::{action_of, capability_gate, target_surface_of};
+#[path = "error_scope.rs"]
+mod error_scope_builder;
+pub use error_scope_builder::{error_scope, error_scope_baseline};
 use strum::IntoEnumIterator as _;
 use veyyon_desktop_model::{
-	ApprovalInteraction, AuthFlowState, AuthFlowView, BadgeKind, BlockKind, Capability,
-	CapabilityStatus, ConnectionState, ConnectionStateKind, ContextBreakdownView, ErrorScope,
-	HostActionKind, InputModality, InteractionId, MessageRole, ModelRef, ModelView, ModelsView,
-	PendingDecisions, QueuePartition, RequestId, SessionBadge, SettingEntry, SettingKind, SurfaceId,
-	action_to_capability,
+	ApprovalInteraction, AuthFlowState, AuthFlowView, BadgeKind, BlockKind, ConnectionState,
+	ConnectionStateKind, ContextBreakdownView, InputModality, InteractionId, MessageRole, ModelRef,
+	ModelView, ModelsView, PendingDecisions, QueuePartition, SessionBadge, SettingEntry,
+	SettingKind,
 };
 use veyyon_desktop_scene::{
-	FixtureText, GateVariant, PrimitiveKind, RequiredState, RowShape, Scene, StateDescriptor,
+	FixtureText, PrimitiveKind, RequiredState, RowShape, Scene, StateDescriptor,
 	content_block_fixture, session_badge_fixture, transcript_entry_fixture,
 };
 use veyyon_desktop_surface::{Overlay, PaletteState};
@@ -118,59 +123,6 @@ fn connection_state(kind: ConnectionStateKind) -> ConnectionState {
 			ConnectionState::Fatal { message: "protocol version mismatch".to_string() }
 		},
 	}
-}
-
-/// The first host action a capability gates, if any gates one.
-fn action_of(capability: Capability) -> Option<HostActionKind> {
-	HostActionKind::iter().find(|kind| action_to_capability(*kind) == capability)
-}
-
-/// The attached window with one capability in one gate state.
-fn capability_gate(
-	name: &str,
-	capability: Capability,
-	gate: GateVariant,
-) -> Result<Built, SceneBuildError> {
-	let mut seed = Seed::attached();
-	let session = seed.session(QueuePartition::Live, None);
-	seed.exchange(&session, Seed::prose());
-	let status = match gate {
-		GateVariant::Enabled => CapabilityStatus::Available,
-		GateVariant::Unknown => CapabilityStatus::UnknownUntilAttached,
-		GateVariant::Unavailable => CapabilityStatus::Unavailable {
-			reason: format!("{} is not available on this host", capability.as_str()),
-		},
-		GateVariant::Pending => {
-			let action = action_of(capability).ok_or_else(|| SceneBuildError::Unreachable {
-				scene:  name.to_string(),
-				reason: format!(
-					"no host action is gated by {}, so no request of it can be in flight",
-					capability.as_str()
-				),
-			})?;
-			seed.registry.register(
-				RequestId(1),
-				action,
-				SurfaceId::GlobalTitlebarLine,
-				SCENE_CLOCK_MS - 500,
-				30_000,
-			);
-			CapabilityStatus::Available
-		},
-	};
-	seed.store.capabilities.set(capability, status);
-	let mut built = seed.finish();
-	built.composer_text = FixtureText::MESSAGE_TYPICAL.to_string();
-	Ok(built)
-}
-
-/// The attached window after a failure of one scope with no request.
-fn error_scope(scope: ErrorScope) -> Built {
-	let mut seed = Seed::attached();
-	let session = seed.session(QueuePartition::Live, None);
-	seed.exchange(&session, Seed::prose());
-	seed.fail(scope);
-	seed.finish()
 }
 
 fn custom(name: &str, surface: &str, state: &str) -> Result<SceneRoot, SceneBuildError> {

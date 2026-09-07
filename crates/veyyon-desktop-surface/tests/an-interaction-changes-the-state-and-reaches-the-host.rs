@@ -67,6 +67,7 @@ fn every_intent() -> Vec<Intent> {
 		Intent::RetryControl(SurfaceId::ConnectionRetryButton),
 		Intent::DismissError(SurfaceId::ConnectionRetryButton),
 		Intent::OpenOverlay(Box::new(Overlay::Palette(PaletteState::default()))),
+		Intent::Navigate(veyyon_desktop_surface::navigation::SurfaceRoute::Account),
 		Intent::CloseOverlay,
 		Intent::PaletteQuery("find".to_owned()),
 		Intent::PaletteMove(1),
@@ -83,6 +84,10 @@ fn every_intent() -> Vec<Intent> {
 		Intent::PinSession(7),
 		Intent::DeferSession(7),
 		Intent::ParkSession(7),
+		Intent::UnparkSession(7),
+		Intent::RecallSession(7),
+		Intent::DeleteSession(7),
+		Intent::BranchSession(7),
 		Intent::FilterQueue("test".to_owned()),
 		Intent::NewSession,
 		Intent::CloseTabOrPark,
@@ -92,7 +97,8 @@ fn every_intent() -> Vec<Intent> {
 		Intent::StepTurn(1),
 		Intent::ToggleBlock,
 		Intent::ToggleQueue,
-		Intent::TogglePanel,
+		Intent::SetPanel { open: true },
+		Intent::SetPanel { open: false },
 		Intent::SelectDrawerTab(1),
 		Intent::TerminalInput(vec![b'a']),
 		Intent::ResizeTerminal { cols: 80, rows: 24 },
@@ -137,6 +143,7 @@ fn every_intent() -> Vec<Intent> {
 			| Intent::RetryControl(_)
 			| Intent::DismissError(_)
 			| Intent::OpenOverlay(_)
+			| Intent::Navigate(_)
 			| Intent::CloseOverlay
 			| Intent::PaletteQuery(_)
 			| Intent::PaletteMove(_)
@@ -153,6 +160,10 @@ fn every_intent() -> Vec<Intent> {
 			| Intent::PinSession(_)
 			| Intent::DeferSession(_)
 			| Intent::ParkSession(_)
+			| Intent::UnparkSession(_)
+			| Intent::RecallSession(_)
+			| Intent::DeleteSession(_)
+			| Intent::BranchSession(_)
 			| Intent::FilterQueue(_)
 			| Intent::NewSession
 			| Intent::CloseTabOrPark
@@ -162,7 +173,7 @@ fn every_intent() -> Vec<Intent> {
 			| Intent::StepTurn(_)
 			| Intent::ToggleBlock
 			| Intent::ToggleQueue
-			| Intent::TogglePanel
+			| Intent::SetPanel { .. }
 			| Intent::SelectDrawerTab(_)
 			| Intent::TerminalInput(_)
 			| Intent::ResizeTerminal { .. }

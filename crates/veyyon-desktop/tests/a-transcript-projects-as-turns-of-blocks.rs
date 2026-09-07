@@ -25,7 +25,7 @@ use veyyon_desktop_model::{
 	BlockKind, ContentBlock, EntryId, HostEvent, MessageRole, SessionId, SnapshotSection, Store,
 	StreamingMessageState, Versioned, reduce,
 };
-use veyyon_desktop_surface::{Badge, Block, ShellState, Turn};
+use veyyon_desktop_surface::{Artifact, Badge, Block, ShellState, Turn};
 
 fn block_of(kind: BlockKind) -> ContentBlock {
 	match kind {
@@ -99,7 +99,7 @@ fn a_turn_is_what_the_operator_said_and_everything_that_came_back() {
 		},
 	]));
 	tree.append(entry("t1", Some("a1"), MessageRole::ToolResult, vec![ContentBlock::ToolResult {
-		tool:     "read".to_string(),
+		tool:     "c".to_string(),
 		content:  serde_json::json!("12 lines\nmore"),
 		is_error: false,
 	}]));
@@ -115,16 +115,42 @@ fn a_turn_is_what_the_operator_said_and_everything_that_came_back() {
 	let blocks = agent_blocks(&state.transcript[1]);
 	assert!(matches!(&blocks[0], Block::Prose(p) if p == "reading"));
 	assert!(
-		matches!(&blocks[1], Block::Invoke { tool, target, result }
-			if tool == "read" && target == "src/lib.rs" && result.as_deref() == Some("12 lines")),
-		"the result attaches to its call, first line only: {:?}",
+		matches!(&blocks[1], Block::Invoke { tool, target, result, .. }
+			if tool == "read" && target == "src/lib.rs" && result.as_deref() == Some("12 lines\nmore")),
+		"the result attaches to its call with disclosure content intact: {:?}",
 		blocks[1]
 	);
 	assert!(matches!(&blocks[2], Block::Prose(p) if p == "done"));
 }
 
 #[test]
-fn every_block_kind_draws_something() {
+fn empty_entries_preserve_branch_links_without_creating_visible_turns() {
+	for role in MessageRole::ALL {
+		let mut store = Store::new();
+		store.persisted.shell.active_session = Some(SessionId::from("s"));
+		let tree = store.transcripts.entry(SessionId::from("s")).or_default();
+		tree.append(entry("hidden", None, role, vec![]));
+		let mut state = ShellState::default();
+		let mut index = SessionIndex::new();
+		project(&store, &mut index, &HashMap::new(), NOW_MS, &mut state);
+		assert!(state.transcript.is_empty(), "{role:?} has no displayable content");
+		let tree = store
+			.transcripts
+			.get_mut(&SessionId::from("s"))
+			.expect("retained tree");
+		tree.append(entry("visible", Some("hidden"), MessageRole::User, vec![ContentBlock::Text {
+			text: "A visible prompt".into(),
+		}]));
+		project(&store, &mut index, &HashMap::new(), NOW_MS, &mut state);
+		assert!(
+			matches!(state.transcript.as_slice(), [Turn::Operator(text)] if text == "A visible prompt"),
+			"{role:?}: hidden parents must not introduce empty turns"
+		);
+	}
+}
+
+#[test]
+fn every_block_kind_preserves_its_display_register() {
 	for kind in BlockKind::iter() {
 		let mut store = Store::new();
 		store.persisted.shell.active_session = Some(SessionId::from("s"));
@@ -134,6 +160,32 @@ fn every_block_kind_draws_something() {
 		project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
 		let blocks = agent_blocks(&state.transcript[0]);
 		assert_eq!(blocks.len(), 1, "{kind:?} draws one block, got {blocks:?}");
+		let expected_note = match kind {
+			BlockKind::ModelChange => Some(("Model", "p/m", false)),
+			BlockKind::ThinkingChange => Some(("Thinking", "high", false)),
+			BlockKind::Lifecycle => Some(("Lifecycle", "start", false)),
+			BlockKind::Summary => Some(("Summary", "compaction: sum", true)),
+			BlockKind::Text
+			| BlockKind::Image
+			| BlockKind::FileMention
+			| BlockKind::Video
+			| BlockKind::Thinking
+			| BlockKind::RedactedThinking
+			| BlockKind::ToolCall
+			| BlockKind::ToolResult
+			| BlockKind::Execution
+			| BlockKind::Diff
+			| BlockKind::Fallback
+			| BlockKind::Unknown => None,
+		};
+		if let Some((label, text, boundary)) = expected_note {
+			assert_eq!(blocks, &[Block::Note { label, text: text.into(), boundary }], "{kind:?}");
+		}
+		if kind == BlockKind::FileMention {
+			assert!(matches!(&blocks[0], Block::Artifact(Artifact::File {
+				path, has_content: false, lines: None, bytes: None, unavailable_reason: None, image: None
+			}) if path == "README.md"));
+		}
 	}
 }
 
@@ -222,7 +274,7 @@ fn a_pane_is_held_to_its_ceiling_with_the_remainder_counted() {
 	let Block::Pane { caption, lines } = &agent_blocks(&state.transcript[0])[0] else {
 		panic!("an execution is a pane");
 	};
-	assert_eq!(caption, "seq · exit 2");
+	assert_eq!(caption, "Shell: seq · exit 2");
 	assert_eq!(lines.len(), PANE_LINE_CEILING + 1);
 	assert_eq!(lines.last().map(String::as_str), Some("… 5 more lines"));
 }

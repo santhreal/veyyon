@@ -17,6 +17,7 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		Intent::SelectTab(index) => {
 			if let Some(&tab) = state.panel.tabs.get(*index) {
 				state.panel.active_tab = tab;
+				state.keymap.panel_collapsed = false;
 			}
 		},
 		Intent::SetDrawer { open } => state.drawer_open = *open,
@@ -72,6 +73,18 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		},
 		Intent::OpenOverlay(overlay) => {
 			state.overlay = Some(overlay.as_ref().clone());
+		},
+		Intent::Navigate(route) => {
+			let mut destination = route.overlay();
+			if let (Some(Overlay::Settings(current)), Overlay::Settings(next)) =
+				(&state.overlay, &mut destination)
+			{
+				let page = next.page;
+				next.clone_from(current);
+				next.page = page;
+				next.route = Some(*route);
+			}
+			state.overlay = Some(destination);
 		},
 		Intent::CloseOverlay => {
 			state.overlay = None;
@@ -165,16 +178,55 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		Intent::ParkSession(id) => {
 			state.keymap.parked_session = Some(*id);
 		},
+		Intent::UnparkSession(id) => {
+			if state.keymap.parked_session == Some(*id) {
+				state.keymap.parked_session = None;
+			}
+		},
+		Intent::RecallSession(id) => {
+			if state.keymap.deferred_session == Some(*id) {
+				state.keymap.deferred_session = None;
+			}
+		},
+		Intent::DeleteSession(_) | Intent::BranchSession(_) => {},
 		Intent::FilterQueue(filter) => {
-			state.keymap.queue_filter = if filter.is_empty() {
+			let trimmed = filter.trim();
+			state.keymap.queue_filter = if trimmed.is_empty() {
 				None
 			} else {
 				Some(filter.clone())
 			};
+			if let Some(q) = &state.keymap.queue_filter {
+				let needle = q.trim().to_lowercase();
+				let current_matches =
+					state
+						.sections
+						.iter()
+						.flat_map(|(_, rows)| rows.iter())
+						.any(|r| {
+							r.id == state.current_id
+								&& (r.title.to_lowercase().contains(&needle)
+									|| r.subtitle.to_lowercase().contains(&needle))
+						});
+				if !current_matches {
+					if let Some(first) = state
+						.sections
+						.iter()
+						.flat_map(|(_, rows)| rows.iter())
+						.find(|r| {
+							r.title.to_lowercase().contains(&needle)
+								|| r.subtitle.to_lowercase().contains(&needle)
+						}) {
+						state.current_id = first.id;
+						state.title = first.title.clone();
+					}
+				}
+			}
 		},
 		Intent::NewSession => {
 			state.current_id = 0;
 			state.title = "new session".to_string();
+			state.keymap.queue_filter = None;
 		},
 		Intent::CloseTabOrPark => {
 			if state.panel.tabs.len() > 1 {
@@ -195,19 +247,34 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		},
 		Intent::MoveQueueSelection(delta) => {
 			state.keymap.selection_delta = *delta;
-			let all_rows: Vec<u64> = state
+			let needle = state
+				.keymap
+				.queue_filter
+				.as_ref()
+				.map(|q| q.trim().to_lowercase())
+				.filter(|s| !s.is_empty());
+			let matching_rows: Vec<u64> = state
 				.sections
 				.iter()
-				.flat_map(|(_, rows)| rows.iter().map(|r| r.id))
+				.flat_map(|(_, rows)| rows.iter())
+				.filter(|r| {
+					if let Some(needle) = &needle {
+						r.title.to_lowercase().contains(needle)
+							|| r.subtitle.to_lowercase().contains(needle)
+					} else {
+						true
+					}
+				})
+				.map(|r| r.id)
 				.collect();
-			if !all_rows.is_empty() {
-				let current_idx = all_rows
+			if !matching_rows.is_empty() {
+				let current_idx = matching_rows
 					.iter()
 					.position(|&id| id == state.current_id)
 					.unwrap_or(0);
 				let next_idx =
-					((current_idx as i64 + *delta as i64).max(0) as usize).min(all_rows.len() - 1);
-				let next_id = all_rows[next_idx];
+					((current_idx as i64 + *delta as i64).max(0) as usize).min(matching_rows.len() - 1);
+				let next_id = matching_rows[next_idx];
 				state.current_id = next_id;
 				if let Some(title) = state.row(next_id).map(|r| r.title.clone()) {
 					state.title = title;
@@ -221,12 +288,9 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 			state.keymap.find_open = !state.keymap.find_open;
 		},
 		Intent::StepTurn(delta) => {
-			state.keymap.focused_turn = Some(
-				state
-					.keymap
-					.focused_turn
-					.map_or(0, |t| (t as i64 + *delta as i64).max(0) as usize),
-			);
+			let current = state.keymap.focused_turn.unwrap_or(0);
+			state.keymap.focused_turn = Some((current as i64 + *delta as i64).max(0) as usize);
+			state.keymap.pending_turn_focus = true;
 		},
 		Intent::ToggleBlock => {
 			state.keymap.focused_block_collapsed = !state.keymap.focused_block_collapsed;
@@ -234,13 +298,14 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		Intent::ToggleQueue => {
 			state.keymap.queue_collapsed = !state.keymap.queue_collapsed;
 		},
-		Intent::TogglePanel => {
-			state.keymap.panel_collapsed = !state.keymap.panel_collapsed;
+		Intent::SetPanel { open } => {
+			state.keymap.panel_collapsed = !*open;
 		},
 		Intent::SetDiffMode(mode) => {
 			state.panel.diff_mode = *mode;
 		},
 		Intent::OpenFile(path) => {
+			state.keymap.panel_collapsed = false;
 			state.panel.active_tab = crate::right_panel::PanelTab::File;
 			state.panel.tree.selected_path = Some(path.clone());
 		},
@@ -272,6 +337,9 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 				diff_file.rows.splice(*row..=*row, expanded_rows);
 			}
 		},
-		Intent::SelectChangeScope(_) => {},
+		Intent::SelectChangeScope(_) => {
+			state.keymap.panel_collapsed = false;
+			state.panel.active_tab = crate::right_panel::PanelTab::Diff;
+		},
 	}
 }

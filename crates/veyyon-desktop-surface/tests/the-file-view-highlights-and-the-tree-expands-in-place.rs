@@ -13,8 +13,8 @@ use veyyon_desktop_kit::{ColorRole, load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_model::DiffMode;
 use veyyon_desktop_scene::headless::{RenderOptions, headless_context, render_view_captured};
 use veyyon_desktop_surface::{
-	Intent, PanelContent, PanelTab, ShellState, ShellView, TreeContent, TreeRowItem, install_tokens,
-	right_panel::highlight_source,
+	DiffStatus, Intent, PanelContent, PanelTab, ShellState, ShellView, TreeContent, TreeRowItem,
+	TreeStatus, install_tokens, right_panel::highlight_source,
 };
 use veyyon_gpui::{App, AppContext};
 
@@ -43,11 +43,12 @@ fn file_view_highlights_rust_syntax_onto_token_roles() {
 fn tree_expands_and_collapses_in_place_and_opens_file() {
 	let mut state = ShellState {
 		panel: PanelContent {
-			tabs:       vec![PanelTab::Diff, PanelTab::File, PanelTab::Tree],
-			active_tab: PanelTab::Tree,
-			diff:       Vec::new(),
-			file:       Some(highlight_source("src/lib.rs", "pub fn init() {}", false, false)),
-			tree:       TreeContent {
+			tabs:               vec![PanelTab::Diff, PanelTab::File, PanelTab::Tree],
+			active_tab:         PanelTab::Tree,
+			diff:               Vec::new(),
+			diff_status:        DiffStatus::Unloaded,
+			file:               Some(highlight_source("src/lib.rs", "pub fn init() {}", false, false)),
+			tree:               TreeContent {
 				rows:           vec![
 					TreeRowItem {
 						path:        "src".to_string(),
@@ -72,8 +73,10 @@ fn tree_expands_and_collapses_in_place_and_opens_file() {
 					s.insert("src".to_string());
 					s
 				},
+				status:         TreeStatus::Loaded,
 			},
-			diff_mode:  DiffMode::Unified,
+			diff_mode:          DiffMode::Unified,
+			unavailable_reason: None,
 		},
 		..ShellState::default()
 	};

@@ -12,7 +12,7 @@ use veyyon_desktop_kit::{
 use veyyon_desktop_tokens::QueueSurfaceTokens;
 use veyyon_gpui::{ClickEvent, Context, IntoElement, ParentElement, Styled, div, px};
 
-use crate::{Intent, ShellView, overlay::Overlay};
+use crate::{ShellView, navigation::SurfaceRoute};
 
 /// Renders the queue rail's bottom-pinned footer containing the settings gear.
 pub fn queue_footer(
@@ -33,7 +33,7 @@ pub fn queue_footer(
 				.variant(IconButtonVariant::Ghost)
 				.size(IconSize::Size16)
 				.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
-					view.dispatch(Intent::OpenOverlay(Box::new(Overlay::Settings(Box::default()))), cx);
+					view.navigate_surface(SurfaceRoute::Settings, cx);
 				})),
 		)
 }

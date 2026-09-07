@@ -9,10 +9,11 @@ mod content;
 mod process_list;
 
 use veyyon_desktop_kit::{ColorRole, MonoSizeStep, SpacingStep, TextWeight, TokenSet};
+use veyyon_desktop_model::{SessionId, SurfaceId};
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
 use veyyon_gpui::{
-	Context, Hsla, InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Styled, div, px,
-	rgb,
+	Context, Hsla, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
+	StatefulInteractiveElement, Styled, div, px, rgb,
 };
 
 pub use self::{
@@ -22,6 +23,7 @@ pub use self::{
 };
 use crate::{
 	Intent, ShellView,
+	controls::{ControlStates, hairline_for},
 	terminal::{Ink, NamedColor},
 };
 
@@ -90,6 +92,8 @@ pub fn resolve_indexed_color(idx: u8, tokens: &TokenSet) -> Hsla {
 pub fn terminal_drawer(
 	content: &DrawerContent,
 	height: f32,
+	controls: &ControlStates,
+	session_id: u64,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
@@ -99,7 +103,7 @@ pub fn terminal_drawer(
 			.flex_1()
 			.w_full()
 			.overflow_hidden()
-			.child(process_list(&content.processes, geometry, tokens, cx))
+			.child(process_list(&content.processes, controls, session_id, geometry, tokens, cx))
 	} else {
 		div()
 			.flex_1()
@@ -109,6 +113,7 @@ pub fn terminal_drawer(
 	};
 
 	div()
+		.occlude()
 		.w_full()
 		.h(px(height))
 		.flex_shrink_0()
@@ -118,7 +123,13 @@ pub fn terminal_drawer(
 		.border_t(px(geometry.chrome_resize_handle_line_px))
 		.border_color(tokens.color(ColorRole::Hairline))
 		.overflow_hidden()
-		.child(drawer_chrome(content, geometry, tokens, cx))
+		.child(drawer_chrome(content, controls, session_id, geometry, tokens, cx))
+		.children(hairline_for(
+			controls,
+			&SurfaceId::TerminalCreateButton(SessionId::from(session_id.to_string())),
+			tokens,
+			cx,
+		))
 		.child(body)
 }
 
@@ -135,6 +146,7 @@ fn render_terminal_grid(
 
 	let mut grid_el = div()
 		.id("terminal-grid")
+		.focusable()
 		.key_context("Terminal")
 		.flex()
 		.flex_col()
@@ -149,6 +161,7 @@ fn render_terminal_grid(
 				keystroke_to_terminal_bytes(&event.keystroke.key, event.keystroke.modifiers.control)
 			{
 				view.dispatch(Intent::TerminalInput(bytes), cx);
+				cx.stop_propagation();
 			}
 		}));
 
@@ -225,6 +238,9 @@ fn render_terminal_grid(
 #[must_use]
 pub fn keystroke_to_terminal_bytes(key: &str, ctrl: bool) -> Option<Vec<u8>> {
 	if ctrl {
+		if key == "space" || key == " " {
+			return Some(vec![0]);
+		}
 		if key.len() == 1 {
 			let b = key.as_bytes()[0].to_ascii_lowercase();
 			if b.is_ascii_lowercase() {
@@ -239,6 +255,9 @@ pub fn keystroke_to_terminal_bytes(key: &str, ctrl: bool) -> Option<Vec<u8>> {
 		"backspace" => Some(vec![0x7f]),
 		"tab" => Some(vec![b'\t']),
 		"escape" => Some(vec![0x1b]),
+		"space" => Some(vec![b' ']),
+		"delete" => Some(b"\x1b[3~".to_vec()),
+		"insert" => Some(b"\x1b[2~".to_vec()),
 		"up" => Some(b"\x1b[A".to_vec()),
 		"down" => Some(b"\x1b[B".to_vec()),
 		"right" => Some(b"\x1b[C".to_vec()),

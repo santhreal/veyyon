@@ -6,72 +6,23 @@
 //! reload, attaches to a GUI host — starting one when nothing listens — and
 //! runs the GPUI event loop with the host's events projected onto the shell.
 
-use std::{cell::RefCell, collections::HashMap, env, process, rc::Rc};
+mod host_view;
+mod request_surface;
+
+use std::{env, process};
 
 use clap::Parser as _;
 use veyyon_desktop::{
-	HostLink, SessionIndex, actions_for,
 	cli::{Cli, Command},
-	connect_or_spawn, current_timestamp_ms, discover_asset_paths, land_failure, load_startup_bundle,
-	project,
-	project::connection_notice,
-	project_controls, request_frame, scene, start_token_supervision,
+	connect_or_spawn, discover_asset_paths, load_startup_bundle, scene, start_token_supervision,
 };
-use veyyon_desktop_model::{HostEvent, RequestRegistry, SessionId, Store, SurfaceId, reduce};
-use veyyon_desktop_surface::{
-	Intent, Keymap, ShellState, ShellView, damage::regions_changed, install_tokens,
-	terminal::TerminalEmulator,
-};
+use veyyon_desktop_surface::{Keymap, ShellState, ShellView, install_tokens};
 use veyyon_desktop_tokens::TokenReloadMessage;
 use veyyon_gpui::{
 	App, AppContext, Application, AsyncApp, Bounds, Point, Size, TitlebarOptions, WindowBounds,
 	WindowOptions, point, px,
 };
 
-/// The window's side of the host: the protocol model, the row identities, and
-/// the link requests go out on. One owner, on the UI thread.
-struct Host {
-	store:     Store,
-	index:     SessionIndex,
-	link:      HostLink,
-	registry:  RequestRegistry,
-	terminals: HashMap<String, TerminalEmulator>,
-	/// The state the window drew last, so a batch's projection can be
-	/// diffed region by region and repainted inside what changed (P5).
-	drawn:     ShellState,
-}
-
-/// Resolves the initiating surface for an operator intent.
-fn surface_for_intent(intent: &Intent, active_session: Option<&SessionId>) -> SurfaceId {
-	if let Some(surface) = active_session.and_then(|session| {
-		veyyon_desktop_surface::composer::actions::request_surface(intent, session)
-	}) {
-		return surface;
-	}
-	match intent {
-		Intent::RetryConnection => SurfaceId::ConnectionRetryButton,
-		Intent::StartProviderAuth(p) => SurfaceId::ProviderAuthStartButton(p.clone()),
-		Intent::SubmitAuthSecret { provider, .. } => {
-			SurfaceId::ProviderAuthSecretSubmit(provider.clone())
-		},
-		Intent::OpenAuthUrl(url) => SurfaceId::ProviderAuthUrlOpen(url.clone()),
-		Intent::CancelAuthFlow => SurfaceId::ProviderAuthCancelButton(String::new()),
-		Intent::RetryAuthFlow => SurfaceId::ProviderAuthRetryButton(String::new()),
-		Intent::RetryControl(id) => id.clone(),
-		Intent::SelectSession(id) => SurfaceId::QueueSessionRow(SessionId(id.to_string())),
-		Intent::SetDrawer { .. } => SurfaceId::TerminalCreateButton(
-			active_session
-				.cloned()
-				.unwrap_or_else(|| SessionId("active".into())),
-		),
-		Intent::SelectTab(_) => SurfaceId::RightPanelDiffTab(
-			active_session
-				.cloned()
-				.unwrap_or_else(|| SessionId("active".into())),
-		),
-		_ => SurfaceId::GlobalTitlebarLine,
-	}
-}
 fn main() {
 	let cli = Cli::parse();
 	let paths = discover_asset_paths();
@@ -188,165 +139,39 @@ fn main() {
 			},
 		}
 
-		// Attach to a host, or start one (§8.11).
-		let cwd = env::current_dir().unwrap_or_else(|_| ".".into());
-		let attachment = match connect_or_spawn(endpoint_argument.as_deref(), &cwd) {
-			Ok(attachment) => attachment,
-			Err(error) => {
-				let _ = window.update(cx, |view, _window, cx| {
-					view.set_notice(Some(format!("no host: {error}")));
-					cx.notify();
-				});
-				return;
-			},
-		};
-		let (link, mut events) = match HostLink::start(attachment.endpoint.clone()) {
-			Ok(started) => started,
-			Err(error) => {
-				let _ = window.update(cx, |view, _window, cx| {
-					view.set_notice(Some(format!("transport failed to start: {error}")));
-					cx.notify();
-				});
-				return;
-			},
-		};
+		// Host startup can block on a cold CLI import graph. Keep the window
+		// responsive and retain the transport after a startup timeout.
 		let _ = window.update(cx, |view, _window, cx| {
-			view.set_notice(Some(match &attachment.spawned {
-				Some(child) => {
-					format!("started veyyon gui (pid {}) at {}", child.pid, attachment.endpoint)
-				},
-				None => format!("attaching to {}", attachment.endpoint),
-			}));
+			view.state_mut().connection =
+				veyyon_desktop_surface::attach::ConnectionPhase::Connecting { attempt: 1 };
+			view.set_notice(Some("Starting GUI host".to_string()));
 			cx.notify();
 		});
-
-		let host = Rc::new(RefCell::new(Host {
-			store: Store::new(),
-			index: SessionIndex::new(),
-			link,
-			registry: RequestRegistry::new(),
-			terminals: HashMap::new(),
-			drawn: ShellState::default(),
-		}));
-
-		// Intents the operator raised go to the host as actions. Every
-		// dispatch notifies the view, so observing it drains them at once.
-		if let Ok(view) = window.entity(cx) {
-			let host = Rc::clone(&host);
-			cx.observe(&view, move |view, cx| {
-				let intents = view.update(cx, |view, _| view.drain_intents());
-				if intents.is_empty() {
-					return;
-				}
-				let mut host = host.borrow_mut();
-				let host = &mut *host;
-				let active_session =
-					Some(SessionId::from(view.read(cx).state().current_id.to_string()));
-				let now_ms = current_timestamp_ms();
-				for intent in &intents {
-					let surface = surface_for_intent(intent, active_session.as_ref());
-					for action in actions_for(intent, &host.index, &mut host.store) {
-						let kind = action.kind();
-						let req_id = host.link.send(action);
-						host
-							.registry
-							.register(req_id, kind, surface.clone(), now_ms, 30_000);
-						view.update(cx, |view, _cx| view.track_submission(req_id, intent));
-					}
-				}
-				view.update(cx, |view, cx| {
-					project_controls(&host.store, &host.registry, &host.index, view.state_mut());
-					cx.notify();
-				});
-			})
-			.detach();
-		}
-
-		// Events from the host reduce into the store and project onto the
-		// shell. Everything already queued is drained before one projection,
-		// so a burst of streaming deltas costs one projection, not one each.
+		let startup = cx.background_executor().spawn(async move {
+			let cwd = env::current_dir().unwrap_or_else(|_| ".".into());
+			connect_or_spawn(endpoint_argument.as_deref(), &cwd)
+		});
 		cx.spawn(move |cx: &mut AsyncApp| {
-			let mut async_cx = cx.clone();
+			let async_cx = cx.clone();
 			async move {
-				while let Some(first) = events.recv().await {
-					let mut batch = vec![first];
-					while let Ok(event) = events.try_recv() {
-						batch.push(event);
-					}
-					let host = Rc::clone(&host);
-					let _ = window.update(&mut async_cx, move |view, _window, cx| {
-						let mut host = host.borrow_mut();
-						let host = &mut *host;
-						let mut notice: Option<Option<String>> = None;
-						for event in batch {
-							match &event {
-								HostEvent::ConnectionChanged(state) => {
-									notice = Some(connection_notice(state));
-								},
-								HostEvent::RequestFailed { request, error } => {
-									let active = host.store.persisted.shell.active_session.as_ref();
-									if let Some(line) =
-										land_failure(error, &host.registry, active, view.state_mut())
-									{
-										notice = Some(Some(line));
-									}
-									host.registry.complete(request);
-									view.finish_submission(*request, false, cx);
-								},
-								HostEvent::RequestSucceeded { request } => {
-									view.finish_submission(*request, true, cx);
-									if let Some(in_flight) = host.registry.complete(request) {
-										view.state_mut().controls.clear_error(&in_flight.surface);
-									}
-								},
-								HostEvent::FatalProtocolError { message } => {
-									notice = Some(Some(format!("protocol error: {message}")));
-								},
-								HostEvent::Snapshot(
-									veyyon_desktop_model::SnapshotSection::Keybindings(views),
-								) => {
-									view.keymap_mut().apply_overrides(views);
-									cx.bind_keys(view.keymap().bindings());
-								},
-								HostEvent::Snapshot(
-									veyyon_desktop_model::SnapshotSection::TerminalOutput(chunk),
-								) => {
-									let emu = host
-										.terminals
-										.entry(chunk.terminal.clone())
-										.or_insert_with(|| TerminalEmulator::new(80, 24));
-									if chunk.reset {
-										emu.reset();
-									}
-									emu.feed(&chunk.data);
-								},
-								_ => {},
-							}
-							let _damage = reduce(&mut host.store, event);
-						}
-						let now_ms = current_timestamp_ms();
-						project(&host.store, &mut host.index, &host.terminals, now_ms, view.state_mut());
-						project_controls(&host.store, &host.registry, &host.index, view.state_mut());
-						// The clock the queue's elapsed labels and the connection
-						// banner are measured against is the batch's, not the last
-						// frame's.
-						view.set_clock_ms(now_ms);
-						// The attention strip is a view field, not state, and
-						// it moves the columns when it appears, so a change to
-						// it repaints the window regardless of the diff.
-						let invalidation = regions_changed(&host.drawn, view.state());
-						host.drawn.clone_from(view.state());
-						match notice {
-							Some(notice) => {
-								view.set_notice(notice);
+				let attachment = startup.await;
+				async_cx.update(|cx| {
+					let attachment = match attachment {
+						Ok(attachment) => attachment,
+						Err(error) => {
+							let _ = window.update(cx, |view, _window, cx| {
+								view.set_notice(Some(format!("no host: {error}")));
+								view.state_mut().connection =
+									veyyon_desktop_surface::attach::ConnectionPhase::Fatal {
+										message: error.to_string(),
+									};
 								cx.notify();
-							},
-							None => {
-								request_frame(view, &invalidation, cx);
-							},
-						}
-					});
-				}
+							});
+							return;
+						},
+					};
+					host_view::attach(attachment, window, cx);
+				});
 			}
 		})
 		.detach();

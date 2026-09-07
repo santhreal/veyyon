@@ -4,23 +4,15 @@
 //! easiest defect to introduce, because a handler moves to the wrong element,
 //! or the element it is on has no hit area, without changing a single pixel.
 //!
-//! GPUI registers a hit rect only for an element that carries a listener, a
-//! hover style or another reason to be hit-tested (`should_insert_hitbox`), so
-//! the frame's hit rects are exactly the set of controls the window will
-//! answer. Fork patch P10 exposes them in logical pixels. These assertions
-//! compare that set against the controls the state implies, counted from the
-//! state and the tokens rather than from a number written here.
+//! Hit rectangles include hover containers and drag surfaces, not only click
+//! targets. This suite checks their registration and viewport bounds against
+//! the rendered state. It cannot establish which intent a click dispatches.
+//! Pointer delivery is exercised in the queue-action, command-navigation,
+//! attachment and terminal interaction suites.
 //!
-//! `reachable` closes the other half: a control laid out past the window's edge
-//! is registered, is hit-tested, and cannot be clicked. That is how a rail with
-//! more rows than height fails — flex lays the overflow out below the lower
-//! edge, the frame paints it clipped, and the count still matches.
-//!
-//! The class this closes is "a control was drawn but not wired". It does not
-//! catch a control wired to the wrong intent — that is the state-side sweep in
-//! `an-interaction-changes-the-state-and-reaches-the-host.rs` — and it does not
-//! judge whether a hit area is comfortable, only that it exists, lies inside
-//! the window and has area.
+//! A registered rectangle can still be unreachable when layout places it
+//! outside the window. The bounds assertions reject that case independently
+//! of hitbox counts.
 
 use std::path::{Path, PathBuf};
 
@@ -32,7 +24,6 @@ use veyyon_desktop_surface::{
 	Attachment, Intent, MediaType, ShellState, ShellView,
 	composer::{AttachmentError, payload_for},
 	fixture, install_tokens,
-	queue::rail_fill,
 };
 use veyyon_gpui::{App, AppContext, Bounds, Pixels};
 
@@ -51,12 +42,13 @@ fn capture(state: ShellState) -> Captured {
 	let tokens = load_bundled_tokens().expect("the bundled tokens load");
 	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");
 
-	render_view_captured(&mut cx, &options(), move |_window, app: &mut App| {
+	let captured = render_view_captured(&mut cx, &options(), move |_window, app: &mut App| {
 		let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
 			.expect("the bundled tokens and theme install");
 		app.new(|_| ShellView::new(installed, state))
 	})
-	.expect("the shell renders offscreen")
+	.expect("the shell renders offscreen");
+	captured
 }
 
 /// How many controls a state puts on screen.
@@ -69,64 +61,84 @@ fn expected_controls(state: &ShellState) -> usize {
 	let queue = &tokens.surface.queue;
 	let cards = &tokens.surface.attached_cards;
 
-	// The rail draws only the rows the columns row has height for: it cannot
-	// scroll, so a row laid out past the window's lower edge would be painted
-	// clipped and still answer a click nobody can aim. No notice is shown
-	// here, so the chrome above the columns row is the titlebar alone. Every
-	// drawn queue row answers four clicks: the row itself opens the session,
-	// and the hover-revealed slot carries the park and defer controls, the
-	// slot itself hit-tested because its paint turns on with the hover. A
-	// Deferred or Parked section header answers two more: the header row
-	// toggles the collapse and its chevron is its own control.
+	// The native list renders partially visible rows as well as complete rows.
+	// The fixed 32px navigation header precedes its viewport; the footer stays
+	// outside it. Cards register the row, the hover container, and two actions.
+	// Lines register the row, the hover container, and one restore action.
 	let columns_px = HEIGHT as f32 - tokens.surface.shell.titlebar_height_px;
-	let drawn_rows: usize = rail_fill(&state.sections, columns_px, queue)
-		.drawn
-		.iter()
-		.sum();
-	let collapsible_headers = state
-		.sections
-		.iter()
-		.filter(|(section, rows)| {
-			matches!(
-				section,
-				veyyon_desktop_surface::model::Section::Deferred
-					| veyyon_desktop_surface::model::Section::Parked
-			) && !rows.is_empty()
-		})
-		.count();
-	let queue_controls = drawn_rows * 4 + collapsible_headers * 2;
+	let bottom = columns_px - queue.footer_height_px;
+	let mut y = queue.content_inset + 32.0 + queue.section_gap_below;
+	let mut queue_controls = 4; // Search wrapper, search icon, new session, list
+	for (section, rows) in &state.sections {
+		if rows.is_empty() {
+			continue;
+		}
+		if y < bottom {
+			queue_controls += 1;
+		}
+		y += queue.section_gap_above + queue.section_header_px + queue.section_gap_below;
+		let height = if section.draws_cards() {
+			queue.card_px
+		} else {
+			queue.line_px
+		};
+		for _ in 0..veyyon_desktop_surface::queue::visible_rows(*section, rows.len(), queue) {
+			if y < bottom {
+				queue_controls += if section.draws_cards() { 4 } else { 3 };
+			}
+			y += height;
+		}
+	}
 
-	// A tab is a control only while the panel it sits in is present, and the
-	// diff surface adds its unified/split toggle and the click target that
-	// covers its scroll area while it is the active tab. At this width the
-	// panel docks, and the split it docks into answers two more: the handle
-	// the operator drags, and the split container that follows the drag.
-	let panel = if state.panel.is_empty() {
+	// An empty contextual panel still has its docked split. A diff has a
+	// scroll area, three toolbar controls and one mode toggle per file.
+	let panel = if state.keymap.panel_collapsed {
 		0
 	} else {
-		state.panel.tabs.len()
-			+ if state.panel.active_tab == veyyon_desktop_surface::PanelTab::Diff {
-				2
+		2 + state.panel.tabs.len()
+			+ if !state.panel.is_empty()
+				&& state.panel.active_tab == veyyon_desktop_surface::PanelTab::Diff
+			{
+				4 + state.panel.diff.len()
 			} else {
 				0
-			} + 2
+			}
 	};
 
-	// A card past the stack cap is collapsed into a count and offers nothing.
+	// The overflow summary is hover-tested; each question also has a text reply.
 	let visible_cards = cards.stack_max_visible.min(state.cards.len());
 	let answers: usize = state
 		.cards
 		.iter()
 		.take(visible_cards)
 		.map(veyyon_desktop_surface::Card::answer_count)
-		.sum();
+		.sum::<usize>()
+		+ usize::from(state.cards.len() > visible_cards);
 
-	// The constant chrome: the window root, the titlebar's drag strip and its
-	// queue and drawer toggles, the rail's settings gear, and the composer's
-	// card, input, model, thinking, queue-mode, attach, context and send
-	// controls. The titlebar's panel toggle is drawn only while the panel has
-	// something to show.
-	let chrome = 1 + 3 + 1 + 8 + usize::from(!state.panel.is_empty());
+	// Root, titlebar drag strip and toggles, rail settings, composer drop
+	// target/editor, and the two tooltip-wrapped footer controls.
+	let chrome = 1 + 3 + 1 + 8 + usize::from(state.connection.is_attached());
+	let transcript = usize::from(!state.transcript.is_empty()) * 2
+		+ state
+			.transcript
+			.iter()
+			.map(|turn| match turn {
+				veyyon_desktop_surface::Turn::Operator(_) => 0,
+				veyyon_desktop_surface::Turn::OperatorArtifacts { artifacts, .. } => artifacts.len(),
+				veyyon_desktop_surface::Turn::Agent(blocks) => blocks
+					.iter()
+					.map(|block| match block {
+						veyyon_desktop_surface::Block::Prose(_)
+						| veyyon_desktop_surface::Block::Note { .. } => 0,
+						veyyon_desktop_surface::Block::Reason(_)
+						| veyyon_desktop_surface::Block::Invoke { .. }
+						| veyyon_desktop_surface::Block::Pane { .. }
+						| veyyon_desktop_surface::Block::Unknown { .. }
+						| veyyon_desktop_surface::Block::Artifact(_) => 1,
+					})
+					.sum::<usize>(),
+			})
+			.sum::<usize>();
 
 	// Each attachment card answers three clicks: the card's own hover group,
 	// the wrapper whose paint turns on with that hover (a `group_hover` style
@@ -135,7 +147,7 @@ fn expected_controls(state: &ShellState) -> usize {
 	// window-local state and so is counted by its own test below, not here.
 	let tray = state.composer.attachments.len() * 3;
 
-	queue_controls + panel + answers + chrome + tray
+	queue_controls + panel + answers + chrome + tray + transcript
 }
 
 /// Whether a rect lies inside the window and encloses any area at all.
@@ -204,14 +216,13 @@ fn closing_the_right_panel_takes_its_tabs_out_of_reach() {
 	assert!(!open.panel.is_empty(), "the fixture has no panel, so this proves nothing");
 
 	let mut closed = open.clone();
-	closed.panel = Default::default();
+	Intent::SetPanel { open: false }.apply(&mut closed);
 
 	let before = capture(open.clone()).hitboxes.len();
 	let after = capture(closed.clone()).hitboxes.len();
 
-	// The panel owns its tabs, the diff surface's two controls while the diff
-	// tab is active, the split handle and container it docks into, and the
-	// titlebar toggle that exists only while the panel has something to show;
+	// Closing removes the panel tabs, diff controls and docked split.
+	// The titlebar toggle remains available to reopen the panel.
 	// closing it takes exactly those out of reach.
 	let owned = expected_controls(&open) - expected_controls(&closed);
 	assert_eq!(
@@ -248,14 +259,13 @@ fn a_dispatched_intent_reaches_the_frame_the_operator_then_looks_at() {
 
 	drop(cx);
 	let open_state = fixture::with_drawer();
-	let drawer_controls = open_state.drawer.tabs.len() + 2; // each tab, plus Clear and Restart
+	let drawer_regions = open_state.drawer.tabs.len() + 6; // Clear, Restart, split handle, container, occlusion and focusable grid
 	let open = capture(open_state);
 
 	assert_eq!(
 		open.hitboxes.len() - closed.hitboxes.len(),
-		drawer_controls,
-		"opening the drawer added {} hit rects rather than its {drawer_controls} own controls, so \
-		 an intent meant for the drawer reaches something else",
+		drawer_regions,
+		"opening the drawer added {} hit rects rather than its {drawer_regions} regions",
 		open.hitboxes.len() - closed.hitboxes.len()
 	);
 	assert_ne!(

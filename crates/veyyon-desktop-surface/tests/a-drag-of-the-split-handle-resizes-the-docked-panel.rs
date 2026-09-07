@@ -151,8 +151,8 @@ fn dragging_the_handle_past_the_bound_stops_at_the_bound() {
 	let stored = stored.expect("the drag stored no width on the view");
 
 	assert!(
-		stored > bound,
-		"the drag asked for {stored}px, inside the {bound}px bound, so it proves no bound"
+		docked_width(None) + WIDTH / 2.0 > bound && (stored - bound).abs() <= 1.0,
+		"an out-of-bounds pointer drag stored {stored}px instead of the {bound}px bound"
 	);
 	let bounded = docked_width(Some(stored));
 	assert!(
@@ -175,8 +175,8 @@ fn dragging_the_handle_outward_stops_at_the_panel_minimum() {
 	let stored = stored.expect("the drag stored no width on the view");
 
 	assert!(
-		stored < floor,
-		"the drag asked for {stored}px, above the {floor}px floor, so it proves no bound"
+		16.0 < floor && (stored - floor).abs() <= 1.0,
+		"a pointer drag below the minimum stored {stored}px instead of the {floor}px floor"
 	);
 	assert_eq!(
 		docked_width(Some(stored)),

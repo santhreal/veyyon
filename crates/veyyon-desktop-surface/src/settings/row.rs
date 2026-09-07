@@ -1,9 +1,9 @@
 //! The single unified settings row shape (§5.9).
 //!
-//! Every settings page renders its controls through `setting_row`: a 44px row
-//! with a 14/20 label, an optional 12/16 muted description, and a 240px
-//! right-aligned control column. Control availability gates opacity and
-//! activation.
+//! Every settings page renders its controls through `setting_row`: a row at
+//! least 44px high, with a 14/20 label, an optional 12/16 muted description,
+//! and a 240px right-aligned control column. Control availability gates opacity
+//! and activation.
 
 use veyyon_desktop_kit::{
 	ColorRole, Row, Spacer, SpacingStep, Stack, TextRamp, TextWeight, TokenSet,
@@ -13,8 +13,7 @@ use veyyon_gpui::{Div, IntoElement, ParentElement, Styled, div, px};
 
 use crate::controls::Availability;
 
-/// Renders a single 44px settings row adhering to the unified §5.9
-/// specification.
+/// Renders a settings row with the unified §5.9 minimum height.
 pub fn setting_row(
 	label: &str,
 	description: Option<&str>,
@@ -34,8 +33,7 @@ pub fn setting_row(
 	)
 }
 
-/// Renders a single 44px settings row with an optional secondary trailing
-/// control.
+/// Renders a settings row with an optional secondary trailing control.
 pub fn setting_row_with_secondary(
 	label: &str,
 	description: Option<&str>,
@@ -103,7 +101,9 @@ pub fn setting_row_with_secondary(
 		.child(Row::new(SpacingStep::S2).children(secondary).child(control));
 
 	div()
-		.h(px(geometry.row_height_px))
+		.min_h(px(geometry.row_height_px))
+		.flex_shrink_0()
+		.py(tokens.spacing(SpacingStep::S1))
 		.w_full()
 		.flex()
 		.flex_row()
@@ -118,7 +118,8 @@ pub fn setting_row_with_secondary(
 /// typography.
 pub fn empty_state_row(message: &str, geometry: &SettingsSurfaceTokens, tokens: &TokenSet) -> Div {
 	div()
-		.h(px(geometry.row_height_px))
+		.min_h(px(geometry.row_height_px))
+		.flex_shrink_0()
 		.w_full()
 		.flex()
 		.items_center()

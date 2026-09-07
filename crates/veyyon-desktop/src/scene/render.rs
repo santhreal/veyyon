@@ -119,6 +119,15 @@ impl<'cx> SceneWindow<'cx> {
 		scene: &Scene,
 	) -> Result<Rendered, SceneRenderError> {
 		let built = build(scene)?;
+		self.render_root(assets, built)
+	}
+
+	/// Renders one built scene root directly.
+	pub fn render_root(
+		&mut self,
+		assets: &Assets<'_>,
+		built: SceneRoot,
+	) -> Result<Rendered, SceneRenderError> {
 		let installed = self
 			.cx
 			.update(|app| install_tokens(app, assets.tokens, assets.theme, assets.surface_path))?;
@@ -134,6 +143,10 @@ impl<'cx> SceneWindow<'cx> {
 						let mut view = ShellView::new(installed, built.state);
 						view.set_clock_ms(SCENE_CLOCK_MS);
 						view.set_notice(built.notice);
+						if let Some(menu) = built.row_menu {
+							view.open_row_menu(menu);
+						}
+						view.rail_motion_mut().set_reduced_motion(true);
 						let composer_text = built.composer_text;
 						let view = cx.new(|cx| {
 							if !composer_text.is_empty() {
@@ -152,11 +165,13 @@ impl<'cx> SceneWindow<'cx> {
 		self.cx.run_until_parked();
 		// `render_to_frame` reads the last drawn frame; the draw itself is the
 		// vsync this delivers, which the notify above left the window dirty for.
-		self
-			.cx
-			.request_frame(self.window.into())
-			.map_err(|error| RenderError::NoFrame { message: format!("{error:?}") })?;
-		self.cx.run_until_parked();
+		for _ in 0..8 {
+			self
+				.cx
+				.request_frame(self.window.into())
+				.map_err(|error| RenderError::NoFrame { message: format!("{error:?}") })?;
+			self.cx.run_until_parked();
+		}
 		let captured = capture_window(self.cx, self.window.into(), self.options.scale_factor)?;
 		let unprojected = shell
 			.map(|view| {

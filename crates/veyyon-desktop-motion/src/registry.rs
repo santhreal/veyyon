@@ -94,7 +94,11 @@ impl ActiveAnimation {
 				let s =
 					spring.evaluate(self.start_value, self.start_velocity, self.target_value, elapsed);
 				let at_rest = spring.is_at_rest(&s, self.target_value);
-				(s.position, s.velocity, at_rest)
+				if at_rest {
+					(self.target_value, 0.0, true)
+				} else {
+					(s.position, s.velocity, false)
+				}
 			},
 			MotionModel::SpringFade(sf) => {
 				let s = sf.spring.evaluate(
@@ -104,7 +108,11 @@ impl ActiveAnimation {
 					elapsed,
 				);
 				let at_rest = sf.spring.is_at_rest(&s, self.target_value);
-				(s.position, s.velocity, at_rest)
+				if at_rest {
+					(self.target_value, 0.0, true)
+				} else {
+					(s.position, s.velocity, false)
+				}
 			},
 			MotionModel::DirectThenSpring(d) => {
 				let s = d.snap_spring.evaluate(
@@ -114,14 +122,18 @@ impl ActiveAnimation {
 					elapsed,
 				);
 				let at_rest = d.snap_spring.is_at_rest(&s, self.target_value);
-				(s.position, s.velocity, at_rest)
+				if at_rest {
+					(self.target_value, 0.0, true)
+				} else {
+					(s.position, s.velocity, false)
+				}
 			},
 			MotionModel::Duration(dur) => {
 				let total = (dur.duration_ms as f32) / 1000.0;
 				if total <= 0.0001 || elapsed >= total {
 					(self.target_value, 0.0, true)
 				} else {
-					let p = dur.curve.evaluate(elapsed / total);
+					let p = dur.curve.evaluate((elapsed / total).clamp(0.0, 1.0));
 					let pos = (self.target_value - self.start_value).mul_add(p, self.start_value);
 					let vel = (self.target_value - self.start_value) / total;
 					(pos, vel, false)
@@ -132,7 +144,7 @@ impl ActiveAnimation {
 				if total <= 0.0001 || elapsed >= total {
 					(self.target_value, 0.0, true)
 				} else {
-					let p = flip.curve.evaluate(elapsed / total);
+					let p = flip.curve.evaluate((elapsed / total).clamp(0.0, 1.0));
 					let pos = (self.target_value - self.start_value).mul_add(p, self.start_value);
 					let vel = (self.target_value - self.start_value) / total;
 					(pos, vel, false)
@@ -141,7 +153,7 @@ impl ActiveAnimation {
 			MotionModel::TwoStep(ts) => {
 				let half = (ts.period_ms as f32) / 2000.0;
 				if half <= 0.0001 {
-					(self.target_value, 0.0, false)
+					(self.target_value, 0.0, true)
 				} else {
 					let phase = ((elapsed / half).floor() as u64) % 2;
 					let pos = if phase == 0 {
@@ -177,6 +189,19 @@ impl AnimatorRegistry {
 		model: MotionModel,
 		now: Instant,
 	) -> &mut ActiveAnimation {
+		self.get_or_create_with_initial(key, 0.0, target, model, now)
+	}
+
+	/// Retrieves the animation for `key`, or starts a new animation from
+	/// `initial_value` towards `target`.
+	pub fn get_or_create_with_initial(
+		&mut self,
+		key: AnimatorKey,
+		initial_value: f32,
+		target: f32,
+		model: MotionModel,
+		now: Instant,
+	) -> &mut ActiveAnimation {
 		match self.animations.entry(key) {
 			std::collections::hash_map::Entry::Occupied(mut entry) => {
 				let existing = entry.get_mut();
@@ -199,17 +224,18 @@ impl AnimatorRegistry {
 				entry.into_mut()
 			},
 			std::collections::hash_map::Entry::Vacant(entry) => {
+				let at_rest = (initial_value - target).abs() <= 0.0001;
 				let initial = ActiveAnimation {
 					key,
 					role: key.role,
-					start_value: 0.0,
+					start_value: initial_value,
 					start_velocity: 0.0,
-					current_value: 0.0,
+					current_value: initial_value,
 					target_value: target,
 					current_velocity: 0.0,
 					start_time: now,
 					model,
-					is_at_rest: false,
+					is_at_rest: at_rest,
 				};
 				entry.insert(initial)
 			},
@@ -225,15 +251,22 @@ impl AnimatorRegistry {
 		now: Instant,
 	) {
 		if let Some(existing) = self.animations.get_mut(&key) {
-			let (pos, vel, _) = existing.sample_at(now);
-			existing.start_value = pos;
-			existing.start_velocity = vel;
-			existing.current_value = pos;
-			existing.target_value = new_target;
-			existing.current_velocity = vel;
-			existing.start_time = now;
-			existing.model = model;
-			existing.is_at_rest = false;
+			if (existing.target_value - new_target).abs() > 0.0001 {
+				let (pos, vel, _) = existing.sample_at(now);
+				existing.start_value = pos;
+				existing.start_velocity = vel;
+				existing.current_value = pos;
+				existing.target_value = new_target;
+				existing.current_velocity = vel;
+				existing.start_time = now;
+				existing.model = model;
+				existing.is_at_rest = false;
+			} else {
+				let (pos, vel, at_rest) = existing.sample_at(now);
+				existing.current_value = pos;
+				existing.current_velocity = vel;
+				existing.is_at_rest = at_rest;
+			}
 		} else {
 			self.get_or_create(key, new_target, model, now);
 		}
@@ -259,6 +292,15 @@ impl AnimatorRegistry {
 		self.animations.get(key).map(|anim| anim.sample_at(now).0)
 	}
 
+	pub fn sample_full(&mut self, key: &AnimatorKey, now: Instant) -> Option<(f32, f32, bool)> {
+		let animation = self.animations.get_mut(key)?;
+		let frame = animation.sample_at(now);
+		animation.current_value = frame.0;
+		animation.current_velocity = frame.1;
+		animation.is_at_rest = frame.2;
+		Some(frame)
+	}
+
 	pub fn is_at_rest(&self, key: &AnimatorKey) -> bool {
 		self.animations.get(key).is_none_or(|anim| anim.is_at_rest)
 	}
@@ -274,76 +316,26 @@ impl AnimatorRegistry {
 	pub fn is_empty(&self) -> bool {
 		self.animations.is_empty()
 	}
+
+	pub fn clear(&mut self) {
+		self.animations.clear();
+	}
+
+	pub fn retain_active(&mut self) {
+		self.animations.retain(|_, anim| !anim.is_at_rest);
+	}
+
+	pub fn has_active_animations(&self, now: Instant) -> bool {
+		self.animations.values().any(|anim| !anim.sample_at(now).2)
+	}
+
+	pub fn has_active_surface_animations(&self, surface_id: SurfaceId, now: Instant) -> bool {
+		self
+			.animations
+			.iter()
+			.any(|(k, anim)| k.surface_id == surface_id && !anim.sample_at(now).2)
+	}
 }
 
 #[cfg(test)]
-mod tests {
-	use std::time::Duration;
-
-	use super::*;
-	use crate::spring::SpringModel;
-
-	#[test]
-	fn test_relayout_preserves_progress() {
-		let mut registry = AnimatorRegistry::new();
-		let key = AnimatorKey::new(SurfaceId::Queue, MotionRole::Reveal, 42);
-		let spring = SpringModel::new(220.0, 26.0, 1.0).unwrap();
-		let model = MotionModel::Spring(spring);
-
-		let t0 = Instant::now();
-		registry.get_or_create(key, 100.0, model, t0);
-
-		let t1 = t0 + Duration::from_millis(50);
-		let anim = registry.get_or_create(key, 100.0, model, t1);
-
-		assert!(anim.current_value > 5.0 && anim.current_value < 90.0);
-		assert!(anim.current_velocity > 0.0);
-	}
-
-	#[test]
-	fn test_remount_preserves_progress() {
-		let mut registry = AnimatorRegistry::new();
-		let key = AnimatorKey::new(SurfaceId::Composer, MotionRole::Float, 101);
-		let spring = SpringModel::new(300.0, 24.0, 1.0).unwrap();
-		let model = MotionModel::Spring(spring);
-
-		let t0 = Instant::now();
-		registry.get_or_create(key, 100.0, model, t0);
-
-		let t1 = t0 + Duration::from_millis(80);
-		let val1 = registry.get_or_create(key, 100.0, model, t1).current_value;
-		let val2 = registry.get_or_create(key, 100.0, model, t1).current_value;
-
-		assert_eq!(val1, val2);
-		assert!(val2 > 20.0);
-	}
-
-	#[test]
-	fn test_interruption_retains_velocity_and_position() {
-		let mut registry = AnimatorRegistry::new();
-		let key = AnimatorKey::new(SurfaceId::RightPanel, MotionRole::Panel, 1);
-		let spring = SpringModel::new(180.0, 22.0, 1.0).unwrap();
-		let model = MotionModel::Spring(spring);
-
-		let t0 = Instant::now();
-		registry.get_or_create(key, 100.0, model, t0);
-
-		let t_int = t0 + Duration::from_millis(40);
-		let (pos, vel, _) = registry.animations.get(&key).unwrap().sample_at(t_int);
-
-		assert!(pos > 10.0 && pos < 70.0);
-		assert!(vel > 10.0);
-
-		registry.update_target(key, 0.0, model, t_int);
-
-		let anim = registry.animations.get(&key).unwrap();
-		assert_eq!(anim.start_value, pos);
-		assert_eq!(anim.start_velocity, vel);
-		assert_eq!(anim.current_velocity, vel);
-		assert_eq!(anim.target_value, 0.0);
-
-		let t_after = t_int + Duration::from_millis(1);
-		let (pos_after, ..) = anim.sample_at(t_after);
-		assert!((pos_after - pos).abs() < 5.0);
-	}
-}
+mod tests;

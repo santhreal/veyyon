@@ -21,8 +21,8 @@
 //!   the set is pinned by exact equality.
 //!
 //! Every pin below is shrink-only. `GATES_STILL_INVISIBLE` and
-//! `ERRORS_STILL_INVISIBLE` are ledger rows A7 and A8, not decisions: a fix
-//! that makes one visible turns the pin red until the row is removed here.
+//! `ERRORS_STILL_INVISIBLE` track temporarily invisible states: a fix
+//! that makes one visible turns the pin red until the entry is removed here.
 //!
 //! WHAT IT DOES NOT CATCH:
 //! - A scene that renders the wrong state, as long as the bytes differ from the
@@ -37,7 +37,10 @@ use std::{
 use strum::IntoEnumIterator as _;
 use veyyon_desktop::{
 	AssetPaths, StartupBundle, load_startup_bundle,
-	scene::{Assets, SceneBuildError, SceneRenderError, SceneWindow, build},
+	scene::{
+		Assets, SceneBuildError, SceneRenderError, SceneRoot, SceneWindow, build,
+		build::error_scope_baseline,
+	},
 };
 use veyyon_desktop_model::{Capability, ErrorScope};
 use veyyon_desktop_scene::{
@@ -52,54 +55,13 @@ const BASELINE: &str = "queue-card/rest";
 /// Capabilities whose gate has no control on the frame their scene renders,
 /// so `Unavailable` and `Pending` draw the same bytes as `Enabled`. Ledger row
 /// A7. Shrink-only.
-const GATES_STILL_INVISIBLE: &[Capability] = &[
-	Capability::Sessions,
-	Capability::SessionDeletion,
-	Capability::SessionTreeNavigation,
-	Capability::Transcript,
-	Capability::BackgroundSubmission,
-	Capability::Tools,
-	Capability::Approvals,
-	Capability::Questions,
-	Capability::Plans,
-	Capability::Files,
-	Capability::Changes,
-	Capability::PendingEdits,
-	Capability::Terminals,
-	Capability::ProcessSupervisor,
-	Capability::Providers,
-	Capability::Authentication,
-	Capability::Mcp,
-	Capability::Extensions,
-	Capability::Agents,
-	Capability::AgentCommands,
-	Capability::Tasks,
-	Capability::Settings,
-	Capability::Themes,
-	Capability::Keybindings,
-	Capability::Diagnostics,
-	Capability::Usage,
-	Capability::ContextBreakdown,
-	Capability::Lifecycle,
-];
+const GATES_STILL_INVISIBLE: &[Capability] = &[];
 
 /// Scopes whose `request: None` fallback target draws no hairline, so the
-/// error scene is the baseline. Ledger row A8. Shrink-only.
-const ERRORS_STILL_INVISIBLE: &[ErrorScope] = &[
-	ErrorScope::Tool,
-	ErrorScope::Interaction,
-	ErrorScope::Plan,
-	ErrorScope::Terminal,
-	ErrorScope::Mcp,
-	ErrorScope::Extension,
-	ErrorScope::Settings,
-	ErrorScope::Diagnostic,
-	ErrorScope::Usage,
-];
+/// error scene is the baseline. Shrink-only.
+const ERRORS_STILL_INVISIBLE: &[ErrorScope] = &[];
 
-/// Names that are one state on purpose, and names that are one state because
-/// the role register draws no label (ledger row A9). Each group is pinned by
-/// exact membership.
+/// Names that represent the same state, pinned by exact membership.
 const ALIASES: &[&[&str]] = &[
 	// The attached window before any exchange: the opening line is what the
 	// composer and the live section rest against.
@@ -109,10 +71,6 @@ const ALIASES: &[&[&str]] = &[
 	// A badge is a card in the live partition with that badge.
 	&["queue-badge/watching", "queue-card/watching"],
 	&["queue-badge/working", "queue-card/working"],
-	// A9: the "noted" and "did" registers draw no role label.
-	&["transcript-role/assistant", "transcript-role/custom", "transcript-role/developer"],
-	&["transcript-role/branch-summary", "transcript-role/compaction-summary"],
-	&["transcript-role/bash-execution", "transcript-role/python-execution"],
 ];
 
 fn startup_assets() -> StartupBundle {
@@ -143,7 +101,7 @@ fn every_scene_builds_except_the_pinned_unreachable_set() {
 
 /// Every scene's bytes, keyed by name, plus the ids every shell scene read
 /// without a projection having set them.
-fn render_all() -> (BTreeMap<String, Vec<u8>>, BTreeSet<String>) {
+fn render_all() -> (BTreeMap<String, Vec<u8>>, BTreeMap<ErrorScope, Vec<u8>>, BTreeSet<String>) {
 	let mut cx = headless_context().expect("headless context must be available on GPU host");
 	let bundle = startup_assets();
 	let assets = Assets {
@@ -161,6 +119,7 @@ fn render_all() -> (BTreeMap<String, Vec<u8>>, BTreeSet<String>) {
 	let registry = SceneRegistry::new();
 	let mut frames = BTreeMap::new();
 	let mut unprojected = BTreeSet::new();
+	let mut error_baselines = BTreeMap::new();
 	let mut window = SceneWindow::open(&mut cx, &options).expect("open the scene window");
 	for scene in registry.iter() {
 		// A renderer crash takes the process with it; under --nocapture this
@@ -181,7 +140,14 @@ fn render_all() -> (BTreeMap<String, Vec<u8>>, BTreeSet<String>) {
 		}
 		frames.insert(scene.name.clone(), rendered.captured.frame.as_bytes().to_vec());
 	}
-	(frames, unprojected)
+	for scope in ErrorScope::iter() {
+		let baseline_root = SceneRoot::Shell(Box::new(error_scope_baseline(scope)));
+		let rendered = window
+			.render_root(&assets, baseline_root)
+			.unwrap_or_else(|error| panic!("baseline for error scope {scope:?}: {error}"));
+		error_baselines.insert(scope, rendered.captured.frame.as_bytes().to_vec());
+	}
+	(frames, error_baselines, unprojected)
 }
 
 fn gate_scene(capability: Capability, gate: GateVariant) -> String {
@@ -190,20 +156,20 @@ fn gate_scene(capability: Capability, gate: GateVariant) -> String {
 
 #[test]
 fn every_scene_shows_the_state_it_names() {
-	let (frames, unprojected) = render_all();
-	let baseline = frames.get(BASELINE).expect("baseline scene renders");
+	let (frames, error_baselines, unprojected) = render_all();
 	let gated = gated_capabilities();
 
-	// §1.2 item 2: Unknown draws at rest, so its bytes are Enabled's.
-	// §4.3: Unavailable and Pending draw differently from Enabled.
+	// Unknown capabilities cannot expose the file and change tabs.
+	// Other capability controls retain their resting appearance.
 	let mut invisible = Vec::new();
 	for capability in Capability::iter() {
 		let enabled = &frames[&gate_scene(capability, GateVariant::Enabled)];
-		assert_eq!(
-			&frames[&gate_scene(capability, GateVariant::Unknown)],
-			enabled,
-			"{capability:?}: Unknown must draw at rest, as Enabled does"
-		);
+		let unknown = &frames[&gate_scene(capability, GateVariant::Unknown)];
+		if matches!(capability, Capability::Files | Capability::Changes) {
+			assert!(unknown != enabled, "{capability:?}: unknown capability exposed a panel tab");
+		} else {
+			assert!(unknown == enabled, "{capability:?}: Unknown must draw at rest");
+		}
 		let mut visible = &frames[&gate_scene(capability, GateVariant::Unavailable)] != enabled;
 		if gated.contains(&capability) {
 			visible &= &frames[&gate_scene(capability, GateVariant::Pending)] != enabled;
@@ -217,7 +183,9 @@ fn every_scene_shows_the_state_it_names() {
 	// §4.4: an error with no request lands on the scope's fallback target.
 	let mut invisible = Vec::new();
 	for scope in ErrorScope::iter() {
-		if &frames[&RequiredState::Error(scope).scene_name()] == baseline {
+		let error_frame = &frames[&RequiredState::Error(scope).scene_name()];
+		let baseline_frame = &error_baselines[&scope];
+		if error_frame == baseline_frame {
 			invisible.push(scope);
 		}
 	}

@@ -5,6 +5,7 @@
 //! Diagnostics, Usage, and `ContextBreakdown`.
 
 pub mod body;
+mod focused;
 pub mod pages;
 pub mod row;
 
@@ -16,11 +17,15 @@ use veyyon_desktop_model::{
 };
 use veyyon_desktop_tokens::SettingsSurfaceTokens;
 use veyyon_gpui::{
-	ClickEvent, Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
-	Styled, div, px,
+	ClickEvent, Context, FocusHandle, InteractiveElement, IntoElement, ParentElement,
+	StatefulInteractiveElement, Styled, div, px,
 };
 
-pub use self::{body::*, pages::*, row::*};
+pub use self::{
+	body::{general::*, *},
+	pages::*,
+	row::*,
+};
 use crate::{Intent, ShellView, controls::ControlStates};
 
 /// Runtime view model for the settings overlay (§5.9).
@@ -53,6 +58,8 @@ pub struct SettingsState {
 	pub reloading:    bool,
 	/// Selected row index for keyboard navigation.
 	pub selected_row: Option<usize>,
+	/// Focused command destination; absent for the complete settings dialog.
+	pub route:        Option<crate::navigation::SurfaceRoute>,
 }
 
 impl Default for SettingsState {
@@ -79,6 +86,7 @@ impl SettingsState {
 			context: None,
 			reloading: false,
 			selected_row: None,
+			route: None,
 		}
 	}
 
@@ -101,18 +109,29 @@ impl SettingsState {
 /// (§5.9).
 pub fn settings_surface(
 	state: &SettingsState,
+	list_state: &GeneralSettingsListState,
+	focus: Option<&FocusHandle>,
 	controls: &ControlStates,
 	geometry: &SettingsSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
+	if let Some(route) = state.route {
+		return focused::focused_surface(
+			state, list_state, route, focus, controls, geometry, tokens, cx,
+		);
+	}
 	let radius = tokens.radius(RadiusStep::Xl);
 	let bg = tokens.color(ColorRole::Float);
 	let border = tokens.color(ColorRole::Hairline);
 	let pad = tokens.spacing(SpacingStep::S6);
 
-	let mut dialog = div()
-		.id("settings-dialog")
+	let mut dialog = div().id("settings-dialog");
+	if let Some(f) = focus {
+		dialog = dialog.track_focus(f);
+	}
+	let mut dialog = dialog
+		.key_context("Settings")
 		.w(px(860.0))
 		.h(px(560.0))
 		.rounded(radius)
@@ -122,8 +141,19 @@ pub fn settings_surface(
 		.shadow_lg()
 		.flex()
 		.flex_row()
-		.overflow_hidden();
-
+		.overflow_hidden()
+		.on_action(cx.listener(
+			|view, _: &veyyon_desktop_kit::input::editor::actions::Escape, _window, cx| {
+				view.back_surface(cx);
+				cx.stop_propagation();
+				cx.notify();
+			},
+		))
+		.on_action(cx.listener(|view, _: &crate::keymap::actions::Dismiss, _window, cx| {
+			view.back_surface(cx);
+			cx.stop_propagation();
+			cx.notify();
+		}));
 	// Left sidebar (200px width).
 	let mut sidebar = div()
 		.w(px(200.0))
@@ -227,8 +257,7 @@ pub fn settings_surface(
 	content = content.child(header);
 
 	// Page body rows container.
-	let body = render_page_body(state, controls, geometry, tokens, cx);
+	let body = render_page_body(state, list_state, controls, geometry, tokens, cx);
 	content = content.child(body);
-
 	dialog.child(content)
 }

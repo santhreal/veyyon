@@ -17,6 +17,18 @@ pub fn overlay_scrim(
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
+	overlay_scrim_with_opacity(content, 1.0, panels, tokens, cx)
+}
+
+/// Renders a centered surface with modulated scrim backdrop opacity.
+#[must_use]
+pub fn overlay_scrim_with_opacity(
+	content: impl IntoElement,
+	opacity: f32,
+	panels: &PanelsSurfaceTokens,
+	tokens: &TokenSet,
+	cx: &Context<ShellView>,
+) -> impl IntoElement {
 	div()
 		.id("overlay-scrim")
 		.absolute()
@@ -24,6 +36,7 @@ pub fn overlay_scrim(
 		.flex()
 		.items_center()
 		.justify_center()
+		.opacity(opacity.clamp(0.0, 1.0))
 		.backdrop_blur(px(panels.right_panel_overlay_scrim_blur_px))
 		.bg(tokens.scrim())
 		.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {

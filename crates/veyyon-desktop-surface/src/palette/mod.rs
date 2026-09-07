@@ -31,8 +31,11 @@ pub struct PaletteState {
 	pub browse_path: Vec<String>,
 	/// Optional root path for project browsing.
 	pub browse_root: Option<String>,
+	/// Optional availability notice (e.g. host-provided unavailability reason).
+	pub notice:      Option<String>,
+	/// Command group shown in the shared navigation surface.
+	pub route:       Option<crate::navigation::SurfaceRoute>,
 }
-
 impl Default for PaletteState {
 	fn default() -> Self {
 		Self::commands()
@@ -40,7 +43,6 @@ impl Default for PaletteState {
 }
 
 impl PaletteState {
-	/// Creates an empty palette state for the specified mode.
 	#[must_use]
 	pub const fn new(mode: PaletteMode) -> Self {
 		Self {
@@ -50,6 +52,8 @@ impl PaletteState {
 			items: Vec::new(),
 			browse_path: Vec::new(),
 			browse_root: None,
+			notice: None,
+			route: None,
 		}
 	}
 
@@ -64,6 +68,8 @@ impl PaletteState {
 			items,
 			browse_path: Vec::new(),
 			browse_root: None,
+			notice: None,
+			route: Some(crate::navigation::SurfaceRoute::Commands),
 		}
 	}
 
@@ -89,6 +95,8 @@ impl PaletteState {
 			items,
 			browse_path: Vec::new(),
 			browse_root: None,
+			notice: None,
+			route: None,
 		}
 	}
 
@@ -145,6 +153,8 @@ impl PaletteState {
 			items,
 			browse_path: Vec::new(),
 			browse_root: None,
+			notice: None,
+			route: None,
 		}
 	}
 
@@ -172,9 +182,35 @@ impl PaletteState {
 	#[must_use]
 	pub fn filtered_items(&self) -> Vec<&PaletteItem> {
 		if self.query.is_empty() {
-			return self.items.iter().collect();
+			return self
+				.items
+				.iter()
+				.filter(|item| {
+					if self.route != Some(crate::navigation::SurfaceRoute::Commands) {
+						return true;
+					}
+					match &item.kind {
+						PaletteItemKind::Command { intent } => match intent.as_ref() {
+							Intent::Navigate(route) => route.parent() == self.route,
+							_ => true,
+						},
+						_ => true,
+					}
+				})
+				.collect();
 		}
-		let ranked = fuzzy_rank(&self.query, &self.items, |item| &item.title);
+		let ranked = fuzzy_rank(&self.query, &self.items, |item| {
+			let aliases = match &item.kind {
+				PaletteItemKind::Command { intent } => match intent.as_ref() {
+					Intent::Navigate(route) => route.aliases(),
+					_ => &[],
+				},
+				_ => &[],
+			};
+			std::iter::once(item.title.as_str())
+				.chain(item.subtitle.as_deref())
+				.chain(aliases.iter().copied())
+		});
 		ranked.into_iter().map(|(_, _, item)| item).collect()
 	}
 

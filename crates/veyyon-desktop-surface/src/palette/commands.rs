@@ -3,10 +3,7 @@
 use strum::{EnumIter, IntoEnumIterator};
 
 use super::{PaletteItem, PaletteItemKind};
-use crate::{
-	Intent, Overlay,
-	settings::{SettingsPage, SettingsState},
-};
+use crate::{Command, Intent, navigation::SurfaceRoute, settings::SettingsPage};
 
 /// Actions requiring the composer's editor or a local selection surface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
@@ -37,20 +34,33 @@ impl ComposerCommand {
 /// chrome.
 #[must_use]
 pub fn command_items() -> Vec<PaletteItem> {
-	let mut items = vec![
-		PaletteItem::command(1, "/new", Intent::NewSession, Some("Cmd/Ctrl N")),
-		PaletteItem::command(2, "/terminal", Intent::SetDrawer { open: true }, Some("Cmd/Ctrl J")),
-		PaletteItem::command(3, "/abort", Intent::AbortTurn, Some("Cmd/Ctrl .")),
-	];
+	let mut items: Vec<_> = [
+		("/new", Intent::NewSession, Command::NewSession.label(), Some("Cmd/Ctrl N")),
+		("/terminal", Intent::SetDrawer { open: true }, "Open terminal drawer", Some("Cmd/Ctrl J")),
+		("/abort", Intent::AbortTurn, Command::AbortTurn.label(), Some("Cmd/Ctrl .")),
+		("/account", Intent::Navigate(SurfaceRoute::Account), "Accounts and sign-in", None),
+		("/settings", Intent::Navigate(SurfaceRoute::Settings), "Preferences and appearance", None),
+	]
+	.into_iter()
+	.enumerate()
+	.map(|(index, (name, intent, description, shortcut))| {
+		let mut item = PaletteItem::command(index as u64 + 1, name, intent, shortcut);
+		item.subtitle = Some(description.to_owned());
+		item
+	})
+	.collect();
 	for page in SettingsPage::iter() {
+		if page == SettingsPage::General {
+			continue;
+		}
 		let name = match page {
 			SettingsPage::General => "/settings",
 			SettingsPage::Themes => "/settings themes",
 			SettingsPage::Keybindings => "/hotkeys",
-			SettingsPage::Providers => "/providers",
-			SettingsPage::Authentication => "/login",
+			SettingsPage::Providers => "/account manager",
+			SettingsPage::Authentication => "/account login",
 			SettingsPage::Mcp => "/mcp",
-			SettingsPage::Extensions => "/extensions",
+			SettingsPage::Extensions => "/agents",
 			SettingsPage::Diagnostics => "/settings diagnostics",
 			SettingsPage::Usage => "/usage",
 			SettingsPage::ContextBreakdown => "/context",
@@ -58,17 +68,25 @@ pub fn command_items() -> Vec<PaletteItem> {
 		let mut item = PaletteItem::command(
 			items.len() as u64 + 1,
 			name,
-			Intent::OpenOverlay(Box::new(Overlay::Settings(Box::new(SettingsState::new(page))))),
+			Intent::Navigate(SurfaceRoute::Page(page)),
 			None,
 		);
 		item.subtitle = Some(page.description().to_owned());
 		items.push(item);
 	}
 	for command in ComposerCommand::iter() {
+		let description = match command {
+			ComposerCommand::AttachFiles => Command::AttachFile.label(),
+			ComposerCommand::Models => Command::ModelPicker.label(),
+			ComposerCommand::Effort => Command::ThinkingLevel.label(),
+			ComposerCommand::QueueMode => Command::ToggleQueueMode.label(),
+			ComposerCommand::Steer => "Steer the running turn with a message",
+			ComposerCommand::Queue => "Queue a follow-up message",
+		};
 		items.push(PaletteItem {
 			id:       items.len() as u64 + 1,
 			title:    command.name().to_owned(),
-			subtitle: None,
+			subtitle: Some(description.to_owned()),
 			badge:    None,
 			meta:     None,
 			kind:     PaletteItemKind::Composer { command },

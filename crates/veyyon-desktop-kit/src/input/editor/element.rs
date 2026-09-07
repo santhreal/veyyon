@@ -60,8 +60,11 @@ impl Element for EditorElement {
 			EditorMode::Multiline { .. } => {
 				let text = editor.text().to_string();
 				let placeholder = editor.placeholder.clone();
+				let mut style = veyyon_gpui::Style::default();
+				style.max_size.width = relative(1.).into();
+				style.max_size.height = relative(1.).into();
 				let layout_id = window.request_measured_layout(
-					veyyon_gpui::Style::default(),
+					style,
 					move |known_dimensions, available_space, window, _cx| {
 						let wrap_width = known_dimensions.width.or(match available_space.width {
 							AvailableSpace::Definite(w) => Some(w),
@@ -111,10 +114,21 @@ impl Element for EditorElement {
 							total_h
 						};
 
+						let avail_h = match available_space.height {
+							AvailableSpace::Definite(h) => Some(h),
+							AvailableSpace::MinContent | AvailableSpace::MaxContent => None,
+						};
+						let final_h = match (known_dimensions.height, avail_h) {
+							(Some(kh), Some(ah)) => clamped_h.min(kh).min(ah),
+							(Some(kh), None) => clamped_h.min(kh),
+							(None, Some(ah)) => clamped_h.min(ah),
+							(None, None) => clamped_h,
+						};
+
 						let w = known_dimensions
 							.width
 							.unwrap_or_else(|| wrap_width.unwrap_or(px(100.0)));
-						Size::new(w, clamped_h)
+						Size::new(w, final_h)
 					},
 				);
 				(layout_id, ())
@@ -167,13 +181,17 @@ impl Element for EditorElement {
 			.unwrap_or_default();
 		let shaped_lines: Arc<[WrappedLine]> = Arc::from(shaped_lines.into_vec());
 
-		let layout_state =
-			EditorLayoutState::new(shaped_lines, line_height, font_size, bounds, scroll_top);
+		let effective_bounds = bounds.intersect(&window.content_mask().bounds);
+		let mut layout_state =
+			EditorLayoutState::new(shaped_lines, line_height, font_size, effective_bounds, scroll_top);
+		let caret_offset = editor.buffer.selection().head;
+		let new_scroll_top = layout_state.compute_scroll_top(caret_offset, scroll_top);
+		layout_state.scroll_top = new_scroll_top;
 
 		let content_h = layout_state.total_height;
 		let layout_clone = layout_state.clone();
-
 		self.editor.update(cx, |ed, _cx| {
+			ed.scroll_top = new_scroll_top;
 			ed.content_height = content_h;
 			ed.last_layout = Some(layout_clone);
 		});

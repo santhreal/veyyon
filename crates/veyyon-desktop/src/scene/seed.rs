@@ -30,6 +30,7 @@ pub struct Built {
 	pub state:         ShellState,
 	pub notice:        Option<String>,
 	pub composer_text: String,
+	pub row_menu:      Option<veyyon_desktop_surface::queue::RowMenu>,
 }
 
 /// The protocol model under construction.
@@ -38,9 +39,9 @@ pub struct Seed {
 	pub registry: RequestRegistry,
 	pub state:    ShellState,
 	pub notice:   Option<String>,
+	pub row_menu: Option<veyyon_desktop_surface::queue::RowMenu>,
 	next_session: u64,
 }
-
 impl Seed {
 	/// A store as the host leaves it once attached: connected, every
 	/// capability available, nothing listed yet.
@@ -59,6 +60,7 @@ impl Seed {
 			registry: RequestRegistry::new(),
 			state: ShellState::default(),
 			notice: None,
+			row_menu: None,
 			next_session: 0,
 		}
 	}
@@ -135,7 +137,17 @@ impl Seed {
 			request: None,
 			occurred_at_ms: SCENE_CLOCK_MS - 1000,
 		};
-		let active = self.store.persisted.shell.active_session.clone();
+		let active = (self.state.current_id > 0)
+			.then(|| SessionId::from(self.state.current_id.to_string()))
+			.or_else(|| {
+				self
+					.store
+					.persisted
+					.shell
+					.active_session
+					.as_ref()
+					.map(|_| SessionId::from("1"))
+			});
 		if let Some(line) = land_failure(&error, &self.registry, active.as_ref(), &mut self.state) {
 			self.notice = Some(line);
 		}
@@ -148,6 +160,11 @@ impl Seed {
 		let mut index = SessionIndex::new();
 		project(&self.store, &mut index, &HashMap::new(), SCENE_CLOCK_MS, &mut self.state);
 		project_controls(&self.store, &self.registry, &index, &mut self.state);
-		Built { state: self.state, notice: self.notice, composer_text: String::new() }
+		Built {
+			state:         self.state,
+			notice:        self.notice,
+			composer_text: String::new(),
+			row_menu:      self.row_menu,
+		}
 	}
 }

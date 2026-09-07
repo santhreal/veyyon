@@ -127,6 +127,24 @@ env = dict(os.environ, OUT_DIR=os.path.abspath(out), SCENE_ARM="before")
 # A file the branch deleted along with its directory needs the directory back, and the
 # restore takes back every directory it made rather than leaving an empty tree behind.
 made_dirs = []
+if env.get("SCENE_TERMINAL") == "native":
+    before_binary = env.get("PROOF_NATIVE_BEFORE_BINARY")
+    after_binary = env.get("PROOF_HOST_REPO_SOURCE")
+    if not before_binary or not after_binary or not env.get("PROOF_HOST_REPO_TARGET"):
+        raise SystemExit(
+            "native Before recording requires PROOF_NATIVE_BEFORE_BINARY and the "
+            "PROOF_HOST_REPO_SOURCE/PROOF_HOST_REPO_TARGET binary mount"
+        )
+    before_binary = os.path.abspath(before_binary)
+    for binary in (before_binary, after_binary):
+        if not os.path.isfile(binary) or not os.access(binary, os.X_OK):
+            raise SystemExit("native capture binary is not an executable file: " + binary)
+    before_sha = sha(before_binary)
+    after_sha = sha(after_binary)
+    if before_sha == after_sha:
+        raise SystemExit("native Before and After binaries are identical; provide the before-state build")
+    env["PROOF_HOST_REPO_SOURCE"] = before_binary
+    print(f"native before sha256: {before_sha}; after sha256: {after_sha}", flush=True)
 try:
     for path, content in want.items():
         if content is None:

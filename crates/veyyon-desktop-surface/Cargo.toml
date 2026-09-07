@@ -12,6 +12,7 @@ description = "The veyyon desktop surfaces: queue, session, composer, run bar, r
 workspace = true
 
 [dependencies]
+image.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 smallvec.workspace = true

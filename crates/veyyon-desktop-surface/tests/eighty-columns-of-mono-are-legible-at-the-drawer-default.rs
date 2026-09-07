@@ -21,8 +21,8 @@ use veyyon_desktop_scene::{
 	HeadlessSession,
 	headless::{RenderOptions, headless_context},
 };
-use veyyon_desktop_surface::{Intent, ShellView, fixture, install_tokens};
-use veyyon_gpui::{App, AppContext, Window};
+use veyyon_desktop_surface::{Intent, ShellView, damage::Region, fixture, install_tokens};
+use veyyon_gpui::{App, AppContext, Point, Window};
 
 fn make_drawer_session(
 	cx: &mut veyyon_desktop_scene::headless::Headless,
@@ -37,7 +37,8 @@ fn make_drawer_session(
 	HeadlessSession::open(cx, &options, move |_window: &mut Window, app: &mut App| {
 		let installed =
 			install_tokens(app, &tokens, &theme, Path::new("surface")).expect("tokens install");
-		let state = fixture::with_drawer();
+		let mut state = fixture::with_drawer();
+		state.keymap.panel_collapsed = true;
 		app.new(|_| ShellView::new(installed, state))
 	})
 	.expect("headless session opens")
@@ -76,27 +77,48 @@ fn eighty_columns_and_eleven_rows_fit_at_drawer_default_widths() {
 #[test]
 fn typing_while_focused_dispatches_terminal_input_with_no_local_echo() {
 	let mut cx = headless_context().expect("headless context available");
-	let mut session = make_drawer_session(&mut cx, 800, 600);
+	for width in [800, 1180] {
+		let mut session = make_drawer_session(&mut cx, width, 600);
+		let (drawer, initial_grid) = session
+			.update(|view, _, _| {
+				(
+					view
+						.laid_out()
+						.bounds(Region::Drawer)
+						.expect("drawer laid out"),
+					view.state().drawer.grid_rows.clone(),
+				)
+			})
+			.expect("read terminal state");
+		session
+			.click(Point {
+				x: drawer.origin.x + drawer.size.width / 2.0,
+				y: drawer.origin.y + drawer.size.height / 2.0,
+			})
+			.expect("focus terminal by pointer");
+		session.frame().expect("focused terminal renders");
 
-	// Dispatch a keystroke into the window
-	let handled = session.keystroke("a").expect("keystroke dispatched");
-
-	// Verify intent was emitted and no local echo occurred on the grid
-	session
-		.update(|view, _window, _cx| {
-			let intents = view.drain_intents();
-			if handled {
-				assert!(
-					intents
-						.iter()
-						.any(|i| matches!(i, Intent::TerminalInput(_))),
-					"typing dispatched TerminalInput intent"
-				);
-			}
-
-			// Verify cell at cursor was NOT mutated by local echo
-			let grid = &view.state().drawer.grid_rows;
-			assert_ne!(grid[0][0].c, 'a', "keystroke was not locally echoed into grid cell");
-		})
-		.expect("update succeeds");
+		for (chord, bytes) in
+			[("a", b"a".as_slice()), ("enter", b"\r"), ("ctrl-c", b"\x03"), ("up", b"\x1b[A")]
+		{
+			let handled = session.keystroke(chord).expect("terminal keystroke");
+			session
+				.update(|view, window, _| {
+					assert_eq!(
+						view.drain_intents(),
+						vec![Intent::TerminalInput(bytes.to_vec())],
+						"chord {chord}, focused contexts: {:?}",
+						window.context_stack()
+					);
+					assert!(handled, "terminal input must not propagate to another input handler");
+					assert_eq!(
+						view.state().drawer.grid_rows,
+						initial_grid,
+						"only host output changes cells"
+					);
+					assert_eq!(view.composer_text(), "", "terminal input must not edit the composer");
+				})
+				.expect("terminal forwarding verified");
+		}
+	}
 }

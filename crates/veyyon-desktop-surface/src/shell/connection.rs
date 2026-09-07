@@ -7,20 +7,27 @@
 
 use veyyon_desktop_kit::{
 	Button, ButtonSize, ButtonVariant, ColorRole, SpacingStep, StrokeStep, TextRamp, TokenSet,
+	state::InteractiveState,
 };
-use veyyon_gpui::{ClickEvent, InteractiveElement, IntoElement, ParentElement, Styled, div};
+use veyyon_desktop_model::SurfaceId;
+use veyyon_gpui::{
+	AnyElement, ClickEvent, InteractiveElement, IntoElement, ParentElement, Styled, div,
+};
 
 pub use crate::controls::{ControlError, error_hairline};
-use crate::{ConnectionPhase, Intent, ShellView};
-
+use crate::{
+	ConnectionPhase, Intent, ShellView,
+	controls::{ControlStates, availability_style},
+};
 /// Renders the top-level connection status banner if the active phase requires
 /// operator attention (§8.12).
 pub fn connection_banner(
 	phase: &ConnectionPhase,
+	controls: &ControlStates,
 	now_ms: u64,
 	tokens: &TokenSet,
 	cx: &veyyon_gpui::Context<ShellView>,
-) -> Option<impl IntoElement> {
+) -> Option<AnyElement> {
 	match phase {
 		ConnectionPhase::Reconnecting { attempt, message, retry_at_ms } => {
 			let stroke_px = tokens.stroke(StrokeStep::Hairline);
@@ -57,14 +64,21 @@ pub fn connection_banner(
 				.child(div().text_color(fg_color).child(countdown_text))
 				.child(div().text_color(sec_color).child(message_text));
 
-			let retry_btn = Button::new("Retry Now")
+			let av = controls.availability(&SurfaceId::ConnectionRetryButton);
+			let (opacity, _, allowed) = availability_style(&av, tokens);
+			let mut retry_btn = Button::new("Retry Now")
 				.id("banner-retry-btn")
 				.variant(ButtonVariant::Ghost)
-				.size(ButtonSize::Small)
-				.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
-					view.dispatch(Intent::RetryConnection, cx);
-				}));
-
+				.size(ButtonSize::Small);
+			if allowed {
+				retry_btn =
+					retry_btn.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
+						view.dispatch(Intent::RetryConnection, cx);
+					}));
+			} else {
+				retry_btn = retry_btn.state(InteractiveState::Disabled);
+			}
+			let retry_el = div().opacity(opacity).child(retry_btn);
 			let banner = div()
 				.id("reconnecting-banner")
 				.w_full()
@@ -78,9 +92,8 @@ pub fn connection_banner(
 				.border_b(stroke_px)
 				.border_color(hairline_color)
 				.child(label)
-				.child(retry_btn);
-
-			Some(banner)
+				.child(retry_el);
+			Some(banner.into_any_element())
 		},
 		ConnectionPhase::Fatal { message } => {
 			let stroke_px = tokens.stroke(StrokeStep::Hairline);
@@ -121,7 +134,7 @@ pub fn connection_banner(
 				.child(label)
 				.child(retry_btn);
 
-			Some(banner)
+			Some(banner.into_any_element())
 		},
 		_ => None,
 	}

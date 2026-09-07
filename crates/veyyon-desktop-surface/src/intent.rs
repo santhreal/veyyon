@@ -75,6 +75,7 @@ pub enum Intent {
 	RetryControl(SurfaceId),
 	DismissError(SurfaceId),
 	OpenOverlay(Box<Overlay>),
+	Navigate(crate::navigation::SurfaceRoute),
 	CloseOverlay,
 	PaletteQuery(String),
 	PaletteMove(i32),
@@ -108,6 +109,10 @@ pub enum Intent {
 	PinSession(u64),
 	DeferSession(u64),
 	ParkSession(u64),
+	UnparkSession(u64),
+	RecallSession(u64),
+	DeleteSession(u64),
+	BranchSession(u64),
 	FilterQueue(String),
 	NewSession,
 	CloseTabOrPark,
@@ -117,7 +122,9 @@ pub enum Intent {
 	StepTurn(i32),
 	ToggleBlock,
 	ToggleQueue,
-	TogglePanel,
+	SetPanel {
+		open: bool,
+	},
 	SetDiffMode(veyyon_desktop_model::DiffMode),
 	OpenFile(String),
 	ToggleTreeNode(String),
@@ -138,13 +145,11 @@ impl Intent {
 				| Self::RemoveAttachment(_)
 				| Self::SelectDrawerTab(_)
 				| Self::SetDrawer { open: false }
-				| Self::DismissError(_)
+				| Self::SetPanel { open: false }
 				| Self::OpenOverlay(_)
 				| Self::CloseOverlay
+				| Self::CloseTabOrPark
 				| Self::PaletteMove(_)
-				| Self::PinSession(_)
-				| Self::DeferSession(_)
-				| Self::ParkSession(_)
 				| Self::FilterQueue(_)
 				| Self::MoveQueueSelection(_)
 				| Self::ScrollTranscript(_)
@@ -152,7 +157,6 @@ impl Intent {
 				| Self::StepTurn(_)
 				| Self::ToggleBlock
 				| Self::ToggleQueue
-				| Self::TogglePanel
 				| Self::SetDiffMode(_)
 				| Self::ToggleTreeNode(_)
 				| Self::ExpandContext { .. }
@@ -197,6 +201,11 @@ impl Intents {
 		{
 			state.overlay = None;
 			self.dispatch(run, state);
+			return;
+		}
+
+		if intent == Intent::CloseTabOrPark && state.panel.tabs.len() <= 1 {
+			self.dispatch(Intent::ParkSession(state.current_id), state);
 			return;
 		}
 

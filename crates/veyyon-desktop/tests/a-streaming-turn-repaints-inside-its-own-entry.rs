@@ -274,9 +274,8 @@ fn a_streaming_turn_repaints_inside_its_own_entry_and_the_bench_reports_the_delt
 	// Both arms draw the same pixels: the diff changes when a frame is
 	// requested, never what it contains.
 	for (batch, ((_, on_frame), (_, off_frame))) in on.iter().zip(&off).enumerate() {
-		assert_eq!(
-			on_frame.as_bytes(),
-			off_frame.as_bytes(),
+		assert!(
+			on_frame.as_bytes() == off_frame.as_bytes(),
 			"batch {batch}: the arms drew different frames"
 		);
 	}

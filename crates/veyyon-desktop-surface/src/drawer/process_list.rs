@@ -9,18 +9,25 @@ use std::cell::RefCell;
 use veyyon_desktop_kit::{
 	ColorRole, Dot, List, ListRow, MonoSizeStep, SpacingStep, TextRamp, TokenSet,
 	controls::{Button, ButtonVariant},
+	state::InteractiveState,
 };
+use veyyon_desktop_model::{SessionId, SurfaceId};
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
 use veyyon_gpui::{
 	AnyElement, ClickEvent, Context, InteractiveElement, IntoElement, ParentElement, Styled, div, px,
 };
 
 use super::content::ProcessRow;
-use crate::{Intent, ShellView};
+use crate::{
+	Intent, ShellView,
+	controls::{ControlStates, availability_style},
+};
 
 /// Builds the supervised processes list view.
 pub fn process_list(
 	processes: &[ProcessRow],
+	controls: &ControlStates,
+	session_id: u64,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
@@ -46,7 +53,7 @@ pub fn process_list(
 	let rows: Vec<Option<AnyElement>> = processes
 		.iter()
 		.enumerate()
-		.map(|(idx, proc)| Some(process_row(idx, proc, geometry, tokens, cx)))
+		.map(|(idx, proc)| Some(process_row(idx, proc, controls, session_id, geometry, tokens, cx)))
 		.collect();
 	let rows = RefCell::new(rows);
 	div()
@@ -74,6 +81,8 @@ pub fn process_list(
 fn process_row(
 	idx: usize,
 	proc: &ProcessRow,
+	controls: &ControlStates,
+	session_id: u64,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
@@ -119,22 +128,40 @@ fn process_row(
 				.flex_row()
 				.items_center()
 				.gap(tokens.spacing(SpacingStep::S1))
-				.child(
-					Button::new("Stop")
+				.child({
+					let sid = SessionId::from(session_id.to_string());
+					let stop_av = controls
+						.availability(&SurfaceId::ProcessStopButton(sid.clone(), proc.name.clone()));
+					let (stop_op, _, stop_allowed) = availability_style(&stop_av, tokens);
+					let mut btn = Button::new("Stop")
 						.id(("process-stop", idx))
-						.variant(ButtonVariant::Ghost)
-						.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
+						.variant(ButtonVariant::Ghost);
+					if is_running && stop_allowed {
+						btn = btn.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
 							view.dispatch(Intent::ProcessStop(name_for_stop.clone()), cx);
-						})),
-				)
-				.child(
-					Button::new("Restart")
+						}));
+					} else {
+						btn = btn.state(InteractiveState::Disabled);
+					}
+					div().opacity(stop_op).child(btn)
+				})
+				.child({
+					let sid = SessionId::from(session_id.to_string());
+					let restart_av =
+						controls.availability(&SurfaceId::ProcessRestartButton(sid, proc.name.clone()));
+					let (restart_op, _, restart_allowed) = availability_style(&restart_av, tokens);
+					let mut btn = Button::new("Restart")
 						.id(("process-restart", idx))
-						.variant(ButtonVariant::Ghost)
-						.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
+						.variant(ButtonVariant::Ghost);
+					if restart_allowed {
+						btn = btn.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
 							view.dispatch(Intent::ProcessRestart(name_for_restart.clone()), cx);
-						})),
-				),
+						}));
+					} else {
+						btn = btn.state(InteractiveState::Disabled);
+					}
+					div().opacity(restart_op).child(btn)
+				}),
 		);
 
 	ListRow::new(proc.name.clone())

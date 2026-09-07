@@ -22,6 +22,7 @@ pub(super) struct PaletteInput {
 	pub restore_focus: bool,
 	pub focus_search:  bool,
 	pub retained:      Option<Overlay>,
+	pub parents:       Vec<PaletteState>,
 	pub motion:        crate::palette::motion::FloatMotion,
 }
 
@@ -93,11 +94,13 @@ impl ShellView {
 						.as_mut()
 						.and_then(Overlay::as_palette_mut)
 					{
-						palette.set_query(query);
+						if palette.query != query {
+							palette.set_query(query);
+						}
 					}
 				},
 				EditorEvent::Submit => view.run_palette(cx),
-				EditorEvent::Escape => view.close_palette(cx),
+				EditorEvent::Escape => view.back_surface(cx),
 				EditorEvent::PasteMedia(_) => {},
 			}
 			cx.notify();
@@ -177,11 +180,85 @@ impl ShellView {
 		if !self.composer_action_allowed(&intent) {
 			return;
 		}
+		if let Intent::Navigate(route) = intent {
+			self.consume_command_prefix(cx);
+			self.navigate_surface(route, cx);
+			return;
+		}
 		if self.palette_input.slash {
 			self.consume_command_prefix(cx);
 		}
 		self.close_palette(cx);
 		self.dispatch(intent, cx);
+	}
+
+	/// Replaces the visible route without closing or restarting its float
+	/// motion.
+	pub fn navigate_surface(
+		&mut self,
+		route: crate::navigation::SurfaceRoute,
+		cx: &mut Context<Self>,
+	) {
+		let returning = self
+			.state
+			.overlay
+			.as_ref()
+			.and_then(Overlay::route)
+			.and_then(crate::navigation::SurfaceRoute::parent)
+			== Some(route);
+		let restored = if returning
+			&& self
+				.palette_input
+				.parents
+				.last()
+				.is_some_and(|parent| parent.route == Some(route))
+		{
+			self.palette_input.parents.pop()
+		} else {
+			if !returning {
+				if let Some(parent) = self.state.overlay.as_ref().and_then(Overlay::as_palette) {
+					if parent.route != Some(route) {
+						self.palette_input.parents.push(parent.clone());
+					}
+				}
+			}
+			None
+		};
+		self.palette_input.slash = false;
+		self.palette_input.anchored = false;
+		self.palette_input.restore_focus = false;
+		self.dispatch(Intent::Navigate(route), cx);
+		if let Some(parent) = restored {
+			self.state.overlay = Some(Overlay::Palette(parent));
+		}
+		self.palette_input.focus_search = true;
+		if self.state.overlay.as_ref().is_some_and(Overlay::is_palette) {
+			let editor = self.ensure_palette_editor(cx);
+			let query = self
+				.state
+				.overlay
+				.as_ref()
+				.and_then(Overlay::as_palette)
+				.map_or_else(String::new, |palette| palette.query.clone());
+			editor.update(cx, |editor, cx| editor.set_text(query, cx));
+			self.palette_input.focus_search = true;
+		}
+		cx.notify();
+	}
+
+	/// Ascends the command hierarchy before closing its root.
+	pub fn back_surface(&mut self, cx: &mut Context<Self>) {
+		match self
+			.state
+			.overlay
+			.as_ref()
+			.and_then(Overlay::route)
+			.and_then(crate::navigation::SurfaceRoute::parent)
+		{
+			Some(parent) => self.navigate_surface(parent, cx),
+			None => self.close_palette(cx),
+		}
+		cx.notify();
 	}
 
 	/// Closes the menu without discarding the draft and restores focus on the
@@ -192,6 +269,7 @@ impl ShellView {
 		}
 		self.palette_input.slash = false;
 		self.palette_input.restore_focus = true;
+		self.palette_input.parents.clear();
 		self.dispatch(Intent::CloseOverlay, cx);
 	}
 }

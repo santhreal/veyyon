@@ -26,7 +26,7 @@ use veyyon_desktop_scene::{
 	headless::{RenderOptions, headless_context},
 };
 use veyyon_desktop_surface::{
-	Overlay, Row, Section, SettingsState, ShellView, fixture, install_tokens,
+	Overlay, Row, Section, ShellView, fixture, install_tokens, navigation::SurfaceRoute,
 	queue::{RailMotion, rail_fill},
 };
 use veyyon_gpui::{App, AppContext, Point};
@@ -217,13 +217,10 @@ fn the_gear_is_present_in_the_rail_and_dispatches_the_settings_overlay_intent() 
 	// (d) Assert that clicking the gear opened the settings overlay.
 	session
 		.update(|view, _window, _cx| {
-			assert!(
-				matches!(
-					&view.state().overlay,
-					Some(Overlay::Settings(boxed)) if **boxed == SettingsState::default()
-				),
-				"clicking settings gear must open the Settings overlay, got: {:?}",
-				view.state().overlay
+			assert_eq!(
+				view.state().overlay.as_ref().and_then(Overlay::route),
+				Some(SurfaceRoute::Settings),
+				"the settings gear must open the shared Settings destination"
 			);
 		})
 		.expect("overlay state verified");

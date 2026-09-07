@@ -9,8 +9,8 @@ use std::{collections::BTreeSet, path::PathBuf};
 
 use veyyon_desktop_model::{ChangeStatus, DiffMode};
 use veyyon_desktop_surface::{
-	Attachment, Badge, Card, DiffFile, DiffRow, Intent, PanelContent, PanelTab, Row, Section,
-	ShellState, TreeContent, TreeRowItem,
+	Attachment, Badge, Card, DiffFile, DiffRow, DiffStatus, Intent, PanelContent, PanelTab, Row,
+	Section, ShellState, TreeContent, TreeRowItem, TreeStatus,
 	composer::{MediaType, TurnPhase, payload_for},
 	drawer::{DrawerContent, DrawerTab, ProcessRow},
 	terminal::{Cell, CellStyle, Ink},
@@ -79,9 +79,9 @@ pub fn state() -> ShellState {
 		turn: TurnPhase::Idle,
 		run_status: None,
 		panel: PanelContent {
-			tabs:       vec![PanelTab::Diff, PanelTab::File, PanelTab::Tree],
-			active_tab: PanelTab::Diff,
-			diff:       vec![DiffFile {
+			tabs:               vec![PanelTab::Diff, PanelTab::File, PanelTab::Tree],
+			active_tab:         PanelTab::Diff,
+			diff:               vec![DiffFile {
 				path:      "src/main.rs".to_string(),
 				old_path:  None,
 				status:    ChangeStatus::Modified,
@@ -89,8 +89,9 @@ pub fn state() -> ShellState {
 				deletions: 1,
 				rows:      vec![DiffRow::Collapsed { hidden: 10, before_line: 0, after_line: 0 }],
 			}],
-			file:       None,
-			tree:       TreeContent {
+			diff_status:        DiffStatus::Loaded,
+			file:               None,
+			tree:               TreeContent {
 				rows:           vec![TreeRowItem {
 					path:        "src".to_string(),
 					name:        "src".to_string(),
@@ -101,8 +102,10 @@ pub fn state() -> ShellState {
 				}],
 				selected_path:  None,
 				expanded_paths: BTreeSet::new(),
+				status:         TreeStatus::Loaded,
 			},
-			diff_mode:  DiffMode::Unified,
+			diff_mode:          DiffMode::Unified,
+			unavailable_reason: None,
 		},
 		cards: vec![
 			Card::Approval { tool: "bash".to_owned(), detail: vec!["rm -rf build".to_owned()] },

@@ -203,7 +203,6 @@ action = "SplitHalf"
 scope = "composer"
 chord = "escape"
 action = "Dismiss"
-
 [[binding]]
 scope = "composer"
 chord = "primary-."

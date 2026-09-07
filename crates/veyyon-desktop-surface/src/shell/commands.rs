@@ -23,7 +23,24 @@ impl ShellView {
 			.as_ref()
 			.and_then(Overlay::as_palette)
 			.and_then(PaletteState::selected_item)
-			.map(|item| item.title.as_str());
+			.map(|item| {
+				let aliases = match &item.kind {
+					crate::palette::PaletteItemKind::Command { intent } => match intent.as_ref() {
+						Intent::Navigate(route) => route.aliases(),
+						_ => &[],
+					},
+					_ => &[],
+				};
+				std::iter::once(item.title.as_str())
+					.chain(aliases.iter().copied())
+					.find(|prefix| {
+						self
+							.composer_cache
+							.strip_prefix(prefix)
+							.is_some_and(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace))
+					})
+					.unwrap_or(item.title.as_str())
+			});
 		let draft = prefix
 			.and_then(|prefix| self.composer_cache.strip_prefix(prefix))
 			.map_or_else(

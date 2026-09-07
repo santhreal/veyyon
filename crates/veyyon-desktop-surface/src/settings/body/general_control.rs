@@ -16,9 +16,7 @@ use veyyon_desktop_kit::{
 	SpacingStep, TextArea, TextField, Toggle,
 };
 use veyyon_desktop_model::{SettingEntry, SettingKind};
-use veyyon_gpui::{
-	AnyElement, App, Context, ElementId, Entity, IntoElement, ParentElement, Styled, div,
-};
+use veyyon_gpui::{AnyElement, App, ElementId, Entity, IntoElement, ParentElement, Styled, div};
 
 use crate::{Intent, ShellView};
 
@@ -36,8 +34,7 @@ fn set_value(entity: &Entity<ShellView>, app: &mut App, key: &str, value: Value)
 }
 
 /// The control for `entry`, wired to dispatch `SettingChanged` for `key`.
-pub fn setting_control(key: &str, entry: &SettingEntry, cx: &Context<ShellView>) -> AnyElement {
-	let entity = cx.entity();
+pub fn setting_control(key: &str, entry: &SettingEntry, entity: Entity<ShellView>) -> AnyElement {
 	match entry.kind {
 		SettingKind::Boolean => boolean_control(key, entry, entity),
 		SettingKind::Number => number_control(key, entry, entity),

@@ -191,10 +191,18 @@ pub fn content_cell(
 	let mut cursor = 0;
 
 	for span in intraline {
-		if span.start > cursor && span.start <= text.len() {
+		if span.start > cursor
+			&& span.start <= text.len()
+			&& text.is_char_boundary(cursor)
+			&& text.is_char_boundary(span.start)
+		{
 			container = container.child(text[cursor..span.start].to_string());
 		}
-		if span.end <= text.len() && span.start < span.end {
+		if span.end <= text.len()
+			&& span.start < span.end
+			&& text.is_char_boundary(span.start)
+			&& text.is_char_boundary(span.end)
+		{
 			container = container.child(
 				div()
 					.bg(hl)
@@ -205,10 +213,9 @@ pub fn content_cell(
 		}
 	}
 
-	if cursor < text.len() {
+	if cursor < text.len() && text.is_char_boundary(cursor) {
 		container = container.child(text[cursor..].to_string());
 	}
-
 	container
 }
 

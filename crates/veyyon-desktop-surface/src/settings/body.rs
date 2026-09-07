@@ -19,12 +19,13 @@ use veyyon_desktop_kit::{Axis, ScrollView, TokenSet};
 use veyyon_desktop_tokens::SettingsSurfaceTokens;
 use veyyon_gpui::{Context, IntoElement, ParentElement, Styled, div, px};
 
-use super::{SettingsPage, SettingsState};
+use super::{GeneralSettingsListState, SettingsPage, SettingsState};
 use crate::{ShellView, controls::ControlStates};
 
 /// Renders the rows for the currently active settings page (§5.9).
 pub fn render_page_body(
 	state: &SettingsState,
+	list_state: &GeneralSettingsListState,
 	controls: &ControlStates,
 	geometry: &SettingsSurfaceTokens,
 	tokens: &TokenSet,
@@ -38,7 +39,9 @@ pub fn render_page_body(
 		.overflow_hidden();
 
 	let body_content = match state.page {
-		SettingsPage::General => general::render_general_page(state, controls, geometry, tokens, cx),
+		SettingsPage::General => {
+			general::render_general_page(state, list_state, controls, geometry, tokens, cx)
+		},
 		SettingsPage::Themes => themes::render_themes_page(state, controls, geometry, tokens, cx),
 		SettingsPage::Keybindings => {
 			keybindings::render_keybindings_page(state, controls, geometry, tokens)
@@ -48,7 +51,9 @@ pub fn render_page_body(
 		},
 		SettingsPage::Authentication => auth::render_auth_page(state, geometry, tokens, cx),
 		SettingsPage::Mcp => mcp::render_mcp_page(state, controls, geometry, tokens, cx),
-		SettingsPage::Extensions => extensions::render_extensions_page(state, geometry, tokens, cx),
+		SettingsPage::Extensions => {
+			extensions::render_extensions_page(state, controls, geometry, tokens, cx)
+		},
 		SettingsPage::Diagnostics => {
 			diagnostics::render_diagnostics_page(state, controls, geometry, tokens, cx)
 		},
@@ -57,6 +62,10 @@ pub fn render_page_body(
 			context::render_context_page(state, controls, geometry, tokens)
 		},
 	};
+
+	if state.page == SettingsPage::General {
+		return container.h_full().min_h_0().child(body_content);
+	}
 
 	// The body scrolls along one axis: a page longer than the overlay is
 	// reached by scrolling, never by a second column.

@@ -10,8 +10,8 @@
 use std::sync::Arc;
 
 use veyyon_gpui::{
-	AnyElement, App, Context, ElementId, Empty, Entity, IntoElement, MouseButton, Pixels, Point,
-	Render, RenderOnce, Window, div, prelude::*, relative,
+	AnyElement, App, Context, ElementId, Empty, Entity, IntoElement, MouseButton, MouseUpEvent,
+	Pixels, Point, Render, RenderOnce, Window, div, prelude::*, relative,
 };
 
 use crate::{
@@ -60,12 +60,13 @@ impl Render for ResizeGhost {
 /// Resizable split container with draggable separator handle.
 #[derive(IntoElement)]
 pub struct Resizable {
-	id:        ElementId,
-	axis:      Axis,
-	first:     AnyElement,
-	second:    AnyElement,
-	ratio:     f32,
-	on_resize: Option<Arc<dyn Fn(f32, &mut Window, &mut App) + Send + Sync + 'static>>,
+	id:            ElementId,
+	axis:          Axis,
+	first:         AnyElement,
+	second:        AnyElement,
+	ratio:         f32,
+	on_resize:     Option<Arc<dyn Fn(f32, &mut Window, &mut App) + Send + Sync + 'static>>,
+	on_resize_end: Option<Arc<dyn Fn(&mut Window, &mut App) + Send + Sync + 'static>>,
 }
 
 impl Resizable {
@@ -79,6 +80,7 @@ impl Resizable {
 			second: second.into_any_element(),
 			ratio: 0.5,
 			on_resize: None,
+			on_resize_end: None,
 		}
 	}
 
@@ -104,6 +106,17 @@ impl Resizable {
 		handler: impl Fn(f32, &mut Window, &mut App) + Send + Sync + 'static,
 	) -> Self {
 		self.on_resize = Some(Arc::new(handler));
+		self
+	}
+
+	/// Receives a release inside or outside the split after its handle was
+	/// pressed.
+	#[must_use]
+	pub fn on_resize_end(
+		mut self,
+		handler: impl Fn(&mut Window, &mut App) + Send + Sync + 'static,
+	) -> Self {
+		self.on_resize_end = Some(Arc::new(handler));
 		self
 	}
 
@@ -168,6 +181,17 @@ impl RenderOnce for Resizable {
 		};
 
 		let mut container = div().id(self.id).w_full().h_full().flex().overflow_hidden();
+		if let Some(handler) = self.on_resize_end {
+			let grab = grab.clone();
+			let release = move |_event: &MouseUpEvent, window: &mut Window, cx: &mut App| {
+				if grab.update(cx, |grab, _| grab.take().is_some()) {
+					handler(window, cx);
+				}
+			};
+			container = container
+				.on_mouse_up(MouseButton::Left, release.clone())
+				.on_mouse_up_out(MouseButton::Left, release);
+		}
 		if let Some(handler) = self.on_resize {
 			container = container.on_drag_move::<ResizeDrag>(move |event, window, cx| {
 				let drag = event.drag(cx);

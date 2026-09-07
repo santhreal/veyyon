@@ -18,7 +18,10 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 				let id = summary.id.clone();
 				let session = Session {
 					id:                id.clone(),
-					title:             summary.title.unwrap_or_else(|| summary.path.clone()),
+					title:             summary
+						.title
+						.filter(|t| !t.trim().is_empty())
+						.unwrap_or_else(|| "new session".to_string()),
 					project_name:      summary.workspace,
 					branch:            String::new(),
 					partition:         QueuePartition::Live,

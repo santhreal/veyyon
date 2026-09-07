@@ -20,7 +20,7 @@ pub use slot::EditorSlot;
 use veyyon_gpui::{
 	App, ClipboardItem, Context, CursorStyle, ElementId, EventEmitter, FocusHandle, Focusable,
 	InteractiveElement, IntoElement, MouseButton, Pixels, Render, SharedString, Subscription, Task,
-	Window, div, prelude::*,
+	Window, div, prelude::*, relative,
 };
 
 use super::buffer::TextBuffer;
@@ -194,6 +194,7 @@ impl Render for Editor {
 			.track_focus(&self.focus_handle)
 			.cursor(CursorStyle::IBeam)
 			.w_full()
+			.max_h(relative(1.))
 			.overflow_hidden()
 			.on_action(cx.listener(Self::select_all_action))
 			.on_action(cx.listener(Self::undo_action))

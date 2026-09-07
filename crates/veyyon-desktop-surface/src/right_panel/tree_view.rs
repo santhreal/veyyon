@@ -16,7 +16,7 @@ use veyyon_gpui::{
 use crate::{
 	ShellView,
 	intent::Intent,
-	right_panel::content::{TreeContent, TreeRowItem},
+	right_panel::content::{TreeContent, TreeRowItem, TreeStatus},
 };
 
 /// Renders the Tree tenant in the right panel.
@@ -27,15 +27,22 @@ pub fn tree_view(
 	cx: &Context<ShellView>,
 ) -> AnyElement {
 	if tree.rows.is_empty() {
+		let message = match tree.status {
+			TreeStatus::Unloaded => "Open the file tree",
+			TreeStatus::Loading => "Loading file tree...",
+			TreeStatus::Loaded => "No files in workspace",
+			TreeStatus::Failed => "Failed to load file tree",
+		};
 		return div()
 			.id("right-panel-tree-empty")
+			.flex_1()
 			.w_full()
 			.flex()
 			.items_center()
 			.justify_center()
-			.text_size(px(geometry.tree_font_size.size))
+			.text_size(tokens.font_size(veyyon_desktop_kit::TextRamp::Small))
 			.text_color(tokens.color(ColorRole::Muted))
-			.child("No files in workspace")
+			.child(message)
 			.into_any_element();
 	}
 

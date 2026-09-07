@@ -31,6 +31,28 @@ pub fn palette_surface(
 		.flush(true);
 	let filtered = state.filtered_items();
 	let mut body = div().w_full().flex().flex_col();
+	let mut input = div().flex().flex_col();
+	if let Some(route) = state.route {
+		input = input.child(
+			div()
+				.px(inset)
+				.py(tokens.spacing(SpacingStep::S2))
+				.child(crate::navigation::surface_header(route, tokens, cx)),
+		);
+	}
+	let input = input.child(search);
+	if let Some(notice) = &state.notice {
+		body = body.child(
+			div()
+				.px(inset)
+				.py(tokens.spacing(SpacingStep::S2))
+				.text_size(tokens.font_size(TextRamp::Micro))
+				.text_color(tokens.color(ColorRole::Muted))
+				.border_b(px(1.0))
+				.border_color(tokens.color(ColorRole::Hairline))
+				.child(notice.clone()),
+		);
+	}
 	if filtered.is_empty() {
 		body = body.child(
 			div()
@@ -80,8 +102,18 @@ pub fn palette_surface(
 		.text_size(tokens.font_size(TextRamp::Micro))
 		.text_color(tokens.color(ColorRole::Muted))
 		.child("↑↓ Select · Enter Confirm")
-		.child("Esc Close");
-	Palette::new(search, body)
+		.child(
+			if state
+				.route
+				.and_then(crate::navigation::SurfaceRoute::parent)
+				.is_some()
+			{
+				"Esc Back"
+			} else {
+				"Esc Close"
+			},
+		);
+	Palette::new(input, body)
 		.id("command-palette")
 		.width(px(geometry.width_px))
 		.max_height(px(geometry.max_height_px))

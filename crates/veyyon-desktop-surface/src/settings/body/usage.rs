@@ -9,7 +9,7 @@ use veyyon_gpui::{ClickEvent, Context, Div, IntoElement, ParentElement, Styled, 
 
 use crate::{
 	Intent, ShellView,
-	controls::ControlStates,
+	controls::{ControlStates, hairline_for},
 	settings::{
 		SettingsState,
 		row::{empty_state_row, setting_row},
@@ -37,10 +37,12 @@ pub fn render_usage_page(
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> Div {
+	let usage_error = hairline_for(controls, &SurfaceId::UsageRefreshButton, tokens, cx);
 	let mut container = div()
 		.flex()
 		.flex_col()
-		.gap(veyyon_gpui::px(geometry.row_gap));
+		.gap(veyyon_gpui::px(geometry.row_gap))
+		.children(usage_error);
 
 	let Some(totals) = &state.usage else {
 		return container.child(empty_state_row(

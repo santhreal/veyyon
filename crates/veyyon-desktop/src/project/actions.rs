@@ -118,7 +118,45 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 			veyyon_desktop_model::SurfaceId::ProviderAuthCancelButton(provider) => {
 				vec![HostAction::CancelAuthFlow { provider: provider.clone() }]
 			},
+			veyyon_desktop_model::SurfaceId::DiagnosticRefreshButton => {
+				vec![HostAction::RefreshDiagnostics]
+			},
+			veyyon_desktop_model::SurfaceId::UsageRefreshButton => {
+				vec![HostAction::GetUsage { session: active }]
+			},
+			veyyon_desktop_model::SurfaceId::ContextBreakdownRefreshButton => active
+				.map_or_else(Vec::new, |session| vec![HostAction::GetContextBreakdown { session }]),
+			veyyon_desktop_model::SurfaceId::DiagnosticRetrySourceButton(source) => {
+				vec![HostAction::RetryDiagnosticSource { source: source.clone() }]
+			},
+			veyyon_desktop_model::SurfaceId::AgentReviveButton(agent) => {
+				vec![HostAction::ReviveAgent { agent_id: agent.clone() }]
+			},
+			veyyon_desktop_model::SurfaceId::TaskCancelButton(task_id) => {
+				vec![HostAction::CancelTask { task_id: task_id.clone() }]
+			},
 			_ => Vec::new(),
+		},
+		Intent::Navigate(crate_route) => {
+			use veyyon_desktop_surface::{SettingsPage, navigation::SurfaceRoute};
+			match crate_route {
+				SurfaceRoute::Page(SettingsPage::General) => vec![HostAction::LoadSettings],
+				SurfaceRoute::Page(SettingsPage::Themes) => vec![HostAction::LoadThemes],
+				SurfaceRoute::Page(SettingsPage::Keybindings) => vec![HostAction::LoadKeybindings],
+				SurfaceRoute::Page(SettingsPage::Providers) => vec![HostAction::RefreshProviders],
+				SurfaceRoute::Page(SettingsPage::Mcp) => vec![HostAction::RefreshMcp],
+				SurfaceRoute::Page(SettingsPage::Diagnostics) => vec![HostAction::RefreshDiagnostics],
+				SurfaceRoute::Page(SettingsPage::Usage) => {
+					vec![HostAction::GetUsage { session: active }]
+				},
+				SurfaceRoute::Page(SettingsPage::ContextBreakdown) => active
+					.map_or_else(Vec::new, |session| vec![HostAction::GetContextBreakdown { session }]),
+				SurfaceRoute::Page(SettingsPage::Extensions)
+				| SurfaceRoute::Page(SettingsPage::Authentication)
+				| SurfaceRoute::Commands
+				| SurfaceRoute::Account
+				| SurfaceRoute::Settings => Vec::new(),
+			}
 		},
 		Intent::OpenOverlay(_) | Intent::CloseOverlay | Intent::PaletteMove(_) => Vec::new(),
 		Intent::PaletteQuery(query) => vec![HostAction::SearchFiles { query: query.clone() }],
@@ -126,6 +164,9 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		Intent::PaletteAscend => vec![HostAction::LoadFileTree { root: None }],
 		Intent::SettingChanged { key, value } => {
 			vec![HostAction::SetSetting { key: key.clone(), value: value.clone() }]
+		},
+		Intent::ResetSetting(key) => {
+			vec![HostAction::ResetSetting { key: key.clone() }]
 		},
 		Intent::SelectTheme(theme) => vec![
 			HostAction::SetSetting {
@@ -136,6 +177,20 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		],
 		Intent::ReloadSettings => {
 			vec![HostAction::LoadSettings, HostAction::LoadThemes, HostAction::LoadKeybindings]
+		},
+		Intent::SetMcpEnabled { server, enabled } => {
+			vec![HostAction::SetMcpEnabled { server: server.clone(), enabled: *enabled }]
+		},
+		Intent::RefreshDiagnostics => vec![HostAction::RefreshDiagnostics],
+		Intent::RetryDiagnosticSource(source) => {
+			vec![HostAction::RetryDiagnosticSource { source: source.clone() }]
+		},
+		Intent::RefreshUsage => {
+			let mut actions = vec![HostAction::GetUsage { session: active.clone() }];
+			if let Some(session) = active {
+				actions.push(HostAction::GetContextBreakdown { session });
+			}
+			actions
 		},
 		Intent::TerminalInput(data) => {
 			let active_term = store
@@ -221,6 +276,28 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 			}
 			Vec::new()
 		},
+		Intent::UnparkSession(row) => {
+			if let Some(session) = index.session_of(*row) {
+				store
+					.sessions
+					.unpark(session, crate::current_timestamp_ms());
+			}
+			Vec::new()
+		},
+		Intent::RecallSession(row) => {
+			if let Some(session) = index.session_of(*row) {
+				store
+					.sessions
+					.recall(session, crate::current_timestamp_ms());
+			}
+			Vec::new()
+		},
+		Intent::DeleteSession(row) => index.session_of(*row).map_or_else(Vec::new, |session| {
+			vec![HostAction::DeleteSession { session: session.clone() }]
+		}),
+		Intent::BranchSession(row) => index.session_of(*row).map_or_else(Vec::new, |session| {
+			vec![HostAction::BranchSession { session: session.clone(), entry: None }]
+		}),
 		Intent::OpenFile(path) => vec![HostAction::ReadFile { path: path.clone() }],
 		Intent::SelectChangeScope(scope) => vec![
 			HostAction::SelectChangeScope {
@@ -231,9 +308,31 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 			},
 			HostAction::RefreshChanges,
 		],
-		Intent::SetDiffMode(_) | Intent::ToggleTreeNode(_) | Intent::ExpandContext { .. } => {
-			Vec::new()
+		Intent::SetPanel { open: true } => {
+			let mut actions = Vec::new();
+			if matches!(
+				store
+					.capabilities
+					.get(veyyon_desktop_model::Capability::Changes),
+				veyyon_desktop_model::CapabilityStatus::Available
+			) {
+				actions.push(HostAction::RefreshChanges);
+			}
+			if store.domains.file_tree.is_none()
+				&& matches!(
+					store
+						.capabilities
+						.get(veyyon_desktop_model::Capability::Files),
+					veyyon_desktop_model::CapabilityStatus::Available
+				) {
+				actions.push(HostAction::LoadFileTree { root: None });
+			}
+			actions
 		},
+		Intent::SetPanel { open: false }
+		| Intent::SetDiffMode(_)
+		| Intent::ToggleTreeNode(_)
+		| Intent::ExpandContext { .. } => Vec::new(),
 		_ => Vec::new(),
 	}
 }

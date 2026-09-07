@@ -28,6 +28,13 @@ pub fn render_shell(
 	cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
 	view.ensure_composer(cx);
+	view.sample_split_motion(window, cx);
+	let transcript_height = view
+		.laid_out()
+		.bounds(Region::Transcript)
+		.map_or(0.0, |bounds| f32::from(bounds.size.height));
+	let now = cx.background_executor().now();
+	view.sync_transcript_viewport(transcript_height, now);
 
 	let chrome_px = view.installed().surface.shell.titlebar_height_px
 		+ if view.has_notice() {
@@ -36,8 +43,8 @@ pub fn render_shell(
 			0.0
 		};
 	let keymap = &view.state().keymap;
-	let panel_available = !view.state().panel.is_empty();
-	let widths = shell_widths(
+	let panel_available = view.state().connection.is_attached();
+	let mut widths = shell_widths(
 		ShedInput {
 			viewport_px:        f32::from(window.viewport_size().width),
 			viewport_height_px: f32::from(window.viewport_size().height),
@@ -50,6 +57,12 @@ pub fn render_shell(
 		},
 		&view.installed().surface,
 	);
+	if let Some(height) = view.split_motion.drawer_height() {
+		let panels = &view.installed().surface.panels;
+		let maximum = widths.columns_px * panels.terminal_drawer_max_viewport_ratio;
+		let minimum = panels.terminal_drawer_min_height_px.min(maximum);
+		widths.drawer.height_px = height.clamp(minimum, maximum);
+	}
 	view.set_labels(widths.labels);
 
 	let focus_handle = view
@@ -57,7 +70,27 @@ pub fn render_shell(
 		.get_or_insert_with(|| cx.focus_handle())
 		.clone();
 	if window.focused(cx).is_none() {
-		window.focus(&focus_handle, cx);
+		if view.state().overlay.is_some() {
+			if view
+				.state()
+				.overlay
+				.as_ref()
+				.is_some_and(crate::Overlay::is_palette)
+			{
+				if let Some(editor) = view.palette_editor() {
+					let focus = editor.read(cx).focus_handle().clone();
+					window.focus(&focus, cx);
+				}
+			} else {
+				let dest_focus = view.destination_focus_handle(cx);
+				window.focus(&dest_focus, cx);
+			}
+		} else if let Some(editor) = view.composer() {
+			let focus = editor.read(cx).focus_handle().clone();
+			window.focus(&focus, cx);
+		} else {
+			window.focus(&focus_handle, cx);
+		}
 	}
 
 	let tokens = view.installed().set.clone();
@@ -90,20 +123,14 @@ pub fn render_shell(
 		.track_children(root, |index| (index == 0).then_some(Region::Titlebar));
 	let mut root = bind_global_keys(root, cx);
 
-	if let Some(banner) = connection_banner(&view.state().connection, view.clock_ms(), &tokens, cx) {
+	if let Some(banner) = connection_banner(
+		&view.state().connection,
+		&view.state().controls,
+		view.clock_ms(),
+		&tokens,
+		cx,
+	) {
 		root = root.child(banner);
-	}
-
-	if matches!(view.state().connection, ConnectionPhase::Reconnecting { .. }) {
-		cx.spawn(async move |this, cx| {
-			cx.background_executor()
-				.timer(std::time::Duration::from_secs(1))
-				.await;
-			let _ = this.update(cx, |_view, cx| {
-				cx.notify();
-			});
-		})
-		.detach();
 	}
 
 	if let Some(notice) = view.notice() {
@@ -142,12 +169,15 @@ pub fn render_shell(
 	if let Some(queue_px) = widths.queue_px {
 		columns = columns.child(queue_rail(
 			&view.state.sections,
+			view.state.keymap.queue_filter.as_deref(),
 			view.state.current_id,
 			queue_px,
 			widths.columns_px,
+			&view.state.controls,
 			&surface.queue,
 			&tokens,
 			&mut view.rail_motion,
+			window,
 			cx,
 		));
 		column_regions.push(Some(Region::Queue));
@@ -155,6 +185,11 @@ pub fn render_shell(
 	column_regions.push(None);
 
 	let has_text = view.has_composer_text();
+	let find_bar = view
+		.state
+		.keymap
+		.find_open
+		.then(|| div().child(view.render_transcript_find_bar(&tokens, cx)));
 	let session = session_surface(
 		view.state(),
 		view.composer(),
@@ -164,6 +199,10 @@ pub fn render_shell(
 		view.installed(),
 		view.laid_out(),
 		view.palette_anchor(),
+		&view.transcript_viewport,
+		view.rail_motion.is_reduced_motion(),
+		find_bar,
+		window,
 		cx,
 	);
 
@@ -184,6 +223,12 @@ pub fn render_shell(
 				});
 			let split_px = widths.session_px + width_px;
 			let shell = cx.weak_entity();
+			let release_shell = shell.clone();
+			let min_width = panels.right_panel_min_width_px;
+			let max_width = (f32::from(window.viewport_size().width)
+				* panels.right_panel_max_viewport_ratio)
+				.min(split_px - panels.right_panel_container_margin_px)
+				.max(min_width);
 			columns.child(
 				Resizable::new(Axis::Horizontal, session, tracked)
 					.id("shell-split")
@@ -193,7 +238,13 @@ pub fn render_shell(
 						// A released view has no handle to move; the drag
 						// ends with the window.
 						let _ = shell.update(cx, |view, cx| {
-							view.set_panel_width(asked_px);
+							view.drag_panel(asked_px, min_width, max_width, cx);
+							cx.notify();
+						});
+					})
+					.on_resize_end(move |_window, cx| {
+						let _ = release_shell.update(cx, |view, cx| {
+							view.release_panel(cx);
 							cx.notify();
 						});
 					}),
@@ -222,11 +273,11 @@ pub fn render_shell(
 	let mut columns = view
 		.laid_out()
 		.track_children(columns, move |index| column_regions.get(index).copied().flatten());
-	if let Some(overlay) = super::float::overlay_layer(view, window, cx) {
+	if let Some(overlay) = super::float::overlay_layer(view, widths.columns_px, window, cx) {
 		columns = columns.child(overlay);
 	}
 	if let Some(menu) = view.row_menu() {
-		columns = columns.child(row_menu_layer(menu, cx));
+		columns = columns.child(row_menu_layer(menu, &view.state().controls, &tokens, cx));
 	}
 
 	root.child(columns)

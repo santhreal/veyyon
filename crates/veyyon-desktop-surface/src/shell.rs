@@ -22,17 +22,22 @@ mod float;
 pub mod keys;
 pub mod overlay;
 mod palette;
+mod queue_search;
 mod render;
 mod session;
+mod split;
 pub mod titlebar;
+mod transcript;
+mod transcript_find;
 
-pub use attach::AttachState;
-pub use connection::{connection_banner, error_hairline};
-pub use overlay::overlay_scrim;
-pub use titlebar::{
-	TitlebarState, attention_strip, attention_strip_height, platform_inset_left_px, titlebar,
+pub use self::{
+	attach::AttachState,
+	connection::{connection_banner, error_hairline},
+	overlay::overlay_scrim,
+	titlebar::{
+		TitlebarState, attention_strip, attention_strip_height, platform_inset_left_px, titlebar,
+	},
 };
-
 use crate::{
 	damage::LaidOut,
 	intent::{Intent, Intents},
@@ -40,45 +45,61 @@ use crate::{
 	layout::LabelState,
 	model::ShellState,
 	queue::{RailMotion, RowMenu},
+	settings::GeneralSettingsListState,
 	tokens::InstalledTokens,
+	transcript::{TranscriptFindState, TranscriptViewportState},
 };
 
 /// The window's root view.
 pub struct ShellView {
-	installed:      InstalledTokens,
-	state:          ShellState,
-	notice:         Option<String>,
-	intents:        Intents,
+	installed:             InstalledTokens,
+	state:                 ShellState,
+	notice:                Option<String>,
+	intents:               Intents,
 	/// What the last frame settled the composer's labels on. Carried because
 	/// the decision has hysteresis, so it is a function of the previous frame
 	/// as well as of this width (§5.4).
-	labels:         LabelState,
+	labels:                LabelState,
 	/// Where the last frame laid each region out, for a repaint scoped to
 	/// the regions a state change touched (P5).
-	laid_out:       LaidOut,
-	keymap:         Keymap,
-	composer:       Option<Entity<Editor>>,
-	composer_cache: String,
-	palette_input:  palette::PaletteInput,
-	submitted:      Option<composer::SubmittedDraft>,
+	laid_out:              LaidOut,
+	keymap:                Keymap,
+	composer:              Option<Entity<Editor>>,
+	composer_cache:        String,
+	palette_input:         palette::PaletteInput,
+	submitted:             Option<composer::SubmittedDraft>,
 	/// What the composer draws that is the window's: the drop target and
 	/// the refusal line.
-	attach:         AttachState,
-	rail_motion:    RailMotion,
+	attach:                AttachState,
+	rail_motion:           RailMotion,
+	transcript_viewport:   TranscriptViewportState,
+	find_state:            TranscriptFindState,
+	split_motion:          split::SplitMotions,
 	/// The queue row menu that is open, if one is (§5.1). Window-local,
 	/// like a hover: a snapshot never reopens one.
-	row_menu:       Option<RowMenu>,
+	row_menu:              Option<RowMenu>,
 	/// The width the operator dragged the docked right panel to. Window-local
 	/// like the row menu: a snapshot never moves the handle (§5.6).
-	panel_width:    Option<f32>,
-	focus_handle:   Option<FocusHandle>,
-	now_ms:         u64,
-	subscriptions:  Vec<Subscription>,
+	panel_width:           Option<f32>,
+	focus_handle:          Option<FocusHandle>,
+	destination_focus:     Option<FocusHandle>,
+	general_settings_list: GeneralSettingsListState,
+	now_ms:                u64,
+	subscriptions:         Vec<Subscription>,
 }
 
 impl ShellView {
 	/// Builds the root view from an installed token set and a state to draw.
 	pub fn new(installed: InstalledTokens, state: ShellState) -> Self {
+		let mut palette_input = palette::PaletteInput::default();
+		if state.overlay.is_some() {
+			palette_input.motion = crate::palette::motion::FloatMotion::with_initial(
+				veyyon_desktop_motion::SurfaceId::Palette,
+				0,
+				true,
+			);
+			palette_input.retained.clone_from(&state.overlay);
+		}
 		Self {
 			installed,
 			state,
@@ -89,16 +110,29 @@ impl ShellView {
 			keymap: Keymap::default(),
 			composer: None,
 			composer_cache: String::new(),
-			palette_input: palette::PaletteInput::default(),
+			palette_input,
 			submitted: None,
 			attach: AttachState::default(),
 			rail_motion: RailMotion::new(),
+			transcript_viewport: TranscriptViewportState::new(),
+			find_state: TranscriptFindState::default(),
+			split_motion: split::SplitMotions::default(),
 			row_menu: None,
 			panel_width: None,
 			focus_handle: None,
+			destination_focus: None,
+			general_settings_list: GeneralSettingsListState::new(),
 			now_ms: 0,
 			subscriptions: Vec::new(),
 		}
+	}
+
+	/// Returns a clone of the destination focus handle.
+	pub fn destination_focus_handle(&mut self, cx: &mut Context<Self>) -> FocusHandle {
+		self
+			.destination_focus
+			.get_or_insert_with(|| cx.focus_handle())
+			.clone()
 	}
 
 	/// Returns a reference to the installed tokens.
@@ -133,6 +167,12 @@ impl ShellView {
 	#[must_use]
 	pub const fn focus_handle(&self) -> Option<&FocusHandle> {
 		self.focus_handle.as_ref()
+	}
+
+	/// Returns a reference to the retained transcript viewport state.
+	#[must_use]
+	pub const fn transcript_viewport(&self) -> &TranscriptViewportState {
+		&self.transcript_viewport
 	}
 
 	/// Sets the clock time in milliseconds for relative time computations.
@@ -218,17 +258,19 @@ impl ShellView {
 		});
 
 		let sub = cx.subscribe(&editor, |this, ed, event: &EditorEvent, cx| match event {
-			EditorEvent::Submit => {
-				this.submit_primary_turn_action(cx);
-			},
+			EditorEvent::Submit => this.submit_primary_turn_action(cx),
 			EditorEvent::Escape => {
 				if this
 					.state
 					.overlay
 					.as_ref()
-					.and_then(crate::Overlay::as_palette)
+					.and_then(crate::Overlay::route)
 					.is_some()
 				{
+					this.back_surface(cx);
+					return;
+				}
+				if this.state.overlay.is_some() {
 					this.close_palette(cx);
 					return;
 				}
@@ -245,29 +287,26 @@ impl ShellView {
 			EditorEvent::PasteMedia(item) => this.attach_clipboard(item, cx),
 		});
 
-		self.composer = Some(editor.clone());
 		self.subscriptions.push(sub);
-		editor
+		self.composer.insert(editor).clone()
 	}
 
 	/// Sets the composer text content.
 	pub fn set_composed(&mut self, text: impl Into<String>, cx: &mut Context<Self>) {
 		let text = text.into();
 		self.composer_cache.clone_from(&text);
-		let ed = self.ensure_composer(cx);
-		ed.update(cx, |editor, cx| {
-			editor.set_text(text, cx);
-		});
+		self
+			.ensure_composer(cx)
+			.update(cx, |editor, cx| editor.set_text(text, cx));
 	}
 
 	/// Takes and clears the composer text content.
 	pub fn take_composed(&mut self, cx: &mut Context<Self>) -> String {
 		self.composer_cache.clear();
-		if let Some(ed) = &self.composer {
-			ed.update(cx, |editor, cx| editor.take_text(cx))
-		} else {
-			String::new()
-		}
+		self
+			.composer
+			.as_ref()
+			.map_or_else(String::new, |ed| ed.update(cx, |e, cx| e.take_text(cx)))
 	}
 
 	/// Replaces the token set, after a reload applied a new one.
@@ -299,22 +338,17 @@ impl ShellView {
 	}
 
 	/// Sets or clears the attention strip's message.
-	///
-	/// A reload that failed keeps the last good token set and reports the
-	/// failure here, so the window stays usable and the operator still learns
-	/// that the file they just saved was rejected.
 	pub fn set_notice(&mut self, notice: Option<String>) {
 		self.notice = notice;
 	}
 
 	/// Applies what the operator did, and records what a host must answer.
-	///
-	/// Every surface reaches the state through here and through nothing else,
-	/// so what an interaction does is decided in one place rather than in each
-	/// click handler.
 	pub fn dispatch(&mut self, intent: Intent, cx: &mut Context<Self>) {
 		if !self.composer_action_allowed(&intent) {
 			return;
+		}
+		if matches!(intent, Intent::SelectSession(_)) {
+			self.rail_motion.request_scroll_to_selected();
 		}
 		self.intents.dispatch(intent, &mut self.state);
 		cx.notify();
@@ -346,6 +380,13 @@ impl ShellView {
 	pub fn set_keymap(&mut self, keymap: Keymap) {
 		self.keymap = keymap;
 	}
+
+	/// Returns a reference to the window-local General settings list state.
+	#[must_use]
+	pub const fn general_settings_list(&self) -> &GeneralSettingsListState {
+		&self.general_settings_list
+	}
+
 }
 
 impl Render for ShellView {

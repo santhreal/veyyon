@@ -9,6 +9,9 @@
 use veyyon_desktop_kit::TintRole;
 use veyyon_desktop_tokens::ColorRole;
 
+mod artifact;
+pub use artifact::*;
+
 pub use crate::{
 	attach::ConnectionPhase,
 	composer::{
@@ -147,14 +150,25 @@ pub struct Row {
 pub enum Block {
 	/// Prose the assistant wrote.
 	Prose(String),
+	/// A subordinate event or structural annotation.
+	Note {
+		/// Static event or role description.
+		label:    &'static str,
+		/// Recorded content, retained for search.
+		text:     String,
+		/// Whether this entry separates structural regions.
+		boundary: bool,
+	},
 	/// A tool invocation, collapsed to one line.
 	Invoke {
+		/// Recorded invocation identity used to correlate results.
+		call_id: String,
 		/// The tool's name.
-		tool:   String,
+		tool:    String,
 		/// The tool's target, already shortened.
-		target: String,
+		target:  String,
 		/// The outcome, absent while running.
-		result: Option<String>,
+		result:  Option<String>,
 	},
 	/// A reasoning summary, collapsed.
 	Reason(String),
@@ -165,6 +179,10 @@ pub enum Block {
 		/// The pane's lines.
 		lines:   Vec<String>,
 	},
+	/// An unrecognized record with its retained raw representation.
+	Unknown { producer: String, lines: Vec<String> },
+	/// A recorded file reference or image with expandable details.
+	Artifact(Artifact),
 }
 
 /// A turn in the transcript.
@@ -172,6 +190,8 @@ pub enum Block {
 pub enum Turn {
 	/// What the operator sent.
 	Operator(String),
+	/// An operator message with recorded attachments or file references.
+	OperatorArtifacts { text: String, artifacts: Vec<Artifact> },
 	/// What the agent produced.
 	Agent(Vec<Block>),
 }
@@ -206,16 +226,15 @@ impl Card {
 	/// How many answers this card offers the operator.
 	///
 	/// An approval offers three (reject, approve, approve for the session), a
-	/// plan two, and a question whatever it was asked with, or one reply row
-	/// when it was asked with none. This is the count of controls the card
+	/// plan two, and a question its options plus a free-text reply row.
+	/// This is the count of controls the card
 	/// contributes, so a card kind added without answers is a card that cannot
 	/// be answered.
 	pub const fn answer_count(&self) -> usize {
 		match self {
 			Self::Approval { .. } => 3,
 			Self::Plan { .. } => 2,
-			Self::Question { options, .. } if options.is_empty() => 1,
-			Self::Question { options, .. } => options.len(),
+			Self::Question { options, .. } => options.len() + 1,
 		}
 	}
 }

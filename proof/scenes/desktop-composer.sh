@@ -104,7 +104,6 @@ fi
 
 # Establish input focus on the native window on this private display.
 xdotool windowfocus --sync "${SCENE_WINDOW}"
-sleep 1.0
 
 # ─── Scene Interactions & Captures ───────────────────────────────────────────
 
@@ -113,14 +112,17 @@ k "ctrl+n"
 if ! native_session_ready created; then
 	abandon_take "native-session-created" "native session-creation interaction produced no session within 10s"
 fi
-pause 0.8
-move_px "$((WIN_X + WIN_W / 2))" "$((WIN_Y + WIN_H - 98))"
+pause 2.0
+COMPOSER_X=$(( WIN_X + (WIN_W > 800 ? 400 : WIN_W / 2) ))
+COMPOSER_Y=$(( WIN_Y + WIN_H - 98 ))
+move_px "${COMPOSER_X}" "${COMPOSER_Y}"
 click
+pause 0.5
 shot idle
 
 # 2. Type a realistic draft into the composer.
 t "Summarize the project structure."
-pause 0.6
+pause 1.2
 shot typed-draft
 
 # 3. Open the model picker overlay (primary-shift-m -> ctrl+shift+m).
