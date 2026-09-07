@@ -20,7 +20,10 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 				state.keymap.panel_collapsed = false;
 			}
 		},
-		Intent::SetDrawer { open } => state.drawer_open = *open,
+		// §5.13: the drawer opens only where the host offers a terminal or a
+		// supervised process. Closing it always lands, so a drawer left open by
+		// a host that offered one closes when the next one does not.
+		Intent::SetDrawer { open } => state.drawer_open = *open && state.drawer.offered,
 		Intent::Approval { card, .. } | Intent::Answer { card, .. } | Intent::Plan { card, .. } => {
 			if state.cards.get(*card).is_some() {
 				state.cards.remove(*card);

@@ -135,6 +135,11 @@ fn a_projection_leaves_what_the_window_owns_alone() {
 	store
 		.capabilities
 		.set(Capability::Files, CapabilityStatus::Available);
+	// The drawer is a surface the host offers (§5.13), and this claim is about
+	// what the window owns once it is offered.
+	store
+		.capabilities
+		.set(Capability::Terminals, CapabilityStatus::Available);
 	let mut state = ShellState {
 		drawer_open: true,
 		panel: veyyon_desktop_surface::PanelContent {

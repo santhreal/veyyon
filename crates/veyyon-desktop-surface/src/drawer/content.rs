@@ -68,6 +68,13 @@ pub struct DrawerContent {
 	pub selection:      Option<TerminalSelection>,
 	/// Optional search filter from the command palette.
 	pub search:         Option<DrawerSearch>,
+	/// Whether the host offers either of the drawer's tenants.
+	///
+	/// §5.13: a surface absent for want of a capability is not rendered, never
+	/// rendered empty. A host that runs no terminals and supervises no
+	/// processes has no drawer, so the toggle, the chord and `/terminal` do not
+	/// offer one.
+	pub offered:        bool,
 }
 
 impl Default for DrawerContent {
@@ -84,6 +91,7 @@ impl Default for DrawerContent {
 			processes:      Vec::new(),
 			selection:      None,
 			search:         None,
+			offered:        false,
 		}
 	}
 }

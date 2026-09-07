@@ -29,13 +29,15 @@ pub const fn platform_inset_left_px() -> f32 {
 /// What the titlebar shows, read from the shell's state.
 #[derive(Debug, Clone, Copy)]
 pub struct TitlebarState<'a> {
-	pub title:           &'a str,
-	pub connection:      &'a ConnectionPhase,
-	pub queue_collapsed: bool,
+	pub title:            &'a str,
+	pub connection:       &'a ConnectionPhase,
+	pub queue_collapsed:  bool,
 	/// Whether there is a panel to show; the control is hidden without one.
-	pub panel_available: bool,
-	pub panel_collapsed: bool,
-	pub drawer_open:     bool,
+	pub panel_available:  bool,
+	pub panel_collapsed:  bool,
+	/// Whether there is a drawer to show; the control is hidden without one.
+	pub drawer_available: bool,
+	pub drawer_open:      bool,
 }
 
 /// The titlebar: the rail control, the open session's name, the connection
@@ -86,16 +88,18 @@ pub fn titlebar(
 			},
 		));
 	}
-	trailing = trailing.child(toggle_control(
-		"titlebar-drawer",
-		IconName::Terminal,
-		state.drawer_open,
-		cx,
-		|view, cx| {
-			let open = !view.state().drawer_open;
-			view.dispatch(Intent::SetDrawer { open }, cx);
-		},
-	));
+	if state.drawer_available {
+		trailing = trailing.child(toggle_control(
+			"titlebar-drawer",
+			IconName::Terminal,
+			state.drawer_open,
+			cx,
+			|view, cx| {
+				let open = !view.state().drawer_open;
+				view.dispatch(Intent::SetDrawer { open }, cx);
+			},
+		));
+	}
 
 	div()
 		.id("titlebar")

@@ -262,6 +262,10 @@ tabs. The tab displays the last 200 lines of that process's output in the same
 80-column monospace grid, and the drawer has no scrollback of its own. The tab
 is read-only: terminal input reaches a terminal, not a process.
 
+A host that runs no terminal and supervises no process has no drawer. The
+titlebar control, `Primary-J`, and `/terminal` are absent, and a drawer left
+open closes when the host stops offering one.
+
 ## Right panel content
 
 The **File** tab displays the file opened from the tree, or the exported

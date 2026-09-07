@@ -139,6 +139,7 @@ pub fn state() -> ShellState {
 			}],
 			selection:      None,
 			search:         None,
+			offered:        true,
 		},
 		drawer_open: false,
 		current_id: 7,

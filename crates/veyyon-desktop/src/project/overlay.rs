@@ -7,9 +7,11 @@
 
 use veyyon_desktop_model::{Capability, CapabilityStatus, FileKind, Store};
 use veyyon_desktop_surface::{
-	Overlay, PaletteItem, PaletteMode, PaletteState, SettingsState, ShellState,
-	navigation::SurfaceRoute,
+	Intent, Overlay, PaletteItem, PaletteItemKind, PaletteMode, PaletteState, SettingsState,
+	ShellState, navigation::SurfaceRoute,
 };
+
+use super::drawer::drawer_offered;
 
 /// Projects domain store views onto active overlay state fields.
 pub fn project_overlay(store: &Store, state: &mut ShellState) {
@@ -107,6 +109,19 @@ fn project_palette_domains(store: &Store, state: &mut PaletteState) {
 					CapabilityStatus::Unavailable { reason } => Some(reason.clone()),
 					_ => None,
 				};
+			}
+			// §5.13: the drawer is a surface, so a host offering neither
+			// terminals nor supervised processes offers no command to open it.
+			// The filter runs on every projection, so the command follows the
+			// capability while the palette stays open.
+			if !drawer_offered(&store.capabilities) {
+				state.items.retain(|item| {
+					!matches!(
+						&item.kind,
+						PaletteItemKind::Command { intent }
+							if matches!(**intent, Intent::SetDrawer { open: true })
+					)
+				});
 			}
 		},
 		PaletteMode::Sessions | PaletteMode::Models => {},

@@ -43,7 +43,7 @@ pub use intent::Intent;
 pub use keymap::*;
 pub use model::*;
 pub use overlay::*;
-pub use palette::{PaletteItem, PaletteMode};
+pub use palette::{PaletteItem, PaletteItemKind, PaletteMode};
 pub use right_panel::*;
 pub use settings::SettingsPage;
 pub use shell::ShellView;

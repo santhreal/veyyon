@@ -160,7 +160,10 @@ pub fn project<S: std::hash::BuildHasher>(
 	state.panel = project_panel(&store.domains, &store.capabilities, active, &state.panel);
 	state.turn = project_turn_phase(store, active);
 	project_composer(store, active, &mut state.composer);
-	project_drawer(&store.domains, emulators, now_ms, &mut state.drawer);
+	project_drawer(&store.domains, &store.capabilities, emulators, now_ms, &mut state.drawer);
+	// §5.13: a drawer the host no longer offers leaves the surface rather than
+	// standing open on an empty grid.
+	state.drawer_open = state.drawer_open && state.drawer.offered;
 	state.connection = connection_phase(store);
 	project_overlay(store, state);
 }

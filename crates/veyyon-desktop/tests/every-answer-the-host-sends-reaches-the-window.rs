@@ -41,9 +41,7 @@ use veyyon_desktop_model::{
 	Capability, CapabilityStatus, ConnectionState, HostEvent, PROTOCOL_VERSION, ProcessView,
 	QueuePartition, SessionId, SnapshotSection, SnapshotSectionKind, Store, TerminalStatus, reduce,
 };
-use veyyon_desktop_surface::{
-	Intent, Overlay, PaletteMode, PaletteState, SettingsState, ShellState,
-};
+use veyyon_desktop_surface::{Intent, Overlay, PaletteMode, PaletteState, ShellState};
 
 /// The session, terminal and process every corpus section names.
 const SESSION: &str = "sess-1";
@@ -158,12 +156,12 @@ fn corpus() -> Vec<SnapshotSection> {
 /// The window with its precondition met, projected and ready to be compared.
 fn prepared(store: &Store, prepare: &Prepare) -> (ShellState, SessionIndex) {
 	let mut index = SessionIndex::new();
-	let mut state = ShellState::default();
-	state.overlay = match prepare {
+	let overlay = match prepare {
 		Prepare::Rest | Prepare::ProcessOutput(_) => None,
-		Prepare::Settings => Some(Overlay::Settings(Box::new(SettingsState::default()))),
+		Prepare::Settings => Some(Overlay::Settings(Box::default())),
 		Prepare::Palette(mode) => Some(Overlay::Palette(PaletteState::new(*mode))),
 	};
+	let mut state = ShellState { overlay, ..ShellState::default() };
 	project(store, &mut index, &HashMap::new(), NOW_MS, &mut state);
 	if let Prepare::ProcessOutput(name) = prepare {
 		// The tab is reached the way the operator reaches it, so the sweep

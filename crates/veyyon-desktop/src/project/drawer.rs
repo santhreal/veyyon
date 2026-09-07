@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use veyyon_desktop_model::{Domains, TerminalStatus};
+use veyyon_desktop_model::{Capability, CapabilityMap, CapabilityStatus, Domains, TerminalStatus};
 use veyyon_desktop_surface::{
 	Cell, DrawerContent, DrawerTab, ProcessRow, terminal::TerminalEmulator,
 };
@@ -17,14 +17,29 @@ use super::{PANE_LINE_CEILING, elapsed_label};
 /// tail costs parsing nothing can reach.
 const PROCESS_LOG_TAIL_LINES: usize = 200;
 
+/// Whether the host offers either of the drawer's tenants (§5.13).
+///
+/// A host that runs no terminal and supervises no process has no drawer: the
+/// titlebar control, the `Primary-J` chord and `/terminal` offer none, rather
+/// than opening an empty 80-column grid. `UnknownUntilAttached` offers nothing
+/// either, since a drawer that appears mid-attach is a surface the operator
+/// did not ask for.
+pub fn drawer_offered(capabilities: &CapabilityMap) -> bool {
+	[Capability::Terminals, Capability::ProcessSupervisor]
+		.into_iter()
+		.any(|capability| matches!(capabilities.get(capability), CapabilityStatus::Available))
+}
+
 /// Projects domain terminals and processes into the shell state's drawer
 /// content.
 pub fn project_drawer<S: std::hash::BuildHasher>(
 	domains: &Domains,
+	capabilities: &CapabilityMap,
 	emulators: &HashMap<String, TerminalEmulator, S>,
 	now_ms: u64,
 	drawer: &mut DrawerContent,
 ) {
+	drawer.offered = drawer_offered(capabilities);
 	let mut tabs = Vec::new();
 	for term in &domains.terminals {
 		let title = emulators

@@ -104,7 +104,9 @@ pub fn populated() -> ShellState {
 		)),
 		panel: fixture_panel(),
 		cards: cards(),
-		drawer: DrawerContent::default(),
+		// A closed drawer the host offers: the titlebar control is on screen
+		// (§5.13), which is what every-control-... counts.
+		drawer: DrawerContent { offered: true, ..DrawerContent::default() },
 		drawer_open: false,
 		// The row the queue draws as open, and the session the titlebar names.
 		current_id: 3,
@@ -318,6 +320,7 @@ pub fn with_drawer() -> ShellState {
 			processes: Vec::new(),
 			selection: None,
 			search: None,
+			offered: true,
 		},
 		drawer_open: true,
 		..populated()

@@ -235,6 +235,13 @@ fn test_agent_commands_unavailable_transition_retains_native_commands() {
 	let emulators = HashMap::new();
 	let mut state = ShellState::default();
 
+	// The drawer command is offered only where the host runs terminals (§5.13),
+	// so this host declares them: the count below then measures the notice
+	// alone rather than the drawer's own gate.
+	store
+		.capabilities
+		.set(Capability::Terminals, CapabilityStatus::Available);
+
 	let initial_palette = PaletteState::commands();
 	let native_command_count = initial_palette.items.len();
 	assert!(native_command_count > 0, "palette must contain native commands");

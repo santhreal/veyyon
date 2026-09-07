@@ -112,6 +112,7 @@ pub fn render_shell(
 				queue_collapsed: view.state().keymap.queue_collapsed,
 				panel_available,
 				panel_collapsed: view.state().keymap.panel_collapsed,
+				drawer_available: view.state().drawer.offered,
 				drawer_open: view.state().drawer_open,
 			},
 			&surface.shell,
