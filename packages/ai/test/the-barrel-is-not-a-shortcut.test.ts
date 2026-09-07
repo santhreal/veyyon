@@ -198,8 +198,11 @@ describe("the modules that were repointed stay cut", () => {
 		// Re-measured 2026-09-04 at 205, from 202: the three `@veyyon/model` leaves named above. 202
 		// was one module from the catalog OpenCode discovery header leaf; 184 was the 2026-07-27
 		// engine-call remeasure; 325 before that was the leak. The file still takes no name from the
-		// barrel.
-		["coding-agent/src/commit/shared-llm.ts", 205],
+		// barrel. Re-measured at 206 when video content arrived: the one new module is
+		// `ai/src/providers/vision-content.ts`, whose only import is `import type` of `../types` and
+		// is therefore erased, so the leaf adds no edge and the nine providers that partition vision
+		// content reach it from a closure they were already in.
+		["coding-agent/src/commit/shared-llm.ts", 206],
 		// The agent's hot loop and the `Agent` class. Both STREAM, so both reach the engine whatever
 		// specifier they use; the ceilings are what the other ten names cost when taken from the entry
 		// point. 378 -> 321 and 380 -> 323.
