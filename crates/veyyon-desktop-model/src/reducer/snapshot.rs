@@ -1,12 +1,71 @@
+use std::collections::HashSet;
+
 use crate::{
-	connection::InteractionId,
+	connection::{InteractionId, SessionId},
 	damage::{Damage, DamageSet},
-	event::SnapshotSection,
+	event::{SessionSummary, SnapshotSection},
 	interaction::PendingDecisions,
 	session::{QueuePartition, Session},
 	store::Store,
 	transcript::TranscriptTree,
 };
+
+/// Reduces the host's session index, which is every session the host holds.
+///
+/// The partition a session sits in, the park, defer and pin timestamps, and the
+/// anchor those set are the client's state: the operator parks a session here
+/// and the host is never told. A re-listing therefore updates what the file
+/// says about a session already held and leaves the rest of it alone.
+/// Rebuilding each session from the summary instead returns every parked,
+/// deferred and pinned session to `Live` the next time any session is created,
+/// renamed or deleted, since each of those sends the whole index again.
+///
+/// A session the index no longer lists is gone with its file and is dropped.
+/// An `Unsent` session is the exception: it has no file for the index to list.
+fn reduce_session_index(store: &mut Store, summaries: Vec<SessionSummary>) {
+	let mut listed: HashSet<SessionId> = HashSet::with_capacity(summaries.len());
+	for summary in summaries {
+		let id = summary.id.clone();
+		listed.insert(id.clone());
+		let title = summary
+			.title
+			.filter(|t| !t.trim().is_empty())
+			.unwrap_or_else(|| "new session".to_string());
+		if let Some(known) = store.sessions.get_mut(&id) {
+			// `created_at_ms` and `last_recall_at_ms` are the Live anchor, and
+			// §5.2 re-anchors on unpark, recall and pin alone. A session that
+			// received a message has a newer `modified_at_ms`, so reading it
+			// here would reorder the partition on activity.
+			known.title = title;
+			known.project_name = summary.workspace;
+			continue;
+		}
+		store.sessions.insert(Session {
+			id,
+			title,
+			project_name: summary.workspace,
+			branch: String::new(),
+			partition: QueuePartition::Live,
+			badge: None,
+			created_at_ms: summary.created_at_ms,
+			last_recall_at_ms: summary.modified_at_ms,
+			defer_until_ms: None,
+			parked_at_ms: None,
+			pin_key: None,
+		});
+	}
+
+	let dropped: Vec<SessionId> = store
+		.sessions
+		.items
+		.iter()
+		.filter(|(id, session)| session.partition != QueuePartition::Unsent && !listed.contains(*id))
+		.map(|(id, _)| id.clone())
+		.collect();
+	for id in dropped {
+		store.sessions.remove(&id);
+	}
+}
 
 /// Reduces a full or partial snapshot synchronization section into store state.
 pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSet {
@@ -14,26 +73,7 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 
 	match snapshot {
 		SnapshotSection::Sessions(versioned, _errors) => {
-			for summary in versioned.value {
-				let id = summary.id.clone();
-				let session = Session {
-					id:                id.clone(),
-					title:             summary
-						.title
-						.filter(|t| !t.trim().is_empty())
-						.unwrap_or_else(|| "new session".to_string()),
-					project_name:      summary.workspace,
-					branch:            String::new(),
-					partition:         QueuePartition::Live,
-					badge:             None,
-					created_at_ms:     summary.created_at_ms,
-					last_recall_at_ms: summary.modified_at_ms,
-					defer_until_ms:    None,
-					parked_at_ms:      None,
-					pin_key:           None,
-				};
-				store.sessions.insert(session);
-			}
+			reduce_session_index(store, versioned.value);
 			damage.insert(Damage::QueueAll);
 		},
 		SnapshotSection::ActiveSession(versioned) => {

@@ -46,6 +46,9 @@ Each section collapses independently. Collapsed sections retain their header
 and count; empty sections are hidden. The session list scrolls between the header
 and the fixed footer.
 
+Parked shows 25 lines and then an `Older (N remaining)` row. Clicking that row
+adds the next 25.
+
 Cards display the session title, workspace, status, and relevant timing.
 Secondary actions remain hidden at rest and do not shift the title when revealed.
 Selection, hover, and status have distinct treatments. Compact rows retain
@@ -58,6 +61,11 @@ navigation rather than becoming sidebar buttons.
 
 Card rows show Park and Defer while the pointer is over the row. Parked lines
 provide Unpark; deferred lines provide Recall.
+
+Park, defer, and pin are window state and are not written to the session file.
+They last until the window closes, and a session index sent while the window is
+open does not move a session out of the section it was placed in. A session the
+agent no longer holds is removed from the queue.
 
 Right-click a card for Open, Park, Defer, Branch, and Delete. Branch starts a new
 session before the latest user message on the selected session's active branch,

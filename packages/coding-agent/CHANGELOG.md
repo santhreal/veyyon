@@ -157,6 +157,7 @@
 - A desktop tool card disclosed with `space` reports the new state to the host, so the keyboard opens the same card a click does instead of opening its body over the collapsed view.
 - A collapsed desktop tool card draws one row: the host's view is projected onto its status line, block header or section label plus what it holds back, instead of the whole card being drawn at its natural height across the blocks above and below it, and the row is the transcript's collapsed chrome height rather than half of it.
 - A disclosed desktop tool card states no held-back line count on its row, which it kept while the card below it was showing every one of those lines.
+- A session index the desktop receives keeps the park, defer and pin the operator chose, so creating, renaming or deleting one session no longer returns every parked and deferred session to `Live`, and it drops a session the agent no longer holds instead of leaving it in the queue until the window closes.
 - A desktop transcript no longer shows the runtime's own bookkeeping records — `tool_execution_start`, `session_exit`, todo edits, an extension's stored state — as `Fallback:` rows between the turns.
 - A `modelOverrides` entry that states a thinking ladder is offered on a model whose upstream metadata declares no effort control, or declares a different ladder; the authored ladder replaces the declared surface instead of being discarded.
 - Terminal tool cards shorten home-directory paths and replace tabs in metadata, notices, code, diffs, and generic argument previews before width fitting.
