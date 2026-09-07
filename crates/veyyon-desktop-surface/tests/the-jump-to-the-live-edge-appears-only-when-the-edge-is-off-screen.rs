@@ -8,15 +8,15 @@
 //! Every transcript shape is swept against every way of leaving the live edge:
 //! one that fits its viewport offers no jump, whether the turn cursor stopped
 //! following or following was paused outright; one that overflows offers it
-//! exactly while its end is off screen and withdraws it on return; and a turn
+//! exactly while its end is off screen and withdraws it on return; a turn
 //! streaming in at the live edge, whose row has no measured height for a
-//! frame, offers none.
+//! frame, offers none; and a list that has laid nothing out, where no row can
+//! be placed either side of a viewport that does not exist yet, offers none
+//! either.
 //!
 //! NOT CAUGHT: what the pill does once clicked, which is the viewport suite's
-//! (`the-transcript-viewport-anchors-scrolls-and-expands.rs`); the shape of
-//! the scroll animation, which is the motion suite's; and a last row the list
-//! can place neither above nor below its viewport, which a list reaches only
-//! before its first layout, where the viewport guard answers first.
+//! (`the-transcript-viewport-anchors-scrolls-and-expands.rs`), and the shape of
+//! the scroll animation, which is the motion suite's.
 
 use std::{path::Path, time::Duration};
 
@@ -44,18 +44,22 @@ const OVERFLOWING: usize = 24;
 /// this is a row or a panel that changed with the scroll rather than the pill.
 const PILL_WIDTH_CEILING: f32 = 426.0;
 
-fn state(turns: usize) -> ShellState {
-	let mut transcript = Vec::with_capacity(turns * 2);
-	for index in 0..turns {
+fn turns(count: usize) -> Vec<Turn> {
+	let mut transcript = Vec::with_capacity(count * 2);
+	for index in 0..count {
 		transcript.push(Turn::Operator(format!("run the tests, take {index}")));
 		transcript.push(Turn::Agent {
 			blocks: vec![Block::Prose(format!("Take {index}: six tests passed and none failed."))],
 			model:  Some("claude-sonnet-4-6".to_owned()),
 		});
 	}
+	transcript
+}
+
+fn state(count: usize) -> ShellState {
 	ShellState {
 		title: "live edge".to_owned(),
-		transcript,
+		transcript: turns(count),
 		connection: ConnectionPhase::Attached,
 		..ShellState::default()
 	}
@@ -302,5 +306,21 @@ fn a_turn_streaming_in_at_the_live_edge_never_raises_the_jump() {
 		resting,
 		"a turn streaming in at the live edge raised the jump-to-end pill over the row the operator \
 		 is watching arrive"
+	);
+}
+
+#[test]
+fn a_list_that_has_not_laid_out_reports_the_end_it_cannot_measure_as_on_screen() {
+	// A viewport that has never drawn has no layout bounds, so the list places
+	// no row either side of it: every row reads as unplaceable, which the pill
+	// would take for off screen. The frames above cannot reach this state,
+	// since opening a window draws one, so the state is driven on its own.
+	let state = TranscriptViewportState::new();
+	state.sync_turns(&turns(OVERFLOWING), false);
+
+	assert!(
+		!state.is_end_off_screen(),
+		"a list that has laid nothing out reported its end off screen, which offers a jump against \
+		 a measurement nobody has taken -- the first frame of every session"
 	);
 }
