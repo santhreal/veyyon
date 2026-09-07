@@ -169,6 +169,7 @@ describe("every `bun test` in .github runs inside the test sandbox", () => {
 		);
 		expect(invoking.map(step => `${step.file}::${step.job}::${step.name}`).sort()).toEqual([
 			"checks.yml::test-leaks::Tracer self-tests",
+			"ci.yml::test_ts_native::Test startup benchmark harness (needs the native addon)",
 			"docs.yml::book-staleness::Check handbook built pages contain source contracts",
 			"docs.yml::doc-examples::Docs examples match the real CLI",
 			"docs.yml::link-check::Check the package maps cover every package",

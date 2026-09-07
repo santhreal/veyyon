@@ -422,9 +422,13 @@ export const repoScriptTests = [
 	"scripts/a-capture-runs-on-the-bun-the-product-requires.test.ts",
 	"scripts/first-party-docs-are-indexed.test.ts",
 	"scripts/script-tests-coverage.test.ts",
-	"scripts/startup-is-measured-after-the-screen-settles.test.ts",
-	"scripts/a-startup-benchmark-keeps-its-executable-and-config-isolated.test.ts",
-	"scripts/a-startup-benchmark-terminates-child-trees-and-honors-cwd.test.ts",
+	// The startup benchmark suites (`startup-is-measured-after-the-screen-settles`,
+	// `a-startup-benchmark-keeps-its-executable-and-config-isolated`,
+	// `a-startup-benchmark-terminates-child-trees-and-honors-cwd`) import `@veyyon/natives` for a
+	// value, so they load the addon at import time. The `test_scripts` job in checks.yml runs
+	// this list without one and reported all twelve of their cases as "Failed to load
+	// veyyon_natives"; ci.yml's `test_ts_native` job, which downloads the addon, runs them by
+	// path instead, and `script-tests-coverage.test.ts` reads that step as their runner.
 	"scripts/a-package-script-runs-in-an-existing-directory.test.ts",
 	"scripts/stray-output-path.test.ts",
 	// The leak tracer's own contract tests. Also run by the `test-leaks` job in
