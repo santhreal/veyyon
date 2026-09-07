@@ -8639,7 +8639,11 @@ export class AgentSession {
 	 * prefix intact.
 	 */
 	#buildSessionStateMessage(): CustomMessage | null {
-		const peers = this.#agentId ? AgentRegistry.global().peers(this.#agentId).map(ref => ({ id: ref.id })) : [];
+		const peers = this.#agentId
+			? AgentRegistry.global()
+					.peers(this.#agentId)
+					.map(ref => ({ id: ref.id }))
+			: [];
 		const content = prompt
 			.render(sessionPrompts["session/session-state"].text, {
 				date: formatLocalCalendarDate(),
