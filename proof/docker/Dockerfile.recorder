@@ -186,3 +186,23 @@ RUN set -eux; \
 	apt-get clean; \
 	rm -rf /var/lib/apt/lists/*; \
 	tmux -V
+
+# A Vulkan implementation, because the desktop scenes record a GPUI window and
+# GPUI has no software path: it opens a Vulkan device or it exits before mapping
+# anything. The loader (`libvulkan1`) is already here from the guest, and a
+# loader with no ICD reports zero devices, so the capture came up as a black
+# screen with the binary named nowhere in it.
+#
+# lavapipe (`mesa-vulkan-drivers`) is the ICD, so a take needs no GPU passthrough
+# and every host draws the same frame. A run that wants the host's NVIDIA device
+# passes PROOF_GPU_DEVICE and points VK_DRIVER_FILES at the CDI-injected
+# nvidia_icd.json instead; both ICDs are then visible and the caller states which.
+#
+# Its own layer, at the end, for the reason the tmux layer states.
+RUN set -eux; \
+	apt-get update; \
+	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+		mesa-vulkan-drivers vulkan-tools; \
+	apt-get clean; \
+	rm -rf /var/lib/apt/lists/*; \
+	test -f /usr/share/vulkan/icd.d/lvp_icd.json

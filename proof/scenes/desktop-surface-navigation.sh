@@ -126,18 +126,19 @@ pause 0.25
 shot settings-group
 k "Return"
 pause 3
+settings_group_png="${SCENE_LAST_SHOT_PNG:?Settings group frame is required}"
+SCENE_LAST_SHOT_PNG=""
+shot settings-general
 if [ "${SCENE_ARM:-after}" = "before" ]; then
-	# The baseline leaves General at the Settings group. Require that failure
-	# instead of requiring a destination the baseline cannot open.
-	settings_group_png="${SCENE_LAST_SHOT_PNG:?Settings group frame is required}"
-	SCENE_LAST_SHOT_PNG=""
-	shot settings-general
+	# The baseline leaves General at the Settings group, so both arms take the
+	# frame under one name and only this arm asserts what it holds: requiring the
+	# baseline to open a destination it does not have would abandon every before
+	# take.
 	if ! cmp -s "${settings_group_png}" "${SCENE_LAST_SHOT_PNG}"; then
 		abandon_take "settings-general" "baseline unexpectedly opened a different destination"
 	fi
 	return 0
 fi
-shot settings-general
 SETTINGS_SCROLL_X=$(( PALETTE_LEFT + PALETTE_W / 2 ))
 glide_px "${COMPOSER_X}" "${COMPOSER_Y}" "${SETTINGS_SCROLL_X}" "${COLUMNS_CENTER_Y}"
 wheel_down 12
