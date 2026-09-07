@@ -10,8 +10,8 @@ on:
    push:
       branches: [main]
       tags: ["v*"]
+   # Every pull request, whatever its base; the reason is in checks.yml.
    pull_request:
-      branches: [main]
    workflow_dispatch:
 
 # A tag run publishes, and a later main push must never cancel it: sharing the
