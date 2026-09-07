@@ -17,10 +17,10 @@
 use serde::{Deserialize, Serialize};
 use veyyon_desktop_kit::{
 	ButtonVariant, ColorRole, Dialog, DialogButtonSpec, Meter, SpacingStep, Spinner, SpinnerSize,
-	TextField, TextRamp, TokenSet,
+	TextField, TextRamp, TokenSet, input::Editor,
 };
 use veyyon_gpui::{
-	AnyElement, App, ClickEvent, Context, Div, ElementId, InteractiveElement, IntoElement,
+	AnyElement, App, ClickEvent, Context, Div, ElementId, Entity, InteractiveElement, IntoElement,
 	ParentElement, Styled, Window, div, px,
 };
 
@@ -177,6 +177,7 @@ fn sync_progress(received: u32, expected: Option<u32>) -> AnyElement {
 /// the recovery action.
 pub fn render_attach_screen(
 	phase: &ConnectionPhase,
+	secret: Option<Entity<Editor>>,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> Option<AnyElement> {
@@ -224,7 +225,9 @@ pub fn render_attach_screen(
 		| ConnectionPhase::Reconnecting { .. }
 		| ConnectionPhase::Fatal { .. } => return None,
 		ConnectionPhase::NeedsSecret { provider } => {
-			let prov = provider.clone();
+			// The field is the retained editor or there is no field: an
+			// element built from a value carries no keystroke, so a submit
+			// that read one back would send an empty secret (§8.25, §9.3).
 			let body = div()
 				.flex()
 				.flex_col()
@@ -234,15 +237,12 @@ pub fn render_attach_screen(
 					ColorRole::Muted,
 					tokens,
 				))
-				.child(TextField::new("secret-key-field").placeholder("API Key / Token"));
+				.children(secret.map(|editor| TextField::new(editor).id("secret-key-field")));
 			Dialog::new(format!("Authenticate {provider}"), body)
 				.action_on_click(
 					DialogButtonSpec::new("Submit", ButtonVariant::Primary),
 					cx.listener(move |view, _event: &ClickEvent, _window, cx| {
-						view.dispatch(
-							Intent::SubmitAuthSecret { provider: prov.clone(), secret: String::new() },
-							cx,
-						);
+						view.submit_pending_secret(cx);
 					}),
 				)
 				.action_on_click(DialogButtonSpec::new("Cancel", ButtonVariant::Ghost), cancel_auth(cx))

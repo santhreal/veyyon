@@ -23,7 +23,6 @@ pub struct SearchField {
 	trailing:    Option<AnyElement>,
 	height:      Option<Pixels>,
 	flush:       bool,
-	on_change:   Option<Arc<dyn Fn(SharedString, &mut Window, &mut App) + Send + Sync + 'static>>,
 	on_clear:    Option<Arc<dyn Fn(&mut Window, &mut App) + Send + Sync + 'static>>,
 }
 
@@ -38,7 +37,6 @@ impl SearchField {
 			trailing:    None,
 			height:      None,
 			flush:       false,
-			on_change:   None,
 			on_clear:    None,
 		}
 	}
@@ -77,16 +75,6 @@ impl SearchField {
 	#[must_use]
 	pub fn placeholder(mut self, placeholder: impl Into<SharedString>) -> Self {
 		self.placeholder = placeholder.into();
-		self
-	}
-
-	/// Sets text change callback.
-	#[must_use]
-	pub fn on_change(
-		mut self,
-		handler: impl Fn(SharedString, &mut Window, &mut App) + Send + Sync + 'static,
-	) -> Self {
-		self.on_change = Some(Arc::new(handler));
 		self
 	}
 

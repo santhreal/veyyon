@@ -11,11 +11,12 @@ use veyyon_desktop_kit::{
 	Popover, PrimitiveKind, Radio, Resizable, Row, ScrollView, SearchField, SegmentedControl,
 	Select, Sheet, Slider, Spacer, Spinner, SpinnerSize, Stack, Table, TableColumn, Text, TextArea,
 	TextField, TextRamp, Toggle, Tooltip, Tree, TreeRow, Truncate,
+	input::{Editor, EditorMode},
 	token_set::{ColorRole, SpacingStep, TintRole, TokenSet},
 };
 use veyyon_gpui::{
-	AnyElement, App, AppContext, Context, HeadlessAppContext, IntoElement, ParentElement, Point,
-	Render, Styled, Window, div,
+	AnyElement, App, AppContext, Context, Entity, HeadlessAppContext, IntoElement, ParentElement,
+	Point, Render, Styled, Window, div,
 };
 
 use crate::{
@@ -114,14 +115,15 @@ pub fn render_primitive(kind: PrimitiveKind, _window: &mut Window, cx: &mut App)
 			.step(1)
 			.into_any_element(),
 
-		PrimitiveKind::TextField => TextField::new(FixtureText::BRANCH_EXTREME_90)
-			.placeholder("Branch name...")
-			.into_any_element(),
+		PrimitiveKind::TextField => {
+			let editor = fixture_editor(FixtureText::BRANCH_EXTREME_90, "Branch name...", false, cx);
+			TextField::new(editor).into_any_element()
+		},
 
 		PrimitiveKind::TextArea => {
-			TextArea::new(format!("{}\n{}", FixtureText::MESSAGE_TYPICAL, FixtureText::CJK))
-				.placeholder("Notes...")
-				.into_any_element()
+			let value = format!("{}\n{}", FixtureText::MESSAGE_TYPICAL, FixtureText::CJK);
+			let editor = fixture_editor(&value, "Notes...", true, cx);
+			TextArea::new(editor).into_any_element()
 		},
 
 		PrimitiveKind::SearchField => SearchField::new(FixtureText::CJK)
@@ -260,6 +262,27 @@ pub fn render_primitive(kind: PrimitiveKind, _window: &mut Window, cx: &mut App)
 			.size(AvatarSize::Large)
 			.into_any_element(),
 	}
+}
+
+/// An editor holding a fixture value, for the catalogue's input primitives:
+/// a field takes the editor itself, so the scene builds one.
+fn fixture_editor(
+	value: &str,
+	placeholder: &'static str,
+	multiline: bool,
+	cx: &mut App,
+) -> Entity<Editor> {
+	let mode = if multiline {
+		EditorMode::Multiline { newline_on_enter: true }
+	} else {
+		EditorMode::SingleLine
+	};
+	let value = value.to_owned();
+	cx.new(|cx| {
+		let mut editor = Editor::new(mode, cx).placeholder(placeholder);
+		editor.buffer_mut().set_text(value);
+		editor
+	})
 }
 
 /// Headless view container wrapping a primitive scene.

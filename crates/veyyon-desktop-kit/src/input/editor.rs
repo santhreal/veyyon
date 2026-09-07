@@ -59,6 +59,7 @@ pub struct Editor {
 	pub(crate) focus_handle:      FocusHandle,
 	pub(crate) mode:              EditorMode,
 	pub(crate) placeholder:       SharedString,
+	pub(crate) mask:              bool,
 	pub(crate) max_visible_lines: Option<usize>,
 	pub(crate) content_height:    Pixels,
 	pub(crate) cursor_visible:    bool,
@@ -83,6 +84,7 @@ impl Editor {
 			focus_handle,
 			mode,
 			placeholder: SharedString::default(),
+			mask: false,
 			max_visible_lines: None,
 			content_height: Pixels::ZERO,
 			cursor_visible: true,
@@ -103,6 +105,15 @@ impl Editor {
 		self
 	}
 
+	/// Draws the value as one asterisk per byte, for a field that carries a
+	/// secret (§9.3). The mask keeps the byte length of the buffer, so caret
+	/// and selection offsets map through the shaped line unchanged.
+	#[must_use]
+	pub const fn masked(mut self) -> Self {
+		self.mask = true;
+		self
+	}
+
 	/// Sets maximum visible lines before vertical scrolling engages.
 	#[must_use]
 	pub fn max_visible_lines(mut self, lines: usize) -> Self {
@@ -114,6 +125,22 @@ impl Editor {
 	#[must_use]
 	pub fn text(&self) -> &str {
 		self.buffer.text()
+	}
+
+	/// True when the value is drawn masked.
+	#[must_use]
+	pub const fn is_masked(&self) -> bool {
+		self.mask
+	}
+
+	/// The text as the element draws it: the buffer, or its mask.
+	#[must_use]
+	pub fn display_text(&self) -> String {
+		if self.mask {
+			mask_text(self.buffer.text())
+		} else {
+			self.buffer.text().to_owned()
+		}
 	}
 
 	/// Returns true if text content is empty.
@@ -185,6 +212,12 @@ impl Focusable for Editor {
 }
 
 impl EventEmitter<EditorEvent> for Editor {}
+
+/// One asterisk per byte of `text`, so the mask occupies the same byte
+/// offsets as the value it hides.
+fn mask_text(text: &str) -> String {
+	"*".repeat(text.len())
+}
 
 impl Render for Editor {
 	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

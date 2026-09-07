@@ -58,7 +58,7 @@ impl Element for EditorElement {
 				(window.request_layout(style, [], cx), ())
 			},
 			EditorMode::Multiline { .. } => {
-				let text = editor.text().to_string();
+				let text = editor.display_text();
 				let placeholder = editor.placeholder.clone();
 				let mut style = veyyon_gpui::Style::default();
 				style.max_size.width = relative(1.).into();
@@ -146,7 +146,7 @@ impl Element for EditorElement {
 		cx: &mut App,
 	) -> Self::PrepaintState {
 		let editor = self.editor.read(cx);
-		let content = editor.text().to_string();
+		let content = editor.display_text();
 		let placeholder = editor.placeholder.clone();
 		let is_empty = content.is_empty();
 		let scroll_top = editor.scroll_top;

@@ -1,10 +1,13 @@
-//! Text field single-line input primitive wrapping an Editor entity (§8.25).
+//! Text field single-line input primitive over an Editor entity (§8.25).
+//!
+//! The field takes the editor itself, never a value: an element is rebuilt
+//! every frame, so a field constructed from a string keeps no keystroke and
+//! whatever reads it back gets the string it was built with. A value on
+//! display is text, not a field.
 
-use std::sync::Arc;
+use veyyon_gpui::{App, ElementId, Entity, IntoElement, RenderOnce, Window, div, prelude::*};
 
-use veyyon_gpui::{App, ElementId, IntoElement, RenderOnce, SharedString, Window, div, prelude::*};
-
-use super::editor::slot::EditorSlot;
+use super::editor::Editor;
 use crate::{
 	controls::{ButtonSize, metrics::control_metrics},
 	state::InteractiveState,
@@ -14,24 +17,17 @@ use crate::{
 /// Single-line text input field primitive element.
 #[derive(IntoElement)]
 pub struct TextField {
-	id:          Option<ElementId>,
-	editor:      EditorSlot,
-	placeholder: SharedString,
-	state:       InteractiveState,
-	on_change:   Option<Arc<dyn Fn(SharedString, &mut Window, &mut App) + Send + Sync + 'static>>,
+	id:     Option<ElementId>,
+	editor: Entity<Editor>,
+	state:  InteractiveState,
 }
 
 impl TextField {
-	/// Creates a text field wrapping an editor slot.
+	/// Creates a text field over `editor`, which holds the value and the
+	/// placeholder it draws when empty.
 	#[must_use]
-	pub fn new(editor: impl Into<EditorSlot>) -> Self {
-		Self {
-			id:          None,
-			editor:      editor.into(),
-			placeholder: SharedString::default(),
-			state:       InteractiveState::default(),
-			on_change:   None,
-		}
+	pub fn new(editor: Entity<Editor>) -> Self {
+		Self { id: None, editor, state: InteractiveState::default() }
 	}
 
 	/// Sets element ID.
@@ -41,27 +37,10 @@ impl TextField {
 		self
 	}
 
-	/// Sets placeholder text.
-	#[must_use]
-	pub fn placeholder(mut self, placeholder: impl Into<SharedString>) -> Self {
-		self.placeholder = placeholder.into();
-		self
-	}
-
 	/// Sets interactive state.
 	#[must_use]
 	pub fn state(mut self, state: InteractiveState) -> Self {
 		self.state = state;
-		self
-	}
-
-	/// Sets change callback.
-	#[must_use]
-	pub fn on_change(
-		mut self,
-		handler: impl Fn(SharedString, &mut Window, &mut App) + Send + Sync + 'static,
-	) -> Self {
-		self.on_change = Some(Arc::new(handler));
 		self
 	}
 }
@@ -71,14 +50,10 @@ impl RenderOnce for TextField {
 		let resolved_tokens = TokenSet::for_app(cx);
 		let tokens: &TokenSet = &resolved_tokens;
 
-		let is_entity_focused = self
-			.editor
-			.entity()
-			.is_some_and(|ed| ed.read(cx).focus_handle().is_focused(window));
+		let is_entity_focused = self.editor.read(cx).focus_handle().is_focused(window);
 
 		// §6.10: no ground and a hairline edge; focus raises the edge to the
-		// focus role and nothing else moves. A static slot is a value on
-		// display, not an input, so it takes no text cursor.
+		// focus role and nothing else moves.
 		let metrics = control_metrics(ButtonSize::Medium, tokens);
 		let focused = self.state == InteractiveState::Focused || is_entity_focused;
 		let disabled = self.state == InteractiveState::Disabled;
@@ -108,29 +83,10 @@ impl RenderOnce for TextField {
 			container = container
 				.opacity(metrics.disabled_opacity)
 				.cursor_not_allowed();
-		} else if self.editor.is_entity() {
+		} else {
 			container = container.cursor_text();
 		}
 
-		match self.editor {
-			EditorSlot::Entity(entity) => container.child(div().flex_1().min_w_0().child(entity)),
-			EditorSlot::Static(val) => {
-				let (text, ink) = if val.is_empty() {
-					(self.placeholder, tokens.color(ColorRole::Placeholder))
-				} else {
-					(val, tokens.color(ColorRole::Foreground))
-				};
-				container.child(
-					div()
-						.flex_1()
-						.min_w_0()
-						.overflow_hidden()
-						.whitespace_nowrap()
-						.truncate()
-						.text_color(ink)
-						.child(text),
-				)
-			},
-		}
+		container.child(div().flex_1().min_w_0().child(self.editor))
 	}
 }

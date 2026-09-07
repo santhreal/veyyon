@@ -137,7 +137,7 @@ fn render(phase: &ConnectionPhase) -> (Chrome, Captured) {
 				let controls = ControlStates::default();
 				let chrome = Chrome {
 					banner: connection_banner(&phase, &controls, NOW_MS, &tokens, cx).is_some(),
-					dialog: render_attach_screen(&phase, &tokens, cx).is_some(),
+					dialog: render_attach_screen(&phase, None, &tokens, cx).is_some(),
 				};
 				*sink.lock().expect("chrome sink") = chrome;
 				ShellView::new(installed, state)

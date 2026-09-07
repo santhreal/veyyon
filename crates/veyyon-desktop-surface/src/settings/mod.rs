@@ -26,7 +26,7 @@ pub use self::{
 	pages::*,
 	row::*,
 };
-use crate::{Intent, ShellView, controls::ControlStates};
+use crate::{Intent, ShellView, controls::ControlStates, shell::fields::FieldSlots};
 
 /// Runtime view model for the settings overlay (§5.9).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,6 +110,7 @@ impl SettingsState {
 pub fn settings_surface(
 	state: &SettingsState,
 	list_state: &GeneralSettingsListState,
+	fields: &FieldSlots,
 	focus: Option<&FocusHandle>,
 	controls: &ControlStates,
 	geometry: &SettingsSurfaceTokens,
@@ -118,7 +119,7 @@ pub fn settings_surface(
 ) -> impl IntoElement {
 	if let Some(route) = state.route {
 		return focused::focused_surface(
-			state, list_state, route, focus, controls, geometry, tokens, cx,
+			state, list_state, fields, route, focus, controls, geometry, tokens, cx,
 		);
 	}
 	let radius = tokens.radius(RadiusStep::Xl);
@@ -257,7 +258,7 @@ pub fn settings_surface(
 	content = content.child(header);
 
 	// Page body rows container.
-	let body = render_page_body(state, list_state, controls, geometry, tokens, cx);
+	let body = render_page_body(state, list_state, fields, controls, geometry, tokens, cx);
 	content = content.child(body);
 	dialog.child(content)
 }

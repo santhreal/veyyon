@@ -13,10 +13,12 @@ use std::path::PathBuf;
 use serde_json::Value;
 use veyyon_desktop_kit::{
 	Checkbox, CheckboxState, FilePicker, NumberInput, Radio, Row, Segmented, Select, Slider,
-	SpacingStep, TextArea, TextField, Toggle,
+	SpacingStep, TextArea, TextField, Toggle, input::Editor,
 };
 use veyyon_desktop_model::{SettingEntry, SettingKind};
-use veyyon_gpui::{AnyElement, App, ElementId, Entity, IntoElement, ParentElement, Styled, div};
+use veyyon_gpui::{
+	AnyElement, App, ElementId, Entity, IntoElement, ParentElement, Styled, Window, div,
+};
 
 use crate::{Intent, ShellView};
 
@@ -34,17 +36,23 @@ fn set_value(entity: &Entity<ShellView>, app: &mut App, key: &str, value: Value)
 }
 
 /// The control for `entry`, wired to dispatch `SettingChanged` for `key`.
-pub fn setting_control(key: &str, entry: &SettingEntry, entity: Entity<ShellView>) -> AnyElement {
+pub fn setting_control(
+	key: &str,
+	entry: &SettingEntry,
+	entity: Entity<ShellView>,
+	window: &mut Window,
+	app: &mut App,
+) -> AnyElement {
 	match entry.kind {
 		SettingKind::Boolean => boolean_control(key, entry, entity),
 		SettingKind::Number => number_control(key, entry, entity),
 		SettingKind::Enum => enum_control(key, entry, entity),
 		SettingKind::Array if !entry.options.is_empty() => checkbox_control(key, entry, entity),
 		SettingKind::Record | SettingKind::ModelChain | SettingKind::Array => {
-			text_area_control(key, entry, entity)
+			text_area_control(key, entry, &entity, window, app)
 		},
 		SettingKind::String if is_location_key(key) => path_control(key, entry, entity),
-		SettingKind::String => text_field_control(key, entry, entity),
+		SettingKind::String => text_field_control(key, entry, &entity, window, app),
 	}
 }
 
@@ -216,40 +224,59 @@ fn checkbox_control(key: &str, entry: &SettingEntry, entity: Entity<ShellView>) 
 		.into_any_element()
 }
 
-/// The multi-line value kinds render through the text area. The row is one
-/// line tall, so the value is shown on one line and clipped at the column.
-fn text_area_control(key: &str, entry: &SettingEntry, entity: Entity<ShellView>) -> AnyElement {
-	let current = match &entry.value {
-		Value::String(s) => s.clone(),
-		other => other.to_string(),
-	};
-	let key = key.to_owned();
+/// The multi-line value kinds render through the text area, over the same
+/// retained editor a single-line field uses. The row is one line tall, so the
+/// value is shown on one line and clipped at the column.
+///
+/// A text row commits on Enter and reverts on Escape: an element is rebuilt
+/// every frame, so the value is read out of the editor entity that survives
+/// the frame, never out of the element (§8.25).
+fn text_area_control(
+	key: &str,
+	entry: &SettingEntry,
+	entity: &Entity<ShellView>,
+	window: &Window,
+	app: &mut App,
+) -> AnyElement {
+	let editor = field_editor(key, entry, entity, window, app);
 	div()
 		.w_full()
 		.whitespace_nowrap()
 		.child(
-			TextArea::new(current)
+			TextArea::new(editor)
 				.id(ElementId::Name(format!("area-{key}").into()))
-				.rows(1)
-				.on_change(move |val, _win, app| {
-					set_value(&entity, app, &key, Value::String(val.to_string()));
-				}),
+				.rows(1),
 		)
 		.into_any_element()
 }
 
-fn text_field_control(key: &str, entry: &SettingEntry, entity: Entity<ShellView>) -> AnyElement {
+fn text_field_control(
+	key: &str,
+	entry: &SettingEntry,
+	entity: &Entity<ShellView>,
+	window: &Window,
+	app: &mut App,
+) -> AnyElement {
+	let editor = field_editor(key, entry, entity, window, app);
+	TextField::new(editor)
+		.id(ElementId::Name(format!("txt-{key}").into()))
+		.into_any_element()
+}
+
+/// The retained editor for `entry`, holding the value the host reports until
+/// the operator types into it.
+fn field_editor(
+	key: &str,
+	entry: &SettingEntry,
+	entity: &Entity<ShellView>,
+	window: &Window,
+	app: &mut App,
+) -> Entity<Editor> {
 	let current = match &entry.value {
-		Value::String(s) => s.clone(),
+		Value::String(text) => text.clone(),
 		other => other.to_string(),
 	};
-	let key = key.to_owned();
-	TextField::new(current)
-		.id(ElementId::Name(format!("txt-{key}").into()))
-		.on_change(move |val, _win, app| {
-			set_value(&entity, app, &key, Value::String(val.to_string()));
-		})
-		.into_any_element()
+	entity.update(app, |view, cx| view.setting_field_editor(key, entry.kind, &current, window, cx))
 }
 
 /// Whether `key` names a filesystem location, by its last segment:

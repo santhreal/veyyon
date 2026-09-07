@@ -1,13 +1,12 @@
 //! Authentication settings page body rendering (§5.9, §8.12).
 
-use std::sync::{Arc, Mutex};
-
 use veyyon_desktop_kit::{
-	Badge, Button, ButtonSize, ButtonVariant, TintRole, TokenSet, input::TextField,
+	Badge, Button, ButtonSize, ButtonVariant, TintRole, TokenSet,
+	input::{Editor, TextField},
 };
 use veyyon_desktop_model::AuthFlowState;
 use veyyon_desktop_tokens::SettingsSurfaceTokens;
-use veyyon_gpui::{ClickEvent, Context, Div, ParentElement, Styled, div};
+use veyyon_gpui::{ClickEvent, Context, Div, Entity, ParentElement, Styled, div};
 
 use crate::{
 	Intent, ShellView,
@@ -21,6 +20,7 @@ use crate::{
 /// Renders the Authentication workflow state machine page rows.
 pub fn render_auth_page(
 	state: &SettingsState,
+	secret: Option<Entity<Editor>>,
 	geometry: &SettingsSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
@@ -74,27 +74,17 @@ pub fn render_auth_page(
 			));
 		},
 		AuthFlowState::AwaitingSecret => {
-			let secret_buffer = Arc::new(Mutex::new(String::new()));
-			let sec_buf = secret_buffer.clone();
+			// The field is the retained editor or there is no field: a
+			// primitive built from a value keeps no keystroke, so a submit
+			// that read one back would send an empty secret (§8.25, §9.3).
+			let text_field = secret.map(|editor| TextField::new(editor).id("auth-secret-input"));
 
-			let text_field = TextField::new("")
-				.id("auth-secret-input")
-				.placeholder("API key or code")
-				.on_change(move |text, _win, _app| {
-					if let Ok(mut buf) = sec_buf.lock() {
-						*buf = text.to_string();
-					}
-				});
-
-			let prov_clone = provider.clone();
-			let sec_for_submit = secret_buffer;
 			let submit_btn = Button::new("Submit")
 				.id("auth-submit-secret-btn")
 				.variant(ButtonVariant::Primary)
 				.size(ButtonSize::Small)
 				.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {
-					let secret = sec_for_submit.lock().map(|b| b.clone()).unwrap_or_default();
-					view.dispatch(Intent::SubmitAuthSecret { provider: prov_clone.clone(), secret }, cx);
+					view.submit_pending_secret(cx);
 				}));
 
 			let cancel_btn = Button::new("Cancel")
@@ -119,8 +109,16 @@ pub fn render_auth_page(
 				tokens,
 			));
 
-			container =
-				container.child(setting_row("Secret Input", None, text_field, &av, geometry, tokens));
+			if let Some(text_field) = text_field {
+				container = container.child(setting_row(
+					"Secret Input",
+					None,
+					text_field,
+					&av,
+					geometry,
+					tokens,
+				));
+			}
 		},
 		AuthFlowState::Failed => {
 			let retry_btn = Button::new("Retry")

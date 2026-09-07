@@ -181,18 +181,24 @@ pub fn render_general_page(
 	let entity = cx.entity();
 	let weak_view = cx.weak_entity();
 
-	let list_el = veyyon_gpui::list(list_state, move |item_ix, _window, app| {
+	let list_el = veyyon_gpui::list(list_state, move |item_ix, window, app| {
 		let Some(key) = visible_keys.get(item_ix) else {
 			return div().into_any_element();
 		};
-		let view_read = entity.read(app);
-		let Some(entry) = view_read.active_settings().and_then(|s| s.entry(key)) else {
-			return div().into_any_element();
+		// The entry is cloned out of the view, because a text row creates its
+		// editor through the same entity and cannot hold a read borrow of it.
+		let entry = {
+			let view_read = entity.read(app);
+			let Some(entry) = view_read.active_settings().and_then(|s| s.entry(key)) else {
+				return div().into_any_element();
+			};
+			entry.clone()
 		};
+		let entry = &entry;
 		let field_id = SurfaceId::SettingsField(key.clone());
 		let av = controls_copy.availability(&field_id);
 
-		let control_el = setting_control(key, entry, entity.clone());
+		let control_el = setting_control(key, entry, entity.clone(), window, app);
 
 		let is_modified = entry.value != entry.default;
 		let secondary_el = if is_modified {

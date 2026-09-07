@@ -12,11 +12,13 @@ use crate::{
 	ShellView,
 	controls::ControlStates,
 	navigation::{SurfaceRoute, surface_header},
+	shell::fields::FieldSlots,
 };
 
 pub(super) fn focused_surface(
 	state: &SettingsState,
 	list_state: &GeneralSettingsListState,
+	fields: &FieldSlots,
 	route: SurfaceRoute,
 	focus: Option<&FocusHandle>,
 	controls: &ControlStates,
@@ -70,6 +72,7 @@ pub(super) fn focused_surface(
 		body_container = body_container.overflow_y_scroll();
 	}
 	container.child(
-		body_container.child(render_page_body(state, list_state, controls, geometry, tokens, cx)),
+		body_container
+			.child(render_page_body(state, list_state, fields, controls, geometry, tokens, cx)),
 	)
 }

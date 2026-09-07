@@ -46,7 +46,10 @@ pub use overlay::*;
 pub use palette::{PaletteItem, PaletteItemKind, PaletteMode};
 pub use right_panel::*;
 pub use settings::SettingsPage;
-pub use shell::ShellView;
+pub use shell::{
+	ShellView,
+	fields::{FieldKey, FieldSlots},
+};
 pub use terminal::Cell;
 pub use tokens::{InstalledTokens, install_tokens};
 pub use tool_view::{

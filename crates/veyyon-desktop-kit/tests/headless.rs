@@ -9,11 +9,12 @@ use veyyon_desktop_kit::{
 	Radio, Resizable, Row, ScrollView, SearchField, SegmentedControl, Select, Sheet, Slider, Spacer,
 	Spinner, SpinnerSize, Stack, Table, TableColumn, Text, TextArea, TextField, TextRamp, Toggle,
 	Tooltip, Tree, TreeRow, Truncate,
+	input::{Editor, EditorMode},
 	token_set::{ColorRole, SpacingStep, TintRole, TokenSet},
 };
 use veyyon_gpui::{
-	App, Context, IntoElement, ParentElement, Point, Render, Styled, Window, div, prelude::*, px,
-	size,
+	App, Context, Entity, IntoElement, ParentElement, Point, Render, Styled, Window, div,
+	prelude::*, px, size,
 };
 
 #[test]
@@ -27,7 +28,20 @@ fn the_desktop_kit_primitives_render_distinct_pixels_on_headless_surface()
 	for kind in PrimitiveKind::iter() {
 		let frame = cx.render_frame(viewport, scale_factor, |_window, app: &mut App| {
 			app.set_global(TokenSet::default());
-			app.new(|_cx| KitPrimitiveFixture { kind })
+			app.new(|cx| KitPrimitiveFixture {
+				kind,
+				field: cx.new(|cx| {
+					let mut editor = Editor::new(EditorMode::SingleLine, cx).placeholder("Type...");
+					editor.buffer_mut().set_text("Input text");
+					editor
+				}),
+				area: cx.new(|cx| {
+					let mode = EditorMode::Multiline { newline_on_enter: true };
+					let mut editor = Editor::new(mode, cx).placeholder("Notes...");
+					editor.buffer_mut().set_text("Multi line text");
+					editor
+				}),
+			})
 		})?;
 
 		let bytes = frame.as_bytes();
@@ -49,7 +63,9 @@ fn the_desktop_kit_primitives_render_distinct_pixels_on_headless_surface()
 }
 
 struct KitPrimitiveFixture {
-	kind: PrimitiveKind,
+	kind:  PrimitiveKind,
+	field: Entity<Editor>,
+	area:  Entity<Editor>,
 }
 
 impl Render for KitPrimitiveFixture {
@@ -93,12 +109,8 @@ impl Render for KitPrimitiveFixture {
 				.range(0, 100)
 				.step(1)
 				.into_any_element(),
-			PrimitiveKind::TextField => TextField::new("Input text")
-				.placeholder("Type...")
-				.into_any_element(),
-			PrimitiveKind::TextArea => TextArea::new("Multi line text")
-				.placeholder("Notes...")
-				.into_any_element(),
+			PrimitiveKind::TextField => TextField::new(self.field.clone()).into_any_element(),
+			PrimitiveKind::TextArea => TextArea::new(self.area.clone()).into_any_element(),
 			PrimitiveKind::SearchField => SearchField::new("Query")
 				.placeholder("Search...")
 				.into_any_element(),

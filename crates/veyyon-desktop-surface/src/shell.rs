@@ -9,15 +9,16 @@
 //! surface being read; a window that gets narrower takes width from the panels
 //! and leaves the transcript's line length alone.
 
-use veyyon_desktop_kit::input::{Editor, EditorEvent, EditorMode};
-use veyyon_gpui::{
-	AppContext, Context, Entity, FocusHandle, IntoElement, Render, Subscription, Window,
-};
+use std::collections::BTreeMap;
+
+use veyyon_desktop_kit::input::Editor;
+use veyyon_gpui::{Context, Entity, FocusHandle, IntoElement, Render, Subscription, Window};
 
 mod attach;
 mod commands;
 mod composer;
 pub mod connection;
+pub mod fields;
 mod float;
 pub mod keys;
 pub mod overlay;
@@ -66,6 +67,16 @@ pub struct ShellView {
 	keymap:                Keymap,
 	composer:              Option<Entity<Editor>>,
 	composer_cache:        String,
+	/// The editor behind every other field a surface draws: the secret a
+	/// provider is waiting on, and the value of a setting whose kind is text.
+	/// Retained across frames, because a field that is rebuilt each frame
+	/// carries no keystroke (§8.25).
+	field_editors:         BTreeMap<fields::FieldKey, fields::Field>,
+	/// The refusal this window put up for a field whose value it would not
+	/// send, so it is withdrawn when the same window's field commits.
+	field_refusal:         Option<String>,
+	/// The field a frame created that has not taken focus yet.
+	field_focus:           Option<Entity<Editor>>,
 	palette_input:         palette::PaletteInput,
 	submitted:             Option<composer::SubmittedDraft>,
 	/// What the composer draws that is the window's: the drop target and
@@ -114,6 +125,9 @@ impl ShellView {
 			keymap: Keymap::default(),
 			composer: None,
 			composer_cache: String::new(),
+			field_editors: BTreeMap::new(),
+			field_refusal: None,
+			field_focus: None,
 			palette_input,
 			submitted: None,
 			attach: AttachState::default(),
@@ -236,82 +250,6 @@ impl ShellView {
 	#[must_use]
 	pub const fn composer(&self) -> Option<&Entity<Editor>> {
 		self.composer.as_ref()
-	}
-
-	/// Returns the current composer text content.
-	#[must_use]
-	pub fn composer_text(&self) -> &str {
-		&self.composer_cache
-	}
-
-	/// Returns true if the composer contains non-whitespace text characters.
-	#[must_use]
-	pub fn has_composer_text(&self) -> bool {
-		!self.composer_cache.trim().is_empty()
-	}
-
-	/// Lazily creates and returns the composer editor entity.
-	pub fn ensure_composer(&mut self, cx: &mut Context<Self>) -> Entity<Editor> {
-		if let Some(ed) = &self.composer {
-			return ed.clone();
-		}
-
-		let editor = cx.new(|cx| {
-			Editor::new(EditorMode::Multiline { newline_on_enter: false }, cx)
-				.placeholder("Ask, or describe a change")
-				.max_visible_lines(8)
-		});
-
-		let sub = cx.subscribe(&editor, |this, ed, event: &EditorEvent, cx| match event {
-			EditorEvent::Submit => this.submit_primary_turn_action(cx),
-			EditorEvent::Escape => {
-				if this
-					.state
-					.overlay
-					.as_ref()
-					.and_then(crate::Overlay::route)
-					.is_some()
-				{
-					this.back_surface(cx);
-					return;
-				}
-				if this.state.overlay.is_some() {
-					this.close_palette(cx);
-					return;
-				}
-				if !this.state.cards.is_empty() {
-					this.state.cards.remove(0);
-					cx.notify();
-				}
-			},
-			EditorEvent::Changed => {
-				this.composer_cache = ed.read(cx).text().to_string();
-				this.update_slash_palette(cx);
-				cx.notify();
-			},
-			EditorEvent::PasteMedia(item) => this.attach_clipboard(item, cx),
-		});
-
-		self.subscriptions.push(sub);
-		self.composer.insert(editor).clone()
-	}
-
-	/// Sets the composer text content.
-	pub fn set_composed(&mut self, text: impl Into<String>, cx: &mut Context<Self>) {
-		let text = text.into();
-		self.composer_cache.clone_from(&text);
-		self
-			.ensure_composer(cx)
-			.update(cx, |editor, cx| editor.set_text(text, cx));
-	}
-
-	/// Takes and clears the composer text content.
-	pub fn take_composed(&mut self, cx: &mut Context<Self>) -> String {
-		self.composer_cache.clear();
-		self
-			.composer
-			.as_ref()
-			.map_or_else(String::new, |ed| ed.update(cx, |e, cx| e.take_text(cx)))
 	}
 
 	/// Replaces the token set, after a reload applied a new one.

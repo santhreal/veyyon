@@ -1,7 +1,8 @@
 //! Turn submission through the same control availability as pointer activation.
 
+use veyyon_desktop_kit::input::{Editor, EditorEvent, EditorMode};
 use veyyon_desktop_model::{QueueMode, RequestId, SessionId};
-use veyyon_gpui::Context;
+use veyyon_gpui::{AppContext, Context, Entity};
 
 use crate::{
 	Intent, ShellView,
@@ -24,6 +25,82 @@ impl ShellView {
 		crate::composer::actions::request_surface(intent, &session).is_none_or(|id| {
 			availability_style(&self.state.controls.availability(&id), &self.installed.set).2
 		})
+	}
+
+	/// Returns the current composer text content.
+	#[must_use]
+	pub fn composer_text(&self) -> &str {
+		&self.composer_cache
+	}
+
+	/// Returns true if the composer contains non-whitespace text characters.
+	#[must_use]
+	pub fn has_composer_text(&self) -> bool {
+		!self.composer_cache.trim().is_empty()
+	}
+
+	/// Lazily creates and returns the composer editor entity.
+	pub fn ensure_composer(&mut self, cx: &mut Context<Self>) -> Entity<Editor> {
+		if let Some(ed) = &self.composer {
+			return ed.clone();
+		}
+
+		let editor = cx.new(|cx| {
+			Editor::new(EditorMode::Multiline { newline_on_enter: false }, cx)
+				.placeholder("Ask, or describe a change")
+				.max_visible_lines(8)
+		});
+
+		let sub = cx.subscribe(&editor, |this, ed, event: &EditorEvent, cx| match event {
+			EditorEvent::Submit => this.submit_primary_turn_action(cx),
+			EditorEvent::Escape => {
+				if this
+					.state
+					.overlay
+					.as_ref()
+					.and_then(crate::Overlay::route)
+					.is_some()
+				{
+					this.back_surface(cx);
+					return;
+				}
+				if this.state.overlay.is_some() {
+					this.close_palette(cx);
+					return;
+				}
+				if !this.state.cards.is_empty() {
+					this.state.cards.remove(0);
+					cx.notify();
+				}
+			},
+			EditorEvent::Changed => {
+				this.composer_cache = ed.read(cx).text().to_string();
+				this.update_slash_palette(cx);
+				cx.notify();
+			},
+			EditorEvent::PasteMedia(item) => this.attach_clipboard(item, cx),
+		});
+
+		self.subscriptions.push(sub);
+		self.composer.insert(editor).clone()
+	}
+
+	/// Sets the composer text content.
+	pub fn set_composed(&mut self, text: impl Into<String>, cx: &mut Context<Self>) {
+		let text = text.into();
+		self.composer_cache.clone_from(&text);
+		self
+			.ensure_composer(cx)
+			.update(cx, |editor, cx| editor.set_text(text, cx));
+	}
+
+	/// Takes and clears the composer text content.
+	pub fn take_composed(&mut self, cx: &mut Context<Self>) -> String {
+		self.composer_cache.clear();
+		self
+			.composer
+			.as_ref()
+			.map_or_else(String::new, |ed| ed.update(cx, |e, cx| e.take_text(cx)))
 	}
 
 	/// Submits the current draft, or runs the selected slash command when its

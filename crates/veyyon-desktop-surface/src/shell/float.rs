@@ -38,6 +38,7 @@ pub(super) fn overlay_layer(
 		.is_some_and(Overlay::is_palette)
 		&& !view.palette_input.slash;
 	let editor = needs_editor.then(|| view.ensure_palette_editor(cx));
+	let fields = view.field_slots(cx);
 	if view.palette_input.focus_search {
 		view.palette_input.focus_search = false;
 		if let Some(editor) = &editor {
@@ -91,6 +92,7 @@ pub(super) fn overlay_layer(
 				.child(settings_surface(
 					state,
 					&view.general_settings_list,
+					&fields,
 					Some(&dest_focus),
 					&view.state.controls,
 					&surface.settings,

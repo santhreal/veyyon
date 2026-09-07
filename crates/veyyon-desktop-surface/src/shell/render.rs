@@ -142,7 +142,13 @@ pub fn render_shell(
 
 	// A phase answered by the banner keeps the cached queue and transcript
 	// behind it, so a dialog phase alone replaces the columns (§8.12).
-	if let Some(attach_screen) = render_attach_screen(&view.state().connection, &tokens, cx) {
+	let secret = view.secret_field_editor(cx);
+	if let Some(editor) = view.take_field_focus() {
+		let focus = editor.read(cx).focus_handle().clone();
+		window.focus(&focus, cx);
+	}
+	if let Some(attach_screen) = render_attach_screen(&view.state().connection, secret, &tokens, cx)
+	{
 		return root.child(attach_screen);
 	}
 

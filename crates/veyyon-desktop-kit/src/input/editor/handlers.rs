@@ -77,9 +77,11 @@ impl Editor {
 		}
 	}
 
+	/// A masked field carries a secret, so a copy or a cut takes nothing out
+	/// of it (§9.3); a cut still deletes what it selected.
 	pub(crate) fn copy_action(&mut self, _: &Copy, _window: &mut Window, cx: &mut Context<Self>) {
 		let selected = self.buffer.selected_text();
-		if !selected.is_empty() {
+		if !selected.is_empty() && !self.mask {
 			cx.write_to_clipboard(ClipboardItem::new_string(selected.to_string()));
 		}
 	}
@@ -87,7 +89,9 @@ impl Editor {
 	pub(crate) fn cut_action(&mut self, _: &Cut, _window: &mut Window, cx: &mut Context<Self>) {
 		let selected = self.buffer.selected_text();
 		if !selected.is_empty() {
-			cx.write_to_clipboard(ClipboardItem::new_string(selected.to_string()));
+			if !self.mask {
+				cx.write_to_clipboard(ClipboardItem::new_string(selected.to_string()));
+			}
 			self.buffer.delete_backward();
 			self.goal_column = None;
 			self.reset_blink(cx);
