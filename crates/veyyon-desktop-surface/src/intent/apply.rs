@@ -204,12 +204,12 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 						.iter()
 						.flat_map(|(_, rows)| rows.iter())
 						.any(|r| {
-							r.id == state.current_id
-								&& (r.title.to_lowercase().contains(&needle)
-									|| r.subtitle.to_lowercase().contains(&needle))
+							let matches_needle = r.title.to_lowercase().contains(&needle)
+								|| r.subtitle.to_lowercase().contains(&needle);
+							r.id == state.current_id && matches_needle
 						});
-				if !current_matches {
-					if let Some(first) = state
+				if !current_matches
+					&& let Some(first) = state
 						.sections
 						.iter()
 						.flat_map(|(_, rows)| rows.iter())
@@ -217,9 +217,8 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 							r.title.to_lowercase().contains(&needle)
 								|| r.subtitle.to_lowercase().contains(&needle)
 						}) {
-						state.current_id = first.id;
-						state.title = first.title.clone();
-					}
+					state.current_id = first.id;
+					state.title = first.title.clone();
 				}
 			}
 		},
@@ -335,6 +334,16 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 					});
 				}
 				diff_file.rows.splice(*row..=*row, expanded_rows);
+			}
+		},
+		// The host owns both: it regenerates the card's view for the new
+		// disclosure state, and it resolves a target against the workspace.
+		Intent::SetToolViewExpanded { .. } => {},
+		Intent::OpenToolTarget(target) => {
+			if let crate::tool_view::ToolViewTarget::File { path, .. } = target {
+				state.keymap.panel_collapsed = false;
+				state.panel.active_tab = crate::right_panel::PanelTab::File;
+				state.panel.tree.selected_path = Some(path.clone());
 			}
 		},
 		Intent::SelectChangeScope(_) => {

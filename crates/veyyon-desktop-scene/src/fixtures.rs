@@ -153,14 +153,16 @@ pub fn content_block_fixture(seed: u64, kind: BlockKind) -> ContentBlock {
 			ContentBlock::RedactedThinking { marker: "[redacted thinking fixture]".to_string() }
 		},
 		BlockKind::ToolCall => ContentBlock::ToolCall {
-			id:        format!("call_seed_{seed}"),
-			name:      "read_file".to_string(),
-			arguments: serde_json::json!({ "path": FixtureText::FILE_PATH_TYPICAL }),
+			id:           format!("call_seed_{seed}"),
+			name:         "read_file".to_string(),
+			arguments:    serde_json::json!({ "path": FixtureText::FILE_PATH_TYPICAL }),
+			presentation: None,
 		},
 		BlockKind::ToolResult => ContentBlock::ToolResult {
-			tool:     "read_file".to_string(),
-			content:  serde_json::json!({ "status": "ok", "lines": 42 + seed }),
-			is_error: false,
+			tool:         "read_file".to_string(),
+			content:      serde_json::json!({ "status": "ok", "lines": 42 + seed }),
+			is_error:     false,
+			presentation: None,
 		},
 		BlockKind::Execution => ContentBlock::Execution {
 			language:  "bash".to_string(),

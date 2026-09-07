@@ -112,6 +112,10 @@ fn every_intent() -> Vec<Intent> {
 		Intent::ToggleTreeNode("src".to_owned()),
 		Intent::ExpandContext { file: 0, row: 0 },
 		Intent::SelectChangeScope(veyyon_desktop_model::ChangeScope::Staged),
+		Intent::SetToolViewExpanded { call_id: "read-call".to_owned(), expanded: true },
+		Intent::OpenToolTarget(veyyon_desktop_surface::tool_view::ToolViewTarget::Url(
+			"https://example.com".to_owned(),
+		)),
 	];
 
 	// The exhaustive match is the gate. Every variant is named, so a new one
@@ -186,7 +190,9 @@ fn every_intent() -> Vec<Intent> {
 			| Intent::OpenFile(_)
 			| Intent::ToggleTreeNode(_)
 			| Intent::ExpandContext { .. }
-			| Intent::SelectChangeScope(_) => {},
+			| Intent::SelectChangeScope(_)
+			| Intent::SetToolViewExpanded { .. }
+			| Intent::OpenToolTarget(_) => {},
 		}
 	}
 

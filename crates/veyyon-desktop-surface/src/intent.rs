@@ -121,6 +121,11 @@ pub enum Intent {
 	FindInTranscript,
 	StepTurn(i32),
 	ToggleBlock,
+	SetToolViewExpanded {
+		call_id:  String,
+		expanded: bool,
+	},
+	OpenToolTarget(crate::tool_view::ToolViewTarget),
 	ToggleQueue,
 	SetPanel {
 		open: bool,

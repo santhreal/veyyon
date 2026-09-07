@@ -9,7 +9,7 @@ fn test_all_actions_mapped_to_capabilities() {
 	let all_capabilities = Capability::ALL;
 
 	// Assert count dynamically from the enum definitions.
-	assert_eq!(all_actions.len(), 72, "Expected 72 actions in HostActionKind");
+	assert_eq!(all_actions.len(), 73, "Expected 73 actions in HostActionKind");
 	assert_eq!(all_capabilities.len(), 30, "Expected 30 capabilities in Capability");
 
 	// Sweep every action kind and ensure total mapping to a valid capability.

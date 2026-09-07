@@ -41,6 +41,7 @@ pub const fn action_to_capability(action: HostActionKind) -> Capability {
 		HostActionKind::AbortTurn => Capability::TurnControl,
 		HostActionKind::SetQueueMode => Capability::TurnControl,
 		HostActionKind::CancelTool => Capability::Tools,
+		HostActionKind::SetToolViewExpanded => Capability::Tools,
 		HostActionKind::RespondToInteraction => Capability::Approvals,
 		HostActionKind::LoadFileTree => Capability::Files,
 		HostActionKind::ReadFile => Capability::Files,

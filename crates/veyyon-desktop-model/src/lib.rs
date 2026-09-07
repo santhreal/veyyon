@@ -18,6 +18,7 @@ pub mod session;
 pub mod store;
 pub mod streaming;
 pub mod surface;
+pub mod tool_view;
 pub mod transcript;
 
 pub use action::{AttachmentSubmission, HostAction, HostRequest};
@@ -59,6 +60,12 @@ pub use session::{BadgeKind, QueuePartition, Session, SessionBadge, SessionColle
 pub use store::Store;
 pub use streaming::StreamingMessageState;
 pub use surface::SurfaceId;
+pub use tool_view::{
+	FramedBlockView, HeadedBlockView, NoticeView, StatusRowBadge, StatusRowView, TextBlockView,
+	ToolPresentation, ToolView, ToolViewContext, ViewCodeLines, ViewContentsKind, ViewDiffLines,
+	ViewDiffSide, ViewHiddenCount, ViewLine, ViewNoun, ViewSection, ViewSpan, ViewStatus,
+	ViewTailWindow, ViewTone, ViewTreeLines,
+};
 pub use transcript::{
 	BlockKind, ContentBlock, EntryMeta, MessageRole, TranscriptEntry, TranscriptTree, UsageTotals,
 };

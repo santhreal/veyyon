@@ -6,7 +6,10 @@
 //! separation is what lets a surface be rendered headlessly from a fixture with
 //! no host attached.
 
+use std::sync::Arc;
+
 use veyyon_desktop_kit::TintRole;
+use veyyon_desktop_model::tool_view::ToolPresentation;
 use veyyon_desktop_tokens::ColorRole;
 
 mod artifact;
@@ -145,6 +148,14 @@ pub struct Row {
 	pub meta:     Option<String>,
 }
 
+/// Host-generated call and result presentations, shared with the decoded
+/// transcript.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+pub struct ToolInvocationViews {
+	pub call:   Option<Arc<ToolPresentation>>,
+	pub result: Option<Arc<ToolPresentation>>,
+}
+
 /// One block inside an assistant turn (§5.2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Block {
@@ -169,6 +180,8 @@ pub enum Block {
 		target:  String,
 		/// The outcome, absent while running.
 		result:  Option<String>,
+		/// Semantic output supplied by the registered tool renderer.
+		views:   ToolInvocationViews,
 	},
 	/// A reasoning summary, collapsed.
 	Reason(String),

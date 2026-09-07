@@ -26,9 +26,10 @@ fn repeated_tools_correlate_by_call_identity_in_either_completion_order() {
 				MessageRole::Assistant,
 				["first", "second"]
 					.map(|id| ContentBlock::ToolCall {
-						id:        id.into(),
-						name:      "read".into(),
-						arguments: serde_json::json!({ "path": id }),
+						id:           id.into(),
+						name:         "read".into(),
+						arguments:    serde_json::json!({ "path": id }),
+						presentation: None,
 					})
 					.to_vec(),
 			));
@@ -41,18 +42,20 @@ fn repeated_tools_correlate_by_call_identity_in_either_completion_order() {
 			for id in order {
 				tree.append(entry(id, Some(parent), MessageRole::ToolResult, vec![
 					ContentBlock::ToolResult {
-						tool:     id.into(),
-						content:  serde_json::json!(format!("output {id}")),
-						is_error: failed,
+						tool:         id.into(),
+						content:      serde_json::json!(format!("output {id}")),
+						is_error:     failed,
+						presentation: None,
 					},
 				]));
 				parent = id;
 			}
 			tree.append(entry("orphan", Some(parent), MessageRole::ToolResult, vec![
 				ContentBlock::ToolResult {
-					tool:     "read".into(),
-					content:  serde_json::json!("unmatched"),
-					is_error: failed,
+					tool:         "read".into(),
+					content:      serde_json::json!("unmatched"),
+					is_error:     failed,
+					presentation: None,
 				},
 			]));
 			let mut state = ShellState::default();
@@ -85,9 +88,10 @@ fn tool_results_are_truncated_once_with_errors_and_remaining_counts_intact() {
 				let mut content = Vec::new();
 				if matched {
 					content.push(ContentBlock::ToolCall {
-						id:        "call".into(),
-						name:      "read".into(),
-						arguments: serde_json::json!({}),
+						id:           "call".into(),
+						name:         "read".into(),
+						arguments:    serde_json::json!({}),
+						presentation: None,
 					});
 				}
 				let output = (0..count)
@@ -95,9 +99,10 @@ fn tool_results_are_truncated_once_with_errors_and_remaining_counts_intact() {
 					.collect::<Vec<_>>()
 					.join("\n");
 				content.push(ContentBlock::ToolResult {
-					tool:     "call".into(),
-					content:  serde_json::json!(output),
-					is_error: failed,
+					tool:         "call".into(),
+					content:      serde_json::json!(output),
+					is_error:     failed,
+					presentation: None,
 				});
 				store
 					.transcripts

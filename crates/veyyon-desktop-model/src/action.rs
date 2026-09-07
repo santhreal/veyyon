@@ -23,7 +23,7 @@ pub struct HostRequest {
 	pub action: HostAction,
 }
 
-/// Enumeration of all 72 host actions across thirteen functional families.
+/// Host actions across connection, session and interactive domains.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HostAction {
 	// Connection family (4 actions)
@@ -94,6 +94,11 @@ pub enum HostAction {
 	CancelTool {
 		session:      SessionId,
 		tool_call_id: String,
+	},
+	SetToolViewExpanded {
+		session:  SessionId,
+		call_id:  String,
+		expanded: bool,
 	},
 	RespondToInteraction {
 		session:        SessionId,
@@ -297,6 +302,7 @@ impl HostAction {
 			Self::AbortTurn { .. } => HostActionKind::AbortTurn,
 			Self::SetQueueMode { .. } => HostActionKind::SetQueueMode,
 			Self::CancelTool { .. } => HostActionKind::CancelTool,
+			Self::SetToolViewExpanded { .. } => HostActionKind::SetToolViewExpanded,
 			Self::RespondToInteraction { .. } => HostActionKind::RespondToInteraction,
 			Self::LoadFileTree { .. } => HostActionKind::LoadFileTree,
 			Self::ReadFile { .. } => HostActionKind::ReadFile,

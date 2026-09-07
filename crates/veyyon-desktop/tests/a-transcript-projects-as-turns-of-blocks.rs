@@ -41,14 +41,16 @@ fn block_of(kind: BlockKind) -> ContentBlock {
 		BlockKind::Thinking => ContentBlock::Thinking { text: "why".to_string() },
 		BlockKind::RedactedThinking => ContentBlock::RedactedThinking { marker: "r".to_string() },
 		BlockKind::ToolCall => ContentBlock::ToolCall {
-			id:        "call-1".to_string(),
-			name:      "read".to_string(),
-			arguments: serde_json::json!({ "path": "src/lib.rs" }),
+			id:           "call-1".to_string(),
+			name:         "read".to_string(),
+			arguments:    serde_json::json!({ "path": "src/lib.rs" }),
+			presentation: None,
 		},
 		BlockKind::ToolResult => ContentBlock::ToolResult {
-			tool:     "read".to_string(),
-			content:  serde_json::json!("12 lines"),
-			is_error: false,
+			tool:         "read".to_string(),
+			content:      serde_json::json!("12 lines"),
+			is_error:     false,
+			presentation: None,
 		},
 		BlockKind::Execution => ContentBlock::Execution {
 			language:  "bash".to_string(),
@@ -93,15 +95,17 @@ fn a_turn_is_what_the_operator_said_and_everything_that_came_back() {
 	tree.append(entry("a1", Some("u1"), MessageRole::Assistant, vec![
 		ContentBlock::Text { text: "reading".to_string() },
 		ContentBlock::ToolCall {
-			id:        "c".to_string(),
-			name:      "read".to_string(),
-			arguments: serde_json::json!({ "path": "src/lib.rs" }),
+			id:           "c".to_string(),
+			name:         "read".to_string(),
+			arguments:    serde_json::json!({ "path": "src/lib.rs" }),
+			presentation: None,
 		},
 	]));
 	tree.append(entry("t1", Some("a1"), MessageRole::ToolResult, vec![ContentBlock::ToolResult {
-		tool:     "c".to_string(),
-		content:  serde_json::json!("12 lines\nmore"),
-		is_error: false,
+		tool:         "c".to_string(),
+		content:      serde_json::json!("12 lines\nmore"),
+		is_error:     false,
+		presentation: None,
 	}]));
 	tree.append(entry("a2", Some("t1"), MessageRole::Assistant, vec![ContentBlock::Text {
 		text: "done".to_string(),

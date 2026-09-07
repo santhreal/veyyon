@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// Discriminant enum for each of the 72 host actions.
+/// Discriminant enum for host actions.
 #[derive(
 	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, strum::EnumIter,
 )]
@@ -25,6 +25,7 @@ pub enum HostActionKind {
 	AbortTurn,
 	SetQueueMode,
 	CancelTool,
+	SetToolViewExpanded,
 	RespondToInteraction,
 	LoadFileTree,
 	ReadFile,
@@ -80,8 +81,8 @@ pub enum HostActionKind {
 }
 
 impl HostActionKind {
-	/// Complete slice of all 72 action kinds for runtime test sweeps.
-	pub const ALL: [Self; 72] = [
+	/// Complete slice of action kinds for runtime test sweeps.
+	pub const ALL: [Self; 73] = [
 		Self::Attach,
 		Self::Detach,
 		Self::RetryConnection,
@@ -102,6 +103,7 @@ impl HostActionKind {
 		Self::AbortTurn,
 		Self::SetQueueMode,
 		Self::CancelTool,
+		Self::SetToolViewExpanded,
 		Self::RespondToInteraction,
 		Self::LoadFileTree,
 		Self::ReadFile,
@@ -180,6 +182,7 @@ impl HostActionKind {
 			Self::AbortTurn => "AbortTurn",
 			Self::SetQueueMode => "SetQueueMode",
 			Self::CancelTool => "CancelTool",
+			Self::SetToolViewExpanded => "SetToolViewExpanded",
 			Self::RespondToInteraction => "RespondToInteraction",
 			Self::LoadFileTree => "LoadFileTree",
 			Self::ReadFile => "ReadFile",

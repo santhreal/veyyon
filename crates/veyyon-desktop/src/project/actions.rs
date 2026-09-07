@@ -36,6 +36,23 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		Intent::AbortTurn => {
 			active.map_or_else(Vec::new, |session| vec![HostAction::AbortTurn { session }])
 		},
+		Intent::SetToolViewExpanded { call_id, expanded } => {
+			active.map_or_else(Vec::new, |session| {
+				vec![HostAction::SetToolViewExpanded {
+					session,
+					call_id: call_id.clone(),
+					expanded: *expanded,
+				}]
+			})
+		},
+		Intent::OpenToolTarget(target) => match target {
+			veyyon_desktop_surface::ToolViewTarget::Url(url) => {
+				vec![HostAction::OpenExternal { path: url.clone() }]
+			},
+			veyyon_desktop_surface::ToolViewTarget::File { path, .. } => {
+				vec![HostAction::ReadFile { path: path.clone() }]
+			},
+		},
 		// The host accepts the two modes by their capitalised names and rejects
 		// any other spelling with INVALID_ARGUMENTS.
 		Intent::SetQueueMode(mode) => active.map_or_else(Vec::new, |session| {
@@ -151,8 +168,7 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 				},
 				SurfaceRoute::Page(SettingsPage::ContextBreakdown) => active
 					.map_or_else(Vec::new, |session| vec![HostAction::GetContextBreakdown { session }]),
-				SurfaceRoute::Page(SettingsPage::Extensions)
-				| SurfaceRoute::Page(SettingsPage::Authentication)
+				SurfaceRoute::Page(SettingsPage::Extensions | SettingsPage::Authentication)
 				| SurfaceRoute::Commands
 				| SurfaceRoute::Account
 				| SurfaceRoute::Settings => Vec::new(),

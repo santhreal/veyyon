@@ -32,6 +32,7 @@ pub mod settings;
 pub mod shell;
 pub mod terminal;
 pub mod tokens;
+pub mod tool_view;
 pub mod transcript;
 pub use composer::{
 	Attachment, AttachmentSource, MediaKind, MediaType, ModelChoice, Payload, PrimaryAction,
@@ -48,3 +49,8 @@ pub use settings::SettingsPage;
 pub use shell::ShellView;
 pub use terminal::Cell;
 pub use tokens::{InstalledTokens, install_tokens};
+pub use tool_view::{
+	DisclosureCallback, TargetCallback, ToolViewCallbacks, ToolViewTarget, render_framed_block,
+	render_headed_block, render_line, render_notice, render_section, render_span, render_status_row,
+	render_text_block, render_tool_view, sanitize_control_sequences,
+};

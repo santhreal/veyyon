@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
-use crate::connection::EntryId;
+use crate::{connection::EntryId, tool_view::ToolPresentation};
 
 /// Message participant role classification across twelve protocol variants.
 #[derive(
@@ -71,14 +71,18 @@ pub enum ContentBlock {
 		marker: String,
 	},
 	ToolCall {
-		id:        String,
-		name:      String,
-		arguments: serde_json::Value,
+		id:           String,
+		name:         String,
+		arguments:    serde_json::Value,
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		presentation: Option<Arc<ToolPresentation>>,
 	},
 	ToolResult {
-		tool:     String,
-		content:  serde_json::Value,
-		is_error: bool,
+		tool:         String,
+		content:      serde_json::Value,
+		is_error:     bool,
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		presentation: Option<Arc<ToolPresentation>>,
 	},
 	Execution {
 		language:  String,

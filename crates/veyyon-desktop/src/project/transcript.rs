@@ -156,22 +156,29 @@ fn push_block(blocks: &mut Vec<Block>, block: &ContentBlock, role: MessageRole) 
 		ContentBlock::RedactedThinking { marker } => {
 			blocks.push(Block::Reason(format!("redacted ({marker})")));
 		},
-		ContentBlock::ToolCall { id, name, arguments } => blocks.push(Block::Invoke {
+		ContentBlock::ToolCall { id, name, arguments, presentation } => blocks.push(Block::Invoke {
 			call_id: id.clone(),
 			tool:    name.clone(),
 			target:  target_of(arguments),
 			result:  None,
+			views:   veyyon_desktop_surface::model::ToolInvocationViews {
+				call:   presentation.clone(),
+				result: None,
+			},
 		}),
-		ContentBlock::ToolResult { tool, content, is_error } => {
+		ContentBlock::ToolResult { tool, content, is_error, presentation } => {
 			let lines = result_lines(content, *is_error);
 			let open = blocks.iter_mut().rev().find_map(|block| match block {
-				Block::Invoke { call_id, result, .. } if result.is_none() && call_id == tool => {
-					Some(result)
+				Block::Invoke { call_id, result, views, .. } if result.is_none() && call_id == tool => {
+					Some((result, views))
 				},
 				_ => None,
 			});
 			match open {
-				Some(result) => *result = Some(lines.join("\n")),
+				Some((result, views)) => {
+					*result = Some(lines.join("\n"));
+					views.result.clone_from(presentation);
+				},
 				None => blocks.push(Block::Pane { caption: tool.clone(), lines }),
 			}
 		},
