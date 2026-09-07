@@ -1183,7 +1183,12 @@ interface TelemetryToolCallSummary {
 type OtelMessagePart =
 	| { readonly type: "text"; readonly content: string }
 	| { readonly type: "reasoning"; readonly content: string }
-	| { readonly type: "blob"; readonly modality: "image" | "video"; readonly mime_type: string; readonly content: string }
+	| {
+			readonly type: "blob";
+			readonly modality: "image" | "video";
+			readonly mime_type: string;
+			readonly content: string;
+	  }
 	| { readonly type: "tool_call"; readonly id?: string; readonly name: string; readonly arguments?: unknown }
 	| { readonly type: "tool_call_response"; readonly id?: string; readonly response: unknown }
 	| { readonly type: string; readonly [key: string]: unknown };

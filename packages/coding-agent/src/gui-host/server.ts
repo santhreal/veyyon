@@ -7,15 +7,15 @@ import { discoverAuthStorage } from "../session/auth-broker-config";
 import { allActionHandlers } from "./actions";
 import type { ActionContext, ReplyHelper } from "./actions/types";
 import { FrameDecoder, writeFrame } from "./frames";
+import { PresentationLedger } from "./presentation";
 import { buildCapabilitiesSnapshot, mapActionToErrorScope } from "./session-bridge";
 import { type ClientSessionState, disposeClientState } from "./turns";
-import { PresentationLedger } from "./presentation";
 import {
 	type BackendError,
+	GUI_HOST_PROTOCOL_VERSION,
 	getActionTag,
 	type HostAction,
 	type HostActionTag,
-	GUI_HOST_PROTOCOL_VERSION,
 	type SnapshotSection,
 } from "./wire";
 

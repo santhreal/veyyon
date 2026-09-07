@@ -417,7 +417,6 @@ export type StreamFunction<TApi extends Api> = (
 	options: OptionsForApi<TApi>,
 ) => AssistantMessageEventStream;
 
-
 export type CursorExecHandlerResult<T> = { result: T; toolResult?: ToolResultMessage } | T | ToolResultMessage;
 
 export type CursorToolResultHandler = (

@@ -19,16 +19,16 @@
  * GPU rasterization and GPUI view layouts in Rust/C++ desktop UI.
  */
 
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { AgentTool } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { computeDefaultSessionDir } from "@veyyon/kernel/session/session-paths";
 import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import type { ToolView, ToolViewContext } from "@veyyon/view";
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
-import * as path from "node:path";
 import { type GuiHostServer, startGuiHostServer } from "../../src/gui-host";
 import { buildToolCallPresentation, buildToolResultPresentation } from "../../src/gui-host/presentation";
 import type { ContentBlock, TranscriptEntry } from "../../src/gui-host/wire";
@@ -234,9 +234,7 @@ describe("GUI Host ToolPresentation and Disclosure", () => {
 		if (callPresExp.view.kind === "framedBlock") {
 			expect(callPresExp.view.header?.title).toBe("raw_scanner");
 			expect(callPresExp.view.sections[0]?.label).toBe("Arguments");
-			const argumentText = (callPresExp.view.sections[0]?.lines ?? []).flatMap(line =>
-				line.map(span => span.text),
-			);
+			const argumentText = (callPresExp.view.sections[0]?.lines ?? []).flatMap(line => line.map(span => span.text));
 			expect(argumentText.join(" ")).toContain("lib/core.ts");
 		}
 
@@ -266,9 +264,7 @@ describe("GUI Host ToolPresentation and Disclosure", () => {
 		expect(resultPresExp.view.kind).toBe("framedBlock");
 		if (resultPresExp.view.kind === "framedBlock") {
 			expect(resultPresExp.view.sections.map(section => section.label)).toEqual(["Output", "Details"]);
-			const detailText = (resultPresExp.view.sections[1]?.lines ?? []).flatMap(line =>
-				line.map(span => span.text),
-			);
+			const detailText = (resultPresExp.view.sections[1]?.lines ?? []).flatMap(line => line.map(span => span.text));
 			expect(detailText.join("")).toContain("count");
 			expect(detailText.join("")).toContain("4");
 		}

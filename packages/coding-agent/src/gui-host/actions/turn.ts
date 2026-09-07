@@ -201,7 +201,7 @@ const handleSetToolViewExpanded: ActionHandler<SetToolViewExpandedPayload | unde
 	}
 
 	const ledger = ctx.clientState.presentationLedger;
-	if (!ledger || !ledger.hasCall(payload.call_id)) {
+	if (!ledger?.hasCall(payload.call_id)) {
 		ctx.reply.failure({
 			scope: "Tool",
 			code: "CALL_NOT_FOUND",
@@ -235,9 +235,8 @@ const handleSetToolViewExpanded: ActionHandler<SetToolViewExpandedPayload | unde
 	}
 
 	if (tracked?.assistantEntry) {
-		const updatedCallEntry = ledger.regenerateCallEntryPresentation(
-			tracked.assistantEntry,
-			name => session?.getToolByName(name),
+		const updatedCallEntry = ledger.regenerateCallEntryPresentation(tracked.assistantEntry, name =>
+			session?.getToolByName(name),
 		);
 		if (updatedCallEntry) {
 			tracked.assistantEntry = updatedCallEntry;
@@ -251,9 +250,8 @@ const handleSetToolViewExpanded: ActionHandler<SetToolViewExpandedPayload | unde
 	}
 
 	if (tracked?.resultEntry) {
-		const updatedResultEntry = ledger.regenerateResultEntryPresentation(
-			tracked.resultEntry,
-			name => session?.getToolByName(name),
+		const updatedResultEntry = ledger.regenerateResultEntryPresentation(tracked.resultEntry, name =>
+			session?.getToolByName(name),
 		);
 		if (updatedResultEntry) {
 			tracked.resultEntry = updatedResultEntry;

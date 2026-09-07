@@ -1,6 +1,10 @@
 import type * as net from "node:net";
 import * as path from "node:path";
 import type { AuthStorage, ImageContent, VideoContent } from "@veyyon/ai";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
+import { computeDefaultSessionDir } from "@veyyon/kernel/session/session-paths";
+import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import type { PtySession } from "@veyyon/natives";
 import { logger } from "@veyyon/utils";
 import { formatBytes } from "@veyyon/utils/format";
@@ -10,10 +14,6 @@ import { createAgentSession } from "../sdk";
 import type { AgentSession } from "../session/agent-session";
 import type { AgentSessionEvent } from "../session/agent-session-types";
 import { USER_INTERRUPT_LABEL } from "../session/messages";
-import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
-import { SessionManager } from "@veyyon/kernel/session/session-manager";
-import { computeDefaultSessionDir } from "@veyyon/kernel/session/session-paths";
-import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
 import { MAX_IMAGE_INPUT_BYTES } from "../utils/image-loading";
 import { base64DecodedBytes, MAX_PROMPT_ATTACHMENT_BYTES, MAX_VIDEO_INPUT_BYTES } from "../utils/video-loading";
 import { writeFrame } from "./frames";
@@ -172,9 +172,8 @@ export function attachTurnListeners(session: AgentSession, socket: net.Socket, s
 					entry.id,
 					transcriptEntry,
 				);
-				const updatedAssistant = state.presentationLedger.markResultAvailable(
-					msg.toolCallId,
-					name => state.agentSession?.getToolByName(name),
+				const updatedAssistant = state.presentationLedger.markResultAvailable(msg.toolCallId, name =>
+					state.agentSession?.getToolByName(name),
 				);
 				if (updatedAssistant) {
 					writeFrame(socket, {
@@ -217,23 +216,14 @@ export function handleSessionEvent(event: AgentSessionEvent, socket: net.Socket,
 					state.streamingSeq = (state.streamingSeq ?? 0) + 1;
 					state.streamingEntry = `stream-${state.streamingSeq}`;
 				}
-				const accumulating = agentMessageToTranscriptEntry(
-					event.message,
-					state.revision,
-					state.streamingEntry,
-					{
-						ledger: state.presentationLedger,
-						session: state.agentSession,
-						isStreaming: true,
-					},
-				);
+				const accumulating = agentMessageToTranscriptEntry(event.message, state.revision, state.streamingEntry, {
+					ledger: state.presentationLedger,
+					session: state.agentSession,
+					isStreaming: true,
+				});
 				for (const block of accumulating.content) {
 					if ("ToolCall" in block) {
-						state.presentationLedger.recordCall(
-							block.ToolCall.id,
-							block.ToolCall.name,
-							block.ToolCall.arguments,
-						);
+						state.presentationLedger.recordCall(block.ToolCall.id, block.ToolCall.name, block.ToolCall.arguments);
 					}
 				}
 				writeStreaming(socket, state, accumulating);
@@ -250,11 +240,7 @@ export function handleSessionEvent(event: AgentSessionEvent, socket: net.Socket,
 			break;
 		}
 		case "tool_execution_update": {
-			state.presentationLedger.recordResult(
-				event.toolCallId,
-				event.partialResult,
-				event.partialResult.isError,
-			);
+			state.presentationLedger.recordResult(event.toolCallId, event.partialResult, event.partialResult.isError);
 			if (state.streamingAccumulating) {
 				const updated = state.presentationLedger.regenerateCallEntryPresentation(
 					state.streamingAccumulating,
@@ -269,11 +255,7 @@ export function handleSessionEvent(event: AgentSessionEvent, socket: net.Socket,
 		case "tool_execution_end": {
 			state.streamingTool = undefined;
 			state.streamingToolCallId = undefined;
-			state.presentationLedger.recordResult(
-				event.toolCallId,
-				event.result,
-				event.isError,
-			);
+			state.presentationLedger.recordResult(event.toolCallId, event.result, event.isError);
 			if (state.streamingAccumulating) {
 				const updated = state.presentationLedger.regenerateCallEntryPresentation(
 					state.streamingAccumulating,

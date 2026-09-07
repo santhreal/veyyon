@@ -9,9 +9,9 @@ import type {
 	ViewSection,
 	ViewStatus,
 } from "@veyyon/view";
-import type { ContentBlock, ToolPresentation, TranscriptEntry } from "./wire";
+import type { ToolPresentation, TranscriptEntry } from "./wire";
 
-export { type ToolPresentation } from "./wire";
+export type { ToolPresentation } from "./wire";
 
 /**
  * Normalized tool result representation passed to ToolViewRenderer.
@@ -162,11 +162,7 @@ export function normalizeResult(result: unknown): RenderableToolResult {
 /**
  * Generic semantic call view for tools without semantic hooks.
  */
-export function formatGenericCallView(
-	toolName: string,
-	args: unknown,
-	context: ToolViewContext,
-): ToolView {
+export function formatGenericCallView(toolName: string, args: unknown, context: ToolViewContext): ToolView {
 	const status: ViewStatus = context.partial ? "running" : context.hasResult ? "done" : "pending";
 	const description = formatArgsSummary(args);
 
@@ -225,9 +221,7 @@ export function formatGenericResultView(
 
 	const sections: ViewSection[] = [];
 	if (text) {
-		const textLines: ViewLine[] = text.split("\n").map(line => [
-			{ text: line, tone: isError ? "error" : "output" },
-		]);
+		const textLines: ViewLine[] = text.split("\n").map(line => [{ text: line, tone: isError ? "error" : "output" }]);
 		sections.push({
 			label: "Output",
 			lines: textLines,
@@ -267,11 +261,7 @@ export function formatGenericResultView(
 /**
  * Visibly surfaces a renderer exception without throwing or suppressing output.
  */
-export function createRendererExceptionView(
-	toolName: string,
-	phase: "call" | "result",
-	error: unknown,
-): NoticeView {
+export function createRendererExceptionView(toolName: string, phase: "call" | "result", error: unknown): NoticeView {
 	const message = error instanceof Error ? error.message : String(error);
 	return {
 		kind: "notice",

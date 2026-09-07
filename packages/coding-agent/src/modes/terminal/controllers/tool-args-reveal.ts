@@ -6,8 +6,8 @@ import {
 	displayArgsForPrefix,
 	initialDisplayArgs,
 	resetDisplayState,
-	sameStringKeys,
 	type StreamingJsonStringExtractor,
+	sameStringKeys,
 } from "../../../tools/core/streamed-tool-args";
 import { nextStep, STREAMING_REVEAL_FRAME_MS } from "./streaming-reveal";
 

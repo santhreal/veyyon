@@ -2,7 +2,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { BranchSummaryMessage, CompactionSummaryMessage } from "@veyyon/agent-core/compaction/messages";
-import type { ImageContent, MessageAttribution, ServiceTierByFamily, TextContent, Usage, VideoContent } from "@veyyon/ai";
+import type {
+	ImageContent,
+	MessageAttribution,
+	ServiceTierByFamily,
+	TextContent,
+	Usage,
+	VideoContent,
+} from "@veyyon/ai";
 import { allowsSessionTelemetry, type InstrumentationLevel } from "@veyyon/ai/instrumentation";
 import {
 	directoryExists,

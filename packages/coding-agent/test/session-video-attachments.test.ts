@@ -19,10 +19,10 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { AuthStorage, Model, VideoContent } from "@veyyon/ai";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { Settings } from "../src/config/settings";
 import { createAgentSession } from "../src/sdk";
 import { type AgentSession, UnsupportedModelInputError } from "../src/session/agent-session";
-import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { isolatedAuthStorage } from "./helpers/isolated-auth-storage";
 
 describe("AgentSession video attachments and queued message lifecycle", () => {

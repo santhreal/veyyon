@@ -4,6 +4,7 @@ import type { ModelReferenceCandidate } from "./identity/reference";
 import modelsSourceJson from "./models.json" with { type: "text" };
 import type { Api, Model, ModelSpec, Usage } from "./types";
 import { ZERO_MODEL_COST } from "./utils";
+
 /**
  * Static bundled model registry loaded from `models.json`.
  *
@@ -353,7 +354,6 @@ export function emptyCost(): Usage["cost"] {
 	return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
 }
 
-
 /**
  * Does this cost object carry a non-zero price in any bucket?
  *
@@ -369,14 +369,18 @@ export function emptyCost(): Usage["cost"] {
  * its extra `total`, and the stats row shape all pass. It had a copy in `catalog`'s generator and
  * another in `stats`, spelled identically down to the bucket order.
  */
-export function hasBillableCost(cost?: Partial<{
-	input: number;
-	output: number;
-	cacheRead: number;
-	cacheWrite: number;
-}>): boolean {
+export function hasBillableCost(
+	cost?: Partial<{
+		input: number;
+		output: number;
+		cacheRead: number;
+		cacheWrite: number;
+	}>,
+): boolean {
 	if (!cost) return false;
-	return (cost.input ?? 0) !== 0 || (cost.output ?? 0) !== 0 || (cost.cacheRead ?? 0) !== 0 || (cost.cacheWrite ?? 0) !== 0;
+	return (
+		(cost.input ?? 0) !== 0 || (cost.output ?? 0) !== 0 || (cost.cacheRead ?? 0) !== 0 || (cost.cacheWrite ?? 0) !== 0
+	);
 }
 
 /**

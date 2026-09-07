@@ -15,8 +15,8 @@ import {
 	ALL_CAPABILITIES,
 	ALL_HOST_ACTIONS,
 	type Capability,
-	type GuiHostServer,
 	GUI_HOST_PROTOCOL_VERSION,
+	type GuiHostServer,
 	startGuiHostServer,
 } from "../../src/gui-host";
 import { TestSocketClient } from "./test-client";

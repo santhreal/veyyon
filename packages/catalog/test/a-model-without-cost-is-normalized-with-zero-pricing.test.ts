@@ -15,7 +15,7 @@
 import { describe, expect, it } from "bun:test";
 import { buildModel } from "../src/build";
 import { calculateCost, emptyUsage, getModelPricing } from "../src/models";
-import { KNOWN_APIS, type Api, type Model, type ModelSpec } from "../src/types";
+import { type Api, KNOWN_APIS, type Model, type ModelSpec } from "../src/types";
 
 describe("model cost normalization across construction boundaries", () => {
 	it.each([...KNOWN_APIS])("normalizes omitted cost to zeroed defaults for api %s", api => {

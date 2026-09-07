@@ -1,6 +1,5 @@
-import type { Api, Model } from "./types";
-
 import { type FetchImpl, wrapFetchForExtraCa } from "@veyyon/utils/tls-fetch";
+import type { Api, Model } from "./types";
 
 export { isRecord } from "@veyyon/utils/type-guards";
 

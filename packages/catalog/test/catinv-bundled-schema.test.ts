@@ -24,8 +24,7 @@ import { describe, expect, it } from "bun:test";
 import { buildModel } from "../src/build";
 import { isEffort } from "../src/effort";
 import MODELS from "../src/models.json" with { type: "json" };
-import { KNOWN_APIS, type Api, type ModelSpec } from "../src/types";
-
+import { type Api, KNOWN_APIS, type ModelSpec } from "../src/types";
 
 /**
  * The ModelSpec vocabulary (`types.ts`, the `Model` interface minus the

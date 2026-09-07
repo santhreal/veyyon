@@ -22,6 +22,7 @@ import { getSymbolTheme, theme } from "../../../theme/theme";
 import type { ResolveToolDetails } from "../../../tools/agent/resolve";
 import { nextActionableTask } from "../../../tools/agent/todo";
 import { previewLine, TRUNCATE_LENGTHS } from "../../../tools/core/render-utils";
+import { streamingStringKeysForTool } from "../../../tools/core/streamed-tool-args";
 import { canonicalizeMessage } from "../../../utils/thinking-display";
 import { formatRetryLine, formatRetrySummary, type RetryTrace, retryReason } from "../../retry-display";
 import { TodoReminderComponent } from "../components/dashboard/todo-reminder";
@@ -47,7 +48,6 @@ import {
 	splitAssistantMessageToolTimeline,
 } from "../utils/transcript-render-helpers";
 import { StreamingRevealController } from "./streaming-reveal";
-import { streamingStringKeysForTool } from "../../../tools/core/streamed-tool-args";
 import { ToolArgsRevealController } from "./tool-args-reveal";
 
 /**

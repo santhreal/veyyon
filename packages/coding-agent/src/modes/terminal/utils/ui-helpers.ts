@@ -5,7 +5,6 @@ import type { SessionContext, StrippedToolCallsMarker } from "@veyyon/kernel/ses
 import { type Component, Spacer, Text, TruncatedText } from "@veyyon/tui";
 import { APP_NAME, errorMessage, formatCount } from "@veyyon/utils";
 import { formatBytes } from "@veyyon/utils/format";
-import { base64DecodedBytes } from "../../../utils/video-loading";
 import type { AdvisorMessageDetails } from "../../../advisor";
 import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../../collab/protocol";
 import { type SettingsSaveFailure, settings } from "../../../config/settings";
@@ -19,6 +18,8 @@ import {
 } from "../../../session/messages";
 import { theme } from "../../../theme/theme";
 import { replaceTabs } from "../../../tools/core/render-utils";
+import { decodeStreamedToolArgs, streamingStringKeysForTool } from "../../../tools/core/streamed-tool-args";
+import { base64DecodedBytes } from "../../../utils/video-loading";
 import { createAdvisorMessageCard } from "../components/transcript/advisor-message";
 import { AssistantMessageComponent } from "../components/transcript/assistant-message";
 import { createBackgroundTanDispatchBlock } from "../components/transcript/background-tan-message";
@@ -46,7 +47,6 @@ import { ToolExecutionComponent, turnFailedToolResult } from "../components/tran
 import { TranscriptBlock } from "../components/transcript/transcript-container";
 import { createUsageRowBlock } from "../components/transcript/usage-row";
 import { UserMessageComponent } from "../components/transcript/user-message";
-import { decodeStreamedToolArgs, streamingStringKeysForTool } from "../../../tools/core/streamed-tool-args";
 import { materializeImageReferenceLinksSync } from "../image-references";
 import { buildSkillCommandPrompt, invokeSkillCommandFromText, isKnownSkillCommand } from "../skill-command";
 import type { CompactionQueuedMessage, InteractiveModeContext } from "../types";

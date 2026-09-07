@@ -17,12 +17,13 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { type GuiHostServer, startGuiHostServer } from "../../src/gui-host";
-import { findSessionPath } from "../../src/gui-host/actions/active-session";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { computeDefaultSessionDir } from "@veyyon/kernel/session/session-paths";
 import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
+import { type GuiHostServer, startGuiHostServer } from "../../src/gui-host";
+import { findSessionPath } from "../../src/gui-host/actions/active-session";
 import { type RequestFrame, TestSocketClient } from "./test-client";
+
 interface SessionRow {
 	id: string;
 	title: string;
@@ -273,10 +274,7 @@ describe("sessions action group behaviour", () => {
 	test("BranchSession on an inactive target session activates it and branches from its latest user message", async () => {
 		await client.request(1, { CreateSession: { title: "Active Session" } });
 
-		const {
-			sessionId: inactiveId,
-			entryIds,
-		} = await createPopulatedSession(tempDir, [
+		const { sessionId: inactiveId, entryIds } = await createPopulatedSession(tempDir, [
 			{ role: "user", text: "Inactive Q1" },
 			{ role: "assistant", text: "Inactive A1" },
 			{ role: "user", text: "Inactive Q2" },
@@ -440,7 +438,11 @@ describe("sessions action group behaviour", () => {
 	});
 
 	test("successive BranchSession requests reuse live AgentSession and keep original source session unchanged", async () => {
-		const { sessionId, entryIds, sm: sourceSm } = await createPopulatedSession(tempDir, [
+		const {
+			sessionId,
+			entryIds,
+			sm: sourceSm,
+		} = await createPopulatedSession(tempDir, [
 			{ role: "user", text: "Turn 1 Q" },
 			{ role: "assistant", text: "Turn 1 A" },
 			{ role: "user", text: "Turn 2 Q" },

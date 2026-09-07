@@ -21,10 +21,10 @@ import type {
 	RedactedThinkingContent as ModelRedactedThinkingContent,
 	TextContent as ModelTextContent,
 	ThinkingContent as ModelThinkingContent,
+	VideoContent as ModelVideoContent,
 	StopReason,
 	ToolCall,
 	Usage,
-	VideoContent as ModelVideoContent,
 } from "@veyyon/model";
 
 // ═══════════════════════════════════════════════════════════════════════════

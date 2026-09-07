@@ -773,7 +773,6 @@ function createHandoffFileName(date = new Date()): string {
 // AgentSession Class
 // ============================================================================
 
-
 /**
  * Redact every string in a provider payload, object keys included, after
  * mutable request hooks. The bounded shared walker rejects transformed-key

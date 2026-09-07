@@ -15,12 +15,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 import { type GuiHostServer, startGuiHostServer } from "../../src/gui-host";
 import { agentMessageToTranscriptEntry, sessionEntryToTranscriptEntry } from "../../src/gui-host/transcript-conversion";
 import type { TranscriptEntry } from "../../src/gui-host/wire";
-import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
-import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { TestSocketClient } from "./test-client";
 import { EXHAUSTIVE_FIXTURES, FIXTURE_TIMESTAMP, FIXTURE_TIMESTAMP_MS } from "./transcript-conversion-fixtures";
 
