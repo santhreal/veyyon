@@ -131,7 +131,7 @@ fn window(state: ConnectionState, pending: bool) -> (ShellState, SessionId) {
 			.capabilities
 			.set(capability, CapabilityStatus::Available);
 	}
-	let session = seed.session(QueuePartition::Live, None);
+	let session = seed.session(QueuePartition::Live);
 	if pending {
 		seed.store.interactions.insert(session.clone(), decisions());
 	}

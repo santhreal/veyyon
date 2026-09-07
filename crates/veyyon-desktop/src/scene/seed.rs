@@ -8,9 +8,11 @@
 use std::collections::HashMap;
 
 use veyyon_desktop_model::{
-	BackendError, BlockKind, Capability, CapabilityMap, CapabilityStatus, ConnectionState,
-	ContentBlock, EntryId, ErrorScope, MessageRole, PROTOCOL_VERSION, QueuePartition,
-	RequestRegistry, SessionBadge, SessionId, Store, TranscriptEntry, is_scope_retryable,
+	ApprovalInteraction, BackendError, BadgeKind, BlockKind, Capability, CapabilityMap,
+	CapabilityStatus, ConnectionState, ContentBlock, EntryId, ErrorScope, InteractionId,
+	MessageRole, PROTOCOL_VERSION, PendingDecisions, PlanInteraction, ProcessView,
+	QuestionInteraction, QueuePartition, RequestRegistry, SessionId, SessionStatus, Store,
+	StreamingMessageState, TranscriptEntry, is_scope_retryable,
 };
 use veyyon_desktop_scene::{FixtureText, content_block_fixture, session_fixture};
 use veyyon_desktop_surface::ShellState;
@@ -79,8 +81,8 @@ impl Seed {
 
 	/// Lists one session in a partition and returns its id. The first
 	/// session listed becomes the active one.
-	pub fn session(&mut self, partition: QueuePartition, badge: Option<SessionBadge>) -> SessionId {
-		let session = session_fixture(self.next_session, partition, badge);
+	pub fn session(&mut self, partition: QueuePartition) -> SessionId {
+		let session = session_fixture(self.next_session, partition);
 		self.next_session += 1;
 		let id = session.id.clone();
 		self.store.sessions.insert(session);
@@ -88,6 +90,107 @@ impl Seed {
 			self.store.persisted.shell.active_session = Some(id.clone());
 		}
 		id
+	}
+
+	/// One session in the state a badge is derived from, so a badge scene
+	/// photographs the projection rather than a hand-set field.
+	///
+	/// Each arm seeds what `session_badge` reads for that badge and nothing
+	/// else: a decision for the three that wait on the operator, a status for
+	/// the two that report a finished turn, a past return time for `Due`, an
+	/// unanswered message for `Working`, and a live supervised process for
+	/// `Watching`.
+	pub fn badged_session(&mut self, partition: QueuePartition, kind: BadgeKind) -> SessionId {
+		let id = self.session(partition);
+		let unread = SCENE_CLOCK_MS - 30_000;
+		match kind {
+			BadgeKind::Approval => self.decide(&id, |pending| {
+				pending.approvals.push(ApprovalInteraction {
+					id:              InteractionId::from("interaction_0001"),
+					tool_name:       "bash".to_string(),
+					detail:          "rm -rf build".to_string(),
+					requested_at_ms: unread,
+				});
+			}),
+			BadgeKind::Input => self.decide(&id, |pending| {
+				pending.questions.push(QuestionInteraction {
+					id:              InteractionId::from("interaction_0002"),
+					prompt:          FixtureText::MESSAGE_TYPICAL.to_string(),
+					options:         vec!["Yes".to_string(), "No".to_string()],
+					requested_at_ms: unread,
+				});
+			}),
+			BadgeKind::Plan => self.decide(&id, |pending| {
+				pending.plans.push(PlanInteraction {
+					id:              InteractionId::from("interaction_0003"),
+					markdown_plan:   "1. Measure\n2. Cut".to_string(),
+					requested_at_ms: unread,
+				});
+			}),
+			BadgeKind::Failed => self.status(&id, SessionStatus::Error, unread),
+			BadgeKind::Done => self.status(&id, SessionStatus::Complete, unread),
+			BadgeKind::Due => {
+				// A return time that has passed, in the partition the badge
+				// is only derived in.
+				self.store.sessions.defer(&id, Some(unread));
+			},
+			BadgeKind::Working => self.status(&id, SessionStatus::Pending, unread),
+			BadgeKind::Watching => {
+				self.store.domains.processes = vec![ProcessView {
+					name:          "dev".to_string(),
+					pid:           Some(4242),
+					status:        "running".to_string(),
+					application:   "bun".to_string(),
+					args:          vec!["run".to_string(), "dev".to_string()],
+					cwd:           "/workspace/project".to_string(),
+					lifetime:      "last-client-exit".to_string(),
+					started_at_ms: unread,
+					exit_code:     None,
+					terminated_by: None,
+				}];
+				self.store.persisted.shell.active_session = Some(id.clone());
+			},
+		}
+		id
+	}
+
+	/// Reports a status for a session the operator has not read since.
+	fn status(&mut self, id: &SessionId, status: SessionStatus, modified_at_ms: u64) {
+		if let Some(session) = self.store.sessions.get_mut(id) {
+			session.status = status;
+			session.modified_at_ms = modified_at_ms;
+			session.read_mark_ms = Some(modified_at_ms - 1000);
+		}
+	}
+
+	/// Raises one decision on a session.
+	fn decide(&mut self, id: &SessionId, raise: impl FnOnce(&mut PendingDecisions)) {
+		let pending = self.store.interactions.entry(id.clone()).or_default();
+		raise(pending);
+	}
+
+	/// The host streaming a reply into a session, naming the tool the turn is
+	/// running, which is the detail the run bar states beside the badge.
+	pub fn stream(&mut self, id: &SessionId, tool: &str) {
+		self
+			.store
+			.streaming
+			.insert(id.clone(), StreamingMessageState {
+				entry:        EntryId::from("stream_0001"),
+				tool:         Some(tool.to_string()),
+				accumulating: TranscriptEntry {
+					id:                EntryId::from("stream_0001"),
+					parent:            None,
+					revision:          1,
+					timestamp_ms:      SCENE_CLOCK_MS - 5_000,
+					role:              MessageRole::Assistant,
+					content:           Vec::new(),
+					meta:              None,
+					raw_discriminator: "Assistant".to_string(),
+					raw:               serde_json::Value::Null,
+				},
+				revision:     1,
+			});
 	}
 
 	/// Appends one entry to a session's transcript, parented to the entry

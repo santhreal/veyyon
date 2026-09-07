@@ -122,7 +122,7 @@ fn attached_store() -> Store {
 	}
 	store
 		.sessions
-		.insert(session(SESSION, QueuePartition::Live, None));
+		.insert(session(SESSION, QueuePartition::Live));
 	store.persisted.shell.active_session = Some(SessionId::from(SESSION));
 	store
 		.domains

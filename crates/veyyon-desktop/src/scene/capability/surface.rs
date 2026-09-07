@@ -22,13 +22,13 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 		Capability::Sessions | Capability::Transcript => {
 			seed.exchange(session, Seed::prose());
 			seed.state.keymap.queue_collapsed = false;
-			let s2 = seed.session(QueuePartition::Live, None);
+			let s2 = seed.session(QueuePartition::Live);
 			seed.exchange(&s2, Seed::prose());
 		},
 		Capability::SessionDeletion | Capability::SessionTreeNavigation => {
 			seed.exchange(session, Seed::prose());
 			seed.state.keymap.queue_collapsed = false;
-			let s2 = seed.session(QueuePartition::Live, None);
+			let s2 = seed.session(QueuePartition::Live);
 			seed.exchange(&s2, Seed::prose());
 			seed.row_menu = Some(veyyon_desktop_surface::queue::RowMenu {
 				id:     2,

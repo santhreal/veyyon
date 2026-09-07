@@ -31,7 +31,7 @@ pub fn capability_gate(
 		Seed::attached()
 	};
 
-	let session = seed.session(QueuePartition::Live, None);
+	let session = seed.session(QueuePartition::Live);
 	seed_capability_surface(&mut seed, &session, capability);
 
 	let status = match gate {

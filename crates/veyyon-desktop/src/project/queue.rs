@@ -1,6 +1,8 @@
 //! The queue's rows: one per session, in the partition the store holds it in.
 
-use veyyon_desktop_model::{QueuePartition, Session, SessionBadge, SessionId, Store};
+use veyyon_desktop_model::{
+	QueuePartition, Session, SessionBadge, SessionId, Store, session_badge,
+};
 use veyyon_desktop_surface::{Badge, Row, Section};
 
 /// The session ids in a partition, in the collection's order.
@@ -38,25 +40,27 @@ pub(super) const fn badge(badge: &SessionBadge) -> Badge {
 	}
 }
 
-pub(super) fn row(session: &Session, id: u64, now_ms: u64) -> Row {
+/// One session's row, with the badge the host's state derives (§0).
+pub(super) fn row(store: &Store, session: &Session, id: u64, now_ms: u64) -> Row {
 	let subtitle = if session.branch.is_empty() {
 		session.project_name.clone()
 	} else {
 		format!("{} · {}", session.project_name, session.branch)
 	};
+	let derived = session_badge(store, &session.id, now_ms);
 	Row {
 		id,
 		title: session.title.clone(),
 		subtitle,
-		badge: session.badge.as_ref().map(badge),
-		meta: Some(row_meta(session, now_ms)),
+		badge: derived.as_ref().map(badge),
+		meta: Some(row_meta(session, derived.as_ref(), now_ms)),
 	}
 }
 
 /// Calculates the time metadata string for a session row at `now_ms`.
 #[must_use]
-pub(super) fn row_meta(session: &Session, now_ms: u64) -> String {
-	match (&session.badge, session.defer_until_ms) {
+pub(super) fn row_meta(session: &Session, derived: Option<&SessionBadge>, now_ms: u64) -> String {
+	match (derived, session.defer_until_ms) {
 		(Some(SessionBadge::Working { started_at_ms }), _) => {
 			elapsed_label(now_ms.saturating_sub(*started_at_ms))
 		},

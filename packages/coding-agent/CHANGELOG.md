@@ -158,6 +158,7 @@
 
 ### Fixed
 
+- Every desktop queue row draws the badge its state calls for: a running turn, a waiting approval, question or plan, a failed or finished turn, an elapsed deferral and a supervised process are derived from what the host reported, instead of the bare row every session drew because `Session.badge` was written by no code path. The run bar beside the badge states the tool, the prompt, the plan's first line or the live process names rather than repeating the badge's own label, and a finished or failed session loses its badge once the operator opens it.
 - The GUI host binds a socket a client can address: a profile path longer than `sockaddr_un.sun_path` falls back to `<runtime-dir>/veyyon-gui-<digest>.sock`, which the desktop derives the same way, instead of a `/proc/self/fd` bind the desktop could only report as `path must be shorter than SUN_LEN` until its reconnect ceiling ended the session.
 - `scene render --contact-sheet` produces the sheets it was asked for: the whole 238-scene catalogue is split across numbered sheets that each fit one texture and one readback buffer, instead of every cell being rendered and then discarded with `BufferAsyncError`.
 - The desktop's scene report measures the three channels a render produces rather than the quad tree alone, so text sizes and interactive density are the frame's own numbers instead of the zeros a recovered tree always reports, and a gap a line of prose crosses no longer counts as rhythm; 49 scenes that failed the §6.6 ceilings on that inflated count now measure the rhythm they authored.

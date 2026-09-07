@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-2e2c2509.js";
+            window.path_to_searchindex_js = "../searchindex-95938438.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-2d780f09.js"></script>
@@ -246,12 +246,49 @@ new-session action. Sessions appear in this order:</p>
 <p>Each section collapses independently. Collapsed sections retain their header
 and count; empty sections are hidden. The session list scrolls between the header
 and the fixed footer.</p>
+<p>Pinned holds the operator’s order. Live sorts by its anchor, newest first, and
+agent activity does not reorder it. Deferred sorts by return time, soonest
+first, and a session deferred from the rail names no return time and sorts
+last. Parked sorts by when each session was parked, most recent first.</p>
 <p>Parked shows 25 lines and then an <code>Older (N remaining)</code> row. Clicking that row
 adds the next 25.</p>
 <p>Cards display the session title, workspace, status, and relevant timing.
 Secondary actions remain hidden at rest and do not shift the title when revealed.
 Selection, hover, and status have distinct treatments. Compact rows retain
 readable text and usable pointer targets.</p>
+<p>A card states the title the host reports for that session, including a rename
+during a turn. A session with no title states <code>new session</code>.</p>
+<h3 id="row-badges"><a class="header" href="#row-badges">Row badges</a></h3>
+<p>A row carries at most one badge, derived from the state the host reported for
+that session. Higher rows in this table win when more than one state holds.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Badge</th><th>State</th></tr>
+</thead>
+<tbody>
+<tr><td>Approval</td><td>A tool call is waiting for approval</td></tr>
+<tr><td>Input</td><td>A question is waiting for a reply</td></tr>
+<tr><td>Plan</td><td>A plan is waiting for a decision</td></tr>
+<tr><td>Failed</td><td>The last turn ended in an error</td></tr>
+<tr><td>Due</td><td>A deferred session’s return time has passed</td></tr>
+<tr><td>Done</td><td>The last turn finished</td></tr>
+<tr><td>Working</td><td>A turn is running, counting up from the message that started it</td></tr>
+<tr><td>Watching</td><td>A supervised process is running under the open session</td></tr>
+</tbody>
+</table>
+</div>
+<p>A running turn suppresses Failed and Done, which read the status of a file
+written before the turn started. Failed, Done, and Due appear until the session
+is opened; opening it clears the badge. Attaching to a host that holds finished
+sessions raises no badge on any of them.</p>
+<p>Watching appears on the open session’s row alone. A supervised process belongs
+to the whole project directory and names no session.</p>
+<p>The line beside the run bar’s badge states what the badge cannot: the running
+tool, the waiting tool and its command, the question, the plan’s first line, or
+the names of the running processes. A finished, failed, or due session states
+nothing there, and the transcript, the error’s own control, and the row carry
+that instead.</p>
 <p>The footer contains one Settings gear. It opens the same group as <code>/settings</code>.
 Settings is the only slash-command destination with a permanent sidebar shortcut.
 Account, Agents, Models, and other command destinations remain in command
@@ -262,10 +299,30 @@ provide Unpark; deferred lines provide Recall.</p>
 They last until the window closes, and a session index sent while the window is
 open does not move a session out of the section it was placed in. A session the
 agent no longer holds is removed from the queue.</p>
-<p>Right-click a card for Open, Park, Defer, Branch, and Delete. Branch starts a new
+<p>Right-click a card for Open, Park, Defer, Branch, and Delete. A pinned card also
+offers Unpin, which a card’s two hover actions have no room for. Parked lines
+offer Open and Unpark; deferred lines offer Open and Recall. Branch starts a new
 session before the latest user message on the selected session’s active branch,
 without changing the source session. Extensions can cancel the operation.
 Unavailable and pending management actions are disabled in the menu.</p>
+<p>Click the queue to focus it for the keyboard.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Shortcut</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Up</code> / <code>Down</code></td><td>Move the selection</td></tr>
+<tr><td><code>Enter</code></td><td>Open the selected session</td></tr>
+<tr><td><code>P</code></td><td>Pin the selected session, or unpin it</td></tr>
+<tr><td><code>D</code></td><td>Defer the selected session, or recall it</td></tr>
+<tr><td><code>K</code></td><td>Park the selected session, or unpark it</td></tr>
+<tr><td><code>/</code></td><td>Search the queue</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>P</code>, <code>D</code>, and <code>K</code> read the section the session is in: a session already in that
+section returns to Live.</p>
 <h2 id="transcript"><a class="header" href="#transcript">Transcript</a></h2>
 <p>Click the transcript to focus keyboard navigation.</p>
 <div class="table-wrapper">
@@ -283,8 +340,10 @@ Unavailable and pending management actions are disabled in the menu.</p>
 </div>
 <p>Keyboard scrolling uses the configured scroll transition. Manual scrolling
 interrupts that transition. Reduced motion applies the destination immediately.
-Reading earlier output pauses tail following; the <strong>Scroll to end</strong> button
-returns to the live edge. Switching sessions restores their saved scroll anchors.</p>
+Reading earlier output pauses tail following. The <strong>Scroll to end</strong> button
+returns to the live edge, and it is shown only while the last row is off
+screen: a transcript shorter than the viewport draws none, whatever stopped it
+following. Switching sessions restores their saved scroll anchors.</p>
 <p>The find bar displays the selected matching block and total matching blocks.
 <code>Enter</code> advances to the next matching block; <code>Escape</code> closes the bar.</p>
 <p>Persisted model, thinking-level, service-tier, and session changes display their
@@ -302,6 +361,20 @@ reading size. File, model, thinking, and lifecycle events use the same annotatio
 style. Branch and compaction summaries have distinct labels and a separating
 line. Execution output includes its shell or Python label. Transcript search
 matches annotation labels and recorded content.</p>
+<p>Vertical spacing has four steps. Consecutive event lines run with no gap between
+them. Blocks of one kind sit 4px apart. A change of kind starts the next group
+8px down. Turns sit 16px apart. A run of tool calls therefore reads as one band
+and the prose after it as a new subject.</p>
+<p>An agent turn ends with a footer naming the model that produced it, at the
+annotation size. The name is shown while the pointer is over the turn and while
+the turn cursor (<code>Ctrl+Up</code>, <code>Ctrl+Down</code>) is on it. A turn the host reported no
+model for has no footer. Click the name to open the session’s token and cost
+accounting on one line in the right panel’s <strong>Usage</strong> tab. The tab is absent
+when the host reports usage unavailable, and the footer then names the model
+only. A tab opened this way stays until the host reports usage unavailable.</p>
+<p>The turn cursor stops on the first and last turn. On the last turn the
+transcript keeps following new output; on any earlier turn it stops, so
+streamed output does not move the turn being read.</p>
 <h2 id="composer"><a class="header" href="#composer">Composer</a></h2>
 <p>The footer contains the model selector and an up-arrow primary action. A separate
 stop control appears while a turn runs. Secondary composer actions are available
@@ -390,12 +463,26 @@ Navigation leaves the composer draft and attachments unchanged.</p>
 <p>General settings renders viewport-adjacent rows as the list scrolls. Value updates
 preserve the scroll position. The page header remains visible at the minimum
 window height.</p>
-<p>Command search also accepts <code>/providers</code>, <code>/login</code>, and <code>/extensions</code> for the
-corresponding focused destinations.</p>
-<h2 id="terminal-input"><a class="header" href="#terminal-input">Terminal input</a></h2>
+<p>Each focused page has its own command name: <code>/account manager</code>, <code>/account login</code>,
+<code>/hotkeys</code>, <code>/mcp</code>, <code>/agents</code>, <code>/usage</code>, <code>/context</code>, <code>/settings themes</code>, and
+<code>/settings diagnostics</code>.</p>
+<h2 id="terminal-and-process-output"><a class="header" href="#terminal-and-process-output">Terminal and process output</a></h2>
 <p>Click the terminal grid to focus it. Terminal input is sent to the host without
 local echo. An overlaid drawer blocks pointer interaction with the composer
 beneath it.</p>
+<p>Each supervised process has a drawer tab named after it, beside the terminal
+tabs. The tab displays the last 200 lines of that process’s output in the same
+80-column monospace grid, and the drawer has no scrollback of its own. The tab
+is read-only: terminal input reaches a terminal, not a process.</p>
+<p>A host that runs no terminal and supervises no process has no drawer. The
+titlebar control, <code>Primary-J</code>, and <code>/terminal</code> are absent, and a drawer left
+open closes when the host stops offering one.</p>
+<h2 id="right-panel-content"><a class="header" href="#right-panel-content">Right panel content</a></h2>
+<p>The <strong>File</strong> tab displays the file opened from the tree, or the exported
+transcript when no file is open. An export is highlighted by its format, so
+Markdown, HTML, and JSON exports read as the same format opened from the tree.
+Opening a file replaces a displayed export. The <strong>File</strong> tab is present without
+file browsing when an export is the only document.</p>
 <h2 id="record-native-interactions"><a class="header" href="#record-native-interactions">Record native interactions</a></h2>
 <p>Build the current executable with <code>cargo build -p veyyon-desktop</code> and build the
 recorder with <code>proof/docker/build-recorder.sh</code>. The output directory must be
@@ -430,6 +517,10 @@ docked drawers.</p>
 card twice, once with <code>space</code> on the focused turn and once by clicking the card’s
 row. The two open frames show the same card, which is what a host-held disclosure
 means.</p>
+<p>Use <code>proof/scenes/desktop-live-edge-pill.sh</code> to drive a real turn, step the turn
+cursor off the last turn of a transcript that fits the viewport, and count the
+accent pixels the jump button fills with. Record its other arm with
+<code>PROOF_BASE_REF=HEAD</code>, since the change is inside the executable alone.</p>
 <p>Output is written to <code>proof/captures/x11/</code>, or the absolute directory in <code>OUT_DIR</code>.
 The <a href="../foundations/verification.html">capture requirements</a> specify paired static
 frames and animated clips. Headless scene PNGs do not replace native captures.</p>

@@ -30,9 +30,7 @@ use veyyon_desktop_surface::{PanelTab, ShellState};
 #[test]
 fn the_open_session_s_accounting_reaches_the_usage_tab_and_a_refusal_takes_the_tab_away() {
 	let mut store = Store::new();
-	store
-		.sessions
-		.insert(session("s", QueuePartition::Live, None));
+	store.sessions.insert(session("s", QueuePartition::Live));
 	store.persisted.shell.active_session = Some(SessionId::from("s"));
 	let totals = UsageTotals {
 		input_tokens:         1_200,
@@ -85,9 +83,7 @@ fn the_open_session_s_accounting_reaches_the_usage_tab_and_a_refusal_takes_the_t
 #[test]
 fn a_usage_tab_the_footer_opened_survives_the_next_snapshot() {
 	let mut store = Store::new();
-	store
-		.sessions
-		.insert(session("s", QueuePartition::Live, None));
+	store.sessions.insert(session("s", QueuePartition::Live));
 	store.persisted.shell.active_session = Some(SessionId::from("s"));
 
 	// The host has not answered the usage capability and has reported no

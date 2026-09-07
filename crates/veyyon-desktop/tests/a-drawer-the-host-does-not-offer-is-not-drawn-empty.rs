@@ -79,7 +79,7 @@ fn attached(terminals: &CapabilityStatus, processes: &CapabilityStatus) -> Store
 	};
 	store
 		.sessions
-		.insert(support::session("sess-1", QueuePartition::Live, None));
+		.insert(support::session("sess-1", QueuePartition::Live));
 	store.persisted.shell.active_session = Some(SessionId::from("sess-1"));
 	store
 		.capabilities

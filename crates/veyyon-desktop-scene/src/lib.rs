@@ -22,8 +22,8 @@ pub use contact_sheet::{
 };
 pub use fixtures::{
 	FixtureText, Reachability, block_reachability, content_block_fixture, entry_meta_fixture,
-	role_reachability, session_badge_fixture, session_fixture, session_summary_fixture,
-	transcript_entry_fixture, usage_totals_fixture,
+	role_reachability, session_fixture, session_summary_fixture, transcript_entry_fixture,
+	usage_totals_fixture,
 };
 pub use frame::{FrameError, PerceptualDiff, RgbaColor, RgbaFrame};
 pub use headless::{

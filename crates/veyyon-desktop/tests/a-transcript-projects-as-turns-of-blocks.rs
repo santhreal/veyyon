@@ -19,11 +19,11 @@ mod support;
 use std::{collections::HashMap, fmt::Write as _};
 
 use strum::IntoEnumIterator as _;
-use support::{NOW_MS, agent_blocks, entry};
+use support::{NOW_MS, agent_blocks, entry, session};
 use veyyon_desktop::{PANE_LINE_CEILING, SessionIndex, project};
 use veyyon_desktop_model::{
-	BlockKind, ContentBlock, EntryId, EntryMeta, HostEvent, MessageRole, SessionId, SnapshotSection,
-	Store, StreamingMessageState, Versioned, reduce,
+	BlockKind, ContentBlock, EntryId, EntryMeta, HostEvent, MessageRole, QueuePartition, SessionId,
+	SnapshotSection, Store, StreamingMessageState, Versioned, reduce,
 };
 use veyyon_desktop_surface::{Artifact, Badge, Block, ShellState, Turn};
 
@@ -197,6 +197,7 @@ fn every_block_kind_preserves_its_display_register() {
 fn the_active_branch_is_read_from_the_leaf_and_a_streaming_reply_is_the_last_turn() {
 	let mut store = Store::new();
 	store.persisted.shell.active_session = Some(SessionId::from("s"));
+	store.sessions.insert(session("s", QueuePartition::Live));
 	let tree = store.transcripts.entry(SessionId::from("s")).or_default();
 	tree.append(entry("u1", None, MessageRole::User, vec![ContentBlock::Text { text: "a".into() }]));
 	tree.append(entry("a-old", Some("u1"), MessageRole::Assistant, vec![ContentBlock::Text {
@@ -230,7 +231,8 @@ fn the_active_branch_is_read_from_the_leaf_and_a_streaming_reply_is_the_last_tur
 		})
 		.collect();
 	assert_eq!(prose, ["kept branch", "partial"], "the leaf's branch, then the stream");
-	assert_eq!(state.run_status, Some((Badge::Working, "Working · bash".to_string())));
+	// The chip says the turn is working; the line says which tool it is in.
+	assert_eq!(state.run_status, Some((Badge::Working, "bash".to_string())));
 }
 
 #[test]

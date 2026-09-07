@@ -62,6 +62,36 @@ readable text and usable pointer targets.
 A card states the title the host reports for that session, including a rename
 during a turn. A session with no title states `new session`.
 
+### Row badges
+
+A row carries at most one badge, derived from the state the host reported for
+that session. Higher rows in this table win when more than one state holds.
+
+| Badge | State |
+| --- | --- |
+| Approval | A tool call is waiting for approval |
+| Input | A question is waiting for a reply |
+| Plan | A plan is waiting for a decision |
+| Failed | The last turn ended in an error |
+| Due | A deferred session's return time has passed |
+| Done | The last turn finished |
+| Working | A turn is running, counting up from the message that started it |
+| Watching | A supervised process is running under the open session |
+
+A running turn suppresses Failed and Done, which read the status of a file
+written before the turn started. Failed, Done, and Due appear until the session
+is opened; opening it clears the badge. Attaching to a host that holds finished
+sessions raises no badge on any of them.
+
+Watching appears on the open session's row alone. A supervised process belongs
+to the whole project directory and names no session.
+
+The line beside the run bar's badge states what the badge cannot: the running
+tool, the waiting tool and its command, the question, the plan's first line, or
+the names of the running processes. A finished, failed, or due session states
+nothing there, and the transcript, the error's own control, and the row carry
+that instead.
+
 The footer contains one Settings gear. It opens the same group as `/settings`.
 Settings is the only slash-command destination with a permanent sidebar shortcut.
 Account, Agents, Models, and other command destinations remain in command

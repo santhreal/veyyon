@@ -41,9 +41,7 @@ fn store_with_decisions() -> (Store, SessionIndex) {
 		endpoint: "127.0.0.1:47000".to_string(),
 		protocol: PROTOCOL_VERSION,
 	};
-	store
-		.sessions
-		.insert(session("s", QueuePartition::Live, None));
+	store.sessions.insert(session("s", QueuePartition::Live));
 	store.persisted.shell.active_session = Some(SessionId::from("s"));
 	store
 		.interactions

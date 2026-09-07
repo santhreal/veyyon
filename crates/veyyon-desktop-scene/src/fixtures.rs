@@ -5,8 +5,8 @@
 //! number generators are used.
 
 use veyyon_desktop_model::{
-	BadgeKind, BlockKind, ContentBlock, EntryId, EntryMeta, MessageRole, QueuePartition, Session,
-	SessionBadge, SessionId, SessionStatus, SessionSummary, TranscriptEntry, UsageTotals,
+	BlockKind, ContentBlock, EntryId, EntryMeta, MessageRole, QueuePartition, Session, SessionId,
+	SessionStatus, SessionSummary, TranscriptEntry, UsageTotals,
 };
 
 /// Text fixtures providing typical and extreme strings for layout and rendering
@@ -211,36 +211,24 @@ pub fn content_block_fixture(seed: u64, kind: BlockKind) -> ContentBlock {
 	}
 }
 
-/// Constructs a deterministic session badge fixture from a badge kind.
+/// Constructs a deterministic session fixture: a read session whose last turn
+/// finished, which carries no badge.
+///
+/// A badge is derived from host state (`veyyon_desktop_model::session_badge`)
+/// rather than set on a session, so a scene that wants one seeds the state it
+/// comes from. `Seed::badged_session` in the desktop crate does that seeding.
 #[must_use]
-pub const fn session_badge_fixture(kind: BadgeKind) -> SessionBadge {
-	match kind {
-		BadgeKind::Approval => SessionBadge::Approval,
-		BadgeKind::Input => SessionBadge::Input,
-		BadgeKind::Plan => SessionBadge::Plan,
-		BadgeKind::Failed => SessionBadge::Failed,
-		BadgeKind::Due => SessionBadge::Due,
-		BadgeKind::Done => SessionBadge::Done,
-		BadgeKind::Working => SessionBadge::Working { started_at_ms: 1_700_000_000_000 },
-		BadgeKind::Watching => SessionBadge::Watching,
-	}
-}
-
-/// Constructs a deterministic session fixture.
-#[must_use]
-pub fn session_fixture(
-	seed: u64,
-	partition: QueuePartition,
-	badge: Option<SessionBadge>,
-) -> Session {
+pub fn session_fixture(seed: u64, partition: QueuePartition) -> Session {
 	Session {
 		id: SessionId::from(format!("session_{seed:04}")),
 		title: format!("{} {seed}", FixtureText::TITLE_TYPICAL),
 		project_name: FixtureText::PROJECT_TYPICAL.to_string(),
 		branch: FixtureText::BRANCH_TYPICAL.to_string(),
 		partition,
-		badge,
+		status: SessionStatus::Complete,
 		created_at_ms: 1_700_000_000_000 + seed * 1000,
+		modified_at_ms: 1_700_000_010_000 + seed * 1000,
+		read_mark_ms: Some(1_700_000_010_000 + seed * 1000),
 		last_recall_at_ms: 1_700_000_000_000 + seed * 1000,
 		defer_until_ms: None,
 		parked_at_ms: None,

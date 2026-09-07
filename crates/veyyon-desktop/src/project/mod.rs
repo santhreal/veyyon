@@ -24,11 +24,12 @@ mod failure;
 mod overlay;
 mod panel;
 mod queue;
+mod run_bar;
 mod transcript;
 use std::collections::HashMap;
 
-use veyyon_desktop_model::{QueuePartition, SessionId, Store};
-use veyyon_desktop_surface::{Badge, ShellState, terminal::TerminalEmulator};
+use veyyon_desktop_model::{QueuePartition, SessionId, Store, session_badge};
+use veyyon_desktop_surface::{ShellState, terminal::TerminalEmulator};
 
 pub use self::{
 	actions::actions_for,
@@ -45,6 +46,7 @@ pub use self::{
 use self::{
 	cards::cards,
 	queue::{badge, partition_ids, row, row_meta, section},
+	run_bar::run_status,
 	transcript::{push_entry, turns},
 };
 
@@ -118,7 +120,7 @@ pub fn project<S: std::hash::BuildHasher>(
 			let rows = ids
 				.iter()
 				.filter_map(|id| store.sessions.get(id))
-				.map(|session| row(session, index.row_of(&session.id), now_ms))
+				.map(|session| row(store, session, index.row_of(&session.id), now_ms))
 				.collect();
 			Some((section(*partition), rows))
 		})
@@ -138,19 +140,9 @@ pub fn project<S: std::hash::BuildHasher>(
 		push_entry(&mut state.transcript, &stream.accumulating);
 	}
 
-	state.run_status = match streaming {
-		Some(stream) => Some((
-			Badge::Working,
-			stream
-				.tool
-				.as_ref()
-				.map_or_else(|| "Working".to_string(), |tool| format!("Working · {tool}")),
-		)),
-		None => active_session.and_then(|s| s.badge.as_ref()).map(|b| {
-			let badge = badge(b);
-			(badge, badge.label().to_string())
-		}),
-	};
+	state.run_status = active
+		.and_then(|id| session_badge(store, id, now_ms))
+		.and_then(|derived| run_status(store, active, Some(&derived)));
 
 	state.cards = active
 		.and_then(|id| store.interactions.get(id))
@@ -185,7 +177,16 @@ pub fn project_clock(
 			if let Some(session_id) = index.session_of(row.id)
 				&& let Some(session) = store.sessions.get(session_id)
 			{
-				let new_meta = Some(row_meta(session, now_ms));
+				// A deferral elapsing is the one badge change no host event
+				// reports: the return time passes while nothing arrives, so
+				// the tick that moves the label resolves the badge again.
+				let derived = session_badge(store, session_id, now_ms);
+				let new_badge = derived.as_ref().map(badge);
+				let new_meta = Some(row_meta(session, derived.as_ref(), now_ms));
+				if row.badge != new_badge {
+					row.badge = new_badge;
+					changed = true;
+				}
 				if row.meta != new_meta {
 					row.meta = new_meta;
 					changed = true;

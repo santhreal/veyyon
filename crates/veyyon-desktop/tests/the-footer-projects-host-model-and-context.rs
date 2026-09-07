@@ -18,9 +18,7 @@ use veyyon_desktop_surface::{Attachment, MediaType, ShellState, composer::payloa
 fn the_footer_shows_the_model_thinking_and_context_the_host_reported() {
 	let mut store = Store::new();
 	let session_id = SessionId::from("s");
-	store
-		.sessions
-		.insert(session("s", QueuePartition::Live, None));
+	store.sessions.insert(session("s", QueuePartition::Live));
 	store.persisted.shell.active_session = Some(session_id.clone());
 	store
 		.capabilities

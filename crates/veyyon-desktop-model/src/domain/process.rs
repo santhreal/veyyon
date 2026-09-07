@@ -25,6 +25,20 @@ pub struct ProcessView {
 	pub terminated_by: Option<String>,
 }
 
+impl ProcessView {
+	/// Whether the supervisor still holds the process, which is what the
+	/// `Watching` badge (§0) and the drawer's live count report.
+	///
+	/// The seven states the launch tool exposes are matched by name and
+	/// nothing else: a state this client does not know is not reported as
+	/// alive, since a badge that claims a process is running is a claim about
+	/// the machine.
+	#[must_use]
+	pub fn is_alive(&self) -> bool {
+		matches!(self.status.as_str(), "starting" | "running" | "ready" | "restarting" | "stopping")
+	}
+}
+
 /// Incremental log line chunk from a supervised process.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessLogsChunk {

@@ -1,5 +1,6 @@
 pub mod action;
 pub mod action_kind;
+pub mod badge;
 pub mod base64_bytes;
 pub mod capabilities;
 pub mod coalescer;
@@ -23,6 +24,7 @@ pub mod transcript;
 
 pub use action::{AttachmentSubmission, HostAction, HostRequest};
 pub use action_kind::HostActionKind;
+pub use badge::session_badge;
 pub use capabilities::{Capability, CapabilityMap, CapabilityStatus};
 pub use coalescer::{EventCoalescer, EventCoalescerError};
 pub use composer::{ComposerDraft, QueueMode};

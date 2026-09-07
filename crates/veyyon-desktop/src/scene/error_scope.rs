@@ -15,7 +15,7 @@ use crate::scene::seed::{Built, Seed};
 /// failure.
 fn base_scene_for_scope(scope: ErrorScope) -> Seed {
 	let mut seed = Seed::attached();
-	let session = seed.session(QueuePartition::Live, None);
+	let session = seed.session(QueuePartition::Live);
 	seed.exchange(&session, Seed::prose());
 
 	match scope {

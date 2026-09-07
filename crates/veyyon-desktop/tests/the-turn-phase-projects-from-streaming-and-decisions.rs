@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use veyyon_desktop::project::{SessionIndex, project, project_turn_phase};
 use veyyon_desktop_model::{
 	ApprovalInteraction, ComposerDraft, InteractionId, PendingDecisions, PlanInteraction,
-	QuestionInteraction, QueueMode, QueuePartition, Session, SessionId, Store,
+	QuestionInteraction, QueueMode, QueuePartition, Session, SessionId, SessionStatus, Store,
 	StreamingMessageState,
 };
 use veyyon_desktop_surface::{ShellState, TurnPhase};
@@ -35,7 +35,9 @@ fn create_test_session(id: &str) -> Session {
 		project_name:      "test".to_string(),
 		branch:            "main".to_string(),
 		partition:         QueuePartition::Live,
-		badge:             None,
+		status:            SessionStatus::Unknown,
+		modified_at_ms:    NOW_MS,
+		read_mark_ms:      Some(NOW_MS),
 		created_at_ms:     NOW_MS,
 		last_recall_at_ms: NOW_MS,
 		defer_until_ms:    None,

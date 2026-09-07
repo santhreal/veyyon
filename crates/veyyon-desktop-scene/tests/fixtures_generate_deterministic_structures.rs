@@ -12,9 +12,9 @@
 //! outputs.
 
 use strum::IntoEnumIterator;
-use veyyon_desktop_model::{BadgeKind, BlockKind, MessageRole, QueuePartition};
+use veyyon_desktop_model::{BlockKind, MessageRole, QueuePartition};
 use veyyon_desktop_scene::{
-	FixtureText, content_block_fixture, entry_meta_fixture, session_badge_fixture, session_fixture,
+	FixtureText, content_block_fixture, entry_meta_fixture, session_fixture,
 	session_summary_fixture, transcript_entry_fixture, usage_totals_fixture,
 };
 
@@ -39,9 +39,8 @@ fn test_session_summary_fixture_is_deterministic() {
 
 #[test]
 fn test_session_fixture_is_deterministic() {
-	let badge = Some(session_badge_fixture(BadgeKind::Approval));
-	let a = session_fixture(7, QueuePartition::Live, badge.clone());
-	let b = session_fixture(7, QueuePartition::Live, badge);
+	let a = session_fixture(7, QueuePartition::Live);
+	let b = session_fixture(7, QueuePartition::Live);
 	assert_eq!(a, b, "session fixture must produce identical structures for identical seeds");
 }
 

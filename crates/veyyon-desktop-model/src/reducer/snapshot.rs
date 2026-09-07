@@ -20,9 +20,17 @@ use crate::{
 /// deferred and pinned session to `Live` the next time any session is created,
 /// renamed or deleted, since each of those sends the whole index again.
 ///
+/// The status and the last write are what the file says, so a re-listing takes
+/// both: they are the row badge's inputs (`badge::session_badge`) and neither
+/// orders a partition. The read mark moves with them for the session the
+/// operator has open and for one seen for the first time, so a turn that ends
+/// under the operator's eyes raises no attention and attaching to a host
+/// holding finished sessions raises none either.
+///
 /// A session the index no longer lists is gone with its file and is dropped.
 /// An `Unsent` session is the exception: it has no file for the index to list.
 fn reduce_session_index(store: &mut Store, summaries: Vec<SessionSummary>) {
+	let active = store.persisted.shell.active_session.clone();
 	let mut listed: HashSet<SessionId> = HashSet::with_capacity(summaries.len());
 	for summary in summaries {
 		let id = summary.id.clone();
@@ -35,9 +43,14 @@ fn reduce_session_index(store: &mut Store, summaries: Vec<SessionSummary>) {
 			// `created_at_ms` and `last_recall_at_ms` are the Live anchor, and
 			// §5.2 re-anchors on unpark, recall and pin alone. A session that
 			// received a message has a newer `modified_at_ms`, so reading it
-			// here would reorder the partition on activity.
+			// as the anchor would reorder the partition on activity.
 			known.title = title;
 			known.project_name = summary.workspace;
+			known.status = summary.status;
+			known.modified_at_ms = summary.modified_at_ms;
+			if active.as_ref() == Some(&id) {
+				known.read_mark_ms = Some(summary.modified_at_ms);
+			}
 			continue;
 		}
 		store.sessions.insert(Session {
@@ -46,8 +59,10 @@ fn reduce_session_index(store: &mut Store, summaries: Vec<SessionSummary>) {
 			project_name: summary.workspace,
 			branch: String::new(),
 			partition: QueuePartition::Live,
-			badge: None,
+			status: summary.status,
 			created_at_ms: summary.created_at_ms,
+			modified_at_ms: summary.modified_at_ms,
+			read_mark_ms: Some(summary.modified_at_ms),
 			last_recall_at_ms: summary.modified_at_ms,
 			defer_until_ms: None,
 			parked_at_ms: None,
@@ -80,6 +95,10 @@ fn reduce_session_index(store: &mut Store, summaries: Vec<SessionSummary>) {
 /// the listing that follows brings one. `created_at_ms` anchors the Live order
 /// and §5.2 re-anchors on unpark, recall and pin alone, so it is not read here
 /// for the same reason `reduce_session_index` does not re-read it.
+///
+/// Opening a session reads it: the header arrives when the operator opens one,
+/// so the read mark takes the last write the index reported and the `Done`,
+/// `Due` and `Failed` badges (§0) come off the row.
 fn reduce_active_header(store: &mut Store, id: &SessionId, title: Option<String>) {
 	let Some(known) = store.sessions.get_mut(id) else {
 		return;
@@ -87,6 +106,7 @@ fn reduce_active_header(store: &mut Store, id: &SessionId, title: Option<String>
 	known.title = title
 		.filter(|t| !t.trim().is_empty())
 		.unwrap_or_else(|| "new session".to_string());
+	known.read_mark_ms = Some(known.modified_at_ms);
 }
 
 /// Reduces a full or partial snapshot synchronization section into store state.

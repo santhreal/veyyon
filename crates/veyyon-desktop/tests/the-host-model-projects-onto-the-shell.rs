@@ -24,34 +24,32 @@ use support::{NOW_MS, session, terminal};
 use veyyon_desktop::{PANE_LINE_CEILING, SessionIndex, drawer_lines, project};
 use veyyon_desktop_model::{
 	BadgeKind, Capability, CapabilityStatus, ChangeScope, ChangeStatus, ChangedFile, ChangesView,
-	FileKind, FileNode, FileTreeView, HostEvent, QueuePartition, SessionBadge, SessionId,
-	SnapshotSection, Store, TerminalOutputChunk, TerminalStatus, reduce,
+	FileKind, FileNode, FileTreeView, HostEvent, QueuePartition, SessionId, SnapshotSection, Store,
+	TerminalOutputChunk, TerminalStatus, reduce,
 };
 use veyyon_desktop_surface::{Badge, DiffStatus, Section, ShellState, TreeStatus};
 
 /// One tree row as the assertions read it: depth, name, line counts.
 type TreeCell<'a> = (usize, &'a str, Option<(u32, u32)>);
 
-const fn badge_of(kind: BadgeKind) -> SessionBadge {
-	match kind {
-		BadgeKind::Approval => SessionBadge::Approval,
-		BadgeKind::Input => SessionBadge::Input,
-		BadgeKind::Plan => SessionBadge::Plan,
-		BadgeKind::Failed => SessionBadge::Failed,
-		BadgeKind::Due => SessionBadge::Due,
-		BadgeKind::Done => SessionBadge::Done,
-		BadgeKind::Working => SessionBadge::Working { started_at_ms: NOW_MS - 5_000 },
-		BadgeKind::Watching => SessionBadge::Watching,
-	}
-}
+/// Every badge the row draws, so a variant added to the surface's vocabulary
+/// without a projection fails here.
+const SURFACE_BADGES: [Badge; 8] = [
+	Badge::Working,
+	Badge::Watching,
+	Badge::Approval,
+	Badge::Input,
+	Badge::Plan,
+	Badge::Due,
+	Badge::Done,
+	Badge::Failed,
+];
 
 #[test]
 fn every_partition_lands_in_its_section_and_a_row_keeps_its_id_across_a_move() {
 	let mut store = Store::new();
 	for (n, partition) in QueuePartition::ALL.iter().enumerate() {
-		store
-			.sessions
-			.insert(session(&format!("s{n}"), *partition, None));
+		store.sessions.insert(session(&format!("s{n}"), *partition));
 	}
 	let mut index = SessionIndex::new();
 	let mut state = ShellState::default();
@@ -70,7 +68,7 @@ fn every_partition_lands_in_its_section_and_a_row_keeps_its_id_across_a_move() {
 	assert_ne!(first_id, 0, "zero is the id of no session");
 
 	// Move s0 from Unsent to Parked: the row id follows the session.
-	let mut moved = session("s0", QueuePartition::Parked, None);
+	let mut moved = session("s0", QueuePartition::Parked);
 	moved.title = "moved".to_string();
 	store.sessions.insert(moved);
 	project(&store, &mut index, &HashMap::new(), NOW_MS, &mut state);
@@ -91,47 +89,50 @@ fn every_partition_lands_in_its_section_and_a_row_keeps_its_id_across_a_move() {
 }
 
 #[test]
-fn every_badge_variant_reaches_the_row_and_the_run_bar() {
+fn every_badge_variant_reaches_the_row_and_the_run_bar_states_its_detail() {
 	for kind in BadgeKind::iter() {
 		let mut store = Store::new();
-		store
-			.sessions
-			.insert(session("s", QueuePartition::Live, Some(badge_of(kind))));
+		store.sessions.insert(session("s", QueuePartition::Live));
 		store.persisted.shell.active_session = Some(SessionId::from("s"));
+		let detail = support::seed_badge(&mut store, "s", kind);
 		let mut state = ShellState::default();
 		project(&store, &mut SessionIndex::new(), &HashMap::new(), NOW_MS, &mut state);
 
-		let row = &state.sections[0].1[0];
+		let row = state
+			.sections
+			.iter()
+			.flat_map(|(_, rows)| rows)
+			.find(|row| row.title == "title s")
+			.unwrap_or_else(|| panic!("{kind:?} projects no row"));
 		let badge = row
 			.badge
 			.unwrap_or_else(|| panic!("{kind:?} projects no badge"));
-		assert_eq!(state.run_status, Some((badge, badge.label().to_string())));
+		// The chip states the state, so the line states what the state is
+		// about and never repeats the chip's own label.
+		assert_eq!(state.run_status, Some((badge, detail.to_string())), "{kind:?}");
+		assert_ne!(
+			state.run_status.as_ref().map(|(_, line)| line.as_str()),
+			Some(badge.label()),
+			"{kind:?} restates its badge in the run bar"
+		);
 		assert_eq!(state.title, "title s");
 		if kind == BadgeKind::Working {
 			assert_eq!(row.meta.as_deref(), Some("5s"), "a working row shows its elapsed time");
-		} else {
+		} else if kind != BadgeKind::Due {
 			assert_eq!(row.meta.as_deref(), Some("1m"), "an idle row shows its age");
 		}
 	}
-	let all: Vec<Badge> = vec![
-		Badge::Working,
-		Badge::Watching,
-		Badge::Approval,
-		Badge::Input,
-		Badge::Plan,
-		Badge::Due,
-		Badge::Done,
-		Badge::Failed,
-	];
-	assert_eq!(all.len(), BadgeKind::iter().count(), "the two badge vocabularies are the same size");
+	assert_eq!(
+		SURFACE_BADGES.len(),
+		BadgeKind::iter().count(),
+		"the two badge vocabularies are the same size"
+	);
 }
 
 #[test]
 fn a_projection_leaves_what_the_window_owns_alone() {
 	let mut store = Store::new();
-	store
-		.sessions
-		.insert(session("s", QueuePartition::Live, None));
+	store.sessions.insert(session("s", QueuePartition::Live));
 	store
 		.capabilities
 		.set(Capability::Files, CapabilityStatus::Available);

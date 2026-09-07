@@ -6,26 +6,134 @@
 pub mod raster;
 
 use veyyon_desktop_model::{
-	ContentBlock, EntryId, MessageRole, QueuePartition, Session, SessionBadge, SessionId,
-	TerminalStatus, TerminalView, TranscriptEntry,
+	ApprovalInteraction, BadgeKind, ContentBlock, EntryId, InteractionId, MessageRole,
+	PlanInteraction, ProcessView, QuestionInteraction, QueuePartition, Session, SessionId,
+	SessionStatus, Store, StreamingMessageState, TerminalStatus, TerminalView, TranscriptEntry,
 };
 use veyyon_desktop_surface::{Block, Turn};
 
 pub const NOW_MS: u64 = 10_000_000;
 
-pub fn session(id: &str, partition: QueuePartition, badge: Option<SessionBadge>) -> Session {
+/// A session the operator has read whose last turn finished, which is the
+/// state that derives no badge.
+pub fn session(id: &str, partition: QueuePartition) -> Session {
 	Session {
 		id: SessionId::from(id),
 		title: format!("title {id}"),
 		project_name: "repo".to_string(),
 		branch: String::new(),
 		partition,
-		badge,
+		status: SessionStatus::Complete,
 		created_at_ms: NOW_MS - 120_000,
+		modified_at_ms: NOW_MS - 60_000,
+		read_mark_ms: Some(NOW_MS - 60_000),
 		last_recall_at_ms: NOW_MS - 60_000,
 		defer_until_ms: None,
 		parked_at_ms: None,
 		pin_key: None,
+	}
+}
+
+/// The state one row badge is derived from, and the detail the run bar states
+/// beside it. Every arm seeds what `session_badge` reads and nothing else.
+pub fn seed_badge(store: &mut Store, id: &str, kind: BadgeKind) -> &'static str {
+	let session_id = SessionId::from(id);
+	match kind {
+		BadgeKind::Approval => {
+			store
+				.interactions
+				.entry(session_id)
+				.or_default()
+				.approvals
+				.push(ApprovalInteraction {
+					id:              InteractionId::from("interaction_0001"),
+					tool_name:       "bash".to_string(),
+					detail:          "rm -rf build".to_string(),
+					requested_at_ms: NOW_MS - 5_000,
+				});
+			"bash · rm -rf build"
+		},
+		BadgeKind::Input => {
+			store
+				.interactions
+				.entry(session_id)
+				.or_default()
+				.questions
+				.push(QuestionInteraction {
+					id:              InteractionId::from("interaction_0002"),
+					prompt:          "Which provider?".to_string(),
+					options:         vec!["A".to_string()],
+					requested_at_ms: NOW_MS - 5_000,
+				});
+			"Which provider?"
+		},
+		BadgeKind::Plan => {
+			store
+				.interactions
+				.entry(session_id)
+				.or_default()
+				.plans
+				.push(PlanInteraction {
+					id:              InteractionId::from("interaction_0003"),
+					markdown_plan:   "1. Measure\n2. Cut".to_string(),
+					requested_at_ms: NOW_MS - 5_000,
+				});
+			"1. Measure"
+		},
+		BadgeKind::Failed => {
+			unread_status(store, &session_id, SessionStatus::Error);
+			""
+		},
+		BadgeKind::Done => {
+			unread_status(store, &session_id, SessionStatus::Complete);
+			""
+		},
+		BadgeKind::Due => {
+			store.sessions.defer(&session_id, Some(NOW_MS - 1_000));
+			""
+		},
+		BadgeKind::Working => {
+			// A running turn is a stream, and the tool it is running is what
+			// the badge itself cannot state.
+			// The file was last written when the turn started, which is what
+			// the elapsed counter reads with no transcript loaded.
+			if let Some(session) = store.sessions.get_mut(&session_id) {
+				session.modified_at_ms = NOW_MS - 5_000;
+			}
+			store.streaming.insert(session_id, StreamingMessageState {
+				entry:        EntryId::from("stream-1"),
+				tool:         Some("bash".to_string()),
+				accumulating: entry("stream-1", None, MessageRole::Assistant, vec![
+					ContentBlock::Text { text: "partial".to_string() },
+				]),
+				revision:     2,
+			});
+			"bash"
+		},
+		BadgeKind::Watching => {
+			store.domains.processes = vec![ProcessView {
+				name:          "dev".to_string(),
+				pid:           Some(4242),
+				status:        "running".to_string(),
+				application:   "bun".to_string(),
+				args:          vec!["run".to_string(), "dev".to_string()],
+				cwd:           "/repo".to_string(),
+				lifetime:      "last-client-exit".to_string(),
+				started_at_ms: NOW_MS - 5_000,
+				exit_code:     None,
+				terminated_by: None,
+			}];
+			"dev"
+		},
+	}
+}
+
+/// A status the host reported after the operator last read the session.
+fn unread_status(store: &mut Store, id: &SessionId, status: SessionStatus) {
+	if let Some(session) = store.sessions.get_mut(id) {
+		session.status = status;
+		session.modified_at_ms = NOW_MS - 5_000;
+		session.read_mark_ms = Some(NOW_MS - 6_000);
 	}
 }
 

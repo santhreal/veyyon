@@ -13,14 +13,13 @@ mod error_scope_builder;
 pub use error_scope_builder::{error_scope, error_scope_baseline};
 use strum::IntoEnumIterator as _;
 use veyyon_desktop_model::{
-	ApprovalInteraction, AuthFlowState, AuthFlowView, BadgeKind, BlockKind, ConnectionState,
-	ConnectionStateKind, ContextBreakdownView, InputModality, InteractionId, MessageRole, ModelRef,
-	ModelView, ModelsView, PendingDecisions, QueuePartition, SessionBadge, SettingEntry,
-	SettingKind,
+	AuthFlowState, AuthFlowView, BadgeKind, BlockKind, ConnectionState, ConnectionStateKind,
+	ContextBreakdownView, InputModality, MessageRole, ModelRef, ModelView, ModelsView,
+	QueuePartition, SettingEntry, SettingKind,
 };
 use veyyon_desktop_scene::{
 	FixtureText, PrimitiveKind, RequiredState, RowShape, Scene, StateDescriptor,
-	content_block_fixture, session_badge_fixture, transcript_entry_fixture,
+	content_block_fixture, transcript_entry_fixture,
 };
 use veyyon_desktop_surface::{Overlay, PaletteState};
 
@@ -67,7 +66,7 @@ fn required(name: &str, state: &RequiredState) -> Result<SceneRoot, SceneBuildEr
 		},
 		RequiredState::Role(role) => {
 			let mut seed = Seed::attached();
-			let session = seed.session(QueuePartition::Live, None);
+			let session = seed.session(QueuePartition::Live);
 			seed.entry(&session, MessageRole::User, vec![content_block_fixture(0, BlockKind::Text)]);
 			let entry = transcript_entry_fixture(1, *role);
 			seed.entry(&session, *role, entry.content);
@@ -75,20 +74,20 @@ fn required(name: &str, state: &RequiredState) -> Result<SceneRoot, SceneBuildEr
 		},
 		RequiredState::Block(kind) => {
 			let mut seed = Seed::attached();
-			let session = seed.session(QueuePartition::Live, None);
+			let session = seed.session(QueuePartition::Live);
 			seed.exchange(&session, vec![content_block_fixture(1, *kind)]);
 			seed.finish()
 		},
 		RequiredState::Error(scope) => error_scope(*scope),
 		RequiredState::Badge(kind) => {
 			let mut seed = Seed::attached();
-			let session = seed.session(QueuePartition::Live, Some(session_badge_fixture(*kind)));
+			let session = seed.badged_session(QueuePartition::Live, *kind);
 			seed.exchange(&session, Seed::prose());
 			seed.finish()
 		},
 		RequiredState::Section(partition) => {
 			let mut seed = Seed::attached();
-			seed.session(*partition, None);
+			seed.session(*partition);
 			seed.finish()
 		},
 		RequiredState::RowShape(shape) => {
@@ -97,7 +96,7 @@ fn required(name: &str, state: &RequiredState) -> Result<SceneRoot, SceneBuildEr
 				RowShape::Card => QueuePartition::Live,
 				RowShape::Line => QueuePartition::Parked,
 			};
-			seed.session(partition, Some(SessionBadge::Done));
+			seed.badged_session(partition, BadgeKind::Done);
 			seed.finish()
 		},
 	};
@@ -132,28 +131,28 @@ fn custom(name: &str, surface: &str, state: &str) -> Result<SceneRoot, SceneBuil
 		("section-header", "rest") => {
 			let mut seed = Seed::attached();
 			for partition in QueuePartition::iter() {
-				seed.session(partition, None);
+				seed.session(partition);
 			}
 			seed.finish()
 		},
 		("composer" | "opening-line", "rest") => {
 			let mut seed = Seed::attached();
-			seed.session(QueuePartition::Live, None);
+			seed.session(QueuePartition::Live);
 			seed.finish()
 		},
 		("composer", "footer") => composer_footer(),
 		("run-bar", "rest") => {
 			let mut seed = Seed::attached();
-			let session = seed.session(
-				QueuePartition::Live,
-				Some(SessionBadge::Working { started_at_ms: SCENE_CLOCK_MS - 12_000 }),
-			);
+			let session = seed.badged_session(QueuePartition::Live, BadgeKind::Working);
 			seed.exchange(&session, Seed::prose());
+			// The bar's own content is the badge plus the detail the badge
+			// cannot state, so the photograph carries both.
+			seed.stream(&session, "bash");
 			seed.finish()
 		},
 		("palette", "rest") => {
 			let mut seed = Seed::attached();
-			seed.session(QueuePartition::Live, None);
+			seed.session(QueuePartition::Live);
 			seed.state.overlay = Some(Overlay::Palette(PaletteState::default()));
 			seed.finish()
 		},
@@ -167,8 +166,8 @@ fn custom(name: &str, surface: &str, state: &str) -> Result<SceneRoot, SceneBuil
 	Ok(SceneRoot::Shell(Box::new(built)))
 }
 
-/// One row in a partition, with the badge the state names; `rest` is none.
-/// An approval also raises the decision the badge stands for.
+/// One row in a partition, in the state its badge is derived from; `rest` is
+/// a read session with a finished turn, which carries none.
 fn queue_row(partition: QueuePartition, badge: &str) -> Result<Built, SceneBuildError> {
 	let kind = match badge {
 		"rest" => None,
@@ -178,26 +177,18 @@ fn queue_row(partition: QueuePartition, badge: &str) -> Result<Built, SceneBuild
 		other => return Err(SceneBuildError::Unbuilt(format!("queue row badge {other}"))),
 	};
 	let mut seed = Seed::attached();
-	let session = seed.session(partition, kind.map(session_badge_fixture));
+	let session = match kind {
+		Some(kind) => seed.badged_session(partition, kind),
+		None => seed.session(partition),
+	};
 	seed.exchange(&session, Seed::prose());
-	if kind == Some(BadgeKind::Approval) {
-		seed.store.interactions.insert(session, PendingDecisions {
-			approvals: vec![ApprovalInteraction {
-				id:              InteractionId::from("approval_0001"),
-				tool_name:       "bash".to_string(),
-				detail:          "rm -rf target/desktop-scenes".to_string(),
-				requested_at_ms: SCENE_CLOCK_MS - 4000,
-			}],
-			..PendingDecisions::new()
-		});
-	}
 	Ok(seed.finish())
 }
 
 /// The composer with every footer control the host can report.
 fn composer_footer() -> Built {
 	let mut seed = Seed::attached();
-	let session = seed.session(QueuePartition::Live, None);
+	let session = seed.session(QueuePartition::Live);
 	seed.store.domains.models = Some(ModelsView {
 		models:          vec![ModelView {
 			provider:       "anthropic".to_string(),
@@ -231,7 +222,7 @@ fn composer_footer() -> Built {
 /// The settings overlay over one boolean and one enum row.
 fn settings_row() -> Built {
 	let mut seed = Seed::attached();
-	seed.session(QueuePartition::Live, None);
+	seed.session(QueuePartition::Live);
 	let entry = |value: serde_json::Value, kind: SettingKind, label: &str| SettingEntry {
 		value: value.clone(),
 		default: value,

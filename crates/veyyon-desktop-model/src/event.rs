@@ -16,7 +16,7 @@ use crate::{
 };
 
 /// Status summary for a session stored on disk.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]
 pub enum SessionStatus {
 	Complete,
 	Interrupted,

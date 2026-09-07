@@ -69,6 +69,7 @@ const ALIASES: &[&[&str]] = &[
 	// The baseline frame, from catalogue entries with the same prose exchange.
 	&[BASELINE, "transcript-block/text"],
 	// A badge is a card in the live partition with that badge.
+	&["queue-badge/approval", "queue-card/approval"],
 	&["queue-badge/watching", "queue-card/watching"],
 	&["queue-badge/working", "queue-card/working"],
 ];

@@ -31,9 +31,7 @@ use veyyon_desktop_surface::{
 
 fn store_with_decisions() -> (Store, SessionIndex) {
 	let mut store = Store::new();
-	store
-		.sessions
-		.insert(session("s", QueuePartition::Live, None));
+	store.sessions.insert(session("s", QueuePartition::Live));
 	store.persisted.shell.active_session = Some(SessionId::from("s"));
 	store
 		.interactions

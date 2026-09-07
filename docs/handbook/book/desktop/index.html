@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-2e2c2509.js";
+            window.path_to_searchindex_js = "../searchindex-95938438.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-2d780f09.js"></script>
@@ -223,12 +223,50 @@ explicit endpoint, the desktop attaches to the default socket if it accepts a
 connection. Otherwise it starts a host in the current working directory and
 waits up to five seconds for its listening banner. An explicit endpoint disables
 automatic host startup.</p>
+<p>A Unix socket path is limited by <code>sockaddr_un.sun_path</code>: 107 bytes on Linux, 103
+on macOS. When <code>&lt;agent-dir&gt;/gui-host.sock</code> is longer, both the desktop and the
+host use <code>&lt;runtime-dir&gt;/veyyon-gui-&lt;digest&gt;.sock</code> instead, where <code>&lt;digest&gt;</code> is
+the first 16 hex characters of the SHA-256 of the agent directory and
+<code>&lt;runtime-dir&gt;</code> is <code>$XDG_RUNTIME_DIR</code>, else <code>/run/user/&lt;uid&gt;</code> on Linux, else
+<code>$TMPDIR</code> on macOS. With no such directory, and for an explicit <code>unix:</code> endpoint
+over the limit, startup fails with the path, its size and the limit.</p>
+<h2 id="connection-states"><a class="header" href="#connection-states">Connection states</a></h2>
+<p>Each transport state is shown in one place.</p>
+<p>Before a session loads, the window shows one dialog in place of the queue,
+transcript and panels. Detached states the endpoint is not connected and offers
+<strong>Attach</strong>. Connecting states the attempt number. Syncing states the snapshot
+count, with a bar over the received fraction when the host declares a total and
+an indeterminate indicator when it does not.</p>
+<p>After a session loads, a transport failure keeps the queue and the transcript on
+screen and adds a banner under the titlebar. Reconnecting shows the attempt, the
+retry countdown, the reason and <strong>Retry Now</strong>. Fatal shows the failure and
+<strong>Re-attach</strong>. Neither state repeats itself in the window’s status line, and
+neither offers a second copy of the button in the banner.</p>
+<p>A control is offered only while the transport can carry what it would send.
+Detached, Connecting, Syncing and Fatal disable every control except the one
+that ends the state, each stating the transport as the reason. Reconnecting
+disables the controls that change state — sending a prompt, answering a
+question, accepting a plan, deleting a session — and leaves navigation over
+what the client already holds enabled.</p>
 <h2 id="render-scenes"><a class="header" href="#render-scenes">Render scenes</a></h2>
 <pre><code class="language-sh">cargo run -p veyyon-desktop -- scene render 'capability-gate/turn-control-*' --out desktop-scenes
+cargo run -p veyyon-desktop -- scene render '*' --contact-sheet --out desktop-scenes
 </code></pre>
 <p><code>scene list</code> prints the scene catalogue. <code>scene render</code> writes PNG files for the
 matching scenes. Capability scenes include draft text so submission controls
 are actionable when the host capability is available.</p>
+<p><code>--contact-sheet</code> tiles the matched scenes into one captioned sheet. A set too
+large for one texture and one readback buffer is split across
+<code>contact-sheet-01.png</code>, <code>contact-sheet-02.png</code> and so on, each holding whole
+rows so a cell keeps the column it would have had on one sheet. Whole-catalogue
+sheets at the default 1180x800 frame page at nine rows.</p>
+<p>Each rendered scene prints one line of measurements: the six §9.6 clutter
+metrics, the count of hit rects the frame registered, and <code>PASS</code> or <code>FAIL</code>
+against the whole-window ceilings. A breach prints a second line naming the
+metric, what it measured, and its ceiling; a text-size breach also lists the
+sizes. Gaps count the rhythm the frame authored: a span larger than the largest
+spacing step, a value backed by one span, and a span a line of prose crosses
+are content or remainder rather than rhythm and are not counted.</p>
 <h2 id="reference"><a class="header" href="#reference">Reference</a></h2>
 <ul>
 <li><a href="surfaces.html">Surfaces and interactions</a></li>

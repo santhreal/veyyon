@@ -49,9 +49,7 @@ impl Rail {
 	fn with_sessions(ids: &[&str]) -> Self {
 		let mut store = Store::new();
 		for id in ids {
-			store
-				.sessions
-				.insert(session(id, QueuePartition::Live, None));
+			store.sessions.insert(session(id, QueuePartition::Live));
 		}
 		store.persisted.shell.active_session = Some(SessionId::from(ids[0]));
 		let mut rail = Self { store, index: SessionIndex::new(), state: ShellState::default() };

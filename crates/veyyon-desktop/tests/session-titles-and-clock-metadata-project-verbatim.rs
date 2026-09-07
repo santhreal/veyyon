@@ -26,7 +26,7 @@ use veyyon_desktop_surface::{Card, ShellState};
 
 fn store_with_decisions() -> (Store, SessionIndex) {
 	let mut store = Store::new();
-	let mut row = session("s", QueuePartition::Live, None);
+	let mut row = session("s", QueuePartition::Live);
 	row.last_recall_at_ms = NOW_MS;
 	store.sessions.insert(row);
 	store.persisted.shell.active_session = Some(SessionId::from("s"));

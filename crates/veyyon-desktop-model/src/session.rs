@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::connection::SessionId;
+use crate::{connection::SessionId, event::SessionStatus};
 
 /// Queue partition sections for session organization.
 #[derive(
@@ -47,8 +47,16 @@ pub struct Session {
 	pub project_name:      String,
 	pub branch:            String,
 	pub partition:         QueuePartition,
-	pub badge:             Option<SessionBadge>,
+	/// The status the host's index reports for the session's file, which the
+	/// row badge is derived from (`badge::session_badge`).
+	pub status:            SessionStatus,
 	pub created_at_ms:     u64,
+	/// The last write to the session's file, as the index reports it.
+	pub modified_at_ms:    u64,
+	/// The `modified_at_ms` the session had when the operator last had it
+	/// open. A listing that reports a newer one is unread, which is what §0's
+	/// `Done`, `Due` and `Failed` badges test.
+	pub read_mark_ms:      Option<u64>,
 	pub last_recall_at_ms: u64,
 	pub defer_until_ms:    Option<u64>,
 	pub parked_at_ms:      Option<u64>,

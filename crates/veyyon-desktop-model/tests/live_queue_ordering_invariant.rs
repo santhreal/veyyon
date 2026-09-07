@@ -21,7 +21,7 @@ use std::{fs, path::PathBuf};
 use strum::IntoEnumIterator as _;
 use veyyon_desktop_model::{
 	BackendError, ConnectionState, ContentBlock, EntryId, ErrorScope, HostEvent, HostEventKind,
-	MessageRole, QueuePartition, RequestId, Session, SessionBadge, SessionId, SessionSummary,
+	MessageRole, QueuePartition, RequestId, Session, SessionId, SessionStatus, SessionSummary,
 	SettingsView, SnapshotSection, SnapshotSectionKind, Store, StreamingMessageState,
 	TranscriptEntry, reduce,
 };
@@ -34,7 +34,9 @@ fn create_sample_live_sessions() -> Vec<Session> {
 			project_name:      "proj-1".to_string(),
 			branch:            "main".to_string(),
 			partition:         QueuePartition::Live,
-			badge:             None,
+			status:            SessionStatus::Unknown,
+			modified_at_ms:    1000,
+			read_mark_ms:      None,
 			created_at_ms:     1000,
 			last_recall_at_ms: 2000, // anchor: 2000
 			defer_until_ms:    None,
@@ -47,7 +49,9 @@ fn create_sample_live_sessions() -> Vec<Session> {
 			project_name:      "proj-1".to_string(),
 			branch:            "main".to_string(),
 			partition:         QueuePartition::Live,
-			badge:             None,
+			status:            SessionStatus::Unknown,
+			modified_at_ms:    3000,
+			read_mark_ms:      None,
 			created_at_ms:     3000,
 			last_recall_at_ms: 1500, // anchor: 3000
 			defer_until_ms:    None,
@@ -60,7 +64,9 @@ fn create_sample_live_sessions() -> Vec<Session> {
 			project_name:      "proj-1".to_string(),
 			branch:            "main".to_string(),
 			partition:         QueuePartition::Live,
-			badge:             None,
+			status:            SessionStatus::Unknown,
+			modified_at_ms:    2500,
+			read_mark_ms:      None,
 			created_at_ms:     2500,
 			last_recall_at_ms: 2500, // anchor: 2500
 			defer_until_ms:    None,
@@ -150,7 +156,7 @@ fn expected_live(summaries: &[SessionSummary]) -> Vec<SessionId> {
 }
 
 /// A store holding the three sample `Live` sessions, in the order §5.2 gives
-/// them, with a badge set so activity is part of every case below.
+/// them, with one session left running so activity is part of every case below.
 fn seeded_store() -> Store {
 	let mut store = Store::new();
 	for session in create_sample_live_sessions() {
@@ -166,7 +172,7 @@ fn seeded_store() -> Store {
 		"anchor descending: Beta 3000, Gamma 2500, Alpha 2000"
 	);
 	if let Some(session_a) = store.sessions.get_mut(&SessionId::from("session-a")) {
-		session_a.badge = Some(SessionBadge::Working { started_at_ms: 9999 });
+		session_a.status = SessionStatus::Pending;
 	}
 	store
 }

@@ -24,8 +24,8 @@
 //! the gui-host suites own the first.
 
 use veyyon_desktop_model::{
-	Damage, HostEvent, QueuePartition, Session, SessionHeaderView, SessionId, SnapshotSection,
-	Store, Versioned, reduce,
+	Damage, HostEvent, QueuePartition, Session, SessionHeaderView, SessionId, SessionStatus,
+	SnapshotSection, Store, Versioned, reduce,
 };
 
 /// A session as the store holds it once the index has listed it.
@@ -36,7 +36,9 @@ fn listed(id: &str, partition: QueuePartition) -> Session {
 		project_name: "repo".to_string(),
 		branch: String::new(),
 		partition,
-		badge: None,
+		status: SessionStatus::Unknown,
+		modified_at_ms: 1_000,
+		read_mark_ms: Some(1_000),
 		created_at_ms: 1_000,
 		last_recall_at_ms: 1_000,
 		defer_until_ms: None,
