@@ -88,8 +88,9 @@ function disarm(adopted: AdoptedAgent): void {
 }
 
 /**
- * Normalize a pair of prune budgets. Shared by {@link AgentLifecycleManager.adopt} and the
- * cold-adopt path so there is ONE place that decides what zero means.
+ * Build an adoption from raw budgets. The one place that decides what zero means, for
+ * every path that adopts: the hand-over ({@link AgentLifecycleManager.adopt}), the
+ * cold revive and the restored-ref scan.
  *
  * A zero quiet budget means "never prune", and that has to include the waiting case:
  * honouring a waiting budget beside it would prune exactly the agents most likely to be
@@ -97,12 +98,19 @@ function disarm(adopted: AdoptedAgent): void {
  * disabling it. The waiting budget is also never shorter than the quiet one, because an
  * agent that stopped to let a peer finish has not run out of things to do.
  */
-function normalizePruneBudgets(
+function adoption(
+	idleTtlMs: number,
 	afterMs: number | undefined,
 	waitingAfterMs: number | undefined,
-): PersistedAgentPruneBudget {
+	revive: AgentReviver | undefined,
+): AdoptedAgent {
 	const parked = Math.max(0, afterMs ?? 0);
-	return { afterMs: parked, waitingAfterMs: parked === 0 ? 0 : Math.max(parked, waitingAfterMs ?? parked) };
+	return {
+		idleTtlMs,
+		pruneAfterMs: parked,
+		pruneWaitingAfterMs: parked === 0 ? 0 : Math.max(parked, waitingAfterMs ?? parked),
+		revive,
+	};
 }
 
 /**
@@ -238,21 +246,7 @@ export class AgentLifecycleManager {
 		// Recognized by role rather than by name: a driving agent's id is derived
 		// from the conversation it drives, so there is no one id to compare with.
 		if (ref.kind === "main") return;
-		// A zero quiet budget means "never prune", and that has to include the waiting
-		// case: honouring a waiting budget beside it would prune exactly the agents most
-		// likely to be needed while leaving every ordinary one listed, which inverts the
-		// switch instead of disabling it. Normalized here rather than trusted from the
-		// caller so the invariant holds for every adoption, not just the settings path.
-		const { afterMs: pruneAfterMs, waitingAfterMs: pruneWaitingAfterMs } = normalizePruneBudgets(
-			opts.pruneAfterMs,
-			opts.pruneWaitingAfterMs,
-		);
-		const adopted: AdoptedAgent = {
-			idleTtlMs: opts.idleTtlMs,
-			pruneAfterMs,
-			pruneWaitingAfterMs,
-			revive: opts.revive,
-		};
+		const adopted = adoption(opts.idleTtlMs, opts.pruneAfterMs, opts.pruneWaitingAfterMs, opts.revive);
 		this.#adopted.set(id, adopted);
 		this.#refreshDeadline(id, adopted);
 		this.#scheduleNext();
@@ -420,23 +414,12 @@ export class AgentLifecycleManager {
 		if (!revive && ref.status === "parked" && ref.sessionFile && this.#persistedReviverFactory) {
 			revive = await this.#persistedReviverFactory(ref);
 			if (revive) {
-				const idleTtlMs =
-					typeof this.#persistedReviveTtl === "function"
-						? this.#persistedReviveTtl(ref)
-						: this.#persistedReviveTtl;
-				// A cold-revived ref carries the operator's CURRENT prune budgets, injected
-				// beside the idle TTL. It used to carry zeros, which meant a ref restored from
-				// disk and woken once was never pruned again, so a resumed session accumulated
-				// every agent it ever revived. The prune budget counts from `lastActivity`, and
-				// the revive below bumps that through `setStatus(id, "idle")`, so a just-woken
-				// agent gets a FULL budget from the wake rather than being dropped for having
-				// been parked a long time.
-				const budget =
-					typeof this.#persistedRevivePruneBudget === "function"
-						? this.#persistedRevivePruneBudget(ref)
-						: this.#persistedRevivePruneBudget;
-				const { afterMs, waitingAfterMs } = normalizePruneBudgets(budget.afterMs, budget.waitingAfterMs);
-				this.#adopted.set(id, { idleTtlMs, pruneAfterMs: afterMs, pruneWaitingAfterMs: waitingAfterMs, revive });
+				// A cold-revived ref carries the operator's CURRENT prune budgets beside the
+				// idle TTL. The prune budget counts from `lastActivity`, and the revive below
+				// bumps that through `setStatus(id, "idle")`, so a just-woken agent gets a
+				// FULL budget from the wake rather than being dropped for having been parked
+				// a long time.
+				this.#adopted.set(id, this.#persistedAdoption(ref, revive));
 				coldAdopted = true;
 			}
 		}
@@ -771,20 +754,30 @@ export class AgentLifecycleManager {
 	 */
 	#adoptRestored(ref: AgentRef): void {
 		if (ref.kind !== "sub" || ref.status !== "parked" || !ref.sessionFile) return;
-		const budget =
-			typeof this.#persistedRevivePruneBudget === "function"
-				? this.#persistedRevivePruneBudget(ref)
-				: this.#persistedRevivePruneBudget;
 		// Zero is the operator's off switch and also what a host that installed no
 		// budget carries. It is NOT re-checked here: `#refreshDeadline` arms nothing
 		// for a zero budget, and a second copy of that rule is a second place for it
 		// to drift.
-		const { afterMs, waitingAfterMs } = normalizePruneBudgets(budget.afterMs, budget.waitingAfterMs);
-		const idleTtlMs =
-			typeof this.#persistedReviveTtl === "function" ? this.#persistedReviveTtl(ref) : this.#persistedReviveTtl;
-		const adopted: AdoptedAgent = { idleTtlMs, pruneAfterMs: afterMs, pruneWaitingAfterMs: waitingAfterMs };
+		const adopted = this.#persistedAdoption(ref, undefined);
 		this.#adopted.set(ref.id, adopted);
 		this.#refreshDeadline(ref.id, adopted);
 		this.#scheduleNext();
+	}
+
+	/**
+	 * The adoption a ref restored from disk receives, whether it is being revived
+	 * (`revive` set) or only listed: the operator's current idle TTL and prune
+	 * budgets, read through the installed resolvers at the moment of adoption so a
+	 * change in `/settings` governs every agent adopted after it, normalized by the
+	 * same rule as a hand-over.
+	 */
+	#persistedAdoption(ref: AgentRef, revive: AgentReviver | undefined): AdoptedAgent {
+		const idleTtlMs =
+			typeof this.#persistedReviveTtl === "function" ? this.#persistedReviveTtl(ref) : this.#persistedReviveTtl;
+		const budget =
+			typeof this.#persistedRevivePruneBudget === "function"
+				? this.#persistedRevivePruneBudget(ref)
+				: this.#persistedRevivePruneBudget;
+		return adoption(idleTtlMs, budget.afterMs, budget.waitingAfterMs, revive);
 	}
 }

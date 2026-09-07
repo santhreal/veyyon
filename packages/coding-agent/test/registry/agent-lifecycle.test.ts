@@ -356,6 +356,46 @@ describe("AgentLifecycleManager", () => {
 	});
 
 	/**
+	 * The cold-adopt path normalizes budgets by the SAME rule as a hand-over: a waiting
+	 * budget shorter than the quiet one is lifted to it, because an agent that stopped to
+	 * let a peer finish has not run out of things to do. One builder serves both paths
+	 * (`adoption`), so this sibling of the hand-over test is what turns red if a second
+	 * copy of the rule ever reappears on this path and drifts.
+	 */
+	it("lifts a cold-revived ref's waiting budget to the quiet budget when it is shorter", async () => {
+		vi.useFakeTimers();
+		const revived = makeSessionStub();
+		registry.register({
+			id: "Cold-Lifted",
+			displayName: "task",
+			kind: "sub",
+			session: null,
+			sessionFile: "/repo/Cold-Lifted.jsonl",
+			status: "parked",
+		});
+		lifecycle.setPersistedAgentReviverFactory(async () => async () => revived.session, TTL, {
+			afterMs: TTL * 4,
+			waitingAfterMs: TTL,
+		});
+
+		await lifecycle.ensureLive("Cold-Lifted");
+		registry.setWaitingOnPeer("Cold-Lifted", true);
+		vi.advanceTimersByTime(TTL);
+		await flushAsync();
+		expect(registry.get("Cold-Lifted")?.status).toBe("parked");
+
+		// The shorter waiting budget has elapsed; the agent is still listed because it
+		// was lifted to the quiet budget.
+		vi.advanceTimersByTime(TTL * 2);
+		await flushAsync();
+		expect(registry.get("Cold-Lifted")?.status).toBe("parked");
+
+		vi.advanceTimersByTime(TTL * 2);
+		await flushAsync();
+		expect(registry.get("Cold-Lifted")).toBeUndefined();
+	});
+
+	/**
 	 * A host that installs a factory WITHOUT budgets keeps the old never-prune behaviour.
 	 *
 	 * The control for the two cases above. ACP installs no factory at all and other
