@@ -172,7 +172,7 @@ Then `init()` calls `refreshSlashCommandState(...)` to load file-based commands 
 Slash command state is refreshed:
 
 - during interactive init
-- after `/move` changes working directory (`handleMoveCommand` -> `applyCwdChange`, which calls `session.rescopeToCwd(newCwd)`, whose process-global half invokes `resetCapabilities()` for non-subagent sessions, then `refreshSlashCommandState(newCwd)`)
+- after `/move` changes working directory (`handleMoveCommand` -> `applyCwdChange`, which calls `session.rescopeToCwd(newCwd)`, whose process-global half invokes `resetCapabilities()` for non-agent sessions, then `refreshSlashCommandState(newCwd)`)
 - when the editor component is swapped (`setEditorComponent` re-runs `refreshSlashCommandState()`)
 
 There is no continuous file watcher for command directories.
@@ -329,4 +329,4 @@ hidden default dressed as one.
   - non-native commands: warning + fallback key/value parse
 - Extension/custom command handler exceptions are caught and reported via extension error channel (or logger fallback for custom commands without extension runner), and treated as handled (no unintended fallback execution).
 
-*Verified against `23e2a7938b9f` on 2026-08-28.*
+*Verified against `63ffc8131ffb8d35ccbbb1c5de69531a7016eff4` on 2026-09-06.*

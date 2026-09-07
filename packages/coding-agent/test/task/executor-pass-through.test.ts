@@ -1,6 +1,6 @@
 /**
  * Verifies parent-discovered rules, extensions, and custom tools are forwarded
- * to `createAgentSession` so subagents skip the FS scans the parent already
+ * to `createAgentSession` so agents skip the FS scans the parent already
  * paid for. Regression guard for issue #2190.
  */
 import { afterEach, describe, expect, it, vi } from "bun:test";
@@ -16,8 +16,8 @@ import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { runSubprocess } from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
 import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
+import { createMockSession, createSessionResult, yieldSuccessEvent } from "../helpers/agent-session";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
-import { createMockSession, createSessionResult, yieldSuccessEvent } from "../helpers/subagent-session";
 
 // Spawning a task writes a session (and, for worktree runs, a checkout) under the
 // ACTIVE PROFILE's agent dir, so without this the suite creates them inside the
@@ -48,7 +48,7 @@ const baseOptions = {
 	agent: baseAgent,
 	task: "do work",
 	index: 0,
-	id: "subagent-pass-through",
+	id: "agent-pass-through",
 	settings: Settings.isolated(),
 	modelRegistry: { refresh: async () => {} } as unknown as ModelRegistry,
 	enableLsp: false,
@@ -128,12 +128,12 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 	});
 
 	/**
-	 * An `:effort` suffix the operator typed into the subagent model is their
+	 * An `:effort` suffix the operator typed into the agent model is their
 	 * explicit choice and outranks the agent definition's own default level. The
 	 * executor receives the pattern already resolved (`modelOverride`) because
-	 * `resolveSubagentModel` is the one owner of that decision.
+	 * `resolveAgentModel` is the one owner of that decision.
 	 */
-	it("resolves an explicit effort suffix on the subagent model over the agent-definition default", async () => {
+	it("resolves an explicit effort suffix on the agent model over the agent-definition default", async () => {
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
 		if (!model) throw new Error("Expected claude-sonnet-4-5 model to exist");
 		const settings = Settings.isolated();
@@ -144,7 +144,7 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 			...baseOptions,
 			agent: baseAgent,
 			modelOverride: [`${model.provider}/${model.id}:high`],
-			id: "subagent-thinking-precedence",
+			id: "agent-thinking-precedence",
 			settings,
 			modelRegistry: createModelRegistry(model),
 			thinkingLevel: ThinkingLevel.Low,
@@ -158,7 +158,7 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 	/**
 	 * Without a suffix there is nothing explicit to honor, so the level the caller
 	 * passed (the agent definition's default, resolved by
-	 * `resolveSubagentThinkingLevel`) stands.
+	 * `resolveAgentThinkingLevel`) stands.
 	 */
 	it("falls back to the agent-definition thinking level without an explicit suffix", async () => {
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
@@ -171,7 +171,7 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 			...baseOptions,
 			agent: baseAgent,
 			modelOverride: [`${model.provider}/${model.id}`],
-			id: "subagent-thinking-default",
+			id: "agent-thinking-default",
 			settings,
 			modelRegistry: createModelRegistry(model),
 			thinkingLevel: ThinkingLevel.Low,
@@ -183,13 +183,13 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 	});
 
 	/**
-	 * Regression guard: Subagent Effort = Inherit (and the equivalent unset value)
+	 * Regression guard: Agent Effort = Inherit (and the equivalent unset value)
 	 * must become the parent session's configured effort before child construction,
 	 * rather than letting child initialization read the global default and choose
 	 * `auto`. The active model string intentionally has no effort suffix, so only
 	 * the dedicated parent-effort channel can preserve the session override.
 	 */
-	it("passes the parent configured effort through when subagent effort inherits", async () => {
+	it("passes the parent configured effort through when agent effort inherits", async () => {
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
 		if (!model) throw new Error("Expected claude-sonnet-4-5 model to exist");
 		const spy = vi.spyOn(sdkModule, "createAgentSession");
@@ -202,7 +202,7 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 				modelOverride: [parentSelector],
 				parentActiveModelPattern: parentSelector,
 				parentThinkingLevel: ThinkingLevel.Medium,
-				id: `subagent-thinking-inherit-${index}`,
+				id: `agent-thinking-inherit-${index}`,
 				modelRegistry: createModelRegistry(model),
 				thinkingLevel: inherited,
 			});
@@ -216,7 +216,7 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 	});
 
 	/**
-	 * Regression guard: `auto` is an explicit subagent choice, not a synonym for
+	 * Regression guard: `auto` is an explicit agent choice, not a synonym for
 	 * inherit, so a medium parent must not overwrite it during child construction
 	 * or in the child badge.
 	 */
@@ -232,7 +232,7 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 			modelOverride: [`${model.provider}/${model.id}`],
 			parentActiveModelPattern: `${model.provider}/${model.id}`,
 			parentThinkingLevel: ThinkingLevel.Medium,
-			id: "subagent-thinking-auto",
+			id: "agent-thinking-auto",
 			modelRegistry: createModelRegistry(model),
 			thinkingLevel: AUTO_THINKING,
 		});
@@ -247,10 +247,10 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 	/**
 	 * The executor must NOT resolve `agent.model` on its own.
 	 *
-	 * This is the defect the Subagents settings area exists to fix: the bundled
+	 * This is the defect the Agents settings area exists to fix: the bundled
 	 * agents carried role aliases in their frontmatter, the executor resolved them
-	 * behind the caller's back, and the operator's subagent model never took
-	 * effect. Every caller now resolves through `resolveSubagentModel` and hands
+	 * behind the caller's back, and the operator's agent model never took
+	 * effect. Every caller now resolves through `resolveAgentModel` and hands
 	 * the patterns down, so frontmatter reaching the executor unresolved is a bug
 	 * in the caller, not a model selection.
 	 */
@@ -264,7 +264,7 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 		const result = await runSubprocess({
 			...baseOptions,
 			agent: { ...baseAgent, model: [`${model.provider}/${model.id}:high`] },
-			id: "subagent-frontmatter-not-resolved-here",
+			id: "agent-frontmatter-not-resolved-here",
 			settings,
 			modelRegistry: createModelRegistry(model),
 			thinkingLevel: ThinkingLevel.Low,

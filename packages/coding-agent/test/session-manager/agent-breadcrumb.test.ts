@@ -1,0 +1,116 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
+import * as fsp from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import { SessionManager } from "@veyyon/kernel/session/session-manager";
+import { readTerminalBreadcrumbEntry } from "@veyyon/kernel/session/session-paths";
+import { getTerminalSessionsDir, setAgentDir } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
+import { getTerminalId } from "@veyyon/utils/ttyid";
+import { makeAssistantMessage } from "./helpers";
+
+const JSONL_SUFFIX = ".jsonl";
+
+/** Synchronously seed the per-terminal breadcrumb (write is otherwise fire-and-forget). */
+function writeBreadcrumb(cwd: string, sessionFile: string): void {
+	const terminalId = getTerminalId();
+	if (!terminalId) throw new Error("Expected a terminal id for breadcrumb test");
+	const dir = getTerminalSessionsDir();
+	fs.mkdirSync(dir, { recursive: true });
+	fs.writeFileSync(path.join(dir, terminalId), `${cwd}\n${sessionFile}\n`);
+}
+
+/** Materialize an agent session file under the parent's artifacts dir (`<parent>/<id>.jsonl`). */
+async function writeAgentSession(parentFile: string, agentId: string, userText: string): Promise<string> {
+	const artifactsDir = parentFile.slice(0, -JSONL_SUFFIX.length);
+	fs.mkdirSync(artifactsDir, { recursive: true });
+	const subFile = path.join(artifactsDir, `${agentId}.jsonl`);
+	// Agents open in the parent's TTY; suppression is what keeps them off the breadcrumb.
+	const sub = await SessionManager.open(subFile, undefined, undefined, {
+		initialCwd: path.dirname(parentFile),
+		suppressBreadcrumb: true,
+	});
+	sub.appendMessage({ role: "user", content: userText, timestamp: 2 });
+	sub.appendMessage(makeAssistantMessage());
+	await sub.flush();
+	await sub.close();
+	return subFile;
+}
+
+describe("SessionManager agent breadcrumb isolation", () => {
+	let testAgentDir: string;
+	let cwd: string;
+	// One owner for "undo a setAgentDir call": the hand-rolled version this replaces could
+	// not express "the variable was absent" and left the active profile cleared, so it
+	// handed every later file in the process the default profile.
+	const dirOverrides = captureDirOverrides();
+	const originalTmuxPane = process.env.TMUX_PANE;
+
+	beforeEach(async () => {
+		// Deterministic, non-TTY terminal id so breadcrumb read/write is stable.
+		process.env.TMUX_PANE = "%agent-breadcrumb-test";
+		testAgentDir = await fsp.mkdtemp(path.join(os.tmpdir(), "veyyon-agent-crumb-"));
+		setAgentDir(testAgentDir);
+		cwd = path.join(testAgentDir, "project");
+		fs.mkdirSync(cwd, { recursive: true });
+	});
+
+	afterEach(async () => {
+		if (originalTmuxPane === undefined) delete process.env.TMUX_PANE;
+		else process.env.TMUX_PANE = originalTmuxPane;
+		restoreDirOverrides(dirOverrides);
+		await fsp.rm(testAgentDir, { recursive: true, force: true });
+	});
+
+	async function createParentSession(): Promise<string> {
+		const main = SessionManager.create(cwd);
+		main.appendMessage({ role: "user", content: "main work", timestamp: 1 });
+		main.appendMessage(makeAssistantMessage());
+		await main.flush();
+		const mainFile = main.getSessionFile();
+		if (!mainFile) throw new Error("Expected persisted parent session file");
+		await main.close();
+		return mainFile;
+	}
+
+	it("keeps --continue on the parent when an agent opens in the same terminal", async () => {
+		const mainFile = await createParentSession();
+		writeBreadcrumb(cwd, mainFile);
+
+		// An agent opening its own session must not clobber the terminal breadcrumb.
+		await writeAgentSession(mainFile, "Worker", "agent work");
+
+		const crumb = await readTerminalBreadcrumbEntry();
+		expect(crumb?.sessionFile).toBe(mainFile);
+
+		const resumed = await SessionManager.continueRecent(cwd);
+		try {
+			expect(resumed.getSessionFile()).toBe(path.resolve(mainFile));
+			const dump = JSON.stringify(resumed.getEntries());
+			expect(dump).toContain("main work");
+			expect(dump).not.toContain("agent work");
+		} finally {
+			await resumed.close();
+		}
+	});
+
+	it("recovers a stale breadcrumb that points inside an agent artifacts dir", async () => {
+		const mainFile = await createParentSession();
+		const subFile = await writeAgentSession(mainFile, "Worker", "agent work");
+
+		// Simulate a pre-fix poisoned breadcrumb pointing at the agent transcript.
+		writeBreadcrumb(cwd, subFile);
+
+		const resumed = await SessionManager.continueRecent(cwd);
+		try {
+			// Redirected up to the interactive root rather than resuming the agent.
+			expect(resumed.getSessionFile()).toBe(path.resolve(mainFile));
+			const dump = JSON.stringify(resumed.getEntries());
+			expect(dump).toContain("main work");
+			expect(dump).not.toContain("agent work");
+		} finally {
+			await resumed.close();
+		}
+	});
+});

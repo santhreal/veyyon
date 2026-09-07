@@ -479,6 +479,7 @@ const CODEX_RESERVED_METADATA_KEYS: Record<string, true> = {
 	turn_started_at_unix_ms: true,
 	forked_from_thread_id: true,
 	parent_thread_id: true,
+	// Codex protocol metadata key; spelled as codex-rs spells it.
 	subagent_kind: true,
 	thread_source: true,
 	sandbox: true,

@@ -464,10 +464,10 @@ describe("task progress rendering", () => {
 		expect(collapsed).toContain("1 failed");
 	});
 
-	// The user must be able to see the model of every subagent launched. The
-	// resolved-model badge now defaults on, so a launched subagent's model id
+	// The user must be able to see the model of every agent launched. The
+	// resolved-model badge now defaults on, so a launched agent's model id
 	// shows in its status line without any opt-in.
-	it("shows the resolved model badge on a running subagent by default", async () => {
+	it("shows the resolved model badge on a running agent by default", async () => {
 		const theme = (await getThemeByName("dark"))!;
 		const options: RenderResultOptions = { expanded: false, isPartial: true, spinnerFrame: 0 };
 		const progress = runningProgress({
@@ -494,7 +494,7 @@ describe("task progress rendering", () => {
 	});
 
 	it("hides the resolved model badge when the setting is turned off", async () => {
-		settings.set("subagent.showResolvedModelBadge", false);
+		settings.set("agent.showResolvedModelBadge", false);
 		const theme = (await getThemeByName("dark"))!;
 		const options: RenderResultOptions = { expanded: false, isPartial: true, spinnerFrame: 0 };
 		const progress = runningProgress({

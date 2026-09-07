@@ -48,7 +48,7 @@ const accents = resolveComposerAccents({
 	bashMode: false,
 	pythonMode: false,
 	planMode: false,
-	focusedSubagent: false,
+	focusedAgent: false,
 	sessionAccentAnsi: undefined,
 	thinkingLevel: "off",
 });

@@ -15,7 +15,7 @@
 <meta property="og:title" content="Features | Veyyon" />
 <meta property="og:url" content="https://veyyon.dev/features.html" />
 <link rel="canonical" href="https://veyyon.dev/features.html" />
-<meta name="description" content="Subagent cockpit (/agents), unified search, autonomous auto-review, kernel CPU limits, persistent goal mode, hashline edits, approval modes. Terminal coding agent." />
+<meta name="description" content="Agent cockpit (/agents), unified search, autonomous auto-review, kernel CPU limits, persistent goal mode, hashline edits, approval modes. Terminal coding agent." />
 <link rel="preload" href="./fonts/JetBrainsMono-Bold.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="preload" href="./fonts/JetBrainsMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="stylesheet" href="./site.css" />
@@ -56,25 +56,25 @@
 
   <div class="page-head">
     <h1>What the binary includes</h1>
-    <p>Subagent orchestration, unified structural search, autonomous deep review, kernel resource limits, and deterministic line-anchored editing. Developer detail: handbook under <span class="inline">docs/</span>.</p>
+    <p>Agent orchestration, unified structural search, autonomous deep review, kernel resource limits, and deterministic line-anchored editing. Developer detail: handbook under <span class="inline">docs/</span>.</p>
   </div>
 
-  <!-- 1. Subagent Cockpit & Inspector -->
+  <!-- 1. Agent Cockpit & Inspector -->
   <section class="plain">
     <div class="lead">
-      <h2>Subagent Cockpit (<span class="inline">/agents</span>)</h2>
-      <p class="sub">Full visibility into every subagent. The <span class="inline">/agents</span> command opens an interactive inspector across the entire session tree. Stream live child transcripts, inspect intermediate tool calls and outputs, check real-time token spend, and jump directly into any subagent history with <span class="inline">history://&lt;id&gt;</span>.</p>
+      <h2>Agent Cockpit (<span class="inline">/agents</span>)</h2>
+      <p class="sub">Full visibility into every agent. The <span class="inline">/agents</span> command opens an interactive inspector across the entire session tree. Stream live child transcripts, inspect intermediate tool calls and outputs, check real-time token spend, and jump directly into any agent history with <span class="inline">history://&lt;id&gt;</span>.</p>
     </div>
     <div class="panel">
       <div class="copy">
         <ul>
           <li><b>Live Stream Inspector</b>: monitor concurrent worker thoughts, running tool executions, and stream outputs without blocking parent flow.</li>
-          <li><b>Session Tree Traversal</b>: drill down into nested subagents at any depth, switch thread focus, and audit child tool histories.</li>
+          <li><b>Session Tree Traversal</b>: drill down into nested agents at any depth, switch thread focus, and audit child tool histories.</li>
           <li><b>Transcript Resolution</b>: internal <span class="inline">history://&lt;id&gt;</span> and <span class="inline">agent://&lt;id&gt;</span> URLs let parent sessions and tools extract structured data from past workers.</li>
           <li><b>Concurrency Governance</b>: bounded worker execution via dynamic session spawn semaphores and provider rate limits.</li>
         </ul>
       </div>
-      <pre class="demo" aria-hidden="true"><span class="c"># interactive subagent cockpit</span>
+      <pre class="demo" aria-hidden="true"><span class="c"># interactive agent cockpit</span>
 /agents
 
 <span class="k">Active Spawns</span> (3 running, 1 completed):
@@ -84,7 +84,7 @@
   [4] <span class="s">TypesWorker</span>     complete exit: 0 (14.2k tokens)
 
 <span class="c"># inspect worker history directly</span>
-read history://subagent-4-types</pre>
+read history://agent-4-types</pre>
     </div>
   </section>
 
@@ -146,13 +146,13 @@ search { type: "files", input: "packages/coding-agent/src" }</pre>
   <section>
     <div class="lead">
       <h2>Kernel CPU &amp; Resource Limits (<span class="inline">/cpu-limit</span>)</h2>
-      <p class="sub">Machine-wide resource protection. Enforces hard kernel-level CPU quotas across the entire session process tree (main agent, subagents, bash commands, workers, and MCP servers) so heavy parallel builds never freeze your workstation.</p>
+      <p class="sub">Machine-wide resource protection. Enforces hard kernel-level CPU quotas across the entire session process tree (main agent, agents, bash commands, workers, and MCP servers) so heavy parallel builds never freeze your workstation.</p>
     </div>
     <div class="panel">
       <div class="copy">
         <ul>
           <li><b>Kernel-Level Quotas</b>: Linux cgroup v2 quotas and Windows Job Objects throttle the entire process tree as a single unified budget group.</li>
-          <li><b>Tree-Wide Scope</b>: limits apply to the session and every subagent spawned beneath it; delegating work to 10 workers cannot multiply host CPU consumption.</li>
+          <li><b>Tree-Wide Scope</b>: limits apply to the session and every agent spawned beneath it; delegating work to 10 workers cannot multiply host CPU consumption.</li>
           <li><b>Runaway Protection</b>: <span class="inline">session.cpuLimitKill: true</span> automatically sends SIGTERM to processes that peg cores past saturation, reporting a clean budget action instead of a crash.</li>
           <li><b>Interactive Tuning</b>: adjust on the fly with <span class="inline">/cpu-limit 4</span> or remove with <span class="inline">/cpu-limit remove</span> without editing persistent config.</li>
         </ul>
@@ -178,7 +178,7 @@ processes: 14 (main CLI, 3 workers, 2 compilers)</pre>
         <ul>
           <li><b>Token References</b>: write <span class="inline">#NAME#</span> where the credential belongs — a header, an env var, a CLI flag. The real value is substituted in just before the tool runs, and you never see it.</li>
           <li><b>Vault Storage</b>: secrets live in an encrypted vault on disk, separate from project config. A secret is created, updated, and deleted through <span class="inline">/secret</span> without touching tracked files.</li>
-          <li><b>No Prompt Leakage</b>: the model's history contains the token, not the value. Logs, transcripts, exports, and subagent returns all carry the opaque token — the real value never crosses the model boundary.</li>
+          <li><b>No Prompt Leakage</b>: the model's history contains the token, not the value. Logs, transcripts, exports, and agent returns all carry the opaque token — the real value never crosses the model boundary.</li>
         </ul>
       </div>
       <pre class="demo" aria-hidden="true"><span class="c"># reference a secret in a tool call</span>

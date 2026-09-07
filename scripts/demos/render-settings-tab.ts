@@ -6,8 +6,8 @@
  * hook, so a change to a tab's sections, row labels or row order can be proved
  * as a before/after pair of the same surface:
  *
- *     bun scripts/demos/render-settings-tab.ts --tab subagents --height 26 |
- *       bun scripts/demos/render-proof.ts --out /tmp/subagents --width 100
+ *     bun scripts/demos/render-settings-tab.ts --tab agents --height 26 |
+ *       bun scripts/demos/render-proof.ts --out /tmp/agents --width 100
  *
  * The component is the one `/settings` constructs, not a drawing of it, so the
  * rows in the image are the rows the schema produces.
@@ -19,7 +19,7 @@ import { flag, initRender, renderWidth } from "./render-args";
 const themeName = flag("theme", "titanium");
 const width = renderWidth();
 const height = Number(flag("height", "26"));
-const tab = flag("tab", "subagents") as SettingTab;
+const tab = flag("tab", "agents") as SettingTab;
 const downCount = Number(flag("down", "0"));
 
 Object.defineProperty(process.stdout, "rows", { configurable: true, value: height });

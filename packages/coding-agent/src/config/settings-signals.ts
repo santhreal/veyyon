@@ -32,7 +32,7 @@ export const appendOnlyModeSignal = new SettingSignal<[value: string]>("provider
 
 /**
  * Subscribe to append-only mode setting changes.
- * Returns an unsubscribe function. Multiple sessions (main + subagents)
+ * Returns an unsubscribe function. Multiple sessions (main + spawned agents)
  * can register independently without overwriting each other.
  */
 export const onAppendOnlyModeChanged = (cb: (value: string) => void) => appendOnlyModeSignal.on(cb);

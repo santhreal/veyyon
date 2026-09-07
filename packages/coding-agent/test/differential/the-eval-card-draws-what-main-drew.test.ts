@@ -15,7 +15,7 @@
  *    is required of a view, and a row of two glyphs names nothing to a reader.
  *  - The duration follows the title after a space, where the block put its own `·` between the header
  *    and its meta.
- *  - A spawned subagent is a group INSIDE the card, where main drew a tree below the box. The rows
+ *  - A spawned agent is a group INSIDE the card, where main drew a tree below the box. The rows
  *    carry the same facts, each opening with its own state mark instead of a dim branch glyph.
  *  - A collapsed output window states what it dropped on TOP and spends a row of the window on the
  *    note, where main showed one more row of output and wrote `… N more lines` under it. The host cuts
@@ -307,7 +307,7 @@ describe("eval tool differential", () => {
 		expect(drawn.some(line => line.includes("[2/2] load"))).toBe(true);
 	});
 
-	it("exception cell: a subagent is a group inside the card, carrying the facts main drew below it", () => {
+	it("exception cell: an agent is a group inside the card, carrying the facts main drew below it", () => {
 		const agent: EvalStatusEvent = {
 			op: "agent",
 			id: "AuthLoader",

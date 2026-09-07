@@ -5,9 +5,9 @@
  * drives it through the normal `/resume` machinery, then applies live frames:
  * entries → SessionManager + agent.replaceMessages, events →
  * EventController.handleEvent, state → status-line overrides plus real
- * model/thinking state applied to the replica agent. The host's subagent
+ * model/thinking state applied to the replica agent. The host's agent
  * ecosystem is mirrored too: agent snapshots populate a local AgentRegistry
- * (the subagent dashboard), EventBus traffic (observer HUD) is republished, and hub
+ * (the agent dashboard), EventBus traffic (observer HUD) is republished, and hub
  * actions (chat/kill/revive/transcript reads) round-trip over the wire.
  * Host ask dialogs (`ui-request` select/editor) present through the same
  * hook selector/editor seam and answer with `ui-response`; `ui-request-end`
@@ -133,7 +133,7 @@ export type CollabGuestContext = Pick<
 	| "statusLine"
 	| "streamingComponent"
 	| "streamingMessage"
-	| "syncRunningSubagentBadge"
+	| "syncRunningAgentBadge"
 	| "ui"
 	| "updateEditorBorderColor"
 >;
@@ -348,7 +348,7 @@ export class CollabGuestLink {
 		}
 
 		this.#ctx.collabGuest = this;
-		this.#ctx.syncRunningSubagentBadge();
+		this.#ctx.syncRunningAgentBadge();
 	}
 
 	/** User-initiated leave (or post-disconnect cleanup): restore the previous session. */
@@ -431,7 +431,7 @@ export class CollabGuestLink {
 		this.#applyHostState(pending.state);
 		this.#ctx.resetObserverRegistry();
 		this.#applyAgentSnapshots(pending.agents);
-		this.#ctx.syncRunningSubagentBadge();
+		this.#ctx.syncRunningAgentBadge();
 		this.#assistantStreamSynced = false;
 		setSessionTerminalTitle(pending.state.sessionName ?? pending.header.title, pending.state.cwd);
 		this.#ctx.chatContainer.clear();
@@ -505,13 +505,13 @@ export class CollabGuestLink {
 				break;
 			}
 			case "bus":
-				// Mirrored host EventBus traffic (task subagent lifecycle/progress)
-				// feeding the observer HUD and the subagent dashboard's activity column.
+				// Mirrored host EventBus traffic (task agent lifecycle/progress)
+				// feeding the observer HUD and the agent dashboard's activity column.
 				this.#ctx.eventBus?.emit(frame.channel, frame.data);
 				break;
 			case "agents":
 				this.#applyAgentSnapshots(frame.agents);
-				this.#ctx.syncRunningSubagentBadge();
+				this.#ctx.syncRunningAgentBadge();
 				break;
 			case "ui-request":
 				this.#presentUiRequest(frame.request);
@@ -592,7 +592,7 @@ export class CollabGuestLink {
 		}
 		for (const snap of agents) {
 			if (this.agentRegistry.get(snap.id)) {
-				this.agentRegistry.setStatus(snap.id, snap.status);
+				this.agentRegistry.mirrorStatus(snap.id, snap.status);
 			} else {
 				this.agentRegistry.register({
 					id: snap.id,
@@ -716,7 +716,7 @@ export class CollabGuestLink {
 		this.#ctx.statusLine.setCollabStatus(null);
 		this.#flushPendingTranscripts();
 		this.#clearAgentMirror();
-		this.#ctx.syncRunningSubagentBadge();
+		this.#ctx.syncRunningAgentBadge();
 		this.#ctx.resetObserverRegistry();
 		this.#clearTransientUi();
 		// Replica file stays on disk: it is a valid session file outside the

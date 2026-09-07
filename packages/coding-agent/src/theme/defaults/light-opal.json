@@ -80,7 +80,7 @@
 		"statusLineUntracked": "sky",
 		"statusLineOutput": "ink",
 		"statusLineCost": "blush",
-		"statusLineSubagents": "violet",
+		"statusLineAgents": "violet",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

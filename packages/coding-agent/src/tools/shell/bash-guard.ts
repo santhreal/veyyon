@@ -1791,7 +1791,7 @@ function namesUnparsedDestructiveVerb(script: string): boolean {
  *
  * It was not a prompt. `critical` is a floor `/yolo` cannot lift and a standing
  * grant cannot apply to, so a run with no interactive surface (headless, CI,
- * `-p` with no terminal, and every subagent underneath such a root) has no
+ * `-p` with no terminal, and every agent underneath such a root) has no
  * answer to give and the call fails outright. Fifteen ordinary shapes reached
  * that, including `sh -c "$SCRIPT"`, `bash -lc "$CMD"`, `eval "$SETUP"`, and
  * every `eval "$(direnv hook bash)"` / `eval "$(ssh-agent -s)"` line a shell

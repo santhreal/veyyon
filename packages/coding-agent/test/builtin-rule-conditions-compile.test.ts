@@ -18,7 +18,7 @@
  * A tool-scoped rule that inherits the global interrupt mode can silently turn post-tool guidance
  * into a stream abort and retry. Requiring every bundled tool rule to choose a policy closes that
  * omission, and pinning the intentional interrupt list makes a new aborting rule fail by default.
- * The remaining tests pin `irc-signal`'s behavior, which exists because subagents wake each other
+ * The remaining tests pin `irc-signal`'s behavior, which exists because agents wake each other
  * with acknowledgements and progress reports: a message stops an idle peer, costs it a full turn,
  * and changes nothing it does, which is also how a two-agent loop sustains itself.
  *

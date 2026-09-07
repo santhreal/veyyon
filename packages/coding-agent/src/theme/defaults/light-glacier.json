@@ -80,7 +80,7 @@
 		"statusLineUntracked": "frostBlue",
 		"statusLineOutput": "crevasseBlue",
 		"statusLineCost": "warningAmber",
-		"statusLineSubagents": "crevasseBlue",
+		"statusLineAgents": "crevasseBlue",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

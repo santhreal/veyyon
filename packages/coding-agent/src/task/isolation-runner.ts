@@ -1,7 +1,7 @@
 /**
- * Reusable isolation lifecycle for subagent execution.
+ * Reusable isolation lifecycle for spawned agent execution.
  *
- * Both `TaskTool` and the eval `agent()` bridge spawn subagents that can run
+ * Both `TaskTool` and the eval `agent()` bridge spawn agents that can run
  * inside a copy-on-write worktree, capture their changes, and (optionally)
  * apply those changes back to the parent repo. The orchestration is identical
  * for both callers; this module hosts the shared lifecycle so eval `agent()`
@@ -78,7 +78,7 @@ export type BuildCommitMessage = () => undefined | ((diff: string) => Promise<st
  */
 export function makeIsolationCommitMessage(session: ToolSession): BuildCommitMessage {
 	return () => {
-		const style = session.settings.get("subagent.isolation.commits");
+		const style = session.settings.get("agent.isolation.commits");
 		if (style !== "ai" || !session.modelRegistry) return undefined;
 		const registry = session.modelRegistry;
 		const settings = session.settings;
@@ -96,7 +96,7 @@ export function makeIsolationCommitMessage(session: ToolSession): BuildCommitMes
 
 export interface IsolatedRunOptions {
 	/**
-	 * Base run options handed to the subagent subprocess. This helper sets
+	 * Base run options handed to the agent subprocess. This helper sets
 	 * `worktree`, clears `preloadedExtensionPaths` / `preloadedCustomToolPaths`
 	 * (isolated runs re-discover inside the worktree), and forwards everything
 	 * else unchanged.
@@ -137,7 +137,7 @@ async function writeIsolationPatch(
 }
 
 /**
- * Run a subagent inside an isolation worktree and capture its changes.
+ * Run a spawned agent inside an isolation worktree and capture its changes.
  *
  * Branch mode: on success, commits the diff onto `veyyon/task/${agentId}` and
  * returns `branchName` + `nestedPatches`. On commit failure the branch is
@@ -148,7 +148,7 @@ async function writeIsolationPatch(
  * returns `patchPath` + `nestedPatches`.
  *
  * Failure paths preserve the underlying `SingleResult` whenever possible so
- * the caller can still surface the subagent's output; only isolation setup
+ * the caller can still surface the spawned agent's output; only isolation setup
  * itself routes through {@link IsolatedRunOptions.buildFailureResult}.
  *
  * The isolation handle is always torn down in `finally`.
@@ -235,7 +235,7 @@ export interface IsolationMergeOptions {
 }
 
 export interface IsolationMergeOutcome {
-	/** Trailing summary appended to the subagent's result text. May be empty. */
+	/** Trailing summary appended to the spawned agent's result text. May be empty. */
 	summary: string;
 	/**
 	 * Tri-state apply outcome:
@@ -381,7 +381,7 @@ export async function mergeIsolatedChanges(opts: IsolationMergeOptions): Promise
 }
 
 export interface NestedPatchApplyOptions {
-	/** Subagent result carrying `nestedPatches`/`exitCode`/`aborted`. */
+	/** Spawned agent result carrying `nestedPatches`/`exitCode`/`aborted`. */
 	result: SingleResult;
 	repoRoot: string;
 	mergeMode: "patch" | "branch";

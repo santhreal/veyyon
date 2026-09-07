@@ -3,7 +3,7 @@
  *
  * A supervised process's completion record (its exit code, termination owner, reason,
  * timestamps, and output tail) must survive the daemon leaving the active list and
- * survive broker restarts. In high-concurrency scenarios (multiple subagents or batch
+ * survive broker restarts. In high-concurrency scenarios (multiple agents or batch
  * jobs terminating simultaneously), concurrent read-modify-write passes over the
  * completion store could interleave and drop records unless strictly serialized through
  * `#completionsQueue`. Furthermore, large output logs must be bounded to prevent

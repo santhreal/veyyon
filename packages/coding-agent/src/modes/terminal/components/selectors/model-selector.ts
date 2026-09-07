@@ -1,7 +1,7 @@
 /**
  * Reusable searchable model selector with auth status on each row.
  *
- * Used by settings roles, subagent profiles, compaction, and any other surface
+ * Used by settings roles, agent profiles, compaction, and any other surface
  * that needs "pick a model from the catalog" without reimplementing search,
  * auth badges, or clear/unset.
  */

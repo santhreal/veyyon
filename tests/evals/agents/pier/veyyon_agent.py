@@ -329,7 +329,7 @@ class VeyyonAgent(BaseInstalledAgent):
         sessions_dir = self.logs_dir / "sessions"
         if not sessions_dir.is_dir():
             return
-        # Every session file counts: the main loop AND any subagent sessions
+        # Every session file counts: the main loop AND any agent sessions
         # (named files). Summing only the newest would undercount runs that
         # delegate implementation work.
         n_input = n_output = n_cache = 0

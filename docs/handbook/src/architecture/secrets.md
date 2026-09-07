@@ -31,7 +31,7 @@ Opaque authenticated replay fields are validated rather than mutated. A live sec
 
 3. Local display restoration expands only live reversible placeholders. Replace-mode substitutions are one-way. Expired and removed values lose expansion rights but retain forward redaction tombstones, so old transcript text cannot become provider-visible.
 
-4. Toggling secret protection and running `/secret` commands rebuilds the runtime immediately, and the system-prompt inventory of spendable names with it. A working-directory move loads the destination project scope transactionally and drops the source project's mappings. If loading fails, both the old directory and runtime are restored. Persisted subagents and resumed sessions initialize from their recorded directory. A same-directory refresh retains only forward redaction history for removed values.
+4. Toggling secret protection and running `/secret` commands rebuilds the runtime immediately, and the system-prompt inventory of spendable names with it. A working-directory move loads the destination project scope transactionally and drops the source project's mappings. If loading fails, both the old directory and runtime are restored. Persisted agents and resumed sessions initialize from their recorded directory. A same-directory refresh retains only forward redaction history for removed values.
 
 ### Spending a secret prompts first
 

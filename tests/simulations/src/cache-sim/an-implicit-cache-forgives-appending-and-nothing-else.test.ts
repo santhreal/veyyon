@@ -26,7 +26,7 @@
  * counted as total losses, since a provider that never caches cannot be said to
  * have missed. An earlier pass over this corpus put the class four times higher by
  * counting `subagent_spawn` records as turns: each carries the aggregate usage of a
- * whole subagent run whose own turns are already counted in its own session file.
+ * whole agent run whose own turns are already counted in its own session file.
  *
  * REAL here is the wire body: every row drives `buildTransformedCodexRequestBody`,
  * the same function the shipped provider calls, so the item boundaries, the

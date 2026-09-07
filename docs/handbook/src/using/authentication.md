@@ -45,7 +45,7 @@ selected account. Press `esc` to leave the filter and get the full list back, an
 close the card.
 
 Switching is **per provider**. Choosing another Anthropic account changes Anthropic and nothing else,
-because several providers serve one session at the same time: your main model, your subagent roles,
+because several providers serve one session at the same time: your main model, your agent roles,
 and web search can each be a different provider. Moving between providers is a model choice, so it
 lives in `/models`.
 

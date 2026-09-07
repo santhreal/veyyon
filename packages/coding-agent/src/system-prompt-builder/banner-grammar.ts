@@ -12,7 +12,7 @@
  *
  * WHY THIS IS ITS OWN MODULE. The grammar lived inside `section-registry.ts`, the
  * system prompt's own list of rows, which put a universal rule inside a specific
- * registry: `prompts/registry.ts` describes the subagent prompt and every other
+ * registry: `prompts/registry.ts` describes the agent prompt and every other
  * registered prompt with the same grammar, so it had to reach into the system
  * prompt's module to ask what a banner looks like. A leaf that depends on nothing
  * but the language is the right home for a rule every registry obeys, and it makes
@@ -24,7 +24,7 @@
  * default system-prompt template" while it exported the one parser that cuts EVERY
  * bannered prompt in the product. That mislabelling was not cosmetic: it is what
  * let the splitter close over the system prompt's banner table in the first place, so
- * handing it the subagent prompt — same grammar — recognised only the banners the two
+ * handing it the agent prompt — same grammar — recognised only the banners the two
  * happen to share and folded the rest away without a word. A parser belongs with the
  * grammar it parses, where nothing about it can quietly become specific to one
  * document. The table is now a required argument for the same reason: there is no
@@ -37,7 +37,7 @@
  * The underline under every banner name, and the ONE place its width is decided.
  *
  * Three widths used to ship in one product: `session/system-prompt.md` underlined
- * with 14, `subagent/system-prompt.md` with 35, and the assembler pasted
+ * with 14, `agent/system-prompt.md` with 35, and the assembler pasted
  * `"=".repeat(33)` onto a registry field that already ended in `==`, so runtime
  * sections arrived at the model with 35 while the template sections above them had
  * 14. The registry field was neither width — a two-character stub that worked only
@@ -138,7 +138,7 @@ export function startsWithBanner(text: string, name: string): boolean {
  * The table every splitter is driven by. Building it takes a registry as an
  * argument rather than closing over one, which is what lets a single splitter serve
  * every registered prompt: the splitter used to close over the system prompt's
- * table, so handing it the subagent prompt — the same `NAME\n====` grammar —
+ * table, so handing it the agent prompt — the same `NAME\n====` grammar —
  * recognised only the banners the two happen to share and folded the rest into the
  * preceding section, reporting nothing.
  *

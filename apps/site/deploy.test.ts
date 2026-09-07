@@ -240,7 +240,7 @@ describe("website deploy staging", () => {
 		const handbook = path.join(fixtureRoot, "handbook");
 		fs.mkdirSync(source);
 		fs.mkdirSync(handbook);
-		const handbookPage = path.join(handbook, "subagents.html");
+		const handbookPage = path.join(handbook, "agents.html");
 		fs.writeFileSync(handbookPage, "rebuilt handbook");
 		fs.symlinkSync(handbook, path.join(source, "docs"), "dir");
 
@@ -249,10 +249,10 @@ describe("website deploy staging", () => {
 			const stagedDocs = path.join(staged.directory, "docs");
 			expect(fs.lstatSync(stagedDocs).isSymbolicLink()).toBe(false);
 			expect(fs.statSync(stagedDocs).isDirectory()).toBe(true);
-			expect(fs.readFileSync(path.join(stagedDocs, "subagents.html"), "utf8")).toBe("rebuilt handbook");
+			expect(fs.readFileSync(path.join(stagedDocs, "agents.html"), "utf8")).toBe("rebuilt handbook");
 
 			fs.writeFileSync(handbookPage, "changed after staging");
-			expect(fs.readFileSync(path.join(stagedDocs, "subagents.html"), "utf8")).toBe("rebuilt handbook");
+			expect(fs.readFileSync(path.join(stagedDocs, "agents.html"), "utf8")).toBe("rebuilt handbook");
 		} finally {
 			staged.cleanup();
 			fs.rmSync(fixtureRoot, { recursive: true, force: true });

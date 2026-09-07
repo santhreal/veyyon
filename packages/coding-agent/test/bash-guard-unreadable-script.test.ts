@@ -7,7 +7,7 @@
  * carrying an expansion it could not resolve, and `critical` is not a prompt in
  * every run. It is a floor `/yolo` cannot lift and a standing grant cannot
  * apply to, so a session with no interactive surface (headless, CI, `-p` with
- * no terminal, and every subagent under such a root, which inherits the root's
+ * no terminal, and every agent under such a root, which inherits the root's
  * surface through `resolveRootUIContext`) has nobody to ask and the tool call
  * fails outright.
  *

@@ -310,12 +310,12 @@ describe("the progress breadcrumb names the steps", () => {
 	it("shows every step name in order, with the position", () => {
 		const component = new SetupWizardComponent(makeContext(30), [
 			labelled("a", "Providers"),
-			labelled("b", "Subagents"),
+			labelled("b", "Agents"),
 			labelled("c", "Theme"),
 		]);
 		try {
 			const frame = sceneFrame(component, 100);
-			expect(hasRow(frame, "1/3  Providers › Subagents › Theme")).toBe(true);
+			expect(hasRow(frame, "1/3  Providers › Agents › Theme")).toBe(true);
 		} finally {
 			component.dispose();
 		}
@@ -341,7 +341,7 @@ describe("the progress breadcrumb names the steps", () => {
 	it("falls back to a plain count when the names cannot fit", () => {
 		const component = new SetupWizardComponent(makeContext(30), [
 			labelled("a", "Providers"),
-			labelled("b", "Subagents"),
+			labelled("b", "Agents"),
 			labelled("c", "Glyphs"),
 			labelled("d", "Theme"),
 			labelled("e", "Import"),
@@ -349,7 +349,7 @@ describe("the progress breadcrumb names the steps", () => {
 		try {
 			const narrow = sceneFrame(component, 34);
 			expect(hasRow(narrow, "step 1 of 5")).toBe(true);
-			expect(hasRow(narrow, "Subagents")).toBe(false);
+			expect(hasRow(narrow, "Agents")).toBe(false);
 		} finally {
 			component.dispose();
 		}
@@ -380,7 +380,7 @@ describe("every real scene fits the viewport it is given", () => {
 		"sonic",
 	].map(name => ({
 		name,
-		description: `The ${name} subagent, described in one full sentence so the detail block has real text to wrap.`,
+		description: `The ${name} agent, described in one full sentence so the detail block has real text to wrap.`,
 		systemPrompt: "",
 		source: "bundled" as const,
 	}));
@@ -402,7 +402,7 @@ describe("every real scene fits the viewport it is given", () => {
 	const scenes: ReadonlyArray<readonly [string, SetupScene]> = [
 		["providers", providersSetupScene],
 		[
-			"subagents",
+			"agents",
 			{
 				...agentsSetupScene,
 				shouldRun: undefined,

@@ -104,13 +104,18 @@ describe("HomeAnchorLayout.sync — home-screen slack", () => {
 		expect(rowsOf(collapsed.layout.bottomFill)).toBe(26);
 	});
 
-	test("both fills are registered as layout-sized, so a partial frame renders them", () => {
+	test("both fills are registered as layout-sized by the first sizing pass, so a partial frame renders them", () => {
 		// The sizing pass runs at the top of a frame that requested nothing on
 		// the fills' behalf. A component-scoped frame reuses the previous rows of
 		// every root child it was not asked to repaint, so an unregistered fill
 		// composes at the height the PREVIOUS frame's content called for — one
 		// row of overflow per streamed row, and nothing downstream to repair it.
+		// Registered against the screen the pass sizes, not the one the port held
+		// at construction, and once: the pass runs every frame.
 		const { layout, state } = makeHarness({ rows: 30, contentRows: 8 });
+		expect(state.layoutSized).toEqual([]);
+		layout.sync();
+		layout.sync();
 		expect(state.layoutSized).toEqual([layout.topFill, layout.bottomFill]);
 	});
 

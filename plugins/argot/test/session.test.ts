@@ -243,7 +243,7 @@ describe("ArgotSession: conflicting loads fail loud", () => {
 	});
 });
 
-describe("ArgotSession: fork for subagent inherit", () => {
+describe("ArgotSession: fork for agent inherit", () => {
 	const DB = vocab({ dbconn: "packages/server/src/database/connection.ts" });
 	const TSC = vocab({ tsc: "bunx tsgo --noEmit" });
 

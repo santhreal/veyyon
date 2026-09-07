@@ -4,13 +4,13 @@ import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import type { ModelRegistry } from "../config/model-registry";
 import type { Settings } from "../config/settings";
 import { mcpManagerInstance } from "../mcp/manager-instance";
-import type { PersistedSubagentReviverFactory } from "../registry/agent-lifecycle";
+import { type PersistedAgentReviverFactory, syncStatusWithTurns } from "../registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 // Loaded on demand where the revive happens. See the note in `./executor`: a
 // static import of `../sdk`, the composition root, is what put this module in a
 // 54-module cycle.
 import type { AgentSession } from "../session/agent-session";
-import { createMCPProxyTools, createSubagentSettingsForCwd } from "./executor";
+import { createAgentSettingsForCwd, createMCPProxyTools } from "./executor";
 
 /**
  * Ambient context the reviver needs at revive time. The parent artifact
@@ -18,34 +18,32 @@ import { createMCPProxyTools, createSubagentSettingsForCwd } from "./executor";
  * the revived session's cwd comes from its own persisted header. Auth, models,
  * and settings are process-stable and captured by reference.
  */
-export interface PersistedSubagentReviveContext {
+export interface PersistedAgentReviveContext {
 	session: AgentSession;
 	authStorage: AuthStorage;
 	modelRegistry: ModelRegistry;
 	settings: Settings;
-	/** LSP policy of the top-level session; revived subagents inherit it rather than defaulting on. */
+	/** LSP policy of the top-level session; revived spawned agents inherit it rather than defaulting on. */
 	enableLsp: boolean;
 }
 
 /**
  * Build the factory the {@link AgentLifecycleManager} uses to cold-revive a
- * `parked` subagent ref restored from disk (the roster's persisted scan, collab mirror, or a
+ * `parked` spawned agent ref restored from disk (the roster's persisted scan, collab mirror, or a
  * resumed process). Such a ref carries a sessionFile but no in-memory adoption —
  * the executor's live reviver closure died with the process/turn that spawned
  * it — so `ensureLive` (IRC sends, hub focus) would otherwise refuse it.
  *
- * This rebuilds the subagent the same way `--resume` rebuilds a session: reopen
+ * This rebuilds the spawned agent the same way `--resume` rebuilds a session: reopen
  * the JSONL and replay it through {@link createAgentSession}. The catch is that
  * resume restores only conversation/model from the file — the runtime contract
  * (tools / system prompt / output schema / kind) is built from options, so a
  * bare reopen would resurrect a wrong (top-level) session. We source that
  * contract from the persisted `session_init` entry instead, and mirror the
- * executor's subagent wiring (MCP proxy tools, depth-derived gating,
+ * executor's agent wiring (MCP proxy tools, depth-derived gating,
  * yield-required, active-tool clamp, registry status sync).
  */
-export function createPersistedSubagentReviverFactory(
-	ctx: PersistedSubagentReviveContext,
-): PersistedSubagentReviverFactory {
+export function createPersistedAgentReviverFactory(ctx: PersistedAgentReviveContext): PersistedAgentReviverFactory {
 	const registry = AgentRegistry.global();
 	return async ref => {
 		const sessionFile = ref.sessionFile;
@@ -105,7 +103,7 @@ export function createPersistedSubagentReviverFactory(
 			const artifactManager = ctx.session.sessionManager.getArtifactManager();
 			if (artifactManager) reopened.adoptArtifactManager(artifactManager);
 			// Reuse the parent's live MCP connections via proxy tools (no
-			// re-discovery), exactly as the executor does for live subagents.
+			// re-discovery), exactly as the executor does for live agents.
 			const mcpManager = mcpManagerInstance();
 			const mcpProxyTools = mcpManager ? createMCPProxyTools(mcpManager) : [];
 			const { createAgentSession } = await import("../sdk");
@@ -113,7 +111,7 @@ export function createPersistedSubagentReviverFactory(
 				cwd: runtimeCwd,
 				authStorage: ctx.authStorage,
 				modelRegistry: ctx.modelRegistry,
-				settings: await createSubagentSettingsForCwd(
+				settings: await createAgentSettingsForCwd(
 					ctx.settings,
 					runtimeCwd,
 					init.readSummarize === false ? { "read.summarize.enabled": false } : undefined,
@@ -144,14 +142,9 @@ export function createPersistedSubagentReviverFactory(
 			// `alwaysInclude` can re-add non-defaultInactive extension/custom tools
 			// the original run didn't carry. Unknown/missing names are ignored.
 			await session.setActiveToolsByName(init.tools);
-			// Cold revives must drive registry status themselves — createAgentSession
-			// doesn't wire this generically (the live path does it in the executor).
-			// Without it the idle-TTL timer never clears on a turn and the lifecycle
-			// could park the agent mid-run.
-			session.subscribe(event => {
-				if (event.type === "agent_start") registry.setStatus(ref.id, "running");
-				else if (event.type === "agent_end") registry.setStatus(ref.id, "idle");
-			});
+			// A cold revive installs the turn sync itself; the live path does it in the
+			// executor. Without it the idle TTL would park the agent mid-turn.
+			syncStatusWithTurns(registry, ref.id, session);
 			return session;
 		};
 	};

@@ -1,5 +1,5 @@
 /**
- * A transcript rebuild while a tool is still executing (subagent focus
+ * A transcript rebuild while a tool is still executing (agent focus
  * attach/unfocus, overlay close) must not hide the in-flight call: the
  * assistant turn is persisted at message_end but its toolResult is not, so a
  * rebuild used to strip the dangling toolCall and the agent looked idle while

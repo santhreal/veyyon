@@ -18,6 +18,27 @@ export const EXPORT_FLOOR_SCHEMA_VERSION = 2;
 
 export const BASELINE_FILE_PATH = "scripts/package-exports-baseline.json";
 
+/**
+ * Approved product vocabulary renames applied to the historical export baseline.
+ */
+export const APPROVED_EXPORT_RENAMES: Readonly<Record<string, string>> = {
+	SUBAGENT_OBSERVER_UI_COALESCE_MS: "AGENT_OBSERVER_UI_COALESCE_MS",
+	SUBAGENT_WARNING_MISSING_YIELD: "AGENT_WARNING_MISSING_YIELD",
+	SUBAGENT_WARNING_NULL_YIELD: "AGENT_WARNING_NULL_YIELD",
+	TASK_SUBAGENT_EVENT_CHANNEL: "TASK_AGENT_EVENT_CHANNEL",
+	TASK_SUBAGENT_LIFECYCLE_CHANNEL: "TASK_AGENT_LIFECYCLE_CHANNEL",
+	TASK_SUBAGENT_PROGRESS_CHANNEL: "TASK_AGENT_PROGRESS_CHANNEL",
+	createSubagentSession: "createSpawnedSession",
+	createSubagentSettings: "createAgentSettings",
+	createSubagentSettingsForCwd: "createAgentSettingsForCwd",
+	finalizeSubagentLifecycle: "finalizeAgentLifecycle",
+	isSubagentSession: "isSpawnedSession",
+	resolveEffectiveSubagentThinkingLevel: "resolveEffectiveAgentThinkingLevel",
+	resolveSubagentErrorText: "resolveAgentErrorText",
+	runSubagentFollowUpTurn: "runAgentFollowUpTurn",
+	getGlobalSubagentsDir: "getGlobalAgentsDir",
+};
+
 export interface ReferencedExportFloor {
 	includes: string[];
 	names: string[];
@@ -115,7 +136,7 @@ export function readApprovedExportBaseline(
 		if (!isStringArray(names)) {
 			throw new Error(`Approved export baseline at ${commit} contains invalid entry for ${specifier}`);
 		}
-		result[specifier] = [...names].sort();
+		result[specifier] = names.map(name => APPROVED_EXPORT_RENAMES[name] ?? name).sort();
 	}
 	return result;
 }

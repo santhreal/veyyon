@@ -60,7 +60,7 @@ describe("createPlanReadMatcher", () => {
 
 	it("does not protect non-plan reads or non-read tools", () => {
 		const matcher = createPlanReadMatcher(() => "local://wp-migration.md");
-		// A different local artifact (shared subagent content) is not the plan.
+		// A different local artifact (shared agent content) is not the plan.
 		expect(matcher(context({ path: "local://scratch.md" }))).toBe(false);
 		// Prefix collisions must not match (PLAN.md vs PLAN.md.bak / PLANNER.md).
 		expect(matcher(context({ path: "local://PLAN.md.bak" }))).toBe(false);

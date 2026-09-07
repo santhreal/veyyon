@@ -88,7 +88,7 @@ const stablePrefixIndex = isCCLayout ? 2 : 0;
 Under OAuth the provider prepends a billing header block and a Claude Code instruction block,
 so Veyyon's own first block sits at index 2. Under an API key it is index 0. That first block is
 block 0 from the [system prompt architecture](system-prompt-architecture.md): the static harness
-prefix shared between a parent session and its subagents. Anchoring it means a changing suffix
+prefix shared between a parent session and its agents. Anchoring it means a changing suffix
 (project context, the argot handle table, the secret inventory) cannot invalidate the shared
 prefix.
 
@@ -543,4 +543,4 @@ than we do, and the comparison is included because it makes the gap concrete.
 | Operator settings | `packages/coding-agent/src/config/settings-domains/context.ts` |
 | Cache-aligned compaction request | `packages/agent/src/compaction/cache-aligned-context.ts` |
 
-*Verified against `23e2a7938b9f` on 2026-08-28.*
+*Verified against `63ffc8131ffb8d35ccbbb1c5de69531a7016eff4` on 2026-09-06.*

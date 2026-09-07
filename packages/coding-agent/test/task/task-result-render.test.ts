@@ -29,7 +29,7 @@ function restoreViewportRows(): void {
 function makeProgress(recentOutput: string[]): AgentProgress {
 	return {
 		index: 0,
-		id: "NoisySubagent",
+		id: "NoisyAgent",
 		agent: "deep",
 		agentSource: "bundled",
 		status: "running",
@@ -143,7 +143,7 @@ describe("task live progress rendering", () => {
 	// no terminal, so a short window and a tall one keep the same rows and a noisy agent is cut the
 	// same either way. These two cells are the pair — under the bound nothing is dropped, over it the
 	// newest rows survive and the front is counted.
-	it("keeps every line of a short subagent burst", () => {
+	it("keeps every line of a short agent burst", () => {
 		setViewportRows(24);
 		const chronological = Array.from({ length: 6 }, (_, index) => `line ${index + 1}`);
 		const text = renderProgressText(makeProgress([...chronological].reverse()), true, uiTheme);
@@ -153,7 +153,7 @@ describe("task live progress rendering", () => {
 		expect(text).not.toContain("earlier lines");
 	});
 
-	it("keeps the newest subagent output when the bound truncates", () => {
+	it("keeps the newest agent output when the bound truncates", () => {
 		setViewportRows(40);
 		const chronological = Array.from({ length: 8 }, (_, index) => `line ${index + 1}`);
 		const text = renderProgressText(makeProgress([...chronological].reverse()), true, uiTheme);
@@ -165,7 +165,7 @@ describe("task live progress rendering", () => {
 		expect(text).toContain("line 8");
 	});
 
-	it("strips bash footer notices from expanded subagent recent output", () => {
+	it("strips bash footer notices from expanded agent recent output", () => {
 		setViewportRows(40);
 		const chronological = [
 			"line 1",
@@ -189,7 +189,7 @@ describe("task live progress rendering", () => {
 		expect(collapsedText).not.toContain("line 1");
 		expect(collapsedText).not.toContain("raw output:");
 	});
-	it("sanitizes control sequences from expanded subagent recent output", () => {
+	it("sanitizes control sequences from expanded agent recent output", () => {
 		setViewportRows(40);
 		const progress = makeProgress(["safe after \x1b[2Kclear", "raw\rprompt"]);
 
@@ -200,7 +200,7 @@ describe("task live progress rendering", () => {
 		expect(text).not.toContain("\x1b[2K");
 		expect(text).not.toContain("\r");
 	});
-	it("sanitizes control sequences from finalized subagent results", () => {
+	it("sanitizes control sequences from finalized agent results", () => {
 		const output = JSON.stringify({ "\x1b[2Kkey": "safe value" });
 		const details: TaskToolDetails = {
 			projectAgentsDir: null,
@@ -224,6 +224,40 @@ describe("task live progress rendering", () => {
 		expect(text).toContain("key");
 		expect(text).not.toContain("\x1b[2K");
 		expect(text).not.toContain("\r");
+	});
+
+	// A session file written before the `subagent` vocabulary was retired carries the runtime's old
+	// spelling of the missing-yield warning. Both spellings lift out of the output and turn a
+	// successful row's status to `warning`; a first line that is not the warning leaves it `done`.
+	for (const spelling of ["Agent", "Subagent"]) {
+		it(`lifts the ${spelling} spelling of the missing-yield warning out of a finished agent's output`, () => {
+			const warning = `SYSTEM WARNING: ${spelling} exited without calling yield tool after 3 reminders.`;
+			const details: TaskToolDetails = {
+				projectAgentsDir: null,
+				results: [makeSingleResult(0, { output: `${warning}\n\nthe migration is already applied` })],
+				totalDurationMs: 1,
+			};
+
+			const text = renderResultText(details, true, uiTheme);
+
+			expect(text).toContain("⟦warning⟧");
+			expect(text).not.toContain("⟦done⟧");
+			expect(text).toContain(warning);
+			expect(text).toContain("the migration is already applied");
+		});
+	}
+
+	it("keeps a first line that is not the missing-yield warning inside the output", () => {
+		const details: TaskToolDetails = {
+			projectAgentsDir: null,
+			results: [makeSingleResult(0, { output: "SYSTEM NOTICE: the agent yielded early\n\nok" })],
+			totalDurationMs: 1,
+		};
+
+		const text = renderResultText(details, true, uiTheme);
+
+		expect(text).toContain("⟦done⟧");
+		expect(text).toContain("SYSTEM NOTICE: the agent yielded early");
 	});
 
 	it("caps collapsed nested task progress at four rows plus an elision line", () => {

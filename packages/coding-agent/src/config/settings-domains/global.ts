@@ -61,7 +61,7 @@ export const GLOBAL_SETTINGS = {
 			group: "Machine Limits",
 			label: "Machine CPU Limit",
 			description:
-				"Maximum CPU every veyyon process on this machine may use TOGETHER, in cores (0 = no limit). Stored in ~/.veyyon/config.yml rather than in a profile, so it covers every profile and every veyyon running at once, which is what makes it a machine limit: held per profile, two profiles would read their own copy and the machine would get the sum. Each session's budget group is created INSIDE this one, so on Linux the kernel caps the whole subtree and no combination of sessions can exceed it. A per-session limit larger than this one is bounded by it and does not raise it. The machine tier therefore needs a parent that delegates two levels; a host that delegates one, such as a container whose cgroup root holds processes, still holds per-session limits and reports the machine tier as unheld. Where the kernel cannot hold it, a notice says so once at startup rather than reporting a cap that does not exist.",
+				"Maximum CPU all veyyon sessions on this machine may use together, in cores. Off: no limit. Stored in ~/.veyyon/config.yml and bounds the sum across profiles.",
 			keywords: ["cpu", "global", "machine", "limit", "quota", "cgroup", "cores", "budget", "all"],
 			options: [
 				{ value: "0", label: "Off", description: "Default" },
@@ -84,7 +84,7 @@ export const GLOBAL_SETTINGS = {
 			group: "Machine Limits",
 			label: "Machine Memory Limit",
 			description:
-				"Maximum memory every veyyon process on this machine may hold together, in gigabytes (0 = no limit). Stored in ~/.veyyon/config.yml, so it spans profiles and concurrent veyyon instances. Every session budget group sits inside this one, so on Linux this is cgroup v2 memory.max on the parent, with memory.swap.max pinned to 0 so the cap is the whole anonymous footprint rather than a resident cap a process escapes by swapping. The kernel reclaims, then OOM-kills, inside the subtree once the total is reached — whichever process the kernel picks, with no warning and no chance to finish. Set it where an OOM kill is preferable to the machine swapping. Where no memory controller is delegated the cap cannot be held, and a notice says so once at startup.",
+				"Maximum resident memory all veyyon sessions on this machine may use together, in gigabytes. Off: no limit. Stored in ~/.veyyon/config.yml and bounds the sum across profiles.",
 			keywords: ["memory", "ram", "global", "machine", "limit", "oom", "cgroup", "gb", "all"],
 			options: [
 				{ value: "0", label: "Off", description: "Default" },
@@ -108,7 +108,7 @@ export const GLOBAL_SETTINGS = {
 			group: "Machine Limits",
 			label: "Machine Write Budget",
 			description:
-				"Cumulative gigabytes every veyyon process on this machine may WRITE before further writes are refused (0 = no limit). Stored in ~/.veyyon/config.yml, so it spans profiles and concurrent veyyon instances. Unlike CPU and memory this is a total that accumulates, not a level: it counts bytes written since the machine budget was last reset, across every session, and refuses new commands and harness writes once the total is reached. A write budget is the one limit no kernel enforces on its own — cgroup io accounting MEASURES bytes and caps rate, not a lifetime total — so this is a refusal, and work already writing runs to completion.",
+				"Cumulative disk writes permitted for all veyyon sessions on this machine, in gigabytes. Off: no limit. Stored in ~/.veyyon/config.yml and bounds the sum across profiles.",
 			keywords: ["disk", "write", "global", "machine", "budget", "gb", "io", "quota", "all"],
 			options: [
 				{ value: "0", label: "Off", description: "Default" },
@@ -131,7 +131,7 @@ export const GLOBAL_SETTINGS = {
 			group: "Machine Limits",
 			label: "Machine Max Processes",
 			description:
-				"Hard cap on how many processes every veyyon on this machine may have alive at once (0 = no limit). Stored in ~/.veyyon/config.yml, so it spans profiles and concurrent veyyon instances. Every session budget group sits inside this one, so on Linux this is cgroup v2 pids.max on the parent and the kernel refuses the fork itself once the subtree is full, whichever session asked. Where pids is not delegated the cap is a refusal at the spawn path instead, and a notice says so once at startup.",
+				"Maximum concurrent processes that all veyyon sessions on this machine may run together. Off: no limit. Stored in ~/.veyyon/config.yml and bounds the sum across profiles.",
 			keywords: ["processes", "pids", "fork", "global", "machine", "limit", "cap", "bomb", "all"],
 			options: [
 				{ value: "0", label: "Off", description: "Default" },
@@ -154,7 +154,7 @@ export const GLOBAL_SETTINGS = {
 			group: "Profiles",
 			label: "Default Profile",
 			description:
-				"Profile used when no --profile flag or VEYYON_PROFILE is set. Stored in ~/.veyyon/config.yml. Use the profile name (`default` clears the override).",
+				"Profile used when no --profile flag or VEYYON_PROFILE environment variable is set. Stored in ~/.veyyon/config.yml. Setting to default clears the override.",
 		},
 	},
 
@@ -167,7 +167,7 @@ export const GLOBAL_SETTINGS = {
 			group: "Credentials",
 			label: "Share Credentials Across Profiles",
 			description:
-				"When on (the default), every profile reads one machine-wide set of provider logins. Turn off to give each profile its own private credential store. Changing this setting shuts down the active session; restart is required before any further model dispatch.",
+				"Share provider logins between profiles. On: every profile reads one machine-wide credential store. Off: each profile has its own. Changing it shuts down the active session; restart before the next model request.",
 		},
 	},
 
@@ -192,8 +192,7 @@ export const GLOBAL_SETTINGS = {
 			// key someone finds in ~/.veyyon/config.yml.
 			hidden: true,
 			label: "Onboarding Version",
-			description:
-				"Setup generation this machine has already completed. Stored in ~/.veyyon/config.yml, so switching profile or working directory never re-runs onboarding.",
+			description: "Setup version completed on this machine. Stored in ~/.veyyon/config.yml.",
 		},
 	},
 
@@ -206,7 +205,7 @@ export const GLOBAL_SETTINGS = {
 			group: "Auth Broker",
 			label: "Auth Broker URL",
 			description:
-				"Base URL of the auth broker that mints provider credentials for this machine. Stored in ~/.veyyon/config.yml under auth.broker.url; empty disables broker discovery via config.",
+				"Base URL of the auth broker providing credentials for this machine. Stored in ~/.veyyon/config.yml. Leave empty to disable broker discovery.",
 		},
 	},
 

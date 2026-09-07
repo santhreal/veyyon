@@ -52,13 +52,13 @@ const scoutAgent: AgentDefinition = {
 
 /**
  * `scout` is a BUNDLED agent, and only the general-purpose `task` delegate ships enabled
- * (`subagentEnabledByDefault`), so a session that does not turn it on refuses every scout spawn with
+ * (`agentEnabledByDefault`), so a session that does not turn it on refuses every scout spawn with
  * "Agent \"scout\" is disabled". Nothing here is about enablement, so the fixture enables it the way
- * an operator does, with a `subagent.agents` row, rather than by pretending the agent is
+ * an operator does, with a `agent.agents` row, rather than by pretending the agent is
  * user-authored: a project-sourced fixture would be enabled by default and would stop reproducing
  * the shipped scout, which is bundled AND blocking.
  */
-const BLOCKING_AGENT_ENABLED = { "subagent.agents": { scout: { enabled: true } } } as const;
+const BLOCKING_AGENT_ENABLED = { "agent.agents": { scout: { enabled: true } } } as const;
 
 function createSession(options: { manager?: AsyncJobManager; settings?: Record<string, unknown> } = {}): ToolSession {
 	return makeToolSession({
@@ -66,7 +66,7 @@ function createSession(options: { manager?: AsyncJobManager; settings?: Record<s
 		hasUI: false,
 		settings: Settings.isolated({
 			"async.enabled": true,
-			"subagent.batch": true,
+			"agent.batch": true,
 			...BLOCKING_AGENT_ENABLED,
 			...options.settings,
 		}),
@@ -290,7 +290,7 @@ describe("task per-item blocking split", () => {
 
 		const manager = createManager();
 		const tool = await TaskTool.create(
-			createSession({ manager, settings: { "subagent.agents": { scout: { enabled: false } } } }),
+			createSession({ manager, settings: { "agent.agents": { scout: { enabled: false } } } }),
 		);
 
 		const result = await tool.execute("tc-scout-disabled", {
@@ -300,7 +300,7 @@ describe("task per-item blocking split", () => {
 
 		const text = firstText(result);
 		expect(text).toContain('Agent "scout" is disabled');
-		expect(text).toContain("subagent.agents.scout.enabled");
+		expect(text).toContain("agent.agents.scout.enabled");
 		expect(executed).toEqual([]);
 		expect(manager.getAllJobs()).toHaveLength(0);
 	});

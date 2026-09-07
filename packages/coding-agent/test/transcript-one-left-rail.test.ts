@@ -81,7 +81,7 @@ describe("the rail is the composer inset", () => {
 			bashMode: false,
 			pythonMode: false,
 			planMode: false,
-			focusedSubagent: false,
+			focusedAgent: false,
 			sessionAccentAnsi: undefined,
 			thinkingLevel: "off",
 		});

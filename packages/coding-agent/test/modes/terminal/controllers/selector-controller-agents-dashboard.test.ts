@@ -1,10 +1,10 @@
 /**
- * The ONE entry point to the subagent dashboard, and the one gate on it.
+ * The ONE entry point to the agent dashboard, and the one gate on it.
  *
  * WHY ONE ENTRY POINT. `/agents`, `/cockpit` (alias `/hub`), the `app.agents.hub`
  * and `app.session.observe` keys, and the editor's `←←` gesture used to open
  * THREE different screens between them: an agent configuration list, an "Agent
- * Hub" overlay with its own roster and its own ordering, and a subagent inbox
+ * Hub" overlay with its own roster and its own ordering, and an agent inbox
  * behind a settings flag. Three renderings of the same registry meant "which
  * agents are running" had three answers that could disagree, and only one of
  * them opened something you could reply to. Every entry now calls
@@ -14,7 +14,7 @@
  * WHY THE GATE. `←←` on an empty editor is a gesture, not a deliberate command,
  * and popping a card that says "Nothing running" every time a user backspaces
  * past the start of a line would make the gesture an irritation. It passes
- * `requireContent`, which opens the card only when there is a SUBAGENT to look
+ * `requireContent`, which opens the card only when there is a AGENT to look
  * at. The driving session does not count: it is always registered, so counting
  * it would un-gate the gesture in every session. Agents persisted by earlier
  * runs register asynchronously, so the gate waits for that scan rather than
@@ -158,12 +158,12 @@ describe("The requireContent gate on the double-left gesture", () => {
 	});
 
 	/**
-	 * One subagent is enough, and it opens immediately rather than after a scan. Asserted on the
+	 * One agent is enough, and it opens immediately rather than after a scan. Asserted on the
 	 * CARD'S ROWS, not merely on a mounted object: the gate's job is to open a roster the operator
 	 * can act on, and a card that opened showing an empty roster would satisfy `toBeDefined` while
 	 * hiding the very agent that unlocked the gesture.
 	 */
-	it("opens as soon as a subagent exists", () => {
+	it("opens as soon as an agent exists", () => {
 		const registry = new AgentRegistry();
 		registerMain(registry);
 		registerWorker(registry);
@@ -182,7 +182,7 @@ describe("The requireContent gate on the double-left gesture", () => {
 	 * run. Answering the gate from the initial roster would close the gesture off
 	 * on exactly the sessions it is most useful for, the ones you came back to.
 	 */
-	it("opens once the persisted scan finds a subagent from an earlier run", async () => {
+	it("opens once the persisted scan finds an agent from an earlier run", async () => {
 		using tempDir = TempDir.createSync("@veyyon-dashboard-gate-");
 		const sessionFile = path.join(tempDir.path(), "main.jsonl");
 		const workerSessionFile = path.join(tempDir.path(), "main", "Worker.jsonl");
@@ -209,7 +209,7 @@ describe("The requireContent gate on the double-left gesture", () => {
 	 * happened to let this case through, and a card that mounted with an empty body would pass it
 	 * too. What the operator must see is the roster chrome and the driving session in it.
 	 */
-	it("opens the empty roster when asked explicitly, with no subagents at all", () => {
+	it("opens the empty roster when asked explicitly, with no agents at all", () => {
 		const registry = new AgentRegistry();
 		registerMain(registry);
 		const h = harness(registry);
@@ -219,7 +219,7 @@ describe("The requireContent gate on the double-left gesture", () => {
 		const dashboard = h.shown();
 		if (!dashboard) throw new Error("the card was not mounted");
 		const body = dashboard.render(80).join("\n").replace(ANSI_PATTERN, "");
-		expect(body).toContain("Subagent Dashboard");
+		expect(body).toContain("Agent Dashboard");
 		expect(body).toContain("Live (1)");
 		expect(body).toContain("Main");
 		dashboard.dispose();
@@ -318,13 +318,13 @@ describe("The roster scope the controller hands the card", () => {
 	 * The card is opened for THIS conversation: the controller passes the session
 	 * manager's session id as the dashboard's `scope`, and the roster is filtered
 	 * to it. The registry is process-global, so a card built without that scope
-	 * listed the subagents of every conversation the process had driven — rows an
+	 * listed the agents of every conversation the process had driven — rows an
 	 * operator could select and hand the main view to, belonging to a transcript
 	 * this session had already replaced. The in-scope row is asserted present in
 	 * the same test, so a scope that filters everything away fails here instead of
 	 * looking like the fix.
 	 */
-	it("scopes the roster to the session id, hiding another conversation's subagents", () => {
+	it("scopes the roster to the session id, hiding another conversation's agents", () => {
 		const registry = new AgentRegistry();
 		registry.register({
 			id: "Mine",

@@ -156,7 +156,7 @@ Tools can add approval-prompt body lines with `formatApprovalDetails(args)`. The
 - `Allow tool: <name>`
 - `Origin: MCP server tool` for unannotated `mcp__...` tools
 - `Reason: <reason>` when the tool decision supplies one
-- tool-specific details such as command, path, code, browser action, or subagent assignment
+- tool-specific details such as command, path, code, browser action, or agent assignment
 
 ## Defining approval on tools
 
@@ -212,8 +212,8 @@ Precedence is the normal settings precedence: runtime flags (`--approval-mode`, 
 
 When ACP approval is required, Veyyon routes it through the ACP client instead of the terminal TUI. Client-gated `bash`, `edit`, `delete`, and `move` calls use ACP `session/request_permission`; generic approval prompts use form elicitation when the client advertises `elicitation.form`. A rejected, cancelled, or unsupported prompt rejects/cancels the tool call; Veyyon does not silently allow it.
 
-## Subagents
+## Agents
 
-A spawned subagent inherits the spawning session's approval mode through its forked settings; nothing hardcodes a rung for it. The parent `task` approval is the authorization boundary for the delegation itself, and your `tools.approval.<tool>` policies apply inside the subagent exactly as they do in the parent. A subagent runs headless, so a call that would prompt fails with an error stating what needed approval rather than stalling on a UI that does not exist.
+A spawned agent inherits the spawning session's approval mode through its forked settings; nothing hardcodes a rung for it. The parent `task` approval is the authorization boundary for the delegation itself, and your `tools.approval.<tool>` policies apply inside the agent exactly as they do in the parent. An agent runs headless, so a call that would prompt fails with an error stating what needed approval rather than stalling on a UI that does not exist.
 
-The `/yolo` bypass is the one part that is not a pure snapshot, and it moves in only one direction. A child is built with the bypass the parent held at spawn time, and `isApprovalBypassed()` then also consults the live parent on every check, so `/yolo off` in the parent reaches a subagent that is already running. It can only narrow: the child's own spawn-time value is checked first, so a parent turning `/yolo` on mid-run cannot hand a bypass to a child that was spawned without one. Without the live read, revoking the bypass left every running subagent executing unasked with nothing on screen to say so.
+The `/yolo` bypass is the one part that is not a pure snapshot, and it moves in only one direction. A child is built with the bypass the parent held at spawn time, and `isApprovalBypassed()` then also consults the live parent on every check, so `/yolo off` in the parent reaches an agent that is already running. It can only narrow: the child's own spawn-time value is checked first, so a parent turning `/yolo` on mid-run cannot hand a bypass to a child that was spawned without one. Without the live read, revoking the bypass left every running agent executing unasked with nothing on screen to say so.

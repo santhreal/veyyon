@@ -25,6 +25,7 @@
 - Array copies that allocated with a spread now use `.slice()`, `.concat()` or `Array.from()`. No user-visible behavior changes.
 - `TerminalNotification` extends `HostNotification` from `@veyyon/utils/host-notification`, so a terminal is one host that can deliver a tool's notification and the two shapes cannot drift apart.
 - `visualColAtOffset` and `offsetAtVisualCol` are exported from `@veyyon/tui` utils, shared by `Editor` and `Input`.
+- Source comments refer to the spawned-agent HUD as the agent HUD. No behavior change.
 
 ### Fixed
 

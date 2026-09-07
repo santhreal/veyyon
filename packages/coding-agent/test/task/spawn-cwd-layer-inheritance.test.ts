@@ -162,7 +162,7 @@ describe("task spawn layer inheritance across a cwd change", () => {
 
 	/**
 	 * LOCKS OUT: an over-broad guard that makes EVERY spawn re-discover, which would put a full
-	 * skills, prompts, and rules scan on the critical path of every subagent launch.
+	 * skills, prompts, and rules scan on the critical path of every agent launch.
 	 */
 	it("still inherits every layer unchanged for a child in the parent's own tree", async () => {
 		const spy = vi.spyOn(executorModule, "runSubprocess").mockResolvedValue(makeResult("SameTree"));
@@ -193,7 +193,7 @@ describe("task spawn layer inheritance across a cwd change", () => {
 	 * seeding path copies untracked files through `ls-files --others --exclude-standard`, so a
 	 * gitignored project layer is not in the mount to be found at all.
 	 *
-	 * IF THIS REGRESSES: every isolated subagent silently drops the nested and gitignored halves
+	 * IF THIS REGRESSES: every isolated agent silently drops the nested and gitignored halves
 	 * of the operator's project rules, which is the same class of loss as the original
 	 * `AGENTS.md` filter.
 	 */
@@ -218,7 +218,7 @@ describe("task spawn layer inheritance across a cwd change", () => {
 
 		const tool = await TaskTool.create(
 			createParentSession({
-				settings: Settings.isolated({ "async.enabled": false, "subagent.isolation.mode": "rcopy" }),
+				settings: Settings.isolated({ "async.enabled": false, "agent.isolation.mode": "rcopy" }),
 			}),
 		);
 

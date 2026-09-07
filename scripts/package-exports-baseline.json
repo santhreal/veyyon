@@ -1,5 +1,73 @@
 {
 	"schemaVersion": 2,
 	"generatedFrom": "de0ccbf5a571d9de1285cb4dddeff1cc23f882aa",
-	"additions": {}
+	"additions": {
+		"exports": {
+			"@veyyon/ai": [
+				"getLoginCredential"
+			],
+			"@veyyon/ai/oauth": [
+				"getLoginCredential"
+			],
+			"@veyyon/ai/registry": [
+				"getLoginCredential"
+			],
+			"@veyyon/ai/registry/oauth": [
+				"getLoginCredential"
+			],
+			"@veyyon/catalog": [
+				"closeModelCache",
+				"iterateBundledModelMetadata",
+				"resolveBundledModelReference",
+				"resolveCursorCacheProviderId",
+				"resolveGitLabDuoWorkflowCacheProviderId",
+				"resolveLitellmCacheProviderId",
+				"resolveOpencodeGoCacheProviderId",
+				"resolveOpencodeZenCacheProviderId",
+				"resolveOpenrouterCacheProviderId",
+				"resolveVllmCacheProviderId"
+			],
+			"@veyyon/catalog/identity": [
+				"resolveBundledModelReference"
+			],
+			"@veyyon/catalog/provider-models": [
+				"resolveCursorCacheProviderId",
+				"resolveGitLabDuoWorkflowCacheProviderId",
+				"resolveLitellmCacheProviderId",
+				"resolveOpencodeGoCacheProviderId",
+				"resolveOpencodeZenCacheProviderId",
+				"resolveOpenrouterCacheProviderId",
+				"resolveVllmCacheProviderId"
+			],
+			"@veyyon/coding-agent": [
+				"CONFIGURABLE_EDITOR_ACTIONS",
+				"DEFERRED_EDITOR_ACTIONS",
+				"checkForNewVersion",
+				"getFormTheme",
+				"reportBlock",
+				"scopeFilePatterns",
+				"stripApplyPatchPathNoise"
+			],
+			"@veyyon/coding-agent/edit": [
+				"stripApplyPatchPathNoise"
+			],
+			"@veyyon/coding-agent/modes/terminal/components": [
+				"CONFIGURABLE_EDITOR_ACTIONS",
+				"DEFERRED_EDITOR_ACTIONS",
+				"reportBlock"
+			],
+			"@veyyon/hashline": [
+				"stripApplyPatchPathNoise"
+			],
+			"@veyyon/tui": [
+				"Form",
+				"encodeDirectPlacementLine",
+				"encodeKittyClippedPlacementLine",
+				"hasNativeScrollbackLiveRegion"
+			],
+			"@veyyon/utils": [
+				"stripAnsiExceptSgr"
+			]
+		}
+	}
 }

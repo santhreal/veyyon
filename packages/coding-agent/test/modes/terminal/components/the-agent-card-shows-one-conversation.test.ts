@@ -1,11 +1,11 @@
 /**
- * The subagent dashboard is scoped to the conversation that opened it.
+ * The agent dashboard is scoped to the conversation that opened it.
  *
  * WHY THESE TESTS. A process runs several conversations at once: `/new` can
  * leave the previous one streaming in the background, and ACP keeps every open
  * session in one map. The registry and the bus are process-global, so every
  * pane of this card reads a set that is wider than what it may show, and a
- * `/resume` in a long-lived process once listed the subagents of every
+ * `/resume` in a long-lived process once listed the agents of every
  * conversation the process had ever driven.
  *
  * The defect class this closes is a HALF-APPLIED scope. The card shows two
@@ -48,7 +48,7 @@ beforeEach(async () => {
 	AgentLifecycleManager.resetGlobalForTests();
 	IrcBus.resetGlobalForTests();
 	const registry = AgentRegistry.global();
-	// Two conversations in one process, each a driving agent with one subagent.
+	// Two conversations in one process, each a driving agent with one agent.
 	// The driving ids are `main:<sessionId>`, the shape the interactive session
 	// registers, so nothing here can pass by matching one hardcoded name.
 	for (const [scope, subName] of [
@@ -200,7 +200,7 @@ describe("There is no process-wide scope to switch to", () => {
 		expect(before).not.toContain("bravoscout");
 		expect(before).not.toContain("all conversations");
 		expect(before).not.toContain("this conversation");
-		expect(before).toContain("Subagent Dashboard");
+		expect(before).toContain("Agent Dashboard");
 		dashboard.dispose();
 	});
 });

@@ -422,9 +422,14 @@ export const repoScriptTests = [
 	"scripts/a-capture-runs-on-the-bun-the-product-requires.test.ts",
 	"scripts/first-party-docs-are-indexed.test.ts",
 	"scripts/script-tests-coverage.test.ts",
-	"scripts/startup-is-measured-after-the-screen-settles.test.ts",
-	"scripts/a-startup-benchmark-keeps-its-executable-and-config-isolated.test.ts",
-	"scripts/a-startup-benchmark-terminates-child-trees-and-honors-cwd.test.ts",
+	// The startup benchmark suites (`startup-is-measured-after-the-screen-settles`,
+	// `a-startup-benchmark-keeps-its-executable-and-config-isolated`,
+	// `a-startup-benchmark-terminates-child-trees-and-honors-cwd`) import `@veyyon/natives` for a
+	// value, so they load the addon at import time. The `test_scripts` job in checks.yml runs
+	// this list without one and reported all twelve of their cases as a failed addon load;
+	// ci.yml's `test_ts_native` job, which downloads the addon, runs them by path instead, and
+	// `script-tests-coverage.test.ts` reads that step as their runner. No quoted string in
+	// this comment: the deleted-suite lock reads the array's string literals from source.
 	"scripts/a-package-script-runs-in-an-existing-directory.test.ts",
 	"scripts/stray-output-path.test.ts",
 	// The leak tracer's own contract tests. Also run by the `test-leaks` job in
@@ -493,6 +498,9 @@ export const repoScriptTests = [
 	"scripts/a-published-surface-survives-the-move.test.ts",
 	"scripts/every-command-and-flag-survives-the-move.test.ts",
 	"scripts/the-kernel-names-no-tool-and-no-host.test.ts",
+	// The shared git reader those four proofs stand on: pinned baseline reachability,
+	// batched blob streaming and rename detection. A broken reader reads as a clean move.
+	"scripts/git-baseline.test.ts",
 	// The ChatGPT Codex compaction route has been broken and re-fixed 50+ times, and
 	// each break falls back to paid local compaction that busts the prompt cache. The
 	// suite hashes the file, so editing it at all fails CI until an operator records

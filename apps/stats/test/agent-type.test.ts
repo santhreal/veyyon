@@ -49,17 +49,17 @@ describe("classifyAgentType", () => {
 		const session = path.join(project, "1700000000000_abc");
 
 		expect(classifyAgentType(path.join(project, "1700000000000_abc.jsonl"))).toBe("main");
-		expect(classifyAgentType(path.join(session, "AuthLoader.jsonl"))).toBe("subagent");
+		expect(classifyAgentType(path.join(session, "AuthLoader.jsonl"))).toBe("spawn");
 		expect(classifyAgentType(path.join(session, "__advisor.jsonl"))).toBe("advisor");
-		// A subagent's own advisor still counts as advisor, however deep it nests.
+		// A spawned agent's own advisor still counts as advisor, however deep it nests.
 		expect(classifyAgentType(path.join(session, "AuthLoader", "__advisor.jsonl"))).toBe("advisor");
-		// A subagent that spawned its own subagent is still a subagent.
-		expect(classifyAgentType(path.join(session, "AuthLoader", "Nested.jsonl"))).toBe("subagent");
+		// A spawned agent that spawned its own child is still a spawn.
+		expect(classifyAgentType(path.join(session, "AuthLoader", "Nested.jsonl"))).toBe("spawn");
 		// Named (multi-advisor) transcripts `__advisor.<slug>.jsonl` also count as advisor.
 		expect(classifyAgentType(path.join(session, "__advisor.arch.jsonl"))).toBe("advisor");
 		expect(classifyAgentType(path.join(session, "AuthLoader", "__advisor.security.jsonl"))).toBe("advisor");
 		// `__advisor-2.jsonl` (output-manager bump namespace) is NOT an advisor transcript.
-		expect(classifyAgentType(path.join(session, "__advisor-2.jsonl"))).toBe("subagent");
+		expect(classifyAgentType(path.join(session, "__advisor-2.jsonl"))).toBe("spawn");
 	});
 });
 
@@ -69,7 +69,7 @@ describe("getStatsByAgentType", () => {
 		insertMessageStats([
 			makeMessage("m1", "main", { input: 100, output: 50, cacheRead: 10, cacheWrite: 0 }),
 			makeMessage("m2", "main", { input: 100, output: 50, cacheRead: 10, cacheWrite: 0 }),
-			makeMessage("s1", "subagent", { input: 40, output: 20, cacheRead: 0, cacheWrite: 0 }),
+			makeMessage("s1", "spawn", { input: 40, output: 20, cacheRead: 0, cacheWrite: 0 }),
 			makeMessage("a1", "advisor", { input: 10, output: 5, cacheRead: 0, cacheWrite: 0 }),
 		]);
 
@@ -80,7 +80,7 @@ describe("getStatsByAgentType", () => {
 			totalOutputTokens: 100,
 			totalCacheReadTokens: 20,
 		});
-		expect(byType.get("subagent")).toMatchObject({ totalRequests: 1, totalInputTokens: 40 });
+		expect(byType.get("spawn")).toMatchObject({ totalRequests: 1, totalInputTokens: 40 });
 		expect(byType.get("advisor")).toMatchObject({ totalRequests: 1, totalOutputTokens: 5 });
 	});
 
@@ -177,7 +177,7 @@ describe("agent_type migration backfill", () => {
 
 		const byType = new Map(getStatsByAgentType().map(stat => [stat.agentType, stat.totalRequests]));
 		expect(byType.get("main")).toBe(1);
-		expect(byType.get("subagent")).toBe(1);
+		expect(byType.get("spawn")).toBe(1);
 		expect(byType.get("advisor")).toBe(1);
 	});
 });

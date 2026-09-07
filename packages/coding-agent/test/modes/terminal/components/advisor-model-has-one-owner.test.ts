@@ -130,7 +130,7 @@ describe("advisor model has one owner", () => {
 		expect(advisorGroup.map(def => def.label)).toEqual([
 			"Enable Advisor",
 			"Advisor Model",
-			"Advisor for Subagents",
+			"Advisor for Spawned Agents",
 			"Advisor Sync Backlog",
 			"Advisor Immune Turns",
 		]);

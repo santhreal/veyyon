@@ -87,7 +87,7 @@
 		"statusLineUntracked": "#ff71ce",
 		"statusLineOutput": "#f222ff",
 		"statusLineCost": "#f222ff",
-		"statusLineSubagents": "retroPink",
+		"statusLineAgents": "retroPink",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

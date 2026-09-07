@@ -52,7 +52,7 @@ export interface ArmInputs {
 	/**
 	 * The arm's `.prompts.yml` after parse, if any: `prompt id -> replacement text`.
 	 *
-	 * The prompt registry vehicle: overrides a tool description, subagent prompt, or agent prompt
+	 * The prompt registry vehicle: overrides a tool description, agent prompt, or agent prompt
 	 * without modifying the prompt files in the shared repository tree.
 	 */
 	readonly prompts?: unknown;

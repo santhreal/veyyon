@@ -1,8 +1,8 @@
 /**
- * Shared subagent statistics and output formatting utilities.
+ * Shared agent statistics and output formatting utilities.
  *
  * Host-independent ViewSpan definitions for agent statistics and cleaned tool
- * output, shared by the task tool's ToolView and the Subagent Dashboard.
+ * output, shared by the task tool's ToolView and the Agent Dashboard.
  */
 
 import { formatContextUsage, formatNumber, sanitizeText } from "@veyyon/utils";
@@ -79,7 +79,7 @@ function stripRecentOutputNoticeLine(text: string): string {
 }
 
 /**
- * The tail of a subagent's output with the runtime notices the bash tool appends
+ * The tail of an agent's output with the runtime notices the bash tool appends
  * (exit code, wall time, artifact pointer) stripped, so the preview is what the
  * child's tools printed rather than what the harness added.
  */

@@ -310,7 +310,7 @@ export type {
 //
 // This is the SUBSET a guest can render, not the session's own entry union.
 // The host's is `SessionEntry` in `@veyyon/agent-core/compaction/entries`, and
-// it carries a dozen more variants (mode changes, subagent spawns, settings
+// it carries a dozen more variants (mode changes, agent spawns, settings
 // snapshots) that no guest draws. Both were spelled `SessionEntry`, so
 // `host.ts` had to import one of them under an alias to say which it meant,
 // and an editor's auto-import decided the question everywhere else.
@@ -532,7 +532,7 @@ export interface AgentSnapshot {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Bus payloads (task subagent lifecycle/progress channels)
+// Bus payloads (task agent lifecycle/progress channels)
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface AgentProgress {
@@ -558,7 +558,7 @@ export interface AgentProgress {
 	resolvedModel?: string;
 }
 
-export interface SubagentProgressPayload {
+export interface AgentProgressPayload {
 	index: number;
 	agent: string;
 	task: string;
@@ -568,7 +568,7 @@ export interface SubagentProgressPayload {
 	sessionFile?: string;
 }
 
-export interface SubagentLifecyclePayload {
+export interface AgentLifecyclePayload {
 	id: string;
 	agent: string;
 	description?: string;
@@ -577,6 +577,10 @@ export interface SubagentLifecyclePayload {
 	parentToolCallId?: string;
 	index: number;
 }
+
+/** The names the `task:subagent:*` bus payloads were published under; both stay exported so a guest built against them still compiles. */
+export type SubagentProgressPayload = AgentProgressPayload;
+export type SubagentLifecyclePayload = AgentLifecyclePayload;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Frames (JSON inside the AES-GCM seal)
@@ -623,7 +627,7 @@ export type GuestFrame =
 	| { t: "agent-cmd"; cmd: "chat" | "kill" | "revive"; agentId: string; text?: string }
 	| { t: "fetch-transcript"; reqId: number; agentId: string; fromByte: number };
 
-/** EventBus channels mirrored to guests (task subagent traffic only). */
+/** EventBus channels mirrored to guests (task agent traffic only). The spellings are frozen wire vocabulary. */
 export type BusChannel = "task:subagent:progress" | "task:subagent:lifecycle";
 
 export type HostFrame =
@@ -653,7 +657,7 @@ export type HostFrame =
 	| { t: "entry"; entry: WireSessionEntry }
 	| { t: "event"; event: AgentEvent }
 	| { t: "state"; state: SessionState }
-	/** Mirrored EventBus traffic (task subagent lifecycle/progress channels only). */
+	/** Mirrored EventBus traffic (task agent lifecycle/progress channels only). */
 	| { t: "bus"; channel: BusChannel; data: unknown }
 	| { t: "agents"; agents: AgentSnapshot[] }
 	| { t: "ui-request"; request: CollabUiRequest }

@@ -41,12 +41,12 @@ engine is TypeScript in `@veyyon/hashline`, with native helpers for block resolu
 - **Hashline edits.** `edit` and `write` apply content-addressed patches and verify
   them before anything reaches disk. A failed patch returns a structured error to the
   model instead of a half-written file.
-- **Model slots.** The interactive model (`/model`), the subagent model, and the
+- **Model slots.** The interactive model (`/model`), the agent model, and the
   compaction model are separate settings. Named roles pin a model to a kind of work.
 - **Approvals.** `tools.approvalMode` gates the read, write, and exec tiers. There is
   no operating-system sandbox: no Landlock, no seccomp, no Seatbelt, no bubblewrap.
   Approvals are the control point.
-- **Engine modes.** Plan mode, goal mode, vibe mode, compaction, and task subagents
+- **Engine modes.** Plan mode, goal mode, vibe mode, compaction, and task agents
   live in the agent loop, not in prompt text.
 
 Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi). See

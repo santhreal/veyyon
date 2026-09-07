@@ -80,7 +80,7 @@ type Transcript = "settled" | "pending" | "empty";
  * what the record itself carries, so the table reads the same way as the log line it governs.
  */
 const EXPECTED_LEVEL: Record<string, { settled: SessionExitLogLevel; pending: SessionExitLogLevel }> = {
-	// A programmatic dispose: `/quit`, a finished subagent, a test tearing down.
+	// A programmatic dispose: `/quit`, a finished agent, a test tearing down.
 	dispose: { settled: "debug", pending: "warn" },
 	[postmortem.Reason.MANUAL]: { settled: "debug", pending: "warn" },
 	// The process is going away for a reason outside the session and nothing is lost.

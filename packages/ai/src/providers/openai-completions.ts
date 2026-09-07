@@ -441,7 +441,7 @@ function hasToolHistory(messages: Message[]): boolean {
  * Without this filter, every keepalive resets `iterateWithIdleTimeout`'s
  * deadline, so a provider that streams nothing but pings keeps the watchdog
  * asleep indefinitely — observed against z.ai/GLM via OpenRouter where a
- * subagent stalled for hours with no error surfaced.
+ * agent stalled for hours with no error surfaced.
  *
  * A chunk counts as progress when it carries terminal usage, a finish reason,
  * or a model-produced delta (content / tool calls / reasoning / refusal).

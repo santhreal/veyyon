@@ -2,9 +2,9 @@
  * The status-event list's update contract, and where it is allowed to live.
  *
  * Why this suite exists: `upsertStatusEvent` decides whether a reported event REPLACES an earlier one or is
- * appended beside it, and the answer differs by op. Agent events supersede, because one subagent reports
+ * appended beside it, and the answer differs by op. Agent events supersede, because one agent reports
  * pending, then running, then completed under a single `id` and the reader wants its current state; appending
- * each would make one subagent look like three, and the count is what the status line shows. Everything else is
+ * each would make one agent look like three, and the count is what the status line shows. Everything else is
  * a distinct thing that happened. Nothing tested that directly: the behaviour was only observable through the
  * rendered progress block, so a change to the replacement rule would have shown up as a wrong count in a
  * screenful of text rather than as a failing assertion.
@@ -54,8 +54,8 @@ describe("recording an eval status event", () => {
 	});
 
 	/**
-	 * THE CONTRACT. One subagent progressing through three states stays one entry, holding the LATEST state.
-	 * Three entries would report three subagents.
+	 * THE CONTRACT. One agent progressing through three states stays one entry, holding the LATEST state.
+	 * Three entries would report three agents.
 	 */
 	it("supersedes an agent event of the same id", () => {
 		const events: EvalStatusEvent[] = [];
@@ -67,7 +67,7 @@ describe("recording an eval status event", () => {
 	});
 
 	/**
-	 * Replacement is WHOLESALE, not a merge. The event the backend sent is the current state of that subagent, so
+	 * Replacement is WHOLESALE, not a merge. The event the backend sent is the current state of that agent, so
 	 * a field absent from the newer event is absent from the list. A merge would leave a stale token count beside
 	 * a finished status and there would be no way to tell it was stale.
 	 */
@@ -80,7 +80,7 @@ describe("recording an eval status event", () => {
 		expect(events[0]).not.toHaveProperty("tool");
 	});
 
-	/** Different subagents are different entries, in the order they first appeared. */
+	/** Different agents are different entries, in the order they first appeared. */
 	it("keeps one entry per agent id", () => {
 		const events: EvalStatusEvent[] = [];
 		for (const id of ["a1", "a2", "a3"]) upsertStatusEvent(events, agentEvent(id, "pending"));
@@ -91,7 +91,7 @@ describe("recording an eval status event", () => {
 
 	/**
 	 * Superseding updates IN PLACE and does not move the entry to the end. The rendered progress block is read
-	 * top to bottom, so a subagent that jumped down the list every time it reported would make the block
+	 * top to bottom, so an agent that jumped down the list every time it reported would make the block
 	 * reshuffle under the reader's eyes while nothing had actually started or finished.
 	 */
 	it("does not reorder the list when superseding", () => {
@@ -110,8 +110,8 @@ describe("recording an eval status event", () => {
 
 	/**
 	 * An agent event with NO id cannot be matched against, so it is appended. Two of them are two entries: an
-	 * un-identified event is the one case where the function cannot tell whether it is the same subagent, and
-	 * guessing that it is would collapse two real subagents into one.
+	 * un-identified event is the one case where the function cannot tell whether it is the same agent, and
+	 * guessing that it is would collapse two real agents into one.
 	 */
 	it("appends an agent event that carries no id", () => {
 		const events: EvalStatusEvent[] = [];
@@ -133,7 +133,7 @@ describe("recording an eval status event", () => {
 
 	/**
 	 * An id shared with a DIFFERENT op is not a match. Ops are separate namespaces, and a tool call that happened
-	 * to carry the same id as a subagent must not be overwritten by it.
+	 * to carry the same id as an agent must not be overwritten by it.
 	 */
 	it("does not supersede across ops", () => {
 		const events: EvalStatusEvent[] = [];
@@ -160,8 +160,8 @@ describe("recording an eval status event", () => {
 		expect(same).toHaveLength(1);
 	});
 
-	/** A long run stays proportional to the number of distinct subagents rather than to the number of reports. */
-	it("holds one entry per subagent across many reports", () => {
+	/** A long run stays proportional to the number of distinct agents rather than to the number of reports. */
+	it("holds one entry per agent across many reports", () => {
 		const events: EvalStatusEvent[] = [];
 		for (let round = 0; round < 200; round++) {
 			for (const id of ["a1", "a2", "a3"]) upsertStatusEvent(events, agentEvent(id, `round-${round}`));

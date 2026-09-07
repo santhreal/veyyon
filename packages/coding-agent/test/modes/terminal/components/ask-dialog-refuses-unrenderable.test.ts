@@ -17,7 +17,7 @@ import { setKeybindings } from "@veyyon/utils/keybindings";
  * either threw `TypeError: undefined is not an object (evaluating 'text.replaceAll')`
  * from inside a render pass. A render-time throw is not a tool error and not a
  * notice: it is an uncaught exception, so the whole session died and took four live
- * subagents with it.
+ * agents with it.
  *
  * The class is "an ask question whose shape the renderer cannot survive", not the
  * one missing field that was reported. Every producer that can carry one is

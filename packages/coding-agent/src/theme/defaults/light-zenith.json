@@ -78,7 +78,7 @@
 		"statusLineUntracked": "cyan",
 		"statusLineOutput": "ink",
 		"statusLineCost": "blue",
-		"statusLineSubagents": "blue",
+		"statusLineAgents": "blue",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

@@ -637,8 +637,8 @@ describe("rearmArgotForDecode", () => {
 });
 
 /**
- * createArgotSession is the single owner of the subagent shorthand policy: it
- * decides whether a session gets a codec at all and, for a subagent, whether it
+ * createArgotSession is the single owner of the agent shorthand policy: it
+ * decides whether a session gets a codec at all and, for an agent, whether it
  * starts off / fresh / inherited. These branches had no test (the symbol
  * appeared only in a doc comment), yet they encode the feature's on/off contract
  * and the deliberate non-silent-failure path where `inherit` with no parent to
@@ -646,42 +646,42 @@ describe("rearmArgotForDecode", () => {
  * case below pins one branch with a concrete, observable outcome (`undefined`
  * vs a real ArgotSession, and for a fork, a NEW distinct session).
  */
-describe("createArgotSession subagent policy", () => {
-	it("returns no codec when the feature is disabled, even for a subagent", () => {
-		expect(createArgotSession({ enabled: false, isSubagent: false, subagentMode: "fresh" })).toBeUndefined();
+describe("createArgotSession agent policy", () => {
+	it("returns no codec when the feature is disabled, even for an agent", () => {
+		expect(createArgotSession({ enabled: false, isSpawned: false, agentMode: "fresh" })).toBeUndefined();
 		expect(
 			createArgotSession({
 				enabled: false,
-				isSubagent: true,
-				subagentMode: "inherit",
+				isSpawned: true,
+				agentMode: "inherit",
 				parentArgot: new ArgotSession(),
 			}),
 		).toBeUndefined();
 	});
 
 	it("gives a top-level session its own empty (unarmed) codec", () => {
-		const session = createArgotSession({ enabled: true, isSubagent: false, subagentMode: "fresh" });
+		const session = createArgotSession({ enabled: true, isSpawned: false, agentMode: "fresh" });
 		expect(session).toBeInstanceOf(ArgotSession);
 		// Loading is agent-driven, so a brand-new session starts unarmed.
 		expect(session?.loaded).toBe(false);
 	});
 
-	it("gives a subagent NO codec when the policy is off", () => {
-		expect(createArgotSession({ enabled: true, isSubagent: true, subagentMode: "off" })).toBeUndefined();
+	it("gives an agent NO codec when the policy is off", () => {
+		expect(createArgotSession({ enabled: true, isSpawned: true, agentMode: "off" })).toBeUndefined();
 	});
 
-	it("gives a fresh subagent its own empty codec", () => {
-		const session = createArgotSession({ enabled: true, isSubagent: true, subagentMode: "fresh" });
+	it("gives a fresh agent its own empty codec", () => {
+		const session = createArgotSession({ enabled: true, isSpawned: true, agentMode: "fresh" });
 		expect(session).toBeInstanceOf(ArgotSession);
 		expect(session?.loaded).toBe(false);
 	});
 
-	it("forks the parent's codec for an inheriting subagent (a new, distinct session)", () => {
+	it("forks the parent's codec for an inheriting agent (a new, distinct session)", () => {
 		const parent = new ArgotSession();
 		const child = createArgotSession({
 			enabled: true,
-			isSubagent: true,
-			subagentMode: "inherit",
+			isSpawned: true,
+			agentMode: "inherit",
 			parentArgot: parent,
 		});
 		expect(child).toBeInstanceOf(ArgotSession);
@@ -690,12 +690,12 @@ describe("createArgotSession subagent policy", () => {
 		expect(child).not.toBe(parent);
 	});
 
-	it("starts an inheriting subagent UNARMED (not undefined) when there is no parent to fork", () => {
-		// The non-silent-failure contract: a revived subagent, or one whose parent
+	it("starts an inheriting agent UNARMED (not undefined) when there is no parent to fork", () => {
+		// The non-silent-failure contract: a revived agent, or one whose parent
 		// had argot off, has no codec to fork. That must fall through to a fresh
 		// unarmed session (a fully correct path), NOT return undefined (no codec)
 		// and NOT throw.
-		const session = createArgotSession({ enabled: true, isSubagent: true, subagentMode: "inherit" });
+		const session = createArgotSession({ enabled: true, isSpawned: true, agentMode: "inherit" });
 		expect(session).toBeInstanceOf(ArgotSession);
 		expect(session?.loaded).toBe(false);
 	});

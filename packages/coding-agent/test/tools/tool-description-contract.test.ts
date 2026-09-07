@@ -52,7 +52,7 @@ const RETAINED: Readonly<Record<string, readonly string[]>> = {
 		// Parameter rules and failure modes, untouched by the cut.
 		"must exist and be a directory",
 		"never writes the profile `session.workdir` setting",
-		"Subagents already running keep the cwd they were spawned with",
+		"Spawned agents already running keep the cwd they were spawned with",
 		"needs the same permission as reading or writing outside it",
 		"Prefer an absolute path",
 	],
@@ -70,7 +70,7 @@ const RETAINED: Readonly<Record<string, readonly string[]>> = {
 		// The rules the collapse must not have taken with it.
 		"One-liners or missing acceptance criteria are PROHIBITED",
 		"skip formatters, linters, and project-wide test suites",
-		"Subagents start blank",
+		"Spawned agents start blank",
 	],
 	launch: [
 		// The routing rule the tool is chosen by. Losing the termination axis puts every

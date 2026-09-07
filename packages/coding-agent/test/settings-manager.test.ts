@@ -967,9 +967,9 @@ describe("Settings", () => {
 			const settings = await Settings.init({ cwd: projectDir, agentDir });
 
 			// `true` reproduced the previous "on" behavior. For delegation that is now
-			// `required` on subagent.delegation, whose scale added `off` below the old
+			// `required` on agent.delegation, whose scale added `off` below the old
 			// three values; todo.eager keeps its own enum.
-			expect(settings.get("subagent.delegation")).toBe("required");
+			expect(settings.get("agent.delegation")).toBe("required");
 			expect(settings.get("todo.eager")).toBe("always");
 		});
 
@@ -985,7 +985,7 @@ describe("Settings", () => {
 			// task tool was still offered. It must land on `allowed`, never `off`, or
 			// this migration would silently take the task tool away from every config
 			// that had turned the old nudge off.
-			expect(settings.get("subagent.delegation")).toBe("allowed");
+			expect(settings.get("agent.delegation")).toBe("allowed");
 			expect(settings.get("todo.eager")).toBe("default");
 		});
 

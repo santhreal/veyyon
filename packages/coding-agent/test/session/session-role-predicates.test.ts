@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import fs from "node:fs";
 import path from "node:path";
 import type { CreateAgentSessionOptions } from "@veyyon/coding-agent/session/factory-options";
-import { isInProcessChildSession, isSubagentSession } from "@veyyon/coding-agent/session/factory-options";
+import { isInProcessChildSession, isSpawnedSession } from "@veyyon/coding-agent/session/factory-options";
 
 const SDK = path.join(import.meta.dir, "../../src/sdk.ts");
 
@@ -18,7 +18,7 @@ type SessionRoleOptions = Pick<CreateAgentSessionOptions, "taskDepth" | "parentT
 
 /**
  * `sdk.ts` asks two different questions about a session's role, and they used to
- * look like the same question asked two ways: `isSubagentSession` in four places,
+ * look like the same question asked two ways: `isSpawnedSession` in four places,
  * and a bare `!options.parentTaskPrefix` in four others that decided who owns the
  * process-global singletons. Reading the file, nothing said whether the second
  * group was a narrower question on purpose or an inline copy that had drifted.
@@ -27,21 +27,21 @@ type SessionRoleOptions = Pick<CreateAgentSessionOptions, "taskDepth" | "parentT
  * where the two disagree, and pins the call sites, so neither can be "simplified"
  * into the other by someone who reads them as duplicates.
  */
-describe("isSubagentSession", () => {
+describe("isSpawnedSession", () => {
 	/**
 	 * The plain top-level session: no depth, no parent. Everything else here is a
 	 * departure from this shape.
 	 */
 	it("is false for a session with neither signal", () => {
-		expect(isSubagentSession({})).toBe(false);
-		expect(isSubagentSession({ taskDepth: 0 })).toBe(false);
-		expect(isSubagentSession({ taskDepth: 0, parentTaskPrefix: undefined })).toBe(false);
+		expect(isSpawnedSession({})).toBe(false);
+		expect(isSpawnedSession({ taskDepth: 0 })).toBe(false);
+		expect(isSpawnedSession({ taskDepth: 0, parentTaskPrefix: undefined })).toBe(false);
 	});
 
 	/**
 	 * Either signal alone is enough. The task executor sets `taskDepth`, the IRC and
 	 * registry path sets `parentTaskPrefix`, and a session can arrive carrying one
-	 * and not the other, so requiring both would miss a real subagent.
+	 * and not the other, so requiring both would miss a real agent.
 	 */
 	it.each<[string, SessionRoleOptions]>([
 		["depth alone", { taskDepth: 1 }],
@@ -49,7 +49,7 @@ describe("isSubagentSession", () => {
 		["a prefix alone", { parentTaskPrefix: "agent-7" }],
 		["both together, as the executor sends them", { taskDepth: 1, parentTaskPrefix: "agent-7" }],
 	])("is true for %s", (_label, options) => {
-		expect(isSubagentSession(options)).toBe(true);
+		expect(isSpawnedSession(options)).toBe(true);
 	});
 
 	/**
@@ -57,10 +57,10 @@ describe("isSubagentSession", () => {
 	 * to the depth check and reports top-level. Pinned because the prefix is a string
 	 * that reaches here from a session file and a spawn path, and a null-ish check
 	 * (`parentTaskPrefix !== undefined`) would read an empty one as a live parent and
-	 * make a top-level session behave as a subagent.
+	 * make a top-level session behave as an agent.
 	 */
 	it("does not treat an empty prefix as a parent", () => {
-		expect(isSubagentSession({ parentTaskPrefix: "" })).toBe(false);
+		expect(isSpawnedSession({ parentTaskPrefix: "" })).toBe(false);
 	});
 });
 
@@ -81,8 +81,8 @@ describe("isInProcessChildSession", () => {
 describe("the two predicates are not interchangeable", () => {
 	/**
 	 * THE ONE INPUT THAT SEPARATES THEM, and the reason both exist. A session
-	 * carrying task depth but no parent prefix is a subagent by every other measure
-	 * in `sdk.ts` (it is displayed as "sub", it follows the subagent Argot policy, it
+	 * carrying task depth but no parent prefix is an agent by every other measure
+	 * in `sdk.ts` (it is displayed as "sub", it follows the agent Argot policy, it
 	 * may not re-root the process) and is still an OWNER of the process globals,
 	 * because no parent in this process installed any.
 	 *
@@ -94,7 +94,7 @@ describe("the two predicates are not interchangeable", () => {
 	it("disagree exactly on depth without a parent prefix", () => {
 		const depthOnly: SessionRoleOptions = { taskDepth: 1 };
 
-		expect(isSubagentSession(depthOnly)).toBe(true);
+		expect(isSpawnedSession(depthOnly)).toBe(true);
 		expect(isInProcessChildSession(depthOnly)).toBe(false);
 	});
 
@@ -112,7 +112,7 @@ describe("the two predicates are not interchangeable", () => {
 		[{ taskDepth: 1, parentTaskPrefix: "agent-7" }],
 		[{ taskDepth: 3, parentTaskPrefix: "agent-9" }],
 	])("agree on %o", options => {
-		expect(isSubagentSession(options)).toBe(isInProcessChildSession(options));
+		expect(isSpawnedSession(options)).toBe(isInProcessChildSession(options));
 	});
 });
 
@@ -123,7 +123,7 @@ describe("the ownership sites ask through the predicate", () => {
 	 * The four ownership decisions -- constructing the process-global `AsyncJobManager`,
 	 * scoping to an inherited one, installing the active skills and rules, and installing
 	 * the global `MCPManager` -- were each a bare `!options.parentTaskPrefix`, which is
-	 * what let them drift from each other and from `isSubagentSession` silently.
+	 * what let them drift from each other and from `isSpawnedSession` silently.
 	 *
 	 * DELETED HERE: four `expect(source).toContain("<exact expression>")` cases, one per
 	 * decision. They named no bug the case below does not already catch, and they were

@@ -47,7 +47,7 @@ import { initTheme } from "@veyyon/coding-agent/theme/theme";
 import { useTempHome } from "./helpers/temp-home";
 
 /**
- * The import and subagents scenes fill their rows from `shouldRun`, which scans
+ * The import and agents scenes fill their rows from `shouldRun`, which scans
  * the machine's real home. They are mounted on fixtures below and never through
  * `shouldRun`; the redirect is the second half of that guarantee.
  */
@@ -76,7 +76,7 @@ function makeContext(terminal: { rows: number }, onRender: () => void = () => {}
 const AGENT_FIXTURE: readonly AgentDefinition[] = ["task", "scout", "designer", "reviewer", "librarian", "sonic"].map(
 	name => ({
 		name,
-		description: `The ${name} subagent, described in one full sentence so the detail block has real text to wrap.`,
+		description: `The ${name} agent, described in one full sentence so the detail block has real text to wrap.`,
 		systemPrompt: "",
 		source: "bundled" as const,
 	}),
@@ -93,7 +93,7 @@ const SCENES: ReadonlyArray<readonly [string, SetupScene]> = [
 	["providers", providersSetupScene],
 	["approvals", approvalsSetupScene],
 	[
-		"subagents",
+		"agents",
 		{
 			...agentsSetupScene,
 			shouldRun: undefined,

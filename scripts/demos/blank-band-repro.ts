@@ -45,7 +45,7 @@ const TURNS = flag("turns", 24);
 const DELAY_MS = flag("delay", 160);
 /** Rows the streaming answer grows to before it settles to its short tail. */
 const STREAM = flag("stream", 30);
-/** Rows of pinned HUD under the transcript — the todo list and subagent tree. */
+/** Rows of pinned HUD under the transcript — the todo list and agent tree. */
 const HUD = flag("hud", 5);
 
 /** A finalized transcript block: plain components are final, so rows commit. */
@@ -92,7 +92,7 @@ class Hud implements Component {
 		if (this.rows <= 0) return [];
 		return [
 			"  ▪ Todo list done · 51 tasks",
-			"  Subagents",
+			"  Agents",
 			"    ├ GitBenchAndHardening",
 			"    └ GuardUXAndBufferOpt",
 			"",

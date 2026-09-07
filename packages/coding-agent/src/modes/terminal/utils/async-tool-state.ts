@@ -9,7 +9,7 @@
  * path kept a running background `task` in `pendingTools` and marked its result
  * partial, while the transcript rebuild settled every result unconditionally. A
  * terminal resize, a theme switch or a session switch rebuilds the transcript,
- * so a running subagent's card was sealed mid-flight and its later progress had
+ * so a running agent's card was sealed mid-flight and its later progress had
  * nowhere to land.
  */
 
@@ -33,7 +33,7 @@ export function isFinalAsyncToolState(details: unknown): boolean {
 }
 
 /**
- * Whether this result belongs to a subagent still running in the background.
+ * Whether this result belongs to an agent still running in the background.
  *
  * `task` only: a backgrounded `bash` job also reports `state: "running"`, but its
  * card is settled when the call returns and its outcome arrives as a separate

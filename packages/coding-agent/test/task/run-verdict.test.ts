@@ -1,5 +1,5 @@
 /**
- * Contracts: the ONE place a subagent run's outcome is decided.
+ * Contracts: the ONE place an agent run's outcome is decided.
  *
  * WHY THIS SUITE EXISTS. The verdict used to be computed in three places from five sites: four
  * inside `driveSessionToYield`, a fifth inside `runSubprocess`, and then re-derived in
@@ -9,7 +9,7 @@
  * facts into an outcome, so the rules are testable directly instead of through a spawned run.
  *
  * WHAT A RULE MEANS HERE. Every test names the operator question it answers, because the whole point
- * of the rules is what a person sees after a cancellation: whether their subagent's finished work
+ * of the rules is what a person sees after a cancellation: whether their agent's finished work
  * survived, whether a timeout is distinguishable from a user cancel, and whether a failure that was
  * nobody's cancellation gets called one.
  *
@@ -56,7 +56,7 @@ describe("a run that finished on its own", () => {
 
 describe("a caller abort around a delivered yield", () => {
 	/**
-	 * THE RULE THIS SUITE EXISTS FOR. The subagent called yield, so its work exists and belongs to the
+	 * THE RULE THIS SUITE EXISTS FOR. The agent called yield, so its work exists and belongs to the
 	 * caller. An abort arriving around that point (the user pressed ^C, the parent turn ended, a batch
 	 * sibling failed) must not turn the finished run into a failure.
 	 */
@@ -127,7 +127,7 @@ describe("a cut-short run that delivered nothing", () => {
 
 describe("a wall-clock timeout", () => {
 	/**
-	 * The override that outranks the yield rule. A hung subagent can emit a `yield` during teardown,
+	 * The override that outranks the yield rule. A hung agent can emit a `yield` during teardown,
 	 * after the timer already aborted it; without this, `hasYield` would zero the exit code and the
 	 * run would report success, masking a run that blew its runtime.
 	 */

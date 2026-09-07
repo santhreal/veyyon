@@ -82,7 +82,7 @@
 		"statusLineUntracked": 31,
 		"statusLineOutput": 133,
 		"statusLineCost": 133,
-		"statusLineSubagents": "veinGray",
+		"statusLineAgents": "veinGray",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

@@ -240,7 +240,7 @@ click_text_in_row() { # <row-needle> <text>
 
 # Click the row carrying a string, at a column.
 #
-# A COUNTED ROW IS HOW TAKES ARE WASTED. subagent-lanes.sh lost three to a list that
+# A COUNTED ROW IS HOW TAKES ARE WASTED. agent-settings-lanes.sh lost three to a list that
 # drifted one row, and the frame it produced looked like a feature that did nothing
 # rather than like a click into empty space. A row read off the glass cannot drift,
 # and a needle that is not there ends the take instead of clicking somewhere else.
@@ -330,7 +330,7 @@ wheel_down() { key_repeat_button 5 "${1:-3}"; }
 #   2 - goal finished early before the needle appeared
 #
 # WHY THIS EXISTS AND WHY IT IS NOT `scroll_to`. Some surfaces are only on screen while the
-# work is happening: the subagent lane list is live state, and the tool block of a search is
+# work is happening: the agent lane list is live state, and the tool block of a search is
 # followed by whatever the model writes about it. `scroll_to` was the answer to that and it
 # is the wrong one against a model that reports at length -- one fan-out turn ended with a
 # verification table, a smoke-test summary and two flagged risks, which put the lane list
@@ -386,7 +386,7 @@ scene_terminal_alive() {
 #
 # A scene used to record a miss in MISSED and walk on to the next guard. A take with five
 # model-dependent guards left after the first miss then spent every remaining ceiling in
-# series before anything reported: one run waited out 1200s on a subagent name and 1800s
+# series before anything reported: one run waited out 1200s on an agent name and 1800s
 # on an edit block, ran past an hour, and published two byte-identical frames under two
 # names. Abandoning at the first miss costs one ceiling, and the reason file is what the
 # host reads to decide whether the scene or the model is at fault.

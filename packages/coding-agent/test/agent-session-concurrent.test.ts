@@ -717,10 +717,10 @@ describe("AgentSession concurrent prompt guard", () => {
 		).toBe(true);
 	});
 
-	it("does not emit session_stop for subagent sessions", async () => {
+	it("does not emit session_stop for agent sessions", async () => {
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5")!;
 		const mock = createMockModel({
-			handler: () => ({ content: ["Subagent done"] }),
+			handler: () => ({ content: ["Agent done"] }),
 		});
 		const agent = new Agent({
 			getApiKey: () => "test-key",
@@ -750,7 +750,7 @@ describe("AgentSession concurrent prompt guard", () => {
 			agentKind: "sub",
 		});
 
-		await session.prompt("Subagent message");
+		await session.prompt("Agent message");
 		await session.waitForIdle();
 
 		expect(mock.calls).toHaveLength(1);

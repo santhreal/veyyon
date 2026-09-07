@@ -81,7 +81,7 @@
 		"statusLineUntracked": 246,
 		"statusLineOutput": 222,
 		"statusLineCost": 222,
-		"statusLineSubagents": "pencilYellow",
+		"statusLineAgents": "pencilYellow",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

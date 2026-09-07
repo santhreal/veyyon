@@ -249,14 +249,14 @@ Fields:
 
 `WATCHDOG.yml`/`WATCHDOG.yaml` share the same user + project search path as `WATCHDOG.md`: the user-level `<active agent dir>/WATCHDOG.yml` plus every `WATCHDOG.yml`/`.veyyon/WATCHDOG.yml` encountered while walking from `cwd` up to the repository root (or the home directory when no repo root is found). All discovered files are loaded together; a more-specific file (project leaf > project ancestor > user) replaces an earlier entry with the same advisor slug.
 
-## Subagents
+## Agents
 
-`advisor.subagents` controls whether spawned task/eval subagents also get an advisor runtime.
+`advisor.agents` controls whether spawned task/eval agents also get an advisor runtime.
 
 - `false` (default): only the main session can run an advisor.
-- `true`: eligible subagent sessions build their own advisor with the same settings/model-role resolution, then rerun `WATCHDOG.md` discovery for that subagent session's `cwd` and agent directory.
+- `true`: eligible agent sessions build their own advisor with the same settings/model-role resolution, then rerun `WATCHDOG.md` discovery for that agent session's `cwd` and agent directory.
 
-Subagent advisors remain isolated from the subagent's primary tool session in the same way the main advisor is isolated from the main agent.
+Agent advisors remain isolated from the agent's primary tool session in the same way the main advisor is isolated from the main agent.
 
 ## Cost and context behavior
 
@@ -272,18 +272,18 @@ The advisor's live context is in-memory and append-only; it is retained while th
 
 ## Transcript persistence and observability
 
-The advisor is a passive reviewer with its own model usage, so, like a task subagent, every finalized advisor turn is appended to a JSONL inside the owning session's artifacts dir:
+The advisor is a passive reviewer with its own model usage, so, like a task agent, every finalized advisor turn is appended to a JSONL inside the owning session's artifacts dir:
 
 - main session: `<session>/__advisor.jsonl`
-- subagent advisor (`advisor.subagents: true`): `<session>/<SubId>/__advisor.jsonl`
+- agent advisor (`advisor.agents: true`): `<session>/<SubId>/__advisor.jsonl`
 
-The path is derived from the session file (not the artifacts dir, which subagents share with their parent), so each advisor writes a distinct file. The reserved `__advisor` stem cannot collide with a task subagent's `<id>.jsonl` (task id allocation reserves it).
+The path is derived from the session file (not the artifacts dir, which agents share with their parent), so each advisor writes a distinct file. The reserved `__advisor` stem cannot collide with a task agent's `<id>.jsonl` (task id allocation reserves it).
 
 Why a file:
 
-- **Usage attribution.** `veyyon stats` scans each session folder recursively, so advisor assistant turns (with their usage/cost) are attributed to the same project/session like any other subagent. Advisor "session update" prompts are persisted as `synthetic`, agent-attributed user messages so they never inflate user-message metrics.
-- **Observability.** The subagent dashboard discovers `__advisor.jsonl` on open and shows it as a read-only `advisor`-kind transcript under its owning session. Opening it there shows the transcript rather than handing the main view over, because an advisor is not a session you can talk to.
+- **Usage attribution.** `veyyon stats` scans each session folder recursively, so advisor assistant turns (with their usage/cost) are attributed to the same project/session like any other agent. Advisor "session update" prompts are persisted as `synthetic`, agent-attributed user messages so they never inflate user-message metrics.
+- **Observability.** The agent dashboard discovers `__advisor.jsonl` on open and shows it as a read-only `advisor`-kind transcript under its owning session. Opening it there shows the transcript rather than handing the main view over, because an advisor is not a session you can talk to.
 
 The file follows session switches: on `/new`, resume/switch, and branch the recorder reopens at the new session's path on the next advisor turn; before a `/drop` deletes the old artifacts dir the recorder feed is detached and drained so a queued write cannot recreate the deleted file. The on-disk log is append-only and independent of the in-memory context, re-primes and compaction never truncate it.
 
-The advisor is never a peer. The `advisor`-kind registry ref is excluded from every agent-facing surface, the `irc` peer roster and broadcast targets, the subagent peer prompt, and the `history://` index/lookup/completions, and cannot be messaged (`irc send` and collab chat reject it) or revived/killed from the subagent dashboard or collab. It is not addressable as a peer, regardless of what tools it has been granted.
+The advisor is never a peer. The `advisor`-kind registry ref is excluded from every agent-facing surface, the `irc` peer roster and broadcast targets, the agent peer prompt, and the `history://` index/lookup/completions, and cannot be messaged (`irc send` and collab chat reject it) or revived/killed from the agent dashboard or collab. It is not addressable as a peer, regardless of what tools it has been granted.

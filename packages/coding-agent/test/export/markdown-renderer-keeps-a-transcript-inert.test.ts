@@ -5,7 +5,7 @@
  * doing it was named `safeMarkedParse`.
  *
  * Anyone who can land text in a transcript reached that sink: a page the fetch tool pulled in, a
- * README in a cloned repo, an MCP tool result, a subagent return, or prompt-injected model text.
+ * README in a cloned repo, an MCP tool result, an agent return, or prompt-injected model text.
  * On `/share` the payload executed on the share origin, which is also the default collab web
  * base, so same-origin script could read a live session's room key and write token out of the URL
  * fragment. On `/export` it executed when the operator opened the file.

@@ -350,7 +350,7 @@ The settings layers deep-merge in a fixed order (profile, then `--config` overla
 
 - `ConfigFile` JSON -> YAML migration for YAML-targeted files.
 - Settings migration from `settings.json` and `agent.db` to `config.yml`.
-- Settings key migrations include `queueMode`, `ask.timeout`, flat `theme`, `task.isolation.enabled`, legacy `task.isolation.mode` values, the whole `task.*` group plus `modelRoles.task` moving to `subagent.*`, removed edit modes, `statusLine.plan_mode`, `memories.enabled`, and hindsight scoping/name fields.
+- Settings key migrations include `queueMode`, `ask.timeout`, flat `theme`, `task.isolation.enabled`, legacy `task.isolation.mode` values, the whole `task.*` group plus `modelRoles.task` moving to `agent.*`, removed edit modes, `statusLine.plan_mode`, `memories.enabled`, and hindsight scoping/name fields.
 - The removed per-source skill toggles (`skills.enableCodexUser`, `skills.enableClaudeUser`, `skills.enableClaudeProject`, `skills.enablePiUser`, `skills.enablePiProject`, `skills.enableAgentsUser`, `skills.enableAgentsProject`) and `skills.customDirectories` are no longer read. Skills load only from the active profile. A stale key in an old `config.yml` is ignored, not an error.
 
 If these compatibility paths are removed in code, update this document immediately; several runtime behaviors still depend on them today.

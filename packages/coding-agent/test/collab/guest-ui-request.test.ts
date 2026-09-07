@@ -250,7 +250,7 @@ async function makeHarness(opts?: { readOnly?: boolean }): Promise<GuestUiHarnes
 		},
 		updateEditorBorderColor: () => {},
 		eventController: { handleEvent: () => Promise.resolve() },
-		syncRunningSubagentBadge: () => {},
+		syncRunningAgentBadge: () => {},
 		showHookSelector: (
 			title: string,
 			options: ExtensionUISelectItem[],

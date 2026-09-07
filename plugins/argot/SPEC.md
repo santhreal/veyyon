@@ -172,8 +172,8 @@ one of two flows:
     session from one vocabulary directly, discarding anything already loaded.
     Passing a vocabulary with no handles re-arms the inert codec. For a session
     that loads more than one project, use `load` with distinct keys.
-  - `session.fork()` returns a detached copy of the session, for handing a subagent
-    the parent's shorthand at spawn (see [Subagents](#subagents)). The copy is
+  - `session.fork()` returns a detached copy of the session, for handing an agent
+    the parent's shorthand at spawn (see [Agents](#agents)). The copy is
     independent: the child loading or unloading never reaches back into the parent.
   - `session.promptFragment()` is the system-prompt block listing the handles the
     session currently *teaches* (the union of every loaded key still taught), `""`
@@ -536,7 +536,7 @@ interception.
    split across two deltas is never shown raw or resolved early.
 
 The complete, mechanical seam list a harness wires (tool arguments, finished
-display, streamed preview, transcript, spawn prompt, subagent return) is given in
+display, streamed preview, transcript, spawn prompt, agent return) is given in
 the [integration manual](./INTEGRATING.md).
 
 ### The wire-only invariant
@@ -586,7 +586,7 @@ a pure predicate over an `ArgotGate` (`models`, `disableAboveTokens`) and the
 per-turn inputs a harness measures (`model`, `contextTokens`). It governs only
 encoding (whether the harness teaches the notation this turn) and never
 decoding, which stays unconditional. The remaining levers (scope, budget,
-sub-agent slices) act on the loaded vocabulary and compose with it. See
+agent slices) act on the loaded vocabulary and compose with it. See
 [README: Controlling model encoding](./README.md#controlling-model-encoding).
 
 - **Gate the codec by model.** A dictionary is only as useful as the model's
@@ -607,10 +607,10 @@ sub-agent slices) act on the loaded vocabulary and compose with it. See
 - **Budget the codebook.** When a project has more handles than you want to spend
   context on, rank by tokens saved (length times frequency) and activate the top
   slice that fits your budget.
-- **Give sub-agents their own vocabulary.** Each subagent owns its own session, so
-  a subagent doing one narrow job can start empty and load a denser, task-specific
+- **Give agents their own vocabulary.** Each agent owns its own session, so
+  an agent doing one narrow job can start empty and load a denser, task-specific
   slice (`fresh`), inherit the parent's (`inherit`), or run without shorthand
-  (`off`). Correctness never depends on the choice; see [Subagents](#subagents).
+  (`off`). Correctness never depends on the choice; see [Agents](#agents).
 
 ## Economics
 
@@ -721,7 +721,7 @@ no HEAD to key on. `resolveProjectCache({ baseDir, cacheId, contentSig, files })
 reads the entry for that signature if it exists (returning it verbatim, `hit:
 true`) and otherwise generates a fresh dictionary from `files` and writes it
 atomically (`hit: false`). An entry is never mutated once written. Two properties
-make this safe under many sessions and subagents at once:
+make this safe under many sessions and agents at once:
 
 - **Immutable, per-state entries.** A repository that moves produces a new
   signature and a new entry; the old one stays put. Two agents on the same state
@@ -792,16 +792,16 @@ with, keying on the root it returns). Either way it teaches the handles with
 `promptFragment` (the model never reads an `AGENTS.dict` in this flow, so it must
 learn the table from the prompt).
 
-## Subagents
+## Agents
 
-A harness that spawns subagents needs each one to be correct without leaking
+A harness that spawns agents needs each one to be correct without leaking
 handles between parent and child. The load-bearing rule is not vocabulary
 sharing, it is the boundary rule from [the codec contract](#the-codec-contract),
 applied to the spawn seam: **every agent expands its own output at every boundary
 it emits across**: a tool call, the persisted transcript, the prompt it hands a
 spawned child, and the result it returns to a parent. Because each side only ever
 emits fully expanded text to the other, a handle never crosses the parent-child
-wire, and no child ever needs the parent's vocabulary to be correct. A subagent
+wire, and no child ever needs the parent's vocabulary to be correct. An agent
 that starts with an empty session is already correct.
 
 On that foundation, a harness picks how much of the parent's shorthand a child
@@ -896,7 +896,7 @@ Shipped in the TypeScript reference implementation:
   `ResolvedProjectVocab`, `ProjectVocabNotice`), over the corpus policy
   `gatherRepoFiles` / `walkProjectTree` / `shouldScanContent` and the budget
   helpers `resolveTokenBudget` / `budgetKeyedSignature`,
-- keyed multi-project sessions and the subagent model (boundary rule plus
+- keyed multi-project sessions and the agent model (boundary rule plus
   `off`/`fresh`/`inherit` via `fork`),
 - veyyon as the first consumer, with a measured before/after token delta to lead
   the public pitch.

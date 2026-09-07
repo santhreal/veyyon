@@ -131,7 +131,7 @@
           <ul>
             <li><b>Interactive</b>: <span class="mono">/model</span>, <span class="mono">--model</span>; stored as <span class="mono">modelRoles.default</span>.</li>
             <li><b>Roles</b>: <span class="mono">smol</span>, <span class="mono">slow</span>, <span class="mono">plan</span>, <span class="mono">task</span>, <span class="mono">advisor</span>, … via <span class="mono">modelRoles</span>.</li>
-            <li><b>Overrides</b>: <span class="mono">subagent.model</span>, <span class="mono">compaction.model</span>.</li>
+            <li><b>Overrides</b>: <span class="mono">agent.model</span>, <span class="mono">compaction.model</span>.</li>
             <li><b>Cycle</b>: <span class="mono">cycleOrder</span> (default <span class="mono">smol</span>, <span class="mono">slow</span>).</li>
           </ul>
         </div>
@@ -139,7 +139,7 @@
 <span class="k">modelRoles</span>:
   <span class="k">default</span>: <span class="s">openai/gpt-5</span>
   <span class="k">smol</span>: <span class="s">openai/gpt-4.1-mini</span>
-<span class="k">subagent</span>:
+<span class="k">agent</span>:
   <span class="k">model</span>: <span class="s">deepseek/deepseek-chat</span>
 <span class="k">compaction</span>:
   <span class="k">model</span>: <span class="s">openai/gpt-5-mini</span></pre>

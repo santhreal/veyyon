@@ -80,7 +80,7 @@
 		"statusLineUntracked": "skyTeal",
 		"statusLineOutput": "wildflowerPurple",
 		"statusLineCost": "warningGold",
-		"statusLineSubagents": "wildflowerPurple",
+		"statusLineAgents": "wildflowerPurple",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

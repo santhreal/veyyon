@@ -66,7 +66,7 @@
  *     silent and unstoppable: `#isRetryableError` is false here by construction,
  *     which is exactly what routes the failure to a continuation, so the retry
  *     ladder never ran and never created the gate `isRetrying` reports. Nothing
- *     was emitted, so the countdown, a subagent HUD's `retryState` and every
+ *     was emitted, so the countdown, an agent HUD's `retryState` and every
  *     hook, extension, collab and SDK consumer saw an idle session; escape did
  *     not reach `abortRetry()` because that is gated on `isRetrying`; and the
  *     wait sat inside the post-prompt scheduler where `abortRetry()` could not
@@ -78,7 +78,7 @@
  * 14. A landed continuation CLOSES the wait it announced. The success-side end
  *     event is gated on the retry ladder's attempt counter, which a continuation
  *     never touches, so announcing the wait without widening that gate would
- *     leave the countdown, a subagent HUD's retryState and the turn's retry
+ *     leave the countdown, an agent HUD's retryState and the turn's retry
  *     trace all showing a retry in progress on a turn that already came back. A
  *     start with no end is worse than no start.
  *
@@ -726,7 +726,7 @@ it("lets abortRetry cancel the wait instead of continuing", async () => {
 });
 
 it("closes the announced wait when the continued turn lands", async () => {
-	// A start with no end is worse than no start: the countdown, a subagent HUD's
+	// A start with no end is worse than no start: the countdown, an agent HUD's
 	// retryState and the turn's retry trace all resolve on the end event, and the
 	// success-side one is gated on the RETRY ladder's attempt counter, which a
 	// continuation never touches. So announcing the wait without this arm would

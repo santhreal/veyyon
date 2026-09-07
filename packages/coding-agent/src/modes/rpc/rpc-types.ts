@@ -12,12 +12,7 @@ import type { BashResult } from "../../exec/bash-executor";
 import type { ContextUsage } from "../../extensibility/extensions/types";
 import type { AgentSessionEvent, SessionStats } from "../../session/agent-session-types";
 import type { AvailableSlashCommandSource } from "../../slash-commands/available-commands";
-import type {
-	AgentProgress,
-	SubagentEventPayload,
-	SubagentLifecyclePayload,
-	SubagentProgressPayload,
-} from "../../task";
+import type { AgentEventPayload, AgentLifecyclePayload, AgentProgress, AgentProgressPayload } from "../../task";
 import type { TodoPhase } from "../../tools/agent/todo";
 
 // ============================================================================
@@ -39,9 +34,9 @@ export type RpcCommand =
 	| { id?: string; type: "set_todos"; phases: TodoPhase[] }
 	| { id?: string; type: "set_host_tools"; tools: RpcHostToolDefinition[] }
 	| { id?: string; type: "set_host_uri_schemes"; schemes: RpcHostUriSchemeDefinition[] }
-	| { id?: string; type: "set_subagent_subscription"; level: RpcSubagentSubscriptionLevel }
+	| { id?: string; type: "set_subagent_subscription"; level: RpcAgentSubscriptionLevel }
 	| { id?: string; type: "get_subagents" }
-	| { id?: string; type: "get_subagent_messages"; subagentId?: string; sessionFile?: string; fromByte?: number }
+	| { id?: string; type: "get_subagent_messages"; agentId?: string; sessionFile?: string; fromByte?: number }
 
 	// Model
 	| { id?: string; type: "set_model"; provider: string; modelId: string }
@@ -136,9 +131,9 @@ export interface RpcHandoffResult {
 	savedPath?: string;
 }
 
-export type RpcSubagentSubscriptionLevel = "off" | "progress" | "events";
+export type RpcAgentSubscriptionLevel = "off" | "progress" | "events";
 
-export interface RpcSubagentSnapshot {
+export interface RpcAgentSnapshot {
 	id: string;
 	index: number;
 	agent: string;
@@ -153,7 +148,7 @@ export interface RpcSubagentSnapshot {
 	parentToolCallId?: string;
 }
 
-export interface RpcSubagentMessagesResult {
+export interface RpcAgentMessagesResult {
 	sessionFile: string;
 	fromByte: number;
 	nextByte: number;
@@ -193,21 +188,21 @@ export type RpcResponse =
 			type: "response";
 			command: "set_subagent_subscription";
 			success: true;
-			data: { level: RpcSubagentSubscriptionLevel };
+			data: { level: RpcAgentSubscriptionLevel };
 	  }
 	| {
 			id?: string;
 			type: "response";
 			command: "get_subagents";
 			success: true;
-			data: { subagents: RpcSubagentSnapshot[] };
+			data: { agents: RpcAgentSnapshot[] };
 	  }
 	| {
 			id?: string;
 			type: "response";
 			command: "get_subagent_messages";
 			success: true;
-			data: RpcSubagentMessagesResult;
+			data: RpcAgentMessagesResult;
 	  }
 
 	// Model
@@ -299,27 +294,27 @@ export type RpcResponse =
 	| { id?: string; type: "response"; command: string; success: false; error: string };
 
 // ============================================================================
-// Subagent Events (stdout)
+// Agent Events (stdout)
 // ============================================================================
 
-export interface RpcSubagentLifecycleFrame {
+export interface RpcAgentLifecycleFrame {
 	type: "subagent_lifecycle";
-	payload: SubagentLifecyclePayload;
+	payload: AgentLifecyclePayload;
 }
 
-export interface RpcSubagentProgressFrame {
+export interface RpcAgentProgressFrame {
 	type: "subagent_progress";
-	payload: SubagentProgressPayload;
+	payload: AgentProgressPayload;
 }
 
-export interface RpcSubagentEventFrame {
+export interface RpcAgentEventFrame {
 	type: "subagent_event";
-	payload: SubagentEventPayload;
+	payload: AgentEventPayload;
 }
 
-export type RpcSubagentFrame = RpcSubagentLifecycleFrame | RpcSubagentProgressFrame | RpcSubagentEventFrame;
+export type RpcAgentFrame = RpcAgentLifecycleFrame | RpcAgentProgressFrame | RpcAgentEventFrame;
 
-export type RpcSessionEventFrame = AgentSessionEvent | RpcSubagentFrame;
+export type RpcSessionEventFrame = AgentSessionEvent | RpcAgentFrame;
 
 // ============================================================================
 // Extension UI Events (stdout)

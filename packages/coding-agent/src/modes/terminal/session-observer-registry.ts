@@ -1,12 +1,12 @@
 // `../../task/types`, the module that DECLARES these, not the `../../task` barrel that re-exports them: the
 // barrel is the whole task subsystem, 1,406 modules, and this file subscribes to two channels by name.
-import type { AgentProgress, SubagentLifecyclePayload, SubagentProgressPayload } from "../../task/types";
-import { TASK_SUBAGENT_LIFECYCLE_CHANNEL, TASK_SUBAGENT_PROGRESS_CHANNEL } from "../../task/types";
+import type { AgentLifecyclePayload, AgentProgress, AgentProgressPayload } from "../../task/types";
+import { TASK_AGENT_LIFECYCLE_CHANNEL, TASK_AGENT_PROGRESS_CHANNEL } from "../../task/types";
 import type { EventBus } from "../../utils/event-bus";
 
 export interface ObservableSession {
 	id: string;
-	kind: "main" | "subagent";
+	kind: "main" | "spawn";
 	label: string;
 	agent?: string;
 	description?: string;
@@ -15,14 +15,14 @@ export interface ObservableSession {
 	parentToolCallId?: string;
 	/**
 	 * Spawn runs as a detached background job (parent turn not blocked on it).
-	 * The anchored subagent HUD only lists detached spawns: sync task spawns
+	 * The anchored agent HUD only lists detached spawns: sync task spawns
 	 * and eval `agent()` spawns are already rendered live by their own inline
 	 * tool block / eval cell.
 	 */
 	detached?: boolean;
 	index?: number;
 	lastUpdate: number;
-	/** Latest progress snapshot from the subagent executor */
+	/** Latest progress snapshot from the agent executor */
 	progress?: AgentProgress;
 }
 
@@ -113,7 +113,7 @@ export class SessionObserverRegistry {
 	}
 
 	/**
-	 * The subagents one session directly spawned, by the dotted-id spawn-tree
+	 * The agents one session directly spawned, by the dotted-id spawn-tree
 	 * convention: a requested id never contains ".", so a dot marks a nested
 	 * child ("Anna.Bob" is Anna's child Bob; see AgentOutputManager). An
 	 * undefined `parentId` names the driving session's scope, the top-level
@@ -121,13 +121,13 @@ export class SessionObserverRegistry {
 	 *
 	 * The registry observes ONE session's event bus, so a scope below the root
 	 * is empty until that session's bus is observed; for a leaf agent the empty
-	 * answer is the truth, not a fallback. The subagent HUD scopes itself by the
+	 * answer is the truth, not a fallback. The agent HUD scopes itself by the
 	 * viewed session through this accessor; the `/agents` roster keeps the
 	 * unscoped {@link getSessions}.
 	 */
 	getSessionsSpawnedBy(parentId: string | undefined): ObservableSession[] {
 		return this.getSessions().filter(session => {
-			if (session.kind !== "subagent") return false;
+			if (session.kind !== "spawn") return false;
 			if (parentId === undefined) return !session.id.includes(".");
 			const prefix = `${parentId}.`;
 			if (!session.id.startsWith(prefix)) return false;
@@ -135,10 +135,10 @@ export class SessionObserverRegistry {
 		});
 	}
 
-	getActiveSubagentCount(): number {
+	getActiveAgentCount(): number {
 		let count = 0;
 		for (const s of this.#sessions.values()) {
-			if (s.kind === "subagent" && s.status === "active") count++;
+			if (s.kind === "spawn" && s.status === "active") count++;
 		}
 		return count;
 	}
@@ -168,8 +168,8 @@ export class SessionObserverRegistry {
 		this.#eventBusUnsubscribers = [];
 
 		this.#eventBusUnsubscribers.push(
-			eventBus.on(TASK_SUBAGENT_LIFECYCLE_CHANNEL, data => {
-				const payload = data as SubagentLifecyclePayload;
+			eventBus.on(TASK_AGENT_LIFECYCLE_CHANNEL, data => {
+				const payload = data as AgentLifecyclePayload;
 				const status = STATUS_MAP[payload.status];
 				if (!status) return;
 
@@ -187,8 +187,8 @@ export class SessionObserverRegistry {
 				} else {
 					this.#sessions.set(payload.id, {
 						id: payload.id,
-						kind: "subagent",
-						label: payload.description ?? `Subagent #${payload.index}`,
+						kind: "spawn",
+						label: payload.description ?? `Agent #${payload.index}`,
 						agent: payload.agent,
 						description: payload.description,
 						status,
@@ -204,8 +204,8 @@ export class SessionObserverRegistry {
 		);
 
 		this.#eventBusUnsubscribers.push(
-			eventBus.on(TASK_SUBAGENT_PROGRESS_CHANNEL, data => {
-				const payload = data as SubagentProgressPayload;
+			eventBus.on(TASK_AGENT_PROGRESS_CHANNEL, data => {
+				const payload = data as AgentProgressPayload;
 				const progress = payload.progress;
 				const id = progress.id;
 				const existing = this.#sessions.get(id);
@@ -223,8 +223,8 @@ export class SessionObserverRegistry {
 				} else {
 					this.#sessions.set(id, {
 						id,
-						kind: "subagent",
-						label: progress.description ?? `Subagent #${payload.index}`,
+						kind: "spawn",
+						label: progress.description ?? `Agent #${payload.index}`,
 						agent: payload.agent,
 						description: progress.description,
 						status: "active",

@@ -31,6 +31,7 @@ import {
 	branchPathOf,
 	GROUP_NAMES,
 	generateSparseLedger,
+	getPostSnapshotRenames,
 	HISTORICAL_SNAPSHOT_COMMIT,
 	HISTORICAL_SNAPSHOT_PATH,
 	isBinaryFile,
@@ -89,12 +90,12 @@ describe("a moved file keeps every byte but its paths", () => {
 		expect(ledger.schemaVersion).toBe(MOVE_EQUIVALENCE_SCHEMA_VERSION);
 		expect(ledger.generatedFrom).toBe(PINNED_BASELINE_COMMIT);
 		expect(ledger.counts.total).toBe(4804);
-		expect(ledger.counts.none).toBe(3574);
-		expect(ledger.counts.importsAndCommentsOnly).toBe(773);
-		expect(ledger.counts.changed).toBe(457);
+		expect(ledger.counts.none).toBe(3416);
+		expect(ledger.counts.importsAndCommentsOnly).toBe(761);
+		expect(ledger.counts.changed).toBe(627);
 		expect(ledger.counts.binary).toBe(ledger.counts.binary);
 		expect(ledger.counts.binary).toBeGreaterThanOrEqual(18);
-		expect(Object.keys(ledger.changed).length).toBe(457);
+		expect(Object.keys(ledger.changed).length).toBe(627);
 		expect(rewrites.length).toBeGreaterThan(50);
 	});
 
@@ -185,15 +186,15 @@ describe("a moved file keeps every byte but its paths", () => {
 
 		expect(unapproved).toEqual([]);
 		expect(drifted).toEqual([]);
-		expect(counts.none).toBe(3574);
-		expect(counts.importsAndCommentsOnly).toBe(773);
-		expect(counts.changed).toBe(457);
+		expect(counts.none).toBe(3416);
+		expect(counts.importsAndCommentsOnly).toBe(761);
+		expect(counts.changed).toBe(627);
 		expect(counts.total).toBe(4804);
 	});
 
 	it("explains every file whose content really changed and verifies fingerprints", async () => {
 		const changedEntries = Object.entries(ledger.changed);
-		expect(changedEntries.length).toBe(457);
+		expect(changedEntries.length).toBe(627);
 		const baselineBlobs = await batchReadGitBlobs(
 			changedEntries.map(([, record]) => `${ledger.generatedFrom}:${record.old}`),
 			REPO_ROOT,
@@ -233,6 +234,8 @@ describe("a moved file keeps every byte but its paths", () => {
 
 	it("draws every group from the recorded vocabulary", () => {
 		expect([...GROUP_NAMES].sort()).toEqual([
+			"agent-settings-wording",
+			"agent-vocabulary-prose",
 			"bindings-path-expectation",
 			"changelog-or-readme",
 			"colocated-test",
@@ -241,6 +244,7 @@ describe("a moved file keeps every byte but its paths", () => {
 			"diagnostic-grouping-owner",
 			"engine-consumer",
 			"extracted-to-utils",
+			"focused-agent-pin",
 			"host-boundary",
 			"json-walk-split",
 			"kernel-absorption",
@@ -497,9 +501,17 @@ describe("a moved file keeps every byte but its paths", () => {
 		}
 
 		// Removing attributed imports must fail structural comparison, without an approved full-file hash masking it.
-		const attributePairs = Object.keys(ledger.importAttributes).map(
-			current => pairs.find(([, target]) => target === current) ?? ([current, current] as const),
-		);
+		const postRenames = getPostSnapshotRenames(REPO_ROOT);
+		const postRenamesInverse = new Map<string, string>();
+		for (const [from, to] of postRenames) {
+			postRenamesInverse.set(to, from);
+		}
+		const attributePairs = Object.keys(ledger.importAttributes).map(current => {
+			const previousP = postRenamesInverse.get(current) ?? current;
+			const pair = pairs.find(([, target]) => target === current);
+			const oldP = pair ? pair[0] : previousP;
+			return [oldP, current] as const;
+		});
 		const attributeBlobs = await batchReadGitBlobs(
 			attributePairs.map(([old]) => `${ledger.generatedFrom}:${old}`),
 			REPO_ROOT,
@@ -545,11 +557,11 @@ describe("a moved file keeps every byte but its paths", () => {
 
 		const expanded = loadExpandedMoveEquivalenceLedger(sparse);
 		expect(expanded.counts.total).toBe(4804);
-		expect(expanded.counts.none).toBe(3574);
-		expect(expanded.counts.importsAndCommentsOnly).toBe(773);
-		expect(expanded.counts.changed).toBe(457);
+		expect(expanded.counts.none).toBe(3416);
+		expect(expanded.counts.importsAndCommentsOnly).toBe(761);
+		expect(expanded.counts.changed).toBe(627);
 		expect(expanded.counts.binary).toBe(26);
-		expect(Object.keys(expanded.changed).length).toBe(457);
+		expect(Object.keys(expanded.changed).length).toBe(627);
 		expect(expanded.rewrites.length).toBe(157);
 		expect(Object.keys(expanded.importAttributes).length).toBe(92);
 		const measured = await generateSparseLedger();
@@ -557,8 +569,15 @@ describe("a moved file keeps every byte but its paths", () => {
 		const historicalText = readGitFileText(HISTORICAL_SNAPSHOT_PATH, HISTORICAL_SNAPSHOT_COMMIT);
 		if (!historicalText) throw new Error("Historical approval snapshot is missing");
 		const historical: { files: Record<string, Record<string, unknown>> } = JSON.parse(historicalText);
+		const postRenames = getPostSnapshotRenames(REPO_ROOT);
+		const postRenamesInverse = new Map<string, string>();
+		for (const [from, to] of postRenames) {
+			postRenamesInverse.set(to, from);
+		}
 		for (const [relative, record] of Object.entries(measured.sparse.deviations)) {
-			const previous = historical.files[relative];
+			const previous =
+				historical.files[relative] ??
+				(postRenamesInverse.has(relative) ? historical.files[postRenamesInverse.get(relative)!] : undefined);
 			expect(previous).toBeDefined();
 			expect({
 				old: previous.old,

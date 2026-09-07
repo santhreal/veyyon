@@ -286,7 +286,7 @@ export function describeSettingTypeMismatch(path: string, value: unknown): strin
 		case "record": {
 			if (!isRecord(value)) return mismatch("an object");
 			// A map whose entries carry a shape of their own (e.g. the
-			// depth-keyed model chains of `subagent.modelByDepth`) names the
+			// depth-keyed model chains of `agent.modelByDepth`) names the
 			// offending entry; the entries that are fine keep working.
 			if (def.validateEntry === undefined) return undefined;
 			for (const [key, entry] of Object.entries(value)) {

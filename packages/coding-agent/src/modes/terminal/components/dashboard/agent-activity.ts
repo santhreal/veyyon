@@ -1,5 +1,5 @@
 /**
- * The live side of the subagent dashboard: who is running and what each one
+ * The live side of the agent dashboard: who is running and what each one
  * is called.
  *
  * WHY THIS MODULE EXISTS. The Control Center used to open on a strip of source
@@ -18,9 +18,9 @@
 import type { AgentKind, AgentRef, AgentStatus } from "../../../../registry/agent-registry";
 
 /**
- * Call signs handed to subagents, in order.
+ * Call signs handed to spawned agents, in order.
  *
- * A subagent's real id is a spawn-scoped string nobody can hold in their head
+ * A spawned agent's real id is a spawn-scoped string nobody can hold in their head
  * (`task-3f2a…`), and its `displayName` is usually a slice of the task prompt,
  * so a transcript that labels turns by either reads as noise. A short, fixed
  * call sign is memorable, and memorable is the entire point of a room view: you
@@ -54,7 +54,7 @@ export const ADVISOR_CALL_SIGN = "Advisor";
  * The call sign for the `order`-th agent of a kind, wrapping past the list.
  *
  * Wrapping suffixes rather than falling back to the raw id: past twelve
- * concurrent subagents the names repeat, and `Kestrel-2` still reads as a name
+ * concurrent spawned agents the names repeat, and `Kestrel-2` still reads as a name
  * while `task-3f2a…` does not. The number starts at 2 because the first cycle
  * carries no suffix, so the common case stays clean.
  */
@@ -74,7 +74,7 @@ export interface LiveAgent {
 	/** Stable, human-readable label: {@link MAIN_CALL_SIGN} or a call sign. */
 	callSign: string;
 	/**
-	 * The registry's own label. For a task subagent this is the AGENT TYPE it was
+	 * The registry's own label. For a task spawned agent this is the AGENT TYPE it was
 	 * spawned from (`reviewer`, `scout`): `task/executor.ts` registers it as
 	 * `agent.name`, which is why the roster can name the type without a second
 	 * lookup.
@@ -198,7 +198,7 @@ export function collectLiveAgents(refs: readonly AgentRef[]): LiveAgent[] {
  * spawned from (`reviewer`, `scout`, `task`).
  *
  * {@link LiveAgent.displayName} carries it, because the task executor registers
- * a subagent under `agent.name`. Two rows have no type to show and return the
+ * a spawned agent under `agent.name`. Two rows have no type to show and return the
  * empty string rather than repeating what the reader already has: the driving
  * session registers as `main` and would print that word twice under the call
  * sign `Main`, and an agent persisted by an earlier run registers under its own

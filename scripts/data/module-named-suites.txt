@@ -295,7 +295,7 @@ packages/coding-agent/test/registry/agent-lifecycle.test.ts
 packages/coding-agent/test/relativize-paths.test.ts
 packages/coding-agent/test/edit/agent-hook.test.ts
 packages/coding-agent/test/edit/schema-repair.test.ts
-packages/coding-agent/test/rpc-subagents.test.ts
+packages/coding-agent/test/rpc-agents.test.ts
 packages/coding-agent/test/rpc.test.ts
 packages/coding-agent/test/secrets/env-keywords.test.ts
 packages/coding-agent/test/secrets/placeholder.test.ts
@@ -336,7 +336,7 @@ packages/coding-agent/test/task/isolation-runner.test.ts
 packages/coding-agent/test/task/name-generator.test.ts
 packages/coding-agent/test/task/output-manager.test.ts
 packages/coding-agent/test/task/spawn-policy.test.ts
-packages/coding-agent/test/task/subagent-settings.test.ts
+packages/coding-agent/test/task/agent-settings.test.ts
 packages/coding-agent/test/task/veyyon-command.test.ts
 packages/coding-agent/test/task/worktree.test.ts
 packages/coding-agent/test/telemetry-export.test.ts

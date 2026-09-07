@@ -18,7 +18,7 @@
  *      out of the rendered layout AND out of the generated settings reference.
  *   3. A NUMERIC row with no `ui.options` ladder. `pathToSettingDef` treats an
  *      optionless number as schema-only, so the row is documented, defaulted, honored
- *      and unreachable. That is exactly how `subagent.idleTtlMs` shipped invisible.
+ *      and unreachable. That is exactly how `agent.idleTtlMs` shipped invisible.
  *   4. A dependent knob with no resolvable `ui.condition`. An unresolved condition name
  *      fails OPEN, so the kill row would sit on screen offering a policy for a budget
  *      of zero.
@@ -247,7 +247,7 @@ describe("the moved CPU rows keep their keys, types and defaults", () => {
  * optionless number to a free-text row, and `getSettingsForTab` returns it either way,
  * so "survives the adapter" means it arrives as a SUBMENU with a ladder to pick from:
  * that is what the shipped numeric limits offer, and a text box for "how many cores"
- * with no ladder is the shape `subagent.idleTtlMs` was invisible in.
+ * with no ladder is the shape `agent.idleTtlMs` was invisible in.
  */
 describe("every numeric limit on the tab survives the UI adapter", () => {
 	it("arrives as a submenu with a non-empty option ladder", () => {

@@ -11,7 +11,7 @@
  * and the engine kept the pre-splice coordinates, so every later frame
  * diverged; and once that was fixed for a transcript at frame row 0, the slide
  * still assumed the transcript IS at row 0, so the shipped layout — which
- * always mounts a filler above it, and hangs the todo and subagent HUDs in the
+ * always mounts a filler above it, and hangs the todo and agent HUDs in the
  * same band — diverged by exactly the header height instead.
  *
  * THE CLASS, not the incident. The invariant is that where the dropping child

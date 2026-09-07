@@ -443,7 +443,7 @@ export function formatApprovalPrompt(tool: ApprovalSubject, args: unknown, reaso
  * Format the richer interactive card without breaking prompt-text consumers.
  *
  * `requester` names the agent the call belongs to, and is set only for a spawned
- * subagent. Every subagent prompt is presented at the ROOT session, so the
+ * agent. Every child prompt is presented at the ROOT session, so the
  * operator faces one queue fed by an arbitrary number of children: without a name
  * on the card, two agents asking to run `bash` at the same moment produce two
  * identical prompts, and answering the wrong one is indistinguishable from

@@ -122,7 +122,7 @@ describe("a tool domain declares what it contributes", () => {
 		}
 
 		// The vibe tools reach a session through `createVibeTools` rather than a manifest, because a
-		// subagent never gets them. Their renderers still ship with the domain that constructs them,
+		// agent never gets them. Their renderers still ship with the domain that constructs them,
 		// and this is the whole set: any other renderer for a name no manifest claims fails here.
 		expect(outsideManifest.sort()).toEqual([...VIBE_TOOL_NAMES].sort());
 	});

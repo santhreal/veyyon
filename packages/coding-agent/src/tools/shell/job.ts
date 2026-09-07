@@ -49,7 +49,7 @@ interface CancelOutcome {
 }
 
 /**
- * A live subagent from the AgentRegistry that has no backing job in the
+ * A live agent from the AgentRegistry that has no backing job in the
  * AsyncJobManager — e.g. an idle agent woken (or a parked agent revived) via
  * `irc`, or a spawn owned by another agent. Surfaced by `list` and empty-poll
  * snapshots so the job tool's picture matches the UI's running-agent count.
@@ -66,7 +66,7 @@ export interface AgentActivitySnapshot {
 export interface JobToolDetails {
 	jobs: JobSnapshot[];
 	cancelled?: { id: string; status: CancelStatus }[];
-	/** Running subagents not represented by a job row in this result. */
+	/** Running agents not represented by a job row in this result. */
 	agents?: AgentActivitySnapshot[];
 }
 
@@ -291,7 +291,7 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		// re-arms the async delivery of anything that settled inside the window and was
 		// NOT acknowledged. So the order is the exactly-once contract, in both
 		// directions: acknowledge first and the re-arm stays quiet; unwatch first and
-		// the operator gets the same subagent report twice. The `finally` is what makes
+		// the operator gets the same agent report twice. The `finally` is what makes
 		// the watch impossible to leak if `#buildResult` ever throws.
 		try {
 			return this.#buildResult(manager, allTrackedJobs, cancelOutcomes);
@@ -376,7 +376,7 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 	}
 
 	/**
-	 * Running subagents from the registry that are not covered by one of the
+	 * Running agents from the registry that are not covered by one of the
 	 * caller's running jobs. Agents woken via `irc` (idle wake / park revival)
 	 * and spawns owned by another agent run with no AsyncJobManager entry, yet
 	 * the UI's agent badge counts them — a snapshot must account for that

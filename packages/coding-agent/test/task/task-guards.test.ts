@@ -8,14 +8,14 @@ import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-sessi
 import { formatResultOutputFallback } from "@veyyon/coding-agent/task";
 import { runSubprocess } from "@veyyon/coding-agent/task/executor";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
-import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 import {
 	createAssistantStopMessage,
 	createMockSessionHandle,
 	createSessionResult,
 	type MockSessionHandle,
 	yieldSuccessEvent,
-} from "../helpers/subagent-session";
+} from "../helpers/agent-session";
+import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
 
 // Spawning a task writes a session (and, for worktree runs, a checkout) under the
 // ACTIVE PROFILE's agent dir, so without this the suite creates them inside the
@@ -23,7 +23,7 @@ import {
 useIsolatedAgentDir();
 
 /**
- * Contract: runaway-subagent guards.
+ * Contract: runaway-agent guards.
  *
  * 1. The executor counts assistant requests (message_end events) and surfaces
  *    the count on `SingleResult.requests`.
@@ -72,7 +72,7 @@ function yieldToolEnd(): AgentSessionEvent {
 /**
  * The shared fake, configured for this suite's shape.
  *
- * The session itself comes from `test/helpers/subagent-session.ts`; only the "replay a fixed event
+ * The session itself comes from `test/helpers/agent-session.ts`; only the "replay a fixed event
  * list" arrangement is local, because these tests describe a child by the turns it burns rather than
  * by reacting to what the executor asked it.
  */
@@ -102,7 +102,7 @@ const baseOptions = {
 	agent: baseAgent,
 	task: "do work",
 	index: 0,
-	id: "subagent-guards",
+	id: "agent-guards",
 	modelRegistry: { refresh: async () => {} } as unknown as ModelRegistry,
 	enableLsp: false,
 };
@@ -113,7 +113,7 @@ describe("runSubprocess request guards", () => {
 	});
 
 	it("counts assistant requests into SingleResult.requests", async () => {
-		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 0 });
+		const settings = Settings.isolated({ "agent.maxRuntimeMs": 0 });
 		const handle = createFakeSession({
 			events: [
 				assistantMessageEnd("step one"),
@@ -124,7 +124,7 @@ describe("runSubprocess request guards", () => {
 		});
 		mockCreateAgentSession(handle.session);
 
-		const result = await runSubprocess({ ...baseOptions, id: "subagent-requests", settings });
+		const result = await runSubprocess({ ...baseOptions, id: "agent-requests", settings });
 
 		expect(result.aborted).toBe(false);
 		expect(result.requests).toBe(3);
@@ -136,9 +136,9 @@ describe("runSubprocess request guards", () => {
 		// Budget 4: steer fires at request 4 and must not repeat at request 5
 		// (still below the 1.5x hard stop of 6).
 		const settings = Settings.isolated({
-			"subagent.maxRuntimeMs": 0,
-			"subagent.softRequestBudget": 4,
-			"subagent.softRequestBudgetNotice": true,
+			"agent.maxRuntimeMs": 0,
+			"agent.softRequestBudget": 4,
+			"agent.softRequestBudgetNotice": true,
 		});
 		const handle = createFakeSession({
 			events: [
@@ -152,7 +152,7 @@ describe("runSubprocess request guards", () => {
 		});
 		mockCreateAgentSession(handle.session);
 
-		const result = await runSubprocess({ ...baseOptions, id: "subagent-steer", settings });
+		const result = await runSubprocess({ ...baseOptions, id: "agent-steer", settings });
 
 		expect(result.requests).toBe(5);
 		expect(result.aborted).toBe(false);
@@ -166,8 +166,8 @@ describe("runSubprocess request guards", () => {
 		// Budget 4 is crossed at request 4; the notice defaults ON, so exactly
 		// one steer lands without task.softRequestBudgetNotice being set.
 		const settings = Settings.isolated({
-			"subagent.maxRuntimeMs": 0,
-			"subagent.softRequestBudget": 4,
+			"agent.maxRuntimeMs": 0,
+			"agent.softRequestBudget": 4,
 		});
 		const handle = createFakeSession({
 			events: [
@@ -181,7 +181,7 @@ describe("runSubprocess request guards", () => {
 		});
 		mockCreateAgentSession(handle.session);
 
-		const result = await runSubprocess({ ...baseOptions, id: "subagent-steer-default", settings });
+		const result = await runSubprocess({ ...baseOptions, id: "agent-steer-default", settings });
 
 		expect(result.requests).toBe(5);
 		expect(result.aborted).toBe(false);
@@ -193,9 +193,9 @@ describe("runSubprocess request guards", () => {
 		// Budget 2: notice would normally fire at 2, but the force-stop at 3 must
 		// remain active even with the notice disabled.
 		const settings = Settings.isolated({
-			"subagent.maxRuntimeMs": 0,
-			"subagent.softRequestBudget": 2,
-			"subagent.softRequestBudgetNotice": false,
+			"agent.maxRuntimeMs": 0,
+			"agent.softRequestBudget": 2,
+			"agent.softRequestBudgetNotice": false,
 		});
 		const handle = createFakeSession({
 			hang: true,
@@ -207,7 +207,7 @@ describe("runSubprocess request guards", () => {
 		});
 		mockCreateAgentSession(handle.session);
 
-		const result = await runSubprocess({ ...baseOptions, id: "subagent-hard-stop-notice-disabled", settings });
+		const result = await runSubprocess({ ...baseOptions, id: "agent-hard-stop-notice-disabled", settings });
 
 		expect(result.aborted).toBe(true);
 		expect(result.exitCode).toBe(1);
@@ -220,9 +220,9 @@ describe("runSubprocess request guards", () => {
 		// Budget 2: with notices enabled, steer at 2 and hard stop at 3. The
 		// session hangs so only the budget abort can release it.
 		const settings = Settings.isolated({
-			"subagent.maxRuntimeMs": 0,
-			"subagent.softRequestBudget": 2,
-			"subagent.softRequestBudgetNotice": true,
+			"agent.maxRuntimeMs": 0,
+			"agent.softRequestBudget": 2,
+			"agent.softRequestBudgetNotice": true,
 		});
 		const handle = createFakeSession({
 			hang: true,
@@ -234,7 +234,7 @@ describe("runSubprocess request guards", () => {
 		});
 		mockCreateAgentSession(handle.session);
 
-		const result = await runSubprocess({ ...baseOptions, id: "subagent-hard-stop", settings });
+		const result = await runSubprocess({ ...baseOptions, id: "agent-hard-stop", settings });
 
 		expect(result.aborted).toBe(true);
 		expect(result.exitCode).toBe(1);
@@ -244,7 +244,7 @@ describe("runSubprocess request guards", () => {
 	});
 
 	it("salvages the last assistant text for an aborted child with no completed output", async () => {
-		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 50 });
+		const settings = Settings.isolated({ "agent.maxRuntimeMs": 50 });
 		const handle = createFakeSession({
 			hang: true,
 			events: [
@@ -256,7 +256,7 @@ describe("runSubprocess request guards", () => {
 		});
 		mockCreateAgentSession(handle.session);
 
-		const result = await runSubprocess({ ...baseOptions, id: "subagent-salvage", settings });
+		const result = await runSubprocess({ ...baseOptions, id: "agent-salvage", settings });
 
 		expect(result.aborted).toBe(true);
 		expect(result.requests).toBe(1);
@@ -269,7 +269,7 @@ describe("runSubprocess request guards", () => {
 	});
 
 	it("clips oversized salvage snippets", async () => {
-		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 50 });
+		const settings = Settings.isolated({ "agent.maxRuntimeMs": 50 });
 		const longText = `start-marker ${"x".repeat(700)}`;
 		const handle = createFakeSession({
 			hang: true,
@@ -277,7 +277,7 @@ describe("runSubprocess request guards", () => {
 		});
 		mockCreateAgentSession(handle.session);
 
-		const result = await runSubprocess({ ...baseOptions, id: "subagent-salvage-clip", settings });
+		const result = await runSubprocess({ ...baseOptions, id: "agent-salvage-clip", settings });
 
 		expect(result.aborted).toBe(true);
 		expect(result.output).toContain("start-marker");

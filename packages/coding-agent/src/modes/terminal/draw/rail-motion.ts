@@ -336,7 +336,7 @@ export interface RailMotionOptions {
 	 * while the head travels past it.
 	 *
 	 * A tool block is one unit of work and needs none of this: every row of it is
-	 * as live as every other. The subagent block is not — its rows are separate
+	 * as live as every other. The agent block is not — its rows are separate
 	 * agents, and lighting a lane whose agent is waiting on the model would make
 	 * the sweep say the one thing about that block that is not true. The head
 	 * still travels the full height, because the cycle is the block's and not the

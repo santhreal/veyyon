@@ -34,26 +34,26 @@ describe("parseTurnBudget", () => {
 });
 
 describe("SessionManager turn budget accounting", () => {
-	it("snapshots a window, accrues eval-subagent output, and reports the ceiling + hard flag", () => {
+	it("snapshots a window, accrues eval-agent output, and reports the ceiling + hard flag", () => {
 		const sm = SessionManager.inMemory();
 
 		sm.beginTurnBudget(100_000, true);
 		expect(sm.getTurnBudget()).toEqual({ total: 100_000, spent: 0, hard: true });
 
-		sm.recordEvalSubagentOutput(3_000);
-		sm.recordEvalSubagentOutput(1_500);
+		sm.recordEvalAgentOutput(3_000);
+		sm.recordEvalAgentOutput(1_500);
 		expect(sm.getTurnBudget()).toEqual({ total: 100_000, spent: 4_500, hard: true });
 
 		// Non-positive / non-finite deltas are ignored.
-		sm.recordEvalSubagentOutput(0);
-		sm.recordEvalSubagentOutput(Number.NaN);
+		sm.recordEvalAgentOutput(0);
+		sm.recordEvalAgentOutput(Number.NaN);
 		expect(sm.getTurnBudget().spent).toBe(4_500);
 	});
 
 	it("resets spend and clears the ceiling when a new window opens with no directive", () => {
 		const sm = SessionManager.inMemory();
 		sm.beginTurnBudget(50_000, false);
-		sm.recordEvalSubagentOutput(9_000);
+		sm.recordEvalAgentOutput(9_000);
 		expect(sm.getTurnBudget()).toEqual({ total: 50_000, spent: 9_000, hard: false });
 
 		sm.beginTurnBudget(null, false);

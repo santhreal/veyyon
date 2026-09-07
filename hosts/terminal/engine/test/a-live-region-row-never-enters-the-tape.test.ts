@@ -1,10 +1,10 @@
 /**
- * A live-region row (e.g. status loader, todo HUD, subagent HUD, pinned chrome)
+ * A live-region row (e.g. status loader, todo HUD, agent HUD, pinned chrome)
  * never enters the terminal's native scrollback or tape history, at any viewport
  * height, chrome height, transcript height, frame growth rate, or combination of seams.
  *
  * WHY THIS CLOSES THE DEFECT.
- * A transient chrome row — a working loader with its clock and `[esc]` hint, a todo or subagent
+ * A transient chrome row — a working loader with its clock and `[esc]` hint, a todo or agent
  * HUD, the composer — is rewritten every frame, so a copy of it stranded in the terminal's own
  * scrollback is permanent and cannot be repaired without erasing and replaying the screen. The
  * engine keeps chrome out of the commit by deriving a history ceiling from the last root child

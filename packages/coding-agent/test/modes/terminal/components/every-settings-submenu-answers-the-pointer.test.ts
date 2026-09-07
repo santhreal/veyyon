@@ -208,27 +208,27 @@ describe("settings submenus answer the pointer", () => {
 	});
 
 	it(
-		"subagent agents: hover lights an agent row once discovery reports, click opens its editor",
+		"agent roster: hover lights an agent row once discovery reports, click opens its editor",
 		async () => {
 			const { component, awaitRenderRequest } = createSelector();
-			component.openTab("subagents");
-			expect(component.selectSetting("subagent.agents")).toBe(true);
+			component.openTab("agents");
+			expect(component.selectSetting("agent.agents")).toBe(true);
 			component.handleInput("\n");
 			await awaitRow(component, awaitRenderRequest, "scout");
 
 			expectHoverBand(component, "scout");
 
 			component.handleInput(clickAt(rowIndex(component, "scout") + 1));
-			// The lane page, headed with the subagent it configures. The row it opens on used to be a
-			// numeric `Nested spawn depth`; the nested `Subagents` chain replaced it.
-			expect(frameText(component)).toContain("Subagent: scout");
+			// The lane page, headed with the agent it configures. The row it opens on used to be a
+			// numeric `Nested spawn depth`; the nested `Agents` chain replaced it.
+			expect(frameText(component)).toContain("Agent: scout");
 		},
 		{ timeout: 30_000 },
 	);
 
 	it("a retired setting is on no tab, so the pointer never reaches a submenu that is gone", () => {
-		// This replaced a case that opened `subagent.modelByDepth` and clicked its
-		// depth chain. That setting is now `retiredBy: "subagent.agents"` and has
+		// This replaced a case that opened `agent.modelByDepth` and clicked its
+		// depth chain. That setting is now `retiredBy: "agent.agents"` and has
 		// no `ui` block, so there is no row to hover and no submenu to open, and
 		// the case asserted a surface the product had removed.
 		//

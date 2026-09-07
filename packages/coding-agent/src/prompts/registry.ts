@@ -51,7 +51,7 @@
  *   side-channel/   turns that reuse the session's context but are not the task:
  *                   a side question, a recap, an IRC message, a speech rewrite,
  *                   a fork's handover.
- *   subagent/       what a delegated agent runs under, and what creates or
+ *   agent/       what a delegated agent runs under, and what creates or
  *                   orchestrates one.
  *   plan-mode/      the read-only contract and its handovers.
  *   agents/         the bundled agent definitions themselves.
@@ -82,6 +82,7 @@
 // From the module that defines them, not the `@veyyon/utils` barrel: 3 modules against 74.
 import { definePromptRegistry, type PromptEntry, type PromptSection } from "@veyyon/utils/prompt-registry";
 import { advisorPrompts } from "./advisor/rows";
+import { agentPrompts } from "./agent/rows";
 import { agentsPrompts } from "./agents/rows";
 import { autolearnPrompts } from "./autolearn/rows";
 import { autoresearchPrompts } from "./autoresearch/rows";
@@ -97,7 +98,6 @@ import { sessionPrompts } from "./session/rows";
 import { sideChannelPrompts } from "./side-channel/rows";
 import { skillsPrompts } from "./skills/rows";
 import { steeringPrompts } from "./steering/rows";
-import { subagentPrompts } from "./subagent/rows";
 import { thinkingPrompts } from "./thinking/rows";
 import { titlesPrompts } from "./titles/rows";
 import { toolsPrompts } from "./tools/rows";
@@ -132,7 +132,7 @@ export const codingAgentPrompts = definePromptRegistry("packages/coding-agent/sr
 	...sideChannelPrompts,
 	...skillsPrompts,
 	...steeringPrompts,
-	...subagentPrompts,
+	...agentPrompts,
 	...thinkingPrompts,
 	...titlesPrompts,
 	...toolsPrompts,

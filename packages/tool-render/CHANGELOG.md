@@ -11,6 +11,7 @@
 ### Changed
 
 - Array copies that allocated with a spread now use `.slice()`, `.concat()` or `Array.from()`. No user-visible behavior changes.
+- The `task` renderer lifts the missing-yield warning out of the output preview under both its current spelling, `SYSTEM WARNING: Agent exited without calling yield tool`, and the `Subagent` spelling a session file recorded before it.
 
 
 ## [1.3.0] - 2026-08-28

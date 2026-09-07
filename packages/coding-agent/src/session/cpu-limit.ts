@@ -19,11 +19,11 @@
  * reports into the group's write accountant, because no group counter can see
  * a process that is not in the group.
  *
- * ONE GROUP PER SESSION TREE, NOT PER AGENT. A subagent opens its own
+ * ONE GROUP PER SESSION TREE, NOT PER AGENT. An agent opens its own
  * `SessionManager` and therefore its own `AgentSession`, so registering by
- * session id alone gave every subagent a group of its own and multiplied the
- * operator's cap by the number of live subagents. The task executor pins an
- * inherited group id around subagent session creation
+ * session id alone gave every agent a group of its own and multiplied the
+ * operator's cap by the number of live agents. The task executor pins an
+ * inherited group id around agent session creation
  * ({@link withInheritedBudgetGroup}); a session that registers inside that
  * scope becomes an ALIAS of the root group instead of an owner of a new one,
  * at any depth. Aliases live in their own table, never in `limiters` or
@@ -331,7 +331,7 @@ export class SessionCpuLimit {
 	 * MCP server would join a group carrying no `memory.max` and no `pids.max`,
 	 * and a runaway allocation in a Python cell would meet no ceiling at all.
 	 *
-	 * A gate that DOES supply limits wins permanently, because a subagent's
+	 * A gate that DOES supply limits wins permanently, because an agent's
 	 * cloned settings are a better answer than the process-wide singleton.
 	 */
 	async #applyConfiguredLimits(): Promise<void> {
@@ -1150,7 +1150,7 @@ const registrationOrder: string[] = [];
  * things that read that map as "one entry, one owned group":
  *
  * - the owned-resource disposer below resolves by id and calls `dispose()`
- *   unconditionally, so the FIRST subagent to finish would tear the root
+ *   unconditionally, so the FIRST agent to finish would tear the root
  *   group down and silently stop enforcing for the whole tree, with a kill
  *   knob turning a normal child exit into a SIGTERM path;
  * - `rekeySessionCpuLimit` treats an existing entry at the destination id as
@@ -1158,7 +1158,7 @@ const registrationOrder: string[] = [];
  *   `limiters` could get the root disposed on `/new`.
  *
  * Aliases also stay out of `registrationOrder`, because that is what
- * `primarySessionCpuLimit` reads: a subagent must never become the process's
+ * `primarySessionCpuLimit` reads: an agent must never become the process's
  * "root session" for shared spawns.
  */
 const aliasOwners = new Map<string, string>();
@@ -1168,7 +1168,7 @@ const aliasesByOwner = new Map<string, Set<string>>();
 /**
  * The limiter for a live session, undefined before registration or after
  * dispose. An alias resolves to the group it borrows, which is what makes a
- * subagent's spawns land in the root session tree's budget.
+ * agent's spawns land in the root session tree's budget.
  */
 export function sessionCpuLimit(sessionId: string | null | undefined): SessionCpuLimit | undefined {
 	if (!sessionId) return undefined;
@@ -1180,7 +1180,7 @@ export function sessionCpuLimit(sessionId: string | null | undefined): SessionCp
 
 /**
  * The id of the session that OWNS this session's budget group: itself for a
- * root session, its spawner's owner for a subagent at any depth. Undefined
+ * root session, its spawner's owner for an agent at any depth. Undefined
  * before registration.
  *
  * This is the process's one answer to "which session tree is this", and
@@ -1344,7 +1344,7 @@ export function primarySessionCpuAdoption(): (pid: number) => void {
 
 /**
  * The session id that OWNS the root budget group, for a spawn path that knows
- * it is starting a subagent but was not told whose child it is. Aliases are
+ * it is starting an agent but was not told whose child it is. Aliases are
  * never in `registrationOrder`, so this is always a real owner.
  */
 export function rootBudgetGroupOwnerId(): string | undefined {
@@ -1447,11 +1447,11 @@ const inheritedBudgetGroup = new AsyncLocalStorage<string>();
 
 /**
  * Run `fn` with sessions created inside it joining `rootSessionId`'s budget
- * group as aliases. The task executor wraps subagent session creation in this.
+ * group as aliases. The task executor wraps agent session creation in this.
  *
  * Depth is unbounded because the pinned id is resolved through the alias
  * table: a depth-2 spawn pins its own (already aliased) session id, which
- * resolves to the same owner, so a subagent of a subagent lands in the root
+ * resolves to the same owner, so an agent of an agent lands in the root
  * group rather than in its parent's copy of it.
  */
 export function withInheritedBudgetGroup<T>(rootSessionId: string | null | undefined, fn: () => T): T {
@@ -1551,7 +1551,7 @@ registerOwnedResourceDisposer({
 	name: "session-cpu-limit",
 	scope: "session",
 	dispose: async ownerId => {
-		// A subagent finishing must not tear down the group its whole tree is
+		// An agent finishing must not tear down the group its whole tree is
 		// still enforcing against: an alias drops its own entry and nothing else.
 		if (unregisterAlias(ownerId)) return;
 		const limiter = limiters.get(ownerId);

@@ -54,7 +54,7 @@ import { discoverContextFiles, discoverRules, discoverSkills } from "@veyyon/cod
 import { buildSystemPrompt, loadProjectContextFiles } from "@veyyon/coding-agent/system-prompt";
 import { discoverCommands } from "@veyyon/coding-agent/task/commands";
 import { type DiscoveryResult, discoverAgents } from "@veyyon/coding-agent/task/discovery";
-import { getGlobalSubagentsDir } from "@veyyon/utils";
+import { getGlobalAgentsDir } from "@veyyon/utils";
 import {
 	GLOBAL_BODY,
 	PROFILE_BODY,
@@ -306,7 +306,7 @@ describe("a non-active agent dir gets its own layers, not the booted profile's",
 		writeAgentDefinition(f, path.join(namedPackage, "agents"), "named-ext-agent");
 		f.writeFile(path.join(f.agentDir, "settings.json"), JSON.stringify({ extensions: [activePackage] }));
 		f.writeFile(path.join(namedAgentDir, "settings.json"), JSON.stringify({ extensions: [namedPackage] }));
-		writeAgentDefinition(f, getGlobalSubagentsDir(), "global-user-agent");
+		writeAgentDefinition(f, getGlobalAgentsDir(), "global-user-agent");
 		writeAgentDefinition(f, path.join(f.agentDir, "agents"), "retired-active-agent");
 		writeAgentDefinition(f, path.join(namedAgentDir, "agents"), "retired-named-agent");
 

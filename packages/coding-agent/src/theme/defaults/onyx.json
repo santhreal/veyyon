@@ -80,7 +80,7 @@
     "statusLineUntracked": "warmGray",
     "statusLineOutput": "cream",
     "statusLineCost": "copper",
-    "statusLineSubagents": "vein",
+    "statusLineAgents": "vein",
     "pythonMode": "#f0c040"
   },
   "export": {

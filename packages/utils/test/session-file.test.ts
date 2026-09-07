@@ -4,7 +4,7 @@
  *
  * WHY THIS SUITE EXISTS. The extension is a WRITER-AND-SCANNER contract. `kernel/src/session/session-manager.ts` builds
  * `<timestamp>_<id>.jsonl`; `session/session-listing.ts`, `cli/gc-cli.ts`, `export/html`, `debug/report-bundle.ts`,
- * `registry/persisted-subagents.ts`, `internal-urls/registry-helpers.ts` and `@veyyon/stats`'s parser all
+ * `registry/persisted-agents.ts`, `internal-urls/registry-helpers.ts` and `@veyyon/stats`'s parser all
  * DISCOVER transcripts by matching it. It was spelled inline at dozens of sites in four packages, plus three
  * constants that shared no name: `JSONL_SUFFIX`, `SESSION_SUFFIX` and `JSONL_SUFFIX_LENGTH`, the last of which
  * was the value expressed as a number so a grep for the extension never found it. `tools/fs/read.ts` had a fourth
@@ -15,7 +15,7 @@
  * garbage-collected or counted, because an empty directory listing is a valid answer. The advisor half is the
  * same shape across a package boundary: `@veyyon/stats` cannot import the coding agent, so it had declared
  * `"__advisor.jsonl"` itself, and a stem change would have moved the writer while leaving the classifier
- * counting advisor transcripts as ordinary subagent sessions.
+ * counting advisor transcripts as ordinary agent sessions.
  *
  * The cases below pin the exact bytes, prove each helper against the forms callers actually hold, and cover
  * the two idempotence traps that a naive implementation gets wrong.
@@ -53,10 +53,10 @@ describe("the session file extension", () => {
 });
 
 describe("isSessionFileName", () => {
-	/** The writer's own output, in the two shapes it produces: a top-level session and a nested subagent. */
+	/** The writer's own output, in the two shapes it produces: a top-level session and a nested agent. */
 	it("matches what the session manager writes", () => {
 		expect(isSessionFileName("20260726-120000_01ABCDEF.jsonl")).toBeTrue();
-		expect(isSessionFileName("SubAgent7.jsonl")).toBeTrue();
+		expect(isSessionFileName("Agent7.jsonl")).toBeTrue();
 	});
 
 	/** A full path, since several callers pass one rather than a basename. */
@@ -108,7 +108,7 @@ describe("sessionFileStem", () => {
 	 * cut six characters off regardless, turning an id into a truncated id with nothing raised.
 	 */
 	it("returns a name without the extension unchanged", () => {
-		expect(sessionFileStem("SubAgent7")).toBe("SubAgent7");
+		expect(sessionFileStem("Agent7")).toBe("Agent7");
 		expect(sessionFileStem("short")).toBe("short");
 		expect(sessionFileStem("")).toBe("");
 	});
@@ -122,7 +122,7 @@ describe("sessionFileStem", () => {
 describe("sessionFileName", () => {
 	/** The ordinary case: a stem becomes a transcript name. */
 	it("applies the extension to a stem", () => {
-		expect(sessionFileName("SubAgent7")).toBe("SubAgent7.jsonl");
+		expect(sessionFileName("Agent7")).toBe("Agent7.jsonl");
 	});
 
 	/**
@@ -131,8 +131,8 @@ describe("sessionFileName", () => {
 	 * extension. The file would then be a transcript nobody wrote.
 	 */
 	it("does not double the extension", () => {
-		expect(sessionFileName("SubAgent7.jsonl")).toBe("SubAgent7.jsonl");
-		expect(sessionFileName(sessionFileName("SubAgent7"))).toBe("SubAgent7.jsonl");
+		expect(sessionFileName("Agent7.jsonl")).toBe("Agent7.jsonl");
+		expect(sessionFileName(sessionFileName("Agent7"))).toBe("Agent7.jsonl");
 	});
 
 	/** Round-trip with the stem helper, in both directions, which is what the writer and scanners rely on. */
@@ -163,7 +163,7 @@ describe("the session backup naming", () => {
 	 * collects, which is indistinguishable from having lost the session.
 	 */
 	it("reads back exactly what it writes", () => {
-		for (const primary of ["a.jsonl", "SubAgent7.jsonl", "__advisor.reviewer.jsonl"]) {
+		for (const primary of ["a.jsonl", "Agent7.jsonl", "__advisor.reviewer.jsonl"]) {
 			for (const id of ["01ABCDEF", 7, 1755300000000]) {
 				const backup = sessionBackupName(primary, id);
 				expect(isSessionBackupName(backup), backup).toBeTrue();
@@ -173,7 +173,7 @@ describe("the session backup naming", () => {
 	});
 
 	/**
-	 * A backup is NOT itself a transcript, which is what keeps it out of every session listing. The subagent dashboard
+	 * A backup is NOT itself a transcript, which is what keeps it out of every session listing. The agent dashboard
 	 * and HTML export both rely on this: a backup appearing as a session would show the user a duplicate of a
 	 * session they already have, dated from a crash.
 	 */
@@ -229,7 +229,7 @@ describe("the advisor transcript naming", () => {
 	});
 
 	/**
-	 * The leading underscores are what keeps the advisor out of the task-subagent id namespace. If a subagent
+	 * The leading underscores are what keeps the advisor out of the task-agent id namespace. If an agent
 	 * could be handed the id `__advisor`, its transcript would be classified as the advisor's and its usage
 	 * would be attributed to the wrong agent.
 	 */
@@ -245,20 +245,20 @@ describe("the advisor transcript naming", () => {
 	});
 
 	/**
-	 * And a task subagent's transcript does NOT, which is the half that keeps the stats split honest: every
-	 * nested transcript that is not an advisor's is counted as a subagent's.
+	 * And a task agent's transcript does NOT, which is the half that keeps the stats split honest: every
+	 * nested transcript that is not an advisor's is counted as an agent's.
 	 */
-	it("rejects a subagent transcript and the near misses", () => {
-		expect(isAdvisorTranscriptName("SubAgent7.jsonl")).toBeFalse();
+	it("rejects an agent transcript and the near misses", () => {
+		expect(isAdvisorTranscriptName("Agent7.jsonl")).toBeFalse();
 		expect(isAdvisorTranscriptName("20260726-120000_01ABCDEF.jsonl")).toBeFalse();
-		// The stem without the separator: a subagent literally named `__advisorial` is not the advisor.
+		// The stem without the separator: an agent literally named `__advisorial` is not the advisor.
 		expect(isAdvisorTranscriptName("__advisorial.jsonl")).toBeFalse();
 		// The right name with the wrong extension is a backup, not a transcript.
 		expect(isAdvisorTranscriptName("__advisor.jsonl.gz")).toBeFalse();
 		expect(isAdvisorTranscriptName("__advisor")).toBeFalse();
 	});
 
-	/** The slug, which the subagent dashboard shows: empty for the default advisor, the name for a named one. */
+	/** The slug, which the agent dashboard shows: empty for the default advisor, the name for a named one. */
 	it("reads the slug of a named advisor and empty for the default", () => {
 		expect(advisorTranscriptSlug("__advisor.jsonl")).toBe("");
 		expect(advisorTranscriptSlug("__advisor.reviewer.jsonl")).toBe("reviewer");

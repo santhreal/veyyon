@@ -89,7 +89,7 @@ bun run stats:audit -- --session parser            # classify sessions matching 
 bun run stats:audit -- --no-cache                  # force fresh LLM verdicts
 ```
 
-The scan phase reports the main-vs-subagent usage split, per-folder and
+The scan phase reports the main-vs-agent usage split, per-folder and
 per-session cost, per-tool traffic (estimated arg/result tokens plus a
 *context-residency* metric: result tokens × subsequent requests), repeated
 reads of the same file, the largest single tool results, compactions, and

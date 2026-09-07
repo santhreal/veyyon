@@ -1,5 +1,5 @@
 /**
- * Per-session guard against subagents looping on byte-identical no-op edits.
+ * Per-session guard against agents looping on byte-identical no-op edits.
  *
  * A hashline patch can apply cleanly yet produce no change when the body rows
  * are already byte-identical to the targeted lines. {@link executeHashlineSingle}

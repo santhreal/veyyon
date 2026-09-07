@@ -37,7 +37,7 @@
  * rather than a string built beside the renderer.
  *
  * Every row the component paints is swept, not just the one the default preset produces: the
- * one-line row, the row whose right group is only the subagent badge, and the two-line layout,
+ * one-line row, the row whose right group is only the agent badge, and the two-line layout,
  * which has a clip callsite of its own. And because a front cut moves the surviving parts left,
  * a slot that did not move with its text sends a click to the wrong segment: each location slot
  * is pinned to the exact columns its text occupies. The path slot alone cannot see that -- it
@@ -467,9 +467,9 @@ describe("the footline path is clipped from one end", () => {
 	// EVERY ROW THE COMPONENT CAN PAINT, not just the one the presets happen to produce. The
 	// clip has two live callsites -- the shed loop and the two-line layout -- and a mutation
 	// that turned either back into a tail cut stayed green while only the first was swept.
-	it("clips a row whose right group is only the subagent badge, and clips it to the row", () => {
+	it("clips a row whose right group is only the agent badge, and clips it to the row", () => {
 		const statusLine = new StatusLineComponent(makeSession());
-		// A preset naming no right segments still gets the subagent badge, which is appended
+		// A preset naming no right segments still gets the agent badge, which is appended
 		// outside the segment config. This is the narrowest right group a row can have, and
 		// the one that leaves the location the most room to be cut wrong in.
 		statusLine.updateSettings({ preset: "custom", leftSegments: ["path", "git"], rightSegments: [] });
@@ -904,7 +904,7 @@ describe("a click on the path trades the model chip for room", () => {
 	 * off the row itself at a width that holds everything, so adding a readout to the right
 	 * group turns this red until someone places it in the order.
 	 */
-	const SPEND_ORDER = ["model", "context_pct", "mode", "subagents"];
+	const SPEND_ORDER = ["model", "context_pct", "mode", "agents"];
 
 	it("shows the clicked name whole, paying with the right group in order, and puts it all back", () => {
 		// TWO DEFECTS, one contract. The first shipped: the click paid with the chip and nothing

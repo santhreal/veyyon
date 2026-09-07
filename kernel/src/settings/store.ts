@@ -885,7 +885,7 @@ export class SettingsStore {
 	 * Resolve every known setting to its effective value, keyed by dotted path.
 	 *
 	 * This is the complete config that governed a run — compaction strategy,
-	 * reserve tokens, advisor/subagent config, tool config, and every other
+	 * reserve tokens, advisor/agent config, tool config, and every other
 	 * Tier-A knob — captured as one flat map. A session records this at start so a
 	 * later study/backtest can reproduce the exact configuration the run used,
 	 * not merely guess it from current defaults. Keys are sorted for stable,
@@ -1166,13 +1166,13 @@ export class SettingsStore {
 	 * Expand every top-level dotted key that names a registered setting into the
 	 * nested tree it belongs in.
 	 *
-	 * `subagent.model: openai/gpt-5` at the top level of `config.yml` is the same
-	 * setting as `subagent: { model: openai/gpt-5 }` to anyone reading the file, and
+	 * `agent.model: openai/gpt-5` at the top level of `config.yml` is the same
+	 * setting as `agent: { model: openai/gpt-5 }` to anyone reading the file, and
 	 * people write it that way. It was parsed, merged, and then never read: {@link
 	 * get} walks nested segments, so the value sat in the tree under a literal
-	 * `"subagent.model"` key that nothing looked at, and the setting silently did
+	 * `"agent.model"` key that nothing looked at, and the setting silently did
 	 * nothing (Law 10). It affected every setting, not one — the shape was found
-	 * while migrating the subagent keys, where a migration writing this spelling made
+	 * while migrating the agent keys, where a migration writing this spelling made
 	 * every legacy config revert to defaults with no signal.
 	 *
 	 * Only paths the schema declares are expanded. An unknown dotted key is left

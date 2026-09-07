@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { buildBudgetNotice } from "@veyyon/coding-agent/task/executor";
 
 /**
- * buildBudgetNotice is the wrap-up message a subagent receives when it crosses its soft request budget.
+ * buildBudgetNotice is the wrap-up message an agent receives when it crosses its soft request budget.
  * The number it quotes as the force-stop point must stay in lockstep with the executor's actual stop
  * logic: the run is stopped when `progress.requests >= softRequestBudget * 1.5` (executor.ts, the
  * `stopThreshold` comparison). Because request counts are integers and the threshold can be fractional

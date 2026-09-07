@@ -367,7 +367,7 @@ export class PrefixCache {
  * This is the counterfactual for a production change, not a description of one.
  * The shipped placement anchors `system[0]` (or `[2]` under the Claude Code
  * layout) so that a changing project, assignment or Argot block cannot
- * invalidate the harness shared with subagents. That is sound as far as it goes,
+ * invalidate the harness shared with agents. That is sound as far as it goes,
  * and it is also as shallow as an anchor can be: when a later system block does
  * change, the deepest prefix that survives covers the harness alone, and every
  * block between it and the change is re-read on every turn.
@@ -649,7 +649,7 @@ export interface FleetLedger {
  *
  * This is the only shape in which the shipped anchor's justification can be
  * measured at all: marking the first system block protects the harness a parent
- * shares with its subagents, and a single-session scenario has no second reader
+ * shares with its agents, and a single-session scenario has no second reader
  * for that prefix to be worth anything to. Whether the second reader can ACTUALLY
  * read it is a property of the marker, not of the bytes — an entry is keyed by
  * session unless the marker says `scope: "global"` — so the fleet runner is also

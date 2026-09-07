@@ -205,7 +205,7 @@ a string nothing will produce is a reference to a fixture that does not exist.
 | 03 | Tool Execution Runtime | Tool dispatch, parameter validation, schema checks, process lifecycles, streaming preview decoders, timeout traps | 26,000 | 512 |
 | 04 | Session & Tree Engine | Fork, resume, branch switching, history serialization, compaction checkpoints, export/share formats, tree merges | 20,000 | 320 |
 | 05 | Persistence & Mnemopi | SQLite storage, WAL lifecycle, schema migrations, triple index, vector recall, cache coherence, crash recovery | 16,000 | 256 |
-| 06 | Concurrency & Agent Mesh | Swarm mesh, IRC bus routing, subagent spawning, task worker pools, deadlock avoidance, lock hierarchies | 14,000 | 256 |
+| 06 | Concurrency & Agent Mesh | Swarm mesh, IRC bus routing, agent spawning, task worker pools, deadlock avoidance, lock hierarchies | 14,000 | 256 |
 | 07 | Security & Sandbox | Path traversal guards, credential boundary isolation, secret redaction, prompt injection fences, environment isolation | 14,000 | 384 |
 | 08 | CLI Engine & Modes | Argv parser, flag resolution, command dispatch, pipe mode, headless execution, TUI bootstrap, worker selectors | 16,000 | 256 |
 | 09 | Installers & Distribution | POSIX `install.sh`, Windows `install.ps1`, GitHub release asset verification, SHA-256 sidecars, self-updater | 10,000 | 192 |
@@ -947,4 +947,4 @@ The conformance migration is complete when all the following quantitative criter
 - [ ] **CI Performance**: Direct-Rust p95 is <= 1.5 ms, compiled-product p95 is <= 500 ms, three cold calibrations of every exact shard finish in <= 144 seconds, and the complete 250,000-case CI run finishes in < 180 seconds across eight runners.
 - [ ] **Zero Unresolved Mismatches**: Every corpus mismatch is fixed or represented by an explicit reviewed contract change across Linux x86_64, Linux aarch64, macOS x86_64, macOS aarch64, and Windows x86_64.
 
-*Verified against `954eace449` on 2026-08-31.*
+*Verified against `63ffc8131ffb8d35ccbbb1c5de69531a7016eff4` on 2026-09-06.*

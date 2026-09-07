@@ -321,7 +321,7 @@ export const INTERACTION_SETTINGS = {
 			tab: "interaction",
 			group: "Notifications",
 			label: "Completion Notification",
-			description: "Notify when the agent finishes a turn (off by default: the turn is on your screen)",
+			description: "Notify when the agent finishes a turn.",
 		},
 	},
 
@@ -442,7 +442,7 @@ export const INTERACTION_SETTINGS = {
 			group: "Profile",
 			label: "Default Working Directory",
 			description:
-				"Per-profile default session working directory used when launching without an explicit --cwd. Precedence: an explicit --cwd wins, then this setting, then the directory you launched from. Use an absolute or ~-relative path; a relative path or a missing directory makes launch fail loudly. The agent can override the live session cwd for that session only via set_cwd / /cwd without writing this setting.",
+				"Working directory a session starts in when --cwd is not given. --cwd takes precedence, then this setting, then the directory the command was run from. Absolute or ~-relative; a relative path or a missing directory fails the launch. set_cwd and /cwd change the directory for one session without writing this.",
 		},
 	},
 
@@ -475,7 +475,7 @@ export const INTERACTION_SETTINGS = {
 			group: "Session",
 			label: "/new Keeps The Old Session",
 			description:
-				"Requires a restart: switching this on or off changes nothing in the running session. On /new while a response is still streaming, keep the old conversation running in the background and attach the screen to a fresh one. The status line counts running background conversations. Off stops the old turn and closes its provider stream before the new session starts, so nothing keeps billing once it leaves the screen.",
+				"What /new does while a response is still streaming. On: the old conversation keeps running in the background and the screen attaches to a new one; the status line counts background conversations. Off: the old turn is stopped and its provider stream closed before the new session starts. Takes effect at the next start.",
 		},
 	},
 

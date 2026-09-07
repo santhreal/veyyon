@@ -19,7 +19,7 @@
  *  2. AN ID THAT CARRIES ITS EFFORT. `cursor-grok-4.6-medium`, `gpt-5.4-high`, `o4-mini-high`: the
  *     id IS the effort, the row exposes no effort field, and a picker that reads a ladder out of the
  *     id would be inventing one from a naming convention. These narrow to nothing and say so.
- *  3. NO MODEL AT ALL. The two rows that have no model and never will (`subagent.thinkingLevel` with
+ *  3. NO MODEL AT ALL. The two rows that have no model and never will (`agent.thinkingLevel` with
  *     no chain, `defaultEffort`'s any-model `*` row) offer the union of what the session's catalog
  *     declares — every row addressable on something the operator can select — and a session with no
  *     catalog offers nothing rather than a constant.
@@ -29,7 +29,7 @@
  * effort-producing helper turns this suite red until it is either swept or recorded as not one.
  *
  * WHAT IT DOES NOT CATCH: what the RUNTIME does with a level once stored. Clamping, the `:level`
- * suffix on a chain entry, and the resolver's precedence are `task/subagent-settings.test.ts` and
+ * suffix on a chain entry, and the resolver's precedence are `task/agent-settings.test.ts` and
  * `config/effort-resolver.test.ts`. This suite is about what a user is OFFERED.
  */
 

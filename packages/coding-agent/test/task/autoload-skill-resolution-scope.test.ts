@@ -37,8 +37,8 @@ import * as discoveryModule from "@veyyon/coding-agent/task/discovery";
 import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { logger } from "@veyyon/utils";
+import { createMockSession, createSessionResult, yieldSuccessEvent } from "../helpers/agent-session";
 import { useIsolatedAgentDir } from "../helpers/isolated-agent-dir";
-import { createMockSession, createSessionResult, yieldSuccessEvent } from "../helpers/subagent-session";
 import { makeToolSession } from "../helpers/tool-session";
 
 // A spawn writes its session under the ACTIVE PROFILE's agent dir, so without this the suite
@@ -100,9 +100,9 @@ describe("autoloadSkills resolve against the child's skill set", () => {
 			skills,
 			settings: Settings.isolated({
 				"async.enabled": false,
-				"subagent.batch": false,
-				"subagent.isolation.mode": "none",
-				"subagent.maxRuntimeMs": 0,
+				"agent.batch": false,
+				"agent.isolation.mode": "none",
+				"agent.maxRuntimeMs": 0,
 			}),
 			getSessionFile: () => path.join(parentTree, "parent.jsonl"),
 			getSessionSpawns: () => "*",

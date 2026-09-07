@@ -1300,7 +1300,7 @@ async function runLoopBody(
 					}
 				}
 
-				// A tool hook may mark its completed result as terminal (e.g. subagent yield).
+				// A tool hook may mark its completed result as terminal (e.g. agent yield).
 				// Stop before the next provider call without changing external/user abort semantics.
 				if (signal?.reason === TERMINAL_TOOL_RESULT_ABORT_REASON) {
 					hasMoreToolCalls = false;

@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "bun:test";
 import type {
+	AgentProgressPayload,
 	AgentSnapshot,
 	GuestFrame,
 	HostFrame,
 	SessionState,
-	SubagentProgressPayload,
 	WireAssistantMessage,
 	WireMessage,
 	WireSessionEntry,
@@ -200,7 +200,7 @@ describe("GuestClient frame apply", () => {
 
 	it("bus progress frames update the progress map", () => {
 		const client = liveClient();
-		const payload: SubagentProgressPayload = {
+		const payload: AgentProgressPayload = {
 			index: 0,
 			agent: "task",
 			task: "do things",

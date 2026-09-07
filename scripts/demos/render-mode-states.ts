@@ -36,7 +36,7 @@ interface StateLoad {
 	readonly goalState?: { tokensUsed: number; tokenBudget?: number; status?: string };
 	readonly vibe?: boolean;
 	readonly loop?: boolean;
-	readonly subagents?: number;
+	readonly agents?: number;
 }
 
 function stubSession(load: StateLoad): AgentSession {
@@ -105,17 +105,17 @@ const LOADS: StateLoad[] = [
 		goalState: { tokensUsed: 12_345, tokenBudget: 50_000 },
 	},
 	{
-		label: "3 states (yolo + plan + subagents)",
+		label: "3 states (yolo + plan + agents)",
 		bypassed: true,
 		plan: { enabled: false, paused: true },
-		subagents: 3,
+		agents: 3,
 	},
 	{
-		label: "4 states (yolo + goal + budget + subagents)",
+		label: "4 states (yolo + goal + budget + agents)",
 		bypassed: true,
 		goal: { enabled: true, paused: false },
 		goalState: { tokensUsed: 12_345, tokenBudget: 50_000 },
-		subagents: 3,
+		agents: 3,
 	},
 ];
 
@@ -127,7 +127,7 @@ for (const load of LOADS) {
 	if (load.goal) statusLine.setGoalModeStatus(load.goal);
 	if (load.vibe) statusLine.setVibeModeStatus({ enabled: true });
 	if (load.loop) statusLine.setLoopModeStatus({ enabled: true });
-	statusLine.setSubagentCount(load.subagents ?? 0);
+	statusLine.setAgentCount(load.agents ?? 0);
 	lines.push(theme.fg("dim", `${load.label}:`));
 	lines.push(statusLine.renderQuietLine(width) ?? theme.fg("error", "(no footline rendered)"));
 	lines.push("");

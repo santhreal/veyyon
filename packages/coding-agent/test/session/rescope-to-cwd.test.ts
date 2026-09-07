@@ -16,7 +16,7 @@ import { getProjectDir, setProjectDir, TempDir } from "@veyyon/utils";
  *
  * WHY THIS SUITE EXISTS. All of it once lived in `InteractiveMode.applyCwdChange`
  * and only there, reached through the TUI's `cwd_changed` handler. An SDK session,
- * an ACP session, a headless run and every subagent therefore re-rooted with the
+ * an ACP session, a headless run and every agent therefore re-rooted with the
  * previous project's settings, provider exclusions, plugin roots, capabilities and
  * base system prompt still live. The prompt is the sharpest of those: it states
  * the working directory verbatim, so those modes went on naming a directory the

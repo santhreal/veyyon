@@ -90,6 +90,7 @@
 					"./commit/git-diff",
 					"./config/personality-resolver",
 					"./config/project-trust",
+					"./config/settings-domains/agents",
 					"./config/settings-signals",
 					"./debug/dap/client",
 					"./debug/dap/config",
@@ -180,6 +181,7 @@
 					"./modes/keywords/ultrathink-keyword",
 					"./modes/keywords/workflow",
 					"./modes/keywords/workflow-keyword",
+					"./modes/rpc/rpc-agents",
 					"./modes/terminal/autocomplete/emoji-autocomplete",
 					"./modes/terminal/autocomplete/github-ref-autocomplete",
 					"./modes/terminal/autocomplete/internal-url-autocomplete",
@@ -210,11 +212,11 @@
 					"./modes/terminal/components/composer/keybinding-hints",
 					"./modes/terminal/components/dashboard/agent-activity",
 					"./modes/terminal/components/dashboard/agent-dashboard",
+					"./modes/terminal/components/dashboard/agent-hud",
 					"./modes/terminal/components/dashboard/agent-model-badge",
 					"./modes/terminal/components/dashboard/agent-status-display",
 					"./modes/terminal/components/dashboard/agent-transcript-viewer",
 					"./modes/terminal/components/dashboard/agent-view-timings",
-					"./modes/terminal/components/dashboard/subagent-hud",
 					"./modes/terminal/components/dashboard/todo-board",
 					"./modes/terminal/components/dashboard/todo-reminder",
 					"./modes/terminal/components/dialogs/advisor-config",
@@ -359,7 +361,7 @@
 					"./modes/terminal/launch-formatting",
 					"./modes/terminal/oauth-manual-input",
 					"./modes/terminal/queue-input",
-					"./modes/terminal/running-subagent-badge",
+					"./modes/terminal/running-agent-badge",
 					"./modes/terminal/session-observer-registry",
 					"./modes/terminal/session-teardown",
 					"./modes/terminal/session-teardown.test",
@@ -401,7 +403,9 @@
 					"./presentation/overlay-builder",
 					"./presentation/status-builder",
 					"./presentation/transcript-builder",
+					"./prompts/agent/rows",
 					"./registry/model-profile",
+					"./registry/persisted-agents",
 					"./session/account-format",
 					"./session/agent-session-message-shapes",
 					"./session/agent-session-permissions",
@@ -444,6 +448,7 @@
 					"./speech/tts/tts-worker",
 					"./speech/tts/vocalizer",
 					"./speech/tts/wav",
+					"./task/agent-settings",
 					"./task/agent-stats",
 					"./task/irc-bus",
 					"./task/model-selector",
@@ -759,6 +764,10 @@
 			],
 			"@veyyon/natives": [
 				"__veyyonNativesV1_4_0"
+			],
+			"@veyyon/wire": [
+				"AgentLifecyclePayload",
+				"AgentProgressPayload"
 			]
 		},
 		"starEdges": {
@@ -1073,6 +1082,10 @@
 					"./config/optional-number": {
 						"to": "@veyyon/kernel/settings/optional-number",
 						"why": "packages/coding-agent/src/config/optional-number.ts moved to kernel/src/settings/optional-number.ts, which @veyyon/kernel publishes as ./settings/optional-number"
+					},
+					"./config/settings-domains/subagents": {
+						"to": "@veyyon/coding-agent/config/settings-domains/agents",
+						"why": "packages/coding-agent/src/config/settings-domains/subagents.ts moved to packages/coding-agent/src/config/settings-domains/agents.ts, which @veyyon/coding-agent publishes as ./config/settings-domains/agents"
 					},
 					"./dap": {
 						"to": "@veyyon/coding-agent/debug/dap/index",
@@ -1831,8 +1844,8 @@
 						"why": "packages/coding-agent/src/modes/components/status-line/types.ts moved to packages/coding-agent/src/modes/terminal/components/status-line/types.ts, which @veyyon/coding-agent publishes as ./modes/terminal/components/status-line/types"
 					},
 					"./modes/components/subagent-hud": {
-						"to": "@veyyon/coding-agent/modes/terminal/components/dashboard/subagent-hud",
-						"why": "packages/coding-agent/src/modes/components/subagent-hud.ts moved to packages/coding-agent/src/modes/terminal/components/dashboard/subagent-hud.ts, which @veyyon/coding-agent publishes as ./modes/terminal/components/dashboard/subagent-hud"
+						"to": "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-hud",
+						"why": "packages/coding-agent/src/modes/components/subagent-hud.ts moved to packages/coding-agent/src/modes/terminal/components/dashboard/agent-hud.ts, which @veyyon/coding-agent publishes as ./modes/terminal/components/dashboard/agent-hud"
 					},
 					"./modes/components/subcommand-picker": {
 						"to": "@veyyon/coding-agent/modes/terminal/components/selectors/subcommand-picker",
@@ -2054,9 +2067,13 @@
 						"to": "@veyyon/coding-agent/modes/terminal/queue-input",
 						"why": "packages/coding-agent/src/modes/queue-input.ts moved to packages/coding-agent/src/modes/terminal/queue-input.ts, which @veyyon/coding-agent publishes as ./modes/terminal/queue-input"
 					},
+					"./modes/rpc/rpc-subagents": {
+						"to": "@veyyon/coding-agent/modes/rpc/rpc-agents",
+						"why": "packages/coding-agent/src/modes/rpc/rpc-subagents.ts moved to packages/coding-agent/src/modes/rpc/rpc-agents.ts, which @veyyon/coding-agent publishes as ./modes/rpc/rpc-agents"
+					},
 					"./modes/running-subagent-badge": {
-						"to": "@veyyon/coding-agent/modes/terminal/running-subagent-badge",
-						"why": "packages/coding-agent/src/modes/running-subagent-badge.ts moved to packages/coding-agent/src/modes/terminal/running-subagent-badge.ts, which @veyyon/coding-agent publishes as ./modes/terminal/running-subagent-badge"
+						"to": "@veyyon/coding-agent/modes/terminal/running-agent-badge",
+						"why": "packages/coding-agent/src/modes/running-subagent-badge.ts moved to packages/coding-agent/src/modes/terminal/running-agent-badge.ts, which @veyyon/coding-agent publishes as ./modes/terminal/running-agent-badge"
 					},
 					"./modes/sanitize-status-text": {
 						"to": "@veyyon/utils/sanitize-status-text",
@@ -2297,6 +2314,14 @@
 					"./personality/resolver": {
 						"to": "@veyyon/coding-agent/config/personality-resolver",
 						"why": "packages/coding-agent/src/personality/resolver.ts moved to packages/coding-agent/src/config/personality-resolver.ts, which @veyyon/coding-agent publishes as ./config/personality-resolver"
+					},
+					"./prompts/subagent/rows": {
+						"to": "@veyyon/coding-agent/prompts/agent/rows",
+						"why": "packages/coding-agent/src/prompts/subagent/rows.ts moved to packages/coding-agent/src/prompts/agent/rows.ts, which @veyyon/coding-agent publishes as ./prompts/agent/rows"
+					},
+					"./registry/persisted-subagents": {
+						"to": "@veyyon/coding-agent/registry/persisted-agents",
+						"why": "packages/coding-agent/src/registry/persisted-subagents.ts moved to packages/coding-agent/src/registry/persisted-agents.ts, which @veyyon/coding-agent publishes as ./registry/persisted-agents"
 					},
 					"./repair/agent-hook": {
 						"to": "@veyyon/coding-agent/tools/core/repair/agent-hook",
@@ -2566,6 +2591,10 @@
 						"to": "./task/task-view",
 						"why": "the task tool renderer is the card the host draws from task/task-view.ts, so the module that registered a terminal-only renderer is gone"
 					},
+					"./task/subagent-settings": {
+						"to": "@veyyon/coding-agent/task/agent-settings",
+						"why": "packages/coding-agent/src/task/subagent-settings.ts moved to packages/coding-agent/src/task/agent-settings.ts, which @veyyon/coding-agent publishes as ./task/agent-settings"
+					},
 					"./thinking.js": {
 						"to": "@veyyon/coding-agent/thinking/index.js",
 						"why": "packages/coding-agent/src/thinking.ts moved to packages/coding-agent/src/thinking/index.ts, which @veyyon/coding-agent publishes as ./thinking/index.js"
@@ -2764,7 +2793,7 @@
 					},
 					"./tools/eval-render": {
 						"to": "./tools/shell/eval-view",
-						"why": "the eval call preview, cell cards, helper log, subagent rows and cell-less fallback are declared in tools/shell/eval-view.ts as views the host draws, so the module that built their terminal components is gone"
+						"why": "the eval call preview, cell cards, helper log, agent rows and cell-less fallback are declared in tools/shell/eval-view.ts as views the host draws, so the module that built their terminal components is gone"
 					},
 					"./tools/fetch": {
 						"to": "@veyyon/coding-agent/tools/web/fetch",
@@ -3669,6 +3698,7 @@
 						"./cli/commands/init-xdg",
 						"./commit/git/diff",
 						"./config/optional-number",
+						"./config/settings-domains/subagents",
 						"./dap/client",
 						"./dap/config",
 						"./dap/index",
@@ -3902,6 +3932,7 @@
 						"./modes/orchestrate-keyword",
 						"./modes/prompt-action-autocomplete",
 						"./modes/queue-input",
+						"./modes/rpc/rpc-subagents",
 						"./modes/running-subagent-badge",
 						"./modes/session-observer-registry",
 						"./modes/session-teardown",
@@ -3960,6 +3991,8 @@
 						"./modes/workflow",
 						"./modes/workflow-keyword",
 						"./personality/resolver",
+						"./prompts/subagent/rows",
+						"./registry/persisted-subagents",
 						"./repair/agent-hook",
 						"./repair/schema-repair",
 						"./security/project-trust",
@@ -4287,6 +4320,7 @@
 						"./task/render",
 						"./task/render.test",
 						"./task/renderer",
+						"./task/subagent-settings",
 						"./tools/__tests__/vibe-render.test",
 						"./tools/browser/render",
 						"./tools/eval-render",

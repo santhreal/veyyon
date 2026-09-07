@@ -57,7 +57,7 @@ Turn on **Bash Stall Detection** to catch a command that has gone quiet. When a 
 
 | Tool | Purpose |
 | --- | --- |
-| `task` | Spawn subagents |
+| `task` | Spawn agents |
 | `irc` | Inter-agent messaging |
 | `todo` | Structured task lists |
 | `goal` | Goal card updates (with goal mode) |

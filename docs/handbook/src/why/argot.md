@@ -53,13 +53,13 @@ Cache entries are content-keyed using the repository commit hash or a directory 
 
 To rebuild a project cache, remove the cached dictionary directory under `~/.veyyon/cache/argot/`.
 
-## Subagent boundary
+## Agent boundary
 
-Subagents evaluate shorthand independently:
+Agents evaluate shorthand independently:
 
-- Each agent instance expands its output before invoking tools, writing transcripts, prompting subagents, or returning values to a parent agent.
+- Each agent instance expands its output before invoking tools, writing transcripts, prompting agents, or returning values to a parent agent.
 - Raw handles do not cross agent boundaries.
-- The `argot.subagents` setting controls whether child agents inherit the parent dictionary, generate a project-specific dictionary, or operate without shorthand. See [Subagents configuration](../using/configuration.md#choose-how-subagents-start).
+- The `argot.agents` setting controls whether child agents inherit the parent dictionary, generate a project-specific dictionary, or operate without shorthand. See [Agents configuration](../using/configuration.md#choose-how-agents-start).
 
 ## Related
 

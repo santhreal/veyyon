@@ -59,15 +59,15 @@ export type QuietPart = { id: string; content: string; pin?: number };
  * Why each of the six outranks a badge:
  *
  * `background` (6) counts the conversations this process is running that NO screen is showing.
- * It outranks even the persistent subagent count, which is the only thing here it could be
- * accused of crowding out: a running subagent is spending in a transcript the operator is
+ * It outranks even the persistent agent count, which is the only thing here it could be
+ * accused of crowding out: a running agent is spending in a transcript the operator is
  * looking at, and a handed-off conversation is spending somewhere they cannot look at all. It
  * renders nothing at zero, so on the overwhelmingly common single-conversation line it costs
  * the width it is worth, and the older contract below never observes it because that fixture
  * has no background conversation.
  *
- * `subagents` (5) is the persistent running count. It is the last thing standing by an older
- * contract than any of the rest: `status-line-running-subagents.test.ts` narrows the footline
+ * `agents` (5) is the persistent running count. It is the last thing standing by an older
+ * contract than any of the rest: `status-line-running-agents.test.ts` narrows the footline
  * to exactly the chip's width and requires the number to be what survives.
  *
  * `location_right` (4) is the owner-supplied zone holding the composer's draft token readout.
@@ -98,7 +98,7 @@ const RIGHT_PART_SHED_RANK: Record<string, number> = {
 	model: 2,
 	mode: 3,
 	location_right: 4,
-	subagents: 5,
+	agents: 5,
 	background: 6,
 };
 
@@ -130,7 +130,7 @@ function weakestRightPart(parts: readonly QuietPart[]): { index: number; rank: n
  * are not on that list: the chip is what this row exists to retain, and a rung says what the
  * next keystroke will DO, which is not something to spend on a wider directory.
  *
- * Neither is the persistent running-subagent count, which the row sheds LAST of all (see
+ * Neither is the persistent running-agent count, which the row sheds LAST of all (see
  * RIGHT_PART_SHED_RANK). Paying the floor with it inverted that order twice over: a row whose
  * only remaining part was the count spent it and rendered nothing at all, and a row narrowing
  * under pressure lost the count while a mode rung it outranks stayed. A count is a small chip
@@ -514,8 +514,8 @@ export interface QuietGatherInput {
 	 * a zone nobody renders or guessing which zones those are.
 	 */
 	buildContext(request: QuietContextRequest): SegmentContext;
-	/** The persistent running-subagent count, always first in the right group. */
-	subagentBadge: string;
+	/** The persistent running-agent count, always first in the right group. */
+	agentBadge: string;
 	/** The animated background-job slot at its current width, or null when closed. */
 	badgeSlot: string | null;
 }
@@ -616,11 +616,11 @@ export function statusLineSettingsFromConfig(): StatusLineSettings {
 }
 
 /**
- * The persistent running-subagent count, which the row sheds last of
+ * The persistent running-agent count, which the row sheds last of
  * everything and renders at zero as readily as at three.
  */
-export function subagentBadgeText(count: number): string {
-	return theme.fg("statusLineSubagents", withIcon(theme.icon.agents, `${count}`));
+export function agentBadgeText(count: number): string {
+	return theme.fg("statusLineAgents", withIcon(theme.icon.agents, `${count}`));
 }
 
 /**
@@ -644,7 +644,7 @@ export function hasPathSegment(segments: readonly StatusLineSegmentId[]): boolea
 }
 
 export function gatherQuietSegments(input: QuietGatherInput): QuietGroups {
-	const { width, effectiveSettings, gitEnabled, expansion, buildContext, subagentBadge, badgeSlot } = input;
+	const { width, effectiveSettings, gitEnabled, expansion, buildContext, agentBadge, badgeSlot } = input;
 	const leftCfg = effectiveSettings.leftSegments;
 	const rightCfg = effectiveSettings.rightSegments;
 	const includePath = hasPathSegment(leftCfg) || hasPathSegment(rightCfg);
@@ -692,7 +692,7 @@ export function gatherQuietSegments(input: QuietGatherInput): QuietGroups {
 	const capLeft: QuietPart[] = [];
 	const capRight: QuietPart[] = [];
 	const push = (id: StatusLineSegmentId, out: QuietPart[]) => {
-		if (id === "subagents") return;
+		if (id === "agents") return;
 		const rendered = renderSegment(id, ctx);
 		if (!rendered.visible || !rendered.content) return;
 		out.push({ id, content: rendered.content, pin: rendered.pin });
@@ -718,7 +718,7 @@ export function gatherQuietSegments(input: QuietGatherInput): QuietGroups {
 	}
 	capRight.push(...contextFromLeft);
 	if (badgeSlot !== null) capRight.unshift({ id: "badges", content: badgeSlot });
-	capRight.unshift({ id: "subagents", content: subagentBadge });
+	capRight.unshift({ id: "agents", content: agentBadge });
 	return { location, capLeft, capRight };
 }
 
@@ -865,7 +865,7 @@ export function composeQuietRow(input: QuietRowInput): QuietRow {
 		// weakest is the whole point of having one: the alternative is what shipped before
 		// it existed, where the return below truncated the joined group and a budget of one
 		// cell rendered a bare `…` — every ranked part destroyed at once, including the
-		// persistent subagent count that outranks all of them.
+		// persistent agent count that outranks all of them.
 		//
 		// The zone is not re-fitted inside this branch: a shed that does not end the overflow
 		// is followed by another, so there is nothing settled to fit against yet. The shed
@@ -895,7 +895,7 @@ export function composeQuietRow(input: QuietRowInput): QuietRow {
 	// the context gauge, the draft token estimate, owner-pinned right content (see
 	// FLOOR_SPENDABLE) -- and asks the fitter again after each one. It never pays with the
 	// model chip, which is what this row exists to retain, never with a mode rung, which says
-	// what the next keystroke does, and never with the running-subagent count, which the row
+	// what the next keystroke does, and never with the running-agent count, which the row
 	// sheds last of everything.
 	while (locationCramped && locationShortened && rightParts.length > 0) {
 		const index = weakestSpendablePart(rightParts);
@@ -1063,7 +1063,7 @@ export function composeQuietRow(input: QuietRowInput): QuietRow {
 	// A location alone on the row is what a click on a name longer than the whole bar comes
 	// to: the reader asked for that name, and the row spent every readout it had to show as
 	// much of it as fits. Before the click could spend the last part this was unreachable --
-	// the subagent badge is appended to `capRight` unconditionally, so `right` was never
+	// the agent badge is appended to `capRight` unconditionally, so `right` was never
 	// empty -- and the lone-group return below dropped the location on the floor, painting
 	// an empty row on the one click that most needed to answer.
 	if (left) return { line: badge + truncateToWidth(left, budget), bounds: painted };

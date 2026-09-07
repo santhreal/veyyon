@@ -172,7 +172,7 @@ export async function initDb(): Promise<Database> {
 		db.run("ALTER TABLE messages ADD COLUMN premium_requests REAL NOT NULL DEFAULT 0");
 	}
 	db.run("UPDATE messages SET premium_requests = 0 WHERE premium_requests IS NULL");
-	// Token-usage-by-agent: each message is classified main / subagent / advisor
+	// Token-usage-by-agent: each message is classified main / spawn / advisor
 	// from its transcript path. A brand-new table gets the column from CREATE
 	// TABLE and the parser labels rows at insert time; a pre-existing table gets
 	// the column here (defaulting every prior row to 'main') and enrolls the
@@ -683,7 +683,7 @@ export function getStatsByFolder(cutoff?: number): FolderStats[] {
 }
 
 /**
- * Get token usage grouped by agent type (main agent, task subagents, advisor).
+ * Get token usage grouped by agent type (main agent, spawned agents, advisor).
  * Token columns are explicit so the dashboard's share denominator matches the
  * counts it renders. Rows missing `agent_type` (defensive) fall back to "main".
  */

@@ -80,7 +80,7 @@
 		"statusLineUntracked": "plumPurple",
 		"statusLineOutput": "blossomPink",
 		"statusLineCost": "honeyGold",
-		"statusLineSubagents": "blossomPink",
+		"statusLineAgents": "blossomPink",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

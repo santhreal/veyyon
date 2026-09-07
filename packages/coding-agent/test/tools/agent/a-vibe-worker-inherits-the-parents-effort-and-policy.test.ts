@@ -9,7 +9,7 @@
  *    queueing when the worker is mid-turn but not steerable (drained into the
  *    next turn automatically), and starting a follow-up turn on the SAME
  *    worker id when idle.
- * 3. `runSubagentFollowUpTurn` continues a live session in place: consecutive
+ * 3. `runAgentFollowUpTurn` continues a live session in place: consecutive
  *    turns hit the same AgentSession instance (context retained) and the
  *    finalized result carries the yield payload + tool trace.
  * 4. `wait` wakes on the FIRST settling turn among concurrent sessions and
@@ -33,7 +33,7 @@ function createSession(options: { manager?: AsyncJobManager } = {}): ToolSession
 	return makeToolSession({
 		cwd: "/tmp",
 		hasUI: false,
-		settings: Settings.isolated({ "subagent.agents": { sonic: { enabled: true } } }),
+		settings: Settings.isolated({ "agent.agents": { sonic: { enabled: true } } }),
 		getSessionFile: () => null,
 		getSessionSpawns: () => "*",
 		asyncJobManager: options.manager,
@@ -217,7 +217,7 @@ describe("vibe session registry", () => {
 			cwd: "/tmp",
 			hasUI: false,
 			getActiveThinkingLevel: () => ThinkingLevel.Low,
-			settings: Settings.isolated({ "subagent.agents": { sonic: { enabled: true } } }),
+			settings: Settings.isolated({ "agent.agents": { sonic: { enabled: true } } }),
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
 			asyncJobManager: manager,
@@ -304,7 +304,7 @@ describe("vibe session registry", () => {
 		const resolvedParent = makeToolSession({
 			cwd: "/tmp",
 			hasUI: false,
-			settings: Settings.isolated({ "subagent.agents": { sonic: { enabled: true } } }),
+			settings: Settings.isolated({ "agent.agents": { sonic: { enabled: true } } }),
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
 			asyncJobManager: manager,
@@ -339,7 +339,7 @@ describe("vibe session registry", () => {
 			cwd: "/tmp",
 			hasUI: false,
 			settings: Settings.isolated({
-				"subagent.agents": { sonic: { enabled: false } },
+				"agent.agents": { sonic: { enabled: false } },
 			}),
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
@@ -353,28 +353,28 @@ describe("vibe session registry", () => {
 				prompt: "Do not start.",
 			}),
 		).rejects.toThrow(
-			'Agent "sonic" is disabled (subagent.agents.sonic.enabled is false). Enable it in the Subagents settings tab (/settings) before starting the "fast" vibe worker.',
+			'Agent "sonic" is disabled (agent.agents.sonic.enabled is false). Enable it in the Agents settings tab (/settings) before starting the "fast" vibe worker.',
 		);
 		expect(executorSpy).not.toHaveBeenCalled();
 	});
 
 	/**
-	 * The master `subagent.enabled` toggle is checked separately from the per-agent
+	 * The master `agent.enabled` toggle is checked separately from the per-agent
 	 * row, and it must reject with its own message: an operator who turned the
 	 * whole feature off should not be told to go flip a per-agent row that is
 	 * already on.
 	 *
-	 * IF THIS REGRESSES: turning subagents off leaves vibe able to start workers.
+	 * IF THIS REGRESSES: turning agents off leaves vibe able to start workers.
 	 */
-	it("rejects a vibe worker when subagents are disabled wholesale", async () => {
+	it("rejects a vibe worker when agents are disabled wholesale", async () => {
 		const executorSpy = vi.spyOn(executorModule, "runSubprocess");
 		const manager = createManager();
 		const session = makeToolSession({
 			cwd: "/tmp",
 			hasUI: false,
 			settings: Settings.isolated({
-				"subagent.enabled": false,
-				"subagent.agents": { sonic: { enabled: true } },
+				"agent.enabled": false,
+				"agent.agents": { sonic: { enabled: true } },
 			}),
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
@@ -383,7 +383,7 @@ describe("vibe session registry", () => {
 
 		await expect(
 			VibeSessionRegistry.global().spawn(session, { cli: "fast", name: "OffVibe", prompt: "Do not start." }),
-		).rejects.toThrow('Cannot start vibe worker "sonic": subagents are disabled in settings.');
+		).rejects.toThrow('Cannot start vibe worker "sonic": agents are disabled in settings.');
 		expect(executorSpy).not.toHaveBeenCalled();
 	});
 
@@ -400,7 +400,7 @@ describe("vibe session registry", () => {
 		const session = makeToolSession({
 			cwd: "/tmp",
 			hasUI: false,
-			settings: Settings.isolated({ "subagent.agents": { sonic: { enabled: true } } }),
+			settings: Settings.isolated({ "agent.agents": { sonic: { enabled: true } } }),
 			getSessionFile: () => null,
 			getSessionSpawns: () => "deep",
 			asyncJobManager: manager,
@@ -416,7 +416,7 @@ describe("vibe session registry", () => {
 	 * Prevents Vibe from drifting from task/eval policy by pinning the exact
 	 * model and effort fields handed to its production executor.
 	 *
-	 * With `subagent.sharedModel` on, `subagent.model` and `subagent.thinkingLevel` are the only
+	 * With `agent.sharedModel` on, `agent.model` and `agent.thinkingLevel` are the only
 	 * pair that reaches a worker: the per-agent row below is inert while that scope is active, so a
 	 * row left behind from the other scope cannot outrank the setting an operator just changed. The
 	 * case below this one is the other half of that contract.
@@ -438,12 +438,12 @@ describe("vibe session registry", () => {
 			cwd: "/tmp",
 			hasUI: false,
 			settings: Settings.isolated({
-				"subagent.agents": {
+				"agent.agents": {
 					sonic: { enabled: true, model: "anthropic/claude-sonnet-4-5", thinkingLevel: "minimal" },
 				},
-				"subagent.sharedModel": true,
-				"subagent.model": "openai/gpt-5.2-codex",
-				"subagent.thinkingLevel": "xhigh",
+				"agent.sharedModel": true,
+				"agent.model": "openai/gpt-5.2-codex",
+				"agent.thinkingLevel": "xhigh",
 			}),
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
@@ -465,7 +465,7 @@ describe("vibe session registry", () => {
 	/**
 	 * The per-agent scope, asserted rather than described.
 	 *
-	 * With `subagent.sharedModel` off — the default — `subagent.agents.<name>.model` and
+	 * With `agent.sharedModel` off — the default — `agent.agents.<name>.model` and
 	 * `.thinkingLevel` are the pair that decides what an agent runs, and the shared pair is inert.
 	 * The vibe path resolves through the same scopes as a spawn, and it is the path that would keep
 	 * a stale order longest if the two ever drifted, which is why the scope is asserted here too.
@@ -489,11 +489,11 @@ describe("vibe session registry", () => {
 			settings: Settings.isolated({
 				// The row asks for one model and effort; the shared pair asks for
 				// another. The shared scope is off, so the row is what must reach the executor.
-				"subagent.agents": {
+				"agent.agents": {
 					sonic: { enabled: true, model: "anthropic/claude-sonnet-4-5", thinkingLevel: "minimal" },
 				},
-				"subagent.model": "openai/gpt-5.2-codex",
-				"subagent.thinkingLevel": "xhigh",
+				"agent.model": "openai/gpt-5.2-codex",
+				"agent.thinkingLevel": "xhigh",
 			}),
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
@@ -584,7 +584,7 @@ describe("vibe session registry", () => {
 			return makeResult(options.id);
 		});
 		const followUps: Array<{ id: string; message: string }> = [];
-		vi.spyOn(executorModule, "runSubagentFollowUpTurn").mockImplementation(async options => {
+		vi.spyOn(executorModule, "runAgentFollowUpTurn").mockImplementation(async options => {
 			followUps.push({ id: options.id, message: options.message });
 			return makeResult(options.id, { output: "queued work done" });
 		});
@@ -629,7 +629,7 @@ describe("vibe session registry", () => {
 			return makeResult(options.id);
 		});
 		const followUps: Array<{ id: string; message: string }> = [];
-		vi.spyOn(executorModule, "runSubagentFollowUpTurn").mockImplementation(async options => {
+		vi.spyOn(executorModule, "runAgentFollowUpTurn").mockImplementation(async options => {
 			followUps.push({ id: options.id, message: options.message });
 			options.onProgress?.(
 				progressSnapshot(options.id, {
@@ -660,7 +660,7 @@ describe("vibe session registry", () => {
 		expect(registry.screens("Main")[0]?.turns).toBe(2);
 	});
 
-	it("runSubagentFollowUpTurn continues the same live session and finalizes trace + yield response", async () => {
+	it("runAgentFollowUpTurn continues the same live session and finalizes trace + yield response", async () => {
 		const fake = createFakeWorkerSession();
 		AgentRegistry.global().register({
 			id: "Worker",
@@ -674,7 +674,7 @@ describe("vibe session registry", () => {
 
 		fake.setScript({ events: yieldTurnEvents({ report: "did the first thing" }), responseText: "first summary" });
 		const progressSnapshots: AgentProgress[] = [];
-		const first = await executorModule.runSubagentFollowUpTurn({
+		const first = await executorModule.runAgentFollowUpTurn({
 			id: "Worker",
 			agent,
 			message: "do the first thing",
@@ -686,7 +686,7 @@ describe("vibe session registry", () => {
 
 		// Second turn lands on the SAME session instance — prior context retained.
 		fake.setScript({ events: yieldTurnEvents({ report: "built on prior work" }), responseText: "second summary" });
-		const second = await executorModule.runSubagentFollowUpTurn({ id: "Worker", agent, message: "now extend it" });
+		const second = await executorModule.runAgentFollowUpTurn({ id: "Worker", agent, message: "now extend it" });
 		expect(second.exitCode).toBe(0);
 		expect(second.output).toContain("built on prior work");
 		expect(fake.prompts).toEqual(["do the first thing", "now extend it"]);
@@ -750,7 +750,7 @@ describe("vibe session registry", () => {
 			return makeResult(options.id, { output: "First turn done." });
 		});
 		const followUpGate = deferred();
-		vi.spyOn(executorModule, "runSubagentFollowUpTurn").mockImplementation(async options => {
+		vi.spyOn(executorModule, "runAgentFollowUpTurn").mockImplementation(async options => {
 			await followUpGate.promise;
 			return makeResult(options.id, { output: "Follow-up done." });
 		});

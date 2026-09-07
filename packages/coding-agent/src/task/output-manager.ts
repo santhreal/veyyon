@@ -1,7 +1,7 @@
 /**
  * Session-scoped manager for agent output IDs.
  *
- * Keeps every subagent output id unique within a session without polluting the
+ * Keeps every agent output id unique within a session without polluting the
  * common case with bookkeeping. A requested name is used verbatim the first
  * time it appears; only a *repeated* name gets a numeric suffix to disambiguate
  * it (e.g. "Anna", "Anna-2", "Anna-3"). When a parent prefix is configured, ids
@@ -30,7 +30,7 @@ export class AgentOutputManager {
 	constructor(getArtifactsDir: () => string | null, options?: { parentPrefix?: string }) {
 		this.#getArtifactsDir = getArtifactsDir;
 		this.#parentPrefix = options?.parentPrefix;
-		// Reserve the advisor transcript stem: a subagent allocated this id would
+		// Reserve the advisor transcript stem: a spawned agent allocated this id would
 		// write `<id>.jsonl`, clobbering the advisor's `__advisor.jsonl` in the same
 		// artifacts dir. Reserving bumps such a request to `__advisor-2`.
 		this.#taken.add(ADVISOR_TRANSCRIPT_STEM);
@@ -38,7 +38,7 @@ export class AgentOutputManager {
 
 	/**
 	 * Seed the taken-id set from output files already on disk so a resumed
-	 * session never reuses a name that would clobber a prior subagent's output.
+	 * session never reuses a name that would clobber a prior spawned agent's output.
 	 */
 	async #ensureInitialized(): Promise<void> {
 		if (this.#initialized) return;

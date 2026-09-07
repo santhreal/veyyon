@@ -8,7 +8,7 @@ import { keywordInProse } from "./markdown-prose";
  * English verb. "orchestrate the release", "orchestrate this migration
  * yourself", "do not orchestrate anything" each appended the hidden notice, and
  * that notice tells the model to drive the work as a multi-phase parallel
- * subagent run and to override any tendency to do it inline. So an operator
+ * agent run and to override any tendency to do it inline. So an operator
  * writing an ordinary sentence got a different execution strategy than the one
  * they had just described, invisibly, because the notice does not display. A
  * magic keyword has to be a token nobody types by accident: `ultrathink` is not

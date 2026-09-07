@@ -49,7 +49,6 @@ const LEGACY_RUNTIME_READERS: readonly string[] = [
 	"components/dashboard/agent-model-badge.ts",
 	"components/dashboard/agent-transcript-viewer.ts",
 	"components/dialogs/advisor-config.ts",
-	"components/dialogs/login-dialog.ts",
 	"components/dialogs/pause-screen.ts",
 	"components/extensions/inspector-panel.ts",
 	"components/selectors/effort-picker.ts",

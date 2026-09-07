@@ -81,7 +81,7 @@
 		"statusLineUntracked": 39,
 		"statusLineOutput": 209,
 		"statusLineCost": 209,
-		"statusLineSubagents": "phosphorBright",
+		"statusLineAgents": "phosphorBright",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

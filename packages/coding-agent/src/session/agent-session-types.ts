@@ -131,7 +131,7 @@ export interface AgentSessionDisposeOptions {
 	 * Postmortem reason that triggered this dispose (signal/fatal teardown
 	 * paths). When set, the persisted `session_exit` diagnostic records it
 	 * instead of the generic `"dispose"` used for normal programmatic disposal
-	 * (`/quit`, test teardown, subagent completion).
+	 * (`/quit`, test teardown, spawned agent completion).
 	 */
 	reason?: postmortem.Reason;
 }
@@ -150,7 +150,7 @@ export interface AgentSessionConfig {
 	 */
 	bypassAllApprovals?: boolean;
 	/**
-	 * A subagent's live view of its parent's bypass. The child's own
+	 * A spawned agent's live view of its parent's bypass. The child's own
 	 * `bypassAllApprovals` is a snapshot taken at spawn, so without this a parent
 	 * that revokes `/yolo` leaves an already-running child bypassing approvals to
 	 * the end of its run. Consulted on every check and can only narrow.
@@ -292,25 +292,25 @@ export interface AgentSessionConfig {
 	evalKernelOwnerId?: string;
 	/**
 	 * AsyncJobManager that this session installed as the process-global instance.
-	 * Only set for top-level sessions; subagents inherit the parent's manager and
+	 * Only set for top-level sessions; spawned agents inherit the parent's manager and
 	 * **MUST NOT** dispose it on their own teardown.
 	 */
 	ownedAsyncJobManager?: AsyncJobManager;
 	/**
 	 * Whether this session was spawned by another session in the SAME process.
 	 *
-	 * Set from `isSubagentSession` in `sdk.ts`, which is the one owner of that
-	 * question. It governs re-rooting: a subagent shares the process with its
+	 * Set from `isSpawnedSession` in `sdk.ts`, which is the one owner of that
+	 * question. It governs re-rooting: a spawned agent shares the process with its
 	 * parent and its siblings, so moving its working directory must not move
 	 * theirs. See {@link AgentSession.rescopeToCwd}. Default false, which is the
 	 * safe reading for an embedder that builds a session directly: a session with
 	 * nobody above it owns the process.
 	 */
-	isSubagent?: boolean;
+	isSpawned?: boolean;
 	/**
 	 * AsyncJobManager reachable by this session for scoped job actions.
 	 *
-	 * Top-level owners receive their own manager, subagents receive the inherited
+	 * Top-level owners receive their own manager, spawned agents receive the inherited
 	 * parent manager, and secondary in-process top-level sessions receive
 	 * `undefined` so job snapshots and ACP drains cannot observe the primary's
 	 * state.
@@ -318,7 +318,7 @@ export interface AgentSessionConfig {
 	asyncJobManager?: AsyncJobManager;
 	/** Agent identity (registry id like "Main" or "Alice") used for IRC routing. */
 	agentId?: string;
-	/** Whether this session is the top-level agent or a subagent. Drives eager-task
+	/** Whether this session is the top-level agent or a spawned agent. Drives eager-task
 	 *  prelude gating so a top-level session created with a custom `agentId` still
 	 *  receives the always-mode reminder. Defaults to "main". */
 	agentKind?: "main" | "sub";
@@ -363,7 +363,7 @@ export interface AgentSessionConfig {
 	pruneToolDescriptions?: boolean | ((model: Model) => boolean);
 	/**
 	 * Disconnect this session's OWNED MCP manager on dispose. Provided only when
-	 * the session created the manager (top-level sessions); subagents reuse a
+	 * the session created the manager (top-level sessions); spawned agents reuse a
 	 * parent's manager via `options.mcpManager` and omit this so a child's
 	 * teardown never tears down the shared servers.
 	 */
@@ -777,6 +777,6 @@ export const SHUTDOWN_DISPOSE_TIMEOUT_MS = 5_000;
  */
 export const TOOL_SHAPE_SETTING_PATHS: Readonly<Record<string, true>> = {
 	"async.enabled": true,
-	"subagent.isolation.mode": true,
-	"subagent.maxNestedSpawnDepth": true,
+	"agent.isolation.mode": true,
+	"agent.maxNestedSpawnDepth": true,
 };

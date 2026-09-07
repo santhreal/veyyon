@@ -50,7 +50,7 @@ export interface PaintShape {
 	headerRows: number;
 	/**
 	 * Rows of a root child mounted BELOW the transcript and above the footer —
-	 * the todo and subagent HUDs, which appear and disappear mid-turn.
+	 * the todo and agent HUDs, which appear and disappear mid-turn.
 	 */
 	hudRows: number;
 	/** Pinned footer children: loader, hairline, composer, status line. */
@@ -137,7 +137,7 @@ export interface PaintReport {
  *
  *  - `answer-collapse`: the tall streaming answer finishes and its final render
  *    is a few rows (a fence, a rule) instead of the dozens it streamed.
- *  - `hud-collapse`: the todo board or the subagent tree finishes and unmounts.
+ *  - `hud-collapse`: the todo board or the agent tree finishes and unmounts.
  *
  * `none` is the control: the same session with nothing shrinking.
  *

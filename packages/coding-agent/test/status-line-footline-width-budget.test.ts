@@ -166,8 +166,8 @@ describe("the footline's width shed keeps the values that decide what you do nex
 	 * boolean cannot be right: below the realistic widths above there is a point where every
 	 * remaining part is protected, the shed has nothing legal to drop, and it fell through to
 	 * truncating the whole joined right group. At a one-cell budget that rendered a bare `…` and
-	 * destroyed all four at once, including the persistent subagent count that
-	 * `status-line-running-subagents.test.ts` has always required to be the last thing standing.
+	 * destroyed all four at once, including the persistent agent count that
+	 * `status-line-running-agents.test.ts` has always required to be the last thing standing.
 	 *
 	 * So the degradation below 80 columns is ORDERED, weakest first: the gauge goes, then the
 	 * approval rung, then the owner zone, and the count is alone on the line before anything
@@ -183,7 +183,7 @@ describe("the footline's width shed keeps the values that decide what you do nex
 		// The gauge is the first of the ranked parts to go and the count the last.
 		const gaugeGone = seen.findIndex(ids => !ids.includes("context_pct"));
 		const rungGone = seen.findIndex(ids => !ids.includes("mode"));
-		const countGone = seen.findIndex(ids => !ids.includes("subagents"));
+		const countGone = seen.findIndex(ids => !ids.includes("agents"));
 		expect(gaugeGone).toBeGreaterThan(-1);
 		expect(rungGone).toBeGreaterThan(gaugeGone);
 		expect(countGone === -1 || countGone > rungGone).toBe(true);
@@ -193,10 +193,10 @@ describe("the footline's width shed keeps the values that decide what you do nex
 		// so this asserts the chip's own text survived rather than the line's.
 		for (const columns of [40, 24, 16, 10, 6]) {
 			const { line, ids, widthOf } = survivors("default", columns);
-			if (!ids.includes("subagents")) continue;
+			if (!ids.includes("agents")) continue;
 			const plain = line.replaceAll(/\x1b\[[0-9;]*m/g, "");
 			expect(`${columns}: ${plain.includes("0")}`).toBe(`${columns}: true`);
-			expect(`${columns}: ${widthOf("subagents")}`).toBe(`${columns}: 1`);
+			expect(`${columns}: ${widthOf("agents")}`).toBe(`${columns}: 1`);
 		}
 	});
 

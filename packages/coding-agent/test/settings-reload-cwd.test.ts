@@ -173,7 +173,7 @@ describe("Settings.reloadForCwd", () => {
 			unsubscribe();
 
 			expect(changed).toEqual([]);
-			expect(settings.get("subagent.delegation")).not.toBe("required");
+			expect(settings.get("agent.delegation")).not.toBe("required");
 		});
 	});
 });

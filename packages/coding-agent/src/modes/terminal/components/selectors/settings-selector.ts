@@ -45,7 +45,7 @@ import {
 	settings,
 	validateProviderMaxInFlightRequests,
 } from "../../../../config/settings";
-import type { SubagentAgentSettings, SubagentLaneSettings } from "../../../../config/settings-domains/subagents";
+import type { AgentLaneSettings, AgentSettings } from "../../../../config/settings-domains/agents";
 import {
 	getDefault,
 	getType,
@@ -61,21 +61,21 @@ import { loadCapability } from "../../../../discovery";
 import { PROVIDER_ID as NATIVE_RULES_PROVIDER_ID } from "../../../../discovery/builtin";
 import { BUILTIN_RULE_SECTIONS, type BuiltinRuleSection } from "../../../../discovery/builtin-rules";
 import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "../../../../discovery/capability/rule";
-import { discoverAgents } from "../../../../task/discovery";
 import {
+	AGENT_ENABLE_STATE_LABEL,
+	agentEnableState,
+	agentModelSourceLabel,
+	agentScopeIsShared,
+	agentSettingsFor,
 	delegationBlockedNotice,
-	isSubagentEnableDefaulted,
-	nextSubagentEnableValue,
+	isAgentEnableDefaulted,
+	nextAgentEnableValue,
+	resolveAgentMaxNestedSpawnDepth,
+	resolveAgentModel,
+	resolveAgentThinkingLevel,
 	resolveDelegation,
-	resolveSubagentMaxNestedSpawnDepth,
-	resolveSubagentModel,
-	resolveSubagentThinkingLevel,
-	SUBAGENT_ENABLE_STATE_LABEL,
-	subagentEnableState,
-	subagentModelSourceLabel,
-	subagentScopeIsShared,
-	subagentSettingsFor,
-} from "../../../../task/subagent-settings";
+} from "../../../../task/agent-settings";
+import { discoverAgents } from "../../../../task/discovery";
 import { type AgentDefinition, canSpawnAtDepth } from "../../../../task/types";
 import { withIcon } from "../../../../theme/icon-label";
 import { getCurrentThemeName, getSelectListTheme, getSettingsListTheme, theme } from "../../../../theme/theme";
@@ -1345,13 +1345,13 @@ const AGENT_ROW_NESTED = "\u0000agent-nested";
 const AGENT_ROW_RESET = "\u0000agent-reset";
 
 /**
- * Row ids for the two settings a subagent's own page edits: the model and the
+ * Row ids for the two settings an agent's own page edits: the model and the
  * effort THAT agent runs. The page that shows a lane's value is the page that
  * changes it, because the previous shape showed a value and then named a
  * different screen to go and change it on.
  */
-const AGENT_ROW_MODEL = "\u0000subagent-model";
-const AGENT_ROW_EFFORT = "\u0000subagent-effort";
+const AGENT_ROW_MODEL = "\u0000agent-model";
+const AGENT_ROW_EFFORT = "\u0000agent-effort";
 
 /**
  * The line stating that an operator may write an agent, and naming where the
@@ -1363,10 +1363,10 @@ const AGENT_ROW_EFFORT = "\u0000subagent-effort";
  * place naming all three.
  */
 const CUSTOM_AGENT_HINT =
-	"Write your own: a markdown file in ~/.veyyon/subagents/. Guide: veyyon.dev/docs/features/subagents-authoring.html";
+	"Write your own: a markdown file in ~/.veyyon/agents/. Guide: veyyon.dev/docs/features/agents-authoring.html";
 
 /** The settings one pass through the roster can write. */
-type SubagentRosterPath = "subagent.agents";
+type AgentRosterPath = "agent.agents";
 
 /**
  * What a lane's Effort row narrows against, as three distinct answers rather
@@ -1385,10 +1385,7 @@ type SubagentRosterPath = "subagent.agents";
  * max`, and an invented ladder for an id like `cursor-grok-4.6-medium` whose id
  * IS its effort.
  */
-type SubagentEffortScope =
-	| { kind: "model"; model: Model }
-	| { kind: "unresolved"; pattern: string }
-	| { kind: "blanket" };
+type AgentEffortScope = { kind: "model"; model: Model } | { kind: "unresolved"; pattern: string } | { kind: "blanket" };
 
 /**
  * The scope one resolved model pattern implies. The one narrowing rule, so a
@@ -1399,7 +1396,7 @@ function effortScopeForPattern(
 	models: ReadonlyArray<Model> | undefined,
 	head: string | undefined,
 	sessionModel: Model | undefined,
-): SubagentEffortScope {
+): AgentEffortScope {
 	if (!head) return sessionModel ? { kind: "model", model: sessionModel } : { kind: "blanket" };
 	const bare = models ? barePickerSelector(head, models as Model<Api>[]) : head;
 	const found = models?.find(candidate => `${candidate.provider}/${candidate.id}` === bare);
@@ -1407,8 +1404,8 @@ function effortScopeForPattern(
 }
 
 /** The picker rows and the sentence that explains a short list, from one scope. */
-function subagentEffortOptions(
-	scope: SubagentEffortScope,
+function agentEffortOptions(
+	scope: AgentEffortScope,
 	catalog: ReadonlyArray<Model> | undefined,
 ): { options: Array<{ value: string; label: string; description: string }>; notice: string | undefined } {
 	if (scope.kind === "unresolved") {
@@ -1450,25 +1447,25 @@ function subagentEffortOptions(
  * the same answer, and a hardcoded "off below the first level" gave the page a
  * different one than the spawn gate.
  */
-function laneSpawnEnabled(lane: SubagentLaneSettings, depth: number, resolvedMax: number): boolean {
+function laneSpawnEnabled(lane: AgentLaneSettings, depth: number, resolvedMax: number): boolean {
 	return lane.enabled ?? canSpawnAtDepth(resolvedMax, depth);
 }
 
 /** The settings path of one lane, which is what a page names when it clears itself. */
 function lanePath(name: string, depth: number): string {
-	return `subagent.agents.${name}${".subagents".repeat(depth)}`;
+	return `agent.agents.${name}${".agents".repeat(depth)}`;
 }
 
 /**
  * One lane with its empty fields dropped, or undefined when nothing is left.
  *
- * A lane that stores only `{}` — or only `{ subagents: {} }` — is a row that
+ * A lane that stores only `{}` — or only `{ agents: {} }` — is a row that
  * reads as configured to everything that checks for one, while deciding nothing.
  * Pruning bottom-up is what lets a page be opened, looked at, and left without
  * writing anything.
  */
-function pruneLane(lane: SubagentLaneSettings): SubagentLaneSettings | undefined {
-	const cleaned: SubagentLaneSettings = {};
+function pruneLane(lane: AgentLaneSettings): AgentLaneSettings | undefined {
+	const cleaned: AgentLaneSettings = {};
 	if (lane.enabled !== undefined) cleaned.enabled = lane.enabled;
 	if (lane.model !== undefined && (Array.isArray(lane.model) ? lane.model.length > 0 : lane.model.trim().length > 0)) {
 		cleaned.model = lane.model;
@@ -1476,8 +1473,8 @@ function pruneLane(lane: SubagentLaneSettings): SubagentLaneSettings | undefined
 	if (lane.thinkingLevel !== undefined && lane.thinkingLevel.trim().length > 0) {
 		cleaned.thinkingLevel = lane.thinkingLevel;
 	}
-	const child = lane.subagents === undefined ? undefined : pruneLane(lane.subagents);
-	if (child !== undefined) cleaned.subagents = child;
+	const child = lane.agents === undefined ? undefined : pruneLane(lane.agents);
+	if (child !== undefined) cleaned.agents = child;
 	// The pre-tree number survives only while there is no chain. It still decides
 	// in that state, so dropping it on an unrelated toggle would silently change
 	// the ceiling; once a chain exists it decides nothing, and leaving it behind
@@ -1489,19 +1486,19 @@ function pruneLane(lane: SubagentLaneSettings): SubagentLaneSettings | undefined
 }
 
 /**
- * The `subagent.agents` table: the discovered agents, each with what it runs and
+ * The `agent.agents` table: the discovered agents, each with what it runs and
  * what it may spawn.
  *
- * Every answer comes from `task/subagent-settings.ts` — the enable default, the
+ * Every answer comes from `task/agent-settings.ts` — the enable default, the
  * state wording, the model precedence and the layer that decided it — so this and
  * `/agents` cannot describe the same row differently. It edits settings rows only;
  * writing an agent FILE stays in `/agents`, which is why the footer points there.
  *
  * A lane is RECURSIVE and every page has the same shape: Enabled, Model, Effort,
  * and a door to what this lane may spawn. Open `deep`, and you are setting what
- * `deep` runs; open its `Subagents` row and you are setting what `deep` spawns,
+ * `deep` runs; open its `Agents` row and you are setting what `deep` spawns,
  * with `inherit` meaning the page you came from. There is no ceiling: the chain
- * goes as deep as levels are turned on, and `Subagents → Enabled` IS the depth
+ * goes as deep as levels are turned on, and `Agents → Enabled` IS the depth
  * limit, which is why no numeric row sits beside it.
  *
  * The hazard this shape has to keep answering: a per-agent model once outranked
@@ -1514,7 +1511,7 @@ function pruneLane(lane: SubagentLaneSettings): SubagentLaneSettings | undefined
  * once something is overridden, so a table-driven list would be empty on a stock
  * install and would hide exactly the specialists the operator came to turn on.
  */
-class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
+class AgentsSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
 	#agents: AgentDefinition[] = [];
 	#loadError: string | undefined;
@@ -1534,7 +1531,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		private readonly models: ReadonlyArray<Model> | undefined,
 		/** Catalog plus registry for the model chain picker; absent in hosts with no model list. */
 		private readonly picker: { registry: ModelRegistry; models: ReadonlyArray<Model> } | undefined,
-		private readonly onChange: (path: SubagentRosterPath) => void,
+		private readonly onChange: (path: AgentRosterPath) => void,
 		private readonly onCancel: () => void,
 		private readonly requestRender?: () => void,
 	) {
@@ -1558,26 +1555,26 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 	}
 
 	/** The stored table, always an object so callers can spread it. */
-	#table(): Record<string, SubagentAgentSettings> {
-		const stored = settings.get("subagent.agents");
-		return stored && typeof stored === "object" ? ({ ...stored } as Record<string, SubagentAgentSettings>) : {};
+	#table(): Record<string, AgentSettings> {
+		const stored = settings.get("agent.agents");
+		return stored && typeof stored === "object" ? ({ ...stored } as Record<string, AgentSettings>) : {};
 	}
 
-	#row(name: string): SubagentAgentSettings {
-		return { ...subagentSettingsFor(settings, name) };
+	#row(name: string): AgentSettings {
+		return { ...agentSettingsFor(settings, name) };
 	}
 
 	/**
-	 * The lane a page is showing: `[]` is the agent's own page, `["subagents"]`
+	 * The lane a page is showing: `[]` is the agent's own page, `["agents"]`
 	 * the page for what it may spawn, and one more step per level below that.
 	 *
 	 * A level the operator has not opened yet does not exist in the file, so this
 	 * answers with an empty lane rather than undefined: the page renders the
 	 * defaults, and nothing is written until something is chosen.
 	 */
-	#lane(name: string, depth: number): SubagentLaneSettings {
-		let lane: SubagentLaneSettings = this.#row(name);
-		for (let step = 0; step < depth; step++) lane = lane.subagents ?? {};
+	#lane(name: string, depth: number): AgentLaneSettings {
+		let lane: AgentLaneSettings = this.#row(name);
+		for (let step = 0; step < depth; step++) lane = lane.agents ?? {};
 		return { ...lane };
 	}
 
@@ -1589,23 +1586,23 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 	 * because a bare `{}` in the file reads as "configured" to anything checking
 	 * for a row.
 	 */
-	#writeLane(name: string, depth: number, next: SubagentLaneSettings): void {
-		const chain: SubagentLaneSettings[] = [];
-		let lane: SubagentLaneSettings = this.#row(name);
+	#writeLane(name: string, depth: number, next: AgentLaneSettings): void {
+		const chain: AgentLaneSettings[] = [];
+		let lane: AgentLaneSettings = this.#row(name);
 		for (let step = 0; step < depth; step++) {
 			chain.push(lane);
-			lane = lane.subagents ?? {};
+			lane = lane.agents ?? {};
 		}
 		let rebuilt = pruneLane(next);
 		for (let step = chain.length - 1; step >= 0; step--) {
-			rebuilt = pruneLane({ ...chain[step], subagents: rebuilt });
+			rebuilt = pruneLane({ ...chain[step], agents: rebuilt });
 		}
 
 		const table = this.#table();
 		if (rebuilt === undefined) delete table[name];
 		else table[name] = rebuilt;
-		settings.set("subagent.agents", table);
-		this.onChange("subagent.agents");
+		settings.set("agent.agents", table);
+		this.onChange("agent.agents");
 	}
 
 	/** One agent's model column: the resolved pattern plus the layer that chose it. */
@@ -1614,7 +1611,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		// one: the agent's own page is a direct child (depth 1), each level down is
 		// one deeper. Passing it is what makes the badge name the lane that decided
 		// rather than the table.
-		const resolved = resolveSubagentModel({
+		const resolved = resolveAgentModel({
 			settings,
 			agentName: agent.name,
 			agentModel: agent.model,
@@ -1633,7 +1630,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 				: formatSelectorSummary(pattern);
 		return resolved.source === "default"
 			? theme.fg("dim", `default · ${summary}`)
-			: `${summary} ${theme.fg("dim", `· ${subagentModelSourceLabel(resolved.source, agent.name, resolved.depth)}`)}`;
+			: `${summary} ${theme.fg("dim", `· ${agentModelSourceLabel(resolved.source, agent.name, resolved.depth)}`)}`;
 	}
 
 	/**
@@ -1643,7 +1640,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 	 * stored value — a row showing a resolved answer it does not own is how a
 	 * screen comes to look configured when it has not been.
 	 */
-	#laneModelSummary(lane: SubagentLaneSettings, depth: number): string {
+	#laneModelSummary(lane: AgentLaneSettings, depth: number): string {
 		const chain = lane.model;
 		if (chain === undefined || (Array.isArray(chain) ? chain.length === 0 : chain.trim().length === 0)) {
 			return theme.fg("dim", depth === 0 ? "default · the default model role" : "inherit · the level above");
@@ -1657,7 +1654,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 	}
 
 	/** One lane's Effort row, on the same stored-not-resolved rule as the model. */
-	#laneEffortSummary(lane: SubagentLaneSettings, depth: number): string {
+	#laneEffortSummary(lane: AgentLaneSettings, depth: number): string {
 		const level = lane.thinkingLevel?.trim() ?? "";
 		return level.length > 0
 			? level
@@ -1672,7 +1669,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 	 */
 	#runsSummary(agent: AgentDefinition, depth = 0): string {
 		const model = this.#modelSummary(agent, depth);
-		const head = resolveSubagentModel({
+		const head = resolveAgentModel({
 			settings,
 			agentName: agent.name,
 			agentModel: agent.model,
@@ -1682,7 +1679,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		// and it outranks every effort layer, so printing a layer's answer beside it
 		// would show two efforts for one agent.
 		if (head && extractExplicitThinkingSelector(head, settings) !== undefined) return model;
-		const effort = resolveSubagentThinkingLevel({
+		const effort = resolveAgentThinkingLevel({
 			settings,
 			agentName: agent.name,
 			agentThinkingLevel: agent.thinkingLevel,
@@ -1694,13 +1691,13 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 	#showAgentList(): void {
 		this.clear();
 		this.#escapeTo = undefined;
-		this.addChild(new Text(theme.bold(theme.fg("accent", "Subagents")), 0, 0));
+		this.addChild(new Text(theme.bold(theme.fg("accent", "Agents")), 0, 0));
 		this.addChild(new Spacer(1));
 		this.addChild(
 			new Text(
 				theme.fg(
 					"muted",
-					"Which subagent types this session offers, and what each one runs. Model and effort are chosen inside an agent's own page and apply to that agent alone; an agent that names neither runs the profile's default model at medium effort.",
+					"Which agents the model may spawn and what each one runs. Open an agent to set its model and effort and which agents it may spawn in turn. An agent with neither set runs the default model at medium effort.",
 				),
 				0,
 				0,
@@ -1716,11 +1713,11 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 			return;
 		}
 		if (!this.#loaded) {
-			this.addChild(new Text(theme.fg("dim", "  Reading subagents…"), 0, 0));
+			this.addChild(new Text(theme.fg("dim", "  Reading agents…"), 0, 0));
 			return;
 		}
 
-		// Whether this table has any effect is decided by `subagent.delegation` as
+		// Whether this table has any effect is decided by `agent.delegation` as
 		// well, and that setting is a row the reader is not looking at right now. So
 		// the panel says when nothing will be delegated, from the one resolver that
 		// reads both — the same sentence `/agents` shows, for the same reason.
@@ -1728,7 +1725,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 			resolveDelegation(
 				settings,
 				this.#agents
-					.filter(agent => subagentEnableState(agent, this.#row(agent.name).enabled) === "on")
+					.filter(agent => agentEnableState(agent, this.#row(agent.name).enabled) === "on")
 					.map(agent => agent.name),
 			),
 		);
@@ -1739,18 +1736,18 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 
 		// One row per discovered agent, and nothing above them. There is no header
 		// pair answering for the whole list any more: a control that reached every
-		// agent at once is what made "I changed the model" and "my subagents
+		// agent at once is what made "I changed the model" and "my agents
 		// changed model" one event.
 		const items: SelectItem[] = this.#agents.map(agent => ({
 			value: agent.name,
 			label: agent.name,
-			description: `${SUBAGENT_ENABLE_STATE_LABEL[subagentEnableState(agent, this.#row(agent.name).enabled)]} · ${this.#modelSummary(agent)}`,
+			description: `${AGENT_ENABLE_STATE_LABEL[agentEnableState(agent, this.#row(agent.name).enabled)]} · ${this.#modelSummary(agent)}`,
 		}));
 		// No lanes at all is now an empty screen rather than a screen with a shared
 		// model pair on it, so the hint below is the only thing left to act on and
 		// this page stops here rather than building a list with no rows in it.
 		if (items.length === 0) {
-			this.addChild(new Text(theme.fg("dim", "  No subagent types found."), 0, 0));
+			this.addChild(new Text(theme.fg("dim", "  No agent types found."), 0, 0));
 			this.addChild(new Spacer(1));
 			this.addChild(new Text(theme.fg("muted", `  ${CUSTOM_AGENT_HINT}`), 0, 0));
 			this.addChild(new Spacer(1));
@@ -1796,7 +1793,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 
 	/**
 	 * One lane's page. `depth` 0 is the agent itself; each step down is one
-	 * `Subagents` row followed, and the page shape never changes.
+	 * `Agents` row followed, and the page shape never changes.
 	 */
 	#showAgentEditor(name: string, depth = 0): void {
 		const agent = this.#agent(name);
@@ -1805,18 +1802,18 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 			return;
 		}
 		const lane = this.#lane(name, depth);
-		const child = lane.subagents ?? {};
+		const child = lane.agents ?? {};
 		// The cap this agent's whole tree runs under, asked once: every default on
 		// this page is read off it, so the page cannot claim a level the spawn gate
 		// would refuse.
-		const resolvedMax = resolveSubagentMaxNestedSpawnDepth(settings, name);
+		const resolvedMax = resolveAgentMaxNestedSpawnDepth(settings, name);
 		const spawnAllowed = laneSpawnEnabled(child, depth + 1, resolvedMax);
 
 		this.clear();
 		this.#escapeTo = undefined;
-		// The trail, not just the name: three levels down, "Subagent: deep" alone
+		// The trail, not just the name: three levels down, "Agent: deep" alone
 		// cannot say which of the three pages you are on.
-		const trail = depth === 0 ? `Subagent: ${name}` : `${name}${" › subagents".repeat(depth)}`;
+		const trail = depth === 0 ? `Agent: ${name}` : `${name}${" › agents".repeat(depth)}`;
 		this.addChild(new Text(theme.bold(theme.fg("accent", trail)), 0, 0));
 		this.addChild(new Spacer(1));
 		this.addChild(
@@ -1824,8 +1821,8 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 				theme.fg(
 					"muted",
 					depth === 0
-						? agent.description || `${agent.source} subagent`
-						: `What ${depth === 1 ? name : "this lane"} may spawn. Unset follows the level above.`,
+						? agent.description || `${agent.source} agent`
+						: `What ${depth === 1 ? name : "the agents at this level"} may spawn. Unset follows the level above.`,
 				),
 				0,
 				0,
@@ -1842,9 +1839,9 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		// is the exact confusion that retired the switch the first time. The
 		// signpost replaces the rows rather than sitting beside them, so the page
 		// still says where the answer is instead of looking like it lost one.
-		const shared = subagentScopeIsShared(settings);
+		const shared = agentScopeIsShared(settings);
 		if (shared) {
-			this.addChild(new Text(theme.fg("dim", "  Set for every subagent · Subagents → Shared Model"), 0, 0));
+			this.addChild(new Text(theme.fg("dim", "  Set for every agent · Agents → Shared Model"), 0, 0));
 			this.addChild(new Spacer(1));
 		}
 		const items: SelectItem[] = [
@@ -1858,8 +1855,8 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 				// not been chosen yet, never that the lane behaves differently.
 				description:
 					depth === 0
-						? `${SUBAGENT_ENABLE_STATE_LABEL[subagentEnableState(agent, lane.enabled)]}${
-								isSubagentEnableDefaulted(lane.enabled) ? theme.fg("dim", " (default)") : ""
+						? `${AGENT_ENABLE_STATE_LABEL[agentEnableState(agent, lane.enabled)]}${
+								isAgentEnableDefaulted(lane.enabled) ? theme.fg("dim", " (default)") : ""
 							}`
 						: `${laneSpawnEnabled(lane, depth, resolvedMax) ? "on" : "off"}${
 								lane.enabled === undefined ? theme.fg("dim", " (default)") : ""
@@ -1881,10 +1878,10 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 					]),
 			{
 				value: AGENT_ROW_NESTED,
-				label: "Subagents",
+				label: "Agents",
 				description: spawnAllowed
 					? this.#laneModelSummary(child, depth + 1)
-					: theme.fg("dim", "off · this lane may not spawn"),
+					: theme.fg("dim", "off · may not spawn agents"),
 			},
 		];
 		if (Object.keys(lane).length > 0) {
@@ -1903,7 +1900,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 						name,
 						depth,
 						depth === 0
-							? { ...lane, enabled: nextSubagentEnableValue(agent, lane.enabled) }
+							? { ...lane, enabled: nextAgentEnableValue(agent, lane.enabled) }
 							: { ...lane, enabled: !laneSpawnEnabled(lane, depth, resolvedMax) },
 					);
 					this.#showAgentEditor(name, depth);
@@ -1939,7 +1936,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 	/**
 	 * One lane's model chain, edited through the SAME chain editor every other
 	 * model surface uses ({@link ModelChainSubmenu}) — handed a writer instead of
-	 * a settings key, because a lane lives inside the `subagent.agents` record
+	 * a settings key, because a lane lives inside the `agent.agents` record
 	 * and only that record's owner can prune the chain of lanes above it.
 	 */
 	#showLaneModelPicker(name: string, depth: number): void {
@@ -1973,7 +1970,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 					back();
 					this.requestRender?.();
 				},
-				() => this.onChange("subagent.agents"),
+				() => this.onChange("agent.agents"),
 				this.requestRender,
 			),
 		);
@@ -1990,13 +1987,13 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		const back = () => this.#showAgentEditor(name, depth);
 		this.#escapeTo = back;
 		const lane = this.#lane(name, depth);
-		const { options, notice } = subagentEffortOptions(this.#laneEffortScope(name, depth), this.models);
+		const { options, notice } = agentEffortOptions(this.#laneEffortScope(name, depth), this.models);
 		const description =
 			notice === undefined
 				? depth === 0
 					? `Effort ${name} runs at. Inherit follows the session's effort; a \`:level\` on the model chain still wins.`
-					: "Effort this lane runs at. Inherit follows the level above."
-				: `Effort this lane runs at. ${notice}`;
+					: "Effort the agents spawned at this level run at. Inherit follows the level above."
+				: `Effort the agents spawned at this level run at. ${notice}`;
 		this.addChild(
 			new SelectSubmenu(
 				depth === 0 ? `Effort · ${name}` : `Effort · what ${name} spawns`,
@@ -2028,8 +2025,8 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 	 * found by asking the same resolver a spawn asks, so the page and the spawn
 	 * cannot disagree about which ladder is on screen.
 	 */
-	#laneEffortScope(name: string, depth: number): SubagentEffortScope {
-		const head = resolveSubagentModel({
+	#laneEffortScope(name: string, depth: number): AgentEffortScope {
+		const head = resolveAgentModel({
 			settings,
 			agentName: name,
 			taskDepth: depth + 1,
@@ -2326,8 +2323,8 @@ class DefaultModelSubmenu extends MouseRoutedSubmenu {
 /**
  * Where a chain the picker edits actually lives, when it is not a settings key.
  *
- * `subagent.model` and `compaction.model` are keys, and `settings.set` addresses
- * them directly. A per-agent lane is a field inside the `subagent.agents`
+ * `agent.model` and `compaction.model` are keys, and `settings.set` addresses
+ * them directly. A per-agent lane is a field inside the `agent.agents`
  * record, whose owner rebuilds and prunes the whole chain of lanes above it on
  * every write, so the picker hands the value over instead of storing it: two
  * writers for one record is how an empty lane comes to persist as `{}` and read
@@ -2339,12 +2336,12 @@ export interface ModelChainSlot {
 
 /**
  * Ordered-chain picker for a model settings slot (`compaction.model`,
- * `subagent.model`).
+ * `agent.model`).
  *
  * Both slots have always accepted a CHAIN rather than one model: the stored
  * value goes through {@link normalizeModelPatternList}, which splits on commas,
  * and each consumer tries the entries in order until one works (compaction skips
- * a candidate that is unauthenticated or whose window is too small; a subagent
+ * a candidate that is unauthenticated or whose window is too small; an agent
  * retries on the next entry when its model errors). Only the picker was
  * single-slot, so the feature existed and was unreachable.
  *
@@ -2352,7 +2349,7 @@ export interface ModelChainSlot {
  * fallbacks. Adding an entry runs the same two steps as before, pick a model
  * then pick a thinking effort, and the effort rides the stored selector as a
  * `:level` suffix (via {@link renderEffortStep}), which is the encoding the
- * compaction candidate resolver and the subagent spawner already parse back out.
+ * compaction candidate resolver and the agent spawner already parse back out.
  * Models with no supported efforts skip the second step and store the bare
  * selector.
  *
@@ -2678,7 +2675,7 @@ const MACHINE_LIMITS_POINTER_ROW: SettingItem = {
 	currentValue: "Global tab",
 	readOnly: true,
 	description:
-		"Every limit on this tab bounds one session tree — this session, its subagents, and everything they spawn — and is stored in the active profile. The limits that bound every veyyon process on this machine together, across profiles and concurrent instances, are on the Global tab under Machine Limits, stored in ~/.veyyon/config.yml. Session groups are created inside the machine group, so a session limit larger than the machine limit is bounded by it.",
+		"Limits on this tab bound what this session and its agents may consume, and are stored in the active profile. Machine-wide limits covering all sessions across profiles are on the Global tab under Machine Limits, stored in ~/.veyyon/config.yml. A session limit larger than the corresponding machine limit is bounded by it.",
 	keywords: ["machine", "global", "all", "everything", "cross-profile", "system", "wide"],
 };
 
@@ -3533,13 +3530,13 @@ export class SettingsSelectorComponent implements Component {
 					changed,
 				};
 
-			case "subagentSharedEffort":
+			case "agentSharedEffort":
 				return {
 					id: def.path,
 					label: def.label,
 					description: def.description,
-					currentValue: this.#formatSubagentSharedEffortValue(),
-					submenu: (_cv, done) => this.#createSubagentSharedEffortInput(done),
+					currentValue: this.#formatAgentSharedEffortValue(),
+					submenu: (_cv, done) => this.#createAgentSharedEffortInput(done),
 					changed,
 				};
 
@@ -3553,13 +3550,13 @@ export class SettingsSelectorComponent implements Component {
 					changed,
 				};
 
-			case "subagentAgents":
+			case "agents":
 				return {
 					id: def.path,
 					label: def.label,
 					description: def.description,
-					currentValue: this.#formatSubagentAgentsValue(),
-					submenu: (_cv, done) => this.#createSubagentAgentsInput(done),
+					currentValue: this.#formatAgentsValue(),
+					submenu: (_cv, done) => this.#createAgentsInput(done),
 					changed,
 				};
 
@@ -3938,8 +3935,8 @@ export class SettingsSelectorComponent implements Component {
 	}
 
 	/** Row summary: the stored level, or that the documented default applies. */
-	#formatSubagentSharedEffortValue(): string {
-		const stored: unknown = settings.get("subagent.thinkingLevel");
+	#formatAgentSharedEffortValue(): string {
+		const stored: unknown = settings.get("agent.thinkingLevel");
 		const level = typeof stored === "string" ? stored.trim() : "";
 		return level.length > 0 ? level : "Inherit";
 	}
@@ -3947,38 +3944,38 @@ export class SettingsSelectorComponent implements Component {
 	/**
 	 * The blanket effort, narrowed against the model those agents actually run.
 	 *
-	 * The scope comes from `subagent.model` rather than the session model: while
+	 * The scope comes from `agent.model` rather than the session model: while
 	 * the switch is on that chain is what every spawn resolves to, and narrowing
-	 * against the model on screen would offer levels no subagent endpoint
+	 * against the model on screen would offer levels no agent endpoint
 	 * accepts. An unset chain falls back to the session model, which is what an
 	 * unset chain resolves to through the default role.
 	 */
-	#createSubagentSharedEffortInput(done: (value?: string) => void): Container {
-		const chain: unknown = settings.get("subagent.model");
+	#createAgentSharedEffortInput(done: (value?: string) => void): Container {
+		const chain: unknown = settings.get("agent.model");
 		const head = Array.isArray(chain) ? chain.find((entry): entry is string => typeof entry === "string") : chain;
 		const scope = effortScopeForPattern(
 			this.context.availableModels,
 			typeof head === "string" && head.trim().length > 0 ? head : undefined,
 			this.context.model,
 		);
-		const { options, notice } = subagentEffortOptions(scope, this.context.availableModels);
-		const stored: unknown = settings.get("subagent.thinkingLevel");
+		const { options, notice } = agentEffortOptions(scope, this.context.availableModels);
+		const stored: unknown = settings.get("agent.thinkingLevel");
 		return new SelectSubmenu(
 			"Shared Effort",
 			notice === undefined
-				? "The effort every subagent runs at. A `:level` on the model chain still wins."
-				: `The effort every subagent runs at. ${notice}`,
+				? "The effort every spawned agent runs at. A `:level` on the model chain still wins."
+				: `The effort every spawned agent runs at. ${notice}`,
 			options,
 			typeof stored === "string" ? stored.trim() : "",
 			value => {
 				// Inherit is the ABSENCE of a value: storing the empty string would
 				// leave the key configured and reading as a choice nobody made.
-				if (value === INHERIT_EFFORT_OPTION_VALUE) settings.set("subagent.thinkingLevel", undefined);
-				else settings.set("subagent.thinkingLevel", value);
-				this.callbacks.onChange("subagent.thinkingLevel", settings.get("subagent.thinkingLevel"));
-				done(this.#formatSubagentSharedEffortValue());
+				if (value === INHERIT_EFFORT_OPTION_VALUE) settings.set("agent.thinkingLevel", undefined);
+				else settings.set("agent.thinkingLevel", value);
+				this.callbacks.onChange("agent.thinkingLevel", settings.get("agent.thinkingLevel"));
+				done(this.#formatAgentSharedEffortValue());
 			},
-			() => done(this.#formatSubagentSharedEffortValue()),
+			() => done(this.#formatAgentSharedEffortValue()),
 		);
 	}
 
@@ -3988,9 +3985,9 @@ export class SettingsSelectorComponent implements Component {
 	 * synchronous — discovery is async, and a row that says "6 agents" before the
 	 * directories are read would be a guess.
 	 */
-	#formatSubagentAgentsValue(): string {
-		const stored = settings.get("subagent.agents");
-		const table = stored && typeof stored === "object" ? (stored as Record<string, SubagentAgentSettings>) : {};
+	#formatAgentsValue(): string {
+		const stored = settings.get("agent.agents");
+		const table = stored && typeof stored === "object" ? (stored as Record<string, AgentSettings>) : {};
 		const rows = Object.values(table);
 		if (rows.length === 0) return "defaults";
 		const blocked = rows.filter(row => row?.enabled === false).length;
@@ -4006,8 +4003,8 @@ export class SettingsSelectorComponent implements Component {
 	 * can open the same chain picker the tab row does; without it that row says so
 	 * instead of refusing the whole screen, which is what it used to do.
 	 */
-	#createSubagentAgentsInput(done: (value?: string) => void): Container {
-		return new SubagentAgentsSubmenu(
+	#createAgentsInput(done: (value?: string) => void): Container {
+		return new AgentsSubmenu(
 			this.context.cwd,
 			this.context.model,
 			this.context.availableModels,
@@ -4015,7 +4012,7 @@ export class SettingsSelectorComponent implements Component {
 			path => {
 				this.callbacks.onChange(path, settings.get(path));
 			},
-			() => done(this.#formatSubagentAgentsValue()),
+			() => done(this.#formatAgentsValue()),
 			this.context.requestRender,
 		);
 	}

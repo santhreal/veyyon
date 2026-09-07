@@ -5,7 +5,7 @@ Use this when you need to investigate with many intermediate tool calls (`read`,
 Rules:
 - You MUST call `rewind` before yielding after starting a checkpoint.
 - You NEVER call `checkpoint` while another checkpoint is active.
-- Not available in subagents.
+- Not available in spawned agents.
 
 Typical flow:
 1. `checkpoint(goal: …)`

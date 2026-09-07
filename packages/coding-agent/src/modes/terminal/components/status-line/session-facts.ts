@@ -209,7 +209,7 @@ export function launchSegmentContext(request: LaunchContextRequest): SegmentCont
 		contextLimit: 0,
 		contextLimitKind: "window",
 		autoCompactEnabled: request.autoCompactEnabled,
-		subagentCount: 0,
+		agentCount: 0,
 		backgroundSessionCount: 0,
 		activeMs: 0,
 		git: { branch: request.branch, status: launchFacts.gitStatus, pr: null },

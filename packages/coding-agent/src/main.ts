@@ -88,8 +88,8 @@ import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "./sess
 import { executeBuiltinSlashCommand } from "./slash-commands/builtin-registry";
 import { shouldShowStartupSplash } from "./startup-splash";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "./system-prompt";
-import { createPersistedSubagentReviverFactory } from "./task/persisted-revive";
-import { resolveSubagentIdleTtlMs, resolveSubagentPruneBudget } from "./task/subagent-settings";
+import { resolveAgentIdleTtlMs, resolveAgentPruneBudget } from "./task/agent-settings";
+import { createPersistedAgentReviverFactory } from "./task/persisted-revive";
 import { initTelemetryExport, isTelemetryExportEnabled } from "./telemetry-export";
 import { initTheme, stopThemeWatcher } from "./theme/theme";
 import type { LspStartupServerInfo } from "./tools";
@@ -135,14 +135,14 @@ export async function checkForNewVersion(currentVersion: string): Promise<Releas
 // Todo settings are caller-controlled in protocol modes. Do not host-default them:
 // embedders need project-level opt-outs for reminder/prelude prompt injection.
 const HOST_DEFAULTED_SETTING_PATHS: SettingPath[] = [
-	"subagent.isolation.mode",
-	"subagent.isolation.merge",
-	"subagent.isolation.commits",
-	"subagent.delegation",
-	"subagent.batch",
-	"subagent.maxConcurrency",
-	"subagent.maxNestedSpawnDepth",
-	"subagent.agents",
+	"agent.isolation.mode",
+	"agent.isolation.merge",
+	"agent.isolation.commits",
+	"agent.delegation",
+	"agent.batch",
+	"agent.maxConcurrency",
+	"agent.maxNestedSpawnDepth",
+	"agent.agents",
 	// Memory subsystems are off-by-default for RPC/ACP hosts; embedders that want
 	// memory should opt in explicitly through their own settings layer.
 	"memory.backend",
@@ -1885,29 +1885,29 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 				isInteractive,
 			);
 
-		// Cold-revive support: a `parked` subagent ref restored from disk (the persisted-subagent
+		// Cold-revive support: a `parked` agent ref restored from disk (the persisted-agent
 		// scan, collab mirror, resumed process) has a sessionFile but no in-memory
 		// reviver, so `ensureLive` (IRC sends, hub focus) would refuse it. Install a
-		// factory — bound to THIS top-level session — that rebuilds the subagent from
+		// factory — bound to THIS top-level session — that rebuilds the agent from
 		// its persisted JSONL (see persisted-revive.ts). Scoped to the non-ACP
 		// bootstrap: ACP keeps several concurrent top-level sessions and a single
 		// process-global factory must not be clobbered by the most recent one.
-		AgentLifecycleManager.global().setPersistedSubagentReviverFactory(
-			createPersistedSubagentReviverFactory({
+		AgentLifecycleManager.global().setPersistedAgentReviverFactory(
+			createPersistedAgentReviverFactory({
 				session,
 				authStorage,
 				modelRegistry,
 				settings: settingsInstance,
 				enableLsp: sessionOptions.enableLsp ?? true,
 			}),
-			() => resolveSubagentIdleTtlMs(settingsInstance),
+			() => resolveAgentIdleTtlMs(settingsInstance),
 			// The operator's close budgets, so a ref restored from disk or revived
 			// rejoins the close stage instead of staying listed for the rest of the
 			// session. Read through a function rather than snapshotted here, so a
 			// change in /settings governs every agent adopted after it; the deadlines
 			// already armed keep the budget they were armed with until their next
 			// status change re-derives them.
-			() => resolveSubagentPruneBudget(settingsInstance),
+			() => resolveAgentPruneBudget(settingsInstance),
 		);
 		if (parsedArgs.apiKey && !sessionOptions.model && session.model) {
 			authStorage.setRuntimeApiKey(session.model.provider, parsedArgs.apiKey);

@@ -54,7 +54,7 @@ function accepting(): AgentSession {
 	} as unknown as AgentSession;
 }
 
-/** `count` subagents, spawned in order, all running. */
+/** `count` agents, spawned in order, all running. */
 function registerRoster(count: number): void {
 	AgentRegistry.global().register({
 		id: MAIN_AGENT_ID,

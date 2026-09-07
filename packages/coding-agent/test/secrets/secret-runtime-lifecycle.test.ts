@@ -19,7 +19,7 @@ import { createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/
 import { SecretVault } from "@veyyon/coding-agent/secrets/vault";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { runSecretCommandForSurface } from "@veyyon/coding-agent/slash-commands/helpers/secret";
-import { createPersistedSubagentReviverFactory } from "@veyyon/coding-agent/task/persisted-revive";
+import { createPersistedAgentReviverFactory } from "@veyyon/coding-agent/task/persisted-revive";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { setProjectDir, TempDir } from "@veyyon/utils";
 import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
@@ -487,7 +487,7 @@ describe("runtime replacement", () => {
 			expect(persisted?.cwd).toBe(fixture.projectA);
 			expect((await fs.stat(persisted!.cwd)).isDirectory()).toBe(true);
 
-			const factory = createPersistedSubagentReviverFactory({
+			const factory = createPersistedAgentReviverFactory({
 				session: fixture.session,
 				authStorage,
 				modelRegistry,

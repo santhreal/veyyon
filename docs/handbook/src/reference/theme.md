@@ -67,7 +67,7 @@ All tokens below are required in `colors`.
 
 ### Status line segment colors (13)
 
-`statusLineSep`, `statusLineModel`, `statusLinePath`, `statusLineGitClean`, `statusLineGitDirty`, `statusLineContext`, `statusLineSpend`, `statusLineStaged`, `statusLineDirty`, `statusLineUntracked`, `statusLineOutput`, `statusLineCost`, `statusLineSubagents`
+`statusLineSep`, `statusLineModel`, `statusLinePath`, `statusLineGitClean`, `statusLineGitDirty`, `statusLineContext`, `statusLineSpend`, `statusLineStaged`, `statusLineDirty`, `statusLineUntracked`, `statusLineOutput`, `statusLineCost`, `statusLineAgents`
 
 ## Optional tokens
 
@@ -340,7 +340,7 @@ Minimal skeleton:
     "statusLineUntracked": "#f7768e",
     "statusLineOutput": "#c0caf5",
     "statusLineCost": "#ff9e64",
-    "statusLineSubagents": "#bb9af7"
+    "statusLineAgents": "#bb9af7"
   }
 }
 ```

@@ -8,7 +8,7 @@ tool calls, and the final assistant message.
 - Persist append-only session entries with `id` / `parentId` linkage
 - Track the active **leaf** for branching (`/tree`, `/branch`, `/fork`)
 - Drive compaction when context limits approach (`/compact`, auto-compact settings)
-- Coordinate tool execution, approvals, and subagent spawns per turn
+- Coordinate tool execution, approvals, and agent spawns per turn
 
 ## Public boundary
 

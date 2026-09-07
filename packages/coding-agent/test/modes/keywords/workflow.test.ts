@@ -70,7 +70,7 @@ describe("workflow notice", () => {
 
 	it("renders flat task-call guidance when task.batch is disabled", () => {
 		const notice = renderWorkflowNotice({ taskBatch: false });
-		expect(notice).toContain("once per independent subagent");
+		expect(notice).toContain("once per independent spawned agent");
 		expect(notice).toContain("Do not pass `context` or `tasks[]`");
 		expect(notice).toContain("one independent task call per leaf");
 		expect(notice).not.toContain("Call `task` once per independent fan-out batch");

@@ -25,7 +25,7 @@
  *
  * That last move is what the flat interface was hiding. While the members sat on
  * `ExtensionUIContext`, every headless host had to declare them anyway, so RPC,
- * ACP, the subagent runner and the session default all carried empty bodies and
+ * ACP, the agent runner and the session default all carried empty bodies and
  * `custom: async () => undefined as never`. `setHeader` and `setFooter` turned
  * out to be `() => {}` in all six hosts, interactive included, and were deleted
  * rather than moved.

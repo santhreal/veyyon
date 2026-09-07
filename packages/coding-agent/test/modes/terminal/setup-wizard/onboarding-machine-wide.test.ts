@@ -63,7 +63,7 @@ function configRecord(filePath: string): Record<string, unknown> {
 /**
  * The ids the gate selects for a first install with no wizard context supplied.
  *
- * Every scene with no `shouldRun`, in `ALL_SCENES` order. `subagents` and
+ * Every scene with no `shouldRun`, in `ALL_SCENES` order. `agents` and
  * `import-config` gate on discovery and these calls pass no context, so the
  * gate cannot run theirs and drops them.
  */

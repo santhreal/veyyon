@@ -99,7 +99,7 @@ export interface HookUIContext {
 	 * Screen takeover, when the host is a terminal that offers it.
 	 *
 	 * Undefined on every host that cannot hand out a live `TUI` — print, RPC,
-	 * ACP and subagents — so a hook reaches it as
+	 * ACP and agents — so a hook reaches it as
 	 * `ctx.ui.terminal?.custom(...)`. {@link HookTerminalCapability} documents
 	 * the factory and carries the examples.
 	 */

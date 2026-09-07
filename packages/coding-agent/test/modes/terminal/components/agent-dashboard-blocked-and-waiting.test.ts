@@ -12,7 +12,7 @@
  * - An agent that stopped to wait on a peer is `parked`, exactly like one that
  *   simply finished. `AgentRef.waitingOnPeer` already carried the difference and
  *   the lifecycle manager already spent it on a longer close budget, so the
- *   state was trusted everywhere except on screen. That is the abandoned-subagent
+ *   state was trusted everywhere except on screen. That is the abandoned-agent
  *   case.
  *
  * PINNED HERE: the rendered words and the column arithmetic. The status column
@@ -201,7 +201,7 @@ describe("an agent parked waiting on a peer", () => {
 
 describe("a card closed before its disk scan lands", () => {
 	/**
-	 * The card scans the session tree for subagents of previous runs, which is
+	 * The card scans the session tree for agents of previous runs, which is
 	 * real filesystem work started in the constructor. A card closed while that
 	 * is in flight used to rebuild its roster and ask the host to repaint, which
 	 * is precisely the work `dispose` exists to stop: the overlay is gone, the
@@ -226,7 +226,7 @@ describe("a card closed before its disk scan lands", () => {
 				repaints += 1;
 			};
 			dashboard.dispose();
-			await dashboard.persistedSubagentsReady;
+			await dashboard.persistedAgentsReady;
 
 			expect(repaints).toBe(0);
 			// The scan still ran and still registered the agent: what is suppressed

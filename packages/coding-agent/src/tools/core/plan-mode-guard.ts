@@ -16,7 +16,7 @@ const HL_TRAILING_TAG_RE = new RegExp(`${HL_FILE_HASH_SEP}[0-9A-Fa-f]{${HL_FILE_
 
 /** Resolve the `local://` options the session uses, preferring its own
  *  {@link LocalProtocolOptions} (the mapping `read`/`write`/`eval` resolve
- *  through) over the bare `getArtifactsDir`/`getSessionId` pair. Subagents and
+ *  through) over the bare `getArtifactsDir`/`getSessionId` pair. Spawned agents and
  *  multi-session hosts (cmux/ACP, embedded SDK) pin `local://` to a parent/foreign
  *  root via `localProtocolOptions`; the sandbox root the plan-mode guard derives
  *  must match where the artifact actually lives, or it rejects a legitimate plan

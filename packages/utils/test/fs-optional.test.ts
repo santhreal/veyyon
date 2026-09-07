@@ -4,7 +4,7 @@
  * WHY THIS SUITE EXISTS. `await fs.readdir(dir).catch(() => [])` appears all over the tree and it is right
  * about the common case: `~/.veyyon/agents` usually does not exist, and a project without `.veyyon/` is not
  * an error. It is wrong about every other case, and wrong in the way that costs the most, because a
- * directory that exists and cannot be LISTED collapses to the same empty array. The user's subagents
+ * directory that exists and cannot be LISTED collapses to the same empty array. The user's agents
  * disappear from `/agents`, a managed-skills sweep sees nothing to keep, a plugin scan finds no plugins --
  * and nothing fails, so nobody looks. That is the silent-fallback shape Law 10 bans, wearing a one-line
  * idiom that reads as defensive coding.

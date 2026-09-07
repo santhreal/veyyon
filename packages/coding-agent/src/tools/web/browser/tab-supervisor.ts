@@ -100,7 +100,7 @@ interface TabSessionBase<TBrowser extends BrowserHandle = BrowserHandle> {
 	/**
 	 * Session id of the caller that CREATED the tab. Preserved across reuse so
 	 * that dispose of the creating session can reap browser resources without
-	 * yanking the tab out from under a subagent that only reused it.
+	 * yanking the tab out from under an agent that only reused it.
 	 * Undefined when the acquirer did not identify itself.
 	 */
 	ownerSessionId?: string;
@@ -463,7 +463,7 @@ async function runInTabWithSnapshot(
 	//   2. `reject(...)` always has an attached handler — a zero-consumer
 	//      rejection would fire `unhandledRejection` and the CLI's
 	//      top-level handler would tear the whole session down, killing
-	//      every other tab and subagent sharing the process (issue #4499).
+	//      every other tab and agent sharing the process (issue #4499).
 	// The cmux branch also composes `closeAc.signal` into the run's abort
 	// signal so `wait(...)`, cmux socket calls, and the facade proxies
 	// unwind promptly when the tab is closed — otherwise a `wait(60_000)`
@@ -643,7 +643,7 @@ export async function dropHeadlessTabs(): Promise<void> {
  * session teardown. (Issue #3963.)
  *
  * Ownership is recorded ONLY on tab creation (`acquireTab` with
- * `ownerSessionId`), never on reuse: a subagent re-driving a tab another
+ * `ownerSessionId`), never on reuse: an agent re-driving a tab another
  * session opened will not yank teardown responsibility away from the
  * creator. Tabs opened with no owner (e.g. from an SDK caller that doesn't
  * identify a session) are skipped and must be released explicitly.
@@ -1012,7 +1012,7 @@ function errorFromWorkerEvent(event: ErrorEvent): Error {
  * Wire tab release into the session's owner-scoped cleanup.
  *
  * Keyed by the SESSION id, not the eval-kernel owner id: `ownerSessionId` is stamped at
- * `acquireTab` creation and never on reuse, so a subagent re-driving a tab another session opened
+ * `acquireTab` creation and never on reuse, so an agent re-driving a tab another session opened
  * does not take teardown responsibility from the creator. Bounded, because teardown talks to a
  * live CDP connection and a broken close must not stall `/exit` (issue #3963).
  */

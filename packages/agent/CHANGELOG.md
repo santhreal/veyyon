@@ -12,6 +12,7 @@
 - The session-entry vocabulary (`SessionEntry` and every member), `AgentMessage` and the `CustomAgentMessages` and `CustomCompactionSessionEntries` hooks are defined in `@veyyon/session`; `@veyyon/agent-core` and `@veyyon/agent-core/compaction/entries` export every name they exported before, and an augmentation now names `@veyyon/session`.
 - Typed tuple and Set copies use spreads rather than `.concat()` or `.slice()`, which those types do not define. No user-visible behavior changes.
 - A source-path comment in `thinking.ts` names the coding-agent module its reader moved to; behavior is unchanged.
+- Doc comments refer to a child run as an agent rather than a subagent. No behavior change.
 
 ### Fixed
 

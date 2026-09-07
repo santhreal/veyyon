@@ -1110,7 +1110,7 @@ describe("YieldTool", () => {
 		// Regression for the GLM/explore failure mode: model invents per-file fields
 		// (`ref`, `surface`, …) instead of the schema's `path` + `description`. The
 		// in-tool validator MUST surface the mismatch with a retry directive so the
-		// subagent can fix its output before the parent runs its post-mortem check.
+		// agent can fix its output before the parent runs its post-mortem check.
 		const outputSchema = {
 			properties: {
 				summary: { type: "string" },

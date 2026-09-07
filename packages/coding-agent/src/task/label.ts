@@ -1,15 +1,15 @@
 /**
- * Tiny-model UI labels for spawned subagents.
+ * Tiny-model UI labels for spawned agents.
  */
 import type { SideCompleteImpl } from "@veyyon/kernel/session/side-complete";
 import { logger, prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import type { Settings } from "../config/settings";
-import { subagentPrompts } from "../prompts/subagent/rows";
+import { agentPrompts } from "../prompts/agent/rows";
 import { ONLINE_TINY_TITLE_MODEL_KEY } from "../tiny/models";
 import { generateSessionTitle } from "../utils/title-generator";
 
-const TASK_LABEL_SYSTEM_PROMPT = prompt.render(subagentPrompts["subagent/task-label"].text);
+const TASK_LABEL_SYSTEM_PROMPT = prompt.render(agentPrompts["agent/task-label"].text);
 
 /** Compresses a delegated assignment into a one-sentence UI label via the tiny title model — fired by the executor spawn path because the task wire schema no longer carries a `description`; null on empty input or failure. */
 export async function generateTaskLabel(

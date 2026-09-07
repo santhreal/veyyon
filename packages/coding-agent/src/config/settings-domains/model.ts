@@ -430,16 +430,16 @@ export const MODEL_SETTINGS = {
 		},
 	},
 
-	"tier.subagent": {
+	"tier.agent": {
 		type: "enum",
 		values: SERVICE_TIER_INHERIT_SETTING_VALUES,
 		default: "inherit",
 		ui: {
 			tab: "model",
 			group: "Sampling",
-			label: "Service Tier — Subagent",
+			label: "Service Tier — Spawned Agents",
 			description:
-				"How spawned task/eval subagent requests are queued and served. Inherit matches the main agent's live per-family tiers (tracks /fast); pick a value to apply it to whichever family the subagent's model belongs to.",
+				"How spawned task/eval agent requests are queued and served. Inherit matches the main agent's live per-family tiers (tracks /fast); pick a value to apply it to whichever family the spawned agent's model belongs to.",
 			keywords: ["fast", "priority", "queue", "latency", "serving"],
 			options: SERVICE_TIER_INHERIT_OPTIONS,
 		},
@@ -555,7 +555,7 @@ export const MODEL_SETTINGS = {
 			group: "Retry & Fallback",
 			label: "Anthropic Server-Side Fallback (Fable 5)",
 			description:
-				"When a Claude Fable 5 / Mythos 5 request is blocked by Anthropic's safety classifier, retry it on Claude Opus 4.8 server-side (Anthropic `server-side-fallback-2026-06-01` beta). Opt-in — leaving this off preserves the pre-fallback behavior for every request.",
+				"Retry a Claude Fable 5 or Mythos 5 request that Anthropic's safety classifier blocks on Claude Opus 4.8, on the provider side (the `server-side-fallback-2026-06-01` beta). Off: the request fails.",
 		},
 	},
 } as const;

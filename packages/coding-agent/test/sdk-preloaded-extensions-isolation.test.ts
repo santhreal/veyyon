@@ -8,7 +8,7 @@
  * MUST clone the caller's `extensions` array before mutating it — otherwise
  * the caller's array accumulates session-local wrappers it never authored.
  *
- * Subagent forwarding is a separate path (`preloadedExtensionPaths`) which
+ * Agent forwarding is a separate path (`preloadedExtensionPaths`) which
  * reloads extensions per session so each session's `ExtensionAPI` is its own.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";

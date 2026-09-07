@@ -4,7 +4,7 @@
  *
  * Phase 1 (scan, no LLM): walks recent sessions, sums *real* per-request usage
  * (input/output/cacheRead/cacheWrite + nominal cost recorded in each assistant
- * message), splits main-context vs subagent usage, and aggregates tool traffic
+ * message), splits main-context vs agent usage, and aggregates tool traffic
  * (estimated tokens in args/results, context residency, repeated reads, edit
  * failures, compactions).
  *
@@ -525,7 +525,7 @@ export async function scanFile(filePath: string): Promise<FileScan | undefined> 
 }
 
 // --------------------------------------------------------------------------
-// Session groups (main + subagent files)
+// Session groups (main + agent files)
 
 interface SessionGroup {
 	folder: string;
@@ -699,7 +699,7 @@ function mergeToolAggs(scans: FileScan[]): Map<string, ToolAgg> {
 	return merged;
 }
 
-/** Strip a `-2`/`-3` retry suffix from a subagent file stem. */
+/** Strip a `-2`/`-3` retry suffix from an agent file stem. */
 function baseLabel(stem: string): string {
 	return stem.replace(/-\d+$/, "");
 }
@@ -731,7 +731,7 @@ function buildDigest(g: SessionGroup): string {
 		`context peak: ${fmtTok(m.contextPeak)} tok; compactions: ${m.compactions}; assistant errors: ${m.asstErrors}`,
 	);
 	lines.push(
-		`SUBAGENTS: ${g.children.length} runs, cost ${fmtMoney(g.subUsage.cost)} (${fmtPct(g.subUsage.cost, g.usage.cost)} of session), ` +
+		`AGENTS: ${g.children.length} runs, cost ${fmtMoney(g.subUsage.cost)} (${fmtPct(g.subUsage.cost, g.usage.cost)} of session), ` +
 			`billed ${fmtTok(billedTokens(g.subUsage))} tok`,
 	);
 
@@ -811,7 +811,7 @@ function buildDigest(g: SessionGroup): string {
 	}
 	const unlinked = g.children.filter(c => !linked.has(c));
 	if (unlinked.length) {
-		lines.push(`\n## Other subagent runs (eval agent()/irc/etc., not matched to a task call)`);
+		lines.push(`\n## Other agent runs (eval agent()/irc/etc., not matched to a task call)`);
 		for (const c of unlinked.slice(0, 16)) {
 			lines.push(
 				`${c.stem}: ${c.usage.requests} req, billed ${fmtTok(billedTokens(c.usage))}, ${fmtMoney(c.usage.cost)}, ended: ${endedStr(c)}`,
@@ -864,7 +864,7 @@ const SESSION_SCHEMA = {
 			type: "array",
 			maxItems: 4,
 			items: { type: "string" },
-			description: "specific turns/moments where a fresh session, /handoff, or a subagent would have been cheaper",
+			description: "specific turns/moments where a fresh session, /handoff, or an agent would have been cheaper",
 		},
 		spawnVerdicts: {
 			type: "array",
@@ -1156,7 +1156,7 @@ function printScanReport(res: AuditResult): void {
 			`(in ${fmtTok(total.input)}, cache-read ${fmtTok(total.cacheRead)}, cache-write ${fmtTok(total.cacheWrite)}, out ${fmtTok(total.output)})`,
 	);
 	console.log(
-		`subagent share: ${fmtPct(sub.cost, total.cost)} of cost (${fmtMoney(sub.cost)}), ` +
+		`agent share: ${fmtPct(sub.cost, total.cost)} of cost (${fmtMoney(sub.cost)}), ` +
 			`${fmtPct(billedTokens(sub), billedTokens(total))} of tokens, ${fmtPct(sub.requests, total.requests)} of requests`,
 	);
 	console.log(`compactions in main contexts: ${compactions}`);
@@ -1408,7 +1408,7 @@ async function main(): Promise<void> {
 				}
 				const parts: string[] = [
 					`# AGGREGATE across ${groups.length} sessions, window ${fmtDur(opts.since)}`,
-					`total nominal cost ${fmtMoney(total.cost)}; subagent share ${fmtPct(sub.cost, total.cost)}`,
+					`total nominal cost ${fmtMoney(total.cost)}; agent share ${fmtPct(sub.cost, total.cost)}`,
 					`\nPer-session data (JSON, one per line):`,
 				];
 				const round2 = (n: number): number => Math.round(n * 100) / 100;
@@ -1420,7 +1420,7 @@ async function main(): Promise<void> {
 							id: g.id,
 							title: g.main.title ?? g.id,
 							costUsd: round2(g.usage.cost),
-							subagentPct: round2(g.usage.cost > 0 ? (g.subUsage.cost / g.usage.cost) * 100 : 0),
+							agentPct: round2(g.usage.cost > 0 ? (g.subUsage.cost / g.usage.cost) * 100 : 0),
 							requests: g.usage.requests,
 							contextPeak: g.main.contextPeak,
 							compactions: g.main.compactions,

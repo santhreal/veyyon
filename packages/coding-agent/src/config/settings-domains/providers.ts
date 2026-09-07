@@ -173,7 +173,7 @@ export const PROVIDERS_SETTINGS = {
 			group: "Discovery",
 			label: "Import Other Tools' Config",
 			description:
-				"Auto-discover skills, context files, rules, and MCP servers authored for other AI tools (Claude, Codex, Gemini, Cursor, opencode, and more) found on disk. Off by default: veyyon runs on its own instruction layers only (the system prompt, the global ~/.veyyon/AGENTS.md, the active profile's AGENTS.md, and the project's own AGENTS.md/CLAUDE.md walked from the repo root down to cwd), and never ambiently picks up a foreign tool's own config directory, GEMINI.md, or the skills, rules and MCP servers those tools define. Turn on to import them as a base layer.",
+				"Import skills, context files, rules and MCP servers that other AI tools (Claude, Codex, Gemini, Cursor, opencode and others) keep on disk, as a base layer under veyyon's own. Off: only the system prompt, ~/.veyyon/AGENTS.md, the profile's AGENTS.md and the project's AGENTS.md or CLAUDE.md files from the repository root down to the working directory are read.",
 		},
 	},
 
@@ -186,8 +186,7 @@ export const PROVIDERS_SETTINGS = {
 			tab: "providers",
 			group: "Services",
 			label: "Ollama Cloud Max Concurrency",
-			description:
-				"Maximum concurrent Ollama Cloud subagent runs per process; 0 disables the provider-specific limit",
+			description: "Maximum concurrent Ollama Cloud agent runs per process; 0 disables the provider-specific limit",
 		},
 	},
 	"providers.webSearch": {
@@ -411,7 +410,7 @@ export const PROVIDERS_SETTINGS = {
 			group: "Tiny Model",
 			label: "Session Title Model",
 			description:
-				"Session-title model: online (the TINY role from /models, else @smol) by default, or a local on-device model",
+				"Model that writes session titles. Online: the Tiny role from /models, else @smol. Local: an on-device model.",
 			options: TINY_TITLE_MODEL_OPTIONS,
 		},
 	},
@@ -450,7 +449,7 @@ export const PROVIDERS_SETTINGS = {
 			group: "General",
 			label: "Memory Model",
 			description:
-				"Mnemopi LLM for fact extraction + consolidation: online (the TINY role from /models, else smol/remote) by default, or a local on-device model",
+				"Model Mnemopi uses to extract and consolidate facts. Online: the Tiny role from /models, else @smol. Local: an on-device model.",
 			condition: "mnemopiActive",
 			options: TINY_MEMORY_MODEL_OPTIONS,
 		},
@@ -465,7 +464,7 @@ export const PROVIDERS_SETTINGS = {
 			group: "Thinking",
 			label: "Auto Thinking Model",
 			description:
-				"Difficulty classifier for the `auto` thinking level: online (the TINY role from /models, else smol) by default, or a local on-device model",
+				"Model that rates task difficulty for the `auto` thinking level. Online: the Tiny role from /models, else @smol. Local: an on-device model.",
 			condition: "autoThinkingActive",
 			options: AUTO_THINKING_MODEL_OPTIONS,
 		},
@@ -490,7 +489,7 @@ export const PROVIDERS_SETTINGS = {
 			group: "Tiny Model",
 			label: "Unexpected Stop Model",
 			description:
-				"Classifier for unexpected-stop detection: online (the TINY role from /models, else smol) by default, or a local on-device model.",
+				"Model that classifies whether a turn stopped unexpectedly. Online: the Tiny role from /models, else @smol. Local: an on-device model.",
 			condition: "unexpectedStopDetection",
 			options: TINY_MEMORY_MODEL_OPTIONS,
 		},
@@ -623,12 +622,12 @@ export const PROVIDERS_SETTINGS = {
 			group: "Services",
 			label: "Codex Auto-Redeem Saved Resets",
 			description:
-				"When a turn is blocked by the Codex weekly limit on the active account and no other account is available, run the conservative saved-reset check. unset asks before spending the first eligible reset, yes spends eligible resets without prompting, and no disables the check entirely. Requires retries enabled.",
+				"When a turn is blocked by the Codex weekly limit on the active account and no other account is available, run the saved-reset check. Unset: prompt before spending the first eligible reset. Yes: spend eligible resets without prompting. No: skip the check. Requires retries enabled.",
 			options: [
 				{
 					value: "unset",
 					label: "Unset",
-					description: "Check eligibility, then ask before spending the first saved reset.",
+					description: "Check eligibility, then prompt before spending the first saved reset.",
 				},
 				{ value: "yes", label: "Yes", description: "Spend eligible saved resets without prompting." },
 				{ value: "no", label: "No", description: "Do not run the saved-reset auto-redeem check." },

@@ -10,8 +10,18 @@ import { resolveConfiguredModelPatterns } from "../config/model-resolver";
 import type { LocalProtocolOptions } from "../internal-urls";
 import { registerArtifactsDir } from "../internal-urls/registry-helpers";
 import { mcpManagerInstance } from "../mcp/manager-instance";
-import { subagentPrompts } from "../prompts/subagent/rows";
+import { agentPrompts } from "../prompts/agent/rows";
 import { MAIN_AGENT_ID } from "../registry/agent-registry";
+import {
+	agentModelSourceLabel,
+	agentsEnabled,
+	type EnabledAgentCatalog,
+	isAgentEnabled,
+	resolveAgentModel,
+	resolveAgentThinkingLevel,
+	resolveEnabledAgents,
+	resolveSessionMaxNestedSpawnDepth,
+} from "../task/agent-settings";
 import { inheritContextFiles } from "../task/context-inheritance";
 import * as taskDiscovery from "../task/discovery";
 // `../task/executor` and `../task/isolation-runner` are loaded inside
@@ -30,23 +40,13 @@ import { inheritResolvedCollection, resolveAutoloadSkills } from "../task/inheri
 import type { IsolationContext } from "../task/isolation-runner";
 import { AgentOutputManager } from "../task/output-manager";
 import { type ResolvedSpawnPolicy, resolveSpawnPolicy } from "../task/spawn-policy";
-import {
-	type EnabledSubagentCatalog,
-	isSubagentEnabled,
-	resolveEnabledSubagents,
-	resolveSessionMaxNestedSpawnDepth,
-	resolveSubagentModel,
-	resolveSubagentThinkingLevel,
-	subagentModelSourceLabel,
-	subagentsEnabled,
-} from "../task/subagent-settings";
 import { type AgentDefinition, type AgentProgress, canSpawnAtDepth, type SingleResult } from "../task/types";
 import { type NestedRepoPatch, parseIsolationMode } from "../task/worktree";
 import type { ToolSession } from "../tools";
 import { ToolError } from "../tools/core/tool-errors";
 import { withBridgeTimeoutPause } from "./bridge-timeout";
 import type { JsStatusEvent } from "./js/shared/types";
-// Import review tools for side effects (registers subagent tool handlers).
+// Import review tools for side effects (registers agent tool handlers).
 import "../tools/agent/review";
 
 /**
@@ -56,7 +56,7 @@ import "../tools/agent/review";
 export { EVAL_AGENT_BRIDGE_NAME } from "./agent-bridge-name";
 
 /**
- * Hard recursion ceiling for eval-driven subagents. The resolved session limit
+ * Hard recursion ceiling for eval-spawned agents. The resolved session limit
  * is honored on top of this, and whichever is tighter wins.
  */
 export const EVAL_AGENT_MAX_DEPTH = 3;
@@ -82,7 +82,7 @@ interface EvalAgentArgs {
 	label?: string;
 	schema?: unknown;
 	/**
-	 * Run this subagent inside an isolation worktree (copy-on-write of the
+	 * Run this spawned agent inside an isolation worktree (copy-on-write of the
 	 * parent repo). Strict opt-in: defaults to `false` regardless of the
 	 * session's `task.isolation.mode`, mirroring the `task` tool. Passing
 	 * `true` while `task.isolation.mode === "none"` errors out instead of
@@ -191,12 +191,12 @@ function assertSpawnAllowed(spawnPolicy: ResolvedSpawnPolicy, agentName: string 
  * it made the setting mean nothing on this path. A `/` command's turn-scoped
  * grant still passes, so a command that drives eval keeps working.
  */
-function assertAgentEnabled(session: ToolSession, agent: AgentDefinition, catalog: EnabledSubagentCatalog): void {
-	if (isSubagentEnabled(session.settings, agent)) return;
+function assertAgentEnabled(session: ToolSession, agent: AgentDefinition, catalog: EnabledAgentCatalog): void {
+	if (isAgentEnabled(session.settings, agent)) return;
 	if (session.agentGrantedThisTurn?.(agent.name)) return;
 	const available = catalog.agents.map(candidate => candidate.name);
 	throw new ToolError(
-		`Agent "${agent.name}" is disabled (subagent.agents.${agent.name}.enabled is false), so it cannot be chosen. Enable it in the Subagents settings tab (/settings), or use a different agent type.${available.length > 0 ? ` Enabled: ${available.join(", ")}` : ""}`,
+		`Agent "${agent.name}" is disabled (agent.agents.${agent.name}.enabled is false), so it cannot be chosen. Enable it in the Agents settings tab (/settings), or use a different agent type.${available.length > 0 ? ` Enabled: ${available.join(", ")}` : ""}`,
 	);
 }
 
@@ -206,8 +206,8 @@ function assertNotPlanMode(session: ToolSession): void {
 	}
 }
 
-function renderSubagentPrompt(assignment: string): string {
-	return prompt.render(subagentPrompts["subagent/user-prompt"].text, { assignment: assignment.trim() });
+function renderAgentPrompt(assignment: string): string {
+	return prompt.render(agentPrompts["agent/user-prompt"].text, { assignment: assignment.trim() });
 }
 
 function trimToUndefined(value: string | undefined): string | undefined {
@@ -319,27 +319,27 @@ function emitProgressStatus(emitStatus: ((event: JsStatusEvent) => void) | undef
 }
 
 /**
- * Coalesce a subagent failure into a non-empty, human-meaningful error message.
+ * Coalesce a spawned agent failure into a non-empty, human-meaningful error message.
  *
- * When the executor aborts a subagent (runtime limit, parent cancellation, …)
+ * When the executor aborts a spawned agent (runtime limit, parent cancellation, …)
  * the actionable explanation lives on `abortReason`, while `error`/`stderr`
  * are routinely empty strings. Plain `??` coalescing stops at the empty string
  * and ships an empty error through the bridge — Python then surfaces only the
  * generic `bridge call '__agent__' failed`. See #2006.
  */
-function buildSubagentFailureMessage(agentName: string, result: SingleResult): string {
+function buildAgentFailureMessage(agentName: string, result: SingleResult): string {
 	const abortReason = trimToUndefined(result.abortReason);
 	if (result.aborted && abortReason) return abortReason;
 	return (
 		trimToUndefined(result.error) ??
 		trimToUndefined(result.stderr) ??
 		abortReason ??
-		`agent() subagent '${agentName}' failed.`
+		`agent() spawn '${agentName}' failed.`
 	);
 }
 
 /**
- * Run a single subagent on behalf of an eval cell's `agent()` call.
+ * Run a single spawned agent on behalf of an eval cell's `agent()` call.
  */
 export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOptions): Promise<EvalAgentResult> {
 	const parsed = parseAgentArgs(args);
@@ -360,14 +360,14 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 	}
 
 	const { agents } = await taskDiscovery.discoverAgents(options.session.cwd);
-	const catalog = resolveEnabledSubagents({
+	const catalog = resolveEnabledAgents({
 		settings: options.session.settings,
 		agents,
 		parentSpawns,
 		isGranted: name => options.session.agentGrantedThisTurn?.(name) === true,
 	});
-	if (!subagentsEnabled(options.session.settings)) {
-		throw new ToolError("agent() is unavailable because subagents are disabled in settings.");
+	if (!agentsEnabled(options.session.settings)) {
+		throw new ToolError("agent() is unavailable because agents are disabled in settings.");
 	}
 	// An omitted `agent` resolves against the ENABLED catalog, the same source the
 	// `task` tool uses (`catalog.defaultAgent`). Resolving it against the spawn
@@ -407,7 +407,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 	// as `childDepth`.
 	const resolvedModel = parsed.model
 		? { patterns: resolveConfiguredModelPatterns(parsed.model, options.session.settings), source: "agent" as const }
-		: resolveSubagentModel({
+		: resolveAgentModel({
 				settings: options.session.settings,
 				agentName,
 				agentModel: effectiveAgent.model,
@@ -417,7 +417,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 	if ("unresolved" in resolvedModel && resolvedModel.unresolved) {
 		const { source, value, depth } = resolvedModel.unresolved;
 		throw new ToolError(
-			`Cannot spawn "${agentName}": ${subagentModelSourceLabel(source, agentName, depth)} is set to "${value}", which matches no available model. Fix that setting in Subagents → Roster → ${agentName} (or clear it to fall back to the default model role) and try again.`,
+			`Cannot spawn "${agentName}": ${agentModelSourceLabel(source, agentName, depth)} is set to "${value}", which matches no available model. Fix that setting in Agents → Roster → ${agentName} (or clear it to fall back to the default model role) and try again.`,
 		);
 	}
 	if (parsed.model && resolvedModel.patterns.length === 0) {
@@ -472,13 +472,13 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 	// default. Mirrors the `task` tool so eval `agent()` and `task` callers
 	// see the same semantic. `isolated=true` while the mode is `"none"`
 	// surfaces a clear error instead of silently downgrading.
-	const isolationMode = options.session.settings.get("subagent.isolation.mode");
+	const isolationMode = options.session.settings.get("agent.isolation.mode");
 	const isolationEnabledInSettings = isolationMode !== "none";
 	if (parsed.isolated === true && !isolationEnabledInSettings) {
 		throw new ToolError(`agent(isolated=True) requires task.isolation.mode to be set; current mode is "none".`);
 	}
 	const isIsolated = parsed.isolated === true;
-	const settingsMergeMode = options.session.settings.get("subagent.isolation.merge");
+	const settingsMergeMode = options.session.settings.get("agent.isolation.merge");
 	const mergeMode: "patch" | "branch" = parsed.merge === false ? "patch" : settingsMergeMode;
 	const applyChanges = parsed.apply !== false;
 
@@ -505,7 +505,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 	const baseRunOptions: ExecutorOptions = {
 		cwd: options.session.cwd,
 		agent: effectiveAgent,
-		task: renderSubagentPrompt(assignment),
+		task: renderAgentPrompt(assignment),
 		assignment,
 		description: trimToUndefined(parsed.label),
 		index: 0,
@@ -517,7 +517,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		// Through the one owner, like the model above. Passing the frontmatter level
 		// straight through made an eval `agent()` spawn ignore this agent's own
 		// `thinkingLevel` row.
-		thinkingLevel: resolveSubagentThinkingLevel({
+		thinkingLevel: resolveAgentThinkingLevel({
 			settings: options.session.settings,
 			agentName,
 			agentThinkingLevel: effectiveAgent.thinkingLevel,
@@ -527,7 +527,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		sessionFile,
 		persistArtifacts: Boolean(sessionFile),
 		artifactsDir,
-		// Eval `agent()` subagents are short-lived programmatic helpers (data
+		// Eval `agent()` agents are short-lived programmatic helpers (data
 		// collection, structured output, parallel() fan-out). LSP server
 		// cold-start costs tens of seconds and is pure overhead here, so it is
 		// forced off regardless of the `task.enableLsp` setting — that knob only
@@ -541,7 +541,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		settings: options.session.settings,
 		obfuscateProviderText: options.session.obfuscateProviderText,
 		completeImpl: options.session.sideComplete,
-		// Eval `agent()` subagents are never wall-clock capped: the parent
+		// Eval `agent()` agents are never wall-clock capped: the parent
 		// cell's idle watchdog is suspended for the whole bridge call
 		// (withBridgeTimeoutPause), so a long-running phase/recovery workflow
 		// must not be killed by `task.maxRuntimeMs`. Force the limit off
@@ -561,19 +561,19 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		parentTelemetry: options.session.getTelemetry?.(),
 		parentAgentId: options.session.getAgentId?.() ?? MAIN_AGENT_ID,
 		parentSessionId: options.session.getSessionId?.() ?? undefined,
-		// Live source of truth for `tier.subagent: inherit` (null = explicit none).
+		// Live source of truth for `tier.agent: inherit` (null = explicit none).
 		parentServiceTier: options.session.getServiceTierByFamily
 			? (options.session.getServiceTierByFamily() ?? null)
 			: undefined,
 		// Deliberately omit parentEvalSessionId: the parent's Python kernel is
 		// blocked on this bridge call, so sharing the eval session would deadlock
-		// (subagent queues behind the parent's in-flight execution, parent waits
-		// for subagent → circular). Each bridge-spawned subagent gets its own
+		// (agent queues behind the parent's in-flight execution, parent waits
+		// for agent → circular). Each bridge-spawned agent gets its own
 		// eval session with an independent kernel.
 	};
 
 	// Suspend eval timeout accounting through the WHOLE bridge call: the
-	// subagent subprocess plus any isolation post-processing (merge,
+	// agent subprocess plus any isolation post-processing (merge,
 	// nested-patch apply, cleanup). All of that is host-side work while the
 	// runtime is parked waiting for the result, and the cell timeout must
 	// not abort us mid-cherry-pick or mid-nested-commit. The clock restarts
@@ -613,7 +613,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 							id,
 							agent: effectiveAgent.name,
 							agentSource: effectiveAgent.source,
-							task: renderSubagentPrompt(assignment),
+							task: renderAgentPrompt(assignment),
 							assignment,
 							description: trimToUndefined(parsed.label),
 							exitCode: 1,
@@ -631,7 +631,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 			})();
 
 			if (result.exitCode !== 0 || result.error || result.aborted) {
-				const failureMessage = buildSubagentFailureMessage(agentName, result);
+				const failureMessage = buildAgentFailureMessage(agentName, result);
 				const recoveryHint = isIsolated ? await buildIsolationRecoveryHint(result, artifactsDir) : "";
 				throw new ToolError(`${failureMessage}${recoveryHint}`);
 			}
@@ -701,7 +701,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 				unregisterArtifactsDir?.();
 			}
 
-			options.session.recordEvalSubagentUsage?.(result.usage?.output ?? 0);
+			options.session.recordEvalAgentUsage?.(result.usage?.output ?? 0);
 
 			return { result, mergeSummary, changesApplied };
 		},

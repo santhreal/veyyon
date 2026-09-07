@@ -320,7 +320,7 @@ export function parseAgentFields(frontmatter: Record<string, unknown>): ParsedAg
 	let tools = parseArrayOrCSV(frontmatter.tools);
 	if (tools) tools = normalizeToolNames(tools);
 
-	// Subagents with explicit tool lists always need yield
+	// Agents with explicit tool lists always need yield
 	if (tools && !tools.includes(TOOL.yield)) {
 		tools = tools.concat([TOOL.yield]);
 	}

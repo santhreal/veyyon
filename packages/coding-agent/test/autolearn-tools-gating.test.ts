@@ -71,8 +71,8 @@ describe("autolearn tool gating", () => {
 		expect(noBackend).not.toContain("learn");
 	});
 
-	it("excludes the tools from a subagent even with an explicit list", async () => {
-		// taskDepth > 0: the controller never runs here, so a subagent's explicit
+	it("excludes the tools from an agent even with an explicit list", async () => {
+		// taskDepth > 0: the controller never runs here, so an agent's explicit
 		// whitelist must not be silently widened with write-capable tools.
 		const sub = (
 			await createTools(makeSession({ "autolearn.enabled": true, "memory.backend": "mnemopi" }, { taskDepth: 1 }), [

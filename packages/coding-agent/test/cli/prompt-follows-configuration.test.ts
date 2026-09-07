@@ -5,7 +5,7 @@
  * send to the model. It answered it against `Settings.isolated({})` -- the testing constructor,
  * which is in-memory, reads no `config.yml` and no project settings, and therefore hands every
  * gate a schema default. Nothing failed. A prompt was printed, it was well-formed, and it was the
- * prompt of a configuration nobody has. With `subagent.delegation=required` and
+ * prompt of a configuration nobody has. With `agent.delegation=required` and
  * `personality=none` it printed the PREFERRED delegation wording and a full personality block,
  * which is the opposite of both settings (`BACKLOG.md`,
  * `FINDING-VEYYON-PROMPT-IGNORES-EVERY-SETTINGS-FED-GATE`).
@@ -85,13 +85,13 @@ async function runWithConfig(
 
 describe("veyyon prompt reads the real configuration", () => {
 	/**
-	 * `subagent.delegation=required` is the gate the finding was reproduced with. The section
+	 * `agent.delegation=required` is the gate the finding was reproduced with. The section
 	 * carries two different paragraphs for `preferred` and `required`, so asserting the MUST
 	 * wording proves the setting was READ, not merely that some prompt rendered.
 	 */
 	it("renders the required-delegation wording when the operator asks for it", async () => {
 		const result = await runWithConfig(
-			{ subagent: { delegation: "required" } },
+			{ agent: { delegation: "required" } },
 			{
 				cwd: workspace(),
 				section: "tool-policy",
@@ -113,7 +113,7 @@ describe("veyyon prompt reads the real configuration", () => {
 	 */
 	it("ignores a repository settings file: the defaults stand", async () => {
 		const result = await runPromptCommand({
-			cwd: workspace({ personality: "none", subagent: { delegation: "required" } }),
+			cwd: workspace({ personality: "none", agent: { delegation: "required" } }),
 			section: "tool-policy",
 		});
 
@@ -128,7 +128,7 @@ describe("veyyon prompt reads the real configuration", () => {
 	 */
 	it("renders the preferred-delegation wording when the operator asks for it", async () => {
 		const result = await runWithConfig(
-			{ subagent: { delegation: "preferred" } },
+			{ agent: { delegation: "preferred" } },
 			{
 				cwd: workspace(),
 				section: "tool-policy",
@@ -166,14 +166,14 @@ describe("veyyon prompt reads the real configuration", () => {
 	 */
 	it("applies every configured gate to the full rendered prompt", async () => {
 		const result = await runWithConfig(
-			{ personality: "none", subagent: { delegation: "required", batch: false } },
+			{ personality: "none", agent: { delegation: "required", batch: false } },
 			{ cwd: workspace() },
 		);
 
 		expect(result.exitCode).toBe(0);
 		expect(result.output).toContain("MUST delegate substantial work");
 		expect(result.output).not.toContain("<personality>");
-		// `subagent.batch: false` drops the batching instruction that `required` otherwise carries.
+		// `agent.batch: false` drops the batching instruction that `required` otherwise carries.
 		expect(result.output).not.toContain("Batch independent slices into one parallel `task` call");
 	});
 
@@ -184,14 +184,14 @@ describe("veyyon prompt reads the real configuration", () => {
 	 */
 	it("follows the configuration through --json as well", async () => {
 		const configured = await runWithConfig(
-			{ subagent: { delegation: "required" } },
+			{ agent: { delegation: "required" } },
 			{
 				cwd: workspace(),
 				json: true,
 			},
 		);
 		const plain = await runWithConfig(
-			{ subagent: { delegation: "preferred" } },
+			{ agent: { delegation: "preferred" } },
 			{
 				cwd: workspace(),
 				json: true,
@@ -260,14 +260,14 @@ describe("veyyon prompt --statements prices each rule against the real configura
 		// `required` selects a different, longer delegation paragraph than the default `preferred`, so
 		// the two runs must charge DIFFERENT rows, not merely produce different totals.
 		const configured = await runWithConfig(
-			{ subagent: { delegation: "required" } },
+			{ agent: { delegation: "required" } },
 			{
 				cwd: workspace(),
 				statements: true,
 			},
 		);
 		const plain = await runWithConfig(
-			{ subagent: { delegation: "preferred" } },
+			{ agent: { delegation: "preferred" } },
 			{
 				cwd: workspace(),
 				statements: true,
@@ -276,7 +276,7 @@ describe("veyyon prompt --statements prices each rule against the real configura
 
 		expect(configured.output).toContain("tool-policy/delegation-required");
 		expect(configured.output).toContain(
-			"tools has task and hasSpawnableSubagent and not useCodexTaskPrompt and eagerTasks and eagerTasksAlways",
+			"tools has task and hasSpawnableAgent and not useCodexTaskPrompt and eagerTasks and eagerTasksAlways",
 		);
 		expect(plain.output).toContain("tool-policy/delegation-preferred");
 	});

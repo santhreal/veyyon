@@ -15,7 +15,7 @@ import {
 	createMockSessionHandle,
 	createSessionResult,
 	yieldSuccessEvent,
-} from "../helpers/subagent-session";
+} from "../helpers/agent-session";
 
 /**
  * Contracts under test — the soft request budget must degrade gracefully
@@ -29,7 +29,7 @@ import {
  * 3. Caller-signal aborts remain terminal, and the irc bus names the aborted
  *    agent precisely instead of claiming it is unknown.
  *
- * The fake session comes from `test/helpers/subagent-session.ts`, which is also what every other
+ * The fake session comes from `test/helpers/agent-session.ts`, which is also what every other
  * `runSubprocess` suite drives, so a member the executor starts reading is stubbed once. The only
  * thing this suite varies is the model api, because it asserts the forced reminder's tool choice and
  * `buildNamedToolChoice` shapes that per api.
@@ -74,7 +74,7 @@ describe("runSubprocess soft request budget", () => {
 			task: "inventory the api surface",
 			index: 0,
 			id,
-			settings: Settings.isolated({ "subagent.softRequestBudget": 2 }),
+			settings: Settings.isolated({ "agent.softRequestBudget": 2 }),
 			modelRegistry: { refresh: async () => {} } as unknown as ModelRegistry,
 			enableLsp: false,
 			artifactsDir: tempDir.path(),

@@ -80,7 +80,7 @@
 		"statusLineUntracked": "veinBlue",
 		"statusLineOutput": "crystalBlue",
 		"statusLineCost": "amber",
-		"statusLineSubagents": "crystalBlue",
+		"statusLineAgents": "crystalBlue",
 		"pythonMode": "amber"
 	},
 	"export": {

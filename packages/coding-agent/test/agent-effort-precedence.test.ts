@@ -1,0 +1,108 @@
+import { describe, expect, it } from "bun:test";
+import { ThinkingLevel } from "@veyyon/agent-core";
+import { Effort } from "@veyyon/catalog/effort";
+import { loadBundledAgents } from "@veyyon/coding-agent/task/agents";
+import { resolveEffectiveAgentThinkingLevel } from "@veyyon/coding-agent/task/executor";
+import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
+
+/**
+ * The effort a dispatched agent runs at. This pins the precedence the
+ * `agent.model` effort UI (FE-1) depends on: a `:level` suffix on the
+ * resolved pattern beats the agent's own default, which beats the
+ * pattern-derived level. Exact levels, not shape.
+ */
+describe("resolveEffectiveAgentThinkingLevel", () => {
+	it("uses the explicit `:level` suffix when the resolver marked it explicit", () => {
+		// agent.model = "provider/id:high" -> explicit High, agent default ignored.
+		expect(resolveEffectiveAgentThinkingLevel(true, Effort.High, Effort.Low)).toBe(Effort.High);
+	});
+
+	it("falls back to the agent-definition default when no explicit suffix was given", () => {
+		// bare selector: explicit=false, resolver has no level, agent asked for Medium.
+		expect(resolveEffectiveAgentThinkingLevel(false, undefined, Effort.Medium)).toBe(Effort.Medium);
+	});
+
+	it("falls back to the pattern-derived level when there is no agent default", () => {
+		expect(resolveEffectiveAgentThinkingLevel(false, Effort.Low, undefined)).toBe(Effort.Low);
+	});
+
+	it("prefers the agent default over a pattern-derived level when not explicit", () => {
+		expect(resolveEffectiveAgentThinkingLevel(false, Effort.Low, Effort.High)).toBe(Effort.High);
+	});
+
+	it("leaves effort unresolved when no configuration layer supplies one", () => {
+		expect(resolveEffectiveAgentThinkingLevel(false, undefined, undefined)).toBeUndefined();
+	});
+
+	it("keeps the explicit level even when it resolves to undefined-free `auto`", () => {
+		// An explicit suffix wins outright: the agent default never masks it.
+		expect(resolveEffectiveAgentThinkingLevel(true, Effort.Minimal, Effort.XHigh)).toBe(Effort.Minimal);
+	});
+
+	/**
+	 * The built-in general worker advertises inheritance rather than auto, so a task
+	 * without an effort override cannot silently reclassify its own effort. The lane is
+	 * `deep`; the name `task` belonged to an earlier roster and matches no bundled agent,
+	 * so the lookup answered `undefined` and the case failed on a roster it was reading
+	 * by a retired name.
+	 */
+	it("configures the bundled general lane to inherit effort", () => {
+		const deep = loadBundledAgents().find(agent => agent.name === "deep");
+		expect(deep?.thinkingLevel).toBe(ThinkingLevel.Inherit);
+	});
+
+	/**
+	 * Parent inheritance is applied by the executor after this resolver. The
+	 * three-argument resolver must preserve the configured inherit sentinel.
+	 */
+	it("preserves agent-level inherit for parent-effort resolution", () => {
+		expect(resolveEffectiveAgentThinkingLevel(false, undefined, ThinkingLevel.Inherit)).toBe(ThinkingLevel.Inherit);
+	});
+
+	/**
+	 * Inherit on an explicit model selector remains authoritative here so the
+	 * executor can resolve it against the parent's effective effort.
+	 */
+	it("preserves explicit inherit for parent-effort resolution", () => {
+		expect(resolveEffectiveAgentThinkingLevel(true, ThinkingLevel.Inherit, Effort.XHigh)).toBe(ThinkingLevel.Inherit);
+	});
+
+	/**
+	 * A caller-resolved off effort is concrete and must remain off.
+	 */
+	it("preserves a resolved off effort exactly", () => {
+		expect(resolveEffectiveAgentThinkingLevel(false, undefined, ThinkingLevel.Off)).toBe(ThinkingLevel.Off);
+	});
+
+	/**
+	 * A parent configured as auto passes its concrete per-turn resolution. Once
+	 * supplied by the caller, xhigh must remain concrete.
+	 */
+	it("preserves the concrete effort resolved by a parent in auto mode", () => {
+		expect(resolveEffectiveAgentThinkingLevel(false, undefined, Effort.XHigh)).toBe(Effort.XHigh);
+	});
+
+	/**
+	 * A child that explicitly requests auto keeps that override over the
+	 * caller-resolved parent effort.
+	 */
+	it("preserves an explicit child auto override", () => {
+		expect(resolveEffectiveAgentThinkingLevel(true, AUTO_THINKING, Effort.High)).toBe(AUTO_THINKING);
+	});
+
+	/**
+	 * An omitted child level uses the effective effort already resolved by the
+	 * caller rather than falling through to model defaults.
+	 */
+	it("uses the caller-resolved parent effort when the child level is omitted", () => {
+		expect(resolveEffectiveAgentThinkingLevel(false, undefined, Effort.Medium)).toBe(Effort.Medium);
+	});
+
+	/**
+	 * If no concrete parent effort exists, the configured inherit sentinel must
+	 * survive this resolver for the executor's inheritance step.
+	 */
+	it("preserves inherit when the parent effective effort is undefined", () => {
+		expect(resolveEffectiveAgentThinkingLevel(false, undefined, ThinkingLevel.Inherit)).toBe(ThinkingLevel.Inherit);
+	});
+});

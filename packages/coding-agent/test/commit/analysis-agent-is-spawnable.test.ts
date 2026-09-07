@@ -3,11 +3,11 @@ import type { AuthStorage } from "@veyyon/ai/auth-storage";
 import { commitAnalysisSpawnTarget, createCommitTools } from "@veyyon/coding-agent/commit/agentic/tools";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { resolveEnabledAgents } from "@veyyon/coding-agent/task/agent-settings";
 import { loadBundledAgents } from "@veyyon/coding-agent/task/agents";
-import { resolveEnabledSubagents } from "@veyyon/coding-agent/task/subagent-settings";
 
 /**
- * The commit agent fans file analysis out to subagents, and the only thing that
+ * The commit agent fans file analysis out to agents, and the only thing that
  * has to be true of the agent it names is that this profile can actually spawn
  * it.
  *
@@ -43,7 +43,7 @@ const MODEL_REGISTRY = {} as unknown as ModelRegistry;
 
 /** The agent names this profile will actually spawn, from the one authority on that. */
 function enabledNames(settings: Settings): string[] {
-	return resolveEnabledSubagents({ settings, agents: loadBundledAgents() }).agents.map(agent => agent.name);
+	return resolveEnabledAgents({ settings, agents: loadBundledAgents() }).agents.map(agent => agent.name);
 }
 
 /** Build the commit tool set the way `runCommitAgentSession` does, and name the tools. */
@@ -70,7 +70,7 @@ describe("the agent the commit flow analyzes files with", () => {
 		],
 		["a single specialist and nothing else", { deep: { enabled: false }, designer: { enabled: true } }],
 	])("is one this profile can spawn: %s", (_label, agents) => {
-		const settings = Settings.isolated({ "subagent.agents": agents });
+		const settings = Settings.isolated({ "agent.agents": agents });
 		const enabled = enabledNames(settings);
 
 		const target = commitAnalysisSpawnTarget(settings);
@@ -80,7 +80,7 @@ describe("the agent the commit flow analyzes files with", () => {
 		// The session's spawn capability is that one name. Resolving the catalog
 		// through it has to leave something, or the commit agent is a session
 		// permitted to spawn exactly one agent it is then refused.
-		const throughTheCapability = resolveEnabledSubagents({
+		const throughTheCapability = resolveEnabledAgents({
 			settings,
 			agents: loadBundledAgents(),
 			parentSpawns: target,
@@ -90,7 +90,7 @@ describe("the agent the commit flow analyzes files with", () => {
 	});
 
 	it("prefers the cheap lane when the operator has it on, since one file is all it summarizes", () => {
-		const settings = Settings.isolated({ "subagent.agents": { sonic: { enabled: true } } });
+		const settings = Settings.isolated({ "agent.agents": { sonic: { enabled: true } } });
 		const target = commitAnalysisSpawnTarget(settings);
 
 		expect(target).toBe("sonic");
@@ -100,9 +100,9 @@ describe("the agent the commit flow analyzes files with", () => {
 	it.each([
 		[
 			"every bundled agent turned off",
-			{ "subagent.agents": Object.fromEntries(loadBundledAgents().map(a => [a.name, { enabled: false }])) },
+			{ "agent.agents": Object.fromEntries(loadBundledAgents().map(a => [a.name, { enabled: false }])) },
 		],
-		["subagents disabled wholesale", { "subagent.enabled": false }],
+		["agents disabled wholesale", { "agent.enabled": false }],
 	])("withholds the tool rather than offering one every call is refused: %s", (_label, overrides) => {
 		const settings = Settings.isolated(overrides);
 

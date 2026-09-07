@@ -40,7 +40,7 @@ export async function discoverExtensions(cwd?: string): Promise<LoadExtensionsRe
 
 /**
  * Path-only counterpart of {@link loadSessionExtensions}: the FS-heavy scan
- * without the per-session module load. Subagents reuse the parent's path list
+ * without the per-session module load. Agents reuse the parent's path list
  * (cached on {@link ToolSession.extensionPaths}) and rebuild Extension
  * instances themselves so each session's `ExtensionAPI` (cwd, eventBus,
  * runtime) is its own.

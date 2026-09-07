@@ -14,14 +14,14 @@ import {
 	resolveComposerAccents,
 } from "../src/modes/terminal/components/composer/composer-chrome";
 import { CustomEditor } from "../src/modes/terminal/components/composer/custom-editor";
-import { renderSubagentHudLines } from "../src/modes/terminal/components/dashboard/subagent-hud";
+import { renderAgentHudLines } from "../src/modes/terminal/components/dashboard/agent-hud";
 import { StatusLineComponent } from "../src/modes/terminal/components/status-line/component";
 import {
+	agentBadgeText,
 	composeQuietRow,
 	effectiveStatusLineSettings,
 	gatherQuietSegments,
 	statusLineSettingsFromConfig,
-	subagentBadgeText,
 } from "../src/modes/terminal/components/status-line/quiet-row";
 import { launchSegmentContext } from "../src/modes/terminal/components/status-line/session-facts";
 import type { ObservableSession } from "../src/modes/terminal/session-observer-registry";
@@ -238,7 +238,7 @@ describe("Systematic UX Audit: Composer, Footline, Warning, HUD", () => {
 							autoCompactEnabled: true,
 							location: null,
 						}),
-					subagentBadge: subagentBadgeText(0),
+					agentBadge: agentBadgeText(0),
 					badgeSlot: null,
 				});
 				const row = composeQuietRow({
@@ -260,13 +260,13 @@ describe("Systematic UX Audit: Composer, Footline, Warning, HUD", () => {
 				modelName: "Claude 3.7 Sonnet",
 			});
 			const statusLine = new StatusLineComponent(session as unknown as AgentSession);
-			statusLine.setSession(session as unknown as AgentSession, "subagent-worker-1");
+			statusLine.setSession(session as unknown as AgentSession, "agent-worker-1");
 
 			for (const width of [160, 100, 60]) {
 				const line = statusLine.renderQuietLine(width);
 				expect(line).not.toBeNull();
 				expect(visibleWidth(line ?? "")).toBeLessThanOrEqual(width);
-				expect(stripAnsi(line ?? "")).toContain("subagent-worker-1");
+				expect(stripAnsi(line ?? "")).toContain("agent-worker-1");
 				expect(stripAnsi(line ?? "")).toContain("esc");
 			}
 		});
@@ -332,50 +332,50 @@ describe("Systematic UX Audit: Composer, Footline, Warning, HUD", () => {
 		});
 	});
 
-	describe("4. Subagent HUD", () => {
-		it("renders HUD with 0, 1, and 12 subagents at widths 60, 100, 160", () => {
-			const makeSubagent = (id: string, description?: string, model?: string): ObservableSession =>
+	describe("4. Agent HUD", () => {
+		it("renders HUD with 0, 1, and 12 agents at widths 60, 100, 160", () => {
+			const makeAgent = (id: string, description?: string, model?: string): ObservableSession =>
 				({
 					id,
-					kind: "subagent",
+					kind: "spawn",
 					status: "active",
 					detached: true,
 					description,
 					progress: model ? { resolvedModel: model } : undefined,
 				}) as unknown as ObservableSession;
 
-			// 0 subagents
+			// 0 agents
 			for (const width of [60, 100, 160]) {
-				const lines0 = renderSubagentHudLines([], { columns: width, showModelBadge: true });
+				const lines0 = renderAgentHudLines([], { columns: width, showModelBadge: true });
 				expect(lines0).toEqual([]);
 			}
 
-			// 1 subagent with long label
-			const oneSubagent = [
-				makeSubagent(
-					"subagent-alpha-long-id-123456789",
+			// 1 agent with long label
+			const oneAgent = [
+				makeAgent(
+					"agent-alpha-long-id-123456789",
 					"Very long description that describes a complex task spanning multiple files and modules",
 					"claude-3-7-sonnet",
 				),
 			];
 			for (const width of [60, 100, 160]) {
-				const lines1 = renderSubagentHudLines(oneSubagent, { columns: width, showModelBadge: true });
+				const lines1 = renderAgentHudLines(oneAgent, { columns: width, showModelBadge: true });
 				expect(lines1.length).toBeGreaterThan(0);
 				for (const line of lines1) {
 					expect(visibleWidth(line)).toBeLessThanOrEqual(width);
 				}
 			}
 
-			// 12 subagents with long labels
-			const twelveSubagents = Array.from({ length: 12 }, (_, i) =>
-				makeSubagent(
-					`subagent-task-${i + 1}-extended-label`,
+			// 12 agents with long labels
+			const twelveAgents = Array.from({ length: 12 }, (_, i) =>
+				makeAgent(
+					`agent-task-${i + 1}-extended-label`,
 					`Refactoring database schema migration and updating api routes for service ${i + 1}`,
 					i % 2 === 0 ? "claude-3-7-sonnet" : "gpt-4o",
 				),
 			);
 			for (const width of [60, 100, 160]) {
-				const lines12 = renderSubagentHudLines(twelveSubagents, { columns: width, showModelBadge: true });
+				const lines12 = renderAgentHudLines(twelveAgents, { columns: width, showModelBadge: true });
 				expect(lines12.length).toBeGreaterThan(0);
 				// 1 empty line + 1 header line + 8 visible agents + 1 "more running" row = 11 lines
 				expect(lines12.length).toBe(11);
@@ -384,12 +384,12 @@ describe("Systematic UX Audit: Composer, Footline, Warning, HUD", () => {
 				}
 			}
 
-			// Subagent with NO description but model badge fits in remaining space
-			const subagentNoDesc = [makeSubagent("task-1", undefined, "gpt-4o")];
+			// Agent with NO description but model badge fits in remaining space
+			const agentNoDesc = [makeAgent("task-1", undefined, "gpt-4o")];
 			// At width 30: id="task-1", badge "gpt-4o" fits in remaining space.
 			// Pre-fix dropped the badge because 9 < 14 (reserving room for non-existent description).
 			// Post-fix retains the badge since there is no description competing for space.
-			const linesNoDesc = renderSubagentHudLines(subagentNoDesc, { columns: 30, showModelBadge: true });
+			const linesNoDesc = renderAgentHudLines(agentNoDesc, { columns: 30, showModelBadge: true });
 			expect(linesNoDesc.length).toBe(3);
 			expect(stripAnsi(linesNoDesc[2] ?? "")).toContain("gpt-4o");
 		});

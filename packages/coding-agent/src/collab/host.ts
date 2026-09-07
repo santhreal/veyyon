@@ -4,9 +4,9 @@
  * Taps the host session's event stream and SessionManager append chokepoint,
  * broadcasting entries/events/state to guests through the relay. Guests prompt
  * and abort through us; the host machine runs the agent and tools. The host's
- * subagent ecosystem is mirrored too: task EventBus traffic (observer HUD),
- * agent-registry snapshots (the subagent dashboard roster), hub chat/kill/revive commands,
- * and incremental subagent-transcript reads.
+ * agent ecosystem is mirrored too: task EventBus traffic (observer HUD),
+ * agent-registry snapshots (the agent dashboard roster), hub chat/kill/revive commands,
+ * and incremental agent-transcript reads.
  */
 
 import { timingSafeEqual } from "node:crypto";
@@ -26,7 +26,7 @@ import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import { type AgentRef, AgentRegistry } from "../registry/agent-registry";
 import type { AgentSessionEvent } from "../session/agent-session-types";
 import { stripImagesFromMessage, USER_INTERRUPT_LABEL } from "../session/messages";
-import { TASK_SUBAGENT_LIFECYCLE_CHANNEL, TASK_SUBAGENT_PROGRESS_CHANNEL } from "../task/types";
+import { TASK_AGENT_LIFECYCLE_CHANNEL, TASK_AGENT_PROGRESS_CHANNEL } from "../task/types";
 import { generateRoomKey, generateWriteToken, importRoomKey } from "./crypto";
 import { collabDisplayName } from "./display-name";
 import {
@@ -65,8 +65,8 @@ const AGENTS_DEBOUNCE_MS = 100;
 const STREAMING_STATE_INTERVAL_MS = 2000;
 const WELCOME_IMAGE_STRIP_THRESHOLD = 24 * 1024 * 1024;
 const COLLAB_BUS_CHANNELS = [
-	TASK_SUBAGENT_LIFECYCLE_CHANNEL,
-	TASK_SUBAGENT_PROGRESS_CHANNEL,
+	TASK_AGENT_LIFECYCLE_CHANNEL,
+	TASK_AGENT_PROGRESS_CHANNEL,
 ] as const satisfies readonly BusChannel[];
 
 // How long the host waits for the REMOTE relay websocket to open. Crosses the
@@ -200,7 +200,7 @@ export class CollabHost {
 	 * Redact a frame on its way to a guest.
 	 *
 	 * A collab link is a bearer capability the operator may have forwarded once, and everything
-	 * the host sees goes down it: entries, live events, subagent bus traffic, error strings. The
+	 * the host sees goes down it: entries, live events, agent bus traffic, error strings. The
 	 * same transcript routed through `/share` or `/export` has its configured secrets replaced
 	 * with placeholders, so a guest must not receive the literal value instead. This is the one
 	 * seam every outbound frame passes through, so the walk lives here rather than at each of the

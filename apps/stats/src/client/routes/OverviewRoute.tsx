@@ -227,7 +227,7 @@ export function OverviewRoute({ active, range, refreshTrigger, onRequestClick }:
 
 			<Panel
 				title="Token Usage by Agent"
-				subtitle="Share of tokens across the main agent, task subagents, and the advisor"
+				subtitle="Share of tokens across the main agent, spawned agents, and the advisor"
 			>
 				<AsyncBoundary loading={overviewLoading} error={overviewError} data={overview}>
 					{overview && <AgentTokenShare stats={overview.byAgentType} />}

@@ -260,7 +260,7 @@ describe("argot tools", () => {
 		const root = makeArgotDir();
 		fs.writeFileSync(path.join(root, ".argot"), "");
 
-		const argot = createArgotSession({ enabled: true, isSubagent: false, subagentMode: "off" });
+		const argot = createArgotSession({ enabled: true, isSpawned: false, agentMode: "off" });
 		if (argot === undefined) throw new Error("expected a codec for an enabled top-level session");
 		argot.load(root, vocabulary());
 

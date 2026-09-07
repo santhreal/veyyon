@@ -105,7 +105,7 @@ const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 30 * 1000;
 const HEARTBEAT_INTERVAL_MS = 5 * 1000;
 // Cap on the debug session's in-memory output ring. Unrelated to the task tool's
-// MAX_OUTPUT_BYTES, which bounds what a subagent may return and is user-tunable
+// MAX_OUTPUT_BYTES, which bounds what an agent may return and is user-tunable
 // via VEYYON_TASK_MAX_OUTPUT_BYTES.
 const MAX_BUFFERED_OUTPUT_BYTES = 128 * 1024;
 const STOP_CAPTURE_TIMEOUT_MS = 5_000;

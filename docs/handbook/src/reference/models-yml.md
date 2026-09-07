@@ -478,7 +478,7 @@ Built-in role ids (see `model-roles.ts`):
 | `tiny` | Yes | Lightweight background (titles, classifiers); else `@smol` |
 | `advisor` | Yes | Advisor runtime |
 
-There is no `task` model role. Profile-wide and per-agent subagent model policy lives under `subagent` instead of the role table.
+There is no `task` model role. Profile-wide and per-agent model policy lives under `agent` instead of the role table.
 
 `cycleOrder` defaults to `["smol","slow"]`; the entry `default` is stripped on load. Role aliases like `@smol` expand through `settings.modelRoles`; `*` selects `@default` (interactive). Quote `@` aliases in YAML values (`fable: "@slow"`). Each role value can append a thinking selector (`:minimal`, `:low`, `:medium`, `:high`, `:xhigh`, `:max`).
 

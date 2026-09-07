@@ -604,7 +604,7 @@ function normalizeForTodoMatch(value: string): string {
 /**
  * Report whether `content` likely names the same work as any entry in
  * `descriptions`. Used by the sticky todo panel to light up a pending todo
- * when an in-flight subagent is doing the work for it, without requiring
+ * when an in-flight spawned agent is doing the work for it, without requiring
  * the caller to flip the todo's status.
  *
  * Matching is normalize-then-equal first (lowercased; punctuation and

@@ -66,8 +66,8 @@ function driver(conversationId: string): AgentRef {
 	});
 }
 
-/** Register a subagent owned by `parentId` inside `conversationId`. */
-function subagent(id: string, parentId: string, conversationId: string): AgentRef {
+/** Register an agent owned by `parentId` inside `conversationId`. */
+function agent(id: string, parentId: string, conversationId: string): AgentRef {
 	return registry.register({
 		id,
 		displayName: "sub",
@@ -196,14 +196,14 @@ describe("The name resolves inside the conversation that wrote it", () => {
 	});
 
 	/**
-	 * A subagent writes the alias too, and it must reach ITS conversation's
+	 * An agent writes the alias too, and it must reach ITS conversation's
 	 * driver. This is the routing case: `SubB` answering `Main` from
 	 * conversation B must not wake conversation A's session.
 	 */
-	test("a subagent's alias reaches its own conversation's driver", () => {
+	test("an agent's alias reaches its own conversation's driver", () => {
 		driver(CONVERSATION_A);
 		const b = driver(CONVERSATION_B);
-		subagent("Worker", b.id, CONVERSATION_B);
+		agent("Worker", b.id, CONVERSATION_B);
 
 		const scope = registry.scopeOf("Worker");
 
@@ -273,19 +273,19 @@ describe("Consumers identify the driver by role", () => {
 	/**
 	 * The roster used to put the row whose id was literally `Main` first. With a
 	 * derived id that comparison never matches, so an unfixed consumer sorts the
-	 * driving agent among its own subagents and hands it a subagent call sign.
+	 * driving agent among its own agents and hands it an agent call sign.
 	 *
-	 * The subagents are registered BEFORE the driver on purpose. Registration
+	 * The agents are registered BEFORE the driver on purpose. Registration
 	 * order is the tie-break, so a fixture that registers the driver first is
 	 * sorted correctly by a consumer that lost the rule entirely, and cannot see
-	 * the defect. This order happens for real: a roster seeds the subagents it
+	 * the defect. This order happens for real: a roster seeds the agents it
 	 * finds on disk, and a conversation adopted from the background registers its
 	 * driver after them.
 	 */
 	test("a driving agent sorts first and keeps the main call sign", () => {
 		const driverId = mainAgentIdFor(CONVERSATION_A);
-		subagent("Early", driverId, CONVERSATION_A);
-		subagent("Late", driverId, CONVERSATION_A);
+		agent("Early", driverId, CONVERSATION_A);
+		agent("Late", driverId, CONVERSATION_A);
 		const a = driver(CONVERSATION_A);
 
 		const roster = collectLiveAgents(registry.listInScope(CONVERSATION_A));
@@ -299,8 +299,8 @@ describe("Consumers identify the driver by role", () => {
 	test("each conversation's roster holds exactly one driver", () => {
 		const a = driver(CONVERSATION_A);
 		const b = driver(CONVERSATION_B);
-		subagent("WorkerA", a.id, CONVERSATION_A);
-		subagent("WorkerB", b.id, CONVERSATION_B);
+		agent("WorkerA", a.id, CONVERSATION_A);
+		agent("WorkerB", b.id, CONVERSATION_B);
 
 		expect(ids(registry.listInScope(CONVERSATION_A)).sort()).toEqual([a.id, "WorkerA"].sort());
 		expect(ids(registry.listInScope(CONVERSATION_B)).sort()).toEqual([b.id, "WorkerB"].sort());
@@ -325,10 +325,10 @@ describe("Consumers identify the driver by role", () => {
 		lifecycle.dispose();
 	});
 
-	/** A real subagent is still adoptable: the refusal is about the role, not about being registered. */
-	test("a subagent is still adopted", () => {
+	/** A real agent is still adoptable: the refusal is about the role, not about being registered. */
+	test("an agent is still adopted", () => {
 		const a = driver(CONVERSATION_A);
-		subagent("Worker", a.id, CONVERSATION_A);
+		agent("Worker", a.id, CONVERSATION_A);
 		const lifecycle = new AgentLifecycleManager(registry);
 
 		lifecycle.adopt("Worker", { idleTtlMs: 60_000, pruneAfterMs: 0, pruneWaitingAfterMs: 0, revive: undefined });

@@ -1,6 +1,6 @@
-{{#if asyncEnabled}}{{#if batchEnabled}}Delegate work to background subagents by passing multiple items in a single `tasks[]` batch.{{else}}Delegate work to ONE background subagent per call.{{/if}}
-Execution does not block your turn: you receive agent and job IDs immediately, and the final results deliver themselves when the subagents finish.{{#if hasBlockingAgents}}
-Exception: agents marked BLOCKING below run inline — their results return in this call, while non-blocking items in the same batch still spawn as background jobs.{{/if}}{{else}}{{#if batchEnabled}}Run subagents synchronously by passing items in a `tasks[]` batch.{{else}}Run ONE subagent synchronously per call.{{/if}}
+{{#if asyncEnabled}}{{#if batchEnabled}}Delegate work to background agents by passing multiple items in a single `tasks[]` batch.{{else}}Delegate work to ONE background agent per call.{{/if}}
+Execution does not block your turn: you receive agent and job IDs immediately, and the final results deliver themselves when the agents finish.{{#if hasBlockingAgents}}
+Exception: agents marked BLOCKING below run inline — their results return in this call, while non-blocking items in the same batch still spawn as background jobs.{{/if}}{{else}}{{#if batchEnabled}}Run agents synchronously by passing items in a `tasks[]` batch.{{else}}Run ONE agent synchronously per call.{{/if}}
 Execution blocks your turn: the call only returns once the work is completely finished.{{/if}}
 
 # Task Design
@@ -10,7 +10,7 @@ Execution blocks your turn: the call only returns once the work is completely fi
 # Inputs
 {{#if batchEnabled}}
 - `context`: Shared project state, constraints, and contracts. Applies to the entire batch; do not duplicate this background into individual tasks.
-- `tasks[]`: Array of subagents to spawn.
+- `tasks[]`: Array of agents to spawn.
   - `name`: A stable CamelCase identifier (≤32 chars), used to address the agent (IRC, job ids). Generated automatically if omitted.
   - `agent`: The enabled agent type running this item.{{#if hasDefaultAgent}} Omitting it uses the configured default (`{{defaultAgent}}`).{{else}} Required because no enabled default agent exists.{{/if}}{{#if allowedAgentsText}} Enabled and allowed: {{allowedAgentsText}}.{{/if}}
   - `task`: Complete, self-contained instructions. One-liners or missing acceptance criteria are PROHIBITED.
@@ -27,8 +27,8 @@ Execution blocks your turn: the call only returns once the work is completely fi
 {{/if}}
 
 # Context and Communication
-Subagents start blank. They have no access to your conversation history.
-{{#if ircEnabled}}- **Steering delivery:** Parent-to-subagent IRC is delivered immediately as steering; subagents blocked in `job poll` / `irc wait` do not need to poll separately for it.{{/if}}
+Spawned agents start blank. They have no access to your conversation history.
+{{#if ircEnabled}}- **Steering delivery:** Parent-to-spawn IRC is delivered immediately as steering; agents blocked in `job poll` / `irc wait` do not need to poll separately for it.{{/if}}
 {{#if batchEnabled}}
 - Pass large payloads using `local://<path>` URIs, NEVER inline text.
 {{else}}

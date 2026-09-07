@@ -76,7 +76,7 @@ export function createAnalyzeFileTool(options: {
 			const toolSession = buildToolSession(ctx, options);
 			// The hand-built ToolSession carries no asyncJobManager, so every
 			// execute() below takes the task tool's sync fallback and resolves
-			// with the subagent's result inline — exactly what this flow needs.
+			// with the agent's result inline — exactly what this flow needs.
 			// The tool's session semaphore bounds the parallel fan-out.
 			const taskTool = await TaskTool.create(toolSession);
 			const numstat = options.state.overview?.numstat ?? [];

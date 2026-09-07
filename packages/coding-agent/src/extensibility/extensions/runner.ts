@@ -219,10 +219,10 @@ const noOpUIContext: ExtensionUIContext = {
 export class ExtensionRunner {
 	#uiContext: ExtensionUIContext;
 	/**
-	 * Registry id of the agent this runner drives, when it is a spawned subagent.
+	 * Registry id of the agent this runner drives, when it is a spawned agent.
 	 *
 	 * Undefined for a root session, which needs no attribution: its prompts are
-	 * self-evidently its own. A subagent's are not. The operator answers ONE
+	 * self-evidently its own. An agent's are not. The operator answers ONE
 	 * queue at the root, so two children asking at the same moment are two
 	 * identical cards unless each says who is asking, and an anonymous prompt is
 	 * nearly as bad as no prompt: it can be answered, but not answered correctly.
@@ -351,7 +351,7 @@ export class ExtensionRunner {
 	 *
 	 * If {@link initialize} has not yet run, the event is buffered and replayed once
 	 * initialize wires the runtime/UI context. This matters because mode controllers
-	 * (interactive, RPC, ACP, print, subagent) call `initialize()` AFTER `createAgentSession`
+	 * (interactive, RPC, ACP, print, agent) call `initialize()` AFTER `createAgentSession`
 	 * returns, but `AuthStorage` can fire `credential_disabled` during startup model probes
 	 * inside `createAgentSession()`. Without deferral, extension handlers would observe
 	 * `hasUI=false`, an unset model, and no-op runtime actions on exactly the headline

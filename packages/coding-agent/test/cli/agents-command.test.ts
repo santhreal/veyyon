@@ -5,9 +5,9 @@
  *
  * The target path is the contract, not a detail. Unpack wrote into the active
  * profile's `agent/agents`, which no loader reads: every unpacked definition was
- * absent from `/agents` and from `task`, silently. `~/.veyyon/subagents` is the
+ * absent from `/agents` and from `task`, silently. `~/.veyyon/agents` is the
  * reader's directory, pinned from the reader's side by
- * `test/task/user-subagents-are-global-and-their-tools-are-checked.test.ts`, so a
+ * `test/task/user-agents-are-global-and-their-tools-are-checked.test.ts`, so a
  * writer that drifts from it fails one of the two.
  */
 import { describe, expect, it } from "bun:test";

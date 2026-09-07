@@ -775,7 +775,7 @@ function supportsThinkingSignature(model: Model<"bedrock-converse-stream">): boo
  * A single trailing `cachePoint` caches a prefix that ENDS at the last system
  * block, so any edit to a later block invalidates the whole system prompt and
  * the next turn re-reads and re-writes all of it. That is the normal shape
- * here: the first block is the harness shared across parent and subagent
+ * here: the first block is the harness shared across parent and agent
  * prompts, and project context, the assignment and the handle table are
  * appended after it and change constantly. The Anthropic provider anchors its
  * own first block for exactly this reason (`applyPromptCaching`); Bedrock did

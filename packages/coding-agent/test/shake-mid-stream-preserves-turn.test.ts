@@ -166,7 +166,7 @@ describe("issue #3656 /shake mid-stream preserves the in-flight assistant turn",
 		expect(pendingIdx).toBeGreaterThan(streamingIdx);
 	});
 
-	it("uses the rendered view session when preserving a focused subagent stream", () => {
+	it("uses the rendered view session when preserving a focused agent stream", () => {
 		const { streamingComponent, pendingTool } = makeStreamingFixture(false);
 		Object.defineProperty(mode, "viewSession", {
 			configurable: true,

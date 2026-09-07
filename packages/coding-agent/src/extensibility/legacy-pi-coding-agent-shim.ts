@@ -667,7 +667,7 @@ export const SettingsManager = {
  * prompt / theme / AGENTS.md discovery inside a `DefaultResourceLoader`
  * instance that the caller constructs, `reload()`s, and hands to
  * `createAgentSession({ resourceLoader })`. Every published version of
- * pi-schedule-prompt (≥0.2.0) and other pi extensions that spawn subagents
+ * pi-schedule-prompt (≥0.2.0) and other pi extensions that spawn agents
  * import the class at module scope; a missing export takes the whole
  * extension down at parse time (issue #4567).
  *
@@ -1125,7 +1125,7 @@ export class DefaultResourceLoader implements ResourceLoader {
  * context-file discovery are configured directly on the session options — so
  * an untranslated call would silently ignore the loader (including its
  * `noExtensions`/`noSkills` opt-outs), re-run veyyon's own discovery, and
- * happily re-load the calling extension into the subagent. That's exactly
+ * happily re-load the calling extension into the agent. That's exactly
  * the recursion the caller passed the loader to prevent.
  *
  * Translate the loader's captured state into veyyon's option fields, then

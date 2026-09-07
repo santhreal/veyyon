@@ -158,7 +158,7 @@ describe("memories runtime", () => {
 		process.env.XDG_STATE_HOME = savedXdgState;
 	});
 
-	test("startup gating skips when disabled or subagent depth", async () => {
+	test("startup gating skips when disabled or agent depth", async () => {
 		const disabled = await createFixture({ "memories.enabled": false });
 		const openSpy = vi.spyOn(memoryStorage, "openMemoryDb");
 		startMemoryStartupTask({
@@ -170,12 +170,12 @@ describe("memories runtime", () => {
 		});
 		expect(openSpy).not.toHaveBeenCalled();
 
-		const subagent = await createFixture({ "memories.enabled": true });
+		const agent = await createFixture({ "memories.enabled": true });
 		startMemoryStartupTask({
-			session: subagent.session,
-			settings: subagent.settings,
-			modelRegistry: subagent.modelRegistry,
-			agentDir: subagent.agentDir,
+			session: agent.session,
+			settings: agent.settings,
+			modelRegistry: agent.modelRegistry,
+			agentDir: agent.agentDir,
 			taskDepth: 1,
 		});
 		expect(openSpy).not.toHaveBeenCalled();

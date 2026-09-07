@@ -88,8 +88,8 @@ export const CONFIG_DIR_NAME: string = ".veyyon";
 export const MAIN_CONFIG_FILENAMES = ["config.yml", "config.yaml"] as const;
 
 /**
- * Basename of the cross-profile directory holding user-authored subagent
- * definitions ({@link getGlobalSubagentsDir}).
+ * Basename of the cross-profile directory holding user-authored agent
+ * definitions ({@link getGlobalAgentsDir}).
  *
  * `subagents`, not `agents`: the config root already holds `profiles/`, whose
  * every entry carries an `agent/` dir, so an `agent/agents/` path named two
@@ -1073,20 +1073,20 @@ export function getSharedAuthDir(): string {
 }
 
 /**
- * Directory holding user-authored subagent definitions (`<name>.md`, YAML
+ * Directory holding user-authored agent definitions (`<name>.md`, YAML
  * frontmatter + prompt body), read by every profile.
  *
  * DISCOVERY IS GLOBAL, ENABLING IS PER-PROFILE. A definition is authored
  * content, so it lives once at the base config root beside the global
  * `config.yml`; whether a profile may spawn it is that profile's
- * `subagent.agents.<name>.enabled`. Keeping the file inside a profile's agent
+ * `agent.agents.<name>.enabled`. Keeping the file inside a profile's agent
  * dir meant re-authoring the same agent for every profile, and it read as
  * profile state rather than as something the operator wrote.
  *
  * Not XDG-redirected, for the reason {@link getSharedAuthDir} is not: one fixed
  * machine-wide location is the whole point.
  */
-export function getGlobalSubagentsDir(): string {
+export function getGlobalAgentsDir(): string {
 	return path.join(getBaseConfigRoot(), SUBAGENTS_DIR_NAME);
 }
 

@@ -1,4 +1,4 @@
-/** `yield` — structured data handed back by a subagent at the end of its run. */
+/** `yield` — structured data handed back by an agent at the end of its run. */
 import type { ReactNode } from "react";
 import { Output, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";

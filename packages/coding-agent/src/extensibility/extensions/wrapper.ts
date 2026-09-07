@@ -311,7 +311,7 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 				});
 			};
 
-			// The agent this call belongs to, when it is a spawned subagent. Both
+			// The agent this call belongs to, when it is a spawned agent. Both
 			// the byline on the card and the observable waiting state below are
 			// keyed off it, and a root session has neither.
 			const requester = this.runner.agentId;
@@ -324,7 +324,7 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 				// headless run reports WHY it was blocked, not only that a prompt was
 				// needed.
 				//
-				// A subagent reaches here only when the ROOT session has no UI either,
+				// An agent reaches here only when the ROOT session has no UI either,
 				// because the spawner hands the root's surface down (see
 				// `resolveRootUIContext` in `task/executor.ts`). So the refusal has to
 				// read as a decision about the run's configuration rather than as a

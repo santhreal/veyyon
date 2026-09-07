@@ -219,7 +219,7 @@ Cancelable pre-events:
 - `after_provider_response`
 - `context`
 - `agent_start` / `agent_end`: agent loop lifecycle notification; `agent_end` remains notification-only
-- `session_stop`: main-session stop hook, awaited before settle; may continue with `{ continue: true, additionalContext }` or `{ decision: "block", reason }`; capped at 8 consecutive continuations and never fires for task/subagent sessions
+- `session_stop`: main-session stop hook, awaited before settle; may continue with `{ continue: true, additionalContext }` or `{ decision: "block", reason }`; capped at 8 consecutive continuations and never fires for task/agent sessions
 - `turn_start` / `turn_end`
 - `message_start` / `message_update` / `message_end`
 
@@ -348,7 +348,7 @@ Unsupported or inert in the RPC implementation:
 - theme switching/loading (`setTheme` returns failure)
 - tool expansion controls
 
-### Print/headless/subagent paths
+### Print/headless/agent paths
 
 When no UI context is supplied to runner init, `ctx.hasUI` is `false` and methods are no-op/default-returning.
 

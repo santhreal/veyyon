@@ -1,8 +1,8 @@
 /**
- * WHY: the subagent dashboard's read-only transcript viewer was the one
+ * WHY: the agent dashboard's read-only transcript viewer was the one
  * display in the product that showed the model's raw `§handle` text. Every
  * other human-facing surface goes through `argot-wire.ts`, but this viewer
- * parses a subagent's or advisor's persisted `.jsonl` itself — precisely
+ * parses an agent's or advisor's persisted `.jsonl` itself — precisely
  * because those are the two agents with no live session to hand the view over
  * to — and the persisted file deliberately keeps the cheap handles, which is
  * what makes replay cheap. So the viewer rendered exactly what was on disk.

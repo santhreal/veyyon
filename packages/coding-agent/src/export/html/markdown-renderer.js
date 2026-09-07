@@ -16,7 +16,7 @@
  *   link      scheme-checked; marked's default emits `javascript:` hrefs untouched
  *
  * The last two were missing. Anyone who can land text in a transcript could reach them: a page
- * the fetch tool pulled in, a README in a cloned repo, an MCP tool result, a subagent return, or
+ * the fetch tool pulled in, a README in a cloned repo, an MCP tool result, an agent return, or
  * prompt-injected model text. On `/share` the payload ran on the share origin, which is also the
  * collab web base, so same-origin script could read a live session's room key out of the URL
  * fragment. On `/export` it ran when the operator opened the file.

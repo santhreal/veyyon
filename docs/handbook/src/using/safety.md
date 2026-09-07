@@ -2,7 +2,7 @@
 
 Commands and file writes go through **approval mode** (`tools.approvalMode`). There is no OS command sandbox (Landlock, seccomp, Seatbelt, bubblewrap). Policy details: [Approvals](../features/sandbox.md). Concepts: [Permission model](../concepts/permission-model.md).
 
-Task subagents can use **filesystem isolation** (CoW worktree backends via `subagent.isolation.*`) so their edits land in a private tree until merged. That is change-control for subagents, not an OS process sandbox. See the task tool docs, or the Isolation group in the Subagents settings tab.
+Task agents can use **filesystem isolation** (CoW worktree backends via `agent.isolation.*`) so their edits land in a private tree until merged. That is change-control for agents, not an OS process sandbox. See the task tool docs, or the Isolation group in the Agents settings tab.
 
 ## Operator-visible cases
 

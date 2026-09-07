@@ -14,7 +14,7 @@ sessions and context resets:
 
 - `BACKLOG.md`'s own header states the row shape and the lifecycle. Read it there; it is
   the ledger's contract, not this page's.
-- Every finding — an agent's own, a subagent's, a test failure, a doc drift — is appended
+- Every finding — an agent's own, an agent's, a test failure, a doc drift — is appended
   **the moment it is found**. A finding that lives only in chat context is lost work.
 - There is one ledger and one plan. Never a second notes/findings/report file, never a
   competing roadmap.
@@ -121,4 +121,4 @@ a ledger row like any other bug.
   account-level Cloudflare/GitHub state) is a human-blocker: record it in the
   ledger with what was tried, and continue on other rows rather than stopping.
 
-*Verified against `0b075fd23` on 2026-08-22.*
+*Verified against `63ffc8131ffb8d35ccbbb1c5de69531a7016eff4` on 2026-09-06.*

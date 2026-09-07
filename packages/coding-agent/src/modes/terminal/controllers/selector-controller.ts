@@ -573,7 +573,7 @@ export class SelectorController {
 	}
 
 	/**
-	 * Show the subagent dashboard: the ONE agent surface.
+	 * Show the agent dashboard: the ONE agent surface.
 	 *
 	 * Every entry point lands here — `/agents`, `/cockpit` (alias `/hub`), the
 	 * `app.agents.hub` and `app.session.observe` keys, and the editor's `←←`
@@ -581,7 +581,7 @@ export class SelectorController {
 	 * about what was running.
 	 *
 	 * `requireContent` is the gesture's gate: `←←` on an empty editor must stay
-	 * inert until there is a subagent to look at, while an explicit key still
+	 * inert until there is an agent to look at, while an explicit key still
 	 * opens the empty roster. Agents persisted by earlier runs register
 	 * asynchronously, so the gate waits for that scan rather than treating the
 	 * initial roster as the answer.
@@ -603,10 +603,10 @@ export class SelectorController {
 			registry: this.ctx.collabGuest?.agentRegistry,
 			remote: this.ctx.collabGuest?.agentRemote,
 			observers,
-			showModelBadge: settings.get("subagent.showResolvedModelBadge"),
+			showModelBadge: settings.get("agent.showResolvedModelBadge"),
 			sessionFile: this.ctx.sessionManager.getSessionFile() ?? null,
 			// The roster is this conversation's, not the process's. Without it a
-			// session resumed with `/resume` listed the subagents of every
+			// session resumed with `/resume` listed the agents of every
 			// conversation the process had driven before it.
 			scope: this.ctx.sessionManager.getSessionId(),
 			focusAgent: id => this.ctx.focusAgentSession(id),
@@ -646,7 +646,7 @@ export class SelectorController {
 		};
 
 		if (options?.requireContent && dashboard.isEmpty) {
-			void dashboard.persistedSubagentsReady.then(() => {
+			void dashboard.persistedAgentsReady.then(() => {
 				if (dashboard.isEmpty) {
 					dashboard.dispose();
 					return;

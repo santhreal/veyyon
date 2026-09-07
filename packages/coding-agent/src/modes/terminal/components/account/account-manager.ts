@@ -9,7 +9,7 @@
  * gone. This card is one row per CREDENTIAL, which is the thing you switch, name and log out.
  *
  * WHY SWITCHING IS PER PROVIDER. Several providers serve one session at once (main model,
- * subagent roles, web search), so there is no single "current account" to pick. `enter` uses the
+ * agent roles, web search), so there is no single "current account" to pick. `enter` uses the
  * selected account FOR ITS PROVIDER and the footer says so by name, because a key labelled just
  * `use` reads as a global switch and is not one. Moving from Anthropic to Google is a model
  * decision and lives in `/models`.

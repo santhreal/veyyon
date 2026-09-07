@@ -420,6 +420,13 @@ jobs:
               github-token: ${{ secrets.GITHUB_TOKEN }}
          - name: Test native/TUI/browser-ish packages (TS)
            run: bun run ci:test:ts:native
+         - name: Test startup benchmark harness (needs the native addon)
+           # These three script suites import `@veyyon/natives` for a value and load the addon
+           # at import time, so the addon-free `test_scripts` job in checks.yml cannot run them.
+           # This job has the addon; they run here by path and the coverage lock reads this
+           # step as their runner.
+           if: ${{ !cancelled() }}
+           run: bash scripts/test-sandbox/run.sh bun test scripts/startup-is-measured-after-the-screen-settles.test.ts scripts/a-startup-benchmark-keeps-its-executable-and-config-isolated.test.ts scripts/a-startup-benchmark-terminates-child-trees-and-honors-cwd.test.ts
 
    # Three buckets, one runner. Each of these was its own job, and each paid the
    # same checkout, `bun install`, artifact download and sandbox image build to

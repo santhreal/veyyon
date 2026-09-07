@@ -6,7 +6,7 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { TASK_SUBAGENT_LIFECYCLE_CHANNEL } from "@veyyon/coding-agent/task";
+import { TASK_AGENT_LIFECYCLE_CHANNEL } from "@veyyon/coding-agent/task";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
@@ -176,7 +176,7 @@ describe("InteractiveMode todo HUD persistence", () => {
 		expect(liveRegion.getNativeScrollbackLiveRegionStart?.()).toBeUndefined();
 	});
 
-	it("marks todos complete when subagent reconciliation reports a finished agent", async () => {
+	it("marks todos complete when agent reconciliation reports a finished agent", async () => {
 		await createMode(-1);
 		vi.spyOn(mode.statusLine, "watchGitState").mockImplementation(() => {});
 		session.setTodoPhases([
@@ -185,10 +185,10 @@ describe("InteractiveMode todo HUD persistence", () => {
 		mode.setTodos(session.getTodoPhases());
 
 		await mode.init();
-		// Subagent lifecycle changes coalesce behind a 100ms observer UI sync
+		// Agent lifecycle changes coalesce behind a 100ms observer UI sync
 		// timer before todo reconciliation runs; flush it deterministically.
 		vi.useFakeTimers();
-		eventBus.emit(TASK_SUBAGENT_LIFECYCLE_CHANNEL, {
+		eventBus.emit(TASK_AGENT_LIFECYCLE_CHANNEL, {
 			id: "ReviewFixer",
 			index: 0,
 			agent: "task",

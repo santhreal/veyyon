@@ -84,7 +84,7 @@
 		"statusLineUntracked": "#00BFFF",
 		"statusLineOutput": "deepMagenta",
 		"statusLineCost": "neonPink",
-		"statusLineSubagents": "neonMagenta",
+		"statusLineAgents": "neonMagenta",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

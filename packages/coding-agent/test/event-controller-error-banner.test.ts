@@ -384,8 +384,8 @@ describe("EventController working loader reconciliation", () => {
 		expect(ctx.ensureLoadingAnimation).toHaveBeenCalledTimes(1);
 	});
 
-	it("self-heals missing working loader when a task subagent finishes mid-turn (#3858)", async () => {
-		// `task` subagents run inside the parent's streaming turn. While the task is
+	it("self-heals missing working loader when a task agent finishes mid-turn (#3858)", async () => {
+		// `task` agents run inside the parent's streaming turn. While the task is
 		// running a transient overlay (auto-compaction / auto-retry) can drop the
 		// working loader by clearing the status container, and the overlay's end
 		// handler is the only restorer keyed off the missing loader. If the task

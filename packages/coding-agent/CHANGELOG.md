@@ -4,6 +4,7 @@
 
 ### Breaking Changes
 
+- A spawned worker is an agent, not a subagent, across the product: the settings tab is Agents, every `subagent.*` setting is `agent.*` (`tier.subagent`, `advisor.subagents` and `argot.subagents` are `tier.agent`, `advisor.agents` and `argot.agents`), a legacy `subagent.*` key in a settings file is folded onto its new name on load with the new key winning, the `prompts/subagent/` and `plan-mode/subagent.md` prompt files are `prompts/agent/` and `plan-mode/agent.md`, and every module, type and export named with the old word is renamed (`rpc-subagents` is `rpc-agents`, `persisted-subagents` is `persisted-agents`, `SubagentLifecyclePayload` is `AgentLifecyclePayload`); the `subagent_spawn` session entry, the `subagent_*` RPC frame types and commands, and the `subagents/` definitions directory keep their on-disk and wire spellings. A session that a task spawned is `spawned` where the code distinguishes it from the one driving the conversation: `isSubagentSession` is `isSpawnedSession` and `createSubagentSession` is `createSpawnedSession`.
 - Account formatting helpers are exported from `@veyyon/coding-agent/session/account-format` instead of `@veyyon/coding-agent/slash-commands/helpers/format`.
 - Screen takeover moved off `ExtensionUIContext` and `HookUIContext` onto an optional `ui.terminal` capability: `custom()` and `setEditorComponent()` are now `ctx.ui.terminal?.custom(...)` and `ctx.ui.terminal?.setEditorComponent(...)`, and a component widget goes through `ctx.ui.terminal?.setWidgetComponent(key, factory)` while `setWidget(key, lines)` keeps the text form every host draws. A host that is not a terminal omits `ui.terminal` rather than declaring members with empty bodies.
 - Removed `ui.setHeader()` and `ui.setFooter()`, which every host implemented as an empty function, interactive mode included.
@@ -42,6 +43,9 @@
 
 ### Changed
 
+- Every setting in every domain states what it does and what each value selects in one to three sentences, with no design history or internal vocabulary; the idle timeout row is labelled "Park Idle Agents After", the Park and Prune groups are one "Idle Agents" group, the artifact rows are "Artifact Threshold", "Artifact Head Size" and "Artifact Tail Size" with the unit on their options, and the MCP debounce row is "MCP Notification Delay".
+- `AgentRegistry.setStatus` consults `AGENT_TRANSITIONS` and throws `AgentTransitionError` for a status move the lifecycle does not perform, so a turn event that arrives after a kill or a park no longer revives the agent; a collab guest mirrors the host's roster through `mirrorStatus`.
+- An agent adopted at hand-over, revived from disk or listed from a previous run receives its idle and prune budgets through one builder, so a zero quiet budget disables pruning and a waiting budget is never shorter than the quiet one on every path; no behaviour changes on the paths that already agreed.
 - Interactive chat and the transcript viewer use one replay implementation without changing displayed content or live-tool lifecycle.
 - Settings group types derive from the settings schema while preserving their existing optional fields and value types.
 - JSON tree projections share bounded traversal, and code and Markdown cells share output assembly, with unchanged rendering.
@@ -156,26 +160,16 @@
 
 ### Fixed
 
+- A compaction that had just freed context no longer reports "Compaction freed too little context to make progress" when its entry is written in the same millisecond as the kept assistant turn; whether a turn predates the latest compaction is read from its position on the branch, not its timestamp.
+- The home anchor sizes its fills, the welcome hero mounts, and the per-frame sizing pass runs on the screen the interactive mode renders on rather than the one its constructor built, and `startup.quiet` is read from the session's settings like the other startup reads.
+- An agent whose session is on screen is no longer parked under it: opening an agent pins it for as long as the main view points at it, a park deadline that elapses meanwhile is deferred, and the idle TTL counts again from the return to the main session.
+- The task card lifts the missing-yield warning out of an agent's output under both its current spelling, `SYSTEM WARNING: Agent exited without calling yield tool`, and the `Subagent` spelling a session file recorded before it; the `task:subagent:progress` and `task:subagent:lifecycle` bus channels a collab guest matches on keep their spelling.
 - Custom tools retain their declared call and result views when converted into extension tool definitions.
 - Terminal tool cards shorten home-directory paths and replace tabs in metadata, notices, code, diffs, and generic argument previews before width fitting.
 - Failed task results without agent details retain error text styling.
 - Launch model context estimates exclude project context and clamp the remaining percentage to zero.
 - Launched processes report completion even when they exit before the completion watch registers.
 - The `/agents` card ships as it did in 1.4.0; the flat frame and the roster detail pane added after that release were withdrawn before this one.
-- The `ask` tool emits a host-agnostic `HostNotification` through `ToolSession.notify` instead of calling the terminal, and the running host installs its delivery through `setToolNotifier`; a host that cannot reach an operator outside its own window installs nothing and the capability reads as absent.
-- Source-path comments in `modes/terminal/controllers/input-controller.ts`, `tools/render-utils.ts`, `utils/block-context.ts` and `utils/shell-snapshot.ts` name the Rust modules they cite at their new paths under `natives/`. No user-visible behavior changes.
-- A commit whose changes all sit under a grouping directory named `natives` proposes the directory below it as the scope, the way `crates`, `packages` and `tests` already do, instead of proposing `natives`.
-- The `set_cwd` renderer drops `name`, `renderArguments` and `renderPending`: no host reads any of the three, and the tool-renderer contract declares none of them. No user-visible behavior changes.
-- `showHookInput`'s `inputOptions.mask` is a boolean rather than the character to draw, so the host that paints the field owns the glyph and `/secret add` no longer names the terminal engine to ask for a hidden field; the masked prompt draws the same `•` it drew before.
-- The todo tool states where a closed task's completion strike has reached with `todoStrikeSplit` and writes no SGR escape itself: the terminal draws the struck run with the theme's strikethrough attribute, so a session with terminal attributes off receives the task text without the `\x1b[9m` bytes it cannot render, and the transcript card sweeps the strike exactly as it did before.
-- `runCommitAgentSession` reports its run through a `CommitAgentReporter` instead of writing to stdout itself, and `commit/agentic/agent-render.ts` is the only module that draws it, so the commit domain names neither the terminal engine nor chalk; `veyyon commit` prints the same thinking line, markdown, tool tree and totals it printed before.
-- The `/collab` QR block draws its own leading blank row instead of being presented behind a spacer, so the slash-command registry no longer imports the terminal engine; the transcript shows the same blank row above the code and above the too-narrow hint.
-- The compaction policy vocabulary (check outcomes, the bar a pass is measured against, the truncation edge budget, the prune cache window and idle flush, and the recovery band) lives in `@veyyon/kernel/session/agent-session-compaction-policy` rather than interleaved with shutdown timeouts and credential backoffs in `agent-session.ts`, with no behavior change.
-- The status row reads its truncation limits from `tools/core/render-limits`, a leaf that imports nothing, rather than `tools/core/render-utils`, which drops the tool renderers, path helpers and image resizing from the launch card's import graph; first-frame time is unchanged, because those modules only declare functions.
-- An MCP tool describes its call and result cards as a `ToolView` instead of building terminal components in `mcp/render.ts`, which is deleted; the terminal states the same arguments, structure walk, raw rows, held-back count and spill warning, indented two columns under the row that heads them and without the branch glyph the call row opened with.
-
-### Fixed
-
 - The permission card's title bar reads `Permission required` instead of the markdown source `## Permission required`; a select dialog's title bar draws the heading's text and leaves the markdown to the body.
 - A hook status set through `ctx.ui.setStatus` keeps the theme colours it was painted with, as its contract states, so the autoresearch status row shows its kept count in green, its flagged count in yellow and its best metric in the tool colour instead of one grey line; cursor moves, hyperlinks and graphics in a status are still stripped.
 - Interrupting Claude mid-thinking no longer fails every later turn with `Refusal (reasoning_extraction)` on an endpoint that enforces the classifier: the hidden continuity message that carries the unfinished reasoning states which turn it came from, and the request drops it on same-model replay to a signing Anthropic endpoint, and after one refusal on any other, instead of re-sending it on the retry and for the rest of the session.

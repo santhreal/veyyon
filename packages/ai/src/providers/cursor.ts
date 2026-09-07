@@ -952,7 +952,7 @@ export type ToolCallState = ToolCall & {
  * `TokenDeltaUpdate.tokens` is an increment of THIS turn's completion.
  * `ConversationTokenDetails` is a gauge of the WHOLE conversation against the
  * model's window: `used_tokens` counts the system prompt, the tool schemas, the
- * rules, the skills, the subagent definitions and the conversation, and it is
+ * rules, the skills, the agent definitions and the conversation, and it is
  * sampled after this turn's reply was appended, so it already contains the
  * completion. Nothing on the wire reports a prompt-cache breakdown, which is
  * why `cacheRead` and `cacheWrite` stay zero: Cursor does not say.
@@ -2559,7 +2559,7 @@ function buildMcpErrorResult(error: string) {
  * can omit oversized parameters entirely and can downgrade a structured value
  * to its raw string fallback when `decodeMcpArgValue` cannot parse it as
  * JSON. Overwriting the streamed args wholesale therefore loses data (e.g.
- * the task tool's `tasks` array on multi-subagent dispatches, issue #2615).
+ * the task tool's `tasks` array on multi-agent dispatches, issue #2615).
  *
  * Rules per key:
  * - completion key absent  → keep the streamed value.

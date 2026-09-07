@@ -26,7 +26,7 @@ export interface LegacyRenderer {
 
 // This commit contains the approved frozen renderers, including their import adaptations.
 // Their original production commits remain recorded in each historical file's header.
-export const ORACLE_SNAPSHOT_COMMIT = "de0ccbf5a571d9de1285cb4dddeff1cc23f882aa";
+export const ORACLE_SNAPSHOT_COMMIT = "81eee11283051f29967dbfc506b297d45fd375b1";
 export const ORACLE_SOURCE_DIRECTORY = "packages/coding-agent/test/oracles";
 export const ORACLE_CACHE_DIRECTORY = path.join(
 	import.meta.dirname,

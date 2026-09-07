@@ -4,7 +4,7 @@ import type { Skill } from "./extensibility/skills";
 import { buildSystemPrompt } from "./system-prompt";
 import { RUNTIME_SECTIONS } from "./system-prompt-builder/section-registry";
 import { PROMPT_STATEMENTS, type StatementCondition } from "./system-prompt-builder/statement-registry";
-import { delegationEnabled } from "./task/subagent-settings";
+import { delegationEnabled } from "./task/agent-settings";
 import { TOOL } from "./tools/core/builtin-names";
 import { type BuiltinToolPermissionInputs, isBuiltinToolAllowed } from "./tools/core/loading/policy";
 import type { ToolSession } from "./tools/index";
@@ -33,7 +33,7 @@ import type { ActiveRepoContext } from "./utils/active-repo-context";
  * without touching a single gate turned eleven of these red at once, which teaches nothing and trains a
  * reader to re-anchor without checking whether the gate still holds. So prefer, in this order: the
  * VALUES the test itself supplied and the template interpolates back (`` (`scout`) ``, `` (`task`) ``,
- * "At most 3 subagents"), a section HEADING ("## Delegation gates:"), and a distinctive short phrase
+ * "At most 3 agents"), a section HEADING ("## Delegation gates:"), and a distinctive short phrase
  * only when neither is available. The sibling harness in `test/core/prompt-gate-inputs.test.ts` derives
  * its signatures from the statement text for the same reason; the same discipline by hand here.
  */
@@ -71,15 +71,15 @@ async function renderBlock0(overrides: Parameters<typeof buildSystemPrompt>[0] =
 /**
  * Render with one spawnable agent, which is what the delegation prose requires.
  *
- * `OMITTED_GATE_DEFAULTS.subagentNames` is empty, and the guidance is gated on
- * `hasSpawnableSubagent`: with nothing to spawn the whole block is suppressed on purpose, because
+ * `OMITTED_GATE_DEFAULTS.agentNames` is empty, and the guidance is gated on
+ * `hasSpawnableAgent`: with nothing to spawn the whole block is suppressed on purpose, because
  * the agent-typing bullet interpolated that empty list and read "Only one agent type is enabled
  * here (``)" while telling the model to fan work out. A test about `taskBatch`, the concurrency
  * cap or the `irc` hint is not a test of that gate, so it declares the agent rather than asserting
  * into a section its own defaults switched off. Stated once here so the precondition has one home.
  */
 async function renderDelegating(overrides: Parameters<typeof buildSystemPrompt>[0] = {}): Promise<string> {
-	return renderBlock0({ subagentNames: ["task"], ...overrides });
+	return renderBlock0({ agentNames: ["task"], ...overrides });
 }
 
 /**
@@ -118,19 +118,19 @@ function demoSkills(): Skill[] {
  * Any word a tool description would use to state delegation policy. Not global,
  * so `test` does not carry a lastIndex between cells.
  */
-const DELEGATION_MENTION = /delegat|subagent|task tool|`task`/i;
+const DELEGATION_MENTION = /delegat|agent|task tool|`task`/i;
 
 /**
- * The unified search tool's live description under one subagent configuration.
+ * The unified search tool's live description under one agent configuration.
  *
  * A tool description describes the tool: its inputs, results, and usage hints.
  * Delegation is policy and belongs to the prompt's Delegation section, so the
  * description must not vary with delegation settings.
  */
-function searchToolDescriptions(subagentsEnabled: boolean, delegation: string): string[] {
+function searchToolDescriptions(agentsEnabled: boolean, delegation: string): string[] {
 	const session = {
 		cwd: import.meta.dir,
-		settings: Settings.isolated({ "subagent.enabled": subagentsEnabled, "subagent.delegation": delegation }),
+		settings: Settings.isolated({ "agent.enabled": agentsEnabled, "agent.delegation": delegation }),
 	} as unknown as ToolSession;
 	return [new SearchTool(session).description];
 }
@@ -138,14 +138,14 @@ function searchToolDescriptions(subagentsEnabled: boolean, delegation: string): 
 /**
  * Whether the `task` tool is offered, through the real permission table.
  *
- * Presence answers to `subagent.enabled` alone: delegation STRENGTH must never
+ * Presence answers to `agent.enabled` alone: delegation STRENGTH must never
  * remove the tool, or the operator loses the ability to ask for delegation
  * outright at the lower levels. Only the `task` branch of the table is
  * exercised, so the remaining inputs are irrelevant and the object is cast
  * rather than filled in.
  */
-function taskToolOffered(subagentsEnabled: boolean, delegation: string): boolean {
-	const settings = Settings.isolated({ "subagent.enabled": subagentsEnabled, "subagent.delegation": delegation });
+function taskToolOffered(agentsEnabled: boolean, delegation: string): boolean {
+	const settings = Settings.isolated({ "agent.enabled": agentsEnabled, "agent.delegation": delegation });
 	return isBuiltinToolAllowed(TOOL.task, {
 		delegationEnabled: delegationEnabled(settings),
 		canSpawnAtDepth: true,
@@ -176,8 +176,8 @@ const GATING_PROPS = [
 	"taskBatch",
 	"taskMaxConcurrency",
 	"taskIrcEnabled",
-	"subagentNames",
-	"hasSpawnableSubagent",
+	"agentNames",
+	"hasSpawnableAgent",
 	"hasRead",
 	"hasEdit",
 	"hasWrite",
@@ -370,18 +370,18 @@ describe("system prompt settings parity: delegation (the regression this harness
 		expect(
 			await renderBlock0({
 				toolNames: ["read", "edit"],
-				subagentNames: ["task"],
+				agentNames: ["task"],
 			}),
 		).not.toContain("# Delegation");
 	});
 
 	/**
-	 * The three `subagent.delegation` levels as the builder sees them (`eagerTasks`
+	 * The three `agent.delegation` levels as the builder sees them (`eagerTasks`
 	 * is `preferred`-or-stronger, `eagerTasksAlways` is `required`), each with the
 	 * one sentence it must produce. Shared by both tables below so a level cannot
 	 * gain a sentence in one table and be forgotten in the other, which is how
 	 * `allowed` came to render the Delegation heading, its gates and its
-	 * subagent-value bullets with nothing saying when spawning is appropriate.
+	 * agent-value bullets with nothing saying when spawning is appropriate.
 	 */
 	const STRENGTHS = [
 		{
@@ -416,7 +416,7 @@ describe("system prompt settings parity: delegation (the regression this harness
 	});
 
 	it("applies delegation strength to matching concrete roles", async () => {
-		const roles = { subagentNames: ["reviewer"] };
+		const roles = { agentNames: ["reviewer"] };
 		const preferred = await renderBlock0({ ...roles, eagerTasks: true, eagerTasksAlways: false });
 		const required = await renderBlock0({ ...roles, eagerTasks: true, eagerTasksAlways: true });
 
@@ -445,7 +445,7 @@ describe("system prompt settings parity: delegation (the regression this harness
 
 		for (const roles of roleSets) {
 			for (const strength of strengths) {
-				const rendered = await renderBlock0({ subagentNames: roles.names, ...strength });
+				const rendered = await renderBlock0({ agentNames: roles.names, ...strength });
 				if (roles.routing === null) {
 					expect(rendered).not.toContain("# Delegation");
 					continue;
@@ -466,33 +466,33 @@ describe("system prompt settings parity: delegation (the regression this harness
 	});
 
 	/**
-	 * THE NINE CELLS: {subagents off, on with zero enabled agent types, on with
+	 * THE NINE CELLS: {agents off, on with zero enabled agent types, on with
 	 * one} x {allowed, preferred, required}, rendered as one table so every cell is
 	 * visible at once and a diff names the cell that moved.
 	 *
 	 * Two invariants, and both were violated. No cell may order delegation while
 	 * nothing can be spawned: the search tools carried a "hand it to a `task`
-	 * subagent" line gated only on the master switch, so with every agent type
+	 * agent" line gated only on the master switch, so with every agent type
 	 * disabled the Delegation section was correctly absent and the tool
 	 * descriptions still ordered a handoff to nothing. And no cell may render the
 	 * section without a strength sentence, which is what `allowed` did. Tool
 	 * descriptions now describe the tool only: delegation policy lives in the
 	 * Delegation section and nowhere else, in all nine cells.
 	 */
-	it("keeps every subagent-enablement x delegation-strength cell self-consistent", async () => {
+	it("keeps every agent-enablement x delegation-strength cell self-consistent", async () => {
 		const enablement = [
 			{
-				label: "subagents off",
+				label: "agents off",
 				toolNames: DELEGATION_TOOLS.filter(name => name !== "task"),
-				subagentNames: [] as string[],
-				subagentsEnabled: false,
+				agentNames: [] as string[],
+				agentsEnabled: false,
 			},
-			{ label: "on, no agent type enabled", toolNames: DELEGATION_TOOLS, subagentNames: [], subagentsEnabled: true },
+			{ label: "on, no agent type enabled", toolNames: DELEGATION_TOOLS, agentNames: [], agentsEnabled: true },
 			{
 				label: "on, one agent type enabled",
 				toolNames: DELEGATION_TOOLS,
-				subagentNames: ["task"],
-				subagentsEnabled: true,
+				agentNames: ["task"],
+				agentsEnabled: true,
 			},
 		];
 
@@ -501,26 +501,26 @@ describe("system prompt settings parity: delegation (the regression this harness
 			for (const strength of STRENGTHS) {
 				const rendered = await renderBlock0({
 					toolNames: state.toolNames,
-					subagentNames: state.subagentNames,
+					agentNames: state.agentNames,
 					eagerTasks: strength.eagerTasks,
 					eagerTasksAlways: strength.eagerTasksAlways,
 				});
 				const sentences = STRENGTHS.filter(candidate => rendered.includes(candidate.marker)).map(
 					candidate => candidate.level,
 				);
-				const mentions = searchToolDescriptions(state.subagentsEnabled, strength.level).filter(description =>
+				const mentions = searchToolDescriptions(state.agentsEnabled, strength.level).filter(description =>
 					DELEGATION_MENTION.test(description),
 				);
 				rows.push(
-					`${state.label} @ ${strength.level}: section=${rendered.includes("# Delegation") ? "yes" : "no"} strength=${sentences.join("+") || "none"} taskTool=${taskToolOffered(state.subagentsEnabled, strength.level) ? "offered" : "absent"} toolDescriptionsNamingDelegation=${mentions.length}`,
+					`${state.label} @ ${strength.level}: section=${rendered.includes("# Delegation") ? "yes" : "no"} strength=${sentences.join("+") || "none"} taskTool=${taskToolOffered(state.agentsEnabled, strength.level) ? "offered" : "absent"} toolDescriptionsNamingDelegation=${mentions.length}`,
 				);
 			}
 		}
 
 		expect(rows).toEqual([
-			"subagents off @ allowed: section=no strength=none taskTool=absent toolDescriptionsNamingDelegation=0",
-			"subagents off @ preferred: section=no strength=none taskTool=absent toolDescriptionsNamingDelegation=0",
-			"subagents off @ required: section=no strength=none taskTool=absent toolDescriptionsNamingDelegation=0",
+			"agents off @ allowed: section=no strength=none taskTool=absent toolDescriptionsNamingDelegation=0",
+			"agents off @ preferred: section=no strength=none taskTool=absent toolDescriptionsNamingDelegation=0",
+			"agents off @ required: section=no strength=none taskTool=absent toolDescriptionsNamingDelegation=0",
 			"on, no agent type enabled @ allowed: section=no strength=none taskTool=offered toolDescriptionsNamingDelegation=0",
 			"on, no agent type enabled @ preferred: section=no strength=none taskTool=offered toolDescriptionsNamingDelegation=0",
 			"on, no agent type enabled @ required: section=no strength=none taskTool=offered toolDescriptionsNamingDelegation=0",
@@ -543,7 +543,7 @@ describe("system prompt settings parity: delegation (the regression this harness
 		const capped = await renderDelegating({ taskMaxConcurrency: 3 });
 		const uncapped = await renderDelegating({ taskMaxConcurrency: 0 });
 		expect(capped).toContain("Concurrency cap:");
-		expect(capped).toContain("At most 3 subagents");
+		expect(capped).toContain("At most 3 spawned agents");
 		expect(uncapped).not.toContain("Concurrency cap:");
 	});
 
@@ -556,9 +556,9 @@ describe("system prompt settings parity: delegation (the regression this harness
 	 * The prompt names the exact enabled roles. It does not derive a second
 	 * classification from their tool grants or replace their own descriptions.
 	 */
-	it(`${asserted("subagentNames")} names every enabled concrete role`, async () => {
+	it(`${asserted("agentNames")} names every enabled concrete role`, async () => {
 		const rendered = await renderBlock0({
-			subagentNames: ["task", "designer", "reviewer"],
+			agentNames: ["task", "designer", "reviewer"],
 		});
 
 		expect(rendered).toContain("Enabled agent types: `task, designer, reviewer`");
@@ -572,9 +572,9 @@ describe("system prompt settings parity: delegation (the regression this harness
 	/**
 	 * WITH NOTHING SPAWNABLE THE DELEGATION GUIDANCE IS NOT EMITTED AT ALL.
 	 *
-	 * The task tool is built whenever `subagent.enabled` is on, and it stays built with every agent
+	 * The task tool is built whenever `agent.enabled` is on, and it stays built with every agent
 	 * row disabled on purpose: an ephemeral `/` command naming an agent grants it for that turn. So
-	 * `contains("tools", "task")` was true while `subagentNames` was empty, and the agent-typing
+	 * `contains("tools", "task")` was true while `agentNames` was empty, and the agent-typing
 	 * bullet interpolated the empty list into a sentence that stated a falsehood and pointed at
 	 * nothing: "**Only one agent type is enabled here** (``), so delegate for parallel execution".
 	 * The rest of the block told the model to fan work out to agents it could not name.
@@ -584,9 +584,9 @@ describe("system prompt settings parity: delegation (the regression this harness
 	 * wrong sentence appeared. The positive direction pins that a real agent still gets the guidance,
 	 * since suppressing delegation prose for everyone would satisfy the negative half by itself.
 	 */
-	it(`${asserted("hasSpawnableSubagent")} suppresses delegation prose when no agent can be spawned`, async () => {
-		const nothingSpawnable = await renderBlock0({ subagentNames: [] });
-		const taskOnly = await renderBlock0({ subagentNames: ["task"] });
+	it(`${asserted("hasSpawnableAgent")} suppresses delegation prose when no agent can be spawned`, async () => {
+		const nothingSpawnable = await renderBlock0({ agentNames: [] });
+		const taskOnly = await renderBlock0({ agentNames: ["task"] });
 
 		expect(nothingSpawnable).not.toContain("(``)");
 		expect(nothingSpawnable).not.toContain("## Delegation gates:");
@@ -626,11 +626,11 @@ describe("system prompt settings parity: delegation (the regression this harness
 
 	/**
 	 * And the reason to delegate is stated as context preservation, not as a cheaper
-	 * or lesser model. A subagent usually runs the model the session is on, so prose
+	 * or lesser model. An agent usually runs the model the session is on, so prose
 	 * implying otherwise teaches the model to reserve real work for itself and hand
 	 * out scraps — the opposite of what delegation is for.
 	 */
-	it("frames a subagent as a separate context rather than a lesser model", async () => {
+	it("frames an agent as a separate context rather than a lesser model", async () => {
 		const rendered = await renderDelegating({});
 
 		expect(rendered).toContain("separate context");
@@ -641,7 +641,7 @@ describe("system prompt settings parity: delegation (the regression this harness
 		const codexEager = await renderDelegating({ model: "openai/gpt-5.6", eagerTasks: true });
 		const codexQuiet = await renderDelegating({ model: "openai/gpt-5.6", eagerTasks: false });
 		expect(codexEager).toContain("Proactive multi-agent delegation is active");
-		expect(codexQuiet).toContain("Do not spawn sub-agents unless");
+		expect(codexQuiet).toContain("Do not spawn agents unless");
 		// Non-codex model must NOT use the Codex phrasing.
 		expect(await renderDelegating({ eagerTasks: true })).not.toContain("Proactive multi-agent delegation is active");
 	});
@@ -722,8 +722,8 @@ const IDENTIFIER_TO_PROP: Record<string, (typeof GATING_PROPS)[number]> = {
 	taskBatch: "taskBatch",
 	MAX_CONCURRENCY: "taskMaxConcurrency",
 	taskIrcEnabled: "taskIrcEnabled",
-	subagentNames: "subagentNames",
-	hasSpawnableSubagent: "hasSpawnableSubagent",
+	agentNames: "agentNames",
+	hasSpawnableAgent: "hasSpawnableAgent",
 	useCodexTaskPrompt: "useCodexTaskPrompt",
 	"tools:read": "hasRead",
 	"tools:edit": "hasEdit",

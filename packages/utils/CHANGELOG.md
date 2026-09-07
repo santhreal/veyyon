@@ -9,14 +9,13 @@
 - `@veyyon/utils/terminal-emulator` resolves terminal identity without loading the terminal renderer.
 - `@veyyon/utils/json-snapshot` atomically stores rebuildable JSON snapshots with one serialization and verifies their input fingerprint and exact payload bytes.
 - `@veyyon/utils/format` owns `formatCostTiered` and `normalizePremiumRequests`, the terminal cost and premium-request formatters the status row and the stats CLI read.
-- `@veyyon/utils/format` owns `formatContextUsage`, the `47K/200K` reading of tokens against a limit that the status-line gauge, a subagent progress row and an eval cell's subagent tree all state.
+- `@veyyon/utils/format` owns `formatContextUsage`, the `47K/200K` reading of tokens against a limit that the status-line gauge, an agent progress row and an eval cell's agent tree all state.
 - The string, escape, keyboard, mouse, motion and layout-math primitives that `@veyyon/tui` used to own are `@veyyon/utils` modules, reachable by subpath and not on the barrel, so a caller that needs the escape bytes or the fuzzy matcher no longer declares a dependency on the terminal renderer.
 - `@veyyon/utils/color-format` states whether escape sequences are written as 24-bit or 256-colour SGR; `@veyyon/tui` sets it once the terminal's capabilities resolve, which is how a utils module renders colour without reading terminal state.
 - `@veyyon/utils/ttyid` reads the controlling terminal's identity, and `@veyyon/utils/image-fallback` states the four causes a client can fail to draw a picture for, as `IMAGE_FALLBACK_REASONS` and the `ImageFallbackReason` union over it. Both moved out of `@veyyon/tui`, so a conversation engine can name a session or a cause without importing a renderer.
 - `@veyyon/utils/host-notification` states `HostNotification`, the out-of-band message a tool asks its host to deliver, and `HostNotifier`, the delivery a host installs. Neither names a terminal, so a GUI host can honour one.
 - `@veyyon/utils/sanitize-status-text` reduces text to one line a terminal draws as text, stripping escape sequences, mapping the remaining controls to spaces and collapsing space runs, so domain code that names a value in a single-line surface no longer imports the terminal host to sanitize it.
 - `@veyyon/utils/markdown-table` renders and escapes GFM tables, `@veyyon/utils/turndown` builds the Turndown instance and normalizes a `<td>`-first table, and `@veyyon/utils/html-markdown` converts HTML to markdown through both. All three are subpaths and none is on the barrel, so a document converter or a scraper reaches them without importing the coding agent.
-- `workspaceModuleReachResolution()` resolves every workspace member declared by the root manifest, at whatever depth it sits, instead of the direct children of `packages/`, so a cross-package specifier into `@veyyon/kernel`, `@veyyon/tui`, a contract or a plugin resolves again and every module-reach ceiling built on it measures what it claims.
 
 ### Changed
 

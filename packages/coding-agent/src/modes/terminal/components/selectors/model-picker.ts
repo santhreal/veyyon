@@ -53,7 +53,7 @@ const BROWSER_FRAME_ROWS = 5;
 /** Minimum rows for the browser list window on short terminals. */
 const MIN_VISIBLE = 5;
 
-const STATUS_HINT = "Interactive model — role / subagent / compaction slots stay unchanged";
+const STATUS_HINT = "Interactive model — role / agent / compaction slots stay unchanged";
 /**
  * The list is only ever as new as the cached catalog. Opening the picker calls
  * `refresh("online-if-uncached")`, which answers from a cache that stays fresh

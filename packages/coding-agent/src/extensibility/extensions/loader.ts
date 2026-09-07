@@ -397,7 +397,7 @@ export interface ExtensionTrustOptions {
  * THE GATE LIVES HERE, not in the callers, because this is the only function in the product
  * that imports an extension module: `loadExtension` runs top-level code and then the factory,
  * and there are five call sites reaching it (the session, the shim, `veyyon models`, the SDK's
- * `discoverExtensions`, and subagents replaying a parent's path list). A gate in front of one
+ * `discoverExtensions`, and agents replaying a parent's path list). A gate in front of one
  * of them is a gate the other four walk around, and the dangerous default — "this caller
  * forgot" — has to be a refusal rather than an execution.
  *
@@ -598,7 +598,7 @@ async function resolveExtensionEntries(dir: string): Promise<string[] | null> {
  * `.veyyon`/`.pi` extension capabilities, JS/TS hook factories, the
  * installed-plugin tree, and any configured paths.
  *
- * Subagents reuse the parent's collected paths via the SDK's
+ * Agents reuse the parent's collected paths via the SDK's
  * `preloadedExtensionPaths` option, then call {@link loadExtensions} themselves
  * so each session rebuilds Extension instances bound to its OWN
  * `ExtensionAPI` (cwd, eventBus, runtime). Forwarding the parent's

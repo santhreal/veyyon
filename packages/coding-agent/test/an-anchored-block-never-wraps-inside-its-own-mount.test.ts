@@ -39,13 +39,13 @@ import { Agent } from "@veyyon/agent-core";
 import { AuthStorage } from "@veyyon/ai/auth-storage";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { renderSubagentHudLines } from "@veyyon/coding-agent/modes/terminal/components/dashboard/subagent-hud";
+import { renderAgentHudLines } from "@veyyon/coding-agent/modes/terminal/components/dashboard/agent-hud";
 import { renderTodoBoardLines } from "@veyyon/coding-agent/modes/terminal/components/dashboard/todo-board";
 import { paintRailMotion, railIdleHeadAt } from "@veyyon/coding-agent/modes/terminal/draw/rail-motion";
 import { ANCHORED_BLOCK_PADDING_X, InteractiveMode } from "@veyyon/coding-agent/modes/terminal/interactive-mode";
 import type { ObservableSession } from "@veyyon/coding-agent/modes/terminal/session-observer-registry";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
-import { type SubagentProgressPayload, TASK_SUBAGENT_PROGRESS_CHANNEL } from "@veyyon/coding-agent/task";
+import { type AgentProgressPayload, TASK_AGENT_PROGRESS_CHANNEL } from "@veyyon/coding-agent/task";
 import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 import type { TodoItem, TodoPhase } from "@veyyon/coding-agent/tools/agent/todo";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
@@ -69,7 +69,7 @@ function laneSessions(): ObservableSession[] {
 	// runs past a lane's share of a wide terminal, and a resolved model badge —
 	// which is the column that ended up on its own row.
 	const base = {
-		kind: "subagent" as const,
+		kind: "spawn" as const,
 		status: "active" as const,
 		detached: true,
 		lastUpdate: 0,
@@ -130,10 +130,10 @@ const plan: readonly TodoPhase[] = [
  * a settled row into a lit one and a lit row is a different string.
  */
 const ANCHORED_BLOCKS: Record<string, { minColumns: number; build: (terminalColumns: number) => readonly string[] }> = {
-	subagentContainer: {
+	agentContainer: {
 		minColumns: 12,
 		build: terminalColumns => {
-			const lines = renderSubagentHudLines(laneSessions(), {
+			const lines = renderAgentHudLines(laneSessions(), {
 				columns: contentColumns(terminalColumns),
 				showModelBadge: true,
 			});
@@ -175,11 +175,11 @@ beforeAll(async () => {
 describe("an anchored block never wraps inside its own mount", () => {
 	it("mounts every anchored container this suite knows about", () => {
 		expect(Object.keys(ANCHORED_BLOCKS).concat(Object.keys(NOT_A_CLAMPED_BLOCK)).sort()).toEqual([
+			"agentContainer",
 			"btwContainer",
 			"errorBannerContainer",
 			"omfgContainer",
 			"statusContainer",
-			"subagentContainer",
 			"todoContainer",
 		]);
 	});
@@ -209,11 +209,11 @@ describe("an anchored block never wraps inside its own mount", () => {
  * The case above proves the arithmetic. This one proves the mode USES it: the
  * defect was a call site handing the block `terminal.columns`, and a block that
  * clamps correctly against a wrong number is exactly what shipped. So this
- * drives the real `InteractiveMode`, publishes two real subagent progress
+ * drives the real `InteractiveMode`, publishes two real agent progress
  * events, and renders the container the mode mounted, at the width the mode was
  * told it had.
  */
-describe("the live subagent HUD fits the width the mode reports", () => {
+describe("the live agent HUD fits the width the mode reports", () => {
 	let tempDir: TempDir;
 	let authStorage: AuthStorage;
 	let session: AgentSession;
@@ -260,7 +260,7 @@ describe("the live subagent HUD fits the width the mode reports", () => {
 			vi.useFakeTimers();
 
 			for (const [index, lane] of laneSessions().entries()) {
-				eventBus.emit(TASK_SUBAGENT_PROGRESS_CHANNEL, {
+				eventBus.emit(TASK_AGENT_PROGRESS_CHANNEL, {
 					index,
 					agent: "task",
 					agentSource: "bundled",
@@ -268,7 +268,7 @@ describe("the live subagent HUD fits the width the mode reports", () => {
 					parentToolCallId: "tool-call",
 					detached: true,
 					progress: lane.progress,
-				} as SubagentProgressPayload);
+				} as AgentProgressPayload);
 			}
 			await Promise.resolve();
 			// Past the observer's coalesce window, and no further: the anchored rail
@@ -276,7 +276,7 @@ describe("the live subagent HUD fits the width the mode reports", () => {
 			vi.advanceTimersByTime(500);
 			await Promise.resolve();
 
-			const rows = mode.subagentContainer.render(columns);
+			const rows = mode.agentContainer.render(columns);
 			// Blank, header, one row per lane. A third lane row means a wrap put a
 			// lane's last column on a line of its own.
 			expect(rows.length).toBe(4);
@@ -284,13 +284,13 @@ describe("the live subagent HUD fits the width the mode reports", () => {
 		});
 	}
 
-	it("strips literal newlines from subagent progress so no text leaks outside the block", async () => {
+	it("strips literal newlines from agent progress so no text leaks outside the block", async () => {
 		await mode.init();
 		vi.spyOn(mode.ui, "requestRender").mockImplementation(() => {});
 		Object.defineProperty(mode.ui.terminal, "columns", { get: () => 100, configurable: true });
 		vi.useFakeTimers();
 
-		eventBus.emit(TASK_SUBAGENT_PROGRESS_CHANNEL, {
+		eventBus.emit(TASK_AGENT_PROGRESS_CHANNEL, {
 			index: 0,
 			agent: "task",
 			agentSource: "bundled",
@@ -308,13 +308,13 @@ describe("the live subagent HUD fits the width the mode reports", () => {
 				currentToolArgs: "echo hello\nrm -rf /tmp/leak\nexit 0",
 				resolvedModel: "local/demo-model",
 			},
-		} as SubagentProgressPayload);
+		} as AgentProgressPayload);
 
 		await Promise.resolve();
 		vi.advanceTimersByTime(500);
 		await Promise.resolve();
 
-		const rows = mode.subagentContainer.render(100);
+		const rows = mode.agentContainer.render(100);
 		// Blank, header, exactly one lane row. Any unstripped newline would split the lane into multiple rows.
 		expect(rows.length).toBe(3);
 		for (const row of rows) {

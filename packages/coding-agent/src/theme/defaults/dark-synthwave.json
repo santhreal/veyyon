@@ -91,7 +91,7 @@
 		"statusLineUntracked": "hotPink",
 		"statusLineOutput": "neonMagenta",
 		"statusLineCost": "vaporPink",
-		"statusLineSubagents": "hotPink",
+		"statusLineAgents": "hotPink",
 		"pythonMode": "gold"
 	},
 	"export": {

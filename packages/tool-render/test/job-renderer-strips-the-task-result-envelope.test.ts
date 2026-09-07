@@ -1,5 +1,5 @@
 /**
- * The web/HTML job rows show a finished subagent's answer, not the markup around it.
+ * The web/HTML job rows show a finished agent's answer, not the markup around it.
  *
  * WHY THIS SUITE EXISTS. A settled `task` job carries the `<task-result>` envelope written
  * by the task-summary prompt: status, duration, an `agent://` pointer, and the body wrapped
@@ -72,7 +72,7 @@ describe("the job rows strip the task-result envelope", () => {
 	});
 
 	it("strips it out of an error preview as well as a result preview", () => {
-		// `errorText` wins over `resultText` in the preview, and an aborted subagent's
+		// `errorText` wins over `resultText` in the preview, and an aborted agent's
 		// envelope reaches it by exactly the same route.
 		const aborted = ENVELOPE.replace("the migration is already applied", "ran out of budget");
 		const html = body(jobResult({ status: "failed", resultText: "", errorText: aborted }));

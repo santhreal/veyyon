@@ -17,7 +17,7 @@ slash "/plan"
 sleep 2.5
 shot plan-mode-on
 
-submit "inspect src/rate-limiter.ts and src/rate-limiter.test.ts only, then plan a sliding-window limiter alongside the token bucket. Do not edit anything and do not use subagents."
+submit "inspect src/rate-limiter.ts and src/rate-limiter.test.ts only, then plan a sliding-window limiter alongside the token bucket. Do not edit anything and do not use agents."
 settle 60
 shot planning
 settle 60

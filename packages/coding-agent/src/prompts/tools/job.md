@@ -1,4 +1,4 @@
-Manages async background tasks (e.g. bash scripts, subagents).
+Manages async background tasks (e.g. bash scripts, spawned agents).
 
 Background tasks deliver their results automatically the moment they finish. You NEVER need to poll to retrieve output. Only use this tool if you need to intervene in the lifecycle of a task.
 
@@ -9,4 +9,4 @@ Background tasks deliver their results automatically the moment they finish. You
   - A finished job's output, or the interrupting message and reason, is included in the next turn.
 - **Stop execution:** Pass `cancel` with job IDs to kill jobs that have hung, stalled, or are no longer needed. A cancel-only call returns immediately.
 - **Kill an agent:** `cancel` also accepts the id of a running agent that has no job entry, and kills it. You may kill any agent you spawned, directly or transitively; you cannot kill your parent or a sibling. Its transcript stays readable at `history://<id>`. Kill an agent that is finished with its work and still running, and kill one that is stuck: two agents that keep answering each other over `irc` and nothing else will not stop on their own.
-- **Snapshot:** Pass `list: true` to get the current status of all jobs without waiting. The listing also names running subagents that have no job entry (e.g. agents woken via `irc`, or spawns owned by another agent).
+- **Snapshot:** Pass `list: true` to get the current status of all jobs without waiting. The listing also names running spawned agents that have no job entry (e.g. agents woken via `irc`, or spawns owned by another agent).

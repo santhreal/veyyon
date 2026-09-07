@@ -9,7 +9,7 @@ import { initTheme, theme } from "@veyyon/coding-agent/theme/theme";
 
 /**
  * Regression suite for BUG-MODEL-PICKER-INHERIT-RETURN: after assigning a
- * model to an inherit-able slot (subagent.model, compaction.model, roles,
+ * model to an inherit-able slot (agent.model, compaction.model, roles,
  * default model), the way back to "inherit" was a hidden forward-Delete-only
  * gesture — Backspace fell through as a no-op and no visible row offered the
  * unset state, so users on keyboards without forward-Delete could not return
@@ -63,7 +63,7 @@ function makePanel(options: { allowClear?: boolean; currentSelector?: string; cl
 		REGISTRY,
 		MODELS,
 		{
-			title: "Subagent model",
+			title: "Agent model",
 			allowClear: options.allowClear,
 			currentSelector: options.currentSelector,
 			clearLabel: options.clearLabel,

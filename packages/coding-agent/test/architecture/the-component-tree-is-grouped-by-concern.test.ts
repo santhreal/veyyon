@@ -36,7 +36,7 @@ const GROUPS: Readonly<Record<string, string>> = {
 	account: "the /providers account card and its rows",
 	chrome: "shared overlay chrome and the decorative marks",
 	composer: "the input surface: editor, loader, shortcuts, history search",
-	dashboard: "the Agent Control Center, the subagent HUD and the todo board",
+	dashboard: "the Agent Control Center, the agent HUD and the todo board",
 	dialogs: "surfaces that ask a question or take over the screen",
 	extensions: "extension-supplied component surfaces",
 	selectors: "pickers and lists the operator chooses from",

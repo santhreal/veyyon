@@ -144,9 +144,9 @@ export interface DashboardStats {
  * Which agent produced a message, derived from its transcript file location
  * inside the session directory: the top-level `<project>/<file>.jsonl` is the
  * `main` agent, an `__advisor.jsonl` is the passive `advisor`, and any other
- * nested transcript is a task `subagent`.
+ * nested transcript is a task spawn.
  */
-export type AgentType = "main" | "subagent" | "advisor";
+export type AgentType = "main" | "spawn" | "advisor";
 
 /**
  * Token usage aggregated by {@link AgentType} over the active range. Token

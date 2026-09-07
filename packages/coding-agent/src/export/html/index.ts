@@ -63,7 +63,7 @@ export interface ExportOptions {
 	 * default `"web"` palette. Resolves to the active TUI theme when omitted.
 	 */
 	themeName?: string;
-	/** Embed subagent session transcripts found next to the session file (default true). */
+	/** Embed agent session transcripts found next to the session file (default true). */
 	includeSubSessions?: boolean;
 	/**
 	 * Redact secrets from the snapshot before it is written, through the same typed walk
@@ -189,7 +189,7 @@ export async function generateThemeVars(
 	return lines.join(" ");
 }
 
-/** Embedded subagent session transcript, keyed by slash-joined agent path in `SessionData.subSessions`. */
+/** Embedded agent session transcript, keyed by slash-joined agent path in `SessionData.subSessions`. */
 export interface SubSession {
 	/** Bare agent id (session file stem), e.g. "ToolAsk". */
 	agentId: string;
@@ -221,10 +221,10 @@ export function buildSessionData(sm: SessionManager, state?: AgentState): Sessio
 }
 
 /**
- * Collect subagent session transcripts stored next to a session file.
+ * Collect agent session transcripts stored next to a session file.
  *
- * A session at `<dir>/<name>.jsonl` keeps its subagent sessions at `<dir>/<name>/<AgentId>.jsonl`;
- * each subagent's own children nest the same way under `<dir>/<name>/<AgentId>/`. Keys in the
+ * A session at `<dir>/<name>.jsonl` keeps its agent sessions at `<dir>/<name>/<AgentId>.jsonl`;
+ * each agent's own children nest the same way under `<dir>/<name>/<AgentId>/`. Keys in the
  * returned record are slash-joined ids relative to the main session ("ToolAsk", "ToolAsk/Helper").
  * Empty files, backups, and unrelated files are skipped. A corrupt transcript refuses the export so
  * the resulting artifact cannot silently claim to contain a complete session.
@@ -540,7 +540,7 @@ export async function exportSessionToHtml(
 		if (Object.keys(subSessions).length > 0) sessionData.subSessions = subSessions;
 	}
 
-	// After sub-sessions are attached: a subagent transcript carries the same tool output the
+	// After sub-sessions are attached: an agent transcript carries the same tool output the
 	// primary one does, so redacting before the merge would leave the child's copy verbatim.
 	const redacted = opts.obfuscator?.hasSecrets()
 		? redactSessionDataForShare(opts.obfuscator, sessionData)

@@ -17,7 +17,7 @@
  *
  * Step 6 was the one that failed quietly and the one an operator notices. That switch had
  * exactly two prompt-rebuilding cases, `personality` and `tui.renderMermaid`, while
- * `subagent.batch`, `subagent.delegation`, `subagent.maxConcurrency`, `tools.format` and
+ * `agent.batch`, `agent.delegation`, `agent.maxConcurrency`, `tools.format` and
  * `includeModelInPrompt` all change prompt text and had none. Flipping one of those in the
  * settings UI changed the setting and left the prompt describing the previous configuration
  * until an unrelated rebuild (a model change, an edit-mode change, a slash command, a memory
@@ -108,29 +108,29 @@ export const PROMPT_GATES = [
 		liveness: { kind: "live" },
 	},
 	{
-		setting: "subagent.enabled",
+		setting: "agent.enabled",
 		// The master switch reaches the prompt by removing the `task` TOOL, which takes
 		// the whole `{{#has tools "task"}}` Delegation section with it. It is listed
 		// here because an operator flipping it must see the prompt change, and because
 		// the registry is where "which settings rewrite the prompt" is answered.
 		variables: ["tools"],
-		renders: "the whole Delegation section, which is absent when subagents are off",
+		renders: "the whole Delegation section, which is absent when agent spawning is off",
 		liveness: { kind: "live" },
 	},
 	{
-		setting: "subagent.delegation",
+		setting: "agent.delegation",
 		variables: ["eagerTasks", "eagerTasksAlways"],
 		renders: "whether the section asks for delegation, and whether it uses MUST/ONLY wording or the softer nudge",
 		liveness: { kind: "live" },
 	},
 	{
-		setting: "subagent.batch",
+		setting: "agent.batch",
 		variables: ["taskBatch"],
 		renders: "which call shape the delegation guidance teaches",
 		liveness: { kind: "live" },
 	},
 	{
-		setting: "subagent.maxConcurrency",
+		setting: "agent.maxConcurrency",
 		// `MAX_CONCURRENCY` and not `taskMaxConcurrency`, which is what this row said until a check
 		// compared every row's variables against the template and found three that named nothing.
 		// `taskMaxConcurrency` is the BUILDER option's name; `system-prompt.ts` passes it to the
@@ -141,8 +141,8 @@ export const PROMPT_GATES = [
 		liveness: { kind: "live" },
 	},
 	{
-		setting: "subagent.agents",
-		variables: ["subagentNames", "hasSpawnableSubagent"],
+		setting: "agent.agents",
+		variables: ["agentNames", "hasSpawnableAgent"],
 		renders: "whether delegation prose is emitted and which enabled agent types it names",
 		liveness: { kind: "live" },
 	},

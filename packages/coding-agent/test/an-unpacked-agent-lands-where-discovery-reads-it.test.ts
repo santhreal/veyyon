@@ -1,6 +1,6 @@
 /**
  * WHY: `veyyon agents unpack` wrote its files to `<agentDir>/agents`, and
- * user-authored definitions are read from the global `subagents` dir. Both
+ * user-authored definitions are read from the global `agents` dir. Both
  * halves were correct on their own, so nothing failed: the command printed a
  * list of written files and every one of them was inert. The starting point the
  * authoring flow hands an operator produced no agent at all.
@@ -13,14 +13,14 @@
  * a claim about discovery rather than about a file existing somewhere.
  *
  * Not covered: whether a discovered agent may be SPAWNED. That is
- * `subagent.agents.<name>.enabled`, per profile, and it is asserted elsewhere.
+ * `agent.agents.<name>.enabled`, per profile, and it is asserted elsewhere.
  */
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { runAgentsCommand } from "@veyyon/coding-agent/cli/agents-cli";
 import { discoverAgents } from "@veyyon/coding-agent/task/discovery";
-import { getGlobalSubagentsDir } from "@veyyon/utils";
+import { getGlobalAgentsDir, SUBAGENTS_DIR_NAME } from "@veyyon/utils";
 import { useContextScopeFixture } from "./helpers/context-scope-fixture";
 
 const fixture = useContextScopeFixture("unpacked-agent-");
@@ -49,11 +49,11 @@ describe("an unpacked agent lands where discovery reads it", () => {
 		const f = fixture("unpack-profile");
 		const targetDir = await unpack();
 
-		const subagentsDir = getGlobalSubagentsDir();
-		expect(targetDir).toBe(subagentsDir);
-		expect(subagentsDir).toBe(path.join(f.globalRoot, "subagents"));
+		const agentsDir = getGlobalAgentsDir();
+		expect(targetDir).toBe(agentsDir);
+		expect(agentsDir).toBe(path.join(f.globalRoot, SUBAGENTS_DIR_NAME));
 		const unpacked = fs
-			.readdirSync(subagentsDir)
+			.readdirSync(agentsDir)
 			.filter(name => name.endsWith(".md"))
 			.map(name => name.slice(0, -3));
 		expect(unpacked.length).toBeGreaterThan(0);
@@ -62,7 +62,7 @@ describe("an unpacked agent lands where discovery reads it", () => {
 		// must be what the model gets, which no name-membership check can show,
 		// because the bundled definition carries the same name.
 		const edited = unpacked[0];
-		fs.writeFileSync(path.join(subagentsDir, `${edited}.md`), DEFINITION(edited, "EDITED-BY-THE-OPERATOR"));
+		fs.writeFileSync(path.join(agentsDir, `${edited}.md`), DEFINITION(edited, "EDITED-BY-THE-OPERATOR"));
 		f.resetCaches();
 
 		const { agents } = await discoverAgents(f.cwd, f.home);
@@ -77,7 +77,7 @@ describe("an unpacked agent lands where discovery reads it", () => {
 	test("a definition in the retired profile agents dir is not discovered", async () => {
 		const f = fixture("retired-profile");
 		f.writeFile(
-			path.join(f.agentDir, "agents", "retired-location-agent.md"),
+			path.join(f.agentDir, SUBAGENTS_DIR_NAME, "retired-location-agent.md"),
 			DEFINITION("retired-location-agent", "d"),
 		);
 		f.resetCaches();

@@ -79,7 +79,7 @@
 		"statusLineUntracked": "mossLight",
 		"statusLineOutput": "swampCyan",
 		"statusLineCost": "fireflyGold",
-		"statusLineSubagents": "fireflyGold",
+		"statusLineAgents": "fireflyGold",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

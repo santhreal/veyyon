@@ -3,7 +3,7 @@
  *
  * WHY IT EXISTS. The registry is process-global and outlives any single
  * transcript, so a session that re-roots (`/new`, `/resume`) used to leave the
- * previous conversation's subagents sitting in every roster the new one built:
+ * previous conversation's agents sitting in every roster the new one built:
  * `irc list` offered peers belonging to a transcript the user had already
  * replaced, and messaging one of them talked to an agent working from context
  * nobody in the new conversation shared. `AgentRef.scope` names the
@@ -69,12 +69,12 @@ describe("Scope derivation at registration", () => {
 	});
 
 	/**
-	 * A parentless subagent is left unattributed ON PURPOSE. Deriving a scope
+	 * A parentless agent is left unattributed ON PURPOSE. Deriving a scope
 	 * from its own transcript path would invent a name nothing else shares, and
 	 * a positively-scoped ref matching no one is hidden from the roster that
 	 * should be showing it. Unscoped keeps it visible.
 	 */
-	test("leaves a parentless subagent unscoped rather than naming it after its own file", () => {
+	test("leaves a parentless agent unscoped rather than naming it after its own file", () => {
 		const ref = registry.register({
 			id: "0-Sub",
 			displayName: "reviewer",
@@ -87,12 +87,12 @@ describe("Scope derivation at registration", () => {
 	});
 
 	/**
-	 * Derivation is by lineage, not by the agent's own transcript. A subagent
+	 * Derivation is by lineage, not by the agent's own transcript. An agent
 	 * writes its file inside its parent's directory, so its own path is a
 	 * different string for the same conversation; taking the parent's scope is
 	 * what makes a spawn tree one conversation.
 	 */
-	test("inherits the parent's scope for a subagent", () => {
+	test("inherits the parent's scope for an agent", () => {
 		registry.register({ id: "Main", displayName: "main", kind: "main", session: null, scope: "session-a" });
 
 		const child = registry.register({
@@ -110,7 +110,7 @@ describe("Scope derivation at registration", () => {
 	/**
 	 * Inheritance is transitive, which is the case that makes a whole spawn tree
 	 * one conversation however deep it nests. A single-level derivation would
-	 * leave a subagent's own subagent unscoped, and an unscoped ref matches every
+	 * leave an agent's own agent unscoped, and an unscoped ref matches every
 	 * scope permissively, so the grandchild would show up in the OTHER
 	 * conversation's roster: the exact leak scoping exists to close.
 	 */
@@ -182,12 +182,12 @@ describe("listInScope", () => {
 
 describe("listVisibleTo", () => {
 	/**
-	 * THE headline case. Two driving sessions, each with its own subagent: the
-	 * peer roster of one must not name the other conversation's subagent, or
+	 * THE headline case. Two driving sessions, each with its own agent: the
+	 * peer roster of one must not name the other conversation's agent, or
 	 * `irc list` offers a peer that is working from context this conversation
 	 * never had, and a DM to it lands in a transcript the user already replaced.
 	 */
-	test("does not name another conversation's subagent as a peer", () => {
+	test("does not name another conversation's agent as a peer", () => {
 		registry.register({ id: "Main-A", displayName: "main", kind: "main", session: null, scope: "session-a" });
 		registry.register({ id: "Sub-A", displayName: "reviewer", kind: "sub", parentId: "Main-A", session: null });
 		registry.register({ id: "Main-B", displayName: "main", kind: "main", session: null, scope: "session-b" });

@@ -2,7 +2,7 @@
  * The model name survives a wide location zone on the composer footline.
  *
  * THE DEFECT. `RIGHT_PART_SHED_RANK` in the status line ranked `context_pct`,
- * `mode`, `location_right` and `subagents`, and left `model` unlisted. Unlisted
+ * `mode`, `location_right` and `agents`, and left `model` unlisted. Unlisted
  * ranks 0, and rank 0 is shed BEFORE the location zone is shortened, so a wide
  * working directory plus a long git branch dropped the active model name off the
  * footline while an untruncated path still occupied the whole left side. Nothing
@@ -30,9 +30,9 @@
  *     carries one frame per member and nothing else notices a new one. A sixth base
  *     mode or rung lands with no frame and no failure otherwise.
  *
- * WHAT IT DOES NOT CATCH. `subagents` (rank 5, the last part standing) renders
- * empty text in a session with no subagents, so it has no slot to observe here;
- * `status-line-running-subagents.test.ts` owns that contract. Nothing here checks
+ * WHAT IT DOES NOT CATCH. `agents` (rank 5, the last part standing) renders
+ * empty text in a session with no agents, so it has no slot to observe here;
+ * `status-line-running-agents.test.ts` owns that contract. Nothing here checks
  * the text inside a segment -- colour, provider icon, or thinking-level suffix.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
@@ -62,8 +62,8 @@ const LOCATION_SEGMENT_IDS = ["git", "path", "pr"] as const;
 
 /**
  * The documented ranking, weakest first: an unranked part (rank 0), then ranks 1
- * through 4. `subagents` (rank 5) is excluded because it renders no text without
- * a running subagent — see the header. `session_name` stands in for rank 0: the
+ * through 4. `agents` (rank 5) is excluded because it renders no text without
+ * a running agent — see the header. `session_name` stands in for rank 0: the
  * fixture session has a name, so the segment renders and can be observed being
  * shed first.
  */
@@ -76,6 +76,7 @@ const SHED_ORDER_WEAKEST_FIRST = ["session_name", "context_pct", "model", "mode"
  */
 const RIGHT_GROUP_CAPABLE_SEGMENT_IDS = [
 	"account",
+	"agents",
 	"background",
 	"cache_hit",
 	"cache_read",
@@ -90,7 +91,6 @@ const RIGHT_GROUP_CAPABLE_SEGMENT_IDS = [
 	"profile",
 	"session",
 	"session_name",
-	"subagents",
 	"time",
 	"time_spent",
 	"token_in",
@@ -174,7 +174,7 @@ describe("the model segment survives long paths and branch names", () => {
 	// and the spend must have bought something, meaning the location is on the row. A part that
 	// vanished while the location zone is empty was not spent, it was lost.
 	//
-	// The running-subagent count and the animated badge slot were on this list and came off it.
+	// The running-agent count and the animated badge slot were on this list and came off it.
 	// The count is the part the row sheds LAST, so paying the floor with it inverted the ranking
 	// this suite exists to pin -- and on a row holding nothing else it emptied the footline
 	// outright. The badge slot is unranked, so the fit ladder has already dropped it by the time

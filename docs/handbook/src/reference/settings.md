@@ -38,10 +38,10 @@ The global `config.yml` is always YAML. The generic config loader used for other
 A setting can be written either way, and the two mean the same thing:
 
 ```yaml
-subagent:
+agent:
   model: openai/gpt-5
 
-subagent.model: openai/gpt-5   # the same setting
+agent.model: openai/gpt-5   # the same setting
 ```
 
 The nested form is the one this documentation uses and the one every write from
@@ -300,15 +300,15 @@ Every key below is defined in the settings schema; `veyyon config list` shows th
 
 ### Models
 
-`modelRoles`, `modelTags`, and `cycleOrder` work together. Role values may carry a thinking suffix (`:off`, `:auto`, `:minimal`, `:low`, `:medium`, `:high`, `:xhigh`, `:max`). The same suffix works on `subagent.model` and `compaction.model`, so any model slot can run at a chosen effort.
+`modelRoles`, `modelTags`, and `cycleOrder` work together. Role values may carry a thinking suffix (`:off`, `:auto`, `:minimal`, `:low`, `:medium`, `:high`, `:xhigh`, `:max`). The same suffix works on `agent.model` and `compaction.model`, so any model slot can run at a chosen effort.
 
 A suffix on a role use overrides the role's stored suffix. For example, if `modelRoles.slow` is `anthropic/claude-opus-5:low`, then `@slow:high` resolves to `anthropic/claude-opus-5:high`, not a double-suffixed model id.
 
-When you pick a role, subagent, or compaction model in `/settings`, Veyyon opens a separate effort step only if that model exposes configurable effort. The first row, **Model default**, stores no suffix. The remaining rows contain `auto`, `off` when the model permits it, and only the model's catalog-defined effort variants. For example, a low/high Gemini model does not show medium or xhigh. A fixed-reasoning model skips the effort step. The **Default Model** picker is deliberately model-only: it stores a bare selector, and **Default Effort** is the one UI surface for its saved effort. Providers sometimes publish effort tiers as separate upstream model IDs. Veyyon collapses effort-only siblings into one logical model and routes the selected effort to the correct upstream ID.
+When you pick a role, agent, or compaction model in `/settings`, Veyyon opens a separate effort step only if that model exposes configurable effort. The first row, **Model default**, stores no suffix. The remaining rows contain `auto`, `off` when the model permits it, and only the model's catalog-defined effort variants. For example, a low/high Gemini model does not show medium or xhigh. A fixed-reasoning model skips the effort step. The **Default Model** picker is deliberately model-only: it stores a bare selector, and **Default Effort** is the one UI surface for its saved effort. Providers sometimes publish effort tiers as separate upstream model IDs. Veyyon collapses effort-only siblings into one logical model and routes the selected effort to the correct upstream ID.
 
-`compaction.model` and `subagent.model` are ordered chains. The first entry is the primary model and later entries are fallbacks. Enter edits the highlighted position, **Add fallback** appends a position, and Delete removes only the highlighted position. The settings rows show a stored effort as ` · high` instead of the raw `:high` suffix.
+`compaction.model` and `agent.model` are ordered chains. The first entry is the primary model and later entries are fallbacks. Enter edits the highlighted position, **Add fallback** appends a position, and Delete removes only the highlighted position. The settings rows show a stored effort as ` · high` instead of the raw `:high` suffix.
 
-The model you are working with (the main conversation) is persisted as **`modelRoles.default`**. That slot is not a selectable role: it is hidden from role pickers and stripped from `cycleOrder` on load. In the code it has one name, `DEFAULT_MODEL_SLOT`, and `interactive` is accepted as an alias for it wherever a role is passed. Selectable built-in roles: `smol`, `slow`, `vision`, `plan`, `designer`, `commit`, `tiny`, `advisor`. There is no `task` role: the model your subagents run lives in [Subagents](#subagents), which is its one owner.
+The model you are working with (the main conversation) is persisted as **`modelRoles.default`**. That slot is not a selectable role: it is hidden from role pickers and stripped from `cycleOrder` on load. In the code it has one name, `DEFAULT_MODEL_SLOT`, and `interactive` is accepted as an alias for it wherever a role is passed. Selectable built-in roles: `smol`, `slow`, `vision`, `plan`, `designer`, `commit`, `tiny`, `advisor`. There is no `task` role: the model your agents run lives in [Agents](#agents), which is its one owner.
 
 ```yaml
 modelRoles:
@@ -323,8 +323,8 @@ cycleOrder:
   - smol
   - slow
 
-subagent:
-  model: deepseek/deepseek-chat:high     # optional; unset means subagents inherit your model; :effort optional
+agent:
+  model: deepseek/deepseek-chat:high     # optional; unset means agents inherit your model; :effort optional
 
 compaction:
   model: openai/gpt-5-mini               # optional; else inherits your current model; may carry :effort
@@ -358,7 +358,7 @@ See [Advisor and WATCHDOG.md](../features/advisor.md) for runtime behavior, `WAT
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `advisor.enabled` | boolean | `false` | Enable the advisor runtime when `modelRoles.advisor` resolves to an available model. |
-| `advisor.subagents` | boolean | `false` | Also enable advisor runtimes for spawned task/eval subagents. |
+| `advisor.agents` | boolean | `false` | Also enable advisor runtimes for spawned task/eval agents. |
 | `advisor.syncBacklog` | enum | `off` | Bounded advisor catch-up delay: `off`, `1`, `3`, or `5`. The primary waits up to 30 seconds only while advisor backlog is at or above the threshold. |
 | `advisor.immuneTurns` | number | `3` | After a `concern`/`blocker` interrupts, route further concerns/blockers as non-interrupting asides for this many completed primary turns. |
 
@@ -436,7 +436,7 @@ veyyon config set presencePenalty -1
 | `tier.openai` | enum | `none` | `none`, `auto`, `default`, `flex`, `scale`, `priority`. Sent as `service_tier` for OpenAI / OpenAI-Codex and OpenAI-family OpenRouter models. |
 | `tier.anthropic` | enum | `none` | `none`, `priority`. `priority` realizes fast mode on supported direct Claude models (ignored on Bedrock/Vertex and via OpenRouter). |
 | `tier.google` | enum | `none` | `none`, `flex`, `priority`. Gemini API sends it in the body; Vertex sends `priority` via header (`flex` is a no-op on Vertex). |
-| `tier.subagent` | enum | `inherit` | `inherit`, `none`, `auto`, `default`, `flex`, `scale`, `priority`. Applied to the spawned model's family; `inherit` tracks the main agent. |
+| `tier.agent` | enum | `inherit` | `inherit`, `none`, `auto`, `default`, `flex`, `scale`, `priority`. Applied to the spawned model's family; `inherit` tracks the main agent. |
 | `tier.advisor` | enum | `none` | `inherit`, `none`, `auto`, `default`, `flex`, `scale`, `priority`. Applied to the advisor model's family. |
 | `personality` | string | `default` | Communication style rendered into the system prompt. Built in: `default`, `friendly`, `pragmatic`, `none`. Not a closed set: add your own with `~/.veyyon/personalities/<name>.md`, or `.veyyon/personalities/<name>.md` in a project. |
 
@@ -487,7 +487,7 @@ retry:
 | `retry.fallbackChains` | record | `{}` | Maps roles, model selectors, or `provider/*` wildcards to ordered fallback selectors. Keys containing `/` are model-oriented and win over roles: `provider/model-id` matches that exact model, `provider/*` matches every model of the provider. A `provider/*` *entry* keeps the failing model's id and swaps the provider. The `default` chain covers every assigned role without its own chain. Unknown models/providers or malformed chains are reported as config warnings at startup. |
 | `retry.fallbackRevertPolicy` | enum | `cooldown-expiry` | `cooldown-expiry` returns to the primary model once its suppression window ends; `never` stays on the fallback until switched manually. |
 
-When the active model keeps failing (429s, quota walls, provider outages) and `retry.modelFallback` is on, the session picks the chain that includes the failing model, by specificity: an exact `provider/model-id` key, then a `provider/*` wildcard, then the current role's chain, then `default`. It skips models whose selectors are still cooling down and switches for the rest of the turn. Subagents get their own per-spawn chains when their agent definition lists multiple model patterns, the first resolvable pattern is primary and the rest become its fallbacks; there is no `agent:<name>` key in `fallbackChains`.
+When the active model keeps failing (429s, quota walls, provider outages) and `retry.modelFallback` is on, the session picks the chain that includes the failing model, by specificity: an exact `provider/model-id` key, then a `provider/*` wildcard, then the current role's chain, then `default`. It skips models whose selectors are still cooling down and switches for the rest of the turn. Agents get their own per-spawn chains when their agent definition lists multiple model patterns, the first resolvable pattern is primary and the rest become its fallbacks; there is no `agent:<name>` key in `fallbackChains`.
 
 ### Tools and approvals
 
@@ -518,37 +518,37 @@ tools:
 
 Most optional built-in tools are toggled by their own keys, e.g. `bash.enabled`, `launch.enabled`, `eval.py`, `eval.js`, `fetch.enabled`, `browser.enabled`, `astEdit.enabled`, `web_search.enabled`, `inspect_image.enabled`. Workspace `search` is part of the default tool inventory.
 
-### Subagents
+### Agents
 
-Everything about spawned agents lives here, under `subagent.`: whether this session
+Everything about spawned agents lives here, under `agent.`: whether this session
 delegates at all, which agent types it may use, what model and effort they run, and
-the limits and isolation they run under. In `/settings` it is the **Subagents** tab.
+the limits and isolation they run under. In `/settings` it is the **Agents** tab.
 
 #### Three settings, three different questions
 
-Subagents are governed by three settings, and mixing them up is the usual source of
+Agents are governed by three settings, and mixing them up is the usual source of
 confusion, so read this table before you change anything. Each one answers a question
 the other two cannot.
 
 | Setting | The question it answers | Default |
 |---|---|---|
-| `subagent.enabled` | May this session use subagents **at all**? | `true` |
-| `subagent.delegation` | Is the model **encouraged** to fan work out, and how hard? | `preferred` |
-| `subagent.agents` | **Which** agents may it use? | `task` only |
+| `agent.enabled` | May this session use agents **at all**? | `true` |
+| `agent.delegation` | Is the model **encouraged** to fan work out, and how hard? | `preferred` |
+| `agent.agents` | **Which** agents may it use? | `task` only |
 
-Read them top to bottom. `subagent.enabled` is the master switch: turn it off and
-there are no subagents, the `task` tool is not built, and the other two settings stop
-mattering. Leave it on and `subagent.delegation` sets how much the prompt pushes,
-while `subagent.agents` sets what there is to push work to.
+Read them top to bottom. `agent.enabled` is the master switch: turn it off and
+there are no agents, the `task` tool is not built, and the other two settings stop
+mattering. Leave it on and `agent.delegation` sets how much the prompt pushes,
+while `agent.agents` sets what there is to push work to.
 
 **Turning delegation down does not forbid delegation.** This is the distinction that
-matters most. `subagent.delegation: allowed` means the model still has the `task`
-tool and will still spawn a subagent when that is the sensible move; the prompt does not request it. The only setting that takes the ability away is `subagent.enabled`. If you
-want subagents gone, set that one, not this one.
+matters most. `agent.delegation: allowed` means the model still has the `task`
+tool and will still spawn an agent when that is the sensible move; the prompt does not request it. The only setting that takes the ability away is `agent.enabled`. If you
+want agents gone, set that one, not this one.
 
 ```yaml
-subagent:
-  enabled: true                # master switch; false removes subagents entirely
+agent:
+  enabled: true                # master switch; false removes agents entirely
   delegation: preferred        # allowed | preferred | required
   model: openai/gpt-5:high     # optional; unset means inherit your model
   thinkingLevel: medium        # optional; unset means inherit your effort
@@ -570,24 +570,24 @@ description to every request, so you pay for the ones you actually use and nothi
 else. They stay listed while disabled, each with a line saying what it is for, so you
 can see what is available before you turn anything on.
 
-#### Subagents on or off
+#### Agents on or off
 
-`subagent.enabled` is a boolean and it is the only kill switch. When it is `false`:
+`agent.enabled` is a boolean and it is the only kill switch. When it is `false`:
 
 - the `task` tool is not built, so the model cannot spawn anything;
 - every delegation instruction leaves the system prompt;
-- `subagent.delegation` and `subagent.agents` are still stored, still editable, and
+- `agent.delegation` and `agent.agents` are still stored, still editable, and
   take effect again the moment you turn this back on.
 
-Earlier releases spelled this as `subagent.delegation: off`, which made one setting
-answer two questions: whether subagents existed, and how hard to push them. An
+Earlier releases spelled this as `agent.delegation: off`, which made one setting
+answer two questions: whether agents existed, and how hard to push them. An
 existing `delegation: off` is migrated to `enabled: false` with `delegation` left at
-its default, because "off" was how you turned subagents off.
+its default, because "off" was how you turned agents off.
 
 #### Delegation
 
-`subagent.delegation` sets how hard this session pushes work out. It never removes
-the ability to delegate; for that, see `subagent.enabled` above.
+`agent.delegation` sets how hard this session pushes work out. It never removes
+the ability to delegate; for that, see `agent.enabled` above.
 
 | Value | Behavior |
 |---|---|
@@ -612,27 +612,27 @@ This is also the answer to "why did it delegate my audit?". If a specialist for 
 work is enabled, the model has been told the work is delegable. If none is, and it
 still fans out, that is a prompt bug rather than a settings question: file it.
 
-**Context preservation, not a cheaper model.** A subagent usually runs the same model
-you are on (see [Which model a subagent runs](#which-model-a-subagent-runs)). What
+**Context preservation, not a cheaper model.** An agent usually runs the same model
+you are on (see [Which model an agent runs](#which-model-an-agent-runs)). What
 delegation buys is a separate context window: bulk reading, wide searches, and long
 tool output stay out of your session and come back as a summary. Nothing about
-delegation implies the subagent is less capable than you.
+delegation implies the agent is less capable than you.
 
 #### When the two settings disagree
 
-`subagent.delegation` and the Agents table are one question with two answers, and one
+`agent.delegation` and the Agents table are one question with two answers, and one
 resolver reads both. If you disable every agent there is nothing to delegate to, so
 the strength you pick has no effect until you enable at least one: the prompt stops
 asking for delegation, the first-turn reminder is not injected, and both agent
-surfaces state it in a line above the table. If `subagent.enabled` is off, the same line
+surfaces state it in a line above the table. If `agent.enabled` is off, the same line
 states that instead, because turning agents on would change nothing until you turn
-subagents back on. Neither setting is hidden behind the other: you need all three
+agents back on. Neither setting is hidden behind the other: you need all three
 while setting up a session, but none pretends the others do not exist.
 
 #### Agents
 
-`subagent.agents` holds one row per agent, keyed by agent name. One surface edits it
-rather than hand-written config: the **Agents** row in `/settings` → Subagents, which
+`agent.agents` holds one row per agent, keyed by agent name. One surface edits it
+rather than hand-written config: the **Agents** row in `/settings` → Agents, which
 lists every discovered agent with the model it resolves to and opens one agent at a
 time to set its state. `/agents` used to carry a second copy of the same table, so the
 same two facts had two homes that had to be kept in step; it is the live picture now
@@ -676,29 +676,29 @@ A row contains whether the agent is enabled, how deep it may nest its own spawns
 the model and effort that agent runs. Every one of those is edited on the agent's own
 page inside **Roster**.
 
-#### Which model a subagent runs
+#### Which model an agent runs
 
 The first row of **Roster** is **Same Model for All Agents**, and it picks which of two
 chains decides. It is off by default.
 
 Off, each agent answers for itself. The first layer that specifies a model wins:
 
-1. the agent's own lane, `subagent.agents.<name>.model`, edited on that agent's page.
-2. `subagent.modelByDepth.<n>`, for a spawn at exactly that depth.
+1. the agent's own lane, `agent.agents.<name>.model`, edited on that agent's page.
+2. `agent.modelByDepth.<n>`, for a spawn at exactly that depth.
 3. the agent definition's own `model:` frontmatter, for an agent you wrote.
-4. otherwise the subagent inherits the model you are working with.
+4. otherwise the agent inherits the model you are working with.
 
-On, one model answers for every agent: `subagent.model`, else the model you are working
+On, one model answers for every agent: `agent.model`, else the model you are working
 with. Nothing per-agent is read, so the lanes, the depth rows and an agent file's own
 `model:` all stop applying. The agent rows stay listed and go grey, because which agents
 are enabled is still decided there.
 
 The shared model and its effort appear on screen only while the switch is on. Off, they
 are not shown at all: a greyed row displaying a model nobody runs is the duplication the
-switch exists to end. There is no Subagent Model row on the Models tab and none on the
-Subagents tab; one page owns the question.
+switch exists to end. There is no Agent Model row on the Models tab and none on the
+Agents tab; one page owns the question.
 
-None of the bundled agents pin a model, so on a fresh install every subagent runs the
+None of the bundled agents pin a model, so on a fresh install every agent runs the
 model you are looking at. To move them all at once, turn the switch on and set the model
 under it. To give one agent its own, open that agent in **Roster**, or write it in the
 agent's `model:` frontmatter.
@@ -707,7 +707,7 @@ A configured value that matches no available model does **not** fall through to 
 next layer. The spawn is rejected and the message states the setting to fix, because a
 silent fall-through is indistinguishable from your setting having no effect.
 
-Effort rides the same switch, through `subagent.thinkingLevel` when shared and the
+Effort rides the same switch, through `agent.thinkingLevel` when shared and the
 agent's own lane when not. The levels offered are the ones the model in scope actually
 exposes, so a model that routes effort through separate model ids offers **Inherit**
 alone and states why, rather than listing levels it would reject. A value that matches
@@ -715,13 +715,13 @@ no level (from a hand-written config) is reported with the setting and the accep
 levels, then ignored. It is never rounded to a neighbouring effort: running at an effort
 you did not choose costs money and would not show up anywhere.
 
-Every surface that shows a subagent's model also names the setting that decided it —
-`subagent.agents.deep.subagents`, `subagent.modelByDepth.2`, `subagent.model` — so an
+Every surface that shows an agent's model also names the setting that decided it —
+`agent.agents.deep.agents`, `agent.modelByDepth.2`, `agent.model` — so an
 agent running something you did not expect is a question you can answer.
 
 #### The two views in `/agents`
 
-`/agents` opens the subagent dashboard, which is about a run in progress and
+`/agents` opens the agent dashboard, which is about a run in progress and
 configures nothing. Move between its two views with the left and right arrows, with
 `tab`, or by clicking a name in the strip at the top of the card:
 
@@ -741,25 +741,25 @@ They used to open a separate screen with its own roster, which meant two answers
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `subagent.enabled` | boolean | `true` | The master switch. `false` removes subagents entirely: no `task` tool, no delegation guidance. See above. |
-| `subagent.delegation` | enum | `preferred` | `allowed`, `preferred`, `required`. How hard the prompt pushes; it never removes the ability to delegate. See above. |
-| `subagent.agents` | record | `{}` | One row per agent: `enabled`, `model`, `thinkingLevel`, `maxNestedSpawnDepth`, and a nested `subagents` row per level below. Edit in the Roster row of the Subagents tab. Ignored while `subagent.sharedModel` is on. |
-| `subagent.sharedModel` | boolean | `false` | Whether one model and effort answer for every subagent. On, `subagent.model` and `subagent.thinkingLevel` decide and nothing per-agent is read. Off, each agent runs what its own Roster page names. The first row of Roster; it has no row of its own on the tab. |
-| `subagent.model` | modelChain | unset | The shared model chain, live only while `subagent.sharedModel` is on. Tried in order, written as a comma-separated string or as a YAML list: the later entries are used when a run errors on the one in use. Unset means inherit: subagents follow the model you are working with. May carry a `:effort` suffix, and an explicit suffix wins over the agent's own default. A pattern that matches no model rejects the spawn rather than falling through to the next entry. Edit inside Roster. |
-| `subagent.modelByDepth` | record | `{}` | One row per spawn depth (`"1"` is a direct child, `"2"` a grandchild), each a chain in the same shape as `subagent.model`. Applies only while `subagent.sharedModel` is off, and outranks the agent's own frontmatter for a spawn at exactly that depth; other depths are unaffected. A row whose chain matches no model rejects the spawn and states the row. Edit in the Models by Depth row of the Subagents tab. |
-| `subagent.thinkingLevel` | string | unset | The shared effort, live only while `subagent.sharedModel` is on, picked from the levels the model in scope exposes. Unset or **Inherit** passes the current session's effective effort into the child. It does not request `auto` from the provider. Edit inside Roster. |
-| `subagent.batch` | boolean | `true` | Batch shape for the `task` tool: one call, many items. |
-| `subagent.maxConcurrency` | number | `32` | Subagents running at once. |
-| `subagent.maxNestedSpawnDepth` | number | `0` | Nested levels that subagents may spawn. Direct children receive no `task` tool at `0`; an agent-specific override may raise the limit. |
-| `subagent.maxRuntimeMs` | number | `0` | Hard per-subagent wall-clock limit in ms; `0` disables it. |
-| `subagent.idleTtlMs` | number | `300000` | How long a finished subagent stays live before parking. The default is 5 minutes for every model and provider. Set a positive millisecond value to override it. `0` keeps idle agents live until exit. Parking closes the live session but retains its transcript for revival. |
-| `subagent.softRequestBudget` | number | `200` | Requests after which a subagent is asked to wrap up; `0` disables the guard. |
-| `subagent.softRequestBudgetNotice` | boolean | `true` | Inject that wrap-up notice once. |
-| `subagent.showResolvedModelBadge` | boolean | `true` | Show each subagent's resolved model, and what decided it, on the task widget and the agent surfaces. |
-| `subagent.enableLsp` | boolean | `false` | Let subagents use the `lsp` tool. |
-| `subagent.isolation.mode` | enum | `none` | Filesystem isolation backend for subagents. See [Safety](../using/safety.md). |
-| `subagent.isolation.merge` | enum | `patch` | How isolated changes come back: `patch` or `branch`. |
-| `subagent.isolation.commits` | enum | `generic` | Commit message style for nested repo changes. |
+| `agent.enabled` | boolean | `true` | The master switch. `false` removes agents entirely: no `task` tool, no delegation guidance. See above. |
+| `agent.delegation` | enum | `preferred` | `allowed`, `preferred`, `required`. How hard the prompt pushes; it never removes the ability to delegate. See above. |
+| `agent.agents` | record | `{}` | One row per agent: `enabled`, `model`, `thinkingLevel`, `maxNestedSpawnDepth`, and a nested `agents` row per level below. Edit in the Roster row of the Agents tab. Ignored while `agent.sharedModel` is on. |
+| `agent.sharedModel` | boolean | `false` | Whether one model and effort answer for every agent. On, `agent.model` and `agent.thinkingLevel` decide and nothing per-agent is read. Off, each agent runs what its own Roster page names. The first row of Roster; it has no row of its own on the tab. |
+| `agent.model` | modelChain | unset | The shared model chain, live only while `agent.sharedModel` is on. Tried in order, written as a comma-separated string or as a YAML list: the later entries are used when a run errors on the one in use. Unset means inherit: agents follow the model you are working with. May carry a `:effort` suffix, and an explicit suffix wins over the agent's own default. A pattern that matches no model rejects the spawn rather than falling through to the next entry. Edit inside Roster. |
+| `agent.modelByDepth` | record | `{}` | One row per spawn depth (`"1"` is a direct child, `"2"` a grandchild), each a chain in the same shape as `agent.model`. Applies only while `agent.sharedModel` is off, and outranks the agent's own frontmatter for a spawn at exactly that depth; other depths are unaffected. A row whose chain matches no model rejects the spawn and states the row. Edit in the Models by Depth row of the Agents tab. |
+| `agent.thinkingLevel` | string | unset | The shared effort, live only while `agent.sharedModel` is on, picked from the levels the model in scope exposes. Unset or **Inherit** passes the current session's effective effort into the child. It does not request `auto` from the provider. Edit inside Roster. |
+| `agent.batch` | boolean | `true` | Batch shape for the `task` tool: one call, many items. |
+| `agent.maxConcurrency` | number | `32` | Agents running at once. |
+| `agent.maxNestedSpawnDepth` | number | `0` | Nested levels that agents may spawn. Direct children receive no `task` tool at `0`; an agent-specific override may raise the limit. |
+| `agent.maxRuntimeMs` | number | `0` | Hard per-agent wall-clock limit in ms; `0` disables it. |
+| `agent.idleTtlMs` | number | `300000` | How long a finished agent stays live before parking. The default is 5 minutes for every model and provider. Set a positive millisecond value to override it. `0` keeps idle agents live until exit. Parking closes the live session but retains its transcript for revival. |
+| `agent.softRequestBudget` | number | `200` | Requests after which an agent is asked to wrap up; `0` disables the guard. |
+| `agent.softRequestBudgetNotice` | boolean | `true` | Inject that wrap-up notice once. |
+| `agent.showResolvedModelBadge` | boolean | `true` | Show each agent's resolved model, and what decided it, on the task widget and the agent surfaces. |
+| `agent.enableLsp` | boolean | `false` | Let agents use the `lsp` tool. |
+| `agent.isolation.mode` | enum | `none` | Filesystem isolation backend for agents. See [Safety](../using/safety.md). |
+| `agent.isolation.merge` | enum | `patch` | How isolated changes come back: `patch` or `branch`. |
+| `agent.isolation.commits` | enum | `generic` | Commit message style for nested repo changes. |
 
 ### Shell, eval, and LSP
 
@@ -851,7 +851,7 @@ read:
 | `read.toolResultPreview` | boolean | `false` | Inline preview of tool results. |
 | `readLineNumbers` | boolean | `false` | Show plain line numbers. |
 
-`edit.afterEdit` applies to the main agent; subagents are exempt from every value. `verify` continues once when the turn's last successful edit has no later successful `bash`, `eval`, `debug` or `browser` result, and asks for one to be run. `review` continues once naming every code file changed since the last user message, and asks for a correctness, maintainability and cross-file contract pass; a file whose edit has left the context window is listed apart with an instruction to read it first. Documentation, lockfiles, binary files, media, archives and databases are not code files. Repeated calls for the same normalized path count once. A reply that ends with a question to the user defers both, and the window moves with the next user message, so changes made before a question are not reviewed after it. A configuration written before this setting existed carries a `critiqueCodeMutations` boolean under `edit`, which migrates on load: true becomes `review`, false becomes `verify`.
+`edit.afterEdit` applies to the main agent; agents are exempt from every value. `verify` continues once when the turn's last successful edit has no later successful `bash`, `eval`, `debug` or `browser` result, and asks for one to be run. `review` continues once naming every code file changed since the last user message, and asks for a correctness, maintainability and cross-file contract pass; a file whose edit has left the context window is listed apart with an instruction to read it first. Documentation, lockfiles, binary files, media, archives and databases are not code files. Repeated calls for the same normalized path count once. A reply that ends with a question to the user defers both, and the window moves with the next user message, so changes made before a question are not reviewed after it. A configuration written before this setting existed carries a `critiqueCodeMutations` boolean under `edit`, which migrates on load: true becomes `review`, false becomes `verify`.
 
 
 ### Automatic tool issue reports
@@ -1067,16 +1067,16 @@ Applied whenever raw settings are loaded (profile config, `--config` overlays, a
 | `queueMode` | `steeringMode` |
 | `ask.timeout` in milliseconds (value `> 1000`) | seconds (divided by 1000), and the rewrite is logged with both values |
 | flat `theme: "<name>"` string | `theme.dark` / `theme.light` (slot chosen by luminance; built-in `light`/`dark` are dropped to use defaults) |
-| `task.isolation.enabled: true/false` | `subagent.isolation.mode: auto/none` |
+| `task.isolation.enabled: true/false` | `agent.isolation.mode: auto/none` |
 | `task.simple` | removed |
 | legacy `task.isolation.mode` (`worktree`, `fuse-overlay`, `fuse-projfs`) | `rcopy`, `overlayfs`, `projfs` |
-| `task.eager` (`default` / `preferred` / `always`, or a boolean) | `subagent.delegation` (`allowed` / `preferred` / `required`) |
-| `task.batch`, `task.maxConcurrency`, `task.maxRecursionDepth`, `task.maxRuntimeMs`, `task.softRequestBudget`, `task.softRequestBudgetNotice`, `task.showResolvedModelBadge`, `task.enableLsp` | the same names under `subagent.` |
-| `task.agentIdleTtlMs` | `subagent.idleTtlMs` |
-| `task.isolation.*` | `subagent.isolation.*` |
-| `task.disabledAgents` | one row per agent in `subagent.agents` |
-| `task.agentModelOverrides` | dropped, and each override is named in the log. Per-agent models no longer exist: `subagent.model` (with `subagent.thinkingLevel`) is the one owner, and an agent that needs its own model declares it in its own `model:` frontmatter. A `subagent.agents.<name>.model` or `.thinkingLevel` left in a config is ignored and reported the same way. |
-| `modelRoles.task` | `subagent.model` (the `task` role is retired) |
+| `task.eager` (`default` / `preferred` / `always`, or a boolean) | `agent.delegation` (`allowed` / `preferred` / `required`) |
+| `task.batch`, `task.maxConcurrency`, `task.maxRecursionDepth`, `task.maxRuntimeMs`, `task.softRequestBudget`, `task.softRequestBudgetNotice`, `task.showResolvedModelBadge`, `task.enableLsp` | the same names under `agent.` |
+| `task.agentIdleTtlMs` | `agent.idleTtlMs` |
+| `task.isolation.*` | `agent.isolation.*` |
+| `task.disabledAgents` | one row per agent in `agent.agents` |
+| `task.agentModelOverrides` | dropped, and each override is named in the log. Per-agent models no longer exist: `agent.model` (with `agent.thinkingLevel`) is the one owner, and an agent that needs its own model declares it in its own `model:` frontmatter. A `agent.agents.<name>.model` or `.thinkingLevel` left in a config is ignored and reported the same way. |
+| `modelRoles.task` | `agent.model` (the `task` role is retired) |
 | `lastChangelogVersion` | moved to a marker file and stripped from `config.yml` |
 | `collapseChangelog` | removed; startup no longer prints release notes, so there is nothing to collapse. Use `startup.updateNotice` to control the one-line notice that replaced it. |
 

@@ -118,7 +118,7 @@ describe("AuthStorage.pinSessionCredential routes this session's requests", () =
 
 	/**
 	 * Switching accounts is per PROVIDER by design: several providers serve one session at
-	 * once (main model, subagent roles, web search), so pinning Anthropic must not disturb
+	 * once (main model, agent roles, web search), so pinning Anthropic must not disturb
 	 * Codex. Pinning drops the pinned provider's routing record on purpose, and the failure
 	 * this catches is that drop not being scoped: a "reset routing on switch" that swept every
 	 * provider would cold-start every other provider's account choice for the session, which

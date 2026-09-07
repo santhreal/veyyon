@@ -1,6 +1,6 @@
 /**
  * Render the real stack of session-scoped surfaces above the composer — the todo
- * HUD, the subagent HUD, the pinned error banner and the quiet footline with its
+ * HUD, the agent HUD, the pinned error banner and the quiet footline with its
  * running-agent count — for the MAIN view and for the view focused on an agent.
  *
  * This boots the real `InteractiveMode` against a real `AgentSession`, a real
@@ -46,7 +46,7 @@ import { buildComposerShortcuts } from "../../packages/coding-agent/src/modes/te
 import { InteractiveMode } from "../../packages/coding-agent/src/modes/terminal/interactive-mode";
 import { AgentRegistry, MAIN_AGENT_ID } from "../../packages/coding-agent/src/registry/agent-registry";
 import { AgentSession } from "../../packages/coding-agent/src/session/agent-session";
-import { TASK_SUBAGENT_LIFECYCLE_CHANNEL } from "../../packages/coding-agent/src/task";
+import { TASK_AGENT_LIFECYCLE_CHANNEL } from "../../packages/coding-agent/src/task";
 import { initTheme, setTheme } from "../../packages/coding-agent/src/theme/theme";
 import { EventBus } from "../../packages/coding-agent/src/utils/event-bus";
 import { flag, hasFlag, renderWidth } from "./render-args";
@@ -105,7 +105,7 @@ for (const [index, spawn] of (
 		["SchemaMigrator", "Migrating the users table"],
 	] as const
 ).entries()) {
-	eventBus.emit(TASK_SUBAGENT_LIFECYCLE_CHANNEL, {
+	eventBus.emit(TASK_AGENT_LIFECYCLE_CHANNEL, {
 		id: spawn[0],
 		index,
 		agent: "task",
@@ -116,7 +116,7 @@ for (const [index, spawn] of (
 		detached: true,
 	});
 }
-// Drain the observer coalesce window (SUBAGENT_OBSERVER_UI_COALESCE_MS = 100).
+// Drain the observer coalesce window (AGENT_OBSERVER_UI_COALESCE_MS = 100).
 await Bun.sleep(160);
 
 mode.showPinnedError("Provider returned 529 overloaded — the turn did not complete");
@@ -131,7 +131,7 @@ for (const id of ["AuthLoader", "SchemaMigrator"]) {
 		status: "running",
 	});
 }
-mode.syncRunningSubagentBadge({ requestRender: false });
+mode.syncRunningAgentBadge({ requestRender: false });
 
 // A busy driving session with a queued message, so the composer chip band has
 // both chips to lose: `esc interrupt` and the dequeue key.
@@ -145,7 +145,7 @@ if (view === "focused") {
 		// The pre-fix data flow, replayed onto the same real components.
 		mode.setTodos(mainSession.getTodoPhases());
 		mode.showPinnedError("Provider returned 529 overloaded — the turn did not complete");
-		mode.statusLine.setSubagentCount(2);
+		mode.statusLine.setAgentCount(2);
 		mode.composerShortcuts.setShortcuts(
 			buildComposerShortcuts(mode.keybindings, {
 				busy: true,
@@ -160,7 +160,7 @@ if (view === "focused") {
 
 const block = [
 	...mode.todoContainer.render(width),
-	...mode.subagentContainer.render(width),
+	...mode.agentContainer.render(width),
 	...mode.errorBannerContainer.render(width),
 	mode.statusLine.renderQuietLine(width) ?? "",
 	...mode.composerShortcuts.render(width),

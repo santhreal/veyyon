@@ -3295,7 +3295,7 @@ function applyPromptCaching(params: MessageCreateParamsStreaming, cacheControl?:
 		}
 
 		// Veyyon's first own system block is the stable harness shared across
-		// parent and subagent prompts. Anchor it before project, assignment, and
+		// parent and agent prompts. Anchor it before project, assignment, and
 		// Argot blocks so those changing suffixes cannot invalidate the shared
 		// prefix. OAuth prepends billing and Claude Code instruction blocks, so
 		// the harness sits at index 2 there and index 0 otherwise.

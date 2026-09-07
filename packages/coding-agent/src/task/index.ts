@@ -3,7 +3,7 @@
  *
  * Discovers agent definitions from:
  *   - Bundled agents (shipped with the veyyon coding agent)
- *   - ~/.veyyon/subagents/*.md (authored once, read by every profile)
+ *   - ~/.veyyon/agents/*.md (authored once, read by every profile)
  *   - agents/*.md shipped by an extension package or a marketplace plugin
  *
  * Supports:
@@ -33,29 +33,29 @@ import { sessionFileName } from "@veyyon/utils/session-file";
 import type { ToolSession } from "..";
 import { mcpManagerInstance } from "../mcp/manager-instance";
 import { DEFAULT_PLAN_FILE_URL } from "../plan-mode/plan-file-url";
+import { agentPrompts } from "../prompts/agent/rows";
 import { planModePrompts } from "../prompts/plan-mode/rows";
-import { subagentPrompts } from "../prompts/subagent/rows";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { Theme } from "../theme/theme";
 import { isIrcEnabled } from "../tools/agent/irc";
 import { truncateForPrompt } from "../tools/core/approval";
 import { formatBytes, formatDuration } from "../tools/core/render-utils";
+import {
+	agentModelSourceLabel,
+	agentsEnabled,
+	type EnabledAgentCatalog,
+	type EnabledAgentSource,
+	filterEnabledAgents,
+	isAgentEnabled,
+	resolveAgentModel,
+	resolveAgentThinkingLevel,
+	resolveEnabledAgents,
+	resolveSessionMaxNestedSpawnDepth,
+} from "./agent-settings";
 import { inheritContextFiles } from "./context-inheritance";
 import { homogeneousTriageRefusal, isHomogeneousTriageFanout } from "./delegation-policy";
 import { inheritResolvedCollection, resolveAutoloadSkills } from "./inherited-collections";
-import { classifySubagentOutcome, describeSubagentBatch, summarizeSubagentBatch } from "./outcome";
-import {
-	type EnabledSubagentCatalog,
-	type EnabledSubagentSource,
-	filterEnabledAgents,
-	isSubagentEnabled,
-	resolveEnabledSubagents,
-	resolveSessionMaxNestedSpawnDepth,
-	resolveSubagentModel,
-	resolveSubagentThinkingLevel,
-	subagentModelSourceLabel,
-	subagentsEnabled,
-} from "./subagent-settings";
+import { classifyAgentOutcome, describeAgentBatch, summarizeAgentBatch } from "./outcome";
 import {
 	type AgentDefinition,
 	type AgentProgress,
@@ -67,7 +67,7 @@ import {
 	type TaskToolDetails,
 	type TaskToolSchemaInstance,
 } from "./types";
-// Import review tools for side effects (registers subagent tool handlers)
+// Import review tools for side effects (registers agent tool handlers)
 import "../tools/agent/review";
 import type { AsyncJobManager } from "../async";
 import type { LocalProtocolOptions } from "../internal-urls";
@@ -92,8 +92,8 @@ import { treeSpawnSemaphore } from "./spawn-semaphore";
 import { taskToolView } from "./task-view";
 import { parseIsolationMode } from "./worktree";
 
-function renderSubagentUserPrompt(assignment: string): string {
-	return prompt.render(subagentPrompts["subagent/user-prompt"].text, {
+function renderAgentUserPrompt(assignment: string): string {
+	return prompt.render(agentPrompts["agent/user-prompt"].text, {
 		assignment: assignment.trim(),
 	});
 }
@@ -129,18 +129,18 @@ export { discoverAgents, getAgent } from "./discovery";
 export { AgentOutputManager } from "./output-manager";
 export type {
 	AgentDefinition,
+	AgentEventPayload,
+	AgentLifecyclePayload,
 	AgentProgress,
+	AgentProgressPayload,
 	SingleResult,
-	SubagentEventPayload,
-	SubagentLifecyclePayload,
-	SubagentProgressPayload,
 	TaskParams,
 	TaskToolDetails,
 } from "./types";
 export {
-	TASK_SUBAGENT_EVENT_CHANNEL,
-	TASK_SUBAGENT_LIFECYCLE_CHANNEL,
-	TASK_SUBAGENT_PROGRESS_CHANNEL,
+	TASK_AGENT_EVENT_CHANNEL,
+	TASK_AGENT_LIFECYCLE_CHANNEL,
+	TASK_AGENT_PROGRESS_CHANNEL,
 	taskSchema,
 } from "./types";
 
@@ -189,7 +189,7 @@ export function formatResultOutputFallback(result: Pick<SingleResult, "output" |
  * Render the tool description from a cached agent list and current settings.
  */
 function renderDescription(
-	catalog: EnabledSubagentCatalog,
+	catalog: EnabledAgentCatalog,
 	isolationEnabled: boolean,
 	batchEnabled: boolean,
 	asyncEnabled: boolean,
@@ -289,8 +289,8 @@ function validateSpawnParams(params: TaskParams, batchEnabled: boolean): string 
 	}
 	if (!hasTask) {
 		return batchEnabled
-			? "Missing `tasks`. Provide a `tasks` array (one subagent per item) with a shared `context`."
-			: "Missing `task`. Provide complete, self-contained instructions for the agent.";
+			? "Missing `tasks`. Provide a `tasks` array (one spawned agent per item) with a shared `context`."
+			: "Missing `task`. Provide complete, self-contained instructions for the spawned agent.";
 	}
 	return undefined;
 }
@@ -315,7 +315,7 @@ export async function resolveSpawnCwd(raw: string | undefined, parentCwd: string
 		return parentCwd;
 	}
 	// A relative cwd is resolved against the parent agent's live cwd rather than
-	// rejected: spawning a subagent in `libs/scanner/rulec` from the parent should
+	// rejected: spawning an agent in `libs/scanner/rulec` from the parent should
 	// behave like a `cd` there. Absolute paths already point where they point.
 	// This adds no new reach an absolute path did not already allow.
 	const resolved = path.isAbsolute(trimmed) ? path.resolve(trimmed) : path.resolve(parentCwd, trimmed);
@@ -515,7 +515,7 @@ export function composeSpawnAdvisory(args: {
 	);
 }
 
-/** Sentinel for async jobs whose subagent finished with a failing result; progress is already updated. */
+/** Sentinel for async jobs whose agent finished with a failing result; progress is already updated. */
 class TaskJobError extends Error {}
 
 /**
@@ -556,11 +556,11 @@ function discoverAgentsForCreate(cwd: string): Promise<DiscoveryResult> {
 /**
  * Task tool - Delegate tasks to specialized agents.
  *
- * Each call spawns one subagent — or, with `task.batch`, one per `tasks[]`
+ * Each call spawns one agent — or, with `task.batch`, one per `tasks[]`
  * item. When `async.enabled` is on, spawns run as AsyncJobManager jobs; when
  * disabled, the tool blocks until every spawn finishes.
  */
-export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetails, Theme>, EnabledSubagentSource {
+export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetails, Theme>, EnabledAgentSource {
 	readonly name = "task";
 	readonly approval = "exec" as const;
 	readonly formatApprovalDetails = (args: unknown): string[] => {
@@ -597,7 +597,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		return lines;
 	};
 	readonly label = "Task";
-	readonly summary = "Spawn subagents to complete delegated tasks";
+	readonly summary = "Spawn agents to complete delegated tasks";
 	readonly strict = true;
 	readonly loadMode = "discoverable";
 	readonly view = taskToolView;
@@ -617,8 +617,8 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	#spawnSemaphore: Semaphore | undefined;
 
 	get parameters(): TaskToolSchemaInstance {
-		const isolationEnabled = this.session.settings.get("subagent.isolation.mode") !== "none";
-		const catalog = this.#enabledSubagents();
+		const isolationEnabled = this.session.settings.get("agent.isolation.mode") !== "none";
+		const catalog = this.#enabledAgents();
 		return getTaskSchema({
 			isolationEnabled,
 			batchEnabled: this.#isBatchEnabled(),
@@ -636,14 +636,14 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	 * instruction it can only fail to follow.
 	 */
 	get enabledAgentNames(): string[] {
-		return this.#enabledSubagents().agents.map(agent => agent.name);
+		return this.#enabledAgents().agents.map(agent => agent.name);
 	}
 
 	/** Dynamic description listing exactly the agents this session may spawn. */
 	get description(): string {
-		const isolationMode = this.session.settings.get("subagent.isolation.mode");
+		const isolationMode = this.session.settings.get("agent.isolation.mode");
 		return renderDescription(
-			this.#enabledSubagents(),
+			this.#enabledAgents(),
 			isolationMode !== "none",
 			this.#isBatchEnabled(),
 			this.session.settings.get("async.enabled"),
@@ -658,11 +658,11 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		this.#discoveredAgents = discoveredAgents;
 	}
 
-	#enabledSubagents(
+	#enabledAgents(
 		agents: readonly AgentDefinition[] = this.#discoveredAgents,
 		includeTurnGrants = false,
-	): EnabledSubagentCatalog {
-		return resolveEnabledSubagents({
+	): EnabledAgentCatalog {
+		return resolveEnabledAgents({
 			settings: this.session.settings,
 			agents,
 			parentSpawns: this.session.getSessionSpawns() ?? "*",
@@ -671,11 +671,11 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	}
 
 	#isBatchEnabled(): boolean {
-		return this.session.settings.get("subagent.batch");
+		return this.session.settings.get("agent.batch");
 	}
 
 	#getSpawnSemaphore(): Semaphore {
-		const max = this.session.settings.get("subagent.maxConcurrency");
+		const max = this.session.settings.get("agent.maxConcurrency");
 		// Resized on every acquire and release so a mid-session settings change
 		// applies to queued work as well as to new spawns.
 		const shared = treeSpawnSemaphore(this.session.getSessionId?.() ?? null, max);
@@ -714,9 +714,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		}
 
 		const { agents: discoveredAgents } = await discoverAgents(this.session.cwd);
-		const catalog = this.#enabledSubagents(discoveredAgents, true);
-		if (!subagentsEnabled(this.session.settings)) {
-			return createTaskModeError("Subagents are disabled in settings.");
+		const catalog = this.#enabledAgents(discoveredAgents, true);
+		if (!agentsEnabled(this.session.settings)) {
+			return createTaskModeError("Agents are disabled in settings.");
 		}
 		const spawnItems = resolveSpawnItems(params);
 		const resolvedAgents: string[] = [];
@@ -740,11 +740,11 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				return createTaskModeError(`Unknown agent "${agentName}". Available: ${available}`);
 			}
 			if (
-				!isSubagentEnabled(this.session.settings, discoveredAgent) &&
+				!isAgentEnabled(this.session.settings, discoveredAgent) &&
 				!this.session.agentGrantedThisTurn?.(agentName)
 			) {
 				return createTaskModeError(
-					`Agent "${agentName}" is disabled (subagent.agents.${agentName}.enabled is false), so it cannot be chosen. Enable it in the Subagents settings tab (/settings), or use a different agent type.${available !== "none" ? ` Enabled: ${available}` : ""}`,
+					`Agent "${agentName}" is disabled (agent.agents.${agentName}.enabled is false), so it cannot be chosen. Enable it in the Agents settings tab (/settings), or use a different agent type.${available !== "none" ? ` Enabled: ${available}` : ""}`,
 				);
 			}
 			const effectiveAgent = getAgent(catalog.agents, agentName);
@@ -854,7 +854,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					agent: agentType,
 					agentSource,
 					status: "pending",
-					task: renderSubagentUserPrompt(assignment),
+					task: renderAgentUserPrompt(assignment),
 					assignment,
 					recentTools: [],
 					recentOutput: [],
@@ -1035,7 +1035,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			const spawn = syncSpawns[position];
 			const result = merged.results.find(r => r.id === spawn.agentId);
 			if (result) {
-				const outcome = classifySubagentOutcome(result);
+				const outcome = classifyAgentOutcome(result);
 				spawn.progress.status = outcome.kind === "aborted" ? "aborted" : outcome.isError ? "failed" : "completed";
 				spawn.progress.durationMs = result.durationMs;
 			} else {
@@ -1050,9 +1050,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		// Same distinction as the blocking-only path, through the same owner: the
 		// inline half of a mixed call is cancellable too, and a cancelled child
 		// there was reported as a failed one for the same reason.
-		const syncSummary = summarizeSubagentBatch(syncResults);
+		const syncSummary = summarizeAgentBatch(syncResults);
 		syncSummary.cancelled += merged.cancelledBeforeStart;
-		const syncHeadline = describeSubagentBatch(syncSummary);
+		const syncHeadline = describeAgentBatch(syncSummary);
 		const text = [syncHeadline ?? "", merged.contentParts.join("\n\n"), spawnedSummary]
 			.filter(section => section.trim().length > 0)
 			.join("\n\n");
@@ -1060,7 +1060,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			content: [{ type: "text", text: text.length > 0 ? text : "No results." }],
 			// A mixed call fails if any spawn could not be scheduled or any of the
 			// inline children failed. A cancelled inline child is neither: see
-			// `SubagentBatchSummary.isError`. The detached ones report themselves later.
+			// `AgentBatchSummary.isError`. The detached ones report themselves later.
 			isError: failedSchedules.length > 0 || syncSummary.isError,
 			details: buildAsyncDetails(),
 		});
@@ -1150,7 +1150,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					// A missing result means the sync path failed at the tool level
 					// (results: []) and there is nothing to classify, so it is a
 					// failure by construction.
-					const outcome = singleResult ? classifySubagentOutcome(singleResult) : undefined;
+					const outcome = singleResult ? classifyAgentOutcome(singleResult) : undefined;
 					const resultFailed = outcome ? outcome.isError : true;
 					progress.status = !outcome
 						? "failed"
@@ -1284,13 +1284,13 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		// two agents crashed. The summary keeps them apart, and the line it renders
 		// leads the content so a reader scrolling three transcripts knows up front
 		// that two more were expected.
-		const summary = summarizeSubagentBatch(merged.results);
+		const summary = summarizeAgentBatch(merged.results);
 		summary.cancelled += merged.cancelledBeforeStart;
-		const headline = describeSubagentBatch(summary);
+		const headline = describeAgentBatch(summary);
 		const contentParts = headline ? [headline, ...merged.contentParts] : merged.contentParts;
 		return {
 			content: [{ type: "text", text: contentParts.join("\n\n") }],
-			// FAILURES ONLY, deliberately: see `SubagentBatchSummary.isError`. A
+			// FAILURES ONLY, deliberately: see `AgentBatchSummary.isError`. A
 			// batch is still an error if any child failed, because reporting success
 			// because most of them worked buries the failures in a wall of successful
 			// output, which is where a parent stops reading.
@@ -1375,7 +1375,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		return this.#runSpawn(toolCallId, params, signal, onUpdate, preAllocatedId, spawnIndex, detached, launchTiming);
 	}
 
-	/** Spawn a fresh subagent and run it to completion. */
+	/** Spawn a fresh agent and run it to completion. */
 	async #runSpawn(
 		toolCallId: string,
 		params: TaskParams,
@@ -1391,12 +1391,12 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		const agentName = params.agent ?? "";
 		const sharedContext = this.#isBatchEnabled() ? params.context?.trim() || undefined : undefined;
 		const assignment = (params.task ?? "").trim();
-		const isolationMode = this.session.settings.get("subagent.isolation.mode");
+		const isolationMode = this.session.settings.get("agent.isolation.mode");
 		const isolationRequested = "isolated" in params ? params.isolated === true : false;
 		const isIsolated = isolationMode !== "none" && isolationRequested;
-		const mergeMode = this.session.settings.get("subagent.isolation.merge");
+		const mergeMode = this.session.settings.get("agent.isolation.merge");
 		const taskDepth = this.session.taskDepth ?? 0;
-		const subagentLspEnabled = (this.session.enableLsp ?? true) && this.session.settings.get("subagent.enableLsp");
+		const agentLspEnabled = (this.session.enableLsp ?? true) && this.session.settings.get("agent.enableLsp");
 
 		if (isolationMode === "none" && "isolated" in params) {
 			return {
@@ -1421,13 +1421,13 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		// — a `/` command that names an agent is the USER asking, and the command
 		// declares that up front, so the grant is checked here rather than the ban
 		// being softened for everybody. See `agentGrantedThisTurn` on ToolSession.
-		if (!isSubagentEnabled(this.session.settings, agent) && !this.session.agentGrantedThisTurn?.(agent.name)) {
+		if (!isAgentEnabled(this.session.settings, agent) && !this.session.agentGrantedThisTurn?.(agent.name)) {
 			const enabled = filterEnabledAgents(this.session.settings, agents).map(a => a.name);
 			return {
 				content: [
 					{
 						type: "text",
-						text: `Agent "${agentName}" is disabled (subagent.agents.${agentName}.enabled is false), so it cannot be chosen. Enable it in the Subagents settings tab (/settings), or use a different agent type.${enabled.length > 0 ? ` Enabled: ${enabled.join(", ")}` : ""}`,
+						text: `Agent "${agentName}" is disabled (agent.agents.${agentName}.enabled is false), so it cannot be chosen. Enable it in the Agents settings tab (/settings), or use a different agent type.${enabled.length > 0 ? ` Enabled: ${enabled.join(", ")}` : ""}`,
 					},
 				],
 				details: { projectAgentsDir, results: [], totalDurationMs: 0 },
@@ -1445,7 +1445,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		const effectiveAgent: typeof agent = planModeState?.enabled
 			? {
 					...agent,
-					systemPrompt: `${planModePrompts["plan-mode/subagent"].text}\n\n${agent.systemPrompt}`,
+					systemPrompt: `${planModePrompts["plan-mode/agent"].text}\n\n${agent.systemPrompt}`,
 					tools: planModeTools,
 					spawns: undefined,
 				}
@@ -1461,7 +1461,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		// agent resolved to has no working credentials, and warns when it does.
 		const parentActiveModelPattern = this.session.getActiveModelString?.();
 		const parentThinkingLevel = this.session.getActiveThinkingLevel?.();
-		const resolvedModel = resolveSubagentModel({
+		const resolvedModel = resolveAgentModel({
 			settings: this.session.settings,
 			agentName,
 			agentModel: effectiveAgent.model,
@@ -1476,14 +1476,14 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				content: [
 					{
 						type: "text",
-						text: `Cannot spawn "${agentName}": ${subagentModelSourceLabel(source, agentName, depth)} is set to "${value}", which matches no available model. Fix that setting in Subagents → Roster → ${agentName} (or clear it to fall back to the default model role) and try again.`,
+						text: `Cannot spawn "${agentName}": ${agentModelSourceLabel(source, agentName, depth)} is set to "${value}", which matches no available model. Fix that setting in Agents → Roster → ${agentName} (or clear it to fall back to the default model role) and try again.`,
 					},
 				],
 				details: { projectAgentsDir, results: [], totalDurationMs: Date.now() - startTime },
 			};
 		}
 		const modelOverride = resolvedModel.patterns;
-		const thinkingLevelOverride = resolveSubagentThinkingLevel({
+		const thinkingLevelOverride = resolveAgentThinkingLevel({
 			settings: this.session.settings,
 			agentName,
 			agentThinkingLevel: effectiveAgent.thinkingLevel,
@@ -1514,10 +1514,10 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		// Derive artifacts directory
 		const sessionFile = this.session.getSessionFile();
 		const artifactsDir = sessionFile ? sessionFile.slice(0, -6) : null;
-		// When the parent has no session file (a fileless/in-memory parent), subagent
-		// transcripts must still be durable and studyable — the "including subagents,
+		// When the parent has no session file (a fileless/in-memory parent), agent
+		// transcripts must still be durable and studyable — the "including agents,
 		// everything" fidelity requirement. Route them to the durable sessions dir (never
-		// os.tmpdir, which the OS GC-reaps) and never delete them. A subagent transcript is
+		// os.tmpdir, which the OS GC-reaps) and never delete them. An agent transcript is
 		// a full session record with session_init; losing it is a data-loss bug (GRAN-1).
 		const orphanArtifactsDir = artifactsDir ? null : path.join(getSessionsDir(), `orphan-task-${Snowflake.next()}`);
 		const effectiveArtifactsDir = artifactsDir || orphanArtifactsDir!;
@@ -1527,13 +1527,13 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			getSessionId: this.session.getSessionId ?? (() => null),
 		};
 
-		// Subagents adopt the parent's ArtifactManager so artifact IDs are unique
+		// Agents adopt the parent's ArtifactManager so artifact IDs are unique
 		// across the whole tree and outputs land flat in the parent's dir.
 		const parentArtifactManager = this.session.getArtifactManager?.() ?? undefined;
 
 		// When the session is executing an approved plan, hand the overall plan to
-		// every subagent so they share the main agent's plan context. Skipped in
-		// plan mode (read-only exploration uses planModePrompts["plan-mode/subagent"].text instead) and
+		// every agent so they share the main agent's plan context. Skipped in
+		// plan mode (read-only exploration uses planModePrompts["plan-mode/agent"].text instead) and
 		// when no plan file exists at the session's reference path.
 		const planReference = planModeState?.enabled
 			? undefined
@@ -1565,7 +1565,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				agent: agentName,
 				agentSource: agent.source,
 				status: "pending",
-				task: renderSubagentUserPrompt(assignment),
+				task: renderAgentUserPrompt(assignment),
 				assignment,
 				recentTools: [],
 				recentOutput: [],
@@ -1654,7 +1654,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			const sharedRunOptions = {
 				cwd: spawnCwd,
 				agent: effectiveAgent,
-				task: renderSubagentUserPrompt(assignment),
+				task: renderAgentUserPrompt(assignment),
 				assignment,
 				context: sharedContext,
 				planReference,
@@ -1673,7 +1673,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				sessionFile,
 				persistArtifacts: !!artifactsDir,
 				artifactsDir: effectiveArtifactsDir,
-				enableLsp: subagentLspEnabled,
+				enableLsp: agentLspEnabled,
 				signal,
 				eventBus: this.session.eventBus,
 				onProgress: (progress: AgentProgress) => {
@@ -1689,7 +1689,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				// The `/yolo` bypass lives on the session, not in settings, so it has
 				// to be handed over explicitly or the child silently drops a rung.
 				bypassAllApprovals: this.session.isApprovalBypassed?.() ?? false,
-				// Read live, so `/yolo off` reaches a subagent that is already running.
+				// Read live, so `/yolo off` reaches an agent that is already running.
 				parentApprovalBypassed: () => this.session.isApprovalBypassed?.() ?? false,
 				obfuscateProviderText: this.session.obfuscateProviderText,
 				completeImpl: this.session.sideComplete,
@@ -1714,10 +1714,10 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				// The child joins THIS session's budget group instead of opening a
 				// second one, so a resource limit cannot be multiplied by delegating.
 				parentSessionId: this.session.getSessionId?.() ?? undefined,
-				// Live source of truth for `tier.subagent: inherit`. When the session
+				// Live source of truth for `tier.agent: inherit`. When the session
 				// exposes a tier accessor, pass the per-family map or null (null =
 				// explicit none, e.g. /fast off); otherwise leave undefined so inherit
-				// falls back to the subagent's configured tier.* settings.
+				// falls back to the agent's configured tier.* settings.
 				parentServiceTier: this.session.getServiceTierByFamily
 					? (this.session.getServiceTierByFamily() ?? null)
 					: undefined,
@@ -1746,7 +1746,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 							id: agentId,
 							agent: agent.name,
 							agentSource: agent.source,
-							task: renderSubagentUserPrompt(assignment),
+							task: renderAgentUserPrompt(assignment),
 							assignment,
 							exitCode: 1,
 							output: "",
@@ -1787,14 +1787,14 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			}
 
 			// The orphan artifacts dir (fileless parent) is intentionally NOT deleted: it holds
-			// subagent session transcripts that must remain studyable (GRAN-1). It lives under
+			// agent session transcripts that must remain studyable (GRAN-1). It lives under
 			// the durable sessions dir, not os.tmpdir, so nothing GC-reaps it.
 
-			// Record a structured parent->child index entry pointing at this subagent's durable
-			// transcript, so a study/backtest tool can enumerate a session's subagents without
+			// Record a structured parent->child index entry pointing at this agent's durable
+			// transcript, so a study/backtest tool can enumerate a session's agents without
 			// scraping tool-result prose (GRAN-2). The child transcript path is derived exactly
 			// as the executor derives it: `<artifactsDir>/<id>.jsonl` (ONE PLACE).
-			this.session.recordSubagentSpawn?.({
+			this.session.recordAgentSpawn?.({
 				agentId: result.id,
 				agentName: result.agent,
 				task: result.task,
@@ -1823,7 +1823,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		totalDurationMs: number,
 		mergeSummary: string,
 	): AgentToolResult<TaskToolDetails> {
-		const outcome = classifySubagentOutcome(result);
+		const outcome = classifyAgentOutcome(result);
 		const status = outcome.label;
 		const output = formatResultOutputFallback(result);
 		const outputCharCount = result.outputMeta?.charCount ?? output.length;

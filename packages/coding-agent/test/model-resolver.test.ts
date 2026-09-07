@@ -747,17 +747,17 @@ describe("resolveModelRoleValue", () => {
 	});
 });
 /**
- * Role EXPANSION, the layer every subagent model pattern passes through.
+ * Role EXPANSION, the layer every agent model pattern passes through.
  *
  * Expansion answers one question: does this `@role` alias name a model of its
  * own? It must never answer with a model the operator did not choose, because
- * the caller (`resolveSubagentModel`) applies inherit afterwards and cannot tell
+ * the caller (`resolveAgentModel`) applies inherit afterwards and cannot tell
  * an operator's choice from a built-in guess once expansion has returned one.
  */
 describe("resolveConfiguredModelPatterns — role expansion", () => {
 	/**
-	 * `@task` was retired along with the `task` model role: the subagent model
-	 * lives in the Subagents settings area (`subagent.model`) and having a role by
+	 * `@task` was retired along with the `task` model role: the agent model
+	 * lives in the Agents settings area (`agent.model`) and having a role by
 	 * the same name meant two owners for one value, with role expansion answering
 	 * first. An old agent file still carrying `@task` must expand to nothing so the
 	 * spawn path reports it loudly rather than resolving it behind the operator.
@@ -789,7 +789,7 @@ describe("resolveConfiguredModelPatterns — role expansion", () => {
 	 *
 	 * `@smol` / `@slow` / `@designer` used to expand to `priority.json` when the
 	 * role was unset, which is why a stock install spawned scout, reviewer and
-	 * designer subagents on three different models and no subagent model setting
+	 * designer agents on three different models and no agent model setting
 	 * could hold: agent frontmatter carries those aliases, and the chain answered
 	 * before any operator choice was consulted. An unset role must contribute NO
 	 * pattern of its own so the caller applies inherit.

@@ -80,7 +80,7 @@
 		"statusLineUntracked": "blue",
 		"statusLineOutput": "spark",
 		"statusLineCost": "gold",
-		"statusLineSubagents": "gold",
+		"statusLineAgents": "gold",
 		"pythonMode": "gold"
 	},
 	"export": {

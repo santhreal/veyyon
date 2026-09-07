@@ -386,6 +386,7 @@ const NAMED_BY_NO_TEST: readonly string[] = [
 	"packages/coding-agent/src/speech/tts/downloader.ts",
 	"packages/coding-agent/src/speech/tts/tts-worker.ts",
 	"packages/coding-agent/src/theme/before-markdown-theme.ts",
+	"packages/coding-agent/src/tools/agent/memory-session.ts",
 	"packages/coding-agent/src/tools/core/result-notice.ts",
 	"packages/coding-agent/src/tools/search/text-search-scope.ts",
 	"packages/coding-agent/src/tools/web/browser/handle-release.ts",

@@ -32,7 +32,7 @@ A package defines its own prompts. Each package that ships any keeps them under 
 
 | Package | Prompts directory | What is in it |
 |---|---|---|
-| `@veyyon/coding-agent` | `packages/coding-agent/src/prompts/` | the system prompt, the subagent prompt, tool descriptions, and every turn the agent takes on its own behalf |
+| `@veyyon/coding-agent` | `packages/coding-agent/src/prompts/` | the system prompt, the agent prompt, tool descriptions, and every turn the agent takes on its own behalf |
 | `@veyyon/agent-core` | `packages/agent/src/prompts/` | compaction: summarizing a session, branch summaries, handoff documents |
 | `@veyyon/ai` | `packages/ai/src/prompts/` | one format guide per tool-call dialect, plus the tool-catalog template that contains them |
 | `@veyyon/hashline` | `plugins/hashline/src/` | the hashline patch language, which is the edit tool's description |
@@ -319,7 +319,7 @@ Use `--json` to compare two configurations mechanically, for example to check th
 
 ### The other prompts
 
-The system prompt is not the only prompt a model receives. Delegated tasks run under a subagent prompt, and there are separate prompts for summarizing a session, titling it, writing a commit message, classifying a turn, teaching a model how to write a tool call, and more. List them with:
+The system prompt is not the only prompt a model receives. Delegated tasks run under an agent prompt, and there are separate prompts for summarizing a session, titling it, writing a commit message, classifying a turn, teaching a model how to write a tool call, and more. List them with:
 
 ```
 veyyon prompt --prompts
@@ -328,12 +328,12 @@ veyyon prompt --prompts
 Then look at one:
 
 ```
-veyyon prompt --prompt subagent/system-prompt
+veyyon prompt --prompt agent/system-prompt
 ```
 
-That reports the prompt's sections and which of them are optional, so you can tell a subagent prompt that rendered three of its five sections because the task had no plan and no worktree from one that lost two sections to a bug.
+That reports the prompt's sections and which of them are optional, so you can tell an agent prompt that rendered three of its five sections because the task had no plan and no worktree from one that lost two sections to a bug.
 
-Most of these prompts are a single region with no internal structure, and they report one `body` section. The subagent prompt has five: `role`, `context`, `plan`, `coop`, and `completion`.
+Most of these prompts are a single region with no internal structure, and they report one `body` section. The agent prompt has five: `role`, `context`, `plan`, `coop`, and `completion`.
 
 The list is grouped by the directory each prompt lives in, and the lookup spans all four groups, so `veyyon prompt --prompt compaction/summarization-system` and `veyyon prompt --prompt dialect/gemma` work the same way as one from the coding agent's own tree. A mistyped id is rejected with the nearest registered id quoted back, rather than printing an empty description that would read as a prompt with nothing in it.
 
@@ -487,15 +487,15 @@ The check to apply when writing template text:
 | A behavior nothing decides, stated as a rule the operator cannot see or change | No — make it a setting first |
 
 For delegation this means the template never lists what is delegable. The enabled agents are
-the instruction: `subagentNames` and `hasSubagentSpecialists` carry the operator's answer, and
+the instruction: `agentNames` and `hasAgentSpecialists` carry the operator's answer, and
 the template reads them. Enabling `reviewer` is how an operator says reviews are delegable
 here, so nothing needs to say it in prose.
 
 ### The gates
 
 Some of the prompt's text is decided by a setting. The IRC coordination clause appears only
-when the session can still spawn subagents, the delegation section changes wording with
-`subagent.delegation`, and the personality block disappears when `personality` is `none`.
+when the session can still spawn agents, the delegation section changes wording with
+`agent.delegation`, and the personality block disappears when `personality` is `none`.
 
 Those settings are listed in one place,
 `packages/coding-agent/src/system-prompt-builder/gate-registry.ts`. Each row records the
@@ -511,12 +511,12 @@ from the registry, so the model sees the new text on its next request. These are
 | --- | --- |
 | `personality` | the personality block, or nothing when set to `none` |
 | `tui.renderMermaid` | whether the model is told Mermaid fences render as terminal diagrams |
-| `subagent.enabled` | the whole Delegation section, which is absent when subagents are off |
-| `subagent.delegation` | whether the section requests delegation, and whether it uses MUST/ONLY wording |
-| `subagent.batch` | which call shape the delegation guidance teaches |
-| `subagent.maxConcurrency` | the concurrency limit quoted in that guidance |
-| `subagent.maxNestedSpawnDepth` | the IRC coordination clause, present only when this session can spawn |
-| `subagent.agents` | which specialists delegation prose names |
+| `agent.enabled` | the whole Delegation section, which is absent when agents are off |
+| `agent.delegation` | whether the section requests delegation, and whether it uses MUST/ONLY wording |
+| `agent.batch` | which call shape the delegation guidance teaches |
+| `agent.maxConcurrency` | the concurrency limit quoted in that guidance |
+| `agent.maxNestedSpawnDepth` | the IRC coordination clause, present only when this session can spawn |
+| `agent.agents` | which specialists delegation prose names |
 | `includeModelInPrompt` | whether the active model is surfaced in the workstation block |
 | `tools.format` | whether tools are described inline or left to the provider's tool list |
 | `inlineToolDescriptors` | whether descriptors live in the prompt or provider schemas for the active model |
@@ -550,9 +550,9 @@ That is not the same as a default session, and on four gates it is deliberately 
 
 | Gate | Omitted | A default session |
 | --- | --- | --- |
-| `eagerTasks` | `false`, no delegation ask | `true`, because `subagent.delegation` ships as `preferred` |
+| `eagerTasks` | `false`, no delegation ask | `true`, because `agent.delegation` ships as `preferred` |
 | `taskIrcEnabled` | `false`, no coordination clause | `true`, because the recursion limit allows spawning |
-| `subagentNames` | `[]`, prose lists no specialist | the agents this session can spawn |
+| `agentNames` | `[]`, prose lists no specialist | the agents this session can spawn |
 | `taskMaxConcurrency` | `0`, quote no cap | `32`, the shipped limit |
 
 You want the resolved values, not the fallbacks, whenever you are showing or benchmarking a real

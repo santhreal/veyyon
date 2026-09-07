@@ -213,7 +213,7 @@ export const EDITING_SETTINGS = {
 			group: "Read Summaries",
 			label: "Read Summary Unfold Ceiling",
 			description:
-				"Hard ceiling on summary size while BFS-unfolding. An unfold whose revealed lines would exceed this is skipped (that span stays folded) and unfolding continues with the remaining spans.",
+				"Maximum number of lines a structural summary may grow to while folded spans are revealed. A span whose lines would exceed it stays folded and the next span is tried.",
 		},
 	},
 

@@ -3,7 +3,7 @@
  * (ARCH-2, bottom-chrome slice). These tests exist because the DS-6 glyph
  * morph was previously decided inline in interactive-mode and had ZERO
  * byte-level coverage: a regression could swap a mode glyph, drop the bypass
- * precedence, or lose the focused-subagent dim, and nothing would fail. Every
+ * precedence, or lose the focused-agent dim, and nothing would fail. Every
  * mode state is pinned here with exact output bytes, including the precedence
  * order (`/yolo` bypass outranks everything — the operator must never lose
  * sight of a full approval bypass).
@@ -27,7 +27,7 @@ function idle(overrides: Partial<ComposerAccentState> = {}): ComposerAccentState
 		bashMode: false,
 		pythonMode: false,
 		planMode: false,
-		focusedSubagent: false,
+		focusedAgent: false,
 		sessionAccentAnsi: undefined,
 		thinkingLevel: ThinkingLevel.Off,
 		...overrides,
@@ -96,17 +96,17 @@ describe("resolveComposerAccents — the DS-6 glyph morph", () => {
 	});
 });
 
-describe("resolveComposerAccents — the focused-subagent dim", () => {
-	/** A focused subagent view borrows the composer; its chrome faints (SGR 2)
+describe("resolveComposerAccents — the focused-agent dim", () => {
+	/** A focused agent view borrows the composer; its chrome faints (SGR 2)
 	 * so the borrowed session is visually distinct from the main one. */
 	it("wraps both the caret and the border in dim", () => {
-		const a = resolveComposerAccents(idle({ focusedSubagent: true }));
+		const a = resolveComposerAccents(idle({ focusedAgent: true }));
 		expect(a.promptGutter).toBe(`${INSET}\x1b[2m${theme.getFgAnsi("borderAccent")}›\x1b[39m\x1b[22m `);
 		expect(a.borderColor("x")).toBe(`\x1b[2m${theme.getThinkingBorderColor(ThinkingLevel.Off)("x")}\x1b[22m`);
 	});
 
 	it("dims the danger states too, without losing their glyphs", () => {
-		const a = resolveComposerAccents(idle({ bypass: true, focusedSubagent: true }));
+		const a = resolveComposerAccents(idle({ bypass: true, focusedAgent: true }));
 		expect(a.promptGutter).toBe(`${INSET}\x1b[2m${theme.getBypassModeBorderColor()("!")}\x1b[22m `);
 	});
 });

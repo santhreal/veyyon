@@ -115,6 +115,6 @@ A few surfaces are worth trying early:
 
 - **A multi-file change.** Ask for a refactor across modules. Hashline edits batch the paths together.
 - **The session tree.** `/tree` jumps back to an earlier message and branches from it inside the same session file.
-- **Model slots.** `/model` sets the interactive model. You set the subagent and compaction models in settings; see [Models, roles, and profiles](./roles-and-profiles.md).
+- **Model slots.** `/model` sets the interactive model. You set the agent and compaction models in settings; see [Models, roles, and profiles](./roles-and-profiles.md).
 
 From here, the [Quickstart](./quickstart.md) is a shorter walkthrough, [Configuration](./configuration.md) covers settings, [Sessions](./sessions.md) explains resuming and branching, [Memory](../features/memory.md) covers the mnemopi backend, and [Diagnostics](../features/doctor.md) covers the doctor and debug tools.

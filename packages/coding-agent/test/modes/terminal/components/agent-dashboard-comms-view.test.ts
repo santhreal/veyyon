@@ -1,7 +1,7 @@
 /**
- * The Comms view of the subagent dashboard: agent-to-agent traffic, streaming.
+ * The Comms view of the agent dashboard: agent-to-agent traffic, streaming.
  *
- * WHY IT READS THE BUS. A subagent's session file shows what THAT agent
+ * WHY IT READS THE BUS. An agent's session file shows what THAT agent
  * received, so a view built from transcripts shows each half of a conversation
  * in a different file and never shows the legs that failed to land at all. The
  * bus sees every leg, keeps them after delivery has drained the mailbox, and

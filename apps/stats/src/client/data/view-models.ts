@@ -12,7 +12,7 @@ import type {
 } from "../types";
 
 /** Fixed display order for the agent-token-share breakdown. */
-const AGENT_TYPE_ORDER: AgentType[] = ["main", "subagent", "advisor"];
+const AGENT_TYPE_ORDER: AgentType[] = ["main", "spawn", "advisor"];
 
 export interface AgentTokenSegment {
 	agentType: AgentType;
@@ -32,7 +32,7 @@ export interface AgentTokenShareView {
 
 /**
  * Build the "token usage by agent" breakdown: one segment per agent type that
- * appears in the data, ordered main -> subagents -> advisor, each carrying its
+ * appears in the data, ordered main -> spawned agents -> advisor, each carrying its
  * token total and share of the grand total. Token counts sum the same four
  * columns the overview renders (input + output + cache read + cache write) so a
  * segment's share never disagrees with the count beside it.

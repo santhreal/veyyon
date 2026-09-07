@@ -2,10 +2,10 @@
  * A dotted key at the TOP LEVEL of a config file names the same setting as its
  * nested spelling.
  *
- * WHY THIS SUITE EXISTS: it did not. `subagent.model: openai/gpt-5` written at the
+ * WHY THIS SUITE EXISTS: it did not. `agent.model: openai/gpt-5` written at the
  * top level of `config.yml` was parsed, merged into the settings tree, and then
  * never read — `get` walks nested segments, so the value sat under a literal
- * `"subagent.model"` key that nothing looked at. The operator's setting silently
+ * `"agent.model"` key that nothing looked at. The operator's setting silently
  * did nothing: no warning, no invalid-value entry, no quarantine, and a `config
  * list` that showed the default. It affected EVERY setting, not one, and it was
  * found only because a migration wrote that same shape and made every legacy
@@ -73,9 +73,9 @@ describe("flat dotted setting keys", () => {
 	 * flat. Before the fix this read back as `undefined` — the schema default.
 	 */
 	test("a flat string setting is readable", async () => {
-		writeConfig({ "subagent.model": "openai/gpt-5:high" });
+		writeConfig({ "agent.model": "openai/gpt-5:high" });
 		const settings = await load();
-		expect(settings.get("subagent.model")).toBe("openai/gpt-5:high");
+		expect(settings.get("agent.model")).toBe("openai/gpt-5:high");
 	});
 
 	/** Booleans are the easiest to miss: the default reads as a plausible answer. */
@@ -87,17 +87,17 @@ describe("flat dotted setting keys", () => {
 
 	/** Numbers and enums go through the same path; pin one of each. */
 	test("flat number and enum settings are readable", async () => {
-		writeConfig({ "subagent.maxConcurrency": 4, "subagent.delegation": "required" });
+		writeConfig({ "agent.maxConcurrency": 4, "agent.delegation": "required" });
 		const settings = await load();
-		expect(settings.get("subagent.maxConcurrency")).toBe(4);
-		expect(settings.get("subagent.delegation")).toBe("required");
+		expect(settings.get("agent.maxConcurrency")).toBe(4);
+		expect(settings.get("agent.delegation")).toBe("required");
 	});
 
 	/** Three-segment paths must expand all the way down, not just one level. */
 	test("a three-segment flat key is readable", async () => {
-		writeConfig({ "subagent.isolation.mode": "rcopy" });
+		writeConfig({ "agent.isolation.mode": "rcopy" });
 		const settings = await load();
-		expect(settings.get("subagent.isolation.mode")).toBe("rcopy");
+		expect(settings.get("agent.isolation.mode")).toBe("rcopy");
 	});
 
 	/**
@@ -105,10 +105,10 @@ describe("flat dotted setting keys", () => {
 	 * one key flat would erase every sibling the operator nested.
 	 */
 	test("expanding into an existing block keeps its other keys", async () => {
-		writeConfig({ subagent: { delegation: "preferred" }, "subagent.model": "openai/gpt-5" });
+		writeConfig({ agent: { delegation: "preferred" }, "agent.model": "openai/gpt-5" });
 		const settings = await load();
-		expect(settings.get("subagent.delegation")).toBe("preferred");
-		expect(settings.get("subagent.model")).toBe("openai/gpt-5");
+		expect(settings.get("agent.delegation")).toBe("preferred");
+		expect(settings.get("agent.model")).toBe("openai/gpt-5");
 	});
 
 	/**
@@ -118,14 +118,14 @@ describe("flat dotted setting keys", () => {
 	 * does nothing.
 	 */
 	test("the nested value wins when a setting is written both ways, and the flat key is dropped", async () => {
-		writeConfig({ subagent: { model: "anthropic/claude-opus-4-5" }, "subagent.model": "openai/gpt-5" });
+		writeConfig({ agent: { model: "anthropic/claude-opus-4-5" }, "agent.model": "openai/gpt-5" });
 		const settings = await load();
-		expect(settings.get("subagent.model")).toBe("anthropic/claude-opus-4-5");
+		expect(settings.get("agent.model")).toBe("anthropic/claude-opus-4-5");
 
 		await rewriteFile(settings);
 		const written = readConfig();
-		expect(written["subagent.model"]).toBeUndefined();
-		expect((written.subagent as Record<string, unknown>).model).toBe("anthropic/claude-opus-4-5");
+		expect(written["agent.model"]).toBeUndefined();
+		expect((written.agent as Record<string, unknown>).model).toBe("anthropic/claude-opus-4-5");
 	});
 
 	/**
@@ -134,13 +134,13 @@ describe("flat dotted setting keys", () => {
 	 * unknown keys would also invent blocks the schema never declared.
 	 */
 	test("an unknown dotted key is left exactly as written", async () => {
-		writeConfig({ "someFutureFeature.enabled": true, "subagent.model": "openai/gpt-5" });
+		writeConfig({ "someFutureFeature.enabled": true, "agent.model": "openai/gpt-5" });
 		const settings = await load();
 		await rewriteFile(settings);
 		const written = readConfig();
 		expect(written["someFutureFeature.enabled"]).toBe(true);
 		expect(written.someFutureFeature).toBeUndefined();
-		expect(settings.get("subagent.model")).toBe("openai/gpt-5");
+		expect(settings.get("agent.model")).toBe("openai/gpt-5");
 	});
 
 	/**
@@ -149,12 +149,12 @@ describe("flat dotted setting keys", () => {
 	 * conflict reported instead.
 	 */
 	test("a scalar in the way is not overwritten", async () => {
-		writeConfig({ subagent: "yes", "subagent.model": "openai/gpt-5" });
+		writeConfig({ agent: "yes", "agent.model": "openai/gpt-5" });
 		const settings = await load();
 		await rewriteFile(settings);
 		const written = readConfig();
-		expect(written.subagent).toBe("yes");
-		expect(written["subagent.model"]).toBe("openai/gpt-5");
+		expect(written.agent).toBe("yes");
+		expect(written["agent.model"]).toBe("openai/gpt-5");
 	});
 
 	/**
@@ -163,17 +163,17 @@ describe("flat dotted setting keys", () => {
 	 * not reintroduce a dotted key.
 	 */
 	test("is a fixed point across a save and reload", async () => {
-		writeConfig({ "subagent.model": "openai/gpt-5", "subagent.isolation.mode": "rcopy" });
+		writeConfig({ "agent.model": "openai/gpt-5", "agent.isolation.mode": "rcopy" });
 		const first = await load();
 		await rewriteFile(first);
 		const afterFirst = readConfig();
 
 		const second = await load();
-		expect(second.get("subagent.model")).toBe("openai/gpt-5");
-		expect(second.get("subagent.isolation.mode")).toBe("rcopy");
+		expect(second.get("agent.model")).toBe("openai/gpt-5");
+		expect(second.get("agent.isolation.mode")).toBe("rcopy");
 		await rewriteFile(second);
 		expect(readConfig()).toEqual(afterFirst);
-		expect(Object.keys(readConfig()).some(key => key.startsWith("subagent."))).toBe(false);
+		expect(Object.keys(readConfig()).some(key => key.startsWith("agent."))).toBe(false);
 	});
 
 	/**
@@ -187,9 +187,9 @@ describe("flat dotted setting keys", () => {
 		const projectDir = makeFlatDottedProjectDir();
 		try {
 			const overlay = path.join(projectDir, "overlay.yml");
-			fs.writeFileSync(overlay, YAML.stringify({ "subagent.maxConcurrency": 2 }));
+			fs.writeFileSync(overlay, YAML.stringify({ "agent.maxConcurrency": 2 }));
 			const settings = await Settings.loadIsolated({ agentDir, cwd: projectDir, configFiles: [overlay] });
-			expect(settings.get("subagent.maxConcurrency")).toBe(2);
+			expect(settings.get("agent.maxConcurrency")).toBe(2);
 		} finally {
 			await removeWithRetries(guardDestructivePath(projectDir, "flat-dotted-setting-keys-project"));
 		}

@@ -611,7 +611,7 @@ export type CollabFrame =
 	 */
 	| { t: "event"; event: WireAgentEvent }
 	| { t: "state"; state: CollabSessionState }
-	/** Mirrored EventBus traffic (task subagent lifecycle/progress channels only). */
+	/** Mirrored EventBus traffic (task agent lifecycle/progress channels only). */
 	| { t: "bus"; channel: BusChannel; data: unknown }
 	/** Full agent-registry snapshot (debounced on registry change). */
 	| { t: "agents"; agents: AgentSnapshot[] }

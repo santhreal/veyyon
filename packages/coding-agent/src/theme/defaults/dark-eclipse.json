@@ -80,7 +80,7 @@
 		"statusLineUntracked": "astral",
 		"statusLineOutput": "silver",
 		"statusLineCost": "corona",
-		"statusLineSubagents": "corona",
+		"statusLineAgents": "corona",
 		"pythonMode": "#f0c040"
 	},
 	"export": {

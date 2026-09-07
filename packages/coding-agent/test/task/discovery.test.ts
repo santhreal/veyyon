@@ -48,7 +48,7 @@ const CLAUDE_AGENT_MD = [
 	"model: sonnet",
 	"color: purple",
 	"---",
-	"You are a Claude Code custom subagent.",
+	"You are a Claude Code custom agent.",
 ].join("\n");
 
 async function writeOmpPluginAgent(home: string): Promise<void> {
@@ -102,7 +102,7 @@ describe("discoverAgents", () => {
 	 * spawn does. Naming it after a bundled role took that role over, and first-run
 	 * onboarding then offered the repository's version as an ordinary row and wrote
 	 * it enabled into the operator's own config. Cloning a repo is not consent to
-	 * run its subagent prompts.
+	 * run its agent prompts.
 	 *
 	 * This test used to assert the opposite, because it predates the fix and was
 	 * never updated: it required the project agent to load and `projectAgentsDir`
