@@ -360,6 +360,17 @@ pixels of the `working` tint the row's badge fills with, while the turn runs and
 after it ends. Record its other arm with `PROOF_BASE_REF=HEAD`, since the change
 is inside the executable alone.
 
+Use `proof/scenes/desktop-settings-field.sh` to type into a real General
+settings row and count the lit pixels of its value column at rest, while a new
+value is typed, and after the host has stored it. Record its other arm with
+`PROOF_BASE_REF=HEAD`, since the change is inside the executable alone.
+
+Use `proof/scenes/desktop-settings-column.sh` to press the leading third of a
+settings row's control column and then a queue card the open dialog covers. It
+counts the lit pixels of the column's leading half and the pixels of the
+titlebar's session name that a press behind the scrim moves. Record its other
+arm with `PROOF_BASE_REF=HEAD`, since the change is inside the executable alone.
+
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
 The [capture requirements](../foundations/verification.md) specify paired static
 frames and animated clips. Headless scene PNGs do not replace native captures.
