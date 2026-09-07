@@ -126,3 +126,20 @@ export class TestSocketClient {
 		this.#socket.destroy();
 	}
 }
+
+/**
+ * Every value one snapshot section carried across the frames of one request.
+ *
+ * A request's frames are not only its own. A live terminal writes its PTY
+ * output whenever the shell produces it, so the frame at index 0 is whichever
+ * frame arrived first, which under load is a chunk of shell output rather than
+ * the snapshot the request asked for. Selecting by section, and by the property
+ * that identifies the frame the request produced, is what the caller means.
+ */
+export function snapshotSections<T>(frames: RequestFrame[], section: string): T[] {
+	return frames
+		.filter((frame): frame is RequestFrame & { Snapshot: Record<string, unknown> } =>
+			Boolean(frame.Snapshot && section in frame.Snapshot),
+		)
+		.map(frame => frame.Snapshot[section] as T);
+}

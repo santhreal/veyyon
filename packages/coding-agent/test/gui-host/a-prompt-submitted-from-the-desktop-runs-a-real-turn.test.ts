@@ -20,7 +20,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { setTimeout as sleep } from "node:timers/promises";
 import type { AssistantMessage } from "@veyyon/ai";
 import * as ai from "@veyyon/ai/stream";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
@@ -156,13 +155,28 @@ describe("a prompt submitted from the desktop runs a real turn", () => {
 		throw new Error("the streamed reply never cleared within 200 frames");
 	}
 
-	/** The session file's message entries, once it holds at least `expected` of them. */
+	/**
+	 * The session file's message entries, once it holds at least `expected` of them.
+	 *
+	 * The host appends on its own schedule and reports no frame for the write, so
+	 * the file's own change events are the signal. Every read is triggered by a
+	 * write rather than by elapsed time, and the watcher opens before the first
+	 * read so a write between the two still wakes it. A file that keeps changing
+	 * without reaching `expected` fails as the named error below; a file that
+	 * stops changing short of it ends on the suite's own deadline, since a bound
+	 * in elapsed time is the wall-clock delay this suite does without.
+	 */
 	async function messagesOnDisk(file: string, expected: number): Promise<SessionEntry[]> {
-		for (let attempt = 0; attempt < 40; attempt++) {
-			const reloaded = await SessionManager.open(file);
-			const messages = reloaded.getEntries().filter((entry: SessionEntry) => entry.type === "message");
-			if (messages.length >= expected) return messages;
-			await sleep(50);
+		const changes = fs.watch(path.dirname(file))[Symbol.asyncIterator]();
+		try {
+			for (let read = 0; read < 200; read++) {
+				const reloaded = await SessionManager.open(file);
+				const messages = reloaded.getEntries().filter((entry: SessionEntry) => entry.type === "message");
+				if (messages.length >= expected) return messages;
+				if ((await changes.next()).done) break;
+			}
+		} finally {
+			await changes.return?.();
 		}
 		throw new Error(`the session file never reached ${expected} message entries`);
 	}

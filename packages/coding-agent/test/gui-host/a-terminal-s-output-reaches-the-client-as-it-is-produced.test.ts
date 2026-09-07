@@ -21,7 +21,21 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { type GuiHostServer, startGuiHostServer } from "../../src/gui-host";
 import { SCROLLBACK_CAP_BYTES } from "../../src/gui-host/actions/terminals";
-import { type RequestFrame, TestSocketClient } from "./test-client";
+import { type RequestFrame, snapshotSections, TestSocketClient } from "./test-client";
+
+interface TerminalRow {
+	id: string;
+	cols: number;
+	rows: number;
+	status: string;
+}
+
+interface TerminalOutputChunk {
+	terminal: string;
+	seq: number;
+	data: number[];
+	reset: boolean;
+}
 
 describe("a terminal's output reaches the client as it is produced", () => {
 	let tempDir: string;
@@ -229,7 +243,12 @@ describe("a terminal's output reaches the client as it is produced", () => {
 			},
 		});
 		expect(createResult.outcome).toEqual({ RequestSucceeded: { request: 20 } });
-		const terminalId = (createResult.frames[0].Snapshot!.Terminals as Array<{ id: string }>)[0].id;
+		// A live shell writes whenever it wants to, so each snapshot below is
+		// taken from the section it belongs to rather than from the frame that
+		// happened to arrive first.
+		const created = snapshotSections<TerminalRow[]>(createResult.frames, "Terminals").at(-1);
+		const terminalId = created?.[0].id ?? "";
+		expect(terminalId).not.toBe("");
 
 		// 2. ResizeTerminal
 		const resizeResult = await client.request(21, {
@@ -240,13 +259,9 @@ describe("a terminal's output reaches the client as it is produced", () => {
 			},
 		});
 		expect(resizeResult.outcome).toEqual({ RequestSucceeded: { request: 21 } });
-		const resizedTerms = resizeResult.frames[0].Snapshot!.Terminals as Array<{
-			id: string;
-			cols: number;
-			rows: number;
-		}>;
-		expect(resizedTerms[0].cols).toBe(120);
-		expect(resizedTerms[0].rows).toBe(40);
+		const resizedTerms = snapshotSections<TerminalRow[]>(resizeResult.frames, "Terminals").at(-1);
+		expect(resizedTerms?.[0].cols).toBe(120);
+		expect(resizedTerms?.[0].rows).toBe(40);
 
 		// Invalid resize parameters fail closed
 		const invalidResize = await client.request(22, {
@@ -273,38 +288,48 @@ describe("a terminal's output reaches the client as it is produced", () => {
 		});
 		expect(writeResult.outcome).toEqual({ RequestSucceeded: { request: 23 } });
 
+		// The write reached the PTY when the shell's own output arrives, so that
+		// is what is waited for: it asserts the write did something, and it
+		// leaves no chunk queued in front of the clear's frames below. This
+		// suite failed once in a loaded run because the frame that arrived first
+		// after a request was a chunk of shell output rather than the snapshot
+		// the request produced.
+		let echoed = false;
+		for (let i = 0; i < 40 && !echoed; i++) {
+			const frame = (await client.nextFrame()) as RequestFrame;
+			const chunk = frame.Snapshot?.TerminalOutput as TerminalOutputChunk | undefined;
+			echoed = chunk?.terminal === terminalId && Buffer.from(chunk.data).toString("utf8").includes("dynamic_output");
+		}
+		expect(echoed).toBe(true);
+
 		// 4. ClearTerminal empties scrollback and emits reset: true with empty data
 		const clearResult = await client.request(24, {
 			ClearTerminal: { terminal_id: terminalId },
 		});
 		expect(clearResult.outcome).toEqual({ RequestSucceeded: { request: 24 } });
-		const clearOutput = clearResult.frames[0].Snapshot!.TerminalOutput as {
-			terminal: string;
-			data: number[];
-			reset: boolean;
-		};
-		expect(clearOutput.terminal).toBe(terminalId);
-		expect(clearOutput.reset).toBe(true);
-		expect(clearOutput.data).toEqual([]);
+		// The clear is the reset that carries no bytes: a chunk of shell output
+		// also arrives with `reset` set when it is the terminal's first, and it
+		// always carries the bytes it is reporting.
+		const clearOutput = snapshotSections<TerminalOutputChunk>(clearResult.frames, "TerminalOutput").find(
+			chunk => chunk.reset && chunk.data.length === 0,
+		);
+		expect(clearOutput?.terminal).toBe(terminalId);
 
 		// 5. RestartTerminal restarts PTY session
 		const restartResult = await client.request(25, {
 			RestartTerminal: { terminal_id: terminalId },
 		});
 		expect(restartResult.outcome).toEqual({ RequestSucceeded: { request: 25 } });
-		const restartedTerms = restartResult.frames[0].Snapshot!.Terminals as Array<{
-			id: string;
-			status: string;
-		}>;
-		expect(restartedTerms[0].id).toBe(terminalId);
-		expect(restartedTerms[0].status).toBe("Running");
+		const restartedTerms = snapshotSections<TerminalRow[]>(restartResult.frames, "Terminals").at(-1);
+		expect(restartedTerms?.[0].id).toBe(terminalId);
+		expect(restartedTerms?.[0].status).toBe("Running");
 
 		// 6. CloseTerminal terminates PTY and removes from list
 		const closeResult = await client.request(26, {
 			CloseTerminal: { terminal_id: terminalId },
 		});
 		expect(closeResult.outcome).toEqual({ RequestSucceeded: { request: 26 } });
-		const remainingTerms = closeResult.frames[0].Snapshot!.Terminals as Array<unknown>;
+		const remainingTerms = snapshotSections<unknown[]>(closeResult.frames, "Terminals").at(-1);
 		expect(remainingTerms).toEqual([]);
 
 		client.destroy();
