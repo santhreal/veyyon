@@ -114,8 +114,9 @@
 
 ### Changed
 
-- Every setting in every domain states what it does and what each value selects in one to three sentences, with no design history or internal vocabulary; the idle timeout row is labelled "Park Idle Agents After" and the Park and Prune groups are one "Idle Agents" group.
+- Every setting in every domain states what it does and what each value selects in one to three sentences, with no design history or internal vocabulary; the idle timeout row is labelled "Park Idle Agents After", the Park and Prune groups are one "Idle Agents" group, the artifact rows are "Artifact Threshold", "Artifact Head Size" and "Artifact Tail Size" with the unit on their options, and the MCP debounce row is "MCP Notification Delay".
 - `AgentRegistry.setStatus` consults `AGENT_TRANSITIONS` and throws `AgentTransitionError` for a status move the lifecycle does not perform, so a turn event that arrives after a kill or a park no longer revives the agent; a collab guest mirrors the host's roster through `mirrorStatus`.
+- An agent adopted at hand-over, revived from disk or listed from a previous run receives its idle and prune budgets through one builder, so a zero quiet budget disables pruning and a waiting budget is never shorter than the quiet one on every path; no behaviour changes on the paths that already agreed.
 - Interactive chat and the transcript viewer use one replay implementation without changing displayed content or live-tool lifecycle.
 - Settings group types derive from the settings schema while preserving their existing optional fields and value types.
 - JSON tree projections share bounded traversal, and code and Markdown cells share output assembly, with unchanged rendering.
@@ -296,6 +297,8 @@
 
 ### Fixed
 
+- A compaction that had just freed context no longer reports "Compaction freed too little context to make progress" when its entry is written in the same millisecond as the kept assistant turn; whether a turn predates the latest compaction is read from its position on the branch, not its timestamp.
+- The home anchor sizes its fills, the welcome hero mounts, and the per-frame sizing pass runs on the screen the interactive mode renders on rather than the one its constructor built, and `startup.quiet` is read from the session's settings like the other startup reads.
 - An agent whose session is on screen is no longer parked under it: opening an agent pins it for as long as the main view points at it, a park deadline that elapses meanwhile is deferred, and the idle TTL counts again from the return to the main session.
 - The task card lifts the missing-yield warning out of an agent's output under both its current spelling, `SYSTEM WARNING: Agent exited without calling yield tool`, and the `Subagent` spelling a session file recorded before it; the `task:subagent:progress` and `task:subagent:lifecycle` bus channels a collab guest matches on keep their spelling.
 - Custom tools retain their declared call and result views when converted into extension tool definitions.
