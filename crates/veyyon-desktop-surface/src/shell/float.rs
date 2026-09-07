@@ -69,7 +69,9 @@ pub(super) fn overlay_layer(
 	geometry.width_px = geometry
 		.width_px
 		.min(f32::from(window.viewport_size().width - margin * 2.0));
-	let max_available_height = (available_height_px - f32::from(margin) * 2.0).max(0.0);
+	let max_available_height = f32::from(margin)
+		.mul_add(-2.0, available_height_px)
+		.max(0.0);
 	geometry.max_height_px = geometry.max_height_px.min(max_available_height);
 	let content = match retained {
 		Overlay::Palette(state) => {
@@ -142,7 +144,11 @@ impl ShellView {
 	/// Settings data remains available until the closing float settles.
 	pub(crate) fn active_settings(&self) -> Option<&crate::settings::SettingsState> {
 		self.state.overlay_settings().or_else(|| {
-			self.palette_input.retained.as_ref().and_then(crate::Overlay::as_settings)
+			self
+				.palette_input
+				.retained
+				.as_ref()
+				.and_then(crate::Overlay::as_settings)
 		})
 	}
 }

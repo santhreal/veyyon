@@ -1,4 +1,4 @@
-//! In-transcript find floating toolbar and ShellView lifecycle (§5.2, §5.3,
+//! In-transcript find floating toolbar and `ShellView` lifecycle (§5.2, §5.3,
 //! §5.14).
 
 use std::time::Instant;

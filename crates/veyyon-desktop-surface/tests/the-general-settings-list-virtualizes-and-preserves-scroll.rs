@@ -89,13 +89,13 @@ fn make_large_settings(count: usize) -> SettingsView {
 	map
 }
 
-fn open_general_settings_session_sized<'a>(
-	cx: &'a mut Headless,
+fn open_general_settings_session_sized(
+	cx: &mut Headless,
 	settings_view: SettingsView,
 	routed: bool,
 	width: u32,
 	height: u32,
-) -> HeadlessSession<'a, ShellView> {
+) -> HeadlessSession<'_, ShellView> {
 	let mut tokens = load_bundled_tokens().expect("bundled tokens load");
 	let MotionModel::SpringFade(float) = &mut tokens.motion.float.model else {
 		panic!("the float role must use its spring-fade model");
@@ -124,11 +124,11 @@ fn open_general_settings_session_sized<'a>(
 	.expect("settings session opens")
 }
 
-fn open_general_settings_session<'a>(
-	cx: &'a mut Headless,
+fn open_general_settings_session(
+	cx: &mut Headless,
 	settings_view: SettingsView,
 	routed: bool,
-) -> HeadlessSession<'a, ShellView> {
+) -> HeadlessSession<'_, ShellView> {
 	open_general_settings_session_sized(cx, settings_view, routed, 1180, 800)
 }
 

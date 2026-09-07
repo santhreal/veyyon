@@ -82,12 +82,12 @@ impl ShellView {
 		//    set
 		if self.state.keymap.pending_turn_focus {
 			self.state.keymap.pending_turn_focus = false;
-			if let Some(turn_ix) = self.state.keymap.focused_turn {
-				if turn_ix < self.state.transcript.len() {
-					self
-						.transcript_viewport
-						.scroll_to_turn_animated(turn_ix, motion, reduced, now);
-				}
+			if let Some(turn_ix) = self.state.keymap.focused_turn
+				&& turn_ix < self.state.transcript.len()
+			{
+				self
+					.transcript_viewport
+					.scroll_to_turn_animated(turn_ix, motion, reduced, now);
 			}
 		}
 

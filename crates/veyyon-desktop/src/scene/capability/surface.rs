@@ -9,9 +9,7 @@ use veyyon_desktop_model::{
 	TerminalView, ThemeView, ThemesView, TranscriptEntry, UsageTotals,
 };
 use veyyon_desktop_scene::FixtureText;
-use veyyon_desktop_surface::{
-	PanelTab, SettingsPage, navigation::SurfaceRoute,
-};
+use veyyon_desktop_surface::{PanelTab, SettingsPage, navigation::SurfaceRoute};
 
 use crate::scene::seed::{SCENE_CLOCK_MS, Seed};
 
@@ -33,12 +31,9 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 			let s2 = seed.session(QueuePartition::Live, None);
 			seed.exchange(&s2, Seed::prose());
 			seed.row_menu = Some(veyyon_desktop_surface::queue::RowMenu {
-				id: 2,
-				origin: veyyon_gpui::Point {
-					x: veyyon_gpui::px(60.0),
-					y: veyyon_gpui::px(180.0),
-				},
-				kind: veyyon_desktop_surface::queue::RowMenuKind::Card,
+				id:     2,
+				origin: veyyon_gpui::Point { x: veyyon_gpui::px(60.0), y: veyyon_gpui::px(180.0) },
+				kind:   veyyon_desktop_surface::queue::RowMenuKind::Card,
 			});
 		},
 		Capability::TurnControl => {
@@ -208,8 +203,7 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 			seed.store.domains.settings = Some(s);
 		},
 		Capability::Themes => {
-			seed.state.overlay =
-				Some(SurfaceRoute::Page(SettingsPage::Themes).overlay());
+			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Themes).overlay());
 			seed.store.domains.themes = Some(ThemesView {
 				current: "dark".to_string(),
 				themes:  vec![ThemeView {
@@ -220,8 +214,7 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 			});
 		},
 		Capability::Keybindings => {
-			seed.state.overlay =
-				Some(SurfaceRoute::Page(SettingsPage::Keybindings).overlay());
+			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Keybindings).overlay());
 			seed.store.domains.keybindings = vec![KeybindingView {
 				action: "NewSession".to_string(),
 				keys:   vec!["Cmd+N".to_string()],
@@ -229,14 +222,12 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 			}];
 		},
 		Capability::Diagnostics => {
-			seed.state.overlay =
-				Some(SurfaceRoute::Page(SettingsPage::Diagnostics).overlay());
+			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Diagnostics).overlay());
 			seed.store.domains.diagnostics =
 				Some(serde_json::json!({ "sources": [{ "name": "lsp", "status": "ok" }] }));
 		},
 		Capability::Usage => {
-			seed.state.overlay =
-				Some(SurfaceRoute::Page(SettingsPage::Usage).overlay());
+			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Usage).overlay());
 			seed
 				.store
 				.domains
@@ -252,8 +243,7 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 				});
 		},
 		Capability::ContextBreakdown => {
-			seed.state.overlay =
-				Some(SurfaceRoute::Page(SettingsPage::ContextBreakdown).overlay());
+			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::ContextBreakdown).overlay());
 			seed
 				.store
 				.domains
@@ -266,8 +256,7 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 				});
 		},
 		Capability::Mcp => {
-			seed.state.overlay =
-				Some(SurfaceRoute::Page(SettingsPage::Mcp).overlay());
+			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Mcp).overlay());
 			seed.store.domains.mcp = vec![McpServerView {
 				name:    "filesystem".to_string(),
 				enabled: true,
@@ -276,8 +265,7 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 			}];
 		},
 		Capability::Providers | Capability::Authentication => {
-			seed.state.overlay =
-				Some(SurfaceRoute::Page(SettingsPage::Providers).overlay());
+			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Providers).overlay());
 			seed.store.domains.providers = vec![ProviderView {
 				id:            "anthropic".to_string(),
 				name:          "Anthropic".to_string(),
@@ -287,8 +275,7 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 			}];
 		},
 		Capability::Extensions => {
-			seed.state.overlay =
-				Some(SurfaceRoute::Page(SettingsPage::Extensions).overlay());
+			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Extensions).overlay());
 			seed.store.domains.agents = vec![AgentView {
 				id:           "cr".to_string(),
 				display_name: "CR".to_string(),
@@ -300,8 +287,7 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 			}];
 		},
 		Capability::Agents => {
-			seed.state.overlay =
-				Some(SurfaceRoute::Page(SettingsPage::Extensions).overlay());
+			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Extensions).overlay());
 			seed.store.domains.agents = vec![AgentView {
 				id:           "cr".to_string(),
 				display_name: "CR".to_string(),
@@ -313,8 +299,7 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 			}];
 		},
 		Capability::Tasks => {
-			seed.state.overlay =
-				Some(SurfaceRoute::Page(SettingsPage::Extensions).overlay());
+			seed.state.overlay = Some(SurfaceRoute::Page(SettingsPage::Extensions).overlay());
 			seed.store.domains.agents = vec![AgentView {
 				id:           "runner".to_string(),
 				display_name: "Runner".to_string(),

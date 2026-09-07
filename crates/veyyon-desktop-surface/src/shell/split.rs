@@ -31,7 +31,7 @@ impl SplitMotions {
 }
 
 impl ShellView {
-	pub(super) fn sample_split_motion(&mut self, window: &mut Window, cx: &Context<Self>) {
+	pub(super) fn sample_split_motion(&mut self, window: &Window, cx: &Context<Self>) {
 		let now = cx.background_executor().now();
 		let mut animating = false;
 		for motion in [&mut self.split_motion.panel, &mut self.split_motion.drawer]

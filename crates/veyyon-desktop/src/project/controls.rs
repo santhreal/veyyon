@@ -226,7 +226,7 @@ pub fn project_controls(
 					Availability::from(gate.clone()),
 				);
 				state.controls.set_availability(
-					SurfaceId::PlanRefineButton(row.clone(), plan.id.clone()),
+					SurfaceId::PlanRefineButton(row, plan.id.clone()),
 					Availability::from(gate),
 				);
 			}
@@ -265,7 +265,7 @@ pub fn project_controls(
 		for surface in [
 			SurfaceId::RightPanelDiffTab(row.clone()),
 			SurfaceId::RightPanelFileTab(row.clone()),
-			SurfaceId::RightPanelChangeScopeSelector(row.clone()),
+			SurfaceId::RightPanelChangeScopeSelector(row),
 		] {
 			state
 				.controls
@@ -323,7 +323,7 @@ pub fn project_controls(
 		matches!(store.capabilities.get(Capability::Files), CapabilityStatus::Unavailable { .. });
 	let tree_error = state
 		.controls
-		.error(&SurfaceId::RightPanelFileTab(row.clone()))
+		.error(&SurfaceId::RightPanelFileTab(row))
 		.is_some()
 		|| active_id.is_some_and(|s| {
 			state

@@ -78,11 +78,11 @@ impl ImageCache {
 		self.entries.is_empty()
 	}
 
-	pub fn total_bytes(&self) -> usize {
+	pub const fn total_bytes(&self) -> usize {
 		self.total_bytes
 	}
 
-	pub fn total_retained_bytes(&self) -> usize {
+	pub const fn total_retained_bytes(&self) -> usize {
 		self.total_bytes
 	}
 
@@ -139,10 +139,10 @@ impl ImageCache {
 			&& (self.total_bytes.saturating_add(byte_size) > MAX_IMAGE_CACHE_BYTES
 				|| self.entries.len() >= MAX_IMAGE_CACHE_ENTRIES)
 		{
-			if let Some(old_key) = self.order.pop_front() {
-				if let Some(old_entry) = self.entries.remove(&old_key) {
-					self.total_bytes = self.total_bytes.saturating_sub(old_entry.byte_size);
-				}
+			if let Some(old_key) = self.order.pop_front()
+				&& let Some(old_entry) = self.entries.remove(&old_key)
+			{
+				self.total_bytes = self.total_bytes.saturating_sub(old_entry.byte_size);
 			}
 		}
 
@@ -179,8 +179,8 @@ pub fn decode_and_validate_image(
 		.saturating_add(media_type.map_or(0, |mime| mime.len().saturating_mul(2)));
 	if input_bytes > MAX_IMAGE_RAW_BYTES {
 		return Err(format!(
-			"Image input ({} bytes) exceeds preview limit of {} bytes; open the original file",
-			input_bytes, MAX_IMAGE_RAW_BYTES
+			"Image input ({input_bytes} bytes) exceeds preview limit of {MAX_IMAGE_RAW_BYTES} bytes; \
+			 open the original file"
 		));
 	}
 

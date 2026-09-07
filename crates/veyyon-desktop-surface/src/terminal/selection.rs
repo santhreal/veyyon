@@ -3,6 +3,8 @@
 //! Models linear stream selections and rectangular block selections across
 //! the visible terminal grid and scrollback history.
 
+use std::cmp::Ordering;
+
 use super::cell::Cell;
 
 /// Selection highlight region kind.
@@ -37,12 +39,11 @@ impl TerminalSelection {
 		match self.kind {
 			SelectionKind::Rectangular => row >= min_r && row <= max_r && col >= min_c && col <= max_c,
 			SelectionKind::Linear => {
-				let (top_row, top_col, bottom_row, bottom_col) = if self.start_row < self.end_row {
-					(self.start_row, self.start_col, self.end_row, self.end_col)
-				} else if self.start_row > self.end_row {
-					(self.end_row, self.end_col, self.start_row, self.start_col)
-				} else {
-					(self.start_row, min_c, self.end_row, max_c)
+				let (top_row, top_col, bottom_row, bottom_col) = match self.start_row.cmp(&self.end_row)
+				{
+					Ordering::Less => (self.start_row, self.start_col, self.end_row, self.end_col),
+					Ordering::Greater => (self.end_row, self.end_col, self.start_row, self.start_col),
+					Ordering::Equal => (self.start_row, min_c, self.end_row, max_c),
 				};
 
 				if row < top_row || row > bottom_row {

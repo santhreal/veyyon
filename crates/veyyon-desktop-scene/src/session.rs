@@ -185,8 +185,8 @@ impl<'a, V: Render + 'static> HeadlessSession<'a, V> {
 		Ok(())
 	}
 
-	/// Dispatches a right mouse click (`MouseDown` followed by `MouseUp`) at the given
-	/// logical coordinates.
+	/// Dispatches a right mouse click (`MouseDown` followed by `MouseUp`) at the
+	/// given logical coordinates.
 	pub fn right_click(&mut self, at: Point<Pixels>) -> Result<(), RenderError> {
 		let mouse_down = PlatformInput::MouseDown(MouseDownEvent {
 			button:      MouseButton::Right,

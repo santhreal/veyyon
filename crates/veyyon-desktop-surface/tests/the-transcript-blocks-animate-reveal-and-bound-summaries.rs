@@ -62,12 +62,15 @@ impl Render for BlockView {
 			.size_full()
 			.into_any_element()
 		} else {
+			let views = veyyon_desktop_surface::model::ToolInvocationViews::default();
 			render_invoke_block(
 				0,
 				0,
+				"read-call",
 				"read",
 				"src/lib.rs",
 				self.result.as_deref(),
+				&views,
 				expanded,
 				&self.geometry,
 				&self.tokens,
@@ -90,6 +93,7 @@ fn render_header(result: Option<&str>, streaming: bool, historical: bool) -> Cap
 		tool:    "read".into(),
 		target:  "src/lib.rs".into(),
 		result:  result.map(str::to_owned),
+		views:   Default::default(),
 	}])];
 	if historical {
 		turns.push(Turn::Operator("Next turn".into()));

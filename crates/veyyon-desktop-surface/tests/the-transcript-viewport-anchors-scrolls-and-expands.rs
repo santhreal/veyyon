@@ -62,6 +62,7 @@ fn the_transcript_viewport_preserves_anchor_during_streaming_revisions_when_scro
 				tool:    "search".to_owned(),
 				target:  "crates/veyyon-desktop-surface".to_owned(),
 				result:  Some("Found 12 matching files".to_owned()),
+				views:   Default::default(),
 			},
 			Block::Prose("Tools execute asynchronously and report outcomes.".to_owned()),
 		]),
@@ -168,6 +169,7 @@ fn the_transcript_block_expansion_transitions_and_remeasures_turn_height() {
 			tool:    "read".to_owned(),
 			target:  "src/main.rs".to_owned(),
 			result:  Some("fn main() {}\n".to_owned()),
+			views:   Default::default(),
 		},
 		Block::Pane {
 			caption: "Excerpt".to_owned(),
@@ -274,6 +276,7 @@ fn the_transcript_vertical_rhythm_and_geometry_rules() {
 		tool:    "t".to_owned(),
 		target:  "x".to_owned(),
 		result:  None,
+		views:   Default::default(),
 	};
 	let reason_a = Block::Reason("r".to_owned());
 	let pane_a = Block::Pane { caption: "c".to_owned(), lines: vec!["l".to_owned()] };
@@ -322,6 +325,7 @@ fn the_transcript_find_matches_and_expands_blocks() {
 				tool:    "search".to_owned(),
 				target:  "needle.txt".to_owned(),
 				result:  Some("found needle here".to_owned()),
+				views:   Default::default(),
 			},
 			Block::Pane {
 				caption: "needle results".to_owned(),

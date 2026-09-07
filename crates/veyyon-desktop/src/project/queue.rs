@@ -49,21 +49,21 @@ pub(super) fn row(session: &Session, id: u64, now_ms: u64) -> Row {
 		title: session.title.clone(),
 		subtitle,
 		badge: session.badge.as_ref().map(badge),
-		meta: row_meta(session, now_ms),
+		meta: Some(row_meta(session, now_ms)),
 	}
 }
 
 /// Calculates the time metadata string for a session row at `now_ms`.
 #[must_use]
-pub(super) fn row_meta(session: &Session, now_ms: u64) -> Option<String> {
+pub(super) fn row_meta(session: &Session, now_ms: u64) -> String {
 	match (&session.badge, session.defer_until_ms) {
 		(Some(SessionBadge::Working { started_at_ms }), _) => {
-			Some(elapsed_label(now_ms.saturating_sub(*started_at_ms)))
+			elapsed_label(now_ms.saturating_sub(*started_at_ms))
 		},
 		(_, Some(due_at_ms)) if due_at_ms > now_ms => {
-			Some(format!("in {}", elapsed_label(due_at_ms - now_ms)))
+			format!("in {}", elapsed_label(due_at_ms - now_ms))
 		},
-		_ => Some(elapsed_label(now_ms.saturating_sub(session.last_recall_at_ms))),
+		_ => elapsed_label(now_ms.saturating_sub(session.last_recall_at_ms)),
 	}
 }
 

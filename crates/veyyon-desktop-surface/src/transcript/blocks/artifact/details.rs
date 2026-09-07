@@ -57,15 +57,15 @@ pub fn render_artifact_details(
 			let image_status = get_or_decode_image(data, Some(media_type));
 			match image_status {
 				ImageStatus::Valid { width, height, format, gpui_image } => {
-					if let Some(alt_text) = alt {
-						if !alt_text.is_empty() {
-							details = details.child(
-								div()
-									.text_size(tokens.font_size(TextRamp::Micro))
-									.text_color(tokens.color(ColorRole::Muted))
-									.child(alt_text.clone()),
-							);
-						}
+					if let Some(alt_text) = alt
+						&& !alt_text.is_empty()
+					{
+						details = details.child(
+							div()
+								.text_size(tokens.font_size(TextRamp::Micro))
+								.text_color(tokens.color(ColorRole::Muted))
+								.child(alt_text.clone()),
+						);
 					}
 					details = details.child(
 						div()
@@ -142,15 +142,15 @@ pub fn render_artifact_details(
 							.text_color(tokens.color(ColorRole::Secondary))
 							.child(message),
 					);
-					if let Some(alt_text) = alt {
-						if !alt_text.is_empty() {
-							details = details.child(
-								div()
-									.text_size(tokens.font_size(TextRamp::Micro))
-									.text_color(tokens.color(ColorRole::Muted))
-									.child(format!("Alt text: {alt_text}")),
-							);
-						}
+					if let Some(alt_text) = alt
+						&& !alt_text.is_empty()
+					{
+						details = details.child(
+							div()
+								.text_size(tokens.font_size(TextRamp::Micro))
+								.text_color(tokens.color(ColorRole::Muted))
+								.child(format!("Alt text: {alt_text}")),
+						);
 					}
 					details = details.child(div().flex().justify_end().w_full().child(
 						Button::new("Collapse").size(ButtonSize::Small).on_click(

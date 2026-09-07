@@ -316,10 +316,7 @@ pub fn spawn_child_host(cwd: &Path) -> Result<ChildHostHandle, HostSpawnError> {
 
 	while !accepts_connection(&endpoint) {
 		if Instant::now() >= deadline {
-			return Err(HostSpawnError::NotListening {
-				endpoint:  endpoint.clone(),
-				waited_ms: SPAWN_WAIT_MS,
-			});
+			return Err(HostSpawnError::NotListening { endpoint, waited_ms: SPAWN_WAIT_MS });
 		}
 		thread::sleep(Duration::from_millis(50));
 	}

@@ -180,10 +180,11 @@ pub fn distinct_pixel_values(frame: &RgbaFrame) -> usize {
 /// One live headless context at a time, process-wide.
 ///
 /// The kit's offscreen renderer draws through a device the process owns, not
-/// the caller. Building a third context while two are live
-/// aborts with SIGSEGV, and a test binary runs its tests on parallel threads,
-/// so concurrent callers have to queue rather than race. The permit is taken
-/// when a context is built and released when it drops.
+/// the caller, and a test binary runs its tests on parallel threads. Serving
+/// one render at a time keeps the frames a sweep compares independent of how
+/// many threads the runner chose, and keeps the render targets alive at one
+/// per process rather than one per thread. The permit is taken when a context
+/// is built and released when it drops.
 static RENDERER: Mutex<()> = Mutex::new(());
 
 /// A headless context holding the process-wide renderer permit.

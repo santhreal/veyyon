@@ -1,20 +1,23 @@
-//! WHY: Every queue partition (`Unsent`, `Pinned`, `Live`, `Deferred`, `Parked`)
-//! must be independently collapsible via rendered section header pointer clicks
-//! (both on the nested chevron button and on the section label text) without
-//! collapsing sibling sections or triggering double-toggles, while maintaining
-//! selection identity, virtualized list item bounds, and section headers (§5.1, §5.2).
+//! WHY: Every queue partition (`Unsent`, `Pinned`, `Live`, `Deferred`,
+//! `Parked`) must be independently collapsible via rendered section header
+//! pointer clicks (both on the nested chevron button and on the section label
+//! text) without collapsing sibling sections or triggering double-toggles,
+//! while maintaining selection identity, virtualized list item bounds, and
+//! section headers (§5.1, §5.2).
 //!
 //! DEFECT CLASSES CLOSED:
-//! 1. Active sections (`Unsent`, `Pinned`, `Live`) rendering inert section headers
-//!    that fail to respond to click events.
+//! 1. Active sections (`Unsent`, `Pinned`, `Live`) rendering inert section
+//!    headers that fail to respond to click events.
 //! 2. Duplicate click handlers on nested chevron button and header container
 //!    causing double-toggle transitions due to event bubbling.
-//! 3. Section collapse state leaking across partition boundaries (collapsing one
-//!    partition incorrectly toggling others).
+//! 3. Section collapse state leaking across partition boundaries (collapsing
+//!    one partition incorrectly toggling others).
 //! 4. Empty sections improperly rendering in the queue rail.
-//! 5. Non-empty collapsed sections failing to retain their header and chevron toggle.
-//! 6. Selecting an already-current or newly selected row in any collapsed section
-//!    failing to expand that section when explicit selection is requested.
+//! 5. Non-empty collapsed sections failing to retain their header and chevron
+//!    toggle.
+//! 6. Selecting an already-current or newly selected row in any collapsed
+//!    section failing to expand that section when explicit selection is
+//!    requested.
 //!
 //! GAPS:
 //! Exact visual rasterization and rendered glyphs of badge/count text digits
@@ -139,8 +142,7 @@ fn clicking_chevron_button_collapses_and_expands_each_section_without_double_tog
 			.update(|view, _window, _cx| {
 				assert!(
 					view.rail_motion().is_collapsed(section),
-					"chevron click must collapse section {:?} without double-toggle",
-					section
+					"chevron click must collapse section {section:?} without double-toggle"
 				);
 				assert_eq!(
 					view.rail_motion().list_state().item_count(),
@@ -157,8 +159,7 @@ fn clicking_chevron_button_collapses_and_expands_each_section_without_double_tog
 			.update(|view, _window, _cx| {
 				assert!(
 					!view.rail_motion().is_collapsed(section),
-					"chevron second click must expand section {:?} without double-toggle",
-					section
+					"chevron second click must expand section {section:?} without double-toggle"
 				);
 				assert_eq!(
 					view.rail_motion().list_state().item_count(),
@@ -189,8 +190,7 @@ fn clicking_section_label_text_collapses_and_expands_independently() {
 			.update(|view, _window, _cx| {
 				assert!(
 					view.rail_motion().is_collapsed(section),
-					"section {:?} must be collapsed after label click",
-					section
+					"section {section:?} must be collapsed after label click"
 				);
 				for sibling in Section::all() {
 					if sibling != section {
@@ -198,9 +198,7 @@ fn clicking_section_label_text_collapses_and_expands_independently() {
 						assert_eq!(
 							view.rail_motion().is_collapsed(sibling),
 							expected,
-							"sibling {:?} state corrupted when toggling {:?}",
-							sibling,
-							section
+							"sibling {sibling:?} state corrupted when toggling {section:?}"
 						);
 					}
 				}
@@ -223,8 +221,7 @@ fn clicking_section_label_text_collapses_and_expands_independently() {
 			.update(|view, _window, _cx| {
 				assert!(
 					!view.rail_motion().is_collapsed(section),
-					"section {:?} must expand after second click",
-					section
+					"section {section:?} must expand after second click"
 				);
 			})
 			.expect("independent expand verified");
@@ -337,16 +334,14 @@ fn selecting_row_in_any_collapsed_section_expands_only_that_section() {
 				assert_eq!(view.state().current_id, target_id);
 				assert!(
 					!view.rail_motion().is_collapsed(target_sec),
-					"target section {:?} must expand when its row is selected",
-					target_sec
+					"target section {target_sec:?} must expand when its row is selected"
 				);
 				for sibling in Section::all() {
 					if sibling != target_sec {
 						assert!(
 							view.rail_motion().is_collapsed(sibling),
-							"sibling section {:?} must remain collapsed when selecting in {:?}",
-							sibling,
-							target_sec
+							"sibling section {sibling:?} must remain collapsed when selecting in \
+							 {target_sec:?}"
 						);
 					}
 				}

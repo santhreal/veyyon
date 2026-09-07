@@ -42,13 +42,12 @@ fn capture(state: ShellState) -> Captured {
 	let tokens = load_bundled_tokens().expect("the bundled tokens load");
 	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");
 
-	let captured = render_view_captured(&mut cx, &options(), move |_window, app: &mut App| {
+	render_view_captured(&mut cx, &options(), move |_window, app: &mut App| {
 		let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
 			.expect("the bundled tokens and theme install");
 		app.new(|_| ShellView::new(installed, state))
 	})
-	.expect("the shell renders offscreen");
-	captured
+	.expect("the shell renders offscreen")
 }
 
 /// How many controls a state puts on screen.

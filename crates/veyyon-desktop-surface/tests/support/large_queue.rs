@@ -1,8 +1,8 @@
 //! Large queue fixture for scroll, paging, and keyboard selection tests.
 
+use veyyon_desktop_surface::{Badge, Section, ShellState, fixture};
 
 use super::queue_scroll::row;
-use veyyon_desktop_surface::{Badge, Section, ShellState, fixture};
 
 pub fn make_large_queue_state() -> ShellState {
 	let mut state = fixture::populated();

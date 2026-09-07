@@ -182,7 +182,7 @@ pub fn project_clock(
 			if let Some(session_id) = index.session_of(row.id)
 				&& let Some(session) = store.sessions.get(session_id)
 			{
-				let new_meta = row_meta(session, now_ms);
+				let new_meta = Some(row_meta(session, now_ms));
 				if row.meta != new_meta {
 					row.meta = new_meta;
 					changed = true;

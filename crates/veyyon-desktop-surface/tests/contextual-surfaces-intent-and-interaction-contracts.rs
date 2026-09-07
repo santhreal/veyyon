@@ -135,15 +135,17 @@ fn diff_mode_and_change_scope_intents_apply_and_preserve_state() {
 
 #[test]
 fn decision_card_intents_cover_approval_question_reply_and_plan() {
-	let mut state = ShellState::default();
-	state.cards = vec![
-		Card::Approval { tool: "bash".to_string(), detail: vec!["cargo check".to_string()] },
-		Card::Question {
-			prompt:  "Pick one".to_string(),
-			options: vec!["A".to_string(), "B".to_string()],
-		},
-		Card::Plan { title: "Refactor".to_string(), body: vec!["Step 1".to_string()] },
-	];
+	let mut state = ShellState {
+		cards: vec![
+			Card::Approval { tool: "bash".to_string(), detail: vec!["cargo check".to_string()] },
+			Card::Question {
+				prompt:  "Pick one".to_string(),
+				options: vec!["A".to_string(), "B".to_string()],
+			},
+			Card::Plan { title: "Refactor".to_string(), body: vec!["Step 1".to_string()] },
+		],
+		..ShellState::default()
+	};
 
 	// Answering card 1 removes it from local state
 	let answer_intent = Intent::Answer { card: 1, option: 0 };

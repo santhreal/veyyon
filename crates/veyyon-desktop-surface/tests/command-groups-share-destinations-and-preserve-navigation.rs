@@ -34,7 +34,7 @@ fn open_test_session(cx: &mut Headless, width: u32, height: u32) -> HeadlessSess
 }
 
 fn find_close_hitbox(hitboxes: &[Bounds<Pixels>], window_w: f32) -> Bounds<Pixels> {
-	let dialog_right = (window_w + 560.0) / 2.0;
+	let dialog_right = f32::midpoint(window_w, 560.0);
 	*hitboxes
 		.iter()
 		.filter(|hb| {
@@ -140,7 +140,7 @@ fn every_domain_page_has_one_parent_and_aliases_resolve_to_the_same_destination(
 		let palette = overlay
 			.as_palette()
 			.expect("parents use the shared intermediate surface");
-		let destinations: Vec<_> = palette
+		let destinations_count = palette
 			.items
 			.iter()
 			.filter_map(|item| match &item.kind {
@@ -150,8 +150,8 @@ fn every_domain_page_has_one_parent_and_aliases_resolve_to_the_same_destination(
 				_ => None,
 			})
 			.filter(|intent| **intent == Intent::Navigate(route))
-			.collect();
-		assert_eq!(destinations.len(), 1, "{page:?} must have one destination in {parent:?}");
+			.count();
+		assert_eq!(destinations_count, 1, "{page:?} must have one destination in {parent:?}");
 		for alias in route.aliases() {
 			let mut commands = PaletteState::commands();
 			commands.set_query(alias.trim_start_matches('/'));

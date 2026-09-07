@@ -5,7 +5,7 @@
 //! CLASS CLOSED:
 //! 1. Inaccessible height budgeting dropping sessions that exceed viewport
 //!    height.
-//! 2. Inert more_row failing to provide pagination into older archival
+//! 2. Inert `more_row` failing to provide pagination into older archival
 //!    sessions.
 //! 3. Selection identity or position resetting during scroll, collapse, or
 //!    filter.
@@ -14,10 +14,10 @@
 //!    intents.
 //! 6. Sizing degradation at minimum width (208px) clipping navigation controls.
 
-#[path = "support/queue-scroll/mod.rs"]
-mod queue_scroll;
 #[path = "support/large_queue.rs"]
 mod large_queue;
+#[path = "support/queue-scroll/mod.rs"]
+mod queue_scroll;
 
 use std::{
 	collections::HashMap,
@@ -153,7 +153,7 @@ fn filter_queue_filters_sessions_and_clearing_restores_full_queue() {
 		.expect("filter queue");
 	session
 		.update(|view, _window, _cx| {
-			assert_eq!(view.state().keymap.queue_filter.as_deref(), Some("Split"))
+			assert_eq!(view.state().keymap.queue_filter.as_deref(), Some("Split"));
 		})
 		.expect("filter verified");
 	session
@@ -260,7 +260,7 @@ fn queue_navigation_and_footer_controls_dispatch_valid_intents() {
 		.expect("dispatch settings overlay");
 	session
 		.update(|view, _window, _cx| {
-			assert!(matches!(&view.state().overlay, Some(Overlay::Settings(_))))
+			assert!(matches!(&view.state().overlay, Some(Overlay::Settings(_))));
 		})
 		.expect("settings overlay verified");
 }

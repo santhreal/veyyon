@@ -28,7 +28,7 @@ fn changed_rows(before: &RgbaFrame, after: &RgbaFrame) -> (u32, u32) {
 	let first = rows
 		.next()
 		.expect("changing availability must change the row's ink");
-	(first, rows.last().unwrap_or(first))
+	(first, rows.next_back().unwrap_or(first))
 }
 
 #[test]

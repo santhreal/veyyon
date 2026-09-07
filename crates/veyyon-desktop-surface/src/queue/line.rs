@@ -101,7 +101,7 @@ pub fn line_row(
 		.id(("queue-line", id as usize))
 		.relative();
 
-	if let Some(weak) = view.clone() {
+	if let Some(weak) = view {
 		let weak_select = weak.clone();
 		let weak_menu = weak;
 		line = line

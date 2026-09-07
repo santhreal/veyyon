@@ -3,7 +3,7 @@
 //!
 //! WHY: When typing multiline text exceeding a bounded viewport, the editor
 //! must automatically scroll to keep the caret and active lines visible. If
-//! scroll_top is not updated or clamped, the caret clips below the viewport,
+//! `scroll_top` is not updated or clamped, the caret clips below the viewport,
 //! navigation to top fails to restore the view, text deletion leaves stale
 //! scroll offsets, and mouse hit testing or IME candidate bounds diverge from
 //! rendered text. GAP: Does not drive native OS-level IME popups or platform

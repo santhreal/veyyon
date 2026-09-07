@@ -386,7 +386,6 @@ impl ShellView {
 	pub const fn general_settings_list(&self) -> &GeneralSettingsListState {
 		&self.general_settings_list
 	}
-
 }
 
 impl Render for ShellView {

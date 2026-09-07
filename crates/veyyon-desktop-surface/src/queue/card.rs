@@ -132,7 +132,7 @@ pub fn card_row(
 		.id(("queue-card", id as usize))
 		.relative();
 
-	if let Some(weak) = view.clone() {
+	if let Some(weak) = view {
 		let weak_select = weak.clone();
 		let weak_menu = weak;
 		card = card

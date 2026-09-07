@@ -75,7 +75,7 @@ impl RailMotion {
 
 	/// Synchronizes motion tokens and reduced-motion policy from active
 	/// settings.
-	pub fn sync_tokens(&mut self, tokens: MotionTokens, reduced_motion: bool) {
+	pub const fn sync_tokens(&mut self, tokens: MotionTokens, reduced_motion: bool) {
 		self.tokens = tokens;
 		self.reduced_motion = reduced_motion;
 	}
@@ -126,7 +126,7 @@ impl RailMotion {
 	/// Returns a reference to the retained [`ListState`] for virtualized queue
 	/// rendering.
 	#[must_use]
-	pub fn list_state(&self) -> &ListState {
+	pub const fn list_state(&self) -> &ListState {
 		&self.list_state
 	}
 
@@ -137,12 +137,12 @@ impl RailMotion {
 	}
 
 	/// Clears any pending scroll request to the selected item.
-	pub fn clear_pending_scroll(&mut self) {
+	pub const fn clear_pending_scroll(&mut self) {
 		self.pending_scroll_to_selected = false;
 	}
 
 	/// Requests the queue rail to scroll to the selected row on next layout.
-	pub fn request_scroll_to_selected(&mut self) {
+	pub const fn request_scroll_to_selected(&mut self) {
 		self.pending_scroll_to_selected = true;
 		self.last_ensured_id = None;
 	}
@@ -174,7 +174,7 @@ impl RailMotion {
 		&self.tokens
 	}
 
-	fn reveal_model(&self) -> MotionModel {
+	const fn reveal_model(&self) -> MotionModel {
 		let resolved = resolve_motion(MotionRole::Reveal, &self.tokens, self.reduced_motion);
 		match resolved {
 			ResolvedMotion::Spring(s) => MotionModel::Spring(s),
@@ -240,12 +240,12 @@ impl RailMotion {
 	}
 
 	/// Increments the parked page limit to page in older archival sessions.
-	pub fn show_more_parked(&mut self, _step: usize) {
+	pub const fn show_more_parked(&mut self, _step: usize) {
 		self.parked_page = self.parked_page.saturating_add(1);
 	}
 
 	/// Resets the parked page count to the initial page.
-	pub fn reset_parked_page(&mut self) {
+	pub const fn reset_parked_page(&mut self) {
 		self.parked_page = 1;
 	}
 

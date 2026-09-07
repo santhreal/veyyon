@@ -3,10 +3,7 @@
 use veyyon_desktop_kit::load_bundled_tokens;
 use veyyon_desktop_scene::{Captured, HeadlessSession};
 use veyyon_desktop_surface::{
-	Intent, Row, ShellState, ShellView,
-	attach::ConnectionPhase,
-	model::Section,
-	queue::RowMenuKind,
+	Intent, Row, ShellState, ShellView, attach::ConnectionPhase, model::Section, queue::RowMenuKind,
 };
 use veyyon_gpui::{Bounds, Modifiers, MouseMoveEvent, Pixels, PlatformInput, Point, px};
 
@@ -26,7 +23,8 @@ impl QueueMetrics {
 	}
 }
 
-/// Builds a compact shell state with one session row per Section::all() variant.
+/// Builds a compact shell state with one session row per `Section::all()`
+/// variant.
 pub fn make_per_section_state() -> ShellState {
 	let mut sections = Vec::new();
 	for (idx, section) in Section::all().into_iter().enumerate() {
@@ -51,18 +49,16 @@ pub fn make_per_section_state() -> ShellState {
 
 /// Computes the center click point for a bounding box.
 pub fn center_of(rect: Bounds<Pixels>) -> Point<Pixels> {
-	Point {
-		x: rect.origin.x + rect.size.width / 2.0,
-		y: rect.origin.y + rect.size.height / 2.0,
-	}
+	Point { x: rect.origin.x + rect.size.width / 2.0, y: rect.origin.y + rect.size.height / 2.0 }
 }
 
-/// Dispatches a mouse move event to simulate real pointer movement onto an element.
+/// Dispatches a mouse move event to simulate real pointer movement onto an
+/// element.
 pub fn move_mouse(session: &mut HeadlessSession<'_, ShellView>, at: Point<Pixels>) {
 	let mouse_move = PlatformInput::MouseMove(MouseMoveEvent {
-		position: at,
+		position:       at,
 		pressed_button: None,
-		modifiers: Modifiers::default(),
+		modifiers:      Modifiers::default(),
 	});
 	session
 		.update(|_view, window, cx| {
@@ -89,23 +85,31 @@ pub fn find_queue_rows(frame: &Captured, metrics: &QueueMetrics) -> Vec<Bounds<P
 }
 
 /// Extracts leaf hitboxes without excluding controls of a different size.
-pub fn extract_action_buttons(
-	frame: &Captured,
-	row_bounds: Bounds<Pixels>,
-) -> Vec<Bounds<Pixels>> {
+pub fn extract_action_buttons(frame: &Captured, row_bounds: Bounds<Pixels>) -> Vec<Bounds<Pixels>> {
 	let contains = |outer: Bounds<Pixels>, inner: Bounds<Pixels>| {
 		inner.origin.x >= outer.origin.x
 			&& inner.origin.x + inner.size.width <= outer.origin.x + outer.size.width
 			&& inner.origin.y >= outer.origin.y
 			&& inner.origin.y + inner.size.height <= outer.origin.y + outer.size.height
 	};
-	let candidates: Vec<_> = frame.hitboxes.iter().copied()
+	let candidates: Vec<_> = frame
+		.hitboxes
+		.iter()
+		.copied()
 		.filter(|bounds| *bounds != row_bounds && contains(row_bounds, *bounds))
 		.collect();
-	let mut buttons: Vec<_> = candidates.iter().copied()
-		.filter(|bounds| !candidates.iter().any(|child| child != bounds && contains(*bounds, *child)))
+	let mut buttons: Vec<_> = candidates
+		.iter()
+		.copied()
+		.filter(|bounds| {
+			!candidates
+				.iter()
+				.any(|child| child != bounds && contains(*bounds, *child))
+		})
 		.collect();
-	buttons.sort_by_key(|bounds| (bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height));
+	buttons.sort_by_key(|bounds| {
+		(bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height)
+	});
 	buttons.dedup();
 	buttons
 }
@@ -133,21 +137,18 @@ pub fn find_menu_items(frame: &Captured, origin: Point<Pixels>) -> Vec<Bounds<Pi
 
 /// Expected interaction contract for a single section variant.
 pub struct SectionContract {
-	pub expected_hover_intents: Vec<Intent>,
-	pub expected_menu_kind: RowMenuKind,
-	pub expected_menu_intents: Vec<Intent>,
+	pub hover_intents: Vec<Intent>,
+	pub menu_kind:     RowMenuKind,
+	pub menu_intents:  Vec<Intent>,
 }
 
 impl SectionContract {
 	pub fn for_section(section: Section, row_id: u64) -> Self {
 		match section {
 			Section::Unsent | Section::Pinned | Section::Live => Self {
-				expected_hover_intents: vec![
-					Intent::ParkSession(row_id),
-					Intent::DeferSession(row_id),
-				],
-				expected_menu_kind: RowMenuKind::Card,
-				expected_menu_intents: vec![
+				hover_intents: vec![Intent::ParkSession(row_id), Intent::DeferSession(row_id)],
+				menu_kind:     RowMenuKind::Card,
+				menu_intents:  vec![
 					Intent::SelectSession(row_id),
 					Intent::ParkSession(row_id),
 					Intent::DeferSession(row_id),
@@ -156,20 +157,14 @@ impl SectionContract {
 				],
 			},
 			Section::Deferred => Self {
-				expected_hover_intents: vec![Intent::RecallSession(row_id)],
-				expected_menu_kind: RowMenuKind::Deferred,
-				expected_menu_intents: vec![
-					Intent::SelectSession(row_id),
-					Intent::RecallSession(row_id),
-				],
+				hover_intents: vec![Intent::RecallSession(row_id)],
+				menu_kind:     RowMenuKind::Deferred,
+				menu_intents:  vec![Intent::SelectSession(row_id), Intent::RecallSession(row_id)],
 			},
 			Section::Parked => Self {
-				expected_hover_intents: vec![Intent::UnparkSession(row_id)],
-				expected_menu_kind: RowMenuKind::Parked,
-				expected_menu_intents: vec![
-					Intent::SelectSession(row_id),
-					Intent::UnparkSession(row_id),
-				],
+				hover_intents: vec![Intent::UnparkSession(row_id)],
+				menu_kind:     RowMenuKind::Parked,
+				menu_intents:  vec![Intent::SelectSession(row_id), Intent::UnparkSession(row_id)],
 			},
 		}
 	}

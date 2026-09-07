@@ -1,4 +1,8 @@
-#![allow(dead_code, unused_imports)]
+#![expect(
+	dead_code,
+	unused_imports,
+	reason = "Shared test helpers used across integration test targets with varying usage"
+)]
 //! Shared helpers and fixtures for veyyon-desktop-kit integration tests.
 
 use std::ops::Range;

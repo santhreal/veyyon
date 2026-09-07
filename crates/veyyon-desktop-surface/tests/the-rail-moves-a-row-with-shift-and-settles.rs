@@ -26,7 +26,8 @@ use veyyon_desktop_scene::{
 	headless::{RenderOptions, headless_context},
 };
 use veyyon_desktop_surface::{
-	Overlay, Row, Section, ShellView, fixture, install_tokens, navigation::SurfaceRoute,
+	Overlay, Row, Section, ShellView, fixture, install_tokens,
+	navigation::SurfaceRoute,
 	queue::{RailMotion, rail_fill},
 };
 use veyyon_gpui::{App, AppContext, Point};

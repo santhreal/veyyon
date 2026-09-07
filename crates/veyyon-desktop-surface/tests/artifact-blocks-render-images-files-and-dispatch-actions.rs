@@ -2,7 +2,7 @@
 //! metadata in 24px collapsed rows, decode and display images at bounded widths
 //! when expanded, report explicit errors for corrupt image bytes (including
 //! corrupt pixel bodies following valid headers), dispatch file open actions
-//! through real ShellView click handlers, enforce admission for unavailable
+//! through real `ShellView` click handlers, enforce admission for unavailable
 //! files, distinguish MIME types in caching, enforce pre-rasterization SVG
 //! bounds, and enforce bounded byte limits across all retained cache memory.
 

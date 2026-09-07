@@ -77,12 +77,12 @@ fn every_section_variant_exposes_only_valid_hover_actions_and_isolates_dispatch(
 		let buttons = extract_action_buttons(&hovered_frame, bounds);
 		assert_eq!(
 			buttons.len(),
-			contract.expected_hover_intents.len(),
+			contract.hover_intents.len(),
 			"{section:?} row must expose exactly the expected hover action buttons"
 		);
 
 		// Click each hover action button and verify isolated intent dispatch
-		for (btn_idx, expected_intent) in contract.expected_hover_intents.into_iter().enumerate() {
+		for (btn_idx, expected_intent) in contract.hover_intents.into_iter().enumerate() {
 			session
 				.update(|view, _window, _cx| {
 					let _ = view.drain_intents();
@@ -103,7 +103,8 @@ fn every_section_variant_exposes_only_valid_hover_actions_and_isolates_dispatch(
 					assert_eq!(
 						view.state().current_id,
 						999,
-						"hover action click on {section:?} row must not trigger row selection side-effects"
+						"hover action click on {section:?} row must not trigger row selection \
+						 side-effects"
 					);
 				})
 				.expect("hover dispatch verified");
@@ -128,7 +129,7 @@ fn every_section_variant_context_menu_dispatches_mapped_intents_and_dismisses() 
 		let menu_origin = Point { x: px(60.0), y: bounds.origin.y + px(6.0) };
 
 		// Test each context menu choice dispatches mapped intent and dismisses
-		for (choice_idx, expected_intent) in contract.expected_menu_intents.iter().enumerate() {
+		for (choice_idx, expected_intent) in contract.menu_intents.iter().enumerate() {
 			session
 				.right_click(menu_origin)
 				.expect("right click opens context menu");
@@ -136,7 +137,7 @@ fn every_section_variant_context_menu_dispatches_mapped_intents_and_dismisses() 
 				.update(|view, _window, _cx| {
 					let menu = view.row_menu().expect("context menu is open");
 					assert_eq!(menu.id, row_id);
-					assert_eq!(menu.kind, contract.expected_menu_kind);
+					assert_eq!(menu.kind, contract.menu_kind);
 					let _ = view.drain_intents();
 				})
 				.expect("menu verified");
@@ -145,7 +146,7 @@ fn every_section_variant_context_menu_dispatches_mapped_intents_and_dismisses() 
 			let items = find_menu_items(&menu_frame, menu_origin);
 			assert_eq!(
 				items.len(),
-				contract.expected_menu_intents.len(),
+				contract.menu_intents.len(),
 				"{section:?} menu items count must match expected partition choices"
 			);
 
@@ -188,10 +189,11 @@ fn disabled_card_menu_items_suppress_dispatch_on_click() {
 	let delete_surface = veyyon_desktop_model::SurfaceId::QueueDeleteButton(
 		veyyon_desktop_model::SessionId::from("3"),
 	);
-	state.controls.set_availability(
-		delete_surface,
-		Availability::Unavailable { reason: "cannot delete active session".to_string() },
-	);
+	state
+		.controls
+		.set_availability(delete_surface, Availability::Unavailable {
+			reason: "cannot delete active session".to_string(),
+		});
 	let mut session = open_session(&mut cx, state, 1440, 900);
 	let metrics = QueueMetrics::load();
 

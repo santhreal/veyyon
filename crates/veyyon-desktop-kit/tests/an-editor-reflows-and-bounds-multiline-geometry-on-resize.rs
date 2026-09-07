@@ -6,7 +6,7 @@
 //! reflows into a different number of visual lines. The editor must re-measure,
 //! recompute scroll offsets to keep the caret visible, and ensure mouse
 //! hit-testing and IME candidate bounds match the reflowed geometry.
-//! Furthermore, SingleLine and short multiline drafts must maintain their
+//! Furthermore, `SingleLine` and short multiline drafts must maintain their
 //! natural content height rather than inflating to fill parent containers.
 //! GAP: Does not test live window manager resize events from X11/Wayland
 //! servers.
@@ -44,7 +44,7 @@ impl Render for EditorWithSiblingFixture {
 					move |bounds, _window, _cx| {
 						*sibling_bounds.lock() = Some(bounds);
 					},
-					|_, _, _, _| {},
+					|_, (), _, _| {},
 				)
 				.w_full()
 				.h(px(40.0)),

@@ -65,7 +65,7 @@ impl TranscriptFindState {
 
 	/// Returns the number of matching blocks found.
 	#[must_use]
-	pub fn match_count(&self) -> usize {
+	pub const fn match_count(&self) -> usize {
 		self.matches.len()
 	}
 
@@ -84,7 +84,7 @@ impl TranscriptFindState {
 	/// Updates the search query and recomputes all matching locations across
 	/// `turns`.
 	pub fn set_query(&mut self, query: &str, turns: &[Turn]) {
-		self.query = query.to_owned();
+		query.clone_into(&mut self.query);
 		let trimmed = query.trim().to_lowercase();
 		if trimmed.is_empty() {
 			self.matches.clear();
@@ -252,10 +252,10 @@ impl TranscriptFindState {
 		}
 		let old_active = self.active_match_ix;
 		self.set_query(&self.query.clone(), turns);
-		if let Some(old) = old_active {
-			if !self.matches.is_empty() {
-				self.active_match_ix = Some(old.min(self.matches.len() - 1));
-			}
+		if let Some(old) = old_active
+			&& !self.matches.is_empty()
+		{
+			self.active_match_ix = Some(old.min(self.matches.len() - 1));
 		}
 	}
 
@@ -291,13 +291,16 @@ impl TranscriptFindState {
 			return;
 		}
 		let count = self.matches.len();
-		let prev = self.active_match_ix.map_or(count.saturating_sub(1), |cur| {
-			if cur == 0 {
-				count.saturating_sub(1)
-			} else {
-				cur - 1
-			}
-		});
+		let prev = self.active_match_ix.map_or_else(
+			|| count.saturating_sub(1),
+			|cur| {
+				if cur == 0 {
+					count.saturating_sub(1)
+				} else {
+					cur - 1
+				}
+			},
+		);
 		self.active_match_ix = Some(prev);
 		self.reveal_active_match(viewport, tokens, reduced, now);
 	}

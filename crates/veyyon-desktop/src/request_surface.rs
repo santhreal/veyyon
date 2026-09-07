@@ -3,7 +3,7 @@
 use veyyon_desktop_model::{HostActionKind, SessionId, SurfaceId};
 use veyyon_desktop_surface::Intent;
 
-pub(super) fn surface_for_action(
+pub fn surface_for_action(
 	intent: &Intent,
 	action: HostActionKind,
 	active_session: Option<&SessionId>,

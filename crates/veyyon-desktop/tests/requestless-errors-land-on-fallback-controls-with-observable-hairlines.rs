@@ -2,15 +2,15 @@
 //! Backend errors with no matching in-flight request land on their scope's
 //! fallback target rather than being lost or displayed as a blanket global
 //! error banner. Session-dependent fallbacks must correctly route to the
-//! rendered numeric UI SessionIndex rather than the wire SessionId, so that
+//! rendered numeric UI `SessionIndex` rather than the wire `SessionId`, so that
 //! visual controls (Composer, Queue, Terminal Drawer) can observe and render
 //! their per-control error hairlines.
 //!
 //! CLASS CLOSED:
 //! - An error scope variant added without its fallback surface routing,
 //!   retryability, or contextual scene visibility decision being recorded.
-//! - A mismatch between wire SessionId and UI SessionIndex row translation that
-//!   silently renders controls without their error hairlines.
+//! - A mismatch between wire `SessionId` and UI `SessionIndex` row translation
+//!   that silently renders controls without their error hairlines.
 //! - A requestless error with no active session that fails to fall back to the
 //!   global titlebar attention strip.
 //! - A matching in-flight request failure that fails to route to its
@@ -19,7 +19,7 @@
 //!   Diagnostics, Usage, Terminal) that fails to expose an error hairline when
 //!   its surface is open.
 //! - A retryable error whose retry action fails to dispatch the corresponding
-//!   HostAction.
+//!   `HostAction`.
 //!
 //! WHAT IT DOES NOT CATCH:
 //! - GPU raster anti-aliasing differences across platform graphic drivers.
@@ -56,8 +56,7 @@ fn startup_assets() -> StartupBundle {
 fn requestless_errors_translate_session_index_and_land_on_fallback_targets() {
 	for scope in ErrorScope::iter() {
 		let registry = RequestRegistry::new();
-		let mut state = ShellState::default();
-		state.current_id = 1;
+		let mut state = ShellState { current_id: 1, ..ShellState::default() };
 
 		let error = BackendError {
 			scope,
@@ -155,8 +154,7 @@ fn matching_request_error_lands_on_originating_control_not_fallback() {
 		30_000,
 	);
 
-	let mut state = ShellState::default();
-	state.current_id = 1;
+	let mut state = ShellState { current_id: 1, ..ShellState::default() };
 
 	let error = BackendError {
 		scope:          ErrorScope::Change,

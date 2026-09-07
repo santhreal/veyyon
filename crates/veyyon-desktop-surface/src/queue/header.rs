@@ -186,7 +186,11 @@ pub fn section_header(
 		.flex()
 		.items_center()
 		.justify_center()
-		.child(Icon::new(chevron_icon).size(IconSize::Size12).color(tokens.color(ColorRole::Secondary)));
+		.child(
+			Icon::new(chevron_icon)
+				.size(IconSize::Size12)
+				.color(tokens.color(ColorRole::Secondary)),
+		);
 
 	if let Some(weak) = view {
 		header = header
@@ -263,7 +267,7 @@ pub fn older_row(
 		.justify_between()
 		.gap(tokens.spacing(SpacingStep::S2));
 
-	if let Some(weak) = view.clone() {
+	if let Some(weak) = view {
 		older = older.on_click(move |_event, _window, app| {
 			let _ = weak.update(app, |view, cx| {
 				view.rail_motion_mut().show_more_parked(initial_page);

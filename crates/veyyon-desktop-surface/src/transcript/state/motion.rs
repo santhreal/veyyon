@@ -7,7 +7,7 @@ use veyyon_gpui::{App, FocusHandle, FollowMode, ListOffset, Pixels, px};
 
 use super::{TranscriptViewportState, TranscriptViewportStateInner};
 
-fn apply_scroll_position(inner: &mut TranscriptViewportStateInner, position: f32) {
+fn apply_scroll_position(inner: &TranscriptViewportStateInner, position: f32) {
 	let current = -f32::from(inner.list_state.scroll_px_offset_for_scrollbar().y);
 	inner.list_state.scroll_by(px(position - current));
 	if position <= 0.001 {

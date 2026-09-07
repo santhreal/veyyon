@@ -54,10 +54,11 @@ pub fn render_reveal_container(
 		.on_children_prepainted(move |children, _window, cx| {
 			if let Some(bounds) = children.first() {
 				let height = f32::from(bounds.size.height);
-				if height > 0.0 && state_measure.record_reveal_height(turn_ix, block_ix, height) {
-					if let Some(v) = &view_measure {
-						let _ = v.update(cx, |_view, cx| cx.notify());
-					}
+				if height > 0.0
+					&& state_measure.record_reveal_height(turn_ix, block_ix, height)
+					&& let Some(v) = &view_measure
+				{
+					let _ = v.update(cx, |_view, cx| cx.notify());
 				}
 			}
 		})

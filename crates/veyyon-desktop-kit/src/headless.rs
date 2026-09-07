@@ -2,12 +2,11 @@
 //! context that draws through it.
 //!
 //! `gpui_platform::current_headless_renderer` builds its wgpu instance over
-//! the Vulkan and GL backends together. On Linux the GL backend is EGL, and
-//! initialising EGL in a process with no display crashes the NVIDIA driver
-//! from one of its worker threads in about one run in five (5 of 25 runs of
-//! a 41-frame sweep, against 0 of 25 with GL excluded). Nothing offscreen
-//! draws through GL, so the instance here is built over Vulkan alone. macOS
-//! draws through Metal and keeps the platform's renderer.
+//! the Vulkan and GL backends together. On Linux the GL backend is EGL, whose
+//! initialisation in a process with no display reaches the display driver for
+//! nothing: no offscreen frame draws through GL, so the instance here is built
+//! over Vulkan alone. macOS draws through Metal and keeps the platform's
+//! renderer.
 //!
 //! One renderer serves every window a context opens: the device is built once
 //! per context rather than once per window, and the windows share one atlas.
@@ -64,12 +63,21 @@ impl PlatformHeadlessRenderer for SharedRenderer {
 	}
 }
 
+/// The text system every headless context shapes through.
+///
+/// One font system serves the whole process. Building one reads the system
+/// font database through fontconfig and freetype, which is the other half of
+/// the per-context cost measured on the process-wide device below. The
+/// families it exposes do not change between contexts and nothing here
+/// registers fonts of its own, so the database is read once.
+static TEXT_SYSTEM: std::sync::LazyLock<Arc<dyn veyyon_gpui::PlatformTextSystem>> =
+	std::sync::LazyLock::new(|| Arc::new(gpui_wgpu::CosmicTextSystem::new("sans-serif")));
+
 /// A headless app context whose windows draw through one shared renderer and
 /// shape text with the sans-serif system family.
 pub fn app_context() -> Result<HeadlessAppContext, NoOffscreenRenderer> {
 	let renderer = SharedRenderer::open()?;
-	let text_system = Arc::new(gpui_wgpu::CosmicTextSystem::new("sans-serif"));
-	Ok(HeadlessAppContext::with_platform(text_system, Arc::new(()), renderer.factory()))
+	Ok(HeadlessAppContext::with_platform(Arc::clone(&TEXT_SYSTEM), Arc::new(()), renderer.factory()))
 }
 
 #[cfg(target_os = "macos")]
@@ -84,18 +92,18 @@ fn platform_renderer() -> Result<Box<dyn PlatformHeadlessRenderer>, NoOffscreenR
 	VulkanRenderer::new().map(|renderer| Box::new(renderer) as Box<dyn PlatformHeadlessRenderer>)
 }
 
-/// A wgpu renderer over a Vulkan-only instance, drawing to an offscreen
-/// target.
+/// The Vulkan device every offscreen renderer in this process draws with.
+///
+/// One device serves the whole process, built on first use and kept for the
+/// process's life. A test binary opens a headless context per test, and
+/// building a device per context costs more than the frames do: a six-test
+/// route binary takes 6.93s per pass with a device and a font database per
+/// context, and 3.07-3.21s with one of each per process. The render target
+/// and the sprite atlas stay per renderer, so no glyph or texture crosses
+/// from one context into the next.
 #[cfg(not(target_os = "macos"))]
-struct VulkanRenderer {
-	/// Holds the device the renderer draws with.
-	_context: gpui_wgpu::WgpuContext,
-	renderer: gpui_wgpu::WgpuRenderer,
-}
-
-#[cfg(not(target_os = "macos"))]
-impl VulkanRenderer {
-	fn new() -> Result<Self, NoOffscreenRenderer> {
+static DEVICE: std::sync::LazyLock<Result<gpui_wgpu::WgpuContext, NoOffscreenRenderer>> =
+	std::sync::LazyLock::new(|| {
 		use gpui_wgpu::wgpu;
 
 		let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -105,16 +113,37 @@ impl VulkanRenderer {
 			memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
 			display:                  None,
 		});
-		let context = gpui_wgpu::WgpuContext::new_surfaceless(instance, None)
-			.map_err(|error| NoOffscreenRenderer { reason: format!("no Vulkan device: {error:#}") })?;
+		gpui_wgpu::WgpuContext::new_surfaceless(instance, None)
+			.map_err(|error| NoOffscreenRenderer { reason: format!("no Vulkan device: {error:#}") })
+	});
+
+/// The process-wide Vulkan device.
+///
+/// A failure is held too: a host with no Vulkan ICD does not acquire one by
+/// being asked a second time, and the first error is the one that explains it.
+#[cfg(not(target_os = "macos"))]
+fn device() -> Result<&'static gpui_wgpu::WgpuContext, NoOffscreenRenderer> {
+	DEVICE.as_ref().map_err(Clone::clone)
+}
+
+/// A wgpu renderer over the process-wide Vulkan device, drawing to an
+/// offscreen target.
+#[cfg(not(target_os = "macos"))]
+struct VulkanRenderer {
+	renderer: gpui_wgpu::WgpuRenderer,
+}
+
+#[cfg(not(target_os = "macos"))]
+impl VulkanRenderer {
+	fn new() -> Result<Self, NoOffscreenRenderer> {
+		let context = device()?;
 		// The target is resized before each frame; this is only where it
 		// starts.
 		let initial = Size { width: DevicePixels(1), height: DevicePixels(1) };
-		let renderer =
-			gpui_wgpu::WgpuRenderer::new_offscreen(&context, initial).map_err(|error| {
-				NoOffscreenRenderer { reason: format!("no offscreen target: {error:#}") }
-			})?;
-		Ok(Self { _context: context, renderer })
+		let renderer = gpui_wgpu::WgpuRenderer::new_offscreen(context, initial).map_err(|error| {
+			NoOffscreenRenderer { reason: format!("no offscreen target: {error:#}") }
+		})?;
+		Ok(Self { renderer })
 	}
 }
 

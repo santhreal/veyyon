@@ -93,10 +93,9 @@ impl ShellView {
 						.overlay
 						.as_mut()
 						.and_then(Overlay::as_palette_mut)
+						&& palette.query != query
 					{
-						if palette.query != query {
-							palette.set_query(query);
-						}
+						palette.set_query(query);
 					}
 				},
 				EditorEvent::Submit => view.run_palette(cx),
@@ -215,12 +214,11 @@ impl ShellView {
 		{
 			self.palette_input.parents.pop()
 		} else {
-			if !returning {
-				if let Some(parent) = self.state.overlay.as_ref().and_then(Overlay::as_palette) {
-					if parent.route != Some(route) {
-						self.palette_input.parents.push(parent.clone());
-					}
-				}
+			if !returning
+				&& let Some(parent) = self.state.overlay.as_ref().and_then(Overlay::as_palette)
+				&& parent.route != Some(route)
+			{
+				self.palette_input.parents.push(parent.clone());
 			}
 			None
 		};

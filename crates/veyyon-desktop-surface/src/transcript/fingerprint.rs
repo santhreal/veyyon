@@ -33,12 +33,13 @@ pub fn compute_turn_fingerprint(turn: &Turn) -> u64 {
 						text.hash(&mut hasher);
 						boundary.hash(&mut hasher);
 					},
-					Block::Invoke { call_id, tool, target, result } => {
+					Block::Invoke { call_id, tool, target, result, views } => {
 						1u8.hash(&mut hasher);
 						call_id.hash(&mut hasher);
 						tool.hash(&mut hasher);
 						target.hash(&mut hasher);
 						result.hash(&mut hasher);
+						views.hash(&mut hasher);
 					},
 					Block::Reason(summary) => {
 						2u8.hash(&mut hasher);

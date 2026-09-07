@@ -130,8 +130,8 @@ fn process_row(
 				.gap(tokens.spacing(SpacingStep::S1))
 				.child({
 					let sid = SessionId::from(session_id.to_string());
-					let stop_av = controls
-						.availability(&SurfaceId::ProcessStopButton(sid.clone(), proc.name.clone()));
+					let stop_av =
+						controls.availability(&SurfaceId::ProcessStopButton(sid, proc.name.clone()));
 					let (stop_op, _, stop_allowed) = availability_style(&stop_av, tokens);
 					let mut btn = Button::new("Stop")
 						.id(("process-stop", idx))

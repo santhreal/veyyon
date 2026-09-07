@@ -157,12 +157,14 @@ pub fn agent_turn(
 				state,
 				view,
 			),
-			Block::Invoke { tool, target, result, .. } => render_invoke_block(
+			Block::Invoke { call_id, tool, target, result, views } => render_invoke_block(
 				turn_ix,
 				block_ix,
+				call_id,
 				tool,
 				target,
 				result.as_deref(),
+				views,
 				is_expanded,
 				geometry,
 				tokens,

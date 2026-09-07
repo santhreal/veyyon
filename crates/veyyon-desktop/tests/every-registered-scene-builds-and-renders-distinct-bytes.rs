@@ -101,7 +101,9 @@ fn every_scene_builds_except_the_pinned_unreachable_set() {
 
 /// Every scene's bytes, keyed by name, plus the ids every shell scene read
 /// without a projection having set them.
-fn render_all() -> (BTreeMap<String, Vec<u8>>, BTreeMap<ErrorScope, Vec<u8>>, BTreeSet<String>) {
+type RenderAllResult = (BTreeMap<String, Vec<u8>>, BTreeMap<ErrorScope, Vec<u8>>, BTreeSet<String>);
+
+fn render_all() -> RenderAllResult {
 	let mut cx = headless_context().expect("headless context must be available on GPU host");
 	let bundle = startup_assets();
 	let assets = Assets {

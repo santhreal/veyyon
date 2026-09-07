@@ -1,7 +1,7 @@
 //! WHY: a cold host exceeded its startup deadline and the desktop never started
 //! its transport, even after the host began listening. Startup failures must
 //! preserve both their diagnostic and a usable endpoint for bounded retries.
-//! This exercises real child processes, pipes and HostLink against a protocol
+//! This exercises real child processes, pipes and `HostLink` against a protocol
 //! fixture. Native capture separately covers window responsiveness and
 //! projection.
 
