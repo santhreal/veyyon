@@ -607,7 +607,15 @@ function applyModelPatch(base: Model<Api>, patch: ModelPatch, transport: ModelTr
 	const result = { ...base };
 	if (patch.name !== undefined) result.name = patch.name;
 	if (patch.reasoning !== undefined) result.reasoning = patch.reasoning;
-	if (patch.thinking !== undefined) result.thinking = patch.thinking;
+	if (patch.thinking !== undefined) {
+		result.thinking = patch.thinking;
+		// An authored ladder replaces the endpoint's declared surface, which
+		// `resolveModelThinking` reads first: a row whose discovery reports
+		// `noEffortControl` (openrouter's `anthropic/claude-sonnet-4`) would
+		// otherwise drop the patch and leave the picker closed on a model the
+		// operator just described a ladder for.
+		delete result.reasoningOptions;
+	}
 	if (patch.input !== undefined) result.input = patch.input;
 	if (patch.supportsTools !== undefined) result.supportsTools = patch.supportsTools;
 	if (patch.contextWindow !== undefined) result.contextWindow = patch.contextWindow;

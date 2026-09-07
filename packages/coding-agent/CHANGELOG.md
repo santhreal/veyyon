@@ -154,6 +154,7 @@
 
 ### Fixed
 
+- A `modelOverrides` entry that states a thinking ladder is offered on a model whose upstream metadata declares no effort control, or declares a different ladder; the authored ladder replaces the declared surface instead of being discarded.
 - Terminal tool cards shorten home-directory paths and replace tabs in metadata, notices, code, diffs, and generic argument previews before width fitting.
 - Failed task results without agent details retain error text styling.
 - Launch model context estimates exclude project context and clamp the remaining percentage to zero.
