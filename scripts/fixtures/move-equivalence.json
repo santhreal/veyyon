@@ -4,9 +4,9 @@
 	"historicalSnapshotCommit": "de0ccbf5a571d9de1285cb4dddeff1cc23f882aa",
 	"counts": {
 		"total": 4804,
-		"none": 3417,
-		"importsAndCommentsOnly": 762,
-		"changed": 625,
+		"none": 3416,
+		"importsAndCommentsOnly": 761,
+		"changed": 627,
 		"binary": 26
 	},
 	"deviations": {
@@ -376,6 +376,12 @@
 			"hash": "55fbcffcb87d2f5db25ac1902c610baef28d0540e81b7316eeabf33273bf62ac",
 			"structuralHash": "85b0c254e2ab583f41e6d8a2c905a35a49cc376373a9b1ae38202e5529fca947"
 		},
+		"packages/coding-agent/src/modes/terminal/controllers/home-anchor-layout.ts": {
+			"old": "packages/coding-agent/src/modes/controllers/home-anchor-layout.ts",
+			"group": "host-boundary",
+			"hash": "e9df210c8cc061d4a46e81b9e55ef10d8038a71ce227d85929044496ccb73759",
+			"structuralHash": "fa445ece61474450edf7fec6254f2030864b54186fe5cd1851147cc4546278e2"
+		},
 		"packages/coding-agent/src/modes/terminal/controllers/input-controller.ts": {
 			"old": "packages/coding-agent/src/modes/controllers/input-controller.ts",
 			"group": "startup-initialization",
@@ -421,8 +427,8 @@
 		"packages/coding-agent/src/modes/terminal/interactive-mode.ts": {
 			"old": "packages/coding-agent/src/modes/interactive-mode.ts",
 			"group": "startup-initialization",
-			"hash": "9dc493668bc34e9e7c6816b4eb457d99ade55fed8f9c4fe4c621bfbe6c4d09a5",
-			"structuralHash": "37863d776c418cf9c9d161e071bdaa80f93e34024da0cb79353868fccc2c8e30"
+			"hash": "10c36e2aff5fe61b1f57bdbd3d74b77398b20b38d967b3940f90ae3c722c86b3",
+			"structuralHash": "60d63c47c01247b756e40ac176b3456fc3fe93d186523ef48fd376cef6bf01e5"
 		},
 		"packages/coding-agent/src/modes/terminal/running-agent-badge.ts": {
 			"old": "packages/coding-agent/src/modes/running-subagent-badge.ts",
@@ -1425,6 +1431,12 @@
 			"group": "colocated-test",
 			"hash": "f586911cbac5ad39d8fe5444dc413573be5435297a696b7ba747433630cdb743",
 			"structuralHash": "250dfaa714638318e435e70163cd79009935dd878e5c4828642db50764741e11"
+		},
+		"packages/coding-agent/test/modes/terminal/controllers/home-anchor-layout.test.ts": {
+			"old": "packages/coding-agent/test/modes/controllers/home-anchor-layout.test.ts",
+			"group": "colocated-test",
+			"hash": "d8aa93461229d0d9b2535efd76f2e5b9c522288168e957f3b98754e8a295e393",
+			"structuralHash": "23411e9e6951711dbdf8633e82b3f41aaecd59af7953eceda6cb4af898374d34"
 		},
 		"packages/coding-agent/test/modes/terminal/controllers/selector-controller-agents-dashboard.test.ts": {
 			"old": "packages/coding-agent/test/modes/controllers/selector-controller-agents-dashboard.test.ts",

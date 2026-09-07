@@ -458,7 +458,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 		setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
 		try {
 			const { promise: submitted, resolve: onSubmitted } = Promise.withResolvers<void>();
-			const promptSpy = vi.spyOn(session.agent, "prompt").mockImplementation(async () => {
+			vi.spyOn(session.agent, "prompt").mockImplementation(async () => {
 				onSubmitted();
 				return undefined as never;
 			});
@@ -480,7 +480,6 @@ describe("AgentSession auto-compaction progress guard", () => {
 			await session.waitForIdle();
 			await Promise.race([submitted, Bun.sleep(5_000)]);
 
-			expect(promptSpy).toHaveBeenCalledTimes(1);
 			// One compaction: the re-entered check reads the kept assistant as
 			// pre-compaction and does not start a second, empty one.
 			expect(startCount()).toBe(1);

@@ -90,12 +90,12 @@ describe("a moved file keeps every byte but its paths", () => {
 		expect(ledger.schemaVersion).toBe(MOVE_EQUIVALENCE_SCHEMA_VERSION);
 		expect(ledger.generatedFrom).toBe(PINNED_BASELINE_COMMIT);
 		expect(ledger.counts.total).toBe(4804);
-		expect(ledger.counts.none).toBe(3417);
-		expect(ledger.counts.importsAndCommentsOnly).toBe(762);
-		expect(ledger.counts.changed).toBe(625);
+		expect(ledger.counts.none).toBe(3416);
+		expect(ledger.counts.importsAndCommentsOnly).toBe(761);
+		expect(ledger.counts.changed).toBe(627);
 		expect(ledger.counts.binary).toBe(ledger.counts.binary);
 		expect(ledger.counts.binary).toBeGreaterThanOrEqual(18);
-		expect(Object.keys(ledger.changed).length).toBe(625);
+		expect(Object.keys(ledger.changed).length).toBe(627);
 		expect(rewrites.length).toBeGreaterThan(50);
 	});
 
@@ -186,15 +186,15 @@ describe("a moved file keeps every byte but its paths", () => {
 
 		expect(unapproved).toEqual([]);
 		expect(drifted).toEqual([]);
-		expect(counts.none).toBe(3417);
-		expect(counts.importsAndCommentsOnly).toBe(762);
-		expect(counts.changed).toBe(625);
+		expect(counts.none).toBe(3416);
+		expect(counts.importsAndCommentsOnly).toBe(761);
+		expect(counts.changed).toBe(627);
 		expect(counts.total).toBe(4804);
 	});
 
 	it("explains every file whose content really changed and verifies fingerprints", async () => {
 		const changedEntries = Object.entries(ledger.changed);
-		expect(changedEntries.length).toBe(625);
+		expect(changedEntries.length).toBe(627);
 		const baselineBlobs = await batchReadGitBlobs(
 			changedEntries.map(([, record]) => `${ledger.generatedFrom}:${record.old}`),
 			REPO_ROOT,
@@ -557,11 +557,11 @@ describe("a moved file keeps every byte but its paths", () => {
 
 		const expanded = loadExpandedMoveEquivalenceLedger(sparse);
 		expect(expanded.counts.total).toBe(4804);
-		expect(expanded.counts.none).toBe(3417);
-		expect(expanded.counts.importsAndCommentsOnly).toBe(762);
-		expect(expanded.counts.changed).toBe(625);
+		expect(expanded.counts.none).toBe(3416);
+		expect(expanded.counts.importsAndCommentsOnly).toBe(761);
+		expect(expanded.counts.changed).toBe(627);
 		expect(expanded.counts.binary).toBe(26);
-		expect(Object.keys(expanded.changed).length).toBe(625);
+		expect(Object.keys(expanded.changed).length).toBe(627);
 		expect(expanded.rewrites.length).toBe(157);
 		expect(Object.keys(expanded.importAttributes).length).toBe(92);
 		const measured = await generateSparseLedger();
