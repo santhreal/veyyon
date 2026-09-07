@@ -13,13 +13,14 @@
 use veyyon_desktop_kit::{ColorRole, TokenSet};
 use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
-use veyyon_gpui::{Div, ParentElement, Styled, WeakEntity, div, px};
+use veyyon_gpui::{Div, InteractiveElement, ParentElement, Styled, WeakEntity, div, px};
 
 use super::{
 	blocks::{
 		render_artifact_block, render_invoke_block, render_note_block, render_pane_block,
 		render_prose_block, render_reason_block,
 	},
+	footer::{TURN_FOOTER_GROUP, render_turn_footer},
 	state::TranscriptViewportState,
 };
 use crate::{
@@ -76,9 +77,10 @@ pub fn render_turn(
 			}
 			turn.child(column)
 		},
-		Turn::Agent(blocks) => agent_turn(
+		Turn::Agent { blocks, model } => agent_turn(
 			turn_ix,
 			blocks,
+			model.as_deref(),
 			is_last,
 			is_streaming,
 			caret_opacity,
@@ -125,6 +127,7 @@ pub fn operator_turn(
 pub fn agent_turn(
 	turn_ix: usize,
 	blocks: &[Block],
+	model: Option<&str>,
 	is_last: bool,
 	is_streaming: bool,
 	caret_opacity: f32,
@@ -136,6 +139,12 @@ pub fn agent_turn(
 	view: Option<&WeakEntity<ShellView>>,
 ) -> Div {
 	let mut turn = div().flex().flex_col().w_full();
+	// A hover group is hit-tested so its reveal can be tracked, so a turn that
+	// names no model does not establish one: there is nothing under it to
+	// reveal, and the rect would answer a click with nothing.
+	if model.is_some() {
+		turn = turn.group(TURN_FOOTER_GROUP);
+	}
 
 	for (block_ix, block) in blocks.iter().enumerate() {
 		let is_last_block = is_last && (block_ix + 1 == blocks.len());
@@ -209,6 +218,16 @@ pub fn agent_turn(
 		}
 
 		turn = turn.child(rendered);
+	}
+
+	// The footer is the turn's last row, one intra-group gap under the blocks:
+	// it belongs to the turn it names rather than reading as another block.
+	if let Some(model) = model {
+		let is_focused = state.focused_turn() == Some(turn_ix);
+		turn = turn.child(
+			render_turn_footer(turn_ix, model, is_focused, tokens, view)
+				.mt(px(geometry.group_blocks_gap)),
+		);
 	}
 
 	turn

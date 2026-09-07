@@ -16,6 +16,10 @@ export interface TranscriptConversionOptions {
 
 function mapContentBlocks(content: unknown, options?: TranscriptConversionOptions): ContentBlock[] {
 	if (typeof content === "string") return [{ Text: { text: content } }];
+	// A message that recorded no content has nothing to draw. The lossless
+	// fallback is for a shape nobody expected, not for an absent one, and it
+	// drew a block captioned "unknown" under every turn whose content was null.
+	if (content === null || content === undefined) return [];
 	if (!Array.isArray(content)) return [{ Fallback: { producer: "unknown", value: content } }];
 
 	const blocks: ContentBlock[] = [];
@@ -271,6 +275,8 @@ export function sessionEntryToTranscriptEntry(
 		case "thinking_level_change": {
 			const configured = entry.configured || entry.thinkingLevel;
 			const effective = entry.thinkingLevel;
+			// A change entry that recorded no level states nothing, so it draws
+			// no row rather than a note about its own absence.
 			content = configured
 				? [
 						{
@@ -279,14 +285,14 @@ export function sessionEntryToTranscriptEntry(
 							},
 						},
 					]
-				: [{ Text: { text: "thinking level not recorded" } }];
+				: [];
 			break;
 		}
 		case "service_tier_change": {
 			const tiers = Object.entries(entry.serviceTier ?? {})
 				.filter(([, value]) => value != null)
 				.map(([family, value]) => `${family}:${value}`);
-			content = [{ Text: { text: `service tier: ${tiers.length ? tiers.join(", ") : "unset"}` } }];
+			content = tiers.length ? [{ Text: { text: `service tier: ${tiers.join(", ")}` } }] : [];
 			break;
 		}
 		case "custom_message":

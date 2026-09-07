@@ -81,7 +81,7 @@ describe("sessionEntryToTranscriptEntry specific variant contracts", () => {
 		expect(transcript.content).toEqual([{ ThinkingChange: { level: "auto (high)" } }]);
 	});
 
-	test("thinking level change when both fields are absent produces 'thinking level not recorded'", () => {
+	test("thinking level change with neither field recorded draws no row", () => {
 		const entry: SessionEntry = {
 			type: "thinking_level_change",
 			id: "t-none",
@@ -89,10 +89,11 @@ describe("sessionEntryToTranscriptEntry specific variant contracts", () => {
 			timestamp: FIXTURE_TIMESTAMP,
 		};
 		const transcript = sessionEntryToTranscriptEntry(entry, 1);
-		expect(transcript.content).toEqual([{ Text: { text: "thinking level not recorded" } }]);
+		expect(transcript.content).toEqual([]);
+		expect(transcript.raw).toEqual(entry);
 	});
 
-	test("service tier change with null produces 'service tier: unset'", () => {
+	test("service tier change with no tier set draws no row", () => {
 		const entry: SessionEntry = {
 			type: "service_tier_change",
 			id: "st-null",
@@ -101,7 +102,20 @@ describe("sessionEntryToTranscriptEntry specific variant contracts", () => {
 			serviceTier: null,
 		};
 		const transcript = sessionEntryToTranscriptEntry(entry, 1);
-		expect(transcript.content).toEqual([{ Text: { text: "service tier: unset" } }]);
+		expect(transcript.content).toEqual([]);
+		expect(transcript.raw).toEqual(entry);
+	});
+
+	test("service tier change states each family it recorded", () => {
+		const entry: SessionEntry = {
+			type: "service_tier_change",
+			id: "st-set",
+			parentId: null,
+			timestamp: FIXTURE_TIMESTAMP,
+			serviceTier: { openai: "flex", anthropic: null },
+		};
+		const transcript = sessionEntryToTranscriptEntry(entry, 1);
+		expect(transcript.content).toEqual([{ Text: { text: "service tier: openai:flex" } }]);
 	});
 
 	test("custom message with display: false returns empty content preserving links and raw", () => {
@@ -319,4 +333,25 @@ describe("tool result identity and presentation", () => {
 			expect(projected.raw).toBe(message);
 		});
 	}
+});
+
+describe("content nobody recorded", () => {
+	for (const [label, content] of [
+		["null", null],
+		["undefined", undefined],
+	] as const) {
+		test(`an assistant message whose content is ${label} draws no block`, () => {
+			const message = { role: "assistant" as const, content, model: "local/qwen2.5-1.5b" };
+			const projected = agentMessageToTranscriptEntry(message, 1, "assistant-empty");
+			expect(projected.content).toEqual([]);
+			expect(projected.meta?.model).toBe("local/qwen2.5-1.5b");
+		});
+	}
+
+	test("an assistant message whose content is a shape nobody expected keeps it losslessly", () => {
+		const content = { unexpected: "shape" };
+		const message = { role: "assistant" as const, content };
+		const projected = agentMessageToTranscriptEntry(message, 1, "assistant-odd");
+		expect(projected.content).toEqual([{ Fallback: { producer: "unknown", value: content } }]);
+	});
 });

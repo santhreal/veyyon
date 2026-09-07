@@ -39,6 +39,9 @@
 - `runCommitAgentSession` reports its run through a `CommitAgentReporter` instead of writing to stdout itself, and `commit/agentic/agent-render.ts` is the only module that draws it, so the commit domain names neither the terminal engine nor chalk; `veyyon commit` prints the same thinking line, markdown, tool tree and totals it printed before.
 - The `/collab` QR block draws its own leading blank row instead of being presented behind a spacer, so the slash-command registry no longer imports the terminal engine; the transcript shows the same blank row above the code and above the too-narrow hint.
 - The compaction policy vocabulary (check outcomes, the bar a pass is measured against, the truncation edge budget, the prune cache window and idle flush, and the recovery band) lives in `@veyyon/kernel/session/agent-session-compaction-policy` rather than interleaved with shutdown timeouts and credential backoffs in `agent-session.ts`, with no behavior change.
+- A desktop agent turn ends with a footer naming the model that produced it, revealed while the pointer is over the turn or the turn cursor is on it, and clicking that name opens the session's token and cost accounting on one line in the right panel's Usage tab; the turn header still states none of the seven usage figures.
+- The desktop turn cursor (`Ctrl+Up`, `Ctrl+Down`) stops on the first and last turn instead of stepping past the end, and stepping onto the last turn keeps the transcript following new output instead of raising a "Scroll to end" pill over the end it is already showing.
+- A desktop transcript draws no row for a thinking-level or service-tier change that recorded no value, where it previously stated "thinking level not recorded" and "service tier: unset".
 
 ### Changed
 
@@ -161,6 +164,8 @@
 - Desktop queue shortcuts reach the rail after the pointer selects a row in it, which the rail's missing focus handle swallowed, and `P`, `D` and `K` toggle: a session already pinned, deferred or parked moves back to `Live` rather than being re-filed where it already is. A pinned row's context menu offers `Unpin`.
 - A desktop turn draws the fourth vertical gap it authored: a change of block kind opens the next group 8px down instead of sitting at the 4px a group's own blocks use, so a run of tool calls reads as one band and the prose after it as a new subject.
 - A desktop transcript no longer shows the runtime's own bookkeeping records — `tool_execution_start`, `session_exit`, todo edits, an extension's stored state — as `Fallback:` rows between the turns.
+- A desktop transcript draws no row for a message that recorded no content, where a `null` content field drew a block captioned `unknown` under the turn it belonged to; a content shape nobody expected is still kept losslessly.
+- A desktop agent turn that names no model establishes no hover group, so the frame registers no hit rect for a reveal with nothing under it.
 - A `modelOverrides` entry that states a thinking ladder is offered on a model whose upstream metadata declares no effort control, or declares a different ladder; the authored ladder replaces the declared surface instead of being discarded.
 - Terminal tool cards shorten home-directory paths and replace tabs in metadata, notices, code, diffs, and generic argument previews before width fitting.
 - Failed task results without agent details retain error text styling.
