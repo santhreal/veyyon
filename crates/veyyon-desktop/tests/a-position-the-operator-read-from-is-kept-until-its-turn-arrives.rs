@@ -1,17 +1,19 @@
-//! WHY: §8.10 remembers where the operator was reading, and the turn that
-//! position names is often not on the window when it is read: a relaunch
-//! restores the store before the host has sent the transcript, and a session
-//! pages in earlier turns afterwards. A position applied only on the frame it
-//! arrives on is a position silently dropped, and one applied as an index
-//! lands on whatever turn later occupies that slot.
+//! WHY: §8.10 remembers where the operator was reading and which cards they
+//! had open, and the turn either one names is often not on the window when it
+//! is read: a relaunch restores the store before the host has sent the
+//! transcript, and a session pages in earlier turns afterwards. A value
+//! applied only on the frame it arrives on is a value silently dropped, and a
+//! position applied as an index lands on whatever turn later occupies that
+//! slot.
 //!
 //! The class this closes is a remembered value that names something the host
-//! has not reported yet: the position is held, resolved against the entry id
-//! rather than the index, and applied on the frame the turn it names is drawn.
+//! has not reported yet: it is held while it cannot be placed, written back to
+//! the store as held, resolved against the id the host reports rather than an
+//! index, and applied on the frame the thing it names is drawn.
 //!
-//! What it does not catch: the document the position is written in, which is
-//! the model crate's sweep, and the placement of a position whose turn is
-//! already drawn, which the shape suite covers.
+//! What it does not catch: the document these values are written in, which is
+//! the model crate's sweep, and the placement of a value whose turn is already
+//! drawn, which the shape suite covers.
 
 mod support;
 
@@ -178,6 +180,43 @@ fn a_view_at_the_live_edge_remembers_no_position_and_a_return_to_it_forgets_one(
 		assert_eq!(
 			returned, None,
 			"a view the operator sent back to the live edge forgets the position it left"
+		);
+	});
+}
+
+#[test]
+fn a_disclosure_naming_an_invocation_that_has_not_arrived_is_kept_until_it_does() {
+	let (_tree, dir) = support::memory::state_dir("gui-memory-pending-disclosure");
+	driven(support::memory::crowded(), |session| {
+		let mut store = store_on(FIRST);
+		let mut keeper = keeper_over(&dir);
+		session
+			.update(|view, window, cx| {
+				keeper.sync(view, &mut store, window, 0, cx);
+			})
+			.expect("the keeper adopts the session the host named");
+		let shape = SessionShape {
+			expanded_call_ids: std::iter::once(
+				support::memory::CALL_WITH_VIEWS.to_string(),
+			)
+			.collect(),
+			..SessionShape::default()
+		};
+		session
+			.update(|view, _window, cx| view.restore_session_shape(&shape, cx))
+			.expect("the window takes a disclosure naming a card it has not drawn");
+		session
+			.frame()
+			.expect("a frame with the invocation still missing draws");
+		let held = session
+			.update(|view, window, cx| {
+				keeper.sync(view, &mut store, window, 1, cx);
+				view.session_shape().expanded_call_ids
+			})
+			.expect("the window states what it is still holding");
+		assert!(
+			held.contains(support::memory::CALL_WITH_VIEWS),
+			"a disclosure whose invocation has not arrived is kept, not dropped: {held:?}"
 		);
 	});
 }
