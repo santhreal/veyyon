@@ -19,29 +19,38 @@
 //! enum can grow past them without a compile error.
 //!
 //! WHAT IT DOES NOT CATCH:
-//! It asserts what a control is told, not what the intent path does with a
-//! keystroke: nothing gates an intent before it is sent today, so a shortcut
-//! bound to a mutation still reaches the transport in a state that cannot carry
-//! it. It does not judge the classification itself — an action filed as
-//! ephemeral that mutates state is `classify_action`'s defect, and
-//! `egress_action_classification_is_exhaustive` is its suite. The sweep reads
-//! the controls this fixture's store reaches: one live session with a pending
-//! question and plan, so a control projected only from a provider, MCP server,
-//! keybinding or terminal the store does not hold is outside it.
+//! It drives one keyboard path, the composer's primary chord, against the
+//! projection it reads; a handler on another surface that raises an intent
+//! without reading `ControlStates` is outside it, and nothing gates an intent
+//! at the dispatch seam. It does not judge the classification itself — an
+//! action filed as ephemeral that mutates state is `classify_action`'s
+//! defect, and `egress_action_classification_is_exhaustive` is its suite. The
+//! sweep reads the controls this fixture's store reaches: one live session
+//! with a pending question and plan, so a control projected only from a
+//! provider, MCP server, keybinding or terminal the store does not hold is
+//! outside it.
 
-use std::collections::HashMap;
+use std::{
+	collections::HashMap,
+	path::PathBuf,
+	sync::{Arc, Mutex},
+};
 
 use strum::IntoEnumIterator;
 use veyyon_desktop::{
-	ActionClassification, SessionIndex, classify_action, project, project_controls,
-	scene::seed::Seed, transport_gate,
+	ActionClassification, AssetPaths, SessionIndex, StartupBundle, classify_action,
+	load_startup_bundle, project, project_controls, scene::seed::Seed, transport_gate,
 };
 use veyyon_desktop_model::{
 	Capability, CapabilityStatus, ConnectionState, ConnectionStateKind, Gate, HostActionKind,
 	InteractionId, PROTOCOL_VERSION, PendingDecisions, PlanInteraction, QuestionInteraction,
 	QueuePartition, RequestId, SessionId, SurfaceId,
 };
-use veyyon_desktop_surface::{Availability, ControlStates, ShellState};
+use veyyon_desktop_scene::{Appearance, RenderOptions, headless_context, render_view_captured};
+use veyyon_desktop_surface::{
+	Availability, ControlStates, Intent, ShellState, ShellView, install_tokens,
+};
+use veyyon_gpui::{App, AppContext, Window};
 
 /// The clock the projection measures elapsed labels against, pinned so the
 /// suite does not read the wall.
@@ -109,12 +118,12 @@ fn decisions() -> PendingDecisions {
 	}
 }
 
-/// The control states the window projects for one connection state, paired
-/// with the row id every session-scoped control is gated under. Every
-/// capability is set available, as the host declared them while it was
-/// reachable, so what withholds a control here is the transport and nothing
-/// else. `pending` seeds the question and plan the session is waiting on.
-fn projected(state: ConnectionState, pending: bool) -> (ControlStates, SessionId) {
+/// The shell one connection state projects, paired with the row id every
+/// session-scoped control is gated under. Every capability is set available,
+/// as the host declared them while it was reachable, so what withholds a
+/// control here is the transport and nothing else. `pending` seeds the
+/// question and plan the session is waiting on.
+fn window(state: ConnectionState, pending: bool) -> (ShellState, SessionId) {
 	let mut seed = Seed::connection(state);
 	for capability in Capability::ALL {
 		seed
@@ -133,7 +142,14 @@ fn projected(state: ConnectionState, pending: bool) -> (ControlStates, SessionId
 	let row = index
 		.row_id(&session)
 		.expect("the session listed holds a row id");
-	(shell.controls, SessionId::from(row.to_string()))
+	shell.current_id = row;
+	(shell, SessionId::from(row.to_string()))
+}
+
+/// The control states of that window.
+fn projected(state: ConnectionState, pending: bool) -> (ControlStates, SessionId) {
+	let (shell, row) = window(state, pending);
+	(shell.controls, row)
 }
 
 #[test]
@@ -264,4 +280,64 @@ fn no_control_the_projection_sets_is_left_offered_while_the_host_is_unreachable(
 		 not: {offered:?}"
 	);
 	assert!(swept > 20, "the sweep read the whole projection, not a handful: {swept} controls");
+}
+
+/// The bundled tokens and themes a rendered shell installs.
+fn startup_assets() -> StartupBundle {
+	let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../veyyon-desktop-tokens");
+	load_startup_bundle(AssetPaths {
+		tokens_dir: root.join("tokens"),
+		themes_dir: root.join("themes"),
+	})
+	.expect("bundled tokens and themes load")
+}
+
+/// Types a draft into a shell whose controls carry one connection state's
+/// gates, presses the composer's primary chord, and reports what it sent.
+fn chorded_send(state: ConnectionState) -> Vec<Intent> {
+	let (shell, _) = window(state, false);
+	let mut cx = headless_context().expect("a headless renderer is required to build the shell");
+	let bundle = startup_assets();
+	let options = RenderOptions {
+		width: 1200,
+		height: 800,
+		appearance: Appearance::Dark,
+		scale_factor: 1.0,
+		..RenderOptions::default()
+	};
+	let sink: Arc<Mutex<Vec<Intent>>> = Arc::new(Mutex::new(Vec::new()));
+	let observed = Arc::clone(&sink);
+	render_view_captured(&mut cx, &options, move |_window: &mut Window, app: &mut App| {
+		let installed = install_tokens(app, &bundle.tokens, &bundle.theme, &bundle.surface_path)
+			.expect("tokens install");
+		let view = app.new(move |_cx| ShellView::new(installed, shell));
+		view.update(app, |view, cx| {
+			view.set_composed("ship it", cx);
+			view.submit_primary_turn_action(cx);
+			*observed.lock().expect("intent sink") = view.drain_intents();
+		});
+		view
+	})
+	.expect("the shell builds and renders");
+	sink.lock().expect("intent sink").clone()
+}
+
+#[test]
+fn the_composer_chord_sends_nothing_its_own_button_is_withholding() {
+	let attached = chorded_send(state_of(ConnectionStateKind::Connected));
+	assert!(
+		attached
+			.iter()
+			.any(|intent| matches!(intent, Intent::Send { .. })),
+		"the chord submits the draft while the host is there: {attached:?}"
+	);
+	for kind in
+		[ConnectionStateKind::Fatal, ConnectionStateKind::Reconnecting, ConnectionStateKind::Detached]
+	{
+		let raised = chorded_send(state_of(kind));
+		assert!(
+			raised.is_empty(),
+			"the chord raises nothing in {kind:?}, where the send button is withheld: {raised:?}"
+		);
+	}
 }
