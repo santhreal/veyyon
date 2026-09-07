@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import { formatBytes } from "@veyyon/utils/format";
 import { SUPPORTED_VIDEO_MIME_TYPES } from "@veyyon/utils/mime";
-import { resolveReadPath } from "../tools/path-utils";
+import { resolveReadPath } from "../tools/core/path-utils";
 
 export const MAX_VIDEO_INPUT_BYTES = 20 * 1024 * 1024;
 export const MAX_PROMPT_ATTACHMENT_BYTES = 20 * 1024 * 1024;

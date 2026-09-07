@@ -12,7 +12,7 @@ import {
 	SETTINGS_SCHEMA,
 	type SettingPath,
 } from "../../config/settings-schema";
-import { getAvailableThemes, isLightTheme } from "../../modes/theme/theme";
+import { getAvailableThemes, isLightTheme } from "../../theme/theme";
 import type { KeybindingView, SettingEntryView, ThemesView, ThemeView } from "../wire";
 import type { ActionHandler, ActionHandlersMap } from "./types";
 

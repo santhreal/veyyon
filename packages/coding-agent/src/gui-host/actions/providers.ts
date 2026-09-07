@@ -2,7 +2,7 @@ import type { AuthStorage } from "@veyyon/ai";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import { PROVIDER_REGISTRY } from "@veyyon/ai/registry";
 import { CATALOG_PROVIDERS } from "@veyyon/catalog/provider-models/descriptors";
-import { formatProviderName } from "../../slash-commands/helpers/format";
+import { formatProviderName } from "../../session/account-format";
 import { openPath } from "../../utils/open";
 import { writeFrame } from "../frames";
 import type { ActiveAuthFlow } from "../turns";

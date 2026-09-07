@@ -24,7 +24,7 @@ import {
 	getExtensionUISelectOptionLabel,
 } from "../extensibility/extensions/types";
 import { APPROVAL_SELECT_OPTIONS } from "../extensibility/extensions/wrapper";
-import { theme } from "../modes/theme/theme";
+import { theme } from "../theme/theme";
 import { writeFrame } from "./frames";
 import type {
 	ApprovalInteraction,

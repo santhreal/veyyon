@@ -22,8 +22,8 @@ import { type PlanApprovalDetails, resolveApprovedPlan } from "../plan-mode/appr
 import { DEFAULT_PLAN_FILE_URL } from "../plan-mode/plan-file-url";
 import { resolvePlanFilePath } from "../plan-mode/plan-path";
 import type { AgentSession } from "../session/agent-session";
-import { runResolveInvocation } from "../tools/resolve";
-import { ToolError } from "../tools/tool-errors";
+import { runResolveInvocation } from "../tools/agent/resolve";
+import { ToolError } from "../tools/core/tool-errors";
 import type { InteractionLedger } from "./interactions";
 
 const PLAN_TOOL = "resolve";
