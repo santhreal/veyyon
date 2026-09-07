@@ -15,6 +15,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { AgentMessage } from "@veyyon/agent-core";
 import { SESSION_EXIT_CUSTOM_TYPE, TOOL_EXECUTION_START_CUSTOM_TYPE } from "@veyyon/kernel/session/exit-diagnostics";
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
@@ -112,7 +113,7 @@ describe("sessionEntryToTranscriptEntry specific variant contracts", () => {
 			id: "st-set",
 			parentId: null,
 			timestamp: FIXTURE_TIMESTAMP,
-			serviceTier: { openai: "flex", anthropic: null },
+			serviceTier: { openai: "flex", anthropic: undefined },
 		};
 		const transcript = sessionEntryToTranscriptEntry(entry, 1);
 		expect(transcript.content).toEqual([{ Text: { text: "service tier: openai:flex" } }]);
@@ -336,22 +337,26 @@ describe("tool result identity and presentation", () => {
 });
 
 describe("content nobody recorded", () => {
-	for (const [label, content] of [
-		["null", null],
-		["undefined", undefined],
+	// A message reaches the converter out of a session file, where the bytes
+	// were written by whatever version recorded the turn: `AgentMessage` states
+	// what a current writer produces, not what the file holds. These cases
+	// arrive the way the host's do, parsed from the recorded line.
+	const recorded = (line: string): AgentMessage => JSON.parse(line) as AgentMessage;
+
+	for (const [label, line] of [
+		["null", '{"role":"assistant","content":null,"model":"local/qwen2.5-1.5b"}'],
+		["absent", '{"role":"assistant","model":"local/qwen2.5-1.5b"}'],
 	] as const) {
 		test(`an assistant message whose content is ${label} draws no block`, () => {
-			const message = { role: "assistant" as const, content, model: "local/qwen2.5-1.5b" };
-			const projected = agentMessageToTranscriptEntry(message, 1, "assistant-empty");
+			const projected = agentMessageToTranscriptEntry(recorded(line), 1, "assistant-empty");
 			expect(projected.content).toEqual([]);
 			expect(projected.meta?.model).toBe("local/qwen2.5-1.5b");
 		});
 	}
 
 	test("an assistant message whose content is a shape nobody expected keeps it losslessly", () => {
-		const content = { unexpected: "shape" };
-		const message = { role: "assistant" as const, content };
+		const message = recorded('{"role":"assistant","content":{"unexpected":"shape"}}');
 		const projected = agentMessageToTranscriptEntry(message, 1, "assistant-odd");
-		expect(projected.content).toEqual([{ Fallback: { producer: "unknown", value: content } }]);
+		expect(projected.content).toEqual([{ Fallback: { producer: "unknown", value: { unexpected: "shape" } } }]);
 	});
 });
