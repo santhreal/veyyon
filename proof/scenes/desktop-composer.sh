@@ -133,11 +133,16 @@ gutter = scale["spacing"]["s4"]
 # hairline on every side; a column has no such frame. Every crop of an
 # overlaid panel starts inside it.
 sheet = scale["spacing"]["s4"] + scale["stroke"]["hairline"]
-# The band the composer owns, from the card's top edge to the window's lower
-# edge: the card at rest, the gap under it, the run bar, and the column's own
-# bottom padding. Anything above it is the transcript, which is what a float
-# over the transcript is entitled to cover, so a band guessed generously reads
-# the float as a panel over the draft.
+# A floor on the band the composer owns at the window's lower edge: the card's
+# authored minimum, the gap under it, the run bar, and the column's own bottom
+# padding. `rest_height_px` is a minimum rather than a measure, and the card
+# draws taller than it -- 86px at rest against an authored 70 at scale 1, since
+# the editor line, the footer row and the card's padding are what decide it --
+# so this number lies strictly inside the card. A crop of the band therefore
+# omits its topmost rows, and a crop of the transcript above it takes a few of
+# the card's; both are conservative for a float that is entitled to the
+# transcript and nothing under it, which a generous band would read as a panel
+# drawn over the draft.
 band = (
     composer["rest_height_px"]
     + scale["spacing"]["s3"]
