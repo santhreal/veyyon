@@ -65,8 +65,6 @@ pub const fn action_to_capability(action: HostActionKind) -> Capability {
 		HostActionKind::ProcessStop => Capability::ProcessSupervisor,
 		HostActionKind::ProcessRestart => Capability::ProcessSupervisor,
 		HostActionKind::ProcessStart => Capability::ProcessSupervisor,
-		HostActionKind::ProcessWait => Capability::ProcessSupervisor,
-		HostActionKind::ProcessDescribe => Capability::ProcessSupervisor,
 		HostActionKind::RefreshModels => Capability::Models,
 		HostActionKind::SelectModel => Capability::Models,
 		HostActionKind::SetThinkingLevel => Capability::Models,

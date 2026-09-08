@@ -43,7 +43,6 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::RefreshChanges
 		| HostActionKind::RefreshProcesses
 		| HostActionKind::ProcessLogs
-		| HostActionKind::ProcessDescribe
 		| HostActionKind::RefreshModels
 		| HostActionKind::RefreshProviders
 		| HostActionKind::RefreshAuth
@@ -91,7 +90,6 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::ProcessStop
 		| HostActionKind::ProcessRestart
 		| HostActionKind::ProcessStart
-		| HostActionKind::ProcessWait
 		| HostActionKind::SelectModel
 		| HostActionKind::SetThinkingLevel
 		| HostActionKind::StartProviderAuth

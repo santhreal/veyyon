@@ -2,7 +2,6 @@ import * as path from "node:path";
 import { daemonClientForProject } from "../../launch/client";
 import type { DaemonRestartPolicy, DaemonSignal, DaemonSpec } from "../../launch/protocol";
 import { writeFrame } from "../frames";
-import type { ProcessView } from "../wire";
 import {
 	emitProcessesSnapshot,
 	ensureProcessFollowers,
@@ -283,62 +282,6 @@ const handleProcessStart: ActionHandler<ProcessStartPayload | undefined> = async
 	}
 };
 
-interface ProcessWaitPayload {
-	process_id?: string;
-}
-
-const handleProcessWait: ActionHandler<ProcessWaitPayload | undefined> = async (ctx, payload) => {
-	if (!requireProcessId(ctx, payload?.process_id)) {
-		return;
-	}
-
-	try {
-		const client = await daemonClientForProject(ctx.cwd);
-		await client.request({ op: "wait", name: payload!.process_id!, for: "exit", timeoutMs: 30000 });
-		await emitProcessesSnapshot(ctx, client);
-		ctx.reply.success();
-	} catch (error) {
-		handleSupervisorError(ctx, error);
-	}
-};
-
-interface ProcessDescribePayload {
-	process_id?: string;
-}
-
-const handleProcessDescribe: ActionHandler<ProcessDescribePayload | undefined> = async (ctx, payload) => {
-	if (!requireProcessId(ctx, payload?.process_id)) {
-		return;
-	}
-
-	try {
-		const client = await daemonClientForProject(ctx.cwd);
-		const result = await client.request({ op: "describe", name: payload!.process_id! });
-		if (result.op !== "describe") {
-			throw new Error(`Unexpected daemon response: ${result.op}`);
-		}
-		const view: ProcessView = {
-			name: result.daemon.name,
-			pid: result.daemon.pid ?? null,
-			status: result.daemon.state,
-			application: result.spec.application,
-			args: result.spec.args,
-			cwd: result.spec.cwd,
-			lifetime: result.daemon.detached ? "detached" : result.daemon.persist ? "broker-shutdown" : "last-client-exit",
-			started_at_ms: result.daemon.startedAt,
-			exit_code: result.daemon.exitCode ?? null,
-			terminated_by: result.daemon.terminatedBy ?? null,
-		};
-		ctx.clientState.revision += 1;
-		ctx.reply.snapshot({
-			Processes: [view],
-		});
-		ctx.reply.success();
-	} catch (error) {
-		handleSupervisorError(ctx, error);
-	}
-};
-
 export const processesActionHandlers: ActionHandlersMap = {
 	RefreshProcesses: handleRefreshProcesses as ActionHandler<never>,
 	ProcessLogs: handleProcessLogs as ActionHandler<never>,
@@ -347,6 +290,4 @@ export const processesActionHandlers: ActionHandlersMap = {
 	ProcessStop: handleProcessStop as ActionHandler<never>,
 	ProcessRestart: handleProcessRestart as ActionHandler<never>,
 	ProcessStart: handleProcessStart as ActionHandler<never>,
-	ProcessWait: handleProcessWait as ActionHandler<never>,
-	ProcessDescribe: handleProcessDescribe as ActionHandler<never>,
 };

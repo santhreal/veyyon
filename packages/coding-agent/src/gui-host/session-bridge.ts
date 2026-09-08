@@ -111,8 +111,6 @@ const ACTION_ERROR_SCOPES: Record<string, ErrorScope> = {
 	ProcessStop: "Terminal",
 	ProcessRestart: "Terminal",
 	ProcessStart: "Terminal",
-	ProcessWait: "Terminal",
-	ProcessDescribe: "Terminal",
 	RefreshModels: "Provider",
 	SelectModel: "Provider",
 	SetThinkingLevel: "Provider",

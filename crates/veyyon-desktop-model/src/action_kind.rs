@@ -49,8 +49,6 @@ pub enum HostActionKind {
 	ProcessStop,
 	ProcessRestart,
 	ProcessStart,
-	ProcessWait,
-	ProcessDescribe,
 	RefreshModels,
 	SelectModel,
 	SetThinkingLevel,
@@ -84,7 +82,7 @@ pub enum HostActionKind {
 
 impl HostActionKind {
 	/// Complete slice of action kinds for runtime test sweeps.
-	pub const ALL: [Self; 75] = [
+	pub const ALL: [Self; 73] = [
 		Self::Attach,
 		Self::Detach,
 		Self::RetryConnection,
@@ -129,8 +127,6 @@ impl HostActionKind {
 		Self::ProcessStop,
 		Self::ProcessRestart,
 		Self::ProcessStart,
-		Self::ProcessWait,
-		Self::ProcessDescribe,
 		Self::RefreshModels,
 		Self::SelectModel,
 		Self::SetThinkingLevel,
@@ -210,8 +206,6 @@ impl HostActionKind {
 			Self::ProcessStop => "ProcessStop",
 			Self::ProcessRestart => "ProcessRestart",
 			Self::ProcessStart => "ProcessStart",
-			Self::ProcessWait => "ProcessWait",
-			Self::ProcessDescribe => "ProcessDescribe",
 			Self::RefreshModels => "RefreshModels",
 			Self::SelectModel => "SelectModel",
 			Self::SetThinkingLevel => "SetThinkingLevel",

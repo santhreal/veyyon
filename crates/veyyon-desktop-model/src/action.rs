@@ -187,12 +187,6 @@ pub enum HostAction {
 		command: String,
 		args:    Vec<String>,
 	},
-	ProcessWait {
-		process_id: String,
-	},
-	ProcessDescribe {
-		process_id: String,
-	},
 
 	// Models family (3 actions)
 	RefreshModels,
@@ -336,8 +330,6 @@ impl HostAction {
 			Self::ProcessStop { .. } => HostActionKind::ProcessStop,
 			Self::ProcessRestart { .. } => HostActionKind::ProcessRestart,
 			Self::ProcessStart { .. } => HostActionKind::ProcessStart,
-			Self::ProcessWait { .. } => HostActionKind::ProcessWait,
-			Self::ProcessDescribe { .. } => HostActionKind::ProcessDescribe,
 			Self::RefreshModels => HostActionKind::RefreshModels,
 			Self::SelectModel { .. } => HostActionKind::SelectModel,
 			Self::SetThinkingLevel { .. } => HostActionKind::SetThinkingLevel,
