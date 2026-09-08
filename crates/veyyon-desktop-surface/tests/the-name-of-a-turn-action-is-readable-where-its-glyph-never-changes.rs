@@ -17,15 +17,19 @@
 //! 4. It stays inside the composer column horizontally.
 //! 5. The pixels under it change, which is the difference between painted and
 //!    merely laid out.
-//! 6. Phases whose action names differ produce tags of different widths, and
-//!    phases sharing a name produce the same width, so one generic tag for
-//!    every phase fails.
+//! 6. The tag measures the width its own action name shapes to in the window's
+//!    text system, so one generic tag stating the same words in every phase
+//!    fails.
 //!
-//! Gap left: the shaped glyphs are not read back, so the geometry sweep proves
-//! a tag of the right size in the right place rather than the exact string.
-//! The names themselves are pinned byte for byte by
+//! Gap left: the shaped glyphs are not read back, so the sweep proves a tag as
+//! wide as its own name in the right place rather than the exact string; two
+//! names that shape to the same width would pass each other's check. The names
+//! themselves are pinned byte for byte by
 //! `every_turn_action_states_itself_in_its_name_because_the_glyph_never_changes`
-//! at the end of this file, which is where a renamed action is caught.
+//! at the end of this file, which is where a renamed action is caught. Width
+//! alone is not the contract: in a proportional face "Send message" and
+//! "Submit answer" shape to within 0.4px of each other, so comparing phases
+//! against each other proves nothing about either.
 
 #[path = "support/composer-layout/mod.rs"]
 mod composer_layout;
@@ -35,9 +39,12 @@ use composer_layout::{
 	render_session,
 };
 use strum::IntoEnumIterator;
+use veyyon_desktop_kit::{ColorRole, TextRamp};
 use veyyon_desktop_scene::frame::RgbaFrame;
 use veyyon_desktop_surface::composer::{PrimaryAction, primary_action};
-use veyyon_gpui::{Bounds, Pixels, Point};
+use veyyon_gpui::{
+	Bounds, Font, FontFeatures, FontStyle, FontWeight, Pixels, Point, SharedString, TextRun,
+};
 
 /// Window size the sweep renders at. Height is deliberately modest: the tag's
 /// room below the control is what the defect depended on.
@@ -96,10 +103,13 @@ fn changed_pixels(before: &RgbaFrame, after: &RgbaFrame, rect: Run) -> u32 {
 /// One phase's hover: the tag's run, the control's own rect, the pixels the
 /// tag changed where it opened, and the action name the phase resolves to.
 struct Hover {
-	tag:     Run,
-	control: Run,
-	changed: u32,
-	label:   &'static str,
+	tag:      Run,
+	control:  Run,
+	changed:  u32,
+	label:    &'static str,
+	/// The width `label` shapes to in the window's own text system, at the
+	/// size and family the tag draws in.
+	measured: f32,
 }
 
 /// Renders a phase and hovers the primary control.
@@ -149,15 +159,43 @@ fn hover_the_primary(discriminant: TurnPhaseDiscriminant) -> Hover {
 		);
 		let tag = revealed.remove(0);
 		let changed = changed_pixels(&resting.frame, &hovered.frame, tag);
+		// The oracle is the window's own text system at the tag's size and
+		// family, so the assertion holds on whatever face the machine
+		// resolved the authored chain to.
+		let measured = session
+			.update(|view, window, _cx| {
+				let tokens = &view.installed().set;
+				let run = TextRun {
+					len:              label.len(),
+					font:             Font {
+						family:    tokens.ui_family(),
+						features:  FontFeatures::default(),
+						fallbacks: None,
+						weight:    FontWeight::default(),
+						style:     FontStyle::default(),
+					},
+					color:            tokens.color(ColorRole::Foreground),
+					background_color: None,
+					underline:        None,
+					strikethrough:    None,
+				};
+				let size = tokens.font_size(TextRamp::Small);
+				let shaped =
+					window
+						.text_system()
+						.shape_line(SharedString::from(label), size, &[run], None);
+				f32::from(shaped.width)
+			})
+			.expect("the label shapes in the window's text system");
 
-		Hover { tag, control: Run::from_bounds(control), changed, label }
+		Hover { tag, control: Run::from_bounds(control), changed, label, measured }
 	})
 }
 
 #[test]
 fn every_turn_phase_states_its_primary_action_on_hover_inside_the_window() {
 	for discriminant in TurnPhaseDiscriminant::iter() {
-		let Hover { tag, control, changed, label: _ } = hover_the_primary(discriminant);
+		let Hover { tag, control, changed, label: _, measured: _ } = hover_the_primary(discriminant);
 
 		assert!(
 			tag.left >= 0.0 && tag.top >= 0.0,
@@ -187,31 +225,31 @@ fn every_turn_phase_states_its_primary_action_on_hover_inside_the_window() {
 }
 
 #[test]
-fn two_phases_share_a_tag_width_only_when_they_share_an_action_name() {
-	let measured: Vec<(TurnPhaseDiscriminant, &'static str, f32)> = TurnPhaseDiscriminant::iter()
-		.map(|discriminant| {
-			let hover = hover_the_primary(discriminant);
-			(discriminant, hover.label, hover.tag.width())
-		})
-		.collect();
+fn a_tag_is_as_wide_as_the_action_name_it_states() {
+	let mut widths: Vec<(TurnPhaseDiscriminant, &'static str, f32)> = Vec::new();
+	for discriminant in TurnPhaseDiscriminant::iter() {
+		let hover = hover_the_primary(discriminant);
+		let drawn = hover.tag.width();
+		assert!(drawn > 0.0, "{discriminant:?}: the tag has width");
+		// One pixel covers layout rounding; a tag stating another phase's name
+		// misses by the difference between two names, which is larger.
+		assert!(
+			(drawn - hover.measured).abs() <= 1.0,
+			"{discriminant:?}: the tag is {drawn}px wide and {:?} shapes to {}px, so the tag is \
+			 stating something else",
+			hover.label,
+			hover.measured
+		);
+		widths.push((discriminant, hover.label, drawn));
+	}
 
-	for (phase, label, width) in &measured {
-		assert!(*width > 0.0, "{phase:?}: the tag has width");
-		for (other_phase, other_label, other_width) in &measured {
-			if phase == other_phase {
-				continue;
-			}
-			if label == other_label {
+	for (phase, label, width) in &widths {
+		for (other_phase, other_label, other_width) in &widths {
+			if phase != other_phase && label == other_label {
 				assert!(
-					(width - other_width).abs() <= 0.5,
+					(width - other_width).abs() <= 1.0,
 					"{phase:?} and {other_phase:?} both state {label:?}, so their tags measure the \
 					 same; got {width} and {other_width}"
-				);
-			} else {
-				assert!(
-					(width - other_width).abs() > 0.5,
-					"{phase:?} states {label:?} and {other_phase:?} states {other_label:?}, so their \
-					 tags cannot measure the same {width}; one tag is stating both"
 				);
 			}
 		}

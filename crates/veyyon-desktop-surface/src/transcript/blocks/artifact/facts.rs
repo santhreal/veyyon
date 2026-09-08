@@ -47,11 +47,11 @@ pub struct ArtifactFact {
 }
 
 impl ArtifactFact {
-	fn note(text: String) -> Self {
+	const fn note(text: String) -> Self {
 		Self { text, role: FactRole::Note }
 	}
 
-	fn fault(text: String) -> Self {
+	const fn fault(text: String) -> Self {
 		Self { text, role: FactRole::Fault }
 	}
 }

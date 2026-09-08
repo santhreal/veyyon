@@ -83,8 +83,8 @@ fn rows(control_height: f32) -> Captured {
 	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");
 	let mut cx = headless_context().expect("a headless renderer is required to draw the rows");
 	let options = RenderOptions {
-		width:        ROWS_WIDTH as u32,
-		height:       ROWS_HEIGHT as u32,
+		width: ROWS_WIDTH as u32,
+		height: ROWS_HEIGHT as u32,
 		scale_factor: 1.0,
 		..RenderOptions::default()
 	};
@@ -130,12 +130,9 @@ fn a_row_keeps_its_band_whatever_its_control_asks_for() {
 		"a control {TALL_CONTROL_PX}px tall moved the text the rows draw, so the row grew to what \
 		 it holds instead of clipping it"
 	);
-	let last = fitting_bands
-		.last()
-		.expect("the rows drew text")
-		.1;
+	let last = fitting_bands.last().expect("the rows drew text").1;
 	assert!(
-		last <= ROW_HEIGHT_PX * 2.0 + 0.5,
+		last <= ROW_HEIGHT_PX.mul_add(2.0, 0.5),
 		"the second row's text ends at {last:.1}px, past the {:.1}px two declared rows occupy",
 		ROW_HEIGHT_PX * 2.0
 	);

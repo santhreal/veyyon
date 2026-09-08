@@ -19,8 +19,10 @@ shot navigation-model-filtered
 k "Return"
 pause 0.5
 shot navigation-model-selected
-COMPOSER_X=$(( WIN_X + (WIN_W > 800 ? 400 : WIN_W / 2) ))
-COMPOSER_Y=$(( WIN_Y + (WIN_H > 481 ? 408 : WIN_H - 98) ))
+# The composer is the last row of the window, so the point inside it is the one
+# the prelude already derived from the window's own bottom edge. A y of 408 was
+# a leftover of an earlier layout: it lands in the transcript, which takes the
+# focus with it, and the prompt typed after it reaches nothing.
 move_px "${COMPOSER_X}" "${COMPOSER_Y}"
 click
 t "Summarize this numbered list about editors in one sentence. Do not call tools."

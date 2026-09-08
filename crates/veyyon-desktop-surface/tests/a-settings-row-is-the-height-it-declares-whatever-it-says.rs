@@ -153,7 +153,7 @@ fn description_centre(captured: &Captured) -> Option<Point<Pixels>> {
 		.filter(|desc| (f32::from(desc.bounds.left()) - column).abs() < 0.5)
 		.map(|desc| Point {
 			x: px(f32::from(desc.bounds.left()) + 4.0),
-			y: px((f32::from(desc.bounds.top()) + f32::from(desc.bounds.bottom())) / 2.0),
+			y: px(f32::midpoint(f32::from(desc.bounds.top()), f32::from(desc.bounds.bottom()))),
 		})
 		.min_by(|left, right| {
 			f32::from(left.y)
@@ -165,7 +165,7 @@ fn description_centre(captured: &Captured) -> Option<Point<Pixels>> {
 /// The label-column text runs of the overlay: the runs left of the control
 /// column, ordered top down as `(top, height)`.
 fn column_runs(captured: &Captured) -> Vec<(f32, f32)> {
-	let control_edge = f32::from(WIDTH as f32) / 2.0 + 60.0;
+	let control_edge = WIDTH as f32 / 2.0 + 60.0;
 	let mut runs: Vec<(f32, f32)> = captured
 		.text_runs
 		.iter()
