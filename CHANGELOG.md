@@ -28,6 +28,9 @@
 
 ### Added
 
+- A desktop approval card offers the tool wrapper's four answers — `Deny for session`, `Deny`, `Approve for session`, `Approve` — so a standing grant or refusal is reachable without leaving the desktop.
+- The desktop card stack's overflow line expands under the pointer or the keyboard onto one line per decision it folded away, each naming the decision's kind and subject.
+- A desktop plan card whose body is cut at its 400px cap fades the last 64px of the body into the card, so a plan that continues past the cut is distinguishable from one that ends there.
 - The desktop rail states an `Unsent` section: a session in play whose composer holds a prompt the operator left unsubmitted is listed there, newest first, and comes off the section when the prompt is sent or cleared.
 - The desktop titlebar provides an in-place session name editor that commits on Enter and reverts on Escape.
 - The desktop command palette and queue row menus provide `/export`, `/compact`, and `/handoff` session lifecycle actions.
