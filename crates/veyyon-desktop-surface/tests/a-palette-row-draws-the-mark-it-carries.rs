@@ -127,6 +127,20 @@ fn text_run_count(captured: &Captured) -> usize {
 	captured.text_runs.len()
 }
 
+/// `count` rows carrying nothing but a title and a heading, two rows per
+/// heading, so a window of them costs more headings than a surface holding
+/// eight bare rows has room for.
+fn grouped_rows(count: u64) -> Vec<PaletteItem> {
+	(0..count)
+		.map(|index| {
+			let mut item =
+				PaletteItem::command(index + 1, format!("model-{index}"), Intent::NewSession, None);
+			item.group = Some(format!("account-{}", index / 2));
+			item
+		})
+		.collect()
+}
+
 #[test]
 fn every_mark_a_producer_sets_reaches_the_frame() {
 	let mut cx = headless_context().expect("a headless renderer is required to render the shell");
@@ -340,6 +354,21 @@ fn a_heading_reaches_the_frame_and_takes_its_room_from_the_rows() {
 		2,
 		"one run per heading and no more: {with} runs grouped against {without} flat"
 	);
+
+	// The rows and the headings share one surface, so a list longer than the
+	// surface draws only the rows that still fit: the same frame a list of
+	// exactly those rows draws.
+	let mut long = PaletteState::new(PaletteMode::Models);
+	long.items = grouped_rows(40);
+	let mut fitting = PaletteState::new(PaletteMode::Models);
+	fitting.items = grouped_rows(40).into_iter().take(7).collect();
+	let drawn = text_run_count(&captured(&mut cx, long));
+	let fits = text_run_count(&captured(&mut cx, fitting));
+	assert_eq!(
+		drawn, fits,
+		"a list of 40 rows drew {drawn} runs where the 7 rows that fit draw {fits}, so the rows the \
+		 headings displaced were drawn past the bottom anyway"
+	);
 }
 
 /// WHY: the row window was taken as the eight rows before the selection, so a
@@ -348,16 +377,7 @@ fn a_heading_reaches_the_frame_and_takes_its_room_from_the_rows() {
 /// row the operator selected is not one of the rows drawn".
 #[test]
 fn the_selected_row_is_one_of_the_rows_a_grouped_list_draws() {
-	let items: Vec<PaletteItem> = (0..40)
-		.map(|index| {
-			let mut item =
-				PaletteItem::command(index + 1, format!("model-{index}"), Intent::NewSession, None);
-			// Three rows per account, so the window under test carries a
-			// heading every third row rather than one at the top.
-			item.group = Some(format!("account-{}", index / 3));
-			item
-		})
-		.collect();
+	let items = grouped_rows(40);
 	let filtered: Vec<&PaletteItem> = items.iter().collect();
 	let room = 420.0 - 40.0 - 32.0;
 	for selected in 0..filtered.len() {
