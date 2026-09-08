@@ -53,12 +53,27 @@ fn to_kebab_case(s: &str) -> String {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RequiredState {
 	Connection(ConnectionStateKind),
-	CapabilityGate { capability: Capability, gate: GateVariant },
+	CapabilityGate {
+		capability: Capability,
+		gate:       GateVariant,
+	},
 	Role(MessageRole),
 	Block(BlockKind),
 	Error(ErrorScope),
 	Badge(BadgeKind),
 	Section(QueuePartition),
+	/// The rail's derived section: a session holding a prompt the operator
+	/// composed and left unsubmitted.
+	///
+	/// Named on its own because it is the one section no protocol variant
+	/// produces. `QueuePartition` holds the four placements a session can be
+	/// moved into; the fifth section the rail draws comes from the drafts, so
+	/// iterating the protocol reaches four of five and the rail's own enum is
+	/// what states there are five. A sixth section turns
+	/// `crates/veyyon-desktop/tests/
+	/// a-draft-left-in-a-session-is-stated-in-the-rail.rs` red, which sweeps
+	/// `Section::all()` against the shipped projection.
+	UnsentSection,
 	RowShape(RowShape),
 	Primitive(PrimitiveKind),
 }
@@ -74,7 +89,7 @@ impl RequiredState {
 			Self::Block(_) => "transcript-block",
 			Self::Error(_) => "error-scope",
 			Self::Badge(_) => "queue-badge",
-			Self::Section(_) => "queue-section",
+			Self::Section(_) | Self::UnsentSection => "queue-section",
 			Self::RowShape(_) => "queue-row",
 			Self::Primitive(_) => "kit",
 		}
@@ -97,6 +112,7 @@ impl RequiredState {
 			Self::Error(e) => to_kebab_case(&format!("{e:?}")),
 			Self::Badge(b) => to_kebab_case(&format!("{b:?}")),
 			Self::Section(s) => to_kebab_case(&format!("{s:?}")),
+			Self::UnsentSection => "unsent".to_string(),
 			Self::RowShape(r) => to_kebab_case(&format!("{r:?}")),
 			Self::Primitive(p) => to_kebab_case(&format!("{p:?}")),
 		}
@@ -139,6 +155,7 @@ pub fn required_states() -> Vec<RequiredState> {
 	states.extend(ErrorScope::iter().map(RequiredState::Error));
 	states.extend(BadgeKind::iter().map(RequiredState::Badge));
 	states.extend(QueuePartition::iter().map(RequiredState::Section));
+	states.push(RequiredState::UnsentSection);
 	states.extend(RowShape::iter().map(RequiredState::RowShape));
 	states.extend(PrimitiveKind::iter().map(RequiredState::Primitive));
 	states

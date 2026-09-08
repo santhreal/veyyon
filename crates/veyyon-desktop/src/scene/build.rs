@@ -90,6 +90,22 @@ fn required(name: &str, state: &RequiredState) -> Result<SceneRoot, SceneBuildEr
 			seed.session(*partition);
 			seed.finish()
 		},
+		RequiredState::UnsentSection => {
+			let mut seed = Seed::attached();
+			// The first session seeded becomes the active one, so the draft
+			// goes in the second: a draft is stated in the rail once the
+			// operator has left the session it was typed into.
+			seed.session(QueuePartition::Live);
+			let drafted = seed.session(QueuePartition::Live);
+			seed
+				.store
+				.persisted
+				.composer
+				.entry(drafted)
+				.or_default()
+				.draft_text = FixtureText::MESSAGE_TYPICAL.to_string();
+			seed.finish()
+		},
 		RequiredState::RowShape(shape) => {
 			let mut seed = Seed::attached();
 			let partition = match shape {
