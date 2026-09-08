@@ -156,6 +156,9 @@ pub struct PanelsSurfaceTokens {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PaletteSurfaceTokens {
 	pub width_px: f32,
+	/// The width of a popover anchored to a control, which is narrower than
+	/// the palette the window centres (§5.8).
+	pub anchored_width_px: f32,
 	pub max_height_px: f32,
 	pub radius: f32,
 	pub elevation_level: u8,

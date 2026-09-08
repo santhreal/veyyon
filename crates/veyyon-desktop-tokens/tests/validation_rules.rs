@@ -124,7 +124,7 @@ fn test_validation_rule_5_unknown_key() {
 	let err_msg = err.to_string();
 	assert!(err_msg.contains(
 		"unknown key \"shadow_blur\" in section [geometry]; expected one of [\"width_px\", \
-		 \"max_height_px\", \"radius\", \"elevation_level\"]"
+		 \"anchored_width_px\", \"max_height_px\", \"radius\", \"elevation_level\"]"
 	));
 }
 

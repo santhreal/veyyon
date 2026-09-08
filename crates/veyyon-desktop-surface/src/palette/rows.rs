@@ -79,6 +79,10 @@ pub struct PaletteItem {
 	/// sharing a heading are contiguous, and the heading is drawn once above
 	/// the first of them.
 	pub group:    Option<String>,
+	/// A name the row is found by and does not draw, for an identity the row
+	/// states across two lines: a model's `provider/model` is one query even
+	/// though the heading holds the provider and the row holds the id.
+	pub search:   Option<String>,
 	/// Visual state badge mapped to a status dot.
 	pub badge:    Option<Badge>,
 	/// The chord that runs the row, or a word about the row itself, drawn at
@@ -102,6 +106,7 @@ impl PaletteItem {
 			title: title.into(),
 			subtitle: None,
 			group: None,
+			search: None,
 			badge: None,
 			meta: chord.map(PaletteMeta::Chord),
 			kind: PaletteItemKind::Command { intent: Box::new(intent) },
@@ -122,6 +127,7 @@ impl PaletteItem {
 			title: title.into(),
 			subtitle: Some(subtitle.into()),
 			group: None,
+			search: None,
 			badge,
 			meta,
 			kind: PaletteItemKind::Session { id },
@@ -137,6 +143,7 @@ impl PaletteItem {
 			title: p.clone(),
 			subtitle: None,
 			group: None,
+			search: None,
 			badge: None,
 			meta: None,
 			kind: PaletteItemKind::File { path: p },
@@ -152,6 +159,7 @@ impl PaletteItem {
 			title: p.clone(),
 			subtitle: None,
 			group: None,
+			search: None,
 			badge: None,
 			meta: Some(PaletteMeta::Note("Folder".to_string())),
 			kind: PaletteItemKind::Directory { path: p },

@@ -4,6 +4,7 @@ name = "surface_palette"
 
 [geometry]
 width_px = 576
+anchored_width_px = 384
 max_height_px = 420
 radius = "xxl"
 elevation_level = 4

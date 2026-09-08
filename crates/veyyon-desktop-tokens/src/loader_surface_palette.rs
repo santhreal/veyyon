@@ -17,7 +17,13 @@ pub fn load_palette(path: &Path, scale: &ScaleTokens) -> Result<PaletteSurfaceTo
 	root.meta("surface_palette")?;
 
 	let geom = root.sub("geometry")?;
-	geom.only(&["width_px", "max_height_px", "radius", "elevation_level"])?;
+	geom.only(&[
+		"width_px",
+		"anchored_width_px",
+		"max_height_px",
+		"radius",
+		"elevation_level",
+	])?;
 	let level = geom.integer("elevation_level")?;
 	let elevation_level = u8::try_from(level)
 		.ok()
@@ -47,6 +53,7 @@ pub fn load_palette(path: &Path, scale: &ScaleTokens) -> Result<PaletteSurfaceTo
 
 	Ok(PaletteSurfaceTokens {
 		width_px: geom.number("width_px")?,
+		anchored_width_px: geom.number("anchored_width_px")?,
 		max_height_px: geom.number("max_height_px")?,
 		radius: geom.radius("radius", scale)?,
 		elevation_level,

@@ -110,6 +110,7 @@ name = "surface_palette"
 
 [geometry]
 width_px = {}
+anchored_width_px = {}
 max_height_px = {}
 radius = "{}"
 elevation_level = {}
@@ -126,6 +127,7 @@ footer_height_px = {}
 key_hint_size = "{}"
 "#,
 		p.width_px as i64,
+		p.anchored_width_px as i64,
 		p.max_height_px as i64,
 		step_radius(s, p.radius),
 		p.elevation_level,

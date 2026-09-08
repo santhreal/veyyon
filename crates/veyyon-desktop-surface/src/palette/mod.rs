@@ -172,6 +172,10 @@ impl PaletteState {
 					// of them has already stated.
 					subtitle: (option.name != option.choice.model).then(|| option.choice.model.clone()),
 					group:    Some(provider.to_owned()),
+					// The heading holds the provider and the row holds the id, so
+					// the qualified name is a query the row answers without
+					// drawing it twice.
+					search:   Some(format!("{provider}/{}", option.choice.model)),
 					badge:    None,
 					meta:     PaletteMeta::note(&marks),
 					kind:     PaletteItemKind::Command {
@@ -286,6 +290,8 @@ impl PaletteState {
 			};
 			std::iter::once(item.title.as_str())
 				.chain(item.subtitle.as_deref())
+				.chain(item.group.as_deref())
+				.chain(item.search.as_deref())
 				.chain(aliases.iter().copied())
 		});
 		let ranked: Vec<&PaletteItem> = ranked.into_iter().map(|(_, _, item)| item).collect();

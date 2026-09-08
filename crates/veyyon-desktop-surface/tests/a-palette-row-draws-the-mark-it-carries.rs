@@ -106,6 +106,7 @@ fn every_kind_of_mark_is_drawn_as_its_own_kind() {
 			title:    "/new".into(),
 			subtitle: Some("Create a new session".into()),
 			group:    None,
+			search:   None,
 			badge:    None,
 			meta:     Some(mark.clone()),
 			kind:     PaletteItemKind::Command { intent: Box::new(Intent::NewSession) },

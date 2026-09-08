@@ -122,6 +122,7 @@ pub fn command_items() -> Vec<PaletteItem> {
 			title:    command.name().to_owned(),
 			subtitle: Some(description.to_owned()),
 			group:    None,
+			search:   None,
 			badge:    None,
 			meta:     chord.map(super::PaletteMeta::Chord),
 			kind:     PaletteItemKind::Composer { command },

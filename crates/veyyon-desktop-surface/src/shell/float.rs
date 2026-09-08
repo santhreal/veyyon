@@ -67,6 +67,12 @@ pub(super) fn overlay_layer(
 	let surface = &view.installed.surface;
 	let mut geometry = surface.palette.clone();
 	let margin = tokens.spacing(SpacingStep::S4);
+	// A popover anchored to a control is narrower than the palette the window
+	// centres (§5.8), so it sits over the composer without covering the turn
+	// the operator is reading.
+	if view.palette_input.anchored && retained.is_palette() {
+		geometry.width_px = geometry.anchored_width_px;
+	}
 	geometry.width_px = geometry
 		.width_px
 		.min(f32::from(window.viewport_size().width - margin * 2.0));
