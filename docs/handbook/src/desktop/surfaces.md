@@ -476,6 +476,23 @@ the change, and name a copy of the token files as they stood in
 `crates/`, so a pre-change executable handed a token file with a key it does
 not know fails to load.
 
+Use `proof/scenes/desktop-content-search.sh` to open Content Search from the
+palette, type a word this workspace contains, and empty the query again. The
+three frames are the mode with nothing to show, the host's answer to that word,
+and the rows gone with the query. A lookup take is still between keystrokes, so
+pass `SCENE_MOTION_FLOOR=9`:
+
+```sh
+SCENE_MOTION_FLOOR=9 proof/docker/record-native.sh proof/scenes/desktop-content-search.sh
+```
+
+Use `proof/scenes/desktop-turn-footer.sh` to run a real turn and reveal the
+model's name on it twice, once with the turn cursor on the last turn and once
+with the pointer over the name, then click the name and photograph the panel
+that opens. The name's own box is the bounding box of the keyboard reveal, so
+the pointer reaches it without a row height being assumed. Record its other arm
+with `PROOF_BASE_REF=HEAD`, since the change is inside the executable alone.
+
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
 The [capture requirements](../foundations/verification.md) specify paired static
 frames and animated clips. Headless scene PNGs do not replace native captures.
