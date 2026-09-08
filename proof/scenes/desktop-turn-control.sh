@@ -226,8 +226,8 @@ MODE_NAME_PIXELS=300
 # hundred pixels of ink over the same crop that measures a few dozen between
 # two settled frames of one state.
 QUEUED_STRIP_PIXELS=300
-COMPOSER_X=$(( WIN_X + (WIN_W > 800 ? 400 : WIN_W / 2) ))
-COMPOSER_Y=$(( WIN_Y + WIN_H - 98 ))
+COMPOSER_X="${COMPOSER_EDITOR_X}"
+COMPOSER_Y="${COMPOSER_EDITOR_Y}"
 # The up arrow, at the trailing edge of the composer's own card. The card is
 # centred in the session surface -- the window less the queue rail -- and
 # measures the authored maximum, or the surface less one gutter each side when

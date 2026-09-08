@@ -260,6 +260,20 @@ COMPOSER_CARD_BOTTOM=$(( WIN_Y + WIN_H - CARD_FOOT_PX ))
 MODEL_CHIP_X=$(( COMPOSER_CARD_LEFT + CARD_PAD_H + GUTTER_PX ))
 MODEL_CHIP_Y=$(( COMPOSER_CARD_BOTTOM - CARD_PAD_BOTTOM - GUTTER_PX ))
 
+# Where the draft is typed, in root coordinates. The card is bottom-anchored
+# and its own height is whatever its contents came to, so the aim measures up
+# from the window's foot: past what the session column puts under the card,
+# past the card's authored resting height to a point inside it, then one
+# spacing step back down. `rest_height_px` is a minimum and the card draws
+# taller, so that point is strictly inside the card and above the footer row
+# the chip sits in, which is the editor line.
+COMPOSER_EDITOR_X=$(( COMPOSER_CARD_LEFT + CARD_PAD_H + GUTTER_PX ))
+COMPOSER_EDITOR_Y=$(( COMPOSER_CARD_BOTTOM - COMPOSER_BAND_H + CARD_FOOT_PX + GUTTER_PX ))
+if (( COMPOSER_EDITOR_Y >= MODEL_CHIP_Y || COMPOSER_EDITOR_Y <= WIN_Y )); then
+	abandon_take "the-editor-line-is-locatable" \
+		"the derived editor aim ${COMPOSER_EDITOR_Y} is not above the footer row ${MODEL_CHIP_Y} inside the window"
+fi
+
 # ─── Scene Interactions & Captures ───────────────────────────────────────────
 
 # 1. Start a fresh session (primary-n -> ctrl+n) and capture composer idle state.
@@ -268,8 +282,8 @@ if ! native_session_ready created; then
 	abandon_take "native-session-created" "native session-creation interaction produced no session within 10s"
 fi
 pause 2.0
-COMPOSER_X=$(( WIN_X + (WIN_W > 800 ? 400 : WIN_W / 2) ))
-COMPOSER_Y=$(( WIN_Y + WIN_H - 98 ))
+COMPOSER_X="${COMPOSER_EDITOR_X}"
+COMPOSER_Y="${COMPOSER_EDITOR_Y}"
 move_px "${COMPOSER_X}" "${COMPOSER_Y}"
 click
 pause 0.5

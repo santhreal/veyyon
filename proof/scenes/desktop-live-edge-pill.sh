@@ -111,8 +111,8 @@ pause 0.4
 k "Return"
 pause 0.5
 
-COMPOSER_X=$(( WIN_X + (WIN_W > 800 ? 400 : WIN_W / 2) ))
-COMPOSER_Y=$(( WIN_Y + (WIN_H > 481 ? 408 : WIN_H - 98) ))
+COMPOSER_X="${COMPOSER_EDITOR_X}"
+COMPOSER_Y="${COMPOSER_EDITOR_Y}"
 move_px "${COMPOSER_X}" "${COMPOSER_Y}"
 click
 k "ctrl+a"

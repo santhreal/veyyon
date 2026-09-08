@@ -100,8 +100,8 @@ mkdir -p "${PROBE_DIR}"
 # another region types into nothing, submits an empty draft, and reads back a turn
 # the provider aborted. That is what this scene recorded while the click was aimed
 # at a point 408px down an 800px window.
-COMPOSER_X=$(( WIN_X + (WIN_W > 800 ? 400 : WIN_W / 2) ))
-COMPOSER_Y=$(( WIN_Y + WIN_H - 98 ))
+COMPOSER_X="${COMPOSER_EDITOR_X}"
+COMPOSER_Y="${COMPOSER_EDITOR_Y}"
 
 # Every readiness probe below is aimed with its own crop. This scene's own crop
 # is the queue rail, 256px at the window's leading edge, and each of these
