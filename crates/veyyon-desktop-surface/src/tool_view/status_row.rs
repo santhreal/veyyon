@@ -11,6 +11,7 @@ use veyyon_gpui::{
 
 use super::{
 	ToolViewCallbacks, ToolViewTarget,
+	fit::FitsTheRow,
 	sanitize::sanitize_control_sequences,
 	theme::{
 		resolve_emblem_icon, resolve_status_color, resolve_status_icon, resolve_tone_color,
@@ -64,7 +65,7 @@ pub fn render_status_row(
 			// Unknown emblem without status retains text fallback
 			Some(
 				div()
-					.flex_shrink_0()
+					.fit_chrome()
 					.text_size(tokens.font_size(TextRamp::Micro))
 					.text_color(tokens.color(ColorRole::Muted))
 					.child(format!("[{clean_emblem}]")),
@@ -93,8 +94,11 @@ pub fn render_status_row(
 		.title_tone
 		.map_or_else(|| tokens.color(ColorRole::Foreground), |t| resolve_tone_color(t, tokens));
 
+	// A title wider than the line yields the rest of the row and states that it
+	// did with an ellipsis (§6.7). It used to refuse to shrink, so a command
+	// carrying its environment was drawn straight through the card's edge.
 	let title_el = div()
-		.flex_shrink_0()
+		.fit_primary()
 		.text_size(tokens.font_size(TextRamp::Small))
 		.line_height(tokens.line_height(TextRamp::Small))
 		.font_weight(tokens.font_weight(TextWeight::Medium))
@@ -109,7 +113,7 @@ pub fn render_status_row(
 		let badge_tint = resolve_tone_tint(badge.tone);
 		row = row.child(
 			div()
-				.flex_shrink_0()
+				.fit_chrome()
 				.child(Badge::new(clean_label, badge_tint)),
 		);
 	}
@@ -122,19 +126,19 @@ pub fn render_status_row(
 			.map_or_else(|| tokens.color(ColorRole::Secondary), |t| resolve_tone_color(t, tokens));
 
 		let mut desc_el = div()
-			.min_w_0()
 			.text_size(tokens.font_size(TextRamp::Small))
 			.line_height(tokens.line_height(TextRamp::Small))
-			.text_color(desc_color)
-			.whitespace_nowrap()
-			.overflow_hidden()
-			.truncate();
+			.text_color(desc_color);
 
-		if view.description_fits {
-			desc_el = desc_el.flex_1();
+		// A description the host says fits shares the room that is left with
+		// the title; one it says does not is the detail beside the title, and
+		// takes at most half the line (§6.7). Either way it is clipped to the
+		// box it was given, so neither arm is drawn past the row.
+		desc_el = if view.description_fits {
+			desc_el.flex_1().clipped_to_one_line()
 		} else {
-			desc_el = desc_el.flex_shrink_0();
-		}
+			desc_el.fit_detail()
+		};
 
 		// Actionable target on description (URL or File).
 		let target = if let Some(url) = &view.description_link {
@@ -169,7 +173,7 @@ pub fn render_status_row(
 		if !clean_lang.is_empty() {
 			row = row.child(
 				div()
-					.flex_shrink_0()
+					.fit_chrome()
 					.px(tokens.spacing(SpacingStep::S1))
 					.py(px(1.0))
 					.rounded(tokens.radius(RadiusStep::Sm))
@@ -184,7 +188,7 @@ pub fn render_status_row(
 	// 6. Trailing metadata entries with sanitization.
 	if !view.meta.is_empty() {
 		let mut meta_container = div()
-			.flex_shrink_0()
+			.fit_chrome()
 			.flex()
 			.flex_row()
 			.items_center()
@@ -196,6 +200,8 @@ pub fn render_status_row(
 				.flex()
 				.flex_row()
 				.items_center()
+				.min_w_0()
+				.overflow_hidden()
 				.gap(tokens.spacing(SpacingStep::S1))
 				.text_size(tokens.font_size(TextRamp::Micro))
 				.line_height(tokens.line_height(TextRamp::Micro))
@@ -207,7 +213,7 @@ pub fn render_status_row(
 					.tone
 					.map_or_else(|| tokens.color(ColorRole::Muted), |t| resolve_tone_color(t, tokens));
 
-				let mut span_el = div().text_color(span_color);
+				let mut span_el = div().clipped_to_one_line().text_color(span_color);
 				if span.bold {
 					span_el = span_el.font_weight(tokens.font_weight(TextWeight::Semibold));
 				}

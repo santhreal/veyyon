@@ -12,6 +12,8 @@ use veyyon_gpui::{App, Div, Window};
 
 pub mod code;
 pub mod diff;
+pub mod disclosure;
+pub mod fit;
 pub mod framed_block;
 pub mod headed_block;
 pub mod notice;
@@ -25,6 +27,8 @@ pub mod tree;
 
 pub use code::render_code_lines;
 pub use diff::render_diff_lines;
+pub use disclosure::render_disclosure;
+pub use fit::FitsTheRow;
 pub use framed_block::render_framed_block;
 pub use headed_block::render_headed_block;
 pub use notice::render_notice;

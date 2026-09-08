@@ -172,6 +172,7 @@
 
 ### Fixed
 
+- Every line a desktop tool card draws stays inside the card: a card's lead row, section label, omission notice, disclosure label, tree entry, badge, language marker and trailing metadata are held to the width they were given and end in an ellipsis where they were cut, and a detail set beside a row's primary text takes at most half the line so a long one no longer squeezes the text it belongs to down to an ellipsis. A bash invocation carrying its environment was drawn straight through the card's right border and cut mid-glyph with nothing to say it was cut.
 - A desktop field's refusal is drawn where it was typed and stays up until the field commits: a refused value stated the line in the window without asking for a frame, and the attention strip carried the refusal and the host's connection commentary in one field, so a chord no press matches flashed for two frames and the next heartbeat erased it.
 - A desktop keybinding field refuses a chord the grammar that binds it cannot read, so `ctrl-` is no longer written to `keybindings.yml` as a modifier with no key.
 - A desktop control answers the pointer after an overlay is dismissed, where the first dismissal left the window pointer-dead: the palette scrim and the anchored popover kept their full-window mouse blocker and their event blanket painted through the exit animation, so every press between the dismissal and the end of the fade landed on a scrim that was no longer offering anything. Only the press that dismisses an overlay is withheld from what it landed on.

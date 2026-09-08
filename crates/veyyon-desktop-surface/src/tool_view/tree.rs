@@ -53,7 +53,10 @@ pub fn render_tree_lines(
 				div()
 					.flex_1()
 					.min_w_0()
-					.child(render_line(line, tokens, callbacks, false)),
+					// A tree row is one entry beside one connector. Wrapping it
+					// would set its second row under the connector and read as
+					// a child of itself, so the entry stays on its row.
+					.child(render_line(line, tokens, callbacks, true)),
 			);
 
 		container = container.child(row);

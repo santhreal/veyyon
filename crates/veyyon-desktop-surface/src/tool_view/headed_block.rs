@@ -1,14 +1,15 @@
 //! Native GPUI renderer for `HeadedBlockView` (§contracts/view).
 
-use veyyon_desktop_kit::{
-	ColorRole, Icon, IconName, IconSize, RadiusStep, SpacingStep, TextRamp, TextWeight, TokenSet,
-};
+use veyyon_desktop_kit::{ColorRole, SpacingStep, TextRamp, TokenSet};
 use veyyon_desktop_model::tool_view::HeadedBlockView;
 use veyyon_gpui::{
 	CursorStyle, Div, InteractiveElement, MouseButton, ParentElement, Styled, div, px,
 };
 
-use super::{ToolViewCallbacks, status_row::render_status_row, text_block::render_line};
+use super::{
+	ToolViewCallbacks, disclosure::render_disclosure, fit::FitsTheRow,
+	status_row::render_status_row, text_block::render_line,
+};
 
 /// Renders a frameless headed block with optional status row header, indented
 /// lines, `ViewTailWindow` semantics, and hidden count disclosure.
@@ -78,6 +79,7 @@ pub fn render_headed_block(
 
 	if omitted_front > 0 {
 		let mut front_el = div()
+			.fit_primary()
 			.py(px(2.0))
 			.text_size(tokens.font_size(TextRamp::Micro))
 			.text_color(tokens.color(ColorRole::Muted));
@@ -97,8 +99,12 @@ pub fn render_headed_block(
 		);
 	}
 
+	// A headed block carries a tail window, which is a budget in LINES. A line
+	// allowed to wrap spends three rows of that budget on one line and pushes
+	// the reserve out of the viewport, so the block holds each line to one row
+	// and marks what it dropped.
 	for line in display_lines {
-		lines_container = lines_container.child(render_line(line, tokens, callbacks, false));
+		lines_container = lines_container.child(render_line(line, tokens, callbacks, true));
 	}
 
 	// 4. Back omission or Hidden Count Disclosure Bar
@@ -110,9 +116,9 @@ pub fn render_headed_block(
 		};
 		let revealable = view.hidden.as_ref().is_none_or(|h| h.revealable);
 		lines_container =
-			lines_container.child(render_disclosure_affordance(&label, revealable, tokens, callbacks));
+			lines_container.child(render_disclosure(&label, revealable, tokens, callbacks));
 	} else if let Some(hidden) = &view.hidden {
-		lines_container = lines_container.child(render_disclosure_affordance(
+		lines_container = lines_container.child(render_disclosure(
 			&hidden.format_label(),
 			hidden.revealable,
 			tokens,
@@ -122,49 +128,4 @@ pub fn render_headed_block(
 
 	container = container.child(lines_container);
 	container
-}
-
-/// Helper to render disclosure affordance.
-fn render_disclosure_affordance(
-	label: &str,
-	revealable: bool,
-	tokens: &TokenSet,
-	callbacks: &ToolViewCallbacks,
-) -> Div {
-	if revealable && callbacks.on_disclose.is_some() {
-		let cb = callbacks.on_disclose.clone().unwrap();
-		div()
-			.flex()
-			.flex_row()
-			.items_center()
-			.gap(tokens.spacing(SpacingStep::S1))
-			.mt(tokens.spacing(SpacingStep::S1))
-			.px(tokens.spacing(SpacingStep::S2))
-			.py(px(2.0))
-			.rounded(tokens.radius(RadiusStep::Sm))
-			.bg(tokens.color(ColorRole::Inset))
-			.cursor(CursorStyle::PointingHand)
-			.hover(|s| s.bg(tokens.color(ColorRole::Canvas)))
-			.on_mouse_down(MouseButton::Left, move |_event, window, cx| {
-				cb(window, cx);
-			})
-			.child(
-				Icon::new(IconName::ChevronRight)
-					.size(IconSize::Size12)
-					.color(tokens.color(ColorRole::Accent)),
-			)
-			.child(
-				div()
-					.text_size(tokens.font_size(TextRamp::Small))
-					.text_color(tokens.color(ColorRole::Accent))
-					.font_weight(tokens.font_weight(TextWeight::Medium))
-					.child(label.to_string()),
-			)
-	} else {
-		div()
-			.mt(tokens.spacing(SpacingStep::S1))
-			.text_size(tokens.font_size(TextRamp::Micro))
-			.text_color(tokens.color(ColorRole::Muted))
-			.child(format!("({label})"))
-	}
 }

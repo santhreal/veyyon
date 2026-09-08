@@ -160,6 +160,14 @@ back. `Space` on the focused turn and a click on the row open the same card, and
 both close it again. An open card states no held-back count on its row, since
 the card below it shows every line.
 
+Text in a tool card stays inside the card. A line wider than the card is cut at
+the card's edge and ends in an ellipsis. The primary text of a row yields first;
+the detail beside it — a `path:line`, a description, a diff count — keeps the
+width it needs, up to half the row. A chip drawn from the tool's own text — a
+badge, a language marker, a trailing count — keeps up to a quarter. Lines of
+tool output are held to one row each, so a card's line count is the number of
+rows it draws. A markdown section wraps instead.
+
 Developer and custom records display labeled annotations below the assistant
 reading size. File, model, thinking, and lifecycle events use the same annotation
 style. Branch and compaction summaries have distinct labels and a separating

@@ -1,8 +1,7 @@
 //! Native GPUI renderer for `ViewSection` (§contracts/view).
 
 use veyyon_desktop_kit::{
-	ColorRole, Icon, IconName, IconSize, RadiusStep, SpacingStep, TextRamp, TextWeight, TokenSet,
-	text::markdown::Markdown,
+	ColorRole, SpacingStep, TextRamp, TextWeight, TokenSet, text::markdown::Markdown,
 };
 use veyyon_desktop_model::tool_view::{ViewLine, ViewSection};
 use veyyon_gpui::{
@@ -11,7 +10,8 @@ use veyyon_gpui::{
 
 use super::{
 	ToolViewCallbacks, code::render_code_lines, diff::render_diff_lines,
-	sanitize::sanitize_control_sequences, text_block::render_line, tree::render_tree_lines,
+	disclosure::render_disclosure, fit::FitsTheRow, sanitize::sanitize_control_sequences,
+	text_block::render_line, tree::render_tree_lines,
 };
 
 /// Renders a single `ViewSection` adhering to canonical structural precedence
@@ -43,6 +43,7 @@ pub fn render_section(
 		let clean_label = sanitize_control_sequences(label);
 		container = container.child(
 			div()
+				.fit_primary()
 				.mb(tokens.spacing(SpacingStep::S1))
 				.text_size(tokens.font_size(TextRamp::Small))
 				.line_height(tokens.line_height(TextRamp::Small))
@@ -93,6 +94,8 @@ pub fn render_section(
 	// 4. Front omission notice for Tail Windows (clickable to expand if callback
 	//    registered)
 	if omitted_front > 0 {
+		// No width role: this states a count in text this renderer authors,
+		// not host text, so it cannot outgrow the row it sits alone on.
 		let mut front_el = div()
 			.py(px(2.0))
 			.text_size(tokens.font_size(TextRamp::Micro))
@@ -138,9 +141,9 @@ pub fn render_section(
 			format!("{omitted_back} more lines")
 		};
 		let revealable = section.hidden.as_ref().is_none_or(|h| h.revealable);
-		container = container.child(render_disclosure_bar(&label, revealable, tokens, callbacks));
+		container = container.child(render_disclosure(&label, revealable, tokens, callbacks));
 	} else if let Some(hidden) = &section.hidden {
-		container = container.child(render_disclosure_bar(
+		container = container.child(render_disclosure(
 			&hidden.format_label(),
 			hidden.revealable,
 			tokens,
@@ -152,6 +155,18 @@ pub fn render_section(
 }
 
 /// Renders a Markdown document section.
+///
+/// `render_section` dispatches this before every arm that reads
+/// `ViewSection::clip`, so a markdown section is a document that wraps
+/// whatever the host asked for its lines.
+///
+/// Nothing here bounds it, and nothing needs to. Every ancestor between this
+/// and the card is a flex column, which stretches its children across, so the
+/// document is handed the card's width whether or not it asks for one; the
+/// text system then breaks a run mid-word when the run has no break
+/// opportunity of its own. A `w_full` or an `overflow_hidden` added here would
+/// change no pixel — the containment suite's mutation gate says so — and would
+/// read as the thing that holds the document in.
 fn render_markdown_section(lines: &[ViewLine], _tokens: &TokenSet) -> Div {
 	let mut source = String::new();
 	for (idx, line) in lines.iter().enumerate() {
@@ -164,7 +179,7 @@ fn render_markdown_section(lines: &[ViewLine], _tokens: &TokenSet) -> Div {
 		}
 	}
 
-	div().w_full().min_w_0().child(Markdown::new(source))
+	div().child(Markdown::new(source))
 }
 
 /// Renders list lines with bullet indicators.
@@ -222,52 +237,4 @@ fn render_prose_lines(
 		container = container.child(render_line(line, tokens, callbacks, clip));
 	}
 	container
-}
-
-/// Renders the disclosure affordance row with optional click callback.
-fn render_disclosure_bar(
-	label: &str,
-	revealable: bool,
-	tokens: &TokenSet,
-	callbacks: &ToolViewCallbacks,
-) -> Div {
-	if revealable && callbacks.on_disclose.is_some() {
-		let cb = callbacks.on_disclose.clone().unwrap();
-		div()
-			.flex()
-			.flex_row()
-			.items_center()
-			.gap(tokens.spacing(SpacingStep::S1))
-			.mt(tokens.spacing(SpacingStep::S1))
-			.px(tokens.spacing(SpacingStep::S2))
-			.py(px(2.0))
-			.rounded(tokens.radius(RadiusStep::Sm))
-			.bg(tokens.color(ColorRole::Inset))
-			.cursor(CursorStyle::PointingHand)
-			.hover(|s| s.bg(tokens.color(ColorRole::Canvas)))
-			.on_mouse_down(MouseButton::Left, move |_event, window, cx| {
-				cb(window, cx);
-			})
-			.child(
-				Icon::new(IconName::ChevronRight)
-					.size(IconSize::Size12)
-					.color(tokens.color(ColorRole::Accent)),
-			)
-			.child(
-				div()
-					.text_size(tokens.font_size(TextRamp::Small))
-					.text_color(tokens.color(ColorRole::Accent))
-					.font_weight(tokens.font_weight(TextWeight::Medium))
-					.child(label.to_string()),
-			)
-	} else {
-		div()
-			.flex()
-			.flex_row()
-			.items_center()
-			.mt(tokens.spacing(SpacingStep::S1))
-			.text_size(tokens.font_size(TextRamp::Micro))
-			.text_color(tokens.color(ColorRole::Muted))
-			.child(format!("({label})"))
-	}
 }

@@ -4,7 +4,10 @@ use veyyon_desktop_kit::{ColorRole, MonoSizeStep, MonoText, SpacingStep, TokenSe
 use veyyon_desktop_model::tool_view::{ViewCodeLines, ViewLine};
 use veyyon_gpui::{Div, ParentElement, Styled, div, px};
 
-use super::{ToolViewCallbacks, sanitize::sanitize_control_sequences, text_block::render_line};
+use super::{
+	ToolViewCallbacks, fit::FitsTheRow, sanitize::sanitize_control_sequences,
+	text_block::render_line,
+};
 
 /// Renders lines formatted as Source Code with optional line numbers and lead
 /// prompt.
@@ -20,11 +23,20 @@ pub fn render_code_lines(
 		.flex()
 		.flex_col()
 		.w_full()
+		.min_w_0()
 		.mono_text(tokens, MonoSizeStep::Small);
 
 	// Lead prompt (e.g. $ cd services &&)
 	if let Some(lead) = &code.lead {
 		let clean_lead = sanitize_control_sequences(lead);
+		// The lead is the invocation, and an invocation carries its
+		// environment: `HOME=... PATH=... cmd`, routinely wider than the card.
+		// It was a bare text child of this row, so it measured its own width
+		// and was drawn straight through the card's right border, cut
+		// mid-glyph, with nothing to say it had been cut.
+		// A flex column stretches its children across, so this row is already
+		// the container's width and needs no bound of its own: what contains
+		// the lead is the width role on the text itself.
 		container = container.child(
 			div()
 				.flex()
@@ -32,8 +44,12 @@ pub fn render_code_lines(
 				.items_center()
 				.px(tokens.spacing(SpacingStep::S1))
 				.py(px(1.0))
-				.text_color(tokens.color(ColorRole::Accent))
-				.child(clean_lead),
+				.child(
+					div()
+						.fit_primary()
+						.text_color(tokens.color(ColorRole::Accent))
+						.child(clean_lead),
+				),
 		);
 	}
 

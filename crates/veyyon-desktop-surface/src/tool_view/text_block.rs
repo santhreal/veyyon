@@ -12,6 +12,7 @@ use veyyon_gpui::{
 
 use super::{
 	ToolViewCallbacks, ToolViewTarget,
+	fit::FitsTheRow,
 	sanitize::sanitize_control_sequences,
 	theme::{
 		resolve_emblem_icon, resolve_status_color, resolve_status_icon, resolve_tone_color,
@@ -142,6 +143,7 @@ fn render_inline_markdown(
 			if !current.is_empty() {
 				out.push(
 					div()
+						.flex_shrink_0()
 						.text_color(base_color)
 						.child(std::mem::take(&mut current)),
 				);
@@ -157,6 +159,7 @@ fn render_inline_markdown(
 			}
 			out.push(
 				div()
+					.flex_shrink_0()
 					.px(tokens.spacing(SpacingStep::S1))
 					.bg(tokens.color(ColorRole::Inset))
 					.rounded(tokens.radius(RadiusStep::Sm))
@@ -168,6 +171,7 @@ fn render_inline_markdown(
 			if !current.is_empty() {
 				out.push(
 					div()
+						.flex_shrink_0()
 						.text_color(base_color)
 						.child(std::mem::take(&mut current)),
 				);
@@ -183,6 +187,7 @@ fn render_inline_markdown(
 			}
 			out.push(
 				div()
+					.flex_shrink_0()
 					.text_color(base_color)
 					.font_weight(tokens.font_weight(TextWeight::Semibold))
 					.child(bold_str),
@@ -194,7 +199,7 @@ fn render_inline_markdown(
 	}
 
 	if !current.is_empty() {
-		out.push(div().text_color(base_color).child(current));
+		out.push(div().flex_shrink_0().text_color(base_color).child(current));
 	}
 
 	out
@@ -233,7 +238,13 @@ pub fn render_line(
 		if in_trailing {
 			trailing_spans.push(span);
 		} else {
-			main_line = main_line.child(render_span(span, tokens, callbacks));
+			// A span is a flex child, so it measures its own text and paints
+			// it whether or not the line can hold it until it is bounded to
+			// the line. Bounded, a run longer than the line has somewhere to
+			// break to, and one with no break opportunity is held inside it.
+			// A clipping line adds the ellipsis itself, through the `nowrap`
+			// and `truncate` it sets above.
+			main_line = main_line.child(render_span(span, tokens, callbacks).max_w_full());
 		}
 	}
 
@@ -244,10 +255,11 @@ pub fn render_line(
 			.items_center()
 			.gap(tokens.spacing(SpacingStep::S1))
 			.ml_auto()
-			.flex_shrink_0();
+			.fit_detail();
 
 		for span in trailing_spans {
-			trailing_box = trailing_box.child(render_span(span, tokens, callbacks));
+			trailing_box =
+				trailing_box.child(render_span(span, tokens, callbacks).clipped_to_one_line());
 		}
 
 		main_line = main_line.child(trailing_box);
@@ -305,8 +317,11 @@ pub fn render_text_block(
 		(&lines[..], 0)
 	};
 
+	// `row_budget` bounds this block in LINES, and the spans above were split
+	// on newlines into exactly those lines, so each one stays a single row and
+	// states where it was cut.
 	for line in display_lines {
-		container = container.child(render_line(line, tokens, callbacks, false));
+		container = container.child(render_line(line, tokens, callbacks, true));
 	}
 
 	if omitted > 0 {
