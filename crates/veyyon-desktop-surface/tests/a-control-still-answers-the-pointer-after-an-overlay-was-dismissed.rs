@@ -82,12 +82,8 @@ impl Dismissal {
 fn open_test_session(cx: &mut Headless) -> HeadlessSession<'_, ShellView> {
 	let tokens = load_bundled_tokens().expect("the bundled tokens load");
 	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");
-	let options = RenderOptions {
-		width:        WIDTH,
-		height:       HEIGHT,
-		scale_factor: 1.0,
-		..RenderOptions::default()
-	};
+	let options =
+		RenderOptions { width: WIDTH, height: HEIGHT, scale_factor: 1.0, ..RenderOptions::default() };
 	HeadlessSession::open(cx, &options, move |_window, app: &mut App| {
 		let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
 			.expect("the bundled tokens and theme install");
@@ -148,10 +144,10 @@ fn center(rect: Bounds<Pixels>) -> Point<Pixels> {
 /// whether the chip answers. The rect rather than its index is returned,
 /// because a press changes what the row registers and an index into the row
 /// does not survive one.
-fn press_along_control_row(
-	session: &mut HeadlessSession<'_, ShellView>,
-) -> Option<Bounds<Pixels>> {
-	let captured = session.frame().expect("a frame is captured before the sweep");
+fn press_along_control_row(session: &mut HeadlessSession<'_, ShellView>) -> Option<Bounds<Pixels>> {
+	let captured = session
+		.frame()
+		.expect("a frame is captured before the sweep");
 	let rects = control_row_rects(&captured);
 	assert!(
 		!rects.is_empty(),
@@ -285,8 +281,8 @@ fn dismiss(session: &mut HeadlessSession<'_, ShellView>, how: Dismissal) {
 			view.set_composed("", cx);
 			assert!(
 				view.state().overlay.is_none(),
-				"{how:?} left an overlay on screen, so the reopen below would measure a palette \
-				 that never closed"
+				"{how:?} left an overlay on screen, so the reopen below would measure a palette that \
+				 never closed"
 			);
 		})
 		.expect("the draft is cleared and the overlay is gone");
@@ -308,8 +304,8 @@ fn the_model_chip_answers_a_press_on_a_window_that_has_dismissed_nothing() {
 
 	assert!(
 		press_along_control_row(&mut session).is_some(),
-		"no press along the composer's row of controls opened the model catalogue on a window \
-		 where nothing had been opened or dismissed, so the chip is not wired to the pointer at all"
+		"no press along the composer's row of controls opened the model catalogue on a window where \
+		 nothing had been opened or dismissed, so the chip is not wired to the pointer at all"
 	);
 }
 
@@ -473,8 +469,8 @@ fn the_press_that_dismisses_a_popover_does_not_also_run_what_it_landed_on() {
 	);
 	assert_ne!(
 		before, opened,
-		"the row opens the session that is already open, so the press below cannot be seen to \
-		 have activated it"
+		"the row opens the session that is already open, so the press below cannot be seen to have \
+		 activated it"
 	);
 
 	session
@@ -492,11 +488,7 @@ fn the_press_that_dismisses_a_popover_does_not_also_run_what_it_landed_on() {
 		.expect("the press outside the popover is dispatched");
 	session.frame().expect("the frame after the press");
 
-	assert_eq!(
-		palette_mode(&mut session),
-		None,
-		"a press outside the popover did not dismiss it"
-	);
+	assert_eq!(palette_mode(&mut session), None, "a press outside the popover did not dismiss it");
 	assert_eq!(
 		session
 			.update(|view, _, _| view.state().current_id)
@@ -524,8 +516,8 @@ fn a_press_on_the_scrim_dismisses_the_dialog_and_runs_nothing_behind_it() {
 	session.frame().expect("the frame with that session open");
 	assert_ne!(
 		before, opened,
-		"the row opens the session that is already open, so the press below cannot be seen to \
-		 have activated it"
+		"the row opens the session that is already open, so the press below cannot be seen to have \
+		 activated it"
 	);
 
 	assert!(
