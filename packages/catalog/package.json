@@ -57,6 +57,10 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts"
     },
+    "./models": {
+      "types": "./src/models.ts",
+      "import": "./src/models.ts"
+    },
     "./models.json": {
       "types": "./src/models.json.d.ts",
       "import": "./src/models.json"
