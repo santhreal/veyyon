@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use veyyon_gpui::{
 	AnyElement, App, ClickEvent, ElementId, IntoElement, Pixels, RenderOnce, SharedString, Window,
-	div, prelude::*,
+	div, prelude::*, relative,
 };
 
 use crate::{
@@ -173,15 +173,17 @@ impl RenderOnce for ListRow {
 			.text_color(tokens.color(ColorRole::Foreground))
 			.child(self.title);
 		title = if inline {
-			title.flex_shrink_0()
+			// A title wider than the line yields, and states that it did with an
+			// ellipsis. It used to refuse to shrink, so a long one ran under the
+			// row's edge, was cut mid-glyph, and squeezed its detail — the
+			// `path:line` of a search hit — out of the row entirely.
+			title.flex_shrink(1.0)
 		} else {
 			title.w_full()
 		};
 		text_col = text_col.child(title);
 
 		if let Some(sub) = self.subtitle {
-			// The detail yields the width first: a long title truncates nothing
-			// of itself to state a subtitle the row also holds.
 			let mut detail = div()
 				.min_w_0()
 				.overflow_hidden()
@@ -191,7 +193,10 @@ impl RenderOnce for ListRow {
 				.text_color(tokens.color(ColorRole::Secondary))
 				.child(sub);
 			detail = if inline {
-				detail.flex_1()
+				// The detail keeps the width it measures, up to half the line,
+				// so the location of a hit survives a long title without
+				// crowding out the title itself.
+				detail.flex_shrink_0().max_w(relative(0.5))
 			} else {
 				detail.w_full()
 			};
