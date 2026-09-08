@@ -2,6 +2,11 @@
 //! Sweep all protocol roles and every combination of optional file metadata.
 //! This tests production projection and search; decoded pixels and disclosure
 //! interactions are covered by the surface renderer suites, not this suite.
+//!
+//! Two roles land on the operator's own turn rather than a model's: a prompt,
+//! and a file that prompt read on its way in. A mention is read on behalf of
+//! the prompt that named it, so drawing it as the model's output claims the
+//! model read a file it never called a tool for.
 
 mod support;
 
@@ -30,6 +35,11 @@ fn projected(role: MessageRole, content: Vec<ContentBlock>) -> ShellState {
 	state
 }
 
+/// Whether the transcript charges this role to the operator's own turn.
+fn belongs_to_the_operator(role: MessageRole) -> bool {
+	matches!(role, MessageRole::User | MessageRole::FileMention)
+}
+
 #[test]
 fn file_metadata_and_images_survive_every_role_and_optional_field_combination() {
 	let motion = load_bundled_tokens().expect("bundled tokens").motion.into();
@@ -56,7 +66,7 @@ fn file_metadata_and_images_survive_every_role_and_optional_field_combination() 
 				unavailable_reason: reason,
 				image,
 			}]);
-			if role == MessageRole::User {
+			if belongs_to_the_operator(role) {
 				assert_eq!(state.transcript, vec![Turn::OperatorArtifacts {
 					text:      String::new(),
 					artifacts: vec![expected],
@@ -98,7 +108,7 @@ fn image_payload_and_alt_survive_in_user_and_agent_turns() {
 			data:       vec![1, 2, 3],
 			alt:        Some("Diagram".into()),
 		}]);
-		if role == MessageRole::User {
+		if belongs_to_the_operator(role) {
 			assert_eq!(state.transcript, vec![Turn::OperatorArtifacts {
 				text:      String::new(),
 				artifacts: vec![expected],
