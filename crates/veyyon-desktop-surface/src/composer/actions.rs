@@ -163,12 +163,9 @@ pub fn turn_action_controls(
 fn composer_tag(
 	text: impl Into<SharedString>,
 	anchor: impl IntoElement,
-	group: impl Into<SharedString>,
+	key: impl Into<SharedString>,
 ) -> Tooltip {
-	Tooltip::new(text, anchor)
-		.above()
-		.aligned_end()
-		.group(group)
+	Tooltip::new(text, anchor).keyed(key).above().aligned_end()
 }
 
 /// Wraps a control in the host's reason for holding it back, readable on

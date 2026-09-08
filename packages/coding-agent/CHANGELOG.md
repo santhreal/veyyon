@@ -47,6 +47,7 @@
 - A prompt sent to the desktop while a turn runs is listed above the composer input until it runs, and `Alt+Up` takes the newest one back into the draft, where the text previously left the composer and appeared nowhere until the turn ended.
 - The desktop model picker lists each provider's models under one heading, the provider serving the model in effect first and that model first under it, and states a model's identifier only when it is not the name already drawn; a search still finds a model by its provider name or its `provider/model` identifier, and a provider's rows stay under one heading instead of being split by ranking.
 - A desktop popover anchored to a composer control is drawn 384px wide rather than at the centred palette's 576px, so the model picker and the slash-command list no longer cover the turn behind them.
+- Every desktop settings row is drawn 44px tall with its label and description on one line each, and the pointer over a row opens the whole description in a tag over the rows below it, where a description previously wrapped to five and six lines, drew rows of 100px and more, and painted past the row it belonged to.
 
 ### Changed
 

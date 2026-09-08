@@ -178,6 +178,7 @@ pub struct SettingsSurfaceTokens {
 	pub row_gap:                 f32,
 	pub group_gap:               f32,
 	pub control_column_width_px: f32,
+	pub tooltip_width_px:        f32,
 	pub label_size:              TypeSize,
 	pub description_size:        TypeSize,
 }

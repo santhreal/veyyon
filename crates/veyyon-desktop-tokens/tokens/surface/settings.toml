@@ -7,6 +7,7 @@ row_height_px = 44
 row_gap = "s4"
 group_gap = "s10"
 control_column_width_px = 240
+tooltip_width_px = 320
 
 [typography]
 label_size = "read"

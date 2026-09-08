@@ -96,7 +96,6 @@ pub fn queued_strip(
 			Tooltip::new(reason.to_string(), take_back_btn)
 				.above()
 				.aligned_end()
-				.group("composer-queued-take-back-hint")
 		}));
 
 	let prompt_rows = div()

@@ -20,7 +20,13 @@ pub fn load_settings(
 	root.meta("surface_settings")?;
 
 	let layout = root.sub("layout")?;
-	layout.only(&["row_height_px", "row_gap", "group_gap", "control_column_width_px"])?;
+	layout.only(&[
+		"row_height_px",
+		"row_gap",
+		"group_gap",
+		"control_column_width_px",
+		"tooltip_width_px",
+	])?;
 
 	let typo = root.sub("typography")?;
 	typo.only(&["label_size", "description_size"])?;
@@ -30,6 +36,7 @@ pub fn load_settings(
 		row_gap:                 layout.spacing("row_gap", scale)?,
 		group_gap:               layout.spacing("group_gap", scale)?,
 		control_column_width_px: layout.number("control_column_width_px")?,
+		tooltip_width_px:        layout.number("tooltip_width_px")?,
 		label_size:              typo.type_size("label_size", scale)?,
 		description_size:        typo.type_size("description_size", scale)?,
 	})

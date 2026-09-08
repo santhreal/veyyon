@@ -13,9 +13,10 @@ minimum window width, the composer remains available across the transcript.
 The transcript and composer remain the primary work area. Workspace inspection
 and terminal output use contextual panels rather than permanent command menus.
 Typography, spacing, control sizes, and motion use the shared design tokens.
-Wrapped descriptions expand their rows; adjacent labels and controls do not
-overlap. Focused pages scroll their content without displacing their navigation
-header.
+Every settings row is 44px tall, with its label on one line and its description
+on one line under it. A description longer than the row truncates; the pointer
+over the row opens the whole description in a tag. Focused pages scroll their
+content without displacing their navigation header.
 
 `Primary` means `Cmd` on macOS and `Ctrl` on Linux and Windows. Default bindings are
 in `crates/veyyon-desktop-surface/keymap.toml`.

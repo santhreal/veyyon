@@ -117,8 +117,10 @@ fn expected_controls(state: &ShellState) -> usize {
 		+ usize::from(state.cards.len() > visible_cards);
 
 	// Root, titlebar drag strip and toggles, rail settings, composer drop
-	// target/editor, and the two tooltip-wrapped footer controls.
-	let chrome = 1 + 3 + 1 + 8 + usize::from(state.connection.is_attached());
+	// target/editor, and the two tooltip-wrapped footer controls. A tooltip
+	// answers one rect, its anchor's: the tag is drawn on the deferred layer
+	// and is hit-tested for nothing.
+	let chrome = 1 + 3 + 1 + 6 + usize::from(state.connection.is_attached());
 	let transcript = usize::from(!state.transcript.is_empty()) * 2
 		+ state
 			.transcript

@@ -223,7 +223,7 @@ pub fn render_general_page(
 				.map_or_else(|| entry.default.to_string(), str::to_owned);
 			Some(
 				Tooltip::new(format!("Default: {default}"), reset_btn)
-					.group(format!("reset-tip-{key}"))
+					.keyed(format!("reset-tip-{key}"))
 					.into_any_element(),
 			)
 		} else {
