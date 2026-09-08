@@ -285,6 +285,7 @@
 
 ### Fixed
 
+- A collapsed desktop card stack fold draws the count alone: the lines it folded away are clipped by the row's lower edge rather than shrunk to share it, where three folded decisions had each been handed a third of the row and the first name was drawn cut through its glyphs under the count.
 - The desktop rail footer draws a gear, where the icon it names as the settings control was a sun: a circle ringed by radial spokes standing clear of it, which reads as brightness rather than as the settings overlay it opens.
 - Escape returns a desktop command surface to the surface it was opened from, and a surface opened directly draws no Back control and states `Esc Close` for what Escape does: pressing the rail footer gear and then Escape opened the command palette, because the ascent read the route table's parent of the surface on screen rather than the descent that reached it.
 - Every line a desktop tool card draws stays inside the card: a card's lead row, section label, omission notice, disclosure label, tree entry, badge, language marker and trailing metadata are held to the width they were given and end in an ellipsis where they were cut, and a detail set beside a row's primary text takes at most half the line so a long one no longer squeezes the text it belongs to down to an ellipsis. A bash invocation carrying its environment was drawn straight through the card's right border and cut mid-glyph with nothing to say it was cut.
