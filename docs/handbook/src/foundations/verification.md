@@ -209,6 +209,38 @@ cannot serve the window: a branch that brings its own GUI host has none in its
 base, and the source hold then records a window attached to nothing rather than
 the surface under test.
 
+A pre-change build reads the token and theme files it was authored against. §9.3
+rejects a key a loader does not know, and a key a later commit made required is
+absent from an older reader, so this checkout's token files fail to load in that
+build. The base's own files come with it, in `PROOF_TOKENS_DIR` and
+`PROOF_THEMES_DIR` as container paths under `/repo`:
+
+```sh
+SCENE_ARM=before PROOF_BASE_REF=HEAD \
+  PROOF_NATIVE_BEFORE_BINARY=<base-build> \
+  PROOF_TOKENS_DIR=/repo/<base-tokens>/crates/veyyon-desktop-tokens/tokens \
+  PROOF_THEMES_DIR=/repo/<base-tokens>/crates/veyyon-desktop-tokens/themes \
+  proof/docker/record-native.sh proof/scenes/<name>.sh
+```
+
+One target directory serves every tree on a machine, and cargo names each unit's
+sources relative to its workspace root, so a base tree and this one describe the
+same files and freshness comes down to mtime. A base tree extracted with archived
+timestamps reads as up to date, and its build links this branch's rlibs into the
+binary the arm then records. Stamp an extracted tree with the current time before
+building it, and rebuild the working tree's executable afterwards, which the same
+collision leaves stale in the other direction.
+
+A base build speaks the protocol of its own day, and the arm runs it against the
+GUI host this checkout ships. A snapshot section or action added since is unknown
+to it: the frame decoder rejects the frame, the transport closes the socket, and
+the host disposes that client -- which aborts a turn the scene had submitted, so
+the take reads `Aborted` over an empty transcript. Past that point the before arm
+is a build of this tree with the change taken back out of it, in the smallest edit
+that reproduces the state the change replaced. That keeps the protocol current and
+narrows the difference between the arms to the change itself; state in the scene
+header which code path the arm removes.
+
 Both arms record the same scene at the same width and are sampled at the same second
 of the same script, so the only difference between them is the change. Attach the
 labeled Before and After pair to the pull request body. It is never committed: not to

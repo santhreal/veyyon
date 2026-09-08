@@ -32,11 +32,18 @@
 #
 #   proof/docker/record-native.sh proof/scenes/desktop-queue-badge.sh
 #
-# and its other arm, against a build of the base ref. The change is entirely
-# inside that executable, so the arm holds no source:
+# and its other arm, whose executable is a build of this tree with the badge
+# derivation taken back out of it. A build of the pre-change tree cannot record
+# this take: it speaks the protocol of its own day, and the host sends a
+# `QueuedPrompts` section on the first frame of a turn, which that executable
+# rejects -- `FrameDecoder` reports a fatal protocol error, the socket closes,
+# the host disposes the client, and the turn the scene just submitted ends
+# `Aborted` over an empty transcript. Holding the change out of the current
+# tree keeps the protocol current and leaves the derivation as the whole
+# differential:
 #
 #   SCENE_ARM=before PROOF_BASE_REF=HEAD \
-#     PROOF_NATIVE_BEFORE_BINARY=<base-build> \
+#     PROOF_NATIVE_BEFORE_BINARY=<build of this tree without the derivation> \
 #     proof/docker/record-native.sh proof/scenes/desktop-queue-badge.sh
 set -euo pipefail
 
@@ -85,21 +92,100 @@ working_fill_pixels() { # <shot> -> count of pixels of the working tint's fill
 }
 
 # ─── A Real Turn, Long Enough To Photograph ──────────────────────────────────
-k "ctrl+shift+m"
-pause 0.3
-t "local/qwen2.5-1.5b"
-pause 0.4
-k "Return"
-pause 0.5
+PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
+mkdir -p "${PROBE_DIR}"
 
-COMPOSER_X=$(( WIN_X + 400 ))
-COMPOSER_Y=$(( WIN_Y + (WIN_H > 481 ? 408 : WIN_H - 98) ))
+# The composer is a band at the foot of the window, which is where a click has to
+# land: an arm whose build does not keep the editor focused through a click on
+# another region types into nothing, submits an empty draft, and reads back a turn
+# the provider aborted. That is what this scene recorded while the click was aimed
+# at a point 408px down an 800px window.
+COMPOSER_X=$(( WIN_X + (WIN_W > 800 ? 400 : WIN_W / 2) ))
+COMPOSER_Y=$(( WIN_Y + WIN_H - 98 ))
+
+# Every readiness probe below is aimed with its own crop. This scene's own crop
+# is the queue rail, 256px at the window's leading edge, and each of these
+# states draws outside it: the model catalogue is anchored over the transcript,
+# and the draft is in the composer. A probe left on the scene's crop reads 0 for
+# all of them and abandons a take that was going fine, which is what this scene
+# did six times.
+WINDOW_CROP="${WIN_W}x${WIN_H}+${WIN_X}+${WIN_Y}"
+
+# The row of composer controls, where the model chip carries the model's name.
+CONTROL_ROW_CROP="${COMPOSER_CARD_W}x$(( CARD_PAD_BOTTOM + 2 * GUTTER_PX ))+${COMPOSER_CARD_LEFT}+$(( COMPOSER_CARD_BOTTOM - CARD_PAD_BOTTOM - 2 * GUTTER_PX ))"
+
+# The model is named rather than left at whatever the composer starts on: a build
+# that reaches the machine's configured model only through the picker draws
+# `Select model` until one is chosen, and a prompt submitted there is a turn with
+# no model, which the provider ends as an abort.
+#
+# The picker is opened from its own chip rather than by the chord. A build whose
+# editor and dismissed overlays do not carry the shell's key contexts answers no
+# chord at all once a palette has been dismissed, which the shared prelude does
+# before this scene starts: the keys then land in the composer and the return
+# after them submits a model id as the prompt. A click on a control reaches it in
+# every build that draws it.
+#
+# The chip's point is derived from the tokens by the shared prelude, and the
+# pointer settles there before the press: a hit test resolves against the frame
+# the window last drew, so a press dispatched in the same breath as the move is
+# tested where the pointer was.
+PICKER_MIN_PIXELS=20000
+PICKER_CLOSED="${PROBE_DIR}/badge-picker-closed.png"
+probe_frame "${PICKER_CLOSED}"
+move_px "${MODEL_CHIP_X}" "${MODEL_CHIP_Y}"
+pause 0.3
+click
+pause 0.8
+PICKER="$(screen_differs_from_frame_pixels_at "${PICKER_CLOSED}" "${WINDOW_CROP}")"
+if [ "${PICKER}" -lt "${PICKER_MIN_PIXELS}" ]; then
+	abandon_take "model-picker-open" \
+		"a press on the model chip at ${MODEL_CHIP_X},${MODEL_CHIP_Y} changed ${PICKER} pixels of \
+the window, under the ${PICKER_MIN_PIXELS} an overlay of model rows draws, so the keys after it \
+would land in the composer"
+fi
+PICKER_OPEN="${PROBE_DIR}/badge-picker-open.png"
+probe_frame "${PICKER_OPEN}"
+t "local/qwen2.5-1.5b"
+pause 0.6
+FILTERED="$(screen_differs_from_frame_pixels_at "${PICKER_OPEN}" "${WINDOW_CROP}")"
+if [ "${FILTERED}" -lt 1000 ]; then
+	abandon_take "model-picker-filtered" \
+		"typing a model id changed ${FILTERED} pixels of the window, so the overlay's field never \
+took it and the return would select whatever row was under the cursor"
+fi
+k "Return"
+pause 0.8
+
+# The pointer goes back where it rested for the frame this is compared against,
+# since the chip's own hover tint inks more than its name does.
 move_px "${COMPOSER_X}" "${COMPOSER_Y}"
+pause 0.5
+MODEL_CHOSEN="${PROBE_DIR}/badge-model-chosen.png"
+probe_frame "${MODEL_CHOSEN}"
+CHOSEN="$(frames_differ_pixels_at "${PICKER_CLOSED}" "${MODEL_CHOSEN}" "${CONTROL_ROW_CROP}")"
+if [ "${CHOSEN}" -lt 100 ]; then
+	abandon_take "model-chosen" \
+		"the composer's control row is ${CHOSEN} pixels from where it was before the picker, \
+under the 100 a model's name inks, so no model was chosen and the turn would run without one"
+fi
+
 click
 k "ctrl+a"
 k "BackSpace"
 pause 0.3
+
+EMPTY_FIELD="${PROBE_DIR}/badge-empty-field.png"
+probe_frame "${EMPTY_FIELD}"
 t "count from one to forty, one number per line, with no other words"
+pause 0.8
+# A line of prose in the field inks a couple of thousand pixels.
+TYPED="$(screen_differs_from_frame_pixels_at "${EMPTY_FIELD}" "${WINDOW_CROP}")"
+if [ "${TYPED}" -lt 1000 ]; then
+	abandon_take "prompt-typed" \
+		"typing the prompt changed ${TYPED} pixels of the window, so the field never took it \
+and pressing return would submit an empty draft"
+fi
 k "Return"
 
 # The pointer is parked on the composer for both frames: a pointer over a queue
