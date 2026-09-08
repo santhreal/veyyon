@@ -35,10 +35,12 @@ use palette_rows::{captured, model_control, text_run_count};
 /// before: the control arm proving the marks are what changed the frame.
 fn unmarked(state: &PaletteState) -> PaletteState {
 	let mut stripped = state.clone();
-	for item in &mut stripped.items {
+	let mut items = state.items().to_vec();
+	for item in &mut items {
 		item.meta = None;
 		item.badge = None;
 	}
+	stripped.set_items(items);
 	stripped
 }
 
@@ -55,7 +57,7 @@ fn session_rows() -> Vec<(Section, Vec<Row>)> {
 /// Every palette state a producer builds, named for the mode it opens in.
 fn every_producer() -> Vec<(&'static str, PaletteState)> {
 	let mut browse = PaletteState::new(PaletteMode::Browse);
-	browse.items = vec![PaletteItem::directory(1, "crates/veyyon-desktop")];
+	browse.set_items(vec![PaletteItem::directory(1, "crates/veyyon-desktop")]);
 	vec![
 		("commands", PaletteState::commands()),
 		("sessions", PaletteState::from_sessions(&session_rows())),
@@ -69,7 +71,7 @@ fn every_mark_a_producer_sets_reaches_the_frame() {
 	let mut cx = headless_context().expect("a headless renderer is required to render the shell");
 	for (name, state) in every_producer() {
 		let marks = state
-			.items
+			.items()
 			.iter()
 			.filter(|item| item.meta.is_some() || item.badge.is_some())
 			.count();
@@ -101,7 +103,7 @@ fn every_kind_of_mark_is_drawn_as_its_own_kind() {
 		assert!(!text.is_empty(), "{mark:?} draws an empty mark");
 
 		let mut state = PaletteState::new(PaletteMode::Commands);
-		state.items = vec![PaletteItem {
+		state.set_items(vec![PaletteItem {
 			id:       1,
 			title:    "/new".into(),
 			subtitle: Some("Create a new session".into()),
@@ -110,7 +112,7 @@ fn every_kind_of_mark_is_drawn_as_its_own_kind() {
 			badge:    None,
 			meta:     Some(mark.clone()),
 			kind:     PaletteItemKind::Command { intent: Box::new(Intent::NewSession) },
-		}];
+		}]);
 		let with = text_run_count(&captured(&mut cx, state.clone()));
 		let without = text_run_count(&captured(&mut cx, unmarked(&state)));
 		assert!(with > without, "{mark:?} drew no run of its own: {with} runs either way");
@@ -150,7 +152,7 @@ fn a_row_states_the_chord_the_operator_bound_not_the_one_shipped() {
 fn a_model_row_states_which_model_is_in_effect_and_which_reasons() {
 	let state = PaletteState::from_models(&model_control());
 	let current = state
-		.items
+		.items()
 		.iter()
 		.find(|item| item.title == "alibaba/qwen-max")
 		.expect("the catalogue lists the model in effect");
@@ -160,7 +162,7 @@ fn a_model_row_states_which_model_is_in_effect_and_which_reasons() {
 		"the model in effect says so, since order alone says nothing once the list is filtered"
 	);
 	let thinker = state
-		.items
+		.items()
 		.iter()
 		.find(|item| item.title == "Qwen3 Thinking")
 		.expect("the catalogue lists the reasoning model");

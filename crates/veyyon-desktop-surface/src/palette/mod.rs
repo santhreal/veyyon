@@ -7,6 +7,7 @@ pub mod commands;
 pub mod matcher;
 pub mod modes;
 pub mod motion;
+mod rank;
 mod render;
 pub mod rows;
 
@@ -17,16 +18,22 @@ use crate::{
 };
 
 /// Active state of the command palette overlay (§5.8).
+///
+/// The query, the items and the route decide the row order, so each is written
+/// through a method that ranks once. Ranking is the expensive part of the
+/// surface and a frame only reads `filtered_items`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PaletteState {
 	/// Current search query string.
-	pub query:       String,
+	query:           String,
 	/// Active palette operating mode.
 	pub mode:        PaletteMode,
 	/// Index of the currently highlighted result row.
 	pub selected:    usize,
 	/// Candidate items available for matching in the active mode.
-	pub items:       Vec<PaletteItem>,
+	items:           Vec<PaletteItem>,
+	/// The ranked row order, as indices into `items`.
+	rows:            Vec<usize>,
 	/// Path components for directory navigation in Browse mode.
 	pub browse_path: Vec<String>,
 	/// Optional root path for project browsing.
@@ -34,7 +41,7 @@ pub struct PaletteState {
 	/// Optional availability notice (e.g. host-provided unavailability reason).
 	pub notice:      Option<String>,
 	/// Command group shown in the shared navigation surface.
-	pub route:       Option<crate::navigation::SurfaceRoute>,
+	route:           Option<crate::navigation::SurfaceRoute>,
 }
 impl Default for PaletteState {
 	fn default() -> Self {
@@ -50,6 +57,7 @@ impl PaletteState {
 			mode,
 			selected: 0,
 			items: Vec::new(),
+			rows: Vec::new(),
 			browse_path: Vec::new(),
 			browse_root: None,
 			notice: None,
@@ -60,17 +68,10 @@ impl PaletteState {
 	/// Creates a palette state initialized with default commands.
 	#[must_use]
 	pub fn commands() -> Self {
-		let items = commands::command_items();
-		Self {
-			query: String::new(),
-			mode: PaletteMode::Commands,
-			selected: 0,
-			items,
-			browse_path: Vec::new(),
-			browse_root: None,
-			notice: None,
-			route: Some(crate::navigation::SurfaceRoute::Commands),
-		}
+		let mut state = Self::new(PaletteMode::Commands);
+		state.route = Some(crate::navigation::SurfaceRoute::Commands);
+		state.set_items(commands::command_items());
+		state
 	}
 
 	/// Creates a palette state populated with queue sessions.
@@ -88,16 +89,9 @@ impl PaletteState {
 				));
 			}
 		}
-		Self {
-			query: String::new(),
-			mode: PaletteMode::Sessions,
-			selected: 0,
-			items,
-			browse_path: Vec::new(),
-			browse_root: None,
-			notice: None,
-			route: None,
-		}
+		let mut state = Self::new(PaletteMode::Sessions);
+		state.set_items(items);
+		state
 	}
 
 	/// The intent running the highlighted row dispatches, for a row that is
@@ -184,16 +178,9 @@ impl PaletteState {
 				});
 			}
 		}
-		Self {
-			query: String::new(),
-			mode: PaletteMode::Models,
-			selected: 0,
-			items,
-			browse_path: Vec::new(),
-			browse_root: None,
-			notice: None,
-			route: None,
-		}
+		let mut state = Self::new(PaletteMode::Models);
+		state.set_items(items);
+		state
 	}
 
 	/// The first row a list can draw and still reach `selected` inside `room`
@@ -239,16 +226,72 @@ impl PaletteState {
 		start
 	}
 
-	/// Updates the search query and resets selection index to 0.
+	/// The query the rows are ranked against.
+	#[must_use]
+	pub fn query(&self) -> &str {
+		&self.query
+	}
+
+	/// Updates the search query, ranks the rows once, and resets the
+	/// selection.
 	pub fn set_query(&mut self, query: impl Into<String>) {
 		self.query = query.into();
 		self.selected = 0;
+		self.rank();
 	}
 
-	/// Adjusts the selection index by `delta`, bounding it within filtered
-	/// results.
-	pub fn move_selection(&mut self, delta: i32) {
-		let count = self.filtered_items().len();
+	/// Every candidate the mode carries, in the order it was authored.
+	#[must_use]
+	pub fn items(&self) -> &[PaletteItem] {
+		&self.items
+	}
+
+	/// Replaces the candidates and ranks them once. The host relists a mode as
+	/// its own state changes, so this is the only write path.
+	pub fn set_items(&mut self, items: Vec<PaletteItem>) {
+		self.items = items;
+		self.rank();
+		if self.selected >= self.rows.len() {
+			self.selected = 0;
+		}
+	}
+
+	/// Drops the candidates `keep` rejects and ranks what is left.
+	///
+	/// A command the host declines is not listed rather than listed and
+	/// refused (§5.13), and the projection runs while the palette is open.
+	pub fn retain_items(&mut self, keep: impl FnMut(&PaletteItem) -> bool) {
+		self.items.retain(keep);
+		self.rank();
+		if self.selected >= self.rows.len() {
+			self.selected = 0;
+		}
+	}
+
+	/// The command group the shared navigation surface is showing.
+	#[must_use]
+	pub const fn route(&self) -> Option<crate::navigation::SurfaceRoute> {
+		self.route
+	}
+
+	/// Moves to another command group and ranks the rows the group owns.
+	pub fn set_route(&mut self, route: Option<crate::navigation::SurfaceRoute>) {
+		self.route = route;
+		self.selected = 0;
+		self.rank();
+	}
+
+	/// Ranks the rows for the query, the items and the route now held.
+	///
+	/// Every write path ends here and a frame never does, which is what keeps
+	/// a catalogue of thousands of rows off the render path.
+	fn rank(&mut self) {
+		self.rows = rank::rank_rows(&self.query, &self.items, self.route);
+	}
+
+	/// Adjusts the selection index by `delta`, wrapping within the ranked rows.
+	pub const fn move_selection(&mut self, delta: i32) {
+		let count = self.rows.len();
 		if count == 0 {
 			self.selected = 0;
 			return;
@@ -258,51 +301,23 @@ impl PaletteState {
 		self.selected = next as usize;
 	}
 
-	/// Returns references to candidate items ranked by fuzzy score against
-	/// `query`.
+	/// The rows in ranked order, as the surface draws them.
 	#[must_use]
 	pub fn filtered_items(&self) -> Vec<&PaletteItem> {
-		if self.query.is_empty() {
-			return self
-				.items
-				.iter()
-				.filter(|item| {
-					if self.route != Some(crate::navigation::SurfaceRoute::Commands) {
-						return true;
-					}
-					match &item.kind {
-						PaletteItemKind::Command { intent } => match intent.as_ref() {
-							Intent::Navigate(route) => route.parent() == self.route,
-							_ => true,
-						},
-						_ => true,
-					}
-				})
-				.collect();
-		}
-		let ranked = fuzzy_rank(&self.query, &self.items, |item| {
-			let aliases = match &item.kind {
-				PaletteItemKind::Command { intent } => match intent.as_ref() {
-					Intent::Navigate(route) => route.aliases(),
-					_ => &[],
-				},
-				_ => &[],
-			};
-			std::iter::once(item.title.as_str())
-				.chain(item.subtitle.as_deref())
-				.chain(item.group.as_deref())
-				.chain(item.search.as_deref())
-				.chain(aliases.iter().copied())
-		});
-		let ranked: Vec<&PaletteItem> = ranked.into_iter().map(|(_, _, item)| item).collect();
-		regroup(ranked)
+		self
+			.rows
+			.iter()
+			.filter_map(|index| self.items.get(*index))
+			.collect()
 	}
 
 	/// Returns the currently highlighted item if one exists.
 	#[must_use]
 	pub fn selected_item(&self) -> Option<&PaletteItem> {
-		let filtered = self.filtered_items();
-		filtered.get(self.selected).copied()
+		self
+			.rows
+			.get(self.selected)
+			.and_then(|index| self.items.get(*index))
 	}
 
 	/// Ascends one directory level in Browse mode. Returns `true` if ascended.
@@ -319,36 +334,7 @@ impl PaletteState {
 	/// Descends into a directory child in Browse mode.
 	pub fn descend(&mut self, dir_name: impl Into<String>) {
 		self.browse_path.push(dir_name.into());
-		self.query.clear();
 		self.selected = 0;
+		self.set_query(String::new());
 	}
-}
-
-/// Reorders `ranked` so rows carrying the same heading stay together, in the
-/// order their best-ranked row appeared.
-///
-/// Ranking scatters a provider's models across the list, and a heading drawn
-/// once per run of rows would then state the same provider several times.
-/// Ungrouped rows keep their ranked order among themselves.
-fn regroup(ranked: Vec<&PaletteItem>) -> Vec<&PaletteItem> {
-	let mut order: Vec<Option<&str>> = Vec::new();
-	for item in &ranked {
-		let group = item.group.as_deref();
-		if !order.contains(&group) {
-			order.push(group);
-		}
-	}
-	if order.len() < 2 {
-		return ranked;
-	}
-	let mut grouped: Vec<&PaletteItem> = Vec::with_capacity(ranked.len());
-	for group in order {
-		grouped.extend(
-			ranked
-				.iter()
-				.copied()
-				.filter(|item| item.group.as_deref() == group),
-		);
-	}
-	grouped
 }

@@ -120,7 +120,7 @@ pub fn bind_global_keys(root: Div, cx: &Context<ShellView>) -> Div {
 				.overlay
 				.as_ref()
 				.and_then(Overlay::as_palette)
-				.is_some_and(|p| p.query.is_empty());
+				.is_some_and(|p| p.query().is_empty());
 			if empty {
 				view.back_surface(cx);
 				cx.stop_propagation();
@@ -135,7 +135,7 @@ pub fn bind_global_keys(root: Div, cx: &Context<ShellView>) -> Div {
 				.overlay
 				.as_ref()
 				.and_then(Overlay::as_palette)
-				.is_some_and(|palette| palette.query.is_empty());
+				.is_some_and(|palette| palette.query().is_empty());
 			if key.eq_ignore_ascii_case("backspace") && empty_search {
 				view.back_surface(cx);
 				cx.stop_propagation();

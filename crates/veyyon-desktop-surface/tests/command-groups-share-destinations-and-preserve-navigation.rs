@@ -124,7 +124,7 @@ fn assert_route_and_query(
 					.as_ref()
 					.and_then(Overlay::as_palette)
 					.unwrap()
-					.query,
+					.query(),
 				query
 			);
 		})
@@ -141,7 +141,7 @@ fn every_domain_page_has_one_parent_and_aliases_resolve_to_the_same_destination(
 			.as_palette()
 			.expect("parents use the shared intermediate surface");
 		let destinations_count = palette
-			.items
+			.items()
 			.iter()
 			.filter_map(|item| match &item.kind {
 				veyyon_desktop_surface::palette::PaletteItemKind::Command { intent } => {

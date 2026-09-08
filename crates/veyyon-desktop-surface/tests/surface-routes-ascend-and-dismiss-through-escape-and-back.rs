@@ -88,7 +88,7 @@ fn general_page_opened_via_keystrokes_ascends_and_dismisses_via_escape() {
 	session
 		.update(|view, _, _| {
 			let palette = view.state().overlay_palette().expect("palette active");
-			assert_eq!(palette.query, "settings");
+			assert_eq!(palette.query(), "settings");
 			assert_eq!(palette.filtered_items()[0].title, "/settings");
 		})
 		.expect("settings command selected");
@@ -212,7 +212,7 @@ fn palette_empty_query_backspace_ascends_while_nonempty_query_backspace_deletes_
 					.state()
 					.overlay_palette()
 					.expect("palette active")
-					.query,
+					.query(),
 				"gen"
 			);
 		})
@@ -231,7 +231,7 @@ fn palette_empty_query_backspace_ascends_while_nonempty_query_backspace_deletes_
 						.state()
 						.overlay_palette()
 						.expect("palette active")
-						.query,
+						.query(),
 					query
 				);
 			})

@@ -80,7 +80,7 @@ fn project_palette_domains(store: &Store, state: &mut PaletteState) {
 					}
 				}
 				if !items.is_empty() {
-					state.items = items;
+					state.set_items(items);
 				}
 			}
 		},
@@ -90,7 +90,7 @@ fn project_palette_domains(store: &Store, state: &mut PaletteState) {
 				for (idx, path) in search.paths.iter().enumerate() {
 					items.push(PaletteItem::file(idx as u64 + 2000, path.clone()));
 				}
-				state.items = items;
+				state.set_items(items);
 			}
 		},
 		PaletteMode::Browse => {
@@ -102,14 +102,14 @@ fn project_palette_domains(store: &Store, state: &mut PaletteState) {
 					}
 				}
 				if !items.is_empty() {
-					state.items = items;
+					state.set_items(items);
 				}
 			}
 		},
 		// Native navigation does not invoke the host's separate agent-command API,
 		// but reflects its availability notice on the root command surface when unavailable.
 		PaletteMode::Commands => {
-			let is_root = matches!(state.route, None | Some(SurfaceRoute::Commands));
+			let is_root = matches!(state.route(), None | Some(SurfaceRoute::Commands));
 			if is_root {
 				state.notice = match store.capabilities.get(Capability::AgentCommands) {
 					CapabilityStatus::Unavailable { reason } => Some(reason.clone()),
@@ -120,7 +120,7 @@ fn project_palette_domains(store: &Store, state: &mut PaletteState) {
 			// host does not offer, so it is not listed rather than listed and
 			// refused. The filter runs on every projection, so a command
 			// follows its capability while the palette stays open.
-			state.items.retain(|item| match &item.kind {
+			state.retain_items(|item| match &item.kind {
 				// The drawer is the one command surface gated by two
 				// capabilities at once: either tenant offers it.
 				PaletteItemKind::Command { intent }

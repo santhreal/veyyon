@@ -20,7 +20,7 @@ impl Overlay {
 	#[must_use]
 	pub const fn route(&self) -> Option<crate::navigation::SurfaceRoute> {
 		match self {
-			Self::Palette(state) => state.route,
+			Self::Palette(state) => state.route(),
 			Self::Settings(state) => state.route,
 		}
 	}

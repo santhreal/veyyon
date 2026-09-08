@@ -68,7 +68,7 @@ fn listed(store: &Store) -> Vec<String> {
 		"the filter changes what is listed, not what the palette is listing"
 	);
 	palette
-		.items
+		.items()
 		.iter()
 		.filter_map(|item| match &item.kind {
 			PaletteItemKind::Composer { command } => Some(command.name().to_owned()),

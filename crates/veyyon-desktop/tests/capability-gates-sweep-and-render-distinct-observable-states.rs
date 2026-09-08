@@ -243,7 +243,7 @@ fn test_agent_commands_unavailable_transition_retains_native_commands() {
 		.set(Capability::Terminals, CapabilityStatus::Available);
 
 	let initial_palette = PaletteState::commands();
-	let native_command_count = initial_palette.items.len();
+	let native_command_count = initial_palette.items().len();
 	assert!(native_command_count > 0, "palette must contain native commands");
 	state.overlay = Some(Overlay::Palette(initial_palette));
 
@@ -259,7 +259,7 @@ fn test_agent_commands_unavailable_transition_retains_native_commands() {
 	if let Overlay::Palette(palette) = overlay {
 		assert_eq!(palette.notice.as_deref(), Some("slash-command registry owns discovery"));
 		assert_eq!(
-			palette.items.len(),
+			palette.items().len(),
 			native_command_count,
 			"native commands must not be filtered out on Unavailable"
 		);
@@ -278,7 +278,7 @@ fn test_agent_commands_unavailable_transition_retains_native_commands() {
 	if let Overlay::Palette(palette) = overlay {
 		assert_eq!(palette.notice, None, "notice must be cleared when AgentCommands is Available");
 		assert_eq!(
-			palette.items.len(),
+			palette.items().len(),
 			native_command_count,
 			"native commands must remain intact when Available"
 		);
@@ -299,7 +299,7 @@ fn test_agent_commands_unavailable_transition_retains_native_commands() {
 	if let Overlay::Palette(palette) = overlay {
 		assert_eq!(palette.notice.as_deref(), Some("slash-command registry owns discovery"));
 		assert_eq!(
-			palette.items.len(),
+			palette.items().len(),
 			native_command_count,
 			"native commands must remain intact on repeated Unavailable transitions"
 		);

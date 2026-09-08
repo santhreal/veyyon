@@ -93,7 +93,7 @@ impl ShellView {
 						.overlay
 						.as_mut()
 						.and_then(Overlay::as_palette_mut)
-						&& palette.query != query
+						&& palette.query() != query
 					{
 						palette.set_query(query);
 					}
@@ -174,6 +174,13 @@ impl ShellView {
 			.and_then(Overlay::as_palette)
 			.and_then(PaletteState::run_intent)
 		else {
+			// A row that stands for no action is a step of navigation: a
+			// directory row descends into what it names and the palette stays
+			// open. The descent is the shell's own, so it is applied and not
+			// reported; the keyboard reached this and returned, so Enter did
+			// nothing at all on a browse row.
+			Intent::PaletteRun.apply(&mut self.state);
+			cx.notify();
 			return;
 		};
 		if !self.composer_action_allowed(&intent) {
@@ -210,13 +217,13 @@ impl ShellView {
 				.palette_input
 				.parents
 				.last()
-				.is_some_and(|parent| parent.route == Some(route))
+				.is_some_and(|parent| parent.route() == Some(route))
 		{
 			self.palette_input.parents.pop()
 		} else {
 			if !returning
 				&& let Some(parent) = self.state.overlay.as_ref().and_then(Overlay::as_palette)
-				&& parent.route != Some(route)
+				&& parent.route() != Some(route)
 			{
 				self.palette_input.parents.push(parent.clone());
 			}
@@ -237,7 +244,7 @@ impl ShellView {
 				.overlay
 				.as_ref()
 				.and_then(Overlay::as_palette)
-				.map_or_else(String::new, |palette| palette.query.clone());
+				.map_or_else(String::new, |palette| palette.query().to_owned());
 			editor.update(cx, |editor, cx| editor.set_text(query, cx));
 			self.palette_input.focus_search = true;
 		}

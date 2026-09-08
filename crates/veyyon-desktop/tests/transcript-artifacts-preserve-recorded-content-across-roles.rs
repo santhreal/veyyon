@@ -36,7 +36,7 @@ fn projected(role: MessageRole, content: Vec<ContentBlock>) -> ShellState {
 }
 
 /// Whether the transcript charges this role to the operator's own turn.
-fn belongs_to_the_operator(role: MessageRole) -> bool {
+const fn belongs_to_the_operator(role: MessageRole) -> bool {
 	matches!(role, MessageRole::User | MessageRole::FileMention)
 }
 

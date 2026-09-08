@@ -75,7 +75,7 @@ impl Shape {
 /// The shape of an artefact, read from the artefact rather than declared beside
 /// it. Every field is named, so a new one on either variant fails to compile
 /// here before it can reach a frame with no decision.
-fn shape_of(artifact: &Artifact, status: Option<&ImageStatus>) -> Shape {
+const fn shape_of(artifact: &Artifact, status: Option<&ImageStatus>) -> Shape {
 	match artifact {
 		Artifact::Image { media_type: _, data: _, alt: _ } => match status {
 			Some(ImageStatus::Valid { .. }) => Shape::ImageDecoded,

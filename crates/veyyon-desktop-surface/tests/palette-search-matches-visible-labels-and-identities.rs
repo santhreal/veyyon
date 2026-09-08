@@ -40,7 +40,7 @@ fn every_mode_matches_both_labels_without_duplicate_results_or_unstable_ties() {
 		both.subtitle = Some("vendor/model".to_string());
 		let mut partial = PaletteItem::command(4, "vendor/model-extra", Intent::AbortTurn, None);
 		partial.subtitle = Some("vendor/model".to_string());
-		palette.items = vec![partial, identity, title, both];
+		palette.set_items(vec![partial, identity, title, both]);
 		for query in ["vendor/model", "VENDOR/MODEL"] {
 			palette.set_query(query);
 			assert_eq!(
@@ -73,7 +73,7 @@ fn every_mode_matches_both_labels_without_duplicate_results_or_unstable_ties() {
 #[test]
 fn command_descriptions_are_searchable_without_losing_slash_names() {
 	let mut palette = PaletteState::commands();
-	for item in palette.items.clone() {
+	for item in palette.items().to_vec() {
 		let description = item
 			.subtitle
 			.expect("every command has a visible action description");

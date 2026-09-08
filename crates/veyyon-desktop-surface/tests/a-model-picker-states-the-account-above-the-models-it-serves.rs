@@ -29,7 +29,7 @@ use palette_rows::{captured, grouped_rows, model_control, text_run_count};
 fn a_model_row_does_not_restate_the_name_above_it() {
 	let control = model_control();
 	let state = PaletteState::from_models(&control);
-	for item in &state.items {
+	for item in state.items() {
 		let heading = item
 			.group
 			.as_deref()
@@ -67,7 +67,7 @@ fn a_provider_is_stated_once_above_the_models_it_holds() {
 	let control = model_control();
 	let state = PaletteState::from_models(&control);
 	let headings: Vec<&str> = state
-		.items
+		.items()
 		.iter()
 		.filter_map(|item| item.group.as_deref())
 		.collect();
@@ -87,7 +87,7 @@ fn a_provider_is_stated_once_above_the_models_it_holds() {
 		"the account holding the model in effect leads, whatever order the host listed"
 	);
 	assert_eq!(
-		state.items.first().map(|item| item.title.as_str()),
+		state.items().first().map(|item| item.title.as_str()),
 		Some("alibaba/qwen-max"),
 		"the model in effect is the first row under the first heading"
 	);
@@ -98,9 +98,11 @@ fn a_heading_reaches_the_frame_and_takes_its_room_from_the_rows() {
 	let mut cx = headless_context().expect("a headless renderer is required to render the shell");
 	let grouped = PaletteState::from_models(&model_control());
 	let mut flat = grouped.clone();
-	for item in &mut flat.items {
+	let mut items = grouped.items().to_vec();
+	for item in &mut items {
 		item.group = None;
 	}
+	flat.set_items(items);
 	let with = text_run_count(&captured(&mut cx, grouped));
 	let without = text_run_count(&captured(&mut cx, flat));
 	assert_eq!(
@@ -113,9 +115,9 @@ fn a_heading_reaches_the_frame_and_takes_its_room_from_the_rows() {
 	// surface draws only the rows that still fit: the same frame a list of
 	// exactly those rows draws.
 	let mut long = PaletteState::new(PaletteMode::Models);
-	long.items = grouped_rows(40);
+	long.set_items(grouped_rows(40));
 	let mut fitting = PaletteState::new(PaletteMode::Models);
-	fitting.items = grouped_rows(40).into_iter().take(7).collect();
+	fitting.set_items(grouped_rows(40).into_iter().take(7).collect());
 	let drawn = text_run_count(&captured(&mut cx, long));
 	let fits = text_run_count(&captured(&mut cx, fitting));
 	assert_eq!(
@@ -191,9 +193,11 @@ fn a_search_keeps_the_rows_under_one_heading_together() {
 	// alone. This is the order the fix reorders, and the test states nothing
 	// unless that order really does split an account.
 	let mut ranked = grouped.clone();
-	for item in &mut ranked.items {
+	let mut items = grouped.items().to_vec();
+	for item in &mut items {
 		item.group = None;
 	}
+	ranked.set_items(items);
 	let account = |title: &str| {
 		control
 			.options

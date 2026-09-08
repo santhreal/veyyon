@@ -208,7 +208,7 @@ fn the_command_to_open_it_is_absent_with_the_surface() {
 			panic!("the palette stays open across a projection");
 		};
 		let drawer_commands = palette
-			.items
+			.items()
 			.iter()
 			.filter(|item| {
 				matches!(
@@ -229,7 +229,7 @@ fn the_command_to_open_it_is_absent_with_the_surface() {
 			PaletteMode::Commands,
 			"the filter must not change what the palette is listing"
 		);
-		assert!(palette.items.len() > 3, "the other commands stay: {} left", palette.items.len());
+		assert!(palette.items().len() > 3, "the other commands stay: {} left", palette.items().len());
 	}
 }
 

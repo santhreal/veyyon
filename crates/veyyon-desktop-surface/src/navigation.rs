@@ -69,12 +69,14 @@ impl SurfaceRoute {
 			return Overlay::Settings(Box::new(state));
 		}
 		let mut palette = PaletteState::commands();
-		palette.route = Some(self);
+		palette.set_route(Some(self));
 		if self != Self::Commands {
-			palette.items = SettingsPage::iter()
-				.filter(|page| Self::Page(*page).parent() == Some(self))
-				.map(page_item)
-				.collect();
+			palette.set_items(
+				SettingsPage::iter()
+					.filter(|page| Self::Page(*page).parent() == Some(self))
+					.map(page_item)
+					.collect(),
+			);
 		}
 		Overlay::Palette(palette)
 	}

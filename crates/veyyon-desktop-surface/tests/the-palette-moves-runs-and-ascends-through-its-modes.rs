@@ -103,7 +103,7 @@ fn every_palette_mode_is_distinct_and_reachable() {
 
 		let state = PaletteState::new(mode);
 		assert_eq!(state.mode, mode);
-		assert!(state.items.is_empty());
+		assert!(state.items().is_empty());
 		assert_eq!(state.selected, 0);
 	}
 }
@@ -160,7 +160,7 @@ fn palette_moves_runs_and_ascends_in_headless_session() {
 				.state()
 				.overlay_palette()
 				.expect("palette overlay active");
-			assert_eq!(palette.query, "Theme");
+			assert_eq!(palette.query(), "Theme");
 			let filtered = palette.filtered_items();
 			assert!(!filtered.is_empty(), "matching items found");
 			assert!(
@@ -181,8 +181,10 @@ fn palette_moves_runs_and_ascends_in_headless_session() {
 	session
 		.update(|view, _window, cx| {
 			let mut browse = PaletteState::new(PaletteMode::Browse);
-			browse.items =
-				vec![PaletteItem::directory(1, "crates"), PaletteItem::directory(2, "packages")];
+			browse.set_items(vec![
+				PaletteItem::directory(1, "crates"),
+				PaletteItem::directory(2, "packages"),
+			]);
 			view.dispatch(Intent::OpenOverlay(Box::new(Overlay::Palette(browse))), cx);
 		})
 		.expect("switched to browse mode");

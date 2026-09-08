@@ -346,7 +346,7 @@ fn queue_search_palette_selection_dispatches_select_session_and_activates_host()
 		row(20, "Database Migration".into(), "watching", None, None),
 	])];
 	let mut palette = veyyon_desktop_surface::palette::PaletteState::from_sessions(&sections);
-	assert_eq!(palette.items.len(), 2);
+	assert_eq!(palette.items().len(), 2);
 
 	palette.set_query("Migration");
 	let filtered = palette.filtered_items();

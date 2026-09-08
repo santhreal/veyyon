@@ -101,26 +101,28 @@ impl ShellView {
 			ComposerCommand::Effort => {
 				let mut state = PaletteState::new(PaletteMode::Commands);
 				if let Some(thinking) = &self.state.composer.thinking {
-					state.items = thinking
-						.levels
-						.iter()
-						.enumerate()
-						.map(|(i, level)| {
-							PaletteItem::command(
-								i as u64 + 1,
-								level.clone(),
-								Intent::SetThinking(ThinkingLevel::new(level.clone())),
-								None,
-							)
-						})
-						.collect();
+					state.set_items(
+						thinking
+							.levels
+							.iter()
+							.enumerate()
+							.map(|(i, level)| {
+								PaletteItem::command(
+									i as u64 + 1,
+									level.clone(),
+									Intent::SetThinking(ThinkingLevel::new(level.clone())),
+									None,
+								)
+							})
+							.collect(),
+					);
 				}
 				self.consume_command_prefix(cx);
 				self.open_composer_options(state, cx);
 			},
 			ComposerCommand::QueueMode => {
 				let mut state = PaletteState::new(PaletteMode::Commands);
-				state.items = vec![
+				state.set_items(vec![
 					PaletteItem::command(
 						1,
 						"Steer the running turn",
@@ -133,7 +135,7 @@ impl ShellView {
 						Intent::SetQueueMode(QueueMode::Queue),
 						None,
 					),
-				];
+				]);
 				self.consume_command_prefix(cx);
 				self.open_composer_options(state, cx);
 			},

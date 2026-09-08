@@ -48,7 +48,7 @@ use palette_rows::{captured_over_nothing, model_control, text_run_count};
 fn row_and_band() -> (f32, f32) {
 	let bundled = load_bundled_tokens().expect("the bundled tokens load");
 	let row = bundled.surface.palette.results_row_height_px;
-	(row, row - 2.0 * bundled.scale.spacing(SpacingStep::S4))
+	(row, 2.0f32.mul_add(-bundled.scale.spacing(SpacingStep::S4), row))
 }
 
 /// The result rows of the open palette, taken from the hit rects the frame
@@ -139,7 +139,7 @@ fn session_rows() -> Vec<(Section, Vec<Row>)> {
 /// truncate is drawn as well as the rows that fit.
 fn overlong() -> PaletteState {
 	let mut state = PaletteState::new(PaletteMode::Commands);
-	state.items = vec![PaletteItem {
+	state.set_items(vec![PaletteItem {
 		id:       1,
 		title:    "/".to_string() + &"a-command-with-a-name-nobody-would-type".repeat(4),
 		subtitle: Some("a description at least as long as the name above it".repeat(3)),
@@ -148,7 +148,7 @@ fn overlong() -> PaletteState {
 		badge:    None,
 		meta:     None,
 		kind:     PaletteItemKind::Command { intent: Box::new(Intent::NewSession) },
-	}];
+	}]);
 	state
 }
 
@@ -168,9 +168,11 @@ fn every_producer() -> Vec<(&'static str, PaletteState)> {
 /// is drawn at all, so a row that fits its band by dropping it fails.
 fn without_detail(state: &PaletteState) -> PaletteState {
 	let mut stripped = state.clone();
-	for item in &mut stripped.items {
+	let mut items = state.items().to_vec();
+	for item in &mut items {
 		item.subtitle = None;
 	}
+	stripped.set_items(items);
 	stripped
 }
 
@@ -185,7 +187,7 @@ fn every_result_row_keeps_its_text_in_the_band_the_row_height_authors() {
 
 	for (name, state) in every_producer() {
 		let detailed = state
-			.items
+			.items()
 			.iter()
 			.filter(|item| item.subtitle.is_some())
 			.count();

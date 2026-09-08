@@ -61,7 +61,7 @@ pub fn captured_over_nothing(cx: &mut HeadlessAppContext, palette: PaletteState)
 	.expect("the shell renders offscreen")
 }
 
-pub fn text_run_count(captured: &Captured) -> usize {
+pub const fn text_run_count(captured: &Captured) -> usize {
 	captured.text_runs.len()
 }
 
