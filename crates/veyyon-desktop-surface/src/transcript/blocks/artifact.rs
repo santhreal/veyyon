@@ -2,15 +2,18 @@
 //!
 //! Renders recorded image and file artifacts with interactive 24px collapsed
 //! headers, expanded image viewing, format/dimension verification, explicit
-//! corrupt-image diagnostics, and admission-gated file action dispatch.
+//! corrupt-image diagnostics, and admission-gated file action dispatch. What
+//! the row states and what its frame states are decided in `facts`.
 
 mod decoder;
 mod details;
+mod facts;
 
 use std::time::Instant;
 
 pub use decoder::*;
 pub use details::*;
+pub use facts::*;
 use veyyon_desktop_kit::{
 	ColorRole, Icon, IconName, IconSize, MonoSizeStep, SpacingStep, TextRamp, TokenSet, Truncate,
 };
@@ -21,47 +24,16 @@ use veyyon_gpui::{
 };
 
 use super::reveal::render_reveal_container;
-use crate::{
-	ShellView, composer::human_bytes, model::Artifact, transcript::state::TranscriptViewportState,
-};
+use crate::{ShellView, model::Artifact, transcript::state::TranscriptViewportState};
 
-/// Formats line counts for display (e.g. "1 line", "42 lines").
-pub fn format_lines(lines: u32) -> String {
-	if lines == 1 {
-		"1 line".to_string()
-	} else {
-		format!("{lines} lines")
-	}
-}
-
-/// Summary text for file metadata in collapsed headers and detail overviews.
-fn file_metadata_summary(
-	has_content: bool,
-	lines: Option<u32>,
-	bytes: Option<u64>,
-	unavailable_reason: Option<&str>,
-	image_status: Option<&ImageStatus>,
-) -> Option<String> {
-	if let Some(reason) = unavailable_reason {
-		return Some(reason.to_owned());
-	}
-	if let Some(ImageStatus::Valid { width, height, .. }) = image_status {
-		return Some(format!("{width}×{height}"));
-	}
-	if let Some(ImageStatus::Error { .. }) = image_status {
-		return Some("unsupported image".to_owned());
-	}
-	match (lines, bytes) {
-		(Some(l), Some(b)) => Some(format!("{} · {}", format_lines(l), human_bytes(b))),
-		(Some(l), None) => Some(format_lines(l)),
-		(None, Some(b)) => Some(human_bytes(b)),
-		(None, None) => {
-			if has_content {
-				Some("content available".to_owned())
-			} else {
-				None
-			}
-		},
+/// The decode result for whatever image an artefact carries, if any. Decoding
+/// is cached per payload, so the row and its frame read the same result.
+pub fn artifact_image_status(artifact: &Artifact) -> Option<ImageStatus> {
+	match artifact {
+		Artifact::Image { media_type, data, .. } => Some(get_or_decode_image(data, Some(media_type))),
+		Artifact::File { image, .. } => image
+			.as_ref()
+			.map(|img_bytes| get_or_decode_image(img_bytes, None)),
 	}
 }
 
@@ -89,41 +61,8 @@ pub fn render_artifact_block(
 	let motion_tokens_toggle = motion_tokens.clone();
 	let view_toggle = view.cloned();
 
-	let (leading_icon, title, summary, has_error) = match artifact {
-		Artifact::Image { media_type, data, alt } => {
-			let status = get_or_decode_image(data, Some(media_type));
-			let err = matches!(status, ImageStatus::Error { .. });
-			let summary_str = match &status {
-				ImageStatus::Valid { width, height, .. } => Some(format!("{width}×{height}")),
-				ImageStatus::Error { .. } => Some("decode error".to_string()),
-			};
-			let title_str = alt
-				.as_deref()
-				.filter(|s| !s.is_empty())
-				.unwrap_or("Image attachment");
-			(IconName::Image, title_str.to_owned(), summary_str, err)
-		},
-		Artifact::File { path, has_content, lines, bytes, unavailable_reason, image } => {
-			let image_status = image
-				.as_ref()
-				.map(|img_bytes| get_or_decode_image(img_bytes, None));
-			let icon = if image.is_some() {
-				IconName::Image
-			} else {
-				IconName::File
-			};
-			let err =
-				unavailable_reason.is_some() || matches!(image_status, Some(ImageStatus::Error { .. }));
-			let summary_str = file_metadata_summary(
-				*has_content,
-				*lines,
-				*bytes,
-				unavailable_reason.as_deref(),
-				image_status.as_ref(),
-			);
-			(icon, path.clone(), summary_str, err)
-		},
-	};
+	let ArtifactRow { icon: leading_icon, title, summary, fault: has_error } =
+		artifact_row(artifact, artifact_image_status(artifact).as_ref());
 
 	let mut header = div()
 		.h(px(geometry.chrome_collapsed_height_px))
