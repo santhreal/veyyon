@@ -37,6 +37,30 @@ pub fn captured(cx: &mut HeadlessAppContext, palette: PaletteState) -> Captured 
 	.expect("the shell renders offscreen")
 }
 
+/// Captures the shell with `palette` open over an empty session: no queue rows,
+/// no transcript and no cards, so every row the frame drew belongs to the
+/// palette. A suite measuring a row's own text bands needs that — the shell
+/// paints the transcript under the overlay, and a run behind a palette row is
+/// indistinguishable from one inside it on a captured frame.
+pub fn captured_over_nothing(cx: &mut HeadlessAppContext, palette: PaletteState) -> Captured {
+	let tokens = load_bundled_tokens().expect("the bundled tokens load");
+	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");
+	render_view_captured(cx, &options(), move |_window, app: &mut App| {
+		let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
+			.expect("the bundled tokens and theme install");
+		app.new(|_| {
+			let mut state = fixture::populated();
+			state.sections.clear();
+			state.transcript.clear();
+			state.turn_anchors.clear();
+			state.cards.clear();
+			state.overlay = Some(Overlay::Palette(palette));
+			ShellView::new(installed, state)
+		})
+	})
+	.expect("the shell renders offscreen")
+}
+
 pub fn text_run_count(captured: &Captured) -> usize {
 	captured.text_runs.len()
 }

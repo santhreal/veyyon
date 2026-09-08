@@ -153,31 +153,45 @@ impl RenderOnce for ListRow {
 			el = el.child(div().flex_shrink_0().child(leading));
 		}
 
-		let mut text_col = div().flex_1().min_w_0().overflow_hidden().flex().flex_col();
-		text_col = text_col.child(
-			div()
-				.w_full()
+		// A row given a fixed height from a surface's tokens is the line shape
+		// (§5.2): one 20px band holding a title and its detail, so the detail is
+		// set beside the title. A row that keeps its padding grows to what it
+		// holds, and stacks the detail under the title.
+		let inline = self.height.is_some();
+		let mut text_col = div().flex_1().min_w_0().overflow_hidden().flex();
+		text_col = if inline {
+			text_col.items_center().gap(gap)
+		} else {
+			text_col.flex_col()
+		};
+		let mut title = div()
+			.min_w_0()
+			.overflow_hidden()
+			.whitespace_nowrap()
+			.truncate()
+			.text_size(tokens.font_size(TextRamp::Body))
+			.text_color(tokens.color(ColorRole::Foreground))
+			.child(self.title);
+		title = if inline {
+			title.flex_shrink_0()
+		} else {
+			title.w_full()
+		};
+		text_col = text_col.child(title);
+
+		if let Some(sub) = self.subtitle {
+			// The detail yields the width first: a long title truncates nothing
+			// of itself to state a subtitle the row also holds.
+			let mut detail = div()
 				.min_w_0()
 				.overflow_hidden()
 				.whitespace_nowrap()
 				.truncate()
-				.text_size(tokens.font_size(TextRamp::Body))
-				.text_color(tokens.color(ColorRole::Foreground))
-				.child(self.title),
-		);
-
-		if let Some(sub) = self.subtitle {
-			text_col = text_col.child(
-				div()
-					.w_full()
-					.min_w_0()
-					.overflow_hidden()
-					.whitespace_nowrap()
-					.truncate()
-					.text_size(tokens.font_size(TextRamp::Small))
-					.text_color(tokens.color(ColorRole::Secondary))
-					.child(sub),
-			);
+				.text_size(tokens.font_size(TextRamp::Small))
+				.text_color(tokens.color(ColorRole::Secondary))
+				.child(sub);
+			detail = if inline { detail.flex_1() } else { detail.w_full() };
+			text_col = text_col.child(detail);
 		}
 
 		el = el.child(text_col);
