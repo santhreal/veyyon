@@ -128,11 +128,7 @@ fn a_notice_adds_the_attention_strip() {
 		move |_window: &mut veyyon_gpui::Window, app: &mut App| {
 			let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
 				.expect("the bundled tokens and theme install");
-			app.new(|_| {
-				let mut view = ShellView::new(installed, fixture::populated());
-				view.set_notice(notice);
-				view
-			})
+			app.new(|_| ShellView::new(installed, fixture::populated()).with_notice(notice))
 		}
 	};
 

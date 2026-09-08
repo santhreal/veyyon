@@ -345,10 +345,14 @@ Each focused page has its own command name: `/account manager`, `/account login`
 
 A Keybindings row is a field holding the chords bound to that action,
 separated by commas. `Enter` rebinds the action, `Escape` restores what the
-host reports. A field that states no readable chord is refused in the
-attention strip and nothing is sent, so an action is never left bound to a
-chord no key press matches. A host that reports no keybindings shows the
-shipped defaults as chips, read-only.
+host reports. A chord is modifiers and a key joined by `-`, as in
+`ctrl-enter` or `cmd-,`; a part that carries a space, or modifiers with no key
+after them, states no chord. A field that states no readable chord is refused
+in the attention strip and nothing is sent, so an action is never left bound
+to a chord no key press matches. The refusal stays in the strip, above what
+the host reports about its connection, until the field commits or is
+restored. A host that reports no keybindings shows the shipped defaults as
+chips, read-only.
 
 The Agents page runs a background task from the field above its listing:
 `Enter`, or Run beside it, spawns the task as a subagent of the active
@@ -504,6 +508,21 @@ with the pointer over the name, then click the name and photograph the panel
 that opens. The name's own box is the bounding box of the keyboard reveal, so
 the pointer reaches it without a row height being assumed. Record its other arm
 with `PROOF_BASE_REF=HEAD`, since the change is inside the executable alone.
+
+Use `proof/scenes/desktop-settings-keybinding.sh` to rebind an action on the
+Keybindings page and then type a chord that states no key. It counts the ink in
+the row's control column at rest, with the chords typed, and after the commit
+has been read back from the host, then measures the strip band for the refusal.
+Record the other arm with a build of this tree that holds the field back, since
+the change is inside the executable alone:
+
+```sh
+SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
+  proof/scenes/desktop-settings-keybinding.sh
+SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
+  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
+  proof/docker/record-native.sh proof/scenes/desktop-settings-keybinding.sh
+```
 
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
 The [capture requirements](../foundations/verification.md) specify paired static

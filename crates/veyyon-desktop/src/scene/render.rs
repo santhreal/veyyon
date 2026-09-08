@@ -138,9 +138,8 @@ impl<'cx> SceneWindow<'cx> {
 						None
 					},
 					SceneRoot::Shell(built) => {
-						let mut view = ShellView::new(installed, built.state);
+						let mut view = ShellView::new(installed, built.state).with_notice(built.notice);
 						view.set_clock_ms(SCENE_CLOCK_MS);
-						view.set_notice(built.notice);
 						if let Some(menu) = built.row_menu {
 							view.open_row_menu(menu);
 						}

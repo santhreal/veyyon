@@ -46,11 +46,14 @@ impl Host {
 		};
 		let failures = keeper.sync(view, &mut self.store, window, now_ms, cx);
 		if let Some(failure) = failures.first() {
-			view.set_notice(Some(format!(
-				"{store} was not saved: {reason}",
-				store = failure.kind.file_name(),
-				reason = failure.reason,
-			)));
+			view.set_notice(
+				Some(format!(
+					"{store} was not saved: {reason}",
+					store = failure.kind.file_name(),
+					reason = failure.reason,
+				)),
+				cx,
+			);
 		}
 	}
 }
@@ -69,7 +72,7 @@ pub fn attach(
 		Ok(started) => started,
 		Err(error) => {
 			let _ = window.update(cx, |view, _window, cx| {
-				view.set_notice(Some(format!("transport failed to start: {error}")));
+				view.set_notice(Some(format!("transport failed to start: {error}")), cx);
 				view.state_mut().connection = veyyon_desktop_surface::attach::ConnectionPhase::Fatal {
 					message: error.to_string(),
 				};
@@ -79,13 +82,16 @@ pub fn attach(
 		},
 	};
 	let _ = window.update(cx, |view, _window, cx| {
-		view.set_notice(Some(match &attachment.spawned {
-			Ok(Some(child)) => {
-				format!("started veyyon gui (pid {}) at {}", child.pid, attachment.endpoint)
-			},
-			Ok(None) => format!("attaching to {}", attachment.endpoint),
-			Err(error) => format!("Host startup: {error}; connecting to {}", attachment.endpoint),
-		}));
+		view.set_notice(
+			Some(match &attachment.spawned {
+				Ok(Some(child)) => {
+					format!("started veyyon gui (pid {}) at {}", child.pid, attachment.endpoint)
+				},
+				Ok(None) => format!("attaching to {}", attachment.endpoint),
+				Err(error) => format!("Host startup: {error}; connecting to {}", attachment.endpoint),
+			}),
+			cx,
+		);
 		cx.notify();
 	});
 
@@ -323,7 +329,7 @@ pub fn attach(
 					host.drawn.clone_from(view.state());
 					match notice {
 						Some(notice) => {
-							view.set_notice(notice);
+							view.set_notice(notice, cx);
 							cx.notify();
 						},
 						None => {

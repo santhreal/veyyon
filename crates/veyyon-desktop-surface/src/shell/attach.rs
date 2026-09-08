@@ -64,10 +64,10 @@ impl ShellView {
 					Ok(Ok(Some(paths))) => view.attach_paths(paths, cx),
 					Ok(Ok(None)) => {},
 					Ok(Err(error)) => {
-						view.set_notice(Some(format!("File prompt failed: {error:#}")));
+						view.set_notice(Some(format!("File prompt failed: {error:#}")), cx);
 					},
 					Err(_cancelled) => {
-						view.set_notice(Some("File prompt closed before answering".to_owned()));
+						view.set_notice(Some("File prompt closed before answering".to_owned()), cx);
 					},
 				}
 				cx.notify();
@@ -99,10 +99,10 @@ impl ShellView {
 					},
 					Ok(Ok(None)) => {},
 					Ok(Err(error)) => {
-						view.set_notice(Some(format!("Path prompt failed: {error:#}")));
+						view.set_notice(Some(format!("Path prompt failed: {error:#}")), cx);
 					},
 					Err(_cancelled) => {
-						view.set_notice(Some("Path prompt closed before answering".to_owned()));
+						view.set_notice(Some("Path prompt closed before answering".to_owned()), cx);
 					},
 				}
 				cx.notify();

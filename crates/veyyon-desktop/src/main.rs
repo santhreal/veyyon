@@ -141,12 +141,12 @@ fn main() {
 										match install_tokens(cx, &new_tokens, &theme, &surface_path) {
 											Ok(installed) => {
 												view.set_tokens(installed);
-												view.set_notice(None);
+												view.set_notice(None, cx);
 											},
-											Err(err) => view.set_notice(Some(err.to_string())),
+											Err(err) => view.set_notice(Some(err.to_string()), cx),
 										}
 									},
-									None => view.set_notice(notice),
+									None => view.set_notice(notice, cx),
 								}
 								cx.notify();
 							});
@@ -160,9 +160,10 @@ fn main() {
 				// from one whose watcher works, until an edit fails to arrive.
 				// It goes on the surface the operator is looking at.
 				let _ = window.update(cx, |view, _window, cx| {
-					view.set_notice(Some(format!(
-						"token hot reload is off: {error}; restart to pick up token edits"
-					)));
+					view.set_notice(
+						Some(format!("token hot reload is off: {error}; restart to pick up token edits")),
+						cx,
+					);
 					cx.notify();
 				});
 			},
@@ -173,7 +174,7 @@ fn main() {
 		let _ = window.update(cx, |view, _window, cx| {
 			view.state_mut().connection =
 				veyyon_desktop_surface::attach::ConnectionPhase::Connecting { attempt: 1 };
-			view.set_notice(Some("Starting GUI host".to_string()));
+			view.set_notice(Some("Starting GUI host".to_string()), cx);
 			cx.notify();
 		});
 		let startup = cx.background_executor().spawn(async move {
@@ -189,7 +190,7 @@ fn main() {
 						Ok(attachment) => attachment,
 						Err(error) => {
 							let _ = window.update(cx, |view, _window, cx| {
-								view.set_notice(Some(format!("no host: {error}")));
+								view.set_notice(Some(format!("no host: {error}")), cx);
 								view.state_mut().connection =
 									veyyon_desktop_surface::attach::ConnectionPhase::Fatal {
 										message: error.to_string(),

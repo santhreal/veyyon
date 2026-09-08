@@ -13,12 +13,9 @@
 mod editors;
 
 use serde_json::Value;
-use veyyon_desktop_kit::{
-	KeyChord,
-	input::{Editor, EditorEvent, EditorMode},
-};
+use veyyon_desktop_kit::input::{Editor, EditorEvent, EditorMode};
 use veyyon_desktop_model::AuthFlowState;
-use veyyon_gpui::{AppContext, Context, Entity, SharedString};
+use veyyon_gpui::{AppContext, Context, Entity, Keystroke, SharedString};
 
 use crate::{Intent, ShellView, attach::ConnectionPhase};
 
@@ -198,7 +195,7 @@ impl ShellView {
 				};
 				let secret = editor.update(cx, |editor, cx| editor.take_text(cx));
 				if secret.trim().is_empty() {
-					self.refuse_field("A secret is required to authenticate");
+					self.refuse_field(cx, "A secret is required to authenticate");
 					return;
 				}
 				self.clear_refusal();
@@ -222,14 +219,14 @@ impl ShellView {
 					// operator typed it, never sent on as a string the host
 					// would store under a key of another shape.
 					Err(error) => {
-						self.refuse_field(&format!("{key} is not valid JSON: {error}"));
+						self.refuse_field(cx, &format!("{key} is not valid JSON: {error}"));
 					},
 				}
 			},
 			(Commit::SessionRename(id), FieldKey::SessionRename(_)) => {
 				let title = editor.read(cx).text().trim().to_owned();
 				if title.is_empty() {
-					self.refuse_field("A session name cannot be empty");
+					self.refuse_field(cx, "A session name cannot be empty");
 					return;
 				}
 				self.clear_refusal();
@@ -242,7 +239,10 @@ impl ShellView {
 				// where it was typed, never written to the keymap as a
 				// binding no key press would ever match.
 				if keys.is_empty() {
-					self.refuse_field(&format!("{action} needs at least one chord, as in ctrl-enter"));
+					self.refuse_field(
+						cx,
+						&format!("{action} needs at least one chord, as in ctrl-enter"),
+					);
 					return;
 				}
 				let action = action.clone();
@@ -252,7 +252,7 @@ impl ShellView {
 			(Commit::Task, FieldKey::TaskPrompt) => {
 				let task = editor.read(cx).text().trim().to_owned();
 				if task.is_empty() {
-					self.refuse_field("A task needs a description to run");
+					self.refuse_field(cx, "A task needs a description to run");
 					return;
 				}
 				editor.update(cx, |editor, cx| editor.set_text(String::new(), cx));
@@ -307,32 +307,50 @@ impl ShellView {
 	}
 
 	/// States a refusal in the attention strip, where the operator is looking.
-	fn refuse_field(&mut self, message: &str) {
-		self.set_notice(Some(message.to_owned()));
+	///
+	/// A refusal sends nothing, so it reaches no `dispatch` and nothing else
+	/// marks the window dirty: without the notification here the strip is
+	/// stated in the state and drawn on whatever frame some later interaction
+	/// happens to request.
+	fn refuse_field(&mut self, cx: &mut Context<Self>, message: &str) {
+		if self.field_refusal.as_deref() == Some(message) {
+			return;
+		}
 		self.field_refusal = Some(message.to_owned());
+		cx.notify();
 	}
 
-	/// Withdraws the refusal this window put up, and leaves a host notice
-	/// alone.
+	/// Withdraws the refusal this window put up, and leaves what the host
+	/// reports alone.
+	///
+	/// No repaint is asked for here, and none is needed: every caller goes on
+	/// to dispatch the value it took or to rewrite the editor it reverted,
+	/// and both of those mark the window dirty on the same frame. A caller
+	/// that only withdraws a refusal would need one.
 	fn clear_refusal(&mut self) {
-		if let Some(refusal) = self.field_refusal.take()
-			&& self.notice() == Some(refusal.as_str())
-		{
-			self.set_notice(None);
-		}
+		self.field_refusal = None;
 	}
 }
 
 /// The chords a keybinding field's text states: the alternatives separated by
-/// commas, each one token in the keymap grammar. A part that is blank, or one
-/// whose modifiers are not followed by a key, is dropped, so a field that
-/// states nothing readable yields no chord and is refused rather than sent.
+/// commas, each one token in the keymap grammar.
+///
+/// A chord is read by [`Keystroke::parse`], which is the grammar that binds
+/// it, rather than by `KeyChord::parse`, which reads a chord for a chip to
+/// draw and is deliberately lenient about one it cannot make sense of. The two
+/// disagree: `ctrl-` is a hyphen with a modifier to the chip and a modifier
+/// with no key to the binder, so validating with the reader that never binds
+/// anything is how `ctrl-` was taken and bound to a press that cannot happen.
+///
+/// A part that is blank, one that carries whitespace inside it, and one whose
+/// modifiers are followed by no key are all dropped, so a field that states
+/// nothing bindable yields no chord and is refused rather than sent.
 fn parse_chords(text: &str) -> Vec<String> {
 	text
 		.split(',')
 		.map(str::trim)
 		.filter(|chord| !chord.is_empty() && !chord.contains(char::is_whitespace))
-		.filter(|chord| !KeyChord::parse(chord).key.is_empty())
+		.filter(|chord| Keystroke::parse(chord).is_ok_and(|stroke| !stroke.key.is_empty()))
 		.map(str::to_owned)
 		.collect()
 }

@@ -10,7 +10,9 @@ use std::path::PathBuf;
 
 use serde_json::Value;
 use veyyon_desktop::{AssetPaths, StartupBundle, load_startup_bundle};
-use veyyon_desktop_model::{AuthFlowState, AuthFlowView, SettingEntry, SettingKind, SettingsView};
+use veyyon_desktop_model::{
+	AuthFlowState, AuthFlowView, KeybindingView, SettingEntry, SettingKind, SettingsView,
+};
 use veyyon_desktop_scene::{Appearance, HeadlessSession, RenderOptions, headless_context};
 use veyyon_desktop_surface::{
 	ConnectionPhase, Intent, Keymap, Overlay, SettingsPage, SettingsState, ShellState, ShellView,
@@ -104,6 +106,31 @@ pub fn general_page_holds(kind: SettingKind, value: Value) -> ShellState {
 		connection: ConnectionPhase::Attached,
 		overlay: Some(Overlay::Settings(Box::new(SettingsState::general(settings)))),
 		..fixture::populated()
+	}
+}
+
+/// A shell whose settings overlay is open on `page`, so the fields that page
+/// draws are registered by the first frame.
+pub fn settings_page_open(page: SettingsPage) -> ShellState {
+	ShellState {
+		connection: ConnectionPhase::Attached,
+		overlay: Some(Overlay::Settings(Box::new(SettingsState::new(page)))),
+		..fixture::populated()
+	}
+}
+
+/// A shell whose Keybindings page reports one binding for `action`, which is
+/// what makes that action's field drawn rather than a chip.
+pub fn keybindings_page_binds(action: &str, keys: &[&str]) -> ShellState {
+	let mut settings = SettingsState::new(SettingsPage::Keybindings);
+	settings.keybindings = vec![KeybindingView {
+		action: action.to_owned(),
+		keys:   keys.iter().map(|key| (*key).to_owned()).collect(),
+		source: "user".to_owned(),
+	}];
+	ShellState {
+		overlay: Some(Overlay::Settings(Box::new(settings))),
+		..settings_page_open(SettingsPage::Keybindings)
 	}
 }
 
