@@ -104,27 +104,92 @@ pause 0.8
 shot artifact-user-image-collapsed
 
 # ─── Expand Transcript Artifact Disclosure ────────────────────────────────────
-# Click the collapsed artifact row in the transcript column
-# Titlebar = 52px, queue width ~256px, transcript column width = 768px
-ARTIFACT_CLICK_X=$((WIN_X + 256 + (WIN_W - 256 - 768) / 2 + 384))
-if (( WIN_W < 980 )); then
-	ARTIFACT_CLICK_X=$((WIN_X + WIN_W / 2))
-fi
-ARTIFACT_CLICK_Y=$((WIN_Y + 52 + 88))
+# The transcript is anchored to its live edge, so the artifact row sits above
+# the composer at a height that depends on how much prose the model wrote, not
+# at a fixed offset under the titlebar. The row is right-aligned to the
+# transcript column, whatever width the prompt's own bubble takes, so the
+# column's trailing edge is the one x inside every row; the y is found by
+# clicking upward from just above the composer and measuring each click against
+# the collapsed frame. The sidebar is cropped off the comparison because it
+# prints each session's age.
+use_crop \
+	$(( WIN_X + (WIN_W > 800 ? 256 : 0) )) \
+	$(( WIN_Y + 48 )) \
+	$(( WIN_W - (WIN_W > 800 ? 256 : 0) )) \
+	$(( WIN_H - 48 ))
 
-move_px "${ARTIFACT_CLICK_X}" "${ARTIFACT_CLICK_Y}"
-pause 0.3
-click
-pause 0.8
+if (( WIN_W >= 980 )); then
+	COLUMN_RIGHT=$((WIN_X + 256 + (WIN_W - 256 - 768) / 2 + 768))
+else
+	COLUMN_RIGHT=$((WIN_X + WIN_W - 32))
+fi
+ARTIFACT_CLICK_X=$((COLUMN_RIGHT - 40))
+COMPOSER_REST_X=$((WIN_X + WIN_W / 2))
+COMPOSER_REST_Y=$((WIN_Y + WIN_H - 98))
+
+# Click rows upward from a starting height until the screen leaves the state
+# the named shot holds, and leave the y that did it in ARTIFACT_CLICK_Y. The
+# pointer parks on the composer between tries because a row under the pointer
+# draws its hover ground, which is a change the comparison would read as a
+# disclosure. Each try is a still second of the take, so the search is kept
+# short: the caller starts it where the row can be and bounds it to the rows
+# above that.
+click_rows_upward_until_changed() { # <from-y> <tries> <shot>
+	local from_y="$1" tries="$2" shot="$3" step
+	for step in $(seq 0 $((tries - 1))); do
+		ARTIFACT_CLICK_Y=$((from_y - step * 24))
+		move_px "${ARTIFACT_CLICK_X}" "${ARTIFACT_CLICK_Y}"
+		pause 0.2
+		click
+		pause 0.5
+		move_px "${COMPOSER_REST_X}" "${COMPOSER_REST_Y}"
+		pause 0.2
+		if [ "$(screen_differs_from_shot_per_mille "${shot}")" -gt 2 ]; then
+			return 0
+		fi
+	done
+	return 1
+}
+
+ARTIFACT_CLICK_Y=0
+if ! click_rows_upward_until_changed \
+	$((WIN_Y + WIN_H - 150)) 8 artifact-user-image-collapsed; then
+	abandon_take "native-artifact-row-disclosed" \
+		"no row in the eight above the composer disclosed anything when clicked"
+fi
 # Capture expanded image artifact view with decoded PNG rendering & metadata
 shot artifact-user-image-expanded
 
+# A disclosed image row draws the decoded preview, which repaints far more than
+# the 24px row it opened from.
+DISCLOSED="$(shots_differ_pixels artifact-user-image-collapsed artifact-user-image-expanded)"
+if [ "${DISCLOSED}" -lt 1200 ]; then
+	abandon_take "native-artifact-row-disclosed" \
+		"disclosing the row changed ${DISCLOSED} pixels, under the 1200 a row and its decoded preview redraw"
+fi
+echo "scene: artifact disclosure ${DISCLOSED} pixels" >&2
+
 # ─── Re-collapse the Artifact Disclosure ──────────────────────────────────────
-move_px "${ARTIFACT_CLICK_X}" "${ARTIFACT_CLICK_Y}"
-pause 0.3
-click
-pause 0.8
+# The detail the row opened is drawn between the row and the composer, so the
+# row header is no longer where the click that opened it landed: it moved up by
+# the height of what it disclosed, which is the image ceiling plus its metadata
+# line and action row. The search therefore starts one row above the click that
+# opened it and never below, and the frame that comes back has to be the
+# collapsed one rather than merely a frame that changed, which a click landing
+# on the detail's own controls would also produce.
+if ! click_rows_upward_until_changed \
+	$((ARTIFACT_CLICK_Y - 24)) 16 artifact-user-image-expanded; then
+	abandon_take "native-artifact-row-recollapsed" \
+		"no row above the disclosed detail closed it when clicked, so the detail is still drawn"
+fi
 shot artifact-user-image-recollapsed
+
+RECLOSED="$(shots_differ_pixels artifact-user-image-collapsed artifact-user-image-recollapsed)"
+if [ "${RECLOSED}" -gt 1200 ]; then
+	abandon_take "native-artifact-row-recollapsed" \
+		"the frame after re-collapsing differs from the collapsed frame by ${RECLOSED} pixels, so it is some other state"
+fi
+echo "scene: re-collapsed within ${RECLOSED} pixels of the collapsed frame" >&2
 
 # ─── Second Turn with File Inspection ─────────────────────────────────────────
 move_px "$((WIN_X + WIN_W / 2))" "$((WIN_Y + WIN_H - 98))"
