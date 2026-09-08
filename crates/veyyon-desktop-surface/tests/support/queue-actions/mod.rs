@@ -38,6 +38,13 @@ pub fn make_per_section_state() -> ShellState {
 			subtitle: "veyyon-desktop-surface".to_owned(),
 			badge: None,
 			meta: None,
+			// Every row but the `Unsent` one is drawn where it is placed, and
+			// an unsent row is a session in play holding a draft.
+			placement: if section == Section::Unsent {
+				Section::Live
+			} else {
+				section
+			},
 		};
 		sections.push((section, vec![row]));
 	}

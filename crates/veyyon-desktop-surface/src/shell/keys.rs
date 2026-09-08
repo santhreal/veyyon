@@ -20,18 +20,21 @@ use crate::{
 	},
 };
 
-/// The intent a partition chord dispatches for the session the rail has open.
+/// The intent a partition chord dispatches for the session the rail has
+/// selected.
 ///
 /// `P`, `D` and `K` are toggles (§5.14): a session already in the partition
 /// the chord names comes back out to `Live`, and one anywhere else moves in.
-/// Returns `None` when no session is open, and for a partition no chord names,
-/// since there is nothing to move.
+/// The comparison is against the row's placement, not the section it is drawn
+/// in, because a row holding a draft draws under `Unsent`, which is no
+/// partition to come back out of. Returns `None` when no session is selected,
+/// and for a partition no chord names, since there is nothing to move.
 fn partition_toggle(view: &ShellView, into: Section) -> Option<Intent> {
 	let current = view.state().current_id;
 	if current == 0 {
 		return None;
 	}
-	let held = view.state().section_of(current) == Some(into);
+	let held = view.state().row(current).map(|row| row.placement) == Some(into);
 	match (into, held) {
 		(Section::Pinned, false) => Some(Intent::PinSession(current)),
 		(Section::Pinned, true) => Some(Intent::UnpinSession(current)),

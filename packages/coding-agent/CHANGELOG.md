@@ -19,6 +19,7 @@
 
 ### Added
 
+- The desktop rail states an `Unsent` section: a session in play whose composer holds a prompt the operator left unsubmitted is listed there, newest first, and comes off the section when the prompt is sent or cleared.
 - The desktop titlebar provides an in-place session name editor that commits on Enter and reverts on Escape.
 - The desktop command palette and queue row menus provide `/export`, `/compact`, and `/handoff` session lifecycle actions.
 - The desktop command palette provides `/reload-transcript` to reload the active session transcript from the host.

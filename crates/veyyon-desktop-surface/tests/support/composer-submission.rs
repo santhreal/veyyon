@@ -41,16 +41,30 @@ fn only_a_matching_success_consumes_the_submitted_draft() {
 							assert_eq!(view.state().turn, TurnPhase::Idle);
 							assert_eq!(view.state().composer.attachments, vec![attachment(1)]);
 							view.track_submission(RequestId(1), &intents[0]);
-							view.finish_submission(RequestId(2), true, cx);
+							assert_eq!(
+								view.finish_submission(RequestId(2), true, cx),
+								None,
+								"an answer to another request names no session",
+							);
 							assert_eq!(view.composer().expect("editor").read(cx).text(), "original draft");
 							if edited {
 								view.set_composed("later draft", cx);
 							}
+							let submitted_from = view.state().current_id;
 							if switched {
 								view.state_mut().current_id += 1;
 							}
 							view.state_mut().composer.attachments.push(attachment(2));
-							view.finish_submission(RequestId(1), succeeded, cx);
+							let answered = view.finish_submission(RequestId(1), succeeded, cx);
+							// The caller drops the draft the window remembers for the session
+							// that submitted, so an accepted prompt names that session even
+							// once the operator has moved to another one. A refusal names
+							// nothing: the draft is still unsent.
+							assert_eq!(
+								answered,
+								succeeded.then_some(submitted_from),
+								"succeeded={succeeded} switched={switched}",
+							);
 							let expected_text = if edited {
 								"later draft"
 							} else if succeeded && !switched {
@@ -65,7 +79,11 @@ fn only_a_matching_success_consumes_the_submitted_draft() {
 								vec![attachment(1), attachment(2)]
 							};
 							assert_eq!(view.state().composer.attachments, expected_attachments);
-							view.finish_submission(RequestId(1), true, cx);
+							assert_eq!(
+								view.finish_submission(RequestId(1), true, cx),
+								None,
+								"one request is answered once",
+							);
 							assert_eq!(view.composer().expect("editor").read(cx).text(), expected_text);
 						})
 						.expect("submission lifecycle");

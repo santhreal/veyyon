@@ -4,7 +4,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use veyyon_desktop::{
 	Attachment, HostLink, SessionIndex, actions_for, current_timestamp_ms, land_failure, project,
-	project::{connection_notice, restored_draft},
+	project::{clear_sent_draft, connection_notice, restored_draft},
 	project_clock, project_controls, request_frame,
 	state::Keeper,
 };
@@ -250,7 +250,9 @@ pub fn attach(
 								view.finish_submission(*request, false, cx);
 							},
 							HostEvent::RequestSucceeded { request } => {
-								view.finish_submission(*request, true, cx);
+								if let Some(row) = view.finish_submission(*request, true, cx) {
+									clear_sent_draft(&mut host.store, &host.index, row);
+								}
 								if let Some(in_flight) = host.registry.complete(request) {
 									view.state_mut().controls.clear_error(&in_flight.surface);
 								}

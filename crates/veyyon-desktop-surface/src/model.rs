@@ -166,15 +166,23 @@ pub struct Row {
 	/// The session this row opens. Stable across a re-section, so selection
 	/// survives a row moving from Live to Deferred, which a positional index
 	/// would not.
-	pub id:       u64,
+	pub id:        u64,
 	/// The session's title.
-	pub title:    String,
+	pub title:     String,
 	/// The repository or working directory, shown on card rows.
-	pub subtitle: String,
+	pub subtitle:  String,
 	/// The badge, absent on a row that is neither running nor finished.
-	pub badge:    Option<Badge>,
+	pub badge:     Option<Badge>,
 	/// Elapsed or due time, already formatted.
-	pub meta:     Option<String>,
+	pub meta:      Option<String>,
+	/// The section whose partition the session is placed in.
+	///
+	/// The same section the row is drawn in, except for a row lifted into
+	/// `Unsent` by a draft: `Unsent` is derived and is no partition, so a
+	/// partition chord toggles against the placement rather than against the
+	/// draft. Reading the drawn section instead pins a pinned session again,
+	/// because `Unsent` is not the partition it names.
+	pub placement: Section,
 }
 
 /// Host-generated call and result presentations, shared with the decoded

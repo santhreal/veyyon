@@ -23,7 +23,6 @@ use crate::{
 /// Renders a card row (78px): badge, timer, title, subtitle, and hover actions.
 pub fn card_row(
 	row: &Row,
-	section: Section,
 	selected: bool,
 	is_open: bool,
 	shift_y: f32,
@@ -33,6 +32,7 @@ pub fn card_row(
 	view: Option<WeakEntity<ShellView>>,
 ) -> impl IntoElement {
 	let id = row.id;
+	let placement = row.placement;
 	let ground = if is_open {
 		tokens.row_active()
 	} else if selected {
@@ -150,8 +150,10 @@ pub fn card_row(
 				let _ = weak_menu.update(app, |view, cx| {
 					// A pinned card's menu is the card's menu plus the way back
 					// out of `Pinned`, which no hover action carries: §5.1 caps
-					// a card at two.
-					let kind = if section == Section::Pinned {
+					// a card at two. The row's placement decides it, not the
+					// section it is drawn in: a pinned session holding a draft
+					// draws under `Unsent` and still needs its way back out.
+					let kind = if placement == Section::Pinned {
 						RowMenuKind::Pinned
 					} else {
 						RowMenuKind::Card

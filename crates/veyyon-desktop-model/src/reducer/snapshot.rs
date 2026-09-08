@@ -29,7 +29,6 @@ use crate::{
 /// holding finished sessions raises none either.
 ///
 /// A session the index no longer lists is gone with its file and is dropped.
-/// An `Unsent` session is the exception: it has no file for the index to list.
 fn reduce_session_index(store: &mut Store, summaries: Vec<SessionSummary>) {
 	let active = store.persisted.shell.active_session.clone();
 	let mut listed: HashSet<SessionId> = HashSet::with_capacity(summaries.len());
@@ -75,7 +74,7 @@ fn reduce_session_index(store: &mut Store, summaries: Vec<SessionSummary>) {
 		.sessions
 		.items
 		.iter()
-		.filter(|(id, session)| session.partition != QueuePartition::Unsent && !listed.contains(*id))
+		.filter(|(id, _)| !listed.contains(*id))
 		.map(|(id, _)| id.clone())
 		.collect();
 	for id in dropped {

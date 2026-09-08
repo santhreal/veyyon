@@ -52,7 +52,13 @@ fn make_compact_all_sections_state() -> ShellState {
 				Section::Pinned => Some(Badge::Approval),
 				_ => None,
 			};
-			let r = Row { id, title, subtitle: "repo".into(), badge, meta: Some("2m".into()) };
+			let placement = if sec == Section::Unsent {
+				Section::Live
+			} else {
+				sec
+			};
+			let r =
+				Row { id, title, subtitle: "repo".into(), badge, meta: Some("2m".into()), placement };
 			(sec, vec![r])
 		})
 		.collect();

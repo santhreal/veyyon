@@ -11,7 +11,7 @@ use veyyon_desktop_scene::{
 	HeadlessSession,
 	headless::{Headless, RenderOptions},
 };
-use veyyon_desktop_surface::{Badge, Row, ShellState, ShellView, install_tokens};
+use veyyon_desktop_surface::{Badge, Row, Section, ShellState, ShellView, install_tokens};
 use veyyon_gpui::{App, AppContext};
 
 fn test_opts(width: u32, height: u32) -> RenderOptions {
@@ -25,7 +25,14 @@ pub fn row(
 	badge: Option<Badge>,
 	meta: Option<&str>,
 ) -> Row {
-	Row { id, title, subtitle: subtitle.into(), badge, meta: meta.map(Into::into) }
+	Row {
+		id,
+		title,
+		subtitle: subtitle.into(),
+		badge,
+		meta: meta.map(Into::into),
+		placement: Section::Live,
+	}
 }
 
 pub fn open_session(

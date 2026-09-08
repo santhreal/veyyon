@@ -58,16 +58,18 @@ fn every_partition_lands_in_its_section_and_a_row_keeps_its_id_across_a_move() {
 	let sections: Vec<Section> = state.sections.iter().map(|(section, _)| *section).collect();
 	assert_eq!(
 		sections,
-		[Section::Unsent, Section::Pinned, Section::Live, Section::Deferred, Section::Parked],
-		"one section per partition, in queue order"
+		[Section::Pinned, Section::Live, Section::Deferred, Section::Parked],
+		"one section per partition, in queue order. `Unsent` is no partition: it is derived from \
+		 the drafts, and `a-draft-left-in-a-session-is-stated-in-the-rail.rs` drives it"
 	);
 	for (section, rows) in &state.sections {
 		assert_eq!(rows.len(), 1, "{section:?} holds its one session");
+		assert_eq!(rows[0].placement, *section, "{section:?}: the row names where it is placed");
 	}
 	let first_id = state.sections[0].1[0].id;
 	assert_ne!(first_id, 0, "zero is the id of no session");
 
-	// Move s0 from Unsent to Parked: the row id follows the session.
+	// Move s0 from Pinned to Parked: the row id follows the session.
 	let mut moved = session("s0", QueuePartition::Parked);
 	moved.title = "moved".to_string();
 	store.sessions.insert(moved);
@@ -82,7 +84,7 @@ fn every_partition_lands_in_its_section_and_a_row_keeps_its_id_across_a_move() {
 		!state
 			.sections
 			.iter()
-			.any(|(section, _)| *section == Section::Unsent),
+			.any(|(section, _)| *section == Section::Pinned),
 		"an emptied partition draws no section"
 	);
 	assert_eq!(index.session_of(first_id), Some(&SessionId::from("s0")));

@@ -4,12 +4,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::{connection::SessionId, event::SessionStatus};
 
-/// Queue partition sections for session organization.
+/// The partition the operator put a session in.
+///
+/// Four, not the five sections the rail draws: `Unsent` is derived from the
+/// draft a session holds (§0) and is never a placement, so it is not a state a
+/// session can be moved into. `project::queue` states which sessions it covers
+/// and the rail draws it above these four.
 #[derive(
 	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, strum::EnumIter,
 )]
 pub enum QueuePartition {
-	Unsent,
 	Pinned,
 	Live,
 	Deferred,
@@ -17,9 +21,8 @@ pub enum QueuePartition {
 }
 
 impl QueuePartition {
-	/// Complete slice of all five queue partitions.
-	pub const ALL: [Self; 5] =
-		[Self::Unsent, Self::Pinned, Self::Live, Self::Deferred, Self::Parked];
+	/// Complete slice of all four placements.
+	pub const ALL: [Self; 4] = [Self::Pinned, Self::Live, Self::Deferred, Self::Parked];
 }
 
 /// Status badges indicating operational state or required operator attention.
@@ -73,11 +76,10 @@ impl Session {
 }
 
 /// Container holding all sessions indexed by identifier and partitioned across
-/// the five queue segments.
+/// the four placements.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SessionCollection {
 	pub items:    HashMap<SessionId, Session>,
-	pub unsent:   Vec<SessionId>,
 	pub pinned:   Vec<SessionId>,
 	pub live:     Vec<SessionId>,
 	pub deferred: Vec<SessionId>,
@@ -90,7 +92,6 @@ impl SessionCollection {
 	pub fn new() -> Self {
 		Self {
 			items:    HashMap::new(),
-			unsent:   Vec::new(),
 			pinned:   Vec::new(),
 			live:     Vec::new(),
 			deferred: Vec::new(),
@@ -107,7 +108,6 @@ impl SessionCollection {
 
 		self.remove_from_all_lists(&id);
 		match partition {
-			QueuePartition::Unsent => self.unsent.push(id),
 			QueuePartition::Pinned => self.pinned.push(id),
 			QueuePartition::Live => self.live.push(id),
 			QueuePartition::Deferred => self.deferred.push(id),
@@ -143,14 +143,6 @@ impl SessionCollection {
 					let anchor_a = items.get(a).map_or(0, Session::live_anchor);
 					let anchor_b = items.get(b).map_or(0, Session::live_anchor);
 					anchor_b.cmp(&anchor_a).then_with(|| a.cmp(b))
-				});
-			},
-			QueuePartition::Unsent => {
-				let items = &self.items;
-				self.unsent.sort_by(|a, b| {
-					let time_a = items.get(a).map_or(0, |s| s.created_at_ms);
-					let time_b = items.get(b).map_or(0, |s| s.created_at_ms);
-					time_b.cmp(&time_a).then_with(|| a.cmp(b))
 				});
 			},
 			QueuePartition::Pinned => {
@@ -268,7 +260,6 @@ impl SessionCollection {
 	}
 
 	fn remove_from_all_lists(&mut self, id: &SessionId) {
-		self.unsent.retain(|x| x != id);
 		self.pinned.retain(|x| x != id);
 		self.live.retain(|x| x != id);
 		self.deferred.retain(|x| x != id);

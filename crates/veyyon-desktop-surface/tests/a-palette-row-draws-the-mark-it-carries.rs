@@ -46,11 +46,12 @@ fn unmarked(state: &PaletteState) -> PaletteState {
 
 fn session_rows() -> Vec<(Section, Vec<Row>)> {
 	vec![(Section::Live, vec![Row {
-		id:       7,
-		title:    "port the loader".into(),
-		subtitle: "ws-default".into(),
-		badge:    Some(Badge::Working),
-		meta:     None,
+		id:        7,
+		title:     "port the loader".into(),
+		subtitle:  "ws-default".into(),
+		badge:     Some(Badge::Working),
+		meta:      None,
+		placement: Section::Live,
 	}])]
 }
 

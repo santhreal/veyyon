@@ -30,7 +30,7 @@ mod transcript;
 use std::collections::HashMap;
 
 use veyyon_desktop_model::{QueuePartition, SessionId, Store, session_badge};
-use veyyon_desktop_surface::{ShellState, terminal::TerminalEmulator};
+use veyyon_desktop_surface::{Row, Section, ShellState, terminal::TerminalEmulator};
 
 pub use self::{
 	actions::actions_for,
@@ -41,12 +41,12 @@ pub use self::{
 	failure::land_failure,
 	overlay::project_overlay,
 	panel::project_panel,
-	queue::elapsed_label,
+	queue::{clear_sent_draft, elapsed_label},
 	transcript::PANE_LINE_CEILING,
 };
 use self::{
 	cards::cards,
-	queue::{badge, partition_ids, row, row_meta, section},
+	queue::{badge, holds_unsent_draft, partition_ids, row, row_meta, section, unsent_ids},
 	run_bar::run_status,
 	transcript::{push_entry, turns},
 };
@@ -111,20 +111,28 @@ pub fn project<S: std::hash::BuildHasher>(
 ) {
 	let active = store.persisted.shell.active_session.as_ref();
 
-	state.sections = QueuePartition::ALL
+	// §0 orders the rail `Unsent`, `Pinned`, `Live`, `Deferred`, `Parked`, and
+	// `Unsent` is the one section no placement produces: it is every session
+	// holding a draft the operator left, so it is built first and its rows are
+	// taken out of the partitions they are placed in.
+	let unsent_rows: Vec<Row> = unsent_ids(store, active)
 		.iter()
-		.filter_map(|partition| {
-			let ids = partition_ids(store, *partition);
-			if ids.is_empty() {
-				return None;
-			}
-			let rows = ids
+		.filter_map(|id| store.sessions.get(id))
+		.map(|session| row(store, session, index.row_of(&session.id), now_ms))
+		.collect();
+
+	state.sections = (!unsent_rows.is_empty())
+		.then_some((Section::Unsent, unsent_rows))
+		.into_iter()
+		.chain(QueuePartition::ALL.iter().filter_map(|partition| {
+			let rows: Vec<Row> = partition_ids(store, *partition)
 				.iter()
+				.filter(|id| !holds_unsent_draft(store, active, id))
 				.filter_map(|id| store.sessions.get(id))
 				.map(|session| row(store, session, index.row_of(&session.id), now_ms))
 				.collect();
-			Some((section(*partition), rows))
-		})
+			(!rows.is_empty()).then(|| (section(*partition), rows))
+		}))
 		.collect();
 
 	let active_session = active.and_then(|id| store.sessions.get(id));

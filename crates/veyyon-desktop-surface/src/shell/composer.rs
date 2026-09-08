@@ -197,35 +197,47 @@ impl ShellView {
 			Some(SubmittedDraft { request, session: self.state.current_id, text, attachments });
 	}
 
-	/// Acknowledgement clears only the submitted draft, never subsequent edits
-	/// or a different session.
+	/// Records the host's answer to a submitted draft, and answers the session
+	/// whose draft the host took.
+	///
+	/// A prompt the host accepted is no longer unsent, so the caller clears the
+	/// draft the window remembers for that session (§8.10). That session is the
+	/// one the draft was submitted from, which is not always the one on screen:
+	/// the operator moves on while the request is in flight, and a draft left
+	/// behind under a session that has already sent it stands in the rail's
+	/// `Unsent` section stating text nobody can retract.
+	///
+	/// The composer in front of the operator is cleared only while it is still
+	/// the one that submitted and still holds the text that went. A refusal
+	/// clears nothing: §5.4 retains the draft the host would not take.
 	pub fn finish_submission(
 		&mut self,
 		request: RequestId,
 		succeeded: bool,
 		cx: &mut Context<Self>,
-	) {
+	) -> Option<u64> {
 		if self
 			.submitted
 			.as_ref()
 			.is_none_or(|draft| draft.request != request)
 		{
-			return;
+			return None;
 		}
-		let Some(draft) = self.submitted.take() else {
-			return;
-		};
-		if !succeeded || draft.session != self.state.current_id {
-			return;
+		let draft = self.submitted.take()?;
+		if !succeeded {
+			return None;
 		}
-		if self.composer_cache == draft.text {
-			self.set_composed(String::new(), cx);
+		if draft.session == self.state.current_id {
+			if self.composer_cache == draft.text {
+				self.set_composed(String::new(), cx);
+			}
+			self
+				.state
+				.composer
+				.attachments
+				.retain(|attachment| !draft.attachments.contains(attachment));
+			cx.notify();
 		}
-		self
-			.state
-			.composer
-			.attachments
-			.retain(|attachment| !draft.attachments.contains(attachment));
-		cx.notify();
+		Some(draft.session)
 	}
 }

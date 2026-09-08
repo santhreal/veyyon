@@ -1,7 +1,7 @@
 //! WHY THIS SUITE EXISTS
 //!
 //! Every sweep in this crate and in the scene gate walks a hand-written `ALL`
-//! array: 73 actions, 30 capabilities, 19 error scopes, 12 roles, 5 partitions.
+//! array: 73 actions, 30 capabilities, 19 error scopes, 12 roles, 4 partitions.
 //! An array is not the enum. Add a 74th action to `HostActionKind` and forget
 //! to extend `HostActionKind::ALL`, and the sweeps do not fail — they iterate
 //! 73 of 74 variants and pass, which is exactly the failure mode of having no
@@ -68,7 +68,10 @@ fn every_action_capability_scope_role_and_partition_is_named_by_its_all_array() 
 	assert_all_is_the_whole_enum(&Capability::ALL, 30, "Capability");
 	assert_all_is_the_whole_enum(&ErrorScope::ALL, 19, "ErrorScope");
 	assert_all_is_the_whole_enum(&MessageRole::ALL, 12, "MessageRole");
-	assert_all_is_the_whole_enum(&QueuePartition::ALL, 5, "QueuePartition");
+	// Four placements, not the five sections the rail draws: `Unsent` is derived
+	// from a session holding an unsubmitted draft, so it is never a placement the
+	// operator chooses or the window persists (§5.2).
+	assert_all_is_the_whole_enum(&QueuePartition::ALL, 4, "QueuePartition");
 }
 
 /// `ContentBlock`, `SessionBadge`, and `SnapshotSection` have payload-carrying

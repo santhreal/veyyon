@@ -211,7 +211,6 @@ pub fn queue_rail(
 				let row_el = if section.draws_cards() {
 					card_row(
 						row,
-						*section,
 						*selected,
 						*is_open,
 						shift_y,

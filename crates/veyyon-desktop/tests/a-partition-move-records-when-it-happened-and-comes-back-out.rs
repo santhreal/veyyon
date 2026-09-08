@@ -118,10 +118,8 @@ const fn move_pair(partition: QueuePartition, row: u64) -> Option<(Intent, Inten
 		QueuePartition::Pinned => Some((Intent::PinSession(row), Intent::UnpinSession(row))),
 		QueuePartition::Deferred => Some((Intent::DeferSession(row), Intent::RecallSession(row))),
 		QueuePartition::Parked => Some((Intent::ParkSession(row), Intent::UnparkSession(row))),
-		// `Live` is where both halves of every pair above land, and `Unsent`
-		// holds a draft that was never sent, which no intent moves a session
-		// into.
-		QueuePartition::Live | QueuePartition::Unsent => None,
+		// `Live` is where both halves of every pair above land.
+		QueuePartition::Live => None,
 	}
 }
 

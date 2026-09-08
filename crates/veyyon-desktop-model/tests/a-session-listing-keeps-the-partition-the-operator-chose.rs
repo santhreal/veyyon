@@ -9,17 +9,17 @@
 //! CLASS CLOSED: a session index reduction that overwrites client-owned queue
 //! state, for every partition rather than the one that was reported. The
 //! partitions are swept from `QueuePartition::ALL` and placed through an
-//! exhaustive match, so a sixth partition fails to compile here until it is
+//! exhaustive match, so a fifth placement fails to compile here until it is
 //! given a placement and a decision.
 //!
 //! It also closes the opposite failure on the same path: the index is every
 //! session the host holds, so one it no longer lists must go rather than sit in
-//! the rail until a restart. `Unsent` is the named exception, since a session
-//! that was never sent has no file for the index to list.
+//! the rail until a restart.
 //!
 //! NOT CAUGHT: what the host chooses to list. This suite drives the reducer, so
 //! a host that omits a session it still holds looks the same here as a host
-//! that deleted it.
+//! that deleted it. It also says nothing about the derived `Unsent` section,
+//! which is not a placement and is projected rather than reduced.
 
 use veyyon_desktop_model::{
 	Damage, HostEvent, QueuePartition, Session, SessionId, SessionStatus, SessionSummary,
@@ -76,13 +76,6 @@ const fn listing(summaries: Vec<SessionSummary>) -> HostEvent {
 /// answers the timestamps that placement recorded.
 fn place(store: &mut Store, id: &SessionId, partition: QueuePartition) {
 	match partition {
-		QueuePartition::Unsent => {
-			if let Some(session) = store.sessions.get_mut(id) {
-				session.partition = QueuePartition::Unsent;
-			}
-			let session = store.sessions.get(id).cloned().expect("seeded session");
-			store.sessions.insert(session);
-		},
 		QueuePartition::Pinned => store.sessions.pin(id, Some("a".to_string())),
 		QueuePartition::Live => {},
 		QueuePartition::Deferred => store.sessions.defer(id, Some(9_000)),
@@ -134,7 +127,7 @@ fn a_listing_leaves_every_partition_and_its_timestamps_where_the_operator_put_th
 }
 
 #[test]
-fn a_listing_drops_the_sessions_it_no_longer_holds_except_an_unsent_one() {
+fn a_listing_drops_every_session_it_no_longer_holds() {
 	for partition in QueuePartition::ALL {
 		let mut store = Store::new();
 		store.sessions.insert(seeded("gone", 1_000));
@@ -144,18 +137,15 @@ fn a_listing_drops_the_sessions_it_no_longer_holds_except_an_unsent_one() {
 
 		reduce(&mut store, listing(vec![summary("kept", "kept title", 2_000, 2_000)]));
 
-		let survives = partition == QueuePartition::Unsent;
-		assert_eq!(
-			store.sessions.get(&gone).is_some(),
-			survives,
-			"{partition:?}: a session the index no longer lists must go unless it was never sent"
+		assert!(
+			store.sessions.get(&gone).is_none(),
+			"{partition:?}: a session the index no longer lists must go"
 		);
 		assert!(
 			store.sessions.get(&SessionId::from("kept")).is_some(),
 			"{partition:?}: the listed session was dropped"
 		);
 		let listed_in = [
-			&store.sessions.unsent,
 			&store.sessions.pinned,
 			&store.sessions.live,
 			&store.sessions.deferred,
@@ -164,12 +154,7 @@ fn a_listing_drops_the_sessions_it_no_longer_holds_except_an_unsent_one() {
 		.into_iter()
 		.filter(|list| list.contains(&gone))
 		.count();
-		assert_eq!(
-			listed_in,
-			usize::from(survives),
-			"{partition:?}: a dropped session must leave every partition list, and a kept one must \
-			 sit in exactly one"
-		);
+		assert_eq!(listed_in, 0, "{partition:?}: a dropped session must leave every partition list");
 	}
 }
 

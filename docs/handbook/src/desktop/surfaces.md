@@ -52,6 +52,17 @@ agent activity does not reorder it. Deferred sorts by return time, soonest
 first, and a session deferred from the rail names no return time and sorts
 last. Parked sorts by when each session was parked, most recent first.
 
+Unsent is derived from the composer, not from a move. A session that is Pinned
+or Live, holds unsubmitted text in its composer, and is not the session on
+screen is listed there, newest session first. Its row leaves the section it was
+placed in for as long as the text is held, and the park, defer and pin actions
+on that row still act on its placement. Sending or clearing the text returns
+the row to its section, and a prompt the host accepts is dropped whether or
+not that session is still on screen when the answer arrives. The session on
+screen never moves while it is typed in.
+A deferred or parked session keeps unsubmitted text where it was set aside, and
+the text returns with the session on recall or unpark.
+
 Parked shows 25 lines and then an `Older (N remaining)` row. Clicking that row
 adds the next 25.
 

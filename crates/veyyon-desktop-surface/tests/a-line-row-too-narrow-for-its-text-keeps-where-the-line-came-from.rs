@@ -93,11 +93,12 @@ fn runs_on(captured: &Captured, row: Bounds<Pixels>) -> Vec<(f32, f32)> {
 
 fn session_rows() -> Vec<(Section, Vec<Row>)> {
 	vec![(Section::Live, vec![Row {
-		id:       7,
-		title:    "port the loader".into(),
-		subtitle: "ws-default".into(),
-		badge:    None,
-		meta:     None,
+		id:        7,
+		title:     "port the loader".into(),
+		subtitle:  "ws-default".into(),
+		badge:     None,
+		meta:      None,
+		placement: Section::Live,
 	}])]
 }
 
