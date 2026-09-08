@@ -42,6 +42,8 @@ pub struct Domains {
 	pub file_content:    Option<FileContentView>,
 	/// Text search results.
 	pub search:          Option<SearchResultsView>,
+	/// The lines the host's last content search matched.
+	pub content_matches: Option<ContentMatchesView>,
 	/// Managed terminal instances.
 	pub terminals:       Vec<TerminalView>,
 	/// Terminal scrollback buffers indexed by terminal ID.

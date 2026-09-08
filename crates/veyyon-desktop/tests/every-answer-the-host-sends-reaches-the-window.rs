@@ -67,8 +67,10 @@ enum Prepare {
 	Rest,
 	/// The settings overlay, open on its first page.
 	Settings,
-	/// The palette, open in one mode.
-	Palette(PaletteMode),
+	/// The palette, open in one mode, holding a query. A lookup mode lists
+	/// what the host answered for what was typed, so its rows are empty
+	/// until something is in the field.
+	Palette(PaletteMode, &'static str),
 	/// The drawer, showing one process's output.
 	ProcessOutput(&'static str),
 }
@@ -86,7 +88,8 @@ const fn prepare_for(kind: SnapshotSectionKind) -> Prepare {
 		| SnapshotSectionKind::McpToolResult
 		| SnapshotSectionKind::Agents
 		| SnapshotSectionKind::Diagnostics => Prepare::Settings,
-		SnapshotSectionKind::SearchResults => Prepare::Palette(PaletteMode::ContentSearch),
+		SnapshotSectionKind::SearchResults => Prepare::Palette(PaletteMode::Files, "app"),
+		SnapshotSectionKind::ContentMatches => Prepare::Palette(PaletteMode::ContentSearch, "todo"),
 		SnapshotSectionKind::ProcessLogs => Prepare::ProcessOutput(PROCESS),
 		SnapshotSectionKind::Sessions
 		| SnapshotSectionKind::ActiveSession
@@ -160,7 +163,11 @@ fn prepared(store: &Store, prepare: &Prepare) -> (ShellState, SessionIndex) {
 	let overlay = match prepare {
 		Prepare::Rest | Prepare::ProcessOutput(_) => None,
 		Prepare::Settings => Some(Overlay::Settings(Box::default())),
-		Prepare::Palette(mode) => Some(Overlay::Palette(PaletteState::new(*mode))),
+		Prepare::Palette(mode, query) => {
+			let mut palette = PaletteState::new(*mode);
+			palette.set_query((*query).to_string());
+			Some(Overlay::Palette(palette))
+		},
 	};
 	let mut state = ShellState { overlay, ..ShellState::default() };
 	project(store, &mut index, &HashMap::new(), NOW_MS, &mut state);

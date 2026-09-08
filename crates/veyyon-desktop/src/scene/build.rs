@@ -14,14 +14,14 @@ pub use error_scope_builder::{error_scope, error_scope_baseline};
 use strum::IntoEnumIterator as _;
 use veyyon_desktop_model::{
 	AuthFlowState, AuthFlowView, BadgeKind, BlockKind, ConnectionState, ConnectionStateKind,
-	ContextBreakdownView, InputModality, MessageRole, ModelRef, ModelView, ModelsView,
-	QueuePartition, QueuedPrompts, SettingEntry, SettingKind,
+	ContentMatch, ContentMatchesView, ContextBreakdownView, InputModality, MessageRole, ModelRef,
+	ModelView, ModelsView, QueuePartition, QueuedPrompts, SettingEntry, SettingKind,
 };
 use veyyon_desktop_scene::{
 	FixtureText, PrimitiveKind, RequiredState, RowShape, Scene, StateDescriptor,
 	content_block_fixture, transcript_entry_fixture,
 };
-use veyyon_desktop_surface::{Overlay, PaletteState};
+use veyyon_desktop_surface::{Overlay, PaletteMode, PaletteState};
 
 use super::seed::{Built, SCENE_CLOCK_MS, Seed};
 
@@ -157,6 +157,7 @@ fn custom(name: &str, surface: &str, state: &str) -> Result<SceneRoot, SceneBuil
 			seed.state.overlay = Some(Overlay::Palette(PaletteState::default()));
 			seed.finish()
 		},
+		("palette", "content-search") => content_search(),
 		("settings-row", "rest") => settings_row(),
 		("shell", "auth-needs-secret") => auth(AuthFlowState::AwaitingSecret, None),
 		("shell", "auth-awaiting-external-url") => {
@@ -184,6 +185,38 @@ fn queue_row(partition: QueuePartition, badge: &str) -> Result<Built, SceneBuild
 	};
 	seed.exchange(&session, Seed::prose());
 	Ok(seed.finish())
+}
+
+/// The palette listing what a content search found: each row draws the line
+/// the host matched and states the file and line number it is in.
+fn content_search() -> Built {
+	let mut seed = Seed::attached();
+	seed.session(QueuePartition::Live);
+	seed.store.domains.content_matches = Some(ContentMatchesView {
+		query:     "deadline".to_string(),
+		matches:   vec![
+			ContentMatch {
+				path:    "crates/veyyon-desktop/src/project/connection.rs".to_string(),
+				line:    212,
+				preview: "let deadline = now_ms + RETRY_WINDOW_MS;".to_string(),
+			},
+			ContentMatch {
+				path:    "crates/veyyon-desktop-model/src/request.rs".to_string(),
+				line:    64,
+				preview: "/// The deadline a request is abandoned at.".to_string(),
+			},
+			ContentMatch {
+				path:    "crates/veyyon-desktop-surface/src/shell/fields.rs".to_string(),
+				line:    148,
+				preview: "// A commit past its deadline is refused rather than retried.".to_string(),
+			},
+		],
+		truncated: false,
+	});
+	let mut palette = PaletteState::new(PaletteMode::ContentSearch);
+	palette.set_query("deadline".to_string());
+	seed.state.overlay = Some(Overlay::Palette(palette));
+	seed.finish()
 }
 
 /// The composer of a running turn that is holding two prompts behind it: one

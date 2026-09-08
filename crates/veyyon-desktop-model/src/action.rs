@@ -121,6 +121,11 @@ pub enum HostAction {
 	SearchFiles {
 		query: String,
 	},
+	/// The lines of the workspace's files that carry `query`, taken as literal
+	/// text rather than as a pattern.
+	SearchContent {
+		query: String,
+	},
 	OpenExternal {
 		path: String,
 	},
@@ -313,6 +318,7 @@ impl HostAction {
 			Self::LoadFileTree { .. } => HostActionKind::LoadFileTree,
 			Self::ReadFile { .. } => HostActionKind::ReadFile,
 			Self::SearchFiles { .. } => HostActionKind::SearchFiles,
+			Self::SearchContent { .. } => HostActionKind::SearchContent,
 			Self::OpenExternal { .. } => HostActionKind::OpenExternal,
 			Self::RefreshChanges => HostActionKind::RefreshChanges,
 			Self::SelectChangeScope { .. } => HostActionKind::SelectChangeScope,

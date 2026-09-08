@@ -4,10 +4,10 @@ use crate::{
 	capabilities::{Capability, CapabilityStatus},
 	connection::{ConnectionState, RequestId, SessionId, Versioned},
 	domain::{
-		AgentView, AuthFlowView, ChangesView, ContextBreakdownView, ExportView, FileContentView,
-		FileTreeView, KeybindingView, McpServerView, McpToolResultView, ModelsView, ProcessLogsChunk,
-		ProcessView, ProviderView, QueuedPromptsView, SearchResultsView, SettingsView,
-		TerminalOutputChunk, TerminalView, ThemesView, UsageView,
+		AgentView, AuthFlowView, ChangesView, ContentMatchesView, ContextBreakdownView, ExportView,
+		FileContentView, FileTreeView, KeybindingView, McpServerView, McpToolResultView, ModelsView,
+		ProcessLogsChunk, ProcessView, ProviderView, QueuedPromptsView, SearchResultsView,
+		SettingsView, TerminalOutputChunk, TerminalView, ThemesView, UsageView,
 	},
 	error::BackendError,
 	interaction::PendingDecisions,
@@ -63,7 +63,7 @@ pub struct SessionHeaderView {
 	pub cwd:            String,
 }
 
-/// Complete list of all 27 snapshot section names defined by the protocol.
+/// Complete list of all 28 snapshot section names defined by the protocol.
 pub const ALL_SECTION_NAMES: &[&str] = &[
 	"Sessions",
 	"ActiveSession",
@@ -76,6 +76,7 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 	"FileTree",
 	"FileContent",
 	"SearchResults",
+	"ContentMatches",
 	"Terminals",
 	"TerminalOutput",
 	"Processes",
@@ -133,6 +134,8 @@ pub enum SnapshotSection {
 	FileContent(FileContentView),
 	/// Text search results.
 	SearchResults(SearchResultsView),
+	/// The lines a content search matched.
+	ContentMatches(ContentMatchesView),
 	/// List of managed terminal sessions.
 	Terminals(Vec<TerminalView>),
 	/// Chunk of terminal output data.
@@ -184,6 +187,7 @@ impl SnapshotSection {
 			Self::FileTree(..) => "FileTree",
 			Self::FileContent(..) => "FileContent",
 			Self::SearchResults(..) => "SearchResults",
+			Self::ContentMatches(..) => "ContentMatches",
 			Self::Terminals(..) => "Terminals",
 			Self::TerminalOutput(..) => "TerminalOutput",
 			Self::Processes(..) => "Processes",

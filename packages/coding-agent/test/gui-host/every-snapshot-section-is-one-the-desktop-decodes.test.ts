@@ -203,6 +203,13 @@ const CORPUS = [
 	},
 	{ SearchResults: { query: "app", paths: ["src/app.ts"], truncated: false } },
 	{
+		ContentMatches: {
+			query: "todo",
+			matches: [{ path: "src/app.ts", line: 12, preview: "// todo: name the error" }],
+			truncated: false,
+		},
+	},
+	{
 		Terminals: [
 			{ id: "term-1", cwd: "/repo", shell: "/bin/bash", cols: 80, rows: 24, status: "Running" },
 			{ id: "term-2", cwd: "/repo", shell: "/bin/bash", cols: 80, rows: 24, status: { Exited: { code: 0 } } },

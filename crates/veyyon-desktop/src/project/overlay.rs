@@ -71,25 +71,50 @@ const fn unavailable(store: &Store, capability: Capability) -> bool {
 /// Populates palette items from file tree and search result domains.
 fn project_palette_domains(store: &Store, state: &mut PaletteState) {
 	match state.mode {
+		// What was typed is answered by the host's search, and the workspace
+		// tree is what the mode opened on: rows follow the query, so a lookup
+		// that matches nothing states that rather than leaving the tree drawn.
 		PaletteMode::Files => {
-			if let Some(tree) = &store.domains.file_tree {
-				let mut items = Vec::new();
-				for (idx, entry) in tree.entries.iter().enumerate() {
-					if entry.kind == FileKind::File {
-						items.push(PaletteItem::file(idx as u64 + 1000, entry.path.clone()));
-					}
-				}
-				if !items.is_empty() {
-					state.set_items(items);
-				}
+			let items: Option<Vec<PaletteItem>> = if state.query().is_empty() {
+				store.domains.file_tree.as_ref().map(|tree| {
+					tree
+						.entries
+						.iter()
+						.enumerate()
+						.filter(|(_, entry)| entry.kind == FileKind::File)
+						.map(|(idx, entry)| PaletteItem::file(idx as u64 + 1000, entry.path.clone()))
+						.collect()
+				})
+			} else {
+				store.domains.search.as_ref().map(|search| {
+					search
+						.paths
+						.iter()
+						.enumerate()
+						.map(|(idx, path)| PaletteItem::file(idx as u64 + 1000, path.clone()))
+						.collect()
+				})
+			};
+			if let Some(items) = items {
+				state.set_items(items);
 			}
 		},
+		// Rows are the lines the host reported for what was typed. Nothing is
+		// listed for the empty query, since no listing of every line of the
+		// workspace exists to open the mode on, and a stale match set from a
+		// previous query is not what the empty field states.
 		PaletteMode::ContentSearch => {
-			if let Some(search) = &store.domains.search {
-				let mut items = Vec::new();
-				for (idx, path) in search.paths.iter().enumerate() {
-					items.push(PaletteItem::file(idx as u64 + 2000, path.clone()));
-				}
+			if state.query().is_empty() {
+				state.set_items(Vec::new());
+			} else if let Some(found) = &store.domains.content_matches {
+				let items = found
+					.matches
+					.iter()
+					.enumerate()
+					.map(|(idx, m)| {
+						PaletteItem::content_match(idx as u64 + 2000, m.path.clone(), m.line, &m.preview)
+					})
+					.collect();
 				state.set_items(items);
 			}
 		},
@@ -122,22 +147,26 @@ fn project_palette_domains(store: &Store, state: &mut PaletteState) {
 			}
 			// §5.13: a command whose action the host declines is a surface the
 			// host does not offer, so it is not listed rather than listed and
-			// refused. The filter runs on every projection, so a command
-			// follows its capability while the palette stays open.
-			state.retain_items(|item| match &item.kind {
-				// The drawer is the one command surface gated by two
-				// capabilities at once: either tenant offers it.
-				PaletteItemKind::Command { intent }
-					if matches!(**intent, Intent::SetDrawer { open: true }) =>
-				{
-					drawer_offered(&store.capabilities)
-				},
-				PaletteItemKind::Composer { command } => command
-					.capability()
-					.is_none_or(|capability| !unavailable(store, capability)),
-				_ => true,
-			});
+			// refused. A row states the capability it rides on, and the two
+			// exceptions are resolved below: the drawer has two tenants, and a
+			// composer command answers for itself.
 		},
 		PaletteMode::Sessions | PaletteMode::Models => {},
 	}
+	// The filter runs on every projection and over every mode, so a row
+	// follows its capability while the palette stays open: a host that
+	// withdraws the workspace leaves no file, directory or match row behind.
+	state.retain_items(|item| match &item.kind {
+		PaletteItemKind::Command { intent }
+			if matches!(**intent, Intent::SetDrawer { open: true }) =>
+		{
+			drawer_offered(&store.capabilities)
+		},
+		PaletteItemKind::Composer { command } => command
+			.capability()
+			.is_none_or(|capability| !unavailable(store, capability)),
+		_ => item
+			.capability
+			.is_none_or(|capability| !unavailable(store, capability)),
+	});
 }

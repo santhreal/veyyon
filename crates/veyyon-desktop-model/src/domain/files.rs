@@ -60,3 +60,25 @@ pub struct SearchResultsView {
 	/// Flag indicating whether results were truncated due to match limits.
 	pub truncated: bool,
 }
+
+/// One line of a file that matched a content search.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContentMatch {
+	/// Workspace-relative path of the file the line is in.
+	pub path:    String,
+	/// One-indexed line number of the match.
+	pub line:    u32,
+	/// The matched line, truncated by the host to a drawable width.
+	pub preview: String,
+}
+
+/// The lines a content search matched, in the order the search reported them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContentMatchesView {
+	/// The text that was searched for.
+	pub query:     String,
+	/// The matching lines.
+	pub matches:   Vec<ContentMatch>,
+	/// Whether the host stopped short of every match.
+	pub truncated: bool,
+}

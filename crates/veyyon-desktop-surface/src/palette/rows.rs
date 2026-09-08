@@ -5,6 +5,8 @@
 //! is in as a leading dot, and the chord that runs a command, or a one-word
 //! note about the row, at the trailing edge.
 
+use veyyon_desktop_model::Capability;
+
 use crate::{Intent, keymap::command::Command, model::Badge};
 
 /// The mark a row carries at its trailing edge.
@@ -70,26 +72,30 @@ pub enum PaletteItemKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PaletteItem {
 	/// Stable identifier for row selection and indexing.
-	pub id:       u64,
+	pub id:         u64,
 	/// Primary label shown in the row.
-	pub title:    String,
+	pub title:      String,
 	/// Secondary description or path text.
-	pub subtitle: Option<String>,
+	pub subtitle:   Option<String>,
 	/// The heading this row sits under, for a list the surface groups. Rows
 	/// sharing a heading are contiguous, and the heading is drawn once above
 	/// the first of them.
-	pub group:    Option<String>,
+	pub group:      Option<String>,
 	/// A name the row is found by and does not draw, for an identity the row
 	/// states across two lines: a model's `provider/model` is one query even
 	/// though the heading holds the provider and the row holds the id.
-	pub search:   Option<String>,
+	pub search:     Option<String>,
 	/// Visual state badge mapped to a status dot.
-	pub badge:    Option<Badge>,
+	pub badge:      Option<Badge>,
 	/// The chord that runs the row, or a word about the row itself, drawn at
 	/// its trailing edge.
-	pub meta:     Option<PaletteMeta>,
+	pub meta:       Option<PaletteMeta>,
+	/// The capability the host must carry for this row's action, for a row the
+	/// projection prunes rather than lists and refuses (§5.13). `None` is a
+	/// row whose action the window carries itself, so no host can decline it.
+	pub capability: Option<Capability>,
 	/// Target action classification.
-	pub kind:     PaletteItemKind,
+	pub kind:       PaletteItemKind,
 }
 
 impl PaletteItem {
@@ -109,6 +115,7 @@ impl PaletteItem {
 			search: None,
 			badge: None,
 			meta: chord.map(PaletteMeta::Chord),
+			capability: None,
 			kind: PaletteItemKind::Command { intent: Box::new(intent) },
 		}
 	}
@@ -130,6 +137,7 @@ impl PaletteItem {
 			search: None,
 			badge,
 			meta,
+			capability: None,
 			kind: PaletteItemKind::Session { id },
 		}
 	}
@@ -146,7 +154,29 @@ impl PaletteItem {
 			search: None,
 			badge: None,
 			meta: None,
+			capability: Some(Capability::Files),
 			kind: PaletteItemKind::File { path: p },
+		}
+	}
+
+	/// Creates a row for one line a content search matched. The row draws the
+	/// line it found and states the file and line number under it, and is
+	/// found by either, since an operator who typed the text is looking at
+	/// rows that all contain it and picks one by where it is.
+	#[must_use]
+	pub fn content_match(id: u64, path: impl Into<String>, line: u32, preview: &str) -> Self {
+		let p = path.into();
+		let place = format!("{p}:{line}");
+		Self {
+			id,
+			title: preview.trim().to_string(),
+			subtitle: Some(place.clone()),
+			group: None,
+			search: Some(place),
+			badge: None,
+			meta: None,
+			capability: Some(Capability::Files),
+			kind: PaletteItemKind::ContentMatch { path: p, line: Some(line) },
 		}
 	}
 
@@ -162,6 +192,7 @@ impl PaletteItem {
 			search: None,
 			badge: None,
 			meta: Some(PaletteMeta::Note("Folder".to_string())),
+			capability: Some(Capability::Files),
 			kind: PaletteItemKind::Directory { path: p },
 		}
 	}

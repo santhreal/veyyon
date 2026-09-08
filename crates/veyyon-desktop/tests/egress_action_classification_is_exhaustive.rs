@@ -4,8 +4,8 @@ use veyyon_desktop::{ActionClassification, classify_action};
 use veyyon_desktop_model::HostActionKind;
 
 #[test]
-fn all_seventy_four_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equality() {
-	assert_eq!(HostActionKind::ALL.len(), 74, "HostActionKind::ALL must contain exactly 74 actions");
+fn all_seventy_five_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equality() {
+	assert_eq!(HostActionKind::ALL.len(), 75, "HostActionKind::ALL must contain exactly 75 actions");
 
 	let mut ephemeral_actions = HashSet::new();
 	let mut mutation_actions = HashSet::new();
@@ -21,15 +21,16 @@ fn all_seventy_four_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_
 		}
 	}
 
-	assert_eq!(ephemeral_actions.len() + mutation_actions.len(), 74);
+	assert_eq!(ephemeral_actions.len() + mutation_actions.len(), 75);
 
-	// Pinned exact set of 19 ephemeral read-only actions (§8.13)
+	// Pinned exact set of 20 ephemeral read-only actions (§8.13)
 	let expected_ephemeral: HashSet<HostActionKind> = [
 		HostActionKind::ListSessions,
 		HostActionKind::LoadTranscript,
 		HostActionKind::LoadFileTree,
 		HostActionKind::ReadFile,
 		HostActionKind::SearchFiles,
+		HostActionKind::SearchContent,
 		HostActionKind::RefreshChanges,
 		HostActionKind::RefreshProcesses,
 		HostActionKind::ProcessLogs,
@@ -52,6 +53,6 @@ fn all_seventy_four_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_
 		ephemeral_actions, expected_ephemeral,
 		"ephemeral action set must match exact pinned definition; any change must be recorded"
 	);
-	assert_eq!(ephemeral_actions.len(), 19);
+	assert_eq!(ephemeral_actions.len(), 20);
 	assert_eq!(mutation_actions.len(), 55);
 }

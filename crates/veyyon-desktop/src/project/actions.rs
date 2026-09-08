@@ -1,9 +1,9 @@
 //! From what the operator asked to what the host is sent.
 
-use veyyon_desktop_model::{AttachmentSubmission, HostAction, Store, TerminalStatus};
-use veyyon_desktop_surface::{Attachment, AttachmentSource, Intent};
+use veyyon_desktop_model::{HostAction, Store, TerminalStatus};
+use veyyon_desktop_surface::Intent;
 
-use super::{SessionIndex, cards::take_interaction};
+use super::{SessionIndex, cards::take_interaction, submission::submission_of};
 
 /// The host actions an intent asks for, in the order they are sent; empty
 /// for one the shell finished alone or one that no longer has a target.
@@ -178,7 +178,19 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 			}
 		},
 		Intent::OpenOverlay(_) | Intent::CloseOverlay | Intent::PaletteMove(_) => Vec::new(),
-		Intent::PaletteQuery(query) => vec![HostAction::SearchFiles { query: query.clone() }],
+		// Ranking rows the window already holds asks the host for nothing; the
+		// modes whose rows come from the host report their own intent.
+		Intent::PaletteQuery(_) => Vec::new(),
+		// An empty query opens the mode on the workspace tree, which is where
+		// its rows come from until something is typed.
+		Intent::FindFile(query) if query.is_empty() => {
+			vec![HostAction::LoadFileTree { root: None }]
+		},
+		Intent::FindFile(query) => vec![HostAction::SearchFiles { query: query.clone() }],
+		// Nothing is searched for until something is typed: there is no
+		// listing of every line of the workspace to open the mode on.
+		Intent::FindText(query) if query.is_empty() => Vec::new(),
+		Intent::FindText(query) => vec![HostAction::SearchContent { query: query.clone() }],
 		Intent::PaletteRun => Vec::new(),
 		// The listing the operator asked for, which is what makes a descent
 		// visible: the rows of Browse mode are the host's children of `path`.
@@ -370,21 +382,5 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		| Intent::ToggleTreeNode(_)
 		| Intent::ExpandContext { .. } => Vec::new(),
 		_ => Vec::new(),
-	}
-}
-
-/// The wire form of one attachment. The id is the attachment's place in the
-/// prompt and where it came from, so two chips that carry the same bytes are
-/// still two attachments and a duplicate id never reaches the host.
-fn submission_of((position, attachment): (usize, &Attachment)) -> AttachmentSubmission {
-	let origin = match &attachment.source {
-		AttachmentSource::Path(path) => path.display().to_string(),
-		AttachmentSource::Clipboard(ordinal) => format!("clipboard:{ordinal}"),
-	};
-	AttachmentSubmission {
-		id:         format!("{position}:{origin}"),
-		name:       attachment.name.clone(),
-		media_type: attachment.media.as_str().to_owned(),
-		data:       attachment.payload.bytes().to_vec(),
 	}
 }

@@ -168,6 +168,11 @@ fn test_damage_decision_for_every_snapshot_section_sweep() {
 					))
 				);
 			},
+			// The matches a content search found are rows of the palette that
+			// asked for them, which floats over the whole window.
+			"ContentMatches" => {
+				assert!(damage.contains(&Damage::FullWindow));
+			},
 			"Terminals" => {
 				assert!(damage.contains(&Damage::TerminalDrawerChrome(session_id.clone())));
 			},

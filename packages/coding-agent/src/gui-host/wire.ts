@@ -322,6 +322,27 @@ export interface SearchResultsView {
 	truncated: boolean;
 }
 
+/**
+ * One line of a file that matched a content search: `line` is 1-indexed and
+ * `preview` is the matched line, already truncated to a drawable width.
+ * Mirrors `ContentMatch` in `crates/veyyon-desktop-model/src/domain/files.rs`.
+ */
+export interface ContentMatch {
+	path: string;
+	line: number;
+	preview: string;
+}
+
+/**
+ * The lines a content search matched, in the order the search reported them.
+ * Mirrors `ContentMatchesView` in the same module.
+ */
+export interface ContentMatchesView {
+	query: string;
+	matches: ContentMatch[];
+	truncated: boolean;
+}
+
 export type TerminalStatus = "Running" | { Exited: { code: number } } | { Failed: { message: string } };
 
 export interface TerminalView {
@@ -524,6 +545,7 @@ export type SnapshotSection =
 	| { FileTree: FileTreeView }
 	| { FileContent: FileContentView }
 	| { SearchResults: SearchResultsView }
+	| { ContentMatches: ContentMatchesView }
 	| { Terminals: TerminalView[] }
 	| { TerminalOutput: TerminalOutputChunk }
 	| { Processes: ProcessView[] }
@@ -553,6 +575,7 @@ export const ALL_SNAPSHOT_SECTIONS = [
 	"FileTree",
 	"FileContent",
 	"SearchResults",
+	"ContentMatches",
 	"Terminals",
 	"TerminalOutput",
 	"Processes",
@@ -637,6 +660,7 @@ export const ALL_HOST_ACTIONS = [
 	"LoadFileTree",
 	"ReadFile",
 	"SearchFiles",
+	"SearchContent",
 	"OpenExternal",
 	"RefreshChanges",
 	"SelectChangeScope",
@@ -716,6 +740,7 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	LoadFileTree: "Files",
 	ReadFile: "Files",
 	SearchFiles: "Files",
+	SearchContent: "Files",
 	OpenExternal: "Files",
 	RefreshChanges: "Changes",
 	SelectChangeScope: "Changes",

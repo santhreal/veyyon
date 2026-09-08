@@ -93,6 +93,7 @@ const ACTION_ERROR_SCOPES: Record<string, ErrorScope> = {
 	LoadFileTree: "File",
 	ReadFile: "File",
 	SearchFiles: "File",
+	SearchContent: "File",
 	OpenExternal: "File",
 	RefreshChanges: "Change",
 	SelectChangeScope: "Change",

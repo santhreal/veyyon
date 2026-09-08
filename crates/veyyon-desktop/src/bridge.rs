@@ -33,12 +33,13 @@ pub enum ActionClassification {
 #[must_use]
 pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 	match kind {
-		// Ephemeral read-only queries and inspectors (19 actions)
+		// Ephemeral read-only queries and inspectors (20 actions)
 		HostActionKind::ListSessions
 		| HostActionKind::LoadTranscript
 		| HostActionKind::LoadFileTree
 		| HostActionKind::ReadFile
 		| HostActionKind::SearchFiles
+		| HostActionKind::SearchContent
 		| HostActionKind::RefreshChanges
 		| HostActionKind::RefreshProcesses
 		| HostActionKind::ProcessLogs

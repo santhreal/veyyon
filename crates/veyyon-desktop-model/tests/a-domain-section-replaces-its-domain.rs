@@ -17,12 +17,12 @@
 use strum::IntoEnumIterator as _;
 use veyyon_desktop_model::{
 	AgentView, AuthFlowState, AuthFlowView, ChangeScope, ChangeStatus, ChangedFile, ChangesView,
-	ContextBreakdownView, ContextCategory, ExportView, FileContentView, FileKind, FileNode,
-	FileTreeView, HostEvent, InputModality, KeybindingView, McpServerStatus, McpServerView,
-	McpToolResultView, ModelRef, ModelView, ModelsView, ProcessView, ProviderView,
-	SearchResultsView, SessionId, SettingEntry, SettingKind, SettingsView, SnapshotSection,
-	SnapshotSectionKind, Store, TerminalStatus, TerminalView, ThemeView, ThemesView, UsageTotals,
-	UsageView, reduce,
+	ContentMatch, ContentMatchesView, ContextBreakdownView, ContextCategory, ExportView,
+	FileContentView, FileKind, FileNode, FileTreeView, HostEvent, InputModality, KeybindingView,
+	McpServerStatus, McpServerView, McpToolResultView, ModelRef, ModelView, ModelsView, ProcessView,
+	ProviderView, SearchResultsView, SessionId, SettingEntry, SettingKind, SettingsView,
+	SnapshotSection, SnapshotSectionKind, Store, TerminalStatus, TerminalView, ThemeView,
+	ThemesView, UsageTotals, UsageView, reduce,
 };
 
 fn changed(path: &str, status: ChangeStatus) -> ChangedFile {
@@ -61,6 +61,21 @@ fn search(query: &str, paths: &[&str]) -> SnapshotSection {
 	SnapshotSection::SearchResults(SearchResultsView {
 		query:     query.into(),
 		paths:     paths.iter().map(|p| (*p).to_owned()).collect(),
+		truncated: false,
+	})
+}
+
+fn content_matches(query: &str, lines: &[(&str, u32)]) -> SnapshotSection {
+	SnapshotSection::ContentMatches(ContentMatchesView {
+		query:     query.into(),
+		matches:   lines
+			.iter()
+			.map(|(path, line)| ContentMatch {
+				path:    (*path).to_owned(),
+				line:    *line,
+				preview: format!("// {query}"),
+			})
+			.collect(),
 		truncated: false,
 	})
 }
@@ -278,6 +293,10 @@ fn pair(kind: SnapshotSectionKind) -> Option<[SnapshotSection; 2]> {
 		SnapshotSectionKind::SearchResults => {
 			[search("foo", &["a.rs"]), search("bar", &["b.rs", "c.rs"])]
 		},
+		SnapshotSectionKind::ContentMatches => [
+			content_matches("foo", &[("a.rs", 3)]),
+			content_matches("bar", &[("b.rs", 9), ("c.rs", 12)]),
+		],
 		SnapshotSectionKind::Terminals => [
 			terminal("t1", TerminalStatus::Running),
 			terminal("t2", TerminalStatus::Exited { code: 0 }),

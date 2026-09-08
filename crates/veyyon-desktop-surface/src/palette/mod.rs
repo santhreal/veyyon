@@ -11,6 +11,8 @@ mod rank;
 mod render;
 pub mod rows;
 
+use veyyon_desktop_model::Capability;
+
 pub use self::{matcher::*, modes::*, render::*, rows::*};
 use crate::{
 	Intent,
@@ -158,20 +160,22 @@ impl PaletteState {
 					marks.push("reasoning");
 				}
 				items.push(PaletteItem {
-					id:       items.len() as u64 + 1,
-					title:    option.name.clone(),
+					id:         items.len() as u64 + 1,
+					title:      option.name.clone(),
 					// The heading above states the provider and the title states
 					// the name, so a second line is drawn only for an id neither
 					// of them has already stated.
-					subtitle: (option.name != option.choice.model).then(|| option.choice.model.clone()),
-					group:    Some(provider.to_owned()),
+					subtitle:   (option.name != option.choice.model)
+						.then(|| option.choice.model.clone()),
+					group:      Some(provider.to_owned()),
 					// The heading holds the provider and the row holds the id, so
 					// the qualified name is a query the row answers without
 					// drawing it twice.
-					search:   Some(format!("{provider}/{}", option.choice.model)),
-					badge:    None,
-					meta:     PaletteMeta::note(&marks),
-					kind:     PaletteItemKind::Command {
+					search:     Some(format!("{provider}/{}", option.choice.model)),
+					badge:      None,
+					meta:       PaletteMeta::note(&marks),
+					capability: Some(Capability::Models),
+					kind:       PaletteItemKind::Command {
 						intent: Box::new(Intent::SelectModel(option.choice.clone())),
 					},
 				});

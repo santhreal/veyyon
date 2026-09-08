@@ -25,6 +25,7 @@ mod overlay;
 mod panel;
 mod queue;
 mod run_bar;
+mod submission;
 mod transcript;
 use std::collections::HashMap;
 

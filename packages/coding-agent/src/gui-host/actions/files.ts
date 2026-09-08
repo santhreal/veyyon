@@ -1,7 +1,7 @@
 import type { Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { FileType, fuzzyFind, type GlobMatch, glob, listWorkspace } from "@veyyon/natives";
+import { FileType, fuzzyFind, type GlobMatch, GrepOutputMode, glob, grep, listWorkspace } from "@veyyon/natives";
 import { errorMessage } from "@veyyon/utils";
 import { openPath } from "../../utils/open";
 import type { FileKind, FileNode } from "../wire";
@@ -12,6 +12,10 @@ export const FILE_TREE_MAX_ENTRIES = 5000;
 export const READ_FILE_MAX_BYTES = 512 * 1024;
 export const BINARY_DETECTION_BUFFER_BYTES = 8 * 1024;
 export const SEARCH_FILES_MAX_RESULTS = 100;
+export const SEARCH_CONTENT_MAX_MATCHES = 200;
+export const SEARCH_CONTENT_MAX_PER_FILE = 20;
+export const SEARCH_CONTENT_MAX_COLUMNS = 240;
+export const SEARCH_CONTENT_TIMEOUT_MS = 5_000;
 
 export function isWithinWorkspace(cwd: string, targetPath: string): boolean {
 	const rel = path.relative(cwd, targetPath);
@@ -336,6 +340,64 @@ const handleSearchFiles: ActionHandler<SearchFilesPayload | undefined> = async (
 	}
 };
 
+interface SearchContentPayload {
+	query?: string;
+}
+
+/**
+ * Searches the workspace for a literal string and reports the lines that
+ * carry it. The query is taken literally, since it comes from a palette a
+ * user types a phrase into rather than a regular expression: an unescaped
+ * `(` or `*` would otherwise fail the pattern or match something else.
+ */
+const handleSearchContent: ActionHandler<SearchContentPayload | undefined> = async (ctx, payload) => {
+	const query = typeof payload?.query === "string" ? payload.query.trim() : "";
+	if (query.length === 0) {
+		ctx.reply.failure({
+			scope: "File",
+			code: "INVALID_ARGUMENTS",
+			message: "SearchContent requires a non-empty query parameter",
+			retryable: false,
+		});
+		return;
+	}
+
+	try {
+		const result = await grep({
+			pattern: query.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`),
+			path: ctx.cwd,
+			ignoreCase: true,
+			hidden: false,
+			gitignore: true,
+			mode: GrepOutputMode.Content,
+			maxCount: SEARCH_CONTENT_MAX_MATCHES + 1,
+			maxCountPerFile: SEARCH_CONTENT_MAX_PER_FILE,
+			maxColumns: SEARCH_CONTENT_MAX_COLUMNS,
+			timeoutMs: SEARCH_CONTENT_TIMEOUT_MS,
+		});
+		const truncated = result.matches.length > SEARCH_CONTENT_MAX_MATCHES;
+		ctx.reply.snapshot({
+			ContentMatches: {
+				query,
+				matches: result.matches.slice(0, SEARCH_CONTENT_MAX_MATCHES).map(match => ({
+					path: match.path.replaceAll("\\", "/"),
+					line: match.lineNumber,
+					preview: match.line.trimEnd(),
+				})),
+				truncated,
+			},
+		});
+		ctx.reply.success();
+	} catch (error) {
+		ctx.reply.failure({
+			scope: "File",
+			code: "SEARCH_FAILED",
+			message: errorMessage(error),
+			retryable: true,
+		});
+	}
+};
+
 interface OpenExternalPayload {
 	path?: string;
 }
@@ -391,5 +453,6 @@ export const filesActionHandlers: ActionHandlersMap = {
 	LoadFileTree: handleLoadFileTree as ActionHandler<never>,
 	ReadFile: handleReadFile as ActionHandler<never>,
 	SearchFiles: handleSearchFiles as ActionHandler<never>,
+	SearchContent: handleSearchContent as ActionHandler<never>,
 	OpenExternal: handleOpenExternal as ActionHandler<never>,
 };

@@ -6,6 +6,8 @@
 
 use strum::EnumIter;
 
+use crate::Intent;
+
 /// Operational mode of the command palette (§5.8).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter)]
 pub enum PaletteMode {
@@ -54,5 +56,20 @@ impl PaletteMode {
 	#[must_use]
 	pub const fn supports_ascend(self) -> bool {
 		matches!(self, Self::Browse)
+	}
+
+	/// The intent a keystroke in this mode reports. A mode whose rows are the
+	/// host's answer to what was typed reports a lookup, so the host searches
+	/// again; every other mode ranks the rows the window already holds, which
+	/// it answers itself without asking (§5.8).
+	#[must_use]
+	pub const fn query_intent(self, query: String) -> Intent {
+		match self {
+			Self::Files => Intent::FindFile(query),
+			Self::ContentSearch => Intent::FindText(query),
+			Self::Commands | Self::Sessions | Self::Browse | Self::Models => {
+				Intent::PaletteQuery(query)
+			},
+		}
 	}
 }

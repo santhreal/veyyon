@@ -132,6 +132,7 @@ impl SceneRegistry {
 			("opening-line/rest", "opening-line"),
 			("run-bar/rest", "run-bar"),
 			("palette/rest", "palette"),
+			("palette/content-search", "palette"),
 			("settings-row/rest", "settings-row"),
 			("shell/auth-needs-secret", "shell"),
 			("shell/auth-awaiting-external-url", "shell"),
