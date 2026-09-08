@@ -84,7 +84,7 @@ impl PaletteState {
 					row.title.clone(),
 					row.subtitle.clone(),
 					row.badge,
-					Some(section.label().to_string()),
+					Some(PaletteMeta::Note(section.label().to_string())),
 				));
 			}
 		}
@@ -118,33 +118,67 @@ impl PaletteState {
 		}
 	}
 
-	/// Creates a palette state listing the host's model catalog, the current
-	/// model first (§5.4). Choosing a row asks the host to select that model.
+	/// Creates a palette state listing the host's model catalog under a heading
+	/// per provider, the provider holding the model in effect first and that
+	/// model first within it (§5.4). Choosing a row asks the host to select it.
 	#[must_use]
 	pub fn from_models(model: &crate::composer::ModelControl) -> Self {
-		let mut items: Vec<PaletteItem> = model
-			.options
-			.iter()
-			.enumerate()
-			.map(|(index, option)| PaletteItem {
-				id:       index as u64 + 1,
-				title:    option.name.clone(),
-				subtitle: Some(format!("{}/{}", option.choice.provider, option.choice.model)),
-				badge:    None,
-				meta:     option.reasoning.then(|| "reasoning".to_string()),
-				kind:     PaletteItemKind::Command {
-					intent: Box::new(Intent::SelectModel(option.choice.clone())),
-				},
-			})
-			.collect();
+		let mut providers: Vec<&str> = Vec::new();
+		for option in &model.options {
+			if !providers.contains(&option.choice.provider.as_str()) {
+				providers.push(&option.choice.provider);
+			}
+		}
+		// The provider holding the model in effect leads, so the operator's own
+		// account is the first heading rather than whichever the host listed.
 		if let Some(current) = &model.current
-			&& let Some(position) = model
+			&& let Some(position) = providers
+				.iter()
+				.position(|provider| *provider == current.provider.as_str())
+		{
+			let held = providers.remove(position);
+			providers.insert(0, held);
+		}
+		let mut items: Vec<PaletteItem> = Vec::new();
+		for provider in providers {
+			let mut group: Vec<&crate::composer::ModelOption> = model
 				.options
 				.iter()
-				.position(|option| option.choice == *current)
-		{
-			let active = items.remove(position);
-			items.insert(0, active);
+				.filter(|option| option.choice.provider == provider)
+				.collect();
+			if let Some(current) = &model.current
+				&& let Some(position) = group.iter().position(|option| option.choice == *current)
+			{
+				let active = group.remove(position);
+				group.insert(0, active);
+			}
+			for option in group {
+				let current = model
+					.current
+					.as_ref()
+					.is_some_and(|choice| *choice == option.choice);
+				let mut marks: Vec<&str> = Vec::new();
+				if current {
+					marks.push("in effect");
+				}
+				if option.reasoning {
+					marks.push("reasoning");
+				}
+				items.push(PaletteItem {
+					id:       items.len() as u64 + 1,
+					title:    option.name.clone(),
+					// The heading above states the provider and the title states
+					// the name, so a second line is drawn only for an id neither
+					// of them has already stated.
+					subtitle: (option.name != option.choice.model).then(|| option.choice.model.clone()),
+					group:    Some(provider.to_owned()),
+					badge:    None,
+					meta:     PaletteMeta::note(&marks),
+					kind:     PaletteItemKind::Command {
+						intent: Box::new(Intent::SelectModel(option.choice.clone())),
+					},
+				});
+			}
 		}
 		Self {
 			query: String::new(),
@@ -156,6 +190,49 @@ impl PaletteState {
 			notice: None,
 			route: None,
 		}
+	}
+
+	/// The first row a list can draw and still reach `selected` inside `room`
+	/// pixels, counting the `header_height` each group change costs and holding
+	/// the eight-row window the surface pages by.
+	///
+	/// The walk starts at the selected row, so the selection is always one of
+	/// the rows drawn however many headings the rows above it carry.
+	#[must_use]
+	pub fn window_start(
+		items: &[&PaletteItem],
+		selected: usize,
+		room: f32,
+		row_height: f32,
+		header_height: f32,
+	) -> usize {
+		if items.is_empty() {
+			return 0;
+		}
+		let group = |index: usize| items[index].group.as_deref();
+		let top = |index: usize| {
+			if group(index).is_some() {
+				header_height
+			} else {
+				0.0
+			}
+		};
+		let selected = selected.min(items.len() - 1);
+		let mut start = selected;
+		let mut rows = row_height;
+		while start > 0 && selected - start < 7 {
+			let above = start - 1;
+			let mut next = rows + row_height;
+			if group(start) != group(above) {
+				next += header_height;
+			}
+			if next + top(above) > room {
+				break;
+			}
+			rows = next;
+			start = above;
+		}
+		start
 	}
 
 	/// Updates the search query and resets selection index to 0.

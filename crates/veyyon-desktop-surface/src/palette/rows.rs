@@ -1,16 +1,51 @@
-//! Palette result items and row rendering (§5.8).
+//! Palette result items and the marks a row carries beside its text (§5.8).
 //!
-//! Result rows reuse the queue rail's 36px line row implementation directly
-//! to ensure visual consistency and shared geometry across surfaces.
-use veyyon_desktop_kit::TokenSet;
-use veyyon_desktop_tokens::QueueSurfaceTokens;
-use veyyon_gpui::{Context, IntoElement};
+//! A row states its title and its description in the two lines a 36px result
+//! row holds. What is left over rides in the row's slots: the state a session
+//! is in as a leading dot, and the chord that runs a command, or a one-word
+//! note about the row, at the trailing edge.
 
-use crate::{
-	Intent, ShellView,
-	model::{Badge, Row, Section},
-	queue::rows::line_row,
-};
+use crate::{Intent, keymap::command::Command, model::Badge};
+
+/// The mark a row carries at its trailing edge.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PaletteMeta {
+	/// The command whose chord the row states, resolved against the active
+	/// keymap when the row is drawn so an operator override is what shows.
+	Chord(Command),
+	/// A word about the row itself: the partition a session sits in, the kind
+	/// of a browse entry, whether a model reasons or is the one in effect.
+	Note(String),
+}
+
+impl PaletteMeta {
+	/// A note built from parts, joined the way a row's meta reads.
+	#[must_use]
+	pub fn note(parts: &[&str]) -> Option<Self> {
+		let joined = parts.join(" · ");
+		(!joined.is_empty()).then_some(Self::Note(joined))
+	}
+
+	/// The chord this mark states, read from the active keymap. A command an
+	/// operator rebound answers to both chords, and the row states theirs,
+	/// since the shipped one is not what they chose. A note states no chord.
+	#[must_use]
+	pub fn chord(&self, keymap: &crate::keymap::Keymap) -> Option<String> {
+		let Self::Chord(command) = self else {
+			return None;
+		};
+		let bound: Vec<crate::keymap::KeymapRow> = keymap
+			.rows()
+			.into_iter()
+			.filter(|row| row.command == *command)
+			.collect();
+		bound
+			.iter()
+			.find(|row| row.overridden)
+			.or_else(|| bound.first())
+			.map(|row| row.chord.clone())
+	}
+}
 
 /// Specific classification and payload for an item in the palette.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,10 +75,15 @@ pub struct PaletteItem {
 	pub title:    String,
 	/// Secondary description or path text.
 	pub subtitle: Option<String>,
+	/// The heading this row sits under, for a list the surface groups. Rows
+	/// sharing a heading are contiguous, and the heading is drawn once above
+	/// the first of them.
+	pub group:    Option<String>,
 	/// Visual state badge mapped to a status dot.
 	pub badge:    Option<Badge>,
-	/// Key chord hint or file metadata shown at the right edge.
-	pub meta:     Option<String>,
+	/// The chord that runs the row, or a word about the row itself, drawn at
+	/// its trailing edge.
+	pub meta:     Option<PaletteMeta>,
 	/// Target action classification.
 	pub kind:     PaletteItemKind,
 }
@@ -51,13 +91,19 @@ pub struct PaletteItem {
 impl PaletteItem {
 	/// Creates a command palette item.
 	#[must_use]
-	pub fn command(id: u64, title: impl Into<String>, intent: Intent, chord: Option<&str>) -> Self {
+	pub fn command(
+		id: u64,
+		title: impl Into<String>,
+		intent: Intent,
+		chord: Option<Command>,
+	) -> Self {
 		Self {
 			id,
 			title: title.into(),
 			subtitle: None,
+			group: None,
 			badge: None,
-			meta: chord.map(ToString::to_string),
+			meta: chord.map(PaletteMeta::Chord),
 			kind: PaletteItemKind::Command { intent: Box::new(intent) },
 		}
 	}
@@ -69,12 +115,13 @@ impl PaletteItem {
 		title: impl Into<String>,
 		subtitle: impl Into<String>,
 		badge: Option<Badge>,
-		meta: Option<String>,
+		meta: Option<PaletteMeta>,
 	) -> Self {
 		Self {
 			id,
 			title: title.into(),
 			subtitle: Some(subtitle.into()),
+			group: None,
 			badge,
 			meta,
 			kind: PaletteItemKind::Session { id },
@@ -89,6 +136,7 @@ impl PaletteItem {
 			id,
 			title: p.clone(),
 			subtitle: None,
+			group: None,
 			badge: None,
 			meta: None,
 			kind: PaletteItemKind::File { path: p },
@@ -103,33 +151,10 @@ impl PaletteItem {
 			id,
 			title: p.clone(),
 			subtitle: None,
+			group: None,
 			badge: None,
-			meta: Some("Folder".to_string()),
+			meta: Some(PaletteMeta::Note("Folder".to_string())),
 			kind: PaletteItemKind::Directory { path: p },
 		}
 	}
-
-	/// Converts this palette item into a queue `Row` for line rendering.
-	#[must_use]
-	pub fn to_row(&self) -> Row {
-		Row {
-			id:       self.id,
-			title:    self.title.clone(),
-			subtitle: self.subtitle.clone().unwrap_or_default(),
-			badge:    self.badge,
-			meta:     self.meta.clone(),
-		}
-	}
-}
-
-/// Renders a palette result row using the queue's 36px line row implementation
-/// (§5.8).
-pub fn palette_line_row(
-	row: &Row,
-	selected: bool,
-	geometry: &QueueSurfaceTokens,
-	tokens: &TokenSet,
-	cx: &Context<ShellView>,
-) -> impl IntoElement {
-	line_row(row, Section::Live, selected, selected, 0.0, geometry, tokens, Some(cx.weak_entity()))
 }

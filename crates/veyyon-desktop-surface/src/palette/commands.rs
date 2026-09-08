@@ -54,9 +54,14 @@ impl ComposerCommand {
 #[must_use]
 pub fn command_items() -> Vec<PaletteItem> {
 	let mut items: Vec<_> = [
-		("/new", Intent::NewSession, Command::NewSession.label(), Some("Cmd/Ctrl N")),
-		("/terminal", Intent::SetDrawer { open: true }, "Open terminal drawer", Some("Cmd/Ctrl J")),
-		("/abort", Intent::AbortTurn, Command::AbortTurn.label(), Some("Cmd/Ctrl .")),
+		("/new", Intent::NewSession, Command::NewSession.label(), Some(Command::NewSession)),
+		(
+			"/terminal",
+			Intent::SetDrawer { open: true },
+			"Open terminal drawer",
+			Some(Command::ToggleDrawer),
+		),
+		("/abort", Intent::AbortTurn, Command::AbortTurn.label(), Some(Command::AbortTurn)),
 		("/account", Intent::Navigate(SurfaceRoute::Account), "Accounts and sign-in", None),
 		("/settings", Intent::Navigate(SurfaceRoute::Settings), "Preferences and appearance", None),
 	]
@@ -94,6 +99,16 @@ pub fn command_items() -> Vec<PaletteItem> {
 		items.push(item);
 	}
 	for command in ComposerCommand::iter() {
+		// The chord a command answers to, for the four that have one. Steering
+		// and queueing are what the composer's own arrow sends, so neither has
+		// a chord of its own to state.
+		let chord = match command {
+			ComposerCommand::AttachFiles => Some(Command::AttachFile),
+			ComposerCommand::Models => Some(Command::ModelPicker),
+			ComposerCommand::Effort => Some(Command::ThinkingLevel),
+			ComposerCommand::QueueMode => Some(Command::ToggleQueueMode),
+			ComposerCommand::Steer | ComposerCommand::Queue => None,
+		};
 		let description = match command {
 			ComposerCommand::AttachFiles => Command::AttachFile.label(),
 			ComposerCommand::Models => Command::ModelPicker.label(),
@@ -106,8 +121,9 @@ pub fn command_items() -> Vec<PaletteItem> {
 			id:       items.len() as u64 + 1,
 			title:    command.name().to_owned(),
 			subtitle: Some(description.to_owned()),
+			group:    None,
 			badge:    None,
-			meta:     None,
+			meta:     chord.map(super::PaletteMeta::Chord),
 			kind:     PaletteItemKind::Composer { command },
 		});
 	}
