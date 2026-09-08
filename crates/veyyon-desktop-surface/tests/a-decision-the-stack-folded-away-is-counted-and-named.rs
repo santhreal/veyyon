@@ -154,7 +154,7 @@ fn fold_lines(captured: &Captured, row: BoxBounds, lines: usize, line: f32) -> V
 		.into_iter()
 		.filter(|run| {
 			run.top >= row.top - 0.5
-				&& run.top <= row.top + line * lines as f32
+				&& run.top <= line.mul_add(lines as f32, row.top)
 				&& run.left >= row.left - 0.5
 				&& run.right <= row.right + 0.5
 		})
