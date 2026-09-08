@@ -3,6 +3,7 @@ import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import type { ToolViewContext } from "@veyyon/view";
 import type { AgentSession } from "../session/agent-session";
+import type { FileMentionMessage } from "../session/messages";
 import { decodeStreamedToolArgs, streamingStringKeysForTool } from "../tools/core/streamed-tool-args";
 import { base64DecodedBytes } from "../utils/video-loading";
 import { buildToolCallPresentation, buildToolResultPresentation, type PresentationLedger } from "./presentation";
@@ -144,9 +145,62 @@ function mapMessageRole(role: string): MessageRole {
 		case "developer":
 		case "system":
 			return "Developer";
+		case "fileMention":
+			return "FileMention";
 		default:
 			return "Custom";
 	}
+}
+
+type MentionFile = FileMentionMessage["files"][number];
+
+/**
+ * Why a mentioned file arrived without its body, in the words the transcript
+ * shows. Keyed by the union, so a new skip reason fails the type check here
+ * rather than reaching the desktop as a file that looks readable.
+ */
+const MENTION_UNAVAILABLE: Record<NonNullable<MentionFile["skippedReason"]>, string> = {
+	tooLarge: "too large to read",
+	binary: "binary file",
+};
+
+function mentionUnavailableReason(file: MentionFile): string | null {
+	if (file.skippedReason) return MENTION_UNAVAILABLE[file.skippedReason];
+	// A collab replica is sent `hasContent` and no body, so an empty string
+	// here means the body was withheld rather than that the file was empty.
+	return file.contentNotReplicated === true ? "content not replicated" : null;
+}
+
+/**
+ * The files an `@path` mention read, as one block each.
+ *
+ * A mention is recorded as its own message carrying `files` rather than
+ * `content`, so a client reading `content` alone states nothing about a file
+ * the model was handed: the prompt names a path, the answer describes what is
+ * in it, and the transcript shows neither. `has_content` is true only when a
+ * body was read, which is what separates an empty file from one skipped for
+ * size, one refused as binary, and one whose body a replica never received.
+ */
+function mapFileMentions(message: AgentMessage): ContentBlock[] {
+	const files: readonly MentionFile[] =
+		"files" in message && Array.isArray(message.files) ? message.files : [];
+	const blocks: ContentBlock[] = [];
+	for (const file of files) {
+		if (typeof file?.path !== "string") continue;
+		const unavailable = mentionUnavailableReason(file);
+		const image = file.image?.data;
+		blocks.push({
+			FileMention: {
+				path: file.path,
+				has_content: unavailable === null && typeof file.content === "string" && file.content.length > 0,
+				lines: typeof file.lineCount === "number" ? file.lineCount : null,
+				bytes: typeof file.byteSize === "number" ? file.byteSize : null,
+				unavailable_reason: unavailable,
+				image: typeof image === "string" ? Array.from(Buffer.from(image, "base64")) : null,
+			},
+		});
+	}
+	return blocks;
 }
 
 function mapUsage(usage: unknown): UsageTotals | null {
@@ -191,7 +245,12 @@ export function agentMessageToTranscriptEntry(
 				}
 			: null;
 
-	let content = "content" in message ? mapContentBlocks(message.content, options) : [];
+	let content =
+		message.role === "fileMention"
+			? mapFileMentions(message)
+			: "content" in message
+				? mapContentBlocks(message.content, options)
+				: [];
 	if (message.role === "toolResult") {
 		const text: string[] = [];
 		const media: ContentBlock[] = [];
