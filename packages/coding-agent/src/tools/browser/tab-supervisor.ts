@@ -135,6 +135,8 @@ export interface AcquireTabOptions {
 	 * dispose. Optional — omitting it opts the tab out of session-scoped reap.
 	 */
 	ownerSessionId?: string;
+	context?: string;
+	storageStatePath?: string;
 }
 
 export interface AcquireTabResult {
@@ -678,6 +680,8 @@ async function buildInitPayload(browser: PuppeteerBrowserHandle, opts: AcquireTa
 			url: opts.url,
 			waitUntil: opts.waitUntil,
 			timeoutMs: opts.timeoutMs,
+			contextName: opts.context,
+			storageStatePath: opts.storageStatePath,
 		};
 	}
 	const page = await pickElectronTarget(browser.browser, opts.target);

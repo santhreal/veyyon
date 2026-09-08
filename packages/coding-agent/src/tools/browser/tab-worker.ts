@@ -8,6 +8,7 @@ import { bestEffort, optionalResult } from "@veyyon/utils/discarded-fault";
 import type { HTMLElement } from "linkedom";
 import type {
 	Browser,
+	BrowserContext,
 	CDPSession,
 	Dialog,
 	ElementHandle,
@@ -50,11 +51,14 @@ import {
 import { cloneSafe, RunOutput } from "./run-output";
 import { guardTabApi } from "./tab-api-guard";
 import type {
+	CookieData,
 	Observation,
 	ObservationEntry,
+	OriginStorageData,
 	ReadyInfo,
 	ScreenshotResult,
 	SessionSnapshot,
+	StorageStateData,
 	TabRunErrorPayload,
 	TabWorkerInbound,
 	TabWorkerTransport,
@@ -249,6 +253,8 @@ export interface TabApi {
 	}): Promise<HTTPResponse | null>;
 	id(n: number): Promise<ActionableHandle>;
 	ref(id: string): Promise<ActionableHandle>;
+	storageState(opts?: { path?: string }): Promise<StorageStateData>;
+	loadStorageState(stateOrPath: string | StorageStateData): Promise<void>;
 }
 
 export function normalizeSelector(selector: string): string {
@@ -309,16 +315,39 @@ export function toActionableHandle(handle: ElementHandle): ActionableHandle {
 	return enriched;
 }
 
-/** Focus, clear any existing value, then retype — shared by `tab.fill(aria-ref)` and enriched handles. */
+/** Focus, set value via property descriptor setter, and dispatch synthetic input + change events for framework compatibility. */
 async function fillViaHandle(handle: ElementHandle, value: string, signal?: AbortSignal): Promise<void> {
 	await untilAborted(signal, () =>
-		handle.evaluate(el => {
-			const node = el as unknown as { value?: string; focus?: () => void };
-			node.focus?.();
-			if ("value" in node) node.value = "";
-		}),
+		handle.evaluate((el, val) => {
+			const target = el as unknown as {
+				focus?: () => void;
+				value?: string;
+				dispatchEvent?: (event: unknown) => boolean;
+			};
+			target.focus?.();
+			const win = globalThis as unknown as {
+				HTMLInputElement?: { prototype: object };
+				HTMLTextAreaElement?: { prototype: object };
+				HTMLSelectElement?: { prototype: object };
+				Event: new (type: string, eventInitDict?: { bubbles?: boolean; cancelable?: boolean }) => unknown;
+			};
+			const proto = Object.getPrototypeOf(target);
+			const descriptor =
+				Object.getOwnPropertyDescriptor(proto, "value") ||
+				(win.HTMLInputElement
+					? Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value")
+					: undefined);
+			if (descriptor?.set) {
+				descriptor.set.call(target, val);
+			} else {
+				target.value = val;
+			}
+			if (win.Event && target.dispatchEvent) {
+				target.dispatchEvent(new win.Event("input", { bubbles: true, cancelable: true }));
+				target.dispatchEvent(new win.Event("change", { bubbles: true, cancelable: true }));
+			}
+		}, value),
 	);
-	await untilAborted(signal, () => handle.type(value, { delay: 0 }));
 }
 
 /**
@@ -652,6 +681,7 @@ export function describeInflight(inflight: Map<number, InflightOp>): string {
 export class WorkerCore {
 	#transport: TabWorkerTransport;
 	#browser?: Browser;
+	#browserContext?: BrowserContext;
 	#page?: Page;
 	#targetId?: string;
 	#elementCache = new Map<number, ElementHandle>();
@@ -715,11 +745,60 @@ export class WorkerCore {
 				protocolTimeout: BROWSER_PROTOCOL_TIMEOUT_MS,
 			});
 			if (payload.mode === "headless") {
-				this.#page = await this.#browser.newPage();
+				if (payload.contextName && payload.contextName !== "default") {
+					this.#browserContext = await this.#browser.createBrowserContext();
+					this.#page = await this.#browserContext.newPage();
+				} else {
+					this.#page = await this.#browser.newPage();
+				}
 				this.#observeDialogs();
 				await applyStealthPatches(this.#browser, this.#page, { browserSession: null, override: null });
 				await applyViewport(this.#page, payload.viewport);
 				if (payload.dialogs) this.#applyDialogPolicy(payload.dialogs);
+
+				if (payload.storageStatePath) {
+					const targetPath = resolveToCwd(payload.storageStatePath, process.cwd());
+					try {
+						const raw = await fs.promises.readFile(targetPath, "utf-8");
+						const state = JSON.parse(raw) as StorageStateData;
+						if (Array.isArray(state.cookies) && state.cookies.length > 0) {
+							await this.#page.setCookie(...(state.cookies as Parameters<Page["setCookie"]>));
+						}
+						if (Array.isArray(state.origins) && state.origins.length > 0) {
+							await this.#page.evaluateOnNewDocument(origins => {
+								const win = globalThis as unknown as {
+									location?: { origin: string };
+									localStorage: Storage;
+									sessionStorage: Storage;
+								};
+								for (const entry of origins) {
+									if (win.location?.origin === entry.origin) {
+										if (Array.isArray(entry.localStorage)) {
+											for (const item of entry.localStorage) {
+												try {
+													win.localStorage.setItem(item.name, item.value);
+												} catch {}
+											}
+										}
+										if (Array.isArray(entry.sessionStorage)) {
+											for (const item of entry.sessionStorage) {
+												try {
+													win.sessionStorage.setItem(item.name, item.value);
+												} catch {}
+											}
+										}
+									}
+								}
+							}, state.origins);
+						}
+					} catch (err) {
+						this.#log("warn", "Failed to preload storage state on tab open", {
+							path: targetPath,
+							error: errorMessage(err),
+						});
+					}
+				}
+
 				if (payload.url) {
 					await this.#page.goto(payload.url, {
 						// Default to "load" because dev servers with HMR/WS never reach networkidle.
@@ -1261,18 +1340,12 @@ export class WorkerCore {
 					`tab.fill(${JSON.stringify(selector)})`,
 					actionOpMs,
 					async sig => {
-						if (parseAriaRefSelector(selector) !== null) {
-							const handle = await this.#resolveAriaRef(selector);
-							try {
-								await fillViaHandle(handle, value, sig);
-							} finally {
-								await releaseHandle(handle);
-							}
-							return;
+						const handle = await this.#resolveActionHandle(selector, actionOpMs, sig);
+						try {
+							await fillViaHandle(handle, value, sig);
+						} finally {
+							await releaseHandle(handle);
 						}
-						await untilAborted(sig, () =>
-							page.locator(normalizeSelector(selector)).setTimeout(actionOpMs).fill(value, { signal: sig }),
-						);
 					},
 					{ selector, zeroMatchAfterMs: ZERO_MATCH_FAIL_FAST_MS },
 				),
@@ -1383,6 +1456,10 @@ export class WorkerCore {
 			},
 			id: async id => toActionableHandle(await this.#resolveCachedHandle(id)),
 			ref: async id => toActionableHandle(await this.#resolveAriaRef(id)),
+			storageState: opts =>
+				op("tab.storageState()", actionOpMs, sig => this.#getStorageState(opts?.path, sig, session)),
+			loadStorageState: stateOrPath =>
+				op("tab.loadStorageState()", actionOpMs, sig => this.#loadStorageState(stateOrPath, sig, session)),
 		};
 	}
 
@@ -1751,12 +1828,118 @@ export class WorkerCore {
 		if (this.#dialogHandler && page && !page.isClosed()) page.off("dialog", this.#dialogHandler);
 		// The worker is shutting down and reports `closed` below regardless: a page that will not close is either
 		// already closing or belongs to a browser that is going away with it, and the disconnect follows.
+		if (this.#browserContext) {
+			await bestEffort(this.#browserContext.close(), "closing isolated browser context");
+			this.#browserContext = undefined;
+		}
 		if (this.#mode === "headless" && page && !page.isClosed()) {
 			await bestEffort(page.close(), "a page that will not close is already closing or going with its browser");
 		}
 		if (this.#browser?.connected) this.#browser.disconnect();
 		this.#transport.send({ type: "closed" });
 		this.#transport.close();
+	}
+
+	async #getStorageState(
+		filePath?: string,
+		signal?: AbortSignal,
+		session?: SessionSnapshot,
+	): Promise<StorageStateData> {
+		const page = this.#requirePage();
+		return await untilAborted(signal, async () => {
+			const cookies = (await page.cookies()) as CookieData[];
+			const origins = (await page.evaluate(() => {
+				const win = globalThis as unknown as {
+					location?: { origin: string };
+					localStorage: Storage;
+					sessionStorage: Storage;
+				};
+				const origin = win.location?.origin;
+				if (!origin || origin === "null") return [];
+				const localStorageEntries: Array<{ name: string; value: string }> = [];
+				try {
+					for (let i = 0; i < win.localStorage.length; i++) {
+						const key = win.localStorage.key(i);
+						if (key !== null) {
+							localStorageEntries.push({ name: key, value: win.localStorage.getItem(key) ?? "" });
+						}
+					}
+				} catch {}
+				const sessionStorageEntries: Array<{ name: string; value: string }> = [];
+				try {
+					for (let i = 0; i < win.sessionStorage.length; i++) {
+						const key = win.sessionStorage.key(i);
+						if (key !== null) {
+							sessionStorageEntries.push({ name: key, value: win.sessionStorage.getItem(key) ?? "" });
+						}
+					}
+				} catch {}
+				return [{ origin, localStorage: localStorageEntries, sessionStorage: sessionStorageEntries }];
+			})) as OriginStorageData[];
+
+			const data: StorageStateData = {
+				cookies: cookies ?? [],
+				origins: origins ?? [],
+			};
+
+			if (filePath) {
+				const targetPath = resolveToCwd(filePath, session?.cwd ?? process.cwd());
+				await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+				await fs.promises.writeFile(targetPath, JSON.stringify(data, null, 2), "utf-8");
+			}
+
+			return data;
+		});
+	}
+
+	async #loadStorageState(
+		stateOrPath: string | StorageStateData,
+		signal?: AbortSignal,
+		session?: SessionSnapshot,
+	): Promise<void> {
+		const page = this.#requirePage();
+		return await untilAborted(signal, async () => {
+			let state: StorageStateData;
+			if (typeof stateOrPath === "string") {
+				const targetPath = resolveToCwd(stateOrPath, session?.cwd ?? process.cwd());
+				const raw = await fs.promises.readFile(targetPath, "utf-8");
+				state = JSON.parse(raw) as StorageStateData;
+			} else {
+				state = stateOrPath;
+			}
+
+			if (Array.isArray(state.cookies) && state.cookies.length > 0) {
+				await page.setCookie(...(state.cookies as Parameters<Page["setCookie"]>));
+			}
+
+			if (Array.isArray(state.origins) && state.origins.length > 0) {
+				await page.evaluate(origins => {
+					const win = globalThis as unknown as {
+						location?: { origin: string };
+						localStorage: Storage;
+						sessionStorage: Storage;
+					};
+					for (const entry of origins) {
+						if (win.location?.origin === entry.origin) {
+							if (Array.isArray(entry.localStorage)) {
+								for (const item of entry.localStorage) {
+									try {
+										win.localStorage.setItem(item.name, item.value);
+									} catch {}
+								}
+							}
+							if (Array.isArray(entry.sessionStorage)) {
+								for (const item of entry.sessionStorage) {
+									try {
+										win.sessionStorage.setItem(item.name, item.value);
+									} catch {}
+								}
+							}
+						}
+					}
+				}, state.origins);
+			}
+		});
 	}
 
 	#requirePage(): Page {

@@ -146,6 +146,7 @@ describe("a misuse of the tab API", () => {
 			"fill",
 			"goto",
 			"id",
+			"loadStorageState",
 			"press",
 			"ref",
 			"scroll",
