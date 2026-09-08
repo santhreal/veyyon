@@ -7,9 +7,11 @@
 #   2. panel-docked     (the panel inline at the trailing edge, transcript narrowed)
 #   3. panel-draft      (a draft typed while the panel is docked)
 #   4. panel-file       (a file opened from the tree, drawn in the File tab)
-#   5. drawer-open      (the terminal drawer over the session's lower edge)
-#   6. drawer-closed    (the drawer gone, the state under it unchanged)
-#   7. session-restored (the panel closed, the transcript back to full width)
+#   5. panel-after-chord (the panel's tab chord, taken after a press in it)
+#   6. composer-edge-draft (a keystroke after a press in the composer's padding)
+#   7. drawer-open      (the terminal drawer over the session's lower edge)
+#   8. drawer-closed    (the drawer gone, the state under it unchanged)
+#   9. session-restored (the panel closed, the transcript back to full width)
 #
 # What the frames state, asserted here rather than left to a reader:
 #
@@ -17,6 +19,9 @@
 #   leaves the rail alone, and the composer under it still takes a keystroke.
 # - The drawer overlays: it covers the composer, swallows what is typed into
 #   it, and leaves the draft it covered intact when it closes.
+# - A press in the panel puts its own chords on the focus path, so the tab
+#   chord moves the mark in the tab strip, and a press in the composer's
+#   padding leaves the next keystroke in the draft.
 # - Neither leaves anything behind: closing the panel returns the transcript to
 #   the frame it had before it opened.
 #
@@ -25,9 +30,14 @@
 #
 # A three-region take is still between keystrokes for most of its length, and
 # the tree probe below waits on the host for every row it tries, so it declares
-# its own floor the way the other native scenes do:
+# its own floor the way the other native scenes do. Both arms are recorded from
+# one scene, the before arm against a build of the base ref, since a source hold
+# cannot rebuild a compiled executable:
 #
-#   SCENE_MOTION_FLOOR=8 proof/docker/record-native.sh proof/scenes/desktop-workspace-panel.sh
+#   SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh proof/scenes/desktop-workspace-panel.sh
+#   SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
+#     PROOF_NATIVE_BEFORE_BINARY=<base-build> \
+#     proof/docker/record-native.sh proof/scenes/desktop-workspace-panel.sh
 #
 # Sourced by proof/docker/xsession.sh with SCENE_WINDOW, SCENE_NAME, SCENE_OUT
 # and SCENE_LIB already initialized.
