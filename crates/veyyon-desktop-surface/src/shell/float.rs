@@ -126,44 +126,42 @@ pub(super) fn overlay_layer(
 	let content = div()
 		.opacity(frame.opacity)
 		.translate_y(px(frame.offset_y))
-		.capture_any_mouse_down(move |_event, _window, cx| {
-			if !open {
-				cx.stop_propagation();
-			}
-		})
-		.capture_any_mouse_up(move |_event, _window, cx| {
-			if !open {
-				cx.stop_propagation();
-			}
-		})
 		.child(content);
 	if view.palette_input.anchored && retained.is_palette() {
+		let mut popover = div().id("composer-popover");
+		if open {
+			popover = popover
+				// A popover swallows the pointer over its own rect, so a press
+				// in the palette does not also answer a card in the transcript
+				// behind it.
+				.occlude()
+				.on_mouse_down_out(cx.listener(|view, event: &MouseDownEvent, _window, cx| {
+					if event.button == MouseButton::Left {
+						view.close_palette(cx);
+						// The press that dismissed the popover is spent on the
+						// dismissal. Letting it continue would also activate
+						// whatever it landed on, which is a decision the
+						// operator did not make. Only this press is stopped:
+						// the popover is drawn for several frames more while it
+						// fades, and a press during those frames belongs to the
+						// surface underneath.
+						cx.stop_propagation();
+					}
+				}));
+		}
 		Some(
 			deferred(
 				anchored()
 					.position(view.palette_input.anchor.get())
 					.anchor(Anchor::BottomLeft)
 					.snap_to_window_with_margin(margin)
-					.child(
-						div()
-							.id("composer-popover")
-							// A popover swallows the pointer over its own rect,
-							// so a press in the palette does not also answer a
-							// card in the transcript behind it.
-							.occlude()
-							.on_mouse_down_out(cx.listener(|view, event: &MouseDownEvent, _window, cx| {
-								if event.button == MouseButton::Left {
-									view.close_palette(cx);
-								}
-							}))
-							.child(content),
-					),
+					.child(popover.child(content)),
 			)
 			.with_priority(1)
 			.into_any_element(),
 		)
 	} else {
-		Some(overlay_scrim(content, &surface.panels, tokens, cx).into_any_element())
+		Some(overlay_scrim(content, open, &surface.panels, tokens, cx).into_any_element())
 	}
 }
 
