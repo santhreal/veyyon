@@ -39,7 +39,11 @@ if ! native_session_ready finished; then
 fi
 move_px "${COMPOSER_X}" "${COMPOSER_Y}"
 click
-t "Editors: acknowledge this second note in one sentence. Do not call tools."
+# The take needs a second turn in the transcript, not a second long one: asked
+# to acknowledge the note in a sentence, the 1.5B model restated all eighty
+# editors and the reply persisted after the 90s the probe waits, which fails a
+# take whose subject is navigation. One word ends the turn inside the window.
+t "Reply with the single word acknowledged. Do not call tools."
 k "Return"
 if ! native_session_ready finished 4; then
 	abandon_take "native-second-turn-produced" "the second submitted turn did not complete within 90s"
