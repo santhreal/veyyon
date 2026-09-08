@@ -91,12 +91,21 @@ fn page_item(page: SettingsPage) -> PaletteItem {
 }
 
 /// The same back, title and close controls for intermediate groups and leaves.
-pub fn surface_header(route: SurfaceRoute, tokens: &TokenSet, cx: &Context<ShellView>) -> Div {
+///
+/// `back` is the surface the operator descended from, so a route reached
+/// directly draws no back control at all rather than one that opens a surface
+/// that was never visited (§5.8).
+pub fn surface_header(
+	route: SurfaceRoute,
+	back: Option<SurfaceRoute>,
+	tokens: &TokenSet,
+	cx: &Context<ShellView>,
+) -> Div {
 	let mut header = div()
 		.flex()
 		.items_center()
 		.gap(tokens.spacing(SpacingStep::S2));
-	if let Some(parent) = route.parent() {
+	if let Some(parent) = back {
 		header = header.child(
 			Button::new("Back")
 				.id("surface-back")

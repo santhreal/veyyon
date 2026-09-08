@@ -20,6 +20,7 @@ pub(super) fn focused_surface(
 	list_state: &GeneralSettingsListState,
 	fields: &FieldSlots,
 	route: SurfaceRoute,
+	back: Option<SurfaceRoute>,
 	focus: Option<&FocusHandle>,
 	controls: &ControlStates,
 	geometry: &SettingsSurfaceTokens,
@@ -54,12 +55,14 @@ pub(super) fn focused_surface(
 			cx.stop_propagation();
 			cx.notify();
 		}));
-	let container = container.child(surface_header(route, tokens, cx)).child(
-		div()
-			.text_size(tokens.font_size(TextRamp::Small))
-			.text_color(tokens.color(ColorRole::Muted))
-			.child(state.page.description()),
-	);
+	let container = container
+		.child(surface_header(route, back, tokens, cx))
+		.child(
+			div()
+				.text_size(tokens.font_size(TextRamp::Small))
+				.text_color(tokens.color(ColorRole::Muted))
+				.child(state.page.description()),
+		);
 	let is_general = state.page == SettingsPage::General;
 	let mut body_container = div()
 		.id("command-destination-body")

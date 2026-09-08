@@ -5,18 +5,24 @@
 # Records visual evidence for:
 #   1. rail-footer-gear-at-rest   (the footer band with the gear drawn in it)
 #   2. rail-footer-settings-open  (the settings overlay the gear opened)
+#   3. rail-footer-after-escape   (the surface Escape left the window on)
 #
 # WHAT IS MEASURED. §5.2 gives the rail a 36px footer holding one 16px gear,
 # inset at the bottom-left, with no ground and no edge. Each frame is reduced
 # to the inked bounding box inside the footer band crop, and the scene asserts
 # the band holds ink, that the ink is one control's worth of it rather than a
-# strip, that it sits in the leading half of the rail, that pressing it opens
-# the settings overlay, and that Escape returns the window to the frame it was
-# photographed in. Both arms hold every one of those, which is the point: the
-# arms differ in the glyph the binary draws, so the pair is read from the two
-# frames rather than from a pixel count. At the drawn size the two glyphs
-# differ by fewer than twenty lit pixels out of 256, and no count threshold
-# separates them from rasteriser variance.
+# strip, that it starts on the authored inset and centres on the band, that
+# pressing it opens the settings overlay, and that Escape returns the window to
+# the frame it was photographed in.
+#
+# THE TWO PAIRS. The glyph the footer draws is one differential: both arms hold
+# every assertion above, so the pair is read from the frames rather than from a
+# pixel count -- at the drawn size the two glyphs differ by fewer than twenty
+# lit pixels out of 256, and no count threshold separates them from rasteriser
+# variance. Where Escape lands is the other: an executable that ascends through
+# the route table opens the command palette instead of closing the surface the
+# gear opened, which the third frame shows and the printed distance from the
+# at-rest frame states.
 #
 # NOT RECORDED HERE: that the gear survives the rail's narrow widths, which
 # `crates/veyyon-desktop-surface/tests/the-rail-footer-gear-is-reachable-at-every-width-that-draws-a-rail.rs`
@@ -98,19 +104,33 @@ mkdir -p "${PROBE_DIR}"
 footer_ink_box() { # <shot> -> WxH+X+Y of the inked bounding box in the footer band
 	local png="${SCENE_OUT}/${SCENE_NAME}-$1.png"
 	local box
+	# `%@` is the box the image would trim to, in the image's own coordinates,
+	# so it is read off the crop rather than after `-trim`: trimming first
+	# leaves the ink at the origin of what remains and reports every frame at
+	# +0+0, which no placement can fail.
 	box="$(magick "${png}" -crop "${BAND_CROP}" +repage \
-		-fuzz 12% -trim -format '%@' info: 2>/dev/null || true)"
+		-fuzz 12% -format '%@' info: 2>/dev/null || true)"
 	if [ -z "${box}" ]; then
 		abandon_take "footer-band-inked" "no inked pixels in the rail footer band for $1"
 	fi
 	echo "${box}"
 }
 
-# ─── 1. Park The Pointer Off The Footer And Photograph It At Rest ─────────────
-# Away from the gear, so the frame shows the control's rest state rather than
-# the ghost button's hover ground.
+# ─── 1. Empty The Composer And Photograph The Footer At Rest ─────────────────
+# The shared prelude leaves a draft in the composer and the pointer parked on
+# the editor. Clearing the draft is what makes this frame a state of its own,
+# and it leaves the window holding nothing but its chrome, which is the frame
+# the footer is read from. The pointer stays off the gear, so the control is
+# photographed at rest rather than under the ghost button's hover ground.
 move_px "${COMPOSER_EDITOR_X}" "${COMPOSER_EDITOR_Y}"
-pause 0.5
+pause 0.3
+click
+pause 0.3
+k "End"
+for _ in $(seq 1 80); do
+	k "BackSpace"
+done
+pause 0.8
 shot rail-footer-gear-at-rest
 
 BOX="$(footer_ink_box rail-footer-gear-at-rest)"
@@ -122,9 +142,19 @@ if [ "${INK_W}" -gt "${GEAR_BOX_MAX}" ] || [ "${INK_H}" -gt "${GEAR_BOX_MAX}" ];
 	abandon_take "footer-holds-one-control" \
 		"footer ink measures ${INK_W}x${INK_H}px, wider than one ${GEAR_PX}px control with its padding (${GEAR_BOX_MAX}px)"
 fi
-if [ "${INK_X}" -ge $(( BAND_W / 2 )) ]; then
-	abandon_take "footer-gear-is-leading" \
-		"footer ink starts ${INK_X}px into a ${BAND_W}px band, past its leading half"
+# §5.2 insets the control at the footer's leading edge and centres it in the
+# band, both read from the tokens rather than from a remembered pixel: the ink
+# starts no earlier than the authored inset and no later than one glyph past
+# it, and its centre sits on the band's own centre line.
+if [ "${INK_X}" -lt "${FOOTER_INSET}" ] || [ "${INK_X}" -gt $(( FOOTER_INSET + GEAR_PX )) ]; then
+	abandon_take "footer-gear-is-inset" \
+		"footer ink starts ${INK_X}px into the band, off the authored ${FOOTER_INSET}px inset"
+fi
+INK_MID=$(( INK_Y + INK_H / 2 ))
+BAND_MID=$(( BAND_H / 2 ))
+if [ $(( INK_MID > BAND_MID ? INK_MID - BAND_MID : BAND_MID - INK_MID )) -gt 3 ]; then
+	abandon_take "footer-gear-is-centred" \
+		"footer ink centres on row ${INK_MID} of a ${BAND_H}px band, off its ${BAND_MID}px centre"
 fi
 echo "scene: rail footer ink ${INK_W}x${INK_H} at +${INK_X}+${INK_Y} in a ${BAND_W}x${BAND_H} band" >&2
 
@@ -145,9 +175,21 @@ pause 0.5
 shot rail-footer-settings-open
 
 # ─── 3. Escape Returns The Window To The Frame It Was Photographed In ────────
+# The gear opens the settings surface with nothing above it, so Escape closes
+# it (§5.8). The frame is photographed rather than only measured, because the
+# surface an ascent lands on is the other pair this scene records: an arm whose
+# executable ascends through the route table instead lands on the command
+# palette, and the distance printed below is the difference between the two.
 k "Escape"
 pause 1.0
 RETURNED="$(screen_differs_from_frame_pixels_at "${AT_REST}" "${WINDOW_CROP}")"
+shot rail-footer-after-escape
+if [ "${SCENE_ARM:-after}" = "before" ]; then
+	# A baseline that ascends elsewhere would abandon every before take on the
+	# assertion below, so this arm records where it landed and states it.
+	echo "scene: the baseline left ${RETURNED}px differing from the at-rest frame after Escape" >&2
+	return 0
+fi
 if [ "${RETURNED}" -gt "${RETURN_MAX_PIXELS}" ]; then
 	abandon_take "escape-returns-from-settings" \
 		"Escape left ${RETURNED} pixels differing from the at-rest frame, over the ${RETURN_MAX_PIXELS} a settled window allows"

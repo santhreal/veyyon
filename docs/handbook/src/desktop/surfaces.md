@@ -350,8 +350,10 @@ The sidebar Settings gear and `/settings` use the same destination and navigatio
 state.
 
 Groups and focused pages use the same Back, title, and Close header. Back or
-`Escape` returns to the parent group and restores its search text. At the root,
-`Escape` closes the palette. Close dismisses the surface directly.
+`Escape` returns to the surface the previous descent came from and restores its
+search text. A surface opened directly -- the rail footer gear, a slash
+command, a keybinding -- has nothing above it: it draws no Back control, and
+`Escape` closes it. Close dismisses the surface directly.
 Navigation leaves the composer draft and attachments unchanged.
 
 General settings renders viewport-adjacent rows as the list scrolls. Value updates

@@ -95,9 +95,11 @@ pub(super) fn overlay_layer(
 		.mul_add(-2.0, available_height_px)
 		.max(0.0);
 	geometry.max_height_px = geometry.max_height_px.min(max_available_height);
+	let back = view.back_route();
 	let content = match retained {
 		Overlay::Palette(state) => {
-			palette_surface(state, editor, &view.keymap, &geometry, tokens, cx).into_any_element()
+			palette_surface(state, editor, back, &view.keymap, &geometry, tokens, cx)
+				.into_any_element()
 		},
 		Overlay::Settings(state) => {
 			let width = if state.route.is_some() {
@@ -114,6 +116,7 @@ pub(super) fn overlay_layer(
 					state,
 					&view.general_settings_list,
 					&fields,
+					back,
 					Some(&dest_focus),
 					&view.state.controls,
 					&surface.settings,

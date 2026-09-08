@@ -246,6 +246,20 @@ impl ShellView {
 		self.palette_input.focus_search = true;
 	}
 
+	/// The surface an ascent returns to: the one the operator descended from,
+	/// not the route table's parent. A surface reached directly -- the rail
+	/// footer gear, a slash command, a keybinding -- has nothing above it, so
+	/// this is `None` there and `Escape` closes instead of opening a palette
+	/// that was never visited (§5.8).
+	#[must_use]
+	pub fn back_route(&self) -> Option<crate::navigation::SurfaceRoute> {
+		self
+			.palette_input
+			.parents
+			.last()
+			.and_then(PaletteState::route)
+	}
+
 	/// Replaces the visible route without closing or restarting its float
 	/// motion.
 	pub fn navigate_surface(
@@ -253,24 +267,11 @@ impl ShellView {
 		route: crate::navigation::SurfaceRoute,
 		cx: &mut Context<Self>,
 	) {
-		let returning = self
-			.state
-			.overlay
-			.as_ref()
-			.and_then(Overlay::route)
-			.and_then(crate::navigation::SurfaceRoute::parent)
-			== Some(route);
-		let restored = if returning
-			&& self
-				.palette_input
-				.parents
-				.last()
-				.is_some_and(|parent| parent.route() == Some(route))
-		{
+		let returning = self.back_route() == Some(route);
+		let restored = if returning {
 			self.palette_input.parents.pop()
 		} else {
-			if !returning
-				&& let Some(parent) = self.state.overlay.as_ref().and_then(Overlay::as_palette)
+			if let Some(parent) = self.state.overlay.as_ref().and_then(Overlay::as_palette)
 				&& parent.route() != Some(route)
 			{
 				self.palette_input.parents.push(parent.clone());
@@ -313,13 +314,7 @@ impl ShellView {
 			cx.notify();
 			return;
 		}
-		match self
-			.state
-			.overlay
-			.as_ref()
-			.and_then(Overlay::route)
-			.and_then(crate::navigation::SurfaceRoute::parent)
-		{
+		match self.back_route() {
 			Some(parent) => self.navigate_surface(parent, cx),
 			None => self.close_palette(cx),
 		}

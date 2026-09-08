@@ -16,6 +16,7 @@ use crate::{ShellView, keymap::Keymap};
 pub fn palette_surface(
 	state: &PaletteState,
 	editor: Option<Entity<Editor>>,
+	back: Option<crate::navigation::SurfaceRoute>,
 	keymap: &Keymap,
 	geometry: &PaletteSurfaceTokens,
 	tokens: &TokenSet,
@@ -39,7 +40,7 @@ pub fn palette_surface(
 			div()
 				.px(inset)
 				.py(tokens.spacing(SpacingStep::S2))
-				.child(crate::navigation::surface_header(route, tokens, cx)),
+				.child(crate::navigation::surface_header(route, back, tokens, cx)),
 		);
 	}
 	let input = input.child(search);
@@ -162,17 +163,11 @@ pub fn palette_surface(
 		.text_size(tokens.font_size(TextRamp::Micro))
 		.text_color(tokens.color(ColorRole::Muted))
 		.child("↑↓ Select · Enter Confirm")
-		.child(
-			if state
-				.route
-				.and_then(crate::navigation::SurfaceRoute::parent)
-				.is_some()
-			{
-				"Esc Back"
-			} else {
-				"Esc Close"
-			},
-		);
+		.child(if back.is_some() {
+			"Esc Back"
+		} else {
+			"Esc Close"
+		});
 	Palette::new(input, body)
 		.id("command-palette")
 		.width(px(geometry.width_px))

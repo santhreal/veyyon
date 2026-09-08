@@ -111,6 +111,7 @@ pub fn settings_surface(
 	state: &SettingsState,
 	list_state: &GeneralSettingsListState,
 	fields: &FieldSlots,
+	back: Option<crate::navigation::SurfaceRoute>,
 	focus: Option<&FocusHandle>,
 	controls: &ControlStates,
 	geometry: &SettingsSurfaceTokens,
@@ -119,7 +120,7 @@ pub fn settings_surface(
 ) -> impl IntoElement {
 	if let Some(route) = state.route {
 		return focused::focused_surface(
-			state, list_state, fields, route, focus, controls, geometry, tokens, cx,
+			state, list_state, fields, route, back, focus, controls, geometry, tokens, cx,
 		);
 	}
 	let radius = tokens.radius(RadiusStep::Xl);
