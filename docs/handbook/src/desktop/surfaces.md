@@ -612,6 +612,24 @@ SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
   proof/docker/record-native.sh proof/scenes/desktop-unsent-rail.sh
 ```
 
+Use `proof/scenes/desktop-decision-card.sh` to run a real tool call, answer the
+approval it raises by clicking the accent answer, and open the row the third of
+three concurrent decisions folds into. The differential is the approval mode,
+which is a setting, so both arms are seeded before the session starts and each
+writes its own directory:
+
+```sh
+OUT_DIR="${PWD}/proof/captures/x11/off" SCENE_MOTION_FLOOR=5 \
+  proof/docker/record-native.sh proof/scenes/desktop-decision-card.sh
+OUT_DIR="${PWD}/proof/captures/x11/on" SCENE_MOTION_FLOOR=5 \
+  SCENE_SETTINGS='tools.approvalMode: ask' \
+  proof/docker/record-native.sh proof/scenes/desktop-decision-card.sh
+```
+
+The off arm records the two frames a mode that stops for nothing can reach: the
+read runs unasked and no card is drawn. The folded frames exist only in the on
+arm.
+
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
 The [capture requirements](../foundations/verification.md) specify paired static
 frames and animated clips. Headless scene PNGs do not replace native captures.
