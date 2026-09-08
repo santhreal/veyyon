@@ -357,3 +357,35 @@ fn session_lifecycle_intents_map_to_host_actions() {
 		HostAction::LoadTranscript { session: SessionId::from("s"), before: None }
 	]);
 }
+#[test]
+fn turn_and_drawer_intents_map_to_host_actions() {
+	let (mut store, index) = store_with_decisions();
+	store.domains.terminals =
+		vec![support::terminal("t", veyyon_desktop_model::TerminalStatus::Running)];
+	let s = SessionId::from("s");
+	assert_eq!(actions_for(&Intent::CancelTool { call_id: "t1".into() }, &index, &mut store), [
+		HostAction::CancelTool { session: s.clone(), tool_call_id: "t1".into() }
+	]);
+	assert_eq!(actions_for(&Intent::CloseTerminal, &index, &mut store), [
+		HostAction::CloseTerminal { terminal_id: "t".into() }
+	]);
+	assert_eq!(actions_for(&Intent::ClearOutput, &index, &mut store), [HostAction::ClearOutput {
+		session: s,
+	}]);
+	assert_eq!(
+		actions_for(
+			&Intent::ProcessStart { command: "cmd".into(), args: vec!["arg".into()] },
+			&index,
+			&mut store
+		),
+		[HostAction::ProcessStart { command: "cmd".into(), args: vec!["arg".into()] }]
+	);
+	assert_eq!(
+		actions_for(
+			&Intent::ProcessSend { process: "p".into(), data: vec![1, 2] },
+			&index,
+			&mut store
+		),
+		[HostAction::ProcessSend { process_id: "p".into(), data: vec![1, 2] }]
+	);
+}

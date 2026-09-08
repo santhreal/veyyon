@@ -25,6 +25,9 @@ pub fn request_surface(intent: &Intent, session: &SessionId) -> Option<SurfaceId
 		Intent::Steer(_) => SurfaceId::ComposerSteerButton(session.clone()),
 		Intent::Queue(_) => SurfaceId::ComposerQueueButton(session.clone()),
 		Intent::AbortTurn => SurfaceId::ComposerAbortButton(session.clone()),
+		Intent::CancelTool { call_id } => {
+			SurfaceId::ComposerCancelToolButton(session.clone(), call_id.clone())
+		},
 		Intent::SetQueueMode(_) => SurfaceId::ComposerQueueModeToggle(session.clone()),
 		Intent::SelectModel(_) => SurfaceId::ComposerModelSelector(session.clone()),
 		Intent::SetThinking(_) => SurfaceId::ComposerThinkingSelector(session.clone()),

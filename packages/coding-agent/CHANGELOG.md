@@ -22,6 +22,7 @@
 - The desktop titlebar provides an in-place session name editor that commits on Enter and reverts on Escape.
 - The desktop command palette and queue row menus provide `/export`, `/compact`, and `/handoff` session lifecycle actions.
 - The desktop command palette provides `/reload-transcript` to reload the active session transcript from the host.
+- The desktop drawer and composer wire controls and command actions for CancelTool, CloseTerminal, ClearOutput, ProcessStart, and ProcessSend.
 - The GUI host answers the desktop's `SearchContent` action with a `ContentMatches` snapshot, so the Content Search palette lists the workspace lines that carry the typed text with their file and line number.
 - `src/presentation/` builds the `@veyyon/wire/presentation` view-models from session state, and `PresentationEventBridge` turns session events into transcript updates, so a renderer draws a session without importing one.
 - `src/modes/terminal/driver.ts` implements `PresentationContext` on `@veyyon/tui`: it renders every transcript block kind, the status line, the composer and the dialogs from view-models alone, and reports operator input back as `UIEvent`s.

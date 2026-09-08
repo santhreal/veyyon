@@ -156,8 +156,8 @@ pub fn drawer_chrome(
 			clear_btn = clear_btn.state(InteractiveState::Disabled);
 		}
 
-		let restart_av =
-			controls.availability(&SurfaceId::TerminalRestartButton(sid, active_term_id.clone()));
+		let restart_av = controls
+			.availability(&SurfaceId::TerminalRestartButton(sid.clone(), active_term_id.clone()));
 		let (restart_op, _, restart_allowed) = availability_style(&restart_av, tokens);
 		let mut restart_btn = Button::new("Restart")
 			.id("restart-terminal-btn")
@@ -171,9 +171,39 @@ pub fn drawer_chrome(
 			restart_btn = restart_btn.state(InteractiveState::Disabled);
 		}
 
+		let close_av =
+			controls.availability(&SurfaceId::TerminalCloseButton(sid, active_term_id.clone()));
+		let (close_op, _, close_allowed) = availability_style(&close_av, tokens);
+		let mut close_btn = Button::new("Close")
+			.id("close-terminal-btn")
+			.variant(ButtonVariant::Ghost);
+		if close_allowed {
+			close_btn = close_btn.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
+				view.dispatch(Intent::CloseTerminal, cx);
+			}));
+		} else {
+			close_btn = close_btn.state(InteractiveState::Disabled);
+		}
+
 		right_side = right_side
 			.child(div().opacity(clear_op).child(clear_btn))
-			.child(div().opacity(restart_op).child(restart_btn));
+			.child(div().opacity(restart_op).child(restart_btn))
+			.child(div().opacity(close_op).child(close_btn));
+	} else if matches!(content.tabs.get(content.active_tab), Some(DrawerTab::Processes)) {
+		let sid = SessionId::from(session_id.to_string());
+		let start_av = controls.availability(&SurfaceId::ProcessStartButton(sid));
+		let (start_op, _, start_allowed) = availability_style(&start_av, tokens);
+		let mut start_btn = Button::new("Start")
+			.id("process-start-btn")
+			.variant(ButtonVariant::Ghost);
+		if start_allowed {
+			start_btn = start_btn.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
+				view.dispatch(Intent::ProcessStart { command: String::new(), args: Vec::new() }, cx);
+			}));
+		} else {
+			start_btn = start_btn.state(InteractiveState::Disabled);
+		}
+		right_side = right_side.child(div().opacity(start_op).child(start_btn));
 	}
 
 	div()

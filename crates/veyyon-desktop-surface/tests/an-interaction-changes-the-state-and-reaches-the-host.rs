@@ -127,6 +127,11 @@ fn every_intent() -> Vec<Intent> {
 		Intent::CompactSession(Some(1)),
 		Intent::HandoffSession(Some(1)),
 		Intent::LoadTranscript(Some(1)),
+		Intent::CloseTerminal,
+		Intent::ClearOutput,
+		Intent::CancelTool { call_id: "tool-1".to_owned() },
+		Intent::ProcessStart { command: "cargo".to_owned(), args: vec!["run".to_owned()] },
+		Intent::ProcessSend { process: "web".to_owned(), data: vec![b'y'] },
 	];
 
 	// The exhaustive match is the gate. Every variant is named, so a new one
@@ -214,7 +219,12 @@ fn every_intent() -> Vec<Intent> {
 			| Intent::ExportSession(_)
 			| Intent::CompactSession(_)
 			| Intent::HandoffSession(_)
-			| Intent::LoadTranscript(_) => {},
+			| Intent::LoadTranscript(_)
+			| Intent::CloseTerminal
+			| Intent::ClearOutput
+			| Intent::CancelTool { .. }
+			| Intent::ProcessStart { .. }
+			| Intent::ProcessSend { .. } => {},
 		}
 	}
 

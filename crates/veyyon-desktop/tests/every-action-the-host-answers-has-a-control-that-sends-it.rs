@@ -33,21 +33,16 @@ use veyyon_desktop_surface::{
 
 /// The fourteen host actions intentionally left unsent for later slices.
 /// A fifteenth unsent action or an unexpected member turns the suite red.
-const PINNED_UNSENT: [HostActionKind; 14] = [
+const PINNED_UNSENT: [HostActionKind; 9] = [
 	HostActionKind::Attach,
 	HostActionKind::Detach,
 	HostActionKind::Shutdown,
-	HostActionKind::CancelTool,
-	HostActionKind::CloseTerminal,
-	HostActionKind::ProcessStart,
-	HostActionKind::ProcessSend,
 	HostActionKind::RefreshAuth,
 	HostActionKind::ConnectMcp,
 	HostActionKind::DisconnectMcp,
 	HostActionKind::CallMcpTool,
 	HostActionKind::SpawnTask,
 	HostActionKind::SetKeybinding,
-	HostActionKind::ClearOutput,
 ];
 
 fn seeded_store_and_index() -> (Store, SessionIndex) {
@@ -202,6 +197,18 @@ fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent> {
 		},
 		IntentDiscriminants::ClearTerminal => vec![Intent::ClearTerminal],
 		IntentDiscriminants::RestartTerminal => vec![Intent::RestartTerminal],
+		IntentDiscriminants::CloseTerminal => vec![Intent::CloseTerminal],
+		IntentDiscriminants::ClearOutput => vec![Intent::ClearOutput],
+		IntentDiscriminants::CancelTool => {
+			vec![Intent::CancelTool { call_id: "tool-1".to_string() }]
+		},
+		IntentDiscriminants::ProcessStart => vec![Intent::ProcessStart {
+			command: "cargo".to_string(),
+			args:    vec!["test".to_string()],
+		}],
+		IntentDiscriminants::ProcessSend => {
+			vec![Intent::ProcessSend { process: "server".to_string(), data: vec![b'y', b'\n'] }]
+		},
 		IntentDiscriminants::ProcessStop => vec![Intent::ProcessStop("server".to_string())],
 		IntentDiscriminants::ProcessRestart => vec![Intent::ProcessRestart("server".to_string())],
 		IntentDiscriminants::ProcessSignal => vec![Intent::ProcessSignal("server".to_string())],
@@ -298,57 +305,32 @@ fn every_action_the_host_answers_has_a_sender_or_is_pinned_unsent() {
 #[test]
 fn session_lifecycle_five_actions_are_all_sent_by_intents_and_registered() {
 	let (mut store, index) = seeded_store_and_index();
-
-	// Verify RenameSession
-	let rename_actions = actions_for(
-		&Intent::RenameSession { session: 1, title: "New Title".to_string() },
-		&index,
-		&mut store,
+	assert!(
+		actions_for(&Intent::RenameSession { session: 1, title: "Title".into() }, &index, &mut store)
+			.iter()
+			.any(|a| a.kind() == HostActionKind::RenameSession)
 	);
 	assert!(
-		rename_actions
+		actions_for(&Intent::ExportSession(Some(1)), &index, &mut store)
 			.iter()
-			.any(|a| a.kind() == HostActionKind::RenameSession),
-		"RenameSession must be produced by actions_for"
+			.any(|a| a.kind() == HostActionKind::ExportSession)
 	);
-
-	// Verify ExportSession
-	let export_actions = actions_for(&Intent::ExportSession(Some(1)), &index, &mut store);
 	assert!(
-		export_actions
+		actions_for(&Intent::CompactSession(Some(1)), &index, &mut store)
 			.iter()
-			.any(|a| a.kind() == HostActionKind::ExportSession),
-		"ExportSession must be produced by actions_for"
+			.any(|a| a.kind() == HostActionKind::CompactSession)
 	);
-
-	// Verify CompactSession
-	let compact_actions = actions_for(&Intent::CompactSession(Some(1)), &index, &mut store);
 	assert!(
-		compact_actions
+		actions_for(&Intent::HandoffSession(Some(1)), &index, &mut store)
 			.iter()
-			.any(|a| a.kind() == HostActionKind::CompactSession),
-		"CompactSession must be produced by actions_for"
+			.any(|a| a.kind() == HostActionKind::HandoffSession)
 	);
-
-	// Verify HandoffSession
-	let handoff_actions = actions_for(&Intent::HandoffSession(Some(1)), &index, &mut store);
 	assert!(
-		handoff_actions
+		actions_for(&Intent::LoadTranscript(Some(1)), &index, &mut store)
 			.iter()
-			.any(|a| a.kind() == HostActionKind::HandoffSession),
-		"HandoffSession must be produced by actions_for"
+			.any(|a| a.kind() == HostActionKind::LoadTranscript)
 	);
 
-	// Verify LoadTranscript
-	let load_actions = actions_for(&Intent::LoadTranscript(Some(1)), &index, &mut store);
-	assert!(
-		load_actions
-			.iter()
-			.any(|a| a.kind() == HostActionKind::LoadTranscript),
-		"LoadTranscript must be produced by actions_for"
-	);
-
-	// Verify controls.rs registrations
 	let controls = gated_controls(&store, Some(1));
 	let control_actions: BTreeSet<HostActionKind> = controls.into_iter().map(|(_, k)| k).collect();
 	assert!(control_actions.contains(&HostActionKind::RenameSession));
@@ -356,4 +338,46 @@ fn session_lifecycle_five_actions_are_all_sent_by_intents_and_registered() {
 	assert!(control_actions.contains(&HostActionKind::CompactSession));
 	assert!(control_actions.contains(&HostActionKind::HandoffSession));
 	assert!(control_actions.contains(&HostActionKind::LoadTranscript));
+}
+
+#[test]
+fn slice_2_turn_and_drawer_five_actions_are_all_sent_by_intents_and_registered() {
+	let (mut store, index) = seeded_store_and_index();
+	assert!(
+		actions_for(&Intent::CancelTool { call_id: "tool-1".into() }, &index, &mut store)
+			.iter()
+			.any(|a| a.kind() == HostActionKind::CancelTool)
+	);
+	assert!(
+		actions_for(&Intent::CloseTerminal, &index, &mut store)
+			.iter()
+			.any(|a| a.kind() == HostActionKind::CloseTerminal)
+	);
+	assert!(
+		actions_for(&Intent::ClearOutput, &index, &mut store)
+			.iter()
+			.any(|a| a.kind() == HostActionKind::ClearOutput)
+	);
+	assert!(
+		actions_for(&Intent::ProcessStart { command: "c".into(), args: vec![] }, &index, &mut store)
+			.iter()
+			.any(|a| a.kind() == HostActionKind::ProcessStart)
+	);
+	assert!(
+		actions_for(
+			&Intent::ProcessSend { process: "server".into(), data: vec![] },
+			&index,
+			&mut store
+		)
+		.iter()
+		.any(|a| a.kind() == HostActionKind::ProcessSend)
+	);
+
+	let controls = gated_controls(&store, Some(1));
+	let control_actions: BTreeSet<HostActionKind> = controls.into_iter().map(|(_, k)| k).collect();
+	assert!(control_actions.contains(&HostActionKind::CancelTool));
+	assert!(control_actions.contains(&HostActionKind::CloseTerminal));
+	assert!(control_actions.contains(&HostActionKind::ClearOutput));
+	assert!(control_actions.contains(&HostActionKind::ProcessStart));
+	assert!(control_actions.contains(&HostActionKind::ProcessSend));
 }

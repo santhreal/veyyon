@@ -82,6 +82,7 @@ pub fn gated_controls(store: &Store, active_row: Option<u64>) -> Vec<(SurfaceId,
 		(SurfaceId::ContextBreakdownRefreshButton, HostActionKind::GetContextBreakdown),
 		(SurfaceId::TaskSpawnButton, HostActionKind::SpawnTask),
 		(SurfaceId::SettingsField("providers".to_string()), HostActionKind::RefreshProviders),
+		(SurfaceId::OutputClearButton, HostActionKind::ClearOutput),
 	];
 	if active_row.is_some() {
 		let row = composer_row(active_row);
@@ -98,6 +99,7 @@ pub fn gated_controls(store: &Store, active_row: Option<u64>) -> Vec<(SurfaceId,
 			(SurfaceId::RightPanelFileTab(row.clone()), HostActionKind::LoadFileTree),
 			(SurfaceId::RightPanelChangeScopeSelector(row.clone()), HostActionKind::SelectChangeScope),
 			(SurfaceId::TerminalCreateButton(row.clone()), HostActionKind::CreateTerminal),
+			(SurfaceId::ProcessStartButton(row.clone()), HostActionKind::ProcessStart),
 		]);
 		let pending = store
 			.persisted
@@ -170,6 +172,10 @@ pub fn gated_controls(store: &Store, active_row: Option<u64>) -> Vec<(SurfaceId,
 				(
 					SurfaceId::ProcessLogsTab(row.clone(), proc.name.clone()),
 					HostActionKind::ProcessLogs,
+				),
+				(
+					SurfaceId::ProcessSendButton(row.clone(), proc.name.clone()),
+					HostActionKind::ProcessSend,
 				),
 			]
 		}));

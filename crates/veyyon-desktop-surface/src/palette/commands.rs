@@ -154,6 +154,13 @@ pub fn command_items() -> Vec<PaletteItem> {
 			None,
 			Some(Capability::Transcript),
 		),
+		(
+			"/clear",
+			Intent::ClearOutput,
+			"Clear active session output",
+			None,
+			Some(Capability::Sessions),
+		),
 	]
 	.into_iter()
 	.enumerate()

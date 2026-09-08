@@ -60,6 +60,24 @@ pub fn surface_for_action(
 				.cloned()
 				.unwrap_or_else(|| SessionId("0".into())),
 		),
+		Intent::CloseTerminal => SurfaceId::TerminalCloseButton(
+			active_session
+				.cloned()
+				.unwrap_or_else(|| SessionId("0".into())),
+			String::new(),
+		),
+		Intent::ClearOutput => SurfaceId::OutputClearButton,
+		Intent::ProcessStart { .. } => SurfaceId::ProcessStartButton(
+			active_session
+				.cloned()
+				.unwrap_or_else(|| SessionId("0".into())),
+		),
+		Intent::ProcessSend { process, .. } => SurfaceId::ProcessSendButton(
+			active_session
+				.cloned()
+				.unwrap_or_else(|| SessionId("0".into())),
+			process.clone(),
+		),
 		_ => SurfaceId::GlobalTitlebarLine,
 	}
 }

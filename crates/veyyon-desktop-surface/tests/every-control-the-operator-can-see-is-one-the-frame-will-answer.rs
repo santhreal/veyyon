@@ -280,7 +280,7 @@ fn a_dispatched_intent_reaches_the_frame_the_operator_then_looks_at() {
 
 	drop(cx);
 	let open_state = fixture::with_drawer();
-	let drawer_regions = open_state.drawer.tabs.len() + 6; // Clear, Restart, split handle, container, occlusion and focusable grid
+	let drawer_regions = open_state.drawer.tabs.len() + 7; // Clear, Restart, Close, split handle, container, occlusion and focusable grid
 	let open = capture(open_state);
 
 	assert_eq!(

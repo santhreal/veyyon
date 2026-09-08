@@ -99,6 +99,7 @@ fn process_row(
 
 	let name_for_stop = proc.name.clone();
 	let name_for_restart = proc.name.clone();
+	let name_for_send = proc.name.clone();
 	let trailing = div()
 		.flex()
 		.flex_row()
@@ -160,6 +161,26 @@ fn process_row(
 						btn = btn.state(InteractiveState::Disabled);
 					}
 					div().opacity(restart_op).child(btn)
+				})
+				.child({
+					let sid = SessionId::from(session_id.to_string());
+					let send_av =
+						controls.availability(&SurfaceId::ProcessSendButton(sid, proc.name.clone()));
+					let (send_op, _, send_allowed) = availability_style(&send_av, tokens);
+					let mut btn = Button::new("Send")
+						.id(("process-send", idx))
+						.variant(ButtonVariant::Ghost);
+					if is_running && send_allowed {
+						btn = btn.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
+							view.dispatch(
+								Intent::ProcessSend { process: name_for_send.clone(), data: Vec::new() },
+								cx,
+							);
+						}));
+					} else {
+						btn = btn.state(InteractiveState::Disabled);
+					}
+					div().opacity(send_op).child(btn)
 				}),
 		);
 

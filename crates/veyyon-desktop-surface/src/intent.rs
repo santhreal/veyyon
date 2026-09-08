@@ -121,6 +121,19 @@ pub enum Intent {
 	OpenProcessLogs(String),
 	ClearTerminal,
 	RestartTerminal,
+	CloseTerminal,
+	ClearOutput,
+	CancelTool {
+		call_id: String,
+	},
+	ProcessStart {
+		command: String,
+		args:    Vec<String>,
+	},
+	ProcessSend {
+		process: String,
+		data:    Vec<u8>,
+	},
 	ProcessStop(String),
 	ProcessRestart(String),
 	ProcessSignal(String),

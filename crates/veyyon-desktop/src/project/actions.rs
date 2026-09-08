@@ -192,6 +192,21 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		Intent::RestartTerminal => active_terminal(store).map_or_else(Vec::new, |term| {
 			vec![HostAction::RestartTerminal { terminal_id: term.id.clone() }]
 		}),
+		Intent::CloseTerminal => active_terminal(store).map_or_else(Vec::new, |term| {
+			vec![HostAction::CloseTerminal { terminal_id: term.id.clone() }]
+		}),
+		Intent::ClearOutput => {
+			active.map_or_else(Vec::new, |session| vec![HostAction::ClearOutput { session }])
+		},
+		Intent::CancelTool { call_id } => active.map_or_else(Vec::new, |session| {
+			vec![HostAction::CancelTool { session, tool_call_id: call_id.clone() }]
+		}),
+		Intent::ProcessStart { command, args } => {
+			vec![HostAction::ProcessStart { command: command.clone(), args: args.clone() }]
+		},
+		Intent::ProcessSend { process, data } => {
+			vec![HostAction::ProcessSend { process_id: process.clone(), data: data.clone() }]
+		},
 		Intent::SelectDrawerTab(_) => Vec::new(),
 		// Opening a process's output subscribes to it: `follow` keeps the
 		// chunks arriving while the tab is the one on screen, which is the
