@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added isolated browser contexts, storage state persistence (`save_state`, `storage_state`, `tab.storageState`, `tab.loadStorageState`), and synthetic event dispatch in `tab.fill` for the browser tool ([#947](https://github.com/santhreal/veyyon/issues/947)).
+
 ## [1.4.1] - 2026-09-08
 
 ### Added

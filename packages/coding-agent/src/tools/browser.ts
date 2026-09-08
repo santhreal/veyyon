@@ -37,9 +37,11 @@ const appSchema = type({
 });
 
 const browserSchema = type({
-	action: type("'open' | 'close' | 'run'").describe("operation"),
+	action: type("'open' | 'close' | 'run' | 'save_state'").describe("operation"),
 	"name?": type("string").describe("tab id (default 'main')"),
 	"url?": type("string").describe("url to open"),
+	"context?": type("string").describe("isolated browser context name (default 'default')"),
+	"storage_state?": type("string").describe("path to storage state JSON file (cookies + localStorage)"),
 	"app?": appSchema,
 	"viewport?": {
 		width: "number",
@@ -105,6 +107,12 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 		const lines = [`Action: ${typeof params.action === "string" ? params.action : "(missing)"}`];
 		const tabName = typeof params.name === "string" ? params.name : DEFAULT_TAB_NAME;
 		lines.push(`Tab: ${truncateForPrompt(tabName)}`);
+		if (typeof params.context === "string" && params.context.length > 0) {
+			lines.push(`Context: ${truncateForPrompt(params.context)}`);
+		}
+		if (typeof params.storage_state === "string" && params.storage_state.length > 0) {
+			lines.push(`Storage State: ${truncateForPrompt(params.storage_state)}`);
+		}
 		if (typeof params.url === "string" && params.url.length > 0) {
 			lines.push(`URL: ${truncateForPrompt(params.url)}`);
 		}
@@ -218,6 +226,9 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 				case "run":
 					result = await this.#run(name, params, details, timeoutMs, signal);
 					break;
+				case "save_state":
+					result = await this.#saveState(name, params, details, timeoutMs, signal);
+					break;
 				default:
 					throw new ToolError(`Unsupported action: ${(params as BrowserParams).action}`);
 			}
@@ -282,6 +293,8 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 				dialogs: params.dialogs,
 				signal,
 				ownerSessionId: this.session.getSessionId?.() ?? undefined,
+				context: params.context,
+				storageStatePath: params.storage_state,
 			}),
 		);
 		const tab = result.tab;
@@ -291,9 +304,10 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 		details.viewport = tab.info.viewport;
 		const verb = result.created ? "Opened" : "Reused";
 		const lines = [
-			`${verb} tab ${JSON.stringify(name)} on ${describeBrowser(browser)}`,
+			`${verb} tab ${JSON.stringify(name)} on ${describeBrowser(browser)}${params.context ? ` (context: ${params.context})` : ""}`,
 			`URL: ${url}`,
 			title ? `Title: ${title}` : null,
+			params.storage_state ? `Storage state: ${params.storage_state}` : null,
 		].filter((l): l is string => typeof l === "string");
 		details.result = lines.join("\n");
 		return toolResult(details).text(lines.join("\n")).done();
@@ -313,6 +327,32 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 		}
 		const closed = await untilAborted(signal, () => releaseTab(name, { kill }));
 		details.result = closed ? `Closed tab ${JSON.stringify(name)}` : `No tab named ${JSON.stringify(name)}`;
+		return toolResult(details).text(details.result).done();
+	}
+	async #saveState(
+		name: string,
+		params: BrowserParams,
+		details: BrowserToolDetails,
+		timeoutMs: number,
+		signal?: AbortSignal,
+	): Promise<AgentToolResult<BrowserToolDetails>> {
+		const targetPath = params.storage_state ?? "./storage-state.json";
+		const tab = getTab(name);
+		if (!tab) {
+			throw new ToolError(`No tab named ${JSON.stringify(name)} to save storage state from. Open the tab first.`);
+		}
+		details.browser = tab.browser.kind.kind;
+		details.url = tab.info.url;
+
+		const code = `await tab.storageState({ path: ${JSON.stringify(targetPath)} }); return ${JSON.stringify(`Saved storage state to ${targetPath}`)};`;
+		const run = await runInTab(name, {
+			code,
+			timeoutMs,
+			signal,
+			session: this.session,
+		});
+
+		details.result = run.returnValue !== undefined ? String(run.returnValue) : `Saved storage state to ${targetPath}`;
 		return toolResult(details).text(details.result).done();
 	}
 

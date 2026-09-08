@@ -53,6 +53,27 @@ describe("browser tool schema", () => {
 		expect(validateToolCall([tool], call)).toEqual(call.arguments);
 	});
 
+	it("accepts save_state and context parameters at schema validation", () => {
+		const tool = new BrowserTool(makeSession());
+		const openCall: ToolCall = {
+			type: "toolCall",
+			id: "browser-open-context",
+			name: "browser",
+			arguments: { action: "open", name: "user-a", context: "tenant-a", storage_state: "./auth.json" },
+		};
+		expect(validateJsonSchemaValue(toolWireSchema(tool), openCall.arguments).success).toBe(true);
+		expect(validateToolCall([tool], openCall)).toEqual(openCall.arguments);
+
+		const saveCall: ToolCall = {
+			type: "toolCall",
+			id: "browser-save-state",
+			name: "browser",
+			arguments: { action: "save_state", name: "user-a", storage_state: "./auth.json" },
+		};
+		expect(validateJsonSchemaValue(toolWireSchema(tool), saveCall.arguments).success).toBe(true);
+		expect(validateToolCall([tool], saveCall)).toEqual(saveCall.arguments);
+	});
+
 	// Reproduces the regression the Codex review flagged on #3647: with default
 	// `tools.intentTracing`, normalizeTools must keep the closed action variants
 	// satisfiable for inputs that carry the injected `i` field. The earlier
@@ -106,6 +127,8 @@ describe("browser tool schema", () => {
 				action: "run",
 				name: "docs",
 				url: null,
+				context: null,
+				storage_state: null,
 				app: null,
 				viewport: null,
 				wait_until: null,

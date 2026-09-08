@@ -28,6 +28,7 @@ import type {
 	RunResultOk,
 	ScreenshotResult,
 	SessionSnapshot,
+	StorageStateData,
 } from "../tab-protocol";
 import {
 	type CmuxEvalResult,
@@ -526,6 +527,20 @@ export class CmuxTab {
 
 	async scroll(dx: number, dy: number): Promise<void> {
 		await this.#request("browser.scroll", { dx, dy });
+	}
+
+	async storageState(opts?: { path?: string }): Promise<StorageStateData> {
+		const data: StorageStateData = { cookies: [], origins: [] };
+		if (opts?.path && this.#runContext) {
+			const dest = resolveToCwd(opts.path, this.#runContext.session.cwd);
+			await fs.promises.mkdir(path.dirname(dest), { recursive: true });
+			await fs.promises.writeFile(dest, JSON.stringify(data, null, 2), "utf-8");
+		}
+		return data;
+	}
+
+	async loadStorageState(_stateOrPath: string | StorageStateData): Promise<void> {
+		// Cmux does not support local storage injection
 	}
 
 	async waitFor(selector: string, opts?: { timeout?: number }): Promise<CmuxElementHandle> {
