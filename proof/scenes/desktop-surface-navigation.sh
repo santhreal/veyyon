@@ -187,3 +187,49 @@ pause 0.25
 t " (focus restored)"
 pause 0.25
 shot general-escape-restores-draft-focus
+
+# ─── What The Escape Ladder States ───────────────────────────────────────────
+# The frames above are a claim about what Escape does on a focused page, and a
+# scene that only writes them leaves the claim to whoever opens the gallery.
+# The defect this ladder was written for dismissed the whole surface from the
+# General page instead of ascending one step, which looks exactly like a
+# working ascent until the two frames are compared.
+#
+# The palette column is the rectangle, because the session list prints each
+# row's age and the composer blinks a caret.
+use_crop "${PALETTE_LEFT}" "$(( WIN_Y + TITLEBAR_H ))" "${PALETTE_W}" "$(( COLUMNS_H - 140 ))"
+ASCENDED_PER_MILLE=40
+DISMISSED_PER_MILLE=40
+
+ASCENT="$(shots_differ_per_mille general-before-escape general-escape-to-settings)"
+if [ "${ASCENT}" -lt "${ASCENDED_PER_MILLE}" ]; then
+	abandon_take "escape-ascended-off-the-general-page" \
+		"the palette column changed ${ASCENT}/1000 on the first Escape, under the ${ASCENDED_PER_MILLE} a changed destination draws"
+fi
+STILL_OPEN="$(shots_differ_per_mille general-escape-to-settings surface-dismissed)"
+if [ "${STILL_OPEN}" -lt "${DISMISSED_PER_MILLE}" ]; then
+	abandon_take "escape-ascended-rather-than-dismissed" \
+		"the frame after one Escape is within ${STILL_OPEN}/1000 of the dismissed surface, so Escape closed the whole hierarchy instead of ascending to Settings"
+fi
+SECOND_ASCENT="$(shots_differ_per_mille general-escape-to-settings settings-escape-to-commands)"
+if [ "${SECOND_ASCENT}" -lt "${ASCENDED_PER_MILLE}" ]; then
+	abandon_take "escape-ascended-from-settings-to-commands" \
+		"the palette column changed ${SECOND_ASCENT}/1000 on the second Escape"
+fi
+ROOT_DISMISSED="$(shots_differ_per_mille settings-escape-to-commands general-escape-restores-draft-focus)"
+if [ "${ROOT_DISMISSED}" -lt "${DISMISSED_PER_MILLE}" ]; then
+	abandon_take "escape-at-the-root-dismissed-the-surface" \
+		"the palette column changed ${ROOT_DISMISSED}/1000 on the third Escape, so the root stayed open"
+fi
+
+# The draft is what focus returning means: the text typed after the last
+# Escape reached the composer, and nothing above it moved.
+use_crop "$(( WIN_X + (WIN_W > 800 ? 256 : 0) ))" "$(( WIN_Y + WIN_H - 140 ))" \
+	"$(( WIN_W - (WIN_W > 800 ? 256 : 0) ))" 140
+TYPED="$(shots_differ_pixels surface-dismissed general-escape-restores-draft-focus)"
+if [ "${TYPED}" -lt 150 ]; then
+	abandon_take "the-composer-took-the-keyboard-back" \
+		"the composer strip changed ${TYPED} pixels after the surface dismissed, so what was typed did not reach the draft"
+fi
+echo "scene: ascent ${ASCENT}/1000, still open ${STILL_OPEN}/1000, second ${SECOND_ASCENT}/1000," \
+	"dismissed ${ROOT_DISMISSED}/1000, draft ${TYPED}px" >&2
