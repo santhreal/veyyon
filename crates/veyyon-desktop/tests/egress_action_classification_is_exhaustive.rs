@@ -52,6 +52,6 @@ fn all_seventy_three_actions_are_classified_and_ephemeral_set_is_pinned_by_exact
 		ephemeral_actions, expected_ephemeral,
 		"ephemeral action set must match exact pinned definition; any change must be recorded"
 	);
-	assert_eq!(ephemeral_actions.len(), 20);
-	assert_eq!(mutation_actions.len(), 55);
+	assert_eq!(ephemeral_actions.len(), 19);
+	assert_eq!(mutation_actions.len(), 54);
 }
