@@ -252,9 +252,14 @@ absent while the queue is empty.
 ## Model picker
 
 Click the model selector or press `Primary-Shift-M` to open the model picker above
-the composer. Search matches display names and `provider/model` identifiers in
-the host catalog. Use the arrow keys to select a row and `Enter` to confirm.
-Selection remains subject to host availability.
+the composer. Rows sit under a heading per provider, stated once above the models
+that provider serves. The provider holding the model in effect comes first, and
+that model is the first row under it, marked `in effect`; a model that reasons is
+marked `reasoning`. A row states its identifier on a second line only when the
+identifier is not the name already drawn. Search matches display names, provider
+names and `provider/model` identifiers in the host catalog. Use the arrow keys to
+select a row and `Enter` to confirm. Selection remains subject to host
+availability.
 
 `Escape` or a click outside closes the picker and returns focus to the composer.
 Opening, filtering, and dismissing it leaves the draft unchanged.
