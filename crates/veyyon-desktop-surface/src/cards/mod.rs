@@ -122,6 +122,7 @@ pub fn card_stack(
 			row = row.child(
 				div()
 					.h(px(line))
+					.flex_shrink_0()
 					.w_full()
 					.min_w_0()
 					.flex()
