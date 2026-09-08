@@ -19,6 +19,7 @@
 
 ### Added
 
+- The GUI host answers the desktop's `SearchContent` action with a `ContentMatches` snapshot, so the Content Search palette lists the workspace lines that carry the typed text with their file and line number.
 - `src/presentation/` builds the `@veyyon/wire/presentation` view-models from session state, and `PresentationEventBridge` turns session events into transcript updates, so a renderer draws a session without importing one.
 - `src/modes/terminal/driver.ts` implements `PresentationContext` on `@veyyon/tui`: it renders every transcript block kind, the status line, the composer and the dialogs from view-models alone, and reports operator input back as `UIEvent`s.
 - `/process-manager` opens the Agent Control Center across every conversation this process is running rather than only the one on screen, and `a` switches the roster, the comms stream and the transcript guard between the two scopes together.
@@ -165,6 +166,8 @@
 
 ### Fixed
 
+- A desktop command that opens a lookup — `/files`, `/search`, `/project` — hands the keyboard to the mode it opened and prompts for what that mode looks up, where every keystroke after the command went to the draft instead, the field kept the generic "Search" prompt, and the palette stayed at the composer's anchor width; a directory descent also clears the field with the query it cleared, so the next keystroke no longer appends to a query the palette no longer holds.
+- A desktop line row too narrow for its text truncates the text and keeps the detail beside it, so a long Content Search hit still states the file and line it came from, where the title never yielded: it ran under the row's edge, was cut mid-glyph with no ellipsis, and pushed the `path:line` out of the row. A detail takes at most half the row.
 - A desktop transcript states the files an `@path` mention read, on the operator's own turn beside the prompt that named them, instead of drawing nothing at all: a mention is recorded as a message whose files sit under `files` rather than `content`, which the GUI host's converter read for every role. A collapsed row per file states its line count, its size, and why a body is missing when one was skipped for size, refused as binary, or withheld from a collab replica.
 - A desktop mention entry keeps whatever it carries beside the files it named, drawn in the `File` register the entry's role reads in, instead of being discarded whole whenever it named no readable file.
 - A desktop artefact card's disclosed frame states the encoding and payload size of the picture it draws, and the line and byte counts recorded of a file it cannot read, instead of repeating the path, the pixel size and the unavailable reason its own 24px row states a line above.

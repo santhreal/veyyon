@@ -281,6 +281,9 @@ Type `/` at the beginning of the composer to open the anchored command palette.
 | `/queue-mode` | Select steer or queue mode |
 | `/steer` | Steer the running turn with the command payload |
 | `/queue` | Queue the command payload |
+| `/files` | Find a file in the workspace by name |
+| `/project` | Browse the workspace one directory at a time |
+| `/search` | Search the workspace for text |
 
 The palette also includes session, terminal, settings, provider, and other host
 commands. Attachment admission depends on the host and model input capabilities.
@@ -291,6 +294,21 @@ Command search matches slash names and action descriptions. For example,
 Selecting a composer command removes its command prefix while retaining the
 payload and attachments. `Escape` dismisses the slash palette without deleting
 the typed slash text.
+
+`/files`, `/project` and `/search` open a lookup instead of closing the
+palette. The palette stays open in the mode the command named, at the centred
+width, and the field prompts for what that mode looks up. The keyboard goes to
+that field, so the next keystroke filters the lookup rather than editing the
+draft. Typing filters files by name in `/files`, and searches the workspace for
+the literal text in `/search`. Emptying the field drops the rows the host
+answered with, since an empty query looks nothing up. In `/project`, `Enter` on
+a directory row lists that directory and `Escape` returns to the one above it.
+
+A result row states its text on one line, with its detail beside it: the file
+and line number of a search hit, the path of a file, the description of a
+command. Text too wide for the row truncates the primary text and keeps the
+detail, which is what names where the row came from. A detail takes at most
+half the row.
 
 ## Command groups
 
