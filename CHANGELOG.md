@@ -28,6 +28,9 @@
 
 ### Added
 
+- The desktop titlebar provides an in-place session name editor that commits on Enter and reverts on Escape.
+- The desktop command palette and queue row menus provide `/export`, `/compact`, and `/handoff` session lifecycle actions.
+- The desktop command palette provides `/reload-transcript` to reload the active session transcript from the host.
 - The GUI host answers the desktop's `SearchContent` action with a `ContentMatches` snapshot, so the Content Search palette lists the workspace lines that carry the typed text with their file and line number.
 - `src/presentation/` builds the `@veyyon/wire/presentation` view-models from session state, and `PresentationEventBridge` turns session events into transcript updates, so a renderer draws a session without importing one.
 - `src/modes/terminal/driver.ts` implements `PresentationContext` on `@veyyon/tui`: it renders every transcript block kind, the status line, the composer and the dialogs from view-models alone, and reports operator input back as `UIEvent`s.
@@ -268,10 +271,13 @@
 ### Removed
 
 - `WRITE_GUTTER_MIN_WIDTH` is no longer exported: the line-number gutter of a code card is the host's, stated once in `src/modes/terminal/draw/draw-tool-view.ts`, and no tool sets it.
+- The GUI host protocol drops the `ProcessWait` and `ProcessDescribe` actions: the supervised-process listing already carries each process's application, arguments, working directory, lifetime, status and exit code, so a describe reply replaced the pane's whole list with the one row it named and a wait held the host's request loop for the length of the process.
 - `@veyyon/kernel/session/content-text` is gone: the session spine calls the `contentText` owner in `@veyyon/utils`, which carries the separator, image, `trimBlocks` and `trimString` options that copy held.
 
 ### Fixed
 
+- A desktop right panel too narrow to dock covers the transcript it annotates and nothing else, so the session rail keeps its colour and its presses and a prompt typed with the panel open is drawn where it was typed, where the float spanned the whole window row: the rail read as disabled and, at the narrow widths, the sheet covered the card stack, the composer and the run bar, so a draft landed under it unread.
+- A desktop slash command reaches its row however it is capitalised, and a command that carries a message keeps the message written after it: `/Steer fix the tests` scored the whole message against a six-character row, listed nothing, and Enter answered nothing at all, while the command word was matched case-sensitively in two places the row's own ranking folds. Which commands carry a message is declared on the command table rather than spelled out at the query.
 - Every desktop chord reaches the surface its scope names: the right panel's tab walk and diff-mode toggle dispatch once the panel is pressed, where the panel carried no key context and no focus handle so all three resolved to nothing, and the transcript's chords survive a press on a turn. A press anywhere in the composer — its padding, its footer, its controls — leaves the keyboard in the draft, where a press outside the editor's text area handed the focus to the window root and dropped the next keystroke.
 - A desktop command that opens a lookup — `/files`, `/search`, `/project` — hands the keyboard to the mode it opened and prompts for what that mode looks up, where every keystroke after the command went to the draft instead, the field kept the generic "Search" prompt, and the palette stayed at the composer's anchor width; a directory descent also clears the field with the query it cleared, so the next keystroke no longer appends to a query the palette no longer holds.
 - A desktop line row too narrow for its text truncates the text and keeps the detail beside it, so a long Content Search hit still states the file and line it came from, where the title never yielded: it ran under the row's edge, was cut mid-glyph with no ellipsis, and pushed the `path:line` out of the row. A detail takes at most half the row.
