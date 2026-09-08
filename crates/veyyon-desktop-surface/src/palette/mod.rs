@@ -288,7 +288,8 @@ impl PaletteState {
 				.chain(item.subtitle.as_deref())
 				.chain(aliases.iter().copied())
 		});
-		ranked.into_iter().map(|(_, _, item)| item).collect()
+		let ranked: Vec<&PaletteItem> = ranked.into_iter().map(|(_, _, item)| item).collect();
+		regroup(ranked)
 	}
 
 	/// Returns the currently highlighted item if one exists.
@@ -315,4 +316,33 @@ impl PaletteState {
 		self.query.clear();
 		self.selected = 0;
 	}
+}
+
+/// Reorders `ranked` so rows carrying the same heading stay together, in the
+/// order their best-ranked row appeared.
+///
+/// Ranking scatters a provider's models across the list, and a heading drawn
+/// once per run of rows would then state the same provider several times.
+/// Ungrouped rows keep their ranked order among themselves.
+fn regroup(ranked: Vec<&PaletteItem>) -> Vec<&PaletteItem> {
+	let mut order: Vec<Option<&str>> = Vec::new();
+	for item in &ranked {
+		let group = item.group.as_deref();
+		if !order.contains(&group) {
+			order.push(group);
+		}
+	}
+	if order.len() < 2 {
+		return ranked;
+	}
+	let mut grouped: Vec<&PaletteItem> = Vec::with_capacity(ranked.len());
+	for group in order {
+		grouped.extend(
+			ranked
+				.iter()
+				.copied()
+				.filter(|item| item.group.as_deref() == group),
+		);
+	}
+	grouped
 }
