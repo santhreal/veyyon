@@ -64,11 +64,15 @@ async function runHook(options: {
 	/**
 	 * Stub mdbook behavior on PATH:
 	 * - undefined / "missing": no mdbook binary on PATH
-	 * - "success": mdbook stub that builds book and creates referenced content-hashed assets
-	 * - "missing-assets": mdbook stub that creates HTML referencing non-existent content-hashed assets
+	 * - "success": mdbook stub that builds the book mdbook's own shape — a root
+	 *   page and a page one directory down, whose stylesheets sit in `book/css/`
+	 *   and are loaded through `../css/` — with every referenced asset present
+	 * - "missing-assets": mdbook stub whose root page references a content-hashed
+	 *   asset that was never written
+	 * - "nested-assets-missing": mdbook stub whose nested page references one
 	 * - "failing": mdbook stub that exits with error code 1
 	 */
-	mdbook?: "missing" | "success" | "missing-assets" | "failing";
+	mdbook?: "missing" | "success" | "missing-assets" | "nested-assets-missing" | "failing";
 }): Promise<HookRun> {
 	using dir = TempDir.createSync("veyyon-hooktest-");
 	// TempDir.path() is relative to the process cwd. The hook runs as a child
@@ -121,17 +125,38 @@ async function runHook(options: {
 		);
 		await Bun.$`chmod +x ${path.join(binDir, "bun")}`.quiet();
 	}
-	if (options.mdbook === "success") {
-		await Bun.write(
-			path.join(binDir, "mdbook"),
-			`#!/usr/bin/env bash\nif [ "$1" = "build" ]; then\n  book="$2/book"\n  mkdir -p "$book"\n  echo '<html><head><script src="searchindex-12345678.js"></script><link rel="stylesheet" href="theme-abcdef01.css"></head><body>built</body></html>' > "$book/index.html"\n  echo '/* search */' > "$book/searchindex-12345678.js"\n  echo '/* theme */' > "$book/theme-abcdef01.css"\n  exit 0\nfi\nexit 0\n`,
-		);
-		await Bun.$`chmod +x ${path.join(binDir, "mdbook")}`.quiet();
-	} else if (options.mdbook === "missing-assets") {
-		await Bun.write(
-			path.join(binDir, "mdbook"),
-			`#!/usr/bin/env bash\nif [ "$1" = "build" ]; then\n  book="$2/book"\n  mkdir -p "$book"\n  echo '<html><head><script src="searchindex-12345678.js"></script></head><body>built</body></html>' > "$book/index.html"\n  # Deliberately omit searchindex-12345678.js\n  exit 0\nfi\nexit 0\n`,
-		);
+	// mdbook's own layout: the root page loads a stylesheet out of `book/css/`,
+	// a page one directory down loads the same file through `../css/`, and the
+	// search index sits at the book root under a content-hashed name. A stub
+	// that emits only a root page cannot tell a check that resolves a reference
+	// against the page from one that resolves it against the book root.
+	const rootPage =
+		'<html><head><script src="searchindex-12345678.js"></script><link rel="stylesheet" href="css/chrome-abcdef01.css"></head><body>built</body></html>';
+	const nestedPage =
+		'<html><head><script src="../searchindex-12345678.js"></script><link rel="stylesheet" href="../css/chrome-abcdef01.css"></head><body>built</body></html>';
+	const nestedAbsent = nestedPage.replace("chrome-abcdef01", "general-0badc0de");
+	const mdbookStub = (body: string) =>
+		`#!/usr/bin/env bash\nif [ "$1" = "build" ]; then\n  book="$2/book"\n  mkdir -p "$book/css" "$book/desktop"\n${body}  exit 0\nfi\nexit 0\n`;
+	const writes = {
+		root: `  echo '${rootPage}' > "$book/index.html"\n`,
+		nested: `  echo '${nestedPage}' > "$book/desktop/surfaces.html"\n`,
+		absent: `  echo '${nestedAbsent}' > "$book/desktop/surfaces.html"\n`,
+		search: `  echo '/* search */' > "$book/searchindex-12345678.js"\n`,
+		chrome: `  echo '/* chrome */' > "$book/css/chrome-abcdef01.css"\n`,
+	};
+	const stubs: Record<string, string> = {
+		// Every reference resolves, from both depths.
+		success: writes.root + writes.nested + writes.search + writes.chrome,
+		// The root page's search index was never written.
+		"missing-assets": writes.root + writes.chrome,
+		// The nested page loads a stylesheet that was never written, through
+		// the `../css/` prefix a check resolving against the book root reads as
+		// a path outside the book.
+		"nested-assets-missing": writes.root + writes.absent + writes.search + writes.chrome,
+	};
+	const stub = options.mdbook === undefined ? undefined : stubs[options.mdbook];
+	if (stub !== undefined) {
+		await Bun.write(path.join(binDir, "mdbook"), mdbookStub(stub));
 		await Bun.$`chmod +x ${path.join(binDir, "mdbook")}`.quiet();
 	} else if (options.mdbook === "failing") {
 		await Bun.write(
@@ -449,6 +474,28 @@ describe("pre-push hook", () => {
 		expect(run.exitCode).not.toBe(0);
 		expect(run.stderr).toContain("generates handbook pages that load missing assets");
 		expect(run.stderr).toContain("searchindex-12345678.js");
+		expect(run.leftoverWorktrees).toEqual([]);
+	});
+
+	/**
+	 * A page one directory down loads its stylesheets through `../css/`, which
+	 * resolves inside the book from that page and outside it from the book root.
+	 * Resolving against the root reported every nested page's stylesheets absent
+	 * and refused every commit that edits one, so the reference has to be
+	 * resolved against the page that carries it — while a nested reference that
+	 * really is absent is still refused, and named.
+	 */
+	it("refuses a nested handbook page that references a missing asset through ../", async () => {
+		const run = await runHook({
+			stdin: `refs/heads/main ${SHA} refs/heads/main ${SHA}\n`,
+			bunExit: 0,
+			handbook: "source-change",
+			mdbook: "nested-assets-missing",
+		});
+		expect(run.exitCode).not.toBe(0);
+		expect(run.stderr).toContain("generates handbook pages that load missing assets");
+		expect(run.stderr).toContain("../css/general-0badc0de.css");
+		expect(run.stderr).not.toContain("chrome-abcdef01.css");
 		expect(run.leftoverWorktrees).toEqual([]);
 	});
 
