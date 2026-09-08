@@ -95,10 +95,10 @@ PY
 # The sidebar is cropped off because the session list prints each session's age,
 # so two frames a second apart differ there whatever the transcript does.
 use_crop \
-	$(( WIN_X + (WIN_W > 800 ? 256 : 0) )) \
-	$(( WIN_Y + 48 )) \
-	$(( WIN_W - (WIN_W > 800 ? 256 : 0) )) \
-	$(( WIN_H - 48 ))
+	$(( WIN_X + RAIL_W )) \
+	$(( WIN_Y + TITLEBAR_H )) \
+	$(( WIN_W - RAIL_W )) \
+	$(( WIN_H - TITLEBAR_H ))
 # A disclosed row redraws a band of that area. Two settled frames of the same
 # state measure tens of pixels apart under the software renderer, so a
 # disclosure is counted in pixels rather than per mille: the row is 24px tall.
@@ -112,15 +112,10 @@ pause 0.4
 k "Return"
 pause 0.5
 
-COMPOSER_X=$(( WIN_X + (WIN_W > 800 ? 400 : WIN_W / 2) ))
-COMPOSER_Y=$(( WIN_Y + (WIN_H > 481 ? 408 : WIN_H - 98) ))
-move_px "${COMPOSER_X}" "${COMPOSER_Y}"
-click
-k "ctrl+a"
-k "BackSpace"
-pause 0.3
-t "State in one short sentence what @src/parser.ts exports. @src/vendor.bin is unrelated. Do not call tools."
-k "Return"
+# The aim is the preamble's, derived from the token files: a number restated
+# here clicked 270px above the card, left the transcript focused, and reported
+# the model as having produced no turn.
+submit_prompt "State in one short sentence what @src/parser.ts exports. @src/vendor.bin is unrelated. Do not call tools."
 
 if ! native_session_ready finished 2; then
 	abandon_take "native-mention-turn-produced" "the prompt naming two paths produced no completed turn within 90s"

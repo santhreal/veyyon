@@ -224,8 +224,8 @@ fi
 
 # The draft is what focus returning means: the text typed after the last
 # Escape reached the composer, and nothing above it moved.
-use_crop "$(( WIN_X + (WIN_W > 800 ? 256 : 0) ))" "$(( WIN_Y + WIN_H - 140 ))" \
-	"$(( WIN_W - (WIN_W > 800 ? 256 : 0) ))" 140
+use_crop "$(( WIN_X + RAIL_W ))" "$(( WIN_Y + WIN_H - COMPOSER_BAND_H ))" \
+	"$(( WIN_W - RAIL_W ))" "${COMPOSER_BAND_H}"
 TYPED="$(shots_differ_pixels surface-dismissed general-escape-restores-draft-focus)"
 if [ "${TYPED}" -lt 150 ]; then
 	abandon_take "the-composer-took-the-keyboard-back" \

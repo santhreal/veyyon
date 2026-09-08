@@ -412,3 +412,41 @@ fi
 echo "scene: draft ${DRAFT_PX}px, kept ${KEPT_PX}px, moved ${MOVED_PX}px," \
 	"picker ${PICKER_OPEN}/1000 open ${PICKER_GONE}/1000 closed," \
 	"slash ${SLASH_OPEN}/1000 open ${SLASH_GONE}/1000 closed" >&2
+
+# ─── Typing A Prompt Where The Composer Actually Is ──────────────────────────
+# Every scene that runs a turn types a prompt into the composer, and the aim it
+# clicks first decides whether the keystrokes reach the editor at all. A click
+# that lands outside the card focuses the region it hit — the transcript
+# carries a key context of its own — and the typing then goes to a surface with
+# no draft, so `Return` submits nothing and the take fails ninety seconds later
+# reporting a turn that never ran. A scene that restated the aim as a number
+# recorded exactly that: a click 270px above the card, `status=Unknown,
+# messages=0`, and a composer still holding the slash the preamble left.
+#
+# So the aim is the one the preamble derived from the token files, the draft is
+# read back before it is sent, and the reading is what fails: the guard names
+# the keystrokes, not the model.
+COMPOSER_BAND_CROP="${SESSION_REGION_W}x${COMPOSER_BAND_H}+${SESSION_REGION_X}+$(( WIN_Y + WIN_H - COMPOSER_BAND_H ))"
+
+type_prompt() { # <text> [floor-pixels]
+	local text="$1" floor="${2:-400}" empty="${SCENE_RUNTIME_DIR}/frame-compare/prompt-empty.png" drew
+	move_px "${COMPOSER_X}" "${COMPOSER_Y}"
+	click
+	k "ctrl+a"
+	k "BackSpace"
+	pause 0.3
+	probe_frame "${empty}"
+	t "${text}"
+	pause 0.6
+	drew="$(screen_differs_from_frame_pixels_at "${empty}" "${COMPOSER_BAND_CROP}")"
+	echo "scene: the prompt drew ${drew} pixels of draft" >&2
+	if [ "${drew}" -lt "${floor}" ]; then
+		abandon_take "the-prompt-reached-the-draft" \
+			"the composer band changed ${drew} pixels while the prompt was typed, under the ${floor} a line of prose inks, so the keystrokes reached something other than the editor"
+	fi
+}
+
+submit_prompt() { # <text> [floor-pixels]
+	type_prompt "$@"
+	k "Return"
+}

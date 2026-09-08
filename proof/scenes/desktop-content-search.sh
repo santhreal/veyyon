@@ -53,10 +53,10 @@ source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 # The session list prints each session's age, so two frames a second apart
 # differ in the sidebar whatever the palette does. Every comparison crops the
 # sidebar off first.
-CROP_X=$(( WIN_X + (WIN_W > 800 ? 256 : 0) ))
-CROP_Y=$(( WIN_Y + 48 ))
-CROP_W=$(( WIN_W - (WIN_W > 800 ? 256 : 0) ))
-CROP_H=$(( WIN_H - 48 ))
+CROP_X=$(( WIN_X + RAIL_W ))
+CROP_Y=$(( WIN_Y + TITLEBAR_H ))
+CROP_W=$(( WIN_W - RAIL_W ))
+CROP_H=$(( WIN_H - TITLEBAR_H ))
 
 # A row of the palette is two lines of text in a 36px band, and this scene
 # expects several of them: far above the noise two settled frames of one state
@@ -69,7 +69,7 @@ ROWS_MIN_PIXELS=800
 # this scene did exactly that. The palette centres in the height under the
 # titlebar and grows in both directions as rows arrive, so everything from just
 # below the untyped palette's own field downwards is a region only rows reach.
-FIELD_BOTTOM=$(( WIN_Y + 48 + (WIN_H - 48) / 2 - 14 ))
+FIELD_BOTTOM=$(( CROP_Y + CROP_H / 2 - 14 ))
 ROWS_CROP="${CROP_W}x$(( WIN_Y + WIN_H - FIELD_BOTTOM ))+${CROP_X}+${FIELD_BOTTOM}"
 
 differing_pixels() { # <shot-a> <shot-b> [<crop>]
@@ -83,8 +83,7 @@ differing_pixels() { # <shot-a> <shot-b> [<crop>]
 # `/search` is the row that opens the mode; typing the slash command is how an
 # operator reaches it, so the scene reaches it that way rather than by a chord
 # no surface offers.
-COMPOSER_X=$(( WIN_X + (WIN_W > 800 ? 400 : WIN_W / 2) ))
-COMPOSER_Y=$(( WIN_Y + WIN_H - 98 ))
+# The aim is the preamble's, derived from the token files.
 move_px "${COMPOSER_X}" "${COMPOSER_Y}"
 click
 k "ctrl+a"

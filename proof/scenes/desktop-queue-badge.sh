@@ -67,9 +67,9 @@ if [ "${WIN_W}" -le 800 ]; then
 		"the queue is collapsed at ${WIN_W}px, so no row is on screen to photograph"
 fi
 CROP_X="${WIN_X}"
-CROP_Y=$(( WIN_Y + 48 ))
-CROP_W=256
-CROP_H=$(( WIN_H - 48 ))
+CROP_Y=$(( WIN_Y + TITLEBAR_H ))
+CROP_W="${RAIL_W}"
+CROP_H=$(( WIN_H - TITLEBAR_H ))
 
 # The chip is a small pill: a 20px-tall fill a few dozen pixels wide, around a
 # thousand pixels of tint. The floor is a fifth of that, above the handful a

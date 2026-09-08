@@ -55,10 +55,10 @@ fi
 # The session list prints each session's age, so two frames a second apart
 # differ in the sidebar whatever the transcript does, and the sidebar carries
 # accent of its own on the selected card. Every measurement crops it off.
-CROP_X=$(( WIN_X + (WIN_W > 800 ? 256 : 0) ))
-CROP_Y=$(( WIN_Y + 48 ))
-CROP_W=$(( WIN_W - (WIN_W > 800 ? 256 : 0) ))
-CROP_H=$(( WIN_H - 48 ))
+CROP_X=$(( WIN_X + RAIL_W ))
+CROP_Y=$(( WIN_Y + TITLEBAR_H ))
+CROP_W=$(( WIN_W - RAIL_W ))
+CROP_H=$(( WIN_H - TITLEBAR_H ))
 
 # The button is a small control: a 28px-tall pill a couple of hundred pixels
 # wide, several thousand accent pixels once its label is punched out. The floor
@@ -113,13 +113,7 @@ pause 0.5
 
 COMPOSER_X="${COMPOSER_EDITOR_X}"
 COMPOSER_Y="${COMPOSER_EDITOR_Y}"
-move_px "${COMPOSER_X}" "${COMPOSER_Y}"
-click
-k "ctrl+a"
-k "BackSpace"
-pause 0.3
-t "answer in one short sentence: what does a linker do?"
-k "Return"
+submit_prompt "answer in one short sentence: what does a linker do?"
 
 if ! native_session_ready finished 2; then
 	abandon_take "native-turn-recorded" "the submitted turn did not complete within 90s"

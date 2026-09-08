@@ -30,11 +30,14 @@ source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 # ─── Comparing Two Frames ────────────────────────────────────────────────────
 # The session list prints each session's age, so two frames a second apart
 # differ in the sidebar whatever the transcript does. Every comparison crops the
-# sidebar off first.
-CROP_X=$(( WIN_X + (WIN_W > 800 ? 256 : 0) ))
-CROP_Y=$(( WIN_Y + 48 ))
-CROP_W=$(( WIN_W - (WIN_W > 800 ? 256 : 0) ))
-CROP_H=$(( WIN_H - 48 ))
+# sidebar off first. RAIL_W and TITLEBAR_H come from the token files through
+# the preamble this scene sources, so the rectangle follows the shed at
+# whatever width the take is recorded at.
+use_crop \
+	$(( WIN_X + RAIL_W )) \
+	$(( WIN_Y + TITLEBAR_H )) \
+	$(( WIN_W - RAIL_W )) \
+	$(( WIN_H - TITLEBAR_H ))
 
 # A footer is one 12px line of a model's name: a few hundred ink pixels, far
 # below the per-mille floor the card scenes use, so this scene counts pixels.
@@ -43,44 +46,13 @@ CROP_H=$(( WIN_H - 48 ))
 REVEAL_MIN_PIXELS=150
 NOISE_MAX_PIXELS=60
 
-differing_pixels() { # <png-a> <png-b>
-	local scratch="${SCENE_RUNTIME_DIR}/frame-compare"
-	mkdir -p "${scratch}"
-	local crop="${CROP_W}x${CROP_H}+${CROP_X}+${CROP_Y}" differing
-	magick "$1" -crop "${crop}" +repage "${scratch}/a.png"
-	magick "$2" -crop "${crop}" +repage "${scratch}/b.png"
-	# `compare` exits non-zero whenever the two images differ at all, which is
-	# the ordinary case here, so only the count it prints is read.
-	differing="$(compare -metric AE "${scratch}/a.png" "${scratch}/b.png" null: 2>&1 || true)"
-	case "${differing}" in
-		'' | *[!0-9]*)
-			abandon_take "frames-comparable" \
-				"comparing $(basename "$1") with $(basename "$2") reported '${differing}' instead of a pixel count"
-			;;
-	esac
-	printf '%s' "${differing}"
-}
-
-shots_differ() { # <shot-a> <shot-b>
-	differing_pixels "${SCENE_OUT}/${SCENE_NAME}-$1.png" "${SCENE_OUT}/${SCENE_NAME}-$2.png"
-}
-
 # The same count inside one box of the frame, in screen coordinates. A reveal
 # somewhere else in the column cannot pass for the one being measured.
 box_differing_pixels() { # <shot-a> <shot-b> <w> <h> <x> <y>
-	local scratch="${SCENE_RUNTIME_DIR}/frame-compare"
-	mkdir -p "${scratch}"
-	local crop="$3x$4+$5+$6" differing
-	magick "${SCENE_OUT}/${SCENE_NAME}-$1.png" -crop "${crop}" +repage "${scratch}/box-in-a.png"
-	magick "${SCENE_OUT}/${SCENE_NAME}-$2.png" -crop "${crop}" +repage "${scratch}/box-in-b.png"
-	differing="$(compare -metric AE "${scratch}/box-in-a.png" "${scratch}/box-in-b.png" null: 2>&1 || true)"
-	case "${differing}" in
-		'' | *[!0-9]*)
-			abandon_take "frames-comparable" \
-				"comparing $1 with $2 inside ${crop} reported '${differing}' instead of a pixel count"
-			;;
-	esac
-	printf '%s' "${differing}"
+	frames_differ_pixels_at \
+		"${SCENE_OUT}/${SCENE_NAME}-$1.png" \
+		"${SCENE_OUT}/${SCENE_NAME}-$2.png" \
+		"$3x$4+$5+$6"
 }
 
 # Where two frames differ, in screen coordinates. The reveal is what turned the
@@ -127,13 +99,7 @@ pause 0.5
 
 COMPOSER_X="${COMPOSER_EDITOR_X}"
 COMPOSER_Y="${COMPOSER_EDITOR_Y}"
-move_px "${COMPOSER_X}" "${COMPOSER_Y}"
-click
-k "ctrl+a"
-k "BackSpace"
-pause 0.3
-t "answer in one short sentence: what does a compiler do?"
-k "Return"
+submit_prompt "answer in one short sentence: what does a compiler do?"
 
 if ! native_session_ready finished 2; then
 	abandon_take "native-turn-recorded" "the submitted turn did not complete within 90s"
@@ -160,7 +126,7 @@ done
 pause 0.8
 shot turn-footer-keyboard
 
-REVEALED="$(shots_differ turn-footer-hidden turn-footer-keyboard)"
+REVEALED="$(shots_differ_pixels turn-footer-hidden turn-footer-keyboard)"
 if [ "${REVEALED}" -lt "${REVEAL_MIN_PIXELS}" ]; then
 	abandon_take "footer-revealed-for-the-keyboard" \
 		"the turn cursor on the last turn changed ${REVEALED} pixels, under the \
@@ -198,7 +164,7 @@ click
 pause 1.2
 shot turn-usage-open
 
-OPENED="$(shots_differ turn-footer-hover turn-usage-open)"
+OPENED="$(shots_differ_pixels turn-footer-hover turn-usage-open)"
 if [ "${OPENED}" -le "$(( NOISE_MAX_PIXELS * 20 ))" ]; then
 	abandon_take "usage-tab-opened" \
 		"clicking the model name changed ${OPENED} pixels, which is nearer this renderer's noise \

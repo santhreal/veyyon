@@ -96,20 +96,18 @@ pause 0.5
 shot model-selected
 
 # ─── Prompt Submission with PNG Attachment ────────────────────────────────────
-move_px "$((WIN_X + WIN_W / 2))" "$((WIN_Y + WIN_H - 98))"
-click
-k "ctrl+a"
-pause 0.2
-k "BackSpace"
-pause 0.3
+# The aim is the preamble's, derived from the token files, not the window's
+# midpoint at a height this scene decides: a click outside the card focuses the
+# transcript and the prompt is typed into nothing.
+COMPOSER_X="${COMPOSER_EDITOR_X}"
+COMPOSER_Y="${COMPOSER_EDITOR_Y}"
 
-# Type /attach in composer and submit prompt with file attachment mention
-t "/attach"
-pause 0.5
+# `/attach` first: the command row takes the draft, so the prompt naming the
+# file is typed after the attachment is held.
+type_prompt "/attach" 40
 k "Return"
 pause 0.4
-t "Examine @src/architecture.png and state its structure in one short sentence. Do not call tools."
-k "Return"
+submit_prompt "Examine @src/architecture.png and state its structure in one short sentence. Do not call tools."
 if ! native_session_ready finished 2; then
 	abandon_take "native-artifact-turn-produced" "turn with attachment did not produce completed transcript within 90s"
 fi
@@ -128,10 +126,10 @@ shot artifact-user-image-collapsed
 # the collapsed frame. The sidebar is cropped off the comparison because it
 # prints each session's age.
 use_crop \
-	$(( WIN_X + (WIN_W > 800 ? 256 : 0) )) \
-	$(( WIN_Y + 48 )) \
-	$(( WIN_W - (WIN_W > 800 ? 256 : 0) )) \
-	$(( WIN_H - 48 ))
+	$(( WIN_X + RAIL_W )) \
+	$(( WIN_Y + TITLEBAR_H )) \
+	$(( WIN_W - RAIL_W )) \
+	$(( WIN_H - TITLEBAR_H ))
 
 ARTIFACT_CLICK_X=$(( TRANSCRIPT_COLUMN_RIGHT - 40 ))
 COMPOSER_REST_X=$((WIN_X + WIN_W / 2))

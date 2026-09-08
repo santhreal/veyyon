@@ -20,7 +20,12 @@
 # Sourced by proof/docker/xsession.sh with SCENE_WINDOW, SCENE_NAME, SCENE_OUT
 # and SCENE_LIB already initialized. Record it with:
 #
-#   proof/docker/record-native.sh proof/scenes/desktop-tool-view.sh
+#   SCENE_MOTION_FLOOR=5 proof/docker/record-native.sh proof/scenes/desktop-tool-view.sh
+#
+# The floor is 5 rather than the 12 a moving surface carries: the take is a
+# minute and a half, most of it a tool turn whose transcript stands still while
+# the model reads the command's output, and the frames it publishes are stills.
+# What judges this take is the readings below, not its frame rate.
 set -euo pipefail
 
 source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
@@ -106,11 +111,15 @@ PY
 #
 # The sidebar is cropped off because the session list prints each session's age,
 # so two frames a second apart differ there whatever the transcript does.
+# RAIL_W and TITLEBAR_H come from the token files through the preamble this
+# scene sources, so the rectangle follows the shed at whatever width the take
+# is recorded at and a retuned titlebar moves it rather than leaving it
+# reaching into the chrome above.
 use_crop \
-	$(( WIN_X + (WIN_W > 800 ? 256 : 0) )) \
-	$(( WIN_Y + 48 )) \
-	$(( WIN_W - (WIN_W > 800 ? 256 : 0) )) \
-	$(( WIN_H - 48 ))
+	$(( WIN_X + RAIL_W )) \
+	$(( WIN_Y + TITLEBAR_H )) \
+	$(( WIN_W - RAIL_W )) \
+	$(( WIN_H - TITLEBAR_H ))
 # A disclosed card redraws a quarter of that area. Two settled frames of the
 # same state measured 26 pixels apart out of 694,848, which is the software
 # renderer's own noise, so agreement is generous and disclosure is unmistakable.
@@ -127,13 +136,7 @@ pause 0.5
 
 COMPOSER_X="${COMPOSER_EDITOR_X}"
 COMPOSER_Y="${COMPOSER_EDITOR_Y}"
-move_px "${COMPOSER_X}" "${COMPOSER_Y}"
-click
-k "ctrl+a"
-k "BackSpace"
-pause 0.3
-t "run this shell command for me with your bash tool: printf 'running 6 tests\n'; printf 'test transcribes_a_16k_mono_wav ... ok\n'"
-k "Return"
+submit_prompt "run this shell command for me with your bash tool: printf 'running 6 tests\n'; printf 'test transcribes_a_16k_mono_wav ... ok\n'"
 
 if ! native_tool_call_recorded; then
 	abandon_take "native-tool-call-recorded" "the submitted turn recorded no completed tool call within 240s"

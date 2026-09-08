@@ -260,9 +260,11 @@ Unrelated and duplicate acknowledgments do not consume content.
 
 A prompt sent while a turn runs waits in the session's queue, and the composer
 lists what waits above the input: the steering prompts, which enter the running
-turn at its next tool boundary, then the follow-up prompts, which run after the
-turn ends, each oldest first. Each prompt occupies one truncated line under a
-count of what is held.
+turn before its next model request, then the follow-up prompts, which run after
+the turn ends, each oldest first. A turn that calls a tool makes that request
+as soon as the tool answers; a turn writing one long answer makes it when that
+answer ends, so a steer sent mid-answer is delivered at the end of it. Each
+prompt occupies one truncated line under a count of what is held.
 
 `Alt-Up`, and the control at the strip's trailing edge, take the newest queued
 prompt out of the queue and put its text back in the draft. The queue releases
@@ -453,6 +455,15 @@ each overlay drawing over the transcript, each dismissal returning the transcrip
 to the frame it opened over, and the draft surviving both. The reading is printed
 as `scene: draft <n>px, kept <n>px, moved <n>px, picker <n>/1000 open ...`.
 
+The preamble also owns where a prompt is typed. `submit_prompt` clicks the
+editor line the preamble derived from the token files, clears the draft, types
+the text, reads the composer band back, and presses `Return` only when the ink
+is there; `type_prompt` stops before the `Return` for a scene that photographs
+the typed draft. A scene that restates the aim as a number clicks whatever that
+number reaches at the current layout, and a click outside the card focuses the
+transcript, so the keystrokes reach no draft and the take reports a turn the
+model never ran.
+
 Use `proof/scenes/desktop-navigation.sh` with the same capture environment to
 exercise a completed host response, transcript paging, find, contextual panel
 transitions, and session creation through command search. It reads back the model
@@ -478,10 +489,11 @@ means. The collapsed frame is taken after the keyboard reaches the turn, so the
 three frames differ in the disclosure alone. The card's row is found by clicking
 down the transcript column until a click draws the frame the keyboard produced; a
 click that opens the right panel is undone with `Primary-\` before the next row.
-The take is a set of still frames, so pass `SCENE_MOTION_FLOOR=6`:
+The take runs a minute and a half, most of it a tool turn whose transcript stands
+still, and the frames it publishes are stills, so pass `SCENE_MOTION_FLOOR=5`:
 
 ```sh
-SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh proof/scenes/desktop-tool-view.sh
+SCENE_MOTION_FLOOR=5 proof/docker/record-native.sh proof/scenes/desktop-tool-view.sh
 ```
 
 Use `proof/scenes/desktop-live-edge-pill.sh` to drive a real turn, step the turn
@@ -508,11 +520,16 @@ arm with `PROOF_BASE_REF=HEAD`, since the change is inside the executable alone.
 Use `proof/scenes/desktop-turn-control.sh` to submit a real prompt on a local
 model and photograph the run bar while the turn runs: its primary action as
 steer, the same run after `primary-/` puts it in queue mode, a follow-up
-submitted behind the running turn, and the turn stopped by `primary-.`. It waits
-on the host's own session state rather than on a pause, so an idle composer
-fails the take instead of being photographed as a running turn. The steer and
-queue frames are one differential: the primary action is the whole difference
-between them. Record its other arm with `PROOF_BASE_REF=HEAD`, since the change
+submitted behind the running turn, `/Steer <message>` typed as a command, the
+strip listing the steer the host holds, and a turn stopped by `primary-.`. It
+waits on the host's own session state rather than on a pause, so an idle
+composer fails the take instead of being photographed as a running turn. The
+steer and queue frames are one differential: the primary action is the whole
+difference between them. The steering message is read twice, in the strip as
+soon as the host reports holding it and in the transcript once the turn it
+joined has ended, and the abort runs against a turn of its own, since a chord
+pressed at a settled session photographs a finished turn under the name of an
+aborted one. Record its other arm with `PROOF_BASE_REF=HEAD`, since the change
 is inside the executable alone.
 
 Use `proof/scenes/desktop-settings-row.sh` to photograph the General page at

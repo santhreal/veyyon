@@ -7,12 +7,16 @@
 #   2. turn-running-queue      (the same turn after `primary-/`, primary Queue)
 #   3. turn-queued-followup    (a follow-up submitted behind the running turn)
 #   4. turn-queue-taken-back   (the same follow-up returned to the draft by alt+Up)
-#   5. turn-aborted            (the turn stopped by `primary-.`)
+#   5. turn-steer-command-typed (`/Steer <message>` typed, the row selected)
+#   6. turn-steer-queued       (the composer listing the steer the host holds)
+#   7. turn-aborted            (a turn stopped by `primary-.`)
 #
 # Frames 1 and 2 are a differential of one state: the run bar's primary action is
 # the whole difference, so a single frame of a running turn proves nothing about
 # the mode. Frames 3 and 4 are the queue the operator can read and the way back
-# out of it, each compared against the frame before it, and frame 5 ends the run.
+# out of it, each compared against the frame before it. Frames 5 and 6 are the
+# keyboard route to a steer and what the host answered with, and frame 7 ends a
+# run.
 #
 # The turn is REAL. The prompt asks the local model for output long enough to
 # still be generating while the frames are taken, the queued follow-up reaches
@@ -49,8 +53,30 @@ created_path = Path(os.environ["SCENE_RUNTIME_DIR"]) / "created-session.json"
 created_id = json.loads(created_path.read_text())
 mode = sys.argv[1]
 deadline = time.monotonic() + float(sys.argv[2])
-settled = {"Complete", "Interrupted", "Aborted", "Error"}
+# An errored turn is not evidence of anything this scene is named for, and it
+# is terminal, so a wait that accepted it published a broken run as a steered
+# one: a take read `status=Error, messages=2` and went on to photograph the
+# abort. `Error` ends the wait as a failure carrying the provider's own
+# message, which the session index does not hold.
+settled = {"Complete", "Interrupted", "Aborted"}
 last = "no host frame"
+
+
+def provider_error(row):
+    # The failure the provider reported sits in the transcript on the assistant
+    # message, not in the session index, so a take that stopped on `Error`
+    # states what broke rather than only that something did.
+    try:
+        with Path(row["path"]).open() as transcript:
+            for entry in transcript:
+                message = json.loads(entry).get("message", {})
+                if message.get("role") == "assistant" and message.get("errorMessage"):
+                    return message["errorMessage"]
+    except (OSError, ValueError, KeyError):
+        pass
+    return "the transcript states no provider message"
+
+
 while time.monotonic() < deadline:
     try:
         with socket.socket(socket.AF_UNIX) as connection:
@@ -80,9 +106,16 @@ while time.monotonic() < deadline:
                     if mode == "started" and row.get("message_count", 0) >= 1:
                         print(f"native turn reached the host ({last})")
                         raise SystemExit(0)
+                    if row.get("status") == "Error":
+                        raise SystemExit(f"Native turn ended in Error ({last}): {provider_error(row)}")
                     if mode == "settled" and row.get("status") in settled:
                         print(f"native turn settled ({last})")
                         raise SystemExit(0)
+                    if mode == "aborted" and row.get("status") == "Aborted":
+                        print(f"native turn aborted ({last})")
+                        raise SystemExit(0)
+                    if mode == "aborted" and row.get("status") == "Complete":
+                        raise SystemExit(f"Native turn completed instead of aborting ({last})")
                     break
     except (OSError, ValueError, RuntimeError) as error:
         last = str(error)
@@ -184,31 +217,33 @@ streamed_into_the_transcript() { # <baseline-png> <ceiling-seconds>
 
 # The two rectangles this scene compares over, in root coordinates. The sidebar
 # is outside both: it prints each session's age, so it differs a second later
-# whatever the surface under test did.
-SIDEBAR_W=$(( WIN_W > 800 ? 256 : 0 ))
-COMPOSER_H=140
+# whatever the surface under test did. RAIL_W, TITLEBAR_H and COMPOSER_BAND_H
+# come from the token files through the preamble this scene sources, so a
+# rectangle follows the shed at whatever width the take is recorded at, and a
+# retuned titlebar or composer moves the crop with it rather than leaving it
+# reaching into the surface next door.
 transcript_crop() {
 	use_crop \
-		$(( WIN_X + SIDEBAR_W )) \
-		$(( WIN_Y + 48 )) \
-		$(( WIN_W - SIDEBAR_W )) \
-		$(( WIN_H - 48 - COMPOSER_H ))
+		$(( WIN_X + RAIL_W )) \
+		$(( WIN_Y + TITLEBAR_H )) \
+		$(( WIN_W - RAIL_W )) \
+		$(( WIN_H - TITLEBAR_H - COMPOSER_BAND_H ))
 }
 run_bar_crop() {
 	use_crop \
-		$(( WIN_X + SIDEBAR_W )) \
-		$(( WIN_Y + WIN_H - COMPOSER_H )) \
-		$(( WIN_W - SIDEBAR_W )) \
-		"${COMPOSER_H}"
+		$(( WIN_X + RAIL_W )) \
+		$(( WIN_Y + WIN_H - COMPOSER_BAND_H )) \
+		$(( WIN_W - RAIL_W )) \
+		"${COMPOSER_BAND_H}"
 }
 # The composer grows upward once it lists what the session is holding, so the
 # queued frames are compared over a taller strip than the run bar's own.
 QUEUED_H=240
 queued_crop() {
 	use_crop \
-		$(( WIN_X + SIDEBAR_W )) \
+		$(( WIN_X + RAIL_W )) \
 		$(( WIN_Y + WIN_H - QUEUED_H )) \
-		$(( WIN_W - SIDEBAR_W )) \
+		$(( WIN_W - RAIL_W )) \
 		"${QUEUED_H}"
 }
 # A streamed line of words repaints far more than the renderer's own noise,
@@ -274,10 +309,19 @@ k "Return"
 pause 0.5
 
 # ─── A turn that is still running when the shutter opens ─────────────────────
-move_px "${COMPOSER_X}" "${COMPOSER_Y}"
-click
-t "Count from one to two hundred, writing each number on its own line as an English word. Do not call tools."
-k "Return"
+# The turn has to run for the length of the frames below, it has to answer in
+# prose, and it has to end cleanly. Two prompts failed the take before this
+# one: asked for the numbers as English words the 1.5B model drifted into
+# Italian and repeated one word twenty times, which the runtime's loop
+# detector reads as a stalled stream and the turn ended in `Error`; asked to
+# "write the numbers" it called the write tool, and a turn aborted inside a
+# tool batch leaves the session running the ledger turn that follows it rather
+# than `Aborted`. A counting verb, digits, and an answer asked for in the
+# reply keep it a single prose turn; the count runs to 400 because the frames
+# below are taken while it generates, and a turn that ends first leaves the
+# primary action at Send under both mode names.
+RUNNING_PROMPT="Count from 1 to 400 in your reply, one number per line as digits, and nothing else. Do not use tools."
+submit_prompt "${RUNNING_PROMPT}"
 if ! native_turn_state started 30; then
 	abandon_take "native-turn-started" "the submitted prompt never reached the host as a persisted turn"
 fi
@@ -345,31 +389,71 @@ fi
 # `/Steer <message>` is the keyboard route to the control the pointer reaches
 # on the composer, and the words after the spelling are what the running turn
 # receives. Ranking folds case over the first word alone, so the row is
-# selected while the message behind it is left out of the score; the assertion
-# is what the host holds afterwards, which is the message with no spelling in
-# front of it.
+# selected while the message behind it is left out of the score.
 #
 # It runs after the frames above because an interjection ends the count the
 # turn was in the middle of: a steer delivered before them left an idle
 # composer under both mode names, and the pair measured nothing.
+#
+# WHEN A STEER BECOMES READABLE. Two observables answer for it and they answer
+# at different times. The composer's strip is immediate: it lists what the
+# HOST reported holding, so a strip carrying the message proves the row ran,
+# the window sent the steer and the host took it. The transcript is not: a
+# steer joins the run loop's steering queue and is recorded when the loop next
+# polls it, which for a single long generation is when that generation ends.
+# A take that asked the transcript 30s after the keystroke read a turn still
+# counting and abandoned a scene whose steer had been delivered correctly, so
+# the strip is read first and the transcript only after the turn settles.
 STEER_MESSAGE="Say the words steered by the palette."
-move_px "${COMPOSER_X}" "${COMPOSER_Y}"
-click
-k "ctrl+a"
-k "BackSpace"
-t "/Steer ${STEER_MESSAGE}"
-pause 0.8
+type_prompt "/Steer ${STEER_MESSAGE}"
+pause 0.4
 shot turn-steer-command-typed
 k "Return"
-if ! native_transcript_holds "${STEER_MESSAGE}" 30; then
+pause 1.2
+shot turn-steer-queued
+queued_crop
+STEER_HELD="$(shots_differ_pixels turn-queue-taken-back turn-steer-queued)"
+echo "scene: the composer moved ${STEER_HELD} pixels when the steer was sent" >&2
+if [ "${STEER_HELD}" -lt "${QUEUED_STRIP_PIXELS}" ]; then
+	abandon_take "native-steer-stated-by-the-composer" \
+		"the steer moved ${STEER_HELD} pixels, so the command row ran without reaching the host or the host reported no steering prompt"
+fi
+
+# What the model received, once the turn it was steering has ended: the
+# message, and no `/steer` spelling in front of it. The probe prints the
+# provider's message and fails when the run ends in `Error`, so a steer that
+# breaks the turn it joined is a failed take rather than a photographed one.
+if ! native_turn_state settled 300; then
+	abandon_take "native-steered-turn-settled" \
+		"the steered turn reached no clean terminal status within 300s, so the steering queue was never polled or the run it joined broke"
+fi
+if ! native_transcript_holds "${STEER_MESSAGE}" 90; then
 	abandon_take "native-steer-reached-the-turn" \
 		"the steering message never reached the host, so the command row ran without what was typed after it"
 fi
 
 # ─── The way out (primary-.) ─────────────────────────────────────────────────
+# The abort needs a turn of its own: the steer above is only readable once the
+# turn it joined has ended, and a chord pressed at a settled session photographs
+# a finished turn under the name of an aborted one.
+submit_prompt "${RUNNING_PROMPT}"
+# `started` counts the session's persisted messages, and the turns above left
+# several, so it answers yes before this prompt reaches anything. What proves
+# this turn is running is the transcript repainting under it.
+transcript_crop
+ABORT_BASELINE="${SCENE_RUNTIME_DIR}/before-the-abort.png"
+probe_frame "${ABORT_BASELINE}"
+if ! streamed_into_the_transcript "${ABORT_BASELINE}" 180; then
+	abandon_take "native-abort-turn-generating" \
+		"nothing streamed into the transcript within 180s, so the chord would have aborted a turn that had not started"
+fi
 k "ctrl+period"
-if ! native_turn_state settled 60; then
-	abandon_take "native-turn-aborted" "the abort chord left the host still running the turn"
+# `Aborted`, not any terminal status: the session index still carries the
+# previous turn's `Complete` for a moment after a submission, so a wait that
+# took the first terminal status it saw returned before this turn existed and
+# published a finished turn under the name of an aborted one.
+if ! native_turn_state aborted 60; then
+	abandon_take "native-turn-aborted" "the abort chord left the host running the turn or let it finish"
 fi
 pause 1.0
 shot turn-aborted

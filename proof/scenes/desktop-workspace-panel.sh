@@ -91,8 +91,10 @@ IDENTICAL_PER_MILLE=3
 # mille, so the composer is read in pixels.
 TYPED_PIXELS=150
 
+# The editor line's height is the preamble's, derived from the token files; the
+# x follows this scene's own column, which moves as the panel docks.
 COMPOSER_X=$(( COLUMN_X + 120 ))
-COMPOSER_Y=$(( WIN_Y + WIN_H - 98 ))
+COMPOSER_Y="${COMPOSER_EDITOR_Y}"
 
 # ─── 1. The Session Alone ────────────────────────────────────────────────────
 move_px "${COMPOSER_X}" "${COMPOSER_Y}"
