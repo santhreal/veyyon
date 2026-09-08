@@ -58,7 +58,7 @@ fn without_raster_margin(bounds: Bounds<Pixels>) -> Bounds<Pixels> {
 use crate::model::ShellState;
 
 /// A region of the shell a state change can confine its repaint to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Region {
 	/// The titlebar: window controls, the title, the drawer control.
 	Titlebar,
@@ -105,6 +105,17 @@ impl LaidOut {
 	/// laid it out yet.
 	pub fn bounds(&self, region: Region) -> Option<Bounds<Pixels>> {
 		self.boxes.borrow().get(&region).copied()
+	}
+
+	/// Every region the last frame laid out, in variant order.
+	///
+	/// The set is the frame's own, so a caller stating something about all of
+	/// them — a float that may only cover what it annotates, a repaint that
+	/// may only touch one — covers a region added later without naming it.
+	pub fn recorded_regions(&self) -> Vec<Region> {
+		let mut regions: Vec<Region> = self.boxes.borrow().keys().copied().collect();
+		regions.sort_unstable();
+		regions
 	}
 
 	/// The extent `region` occupied, which is the recorded box with the raster

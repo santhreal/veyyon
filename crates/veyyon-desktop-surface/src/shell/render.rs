@@ -159,9 +159,11 @@ pub fn render_shell(
 
 	let panels = &surface.panels;
 
-	// The columns row is the overlay's positioning parent, so an overlaid
-	// right panel covers the queue and the transcript and leaves the
-	// titlebar and the attention strip reachable above it.
+	// The columns row places the rail beside the session surface. An overlaid
+	// right panel is NOT placed here: it annotates the transcript, so it
+	// floats inside the session surface (§5.6). A float over this row would
+	// dim the rail it sits beside and cover the draft the operator is writing,
+	// which is what a modal does.
 	let mut columns = div()
 		.relative()
 		.flex()
@@ -176,7 +178,7 @@ pub fn render_shell(
 	//
 	// The columns' regions, in child order. The session column records
 	// its own regions, so its slot is empty here.
-	let mut column_regions: Vec<Option<Region>> = Vec::with_capacity(3);
+	let mut column_regions: Vec<Option<Region>> = Vec::with_capacity(2);
 	if let Some(queue_px) = widths.queue_px {
 		let queue_focus = view
 			.queue_focus
@@ -217,6 +219,36 @@ pub fn render_shell(
 		.panel_focus
 		.get_or_insert_with(|| cx.focus_handle())
 		.clone();
+	// The float, built before the surface it is handed to. The scrim dims the
+	// transcript the panel is annotating and nothing else, and the sheet takes
+	// its height from that region, so the composer, the cards above it and the
+	// run bar under it stay lit and stay reachable.
+	let panel_overlay = match widths.right_panel {
+		RightPanelPlacement::Overlay { width_px } => {
+			let inset_px = f32::from(Sheet::inset(&tokens));
+			let body = right_panel(
+				&view.state().panel,
+				inset_px.mul_add(-2.0, width_px),
+				panels,
+				&tokens,
+				&panel_focus,
+				cx,
+			);
+			Some(view.laid_out().track_children(
+				div()
+					.absolute()
+					.inset_0()
+					.flex()
+					.flex_row()
+					.justify_end()
+					.backdrop_blur(px(panels.right_panel_overlay_scrim_blur_px))
+					.bg(tokens.scrim())
+					.child(Sheet::right(body)),
+				|index| (index == 0).then_some(Region::Panel),
+			))
+		},
+		RightPanelPlacement::Inline { .. } | RightPanelPlacement::Absent => None,
+	};
 	let session = session_surface(
 		view.state(),
 		view.composer(),
@@ -230,13 +262,18 @@ pub fn render_shell(
 		&transcript_focus,
 		view.rail_motion.is_reduced_motion(),
 		find_bar,
+		panel_overlay,
 		window,
 		cx,
 	);
 
 	let panel = &view.state().panel;
 	columns = match widths.right_panel {
-		RightPanelPlacement::Absent => columns.child(session),
+		// A float takes no width, so the row is the session surface alone and
+		// the panel is already inside it.
+		RightPanelPlacement::Absent | RightPanelPlacement::Overlay { .. } => {
+			columns.child(session)
+		},
 		// A docked panel is the second pane of a split whose handle the
 		// operator drags (§5.6). The handle sits inside the panel's measure,
 		// so the session surface keeps the width the shed gave it, and the
@@ -276,26 +313,6 @@ pub fn render_shell(
 							cx.notify();
 						});
 					}),
-			)
-		},
-		// The panel takes its width from the window rather than from the
-		// transcript, as a sheet docked to the trailing edge over a blurred
-		// scrim stating that what it covers is still there (§5.6).
-		RightPanelPlacement::Overlay { width_px } => {
-			column_regions.push(Some(Region::Panel));
-			let inset_px = f32::from(Sheet::inset(&tokens));
-			let body =
-				right_panel(panel, inset_px.mul_add(-2.0, width_px), panels, &tokens, &panel_focus, cx);
-			columns.child(session).child(
-				div()
-					.absolute()
-					.inset_0()
-					.flex()
-					.flex_row()
-					.justify_end()
-					.backdrop_blur(px(panels.right_panel_overlay_scrim_blur_px))
-					.bg(tokens.scrim())
-					.child(Sheet::right(body)),
 			)
 		},
 	};

@@ -45,6 +45,7 @@ pub fn session_surface(
 	transcript_focus: &FocusHandle,
 	reduced_motion: bool,
 	find_bar: Option<Div>,
+	panel_overlay: Option<Div>,
 	window: &mut Window,
 	cx: &Context<ShellView>,
 ) -> Div {
@@ -91,6 +92,25 @@ pub fn session_surface(
 			window,
 			cx,
 		))
+	};
+
+	// An overlaid right panel floats over the transcript it annotates, so the
+	// region it dims is the region it is about: the composer keeps its light,
+	// the cards above it stay legible, and a press in either still reaches
+	// them (§5.6). The float's own box is recorded from in here, because the
+	// scrim it sits in spans this region rather than the columns row.
+	let body = match panel_overlay {
+		Some(overlay) => div()
+			.relative()
+			.flex()
+			.flex_col()
+			.w_full()
+			.flex_1()
+			.min_w_0()
+			.overflow_hidden()
+			.child(body)
+			.child(overlay),
+		None => body,
 	};
 
 	// The children below, in order, so a child's index resolves to its region.

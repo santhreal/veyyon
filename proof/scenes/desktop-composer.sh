@@ -105,6 +105,73 @@ fi
 # Establish input focus on the native window on this private display.
 xdotool windowfocus --sync "${SCENE_WINDOW}"
 
+# ─── What The Window Sheds At This Width ─────────────────────────────────────
+# Every desktop scene crops by region, and where a region IS depends on the
+# breakpoint row the window's width resolves to: the rail is 256, 208 or gone,
+# and the panel is a column of 540 or 360 or a float over the session surface.
+# The rows are read from the token files this checkout ships rather than
+# restated here, so a scene recorded at a new width crops what the product
+# actually drew instead of what one width happened to make true.
+read -r RAIL_W PANEL_MODE PANEL_W DRAWER_PLACEMENT LABELS COMPOSER_MAX_W GUTTER_PX SHEET_INSET < <(
+	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" "${WIN_W}" <<'PY'
+from pathlib import Path
+import sys
+import tomllib
+
+tokens = Path(sys.argv[1])
+width = float(sys.argv[2])
+surface = tomllib.loads((tokens / "surface" / "breakpoints.toml").read_text())
+panels = tomllib.loads((tokens / "surface" / "panels.toml").read_text())["right_panel"]
+composer = tomllib.loads((tokens / "surface" / "composer.toml").read_text())["geometry"]
+# §5.4 measures the composer against the session surface it sits in, insetting
+# it by one spacing step on each side. Both numbers are authored, so the scene
+# reads them rather than deciding what a card should measure.
+scale = tomllib.loads((tokens / "scale.toml").read_text())
+gutter = scale["spacing"]["s4"]
+# A float draws as a sheet, which frames its body with one spacing step and a
+# hairline on every side; a column has no such frame. Every crop of an
+# overlaid panel starts inside it.
+sheet = scale["spacing"]["s4"] + scale["stroke"]["hairline"]
+
+rows = sorted(surface["breakpoint"].values(), key=lambda row: row["min_width_px"])
+row = rows[0]
+for candidate in rows:
+    if width >= candidate["min_width_px"]:
+        row = candidate
+
+rail = row["queue_width_px"]
+share = width * panels["max_viewport_ratio"]
+overlay = max(min(panels["default_width_px"], share), min(panels["min_width_px"], width))
+mode = row["right_panel_mode"]
+if mode.startswith("inline_"):
+    asked = float(mode.removeprefix("inline_"))
+    ceiling = width - rail - panels["container_margin_px"]
+    inline = min(asked, share, ceiling)
+    if inline < panels["min_width_px"]:
+        placement, panel = "overlay", overlay
+    else:
+        placement, panel = "inline", inline
+else:
+    placement, panel = "overlay", overlay
+
+print(
+    int(rail),
+    placement,
+    int(panel),
+    row["terminal_drawer_placement"],
+    "labels" if row["composer_footer_labels"] else "no-labels",
+    int(composer["max_width_px"]),
+    int(gutter),
+    int(sheet) if placement == "overlay" else 0,
+)
+PY
+)
+if [ -z "${PANEL_MODE:-}" ]; then
+	abandon_take "the-shed-is-known" "no breakpoint row resolved for a ${WIN_W}px window"
+fi
+echo "scene: ${WIN_W}px sheds to rail ${RAIL_W}px, panel ${PANEL_MODE} ${PANEL_W}px," \
+	"drawer ${DRAWER_PLACEMENT}, ${LABELS}" >&2
+
 # ─── Scene Interactions & Captures ───────────────────────────────────────────
 
 # 1. Start a fresh session (primary-n -> ctrl+n) and capture composer idle state.

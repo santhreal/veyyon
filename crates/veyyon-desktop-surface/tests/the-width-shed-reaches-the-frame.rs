@@ -146,11 +146,16 @@ fn at_the_window_floor_the_panel_overlays_instead_of_taking_the_transcript() {
 	let width = surface.shell.window_min_width_px as u32;
 	let height = surface.shell.window_min_height_px as u32;
 
-	let state = fixture::populated();
+	let mut state = fixture::populated();
 	assert!(
 		!state.panel.is_empty(),
 		"the fixture must have panel content for this to mean anything"
 	);
+	// The float is over the transcript it annotates (§5.6), so the band read
+	// below is the transcript's. At this floor the fixture's card stack takes
+	// most of a 560px column, and a band measured through it would be reading
+	// the cards rather than the placement this test is about.
+	state.cards = Vec::new();
 
 	let widths = shell_widths(shed(width as f32, height as f32, true), &surface);
 	let drawn = match widths.right_panel {
