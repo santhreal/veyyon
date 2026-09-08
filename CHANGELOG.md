@@ -285,6 +285,7 @@
 
 ### Fixed
 
+- A desktop file or diff line wider than the right panel scrolls sideways under a horizontal wheel while its line numbers and change signs stay where they are, and a vertical wheel over the same lines scrolls the file: a long line had been cut at the panel's edge mid-glyph with no gesture that reached the rest of it. A split diff's two sides scroll on their own.
 - A collapsed desktop card stack fold draws the count alone: the lines it folded away are clipped by the row's lower edge rather than shrunk to share it, where three folded decisions had each been handed a third of the row and the first name was drawn cut through its glyphs under the count.
 - The desktop rail footer draws a gear, where the icon it names as the settings control was a sun: a circle ringed by radial spokes standing clear of it, which reads as brightness rather than as the settings overlay it opens.
 - Escape returns a desktop command surface to the surface it was opened from, and a surface opened directly draws no Back control and states `Esc Close` for what Escape does: pressing the rail footer gear and then Escape opened the command palette, because the ascent read the route table's parent of the surface on screen rather than the descent that reached it.
