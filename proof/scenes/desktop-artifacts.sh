@@ -17,6 +17,21 @@
 #  12. contextual-file-panel-open (contextual right panel open with file / tree view)
 #  13. contextual-file-panel-closed (contextual right panel toggled closed)
 #
+# Two of those marks are found rather than aimed at: a transcript is anchored to
+# its live edge, so the artefact row sits wherever the model's prose left it,
+# and the search that finds it clicks a row a second and measures the frame.
+# That is fourteen still seconds in a sixty-second take, which reads as eleven
+# frames a second of change against the twelve the recorder requires, so the
+# take declares its own floor:
+#
+#   SCENE_MOTION_FLOOR=9 proof/docker/record-native.sh proof/scenes/desktop-artifacts.sh
+#
+# That is not a waiver. The floor exists to stop a stuttering capture being
+# published as a clip, and the search here is a still window under a moving
+# pointer rather than a compositor dropping frames: the number is measured and
+# printed either way, and the two disclosure marks assert their own pixel
+# deltas, which a stuttered capture could not produce.
+#
 # Sourced by proof/docker/xsession.sh with SCENE_WINDOW, SCENE_NAME, SCENE_OUT,
 # and SCENE_LIB already initialized.
 
