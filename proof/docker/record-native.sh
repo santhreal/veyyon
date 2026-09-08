@@ -68,6 +68,12 @@ fi
 
 # The token and theme directories are read from the checkout rather than an
 # installed share tree, so a scene photographs the tokens in this working copy.
+#
+# A before arm names another tree in PROOF_TOKENS_DIR (a container path under
+# /repo). The source hold covers packages/ and its siblings, never crates/, so
+# a pre-change executable is handed this checkout's token files: one that adds
+# a key fails to load, since §9.3 rejects a key a loader does not know rather
+# than ignoring it. The arm points at a copy of the tokens as they stood.
 export PROOF_HOST_REPO_SOURCE="${BINARY}"
 export PROOF_HOST_REPO_TARGET=/desktop-bin/veyyon-desktop
 export SCENE_TERMINAL=native
@@ -77,8 +83,8 @@ export SCENE_TERMINAL=native
 export SCENE_RUNTIME_DIR=/out/runtime
 export SCENE_COMMAND="env VK_DRIVER_FILES=${VK_ICD:-/usr/share/vulkan/icd.d/lvp_icd.json} \
 VEYYON_BIN=/repo/packages/coding-agent/src/cli.ts \
-VEYYON_DESKTOP_TOKENS_DIR=/repo/crates/veyyon-desktop-tokens/tokens \
-VEYYON_DESKTOP_THEMES_DIR=/repo/crates/veyyon-desktop-tokens/themes \
+VEYYON_DESKTOP_TOKENS_DIR=${PROOF_TOKENS_DIR:-/repo/crates/veyyon-desktop-tokens/tokens} \
+VEYYON_DESKTOP_THEMES_DIR=${PROOF_THEMES_DIR:-/repo/crates/veyyon-desktop-tokens/themes} \
 /desktop-bin/veyyon-desktop"
 : "${SCENE_WIDTH:=1180}"
 : "${SCENE_HEIGHT:=800}"

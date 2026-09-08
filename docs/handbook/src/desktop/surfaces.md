@@ -413,6 +413,15 @@ queue frames are one differential: the primary action is the whole difference
 between them. Record its other arm with `PROOF_BASE_REF=HEAD`, since the change
 is inside the executable alone.
 
+Use `proof/scenes/desktop-settings-row.sh` to photograph the General page at
+rest and with the pointer on a row's description. It counts the control bands
+in the page body, the distance between the first two, and the pixels a hovered
+row changes under itself. Record its other arm with the base ref that precedes
+the change, and name a copy of the token files as they stood in
+`PROOF_TOKENS_DIR`: the source hold covers `packages/` and its siblings, never
+`crates/`, so a pre-change executable handed a token file with a key it does
+not know fails to load.
+
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
 The [capture requirements](../foundations/verification.md) specify paired static
 frames and animated clips. Headless scene PNGs do not replace native captures.

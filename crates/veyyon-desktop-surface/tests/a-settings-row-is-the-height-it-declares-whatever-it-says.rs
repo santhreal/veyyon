@@ -23,9 +23,9 @@
 //!    page added later is measured here without editing this suite.
 //!
 //! NOT CAUGHT: which words survive the truncation, and where the tag opens.
-//! Both are judged from a capture. A control taller than the row would grow it
-//! past the assertion here only if it were drawn on the page under test; the
-//! sweep draws every page, so one that does fails.
+//! Both are judged from a capture. The row's control column is measured in
+//! `a-row-clips-a-control-taller-than-the-band-it-declares`, which draws a
+//! control taller than the band the row declares.
 
 use std::path::Path;
 
@@ -138,7 +138,7 @@ fn description_centre(captured: &Captured) -> Option<Point<Pixels>> {
 		let left = f32::from(desc.bounds.left());
 		match counts
 			.iter_mut()
-			.find(|(seen, _)| (seen - &left).abs() < 0.5)
+			.find(|(seen, _)| (*seen - left).abs() < 0.5)
 		{
 			Some((_, count)) => *count += 1,
 			None => counts.push((left, 1)),
