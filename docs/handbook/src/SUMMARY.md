@@ -78,6 +78,7 @@
 - [Speech](./features/speech.md)
 - [Export and import](./features/export-import.md)
 - [Configuration](./using/configuration.md)
+  - [Reload routing defaults](./using/configuration.md#reload-routing-defaults-without-restarting)
   - [Feature flags](./features/feature-flags.md)
   - [Tools, skills, and extension data](./using/extending.md)
 - [Migration guide](./using/migration-guide.md)

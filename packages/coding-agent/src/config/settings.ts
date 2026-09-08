@@ -905,12 +905,100 @@ export class Settings {
 			clearTimeout(this.#saveTimer);
 			this.#saveTimer = undefined;
 		}
-		if (this.#savePromise) {
+		while (this.#savePromise) {
 			await this.#savePromise;
 		}
 		if (this.#modified.size > 0) {
 			await this.#saveNow();
 		}
+	}
+
+	/**
+	 * Reload routing defaults for subsequent spawns without replacing this store or
+	 * rebinding live agents. Other settings deliberately remain startup-owned.
+	 */
+	async reloadConfig(): Promise<{
+		changed: { path: SettingPath; before: unknown; after: unknown }[];
+		restartRequired: SettingPath[];
+	}> {
+		if (!this.#configPath) throw new Error("Cannot reload an in-memory settings store.");
+		if (this.#modified.size || this.#savePromise) {
+			throw new Error("Settings are being saved; retry /reload-config after the save finishes.");
+		}
+		const original = JSON.stringify([this.#global, this.#configOverlay, this.#overrides]);
+		const candidate = new Settings({ cwd: this.#cwd, agentDir: this.#agentDir, readOnly: true });
+		// Unlike startup's forgiving loader, a reload must never quarantine or
+		// replace a malformed file and must leave the live routing table intact.
+		candidate.#global = (await candidate.#loadExistingMainYaml(true)) ?? {};
+		candidate.#configFiles = this.#configFiles;
+		candidate.#configOverlay = await candidate.#loadConfigOverlays();
+		candidate.#overrides = this.#overrides;
+		for (const source of [candidate.#global, candidate.#configOverlay]) {
+			for (const settingPath of Object.keys(SETTINGS_SCHEMA)) {
+				const segments = settingPath.split(".");
+				for (let depth = 1; depth < segments.length; depth++) {
+					const namespace = getByPath(source, segments.slice(0, depth));
+					if (namespace === undefined) break;
+					if (namespace === null || typeof namespace !== "object" || Array.isArray(namespace)) {
+						throw new Error(`Invalid config namespace ${segments.slice(0, depth).join(".")}; reload rejected.`);
+					}
+				}
+			}
+		}
+		candidate.#collectInvalidValues(candidate.#global, candidate.#configPath ?? this.#configPath);
+		candidate.#collectInvalidValues(candidate.#configOverlay, "--config overlays");
+		if (candidate.#invalidValues.length) {
+			throw new Error(
+				`Invalid config settings; reload rejected:\n${candidate.#invalidValues
+					.map(({ file, reason }) => `${file}: ${reason}`)
+					.join("\n")}`,
+			);
+		}
+		candidate.#rebuildMerged();
+		if (
+			JSON.stringify([this.#global, this.#configOverlay, this.#overrides]) !== original ||
+			this.#modified.size ||
+			this.#savePromise
+		) {
+			throw new Error("Settings changed during reload; retry /reload-config.");
+		}
+		const reloadable: readonly SettingPath[] = [
+			"modelRoles",
+			"defaultEffort",
+			"subagent.agents",
+			"subagent.model",
+			"subagent.sharedModel",
+			"subagent.thinkingLevel",
+		];
+		const changed: { path: SettingPath; before: unknown; after: unknown }[] = [];
+		const restartRequired: SettingPath[] = [];
+		for (const key of Object.keys(SETTINGS_SCHEMA) as SettingPath[]) {
+			if (GLOBAL_SETTING_BINDINGS[key]) continue;
+			const before = this.get(key);
+			const after = candidate.get(key);
+			if (JSON.stringify(before) === JSON.stringify(after)) continue;
+			if (reloadable.includes(key)) changed.push({ path: key, before, after });
+			else restartRequired.push(key);
+		}
+		// Replace only the supported source fields, including deletions. Keep
+		// overlays and runtime overrides in their original precedence layers.
+		for (const key of reloadable) {
+			const segments = key.split(".");
+			for (const [target, source] of [
+				[this.#global, candidate.#global],
+				[this.#configOverlay, candidate.#configOverlay],
+			]) {
+				const value = getByPath(source, segments);
+				if (value === undefined) deleteByPath(target, segments);
+				else setByPath(target, segments, value);
+			}
+		}
+		this.#configPath = candidate.#configPath;
+		this.#rebuildMerged();
+		for (const change of changed) {
+			this.#fireEffectiveSettingChanged(change.path, this.get(change.path), change.before);
+		}
+		return { changed, restartRequired };
 	}
 
 	/**
@@ -1377,11 +1465,13 @@ export class Settings {
 		}
 	}
 
-	async #loadExistingMainYaml(): Promise<RawSettings | null> {
+	async #loadExistingMainYaml(strict = false): Promise<RawSettings | null> {
 		if (!this.#configPath) return null;
 		for (const filename of MAIN_CONFIG_FILENAMES) {
 			const configPath = path.join(this.#agentDir, filename);
-			const loaded = await this.#loadYamlIfPresent(configPath);
+			const loaded = strict
+				? await this.#loadOverlayYaml(configPath, true)
+				: await this.#loadYamlIfPresent(configPath);
 			if (loaded instanceof UnreadableConfig) {
 				// The file at this name exists, so it is the config even though this
 				// read failed. Falling through to the next candidate would start
@@ -1401,7 +1491,9 @@ export class Settings {
 	async #loadConfigOverlays(): Promise<RawSettings> {
 		let merged: RawSettings = {};
 		for (const filePath of this.#configFiles) {
-			merged = this.#deepMerge(merged, await this.#loadOverlayYaml(filePath));
+			const overlay = await this.#loadOverlayYaml(filePath);
+			if (overlay === null) throw new Error(`Config overlay not found: ${filePath}`);
+			merged = this.#deepMerge(merged, overlay);
 		}
 		return merged;
 	}
@@ -1411,11 +1503,12 @@ export class Settings {
 	 * missing or malformed files are hard errors so a typo'd path cannot
 	 * silently fall back to the persistent settings.
 	 */
-	async #loadOverlayYaml(filePath: string): Promise<RawSettings> {
+	async #loadOverlayYaml(filePath: string, allowMissing = false): Promise<RawSettings | null> {
 		let content: string;
 		try {
 			content = await Bun.file(filePath).text();
 		} catch (error) {
+			if (allowMissing && isEnoent(error)) return null;
 			throw new Error(
 				isEnoent(error)
 					? `Config overlay not found: ${filePath}`
@@ -2500,6 +2593,17 @@ export class Settings {
 	}
 
 	async #saveNow(): Promise<void> {
+		while (this.#savePromise) await this.#savePromise;
+		const pending = this.#persistNow();
+		this.#savePromise = pending;
+		try {
+			await pending;
+		} finally {
+			if (this.#savePromise === pending) this.#savePromise = undefined;
+		}
+	}
+
+	async #persistNow(): Promise<void> {
 		if (!this.#persist || !this.#configPath || this.#modified.size === 0) return;
 
 		const configPath = this.#configPath;
@@ -2524,9 +2628,10 @@ export class Settings {
 					setByPath(current, segments, value);
 				}
 
-				// Update our global with any external changes we preserved
-				this.#global = current;
-				await this.#writeConfigPreservingText(configPath, this.#global);
+				// #global is the last activated source snapshot, updated only by
+				// explicit setters or reload. Disk preservation is not activation:
+				// adopting this tree would bypass validation and setting hooks.
+				await this.#writeConfigPreservingText(configPath, current);
 			});
 			// The file took the write, so whatever was wrong is over.
 			this.#saveFailure = undefined;

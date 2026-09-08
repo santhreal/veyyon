@@ -84,6 +84,11 @@ export interface BuiltinSlashCommandDeclaration {
 
 export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	{
+		name: "reload-config",
+		description: "Reload model and effort defaults for new subagents (keeps running agents unchanged)",
+		textMode: true,
+	},
+	{
 		name: "settings",
 		description: "Open settings menu",
 	},
@@ -486,6 +491,8 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 			{ name: "done", description: "Mark task/phase/all completed (fuzzy-matched)", usage: "[<task|phase>]" },
 			{ name: "drop", description: "Mark task/phase/all abandoned (fuzzy-matched)", usage: "[<task|phase>]" },
 			{ name: "rm", description: "Remove task/phase/all (fuzzy-matched)", usage: "[<task|phase>]" },
+			{ name: "pending", description: "Reset task/phase/all to pending (fuzzy-matched)", usage: "[<task|phase>]" },
+			{ name: "reset", description: "Reset task/phase/all to pending (alias for pending)", usage: "[<task|phase>]" },
 		],
 		allowArgs: true,
 	},

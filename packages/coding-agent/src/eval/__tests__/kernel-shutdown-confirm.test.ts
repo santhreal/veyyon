@@ -42,11 +42,15 @@ interface FakeProc {
  * `stdout`/`stderr` close immediately so the kernel's readers finish cleanly, and
  * `kill` records the signals it receives (optionally resolving the exit).
  */
-function makeFakeProc(exited: Promise<number | null>, onKill?: (signal: string) => void): FakeProc {
+function makeFakeProc(
+	exited: Promise<number | null>,
+	onKill?: (signal: string) => void,
+	end: () => unknown = () => {},
+): FakeProc {
 	const killSignals: string[] = [];
 	const closedStream = () => new ReadableStream<Uint8Array>({ start: controller => controller.close() });
 	const proc = {
-		stdin: { write: () => 0, flush: () => {}, end: () => {} },
+		stdin: { write: () => 0, flush: () => {}, end },
 		stdout: closedStream(),
 		stderr: closedStream(),
 		exited,
@@ -69,6 +73,29 @@ describe("BaseKernel.shutdown exit confirmation", () => {
 
 		expect(result.confirmed).toBe(true);
 		// The regression: exit code 0 must NOT be misread as "still running".
+		expect(killSignals).toEqual([]);
+	});
+
+	it("observes and contains an asynchronous broken-pipe rejection while closing stdin", async () => {
+		const kernel = new TestKernel("k-broken-stdin", testOptions(200));
+		const brokenPipe = Object.assign(new Error("EPIPE: broken pipe, write"), {
+			code: "EPIPE",
+			syscall: "write",
+		});
+		let endObserved = false;
+		const rejectedEnd = {
+			then(_resolve: (value: number) => void, reject: (error: Error) => void): void {
+				endObserved = true;
+				reject(brokenPipe);
+			},
+		};
+		const { proc, killSignals } = makeFakeProc(Promise.resolve(0), undefined, () => rejectedEnd);
+		kernel.setProcess(proc);
+
+		const result = await kernel.shutdown();
+
+		expect(result.confirmed).toBe(true);
+		expect(endObserved).toBe(true);
 		expect(killSignals).toEqual([]);
 	});
 

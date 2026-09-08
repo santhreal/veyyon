@@ -39,6 +39,7 @@ const USAGE = [
 	"  /todo done   [<task|phase>]        Mark task/phase/all completed",
 	"  /todo drop   [<task|phase>]        Mark task/phase/all abandoned",
 	"  /todo rm     [<task|phase>]        Remove task/phase/all",
+	"  /todo pending [<task|phase>]        Reset task/phase/all to pending",
 	"  /todo help                         Show this help",
 ].join("\n");
 
@@ -154,6 +155,10 @@ export class TodoCommandController {
 				return;
 			case "drop":
 				this.#mutateStatus(rest, "abandoned");
+				return;
+			case "pending":
+			case "reset":
+				this.#mutateStatus(rest, "pending");
 				return;
 			case "rm":
 				this.#remove(rest);
@@ -293,8 +298,8 @@ export class TodoCommandController {
 		this.ctx.showStatus(`Started: ${hit.task.content}`);
 	}
 
-	#mutateStatus(rest: string, target: "completed" | "abandoned"): void {
-		const op = target === "completed" ? "done" : "drop";
+	#mutateStatus(rest: string, target: "completed" | "abandoned" | "pending"): void {
+		const op = target === "completed" ? "done" : target === "abandoned" ? "drop" : "pending";
 		const current = this.#currentPhases();
 		const trimmed = rest.trim();
 		if (!trimmed) {
@@ -305,7 +310,13 @@ export class TodoCommandController {
 				return;
 			}
 			this.#commit(phases, `/todo ${op} (all)`);
-			this.ctx.showStatus(`Marked all tasks ${target}.`);
+			const allMsg =
+				target === "completed"
+					? "Marked all tasks completed."
+					: target === "abandoned"
+						? "Marked all tasks abandoned."
+						: "Reset all tasks to pending.";
+			this.ctx.showStatus(allMsg);
 			return;
 		}
 
@@ -317,7 +328,13 @@ export class TodoCommandController {
 				return;
 			}
 			this.#commit(phases, `/todo ${op} ${taskHit.task.content}`);
-			this.ctx.showStatus(`Marked ${target}: ${taskHit.task.content}`);
+			const taskMsg =
+				target === "completed"
+					? `Marked completed: ${taskHit.task.content}`
+					: target === "abandoned"
+						? `Marked abandoned: ${taskHit.task.content}`
+						: `Reset to pending: ${taskHit.task.content}`;
+			this.ctx.showStatus(taskMsg);
 			return;
 		}
 
@@ -329,7 +346,13 @@ export class TodoCommandController {
 				return;
 			}
 			this.#commit(phases, `/todo ${op} ${phaseHit.name}`);
-			this.ctx.showStatus(`Marked phase ${phaseHit.name} ${target}.`);
+			const phaseMsg =
+				target === "completed"
+					? `Marked phase ${phaseHit.name} completed.`
+					: target === "abandoned"
+						? `Marked phase ${phaseHit.name} abandoned.`
+						: `Reset phase ${phaseHit.name} to pending.`;
+			this.ctx.showStatus(phaseMsg);
 			return;
 		}
 

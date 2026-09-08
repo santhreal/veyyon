@@ -1,0 +1,91 @@
+name: Config hot reload
+on:
+  pull_request:
+    branches: [feat/native-topic-replenishment]
+    paths:
+      - packages/coding-agent/src/config/settings.ts
+      - packages/coding-agent/src/config/settings-domains/subagents.ts
+      - packages/coding-agent/bench/config-hot-reload.bench.ts
+      - proof/scenes/config-hot-reload.sh
+      - packages/coding-agent/src/slash-commands/**
+      - packages/coding-agent/test/config-hot-reload.test.ts
+      - .github/workflows/config-hot-reload.yml
+permissions:
+  contents: read
+  actions: read
+jobs:
+  contracts:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-system-deps
+      - uses: ./.github/actions/bun-install
+      - name: Build test sandbox
+        run: bash scripts/test-sandbox/run.sh --build
+      - name: Prove both contracts reject the pre-fix implementation
+        run: |
+          settings=packages/coding-agent/src/config/settings.ts
+          lanes=packages/coding-agent/src/config/settings-domains/subagents.ts
+          cp "$settings" /tmp/hot-reload-settings.ts
+          cp "$lanes" /tmp/hot-reload-lanes.ts
+          trap 'cp /tmp/hot-reload-settings.ts "$settings"; cp /tmp/hot-reload-lanes.ts "$lanes"' EXIT
+          git show 2c38b9dc4688fed0c9e116436211b36322321315:"$settings" > "$settings"
+          git show 2c38b9dc4688fed0c9e116436211b36322321315:"$lanes" > "$lanes"
+          for contract in "rejects semantic-invalid nested lanes" "keeps the activated snapshot"; do
+            if bash scripts/test-sandbox/run.sh bun test ./packages/coding-agent/test/config-hot-reload.test.ts --test-name-pattern "$contract" > /tmp/contract-red.log 2>&1; then
+              cat /tmp/contract-red.log
+              echo "Regression contract unexpectedly passed on the pre-fix source"
+              exit 1
+            fi
+            cat /tmp/contract-red.log
+            grep -q "1 fail" /tmp/contract-red.log
+          done
+      - name: Prove TUI rejection contract fails before dispatcher repair
+        run: |
+          registry=packages/coding-agent/src/slash-commands/builtin-registry.ts
+          cp "$registry" /tmp/hot-reload-registry.ts
+          trap 'cp /tmp/hot-reload-registry.ts "$registry"' EXIT
+          git show 3c22e09bebb15a8869c2cea3ab2534584e582716:"$registry" > "$registry"
+          if bash scripts/test-sandbox/run.sh bun test ./packages/coding-agent/test/config-hot-reload.test.ts --test-name-pattern "contains rejected reloads through the real TUI" > /tmp/tui-red.log 2>&1; then
+            cat /tmp/tui-red.log
+            exit 1
+          fi
+          cat /tmp/tui-red.log
+          grep -q "1 fail" /tmp/tui-red.log
+      - name: Focused settings contracts
+        run: bash scripts/test-sandbox/run.sh bun test packages/coding-agent/test/config-hot-reload.test.ts packages/coding-agent/test/settings-reload-cwd.test.ts
+      - name: Prepare package native dependency
+        run: bun --cwd=packages/natives run ensure
+      - name: Exact-parity routing bench
+        run: bash scripts/test-sandbox/run.sh bun packages/coding-agent/bench/config-hot-reload.bench.ts
+      - name: Build private-display recorder
+        run: |
+          bash proof/docker/build-recorder.sh
+      - name: Record production command differential
+        env:
+          # This command proves static states, not an animation cadence.
+          SCENE_MOTION_FLOOR: "0"
+        run: bash proof/record.sh proof/scenes/config-hot-reload.sh
+      - name: Preserve rendered command proof
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: config-hot-reload-proof
+          path: proof/captures/x11/
+          if-no-files-found: error
+      - name: Coding-agent package tests
+        run: bash scripts/test-sandbox/run.sh bun run --cwd packages/coding-agent test
+      - name: Diagnose package failure against pre-repair source
+        if: failure()
+        run: |
+          settings=packages/coding-agent/src/config/settings.ts
+          lanes=packages/coding-agent/src/config/settings-domains/subagents.ts
+          cp "$settings" /tmp/hot-reload-settings.ts
+          cp "$lanes" /tmp/hot-reload-lanes.ts
+          trap 'cp /tmp/hot-reload-settings.ts "$settings"; cp /tmp/hot-reload-lanes.ts "$lanes"' EXIT
+          git show 2c38b9dc4688fed0c9e116436211b36322321315:"$settings" > "$settings"
+          git show 2c38b9dc4688fed0c9e116436211b36322321315:"$lanes" > "$lanes"
+          bash scripts/test-sandbox/run.sh bun test ./packages/coding-agent/test/task/topic-replenishment.test.ts

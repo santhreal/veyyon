@@ -213,7 +213,7 @@ own page; typing the bare command lists them with their descriptions.
 | `/secret` | `add`, `from-env`, `list`, `rm`, `clear`, `rename`, `value`, `scope`, `copy`, `extend`, `log`, `discard`, `help` |
 | `/collab` | `start`, `view`, `status`, `stop` |
 | `/browser` | `headless`, `visible` |
-| `/todo` | `edit`, `copy`, `export`, `import`, `append`, `start`, `done`, `drop`, `rm` |
+| `/todo` | `edit`, `copy`, `export`, `import`, `append`, `start`, `done`, `drop`, `rm`, `pending`, `reset` |
 | `/session` | `info`, `delete` |
 | `/usage` | `show`, `reset` |
 | `/mcp` | `add`, `list`, `remove`, `test`, `reauth`, `unauth`, `enable`, `disable`, `smithery-search`, `smithery-login`, `smithery-logout`, `reconnect`, `reload`, `resources`, `prompts`, `notifications`, `help` |

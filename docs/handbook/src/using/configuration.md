@@ -35,6 +35,39 @@ $ veyyon config path                     # print the active agent directory
 `/settings` does the same inside a live session. Keys must match a schema path exactly
 (`theme.dark`, not `theme`).
 
+### Reload routing defaults without restarting
+
+After editing the active profile configuration, send `/reload-config` in the running TUI,
+RPC, or ACP session. SDK callers use `await session.settings.reloadConfig()`.
+The command rediscovers the main filename in normal startup order, then re-reads existing
+`--config` overlays. Deleting the main file restores absent/default routing; replacing
+`config.yml` with a supported alternate filename is discovered on the next reload.
+Malformed or unreadable files, invalid lane members (including nested lanes), and missing
+explicit overlays reject the whole reload and preserve prior routing. No file is quarantined
+or rewritten. If a settings save is in flight, wait for it to finish and retry.
+
+The reloadable fields are `modelRoles`, `defaultEffort`, `subagent.agents`,
+`subagent.model`, `subagent.sharedModel`, and `subagent.thinkingLevel`.
+Runtime/CLI overrides keep their precedence. Shared model/effort settings govern spawns only
+when `subagent.sharedModel` is enabled; otherwise per-agent lanes govern them.
+The command reports effective before/after values and notifies next-turn consumers.
+New workers use the new defaults; existing workers retain their settings snapshots.
+
+**Running Main and existing workers are not rebound.** Use explicit session model/effort
+controls to change Main. Other settings remain startup-owned and are reported by path as
+requiring restart: tools, provider initialization, transports, lifecycle/concurrency,
+plugins, UI, and role presentation metadata. Credentials, environment variables, agent
+definitions/prompts, catalogs, and profile selection are not reloaded.
+`Settings.init()` is startup initialization, not a reload API. `/reload-plugins` refreshes
+plugin/project registries, not profile routing; SIGHUP tears down the session.
+
+Regenerate the production-command differential with
+`proof/record.sh proof/scenes/config-hot-reload.sh`: `off` shows the running session
+before applying the disk edit, `on` shows `/reload-config` applying it, and `unchanged`
+shows an idempotent repeat. This is a one-shot command, not an enablement flag.
+Run `bun packages/coding-agent/bench/config-hot-reload.bench.ts` in the supported test
+sandbox for the identical 32-lane corpus and exact off-arm routing parity.
+
 ### Session Working Directory (`session.workdir` vs `set_cwd`)
 
 - **Persistent Profile Default (`session.workdir`)**: Configures the default working directory for a profile across all future sessions. Set interactively via `/settings` (Interaction › Profile) or in `~/.veyyon/profiles/<profile>/agent/config.yml`.

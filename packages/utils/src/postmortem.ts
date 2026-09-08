@@ -88,9 +88,7 @@ let inspectorOpened = false;
 /**
  * Detect an EPIPE rejection that originated from an IPC `send()` to a worker
  * subprocess (`syscall: "send"`), as opposed to a stdin/stdout pipe write
- * (`syscall: "write"`). Only the IPC-send path can break an optional worker
- * subsystem without affecting the main process, so only this shape is safe to
- * swallow at the global `unhandledRejection` level. See issue #2997.
+ * (`syscall: "write"`). The owning worker handles recovery. See issue #2997.
  */
 export function isIpcSendEpipe(err: Error): boolean {
 	const code = (err as { code?: unknown }).code;
@@ -98,16 +96,17 @@ export function isIpcSendEpipe(err: Error): boolean {
 	return code === "EPIPE" && syscall === "send";
 }
 
-/**
- * Detect an EPIPE from writing to our own stdout/stderr (`syscall: "write"`):
- * the downstream consumer (`veyyon … | head`) closed the pipe after taking what
- * it wanted. Standard Unix teardown, not a crash — the fatal handlers exit
- * quietly instead of dumping `[Uncaught Exception] Error: EPIPE`.
- */
-export function isStdioWriteEpipe(err: Error): boolean {
-	const code = (err as { code?: unknown }).code;
-	const syscall = (err as { syscall?: unknown }).syscall;
+const stdioErrors = new WeakSet<object>();
+
+function isWriteEpipe(err: unknown): boolean {
+	if (err === null || typeof err !== "object") return false;
+	const { code, syscall } = err as { code?: unknown; syscall?: unknown };
 	return code === "EPIPE" && syscall === "write";
+}
+
+/** Only errors observed on our output streams prove a consumer closed them. */
+export function isStdioWriteEpipe(err: Error): boolean {
+	return isWriteEpipe(err) && stdioErrors.has(err);
 }
 
 // Well-known key marking an error as an *expected* teardown artifact (e.g. a
@@ -170,6 +169,16 @@ function formatFatalError(label: string, err: Error): string {
 }
 
 if (isMainThread) {
+	// A syscall alone cannot distinguish child stdin from our own output pipes.
+	for (const stream of [process.stdout, process.stderr]) {
+		stream.on("error", err => {
+			stdioErrors.add(err);
+			// The first failure owns shutdown. Teardown can itself emit output
+			// errors; re-entering would exit before asynchronous persistence settles.
+			if (cleanupStage !== "idle") return;
+			process.emit("uncaughtException", err);
+		});
+	}
 	process
 		.on("SIGINT", async () => {
 			await runCleanup(Reason.SIGINT);
@@ -189,9 +198,14 @@ if (isMainThread) {
 				return;
 			}
 			if (isStdioWriteEpipe(err)) {
+				if (cleanupStage !== "idle") return;
 				logger.info("stdout/stderr pipe closed by consumer; exiting quietly", { err });
 				await runCleanup(Reason.EXIT);
 				process.exit(0);
+			}
+			if (isWriteEpipe(err)) {
+				logger.warn("Ignoring EPIPE from non-stdio write; owning operation handles failure", { err });
+				return;
 			}
 			// fd 2 may be redirected to the log while a TUI owns the terminal
 			// (stderr-guard); re-point it at the real terminal so the fatal
@@ -224,9 +238,14 @@ if (isMainThread) {
 			}
 			// Async stdout/stderr writes surface consumer-closed pipes here.
 			if (isStdioWriteEpipe(err)) {
+				if (cleanupStage !== "idle") return;
 				logger.info("stdout/stderr pipe closed by consumer; exiting quietly", { err });
 				await runCleanup(Reason.EXIT);
 				process.exit(0);
+			}
+			if (isWriteEpipe(reason)) {
+				logger.warn("Ignoring EPIPE from non-stdio write; owning operation handles failure", { err: reason });
+				return;
 			}
 			for (const interceptor of rejectionInterceptors) {
 				try {
