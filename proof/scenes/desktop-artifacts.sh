@@ -133,12 +133,7 @@ use_crop \
 	$(( WIN_W - (WIN_W > 800 ? 256 : 0) )) \
 	$(( WIN_H - 48 ))
 
-if (( WIN_W >= 980 )); then
-	COLUMN_RIGHT=$((WIN_X + 256 + (WIN_W - 256 - 768) / 2 + 768))
-else
-	COLUMN_RIGHT=$((WIN_X + WIN_W - 32))
-fi
-ARTIFACT_CLICK_X=$((COLUMN_RIGHT - 40))
+ARTIFACT_CLICK_X=$(( TRANSCRIPT_COLUMN_RIGHT - 40 ))
 COMPOSER_REST_X=$((WIN_X + WIN_W / 2))
 COMPOSER_REST_Y=$((WIN_Y + WIN_H - 98))
 

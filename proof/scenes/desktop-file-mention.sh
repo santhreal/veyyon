@@ -153,12 +153,7 @@ esac
 # lands inside every row. The y depends on how much prose the model wrote
 # around it, so it is found by clicking upward from just above the composer,
 # each click measured against the collapsed frame.
-if (( WIN_W >= 980 )); then
-	COLUMN_RIGHT=$(( WIN_X + 256 + (WIN_W - 256 - 768) / 2 + 768 ))
-else
-	COLUMN_RIGHT=$(( WIN_X + WIN_W - 32 ))
-fi
-ROW_X=$(( COLUMN_RIGHT - 40 ))
+ROW_X=$(( TRANSCRIPT_COLUMN_RIGHT - 40 ))
 ROW_OPENED=0
 for step in $(seq 0 15); do
 	ROW_Y=$(( WIN_Y + WIN_H - 150 - step * 24 ))
