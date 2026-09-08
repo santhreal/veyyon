@@ -99,8 +99,9 @@ pub fn load_scale(path: &Path) -> Result<ScaleTokens, TokenError> {
 	}
 
 	let family_tbl = type_tbl.sub("family")?;
-	family_tbl.only(&["mono"])?;
+	family_tbl.only(&["mono", "ui"])?;
 	let mono_family = family_tbl.strings("mono")?;
+	let ui_family = family_tbl.strings("ui")?;
 
 	let stroke_tbl = root.sub("stroke")?;
 	let mut strokes = [0.0f32; 3];
@@ -108,5 +109,14 @@ pub fn load_scale(path: &Path) -> Result<ScaleTokens, TokenError> {
 		strokes[step as usize] = stroke_tbl.number(step.as_token())?;
 	}
 
-	Ok(ScaleTokens { spacing, radius, type_sizes, type_weights, mono_sizes, mono_family, strokes })
+	Ok(ScaleTokens {
+		spacing,
+		radius,
+		type_sizes,
+		type_weights,
+		mono_sizes,
+		mono_family,
+		ui_family,
+		strokes,
+	})
 }

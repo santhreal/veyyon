@@ -8,8 +8,9 @@
 
 use veyyon_gpui::{App, IntoElement, Pixels, RenderOnce, SharedString, Window, div, prelude::*};
 
-use crate::token_set::{
-	ColorRole, MonoSizeStep, MonoText, RadiusStep, SpacingStep, TextRamp, TokenSet,
+use crate::{
+	families::MonoText,
+	token_set::{ColorRole, MonoSizeStep, RadiusStep, SpacingStep, TextRamp, TokenSet},
 };
 
 /// A captioned, height-capped pane of monospace lines.

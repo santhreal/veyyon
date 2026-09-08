@@ -13,9 +13,8 @@
 //! 4. Grid cells drawn off the column pitch, or in a face whose glyphs each
 //!    have their own advance, which is what the tokens' cell width means and
 //!    what an 80-column line is counted in.
-//! 5. An install that stops asking whether the machine has a monospace face the
-//!    scale authors, which is how the drawer came to be drawn in the
-//!    proportional UI stack with nothing reported (§9.3).
+//! 5. Cells drawn in a face this machine lacks; the whole authored family table
+//!    is swept by `every-authored-font-family-is-a-face-this-machine-has`.
 //!
 //! WHAT THIS DOES NOT CATCH: underlying PTY signal handling or remote process
 //! exit semantics on the host side. The family a run was shaped with is not
@@ -207,32 +206,5 @@ fn the_grid_draws_every_cell_on_the_column_pitch_at_one_advance() {
 	);
 }
 
-/// The install asks this machine which of the authored monospace families it
-/// has, and stops when it has none. Selecting a face that is absent, or
-/// leaving the question unasked, both end in a terminal drawn proportionally
-/// and stated nowhere.
-#[test]
-fn the_install_refuses_a_machine_without_any_authored_mono_family() {
-	let mut cx = headless_context().expect("headless context available");
-	let mut tokens = load_bundled_tokens().expect("the bundled tokens load");
-	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");
-	tokens.scale.mono_family = vec!["No Such Face".to_string()];
-
-	let options = RenderOptions { width: 800, height: 600, scale_factor: 1.0, ..Default::default() };
-	let outcome = HeadlessSession::open(&mut cx, &options, move |_window, app: &mut App| {
-		let error = install_tokens(app, &tokens, &theme, Path::new("surface"))
-			.expect_err("an install without a mono face must fail");
-		let message = error.to_string();
-		assert!(message.contains("No Such Face"), "the error omits the family: {message}");
-		assert!(message.contains("type.family.mono"), "the error omits the key: {message}");
-		let installed = install_tokens(
-			app,
-			&load_bundled_tokens().expect("bundled tokens load"),
-			&theme,
-			Path::new("surface"),
-		)
-		.expect("the shipped chain installs");
-		app.new(|_| ShellView::new(installed, fixture::with_drawer()))
-	});
-	assert!(outcome.is_ok(), "the fixture window opens once the shipped chain is installed");
-}
+// The install refuses a machine without a monospace face, swept over every
+// authored chain in `every-authored-font-family-is-a-face-this-machine-has`.

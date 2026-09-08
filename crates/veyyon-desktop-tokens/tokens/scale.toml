@@ -63,6 +63,23 @@ mono = [
 	"Courier New",
 ]
 
+# The families every other text run is set in, most wanted first (§6.3). GPUI
+# leaves an unstated family as `.SystemUIFont`, which its Linux text system
+# does not resolve: each run then fails and walks a ten-deep fallback stack,
+# and each miss builds an error whose backtrace capture costs more than the
+# frame. The chain states the faces that are acceptable and `ui_family` on the
+# resolved set states which one the machine has.
+ui = [
+	"Inter",
+	"Segoe UI",
+	"SF Pro Text",
+	"Helvetica Neue",
+	"Cantarell",
+	"Noto Sans",
+	"DejaVu Sans",
+	"Arial",
+]
+
 # Stroke widths for borders, rules, and icon geometry (§6.8).
 [stroke]
 hairline = 1.0

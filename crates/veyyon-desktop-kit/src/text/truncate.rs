@@ -6,7 +6,10 @@
 
 use veyyon_gpui::{App, IntoElement, Pixels, RenderOnce, SharedString, Window, div, prelude::*};
 
-use crate::token_set::{ColorRole, MonoSizeStep, MonoText, TextRamp, TokenSet};
+use crate::{
+	families::MonoText,
+	token_set::{ColorRole, MonoSizeStep, TextRamp, TokenSet},
+};
 
 /// The size a truncated line is set at.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

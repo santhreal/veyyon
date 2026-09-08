@@ -294,6 +294,11 @@ pub struct ScaleTokens {
 	/// not a cosmetic difference; the chain states which faces are acceptable
 	/// and `mono_family` on the resolved set states which one the machine has.
 	pub mono_family:  Vec<String>,
+	/// The families every other text run is set in, most wanted first. An
+	/// unstated family reaches GPUI as `.SystemUIFont`, which its Linux text
+	/// system does not resolve, so the chain states the acceptable faces and
+	/// `ui_family` on the resolved set states which one the machine has.
+	pub ui_family:    Vec<String>,
 	pub strokes:      [f32; 3],
 }
 
@@ -326,6 +331,11 @@ impl ScaleTokens {
 	/// The authored monospace family chain, most wanted first.
 	pub fn mono_family_chain(&self) -> &[String] {
 		&self.mono_family
+	}
+
+	/// The authored proportional family chain, most wanted first.
+	pub fn ui_family_chain(&self) -> &[String] {
+		&self.ui_family
 	}
 
 	/// Resolves stroke width in pixels.

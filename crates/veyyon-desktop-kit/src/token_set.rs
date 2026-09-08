@@ -12,6 +12,8 @@ pub use veyyon_desktop_tokens::{
 };
 use veyyon_gpui::{App, FontWeight, Hsla, Pixels, SharedString, px};
 
+use crate::families::{MonoMetrics, first_family, present_family};
+
 /// Number of semantic colour roles defined in the system (§6.4).
 pub const COLOR_ROLE_COUNT: usize = 29;
 
@@ -114,32 +116,6 @@ fn rgb_to_hsla(rgb: RgbColor) -> Hsla {
 	Hsla { h: hue, s: saturation, l: luminance, a: rgb.a }
 }
 
-/// Monospace size and line height, in pixels.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct MonoMetrics {
-	pub size:        Pixels,
-	pub line_height: Pixels,
-}
-
-/// Sets an element's text in the monospace family, at a mono step.
-///
-/// Size, line height and family are one call, so a mono element cannot be
-/// sized as mono and drawn in the proportional UI family: that combination
-/// renders every glyph at a different advance, which breaks the column
-/// alignment mono text exists for, and it looks deliberate.
-pub trait MonoText: veyyon_gpui::Styled + Sized {
-	#[must_use]
-	fn mono_text(self, tokens: &TokenSet, step: MonoSizeStep) -> Self {
-		let metrics = tokens.mono_metrics(step);
-		self
-			.font_family(tokens.mono_family())
-			.text_size(metrics.size)
-			.line_height(metrics.line_height)
-	}
-}
-
-impl<T: veyyon_gpui::Styled + Sized> MonoText for T {}
-
 /// Resolved design token set stored in GPUI context.
 #[derive(Debug, Clone)]
 pub struct TokenSet {
@@ -151,6 +127,7 @@ pub struct TokenSet {
 	scale:        ScaleTokens,
 	elevation:    Option<ElevationTokens>,
 	mono_family:  SharedString,
+	ui_family:    SharedString,
 }
 
 impl Default for TokenSet {
@@ -206,16 +183,8 @@ impl TokenSet {
 		let mut scrim = colors[ColorRole::Ground as usize];
 		scrim.a = 0.60;
 
-		let mono_family = tokens
-			.scale
-			.mono_family_chain()
-			.first()
-			.ok_or_else(|| TokenError::MissingKey {
-				path:    PathBuf::from("scale"),
-				section: "type.family".to_string(),
-				key:     "mono".to_string(),
-			})?
-			.clone();
+		let mono_family = first_family(tokens.scale.mono_family_chain(), "mono")?;
+		let ui_family = first_family(tokens.scale.ui_family_chain(), "ui")?;
 
 		Ok(Self {
 			colors,
@@ -226,6 +195,7 @@ impl TokenSet {
 			scale: tokens.scale.clone(),
 			elevation: Some(tokens.elevation.clone()),
 			mono_family: SharedString::from(mono_family),
+			ui_family: SharedString::from(ui_family),
 		})
 	}
 
@@ -239,18 +209,23 @@ impl TokenSet {
 	/// acceptable, this states which one is present, and an install with none
 	/// of them stops here instead of drawing columns that do not line up.
 	pub fn resolve_mono_family(&mut self, available: &[String]) -> Result<(), TokenError> {
-		let chain = self.scale.mono_family_chain();
-		for family in chain {
-			if available.iter().any(|have| have == family) {
-				self.mono_family = SharedString::from(family.clone());
-				return Ok(());
-			}
-		}
-		Err(TokenError::FontUnavailable {
-			path:     PathBuf::from("scale"),
-			key:      "type.family.mono".to_string(),
-			families: chain.join(", "),
-		})
+		let family = present_family(self.scale.mono_family_chain(), available, "mono")?;
+		self.mono_family = SharedString::from(family);
+		Ok(())
+	}
+
+	/// Selects the proportional family from the authored chain, given the
+	/// families this machine has, and fails when it has none of them.
+	///
+	/// A family the platform cannot resolve is not a cosmetic difference: GPUI
+	/// walks its own ten-deep fallback stack per text run and builds an error
+	/// for every miss, so a window drawing hundreds of runs a frame spends the
+	/// frame in font resolution and stops answering the keyboard. Stating the
+	/// family the machine has is what keeps every run a cache hit (§9.3).
+	pub fn resolve_ui_family(&mut self, available: &[String]) -> Result<(), TokenError> {
+		let family = present_family(self.scale.ui_family_chain(), available, "ui")?;
+		self.ui_family = SharedString::from(family);
+		Ok(())
 	}
 
 	/// Returns elevation tokens if configured.
@@ -350,6 +325,14 @@ impl TokenSet {
 	#[must_use]
 	pub fn mono_family(&self) -> SharedString {
 		self.mono_family.clone()
+	}
+
+	/// The family every other text run is set in (§6.3), chosen from the
+	/// authored chain by `resolve_ui_family` against the families this machine
+	/// has.
+	#[must_use]
+	pub fn ui_family(&self) -> SharedString {
+		self.ui_family.clone()
 	}
 
 	/// Resolves font weight.

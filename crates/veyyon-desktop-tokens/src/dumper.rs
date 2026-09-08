@@ -61,6 +61,10 @@ fn dump_scale(tokens: &Tokens, path: &Path) -> Result<(), TokenError> {
 	for family in tokens.scale.mono_family_chain() {
 		let _ = writeln!(out, "\t\"{family}\",");
 	}
+	out.push_str("]\nui = [\n");
+	for family in tokens.scale.ui_family_chain() {
+		let _ = writeln!(out, "\t\"{family}\",");
+	}
 	out.push_str("]\n");
 	out.push_str("\n[stroke]\nhairline = 1.0\nicon     = 1.5\nheavy    = 2.0\n");
 	write_file(path, &out)

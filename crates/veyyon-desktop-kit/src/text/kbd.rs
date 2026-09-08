@@ -3,8 +3,9 @@
 use veyyon_gpui::{App, IntoElement, RenderOnce, SharedString, Window, div, prelude::*};
 
 use crate::{
+	families::MonoText,
 	state::KeyChord,
-	token_set::{ColorRole, MonoSizeStep, MonoText, RadiusStep, SpacingStep, TokenSet},
+	token_set::{ColorRole, MonoSizeStep, RadiusStep, SpacingStep, TokenSet},
 };
 
 /// Keyboard shortcut indicator element rendering chords and modifier keys.

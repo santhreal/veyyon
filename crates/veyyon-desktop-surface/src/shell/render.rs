@@ -104,6 +104,11 @@ pub fn render_shell(
 		.size_full()
 		.bg(tokens.color(ColorRole::Ground))
 		.text_color(tokens.color(ColorRole::Foreground))
+		// Every run under the root inherits this family, deferred overlays
+		// included: GPUI's own default is `.SystemUIFont`, which its Linux
+		// text system cannot resolve, and an unresolvable family costs a
+		// ten-deep fallback walk and a constructed error per run per frame.
+		.font_family(tokens.ui_family())
 		.overflow_hidden()
 		.child(titlebar(
 			TitlebarState {
