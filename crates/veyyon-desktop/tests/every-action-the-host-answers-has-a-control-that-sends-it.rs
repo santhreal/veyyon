@@ -31,16 +31,13 @@ use veyyon_desktop_surface::{
 	QueueMode, ScrollBy, SettingsPage, ThinkingLevel, ToolViewTarget, navigation::SurfaceRoute,
 };
 
-/// The fourteen host actions intentionally left unsent for later slices.
-/// A fifteenth unsent action or an unexpected member turns the suite red.
-const PINNED_UNSENT: [HostActionKind; 9] = [
+/// The six host actions intentionally left unsent for later slices.
+/// A seventh unsent action or an unexpected member turns the suite red.
+const PINNED_UNSENT: [HostActionKind; 6] = [
 	HostActionKind::Attach,
 	HostActionKind::Detach,
 	HostActionKind::Shutdown,
 	HostActionKind::RefreshAuth,
-	HostActionKind::ConnectMcp,
-	HostActionKind::DisconnectMcp,
-	HostActionKind::CallMcpTool,
 	HostActionKind::SpawnTask,
 	HostActionKind::SetKeybinding,
 ];

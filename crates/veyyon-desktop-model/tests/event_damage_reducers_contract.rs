@@ -140,8 +140,8 @@ fn test_damage_decision_for_every_snapshot_section_sweep() {
 					"the section's two queues reach the store in delivery order"
 				);
 			},
-			"Settings" | "Diagnostics" | "Models" | "Providers" | "AuthFlow" | "Mcp"
-			| "McpToolResult" | "Agents" | "Themes" | "Keybindings" => {
+			"Settings" | "Diagnostics" | "Models" | "Providers" | "AuthFlow" | "Mcp" | "Agents"
+			| "Themes" | "Keybindings" => {
 				assert!(damage.contains(&Damage::Palette), "{name} must emit Damage::Palette");
 			},
 			"Changes" => {

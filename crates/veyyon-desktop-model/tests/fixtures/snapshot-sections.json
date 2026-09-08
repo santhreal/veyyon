@@ -174,7 +174,6 @@
 			{ "name": "paused", "enabled": false, "status": "Disconnected", "tools": [] }
 		]
 	},
-	{ "McpToolResult": { "server": "filesystem", "tool": "read_file", "is_error": false, "output": "contents" } },
 	{
 		"Agents": [
 			{ "id": "agent-1", "display_name": "HostCoverage", "kind": "sub", "status": "running", "parent": "main", "scope": "/repo", "session": "sess-1" }

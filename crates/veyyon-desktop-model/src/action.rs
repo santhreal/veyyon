@@ -220,22 +220,11 @@ pub enum HostAction {
 		provider: String,
 	},
 
-	// MCP family (5 actions)
+	// MCP family (2 actions)
 	RefreshMcp,
-	ConnectMcp {
-		server: String,
-	},
-	DisconnectMcp {
-		server: String,
-	},
 	SetMcpEnabled {
 		server:  String,
 		enabled: bool,
-	},
-	CallMcpTool {
-		server:    String,
-		tool:      String,
-		arguments: serde_json::Value,
 	},
 
 	// Agents and Tasks family (3 actions)
@@ -341,10 +330,7 @@ impl HostAction {
 			Self::CancelAuthFlow { .. } => HostActionKind::CancelAuthFlow,
 			Self::RetryAuthFlow { .. } => HostActionKind::RetryAuthFlow,
 			Self::RefreshMcp => HostActionKind::RefreshMcp,
-			Self::ConnectMcp { .. } => HostActionKind::ConnectMcp,
-			Self::DisconnectMcp { .. } => HostActionKind::DisconnectMcp,
 			Self::SetMcpEnabled { .. } => HostActionKind::SetMcpEnabled,
-			Self::CallMcpTool { .. } => HostActionKind::CallMcpTool,
 			Self::ReviveAgent { .. } => HostActionKind::ReviveAgent,
 			Self::SpawnTask { .. } => HostActionKind::SpawnTask,
 			Self::CancelTask { .. } => HostActionKind::CancelTask,

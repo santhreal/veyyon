@@ -428,13 +428,6 @@ export interface McpServerView {
 	tools: string[];
 }
 
-export interface McpToolResultView {
-	server: string;
-	tool: string;
-	is_error: boolean;
-	output: string;
-}
-
 export interface AgentView {
 	id: string;
 	display_name: string;
@@ -554,7 +547,6 @@ export type SnapshotSection =
 	| { Providers: ProviderView[] }
 	| { AuthFlow: AuthFlowView }
 	| { Mcp: McpServerView[] }
-	| { McpToolResult: McpToolResultView }
 	| { Agents: AgentView[] }
 	| { Usage: UsageView }
 	| { ContextBreakdown: ContextBreakdownView }
@@ -584,7 +576,6 @@ export const ALL_SNAPSHOT_SECTIONS = [
 	"Providers",
 	"AuthFlow",
 	"Mcp",
-	"McpToolResult",
 	"Agents",
 	"Usage",
 	"ContextBreakdown",
@@ -689,10 +680,7 @@ export const ALL_HOST_ACTIONS = [
 	"CancelAuthFlow",
 	"RetryAuthFlow",
 	"RefreshMcp",
-	"ConnectMcp",
-	"DisconnectMcp",
 	"SetMcpEnabled",
-	"CallMcpTool",
 	"ReviveAgent",
 	"SpawnTask",
 	"CancelTask",
@@ -767,10 +755,7 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	CancelAuthFlow: "Authentication",
 	RetryAuthFlow: "Authentication",
 	RefreshMcp: "Mcp",
-	ConnectMcp: "Mcp",
-	DisconnectMcp: "Mcp",
 	SetMcpEnabled: "Mcp",
-	CallMcpTool: "Mcp",
 	ReviveAgent: "Agents",
 	SpawnTask: "Tasks",
 	CancelTask: "Tasks",

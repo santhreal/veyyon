@@ -37,7 +37,7 @@ pub use domain::{
 	AgentView, AuthFlowState, AuthFlowView, ChangeScope, ChangeStatus, ChangedFile, ChangesView,
 	ContentMatch, ContentMatchesView, ContextBreakdownView, ContextCategory, Domains, ExportView,
 	FileContentView, FileKind, FileNode, FileTreeView, InputModality, KeybindingView,
-	McpServerStatus, McpServerView, McpToolResultView, ModelRef, ModelView, ModelsView,
+	McpServerStatus, McpServerView, ModelRef, ModelView, ModelsView,
 	PROCESS_LOG_CAPACITY_LINES, ProcessLogView, ProcessLogsChunk, ProcessView, ProviderView,
 	QueuedPrompts, QueuedPromptsView, SearchResultsView, SeqGap, SettingEntry, SettingKind,
 	SettingOption, SettingsView, TERMINAL_SCROLLBACK_CAPACITY_BYTES, TerminalOutputChunk,

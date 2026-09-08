@@ -97,10 +97,7 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::OpenAuthUrl
 		| HostActionKind::CancelAuthFlow
 		| HostActionKind::RetryAuthFlow
-		| HostActionKind::ConnectMcp
-		| HostActionKind::DisconnectMcp
 		| HostActionKind::SetMcpEnabled
-		| HostActionKind::CallMcpTool
 		| HostActionKind::ReviveAgent
 		| HostActionKind::SpawnTask
 		| HostActionKind::CancelTask

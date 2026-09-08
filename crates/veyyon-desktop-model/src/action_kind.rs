@@ -60,10 +60,7 @@ pub enum HostActionKind {
 	CancelAuthFlow,
 	RetryAuthFlow,
 	RefreshMcp,
-	ConnectMcp,
-	DisconnectMcp,
 	SetMcpEnabled,
-	CallMcpTool,
 	ReviveAgent,
 	SpawnTask,
 	CancelTask,
@@ -82,7 +79,7 @@ pub enum HostActionKind {
 
 impl HostActionKind {
 	/// Complete slice of action kinds for runtime test sweeps.
-	pub const ALL: [Self; 73] = [
+	pub const ALL: [Self; 70] = [
 		Self::Attach,
 		Self::Detach,
 		Self::RetryConnection,
@@ -138,10 +135,7 @@ impl HostActionKind {
 		Self::CancelAuthFlow,
 		Self::RetryAuthFlow,
 		Self::RefreshMcp,
-		Self::ConnectMcp,
-		Self::DisconnectMcp,
 		Self::SetMcpEnabled,
-		Self::CallMcpTool,
 		Self::ReviveAgent,
 		Self::SpawnTask,
 		Self::CancelTask,
@@ -217,10 +211,7 @@ impl HostActionKind {
 			Self::CancelAuthFlow => "CancelAuthFlow",
 			Self::RetryAuthFlow => "RetryAuthFlow",
 			Self::RefreshMcp => "RefreshMcp",
-			Self::ConnectMcp => "ConnectMcp",
-			Self::DisconnectMcp => "DisconnectMcp",
 			Self::SetMcpEnabled => "SetMcpEnabled",
-			Self::CallMcpTool => "CallMcpTool",
 			Self::ReviveAgent => "ReviveAgent",
 			Self::SpawnTask => "SpawnTask",
 			Self::CancelTask => "CancelTask",

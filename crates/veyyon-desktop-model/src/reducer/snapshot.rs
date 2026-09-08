@@ -282,10 +282,6 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 			store.domains.mcp = views;
 			damage.insert(Damage::Palette);
 		},
-		SnapshotSection::McpToolResult(view) => {
-			store.domains.mcp_tool_result = Some(view);
-			damage.insert(Damage::Palette);
-		},
 		SnapshotSection::Agents(views) => {
 			store.domains.agents = views;
 			damage.insert(Damage::Palette);

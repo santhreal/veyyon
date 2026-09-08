@@ -265,6 +265,7 @@
 
 - `WRITE_GUTTER_MIN_WIDTH` is no longer exported: the line-number gutter of a code card is the host's, stated once in `src/modes/terminal/draw/draw-tool-view.ts`, and no tool sets it.
 - The GUI host protocol drops the `ProcessWait` and `ProcessDescribe` actions: the supervised-process listing already carries each process's application, arguments, working directory, lifetime, status and exit code, so a describe reply replaced the pane's whole list with the one row it named and a wait held the host's request loop for the length of the process.
+- The GUI host protocol drops the `ConnectMcp`, `DisconnectMcp` and `CallMcpTool` actions and the `McpToolResult` snapshot section: `SetMcpEnabled` connects, disconnects and reconnects a server, and an MCP tool reaches a session as an ordinary tool call through the agent rather than through a host action with no editor for its arguments.
 
 
 ## [1.4.0] - 2026-09-04

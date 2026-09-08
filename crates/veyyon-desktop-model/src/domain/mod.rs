@@ -60,8 +60,6 @@ pub struct Domains {
 	pub auth_flow:       Option<AuthFlowView>,
 	/// Model Context Protocol servers.
 	pub mcp:             Vec<McpServerView>,
-	/// Ad-hoc MCP tool execution result.
-	pub mcp_tool_result: Option<McpToolResultView>,
 	/// Active background subagents.
 	pub agents:          Vec<AgentView>,
 	/// Session resource and token usage totals.

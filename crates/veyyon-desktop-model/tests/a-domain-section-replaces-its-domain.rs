@@ -19,7 +19,7 @@ use veyyon_desktop_model::{
 	AgentView, AuthFlowState, AuthFlowView, ChangeScope, ChangeStatus, ChangedFile, ChangesView,
 	ContentMatch, ContentMatchesView, ContextBreakdownView, ContextCategory, ExportView,
 	FileContentView, FileKind, FileNode, FileTreeView, HostEvent, InputModality, KeybindingView,
-	McpServerStatus, McpServerView, McpToolResultView, ModelRef, ModelView, ModelsView, ProcessView,
+	McpServerStatus, McpServerView, ModelRef, ModelView, ModelsView, ProcessView,
 	ProviderView, SearchResultsView, SessionId, SettingEntry, SettingKind, SettingsView,
 	SnapshotSection, SnapshotSectionKind, Store, TerminalStatus, TerminalView, ThemeView,
 	ThemesView, UsageTotals, UsageView, reduce,
@@ -162,15 +162,6 @@ fn mcp(status: McpServerStatus, tools: &[&str]) -> SnapshotSection {
 	}])
 }
 
-fn mcp_tool_result(is_error: bool, output: &str) -> SnapshotSection {
-	SnapshotSection::McpToolResult(McpToolResultView {
-		server: "fs".into(),
-		tool: "read_file".into(),
-		is_error,
-		output: output.into(),
-	})
-}
-
 fn agent(id: &str, status: &str) -> SnapshotSection {
 	SnapshotSection::Agents(vec![AgentView {
 		id:           id.into(),
@@ -309,9 +300,6 @@ fn pair(kind: SnapshotSectionKind) -> Option<[SnapshotSection; 2]> {
 		},
 		SnapshotSectionKind::Mcp => {
 			[mcp(McpServerStatus::Connecting, &[]), mcp(McpServerStatus::Connected, &["read_file"])]
-		},
-		SnapshotSectionKind::McpToolResult => {
-			[mcp_tool_result(false, "out"), mcp_tool_result(true, "error")]
 		},
 		SnapshotSectionKind::Agents => [agent("agent-1", "running"), agent("agent-2", "completed")],
 		SnapshotSectionKind::Usage => [usage(100), usage(500)],

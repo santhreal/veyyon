@@ -28,16 +28,3 @@ pub struct McpServerView {
 	/// List of exposed tool names.
 	pub tools:   Vec<String>,
 }
-
-/// Result of an ad-hoc or direct MCP tool execution.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct McpToolResultView {
-	/// Name of the executing MCP server.
-	pub server:   String,
-	/// Name of the invoked tool.
-	pub tool:     String,
-	/// Flag indicating whether tool execution failed.
-	pub is_error: bool,
-	/// Output payload or error text.
-	pub output:   String,
-}

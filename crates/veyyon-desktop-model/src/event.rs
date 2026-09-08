@@ -5,7 +5,7 @@ use crate::{
 	connection::{ConnectionState, RequestId, SessionId, Versioned},
 	domain::{
 		AgentView, AuthFlowView, ChangesView, ContentMatchesView, ContextBreakdownView, ExportView,
-		FileContentView, FileTreeView, KeybindingView, McpServerView, McpToolResultView, ModelsView,
+		FileContentView, FileTreeView, KeybindingView, McpServerView, ModelsView,
 		ProcessLogsChunk, ProcessView, ProviderView, QueuedPromptsView, SearchResultsView,
 		SettingsView, TerminalOutputChunk, TerminalView, ThemesView, UsageView,
 	},
@@ -63,7 +63,7 @@ pub struct SessionHeaderView {
 	pub cwd:            String,
 }
 
-/// Complete list of all 28 snapshot section names defined by the protocol.
+/// Complete list of all 27 snapshot section names defined by the protocol.
 pub const ALL_SECTION_NAMES: &[&str] = &[
 	"Sessions",
 	"ActiveSession",
@@ -85,7 +85,6 @@ pub const ALL_SECTION_NAMES: &[&str] = &[
 	"Providers",
 	"AuthFlow",
 	"Mcp",
-	"McpToolResult",
 	"Agents",
 	"Usage",
 	"ContextBreakdown",
@@ -152,8 +151,6 @@ pub enum SnapshotSection {
 	AuthFlow(AuthFlowView),
 	/// Model Context Protocol servers.
 	Mcp(Vec<McpServerView>),
-	/// MCP tool execution result.
-	McpToolResult(McpToolResultView),
 	/// Background subagents.
 	Agents(Vec<AgentView>),
 	/// Session resource and token usage totals.
@@ -196,7 +193,6 @@ impl SnapshotSection {
 			Self::Providers(..) => "Providers",
 			Self::AuthFlow(..) => "AuthFlow",
 			Self::Mcp(..) => "Mcp",
-			Self::McpToolResult(..) => "McpToolResult",
 			Self::Agents(..) => "Agents",
 			Self::Usage(..) => "Usage",
 			Self::ContextBreakdown(..) => "ContextBreakdown",

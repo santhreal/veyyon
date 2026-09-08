@@ -1,8 +1,8 @@
 //! WHY THIS SUITE EXISTS:
 //! Three domains the reducer filled reached no pixel. The host answered
 //! `ProcessLogs` with a supervised process's output, `ExportSession` with the
-//! document it wrote and `CallMcpTool` with a tool's result; the store held all
-//! three and `project` read none of them, so an operator who pressed the
+//! document it wrote and an MCP tool call with a tool's result; the store held
+//! all three and `project` read none of them, so an operator who pressed the
 //! control watched nothing happen. The defect is invisible from either side:
 //! the reducer test passes because the store changed, and the surface tests
 //! pass because they never ask what filled the field.
@@ -50,12 +50,13 @@ const PROCESS: &str = "web";
 
 /// Sections the window stores and draws nowhere, with the reason.
 ///
-/// `McpToolResult` answers `CallMcpTool`, and the desktop calls no tool
-/// directly: a tool call needs arbitrary JSON arguments, which is an editor
-/// surface the product does not have (§1.3). The tool calls an operator sees
-/// are the agent's, and those arrive as `ToolCall` and `ToolResult` blocks in
-/// the transcript with their own presentation.
-const NOT_DRAWN: &[SnapshotSectionKind] = &[SnapshotSectionKind::McpToolResult];
+/// Every section the protocol carries reaches a surface. The one exception was
+/// an MCP tool result, and the action that produced it is gone: a tool call
+/// needs arbitrary JSON arguments, which is an editor surface the product does
+/// not have (§1.3). The tool calls an operator sees are the agent's, and those
+/// arrive as `ToolCall` and `ToolResult` blocks in the transcript with their
+/// own presentation.
+const NOT_DRAWN: &[SnapshotSectionKind] = &[];
 
 /// What must already be on the surface for a section's destination to exist.
 ///
@@ -85,7 +86,6 @@ const fn prepare_for(kind: SnapshotSectionKind) -> Prepare {
 		| SnapshotSectionKind::Providers
 		| SnapshotSectionKind::AuthFlow
 		| SnapshotSectionKind::Mcp
-		| SnapshotSectionKind::McpToolResult
 		| SnapshotSectionKind::Agents
 		| SnapshotSectionKind::Diagnostics => Prepare::Settings,
 		SnapshotSectionKind::SearchResults => Prepare::Palette(PaletteMode::Files, "app"),
