@@ -57,7 +57,12 @@ source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 COLUMN_X=$(( WIN_X + RAIL_W ))
 COLUMN_W=$(( WIN_W - RAIL_W ))
 TITLEBAR_H=48
-COMPOSER_H=140
+# The composer's own band, authored in `composer.toml` and resolved by the
+# helper: the card at rest, the gap under it, the run bar and the column's
+# bottom padding. A band guessed larger than that reaches into the transcript,
+# which is the one region a float IS entitled to cover, so it reads a correct
+# float as a panel over the draft.
+COMPOSER_H="${COMPOSER_BAND_H}"
 
 rail_region() { use_crop "${WIN_X}" "$(( WIN_Y + TITLEBAR_H ))" "${RAIL_W}" "$(( WIN_H - TITLEBAR_H ))"; }
 # A column spans the row under the titlebar; a float over the transcript ends

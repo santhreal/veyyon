@@ -112,7 +112,7 @@ xdotool windowfocus --sync "${SCENE_WINDOW}"
 # The rows are read from the token files this checkout ships rather than
 # restated here, so a scene recorded at a new width crops what the product
 # actually drew instead of what one width happened to make true.
-read -r RAIL_W PANEL_MODE PANEL_W DRAWER_PLACEMENT LABELS COMPOSER_MAX_W GUTTER_PX SHEET_INSET < <(
+read -r RAIL_W PANEL_MODE PANEL_W DRAWER_PLACEMENT LABELS COMPOSER_MAX_W GUTTER_PX SHEET_INSET COMPOSER_BAND_H < <(
 	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" "${WIN_W}" <<'PY'
 from pathlib import Path
 import sys
@@ -122,7 +122,8 @@ tokens = Path(sys.argv[1])
 width = float(sys.argv[2])
 surface = tomllib.loads((tokens / "surface" / "breakpoints.toml").read_text())
 panels = tomllib.loads((tokens / "surface" / "panels.toml").read_text())["right_panel"]
-composer = tomllib.loads((tokens / "surface" / "composer.toml").read_text())["geometry"]
+composer_tokens = tomllib.loads((tokens / "surface" / "composer.toml").read_text())
+composer = composer_tokens["geometry"]
 # §5.4 measures the composer against the session surface it sits in, insetting
 # it by one spacing step on each side. Both numbers are authored, so the scene
 # reads them rather than deciding what a card should measure.
@@ -132,6 +133,17 @@ gutter = scale["spacing"]["s4"]
 # hairline on every side; a column has no such frame. Every crop of an
 # overlaid panel starts inside it.
 sheet = scale["spacing"]["s4"] + scale["stroke"]["hairline"]
+# The band the composer owns, from the card's top edge to the window's lower
+# edge: the card at rest, the gap under it, the run bar, and the column's own
+# bottom padding. Anything above it is the transcript, which is what a float
+# over the transcript is entitled to cover, so a band guessed generously reads
+# the float as a panel over the draft.
+band = (
+    composer["rest_height_px"]
+    + scale["spacing"]["s3"]
+    + composer_tokens["run_bar"]["height_px"]
+    + scale["spacing"]["s3"]
+)
 
 rows = sorted(surface["breakpoint"].values(), key=lambda row: row["min_width_px"])
 row = rows[0]
@@ -163,6 +175,7 @@ print(
     int(composer["max_width_px"]),
     int(gutter),
     int(sheet) if placement == "overlay" else 0,
+    int(band),
 )
 PY
 )
