@@ -23,10 +23,11 @@
 # The session is a real one on the real host, and the file is whatever the
 # host's own tree listed. Nothing here is seeded into a view.
 #
-# A three-region take is still between keystrokes for most of its length, so it
-# declares its own floor the way the other native scenes do:
+# A three-region take is still between keystrokes for most of its length, and
+# the tree probe below waits on the host for every row it tries, so it declares
+# its own floor the way the other native scenes do:
 #
-#   SCENE_MOTION_FLOOR=9 proof/docker/record-native.sh proof/scenes/desktop-workspace-panel.sh
+#   SCENE_MOTION_FLOOR=8 proof/docker/record-native.sh proof/scenes/desktop-workspace-panel.sh
 #
 # Sourced by proof/docker/xsession.sh with SCENE_WINDOW, SCENE_NAME, SCENE_OUT
 # and SCENE_LIB already initialized.
@@ -47,6 +48,10 @@ COMPOSER_H=140
 
 rail_region() { use_crop "${WIN_X}" "$(( WIN_Y + TITLEBAR_H ))" "${RAIL_W}" "$(( WIN_H - TITLEBAR_H ))"; }
 panel_region() { use_crop "$(( WIN_X + WIN_W - PANEL_W ))" "$(( WIN_Y + TITLEBAR_H ))" "${PANEL_W}" "$(( WIN_H - TITLEBAR_H ))"; }
+# The 24px strip the active tab is marked in (`panels.toml` `[tabs] height_px`).
+# A tab that opens on an empty document redraws little of the panel's body, so
+# the whole-panel rectangle reads a tab walk as noise; the strip does not.
+panel_tabs_region() { use_crop "$(( WIN_X + WIN_W - PANEL_W ))" "$(( WIN_Y + TITLEBAR_H ))" "${PANEL_W}" 24; }
 column_region() { use_crop "${COLUMN_X}" "$(( WIN_Y + TITLEBAR_H ))" "${COLUMN_W}" "$(( WIN_H - TITLEBAR_H ))"; }
 composer_region() { use_crop "${COLUMN_X}" "$(( WIN_Y + WIN_H - COMPOSER_H ))" "${COLUMN_W}" "${COMPOSER_H}"; }
 transcript_region() { use_crop "${COLUMN_X}" "$(( WIN_Y + TITLEBAR_H ))" "${COLUMN_W}" "$(( WIN_H - TITLEBAR_H - COMPOSER_H ))"; }
@@ -107,13 +112,19 @@ if [ "${DRAFT_PIXELS}" -lt "${TYPED_PIXELS}" ]; then
 fi
 
 # ─── 4. A File From The Host's Own Tree ──────────────────────────────────────
-# The tab is reached from the panel's own scope, and the row is found by
-# clicking rather than by arithmetic: the tree is the host's listing, so a
-# row's y depends on what the workspace holds, and which tabs the panel offers
-# at all depends on what the host declared. So each tab the walk reaches is
-# offered its own rows, and the take stands on the first row that opened a
-# file.
+# The row is found by clicking rather than by arithmetic: the tree is the
+# host's listing, so a row's y depends on what the workspace holds, and which
+# tabs the panel offers at all depends on what the host declared. So each tab
+# the walk reaches is offered its own rows, and the take stands on the first
+# row that opened a file.
+#
+# The walk presses the tab strip instead of sending the tab chord, so this
+# section reads the same in both arms: the chord is what section 4b measures,
+# and a section that depended on it would abandon the before arm on the very
+# behavior the pair is recorded to show missing.
+PANEL_LEFT=$(( WIN_X + WIN_W - PANEL_W ))
 PANEL_MID_X=$(( WIN_X + WIN_W - PANEL_W / 2 ))
+TABS_Y=$(( WIN_Y + TITLEBAR_H + 12 ))
 move_px "${PANEL_MID_X}" "$(( WIN_Y + WIN_H / 2 ))"
 click
 pause 0.4
@@ -121,10 +132,9 @@ pause 0.4
 FILE_OPENED=0
 for tab in $(seq 0 4); do
 	if [ "${tab}" -gt 0 ]; then
-		move_px "${PANEL_MID_X}" "$(( WIN_Y + WIN_H / 2 ))"
+		move_px "$(( PANEL_LEFT + 16 + tab * 44 ))" "${TABS_Y}"
+		pause 0.2
 		click
-		pause 0.3
-		k "ctrl+alt+bracketright"
 		pause 0.6
 	fi
 	for step in $(seq 0 12); do
@@ -150,13 +160,72 @@ if [ "${FILE_OPENED}" != 1 ]; then
 fi
 shot panel-file
 
+# ─── 4b. The Panel Takes The Keyboard, The Composer Keeps It ─────────────────
+# The two claims this pair is recorded for, each guarded in the direction its
+# arm is true in (§5.14):
+#
+# - The press that opened the file above put the panel's own chords on the focus
+#   path, so the tab chord moves the mark in the tab strip. Before, the
+#   container carried no key context and tracked no focus handle, so all three
+#   panel chords resolved to nothing.
+# - A press in the composer's box that misses the editor's text area still
+#   leaves the keyboard in the draft. Before, the window root took the focus
+#   during the bubble phase and the next keystroke went nowhere.
+#
+# The frame the file opened in is the frame the chord is measured against: a
+# press on an already focused panel draws nothing of its own, so a second
+# baseline of it would be the same bytes.
+k "ctrl+alt+bracketright"
+pause 1.0
+shot panel-after-chord
+
+panel_tabs_region
+WALKED="$(shots_differ_per_mille panel-file panel-after-chord)"
+if [ "${SCENE_ARM:-after}" = "before" ]; then
+	if [ "${WALKED}" -gt "${IDENTICAL_PER_MILLE}" ]; then
+		abandon_take "the-tab-chord-reached-nothing" \
+			"the tab strip changed ${WALKED}/1000 on the tab chord, so this arm is not the state the chord was dead in"
+	fi
+else
+	if [ "${WALKED}" -lt "${DREW_PER_MILLE}" ]; then
+		abandon_take "the-tab-chord-moved-the-panel" \
+			"the tab strip changed ${WALKED}/1000 on the tab chord, under the ${DREW_PER_MILLE} a moved tab mark draws"
+	fi
+fi
+
+# The press lands in the composer's own box, to the side of the centred card
+# the editor draws in: the band the defect lived in. The draft is measured
+# against the frame before the press, because a press that only moves a caret
+# draws too little to stand a frame of its own.
+COMPOSER_PAD_X=$(( COLUMN_X + 24 ))
+move_px "${COMPOSER_PAD_X}" "${COMPOSER_Y}"
+click
+pause 0.4
+t " plus this"
+pause 0.8
+shot composer-edge-draft
+
+composer_region
+EDGE_DRAFT="$(shots_differ_pixels panel-after-chord composer-edge-draft)"
+if [ "${SCENE_ARM:-after}" = "before" ]; then
+	if [ "${EDGE_DRAFT}" -ge "${TYPED_PIXELS}" ]; then
+		abandon_take "a-press-beside-the-editor-kept-the-keyboard" \
+			"the composer strip changed ${EDGE_DRAFT} pixels, so this arm is not the state the press blurred the draft in"
+	fi
+else
+	if [ "${EDGE_DRAFT}" -lt "${TYPED_PIXELS}" ]; then
+		abandon_take "a-press-beside-the-editor-keeps-the-keyboard" \
+			"the composer strip changed ${EDGE_DRAFT} pixels, under the ${TYPED_PIXELS} a typed draft changes"
+	fi
+fi
+
 # ─── 5. The Drawer Overlays ──────────────────────────────────────────────────
 k "ctrl+j"
 pause 1.5
 shot drawer-open
 
 composer_region
-DRAWER_DREW="$(shots_differ_per_mille panel-file drawer-open)"
+DRAWER_DREW="$(shots_differ_per_mille composer-edge-draft drawer-open)"
 if [ "${DRAWER_DREW}" -lt "${DREW_PER_MILLE}" ]; then
 	abandon_take "the-drawer-covered-the-lower-edge" \
 		"the composer's band changed ${DRAWER_DREW}/1000 when the drawer opened, so nothing was drawn over it"
@@ -174,7 +243,7 @@ pause 1.2
 shot drawer-closed
 
 column_region
-UNDER_DRAWER="$(shots_differ_per_mille panel-file drawer-closed)"
+UNDER_DRAWER="$(shots_differ_per_mille composer-edge-draft drawer-closed)"
 if [ "${UNDER_DRAWER}" -gt "${IDENTICAL_PER_MILLE}" ]; then
 	abandon_take "the-drawer-left-the-draft-it-covered" \
 		"the session column differs from its pre-drawer frame by ${UNDER_DRAWER}/1000, so what was typed into the drawer reached the composer under it"

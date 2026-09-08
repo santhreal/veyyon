@@ -355,6 +355,16 @@ Markdown, HTML, and JSON exports read as the same format opened from the tree.
 Opening a file replaces a displayed export. The **File** tab is present without
 file browsing when an export is the only document.
 
+Click the panel to focus it for the keyboard.
+
+| Shortcut | Action |
+| --- | --- |
+| `Primary-Alt-]` | Move to the next tab |
+| `Primary-Alt-[` | Move to the previous tab |
+| `Primary-Shift-D` | Switch the diff between unified and split |
+
+The tab walk wraps at both ends.
+
 ## Record native interactions
 
 Build the current executable with `cargo build -p veyyon-desktop` and build the
