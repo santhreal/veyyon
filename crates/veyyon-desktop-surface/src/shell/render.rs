@@ -192,6 +192,7 @@ pub fn render_shell(
 			.queue_focus
 			.get_or_insert_with(|| cx.focus_handle())
 			.clone();
+		let rail_layout = view.laid_out.clone();
 		columns = columns.child(queue_rail(
 			&view.state.sections,
 			view.state.keymap.queue_filter.as_deref(),
@@ -203,6 +204,7 @@ pub fn render_shell(
 			&tokens,
 			&mut view.rail_motion,
 			&queue_focus,
+			&rail_layout,
 			window,
 			cx,
 		));
@@ -223,6 +225,14 @@ pub fn render_shell(
 		.transcript_focus
 		.get_or_insert_with(|| cx.focus_handle())
 		.clone();
+	let cards_focus = view
+		.cards_focus
+		.get_or_insert_with(|| cx.focus_handle())
+		.clone();
+	// The row the overflowing cards fold into opens for the keyboard that
+	// focused it and for the pointer that reached it, and its height is laid
+	// out from that rather than refined at paint (§5.5).
+	let cards_expanded = cards_focus.is_focused(window) || view.cards_hovered;
 	let panel_focus = view
 		.panel_focus
 		.get_or_insert_with(|| cx.focus_handle())
@@ -240,6 +250,7 @@ pub fn render_shell(
 				panels,
 				&tokens,
 				&panel_focus,
+				view.laid_out(),
 				cx,
 			);
 			Some(
@@ -270,6 +281,8 @@ pub fn render_shell(
 		view.palette_anchor(),
 		&view.transcript_viewport,
 		&transcript_focus,
+		&cards_focus,
+		cards_expanded,
 		view.rail_motion.is_reduced_motion(),
 		find_bar,
 		panel_overlay,
@@ -288,7 +301,15 @@ pub fn render_shell(
 		// panel's own box is recorded from inside the split.
 		RightPanelPlacement::Inline { width_px } => {
 			let grip_px = f32::from(Resizable::handle_extent(&tokens));
-			let body = right_panel(panel, width_px - grip_px, panels, &tokens, &panel_focus, cx);
+			let body = right_panel(
+				panel,
+				width_px - grip_px,
+				panels,
+				&tokens,
+				&panel_focus,
+				view.laid_out(),
+				cx,
+			);
 			let tracked = view
 				.laid_out()
 				.track_children(div().h_full().w_full().flex().child(body), |index| {

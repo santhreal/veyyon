@@ -90,9 +90,19 @@ impl BoxBounds {
 	}
 }
 /// Border styling for a layout box.
+///
+/// The sides are kept apart because a scanline crosses a vertical side only:
+/// a box carrying a bottom hairline draws no vertical edge, and charging its
+/// left and right extremes for one counts a horizontal rule as two columns of
+/// structure.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct BorderPaint {
+	/// The widest side, which is what carrying a border means for ink.
 	pub width: f32,
+	/// The leading side's width.
+	pub left:  f32,
+	/// The trailing side's width.
+	pub right: f32,
 	pub color: RgbaColor,
 }
 
@@ -204,8 +214,18 @@ impl LayoutBoxSpec {
 		self
 	}
 
+	/// A border on all four sides, which is what a caller stating one width
+	/// means.
 	pub const fn border(mut self, width: f32, color: RgbaColor) -> Self {
-		self.border = Some(BorderPaint { width, color });
+		self.border = Some(BorderPaint { width, left: width, right: width, color });
+		self
+	}
+
+	/// A border on the two sides a scanline crosses, for a box whose vertical
+	/// and horizontal sides differ.
+	pub const fn border_sides(mut self, left: f32, right: f32, color: RgbaColor) -> Self {
+		let width = if left > right { left } else { right };
+		self.border = Some(BorderPaint { width, left, right, color });
 		self
 	}
 

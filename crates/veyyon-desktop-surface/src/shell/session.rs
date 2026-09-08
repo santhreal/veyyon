@@ -43,6 +43,8 @@ pub fn session_surface(
 	palette_anchor: Rc<Cell<Point<Pixels>>>,
 	viewport: &TranscriptViewportState,
 	transcript_focus: &FocusHandle,
+	cards_focus: &FocusHandle,
+	cards_expanded: bool,
 	reduced_motion: bool,
 	find_bar: Option<Div>,
 	panel_overlay: Option<Div>,
@@ -178,6 +180,8 @@ pub fn session_surface(
 					&state.cards,
 					&surface.attached_cards,
 					tokens,
+					cards_focus,
+					cards_expanded,
 					cx,
 				)))
 		}))
@@ -235,6 +239,7 @@ pub fn session_surface(
 						state.current_id,
 						&surface.panels,
 						tokens,
+						laid_out,
 						cx,
 					))
 			},
@@ -259,6 +264,7 @@ pub fn session_surface(
 			state.current_id,
 			&surface.panels,
 			tokens,
+			laid_out,
 			cx,
 		);
 		let drawer = laid_out.track_children(div().w_full().h_full().child(drawer), |index| {

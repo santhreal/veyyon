@@ -1,17 +1,19 @@
-//! WHY: §6.6 gives the whole window four ceilings — 16 edges, 8 distinct gaps,
-//! 6 text sizes, 105 interactive elements — and M7 makes them a gate: the
-//! populated window is measured at every breakpoint width in both appearances,
-//! and a surface that crept past its allowance fails here rather than in a
-//! review months later, when the clutter has spread to every neighbour.
+//! WHY: §6.6 gives the whole window four ceilings, and M7 makes them a gate:
+//! the populated window is measured at every breakpoint width in both
+//! appearances, and a surface that crept past its allowance fails here rather
+//! than in a review months later, when the clutter has spread to every
+//! neighbour.
 //!
-//! The widths are the four `breakpoints.toml` tiers (1440, 1180, 980, 800), so
-//! a shed decision that adds a control, a gap or a text size at one tier is
-//! measured at that tier. The metrics are computed from the rendered frame and
-//! its layout tree by the scene crate's six-metric suite; the interactive
-//! count is the frame's registered hit rects, the set a click can reach.
+//! The widths are the four `breakpoints.toml` tiers, read from the token file
+//! rather than restated, so a retuned tier moves the gate with it. The
+//! ceilings come from `ceilings.toml` through `metrics::check` for the same
+//! reason: a number restated here would pass while the app loaded the other
+//! copy. The metrics are computed from the rendered frame and its layout tree
+//! by the scene crate's six-metric suite; the interactive count is the frame's
+//! registered hit rects, the set a click can reach.
 //!
-//! A breach names its cell (width × appearance) and the `MetricReport`'s own
-//! accounting, so the surface that overspent is found from the failure alone.
+//! A breach names its cell (width × appearance), the column and both numbers,
+//! so the surface that overspent is found from the failure alone.
 
 use std::path::{Path, PathBuf};
 
@@ -19,20 +21,14 @@ use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_scene::{
 	headless::{RenderOptions, headless_context, render_view_captured},
 	measure::{measure, rhythm_spans, text_sizes, theme_ground},
-	metrics::{Ceilings, DENSEST_REGION_CEILING, SurfaceClass, ceilings},
+	metrics::{SurfaceClass, check},
 	write_png,
 };
 use veyyon_desktop_surface::{ShellView, fixture, install_tokens};
 use veyyon_gpui::{App, AppContext};
 
-/// The four breakpoint tiers, wide to collapsed.
-const WIDTHS: [u32; 4] = [1440, 1180, 980, 800];
 const HEIGHT: u32 = 900;
 const APPEARANCES: [&str; 2] = ["dark", "light"];
-
-/// §6.6's whole-window interactive ceiling: the most hit rects one frame may
-/// register and still be aimable.
-const INTERACTIVE_CEILING: usize = 105;
 
 #[test]
 fn the_window_holds_its_ink_ceilings_at_every_width_in_both_appearances() {
@@ -44,14 +40,22 @@ fn the_window_holds_its_ink_ceilings_at_every_width_in_both_appearances() {
 		let theme = load_bundled_theme(appearance).expect("the bundled theme loads");
 		let ground =
 			theme_ground(&theme, Path::new("surface")).expect("the bundled theme states a ground");
-		for width in WIDTHS {
+		let breakpoints = &tokens.surface.breakpoints;
+		let widths = [
+			breakpoints.wide.min_width_px,
+			breakpoints.standard.min_width_px,
+			breakpoints.compact.min_width_px,
+			breakpoints.collapsed.min_width_px,
+		];
+		for width in widths {
+			let width = width.round() as u32;
 			let options =
 				RenderOptions { width, height: HEIGHT, scale_factor: 1.0, ..RenderOptions::default() };
 			let state = fixture::populated();
-			let tokens = tokens.clone();
+			let tokens_for_render = tokens.clone();
 			let theme = theme.clone();
 			let captured = render_view_captured(&mut cx, &options, move |_window, app: &mut App| {
-				let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
+				let installed = install_tokens(app, &tokens_for_render, &theme, Path::new("surface"))
 					.expect("the bundled tokens and theme install");
 				app.new(|_| ShellView::new(installed, state))
 			})
@@ -61,54 +65,35 @@ fn the_window_holds_its_ink_ceilings_at_every_width_in_both_appearances() {
 			// the frame, gaps from the recovered tree with the shaped runs
 			// suppressing the spans that cross prose, text sizes from those
 			// runs, interactive from the registered hit rects. `measure` owns
-			// that derivation; this gate owns the ceilings.
+			// that derivation and `check` owns the ceilings; this gate owns
+			// only the cell and the diagnosis.
 			let cell = format!("{width}x{HEIGHT} {appearance}");
-			let ceiling: Ceilings = ceilings(SurfaceClass::WholeWindow);
 			let measured = measure(&captured, ground);
+			let verdict = check(&measured, SurfaceClass::WholeWindow, &tokens.ceilings);
 
-			let edges = measured.metrics.edge_count;
-			if edges > ceiling.edges {
-				failures
-					.push(format!("{cell}: {edges:.1} edges over the {:.0} ceiling", ceiling.edges));
-			}
-
-			let spans = rhythm_spans(&captured);
-			if spans.len() > ceiling.distinct_gaps {
+			for breach in verdict.breaches() {
+				let detail = match breach.metric {
+					"distinct_gaps" => {
+						let spans = rhythm_spans(&captured);
+						format!(": {:?}", spans.keys().collect::<Vec<_>>())
+					},
+					"distinct_text_sizes" => {
+						let mut distinct = text_sizes(&captured);
+						distinct.dedup_by(|a, b| (*a - *b).abs() <= 0.1);
+						format!(": {distinct:?}")
+					},
+					_ => String::new(),
+				};
 				failures.push(format!(
-					"{cell}: {} distinct gaps over the {} ceiling: {:?}",
-					spans.len(),
-					ceiling.distinct_gaps,
-					spans.keys().collect::<Vec<_>>()
+					"{cell}: {} measured {} over the {} ceiling{detail}",
+					breach.metric, breach.actual, breach.ceiling
 				));
 			}
+
 			if std::env::var_os("VEYYON_CONVERGENCE_PROBE").is_some() {
-				for (gap, rects) in &spans {
+				for (gap, rects) in &rhythm_spans(&captured) {
 					println!("{cell} gap {gap}px ×{}: {rects:?}", rects.len());
 				}
-			}
-
-			let text_sizes_seen = measured.metrics.distinct_text_sizes;
-			if text_sizes_seen > ceiling.text_sizes {
-				let mut distinct = text_sizes(&captured);
-				distinct.dedup_by(|a, b| (*a - *b).abs() <= 0.1);
-				failures.push(format!(
-					"{cell}: {text_sizes_seen} text sizes over the {} ceiling: {distinct:?}",
-					ceiling.text_sizes
-				));
-			}
-
-			let interactive = measured.interactive;
-			if interactive > INTERACTIVE_CEILING {
-				failures.push(format!(
-					"{cell}: {interactive} interactive elements over the {INTERACTIVE_CEILING} ceiling"
-				));
-			}
-
-			let density = measured.metrics.element_density;
-			if density > DENSEST_REGION_CEILING {
-				failures.push(format!(
-					"{cell}: densest region {density:.1} over the {DENSEST_REGION_CEILING} ceiling"
-				));
 			}
 
 			// The judgement half of the pass: a person reads the frames, and no

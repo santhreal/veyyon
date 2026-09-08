@@ -258,7 +258,7 @@ fn cards() -> Vec<Card> {
 		Card::Approval {
 			tool:   "bash — cargo test -p veyyon-desktop-surface".to_owned(),
 			detail: vec![
-				"Runs on axiomexec, in the checkout at /media/.../veyyon-gui.".to_owned(),
+				"Runs in the checkout the session was opened in.".to_owned(),
 				"Touches no tracked file; writes target/scene-frames/.".to_owned(),
 			],
 		},

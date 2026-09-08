@@ -7,7 +7,7 @@ pub mod raster;
 use std::fmt;
 
 pub use ceilings::{
-	Ceilings, DENSEST_REGION_CEILING, MetricBreach, SurfaceClass, Verdict, ceilings, check,
+	Ceilings, MetricBreach, SurfaceClass, Verdict, ceilings, check, density_ceiling,
 };
 pub use layout::{
 	cluster_text_sizes, compute_alignment_residue, compute_distinct_gaps,
@@ -15,6 +15,7 @@ pub use layout::{
 	element_density_of_centers, gap_spans,
 };
 pub use raster::{compute_edge_count, compute_ink_ratio, perceptual_diff};
+use veyyon_desktop_tokens::CeilingTokens;
 
 use crate::{
 	frame::{RgbaColor, RgbaFrame},
@@ -30,6 +31,18 @@ pub struct ClutterMetrics {
 	pub ink_ratio:           f32,
 	pub element_density:     f32,
 	pub alignment_residue:   f32,
+}
+
+/// A capture's six metrics, and the interactive count §6.6 caps beside them.
+///
+/// The pair is one value because a §6.6 row caps both, and a verdict taken on
+/// the metrics alone leaves the interactive column unchecked.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Measured {
+	pub metrics:     ClutterMetrics,
+	/// Hit rects the frame registered, which is what the interactive ceiling
+	/// counts: controls a click reaches, not elements drawn to look like one.
+	pub interactive: usize,
 }
 
 /// Compute the full suite of six clutter metrics for a rendered frame.
@@ -53,21 +66,21 @@ pub fn compute_metrics(
 	}
 }
 
-/// Evaluation report pairing computed metrics with surface ceilings and
-/// verdict.
+/// Evaluation report pairing a measurement with surface ceilings and verdict.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MetricReport {
-	pub metrics: ClutterMetrics,
-	pub surface: SurfaceClass,
-	pub verdict: Verdict,
+	pub measured: Measured,
+	pub surface:  SurfaceClass,
+	pub verdict:  Verdict,
 }
 
 impl MetricReport {
-	/// Create a new report by checking the metrics against the specified surface
-	/// class.
-	pub fn new(metrics: ClutterMetrics, surface: SurfaceClass) -> Self {
-		let verdict = check(&metrics, surface);
-		Self { metrics, surface, verdict }
+	/// Create a new report by checking the measurement against the ceilings
+	/// `tokens` authors for `surface`.
+	#[must_use]
+	pub fn new(measured: Measured, surface: SurfaceClass, tokens: &CeilingTokens) -> Self {
+		let verdict = check(&measured, surface, tokens);
+		Self { measured, surface, verdict }
 	}
 }
 
@@ -78,15 +91,18 @@ impl fmt::Display for MetricReport {
 		} else {
 			"FAIL"
 		};
+		let m = &self.measured.metrics;
 		write!(
 			f,
-			"edges: {:.1} | gaps: {} | text: {} | density: {:.1} | ink: {:.3} | align: {:.1}% [{}]",
-			self.metrics.edge_count,
-			self.metrics.distinct_gaps,
-			self.metrics.distinct_text_sizes,
-			self.metrics.element_density,
-			self.metrics.ink_ratio,
-			self.metrics.alignment_residue * 100.0,
+			"edges: {:.1} | gaps: {} | text: {} | controls: {} | density: {:.1} | ink: {:.3} | \
+			 align: {:.1}% [{}]",
+			m.edge_count,
+			m.distinct_gaps,
+			m.distinct_text_sizes,
+			self.measured.interactive,
+			m.element_density,
+			m.ink_ratio,
+			m.alignment_residue * 100.0,
 			status,
 		)
 	}

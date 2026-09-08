@@ -5,8 +5,17 @@
 //! alone would allow forty surfaces to each add one unnecessary border or gap
 //! before failing. Asserting tight per-surface ceilings at the scene gate
 //! prevents drift.
+//!
+//! WHERE THE NUMBERS COME FROM: `ceilings.toml`, through the strict loader,
+//! and nowhere else. §9.3 compiles no visual value in, and a second copy of
+//! the table here would pass its own test while the running app checked the
+//! other one. `SurfaceClass::of` is the whole mapping from a §6.6 row to the
+//! block the loader parsed, so a class added to the table without a block
+//! fails to compile.
 
 use std::fmt;
+
+use veyyon_desktop_tokens::{CeilingTokens, SurfaceCeilings};
 
 /// The eight surface classes defined in §6.6 with authoritative ink ceilings.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -46,6 +55,24 @@ impl SurfaceClass {
 			Self::WholeWindow => "whole window",
 		}
 	}
+
+	/// The block of `ceilings.toml` this class is judged against.
+	///
+	/// Total over the enum on purpose: a §6.6 row added here without a block
+	/// in the token file fails to compile, rather than borrowing another
+	/// row's numbers.
+	pub const fn of(self, tokens: &CeilingTokens) -> &SurfaceCeilings {
+		match self {
+			Self::QueueRowCard => &tokens.queue_card,
+			Self::QueueRowLine => &tokens.queue_line,
+			Self::TranscriptTurn => &tokens.transcript_turn,
+			Self::BlockChrome => &tokens.block_chrome,
+			Self::Composer => &tokens.composer,
+			Self::RightPanelChrome => &tokens.right_panel_chrome,
+			Self::TerminalDrawerChrome => &tokens.terminal_drawer_chrome,
+			Self::WholeWindow => &tokens.whole_window,
+		}
+	}
 }
 
 /// Hard ceilings defined per surface class.
@@ -57,43 +84,32 @@ pub struct Ceilings {
 	pub interactive:   usize,
 }
 
-/// Authoritative §6.6 ceiling limits for each surface class.
-pub const fn ceilings(surface: SurfaceClass) -> Ceilings {
-	match surface {
-		SurfaceClass::QueueRowCard => {
-			Ceilings { edges: 2.0, distinct_gaps: 3, text_sizes: 3, interactive: 3 }
-		},
-		SurfaceClass::QueueRowLine => {
-			Ceilings { edges: 1.0, distinct_gaps: 2, text_sizes: 2, interactive: 2 }
-		},
-		SurfaceClass::TranscriptTurn => {
-			Ceilings { edges: 1.0, distinct_gaps: 3, text_sizes: 3, interactive: 4 }
-		},
-		SurfaceClass::BlockChrome => {
-			Ceilings { edges: 1.0, distinct_gaps: 2, text_sizes: 2, interactive: 2 }
-		},
-		SurfaceClass::Composer => {
-			Ceilings { edges: 3.0, distinct_gaps: 4, text_sizes: 3, interactive: 8 }
-		},
-		SurfaceClass::RightPanelChrome => {
-			Ceilings { edges: 2.0, distinct_gaps: 3, text_sizes: 3, interactive: 6 }
-		},
-		SurfaceClass::TerminalDrawerChrome => {
-			Ceilings { edges: 2.0, distinct_gaps: 2, text_sizes: 2, interactive: 5 }
-		},
-		SurfaceClass::WholeWindow => {
-			Ceilings { edges: 16.0, distinct_gaps: 8, text_sizes: 6, interactive: 105 }
-		},
+/// The ceilings `tokens` authors for this surface class.
+#[must_use]
+pub const fn ceilings(surface: SurfaceClass, tokens: &CeilingTokens) -> Ceilings {
+	let authored = surface.of(tokens);
+	Ceilings {
+		edges:         authored.edges as f32,
+		distinct_gaps: authored.distinct_gaps,
+		text_sizes:    authored.text_sizes,
+		interactive:   authored.interactive_elements,
 	}
 }
 
-/// Maximum interactive element density across any 100x100px region (§6.6 /
-/// §8.31).
+/// The interactive elements a sample box may hold, in the unit
+/// [`element_density_of_centers`] returns: controls per sample box, not per
+/// 1000px².
 ///
-/// Restated from 2.08 interactive elements per 1000px² into elements per
-/// 100x100px window (10,000px² = 10 × 1000px²), which is the exact unit
-/// `compute_element_density` returns (2.08 × 10 = 20.8).
-pub const DENSEST_REGION_CEILING: f32 = 20.8;
+/// `ceilings.toml` authors the rate and the box edge separately, because the
+/// rate is the judgement and the box is the window it is judged over. A
+/// 100px box at 2.08 per 1000px² is 20.8 controls.
+///
+/// [`element_density_of_centers`]: super::element_density_of_centers
+#[must_use]
+pub fn density_ceiling(tokens: &CeilingTokens) -> f32 {
+	let box_area = tokens.density_region.sample_box_px * tokens.density_region.sample_box_px;
+	tokens.density_region.max_interactive_per_1000px2 * box_area / 1000.0
+}
 
 /// A single metric ceiling breach.
 #[derive(Clone, Debug, PartialEq)]
@@ -145,9 +161,15 @@ impl fmt::Display for Verdict {
 	}
 }
 
-/// Check metrics against the authoritative ceilings for a surface class.
-pub fn check(metrics: &super::ClutterMetrics, surface: SurfaceClass) -> Verdict {
-	let c = ceilings(surface);
+/// Checks a measurement against the ceilings `tokens` authors for `surface`.
+///
+/// Every column of the §6.6 row is checked. The interactive count is one of
+/// them: a ceiling nothing consults is a number in a file, and the row that
+/// caps the whole window at 105 controls was exactly that until this read it.
+#[must_use]
+pub fn check(measured: &super::Measured, surface: SurfaceClass, tokens: &CeilingTokens) -> Verdict {
+	let c = ceilings(surface, tokens);
+	let metrics = &measured.metrics;
 	let mut breaches = Vec::new();
 
 	if metrics.distinct_gaps > c.distinct_gaps {
@@ -174,11 +196,20 @@ pub fn check(metrics: &super::ClutterMetrics, surface: SurfaceClass) -> Verdict 
 		});
 	}
 
-	if metrics.element_density > DENSEST_REGION_CEILING {
+	if measured.interactive > c.interactive {
+		breaches.push(MetricBreach {
+			metric:  "interactive_elements",
+			ceiling: c.interactive as f64,
+			actual:  measured.interactive as f64,
+		});
+	}
+
+	let density = density_ceiling(tokens);
+	if metrics.element_density > density {
 		breaches.push(MetricBreach {
 			metric:  "element_density",
-			ceiling: DENSEST_REGION_CEILING as f64,
-			actual:  metrics.element_density as f64,
+			ceiling: f64::from(density),
+			actual:  f64::from(metrics.element_density),
 		});
 	}
 

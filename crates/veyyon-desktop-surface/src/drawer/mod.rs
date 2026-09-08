@@ -24,6 +24,7 @@ pub use self::{
 use crate::{
 	Intent, ShellView,
 	controls::{ControlStates, hairline_for},
+	damage::{LaidOut, Region},
 	terminal::{Ink, NamedColor},
 };
 
@@ -96,6 +97,7 @@ pub fn terminal_drawer(
 	session_id: u64,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
+	laid_out: &LaidOut,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
 	let body = if content.is_processes_active() {
@@ -112,25 +114,28 @@ pub fn terminal_drawer(
 			.child(render_terminal_grid(content, geometry, tokens, cx))
 	};
 
-	div()
-		.occlude()
-		.w_full()
-		.h(px(height))
-		.flex_shrink_0()
-		.flex()
-		.flex_col()
-		.bg(tokens.color(ColorRole::Canvas))
-		.border_t(px(geometry.chrome_resize_handle_line_px))
-		.border_color(tokens.color(ColorRole::Hairline))
-		.overflow_hidden()
-		.child(drawer_chrome(content, controls, session_id, geometry, tokens, cx))
-		.children(hairline_for(
-			controls,
-			&SurfaceId::TerminalCreateButton(SessionId::from(session_id.to_string())),
-			tokens,
-			cx,
-		))
-		.child(body)
+	laid_out.track_children(
+		div()
+			.occlude()
+			.w_full()
+			.h(px(height))
+			.flex_shrink_0()
+			.flex()
+			.flex_col()
+			.bg(tokens.color(ColorRole::Canvas))
+			.border_t(px(geometry.chrome_resize_handle_line_px))
+			.border_color(tokens.color(ColorRole::Hairline))
+			.overflow_hidden()
+			.child(drawer_chrome(content, controls, session_id, geometry, tokens, cx))
+			.children(hairline_for(
+				controls,
+				&SurfaceId::TerminalCreateButton(SessionId::from(session_id.to_string())),
+				tokens,
+				cx,
+			))
+			.child(body),
+		|index| (index == 0).then_some(Region::DrawerChrome),
+	)
 }
 
 /// Renders the monospace 80-column terminal cell grid.

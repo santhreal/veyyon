@@ -186,7 +186,7 @@ fn a_floating_panel_meets_no_region_it_is_not_annotating() {
 		.expect("the view is live");
 	let met: Vec<Region> = recorded
 		.into_iter()
-		.filter(|region| *region != Region::Panel)
+		.filter(|region| !matches!(region, Region::Panel | Region::PanelChrome))
 		.filter(|region| overlaps(panel, box_of(&mut session, *region)))
 		.collect();
 
@@ -197,7 +197,10 @@ fn a_floating_panel_meets_no_region_it_is_not_annotating() {
 	let strays: Vec<Region> = met
 		.iter()
 		.copied()
-		.filter(|region| !matches!(region, Region::Transcript | Region::Turn(_)))
+		// The transcript and what is inside it: a turn, and a block of a turn.
+		.filter(|region| {
+			!matches!(region, Region::Transcript | Region::Turn(_) | Region::Block(_, _))
+		})
 		.collect();
 	assert_eq!(strays, Vec::new(), "the float covers regions it does not annotate: {strays:?}");
 	assert!(

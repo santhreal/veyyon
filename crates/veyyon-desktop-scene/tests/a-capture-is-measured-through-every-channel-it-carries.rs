@@ -70,6 +70,9 @@ impl Render for Probe {
 					.child("eighteen"),
 			)
 			.child(
+				// A control the frame draws: `measure` counts a hit rect only
+				// where the frame drew something inside it, because a rect over
+				// one flat wash is a hidden control gpui still registers.
 				div()
 					.id("the-one-control")
 					.absolute()
@@ -78,6 +81,8 @@ impl Render for Probe {
 					.w(px(80.0))
 					.h(px(24.0))
 					.bg(rgb(CANVAS))
+					.text_size(px(13.0))
+					.child("press")
 					.on_mouse_down(MouseButton::Left, |_event: &MouseDownEvent, _window, _cx| {}),
 			)
 			// 8px between each pair, so the value is backed by two spans and

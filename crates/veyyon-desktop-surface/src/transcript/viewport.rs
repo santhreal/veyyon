@@ -90,6 +90,7 @@ pub fn transcript_viewport(
 				&motion_tokens_copy,
 				reduced_motion,
 				measure_px,
+				&item_layout,
 				Some(&view),
 			);
 

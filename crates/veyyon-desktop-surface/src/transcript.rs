@@ -71,6 +71,7 @@ pub fn transcript_column(
 			motion_tokens,
 			false,
 			measure_px,
+			laid_out,
 			None,
 		);
 

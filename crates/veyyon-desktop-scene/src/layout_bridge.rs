@@ -58,16 +58,21 @@ pub fn layout_box_tree_from_quads(
 			.as_solid()
 			.filter(|hsla| hsla.a > 0.0)
 			.map(hsla_to_rgba);
-		let max_border_scaled = quad
-			.border_widths
+		let sides = quad.border_widths;
+		let max_border_scaled = sides
 			.top
 			.0
-			.max(quad.border_widths.right.0)
-			.max(quad.border_widths.bottom.0)
-			.max(quad.border_widths.left.0);
+			.max(sides.right.0)
+			.max(sides.bottom.0)
+			.max(sides.left.0);
 		let border_width = max_border_scaled / scale_factor;
 		let border = if border_width > 0.0 && quad.border_color.a > 0.0 {
-			Some(BorderPaint { width: border_width, color: hsla_to_rgba(quad.border_color) })
+			Some(BorderPaint {
+				width: border_width,
+				left:  sides.left.0 / scale_factor,
+				right: sides.right.0 / scale_factor,
+				color: hsla_to_rgba(quad.border_color),
+			})
 		} else {
 			None
 		};

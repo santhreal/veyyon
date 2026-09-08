@@ -27,6 +27,7 @@ use veyyon_gpui::{
 
 use crate::{
 	ShellView,
+	damage::{LaidOut, Region},
 	intent::Intent,
 	keymap::actions::{NextTab, PreviousTab, ToggleDiffMode},
 };
@@ -44,6 +45,7 @@ pub fn right_panel(
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
 	focus: &FocusHandle,
+	laid_out: &LaidOut,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
 	if panel.tabs.is_empty() {
@@ -51,7 +53,8 @@ pub fn right_panel(
 			.unavailable_reason
 			.as_deref()
 			.unwrap_or("No panel features available");
-		return div()
+		return laid_out
+			.tracking(|index| (index == 0).then_some(Region::PanelChrome))
 			.id("right-panel")
 			.flex()
 			.flex_col()
@@ -73,7 +76,8 @@ pub fn right_panel(
 					.text_size(tokens.font_size(TextRamp::Small))
 					.text_color(tokens.color(ColorRole::Muted))
 					.child(reason.to_string()),
-			);
+			)
+			.into_any_element();
 	}
 
 	let active_content = match panel.active_tab {
@@ -115,7 +119,8 @@ pub fn right_panel(
 
 	// The container tracks the focus, so a press anywhere inside it hands the
 	// keyboard to the panel and its context reaches the focus path (§5.14).
-	div()
+	laid_out
+		.tracking(|index| (index == 0).then_some(Region::PanelChrome))
 		.id("right-panel")
 		.key_context("Panel")
 		.track_focus(focus)
@@ -139,4 +144,5 @@ pub fn right_panel(
 		.overflow_hidden()
 		.child(tab_strip(panel, geometry, tokens, cx))
 		.child(active_content)
+		.into_any_element()
 }

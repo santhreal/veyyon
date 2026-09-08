@@ -128,13 +128,12 @@ fn cell(
 	assets: &Assets<'_>,
 ) -> Result<SheetCell, SceneRenderError> {
 	let measured = measure(&captured, assets.ground()?);
-	let report = MetricReport::new(measured.metrics, SurfaceClass::WholeWindow);
+	let report = MetricReport::new(measured, SurfaceClass::WholeWindow, &assets.tokens.ceilings);
 	println!(
-		"{name}\t{}x{}@{}\t{report} | hits: {}",
+		"{name}\t{}x{}@{}\t{report}",
 		captured.frame.width(),
 		captured.frame.height(),
 		captured.frame.scale_factor(),
-		measured.interactive
 	);
 	for breach in report.verdict.breaches() {
 		println!(

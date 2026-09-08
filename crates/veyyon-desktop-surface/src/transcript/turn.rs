@@ -25,6 +25,7 @@ use super::{
 };
 use crate::{
 	ShellView,
+	damage::{LaidOut, Region},
 	model::{Block, Turn},
 };
 
@@ -42,6 +43,7 @@ pub fn render_turn(
 	motion_tokens: &MotionTokens,
 	reduced_motion: bool,
 	measure_px: f32,
+	laid_out: &LaidOut,
 	view: Option<&WeakEntity<ShellView>>,
 ) -> Div {
 	match turn {
@@ -75,7 +77,9 @@ pub fn render_turn(
 					view,
 				));
 			}
-			turn.child(column)
+			turn.child(
+				laid_out.track_children(column, move |index| Some(Region::Block(turn_ix, index))),
+			)
 		},
 		Turn::Agent { blocks, model } => agent_turn(
 			turn_ix,
@@ -89,6 +93,7 @@ pub fn render_turn(
 			tokens,
 			motion_tokens,
 			reduced_motion,
+			laid_out,
 			view,
 		),
 	}
@@ -136,6 +141,7 @@ pub fn agent_turn(
 	tokens: &TokenSet,
 	motion_tokens: &MotionTokens,
 	reduced_motion: bool,
+	laid_out: &LaidOut,
 	view: Option<&WeakEntity<ShellView>>,
 ) -> Div {
 	let mut turn = div().flex().flex_col().w_full();
@@ -230,7 +236,14 @@ pub fn agent_turn(
 		);
 	}
 
-	turn
+	// Every block records its own box, so a block whose chrome moved declares
+	// the pixels it vacated, and the §6.6 block ceiling is measured over the
+	// block rather than over the turn that holds it. The footer is a child of
+	// the same column and is not a block, so it stays unrecorded.
+	let block_count = blocks.len();
+	laid_out.track_children(turn, move |index| {
+		(index < block_count).then_some(Region::Block(turn_ix, index))
+	})
 }
 
 /// Whether two blocks are the same kind, for vertical rhythm gap selection.

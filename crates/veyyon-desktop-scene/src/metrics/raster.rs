@@ -9,8 +9,10 @@ use crate::{
 /// Compute the average number of structural vertical edge boundaries per
 /// scanline.
 ///
-/// Collects border edges, vertical dividers, and contrasting hairline fill
-/// boundaries across every device scanline.
+/// Collects the vertical sides of bordered boxes, vertical dividers, and
+/// contrasting hairline fill boundaries across every device scanline. A
+/// horizontal rule is not a vertical edge and is reported by the ink ratio
+/// instead.
 pub fn compute_edge_count(tree: &LayoutBoxTree, frame: &RgbaFrame) -> f32 {
 	// Note: RgbaFrame enforces width > 0 and height > 0 upon construction,
 	// so frame.height() is guaranteed non-zero.
@@ -23,19 +25,26 @@ pub fn compute_edge_count(tree: &LayoutBoxTree, frame: &RgbaFrame) -> f32 {
 		let logical_y = dev_y as f32 / scale;
 		let mut candidates = Vec::new();
 
-		// (a) Box borders with width > 0 and visible color
+		// (a) The vertical sides of a box that carries a visible border. A
+		// scanline crosses a left or right side and never a top or bottom
+		// one, so a horizontal rule contributes to the ink ratio and not to
+		// this count.
 		// (b) Explicit vertical dividers
 		for b in tree.iter() {
 			if !b.visible {
 				continue;
 			}
 			if logical_y >= b.bounds.top && logical_y <= b.bounds.bottom {
-				if b
+				if let Some(border) = b
 					.border
-					.is_some_and(|border| border.width > 0.0 && !border.color.is_invisible())
+					.filter(|border| border.width > 0.0 && !border.color.is_invisible())
 				{
-					candidates.push(b.bounds.left);
-					candidates.push(b.bounds.right);
+					if border.left > 0.0 {
+						candidates.push(b.bounds.left);
+					}
+					if border.right > 0.0 {
+						candidates.push(b.bounds.right);
+					}
 				}
 				if b.divider == Some(DividerAxis::Vertical) {
 					candidates.push(f32::midpoint(b.bounds.left, b.bounds.right));

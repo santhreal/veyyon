@@ -22,6 +22,7 @@ pub mod fields;
 mod float;
 pub mod keys;
 mod memory;
+mod notice;
 pub mod overlay;
 mod palette;
 mod queue_search;
@@ -114,6 +115,14 @@ pub struct ShellView {
 	/// And for the transcript column, whose scope carries the scroll chords,
 	/// the find bar and the block toggle (§5.14).
 	transcript_focus:      Option<FocusHandle>,
+	/// And for the collapsed row the overflowing decision cards fold into,
+	/// which expands to state which decisions are waiting while it holds the
+	/// focus, so the count is readable without a pointer (§5.5).
+	cards_focus:           Option<FocusHandle>,
+	/// Whether the pointer is over that row. A hover style resolves at paint
+	/// and cannot change a box, so an expansion the pointer drives is state
+	/// the next frame lays out rather than a `hover` refinement (§5.5).
+	cards_hovered:         bool,
 	destination_focus:     Option<FocusHandle>,
 	general_settings_list: GeneralSettingsListState,
 	now_ms:                u64,
@@ -161,6 +170,8 @@ impl ShellView {
 			queue_focus: None,
 			panel_focus: None,
 			transcript_focus: None,
+			cards_focus: None,
+			cards_hovered: false,
 			destination_focus: None,
 			general_settings_list: GeneralSettingsListState::new(),
 			now_ms: 0,
@@ -174,6 +185,16 @@ impl ShellView {
 			.destination_focus
 			.get_or_insert_with(|| cx.focus_handle())
 			.clone()
+	}
+
+	/// Records whether the pointer is over the collapsed overflow row.
+	///
+	/// Returns whether that changed, which is what decides a repaint: the
+	/// callback also fires when layout moves under a stationary pointer.
+	pub const fn set_cards_hovered(&mut self, hovered: bool) -> bool {
+		let changed = self.cards_hovered != hovered;
+		self.cards_hovered = hovered;
+		changed
 	}
 
 	/// Returns a reference to the installed tokens.
@@ -225,26 +246,6 @@ impl ShellView {
 	#[must_use]
 	pub const fn clock_ms(&self) -> u64 {
 		self.now_ms
-	}
-
-	/// Returns true if the attention strip has a line to draw.
-	#[must_use]
-	pub fn has_notice(&self) -> bool {
-		self.notice().is_some()
-	}
-
-	/// The line the attention strip draws, if it has one.
-	///
-	/// The strip carries two channels: what the host reports about itself,
-	/// and the refusal this window put up for a value it would not send. The
-	/// refusal outranks it while it stands, because the host's commentary is
-	/// its connection state rather than an answer to what the operator just
-	/// typed, and a heartbeat that reports a healthy socket carries no notice
-	/// at all — which used to erase a refusal 60 milliseconds after it was
-	/// stated.
-	#[must_use]
-	pub fn notice(&self) -> Option<&str> {
-		self.field_refusal.as_deref().or(self.notice.as_deref())
 	}
 
 	/// The queue row menu that is open, if one is.
@@ -308,31 +309,6 @@ impl ShellView {
 	#[must_use]
 	pub const fn laid_out(&self) -> &LaidOut {
 		&self.laid_out
-	}
-
-	/// Sets or clears the attention strip's message.
-	///
-	/// The strip is a band of the window rather than a field of a control, so
-	/// a message that changes moves the columns under it. The repaint belongs
-	/// here: a notice reaches the strip from a refusal that sends nothing, a
-	/// picker that was cancelled, a store that failed to save and a host
-	/// snapshot, and the ones that send nothing otherwise mark nothing dirty,
-	/// which leaves the strip stated in the state and drawn on whatever later
-	/// frame something else happens to request.
-	pub fn set_notice(&mut self, notice: Option<String>, cx: &mut Context<Self>) {
-		if self.notice == notice {
-			return;
-		}
-		self.notice = notice;
-		cx.notify();
-	}
-
-	/// The same message, on a view that has no window yet: the first frame
-	/// draws it, so there is nothing to repaint.
-	#[must_use]
-	pub fn with_notice(mut self, notice: Option<String>) -> Self {
-		self.notice = notice;
-		self
 	}
 
 	/// Applies what the operator did, and records what a host must answer.

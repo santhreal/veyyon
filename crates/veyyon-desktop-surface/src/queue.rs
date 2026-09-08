@@ -35,6 +35,7 @@ use veyyon_desktop_model::{SessionId, SurfaceId};
 use crate::{
 	ShellView,
 	controls::{ControlStates, availability_style, hairline_for_weak},
+	damage::{LaidOut, Region},
 	model::{Row, Section},
 };
 
@@ -61,6 +62,7 @@ pub fn queue_rail(
 	tokens: &TokenSet,
 	motion: &mut RailMotion,
 	focus: &FocusHandle,
+	laid_out: &LaidOut,
 	window: &mut Window,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
@@ -184,6 +186,7 @@ pub fn queue_rail(
 	let tokens_copy = tokens.clone();
 	let controls_copy = controls.clone();
 	let weak_view = cx.weak_entity();
+	let row_layout = laid_out.clone();
 
 	let list_el = veyyon_gpui::list(list_state, move |item_ix, _window, _app| {
 		let Some(item) = items_snapshot.get(item_ix) else {
@@ -235,13 +238,22 @@ pub fn queue_rail(
 				};
 				let row_av = controls_copy.availability(&row_surface);
 				let (row_opacity, ..) = availability_style(&row_av, &tokens_copy);
-				return div()
-					.w_full()
-					.flex()
-					.flex_col()
-					.opacity(row_opacity)
-					.child(row_el)
-					.children(row_error)
+				let drawn = if section.draws_cards() {
+					Region::QueueCardRow(item_ix)
+				} else {
+					Region::QueueLineRow(item_ix)
+				};
+				return row_layout
+					.track_children(
+						div()
+							.w_full()
+							.flex()
+							.flex_col()
+							.opacity(row_opacity)
+							.child(row_el)
+							.children(row_error),
+						move |index| (index == 0).then_some(drawn),
+					)
 					.into_any_element();
 			},
 			QueueListItem::OlderRow { hidden } => {

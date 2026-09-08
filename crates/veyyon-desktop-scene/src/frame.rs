@@ -248,6 +248,75 @@ impl RgbaFrame {
 		}
 		Some(scaled as u32)
 	}
+
+	/// The rectangle of this frame at `x, y` sized `width` × `height`, all in
+	/// DEVICE pixels, as a frame of its own at the same scale factor.
+	///
+	/// A per-surface ceiling is judged over the surface's own box, so the
+	/// metrics that read pixels need a frame that holds that box and nothing
+	/// around it. A rectangle reaching past an edge is an error rather than a
+	/// clamp: a measurement of a region the frame does not hold is not a
+	/// measurement of that region.
+	pub fn crop(&self, x: u32, y: u32, width: u32, height: u32) -> Result<Self, FrameError> {
+		if width == 0 || height == 0 {
+			return Err(FrameError::ZeroDimension { width, height });
+		}
+		let right = x.checked_add(width);
+		let bottom = y.checked_add(height);
+		if right.is_none_or(|r| r > self.width) || bottom.is_none_or(|b| b > self.height) {
+			return Err(FrameError::ByteCountMismatch {
+				width,
+				height,
+				scale_factor: self.scale_factor(),
+				expected: (width as usize) * (height as usize) * 4,
+				actual: 0,
+			});
+		}
+		let stride = self.width as usize * 4;
+		let row_bytes = width as usize * 4;
+		let mut pixels = Vec::with_capacity(row_bytes * height as usize);
+		for row in y..y + height {
+			let start = row as usize * stride + x as usize * 4;
+			match self.pixels.get(start..start + row_bytes) {
+				Some(slice) => pixels.extend_from_slice(slice),
+				None => {
+					return Err(FrameError::ByteCountMismatch {
+						width,
+						height,
+						scale_factor: self.scale_factor(),
+						expected: row_bytes * height as usize,
+						actual: pixels.len(),
+					});
+				},
+			}
+		}
+		Self::new(width, height, self.scale_factor(), pixels)
+	}
+
+	/// Paints `colour` over the rectangle at `x, y` sized `width` × `height`,
+	/// all in DEVICE pixels, clipped to the frame.
+	///
+	/// A surface with a §6.6 row of its own is measured over its own chrome,
+	/// so a nested surface that carries its own row is painted out of its
+	/// parent's crop before the parent is measured: the block's border is
+	/// charged to the block ceiling and not a second time to the turn that
+	/// holds it. The colour is the ground the surface sits on, so the blank
+	/// introduces no edge of its own.
+	pub fn fill(&mut self, x: u32, y: u32, width: u32, height: u32, colour: RgbaColor) {
+		let right = x.saturating_add(width).min(self.width);
+		let bottom = y.saturating_add(height).min(self.height);
+		let bytes = [colour.r, colour.g, colour.b, colour.a];
+		let stride = self.width as usize * 4;
+		for row in y.min(self.height)..bottom {
+			let start = row as usize * stride;
+			for column in x.min(self.width)..right {
+				let offset = start + column as usize * 4;
+				if let Some(slot) = self.pixels.get_mut(offset..offset + 4) {
+					slot.copy_from_slice(&bytes);
+				}
+			}
+		}
+	}
 }
 
 /// How far two frames of the same geometry diverge. §9.6 reports one of these

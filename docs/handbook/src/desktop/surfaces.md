@@ -271,6 +271,31 @@ prompt out of the queue and put its text back in the draft. The queue releases
 prompts newest first, so there is no per-prompt removal control. The strip is
 absent while the queue is empty.
 
+## Attached decisions
+
+A decision the agent is waiting on attaches directly above the composer, in the
+composer's own width: an approval, a question, or a plan.
+
+| Decision | Answers |
+| --- | --- |
+| Approval | `Deny for session`, `Deny`, `Approve for session`, `Approve` |
+| Question | One control per option, and the composer's primary action sends a free-text reply |
+| Plan | `Revise`, `Accept` |
+
+An approval's four answers are the ones the tool wrapper accepts. The two
+`for session` answers apply to every later call of the same tool until the
+session ends; the other two apply to the call on screen.
+
+A plan's body is capped at 400 pixels and the last 64 pixels of a body cut at
+that cap fade into the card, which is what states there is more of the plan than
+the card shows. A body that fits is drawn to its last line.
+
+Two decisions are shown at once. Every decision past the second folds into one
+24-pixel line stating how many are waiting; the pointer over that line, or the
+keyboard on it, opens it onto one line per folded decision, naming the kind and
+the subject of each. It closes when the pointer leaves and the keyboard moves
+on.
+
 ## Model picker
 
 Click the model selector or press `Primary-Shift-M` to open the model picker above

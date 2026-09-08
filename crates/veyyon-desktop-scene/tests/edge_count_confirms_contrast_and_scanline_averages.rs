@@ -107,3 +107,44 @@ fn test_contrasting_fill_adjacency_is_confirmed_as_edge() {
 	let edges = compute_edge_count(&tree, &frame);
 	assert!((edges - 1.0).abs() < 1e-4);
 }
+
+#[test]
+fn test_horizontal_rule_contributes_no_vertical_edge() {
+	let mut builder = LayoutBoxTreeBuilder::new();
+
+	// A strip carrying a bottom hairline and nothing on either side: the
+	// same shape as a chrome row above its tenant.
+	builder.push(
+		None,
+		LayoutBoxSpec::new()
+			.rect(0.0, 0.0, 100.0, 28.0)
+			.border_sides(0.0, 0.0, RgbaColor::opaque(0, 0, 0)),
+	);
+
+	let tree = builder.build().expect("tree builds");
+	let frame =
+		RgbaFrame::filled(100, 100, 1.0, RgbaColor::opaque(255, 255, 255)).expect("frame creates");
+
+	assert!(compute_edge_count(&tree, &frame).abs() < 1e-4);
+}
+
+#[test]
+fn test_one_vertical_side_counts_once_over_the_scanlines_it_spans() {
+	let mut builder = LayoutBoxTreeBuilder::new();
+
+	// A leading rule down half the viewport: one edge on 50 of 100 rows.
+	builder.push(
+		None,
+		LayoutBoxSpec::new()
+			.rect(10.0, 0.0, 90.0, 50.0)
+			.border_sides(1.0, 0.0, RgbaColor::opaque(0, 0, 0)),
+	);
+
+	let tree = builder.build().expect("tree builds");
+	let frame =
+		RgbaFrame::filled(100, 100, 1.0, RgbaColor::opaque(255, 255, 255)).expect("frame creates");
+
+	// The box spans rows 0..=50 inclusive, so 51 of 100 scanlines.
+	let edges = compute_edge_count(&tree, &frame);
+	assert!((edges - 0.51).abs() < 1e-4, "one leading side over half the rows, got {edges}");
+}

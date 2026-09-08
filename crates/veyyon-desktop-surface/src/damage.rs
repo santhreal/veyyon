@@ -17,7 +17,7 @@
 
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use veyyon_gpui::{Bounds, Div, Pixels, Size, Window, px};
+use veyyon_gpui::{Bounds, Div, Pixels, Size, Window, div, px};
 
 /// How far past a region's laid-out box its paint can reach, in logical
 /// pixels. Text is set on line boxes tighter than the font's natural
@@ -64,10 +64,22 @@ pub enum Region {
 	Titlebar,
 	/// The queue rail, headers and rows.
 	Queue,
+	/// One card-shaped row of the rail, by the rail's own item index.
+	///
+	/// A row records its own box for the same reason a turn does: its box
+	/// moves when a section above it collapses, and a region whose box moved
+	/// declares the union of the two so the pixels it vacated repaint. The
+	/// shape is in the variant because a card and a line are capped
+	/// differently (§6.6) and the index alone does not state which one drew.
+	QueueCardRow(usize),
+	/// One line-shaped row of the rail, by the rail's own item index.
+	QueueLineRow(usize),
 	/// The transcript body, opening line included.
 	Transcript,
 	/// One turn of the transcript, by index.
 	Turn(usize),
+	/// One block of one turn, by turn index and position within the turn.
+	Block(usize, usize),
 	/// The card stack above the composer.
 	Cards,
 	/// The composer.
@@ -76,8 +88,17 @@ pub enum Region {
 	RunBar,
 	/// The right panel.
 	Panel,
+	/// The right panel's chrome: its tab strip, without the view under it.
+	///
+	/// §6.6 caps the panel's chrome and the drawer's chrome, not the content
+	/// they frame: a tree with two hundred rows and a terminal grid of prose
+	/// are content, and a ceiling that counted them would be a ceiling on how
+	/// much a session did.
+	PanelChrome,
 	/// The terminal drawer.
 	Drawer,
+	/// The drawer's chrome: its tab strip and toolbar, without the tenant.
+	DrawerChrome,
 }
 
 /// What the next frame has to repaint.
@@ -118,6 +139,18 @@ impl LaidOut {
 		regions
 	}
 
+	/// Drops every recorded box, so the set the next frame records is that
+	/// frame's own.
+	///
+	/// A box outlives the frame that recorded it on purpose: damage is the
+	/// union of where a region was and where it is. A measurement is the
+	/// opposite: a §6.6 verdict on a box the current frame did not lay out
+	/// reads this frame's pixels through the last frame's geometry, so a
+	/// caller that measures forgets first.
+	pub fn forget(&self) {
+		self.boxes.borrow_mut().clear();
+	}
+
 	/// The extent `region` occupied, which is the recorded box with the raster
 	/// margin taken back off: where a press has to land to reach the element,
 	/// rather than where a repaint of it has to paint.
@@ -153,6 +186,16 @@ impl LaidOut {
 				}
 			}
 		})
+	}
+
+	/// A fresh div that records its children the same way, for a container
+	/// whose own chain has to come after the listener.
+	///
+	/// `on_children_prepainted` is a `Div` method and `id` returns a
+	/// `Stateful<Div>`, so a container that carries an element id installs
+	/// the listener first and chains the rest onto what this returns.
+	pub fn tracking(&self, region_of: impl Fn(usize) -> Option<Region> + 'static) -> Div {
+		self.track_children(div(), region_of)
 	}
 }
 
