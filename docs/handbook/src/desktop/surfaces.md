@@ -295,6 +295,13 @@ Selecting a composer command removes its command prefix while retaining the
 payload and attachments. `Escape` dismisses the slash palette without deleting
 the typed slash text.
 
+A command name matches in any capitalisation: `/Steer` reaches the same row as
+`/steer`, and the word `commands` after the slash opens the complete list
+whichever way it is capitalised. `/steer` and `/queue` are the two commands
+that take a payload, so text after the name is the message they send. Every
+other command matches on the whole text typed after `/`, and words after its
+name list no row rather than a row that would discard them.
+
 `/files`, `/project` and `/search` open a lookup instead of closing the
 palette. The palette stays open in the mode the command named, at the centred
 width, and the field prompts for what that mode looks up. The keyboard goes to
