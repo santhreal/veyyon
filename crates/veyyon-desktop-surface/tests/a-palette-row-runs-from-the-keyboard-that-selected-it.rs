@@ -63,8 +63,14 @@ enum Outcome {
 /// surface opens yet is still driven by the same key.
 fn seeded_rows(mode: PaletteMode) -> Vec<PaletteItem> {
 	match mode {
-		PaletteMode::Files | PaletteMode::ContentSearch => {
+		PaletteMode::Files => {
 			vec![PaletteItem::file(1, "src/app.rs"), PaletteItem::file(2, "src/other.rs")]
+		},
+		PaletteMode::ContentSearch => {
+			vec![
+				PaletteItem::content_match(1, "src/app.rs", 12, "let app = App::new();"),
+				PaletteItem::content_match(2, "src/other.rs", 3, "let other = 1;"),
+			]
 		},
 		PaletteMode::Browse => {
 			vec![PaletteItem::directory(1, "crates"), PaletteItem::directory(2, "packages")]
@@ -80,10 +86,11 @@ fn open(mode: PaletteMode, view: &mut ShellView, window: &mut Window, cx: &mut C
 		PaletteMode::Commands => view.open_command_palette(window, cx),
 		PaletteMode::Models => view.open_model_picker(window, cx),
 		PaletteMode::Sessions => view.open_queue_search(window, cx),
-		// No control opens these three yet: the host projects their rows onto
-		// an open palette (`project_palette_domains`). The command surface is
-		// opened for its editor and focus, then the mode's rows are put in
-		// front of it, which is the state that projection leaves behind.
+		// `/files`, `/search` and `/project` open these three, and the host
+		// projects their rows onto the open palette
+		// (`project_palette_domains`). The command surface is opened for its
+		// editor and focus, then the mode's rows are put in front of it,
+		// which is the state that projection leaves behind.
 		PaletteMode::Files | PaletteMode::ContentSearch | PaletteMode::Browse => {
 			view.open_command_palette(window, cx);
 			let mut state = PaletteState::new(mode);
@@ -140,6 +147,16 @@ fn every_palette_mode_runs_its_selected_row_from_the_enter_key() {
 						!palette.filtered_items().is_empty(),
 						"{mode:?}: the query left a row to run"
 					);
+					// A mode whose rows are the host's answer to what was
+					// typed reports each keystroke's lookup; a mode that ranks
+					// the rows it already holds reports nothing, so the
+					// assertion on Enter below reads what Enter alone sent.
+					let reported = view.drain_intents();
+					let expected: Vec<Intent> = (1..=query.len())
+						.map(|end| mode.query_intent(query[..end].to_owned()))
+						.filter(|intent| !intent.is_local())
+						.collect();
+					assert_eq!(reported, expected, "{mode:?}: what typing asked the host for");
 				})
 				.expect("query state");
 
@@ -147,7 +164,7 @@ fn every_palette_mode_runs_its_selected_row_from_the_enter_key() {
 			assert!(handled, "{mode:?}: the enter key reached a handler");
 
 			session
-				.update(|view, _window, _cx| {
+				.update(|view, _window, cx| {
 					let overlay = view.state().overlay.clone();
 					match &outcome {
 						Outcome::Runs(intent) => {
@@ -169,6 +186,15 @@ fn every_palette_mode_runs_its_selected_row_from_the_enter_key() {
 								.expect("palette stays open on a directory row");
 							assert_eq!(palette.browse_root(), Some(*into), "{mode:?}");
 							assert!(palette.query().is_empty(), "{mode:?}: the query cleared");
+							// The field the operator types into is the state
+							// the descent left, or the next keystroke appends
+							// to a query the palette no longer holds.
+							let editor = view.palette_editor().expect("the palette's own editor");
+							assert_eq!(
+								editor.read(cx).text(),
+								"",
+								"{mode:?}: the field cleared with the query"
+							);
 						},
 					}
 				})

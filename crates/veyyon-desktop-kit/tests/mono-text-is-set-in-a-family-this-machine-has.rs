@@ -136,7 +136,7 @@ fn resolution_skips_a_family_the_machine_lacks_and_takes_the_next_one() {
 	assert!(chain.len() >= 2, "this case needs a chain with a second choice: {chain:?}");
 
 	let mut set = TokenSet::default();
-	set.resolve_mono_family(&chain[1..].to_vec())
+	set.resolve_mono_family(&chain[1..])
 		.expect("a machine with the second choice resolves");
 	assert_eq!(set.mono_family().as_ref(), chain[1].as_str());
 

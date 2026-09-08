@@ -120,6 +120,8 @@ fn every_intent() -> Vec<Intent> {
 		Intent::OpenUsage,
 		Intent::OpenProcessLogs("web".to_owned()),
 		Intent::DequeueQueuedPrompt,
+		Intent::FindFile("lib".to_owned()),
+		Intent::FindText("todo".to_owned()),
 	];
 
 	// The exhaustive match is the gate. Every variant is named, so a new one
@@ -157,6 +159,8 @@ fn every_intent() -> Vec<Intent> {
 			| Intent::PaletteMove(_)
 			| Intent::PaletteRun
 			| Intent::BrowseTo { .. }
+			| Intent::FindFile(_)
+			| Intent::FindText(_)
 			| Intent::SettingChanged { .. }
 			| Intent::SelectTheme(_)
 			| Intent::ResetSetting(_)

@@ -10,10 +10,10 @@
 //!
 //! CLASS CLOSED: every chain `[type.family]` authors, swept from the shipped
 //! file at run time rather than from a list written here. Each chain must be
-//! present, ordered, named and unique, must have an accessor on `ScaleTokens`, and a
-//! chain that is missing, empty, or names something that is not a family fails
-//! the load with the file and the key. A key the loader does not read fails
-//! too. A chain added to the file with no accessor turns
+//! present, ordered, named and unique, must have an accessor on `ScaleTokens`,
+//! and a chain that is missing, empty, or names something that is not a family
+//! fails the load with the file and the key. A key the loader does not read
+//! fails too. A chain added to the file with no accessor turns
 //! `the_shipped_scale_authors_an_ordered_chain_for_every_family_it_names` red.
 //! Presence and type of the key itself are swept for every token key by
 //! `every_token_key_is_required_and_typed`, and the dump path is covered by
@@ -105,7 +105,10 @@ fn scale_with_family(label: &str, body: &str) -> (TempTree, PathBuf) {
 /// with no accessor is authored text nothing reads.
 #[test]
 fn the_shipped_scale_authors_an_ordered_chain_for_every_family_it_names() {
-	let wired: BTreeSet<String> = accessors().iter().map(|(key, _)| (*key).to_string()).collect();
+	let wired: BTreeSet<String> = accessors()
+		.iter()
+		.map(|(key, _)| (*key).to_string())
+		.collect();
 	assert_eq!(
 		wired,
 		authored_keys(),

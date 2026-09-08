@@ -104,14 +104,15 @@ fn every_kind_of_mark_is_drawn_as_its_own_kind() {
 
 		let mut state = PaletteState::new(PaletteMode::Commands);
 		state.set_items(vec![PaletteItem {
-			id:       1,
-			title:    "/new".into(),
-			subtitle: Some("Create a new session".into()),
-			group:    None,
-			search:   None,
-			badge:    None,
-			meta:     Some(mark.clone()),
-			kind:     PaletteItemKind::Command { intent: Box::new(Intent::NewSession) },
+			id:         1,
+			title:      "/new".into(),
+			subtitle:   Some("Create a new session".into()),
+			group:      None,
+			search:     None,
+			badge:      None,
+			meta:       Some(mark.clone()),
+			capability: None,
+			kind:       PaletteItemKind::Command { intent: Box::new(Intent::NewSession) },
 		}]);
 		let with = text_run_count(&captured(&mut cx, state.clone()));
 		let without = text_run_count(&captured(&mut cx, unmarked(&state)));

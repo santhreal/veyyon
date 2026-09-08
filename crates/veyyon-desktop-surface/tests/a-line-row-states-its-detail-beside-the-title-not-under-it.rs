@@ -140,14 +140,15 @@ fn session_rows() -> Vec<(Section, Vec<Row>)> {
 fn overlong() -> PaletteState {
 	let mut state = PaletteState::new(PaletteMode::Commands);
 	state.set_items(vec![PaletteItem {
-		id:       1,
-		title:    "/".to_string() + &"a-command-with-a-name-nobody-would-type".repeat(4),
-		subtitle: Some("a description at least as long as the name above it".repeat(3)),
-		group:    None,
-		search:   None,
-		badge:    None,
-		meta:     None,
-		kind:     PaletteItemKind::Command { intent: Box::new(Intent::NewSession) },
+		id:         1,
+		title:      "/".to_string() + &"a-command-with-a-name-nobody-would-type".repeat(4),
+		subtitle:   Some("a description at least as long as the name above it".repeat(3)),
+		group:      None,
+		search:     None,
+		badge:      None,
+		meta:       None,
+		capability: None,
+		kind:       PaletteItemKind::Command { intent: Box::new(Intent::NewSession) },
 	}]);
 	state
 }
