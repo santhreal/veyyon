@@ -284,6 +284,10 @@ Type `/` at the beginning of the composer to open the anchored command palette.
 | `/files` | Find a file in the workspace by name |
 | `/project` | Browse the workspace one directory at a time |
 | `/search` | Search the workspace for text |
+| `/export` | Export the active session to HTML |
+| `/compact` | Compact the active session transcript |
+| `/handoff` | Hand off the active session to a new agent |
+| `/reload-transcript` | Reload the active session transcript |
 
 The palette also includes session, terminal, settings, provider, and other host
 commands. Attachment admission depends on the host and model input capabilities.
@@ -422,7 +426,15 @@ docked drawers.
 Use `proof/scenes/desktop-tool-view.sh` to record a real tool call and disclose its
 card twice, once with `space` on the focused turn and once by clicking the card's
 row. The two open frames show the same card, which is what a host-held disclosure
-means.
+means. The collapsed frame is taken after the keyboard reaches the turn, so the
+three frames differ in the disclosure alone. The card's row is found by clicking
+down the transcript column until a click draws the frame the keyboard produced; a
+click that opens the right panel is undone with `Primary-\` before the next row.
+The take is a set of still frames, so pass `SCENE_MOTION_FLOOR=6`:
+
+```sh
+SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh proof/scenes/desktop-tool-view.sh
+```
 
 Use `proof/scenes/desktop-live-edge-pill.sh` to drive a real turn, step the turn
 cursor off the last turn of a transcript that fits the viewport, and count the

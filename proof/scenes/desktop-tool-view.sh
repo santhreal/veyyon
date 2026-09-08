@@ -3,7 +3,7 @@
 # ways: with the keyboard, and with the pointer.
 #
 # Records visual evidence for:
-#   1. tool-card-collapsed        (the settled card, one line, host-supplied view)
+#   1. tool-card-collapsed        (one line, host-supplied view, turn focused)
 #   2. tool-card-keyboard-open    (disclosed with `space` on the focused turn)
 #   3. tool-card-keyboard-closed  (`space` again closes it)
 #   4. tool-card-pointer-open     (disclosed by clicking the same card's row)
@@ -138,19 +138,36 @@ k "Return"
 if ! native_tool_call_recorded; then
 	abandon_take "native-tool-call-recorded" "the submitted turn recorded no completed tool call within 240s"
 fi
+# The card exists as soon as the tool result is recorded, and the model goes on
+# writing after it. Every frame below is compared against a baseline over the
+# whole transcript, so a turn still streaming under the card puts its next
+# paragraph in the differential: a take that opened and closed the card
+# correctly measured 136 per mille between two collapsed frames, which is a
+# paragraph, not a disclosure. The comparison starts once the turn is settled.
+if ! native_session_ready finished 2; then
+	abandon_take "native-tool-turn-settled" \
+		"the turn that called the tool never reached Complete within 90s, so no two frames of it are comparable"
+fi
 pause 0.8
-shot tool-card-collapsed
 
 # ─── Disclosure From The Keyboard ────────────────────────────────────────────
 # The transcript owns `space`, so the pointer establishes that scope first; the
 # turn step focuses the turn the card is in, which is the last one.
+#
+# The baseline is shot AFTER that, not before: a focused turn draws its own
+# ring and reveals the footer stating which model wrote it, so a frame taken
+# before the focus lands differs from the closed card by everything the focus
+# added. That read 210 per mille between two frames of one collapsed card. The
+# disclosure is the only thing that may differ between the three frames below.
 TRANSCRIPT_X=$(( WIN_X + WIN_W / 2 ))
 TRANSCRIPT_Y=$(( WIN_Y + (WIN_H > 481 ? 481 / 3 : WIN_H / 3) ))
 move_px "${TRANSCRIPT_X}" "${TRANSCRIPT_Y}"
 click
 pause 0.4
 k "End"
-pause 0.4
+pause 1.0
+shot tool-card-collapsed
+
 k "space"
 pause 1.0
 shot tool-card-keyboard-open
@@ -160,36 +177,70 @@ pause 1.0
 shot tool-card-keyboard-closed
 
 # ─── Disclosure From The Pointer ─────────────────────────────────────────────
-# The same card, opened the other way. Its row is found by clicking rather than
-# by arithmetic: the transcript is laid out from the host's blocks, so the row's
-# y depends on how much prose the turn wrote around it, and the fixed offset
-# this used to carry photographed the collapsed card unchanged. Rows are clicked
-# from just above the composer upwards on the card's chevron, which carries the
-# card's own toggle and none of the view's targets. After each click the pointer
-# returns to where the keyboard frames were taken, so no hover state separates
-# the two frames, and the transcript is compared with the collapsed frame: the
-# first click that discloses the card is the card's row, and a click on prose
-# changes nothing and costs one probe.
-CARD_X=$(( CROP_X + 16 ))
+# The same card, opened the other way. Which row holds it is found by clicking,
+# because nothing else states it: the transcript is laid out from the host's
+# blocks, so the row moves with every word the model wrote around it, and the
+# transcript is anchored on its live edge, so the whole turn also moves when
+# the card opens. Two arithmetic aims were tried and neither lands: a fixed
+# offset above the composer photographed the collapsed card unchanged, and the
+# box of the difference between the disclosed and collapsed frames spans the
+# shifted prose as well as the card, so its top edge is 300px above the row.
+#
+# The search runs DOWN the transcript, from the ground above the turn to the
+# prose under the card, and stops at the first click that disclosed. Upward
+# from the composer it reached the focused turn's own footer first, whose
+# trailing actions opened the right panel over the transcript: every later
+# click then landed on a surface that had been re-laid-out around a 360px
+# column, and the take recorded a frame with a panel in it.
+#
+# Two of the rows above the card answer a press as well. The footer states
+# which model wrote the turn, revealed while the keyboard is on it, and a
+# click on that name opens the usage tab. So a click is read three ways: the
+# disclosed card is the frame the keyboard already produced; ground and prose
+# leave the collapsed frame alone; anything else opened a surface, which the
+# panel chord puts back before the next row is tried. A stray change the
+# chord does not undo ends the take naming the row that did it, since no later
+# frame is comparable to the ones already taken.
+#
+# The step is smaller than the row, so no row is passed over, and the pointer
+# parks where the keyboard frames were taken so no hover state separates the
+# pair.
+CARD_X=$(( TRANSCRIPT_COLUMN_LEFT + 8 ))
+CARD_FLOOR=$(( WIN_Y + WIN_H - COMPOSER_BAND_H - 40 ))
 CARD_OPENED=0
-for step in $(seq 0 15); do
-	CARD_Y=$(( WIN_Y + WIN_H - 140 - step * 24 ))
-	[ "${CARD_Y}" -gt "${CROP_Y}" ] || break
+park_pointer() {
+	move_px "${TRANSCRIPT_X}" "${TRANSCRIPT_Y}"
+	pause 0.4
+}
+for step in $(seq 0 39); do
+	CARD_Y=$(( CROP_Y + 8 + step * 16 ))
+	[ "${CARD_Y}" -lt "${CARD_FLOOR}" ] || break
 	move_px "${CARD_X}" "${CARD_Y}"
 	pause 0.2
 	click
-	pause 0.6
-	move_px "${TRANSCRIPT_X}" "${TRANSCRIPT_Y}"
-	pause 0.4
-	if [ "$(screen_differs_from_shot_per_mille tool-card-collapsed)" -ge "${DISCLOSED_PER_MILLE}" ]; then
-		CARD_OPENED=1
+	pause 0.8
+	park_pointer
+	if [ "$(screen_differs_from_shot_per_mille tool-card-keyboard-open)" -le "${IDENTICAL_PER_MILLE}" ]; then
+		CARD_OPENED="${CARD_Y}"
 		break
 	fi
+	STRAY_PER_MILLE="$(screen_differs_from_shot_per_mille tool-card-collapsed)"
+	if [ "${STRAY_PER_MILLE}" -gt "${IDENTICAL_PER_MILLE}" ]; then
+		k "ctrl+backslash"
+		pause 0.8
+		park_pointer
+		STRAY_PER_MILLE="$(screen_differs_from_shot_per_mille tool-card-collapsed)"
+		if [ "${STRAY_PER_MILLE}" -gt "${IDENTICAL_PER_MILLE}" ]; then
+			abandon_take "a-click-on-the-transcript-discloses-or-does-nothing" \
+				"the click at y=${CARD_Y} left ${STRAY_PER_MILLE} pixels per thousand changed after the panel chord put the surface back"
+		fi
+	fi
 done
-if [ "${CARD_OPENED}" != 1 ]; then
-	abandon_take "the-pointer-found-the-card-row" \
-		"no row between the composer and the top of the transcript disclosed the card when clicked"
+if [ "${CARD_OPENED}" = 0 ]; then
+	abandon_take "the-pointer-disclosed-the-card" \
+		"no row between the top of the transcript and the composer drew the card the keyboard disclosed"
 fi
+echo "scene: the pointer disclosed the card from the row at y=${CARD_OPENED}" >&2
 shot tool-card-pointer-open
 
 # ─── What The Four Frames State ──────────────────────────────────────────────
@@ -203,6 +254,10 @@ if [ "${CLOSED_PER_MILLE}" -gt "${IDENTICAL_PER_MILLE}" ]; then
 	abandon_take "the-keyboard-closed-the-card" \
 		"the closed card differs from the collapsed one by ${CLOSED_PER_MILLE} pixels per thousand"
 fi
+# Parity is decided by the search above, which ends only on a click that drew
+# the keyboard's frame. This reads it again from the published shot, so a frame
+# that changed between the measurement and the capture is caught rather than
+# gallery-published as a pair.
 PARITY_PER_MILLE="$(shots_differ_per_mille tool-card-keyboard-open tool-card-pointer-open)"
 if [ "${PARITY_PER_MILLE}" -gt "${IDENTICAL_PER_MILLE}" ]; then
 	abandon_take "both-gestures-open-the-same-card" \

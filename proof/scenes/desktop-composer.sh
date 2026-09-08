@@ -112,7 +112,7 @@ xdotool windowfocus --sync "${SCENE_WINDOW}"
 # The rows are read from the token files this checkout ships rather than
 # restated here, so a scene recorded at a new width crops what the product
 # actually drew instead of what one width happened to make true.
-read -r RAIL_W PANEL_MODE PANEL_W DRAWER_PLACEMENT LABELS COMPOSER_MAX_W GUTTER_PX SHEET_INSET COMPOSER_BAND_H < <(
+read -r RAIL_W PANEL_MODE PANEL_W DRAWER_PLACEMENT LABELS COMPOSER_MAX_W GUTTER_PX SHEET_INSET COMPOSER_BAND_H TRANSCRIPT_MAX_W < <(
 	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" "${WIN_W}" <<'PY'
 from pathlib import Path
 import sys
@@ -124,6 +124,7 @@ surface = tomllib.loads((tokens / "surface" / "breakpoints.toml").read_text())
 panels = tomllib.loads((tokens / "surface" / "panels.toml").read_text())["right_panel"]
 composer_tokens = tomllib.loads((tokens / "surface" / "composer.toml").read_text())
 composer = composer_tokens["geometry"]
+transcript = tomllib.loads((tokens / "surface" / "transcript.toml").read_text())["layout"]
 # §5.4 measures the composer against the session surface it sits in, insetting
 # it by one spacing step on each side. Both numbers are authored, so the scene
 # reads them rather than deciding what a card should measure.
@@ -181,6 +182,7 @@ print(
     int(gutter),
     int(sheet) if placement == "overlay" else 0,
     int(band),
+    int(transcript["column_width_px"]),
 )
 PY
 )
@@ -189,6 +191,21 @@ if [ -z "${PANEL_MODE:-}" ]; then
 fi
 echo "scene: ${WIN_W}px sheds to rail ${RAIL_W}px, panel ${PANEL_MODE} ${PANEL_W}px," \
 	"drawer ${DRAWER_PLACEMENT}, ${LABELS}" >&2
+
+# Where the transcript's own column is, in root coordinates. Every turn draws
+# inside it: the operator's bubble, a tool card's chevron and a row's trailing
+# controls are all placed against its edges rather than the window's, so a
+# scene that aims at one of them aims here. The column is centred in the
+# session surface -- the window less the queue rail -- at the authored width,
+# or takes the whole surface when that is narrower.
+#
+# The panel is closed at the defaults a take starts from (§8.10), so the
+# surface is the whole row. A scene that opens the panel and then aims at a
+# turn recomputes this against the surface the panel leaves.
+TRANSCRIPT_SURFACE_W=$(( WIN_W - RAIL_W ))
+TRANSCRIPT_COLUMN_W=$(( TRANSCRIPT_MAX_W < TRANSCRIPT_SURFACE_W ? TRANSCRIPT_MAX_W : TRANSCRIPT_SURFACE_W ))
+TRANSCRIPT_COLUMN_LEFT=$(( WIN_X + RAIL_W + (TRANSCRIPT_SURFACE_W - TRANSCRIPT_COLUMN_W) / 2 ))
+TRANSCRIPT_COLUMN_RIGHT=$(( TRANSCRIPT_COLUMN_LEFT + TRANSCRIPT_COLUMN_W ))
 
 # ─── Scene Interactions & Captures ───────────────────────────────────────────
 
