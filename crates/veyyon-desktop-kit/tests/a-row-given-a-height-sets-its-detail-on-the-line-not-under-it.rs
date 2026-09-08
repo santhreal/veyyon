@@ -16,7 +16,8 @@
 //! WHAT IT DOES NOT CATCH: which text a row states, and whether a surface gave
 //! the row the right height for the shape it wanted. The palette's own rows are
 //! measured against their authored token in
-//! `veyyon-desktop-surface/tests/a-line-row-states-its-detail-beside-the-title-not-under-it.rs`.
+//! `veyyon-desktop-surface/tests/
+//! a-line-row-states-its-detail-beside-the-title-not-under-it.rs`.
 
 mod common;
 
@@ -43,7 +44,11 @@ impl Render for RowUnderTest {
 		let title = if self.long { LONG_TITLE } else { "/new" };
 		let mut row = ListRow::new(title).id("row-under-test");
 		if self.detail {
-			row = row.subtitle(if self.long { LONG_DETAIL } else { "Create a new session" });
+			row = row.subtitle(if self.long {
+				LONG_DETAIL
+			} else {
+				"Create a new session"
+			});
 		}
 		if self.fixed {
 			row = row.height(px(ROW_HEIGHT));
@@ -73,7 +78,12 @@ fn drawn(fixed: bool, long: bool, detail: bool) -> (Vec<(f32, f32)>, usize) {
 		.iter()
 		.map(|run| (f32::from(run.bounds.top()), f32::from(run.bounds.bottom())))
 		.collect();
-	spans.sort_by(|left, right| left.0.partial_cmp(&right.0).expect("a top is a real number"));
+	spans.sort_by(|left, right| {
+		left
+			.0
+			.partial_cmp(&right.0)
+			.expect("a top is a real number")
+	});
 
 	let mut merged: Vec<(f32, f32)> = Vec::new();
 	for (top, bottom) in spans {
@@ -125,8 +135,8 @@ fn a_row_given_a_height_still_draws_the_detail_it_holds() {
 	assert_eq!(detailed.len(), 1, "the detailed row drew {} bands", detailed.len());
 	assert!(
 		with > without,
-		"the frame drew {with} runs with the detail and {without} without it, so a fixed-height \
-		 row fits its band by dropping what it states"
+		"the frame drew {with} runs with the detail and {without} without it, so a fixed-height row \
+		 fits its band by dropping what it states"
 	);
 }
 
@@ -136,8 +146,8 @@ fn a_row_left_with_its_padding_stacks_the_detail_under_the_title() {
 	assert_eq!(
 		stacked.len(),
 		2,
-		"a padded row drew {} bands of text, so the two-line shape the settings and account \
-		 lists read as is gone: {stacked:?}",
+		"a padded row drew {} bands of text, so the two-line shape the settings and account lists \
+		 read as is gone: {stacked:?}",
 		stacked.len()
 	);
 	assert!(

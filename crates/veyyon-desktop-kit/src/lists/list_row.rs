@@ -190,7 +190,11 @@ impl RenderOnce for ListRow {
 				.text_size(tokens.font_size(TextRamp::Small))
 				.text_color(tokens.color(ColorRole::Secondary))
 				.child(sub);
-			detail = if inline { detail.flex_1() } else { detail.w_full() };
+			detail = if inline {
+				detail.flex_1()
+			} else {
+				detail.w_full()
+			};
 			text_col = text_col.child(detail);
 		}
 

@@ -11,8 +11,8 @@
 //!    Every result row the palette draws is swept from the frame's own hit
 //!    rects, and the runs inside one row are merged by overlap, so a second
 //!    line fails whether or not it stays inside the row.
-//! 2. A line of text taller than the band the row height authors: 36px less
-//!    the row's 8px insets, read from the tokens rather than written here.
+//! 2. A line of text taller than the band the row height authors: 36px less the
+//!    row's 8px insets, read from the tokens rather than written here.
 //! 3. Text drawn outside the row that holds it, in either direction.
 //! 4. Closing the row by dropping the detail: the same producers are captured
 //!    with their subtitles removed, and the frame is asserted to lose runs.
@@ -25,7 +25,8 @@
 //! and asserted as strings in `a-palette-row-draws-the-mark-it-carries.rs`; a
 //! captured run carries its box and its size, not its characters. The padded
 //! two-line shape the primitive still offers is asserted in
-//! `veyyon-desktop-kit/tests/a-row-given-a-height-sets-its-detail-on-the-line-not-under-it.rs`.
+//! `veyyon-desktop-kit/tests/
+//! a-row-given-a-height-sets-its-detail-on-the-line-not-under-it.rs`.
 //! A run drawn behind the palette that starts inside a row's box would be
 //! counted as the row's; the session under the overlay is emptied so none is.
 
@@ -98,7 +99,12 @@ fn bands_in(captured: &Captured, row: Bounds<Pixels>) -> Vec<(f32, f32)> {
 			centre > top && centre < bottom
 		})
 		.collect();
-	spans.sort_by(|left, right| left.0.partial_cmp(&right.0).expect("a top is a real number"));
+	spans.sort_by(|left, right| {
+		left
+			.0
+			.partial_cmp(&right.0)
+			.expect("a top is a real number")
+	});
 
 	let mut merged: Vec<(f32, f32)> = Vec::new();
 	for (span_top, span_bottom) in spans {
@@ -178,7 +184,11 @@ fn every_result_row_keeps_its_text_in_the_band_the_row_height_authors() {
 	let mut cx = headless_context().expect("a headless renderer is required to render the shell");
 
 	for (name, state) in every_producer() {
-		let detailed = state.items.iter().filter(|item| item.subtitle.is_some()).count();
+		let detailed = state
+			.items
+			.iter()
+			.filter(|item| item.subtitle.is_some())
+			.count();
 		assert!(detailed > 0, "{name}: no row here carries detail, so it proves nothing");
 
 		let frame = captured_over_nothing(&mut cx, state);
@@ -195,8 +205,8 @@ fn every_result_row_keeps_its_text_in_the_band_the_row_height_authors() {
 			assert_eq!(
 				bands.len(),
 				1,
-				"{name}: the row at {top}px draws {} lines of text in a {row_height}px row, so \
-				 its detail is stacked under its title: {bands:?}",
+				"{name}: the row at {top}px draws {} lines of text in a {row_height}px row, so its \
+				 detail is stacked under its title: {bands:?}",
 				bands.len()
 			);
 			let (band_top, band_bottom) = bands[0];
@@ -223,8 +233,8 @@ fn a_row_that_fits_its_band_still_states_its_detail() {
 		let without = text_run_count(&captured_over_nothing(&mut cx, without_detail(&state)));
 		assert!(
 			with > without,
-			"{name}: the frame drew the same {with} runs with the detail and without it, so the \
-			 row fits its band by dropping what it states"
+			"{name}: the frame drew the same {with} runs with the detail and without it, so the row \
+			 fits its band by dropping what it states"
 		);
 	}
 }
