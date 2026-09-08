@@ -69,6 +69,15 @@ impl ShellState {
 			.find(|row| row.id == id)
 	}
 
+	/// The mutable row with this id, in whatever section holds it.
+	pub fn row_mut(&mut self, id: u64) -> Option<&mut Row> {
+		self
+			.sections
+			.iter_mut()
+			.flat_map(|(_, rows)| rows.iter_mut())
+			.find(|row| row.id == id)
+	}
+
 	/// The section holding the row with this id.
 	///
 	/// A partition move reads it first: parking a session that is already

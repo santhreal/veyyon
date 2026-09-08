@@ -26,7 +26,7 @@
 //! face named in the mono chain is in fact monospaced: a proportional family
 //! written there loads, and the kit suite is what observes the advance.
 
-use std::{collections::BTreeSet, fs, path::PathBuf};
+use std::{collections::BTreeSet, fmt::Write, fs, path::PathBuf};
 
 use veyyon_desktop_tokens::{ScaleTokens, load_from_dir, loader_scale::load_scale};
 use veyyon_test_scratch::{TempTree, scratch_dir};
@@ -72,9 +72,9 @@ fn family_body(key: &str, value: &str) -> String {
 			if value.is_empty() {
 				continue;
 			}
-			body.push_str(&format!("{authored} = {value}\n"));
+			let _ = writeln!(body, "{authored} = {value}");
 		} else {
-			body.push_str(&format!("{authored} = [\"JetBrains Mono\"]\n"));
+			let _ = writeln!(body, "{authored} = [\"JetBrains Mono\"]");
 		}
 	}
 	body

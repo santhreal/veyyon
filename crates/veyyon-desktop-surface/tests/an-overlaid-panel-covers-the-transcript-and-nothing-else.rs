@@ -28,7 +28,10 @@ use veyyon_desktop_scene::{
 	headless::{Headless, RenderOptions, headless_context},
 };
 use veyyon_desktop_surface::{
-	Keymap, ShellView, damage::Region, fixture, install_tokens, keymap::resolve_chord,
+	Keymap, ShellView,
+	damage::Region,
+	fixture, install_tokens,
+	keymap::resolve_chord,
 	layout::{LabelState, RightPanelPlacement, ShedInput, shell_widths},
 };
 use veyyon_gpui::{App, AppContext, Bounds, Pixels, px, size};
@@ -44,14 +47,14 @@ fn shed(panel_open: bool) -> ShedInput {
 		.expect("the bundled tokens load")
 		.surface;
 	ShedInput {
-		viewport_px:        WIDTH as f32,
+		viewport_px: WIDTH as f32,
 		viewport_height_px: HEIGHT as f32,
-		chrome_height_px:   surface.shell.titlebar_height_px,
-		gutter_px:          f32::from(TokenSet::default().spacing(SpacingStep::S4)),
-		queue_collapsed:    false,
+		chrome_height_px: surface.shell.titlebar_height_px,
+		gutter_px: f32::from(TokenSet::default().spacing(SpacingStep::S4)),
+		queue_collapsed: false,
 		panel_open,
-		panel_width:        None,
-		labels:             LabelState::default(),
+		panel_width: None,
+		labels: LabelState::default(),
 	}
 }
 
@@ -60,12 +63,8 @@ fn shed(panel_open: bool) -> ShedInput {
 fn open_shell(cx: &mut Headless) -> HeadlessSession<'_, ShellView> {
 	let tokens = load_bundled_tokens().expect("the bundled tokens load");
 	let theme = load_bundled_theme("dark").expect("the bundled dark theme loads");
-	let options = RenderOptions {
-		width:        WIDTH,
-		height:       HEIGHT,
-		scale_factor: 1.0,
-		..RenderOptions::default()
-	};
+	let options =
+		RenderOptions { width: WIDTH, height: HEIGHT, scale_factor: 1.0, ..RenderOptions::default() };
 	HeadlessSession::open(cx, &options, move |_window, app: &mut App| {
 		let installed =
 			install_tokens(app, &tokens, &theme, Path::new("surface")).expect("tokens install");
@@ -133,8 +132,7 @@ fn brightness(frame: &RgbaFrame, area: Bounds<Pixels>) -> (u32, u32, u32) {
 	for y in top..bottom {
 		for x in left..right {
 			let pixel = frame.pixel(x, y).expect("the sample is inside the frame");
-			let luminance =
-				(u32::from(pixel.r) * 2 + u32::from(pixel.g) * 5 + u32::from(pixel.b)) / 8;
+			let luminance = (u32::from(pixel.r) * 2 + u32::from(pixel.g) * 5 + u32::from(pixel.b)) / 8;
 			brightest = brightest.max(luminance);
 			total += u64::from(luminance);
 			counted += 1;
@@ -201,11 +199,7 @@ fn a_floating_panel_meets_no_region_it_is_not_annotating() {
 		.copied()
 		.filter(|region| !matches!(region, Region::Transcript | Region::Turn(_)))
 		.collect();
-	assert_eq!(
-		strays,
-		Vec::new(),
-		"the float covers regions it does not annotate: {strays:?}"
-	);
+	assert_eq!(strays, Vec::new(), "the float covers regions it does not annotate: {strays:?}");
 	assert!(
 		panel.origin.y >= transcript.origin.y
 			&& panel.origin.y + panel.size.height <= transcript.origin.y + transcript.size.height,
@@ -217,7 +211,10 @@ fn a_floating_panel_meets_no_region_it_is_not_annotating() {
 fn a_floating_panel_tints_the_transcript_and_leaves_the_rail_and_the_draft_lit() {
 	let mut cx = headless_context().expect("a headless renderer is required");
 	let mut session = open_shell(&mut cx);
-	let closed = session.frame().expect("the frame without the panel renders").frame;
+	let closed = session
+		.frame()
+		.expect("the frame without the panel renders")
+		.frame;
 
 	let rail = box_of(&mut session, Region::Queue);
 	let composer = box_of(&mut session, Region::Composer);
@@ -228,7 +225,10 @@ fn a_floating_panel_tints_the_transcript_and_leaves_the_rail_and_the_draft_lit()
 	session
 		.keystroke(&resolve_chord("primary-\\"))
 		.expect("the panel chord dispatches");
-	let open = session.frame().expect("the frame with the panel renders").frame;
+	let open = session
+		.frame()
+		.expect("the frame with the panel renders")
+		.frame;
 
 	let panel = box_of(&mut session, Region::Panel);
 	// The strip of the transcript the sheet does not cover: what the scrim is
@@ -238,10 +238,7 @@ fn a_floating_panel_tints_the_transcript_and_leaves_the_rail_and_the_draft_lit()
 	let clear_of_shadow = px(64.0);
 	let tinted = Bounds {
 		origin: transcript.origin,
-		size:   size(
-			panel.origin.x - transcript.origin.x - clear_of_shadow,
-			transcript.size.height,
-		),
+		size:   size(panel.origin.x - transcript.origin.x - clear_of_shadow, transcript.size.height),
 	};
 	let (was_brightest, was_mean, was_ink) = brightness(&closed, tinted);
 	let (is_brightest, is_mean, is_ink) = brightness(&open, tinted);
@@ -254,13 +251,13 @@ fn a_floating_panel_tints_the_transcript_and_leaves_the_rail_and_the_draft_lit()
 	);
 	assert!(
 		is_brightest * 2 < was_brightest,
-		"the brightest pixel beside the float went {was_brightest} -> {is_brightest}, so the \
-		 float does not dim the transcript it covers"
+		"the brightest pixel beside the float went {was_brightest} -> {is_brightest}, so the float \
+		 does not dim the transcript it covers"
 	);
 	assert_eq!(
 		is_ink, 0,
-		"{is_ink} pixels beside the float still read at ink brightness, so the scrim is drawn \
-		 over part of the transcript rather than the region"
+		"{is_ink} pixels beside the float still read at ink brightness, so the scrim is drawn over \
+		 part of the transcript rather than the region"
 	);
 	assert!(
 		is_mean < was_mean,
@@ -276,8 +273,8 @@ fn a_floating_panel_tints_the_transcript_and_leaves_the_rail_and_the_draft_lit()
 		let differing = differing_pixels(&closed, &open, area);
 		assert_eq!(
 			differing, 0,
-			"{name} changed {differing} pixels when the panel opened, so the float reaches a \
-			 surface it is not annotating"
+			"{name} changed {differing} pixels when the panel opened, so the float reaches a surface \
+			 it is not annotating"
 		);
 	}
 }

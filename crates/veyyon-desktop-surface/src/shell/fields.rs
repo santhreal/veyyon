@@ -25,6 +25,8 @@ pub enum FieldKey {
 	AuthSecret,
 	/// The value of the setting this key names.
 	Setting(String),
+	/// The in-place name editor for the session with this row id.
+	SessionRename(u64),
 }
 
 /// What a field's submit sends.
@@ -36,6 +38,8 @@ enum Commit {
 	SettingText,
 	/// The text is JSON, and the setting's value is what it parses to.
 	SettingJson,
+	/// The text is the new session title.
+	SessionRename(u64),
 }
 
 /// A retained field: its editor, and what a submit of it sends.
@@ -115,6 +119,34 @@ impl ShellView {
 				},
 				mask:        false,
 				multiline:   json,
+				initial:     current.to_owned(),
+			},
+			cx,
+		);
+		let focused = editor.read(cx).focus_handle().is_focused(window);
+		if !focused && editor.read(cx).text() != current {
+			let current = current.to_owned();
+			editor.update(cx, |editor, cx| editor.set_text(current, cx));
+		}
+		editor
+	}
+
+	/// The retained editor for renaming the session `session_id`, holding
+	/// `current` until the operator edits it.
+	pub fn session_rename_field_editor(
+		&mut self,
+		session_id: u64,
+		current: &str,
+		window: &Window,
+		cx: &mut Context<Self>,
+	) -> Entity<Editor> {
+		let editor = self.field_editor(
+			FieldSpec {
+				key:         FieldKey::SessionRename(session_id),
+				commit:      Commit::SessionRename(session_id),
+				placeholder: "Session name".into(),
+				mask:        false,
+				multiline:   false,
 				initial:     current.to_owned(),
 			},
 			cx,
@@ -249,7 +281,16 @@ impl ShellView {
 					},
 				}
 			},
-			(Commit::SettingText | Commit::SettingJson, FieldKey::AuthSecret) => {},
+			(Commit::SessionRename(id), FieldKey::SessionRename(_)) => {
+				let title = editor.read(cx).text().trim().to_owned();
+				if title.is_empty() {
+					self.refuse_field("A session name cannot be empty");
+					return;
+				}
+				self.clear_refusal();
+				self.dispatch(Intent::RenameSession { session: id, title }, cx);
+			},
+			_ => {},
 		}
 	}
 
@@ -260,10 +301,22 @@ impl ShellView {
 			return;
 		};
 		let editor = field.editor.clone();
-		editor.update(cx, |editor, cx| editor.set_text(String::new(), cx));
-		if key == &FieldKey::AuthSecret {
-			self.field_editors.remove(key);
-			self.dispatch(Intent::CancelAuthFlow, cx);
+		match key {
+			FieldKey::AuthSecret => {
+				editor.update(cx, |editor, cx| editor.set_text(String::new(), cx));
+				self.field_editors.remove(key);
+				self.dispatch(Intent::CancelAuthFlow, cx);
+			},
+			FieldKey::Setting(_) => {
+				editor.update(cx, |editor, cx| editor.set_text(String::new(), cx));
+			},
+			FieldKey::SessionRename(id) => {
+				let initial = self
+					.state
+					.row(*id)
+					.map_or_else(|| self.state.title.clone(), |r| r.title.clone());
+				editor.update(cx, |editor, cx| editor.set_text(initial, cx));
+			},
 		}
 		self.clear_refusal();
 	}

@@ -32,6 +32,29 @@ pub fn surface_for_action(
 		Intent::SelectSession(id) => SurfaceId::QueueSessionRow(SessionId(id.to_string())),
 		Intent::DeleteSession(id) => SurfaceId::QueueDeleteButton(SessionId(id.to_string())),
 		Intent::BranchSession(id) => SurfaceId::SessionBranchButton(SessionId(id.to_string())),
+		Intent::RenameSession { session, .. } => {
+			SurfaceId::SessionRenameField(SessionId(session.to_string()))
+		},
+		Intent::ExportSession(id) => SurfaceId::SessionExportButton(
+			id.map(|i| SessionId(i.to_string()))
+				.or_else(|| active_session.cloned())
+				.unwrap_or_else(|| SessionId("0".into())),
+		),
+		Intent::CompactSession(id) => SurfaceId::SessionCompactButton(
+			id.map(|i| SessionId(i.to_string()))
+				.or_else(|| active_session.cloned())
+				.unwrap_or_else(|| SessionId("0".into())),
+		),
+		Intent::HandoffSession(id) => SurfaceId::SessionHandoffButton(
+			id.map(|i| SessionId(i.to_string()))
+				.or_else(|| active_session.cloned())
+				.unwrap_or_else(|| SessionId("0".into())),
+		),
+		Intent::LoadTranscript(id) => SurfaceId::QueueSessionRow(
+			id.map(|i| SessionId(i.to_string()))
+				.or_else(|| active_session.cloned())
+				.unwrap_or_else(|| SessionId("0".into())),
+		),
 		Intent::SetDrawer { .. } => SurfaceId::TerminalCreateButton(
 			active_session
 				.cloned()

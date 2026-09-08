@@ -184,12 +184,9 @@ fn spellings() -> Vec<(String, String)> {
 fn every_command_spelling_selects_its_own_row_however_it_is_typed() {
 	let mut cx = headless_context().expect("headless context available");
 	let drained = Rc::new(RefCell::new(Vec::new()));
-	let mut session = HeadlessSession::open(
-		&mut cx,
-		&options(),
-		shell(fixture::populated(), Rc::clone(&drained)),
-	)
-	.expect("session opens");
+	let mut session =
+		HeadlessSession::open(&mut cx, &options(), shell(fixture::populated(), Rc::clone(&drained)))
+			.expect("session opens");
 
 	for (spelling, expected) in spellings() {
 		for typed in cases(&spelling) {
@@ -207,12 +204,9 @@ fn every_command_spelling_selects_its_own_row_however_it_is_typed() {
 fn the_whole_command_list_opens_however_commands_is_typed() {
 	let mut cx = headless_context().expect("headless context available");
 	let drained = Rc::new(RefCell::new(Vec::new()));
-	let mut session = HeadlessSession::open(
-		&mut cx,
-		&options(),
-		shell(fixture::populated(), Rc::clone(&drained)),
-	)
-	.expect("session opens");
+	let mut session =
+		HeadlessSession::open(&mut cx, &options(), shell(fixture::populated(), Rc::clone(&drained)))
+			.expect("session opens");
 
 	// `/commands` is the one spelling that stands for no row: it blanks the
 	// query, so the list is every row the route offers.
@@ -274,12 +268,9 @@ fn a_command_that_carries_a_message_keeps_it_however_the_command_is_typed() {
 fn a_command_that_carries_no_message_is_not_ranked_on_its_first_word() {
 	let mut cx = headless_context().expect("headless context available");
 	let drained = Rc::new(RefCell::new(Vec::new()));
-	let mut session = HeadlessSession::open(
-		&mut cx,
-		&options(),
-		shell(fixture::populated(), Rc::clone(&drained)),
-	)
-	.expect("session opens");
+	let mut session =
+		HeadlessSession::open(&mut cx, &options(), shell(fixture::populated(), Rc::clone(&drained)))
+			.expect("session opens");
 
 	for command in ComposerCommand::iter().filter(|command| !command.carries_draft()) {
 		// A row that sends no message has nowhere to put the words after its

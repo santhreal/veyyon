@@ -124,59 +124,8 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 				.map_or_else(String::new, |f| f.provider.clone());
 			vec![HostAction::RetryAuthFlow { provider }]
 		},
-		Intent::RetryControl(id) => match id {
-			veyyon_desktop_model::SurfaceId::ConnectionRetryButton
-			| veyyon_desktop_model::SurfaceId::ConnectionAttachButton => {
-				vec![HostAction::RetryConnection]
-			},
-			veyyon_desktop_model::SurfaceId::ProviderAuthRetryButton(provider) => {
-				vec![HostAction::RetryAuthFlow { provider: provider.clone() }]
-			},
-			veyyon_desktop_model::SurfaceId::ProviderAuthStartButton(provider) => {
-				vec![HostAction::StartProviderAuth { provider: provider.clone() }]
-			},
-			veyyon_desktop_model::SurfaceId::ProviderAuthCancelButton(provider) => {
-				vec![HostAction::CancelAuthFlow { provider: provider.clone() }]
-			},
-			veyyon_desktop_model::SurfaceId::DiagnosticRefreshButton => {
-				vec![HostAction::RefreshDiagnostics]
-			},
-			veyyon_desktop_model::SurfaceId::UsageRefreshButton => {
-				vec![HostAction::GetUsage { session: active }]
-			},
-			veyyon_desktop_model::SurfaceId::ContextBreakdownRefreshButton => active
-				.map_or_else(Vec::new, |session| vec![HostAction::GetContextBreakdown { session }]),
-			veyyon_desktop_model::SurfaceId::DiagnosticRetrySourceButton(source) => {
-				vec![HostAction::RetryDiagnosticSource { source: source.clone() }]
-			},
-			veyyon_desktop_model::SurfaceId::AgentReviveButton(agent) => {
-				vec![HostAction::ReviveAgent { agent_id: agent.clone() }]
-			},
-			veyyon_desktop_model::SurfaceId::TaskCancelButton(task_id) => {
-				vec![HostAction::CancelTask { task_id: task_id.clone() }]
-			},
-			_ => Vec::new(),
-		},
-		Intent::Navigate(crate_route) => {
-			use veyyon_desktop_surface::{SettingsPage, navigation::SurfaceRoute};
-			match crate_route {
-				SurfaceRoute::Page(SettingsPage::General) => vec![HostAction::LoadSettings],
-				SurfaceRoute::Page(SettingsPage::Themes) => vec![HostAction::LoadThemes],
-				SurfaceRoute::Page(SettingsPage::Keybindings) => vec![HostAction::LoadKeybindings],
-				SurfaceRoute::Page(SettingsPage::Providers) => vec![HostAction::RefreshProviders],
-				SurfaceRoute::Page(SettingsPage::Mcp) => vec![HostAction::RefreshMcp],
-				SurfaceRoute::Page(SettingsPage::Diagnostics) => vec![HostAction::RefreshDiagnostics],
-				SurfaceRoute::Page(SettingsPage::Usage) => {
-					vec![HostAction::GetUsage { session: active }]
-				},
-				SurfaceRoute::Page(SettingsPage::ContextBreakdown) => active
-					.map_or_else(Vec::new, |session| vec![HostAction::GetContextBreakdown { session }]),
-				SurfaceRoute::Page(SettingsPage::Extensions | SettingsPage::Authentication)
-				| SurfaceRoute::Commands
-				| SurfaceRoute::Account
-				| SurfaceRoute::Settings => Vec::new(),
-			}
-		},
+		Intent::RetryControl(id) => retry_control_actions(id, active),
+		Intent::Navigate(crate_route) => navigate_actions(*crate_route, active),
 		Intent::OpenOverlay(_) | Intent::CloseOverlay | Intent::PaletteMove(_) => Vec::new(),
 		// Ranking rows the window already holds asks the host for nothing; the
 		// modes whose rows come from the host report their own intent.
@@ -225,30 +174,11 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 			}
 			actions
 		},
-		Intent::TerminalInput(data) => {
-			let active_term = store
-				.domains
-				.terminals
-				.iter()
-				.rev()
-				.find(|t| t.status == TerminalStatus::Running)
-				.or_else(|| store.domains.terminals.last());
-			active_term.map_or_else(Vec::new, |term| {
-				vec![HostAction::WriteTerminal {
-					terminal_id: term.id.clone(),
-					data:        data.clone(),
-				}]
-			})
-		},
+		Intent::TerminalInput(data) => active_terminal(store).map_or_else(Vec::new, |term| {
+			vec![HostAction::WriteTerminal { terminal_id: term.id.clone(), data: data.clone() }]
+		}),
 		Intent::ResizeTerminal { cols, rows } => {
-			let active_term = store
-				.domains
-				.terminals
-				.iter()
-				.rev()
-				.find(|t| t.status == TerminalStatus::Running)
-				.or_else(|| store.domains.terminals.last());
-			active_term.map_or_else(Vec::new, |term| {
+			active_terminal(store).map_or_else(Vec::new, |term| {
 				vec![HostAction::ResizeTerminal {
 					terminal_id: term.id.clone(),
 					cols:        *cols,
@@ -256,30 +186,12 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 				}]
 			})
 		},
-		Intent::ClearTerminal => {
-			let active_term = store
-				.domains
-				.terminals
-				.iter()
-				.rev()
-				.find(|t| t.status == TerminalStatus::Running)
-				.or_else(|| store.domains.terminals.last());
-			active_term.map_or_else(Vec::new, |term| {
-				vec![HostAction::ClearTerminal { terminal_id: term.id.clone() }]
-			})
-		},
-		Intent::RestartTerminal => {
-			let active_term = store
-				.domains
-				.terminals
-				.iter()
-				.rev()
-				.find(|t| t.status == TerminalStatus::Running)
-				.or_else(|| store.domains.terminals.last());
-			active_term.map_or_else(Vec::new, |term| {
-				vec![HostAction::RestartTerminal { terminal_id: term.id.clone() }]
-			})
-		},
+		Intent::ClearTerminal => active_terminal(store).map_or_else(Vec::new, |term| {
+			vec![HostAction::ClearTerminal { terminal_id: term.id.clone() }]
+		}),
+		Intent::RestartTerminal => active_terminal(store).map_or_else(Vec::new, |term| {
+			vec![HostAction::RestartTerminal { terminal_id: term.id.clone() }]
+		}),
 		Intent::SelectDrawerTab(_) => Vec::new(),
 		// Opening a process's output subscribes to it: `follow` keeps the
 		// chunks arriving while the tab is the one on screen, which is the
@@ -297,47 +209,13 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		Intent::CloseTabOrPark => {
 			active.map_or_else(Vec::new, |session| vec![HostAction::DeleteSession { session }])
 		},
-		Intent::PinSession(row) => {
-			if let Some(session) = index.session_of(*row) {
-				store.sessions.pin(session, None);
-			}
-			Vec::new()
-		},
-		Intent::UnpinSession(row) => {
-			if let Some(session) = index.session_of(*row) {
-				store.sessions.unpin(session, crate::current_timestamp_ms());
-			}
-			Vec::new()
-		},
-		// `Parked` orders by when a session was put away, so an epoch timestamp
-		// collapses that ordering onto the id. The rail's defer names no return
-		// time, and records none rather than inventing one.
-		Intent::DeferSession(row) => {
-			if let Some(session) = index.session_of(*row) {
-				store.sessions.defer(session, None);
-			}
-			Vec::new()
-		},
-		Intent::ParkSession(row) => {
-			if let Some(session) = index.session_of(*row) {
-				store.sessions.park(session, crate::current_timestamp_ms());
-			}
-			Vec::new()
-		},
-		Intent::UnparkSession(row) => {
-			if let Some(session) = index.session_of(*row) {
-				store
-					.sessions
-					.unpark(session, crate::current_timestamp_ms());
-			}
-			Vec::new()
-		},
-		Intent::RecallSession(row) => {
-			if let Some(session) = index.session_of(*row) {
-				store
-					.sessions
-					.recall(session, crate::current_timestamp_ms());
-			}
+		Intent::PinSession(_)
+		| Intent::UnpinSession(_)
+		| Intent::DeferSession(_)
+		| Intent::ParkSession(_)
+		| Intent::UnparkSession(_)
+		| Intent::RecallSession(_) => {
+			mutate_partition(intent, index, store);
 			Vec::new()
 		},
 		Intent::DeleteSession(row) => index.session_of(*row).map_or_else(Vec::new, |session| {
@@ -346,6 +224,35 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		Intent::BranchSession(row) => index.session_of(*row).map_or_else(Vec::new, |session| {
 			vec![HostAction::BranchSession { session: session.clone(), entry: None }]
 		}),
+		Intent::RenameSession { session, title } => {
+			index.session_of(*session).map_or_else(Vec::new, |s| {
+				vec![HostAction::RenameSession { session: s.clone(), title: title.clone() }]
+			})
+		},
+		Intent::ExportSession(row) => row
+			.and_then(|r| index.session_of(r))
+			.cloned()
+			.or_else(|| active.clone())
+			.map_or_else(Vec::new, |s| {
+				vec![HostAction::ExportSession { session: s, format: "html".to_string() }]
+			}),
+		Intent::CompactSession(row) => row
+			.and_then(|r| index.session_of(r))
+			.cloned()
+			.or_else(|| active.clone())
+			.map_or_else(Vec::new, |s| vec![HostAction::CompactSession { session: s }]),
+		Intent::HandoffSession(row) => row
+			.and_then(|r| index.session_of(r))
+			.cloned()
+			.or_else(|| active.clone())
+			.map_or_else(Vec::new, |s| {
+				vec![HostAction::HandoffSession { session: s, target: String::new() }]
+			}),
+		Intent::LoadTranscript(row) => row
+			.and_then(|r| index.session_of(r))
+			.cloned()
+			.or(active)
+			.map_or_else(Vec::new, |s| vec![HostAction::LoadTranscript { session: s, before: None }]),
 		Intent::OpenFile(path) => vec![HostAction::ReadFile { path: path.clone() }],
 		Intent::SelectChangeScope(scope) => vec![
 			HostAction::SelectChangeScope {
@@ -383,4 +290,92 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		| Intent::ExpandContext { .. } => Vec::new(),
 		_ => Vec::new(),
 	}
+}
+
+fn retry_control_actions(
+	id: &veyyon_desktop_model::SurfaceId,
+	active: Option<veyyon_desktop_model::SessionId>,
+) -> Vec<HostAction> {
+	use veyyon_desktop_model::SurfaceId;
+	match id {
+		SurfaceId::ConnectionRetryButton | SurfaceId::ConnectionAttachButton => {
+			vec![HostAction::RetryConnection]
+		},
+		SurfaceId::ProviderAuthRetryButton(p) => {
+			vec![HostAction::RetryAuthFlow { provider: p.clone() }]
+		},
+		SurfaceId::ProviderAuthStartButton(p) => {
+			vec![HostAction::StartProviderAuth { provider: p.clone() }]
+		},
+		SurfaceId::ProviderAuthCancelButton(p) => {
+			vec![HostAction::CancelAuthFlow { provider: p.clone() }]
+		},
+		SurfaceId::DiagnosticRefreshButton => vec![HostAction::RefreshDiagnostics],
+		SurfaceId::UsageRefreshButton => vec![HostAction::GetUsage { session: active }],
+		SurfaceId::ContextBreakdownRefreshButton => {
+			active.map_or_else(Vec::new, |session| vec![HostAction::GetContextBreakdown { session }])
+		},
+		SurfaceId::DiagnosticRetrySourceButton(s) => {
+			vec![HostAction::RetryDiagnosticSource { source: s.clone() }]
+		},
+		SurfaceId::AgentReviveButton(a) => vec![HostAction::ReviveAgent { agent_id: a.clone() }],
+		SurfaceId::TaskCancelButton(t) => vec![HostAction::CancelTask { task_id: t.clone() }],
+		_ => Vec::new(),
+	}
+}
+
+fn navigate_actions(
+	route: veyyon_desktop_surface::navigation::SurfaceRoute,
+	active: Option<veyyon_desktop_model::SessionId>,
+) -> Vec<HostAction> {
+	use veyyon_desktop_surface::{SettingsPage, navigation::SurfaceRoute};
+	match route {
+		SurfaceRoute::Page(SettingsPage::General) => vec![HostAction::LoadSettings],
+		SurfaceRoute::Page(SettingsPage::Themes) => vec![HostAction::LoadThemes],
+		SurfaceRoute::Page(SettingsPage::Keybindings) => vec![HostAction::LoadKeybindings],
+		SurfaceRoute::Page(SettingsPage::Providers) => vec![HostAction::RefreshProviders],
+		SurfaceRoute::Page(SettingsPage::Mcp) => vec![HostAction::RefreshMcp],
+		SurfaceRoute::Page(SettingsPage::Diagnostics) => vec![HostAction::RefreshDiagnostics],
+		SurfaceRoute::Page(SettingsPage::Usage) => vec![HostAction::GetUsage { session: active }],
+		SurfaceRoute::Page(SettingsPage::ContextBreakdown) => {
+			active.map_or_else(Vec::new, |session| vec![HostAction::GetContextBreakdown { session }])
+		},
+		SurfaceRoute::Page(SettingsPage::Extensions | SettingsPage::Authentication)
+		| SurfaceRoute::Commands
+		| SurfaceRoute::Account
+		| SurfaceRoute::Settings => Vec::new(),
+	}
+}
+
+fn mutate_partition(intent: &Intent, index: &SessionIndex, store: &mut Store) {
+	let now = crate::current_timestamp_ms();
+	let (session, op) = match intent {
+		Intent::PinSession(r) => (index.session_of(*r), 0),
+		Intent::UnpinSession(r) => (index.session_of(*r), 1),
+		Intent::DeferSession(r) => (index.session_of(*r), 2),
+		Intent::ParkSession(r) => (index.session_of(*r), 3),
+		Intent::UnparkSession(r) => (index.session_of(*r), 4),
+		Intent::RecallSession(r) => (index.session_of(*r), 5),
+		_ => return,
+	};
+	if let Some(s) = session {
+		match op {
+			0 => store.sessions.pin(s, None),
+			1 => store.sessions.unpin(s, now),
+			2 => store.sessions.defer(s, None),
+			3 => store.sessions.park(s, now),
+			4 => store.sessions.unpark(s, now),
+			_ => store.sessions.recall(s, now),
+		}
+	}
+}
+
+fn active_terminal(store: &Store) -> Option<&veyyon_desktop_model::TerminalView> {
+	store
+		.domains
+		.terminals
+		.iter()
+		.rev()
+		.find(|t| t.status == TerminalStatus::Running)
+		.or_else(|| store.domains.terminals.last())
 }

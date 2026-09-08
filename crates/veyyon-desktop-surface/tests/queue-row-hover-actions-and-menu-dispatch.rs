@@ -209,7 +209,7 @@ fn disabled_card_menu_items_suppress_dispatch_on_click() {
 
 	let menu_frame = session.frame().expect("menu renders in frame");
 	let menu_items = find_menu_items(&menu_frame, menu_origin);
-	assert_eq!(menu_items.len(), 5, "card menu registers 5 item bounds");
+	assert_eq!(menu_items.len(), 8, "card menu registers 8 item bounds");
 
 	session
 		.update(|view, _window, _cx| {
@@ -217,11 +217,10 @@ fn disabled_card_menu_items_suppress_dispatch_on_click() {
 		})
 		.expect("drain intents");
 
-	// Click disabled Delete item (index 4)
+	// Click disabled Delete item (index 7)
 	session
-		.click(center_of(menu_items[4]))
+		.click(center_of(menu_items[7]))
 		.expect("click disabled delete menu item");
-
 	session
 		.update(|view, _window, _cx| {
 			assert!(

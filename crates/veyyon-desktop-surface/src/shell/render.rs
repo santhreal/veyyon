@@ -95,6 +95,13 @@ pub fn render_shell(
 
 	let tokens = view.installed().set.clone();
 	let surface = view.installed().surface.clone();
+	let rename_editor = if view.state().current_id > 0 {
+		let current_id = view.state().current_id;
+		let title = view.state().title.clone();
+		Some(view.session_rename_field_editor(current_id, &title, window, cx))
+	} else {
+		None
+	};
 
 	let root = div()
 		.track_focus(&focus_handle)
@@ -113,6 +120,7 @@ pub fn render_shell(
 		.child(titlebar(
 			TitlebarState {
 				title: &view.state().title,
+				rename_editor,
 				connection: &view.state().connection,
 				queue_collapsed: view.state().keymap.queue_collapsed,
 				panel_available,
@@ -234,18 +242,20 @@ pub fn render_shell(
 				&panel_focus,
 				cx,
 			);
-			Some(view.laid_out().track_children(
-				div()
-					.absolute()
-					.inset_0()
-					.flex()
-					.flex_row()
-					.justify_end()
-					.backdrop_blur(px(panels.right_panel_overlay_scrim_blur_px))
-					.bg(tokens.scrim())
-					.child(Sheet::right(body)),
-				|index| (index == 0).then_some(Region::Panel),
-			))
+			Some(
+				view.laid_out().track_children(
+					div()
+						.absolute()
+						.inset_0()
+						.flex()
+						.flex_row()
+						.justify_end()
+						.backdrop_blur(px(panels.right_panel_overlay_scrim_blur_px))
+						.bg(tokens.scrim())
+						.child(Sheet::right(body)),
+					|index| (index == 0).then_some(Region::Panel),
+				),
+			)
 		},
 		RightPanelPlacement::Inline { .. } | RightPanelPlacement::Absent => None,
 	};
@@ -271,9 +281,7 @@ pub fn render_shell(
 	columns = match widths.right_panel {
 		// A float takes no width, so the row is the session surface alone and
 		// the panel is already inside it.
-		RightPanelPlacement::Absent | RightPanelPlacement::Overlay { .. } => {
-			columns.child(session)
-		},
+		RightPanelPlacement::Absent | RightPanelPlacement::Overlay { .. } => columns.child(session),
 		// A docked panel is the second pane of a split whose handle the
 		// operator drags (§5.6). The handle sits inside the panel's measure,
 		// so the session surface keeps the width the shed gave it, and the

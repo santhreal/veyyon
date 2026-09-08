@@ -330,3 +330,30 @@ fn session_pin_defer_and_park_mutate_store_partitions() {
 	assert!(actions_for(&Intent::ParkSession(row), &index, &mut store).is_empty());
 	assert!(store.sessions.parked.contains(&SessionId::from("s")));
 }
+
+#[test]
+fn session_lifecycle_intents_map_to_host_actions() {
+	let (mut store, index) = store_with_decisions();
+	let row = index.row_id(&SessionId::from("s")).unwrap();
+
+	assert_eq!(
+		actions_for(
+			&Intent::RenameSession { session: row, title: "Renamed".into() },
+			&index,
+			&mut store,
+		),
+		[HostAction::RenameSession { session: SessionId::from("s"), title: "Renamed".into() }]
+	);
+	assert_eq!(actions_for(&Intent::ExportSession(Some(row)), &index, &mut store), [
+		HostAction::ExportSession { session: SessionId::from("s"), format: "html".into() }
+	]);
+	assert_eq!(actions_for(&Intent::CompactSession(Some(row)), &index, &mut store), [
+		HostAction::CompactSession { session: SessionId::from("s") }
+	]);
+	assert_eq!(actions_for(&Intent::HandoffSession(Some(row)), &index, &mut store), [
+		HostAction::HandoffSession { session: SessionId::from("s"), target: String::new() }
+	]);
+	assert_eq!(actions_for(&Intent::LoadTranscript(Some(row)), &index, &mut store), [
+		HostAction::LoadTranscript { session: SessionId::from("s"), before: None }
+	]);
+}

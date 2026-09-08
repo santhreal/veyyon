@@ -223,7 +223,20 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 				state.keymap.deferred_session = None;
 			}
 		},
-		Intent::DeleteSession(_) | Intent::BranchSession(_) => {},
+		Intent::RenameSession { session, title } => {
+			if state.current_id == *session {
+				state.title.clone_from(title);
+			}
+			if let Some(row) = state.row_mut(*session) {
+				row.title.clone_from(title);
+			}
+		},
+		Intent::DeleteSession(_)
+		| Intent::BranchSession(_)
+		| Intent::ExportSession(_)
+		| Intent::CompactSession(_)
+		| Intent::HandoffSession(_)
+		| Intent::LoadTranscript(_) => {},
 		Intent::FilterQueue(filter) => queue::filter(state, filter),
 		Intent::NewSession => {
 			state.current_id = 0;

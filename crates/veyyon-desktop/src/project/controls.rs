@@ -72,7 +72,7 @@ fn composer_controls(row: &SessionId) -> [(SurfaceId, HostActionKind); 9] {
 /// that shows it. The composer's primary action answers the first pending
 /// card of each kind under that card's id (`TurnPhase::primary_surface`), so
 /// those ids are gated by the answer they would send.
-fn gated_controls(store: &Store, active_row: Option<u64>) -> Vec<(SurfaceId, HostActionKind)> {
+pub fn gated_controls(store: &Store, active_row: Option<u64>) -> Vec<(SurfaceId, HostActionKind)> {
 	let mut controls = vec![
 		(SurfaceId::NewSessionButton, HostActionKind::CreateSession),
 		(SurfaceId::ConnectionRetryButton, HostActionKind::RetryConnection),
@@ -90,7 +90,10 @@ fn gated_controls(store: &Store, active_row: Option<u64>) -> Vec<(SurfaceId, Hos
 			(SurfaceId::QueueSessionRow(row.clone()), HostActionKind::LoadTranscript),
 			(SurfaceId::QueueDeleteButton(row.clone()), HostActionKind::DeleteSession),
 			(SurfaceId::SessionBranchButton(row.clone()), HostActionKind::BranchSession),
+			(SurfaceId::SessionRenameField(row.clone()), HostActionKind::RenameSession),
 			(SurfaceId::SessionExportButton(row.clone()), HostActionKind::ExportSession),
+			(SurfaceId::SessionCompactButton(row.clone()), HostActionKind::CompactSession),
+			(SurfaceId::SessionHandoffButton(row.clone()), HostActionKind::HandoffSession),
 			(SurfaceId::RightPanelDiffTab(row.clone()), HostActionKind::RefreshChanges),
 			(SurfaceId::RightPanelFileTab(row.clone()), HostActionKind::LoadFileTree),
 			(SurfaceId::RightPanelChangeScopeSelector(row.clone()), HostActionKind::SelectChangeScope),

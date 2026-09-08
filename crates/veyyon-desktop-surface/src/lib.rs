@@ -39,7 +39,7 @@ pub use composer::{
 	QueueMode, SecondaryAction, ThinkingLevel, TurnPhase,
 };
 pub use drawer::{DrawerContent, DrawerTab, ProcessRow};
-pub use intent::Intent;
+pub use intent::{Intent, IntentDiscriminants};
 pub use keymap::*;
 pub use model::*;
 pub use overlay::*;

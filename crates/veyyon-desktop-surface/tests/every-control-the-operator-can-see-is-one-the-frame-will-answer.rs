@@ -127,7 +127,11 @@ fn expected_controls(state: &ShellState) -> usize {
 	// transcript body, which takes the focus its scope's chords ride on, and
 	// the composer box, which hands the focus back to the editor whatever the
 	// press landed on.
-	let chrome = 1 + 3 + 1 + 6 + 2 + usize::from(state.connection.is_attached());
+	let chrome = 1
+		+ 3 + 1
+		+ 6 + 2
+		+ usize::from(state.connection.is_attached())
+		+ usize::from(state.current_id > 0) * 2;
 	let transcript = usize::from(!state.transcript.is_empty()) * 2
 		+ state
 			.transcript

@@ -122,6 +122,11 @@ fn every_intent() -> Vec<Intent> {
 		Intent::DequeueQueuedPrompt,
 		Intent::FindFile("lib".to_owned()),
 		Intent::FindText("todo".to_owned()),
+		Intent::RenameSession { session: 1, title: "renamed".to_owned() },
+		Intent::ExportSession(Some(1)),
+		Intent::CompactSession(Some(1)),
+		Intent::HandoffSession(Some(1)),
+		Intent::LoadTranscript(Some(1)),
 	];
 
 	// The exhaustive match is the gate. Every variant is named, so a new one
@@ -204,7 +209,12 @@ fn every_intent() -> Vec<Intent> {
 			| Intent::OpenToolTarget(_)
 			| Intent::OpenUsage
 			| Intent::OpenProcessLogs(_)
-			| Intent::DequeueQueuedPrompt => {},
+			| Intent::DequeueQueuedPrompt
+			| Intent::RenameSession { .. }
+			| Intent::ExportSession(_)
+			| Intent::CompactSession(_)
+			| Intent::HandoffSession(_)
+			| Intent::LoadTranscript(_) => {},
 		}
 	}
 

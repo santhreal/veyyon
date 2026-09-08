@@ -25,7 +25,9 @@ use crate::{
 };
 
 /// One thing the operator did.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, strum::EnumDiscriminants)]
+#[strum_discriminants(derive(strum::EnumIter))]
+#[strum_discriminants(vis(pub))]
 pub enum Intent {
 	SelectSession(u64),
 	SelectTab(usize),
@@ -130,6 +132,14 @@ pub enum Intent {
 	RecallSession(u64),
 	DeleteSession(u64),
 	BranchSession(u64),
+	RenameSession {
+		session: u64,
+		title:   String,
+	},
+	ExportSession(Option<u64>),
+	CompactSession(Option<u64>),
+	HandoffSession(Option<u64>),
+	LoadTranscript(Option<u64>),
 	FilterQueue(String),
 	NewSession,
 	CloseTabOrPark,

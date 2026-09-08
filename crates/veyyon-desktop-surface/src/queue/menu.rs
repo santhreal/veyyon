@@ -60,6 +60,33 @@ fn choices(menu: &RowMenu, controls: &ControlStates) -> Vec<(MenuItem, Intent)> 
 				branch_item = branch_item.disabled(true);
 			}
 
+			let export_surface = SurfaceId::SessionExportButton(sid.clone());
+			let export_av = controls.availability(&export_surface);
+			let mut export_item = MenuItem::new("Export").icon(IconName::File);
+			if matches!(export_av, Availability::Pending) {
+				export_item = export_item.shortcut("In flight...").disabled(true);
+			} else if matches!(export_av, Availability::Unavailable { .. }) {
+				export_item = export_item.disabled(true);
+			}
+
+			let compact_surface = SurfaceId::SessionCompactButton(sid.clone());
+			let compact_av = controls.availability(&compact_surface);
+			let mut compact_item = MenuItem::new("Compact").icon(IconName::Layers);
+			if matches!(compact_av, Availability::Pending) {
+				compact_item = compact_item.shortcut("In flight...").disabled(true);
+			} else if matches!(compact_av, Availability::Unavailable { .. }) {
+				compact_item = compact_item.disabled(true);
+			}
+
+			let handoff_surface = SurfaceId::SessionHandoffButton(sid.clone());
+			let handoff_av = controls.availability(&handoff_surface);
+			let mut handoff_item = MenuItem::new("Handoff").icon(IconName::ArrowRight);
+			if matches!(handoff_av, Availability::Pending) {
+				handoff_item = handoff_item.shortcut("In flight...").disabled(true);
+			} else if matches!(handoff_av, Availability::Unavailable { .. }) {
+				handoff_item = handoff_item.disabled(true);
+			}
+
 			let delete_surface = SurfaceId::QueueDeleteButton(sid);
 			let delete_av = controls.availability(&delete_surface);
 			let mut delete_item = MenuItem::new("Delete").icon(IconName::Trash).danger(true);
@@ -78,6 +105,9 @@ fn choices(menu: &RowMenu, controls: &ControlStates) -> Vec<(MenuItem, Intent)> 
 				(MenuItem::new("Park").icon(IconName::Stop), Intent::ParkSession(menu.id)),
 				(MenuItem::new("Defer").icon(IconName::Pause), Intent::DeferSession(menu.id)),
 				(branch_item, Intent::BranchSession(menu.id)),
+				(export_item, Intent::ExportSession(Some(menu.id))),
+				(compact_item, Intent::CompactSession(Some(menu.id))),
+				(handoff_item, Intent::HandoffSession(Some(menu.id))),
 				(delete_item, Intent::DeleteSession(menu.id)),
 			]);
 			items
@@ -124,10 +154,19 @@ pub fn row_menu_layer(
 	if menu.is_card() {
 		let sid = SessionId::from(menu.id.to_string());
 		let branch_surface = SurfaceId::SessionBranchButton(sid.clone());
+		let export_surface = SurfaceId::SessionExportButton(sid.clone());
+		let compact_surface = SurfaceId::SessionCompactButton(sid.clone());
+		let handoff_surface = SurfaceId::SessionHandoffButton(sid.clone());
 		let delete_surface = SurfaceId::QueueDeleteButton(sid);
 		let weak = Some(cx.weak_entity());
 
-		for (surface, label) in [(branch_surface, "Branch"), (delete_surface, "Delete")] {
+		for (surface, label) in [
+			(branch_surface, "Branch"),
+			(export_surface, "Export"),
+			(compact_surface, "Compact"),
+			(handoff_surface, "Handoff"),
+			(delete_surface, "Delete"),
+		] {
 			if let Some(err) = controls.error(&surface) {
 				content = content.child(error_hairline_weak(err, surface, tokens, weak.clone()));
 			} else {

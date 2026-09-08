@@ -9,10 +9,11 @@
 use veyyon_desktop_kit::{
 	ColorRole, Dot, IconButton, IconButtonVariant, IconName, IconSize, SpacingStep, Spinner,
 	SpinnerSize, StrokeStep, TextRamp, TextWeight, TokenSet,
+	input::{Editor, TextField},
 };
 use veyyon_desktop_tokens::ShellSurfaceTokens;
 use veyyon_gpui::{
-	AnyElement, ClickEvent, Context, Div, InteractiveElement, IntoElement, MouseMoveEvent,
+	AnyElement, ClickEvent, Context, Div, Entity, InteractiveElement, IntoElement, MouseMoveEvent,
 	ParentElement, StatefulInteractiveElement, Styled, div, px,
 };
 
@@ -27,9 +28,10 @@ pub const fn platform_inset_left_px() -> f32 {
 }
 
 /// What the titlebar shows, read from the shell's state.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct TitlebarState<'a> {
 	pub title:            &'a str,
+	pub rename_editor:    Option<Entity<Editor>>,
 	pub connection:       &'a ConnectionPhase,
 	pub queue_collapsed:  bool,
 	/// Whether there is a panel to show; the control is hidden without one.
@@ -101,6 +103,29 @@ pub fn titlebar(
 		));
 	}
 
+	let center = if let Some(editor) = state.rename_editor {
+		div()
+			.id("titlebar-title-edit")
+			.flex_1()
+			.min_w_0()
+			.max_w(px(320.0))
+			.child(TextField::new(editor).id("session-rename-field"))
+	} else {
+		div()
+			.id("titlebar-title")
+			.flex_1()
+			.min_w_0()
+			.overflow_hidden()
+			.whitespace_nowrap()
+			.truncate()
+			.text_center()
+			.text_size(tokens.font_size(TextRamp::Small))
+			.line_height(tokens.line_height(TextRamp::Small))
+			.font_weight(tokens.font_weight(TextWeight::Medium))
+			.text_color(tokens.color(ColorRole::Secondary))
+			.child(state.title.to_owned())
+	};
+
 	div()
 		.id("titlebar")
 		.h(px(geometry.titlebar_height_px))
@@ -126,20 +151,7 @@ pub fn titlebar(
 			}
 		})
 		.child(leading)
-		.child(
-			div()
-				.flex_1()
-				.min_w_0()
-				.overflow_hidden()
-				.whitespace_nowrap()
-				.truncate()
-				.text_center()
-				.text_size(tokens.font_size(TextRamp::Small))
-				.line_height(tokens.line_height(TextRamp::Small))
-				.font_weight(tokens.font_weight(TextWeight::Medium))
-				.text_color(tokens.color(ColorRole::Secondary))
-				.child(state.title.to_owned()),
-		)
+		.child(center)
 		.child(trailing)
 }
 

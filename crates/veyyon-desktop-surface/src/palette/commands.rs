@@ -126,6 +126,34 @@ pub fn command_items() -> Vec<PaletteItem> {
 			None,
 			None,
 		),
+		(
+			"/export",
+			Intent::ExportSession(None),
+			"Export active session to HTML",
+			None,
+			Some(Capability::Sessions),
+		),
+		(
+			"/compact",
+			Intent::CompactSession(None),
+			"Compact active session transcript",
+			None,
+			Some(Capability::Sessions),
+		),
+		(
+			"/handoff",
+			Intent::HandoffSession(None),
+			"Hand off active session to a new agent",
+			None,
+			Some(Capability::Sessions),
+		),
+		(
+			"/reload-transcript",
+			Intent::LoadTranscript(None),
+			"Reload active session transcript",
+			None,
+			Some(Capability::Transcript),
+		),
 	]
 	.into_iter()
 	.enumerate()

@@ -19,6 +19,9 @@
 
 ### Added
 
+- The desktop titlebar provides an in-place session name editor that commits on Enter and reverts on Escape.
+- The desktop command palette and queue row menus provide `/export`, `/compact`, and `/handoff` session lifecycle actions.
+- The desktop command palette provides `/reload-transcript` to reload the active session transcript from the host.
 - The GUI host answers the desktop's `SearchContent` action with a `ContentMatches` snapshot, so the Content Search palette lists the workspace lines that carry the typed text with their file and line number.
 - `src/presentation/` builds the `@veyyon/wire/presentation` view-models from session state, and `PresentationEventBridge` turns session events into transcript updates, so a renderer draws a session without importing one.
 - `src/modes/terminal/driver.ts` implements `PresentationContext` on `@veyyon/tui`: it renders every transcript block kind, the status line, the composer and the dialogs from view-models alone, and reports operator input back as `UIEvent`s.
@@ -259,6 +262,7 @@
 ### Removed
 
 - `WRITE_GUTTER_MIN_WIDTH` is no longer exported: the line-number gutter of a code card is the host's, stated once in `src/modes/terminal/draw/draw-tool-view.ts`, and no tool sets it.
+- The GUI host protocol drops the `ProcessWait` and `ProcessDescribe` actions: the supervised-process listing already carries each process's application, arguments, working directory, lifetime, status and exit code, so a describe reply replaced the pane's whole list with the one row it named and a wait held the host's request loop for the length of the process.
 
 
 ## [1.4.0] - 2026-09-04
