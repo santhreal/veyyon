@@ -24,7 +24,7 @@ import { formatErrorDetail } from "./render-utils";
 
 export type { TodoStatus };
 /** Operation names accepted by the todo tool and echoed in successful result details. */
-export type TodoOperation = "init" | "start" | "done" | "rm" | "drop" | "append" | "view";
+export type TodoOperation = "init" | "start" | "done" | "rm" | "drop" | "append" | "view" | "pending";
 
 export interface TodoItem {
 	content: string;
@@ -179,6 +179,8 @@ export interface TodoToolDetails {
 	phases: TodoPhase[];
 	storage: "session" | "memory";
 	completedTasks?: TodoCompletionTransition[];
+	/** Canonical tasks entering in_progress in this write, retained for transcript replay. */
+	startedTasks?: TodoCompletionTransition[];
 	telemetry?: TodoTaskTelemetry;
 	/**
 	 * Non-fatal adjustments the tool made to a write that LANDED. Present only
@@ -211,7 +213,9 @@ export interface TodoOpReport {
 // Schema
 // =============================================================================
 
-const TodoOp = type('"init" | "start" | "done" | "rm" | "drop" | "append" | "view"').describe("operation to apply");
+const TodoOp = type('"init" | "start" | "done" | "rm" | "drop" | "append" | "view" | "pending"').describe(
+	"operation to apply",
+);
 
 const InitListEntry = type({
 	"phase?": type("string").describe("phase name; omitted entries continue the previous phase"),
@@ -266,7 +270,7 @@ const todoSchema = type({
 	.narrow((params, ctx) => {
 		if (params.op !== undefined || params.todos !== undefined) return true;
 		return ctx.reject({
-			expected: 'an "op" naming the operation: init, start, done, rm, drop, append or view',
+			expected: 'an "op" naming the operation: init, start, done, rm, drop, append, view or pending',
 			actual: "no op",
 			path: ["op"],
 		});
@@ -348,7 +352,11 @@ function todoTransitionKey(phase: string, content: string): string {
 	return `${phase}\u0000${content}`;
 }
 
-function getCompletionTransitions(previous: TodoPhase[], updated: TodoPhase[]): TodoCompletionTransition[] {
+function getStatusTransitions(
+	previous: TodoPhase[],
+	updated: TodoPhase[],
+	status: TodoStatus = "completed",
+): TodoCompletionTransition[] {
 	const previousStatuses = new Map<string, TodoStatus>();
 	for (const phase of previous) {
 		for (const task of phase.tasks) {
@@ -359,9 +367,9 @@ function getCompletionTransitions(previous: TodoPhase[], updated: TodoPhase[]): 
 	const transitions: TodoCompletionTransition[] = [];
 	for (const phase of updated) {
 		for (const task of phase.tasks) {
-			if (task.status !== "completed") continue;
+			if (task.status !== status) continue;
 			const previousStatus = previousStatuses.get(todoTransitionKey(phase.name, task.content));
-			if (previousStatus && previousStatus !== "completed") {
+			if (previousStatus && previousStatus !== status) {
 				transitions.push({ phase: phase.name, content: task.content });
 			}
 		}
@@ -527,14 +535,8 @@ function normalizeInProgressTask(phases: TodoPhase[]): void {
 	const orderedTasks = phases.flatMap(phase => phase.tasks);
 	if (orderedTasks.length === 0) return;
 
-	const inProgressTasks = orderedTasks.filter(task => task.status === "in_progress");
-	if (inProgressTasks.length > 1) {
-		for (const task of inProgressTasks.slice(1)) {
-			task.status = "pending";
-		}
-	}
-
-	if (inProgressTasks.length > 0) return;
+	const hasInProgress = orderedTasks.some(task => task.status === "in_progress");
+	if (hasInProgress) return;
 
 	const firstPendingTask = orderedTasks.find(task => task.status === "pending");
 	if (firstPendingTask) firstPendingTask.status = "in_progress";
@@ -832,13 +834,6 @@ function applyEntry(phases: TodoPhase[], entry: TodoOpEntryValue, report: TodoOp
 		case "start": {
 			const hit = resolveTaskOrError(phases, entry.task, report.errors);
 			if (!hit) return phases;
-			for (const phase of phases) {
-				for (const candidate of phase.tasks) {
-					if (candidate.status === "in_progress" && candidate !== hit.task) {
-						candidate.status = "pending";
-					}
-				}
-			}
 			hit.task.status = "in_progress";
 			return phases;
 		}
@@ -860,6 +855,12 @@ function applyEntry(phases: TodoPhase[], entry: TodoOpEntryValue, report: TodoOp
 			return appendItems(phases, entry, report.errors);
 		case "view":
 			return phases;
+		case "pending": {
+			for (const task of getTaskTargets(phases, entry, report.errors)) {
+				task.status = "pending";
+			}
+			return phases;
+		}
 		default:
 			// Unreachable for a validated tool call: the schema requires `op` and
 			// pins it to the seven names above. Reachable for the OTHER callers of
@@ -869,7 +870,7 @@ function applyEntry(phases: TodoPhase[], entry: TodoOpEntryValue, report: TodoOp
 			// a bad op. The board is returned untouched with the op named.
 			entry.op satisfies never;
 			report.errors.push(
-				`Unknown op ${JSON.stringify(entry.op)}; expected init, start, done, rm, drop, append or view`,
+				`Unknown op ${JSON.stringify(entry.op)}; expected init, start, done, rm, drop, append, view or pending`,
 			);
 			return phases;
 	}
@@ -987,11 +988,33 @@ export function adaptTodoWriteBatch(
 			case "cancelled":
 				ops.push({ op: "drop", task: todo.content });
 				break;
-			case "pending":
-				// `init`/`append` already created it pending, and no op moves a task
-				// back to pending, so a pending entry is a presence assertion only.
+			case "pending": {
+				// Explicit pending in whole-board writes resets targeted tasks that
+				// were previously active back to pending, without demoting omitted items.
+				// If the task was already pending (or newly appended), no op is needed.
+				if (!replace) {
+					const existing = currentPhases
+						.flatMap(phase => phase.tasks)
+						.find(
+							t =>
+								(normalizeForTodoMatch(t.content) || t.content) ===
+								(normalizeForTodoMatch(todo.content) || todo.content),
+						);
+					if (existing && existing.status !== "pending") {
+						ops.push({ op: "pending", task: todo.content });
+					}
+				}
 				break;
+			}
 		}
+	}
+	if (
+		replace &&
+		todos.length > 0 &&
+		!todos.some(t => t.status === "in_progress") &&
+		todos.every(t => t.status === "pending")
+	) {
+		ops.push({ op: "pending" });
 	}
 	return { ops, notes };
 }
@@ -999,7 +1022,9 @@ export function adaptTodoWriteBatch(
 function applyParams(phases: TodoPhase[], params: TodoParams): TodoOpReport & { phases: TodoPhase[] } {
 	const report: TodoOpReport = { errors: [], notes: [] };
 	const next = applyEntry(phases, params, report);
-	normalizeInProgressTask(next);
+	if (params.op !== "pending") {
+		normalizeInProgressTask(next);
+	}
 	return { phases: next, ...report };
 }
 
@@ -1017,7 +1042,10 @@ export function applyOpsToPhases(
 	for (const op of ops) {
 		next = applyEntry(next, op, report);
 	}
-	normalizeInProgressTask(next);
+	const lastOp = ops.at(-1)?.op;
+	if (lastOp !== "pending") {
+		normalizeInProgressTask(next);
+	}
 	return { phases: next, ...report };
 }
 
@@ -1142,10 +1170,10 @@ function formatMutationSummary(phases: TodoPhase[], params: TodoParams): string 
 			changed = `Started: ${task}.`;
 			break;
 		case "done":
-			changed = task ? `Completed: ${task}.` : `Completed phase: ${phase}.`;
+			changed = task ? `Completed: ${task}.` : phase ? `Completed phase: ${phase}.` : "Completed all tasks.";
 			break;
 		case "drop":
-			changed = task ? `Dropped: ${task}.` : `Dropped phase: ${phase}.`;
+			changed = task ? `Dropped: ${task}.` : phase ? `Dropped phase: ${phase}.` : "Dropped all tasks.";
 			break;
 		case "append":
 			changed = `Added ${params.items?.length ?? 0} ${(params.items?.length ?? 0) === 1 ? "task" : "tasks"} to ${phase}.`;
@@ -1153,6 +1181,13 @@ function formatMutationSummary(phases: TodoPhase[], params: TodoParams): string 
 		case "rm":
 			if (!task && !phase) return `Todo list cleared. ${formatOverall([])}`;
 			changed = task ? `Removed: ${task}.` : `Removed phase: ${phase}.`;
+			break;
+		case "pending":
+			changed = task
+				? `Reset to pending: ${task}.`
+				: phase
+					? `Reset phase to pending: ${phase}.`
+					: "Reset all tasks to pending.";
 			break;
 		case "view":
 			throw new Error("view operations require the full todo summary");
@@ -1234,7 +1269,7 @@ function formatSummaryBody(phases: TodoPhase[], errors: string[], readOnly: bool
 		lines.push(
 			`Active phase ${currentIdx + 1}/${phases.length} "${boundedTodoPreviewText(current.name, TODO_ITEM_PREVIEW_WIDTH)}" (${done}/${current.tasks.length})${
 				workedAhead
-					? " — earliest phase with open tasks; the in-progress pointer auto-advances to the earliest open task on each completion, so it can sit behind out-of-order work (nothing was un-completed)."
+					? " — earliest phase with open tasks; the in-progress pointer auto-advances to the earliest open task when no active task remains, so it can sit behind out-of-order work (nothing was un-completed)."
 					: "."
 			}`,
 		);
@@ -1347,11 +1382,13 @@ export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
 		// the ops that did land. State and rendered summary stay at previous.
 		const failed = errors.length > 0;
 		const effective = failed ? previousPhases : updated;
-		const completedTasks = readOnly || failed ? [] : getCompletionTransitions(previousPhases, updated);
+		const completedTasks = readOnly || failed ? [] : getStatusTransitions(previousPhases, updated);
 		if (!readOnly && !failed) this.session.setTodoPhases?.(updated);
 		const storage = this.session.getSessionFile() ? "session" : "memory";
 		const details: TodoToolDetails = { op: normalized.op, phases: effective, storage };
 		if (completedTasks.length > 0) details.completedTasks = completedTasks;
+		const startedTasks = readOnly || failed ? [] : getStatusTransitions(previousPhases, updated, "in_progress");
+		if (startedTasks.length > 0) details.startedTasks = startedTasks;
 		// A note describes an adjustment to a write that LANDED, so it is dropped
 		// when the batch failed: there is nothing applied for it to describe.
 		if (!failed && notes.length > 0) details.notes = notes;
@@ -1396,8 +1433,10 @@ export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
 		// value the schema does not accept.
 		const batchOp: TodoOperation = ops[0]?.op ?? "view";
 		const details: TodoToolDetails = { op: batchOp, phases: effective, storage };
-		const completedTasks = failed ? [] : getCompletionTransitions(previousPhases, updated);
+		const completedTasks = failed ? [] : getStatusTransitions(previousPhases, updated);
 		if (completedTasks.length > 0) details.completedTasks = completedTasks;
+		const startedTasks = failed ? [] : getStatusTransitions(previousPhases, updated, "in_progress");
+		if (startedTasks.length > 0) details.startedTasks = startedTasks;
 		if (!failed && notes.length > 0) details.notes = notes;
 		const telemetryDetail = sessionTelemetryDetail(
 			this.session.settings.get("session.instrumentation"),
@@ -1667,18 +1706,26 @@ export const todoToolRenderer = {
 		// Expanded (the block's own toggle) it is the full list, which is what a
 		// reader scrolling back through history wants — by then the board is gone.
 		if (!options.expanded) {
-			const active = allTasks.find(task => task.status === "in_progress");
-			const moved = active ?? completedTasks[completedTasks.length - 1];
-			const phaseOf = phases.find(phase => phase.tasks.some(task => task.content === moved?.content));
+			const inProgress = allTasks.filter(task => task.status === "in_progress");
+			const started = result.details?.startedTasks?.at(-1);
+			const targetedPhase = started ? phases.find(phase => phase.name === started.phase) : undefined;
+			const targetedTask = targetedPhase?.tasks.find(task => task.content === started?.content);
+			const moved = targetedTask ?? inProgress[0] ?? completedTasks[completedTasks.length - 1];
+			const phaseOf =
+				targetedPhase ?? phases.find(phase => phase.tasks.some(task => task.content === moved?.content));
 			const parts = [
 				uiTheme.fg("dim", formatCount("done", allTasks.filter(task => task.status === "completed").length)),
 			];
+			if (inProgress.length > 1) {
+				parts.push(uiTheme.fg("accent", `${inProgress.length} in progress`));
+			}
 			if (phaseOf && phases.length > 1) {
 				parts.push(uiTheme.fg("muted", boundedTodoPreviewText(phaseOf.name, TODO_ITEM_PREVIEW_WIDTH)));
 			}
 			if (moved) {
-				const mark = active ? uiTheme.checkbox.progress : uiTheme.checkbox.checked;
-				const color = active ? "accent" : "success";
+				const isTaskActive = moved.status === "in_progress";
+				const mark = isTaskActive ? uiTheme.checkbox.progress : uiTheme.checkbox.checked;
+				const color = isTaskActive ? "accent" : "success";
 				parts.push(uiTheme.fg(color, `${mark} ${boundedTodoPreviewText(moved.content, TODO_ITEM_PREVIEW_WIDTH)}`));
 			}
 			return new Text(`${header} ${uiTheme.fg("dim", "·")} ${parts.join(uiTheme.fg("dim", " · "))}`, 0, 0);

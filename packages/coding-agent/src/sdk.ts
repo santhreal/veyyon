@@ -198,6 +198,7 @@ import { ARGOT_HANDLES_BANNER } from "./system-prompt-builder/section-registry";
 import { AgentOutputManager } from "./task/output-manager";
 import { wrapStreamFnWithProviderConcurrency } from "./task/provider-concurrency";
 import { delegationStrength } from "./task/subagent-settings";
+import { type ClaimedTicket, TopicReplenishmentEngine } from "./task/topic-replenishment";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,
@@ -708,6 +709,10 @@ export interface CreateAgentSessionOptions {
 	 * bypass is off is never granted one by its parent.
 	 */
 	parentApprovalBypassed?: () => boolean;
+	/** Topic replenishment engine instance override. */
+	replenishmentEngine?: TopicReplenishmentEngine;
+	/** Custom executor for topic replenishment. */
+	replenishmentExecutor?: (ticket: ClaimedTicket) => Promise<unknown>;
 }
 
 /**
@@ -2523,6 +2528,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			}
 			return cwd;
 		};
+		let replenishmentEngine: TopicReplenishmentEngine | null = null;
 		const toolSession: ToolSession = {
 			get cwd() {
 				return sessionManager.getCwd();
@@ -2640,6 +2646,34 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			},
 			getArtifactManager: () => sessionManager.getArtifactManager(),
 			recordSubagentSpawn: record => sessionManager.appendSubagentSpawn(record),
+			onSubagentComplete: async record => {
+				const engine = replenishmentEngine;
+				if (engine) {
+					const activeRoster = AgentRegistry.global()
+						.list()
+						.map(ref => ({
+							id: ref.id,
+							status: ref.status,
+							role: ref.kind,
+							task: ref.activity,
+						}));
+					await engine.onWorkerComplete(
+						{
+							agentId: record.agentId,
+							agentName: record.agentName,
+							task: record.task,
+							status: record.status,
+							exitCode: record.exitCode,
+							durationMs: record.durationMs,
+							error: record.error,
+							ticketId: record.ticketId,
+							runId: record.runId,
+							structuredResult: record.structuredResult,
+						},
+						activeRoster,
+					);
+				}
+			},
 			settings,
 			authStorage,
 			modelRegistry,
@@ -4466,6 +4500,59 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			atRestUsage?.tokens == null ? null : atRestLimit > 0 ? (atRestUsage.tokens / atRestLimit) * 100 : null,
 			atRestLimit,
 		);
+		if (!isInProcessChildSession(options) && !isSubagentSession(options)) {
+			const taskTool = toolRegistry.get("task");
+			const productionExecutor =
+				options.replenishmentExecutor ??
+				(taskTool
+					? async (ticket: ClaimedTicket) => {
+							const toolCallId = `replenish-${ticket.id}-${Date.now().toString(36)}`;
+							const result = await taskTool.execute(
+								toolCallId,
+								{
+									task: ticket.prompt,
+									ticketId: ticket.id,
+									runId: ticket.runId,
+									ledgerPath: ticket.ledgerPath,
+								},
+								undefined,
+								undefined,
+								toolContextStore.getContext(),
+							);
+							const spawned =
+								(result.details?.progress?.length ?? 0) > 0 || (result.details?.results?.length ?? 0) > 0;
+							if (result.isError || !spawned) {
+								const message = result.content
+									.filter(part => part.type === "text")
+									.map(part => part.text)
+									.join("\n");
+								throw new Error(message || `Native replenishment did not spawn a worker for ${ticket.id}`);
+							}
+							return result;
+						}
+					: undefined);
+
+			const engine =
+				options.replenishmentEngine ??
+				new TopicReplenishmentEngine({
+					executor: productionExecutor,
+				});
+			replenishmentEngine = engine;
+
+			const activeRoster = AgentRegistry.global()
+				.list()
+				.map(ref => ({
+					id: ref.id,
+					status: ref.status,
+					role: ref.kind,
+					task: ref.activity,
+				}));
+			void engine.onSessionRecovery(activeRoster).catch(err => {
+				logger.warn("TopicReplenishmentEngine: session recovery failed", {
+					error: errorMessage(err),
+				});
+			});
+		}
 
 		if (
 			shouldAutoloadArgotAtStartup({

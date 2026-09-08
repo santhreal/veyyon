@@ -118,7 +118,9 @@ export function buildRollbackRows(
 	const visited = new Set<string>();
 	for (const move of moves) {
 		visited.add(move.from);
-		visited.add(move.to);
+		if (move.status !== "skipped") {
+			visited.add(move.to);
+		}
 	}
 	const currentRelease = releases.find(r => r.version === currentVersion);
 	const currentPublishedAt = currentRelease?.publishedAt;

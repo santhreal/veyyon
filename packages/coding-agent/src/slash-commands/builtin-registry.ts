@@ -809,6 +809,29 @@ type HandlerSetFor<Name extends BuiltinSlashCommandName> =
 		: Pick<SlashCommandSpec, "handleTui" | "getTuiAutocompleteDescription"> & { readonly handle?: never };
 
 const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: HandlerSetFor<Name> } = {
+	"reload-config": {
+		handle: async (_command, runtime) => {
+			try {
+				const result = await runtime.settings.reloadConfig();
+				await runtime.output(
+					[
+						"Config routing defaults reloaded. Running Main and existing workers keep their model and effort bindings.",
+						...result.changed.map(
+							change =>
+								`${change.path}: ${JSON.stringify(change.before) ?? "unset"} → ${JSON.stringify(change.after) ?? "unset"}`,
+						),
+						result.changed.length ? "These defaults apply to new spawns." : "No effective routing changes.",
+						...(result.restartRequired.length
+							? [`Not reloaded (restart required): ${result.restartRequired.join(", ")}`]
+							: []),
+					].join("\n"),
+				);
+			} catch (error) {
+				await runtime.output(`Config reload failed: ${error instanceof Error ? error.message : String(error)}`);
+				throw error;
+			}
+		},
+	},
 	settings: {
 		handleTui: (_command, runtime) => {
 			runtime.ctx.showSettingsSelector();
@@ -3166,9 +3189,15 @@ export async function executeBuiltinSlashCommand(
 				await ctx.session.refreshSshTool({ activateIfAvailable: true });
 			},
 		};
-		const result = await command.handle(parsed, adapted);
-		ctx.editor.setText("");
-		if (result && typeof result === "object" && "prompt" in result) return result.prompt;
+		try {
+			const result = await command.handle(parsed, adapted);
+			ctx.editor.setText("");
+			if (result && typeof result === "object" && "prompt" in result) return result.prompt;
+		} catch (error) {
+			// Text transports must observe rejection, but the TUI owns the
+			// diagnostic: follow-up and picker callbacks do not await dispatch.
+			ctx.showError(error instanceof Error ? error.message : String(error));
+		}
 		return true;
 	}
 	return false;

@@ -18,7 +18,7 @@ Operator guide: [Configuration](../using/configuration.md). Every setting, by na
 ## Public boundary
 
 - Primary user file: `~/.veyyon/profiles/default/agent/config.yml` (or profile path under `~/.veyyon/profiles/`)
-- CLI: `veyyon config list|get|set`, `/settings`, `/reload-plugins` (re-read without restart)
+- CLI: `veyyon config list|get|set`, `/settings`, and [`/reload-config`](../using/configuration.md#reload-routing-defaults-without-restarting) for routing defaults. `/reload-plugins` refreshes plugin registries, not profile configuration.
 
 ## How configuration resolves
 

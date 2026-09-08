@@ -185,8 +185,8 @@ describe("the split kept one set of commands", () => {
 	 *     the conversation is resting on a finished reply — there is nothing to rephrase mid-turn,
 	 *     or after a turn that produced only tool calls or an error.
 	 */
-	it("there are the 75 builtins the declarations hold", () => {
-		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(75);
+	it("there are the 76 builtins the declarations hold", () => {
+		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(76);
 	});
 
 	/**

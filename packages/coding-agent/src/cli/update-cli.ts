@@ -13,6 +13,7 @@ import {
 	$which,
 	APP_ALIAS,
 	APP_NAME,
+	BUILD_TAG,
 	bareVersion,
 	changelogUrlForVersion,
 	errorMessage,
@@ -31,6 +32,8 @@ import {
 } from "@veyyon/utils";
 import { $ } from "bun";
 import chalk from "chalk";
+import { settingsOrNull } from "../config/settings-instance";
+import type { SettingPath } from "../config/settings-schema";
 import { theme } from "../modes/theme/theme";
 import { isTimeoutError, withTimeoutSignal } from "../utils/fetch-timeout";
 import {
@@ -133,6 +136,85 @@ export interface BinaryReplacementOptions {
 	 * wrote correct?" (see {@link verifyBinaryVersion}).
 	 */
 	verifyInstalledVersion: (expectedVersion: string) => Promise<InstalledVersionVerification>;
+	/** Allow replacing custom or local builds when force is set. */
+	force?: boolean;
+}
+
+/**
+ * Detect if the currently running process was compiled as a local or custom build.
+ */
+export function isCurrentProcessLocalOrCustom(): boolean {
+	if (BUILD_TAG) {
+		const tag = BUILD_TAG.toLowerCase();
+		if (tag.includes("local") || tag.includes("custom") || tag.length > 0) {
+			return true;
+		}
+	}
+	if (process.env.VEYYON_BUILD_LOCAL === "true") return true;
+	if (process.env.VEYYON_BUILD_TAG) {
+		const tag = process.env.VEYYON_BUILD_TAG.toLowerCase();
+		if (tag.includes("local") || tag.includes("custom") || tag.length > 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * Probe whether a target binary at `binPath` is a local or custom build.
+ */
+export async function isBinaryLocalOrCustom(binPath: string): Promise<boolean> {
+	if (isCurrentProcessLocalOrCustom()) {
+		try {
+			const realTarget = await fs.promises.realpath(binPath);
+			const realSelf = await fs.promises.realpath(process.execPath);
+			if (realTarget.toLowerCase() === realSelf.toLowerCase()) {
+				return true;
+			}
+		} catch {
+			// fallback
+		}
+	}
+	try {
+		const result = await $`${binPath} --version`.quiet().nothrow();
+		if (result.exitCode === 0) {
+			const output = result.text().toLowerCase();
+			if (output.includes("local") || output.includes("custom")) {
+				return true;
+			}
+		}
+	} catch {
+		// ignore
+	}
+	return false;
+}
+
+/**
+ * Determine if background automatic update is disabled via environment variables or configuration.
+ */
+export function isAutoUpdateDisabled(customSettings?: { get: (path: SettingPath) => unknown }): boolean {
+	const envNo = process.env.VEYYON_NO_AUTO_UPDATE?.trim().toLowerCase();
+	if (envNo === "1" || envNo === "true" || envNo === "yes" || envNo === "on") {
+		return true;
+	}
+	const envAuto = process.env.VEYYON_AUTO_UPDATE?.trim().toLowerCase();
+	if (envAuto === "0" || envAuto === "false" || envAuto === "no" || envAuto === "off") {
+		return true;
+	}
+	const s = customSettings ?? settingsOrNull();
+	if (s) {
+		try {
+			if (s.get("startup.autoUpdate") === false) return true;
+		} catch {
+			// ignore missing key
+		}
+		try {
+			if (s.get("updates.auto") === false) return true;
+		} catch {
+			// ignore missing key
+		}
+	}
+	return false;
 }
 
 /**
@@ -1181,6 +1263,12 @@ export async function replaceBinaryForUpdate(options: BinaryReplacementOptions):
 					`replace the symlink with a real binary first (rm ${options.targetPath}) and re-run the update.`,
 			);
 		}
+		if (!options.force && (await isBinaryLocalOrCustom(options.targetPath))) {
+			throw new Error(
+				`Refusing to replace ${options.targetPath}: it is a custom or local build. ` +
+					`Re-run with --force to overwrite it anyway.`,
+			);
+		}
 
 		// Hashed while it is still staged, which is the only moment the bytes are
 		// certainly readable at a pathname nothing else is competing for. The same
@@ -1282,6 +1370,7 @@ export async function updateViaBinaryAt(
 	targetPath: string,
 	expectedVersion: string,
 	report: UpdateReporter,
+	force: boolean = false,
 ): Promise<InstallReleaseResult> {
 	const binaryName = getBinaryName();
 	const tag = `v${expectedVersion}`;
@@ -1380,6 +1469,7 @@ export async function updateViaBinaryAt(
 					expectedVersion,
 					// Verify the file this update just wrote, not whatever PATH resolves now.
 					verifyInstalledVersion: version => verifyBinaryUsable(targetPath, version),
+					force,
 				});
 				// The completion scripts on disk describe the version we just replaced, so
 				// every subcommand and flag this release adds would be missing from tab
@@ -1768,12 +1858,11 @@ export async function installRelease(
 	currentVersion: string = VERSION,
 	historyPath: string = getUpdateHistoryPath(),
 ): Promise<InstallReleaseResult> {
-	void force;
 	const target = await resolveUpdateTarget();
 	const result =
 		target.method === "source"
 			? await updateViaSourceAt(target.path, version, report)
-			: await updateViaBinaryAt(target.path, version, report);
+			: await updateViaBinaryAt(target.path, version, report, force);
 	if (version !== currentVersion) {
 		await recordVersionMove({ from: currentVersion, to: version, at: new Date().toISOString() }, historyPath);
 	}
@@ -1831,6 +1920,27 @@ export interface UpdateHistoryEntry {
 	to: string;
 	/** ISO 8601, so the record is readable without knowing the writer's locale. */
 	at: string;
+	status?: "updated" | "skipped";
+	reason?: string;
+}
+
+/**
+ * Append a skipped update event to the history file.
+ */
+export async function recordVersionSkip(
+	skip: { from: string; to: string; reason: string },
+	historyPath: string = getUpdateHistoryPath(),
+): Promise<void> {
+	await recordVersionMove(
+		{
+			from: skip.from,
+			to: skip.to,
+			at: new Date().toISOString(),
+			status: "skipped",
+			reason: skip.reason,
+		},
+		historyPath,
+	);
 }
 
 /**
@@ -1943,7 +2053,12 @@ export type AutoUpdateOutcome =
  * not a binary swap — attempting one would overwrite its launcher, so the
  * background updater leaves it alone instead of fail-looping.
  */
-export type AutoUpdateSkipReason = "another-process" | "recent-failure" | "source-install";
+export type AutoUpdateSkipReason =
+	| "another-process"
+	| "recent-failure"
+	| "source-install"
+	| "disabled"
+	| "custom-build";
 
 /**
  * Update to the latest release without printing anything or exiting.
@@ -1976,6 +2091,9 @@ export async function runAutoUpdate(
 		version: string,
 		reporter: typeof SILENT_UPDATE_REPORTER,
 	) => Promise<void> | Promise<InstallReleaseResult> = (version, reporter) => installRelease(version, false, reporter),
+	historyPath: string = getUpdateHistoryPath(),
+	settingsOverride?: { get: (path: SettingPath) => unknown },
+	isCustomBuildOverride?: () => boolean | Promise<boolean>,
 ): Promise<AutoUpdateOutcome> {
 	let release: ReleaseInfo;
 	if (knownRelease) {
@@ -1992,6 +2110,32 @@ export async function runAutoUpdate(
 	if (release.version === currentVersion) {
 		return { status: "up-to-date" };
 	}
+	if (isAutoUpdateDisabled(settingsOverride)) {
+		logger.info("Skipping automatic update: automatic updates are disabled", {
+			version: release.version,
+		});
+		await recordVersionSkip({ from: currentVersion, to: release.version, reason: "disabled" }, historyPath);
+		return { status: "skipped", version: release.version, reason: "disabled" };
+	}
+
+	let targetPath: string | undefined;
+	try {
+		targetPath = resolveVeyyonPath();
+	} catch {
+		// ignore
+	}
+
+	const isCustom = isCustomBuildOverride
+		? await isCustomBuildOverride()
+		: isCurrentProcessLocalOrCustom() || (targetPath ? await isBinaryLocalOrCustom(targetPath) : false);
+
+	if (isCustom) {
+		logger.info("Skipping automatic update: veyyon is a custom or local build", {
+			version: release.version,
+		});
+		await recordVersionSkip({ from: currentVersion, to: release.version, reason: "custom-build" }, historyPath);
+		return { status: "skipped", version: release.version, reason: "custom-build" };
+	}
 
 	// A source install updates via `git pull`, not a binary swap: a background
 	// self-update would overwrite its launcher, so skip it loudly instead of
@@ -2001,6 +2145,7 @@ export async function runAutoUpdate(
 		logger.info("Skipping automatic update: veyyon is installed from source (update with git pull)", {
 			version: release.version,
 		});
+		await recordVersionSkip({ from: currentVersion, to: release.version, reason: "source-install" }, historyPath);
 		return { status: "skipped", version: release.version, reason: "source-install" };
 	}
 

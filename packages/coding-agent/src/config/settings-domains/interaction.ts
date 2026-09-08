@@ -240,6 +240,17 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
+	"updates.auto": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "interaction",
+			group: "Startup & Updates",
+			label: "Automatic Updates (updates.auto)",
+			description: "Install a newer version in the background; off means updates only when you run `veyyon update`",
+		},
+	},
+
 	"startup.updateNotice": {
 		type: "boolean",
 		default: true,

@@ -113,6 +113,12 @@ const INSTALL_ID_FILE = "install-id";
 /** Version (e.g. "1.0.0") */
 export const VERSION: string = version;
 
+/**
+ * Build metadata tag embedded at compile time (e.g. "a19ab2a13-local").
+ * Empty or undefined for standard release builds.
+ */
+export const BUILD_TAG: string | undefined = process.env.VEYYON_BUILD_TAG || undefined;
+
 /** Minimum Bun version */
 export const MIN_BUN_VERSION: string = engines.bun.replace(/[^0-9.]/g, "");
 

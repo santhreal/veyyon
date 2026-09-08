@@ -12,7 +12,7 @@ import {
 import type { ParsedSlashCommand, SlashCommandResult, SlashCommandRuntime } from "../types";
 import { commandConsumed, errorMessage, parseSubcommand, usage } from "./parse";
 
-type TodoMutationVerb = "done" | "drop" | "rm";
+type TodoMutationVerb = "done" | "drop" | "rm" | "pending";
 
 interface TodoTaskMatch {
 	task: { content: string; status: string };
@@ -73,6 +73,8 @@ const TODO_HELP_TEXT = [
 	"  /todo done   [<task|phase>]        Mark task/phase/all completed",
 	"  /todo drop   [<task|phase>]        Mark task/phase/all abandoned",
 	"  /todo rm     [<task|phase>]        Remove task/phase/all",
+	"  /todo pending [<task|phase>]        Reset task/phase to pending",
+	"  /todo reset   [<task|phase>]        Reset task/phase to pending (alias for pending)",
 	"  /todo help                         Show this help",
 ].join("\n");
 
@@ -172,7 +174,13 @@ async function handleTodoMutationCommand(
 		}
 		const { phases } = applyOpsToPhases(current, [{ op: verb }]);
 		commitTodos(runtime, phases);
-		await runtime.output(verb === "done" ? "Marked all tasks completed." : "Marked all tasks abandoned.");
+		await runtime.output(
+			verb === "done"
+				? "Marked all tasks completed."
+				: verb === "drop"
+					? "Marked all tasks abandoned."
+					: "Reset all tasks to pending.",
+		);
 		return commandConsumed();
 	}
 
@@ -180,7 +188,14 @@ async function handleTodoMutationCommand(
 	if (taskHit) {
 		const { phases } = applyOpsToPhases(current, [{ op: verb, task: taskHit.task.content }]);
 		commitTodos(runtime, phases);
-		const label = verb === "done" ? "Marked completed" : verb === "drop" ? "Marked abandoned" : "Removed";
+		const label =
+			verb === "done"
+				? "Marked completed"
+				: verb === "drop"
+					? "Marked abandoned"
+					: verb === "pending"
+						? "Reset to pending"
+						: "Removed";
 		await runtime.output(`${label}: ${taskHit.task.content}`);
 		return commandConsumed();
 	}
@@ -194,7 +209,9 @@ async function handleTodoMutationCommand(
 				? `Marked phase ${phaseHit.name} completed.`
 				: verb === "drop"
 					? `Marked phase ${phaseHit.name} abandoned.`
-					: `Removed phase: ${phaseHit.name}`;
+					: verb === "pending"
+						? `Reset phase ${phaseHit.name} to pending.`
+						: `Removed phase: ${phaseHit.name}`;
 		await runtime.output(message);
 		return commandConsumed();
 	}
@@ -231,7 +248,9 @@ export async function handleTodoAcp(
 		case "done":
 		case "drop":
 		case "rm":
-			return await handleTodoMutationCommand(verb, rest, runtime);
+		case "pending":
+		case "reset":
+			return await handleTodoMutationCommand(verb === "reset" ? "pending" : verb, rest, runtime);
 		case "edit":
 			return usage(
 				"/todo edit requires the TUI editor; use /todo export then /todo import for non-interactive edits.",
@@ -243,7 +262,7 @@ export async function handleTodoAcp(
 			return commandConsumed();
 		default:
 			return usage(
-				"Unknown /todo subcommand.\nUse append, start, done, drop, rm, copy, export, import, edit, or help.",
+				"Unknown /todo subcommand.\nUse append, start, done, drop, rm, pending, reset, copy, export, import, edit, or help.",
 				runtime,
 			);
 	}

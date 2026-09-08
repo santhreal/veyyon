@@ -272,15 +272,18 @@ export function setAltScreenActive(active: boolean): void {
 
 const stdoutErrorHandlers = new Set<(err: Error) => void>();
 let stdoutErrorListenerInstalled = false;
+let stdoutDead = false;
 
 function onStdoutError(err: Error): void {
+	if (decideTerminalWriteFailure(err, 1) === "disable-fatal") stdoutDead = true;
 	for (const handler of stdoutErrorHandlers) handler(err);
 }
 
 function registerStdoutErrorHandler(handler: (err: Error) => void): () => void {
 	stdoutErrorHandlers.add(handler);
 	if (!stdoutErrorListenerInstalled) {
-		process.stdout.on("error", onStdoutError);
+		// Mark the terminal dead before postmortem starts synchronous restore.
+		process.stdout.prependListener("error", onStdoutError);
 		stdoutErrorListenerInstalled = true;
 	}
 	return () => {
@@ -392,7 +395,7 @@ export function emergencyTerminalRestore(): void {
 				osc11BackgroundOverridden = false;
 			}
 			terminal.showCursor();
-		} else if (terminalEverStarted && !isTerminalHeadless()) {
+		} else if (terminalEverStarted && !isTerminalHeadless() && !stdoutDead) {
 			// Blind restore only if we know a terminal was started but lost track of it
 			// This avoids writing escape sequences for non-TUI commands (grep, commit, etc.)
 			process.stdout.write(
@@ -1734,7 +1737,7 @@ export class ProcessTerminal implements Terminal {
 
 	#safeWrite(data: string): void {
 		if (this.#headless) return;
-		if (this.#dead) return;
+		if (this.#dead || stdoutDead) return;
 		// Skip control sequences when stdout isn't a TTY (piped output, tests, log
 		// files). They serve no purpose there and would surface as visible noise.
 		if (!process.stdout.isTTY) return;

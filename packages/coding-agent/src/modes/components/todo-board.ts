@@ -154,7 +154,10 @@ function collapsedTasks(phase: TodoPhase): TodoItem[] {
 	const closed = phase.tasks.filter(isClosed);
 	const open = phase.tasks.filter(task => !isClosed(task));
 	if (open.length === 0) return closed.slice(-ACTIVE_TASK_CAP);
-	const keep = new Set<TodoItem>([...closed.slice(-DONE_TASK_CAP), ...open.slice(0, ACTIVE_TASK_CAP)]);
+	const inProgress = open.filter(task => task.status === "in_progress");
+	const pending = open.filter(task => task.status !== "in_progress");
+	const openToKeep = [...inProgress, ...pending.slice(0, Math.max(0, ACTIVE_TASK_CAP - inProgress.length))];
+	const keep = new Set<TodoItem>([...closed.slice(-DONE_TASK_CAP), ...openToKeep]);
 	return phase.tasks.filter(task => keep.has(task));
 }
 
@@ -242,11 +245,31 @@ export function renderTodoBoardLines(phases: readonly TodoPhase[], options: Todo
 	// stage from the top. Roman numerals stay tied to the real phase index.
 	const baseIdx = options.expanded ? 0 : activeIdx;
 	const slice = options.expanded ? live.slice(baseIdx) : live.slice(baseIdx, baseIdx + 1 + SUBSEQUENT_PHASE_CAP);
+	const phaseLineRanges: Array<{ phase: TodoPhase; hasActiveWork: boolean; activeTaskLines: number[] }> = [];
+	let currentLine = 0;
 	const body = renderTreeList(
 		{
 			items: slice,
 			expanded: true,
-			renderItem: (phase, ctx) => phaseLines(phase, baseIdx + ctx.index + 1, baseIdx + ctx.index === activeIdx),
+			renderItem: (phase, ctx) => {
+				const isEarliestOpen = baseIdx + ctx.index === activeIdx;
+				const hasActiveWork = phase.tasks.some(
+					task => task.status === "in_progress" || (task.status === "pending" && options.owned.has(task.content)),
+				);
+				const lines = phaseLines(phase, baseIdx + ctx.index + 1, isEarliestOpen || hasActiveWork);
+				const start = currentLine;
+				currentLine += lines.length;
+				const tasks = options.expanded ? phase.tasks : collapsedTasks(phase);
+				const activeTaskLines: number[] = [];
+				for (let t = 0; t < tasks.length; t++) {
+					const task = tasks[t]!;
+					if (task.status === "in_progress" || (task.status === "pending" && options.owned.has(task.content))) {
+						activeTaskLines.push(start + 1 + t);
+					}
+				}
+				phaseLineRanges.push({ phase, hasActiveWork, activeTaskLines });
+				return lines;
+			},
 		},
 		theme,
 	);
@@ -256,21 +279,51 @@ export function renderTodoBoardLines(phases: readonly TodoPhase[], options: Todo
 		theme.bold(theme.fg("accent", "Todos")) +
 		(multiPhase ? theme.fg("dim", ` · phase ${activeIdx + 1}/${live.length}`) : "");
 
-	// The header is inside the row budget, and so is the overflow row when there
-	// is one, so `maxRows` is the height of the block rather than the height of
-	// its body. The tail is what goes: the rows are the active stage first, so
-	// what a trim drops is the stages furthest ahead of the work.
-	const budget = Math.max(1, options.maxRows - 1);
-	let shown = body;
-	let hidden = 0;
-	if (body.length > budget) {
-		shown = body.slice(0, Math.max(0, budget - 1));
-		hidden = body.length - shown.length;
+	// Active phases beyond the collapsed slice cap
+	const beyondCapActivePhases = !options.expanded
+		? live
+				.slice(baseIdx + 1 + SUBSEQUENT_PHASE_CAP)
+				.filter(phase =>
+					phase.tasks.some(
+						task =>
+							task.status === "in_progress" || (task.status === "pending" && options.owned.has(task.content)),
+					),
+				)
+		: [];
+
+	// The header is inside the row budget, and so is any overflow row, so
+	// `maxRows` is the height of the block rather than the height of its body.
+	const bodyBudget = Math.max(0, options.maxRows - 1);
+	const hasBeyondNotice = beyondCapActivePhases.length > 0;
+	const reserveNotice = (hasBeyondNotice || body.length > bodyBudget) && bodyBudget > 0;
+	const maxShown = reserveNotice ? bodyBudget - 1 : bodyBudget;
+	const shown = body.slice(0, maxShown);
+	const hidden = body.length - shown.length;
+
+	const unrenderedActivePhases: TodoPhase[] = [...beyondCapActivePhases];
+	for (const range of phaseLineRanges) {
+		if (!range.hasActiveWork) continue;
+		const hasVisibleActiveTask = range.activeTaskLines.some(lineIdx => lineIdx < maxShown);
+		if (!hasVisibleActiveTask) {
+			unrenderedActivePhases.push(range.phase);
+		}
 	}
+	const unrenderedSet = new Set(unrenderedActivePhases);
+	const orderedUnrendered = live.filter(phase => unrenderedSet.has(phase));
+	const hasActivePhaseNotice = orderedUnrendered.length > 0;
 
 	const lines = [`${railCell} ${header}`, ...shown.map(line => `${railCell} ${line}`.trimEnd())];
-	if (hidden > 0) {
-		lines.push(`${railCell} ${theme.fg("dim", boundedTodoPreviewText(`… ${hidden} more`, content))}`);
+	if (reserveNotice) {
+		if (hasActivePhaseNotice) {
+			const names = orderedUnrendered.map(p => p.name).join(", ");
+			const text =
+				hidden > 0
+					? `… ${orderedUnrendered.length} more active phase(s) (${names}) · ${hidden} more`
+					: `… ${orderedUnrendered.length} more active phase(s) (${names})`;
+			lines.push(`${railCell} ${theme.fg("accent", boundedTodoPreviewText(text, content))}`);
+		} else if (hidden > 0) {
+			lines.push(`${railCell} ${theme.fg("dim", boundedTodoPreviewText(`… ${hidden} more`, content))}`);
+		}
 	}
 	return ["", ...lines];
 }

@@ -313,6 +313,10 @@ export interface ToolSession {
 	 * sessions that do not persist; a no-op there.
 	 */
 	recordSubagentSpawn?: (record: SubagentSpawnRecord) => void;
+	/**
+	 * Hook invoked when a subagent completes, enabling automatic runtime topic replenishment.
+	 */
+	onSubagentComplete?: (record: SubagentSpawnRecord) => void | Promise<void>;
 	/** Get the ArtifactManager backing this session (shared across parent + subagents). */
 	getArtifactManager?: () => ArtifactManager | null;
 	/** Allocate a new artifact path and ID for session-scoped truncated output. */

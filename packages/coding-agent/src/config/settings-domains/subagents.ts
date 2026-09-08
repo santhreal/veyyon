@@ -28,6 +28,8 @@
  *     when named", and nobody could tell what the switch did.
  */
 
+import { parseConfiguredThinkingLevel } from "../../thinking";
+
 /**
  * One lane in {@link SUBAGENTS_SETTINGS}`["subagent.agents"]`, keyed at the top
  * level by agent name (`deep`, `scout`, a user-authored agent, …).
@@ -92,6 +94,49 @@ export interface SubagentLaneSettings {
 
 /** The top level of a lane chain is a lane like any other. */
 export type SubagentAgentSettings = SubagentLaneSettings;
+
+/** Validate every level before a hand-edited roster can reach spawn routing. */
+function validateLane(key: string, value: unknown): string | undefined {
+	const seen = new Set<object>();
+	let current = value;
+	let location = `subagent.agents.${key}`;
+	while (current !== undefined) {
+		if (current === null || typeof current !== "object" || Array.isArray(current)) {
+			return `${location}: expected a lane object`;
+		}
+		if (seen.has(current)) return `${location}: cyclic lane`;
+		seen.add(current);
+		const lane = current as Record<string, unknown>;
+		if (lane.enabled !== undefined && typeof lane.enabled !== "boolean") {
+			return `${location}.enabled: expected a boolean`;
+		}
+		if (
+			lane.model !== undefined &&
+			typeof lane.model !== "string" &&
+			!(Array.isArray(lane.model) && lane.model.every(model => typeof model === "string"))
+		) {
+			return `${location}.model: expected a model pattern or list of patterns`;
+		}
+		if (
+			lane.thinkingLevel !== undefined &&
+			(typeof lane.thinkingLevel !== "string" ||
+				(lane.thinkingLevel.trim() !== "" && parseConfiguredThinkingLevel(lane.thinkingLevel.trim()) === undefined))
+		) {
+			return `${location}.thinkingLevel: expected a configured effort level or blank`;
+		}
+		if (
+			lane.maxNestedSpawnDepth !== undefined &&
+			(typeof lane.maxNestedSpawnDepth !== "number" ||
+				!Number.isInteger(lane.maxNestedSpawnDepth) ||
+				lane.maxNestedSpawnDepth < -1)
+		) {
+			return `${location}.maxNestedSpawnDepth: expected -1 or a non-negative integer`;
+		}
+		current = lane.subagents;
+		location += ".subagents";
+	}
+	return undefined;
+}
 
 /**
  * The one bundled agent enabled out of the box: the end-to-end delegate.
@@ -243,6 +288,7 @@ export const SUBAGENTS_SETTINGS = {
 	"subagent.agents": {
 		type: "record",
 		default: {} as Record<string, SubagentAgentSettings>,
+		validateEntry: validateLane,
 		ui: {
 			tab: "subagents",
 			group: "Subagents",

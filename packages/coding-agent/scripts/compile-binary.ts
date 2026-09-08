@@ -31,6 +31,8 @@ export interface CodingAgentCompileOptions {
 	 * containing `import.meta.resolve`/`env`, oven-sh/bun#21097).
 	 */
 	readonly bytecode?: boolean;
+	/** Optional build metadata tag (e.g. "a19ab2a13-local"). Defaults to resolveBuildTag(). */
+	readonly buildTag?: string;
 }
 
 /**
@@ -96,6 +98,32 @@ function createYargsImportMetaResolvePatchPlugin(): Bun.BunPlugin {
 }
 
 /**
+ * Resolve build metadata tag (e.g. "a19ab2a13-local").
+ * Respects VEYYON_BUILD_TAG if set.
+ * Returns undefined if VEYYON_OFFICIAL_RELEASE is "1".
+ * Otherwise runs `git rev-parse --short HEAD` to derive a local build tag.
+ */
+export async function resolveBuildTag(repoRoot: string): Promise<string | undefined> {
+	if (Bun.env.VEYYON_BUILD_TAG) return Bun.env.VEYYON_BUILD_TAG;
+	if (Bun.env.VEYYON_OFFICIAL_RELEASE === "1") return undefined;
+	try {
+		const proc = Bun.spawn(["git", "rev-parse", "--short", "HEAD"], {
+			cwd: repoRoot,
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		const out = (await new Response(proc.stdout).text()).trim();
+		const exitCode = await proc.exited;
+		if (exitCode === 0 && out) {
+			return `${out}-local`;
+		}
+	} catch {
+		// git unavailable
+	}
+	return "local";
+}
+
+/**
  * Compile the coding-agent executable with its legacy Pi compatibility module
  * graph supplied by an in-memory build plugin rather than generated files.
  */
@@ -114,6 +142,7 @@ export async function compileCodingAgent(options: CodingAgentCompileOptions): Pr
 	if (options.skipBuiltinCodesign) {
 		Bun.env.BUN_NO_CODESIGN_MACHO_BINARY = "1";
 	}
+	const buildTag = options.buildTag ?? (await resolveBuildTag(options.repoRoot));
 	try {
 		const output = await Bun.build({
 			entrypoints: [options.entrypoint],
@@ -123,6 +152,8 @@ export async function compileCodingAgent(options: CodingAgentCompileOptions): Pr
 				"process.env.VEYYON_COMPILED": JSON.stringify("true"),
 				"process.env.VEYYON_TINY_TRANSFORMERS_VERSION": JSON.stringify(options.transformersVersion),
 				"process.env.VEYYON_DOCS_EMBED": JSON.stringify((await buildDocsIndexPayload()).payload),
+				"process.env.VEYYON_BUILD_TAG": JSON.stringify(buildTag ?? ""),
+				"process.env.VEYYON_BUILD_LOCAL": JSON.stringify(buildTag ? "true" : "false"),
 			},
 			// Whitespace and syntax minification are startup latency, not disk
 			// hygiene. Bun's standalone loader links the whole bytecode blob

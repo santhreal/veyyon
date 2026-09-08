@@ -12,6 +12,7 @@ import { EventLoopKeepalive } from "@veyyon/agent-core";
 import type { ImageContent } from "@veyyon/ai";
 import {
 	$env,
+	BUILD_TAG,
 	directoryExists,
 	errorMessage,
 	getLogPath,
@@ -632,17 +633,12 @@ async function runInteractiveMode(
 	versionCheckPromise
 		.then(async release => {
 			if (!release) return;
-			// With automatic updates off, all we do is say a version exists and let
-			// the user run `veyyon update` themselves.
-			if (!settings.get("startup.autoUpdate")) {
-				mode.showNewVersionNotification(release.version);
-				return;
-			}
 			// Install in the background, reusing the release the check already
-			// resolved so the launch makes one registry round trip, not two. The
-			// running process keeps the old version either way, so both outcomes
-			// tell the user what to do next.
-			const outcome = await runAutoUpdate(VERSION, release);
+			// resolved so the launch makes one registry round trip, not two.
+			// `runAutoUpdate` enforces the opt-out settings (`startup.autoUpdate`,
+			// `updates.auto`, `VEYYON_NO_AUTO_UPDATE`) and refuses to replace custom
+			// or local builds, recording any skip in update-history.
+			const outcome = await runAutoUpdate(VERSION, release, undefined, undefined, undefined, undefined, settings);
 			if (outcome.status === "updated") {
 				mode.showUpdateReadyNotification(outcome.version, outcome.warnings);
 			} else if (outcome.status === "failed") {
@@ -1338,7 +1334,8 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 	);
 	modelRegistryPromise.catch(() => {});
 	if (parsedArgs.version) {
-		writeStartupNotice(parsedArgs, `${VERSION}\n`);
+		const displayVersion = BUILD_TAG ? `${VERSION} (${BUILD_TAG})` : VERSION;
+		writeStartupNotice(parsedArgs, `${displayVersion}\n`);
 		process.exit(EXIT_OK);
 	}
 
