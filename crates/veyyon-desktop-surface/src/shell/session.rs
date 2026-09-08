@@ -10,8 +10,8 @@ use std::{cell::Cell, rc::Rc};
 use veyyon_desktop_kit::{Axis, Resizable, SpacingStep, input::Editor};
 use veyyon_desktop_tokens::DrawerPlacement;
 use veyyon_gpui::{
-	Context, Div, Entity, InteractiveElement, ParentElement, Pixels, Point, Styled, Window, div,
-	point, px,
+	Context, Div, Entity, FocusHandle, InteractiveElement, MouseButton, ParentElement, Pixels,
+	Point, Styled, Window, div, point, px,
 };
 
 use super::keys::bind_composer_keys;
@@ -42,6 +42,7 @@ pub fn session_surface(
 	laid_out: &LaidOut,
 	palette_anchor: Rc<Cell<Point<Pixels>>>,
 	viewport: &TranscriptViewportState,
+	transcript_focus: &FocusHandle,
 	reduced_motion: bool,
 	find_bar: Option<Div>,
 	window: &mut Window,
@@ -51,10 +52,16 @@ pub fn session_surface(
 	let composer_width = px(widths.composer_px);
 	let surface = &installed.surface;
 
-	// The retained list keeps older turns reachable and preserves each session's
-	// anchor.
+	// The retained list keeps older turns reachable and preserves each
+	// session's anchor.
+	//
+	// The body tracks the focus, so a press anywhere in it hands the keyboard
+	// to the transcript: the `Transcript` context reaches a keystroke only
+	// along the focus path, and the composer beside it holds the focus until
+	// something takes it (§5.14).
 	let mut body = div()
 		.key_context("Transcript")
+		.track_focus(transcript_focus)
 		.flex()
 		.flex_col()
 		.justify_end()
@@ -96,6 +103,37 @@ pub fn session_surface(
 		regions.push(Region::Drawer);
 	}
 
+	// A press inside the composer's box that missed the editor's own text area
+	// — the padding around it, the row of controls under it, the button that
+	// was pressed — left the draft blurred: the keyboard went nowhere, the
+	// next keystroke was dropped on the floor, and the composer's own chords
+	// stopped resolving because the `Composer` context left the focus path.
+	// The box hands the keyboard back to the editor whatever the press landed
+	// on (§5.4).
+	//
+	// It captures rather than bubbles: a control that answers the press stops
+	// propagation, and a bubble listener above it never runs. A control that
+	// wants the focus for itself still takes it, because it runs after this.
+	let composer_input = match editor {
+		Some(editor) => {
+			let focus = editor.read(cx).focus_handle().clone();
+			div()
+				.key_context("Composer")
+				.capture_any_mouse_down(move |event, window, app| {
+					if event.button == MouseButton::Left {
+						window.focus(&focus, app);
+						// gpui transfers focus to every focusable element under
+						// the pointer during the bubble phase, and the window
+						// root is focusable: without this the root takes the
+						// keyboard back one phase later and the draft is blurred
+						// by a press on its own controls.
+						window.prevent_default();
+					}
+				})
+		},
+		None => div().key_context("Composer"),
+	};
+
 	let column = div()
 		.relative()
 		.flex()
@@ -124,8 +162,7 @@ pub fn session_surface(
 				)))
 		}))
 		.child(bind_composer_keys(
-			div()
-				.key_context("Composer")
+			composer_input
 				.w_full()
 				.px(tokens.spacing(SpacingStep::S4))
 				.on_children_prepainted(move |children, _window, _cx| {

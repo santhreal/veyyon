@@ -91,12 +91,14 @@ fn expected_controls(state: &ShellState) -> usize {
 		}
 	}
 
-	// An empty contextual panel still has its docked split. A diff has a
-	// scroll area, three toolbar controls and one mode toggle per file.
+	// An empty contextual panel still has its docked split, and the panel's own
+	// container answers a press because that is what puts its chords on the
+	// focus path. A diff has a scroll area, three toolbar controls and one mode
+	// toggle per file.
 	let panel = if state.keymap.panel_collapsed {
 		0
 	} else {
-		2 + state.panel.tabs.len()
+		3 + state.panel.tabs.len()
 			+ if !state.panel.is_empty()
 				&& state.panel.active_tab == veyyon_desktop_surface::PanelTab::Diff
 			{
@@ -120,7 +122,12 @@ fn expected_controls(state: &ShellState) -> usize {
 	// target/editor, and the two tooltip-wrapped footer controls. A tooltip
 	// answers one rect, its anchor's: the tag is drawn on the deferred layer
 	// and is hit-tested for nothing.
-	let chrome = 1 + 3 + 1 + 6 + usize::from(state.connection.is_attached());
+	//
+	// Two more answer a press for the keyboard rather than for a control: the
+	// transcript body, which takes the focus its scope's chords ride on, and
+	// the composer box, which hands the focus back to the editor whatever the
+	// press landed on.
+	let chrome = 1 + 3 + 1 + 6 + 2 + usize::from(state.connection.is_attached());
 	let transcript = usize::from(!state.transcript.is_empty()) * 2
 		+ state
 			.transcript

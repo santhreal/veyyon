@@ -21,7 +21,9 @@ pub use tree_view::tree_view;
 pub use usage_view::usage_view;
 use veyyon_desktop_kit::{ColorRole, SpacingStep, TextRamp, TokenSet};
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
-use veyyon_gpui::{Context, InteractiveElement, IntoElement, ParentElement, Styled, div, px};
+use veyyon_gpui::{
+	Context, FocusHandle, InteractiveElement, IntoElement, ParentElement, Styled, div, px,
+};
 
 use crate::{
 	ShellView,
@@ -30,11 +32,18 @@ use crate::{
 };
 
 /// Builds the right panel at the given width with active tab content.
+///
+/// `focus` is the handle the panel takes when the pointer lands in it. The
+/// `Panel` scope's chords are bound against the `Panel` key context, and a
+/// context reaches a keystroke only along the focus path, so a panel that
+/// never takes the focus resolves none of them: the tab walk and the
+/// diff-mode toggle are listed in the keybindings page and do nothing.
 pub fn right_panel(
 	panel: &PanelContent,
 	width: f32,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
+	focus: &FocusHandle,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
 	if panel.tabs.is_empty() {
@@ -104,8 +113,12 @@ pub fn right_panel(
 		veyyon_desktop_model::DiffMode::Split => veyyon_desktop_model::DiffMode::Unified,
 	};
 
+	// The container tracks the focus, so a press anywhere inside it hands the
+	// keyboard to the panel and its context reaches the focus path (§5.14).
 	div()
 		.id("right-panel")
+		.key_context("Panel")
+		.track_focus(focus)
 		.on_action(cx.listener(move |view, _: &PreviousTab, _window, cx| {
 			view.dispatch(Intent::SelectTab(prev_idx), cx);
 		}))

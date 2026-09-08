@@ -42,6 +42,19 @@ fn with_raster_margin(bounds: Bounds<Pixels>) -> Bounds<Pixels> {
 	}
 }
 
+/// The box `bounds` covers with that margin taken back off, which is the
+/// extent the element occupied rather than the extent a repaint of it covers.
+fn without_raster_margin(bounds: Bounds<Pixels>) -> Bounds<Pixels> {
+	let margin = px(RASTER_MARGIN_PX);
+	Bounds {
+		origin: bounds.origin + veyyon_gpui::point(margin, margin),
+		size:   Size {
+			width:  bounds.size.width - margin * 2.0,
+			height: bounds.size.height - margin * 2.0,
+		},
+	}
+}
+
 use crate::model::ShellState;
 
 /// A region of the shell a state change can confine its repaint to.
@@ -92,6 +105,13 @@ impl LaidOut {
 	/// laid it out yet.
 	pub fn bounds(&self, region: Region) -> Option<Bounds<Pixels>> {
 		self.boxes.borrow().get(&region).copied()
+	}
+
+	/// The extent `region` occupied, which is the recorded box with the raster
+	/// margin taken back off: where a press has to land to reach the element,
+	/// rather than where a repaint of it has to paint.
+	pub fn drawn_bounds(&self, region: Region) -> Option<Bounds<Pixels>> {
+		self.bounds(region).map(without_raster_margin)
 	}
 
 	/// Records the box a region was just prepainted into. When the box differs

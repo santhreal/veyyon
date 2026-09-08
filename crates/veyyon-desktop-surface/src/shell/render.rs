@@ -206,6 +206,17 @@ pub fn render_shell(
 		.keymap
 		.find_open
 		.then(|| div().child(view.render_transcript_find_bar(&tokens, cx)));
+	// Both region handles are created before the surfaces that carry them and
+	// kept on the view, so a press focuses something the next frame tracks
+	// rather than a handle discarded with the frame that made it.
+	let transcript_focus = view
+		.transcript_focus
+		.get_or_insert_with(|| cx.focus_handle())
+		.clone();
+	let panel_focus = view
+		.panel_focus
+		.get_or_insert_with(|| cx.focus_handle())
+		.clone();
 	let session = session_surface(
 		view.state(),
 		view.composer(),
@@ -216,6 +227,7 @@ pub fn render_shell(
 		view.laid_out(),
 		view.palette_anchor(),
 		&view.transcript_viewport,
+		&transcript_focus,
 		view.rail_motion.is_reduced_motion(),
 		find_bar,
 		window,
@@ -231,7 +243,7 @@ pub fn render_shell(
 		// panel's own box is recorded from inside the split.
 		RightPanelPlacement::Inline { width_px } => {
 			let grip_px = f32::from(Resizable::handle_extent(&tokens));
-			let body = right_panel(panel, width_px - grip_px, panels, &tokens, cx);
+			let body = right_panel(panel, width_px - grip_px, panels, &tokens, &panel_focus, cx);
 			let tracked = view
 				.laid_out()
 				.track_children(div().h_full().w_full().flex().child(body), |index| {
@@ -272,7 +284,8 @@ pub fn render_shell(
 		RightPanelPlacement::Overlay { width_px } => {
 			column_regions.push(Some(Region::Panel));
 			let inset_px = f32::from(Sheet::inset(&tokens));
-			let body = right_panel(panel, inset_px.mul_add(-2.0, width_px), panels, &tokens, cx);
+			let body =
+				right_panel(panel, inset_px.mul_add(-2.0, width_px), panels, &tokens, &panel_focus, cx);
 			columns.child(session).child(
 				div()
 					.absolute()

@@ -13,8 +13,7 @@ use std::{collections::HashMap, time::Instant};
 use veyyon_desktop_kit::{ColorRole, TokenSet};
 use veyyon_desktop_tokens::QueueSurfaceTokens;
 use veyyon_gpui::{
-	Context, FocusHandle, InteractiveElement, IntoElement, MouseButton, ParentElement, Styled,
-	Window, div, px,
+	Context, FocusHandle, InteractiveElement, IntoElement, ParentElement, Styled, Window, div, px,
 };
 pub mod card;
 pub mod fill;
@@ -269,17 +268,13 @@ pub fn queue_rail(
 		.overflow_hidden()
 		.child(list_el);
 
-	let rail_focus = focus.clone();
+	// The rail tracks the focus, so a press anywhere in it -- a row, a header,
+	// the footer -- hands the keyboard to the rail and the `Queue` context
+	// reaches the focus path (§5.14).
 	div()
 		.id("queue-rail")
 		.key_context("Queue")
 		.track_focus(focus)
-		// A row's own click handler stops at selection, so the rail takes the
-		// focus itself: without it the `Queue` context never reaches the focus
-		// path and every chord the scope declares resolves to nothing.
-		.on_mouse_down(MouseButton::Left, move |_event, window, app| {
-			window.focus(&rail_focus, app);
-		})
 		.flex()
 		.flex_col()
 		.justify_between()

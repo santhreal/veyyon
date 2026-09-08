@@ -106,6 +106,14 @@ pub struct ShellView {
 	/// what puts the `Queue` key context on the focus path so the scope's
 	/// chords resolve (§5.14).
 	queue_focus:           Option<FocusHandle>,
+	/// The same for the right panel: the `Panel` scope's chords — the tab
+	/// walk and the diff-mode toggle — resolve against the `Panel` key
+	/// context, which reaches the focus path only while the panel holds the
+	/// focus (§5.14).
+	panel_focus:           Option<FocusHandle>,
+	/// And for the transcript column, whose scope carries the scroll chords,
+	/// the find bar and the block toggle (§5.14).
+	transcript_focus:      Option<FocusHandle>,
 	destination_focus:     Option<FocusHandle>,
 	general_settings_list: GeneralSettingsListState,
 	now_ms:                u64,
@@ -151,6 +159,8 @@ impl ShellView {
 			pending_anchor: None,
 			focus_handle: None,
 			queue_focus: None,
+			panel_focus: None,
+			transcript_focus: None,
 			destination_focus: None,
 			general_settings_list: GeneralSettingsListState::new(),
 			now_ms: 0,
