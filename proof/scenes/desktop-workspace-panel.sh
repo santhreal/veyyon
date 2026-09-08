@@ -61,7 +61,6 @@ COLUMN_W=$(( WIN_W - RAIL_W ))
 # the run bar and the column's bottom padding. A band guessed larger than that
 # reaches into the transcript, which is the one region a float IS entitled to
 # cover, so it reads a correct float as a panel over the draft.
-COMPOSER_H="${COMPOSER_BAND_H}"
 
 rail_region() { use_crop "${WIN_X}" "$(( WIN_Y + TITLEBAR_H ))" "${RAIL_W}" "$(( WIN_H - TITLEBAR_H ))"; }
 # A column spans the row under the titlebar; a float over the transcript ends
@@ -69,7 +68,7 @@ rail_region() { use_crop "${WIN_X}" "$(( WIN_Y + TITLEBAR_H ))" "${RAIL_W}" "$((
 # panel's own rectangle follows its placement.
 PANEL_H=$(( WIN_H - TITLEBAR_H ))
 if [ "${PANEL_MODE}" = "overlay" ]; then
-	PANEL_H=$(( WIN_H - TITLEBAR_H - COMPOSER_H ))
+	PANEL_H=$(( WIN_H - TITLEBAR_H - COMPOSER_BAND_H ))
 fi
 panel_region() { use_crop "$(( WIN_X + WIN_W - PANEL_W ))" "$(( WIN_Y + TITLEBAR_H ))" "${PANEL_W}" "${PANEL_H}"; }
 # The 24px strip the active tab is marked in (`panels.toml` `[tabs] height_px`),

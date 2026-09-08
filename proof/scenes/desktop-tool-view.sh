@@ -197,10 +197,10 @@ shot tool-card-keyboard-closed
 # which model wrote the turn, revealed while the keyboard is on it, and a
 # click on that name opens the usage tab. So a click is read three ways: the
 # disclosed card is the frame the keyboard already produced; ground and prose
-# leave the collapsed frame alone; anything else opened a surface, which the
-# panel chord puts back before the next row is tried. A stray change the
-# chord does not undo ends the take naming the row that did it, since no later
-# frame is comparable to the ones already taken.
+# leave the collapsed frame alone; anything else moved the surface, which is
+# put back and read back before the next row is tried. A stray change no
+# recovery undoes ends the take naming the row that did it and every reading
+# taken, since no later frame is comparable to the ones already taken.
 #
 # The step is smaller than the row, so no row is passed over, and the pointer
 # parks where the keyboard frames were taken so no hover state separates the
@@ -212,6 +212,30 @@ park_pointer() {
 	move_px "${TRANSCRIPT_X}" "${TRANSCRIPT_Y}"
 	pause 0.4
 }
+# PUTTING THE SURFACE BACK. A click that is neither the card nor ground leaves
+# one of three states, and which one it left is read back rather than assumed.
+# Escape dismisses an overlay. The click and `End` that took the baseline
+# restore a turn focus that a click on the ground moved to the scroll
+# container, which draws its own ring and reads as a few pixels per thousand.
+# The panel chord toggles the right panel, and it is a TOGGLE: a take that
+# reached for the chord first chorded a panel OPEN over a surface whose stray
+# change was a moved focus, and reported 460 per thousand where it expected
+# agreement. So the ladder runs first, the chord only after it, a chord that
+# did not help is undone, and each step states what it left.
+restore_collapsed() {
+	{
+		k "Escape"
+		pause 0.5
+		move_px "${TRANSCRIPT_X}" "${TRANSCRIPT_Y}"
+		click
+		pause 0.3
+		k "End"
+		pause 0.8
+		park_pointer
+	} >&2
+	screen_differs_from_shot_per_mille tool-card-collapsed
+}
+STRAY_FRAME="${SCENE_RUNTIME_DIR}/unexplained-stray.png"
 for step in $(seq 0 39); do
 	CARD_Y=$(( CROP_Y + 8 + step * 16 ))
 	[ "${CARD_Y}" -lt "${CARD_FLOOR}" ] || break
@@ -225,16 +249,21 @@ for step in $(seq 0 39); do
 		break
 	fi
 	STRAY_PER_MILLE="$(screen_differs_from_shot_per_mille tool-card-collapsed)"
-	if [ "${STRAY_PER_MILLE}" -gt "${IDENTICAL_PER_MILLE}" ]; then
-		k "ctrl+backslash"
-		pause 0.8
-		park_pointer
-		STRAY_PER_MILLE="$(screen_differs_from_shot_per_mille tool-card-collapsed)"
-		if [ "${STRAY_PER_MILLE}" -gt "${IDENTICAL_PER_MILLE}" ]; then
-			abandon_take "a-click-on-the-transcript-discloses-or-does-nothing" \
-				"the click at y=${CARD_Y} left ${STRAY_PER_MILLE} pixels per thousand changed after the panel chord put the surface back"
-		fi
-	fi
+	[ "${STRAY_PER_MILLE}" -gt "${IDENTICAL_PER_MILLE}" ] || continue
+	LADDER_PER_MILLE="$(restore_collapsed)"
+	[ "${LADDER_PER_MILLE}" -gt "${IDENTICAL_PER_MILLE}" ] || continue
+	k "ctrl+backslash"
+	pause 0.8
+	park_pointer
+	CHORD_PER_MILLE="$(screen_differs_from_shot_per_mille tool-card-collapsed)"
+	[ "${CHORD_PER_MILLE}" -gt "${IDENTICAL_PER_MILLE}" ] || continue
+	k "ctrl+backslash"
+	pause 0.8
+	UNDONE_PER_MILLE="$(restore_collapsed)"
+	[ "${UNDONE_PER_MILLE}" -gt "${IDENTICAL_PER_MILLE}" ] || continue
+	probe_frame "${STRAY_FRAME}"
+	abandon_take "a-click-on-the-transcript-discloses-or-does-nothing" \
+		"the click at y=${CARD_Y} left ${STRAY_PER_MILLE} pixels per thousand changed and the surface did not come back: the escape ladder left ${LADDER_PER_MILLE}, the panel chord ${CHORD_PER_MILLE}, undoing the chord ${UNDONE_PER_MILLE}; the frame it could not explain is at ${STRAY_FRAME}"
 done
 if [ "${CARD_OPENED}" = 0 ]; then
 	abandon_take "the-pointer-disclosed-the-card" \
