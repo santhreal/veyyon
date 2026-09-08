@@ -47,8 +47,12 @@ fn test_enum_iteration_exhausts_all_protocol_domains() {
 	let badge_count = BadgeKind::iter().count();
 	assert_eq!(badge_count, 8);
 
+	// The four placements a session is moved into. The rail's fifth section,
+	// `Unsent`, is derived from the drafts rather than placed, so it is a
+	// required state of its own and not a variant here.
 	let partition_count = QueuePartition::iter().count();
-	assert_eq!(partition_count, 5);
+	assert_eq!(partition_count, 4);
+	let derived_section_count = 1;
 
 	let row_shape_count = RowShape::iter().count();
 	assert_eq!(row_shape_count, 2);
@@ -64,6 +68,7 @@ fn test_enum_iteration_exhausts_all_protocol_domains() {
 		+ error_count
 		+ badge_count
 		+ partition_count
+		+ derived_section_count
 		+ row_shape_count
 		+ primitive_count;
 
