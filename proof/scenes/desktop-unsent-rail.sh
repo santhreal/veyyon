@@ -90,7 +90,6 @@ if [ "${WIN_W}" -le 800 ] || [ "${RAIL_W}" -le 0 ]; then
 	abandon_take "rail-drawn" "window width ${WIN_W}px has no queue rail"
 fi
 
-TITLEBAR_H=48
 CROP_X="${WIN_X}"
 CROP_Y=$(( WIN_Y + TITLEBAR_H + NAV_HEADER_PX ))
 CROP_W=$(( RAIL_W - 2 ))

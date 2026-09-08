@@ -447,18 +447,29 @@ produce a new host session before entering a draft. It records model-picker
 opening and dismissal, repeated palette transitions, and slash palette opening
 and dismissal. Set `SCENE_WIDTH=800` for the minimum-width case.
 
+Every desktop scene reads this preamble's frames back before it records its own,
+and ends the take naming the guard that failed: the draft reaching the composer,
+each overlay drawing over the transcript, each dismissal returning the transcript
+to the frame it opened over, and the draft surviving both. The reading is printed
+as `scene: draft <n>px, kept <n>px, moved <n>px, picker <n>/1000 open ...`.
+
 Use `proof/scenes/desktop-navigation.sh` with the same capture environment to
 exercise a completed host response, transcript paging, find, contextual panel
-transitions, and session creation through command search. Set
-`PROOF_LLM_BASE_URL` to an endpoint reachable from the recorder container.
+transitions, and session creation through command search. It reads back the model
+row entered, the card grown by an eighty-line draft, Home, a page, a find and its
+next match, the panel's two states, the command palette and the session its row
+made. Set `PROOF_LLM_BASE_URL` to an endpoint reachable from the recorder
+container.
 
 Use `proof/scenes/desktop-surface-navigation.sh` with the same capture environment
 to exercise command groups, focused Account and Settings pages, settings scrolling,
 parent navigation, draft-focus restoration, and queue action visibility.
 
 Use `proof/scenes/desktop-terminal.sh` to open the terminal drawer, focus its grid,
-and execute a shell command. Set `SCENE_WIDTH` to `800` and `1180` for overlaid and
-docked drawers.
+and execute a shell command. It reads back the drawer drawn over the session and
+the command answered inside it, so a withheld `Capability::Terminals` ends the
+take rather than publishing the session under both frame names. Set `SCENE_WIDTH`
+to `800` and `1180` for overlaid and docked drawers.
 
 Use `proof/scenes/desktop-tool-view.sh` to record a real tool call and disclose its
 card twice, once with `space` on the focused turn and once by clicking the card's

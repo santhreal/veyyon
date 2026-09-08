@@ -135,7 +135,7 @@ xdotool windowfocus --sync "${SCENE_WINDOW}"
 # The rows are read from the token files this checkout ships rather than
 # restated here, so a scene recorded at a new width crops what the product
 # actually drew instead of what one width happened to make true.
-read -r RAIL_W PANEL_MODE PANEL_W DRAWER_PLACEMENT LABELS COMPOSER_MAX_W GUTTER_PX SHEET_INSET COMPOSER_BAND_H TRANSCRIPT_MAX_W CARD_FOOT_PX CARD_PAD_H CARD_PAD_BOTTOM < <(
+read -r RAIL_W PANEL_MODE PANEL_W DRAWER_PLACEMENT LABELS COMPOSER_MAX_W GUTTER_PX SHEET_INSET COMPOSER_BAND_H TRANSCRIPT_MAX_W CARD_FOOT_PX CARD_PAD_H CARD_PAD_BOTTOM TITLEBAR_H < <(
 	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" "${WIN_W}" <<'PY'
 from pathlib import Path
 import sys
@@ -148,6 +148,7 @@ panels = tomllib.loads((tokens / "surface" / "panels.toml").read_text())["right_
 composer_tokens = tomllib.loads((tokens / "surface" / "composer.toml").read_text())
 composer = composer_tokens["geometry"]
 transcript = tomllib.loads((tokens / "surface" / "transcript.toml").read_text())["layout"]
+shell = tomllib.loads((tokens / "surface" / "shell.toml").read_text())
 # §5.4 measures the composer against the session surface it sits in, insetting
 # it by one spacing step on each side. Both numbers are authored, so the scene
 # reads them rather than deciding what a card should measure.
@@ -220,6 +221,7 @@ print(
     int(foot),
     int(scale["spacing"][composer["padding_horizontal"]]),
     int(scale["spacing"][composer["padding_bottom"]]),
+    int(shell["titlebar"]["height_px"]),
 )
 PY
 )
@@ -326,3 +328,87 @@ shot slash-palette-open
 k "Escape"
 pause 0.8
 shot slash-palette-dismissed
+
+# ─── What These Frames State ─────────────────────────────────────────────────
+# Six frames named for a draft, an overlay over it and the draft surviving the
+# overlay, and until this block every one of those claims was left to whoever
+# opened the gallery. An overlay that never opened, a draft the picker's own
+# focus swallowed, and a palette still on screen after Escape all publish a
+# frame that looks like the state it is named for.
+#
+# Two rectangles, because the session list prints each row's age: the composer
+# band a draft is typed into, and the session surface above it, which is the
+# transcript together with whatever an overlay or a panel draws over it. Every
+# scene sourcing this preamble reads its own frames through them.
+SESSION_REGION_X=$(( WIN_X + RAIL_W ))
+SESSION_REGION_W=$(( WIN_W - RAIL_W ))
+composer_band_region() {
+	use_crop "${SESSION_REGION_X}" "$(( WIN_Y + WIN_H - COMPOSER_BAND_H ))" \
+		"${SESSION_REGION_W}" "${COMPOSER_BAND_H}"
+}
+transcript_region() {
+	use_crop "${SESSION_REGION_X}" "$(( WIN_Y + TITLEBAR_H ))" \
+		"${SESSION_REGION_W}" "$(( WIN_H - TITLEBAR_H - COMPOSER_BAND_H ))"
+}
+
+# The ink the typing drew. Counted in pixels rather than per mille: a line of
+# 13px text inside a 110px band rounds to nothing.
+composer_band_region
+DRAFT_PX="$(shots_differ_pixels idle typed-draft)"
+if [ "${DRAFT_PX}" -lt 150 ]; then
+	abandon_take "the-draft-reached-the-composer" \
+		"the composer band changed ${DRAFT_PX} pixels while a prompt was typed, so the keystrokes went somewhere else"
+fi
+
+# An overlay is read over the transcript, which is the region a picker and a
+# slash palette both draw across. A per-mille floor, since a palette is a
+# surface rather than a control; a ceiling derived from the open reading, since
+# a dismissed overlay returns the region to the frame it opened over and an
+# empty session's transcript is otherwise still.
+#
+# Read before the band, and that order is part of the guard: a picker still on
+# screen reaches the footer row the band covers, so a band reading taken first
+# reports a moved draft for an overlay that never closed.
+OVERLAID_PER_MILLE=40
+transcript_region
+PICKER_OPEN="$(shots_differ_per_mille typed-draft model-picker-open)"
+if [ "${PICKER_OPEN}" -lt "${OVERLAID_PER_MILLE}" ]; then
+	abandon_take "the-model-picker-opened" \
+		"the transcript changed ${PICKER_OPEN}/1000 on primary-shift-m, under the ${OVERLAID_PER_MILLE} an overlay draws"
+fi
+PICKER_GONE="$(shots_differ_per_mille typed-draft model-picker-dismissed)"
+if [ "${PICKER_GONE}" -ge "$(( PICKER_OPEN / 4 ))" ]; then
+	abandon_take "the-model-picker-closed" \
+		"the transcript is ${PICKER_GONE}/1000 from the frame the picker opened over, against ${PICKER_OPEN}/1000 while it was open"
+fi
+
+# The draft after the overlay closed, against the empty composer it was typed
+# into and against the frame it was typed in. Both readings are needed: a
+# cleared draft leaves the band back at idle, and a draft the overlay retyped
+# or shifted leaves it at neither.
+composer_band_region
+KEPT_PX="$(shots_differ_pixels idle model-picker-dismissed)"
+if [ "${KEPT_PX}" -lt "$(( DRAFT_PX / 2 ))" ]; then
+	abandon_take "the-draft-outlived-the-picker" \
+		"the band holds ${KEPT_PX} pixels of ink against the ${DRAFT_PX} the typing drew, so the model picker took the draft with it"
+fi
+MOVED_PX="$(shots_differ_pixels typed-draft model-picker-dismissed)"
+if [ "${MOVED_PX}" -gt "$(( DRAFT_PX / 4 ))" ]; then
+	abandon_take "the-draft-came-back-unchanged" \
+		"${MOVED_PX} pixels of the band differ from the frame the draft was typed in, over the ${DRAFT_PX} the typing drew"
+fi
+
+transcript_region
+SLASH_OPEN="$(shots_differ_per_mille model-picker-dismissed slash-palette-open)"
+if [ "${SLASH_OPEN}" -lt "${OVERLAID_PER_MILLE}" ]; then
+	abandon_take "a-slash-opened-the-commands" \
+		"the transcript changed ${SLASH_OPEN}/1000 when the draft opened with a slash, under the ${OVERLAID_PER_MILLE} an overlay draws"
+fi
+SLASH_GONE="$(shots_differ_per_mille model-picker-dismissed slash-palette-dismissed)"
+if [ "${SLASH_GONE}" -ge "$(( SLASH_OPEN / 4 ))" ]; then
+	abandon_take "the-slash-palette-closed" \
+		"the transcript is ${SLASH_GONE}/1000 from the frame the palette opened over, against ${SLASH_OPEN}/1000 while it was open"
+fi
+echo "scene: draft ${DRAFT_PX}px, kept ${KEPT_PX}px, moved ${MOVED_PX}px," \
+	"picker ${PICKER_OPEN}/1000 open ${PICKER_GONE}/1000 closed," \
+	"slash ${SLASH_OPEN}/1000 open ${SLASH_GONE}/1000 closed" >&2

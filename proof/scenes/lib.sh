@@ -390,15 +390,6 @@ scene_terminal_alive() {
 # on an edit block, ran past an hour, and published two byte-identical frames under two
 # names. Abandoning at the first miss costs one ceiling, and the reason file is what the
 # host reads to decide whether the scene or the model is at fault.
-# True while the window the session handed the scene still exists. The X session
-# exports SCENE_WINDOW; the Wayland one has no window id and no xdotool, so an
-# unanswerable question is answered "alive" and changes no message.
-scene_terminal_alive() {
-	[ -n "${SCENE_WINDOW:-}" ] || return 0
-	command -v xdotool >/dev/null 2>&1 || return 0
-	xdotool getwindowgeometry "${SCENE_WINDOW}" >/dev/null 2>&1
-}
-
 abandon_take() {
 	local guard="$1" reason="$2"
 	# A take whose terminal is gone was not a scene mistake: the product exited and

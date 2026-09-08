@@ -51,17 +51,16 @@ source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 # Every comparison names one region, because the session list prints each row's
 # age and the composer blinks a caret: two frames a second apart differ outside
 # the region under test whatever that region did.
-# RAIL_W, PANEL_MODE, PANEL_W and DRAWER_PLACEMENT are resolved from the
-# breakpoint rows by the helper this scene sources, so the regions below follow
-# the shed at whatever width the take is recorded at (§5.7).
+# RAIL_W, PANEL_MODE, PANEL_W, DRAWER_PLACEMENT and TITLEBAR_H are resolved
+# from the token files by the helper this scene sources, so the regions below
+# follow the shed at whatever width the take is recorded at (§5.7).
 COLUMN_X=$(( WIN_X + RAIL_W ))
 COLUMN_W=$(( WIN_W - RAIL_W ))
-TITLEBAR_H=48
-# The composer's own band, authored in `composer.toml` and resolved by the
-# helper: the card at rest, the gap under it, the run bar and the column's
-# bottom padding. A band guessed larger than that reaches into the transcript,
-# which is the one region a float IS entitled to cover, so it reads a correct
-# float as a panel over the draft.
+# The composer's own band and the transcript above it come from the preamble,
+# which resolves both from `composer.toml`: the card at rest, the gap under it,
+# the run bar and the column's bottom padding. A band guessed larger than that
+# reaches into the transcript, which is the one region a float IS entitled to
+# cover, so it reads a correct float as a panel over the draft.
 COMPOSER_H="${COMPOSER_BAND_H}"
 
 rail_region() { use_crop "${WIN_X}" "$(( WIN_Y + TITLEBAR_H ))" "${RAIL_W}" "$(( WIN_H - TITLEBAR_H ))"; }
@@ -83,8 +82,6 @@ panel_tabs_region() {
 		"$(( WIN_Y + TITLEBAR_H + SHEET_INSET ))" "$(( PANEL_W - 2 * SHEET_INSET ))" 24
 }
 column_region() { use_crop "${COLUMN_X}" "$(( WIN_Y + TITLEBAR_H ))" "${COLUMN_W}" "$(( WIN_H - TITLEBAR_H ))"; }
-composer_region() { use_crop "${COLUMN_X}" "$(( WIN_Y + WIN_H - COMPOSER_H ))" "${COLUMN_W}" "${COMPOSER_H}"; }
-transcript_region() { use_crop "${COLUMN_X}" "$(( WIN_Y + TITLEBAR_H ))" "${COLUMN_W}" "$(( WIN_H - TITLEBAR_H - COMPOSER_H ))"; }
 
 # A surface that opened or closed repaints a large share of its region; two
 # settled frames of one state measure a couple of pixels per thousand apart on
@@ -149,7 +146,7 @@ fi
 # takes no width. A column, by contrast, reflows the composer, which the card
 # edge below measures.
 if [ "${PANEL_MODE}" = "overlay" ]; then
-	composer_region
+	composer_band_region
 	COMPOSER_LIT="$(shots_differ_per_mille session-only panel-docked)"
 	if [ "${FLOAT_WAS_MODAL}" = 1 ]; then
 		if [ "${COMPOSER_LIT}" -le "${IDENTICAL_PER_MILLE}" ]; then
@@ -234,7 +231,7 @@ t "the panel is docked and this still reaches the draft"
 pause 0.8
 shot panel-draft
 
-composer_region
+composer_band_region
 DRAFT_PIXELS="$(shots_differ_pixels panel-docked panel-draft)"
 if [ "${DRAFT_PIXELS}" -lt "${TYPED_PIXELS}" ]; then
 	abandon_take "the-composer-takes-a-keystroke-under-a-docked-panel" \
@@ -346,7 +343,7 @@ else
 	shot composer-edge-draft
 	EDGE_MARK=composer-edge-draft
 
-	composer_region
+	composer_band_region
 	EDGE_DRAFT="$(shots_differ_pixels panel-after-chord composer-edge-draft)"
 	if [ "${SCENE_ARM:-after}" = "before" ]; then
 		if [ "${EDGE_DRAFT}" -ge "${TYPED_PIXELS}" ]; then
@@ -364,7 +361,7 @@ k "ctrl+j"
 pause 1.5
 shot drawer-open
 
-composer_region
+composer_band_region
 DRAWER_DREW="$(shots_differ_per_mille "${EDGE_MARK}" drawer-open)"
 if [ "${DRAWER_DREW}" -lt "${DREW_PER_MILLE}" ]; then
 	abandon_take "the-drawer-covered-the-lower-edge" \
