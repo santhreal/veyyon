@@ -355,6 +355,13 @@ Markdown, HTML, and JSON exports read as the same format opened from the tree.
 Opening a file replaces a displayed export. The **File** tab is present without
 file browsing when an export is the only document.
 
+The panel docks as a resizable column beside the transcript. Below 980px it
+floats at the trailing edge over the transcript, behind a blurred scrim. A
+float covers the transcript alone: the session queue, the cards above the
+composer, the composer and the run bar keep their colour, their presses and
+the keyboard, so a prompt typed with the panel open is drawn where it is
+typed. A float takes its height from the transcript.
+
 Click the panel to focus it for the keyboard.
 
 | Shortcut | Action |
