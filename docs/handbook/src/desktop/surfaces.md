@@ -543,6 +543,20 @@ SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
   proof/docker/record-native.sh proof/scenes/desktop-settings-keybinding.sh
 ```
 
+Use `proof/scenes/desktop-unsent-rail.sh` to leave an unsubmitted draft in an
+inactive session and measure the rail's inked bounding box when the draft is in
+the active session and after switching to another session. Record the other arm
+with a build of this tree that holds the derived section back, since the change
+is inside the executable alone:
+
+```sh
+SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
+  proof/scenes/desktop-unsent-rail.sh
+SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
+  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
+  proof/docker/record-native.sh proof/scenes/desktop-unsent-rail.sh
+```
+
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
 The [capture requirements](../foundations/verification.md) specify paired static
 frames and animated clips. Headless scene PNGs do not replace native captures.
