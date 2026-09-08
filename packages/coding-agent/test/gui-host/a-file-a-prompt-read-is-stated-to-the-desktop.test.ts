@@ -22,9 +22,9 @@
  * covered by `a-prompt-submitted-from-the-desktop-runs-a-real-turn.test.ts`.
  */
 
+import { describe, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { describe, expect, test } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { TempDir } from "@veyyon/utils";
 import { agentMessageToTranscriptEntry } from "../../src/gui-host/transcript-conversion";
@@ -58,7 +58,8 @@ function blocksOf(message: FileMentionMessage): ContentBlock[] {
 }
 
 function mentionOf(block: ContentBlock | undefined): Extract<ContentBlock, { FileMention: unknown }>["FileMention"] {
-	if (!block || !("FileMention" in block)) throw new Error(`expected a FileMention block, got ${JSON.stringify(block)}`);
+	if (!block || !("FileMention" in block))
+		throw new Error(`expected a FileMention block, got ${JSON.stringify(block)}`);
 	return block.FileMention;
 }
 

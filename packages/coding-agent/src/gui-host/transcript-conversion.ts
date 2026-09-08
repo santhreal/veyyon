@@ -182,8 +182,7 @@ function mentionUnavailableReason(file: MentionFile): string | null {
  * size, one refused as binary, and one whose body a replica never received.
  */
 function mapFileMentions(message: AgentMessage): ContentBlock[] {
-	const files: readonly MentionFile[] =
-		"files" in message && Array.isArray(message.files) ? message.files : [];
+	const files: readonly MentionFile[] = "files" in message && Array.isArray(message.files) ? message.files : [];
 	const blocks: ContentBlock[] = [];
 	for (const file of files) {
 		if (typeof file?.path !== "string") continue;

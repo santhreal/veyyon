@@ -165,6 +165,12 @@ style. Branch and compaction summaries have distinct labels and a separating
 line. Execution output includes its shell or Python label. Transcript search
 matches annotation labels and recorded content.
 
+An `@path` in a prompt reads that file, and each file read is drawn on the
+operator's turn beside the prompt text as one collapsed row. The row states the
+path with its line count and size, or why there is no body: too large to read,
+binary file, or content not replicated to a collab guest. A mentioned image
+states its pixel dimensions and expands to the picture.
+
 Vertical spacing has four steps. Consecutive event lines run with no gap between
 them. Blocks of one kind sit 4px apart. A change of kind starts the next group
 8px down. Turns sit 16px apart. A run of tool calls therefore reads as one band
