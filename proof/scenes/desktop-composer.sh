@@ -48,6 +48,25 @@ baseline = set(json.loads(baseline_path.read_text())) if mode != "before" else s
 created_path = Path(os.environ["SCENE_RUNTIME_DIR"]) / "created-session.json"
 created_id = json.loads(created_path.read_text()) if mode == "finished" else None
 deadline = time.monotonic() + (90 if mode == "finished" else 10)
+latest_row = None
+
+
+def report_provider_error(row):
+    # A failed turn carries the provider's own message in the transcript rather than in
+    # the session index, and a take is diagnosed from the recorder's log after the fact.
+    # A transcript that cannot be read is not the failure being reported, so it stays
+    # quiet rather than replacing the status this probe stopped on.
+    if not row:
+        return
+    try:
+        with Path(row["path"]).open() as transcript:
+            for entry_line in transcript:
+                message = json.loads(entry_line).get("message", {})
+                if message.get("role") == "assistant" and message.get("errorMessage"):
+                    print(f"Native provider error: {message['errorMessage']}", file=sys.stderr)
+    except (OSError, ValueError):
+        pass
+
 while time.monotonic() < deadline:
     try:
         with socket.socket(socket.AF_UNIX) as connection:
@@ -76,17 +95,20 @@ while time.monotonic() < deadline:
                             raise SystemExit(0)
                         if mode == "finished":
                             current = next((row for row in sessions["value"] if row["id"] == created_id), None)
+                            latest_row = current
                             last_error = (
                                 f"session status={current.get('status')}, messages={current.get('message_count', 0)}"
                                 if current else "created session missing from host snapshot"
                             )
-                            if current and current.get("status") in {"Error", "Aborted", "Interrupted"}:
-                                with Path(current["path"]).open() as transcript:
-                                    for entry_line in transcript:
-                                        entry = json.loads(entry_line)
-                                        message = entry.get("message", {})
-                                        if message.get("role") == "assistant" and message.get("errorMessage"):
-                                            print(f"Native provider error: {message['errorMessage']}", file=sys.stderr)
+                            # A session whose last entry is an assistant turn holding an
+                            # unanswered tool call reads as `Interrupted`, and that is the state
+                            # every turn that calls a tool passes through while the tool runs. A
+                            # scene that read it as terminal abandoned a take of a prompt the
+                            # model chose to answer with a tool. Only `Error` and `Aborted` end
+                            # the wait; a turn that stays `Interrupted` ends on the deadline
+                            # below, which states the status it stopped at.
+                            if current and current.get("status") in {"Error", "Aborted"}:
+                                report_provider_error(current)
                                 raise SystemExit(f"Native turn ended with status {current['status']}")
                             if current and current.get("message_count", 0) >= minimum_messages and current.get("status") == "Complete":
                                 print("native turn completed with persisted transcript messages")
@@ -95,6 +117,7 @@ while time.monotonic() < deadline:
     except (OSError, ValueError, RuntimeError) as error:
         last_error = str(error)
     time.sleep(0.1)
+report_provider_error(latest_row)
 raise SystemExit(f"Native session readiness timed out ({mode}): {locals().get('last_error', 'no new session')}")
 PY
 }
