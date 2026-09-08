@@ -53,7 +53,9 @@ import time
 profile = os.environ.get("VEYYON_PROFILE") or "default"
 endpoint = Path.home() / ".veyyon" / "profiles" / profile / "agent" / "gui-host.sock"
 created = json.loads((Path(os.environ["SCENE_RUNTIME_DIR"]) / "created-session.json").read_text())
-request = json.dumps({"id": 1, "action": "OpenSession", "payload": {"session": created}}) + "\n"
+# A host action is externally tagged: the unit variants are a bare string and
+# this one carries its own value, never a separate `payload` field.
+request = json.dumps({"id": 1, "action": {"OpenSession": {"session": created}}}) + "\n"
 deadline = time.monotonic() + 30
 while time.monotonic() < deadline:
     try:
@@ -67,7 +69,11 @@ while time.monotonic() < deadline:
                     line = stream.readline(8 * 1024 * 1024 + 1)
                     if not line or len(line) > 8 * 1024 * 1024:
                         raise RuntimeError("missing or oversized host frame")
-                    transcript = json.loads(line).get("Snapshot", {}).get("Transcript")
+                    frame = json.loads(line)
+                    failure = frame.get("RequestFailed")
+                    if failure:
+                        raise RuntimeError(f"host refused OpenSession: {failure['error']}")
+                    transcript = frame.get("Snapshot", {}).get("Transcript")
                     if not transcript:
                         continue
                     blocks = sum(
@@ -78,10 +84,10 @@ while time.monotonic() < deadline:
                     )
                     print(blocks)
                     raise SystemExit(0)
-    except (OSError, ValueError, RuntimeError):
-        pass
+    except (OSError, ValueError, RuntimeError) as error:
+        last = str(error)
     time.sleep(0.2)
-raise SystemExit("the host sent no transcript frame within 30s")
+raise SystemExit(f"the host sent no transcript frame within 30s ({locals().get('last', 'no reply')})")
 PY
 }
 
@@ -142,10 +148,17 @@ case "${SCENE_ARM:-after}" in
 esac
 
 # ─── Disclosing One Row ──────────────────────────────────────────────────────
-# The row's y depends on how much prose the model wrote around it, so it is
-# found by clicking upward from just above the composer rather than by
-# arithmetic, and each click is measured against the collapsed frame.
-ROW_X=$(( CROP_X + 16 ))
+# A mention row is right-aligned to the transcript column, whatever width the
+# prompt's own bubble takes, so the column's trailing edge is the one x that
+# lands inside every row. The y depends on how much prose the model wrote
+# around it, so it is found by clicking upward from just above the composer,
+# each click measured against the collapsed frame.
+if (( WIN_W >= 980 )); then
+	COLUMN_RIGHT=$(( WIN_X + 256 + (WIN_W - 256 - 768) / 2 + 768 ))
+else
+	COLUMN_RIGHT=$(( WIN_X + WIN_W - 32 ))
+fi
+ROW_X=$(( COLUMN_RIGHT - 40 ))
 ROW_OPENED=0
 for step in $(seq 0 15); do
 	ROW_Y=$(( WIN_Y + WIN_H - 150 - step * 24 ))
