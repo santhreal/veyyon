@@ -105,6 +105,14 @@ pub fn card_stack(
 			.child(
 				div()
 					.h(px(line))
+					// The row is a clip, not a shrink. A flex child yields its
+					// height by default, so a collapsed row of one line holding
+					// three of them handed each a third of a line: a native take
+					// photographed `1 more waiting` with the first folded name
+					// cut through the middle of its glyphs underneath it. Every
+					// line keeps the height the token authors and the row's own
+					// `overflow_hidden` decides how many of them are seen.
+					.flex_shrink_0()
 					.flex()
 					.items_center()
 					.child(format!("{} more waiting", hidden.len())),

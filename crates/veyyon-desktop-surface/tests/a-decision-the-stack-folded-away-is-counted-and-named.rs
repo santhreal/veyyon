@@ -17,7 +17,12 @@
 //!    Both directions are asserted, at a card count under the cap and over it,
 //!    so a row drawn unconditionally fails as loudly as a row never drawn.
 //! 2. The collapsed height drifting off the token, or scaling with what it
-//!    holds. The token is read at run time and the row is measured against it.
+//!    holds. The token is read at run time and the row is measured against it,
+//!    and separately every line the fold draws is read from the row's own text
+//!    inset and required to sit one authored line below the one over it, with
+//!    the first folded name at or past the row's lower edge. A row that shrank
+//!    its lines to share the one row keeps the authored box and draws a cut
+//!    name under the count, packing the runs closer than the line.
 //! 3. The open height not accounting for what is folded: it is asserted to be
 //!    one line per hidden decision plus the count's own, for one, two and three
 //!    hidden decisions, so a row that opens by a constant passes at one and
@@ -135,6 +140,33 @@ fn runs_within(captured: &Captured, row: BoxBounds) -> Vec<BoxBounds> {
 		.collect()
 }
 
+/// The lines the fold draws from its own text inset downward: the count first,
+/// then one for each folded decision, whether or not the row's box contains
+/// them.
+///
+/// The inset is what identifies them. Reading the row's box instead is what
+/// hides the defect this is here for, since a line the row squeezed rather
+/// than clipped hangs past the row's lower edge and a containment filter
+/// discards it. The composer under the fold and the cards over it draw at
+/// their own insets, so their runs start at another edge and drop out.
+fn fold_lines(captured: &Captured, row: BoxBounds, lines: usize, line: f32) -> Vec<BoxBounds> {
+	let mut runs: Vec<BoxBounds> = text_boxes(captured)
+		.into_iter()
+		.filter(|run| {
+			run.top >= row.top - 0.5
+				&& run.top <= row.top + line * lines as f32
+				&& run.left >= row.left - 0.5
+				&& run.right <= row.right + 0.5
+		})
+		.collect();
+	runs.sort_by(|left, right| left.top.total_cmp(&right.top));
+	let Some(first) = runs.first().copied() else {
+		return Vec::new();
+	};
+	runs.retain(|run| (run.left - first.left).abs() < 0.5);
+	runs
+}
+
 /// The cards region's box, as the frame just laid it out.
 fn cards_region(session: &mut HeadlessSession<'_, ShellView>) -> BoxBounds {
 	let bounds = session
@@ -188,6 +220,66 @@ fn the_fold_is_one_token_line_however_many_it_holds() {
 			 {}px",
 			row.height(),
 			geometry.stack_overflow_collapsed_height_px
+		);
+	}
+}
+
+/// A collapsed fold states the count and nothing else. The row is one line
+/// tall whatever it holds, so its own height cannot say whether the lines
+/// inside it were CLIPPED or SQUEEZED into it: a flex child yields its height
+/// by default, and a row of one line holding three of them handed each a third
+/// of a line. The frame drawn from that is the count with the first folded name
+/// cut through the middle of its glyphs underneath it, which is how a native
+/// take found it, and every height assertion above passes on it.
+#[test]
+fn the_collapsed_fold_holds_the_count_alone_and_clips_the_rest() {
+	let tokens = load_bundled_tokens().expect("the bundled tokens load");
+	let geometry = &tokens.surface.attached_cards;
+	let cap = geometry.stack_max_visible;
+	let line = geometry.stack_overflow_collapsed_height_px;
+
+	for hidden in 1..=3 {
+		let mut cx = headless_context().expect("a headless renderer is required");
+		let mut session = open_session(&mut cx, state_with(cap + hidden), WINDOW_W, WINDOW_H);
+		let rest = session.frame().expect("the shell renders at rest");
+		let cards = cards_region(&mut session);
+		let row = fold_row(&rest, cards).expect("the stack folds what it cannot show");
+
+		let runs = runs_within(&rest, row);
+		assert_eq!(
+			runs.len(),
+			1,
+			"the collapsed fold holding {hidden} decision(s) draws the count and nothing else inside \
+			 its own box; got {runs:?}"
+		);
+
+		let lines = fold_lines(&rest, row, 1 + hidden, line);
+		assert_eq!(
+			lines.len(),
+			1 + hidden,
+			"the fold draws the count and one line for each of the {hidden} decision(s) it holds, all \
+			 at the row's own text inset; got {lines:?}"
+		);
+		assert!(
+			lines[0].height() <= line + 0.5,
+			"the count keeps the line the token authors rather than a share of it: {}px against \
+			 {line}px",
+			lines[0].height()
+		);
+		for pair in lines.windows(2) {
+			let pitch = pair[1].top - pair[0].top;
+			assert!(
+				(pitch - line).abs() < 1.0,
+				"the folded lines keep the {line}px line they are authored at and leave the row by its \
+				 lower edge; packed {pitch}px apart they were shrunk to share one row, which draws a \
+				 cut line of the next name under the count"
+			);
+		}
+		assert!(
+			lines[1].top >= row.bottom - 0.5,
+			"the first folded line starts at or past the row's lower edge, where the row clips it: it \
+			 starts {}px above it",
+			row.bottom - lines[1].top
 		);
 	}
 }
