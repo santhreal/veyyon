@@ -5,9 +5,9 @@ use crate::{
 	connection::{ConnectionState, RequestId, SessionId, Versioned},
 	domain::{
 		AgentView, AuthFlowView, ChangesView, ContentMatchesView, ContextBreakdownView, ExportView,
-		FileContentView, FileTreeView, KeybindingView, McpServerView, ModelsView,
-		ProcessLogsChunk, ProcessView, ProviderView, QueuedPromptsView, SearchResultsView,
-		SettingsView, TerminalOutputChunk, TerminalView, ThemesView, UsageView,
+		FileContentView, FileTreeView, KeybindingView, McpServerView, ModelsView, ProcessLogsChunk,
+		ProcessView, ProviderView, QueuedPromptsView, SearchResultsView, SettingsView,
+		TerminalOutputChunk, TerminalView, ThemesView, UsageView,
 	},
 	error::BackendError,
 	interaction::PendingDecisions,

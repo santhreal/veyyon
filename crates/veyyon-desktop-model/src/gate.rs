@@ -70,7 +70,6 @@ pub const fn action_to_capability(action: HostActionKind) -> Capability {
 		HostActionKind::SetThinkingLevel => Capability::Models,
 		HostActionKind::RefreshProviders => Capability::Providers,
 		HostActionKind::StartProviderAuth => Capability::Authentication,
-		HostActionKind::RefreshAuth => Capability::Authentication,
 		HostActionKind::SubmitAuthSecret => Capability::Authentication,
 		HostActionKind::OpenAuthUrl => Capability::Authentication,
 		HostActionKind::CancelAuthFlow => Capability::Authentication,

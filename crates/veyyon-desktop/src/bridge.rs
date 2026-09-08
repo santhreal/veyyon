@@ -45,7 +45,6 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::ProcessLogs
 		| HostActionKind::RefreshModels
 		| HostActionKind::RefreshProviders
-		| HostActionKind::RefreshAuth
 		| HostActionKind::RefreshMcp
 		| HostActionKind::LoadSettings
 		| HostActionKind::LoadThemes

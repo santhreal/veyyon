@@ -198,12 +198,9 @@ pub enum HostAction {
 		level: String,
 	},
 
-	// Auth and Providers family (7 actions)
+	// Auth and Providers family (6 actions)
 	RefreshProviders,
 	StartProviderAuth {
-		provider: String,
-	},
-	RefreshAuth {
 		provider: String,
 	},
 	SubmitAuthSecret {
@@ -250,8 +247,8 @@ pub enum HostAction {
 	LoadThemes,
 	LoadKeybindings,
 	SetKeybinding {
-		binding: String,
-		command: String,
+		action: String,
+		keys:   Vec<String>,
 	},
 
 	// Diagnostics and Usage family (5 actions)
@@ -324,7 +321,6 @@ impl HostAction {
 			Self::SetThinkingLevel { .. } => HostActionKind::SetThinkingLevel,
 			Self::RefreshProviders => HostActionKind::RefreshProviders,
 			Self::StartProviderAuth { .. } => HostActionKind::StartProviderAuth,
-			Self::RefreshAuth { .. } => HostActionKind::RefreshAuth,
 			Self::SubmitAuthSecret { .. } => HostActionKind::SubmitAuthSecret,
 			Self::OpenAuthUrl { .. } => HostActionKind::OpenAuthUrl,
 			Self::CancelAuthFlow { .. } => HostActionKind::CancelAuthFlow,

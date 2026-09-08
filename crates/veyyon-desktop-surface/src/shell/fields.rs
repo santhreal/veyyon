@@ -1,18 +1,24 @@
-//! The editors behind every field a surface draws besides the composer and
-//! the palette search: the secret a provider is waiting on, and the value of
-//! a setting whose kind is text (§8.25).
+//! The registry behind every field a surface draws besides the composer and
+//! the palette search (§8.25).
+//!
+//! It states which field an editor belongs to, what a submit of it sends, and
+//! the one editor entity each field retains across frames.
 //!
 //! An element is rebuilt every frame, so a field drawn from a value carries no
 //! keystroke: what a submit reads back out of one is the value it was
-//! constructed with. An editable field therefore resolves through
-//! [`ShellView::setting_field_editor`] or [`ShellView::secret_field_editor`],
-//! which create the editor entity once, subscribe to it, and hand back the
-//! same handle on every later frame.
+//! constructed with. The constructors are in [`editors`], and each resolves
+//! through [`ShellView::field_editor`], which creates the editor entity once,
+//! subscribes to it, and hands back the same handle on every later frame.
+
+mod editors;
 
 use serde_json::Value;
-use veyyon_desktop_kit::input::{Editor, EditorEvent, EditorMode};
-use veyyon_desktop_model::{AuthFlowState, SettingKind};
-use veyyon_gpui::{AppContext, Context, Entity, SharedString, Window};
+use veyyon_desktop_kit::{
+	KeyChord,
+	input::{Editor, EditorEvent, EditorMode},
+};
+use veyyon_desktop_model::AuthFlowState;
+use veyyon_gpui::{AppContext, Context, Entity, SharedString};
 
 use crate::{Intent, ShellView, attach::ConnectionPhase};
 
@@ -27,6 +33,10 @@ pub enum FieldKey {
 	Setting(String),
 	/// The in-place name editor for the session with this row id.
 	SessionRename(u64),
+	/// The alternatives bound to the keymap action this name states.
+	Keybinding(String),
+	/// The description of the task the Agents page spawns.
+	TaskPrompt,
 }
 
 /// What a field's submit sends.
@@ -40,6 +50,11 @@ enum Commit {
 	SettingJson,
 	/// The text is the new session title.
 	SessionRename(u64),
+	/// The text is the comma-separated alternatives bound to the keymap
+	/// action the field's key names.
+	Keybinding,
+	/// The text is the task a background subagent is given.
+	Task,
 }
 
 /// A retained field: its editor, and what a submit of it sends.
@@ -66,103 +81,38 @@ struct FieldSpec {
 #[derive(Clone, Default)]
 pub struct FieldSlots {
 	/// The editor for the secret a provider is waiting on, when one is.
-	pub secret: Option<Entity<Editor>>,
+	pub secret:      Option<Entity<Editor>>,
+	/// The editor for each keymap action the host reports a binding for,
+	/// paired with the action it rebinds.
+	pub keybindings: Vec<(String, Entity<Editor>)>,
+	/// The editor for the task the Agents page spawns.
+	pub task:        Option<Entity<Editor>>,
+}
+
+impl FieldSlots {
+	/// The editor that rebinds `action`, and `None` where the host reports
+	/// no binding for it.
+	#[must_use]
+	pub fn keybinding(&self, action: &str) -> Option<Entity<Editor>> {
+		self
+			.keybindings
+			.iter()
+			.find(|(name, _)| name == action)
+			.map(|(_, editor)| editor.clone())
+	}
 }
 
 impl ShellView {
-	/// The retained editor for the secret a provider is waiting on: created
-	/// when a flow asks for one, dropped when no flow does, so the next flow
-	/// starts from an empty field.
-	pub fn secret_field_editor(&mut self, cx: &mut Context<Self>) -> Option<Entity<Editor>> {
-		if self.pending_secret_provider().is_none() {
-			self.field_editors.remove(&FieldKey::AuthSecret);
-			return None;
-		}
-		Some(self.field_editor(
-			FieldSpec {
-				key:         FieldKey::AuthSecret,
-				commit:      Commit::Secret,
-				placeholder: "API key or token".into(),
-				mask:        true,
-				multiline:   false,
-				initial:     String::new(),
-			},
-			cx,
-		))
-	}
-
-	/// The retained editor for the value of the setting `key`, holding
-	/// `current` until the operator types into it. A value the host reports
-	/// while the field is unfocused replaces what the field draws; one
-	/// reported mid-edit does not, so a snapshot never eats a keystroke.
-	pub fn setting_field_editor(
-		&mut self,
-		key: &str,
-		kind: SettingKind,
-		current: &str,
-		window: &Window,
-		cx: &mut Context<Self>,
-	) -> Entity<Editor> {
-		let json = !matches!(kind, SettingKind::String);
-		let editor = self.field_editor(
-			FieldSpec {
-				key:         FieldKey::Setting(key.to_owned()),
-				commit:      if json {
-					Commit::SettingJson
-				} else {
-					Commit::SettingText
-				},
-				placeholder: if json {
-					"JSON value".into()
-				} else {
-					SharedString::default()
-				},
-				mask:        false,
-				multiline:   json,
-				initial:     current.to_owned(),
-			},
-			cx,
-		);
-		let focused = editor.read(cx).focus_handle().is_focused(window);
-		if !focused && editor.read(cx).text() != current {
-			let current = current.to_owned();
-			editor.update(cx, |editor, cx| editor.set_text(current, cx));
-		}
-		editor
-	}
-
-	/// The retained editor for renaming the session `session_id`, holding
-	/// `current` until the operator edits it.
-	pub fn session_rename_field_editor(
-		&mut self,
-		session_id: u64,
-		current: &str,
-		window: &Window,
-		cx: &mut Context<Self>,
-	) -> Entity<Editor> {
-		let editor = self.field_editor(
-			FieldSpec {
-				key:         FieldKey::SessionRename(session_id),
-				commit:      Commit::SessionRename(session_id),
-				placeholder: "Session name".into(),
-				mask:        false,
-				multiline:   false,
-				initial:     current.to_owned(),
-			},
-			cx,
-		);
-		let focused = editor.read(cx).focus_handle().is_focused(window);
-		if !focused && editor.read(cx).text() != current {
-			let current = current.to_owned();
-			editor.update(cx, |editor, cx| editor.set_text(current, cx));
-		}
-		editor
-	}
-
 	/// Sends the secret the field holds, for the button beside it. The
 	/// provider comes from the flow in progress, which is what asked.
 	pub fn submit_pending_secret(&mut self, cx: &mut Context<Self>) {
 		self.commit_field(&FieldKey::AuthSecret, cx);
+	}
+
+	/// Runs the task the Agents page's field holds, for the button beside
+	/// it. The text is the task, and a submit empties the field.
+	pub fn submit_task_prompt(&mut self, cx: &mut Context<Self>) {
+		self.commit_field(&FieldKey::TaskPrompt, cx);
 	}
 
 	/// The editor a drawn field registered under `key`, without creating one:
@@ -179,11 +129,6 @@ impl ShellView {
 	/// secret field: the screen exists to be typed into.
 	pub const fn take_field_focus(&mut self) -> Option<Entity<Editor>> {
 		self.field_focus.take()
-	}
-
-	/// The editors the settings pages draw their own fields from.
-	pub fn field_slots(&mut self, cx: &mut Context<Self>) -> FieldSlots {
-		FieldSlots { secret: self.secret_field_editor(cx) }
 	}
 
 	/// The provider waiting on a secret, named by the transport's phase or by
@@ -290,6 +235,30 @@ impl ShellView {
 				self.clear_refusal();
 				self.dispatch(Intent::RenameSession { session: id, title }, cx);
 			},
+			(Commit::Keybinding, FieldKey::Keybinding(action)) => {
+				let text = editor.read(cx).text().to_owned();
+				let keys = parse_chords(&text);
+				// §9.3: a chord the keymap grammar cannot read is refused
+				// where it was typed, never written to the keymap as a
+				// binding no key press would ever match.
+				if keys.is_empty() {
+					self.refuse_field(&format!("{action} needs at least one chord, as in ctrl-enter"));
+					return;
+				}
+				let action = action.clone();
+				self.clear_refusal();
+				self.dispatch(Intent::KeybindingChanged { action, keys }, cx);
+			},
+			(Commit::Task, FieldKey::TaskPrompt) => {
+				let task = editor.read(cx).text().trim().to_owned();
+				if task.is_empty() {
+					self.refuse_field("A task needs a description to run");
+					return;
+				}
+				editor.update(cx, |editor, cx| editor.set_text(String::new(), cx));
+				self.clear_refusal();
+				self.dispatch(Intent::SpawnTask(task), cx);
+			},
 			_ => {},
 		}
 	}
@@ -317,6 +286,22 @@ impl ShellView {
 					.map_or_else(|| self.state.title.clone(), |r| r.title.clone());
 				editor.update(cx, |editor, cx| editor.set_text(initial, cx));
 			},
+			FieldKey::Keybinding(action) => {
+				let initial = self
+					.active_settings()
+					.and_then(|settings| {
+						settings
+							.keybindings
+							.iter()
+							.find(|binding| &binding.action == action)
+					})
+					.map(|binding| binding.keys.join(", "))
+					.unwrap_or_default();
+				editor.update(cx, |editor, cx| editor.set_text(initial, cx));
+			},
+			FieldKey::TaskPrompt => {
+				editor.update(cx, |editor, cx| editor.set_text(String::new(), cx));
+			},
 		}
 		self.clear_refusal();
 	}
@@ -336,4 +321,18 @@ impl ShellView {
 			self.set_notice(None);
 		}
 	}
+}
+
+/// The chords a keybinding field's text states: the alternatives separated by
+/// commas, each one token in the keymap grammar. A part that is blank, or one
+/// whose modifiers are not followed by a key, is dropped, so a field that
+/// states nothing readable yields no chord and is refused rather than sent.
+fn parse_chords(text: &str) -> Vec<String> {
+	text
+		.split(',')
+		.map(str::trim)
+		.filter(|chord| !chord.is_empty() && !chord.contains(char::is_whitespace))
+		.filter(|chord| !KeyChord::parse(chord).key.is_empty())
+		.map(str::to_owned)
+		.collect()
 }

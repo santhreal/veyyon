@@ -19,10 +19,10 @@ use veyyon_desktop_model::{
 	AgentView, AuthFlowState, AuthFlowView, ChangeScope, ChangeStatus, ChangedFile, ChangesView,
 	ContentMatch, ContentMatchesView, ContextBreakdownView, ContextCategory, ExportView,
 	FileContentView, FileKind, FileNode, FileTreeView, HostEvent, InputModality, KeybindingView,
-	McpServerStatus, McpServerView, ModelRef, ModelView, ModelsView, ProcessView,
-	ProviderView, SearchResultsView, SessionId, SettingEntry, SettingKind, SettingsView,
-	SnapshotSection, SnapshotSectionKind, Store, TerminalStatus, TerminalView, ThemeView,
-	ThemesView, UsageTotals, UsageView, reduce,
+	McpServerStatus, McpServerView, ModelRef, ModelView, ModelsView, ProcessView, ProviderView,
+	SearchResultsView, SessionId, SettingEntry, SettingKind, SettingsView, SnapshotSection,
+	SnapshotSectionKind, Store, TerminalStatus, TerminalView, ThemeView, ThemesView, UsageTotals,
+	UsageView, reduce,
 };
 
 fn changed(path: &str, status: ChangeStatus) -> ChangedFile {

@@ -598,6 +598,25 @@ shots_differ_per_mille() { # <shot-a> <shot-b>
 	frames_differ_per_mille "${SCENE_OUT}/${SCENE_NAME}-$1.png" "${SCENE_OUT}/${SCENE_NAME}-$2.png"
 }
 
+# How many pixels of an explicit crop differ, for a probe whose subject is not
+# what the scene's shots are judged on: an overlay that draws outside the crop,
+# a control row beside it. `CROP_*` stays as the scene set it, so a readiness
+# probe cannot move what the evidence frames measure.
+frames_differ_pixels_at() { # <png-a> <png-b> <crop>
+	local scratch="${SCENE_RUNTIME_DIR}/frame-compare" differing
+	mkdir -p "${scratch}"
+	magick "$1" -crop "$3" +repage "${scratch}/at-a.png"
+	magick "$2" -crop "$3" +repage "${scratch}/at-b.png"
+	differing="$(compare -metric AE "${scratch}/at-a.png" "${scratch}/at-b.png" null: 2>&1 || true)"
+	case "${differing}" in
+		'' | *[!0-9]*)
+			abandon_take "frames-comparable" \
+				"comparing $(basename "$1") with $(basename "$2") over $3 reported '${differing}' instead of a pixel count"
+			;;
+	esac
+	echo "${differing}"
+}
+
 # What is on screen now, against a frame taken earlier. This is how a scene
 # waits for a state only the window reports: a click that disclosed a card
 # changed the transcript, a first streamed token changed it, and a click that
@@ -610,6 +629,12 @@ screen_differs_from_frame_per_mille() { # <png>
 
 screen_differs_from_shot_per_mille() { # <shot>
 	screen_differs_from_frame_per_mille "${SCENE_OUT}/${SCENE_NAME}-$1.png"
+}
+
+screen_differs_from_frame_pixels_at() { # <png> <crop>
+	local probe="${SCENE_RUNTIME_DIR}/frame-compare/probe-at.png"
+	probe_frame "${probe}"
+	frames_differ_pixels_at "$1" "${probe}" "$2"
 }
 
 # Wait out a turn. Every wait in every scene passes through here, so one knob

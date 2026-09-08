@@ -152,6 +152,20 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 				entry.value = entry.default.clone();
 			}
 		},
+		Intent::KeybindingChanged { action, keys } => {
+			if let Some(Overlay::Settings(settings)) = &mut state.overlay
+				&& let Some(binding) = settings
+					.keybindings
+					.iter_mut()
+					.find(|binding| binding.action == *action)
+			{
+				binding.keys.clone_from(keys);
+				"user".clone_into(&mut binding.source);
+			}
+		},
+		// The agents listing is the host's: a spawned task appears in it when
+		// the host answers with it, never on the request that asked for it.
+		Intent::SpawnTask(_) => {},
 		Intent::SelectTheme(theme) => {
 			if let Some(Overlay::Settings(settings)) = &mut state.overlay
 				&& let Some(themes) = &mut settings.themes

@@ -45,7 +45,7 @@ pub fn render_page_body(
 		},
 		SettingsPage::Themes => themes::render_themes_page(state, controls, geometry, tokens, cx),
 		SettingsPage::Keybindings => {
-			keybindings::render_keybindings_page(state, controls, geometry, tokens)
+			keybindings::render_keybindings_page(state, fields, controls, geometry, tokens)
 		},
 		SettingsPage::Providers => {
 			providers::render_providers_page(state, controls, geometry, tokens, cx)
@@ -55,7 +55,7 @@ pub fn render_page_body(
 		},
 		SettingsPage::Mcp => mcp::render_mcp_page(state, controls, geometry, tokens, cx),
 		SettingsPage::Extensions => {
-			extensions::render_extensions_page(state, controls, geometry, tokens, cx)
+			extensions::render_extensions_page(state, fields, controls, geometry, tokens, cx)
 		},
 		SettingsPage::Diagnostics => {
 			diagnostics::render_diagnostics_page(state, controls, geometry, tokens, cx)

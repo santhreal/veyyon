@@ -343,6 +343,18 @@ Each focused page has its own command name: `/account manager`, `/account login`
 `/hotkeys`, `/mcp`, `/agents`, `/usage`, `/context`, `/settings themes`, and
 `/settings diagnostics`.
 
+A Keybindings row is a field holding the chords bound to that action,
+separated by commas. `Enter` rebinds the action, `Escape` restores what the
+host reports. A field that states no readable chord is refused in the
+attention strip and nothing is sent, so an action is never left bound to a
+chord no key press matches. A host that reports no keybindings shows the
+shipped defaults as chips, read-only.
+
+The Agents page runs a background task from the field above its listing:
+`Enter`, or Run beside it, spawns the task as a subagent of the active
+session and empties the field. The task appears in the listing when the host
+answers with it.
+
 ## Terminal and process output
 
 Click the terminal grid to focus it. Terminal input is sent to the host without

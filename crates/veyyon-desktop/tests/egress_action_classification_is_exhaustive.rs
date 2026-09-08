@@ -4,8 +4,8 @@ use veyyon_desktop::{ActionClassification, classify_action};
 use veyyon_desktop_model::HostActionKind;
 
 #[test]
-fn all_seventy_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equality() {
-	assert_eq!(HostActionKind::ALL.len(), 70, "HostActionKind::ALL must contain exactly 70 actions");
+fn all_sixty_nine_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equality() {
+	assert_eq!(HostActionKind::ALL.len(), 69, "HostActionKind::ALL must contain exactly 69 actions");
 
 	let mut ephemeral_actions = HashSet::new();
 	let mut mutation_actions = HashSet::new();
@@ -21,9 +21,9 @@ fn all_seventy_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equal
 		}
 	}
 
-	assert_eq!(ephemeral_actions.len() + mutation_actions.len(), 70);
+	assert_eq!(ephemeral_actions.len() + mutation_actions.len(), 69);
 
-	// Pinned exact set of 19 ephemeral read-only actions (§8.13)
+	// Pinned exact set of 18 ephemeral read-only actions (§8.13)
 	let expected_ephemeral: HashSet<HostActionKind> = [
 		HostActionKind::ListSessions,
 		HostActionKind::LoadTranscript,
@@ -36,7 +36,6 @@ fn all_seventy_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equal
 		HostActionKind::ProcessLogs,
 		HostActionKind::RefreshModels,
 		HostActionKind::RefreshProviders,
-		HostActionKind::RefreshAuth,
 		HostActionKind::RefreshMcp,
 		HostActionKind::LoadSettings,
 		HostActionKind::LoadThemes,
@@ -52,6 +51,6 @@ fn all_seventy_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equal
 		ephemeral_actions, expected_ephemeral,
 		"ephemeral action set must match exact pinned definition; any change must be recorded"
 	);
-	assert_eq!(ephemeral_actions.len(), 19);
+	assert_eq!(ephemeral_actions.len(), 18);
 	assert_eq!(mutation_actions.len(), 51);
 }

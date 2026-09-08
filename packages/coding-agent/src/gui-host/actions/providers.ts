@@ -217,27 +217,6 @@ const handleStartProviderAuth: ActionHandler<StartProviderAuthPayload | undefine
 	ctx.reply.success();
 };
 
-interface RefreshAuthPayload {
-	provider?: string;
-}
-
-const handleRefreshAuth: ActionHandler<RefreshAuthPayload | undefined> = async (ctx, _payload) => {
-	try {
-		const providers = buildProvidersView(await ctx.authStorage());
-		ctx.reply.snapshot({
-			Providers: providers,
-		});
-		ctx.reply.success();
-	} catch (error) {
-		ctx.reply.failure({
-			scope: "Provider",
-			code: "PROVIDER_REFRESH_FAILED",
-			message: errorMessage(error),
-			retryable: false,
-		});
-	}
-};
-
 interface SubmitAuthSecretPayload {
 	provider?: string;
 	secret?: string;
@@ -371,7 +350,6 @@ const handleRetryAuthFlow: ActionHandler<RetryAuthFlowPayload | undefined> = asy
 export const providersActionHandlers: ActionHandlersMap = {
 	RefreshProviders: handleRefreshProviders as ActionHandler<never>,
 	StartProviderAuth: handleStartProviderAuth as ActionHandler<never>,
-	RefreshAuth: handleRefreshAuth as ActionHandler<never>,
 	SubmitAuthSecret: handleSubmitAuthSecret as ActionHandler<never>,
 	OpenAuthUrl: handleOpenAuthUrl as ActionHandler<never>,
 	CancelAuthFlow: handleCancelAuthFlow as ActionHandler<never>,

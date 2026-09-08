@@ -213,7 +213,7 @@ A pre-change build reads the token and theme files it was authored against. §9.
 rejects a key a loader does not know, and a key a later commit made required is
 absent from an older reader, so this checkout's token files fail to load in that
 build. The base's own files come with it, in `PROOF_TOKENS_DIR` and
-`PROOF_THEMES_DIR` as container paths under `/repo`:
+`PROOF_THEMES_DIR` as container paths under the mounted repository root:
 
 ```sh
 SCENE_ARM=before PROOF_BASE_REF=HEAD \

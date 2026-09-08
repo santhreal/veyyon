@@ -1,8 +1,8 @@
 //! Extensions settings page body rendering (§5.9).
 
 use veyyon_desktop_kit::{
-	Avatar, AvatarSize, Badge, Button, ButtonSize, InteractiveState, Row, SpacingStep, TintRole,
-	TokenSet,
+	Avatar, AvatarSize, Badge, Button, ButtonSize, InteractiveState, Row, SpacingStep, TextField,
+	TintRole, TokenSet,
 };
 use veyyon_desktop_model::SurfaceId;
 use veyyon_desktop_tokens::SettingsSurfaceTokens;
@@ -15,11 +15,13 @@ use crate::{
 		SettingsState,
 		row::{empty_state_row, setting_row},
 	},
+	shell::fields::FieldSlots,
 };
 
 /// Renders the Extensions and subagents configuration page rows.
 pub fn render_extensions_page(
 	state: &SettingsState,
+	fields: &FieldSlots,
 	controls: &ControlStates,
 	geometry: &SettingsSurfaceTokens,
 	tokens: &TokenSet,
@@ -32,6 +34,35 @@ pub fn render_extensions_page(
 		.flex_col()
 		.gap(veyyon_gpui::px(geometry.row_gap))
 		.children(ext_error);
+
+	// The page spawns a task as well as listing what is running: the field
+	// is the task, and it stays whether or not anything is running yet.
+	if let Some(editor) = fields.task.clone() {
+		let surface = SurfaceId::TaskSpawnButton;
+		let av = controls.availability(&surface);
+		let (_, _, allowed) = availability_style(&av, tokens);
+		let mut run = Button::new("Run").size(ButtonSize::Small);
+		if allowed {
+			run = run.on_click(cx.listener(|view, _e: &ClickEvent, _w, cx| {
+				view.submit_task_prompt(cx);
+			}));
+		} else {
+			run = run.state(InteractiveState::Disabled);
+		}
+		let control = Row::new(SpacingStep::S2)
+			.child(TextField::new(editor).id("task-prompt"))
+			.child(run);
+		container = container
+			.children(hairline_for(controls, &surface, tokens, cx))
+			.child(setting_row(
+				"Background task",
+				Some("Runs as a subagent of the active session"),
+				control,
+				&av,
+				geometry,
+				tokens,
+			));
+	}
 
 	if state.extensions.is_empty() {
 		return container.child(empty_state_row(

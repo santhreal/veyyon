@@ -34,6 +34,18 @@
 # and SCENE_LIB already initialized. Record it with:
 #
 #   SCENE_MOTION_FLOOR=9 proof/docker/record-native.sh proof/scenes/desktop-content-search.sh
+#
+# and its other arm against a build of the base ref, which has no such lookup:
+# no command opens one and no mode lists a matched line, so that arm carries the
+# three marks as the base draws them and asserts the absence in that direction.
+# The change is entirely inside the executable, so the arm holds no source, and
+# the base's own token and theme files come with the build that reads them:
+#
+#   SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=9 \
+#     PROOF_NATIVE_BEFORE_BINARY=<base-build> \
+#     PROOF_TOKENS_DIR=/repo/.internal/before-tokens/<name>/crates/veyyon-desktop-tokens/tokens \
+#     PROOF_THEMES_DIR=/repo/.internal/before-tokens/<name>/crates/veyyon-desktop-tokens/themes \
+#     proof/docker/record-native.sh proof/scenes/desktop-content-search.sh
 set -euo pipefail
 
 source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
@@ -61,21 +73,10 @@ FIELD_BOTTOM=$(( WIN_Y + 48 + (WIN_H - 48) / 2 - 14 ))
 ROWS_CROP="${CROP_W}x$(( WIN_Y + WIN_H - FIELD_BOTTOM ))+${CROP_X}+${FIELD_BOTTOM}"
 
 differing_pixels() { # <shot-a> <shot-b> [<crop>]
-	local scratch="${SCENE_RUNTIME_DIR}/frame-compare"
-	mkdir -p "${scratch}"
-	local crop="${3:-${CROP_W}x${CROP_H}+${CROP_X}+${CROP_Y}}" differing
-	magick "${SCENE_OUT}/${SCENE_NAME}-$1.png" -crop "${crop}" +repage "${scratch}/a.png"
-	magick "${SCENE_OUT}/${SCENE_NAME}-$2.png" -crop "${crop}" +repage "${scratch}/b.png"
-	# `compare` exits non-zero whenever the two images differ at all, which is
-	# the ordinary case here, so only the count it prints is read.
-	differing="$(compare -metric AE "${scratch}/a.png" "${scratch}/b.png" null: 2>&1 || true)"
-	case "${differing}" in
-		'' | *[!0-9]*)
-			abandon_take "frames-comparable" \
-				"comparing $1 with $2 reported '${differing}' instead of a pixel count"
-			;;
-	esac
-	printf '%s' "${differing}"
+	frames_differ_pixels_at \
+		"${SCENE_OUT}/${SCENE_NAME}-$1.png" \
+		"${SCENE_OUT}/${SCENE_NAME}-$2.png" \
+		"${3:-${CROP_W}x${CROP_H}+${CROP_X}+${CROP_Y}}"
 }
 
 # ─── The Mode Is Opened By Its Command ───────────────────────────────────────
@@ -90,11 +91,40 @@ k "ctrl+a"
 pause 0.2
 k "BackSpace"
 pause 0.3
-t "/search"
-pause 0.8
-k "Return"
-pause 1.0
+
+# ─── Reaching The Mode, Or Failing To ────────────────────────────────────────
+# At the base there is no workspace-content lookup: no command opens it and no
+# mode lists a matched line. Both arms carry the same three marks and type the
+# same characters; the base arm never presses return, since a `/search` the
+# palette does not list is a prompt rather than a command. Its own control is
+# the command list that `/` opens and `search` collapses, which states the
+# palette was live rather than the window being blank.
+ARM="${SCENE_ARM:-after}"
+mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
+COMMANDS_LISTED="${SCENE_RUNTIME_DIR}/frame-compare/commands-listed.png"
+if [ "${ARM}" = "before" ]; then
+	t "/"
+	pause 1.0
+	probe_frame "${COMMANDS_LISTED}"
+	t "search"
+	pause 1.0
+else
+	t "/search"
+	pause 0.8
+	k "Return"
+	pause 1.0
+fi
 shot content-search-empty
+
+if [ "${ARM}" = "before" ]; then
+	COLLAPSED="$(frames_differ_pixels_at "${COMMANDS_LISTED}" \
+		"${SCENE_OUT}/${SCENE_NAME}-content-search-empty.png" "${ROWS_CROP}")"
+	if [ "${COLLAPSED}" -lt "${ROWS_MIN_PIXELS}" ]; then
+		abandon_take "commands-listed" \
+			"typing a word no command carries changed ${COLLAPSED} pixels, under the \
+${ROWS_MIN_PIXELS} a list of rows inks, so the palette listed nothing to begin with"
+	fi
+fi
 
 # ─── The Host Answers What Was Typed ─────────────────────────────────────────
 # `process.env` is read by nine of this workspace's own modules, so the rows are
@@ -106,7 +136,13 @@ pause 2.5
 shot content-search-matches
 
 FOUND="$(differing_pixels content-search-empty content-search-matches "${ROWS_CROP}")"
-if [ "${FOUND}" -lt "${ROWS_MIN_PIXELS}" ]; then
+if [ "${ARM}" = "before" ]; then
+	if [ "${FOUND}" -ge "${ROWS_MIN_PIXELS}" ]; then
+		abandon_take "no-content-search-at-base" \
+			"a word this workspace carries listed ${FOUND} pixels of rows, at least the \
+${ROWS_MIN_PIXELS} a list of matched lines inks, so this arm is not the base"
+	fi
+elif [ "${FOUND}" -lt "${ROWS_MIN_PIXELS}" ]; then
 	abandon_take "matches-listed" \
 		"typing a word this workspace carries changed ${FOUND} pixels, under the \
 ${ROWS_MIN_PIXELS} a list of matched lines inks, so the search reached no rows"
@@ -114,7 +150,8 @@ fi
 
 # ─── The Rows Follow The Query ───────────────────────────────────────────────
 # An emptied field lists nothing rather than the matches of the query before
-# it, which is the state frame 1 already photographed.
+# it, which is the state frame 1 already photographed. The base arm empties the
+# same field and has nothing to shed.
 k "ctrl+a"
 pause 0.2
 k "BackSpace"
@@ -126,4 +163,9 @@ if [ "${STALE}" -ge "${ROWS_MIN_PIXELS}" ]; then
 	abandon_take "matches-cleared" \
 		"the emptied field differs from the untyped one by ${STALE} pixels, at least the \
 ${ROWS_MIN_PIXELS} a list of matched lines inks, so the rows outlived the query that fetched them"
+fi
+
+if [ "${ARM}" = "before" ]; then
+	echo "scene: before arm -- ${COLLAPSED} pixels of command rows collapsed, and a query for \
+a word in this workspace listed ${FOUND}" >&2
 fi

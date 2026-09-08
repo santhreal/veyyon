@@ -4,6 +4,7 @@
 #![allow(dead_code, reason = "each test binary uses a subset of these fixtures")]
 
 pub mod fields;
+pub mod intent_samples;
 pub mod memory;
 pub mod raster;
 

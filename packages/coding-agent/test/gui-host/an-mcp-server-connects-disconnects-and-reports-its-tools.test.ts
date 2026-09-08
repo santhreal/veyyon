@@ -85,8 +85,10 @@ describe("an mcp server connects, disconnects and reports its tools", () => {
 
 	const rowOf = (frames: { Snapshot?: { Mcp?: unknown } }[], name: string): McpServerView | undefined => {
 		const snapshot = frames.find(frame => frame.Snapshot?.Mcp !== undefined);
-		expect(snapshot).toBeDefined();
-		return (snapshot?.Snapshot?.Mcp as McpServerView[]).find(row => row.name === name);
+		if (!snapshot?.Snapshot?.Mcp) {
+			throw new Error("no frame carried an Mcp snapshot section");
+		}
+		return (snapshot.Snapshot.Mcp as McpServerView[]).find(row => row.name === name);
 	};
 
 	beforeEach(async () => {

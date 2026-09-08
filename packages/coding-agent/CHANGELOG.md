@@ -23,6 +23,8 @@
 - The desktop command palette and queue row menus provide `/export`, `/compact`, and `/handoff` session lifecycle actions.
 - The desktop command palette provides `/reload-transcript` to reload the active session transcript from the host.
 - The desktop drawer and composer wire controls and command actions for CancelTool, CloseTerminal, ClearOutput, ProcessStart, and ProcessSend.
+- The desktop Keybindings page rebinds an action: a row is a field holding the chords bound to it, `Enter` writes them to `keybindings.yml` and `Escape` restores what the host reports, and a field stating no readable chord is refused where it was typed rather than written as a binding no key press matches.
+- The desktop Agents page runs a background task from the field above its listing, which spawns it as a subagent of the active session.
 - The GUI host answers the desktop's `SearchContent` action with a `ContentMatches` snapshot, so the Content Search palette lists the workspace lines that carry the typed text with their file and line number.
 - `src/presentation/` builds the `@veyyon/wire/presentation` view-models from session state, and `PresentationEventBridge` turns session events into transcript updates, so a renderer draws a session without importing one.
 - `src/modes/terminal/driver.ts` implements `PresentationContext` on `@veyyon/tui`: it renders every transcript block kind, the status line, the composer and the dialogs from view-models alone, and reports operator input back as `UIEvent`s.
@@ -266,6 +268,7 @@
 - `WRITE_GUTTER_MIN_WIDTH` is no longer exported: the line-number gutter of a code card is the host's, stated once in `src/modes/terminal/draw/draw-tool-view.ts`, and no tool sets it.
 - The GUI host protocol drops the `ProcessWait` and `ProcessDescribe` actions: the supervised-process listing already carries each process's application, arguments, working directory, lifetime, status and exit code, so a describe reply replaced the pane's whole list with the one row it named and a wait held the host's request loop for the length of the process.
 - The GUI host protocol drops the `ConnectMcp`, `DisconnectMcp` and `CallMcpTool` actions and the `McpToolResult` snapshot section: `SetMcpEnabled` connects, disconnects and reconnects a server, and an MCP tool reaches a session as an ordinary tool call through the agent rather than through a host action with no editor for its arguments.
+- The GUI host protocol drops the `RefreshAuth` action, which was `RefreshProviders` under a second name: both answered with the same `Providers` snapshot from the same credential store, and the provider its payload named was discarded.
 
 
 ## [1.4.0] - 2026-09-04

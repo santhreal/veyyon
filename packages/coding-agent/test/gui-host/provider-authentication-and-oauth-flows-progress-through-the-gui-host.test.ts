@@ -2,7 +2,7 @@
  * WHY:
  *
  * Provider discovery and authentication actions (RefreshProviders, StartProviderAuth,
- * RefreshAuth, SubmitAuthSecret, OpenAuthUrl, CancelAuthFlow, RetryAuthFlow) must
+ * SubmitAuthSecret, OpenAuthUrl, CancelAuthFlow, RetryAuthFlow) must
  * query and update credentials in AuthStorage, track active auth flows without leaking
  * secrets in wire frames, and emit typed snapshot sections for `Providers` and `AuthFlow`.
  *

@@ -54,7 +54,6 @@ pub enum HostActionKind {
 	SetThinkingLevel,
 	RefreshProviders,
 	StartProviderAuth,
-	RefreshAuth,
 	SubmitAuthSecret,
 	OpenAuthUrl,
 	CancelAuthFlow,
@@ -79,7 +78,7 @@ pub enum HostActionKind {
 
 impl HostActionKind {
 	/// Complete slice of action kinds for runtime test sweeps.
-	pub const ALL: [Self; 70] = [
+	pub const ALL: [Self; 69] = [
 		Self::Attach,
 		Self::Detach,
 		Self::RetryConnection,
@@ -129,7 +128,6 @@ impl HostActionKind {
 		Self::SetThinkingLevel,
 		Self::RefreshProviders,
 		Self::StartProviderAuth,
-		Self::RefreshAuth,
 		Self::SubmitAuthSecret,
 		Self::OpenAuthUrl,
 		Self::CancelAuthFlow,
@@ -205,7 +203,6 @@ impl HostActionKind {
 			Self::SetThinkingLevel => "SetThinkingLevel",
 			Self::RefreshProviders => "RefreshProviders",
 			Self::StartProviderAuth => "StartProviderAuth",
-			Self::RefreshAuth => "RefreshAuth",
 			Self::SubmitAuthSecret => "SubmitAuthSecret",
 			Self::OpenAuthUrl => "OpenAuthUrl",
 			Self::CancelAuthFlow => "CancelAuthFlow",

@@ -135,7 +135,7 @@ xdotool windowfocus --sync "${SCENE_WINDOW}"
 # The rows are read from the token files this checkout ships rather than
 # restated here, so a scene recorded at a new width crops what the product
 # actually drew instead of what one width happened to make true.
-read -r RAIL_W PANEL_MODE PANEL_W DRAWER_PLACEMENT LABELS COMPOSER_MAX_W GUTTER_PX SHEET_INSET COMPOSER_BAND_H TRANSCRIPT_MAX_W < <(
+read -r RAIL_W PANEL_MODE PANEL_W DRAWER_PLACEMENT LABELS COMPOSER_MAX_W GUTTER_PX SHEET_INSET COMPOSER_BAND_H TRANSCRIPT_MAX_W CARD_FOOT_PX CARD_PAD_H CARD_PAD_BOTTOM < <(
 	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" "${WIN_W}" <<'PY'
 from pathlib import Path
 import sys
@@ -174,6 +174,17 @@ band = (
     + scale["spacing"]["s3"]
 )
 
+# What the session column places under the composer card, from the card's lower
+# edge to the window's: the gap, the run bar, and the column's own bottom
+# padding. A scene that aims at a control inside the card measures up from the
+# window's foot through this, since the card is bottom-anchored and its own
+# height is whatever its contents came to.
+foot = (
+    scale["spacing"]["s3"]
+    + composer_tokens["run_bar"]["height_px"]
+    + scale["spacing"]["s3"]
+)
+
 rows = sorted(surface["breakpoint"].values(), key=lambda row: row["min_width_px"])
 row = rows[0]
 for candidate in rows:
@@ -206,6 +217,9 @@ print(
     int(sheet) if placement == "overlay" else 0,
     int(band),
     int(transcript["column_width_px"]),
+    int(foot),
+    int(scale["spacing"][composer["padding_horizontal"]]),
+    int(scale["spacing"][composer["padding_bottom"]]),
 )
 PY
 )
@@ -229,6 +243,22 @@ TRANSCRIPT_SURFACE_W=$(( WIN_W - RAIL_W ))
 TRANSCRIPT_COLUMN_W=$(( TRANSCRIPT_MAX_W < TRANSCRIPT_SURFACE_W ? TRANSCRIPT_MAX_W : TRANSCRIPT_SURFACE_W ))
 TRANSCRIPT_COLUMN_LEFT=$(( WIN_X + RAIL_W + (TRANSCRIPT_SURFACE_W - TRANSCRIPT_COLUMN_W) / 2 ))
 TRANSCRIPT_COLUMN_RIGHT=$(( TRANSCRIPT_COLUMN_LEFT + TRANSCRIPT_COLUMN_W ))
+
+# Where the composer card is, in root coordinates. §5.4 insets the card by one
+# spacing step on each side of the session surface and centres it at the
+# authored measure, so its own edges follow the panel rather than the window.
+COMPOSER_CARD_MAX=$(( TRANSCRIPT_SURFACE_W - 2 * GUTTER_PX ))
+COMPOSER_CARD_W=$(( COMPOSER_MAX_W < COMPOSER_CARD_MAX ? COMPOSER_MAX_W : COMPOSER_CARD_MAX ))
+COMPOSER_CARD_LEFT=$(( WIN_X + RAIL_W + GUTTER_PX + (COMPOSER_CARD_MAX - COMPOSER_CARD_W) / 2 ))
+COMPOSER_CARD_BOTTOM=$(( WIN_Y + WIN_H - CARD_FOOT_PX ))
+
+# The model chip: the leading control of the card's footer row, which is the
+# last row inside the card. Vertically the aim is one spacing step above the
+# row's own lower edge, which is inside a row of any authored control height
+# rather than at a height this scene decides. Horizontally it is one spacing
+# step into the chip, past its rounded corner and onto the model's name.
+MODEL_CHIP_X=$(( COMPOSER_CARD_LEFT + CARD_PAD_H + GUTTER_PX ))
+MODEL_CHIP_Y=$(( COMPOSER_CARD_BOTTOM - CARD_PAD_BOTTOM - GUTTER_PX ))
 
 # ─── Scene Interactions & Captures ───────────────────────────────────────────
 

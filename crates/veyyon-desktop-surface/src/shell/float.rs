@@ -53,7 +53,7 @@ pub(super) fn overlay_layer(
 			editor.update(cx, |editor, _cx| editor.set_placeholder(prompt));
 		}
 	}
-	let fields = view.field_slots(cx);
+	let fields = view.field_slots(window, cx);
 	if view.palette_input.focus_search {
 		view.palette_input.focus_search = false;
 		if let Some(editor) = &editor {

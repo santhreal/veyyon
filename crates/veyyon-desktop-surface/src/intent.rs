@@ -103,6 +103,15 @@ pub enum Intent {
 		value: serde_json::Value,
 	},
 	ResetSetting(String),
+	/// Rebinds the keymap action `action` to the alternatives `keys`, from
+	/// the field the Keybindings page draws beside that action's row.
+	KeybindingChanged {
+		action: String,
+		keys:   Vec<String>,
+	},
+	/// Runs `task` as a background subagent of the active session, from the
+	/// field the Agents page draws above its listing.
+	SpawnTask(String),
 	SelectTheme(String),
 	ReloadSettings,
 	SetMcpEnabled {

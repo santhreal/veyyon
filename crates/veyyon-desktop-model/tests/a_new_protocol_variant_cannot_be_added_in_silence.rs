@@ -64,7 +64,7 @@ where
 
 #[test]
 fn every_action_capability_scope_role_and_partition_is_named_by_its_all_array() {
-	assert_all_is_the_whole_enum(&HostActionKind::ALL, 70, "HostActionKind");
+	assert_all_is_the_whole_enum(&HostActionKind::ALL, 69, "HostActionKind");
 	assert_all_is_the_whole_enum(&Capability::ALL, 30, "Capability");
 	assert_all_is_the_whole_enum(&ErrorScope::ALL, 19, "ErrorScope");
 	assert_all_is_the_whole_enum(&MessageRole::ALL, 12, "MessageRole");

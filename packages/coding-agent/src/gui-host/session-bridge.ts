@@ -116,7 +116,6 @@ const ACTION_ERROR_SCOPES: Record<string, ErrorScope> = {
 	SetThinkingLevel: "Provider",
 	RefreshProviders: "Provider",
 	StartProviderAuth: "Authentication",
-	RefreshAuth: "Authentication",
 	SubmitAuthSecret: "Authentication",
 	OpenAuthUrl: "Authentication",
 	CancelAuthFlow: "Authentication",

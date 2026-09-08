@@ -150,6 +150,10 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		Intent::ResetSetting(key) => {
 			vec![HostAction::ResetSetting { key: key.clone() }]
 		},
+		Intent::KeybindingChanged { action, keys } => {
+			vec![HostAction::SetKeybinding { action: action.clone(), keys: keys.clone() }]
+		},
+		Intent::SpawnTask(task) => vec![HostAction::SpawnTask { task: task.clone() }],
 		Intent::SelectTheme(theme) => vec![
 			HostAction::SetSetting {
 				key:   "theme".to_string(),

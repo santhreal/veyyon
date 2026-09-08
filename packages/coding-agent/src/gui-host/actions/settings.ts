@@ -280,13 +280,10 @@ const handleLoadKeybindings: ActionHandler = ctx => {
 interface SetKeybindingPayload {
 	action?: string;
 	keys?: string[];
-	binding?: string;
-	command?: string;
 }
 
 const handleSetKeybinding: ActionHandler<SetKeybindingPayload | undefined> = (ctx, payload) => {
-	const action = payload?.action ?? payload?.command;
-	const keys = payload?.keys ?? (payload?.binding ? [payload.binding] : undefined);
+	const { action, keys } = payload ?? {};
 
 	if (!action || !keys || !Array.isArray(keys) || keys.length === 0) {
 		ctx.reply.failure({

@@ -292,7 +292,6 @@ const CORPUS = [
 			{ name: "paused", enabled: false, status: "Disconnected", tools: [] },
 		],
 	},
-	{ McpToolResult: { server: "filesystem", tool: "read_file", is_error: false, output: "contents" } },
 	{
 		Agents: [
 			{

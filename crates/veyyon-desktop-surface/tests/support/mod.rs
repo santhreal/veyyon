@@ -2,6 +2,8 @@
 //! pulls in only what it uses, so a helper unused by one binary is expected.
 #![allow(dead_code, reason = "each test binary uses a subset of these fixtures")]
 
+pub mod intent_samples;
+pub mod overlay_pointer;
 pub mod settings_seed;
 pub mod shed;
 pub mod tool_cards;
