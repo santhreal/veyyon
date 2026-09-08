@@ -9,6 +9,7 @@ use super::{
 	Badge, Card, ComposerState, ConnectionPhase, ControlStates, DrawerContent, KeymapState, Overlay,
 	PaletteState, PanelContent, Row, Section, SettingsState, Turn, TurnPhase,
 };
+use crate::PaletteMode;
 
 /// Everything one shell render draws.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,6 +93,20 @@ impl ShellState {
 	#[must_use]
 	pub fn overlay_palette_mut(&mut self) -> Option<&mut PaletteState> {
 		self.overlay.as_mut().and_then(Overlay::as_palette_mut)
+	}
+
+	/// Runs `edit` against the palette in `mode`, opening one when the overlay
+	/// holds anything else: a command row that asks a mode for its rows is run
+	/// from another mode's list, and the run closes that list.
+	pub fn palette_in(&mut self, mode: PaletteMode, edit: impl FnOnce(&mut PaletteState)) {
+		match &mut self.overlay {
+			Some(Overlay::Palette(palette)) if palette.mode == mode => edit(palette),
+			slot => {
+				let mut palette = PaletteState::new(mode);
+				edit(&mut palette);
+				*slot = Some(Overlay::Palette(palette));
+			},
+		}
 	}
 
 	/// Returns the settings state if a settings overlay is open.

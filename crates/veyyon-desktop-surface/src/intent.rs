@@ -79,6 +79,8 @@ pub enum Intent {
 	OpenOverlay(Box<Overlay>),
 	Navigate(crate::navigation::SurfaceRoute),
 	CloseOverlay,
+	/// Ranks the rows a mode already holds against what was typed. The rows
+	/// come from the window, so nothing is asked of the host.
 	PaletteQuery(String),
 	PaletteMove(i32),
 	PaletteRun,
@@ -87,6 +89,13 @@ pub enum Intent {
 	BrowseTo {
 		path: Option<String>,
 	},
+	/// Looks a file up by name in Files mode: the empty query opens the mode
+	/// on the workspace tree, and a query is answered by the host's search.
+	FindFile(String),
+	/// Looks text up across the workspace's files in Content Search mode.
+	/// The empty query opens the mode, which lists nothing until something
+	/// is typed, since there is no whole-workspace listing of lines.
+	FindText(String),
 	SettingChanged {
 		key:   String,
 		value: serde_json::Value,
@@ -182,6 +191,7 @@ impl Intent {
 				| Self::CloseOverlay
 				| Self::CloseTabOrPark
 				| Self::PaletteMove(_)
+				| Self::PaletteQuery(_)
 				| Self::FilterQueue(_)
 				| Self::MoveQueueSelection(_)
 				| Self::ScrollTranscript(_)

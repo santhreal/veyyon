@@ -83,20 +83,22 @@ impl ShellView {
 		if let Some(editor) = &self.palette_input.editor {
 			return editor.clone();
 		}
-		let editor = cx.new(|cx| Editor::new(EditorMode::SingleLine, cx).placeholder("Search"));
+		let editor = cx.new(|cx| Editor::new(EditorMode::SingleLine, cx));
 		let subscription = cx.subscribe(&editor, |view, editor, event, cx| {
 			match event {
 				EditorEvent::Changed => {
 					let query = editor.read(cx).text().to_owned();
-					if let Some(palette) = view
-						.state
-						.overlay
-						.as_mut()
-						.and_then(Overlay::as_palette_mut)
-						&& palette.query() != query
-					{
-						palette.set_query(query);
+					let Some(palette) = view.state.overlay.as_ref().and_then(Overlay::as_palette) else {
+						return;
+					};
+					if palette.query() == query {
+						return;
 					}
+					// A mode whose rows are the host's answer to what was
+					// typed reports a lookup; every other mode ranks the rows
+					// it already holds (§5.8).
+					let intent = palette.mode.query_intent(query);
+					view.dispatch(intent, cx);
 				},
 				EditorEvent::Submit => view.run_palette(cx),
 				EditorEvent::Escape => view.back_surface(cx),
@@ -173,6 +175,7 @@ impl ShellView {
 			// row named, so the descent has to reach the host.
 			Some(crate::palette::PaletteItemKind::Directory { path }) => {
 				self.dispatch(Intent::BrowseTo { path: Some(path) }, cx);
+				self.focus_palette_query(cx);
 				cx.notify();
 				return;
 			},
@@ -200,6 +203,31 @@ impl ShellView {
 		}
 		self.close_palette(cx);
 		self.dispatch(intent, cx);
+		// A row whose answer is another mode's rows leaves that mode open, and
+		// the query the operator types next is that mode's rather than the
+		// composer's. Which rows do that is read from what the row left open,
+		// not from a second list of the intents that open one (§5.8).
+		self.focus_palette_query(cx);
+	}
+
+	/// Hands the keyboard to the query of the palette a row left open, off the
+	/// composer's anchor and holding that palette's own query (§5.8). Does
+	/// nothing when the row closed the palette.
+	fn focus_palette_query(&mut self, cx: &mut Context<Self>) {
+		let Some(query) = self
+			.state
+			.overlay
+			.as_ref()
+			.and_then(Overlay::as_palette)
+			.map(|palette| palette.query().to_owned())
+		else {
+			return;
+		};
+		self.palette_input.anchored = false;
+		self.palette_input.restore_focus = false;
+		let editor = self.ensure_palette_editor(cx);
+		editor.update(cx, |editor, cx| editor.set_text(query, cx));
+		self.palette_input.focus_search = true;
 	}
 
 	/// Replaces the visible route without closing or restarting its float

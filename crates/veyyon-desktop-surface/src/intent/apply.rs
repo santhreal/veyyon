@@ -1,8 +1,11 @@
 //! Execution and local state application for operator intents (§4.1, §5.14).
 
+mod panel;
+mod queue;
+
 use crate::{
 	attach::ConnectionPhase, composer::TurnPhase, controls::Availability, intent::Intent,
-	model::ShellState, overlay::Overlay,
+	model::ShellState, overlay::Overlay, palette::PaletteMode,
 };
 
 /// Applies the part of an intent that the local shell owns.
@@ -110,10 +113,30 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		// palette and dispatches what the row stands for; a directory row
 		// stands for a listing, which the shell turns into `BrowseTo`.
 		Intent::PaletteRun => {},
+		// A listing opens the mode that draws it, since the command row that
+		// asked for one is run from another mode's list and closes it.
 		Intent::BrowseTo { path } => {
-			if let Some(Overlay::Palette(palette)) = &mut state.overlay {
-				palette.browse_to(path.clone());
-			}
+			state.palette_in(PaletteMode::Browse, |palette| palette.browse_to(path.clone()));
+		},
+		// A lookup's rows are the host's answer to one query, so emptying the
+		// field drops them here rather than leaving them drawn until a frame
+		// arrives: an empty query asks for no search, so no answer is on its
+		// way to replace them (§5.8).
+		Intent::FindFile(query) => {
+			state.palette_in(PaletteMode::Files, |palette| {
+				palette.set_query(query.clone());
+				if query.is_empty() {
+					palette.set_items(Vec::new());
+				}
+			});
+		},
+		Intent::FindText(query) => {
+			state.palette_in(PaletteMode::ContentSearch, |palette| {
+				palette.set_query(query.clone());
+				if query.is_empty() {
+					palette.set_items(Vec::new());
+				}
+			});
 		},
 		Intent::SettingChanged { key, value } => {
 			if let Some(Overlay::Settings(settings)) = &mut state.overlay
@@ -201,97 +224,14 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 			}
 		},
 		Intent::DeleteSession(_) | Intent::BranchSession(_) => {},
-		Intent::FilterQueue(filter) => {
-			let trimmed = filter.trim();
-			state.keymap.queue_filter = if trimmed.is_empty() {
-				None
-			} else {
-				Some(filter.clone())
-			};
-			if let Some(q) = &state.keymap.queue_filter {
-				let needle = q.trim().to_lowercase();
-				let current_matches =
-					state
-						.sections
-						.iter()
-						.flat_map(|(_, rows)| rows.iter())
-						.any(|r| {
-							let matches_needle = r.title.to_lowercase().contains(&needle)
-								|| r.subtitle.to_lowercase().contains(&needle);
-							r.id == state.current_id && matches_needle
-						});
-				if !current_matches
-					&& let Some(first) = state
-						.sections
-						.iter()
-						.flat_map(|(_, rows)| rows.iter())
-						.find(|r| {
-							r.title.to_lowercase().contains(&needle)
-								|| r.subtitle.to_lowercase().contains(&needle)
-						}) {
-					state.current_id = first.id;
-					state.title = first.title.clone();
-				}
-			}
-		},
+		Intent::FilterQueue(filter) => queue::filter(state, filter),
 		Intent::NewSession => {
 			state.current_id = 0;
 			state.title = "new session".to_string();
 			state.keymap.queue_filter = None;
 		},
-		Intent::CloseTabOrPark => {
-			if state.panel.tabs.len() > 1 {
-				let current_pos = state
-					.panel
-					.tabs
-					.iter()
-					.position(|&t| t == state.panel.active_tab)
-					.unwrap_or(0);
-				state.panel.tabs.remove(current_pos);
-				let new_pos = current_pos.min(state.panel.tabs.len().saturating_sub(1));
-				if let Some(&tab) = state.panel.tabs.get(new_pos) {
-					state.panel.active_tab = tab;
-				}
-			} else {
-				state.keymap.parked_session = Some(state.current_id);
-			}
-		},
-		Intent::MoveQueueSelection(delta) => {
-			state.keymap.selection_delta = *delta;
-			let needle = state
-				.keymap
-				.queue_filter
-				.as_ref()
-				.map(|q| q.trim().to_lowercase())
-				.filter(|s| !s.is_empty());
-			let matching_rows: Vec<u64> = state
-				.sections
-				.iter()
-				.flat_map(|(_, rows)| rows.iter())
-				.filter(|r| {
-					if let Some(needle) = &needle {
-						r.title.to_lowercase().contains(needle)
-							|| r.subtitle.to_lowercase().contains(needle)
-					} else {
-						true
-					}
-				})
-				.map(|r| r.id)
-				.collect();
-			if !matching_rows.is_empty() {
-				let current_idx = matching_rows
-					.iter()
-					.position(|&id| id == state.current_id)
-					.unwrap_or(0);
-				let next_idx =
-					((current_idx as i64 + *delta as i64).max(0) as usize).min(matching_rows.len() - 1);
-				let next_id = matching_rows[next_idx];
-				state.current_id = next_id;
-				if let Some(title) = state.row(next_id).map(|r| r.title.clone()) {
-					state.title = title;
-				}
-			}
-		},
+		Intent::CloseTabOrPark => queue::close_tab_or_park(state),
+		Intent::MoveQueueSelection(delta) => queue::move_selection(state, *delta),
 		Intent::ScrollTranscript(by) => {
 			state.keymap.transcript_scroll = Some(*by);
 		},
@@ -326,66 +266,14 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		Intent::SetDiffMode(mode) => {
 			state.panel.diff_mode = *mode;
 		},
-		Intent::OpenFile(path) => {
-			state.keymap.panel_collapsed = false;
-			state.panel.active_tab = crate::right_panel::PanelTab::File;
-			state.panel.tree.selected_path = Some(path.clone());
-		},
-		Intent::OpenUsage => {
-			state.keymap.panel_collapsed = false;
-			state.panel.active_tab = crate::right_panel::PanelTab::Usage;
-			// The turn footer can be clicked before the host has listed the tab.
-			// Adding it here keeps the click answerable; a host that reports
-			// usage unavailable drops it again on the next projection.
-			if !state
-				.panel
-				.tabs
-				.contains(&crate::right_panel::PanelTab::Usage)
-			{
-				state.panel.tabs.push(crate::right_panel::PanelTab::Usage);
-			}
-		},
-		Intent::ToggleTreeNode(path) => {
-			if state.panel.tree.expanded_paths.contains(path) {
-				state.panel.tree.expanded_paths.remove(path);
-			} else {
-				state.panel.tree.expanded_paths.insert(path.clone());
-			}
-			for row in &mut state.panel.tree.rows {
-				if row.path == *path {
-					row.is_expanded = !row.is_expanded;
-				}
-			}
-		},
-		Intent::ExpandContext { file, row } => {
-			if let Some(diff_file) = state.panel.diff.get_mut(*file)
-				&& let Some(crate::right_panel::DiffRow::Collapsed { hidden, before_line, after_line }) =
-					diff_file.rows.get(*row).cloned()
-			{
-				let mut expanded_rows = Vec::with_capacity(hidden);
-				for i in 0..hidden {
-					expanded_rows.push(crate::right_panel::DiffRow::Context {
-						old_line: before_line + 1 + i,
-						new_line: after_line + 1 + i,
-						text:     String::new(),
-					});
-				}
-				diff_file.rows.splice(*row..=*row, expanded_rows);
-			}
-		},
+		Intent::OpenFile(path) => panel::open_file(state, path),
+		Intent::OpenUsage => panel::open_usage(state),
+		Intent::ToggleTreeNode(path) => panel::toggle_tree_node(state, path),
+		Intent::ExpandContext { file, row } => panel::expand_context(state, *file, *row),
 		// The host owns both: it regenerates the card's view for the new
 		// disclosure state, and it resolves a target against the workspace.
 		Intent::SetToolViewExpanded { .. } => {},
-		Intent::OpenToolTarget(target) => {
-			if let crate::tool_view::ToolViewTarget::File { path, .. } = target {
-				state.keymap.panel_collapsed = false;
-				state.panel.active_tab = crate::right_panel::PanelTab::File;
-				state.panel.tree.selected_path = Some(path.clone());
-			}
-		},
-		Intent::SelectChangeScope(_) => {
-			state.keymap.panel_collapsed = false;
-			state.panel.active_tab = crate::right_panel::PanelTab::Diff;
-		},
+		Intent::OpenToolTarget(target) => panel::open_tool_target(state, target),
+		Intent::SelectChangeScope(_) => panel::select_change_scope(state),
 	}
 }

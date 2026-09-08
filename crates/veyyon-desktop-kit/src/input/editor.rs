@@ -105,6 +105,18 @@ impl Editor {
 		self
 	}
 
+	/// Replaces the placeholder, for a field whose prompt belongs to the mode
+	/// it is drawn in rather than to the moment the editor was made.
+	pub fn set_placeholder(&mut self, placeholder: impl Into<SharedString>) {
+		self.placeholder = placeholder.into();
+	}
+
+	/// The placeholder drawn while the value is empty.
+	#[must_use]
+	pub fn placeholder_text(&self) -> &str {
+		&self.placeholder
+	}
+
 	/// Draws the value as one asterisk per byte, for a field that carries a
 	/// secret (§9.3). The mask keeps the byte length of the buffer, so caret
 	/// and selection offsets map through the shaped line unchanged.

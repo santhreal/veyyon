@@ -38,6 +38,21 @@ pub(super) fn overlay_layer(
 		.is_some_and(Overlay::is_palette)
 		&& !view.palette_input.slash;
 	let editor = needs_editor.then(|| view.ensure_palette_editor(cx));
+	// The prompt belongs to the mode, and a row that opens a lookup changes
+	// the mode under an editor the window retains, so it is set where the
+	// frame reads it (§5.8).
+	if let Some(editor) = &editor
+		&& let Some(palette) = view
+			.palette_input
+			.retained
+			.as_ref()
+			.and_then(Overlay::as_palette)
+	{
+		let prompt = palette.mode.placeholder();
+		if editor.read(cx).placeholder_text() != prompt {
+			editor.update(cx, |editor, _cx| editor.set_placeholder(prompt));
+		}
+	}
 	let fields = view.field_slots(cx);
 	if view.palette_input.focus_search {
 		view.palette_input.focus_search = false;
