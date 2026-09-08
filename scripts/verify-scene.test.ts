@@ -232,6 +232,14 @@ describe("a scene has to fail rather than hang or overwrite", () => {
 			}),
 		).toEqual([]);
 	});
+
+	it("reads a threshold that ends in the word as its own name", () => {
+		expect(
+			problems({
+				scene: 'DISMISSED_PER_MILLE=40\nROOT_DISMISSED="$(shots_differ_per_mille a b)"\nshot idle\n',
+			}),
+		).toEqual([]);
+	});
 });
 
 describe("every recorded scene in this repository", () => {
