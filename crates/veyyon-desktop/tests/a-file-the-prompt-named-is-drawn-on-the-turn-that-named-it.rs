@@ -164,7 +164,7 @@ fn every_reason_a_body_is_missing_reaches_the_renderer() {
 		]);
 		let held = artifacts(&state.transcript[0]);
 		assert!(
-			matches!(&held[..], [Artifact::File { has_content, unavailable_reason, .. }]
+			matches!(held, [Artifact::File { has_content, unavailable_reason, .. }]
 				if !*has_content && unavailable_reason.as_deref() == Some(reason)),
 			"{reason}: the renderer is told why there is no body: {held:?}"
 		);
