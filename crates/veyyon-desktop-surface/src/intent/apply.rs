@@ -107,19 +107,12 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 			}
 		},
 		// An action row is run by `Intents::dispatch`, which closes the
-		// palette and dispatches what the row stands for; a directory row is
-		// a step of navigation and is the one the shell finishes alone.
-		Intent::PaletteRun => {
-			if let Some(Overlay::Palette(palette)) = &mut state.overlay
-				&& let Some(crate::palette::PaletteItemKind::Directory { path }) =
-					palette.selected_item().map(|item| item.kind.clone())
-			{
-				palette.descend(path);
-			}
-		},
-		Intent::PaletteAscend => {
+		// palette and dispatches what the row stands for; a directory row
+		// stands for a listing, which the shell turns into `BrowseTo`.
+		Intent::PaletteRun => {},
+		Intent::BrowseTo { path } => {
 			if let Some(Overlay::Palette(palette)) = &mut state.overlay {
-				palette.ascend();
+				palette.browse_to(path.clone());
 			}
 		},
 		Intent::SettingChanged { key, value } => {

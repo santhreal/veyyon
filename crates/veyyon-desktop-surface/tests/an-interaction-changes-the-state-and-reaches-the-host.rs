@@ -72,7 +72,7 @@ fn every_intent() -> Vec<Intent> {
 		Intent::PaletteQuery("find".to_owned()),
 		Intent::PaletteMove(1),
 		Intent::PaletteRun,
-		Intent::PaletteAscend,
+		Intent::BrowseTo { path: Some("crates".to_owned()) },
 		Intent::SettingChanged { key: "font_size".to_owned(), value: serde_json::json!(14) },
 		Intent::SelectTheme("light".to_owned()),
 		Intent::ResetSetting("font_size".to_owned()),
@@ -156,7 +156,7 @@ fn every_intent() -> Vec<Intent> {
 			| Intent::PaletteQuery(_)
 			| Intent::PaletteMove(_)
 			| Intent::PaletteRun
-			| Intent::PaletteAscend
+			| Intent::BrowseTo { .. }
 			| Intent::SettingChanged { .. }
 			| Intent::SelectTheme(_)
 			| Intent::ResetSetting(_)
@@ -253,9 +253,9 @@ fn every_intent_either_changes_the_state_or_is_reported_and_never_neither() {
 		if let Intent::PaletteQuery(_) | Intent::PaletteMove(_) | Intent::PaletteRun = &intent {
 			before.overlay = Some(Overlay::Palette(PaletteState::commands()));
 		}
-		if matches!(&intent, Intent::PaletteAscend) {
+		if matches!(&intent, Intent::BrowseTo { .. }) {
 			let mut p = PaletteState::new(PaletteMode::Browse);
-			p.browse_path = vec!["crates".to_owned(), "src".to_owned()];
+			p.browse_to(Some("crates/veyyon-desktop".to_owned()));
 			before.overlay = Some(Overlay::Palette(p));
 		}
 		if let Intent::SettingChanged { key, .. } = &intent {

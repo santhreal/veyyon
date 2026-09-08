@@ -174,6 +174,10 @@ fn palette_moves_runs_and_ascends_in_headless_session() {
 	session
 		.update(|view, _window, cx| {
 			view.dispatch(Intent::PaletteMove(1), cx);
+			// The steps above typed a query, which the shell reports so the
+			// host can rank against its own catalogue. The descent below is
+			// asserted on what it alone reports, so that one is taken first.
+			view.drain_intents();
 		})
 		.expect("moved selection down");
 
@@ -191,32 +195,37 @@ fn palette_moves_runs_and_ascends_in_headless_session() {
 
 	session
 		.update(|view, _window, cx| {
-			let palette = view
-				.state_mut()
-				.overlay_palette_mut()
-				.expect("palette active");
-			palette.descend("crates");
-			cx.notify();
+			view.run_palette(cx);
 		})
 		.expect("descended into directory");
 
 	session
 		.update(|view, _window, _cx| {
 			let palette = view.state().overlay_palette().expect("palette active");
-			assert_eq!(palette.browse_path, vec!["crates".to_string()]);
+			assert_eq!(palette.browse_root(), Some("crates"));
+			assert_eq!(
+				view.drain_intents(),
+				vec![Intent::BrowseTo { path: Some("crates".to_owned()) }],
+				"the descent asks the host for the directory it opened"
+			);
 		})
 		.expect("path verified");
 
 	session
 		.update(|view, _window, cx| {
-			view.dispatch(Intent::PaletteAscend, cx);
+			view.back_surface(cx);
 		})
 		.expect("ascended directory");
 
 	session
 		.update(|view, _window, _cx| {
 			let palette = view.state().overlay_palette().expect("palette active");
-			assert!(palette.browse_path.is_empty());
+			assert_eq!(palette.browse_root(), None);
+			assert_eq!(
+				view.drain_intents(),
+				vec![Intent::BrowseTo { path: None }],
+				"the ascent asks the host for the parent it returned to"
+			);
 		})
 		.expect("path emptied");
 

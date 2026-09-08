@@ -82,7 +82,11 @@ pub enum Intent {
 	PaletteQuery(String),
 	PaletteMove(i32),
 	PaletteRun,
-	PaletteAscend,
+	/// Lists one directory in Browse mode: `None` is the workspace root, and
+	/// a path is the directory a row named or the parent an ascent reached.
+	BrowseTo {
+		path: Option<String>,
+	},
 	SettingChanged {
 		key:   String,
 		value: serde_json::Value,

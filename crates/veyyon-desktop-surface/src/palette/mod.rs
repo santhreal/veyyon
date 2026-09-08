@@ -25,23 +25,23 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PaletteState {
 	/// Current search query string.
-	query:           String,
+	query:        String,
 	/// Active palette operating mode.
-	pub mode:        PaletteMode,
+	pub mode:     PaletteMode,
 	/// Index of the currently highlighted result row.
-	pub selected:    usize,
+	pub selected: usize,
 	/// Candidate items available for matching in the active mode.
-	items:           Vec<PaletteItem>,
+	items:        Vec<PaletteItem>,
 	/// The ranked row order, as indices into `items`.
-	rows:            Vec<usize>,
-	/// Path components for directory navigation in Browse mode.
-	pub browse_path: Vec<String>,
-	/// Optional root path for project browsing.
-	pub browse_root: Option<String>,
+	rows:         Vec<usize>,
+	/// The directory Browse mode is listing, workspace-relative, or `None` for
+	/// the workspace root. The host is asked for this directory's children, so
+	/// the rows are one level and the parent is what an ascent reads off it.
+	browse_root:  Option<String>,
 	/// Optional availability notice (e.g. host-provided unavailability reason).
-	pub notice:      Option<String>,
+	pub notice:   Option<String>,
 	/// Command group shown in the shared navigation surface.
-	route:           Option<crate::navigation::SurfaceRoute>,
+	route:        Option<crate::navigation::SurfaceRoute>,
 }
 impl Default for PaletteState {
 	fn default() -> Self {
@@ -58,7 +58,6 @@ impl PaletteState {
 			selected: 0,
 			items: Vec::new(),
 			rows: Vec::new(),
-			browse_path: Vec::new(),
 			browse_root: None,
 			notice: None,
 			route: None,
@@ -320,20 +319,28 @@ impl PaletteState {
 			.and_then(|index| self.items.get(*index))
 	}
 
-	/// Ascends one directory level in Browse mode. Returns `true` if ascended.
-	pub fn ascend(&mut self) -> bool {
-		if self.mode == PaletteMode::Browse && !self.browse_path.is_empty() {
-			self.browse_path.pop();
-			self.selected = 0;
-			true
-		} else {
-			false
-		}
+	/// The directory being listed, or `None` at the workspace root.
+	#[must_use]
+	pub fn browse_root(&self) -> Option<&str> {
+		self.browse_root.as_deref()
 	}
 
-	/// Descends into a directory child in Browse mode.
-	pub fn descend(&mut self, dir_name: impl Into<String>) {
-		self.browse_path.push(dir_name.into());
+	/// The directory one level above the one being listed, and whether there
+	/// is one to ascend to: `Some(None)` is the workspace root, and `None`
+	/// means the palette is already there or is not browsing.
+	#[must_use]
+	pub fn browse_parent(&self) -> Option<Option<String>> {
+		if self.mode != PaletteMode::Browse {
+			return None;
+		}
+		let root = self.browse_root.as_deref()?;
+		Some(root.rsplit_once('/').map(|(parent, _)| parent.to_owned()))
+	}
+
+	/// Lists another directory: the rows the projection fills come from the
+	/// host's listing of it, so the selection and the query start over.
+	pub fn browse_to(&mut self, path: Option<String>) {
+		self.browse_root = path;
 		self.selected = 0;
 		self.set_query(String::new());
 	}

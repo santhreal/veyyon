@@ -173,9 +173,9 @@ fn every_write_path_leaves_the_rows_ranked_for_what_it_wrote() {
 		let mut browse = PaletteState::new(PaletteMode::Browse);
 		browse.set_items(seeded(30));
 		browse.set_query("Number 2");
-		browse.descend("crates");
-		assert_eq!(browse.query(), "", "descend clears the query it descended from");
-		assert_eq!(browse.filtered_items().len(), 30, "descend offers the directory it entered");
+		browse.browse_to(Some("crates".to_owned()));
+		assert_eq!(browse.query(), "", "browse_to clears the query it listed under");
+		assert_eq!(browse.filtered_items().len(), 30, "browse_to ranks the rows it listed");
 	}
 }
 

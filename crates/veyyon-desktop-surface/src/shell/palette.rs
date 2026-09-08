@@ -163,9 +163,20 @@ impl ShellView {
 			.and_then(Overlay::as_palette)
 			.and_then(PaletteState::selected_item)
 			.map(|item| item.kind.clone());
-		if let Some(crate::palette::PaletteItemKind::Composer { command }) = selected {
-			self.run_composer_command(command, cx);
-			return;
+		match selected {
+			Some(crate::palette::PaletteItemKind::Composer { command }) => {
+				self.run_composer_command(command, cx);
+				return;
+			},
+			// A directory row is a step of navigation and the palette stays
+			// open: the rows it draws next are the host's listing of what the
+			// row named, so the descent has to reach the host.
+			Some(crate::palette::PaletteItemKind::Directory { path }) => {
+				self.dispatch(Intent::BrowseTo { path: Some(path) }, cx);
+				cx.notify();
+				return;
+			},
+			_ => {},
 		}
 		let Some(intent) = self
 			.state
@@ -174,13 +185,6 @@ impl ShellView {
 			.and_then(Overlay::as_palette)
 			.and_then(PaletteState::run_intent)
 		else {
-			// A row that stands for no action is a step of navigation: a
-			// directory row descends into what it names and the palette stays
-			// open. The descent is the shell's own, so it is applied and not
-			// reported; the keyboard reached this and returned, so Enter did
-			// nothing at all on a browse row.
-			Intent::PaletteRun.apply(&mut self.state);
-			cx.notify();
 			return;
 		};
 		if !self.composer_action_allowed(&intent) {
@@ -251,8 +255,20 @@ impl ShellView {
 		cx.notify();
 	}
 
-	/// Ascends the command hierarchy before closing its root.
+	/// Ascends the command hierarchy, or one browsed directory, before closing
+	/// its root (§5.8).
 	pub fn back_surface(&mut self, cx: &mut Context<Self>) {
+		if let Some(parent) = self
+			.state
+			.overlay
+			.as_ref()
+			.and_then(Overlay::as_palette)
+			.and_then(PaletteState::browse_parent)
+		{
+			self.dispatch(Intent::BrowseTo { path: parent }, cx);
+			cx.notify();
+			return;
+		}
 		match self
 			.state
 			.overlay

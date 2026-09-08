@@ -155,12 +155,19 @@ fn every_palette_mode_runs_its_selected_row_from_the_enter_key() {
 							assert!(overlay.is_none(), "{mode:?}: the palette closed behind the row");
 						},
 						Outcome::Descends(into) => {
-							assert_eq!(view.drain_intents(), vec![], "{mode:?}");
+							// The descent is a listing the host owns, so Enter reports
+							// it and the palette stays open over the rows it will
+							// answer with.
+							assert_eq!(
+								view.drain_intents(),
+								vec![Intent::BrowseTo { path: Some((*into).to_owned()) }],
+								"{mode:?}"
+							);
 							let palette = overlay
 								.as_ref()
 								.and_then(Overlay::as_palette)
 								.expect("palette stays open on a directory row");
-							assert_eq!(palette.browse_path, vec![(*into).to_owned()], "{mode:?}");
+							assert_eq!(palette.browse_root(), Some(*into), "{mode:?}");
 							assert!(palette.query().is_empty(), "{mode:?}: the query cleared");
 						},
 					}

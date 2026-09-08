@@ -180,7 +180,9 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		Intent::OpenOverlay(_) | Intent::CloseOverlay | Intent::PaletteMove(_) => Vec::new(),
 		Intent::PaletteQuery(query) => vec![HostAction::SearchFiles { query: query.clone() }],
 		Intent::PaletteRun => Vec::new(),
-		Intent::PaletteAscend => vec![HostAction::LoadFileTree { root: None }],
+		// The listing the operator asked for, which is what makes a descent
+		// visible: the rows of Browse mode are the host's children of `path`.
+		Intent::BrowseTo { path } => vec![HostAction::LoadFileTree { root: path.clone() }],
 		Intent::SettingChanged { key, value } => {
 			vec![HostAction::SetSetting { key: key.clone(), value: value.clone() }]
 		},

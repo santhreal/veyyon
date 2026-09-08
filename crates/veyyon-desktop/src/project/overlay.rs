@@ -93,17 +93,21 @@ fn project_palette_domains(store: &Store, state: &mut PaletteState) {
 				state.set_items(items);
 			}
 		},
+		// The host was asked for one directory's listing, so the rows are its
+		// immediate children: a deeper entry belongs to a row the operator has
+		// not opened yet, and listing it flattens the walk into one dump of
+		// the tree. A directory with no subdirectory lists nothing rather than
+		// keeping the rows of the one above it.
 		PaletteMode::Browse => {
 			if let Some(tree) = &store.domains.file_tree {
-				let mut items = Vec::new();
-				for (idx, entry) in tree.entries.iter().enumerate() {
-					if entry.kind == FileKind::Directory {
-						items.push(PaletteItem::directory(idx as u64 + 3000, entry.path.clone()));
-					}
-				}
-				if !items.is_empty() {
-					state.set_items(items);
-				}
+				let items = tree
+					.entries
+					.iter()
+					.enumerate()
+					.filter(|(_, entry)| entry.kind == FileKind::Directory && entry.depth == 0)
+					.map(|(idx, entry)| PaletteItem::directory(idx as u64 + 3000, entry.path.clone()))
+					.collect();
+				state.set_items(items);
 			}
 		},
 		// Native navigation does not invoke the host's separate agent-command API,
