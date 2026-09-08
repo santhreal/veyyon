@@ -117,30 +117,50 @@ pub(super) fn push_entry(turns: &mut Turns, entry: &TranscriptEntry) {
 	// turn for it would attribute the operator's attachment to the model's reply
 	// and draw it above prose the model had not produced yet.
 	if entry.role == MessageRole::FileMention {
-		let artifacts: Vec<Artifact> = entry.content.iter().filter_map(artifact_of).collect();
-		if artifacts.is_empty() {
+		let mut artifacts: Vec<Artifact> = Vec::new();
+		let mut rest: Vec<&ContentBlock> = Vec::new();
+		for block in &entry.content {
+			match artifact_of(block) {
+				Some(artifact) => artifacts.push(artifact),
+				None => rest.push(block),
+			}
+		}
+		if !artifacts.is_empty() {
+			// Pop and push rather than assign through the match: turns and their
+			// anchors are index-aligned, and neither count changes here.
+			if matches!(turns.turns.last(), Some(Turn::Operator(_))) {
+				let text = match turns.turns.pop() {
+					Some(Turn::Operator(text)) => text,
+					_ => String::new(),
+				};
+				turns
+					.turns
+					.push(Turn::OperatorArtifacts { text, artifacts });
+			} else {
+				match turns.turns.last_mut() {
+					Some(Turn::OperatorArtifacts { artifacts: held, .. }) => held.extend(artifacts),
+					Some(Turn::Agent { blocks, .. }) => {
+						blocks.extend(artifacts.into_iter().map(Block::Artifact));
+					},
+					Some(Turn::Operator(_)) | None => {
+						turns.open(Turn::OperatorArtifacts { text: String::new(), artifacts }, entry);
+					},
+				}
+			}
+		}
+		// Anything the entry carries beyond the files it named is not the
+		// prompt's own text, so it keeps the register its role reads in rather
+		// than being folded into the operator's bubble or dropped.
+		if rest.is_empty() {
 			return;
 		}
-		// Pop and push rather than assign through the match: turns and their
-		// anchors are index-aligned, and neither count changes here.
-		if matches!(turns.turns.last(), Some(Turn::Operator(_))) {
-			let text = match turns.turns.pop() {
-				Some(Turn::Operator(text)) => text,
-				_ => String::new(),
-			};
-			turns
-				.turns
-				.push(Turn::OperatorArtifacts { text, artifacts });
-			return;
+		if !matches!(turns.turns.last(), Some(Turn::Agent { .. })) {
+			turns.open(Turn::Agent { blocks: Vec::new(), model: None }, entry);
 		}
-		match turns.turns.last_mut() {
-			Some(Turn::OperatorArtifacts { artifacts: held, .. }) => held.extend(artifacts),
-			Some(Turn::Agent { blocks, .. }) => {
-				blocks.extend(artifacts.into_iter().map(Block::Artifact));
-			},
-			Some(Turn::Operator(_)) | None => {
-				turns.open(Turn::OperatorArtifacts { text: String::new(), artifacts }, entry);
-			},
+		if let Some(Turn::Agent { blocks, .. }) = turns.turns.last_mut() {
+			for block in rest {
+				push_block(blocks, block, entry.role);
+			}
 		}
 		return;
 	}

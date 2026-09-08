@@ -12,7 +12,8 @@
 //! agent turn, so a role added to the model turns this red until the
 //! projection states which speaker owns it. Also covered: a mention joining a
 //! prompt that already carried attachments, a mention with no prompt in front
-//! of it, and the metadata each file state hands the renderer.
+//! of it, whatever a mention entry carries besides the files it named, and the
+//! metadata each file state hands the renderer.
 //!
 //! NOT CAUGHT: how an artifact block draws once it is on the turn, which is
 //! the surface crate's `artifact` suites; and whether the host records the
@@ -27,7 +28,7 @@ use std::collections::HashMap;
 use support::{NOW_MS, entry};
 use veyyon_desktop::{SessionIndex, project};
 use veyyon_desktop_model::{ContentBlock, MessageRole, SessionId, Store};
-use veyyon_desktop_surface::{Artifact, ShellState, Turn};
+use veyyon_desktop_surface::{Artifact, Block, ShellState, Turn};
 
 fn mention(path: &str) -> ContentBlock {
 	ContentBlock::FileMention {
@@ -132,18 +133,19 @@ fn a_mention_with_no_prompt_in_front_of_it_is_still_the_operators() {
 	assert_eq!(artifacts.len(), 1, "the file is what the turn holds");
 }
 
+/// An entry with nothing in it is the only mention that adds nothing. One that
+/// carries text is covered below, and dropping that text is the defect this
+/// pair separates.
 #[test]
 fn a_mention_that_read_nothing_draws_nothing() {
 	let state = seeded(vec![
 		("u1", None, MessageRole::User, vec![ContentBlock::Text { text: "hello".to_string() }]),
-		("m1", Some("u1"), MessageRole::FileMention, vec![ContentBlock::Text {
-			text: "ignored".to_string(),
-		}]),
+		("m1", Some("u1"), MessageRole::FileMention, Vec::new()),
 	]);
 
 	assert!(
 		matches!(state.transcript.as_slice(), [Turn::Operator(text)] if text == "hello"),
-		"a mention entry carrying no file leaves the prompt as it was: {:?}",
+		"an empty mention entry leaves the prompt as it was: {:?}",
 		state.transcript
 	);
 }
@@ -217,5 +219,39 @@ fn only_two_roles_draw_on_the_turn_the_operator_owns() {
 			MessageRole::Unknown,
 		],
 		"every other role draws in the turn that came back"
+	);
+}
+
+#[test]
+fn a_mention_entry_states_whatever_it_carries_besides_the_files_it_named() {
+	let text_only = seeded(vec![("m1", None, MessageRole::FileMention, vec![ContentBlock::Text {
+		text: "Recorded text".to_string(),
+	}])]);
+	assert!(
+		matches!(text_only.transcript.as_slice(), [Turn::Agent { blocks, .. }]
+			if matches!(blocks.as_slice(), [Block::Note { label, text, .. }]
+				if *label == "File" && text == "Recorded text")),
+		"a mention entry that named no file states what it does carry, in its own register: {:?}",
+		text_only.transcript
+	);
+
+	let both = seeded(vec![
+		("u1", None, MessageRole::User, vec![ContentBlock::Text {
+			text: "read @README.md".to_string(),
+		}]),
+		("m1", Some("u1"), MessageRole::FileMention, vec![
+			mention("README.md"),
+			ContentBlock::Text { text: "Recorded text".to_string() },
+		]),
+	]);
+	let [operator, agent] = both.transcript.as_slice() else {
+		panic!("expected the prompt's turn and a note beside it, got {:?}", both.transcript);
+	};
+	assert_eq!(artifacts(operator).len(), 1, "the file it named is the operator's");
+	assert!(
+		matches!(agent, Turn::Agent { blocks, .. }
+			if matches!(blocks.as_slice(), [Block::Note { label, text, .. }]
+				if *label == "File" && text == "Recorded text")),
+		"the text beside the file is not folded into the prompt's own words: {agent:?}"
 	);
 }
