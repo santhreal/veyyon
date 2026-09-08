@@ -122,6 +122,13 @@ export COLORTERM=truecolor
 # vault through the environment never appears in the transcript at all, so what the
 # recording shows spending is a placeholder and nothing else.
 export RELEASE_SIGNATURE="${SCENE_SIGNING_NUMBER}"
+# §8.10 keeps the window's panel, drawer, queue and composer layout on disk,
+# under the profile by default, which is the layout of whatever ran last. A
+# take that read another scene's copy photographed a right panel one of them
+# had opened, and every crop and pointer offset aimed at a control the panel's
+# width places landed 356px away from it. Each take keeps its own, so a
+# scene's frames follow from the scene and from the authored defaults.
+export VEYYON_DESKTOP_STATE_DIR="${SCENE_RUNTIME_DIR:-/tmp}/desktop-state"
 printf 'stty=%s\n' "$(stty size </dev/tty 2>/dev/null || true)" >"${SCENE_RUNTIME_DIR:-/tmp}/geom"
 cd "${SCENE_CWD}"
 exec ${SCENE_COMMAND:?}

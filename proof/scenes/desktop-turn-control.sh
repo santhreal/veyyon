@@ -91,6 +91,75 @@ raise SystemExit(f"Native turn state timed out ({mode}): {last}")
 PY
 }
 
+# The transcript the host holds for this session, searched for one string.
+# Every reply shape is walked rather than indexed by field, so a snapshot key
+# renamed upstream cannot make the probe pass over a transcript that never
+# carried the text. It also refuses a transcript carrying the command spelling
+# itself: a count of the session's messages cannot separate a steer that
+# delivered the draft from one that delivered `/Steer ` in front of it.
+native_transcript_holds() { # <text> <seconds>
+python3 - "$1" "${2:-30}" <<'PY'
+import json
+import os
+from pathlib import Path
+import socket
+import sys
+import time
+
+profile = os.environ.get("VEYYON_PROFILE") or "default"
+endpoint = Path.home() / ".veyyon" / "profiles" / profile / "agent" / "gui-host.sock"
+created_path = Path(os.environ["SCENE_RUNTIME_DIR"]) / "created-session.json"
+created_id = json.loads(created_path.read_text())
+wanted = sys.argv[1]
+deadline = time.monotonic() + float(sys.argv[2])
+request = json.dumps({"id": 1, "action": {"LoadTranscript": {"session": created_id, "before": None}}})
+last = "no host frame"
+
+
+def strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from strings(item)
+
+
+while time.monotonic() < deadline:
+    try:
+        with socket.socket(socket.AF_UNIX) as connection:
+            connection.settimeout(max(0.01, deadline - time.monotonic()))
+            connection.connect(str(endpoint))
+            connection.sendall(request.encode() + b"\n")
+            with connection.makefile("rb") as stream:
+                for _ in range(32):
+                    connection.settimeout(max(0.01, deadline - time.monotonic()))
+                    line = stream.readline(8 * 1024 * 1024 + 1)
+                    if not line or len(line) > 8 * 1024 * 1024:
+                        raise RuntimeError("Missing or oversized host frame")
+                    snapshot = json.loads(line).get("Snapshot", {})
+                    if "Transcript" not in snapshot:
+                        continue
+                    held = list(strings(snapshot["Transcript"]))
+                    spelled = next((text for text in held if "/steer" in text.lower()), None)
+                    if spelled is not None:
+                        raise SystemExit(
+                            f"The transcript carries the command spelling, not only its message: {spelled!r}"
+                        )
+                    if any(wanted in text for text in held):
+                        print(f"the steering message reached the session ({len(held)} strings in its transcript)")
+                        raise SystemExit(0)
+                    last = f"{len(held)} strings in the transcript, none carrying the message"
+                    break
+    except (OSError, ValueError, RuntimeError) as error:
+        last = str(error)
+    time.sleep(0.2)
+raise SystemExit(f"The steering message never reached the host transcript ({last})")
+PY
+}
+
 # The composer draws `Running` from the moment the host STREAMS, which is later
 # than the persisted user message `started` waits for. Under the software
 # renderer this model's first token arrived seconds after the submit reached
@@ -159,10 +228,37 @@ MODE_NAME_PIXELS=300
 QUEUED_STRIP_PIXELS=300
 COMPOSER_X=$(( WIN_X + (WIN_W > 800 ? 400 : WIN_W / 2) ))
 COMPOSER_Y=$(( WIN_Y + WIN_H - 98 ))
-# The up arrow, at the trailing edge of the composer's own column: the right
-# panel takes the trailing 356px above 980px of window (§5.6), and the control
-# is one 28px square and its gap in from that edge.
-PRIMARY_X=$(( WIN_X + (WIN_W > 980 ? WIN_W - 356 : WIN_W) - 43 ))
+# The up arrow, at the trailing edge of the composer's own card. The card is
+# centred in the session surface -- the window less the queue rail -- and
+# measures the authored maximum, or the surface less one gutter each side when
+# that is narrower. The control is one 28px square (§6.10) inside the card's
+# horizontal padding, so half of it is the offset from the card's content edge
+# to the control's centre.
+#
+# An earlier offset subtracted the right panel's 356px from the window. §8.10
+# opens that panel for an operator who opened it and for nobody else, so at
+# the defaults a take starts from it is closed, the card is centred in the
+# whole row, and that offset aimed 300px left of the arrow: the pointer rested
+# on the transcript, no control named itself, and the mode pair measured
+# nothing.
+PRIMARY_PAD="$(
+	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" <<'PY'
+from pathlib import Path
+import sys
+import tomllib
+
+tokens = Path(sys.argv[1])
+geometry = tomllib.loads((tokens / "surface/composer.toml").read_text())["geometry"]
+scale = tomllib.loads((tokens / "scale.toml").read_text())
+print(int(scale["spacing"][geometry["padding_horizontal"]]))
+PY
+)"
+COMPOSER_SURFACE_W=$(( WIN_W - RAIL_W ))
+COMPOSER_CARD_W=$(( COMPOSER_MAX_W < COMPOSER_SURFACE_W - 2 * GUTTER_PX
+	? COMPOSER_MAX_W
+	: COMPOSER_SURFACE_W - 2 * GUTTER_PX ))
+COMPOSER_CARD_RIGHT=$(( RAIL_W + (COMPOSER_SURFACE_W - COMPOSER_CARD_W) / 2 + COMPOSER_CARD_W ))
+PRIMARY_X=$(( WIN_X + COMPOSER_CARD_RIGHT - PRIMARY_PAD - 14 ))
 PRIMARY_Y=$(( WIN_Y + WIN_H - 67 ))
 
 # ─── The model the turn runs on ──────────────────────────────────────────────
@@ -243,6 +339,31 @@ echo "scene: the composer moved ${TAKEN_BACK} pixels when the prompt was taken b
 if [ "${TAKEN_BACK}" -lt "${QUEUED_STRIP_PIXELS}" ]; then
 	abandon_take "native-queued-prompt-taken-back" \
 		"alt+Up moved ${TAKEN_BACK} pixels, so the queued prompt did not return to the draft"
+fi
+
+# ─── A steer typed as a command, in any capitalisation ──────────────────────
+# `/Steer <message>` is the keyboard route to the control the pointer reaches
+# on the composer, and the words after the spelling are what the running turn
+# receives. Ranking folds case over the first word alone, so the row is
+# selected while the message behind it is left out of the score; the assertion
+# is what the host holds afterwards, which is the message with no spelling in
+# front of it.
+#
+# It runs after the frames above because an interjection ends the count the
+# turn was in the middle of: a steer delivered before them left an idle
+# composer under both mode names, and the pair measured nothing.
+STEER_MESSAGE="Say the words steered by the palette."
+move_px "${COMPOSER_X}" "${COMPOSER_Y}"
+click
+k "ctrl+a"
+k "BackSpace"
+t "/Steer ${STEER_MESSAGE}"
+pause 0.8
+shot turn-steer-command-typed
+k "Return"
+if ! native_transcript_holds "${STEER_MESSAGE}" 30; then
+	abandon_take "native-steer-reached-the-turn" \
+		"the steering message never reached the host, so the command row ran without what was typed after it"
 fi
 
 # ─── The way out (primary-.) ─────────────────────────────────────────────────
