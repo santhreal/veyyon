@@ -3,10 +3,11 @@
 //! Owns the diff view, file view, and workspace tree tabs.
 
 pub mod content;
+pub mod diff_columns;
 pub mod diff_rows;
-pub mod diff_split;
 pub mod diff_view;
 pub mod file_view;
+pub mod mono_pane;
 pub mod tabs;
 pub mod tree_view;
 pub mod usage_view;
@@ -22,7 +23,7 @@ pub use usage_view::usage_view;
 use veyyon_desktop_kit::{ColorRole, SpacingStep, TextRamp, TokenSet};
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
 use veyyon_gpui::{
-	Context, FocusHandle, InteractiveElement, IntoElement, ParentElement, Styled, div, px,
+	Context, FocusHandle, InteractiveElement, IntoElement, ParentElement, Styled, Window, div, px,
 };
 
 use crate::{
@@ -46,6 +47,7 @@ pub fn right_panel(
 	tokens: &TokenSet,
 	focus: &FocusHandle,
 	laid_out: &LaidOut,
+	window: &mut Window,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
 	if panel.tabs.is_empty() {
@@ -88,10 +90,11 @@ pub fn right_panel(
 			width,
 			geometry,
 			tokens,
+			window,
 			cx,
 		)
 		.into_any_element(),
-		PanelTab::File => file_view(&panel.file, geometry, tokens, cx).into_any_element(),
+		PanelTab::File => file_view(&panel.file, geometry, tokens, window, cx).into_any_element(),
 		PanelTab::Tree => tree_view(&panel.tree, geometry, tokens, cx).into_any_element(),
 		PanelTab::Usage => usage_view(panel.usage.as_ref(), geometry, tokens).into_any_element(),
 	};

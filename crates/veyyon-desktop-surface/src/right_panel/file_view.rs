@@ -5,13 +5,11 @@ use syntect::{
 	highlighting::{Style, ThemeSet},
 	parsing::SyntaxSet,
 };
-use veyyon_desktop_kit::{
-	ColorRole, MonoSizeStep, MonoText, SpacingStep, TextRamp, TextWeight, TokenSet,
-};
+use veyyon_desktop_kit::{ColorRole, SpacingStep, TextRamp, TextWeight, TokenSet};
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
 use veyyon_gpui::{
 	Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
-	div, px,
+	Window, div, px,
 };
 
 use crate::{
@@ -19,6 +17,7 @@ use crate::{
 	right_panel::{
 		content::{FileLine, FileView, HighlightSpan},
 		diff_rows::gutter_cell,
+		mono_pane::{columns, pane_cell, pane_content_px, pinned_gutter_pane},
 	},
 };
 
@@ -27,6 +26,7 @@ pub fn file_view(
 	file: &Option<FileView>,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
+	window: &mut Window,
 	_cx: &Context<ShellView>,
 ) -> impl IntoElement {
 	let Some(file_data) = file else {
@@ -94,28 +94,16 @@ pub fn file_view(
 		);
 	}
 
+	let mut gutter = div();
+	let mut code = div();
 	for line in &file_data.lines {
-		let line_no = format!("{:>4}", line.line_number);
-		let mut row = div()
-			.h(px(geometry.diff_row_height_px))
-			.w_full()
-			.flex_shrink_0()
-			.flex()
-			.flex_row()
-			.items_center()
-			.mono_text(tokens, MonoSizeStep::Small)
-			.line_height(px(geometry.diff_row_height_px))
-			.child(gutter_cell(&line_no, geometry, tokens));
+		gutter = gutter.child(pane_cell(geometry).child(gutter_cell(
+			&format!("{:>4}", line.line_number),
+			geometry,
+			tokens,
+		)));
 
-		let mut content_line = div()
-			.flex_1()
-			.min_w_0()
-			.flex()
-			.flex_row()
-			.items_center()
-			.overflow_hidden()
-			.whitespace_nowrap();
-
+		let mut content_line = pane_cell(geometry);
 		for span in &line.spans {
 			content_line = content_line.child(
 				div()
@@ -123,10 +111,34 @@ pub fn file_view(
 					.child(span.text.clone()),
 			);
 		}
-
-		row = row.child(content_line);
-		container = container.child(row);
+		code = code.child(content_line);
 	}
+	// The widest line of the file. A line's spans are one line's pieces, so its
+	// width is their sum: the widest piece is not the widest line.
+	let widest = file_data
+		.lines
+		.iter()
+		.map(|line| {
+			line
+				.spans
+				.iter()
+				.map(|span| columns(&span.text))
+				.sum::<usize>()
+		})
+		.max()
+		.unwrap_or(0);
+	container = container.child(
+		pinned_gutter_pane(
+			"right-panel-file-code",
+			gutter,
+			code,
+			pane_content_px(window, tokens, geometry, widest),
+			geometry,
+			tokens,
+		)
+		.w_full()
+		.flex_shrink_0(),
+	);
 
 	if file_data.truncated {
 		container = container.child(

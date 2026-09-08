@@ -11,7 +11,7 @@ use veyyon_desktop_model::DiffMode;
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
 use veyyon_gpui::{
 	Context, ElementId, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
-	Styled, div, px,
+	Styled, Window, div, px,
 };
 
 use crate::{
@@ -19,8 +19,7 @@ use crate::{
 	intent::Intent,
 	right_panel::{
 		content::{DiffFile, DiffStatus},
-		diff_rows::render_unified_row,
-		diff_split::render_split_rows,
+		diff_columns::{split_columns, unified_columns},
 	},
 };
 
@@ -32,6 +31,7 @@ pub fn diff_view(
 	_panel_width: f32,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
+	window: &mut Window,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
 	let effective_mode = diff_mode;
@@ -74,7 +74,8 @@ pub fn diff_view(
 			container = container.child(Divider::horizontal());
 		}
 		container = container.child(file_header(file, effective_mode, geometry, tokens, cx));
-		container = container.child(file_body(file_idx, file, effective_mode, geometry, tokens, cx));
+		container =
+			container.child(file_body(file_idx, file, effective_mode, geometry, tokens, window, cx));
 	}
 
 	container
@@ -157,28 +158,45 @@ fn file_header(
 		)
 }
 
+/// Draws one file's rows: one pane in unified mode, two in split mode, each
+/// pinning its gutter while its code scrolls sideways (§5.11).
 fn file_body(
 	file_idx: usize,
 	file: &DiffFile,
 	diff_mode: DiffMode,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
+	window: &mut Window,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
-	let mut body = div().w_full().flex().flex_col();
-
 	match diff_mode {
-		DiffMode::Unified => {
-			for (row_idx, row) in file.rows.iter().enumerate() {
-				body = body.child(render_unified_row(file_idx, row_idx, row, geometry, tokens, cx));
-			}
-		},
+		DiffMode::Unified => div().w_full().flex().flex_col().child(
+			unified_columns(file_idx, file, geometry, tokens, cx)
+				.into_pane(format!("diff-unified-{file_idx}"), window, geometry, tokens)
+				.w_full()
+				.flex_shrink_0(),
+		),
 		DiffMode::Split => {
-			body = body.child(render_split_rows(file_idx, file, geometry, tokens, cx));
+			let (old, new) = split_columns(file_idx, file, geometry, tokens, cx);
+			div()
+				.w_full()
+				.flex()
+				.flex_row()
+				.items_start()
+				.child(
+					old.into_pane(format!("diff-split-old-{file_idx}"), window, geometry, tokens)
+						.flex_1()
+						.min_w_0(),
+				)
+				.child(
+					new.into_pane(format!("diff-split-new-{file_idx}"), window, geometry, tokens)
+						.flex_1()
+						.min_w_0()
+						.border_l(px(geometry.chrome_resize_handle_line_px))
+						.border_color(tokens.color(ColorRole::Hairline)),
+				)
 		},
 	}
-
-	body
 }
 
 fn diff_toolbar(

@@ -630,6 +630,20 @@ The off arm records the two frames a mode that stops for nothing can reach: the
 read runs unasked and no card is drawn. The folded frames exist only in the on
 arm.
 
+Use `proof/scenes/desktop-mono-pane.sh` to open a file whose lines are wider
+than the right panel and reach the far end of one, measuring the pane's pinned
+gutter and its scrolling code column separately. Record the other arm with a
+build of this tree that holds the pane back, since the change is inside the
+executable alone:
+
+```sh
+SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
+  proof/scenes/desktop-mono-pane.sh
+SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
+  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
+  proof/docker/record-native.sh proof/scenes/desktop-mono-pane.sh
+```
+
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
 The [capture requirements](../foundations/verification.md) specify paired static
 frames and animated clips. Headless scene PNGs do not replace native captures.

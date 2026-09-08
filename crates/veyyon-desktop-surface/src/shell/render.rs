@@ -251,6 +251,7 @@ pub fn render_shell(
 				&tokens,
 				&panel_focus,
 				view.laid_out(),
+				window,
 				cx,
 			);
 			Some(
@@ -308,6 +309,7 @@ pub fn render_shell(
 				&tokens,
 				&panel_focus,
 				view.laid_out(),
+				window,
 				cx,
 			);
 			let tracked = view

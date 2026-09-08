@@ -3,8 +3,7 @@
 use std::ops::Range;
 
 use veyyon_desktop_kit::{
-	ColorRole, MonoSizeStep, MonoText, RadiusStep, SpacingStep, TextRamp, TextWeight, TintRole,
-	TokenSet,
+	ColorRole, MonoSizeStep, MonoText, RadiusStep, SpacingStep, TextRamp, TextWeight, TokenSet,
 };
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
 use veyyon_gpui::{
@@ -12,89 +11,26 @@ use veyyon_gpui::{
 	Styled, div, px,
 };
 
-use crate::{ShellView, intent::Intent, right_panel::content::DiffRow};
+use crate::{ShellView, intent::Intent};
 
-/// Renders a single diff row in unified view mode.
-pub fn render_unified_row(
-	file_index: usize,
-	row_index: usize,
-	row: &DiffRow,
-	geometry: &PanelsSurfaceTokens,
-	tokens: &TokenSet,
-	cx: &Context<ShellView>,
-) -> Div {
-	match row {
-		DiffRow::HunkHeader { old_start, old_count, new_start, new_count, symbol } => {
-			render_hunk_header(
-				*old_start, *old_count, *new_start, *new_count, symbol, geometry, tokens,
-			)
-		},
-		DiffRow::Context { old_line: _, new_line, text } => {
-			let line_no = format!("{new_line:>4}");
-			div()
-				.h(px(geometry.diff_row_height_px))
-				.w_full()
-				.flex_shrink_0()
-				.flex()
-				.flex_row()
-				.items_center()
-				.mono_text(tokens, MonoSizeStep::Small)
-				.line_height(px(geometry.diff_row_height_px))
-				.child(gutter_cell(&line_no, geometry, tokens))
-				.child(sign_cell(" ", geometry, tokens, ColorRole::Secondary))
-				.child(content_cell(text, &[], tokens, None))
-		},
-		DiffRow::Added { new_line, text, intraline } => {
-			let line_no = format!("{new_line:>4}");
-			let mut row_bg = tokens.tint(TintRole::Done).fill;
-			row_bg.a = geometry.diff_added_removed_alpha;
-			let mut hl_bg = tokens.tint(TintRole::Done).fill;
-			hl_bg.a = geometry.diff_intraline_alpha;
-
-			div()
-				.h(px(geometry.diff_row_height_px))
-				.w_full()
-				.flex_shrink_0()
-				.flex()
-				.flex_row()
-				.items_center()
-				.bg(row_bg)
-				.mono_text(tokens, MonoSizeStep::Small)
-				.line_height(px(geometry.diff_row_height_px))
-				.child(gutter_cell(&line_no, geometry, tokens))
-				.child(sign_cell("+", geometry, tokens, ColorRole::Foreground))
-				.child(content_cell(text, intraline, tokens, Some(hl_bg)))
-		},
-		DiffRow::Removed { old_line, text, intraline } => {
-			let line_no = format!("{old_line:>4}");
-			let mut row_bg = tokens.tint(TintRole::Error).fill;
-			row_bg.a = geometry.diff_added_removed_alpha;
-			let mut hl_bg = tokens.tint(TintRole::Error).fill;
-			hl_bg.a = geometry.diff_intraline_alpha;
-
-			div()
-				.h(px(geometry.diff_row_height_px))
-				.w_full()
-				.flex_shrink_0()
-				.flex()
-				.flex_row()
-				.items_center()
-				.bg(row_bg)
-				.mono_text(tokens, MonoSizeStep::Small)
-				.line_height(px(geometry.diff_row_height_px))
-				.child(gutter_cell(&line_no, geometry, tokens))
-				.child(sign_cell("-", geometry, tokens, ColorRole::Foreground))
-				.child(content_cell(text, intraline, tokens, Some(hl_bg)))
-		},
-		DiffRow::Collapsed { hidden, .. } => {
-			div().child(render_collapsed_row(file_index, row_index, *hidden, geometry, tokens, cx))
-		},
-		DiffRow::Binary { message } => render_notice_row(message, geometry, tokens),
-		DiffRow::Unavailable { reason } => render_notice_row(reason, geometry, tokens),
-		DiffRow::Truncated { remaining } => {
-			let msg = format!("2,000 changed lines cap reached ({remaining} more lines not shown)");
-			render_notice_row(&msg, geometry, tokens)
-		},
+/// The text a hunk header states: its ranges, and the symbol it sits in when
+/// the host named one.
+///
+/// Stated here rather than only inside the header's own element because the
+/// pane it draws in has to be at least as wide as the header (§5.11), and the
+/// pane's width is counted in cells before any of it is drawn.
+#[must_use]
+pub fn hunk_header_text(
+	old_start: usize,
+	old_count: usize,
+	new_start: usize,
+	new_count: usize,
+	symbol: &Option<String>,
+) -> String {
+	let ranges = format!("@@ -{old_start},{old_count} +{new_start},{new_count} @@");
+	match symbol {
+		Some(symbol) => format!("{ranges} {symbol}"),
+		None => ranges,
 	}
 }
 

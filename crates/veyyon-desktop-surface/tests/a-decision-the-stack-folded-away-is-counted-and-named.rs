@@ -46,141 +46,16 @@
 //! anything about the two cards on top of the fold, which the card-stack
 //! control and ink suites own.
 
-#[path = "support/queue-scroll/mod.rs"]
-#[allow(dead_code, reason = "this binary uses a subset of the shared session helpers")]
-mod queue_scroll;
+#[path = "support/decision-fold/mod.rs"]
+#[allow(dead_code, reason = "this binary uses a subset of the shared fold helpers")]
+mod decision_fold;
 
-use queue_scroll::open_session;
+use decision_fold::{
+	WINDOW_H, WINDOW_W, away, cards_region, centre, fold_lines, fold_row, open_session, runs_within,
+	state_with,
+};
 use veyyon_desktop_kit::load_bundled_tokens;
-use veyyon_desktop_scene::{BoxBounds, Captured, HeadlessSession, headless_context, text_boxes};
-use veyyon_desktop_surface::{Card, ShellState, ShellView, damage::Region, fixture};
-use veyyon_gpui::{Bounds, Pixels, Point};
-
-/// The window this renders in: wide enough that no width shed is in play, so
-/// the stack keeps the composer's measure.
-const WINDOW_W: u32 = 1280;
-const WINDOW_H: u32 = 900;
-
-fn rect(bounds: Bounds<Pixels>) -> BoxBounds {
-	BoxBounds {
-		left:   f32::from(bounds.origin.x),
-		top:    f32::from(bounds.origin.y),
-		right:  f32::from(bounds.origin.x) + f32::from(bounds.size.width),
-		bottom: f32::from(bounds.origin.y) + f32::from(bounds.size.height),
-	}
-}
-
-fn centre(area: BoxBounds) -> Point<Pixels> {
-	Point {
-		x: Pixels::from(f32::midpoint(area.left, area.right)),
-		y: Pixels::from(f32::midpoint(area.top, area.bottom)),
-	}
-}
-
-/// Decisions with subjects of visibly different lengths, so a fold that names
-/// each one draws runs of different widths and a fold that repeats one label
-/// draws runs of the same width.
-fn decisions() -> Vec<Card> {
-	vec![
-		Card::Approval { tool: "bash".to_owned(), detail: vec!["cargo test".to_owned()] },
-		Card::Question {
-			prompt:  "Which of the two shapes gives way under 208px?".to_owned(),
-			options: vec!["The badge".to_owned(), "The elapsed time".to_owned()],
-		},
-		Card::Plan {
-			title: "Move the surface leaves onto the kit primitives, in order".to_owned(),
-			body:  vec!["Replace the answer row with Button.".to_owned()],
-		},
-		Card::Approval {
-			tool:   "write — crates/veyyon-desktop-surface/src/cards/mod.rs".to_owned(),
-			detail: vec!["Adds the fold's own row.".to_owned()],
-		},
-		Card::Question { prompt: "Ship it?".to_owned(), options: vec!["Yes".to_owned()] },
-	]
-}
-
-/// A state carrying `count` decisions, in the fixture's own window.
-fn state_with(count: usize) -> ShellState {
-	let mut state = fixture::populated();
-	state.cards = decisions().into_iter().take(count).collect();
-	assert_eq!(state.cards.len(), count, "the fixture set carries {count} decisions to attach");
-	state
-}
-
-/// The row the fold occupies: the stack's last child, so its lower edge is the
-/// cards region's own.
-///
-/// Found by position rather than by height, which is what leaves the height
-/// free to be asserted: a row identified by being 24px tall could not then be
-/// checked for being 24px tall.
-fn fold_row(captured: &Captured, cards: BoxBounds) -> Option<BoxBounds> {
-	let rows: Vec<BoxBounds> = captured
-		.hitboxes
-		.iter()
-		.map(|bounds| rect(*bounds))
-		.filter(|row| (row.bottom - cards.bottom).abs() < 1.5 && row.width() > 300.0)
-		.collect();
-	assert!(
-		rows.len() <= 1,
-		"the stack's lower edge carries at most the fold's own row; got {rows:?}"
-	);
-	rows.first().copied()
-}
-
-/// Every text run drawn inside `row`.
-fn runs_within(captured: &Captured, row: BoxBounds) -> Vec<BoxBounds> {
-	text_boxes(captured)
-		.into_iter()
-		.filter(|run| {
-			run.left >= row.left - 0.5
-				&& run.right <= row.right + 0.5
-				&& run.top >= row.top - 0.5
-				&& run.bottom <= row.bottom + 0.5
-		})
-		.collect()
-}
-
-/// The lines the fold draws from its own text inset downward: the count first,
-/// then one for each folded decision, whether or not the row's box contains
-/// them.
-///
-/// The inset is what identifies them. Reading the row's box instead is what
-/// hides the defect this is here for, since a line the row squeezed rather
-/// than clipped hangs past the row's lower edge and a containment filter
-/// discards it. The composer under the fold and the cards over it draw at
-/// their own insets, so their runs start at another edge and drop out.
-fn fold_lines(captured: &Captured, row: BoxBounds, lines: usize, line: f32) -> Vec<BoxBounds> {
-	let mut runs: Vec<BoxBounds> = text_boxes(captured)
-		.into_iter()
-		.filter(|run| {
-			run.top >= row.top - 0.5
-				&& run.top <= line.mul_add(lines as f32, row.top)
-				&& run.left >= row.left - 0.5
-				&& run.right <= row.right + 0.5
-		})
-		.collect();
-	runs.sort_by(|left, right| left.top.total_cmp(&right.top));
-	let Some(first) = runs.first().copied() else {
-		return Vec::new();
-	};
-	runs.retain(|run| (run.left - first.left).abs() < 0.5);
-	runs
-}
-
-/// The cards region's box, as the frame just laid it out.
-fn cards_region(session: &mut HeadlessSession<'_, ShellView>) -> BoxBounds {
-	let bounds = session
-		.update(|view, _window, _cx| view.laid_out().drawn_bounds(Region::Cards))
-		.expect("the window updates")
-		.expect("a state with cards lays the cards region out");
-	rect(bounds)
-}
-
-/// Somewhere with no card under it, for the pointer to leave to.
-fn away() -> Point<Pixels> {
-	Point { x: Pixels::from(4.0), y: Pixels::from(4.0) }
-}
-
+use veyyon_desktop_scene::headless_context;
 #[test]
 fn a_stack_under_its_cap_folds_nothing_and_draws_no_count() {
 	let tokens = load_bundled_tokens().expect("the bundled tokens load");
@@ -257,8 +132,8 @@ fn the_collapsed_fold_holds_the_count_alone_and_clips_the_rest() {
 		assert_eq!(
 			lines.len(),
 			1 + hidden,
-			"the fold draws the count and one line for each of the {hidden} decision(s) it holds, all \
-			 at the row's own text inset; got {lines:?}"
+			"the fold draws the count and one line for each of the {hidden} decision(s) it holds, \
+			 all at the row's own text inset; got {lines:?}"
 		);
 		assert!(
 			lines[0].height() <= line + 0.5,
@@ -270,15 +145,15 @@ fn the_collapsed_fold_holds_the_count_alone_and_clips_the_rest() {
 			let pitch = pair[1].top - pair[0].top;
 			assert!(
 				(pitch - line).abs() < 1.0,
-				"the folded lines keep the {line}px line they are authored at and leave the row by its \
-				 lower edge; packed {pitch}px apart they were shrunk to share one row, which draws a \
-				 cut line of the next name under the count"
+				"the folded lines keep the {line}px line they are authored at and leave the row by \
+				 its lower edge; packed {pitch}px apart they were shrunk to share one row, which \
+				 draws a cut line of the next name under the count"
 			);
 		}
 		assert!(
 			lines[1].top >= row.bottom - 0.5,
-			"the first folded line starts at or past the row's lower edge, where the row clips it: it \
-			 starts {}px above it",
+			"the first folded line starts at or past the row's lower edge, where the row clips it: \
+			 it starts {}px above it",
 			row.bottom - lines[1].top
 		);
 	}

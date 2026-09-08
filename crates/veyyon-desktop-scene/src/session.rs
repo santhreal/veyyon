@@ -306,6 +306,30 @@ impl<'a, V: Render + 'static> HeadlessSession<'a, V> {
 		Ok(())
 	}
 
+	/// Turns the wheel sideways by `lines` at `at`, negative leftward, as a
+	/// trackpad or a tilt wheel does over that position.
+	///
+	/// A pane that scrolls horizontally cannot be driven by [`Self::scroll`],
+	/// which carries no x delta: GPUI maps a vertical delta onto a horizontal
+	/// region only where the axis restriction is off, which is the behaviour a
+	/// mono pane turns off.
+	pub fn scroll_across(&mut self, at: Point<Pixels>, lines: f32) -> Result<(), RenderError> {
+		let modifiers = Modifiers::default();
+		let mouse_move =
+			PlatformInput::MouseMove(MouseMoveEvent { position: at, pressed_button: None, modifiers });
+		let wheel = PlatformInput::ScrollWheel(ScrollWheelEvent {
+			position: at,
+			delta: ScrollDelta::Lines(Point { x: -lines, y: 0.0 }),
+			modifiers,
+			touch_phase: TouchPhase::Moved,
+		});
+
+		self.dispatch(mouse_move)?;
+		self.dispatch(wheel)?;
+		self.cx.run_until_parked();
+		Ok(())
+	}
+
 	/// Dispatches one platform input to the window.
 	fn dispatch(&mut self, input: PlatformInput) -> Result<(), RenderError> {
 		self

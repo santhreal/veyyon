@@ -8,8 +8,10 @@
 
 use std::path::PathBuf;
 
-use veyyon_desktop_tokens::{MonoSizeStep, TokenError};
-use veyyon_gpui::Pixels;
+use veyyon_desktop_tokens::{MonoSizeStep, TokenError, TypeSize};
+use veyyon_gpui::{
+	Font, FontFeatures, FontStyle, FontWeight, Hsla, Pixels, SharedString, TextRun, Window, px,
+};
 
 use crate::token_set::TokenSet;
 
@@ -34,6 +36,22 @@ pub trait MonoText: veyyon_gpui::Styled + Sized {
 			.font_family(tokens.mono_family())
 			.text_size(metrics.size)
 			.line_height(metrics.line_height)
+	}
+
+	/// Sets an element's text in the monospace family, at the size the
+	/// surface's own tokens author for that row.
+	///
+	/// A mono row whose size is authored beside its height - a diff row, a
+	/// file line - states it in its surface's token file and reads it back
+	/// here, rather than naming a step the surface does not author: a row
+	/// 18px tall drawn at the 16px step's leading is the same defect as a
+	/// hardcoded size, since the token it authors reaches nothing (§9.3).
+	#[must_use]
+	fn mono_type(self, tokens: &TokenSet, size: &TypeSize) -> Self {
+		self
+			.font_family(tokens.mono_family())
+			.text_size(px(size.size))
+			.line_height(px(size.line_height))
 	}
 }
 
@@ -67,4 +85,36 @@ pub(crate) fn present_family(
 			key:      format!("type.family.{key}"),
 			families: chain.join(", "),
 		})
+}
+
+/// The width of one monospace cell at `size`, as the face this machine
+/// resolved shapes it.
+///
+/// A pane that scrolls sideways has to state how wide its widest line is
+/// before the frame is laid out, and a mono column's width is its cell count
+/// times this. Measuring it here rather than authoring a number keeps it
+/// correct for whichever family of the chain the machine carries, whose
+/// advances differ in the third decimal place, and GPUI caches the shaped line
+/// so the cost is one hash lookup per frame after the first.
+pub fn mono_advance(window: &mut Window, tokens: &TokenSet, size: &TypeSize) -> f32 {
+	let font = Font {
+		family:    tokens.mono_family(),
+		features:  FontFeatures::default(),
+		fallbacks: None,
+		weight:    FontWeight::NORMAL,
+		style:     FontStyle::Normal,
+	};
+	let run = TextRun {
+		len: 1,
+		font,
+		color: Hsla::default(),
+		background_color: None,
+		underline: None,
+		strikethrough: None,
+	};
+	let shaped =
+		window
+			.text_system()
+			.shape_line(SharedString::from("0"), px(size.size), &[run], None);
+	f32::from(shaped.width)
 }

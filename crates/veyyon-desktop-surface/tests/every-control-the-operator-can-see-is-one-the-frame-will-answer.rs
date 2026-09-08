@@ -94,19 +94,22 @@ fn expected_controls(state: &ShellState) -> usize {
 	// An empty contextual panel still has its docked split, and the panel's own
 	// container answers a press because that is what puts its chords on the
 	// focus path. A diff has a scroll area, three toolbar controls and one mode
-	// toggle per file.
-	let panel = if state.keymap.panel_collapsed {
-		0
-	} else {
-		3 + state.panel.tabs.len()
-			+ if !state.panel.is_empty()
-				&& state.panel.active_tab == veyyon_desktop_surface::PanelTab::Diff
-			{
-				4 + state.panel.diff.len()
-			} else {
-				0
-			}
+	// toggle per file. Each mono tenant answers one more rect per pane it
+	// scrolls sideways (§5.11): the pinned gutter stays put and the code beside
+	// it is its own scroll region, so a unified diff adds one per file, a split
+	// diff adds two, and an open file adds one.
+	let panes = match state.panel.diff_mode {
+		veyyon_desktop_model::DiffMode::Unified => 1,
+		veyyon_desktop_model::DiffMode::Split => 2,
 	};
+	let tenant = match state.panel.active_tab {
+		veyyon_desktop_surface::PanelTab::Diff if !state.panel.is_empty() => {
+			4 + state.panel.diff.len() * (1 + panes)
+		},
+		veyyon_desktop_surface::PanelTab::File => usize::from(state.panel.file.is_some()),
+		_ => 0,
+	};
+	let panel = if state.keymap.panel_collapsed { 0 } else { 3 + state.panel.tabs.len() + tenant };
 
 	// The overflow summary is hover-tested; each question also has a text reply.
 	let visible_cards = cards.stack_max_visible.min(state.cards.len());
