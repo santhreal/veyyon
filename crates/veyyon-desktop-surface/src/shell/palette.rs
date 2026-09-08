@@ -2,12 +2,15 @@
 
 use std::{cell::Cell, rc::Rc};
 
+use strum::IntoEnumIterator;
 use veyyon_desktop_kit::input::{Editor, EditorEvent, EditorMode};
 use veyyon_desktop_model::{SessionId, SurfaceId};
 use veyyon_gpui::{AppContext, Context, Entity, Pixels, Point, Window};
 
 use crate::{
-	Intent, Overlay, PaletteState, ShellView, controls::availability_style, palette::PaletteMode,
+	Intent, Overlay, PaletteState, ShellView,
+	controls::availability_style,
+	palette::{PaletteMode, commands::ComposerCommand},
 };
 
 /// Window-local input state; host snapshots do not replace the query editor or
@@ -126,13 +129,26 @@ impl ShellView {
 			}
 			return;
 		};
+		// A command that carries a message is ranked on its first word, so the
+		// message after it is not scored against the row and cannot lose it.
+		// Which commands those are is read off the command table, and the
+		// spelling is compared the way the ranker compares, ignoring case:
+		// `/Steer hello` reaches the same row as `/steer hello`.
 		let first = query.split_whitespace().next().unwrap_or("");
-		let query = if matches!(first, "steer" | "queue") {
-			first
+		let carries = ComposerCommand::iter().any(|command| {
+			command.carries_draft()
+				&& command
+					.name()
+					.trim_start_matches('/')
+					.eq_ignore_ascii_case(first)
+		});
+		let query = if carries { first } else { query };
+		let query = if query.eq_ignore_ascii_case("commands") {
+			""
 		} else {
 			query
-		};
-		let query = if query == "commands" { "" } else { query }.to_owned();
+		}
+		.to_owned();
 		if !self.palette_input.slash
 			|| self
 				.state

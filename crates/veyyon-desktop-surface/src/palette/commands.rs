@@ -30,6 +30,21 @@ impl ComposerCommand {
 		}
 	}
 
+	/// Whether the command sends the draft written after its spelling.
+	///
+	/// The composer's text is the palette's query while a slash menu is open,
+	/// and the ranker scores a query against the row's own name: a message
+	/// long enough to outrun that name loses the row it was addressed to. A
+	/// command that carries a message is therefore ranked on its first word
+	/// alone, and the rest is the message.
+	#[must_use]
+	pub const fn carries_draft(self) -> bool {
+		match self {
+			Self::Steer | Self::Queue => true,
+			Self::AttachFiles | Self::Models | Self::Effort | Self::QueueMode => false,
+		}
+	}
+
 	/// The capability the command's action needs from the host, for the
 	/// commands whose action a host can decline to carry (§5.13).
 	///

@@ -114,6 +114,42 @@ fn differing_pixels(before: &RgbaFrame, after: &RgbaFrame, area: Bounds<Pixels>)
 	differing
 }
 
+/// The brightest pixel, the mean brightness, and how many pixels are bright
+/// enough to read as ink, inside `area`.
+///
+/// A scrim is read this way rather than by counting changed pixels: the
+/// transcript's ground is black, a dark scrim over black is still black, and
+/// the share of the band that changes is then the share of it that carries
+/// ink, which is a property of the fixture and not of the scrim.
+fn brightness(frame: &RgbaFrame, area: Bounds<Pixels>) -> (u32, u32, u32) {
+	let left = f32::from(area.origin.x).max(0.0) as u32;
+	let top = f32::from(area.origin.y).max(0.0) as u32;
+	let right = (f32::from(area.origin.x + area.size.width) as u32).min(frame.width());
+	let bottom = (f32::from(area.origin.y + area.size.height) as u32).min(frame.height());
+	let mut brightest = 0;
+	let mut total = 0u64;
+	let mut counted = 0u64;
+	let mut ink = 0;
+	for y in top..bottom {
+		for x in left..right {
+			let pixel = frame.pixel(x, y).expect("the sample is inside the frame");
+			let luminance =
+				(u32::from(pixel.r) * 2 + u32::from(pixel.g) * 5 + u32::from(pixel.b)) / 8;
+			brightest = brightest.max(luminance);
+			total += u64::from(luminance);
+			counted += 1;
+			if luminance > INK {
+				ink += 1;
+			}
+		}
+	}
+	(brightest, (total / counted.max(1)) as u32, ink)
+}
+
+/// The luminance a run of text has to reach to be read as ink rather than as
+/// ground or as an antialiased edge of it.
+const INK: u32 = 96;
+
 #[test]
 fn a_floating_panel_meets_no_region_it_is_not_annotating() {
 	let surface = load_bundled_tokens()
@@ -197,10 +233,8 @@ fn a_floating_panel_tints_the_transcript_and_leaves_the_rail_and_the_draft_lit()
 	let panel = box_of(&mut session, Region::Panel);
 	// The strip of the transcript the sheet does not cover: what the scrim is
 	// for. It is read clear of the sheet's own drop shadow, which spills into
-	// the band beside it, so a single changed pixel there is not evidence of a
-	// scrim -- a float with no scrim at all still darkens what its shadow
-	// falls on. A scrim tints the whole region, so the share is what is
-	// asserted, not the presence of a difference.
+	// the band beside it, so a change there is not evidence of a scrim -- a
+	// float with no scrim at all still darkens what its shadow falls on.
 	let clear_of_shadow = px(64.0);
 	let tinted = Bounds {
 		origin: transcript.origin,
@@ -209,12 +243,28 @@ fn a_floating_panel_tints_the_transcript_and_leaves_the_rail_and_the_draft_lit()
 			transcript.size.height,
 		),
 	};
-	let area = f32::from(tinted.size.width) as u32 * f32::from(tinted.size.height) as u32;
-	let tint = differing_pixels(&closed, &open, tinted);
+	let (was_brightest, was_mean, was_ink) = brightness(&closed, tinted);
+	let (is_brightest, is_mean, is_ink) = brightness(&open, tinted);
+	// Whatever the fixture draws there has to be readable first, or a band of
+	// bare ground would pass every claim below without a scrim existing.
 	assert!(
-		area > 0 && tint * 2 > area,
-		"{tint} of {area} pixels beside the float changed, so the float does not tint the \
-		 transcript it covers"
+		was_ink > 0 && was_brightest > 2 * INK,
+		"the transcript beside the float draws no ink ({was_ink} px over {INK}, brightest \
+		 {was_brightest}), so there is nothing for a scrim to dim"
+	);
+	assert!(
+		is_brightest * 2 < was_brightest,
+		"the brightest pixel beside the float went {was_brightest} -> {is_brightest}, so the \
+		 float does not dim the transcript it covers"
+	);
+	assert_eq!(
+		is_ink, 0,
+		"{is_ink} pixels beside the float still read at ink brightness, so the scrim is drawn \
+		 over part of the transcript rather than the region"
+	);
+	assert!(
+		is_mean < was_mean,
+		"the band's mean brightness went {was_mean} -> {is_mean}, so the scrim darkens nothing"
 	);
 
 	for (name, area) in [

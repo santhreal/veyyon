@@ -10,6 +10,18 @@ use crate::{
 	palette::{PaletteItem, PaletteMode, commands::ComposerCommand},
 };
 
+/// The draft past `prefix`, when the draft opens with that spelling in any
+/// case.
+///
+/// The ranker folds case, so `/Steer hello` selects the steering row; a
+/// case-sensitive strip left that spelling unrecognised, and the fallback
+/// below drops the draft's whole first line, which is the message. Every
+/// command spelling is ASCII, so a fold cannot change the run's length.
+fn strip_command_spelling<'a>(draft: &'a str, prefix: &str) -> Option<&'a str> {
+	let (head, rest) = draft.split_at_checked(prefix.len())?;
+	head.eq_ignore_ascii_case(prefix).then_some(rest)
+}
+
 impl ShellView {
 	/// Removes the selected command spelling, preserving trailing draft text and
 	/// attachments.
@@ -34,15 +46,13 @@ impl ShellView {
 				std::iter::once(item.title.as_str())
 					.chain(aliases.iter().copied())
 					.find(|prefix| {
-						self
-							.composer_cache
-							.strip_prefix(prefix)
+						strip_command_spelling(&self.composer_cache, prefix)
 							.is_some_and(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace))
 					})
 					.unwrap_or(item.title.as_str())
 			});
 		let draft = prefix
-			.and_then(|prefix| self.composer_cache.strip_prefix(prefix))
+			.and_then(|prefix| strip_command_spelling(&self.composer_cache, prefix))
 			.map_or_else(
 				|| {
 					self
