@@ -17,7 +17,8 @@
 //! NOT CAUGHT: how an artifact block draws once it is on the turn, which is
 //! the surface crate's `artifact` suites; and whether the host records the
 //! mention at all, which is
-//! `packages/coding-agent/test/gui-host/a-file-a-prompt-read-is-stated-to-the-desktop.test.ts`.
+//! `packages/coding-agent/test/gui-host/
+//! a-file-a-prompt-read-is-stated-to-the-desktop.test.ts`.
 
 mod support;
 
@@ -67,7 +68,12 @@ fn a_file_the_prompt_named_joins_the_turn_that_named_it() {
 		("m1", Some("u1"), MessageRole::FileMention, vec![mention("README.md")]),
 	]);
 
-	assert_eq!(state.transcript.len(), 1, "the mention draws no turn of its own: {:?}", state.transcript);
+	assert_eq!(
+		state.transcript.len(),
+		1,
+		"the mention draws no turn of its own: {:?}",
+		state.transcript
+	);
 	let Turn::OperatorArtifacts { text, artifacts } = &state.transcript[0] else {
 		panic!("expected one operator turn holding the file, got {:?}", state.transcript);
 	};
@@ -116,12 +122,7 @@ fn a_second_mention_entry_lands_on_the_same_turn() {
 
 #[test]
 fn a_mention_with_no_prompt_in_front_of_it_is_still_the_operators() {
-	let state = seeded(vec![(
-		"m1",
-		None,
-		MessageRole::FileMention,
-		vec![mention("README.md")],
-	)]);
+	let state = seeded(vec![("m1", None, MessageRole::FileMention, vec![mention("README.md")])]);
 
 	assert_eq!(state.transcript.len(), 1, "the file is drawn: {:?}", state.transcript);
 	let Turn::OperatorArtifacts { text, artifacts } = &state.transcript[0] else {
@@ -182,9 +183,9 @@ fn only_two_roles_draw_on_the_turn_the_operator_owns() {
 			("u1", None, MessageRole::User, vec![ContentBlock::Text { text: "prompt".to_string() }]),
 			("x1", Some("u1"), role, vec![mention("README.md")]),
 		]);
-		let as_operator = state.transcript.iter().any(|turn| {
-			matches!(turn, Turn::OperatorArtifacts { artifacts, .. } if !artifacts.is_empty())
-		});
+		let as_operator = state.transcript.iter().any(
+			|turn| matches!(turn, Turn::OperatorArtifacts { artifacts, .. } if !artifacts.is_empty()),
+		);
 		let as_agent = state
 			.transcript
 			.iter()

@@ -128,7 +128,9 @@ pub(super) fn push_entry(turns: &mut Turns, entry: &TranscriptEntry) {
 				Some(Turn::Operator(text)) => text,
 				_ => String::new(),
 			};
-			turns.turns.push(Turn::OperatorArtifacts { text, artifacts });
+			turns
+				.turns
+				.push(Turn::OperatorArtifacts { text, artifacts });
 			return;
 		}
 		match turns.turns.last_mut() {
