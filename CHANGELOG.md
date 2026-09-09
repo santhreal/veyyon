@@ -286,6 +286,8 @@
 
 ### Fixed
 
+- The GUI host states the header of the session a transcript belongs to before it sends the entries, so reloading or exporting another session no longer writes its transcript into the pane of the session on screen: `LoadTranscript` had switched the host's session and sent a bare entry list, which the desktop files under the session it last had a header for, and `ExportSession` switched it and stated nothing at all.
+- The desktop drops the transcript and the active-session pointer of a session the host stops listing, where deleting the open session had left the window addressing an erased id: the next prompt named a session the host no longer held and the next transcript was filed under a row nothing drew.
 - A desktop split's resize grip is the hit area its panels tokens author and tints to the accent while the pointer holds it, the docked terminal drawer no longer draws a second hairline under the split's own line, and the drawer chrome no longer paints an 8x1 mark in its tab row that answered no press.
 - A desktop file or diff pane draws the rows and columns its own box shows, so a long file or a diff of thousands of rows opens at the cost of a short one: a 40-line file of 900 columns had handed the renderer some 13,000 text runs for the 400 the panel showed, and the window stopped answering a pointer, a keystroke and a wheel while it drew them.
 - A desktop file or diff line wider than the right panel scrolls sideways under a horizontal wheel while its line numbers and change signs stay where they are, and a vertical wheel over the same lines scrolls the file: a long line had been cut at the panel's edge mid-glyph with no gesture that reached the rest of it. A split diff's two sides scroll on their own.
