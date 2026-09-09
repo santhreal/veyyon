@@ -2,9 +2,7 @@
 
 use serde_json::{Value, json};
 use veyyon_desktop_model::{InteractionId, PendingDecisions};
-use veyyon_desktop_surface::{Card, Intent};
-
-use super::markdown;
+use veyyon_desktop_surface::{Card, Intent, plain_lines};
 
 /// The cards for a session's pending decisions: approvals, then questions,
 /// then plans. `interaction_at` reads the same order, so a card's position is
@@ -27,7 +25,7 @@ pub(super) fn cards(pending: &PendingDecisions) -> Vec<Card> {
 		// draws that name in its own ramp, so it is not redrawn in the body.
 		// The run bar reads the same line, so the two name one plan once, and
 		// the blank the heading was parted from is not drawn as an empty row.
-		let lines = markdown::plain_lines(&p.markdown_plan);
+		let lines = plain_lines(&p.markdown_plan);
 		let named = lines.iter().position(|line| !line.trim().is_empty());
 		let title = named.map_or_else(String::new, |at| lines[at].trim().to_owned());
 		let rest = named.map_or(&[][..], |at| &lines[at + 1..]);

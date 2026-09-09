@@ -6,9 +6,9 @@
 //! state is all there is to report.
 
 use veyyon_desktop_model::{SessionBadge, SessionId, Store};
-use veyyon_desktop_surface::Badge;
+use veyyon_desktop_surface::{Badge, plain_line};
 
-use super::{markdown, queue::badge};
+use super::queue::badge;
 
 /// The run bar's badge and its line, or `None` when the session is idle.
 pub(super) fn run_status(
@@ -50,7 +50,7 @@ pub(super) fn run_status(
 			.interactions
 			.get(id)
 			.and_then(|pending| pending.plans.first())
-			.map(|plan| markdown::plain_line(&plan.markdown_plan))
+			.map(|plan| plain_line(&plan.markdown_plan))
 			.unwrap_or_default(),
 		SessionBadge::Watching => store
 			.domains

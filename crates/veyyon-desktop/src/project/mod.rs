@@ -21,7 +21,6 @@ mod connection;
 mod controls;
 mod drawer;
 mod failure;
-mod markdown;
 mod overlay;
 mod panel;
 mod queue;

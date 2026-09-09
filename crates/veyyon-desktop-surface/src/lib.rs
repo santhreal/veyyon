@@ -31,6 +31,7 @@ pub mod right_panel;
 pub mod settings;
 pub mod shell;
 pub mod terminal;
+pub mod text;
 pub mod tokens;
 pub mod tool_view;
 pub mod transcript;
@@ -51,6 +52,7 @@ pub use shell::{
 	fields::{FieldKey, FieldSlots},
 };
 pub use terminal::Cell;
+pub use text::{plain_line, plain_lines};
 pub use tokens::{InstalledTokens, install_tokens};
 pub use tool_view::{
 	DisclosureCallback, TargetCallback, ToolViewCallbacks, ToolViewTarget, render_framed_block,

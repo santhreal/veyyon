@@ -2,8 +2,8 @@
 //! (§contracts/view).
 
 use veyyon_desktop_kit::{
-	ColorRole, Icon, IconName, IconSize, MonoSizeStep, MonoText, RadiusStep, SpacingStep, TextRamp,
-	TextWeight, TokenSet, indicators::badge::Badge,
+	ColorRole, Icon, IconName, IconSize, RadiusStep, SpacingStep, TextRamp, TextWeight, TokenSet,
+	indicators::badge::Badge, text::inline::inline_prose,
 };
 use veyyon_desktop_model::tool_view::{TextBlockView, ViewLine, ViewSpan};
 use veyyon_gpui::{
@@ -111,98 +111,21 @@ pub fn render_span(span: &ViewSpan, tokens: &TokenSet, callbacks: &ToolViewCallb
 			});
 	}
 
-	// Inline markdown handling if requested on span
-	if span.markdown && (raw_text.contains('`') || raw_text.contains("**") || raw_text.contains('*'))
-	{
-		let parsed_elements = render_inline_markdown(&raw_text, tone_color, tokens);
-		for child_el in parsed_elements {
-			el = el.child(child_el);
-		}
+	// A span the view marked as markdown is read by the one reader on this
+	// surface, so a marker in a tool view is set exactly as the transcript
+	// sets it.
+	if span.markdown {
+		el = el.child(inline_prose(
+			&raw_text,
+			tokens,
+			tokens.font_size(TextRamp::Small),
+			tokens.line_height(TextRamp::Small),
+		));
 	} else {
 		el = el.child(raw_text);
 	}
 
 	el
-}
-
-/// Parses simple inline markdown emphasis and inline code blocks within a
-/// single line.
-fn render_inline_markdown(
-	text: &str,
-	base_color: veyyon_gpui::Hsla,
-	tokens: &TokenSet,
-) -> Vec<Div> {
-	let mut out = Vec::new();
-	let mut current = String::new();
-	let chars: Vec<char> = text.chars().collect();
-	let mut i = 0;
-
-	while i < chars.len() {
-		if chars[i] == '`' {
-			// Flush current
-			if !current.is_empty() {
-				out.push(
-					div()
-						.flex_shrink_0()
-						.text_color(base_color)
-						.child(std::mem::take(&mut current)),
-				);
-			}
-			i += 1;
-			let mut code_str = String::new();
-			while i < chars.len() && chars[i] != '`' {
-				code_str.push(chars[i]);
-				i += 1;
-			}
-			if i < chars.len() && chars[i] == '`' {
-				i += 1;
-			}
-			out.push(
-				div()
-					.flex_shrink_0()
-					.px(tokens.spacing(SpacingStep::S1))
-					.bg(tokens.color(ColorRole::Inset))
-					.rounded(tokens.radius(RadiusStep::Sm))
-					.mono_text(tokens, MonoSizeStep::Small)
-					.text_color(tokens.color(ColorRole::Secondary))
-					.child(code_str),
-			);
-		} else if i + 1 < chars.len() && chars[i] == '*' && chars[i + 1] == '*' {
-			if !current.is_empty() {
-				out.push(
-					div()
-						.flex_shrink_0()
-						.text_color(base_color)
-						.child(std::mem::take(&mut current)),
-				);
-			}
-			i += 2;
-			let mut bold_str = String::new();
-			while i + 1 < chars.len() && !(chars[i] == '*' && chars[i + 1] == '*') {
-				bold_str.push(chars[i]);
-				i += 1;
-			}
-			if i + 1 < chars.len() && chars[i] == '*' && chars[i + 1] == '*' {
-				i += 2;
-			}
-			out.push(
-				div()
-					.flex_shrink_0()
-					.text_color(base_color)
-					.font_weight(tokens.font_weight(TextWeight::Semibold))
-					.child(bold_str),
-			);
-		} else {
-			current.push(chars[i]);
-			i += 1;
-		}
-	}
-
-	if !current.is_empty() {
-		out.push(div().flex_shrink_0().text_color(base_color).child(current));
-	}
-
-	out
 }
 
 /// Renders a single `ViewLine` (vector of `ViewSpan`) with support for clipping

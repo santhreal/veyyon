@@ -208,6 +208,19 @@ runtime's own bookkeeping records — the pending-tool-call warning, the exit
 diagnostic, a todo edit, an extension's stored state — do not create visible
 turns. Unknown extension entries retain their original data.
 
+An agent reply is drawn as markdown. `**strong**` and `__strong__` set the bold
+weight, `*emphasis*` and `_emphasis_` the slant, `` `code` `` the monospaced
+family on the inset ground, and `[text](target)` draws the text in the accent,
+underlined, followed by its target in the muted ink. A heading is set at the
+heading ramp, a `-`, `*` or `+` item draws a bullet, an ordered item keeps its
+own number, an indented item keeps its depth, a blockquote carries a rule down
+its leading edge, and a fenced block draws in a code pane with its language as
+the caption. A fence still open at the end of a streaming reply draws as code.
+
+A marker that markdown reads as text is drawn as written: an underscore inside
+a name, a `*` with a space after it, an unpaired delimiter, a bracket with no
+target, and anything inside a code span.
+
 A tool call occupies one row while it is collapsed: the card's status line, its
 block header, or the section it names, followed by how many lines it is holding
 back. `Space` on the focused turn and a click on the row open the same card, and
