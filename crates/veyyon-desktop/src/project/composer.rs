@@ -75,11 +75,11 @@ const fn clamp_queue_mode(store: &Store, mode: QueueMode) -> QueueMode {
 pub fn project_composer(store: &Store, session: Option<&SessionId>, composer: &mut ComposerState) {
 	let models = store.domains.models.as_ref();
 	composer.model = models.map(|view| ModelControl {
-		current:    view
+		current: view
 			.current
 			.as_ref()
 			.map(|reference| ModelChoice::new(reference.provider.clone(), reference.id.clone())),
-		options:    view
+		options: view
 			.models
 			.iter()
 			.map(|model| ModelOption {
@@ -89,9 +89,6 @@ pub fn project_composer(store: &Store, session: Option<&SessionId>, composer: &m
 				input:     model.input.clone(),
 			})
 			.collect(),
-		// The control becomes a label naming the active model when the host
-		// never answered whether it accepts SelectModel (§5.13).
-		selectable: matches!(store.capabilities.get(Capability::Models), CapabilityStatus::Available),
 	});
 
 	composer.thinking = models.and_then(|view| {

@@ -134,8 +134,8 @@ fn fixture_composer() -> ComposerState {
 		ModelChoice { provider: "anthropic".to_owned(), model: "claude-opus-4.1".to_owned() };
 	ComposerState {
 		model: Some(ModelControl {
-			current:    Some(sonnet.clone()),
-			options:    vec![
+			current: Some(sonnet.clone()),
+			options: vec![
 				ModelOption {
 					choice:    sonnet,
 					name:      "Claude Sonnet 4.5".to_owned(),
@@ -149,7 +149,6 @@ fn fixture_composer() -> ComposerState {
 					input:     vec![InputModality::Text, InputModality::Image],
 				},
 			],
-			selectable: true,
 		}),
 		thinking: Some(ThinkingControl {
 			level:  "high".to_owned(),

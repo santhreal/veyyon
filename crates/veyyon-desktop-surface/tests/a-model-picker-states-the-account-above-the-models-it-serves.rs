@@ -160,8 +160,8 @@ fn a_search_keeps_the_rows_under_one_heading_together() {
 	// side of the other's, which is what splits a provider once the list is
 	// ordered by score alone.
 	let control = ModelControl {
-		current:    None,
-		options:    vec![
+		current: None,
+		options: vec![
 			ModelOption {
 				choice:    ModelChoice { provider: "aimlapi".into(), model: "glm".into() },
 				name:      "glm".into(),
@@ -184,7 +184,6 @@ fn a_search_keeps_the_rows_under_one_heading_together() {
 				input:     Vec::new(),
 			},
 		],
-		selectable: true,
 	};
 	let mut grouped = PaletteState::from_models(&control);
 	grouped.set_query("glm");

@@ -72,8 +72,8 @@ pub fn model_control() -> ModelControl {
 	let thinker = ModelChoice { provider: "aimlapi".into(), model: "qwen3-thinking".into() };
 	let other = ModelChoice { provider: "openrouter".into(), model: "z-ai/glm-4.7".into() };
 	ModelControl {
-		current:    Some(plain.clone()),
-		options:    vec![
+		current: Some(plain.clone()),
+		options: vec![
 			ModelOption {
 				choice:    other,
 				name:      "GLM 4.7".into(),
@@ -93,7 +93,6 @@ pub fn model_control() -> ModelControl {
 				input:     Vec::new(),
 			},
 		],
-		selectable: true,
 	}
 }
 

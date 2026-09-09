@@ -29,15 +29,16 @@ pub struct ModelOption {
 }
 
 /// The footer's model control.
+///
+/// Whether the host accepts `SelectModel` is not held here: the control reads
+/// `ControlStates::availability` for `SurfaceId::ComposerModelSelector`, which
+/// is the one place that decision is made (§5.13).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelControl {
 	/// The model in use, as the host reported it.
-	pub current:    Option<ModelChoice>,
+	pub current: Option<ModelChoice>,
 	/// Every model the host offers, in the host's order.
-	pub options:    Vec<ModelOption>,
-	/// Whether the host accepts `SelectModel`. Without it the control is a
-	/// label naming the active model and nothing more (§5.13).
-	pub selectable: bool,
+	pub options: Vec<ModelOption>,
 }
 
 impl ModelControl {
