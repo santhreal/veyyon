@@ -51,6 +51,11 @@ const MARKERS: &[(&str, &str, &str)] = &[
 /// byte, and draws as one unstyled span.
 const LITERAL: &[(&str, &str)] = &[
 	("a name's own underscore", "call read_file_at now"),
+	// The two halves of the intraword rule, each of which is enough to eat a
+	// name's bytes on its own: a run that would open inside a word, and one
+	// that would close inside the next.
+	("an underscore pair opening inside a word", "call read_file_ at"),
+	("an underscore pair closing inside a word", "_read_file here"),
 	("a trailing underscore", "the value is x_"),
 	("multiplication", "2 * 3 = 6"),
 	("an opener with a space after it", "a * b * c"),
