@@ -45,6 +45,15 @@ const MARKERS: &[(&str, &str, &str)] = &[
 	("code inside strong", "**run `read`**", "run read"),
 	("a marker inside a code span", "`**not strong**`", "**not strong**"),
 	("image", "![shot](a.png)", "shot (a.png)"),
+	// A delimiter followed by a space opens nothing, and the row has to carry a
+	// real pair after it: with no pair in the line there is no closer to reach,
+	// so a reader that opened on the space would set nothing either way and the
+	// product below would survive a broken rule.
+	(
+		"a product beside a strong pair",
+		"the ratio is 3 * 4 and **bold** here",
+		"the ratio is 3 * 4 and bold here",
+	),
 ];
 
 /// Sources markdown reads no marker in. Each one reaches the frame byte for
@@ -59,6 +68,10 @@ const LITERAL: &[(&str, &str)] = &[
 	("a trailing underscore", "the value is x_"),
 	("multiplication", "2 * 3 = 6"),
 	("an opener with a space after it", "a * b * c"),
+	// The other half of the space rule, which is the closer's: a run preceded by
+	// a space closes nothing, so an opener with no other candidate after it
+	// stays a glob and the product keeps its own `*`.
+	("a glob with a product after it", "the pattern *.ts matches, and 3 * 4 is twelve"),
 	("an unpaired strong run", "**unclosed and on"),
 	("an unpaired code run", "a `backtick and on"),
 	("a bracket with no target", "[not a link] here"),
