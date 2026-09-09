@@ -43,7 +43,7 @@ const TYPED: &str = "Reticulating splines";
 ///
 /// An exhaustive match with no wildcard arm: a sixth `FieldKey` stops this
 /// compiling until its commit is proven somewhere and named here.
-fn proven_by(key: &FieldKey) -> &'static str {
+const fn proven_by(key: &FieldKey) -> &'static str {
 	match key {
 		FieldKey::AuthSecret => "a-field-sends-what-the-operator-typed-into-it",
 		FieldKey::Setting(_) => "a-setting-row-sends-the-value-its-field-holds",

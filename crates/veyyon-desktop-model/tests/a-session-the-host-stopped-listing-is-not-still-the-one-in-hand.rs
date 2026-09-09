@@ -95,7 +95,7 @@ fn a_listing_that_drops_the_open_session_leaves_nothing_addressing_it() {
 		"the row of a session the host no longer lists is still held"
 	);
 	assert!(
-		store.transcripts.get(&session_id()).is_none(),
+		!store.transcripts.contains_key(&session_id()),
 		"the transcript of a deleted session is still held, and is served again if its id returns"
 	);
 	assert_eq!(
@@ -112,11 +112,11 @@ fn a_transcript_after_the_open_session_was_dropped_is_not_filed_under_it() {
 	transcript(&mut store);
 
 	assert!(
-		store.transcripts.get(&session_id()).is_none(),
+		!store.transcripts.contains_key(&session_id()),
 		"entries were filed under the id the host erased"
 	);
 	assert!(
-		store.transcripts.get(&other_id()).is_none(),
+		!store.transcripts.contains_key(&other_id()),
 		"entries were filed under a session no header named"
 	);
 }

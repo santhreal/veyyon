@@ -162,12 +162,11 @@ pub fn selected(session: &mut HeadlessSession<'_, ShellView>) -> Option<String> 
 /// What the row titled `title` must send, read from the host's own catalogue
 /// rather than from the list the palette built out of it.
 pub fn choice_of(title: &str) -> ModelChoice {
-	control()
-		.options
-		.iter()
-		.find(|option| option.name == title)
-		.map(|option| option.choice.clone())
-		.unwrap_or_else(|| panic!("{title} is a row the host never reported"))
+	let options = control().options;
+	let Some(option) = options.iter().find(|option| option.name == title) else {
+		panic!("{title} is a row the host never reported")
+	};
+	option.choice.clone()
 }
 
 /// Presses the return key and reports what the shell sent for the host, having
