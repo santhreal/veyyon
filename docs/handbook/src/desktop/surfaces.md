@@ -431,6 +431,14 @@ The Agents page runs a background task from the field above its listing:
 session and empties the field. The task appears in the listing when the host
 answers with it.
 
+The Sign in page draws the step the host's authentication flow waits on. A
+flow awaiting the browser draws Open Browser, which opens the URL the host
+issued, beside Cancel. A flow awaiting a secret draws a masked field with
+Submit and Cancel; Submit sends what the field holds, and an empty field is
+refused in the attention strip. A failed flow draws Retry and Dismiss. A
+cancelled flow draws Start Flow. A completed flow states the connected
+account and draws no control.
+
 ## Terminal and process output
 
 Click the terminal grid to focus it. Terminal input is sent to the host without
