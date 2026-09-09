@@ -430,6 +430,14 @@ Markdown, HTML, and JSON exports read as the same format opened from the tree.
 Opening a file replaces a displayed export. The **File** tab is present without
 file browsing when an export is the only document.
 
+A file and a diff draw one monospace row per line with word wrap off. Line
+numbers, and a diff's change signs, stand in a pinned column; the code beside
+them scrolls sideways across the width of the widest line, and the pinned
+column stays where it is. A vertical gesture scrolls the file under both
+columns. A sideways gesture scrolls the code alone. Each pane draws the rows
+and the columns inside its own box, so a file of any length costs a frame the
+size of the panel.
+
 The panel docks as a resizable column beside the transcript. Below 980px it
 floats at the trailing edge over the transcript, behind a blurred scrim. A
 float covers the transcript alone: the session queue, the cards above the
