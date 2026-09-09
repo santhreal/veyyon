@@ -2,10 +2,9 @@ import * as os from "node:os";
 import { errorMessage } from "@veyyon/utils";
 import { mcpManagerInstance } from "../../mcp/manager-instance";
 import { computeContextBreakdown } from "../../session/context-usage";
-import { sessionHeaderToView } from "../session-bridge";
-import { sessionEntryToTranscriptEntry } from "../transcript-conversion";
 import { getOrCreateAgentSession } from "../turns";
 import type { UsageTotals } from "../wire";
+import { emitActiveSessionAndTranscript } from "./active-session";
 import type { ActionHandler, ActionHandlersMap } from "./types";
 
 /**
@@ -190,20 +189,10 @@ const handleClearOutput: ActionHandler<ClearOutputPayload | undefined> = async (
 	try {
 		const agent = ctx.clientState.agentSession ?? (await getOrCreateAgentSession(ctx.clientState, ctx.socket, ctx));
 		await agent.newSession();
-		const sm = agent.sessionManager;
-
-		ctx.clientState.revision += 1;
-		ctx.reply.snapshot({
-			ActiveSession: { revision: ctx.clientState.revision, value: sessionHeaderToView(sm.getHeader()) },
-		});
-
-		ctx.clientState.revision += 1;
-		ctx.reply.snapshot({
-			Transcript: {
-				revision: ctx.clientState.revision,
-				value: sm.getEntries().map(e => sessionEntryToTranscriptEntry(e, ctx.clientState.revision)),
-			},
-		});
+		// The header and the transcript of the session the operator is now on
+		// are one pair, stated by one emitter: a second copy of it is how a
+		// transcript came to be sent with no header in front of it.
+		emitActiveSessionAndTranscript(ctx, agent.sessionManager);
 
 		ctx.reply.success();
 	} catch (error) {

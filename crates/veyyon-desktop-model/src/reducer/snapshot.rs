@@ -28,7 +28,10 @@ use crate::{
 /// under the operator's eyes raises no attention and attaching to a host
 /// holding finished sessions raises none either.
 ///
-/// A session the index no longer lists is gone with its file and is dropped.
+/// A session the index no longer lists is gone with its file and is dropped,
+/// along with the transcript held for it. Dropping the one the window is on
+/// also clears the active pointer, so nothing addresses a session the host no
+/// longer holds.
 fn reduce_session_index(store: &mut Store, summaries: Vec<SessionSummary>) {
 	let active = store.persisted.shell.active_session.clone();
 	let mut listed: HashSet<SessionId> = HashSet::with_capacity(summaries.len());
@@ -79,6 +82,13 @@ fn reduce_session_index(store: &mut Store, summaries: Vec<SessionSummary>) {
 		.collect();
 	for id in dropped {
 		store.sessions.remove(&id);
+		store.transcripts.remove(&id);
+		// A session the host no longer holds cannot be the one the window is
+		// on: leaving the pointer would address a deleted session with the
+		// next prompt and file the next transcript under it.
+		if store.persisted.shell.active_session.as_ref() == Some(&id) {
+			store.persisted.shell.active_session = None;
+		}
 	}
 }
 

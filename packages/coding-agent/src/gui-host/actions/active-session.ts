@@ -57,15 +57,29 @@ export function replySessionNotFound(ctx: ActionContext, session: string): void 
 	});
 }
 
+/**
+ * State the header of the session the client is now on.
+ *
+ * The `Transcript` section carries no session id, and the desktop files one
+ * under the last header it received (`reducer/snapshot.rs`), so an action that
+ * changes which session is active states the header before it sends anything
+ * belonging to that session. Without it the entries land in the pane of the
+ * session the operator was reading, and every later append addresses the
+ * wrong one.
+ */
+export function emitActiveSession(ctx: ActionContext, sm: SessionManager): void {
+	ctx.clientState.revision += 1;
+	ctx.reply.snapshot({
+		ActiveSession: { revision: ctx.clientState.revision, value: sessionHeaderToView(sm.getHeader()) },
+	});
+}
+
 export function emitActiveSessionAndTranscript(
 	ctx: ActionContext,
 	sm: SessionManager,
 	entries?: TranscriptEntry[],
 ): void {
-	ctx.clientState.revision += 1;
-	ctx.reply.snapshot({
-		ActiveSession: { revision: ctx.clientState.revision, value: sessionHeaderToView(sm.getHeader()) },
-	});
+	emitActiveSession(ctx, sm);
 	ctx.clientState.revision += 1;
 	const ledger = ctx.clientState.presentationLedger;
 	const session = ctx.clientState.agentSession;

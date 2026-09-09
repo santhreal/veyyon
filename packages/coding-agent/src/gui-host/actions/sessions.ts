@@ -1,11 +1,10 @@
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
-import { sessionHeaderToView } from "../session-bridge";
-import { sessionEntriesToTranscript } from "../transcript-conversion";
 import { disposeTurnSession, getOrCreateAgentSession } from "../turns";
 import {
 	activateSession as activate,
 	activeManager,
+	emitActiveSession,
 	emitActiveSessionAndTranscript,
 	emitSessionList,
 	replyError as failure,
@@ -107,10 +106,7 @@ const handleRenameSession: ActionHandler<RenameSessionPayload | undefined> = asy
 			const agent = ctx.clientState.agentSession;
 			if (agent) await agent.setSessionName(title, "user");
 			else await active.setSessionName(title, "user");
-			ctx.clientState.revision += 1;
-			ctx.reply.snapshot({
-				ActiveSession: { revision: ctx.clientState.revision, value: sessionHeaderToView(active.getHeader()) },
-			});
+			emitActiveSession(ctx, active);
 		} else {
 			const sessionPath = await findSessionPath(payload.session, ctx.cwd, ctx.agentDir);
 			if (!sessionPath) {
@@ -246,6 +242,9 @@ const handleExportSession: ActionHandler<ExportSessionPayload | undefined> = asy
 	try {
 		const sm = await activate(ctx, payload.session);
 		if (!sm) return;
+		// Activating switched the client's session, so the header states which
+		// one the export and everything after it belongs to.
+		emitActiveSession(ctx, sm);
 		if (format === "json") {
 			ctx.reply.snapshot({
 				Export: { session: payload.session, format, path: null, content: JSON.stringify(sm.getEntries(), null, 2) },
@@ -358,12 +357,7 @@ const handleLoadTranscript: ActionHandler<LoadTranscriptPayload | undefined> = a
 	try {
 		const sm = await activate(ctx, payload.session);
 		if (!sm) return;
-		ctx.clientState.revision += 1;
-		const entries = sessionEntriesToTranscript(sm.getEntries(), ctx.clientState.revision, {
-			ledger: ctx.clientState.presentationLedger,
-			session: ctx.clientState.agentSession,
-		});
-		ctx.reply.snapshot({ Transcript: { revision: ctx.clientState.revision, value: entries } });
+		emitActiveSessionAndTranscript(ctx, sm);
 		ctx.reply.success();
 	} catch (error) {
 		failure(ctx, "LOAD_TRANSCRIPT_FAILED", error, "Transcript");
