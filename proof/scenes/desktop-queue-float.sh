@@ -7,13 +7,16 @@
 #   2. queue-float-open    (the rail floated at the leading edge)
 #   3. queue-float-closed-again (the surface Escape left the window on)
 #
+# The before arm records the second of those alone: with no floated placement
+# to draw, the frames on either side of the press are the same pixels.
+#
 # WHAT IS MEASURED. The collapsed breakpoint row declares a queue measure and
 # the `overlay` mode, so the rail is drawn on request as a left sheet spanning
 # the area below the titlebar, and takes no width out of the columns row. Every
 # number below is read from the token files this checkout ships. The scene
 # asserts that the rail control draws a sheet's worth of ink into the leading
-# strip, that the sheet's inked box reaches the declared measure and starts on
-# the window's own leading edge, that the sheet spans the row rather than the
+# strip, that the sheet's own ground measures the declared width and starts on
+# the window's leading edge, that the sheet spans the row rather than the
 # transcript inside it -- a rail that stopped above the composer would clip the
 # footer holding its one gear -- and that Escape returns the window to the
 # frame it was photographed in.
@@ -83,6 +86,15 @@ WINDOW_CROP="${WIN_W}x${WIN_H}+${WIN_X}+${WIN_Y}"
 # separates a rail carrying its footer from one clipped above the composer.
 BAND_CROP="${QUEUE_W}x${COMPOSER_BAND_H}+${WIN_X}+$(( WIN_Y + WIN_H - COMPOSER_BAND_H ))"
 
+# The strip above that band, which is where the sheet's own measure is read.
+# The strip is wider than the rail so a sheet drawn too wide is caught, and at
+# the window's foot that extra width reaches over the composer card, whose own
+# ink is no evidence about the rail: measuring the whole strip read the card's
+# leading edge as the sheet's trailing one and answered 243px for a 208px
+# sheet. What the sheet does inside the band is the BAND_CROP comparison
+# above, which is a differential rather than a measure.
+MEASURE_CROP="${STRIP_W}x$(( STRIP_H - COMPOSER_BAND_H ))+${STRIP_X}+${STRIP_Y}"
+
 # A sheet's worth of ink, not a hairline: the rail draws section headers and
 # cards across its whole measure.
 FLOAT_MIN_PIXELS=4000
@@ -97,18 +109,48 @@ CLOSED_MAX_PIXELS=200
 PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
 
-strip_ink_box() { # <shot> -> WxH+X+Y of the inked bounding box in the rail strip
+# The column the sheet's ground ends in, measured rather than trimmed to.
+#
+# A bounding box cannot answer this: the strip is wider than the rail so an
+# oversized sheet is caught, and every pixel of transcript inside that margin
+# is ink too, so a trim reports the widest thing in the strip and not the
+# sheet. The sheet is a solid column of ground from the titlebar to the foot,
+# and the transcript beside it is a dark ground carrying a line of text, so
+# each column's average over the strip separates them by an order of
+# magnitude. The cut is half the median of the columns the sheet certainly
+# owns -- the ones inside the rail's own body -- so it is read off the frame
+# rather than written here, and a theme with a lighter or darker float moves
+# it with the frame.
+sheet_ground_columns() { # <shot> -> "<first-column> <last-column>" of the run
 	local png="${SCENE_OUT}/${SCENE_NAME}-$1.png"
-	local box
-	box="$(magick "${png}" -crop "${STRIP_CROP}" +repage \
-		-fuzz 5% -trim -format '%@' info: 2>/dev/null || true)"
-	if [ -z "${box}" ]; then
-		abandon_take "strip-trimmed" "no inked pixels found in the rail strip for $1"
-	fi
-	echo "${box}"
+	python3 - "${png}" "${MEASURE_CROP}" "${STRIP_W}" "${QUEUE_W}" <<-'PY'
+		import re
+		import statistics
+		import subprocess
+		import sys
+
+		png, crop, strip_w, measure = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
+		dump = subprocess.run(
+		    ["magick", png, "-crop", crop, "+repage", "-colorspace", "Gray",
+		     "-scale", f"{strip_w}x1!", "txt:-"],
+		    capture_output=True, text=True, check=True,
+		).stdout
+		levels = [int(found.group(1)) for found in re.finditer(r"^\d+,0:\s*\((\d+)", dump, re.M)]
+		if len(levels) < measure:
+		    raise SystemExit(f"the strip averaged {len(levels)} columns, under the {measure}px it must cover")
+		cut = statistics.median(levels[: measure // 2]) / 2.0
+		if cut <= 0:
+		    raise SystemExit("the sheet's own columns are unlit, so no cut separates it from the transcript")
+		run = 0
+		while run < len(levels) and levels[run] > cut:
+		    run += 1
+		if run == 0:
+		    raise SystemExit("no lit column at the window's leading edge, so no sheet was drawn there")
+		print(0, run - 1)
+	PY
 }
 
-# ─── 1. Empty The Composer And Photograph The Closed Width ───────────────────
+# ─── 1. Empty The Composer And Read The Closed Width ─────────────────────────
 # The prelude leaves a draft in the composer and the pointer on the editor.
 # Clearing it is what makes the band comparison below about the float rather
 # than about a caret blinking in a draft.
@@ -121,10 +163,18 @@ for _ in $(seq 1 80); do
 	k "BackSpace"
 done
 pause 0.8
-shot queue-float-closed
 
 CLOSED="${PROBE_DIR}/queue-float-closed.png"
 probe_frame "${CLOSED}"
+# The closed width is a published frame in the after arm only. The before arm
+# draws nothing for the control to change, so its frame after the press is the
+# frame before it, and `shot` rejects a still identical to the one before it --
+# rightly, since everywhere else that means a key landed too early. The arm
+# publishes the pressed frame alone and states the press moved nothing, which
+# is the claim, rather than the same pixels under two names.
+if [ "${SCENE_ARM:-after}" != "before" ]; then
+	shot queue-float-closed
+fi
 
 # ─── 2. Press The Rail Control And Photograph What It Drew ───────────────────
 # The chord rather than the titlebar glyph: the control's own box is a token
@@ -143,9 +193,6 @@ if [ "${SCENE_ARM:-after}" = "before" ]; then
 			"the baseline drew ${OPENED}px into the rail strip; it has no floated placement to draw"
 	fi
 	echo "scene: before arm -- the rail control moved ${OPENED}px in the strip and ${BAND_MOVED}px in the band" >&2
-	k "Escape"
-	pause 1.0
-	shot queue-float-closed-again
 	exit 0
 fi
 
@@ -159,26 +206,26 @@ if [ "${BAND_MOVED}" -lt "${BAND_MIN_PIXELS}" ]; then
 fi
 
 # ─── 3. The Sheet Reaches The Measure The Tokens Author ──────────────────────
-BOX="$(strip_ink_box queue-float-open)"
-IFS='x+' read -r INK_W INK_H INK_X INK_Y <<<"${BOX}"
-if [ -z "${INK_W:-}" ]; then
-	abandon_take "strip-measured" "could not read the rail strip ink box (got '${BOX}')"
+RUN="$(sheet_ground_columns queue-float-open)" || RUN=""
+read -r GROUND_FIRST GROUND_LAST <<<"${RUN}"
+if [ -z "${GROUND_LAST:-}" ]; then
+	abandon_take "sheet-measured" "could not read the sheet's ground columns (got '${RUN}')"
 fi
-# Flush to the window's leading edge: the sheet's own frame is the only inset,
-# so ink starts inside it and no later than one frame in.
-if [ "${INK_X}" -gt "${SHEET_PX}" ]; then
+# Flush to the window's leading edge: a left sheet draws its own frame inside
+# its box and nothing outside it, so the first lit column is the window's.
+if [ "${GROUND_FIRST}" -ne 0 ]; then
 	abandon_take "sheet-is-flush" \
-		"the sheet's ink starts ${INK_X}px in, past the ${SHEET_PX}px frame a left sheet draws"
+		"the sheet's ground starts at column ${GROUND_FIRST}, not on the window's leading edge"
 fi
-# The declared measure is the sheet's outer width, so its ink ends inside it
-# and no earlier than the rail's body: a sheet drawn at the rail's measure plus
-# its own frame overruns this, and one drawn at half of it falls short.
-INK_RIGHT=$(( INK_X + INK_W ))
-if [ "${INK_RIGHT}" -gt "${QUEUE_W}" ] || [ "${INK_RIGHT}" -lt $(( QUEUE_W - 3 * SHEET_PX )) ]; then
+# The declared measure is the sheet's outer width, so its ground ends inside
+# it and no earlier than the rail's body: a sheet drawn at the measure plus its
+# own frame overruns this, and one drawn at half of it falls short.
+SHEET_WIDTH=$(( GROUND_LAST + 1 ))
+if [ "${SHEET_WIDTH}" -gt "${QUEUE_W}" ] || [ "${SHEET_WIDTH}" -lt $(( QUEUE_W - 3 * SHEET_PX )) ]; then
 	abandon_take "sheet-takes-its-measure" \
-		"the sheet's ink ends at ${INK_RIGHT}px against a declared ${QUEUE_W}px measure"
+		"the sheet's ground measures ${SHEET_WIDTH}px against a declared ${QUEUE_W}px measure"
 fi
-echo "scene: the float inked ${INK_W}x${INK_H} at +${INK_X}+${INK_Y} inside a declared ${QUEUE_W}px measure" >&2
+echo "scene: the float drew a ${SHEET_WIDTH}px sheet inside a declared ${QUEUE_W}px measure" >&2
 
 # ─── 4. Escape Returns The Window To The Frame It Was Photographed In ────────
 # The float is the last rung of the dismiss ladder, below every overlay in
