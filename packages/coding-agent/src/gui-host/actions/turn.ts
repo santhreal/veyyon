@@ -3,6 +3,7 @@ import { ImageInputTooLargeError } from "../../utils/image-loading";
 import { VideoInputTooLargeError } from "../../utils/video-loading";
 import { writeFrame } from "../frames";
 import { reportQueuedPrompts } from "../queued-prompts";
+import { nameSessionFromFirstPrompt } from "../session-title";
 import { AttachmentValidationError, abortTurn, executePromptTurn, getOrCreateAgentSession } from "../turns";
 import type { AttachmentSubmission } from "../wire";
 import { activateSession, activeManager, isActive, replyError } from "./active-session";
@@ -62,6 +63,10 @@ async function deliver(
 		await executePromptTurn(session, ctx.clientState, text, attachments, streaming);
 		reportQueuedPrompts(ctx.socket, ctx.clientState);
 		ctx.reply.success();
+		// After the reply: the prompt is accepted either way, and the title takes
+		// a model call of its own. The name reaches the client as a snapshot of
+		// its own, the way a rename does.
+		void nameSessionFromFirstPrompt(ctx, session, text);
 	} catch (error) {
 		if (
 			error instanceof UnsupportedModelInputError ||

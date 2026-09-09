@@ -733,6 +733,24 @@ SCENE_ARM=before PROOF_BASE_REF=da49c36a25^ SCENE_MOTION_FLOOR=6 \
   proof/docker/record-native.sh proof/scenes/desktop-export-header.sh
 ```
 
+Use `proof/scenes/desktop-session-transcript.sh` to run one turn in each of two
+sessions and switch between them. It runs a one-line prose reply in the session
+the prelude created and a twelve-line reply of digits in a session created with
+`ctrl+n`, then clicks the card of each by its own top rather than walking from
+the selected one, since the rail also lists the seeded session. Each click
+asserts the selection lands on the card that was clicked, each photographed
+frame asserts the transcript column inks as tall as a settled turn, and the
+host is asked on a second connection, after every frame, whether each session
+holds its own prompt and not the other's. Three frames come out of one arm:
+two states of one surface, and the first state reached again. Fifty of the
+take's seconds are spent waiting on two turns of a 1.5B model, so it declares a
+still take's motion floor:
+
+```sh
+SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
+  proof/scenes/desktop-session-transcript.sh
+```
+
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
 The [capture requirements](../foundations/verification.md) specify paired static
 frames and animated clips. Headless scene PNGs do not replace native captures.
