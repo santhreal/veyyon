@@ -31,7 +31,7 @@ pause 0.3
 shot multiline-draft-active
 # The capture uses the bundled typography at scale 1. Header target offsets
 # are measured from its native frames; placement follows the current window.
-read -r PALETTE_W TITLEBAR_H MARGIN < <(
+read -r PALETTE_W TITLEBAR_H MARGIN SHEET_H < <(
 	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" <<'PY'
 from pathlib import Path
 import sys
@@ -40,8 +40,14 @@ import tomllib
 root = Path(sys.argv[1])
 palette = tomllib.loads((root / "surface/palette.toml").read_text())
 shell = tomllib.loads((root / "surface/shell.toml").read_text())
+settings = tomllib.loads((root / "surface/settings.toml").read_text())
 scale = tomllib.loads((root / "scale.toml").read_text())
-print(palette["geometry"]["width_px"], shell["titlebar"]["height_px"], scale["spacing"]["s4"])
+print(
+	palette["geometry"]["width_px"],
+	shell["titlebar"]["height_px"],
+	scale["spacing"]["s4"],
+	settings["layout"]["sheet_height_px"],
+)
 PY
 )
 PALETTE_LEFT=$(( WIN_X + (WIN_W - PALETTE_W) / 2 ))
@@ -49,7 +55,7 @@ PALETTE_RIGHT=$(( WIN_X + (WIN_W + PALETTE_W) / 2 ))
 COLUMNS_H=$(( WIN_H - TITLEBAR_H ))
 COLUMNS_CENTER_Y=$(( WIN_Y + TITLEBAR_H + COLUMNS_H / 2 ))
 DEST_H=$(( COLUMNS_H - 2 * MARGIN ))
-if (( DEST_H > 560 )); then DEST_H=560; fi
+if (( DEST_H > SHEET_H )); then DEST_H=$SHEET_H; fi
 DEST_HEADER_Y=$(( COLUMNS_CENTER_Y - DEST_H / 2 + 26 ))
 DEST_BACK_X=$(( PALETTE_LEFT + 43 ))
 DEST_CLOSE_X=$(( PALETTE_RIGHT - 38 ))

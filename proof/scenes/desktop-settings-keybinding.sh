@@ -56,7 +56,7 @@ source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 # ─── Where The Dialog, Its Rows And The Strip Draw ───────────────────────────
 # Read from the tokens this checkout ships, so a retheme moves the crops with
 # the surfaces instead of leaving them measuring the backdrop.
-read -r DIALOG_W TITLEBAR_H MARGIN COLUMN_W BODY_INSET ROW_H ROW_GAP STRIP_H < <(
+read -r DIALOG_W TITLEBAR_H MARGIN COLUMN_W BODY_INSET ROW_H ROW_GAP STRIP_H SHEET_H < <(
 	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" <<'PY'
 from pathlib import Path
 import sys
@@ -79,6 +79,7 @@ print(
 	settings["layout"]["row_height_px"],
 	scale["spacing"][settings["layout"]["row_gap"]],
 	int(strip),
+	settings["layout"]["sheet_height_px"],
 )
 PY
 )
@@ -86,7 +87,7 @@ DIALOG_LEFT=$(( WIN_X + (WIN_W - DIALOG_W) / 2 ))
 COLUMNS_H=$(( WIN_H - TITLEBAR_H ))
 COLUMNS_CENTER_Y=$(( WIN_Y + TITLEBAR_H + COLUMNS_H / 2 ))
 DEST_H=$(( COLUMNS_H - 2 * MARGIN ))
-if (( DEST_H > 560 )); then DEST_H=560; fi
+if (( DEST_H > SHEET_H )); then DEST_H=$SHEET_H; fi
 DEST_TOP=$(( COLUMNS_CENTER_Y - DEST_H / 2 ))
 if (( DEST_H < 480 )); then
 	abandon_take "keybinding-rest" \
