@@ -23,6 +23,7 @@
 - The desktop card stack's overflow line expands under the pointer or the keyboard onto one line per decision it folded away, each naming the decision's kind and subject.
 - A desktop plan card whose body is cut at its 400px cap fades the last 64px of the body into the card, so a plan that continues past the cut is distinguishable from one that ends there.
 - The desktop rail states an `Unsent` section: a session in play whose composer holds a prompt the operator left unsubmitted is listed there, newest first, and comes off the section when the prompt is sent or cleared.
+- The desktop session queue is reachable below 980px, where it floats at the leading edge over the whole area below the titlebar instead of being shed: `Primary-B` and the titlebar's leading control open it, `Escape` or a press outside it closes it, and it takes no width from the transcript, the composer or the run bar.
 - The desktop titlebar provides an in-place session name editor that commits on Enter and reverts on Escape.
 - The desktop command palette and queue row menus provide `/export`, `/compact`, and `/handoff` session lifecycle actions.
 - The desktop command palette provides `/reload-transcript` to reload the active session transcript from the host.

@@ -24,10 +24,12 @@ mod support;
 
 use std::collections::BTreeSet;
 
-use support::shed::{SWEPT_HEIGHT, shed, surface, swept_widths};
+use support::shed::{SWEPT_HEIGHT, shed, shed_with_queue, surface, swept_widths};
 use veyyon_desktop_kit::{SpacingStep, TokenSet};
-use veyyon_desktop_surface::layout::{LabelState, RightPanelPlacement, ShedInput, shell_widths};
-use veyyon_desktop_tokens::RightPanelMode;
+use veyyon_desktop_surface::layout::{
+	LabelState, QueuePlacement, RightPanelPlacement, ShedInput, shell_widths,
+};
+use veyyon_desktop_tokens::{QueueMode, RightPanelMode};
 
 #[test]
 fn the_session_surface_keeps_its_declared_margin_at_every_width() {
@@ -47,7 +49,7 @@ fn the_session_surface_keeps_its_declared_margin_at_every_width() {
 					"at {width}px with panel open = {open} the session surface got {}px, below the \
 					 declared container margin of {floor}px (queue {:?}, panel {:?})",
 					widths.session_px,
-					widths.queue_px,
+					widths.queue,
 					widths.right_panel
 				);
 			}
@@ -70,13 +72,13 @@ fn the_columns_account_for_the_whole_window_and_no_more() {
 	for width in swept_widths() {
 		let widths = shell_widths(shed(width, true), &surface);
 		let total =
-			widths.queue_px.unwrap_or(0.0) + widths.right_panel.inline_width() + widths.session_px;
+			widths.queue.inline_width() + widths.right_panel.inline_width() + widths.session_px;
 
 		assert!(
 			(total - width).abs() < 0.5,
 			"at {width}px the columns account for {total}px: queue {:?}, inline panel {}px, session \
 			 {}px",
-			widths.queue_px,
+			widths.queue,
 			widths.right_panel.inline_width(),
 			widths.session_px
 		);
@@ -124,10 +126,10 @@ fn an_empty_panel_takes_no_width_from_anything() {
 			"at {width}px a panel with no content was placed anyway"
 		);
 		assert!(
-			(widths.session_px + widths.queue_px.unwrap_or(0.0) - width).abs() < 0.5,
+			(widths.session_px + widths.queue.inline_width() - width).abs() < 0.5,
 			"at {width}px an absent panel still cost width: session {}px, queue {:?}",
 			widths.session_px,
-			widths.queue_px
+			widths.queue
 		);
 	}
 }
@@ -137,20 +139,92 @@ fn the_queue_takes_exactly_what_the_resolved_breakpoint_declares() {
 	let surface = surface();
 
 	for width in swept_widths() {
-		let declared = surface.breakpoints.resolve(width).queue_width_px;
-		let resolved = shell_widths(shed(width, true), &surface).queue_px;
+		let row = surface.breakpoints.resolve(width);
+		let declared = row.queue_width_px;
+		let resolved = shell_widths(shed(width, true), &surface).queue;
 
-		if declared > 0.0 {
-			assert_eq!(
-				resolved,
-				Some(declared),
-				"at {width}px the queue took {resolved:?} against a declared {declared}px"
-			);
-		} else {
-			// A collapsed rail is absent rather than zero-width: a zero-width
-			// column still draws its edge stroke against the window frame.
-			assert_eq!(resolved, None, "at {width}px a collapsed queue was still placed");
+		// A row declaring no measure has no rail to draw in either mode, and a
+		// row that floats it draws nothing until the operator asks: the shed's
+		// own input here is a freshly opened window, with no float open.
+		let expected = match (declared > 0.0, row.queue_mode) {
+			(true, QueueMode::Inline) => QueuePlacement::Inline { width_px: declared },
+			(true, QueueMode::Overlay) | (false, _) => QueuePlacement::Absent,
+		};
+		assert_eq!(
+			resolved, expected,
+			"at {width}px the queue resolved to {resolved:?} against a declared {declared}px in {:?} \
+			 mode",
+			row.queue_mode
+		);
+	}
+}
+
+#[test]
+fn a_floated_queue_covers_the_transcript_instead_of_narrowing_it() {
+	let surface = surface();
+
+	for width in swept_widths() {
+		let row = surface.breakpoints.resolve(width);
+		let closed = shell_widths(shed_with_queue(width, false, false, false), &surface);
+		let opened = shell_widths(shed_with_queue(width, false, false, true), &surface);
+
+		match row.queue_mode {
+			// The float is this window's own and takes no width: opening it
+			// leaves every other region's measure exactly where it was, which
+			// is what keeps the transcript from reflowing under the sheet.
+			QueueMode::Overlay if row.queue_width_px > 0.0 => {
+				assert_eq!(
+					opened.queue,
+					QueuePlacement::Overlay { width_px: row.queue_width_px },
+					"at {width}px an opened float resolved to {:?}",
+					opened.queue
+				);
+				assert_eq!(
+					opened.session_px, closed.session_px,
+					"at {width}px opening the float moved the session surface from {}px to {}px",
+					closed.session_px, opened.session_px
+				);
+				assert_eq!(
+					opened.composer_px, closed.composer_px,
+					"at {width}px opening the float moved the composer"
+				);
+				assert_eq!(
+					opened.right_panel, closed.right_panel,
+					"at {width}px opening the float moved the right panel"
+				);
+			},
+			// A width with room for a column ignores the float flag entirely:
+			// the rail is already beside the transcript, and a sheet over it
+			// would be a second copy of the same rail.
+			QueueMode::Inline | QueueMode::Overlay => assert_eq!(
+				opened.queue, closed.queue,
+				"at {width}px in {:?} mode the float flag changed the placement to {:?}",
+				row.queue_mode, opened.queue
+			),
 		}
+	}
+}
+
+#[test]
+fn every_width_that_declares_a_rail_can_reach_one() {
+	let surface = surface();
+
+	// The defect this closes: at a width whose row floats the queue, the rail
+	// control moved nothing, so the sessions the rail lists were unreachable
+	// from that window. Every width that declares a measure has some pair of
+	// the two queue states that draws it.
+	for width in swept_widths() {
+		if surface.breakpoints.resolve(width).queue_width_px <= 0.0 {
+			continue;
+		}
+		let reachable = [(false, false), (false, true), (true, false), (true, true)]
+			.into_iter()
+			.any(|(collapsed, float_open)| {
+				shell_widths(shed_with_queue(width, false, collapsed, float_open), &surface)
+					.queue
+					.is_shown()
+			});
+		assert!(reachable, "at {width}px no queue state draws a rail at all");
 	}
 }
 
@@ -204,6 +278,7 @@ fn a_resize_across_the_label_threshold_settles_instead_of_flickering() {
 				chrome_height_px: surface.shell.titlebar_height_px,
 				gutter_px: gutter,
 				queue_collapsed: false,
+				queue_float_open: false,
 				panel_open: true,
 				panel_width: None,
 				labels,
@@ -269,7 +344,7 @@ fn a_resize_across_the_label_threshold_settles_instead_of_flickering() {
 }
 
 #[test]
-fn every_declared_breakpoint_is_reached_and_every_panel_mode_is_placed() {
+fn every_declared_breakpoint_is_reached_and_every_region_mode_is_placed() {
 	let surface = surface();
 
 	// The declared rows are read out of the token structure at run time, so a
@@ -285,6 +360,8 @@ fn every_declared_breakpoint_is_reached_and_every_panel_mode_is_placed() {
 	let mut reached: BTreeSet<String> = BTreeSet::new();
 	let mut placed_inline = false;
 	let mut placed_overlay = false;
+	let mut queue_inline = false;
+	let mut queue_overlay = false;
 
 	for width in swept_widths() {
 		let config = surface.breakpoints.resolve(width);
@@ -301,6 +378,10 @@ fn every_declared_breakpoint_is_reached_and_every_panel_mode_is_placed() {
 			RightPanelMode::Inline { .. } => placed_inline = true,
 			RightPanelMode::Overlay => placed_overlay = true,
 		}
+		match config.queue_mode {
+			QueueMode::Inline => queue_inline = true,
+			QueueMode::Overlay => queue_overlay = true,
+		}
 	}
 
 	assert_eq!(
@@ -309,6 +390,11 @@ fn every_declared_breakpoint_is_reached_and_every_panel_mode_is_placed() {
 	);
 	assert!(placed_inline, "no swept width declared an inline panel");
 	assert!(placed_overlay, "no swept width declared an overlay panel");
+	assert!(queue_inline, "no swept width declared a docked queue");
+	assert!(
+		queue_overlay,
+		"no swept width declared a floating queue, so the narrow-width rail is unproven"
+	);
 }
 
 #[test]
@@ -330,9 +416,9 @@ fn a_hostile_viewport_width_still_resolves_to_finite_measures() {
 			widths.right_panel.drawn_width()
 		);
 		assert!(
-			widths.queue_px.is_none_or(|q| q.is_finite() && q >= 0.0),
+			widths.queue.drawn_width().is_finite() && widths.queue.drawn_width() >= 0.0,
 			"a {width} window produced a queue of {:?}",
-			widths.queue_px
+			widths.queue
 		);
 		assert!(
 			widths.drawer.height_px.is_finite() && widths.drawer.height_px > 0.0,

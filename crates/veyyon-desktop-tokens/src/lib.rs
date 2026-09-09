@@ -48,8 +48,9 @@ pub use schema::{
 };
 pub use surface::{
 	AttachedCardsSurfaceTokens, BreakpointConfig, BreakpointsSurfaceTokens, ComposerSurfaceTokens,
-	DrawerPlacement, PaletteSurfaceTokens, PanelsSurfaceTokens, QueueSurfaceTokens, RightPanelMode,
-	SettingsSurfaceTokens, ShellSurfaceTokens, SurfaceTokens, TranscriptSurfaceTokens,
+	DrawerPlacement, PaletteSurfaceTokens, PanelsSurfaceTokens, QueueMode, QueueSurfaceTokens,
+	RightPanelMode, SettingsSurfaceTokens, ShellSurfaceTokens, SurfaceTokens,
+	TranscriptSurfaceTokens,
 };
 pub use watcher::{TokenReloadMessage, TokenWatcher};
 

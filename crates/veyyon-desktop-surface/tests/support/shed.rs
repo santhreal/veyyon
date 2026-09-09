@@ -31,15 +31,29 @@ pub fn swept_chrome() -> f32 {
 
 /// The shed's input for a width. The gutter is the session column's own inset,
 /// read from the tokens rather than restated, and the previous state is the
-/// default, so a sweep reads as the state a freshly opened window settles on.
+/// default, so a sweep reads as the state a freshly opened window settles on:
+/// the rail uncollapsed, and no queue float opened over the transcript.
 pub fn shed(viewport_px: f32, panel_open: bool) -> ShedInput {
+	shed_with_queue(viewport_px, panel_open, false, false)
+}
+
+/// The shed's input for a width with the queue's two states named: whether the
+/// operator collapsed the docked rail, and whether they opened it over the
+/// transcript at a width that floats it.
+pub fn shed_with_queue(
+	viewport_px: f32,
+	panel_open: bool,
+	queue_collapsed: bool,
+	queue_float_open: bool,
+) -> ShedInput {
 	let gutter_px = f32::from(TokenSet::default().spacing(SpacingStep::S4));
 	ShedInput {
 		viewport_px,
 		viewport_height_px: SWEPT_HEIGHT,
 		chrome_height_px: swept_chrome(),
 		gutter_px,
-		queue_collapsed: false,
+		queue_collapsed,
+		queue_float_open,
 		panel_open,
 		panel_width: None,
 		labels: LabelState::default(),

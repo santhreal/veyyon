@@ -128,6 +128,15 @@ pub struct ShellView {
 	/// and cannot change a box, so an expansion the pointer drives is state
 	/// the next frame lays out rather than a `hover` refinement (§5.5).
 	cards_hovered:         bool,
+	/// Whether the operator opened the queue over the transcript, at a width
+	/// whose row has no room for a rail beside it (§5.14). Window-local like
+	/// the row menu: a float that came back with a snapshot would cover the
+	/// transcript the window was opened to read.
+	queue_float_open:      bool,
+	/// Whether the width the last frame resolved floats the queue rather than
+	/// docking it, which is what decides whether the rail control toggles the
+	/// float or the standing collapsed state.
+	queue_floats:          bool,
 	destination_focus:     Option<FocusHandle>,
 	general_settings_list: GeneralSettingsListState,
 	now_ms:                u64,
@@ -178,6 +187,8 @@ impl ShellView {
 			transcript_focus: None,
 			cards_focus: None,
 			cards_hovered: false,
+			queue_float_open: false,
+			queue_floats: false,
 			destination_focus: None,
 			general_settings_list: GeneralSettingsListState::new(),
 			now_ms: 0,
@@ -201,6 +212,37 @@ impl ShellView {
 		let changed = self.cards_hovered != hovered;
 		self.cards_hovered = hovered;
 		changed
+	}
+
+	/// Records whether the width the frame resolved floats the queue.
+	pub const fn set_queue_floats(&mut self, floats: bool) {
+		self.queue_floats = floats;
+	}
+
+	/// Answers the rail control, at whichever width the window is.
+	///
+	/// A width with room for a column toggles the standing collapsed state,
+	/// which the host records and the next window restores. A width without
+	/// room floats the rail over the transcript instead, and that is this
+	/// window's own: the control moved nothing at all at those widths before,
+	/// which left every session but the open one unreachable (§5.14).
+	pub fn toggle_queue(&mut self, cx: &mut Context<Self>) {
+		if self.queue_floats {
+			self.queue_float_open = !self.queue_float_open;
+			cx.notify();
+		} else {
+			self.dispatch(Intent::ToggleQueue, cx);
+		}
+	}
+
+	/// Closes an open queue float, reporting whether one was open.
+	///
+	/// The Escape ladder and a press on the scrim both land here, so a float
+	/// dismisses the way every other overlay over the transcript does.
+	pub const fn close_queue_float(&mut self) -> bool {
+		let was_open = self.queue_float_open;
+		self.queue_float_open = false;
+		was_open
 	}
 
 	/// The handles the right panel's mono panes report their scroll offsets

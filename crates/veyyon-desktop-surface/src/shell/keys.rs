@@ -46,6 +46,31 @@ fn partition_toggle(view: &ShellView, into: Section) -> Option<Intent> {
 	}
 }
 
+/// Dismisses the topmost thing over the transcript, one rung per press.
+///
+/// A routed overlay steps back one surface, an unrouted one closes, and a
+/// queue floated over the transcript at a narrow width closes last, since it
+/// is the only rung that is not an overlay in `state.overlay`. Nothing over
+/// the transcript propagates, so the editor below keeps its own Escape.
+fn dismiss_topmost(view: &mut ShellView, cx: &mut Context<ShellView>) {
+	let routed = view
+		.state()
+		.overlay
+		.as_ref()
+		.and_then(Overlay::route)
+		.is_some();
+	if routed {
+		view.back_surface(cx);
+	} else if view.state().overlay.is_some() {
+		view.close_palette(cx);
+	} else if !view.close_queue_float() {
+		cx.propagate();
+		return;
+	}
+	cx.stop_propagation();
+	cx.notify();
+}
+
 /// Binds the root `Shell` key context and registers action handlers.
 #[must_use]
 pub fn bind_global_keys(root: Div, cx: &Context<ShellView>) -> Div {
@@ -80,42 +105,10 @@ pub fn bind_global_keys(root: Div, cx: &Context<ShellView>) -> Div {
 			}
 		}))
 		.capture_action(cx.listener(|view, _: &Dismiss, _window, cx| {
-			let routed = view
-				.state()
-				.overlay
-				.as_ref()
-				.and_then(Overlay::route)
-				.is_some();
-			if routed {
-				view.back_surface(cx);
-				cx.stop_propagation();
-				cx.notify();
-			} else if view.state().overlay.is_some() {
-				view.close_palette(cx);
-				cx.stop_propagation();
-				cx.notify();
-			} else {
-				cx.propagate();
-			}
+			dismiss_topmost(view, cx);
 		}))
 		.capture_action(cx.listener(|view, _: &Escape, _window, cx| {
-			let routed = view
-				.state()
-				.overlay
-				.as_ref()
-				.and_then(Overlay::route)
-				.is_some();
-			if routed {
-				view.back_surface(cx);
-				cx.stop_propagation();
-				cx.notify();
-			} else if view.state().overlay.is_some() {
-				view.close_palette(cx);
-				cx.stop_propagation();
-				cx.notify();
-			} else {
-				cx.propagate();
-			}
+			dismiss_topmost(view, cx);
 		}))
 		.capture_action(cx.listener(|view, _: &Backspace, _window, cx| {
 			let empty = view
@@ -171,7 +164,7 @@ pub fn bind_global_keys(root: Div, cx: &Context<ShellView>) -> Div {
 			view.navigate_surface(crate::navigation::SurfaceRoute::Settings, cx);
 		}))
 		.on_action(cx.listener(|view, _: &ToggleQueue, _window, cx| {
-			view.dispatch(Intent::ToggleQueue, cx);
+			view.toggle_queue(cx);
 		}))
 		.on_action(cx.listener(|view, _: &ToggleDrawer, _window, cx| {
 			let open = !view.state().drawer_open;

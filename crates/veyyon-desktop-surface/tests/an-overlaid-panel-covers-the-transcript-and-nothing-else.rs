@@ -52,6 +52,7 @@ fn shed(panel_open: bool) -> ShedInput {
 		chrome_height_px: surface.shell.titlebar_height_px,
 		gutter_px: f32::from(TokenSet::default().spacing(SpacingStep::S4)),
 		queue_collapsed: false,
+		queue_float_open: false,
 		panel_open,
 		panel_width: None,
 		labels: LabelState::default(),
@@ -160,8 +161,8 @@ fn a_floating_panel_meets_no_region_it_is_not_annotating() {
 		widths.right_panel
 	);
 	assert!(
-		widths.queue_px.is_some(),
-		"a {WIDTH}px window must keep the queue rail, or the rail cannot be dimmed"
+		widths.queue.inline_width() > 0.0,
+		"a {WIDTH}px window must dock the queue rail, or the rail cannot be dimmed"
 	);
 
 	let mut cx = headless_context().expect("a headless renderer is required");

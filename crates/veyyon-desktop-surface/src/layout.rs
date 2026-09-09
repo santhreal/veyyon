@@ -15,8 +15,50 @@
 //! labels. Both hold, so labels appear only where both permit them.
 
 use veyyon_desktop_tokens::{
-	BreakpointConfig, ComposerSurfaceTokens, DrawerPlacement, RightPanelMode, SurfaceTokens,
+	BreakpointConfig, ComposerSurfaceTokens, DrawerPlacement, QueueMode, RightPanelMode,
+	SurfaceTokens,
 };
+
+/// Where the session queue goes, and how wide it is when it is shown.
+///
+/// A window narrow enough that a rail beside the transcript would leave the
+/// transcript unreadable still has to reach its sessions, so the rail floats
+/// over what is being read instead of being dropped (§5.14).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum QueuePlacement {
+	/// No queue: the operator collapsed it, or the row declares no rail.
+	Absent,
+	/// A column beside the session surface, taking width from it.
+	Inline { width_px: f32 },
+	/// A float over the transcript, taking no width from it.
+	Overlay { width_px: f32 },
+}
+
+impl QueuePlacement {
+	/// The width this placement takes out of the columns row.
+	#[must_use]
+	pub const fn inline_width(self) -> f32 {
+		match self {
+			Self::Inline { width_px } => width_px,
+			Self::Absent | Self::Overlay { .. } => 0.0,
+		}
+	}
+
+	/// The width the rail draws at, in either placement.
+	#[must_use]
+	pub const fn drawn_width(self) -> f32 {
+		match self {
+			Self::Inline { width_px } | Self::Overlay { width_px } => width_px,
+			Self::Absent => 0.0,
+		}
+	}
+
+	/// Whether the rail is drawn at all, in either placement.
+	#[must_use]
+	pub const fn is_shown(self) -> bool {
+		!matches!(self, Self::Absent)
+	}
+}
 
 /// Where the right panel goes, and how wide it is when it is shown.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -85,6 +127,12 @@ pub struct ShedInput {
 	pub gutter_px:          f32,
 	/// Whether the operator collapsed the queue rail (§5.14).
 	pub queue_collapsed:    bool,
+	/// Whether the operator opened the queue over the transcript at a width
+	/// whose row floats it. Window-local and closed at open: a float that
+	/// restored itself would cover the transcript the window was opened to
+	/// read, while the rail's own collapsed state is the operator's standing
+	/// preference for the widths that have room for a column.
+	pub queue_float_open:   bool,
 	/// Whether the right panel has anything to show and is not collapsed.
 	pub panel_open:         bool,
 	/// The width the operator dragged the docked panel to, when they have.
@@ -123,8 +171,8 @@ impl DrawerBox {
 /// What every region of the columns row measures at one window width.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ShellWidths {
-	/// The queue rail's width, or `None` where the breakpoint collapses it.
-	pub queue_px:    Option<f32>,
+	/// The queue's placement and width.
+	pub queue:       QueuePlacement,
 	/// The right panel's placement and width.
 	pub right_panel: RightPanelPlacement,
 	/// What is left for the session surface.
@@ -156,30 +204,53 @@ pub fn shell_widths(input: ShedInput, surface: &SurfaceTokens) -> ShellWidths {
 	};
 
 	let breakpoint = surface.breakpoints.resolve(viewport);
-	let queue_px = (breakpoint.queue_width_px > 0.0 && !input.queue_collapsed)
-		.then_some(breakpoint.queue_width_px);
+	let queue = queue_placement(breakpoint, input.queue_collapsed, input.queue_float_open);
 	let right_panel = panel_placement(
 		viewport,
-		queue_px.unwrap_or(0.0),
+		queue.inline_width(),
 		input.panel_open,
 		input.panel_width,
 		breakpoint,
 		surface,
 	);
-	let session_px = (viewport - queue_px.unwrap_or(0.0) - right_panel.inline_width()).max(0.0);
+	let session_px = (viewport - queue.inline_width() - right_panel.inline_width()).max(0.0);
 	let composer_px = input
 		.gutter_px
 		.mul_add(-2.0, session_px)
 		.clamp(0.0, surface.composer.max_width_px);
 
 	ShellWidths {
-		queue_px,
+		queue,
 		right_panel,
 		session_px,
 		composer_px,
 		columns_px: (input.viewport_height_px - input.chrome_height_px).max(0.0),
 		drawer: drawer_box(input.viewport_height_px, breakpoint, surface),
 		labels: labels(composer_px, breakpoint, &surface.composer, input.labels),
+	}
+}
+
+/// Resolves where the queue goes at one window width.
+///
+/// The row declares the measure and the mode. An inline row draws a column
+/// unless the operator collapsed it; an overlay row draws nothing until the
+/// operator asks for it, and then draws over the transcript. A row that
+/// declares no measure has no rail in either mode, which is what a window with
+/// no room at all resolves to.
+fn queue_placement(
+	breakpoint: &BreakpointConfig,
+	collapsed: bool,
+	float_open: bool,
+) -> QueuePlacement {
+	let width_px = breakpoint.queue_width_px;
+	if width_px <= 0.0 {
+		return QueuePlacement::Absent;
+	}
+	match breakpoint.queue_mode {
+		QueueMode::Inline if collapsed => QueuePlacement::Absent,
+		QueueMode::Inline => QueuePlacement::Inline { width_px },
+		QueueMode::Overlay if float_open => QueuePlacement::Overlay { width_px },
+		QueueMode::Overlay => QueuePlacement::Absent,
 	}
 }
 

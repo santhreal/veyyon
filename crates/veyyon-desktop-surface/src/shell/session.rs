@@ -96,13 +96,14 @@ pub fn session_surface(
 		))
 	};
 
-	// An overlaid right panel floats over the transcript it annotates, so the
-	// region it dims is the region it is about: the composer keeps its light,
-	// the cards above it stay legible, and a press in either still reaches
-	// them (§5.6). The float's own box is recorded from in here, because the
-	// scrim it sits in spans this region rather than the columns row.
+	// An overlaid right panel dims the region it annotates: the transcript it
+	// was opened against. The composer keeps its light, the cards above it
+	// stay legible, and a press in either still reaches them (§5.6). The
+	// float's own box is recorded from in here, because the scrim it sits in
+	// spans this region rather than the columns row.
 	let body = match panel_overlay {
-		Some(overlay) => div()
+		None => body,
+		Some(float) => div()
 			.relative()
 			.flex()
 			.flex_col()
@@ -111,8 +112,7 @@ pub fn session_surface(
 			.min_w_0()
 			.overflow_hidden()
 			.child(body)
-			.child(overlay),
-		None => body,
+			.child(float),
 	};
 
 	// The children below, in order, so a child's index resolves to its region.

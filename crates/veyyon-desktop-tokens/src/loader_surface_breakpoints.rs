@@ -4,7 +4,9 @@ use crate::{
 	error::TokenError,
 	loader::{find_key_line_col, parse_toml, read_file},
 	section::Section,
-	surface::{BreakpointConfig, BreakpointsSurfaceTokens, DrawerPlacement, RightPanelMode},
+	surface::{
+		BreakpointConfig, BreakpointsSurfaceTokens, DrawerPlacement, QueueMode, RightPanelMode,
+	},
 };
 
 fn off_scale(row: &Section<'_>, key: &str, value: &str, allowed: &str) -> TokenError {
@@ -27,6 +29,7 @@ fn parse_bp(bp_tbl: &Section<'_>, name: &str) -> Result<BreakpointConfig, TokenE
 	row.only(&[
 		"min_width_px",
 		"queue_width_px",
+		"queue_mode",
 		"right_panel_mode",
 		"terminal_drawer_placement",
 		"terminal_drawer_height_px",
@@ -45,6 +48,12 @@ fn parse_bp(bp_tbl: &Section<'_>, name: &str) -> Result<BreakpointConfig, TokenE
 	} else {
 		return Err(off_scale(&row, "right_panel_mode", raw_mode, "\"overlay\" or \"inline_<px>\""));
 	};
+	let raw_queue = row.string("queue_mode")?;
+	let queue_mode = match raw_queue {
+		"inline" => QueueMode::Inline,
+		"overlay" => QueueMode::Overlay,
+		_ => return Err(off_scale(&row, "queue_mode", raw_queue, "\"inline\" or \"overlay\"")),
+	};
 	let raw_placement = row.string("terminal_drawer_placement")?;
 	let terminal_drawer_placement = match raw_placement {
 		"row" => DrawerPlacement::Row,
@@ -62,6 +71,7 @@ fn parse_bp(bp_tbl: &Section<'_>, name: &str) -> Result<BreakpointConfig, TokenE
 	Ok(BreakpointConfig {
 		min_width_px: row.pixels("min_width_px")?,
 		queue_width_px: row.pixels("queue_width_px")?,
+		queue_mode,
 		right_panel_mode,
 		terminal_drawer_placement,
 		terminal_drawer_height_px: row.pixels("terminal_drawer_height_px")?,

@@ -20,8 +20,8 @@
 //! 2. Cost following the file rather than the box once the other axis has left
 //!    its origin. Every combination of the two gestures is drawn and the runs
 //!    the pane drew stay at the count its own box shows, so a pane that widens
-//!    to the whole line once the file is scrolled, or empties once the code
-//!    is, fails here whatever the constants are.
+//!    to the whole line once the file is scrolled, or empties once the code is,
+//!    fails here whatever the constants are.
 //!
 //! NOT CAUGHT: how long a frame takes, which is what the windowing defect was
 //! recorded in. A count of runs is the cause; a millisecond is a machine's
@@ -55,10 +55,7 @@ fn a_pane_scrolled_down_a_file_of_wide_lines_still_draws_one_box_of_columns() {
 		open_session(&mut cx, state_with_wide_lines(LINES, PIECES), WINDOW_W, WINDOW_H);
 	let rest = session.frame().expect("the shell renders at rest");
 	let panel = panel_region(&mut session);
-	let at_rest = (
-		gutter_runs(&rest, panel, panels).len(),
-		code_runs(&rest, panel, panels).len(),
-	);
+	let at_rest = (gutter_runs(&rest, panel, panels).len(), code_runs(&rest, panel, panels).len());
 	assert!(
 		at_rest.0 > 0 && at_rest.1 > 0,
 		"the pane drew rows for any of this to read: {} numbers, {} code runs",
@@ -67,8 +64,8 @@ fn a_pane_scrolled_down_a_file_of_wide_lines_still_draws_one_box_of_columns() {
 	);
 	assert!(
 		at_rest.1 < LINES * PIECES,
-		"and it drew fewer pieces than the file holds, so a pane that admits everything fails \
-		 here rather than passing the counts below: {} of {}",
+		"and it drew fewer pieces than the file holds, so a pane that admits everything fails here \
+		 rather than passing the counts below: {} of {}",
 		at_rest.1,
 		LINES * PIECES
 	);
@@ -81,37 +78,31 @@ fn a_pane_scrolled_down_a_file_of_wide_lines_still_draws_one_box_of_columns() {
 			.expect("the wheel reaches the pane");
 	}
 	let down = session.frame().expect("the shell renders down the file");
-	let scrolled_down = (
-		gutter_runs(&down, panel, panels).len(),
-		code_runs(&down, panel, panels).len(),
-	);
+	let scrolled_down =
+		(gutter_runs(&down, panel, panels).len(), code_runs(&down, panel, panels).len());
 
 	for _ in 0..10 {
 		session
 			.scroll_across(over_code(panel, panels), 4.0)
 			.expect("the sideways wheel reaches the pane");
 	}
-	let across = session
-		.frame()
-		.expect("the shell renders across the line");
-	let scrolled_across = (
-		gutter_runs(&across, panel, panels).len(),
-		code_runs(&across, panel, panels).len(),
-	);
+	let across = session.frame().expect("the shell renders across the line");
+	let scrolled_across =
+		(gutter_runs(&across, panel, panels).len(), code_runs(&across, panel, panels).len());
 
 	for (name, drawn) in [("down the file", scrolled_down), ("across a line", scrolled_across)] {
 		assert!(
 			drawn.0 > 0 && drawn.1 > 0,
-			"{name}: the pane still draws rows and code, and this frame drew {} numbers and {} \
-			 code runs",
+			"{name}: the pane still draws rows and code, and this frame drew {} numbers and {} code \
+			 runs",
 			drawn.0,
 			drawn.1
 		);
 		assert!(
 			drawn.1 <= at_rest.1 * 2,
-			"{name}: a pane costs what its own box shows on both axes at once. It drew {} code \
-			 runs against {} at rest, which is a window that followed the file once the other \
-			 axis left its origin",
+			"{name}: a pane costs what its own box shows on both axes at once. It drew {} code runs \
+			 against {} at rest, which is a window that followed the file once the other axis left \
+			 its origin",
 			drawn.1,
 			at_rest.1
 		);
@@ -166,9 +157,7 @@ fn a_sideways_wheel_over_the_code_leaves_the_file_where_it_was() {
 	session
 		.scroll_across(over_code(panel, panels), 4.0)
 		.expect("the sideways wheel reaches the pane");
-	let across = session
-		.frame()
-		.expect("the shell renders across the line");
+	let across = session.frame().expect("the shell renders across the line");
 	let code = code_runs(&across, panel, panels);
 	assert_ne!(
 		lefts(&code),
@@ -204,14 +193,12 @@ fn a_sideways_wheel_over_a_diff_leaves_the_diff_where_it_was() {
 		session
 			.scroll_across(over_code(panel, panels), 4.0)
 			.expect("the sideways wheel reaches the pane");
-		let across = session
-			.frame()
-			.expect("the shell renders across the diff");
+		let across = session.frame().expect("the shell renders across the diff");
 		assert_eq!(
 			ladder(&gutter_runs(&across, panel, panels)),
 			rows_before,
-			"{mode:?}: the diff's rows stay where they were under a sideways gesture, which \
-			 belongs to the pane's code column"
+			"{mode:?}: the diff's rows stay where they were under a sideways gesture, which belongs \
+			 to the pane's code column"
 		);
 	}
 }

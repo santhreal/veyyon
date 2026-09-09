@@ -2,8 +2,10 @@
 
 use veyyon_desktop_kit::{Axis, ColorRole, Resizable, Sheet, SpacingStep};
 use veyyon_desktop_model::SurfaceId;
+use veyyon_desktop_tokens::QueueMode;
 use veyyon_gpui::{
-	Context, InteractiveElement, IntoElement, ParentElement, Styled, Window, div, px,
+	Context, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement, Styled,
+	Window, div, px,
 };
 
 use super::{
@@ -16,7 +18,7 @@ use crate::{
 	ShellView,
 	attach::render_attach_screen,
 	damage::Region,
-	layout::{RightPanelPlacement, ShedInput, shell_widths},
+	layout::{QueuePlacement, RightPanelPlacement, ShedInput, shell_widths},
 	panel::right_panel,
 	queue::{queue_rail, row_menu_layer},
 };
@@ -51,12 +53,25 @@ pub fn render_shell(
 			chrome_height_px:   chrome_px,
 			gutter_px:          f32::from(view.installed().set.spacing(SpacingStep::S4)),
 			queue_collapsed:    keymap.queue_collapsed,
+			queue_float_open:   view.queue_float_open,
 			panel_open:         panel_available && !keymap.panel_collapsed,
 			panel_width:        view.panel_width(),
 			labels:             view.labels(),
 		},
 		&view.installed().surface,
 	);
+	// What the rail control does at this width, read from the row the shed
+	// resolved rather than from a width this module restates.
+	let floats = matches!(
+		view
+			.installed()
+			.surface
+			.breakpoints
+			.resolve(f32::from(window.viewport_size().width))
+			.queue_mode,
+		QueueMode::Overlay
+	);
+	view.set_queue_floats(floats);
 	if let Some(height) = view.split_motion.drawer_height() {
 		let panels = &view.installed().surface.panels;
 		let maximum = widths.columns_px * panels.terminal_drawer_max_viewport_ratio;
@@ -122,7 +137,10 @@ pub fn render_shell(
 				title: &view.state().title,
 				rename_editor,
 				connection: &view.state().connection,
-				queue_collapsed: view.state().keymap.queue_collapsed,
+				// Lit when a rail is on screen, whether docked beside the
+				// transcript or floated over it, rather than from the standing
+				// collapsed state alone, which a float leaves untouched.
+				queue_collapsed: !widths.queue.is_shown(),
 				panel_available,
 				panel_collapsed: view.state().keymap.panel_collapsed,
 				drawer_available: view.state().drawer.offered,
@@ -184,20 +202,32 @@ pub fn render_shell(
 	// draws its right border, leaving a hairline against the window edge
 	// with nothing behind it.
 	//
-	// The columns' regions, in child order. The session column records
-	// its own regions, so its slot is empty here.
-	let mut column_regions: Vec<Option<Region>> = Vec::with_capacity(2);
-	if let Some(queue_px) = widths.queue_px {
+	// The columns' regions, in child order. The session column records its
+	// own regions, so its slot is empty here, and so is a floated rail's: the
+	// float records the sheet's own box from inside its scrim, because the
+	// scrim spans the whole row and the sheet is the rail.
+	let mut column_regions: Vec<Option<Region>> = Vec::with_capacity(3);
+	let mut queue_float = None;
+	if widths.queue.is_shown() {
 		let queue_focus = view
 			.queue_focus
 			.get_or_insert_with(|| cx.focus_handle())
 			.clone();
 		let rail_layout = view.laid_out.clone();
-		columns = columns.child(queue_rail(
+		let rail = queue_rail(
 			&view.state.sections,
 			view.state.keymap.queue_filter.as_deref(),
 			view.state.current_id,
-			queue_px,
+			// The declared measure is the rail's outer width in either
+			// placement, so a floated rail hands the sheet's own frame back
+			// and lands its rows in the same 208px the docked one draws in.
+			match widths.queue {
+				QueuePlacement::Overlay { width_px } => {
+					f32::from(Sheet::inset(&tokens)).mul_add(-2.0, width_px)
+				},
+				QueuePlacement::Inline { width_px } => width_px,
+				QueuePlacement::Absent => 0.0,
+			},
 			widths.columns_px,
 			&view.state.controls,
 			&surface.queue,
@@ -207,8 +237,53 @@ pub fn render_shell(
 			&rail_layout,
 			window,
 			cx,
-		));
-		column_regions.push(Some(Region::Queue));
+		)
+		.into_any_element();
+		match widths.queue {
+			QueuePlacement::Inline { .. } => {
+				columns = columns.child(rail);
+				column_regions.push(Some(Region::Queue));
+			},
+			// The float spans the columns row, not the transcript inside it.
+			// The queue is not an annotation of what is being read, the way
+			// the right panel is: it is the only way to reach another session
+			// at this width, so it draws every row and its footer at the
+			// height a docked column would have had. That makes it modal
+			// while it is open, and it closes on the control, on Escape, and
+			// on a press outside it.
+			QueuePlacement::Overlay { .. } => {
+				// The scrim swallows the pointer over the row it dims, so a
+				// press meant to dismiss the rail does not also answer the
+				// card or the control it landed on. The rail itself takes the
+				// press outside its own box as the dismissal.
+				let sheet = div()
+					.id("queue-float")
+					.occlude()
+					.on_mouse_down_out(cx.listener(|view, event: &MouseDownEvent, _window, cx| {
+						if event.button == MouseButton::Left && view.close_queue_float() {
+							cx.stop_propagation();
+							cx.notify();
+						}
+					}))
+					.child(Sheet::left(rail));
+				queue_float = Some(
+					view.laid_out().track_children(
+						div()
+							.absolute()
+							.inset_0()
+							.flex()
+							.flex_row()
+							.justify_start()
+							.occlude()
+							.backdrop_blur(px(panels.right_panel_overlay_scrim_blur_px))
+							.bg(tokens.scrim())
+							.child(sheet),
+						|index| (index == 0).then_some(Region::Queue),
+					),
+				);
+			},
+			QueuePlacement::Absent => {},
+		}
 	}
 	column_regions.push(None);
 
@@ -349,6 +424,10 @@ pub fn render_shell(
 			)
 		},
 	};
+	if let Some(float) = queue_float {
+		columns = columns.child(float);
+		column_regions.push(None);
+	}
 	let mut columns = view
 		.laid_out()
 		.track_children(columns, move |index| column_regions.get(index).copied().flatten());

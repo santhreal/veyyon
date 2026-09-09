@@ -54,7 +54,7 @@ fn the_operator_bubble_stays_inside_the_session_column_when_the_shed_narrows_it(
 		.into_iter()
 		.filter(|width| {
 			let widths = shell_widths(shed(*width, true), &tokens.surface);
-			widths.queue_px.is_some()
+			widths.queue.inline_width() > 0.0
 				&& matches!(widths.right_panel, RightPanelPlacement::Inline { .. })
 				&& widths.composer_px < measure
 		})
@@ -81,7 +81,7 @@ fn the_operator_bubble_stays_inside_the_session_column_when_the_shed_narrows_it(
 
 	for width in chosen {
 		let widths = shell_widths(shed(width, true), &tokens.surface);
-		let session_left = widths.queue_px.unwrap_or(0.0);
+		let session_left = widths.queue.inline_width();
 		let session_right = session_left + widths.session_px;
 
 		let mut cx = headless_context().expect("a headless renderer is required to render the shell");

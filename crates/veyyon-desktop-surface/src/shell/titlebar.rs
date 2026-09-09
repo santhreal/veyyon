@@ -67,7 +67,7 @@ pub fn titlebar(
 			!state.queue_collapsed,
 			cx,
 			|view, cx| {
-				view.dispatch(Intent::ToggleQueue, cx);
+				view.toggle_queue(cx);
 			},
 		));
 

@@ -66,6 +66,23 @@ the text returns with the session on recall or unpark.
 Parked shows 25 lines and then an `Older (N remaining)` row. Clicking that row
 adds the next 25.
 
+The queue docks as a column beside the transcript. Below 980px it floats at the
+leading edge behind a blurred scrim, and is closed when a window opens.
+`Primary-B` and the titlebar's leading control open it there; `Escape`, the
+same control, and a press outside it close it. A float takes no width from
+anything, so opening it reflows nothing.
+
+A float covers the whole area below the titlebar and is modal while it is open:
+it carries every section, every row and the footer at the height a docked
+column has, because at that width it is the only way to reach another session.
+The right panel floats differently — it annotates the transcript and leaves the
+composer lit.
+
+A docked column and a float carry the same rows, the same sections and the same
+footer. The collapsed state `Primary-B` sets on a docked column is the standing
+preference and returns with the next window; a float is that window's own and
+never returns opened.
+
 Cards display the session title, workspace, status, and relevant timing.
 Secondary actions remain hidden at rest and do not shift the title when revealed.
 Selection, hover, and status have distinct treatments. Compact rows retain

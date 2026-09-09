@@ -219,11 +219,32 @@ impl std::fmt::Display for DrawerPlacement {
 	}
 }
 
+/// How the session queue occupies the window at a given width (§5.7, §5.14).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum QueueMode {
+	/// A column beside the session surface, taking width from it.
+	Inline,
+	/// A float over the transcript, taking no width from it. A window this
+	/// narrow has no room for a rail beside what is being read, and a rail
+	/// that is simply absent leaves the session list unreachable.
+	Overlay,
+}
+
+impl std::fmt::Display for QueueMode {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Inline => write!(f, "inline"),
+			Self::Overlay => write!(f, "overlay"),
+		}
+	}
+}
+
 /// Viewport layout state and thresholds for a single breakpoint.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BreakpointConfig {
 	pub min_width_px:              f32,
 	pub queue_width_px:            f32,
+	pub queue_mode:                QueueMode,
 	pub right_panel_mode:          RightPanelMode,
 	pub terminal_drawer_placement: DrawerPlacement,
 	pub terminal_drawer_height_px: f32,

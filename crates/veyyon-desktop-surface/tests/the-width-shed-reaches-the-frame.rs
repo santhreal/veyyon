@@ -45,6 +45,7 @@ fn shed(viewport_px: f32, viewport_height_px: f32, panel_open: bool) -> ShedInpu
 		chrome_height_px: surface.shell.titlebar_height_px,
 		gutter_px,
 		queue_collapsed: false,
+		queue_float_open: false,
 		panel_open,
 		panel_width: None,
 		labels: LabelState::default(),
@@ -123,7 +124,7 @@ fn at_the_window_floor_the_session_surface_spans_the_window() {
 	let titlebar = surface.shell.titlebar_height_px as u32;
 	let band = (titlebar + 4, height / 2);
 
-	let start = widths.queue_px.unwrap_or(0.0) as u32;
+	let start = widths.queue.inline_width() as u32;
 	let left = ground_at(&frame, start + 4, band.0, band.1);
 	let middle = ground_at(&frame, start + (widths.session_px as u32) / 2, band.0, band.1);
 	let right = ground_at(&frame, width - 4, band.0, band.1);
@@ -164,7 +165,7 @@ fn at_the_window_floor_the_panel_overlays_instead_of_taking_the_transcript() {
 	};
 	assert_eq!(
 		widths.session_px,
-		width as f32 - widths.queue_px.unwrap_or(0.0),
+		width as f32 - widths.queue.inline_width(),
 		"an overlaid panel took width out of the session surface"
 	);
 
@@ -200,9 +201,8 @@ fn a_wide_window_docks_the_panel_at_the_width_the_shed_resolved() {
 		RightPanelPlacement::Inline { width_px } => width_px,
 		other => panic!("a 1440px window must dock the panel, not place it {other:?}"),
 	};
-	let queue = widths
-		.queue_px
-		.expect("a 1440px window keeps the queue rail");
+	let queue = widths.queue.inline_width();
+	assert!(queue > 0.0, "a 1440px window docks the queue rail");
 
 	let frame = render_at(width, height, fixture::populated(), "shed-wide-inline-panel");
 	let titlebar = surface.shell.titlebar_height_px as u32;

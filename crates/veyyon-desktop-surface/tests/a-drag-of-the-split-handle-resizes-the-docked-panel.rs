@@ -58,6 +58,7 @@ fn shed(panel_width: Option<f32>) -> ShedInput {
 		chrome_height_px: tokens.surface.shell.titlebar_height_px,
 		gutter_px: 8.0,
 		queue_collapsed: false,
+		queue_float_open: false,
 		panel_open: true,
 		panel_width,
 		labels: LabelState::default(),
@@ -143,8 +144,9 @@ fn dragging_the_handle_past_the_bound_stops_at_the_bound() {
 	// The shed bounds a docked panel by its share of the window and by what
 	// the session surface must keep; the tighter of the two is the wall.
 	let queue = shell_widths(shed(None), &tokens.surface)
-		.queue_px
-		.expect("a 1440px window keeps the queue rail");
+		.queue
+		.inline_width();
+	assert!(queue > 0.0, "a {WIDTH}px window docks the queue rail beside the transcript");
 	let share = WIDTH * panels.right_panel_max_viewport_ratio;
 	let bound = share.min(WIDTH - queue - panels.right_panel_container_margin_px);
 	let (before, after, stored) = drag_handle_by(-(WIDTH / 2.0));

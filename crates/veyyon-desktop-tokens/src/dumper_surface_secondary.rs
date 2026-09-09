@@ -176,11 +176,13 @@ description_size = "{}"
 fn format_bp(out: &mut String, name: &str, c: &BreakpointConfig) {
 	let _ = write!(
 		out,
-		"[breakpoint.{name}]\nmin_width_px = {}\nqueue_width_px = {}\nright_panel_mode = \
-		 \"{}\"\nterminal_drawer_placement = \"{}\"\nterminal_drawer_height_px = \
-		 {}\ncomposer_footer_labels = {}\nrun_bar_labels = {}\n\n",
+		"[breakpoint.{name}]\nmin_width_px = {}\nqueue_width_px = {}\nqueue_mode = \
+		 \"{}\"\nright_panel_mode = \"{}\"\nterminal_drawer_placement = \
+		 \"{}\"\nterminal_drawer_height_px = {}\ncomposer_footer_labels = {}\nrun_bar_labels = \
+		 {}\n\n",
 		c.min_width_px as i64,
 		c.queue_width_px as i64,
+		c.queue_mode,
 		c.right_panel_mode,
 		c.terminal_drawer_placement,
 		c.terminal_drawer_height_px as i64,
