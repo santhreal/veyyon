@@ -371,8 +371,12 @@ export function sessionEntryToTranscriptEntry(
 		case "mode_change":
 			content = [{ Text: { text: `mode: ${entry.mode}` } }];
 			break;
+		// A title is chrome, not conversation: the titlebar and the rail row
+		// state the name, and a session is named from its own first prompt, so a
+		// row for it landed in every transcript between the prompt and the reply
+		// that answered it.
 		case "title_change":
-			content = [{ Text: { text: `title: ${entry.title}` } }];
+			content = [];
 			break;
 		case "ttsr_injection":
 			content = [{ Text: { text: `injected rules: ${entry.injectedRules.join(", ")}` } }];

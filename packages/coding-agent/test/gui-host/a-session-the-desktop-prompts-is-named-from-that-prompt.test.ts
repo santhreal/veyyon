@@ -27,7 +27,7 @@ import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
 import { computeDefaultSessionDir } from "@veyyon/kernel/session/session-paths";
 import { FileSessionStorage } from "@veyyon/kernel/session/session-storage";
-import { type GuiHostServer, type HostEvent, startGuiHostServer } from "../../src/gui-host";
+import { type GuiHostServer, type HostEvent, startGuiHostServer, type TranscriptEntry } from "../../src/gui-host";
 import { turnActionHandlers } from "../../src/gui-host/actions/turn";
 import { isolatedAuthStorage } from "../helpers/isolated-auth-storage";
 import { type RequestFrame, snapshotSections, TestSocketClient } from "./test-client";
@@ -295,6 +295,29 @@ describe("a session the desktop prompts is named from that prompt", () => {
 		// One title request per session, not one per frame of its turn.
 		expect(titleRequests.length).toBe(3);
 		expect(titleRequests.every(prompt => prompt.includes("login button"))).toBe(true);
+	});
+
+	test("the name is not a row in the transcript it was taken from", async () => {
+		// The name is chrome: the titlebar and the rail row state it. A session
+		// records its naming as an entry of its own, and drawn as a block that
+		// entry put a row between the prompt and the reply that answered it, in
+		// every session the desktop ever prompted.
+		const session = await createSession(1);
+		const submitted = await client.request(2, { SubmitPrompt: { session, text: TASK_PROMPT } });
+		expect(submitted.outcome).toEqual({ RequestSucceeded: { request: 2 } });
+		await framesUntilNamedAndSettled(session);
+
+		const loaded = await client.request(3, { LoadTranscript: { session, before: null } });
+		const entries = snapshotSections<{ revision: number; value: TranscriptEntry[] }>(loaded.frames, "Transcript").at(
+			-1,
+		)?.value;
+		const named = entries?.filter(entry => entry.raw_discriminator === "title_change") ?? [];
+		expect(named.length).toBe(1);
+		expect(named.every(entry => entry.content.length === 0)).toBe(true);
+		// And it is drawn nowhere else either: no block of any entry carries it,
+		// so the conversation reads as the prompt and the reply to it.
+		expect(JSON.stringify(entries?.map(entry => entry.content) ?? [])).not.toContain(TITLE);
+		expect(entries?.filter(entry => entry.content.length > 0).map(entry => entry.role)).toContain("Assistant");
 	});
 
 	test("a name the session was given survives the prompt that follows it", async () => {

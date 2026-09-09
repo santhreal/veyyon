@@ -127,7 +127,7 @@ export const EXHAUSTIVE_FIXTURES = {
 			source: "user",
 		},
 		expectedRole: "Custom",
-		expectedContent: [{ Text: { text: "title: Refactor Session" } }],
+		expectedContent: [],
 	},
 	ttsr_injection: {
 		entry: {
