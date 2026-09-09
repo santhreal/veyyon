@@ -8,6 +8,8 @@ row_gap = "s4"
 group_gap = "s10"
 control_column_width_px = 240
 tooltip_width_px = 320
+group_width_px = 860
+sheet_height_px = 560
 
 [typography]
 label_size = "read"

@@ -26,6 +26,8 @@ pub fn load_settings(
 		"group_gap",
 		"control_column_width_px",
 		"tooltip_width_px",
+		"group_width_px",
+		"sheet_height_px",
 	])?;
 
 	let typo = root.sub("typography")?;
@@ -37,6 +39,8 @@ pub fn load_settings(
 		group_gap:               layout.spacing("group_gap", scale)?,
 		control_column_width_px: layout.number("control_column_width_px")?,
 		tooltip_width_px:        layout.number("tooltip_width_px")?,
+		group_width_px:          layout.number("group_width_px")?,
+		sheet_height_px:         layout.number("sheet_height_px")?,
 		label_size:              typo.type_size("label_size", scale)?,
 		description_size:        typo.type_size("description_size", scale)?,
 	})

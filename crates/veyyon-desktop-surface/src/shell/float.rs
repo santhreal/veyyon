@@ -105,10 +105,10 @@ pub(super) fn overlay_layer(
 			let width = if state.route.is_some() {
 				geometry.width_px
 			} else {
-				860.0_f32
+				surface.settings.group_width_px
 			};
 			let width = width.min(f32::from(window.viewport_size().width - margin * 2.0));
-			let height = 560.0_f32.min(max_available_height);
+			let height = surface.settings.sheet_height_px.min(max_available_height);
 			div()
 				.w(px(width))
 				.h(px(height))
