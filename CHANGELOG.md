@@ -285,7 +285,9 @@
 
 ### Fixed
 
+- A desktop file or diff pane draws the rows and columns its own box shows, so a long file or a diff of thousands of rows opens at the cost of a short one: a 40-line file of 900 columns had handed the renderer some 13,000 text runs for the 400 the panel showed, and the window stopped answering a pointer, a keystroke and a wheel while it drew them.
 - A desktop file or diff line wider than the right panel scrolls sideways under a horizontal wheel while its line numbers and change signs stay where they are, and a vertical wheel over the same lines scrolls the file: a long line had been cut at the panel's edge mid-glyph with no gesture that reached the rest of it. A split diff's two sides scroll on their own.
+- A sideways gesture over a desktop file or diff pane moves that pane's code alone: a wheel with shift held, which the display server sends as a horizontal delta, had also scrolled the file under it, because the pane's vertical region mapped a horizontal delta onto the one axis it scrolls, and the line numbers travelled with the lines.
 - A collapsed desktop card stack fold draws the count alone: the lines it folded away are clipped by the row's lower edge rather than shrunk to share it, where three folded decisions had each been handed a third of the row and the first name was drawn cut through its glyphs under the count.
 - The desktop rail footer draws a gear, where the icon it names as the settings control was a sun: a circle ringed by radial spokes standing clear of it, which reads as brightness rather than as the settings overlay it opens.
 - Escape returns a desktop command surface to the surface it was opened from, and a surface opened directly draws no Back control and states `Esc Close` for what Escape does: pressing the rail footer gear and then Escape opened the command palette, because the ascent read the route table's parent of the surface on screen rather than the descent that reached it.
