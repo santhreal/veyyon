@@ -93,6 +93,26 @@ function completedStream(text: string): AssistantMessageEventStream {
 	return stream;
 }
 
+/**
+ * Answer each turn with the next stream in `streams`, and a title request with
+ * one of its own.
+ *
+ * A title request is not a turn: the host makes one after the first prompt a
+ * session receives, and answering it from a test's queue hands the titler the
+ * reply a turn was waiting for, so the turn behind it never ends.
+ */
+function answerTurnsWith(streams: AssistantMessageEventStream[]): void {
+	vi.spyOn(ai, "streamSimple").mockImplementation((_model, context) => {
+		const content = context.messages[0]?.content;
+		if (context.messages.length === 1 && typeof content === "string" && content.startsWith("<user>")) {
+			return completedStream("<title>Queued work</title>");
+		}
+		const next = streams.shift();
+		if (!next) throw new Error("the provider was asked for a reply this test queued none for");
+		return next;
+	});
+}
+
 describe("a prompt queued behind a running turn is stated to the desktop", () => {
 	let tempDir: string;
 	let server: GuiHostServer | null = null;
@@ -136,8 +156,7 @@ describe("a prompt queued behind a running turn is stated to the desktop", () =>
 	test("a prompt queued while a turn runs is reported in follow_up and steering queues", async () => {
 		const turn1 = controllableStream("First response");
 		const turn2 = controllableStream("Second response");
-		const streams = [turn1, turn2];
-		vi.spyOn(ai, "streamSimple").mockImplementation(() => streams.shift()!.stream);
+		answerTurnsWith([turn1.stream, turn2.stream]);
 
 		const session = await createSession(1);
 
@@ -187,7 +206,7 @@ describe("a prompt queued behind a running turn is stated to the desktop", () =>
 
 	test("DequeueQueuedPrompt restores prompt text and updates queues in LIFO order", async () => {
 		const turn1 = controllableStream("Active reply");
-		vi.spyOn(ai, "streamSimple").mockImplementation(() => turn1.stream);
+		answerTurnsWith([turn1.stream]);
 
 		const session = await createSession(1);
 
@@ -267,7 +286,7 @@ describe("a prompt queued behind a running turn is stated to the desktop", () =>
 		const turn1 = controllableStream("Reply 1");
 		const turn2 = completedStream("Reply 2");
 		const streams = [turn1.stream, turn2];
-		vi.spyOn(ai, "streamSimple").mockImplementation(() => streams.shift()!);
+		answerTurnsWith(streams);
 
 		const session = await createSession(1);
 

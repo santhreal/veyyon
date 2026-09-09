@@ -44,6 +44,7 @@ const CHOSEN_NAME = "The name it was given";
 interface SessionRow {
 	id: string;
 	title: string | null;
+	status?: string;
 }
 
 type SessionsSection = [{ revision: number; value: SessionRow[] }, unknown[]];
@@ -218,6 +219,25 @@ describe("a session the desktop prompts is named from that prompt", () => {
 		throw new Error(`${session} was not listed under a title with its reply cleared within 400 frames`);
 	}
 
+	/**
+	 * Wait until the index reports `session` idle.
+	 *
+	 * The host states the index when a session goes idle, and a session's status
+	 * is `Pending` for as long as its prompt is owed a reply, so a listing that
+	 * reports anything else is the turn being over. It is the barrier a prompt
+	 * that follows another needs: a request sent while the previous turn runs is
+	 * refused as `TURN_IN_PROGRESS`.
+	 */
+	async function untilIdle(session: string): Promise<void> {
+		for (let read = 0; read < 400; read++) {
+			const frame = (await client.nextFrame()) as RequestFrame;
+			if (frame.RequestFailed) throw new Error(`Unexpected RequestFailed: ${JSON.stringify(frame.RequestFailed)}`);
+			const row = listedIn([frame])?.find(listed => listed.id === session);
+			if (row && row.status !== "Pending") return;
+		}
+		throw new Error(`${session} was never listed as idle within 400 frames`);
+	}
+
 	/** The name the session file itself holds. */
 	async function nameOnDisk(session: string): Promise<string | undefined> {
 		for (const entry of await fs.readdir(sessionDir)) {
@@ -297,6 +317,7 @@ describe("a session the desktop prompts is named from that prompt", () => {
 
 		const greeted = await client.request(2, { SubmitPrompt: { session, text: GREETING } });
 		expect(greeted.outcome).toEqual({ RequestSucceeded: { request: 2 } });
+		await untilIdle(session);
 		const listed = await client.request(3, "ListSessions");
 		expect(titleRequests).toEqual([]);
 		expect(listedIn(listed.frames)?.find(row => row.id === session)?.title).toBeNull();
@@ -314,6 +335,7 @@ describe("a session the desktop prompts is named from that prompt", () => {
 		// after it: one title per session, whoever named it.
 		const third = await client.request(5, { SubmitPrompt: { session, text: "and check the signup form too" } });
 		expect(third.outcome).toEqual({ RequestSucceeded: { request: 5 } });
+		await untilIdle(session);
 		await client.request(6, "ListSessions");
 		expect(titleRequests.length).toBe(1);
 		expect(await nameOnDisk(session)).toBe(TITLE);
