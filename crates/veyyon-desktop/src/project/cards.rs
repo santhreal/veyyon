@@ -4,6 +4,8 @@ use serde_json::{Value, json};
 use veyyon_desktop_model::{InteractionId, PendingDecisions};
 use veyyon_desktop_surface::{Card, Intent};
 
+use super::markdown;
+
 /// The cards for a session's pending decisions: approvals, then questions,
 /// then plans. `interaction_at` reads the same order, so a card's position is
 /// its interaction's.
@@ -21,14 +23,23 @@ pub(super) fn cards(pending: &PendingDecisions) -> Vec<Card> {
 			.map(|q| Card::Question { prompt: q.prompt.clone(), options: q.options.clone() }),
 	);
 	cards.extend(pending.plans.iter().map(|p| {
-		let mut lines = p.markdown_plan.lines();
-		let title = lines
-			.next()
-			.unwrap_or_default()
-			.trim_start_matches('#')
-			.trim()
-			.to_string();
-		Card::Plan { title, body: lines.map(str::to_string).collect() }
+		// A plan's first line with text on it names the plan, and the card
+		// draws that name in its own ramp, so it is not redrawn in the body.
+		// The run bar reads the same line, so the two name one plan once, and
+		// the blank the heading was parted from is not drawn as an empty row.
+		let lines = markdown::plain_lines(&p.markdown_plan);
+		let named = lines.iter().position(|line| !line.trim().is_empty());
+		let title = named.map_or_else(String::new, |at| lines[at].trim().to_owned());
+		let rest = named.map_or(&[][..], |at| &lines[at + 1..]);
+		let start = rest
+			.iter()
+			.position(|line| !line.trim().is_empty())
+			.unwrap_or(rest.len());
+		let end = rest
+			.iter()
+			.rposition(|line| !line.trim().is_empty())
+			.map_or(start, |at| at + 1);
+		Card::Plan { title, body: rest[start..end].to_vec() }
 	}));
 	cards
 }

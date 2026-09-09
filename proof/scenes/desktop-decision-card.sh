@@ -394,9 +394,16 @@ fi
 # against a stack that draws two: the cap held, the rest folded into one row,
 # and the row opened for the pointer and closed behind it.
 #
-# WHAT IS NOT HERE. A plan card cut at `max_markdown_height_px` and faded over
-# its cut is not in this take: a plan arrives when the model presents one, and
-# this recorder's model does not. That fade is held by
+# WHAT IS NOT HERE. A plan card is not in this take: a plan arrives when the
+# model presents one, and this recorder's model does not. Two claims about one
+# therefore have no frame -- the fade over a body cut at
+# `max_markdown_height_px`, and the flattening of the markdown a plan arrives
+# in -- and they are the only parts of §5.5 without one. The fade is held by
 # crates/veyyon-desktop-surface/tests/a-plan-cut-at-its-cap-fades-where-it-was-cut.rs
-# and by the mutation gate in .internal/mutate-card-decisions.py, and it is the
-# one part of §5.5 with no frame of its own.
+# and the mutation gate in .internal/mutate-card-decisions.py; the flattening by
+# crates/veyyon-desktop/tests/a-decision-card-draws-text-and-never-the-markdown-it-arrived-in.rs
+# and the mutation gate in .internal/check-plan-markdown-mutations.py.
+#
+# The approval card's own detail IS here, in frame 1 of the on arm: it is the
+# text the tool wrapper's card states, and the host is what turns that card's
+# markdown into the lines this pane draws.

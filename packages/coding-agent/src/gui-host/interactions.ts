@@ -67,6 +67,38 @@ export function approvalToolName(card: string): string | undefined {
 	return line?.match(/`([^`]+)`/)?.[1];
 }
 
+/** A label line the wrapper writes on its own card: `**Scope:** This call only`. */
+const WRAPPER_LABEL = /^\*\*([^*:]+):\*\*\s*(.*)$/;
+
+/** A wrapper line that is bold and nothing else: `**Requested action**`. */
+const WRAPPER_HEADING = /^\*\*([^*]+)\*\*$/;
+
+/**
+ * The card's detail as the plain text lines the `detail` field carries.
+ *
+ * WHY: `formatApprovalCard` writes markdown for the terminal's renderer, while
+ * the desktop draws each detail line into a mono pane verbatim, so the card
+ * read `**Scope:** This call only` with the emphasis markers as text. Only the
+ * wrapper's own label lines are rewritten. A tool's detail line crosses
+ * byte-identical, because it states the command about to run, and an approval
+ * that shows anything other than what runs is worse than an ugly one.
+ */
+export function approvalDetail(card: string): string {
+	return card
+		.split("\n")
+		.filter(line => !line.startsWith("## ") && !line.startsWith("**Tool:**"))
+		.map(line => {
+			const labelled = line.match(WRAPPER_LABEL);
+			if (labelled) {
+				const value = labelled[2]!.replaceAll("`", "").trim();
+				return value.length > 0 ? `${labelled[1]!}: ${value}` : `${labelled[1]!}:`;
+			}
+			return line.match(WRAPPER_HEADING)?.[1] ?? line;
+		})
+		.join("\n")
+		.trim();
+}
+
 export class InteractionLedger {
 	readonly #waiting = new Map<string, Waiting>();
 	#approvals: ApprovalInteraction[] = [];
@@ -171,11 +203,7 @@ export class InteractionLedger {
 	/** A tool approval: the wrapper's four-way card, answered with `{ approved, scope }`. */
 	approval(card: string, dialogOptions?: ExtensionUIDialogOptions): Promise<string | undefined> {
 		const tool = approvalToolName(card) ?? "tool";
-		const detail = card
-			.split("\n")
-			.filter(line => !line.startsWith("## ") && !line.startsWith("**Tool:**"))
-			.join("\n")
-			.trim();
+		const detail = approvalDetail(card);
 		return this.#raise(
 			"approval",
 			(id, now) => {

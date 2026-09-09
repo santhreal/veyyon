@@ -333,6 +333,14 @@ A plan's body is capped at 400 pixels and the last 64 pixels of a body cut at
 that cap fade into the card, which is what states there is more of the plan than
 the card shows. A body that fits is drawn to its last line.
 
+Every card draws text. An approval's detail is the request as the tool states
+it, one line per row of a monospaced pane, including the command about to run
+with whatever characters it contains. A plan arrives as markdown and is
+flattened before it is drawn: the first line with text on it names the card, and
+the body keeps its list indentation while heading hashes, emphasis markers,
+backticks and code fences come off. A link is drawn as its text followed by its
+target in parentheses.
+
 Two decisions are shown at once. Every decision past the second folds into one
 24-pixel line stating how many are waiting; the pointer over that line, or the
 keyboard on it, opens it onto one line per folded decision, naming the kind and

@@ -8,7 +8,7 @@
 use veyyon_desktop_model::{SessionBadge, SessionId, Store};
 use veyyon_desktop_surface::Badge;
 
-use super::queue::badge;
+use super::{markdown, queue::badge};
 
 /// The run bar's badge and its line, or `None` when the session is idle.
 pub(super) fn run_status(
@@ -31,10 +31,12 @@ pub(super) fn run_status(
 			.get(id)
 			.and_then(|pending| pending.approvals.first())
 			.map(|approval| {
-				if approval.detail.is_empty() {
-					approval.tool_name.clone()
-				} else {
-					format!("{} · {}", approval.tool_name, approval.detail)
+				// The bar is one line. A card's detail is several, and the
+				// first states what is being asked for, so the rest belongs
+				// to the card and a newline never reaches the bar's layout.
+				match approval.detail.lines().find(|line| !line.trim().is_empty()) {
+					Some(first) => format!("{} · {first}", approval.tool_name),
+					None => approval.tool_name.clone(),
 				}
 			})
 			.unwrap_or_default(),
@@ -48,7 +50,7 @@ pub(super) fn run_status(
 			.interactions
 			.get(id)
 			.and_then(|pending| pending.plans.first())
-			.map(|plan| first_line(&plan.markdown_plan))
+			.map(|plan| markdown::plain_line(&plan.markdown_plan))
 			.unwrap_or_default(),
 		SessionBadge::Watching => store
 			.domains
@@ -64,14 +66,4 @@ pub(super) fn run_status(
 		SessionBadge::Failed | SessionBadge::Due | SessionBadge::Done => String::new(),
 	};
 	Some((badge(derived), line))
-}
-
-/// The first non-empty line of a block of markdown.
-fn first_line(markdown: &str) -> String {
-	markdown
-		.lines()
-		.map(str::trim)
-		.find(|line| !line.is_empty())
-		.unwrap_or_default()
-		.to_string()
 }

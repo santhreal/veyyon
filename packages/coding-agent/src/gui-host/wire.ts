@@ -230,6 +230,11 @@ export interface Versioned<T> {
 export interface ApprovalInteraction {
 	id: string;
 	tool_name: string;
+	/**
+	 * Plain text, one line per row of the card's mono pane. The wrapper's card
+	 * is markdown for the terminal; the desktop draws these lines verbatim, so
+	 * the emphasis markers come off in `approvalDetail`.
+	 */
 	detail: string;
 	requested_at_ms: number;
 }
