@@ -4,21 +4,23 @@
  * flight is a trailing prompt with no reply after it: `pending`, which the row
  * draws as `Working` with a clock counting up. Nothing a turn streams carries a
  * status, and the host stated the index only when a request asked it to, so a
- * listing that landed mid-turn — the one that carries the name a session was
- * just given — left every row it touched reporting a turn that was over. In a
- * window driven for a minute, two finished sessions both read `Working`.
+ * listing that landed mid-turn, the one carrying the name a session was just
+ * given, left every row it touched reporting a turn that was over. In a window
+ * driven for a minute, two finished sessions both read `Working`.
  *
  * The class this closes: any path that runs a turn leaves the index reporting
  * the session's settled status once the session is idle, whatever ended it and
  * whichever action carried the prompt. The prompt carriers are read off the
- * host's own handler table, so a fourth one fails here until it is decided.
+ * host's own handler table, so a fourth one fails here until it is decided. A
+ * turn that calls a tool is driven too, because a tool call ends a turn
+ * mid-loop and the file then trails the call's result, which lists as an
+ * interrupted session: a listing stated per turn rather than per idle session
+ * puts `Interrupted` on a row whose reply is still coming.
  *
- * What it does not catch: the listing is stated at `agent_end` and not at
- * `turn_end`, because a tool call ends a turn mid-loop and the file then trails
- * a tool result, which lists as an interrupted session. This suite drives no
- * tool loop, so a regression that lists on every `turn_end` would show up here
- * only as an extra listing carrying the same settled status, not as the
- * `Interrupted` row it would draw mid-loop.
+ * What it does not catch: the index is stated to the connection whose turn
+ * ended, so a session another client is running is reported to this one only
+ * when it asks. Nothing here asserts the revision each listing carries, which
+ * is what the client reads to reject a snapshot older than the one it holds.
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
@@ -110,6 +112,24 @@ function endedStream(text: string, reason: StopReason): AssistantMessageEventStr
 }
 
 /**
+ * A reply that calls one tool and ends the turn on it. The call is the
+ * session's own `ls`, a read-tier tool this suite's config runs unasked, so the
+ * loop reaches a second turn without a decision in the way.
+ */
+function toolCallStream(): AssistantMessageEventStream {
+	const stream = new AssistantMessageEventStream();
+	const call = { type: "toolCall", id: "call-ls-1", name: "ls", arguments: { path: "." } } as const;
+	const message: AssistantMessage = { ...assistantMessage("", "toolUse"), content: [call] };
+	queueMicrotask(() => {
+		stream.push({ type: "start", partial: { ...message, content: [] } });
+		stream.push({ type: "toolcall_start", contentIndex: 0, partial: message });
+		stream.push({ type: "toolcall_end", contentIndex: 0, toolCall: call, partial: message });
+		stream.push({ type: "done", reason: "toolUse", message });
+	});
+	return stream;
+}
+
+/**
  * A title request is the one the title generator sends: one message, holding
  * the prompt wrapped in `<user>` by `formatTitleUserMessage`. A turn's own
  * request carries the session's messages and no such wrapper.
@@ -126,18 +146,30 @@ describe("a turn that ends stops being listed as running", () => {
 	let client: TestSocketClient;
 	/** How the next reply this suite's provider streams ends. */
 	let replyEnding: StopReason;
+	/** Whether the first reply of the next prompt calls a tool. */
+	let callsATool: boolean;
+	/** How many requests this suite's provider answered for a turn, not a title. */
+	let turnRequests: number;
 
 	beforeEach(async () => {
 		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "gui-host-turn-index-"));
 		await fs.mkdir(computeDefaultSessionDir(tempDir, new FileSessionStorage(), path.join(tempDir, "sessions")), {
 			recursive: true,
 		});
-		await fs.writeFile(path.join(tempDir, "config.yml"), "modelRoles:\n  default: openai/gpt-4o-mini\n", "utf8");
+		await fs.writeFile(
+			path.join(tempDir, "config.yml"),
+			"modelRoles:\n  default: openai/gpt-4o-mini\ntools:\n  approvalMode: auto\n",
+			"utf8",
+		);
 		const authStorage = await isolatedAuthStorage(tempDir);
 		authStorage.upsertCredential("openai", { type: "api_key", key: "test-key" });
 		replyEnding = "stop";
+		callsATool = false;
+		turnRequests = 0;
 		vi.spyOn(ai, "streamSimple").mockImplementation((_model, context) => {
 			if (isTitleRequest(context)) return endedStream(`<title>${TITLE}</title>`, "stop");
+			turnRequests += 1;
+			if (callsATool && turnRequests === 1) return toolCallStream();
 			return endedStream("Hello from engine!", replyEnding);
 		});
 		server = await startGuiHostServer({
@@ -270,5 +302,23 @@ describe("a turn that ends stops being listed as running", () => {
 			const { statuses } = await listedStatusesUntilSettled(session);
 			expect(statuses.at(-1)).toBe(ending.status);
 		}
+	});
+
+	test("a turn that calls a tool is listed once it is idle, not once per turn it took", async () => {
+		// A prompt whose reply calls a tool takes two turns, and between them the
+		// file trails the call's result, which the index reads as a session that
+		// stopped mid-loop. So the listing is owed where the session goes idle:
+		// stating it at the end of each turn puts `Interrupted` on the row of a
+		// session whose reply is still coming.
+		callsATool = true;
+		const session = await createSession(1);
+		const submitted = await client.request(2, { SubmitPrompt: { session, text: GREETING } });
+		expect(submitted.outcome).toEqual({ RequestSucceeded: { request: 2 } });
+
+		const { statuses } = await listedStatusesUntilSettled(session);
+		expect(statuses).toEqual(["Complete"]);
+		// The loop really took two turns: the tool ran and the session asked the
+		// provider again, which is what puts a `turn_end` between the two.
+		expect(turnRequests).toBe(2);
 	});
 });
