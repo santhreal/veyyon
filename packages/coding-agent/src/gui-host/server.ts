@@ -5,6 +5,7 @@ import type { AuthStorage } from "@veyyon/ai";
 import { errorMessage, getAgentDir, logger } from "@veyyon/utils";
 import { discoverAuthStorage } from "../session/auth-broker-config";
 import { allActionHandlers } from "./actions";
+import { writeSessionList } from "./actions/active-session";
 import type { ActionContext, ReplyHelper } from "./actions/types";
 import { FrameDecoder, writeFrame } from "./frames";
 import { PresentationLedger } from "./presentation";
@@ -220,8 +221,18 @@ export class GuiHostServer {
 			revision: 0,
 			presentationLedger: new PresentationLedger(),
 		};
+		// A turn's own frames carry no status, so the index is what tells the
+		// rail a turn ended. It is re-stated for the connection rather than for
+		// a request, because the turn that ends may have no request in flight.
+		clientState.refreshSessionList = async () => {
+			if (socket.destroyed) return;
+			try {
+				await writeSessionList(socket, clientState, this.#cwd, this.#agentDir);
+			} catch (error) {
+				logger.warn("GUI host could not re-state the session index", { error: errorMessage(error) });
+			}
+		};
 		this.#clientStates.set(socket, clientState);
-
 		// 1. Write greeting frame first
 		writeFrame(socket, {
 			ConnectionChanged: {

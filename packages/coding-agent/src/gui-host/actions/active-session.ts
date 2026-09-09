@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import type * as net from "node:net";
 import * as path from "node:path";
 import { listSessions } from "@veyyon/kernel/session/session-listing";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
@@ -9,7 +10,7 @@ import { writeFrame } from "../frames";
 import { reportQueuedPrompts } from "../queued-prompts";
 import { sessionHeaderToView, sessionInfoToSummary } from "../session-bridge";
 import { sessionEntriesToTranscript, sessionEntryToTranscriptEntry } from "../transcript-conversion";
-import { disposeTurnSession } from "../turns";
+import { type ClientSessionState, disposeTurnSession } from "../turns";
 import type { ErrorScope, TranscriptEntry } from "../wire";
 import type { ActionContext } from "./types";
 
@@ -91,12 +92,30 @@ export function emitActiveSessionAndTranscript(
 	reportQueuedPrompts(ctx.socket, ctx.clientState);
 }
 
-export async function emitSessionList(ctx: ActionContext): Promise<void> {
-	const sessions = await listSessions(sessionDirFor(ctx.cwd, ctx.agentDir), sessionStorage);
-	ctx.clientState.revision += 1;
-	ctx.reply.snapshot({
-		Sessions: [{ revision: ctx.clientState.revision, value: sessions.map(sessionInfoToSummary) }, []],
+/**
+ * State the session index to one client, outside any request.
+ *
+ * A row's status is whatever the last listing reported, and a session's status
+ * is derived from its file: a turn in flight leaves a trailing prompt with no
+ * reply after it, which lists as `pending`, so the row keeps drawing `Working`
+ * until another listing replaces it. The listing that replaces it is owed when
+ * the turn ends, which is not a request the client sent.
+ */
+export async function writeSessionList(
+	socket: net.Socket,
+	clientState: ClientSessionState,
+	cwd: string,
+	agentDir: string,
+): Promise<void> {
+	const sessions = await listSessions(sessionDirFor(cwd, agentDir), sessionStorage);
+	clientState.revision += 1;
+	writeFrame(socket, {
+		Snapshot: { Sessions: [{ revision: clientState.revision, value: sessions.map(sessionInfoToSummary) }, []] },
 	});
+}
+
+export function emitSessionList(ctx: ActionContext): Promise<void> {
+	return writeSessionList(ctx.socket, ctx.clientState, ctx.cwd, ctx.agentDir);
 }
 
 export function wireSessionManager(ctx: ActionContext, sm: SessionManager): void {

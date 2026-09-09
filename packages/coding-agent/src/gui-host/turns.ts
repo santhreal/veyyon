@@ -94,6 +94,16 @@ export interface ClientSessionState {
 	 * to suppress redundant frames when the queues have not changed.
 	 */
 	lastQueuedPromptsSignature?: string;
+	/**
+	 * Re-state the session index to this client, installed per connection.
+	 *
+	 * The rail draws each row's status from the last listing it received, and
+	 * a session's status is read from its file, where a turn in flight is a
+	 * trailing prompt with no reply after it: `pending`, which the row draws
+	 * as `Working`. Nothing in a turn's own frames carries a status, so the
+	 * row reports a finished turn as running until a listing replaces it.
+	 */
+	refreshSessionList?: () => Promise<void>;
 }
 
 /**
@@ -276,10 +286,19 @@ export function handleSessionEvent(event: AgentSessionEvent, socket: net.Socket,
 			if (event.message.role === "assistant") clearStreaming(socket, state);
 			break;
 		}
-		case "turn_end":
+		case "turn_end": {
+			clearStreaming(socket, state);
+			reportQueuedPrompts(socket, state);
+			break;
+		}
 		case "agent_end": {
 			clearStreaming(socket, state);
 			reportQueuedPrompts(socket, state);
+			// The session is idle here, and only here: a tool call ends a turn
+			// mid-loop, and the file then trails a tool result, which lists as
+			// an interrupted session. Listing on `turn_end` would draw `Failed`
+			// on a row whose turn is still running.
+			void state.refreshSessionList?.();
 			break;
 		}
 		default:
