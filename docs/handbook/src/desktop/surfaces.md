@@ -24,6 +24,12 @@ catches it inside an 8px band centred on the hairline, and the hairline is
 drawn in the accent colour while the pointer is inside that band or a drag
 holds it.
 
+The titlebar centre holds the open session's name as an editable field. Type
+over it and press `Enter` to rename that session. The rename applies to the
+session on screen, so opening another session before pressing `Enter` renames
+that one instead. A name that is empty or only spaces is rejected in the
+attention strip and sends nothing. `Escape` restores the name the host reports.
+
 `Primary` means `Cmd` on macOS and `Ctrl` on Linux and Windows. Default bindings are
 in `crates/veyyon-desktop-surface/keymap.toml`.
 
