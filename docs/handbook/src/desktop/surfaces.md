@@ -150,12 +150,18 @@ They last until the window closes, and a session index sent while the window is
 open does not move a session out of the section it was placed in. A session the
 agent no longer holds is removed from the queue.
 
-Right-click a card for Open, Park, Defer, Branch, and Delete. A pinned card also
-offers Unpin, which a card's two hover actions have no room for. Parked lines
-offer Open and Unpark; deferred lines offer Open and Recall. Branch starts a new
-session before the latest user message on the selected session's active branch,
-without changing the source session. Extensions can cancel the operation.
-Unavailable and pending management actions are disabled in the menu.
+Right-click a card for Open, Park, Defer, Branch, Export, Compact, Handoff, and
+Delete. A pinned card also offers Unpin, which a card's two hover actions have
+no room for. Parked lines offer Open and Unpark; deferred lines offer Open and
+Recall. Branch starts a new session before the latest user message on the
+selected session's active branch, without changing the source session.
+Extensions can cancel the operation. Unavailable and pending management actions
+are disabled in the menu.
+
+Branch, Export, Compact, and Handoff run against the session whose row was
+right-clicked, and each opens that session: the transcript, the titlebar name
+and the row selection state the session the action ran on, so an export taken
+from another row leaves the window on the session that was exported.
 
 Click the queue to focus it for the keyboard.
 
@@ -708,6 +714,23 @@ SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
 SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
   PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
   proof/docker/record-native.sh proof/scenes/desktop-split-grip.sh
+```
+
+Use `proof/scenes/desktop-export-header.sh` to export a session the window is
+not on, from that row's own context menu, and read where the rail's selection
+lands. It reads the selected card and the menu's rows out of the frame it
+opened in, and reads the Export row's ink against the menu's first row: a row
+the gate refused is drawn at a fraction of its strength, swallows the click,
+and both arms then show the export never running, so the take waits for the
+host and abandons rather than clicking it. The change is inside the host, so
+the other arm reuses this build with the host's source held at the commit
+before it and names no second binary:
+
+```sh
+SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
+  proof/scenes/desktop-export-header.sh
+SCENE_ARM=before PROOF_BASE_REF=da49c36a25^ SCENE_MOTION_FLOOR=6 \
+  proof/docker/record-native.sh proof/scenes/desktop-export-header.sh
 ```
 
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
