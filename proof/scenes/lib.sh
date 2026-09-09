@@ -318,6 +318,9 @@ glide() { # glide <row-from> <col-from> <row-to> <col-to> [steps] [delay]
 	done
 }
 click() { _be_click 1; }
+# The context menu of a row opens on the secondary button, so a scene that
+# reaches one presses button 3 rather than synthesizing a long press.
+right_click() { _be_click 3; }
 click_at() { point "$1" "$2"; pause 0.3; click; }
 wheel_up() { key_repeat_button 4 "${1:-3}"; }
 wheel_down() { key_repeat_button 5 "${1:-3}"; }

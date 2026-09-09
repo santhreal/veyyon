@@ -32,6 +32,14 @@
 #     PROOF_NATIVE_BEFORE_BINARY=<base-build> \
 #     proof/docker/record-native.sh proof/scenes/<name>.sh
 #
+# A change the window takes no part in inverts that: the differential is in the
+# host the window talks to, there is no second build, and the arm names the
+# commit before the host changed. The executable is then shared and
+# PROOF_NATIVE_BEFORE_BINARY is left unset:
+#
+#   SCENE_ARM=before PROOF_BASE_REF=<fix>^ \
+#     proof/docker/record-native.sh proof/scenes/<name>.sh
+#
 # THE GPU IS OPTIONAL. lavapipe renders in software, so a take needs no
 # passthrough and every host draws the same frame. Pass PROOF_GPU_DEVICE and
 # VK_ICD to use the host's device instead:

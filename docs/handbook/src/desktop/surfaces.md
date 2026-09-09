@@ -776,6 +776,26 @@ SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
   proof/scenes/desktop-session-transcript.sh
 ```
 
+Use `proof/scenes/desktop-transcript-prose.sh` to open a session whose reply
+carries inline markdown and photograph the transcript setting it. The reply is
+a committed fixture in `proof/docker/seed-sessions/`, written into the session
+store for this scene alone, so both arms of the pair draw the same paragraph
+instead of two replies a model wrote; the scene reaches it through the rail's
+own search, pressed on the control rather than the `/` chord. It reads the
+palette's overlay, the typed filter and the ink the reply brings to a column
+that was empty, then asks the host on a second connection whether the reply
+still holds the raw markers the fixture wrote. The change is inside the
+executable, so the before arm names a build of this tree without the inline
+reader:
+
+```sh
+SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
+  proof/scenes/desktop-transcript-prose.sh
+SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
+  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
+  proof/docker/record-native.sh proof/scenes/desktop-transcript-prose.sh
+```
+
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
 The [capture requirements](../foundations/verification.md) specify paired static
 frames and animated clips. Headless scene PNGs do not replace native captures.
