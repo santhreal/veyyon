@@ -8,10 +8,12 @@ mod damage_report;
 use std::{collections::HashMap, fs, io::Write, path::PathBuf, time::Instant};
 
 use damage_report::{
-	BenchComparison, BenchSummary, FrameSample, compute_stats, detect_gpu_name, print_report,
+	BenchComparison, BenchSummary, FrameSample, RepaintTally, compute_stats, detect_gpu_name,
+	print_report,
 };
 use veyyon_desktop::{
-	SessionIndex, StartupBundle, discover_asset_paths, load_startup_bundle, project, request_frame,
+	SessionIndex, StartupBundle, damage::Repaint, discover_asset_paths, load_startup_bundle,
+	project, request_frame,
 };
 use veyyon_desktop_model::{
 	ConnectionState, ContentBlock, EntryId, HostEvent, MessageRole, SessionId, Store,
@@ -114,7 +116,7 @@ fn replay_arm(
 	options: &RenderOptions,
 	corpus: &[HostEvent],
 	bundle: &StartupBundle,
-) -> Vec<FrameSample> {
+) -> (Vec<FrameSample>, RepaintTally) {
 	let mut session = HeadlessSession::open(cx, options, move |_, cx| {
 		let inst = install_tokens(cx, &bundle.tokens, &bundle.theme, &bundle.surface_path)
 			.expect("install tokens");
@@ -127,10 +129,12 @@ fn replay_arm(
 	let mut index = SessionIndex::new();
 	let mut drawn = ShellState::default();
 	let mut samples = Vec::with_capacity(corpus.len());
+	let mut tally = RepaintTally::default();
+	let mut scoped_device_px = 0_u64;
 
 	for (batch, event) in corpus.iter().enumerate() {
 		let now_ms = 10_000 + batch as u64;
-		session
+		let repaint = session
 			.update(|view, _, cx| {
 				reduce(&mut store, event.clone());
 				project(&store, &mut index, &HashMap::new(), now_ms, view.state_mut());
@@ -138,12 +142,27 @@ fn replay_arm(
 					Arm::DamageOn => {
 						let invalidation = regions_changed(&drawn, view.state());
 						drawn.clone_from(view.state());
-						request_frame(view, &invalidation, cx);
+						request_frame(view, &invalidation, cx)
 					},
-					Arm::DamageOff => cx.notify(),
+					Arm::DamageOff => {
+						cx.notify();
+						Repaint::Full
+					},
 				}
 			})
 			.expect("update view state");
+		tally.frames += 1;
+		match repaint {
+			Repaint::Nothing => tally.nothing += 1,
+			Repaint::Full => tally.full += 1,
+			Repaint::Within(bounds) => {
+				tally.within += 1;
+				scoped_device_px += device_area(
+					f64::from(bounds.size.width) * f64::from(bounds.size.height),
+					f64::from(options.scale_factor),
+				);
+			},
+		}
 
 		let raster_start = Instant::now();
 		let _ = session.frame().expect("rasterise frame");
@@ -160,7 +179,12 @@ fn replay_arm(
 		);
 		samples.push(FrameSample { raster_time, repainted_device_px });
 	}
-	samples
+	tally.mean_scoped_device_pixels = if tally.within == 0 {
+		0.0
+	} else {
+		scoped_device_px as f64 / tally.within as f64
+	};
+	(samples, tally)
 }
 
 fn device_area(logical_area: f64, scale: f64) -> u64 {
@@ -186,11 +210,14 @@ fn main() {
 	);
 	let mut on_runs = Vec::with_capacity(MEASURE_RUNS);
 	let mut off_runs = Vec::with_capacity(MEASURE_RUNS);
+	let mut on_repaints = RepaintTally::default();
 	for i in 0..MEASURE_RUNS {
 		print!("  iteration {}/{MEASURE_RUNS}... ", i + 1);
 		let _ = std::io::stdout().flush();
-		on_runs.push(replay_arm(&mut cx, Arm::DamageOn, &opt, &corpus, &bundle));
-		off_runs.push(replay_arm(&mut cx, Arm::DamageOff, &opt, &corpus, &bundle));
+		let (on_samples, tally) = replay_arm(&mut cx, Arm::DamageOn, &opt, &corpus, &bundle);
+		on_runs.push(on_samples);
+		on_repaints = tally;
+		off_runs.push(replay_arm(&mut cx, Arm::DamageOff, &opt, &corpus, &bundle).0);
 		println!("done");
 	}
 
@@ -230,6 +257,7 @@ fn main() {
 		damage_on: on,
 		damage_off: off,
 		comparison: cmp,
+		damage_on_repaints: on_repaints,
 	};
 
 	let summary_path =

@@ -34,6 +34,27 @@ pub struct BenchComparison {
 	pub verified_damage_on_less_than_off: bool,
 }
 
+/// How the scoped arm's frames were classified, which is what decides how much
+/// a turn saves: a frame the diff scopes repaints its own rectangle, and one it
+/// declares full repaints the viewport whatever the diff found.
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+pub struct RepaintTally {
+	pub frames:                    usize,
+	pub nothing:                   usize,
+	pub within:                    usize,
+	pub full:                      usize,
+	pub mean_scoped_device_pixels: f64,
+}
+
+impl RepaintTally {
+	pub fn scoped_share_percent(&self) -> f64 {
+		if self.frames == 0 {
+			return 0.0;
+		}
+		self.within as f64 / self.frames as f64 * 100.0
+	}
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct BenchSummary {
 	pub benchmark:              &'static str,
@@ -51,6 +72,7 @@ pub struct BenchSummary {
 	pub damage_on:              ArmReport,
 	pub damage_off:             ArmReport,
 	pub comparison:             BenchComparison,
+	pub damage_on_repaints:     RepaintTally,
 }
 
 pub fn compute_stats(arm_name: &'static str, runs: &[Vec<FrameSample>]) -> ArmReport {
@@ -128,6 +150,7 @@ pub fn print_report(summary: &BenchSummary) {
 		damage_on: on,
 		damage_off: off,
 		comparison: cmp,
+		damage_on_repaints: repaints,
 		benchmark: _,
 	} = summary;
 	let sep = "-".repeat(80);
@@ -209,6 +232,19 @@ pub fn print_report(summary: &BenchSummary) {
 	for (name, o, f, d) in rows {
 		println!("{name:<33} {o:>18} {f:>18} {d:>18}");
 	}
+	println!("{sep}");
+	println!(
+		"Scoped arm frames                 {:>18} {:>18} {:>18}",
+		format!("{} within", repaints.within),
+		format!("{} full", repaints.full),
+		format!("{:.1}% scoped", repaints.scoped_share_percent()),
+	);
+	println!(
+		"Mean Declared Rect (scoped only)  {:>18} {:>18} {:>18}",
+		format!("{} px", fmt_k(repaints.mean_scoped_device_pixels.round() as u64)),
+		format!("{} px", fmt_k(*viewport_device_pixels)),
+		format!("{} frames drew nothing", repaints.nothing),
+	);
 	println!("{sep}");
 	if cmp.verified_damage_on_less_than_off {
 		println!(
