@@ -5,14 +5,17 @@
 //!
 //! THE CLASS THIS CLOSES:
 //! Controls deciding their own availability without consulting `ControlStates`,
-//! request failures failing to render the per-control error hairline, and
-//! unassociated global errors failing to render on the top-level attention
-//! strip.
+//! including the answers a queue row menu offers, which read the gate of the
+//! row the menu opened on; request failures failing to render the per-control
+//! error hairline; and unassociated global errors failing to render on the
+//! top-level attention strip.
 //!
 //! WHAT IT DOES NOT CATCH:
 //! It does not validate remote host latency or network socket packet drops; it
 //! asserts that local surface state reflects gate availability and error
-//! routing.
+//! routing. Which control the projection sets for which row is
+//! `a-row-menu-states-the-gate-of-the-session-it-opened-on.rs` in
+//! `veyyon-desktop`.
 
 use veyyon_desktop_kit::{TokenSet, load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_model::{
@@ -20,10 +23,13 @@ use veyyon_desktop_model::{
 };
 use veyyon_desktop_scene::{Appearance, RenderOptions, headless_context, render_view_captured};
 use veyyon_desktop_surface::{
-	Availability, ConnectionPhase, ControlError, ShellState, ShellView,
-	controls::availability_style, fixture::populated, tokens::install_tokens,
+	Availability, ConnectionPhase, ControlError, ControlStates, ShellState, ShellView,
+	controls::availability_style,
+	fixture::populated,
+	queue::{RowMenu, RowMenuKind, card_row_answers, row_menu_items},
+	tokens::install_tokens,
 };
-use veyyon_gpui::{App, AppContext, CursorStyle, Window};
+use veyyon_gpui::{App, AppContext, CursorStyle, Window, point, px};
 fn render_shell_captured(state: ShellState) -> veyyon_desktop_scene::Captured {
 	let mut cx = headless_context().expect("headless context");
 	let tokens = load_bundled_tokens().expect("tokens");
@@ -191,5 +197,89 @@ fn every_attach_screen_phase_carries_hitbox_for_its_action() {
 			!captured.hitboxes.is_empty(),
 			"phase {phase:?} must expose actionable hitboxes on its attach screen"
 		);
+	}
+}
+
+/// The rows a card menu draws that no gate decides: they move the row inside
+/// the window and send nothing to the host.
+const UNGATED_ROWS: [&str; 3] = ["Open", "Park", "Defer"];
+
+/// A card row menu at the origin a right-click would put it.
+const fn card_menu(id: u64) -> RowMenu {
+	RowMenu { id, origin: point(px(120.0), px(300.0)), kind: RowMenuKind::Card }
+}
+
+#[test]
+fn a_row_menu_answer_is_selectable_only_where_its_own_gate_allows_it() {
+	let tokens = TokenSet::default();
+	let menu = card_menu(7);
+	for availability in [
+		Availability::Enabled,
+		Availability::Unknown,
+		Availability::Pending,
+		Availability::Unavailable { reason: "sessions disabled".to_string() },
+	] {
+		let mut controls = ControlStates::new();
+		for answer in card_row_answers(menu.id) {
+			controls.set_availability(answer.surface, availability.clone());
+		}
+		let (_, _, allowed) = availability_style(&availability, &tokens);
+		let items = row_menu_items(&menu, &controls);
+		for answer in card_row_answers(menu.id) {
+			let (item, _) = items
+				.iter()
+				.find(|(item, _)| item.label.as_ref() == answer.label)
+				.unwrap_or_else(|| panic!("the menu draws a row for {}", answer.label));
+			assert_eq!(
+				!item.is_disabled, allowed,
+				"{} under {availability:?} is selectable exactly where the gate allows activation",
+				answer.label
+			);
+			assert_eq!(
+				item.shortcut.is_some(),
+				availability == Availability::Pending,
+				"{} states the wait it is on only while its request is in flight",
+				answer.label
+			);
+		}
+		for label in UNGATED_ROWS {
+			let (item, _) = items
+				.iter()
+				.find(|(item, _)| item.label.as_ref() == label)
+				.unwrap_or_else(|| panic!("the menu draws a row for {label}"));
+			assert!(
+				!item.is_disabled,
+				"{label} moves the row inside the window and is not gated on {availability:?}"
+			);
+		}
+	}
+}
+
+#[test]
+fn a_row_menu_reads_each_answer_at_the_control_that_answer_names() {
+	let menu = card_menu(9);
+	let answers = card_row_answers(menu.id);
+	for refused in card_row_answers(menu.id) {
+		let mut controls = ControlStates::new();
+		for answer in card_row_answers(menu.id) {
+			controls.set_availability(answer.surface, Availability::Enabled);
+		}
+		controls.set_availability(refused.surface.clone(), Availability::Unavailable {
+			reason: "host refused".to_string(),
+		});
+		let items = row_menu_items(&menu, &controls);
+		for answer in &answers {
+			let (item, _) = items
+				.iter()
+				.find(|(item, _)| item.label.as_ref() == answer.label)
+				.unwrap_or_else(|| panic!("the menu draws a row for {}", answer.label));
+			assert_eq!(
+				item.is_disabled,
+				answer.surface == refused.surface,
+				"only {} is refused when {:?} is the control the host refused",
+				refused.label,
+				refused.surface
+			);
+		}
 	}
 }

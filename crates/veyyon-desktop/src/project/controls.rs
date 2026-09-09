@@ -11,183 +11,20 @@
 //! Every gate is then narrowed by the transport (`transport_gate`, §8.12),
 //! because the capability map holds what the host declared while it was
 //! reachable and says nothing about whether it still is.
+mod gates;
+
 use veyyon_desktop_model::{
-	Capability, CapabilityStatus, ErrorScope, HostActionKind, RequestRegistry, SessionId, Store,
-	SurfaceId, fallback_surface, gate_kind,
+	Capability, CapabilityStatus, ErrorScope, HostActionKind, RequestRegistry, Store, SurfaceId,
+	fallback_surface, gate_kind,
 };
 use veyyon_desktop_surface::{Availability, DiffStatus, ShellState, TreeStatus};
 
+use self::gates::{composer_controls, composer_row};
+pub use self::gates::{contextual_surface_for_action, gated_controls, session_row_controls};
 use super::{
 	SessionIndex,
 	connection::{transport_gate, transport_gate_capability},
 };
-
-/// Resolves the initiating contextual surface for a background or panel host
-/// action.
-#[must_use]
-pub fn contextual_surface_for_action(
-	action: HostActionKind,
-	session: &SessionId,
-) -> Option<SurfaceId> {
-	match action {
-		HostActionKind::RefreshChanges => Some(SurfaceId::RightPanelDiffTab(session.clone())),
-		HostActionKind::LoadFileTree | HostActionKind::ReadFile => {
-			Some(SurfaceId::RightPanelFileTab(session.clone()))
-		},
-		HostActionKind::SelectChangeScope => {
-			Some(SurfaceId::RightPanelChangeScopeSelector(session.clone()))
-		},
-		_ => None,
-	}
-}
-
-/// The row the composer draws for: the active session's, or zero when none
-/// is open, which is the id of no session and the id the composer reads.
-fn composer_row(active_row: Option<u64>) -> SessionId {
-	SessionId::from(active_row.unwrap_or(0).to_string())
-}
-
-/// The composer's own controls, with the action each would send.
-fn composer_controls(row: &SessionId) -> [(SurfaceId, HostActionKind); 9] {
-	[
-		(SurfaceId::ComposerSendButton(row.clone()), HostActionKind::SubmitPrompt),
-		(SurfaceId::ComposerSteerButton(row.clone()), HostActionKind::Steer),
-		(SurfaceId::ComposerQueueButton(row.clone()), HostActionKind::FollowUp),
-		(SurfaceId::ComposerAbortButton(row.clone()), HostActionKind::AbortTurn),
-		(
-			SurfaceId::ComposerCancelToolButton(row.clone(), "bash".to_string()),
-			HostActionKind::CancelTool,
-		),
-		(SurfaceId::ComposerQueueModeToggle(row.clone()), HostActionKind::SetQueueMode),
-		(SurfaceId::ComposerModelSelector(row.clone()), HostActionKind::SelectModel),
-		(SurfaceId::ComposerThinkingSelector(row.clone()), HostActionKind::SetThinkingLevel),
-		(SurfaceId::ComposerQueuedTakeBack(row.clone()), HostActionKind::DequeueQueuedPrompt),
-	]
-}
-
-/// Every control that reads its availability, with the action it would send.
-///
-/// Derived from the store's domains at each projection, so a provider, server,
-/// setting or binding the host adds on the next snapshot is gated on the frame
-/// that shows it. The composer's primary action answers the first pending
-/// card of each kind under that card's id (`TurnPhase::primary_surface`), so
-/// those ids are gated by the answer they would send.
-pub fn gated_controls(store: &Store, active_row: Option<u64>) -> Vec<(SurfaceId, HostActionKind)> {
-	let mut controls = vec![
-		(SurfaceId::NewSessionButton, HostActionKind::CreateSession),
-		(SurfaceId::ConnectionRetryButton, HostActionKind::RetryConnection),
-		(SurfaceId::ThemeSelector, HostActionKind::LoadThemes),
-		(SurfaceId::DiagnosticRefreshButton, HostActionKind::RefreshDiagnostics),
-		(SurfaceId::UsageRefreshButton, HostActionKind::GetUsage),
-		(SurfaceId::ContextBreakdownRefreshButton, HostActionKind::GetContextBreakdown),
-		(SurfaceId::TaskSpawnButton, HostActionKind::SpawnTask),
-		(SurfaceId::SettingsField("providers".to_string()), HostActionKind::RefreshProviders),
-		(SurfaceId::OutputClearButton, HostActionKind::ClearOutput),
-	];
-	if active_row.is_some() {
-		let row = composer_row(active_row);
-		controls.extend(composer_controls(&row));
-		controls.extend([
-			(SurfaceId::QueueSessionRow(row.clone()), HostActionKind::LoadTranscript),
-			(SurfaceId::QueueDeleteButton(row.clone()), HostActionKind::DeleteSession),
-			(SurfaceId::SessionBranchButton(row.clone()), HostActionKind::BranchSession),
-			(SurfaceId::SessionRenameField(row.clone()), HostActionKind::RenameSession),
-			(SurfaceId::SessionExportButton(row.clone()), HostActionKind::ExportSession),
-			(SurfaceId::SessionCompactButton(row.clone()), HostActionKind::CompactSession),
-			(SurfaceId::SessionHandoffButton(row.clone()), HostActionKind::HandoffSession),
-			(SurfaceId::RightPanelDiffTab(row.clone()), HostActionKind::RefreshChanges),
-			(SurfaceId::RightPanelFileTab(row.clone()), HostActionKind::LoadFileTree),
-			(SurfaceId::RightPanelChangeScopeSelector(row.clone()), HostActionKind::SelectChangeScope),
-			(SurfaceId::TerminalCreateButton(row.clone()), HostActionKind::CreateTerminal),
-			(SurfaceId::ProcessStartButton(row.clone()), HostActionKind::ProcessStart),
-		]);
-		let pending = store
-			.persisted
-			.shell
-			.active_session
-			.as_ref()
-			.and_then(|id| store.interactions.get(id));
-		if let Some(pending) = pending {
-			let answer = HostActionKind::RespondToInteraction;
-			controls.extend(pending.approvals.first().map(|approval| {
-				(SurfaceId::ApprovalApproveButton(row.clone(), approval.id.clone()), answer)
-			}));
-			controls.extend(pending.questions.first().map(|question| {
-				(SurfaceId::QuestionSubmitButton(row.clone(), question.id.clone()), answer)
-			}));
-			controls.extend(pending.plans.first().into_iter().flat_map(|plan| {
-				[
-					(SurfaceId::PlanAcceptButton(row.clone(), plan.id.clone()), answer),
-					(SurfaceId::PlanRefineButton(row.clone(), plan.id.clone()), answer),
-				]
-			}));
-		}
-	}
-
-	let domains = &store.domains;
-	if let Some(settings) = &domains.settings {
-		controls.extend(
-			settings
-				.keys()
-				.map(|key| (SurfaceId::SettingsField(key.clone()), HostActionKind::SetSetting)),
-		);
-	}
-	controls.extend(domains.keybindings.iter().map(|binding| {
-		(SurfaceId::KeybindingField(binding.action.clone()), HostActionKind::SetKeybinding)
-	}));
-	controls.extend(domains.providers.iter().map(|provider| {
-		(SurfaceId::ProviderAuthStartButton(provider.id.clone()), HostActionKind::StartProviderAuth)
-	}));
-	controls.extend(domains.mcp.iter().map(|server| {
-		(SurfaceId::McpEnableToggle(server.name.clone()), HostActionKind::SetMcpEnabled)
-	}));
-	if let Some(row_id) = active_row {
-		let row = composer_row(Some(row_id));
-		controls.extend(domains.terminals.iter().flat_map(|term| {
-			[
-				(
-					SurfaceId::TerminalClearButton(row.clone(), term.id.clone()),
-					HostActionKind::ClearTerminal,
-				),
-				(
-					SurfaceId::TerminalRestartButton(row.clone(), term.id.clone()),
-					HostActionKind::RestartTerminal,
-				),
-				(
-					SurfaceId::TerminalCloseButton(row.clone(), term.id.clone()),
-					HostActionKind::CloseTerminal,
-				),
-			]
-		}));
-		controls.extend(domains.processes.iter().flat_map(|proc| {
-			[
-				(
-					SurfaceId::ProcessStopButton(row.clone(), proc.name.clone()),
-					HostActionKind::ProcessStop,
-				),
-				(
-					SurfaceId::ProcessRestartButton(row.clone(), proc.name.clone()),
-					HostActionKind::ProcessRestart,
-				),
-				(
-					SurfaceId::ProcessLogsTab(row.clone(), proc.name.clone()),
-					HostActionKind::ProcessLogs,
-				),
-				(
-					SurfaceId::ProcessSendButton(row.clone(), proc.name.clone()),
-					HostActionKind::ProcessSend,
-				),
-			]
-		}));
-	}
-	controls.extend(domains.agents.iter().flat_map(|agent| {
-		[
-			(SurfaceId::AgentReviveButton(agent.id.clone()), HostActionKind::ReviveAgent),
-			(SurfaceId::TaskCancelButton(agent.id.clone()), HostActionKind::CancelTask),
-		]
-	}));
-	controls
-}
 
 /// What the composer's controls read while no session is open: the intent
 /// path sends nothing for them (`actions_for`), so the control states that
@@ -198,22 +35,26 @@ pub const NO_SESSION_OPEN: &str = "no session is open";
 /// in-flight registry.
 ///
 /// The registry is the one source of a pending mark, so a request the host
-/// answered releases its control on the next projection. With no session
-/// open the composer still draws, under the row id of no session, and its
-/// controls are unavailable for that reason rather than unset.
+/// answered releases its control on the next projection. Every availability
+/// the last projection set is dropped first, so a value it no longer states
+/// is gone rather than read by the next frame: the row that stopped being
+/// the active one keeps no gate from when it was. With no session open the
+/// composer still draws, under the row id of no session, and its controls
+/// are unavailable for that reason rather than unset.
 pub fn project_controls(
 	store: &Store,
 	registry: &RequestRegistry,
 	index: &SessionIndex,
 	state: &mut ShellState,
 ) {
+	state.controls.clear_availability();
 	let active_row = store
 		.persisted
 		.shell
 		.active_session
 		.as_ref()
 		.and_then(|id| index.row_id(id));
-	for (surface, action) in gated_controls(store, active_row) {
+	for (surface, action) in gated_controls(store, index, active_row) {
 		let gate = transport_gate(
 			action,
 			&store.connection,

@@ -46,56 +46,90 @@ impl RowMenu {
 	}
 }
 
+/// One management answer a card row's menu offers: the label it draws, the
+/// icon beside it, whether it is destructive, the control whose gate decides
+/// it, and the intent selecting it sends.
+pub struct RowAnswer {
+	pub label:   &'static str,
+	pub icon:    Option<IconName>,
+	pub danger:  bool,
+	pub surface: SurfaceId,
+	pub intent:  Intent,
+}
+
+/// The management answers a card row offers, in the order they are drawn.
+///
+/// The menu's items, the hairline a refused answer draws under it, and the
+/// projection that gates them read this one table, so an answer added here is
+/// gated, stated and swept everywhere at once.
+#[must_use]
+pub fn card_row_answers(id: u64) -> [RowAnswer; 5] {
+	let sid = SessionId::from(id.to_string());
+	[
+		RowAnswer {
+			label:   "Branch",
+			icon:    None,
+			danger:  false,
+			surface: SurfaceId::SessionBranchButton(sid.clone()),
+			intent:  Intent::BranchSession(id),
+		},
+		RowAnswer {
+			label:   "Export",
+			icon:    Some(IconName::File),
+			danger:  false,
+			surface: SurfaceId::SessionExportButton(sid.clone()),
+			intent:  Intent::ExportSession(Some(id)),
+		},
+		RowAnswer {
+			label:   "Compact",
+			icon:    Some(IconName::Layers),
+			danger:  false,
+			surface: SurfaceId::SessionCompactButton(sid.clone()),
+			intent:  Intent::CompactSession(Some(id)),
+		},
+		RowAnswer {
+			label:   "Handoff",
+			icon:    Some(IconName::ArrowRight),
+			danger:  false,
+			surface: SurfaceId::SessionHandoffButton(sid.clone()),
+			intent:  Intent::HandoffSession(Some(id)),
+		},
+		RowAnswer {
+			label:   "Delete",
+			icon:    Some(IconName::Trash),
+			danger:  true,
+			surface: SurfaceId::QueueDeleteButton(sid),
+			intent:  Intent::DeleteSession(id),
+		},
+	]
+}
+
+/// The item an answer draws at the gate its own control resolved (§4.3): a
+/// refused answer is not selectable, and one waiting on the host says so.
+fn gated_item(answer: &RowAnswer, av: &Availability) -> MenuItem {
+	let mut item = MenuItem::new(answer.label);
+	if let Some(icon) = answer.icon {
+		item = item.icon(icon);
+	}
+	if answer.danger {
+		item = item.danger(true);
+	}
+	match av {
+		Availability::Pending => item.shortcut("In flight...").disabled(true),
+		Availability::Unavailable { .. } => item.disabled(true),
+		Availability::Enabled | Availability::Unknown => item,
+	}
+}
+
 /// What the menu's rows dispatch, in the order they are drawn.
-fn choices(menu: &RowMenu, controls: &ControlStates) -> Vec<(MenuItem, Intent)> {
+///
+/// The layer draws these and the suite that pins the gate reads them, so an
+/// item's availability is asserted where it is decided rather than out of a
+/// raster.
+#[must_use]
+pub fn row_menu_items(menu: &RowMenu, controls: &ControlStates) -> Vec<(MenuItem, Intent)> {
 	match menu.kind {
 		RowMenuKind::Card | RowMenuKind::Pinned => {
-			let sid = SessionId::from(menu.id.to_string());
-			let branch_surface = SurfaceId::SessionBranchButton(sid.clone());
-			let branch_av = controls.availability(&branch_surface);
-			let mut branch_item = MenuItem::new("Branch");
-			if matches!(branch_av, Availability::Pending) {
-				branch_item = branch_item.shortcut("In flight...").disabled(true);
-			} else if matches!(branch_av, Availability::Unavailable { .. }) {
-				branch_item = branch_item.disabled(true);
-			}
-
-			let export_surface = SurfaceId::SessionExportButton(sid.clone());
-			let export_av = controls.availability(&export_surface);
-			let mut export_item = MenuItem::new("Export").icon(IconName::File);
-			if matches!(export_av, Availability::Pending) {
-				export_item = export_item.shortcut("In flight...").disabled(true);
-			} else if matches!(export_av, Availability::Unavailable { .. }) {
-				export_item = export_item.disabled(true);
-			}
-
-			let compact_surface = SurfaceId::SessionCompactButton(sid.clone());
-			let compact_av = controls.availability(&compact_surface);
-			let mut compact_item = MenuItem::new("Compact").icon(IconName::Layers);
-			if matches!(compact_av, Availability::Pending) {
-				compact_item = compact_item.shortcut("In flight...").disabled(true);
-			} else if matches!(compact_av, Availability::Unavailable { .. }) {
-				compact_item = compact_item.disabled(true);
-			}
-
-			let handoff_surface = SurfaceId::SessionHandoffButton(sid.clone());
-			let handoff_av = controls.availability(&handoff_surface);
-			let mut handoff_item = MenuItem::new("Handoff").icon(IconName::ArrowRight);
-			if matches!(handoff_av, Availability::Pending) {
-				handoff_item = handoff_item.shortcut("In flight...").disabled(true);
-			} else if matches!(handoff_av, Availability::Unavailable { .. }) {
-				handoff_item = handoff_item.disabled(true);
-			}
-
-			let delete_surface = SurfaceId::QueueDeleteButton(sid);
-			let delete_av = controls.availability(&delete_surface);
-			let mut delete_item = MenuItem::new("Delete").icon(IconName::Trash).danger(true);
-			if matches!(delete_av, Availability::Pending) {
-				delete_item = delete_item.shortcut("In flight...").disabled(true);
-			} else if matches!(delete_av, Availability::Unavailable { .. }) {
-				delete_item = delete_item.disabled(true);
-			}
-
 			let mut items = vec![(MenuItem::new("Open"), Intent::SelectSession(menu.id))];
 			if matches!(menu.kind, RowMenuKind::Pinned) {
 				items
@@ -104,12 +138,11 @@ fn choices(menu: &RowMenu, controls: &ControlStates) -> Vec<(MenuItem, Intent)> 
 			items.extend([
 				(MenuItem::new("Park").icon(IconName::Stop), Intent::ParkSession(menu.id)),
 				(MenuItem::new("Defer").icon(IconName::Pause), Intent::DeferSession(menu.id)),
-				(branch_item, Intent::BranchSession(menu.id)),
-				(export_item, Intent::ExportSession(Some(menu.id))),
-				(compact_item, Intent::CompactSession(Some(menu.id))),
-				(handoff_item, Intent::HandoffSession(Some(menu.id))),
-				(delete_item, Intent::DeleteSession(menu.id)),
 			]);
+			items.extend(card_row_answers(menu.id).into_iter().map(|answer| {
+				let av = controls.availability(&answer.surface);
+				(gated_item(&answer, &av), answer.intent)
+			}));
 			items
 		},
 		RowMenuKind::Parked => vec![
@@ -132,7 +165,7 @@ pub fn row_menu_layer(
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
 	let (items, intents): (Vec<MenuItem>, Vec<Intent>) =
-		choices(&menu, controls).into_iter().unzip();
+		row_menu_items(&menu, controls).into_iter().unzip();
 	let entity = cx.entity();
 	let picker = Menu::new(items).on_select(move |index, _event, _window, app| {
 		let intent = intents.get(index).cloned();
@@ -152,29 +185,14 @@ pub fn row_menu_layer(
 		.child(picker);
 
 	if menu.is_card() {
-		let sid = SessionId::from(menu.id.to_string());
-		let branch_surface = SurfaceId::SessionBranchButton(sid.clone());
-		let export_surface = SurfaceId::SessionExportButton(sid.clone());
-		let compact_surface = SurfaceId::SessionCompactButton(sid.clone());
-		let handoff_surface = SurfaceId::SessionHandoffButton(sid.clone());
-		let delete_surface = SurfaceId::QueueDeleteButton(sid);
 		let weak = Some(cx.weak_entity());
-
-		for (surface, label) in [
-			(branch_surface, "Branch"),
-			(export_surface, "Export"),
-			(compact_surface, "Compact"),
-			(handoff_surface, "Handoff"),
-			(delete_surface, "Delete"),
-		] {
+		for answer in card_row_answers(menu.id) {
+			let (label, surface) = (answer.label, answer.surface);
 			if let Some(err) = controls.error(&surface) {
 				content = content.child(error_hairline_weak(err, surface, tokens, weak.clone()));
-			} else {
-				let av = controls.availability(&surface);
-				if let Some(reason) = av.reason() {
-					let err = ControlError::new(format!("{label}: {reason}"), false);
-					content = content.child(error_hairline_weak(&err, surface, tokens, weak.clone()));
-				}
+			} else if let Some(reason) = controls.availability(&surface).reason() {
+				let err = ControlError::new(format!("{label}: {reason}"), false);
+				content = content.child(error_hairline_weak(&err, surface, tokens, weak.clone()));
 			}
 		}
 	}

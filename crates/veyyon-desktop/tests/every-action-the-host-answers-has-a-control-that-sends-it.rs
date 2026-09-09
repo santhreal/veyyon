@@ -163,7 +163,7 @@ fn session_lifecycle_five_actions_are_all_sent_by_intents_and_registered() {
 			.any(|a| a.kind() == HostActionKind::LoadTranscript)
 	);
 
-	let controls = gated_controls(&store, Some(1));
+	let controls = gated_controls(&store, &index, Some(1));
 	let control_actions: BTreeSet<HostActionKind> = controls.into_iter().map(|(_, k)| k).collect();
 	assert!(control_actions.contains(&HostActionKind::RenameSession));
 	assert!(control_actions.contains(&HostActionKind::ExportSession));
@@ -205,7 +205,7 @@ fn slice_2_turn_and_drawer_five_actions_are_all_sent_by_intents_and_registered()
 		.any(|a| a.kind() == HostActionKind::ProcessSend)
 	);
 
-	let controls = gated_controls(&store, Some(1));
+	let controls = gated_controls(&store, &index, Some(1));
 	let control_actions: BTreeSet<HostActionKind> = controls.into_iter().map(|(_, k)| k).collect();
 	assert!(control_actions.contains(&HostActionKind::CancelTool));
 	assert!(control_actions.contains(&HostActionKind::CloseTerminal));
@@ -236,7 +236,7 @@ fn slice_3_config_two_actions_are_all_sent_by_intents_and_registered() {
 			.any(|action| *action == HostAction::SpawnTask { task: "review the diff".into() })
 	);
 
-	let controls = gated_controls(&store, Some(1));
+	let controls = gated_controls(&store, &index, Some(1));
 	let control_actions: BTreeSet<HostActionKind> = controls.into_iter().map(|(_, k)| k).collect();
 	assert!(control_actions.contains(&HostActionKind::SetKeybinding));
 	assert!(control_actions.contains(&HostActionKind::SpawnTask));

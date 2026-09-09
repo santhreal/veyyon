@@ -36,7 +36,10 @@ pub use self::{
 	actions::actions_for,
 	composer::{project_composer, project_turn_phase, restored_draft},
 	connection::{connection_notice, connection_phase, transport_gate, transport_gate_capability},
-	controls::{NO_SESSION_OPEN, contextual_surface_for_action, gated_controls, project_controls},
+	controls::{
+		NO_SESSION_OPEN, contextual_surface_for_action, gated_controls, project_controls,
+		session_row_controls,
+	},
 	drawer::{drawer_lines, project_drawer, strip_control_sequences},
 	failure::land_failure,
 	overlay::project_overlay,

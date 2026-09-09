@@ -158,6 +158,16 @@ impl ControlStates {
 		self.errors.get(id)
 	}
 
+	/// Drops every availability the last projection set.
+	///
+	/// The projection is the only writer and it runs before the frame that
+	/// reads it, so a value it no longer states is gone rather than left
+	/// behind: a row that stopped being the active one, and a session the
+	/// host stopped listing, both take their gates with them (§4.3).
+	pub fn clear_availability(&mut self) {
+		self.availability.clear();
+	}
+
 	/// Sets the capability gate availability for a control.
 	pub fn set_availability(&mut self, id: SurfaceId, av: Availability) {
 		self.availability.insert(id, av);

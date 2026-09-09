@@ -27,7 +27,7 @@ pub mod rows;
 pub use fill::{RailFill, paged_rail_fill, rail_fill, visible_rows, visible_rows_with_limit};
 pub use footer::queue_footer;
 pub use header::{more_row, older_row, queue_nav_header, section_header};
-pub use menu::{RowMenu, RowMenuKind, row_menu_layer};
+pub use menu::{RowAnswer, RowMenu, RowMenuKind, card_row_answers, row_menu_items, row_menu_layer};
 pub use motion::RailMotion;
 pub use rows::{card_row, line_row};
 use veyyon_desktop_model::{SessionId, SurfaceId};
