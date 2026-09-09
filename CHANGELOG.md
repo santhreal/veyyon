@@ -286,6 +286,7 @@
 
 ### Fixed
 
+- A desktop split's resize grip is the hit area its panels tokens author and tints to the accent while the pointer holds it, the docked terminal drawer no longer draws a second hairline under the split's own line, and the drawer chrome no longer paints an 8x1 mark in its tab row that answered no press.
 - A desktop file or diff pane draws the rows and columns its own box shows, so a long file or a diff of thousands of rows opens at the cost of a short one: a 40-line file of 900 columns had handed the renderer some 13,000 text runs for the 400 the panel showed, and the window stopped answering a pointer, a keystroke and a wheel while it drew them.
 - A desktop file or diff line wider than the right panel scrolls sideways under a horizontal wheel while its line numbers and change signs stay where they are, and a vertical wheel over the same lines scrolls the file: a long line had been cut at the panel's edge mid-glyph with no gesture that reached the rest of it. A split diff's two sides scroll on their own.
 - A sideways gesture over a desktop file or diff pane moves that pane's code alone: a wheel with shift held, which the display server sends as a horizontal delta, had also scrolled the file under it, because the pane's vertical region mapped a horizontal delta onto the one axis it scrolls, and the line numbers travelled with the lines.

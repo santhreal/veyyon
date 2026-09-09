@@ -678,13 +678,16 @@ SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
 Use `proof/scenes/desktop-split-grip.sh` to open the terminal drawer into its
 split and point at the hairline above it. It reads the split's own row out of
 the frame, counts the lines in the grip band, measures the middle of the tab
-row, and compares the band under the pointer with the band at rest. Record the
-other arm with a build of this tree that holds the one edge, the tint and the
-dash's removal back, since the change is inside the executable alone:
+row, and compares the band under the pointer with the band at rest. A pointer
+move and a one-pixel tint are most of what the take contains, so it declares a
+still take's motion floor. Record the other arm with a build of this tree that
+holds the one edge, the tint and the dash's removal back, since the change is
+inside the executable alone:
 
 ```sh
-proof/docker/record-native.sh proof/scenes/desktop-split-grip.sh
-SCENE_ARM=before PROOF_BASE_REF=HEAD \
+SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
+  proof/scenes/desktop-split-grip.sh
+SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
   PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
   proof/docker/record-native.sh proof/scenes/desktop-split-grip.sh
 ```

@@ -32,16 +32,21 @@
 #
 # Sourced by proof/docker/xsession.sh with SCENE_WINDOW, SCENE_NAME, SCENE_OUT
 # and SCENE_LIB already initialized. Record it at a width that docks the
-# drawer:
+# drawer. A pointer move and a one-pixel tint are most of what the take
+# contains, so it is a still take and states its own motion floor:
 #
-#   proof/docker/record-native.sh proof/scenes/desktop-split-grip.sh
+#   SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
+#     proof/scenes/desktop-split-grip.sh
 #
 # and its other arm, whose executable is a build of this tree with the one
-# edge, the tint and the dash's removal taken back out of it:
+# edge, the tint and the dash's removal taken back out of it. The holdback
+# build writes through the workspace's own target directory, so the after
+# executable is rebuilt before that arm is recorded:
 #
 #   SANTH_BUILD_GOVERNED=1 python3 .internal/build-commit-before.py \
 #     --holdback .internal/before-edits/split-grip.patch split-grip
-#   SCENE_ARM=before PROOF_BASE_REF=HEAD \
+#   SANTH_BUILD_GOVERNED=1 cargo build -p veyyon-desktop
+#   SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
 #     PROOF_NATIVE_BEFORE_BINARY=.internal/captures/split-grip/veyyon-desktop \
 #     proof/docker/record-native.sh proof/scenes/desktop-split-grip.sh
 set -euo pipefail

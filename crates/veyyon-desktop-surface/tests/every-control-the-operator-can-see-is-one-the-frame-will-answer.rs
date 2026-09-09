@@ -93,11 +93,14 @@ fn expected_controls(state: &ShellState) -> usize {
 
 	// An empty contextual panel still has its docked split, and the panel's own
 	// container answers a press because that is what puts its chords on the
-	// focus path. A diff has a scroll area, three toolbar controls and one mode
-	// toggle per file. Each mono tenant answers one more rect per pane it
-	// scrolls sideways (§5.11): the pinned gutter stays put and the code beside
-	// it is its own scroll region, so a unified diff adds one per file, a split
-	// diff adds two, and an open file adds one.
+	// focus path. The split answers two rects of its own: the grip that takes
+	// the press, and the hairline inside it, whose tint turns on with the
+	// grip's hover group, so it is hit-tested for the same reason a card's
+	// revealed wrapper is. A diff has a scroll area, three toolbar controls and
+	// one mode toggle per file. Each mono tenant answers one more rect per pane
+	// it scrolls sideways (§5.11): the pinned gutter stays put and the code
+	// beside it is its own scroll region, so a unified diff adds one per file, a
+	// split diff adds two, and an open file adds one.
 	let panes = match state.panel.diff_mode {
 		veyyon_desktop_model::DiffMode::Unified => 1,
 		veyyon_desktop_model::DiffMode::Split => 2,
@@ -112,7 +115,7 @@ fn expected_controls(state: &ShellState) -> usize {
 	let panel = if state.keymap.panel_collapsed {
 		0
 	} else {
-		3 + state.panel.tabs.len() + tenant
+		4 + state.panel.tabs.len() + tenant
 	};
 
 	// The overflow summary is hover-tested; each question also has a text reply.
@@ -287,7 +290,9 @@ fn a_dispatched_intent_reaches_the_frame_the_operator_then_looks_at() {
 
 	drop(cx);
 	let open_state = fixture::with_drawer();
-	let drawer_regions = open_state.drawer.tabs.len() + 7; // Clear, Restart, Close, split handle, container, occlusion and focusable grid
+	// Clear, Restart, Close, the split's grip and the hairline whose tint turns
+	// on with it, container, occlusion and focusable grid.
+	let drawer_regions = open_state.drawer.tabs.len() + 8;
 	let open = capture(open_state);
 
 	assert_eq!(
