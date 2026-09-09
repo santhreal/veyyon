@@ -198,11 +198,15 @@ following. Switching sessions restores their saved scroll anchors.
 The find bar displays the selected matching block and total matching blocks.
 `Enter` advances to the next matching block; `Escape` closes the bar.
 
-Persisted model, thinking-level, service-tier, and session changes display their
-recorded values. Hidden custom messages, internal checkpoints, and the runtime's
-own bookkeeping records — the pending-tool-call warning, the exit diagnostic, a
-todo edit, an extension's stored state — do not create visible turns. Unknown
-extension entries retain their original data.
+Persisted thinking-level, service-tier and session changes display their
+recorded values. A model change displays its recorded value from the first
+prompt onward; the model a session opens on displays none, because the composer
+footer states the model in hand and each agent turn ends with the model that
+produced it. A session's name displays no row either, since the titlebar and the
+queue row state it. Hidden custom messages, internal checkpoints, and the
+runtime's own bookkeeping records — the pending-tool-call warning, the exit
+diagnostic, a todo edit, an extension's stored state — do not create visible
+turns. Unknown extension entries retain their original data.
 
 A tool call occupies one row while it is collapsed: the card's status line, its
 block header, or the section it names, followed by how many lines it is holding
