@@ -94,10 +94,10 @@ pub fn card_row(
 		});
 	}
 
-	// Hidden rather than transparent: an opacity-0 control still registers a
-	// hitbox, so a card would answer a click on a button the frame never drew.
-	// Hidden reserves the same layout, paints nothing and hit-tests nothing,
-	// which is how the line rows reveal their own action.
+	// Hidden rather than transparent: a hidden subtree keeps its layout and is
+	// not painted, so its buttons attach no listener and a click on the space
+	// they reserve falls through to the card. An opacity-0 control is painted,
+	// so it would answer that click with a park the frame never drew.
 	let actions = div()
 		.invisible()
 		.group_hover("queue-card-row", |style| style.visible())

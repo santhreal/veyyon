@@ -20,6 +20,12 @@
 //! 6. Pointer and keyboard navigation failing across card/line partition
 //!    boundaries.
 //! 7. Hover-action button clicks triggering row selection side-effects.
+//! 8. A held-back action that answers a click before it is painted. A row
+//!    reserves the slot its actions occupy, and a pointer arriving from outside
+//!    the row lands in that slot while the frame answering the click has
+//!    painted nothing there. That click opens the session. An action held back
+//!    by opacity or a zero-alpha colour is painted, listeners and all, so it
+//!    parks or defers a session nobody asked to park or defer.
 
 #[path = "support/large_queue.rs"]
 mod large_queue;
@@ -264,4 +270,65 @@ fn keyboard_selection_moves_seamlessly_across_cards_deferred_and_parked_lines() 
 	Intent::MoveQueueSelection(-1).apply(&mut state);
 	assert_eq!(state.current_id, 71);
 	assert_eq!(state.title, "Parked 71");
+}
+
+#[test]
+fn a_click_where_a_held_back_action_reserves_space_opens_the_session() {
+	let metrics = QueueMetrics::load();
+	let mut cx = headless_context().expect("headless renderer is required");
+	let mut session = open_session(&mut cx, make_per_section_state(), 1440, 900);
+
+	// Away from every row, so no row's actions are painted. The transcript is
+	// free to answer a hover of its own: nothing here reads outside the rail.
+	let off_rail = Point { x: px(900.0), y: px(450.0) };
+	move_mouse(&mut session, off_rail);
+	let resting = session.frame().expect("resting frame renders");
+	let rows = find_queue_rows(&resting, &metrics);
+	let sections = Section::all();
+	assert_eq!(rows.len(), sections.len(), "one row per section in the per-section fixture");
+
+	for (idx, section) in sections.into_iter().enumerate() {
+		let row_id = (idx as u64) + 101;
+		let row = rows[idx];
+
+		// Where the actions will be painted, read off a hovered frame and then
+		// abandoned: the click below is answered by the resting frame, which is
+		// the frame a pointer arriving from outside the row is answered by.
+		move_mouse(&mut session, center_of(row));
+		let hovered = session.frame().expect("hovered frame renders");
+		let places = extract_action_buttons(&hovered, row);
+		assert_eq!(
+			places.len(),
+			SectionContract::for_section(section, row_id)
+				.hover_intents
+				.len(),
+			"{section:?} row paints its actions under the pointer, or there is no place to cold-click"
+		);
+
+		move_mouse(&mut session, off_rail);
+		let _ = session.frame().expect("resting frame renders again");
+
+		for place in places {
+			session
+				.update(|view, _window, _cx| {
+					let _ = view.drain_intents();
+				})
+				.expect("intents drained");
+			session
+				.click(center_of(place))
+				.expect("click where the held-back action reserves its space");
+			session
+				.update(|view, _window, _cx| {
+					assert_eq!(
+						view.drain_intents(),
+						vec![Intent::SelectSession(row_id)],
+						"a click on the space the held-back {section:?} actions reserve opens the \
+						 session, and dispatches no action the frame had not painted"
+					);
+				})
+				.expect("cold click verified");
+			move_mouse(&mut session, off_rail);
+			let _ = session.frame().expect("resting frame renders again");
+		}
+	}
 }

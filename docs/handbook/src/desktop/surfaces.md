@@ -90,7 +90,8 @@ preference and returns with the next window; a float is that window's own and
 never returns opened.
 
 Cards display the session title, workspace, status, and relevant timing.
-Secondary actions remain hidden at rest and do not shift the title when revealed.
+Secondary actions remain hidden at rest and shift nothing in the row when
+revealed. A click on the space a hidden action reserves opens the session.
 Selection, hover, and status have distinct treatments. Compact rows retain
 readable text and usable pointer targets.
 
