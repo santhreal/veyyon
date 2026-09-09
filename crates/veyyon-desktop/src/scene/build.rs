@@ -8,6 +8,9 @@
 #[path = "capability/mod.rs"]
 mod capability;
 pub use capability::{action_of, capability_gate, target_surface_of};
+#[path = "attachments.rs"]
+mod attachments_builder;
+pub use attachments_builder::composer_attachments;
 #[path = "error_scope.rs"]
 mod error_scope_builder;
 pub use error_scope_builder::{error_scope, error_scope_baseline};
@@ -157,6 +160,7 @@ fn custom(name: &str, surface: &str, state: &str) -> Result<SceneRoot, SceneBuil
 			seed.finish()
 		},
 		("composer", "footer") => composer_footer(),
+		("composer", "attachments") => composer_attachments(),
 		("composer", "queued") => composer_queued(),
 		("run-bar", "rest") => {
 			let mut seed = Seed::attached();

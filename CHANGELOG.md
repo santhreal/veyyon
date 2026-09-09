@@ -286,6 +286,7 @@
 
 ### Fixed
 
+- A desktop attachment card keeps its caption inside the box it draws, where a refusal naming a long model (`Not accepted by <model>`) had run past the card's authored 240px ceiling instead of ending in an ellipsis.
 - A desktop approval card draws the permission request as text, where the tool wrapper's markdown had reached the card's pane verbatim and drawn `**Scope:** This call only` with its emphasis markers; a tool's own detail line still crosses byte-identical, because it states the command about to run.
 - A desktop plan card and run bar draw a plan as text, where the plan's markdown had reached both verbatim: the bar drew the leading `#` of the plan's heading, the card drew that heading again as its first body row, and a body row drew its own `-`, `**` and backtick markers.
 - The desktop run bar states one line of a pending approval's detail beside the tool name, where it had passed the whole multi-line detail into a single-line layout.

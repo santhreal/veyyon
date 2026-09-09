@@ -312,6 +312,22 @@ Successful submission removes attachments included in that request. Attachments
 added afterward remain unless they compare equal to a submitted attachment.
 Unrelated and duplicate acknowledgments do not consume content.
 
+### Attachment tray
+
+What the next prompt carries is listed above the input, one card per
+attachment, wrapping onto as many rows as the cards need. A card is a square
+thumbnail — the image, or a film glyph on the inset ground for a clip — beside
+the file's name over a caption stating its type and size, inside a hairline box
+capped at `card_max_width_px` in
+`crates/veyyon-desktop-tokens/tokens/surface/composer.toml`. A name or a
+caption longer than the room left inside that cap ends in an ellipsis. A remove
+control appears in the card's upper-right corner under the pointer.
+
+A card whose media the active model is not listed as taking draws
+`Not accepted by <model>` in the accent where the size goes, and keeps the
+attachment. A running turn takes text alone, so the tray states
+`Sent with the next prompt` beside the cards until the turn ends.
+
 ### Queued prompts
 
 A prompt sent while a turn runs waits in the session's queue, and the composer
@@ -794,6 +810,23 @@ SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
 SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
   PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
   proof/docker/record-native.sh proof/scenes/desktop-transcript-prose.sh
+```
+
+Use `proof/scenes/desktop-attachment.sh` to paste an image into the composer,
+send the prompt that carries it, and read back what the host received. The
+clipboard is loaded through `xclip` with a generated plasma PNG, since the file
+chooser on Linux is the XDG portal and no container runs one; the paste ends in
+the same `attach` as the chooser and a drag. It asserts the clipboard offered
+`image/png` before the chord, that the tray inked a card where the empty
+composer drew nothing, that the editor line came back to where it was once the
+prompt was away, and then asks the host on a second connection whether the
+session holds an image block of exactly the bytes that were pasted:
+
+```sh
+proof/docker/record-x11.sh proof/scenes/desktop-attachment.sh
+SCENE_ARM=before PROOF_BASE_REF=HEAD \
+  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
+  proof/docker/record-x11-before.sh proof/scenes/desktop-attachment.sh
 ```
 
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
