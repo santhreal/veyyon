@@ -18,6 +18,12 @@ on one line under it. A description longer than the row truncates; the pointer
 over the row opens the whole description in a tag. Focused pages scroll their
 content without displacing their navigation header.
 
+A hairline separates the transcript from the docked right panel and from the
+terminal drawer. Drag it to resize the panel or the drawer. The pointer
+catches it inside an 8px band centred on the hairline, and the hairline is
+drawn in the accent colour while the pointer is inside that band or a drag
+holds it.
+
 `Primary` means `Cmd` on macOS and `Ctrl` on Linux and Windows. Default bindings are
 in `crates/veyyon-desktop-surface/keymap.toml`.
 
@@ -667,6 +673,20 @@ SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
 SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
   PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
   proof/docker/record-native.sh proof/scenes/desktop-mono-pane.sh
+```
+
+Use `proof/scenes/desktop-split-grip.sh` to open the terminal drawer into its
+split and point at the hairline above it. It reads the split's own row out of
+the frame, counts the lines in the grip band, measures the middle of the tab
+row, and compares the band under the pointer with the band at rest. Record the
+other arm with a build of this tree that holds the one edge, the tint and the
+dash's removal back, since the change is inside the executable alone:
+
+```sh
+proof/docker/record-native.sh proof/scenes/desktop-split-grip.sh
+SCENE_ARM=before PROOF_BASE_REF=HEAD \
+  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
+  proof/docker/record-native.sh proof/scenes/desktop-split-grip.sh
 ```
 
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.

@@ -1,12 +1,17 @@
 //! Shell rendering implementation (§4.2).
+//!
+//! This module places the root's regions and nothing else. Where each side
+//! column goes at the width the shed resolved is its own concern: `queue` for
+//! the rail, inline or floated, and `panel` for the right panel, docked in a
+//! split or floated inside the session surface.
 
-use veyyon_desktop_kit::{Axis, ColorRole, Resizable, Sheet, SpacingStep};
+mod panel;
+mod queue;
+
+use veyyon_desktop_kit::{ColorRole, SpacingStep};
 use veyyon_desktop_model::SurfaceId;
 use veyyon_desktop_tokens::QueueMode;
-use veyyon_gpui::{
-	Context, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement, Styled,
-	Window, div, px,
-};
+use veyyon_gpui::{Context, InteractiveElement, IntoElement, ParentElement, Styled, Window, div};
 
 use super::{
 	connection::connection_banner,
@@ -18,9 +23,8 @@ use crate::{
 	ShellView,
 	attach::render_attach_screen,
 	damage::Region,
-	layout::{QueuePlacement, RightPanelPlacement, ShedInput, shell_widths},
-	panel::right_panel,
-	queue::{queue_rail, row_menu_layer},
+	layout::{RightPanelPlacement, ShedInput, shell_widths},
+	queue::row_menu_layer,
 };
 
 /// Renders the root shell view.
@@ -207,83 +211,10 @@ pub fn render_shell(
 	// float records the sheet's own box from inside its scrim, because the
 	// scrim spans the whole row and the sheet is the rail.
 	let mut column_regions: Vec<Option<Region>> = Vec::with_capacity(3);
-	let mut queue_float = None;
-	if widths.queue.is_shown() {
-		let queue_focus = view
-			.queue_focus
-			.get_or_insert_with(|| cx.focus_handle())
-			.clone();
-		let rail_layout = view.laid_out.clone();
-		let rail = queue_rail(
-			&view.state.sections,
-			view.state.keymap.queue_filter.as_deref(),
-			view.state.current_id,
-			// The declared measure is the rail's outer width in either
-			// placement, so a floated rail hands the sheet's own frame back
-			// and lands its rows in the same 208px the docked one draws in.
-			match widths.queue {
-				QueuePlacement::Overlay { width_px } => {
-					f32::from(Sheet::inset(&tokens)).mul_add(-2.0, width_px)
-				},
-				QueuePlacement::Inline { width_px } => width_px,
-				QueuePlacement::Absent => 0.0,
-			},
-			widths.columns_px,
-			&view.state.controls,
-			&surface.queue,
-			&tokens,
-			&mut view.rail_motion,
-			&queue_focus,
-			&rail_layout,
-			window,
-			cx,
-		)
-		.into_any_element();
-		match widths.queue {
-			QueuePlacement::Inline { .. } => {
-				columns = columns.child(rail);
-				column_regions.push(Some(Region::Queue));
-			},
-			// The float spans the columns row, not the transcript inside it.
-			// The queue is not an annotation of what is being read, the way
-			// the right panel is: it is the only way to reach another session
-			// at this width, so it draws every row and its footer at the
-			// height a docked column would have had. That makes it modal
-			// while it is open, and it closes on the control, on Escape, and
-			// on a press outside it.
-			QueuePlacement::Overlay { .. } => {
-				// The scrim swallows the pointer over the row it dims, so a
-				// press meant to dismiss the rail does not also answer the
-				// card or the control it landed on. The rail itself takes the
-				// press outside its own box as the dismissal.
-				let sheet = div()
-					.id("queue-float")
-					.occlude()
-					.on_mouse_down_out(cx.listener(|view, event: &MouseDownEvent, _window, cx| {
-						if event.button == MouseButton::Left && view.close_queue_float() {
-							cx.stop_propagation();
-							cx.notify();
-						}
-					}))
-					.child(Sheet::left(rail));
-				queue_float = Some(
-					view.laid_out().track_children(
-						div()
-							.absolute()
-							.inset_0()
-							.flex()
-							.flex_row()
-							.justify_start()
-							.occlude()
-							.backdrop_blur(px(panels.right_panel_overlay_scrim_blur_px))
-							.bg(tokens.scrim())
-							.child(sheet),
-						|index| (index == 0).then_some(Region::Queue),
-					),
-				);
-			},
-			QueuePlacement::Absent => {},
-		}
+	let queue = queue::queue_column(view, &widths, &surface, &tokens, window, cx);
+	if let Some(rail) = queue.inline {
+		columns = columns.child(rail);
+		column_regions.push(Some(Region::Queue));
 	}
 	column_regions.push(None);
 
@@ -312,41 +243,7 @@ pub fn render_shell(
 		.panel_focus
 		.get_or_insert_with(|| cx.focus_handle())
 		.clone();
-	// The float, built before the surface it is handed to. The scrim dims the
-	// transcript the panel is annotating and nothing else, and the sheet takes
-	// its height from that region, so the composer, the cards above it and the
-	// run bar under it stay lit and stay reachable.
-	let panel_overlay = match widths.right_panel {
-		RightPanelPlacement::Overlay { width_px } => {
-			let inset_px = f32::from(Sheet::inset(&tokens));
-			let body = right_panel(
-				&view.state().panel,
-				inset_px.mul_add(-2.0, width_px),
-				view.pane_scrolls(),
-				panels,
-				&tokens,
-				&panel_focus,
-				view.laid_out(),
-				window,
-				cx,
-			);
-			Some(
-				view.laid_out().track_children(
-					div()
-						.absolute()
-						.inset_0()
-						.flex()
-						.flex_row()
-						.justify_end()
-						.backdrop_blur(px(panels.right_panel_overlay_scrim_blur_px))
-						.bg(tokens.scrim())
-						.child(Sheet::right(body)),
-					|index| (index == 0).then_some(Region::Panel),
-				),
-			)
-		},
-		RightPanelPlacement::Inline { .. } | RightPanelPlacement::Absent => None,
-	};
+	let panel_overlay = panel::panel_float(view, &widths, panels, &tokens, &panel_focus, window, cx);
 	let session = session_surface(
 		view.state(),
 		view.composer(),
@@ -367,64 +264,26 @@ pub fn render_shell(
 		cx,
 	);
 
-	let panel = &view.state().panel;
 	columns = match widths.right_panel {
 		// A float takes no width, so the row is the session surface alone and
 		// the panel is already inside it.
 		RightPanelPlacement::Absent | RightPanelPlacement::Overlay { .. } => columns.child(session),
 		// A docked panel is the second pane of a split whose handle the
-		// operator drags (§5.6). The handle sits inside the panel's measure,
-		// so the session surface keeps the width the shed gave it, and the
-		// panel's own box is recorded from inside the split.
-		RightPanelPlacement::Inline { width_px } => {
-			let grip_px = f32::from(Resizable::handle_extent(&tokens));
-			let body = right_panel(
-				panel,
-				width_px - grip_px,
-				view.pane_scrolls(),
-				panels,
-				&tokens,
-				&panel_focus,
-				view.laid_out(),
-				window,
-				cx,
-			);
-			let tracked = view
-				.laid_out()
-				.track_children(div().h_full().w_full().flex().child(body), |index| {
-					(index == 0).then_some(Region::Panel)
-				});
-			let split_px = widths.session_px + width_px;
-			let shell = cx.weak_entity();
-			let release_shell = shell.clone();
-			let min_width = panels.right_panel_min_width_px;
-			let max_width = (f32::from(window.viewport_size().width)
-				* panels.right_panel_max_viewport_ratio)
-				.min(split_px - panels.right_panel_container_margin_px)
-				.max(min_width);
-			columns.child(
-				Resizable::new(Axis::Horizontal, session, tracked)
-					.id("shell-split")
-					.ratio(widths.session_px / split_px)
-					.on_resize(move |ratio, _window, cx| {
-						let asked_px = (1.0 - ratio) * split_px;
-						// A released view has no handle to move; the drag
-						// ends with the window.
-						let _ = shell.update(cx, |view, cx| {
-							view.drag_panel(asked_px, min_width, max_width, cx);
-							cx.notify();
-						});
-					})
-					.on_resize_end(move |_window, cx| {
-						let _ = release_shell.update(cx, |view, cx| {
-							view.release_panel(cx);
-							cx.notify();
-						});
-					}),
-			)
-		},
+		// operator drags (§5.6), and the panel's own box is recorded from
+		// inside it.
+		RightPanelPlacement::Inline { width_px } => columns.child(panel::docked_split(
+			view,
+			&widths,
+			panels,
+			&tokens,
+			&panel_focus,
+			session.into_any_element(),
+			width_px,
+			window,
+			cx,
+		)),
 	};
-	if let Some(float) = queue_float {
+	if let Some(float) = queue.float {
 		columns = columns.child(float);
 		column_regions.push(None);
 	}

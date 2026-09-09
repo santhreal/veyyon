@@ -24,7 +24,7 @@
 
 use std::path::Path;
 
-use veyyon_desktop_kit::{Resizable, load_bundled_theme, load_bundled_tokens};
+use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_scene::{
 	HeadlessSession,
 	headless::{RenderOptions, headless_context},
@@ -98,8 +98,11 @@ fn drag_handle_by(dx: f32) -> (f32, f32, Option<f32>) {
 	.expect("the session opens");
 	session.frame().expect("the first frame renders");
 	let before = panel_box(&mut session);
+	// The grip the pointer has to catch is the one the panels tokens author,
+	// not a measure the primitive keeps: a press at the middle of the
+	// authored extent lands on the handle only if the split took it.
 	let grip = session
-		.update(|view, _window, _cx| f32::from(Resizable::handle_extent(&view.installed().set)))
+		.update(|view, _window, _cx| view.installed().surface.panels.chrome_resize_handle_hit_px)
 		.expect("the view is live");
 	let declared = docked_width(None);
 	let edge = WIDTH - declared;

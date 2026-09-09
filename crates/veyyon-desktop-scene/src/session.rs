@@ -12,12 +12,12 @@
 use std::time::Duration;
 
 use veyyon_gpui::{
-	App, Context, Entity, Keystroke, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent,
-	MouseUpEvent, Pixels, PlatformInput, Point, Render, ScrollDelta, ScrollWheelEvent, TouchPhase,
-	Window, WindowHandle,
+	App, Context, Entity, Keystroke, Modifiers, PlatformInput, Render, Window, WindowHandle,
 };
 
 use crate::headless::{Captured, Headless, RenderError, RenderOptions, capture_window};
+
+mod pointer;
 
 /// A live headless window session for multi-step interaction testing.
 ///
@@ -152,180 +152,6 @@ impl<'a, V: Render + 'static> HeadlessSession<'a, V> {
 				.map_err(|error| RenderError::Window { message: format!("{error:?}") })?;
 		}
 
-		self.cx.run_until_parked();
-		Ok(())
-	}
-
-	/// Moves the pointer to the given logical coordinates without pressing a
-	/// button, which is how a hover reaches an element: group-hover styling and
-	/// a hover tag are painted from the pointer position the previous frame
-	/// recorded, so the caller draws a frame after this to read them.
-	pub fn hover(&mut self, at: Point<Pixels>) -> Result<(), RenderError> {
-		let mouse_move = PlatformInput::MouseMove(MouseMoveEvent {
-			position:       at,
-			pressed_button: None,
-			modifiers:      Modifiers::default(),
-		});
-
-		self
-			.cx
-			.update_window(self.window.into(), |_, window, cx| {
-				window.dispatch_event(mouse_move, cx);
-			})
-			.map_err(|error| RenderError::Window { message: format!("{error:?}") })?;
-
-		self.cx.run_until_parked();
-		Ok(())
-	}
-
-	/// Dispatches a mouse click (`MouseDown` followed by `MouseUp`) at the given
-	/// logical coordinates.
-	pub fn click(&mut self, at: Point<Pixels>) -> Result<(), RenderError> {
-		let mouse_down = PlatformInput::MouseDown(MouseDownEvent {
-			button:      MouseButton::Left,
-			position:    at,
-			modifiers:   Modifiers::default(),
-			click_count: 1,
-			first_mouse: false,
-		});
-
-		let mouse_up = PlatformInput::MouseUp(MouseUpEvent {
-			button:      MouseButton::Left,
-			position:    at,
-			modifiers:   Modifiers::default(),
-			click_count: 1,
-		});
-
-		self
-			.cx
-			.update_window(self.window.into(), |_, window, cx| {
-				window.dispatch_event(mouse_down, cx);
-				window.dispatch_event(mouse_up, cx);
-			})
-			.map_err(|error| RenderError::Window { message: format!("{error:?}") })?;
-
-		self.cx.run_until_parked();
-		Ok(())
-	}
-
-	/// Dispatches a right mouse click (`MouseDown` followed by `MouseUp`) at the
-	/// given logical coordinates.
-	pub fn right_click(&mut self, at: Point<Pixels>) -> Result<(), RenderError> {
-		let mouse_down = PlatformInput::MouseDown(MouseDownEvent {
-			button:      MouseButton::Right,
-			position:    at,
-			modifiers:   Modifiers::default(),
-			click_count: 1,
-			first_mouse: false,
-		});
-
-		let mouse_up = PlatformInput::MouseUp(MouseUpEvent {
-			button:      MouseButton::Right,
-			position:    at,
-			modifiers:   Modifiers::default(),
-			click_count: 1,
-		});
-
-		self
-			.cx
-			.update_window(self.window.into(), |_, window, cx| {
-				window.dispatch_event(mouse_down, cx);
-				window.dispatch_event(mouse_up, cx);
-			})
-			.map_err(|error| RenderError::Window { message: format!("{error:?}") })?;
-
-		self.cx.run_until_parked();
-		Ok(())
-	}
-
-	/// Drags the left button from `from` to `to`: a press, a move just past
-	/// the renderer's 2px drag threshold that starts the drag, a move halfway
-	/// and a move to `to` that a drag-move listener sees with the drag active,
-	/// and a release there.
-	///
-	/// A frame is delivered after each move, as a live window draws between
-	/// pointer events, so a listener that re-renders its element on every
-	/// move is driven through the re-render rather than around it, and the
-	/// second move it sees follows a frame drawn from the first.
-	pub fn drag(&mut self, from: Point<Pixels>, to: Point<Pixels>) -> Result<(), RenderError> {
-		let modifiers = Modifiers::default();
-		let mouse_down = PlatformInput::MouseDown(MouseDownEvent {
-			button: MouseButton::Left,
-			position: from,
-			modifiers,
-			click_count: 1,
-			first_mouse: false,
-		});
-		let travel = to - from;
-		let length = f32::from(travel.x).hypot(f32::from(travel.y));
-		// The threshold move is skipped for a drag too short to have one.
-		let threshold = (length > 4.0).then(|| from + travel * (4.0 / length));
-		let midway = from + travel * 0.5;
-		let moves = threshold.into_iter().chain([midway, to]).map(|position| {
-			PlatformInput::MouseMove(MouseMoveEvent {
-				position,
-				pressed_button: Some(MouseButton::Left),
-				modifiers,
-			})
-		});
-		let mouse_up = PlatformInput::MouseUp(MouseUpEvent {
-			button: MouseButton::Left,
-			position: to,
-			modifiers,
-			click_count: 1,
-		});
-
-		self.dispatch(mouse_down)?;
-		for mouse_move in moves {
-			self.dispatch(mouse_move)?;
-			self.deliver_frame()?;
-		}
-		self.dispatch(mouse_up)?;
-
-		self.cx.run_until_parked();
-		Ok(())
-	}
-
-	/// Turns the wheel by `lines` at `at`, negative upward, as a pointer over
-	/// that position does. A move to `at` precedes the wheel, because a wheel
-	/// arrives where the pointer already is.
-	pub fn scroll(&mut self, at: Point<Pixels>, lines: f32) -> Result<(), RenderError> {
-		let modifiers = Modifiers::default();
-		let mouse_move =
-			PlatformInput::MouseMove(MouseMoveEvent { position: at, pressed_button: None, modifiers });
-		let wheel = PlatformInput::ScrollWheel(ScrollWheelEvent {
-			position: at,
-			delta: ScrollDelta::Lines(Point { x: 0.0, y: -lines }),
-			modifiers,
-			touch_phase: TouchPhase::Moved,
-		});
-
-		self.dispatch(mouse_move)?;
-		self.dispatch(wheel)?;
-		self.cx.run_until_parked();
-		Ok(())
-	}
-
-	/// Turns the wheel sideways by `lines` at `at`, negative leftward, as a
-	/// trackpad or a tilt wheel does over that position.
-	///
-	/// A pane that scrolls horizontally cannot be driven by [`Self::scroll`],
-	/// which carries no x delta: GPUI maps a vertical delta onto a horizontal
-	/// region only where the axis restriction is off, which is the behaviour a
-	/// mono pane turns off.
-	pub fn scroll_across(&mut self, at: Point<Pixels>, lines: f32) -> Result<(), RenderError> {
-		let modifiers = Modifiers::default();
-		let mouse_move =
-			PlatformInput::MouseMove(MouseMoveEvent { position: at, pressed_button: None, modifiers });
-		let wheel = PlatformInput::ScrollWheel(ScrollWheelEvent {
-			position: at,
-			delta: ScrollDelta::Lines(Point { x: -lines, y: 0.0 }),
-			modifiers,
-			touch_phase: TouchPhase::Moved,
-		});
-
-		self.dispatch(mouse_move)?;
-		self.dispatch(wheel)?;
 		self.cx.run_until_parked();
 		Ok(())
 	}

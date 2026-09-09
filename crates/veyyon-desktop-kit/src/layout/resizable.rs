@@ -11,12 +11,12 @@ use std::sync::Arc;
 
 use veyyon_gpui::{
 	AnyElement, App, Context, ElementId, Empty, Entity, IntoElement, MouseButton, MouseUpEvent,
-	Pixels, Point, Render, RenderOnce, Window, div, prelude::*, relative,
+	Pixels, Point, Render, RenderOnce, SharedString, Window, div, prelude::*, relative,
 };
 
 use crate::{
 	geometry::Axis,
-	token_set::{ColorRole, SpacingStep, StrokeStep, TokenSet},
+	token_set::{ColorRole, StrokeStep, TokenSet},
 };
 
 /// Where the handle was pressed and the share the first pane had then. The
@@ -62,6 +62,7 @@ impl Render for ResizeGhost {
 pub struct Resizable {
 	id:            ElementId,
 	axis:          Axis,
+	grip:          Pixels,
 	first:         AnyElement,
 	second:        AnyElement,
 	ratio:         f32,
@@ -70,12 +71,20 @@ pub struct Resizable {
 }
 
 impl Resizable {
-	/// Creates a resizable split container.
+	/// Creates a resizable split container whose handle takes `grip` along the
+	/// split axis. The measure is the caller's: the shell reads the hit area
+	/// its surface tokens author, so the primitive holds no measure of its
+	/// own to disagree with them.
+	///
+	/// A caller placing the second pane at a declared measure subtracts the
+	/// grip from it, so the handle sits inside that measure rather than
+	/// pushing the pane past it.
 	#[must_use]
-	pub fn new(axis: Axis, first: impl IntoElement, second: impl IntoElement) -> Self {
+	pub fn new(axis: Axis, grip: Pixels, first: impl IntoElement, second: impl IntoElement) -> Self {
 		Self {
 			id: ElementId::from("resizable"),
 			axis,
+			grip,
 			first: first.into_any_element(),
 			second: second.into_any_element(),
 			ratio: 0.5,
@@ -119,15 +128,6 @@ impl Resizable {
 		self.on_resize_end = Some(Arc::new(handler));
 		self
 	}
-
-	/// The extent the handle takes along the split axis: the 8px hit area
-	/// around a 1px line (§5.6). A caller placing the second pane at a
-	/// declared measure subtracts it, so the handle sits inside that measure
-	/// rather than pushing the pane past it.
-	#[must_use]
-	pub fn handle_extent(tokens: &TokenSet) -> Pixels {
-		tokens.spacing(SpacingStep::S4)
-	}
 }
 
 impl RenderOnce for Resizable {
@@ -135,9 +135,10 @@ impl RenderOnce for Resizable {
 		let resolved_tokens = TokenSet::for_app(cx);
 		let tokens: &TokenSet = &resolved_tokens;
 
-		let handle_color = tokens.color(ColorRole::Hairline);
+		let rest_color = tokens.color(ColorRole::Hairline);
+		let tint_color = tokens.color(ColorRole::Accent);
 		let stroke_px = tokens.stroke(StrokeStep::Hairline);
-		let grip_px = Self::handle_extent(tokens);
+		let grip_px = self.grip;
 		let axis = self.axis;
 		let ratio = self.ratio;
 
@@ -146,15 +147,30 @@ impl RenderOnce for Resizable {
 			other => ElementId::NamedChild(Arc::new(other.clone()), name.into()),
 		};
 		let handle_id = child_id("handle");
+		let group = match &self.id {
+			ElementId::Name(base) => SharedString::from(format!("{base}-grip")),
+			other => SharedString::from(format!("{other:?}-grip")),
+		};
 		// The press outlives the frame it lands in: a drag re-renders the
 		// split with each new share, and the travel is measured from the
 		// press, not from the last frame.
 		let grab = window.use_keyed_state(child_id("grab"), cx, |_, _| None::<Grab>);
+		// A drag holds the tint after the pointer has left the grip: the
+		// split is still moving, so the line the operator took is still the
+		// one under their hand.
+		let line_color = if grab.read(cx).is_some() {
+			tint_color
+		} else {
+			rest_color
+		};
 
 		// The hairline is what the operator sees; the grip around it is what
-		// the pointer catches, so a 1px line is not a 1px target.
+		// the pointer catches, so a 1px line is not a 1px target. The grip
+		// is the group, so a pointer anywhere in it tints the line, which is
+		// the only thing the hit area has to show for itself.
 		let handle = div()
 			.id(handle_id)
+			.group(group.clone())
 			.flex_shrink_0()
 			.flex()
 			.items_center()
@@ -167,17 +183,20 @@ impl RenderOnce for Resizable {
 				}
 			})
 			.on_drag(ResizeDrag { axis, grab: grab.clone() }, |_, _, _, cx| cx.new(|_| ResizeGhost));
+		let line = div()
+			.bg(line_color)
+			.group_hover(group, move |style| style.bg(tint_color));
 		let handle = match axis {
 			Axis::Horizontal => handle
 				.w(grip_px)
 				.h_full()
 				.cursor_col_resize()
-				.child(div().w(stroke_px).h_full().bg(handle_color)),
+				.child(line.w(stroke_px).h_full()),
 			Axis::Vertical => handle
 				.h(grip_px)
 				.w_full()
 				.cursor_row_resize()
-				.child(div().h(stroke_px).w_full().bg(handle_color)),
+				.child(line.h(stroke_px).w_full()),
 		};
 
 		let mut container = div().id(self.id).w_full().h_full().flex().overflow_hidden();

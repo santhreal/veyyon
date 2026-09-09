@@ -234,6 +234,7 @@ pub fn session_surface(
 					.right_0()
 					.child(terminal_drawer(
 						&state.drawer,
+						DrawerPlacement::Overlay,
 						widths.drawer.height_px,
 						&state.controls,
 						state.current_id,
@@ -256,9 +257,10 @@ pub fn session_surface(
 		let extent = widths.columns_px.max(1.0);
 		let maximum = extent * surface.panels.terminal_drawer_max_viewport_ratio;
 		let minimum = surface.panels.terminal_drawer_min_height_px.min(maximum);
-		let grip = f32::from(Resizable::handle_extent(tokens));
+		let grip = surface.panels.chrome_resize_handle_hit_px;
 		let drawer = terminal_drawer(
 			&state.drawer,
+			DrawerPlacement::Row,
 			(widths.drawer.height_px - grip).max(0.0),
 			&state.controls,
 			state.current_id,
@@ -273,7 +275,7 @@ pub fn session_surface(
 		let shell = cx.weak_entity();
 		let release_shell = shell.clone();
 		div().flex().flex_1().min_w_0().h_full().child(
-			Resizable::new(Axis::Vertical, column, drawer)
+			Resizable::new(Axis::Vertical, px(grip), column, drawer)
 				.id("session-drawer-split")
 				.ratio((extent - widths.drawer.height_px) / extent)
 				.on_resize(move |ratio, _window, cx| {

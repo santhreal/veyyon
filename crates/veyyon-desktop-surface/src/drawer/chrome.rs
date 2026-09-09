@@ -1,11 +1,12 @@
 //! Drawer header chrome and tab strip.
 //!
-//! Renders the 28px chrome row containing tenant tabs (terminals and process
-//! supervisor), active title, palette search match count, and the vertical
-//! resize drag affordance.
+//! Renders the chrome row containing tenant tabs (terminals and process
+//! supervisor), active title, palette search match count, and the tab
+//! actions. The drawer's resize grip is the split's own handle, above this
+//! row, not a mark painted inside it.
 
 use veyyon_desktop_kit::{
-	ColorRole, SpacingStep, TextRamp, TextWeight, TokenSet,
+	ColorRole, SpacingStep, StrokeStep, TextRamp, TextWeight, TokenSet,
 	controls::{Button, ButtonVariant},
 	state::InteractiveState,
 };
@@ -215,16 +216,8 @@ pub fn drawer_chrome(
 		.items_center()
 		.justify_between()
 		.px(tokens.spacing(SpacingStep::S3))
-		.border_b(px(1.0))
+		.border_b(tokens.stroke(StrokeStep::Hairline))
 		.border_color(tokens.color(ColorRole::Hairline))
 		.child(tabs_strip)
-		.child(
-			div().flex_1().flex().justify_center().child(
-				div()
-					.h(px(geometry.chrome_resize_handle_line_px))
-					.w(px(geometry.chrome_resize_handle_hit_px))
-					.bg(tokens.color(ColorRole::Hairline)),
-			),
-		)
 		.child(right_side)
 }

@@ -165,6 +165,7 @@ pub fn render_primitive(kind: PrimitiveKind, _window: &mut Window, cx: &mut App)
 
 		PrimitiveKind::Resizable => Resizable::new(
 			Axis::Horizontal,
+			TokenSet::for_app(cx).spacing(SpacingStep::S4),
 			Text::new(FixtureText::PROJECT_TYPICAL),
 			Text::new(FixtureText::CJK),
 		)

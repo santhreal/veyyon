@@ -10,7 +10,7 @@ mod process_list;
 
 use veyyon_desktop_kit::{ColorRole, MonoSizeStep, MonoText, SpacingStep, TextWeight, TokenSet};
 use veyyon_desktop_model::{SessionId, SurfaceId};
-use veyyon_desktop_tokens::PanelsSurfaceTokens;
+use veyyon_desktop_tokens::{DrawerPlacement, PanelsSurfaceTokens};
 use veyyon_gpui::{
 	Context, Hsla, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
 	StatefulInteractiveElement, Styled, div, px, rgb,
@@ -90,8 +90,15 @@ pub fn resolve_indexed_color(idx: u8, tokens: &TokenSet) -> Hsla {
 }
 
 /// Builds the terminal drawer component.
+///
+/// A docked drawer is the second pane of a split, and the split's handle draws
+/// the hairline between the drawer and the column above it. An overlaid
+/// drawer has no split, so it draws that edge itself: without the placement
+/// the docked drawer draws a second hairline a grip's half-height under the
+/// first.
 pub fn terminal_drawer(
 	content: &DrawerContent,
+	placement: DrawerPlacement,
 	height: f32,
 	controls: &ControlStates,
 	session_id: u64,
@@ -114,18 +121,23 @@ pub fn terminal_drawer(
 			.child(render_terminal_grid(content, geometry, tokens, cx))
 	};
 
-	laid_out.track_children(
-		div()
-			.occlude()
-			.w_full()
-			.h(px(height))
-			.flex_shrink_0()
-			.flex()
-			.flex_col()
-			.bg(tokens.color(ColorRole::Canvas))
+	let mut shell = div()
+		.occlude()
+		.w_full()
+		.h(px(height))
+		.flex_shrink_0()
+		.flex()
+		.flex_col()
+		.bg(tokens.color(ColorRole::Canvas))
+		.overflow_hidden();
+	if placement == DrawerPlacement::Overlay {
+		shell = shell
 			.border_t(px(geometry.chrome_resize_handle_line_px))
-			.border_color(tokens.color(ColorRole::Hairline))
-			.overflow_hidden()
+			.border_color(tokens.color(ColorRole::Hairline));
+	}
+
+	laid_out.track_children(
+		shell
 			.child(drawer_chrome(content, controls, session_id, geometry, tokens, cx))
 			.children(hairline_for(
 				controls,

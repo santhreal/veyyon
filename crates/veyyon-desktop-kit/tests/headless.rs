@@ -138,6 +138,7 @@ impl Render for KitPrimitiveFixture {
 			},
 			PrimitiveKind::Resizable => Resizable::new(
 				veyyon_desktop_kit::Axis::Horizontal,
+				pad,
 				Text::new("Left"),
 				Text::new("Right"),
 			)
