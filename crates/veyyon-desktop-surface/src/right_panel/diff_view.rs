@@ -50,7 +50,11 @@ pub fn diff_view(
 		.w_full()
 		.flex()
 		.flex_col()
-		.overflow_y_scroll();
+		.overflow_y_scroll()
+		// As in the file view: a horizontal delta belongs to the pane under the
+		// pointer, and without this GPUI maps it onto the axis this region
+		// scrolls, so a sideways wheel over a hunk moved the diff's rows.
+		.restrict_scroll_to_axis();
 
 	container = container.child(diff_toolbar(diff_mode, geometry, tokens, cx));
 

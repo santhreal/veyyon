@@ -58,7 +58,13 @@ pub fn file_view(
 		.w_full()
 		.flex()
 		.flex_col()
-		.overflow_y_scroll();
+		.overflow_y_scroll()
+		// The sideways gesture belongs to the code column inside this region.
+		// Without the restriction GPUI maps a horizontal delta onto the one
+		// axis this region scrolls, so a wheel with shift held over the code
+		// scrolled the file as well as the line, and the pinned numbers
+		// travelled with it: §5.11 pins them against exactly that gesture.
+		.restrict_scroll_to_axis();
 	container = container.child(path_header(file_data, geometry, tokens));
 
 	if file_data.binary {

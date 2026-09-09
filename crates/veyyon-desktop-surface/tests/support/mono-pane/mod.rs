@@ -174,6 +174,24 @@ pub fn state_with_a_line_of_pieces(count: usize) -> ShellState {
 	state
 }
 
+/// A file of `count` lines that are each `pieces` highlighted pieces wide,
+/// which is the shape the native take of the pane recorded: rows past the
+/// pane's box on one axis and columns past it on the other, at once.
+///
+/// A fixture wide on one axis only cannot state what a gesture on the other
+/// costs, and the freeze this shape found arrived after a wheel down a file of
+/// wide lines rather than at rest.
+pub fn state_with_wide_lines(count: usize, pieces: usize) -> ShellState {
+	let mut state = state_with_long_line();
+	let text: Vec<String> = (0..pieces)
+		.map(|piece| format!("a{:02}", piece % 100))
+		.collect();
+	let borrowed: Vec<&str> = text.iter().map(String::as_str).collect();
+	let lines: Vec<FileLine> = (1..=count).map(|number| spans(number, &borrowed)).collect();
+	state.panel.file = state.panel.file.map(|file| FileView { lines, ..file });
+	state
+}
+
 /// The panel's box, as the frame just laid it out.
 pub fn panel_region(session: &mut HeadlessSession<'_, ShellView>) -> BoxBounds {
 	let bounds = session
