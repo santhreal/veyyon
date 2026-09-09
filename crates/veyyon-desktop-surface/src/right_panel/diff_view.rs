@@ -20,15 +20,21 @@ use crate::{
 	right_panel::{
 		content::{DiffFile, DiffStatus},
 		diff_columns::{split_columns, unified_columns},
+		pane_scroll::{PaneId, PaneScrolls},
+		pane_window::{RowWalk, scrolled},
 	},
 };
 
 /// Renders the diff tenant for the right panel.
+///
+/// Every changed file scrolls in one region, so one cursor walks all of them:
+/// a file's rows are admitted against the box the region shows, and the
+/// chrome between two files is part of the distance the cursor has travelled.
 pub fn diff_view(
 	files: &[DiffFile],
 	diff_status: DiffStatus,
 	diff_mode: DiffMode,
-	_panel_width: f32,
+	panes: &PaneScrolls,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
 	window: &mut Window,
@@ -36,8 +42,10 @@ pub fn diff_view(
 ) -> impl IntoElement {
 	let effective_mode = diff_mode;
 
+	let rows = panes.handle(PaneId::DiffRows);
 	let mut container = div()
 		.id("right-panel-diff-view")
+		.track_scroll(&rows)
 		.flex_1()
 		.w_full()
 		.flex()
@@ -67,15 +75,29 @@ pub fn diff_view(
 				.child(message),
 		);
 	}
+	let mut walk = RowWalk::of(&scrolled(&rows, window));
+	walk.advance(geometry.chrome_row_height_px);
+	let hairline_px = f32::from(tokens.stroke(StrokeStep::Hairline));
 	for (file_idx, file) in files.iter().enumerate() {
 		// A hairline closes each file above the next one's header, so the last
 		// row of one file is not read as the first of the next.
 		if file_idx > 0 {
 			container = container.child(Divider::horizontal());
+			walk.advance(hairline_px);
 		}
 		container = container.child(file_header(file, effective_mode, geometry, tokens, cx));
-		container =
-			container.child(file_body(file_idx, file, effective_mode, geometry, tokens, window, cx));
+		walk.advance(geometry.chrome_row_height_px);
+		container = container.child(file_body(
+			file_idx,
+			file,
+			effective_mode,
+			panes,
+			&mut walk,
+			geometry,
+			tokens,
+			window,
+			cx,
+		));
 	}
 
 	container
@@ -164,36 +186,67 @@ fn file_body(
 	file_idx: usize,
 	file: &DiffFile,
 	diff_mode: DiffMode,
+	panes: &PaneScrolls,
+	walk: &mut RowWalk,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
 	window: &mut Window,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
 	match diff_mode {
-		DiffMode::Unified => div().w_full().flex().flex_col().child(
-			unified_columns(file_idx, file, geometry, tokens, cx)
-				.into_pane(format!("diff-unified-{file_idx}"), window, geometry, tokens)
-				.w_full()
-				.flex_shrink_0(),
-		),
+		DiffMode::Unified => {
+			let columns = unified_columns(file_idx, file, walk, geometry, tokens, cx);
+			let scroll = panes.handle(PaneId::DiffUnified(file_idx));
+			div().w_full().flex().flex_col().child(
+				columns
+					.into_pane(
+						format!("diff-unified-{file_idx}"),
+						&scroll,
+						walk.take_padding(),
+						window,
+						geometry,
+						tokens,
+					)
+					.w_full()
+					.flex_shrink_0(),
+			)
+		},
 		DiffMode::Split => {
-			let (old, new) = split_columns(file_idx, file, geometry, tokens, cx);
+			let (old, new) = split_columns(file_idx, file, walk, geometry, tokens, cx);
+			// Both sides drew the same rows, so both take the same padding.
+			let padding = walk.take_padding();
+			let old_scroll = panes.handle(PaneId::DiffOld(file_idx));
+			let new_scroll = panes.handle(PaneId::DiffNew(file_idx));
 			div()
 				.w_full()
 				.flex()
 				.flex_row()
 				.items_start()
 				.child(
-					old.into_pane(format!("diff-split-old-{file_idx}"), window, geometry, tokens)
-						.flex_1()
-						.min_w_0(),
+					old.into_pane(
+						format!("diff-split-old-{file_idx}"),
+						&old_scroll,
+						padding,
+						window,
+						geometry,
+						tokens,
+					)
+					.flex_1()
+					.min_w_0(),
 				)
 				.child(
-					new.into_pane(format!("diff-split-new-{file_idx}"), window, geometry, tokens)
-						.flex_1()
-						.min_w_0()
-						.border_l(px(geometry.chrome_resize_handle_line_px))
-						.border_color(tokens.color(ColorRole::Hairline)),
+					new.into_pane(
+						format!("diff-split-new-{file_idx}"),
+						&new_scroll,
+						padding,
+						window,
+						geometry,
+						tokens,
+					)
+					.flex_1()
+					.min_w_0()
+					.border_l(px(geometry.chrome_resize_handle_line_px))
+					.border_color(tokens.color(ColorRole::Hairline)),
 				)
 		},
 	}

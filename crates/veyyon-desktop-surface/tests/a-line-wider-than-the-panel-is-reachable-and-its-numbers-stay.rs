@@ -53,8 +53,8 @@ mod mono_pane;
 
 use mono_pane::{
 	WINDOW_H, WINDOW_W, code_runs, gutter_runs, lefts, open_session, open_session_on_tokens,
-	over_code, panel_region, row_runs, state_with_a_long_file, state_with_long_line, tops,
-	widest_row,
+	over_code, panel_region, row_runs, state_with_a_file_of, state_with_a_long_file,
+	state_with_long_line, tops, widest_row,
 };
 use veyyon_desktop_kit::load_bundled_tokens;
 use veyyon_desktop_scene::headless_context;
@@ -182,6 +182,41 @@ fn a_vertical_wheel_over_the_code_scrolls_the_file_and_not_the_line() {
 		(left_at_rest - left_moved).abs() < 0.5,
 		"a vertical wheel leaves the horizontal offset alone: the leading edge went from \
 		 {left_at_rest}px to {left_moved}px, which is GPUI mapping one axis onto the other"
+	);
+}
+
+#[test]
+fn a_file_a_little_taller_than_the_pane_scrolls_to_its_last_line() {
+	let tokens = load_bundled_tokens().expect("the bundled tokens load");
+	let panels = &tokens.surface.panels;
+
+	// The window a native take of this pane records at, and a file whose rows
+	// come to a couple of dozen pixels past the pane rather than to hundreds:
+	// a scroll container laid out taller than the viewport it sits in scrolls
+	// the long file and cannot scroll this one, so the long file alone is not
+	// evidence that the pane scrolls at all.
+	let mut cx = headless_context().expect("a headless renderer is required");
+	let mut session = open_session(&mut cx, state_with_a_file_of(40), 1180, 800);
+	let rest = session.frame().expect("the shell renders at rest");
+	let panel = panel_region(&mut session);
+	let at_rest = gutter_runs(&rest, panel, panels);
+
+	session
+		.scroll(over_code(panel, panels), 6.0)
+		.expect("the wheel reaches the pane");
+	let scrolled = session.frame().expect("the shell renders scrolled");
+	let moved = gutter_runs(&scrolled, panel, panels);
+
+	let last_at_rest = tops(&at_rest).into_iter().fold(f32::MIN, f32::max);
+	assert_ne!(
+		tops(&moved),
+		tops(&at_rest),
+		"the file scrolls to its last line: 40 rows of {row}px stand in a panel of {panel:?}, \
+		 {drawn} of them drawn and the lowest at {last_at_rest}px, and the wheel moved none of them \
+		 -- a pane whose own box is as tall as its rows has nowhere to scroll to and clips the rest \
+		 against the window instead",
+		row = panels.diff_row_height_px,
+		drawn = at_rest.len(),
 	);
 }
 

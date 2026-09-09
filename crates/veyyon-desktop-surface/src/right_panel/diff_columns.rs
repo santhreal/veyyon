@@ -19,21 +19,30 @@ use std::ops::Range;
 
 use veyyon_desktop_kit::{ColorRole, TintRole, TokenSet};
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
-use veyyon_gpui::{Context, Div, ElementId, Hsla, ParentElement, Styled, Window, div, px};
+use veyyon_gpui::{
+	Context, Div, ElementId, Hsla, ParentElement, ScrollHandle, Styled, Window, div, px,
+};
 
 use crate::{
 	ShellView,
 	right_panel::{
 		content::{DiffFile, DiffRow},
+		diff_extent::{row_height, split_file_columns, unified_file_columns},
 		diff_rows::{
-			content_cell, gutter_cell, hunk_header_text, render_collapsed_row, render_hunk_header,
-			render_notice_row, sign_cell,
+			content_cell, gutter_cell, render_collapsed_row, render_hunk_header, render_notice_row,
+			sign_cell, truncated_notice,
 		},
-		mono_pane::{columns, pane_cell, pane_content_px, pinned_gutter_pane},
+		mono_pane::{PaneParts, pane_cell, pane_content_px, pinned_gutter_pane},
+		pane_window::RowWalk,
 	},
 };
 
-/// One pane's two columns, and how wide its widest row is in monospace cells.
+/// One pane's two columns: the cells of the rows it drew, and how wide its
+/// widest row is in monospace cells.
+///
+/// The width is the file's rather than the drawn rows', because the rows drawn
+/// are the rows the pane's box shows: a content width taken from those would
+/// move the scroll extent every time the wheel changed which rows they are.
 pub struct PaneColumns {
 	pinned:  Vec<Div>,
 	code:    Vec<Div>,
@@ -41,36 +50,40 @@ pub struct PaneColumns {
 }
 
 impl PaneColumns {
-	const fn new() -> Self {
-		Self { pinned: Vec::new(), code: Vec::new(), columns: 0 }
+	const fn new(columns: usize) -> Self {
+		Self { pinned: Vec::new(), code: Vec::new(), columns }
 	}
 
-	/// Adds one row: the cell the pane pins, the cell it scrolls, and how many
-	/// cells wide that row's text is.
-	fn push(&mut self, pinned: Div, code: Div, cells: usize) {
+	/// Adds one row: the cell the pane pins and the cell it scrolls.
+	fn push(&mut self, pinned: Div, code: Div) {
 		self.pinned.push(pinned);
 		self.code.push(code);
-		self.columns = self.columns.max(cells);
 	}
 
-	/// Composes the columns into the pane that pins one and scrolls the other.
+	/// Composes the columns into the pane that pins one and scrolls the other,
+	/// with `padding` standing in for the rows outside its box.
 	///
-	/// `id` names the scroll region, so it carries the file and the side: two
-	/// panes sharing an id would share one offset and one file's diff would
-	/// scroll another's.
+	/// `id` and `columns` carry the file and the side: two panes sharing either
+	/// would share one offset, and one file's diff would scroll another's.
 	pub fn into_pane(
 		self,
 		id: impl Into<ElementId>,
+		columns: &ScrollHandle,
+		padding: (f32, f32),
 		window: &mut Window,
 		geometry: &PanelsSurfaceTokens,
 		tokens: &TokenSet,
 	) -> Div {
-		let content = pane_content_px(window, tokens, geometry, self.columns);
+		let content_width_px = pane_content_px(window, tokens, geometry, self.columns);
 		pinned_gutter_pane(
-			id,
-			div().children(self.pinned),
-			div().children(self.code),
-			content,
+			PaneParts {
+				id: id.into(),
+				columns,
+				gutter: div().children(self.pinned),
+				code: div().children(self.code),
+				content_width_px,
+				padding,
+			},
 			geometry,
 			tokens,
 		)
@@ -131,11 +144,7 @@ fn tint_fills(
 }
 
 /// One line's pinned cell, scrolled cell and width in cells.
-fn line_cells(
-	line: &Line<'_>,
-	geometry: &PanelsSurfaceTokens,
-	tokens: &TokenSet,
-) -> (Div, Div, usize) {
+fn line_cells(line: &Line<'_>, geometry: &PanelsSurfaceTokens, tokens: &TokenSet) -> (Div, Div) {
 	let (ground, highlight) = tint_fills(line.tint, geometry, tokens);
 	let number = line
 		.number
@@ -157,7 +166,7 @@ fn line_cells(
 		code = code.bg(fill);
 	}
 
-	(pinned, code, columns(line.text))
+	(pinned, code)
 }
 
 /// A row that spans the pane: its ground in the pinned column, its content in
@@ -178,55 +187,52 @@ fn spanning_cells(
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
-) -> Option<(Div, Div, usize)> {
+) -> Option<(Div, Div)> {
 	let inset = Some(tokens.color(ColorRole::Inset));
 	match row {
 		DiffRow::HunkHeader { old_start, old_count, new_start, new_count, symbol } => {
-			let text = hunk_header_text(*old_start, *old_count, *new_start, *new_count, symbol);
 			let header = render_hunk_header(
 				*old_start, *old_count, *new_start, *new_count, symbol, geometry, tokens,
 			);
-			let (pinned, code) = span_cells(geometry.diff_hunk_header_height_px, inset, header);
-			Some((pinned, code, columns(&text)))
+			Some(span_cells(geometry.diff_hunk_header_height_px, inset, header))
 		},
 		DiffRow::Collapsed { hidden, .. } => {
 			let row = div()
 				.w_full()
 				.flex_shrink_0()
 				.child(render_collapsed_row(file_index, row_index, *hidden, geometry, tokens, cx));
-			let (pinned, code) = span_cells(geometry.diff_row_height_px, inset, row);
-			Some((pinned, code, columns(&format!("Expand {hidden} lines"))))
+			Some(span_cells(geometry.diff_row_height_px, inset, row))
 		},
 		DiffRow::Binary { message } | DiffRow::Unavailable { reason: message } => {
 			let notice = render_notice_row(message, geometry, tokens);
-			let (pinned, code) = span_cells(geometry.diff_row_height_px, None, notice);
-			Some((pinned, code, columns(message)))
+			Some(span_cells(geometry.diff_row_height_px, None, notice))
 		},
 		DiffRow::Truncated { remaining } => {
-			let message =
-				format!("2,000 changed lines cap reached ({remaining} more lines not shown)");
-			let notice = render_notice_row(&message, geometry, tokens);
-			let (pinned, code) = span_cells(geometry.diff_row_height_px, None, notice);
-			Some((pinned, code, columns(&message)))
+			let notice = render_notice_row(&truncated_notice(*remaining), geometry, tokens);
+			Some(span_cells(geometry.diff_row_height_px, None, notice))
 		},
 		DiffRow::Context { .. } | DiffRow::Added { .. } | DiffRow::Removed { .. } => None,
 	}
 }
 
-/// Builds the columns a unified diff draws in.
+/// Builds the columns a unified diff draws in, admitting the rows `walk`
+/// states are inside the pane's box.
 pub fn unified_columns(
 	file_index: usize,
 	file: &DiffFile,
+	walk: &mut RowWalk,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> PaneColumns {
-	let mut pane = PaneColumns::new();
+	let mut pane = PaneColumns::new(unified_file_columns(file));
 	for (row_index, row) in file.rows.iter().enumerate() {
-		if let Some((pinned, code, cells)) =
-			spanning_cells(file_index, row_index, row, geometry, tokens, cx)
+		if !walk.admit(row_height(row, geometry)) {
+			continue;
+		}
+		if let Some((pinned, code)) = spanning_cells(file_index, row_index, row, geometry, tokens, cx)
 		{
-			pane.push(pinned, code, cells);
+			pane.push(pinned, code);
 			continue;
 		}
 		let line = match row {
@@ -249,8 +255,8 @@ pub fn unified_columns(
 			},
 			_ => continue,
 		};
-		let (pinned, code, cells) = line_cells(&line, geometry, tokens);
-		pane.push(pinned, code, cells);
+		let (pinned, code) = line_cells(&line, geometry, tokens);
+		pane.push(pinned, code);
 	}
 	pane
 }
@@ -263,23 +269,29 @@ pub fn unified_columns(
 pub fn split_columns(
 	file_index: usize,
 	file: &DiffFile,
+	walk: &mut RowWalk,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> (PaneColumns, PaneColumns) {
-	let mut old = PaneColumns::new();
-	let mut new = PaneColumns::new();
+	let (old_columns, new_columns) = split_file_columns(file);
+	let mut old = PaneColumns::new(old_columns);
+	let mut new = PaneColumns::new(new_columns);
 
 	let mut row_index = 0;
 	while row_index < file.rows.len() {
 		let row = &file.rows[row_index];
-		if let Some((pinned, code, cells)) =
-			spanning_cells(file_index, row_index, row, geometry, tokens, cx)
+		if let DiffRow::Removed { .. } | DiffRow::Added { .. } = row {
+			row_index = push_change_chunk(file, row_index, &mut old, &mut new, walk, geometry, tokens);
+			continue;
+		}
+		let height = row_height(row, geometry);
+		if !walk.admit(height) {
+			row_index += 1;
+			continue;
+		}
+		if let Some((pinned, code)) = spanning_cells(file_index, row_index, row, geometry, tokens, cx)
 		{
-			let height = match row {
-				DiffRow::HunkHeader { .. } => geometry.diff_hunk_header_height_px,
-				_ => geometry.diff_row_height_px,
-			};
 			let ground = match row {
 				DiffRow::HunkHeader { .. } | DiffRow::Collapsed { .. } => {
 					Some(tokens.color(ColorRole::Inset))
@@ -287,26 +299,18 @@ pub fn split_columns(
 				_ => None,
 			};
 			let (mirror_pinned, mirror_code) = span_cells(height, ground, div().h(px(height)));
-			old.push(pinned, code, cells);
-			new.push(mirror_pinned, mirror_code, 0);
+			old.push(pinned, code);
+			new.push(mirror_pinned, mirror_code);
 			row_index += 1;
 			continue;
 		}
-		match row {
-			DiffRow::Context { old_line, new_line, text } => {
-				let (pinned, code, cells) =
-					line_cells(&Line::context(*old_line, text), geometry, tokens);
-				old.push(pinned, code, cells);
-				let (pinned, code, cells) =
-					line_cells(&Line::context(*new_line, text), geometry, tokens);
-				new.push(pinned, code, cells);
-				row_index += 1;
-			},
-			DiffRow::Removed { .. } | DiffRow::Added { .. } => {
-				row_index = push_change_chunk(file, row_index, &mut old, &mut new, geometry, tokens);
-			},
-			_ => row_index += 1,
+		if let DiffRow::Context { old_line, new_line, text } = row {
+			let (pinned, code) = line_cells(&Line::context(*old_line, text), geometry, tokens);
+			old.push(pinned, code);
+			let (pinned, code) = line_cells(&Line::context(*new_line, text), geometry, tokens);
+			new.push(pinned, code);
 		}
+		row_index += 1;
 	}
 
 	(old, new)
@@ -323,6 +327,7 @@ fn push_change_chunk(
 	from: usize,
 	old: &mut PaneColumns,
 	new: &mut PaneColumns,
+	walk: &mut RowWalk,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
 ) -> usize {
@@ -340,6 +345,11 @@ fn push_change_chunk(
 	}
 
 	for pair in 0..removed.len().max(added.len()) {
+		// One pair is one row of the pane, whichever side is shorter, so the
+		// cursor advances once per pair and not once per changed line.
+		if !walk.admit(geometry.diff_row_height_px) {
+			continue;
+		}
 		let line = match removed.get(pair) {
 			Some((number, text, intraline)) => Line {
 				number: Some(*number),
@@ -351,8 +361,8 @@ fn push_change_chunk(
 			},
 			None => Line::blank(),
 		};
-		let (pinned, code, cells) = line_cells(&line, geometry, tokens);
-		old.push(pinned, code, cells);
+		let (pinned, code) = line_cells(&line, geometry, tokens);
+		old.push(pinned, code);
 
 		let line = match added.get(pair) {
 			Some((number, text, intraline)) => Line {
@@ -365,8 +375,8 @@ fn push_change_chunk(
 			},
 			None => Line::blank(),
 		};
-		let (pinned, code, cells) = line_cells(&line, geometry, tokens);
-		new.push(pinned, code, cells);
+		let (pinned, code) = line_cells(&line, geometry, tokens);
+		new.push(pinned, code);
 	}
 
 	row_index

@@ -177,7 +177,22 @@ pub fn render_collapsed_row(
 		.hover(|s| s.bg(tokens.row_hover()))
 		.text_size(tokens.font_size(TextRamp::Micro))
 		.text_color(tokens.color(ColorRole::Secondary))
-		.child(format!("Expand {hidden} lines"))
+		.child(collapsed_label(hidden))
+}
+
+/// What a collapsed region's row reads.
+///
+/// Stated here rather than inside the row, because the pane's content width is
+/// measured from the same text and a second copy of it would drift from this
+/// one, which shows as a row of the diff standing wider than the extent the
+/// pane can scroll to.
+pub fn collapsed_label(hidden: usize) -> String {
+	format!("Expand {hidden} lines")
+}
+
+/// What the row at the changed-line cap reads.
+pub fn truncated_notice(remaining: usize) -> String {
+	format!("2,000 changed lines cap reached ({remaining} more lines not shown)")
 }
 
 /// Renders a notice row for binary/unavailable files or truncation.

@@ -15,13 +15,14 @@ use std::path::Path;
 
 pub use queue_scroll::open_session;
 use veyyon_desktop_kit::{ColorRole, Tokens, load_bundled_theme};
+use veyyon_desktop_model::{ChangeStatus, DiffMode};
 use veyyon_desktop_scene::{
 	BoxBounds, Captured, HeadlessSession,
 	headless::{Headless, RenderOptions},
 };
 use veyyon_desktop_surface::{
-	FileLine, FileView, HighlightSpan, PanelTab, ShellState, ShellView, damage::Region, fixture,
-	install_tokens,
+	DiffFile, DiffRow, FileLine, FileView, HighlightSpan, PanelTab, ShellState, ShellView,
+	damage::Region, fixture, install_tokens,
 };
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
 use veyyon_gpui::{App, AppContext, Bounds, Pixels, Point};
@@ -111,6 +112,18 @@ pub fn state_with_long_line() -> ShellState {
 /// The same file with enough lines below the long one for the pane to have
 /// somewhere to scroll vertically to.
 pub fn state_with_a_long_file() -> ShellState {
+	state_with_a_file_of(79)
+}
+
+/// The same file carried out to `count` lines, so a suite can state how far
+/// past the pane's own height the rows reach.
+///
+/// A file far taller than any pane proves a scroll region that overflows by
+/// hundreds of pixels and says nothing about one that overflows by twenty: a
+/// container laid out taller than the viewport it sits in still scrolls the
+/// first file and cannot scroll the second, which is what a real 40-line file
+/// photographed.
+pub fn state_with_a_file_of(count: usize) -> ShellState {
 	let mut state = state_with_long_line();
 	let mut lines = state
 		.panel
@@ -118,10 +131,46 @@ pub fn state_with_a_long_file() -> ShellState {
 		.clone()
 		.expect("the state carries a file")
 		.lines;
-	for number in 5..80 {
+	lines.truncate(count);
+	for number in lines.len() + 1..=count {
 		lines.push(line(number, "// filler"));
 	}
 	state.panel.file = state.panel.file.map(|file| FileView { lines, ..file });
+	state
+}
+
+/// A file of `count` lines whose last one is the line no pane can hold, and
+/// whose every other line is filler, so a suite can state which end of a long
+/// file is on screen: the wide line is the only row here the pane cannot draw
+/// inside its own width, and no other row can be mistaken for it.
+pub fn state_with_the_long_line_last(count: usize) -> ShellState {
+	let mut state = state_with_a_file_of(count);
+	let last = count.max(1);
+	state.panel.file = state.panel.file.map(|file| {
+		let mut lines: Vec<FileLine> = (1..last).map(|number| line(number, "// filler")).collect();
+		lines.push(spans(last, &[LONG_HEAD, LONG_TAIL]));
+		FileView { lines, ..file }
+	});
+	state
+}
+
+/// A file of one line, arriving in `count` highlighted pieces of three cells
+/// each, which is the shape a real source line arrives in.
+///
+/// Syntect splits a line into a span per token, so a 900-column line of code
+/// is hundreds of spans and only the handful inside the pane's own width are
+/// on screen. One line on purpose: every code run the frame drew is then that
+/// row's, and a count of them is a count of what one row cost.
+pub fn state_with_a_line_of_pieces(count: usize) -> ShellState {
+	let mut state = state_with_long_line();
+	let pieces: Vec<String> = (0..count)
+		.map(|piece| format!("a{:02}", piece % 100))
+		.collect();
+	let borrowed: Vec<&str> = pieces.iter().map(String::as_str).collect();
+	state.panel.file = state
+		.panel
+		.file
+		.map(|file| FileView { lines: vec![spans(1, &borrowed)], ..file });
 	state
 }
 
@@ -243,4 +292,68 @@ pub fn widest_row(runs: &[BoxBounds]) -> f32 {
 		.into_iter()
 		.map(|(_, left, right)| right - left)
 		.fold(0.0, f32::max)
+}
+
+/// The diff tenant, whose rows are the other half of the class: a hunk header
+/// is taller than a line, a split pair collapses two rows into one, and every
+/// changed file scrolls in one region.
+///
+/// Built rather than taken from `fixture::populated`, which carries five rows:
+/// a suite that states what a pane's box costs needs a file long enough that
+/// the pane cannot draw all of it, in two sizes.
+pub fn diff_state(lines: usize, mode: DiffMode) -> ShellState {
+	let mut rows = vec![DiffRow::HunkHeader {
+		old_start: 1,
+		old_count: lines,
+		new_start: 1,
+		new_count: lines,
+		symbol:    Some("fn changed".to_owned()),
+	}];
+	for number in 1..=lines {
+		if number % 5 == 0 {
+			// The name and the value, which is the two-piece shape an intraline
+			// highlight arrives in: a changed line is one span of code with the
+			// parts that differ marked inside it.
+			let was = format!("\tlet was = {number};");
+			let now = format!("\tlet now = {number};");
+			let value = 11..was.len() - 1;
+			rows.push(DiffRow::Removed {
+				old_line:  number,
+				intraline: vec![5..8, value.clone()],
+				text:      was,
+			});
+			rows.push(DiffRow::Added {
+				new_line:  number,
+				intraline: vec![5..8, value],
+				text:      now,
+			});
+		} else {
+			rows.push(DiffRow::Context {
+				old_line: number,
+				new_line: number,
+				text:     format!("\t// line {number}"),
+			});
+		}
+	}
+
+	// Two files, because every changed file scrolls in one region and one
+	// cursor walks all of them: a file whose padding does not account for the
+	// header and hairline above it draws its rows over the file before it.
+	let mut state = fixture::populated();
+	state.transcript.clear();
+	state.keymap.panel_collapsed = false;
+	state.panel.active_tab = PanelTab::Diff;
+	state.panel.diff_mode = mode;
+	state.panel.diff = ["diff_columns.rs", "diff_view.rs"]
+		.into_iter()
+		.map(|name| DiffFile {
+			path:      format!("crates/veyyon-desktop-surface/src/right_panel/{name}"),
+			old_path:  None,
+			status:    ChangeStatus::Modified,
+			additions: lines / 5,
+			deletions: lines / 5,
+			rows:      rows.clone(),
+		})
+		.collect();
+	state
 }

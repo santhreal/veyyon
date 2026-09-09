@@ -4,10 +4,13 @@
 
 pub mod content;
 pub mod diff_columns;
+pub mod diff_extent;
 pub mod diff_rows;
 pub mod diff_view;
 pub mod file_view;
 pub mod mono_pane;
+pub mod pane_scroll;
+pub mod pane_window;
 pub mod tabs;
 pub mod tree_view;
 pub mod usage_view;
@@ -17,6 +20,7 @@ pub use content::{
 	TreeContent, TreeRowItem, TreeStatus,
 };
 pub use file_view::{file_view, highlight_source};
+pub use pane_scroll::{PaneId, PaneScrolls};
 pub use tabs::tab_strip;
 pub use tree_view::tree_view;
 pub use usage_view::usage_view;
@@ -43,6 +47,7 @@ use crate::{
 pub fn right_panel(
 	panel: &PanelContent,
 	width: f32,
+	panes: &PaneScrolls,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
 	focus: &FocusHandle,
@@ -87,14 +92,16 @@ pub fn right_panel(
 			&panel.diff,
 			panel.diff_status,
 			panel.diff_mode,
-			width,
+			panes,
 			geometry,
 			tokens,
 			window,
 			cx,
 		)
 		.into_any_element(),
-		PanelTab::File => file_view(&panel.file, geometry, tokens, window, cx).into_any_element(),
+		PanelTab::File => {
+			file_view(&panel.file, panes, geometry, tokens, window, cx).into_any_element()
+		},
 		PanelTab::Tree => tree_view(&panel.tree, geometry, tokens, cx).into_any_element(),
 		PanelTab::Usage => usage_view(panel.usage.as_ref(), geometry, tokens).into_any_element(),
 	};

@@ -49,6 +49,7 @@ use crate::{
 	layout::LabelState,
 	model::ShellState,
 	queue::{RailMotion, RowMenu},
+	right_panel::PaneScrolls,
 	settings::GeneralSettingsListState,
 	tokens::InstalledTokens,
 	transcript::{TranscriptFindState, TranscriptViewportState},
@@ -95,6 +96,10 @@ pub struct ShellView {
 	/// The width the operator dragged the docked right panel to. Window-local
 	/// like the row menu: a snapshot never moves the handle (§5.6).
 	panel_width:           Option<f32>,
+	/// Where each of the right panel's mono panes is scrolled to, which is
+	/// what states the rows and columns the next frame builds (§5.11).
+	/// Window-local for the same reason the dragged width is.
+	pane_scrolls:          PaneScrolls,
 	/// Disclosed tool cards a previous window remembered whose invocations
 	/// this one has not drawn yet, the drawer tenant it last looked at, which
 	/// the host has not reported yet, and where it was reading, which names an
@@ -168,6 +173,7 @@ impl ShellView {
 			pending_anchor: None,
 			focus_handle: None,
 			queue_focus: None,
+			pane_scrolls: PaneScrolls::default(),
 			panel_focus: None,
 			transcript_focus: None,
 			cards_focus: None,
@@ -195,6 +201,14 @@ impl ShellView {
 		let changed = self.cards_hovered != hovered;
 		self.cards_hovered = hovered;
 		changed
+	}
+
+	/// The handles the right panel's mono panes report their scroll offsets
+	/// through, so a pane builds the rows and columns its own box shows
+	/// (§5.11).
+	#[must_use]
+	pub const fn pane_scrolls(&self) -> &PaneScrolls {
+		&self.pane_scrolls
 	}
 
 	/// Returns a reference to the installed tokens.

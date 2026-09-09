@@ -247,6 +247,7 @@ pub fn render_shell(
 			let body = right_panel(
 				&view.state().panel,
 				inset_px.mul_add(-2.0, width_px),
+				view.pane_scrolls(),
 				panels,
 				&tokens,
 				&panel_focus,
@@ -305,6 +306,7 @@ pub fn render_shell(
 			let body = right_panel(
 				panel,
 				width_px - grip_px,
+				view.pane_scrolls(),
 				panels,
 				&tokens,
 				&panel_focus,

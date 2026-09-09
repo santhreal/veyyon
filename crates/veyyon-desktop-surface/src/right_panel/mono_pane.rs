@@ -15,26 +15,23 @@
 //! seam, and the scroll region carries the whole file rather than one line, so
 //! every line moves by the same offset and the columns stay aligned.
 
-use unicode_width::UnicodeWidthStr;
 use veyyon_desktop_kit::{MonoText, TokenSet, mono_advance};
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
 use veyyon_gpui::{
-	Div, ElementId, InteractiveElement, ParentElement, StatefulInteractiveElement, Styled, Window,
-	div, px, relative,
+	Div, ElementId, InteractiveElement, ParentElement, ScrollHandle, StatefulInteractiveElement,
+	Styled, Window, div, px, relative,
 };
 
-/// Composes a mono pane's body from its pinned `gutter` column and its
-/// scrolling `code` column.
+/// Composes a mono pane's body from its pinned gutter column and its
+/// scrolling code column.
 ///
-/// `id` names the scroll region, which is what retains the offset across
-/// frames: two panes sharing one id would share one offset.
-///
-/// `content_width_px` is how wide the widest line is. It is stated rather than
-/// left to the layout because a column of auto width inside a scroll region
-/// resolves to the region's own width: the lines then overflow their boxes,
-/// the scroll extent is zero, and the pane reads as clipped with a wheel that
-/// does nothing. The region's own width is a floor, so a file of short lines
-/// still fills the pane rather than leaving a strip of rail beside the text.
+/// `PaneParts::content_width_px` is how wide the widest line is. It is stated
+/// rather than left to the layout because a column of auto width inside a
+/// scroll region resolves to the region's own width: the lines then overflow
+/// their boxes, the scroll extent is zero, and the pane reads as clipped with
+/// a wheel that does nothing. The region's own width is a floor, so a file of
+/// short lines still fills the pane rather than leaving a strip of rail beside
+/// the text.
 ///
 /// The wheel is restricted to the axis of the gesture. Without that, GPUI maps
 /// a vertical wheel onto the one axis a region scrolls, so every scroll down
@@ -42,37 +39,78 @@ use veyyon_gpui::{
 ///
 /// The pane states no width of its own: a docked file pane fills the panel,
 /// and a split diff draws two panes that each take half of it, so the caller
-/// says which.
+/// states which.
 pub fn pinned_gutter_pane(
-	id: impl Into<ElementId>,
-	gutter: Div,
-	code: Div,
-	content_width_px: f32,
+	pane: PaneParts<'_>,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
 ) -> Div {
+	let (lead_px, tail_px) = pane.padding;
 	div()
 		.flex()
 		.flex_row()
 		.items_start()
 		.mono_type(tokens, &geometry.diff_font_size)
-		.child(gutter.flex_shrink_0().flex().flex_col())
+		.child(column(pane.gutter, lead_px, tail_px).flex_shrink_0())
 		.child(
 			div()
-				.id(id)
+				.id(pane.id)
+				.track_scroll(pane.columns)
 				.flex_1()
 				.min_w_0()
 				.overflow_x_scroll()
 				.restrict_scroll_to_axis()
 				.child(
-					code
+					column(pane.code, lead_px, tail_px)
 						.flex_none()
-						.w(px(content_width_px))
-						.min_w(relative(1.0))
-						.flex()
-						.flex_col(),
+						.w(px(pane.content_width_px))
+						.min_w(relative(1.0)),
 				),
 		)
+}
+
+/// What a pane is composed from: the columns, the region that scrolls them,
+/// and the extent of the rows outside the box.
+///
+/// Stated as one value because a pane whose padding, id and scroll handle
+/// arrive as four positional arguments is a pane whose two columns can be
+/// given different padding by a caller that transposes two of them, which
+/// reads as the numbers drifting out of step with the lines.
+pub struct PaneParts<'a> {
+	/// Names the scroll region, which is what retains the offset across
+	/// frames: two panes sharing an id would share one offset.
+	pub id:               ElementId,
+	/// The handle the region reports its offset and box through, which is
+	/// what says which rows the next frame builds.
+	pub columns:          &'a ScrollHandle,
+	/// The pinned column, one cell per built row.
+	pub gutter:           Div,
+	/// The scrolled column, one cell per built row.
+	pub code:             Div,
+	/// How wide the widest line is.
+	pub content_width_px: f32,
+	/// The extent of the rows skipped above the built ones and below them.
+	pub padding:          (f32, f32),
+}
+
+/// One column of a pane: its cells between the padding that stands in for the
+/// rows outside the box.
+fn column(cells: Div, lead_px: f32, tail_px: f32) -> Div {
+	div()
+		.flex()
+		.flex_col()
+		.child(pane_padding(lead_px))
+		.child(cells.flex().flex_col())
+		.child(pane_padding(tail_px))
+}
+
+/// A box of the exact extent of the rows a pane did not build.
+///
+/// The scroll extent is the sum of the column's children, so padding of the
+/// skipped rows' own height leaves the extent, and every offset the wheel can
+/// reach, the same as a pane that built the whole file.
+fn pane_padding(height_px: f32) -> Div {
+	div().h(px(height_px)).flex_shrink_0()
 }
 
 /// How wide `columns` monospace cells are at the size the pane's rows are
@@ -84,15 +122,6 @@ pub fn pane_content_px(
 	columns: usize,
 ) -> f32 {
 	mono_advance(window, tokens, &geometry.diff_font_size) * columns as f32
-}
-
-/// How many monospace cells `text` occupies.
-///
-/// Counted as a terminal counts them: a double-width glyph takes two, so a line
-/// of CJK is twice the cells of its character count and a pane that measured
-/// characters would stop halfway along it.
-pub fn columns(text: &str) -> usize {
-	UnicodeWidthStr::width(text)
 }
 
 /// One cell of a pane column, at the authored row height.

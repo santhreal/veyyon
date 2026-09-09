@@ -109,7 +109,11 @@ fn expected_controls(state: &ShellState) -> usize {
 		veyyon_desktop_surface::PanelTab::File => usize::from(state.panel.file.is_some()),
 		_ => 0,
 	};
-	let panel = if state.keymap.panel_collapsed { 0 } else { 3 + state.panel.tabs.len() + tenant };
+	let panel = if state.keymap.panel_collapsed {
+		0
+	} else {
+		3 + state.panel.tabs.len() + tenant
+	};
 
 	// The overflow summary is hover-tested; each question also has a text reply.
 	let visible_cards = cards.stack_max_visible.min(state.cards.len());

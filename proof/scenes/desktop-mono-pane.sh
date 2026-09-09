@@ -3,16 +3,16 @@
 # of them, in the native GPUI window.
 #
 # Records visual evidence for:
-#   1. pane-at-rest      (the file drawn in the File tab, at the head of its lines)
-#   2. pane-scrolled     (the same rows after a sideways wheel over the code)
-#   3. pane-scrolled-down (the same pane after a vertical wheel over the code)
+#   1. pane-at-rest    (the file drawn in the File tab, at the head of its lines)
+#   2. pane-lines-down (the same pane after a vertical wheel over the code)
+#   3. pane-scrolled   (the same rows after a sideways wheel over the code)
 #
-# Frames 1 and 2 are the differential, and the claim is what happens to each of
+# Frames 2 and 3 are the differential, and the claim is what happens to each of
 # the pane's two columns (§5.11): the code moves and the line numbers do not.
 # One frame of a code view proves nothing, because a pane that clips its long
 # lines and a pane that scrolls them draw the same first column of text.
 #
-# Frame 3 is the axis claim, and it is asserted in both arms: a vertical wheel
+# Frame 2 also carries the axis claim, asserted in both arms: a vertical wheel
 # over the code moves the numbers with the lines, so the sideways gesture is
 # restricted to the axis it was made on rather than being mapped onto the one
 # axis a region scrolls.
@@ -124,9 +124,17 @@ STILL_PIXELS=200
 CODE_X=$(( PANEL_LEFT + GUTTER_W + (PANEL_RIGHT - PANEL_LEFT - GUTTER_W) / 2 ))
 CODE_Y=$(( ROWS_TOP + ROWS_H / 2 ))
 
-# Buttons 6 and 7 are the horizontal wheel: the window's own input path reads
-# them as a sideways gesture, which is what an operator's trackpad sends.
-scroll_code_right() { key_repeat_button 7 "${1:-8}"; }
+# A sideways gesture, sent the way this display can send one. The horizontal
+# wheel is buttons 6 and 7, which the X server maps only for a pointer device
+# that has them, and the private display's core pointer does not: a take that
+# clicked button 7 moved nothing, because the fake press was never delivered.
+# A wheel with shift held is the other sideways gesture the window's own input
+# path reads, and it rides button 5, which every pointer here carries.
+scroll_code_right() {
+	xdotool keydown shift
+	wheel_down "${1:-8}"
+	xdotool keyup shift
+}
 
 # ─── The Panel Opens On The File ─────────────────────────────────────────────
 k "ctrl+backslash"
@@ -161,17 +169,32 @@ if [ "${OPENED_CODE}" -lt "${MOVED_PIXELS}" ] || [ "${OPENED_GUTTER}" -lt "${STI
 		"the pane inked ${OPENED_CODE} pixels of code and ${OPENED_GUTTER} of line numbers when the row was taken, so the File tab is not holding the file this scene wrote"
 fi
 
-# ─── The Code Moves Sideways ─────────────────────────────────────────────────
+# ─── The File Scrolls Under Both Columns ─────────────────────────────────────
+# The vertical gesture first, in both arms: it states the wheel reaches the
+# pane at all, and it is the axis a sideways gesture must not be mapped onto.
+# Both columns move, because the file scrolls under both.
 move_px "${CODE_X}" "${CODE_Y}"
 pause 0.4
+wheel_down 4
+pause 1.2
+shot pane-lines-down
+
+gutter_band
+NUMBERS_SCROLLED="$(shots_differ_pixels pane-at-rest pane-lines-down)"
+if [ "${NUMBERS_SCROLLED}" -lt "${MOVED_PIXELS}" ]; then
+	abandon_take "the-file-scrolls-under-both-columns" \
+		"a vertical wheel over the code changed ${NUMBERS_SCROLLED} pixels of gutter, under the ${MOVED_PIXELS} moved line numbers ink, so the wheel reached nothing"
+fi
+
+# ─── The Code Moves Sideways, The Numbers Do Not ─────────────────────────────
 scroll_code_right 10
 pause 1.2
 shot pane-scrolled
 
 code_band
-CODE_MOVED="$(shots_differ_pixels pane-at-rest pane-scrolled)"
+CODE_MOVED="$(shots_differ_pixels pane-lines-down pane-scrolled)"
 gutter_band
-NUMBERS_MOVED="$(shots_differ_pixels pane-at-rest pane-scrolled)"
+NUMBERS_MOVED="$(shots_differ_pixels pane-lines-down pane-scrolled)"
 ARM="${SCENE_ARM:-after}"
 if [ "${ARM}" = "before" ]; then
 	# Either the gesture reached nothing, or it moved the whole pane. Both are
@@ -192,21 +215,5 @@ else
 	fi
 fi
 
-# ─── The Wheel Still Belongs To The Axis It Was Made On ──────────────────────
-# The same pointer, a vertical wheel: both columns move, because the file
-# scrolls under both. An arm where this fails has mapped one gesture onto the
-# other axis, which is the defect that would have slid the code sideways on
-# every scroll down the file.
-wheel_down 4
-pause 1.2
-shot pane-scrolled-down
-
-gutter_band
-NUMBERS_SCROLLED="$(shots_differ_pixels pane-scrolled pane-scrolled-down)"
-if [ "${NUMBERS_SCROLLED}" -lt "${MOVED_PIXELS}" ]; then
-	abandon_take "the-file-scrolls-under-both-columns" \
-		"a vertical wheel over the code changed ${NUMBERS_SCROLLED} pixels of gutter, under the ${MOVED_PIXELS} moved line numbers ink, so the vertical gesture did not reach the file"
-fi
-
-echo "scene: ${ARM} arm -- a sideways wheel moved ${CODE_MOVED} pixels of code against" \
-	"${NUMBERS_MOVED} of gutter, and a vertical wheel moved ${NUMBERS_SCROLLED} of gutter" >&2
+echo "scene: ${ARM} arm -- a vertical wheel moved ${NUMBERS_SCROLLED} pixels of gutter, and a" \
+	"sideways wheel moved ${CODE_MOVED} pixels of code against ${NUMBERS_MOVED} of gutter" >&2
