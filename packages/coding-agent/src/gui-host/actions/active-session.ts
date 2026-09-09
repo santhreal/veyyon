@@ -9,7 +9,11 @@ import { errorMessage } from "@veyyon/utils";
 import { writeFrame } from "../frames";
 import { reportQueuedPrompts } from "../queued-prompts";
 import { sessionHeaderToView, sessionInfoToSummary } from "../session-bridge";
-import { sessionEntriesToTranscript, sessionEntryToTranscriptEntry } from "../transcript-conversion";
+import {
+	appendedEntryToTranscriptEntry,
+	seedFirstMessagePosition,
+	sessionEntriesToTranscript,
+} from "../transcript-conversion";
 import { type ClientSessionState, disposeTurnSession } from "../turns";
 import type { ErrorScope, TranscriptEntry } from "../wire";
 import type { ActionContext } from "./types";
@@ -120,11 +124,12 @@ export function emitSessionList(ctx: ActionContext): Promise<void> {
 
 export function wireSessionManager(ctx: ActionContext, sm: SessionManager): void {
 	ctx.clientState.sessionManager = sm;
+	seedFirstMessagePosition(ctx.clientState, sm.getEntries());
 	sm.onEntryAppended = entry => {
 		ctx.clientState.revision += 1;
 		const ledger = ctx.clientState.presentationLedger;
 		const session = ctx.clientState.agentSession;
-		const transcriptEntry = sessionEntryToTranscriptEntry(entry, ctx.clientState.revision, {
+		const transcriptEntry = appendedEntryToTranscriptEntry(ctx.clientState, entry, ctx.clientState.revision, {
 			ledger,
 			session,
 		});

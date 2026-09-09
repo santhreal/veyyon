@@ -21,7 +21,11 @@ import { GuiHostUIContext, InteractionLedger } from "./interactions";
 import { enterPlanModeIfConfigured } from "./plan-approval";
 import type { PresentationLedger } from "./presentation";
 import { reportQueuedPrompts } from "./queued-prompts";
-import { agentMessageToTranscriptEntry, sessionEntryToTranscriptEntry } from "./transcript-conversion";
+import {
+	agentMessageToTranscriptEntry,
+	appendedEntryToTranscriptEntry,
+	seedFirstMessagePosition,
+} from "./transcript-conversion";
 import type { AttachmentSubmission, AuthFlowState, TerminalStatus, TranscriptEntry } from "./wire";
 
 export interface ActiveAuthFlow {
@@ -104,6 +108,13 @@ export interface ClientSessionState {
 	 * row reports a finished turn as running until a listing replaces it.
 	 */
 	refreshSessionList?: () => Promise<void>;
+	/**
+	 * Whether the open session has recorded a message yet. A live entry arrives
+	 * one at a time with no list around it, so the flag is what tells a setting
+	 * the session opened in from a change made inside its conversation; it is
+	 * seeded from the session's entries when a session is attached.
+	 */
+	hasMessageEntry?: boolean;
 }
 
 /**
@@ -158,10 +169,11 @@ export function attachTurnListeners(session: AgentSession, socket: net.Socket, s
 
 	const sm = session.sessionManager;
 	state.sessionManager = sm;
+	seedFirstMessagePosition(state, sm.getEntries());
 
 	sm.onEntryAppended = (entry: SessionEntry) => {
 		state.revision += 1;
-		const transcriptEntry = sessionEntryToTranscriptEntry(entry, state.revision, {
+		const transcriptEntry = appendedEntryToTranscriptEntry(state, entry, state.revision, {
 			ledger: state.presentationLedger,
 			session: state.agentSession,
 		});

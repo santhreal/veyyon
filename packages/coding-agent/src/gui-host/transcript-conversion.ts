@@ -13,6 +13,15 @@ export interface TranscriptConversionOptions {
 	ledger?: PresentationLedger;
 	session?: AgentSession;
 	isStreaming?: boolean;
+	/**
+	 * The entry sits ahead of the session's first message, so it records the
+	 * state the session opens in rather than a change made inside a
+	 * conversation. Only a setting some other control states permanently reads
+	 * differently there: the model, which the composer footer draws at every
+	 * width. The thinking level and the mode are reached through the command
+	 * surface and drawn nowhere at rest, so their entries draw either way.
+	 */
+	beforeFirstMessage?: boolean;
 }
 
 function mapContentBlocks(content: unknown, options?: TranscriptConversionOptions): ContentBlock[] {
@@ -321,6 +330,14 @@ export function sessionEntryToTranscriptEntry(
 	let content: ContentBlock[];
 	switch (entry.type) {
 		case "model_change": {
+			// The model a session opens on is the one the composer's picker
+			// states, so a row for it above the first prompt states it twice. A
+			// change made inside the conversation states which model produced
+			// the turns after it, and draws.
+			if (options?.beforeFirstMessage) {
+				content = [];
+				break;
+			}
 			const slash = entry.model.indexOf("/");
 			content =
 				entry.role && entry.role !== "default"
@@ -438,11 +455,51 @@ export function sessionEntriesToTranscript(
 	options?: TranscriptConversionOptions,
 ): TranscriptEntry[] {
 	const ledger = options?.ledger;
-	if (!ledger) return entries.map(entry => sessionEntryToTranscriptEntry(entry, revision, options));
+	// The first message in the list is where the session stops recording the
+	// state it opened in and starts recording changes made inside a
+	// conversation, so each entry is converted knowing which side of it it sits
+	// on.
+	const firstMessage = entries.findIndex(entry => entry.type === "message");
+	const convert = (entry: SessionEntry, index: number): TranscriptEntry =>
+		sessionEntryToTranscriptEntry(entry, revision, {
+			...options,
+			beforeFirstMessage: firstMessage < 0 || index < firstMessage,
+		});
+	if (!ledger) return entries.map(convert);
 	for (const entry of entries) recordEntryCalls(ledger, entry);
-	const converted = entries.map(entry => sessionEntryToTranscriptEntry(entry, revision, options));
+	const converted = entries.map(convert);
 	for (const [index, entry] of entries.entries()) linkEntryCalls(ledger, entry, converted[index]);
 	return converted;
+}
+
+/**
+ * Where a live entry sits relative to the session's first message.
+ *
+ * A stored transcript converts as a list, which states the position of every
+ * entry in it. A live entry arrives one at a time, so the connection carries
+ * one flag instead, seeded from the session's entries when it is attached.
+ */
+export interface FirstMessagePosition {
+	hasMessageEntry?: boolean;
+}
+
+/** Read the flag off a session already holding entries. */
+export function seedFirstMessagePosition(position: FirstMessagePosition, entries: readonly SessionEntry[]): void {
+	position.hasMessageEntry = entries.some(entry => entry.type === "message");
+}
+
+/** Convert one appended entry, advancing the position the first message sets. */
+export function appendedEntryToTranscriptEntry(
+	position: FirstMessagePosition,
+	entry: SessionEntry,
+	revision: number,
+	options?: TranscriptConversionOptions,
+): TranscriptEntry {
+	if (entry.type === "message") position.hasMessageEntry = true;
+	return sessionEntryToTranscriptEntry(entry, revision, {
+		...options,
+		beforeFirstMessage: !position.hasMessageEntry,
+	});
 }
 
 /** Index the tool call, or the tool result, a stored entry carries. */
