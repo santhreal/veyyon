@@ -45,7 +45,10 @@ in `crates/veyyon-desktop-surface/keymap.toml`.
 ## Queue
 
 The sidebar is a session queue. Its header contains session search and the
-new-session action. Sessions appear in this order:
+new-session action. The new-session action is disabled while the host does not
+offer session creation and while a create request is in flight. `Primary-N`
+creates a session whatever state that action is in, and a refusal from the host
+is stated under the action. Sessions appear in this order:
 
 | Section | Contents | Row shape |
 | --- | --- | --- |
