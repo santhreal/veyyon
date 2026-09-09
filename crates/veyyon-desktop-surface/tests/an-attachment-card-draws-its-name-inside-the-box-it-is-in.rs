@@ -1,12 +1,11 @@
-//! WHY: the composer's attachment card (§5.4) is a thumbnail beside a name and
-//! a caption inside a hairline box, and the name was drawn past that box. A
-//! native take of `proof/scenes/desktop-attachment.sh` photographed it: the
-//! card's own hairline ran to x=533 while the glyphs of `Pasted image 1.png`
-//! reached x=546, the right edge of the box was absent because the border was
-//! being drawn around bounds the text had already left, and a 1x16 stub of
-//! hairline stood 12px clear of the card. The card read as an open box with a
-//! detached rule beside it, which is what an unbounded flex child inside an
-//! `overflow_hidden` parent looks like when the parent is clamped by `max_w`.
+//! WHY: the composer's attachment card (§5.4) is a thumbnail beside a name over
+//! a caption, inside a hairline box clamped by `attachment_card_max_width_px`.
+//! The name shrank to that clamp and ended in an ellipsis; the caption did not.
+//! It sat directly in a flex row, where a nowrap string reports its whole
+//! measure as the row's minimum, so a card holding a clip the model does not
+//! take drew `Not accepted by Claude Sonnet 4.5` from x=354 to x=526.4 while
+//! its own right edge stopped at x=521 -- text outside the box it belongs to,
+//! over a border drawn where the box ends.
 //!
 //! CLASS CLOSED:
 //! 1. A name of any length: the sweep forces names shorter than the box, near
@@ -14,8 +13,9 @@
 //!    card that holds it.
 //! 2. Both payload kinds, since a clip draws a glyph square where an image
 //!    draws its own pixels and the two size their card the same way.
-//! 3. Both captions, since the refusal line ("Not accepted by <model>") is
-//!    longer than `PNG · 72 KB` and is the wider of the two to fit.
+//! 3. Both captions, since the refusal line is longer than `PNG · 8 B` and is
+//!    the wider of the two to fit, and it carries a glyph the size caption
+//!    does not.
 //! 4. A tray that wraps: several cards at once, each asserted against the
 //!    composer's own inner edge, so a card cannot escape the card it sits in.
 //! 5. The box being closed: the border is read from the layout tree with its
@@ -25,9 +25,11 @@
 //!
 //! NOT CAUGHT: which characters survive the truncation and whether the ellipsis
 //! glyph is the font's, since a captured run carries its box and not its text;
-//! and the thumbnail's own decode, which
-//! `artifact-image-geometry-enforces-height-ceiling-and-aspect-ratio.rs` owns.
-//! The shape is photographed by `proof/scenes/desktop-attachment.sh`.
+//! the thumbnail's own decode, which
+//! `artifact-image-geometry-enforces-height-ceiling-and-aspect-ratio.rs` owns;
+//! and anything that depends on the shaping a particular font gives a string,
+//! since a run measured here is measured against the bundled one. The card is
+//! photographed by `proof/scenes/desktop-attachment.sh`.
 
 use std::path::PathBuf;
 

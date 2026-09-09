@@ -230,11 +230,11 @@ fn size_caption(attachment: &Attachment) -> String {
 
 /// The card's second line, optionally led by a 12px glyph in the same ink.
 ///
-/// The line is a row, so the text is a flex item and shrinks only when it is
-/// told it may: a nowrap string contributes its whole measure as a minimum,
-/// which is how a refusal naming a long model drew past the card's ceiling
-/// while the card stayed at it. The glyph keeps its size and the text takes
-/// what is left, ending in an ellipsis when that is less than it wanted.
+/// The text is a box of its own rather than a child of the row, which is what
+/// bounds it: a nowrap string sitting directly in a flex row reports its whole
+/// measure as that row's minimum, so a refusal naming a long model drew past
+/// the card's ceiling while the card stayed at it. Cut inside its own box, the
+/// line ends in an ellipsis at whatever the glyph leaves it.
 fn caption_row(glyph: Option<IconName>, text: String, ink: ColorRole, tokens: &TokenSet) -> Div {
 	div()
 		.flex()
@@ -252,8 +252,6 @@ fn caption_row(glyph: Option<IconName>, text: String, ink: ColorRole, tokens: &T
 		}))
 		.child(
 			div()
-				.min_w_0()
-				.flex_1()
 				.whitespace_nowrap()
 				.overflow_hidden()
 				.text_ellipsis()

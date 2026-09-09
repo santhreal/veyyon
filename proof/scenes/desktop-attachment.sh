@@ -163,13 +163,18 @@ move_px "${COMPOSER_X}" "${COMPOSER_Y}"
 pause 1.0
 shot attachment-sent
 
-CLEARED="$(frames_differ_pixels_at "${EMPTY_BAND}" "${SCENE_OUT}/${SCENE_NAME}-attachment-sent.png" "${COMPOSER_BAND_CROP}")"
+CLEARED="$(frames_differ_pixels_at "${PRISTINE_BAND}" "${SCENE_OUT}/${SCENE_NAME}-attachment-sent.png" "${EDITOR_ROW_CROP}")"
 if [ "${CLEARED}" -gt "${CLEARED_MAX_PIXELS}" ]; then
 	abandon_take "the-tray-emptied-with-the-prompt" \
-		"the composer band still differs by ${CLEARED} pixels from the one before the paste, over the ${CLEARED_MAX_PIXELS} a placeholder and a caret account for, so the card the prompt carried is still in the tray"
+		"the editor's own line still differs by ${CLEARED} pixels from the empty composer, over the ${CLEARED_MAX_PIXELS} a caret accounts for, so the card the prompt carried is still in the row it took"
 fi
-echo "scene: the tray drew ${TRAY_DREW}px, the prompt drew ${PROMPT_DREW}px" \
-	"and the band came back within ${CLEARED}px" >&2
+TRAY_ROW="$(frames_differ_pixels_at "${PRISTINE_BAND}" "${SCENE_OUT}/${SCENE_NAME}-attachment-tray.png" "${EDITOR_ROW_CROP}")"
+if [ "${TRAY_ROW}" -le "${CLEARED}" ]; then
+	abandon_take "the-card-took-the-editor-row" \
+		"the editor's own line differs by ${TRAY_ROW} pixels with the card attached and ${CLEARED} without it, so the reading below is not reading the tray"
+fi
+echo "scene: the tray drew ${TRAY_DREW}px, the prompt drew ${PROMPT_DREW}px," \
+	"the editor row held ${TRAY_ROW}px of card and came back within ${CLEARED}px" >&2
 
 # ─── 4. What The Host Received ───────────────────────────────────────────────
 # Asked last, on a connection of its own. The bytes are the reading: a host
@@ -279,3 +284,70 @@ then
 	abandon_take "the-host-received-the-image" \
 		"no session the host lists holds an image block of the bytes that were pasted, so the card the frames photograph reached the window and not the prompt"
 fi
+
+# ─── 5. A Card The Model Will Not Take ───────────────────────────────────────
+# The frames above ran with no model selected, which is the state the host
+# reports a session in until one is picked, and a card cannot state a refusal
+# without a model to name. So a model is selected here -- every row seeded for
+# these takes is a local text model, none of which declares an image input --
+# and the same clipboard is pasted again. The card then says
+# `Not accepted by <model>` where the size goes, in the accent, and keeps the
+# attachment: a refusal is a statement about the model, not a rejection of the
+# file. Nothing is sent from this state, so the turn the frames above proved is
+# not re-run against a model that would refuse its image.
+#
+# This is the frame the card's own measure is read from: the refusal is the
+# longer of the two captions and names a model whose display name is longer
+# than its id, so a caption that cannot be cut inside the card draws past it.
+REFUSED_MIN_PIXELS=300
+CHIP_ROW_CROP="${COMPOSER_CARD_W}x24+${COMPOSER_CARD_LEFT}+$(( MODEL_CHIP_Y - 12 ))"
+
+BEFORE_MODEL="${PROBE_DIR}/attachment-before-model.png"
+probe_frame "${BEFORE_MODEL}"
+k "ctrl+shift+m"
+pause 1.0
+k "Return"
+MODEL_DREW=0
+for _ in $(seq 1 40); do
+	MODEL_DREW="$(screen_differs_from_frame_pixels_at "${BEFORE_MODEL}" "${CHIP_ROW_CROP}")"
+	if [ "${MODEL_DREW}" -ge 150 ]; then
+		break
+	fi
+	pause 0.25
+done
+if [ "${MODEL_DREW}" -lt 150 ]; then
+	abandon_take "the-model-was-selected" \
+		"the footer's model row changed ${MODEL_DREW} pixels after the picker was opened and its selection taken, under the 150 a model's name inks over the words the row holds without one, so no model was selected and a card has none to refuse for"
+fi
+
+type_prompt "Describe what this clip shows."
+pause 0.6
+BEFORE_REFUSED="${PROBE_DIR}/attachment-before-refused.png"
+probe_frame "${BEFORE_REFUSED}"
+k "ctrl+v"
+REFUSED_DREW=0
+for _ in $(seq 1 40); do
+	REFUSED_DREW="$(screen_differs_from_frame_pixels_at "${BEFORE_REFUSED}" "${EDITOR_ROW_CROP}")"
+	if [ "${REFUSED_DREW}" -ge "${TRAY_MIN_PIXELS}" ]; then
+		break
+	fi
+	pause 0.25
+done
+if [ "${REFUSED_DREW}" -lt "${TRAY_MIN_PIXELS}" ]; then
+	abandon_take "the-paste-reached-the-tray-again" \
+		"the editor's own line changed ${REFUSED_DREW} pixels after the second paste, under the ${TRAY_MIN_PIXELS} an attachment card inks, so the clipboard image reached no tray"
+fi
+move_px "${COMPOSER_X}" "${COMPOSER_Y}"
+pause 0.8
+shot attachment-refused
+
+# The refusal against the size caption the first card drew: same clipboard,
+# same place, one card each, so what differs is the caption and the accent the
+# refused card's edge takes.
+REFUSED_SAYS_SO="$(frames_differ_pixels_at "${SCENE_OUT}/${SCENE_NAME}-attachment-tray.png" "${SCENE_OUT}/${SCENE_NAME}-attachment-refused.png" "${EDITOR_ROW_CROP}")"
+if [ "${REFUSED_SAYS_SO}" -lt "${REFUSED_MIN_PIXELS}" ]; then
+	abandon_take "the-card-states-the-refusal" \
+		"the card row differs by ${REFUSED_SAYS_SO} pixels from the one drawn under no model, under the ${REFUSED_MIN_PIXELS} a refusal caption and an accent edge ink, so the card drew a size where it owed a refusal"
+fi
+echo "scene: the model row drew ${MODEL_DREW}px, the refused card drew ${REFUSED_DREW}px" \
+	"and states its refusal in ${REFUSED_SAYS_SO}px the accepted card does not" >&2
