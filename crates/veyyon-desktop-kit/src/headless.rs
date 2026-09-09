@@ -2,11 +2,14 @@
 //! context that draws through it.
 //!
 //! `gpui_platform::current_headless_renderer` builds its wgpu instance over
-//! the Vulkan and GL backends together. On Linux the GL backend is EGL, whose
-//! initialisation in a process with no display reaches the display driver for
-//! nothing: no offscreen frame draws through GL, so the instance here is built
-//! over Vulkan alone. macOS draws through Metal and keeps the platform's
-//! renderer.
+//! the Vulkan and GL backends together. On Linux the GL backend is EGL, and a
+//! process with no display draws no offscreen frame through it: with
+//! `WGPU_BACKEND=gl`, 25 of 25 runs of the `veyyon-gpui` headless surface
+//! suite report no renderer at all, so every offscreen render returns an
+//! empty frame. Vulkan is the only backend that serves one, so the instance
+//! here is built over Vulkan alone, and the GL arm is initialisation for a
+//! backend that cannot draw. macOS draws through Metal and keeps the
+//! platform's renderer.
 //!
 //! One renderer serves every window a context opens: the device is built once
 //! per context rather than once per window, and the windows share one atlas.
@@ -65,11 +68,11 @@ impl PlatformHeadlessRenderer for SharedRenderer {
 
 /// The text system every headless context shapes through.
 ///
-/// One font system serves the whole process. Building one reads the system
-/// font database through fontconfig and freetype, which is the other half of
-/// the per-context cost measured on the process-wide device below. The
-/// families it exposes do not change between contexts and nothing here
-/// registers fonts of its own, so the database is read once.
+/// One font system serves the whole process. The families it exposes do not
+/// change between contexts and nothing here registers fonts of its own, so
+/// reading the system font database again per context buys nothing: on the
+/// two suites measured below it costs 0.04-0.07s per pass, against the 0.55s
+/// a device per context costs.
 static TEXT_SYSTEM: std::sync::LazyLock<Arc<dyn veyyon_gpui::PlatformTextSystem>> =
 	std::sync::LazyLock::new(|| Arc::new(gpui_wgpu::CosmicTextSystem::new("sans-serif")));
 
@@ -96,11 +99,12 @@ fn platform_renderer() -> Result<Box<dyn PlatformHeadlessRenderer>, NoOffscreenR
 ///
 /// One device serves the whole process, built on first use and kept for the
 /// process's life. A test binary opens a headless context per test, and
-/// building a device per context costs more than the frames do: a six-test
-/// route binary takes 6.93s per pass with a device and a font database per
-/// context, and 3.07-3.21s with one of each per process. The render target
-/// and the sprite atlas stay per renderer, so no glyph or texture crosses
-/// from one context into the next.
+/// building a device per context costs more than the frames do: the
+/// seven-test editor-scroll suite runs a warm pass in 0.45-0.50s with one
+/// device per process and 1.03-1.09s with one per context, and the five-test
+/// masked-field suite in 0.41s against 0.98s. The render target and the
+/// sprite atlas stay per renderer, so no glyph or texture crosses from one
+/// context into the next.
 #[cfg(not(target_os = "macos"))]
 static DEVICE: std::sync::LazyLock<Result<gpui_wgpu::WgpuContext, NoOffscreenRenderer>> =
 	std::sync::LazyLock::new(|| {
