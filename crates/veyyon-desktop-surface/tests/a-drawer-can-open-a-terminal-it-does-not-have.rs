@@ -1,21 +1,24 @@
 //! WHY: the drawer's only route to a terminal was opening the drawer. The
 //! window turns `SetDrawer { open: true }` into an attach of the newest
 //! running terminal, or a create when there is none, and it runs that once.
-//! Closing the last terminal therefore left the drawer open on an empty strip
-//! captioned `Terminal` with no control on it at all: the way back to a
-//! terminal was to close the drawer and open it again.
+//! Closing the last terminal therefore left the drawer standing open with no
+//! route to another: an empty strip captioned `Terminal` with no control on
+//! it at all, or, on a host that supervises processes, the process list and
+//! its `Start`, which is the state the live host leaves since it offers that
+//! tab whenever the capability is declared. The way back to a terminal was
+//! to close the drawer and open it again.
 //! `SurfaceId::TerminalCreateButton` was gated for a control the window drew
 //! nowhere.
 //!
 //! CLASS CLOSED: every tab the drawer can show states what it offers, pinned
-//! as the whole chrome row by exact equality, and the one state with no
-//! tenant to work with -- the empty strip -- offers the route to one. The
-//! sweep matches over `DrawerTab` exhaustively, so a new tenant is red until
-//! its row is recorded, and reads the row off the frame rather than a
-//! vocabulary list, so a control added to the chrome fails here until it is
-//! stated. Pinning the rows is also what holds the §6.6 ceiling this row
-//! authors: five interactive elements, which a strip carrying a tenant plus
-//! `Clear`, `Restart` and `Close` already spends.
+//! as the whole chrome row by exact equality, and every row that holds no
+//! terminal offers the route to one. The sweep matches over `DrawerTab`
+//! exhaustively, so a new tenant is red until its row is recorded, and reads
+//! the row off the frame rather than a vocabulary list, so a control added to
+//! the chrome fails here until it is stated. Pinning the rows is also what
+//! holds the §6.6 ceiling this row authors: five interactive elements, which
+//! a strip carrying a terminal plus `Clear`, `Restart` and `Close` already
+//! spends.
 //!
 //! The press is the drawn `New`, located by the word the frame recorded and
 //! pressed at its centre, so a control wired to nothing fails here rather
@@ -24,11 +27,9 @@
 //! GAPS: it drives the window, not the host. That `CreateTerminal` opens a
 //! terminal is the host's contract, and that the intent reaches that action
 //! is `an-intent-maps-to-the-actions-the-host-answers`. The window asks for a
-//! terminal only where it has none, so a second one beside a terminal already
-//! drawn is the host's to create and the strip's to draw; nothing here offers
-//! it. A process log tab carries no control of its own either: its process is
-//! worked from the row it has on the list tab, which is another suite's
-//! subject.
+//! terminal only where the strip holds none, so a second one beside a
+//! terminal already drawn is the host's to create and the strip's to draw;
+//! nothing here offers it.
 
 use std::path::Path;
 
@@ -207,7 +208,7 @@ fn every_tab_the_drawer_can_show_states_what_it_offers() {
 	// recorded rather than inheriting whatever the last arm drew. Each row is
 	// also the §6.6 count for this surface: five interactive elements, which
 	// a tab plus `Clear`, `Restart` and `Close` already spends, so `New` is
-	// drawn where there is no tenant instead of beside them.
+	// drawn on the rows that hold no terminal instead of beside them.
 	for tab in
 		[terminal("bash"), DrawerTab::Processes, DrawerTab::Process { name: "web".to_owned() }]
 	{
@@ -218,15 +219,17 @@ fn every_tab_the_drawer_can_show_states_what_it_offers() {
 				])
 			},
 			DrawerTab::Processes => {
-				(drawer_state(vec![tab.clone()], 0), "Processes", vec!["Processes", "Start"])
+				(drawer_state(vec![tab.clone()], 0), "Processes", vec!["Processes", "New", "Start"])
 			},
 			// A log tab draws its process's output. Stop, Restart and Send
 			// are on that process's row on the list tab, so the chrome
-			// carries the two tabs and no control.
+			// carries the two tabs and the route to the terminal this strip
+			// holds none of.
 			DrawerTab::Process { name } => {
 				(drawer_state(vec![DrawerTab::Processes, tab.clone()], 1), name.as_str(), vec![
 					"Processes",
 					"web",
+					"New",
 				])
 			},
 		};
