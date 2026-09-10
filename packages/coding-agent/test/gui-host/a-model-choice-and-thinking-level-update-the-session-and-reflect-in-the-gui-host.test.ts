@@ -116,7 +116,9 @@ describe("model selection and thinking level gui-host behaviour", () => {
 					context_window: 8192,
 					max_output: 512,
 				});
-				expect(models.current).toBeNull();
+				// The profile's provider is the only one a turn could run, so it is
+				// the model in effect before anything has been selected.
+				expect(models.current).toEqual({ provider: "fixture", id: "profile-model" });
 				const selected = await client.request(2, {
 					SelectModel: { provider: "fixture", model: "profile-model" },
 				});
