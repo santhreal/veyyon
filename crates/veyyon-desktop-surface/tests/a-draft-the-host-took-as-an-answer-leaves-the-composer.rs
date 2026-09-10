@@ -31,7 +31,9 @@ mod support;
 use composer_layout::{TurnPhaseDiscriminant, build_state_for_phase, render_session};
 use support::intent_samples::every_intent;
 use veyyon_desktop_model::RequestId;
+use veyyon_desktop_scene::Captured;
 use veyyon_desktop_surface::{Intent, IntentDiscriminants, composer::TurnPhase, fixture};
+use veyyon_gpui::{Point, px};
 
 /// The draft every case starts with, and the payload each carrier is built to
 /// carry, so a cleared composer is only ever explained by the intent under
@@ -56,8 +58,10 @@ fn carries_the_draft(intent: &Intent) -> bool {
 		return true;
 	}
 	match intent {
-		// The card's own revise row answers with no refinement, so a draft
-		// beside it is text the operator is still writing.
+		// A plan answers with the composer's text or with nothing, and which
+		// of the two it is decides whether the draft went out with it: both
+		// the composer's own control and the card's revise row answer with
+		// the draft when there is one.
 		Intent::Plan { feedback, .. } => !feedback.trim().is_empty(),
 		_ => false,
 	}
@@ -162,4 +166,41 @@ fn refining_a_plan_from_the_composer_sends_the_draft_and_then_gives_it_up() {
 			})
 			.expect("refined plan");
 	});
+}
+
+#[test]
+fn revising_from_the_card_sends_the_same_refinement_the_composer_would() {
+	let (state, has_text) = build_state_for_phase(TurnPhaseDiscriminant::PlanPendingWithText);
+	assert!(has_text, "a refinement is the phase that has a draft");
+	render_session(state, Some(DRAFT), 1440, 900, |session| {
+		let captured = session.frame().expect("frame renders");
+		let at = drawn_once(&captured, "Revise");
+		session
+			.click(Point { x: px(at.x), y: px(at.y) })
+			.expect("press the row the card drew");
+		let intents = session
+			.update(|view, _window, _cx| view.drain_intents())
+			.expect("intents drain");
+		assert_eq!(
+			intents,
+			vec![Intent::Plan { card: 0, accepted: false, feedback: DRAFT.to_owned() }],
+			"the row beside the draft answers with it, as the composer's own control does",
+		);
+	});
+}
+
+/// Where the frame drew `label`, as the centre of the one run whose text is
+/// exactly it. A label drawn twice is refused rather than guessed at.
+fn drawn_once(captured: &Captured, label: &str) -> Point<f32> {
+	let runs: Vec<Point<f32>> = captured
+		.text_runs
+		.iter()
+		.filter(|run| run.text.as_ref().trim() == label)
+		.map(|run| Point {
+			x: f32::from(run.bounds.origin.x) + f32::from(run.bounds.size.width) / 2.0,
+			y: f32::from(run.bounds.origin.y) + f32::from(run.bounds.size.height) / 2.0,
+		})
+		.collect();
+	assert_eq!(runs.len(), 1, "the frame draws `{label}` once, drew {}", runs.len());
+	runs[0]
 }

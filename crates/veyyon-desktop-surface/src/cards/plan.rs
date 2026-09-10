@@ -87,14 +87,7 @@ pub(super) fn plan(
 		.child(markdown)
 		.child(answers(
 			&[
-				(
-					"Revise",
-					Choice::Fixed(Box::new(Intent::Plan {
-						card,
-						accepted: false,
-						feedback: String::new(),
-					})),
-				),
+				("Revise", Choice::Refine { card }),
 				(
 					"Accept",
 					Choice::Fixed(Box::new(Intent::Plan {

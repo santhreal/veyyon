@@ -11,12 +11,16 @@ use crate::{ShellView, intent::Intent};
 
 /// What clicking an answer dispatches.
 ///
-/// Most answers are decided when the card is drawn. A reply is not: its text
-/// is whatever the composer holds at the click, so it is built then.
+/// Most answers are decided when the card is drawn. The two that answer with
+/// the operator's own words are not: a reply and a plan's refinement are
+/// whatever the composer holds at the click, so each is built then. A card
+/// row that answered with the text it was drawn beside would send the words
+/// the operator wrote before them.
 #[derive(Clone)]
 pub(super) enum Choice {
 	Fixed(Box<Intent>),
 	Reply { card: usize },
+	Refine { card: usize },
 }
 
 impl Choice {
@@ -25,6 +29,11 @@ impl Choice {
 			Self::Fixed(intent) => intent.as_ref().clone(),
 			Self::Reply { card } => {
 				Intent::Reply { card: *card, text: view.composer_text().to_string() }
+			},
+			Self::Refine { card } => Intent::Plan {
+				card:     *card,
+				accepted: false,
+				feedback: view.composer_text().to_string(),
 			},
 		}
 	}
