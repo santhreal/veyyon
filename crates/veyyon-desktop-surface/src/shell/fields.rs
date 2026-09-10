@@ -34,6 +34,8 @@ pub enum FieldKey {
 	Keybinding(String),
 	/// The description of the task the Agents page spawns.
 	TaskPrompt,
+	/// The command line the drawer's process supervisor starts.
+	ProcessCommand,
 }
 
 /// What a field's submit sends.
@@ -52,6 +54,8 @@ enum Commit {
 	Keybinding,
 	/// The text is the task a background subagent is given.
 	Task,
+	/// The text is the command line a supervised process is started from.
+	ProcessStart,
 }
 
 /// A retained field: its editor, and what a submit of it sends.
@@ -110,6 +114,13 @@ impl ShellView {
 	/// it. The text is the task, and a submit empties the field.
 	pub fn submit_task_prompt(&mut self, cx: &mut Context<Self>) {
 		self.commit_field(&FieldKey::TaskPrompt, cx);
+	}
+
+	/// Starts the process the drawer's command field states, for the `Start`
+	/// beside it. The command line is split into the application and its
+	/// arguments, and a submit empties the field.
+	pub fn submit_process_command(&mut self, cx: &mut Context<Self>) {
+		self.commit_field(&FieldKey::ProcessCommand, cx);
 	}
 
 	/// The editor a drawn field registered under `key`, without creating one:
@@ -259,6 +270,20 @@ impl ShellView {
 				self.clear_refusal();
 				self.dispatch(Intent::SpawnTask(task), cx);
 			},
+			(Commit::ProcessStart, FieldKey::ProcessCommand) => {
+				let line = editor.read(cx).text().to_owned();
+				// §9.3: an empty command is refused where it was typed. The
+				// host answers one with `INVALID_ARGUMENTS`, so sending it
+				// would spend a round trip to learn what the field already
+				// states.
+				let Some((command, args)) = split_command_line(&line) else {
+					self.refuse_field(cx, "A process needs a command to run");
+					return;
+				};
+				editor.update(cx, |editor, cx| editor.set_text(String::new(), cx));
+				self.clear_refusal();
+				self.dispatch(Intent::ProcessStart { command, args }, cx);
+			},
 			_ => {},
 		}
 	}
@@ -299,7 +324,7 @@ impl ShellView {
 					.unwrap_or_default();
 				editor.update(cx, |editor, cx| editor.set_text(initial, cx));
 			},
-			FieldKey::TaskPrompt => {
+			FieldKey::TaskPrompt | FieldKey::ProcessCommand => {
 				editor.update(cx, |editor, cx| editor.set_text(String::new(), cx));
 			},
 		}
@@ -353,4 +378,45 @@ fn parse_chords(text: &str) -> Vec<String> {
 		.filter(|chord| Keystroke::parse(chord).is_ok_and(|stroke| !stroke.key.is_empty()))
 		.map(str::to_owned)
 		.collect()
+}
+
+/// The application and arguments a command line states, or `None` when it
+/// states no application.
+///
+/// The host spawns the application directly rather than through a shell, so a
+/// line is split on whitespace outside quotes and each quoted run is one
+/// argument: `bun run dev` is three tokens, and `git commit -m "one two"`
+/// carries the message as one. A quote nobody closed ends at the end of the
+/// line, which is what the operator meant by typing it.
+fn split_command_line(line: &str) -> Option<(String, Vec<String>)> {
+	let mut tokens: Vec<String> = Vec::new();
+	let mut token = String::new();
+	let mut started = false;
+	let mut quote: Option<char> = None;
+	for ch in line.chars() {
+		match quote {
+			Some(open) if ch == open => quote = None,
+			Some(_) => token.push(ch),
+			None if ch == '"' || ch == '\'' => {
+				quote = Some(ch);
+				started = true;
+			},
+			None if ch.is_whitespace() => {
+				if started {
+					tokens.push(std::mem::take(&mut token));
+					started = false;
+				}
+			},
+			None => {
+				token.push(ch);
+				started = true;
+			},
+		}
+	}
+	if started {
+		tokens.push(token);
+	}
+	let mut tokens = tokens.into_iter();
+	let command = tokens.next().filter(|token| !token.is_empty())?;
+	Some((command, tokens.collect()))
 }

@@ -8,11 +8,14 @@ mod chrome;
 mod content;
 mod process_list;
 
-use veyyon_desktop_kit::{ColorRole, MonoSizeStep, MonoText, SpacingStep, TextWeight, TokenSet};
+use veyyon_desktop_kit::{
+	ColorRole, MonoSizeStep, MonoText, SpacingStep, TextWeight, TokenSet,
+	input::{Editor, TextField},
+};
 use veyyon_desktop_model::{SessionId, SurfaceId};
 use veyyon_desktop_tokens::{DrawerPlacement, PanelsSurfaceTokens};
 use veyyon_gpui::{
-	Context, Hsla, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
+	Context, Entity, Hsla, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
 	StatefulInteractiveElement, Styled, div, px, rgb,
 };
 
@@ -102,6 +105,7 @@ pub fn terminal_drawer(
 	height: f32,
 	controls: &ControlStates,
 	session_id: u64,
+	command_field: Option<&Entity<Editor>>,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
 	laid_out: &LaidOut,
@@ -112,6 +116,20 @@ pub fn terminal_drawer(
 			.flex_1()
 			.w_full()
 			.overflow_hidden()
+			.flex()
+			.flex_col()
+			// The supervisor starts what this field states, so the tab that
+			// offers `Start` is the tab that offers somewhere to say what to
+			// start: without it the control can only ask the host to run
+			// nothing (§5.12).
+			.children(command_field.map(|editor| {
+				div()
+					.w_full()
+					.flex_shrink_0()
+					.px(tokens.spacing(SpacingStep::S3))
+					.pt(tokens.spacing(SpacingStep::S2))
+					.child(TextField::new("process-command-field", editor.clone()))
+			}))
 			.child(process_list(&content.processes, controls, session_id, geometry, tokens, cx))
 	} else {
 		div()

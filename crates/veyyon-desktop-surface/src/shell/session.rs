@@ -35,6 +35,7 @@ use crate::{
 pub fn session_surface(
 	state: &ShellState,
 	editor: Option<&Entity<Editor>>,
+	process_command: Option<&Entity<Editor>>,
 	local: ComposerLocal<'_>,
 	has_text: bool,
 	widths: &ShellWidths,
@@ -242,6 +243,7 @@ pub fn session_surface(
 						widths.drawer.height_px,
 						&state.controls,
 						state.current_id,
+						process_command,
 						&surface.panels,
 						tokens,
 						laid_out,
@@ -268,6 +270,7 @@ pub fn session_surface(
 			(widths.drawer.height_px - grip).max(0.0),
 			&state.controls,
 			state.current_id,
+			process_command,
 			&surface.panels,
 			tokens,
 			laid_out,

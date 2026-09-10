@@ -56,7 +56,11 @@ pub fn project_drawer<S: std::hash::BuildHasher>(
 		tabs.push(DrawerTab::Terminal { id: term.id.clone(), title });
 	}
 
-	if !domains.processes.is_empty() {
+	// §5.12: the supervisor's tab is offered on the capability, not on the
+	// list. A tab that appears only once something is running cannot be the
+	// tab the first process is started from, and the list states its own
+	// emptiness.
+	if matches!(capabilities.get(Capability::ProcessSupervisor), CapabilityStatus::Available) {
 		tabs.push(DrawerTab::Processes);
 	}
 

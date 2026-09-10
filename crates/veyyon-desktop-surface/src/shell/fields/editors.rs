@@ -139,6 +139,24 @@ impl ShellView {
 		)
 	}
 
+	/// The retained editor for the command a supervised process is started
+	/// from. Nothing the host reports replaces it: the supervisor lists what
+	/// is running, not what someone is about to type, and a submit empties
+	/// the field.
+	pub fn process_command_field_editor(&mut self, cx: &mut Context<Self>) -> Entity<Editor> {
+		self.field_editor(
+			FieldSpec {
+				key:         FieldKey::ProcessCommand,
+				commit:      Commit::ProcessStart,
+				placeholder: "Command to supervise, as in bun run dev".into(),
+				mask:        false,
+				multiline:   false,
+				initial:     String::new(),
+			},
+			cx,
+		)
+	}
+
 	/// The editors the settings pages draw their own fields from, created
 	/// here because a page renders from a shared view that cannot create one.
 	pub fn field_slots(&mut self, window: &Window, cx: &mut Context<Self>) -> FieldSlots {

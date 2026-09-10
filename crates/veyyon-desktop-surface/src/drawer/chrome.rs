@@ -191,8 +191,11 @@ pub fn drawer_chrome(
 		let (start_op, _, start_allowed) = availability_style(&start_av, tokens);
 		let mut start_btn = Button::new("process-start-btn", "Start").variant(ButtonVariant::Ghost);
 		if start_allowed {
+			// The command is what the tab's field states. An empty field is
+			// refused where it was typed rather than sent as a request to run
+			// nothing, which is all the host can answer to it (§5.12).
 			start_btn = start_btn.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
-				view.dispatch(Intent::ProcessStart { command: String::new(), args: Vec::new() }, cx);
+				view.submit_process_command(cx);
 			}));
 		} else {
 			start_btn = start_btn.state(InteractiveState::Disabled);
