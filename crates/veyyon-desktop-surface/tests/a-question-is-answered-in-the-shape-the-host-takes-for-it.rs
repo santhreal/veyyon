@@ -36,8 +36,8 @@
 //! It also cannot see how the control is PAINTED while it carries no answer.
 //! The headless capture records fill, border and text, not the opacity and
 //! cursor that dim a control with an empty draft, so a control that acts
-//! correctly and looks live is caught by the native capture of the scene
-//! rather than here.
+//! correctly and looks live is caught by the native capture in
+//! `proof/scenes/desktop-question-answer.sh` rather than here.
 
 #[path = "support/composer-layout/mod.rs"]
 mod composer_layout;

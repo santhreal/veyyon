@@ -23,6 +23,15 @@
 //! `control-availability-and-contextual-statuses-project-from-capabilities.rs`;
 //! and the paint of a control carrying no answer, since the headless capture
 //! records fill, border and text but not the opacity and cursor that dim it.
+//!
+//! That paint is the one mutation this suite leaves green: making the answer
+//! control actionable on an empty draft. It changes nothing else, because the
+//! payload is guarded a second time where it is built -- the `Answer` arm of
+//! `submit_primary_turn_action` matches on `has_text`, so an empty draft
+//! raises no intent whichever way the control is painted -- and for a question
+//! that offers options the projection already holds the control at the
+//! unavailable opacity. Recorded in `proof/scenes/desktop-question-answer.sh`,
+//! whose frames show that control dim beside an open question.
 
 #[path = "support/composer-layout/mod.rs"]
 mod composer_layout;
