@@ -249,7 +249,7 @@ pub fn bind_global_keys(root: Div, cx: &Context<ShellView>) -> Div {
 pub fn bind_composer_keys(composer: Div, cx: &Context<ShellView>) -> Div {
 	composer
 		.on_action(cx.listener(|view, _: &AbortTurn, _window, cx| {
-			if view.state().turn.is_running() {
+			if view.state().turn.is_stoppable() {
 				view.dispatch(Intent::AbortTurn, cx);
 			} else {
 				cx.propagate();

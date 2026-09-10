@@ -53,6 +53,18 @@ impl TurnPhase {
 		)
 	}
 
+	/// Whether a stop has something to reach: a turn that is generating, or one
+	/// parked on a decision nobody has answered.
+	///
+	/// A turn waiting for an approval is mid-turn -- the agent cannot proceed
+	/// and cannot end -- so hiding the stop while a card is up leaves the
+	/// operator with no way out of the state that most needs one. `Idle` is the
+	/// only phase with no turn to stop.
+	#[must_use]
+	pub const fn is_stoppable(&self) -> bool {
+		!matches!(self, Self::Idle)
+	}
+
 	/// The control the composer's primary action is, for gating and error
 	/// routing: the send, steer or queue button, or the first pending card's
 	/// answer button.

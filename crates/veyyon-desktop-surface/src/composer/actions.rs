@@ -61,9 +61,10 @@ pub fn turn_action_controls(
 		.gap(tokens.spacing(SpacingStep::S2))
 		.flex_shrink_0();
 
-	// AbortTurn is an isolated 28px control, shown only while actively running
-	// (§5.4).
-	if turn.is_running() {
+	// AbortTurn is an isolated 28px control, shown while a turn is in flight
+	// (§5.4) -- generating, or parked on a decision, which is a turn that has
+	// not ended and is exactly where an operator reaches for the stop.
+	if turn.is_stoppable() {
 		let abort_id = SurfaceId::ComposerAbortButton(sid.clone());
 		let cancel_tool_id = SurfaceId::ComposerCancelToolButton(sid, "bash".to_string());
 		let cancel_tool_av = controls.availability(&cancel_tool_id);
