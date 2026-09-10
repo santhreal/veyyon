@@ -6,7 +6,9 @@
 //! setting, binding or session the host adds is gated on the frame that draws
 //! it.
 
-use veyyon_desktop_model::{HostActionKind, SessionId, Store, SurfaceId};
+use veyyon_desktop_model::{
+	DiagnosticSource, HostActionKind, SessionId, Store, SurfaceId, diagnostic_sources,
+};
 
 use crate::project::SessionIndex;
 
@@ -88,6 +90,9 @@ pub fn gated_controls(
 	let mut controls = vec![
 		(SurfaceId::NewSessionButton, HostActionKind::CreateSession),
 		(SurfaceId::ConnectionRetryButton, HostActionKind::RetryConnection),
+		// The selector reads the catalogue's gate, which is the capability a
+		// host without themes withholds; a refused selection is stated on it
+		// by `settings_surface_for_action`, which the gate does not decide.
 		(SurfaceId::ThemeSelector, HostActionKind::LoadThemes),
 		(SurfaceId::DiagnosticRefreshButton, HostActionKind::RefreshDiagnostics),
 		(SurfaceId::UsageRefreshButton, HostActionKind::GetUsage),
@@ -157,6 +162,19 @@ pub fn gated_controls(
 	controls.extend(domains.mcp.iter().map(|server| {
 		(SurfaceId::McpEnableToggle(server.name.clone()), HostActionKind::SetMcpEnabled)
 	}));
+	// A source the host reports in error draws its own `Retry`, which reads
+	// its own gate: one source re-running holds that row, not the page.
+	controls.extend(
+		diagnostic_sources(domains.diagnostics.as_ref())
+			.into_iter()
+			.filter(DiagnosticSource::offers_retry)
+			.map(|source| {
+				(
+					SurfaceId::DiagnosticRetrySourceButton(source.name.to_owned()),
+					HostActionKind::RetryDiagnosticSource,
+				)
+			}),
+	);
 	if let Some(row_id) = active_row {
 		let row = composer_row(Some(row_id));
 		controls.extend(domains.terminals.iter().flat_map(|term| {

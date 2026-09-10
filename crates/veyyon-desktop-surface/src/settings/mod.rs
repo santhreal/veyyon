@@ -13,7 +13,7 @@ use serde_json::Value;
 use veyyon_desktop_kit::{ColorRole, RadiusStep, SpacingStep, TextRamp, TextWeight, TokenSet};
 use veyyon_desktop_model::{
 	AgentView, AuthFlowView, ContextBreakdownView, KeybindingView, McpServerView, ProviderView,
-	SettingEntry, SettingsView, ThemesView, UsageTotals,
+	SettingEntry, SettingsView, SurfaceId, ThemesView, UsageTotals,
 };
 use veyyon_desktop_tokens::SettingsSurfaceTokens;
 use veyyon_gpui::{
@@ -26,7 +26,31 @@ pub use self::{
 	pages::*,
 	row::*,
 };
-use crate::{Intent, ShellView, controls::ControlStates, shell::fields::FieldSlots};
+use crate::{
+	Intent, ShellView,
+	controls::{ControlError, ControlStates, error_hairline},
+	shell::fields::FieldSlots,
+};
+
+/// The failure the host sent for a control the settings sheet draws, with the
+/// control it landed on.
+///
+/// Every page of the sheet sends requests -- a setting written, a setting
+/// reset, a binding rebound, a theme selected, a server enabled, a source
+/// re-run, a task spawned, a provider signed into -- and the refusal the
+/// host answers with lands on the control that sent it. The sheet stated
+/// none of them, so a setting the host would not write was reported on the
+/// window's line, above the sheet and away from the field, and a sign-in it
+/// refused reached nothing that draws at all. The surface travels with the
+/// message because a retry sends the request that failed there, which the
+/// surface id is the key to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsFailure {
+	/// The control the failure landed on, and the key to the request it sent.
+	pub surface: SurfaceId,
+	/// What the host said, and whether it offered to be asked again.
+	pub error:   ControlError,
+}
 
 /// Runtime view model for the settings overlay (§5.9).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,6 +84,9 @@ pub struct SettingsState {
 	pub selected_row: Option<usize>,
 	/// Focused command destination; absent for the complete settings dialog.
 	pub route:        Option<crate::navigation::SurfaceRoute>,
+	/// The host's failure for one of the sheet's own controls, restated every
+	/// projection.
+	pub failure:      Option<SettingsFailure>,
 }
 
 impl Default for SettingsState {
@@ -87,6 +114,7 @@ impl SettingsState {
 			reloading: false,
 			selected_row: None,
 			route: None,
+			failure: None,
 		}
 	}
 
@@ -103,6 +131,30 @@ impl SettingsState {
 	pub fn entry(&self, key: &str) -> Option<&SettingEntry> {
 		self.settings.get(key)
 	}
+}
+
+/// The host's sentence for whatever the sheet last asked it for, drawn above
+/// the page it was asked from, with the `Retry` that sends the refused
+/// request again and the `Dismiss` that clears it (§4.4).
+///
+/// One row for every page, because the sheet is one surface the operator is
+/// looking at and a request registers under one control. What lands here is
+/// resolved every projection, so an error the operator dismissed is gone
+/// from the next frame.
+#[must_use]
+pub fn settings_failure_row(
+	state: &SettingsState,
+	tokens: &TokenSet,
+	cx: &Context<ShellView>,
+) -> Option<veyyon_gpui::Stateful<veyyon_gpui::Div>> {
+	state.failure.as_ref().map(|failure| {
+		div()
+			.id("settings-failure")
+			.flex_shrink_0()
+			.w_full()
+			.pb(tokens.spacing(SpacingStep::S2))
+			.child(error_hairline(&failure.error, failure.surface.clone(), tokens, cx))
+	})
 }
 
 /// Renders the complete settings overlay dialog with sidebar and page contents
@@ -257,6 +309,7 @@ pub fn settings_surface(
 				.child(state.page.description()),
 		);
 	content = content.child(header);
+	content = content.children(settings_failure_row(state, tokens, cx));
 
 	// Page body rows container.
 	let body = render_page_body(state, list_state, fields, controls, geometry, tokens, cx);

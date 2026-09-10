@@ -17,7 +17,7 @@ use veyyon_gpui::{
 
 use crate::{
 	Intent, ShellView,
-	controls::{ControlStates, hairline_for, hairline_for_weak},
+	controls::ControlStates,
 	settings::{
 		SettingsState,
 		body::general_control::setting_control,
@@ -146,8 +146,8 @@ pub fn render_general_page(
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> Div {
-	let general_error =
-		hairline_for(controls, &SurfaceId::SettingsField("general".to_string()), tokens, cx);
+	// The sheet states the refusal of any field it draws in one row above the
+	// page, which a virtualized list cannot scroll out of sight (§4.4).
 
 	if state.settings.is_empty() {
 		return div()
@@ -156,7 +156,6 @@ pub fn render_general_page(
 			.flex()
 			.flex_col()
 			.gap(px(geometry.row_gap))
-			.children(general_error)
 			.child(empty_state_row("No settings reported by host.", geometry, tokens));
 	}
 
@@ -170,7 +169,6 @@ pub fn render_general_page(
 			.flex()
 			.flex_col()
 			.gap(px(geometry.row_gap))
-			.children(general_error)
 			.child(empty_state_row("No configurable settings available.", geometry, tokens));
 	}
 
@@ -230,9 +228,6 @@ pub fn render_general_page(
 			None
 		};
 
-		let field_error =
-			hairline_for_weak(&controls_copy, &field_id, &tokens_copy, Some(weak_view.clone()));
-
 		let mut row_container = div()
 			.w_full()
 			.flex()
@@ -246,8 +241,7 @@ pub fn render_general_page(
 				&av,
 				&geometry_copy,
 				&tokens_copy,
-			))
-			.children(field_error);
+			));
 
 		if item_ix > 0 {
 			row_container = row_container.mt(px(geometry_copy.row_gap));
@@ -264,6 +258,5 @@ pub fn render_general_page(
 		.flex()
 		.flex_col()
 		.overflow_hidden()
-		.children(general_error)
 		.child(div().flex_1().min_h_0().child(list_el))
 }

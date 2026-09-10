@@ -52,6 +52,9 @@ pub fn surface_for_action(
 	if let Some(surface) = drawer_surface_for_action(action, &row) {
 		return surface;
 	}
+	if let Some(surface) = settings_surface_for_action(intent, action) {
+		return surface;
+	}
 	if let Some(session) = active_session {
 		if let Some(surface) = super::contextual_surface_for_action(kind, session) {
 			return surface;
@@ -64,13 +67,6 @@ pub fn surface_for_action(
 	}
 	match intent {
 		Intent::RetryConnection => SurfaceId::ConnectionRetryButton,
-		Intent::StartProviderAuth(provider) => SurfaceId::ProviderAuthStartButton(provider.clone()),
-		Intent::SubmitAuthSecret { provider, .. } => {
-			SurfaceId::ProviderAuthSecretSubmit(provider.clone())
-		},
-		Intent::OpenAuthUrl(url) => SurfaceId::ProviderAuthUrlOpen(url.clone()),
-		Intent::CancelAuthFlow => SurfaceId::ProviderAuthCancelButton(String::new()),
-		Intent::RetryAuthFlow => SurfaceId::ProviderAuthRetryButton(String::new()),
 		Intent::RetryControl(id) => id.clone(),
 		Intent::SelectSession(id) => SurfaceId::QueueSessionRow(SessionId(id.to_string())),
 		Intent::DeleteSession(id) => SurfaceId::QueueDeleteButton(SessionId(id.to_string())),
@@ -98,9 +94,68 @@ pub fn surface_for_action(
 				.or_else(|| active_session.cloned())
 				.unwrap_or_else(|| SessionId("0".into())),
 		),
-		Intent::ClearOutput => SurfaceId::OutputClearButton,
 		_ => SurfaceId::GlobalTitlebarLine,
 	}
+}
+
+/// The settings-sheet control a request belongs to, or `None` for a request
+/// no control of the sheet sends.
+///
+/// Every page of the sheet is rows of controls, and a control names what it
+/// acts on: a field its key, a binding its action, a toggle its server, a
+/// `Retry` its source. The action carries those names and the intent does
+/// not always, so it is read first and the intent decides only where an
+/// action of another shape was pressed -- a theme selected writes the
+/// `theme` setting, and the press was on the Themes page.
+///
+/// Resolved without a name, every one of these requests registered under the
+/// window's titlebar line: the sheet stated nothing of its own, a refused
+/// sign-in reached nothing that draws, and the `Retry` that would send the
+/// request again was never offered.
+///
+/// A page load is not here. `Navigate` is the window opening a page rather
+/// than a control the operator pressed, and `ClearOutput` is a palette
+/// command whose row is gone by the time the host answers; their failures
+/// are the window's and land on its line.
+fn settings_surface_for_action(intent: &Intent, action: &HostAction) -> Option<SurfaceId> {
+	if matches!(intent, Intent::Navigate(_)) {
+		return None;
+	}
+	if matches!(intent, Intent::SelectTheme(_)) {
+		return Some(SurfaceId::ThemeSelector);
+	}
+	Some(match action {
+		HostAction::SetSetting { key, .. } | HostAction::ResetSetting { key } => {
+			SurfaceId::SettingsField(key.clone())
+		},
+		HostAction::SetKeybinding { action, .. } => SurfaceId::KeybindingField(action.clone()),
+		HostAction::SetMcpEnabled { server, .. } => SurfaceId::McpEnableToggle(server.clone()),
+		HostAction::SpawnTask { .. } => SurfaceId::TaskSpawnButton,
+		HostAction::RefreshDiagnostics => SurfaceId::DiagnosticRefreshButton,
+		HostAction::RetryDiagnosticSource { source } => {
+			SurfaceId::DiagnosticRetrySourceButton(source.clone())
+		},
+		HostAction::GetUsage { .. } => SurfaceId::UsageRefreshButton,
+		HostAction::GetContextBreakdown { .. } => SurfaceId::ContextBreakdownRefreshButton,
+		// The auth flow's controls are keyed by the provider they act on,
+		// which the window holds and the intent does not: a cancel and a
+		// retry resolved from the intent alone registered under the empty
+		// provider, an id the page never draws.
+		HostAction::StartProviderAuth { provider } => {
+			SurfaceId::ProviderAuthStartButton(provider.clone())
+		},
+		HostAction::SubmitAuthSecret { provider, .. } => {
+			SurfaceId::ProviderAuthSecretSubmit(provider.clone())
+		},
+		HostAction::OpenAuthUrl { url } => SurfaceId::ProviderAuthUrlOpen(url.clone()),
+		HostAction::CancelAuthFlow { provider } => {
+			SurfaceId::ProviderAuthCancelButton(provider.clone())
+		},
+		HostAction::RetryAuthFlow { provider } => {
+			SurfaceId::ProviderAuthRetryButton(provider.clone())
+		},
+		_ => return None,
+	})
 }
 
 /// The drawer control an action belongs to, or `None` for an action no

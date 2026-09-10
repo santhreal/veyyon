@@ -46,7 +46,7 @@ pub use model::*;
 pub use overlay::*;
 pub use palette::{PaletteItem, PaletteItemKind, PaletteMode};
 pub use right_panel::*;
-pub use settings::SettingsPage;
+pub use settings::{SettingsFailure, SettingsPage};
 pub use shell::{
 	HostShape, ScrollAnchor, SessionShape, ShellView,
 	fields::{FieldKey, FieldSlots},

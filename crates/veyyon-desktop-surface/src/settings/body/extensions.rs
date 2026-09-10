@@ -10,7 +10,7 @@ use veyyon_gpui::{ClickEvent, Context, Div, ElementId, ParentElement, Styled, di
 
 use crate::{
 	Intent, ShellView,
-	controls::{ControlStates, availability_style, hairline_for},
+	controls::{ControlStates, availability_style},
 	settings::{
 		SettingsState,
 		row::{empty_state_row, setting_row},
@@ -27,13 +27,13 @@ pub fn render_extensions_page(
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> Div {
-	let ext_error =
-		hairline_for(controls, &SurfaceId::SettingsField("extensions".to_string()), tokens, cx);
+	// The sheet states the refusal of any control it draws -- this page's
+	// `Run`, `Revive` and `Cancel` included -- in one row above the page
+	// (§4.4).
 	let mut container = div()
 		.flex()
 		.flex_col()
-		.gap(veyyon_gpui::px(geometry.row_gap))
-		.children(ext_error);
+		.gap(veyyon_gpui::px(geometry.row_gap));
 
 	// The page spawns a task as well as listing what is running: the field
 	// is the task, and it stays whether or not anything is running yet.
@@ -52,16 +52,14 @@ pub fn render_extensions_page(
 		let control = Row::new(SpacingStep::S2)
 			.child(TextField::new("task-prompt", editor))
 			.child(run);
-		container = container
-			.children(hairline_for(controls, &surface, tokens, cx))
-			.child(setting_row(
-				"Background task",
-				Some("Runs as a subagent of the active session"),
-				control,
-				&av,
-				geometry,
-				tokens,
-			));
+		container = container.child(setting_row(
+			"Background task",
+			Some("Runs as a subagent of the active session"),
+			control,
+			&av,
+			geometry,
+			tokens,
+		));
 	}
 
 	if state.extensions.is_empty() {
@@ -113,15 +111,13 @@ pub fn render_extensions_page(
 				Button::new(ElementId::Name(format!("agent-action-{}", agent.id).into()), label)
 					.size(ButtonSize::Small);
 			if allowed {
-				let target = surface.clone();
 				button = button.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {
-					view.dispatch(Intent::RetryControl(target.clone()), cx);
+					view.dispatch(Intent::RetryControl(surface.clone()), cx);
 				}));
 			} else {
 				button = button.state(InteractiveState::Disabled);
 			}
 			control = control.child(button);
-			container = container.children(hairline_for(controls, &surface, tokens, cx));
 		}
 		container = container.child(setting_row(label, Some(&desc), control, &av, geometry, tokens));
 	}

@@ -7,7 +7,9 @@ use veyyon_gpui::{
 	StatefulInteractiveElement, Styled, div, px,
 };
 
-use super::{GeneralSettingsListState, SettingsPage, SettingsState, render_page_body};
+use super::{
+	GeneralSettingsListState, SettingsPage, SettingsState, render_page_body, settings_failure_row,
+};
 use crate::{
 	ShellView,
 	controls::ControlStates,
@@ -62,7 +64,8 @@ pub(super) fn focused_surface(
 				.text_size(tokens.font_size(TextRamp::Small))
 				.text_color(tokens.color(ColorRole::Muted))
 				.child(state.page.description()),
-		);
+		)
+		.children(settings_failure_row(state, tokens, cx));
 	let is_general = state.page == SettingsPage::General;
 	let mut body_container = div()
 		.id("command-destination-body")

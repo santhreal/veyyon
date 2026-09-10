@@ -9,7 +9,7 @@ use veyyon_gpui::{ClickEvent, Context, Div, IntoElement, ParentElement, Styled, 
 
 use crate::{
 	Intent, ShellView,
-	controls::{ControlStates, hairline_for},
+	controls::ControlStates,
 	settings::{
 		SettingsState,
 		row::{empty_state_row, setting_row},
@@ -37,12 +37,12 @@ pub fn render_usage_page(
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> Div {
-	let usage_error = hairline_for(controls, &SurfaceId::UsageRefreshButton, tokens, cx);
+	// The sheet states the refusal of this page's `Refresh` in one row above
+	// the page (§4.4).
 	let mut container = div()
 		.flex()
 		.flex_col()
-		.gap(veyyon_gpui::px(geometry.row_gap))
-		.children(usage_error);
+		.gap(veyyon_gpui::px(geometry.row_gap));
 
 	let Some(totals) = &state.usage else {
 		return container.child(empty_state_row(

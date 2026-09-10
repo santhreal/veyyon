@@ -17,7 +17,8 @@ use veyyon_desktop_model::{
 	Capability, CapabilityStatus, HostActionKind, RequestRegistry, Store, SurfaceId, gate_kind,
 };
 use veyyon_desktop_surface::{
-	Availability, DiffStatus, DrawerFailure, PanelFailure, PanelTab, ShellState, TreeStatus,
+	Availability, DiffStatus, DrawerFailure, PanelFailure, PanelTab, SettingsFailure, ShellState,
+	TreeStatus,
 };
 
 use self::gates::{composer_controls, composer_row};
@@ -241,6 +242,20 @@ pub fn project_controls(
 		.find(|(surface, _)| surface.in_terminal_drawer())
 		.map(|(surface, error)| DrawerFailure { surface: surface.clone(), error: error.clone() });
 	state.drawer.failure = drawer_failure;
+	// §4.4: the sheet states the refusal any of its own controls landed on,
+	// resolved the same way -- by what the failure is rather than by a
+	// control named here -- so a page the sheet grows states its refusals by
+	// being on the sheet. Every page stated nothing of its own, so a setting
+	// the host would not write was reported on the window's line above the
+	// sheet and a sign-in it refused reached nothing that draws.
+	let settings_failure = state
+		.controls
+		.failures()
+		.find(|(surface, _)| surface.in_settings_sheet())
+		.map(|(surface, error)| SettingsFailure { surface: surface.clone(), error: error.clone() });
+	if let Some(settings) = state.overlay_settings_mut() {
+		settings.failure = settings_failure;
+	}
 }
 
 /// The first of these controls carrying a failure, as the panel states it.

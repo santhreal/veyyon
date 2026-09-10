@@ -7,7 +7,7 @@ use veyyon_gpui::{Context, Div, ElementId, IntoElement, ParentElement, Styled, d
 
 use crate::{
 	Intent, ShellView,
-	controls::{ControlStates, hairline_for},
+	controls::ControlStates,
 	settings::{
 		SettingsState,
 		row::{empty_state_row, setting_row_with_secondary},
@@ -22,12 +22,12 @@ pub fn render_mcp_page(
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> Div {
-	let mcp_error = hairline_for(controls, &SurfaceId::SettingsField("mcp".to_string()), tokens, cx);
+	// The sheet states the refusal of any control it draws, this toggle
+	// included, in one row above the page (§4.4).
 	let mut container = div()
 		.flex()
 		.flex_col()
-		.gap(veyyon_gpui::px(geometry.row_gap))
-		.children(mcp_error);
+		.gap(veyyon_gpui::px(geometry.row_gap));
 
 	if state.mcp.is_empty() {
 		return container.child(empty_state_row("No MCP servers configured.", geometry, tokens));
@@ -63,19 +63,15 @@ pub fn render_mcp_page(
 			format!("{} tools: {}", server.tools.len(), server.tools.join(", "))
 		};
 
-		let toggle_error =
-			hairline_for(controls, &SurfaceId::McpEnableToggle(server.name.clone()), tokens, cx);
-		container = container
-			.child(setting_row_with_secondary(
-				&server.name,
-				Some(&desc),
-				toggle,
-				Some(status_badge),
-				&av,
-				geometry,
-				tokens,
-			))
-			.children(toggle_error);
+		container = container.child(setting_row_with_secondary(
+			&server.name,
+			Some(&desc),
+			toggle,
+			Some(status_badge),
+			&av,
+			geometry,
+			tokens,
+		));
 	}
 
 	container

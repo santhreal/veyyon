@@ -2,13 +2,13 @@
 
 use serde_json::Value;
 use veyyon_desktop_kit::{Badge, Button, ButtonSize, ButtonVariant, TintRole, TokenSet};
-use veyyon_desktop_model::SurfaceId;
+use veyyon_desktop_model::{SurfaceId, diagnostic_sources};
 use veyyon_desktop_tokens::SettingsSurfaceTokens;
 use veyyon_gpui::{ClickEvent, Context, Div, ElementId, IntoElement, ParentElement, Styled, div};
 
 use crate::{
 	Intent, ShellView,
-	controls::{ControlStates, hairline_for},
+	controls::ControlStates,
 	settings::{
 		SettingsState,
 		row::{empty_state_row, setting_row, setting_row_with_secondary},
@@ -23,12 +23,13 @@ pub fn render_diagnostics_page(
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> Div {
-	let diag_error = hairline_for(controls, &SurfaceId::DiagnosticRefreshButton, tokens, cx);
+	// The sheet states the refusal of any control this page draws -- the
+	// page's `Refresh` and a source's own `Retry` -- in one row above the
+	// page (§4.4).
 	let mut container = div()
 		.flex()
 		.flex_col()
-		.gap(veyyon_gpui::px(geometry.row_gap))
-		.children(diag_error);
+		.gap(veyyon_gpui::px(geometry.row_gap));
 
 	let Some(diag_json) = &state.diagnostics else {
 		return container.child(empty_state_row(
@@ -56,54 +57,45 @@ pub fn render_diagnostics_page(
 		tokens,
 	));
 
-	// Render diagnostic sources
-	if let Some(sources) = diag_json.get("sources").and_then(Value::as_array) {
-		for source in sources {
-			let name = source
-				.get("name")
-				.and_then(Value::as_str)
-				.unwrap_or("Unknown");
-			let status = source
-				.get("status")
-				.and_then(Value::as_str)
-				.unwrap_or("unknown");
-			let message = source
-				.get("message")
-				.and_then(Value::as_str)
-				.or_else(|| source.get("last_error").and_then(Value::as_str));
+	// One reader states what a source is, so the `Retry` this page draws and
+	// the gate the projection sets for it are decided by the same rule.
+	for source in diagnostic_sources(Some(diag_json)) {
+		let (badge_text, tint) = match source.status {
+			"ok" => ("OK", TintRole::Done),
+			"warning" => ("Warning", TintRole::Plan),
+			"error" => ("Error", TintRole::Error),
+			"disabled" => ("Disabled", TintRole::Plan),
+			other => (other, TintRole::Plan),
+		};
+		let badge = Badge::new(badge_text, tint).into_any_element();
 
-			let (badge_text, tint) = match status {
-				"ok" => ("OK", TintRole::Done),
-				"warning" => ("Warning", TintRole::Plan),
-				"error" => ("Error", TintRole::Error),
-				"disabled" => ("Disabled", TintRole::Plan),
-				_ => (status, TintRole::Plan),
-			};
+		if source.offers_retry() {
+			let surface = SurfaceId::DiagnosticRetrySourceButton(source.name.to_owned());
+			// A source's `Retry` sends one source's request, so it reads its
+			// own gate rather than the page's: a refresh in flight holds the
+			// page, not every row on it.
+			let row_av = controls.availability(&surface);
+			let source_name = source.name.to_owned();
+			let retry_btn =
+				Button::new(ElementId::Name(format!("diag-retry-{}", source.name).into()), "Retry")
+					.size(ButtonSize::Small)
+					.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {
+						view.dispatch(Intent::RetryDiagnosticSource(source_name.clone()), cx);
+					}))
+					.into_any_element();
 
-			let badge = Badge::new(badge_text, tint).into_any_element();
-
-			if status == "error" {
-				let source_name = name.to_string();
-				let retry_btn =
-					Button::new(ElementId::Name(format!("diag-retry-{name}").into()), "Retry")
-						.size(ButtonSize::Small)
-						.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {
-							view.dispatch(Intent::RetryDiagnosticSource(source_name.clone()), cx);
-						}))
-						.into_any_element();
-
-				container = container.child(setting_row_with_secondary(
-					name,
-					message,
-					retry_btn,
-					Some(badge),
-					&av,
-					geometry,
-					tokens,
-				));
-			} else {
-				container = container.child(setting_row(name, message, badge, &av, geometry, tokens));
-			}
+			container = container.child(setting_row_with_secondary(
+				source.name,
+				source.message,
+				retry_btn,
+				Some(badge),
+				&row_av,
+				geometry,
+				tokens,
+			));
+		} else {
+			container =
+				container.child(setting_row(source.name, source.message, badge, &av, geometry, tokens));
 		}
 	}
 

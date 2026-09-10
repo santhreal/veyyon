@@ -7,6 +7,7 @@ pub mod fields;
 pub mod intent_samples;
 pub mod memory;
 pub mod raster;
+pub mod settings_sheet;
 
 use veyyon_desktop_model::{
 	ApprovalInteraction, BadgeKind, ContentBlock, EntryId, InteractionId, MessageRole,

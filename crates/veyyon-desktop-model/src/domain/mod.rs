@@ -3,6 +3,7 @@
 pub mod agents;
 pub mod answered;
 pub mod changes;
+pub mod diagnostics;
 pub mod files;
 pub mod mcp;
 pub mod models;
@@ -19,6 +20,7 @@ use std::collections::HashMap;
 pub use agents::*;
 pub use answered::*;
 pub use changes::*;
+pub use diagnostics::*;
 pub use files::*;
 pub use mcp::*;
 pub use models::*;
