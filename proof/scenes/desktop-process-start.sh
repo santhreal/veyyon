@@ -194,7 +194,11 @@ case "${STARTING_LIST}" in
 		;;
 esac
 
-# ─── The Drawer, Open On The Supervisor ──────────────────────────────────────
+# ─── The Drawer, Moved To The Supervisor ─────────────────────────────────────
+# The drawer opens on the terminal it asked the host for, so the supervisor is
+# one tab along: one `/bin/sh` label (47px at the body ramp in this checkout's
+# font) past the strip's first tab.
+PROCESSES_TAB_X=$(( TAB_X + 47 ))
 AT_REST="${SCENE_RUNTIME_DIR}/frame-compare/process-at-rest.png"
 mkdir -p "${SCENE_RUNTIME_DIR}/frame-compare"
 probe_frame "${AT_REST}"
@@ -202,13 +206,18 @@ probe_frame "${AT_REST}"
 k "ctrl+j"
 pause 2
 drawer_region
-shot supervisor-open
 OPENED="$(screen_differs_from_frame_pixels_at "${AT_REST}" \
 	"${SESSION_REGION_W}x$(( WIN_Y + WIN_H - DRAWER_TOP ))+${SESSION_REGION_X}+${DRAWER_TOP}")"
 if [ "${OPENED}" -lt 2000 ]; then
 	abandon_take "the-drawer-answered-its-chord" \
 		"the drawer region changed ${OPENED} pixels on primary-j, so no drawer opened over the session"
 fi
+
+move_px "${PROCESSES_TAB_X}" "${CHROME_MID_Y}"
+pause 0.3
+click
+settle 3
+shot supervisor-open
 
 # ─── The Command The Field States ────────────────────────────────────────────
 # The pointer clicks where the field is drawn and the line is typed there. In

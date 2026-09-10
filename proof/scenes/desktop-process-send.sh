@@ -117,6 +117,11 @@ DRAWER_TOP=$(( WIN_Y + WIN_H - DRAWER_H + GRIP_PX ))
 CHROME_MID_Y=$(( DRAWER_TOP + CHROME_H / 2 ))
 # The chrome row's trailing child, which is the supervisor's `Start`.
 START_X=$(( WIN_X + WIN_W - S3 - 24 ))
+# The strip's tabs: the terminal the drawer opened with is first, past the
+# chrome row's padding and the tab's own, and the supervisor's tab is one
+# `/bin/sh` label along (47px at the body ramp in this checkout's font).
+TAB_X=$(( WIN_X + RAIL_W + S3 + S2 + 20 ))
+PROCESSES_TAB_X=$(( TAB_X + 47 ))
 # The command field, the first row under the chrome.
 FIELD_X=$(( WIN_X + RAIL_W + S3 + 60 ))
 COMMAND_TOP=$(( DRAWER_TOP + CHROME_H + S2 ))
@@ -255,9 +260,16 @@ esac
 # ─── The Process Both Arms Supervise ─────────────────────────────────────────
 # The start is the same in both arms: the field it reads and the control that
 # reads it are not what this scene records.
+#
+# The drawer opens on the terminal it asked the host for, so the scene moves
+# to the supervisor's tab before it types into the field the supervisor draws.
 k "ctrl+j"
 pause 2
 drawer_region
+move_px "${PROCESSES_TAB_X}" "${CHROME_MID_Y}"
+pause 0.3
+click
+settle 2
 move_px "${FIELD_X}" "${FIELD_Y}"
 pause 0.3
 click

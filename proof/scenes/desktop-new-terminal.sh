@@ -5,8 +5,9 @@
 # Records visual evidence for:
 #   1. terminal-open (the drawer as its opening left it, one terminal in it)
 #   2. terminal-closed (the same drawer a press of `Close` later)
-#   3. after-press (the same drawer a press of its trailing control later)
-#   4. reopened (the drawer closed and opened again, which is the old route)
+#   3. aim-taken (that drawer with the pointer resting where `New` is drawn)
+#   4. after-press (the same drawer a press of that control later)
+#   5. reopened (the drawer closed and opened again, which is the old route)
 #
 # THE PAIR IS TWO BINARIES, not two settings. The window turned the drawer's
 # own opening into an attach of the running terminal, or a create when there
@@ -38,8 +39,8 @@
 # terminal has to take it away in both arms, which is the state the arms are
 # compared in. The press that follows lands on the same point in both, one
 # control in from the trailing edge: in the after arm that point is the `New`
-# the chrome draws, and the drawer has to gain a terminal there; in the before
-# arm nothing is drawn there, and the band has to be unchanged.
+# the chrome draws, and the drawer has to gain a terminal and draw it; in the
+# before arm nothing is drawn there, and the band has to be unchanged.
 #
 # THE AIM IS DERIVED, not guessed: the drawer is the bottom of the session
 # column at the authored height, its chrome row is first inside it, and the
@@ -114,9 +115,6 @@ TRAILING_X=$(( WIN_X + WIN_W - S3 - 24 ))
 # `Start` in from the trailing edge. `Start` measures 29px of label at the
 # body ramp in this checkout's font.
 NEW_X=$(( TRAILING_X - 29 - 2 * S6 - S2 ))
-# The strip's first tab, which is the drawer's leading child: the session
-# column's left edge, the chrome's S3 inset, and 20px into the label itself.
-TAB_X=$(( SESSION_REGION_X + S3 + 20 ))
 if (( CHROME_MID_Y <= WIN_Y || CHROME_MID_Y >= WIN_Y + WIN_H )); then
 	abandon_take "the-chrome-is-locatable" \
 		"the derived aim (${TRAILING_X},${CHROME_MID_Y}) does not sit inside a ${WIN_W}x${WIN_H} window"
@@ -128,15 +126,9 @@ drawer_region() {
 }
 
 # ─── The Terminal The Drawer Opens With ──────────────────────────────────────
-# Opening the drawer creates a terminal and leaves the process list active, so
-# the scene selects the terminal's own tab, which is the first in the strip.
 k "ctrl+j"
-settle 3
+settle 4
 drawer_region
-move_px "${TAB_X}" "${CHROME_MID_Y}"
-pause 0.3
-click
-settle 3
 shot terminal-open
 
 # ─── The Close Beside It, Which Takes The Terminal Away ──────────────────────
@@ -169,34 +161,18 @@ settle 4
 shot after-press
 PRESSED="$(shots_differ_pixels aim-taken after-press)"
 
-# ─── The Tab The Press Left In The Strip ─────────────────────────────────────
-# The first tab again: in the after arm that is the terminal the press opened,
-# and in the before arm the strip holds only the process list, so the same
-# click selects the tab that is already selected.
-move_px "${TAB_X}" "${CHROME_MID_Y}"
-pause 0.4
-click
-settle 3
-shot terminal-back
-BACK="$(shots_differ_pixels after-press terminal-back)"
-
 # ─── The Route That Existed, Which Both Arms Still Have ──────────────────────
 # Closing and opening the drawer attaches a terminal or creates one, and the
-# strip's first tab draws it. Both arms reach a terminal grid this way, which
-# is what makes the before arm's nothing the chrome's and not the host's.
+# drawer draws it. Both arms reach a terminal grid this way, which is what
+# makes the before arm's nothing the chrome's and not the host's.
 k "ctrl+j"
 pause 1.5
 k "ctrl+j"
 settle 4
 shot reopened
-move_px "${TAB_X}" "${CHROME_MID_Y}"
-pause 0.4
-click
-settle 3
-shot reopened-terminal
-REOPENED="$(shots_differ_pixels terminal-closed reopened-terminal)"
+REOPENED="$(shots_differ_pixels terminal-closed reopened)"
 
-echo "scene: ${CLOSED}px on the close, ${PRESSED}px on the press, ${BACK}px on the first tab after it, ${REOPENED}px on the terminal the drawer's own opening leaves" >&2
+echo "scene: ${CLOSED}px on the close, ${PRESSED}px on the press, ${REOPENED}px on the terminal the drawer's own opening leaves" >&2
 
 # A terminal grid replacing the supervisor's body is thousands of pixels, and
 # both arms must reach one this way.
@@ -210,19 +186,11 @@ if [ "${ARM}" = "before" ]; then
 		abandon_take "the-press-changed-nothing" \
 			"the drawer changed ${PRESSED} pixels on the press, so this arm is not the before one"
 	fi
-	if [ "${BACK}" -gt 500 ]; then
-		abandon_take "the-strip-gained-no-tab" \
-			"the strip's first tab drew ${BACK} pixels after the press, so this arm is not the before one"
-	fi
-	echo "scene: before arm -- the strip with no terminal in it offered nothing to press there, the press changed ${PRESSED} pixels and left the strip's first tab the process list (${BACK}px), while the drawer's own opening still reached a terminal (${REOPENED}px)" >&2
+	echo "scene: before arm -- the strip with no terminal in it offered nothing to press there, and the press changed ${PRESSED} pixels, while the drawer's own opening still reached a terminal (${REOPENED}px)" >&2
 else
-	if [ "${PRESSED}" -lt 500 ]; then
-		abandon_take "the-strip-answered-the-press" \
-			"the drawer changed ${PRESSED} pixels on the press of New, so the strip did not gain the terminal it had none of"
-	fi
-	if [ "${BACK}" -lt 3000 ]; then
+	if [ "${PRESSED}" -lt 3000 ]; then
 		abandon_take "the-press-opened-a-terminal" \
-			"the strip's first tab drew ${BACK} pixels after the press, so the press did not put a terminal back in a strip that had none"
+			"the drawer changed ${PRESSED} pixels on the press of New, so the strip did not gain the terminal it had none of and draw it"
 	fi
-	echo "scene: after arm -- the press of New put a terminal back into a strip that had none (${PRESSED}px on the press, ${BACK}px on the terminal it drew)" >&2
+	echo "scene: after arm -- the press of New put a terminal into a strip that had none and drew it (${PRESSED}px)" >&2
 fi
