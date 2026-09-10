@@ -15,8 +15,8 @@ use veyyon_desktop_model::{
 };
 use veyyon_desktop_scene::{Appearance, HeadlessSession, RenderOptions, headless_context};
 use veyyon_desktop_surface::{
-	ConnectionPhase, DrawerContent, DrawerTab, Intent, Keymap, Overlay, SettingsPage, SettingsState,
-	ShellState, ShellView, fixture, install_tokens,
+	ConnectionPhase, DrawerContent, DrawerTab, Intent, Keymap, Overlay, ProcessRow, SettingsPage,
+	SettingsState, ShellState, ShellView, fixture, install_tokens,
 };
 use veyyon_gpui::{App, AppContext, Window};
 
@@ -148,6 +148,24 @@ pub fn supervisor_tab_open() -> ShellState {
 		},
 		..fixture::populated()
 	}
+}
+
+/// The name of the running process a seeded supervisor lists.
+pub const RUNNING_PROCESS: &str = "dev-server";
+
+/// The same drawer with one process running in it, which is what draws the
+/// input field a row's `Send` reads.
+pub fn supervisor_tab_running() -> ShellState {
+	let mut state = supervisor_tab_open();
+	state.drawer.processes = vec![ProcessRow {
+		name:          RUNNING_PROCESS.to_owned(),
+		pid:           Some(4_242),
+		status:        "running".to_owned(),
+		elapsed_label: "12s".to_owned(),
+		terminated_by: None,
+		exit_code:     None,
+	}];
+	state
 }
 
 /// Opens a window on `state`, draws one frame so input handlers and focus are

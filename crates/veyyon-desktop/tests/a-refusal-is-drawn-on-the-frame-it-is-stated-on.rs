@@ -46,7 +46,7 @@ use serde_json::json;
 use strum::{EnumIter, IntoEnumIterator};
 use support::fields::{
 	SETTING_KEY, driven, general_page_holds, keybindings_page_binds, settings_page_open,
-	supervisor_tab_open, transport_asks_for_a_secret,
+	supervisor_tab_open, supervisor_tab_running, transport_asks_for_a_secret,
 };
 use veyyon_desktop_model::SettingKind;
 use veyyon_desktop_scene::{HeadlessSession, RgbaFrame};
@@ -73,6 +73,8 @@ enum KeyShape {
 	TaskPrompt,
 	/// [`FieldKey::ProcessCommand`].
 	ProcessCommand,
+	/// [`FieldKey::ProcessInput`].
+	ProcessInput,
 }
 
 /// The exhaustive match that makes a new `FieldKey` fail to compile here until
@@ -85,6 +87,7 @@ const fn key_shape(key: &FieldKey) -> KeyShape {
 		FieldKey::Keybinding(_) => KeyShape::Keybinding,
 		FieldKey::TaskPrompt => KeyShape::TaskPrompt,
 		FieldKey::ProcessCommand => KeyShape::ProcessCommand,
+		FieldKey::ProcessInput => KeyShape::ProcessInput,
 	}
 }
 
@@ -168,6 +171,16 @@ fn cases() -> Vec<Case> {
 			text:  "",
 			says:  "A process needs a command to run",
 			takes: "bun run dev",
+		},
+		Case {
+			key:   FieldKey::ProcessInput,
+			// A row's `Send` is the only thing that reads this field, so the
+			// state that draws it is a supervisor with a process running in
+			// it.
+			state: supervisor_tab_running(),
+			text:  "",
+			says:  "Sending to a process needs something to send",
+			takes: "y",
 		},
 	]
 }

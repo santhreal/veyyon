@@ -41,7 +41,7 @@ const TYPED: &str = "Reticulating splines";
 
 /// Which suite proves the commit of each field the window draws.
 ///
-/// An exhaustive match with no wildcard arm: a seventh `FieldKey` stops this
+/// An exhaustive match with no wildcard arm: an eighth `FieldKey` stops this
 /// compiling until its commit is proven somewhere and named here.
 const fn proven_by(key: &FieldKey) -> &'static str {
 	match key {
@@ -51,6 +51,7 @@ const fn proven_by(key: &FieldKey) -> &'static str {
 		FieldKey::Keybinding(_) => "a-keybinding-override-that-shadows-nothing-is-reported",
 		FieldKey::TaskPrompt => "contextual-surfaces-intent-and-interaction-contracts",
 		FieldKey::ProcessCommand => "the-supervisor-starts-the-command-its-field-states",
+		FieldKey::ProcessInput => "a-line-a-process-receives-is-the-line-the-field-states",
 	}
 }
 
@@ -114,6 +115,7 @@ fn every_field_the_window_draws_states_the_suite_that_proves_its_commit() {
 		FieldKey::Keybinding("NewSession".to_owned()),
 		FieldKey::TaskPrompt,
 		FieldKey::ProcessCommand,
+		FieldKey::ProcessInput,
 	] {
 		assert!(!proven_by(&key).is_empty(), "{key:?} names no suite that proves its commit");
 	}
