@@ -24,5 +24,5 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && /bin/pwd -P)/script
 # and short of the package, so a capture failed inside the container after the
 # display server had come up. Bumping this makes a stale image a missing one,
 # which docker reports before anything else starts.
-RECORDER_REVISION=2
+RECORDER_REVISION=3
 RECORDER_IMAGE="${RECORDER_IMAGE:-veyyon-proof-recorder:bun${BUN_VERSION}-r${RECORDER_REVISION}}"

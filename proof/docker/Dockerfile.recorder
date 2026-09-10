@@ -107,16 +107,24 @@ RUN set -eux; \
 # no alpha channel, and kitty says so in its own log. picom's window opacity and
 # kernel blur need nothing from the client, so the lit backdrop bleeds through the
 # window anyway.
+#
+# xclip owns an X11 selection on behalf of a scene: nothing else in this image
+# can put image bytes on the CLIPBOARD, and a paste is one of the three routes
+# an attachment reaches the composer by (the other two are a drag from outside
+# the container and the desktop portal's file chooser, neither of which exists
+# here). `wl-clipboard` covers the same ground on the Wayland session and has no
+# X11 counterpart.
 RUN set -eux; \
 	apt-get update; \
 	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 		xvfb x11-utils x11-xserver-utils xdotool xterm kitty picom xwallpaper \
-		libgl1-mesa-dri mesa-utils imagemagick; \
+		xclip libgl1-mesa-dri mesa-utils imagemagick; \
 	apt-get clean; \
 	rm -rf /var/lib/apt/lists/*; \
 	xdotool --version; \
 	kitty --version; \
-	picom --version
+	picom --version; \
+	xclip -version
 
 # A language server, because one gallery row is the product driving one: the model
 # asks the server for the references to a symbol and applies the rename the server

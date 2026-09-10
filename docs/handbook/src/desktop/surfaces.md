@@ -820,17 +820,17 @@ the same `attach` as the chooser and a drag. It asserts the clipboard offered
 `image/png` before the chord, that the tray inked a card where the empty
 composer drew nothing, that the editor line came back to where it was once the
 prompt was away, and then asks the host on a second connection whether the
-session holds an image block of exactly the bytes that were pasted. A fifth
+session holds an image block of exactly the bytes that were pasted. A fourth
 frame selects a model from the picker and pastes again, which is the state a
 card states `Not accepted by <model>` in: every model seeded for these takes is
 a local text model, so the refusal is the caption, and nothing is sent from
 that state:
 
 ```sh
-proof/docker/record-x11.sh proof/scenes/desktop-attachment.sh
+proof/docker/record-native.sh proof/scenes/desktop-attachment.sh
 SCENE_ARM=before PROOF_BASE_REF=HEAD \
   PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
-  proof/docker/record-x11-before.sh proof/scenes/desktop-attachment.sh
+  proof/docker/record-native.sh proof/scenes/desktop-attachment.sh
 ```
 
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
