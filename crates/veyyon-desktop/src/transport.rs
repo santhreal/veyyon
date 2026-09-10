@@ -325,6 +325,16 @@ pub fn spawn_transport(
 													}
 													Err(_) => {}
 												}
+												// A handshake that completed is a connection that worked, so
+												// the retry ceiling starts again from it. Without this the
+												// ceiling counts every disconnection a window ever recovered
+												// from: the tenth host restart is refused as "failed after 10
+												// retry attempts" with a manual re-attach as the only way out,
+												// and each recovery before it waits longer than the last for a
+												// host that is already back.
+												if handshake.is_connected() {
+													reconnect_policy.reset();
+												}
 											}
 											if ingress_tx.send(event).await.is_err() {
 												socket_active = false;
