@@ -119,7 +119,10 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 				.map_or_else(String::new, |f| f.provider.clone());
 			vec![HostAction::RetryAuthFlow { provider }]
 		},
-		Intent::RetryControl(id) => retry_control_actions(id, active),
+		Intent::RetryControl(id) => store
+			.retries
+			.take(id)
+			.map_or_else(|| retry_control_actions(id, active), |refused| vec![refused]),
 		Intent::Navigate(crate_route) => navigate_actions(*crate_route, active),
 		Intent::OpenOverlay(_) | Intent::CloseOverlay | Intent::PaletteMove(_) => Vec::new(),
 		// Ranking rows the window already holds asks the host for nothing; the
@@ -300,6 +303,11 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 	}
 }
 
+/// What a control sends when its retry has no refused request to send again:
+/// a control the operator reaches before anything failed on it, and one whose
+/// error came from the transport rather than from a request the window sent.
+/// A refused request is always preferred, because it carries the prompt, the
+/// session and the attachments that no surface id states.
 fn retry_control_actions(
 	id: &veyyon_desktop_model::SurfaceId,
 	active: Option<veyyon_desktop_model::SessionId>,

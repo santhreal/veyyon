@@ -7,7 +7,6 @@
 //! runs the GPUI event loop with the host's events projected onto the shell.
 
 mod host_view;
-mod request_surface;
 
 use std::{env, process};
 

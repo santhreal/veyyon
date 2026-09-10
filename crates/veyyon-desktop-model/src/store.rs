@@ -6,6 +6,7 @@ use crate::{
 	domain::{Domains, QueuedPrompts},
 	interaction::PendingDecisions,
 	persistence::PersistedState,
+	retries::RetryMemory,
 	session::SessionCollection,
 	streaming::StreamingMessageState,
 	transcript::TranscriptTree,
@@ -39,6 +40,9 @@ pub struct Store {
 	pub persisted:    PersistedState,
 	/// Single definition of all panel-domain views received from the host.
 	pub domains:      Domains,
+	/// Single definition of the request each control would send again after
+	/// the host refused the one it sent.
+	pub retries:      RetryMemory,
 }
 
 impl Default for Store {
@@ -62,6 +66,7 @@ impl Store {
 			queued:       HashMap::new(),
 			persisted:    PersistedState::new(),
 			domains:      Domains::new(),
+			retries:      RetryMemory::new(),
 		}
 	}
 

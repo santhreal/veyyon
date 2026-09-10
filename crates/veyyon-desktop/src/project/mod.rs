@@ -24,6 +24,7 @@ mod failure;
 mod overlay;
 mod panel;
 mod queue;
+mod requests;
 mod run_bar;
 mod submission;
 mod transcript;
@@ -45,6 +46,7 @@ pub use self::{
 	overlay::project_overlay,
 	panel::project_panel,
 	queue::{clear_sent_draft, elapsed_label},
+	requests::{record_sent, surface_for_action},
 	transcript::PANE_LINE_CEILING,
 };
 use self::{

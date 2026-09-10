@@ -5,8 +5,9 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use veyyon_desktop::{
 	Attachment, HostLink, SessionIndex, actions_for, current_timestamp_ms, land_failure, project,
 	project::{clear_sent_draft, connection_notice, restored_draft},
-	project_clock, project_controls, request_frame,
+	project_clock, project_controls, record_sent, request_frame,
 	state::Keeper,
+	surface_for_action,
 };
 use veyyon_desktop_model::{
 	HostAction, HostEvent, PersistedState, RequestRegistry, SessionId, Store, SurfaceId, reduce,
@@ -15,8 +16,6 @@ use veyyon_desktop_surface::{
 	Intent, ShellState, ShellView, damage::regions_changed, terminal::TerminalEmulator,
 };
 use veyyon_gpui::{App, AsyncApp, Context, Window, WindowHandle};
-
-use crate::request_surface;
 
 struct Host {
 	store:     Store,
@@ -145,13 +144,9 @@ pub fn attach(
 			let now_ms = current_timestamp_ms();
 			for intent in &intents {
 				for action in actions_for(intent, &host.index, &mut host.store) {
-					let kind = action.kind();
-					let surface =
-						request_surface::surface_for_action(intent, kind, active_session.as_ref());
-					let req_id = host.link.send(action);
-					host
-						.registry
-						.register(req_id, kind, surface, now_ms, 30_000);
+					let surface = surface_for_action(intent, action.kind(), active_session.as_ref());
+					let req_id = host.link.send(action.clone());
+					record_sent(&mut host.store, &mut host.registry, req_id, &action, surface, now_ms);
 					view.update(cx, |view, _cx| view.track_submission(req_id, intent));
 				}
 			}
@@ -311,11 +306,15 @@ pub fn attach(
 						let now_ms = current_timestamp_ms();
 						let surface = SurfaceId::QueueSessionRow(session.clone());
 						let action = HostAction::OpenSession { session };
-						let kind = action.kind();
-						let req_id = host.link.send(action);
-						host
-							.registry
-							.register(req_id, kind, surface, now_ms, 30_000);
+						let req_id = host.link.send(action.clone());
+						record_sent(
+							&mut host.store,
+							&mut host.registry,
+							req_id,
+							&action,
+							surface,
+							now_ms,
+						);
 					}
 					let now_ms = current_timestamp_ms();
 					project(&host.store, &mut host.index, &host.terminals, now_ms, view.state_mut());

@@ -15,6 +15,7 @@ pub mod interaction;
 pub mod persistence;
 pub mod reducer;
 pub mod registry;
+pub mod retries;
 pub mod session;
 pub mod store;
 pub mod streaming;
@@ -59,6 +60,7 @@ pub use persistence::{
 };
 pub use reducer::reduce;
 pub use registry::{InFlightRequest, RequestRegistry};
+pub use retries::RetryMemory;
 pub use session::{BadgeKind, QueuePartition, Session, SessionBadge, SessionCollection};
 pub use store::Store;
 pub use streaming::StreamingMessageState;
