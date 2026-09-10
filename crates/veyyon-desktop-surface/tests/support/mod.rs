@@ -135,6 +135,7 @@ pub fn state() -> ShellState {
 				DrawerTab::Terminal { id: "t2".to_owned(), title: "Terminal 2".to_owned() },
 			],
 			active_tab:     0,
+			tab_chosen:     true,
 			grid_rows:      vec![vec![cell()]],
 			cursor_col:     0,
 			cursor_row:     0,
