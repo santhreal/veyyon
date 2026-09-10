@@ -138,13 +138,15 @@ fn attachment_card(
 				.invisible()
 				.group_hover("composer-attachment", |style| style.visible())
 				.child(
-					IconButton::new(IconName::Close)
-						.id(ElementId::NamedInteger("composer-attachment-remove".into(), index as u64))
-						.size(IconSize::Size12)
-						.variant(IconButtonVariant::Ghost)
-						.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
-							view.dispatch(Intent::RemoveAttachment(index), cx);
-						})),
+					IconButton::new(
+						ElementId::NamedInteger("composer-attachment-remove".into(), index as u64),
+						IconName::Close,
+					)
+					.size(IconSize::Size12)
+					.variant(IconButtonVariant::Ghost)
+					.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
+						view.dispatch(Intent::RemoveAttachment(index), cx);
+					})),
 				),
 		)
 }
@@ -212,8 +214,7 @@ pub fn attachment_notice(
 				.child(notice.to_owned()),
 		)
 		.child(
-			IconButton::new(IconName::Close)
-				.id("composer-attachment-notice-close")
+			IconButton::new("composer-attachment-notice-close", IconName::Close)
 				.size(IconSize::Size12)
 				.variant(IconButtonVariant::Ghost)
 				.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {

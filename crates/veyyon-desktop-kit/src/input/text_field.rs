@@ -17,7 +17,7 @@ use crate::{
 /// Single-line text input field primitive element.
 #[derive(IntoElement)]
 pub struct TextField {
-	id:     Option<ElementId>,
+	id:     ElementId,
 	editor: Entity<Editor>,
 	state:  InteractiveState,
 }
@@ -26,15 +26,8 @@ impl TextField {
 	/// Creates a text field over `editor`, which holds the value and the
 	/// placeholder it draws when empty.
 	#[must_use]
-	pub fn new(editor: Entity<Editor>) -> Self {
-		Self { id: None, editor, state: InteractiveState::default() }
-	}
-
-	/// Sets element ID.
-	#[must_use]
-	pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-		self.id = Some(id.into());
-		self
+	pub fn new(id: impl Into<ElementId>, editor: Entity<Editor>) -> Self {
+		Self { id: id.into(), editor, state: InteractiveState::default() }
 	}
 
 	/// Sets interactive state.
@@ -63,7 +56,7 @@ impl RenderOnce for TextField {
 			tokens.color(ColorRole::Hairline)
 		};
 
-		let id = self.id.unwrap_or_else(|| ElementId::from("text-field"));
+		let id = self.id;
 		let mut container = div()
 			.id(id)
 			.h(metrics.height)

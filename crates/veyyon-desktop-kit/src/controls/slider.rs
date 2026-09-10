@@ -20,7 +20,7 @@ use crate::{
 /// Continuous range slider primitive element.
 #[derive(IntoElement)]
 pub struct Slider {
-	id:        Option<ElementId>,
+	id:        ElementId,
 	value:     f32,
 	min:       f32,
 	max:       f32,
@@ -45,15 +45,8 @@ impl Render for SliderDragPreview {
 impl Slider {
 	/// Creates a slider with current value and bounds.
 	#[must_use]
-	pub fn new(value: f32, min: f32, max: f32) -> Self {
-		Self { id: None, value, min, max, state: InteractiveState::default(), on_change: None }
-	}
-
-	/// Sets element ID.
-	#[must_use]
-	pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-		self.id = Some(id.into());
-		self
+	pub fn new(id: impl Into<ElementId>, value: f32, min: f32, max: f32) -> Self {
+		Self { id: id.into(), value, min, max, state: InteractiveState::default(), on_change: None }
 	}
 
 	/// Sets interactive state.
@@ -131,7 +124,7 @@ impl RenderOnce for Slider {
 		// the id, since it is the plain div's.
 		let track_bounds: Rc<Cell<Option<Bounds<Pixels>>>> = Rc::new(Cell::new(None));
 		let seen = Rc::clone(&track_bounds);
-		let id = self.id.unwrap_or_else(|| ElementId::from("slider"));
+		let id = self.id;
 		let mut container = div()
 			.on_children_prepainted(move |bounds, _window, _cx| {
 				seen.set(bounds.first().copied());

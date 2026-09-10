@@ -14,7 +14,7 @@ use crate::{
 /// Boolean toggle switch element.
 #[derive(IntoElement)]
 pub struct Toggle {
-	id:        Option<ElementId>,
+	id:        ElementId,
 	checked:   bool,
 	state:     InteractiveState,
 	on_toggle: Option<Arc<dyn Fn(bool, &mut Window, &mut App) + Send + Sync + 'static>>,
@@ -23,15 +23,8 @@ pub struct Toggle {
 impl Toggle {
 	/// Creates a toggle switch with state.
 	#[must_use]
-	pub fn new(checked: bool) -> Self {
-		Self { id: None, checked, state: InteractiveState::default(), on_toggle: None }
-	}
-
-	/// Sets element ID.
-	#[must_use]
-	pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-		self.id = Some(id.into());
-		self
+	pub fn new(id: impl Into<ElementId>, checked: bool) -> Self {
+		Self { id: id.into(), checked, state: InteractiveState::default(), on_toggle: None }
 	}
 
 	/// Sets interactive state.
@@ -88,7 +81,7 @@ impl RenderOnce for Toggle {
 			CursorStyle::PointingHand
 		};
 
-		let id = self.id.unwrap_or_else(|| ElementId::from("toggle"));
+		let id = self.id;
 		let mut track = div()
 			.id(id)
 			.w(track_w)

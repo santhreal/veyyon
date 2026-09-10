@@ -150,7 +150,7 @@ pub fn transcript_viewport(
 			.flex_row()
 			.justify_center()
 			.child(
-				Button::new("Scroll to end")
+				Button::new("transcript-scroll-to-end", "Scroll to end")
 					.variant(ButtonVariant::Primary)
 					.size(veyyon_desktop_kit::controls::button::ButtonSize::Small)
 					.leading_icon(IconName::ChevronDown)

@@ -25,15 +25,8 @@ pub struct FilePicker {
 impl FilePicker {
 	/// Creates a file picker with optional initial path.
 	#[must_use]
-	pub fn new(path: Option<PathBuf>) -> Self {
-		Self { id: ElementId::from("file-picker"), path, disabled: false, on_browse: None }
-	}
-
-	/// Sets the element id.
-	#[must_use]
-	pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-		self.id = id.into();
-		self
+	pub fn new(id: impl Into<ElementId>, path: Option<PathBuf>) -> Self {
+		Self { id: id.into(), path, disabled: false, on_browse: None }
 	}
 
 	/// Configures disabled state.

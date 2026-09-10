@@ -43,8 +43,7 @@ pub fn render_providers_page(
 		let control_el = if provider.authenticated {
 			Badge::new("Connected", TintRole::Done).into_any_element()
 		} else {
-			Button::new("Sign in")
-				.id(ElementId::Name(format!("auth-btn-{}", provider.id).into()))
+			Button::new(ElementId::Name(format!("auth-btn-{}", provider.id).into()), "Sign in")
 				.size(ButtonSize::Small)
 				.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {
 					view.dispatch(Intent::StartProviderAuth(provider_id.clone()), cx);

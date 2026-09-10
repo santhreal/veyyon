@@ -48,14 +48,14 @@ pub fn render_mcp_page(
 
 		let s_name = server.name.clone();
 		let ent = entity.clone();
-		let toggle = Toggle::new(server.enabled)
-			.id(ElementId::Name(format!("mcp-toggle-{}", server.name).into()))
-			.on_toggle(move |val, _win, app| {
-				let () = ent.update(app, |view, cx| {
-					view.dispatch(Intent::SetMcpEnabled { server: s_name.clone(), enabled: val }, cx);
-				});
-			})
-			.into_any_element();
+		let toggle =
+			Toggle::new(ElementId::Name(format!("mcp-toggle-{}", server.name).into()), server.enabled)
+				.on_toggle(move |val, _win, app| {
+					let () = ent.update(app, |view, cx| {
+						view.dispatch(Intent::SetMcpEnabled { server: s_name.clone(), enabled: val }, cx);
+					});
+				})
+				.into_any_element();
 
 		let desc = if server.tools.is_empty() {
 			"0 tools exposed".to_string()

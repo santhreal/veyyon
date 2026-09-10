@@ -195,13 +195,18 @@ pub fn render_attach_screen(
 		.bg(tokens.color(ColorRole::Ground))
 		.p(tokens.spacing(SpacingStep::S8));
 
+	// One id for the card whichever phase drew it: gpui keys element state by
+	// the id path, and the phase is already in the slug.
+	let dialog_id = ElementId::Name(format!("attach-{}", phase.scene_slug()).into());
 	let dialog = match phase {
 		ConnectionPhase::Detached => Dialog::new(
+			dialog_id,
 			"Disconnected from Host",
 			line("No active connection to the veyyon host engine.", ColorRole::Muted, tokens),
 		)
 		.action_on_click(DialogButtonSpec::new("Attach", ButtonVariant::Primary), retry(cx)),
 		ConnectionPhase::Connecting { attempt } => Dialog::new(
+			dialog_id,
 			format!("Connecting (attempt {attempt})..."),
 			line("Establishing communication with the host socket.", ColorRole::Muted, tokens),
 		),
@@ -216,7 +221,7 @@ pub fn render_attach_screen(
 				.gap(tokens.spacing(SpacingStep::S3))
 				.child(line(status, ColorRole::Muted, tokens))
 				.child(sync_progress(*received, *expected));
-			Dialog::new("Synchronizing Session State", body)
+			Dialog::new(dialog_id, "Synchronizing Session State", body)
 		},
 		// The guard above admits the dialog phases alone: the attached
 		// product and the two banner phases reach here only if
@@ -237,8 +242,8 @@ pub fn render_attach_screen(
 					ColorRole::Muted,
 					tokens,
 				))
-				.children(secret.map(|editor| TextField::new(editor).id("secret-key-field")));
-			Dialog::new(format!("Authenticate {provider}"), body)
+				.children(secret.map(|editor| TextField::new("secret-key-field", editor)));
+			Dialog::new(dialog_id, format!("Authenticate {provider}"), body)
 				.action_on_click(
 					DialogButtonSpec::new("Submit", ButtonVariant::Primary),
 					cx.listener(move |view, _event: &ClickEvent, _window, cx| {
@@ -250,6 +255,7 @@ pub fn render_attach_screen(
 		ConnectionPhase::AwaitingExternalUrl { provider, url } => {
 			let target_url = url.clone();
 			Dialog::new(
+				dialog_id,
 				format!("Authorize {provider}"),
 				line("Complete OAuth authorization in your web browser.", ColorRole::Muted, tokens),
 			)
@@ -265,11 +271,7 @@ pub fn render_attach_screen(
 
 	Some(
 		container
-			.child(
-				div()
-					.w(px(CARD_WIDTH_PX))
-					.child(dialog.id(ElementId::Name(format!("attach-{}", phase.scene_slug()).into()))),
-			)
+			.child(div().w(px(CARD_WIDTH_PX)).child(dialog))
 			.into_any_element(),
 	)
 }

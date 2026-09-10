@@ -27,20 +27,17 @@ pub struct Dialog {
 impl Dialog {
 	/// Creates a dialog with title and body element.
 	#[must_use]
-	pub fn new(title: impl Into<SharedString>, body: impl IntoElement) -> Self {
+	pub fn new(
+		id: impl Into<ElementId>,
+		title: impl Into<SharedString>,
+		body: impl IntoElement,
+	) -> Self {
 		Self {
-			id:      ElementId::from("dialog"),
+			id:      id.into(),
 			title:   title.into(),
 			body:    body.into_any_element(),
 			actions: Vec::new(),
 		}
-	}
-
-	/// Sets the element id the action buttons derive theirs from.
-	#[must_use]
-	pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-		self.id = id.into();
-		self
 	}
 
 	/// Appends an action button that answers no click: a label the caller
@@ -97,7 +94,7 @@ impl RenderOnce for Dialog {
 				std::sync::Arc::new(self.id.clone()),
 				format!("action-{index}").into(),
 			);
-			let mut btn = Button::new(action.label).id(id).variant(action.variant);
+			let mut btn = Button::new(id, action.label).variant(action.variant);
 			if let Some(handler) = handler {
 				btn = btn.on_click(handler);
 			}

@@ -266,7 +266,7 @@ pub fn error_hairline_weak(
 	if err.retryable {
 		let retry_id = id.clone();
 		let weak_retry = weak.clone();
-		let mut retry_btn = Button::new("Retry")
+		let mut retry_btn = Button::new("retry", "Retry")
 			.variant(ButtonVariant::Danger)
 			.size(ButtonSize::Small);
 		if let Some(weak) = weak_retry {
@@ -281,7 +281,7 @@ pub fn error_hairline_weak(
 
 	let dismiss_id = id;
 	let weak_dismiss = weak;
-	let mut dismiss_btn = Button::new("Dismiss")
+	let mut dismiss_btn = Button::new("dismiss", "Dismiss")
 		.variant(ButtonVariant::Ghost)
 		.size(ButtonSize::Small);
 	if let Some(weak) = weak_dismiss {

@@ -80,9 +80,15 @@ impl Resizable {
 	/// grip from it, so the handle sits inside that measure rather than
 	/// pushing the pane past it.
 	#[must_use]
-	pub fn new(axis: Axis, grip: Pixels, first: impl IntoElement, second: impl IntoElement) -> Self {
+	pub fn new(
+		id: impl Into<ElementId>,
+		axis: Axis,
+		grip: Pixels,
+		first: impl IntoElement,
+		second: impl IntoElement,
+	) -> Self {
 		Self {
-			id: ElementId::from("resizable"),
+			id: id.into(),
 			axis,
 			grip,
 			first: first.into_any_element(),
@@ -91,13 +97,6 @@ impl Resizable {
 			on_resize: None,
 			on_resize_end: None,
 		}
-	}
-
-	/// Sets the element id, which the handle derives its own from.
-	#[must_use]
-	pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-		self.id = id.into();
-		self
 	}
 
 	/// Sets the split ratio: the first child's share of the extent, clamped to

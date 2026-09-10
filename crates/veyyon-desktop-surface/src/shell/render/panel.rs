@@ -105,8 +105,7 @@ pub fn docked_split(
 		* panels.right_panel_max_viewport_ratio)
 		.min(split_px - panels.right_panel_container_margin_px)
 		.max(min_width);
-	Resizable::new(Axis::Horizontal, px(grip_px), session, tracked)
-		.id("shell-split")
+	Resizable::new("shell-split", Axis::Horizontal, px(grip_px), session, tracked)
 		.ratio(widths.session_px / split_px)
 		.on_resize(move |ratio, _window, cx| {
 			let asked_px = (1.0 - ratio) * split_px;

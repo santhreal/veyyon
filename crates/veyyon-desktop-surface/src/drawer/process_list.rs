@@ -133,9 +133,8 @@ fn process_row(
 					let stop_av =
 						controls.availability(&SurfaceId::ProcessStopButton(sid, proc.name.clone()));
 					let (stop_op, _, stop_allowed) = availability_style(&stop_av, tokens);
-					let mut btn = Button::new("Stop")
-						.id(("process-stop", idx))
-						.variant(ButtonVariant::Ghost);
+					let mut btn =
+						Button::new(("process-stop", idx), "Stop").variant(ButtonVariant::Ghost);
 					if is_running && stop_allowed {
 						btn = btn.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
 							view.dispatch(Intent::ProcessStop(name_for_stop.clone()), cx);
@@ -150,9 +149,8 @@ fn process_row(
 					let restart_av =
 						controls.availability(&SurfaceId::ProcessRestartButton(sid, proc.name.clone()));
 					let (restart_op, _, restart_allowed) = availability_style(&restart_av, tokens);
-					let mut btn = Button::new("Restart")
-						.id(("process-restart", idx))
-						.variant(ButtonVariant::Ghost);
+					let mut btn =
+						Button::new(("process-restart", idx), "Restart").variant(ButtonVariant::Ghost);
 					if restart_allowed {
 						btn = btn.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
 							view.dispatch(Intent::ProcessRestart(name_for_restart.clone()), cx);
@@ -167,9 +165,8 @@ fn process_row(
 					let send_av =
 						controls.availability(&SurfaceId::ProcessSendButton(sid, proc.name.clone()));
 					let (send_op, _, send_allowed) = availability_style(&send_av, tokens);
-					let mut btn = Button::new("Send")
-						.id(("process-send", idx))
-						.variant(ButtonVariant::Ghost);
+					let mut btn =
+						Button::new(("process-send", idx), "Send").variant(ButtonVariant::Ghost);
 					if is_running && send_allowed {
 						btn = btn.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
 							view.dispatch(
@@ -184,8 +181,7 @@ fn process_row(
 				}),
 		);
 
-	ListRow::new(proc.name.clone())
-		.id(("process-row", idx))
+	ListRow::new(("process-row", idx), proc.name.clone())
 		.height(px(geometry.process_row_height_px))
 		.leading(dot)
 		.trailing(trailing)

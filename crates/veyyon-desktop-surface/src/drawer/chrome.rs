@@ -146,9 +146,7 @@ pub fn drawer_chrome(
 		let clear_av = controls
 			.availability(&SurfaceId::TerminalClearButton(sid.clone(), active_term_id.clone()));
 		let (clear_op, _, clear_allowed) = availability_style(&clear_av, tokens);
-		let mut clear_btn = Button::new("Clear")
-			.id("clear-terminal-btn")
-			.variant(ButtonVariant::Ghost);
+		let mut clear_btn = Button::new("clear-terminal-btn", "Clear").variant(ButtonVariant::Ghost);
 		if clear_allowed {
 			clear_btn = clear_btn.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
 				view.dispatch(Intent::ClearTerminal, cx);
@@ -160,9 +158,8 @@ pub fn drawer_chrome(
 		let restart_av = controls
 			.availability(&SurfaceId::TerminalRestartButton(sid.clone(), active_term_id.clone()));
 		let (restart_op, _, restart_allowed) = availability_style(&restart_av, tokens);
-		let mut restart_btn = Button::new("Restart")
-			.id("restart-terminal-btn")
-			.variant(ButtonVariant::Ghost);
+		let mut restart_btn =
+			Button::new("restart-terminal-btn", "Restart").variant(ButtonVariant::Ghost);
 		if restart_allowed {
 			restart_btn =
 				restart_btn.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
@@ -175,9 +172,7 @@ pub fn drawer_chrome(
 		let close_av =
 			controls.availability(&SurfaceId::TerminalCloseButton(sid, active_term_id.clone()));
 		let (close_op, _, close_allowed) = availability_style(&close_av, tokens);
-		let mut close_btn = Button::new("Close")
-			.id("close-terminal-btn")
-			.variant(ButtonVariant::Ghost);
+		let mut close_btn = Button::new("close-terminal-btn", "Close").variant(ButtonVariant::Ghost);
 		if close_allowed {
 			close_btn = close_btn.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
 				view.dispatch(Intent::CloseTerminal, cx);
@@ -194,9 +189,7 @@ pub fn drawer_chrome(
 		let sid = SessionId::from(session_id.to_string());
 		let start_av = controls.availability(&SurfaceId::ProcessStartButton(sid));
 		let (start_op, _, start_allowed) = availability_style(&start_av, tokens);
-		let mut start_btn = Button::new("Start")
-			.id("process-start-btn")
-			.variant(ButtonVariant::Ghost);
+		let mut start_btn = Button::new("process-start-btn", "Start").variant(ButtonVariant::Ghost);
 		if start_allowed {
 			start_btn = start_btn.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
 				view.dispatch(Intent::ProcessStart { command: String::new(), args: Vec::new() }, cx);

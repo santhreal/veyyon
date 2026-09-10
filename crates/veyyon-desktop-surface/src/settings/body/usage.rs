@@ -55,8 +55,7 @@ pub fn render_usage_page(
 	let av = controls.availability(&SurfaceId::UsageRefreshButton);
 
 	// Refresh action row
-	let refresh_btn = Button::new("Refresh")
-		.id("usage-refresh-btn")
+	let refresh_btn = Button::new("usage-refresh-btn", "Refresh")
 		.size(ButtonSize::Small)
 		.on_click(cx.listener(|view, _e: &ClickEvent, _w, cx| {
 			view.dispatch(Intent::RefreshUsage, cx);

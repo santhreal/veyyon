@@ -29,7 +29,7 @@ pub struct TreeNodeMetrics {
 /// Hierarchical tree node element.
 #[derive(IntoElement)]
 pub struct TreeNode {
-	id:          Option<ElementId>,
+	id:          ElementId,
 	label:       SharedString,
 	depth:       usize,
 	is_branch:   bool,
@@ -45,9 +45,9 @@ pub struct TreeNode {
 impl TreeNode {
 	/// Creates a tree node with label and nesting depth.
 	#[must_use]
-	pub fn new(label: impl Into<SharedString>, depth: usize) -> Self {
+	pub fn new(id: impl Into<ElementId>, label: impl Into<SharedString>, depth: usize) -> Self {
 		Self {
-			id: None,
+			id: id.into(),
 			label: label.into(),
 			depth,
 			is_branch: false,
@@ -59,13 +59,6 @@ impl TreeNode {
 			on_toggle: None,
 			on_click: None,
 		}
-	}
-
-	/// Sets element ID.
-	#[must_use]
-	pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-		self.id = Some(id.into());
-		self
 	}
 
 	/// Sets whether node is a branch/directory or a leaf.
@@ -193,7 +186,7 @@ impl RenderOnce for TreeNode {
 				.color(tokens.color(ColorRole::Secondary))
 		});
 
-		let id = self.id.unwrap_or_else(|| ElementId::from("tree-node"));
+		let id = self.id;
 		let mut el = div()
 			.id(id)
 			.w_full()

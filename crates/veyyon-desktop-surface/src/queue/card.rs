@@ -72,10 +72,10 @@ pub fn card_row(
 	let defer_id = id;
 	let weak_park = view.clone();
 	let weak_defer = view.clone();
-	let mut park_btn = IconButton::new(IconName::Stop)
-		.id(ElementId::NamedInteger("queue-card-park".into(), park_id))
-		.size(IconSize::Size12)
-		.variant(IconButtonVariant::Ghost);
+	let mut park_btn =
+		IconButton::new(ElementId::NamedInteger("queue-card-park".into(), park_id), IconName::Stop)
+			.size(IconSize::Size12)
+			.variant(IconButtonVariant::Ghost);
 	if let Some(weak) = weak_park {
 		park_btn = park_btn.on_click(move |_event, _window, app| {
 			app.stop_propagation();
@@ -83,10 +83,12 @@ pub fn card_row(
 		});
 	}
 
-	let mut defer_btn = IconButton::new(IconName::Pause)
-		.id(ElementId::NamedInteger("queue-card-defer".into(), defer_id))
-		.size(IconSize::Size12)
-		.variant(IconButtonVariant::Ghost);
+	let mut defer_btn = IconButton::new(
+		ElementId::NamedInteger("queue-card-defer".into(), defer_id),
+		IconName::Pause,
+	)
+	.size(IconSize::Size12)
+	.variant(IconButtonVariant::Ghost);
 	if let Some(weak) = weak_defer {
 		defer_btn = defer_btn.on_click(move |_event, _window, app| {
 			app.stop_propagation();

@@ -6,7 +6,7 @@ use veyyon_desktop_kit::{
 };
 use veyyon_desktop_model::SurfaceId;
 use veyyon_desktop_tokens::SettingsSurfaceTokens;
-use veyyon_gpui::{ClickEvent, Context, Div, ParentElement, Styled, div};
+use veyyon_gpui::{ClickEvent, Context, Div, ElementId, ParentElement, Styled, div};
 
 use crate::{
 	Intent, ShellView,
@@ -41,7 +41,7 @@ pub fn render_extensions_page(
 		let surface = SurfaceId::TaskSpawnButton;
 		let av = controls.availability(&surface);
 		let (_, _, allowed) = availability_style(&av, tokens);
-		let mut run = Button::new("Run").size(ButtonSize::Small);
+		let mut run = Button::new("extensions-run-task", "Run").size(ButtonSize::Small);
 		if allowed {
 			run = run.on_click(cx.listener(|view, _e: &ClickEvent, _w, cx| {
 				view.submit_task_prompt(cx);
@@ -50,7 +50,7 @@ pub fn render_extensions_page(
 			run = run.state(InteractiveState::Disabled);
 		}
 		let control = Row::new(SpacingStep::S2)
-			.child(TextField::new(editor).id("task-prompt"))
+			.child(TextField::new("task-prompt", editor))
 			.child(run);
 		container = container
 			.children(hairline_for(controls, &surface, tokens, cx))
@@ -109,7 +109,9 @@ pub fn render_extensions_page(
 		};
 		if let Some((label, surface)) = action {
 			let (_, _, allowed) = availability_style(&av, tokens);
-			let mut button = Button::new(label).size(ButtonSize::Small);
+			let mut button =
+				Button::new(ElementId::Name(format!("agent-action-{}", agent.id).into()), label)
+					.size(ButtonSize::Small);
 			if allowed {
 				let target = surface.clone();
 				button = button.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {

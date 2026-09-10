@@ -66,8 +66,7 @@ pub fn connection_banner(
 
 			let av = controls.availability(&SurfaceId::ConnectionRetryButton);
 			let (opacity, _, allowed) = availability_style(&av, tokens);
-			let mut retry_btn = Button::new("Retry Now")
-				.id("banner-retry-btn")
+			let mut retry_btn = Button::new("banner-retry-btn", "Retry Now")
 				.variant(ButtonVariant::Ghost)
 				.size(ButtonSize::Small);
 			if allowed {
@@ -111,8 +110,7 @@ pub fn connection_banner(
 				.text_color(text_color)
 				.child(format!("Fatal connection error: {message}"));
 
-			let retry_btn = Button::new("Re-attach")
-				.id("banner-reattach-btn")
+			let retry_btn = Button::new("banner-reattach-btn", "Re-attach")
 				.variant(ButtonVariant::Danger)
 				.size(ButtonSize::Small)
 				.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {

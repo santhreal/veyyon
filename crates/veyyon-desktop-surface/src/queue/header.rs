@@ -56,8 +56,7 @@ pub fn queue_nav_header(
 					.items_center()
 					.gap(tokens.spacing(SpacingStep::S1))
 					.child(
-						IconButton::new(IconName::Search)
-							.id("queue-search-active-icon")
+						IconButton::new("queue-search-active-icon", IconName::Search)
 							.size(IconSize::Size12)
 							.variant(IconButtonVariant::Ghost),
 					)
@@ -76,8 +75,7 @@ pub fn queue_nav_header(
 					),
 			)
 			.child(
-				IconButton::new(IconName::Close)
-					.id("queue-filter-clear")
+				IconButton::new("queue-filter-clear", IconName::Close)
 					.size(IconSize::Size12)
 					.variant(IconButtonVariant::Ghost)
 					.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
@@ -103,8 +101,7 @@ pub fn queue_nav_header(
 				view.open_queue_search(window, cx);
 			}))
 			.child(
-				IconButton::new(IconName::Search)
-					.id("queue-search-icon")
+				IconButton::new("queue-search-icon", IconName::Search)
 					.size(IconSize::Size12)
 					.variant(IconButtonVariant::Ghost),
 			)
@@ -124,8 +121,7 @@ pub fn queue_nav_header(
 	};
 	let new_session_av = controls.availability(&SurfaceId::NewSessionButton);
 	let (new_opacity, _, new_allowed) = availability_style(&new_session_av, tokens);
-	let mut new_btn = IconButton::new(IconName::Edit)
-		.id("queue-new-session")
+	let mut new_btn = IconButton::new("queue-new-session", IconName::Edit)
 		.size(IconSize::Size14)
 		.variant(IconButtonVariant::Ghost);
 	if new_allowed {
@@ -283,8 +279,7 @@ pub fn older_row(
 			.items_center()
 			.gap(tokens.spacing(SpacingStep::S2))
 			.child(
-				IconButton::new(IconName::ChevronDown)
-					.id("queue-older-chevron")
+				IconButton::new("queue-older-chevron", IconName::ChevronDown)
 					.size(IconSize::Size12)
 					.variant(IconButtonVariant::Ghost),
 			)

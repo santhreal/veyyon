@@ -32,6 +32,7 @@ libc.workspace = true
 
 [dev-dependencies]
 veyyon-test-scratch.workspace = true
+veyyon-desktop-kit.workspace = true
 
 [[bin]]
 name = "veyyon-desktop"

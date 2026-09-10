@@ -71,67 +71,73 @@ pub fn render_primitive(kind: PrimitiveKind, _window: &mut Window, cx: &mut App)
 
 		PrimitiveKind::Button => Stack::horizontal(SpacingStep::S2)
 			.child(
-				Button::new(FixtureText::CJK)
+				Button::new("primary", FixtureText::CJK)
 					.variant(ButtonVariant::Primary)
 					.leading_icon(IconName::Settings),
 			)
-			.child(Button::new(FixtureText::PROJECT_EXTREME_SINGLE).variant(ButtonVariant::Default))
+			.child(
+				Button::new("default", FixtureText::PROJECT_EXTREME_SINGLE)
+					.variant(ButtonVariant::Default),
+			)
 			.into_any_element(),
 
 		PrimitiveKind::IconButton => Stack::horizontal(SpacingStep::S2)
-			.child(IconButton::new(IconName::Search))
-			.child(IconButton::new(IconName::Settings))
+			.child(IconButton::new("search", IconName::Search))
+			.child(IconButton::new("settings", IconName::Settings))
 			.into_any_element(),
 
 		PrimitiveKind::Toggle => Stack::horizontal(SpacingStep::S4)
-			.child(Toggle::new(true))
-			.child(Toggle::new(false))
+			.child(Toggle::new("on", true))
+			.child(Toggle::new("off", false))
 			.into_any_element(),
 
 		PrimitiveKind::Checkbox => Stack::vertical(SpacingStep::S2)
-			.child(Checkbox::new(CheckboxState::Checked).label(FixtureText::RTL))
-			.child(Checkbox::new(CheckboxState::Unchecked).label(FixtureText::CJK))
+			.child(Checkbox::new("checked", CheckboxState::Checked).label(FixtureText::RTL))
+			.child(Checkbox::new("unchecked", CheckboxState::Unchecked).label(FixtureText::CJK))
 			.into_any_element(),
 
 		PrimitiveKind::Radio => Stack::vertical(SpacingStep::S2)
-			.child(Radio::new(true).label(FixtureText::PROJECT_EXTREME_SINGLE))
-			.child(Radio::new(false).label(FixtureText::PROJECT_TYPICAL))
+			.child(Radio::new("selected", true).label(FixtureText::PROJECT_EXTREME_SINGLE))
+			.child(Radio::new("unselected", false).label(FixtureText::PROJECT_TYPICAL))
 			.into_any_element(),
 
 		PrimitiveKind::Select => {
-			Select::new([FixtureText::BRANCH_EXTREME_90, FixtureText::CJK], 0).into_any_element()
+			Select::new("select", [FixtureText::BRANCH_EXTREME_90, FixtureText::CJK], 0)
+				.into_any_element()
 		},
 
-		PrimitiveKind::Slider => Slider::new(0.68, 0.0, 1.0).into_any_element(),
+		PrimitiveKind::Slider => Slider::new("slider", 0.68, 0.0, 1.0).into_any_element(),
 
 		PrimitiveKind::SegmentedControl => SegmentedControl::new(
+			"segmented",
 			[FixtureText::PROJECT_TYPICAL, FixtureText::CJK, FixtureText::PROJECT_EXTREME_SINGLE],
 			1,
 		)
 		.into_any_element(),
 
-		PrimitiveKind::NumberInput => NumberInput::new(42)
+		PrimitiveKind::NumberInput => NumberInput::new("number", 42)
 			.range(0, 100)
 			.step(1)
 			.into_any_element(),
 
 		PrimitiveKind::TextField => {
 			let editor = fixture_editor(FixtureText::BRANCH_EXTREME_90, "Branch name...", false, cx);
-			TextField::new(editor).into_any_element()
+			TextField::new("field", editor).into_any_element()
 		},
 
 		PrimitiveKind::TextArea => {
 			let value = format!("{}\n{}", FixtureText::MESSAGE_TYPICAL, FixtureText::CJK);
 			let editor = fixture_editor(&value, "Notes...", true, cx);
-			TextArea::new(editor).into_any_element()
+			TextArea::new("area", editor).into_any_element()
 		},
 
-		PrimitiveKind::SearchField => SearchField::new(FixtureText::CJK)
+		PrimitiveKind::SearchField => SearchField::new("search", FixtureText::CJK)
 			.placeholder("Search symbols...")
 			.into_any_element(),
 
 		PrimitiveKind::FilePicker => {
-			FilePicker::new(Some(PathBuf::from(FixtureText::FILE_PATH_EXTREME))).into_any_element()
+			FilePicker::new("picker", Some(PathBuf::from(FixtureText::FILE_PATH_EXTREME)))
+				.into_any_element()
 		},
 
 		PrimitiveKind::Stack => Stack::vertical(SpacingStep::S2)
@@ -164,6 +170,7 @@ pub fn render_primitive(kind: PrimitiveKind, _window: &mut Window, cx: &mut App)
 		.into_any_element(),
 
 		PrimitiveKind::Resizable => Resizable::new(
+			"resizable",
 			Axis::Horizontal,
 			TokenSet::for_app(cx).spacing(SpacingStep::S4),
 			Text::new(FixtureText::PROJECT_TYPICAL),
@@ -175,7 +182,7 @@ pub fn render_primitive(kind: PrimitiveKind, _window: &mut Window, cx: &mut App)
 		PrimitiveKind::Sheet => Sheet::bottom(
 			Stack::vertical(SpacingStep::S2)
 				.child(Text::new(FixtureText::TITLE_TYPICAL))
-				.child(Button::new("Dismiss")),
+				.child(Button::new("dismiss", "Dismiss")),
 		)
 		.into_any_element(),
 
@@ -184,20 +191,20 @@ pub fn render_primitive(kind: PrimitiveKind, _window: &mut Window, cx: &mut App)
 		})
 		.into_any_element(),
 
-		PrimitiveKind::ListRow => ListRow::new(FixtureText::BRANCH_EXTREME_90)
+		PrimitiveKind::ListRow => ListRow::new("row", FixtureText::BRANCH_EXTREME_90)
 			.subtitle(FixtureText::CJK)
 			.trailing(Badge::new(FixtureText::PROJECT_EXTREME_SINGLE, TintRole::Approve))
 			.into_any_element(),
 
 		PrimitiveKind::Tree => Tree::new(3, |idx, _, _| {
-			TreeRow::new(format!("Node {idx} - {}", FixtureText::PROJECT_TYPICAL), idx)
+			TreeRow::new(("node", idx), format!("Node {idx} - {}", FixtureText::PROJECT_TYPICAL), idx)
 				.branch(idx == 0)
 				.expanded(idx == 0)
 				.into_any_element()
 		})
 		.into_any_element(),
 
-		PrimitiveKind::TreeRow => TreeRow::new(FixtureText::FILE_PATH_TYPICAL, 1)
+		PrimitiveKind::TreeRow => TreeRow::new("tree-row", FixtureText::FILE_PATH_TYPICAL, 1)
 			.branch(true)
 			.expanded(true)
 			.icon(IconName::Folder)
@@ -227,18 +234,18 @@ pub fn render_primitive(kind: PrimitiveKind, _window: &mut Window, cx: &mut App)
 		.into_any_element(),
 
 		PrimitiveKind::Dialog => {
-			Dialog::new(FixtureText::TITLE_TYPICAL, Text::new(FixtureText::MESSAGE_TYPICAL))
+			Dialog::new("dialog", FixtureText::TITLE_TYPICAL, Text::new(FixtureText::MESSAGE_TYPICAL))
 				.action(DialogButtonSpec::new("Confirm", ButtonVariant::Primary))
 				.into_any_element()
 		},
 
 		PrimitiveKind::Tooltip => {
-			Tooltip::new(FixtureText::BRANCH_EXTREME_90, Button::new("Inspect Target"))
+			Tooltip::new(FixtureText::BRANCH_EXTREME_90, Button::new("inspect", "Inspect Target"))
 				.into_any_element()
 		},
 
 		PrimitiveKind::Palette => Palette::new(
-			SearchField::new("").placeholder("Command palette..."),
+			SearchField::new("palette-search", "").placeholder("Command palette..."),
 			List::new(2, |i, _, _| Text::new(format!("Command {i}")).into_any_element()),
 		)
 		.into_any_element(),

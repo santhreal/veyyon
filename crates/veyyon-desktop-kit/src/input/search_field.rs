@@ -17,7 +17,7 @@ use crate::{
 /// Search field primitive with search icon, clear button, and placeholder.
 #[derive(IntoElement)]
 pub struct SearchField {
-	id:          Option<ElementId>,
+	id:          ElementId,
 	editor:      EditorSlot,
 	placeholder: SharedString,
 	trailing:    Option<AnyElement>,
@@ -29,9 +29,9 @@ pub struct SearchField {
 impl SearchField {
 	/// Creates a search field wrapping an editor slot.
 	#[must_use]
-	pub fn new(editor: impl Into<EditorSlot>) -> Self {
+	pub fn new(id: impl Into<ElementId>, editor: impl Into<EditorSlot>) -> Self {
 		Self {
-			id:          None,
+			id:          id.into(),
 			editor:      editor.into(),
 			placeholder: "Search...".into(),
 			trailing:    None,
@@ -61,13 +61,6 @@ impl SearchField {
 	#[must_use]
 	pub fn flush(mut self, flush: bool) -> Self {
 		self.flush = flush;
-		self
-	}
-
-	/// Sets element ID.
-	#[must_use]
-	pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-		self.id = Some(id.into());
 		self
 	}
 
@@ -112,7 +105,7 @@ impl RenderOnce for SearchField {
 			EditorSlot::Static(val) => !val.is_empty(),
 		};
 
-		let id = self.id.unwrap_or_else(|| ElementId::from("search-field"));
+		let id = self.id;
 		let mut container = div()
 			.id(id)
 			.h(self.height.unwrap_or(metrics.height))
@@ -170,8 +163,7 @@ impl RenderOnce for SearchField {
 
 		if let (true, Some(on_clear)) = (has_value, self.on_clear) {
 			container = container.child(
-				IconButton::new(IconName::Close)
-					.id("search-field-clear")
+				IconButton::new("search-field-clear", IconName::Close)
 					.size(IconSize::Size12)
 					.on_click(move |_, window, cx| on_clear(window, cx)),
 			);

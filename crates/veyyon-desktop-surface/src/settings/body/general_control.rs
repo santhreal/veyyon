@@ -63,8 +63,7 @@ fn boolean_control(key: &str, entry: &SettingEntry, entity: Entity<ShellView>) -
 		_ => false,
 	};
 	let key = key.to_owned();
-	Toggle::new(current)
-		.id(ElementId::Name(format!("toggle-{key}").into()))
+	Toggle::new(ElementId::Name(format!("toggle-{key}").into()), current)
 		.on_toggle(move |val, _win, app| set_value(&entity, app, &key, Value::Bool(val)))
 		.into_any_element()
 }
@@ -90,26 +89,30 @@ fn number_control(key: &str, entry: &SettingEntry, entity: Entity<ShellView>) ->
 
 	let input_entity = entity.clone();
 	let input_key = key.to_owned();
-	let input = NumberInput::new(current.round() as i64)
-		.id(ElementId::Name(format!("num-{key}").into()))
-		.range(
-			bounds.map_or(0, |(min, _)| min.round() as i64),
-			bounds.map_or(100, |(_, max)| max.round() as i64),
-		)
-		.on_change(move |val, _win, app| {
-			set_value(&input_entity, app, &input_key, to_value(val as f64));
-		});
+	let input =
+		NumberInput::new(ElementId::Name(format!("num-{key}").into()), current.round() as i64)
+			.range(
+				bounds.map_or(0, |(min, _)| min.round() as i64),
+				bounds.map_or(100, |(_, max)| max.round() as i64),
+			)
+			.on_change(move |val, _win, app| {
+				set_value(&input_entity, app, &input_key, to_value(val as f64));
+			});
 
 	let Some((min, max)) = bounds else {
 		return input.into_any_element();
 	};
 
 	let slider_key = key.to_owned();
-	let slider = Slider::new(current as f32, min as f32, max as f32)
-		.id(ElementId::Name(format!("slider-{key}").into()))
-		.on_change(move |val, _win, app| {
-			set_value(&entity, app, &slider_key, to_value(f64::from(val)));
-		});
+	let slider = Slider::new(
+		ElementId::Name(format!("slider-{key}").into()),
+		current as f32,
+		min as f32,
+		max as f32,
+	)
+	.on_change(move |val, _win, app| {
+		set_value(&entity, app, &slider_key, to_value(f64::from(val)));
+	});
 	Row::new(SpacingStep::S2)
 		.child(div().flex_1().min_w_0().child(slider))
 		.child(input)
@@ -143,8 +146,7 @@ fn enum_control(key: &str, entry: &SettingEntry, entity: Entity<ShellView>) -> A
 			let entity = entity.clone();
 			let key = key.to_owned();
 			row = row.child(
-				Radio::new(index == selected)
-					.id(ElementId::Name(format!("radio-{key}-{value}").into()))
+				Radio::new(ElementId::Name(format!("radio-{key}-{value}").into()), index == selected)
 					.label(label)
 					.on_select(move |_win, app| {
 						set_value(&entity, app, &key, Value::String(value.clone()));
@@ -156,8 +158,7 @@ fn enum_control(key: &str, entry: &SettingEntry, entity: Entity<ShellView>) -> A
 
 	if labels.len() <= SEGMENTED_MAX {
 		let key = key.to_owned();
-		return Segmented::new(labels, selected)
-			.id(ElementId::Name(format!("seg-{key}").into()))
+		return Segmented::new(ElementId::Name(format!("seg-{key}").into()), labels, selected)
 			.on_change(move |idx, _win, app| {
 				if let Some(val) = values.get(idx) {
 					set_value(&entity, app, &key, Value::String(val.clone()));
@@ -166,9 +167,7 @@ fn enum_control(key: &str, entry: &SettingEntry, entity: Entity<ShellView>) -> A
 			.into_any_element();
 	}
 
-	Select::new(labels, selected)
-		.id(ElementId::Name(format!("sel-{key}").into()))
-		.into_any_element()
+	Select::new(ElementId::Name(format!("sel-{key}").into()), labels, selected).into_any_element()
 }
 
 /// An array with declared choices is one checkbox per choice; a toggle adds
@@ -199,8 +198,7 @@ fn checkbox_control(key: &str, entry: &SettingEntry, entity: Entity<ShellView>) 
 			.collect();
 		let order: Vec<String> = entry.options.iter().map(|o| o.value.clone()).collect();
 		row = row.child(
-			Checkbox::new(state)
-				.id(ElementId::Name(format!("check-{key}-{value}").into()))
+			Checkbox::new(ElementId::Name(format!("check-{key}-{value}").into()), state)
 				.label(option.label.clone())
 				.on_toggle(move |next, _win, app| {
 					let mut kept = others.clone();
@@ -242,11 +240,7 @@ fn text_area_control(
 	div()
 		.w_full()
 		.whitespace_nowrap()
-		.child(
-			TextArea::new(editor)
-				.id(ElementId::Name(format!("area-{key}").into()))
-				.rows(1),
-		)
+		.child(TextArea::new(ElementId::Name(format!("area-{key}").into()), editor).rows(1))
 		.into_any_element()
 }
 
@@ -258,9 +252,7 @@ fn text_field_control(
 	app: &mut App,
 ) -> AnyElement {
 	let editor = field_editor(key, entry, entity, window, app);
-	TextField::new(editor)
-		.id(ElementId::Name(format!("txt-{key}").into()))
-		.into_any_element()
+	TextField::new(ElementId::Name(format!("txt-{key}").into()), editor).into_any_element()
 }
 
 /// The retained editor for `entry`, holding the value the host reports until
@@ -299,8 +291,7 @@ fn path_control(key: &str, entry: &SettingEntry, entity: Entity<ShellView>) -> A
 		.filter(|s| !s.is_empty())
 		.map(PathBuf::from);
 	let key = key.to_owned();
-	FilePicker::new(current)
-		.id(ElementId::Name(format!("path-{key}").into()))
+	FilePicker::new(ElementId::Name(format!("path-{key}").into()), current)
 		.on_browse(move |_event, _win, app| {
 			let key = key.clone();
 			let () = entity.update(app, |view, cx| view.pick_setting_path(key, cx));

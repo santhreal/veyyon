@@ -16,7 +16,7 @@ use crate::{
 /// leading/trailing slots.
 #[derive(IntoElement)]
 pub struct ListRow {
-	id:        Option<ElementId>,
+	id:        ElementId,
 	title:     SharedString,
 	subtitle:  Option<SharedString>,
 	leading:   Option<AnyElement>,
@@ -30,9 +30,9 @@ pub struct ListRow {
 impl ListRow {
 	/// Creates a list row with title text.
 	#[must_use]
-	pub fn new(title: impl Into<SharedString>) -> Self {
+	pub fn new(id: impl Into<ElementId>, title: impl Into<SharedString>) -> Self {
 		Self {
-			id:        None,
+			id:        id.into(),
 			title:     title.into(),
 			subtitle:  None,
 			leading:   None,
@@ -42,13 +42,6 @@ impl ListRow {
 			compact:   false,
 			height:    None,
 		}
-	}
-
-	/// Sets element ID.
-	#[must_use]
-	pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-		self.id = Some(id.into());
-		self
 	}
 
 	/// Sets secondary subtitle.
@@ -124,7 +117,7 @@ impl RenderOnce for ListRow {
 		let radius = tokens.radius(RadiusStep::Sm);
 		let gap = tokens.spacing(SpacingStep::S2);
 
-		let id = self.id.unwrap_or_else(|| ElementId::from("list-row"));
+		let id = self.id;
 		let mut el = div()
 			.id(id)
 			.w_full()

@@ -13,7 +13,7 @@ use veyyon_desktop_kit::{
 };
 use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
-use veyyon_gpui::{Div, ParentElement, Styled, WeakEntity, div, img, px};
+use veyyon_gpui::{Div, ElementId, ParentElement, Styled, WeakEntity, div, img, px};
 
 use super::{
 	artifact_facts, artifact_image_status,
@@ -108,9 +108,12 @@ pub fn render_artifact_details(
 	if let Artifact::File { path, unavailable_reason, .. } = artifact {
 		let view_open = view.cloned();
 		let path_open = path.clone();
-		let mut open_button = Button::new("Open File")
-			.size(ButtonSize::Small)
-			.leading_icon(IconName::File);
+		let mut open_button = Button::new(
+			ElementId::Name(format!("artifact-open-{turn_ix}-{block_ix}").into()),
+			"Open File",
+		)
+		.size(ButtonSize::Small)
+		.leading_icon(IconName::File);
 		if unavailable_reason.is_some() {
 			open_button = open_button.state(InteractiveState::Disabled);
 		} else {
@@ -128,19 +131,26 @@ pub fn render_artifact_details(
 		actions = actions.justify_end();
 	}
 
-	details.child(actions.child(Button::new("Collapse").size(ButtonSize::Small).on_click(
-		move |_event, _window, cx| {
-			state_collapse.set_block_expanded(
-				turn_ix,
-				block_ix,
-				false,
-				&motion_tokens_collapse,
-				reduced_motion,
-				Instant::now(),
-			);
-			if let Some(v) = &view_collapse {
-				let _ = v.update(cx, |_view, cx| cx.notify());
-			}
-		},
-	)))
+	details.child(
+		actions.child(
+			Button::new(
+				ElementId::Name(format!("artifact-collapse-{turn_ix}-{block_ix}").into()),
+				"Collapse",
+			)
+			.size(ButtonSize::Small)
+			.on_click(move |_event, _window, cx| {
+				state_collapse.set_block_expanded(
+					turn_ix,
+					block_ix,
+					false,
+					&motion_tokens_collapse,
+					reduced_motion,
+					Instant::now(),
+				);
+				if let Some(v) = &view_collapse {
+					let _ = v.update(cx, |_view, cx| cx.notify());
+				}
+			}),
+		),
+	)
 }

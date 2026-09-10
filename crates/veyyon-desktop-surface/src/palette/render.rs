@@ -27,8 +27,7 @@ pub fn palette_surface(
 		Some(editor) => EditorSlot::from(editor),
 		None => EditorSlot::from(state.query.clone()),
 	};
-	let search = SearchField::new(input)
-		.id("palette-search")
+	let search = SearchField::new("palette-search", input)
 		.placeholder(state.mode.placeholder())
 		.height(px(geometry.input_row_height_px))
 		.flush(true);
@@ -112,8 +111,7 @@ pub fn palette_surface(
 					.child(heading.to_owned()),
 			);
 		}
-		let mut row = ListRow::new(item.title.clone())
-			.id(("palette-result", item.id))
+		let mut row = ListRow::new(("palette-result", item.id), item.title.clone())
 			.height(px(geometry.results_row_height_px))
 			.selection(if index == state.selected {
 				SelectionState::Selected

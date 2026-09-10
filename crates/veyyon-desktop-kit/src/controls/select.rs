@@ -21,7 +21,7 @@ use crate::{
 /// Dropdown select trigger element.
 #[derive(IntoElement)]
 pub struct Select {
-	id:       Option<ElementId>,
+	id:       ElementId,
 	options:  Vec<SharedString>,
 	selected: usize,
 	is_open:  bool,
@@ -33,9 +33,13 @@ pub struct Select {
 impl Select {
 	/// Creates a select trigger with options list and selected index.
 	#[must_use]
-	pub fn new(options: impl IntoIterator<Item = impl Into<SharedString>>, selected: usize) -> Self {
+	pub fn new(
+		id: impl Into<ElementId>,
+		options: impl IntoIterator<Item = impl Into<SharedString>>,
+		selected: usize,
+	) -> Self {
 		Self {
-			id: None,
+			id: id.into(),
 			options: options.into_iter().map(Into::into).collect(),
 			selected,
 			is_open: false,
@@ -43,13 +47,6 @@ impl Select {
 			state: InteractiveState::default(),
 			on_open: None,
 		}
-	}
-
-	/// Sets element ID.
-	#[must_use]
-	pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-		self.id = Some(id.into());
-		self
 	}
 
 	/// Sets open state, which flips the chevron.
@@ -116,7 +113,7 @@ impl RenderOnce for Select {
 			IconName::ChevronDown
 		};
 
-		let id = self.id.unwrap_or_else(|| ElementId::from("select-trigger"));
+		let id = self.id;
 		let mut el = div()
 			.id(id)
 			.h(metrics.height)

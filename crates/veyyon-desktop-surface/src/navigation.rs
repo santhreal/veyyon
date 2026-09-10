@@ -107,8 +107,7 @@ pub fn surface_header(
 		.gap(tokens.spacing(SpacingStep::S2));
 	if let Some(parent) = back {
 		header = header.child(
-			Button::new("Back")
-				.id("surface-back")
+			Button::new("surface-back", "Back")
 				.size(ButtonSize::Small)
 				.variant(ButtonVariant::Ghost)
 				.on_click(cx.listener(move |view, _, _, cx| view.navigate_surface(parent, cx))),
@@ -124,8 +123,7 @@ pub fn surface_header(
 				.child(route.title()),
 		)
 		.child(
-			Button::new("Close")
-				.id("surface-close")
+			Button::new("surface-close", "Close")
 				.size(ButtonSize::Small)
 				.variant(ButtonVariant::Ghost)
 				.on_click(cx.listener(|view, _, _, cx| view.close_palette(cx))),

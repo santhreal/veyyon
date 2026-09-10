@@ -109,7 +109,7 @@ pub fn titlebar(
 			.flex_1()
 			.min_w_0()
 			.max_w(px(320.0))
-			.child(TextField::new(editor).id("session-rename-field"))
+			.child(TextField::new("session-rename-field", editor))
 	} else {
 		div()
 			.id("titlebar-title")
@@ -169,8 +169,7 @@ fn toggle_control(
 	} else {
 		IconButtonVariant::Ghost
 	};
-	IconButton::new(icon)
-		.id(id)
+	IconButton::new(id, icon)
 		.size(IconSize::Size14)
 		.variant(variant)
 		.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {

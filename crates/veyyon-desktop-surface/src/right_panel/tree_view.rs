@@ -81,8 +81,7 @@ fn render_tree_row(
 	let is_dir = row.is_dir;
 	let entity = cx.entity();
 
-	let mut node = TreeRow::new(row.name.clone(), row.depth)
-		.id(("tree-row", index))
+	let mut node = TreeRow::new(("tree-row", index), row.name.clone(), row.depth)
 		.branch(row.is_dir)
 		.expanded(row.is_expanded)
 		.selected(is_selected)

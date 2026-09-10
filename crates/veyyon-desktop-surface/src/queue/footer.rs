@@ -28,8 +28,7 @@ pub fn queue_footer(
 		.flex_row()
 		.items_center()
 		.child(
-			IconButton::new(IconName::Settings)
-				.id("queue-settings-gear")
+			IconButton::new("queue-settings-gear", IconName::Settings)
 				.variant(IconButtonVariant::Ghost)
 				.size(IconSize::Size16)
 				.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {

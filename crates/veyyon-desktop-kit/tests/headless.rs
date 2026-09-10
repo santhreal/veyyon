@@ -91,30 +91,36 @@ impl Render for KitPrimitiveFixture {
 				.caption("rust")
 				.into_any_element(),
 			PrimitiveKind::Kbd => Kbd::chords([KeyChord::key("K").meta()]).into_any_element(),
-			PrimitiveKind::Button => Button::new("Primary Action")
+			PrimitiveKind::Button => Button::new("primary", "Primary Action")
 				.variant(ButtonVariant::Primary)
 				.into_any_element(),
-			PrimitiveKind::IconButton => IconButton::new(IconName::Search).into_any_element(),
-			PrimitiveKind::Toggle => Toggle::new(true).into_any_element(),
-			PrimitiveKind::Checkbox => Checkbox::new(CheckboxState::Checked)
+			PrimitiveKind::IconButton => {
+				IconButton::new("search", IconName::Search).into_any_element()
+			},
+			PrimitiveKind::Toggle => Toggle::new("toggle", true).into_any_element(),
+			PrimitiveKind::Checkbox => Checkbox::new("checkbox", CheckboxState::Checked)
 				.label("Enabled")
 				.into_any_element(),
-			PrimitiveKind::Radio => Radio::new(true).label("Option A").into_any_element(),
-			PrimitiveKind::Select => Select::new(["Choice 1", "Choice 2"], 0).into_any_element(),
-			PrimitiveKind::Slider => Slider::new(0.5, 0.0, 1.0).into_any_element(),
-			PrimitiveKind::SegmentedControl => {
-				SegmentedControl::new(["First", "Second"], 0).into_any_element()
+			PrimitiveKind::Radio => Radio::new("radio", true)
+				.label("Option A")
+				.into_any_element(),
+			PrimitiveKind::Select => {
+				Select::new("select", ["Choice 1", "Choice 2"], 0).into_any_element()
 			},
-			PrimitiveKind::NumberInput => NumberInput::new(10)
+			PrimitiveKind::Slider => Slider::new("slider", 0.5, 0.0, 1.0).into_any_element(),
+			PrimitiveKind::SegmentedControl => {
+				SegmentedControl::new("segmented", ["First", "Second"], 0).into_any_element()
+			},
+			PrimitiveKind::NumberInput => NumberInput::new("number", 10)
 				.range(0, 100)
 				.step(1)
 				.into_any_element(),
-			PrimitiveKind::TextField => TextField::new(self.field.clone()).into_any_element(),
-			PrimitiveKind::TextArea => TextArea::new(self.area.clone()).into_any_element(),
-			PrimitiveKind::SearchField => SearchField::new("Query")
+			PrimitiveKind::TextField => TextField::new("field", self.field.clone()).into_any_element(),
+			PrimitiveKind::TextArea => TextArea::new("area", self.area.clone()).into_any_element(),
+			PrimitiveKind::SearchField => SearchField::new("search-field", "Query")
 				.placeholder("Search...")
 				.into_any_element(),
-			PrimitiveKind::FilePicker => FilePicker::new(None).into_any_element(),
+			PrimitiveKind::FilePicker => FilePicker::new("picker", None).into_any_element(),
 			PrimitiveKind::Stack => Stack::vertical(SpacingStep::S2)
 				.child(Text::new("A"))
 				.child(Text::new("B"))
@@ -137,6 +143,7 @@ impl Render for KitPrimitiveFixture {
 				ScrollView::new(Text::new("Scroll Content")).into_any_element()
 			},
 			PrimitiveKind::Resizable => Resizable::new(
+				"resizable",
 				veyyon_desktop_kit::Axis::Horizontal,
 				pad,
 				Text::new("Left"),
@@ -148,14 +155,14 @@ impl Render for KitPrimitiveFixture {
 				List::new(3, |i, _, _| Text::new(format!("Item {i}")).into_any_element())
 					.into_any_element()
 			},
-			PrimitiveKind::ListRow => ListRow::new("Queue Title")
+			PrimitiveKind::ListRow => ListRow::new("row", "Queue Title")
 				.subtitle("Detail")
 				.into_any_element(),
-			PrimitiveKind::Tree => {
-				Tree::new(2, |i, _, _| TreeRow::new(format!("Node {i}"), i).into_any_element())
-					.into_any_element()
-			},
-			PrimitiveKind::TreeRow => TreeRow::new("Tree Node", 0)
+			PrimitiveKind::Tree => Tree::new(2, |i, _, _| {
+				TreeRow::new(("node", i), format!("Node {i}"), i).into_any_element()
+			})
+			.into_any_element(),
+			PrimitiveKind::TreeRow => TreeRow::new("tree-row", "Tree Node", 0)
 				.branch(true)
 				.expanded(true)
 				.into_any_element(),
@@ -170,14 +177,15 @@ impl Render for KitPrimitiveFixture {
 			)
 			.into_any_element(),
 			PrimitiveKind::Menu => Menu::new([MenuItem::new("Menu Item")]).into_any_element(),
-			PrimitiveKind::Dialog => Dialog::new("Dialog Title", Text::new("Dialog Body"))
+			PrimitiveKind::Dialog => Dialog::new("dialog", "Dialog Title", Text::new("Dialog Body"))
 				.action(DialogButtonSpec::new("OK", ButtonVariant::Primary))
 				.into_any_element(),
 			PrimitiveKind::Tooltip => {
-				Tooltip::new("Tooltip text", Button::new("Button")).into_any_element()
+				Tooltip::new("Tooltip text", Button::new("tooltip-anchor", "Button")).into_any_element()
 			},
 			PrimitiveKind::Palette => {
-				Palette::new(SearchField::new(""), Text::new("Results")).into_any_element()
+				Palette::new(SearchField::new("palette-search", ""), Text::new("Results"))
+					.into_any_element()
 			},
 			PrimitiveKind::Badge => Badge::new("Active", TintRole::Approve).into_any_element(),
 			PrimitiveKind::Dot => Dot::new(TintRole::Working).into_any_element(),

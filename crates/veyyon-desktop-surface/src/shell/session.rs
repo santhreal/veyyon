@@ -275,8 +275,7 @@ pub fn session_surface(
 		let shell = cx.weak_entity();
 		let release_shell = shell.clone();
 		div().flex().flex_1().min_w_0().h_full().child(
-			Resizable::new(Axis::Vertical, px(grip), column, drawer)
-				.id("session-drawer-split")
+			Resizable::new("session-drawer-split", Axis::Vertical, px(grip), column, drawer)
 				.ratio((extent - widths.drawer.height_px) / extent)
 				.on_resize(move |ratio, _window, cx| {
 					let _ = shell.update(cx, |view, cx| {

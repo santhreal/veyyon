@@ -52,8 +52,7 @@ pub fn render_keybindings_page(
 			let control = fields.keybinding(&binding.action).map_or_else(
 				|| Kbd::chords(binding.keys.iter().map(|key| KeyChord::parse(key))).into_any_element(),
 				|editor| {
-					TextField::new(editor)
-						.id(ElementId::Name(format!("kbd-{}", binding.action).into()))
+					TextField::new(ElementId::Name(format!("kbd-{}", binding.action).into()), editor)
 						.into_any_element()
 				},
 			);

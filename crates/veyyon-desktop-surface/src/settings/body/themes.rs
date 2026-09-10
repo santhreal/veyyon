@@ -44,8 +44,7 @@ pub fn render_themes_page(
 		let control_el = if is_selected {
 			Badge::new("Active", TintRole::Done).into_any_element()
 		} else {
-			Button::new("Select")
-				.id(ElementId::Name(format!("theme-opt-{}", theme.id).into()))
+			Button::new(ElementId::Name(format!("theme-opt-{}", theme.id).into()), "Select")
 				.size(ButtonSize::Small)
 				.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {
 					view.dispatch(Intent::SelectTheme(theme_id_str.clone()), cx);

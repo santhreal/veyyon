@@ -41,8 +41,7 @@ pub fn render_diagnostics_page(
 	let av = controls.availability(&SurfaceId::DiagnosticRefreshButton);
 
 	// Refresh action row
-	let refresh_btn = Button::new("Refresh")
-		.id("diag-refresh-btn")
+	let refresh_btn = Button::new("diag-refresh-btn", "Refresh")
 		.variant(ButtonVariant::Default)
 		.size(ButtonSize::Small)
 		.on_click(cx.listener(|view, _e: &ClickEvent, _w, cx| {
@@ -85,13 +84,13 @@ pub fn render_diagnostics_page(
 
 			if status == "error" {
 				let source_name = name.to_string();
-				let retry_btn = Button::new("Retry")
-					.id(ElementId::Name(format!("diag-retry-{name}").into()))
-					.size(ButtonSize::Small)
-					.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {
-						view.dispatch(Intent::RetryDiagnosticSource(source_name.clone()), cx);
-					}))
-					.into_any_element();
+				let retry_btn =
+					Button::new(ElementId::Name(format!("diag-retry-{name}").into()), "Retry")
+						.size(ButtonSize::Small)
+						.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {
+							view.dispatch(Intent::RetryDiagnosticSource(source_name.clone()), cx);
+						}))
+						.into_any_element();
 
 				container = container.child(setting_row_with_secondary(
 					name,

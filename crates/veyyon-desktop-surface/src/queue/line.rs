@@ -54,10 +54,12 @@ pub fn line_row(
 	let action_btn = match section {
 		Section::Deferred => {
 			let recall_id = id;
-			let mut btn = IconButton::new(IconName::Refresh)
-				.id(ElementId::NamedInteger("queue-line-recall".into(), recall_id))
-				.size(IconSize::Size12)
-				.variant(IconButtonVariant::Ghost);
+			let mut btn = IconButton::new(
+				ElementId::NamedInteger("queue-line-recall".into(), recall_id),
+				IconName::Refresh,
+			)
+			.size(IconSize::Size12)
+			.variant(IconButtonVariant::Ghost);
 			if let Some(weak) = weak_action {
 				btn = btn.on_click(move |_event, _window, app| {
 					app.stop_propagation();
@@ -69,10 +71,12 @@ pub fn line_row(
 		},
 		Section::Parked => {
 			let unpark_id = id;
-			let mut btn = IconButton::new(IconName::Play)
-				.id(ElementId::NamedInteger("queue-line-unpark".into(), unpark_id))
-				.size(IconSize::Size12)
-				.variant(IconButtonVariant::Ghost);
+			let mut btn = IconButton::new(
+				ElementId::NamedInteger("queue-line-unpark".into(), unpark_id),
+				IconName::Play,
+			)
+			.size(IconSize::Size12)
+			.variant(IconButtonVariant::Ghost);
 			if let Some(weak) = weak_action {
 				btn = btn.on_click(move |_event, _window, app| {
 					app.stop_propagation();

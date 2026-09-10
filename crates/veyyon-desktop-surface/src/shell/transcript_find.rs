@@ -171,7 +171,7 @@ impl ShellView {
 				)
 			})
 			.child(
-				IconButton::new(IconName::ChevronUp)
+				IconButton::new("find-previous", IconName::ChevronUp)
 					.size(IconSize::Size14)
 					.variant(IconButtonVariant::Ghost)
 					.on_click(move |_, _, cx| {
@@ -184,7 +184,7 @@ impl ShellView {
 					}),
 			)
 			.child(
-				IconButton::new(IconName::ChevronDown)
+				IconButton::new("find-next", IconName::ChevronDown)
 					.size(IconSize::Size14)
 					.variant(IconButtonVariant::Ghost)
 					.on_click(move |_, _, cx| {
@@ -197,7 +197,7 @@ impl ShellView {
 					}),
 			)
 			.child(
-				IconButton::new(IconName::Close)
+				IconButton::new("find-close", IconName::Close)
 					.size(IconSize::Size14)
 					.variant(IconButtonVariant::Ghost)
 					.on_click(move |_, window, cx| {

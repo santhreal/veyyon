@@ -22,7 +22,7 @@ pub enum CheckboxState {
 /// Checkbox selection control primitive.
 #[derive(IntoElement)]
 pub struct Checkbox {
-	id:        Option<ElementId>,
+	id:        ElementId,
 	state:     CheckboxState,
 	label:     Option<SharedString>,
 	interact:  InteractiveState,
@@ -32,15 +32,14 @@ pub struct Checkbox {
 impl Checkbox {
 	/// Creates a checkbox with current checked state.
 	#[must_use]
-	pub fn new(state: CheckboxState) -> Self {
-		Self { id: None, state, label: None, interact: InteractiveState::default(), on_toggle: None }
-	}
-
-	/// Sets element ID.
-	#[must_use]
-	pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-		self.id = Some(id.into());
-		self
+	pub fn new(id: impl Into<ElementId>, state: CheckboxState) -> Self {
+		Self {
+			id: id.into(),
+			state,
+			label: None,
+			interact: InteractiveState::default(),
+			on_toggle: None,
+		}
 	}
 
 	/// Sets label text.
@@ -109,7 +108,7 @@ impl RenderOnce for Checkbox {
 			);
 		}
 
-		let id = self.id.unwrap_or_else(|| ElementId::from("checkbox"));
+		let id = self.id;
 		let mut row = div()
 			.id(id)
 			.flex()
@@ -146,7 +145,7 @@ impl RenderOnce for Checkbox {
 /// Radio button single-choice primitive.
 #[derive(IntoElement)]
 pub struct Radio {
-	id:        Option<ElementId>,
+	id:        ElementId,
 	selected:  bool,
 	label:     Option<SharedString>,
 	interact:  InteractiveState,
@@ -156,21 +155,14 @@ pub struct Radio {
 impl Radio {
 	/// Creates a radio button with selection state.
 	#[must_use]
-	pub fn new(selected: bool) -> Self {
+	pub fn new(id: impl Into<ElementId>, selected: bool) -> Self {
 		Self {
-			id: None,
+			id: id.into(),
 			selected,
 			label: None,
 			interact: InteractiveState::default(),
 			on_select: None,
 		}
-	}
-
-	/// Sets element ID.
-	#[must_use]
-	pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-		self.id = Some(id.into());
-		self
 	}
 
 	/// Sets label text.
@@ -228,7 +220,7 @@ impl RenderOnce for Radio {
 			.justify_center()
 			.child(inner_dot);
 
-		let id = self.id.unwrap_or_else(|| ElementId::from("radio"));
+		let id = self.id;
 		let mut row = div()
 			.id(id)
 			.flex()

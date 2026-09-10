@@ -23,7 +23,7 @@ pub enum IconButtonVariant {
 /// Compact button containing only an icon.
 #[derive(IntoElement)]
 pub struct IconButton {
-	id:       Option<ElementId>,
+	id:       ElementId,
 	icon:     IconName,
 	size:     IconSize,
 	variant:  IconButtonVariant,
@@ -33,23 +33,20 @@ pub struct IconButton {
 
 impl IconButton {
 	/// Creates an icon button.
+	///
+	/// The id is the caller's: gpui keys element state by the id path, so two
+	/// icon buttons under one parent that resolve to the same id share one
+	/// pending-press cell and the second answers no click.
 	#[must_use]
-	pub fn new(icon: IconName) -> Self {
+	pub fn new(id: impl Into<ElementId>, icon: IconName) -> Self {
 		Self {
-			id: None,
+			id: id.into(),
 			icon,
 			size: IconSize::default(),
 			variant: IconButtonVariant::default(),
 			state: InteractiveState::default(),
 			on_click: None,
 		}
-	}
-
-	/// Sets element ID.
-	#[must_use]
-	pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-		self.id = Some(id.into());
-		self
 	}
 
 	/// Sets icon size.
@@ -127,7 +124,7 @@ impl RenderOnce for IconButton {
 			CursorStyle::PointingHand
 		};
 
-		let id = self.id.unwrap_or_else(|| ElementId::from("icon-button"));
+		let id = self.id;
 		let mut el = div()
 			.id(id)
 			.w(metrics.square)

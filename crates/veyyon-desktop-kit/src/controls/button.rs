@@ -25,7 +25,7 @@ pub enum ButtonSize {
 /// Interactive button primitive element.
 #[derive(IntoElement)]
 pub struct Button {
-	id:          Option<ElementId>,
+	id:          ElementId,
 	label:       Option<SharedString>,
 	variant:     ButtonVariant,
 	size:        ButtonSize,
@@ -38,10 +38,15 @@ pub struct Button {
 
 impl Button {
 	/// Creates a button with a text label.
+	///
+	/// The id is the caller's because gpui keys element state by the id path:
+	/// two buttons under one parent that resolve to the same id share one
+	/// pending-press cell, and the second one answers no click at all. A
+	/// default derived here would collide the moment a row repeated a label.
 	#[must_use]
-	pub fn new(label: impl Into<SharedString>) -> Self {
+	pub fn new(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Self {
 		Self {
-			id:          None,
+			id:          id.into(),
 			label:       Some(label.into()),
 			variant:     ButtonVariant::default(),
 			size:        ButtonSize::default(),
@@ -51,13 +56,6 @@ impl Button {
 			on_click:    None,
 			block_width: false,
 		}
-	}
-
-	/// Sets the element ID.
-	#[must_use]
-	pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-		self.id = Some(id.into());
-		self
 	}
 
 	/// Sets visual variant.
@@ -160,7 +158,7 @@ impl RenderOnce for Button {
 		};
 		let disabled = self.state == InteractiveState::Disabled;
 
-		let id = self.id.unwrap_or_else(|| ElementId::from("button"));
+		let id = self.id;
 		let cursor = if disabled {
 			CursorStyle::OperationNotAllowed
 		} else {

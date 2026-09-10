@@ -13,7 +13,7 @@ use crate::{
 /// Numeric input field with increment/decrement stepper controls.
 #[derive(IntoElement)]
 pub struct NumberInput {
-	id:        Option<ElementId>,
+	id:        ElementId,
 	value:     i64,
 	min:       i64,
 	max:       i64,
@@ -25,9 +25,9 @@ pub struct NumberInput {
 impl NumberInput {
 	/// Creates a number input with initial value.
 	#[must_use]
-	pub fn new(value: i64) -> Self {
+	pub fn new(id: impl Into<ElementId>, value: i64) -> Self {
 		Self {
-			id: None,
+			id: id.into(),
 			value,
 			min: i64::MIN,
 			max: i64::MAX,
@@ -35,13 +35,6 @@ impl NumberInput {
 			disabled: false,
 			on_change: None,
 		}
-	}
-
-	/// Sets the element ID; two inputs in one surface need distinct ids.
-	#[must_use]
-	pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-		self.id = Some(id.into());
-		self
 	}
 
 	/// Sets minimum and maximum value bounds.
@@ -119,7 +112,7 @@ impl RenderOnce for NumberInput {
 			(self.value < self.max).then(|| self.value.saturating_add(self.step).min(self.max));
 
 		let mut container = div()
-			.id(self.id.unwrap_or_else(|| ElementId::from("number-input")))
+			.id(self.id)
 			.h(metrics.height)
 			.rounded(metrics.radius)
 			.border(stroke)

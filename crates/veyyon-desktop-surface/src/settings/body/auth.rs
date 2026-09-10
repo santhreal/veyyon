@@ -42,16 +42,14 @@ pub fn render_auth_page(
 			let url_str = flow.url.clone().unwrap_or_default();
 			let url_for_open = url_str;
 
-			let open_btn = Button::new("Open Browser")
-				.id("auth-open-url-btn")
+			let open_btn = Button::new("auth-open-url-btn", "Open Browser")
 				.variant(ButtonVariant::Primary)
 				.size(ButtonSize::Small)
 				.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {
 					view.dispatch(Intent::OpenAuthUrl(url_for_open.clone()), cx);
 				}));
 
-			let cancel_btn = Button::new("Cancel")
-				.id("auth-cancel-btn")
+			let cancel_btn = Button::new("auth-cancel-btn", "Cancel")
 				.size(ButtonSize::Small)
 				.on_click(cx.listener(|view, _e: &ClickEvent, _w, cx| {
 					view.dispatch(Intent::CancelAuthFlow, cx);
@@ -77,18 +75,16 @@ pub fn render_auth_page(
 			// The field is the retained editor or there is no field: a
 			// primitive built from a value keeps no keystroke, so a submit
 			// that read one back would send an empty secret (§8.25, §9.3).
-			let text_field = secret.map(|editor| TextField::new(editor).id("auth-secret-input"));
+			let text_field = secret.map(|editor| TextField::new("auth-secret-input", editor));
 
-			let submit_btn = Button::new("Submit")
-				.id("auth-submit-secret-btn")
+			let submit_btn = Button::new("auth-submit-secret-btn", "Submit")
 				.variant(ButtonVariant::Primary)
 				.size(ButtonSize::Small)
 				.on_click(cx.listener(move |view, _e: &ClickEvent, _w, cx| {
 					view.submit_pending_secret(cx);
 				}));
 
-			let cancel_btn = Button::new("Cancel")
-				.id("auth-cancel-btn")
+			let cancel_btn = Button::new("auth-cancel-btn", "Cancel")
 				.size(ButtonSize::Small)
 				.on_click(cx.listener(|view, _e: &ClickEvent, _w, cx| {
 					view.dispatch(Intent::CancelAuthFlow, cx);
@@ -121,16 +117,14 @@ pub fn render_auth_page(
 			}
 		},
 		AuthFlowState::Failed => {
-			let retry_btn = Button::new("Retry")
-				.id("auth-retry-btn")
+			let retry_btn = Button::new("auth-retry-btn", "Retry")
 				.variant(ButtonVariant::Primary)
 				.size(ButtonSize::Small)
 				.on_click(cx.listener(|view, _e: &ClickEvent, _w, cx| {
 					view.dispatch(Intent::RetryAuthFlow, cx);
 				}));
 
-			let cancel_btn = Button::new("Dismiss")
-				.id("auth-cancel-btn")
+			let cancel_btn = Button::new("auth-cancel-btn", "Dismiss")
 				.size(ButtonSize::Small)
 				.on_click(cx.listener(|view, _e: &ClickEvent, _w, cx| {
 					view.dispatch(Intent::CancelAuthFlow, cx);
@@ -152,8 +146,7 @@ pub fn render_auth_page(
 			));
 		},
 		AuthFlowState::Cancelled => {
-			let retry_btn = Button::new("Start Flow")
-				.id("auth-retry-btn")
+			let retry_btn = Button::new("auth-retry-btn", "Start Flow")
 				.size(ButtonSize::Small)
 				.on_click(cx.listener(|view, _e: &ClickEvent, _w, cx| {
 					view.dispatch(Intent::RetryAuthFlow, cx);

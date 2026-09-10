@@ -12,7 +12,7 @@ use veyyon_desktop_kit::{
 use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
 use veyyon_gpui::{
-	CursorStyle, Div, InteractiveElement, ParentElement, Styled, WeakEntity, div, px,
+	CursorStyle, Div, ElementId, InteractiveElement, ParentElement, Styled, WeakEntity, div, px,
 };
 
 use super::reveal::render_reveal_container;
@@ -110,21 +110,24 @@ pub fn render_reason_block(
 		)
 		.child(
 			div().flex().justify_end().w_full().child(
-				Button::new("Collapse")
-					.size(ButtonSize::Small)
-					.on_click(move |_event, _window, cx| {
-						state_collapse.set_block_expanded(
-							turn_ix,
-							block_ix,
-							false,
-							&motion_tokens_collapse,
-							reduced_motion,
-							Instant::now(),
-						);
-						if let Some(v) = &view_collapse {
-							let _ = v.update(cx, |_view, cx| cx.notify());
-						}
-					}),
+				Button::new(
+					ElementId::Name(format!("reason-collapse-{turn_ix}-{block_ix}").into()),
+					"Collapse",
+				)
+				.size(ButtonSize::Small)
+				.on_click(move |_event, _window, cx| {
+					state_collapse.set_block_expanded(
+						turn_ix,
+						block_ix,
+						false,
+						&motion_tokens_collapse,
+						reduced_motion,
+						Instant::now(),
+					);
+					if let Some(v) = &view_collapse {
+						let _ = v.update(cx, |_view, cx| cx.notify());
+					}
+				}),
 			),
 		);
 

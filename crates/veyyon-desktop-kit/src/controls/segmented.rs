@@ -13,7 +13,7 @@ use crate::{
 /// Segmented choice selector primitive element.
 #[derive(IntoElement)]
 pub struct Segmented {
-	id:        Option<ElementId>,
+	id:        ElementId,
 	options:   Vec<SharedString>,
 	selected:  usize,
 	size:      ButtonSize,
@@ -25,22 +25,19 @@ impl Segmented {
 	/// Creates a segmented control with option labels and initially selected
 	/// index.
 	#[must_use]
-	pub fn new(options: impl IntoIterator<Item = impl Into<SharedString>>, selected: usize) -> Self {
+	pub fn new(
+		id: impl Into<ElementId>,
+		options: impl IntoIterator<Item = impl Into<SharedString>>,
+		selected: usize,
+	) -> Self {
 		Self {
-			id: None,
+			id: id.into(),
 			options: options.into_iter().map(Into::into).collect(),
 			selected,
 			size: ButtonSize::Medium,
 			state: InteractiveState::default(),
 			on_change: None,
 		}
-	}
-
-	/// Sets the element ID.
-	#[must_use]
-	pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-		self.id = Some(id.into());
-		self
 	}
 
 	/// Sets the control size; the height follows `control_height_px`.
@@ -84,7 +81,7 @@ impl RenderOnce for Segmented {
 		let hairline = tokens.color(ColorRole::Hairline);
 		let hover = tokens.row_hover();
 		let disabled = self.state == InteractiveState::Disabled;
-		let id = self.id.unwrap_or_else(|| ElementId::from("segmented"));
+		let id = self.id;
 
 		let mut container = div()
 			.id(id)

@@ -42,7 +42,7 @@ struct RowUnderTest {
 impl Render for RowUnderTest {
 	fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
 		let title = if self.long { LONG_TITLE } else { "/new" };
-		let mut row = ListRow::new(title).id("row-under-test");
+		let mut row = ListRow::new("row-under-test", title);
 		if self.detail {
 			row = row.subtitle(if self.long {
 				LONG_DETAIL

@@ -15,7 +15,7 @@ use crate::{
 /// Multiline text input area primitive element.
 #[derive(IntoElement)]
 pub struct TextArea {
-	id:     Option<ElementId>,
+	id:     ElementId,
 	editor: Entity<Editor>,
 	state:  InteractiveState,
 	rows:   usize,
@@ -25,15 +25,8 @@ impl TextArea {
 	/// Creates a text area over `editor`, which holds the value and the
 	/// placeholder it draws when empty.
 	#[must_use]
-	pub fn new(editor: Entity<Editor>) -> Self {
-		Self { id: None, editor, state: InteractiveState::default(), rows: 4 }
-	}
-
-	/// Sets element ID.
-	#[must_use]
-	pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-		self.id = Some(id.into());
-		self
+	pub fn new(id: impl Into<ElementId>, editor: Entity<Editor>) -> Self {
+		Self { id: id.into(), editor, state: InteractiveState::default(), rows: 4 }
 	}
 
 	/// Sets interactive state.
@@ -87,7 +80,7 @@ impl RenderOnce for TextArea {
 		let font_size = tokens.font_size(TextRamp::Body);
 		let line_h = tokens.line_height(TextRamp::Body);
 
-		let id = self.id.unwrap_or_else(|| ElementId::from("text-area"));
+		let id = self.id;
 		let container = div()
 			.id(id)
 			.w_full()
