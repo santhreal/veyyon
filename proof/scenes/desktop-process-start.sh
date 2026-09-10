@@ -15,16 +15,22 @@
 # had started one. Both arms run this same scene; the window is the
 # differential.
 #
-#   proof/docker/record-native.sh proof/scenes/desktop-process-start.sh
+#   SCENE_MOTION_FLOOR=5 proof/docker/record-native.sh \
+#     proof/scenes/desktop-process-start.sh
 #
-#   SCENE_ARM=before PROOF_BASE_REF=HEAD \
+#   SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=5 \
 #     PROOF_NATIVE_BEFORE_BINARY=.internal/captures/process-start/veyyon-desktop \
 #     proof/docker/record-native.sh proof/scenes/desktop-process-start.sh
 #
+# The take is a still one: a drawer opens, a line is typed into it and a row
+# appears, which measured 7 fps of real change against the 12 fps default
+# floor, so both arms are recorded at 5.
+#
 # The change is the window's alone, so the before arm holds no source back and
-# runs a build of the commit before the fix instead
-# (`.internal/build-commit-before.py --holdback <fix> process-start`, then
-# `--after` to put this tree's executable back).
+# runs a build of this tree with the fix taken out of it instead
+# (`.internal/build-commit-before.py --holdback
+# .internal/before-edits/process-start.patch process-start`, then `--after` to
+# put this tree's executable back).
 #
 # WHAT IS MEASURED. The host is asked in its own vocabulary, over the same
 # socket the window uses: the after arm requires a supervised process named for
@@ -157,8 +163,9 @@ while True:
                     snapshot = json.loads(line).get("Snapshot", {})
                     if "Processes" not in snapshot:
                         continue
-                    processes, _errors = snapshot["Processes"]
-                    rows = processes["value"]
+                    # `Processes` carries the list itself, not the versioned
+                    # pair `Sessions` carries.
+                    rows = snapshot["Processes"]
                     names = ",".join(str(row.get("name", "")) for row in rows)
                     statuses = ",".join(str(row.get("status", "")) for row in rows)
                     last = f"count={len(rows)} names={names} statuses={statuses}"
@@ -218,8 +225,22 @@ shot command-typed
 TYPED="$(shots_differ_pixels supervisor-open command-typed)"
 
 # ─── The Press, On The Word The Chrome States ────────────────────────────────
-echo "scene: pressing the supervisor's start at ${START_X},${CHROME_MID_Y}" >&2
-move_px "${START_X}" "${CHROME_MID_Y}"
+# The after arm presses the supervisor's `Start`, at the trailing end of the
+# drawer's chrome row. That aim does not exist in the before window: with no
+# supervisor tab, the chrome row's trailing control there is the active
+# terminal's own `Close`, so pressing it would photograph a terminal closing
+# rather than a supervisor starting nothing. The before arm presses inside the
+# drawer body instead, where the supervisor's field and `Start` would be, and
+# rests its claim on the host list below.
+if [ "${ARM}" = "before" ]; then
+	PRESS_X="${FIELD_X}"
+	PRESS_Y="${FIELD_Y}"
+else
+	PRESS_X="${START_X}"
+	PRESS_Y="${CHROME_MID_Y}"
+fi
+echo "scene: pressing at ${PRESS_X},${PRESS_Y}" >&2
+move_px "${PRESS_X}" "${PRESS_Y}"
 pause 0.4
 click
 settle 3
