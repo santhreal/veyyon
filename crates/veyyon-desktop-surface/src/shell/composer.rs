@@ -128,10 +128,14 @@ impl ShellView {
 				Intent::Approval { card: 0, approved: true, standing: false }
 			},
 			PrimaryAction::Accept if !self.state.cards.is_empty() => {
-				Intent::Plan { card: 0, accepted: true }
+				Intent::Plan { card: 0, accepted: true, feedback: String::new() }
 			},
+			// The draft under a plan is what the plan is to be changed to, so
+			// it goes back with the refusal rather than staying behind in the
+			// composer while the agent is told only that a refinement was
+			// asked for (§5.5).
 			PrimaryAction::Refine if has_text && !self.state.cards.is_empty() => {
-				Intent::Plan { card: 0, accepted: false }
+				Intent::Plan { card: 0, accepted: false, feedback: text }
 			},
 			_ => return,
 		};
@@ -178,10 +182,20 @@ impl ShellView {
 
 	/// Records the accepted transport request without consuming editable draft
 	/// content.
+	///
+	/// An answer whose payload IS the draft is tracked with the prompts: the
+	/// free-text answer to a question and the refinement under a plan both
+	/// leave the composer once the host has taken them, or the rail goes on
+	/// stating text as unsent that the session has already answered with
+	/// (§8.10).
 	pub fn track_submission(&mut self, request: RequestId, intent: &Intent) {
 		let (text, attachments) = match intent {
 			Intent::Send { text, attachments } => (text.clone(), attachments.clone()),
 			Intent::Steer(text) | Intent::Queue(text) => (text.clone(), Vec::new()),
+			Intent::Reply { text, .. } => (text.clone(), Vec::new()),
+			Intent::Plan { feedback, .. } if !feedback.trim().is_empty() => {
+				(feedback.clone(), Vec::new())
+			},
 			_ => return,
 		};
 		self.submitted =

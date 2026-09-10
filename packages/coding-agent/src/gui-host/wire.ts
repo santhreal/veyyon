@@ -262,13 +262,15 @@ export interface PendingDecisions {
 /**
  * The `response` of `RespondToInteraction`, by the kind of decision it answers.
  * An approval's `scope` defaults to `"once"`; `"session"` stands for the rest
- * of the session, the same grant the terminal's "for session" rows record.
+ * of the session, the same grant the terminal's "for session" rows record. A
+ * plan sent back for revision carries the refinement asked for in `feedback`,
+ * which is empty when the answer came from the card's own row.
  */
 export type InteractionResponse =
 	| { approved: boolean; scope?: "once" | "session" }
 	| { option: number }
 	| { text: string }
-	| { accepted: boolean };
+	| { accepted: boolean; feedback?: string };
 
 /**
  * Panel-domain sections. Each is the whole of its domain as the host holds it

@@ -183,7 +183,29 @@ describe("raising a decision", () => {
 		const [plan] = raised.Snapshot.Interactions.pending.plans;
 		expect(plan.markdown_plan).toBe("# Ship it\n- step");
 		ledger.answer(plan.id, { accepted: true });
-		expect(await review).toBe(true);
+		expect(await review).toEqual({ accepted: true, feedback: "" });
+	});
+
+	test("a plan sent back carries the refinement it was answered with", async () => {
+		const review = ledger.plan("# Ship it\n- step");
+		const raised = await sink.next();
+		const [plan] = raised.Snapshot.Interactions.pending.plans;
+		expect(ledger.answer(plan.id, { accepted: false, feedback: 42 })?.message).toBe("a plan's feedback is a string");
+		expect(ledger.isEmpty).toBe(false);
+		ledger.answer(plan.id, { accepted: false, feedback: "split step two" });
+		expect(await review).toEqual({ accepted: false, feedback: "split step two" });
+	});
+
+	test("a plan answered as anything but { accepted } stays open", async () => {
+		const review = ledger.plan("# p");
+		const raised = await sink.next();
+		const id = raised.Snapshot.Interactions.pending.plans[0].id;
+		expect(ledger.answer(id, { option: 0 })?.message).toBe(
+			"a plan is answered with { accepted: boolean, feedback?: string }",
+		);
+		expect(ledger.answer(id, { accepted: "yes" })?.code).toBe("INVALID_ARGUMENTS");
+		ledger.answer(id, { accepted: false });
+		expect(await review).toEqual({ accepted: false, feedback: "" });
 	});
 
 	test("the frame carries every open decision, so two prompts are one set", async () => {
@@ -287,7 +309,7 @@ describe("settling without an answer", () => {
 		expect(await approval).toBeUndefined();
 		expect(await confirm).toBe(false);
 		expect(await text).toBeUndefined();
-		expect(await plan).toBe(false);
+		expect(await plan).toEqual({ accepted: false, feedback: "" });
 		expect(ledger.isEmpty).toBe(true);
 		expect(ledger.pending()).toEqual({ approvals: [], questions: [], plans: [] });
 	});

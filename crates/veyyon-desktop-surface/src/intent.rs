@@ -51,9 +51,14 @@ pub enum Intent {
 		card: usize,
 		text: String,
 	},
+	/// A plan review answered: accepted as written, or sent back with the
+	/// refinement the draft states. The refinement travels with the answer
+	/// because the agent is inside the call that raised the plan and reads its
+	/// result; a refusal that carried nothing told it only to try again.
 	Plan {
 		card:     usize,
 		accepted: bool,
+		feedback: String,
 	},
 	/// A prompt and the images and clips it carries, sent as the next turn.
 	Send {

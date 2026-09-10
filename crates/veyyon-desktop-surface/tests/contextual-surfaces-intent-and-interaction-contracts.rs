@@ -158,7 +158,7 @@ fn decision_card_intents_cover_approval_question_reply_and_plan() {
 	assert_eq!(state.cards.len(), 1);
 
 	// Plan intent
-	let plan_intent = Intent::Plan { card: 0, accepted: true };
+	let plan_intent = Intent::Plan { card: 0, accepted: true, feedback: String::new() };
 	plan_intent.apply(&mut state);
 	assert_eq!(state.cards.len(), 0);
 }

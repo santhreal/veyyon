@@ -70,11 +70,11 @@ pub(super) fn take_interaction(
 			let question = pending.questions.remove(card - approvals);
 			Some((question.id, json!({ "text": text })))
 		},
-		Intent::Plan { accepted, .. }
+		Intent::Plan { accepted, ref feedback, .. }
 			if card >= approvals + questions && card - approvals - questions < pending.plans.len() =>
 		{
 			let plan = pending.plans.remove(card - approvals - questions);
-			Some((plan.id, json!({ "accepted": accepted })))
+			Some((plan.id, json!({ "accepted": accepted, "feedback": feedback })))
 		},
 		_ => None,
 	}

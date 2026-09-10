@@ -40,7 +40,13 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 		IntentDiscriminants::Reply => {
 			vec![Intent::Reply { card: 0, text: "sample reply".to_string() }]
 		},
-		IntentDiscriminants::Plan => vec![Intent::Plan { card: 0, accepted: true }],
+		IntentDiscriminants::Plan => {
+			vec![Intent::Plan { card: 0, accepted: true, feedback: String::new() }, Intent::Plan {
+				card:     0,
+				accepted: false,
+				feedback: "tighten step two".to_string(),
+			}]
+		},
 		IntentDiscriminants::Send => {
 			vec![Intent::Send { text: "hello".to_string(), attachments: vec![] }]
 		},

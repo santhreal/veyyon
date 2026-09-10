@@ -148,11 +148,12 @@ fn every_intent_maps_to_the_actions_the_host_answers_or_to_none_on_purpose() {
 
 	// Answer the plan (position 3) first: its id is the plan's, and the
 	// cards before it keep their positions.
-	let plan = actions_for(&Intent::Plan { card: 3, accepted: true }, &index, &mut store);
+	let answered = Intent::Plan { card: 3, accepted: true, feedback: String::new() };
+	let plan = actions_for(&answered, &index, &mut store);
 	assert_eq!(plan, [HostAction::RespondToInteraction {
 		session:        session.clone(),
 		interaction_id: "i-plan".into(),
-		response:       serde_json::json!({ "accepted": true }),
+		response:       serde_json::json!({ "accepted": true, "feedback": "" }),
 	}]);
 	let answer = actions_for(&Intent::Answer { card: 1, option: 1 }, &index, &mut store);
 	assert_eq!(answer, [HostAction::RespondToInteraction {
@@ -228,14 +229,14 @@ fn opening_the_drawer_attaches_to_the_running_terminal_or_creates_one() {
 #[test]
 fn a_decision_at_a_position_of_the_wrong_kind_is_dropped_not_misdelivered() {
 	let (mut store, index) = store_with_decisions();
-	// Position 0 is the approval; asking to answer it as a question must not
-	// resolve the approval with a question's payload.
-	assert!(actions_for(&Intent::Answer { card: 0, option: 0 }, &index, &mut store).is_empty());
-	assert!(actions_for(&Intent::Plan { card: 1, accepted: true }, &index, &mut store).is_empty());
-	assert!(
-		actions_for(&Intent::Reply { card: 0, text: "no".into() }, &index, &mut store).is_empty(),
-		"a reply is a question's answer, never an approval's"
-	);
+	// Position 0 is the approval: a question's answer, a reply and a plan's
+	// acceptance each belong to a card of another kind, and none of the three
+	// resolves the approval standing at that position.
+	let plan = Intent::Plan { card: 1, accepted: true, feedback: String::new() };
+	let reply = Intent::Reply { card: 0, text: "no".into() };
+	for wrong in [Intent::Answer { card: 0, option: 0 }, plan, reply] {
+		assert!(actions_for(&wrong, &index, &mut store).is_empty(), "{wrong:?} was misdelivered");
+	}
 	assert!(
 		actions_for(&Intent::Answer { card: 1, option: 5 }, &index, &mut store).is_empty(),
 		"an option that does not exist is not sent"

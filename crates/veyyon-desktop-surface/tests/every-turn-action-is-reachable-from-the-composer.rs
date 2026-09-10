@@ -133,10 +133,18 @@ fn every_turn_action_is_reachable_and_dispatches_expected_intent() {
 					));
 				},
 				TurnPhaseDiscriminant::PlanPendingEmpty => {
-					assert!(matches!(intents.first(), Some(Intent::Plan { card: 0, accepted: true })));
+					assert!(matches!(
+						intents.first(),
+						Some(Intent::Plan { card: 0, accepted: true, .. })
+					));
 				},
 				TurnPhaseDiscriminant::PlanPendingWithText => {
-					assert!(matches!(intents.first(), Some(Intent::Plan { card: 0, accepted: false })));
+					let refined = intents.first();
+					assert!(
+						matches!(refined, Some(Intent::Plan { card: 0, accepted: false, feedback })
+							if feedback == "test instructions"),
+						"a refinement is sent with the plan it revises, not dropped: {refined:?}"
+					);
 				},
 			}
 		});

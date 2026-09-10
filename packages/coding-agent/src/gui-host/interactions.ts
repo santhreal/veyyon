@@ -50,6 +50,16 @@ export interface AnswerRejection {
 	message: string;
 }
 
+/**
+ * What a plan review came back as: accepted as written, or sent back with the
+ * refinement to make. `feedback` is empty when the answer carried none, which
+ * is the plan card's own revise row.
+ */
+export interface PlanDecision {
+	accepted: boolean;
+	feedback: string;
+}
+
 type Settle = (response: InteractionResponse) => AnswerRejection | undefined;
 
 /**
@@ -294,18 +304,24 @@ export class InteractionLedger {
 		);
 	}
 
-	/** A plan review, answered with `{ accepted }`. */
-	plan(markdown: string, dialogOptions?: ExtensionUIDialogOptions): Promise<boolean> {
+	/** A plan review, answered with `{ accepted }` and, when sent back, the refinement asked for. */
+	plan(markdown: string, dialogOptions?: ExtensionUIDialogOptions): Promise<PlanDecision> {
 		return this.#raise(
 			"plan",
 			(id, now) => {
 				this.#plans = [...this.#plans, { id, markdown_plan: markdown, requested_at_ms: now }];
 			},
-			response =>
-				"accepted" in response && typeof response.accepted === "boolean"
-					? response.accepted
-					: invalid("a plan is answered with { accepted: boolean }"),
-			false,
+			response => {
+				if (!("accepted" in response) || typeof response.accepted !== "boolean") {
+					return invalid("a plan is answered with { accepted: boolean, feedback?: string }");
+				}
+				const feedback = "feedback" in response ? response.feedback : undefined;
+				if (feedback !== undefined && typeof feedback !== "string") {
+					return invalid("a plan's feedback is a string");
+				}
+				return { accepted: response.accepted, feedback: feedback ?? "" };
+			},
+			{ accepted: false, feedback: "" },
 			dialogOptions,
 		);
 	}

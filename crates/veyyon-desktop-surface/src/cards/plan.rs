@@ -87,8 +87,22 @@ pub(super) fn plan(
 		.child(markdown)
 		.child(answers(
 			&[
-				("Revise", Choice::Fixed(Box::new(Intent::Plan { card, accepted: false }))),
-				("Accept", Choice::Fixed(Box::new(Intent::Plan { card, accepted: true }))),
+				(
+					"Revise",
+					Choice::Fixed(Box::new(Intent::Plan {
+						card,
+						accepted: false,
+						feedback: String::new(),
+					})),
+				),
+				(
+					"Accept",
+					Choice::Fixed(Box::new(Intent::Plan {
+						card,
+						accepted: true,
+						feedback: String::new(),
+					})),
+				),
 			],
 			tokens,
 			cx,

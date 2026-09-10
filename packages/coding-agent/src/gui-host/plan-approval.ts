@@ -99,15 +99,14 @@ function resolvePlanApproval(
 				listPlanFiles: () => listLocalPlanFileUrls(planPath(session, "local://")),
 			});
 			const details: PlanApprovalDetails = { planFilePath, title, planExists: true };
-			const accepted = await ledger.plan(planContent);
+			const { accepted, feedback } = await ledger.plan(planContent);
 			if (!accepted) {
+				const refinement = feedback.trim();
+				const text = refinement
+					? `Plan refinement requested: ${refinement}\nUpdate the plan file accordingly, then call \`resolve { action: "apply" }\` again when ready.`
+					: 'Plan refinement requested. Update the plan file, then call `resolve { action: "apply" }` again when ready.';
 				return {
-					content: [
-						{
-							type: "text" as const,
-							text: 'Plan refinement requested. Update the plan file, then call `resolve { action: "apply" }` again when ready.',
-						},
-					],
+					content: [{ type: "text" as const, text }],
 					details,
 				};
 			}
