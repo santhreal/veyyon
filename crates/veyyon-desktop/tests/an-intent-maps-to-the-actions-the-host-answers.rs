@@ -146,14 +146,14 @@ fn every_intent_maps_to_the_actions_the_host_answers_or_to_none_on_purpose() {
 	assert!(actions_for(&Intent::SelectTab(PanelTab::Diff), &index, &mut store).is_empty());
 	assert!(actions_for(&Intent::SetDrawer { open: false }, &index, &mut store).is_empty());
 
-	// Answer the plan (position 3) first: its id is the plan's, and the
-	// cards before it keep their positions.
-	let answered = Intent::Plan { card: 3, accepted: true, feedback: String::new() };
+	// Answer the plan (position 3) first: its id is the plan's, the cards
+	// before it keep their positions, and a refusal carries the refinement.
+	let answered = Intent::Plan { card: 3, accepted: false, feedback: "split step two".into() };
 	let plan = actions_for(&answered, &index, &mut store);
 	assert_eq!(plan, [HostAction::RespondToInteraction {
 		session:        session.clone(),
 		interaction_id: "i-plan".into(),
-		response:       serde_json::json!({ "accepted": true, "feedback": "" }),
+		response:       serde_json::json!({ "accepted": false, "feedback": "split step two" }),
 	}]);
 	let answer = actions_for(&Intent::Answer { card: 1, option: 1 }, &index, &mut store);
 	assert_eq!(answer, [HostAction::RespondToInteraction {

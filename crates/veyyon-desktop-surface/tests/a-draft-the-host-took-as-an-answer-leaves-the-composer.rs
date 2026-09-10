@@ -88,18 +88,24 @@ fn carrying_the_draft(intent: Intent) -> Intent {
 fn only_an_answer_whose_payload_is_the_draft_consumes_the_draft() {
 	for sample in every_intent() {
 		let intent = carrying_the_draft(sample);
-		let expected = if carries_the_draft(&intent) {
-			""
-		} else {
-			DRAFT
-		};
+		let carries = carries_the_draft(&intent);
+		let expected = if carries { "" } else { DRAFT };
 		let mut state = fixture::populated();
 		state.turn = TurnPhase::Idle;
 		render_session(state, Some(DRAFT), 1440, 900, |session| {
 			session
 				.update(|view, _window, cx| {
+					let submitted_from = view.state().current_id;
 					view.track_submission(RequestId(7), &intent);
-					view.finish_submission(RequestId(7), true, cx);
+					// The answered session is what the window drops its
+					// remembered draft for, so an answer that carried no draft
+					// must name nobody: naming one takes the rail's `Unsent`
+					// row off a session whose composer still holds the text.
+					assert_eq!(
+						view.finish_submission(RequestId(7), true, cx),
+						carries.then_some(submitted_from),
+						"{intent:?} answered for the wrong session's draft",
+					);
 					assert_eq!(
 						view.composer().expect("editor").read(cx).text(),
 						expected,
