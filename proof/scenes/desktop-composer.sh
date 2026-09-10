@@ -121,6 +121,80 @@ report_provider_error(latest_row)
 raise SystemExit(f"Native session readiness timed out ({mode}): {locals().get('last_error', 'no new session')}")
 PY
 }
+
+# A tool call, not merely a finished turn: a turn that answered in prose drew
+# no card and touched no file, and a scene that waits on the turn alone
+# photographs whatever the prose left. The host names the session's
+# transcript, and the transcript states the block.
+#
+# A session whose last entry is an assistant turn holding an unanswered tool
+# call reads as `Interrupted`, and that is exactly the state a turn passes
+# through while the tool runs, so only `Error` and `Aborted` end the wait. What
+# the probe waits for is the completed shape: a `toolCall` block, the
+# `toolResult` that answered it, and the turn settled at `Complete`.
+native_tool_call_recorded() {
+python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+import socket
+import sys
+import time
+
+profile = os.environ.get("VEYYON_PROFILE") or "default"
+endpoint = Path.home() / ".veyyon" / "profiles" / profile / "agent" / "gui-host.sock"
+created = json.loads((Path(os.environ["SCENE_RUNTIME_DIR"]) / "created-session.json").read_text())
+deadline = time.monotonic() + 240
+last = "no session snapshot"
+while time.monotonic() < deadline:
+    try:
+        with socket.socket(socket.AF_UNIX) as connection:
+            connection.settimeout(max(0.01, deadline - time.monotonic()))
+            connection.connect(str(endpoint))
+            connection.sendall(b'{"id":1,"action":"ListSessions"}\n')
+            with connection.makefile("rb") as stream:
+                for _ in range(32):
+                    connection.settimeout(max(0.01, deadline - time.monotonic()))
+                    line = stream.readline(8 * 1024 * 1024 + 1)
+                    if not line or len(line) > 8 * 1024 * 1024:
+                        raise RuntimeError("missing or oversized host frame")
+                    snapshot = json.loads(line).get("Snapshot", {})
+                    if "Sessions" not in snapshot:
+                        continue
+                    sessions, errors = snapshot["Sessions"]
+                    if errors:
+                        raise RuntimeError("host session listing reported errors")
+                    row = next((r for r in sessions["value"] if r["id"] == created), None)
+                    if not row:
+                        raise RuntimeError("created session missing from host snapshot")
+                    last = f"status={row.get('status')}, messages={row.get('message_count', 0)}"
+                    if row.get("status") in {"Error", "Aborted"}:
+                        raise SystemExit(f"native turn ended with status {row['status']}")
+                    calls = 0
+                    results = 0
+                    with Path(row["path"]).open() as transcript:
+                        for entry_line in transcript:
+                            message = json.loads(entry_line).get("message", {})
+                            if message.get("role") == "toolResult":
+                                results += 1
+                            content = message.get("content")
+                            if isinstance(content, list):
+                                calls += sum(
+                                    1
+                                    for block in content
+                                    if isinstance(block, dict) and block.get("type") == "toolCall"
+                                )
+                    last = f"{last}, calls={calls}, results={results}"
+                    if calls and results and row.get("status") == "Complete":
+                        print(f"native turn recorded {calls} tool call(s), {results} result(s)")
+                        raise SystemExit(0)
+                    break
+    except (OSError, ValueError, RuntimeError) as error:
+        last = str(error)
+    time.sleep(0.2)
+raise SystemExit(f"no completed tool call within 240s ({last})")
+PY
+}
 if ! native_session_ready before; then
 	abandon_take "native-host-ready" "native host returned no session snapshot within 10s"
 fi
