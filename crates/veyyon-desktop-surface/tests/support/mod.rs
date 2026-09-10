@@ -12,8 +12,8 @@ use std::{collections::BTreeSet, path::PathBuf};
 
 use veyyon_desktop_model::{ChangeStatus, DiffMode};
 use veyyon_desktop_surface::{
-	Attachment, Badge, Card, DiffFile, DiffRow, DiffStatus, Intent, PanelContent, PanelTab, Row,
-	Section, ShellState, TreeContent, TreeRowItem, TreeStatus,
+	Attachment, Badge, Card, DiffFile, DiffRow, DiffStatus, DiffWithheld, Intent, PanelContent,
+	PanelTab, Row, Section, ShellState, TreeContent, TreeRowItem, TreeStatus,
 	composer::{MediaType, TurnPhase, payload_for},
 	drawer::{DrawerContent, DrawerTab, ProcessRow},
 	terminal::{Cell, CellStyle, Ink},
@@ -87,6 +87,7 @@ pub fn state() -> ShellState {
 		panel: PanelContent {
 			tabs:               vec![PanelTab::Diff, PanelTab::File, PanelTab::Tree],
 			active_tab:         PanelTab::Diff,
+			withheld:           DiffWithheld::default(),
 			diff:               vec![DiffFile {
 				path:      "src/main.rs".to_string(),
 				old_path:  None,

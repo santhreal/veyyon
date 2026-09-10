@@ -63,6 +63,8 @@ fn changes_for(path: &str, revision: u64) -> ChangesView {
 			deletions:     1,
 		}],
 		diff: diff_for(path),
+		diff_truncated: false,
+		files_withheld: 0,
 	}
 }
 

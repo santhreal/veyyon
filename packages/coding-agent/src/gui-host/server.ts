@@ -7,7 +7,7 @@ import { discoverAuthStorage } from "../session/auth-broker-config";
 import { allActionHandlers } from "./actions";
 import { writeSessionList } from "./actions/active-session";
 import type { ActionContext, ReplyHelper } from "./actions/types";
-import { FrameDecoder, writeFrame } from "./frames";
+import { FrameDecoder, MAX_FRAME_BYTES, writeFrame } from "./frames";
 import { PresentationLedger } from "./presentation";
 import { buildCapabilitiesSnapshot, mapActionToErrorScope } from "./session-bridge";
 import { assertUnixPathFits, guiHostSocketPath } from "./socket-path";
@@ -19,6 +19,7 @@ import {
 	type HostAction,
 	type HostActionTag,
 	type SnapshotSection,
+	snapshotSectionTag,
 } from "./wire";
 import { republishWorkspace } from "./workspace-republish";
 
@@ -316,23 +317,43 @@ export class GuiHostServer {
 		action: HostAction,
 		actionTag: string,
 	): Promise<void> {
+		// A request has one outcome. A handler that fails partway and then
+		// reports success -- which a refused snapshot makes reachable, since
+		// the handler that asked for it carries on -- would otherwise send the
+		// window both, and the second erases the reason for the first.
+		let settled = false;
+		const failure: ReplyHelper["failure"] = err => {
+			if (settled) return;
+			settled = true;
+			const error: BackendError = {
+				scope: err.scope,
+				code: err.code ?? "ACTION_FAILED",
+				message: err.message,
+				retryable: err.retryable ?? false,
+				request: requestId,
+				occurred_at_ms: err.occurred_at_ms ?? Date.now(),
+			};
+			writeFrame(socket, { RequestFailed: { request: requestId, error } });
+		};
 		const reply: ReplyHelper = {
 			success: () => {
+				if (settled) return;
+				settled = true;
 				writeFrame(socket, { RequestSucceeded: { request: requestId } });
 			},
-			failure: err => {
-				const error: BackendError = {
-					scope: err.scope,
-					code: err.code ?? "ACTION_FAILED",
-					message: err.message,
-					retryable: err.retryable ?? false,
-					request: requestId,
-					occurred_at_ms: err.occurred_at_ms ?? Date.now(),
-				};
-				writeFrame(socket, { RequestFailed: { request: requestId, error } });
-			},
+			failure,
+			// A view the host built too large to send is refused by `writeFrame`
+			// rather than sent and fatal to the window's decoder. The request
+			// that asked for it fails instead, so the pane states a reason
+			// rather than waiting on a snapshot that will never arrive.
 			snapshot: (section: SnapshotSection) => {
-				writeFrame(socket, { Snapshot: section });
+				if (writeFrame(socket, { Snapshot: section })) return;
+				failure({
+					scope: mapActionToErrorScope(actionTag),
+					code: "SNAPSHOT_TOO_LARGE",
+					message: `This host built a '${snapshotSectionTag(section)}' view too large to send (over ${MAX_FRAME_BYTES} bytes)`,
+					retryable: false,
+				});
 			},
 		};
 

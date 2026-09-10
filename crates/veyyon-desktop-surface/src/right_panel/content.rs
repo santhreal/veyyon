@@ -93,6 +93,22 @@ pub struct DerivedFrom {
 	pub export:       u64,
 }
 
+/// What the host held back from the changes snapshot the rows were parsed
+/// from.
+///
+/// A working tree has no size limit and a frame does, so the host cuts the
+/// diff at a byte budget and the file list at a count. The pane states both,
+/// because a diff that stops early otherwise reads as a diff that ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct DiffWithheld {
+	/// Whether the diff text is a prefix of the scope's diff.
+	pub diff_truncated: bool,
+	/// Changed files the snapshot did not list.
+	pub files_withheld: u64,
+	/// Bytes of diff text the snapshot did carry.
+	pub diff_bytes:     usize,
+}
+
 /// All state rendered by the right panel (§5.6).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PanelContent {
@@ -116,6 +132,8 @@ pub struct PanelContent {
 	pub unavailable_reason: Option<String>,
 	/// The answers `diff` and `file` were derived from.
 	pub derived_from:       DerivedFrom,
+	/// What the host cut from the snapshot `diff` was parsed from.
+	pub withheld:           DiffWithheld,
 }
 
 impl PanelContent {

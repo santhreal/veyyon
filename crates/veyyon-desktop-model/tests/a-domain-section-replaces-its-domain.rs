@@ -36,6 +36,8 @@ fn changes(revision: u64, scope: ChangeScope, file: ChangedFile) -> SnapshotSect
 		scope,
 		files: vec![file],
 		diff: format!("diff {revision}"),
+		diff_truncated: false,
+		files_withheld: 0,
 	})
 }
 

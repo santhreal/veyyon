@@ -180,6 +180,8 @@ const CORPUS = [
 				{ path: "src/new.ts", previous_path: "src/old.ts", status: "Renamed", additions: 0, deletions: 0 },
 			],
 			diff: "diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1,3 @@\n-old\n+new\n+lines\n+here\n",
+			diff_truncated: true,
+			files_withheld: 3,
 		},
 	},
 	{

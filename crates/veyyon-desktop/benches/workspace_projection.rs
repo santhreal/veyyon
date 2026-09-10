@@ -78,6 +78,8 @@ fn changes() -> ChangesView {
 		scope: ChangeScope::WorkingTree,
 		files,
 		diff,
+		diff_truncated: false,
+		files_withheld: 0,
 	}
 }
 

@@ -11,7 +11,7 @@ use veyyon_gpui::{
 	Styled, div, px,
 };
 
-use crate::{ShellView, intent::Intent};
+use crate::{ShellView, intent::Intent, right_panel::content::DiffWithheld};
 
 /// The text a hunk header states: its ranges, and the symbol it sits in when
 /// the host named one.
@@ -195,7 +195,48 @@ pub fn truncated_notice(remaining: usize) -> String {
 	format!("2,000 changed lines cap reached ({remaining} more lines not shown)")
 }
 
+/// What the pane states when the host cut the snapshot these rows came from,
+/// one line per fact, empty when the host sent the scope whole.
+///
+/// One line per fact rather than one sentence carrying both: the pane is
+/// narrower than the two facts joined, so a single line ellipsises the second
+/// away in the state that has most to say.
+///
+/// The size is the one the window received rather than the host's budget: two
+/// copies of a budget drift, and the bytes in hand are the honest figure.
+#[must_use]
+pub fn withheld_notices(withheld: DiffWithheld) -> Vec<String> {
+	let mut lines = Vec::new();
+	if withheld.diff_truncated {
+		let sent = bytes_label(withheld.diff_bytes);
+		lines.push(format!("This host sent the first {sent} of this diff"));
+	}
+	if withheld.files_withheld > 0 {
+		let files = withheld.files_withheld;
+		lines.push(format!("{files} more changed files are not listed"));
+	}
+	lines
+}
+
+/// A byte count to one decimal place, in the unit a reader of a diff thinks
+/// in. Integer arithmetic: a float conversion of a size loses precision the
+/// lint catches and buys nothing at one decimal.
+fn bytes_label(bytes: usize) -> String {
+	const MIB: usize = 1024 * 1024;
+	const KIB: usize = 1024;
+	let (tenths, unit) = if bytes >= MIB {
+		(bytes * 10 / MIB, "MiB")
+	} else {
+		(bytes * 10 / KIB, "KiB")
+	};
+	format!("{}.{} {unit}", tenths / 10, tenths % 10)
+}
+
 /// Renders a notice row for binary/unavailable files or truncation.
+///
+/// Truncated rather than allowed to run on: a row of the diff is code and
+/// scrolls sideways, but a notice is chrome, and chrome carried past the
+/// panel's edge is clipped mid-word by the mask the panel draws under.
 pub fn render_notice_row(message: &str, geometry: &PanelsSurfaceTokens, tokens: &TokenSet) -> Div {
 	div()
 		.h(px(geometry.diff_row_height_px))
@@ -207,5 +248,6 @@ pub fn render_notice_row(message: &str, geometry: &PanelsSurfaceTokens, tokens: 
 		.px(tokens.spacing(SpacingStep::S3))
 		.text_size(tokens.font_size(TextRamp::Micro))
 		.text_color(tokens.color(ColorRole::Muted))
+		.truncate()
 		.child(message.to_string())
 }

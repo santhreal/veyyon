@@ -261,11 +261,13 @@ fn contextual_statuses_transition_through_loading_loaded_unloaded_and_failed() {
 	// 5. Success: snapshot arrives and request completes
 	registry.complete(&req3);
 	store.domains.changes.set(ChangesView {
-		revision:   1,
-		repository: Some("/repo".into()),
-		scope:      veyyon_desktop_model::ChangeScope::WorkingTree,
-		files:      Vec::new(),
-		diff:       String::new(),
+		revision:       1,
+		repository:     Some("/repo".into()),
+		scope:          veyyon_desktop_model::ChangeScope::WorkingTree,
+		files:          Vec::new(),
+		diff:           String::new(),
+		diff_truncated: false,
+		files_withheld: 0,
 	});
 	store.domains.file_tree =
 		Some(FileTreeView { root: "/repo".into(), entries: Vec::new(), truncated: false });

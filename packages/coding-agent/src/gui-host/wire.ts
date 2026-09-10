@@ -293,8 +293,12 @@ export interface ChangesView {
 	repository: string | null;
 	scope: ChangeScope;
 	files: ChangedFile[];
-	/** Unified diff of every file in `files` for `scope`. */
+	/** Unified diff of every file in `files` for `scope`, cut on a boundary at the host's budget. */
 	diff: string;
+	/** True when `diff` is a prefix: the host cut it at its budget. */
+	diff_truncated: boolean;
+	/** Changed files this snapshot does not list, held back at the host's file budget. */
+	files_withheld: number;
 }
 
 export type FileKind = "File" | "Directory" | "Symlink";
@@ -794,4 +798,12 @@ export function getActionTag(action: HostAction): string {
 		}
 	}
 	return String(action);
+}
+
+/**
+ * Extract the section name a snapshot frame carries, for the message a
+ * request states when its view could not be sent.
+ */
+export function snapshotSectionTag(section: SnapshotSection): string {
+	return Object.keys(section)[0] ?? "unknown";
 }

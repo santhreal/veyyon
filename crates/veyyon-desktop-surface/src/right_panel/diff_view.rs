@@ -18,8 +18,9 @@ use crate::{
 	ShellView,
 	intent::Intent,
 	right_panel::{
-		content::{DiffFile, DiffStatus},
+		content::{DiffFile, DiffStatus, DiffWithheld},
 		diff_columns::{split_columns, unified_columns},
+		diff_rows::{render_notice_row, withheld_notices},
 		pane_scroll::{PaneId, PaneScrolls},
 		pane_window::{RowWalk, scrolled},
 	},
@@ -33,6 +34,7 @@ use crate::{
 pub fn diff_view(
 	files: &[DiffFile],
 	diff_status: DiffStatus,
+	withheld: DiffWithheld,
 	diff_mode: DiffMode,
 	panes: &PaneScrolls,
 	geometry: &PanelsSurfaceTokens,
@@ -58,7 +60,21 @@ pub fn diff_view(
 
 	container = container.child(diff_toolbar(diff_mode, geometry, tokens, cx));
 
+	// What the host cut is chrome, not a row: it belongs above the first file
+	// rather than at the end of a scroll a reader of a truncated diff never
+	// reaches.
+	let cut_notices = withheld_notices(withheld);
+	for notice in &cut_notices {
+		container = container.child(render_notice_row(notice, geometry, tokens));
+	}
+
 	if files.is_empty() {
+		// A host that cut the diff to nothing still cut it, and the rows above
+		// already say so: a second copy centred here would state one cut twice,
+		// and reporting a clean working tree would deny it.
+		if !cut_notices.is_empty() {
+			return container;
+		}
 		let message = match diff_status {
 			DiffStatus::Unloaded => "Open changes",
 			DiffStatus::Loading => "Loading changes...",
@@ -81,6 +97,11 @@ pub fn diff_view(
 	}
 	let mut walk = RowWalk::of(&scrolled(&rows, window));
 	walk.advance(geometry.chrome_row_height_px);
+	// One row each, counted rather than multiplied: a usize scaled into the
+	// row height is a float conversion of a count for no gain.
+	for _ in &cut_notices {
+		walk.advance(geometry.diff_row_height_px);
+	}
 	let hairline_px = f32::from(tokens.stroke(StrokeStep::Hairline));
 	for (file_idx, file) in files.iter().enumerate() {
 		// A hairline closes each file above the next one's header, so the last

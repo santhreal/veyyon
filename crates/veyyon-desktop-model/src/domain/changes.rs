@@ -45,13 +45,19 @@ pub struct ChangedFile {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChangesView {
 	/// Revision counter tracking change snapshot order.
-	pub revision:   u64,
+	pub revision:       u64,
 	/// Root path of the owning git repository.
-	pub repository: Option<String>,
+	pub repository:     Option<String>,
 	/// Scope filter applied to this changes snapshot.
-	pub scope:      ChangeScope,
+	pub scope:          ChangeScope,
 	/// Individual changed files in this snapshot.
-	pub files:      Vec<ChangedFile>,
-	/// Unified diff string spanning all changed files for this scope.
-	pub diff:       String,
+	pub files:          Vec<ChangedFile>,
+	/// Unified diff string spanning the files this snapshot carries, cut on a
+	/// file, hunk or line boundary at the host's byte budget.
+	pub diff:           String,
+	/// Whether `diff` is a prefix of the scope's diff rather than all of it.
+	pub diff_truncated: bool,
+	/// Changed files this snapshot does not list, held back at the host's
+	/// file budget.
+	pub files_withheld: u64,
 }

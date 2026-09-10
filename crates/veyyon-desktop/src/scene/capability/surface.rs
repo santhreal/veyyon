@@ -96,11 +96,13 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 			seed.exchange(session, Seed::prose());
 			seed.state.keymap.panel_collapsed = false;
 			seed.store.domains.changes.set(ChangesView {
-				revision:   1,
-				repository: Some("/repo".to_string()),
-				scope:      ChangeScope::WorkingTree,
-				files:      Vec::new(),
-				diff:       String::new(),
+				revision:       1,
+				repository:     Some("/repo".to_string()),
+				scope:          ChangeScope::WorkingTree,
+				files:          Vec::new(),
+				diff:           String::new(),
+				diff_truncated: false,
+				files_withheld: 0,
 			});
 		},
 		Capability::Files => {

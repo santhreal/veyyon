@@ -98,9 +98,39 @@ export class FrameDecoder {
 }
 
 /**
+ * Names a frame for a log line: its tag, and the section tag inside a
+ * `Snapshot`, which is the only frame whose size is decided by a view builder.
+ */
+function frameKind(value: unknown): string {
+	if (typeof value !== "object" || value === null) return "unknown";
+	const entry = Object.entries(value)[0];
+	if (!entry) return "empty";
+	const [tag, payload] = entry;
+	return tag === "Snapshot" ? `Snapshot/${frameKind(payload)}` : tag;
+}
+
+/**
  * Serialize a JSON value as a single-line frame terminated by newline.
+ *
+ * Returns false when the frame is over `MAX_FRAME_BYTES` and was not written.
+ * The window's decoder treats an oversized frame as a fatal protocol error and
+ * drops the socket, so one view that outgrew the cap would take the whole
+ * session's connection with it; refusing the single frame here keeps every
+ * other view drawable. A refused frame is a defect in the view builder that
+ * produced it -- the log line names which one -- so the callers that answer a
+ * request turn the refusal into a `RequestFailed` the window can draw.
  */
 export function writeFrame<T>(socket: Socket, value: T): boolean {
 	const payload = `${JSON.stringify(value)}\n`;
-	return socket.write(payload, "utf8");
+	const bytes = Buffer.byteLength(payload, "utf8");
+	if (bytes > MAX_FRAME_BYTES) {
+		logger.error("GUI host refused to write a frame over the maximum size", {
+			kind: frameKind(value),
+			bytes,
+			maxBytes: MAX_FRAME_BYTES,
+		});
+		return false;
+	}
+	socket.write(payload, "utf8");
+	return true;
 }

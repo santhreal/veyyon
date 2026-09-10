@@ -46,17 +46,19 @@ fn without(capability: Capability) -> CapabilityMap {
 fn one_changed_file() -> Domains {
 	Domains {
 		changes: Some(ChangesView {
-			revision:   1,
-			repository: Some("/repo".to_string()),
-			scope:      ChangeScope::WorkingTree,
-			files:      vec![ChangedFile {
+			revision:       1,
+			repository:     Some("/repo".to_string()),
+			scope:          ChangeScope::WorkingTree,
+			files:          vec![ChangedFile {
 				path:          "ledger.rs".to_string(),
 				previous_path: None,
 				status:        ChangeStatus::Modified,
 				additions:     4,
 				deletions:     4,
 			}],
-			diff:       String::new(),
+			diff:           String::new(),
+			diff_truncated: false,
+			files_withheld: 0,
 		})
 		.into(),
 		..Domains::default()

@@ -16,8 +16,8 @@ pub mod tree_view;
 pub mod usage_view;
 
 pub use content::{
-	DerivedFrom, DiffFile, DiffRow, DiffStatus, FileLine, FileView, HighlightSpan, PanelContent,
-	PanelTab, TreeContent, TreeRowItem, TreeStatus,
+	DerivedFrom, DiffFile, DiffRow, DiffStatus, DiffWithheld, FileLine, FileView, HighlightSpan,
+	PanelContent, PanelTab, TreeContent, TreeRowItem, TreeStatus,
 };
 pub use file_view::{file_view, highlight_source};
 pub use pane_scroll::{PaneId, PaneScrolls};
@@ -91,6 +91,7 @@ pub fn right_panel(
 		PanelTab::Diff => diff_view::diff_view(
 			&panel.diff,
 			panel.diff_status,
+			panel.withheld,
 			panel.diff_mode,
 			panes,
 			geometry,

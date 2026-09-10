@@ -179,16 +179,18 @@ fn a_file_tree_snapshot_projects_tree_and_decorates_changes() {
 	reduce(
 		&mut store,
 		HostEvent::Snapshot(SnapshotSection::Changes(ChangesView {
-			revision:   1,
-			repository: Some("/repo".to_string()),
-			scope:      ChangeScope::WorkingTree,
-			files:      vec![
+			revision:       1,
+			repository:     Some("/repo".to_string()),
+			scope:          ChangeScope::WorkingTree,
+			files:          vec![
 				changed("src/b/two.rs", 2, 0),
 				changed("README.md", 1, 1),
 				changed("src/a/one.rs", 3, 4),
 				changed("src/a/zero.rs", 0, 9),
 			],
-			diff:       String::new(),
+			diff:           String::new(),
+			diff_truncated: false,
+			files_withheld: 0,
 		})),
 	);
 	let mut state = ShellState::default();

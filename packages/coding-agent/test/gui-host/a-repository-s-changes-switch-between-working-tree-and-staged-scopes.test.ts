@@ -221,6 +221,8 @@ describe("a repository's changes switch between working tree and staged scopes",
 			scope: "WorkingTree",
 			files: [],
 			diff: "",
+			diff_truncated: false,
+			files_withheld: 0,
 		});
 
 		client.destroy();

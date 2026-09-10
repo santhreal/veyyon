@@ -84,11 +84,13 @@ fn attached() -> (Store, SessionIndex) {
 	reduce(
 		&mut store,
 		HostEvent::Snapshot(SnapshotSection::Changes(ChangesView {
-			revision:   1,
-			repository: Some("/repo".to_owned()),
-			scope:      ChangeScope::WorkingTree,
-			files:      Vec::new(),
-			diff:       String::new(),
+			revision:       1,
+			repository:     Some("/repo".to_owned()),
+			scope:          ChangeScope::WorkingTree,
+			files:          Vec::new(),
+			diff:           String::new(),
+			diff_truncated: false,
+			files_withheld: 0,
 		})),
 	);
 	reduce(

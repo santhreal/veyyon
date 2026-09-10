@@ -6,8 +6,8 @@ use veyyon_desktop_model::{
 	SessionId,
 };
 use veyyon_desktop_surface::{
-	DerivedFrom, DiffFile, DiffStatus, FileView, PanelContent, PanelTab, TreeContent, TreeRowItem,
-	TreeStatus, diff::parse_diff, right_panel::highlight_source,
+	DerivedFrom, DiffFile, DiffStatus, DiffWithheld, FileView, PanelContent, PanelTab, TreeContent,
+	TreeRowItem, TreeStatus, diff::parse_diff, right_panel::highlight_source,
 };
 
 /// Projects domain models from the store onto the right panel's content,
@@ -34,7 +34,7 @@ pub fn project_panel(
 
 	// The status a tab reports comes from the capability and the answer, both
 	// cheap, so it is stated every projection. Only the parse is held.
-	let (diff, diff_status) = if let Some(changes) = domains.changes.get() {
+	let (diff, diff_status, withheld) = if let Some(changes) = domains.changes.get() {
 		let files = if derived_from.changes == previous.derived_from.changes {
 			previous.diff
 		} else if !changes.diff.is_empty() {
@@ -56,11 +56,20 @@ pub fn project_panel(
 		} else {
 			Vec::new()
 		};
-		(files, DiffStatus::Loaded)
+		// What the host cut is three fields off the answer, so it is stated
+		// every projection rather than held: a notice that outlived the
+		// snapshot it describes would claim a cut diff the host has since
+		// sent whole.
+		let withheld = DiffWithheld {
+			diff_truncated: changes.diff_truncated,
+			files_withheld: changes.files_withheld,
+			diff_bytes:     changes.diff.len(),
+		};
+		(files, DiffStatus::Loaded, withheld)
 	} else if matches!(capabilities.get(Capability::Changes), CapabilityStatus::Unavailable { .. }) {
-		(Vec::new(), DiffStatus::Failed)
+		(Vec::new(), DiffStatus::Failed, DiffWithheld::default())
 	} else {
-		(Vec::new(), previous.diff_status)
+		(Vec::new(), previous.diff_status, DiffWithheld::default())
 	};
 
 	// The file the operator opened holds the tab. An export they asked for
@@ -159,6 +168,7 @@ pub fn project_panel(
 		usage,
 		unavailable_reason,
 		derived_from,
+		withheld,
 	}
 }
 

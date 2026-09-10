@@ -15,6 +15,7 @@ export class TestSocketClient {
 	#waiters: Array<{ resolve: (frame: unknown) => void; reject: (err: Error) => void }> = [];
 	#closeWaiters: Array<{ resolve: () => void; reject: (err: Error) => void }> = [];
 	#isClosed = false;
+	#largestFrameBytes = 0;
 
 	constructor(socket: net.Socket) {
 		this.#socket = socket;
@@ -26,6 +27,7 @@ export class TestSocketClient {
 				if (newlineIndex === -1) break;
 
 				const rawLine = this.#buffer.subarray(0, newlineIndex);
+				this.#largestFrameBytes = Math.max(this.#largestFrameBytes, rawLine.length + 1);
 				this.#buffer = this.#buffer.subarray(newlineIndex + 1);
 
 				const line = rawLine.toString("utf8").trim();
@@ -87,6 +89,15 @@ export class TestSocketClient {
 		const { promise, resolve, reject } = Promise.withResolvers<unknown>();
 		this.#waiters.push({ resolve, reject });
 		return await promise;
+	}
+
+	/**
+	 * The largest frame this client has read, in bytes on the wire including
+	 * its newline. Read from the raw line rather than from the parsed value,
+	 * because the cap the window's decoder enforces is a byte count.
+	 */
+	largestFrameBytes(): number {
+		return this.#largestFrameBytes;
 	}
 
 	send(value: unknown): void {
