@@ -56,14 +56,10 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 				vec![HostAction::ReadFile { path: path.clone() }]
 			},
 		},
-		// The host accepts the two modes by their capitalised names and rejects
-		// any other spelling with INVALID_ARGUMENTS.
+		// The vocabulary crosses the wire as the type the window decodes it
+		// with, so a spelling the host rejects cannot be written here.
 		Intent::SetQueueMode(mode) => active.map_or_else(Vec::new, |session| {
-			let mode_str = match mode {
-				veyyon_desktop_surface::QueueMode::Steer => "Steer",
-				veyyon_desktop_surface::QueueMode::Queue => "Queue",
-			};
-			vec![HostAction::SetQueueMode { session, mode: mode_str.to_string() }]
+			vec![HostAction::SetQueueMode { session, mode: *mode }]
 		}),
 		Intent::SelectModel(choice) => {
 			vec![HostAction::SelectModel {
@@ -273,15 +269,9 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 			.or(active)
 			.map_or_else(Vec::new, |s| vec![HostAction::LoadTranscript { session: s, before: None }]),
 		Intent::OpenFile(path) => vec![HostAction::ReadFile { path: path.clone() }],
-		Intent::SelectChangeScope(scope) => vec![
-			HostAction::SelectChangeScope {
-				scope: match scope {
-					veyyon_desktop_model::ChangeScope::WorkingTree => "working_tree".to_string(),
-					veyyon_desktop_model::ChangeScope::Staged => "staged".to_string(),
-				},
-			},
-			HostAction::RefreshChanges,
-		],
+		Intent::SelectChangeScope(scope) => {
+			vec![HostAction::SelectChangeScope { scope: *scope }, HostAction::RefreshChanges]
+		},
 		Intent::SetPanel { open: true } => {
 			let mut actions = Vec::new();
 			if matches!(

@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 pub use crate::action_kind::{HostActionKind, HostActionKind as Kind};
+use crate::composer::QueueMode;
 use crate::connection::{EntryId, RequestId, SessionId};
+use crate::domain::changes::ChangeScope;
 
 /// Binary attachment descriptor for prompt submission.
 ///
@@ -89,7 +91,7 @@ pub enum HostAction {
 	},
 	SetQueueMode {
 		session: SessionId,
-		mode:    String,
+		mode:    QueueMode,
 	},
 	CancelTool {
 		session:      SessionId,
@@ -133,7 +135,7 @@ pub enum HostAction {
 	// Changes family (2 actions)
 	RefreshChanges,
 	SelectChangeScope {
-		scope: String,
+		scope: ChangeScope,
 	},
 
 	// Terminals family (7 actions)

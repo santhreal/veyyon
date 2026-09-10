@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Scope of uncommitted git working tree modifications.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::EnumIter)]
 pub enum ChangeScope {
 	/// Modified and untracked files in the working tree.
 	WorkingTree,
