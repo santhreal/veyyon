@@ -42,7 +42,7 @@ impl MessageRole {
 }
 
 /// Rich content block payload representing an element within a transcript turn
-/// across sixteen variants.
+/// across seventeen variants.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, strum::EnumDiscriminants)]
 #[strum_discriminants(name(BlockKind), derive(Hash, PartialOrd, Ord, strum::EnumIter))]
 #[strum_discriminants(
@@ -107,6 +107,12 @@ pub enum ContentBlock {
 	},
 	ThinkingChange {
 		level: String,
+	},
+	/// The mode a session started or stopped running in. The operator sets one
+	/// mid-conversation, so the transcript states where it changed, as it does
+	/// for the model and the thinking level.
+	ModeChange {
+		mode: String,
 	},
 	Lifecycle {
 		phase:  String,

@@ -98,13 +98,14 @@ pub const fn block_reachability(kind: BlockKind) -> Reachability {
 		| BlockKind::Lifecycle
 		| BlockKind::Fallback
 		| BlockKind::Unknown
-		| BlockKind::Video => Reachability::Reachable,
-		BlockKind::RedactedThinking
-		| BlockKind::Execution
+		| BlockKind::Video
 		| BlockKind::FileMention
-		| BlockKind::Diff
 		| BlockKind::ModelChange
-		| BlockKind::ThinkingChange => Reachability::Unreachable,
+		| BlockKind::ThinkingChange
+		| BlockKind::ModeChange => Reachability::Reachable,
+		BlockKind::RedactedThinking | BlockKind::Execution | BlockKind::Diff => {
+			Reachability::Unreachable
+		},
 	}
 }
 
@@ -189,6 +190,7 @@ pub fn content_block_fixture(seed: u64, kind: BlockKind) -> ContentBlock {
 			model:    "claude-3-7-sonnet".to_string(),
 		},
 		BlockKind::ThinkingChange => ContentBlock::ThinkingChange { level: "high".to_string() },
+		BlockKind::ModeChange => ContentBlock::ModeChange { mode: "plan".to_string() },
 		BlockKind::Summary => ContentBlock::Summary {
 			kind: "compaction".to_string(),
 			text: format!("Compacted turns up to revision {seed}."),

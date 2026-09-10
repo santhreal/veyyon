@@ -115,7 +115,7 @@ export const EXHAUSTIVE_FIXTURES = {
 			mode: "plan",
 		},
 		expectedRole: "Custom",
-		expectedContent: [{ Text: { text: "mode: plan" } }],
+		expectedContent: [{ ModeChange: { mode: "plan" } }],
 	},
 	title_change: {
 		entry: {

@@ -246,7 +246,7 @@ describe("the transcript the desktop is sent", () => {
 			{ ThinkingChange: { level: "high" } },
 		]);
 		expect(entries.find(entry => entry.raw_discriminator === "mode_change")?.content).toEqual([
-			{ Text: { text: "mode: plan" } },
+			{ ModeChange: { mode: "plan" } },
 		]);
 	});
 });

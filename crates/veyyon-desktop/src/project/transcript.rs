@@ -298,6 +298,9 @@ fn push_block(blocks: &mut Vec<Block>, block: &ContentBlock, role: MessageRole) 
 				boundary: false,
 			});
 		},
+		ContentBlock::ModeChange { mode } => {
+			blocks.push(Block::Note { label: "Mode", text: mode.clone(), boundary: false });
+		},
 		ContentBlock::Lifecycle { phase, reason } => blocks.push(Block::Note {
 			label:    "Lifecycle",
 			text:     match reason {

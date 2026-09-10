@@ -176,6 +176,7 @@ export type ContentBlock =
 	| { Diff: { raw: string } }
 	| { ModelChange: { provider: string; model: string } }
 	| { ThinkingChange: { level: string } }
+	| { ModeChange: { mode: string } }
 	| { Lifecycle: { phase: string; reason: string | null } }
 	| { Summary: { kind: string; text: string } }
 	| { Fallback: { producer: string; value: unknown } }

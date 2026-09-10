@@ -71,6 +71,7 @@ fn block_of(kind: BlockKind) -> ContentBlock {
 			ContentBlock::ModelChange { provider: "p".to_string(), model: "m".to_string() }
 		},
 		BlockKind::ThinkingChange => ContentBlock::ThinkingChange { level: "high".to_string() },
+		BlockKind::ModeChange => ContentBlock::ModeChange { mode: "plan".to_string() },
 		BlockKind::Lifecycle => ContentBlock::Lifecycle { phase: "start".to_string(), reason: None },
 		BlockKind::Summary => {
 			ContentBlock::Summary { kind: "compaction".to_string(), text: "sum".to_string() }
@@ -167,6 +168,7 @@ fn every_block_kind_preserves_its_display_register() {
 		let expected_note = match kind {
 			BlockKind::ModelChange => Some(("Model", "p/m", false)),
 			BlockKind::ThinkingChange => Some(("Thinking", "high", false)),
+			BlockKind::ModeChange => Some(("Mode", "plan", false)),
 			BlockKind::Lifecycle => Some(("Lifecycle", "start", false)),
 			BlockKind::Summary => Some(("Summary", "compaction: sum", true)),
 			BlockKind::Text

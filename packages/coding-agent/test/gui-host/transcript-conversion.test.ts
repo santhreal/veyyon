@@ -292,7 +292,7 @@ describe("LoadTranscript socket integration", () => {
 		expect(hiddenMsg?.id).toBeDefined();
 
 		const modeEntry = entries.find(e => e.raw_discriminator === "mode_change");
-		expect(modeEntry?.content).toEqual([{ Text: { text: "mode: plan" } }]);
+		expect(modeEntry?.content).toEqual([{ ModeChange: { mode: "plan" } }]);
 	});
 });
 

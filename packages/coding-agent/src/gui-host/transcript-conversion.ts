@@ -386,7 +386,10 @@ export function sessionEntryToTranscriptEntry(
 			content = [{ Lifecycle: { phase: entry.state, reason: entry.reason ?? null } }];
 			break;
 		case "mode_change":
-			content = [{ Text: { text: `mode: ${entry.mode}` } }];
+			// A block of its own rather than a line of text, so the transcript
+			// states the mode the way it states a model or a thinking level
+			// instead of drawing it as a custom message.
+			content = [{ ModeChange: { mode: entry.mode } }];
 			break;
 		// A title is chrome, not conversation: the titlebar and the rail row
 		// state the name, and a session is named from its own first prompt, so a

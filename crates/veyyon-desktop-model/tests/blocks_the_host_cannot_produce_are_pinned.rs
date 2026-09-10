@@ -1,13 +1,13 @@
 //! WHY THIS SUITE EXISTS
 //!
-//! `ContentBlock` declares fifteen variants and `MessageRole` twelve, but the
+//! `ContentBlock` declares seventeen variants and `MessageRole` twelve, but the
 //! host fills neither union. Every producer in
 //! `packages/coding-agent/src/gui-host/` was enumerated against a running host:
 //! `mapContentBlocks`, `agentMessageToTranscriptEntry`,
 //! `sessionEntryToTranscriptEntry` and `mapMessageRole` in `session-bridge.ts`
-//! are all of them, and six block kinds plus four roles appear nowhere outside
-//! their declaration in `wire.ts`. The front end therefore ships nine block
-//! render paths, not fifteen.
+//! are all of them, and three block kinds plus four roles appear nowhere
+//! outside their declaration in `wire.ts`. The front end therefore ships
+//! fourteen block render paths, not seventeen.
 //!
 //! That measurement rots in two directions, and both are silent. A host release
 //! that starts producing `Diff` would reach a renderer that was never written,
@@ -18,8 +18,8 @@
 //! THE CLASS THIS CLOSES: a divergence between the variants this client renders
 //! and the variants the host emits, in either direction. The reachable and
 //! unreachable sets are pinned by exact equality and partition the whole enum,
-//! which is derived from source at run time through `strum::EnumIter`. A
-//! sixteenth block kind belongs to neither set and turns this suite red until
+//! which is derived from source at run time through `strum::EnumIter`. An
+//! eighteenth block kind belongs to neither set and turns this suite red until
 //! somebody records which side it is on.
 //!
 //! WHAT IT DOES NOT CATCH: it cannot read the host. The pin is a record of a
@@ -34,14 +34,8 @@ use strum::IntoEnumIterator;
 use veyyon_desktop_model::{BlockKind, MessageRole};
 
 /// Block kinds no producer in the host constructs, so no render path is owed.
-const UNREACHABLE_BLOCKS: [BlockKind; 6] = [
-	BlockKind::RedactedThinking,
-	BlockKind::Execution,
-	BlockKind::FileMention,
-	BlockKind::Diff,
-	BlockKind::ModelChange,
-	BlockKind::ThinkingChange,
-];
+const UNREACHABLE_BLOCKS: [BlockKind; 3] =
+	[BlockKind::RedactedThinking, BlockKind::Execution, BlockKind::Diff];
 
 /// Roles no producer in the host assigns.
 const UNREACHABLE_ROLES: [MessageRole; 4] = [
@@ -52,13 +46,17 @@ const UNREACHABLE_ROLES: [MessageRole; 4] = [
 ];
 
 /// Block kinds the host constructs, each owing the transcript a render path.
-const REACHABLE_BLOCKS: [BlockKind; 10] = [
+const REACHABLE_BLOCKS: [BlockKind; 14] = [
 	BlockKind::Text,
 	BlockKind::Thinking,
 	BlockKind::Image,
 	BlockKind::Video,
 	BlockKind::ToolCall,
 	BlockKind::ToolResult,
+	BlockKind::FileMention,
+	BlockKind::ModelChange,
+	BlockKind::ThinkingChange,
+	BlockKind::ModeChange,
 	BlockKind::Summary,
 	BlockKind::Lifecycle,
 	BlockKind::Fallback,
@@ -127,19 +125,12 @@ fn the_two_role_sets_partition_every_variant_the_enum_declares() {
 }
 
 #[test]
-fn the_unreachable_block_set_is_exactly_the_six_that_were_measured() {
+fn the_unreachable_block_set_is_exactly_the_three_that_were_measured() {
 	// Exact equality, not a count: a swap that trades one unreachable kind for
-	// another keeps the length at six and would otherwise pass.
+	// another keeps the length at three and would otherwise pass.
 	assert_eq!(
 		set_of(&UNREACHABLE_BLOCKS),
-		BTreeSet::from([
-			BlockKind::RedactedThinking,
-			BlockKind::Execution,
-			BlockKind::FileMention,
-			BlockKind::Diff,
-			BlockKind::ModelChange,
-			BlockKind::ThinkingChange,
-		]),
+		BTreeSet::from([BlockKind::RedactedThinking, BlockKind::Execution, BlockKind::Diff]),
 	);
 }
 
@@ -158,9 +149,10 @@ fn the_unreachable_role_set_is_exactly_the_four_that_were_measured() {
 
 #[test]
 fn every_block_the_host_can_emit_is_one_the_transcript_must_render() {
-	// The renderer's obligation is this set and no larger. Ten, not sixteen.
-	assert_eq!(REACHABLE_BLOCKS.len(), 10);
-	assert_eq!(BlockKind::iter().count(), 16);
+	// The renderer's obligation is this set and no larger. Fourteen, not
+	// seventeen.
+	assert_eq!(REACHABLE_BLOCKS.len(), 14);
+	assert_eq!(BlockKind::iter().count(), 17);
 
 	// Unknown and Fallback are the host's own output for content it does not
 	// recognise, so they are reachable rather than defensive branches.
