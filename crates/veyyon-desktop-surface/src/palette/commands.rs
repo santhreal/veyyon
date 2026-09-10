@@ -97,6 +97,23 @@ pub fn command_items() -> Vec<PaletteItem> {
 			Some(Command::AbortTurn),
 			Some(Capability::TurnControl),
 		),
+		// Two rows rather than one that toggles: a command list is ranked
+		// against what was typed, and a row whose action depends on state the
+		// operator cannot see from the list is a press with two outcomes.
+		(
+			"/plan",
+			Intent::SetPlanMode { on: true },
+			"Plan this task before any of it is done",
+			None,
+			Some(Capability::Sessions),
+		),
+		(
+			"/plan off",
+			Intent::SetPlanMode { on: false },
+			"Leave plan mode and take the tools back",
+			None,
+			Some(Capability::Sessions),
+		),
 		(
 			"/files",
 			Intent::FindFile(String::new()),

@@ -84,6 +84,7 @@ const PAYLOADS: Record<string, (other: string, onScreen: string) => unknown> = {
 	FollowUp: other => ({ session: other, text: "a follow-up for the other session" }),
 	AbortTurn: (_other, onScreen) => ({ session: onScreen }),
 	SetQueueMode: (_other, onScreen) => ({ session: onScreen, mode: "Queue" }),
+	SetSessionMode: (_other, onScreen) => ({ session: onScreen, mode: "plan" }),
 	DequeueQueuedPrompt: other => ({ session: other }),
 	CancelTool: (_other, onScreen) => ({ session: onScreen, tool_call_id: "call-that-is-not-running" }),
 	SetToolViewExpanded: (_other, onScreen) => ({ session: onScreen, call_id: "call-1", expanded: true }),

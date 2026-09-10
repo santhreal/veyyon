@@ -75,7 +75,10 @@ export function replySessionNotFound(ctx: ActionContext, session: string): void 
 export function emitActiveSession(ctx: ActionContext, sm: SessionManager): void {
 	ctx.clientState.revision += 1;
 	ctx.reply.snapshot({
-		ActiveSession: { revision: ctx.clientState.revision, value: sessionHeaderToView(sm.getHeader()) },
+		ActiveSession: {
+			revision: ctx.clientState.revision,
+			value: sessionHeaderToView(sm.getHeader(), sm.getEntries()),
+		},
 	});
 }
 

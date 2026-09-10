@@ -34,7 +34,7 @@ use support::{NOW_MS, fields::driven_with_keys, session};
 use veyyon_desktop::{SessionIndex, project, project_controls, project_turn_phase};
 use veyyon_desktop_model::{
 	BadgeKind, Capability, CapabilityStatus, ConnectionState, PROTOCOL_VERSION, QueueMode,
-	QueuePartition, RequestRegistry, SessionId, Store,
+	QueuePartition, RequestRegistry, SessionId, SessionMode, Store,
 };
 use veyyon_desktop_surface::{
 	Intent, ShellState,
@@ -240,6 +240,7 @@ fn every_field_the_window_owns_survives_the_frame() {
 			attachments: Vec::new(),
 			context:     None,
 			queued:      vec!["a prompt the host is not holding".to_string()],
+			mode:        Some(SessionMode::Plan),
 		},
 		..ShellState::default()
 	};
@@ -259,5 +260,9 @@ fn every_field_the_window_owns_survives_the_frame() {
 	assert!(
 		state.composer.queued.is_empty(),
 		"the held prompts are the host's; a session holding none holds none on the strip"
+	);
+	assert!(
+		state.composer.mode.is_none(),
+		"the mode is the host's; a session it reports no mode for draws no mode chip"
 	);
 }

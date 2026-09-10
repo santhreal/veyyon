@@ -53,7 +53,7 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::GetUsage
 		| HostActionKind::GetContextBreakdown => ActionClassification::Ephemeral,
 
-		// Mutations, lifecycle, session modifications, turns, terminals, processes (55 actions)
+		// Mutations, lifecycle, session modifications, turns, terminals, processes (56 actions)
 		HostActionKind::Attach
 		| HostActionKind::Detach
 		| HostActionKind::RetryConnection
@@ -71,6 +71,7 @@ pub const fn classify_action(kind: HostActionKind) -> ActionClassification {
 		| HostActionKind::FollowUp
 		| HostActionKind::AbortTurn
 		| HostActionKind::SetQueueMode
+		| HostActionKind::SetSessionMode
 		| HostActionKind::CancelTool
 		| HostActionKind::SetToolViewExpanded
 		| HostActionKind::DequeueQueuedPrompt

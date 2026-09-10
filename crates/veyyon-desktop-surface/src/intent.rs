@@ -69,6 +69,14 @@ pub enum Intent {
 	Queue(String),
 	AbortTurn,
 	SetQueueMode(QueueMode),
+	/// Puts the session in plan mode, or takes it out of it.
+	///
+	/// Plan mode was reachable only by starting a session with the setting for
+	/// it already on, which is a decision an operator makes about the next
+	/// task rather than about every session.
+	SetPlanMode {
+		on: bool,
+	},
 	SelectModel(ModelChoice),
 	SetThinking(ThinkingLevel),
 	/// Takes the newest queued prompt back out of the runtime into the composer.

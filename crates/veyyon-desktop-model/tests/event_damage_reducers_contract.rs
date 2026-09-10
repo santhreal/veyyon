@@ -61,6 +61,7 @@ fn test_reduce_snapshot_sections() {
 			parent:         None,
 			created_at_ms:  1000,
 			cwd:            "/path/to".to_string(),
+			mode:           None,
 		},
 	}));
 	let damage_active = reduce(&mut store, active_event);

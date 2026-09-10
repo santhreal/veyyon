@@ -1,8 +1,8 @@
 //! Integrated model selection and turn submission in one composer row.
 
 use veyyon_desktop_kit::{
-	ButtonSize, ColorRole, Icon, IconName, IconSize, SpacingStep, TokenSet, Tooltip,
-	controls::control_metrics,
+	Badge, ButtonSize, ColorRole, Icon, IconName, IconSize, SpacingStep, TintRole, TokenSet,
+	Tooltip, controls::control_metrics,
 };
 use veyyon_desktop_model::{SessionId, SurfaceId};
 use veyyon_desktop_tokens::ComposerSurfaceTokens;
@@ -70,6 +70,12 @@ pub fn footer_row(
 				view.open_model_picker(window, cx);
 			}));
 	}
+	// The kit's chip, not a div of its own: a mode is a status the queue rows
+	// and the settings pages already state this way.
+	let mode = composer
+		.mode
+		.as_ref()
+		.map(|mode| Badge::new(mode.label().to_owned(), TintRole::Plan));
 	div()
 		.id("composer-footer")
 		.w_full()
@@ -77,6 +83,14 @@ pub fn footer_row(
 		.items_center()
 		.justify_between()
 		.gap(tokens.spacing(SpacingStep::S3))
-		.child(Tooltip::new(availability.reason().unwrap_or(label).to_owned(), model).above())
+		.child(
+			div()
+				.flex()
+				.min_w_0()
+				.items_center()
+				.gap(tokens.spacing(SpacingStep::S2))
+				.children(mode)
+				.child(Tooltip::new(availability.reason().unwrap_or(label).to_owned(), model).above()),
+		)
 		.child(turn_action_controls(turn, has_text, session_id, states, tokens, cx))
 }

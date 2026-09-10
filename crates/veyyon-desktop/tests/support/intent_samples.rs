@@ -54,6 +54,9 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 		IntentDiscriminants::Queue => vec![Intent::Queue("queue text".to_string())],
 		IntentDiscriminants::AbortTurn => vec![Intent::AbortTurn],
 		IntentDiscriminants::SetQueueMode => vec![Intent::SetQueueMode(QueueMode::Steer)],
+		IntentDiscriminants::SetPlanMode => {
+			vec![Intent::SetPlanMode { on: true }, Intent::SetPlanMode { on: false }]
+		},
 		IntentDiscriminants::SelectModel => vec![Intent::SelectModel(ModelChoice {
 			provider: "anthropic".to_string(),
 			model:    "claude-3-5-sonnet".to_string(),

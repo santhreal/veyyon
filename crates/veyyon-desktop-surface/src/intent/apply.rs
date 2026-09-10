@@ -49,6 +49,10 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 				*queue_mode = *mode;
 			}
 		},
+		// The mode is the session's and the host records it; the chip changes
+		// when the header comes back, so a refused request leaves no mode
+		// drawn that the agent is not in.
+		Intent::SetPlanMode { .. } => {},
 		// Selection remains host-confirmed; a failed request cannot replace the displayed value.
 		Intent::SelectModel(_) | Intent::SetThinking(_) => {},
 		Intent::Attach(attachment) => state.composer.attach(attachment.clone()),

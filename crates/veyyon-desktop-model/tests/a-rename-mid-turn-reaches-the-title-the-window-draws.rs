@@ -59,6 +59,7 @@ fn header(id: &str, title: Option<&str>) -> SnapshotSection {
 			parent:         None,
 			created_at_ms:  4_000,
 			cwd:            "/repo".to_string(),
+			mode:           None,
 		},
 	})
 }

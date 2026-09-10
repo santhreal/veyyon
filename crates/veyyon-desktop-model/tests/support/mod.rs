@@ -188,6 +188,7 @@ pub fn open(store: &mut Store) {
 				parent:         None,
 				created_at_ms:  NOW_MS - 600_000,
 				cwd:            "/repo".to_string(),
+				mode:           None,
 			},
 		})),
 	);

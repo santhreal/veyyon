@@ -121,6 +121,7 @@ pub fn every_intent() -> Vec<Intent> {
 			keys:   vec!["ctrl-enter".to_owned()],
 		},
 		Intent::SpawnTask("review the diff".to_owned()),
+		Intent::SetPlanMode { on: true },
 	];
 
 	// The exhaustive match is the gate. Every variant is named, so a new one
@@ -139,6 +140,7 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::Queue(_)
 			| Intent::AbortTurn
 			| Intent::SetQueueMode(_)
+			| Intent::SetPlanMode { .. }
 			| Intent::SelectModel(_)
 			| Intent::SetThinking(_)
 			| Intent::RemoveAttachment(_)

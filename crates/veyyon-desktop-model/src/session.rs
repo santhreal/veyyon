@@ -42,6 +42,84 @@ pub enum SessionBadge {
 	Watching,
 }
 
+/// A mode the operator sets from the window, in the spelling the host accepts.
+///
+/// Narrower than `SessionMode` on purpose: `goal` and `vibe` are entered by
+/// the tools that own them and `plan_paused` by the agent, so the only two
+/// this crosses the wire with are the two a request may carry. Sent as the
+/// type rather than as a literal beside the action, so the window and the
+/// host cannot drift apart on the bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::EnumIter)]
+#[serde(rename_all = "snake_case")]
+pub enum SettableMode {
+	/// Plan mode: read-only tools and a plan the operator resolves.
+	Plan,
+	/// No mode: the agent runs with everything it has.
+	None,
+}
+
+/// The mode a session runs in, as the host states it on the session's header.
+///
+/// A mode decides which tools the agent holds and how its turn ends, so it is
+/// state the window states rather than one the operator infers from a card
+/// that happens to be up. `Other` carries a name this client has no spelling
+/// for, so a host that adds a mode is drawn rather than dropped.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, strum::EnumDiscriminants)]
+#[strum_discriminants(name(SessionModeKind), derive(Hash, PartialOrd, Ord, strum::EnumIter))]
+#[strum_discriminants(doc = "Fieldless projection of `SessionMode`, so a sweep reads the modes \
+                             this client spells from the enum rather than from a list beside it.")]
+pub enum SessionMode {
+	Plan,
+	PlanPaused,
+	Goal,
+	Vibe,
+	Other(String),
+}
+
+impl SessionMode {
+	/// The mode a host-reported name states, or `None` for the absence of one.
+	///
+	/// `none` is how the host spells a session in no mode, and an empty name is
+	/// the same absence written by a host that sends the field empty rather
+	/// than omitting it.
+	#[must_use]
+	pub fn from_wire(name: &str) -> Option<Self> {
+		match name {
+			"none" | "" => None,
+			"plan" => Some(Self::Plan),
+			"plan_paused" => Some(Self::PlanPaused),
+			"goal" => Some(Self::Goal),
+			"vibe" => Some(Self::Vibe),
+			other => Some(Self::Other(other.to_owned())),
+		}
+	}
+
+	/// The name the host states this mode by, which is what an action setting
+	/// it sends back.
+	#[must_use]
+	pub fn wire_name(&self) -> &str {
+		match self {
+			Self::Plan => "plan",
+			Self::PlanPaused => "plan_paused",
+			Self::Goal => "goal",
+			Self::Vibe => "vibe",
+			Self::Other(name) => name,
+		}
+	}
+
+	/// What the window calls this mode where it states it.
+	#[must_use]
+	pub fn label(&self) -> &str {
+		match self {
+			Self::Plan => "Plan mode",
+			Self::PlanPaused => "Plan paused",
+			Self::Goal => "Goal mode",
+			Self::Vibe => "Vibe mode",
+			Self::Other(name) => name,
+		}
+	}
+}
+
 /// Individual session metadata and partition placement state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Session {

@@ -24,6 +24,7 @@ pub enum HostActionKind {
 	FollowUp,
 	AbortTurn,
 	SetQueueMode,
+	SetSessionMode,
 	CancelTool,
 	SetToolViewExpanded,
 	DequeueQueuedPrompt,
@@ -78,7 +79,7 @@ pub enum HostActionKind {
 
 impl HostActionKind {
 	/// Complete slice of action kinds for runtime test sweeps.
-	pub const ALL: [Self; 69] = [
+	pub const ALL: [Self; 70] = [
 		Self::Attach,
 		Self::Detach,
 		Self::RetryConnection,
@@ -98,6 +99,7 @@ impl HostActionKind {
 		Self::FollowUp,
 		Self::AbortTurn,
 		Self::SetQueueMode,
+		Self::SetSessionMode,
 		Self::CancelTool,
 		Self::SetToolViewExpanded,
 		Self::DequeueQueuedPrompt,
@@ -173,6 +175,7 @@ impl HostActionKind {
 			Self::FollowUp => "FollowUp",
 			Self::AbortTurn => "AbortTurn",
 			Self::SetQueueMode => "SetQueueMode",
+			Self::SetSessionMode => "SetSessionMode",
 			Self::CancelTool => "CancelTool",
 			Self::SetToolViewExpanded => "SetToolViewExpanded",
 			Self::DequeueQueuedPrompt => "DequeueQueuedPrompt",

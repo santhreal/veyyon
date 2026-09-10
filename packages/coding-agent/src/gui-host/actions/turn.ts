@@ -2,11 +2,12 @@ import { UnsupportedModelInputError } from "../../session/agent-session";
 import { ImageInputTooLargeError } from "../../utils/image-loading";
 import { VideoInputTooLargeError } from "../../utils/video-loading";
 import { writeFrame } from "../frames";
+import { enterPlanMode, exitPlanMode } from "../plan-approval";
 import { reportQueuedPrompts } from "../queued-prompts";
 import { nameSessionFromFirstPrompt } from "../session-title";
 import { AttachmentValidationError, abortTurn, executePromptTurn, getOrCreateAgentSession } from "../turns";
 import type { AttachmentSubmission } from "../wire";
-import { activateSession, activeManager, isActive, replyError } from "./active-session";
+import { activateSession, activeManager, emitActiveSession, isActive, replyError } from "./active-session";
 import type { ActionContext, ActionHandler, ActionHandlersMap } from "./types";
 
 const QUEUE_MODES = ["Steer", "Queue"] as const;
@@ -133,6 +134,91 @@ const handleSetQueueMode: ActionHandler<SetQueueModePayload | undefined> = (ctx,
 		return;
 	}
 	ctx.clientState.queueMode = payload.mode;
+	ctx.reply.success();
+};
+
+const SESSION_MODES = ["plan", "none"] as const;
+
+interface SetSessionModePayload {
+	session?: string;
+	mode?: string;
+}
+
+/**
+ * Enter or leave a session mode.
+ *
+ * Only plan mode is the operator's to set: `goal` and `vibe` are entered by
+ * the tools that own them, so a request naming one is refused rather than
+ * half-applied. Entering respects `plan.enabled` the way the terminal's
+ * `/plan` does, and leaving a mode the session is not in is reported as such
+ * instead of appending a mode change nothing asked for.
+ */
+const handleSetSessionMode: ActionHandler<SetSessionModePayload | undefined> = async (ctx, payload) => {
+	const mode = payload?.mode;
+	if (!mode || !(SESSION_MODES as readonly string[]).includes(mode)) {
+		ctx.reply.failure({
+			scope: "Session",
+			code: "INVALID_ARGUMENTS",
+			message: `SetSessionMode mode must be one of ${SESSION_MODES.join(", ")}`,
+			retryable: false,
+		});
+		return;
+	}
+	const session = await getOrCreateAgentSession(ctx.clientState, ctx.socket, ctx);
+	if (session.isStreaming) {
+		// Entering or leaving a mode swaps the session's tool set and the
+		// standing handler the plan is resolved through. Applied under a running
+		// turn that would change what the agent may call in the middle of the
+		// request it is already answering, so the mode waits for the turn.
+		ctx.reply.failure({
+			scope: "Session",
+			code: "TURN_IN_PROGRESS",
+			message: "A turn is running; the mode can be changed once it ends",
+			retryable: true,
+		});
+		return;
+	}
+	const ledger = ctx.clientState.interactions;
+	if (!ledger) {
+		ctx.reply.failure({
+			scope: "Session",
+			code: "NOT_READY",
+			message: "The session has no interaction surface to raise a plan on",
+			retryable: true,
+		});
+		return;
+	}
+	try {
+		if (mode === "plan") {
+			if (!session.settings.get("plan.enabled")) {
+				ctx.reply.failure({
+					scope: "Session",
+					code: "MODE_DISABLED",
+					message: "Plan mode is disabled. Enable it in settings (plan.enabled).",
+					retryable: false,
+				});
+				return;
+			}
+			if (session.getPlanModeState()?.enabled) {
+				ctx.reply.success();
+				return;
+			}
+			await enterPlanMode(session, ledger, ctx.clientState);
+		} else if (!(await exitPlanMode(session, ctx.clientState))) {
+			ctx.reply.failure({
+				scope: "Session",
+				code: "NOT_IN_MODE",
+				message: "The session is not in a mode to leave",
+				retryable: false,
+			});
+			return;
+		}
+	} catch (error) {
+		replyError(ctx, "MODE_FAILED", error);
+		return;
+	}
+	const sm = activeManager(ctx);
+	if (sm) emitActiveSession(ctx, sm);
 	ctx.reply.success();
 };
 
@@ -326,6 +412,7 @@ export const turnActionHandlers: ActionHandlersMap = {
 	FollowUp: handleFollowUp as ActionHandler<never>,
 	AbortTurn: handleAbortTurn as ActionHandler<never>,
 	SetQueueMode: handleSetQueueMode as ActionHandler<never>,
+	SetSessionMode: handleSetSessionMode as ActionHandler<never>,
 	DequeueQueuedPrompt: handleDequeueQueuedPrompt as ActionHandler<never>,
 	CancelTool: handleCancelTool as ActionHandler<never>,
 	SetToolViewExpanded: handleSetToolViewExpanded as ActionHandler<never>,

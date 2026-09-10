@@ -61,6 +61,10 @@ pub struct SessionHeaderView {
 	pub parent:         Option<SessionId>,
 	pub created_at_ms:  u64,
 	pub cwd:            String,
+	/// The mode the session is in as the host spells it (`plan`, `goal`,
+	/// `none`), absent from a host that reports no mode at all.
+	#[serde(default)]
+	pub mode:           Option<String>,
 }
 
 /// Complete list of all 27 snapshot section names defined by the protocol.

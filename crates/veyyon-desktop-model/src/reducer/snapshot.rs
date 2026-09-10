@@ -6,7 +6,7 @@ use crate::{
 	domain::QueuedPrompts,
 	event::{SessionSummary, SnapshotSection},
 	interaction::PendingDecisions,
-	session::{QueuePartition, Session},
+	session::{QueuePartition, Session, SessionMode},
 	store::Store,
 	transcript::TranscriptTree,
 };
@@ -132,6 +132,14 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 			let header = versioned.value;
 			let session_id = header.id;
 			reduce_active_header(store, &session_id, header.title);
+			// A header that names no mode is a session in none of them, so the
+			// entry is removed rather than left at whatever the last header
+			// said: a mode the operator has just left would otherwise keep
+			// being stated.
+			match header.mode.as_deref().and_then(SessionMode::from_wire) {
+				Some(mode) => store.modes.insert(session_id.clone(), mode),
+				None => store.modes.remove(&session_id),
+			};
 			store.persisted.shell.active_session = Some(session_id.clone());
 			damage.insert(Damage::QueueAll);
 			damage.insert(Damage::Titlebar);

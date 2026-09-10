@@ -138,6 +138,11 @@ export interface ClientSessionState {
 	 * seeded from the session's entries when a session is attached.
 	 */
 	hasMessageEntry?: boolean;
+	/**
+	 * The tool set plan mode replaced, held while plan mode is on so the
+	 * operator's own exit gives the same tools back the accepted-plan exit does.
+	 */
+	planModePreviousTools?: string[];
 }
 
 /**
@@ -180,7 +185,7 @@ export async function getOrCreateAgentSession(
 
 	state.agentSession = session;
 	attachTurnListeners(session, socket, state);
-	await enterPlanModeIfConfigured(session, ledger);
+	await enterPlanModeIfConfigured(session, ledger, state);
 	// The session resolves its own model, through a longer chain than a
 	// configuration read can reproduce, and until now nothing told the client
 	// which one it picked: the composer kept offering to select a model while

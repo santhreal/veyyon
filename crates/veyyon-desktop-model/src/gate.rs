@@ -40,6 +40,10 @@ pub const fn action_to_capability(action: HostActionKind) -> Capability {
 		HostActionKind::FollowUp => Capability::TurnControl,
 		HostActionKind::AbortTurn => Capability::TurnControl,
 		HostActionKind::SetQueueMode => Capability::TurnControl,
+		// A mode is the session's, not the turn's: it survives the turn that
+		// was running when it was entered, and a host with no turn in flight
+		// still answers it.
+		HostActionKind::SetSessionMode => Capability::Sessions,
 		HostActionKind::CancelTool => Capability::Tools,
 		HostActionKind::SetToolViewExpanded => Capability::Tools,
 		HostActionKind::DequeueQueuedPrompt => Capability::TurnControl,

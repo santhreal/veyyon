@@ -1,4 +1,4 @@
-import type { SessionHeader } from "@veyyon/kernel/session/session-entries";
+import type { SessionEntry, SessionHeader } from "@veyyon/kernel/session/session-entries";
 import type { SessionInfo } from "@veyyon/kernel/session/session-listing";
 import {
 	ALL_CAPABILITIES,
@@ -86,6 +86,7 @@ const ACTION_ERROR_SCOPES: Record<string, ErrorScope> = {
 	FollowUp: "Session",
 	AbortTurn: "Session",
 	SetQueueMode: "Session",
+	SetSessionMode: "Session",
 	DequeueQueuedPrompt: "Session",
 	CancelTool: "Tool",
 	SetToolViewExpanded: "Tool",
@@ -175,7 +176,26 @@ export function sessionInfoToSummary(info: SessionInfo): SessionSummary {
 	};
 }
 
-export function sessionHeaderToView(header: SessionHeader | null | undefined): SessionHeaderView {
+/**
+ * The mode a session is in, read from the last mode change it recorded.
+ *
+ * A mode is not part of the header on disk: it is a session entry, appended
+ * whenever a mode is entered or left, so the current one is the last such
+ * entry and a session that never entered one is in `none`.
+ */
+export function sessionMode(entries: readonly SessionEntry[]): string {
+	for (let index = entries.length - 1; index >= 0; index -= 1) {
+		const entry = entries[index];
+		if (entry?.type === "mode_change") return entry.mode;
+	}
+	return "none";
+}
+
+export function sessionHeaderToView(
+	header: SessionHeader | null | undefined,
+	entries: readonly SessionEntry[] = [],
+): SessionHeaderView {
+	const mode = sessionMode(entries);
 	if (!header) {
 		return {
 			id: "unknown",
@@ -185,6 +205,7 @@ export function sessionHeaderToView(header: SessionHeader | null | undefined): S
 			parent: null,
 			created_at_ms: Date.now(),
 			cwd: process.cwd(),
+			mode,
 		};
 	}
 	return {
@@ -195,5 +216,6 @@ export function sessionHeaderToView(header: SessionHeader | null | undefined): S
 		parent: header.parentSession ?? null,
 		created_at_ms: header.timestamp ? new Date(header.timestamp).getTime() : Date.now(),
 		cwd: header.cwd,
+		mode,
 	};
 }

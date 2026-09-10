@@ -62,7 +62,10 @@ pub use persistence::{
 pub use reducer::reduce;
 pub use registry::{InFlightRequest, RequestRegistry};
 pub use retries::RetryMemory;
-pub use session::{BadgeKind, QueuePartition, Session, SessionBadge, SessionCollection};
+pub use session::{
+	BadgeKind, QueuePartition, Session, SessionBadge, SessionCollection, SessionMode,
+	SessionModeKind, SettableMode,
+};
 pub use store::Store;
 pub use streaming::StreamingMessageState;
 pub use surface::SurfaceId;

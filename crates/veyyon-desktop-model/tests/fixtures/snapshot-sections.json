@@ -34,7 +34,8 @@
 				"title_source": "user",
 				"parent": null,
 				"created_at_ms": 1700000000000,
-				"cwd": "/repo"
+				"cwd": "/repo",
+				"mode": "plan"
 			}
 		}
 	},

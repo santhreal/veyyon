@@ -5,6 +5,7 @@ use crate::{
 	composer::QueueMode,
 	connection::{EntryId, RequestId, SessionId},
 	domain::changes::ChangeScope,
+	session::SettableMode,
 };
 
 /// Binary attachment descriptor for prompt submission.
@@ -74,7 +75,7 @@ pub enum HostAction {
 		before:  Option<EntryId>,
 	},
 
-	// Turn control family (8 actions)
+	// Turn control family (9 actions)
 	SubmitPrompt {
 		session:     SessionId,
 		text:        String,
@@ -94,6 +95,16 @@ pub enum HostAction {
 	SetQueueMode {
 		session: SessionId,
 		mode:    QueueMode,
+	},
+	/// Puts the session in a mode, or takes it out of the one it is in.
+	///
+	/// `SettableMode::None` leaves whatever mode the session was in, which is
+	/// the same request the host reads as a mode of `none`. A host that
+	/// declines a mode answers with its own refusal rather than the window
+	/// guessing which modes it has.
+	SetSessionMode {
+		session: SessionId,
+		mode:    SettableMode,
 	},
 	CancelTool {
 		session:      SessionId,
@@ -295,6 +306,7 @@ impl HostAction {
 			Self::FollowUp { .. } => HostActionKind::FollowUp,
 			Self::AbortTurn { .. } => HostActionKind::AbortTurn,
 			Self::SetQueueMode { .. } => HostActionKind::SetQueueMode,
+			Self::SetSessionMode { .. } => HostActionKind::SetSessionMode,
 			Self::CancelTool { .. } => HostActionKind::CancelTool,
 			Self::SetToolViewExpanded { .. } => HostActionKind::SetToolViewExpanded,
 			Self::DequeueQueuedPrompt { .. } => HostActionKind::DequeueQueuedPrompt,

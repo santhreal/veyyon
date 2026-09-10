@@ -4,8 +4,8 @@ use veyyon_desktop::{ActionClassification, classify_action};
 use veyyon_desktop_model::HostActionKind;
 
 #[test]
-fn all_sixty_nine_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equality() {
-	assert_eq!(HostActionKind::ALL.len(), 69, "HostActionKind::ALL must contain exactly 69 actions");
+fn all_seventy_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_equality() {
+	assert_eq!(HostActionKind::ALL.len(), 70, "HostActionKind::ALL must contain exactly 70 actions");
 
 	let mut ephemeral_actions = HashSet::new();
 	let mut mutation_actions = HashSet::new();
@@ -21,7 +21,7 @@ fn all_sixty_nine_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_eq
 		}
 	}
 
-	assert_eq!(ephemeral_actions.len() + mutation_actions.len(), 69);
+	assert_eq!(ephemeral_actions.len() + mutation_actions.len(), 70);
 
 	// Pinned exact set of 18 ephemeral read-only actions (§8.13)
 	let expected_ephemeral: HashSet<HostActionKind> = [
@@ -52,5 +52,5 @@ fn all_sixty_nine_actions_are_classified_and_ephemeral_set_is_pinned_by_exact_eq
 		"ephemeral action set must match exact pinned definition; any change must be recorded"
 	);
 	assert_eq!(ephemeral_actions.len(), 18);
-	assert_eq!(mutation_actions.len(), 51);
+	assert_eq!(mutation_actions.len(), 52);
 }

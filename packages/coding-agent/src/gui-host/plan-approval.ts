@@ -29,10 +29,26 @@ import type { InteractionLedger } from "./interactions";
 const PLAN_TOOL = "resolve";
 
 /**
+ * Where the tool set plan mode replaced is held while plan mode is on.
+ *
+ * Plan mode restores the tools it took away when it ends, and it ends two
+ * ways: the agent's plan is accepted, or the operator leaves. The accepting
+ * path could close over the list, the operator's path cannot, so both read it
+ * from the connection's state and one function performs the exit.
+ */
+export interface PlanModeMemory {
+	planModePreviousTools?: string[];
+}
+
+/**
  * Start plan mode when the session is fresh and settings ask for it.
  * Returns whether plan mode is on afterwards.
  */
-export async function enterPlanModeIfConfigured(session: AgentSession, ledger: InteractionLedger): Promise<boolean> {
+export async function enterPlanModeIfConfigured(
+	session: AgentSession,
+	ledger: InteractionLedger,
+	memory: PlanModeMemory,
+): Promise<boolean> {
 	if (session.getPlanModeState()?.enabled) return true;
 	const sm = session.sessionManager;
 	const fresh =
@@ -40,12 +56,16 @@ export async function enterPlanModeIfConfigured(session: AgentSession, ledger: I
 	if (!fresh || !session.settings.get("plan.enabled") || !session.settings.get("plan.defaultOnStartup")) {
 		return false;
 	}
-	await enterPlanMode(session, ledger);
+	await enterPlanMode(session, ledger, memory);
 	return true;
 }
 
 /** Restrict tools to the plan set, mark plan-mode state, and install the approval handler. */
-export async function enterPlanMode(session: AgentSession, ledger: InteractionLedger): Promise<void> {
+export async function enterPlanMode(
+	session: AgentSession,
+	ledger: InteractionLedger,
+	memory: PlanModeMemory,
+): Promise<void> {
 	const previousTools = session.getActiveToolNames();
 	const augmentations = [PLAN_TOOL];
 	if (session.hasBuiltInTool("write")) augmentations.push("write");
@@ -57,8 +77,30 @@ export async function enterPlanMode(session: AgentSession, ledger: InteractionLe
 		workflow: previous?.workflow ?? "parallel",
 		reentry: previous !== undefined,
 	});
-	session.setStandingResolveHandler(input => resolvePlanApproval(session, ledger, previousTools, input));
+	memory.planModePreviousTools = previousTools;
+	session.setStandingResolveHandler(input => resolvePlanApproval(session, ledger, memory, input));
 	session.sessionManager.appendModeChange("plan", { planFilePath: session.getPlanModeState()?.planFilePath });
+}
+
+/**
+ * End plan mode: give the tools back, drop the standing handler and record the
+ * mode the session is in now.
+ *
+ * Returns whether plan mode was on, so a caller can report a request to leave
+ * a mode the session is not in rather than reporting a state change that did
+ * not happen.
+ */
+export async function exitPlanMode(session: AgentSession, memory: PlanModeMemory): Promise<boolean> {
+	if (!session.getPlanModeState()?.enabled) return false;
+	const previousTools = memory.planModePreviousTools;
+	if (previousTools && previousTools.length > 0) {
+		await session.setActiveToolsByName(previousTools);
+	}
+	memory.planModePreviousTools = undefined;
+	session.setStandingResolveHandler(null);
+	session.setPlanModeState(undefined);
+	session.sessionManager.appendModeChange("none");
+	return true;
 }
 
 function planPath(session: AgentSession, planFilePath: string): string {
@@ -83,7 +125,7 @@ async function readPlan(session: AgentSession, planFilePath: string): Promise<st
 function resolvePlanApproval(
 	session: AgentSession,
 	ledger: InteractionLedger,
-	previousTools: string[],
+	memory: PlanModeMemory,
 	input: unknown,
 ): Promise<AgentToolResult<unknown>> {
 	return runResolveInvocation(input as Parameters<typeof runResolveInvocation>[0], {
@@ -111,10 +153,7 @@ function resolvePlanApproval(
 				};
 			}
 			session.setPlanReferencePath(planFilePath);
-			session.setStandingResolveHandler(null);
-			session.setPlanModeState(undefined);
-			await session.setActiveToolsByName(previousTools);
-			session.sessionManager.appendModeChange("none");
+			await exitPlanMode(session, memory);
 			return {
 				content: [
 					{

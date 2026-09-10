@@ -64,6 +64,7 @@ const CORPUS = [
 				parent: null,
 				created_at_ms: 1700000000000,
 				cwd: "/repo",
+				mode: "plan",
 			},
 		},
 	},

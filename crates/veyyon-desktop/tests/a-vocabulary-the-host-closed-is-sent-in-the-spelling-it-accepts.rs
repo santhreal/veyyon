@@ -35,14 +35,14 @@ use support::{intent_samples::every_sample_intent, session};
 use veyyon_desktop::{SessionIndex, actions_for};
 use veyyon_desktop_model::{
 	Capability, CapabilityStatus, ChangeScope, HostAction, QueueMode, QueuePartition, SessionId,
-	Store,
+	SettableMode, Store,
 };
 use veyyon_desktop_surface::Intent;
 
 /// Every string an action carries that is an operator's or the host's own
 /// value rather than a vocabulary: text, identifiers, paths and queries. A new
 /// entry here is a decision that the value is open.
-const OPEN_STRINGS: [&str; 57] = [
+const OPEN_STRINGS: [&str; 58] = [
 	"AbortTurn.session",
 	"BranchSession.session",
 	"CancelAuthFlow.provider",
@@ -87,6 +87,7 @@ const OPEN_STRINGS: [&str; 57] = [
 	"SetKeybinding.keys[]",
 	"SetMcpEnabled.server",
 	"SetQueueMode.session",
+	"SetSessionMode.session",
 	"SetSetting.key",
 	"SetSetting.value",
 	"SetThinkingLevel.level",
@@ -106,7 +107,8 @@ const OPEN_STRINGS: [&str; 57] = [
 /// of, and that the window carries as the type it decodes the same set with.
 /// A member here is round-tripped through that type below; a member added
 /// without one leaves the sweep proving nothing about it.
-const VOCABULARY_STRINGS: [&str; 2] = ["SelectChangeScope.scope", "SetQueueMode.mode"];
+const VOCABULARY_STRINGS: [&str; 3] =
+	["SelectChangeScope.scope", "SetQueueMode.mode", "SetSessionMode.mode"];
 
 /// A closed set with no type on this side to carry it. The daemon's signals
 /// are declared in `packages/coding-agent/src/launch/protocol.ts` and reach no
@@ -207,6 +209,23 @@ fn every_scope_and_every_mode_reaches_the_host_as_the_vocabulary_it_came_from() 
 		};
 		assert_eq!(sent, Value::String(expected.to_owned()));
 		proven.insert("SetQueueMode.mode".to_owned());
+	}
+
+	for mode in SettableMode::iter() {
+		let (mut store, index) = seeded();
+		let on = mode == SettableMode::Plan;
+		let actions = actions_for(&Intent::SetPlanMode { on }, &index, &mut store);
+		let sent = payload_of(&actions, "SetSessionMode")["mode"].clone();
+		let decoded: SettableMode = serde_json::from_value(sent.clone())
+			.unwrap_or_else(|_| panic!("the host's SettableMode cannot read {sent}"));
+		assert_eq!(decoded, mode, "the mode sent for {mode:?} decodes as {decoded:?}");
+		// `SESSION_MODES` in `packages/coding-agent/src/gui-host/actions/turn.ts`.
+		let expected = match mode {
+			SettableMode::Plan => "plan",
+			SettableMode::None => "none",
+		};
+		assert_eq!(sent, Value::String(expected.to_owned()));
+		proven.insert("SetSessionMode.mode".to_owned());
 	}
 
 	// A vocabulary recorded and never round-tripped here is a claim with no

@@ -19,6 +19,7 @@
 
 ### Added
 
+- The desktop states the mode its session runs in on the composer's footer, and sets it: `/plan` enters plan mode and `/plan off` leaves it, both refused while a turn is running, and leaving restores the tools plan mode took away.
 - A desktop approval card offers the tool wrapper's four answers — `Deny for session`, `Deny`, `Approve for session`, `Approve` — so a standing grant or refusal is reachable without leaving the desktop.
 - The desktop card stack's overflow line expands under the pointer or the keyboard onto one line per decision it folded away, each naming the decision's kind and subject.
 - A desktop plan card whose body is cut at its 400px cap fades the last 64px of the body into the card, so a plan that continues past the cut is distinguishable from one that ends there.
@@ -177,6 +178,7 @@
 
 ### Fixed
 
+- A desktop decision card draws its answers unpressable while the host cannot take them, where an approval's four answers, a question's options and its composer reply, and a plan's `Revise` and `Accept` were drawn identically whether the capability was declared or not, so a press on any of them reached nothing and stated nothing: each kind's rows now read the capability of that kind of decision under the transport carrying the answer, and draw at the opacity every unavailable control is drawn at.
 - A desktop plan sent back for revision carries the refinement typed under it, where the composer offered `Refine` as soon as a draft existed and then answered with a bare refusal: the agent was told a revision had been asked for and never what it was, and the text stayed in the composer for the rail to state as unsent. The card's own `Revise` row answers with the same refinement, rather than discarding the words the operator wrote beside it. A free-text answer to a question likewise leaves the composer once the host has taken it.
 - A desktop question that offers options is answered by choosing one, where the composer sent the wrong shape for it -- the draft as free text, or, with nothing typed, the first option nobody chose -- and the host refused both and left the decision open, so the card came down on a turn that kept waiting: the composer's answer is held back for such a question with the reason stating that an option is chosen, its card offers only the options, and a question that takes text keeps its composer reply.
 - A desktop refusal keeps its own `Retry` and `Dismiss` on the surface it is drawn on however long the host's sentence is, where an unbounded message took the whole row -- a 300-character refusal drew both controls about a thousand pixels outside an 1180px window, so neither the second send nor the dismissal could be reached: the sentence now takes what the row has left over and ends in an ellipsis after two lines. The window's attention strip states a long notice on the one line the window reserves for it instead of wrapping to two and drawing over the surface beneath it.

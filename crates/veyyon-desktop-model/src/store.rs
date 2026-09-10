@@ -7,7 +7,7 @@ use crate::{
 	interaction::PendingDecisions,
 	persistence::PersistedState,
 	retries::RetryMemory,
-	session::SessionCollection,
+	session::{SessionCollection, SessionMode},
 	streaming::StreamingMessageState,
 	transcript::TranscriptTree,
 };
@@ -32,6 +32,9 @@ pub struct Store {
 	/// Single definition of operator decision requests awaiting input, approval,
 	/// or plan review.
 	pub interactions: HashMap<SessionId, PendingDecisions>,
+	/// Single definition of the mode each session runs in, as the host stated
+	/// it on that session's header.
+	pub modes:        HashMap<SessionId, SessionMode>,
 	/// Single definition of the prompts each session holds behind a running
 	/// turn, as the host reported them.
 	pub queued:       HashMap<SessionId, QueuedPrompts>,
@@ -63,6 +66,7 @@ impl Store {
 			transcripts:  HashMap::new(),
 			streaming:    HashMap::new(),
 			interactions: HashMap::new(),
+			modes:        HashMap::new(),
 			queued:       HashMap::new(),
 			persisted:    PersistedState::new(),
 			domains:      Domains::new(),

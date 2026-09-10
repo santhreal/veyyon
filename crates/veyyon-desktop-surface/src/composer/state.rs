@@ -8,7 +8,7 @@
 
 use std::path::PathBuf;
 
-use veyyon_desktop_model::{InputModality, QueueMode};
+use veyyon_desktop_model::{InputModality, QueueMode, SessionMode};
 
 use super::{
 	media::{AttachmentError, MAX_PROMPT_ATTACHMENT_BYTES, MediaKind, MediaType, Payload},
@@ -211,6 +211,11 @@ pub struct ComposerState {
 	pub context:     Option<ContextMeter>,
 	/// The prompts waiting behind the running turn, in delivery order.
 	pub queued:      Vec<String>,
+	/// The mode the session runs in, absent when it runs in none.
+	///
+	/// A mode decides what the agent may do with the prompt about to be sent,
+	/// so the footer states it beside the model that will answer it.
+	pub mode:        Option<SessionMode>,
 }
 
 impl ComposerState {

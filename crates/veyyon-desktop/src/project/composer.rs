@@ -106,6 +106,10 @@ pub fn project_composer(store: &Store, session: Option<&SessionId>, composer: &m
 		.and_then(|id| store.queued.get(id))
 		.map_or_else(Vec::new, |queued| queued.in_delivery_order().map(str::to_owned).collect());
 
+	// The mode is the host's, and a session in none of them removes the chip
+	// rather than drawing a mode nobody is in.
+	composer.mode = session.and_then(|id| store.modes.get(id).cloned());
+
 	composer.queue_mode = clamp_queue_mode(store, composer.queue_mode);
 }
 

@@ -79,6 +79,7 @@ fn header(store: &mut Store, id: &SessionId) -> veyyon_desktop_model::DamageSet 
 				parent:         None,
 				created_at_ms:  NOW_MS - 600_000,
 				cwd:            "/repo".to_string(),
+				mode:           None,
 			},
 		})),
 	)

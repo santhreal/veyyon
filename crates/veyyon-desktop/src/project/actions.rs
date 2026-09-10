@@ -1,14 +1,17 @@
 //! From what the operator asked to what the host is sent.
 
-use veyyon_desktop_model::{HostAction, Store, TerminalStatus};
+use veyyon_desktop_model::{HostAction, SettableMode, Store, TerminalStatus};
 use veyyon_desktop_surface::Intent;
 
+use self::routes::{navigate_actions, retry_control_actions};
 use super::{
 	SessionIndex,
 	cards::take_interaction,
 	submission::submission_of,
 	workspace_asks::{open_actions, tab_actions},
 };
+
+mod routes;
 
 /// The host actions an intent asks for, in the order they are sent; empty
 /// for one the shell finished alone or one that no longer has a target.
@@ -65,6 +68,16 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		// with, so a spelling the host rejects cannot be written here.
 		Intent::SetQueueMode(mode) => active
 			.map_or_else(Vec::new, |session| vec![HostAction::SetQueueMode { session, mode: *mode }]),
+		// Leaving a mode is the same action as entering one: the host reads
+		// `SettableMode::None` as the session running in no mode.
+		Intent::SetPlanMode { on } => active.map_or_else(Vec::new, |session| {
+			let mode = if *on {
+				SettableMode::Plan
+			} else {
+				SettableMode::None
+			};
+			vec![HostAction::SetSessionMode { session, mode }]
+		}),
 		Intent::SelectModel(choice) => {
 			vec![HostAction::SelectModel {
 				provider: choice.provider.clone(),
@@ -293,66 +306,6 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		| Intent::ToggleTreeNode(_)
 		| Intent::ExpandContext { .. } => Vec::new(),
 		_ => Vec::new(),
-	}
-}
-
-/// What a control sends when its retry has no refused request to send again:
-/// a control the operator reaches before anything failed on it, and one whose
-/// error came from the transport rather than from a request the window sent.
-/// A refused request is always preferred, because it carries the prompt, the
-/// session and the attachments that no surface id states.
-fn retry_control_actions(
-	id: &veyyon_desktop_model::SurfaceId,
-	active: Option<veyyon_desktop_model::SessionId>,
-) -> Vec<HostAction> {
-	use veyyon_desktop_model::SurfaceId;
-	match id {
-		SurfaceId::ConnectionRetryButton | SurfaceId::ConnectionAttachButton => {
-			vec![HostAction::RetryConnection]
-		},
-		SurfaceId::ProviderAuthRetryButton(p) => {
-			vec![HostAction::RetryAuthFlow { provider: p.clone() }]
-		},
-		SurfaceId::ProviderAuthStartButton(p) => {
-			vec![HostAction::StartProviderAuth { provider: p.clone() }]
-		},
-		SurfaceId::ProviderAuthCancelButton(p) => {
-			vec![HostAction::CancelAuthFlow { provider: p.clone() }]
-		},
-		SurfaceId::DiagnosticRefreshButton => vec![HostAction::RefreshDiagnostics],
-		SurfaceId::UsageRefreshButton => vec![HostAction::GetUsage { session: active }],
-		SurfaceId::ContextBreakdownRefreshButton => {
-			active.map_or_else(Vec::new, |session| vec![HostAction::GetContextBreakdown { session }])
-		},
-		SurfaceId::DiagnosticRetrySourceButton(s) => {
-			vec![HostAction::RetryDiagnosticSource { source: s.clone() }]
-		},
-		SurfaceId::AgentReviveButton(a) => vec![HostAction::ReviveAgent { agent_id: a.clone() }],
-		SurfaceId::TaskCancelButton(t) => vec![HostAction::CancelTask { task_id: t.clone() }],
-		_ => Vec::new(),
-	}
-}
-
-fn navigate_actions(
-	route: veyyon_desktop_surface::navigation::SurfaceRoute,
-	active: Option<veyyon_desktop_model::SessionId>,
-) -> Vec<HostAction> {
-	use veyyon_desktop_surface::{SettingsPage, navigation::SurfaceRoute};
-	match route {
-		SurfaceRoute::Page(SettingsPage::General) => vec![HostAction::LoadSettings],
-		SurfaceRoute::Page(SettingsPage::Themes) => vec![HostAction::LoadThemes],
-		SurfaceRoute::Page(SettingsPage::Keybindings) => vec![HostAction::LoadKeybindings],
-		SurfaceRoute::Page(SettingsPage::Providers) => vec![HostAction::RefreshProviders],
-		SurfaceRoute::Page(SettingsPage::Mcp) => vec![HostAction::RefreshMcp],
-		SurfaceRoute::Page(SettingsPage::Diagnostics) => vec![HostAction::RefreshDiagnostics],
-		SurfaceRoute::Page(SettingsPage::Usage) => vec![HostAction::GetUsage { session: active }],
-		SurfaceRoute::Page(SettingsPage::ContextBreakdown) => {
-			active.map_or_else(Vec::new, |session| vec![HostAction::GetContextBreakdown { session }])
-		},
-		SurfaceRoute::Page(SettingsPage::Extensions | SettingsPage::Authentication)
-		| SurfaceRoute::Commands
-		| SurfaceRoute::Account
-		| SurfaceRoute::Settings => Vec::new(),
 	}
 }
 

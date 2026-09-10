@@ -132,6 +132,12 @@ export interface SessionHeaderView {
 	parent: string | null;
 	created_at_ms: number;
 	cwd: string;
+	/**
+	 * The mode the session runs in: `plan`, `plan_paused`, `goal`, `vibe`, or
+	 * `none` when the agent runs with everything it has. Read from the last
+	 * mode change the session recorded, so it survives a restart.
+	 */
+	mode: string;
 }
 
 export type MessageRole =
@@ -655,6 +661,7 @@ export const ALL_HOST_ACTIONS = [
 	"FollowUp",
 	"AbortTurn",
 	"SetQueueMode",
+	"SetSessionMode",
 	"CancelTool",
 	"SetToolViewExpanded",
 	"DequeueQueuedPrompt",
@@ -729,6 +736,7 @@ export const ACTION_TO_CAPABILITY: Record<HostActionTag, Capability> = {
 	FollowUp: "TurnControl",
 	AbortTurn: "TurnControl",
 	SetQueueMode: "TurnControl",
+	SetSessionMode: "Sessions",
 	CancelTool: "Tools",
 	SetToolViewExpanded: "Tools",
 	DequeueQueuedPrompt: "TurnControl",
