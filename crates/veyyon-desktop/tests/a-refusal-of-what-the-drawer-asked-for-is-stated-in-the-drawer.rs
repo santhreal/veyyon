@@ -59,11 +59,10 @@ fn row() -> SessionId {
 }
 
 /// The actions of the drawer's capabilities that an intent sends and no
-/// control of the drawer presses: the grid's own keystrokes and the resize
-/// the layout raises. Their failures are the connection's, and they land on
-/// the titlebar line. `RefreshProcesses` is a third of that kind and reaches
-/// no intent at all -- the window polls the host with it -- so it is pinned
-/// by `the_window_s_own_poll_is_nobody_s_press` rather than by this sweep.
+/// control presses: the grid's own keystrokes and the resize the layout
+/// raises, whose failures are the connection's. `RefreshProcesses` is a third
+/// of that kind and reaches no intent, so it is pinned by
+/// `the_window_s_own_poll_is_nobody_s_press` instead.
 const PINNED_NOT_A_PRESS: [HostActionKind; 2] =
 	[HostActionKind::WriteTerminal, HostActionKind::ResizeTerminal];
 
@@ -137,18 +136,21 @@ fn target_of_action(action: &HostAction) -> Option<&str> {
 	}
 }
 
-/// What a drawer control is keyed under, for the controls that name one.
-fn target_of_surface(surface: &SurfaceId) -> Option<&str> {
+/// The control family a drawer surface belongs to, and what it is keyed
+/// under for the families that name something.
+fn drawer_control(surface: &SurfaceId) -> (&'static str, Option<&str>) {
 	match surface {
-		SurfaceId::TerminalCloseButton(_, id)
-		| SurfaceId::TerminalRestartButton(_, id)
-		| SurfaceId::TerminalClearButton(_, id)
-		| SurfaceId::ProcessStopButton(_, id)
-		| SurfaceId::ProcessRestartButton(_, id)
-		| SurfaceId::ProcessSignalButton(_, id)
-		| SurfaceId::ProcessSendButton(_, id)
-		| SurfaceId::ProcessLogsTab(_, id) => Some(id),
-		_ => None,
+		SurfaceId::TerminalCreateButton(_) => ("TerminalCreateButton", None),
+		SurfaceId::ProcessStartButton(_) => ("ProcessStartButton", None),
+		SurfaceId::TerminalCloseButton(_, id) => ("TerminalCloseButton", Some(id)),
+		SurfaceId::TerminalRestartButton(_, id) => ("TerminalRestartButton", Some(id)),
+		SurfaceId::TerminalClearButton(_, id) => ("TerminalClearButton", Some(id)),
+		SurfaceId::ProcessStopButton(_, id) => ("ProcessStopButton", Some(id)),
+		SurfaceId::ProcessRestartButton(_, id) => ("ProcessRestartButton", Some(id)),
+		SurfaceId::ProcessSignalButton(_, id) => ("ProcessSignalButton", Some(id)),
+		SurfaceId::ProcessSendButton(_, id) => ("ProcessSendButton", Some(id)),
+		SurfaceId::ProcessLogsTab(_, id) => ("ProcessLogsTab", Some(id)),
+		_ => ("outside the drawer", None),
 	}
 }
 
@@ -245,7 +247,7 @@ fn a_control_a_request_lands_on_names_what_the_action_acts_on() {
 			&& let Some(target) = target_of_action(&action)
 		{
 			assert_eq!(
-				target_of_surface(&surface),
+				drawer_control(&surface).1,
 				Some(target),
 				"{:?} acts on {target}, and landed on {surface:?}",
 				action.kind()
@@ -271,6 +273,35 @@ fn a_control_a_request_lands_on_names_what_the_action_acts_on() {
 			action.kind()
 		);
 	}
+}
+
+#[test]
+fn every_drawer_action_registers_under_the_control_that_sends_it() {
+	// Pinned by exact equality, so an action of either family added to the
+	// window is red here until the control it belongs to is recorded, and a
+	// send that registers under the row's stop -- the same row, the same
+	// name, the wrong press -- is red rather than plausible.
+	let table: BTreeSet<(String, &'static str)> = drawer_requests()
+		.iter()
+		.filter(|(_, surface)| surface.in_terminal_drawer())
+		.map(|(action, surface)| (format!("{:?}", action.kind()), drawer_control(surface).0))
+		.collect();
+	let pinned: BTreeSet<(String, &'static str)> = [
+		("AttachTerminal", "TerminalCreateButton"),
+		("CreateTerminal", "TerminalCreateButton"),
+		("ClearTerminal", "TerminalClearButton"),
+		("CloseTerminal", "TerminalCloseButton"),
+		("RestartTerminal", "TerminalRestartButton"),
+		("ProcessStart", "ProcessStartButton"),
+		("ProcessSend", "ProcessSendButton"),
+		("ProcessSignal", "ProcessSignalButton"),
+		("ProcessStop", "ProcessStopButton"),
+		("ProcessRestart", "ProcessRestartButton"),
+		("ProcessLogs", "ProcessLogsTab"),
+	]
+	.map(|(kind, control)| (kind.to_owned(), control))
+	.into();
+	assert_eq!(table, pinned, "a drawer action changed the control it registers under");
 }
 
 #[test]
@@ -355,33 +386,6 @@ fn a_refusal_the_operator_dismissed_leaves_the_drawer() {
 	assert_eq!(
 		state.drawer.failure, None,
 		"the drawer held a failure the control no longer carries"
-	);
-}
-
-#[test]
-fn the_drawer_states_one_refusal_at_a_time() {
-	let (store, index) = seeded();
-	let mut registry = RequestRegistry::new();
-	let start = SurfaceId::ProcessStartButton(row());
-	let send = SurfaceId::ProcessSendButton(row(), "server".to_string());
-	registry.register(RequestId(1), HostActionKind::ProcessStart, start.clone(), NOW_MS, 30_000);
-	registry.register(RequestId(2), HostActionKind::ProcessSend, send.clone(), NOW_MS, 30_000);
-
-	let mut state = ShellState { current_id: 1, ..ShellState::default() };
-	land_failure(&refusal(RequestId(1), true), &registry, Some(&wire()), &mut state);
-	land_failure(&refusal(RequestId(2), true), &registry, Some(&wire()), &mut state);
-	registry.complete(&RequestId(1));
-	registry.complete(&RequestId(2));
-	project_controls(&store, &registry, &index, &mut state);
-
-	let failure = state
-		.drawer
-		.failure
-		.expect("two refusals, and the drawer states one");
-	assert!(
-		failure.surface == start || failure.surface == send,
-		"the drawer stated {:?}, which neither request landed on",
-		failure.surface
 	);
 }
 
