@@ -11,12 +11,14 @@
 //! subscribes to it, and hands back the same handle on every later frame.
 
 mod editors;
+mod parse;
 
 use serde_json::Value;
 use veyyon_desktop_kit::input::{Editor, EditorEvent, EditorMode};
 use veyyon_desktop_model::AuthFlowState;
-use veyyon_gpui::{AppContext, Context, Entity, Keystroke, SharedString};
+use veyyon_gpui::{AppContext, Context, Entity, SharedString};
 
+use self::parse::{parse_chords, split_command_line};
 use crate::{Intent, ShellView, attach::ConnectionPhase};
 
 /// Which field an editor belongs to.
@@ -355,68 +357,4 @@ impl ShellView {
 	fn clear_refusal(&mut self) {
 		self.field_refusal = None;
 	}
-}
-
-/// The chords a keybinding field's text states: the alternatives separated by
-/// commas, each one token in the keymap grammar.
-///
-/// A chord is read by [`Keystroke::parse`], which is the grammar that binds
-/// it, rather than by `KeyChord::parse`, which reads a chord for a chip to
-/// draw and is deliberately lenient about one it cannot make sense of. The two
-/// disagree: `ctrl-` is a hyphen with a modifier to the chip and a modifier
-/// with no key to the binder, so validating with the reader that never binds
-/// anything is how `ctrl-` was taken and bound to a press that cannot happen.
-///
-/// A part that is blank, one that carries whitespace inside it, and one whose
-/// modifiers are followed by no key are all dropped, so a field that states
-/// nothing bindable yields no chord and is refused rather than sent.
-fn parse_chords(text: &str) -> Vec<String> {
-	text
-		.split(',')
-		.map(str::trim)
-		.filter(|chord| !chord.is_empty() && !chord.contains(char::is_whitespace))
-		.filter(|chord| Keystroke::parse(chord).is_ok_and(|stroke| !stroke.key.is_empty()))
-		.map(str::to_owned)
-		.collect()
-}
-
-/// The application and arguments a command line states, or `None` when it
-/// states no application.
-///
-/// The host spawns the application directly rather than through a shell, so a
-/// line is split on whitespace outside quotes and each quoted run is one
-/// argument: `bun run dev` is three tokens, and `git commit -m "one two"`
-/// carries the message as one. A quote nobody closed ends at the end of the
-/// line, which is what the operator meant by typing it.
-fn split_command_line(line: &str) -> Option<(String, Vec<String>)> {
-	let mut tokens: Vec<String> = Vec::new();
-	let mut token = String::new();
-	let mut started = false;
-	let mut quote: Option<char> = None;
-	for ch in line.chars() {
-		match quote {
-			Some(open) if ch == open => quote = None,
-			Some(_) => token.push(ch),
-			None if ch == '"' || ch == '\'' => {
-				quote = Some(ch);
-				started = true;
-			},
-			None if ch.is_whitespace() => {
-				if started {
-					tokens.push(std::mem::take(&mut token));
-					started = false;
-				}
-			},
-			None => {
-				token.push(ch);
-				started = true;
-			},
-		}
-	}
-	if started {
-		tokens.push(token);
-	}
-	let mut tokens = tokens.into_iter();
-	let command = tokens.next().filter(|token| !token.is_empty())?;
-	Some((command, tokens.collect()))
 }
