@@ -8,6 +8,7 @@ import { openPath } from "../../utils/open";
 import { writeFrame } from "../frames";
 import type { ActiveAuthFlow } from "../turns";
 import type { AuthFlowView, ProviderView } from "../wire";
+import { publishModelsAfterAuthChange } from "./models";
 import type { ActionHandler, ActionHandlersMap } from "./types";
 
 function buildProvidersView(authStorage: AuthStorage): ProviderView[] {
@@ -171,6 +172,7 @@ const handleStartProviderAuth: ActionHandler<StartProviderAuthPayload | undefine
 
 				const providers = buildProvidersView(await ctx.authStorage());
 				writeFrame(ctx.socket, { Snapshot: { Providers: providers } });
+				await publishModelsAfterAuthChange(ctx);
 			} catch (err: unknown) {
 				if (abortController.signal.aborted) {
 					const cancelledView: AuthFlowView = {
@@ -260,6 +262,7 @@ const handleSubmitAuthSecret: ActionHandler<SubmitAuthSecretPayload | undefined>
 		ctx.reply.snapshot({
 			Providers: providers,
 		});
+		await publishModelsAfterAuthChange(ctx);
 		ctx.reply.success();
 	} catch (error) {
 		ctx.reply.failure({

@@ -64,7 +64,10 @@ pub fn palette_surface(
 				.text_size(tokens.font_size(TextRamp::Small))
 				.text_color(tokens.color(ColorRole::Muted))
 				.child(if state.mode == PaletteMode::Models && state.items.is_empty() {
-					"No models reported by the host"
+					// The list holds the models a turn could run, so an empty one
+					// states no provider is signed in rather than that the host
+					// answered nothing.
+					"No models available — sign in to a provider under Settings ▸ Providers"
 				} else {
 					"No matching items"
 				}),

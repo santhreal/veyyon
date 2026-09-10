@@ -2,11 +2,12 @@ import * as path from "node:path";
 import { ThinkingLevel } from "@veyyon/agent-core";
 import type { Model } from "@veyyon/ai";
 import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import { ModelRegistry } from "../../config/model-registry";
 import { parseModelString } from "../../config/model-resolver";
 import { DEFAULT_MODEL_SLOT } from "../../config/model-roles";
 import { Settings } from "../../config/settings";
+import { writeFrame } from "../frames";
 import { getOrCreateAgentSession } from "../turns";
 import type { ModelRef, ModelsView, ModelView } from "../wire";
 import type { ActionContext, ActionHandler, ActionHandlersMap } from "./types";
@@ -17,8 +18,12 @@ async function buildModelsView(ctx: ActionContext): Promise<ModelsView> {
 	const registry =
 		ctx.clientState.agentSession?.modelRegistry ??
 		new ModelRegistry(await ctx.authStorage(), path.join(ctx.agentDir, "models.yml"));
-	const allModels = registry.getAll();
-	const models: ModelView[] = allModels.map(m => ({
+	// The models a turn can actually run: `getAvailable()` keeps a provider that
+	// holds a credential or needs none, and drops the rest of the bundled
+	// catalog. `getAll()` offers four fifths of the catalog as choices that fail
+	// at the first prompt, and `SelectModel` persists whichever is picked.
+	const offered = registry.getAvailable();
+	const models: ModelView[] = offered.map(m => ({
 		provider: m.provider,
 		id: m.id,
 		name: m.name ?? m.id,
@@ -109,6 +114,18 @@ const handleSelectModel: ActionHandler<SelectModelPayload | undefined> = async (
 			});
 			return;
 		}
+		// A model whose provider holds no credential runs no turn. Refusing it
+		// here keeps the failure at the click, rather than persisting it as the
+		// default role and surfacing it as a failed prompt later.
+		if (!session.modelRegistry.hasConfiguredAuth(found)) {
+			ctx.reply.failure({
+				scope: "Provider",
+				code: "MODEL_NOT_AUTHENTICATED",
+				message: `No credentials are stored for provider '${payload.provider}'`,
+				retryable: false,
+			});
+			return;
+		}
 
 		await session.setModel(found, DEFAULT_MODEL_SLOT, { persist: true });
 		const view = await buildModelsView(ctx);
@@ -170,6 +187,33 @@ const handleSetThinkingLevel: ActionHandler<SetThinkingLevelPayload | undefined>
 		});
 	}
 };
+
+/**
+ * Sends the model list after a provider's credentials changed.
+ *
+ * The list is filtered by credential, so the models a provider contributes
+ * appear the moment it authenticates and stay absent while it has not. A
+ * provider whose models are discovered from its own endpoint contributes none
+ * until the registry has fetched from it, which is the refresh the terminal
+ * also runs when a sign-in completes.
+ *
+ * Called from the authentication paths, which have already reported the
+ * outcome of the sign-in: a discovery or catalog failure here leaves the
+ * previous list drawn and is logged, never reported as a failed sign-in.
+ */
+export async function publishModelsAfterAuthChange(ctx: ActionContext): Promise<void> {
+	try {
+		await ctx.clientState.agentSession?.modelRegistry.refresh();
+	} catch (error) {
+		logger.warn("GUI host: model discovery failed after authentication", { error: errorMessage(error) });
+	}
+	try {
+		writeFrame(ctx.socket, { Snapshot: { Models: await buildModelsView(ctx) } });
+		ctx.clientState.revision += 1;
+	} catch (error) {
+		logger.warn("GUI host: model list unavailable after authentication", { error: errorMessage(error) });
+	}
+}
 
 export const modelsActionHandlers: ActionHandlersMap = {
 	RefreshModels: handleRefreshModels as ActionHandler<never>,

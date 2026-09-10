@@ -8,8 +8,8 @@
  * invalid thinking levels without validation and failed to reflect model registry state.
  *
  * This suite defends:
- * 1. `RefreshModels` emits a `Models` snapshot section containing catalog models with exact
- *    context windows and output limits.
+ * 1. `RefreshModels` emits a `Models` snapshot section containing a signed-in provider's
+ *    catalog models with exact context windows and output limits.
  * 2. `SelectModel` looks up the real model in `ModelRegistry`, attaches to an `AgentSession`,
  *    and sets the active model while reflecting the update in `Models.current`.
  * 3. `SelectModel` fails closed with `MODEL_NOT_FOUND` in scope `Provider` when the model is unknown.
@@ -52,7 +52,11 @@ describe("model selection and thinking level gui-host behaviour", () => {
 		}
 	});
 
+	// The list holds what a turn could run, so the provider whose row this reads
+	// is signed in first; `the-model-list-holds-the-models-a-turn-could-run`
+	// owns the filter itself.
 	test("RefreshModels lists catalog models with exact context window and reflects default/session model", async () => {
+		await authStorage.set("anthropic", { type: "api_key", key: "sk-ant-test-key-for-refresh" });
 		server = await startGuiHostServer({ endpoint: "tcp:127.0.0.1:0", cwd: tempDir, agentDir: tempDir, authStorage });
 		const client = await TestSocketClient.connect(server.endpoint);
 
