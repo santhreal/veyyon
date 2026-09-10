@@ -219,7 +219,7 @@ fn a_tab_with_nothing_open_and_a_window_with_no_session_ask_for_nothing() {
 	// The File tab holds one file. With none open there is no path to read
 	// again, and an export drawn in its place is not a file the host holds.
 	let (mut store, index) = attached();
-	store.domains.file_content = None;
+	store.domains.file_content.clear();
 	assert!(
 		actions_for(&Intent::SelectTab(PanelTab::File), &index, &mut store).is_empty(),
 		"the File tab asked the host to read a file nothing had opened"

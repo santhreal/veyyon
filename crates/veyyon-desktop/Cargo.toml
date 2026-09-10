@@ -40,3 +40,7 @@ path = "src/main.rs"
 [[bench]]
 name = "streaming_turn_damage"
 harness = false
+
+[[bench]]
+name = "workspace_projection"
+harness = false

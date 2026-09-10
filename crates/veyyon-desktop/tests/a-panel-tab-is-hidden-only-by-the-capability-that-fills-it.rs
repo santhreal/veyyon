@@ -57,13 +57,14 @@ fn one_changed_file() -> Domains {
 				deletions:     4,
 			}],
 			diff:       String::new(),
-		}),
+		})
+		.into(),
 		..Domains::default()
 	}
 }
 
 fn tabs_for(capabilities: &CapabilityMap) -> Vec<PanelTab> {
-	project_panel(&Domains::default(), capabilities, None, &PanelContent::default()).tabs
+	project_panel(&Domains::default(), capabilities, None, PanelContent::default()).tabs
 }
 
 #[test]
@@ -119,7 +120,7 @@ fn the_snapshot_the_engine_host_sends_offers_the_changes_tab() {
 		}
 	}
 
-	let panel = project_panel(&one_changed_file(), &capabilities, None, &PanelContent::default());
+	let panel = project_panel(&one_changed_file(), &capabilities, None, PanelContent::default());
 
 	assert_eq!(
 		panel.tabs,
@@ -155,7 +156,7 @@ fn the_changes_tab_waits_for_the_capability_that_fills_it() {
 	);
 
 	let remembered = PanelContent { active_tab: PanelTab::Diff, ..PanelContent::default() };
-	let panel = project_panel(&Domains::default(), &refused, None, &remembered);
+	let panel = project_panel(&Domains::default(), &refused, None, remembered);
 	assert_eq!(
 		panel.active_tab,
 		PanelTab::File,

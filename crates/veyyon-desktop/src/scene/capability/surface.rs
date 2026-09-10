@@ -95,7 +95,7 @@ pub fn seed_capability_surface(seed: &mut Seed, session: &SessionId, capability:
 		Capability::Changes | Capability::PendingEdits => {
 			seed.exchange(session, Seed::prose());
 			seed.state.keymap.panel_collapsed = false;
-			seed.store.domains.changes = Some(ChangesView {
+			seed.store.domains.changes.set(ChangesView {
 				revision:   1,
 				repository: Some("/repo".to_string()),
 				scope:      ChangeScope::WorkingTree,

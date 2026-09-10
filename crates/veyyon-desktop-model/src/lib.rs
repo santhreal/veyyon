@@ -35,9 +35,9 @@ pub use connection::{
 };
 pub use damage::{Damage, DamageSet};
 pub use domain::{
-	AgentView, AuthFlowState, AuthFlowView, ChangeScope, ChangeStatus, ChangedFile, ChangesView,
-	ContentMatch, ContentMatchesView, ContextBreakdownView, ContextCategory, Domains, ExportView,
-	FileContentView, FileKind, FileNode, FileTreeView, InputModality, KeybindingView,
+	AgentView, Answered, AuthFlowState, AuthFlowView, ChangeScope, ChangeStatus, ChangedFile,
+	ChangesView, ContentMatch, ContentMatchesView, ContextBreakdownView, ContextCategory, Domains,
+	ExportView, FileContentView, FileKind, FileNode, FileTreeView, InputModality, KeybindingView,
 	McpServerStatus, McpServerView, ModelRef, ModelView, ModelsView, PROCESS_LOG_CAPACITY_LINES,
 	ProcessLogView, ProcessLogsChunk, ProcessView, ProviderView, QueuedPrompts, QueuedPromptsView,
 	SearchResultsView, SeqGap, SettingEntry, SettingKind, SettingOption, SettingsView,

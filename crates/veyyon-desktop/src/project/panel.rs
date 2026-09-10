@@ -6,22 +6,38 @@ use veyyon_desktop_model::{
 	SessionId,
 };
 use veyyon_desktop_surface::{
-	DiffFile, DiffStatus, FileView, PanelContent, PanelTab, TreeContent, TreeRowItem, TreeStatus,
-	diff::parse_diff, right_panel::highlight_source,
+	DerivedFrom, DiffFile, DiffStatus, FileView, PanelContent, PanelTab, TreeContent, TreeRowItem,
+	TreeStatus, diff::parse_diff, right_panel::highlight_source,
 };
 
 /// Projects domain models from the store onto the right panel's content,
 /// preserving window-owned state (active tab, diff mode, tree expansion,
 /// selection).
+///
+/// `previous` is what the window is holding, by value: parsing a repository's
+/// unified diff into rows and highlighting the open file are the two
+/// derivations here that cost more than a frame, and a projection runs on
+/// every host event batch, so both are moved out of `previous` rather than
+/// derived again while the host has stated nothing new.
 #[must_use]
 pub fn project_panel(
 	domains: &Domains,
 	capabilities: &CapabilityMap,
 	active: Option<&SessionId>,
-	previous: &PanelContent,
+	previous: PanelContent,
 ) -> PanelContent {
-	let (diff, diff_status) = if let Some(changes) = domains.changes.as_ref() {
-		let files = if !changes.diff.is_empty() {
+	let derived_from = DerivedFrom {
+		changes:      domains.changes.answers(),
+		file_content: domains.file_content.answers(),
+		export:       domains.export.answers(),
+	};
+
+	// The status a tab reports comes from the capability and the answer, both
+	// cheap, so it is stated every projection. Only the parse is held.
+	let (diff, diff_status) = if let Some(changes) = domains.changes.get() {
+		let files = if derived_from.changes == previous.derived_from.changes {
+			previous.diff
+		} else if !changes.diff.is_empty() {
 			parse_diff(&changes.diff)
 		} else if !changes.files.is_empty() {
 			// If diff text is not provided, construct stub files from ChangesView.files
@@ -51,18 +67,28 @@ pub fn project_panel(
 	// takes it only while no file is open, so the answer to `ExportSession` is
 	// on a surface rather than in the store alone, and reading a file after
 	// exporting replaces it rather than fighting it.
-	let file = domains
-		.file_content
-		.as_ref()
-		.map(|fc| highlight_source(&fc.path, &fc.content, fc.truncated, fc.binary))
-		.or_else(|| domains.export.as_ref().map(export_view));
+	//
+	// Highlighting the file line by line is the panel's other derivation that
+	// costs more than a frame, so it is held while both answers stand. A panel
+	// whose stamps agree while its document disagrees with the store -- one
+	// assembled by a fixture, a scene seed or a restored window rather than by
+	// a projection -- derives instead of trusting the stamp.
+	let has_document = domains.file_content.is_some() || domains.export.is_some();
+	let file = if derived_from.file_content == previous.derived_from.file_content
+		&& derived_from.export == previous.derived_from.export
+		&& previous.file.is_some() == has_document
+	{
+		previous.file
+	} else {
+		domains
+			.file_content
+			.get()
+			.map(|fc| highlight_source(&fc.path, &fc.content, fc.truncated, fc.binary))
+			.or_else(|| domains.export.get().map(export_view))
+	};
 
-	let tree = project_tree(
-		domains.file_tree.as_ref(),
-		domains.changes.as_ref(),
-		capabilities,
-		&previous.tree,
-	);
+	let tree =
+		project_tree(domains.file_tree.as_ref(), domains.changes.get(), capabilities, &previous.tree);
 
 	// The usage tab is the turn footer's destination. A host that declared usage
 	// unavailable takes the tab away, which is how the footer degrades to naming
@@ -132,6 +158,7 @@ pub fn project_panel(
 		diff_mode: previous.diff_mode,
 		usage,
 		unavailable_reason,
+		derived_from,
 	}
 }
 

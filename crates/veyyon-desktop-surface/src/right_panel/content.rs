@@ -75,6 +75,24 @@ pub enum DiffStatus {
 	Failed,
 }
 
+/// The answers the panel's expensive content was derived from: how many times
+/// the host had stated the working tree, the open file and the export when the
+/// rows and the highlighted document were built.
+///
+/// The window re-projects on every host event batch, so a streamed turn asks
+/// the panel for its content dozens of times a second. Parsing a repository's
+/// unified diff and highlighting a file are the two derivations that cost more
+/// than a frame, and neither can change without an answer from the host.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct DerivedFrom {
+	/// Answers to the working tree when the diff rows were parsed.
+	pub changes:      u64,
+	/// Answers to the open file when the document was highlighted.
+	pub file_content: u64,
+	/// Answers to the export when the document was highlighted.
+	pub export:       u64,
+}
+
 /// All state rendered by the right panel (§5.6).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PanelContent {
@@ -96,6 +114,8 @@ pub struct PanelContent {
 	pub usage:              Option<UsageTotals>,
 	/// Reason if the panel is unavailable.
 	pub unavailable_reason: Option<String>,
+	/// The answers `diff` and `file` were derived from.
+	pub derived_from:       DerivedFrom,
 }
 
 impl PanelContent {

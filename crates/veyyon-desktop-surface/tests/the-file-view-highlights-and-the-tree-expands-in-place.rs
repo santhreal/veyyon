@@ -43,12 +43,12 @@ fn file_view_highlights_rust_syntax_onto_token_roles() {
 fn tree_expands_and_collapses_in_place_and_opens_file() {
 	let mut state = ShellState {
 		panel: PanelContent {
-			tabs:               vec![PanelTab::Diff, PanelTab::File, PanelTab::Tree],
-			active_tab:         PanelTab::Tree,
-			diff:               Vec::new(),
-			diff_status:        DiffStatus::Unloaded,
-			file:               Some(highlight_source("src/lib.rs", "pub fn init() {}", false, false)),
-			tree:               TreeContent {
+			tabs: vec![PanelTab::Diff, PanelTab::File, PanelTab::Tree],
+			active_tab: PanelTab::Tree,
+			diff: Vec::new(),
+			diff_status: DiffStatus::Unloaded,
+			file: Some(highlight_source("src/lib.rs", "pub fn init() {}", false, false)),
+			tree: TreeContent {
 				rows:           vec![
 					TreeRowItem {
 						path:        "src".to_string(),
@@ -75,9 +75,10 @@ fn tree_expands_and_collapses_in_place_and_opens_file() {
 				},
 				status:         TreeStatus::Loaded,
 			},
-			diff_mode:          DiffMode::Unified,
-			usage:              None,
+			diff_mode: DiffMode::Unified,
+			usage: None,
 			unavailable_reason: None,
+			..Default::default()
 		},
 		..ShellState::default()
 	};

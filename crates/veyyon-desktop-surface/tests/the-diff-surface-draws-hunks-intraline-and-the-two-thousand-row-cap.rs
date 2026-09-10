@@ -145,15 +145,16 @@ fn diff_surface_renders_in_shell_view_and_toggles_mode() {
 
 	let mut state = ShellState {
 		panel: PanelContent {
-			tabs:               vec![PanelTab::Diff, PanelTab::File, PanelTab::Tree],
-			active_tab:         PanelTab::Diff,
-			diff:               files,
-			diff_status:        DiffStatus::Loaded,
-			file:               None,
-			tree:               Default::default(),
-			diff_mode:          DiffMode::Unified,
-			usage:              None,
+			tabs: vec![PanelTab::Diff, PanelTab::File, PanelTab::Tree],
+			active_tab: PanelTab::Diff,
+			diff: files,
+			diff_status: DiffStatus::Loaded,
+			file: None,
+			tree: Default::default(),
+			diff_mode: DiffMode::Unified,
+			usage: None,
 			unavailable_reason: None,
+			..Default::default()
 		},
 		..ShellState::default()
 	};

@@ -2,7 +2,8 @@
 //! names the same path.
 
 use crate::right_panel::{
-	DiffFile, DiffRow, DiffStatus, PanelContent, PanelTab, TreeContent, TreeRowItem, TreeStatus,
+	DerivedFrom, DiffFile, DiffRow, DiffStatus, PanelContent, PanelTab, TreeContent, TreeRowItem,
+	TreeStatus,
 };
 
 /// A populated fixture panel.
@@ -18,6 +19,9 @@ pub(super) fn fixture_panel() -> PanelContent {
 		active_tab:         PanelTab::Diff,
 		diff_status:        DiffStatus::Loaded,
 		unavailable_reason: None,
+		// One answer for each domain the fixture states, as a host that sent
+		// this panel once would leave it.
+		derived_from:       DerivedFrom { changes: 1, file_content: 1, export: 0 },
 		diff:               vec![DiffFile {
 			path:      "crates/veyyon-desktop-surface/src/panel.rs".to_string(),
 			old_path:  None,

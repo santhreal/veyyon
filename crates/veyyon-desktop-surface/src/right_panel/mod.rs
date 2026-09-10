@@ -16,8 +16,8 @@ pub mod tree_view;
 pub mod usage_view;
 
 pub use content::{
-	DiffFile, DiffRow, DiffStatus, FileLine, FileView, HighlightSpan, PanelContent, PanelTab,
-	TreeContent, TreeRowItem, TreeStatus,
+	DerivedFrom, DiffFile, DiffRow, DiffStatus, FileLine, FileView, HighlightSpan, PanelContent,
+	PanelTab, TreeContent, TreeRowItem, TreeStatus,
 };
 pub use file_view::{file_view, highlight_source};
 pub use pane_scroll::{PaneId, PaneScrolls};

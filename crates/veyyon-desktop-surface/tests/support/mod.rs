@@ -96,6 +96,10 @@ pub fn state() -> ShellState {
 				rows:      vec![DiffRow::Collapsed { hidden: 10, before_line: 0, after_line: 0 }],
 			}],
 			diff_status:        DiffStatus::Loaded,
+			derived_from:       veyyon_desktop_surface::DerivedFrom {
+				changes: 1,
+				..Default::default()
+			},
 			file:               None,
 			tree:               TreeContent {
 				rows:           vec![TreeRowItem {

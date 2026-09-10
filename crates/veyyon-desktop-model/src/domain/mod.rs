@@ -1,6 +1,7 @@
 //! Domain-specific snapshot and state payload models (§5, §8).
 
 pub mod agents;
+pub mod answered;
 pub mod changes;
 pub mod files;
 pub mod mcp;
@@ -16,6 +17,7 @@ pub mod usage;
 use std::collections::HashMap;
 
 pub use agents::*;
+pub use answered::*;
 pub use changes::*;
 pub use files::*;
 pub use mcp::*;
@@ -34,12 +36,15 @@ use crate::{connection::SessionId, transcript::UsageTotals};
 /// Container for all panel-domain views received from the host.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Domains {
-	/// Uncommitted repository changes.
-	pub changes:         Option<ChangesView>,
+	/// Uncommitted repository changes. The panel parses this into rows, so it
+	/// states how many answers have arrived and the projection holds the rows
+	/// it built until that count moves.
+	pub changes:         Answered<ChangesView>,
 	/// Workspace directory file tree.
 	pub file_tree:       Option<FileTreeView>,
-	/// File content snapshot.
-	pub file_content:    Option<FileContentView>,
+	/// File content snapshot. Highlighted line by line, so it counts its
+	/// answers for the same reason `changes` does.
+	pub file_content:    Answered<FileContentView>,
 	/// Text search results.
 	pub search:          Option<SearchResultsView>,
 	/// The lines the host's last content search matched.
@@ -66,8 +71,9 @@ pub struct Domains {
 	pub usage:           HashMap<SessionId, UsageTotals>,
 	/// Context window breakdown indexed by session.
 	pub context:         HashMap<SessionId, ContextBreakdownView>,
-	/// Transcript export snapshot.
-	pub export:          Option<ExportView>,
+	/// Transcript export snapshot, which holds the File tab while no file is
+	/// open and is highlighted the same way, so it counts its answers too.
+	pub export:          Answered<ExportView>,
 	/// UI color themes.
 	pub themes:          Option<ThemesView>,
 	/// Keyboard shortcuts.

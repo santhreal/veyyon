@@ -28,6 +28,7 @@ mod requests;
 mod run_bar;
 mod submission;
 mod transcript;
+mod workspace_asks;
 use std::collections::HashMap;
 
 use veyyon_desktop_model::{QueuePartition, SessionId, Store, session_badge};
@@ -185,7 +186,10 @@ pub fn project<S: std::hash::BuildHasher>(
 		.map(cards)
 		.unwrap_or_default();
 
-	state.panel = project_panel(&store.domains, &store.capabilities, active, &state.panel);
+	// The panel is handed what the window already has, by value: what it can
+	// hold rather than derive again is moved out of it.
+	state.panel =
+		project_panel(&store.domains, &store.capabilities, active, std::mem::take(&mut state.panel));
 	state.turn = project_turn_phase(store, active, state.composer.queue_mode);
 	project_composer(store, active, &mut state.composer);
 	project_drawer(&store.domains, &store.capabilities, emulators, now_ms, &mut state.drawer);

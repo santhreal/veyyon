@@ -194,7 +194,7 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 			damage.insert(Damage::Palette);
 		},
 		SnapshotSection::Changes(view) => {
-			store.domains.changes = Some(view);
+			store.domains.changes.set(view);
 			if let Some(session_id) = &store.persisted.shell.active_session {
 				damage.insert(Damage::RightPanelTab(session_id.clone(), "changes".to_string()));
 			} else {
@@ -210,7 +210,7 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 			}
 		},
 		SnapshotSection::FileContent(view) => {
-			store.domains.file_content = Some(view);
+			store.domains.file_content.set(view);
 			if let Some(session_id) = &store.persisted.shell.active_session {
 				damage.insert(Damage::RightPanelTab(session_id.clone(), "filecontent".to_string()));
 			} else {
@@ -307,7 +307,7 @@ pub fn reduce_snapshot(store: &mut Store, snapshot: SnapshotSection) -> DamageSe
 		},
 		SnapshotSection::Export(view) => {
 			let session = view.session.clone();
-			store.domains.export = Some(view);
+			store.domains.export.set(view);
 			damage.insert(Damage::RightPanelTab(session, "export".to_string()));
 		},
 		SnapshotSection::Themes(view) => {
