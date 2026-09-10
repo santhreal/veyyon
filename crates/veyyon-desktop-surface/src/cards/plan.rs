@@ -11,13 +11,14 @@ use super::{
 	answers::{Choice, answers},
 	shell,
 };
-use crate::{ShellView, intent::Intent};
+use crate::{ShellView, controls::Availability, intent::Intent};
 
 /// A plan: what the agent intends, capped in height and faded at the cut.
 pub(super) fn plan(
 	card: usize,
 	title: &str,
 	body: &[String],
+	answer: &Availability,
 	geometry: &AttachedCardsSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
@@ -97,6 +98,7 @@ pub(super) fn plan(
 					})),
 				),
 			],
+			answer,
 			tokens,
 			cx,
 		))

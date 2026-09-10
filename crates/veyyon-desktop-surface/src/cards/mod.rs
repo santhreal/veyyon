@@ -29,15 +29,23 @@ use veyyon_gpui::{
 };
 
 use self::{approval::approval, plan::plan, question::question};
-use crate::{ShellView, model::Card};
+use crate::{
+	ShellView,
+	model::{Card, CardAnswers},
+};
 
 /// Builds the attached card stack, capped at the token's visible count.
 ///
 /// `overflow_focus` is the handle the collapsed overflow row tracks and
 /// `expanded` states whether the pointer or the keyboard is on it, so the
 /// count it carries expands for either (§5.5).
+///
+/// `answers` is what each kind of decision can be answered with right now, so
+/// a card whose answer the host cannot take draws its rows unanswerable
+/// rather than offering a press that reaches nothing.
 pub fn card_stack(
 	cards: &[Card],
+	answers: &CardAnswers,
 	geometry: &AttachedCardsSurfaceTokens,
 	tokens: &TokenSet,
 	overflow_focus: &FocusHandle,
@@ -52,15 +60,16 @@ pub fn card_stack(
 
 	let visible = geometry.stack_max_visible.min(cards.len());
 	for (index, card) in cards.iter().enumerate().take(visible) {
+		let answer = answers.of(card);
 		let body: AnyElement = match card {
 			Card::Approval { tool, detail } => {
-				approval(index, tool, detail, geometry, tokens, cx).into_any_element()
+				approval(index, tool, detail, answer, geometry, tokens, cx).into_any_element()
 			},
 			Card::Question { prompt, options } => {
-				question(index, prompt, options, geometry, tokens, cx).into_any_element()
+				question(index, prompt, options, answer, geometry, tokens, cx).into_any_element()
 			},
 			Card::Plan { title, body } => {
-				plan(index, title, body, geometry, tokens, cx).into_any_element()
+				plan(index, title, body, answer, geometry, tokens, cx).into_any_element()
 			},
 		};
 

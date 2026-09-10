@@ -280,15 +280,48 @@ impl Card {
 	/// How many answers this card offers the operator.
 	///
 	/// An approval offers the tool wrapper's four (deny, deny for the session,
-	/// approve, approve for the session), a plan two, and a question its
-	/// options plus a free-text reply row. This is the count of controls the
-	/// card contributes, so a card kind added without answers is a card that
-	/// cannot be answered.
+	/// approve, approve for the session) and a plan two. A question offers its
+	/// options, and the free-text reply row only where it has none: the host
+	/// takes an option index for a question that lists them and refuses text
+	/// for it (§5.5). This is the count of controls the card contributes, so a
+	/// card kind added without answers is a card that cannot be answered.
 	pub const fn answer_count(&self) -> usize {
 		match self {
 			Self::Approval { .. } => 4,
 			Self::Plan { .. } => 2,
-			Self::Question { options, .. } => options.len() + 1,
+			Self::Question { options, .. } => match options.len() {
+				0 => 1,
+				offered => offered,
+			},
+		}
+	}
+}
+
+/// Whether each kind of decision can be answered at all, right now.
+///
+/// A card's answers are gated by the capability the host declared for that
+/// kind of decision and by the transport under it. That is one answer for
+/// every card of a kind rather than one per card, because it is the host's
+/// ability to take the decision at all: an option row nothing can send is a
+/// transcript of the question drawn as a control (§4.3, §5.5).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CardAnswers {
+	/// Whether an approval can be answered.
+	pub approvals: Availability,
+	/// Whether a question can be answered.
+	pub questions: Availability,
+	/// Whether a plan can be answered.
+	pub plans:     Availability,
+}
+
+impl CardAnswers {
+	/// The availability of the answers `card` offers.
+	#[must_use]
+	pub const fn of(&self, card: &Card) -> &Availability {
+		match card {
+			Card::Approval { .. } => &self.approvals,
+			Card::Question { .. } => &self.questions,
+			Card::Plan { .. } => &self.plans,
 		}
 	}
 }

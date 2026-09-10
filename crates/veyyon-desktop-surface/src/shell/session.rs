@@ -179,6 +179,7 @@ pub fn session_surface(
 				.justify_center()
 				.child(div().w(px(widths.composer_px)).child(card_stack(
 					&state.cards,
+					&state.card_answers,
 					&surface.attached_cards,
 					tokens,
 					cards_focus,

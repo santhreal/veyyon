@@ -11,7 +11,7 @@ use super::{
 	answers::{Choice, answers},
 	shell,
 };
-use crate::{ShellView, intent::Intent};
+use crate::{ShellView, controls::Availability, intent::Intent};
 
 /// An approval: what the agent wants to run, and the four answers the tool
 /// wrapper accepts.
@@ -19,6 +19,7 @@ pub(super) fn approval(
 	card: usize,
 	tool: &str,
 	detail: &[String],
+	answer: &Availability,
 	geometry: &AttachedCardsSurfaceTokens,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
@@ -85,6 +86,7 @@ pub(super) fn approval(
 					Choice::Fixed(Box::new(Intent::Approval { card, approved: true, standing: false })),
 				),
 			],
+			answer,
 			tokens,
 			cx,
 		))

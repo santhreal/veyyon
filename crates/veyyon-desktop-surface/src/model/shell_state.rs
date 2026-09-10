@@ -6,8 +6,8 @@
 //! handed is one file, and each field states which section owns it.
 
 use super::{
-	Badge, Card, ComposerState, ConnectionPhase, ControlStates, DrawerContent, KeymapState, Overlay,
-	PaletteState, PanelContent, Row, Section, SettingsState, Turn, TurnPhase,
+	Badge, Card, CardAnswers, ComposerState, ConnectionPhase, ControlStates, DrawerContent,
+	KeymapState, Overlay, PaletteState, PanelContent, Row, Section, SettingsState, Turn, TurnPhase,
 };
 use crate::PaletteMode;
 
@@ -39,6 +39,9 @@ pub struct ShellState {
 	pub panel:          PanelContent,
 	/// Decisions attached above the composer.
 	pub cards:          Vec<Card>,
+	/// Whether each kind of decision can be answered, which is what a card's
+	/// answer rows are gated by.
+	pub card_answers:   CardAnswers,
 	/// Terminal drawer state and tenants.
 	pub drawer:         DrawerContent,
 	/// Whether the terminal drawer is open.
@@ -148,6 +151,7 @@ impl Default for ShellState {
 			run_status:     None,
 			panel:          PanelContent::default(),
 			cards:          Vec::new(),
+			card_answers:   CardAnswers::default(),
 			drawer:         DrawerContent::default(),
 			drawer_open:    false,
 			current_id:     0,

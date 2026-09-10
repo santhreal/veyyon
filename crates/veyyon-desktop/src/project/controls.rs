@@ -17,8 +17,8 @@ use veyyon_desktop_model::{
 	Capability, CapabilityStatus, HostActionKind, RequestRegistry, Store, SurfaceId, gate_kind,
 };
 use veyyon_desktop_surface::{
-	Availability, DiffStatus, DrawerFailure, PanelFailure, PanelTab, SettingsFailure, ShellState,
-	TreeStatus,
+	Availability, CardAnswers, DiffStatus, DrawerFailure, PanelFailure, PanelTab, SettingsFailure,
+	ShellState, TreeStatus,
 };
 
 use self::gates::{composer_controls, composer_row};
@@ -27,6 +27,20 @@ use super::{
 	SessionIndex,
 	connection::{transport_gate, transport_gate_capability},
 };
+
+/// Whether one kind of decision can be answered: the capability the host
+/// declared for it, narrowed by the transport that would carry the answer.
+fn decision_answer(
+	store: &Store,
+	registry: &RequestRegistry,
+	capability: Capability,
+) -> Availability {
+	Availability::from(transport_gate(
+		HostActionKind::RespondToInteraction,
+		&store.connection,
+		veyyon_desktop_model::gate_capability(capability, &store.capabilities, registry),
+	))
+}
 
 /// What the composer's controls read while no session is open: the intent
 /// path sends nothing for them (`actions_for`), so the control states that
@@ -71,6 +85,14 @@ pub fn project_controls(
 			.controls
 			.set_availability(surface, Availability::from(gate));
 	}
+	// What a card's answer rows are gated by: the capability of that kind of
+	// decision, under the transport carrying it. One answer per kind and not
+	// per card, because it is whether the host can take the decision at all.
+	state.card_answers = CardAnswers {
+		approvals: decision_answer(store, registry, Capability::Approvals),
+		questions: decision_answer(store, registry, Capability::Questions),
+		plans:     decision_answer(store, registry, Capability::Plans),
+	};
 	if let Some(active_id) = store.persisted.shell.active_session.as_ref()
 		&& let Some(row_id) = active_row
 	{

@@ -218,6 +218,9 @@ pub fn regions_changed(last: &ShellState, next: &ShellState) -> Invalidation {
 		run_status,
 		panel,
 		cards,
+		// A change in what a card's answers are gated by changes how every
+		// answer row on the stack is drawn, so it repaints with the stack.
+		card_answers,
 		drawer,
 		drawer_open,
 		current_id,
@@ -237,6 +240,7 @@ pub fn regions_changed(last: &ShellState, next: &ShellState) -> Invalidation {
 		|| drawer_open != &last.drawer_open
 		|| panel.is_empty() != last.panel.is_empty()
 		|| cards.is_empty() != last.cards.is_empty()
+		|| card_answers != &last.card_answers
 		|| turn != &last.turn
 		|| connection != &last.connection
 		|| controls != &last.controls

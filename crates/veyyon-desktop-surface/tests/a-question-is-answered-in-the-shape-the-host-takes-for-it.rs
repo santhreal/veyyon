@@ -48,7 +48,7 @@ use composer_layout::{
 };
 use strum::IntoEnumIterator;
 use veyyon_desktop_scene::Captured;
-use veyyon_desktop_surface::{Card, Intent, composer::TurnPhase};
+use veyyon_desktop_surface::{Availability, Card, CardAnswers, Intent, composer::TurnPhase};
 use veyyon_gpui::{Point, px};
 
 /// The label the card draws for the answer that is the composer's own text.
@@ -260,5 +260,85 @@ fn every_gesture_that_answers_a_question_raises_the_shape_that_question_takes() 
 			("QuestionPendingFreeText".to_owned(), "composer-empty".to_owned(), Vec::new()),
 		],
 		"the composer answers a question only with the text a question of that shape takes"
+	);
+}
+
+/// The label the frame draws `card`'s answer as.
+///
+/// A match rather than a list, so a card kind added without an answer to
+/// drive fails to compile here instead of going untested.
+fn answer_label(card: &Card) -> String {
+	match card {
+		Card::Approval { .. } => "Approve".to_owned(),
+		Card::Question { options, .. } => options
+			.first()
+			.map_or_else(|| REPLY_ROW.to_owned(), |first| format!("1. {first}")),
+		Card::Plan { .. } => "Accept".to_owned(),
+	}
+}
+
+/// Every card the phases attach, answered once under a host that takes the
+/// answer and once under a host that cannot: the row is drawn either way and
+/// reaches the host only where it can be answered.
+#[test]
+fn an_answer_the_host_cannot_take_is_drawn_and_answers_nothing() {
+	let mut driven: Vec<(String, String)> = Vec::new();
+
+	for discriminant in TurnPhaseDiscriminant::iter() {
+		let (fixture, _) = build_state_for_phase(discriminant);
+		// A phase that raises no decision of its own keeps the fixture's three
+		// cards, which is past the stack's visible cap: its last card is a line
+		// in the overflow row rather than an answer row. The phases that raise
+		// one are where a kind is drawn in full, and between them they cover
+		// every kind.
+		if fixture.cards.len() != 1 {
+			continue;
+		}
+		let labels: Vec<String> = fixture.cards.iter().map(answer_label).collect();
+		for label in labels {
+			driven.push((format!("{discriminant:?}"), label.clone()));
+			for refused in [false, true] {
+				let (mut state, _) = build_state_for_phase(discriminant);
+				if refused {
+					let held = Availability::Unavailable { reason: "the host declined".to_owned() };
+					state.card_answers =
+						CardAnswers { approvals: held.clone(), questions: held.clone(), plans: held };
+				}
+				let clicked = render_session(state, None, WIDTH, HEIGHT, |session| {
+					let captured = session.frame().expect("frame renders");
+					// Drawn either way: a decision that cannot be answered is
+					// still the one the agent is waiting on, so the card states
+					// it at the opacity every unavailable control is drawn at.
+					let at = drawn_once(&captured, &label);
+					session
+						.click(Point { x: px(at.x), y: px(at.y) })
+						.expect("press the answer the card drew");
+					session
+						.update(|view, _win, _cx| view.drain_intents())
+						.expect("intents drain")
+				});
+				if refused {
+					assert_eq!(
+						clicked,
+						Vec::new(),
+						"`{label}` answered a decision the host cannot take"
+					);
+				} else {
+					assert_eq!(clicked.len(), 1, "`{label}` answers its own decision: {clicked:?}");
+				}
+			}
+		}
+	}
+
+	assert_eq!(
+		driven,
+		vec![
+			("QuestionPendingChoice".to_owned(), "1. A".to_owned()),
+			("QuestionPendingFreeText".to_owned(), REPLY_ROW.to_owned()),
+			("ApprovalPending".to_owned(), "Approve".to_owned()),
+			("PlanPendingEmpty".to_owned(), "Accept".to_owned()),
+			("PlanPendingWithText".to_owned(), "Accept".to_owned()),
+		],
+		"every decision a phase raises is answered under both gates"
 	);
 }

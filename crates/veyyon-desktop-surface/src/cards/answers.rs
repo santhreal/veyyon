@@ -7,7 +7,11 @@ use veyyon_gpui::{
 	Context, Div, InteractiveElement, ParentElement, StatefulInteractiveElement, Styled, div,
 };
 
-use crate::{ShellView, intent::Intent};
+use crate::{
+	ShellView,
+	controls::{Availability, availability_style},
+	intent::Intent,
+};
 
 /// What clicking an answer dispatches.
 ///
@@ -43,9 +47,11 @@ impl Choice {
 /// question without offering the answers is a notification.
 pub(super) fn answers(
 	choices: &[(&str, Choice)],
+	availability: &Availability,
 	tokens: &TokenSet,
 	cx: &Context<ShellView>,
 ) -> Div {
+	let (opacity, cursor, activatable) = availability_style(availability, tokens);
 	let mut row = div()
 		.w_full()
 		.flex()
@@ -76,27 +82,31 @@ pub(super) fn answers(
 		};
 		let choice = choice.clone();
 
-		row = row.child(
-			div()
-				.id(("choice", index))
+		let mut answer = div()
+			.id(("choice", index))
+			.flex_shrink_0()
+			.px(tokens.spacing(SpacingStep::S3))
+			.py(tokens.spacing(SpacingStep::S1))
+			.rounded(tokens.radius(RadiusStep::Sm))
+			.bg(ground)
+			.border(tokens.stroke(StrokeStep::Hairline))
+			.border_color(edge)
+			.opacity(opacity)
+			.cursor(cursor)
+			.text_size(tokens.font_size(TextRamp::Micro))
+			.line_height(tokens.line_height(TextRamp::Micro))
+			.font_weight(tokens.font_weight(TextWeight::Medium))
+			.text_color(ink)
+			.child((*label).to_owned());
+		if activatable {
+			answer = answer
 				.on_click(cx.listener(move |view, _event, _window, cx| {
 					let intent = choice.intent(view);
 					view.dispatch(intent, cx);
 				}))
-				.hover(move |style| style.bg(hover))
-				.flex_shrink_0()
-				.px(tokens.spacing(SpacingStep::S3))
-				.py(tokens.spacing(SpacingStep::S1))
-				.rounded(tokens.radius(RadiusStep::Sm))
-				.bg(ground)
-				.border(tokens.stroke(StrokeStep::Hairline))
-				.border_color(edge)
-				.text_size(tokens.font_size(TextRamp::Micro))
-				.line_height(tokens.line_height(TextRamp::Micro))
-				.font_weight(tokens.font_weight(TextWeight::Medium))
-				.text_color(ink)
-				.child((*label).to_owned()),
-		);
+				.hover(move |style| style.bg(hover));
+		}
+		row = row.child(answer);
 	}
 
 	row
