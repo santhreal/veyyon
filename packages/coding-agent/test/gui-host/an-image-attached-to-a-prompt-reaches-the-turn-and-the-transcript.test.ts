@@ -36,7 +36,7 @@ import {
 } from "../../src/gui-host";
 import { canonicalizeImageContent } from "../../src/utils/image-resize";
 import { isolatedAuthStorage } from "../helpers/isolated-auth-storage";
-import { TestSocketClient } from "./test-client";
+import { snapshotSections, TestSocketClient } from "./test-client";
 
 /**
  * One real 2x2 image per media type the host accepts, since the host decodes
@@ -124,12 +124,39 @@ function completedStream(text: string): AssistantMessageEventStream {
  * arrived everywhere.
  */
 async function imageOf(block: ContentBlock | undefined): Promise<string> {
-	expect(block && "Image" in block).toBeTrue();
-	const image = (block as { Image: { media_type: string; data: number[] } }).Image;
-	expect(SUPPORTED_IMAGE_MIME_TYPES.has(image.media_type)).toBeTrue();
-	const data = Buffer.from(image.data).toString("base64");
+	if (block === undefined || !("Image" in block)) {
+		throw new Error(`expected an image block, read ${JSON.stringify(block)}`);
+	}
+	expect(SUPPORTED_IMAGE_MIME_TYPES.has(block.Image.media_type)).toBeTrue();
+	const data = Buffer.from(block.Image.data).toString("base64");
 	await expect(canonicalizeImageContent({ data })).resolves.toBeDefined();
 	return data;
+}
+
+/**
+ * The base64 of every image the model was asked about, over every message of
+ * every request.
+ *
+ * A message's content is one of two unions depending on its role, so the
+ * blocks are read as `unknown` and narrowed here rather than through whichever
+ * arm the compiler picks first.
+ */
+function imagesAskedFor(contexts: Context[]): string[] {
+	const isImage = (block: unknown): block is { type: "image"; data: string } =>
+		typeof block === "object" &&
+		block !== null &&
+		"type" in block &&
+		block.type === "image" &&
+		"data" in block &&
+		typeof block.data === "string";
+	return contexts
+		.flatMap(context => context.messages)
+		.flatMap(message => {
+			const content: readonly unknown[] = Array.isArray(message.content) ? message.content : [];
+			return content;
+		})
+		.filter(isImage)
+		.map(block => block.data);
 }
 
 /**
@@ -270,11 +297,7 @@ describe("an image attached to a prompt reaches the turn and the transcript", ()
 		// The entry the desktop draws and the request the model answered are two
 		// different objects: a host that appended the image and sent a text-only
 		// request passes the assertion above and asks nothing about the picture.
-		const asked = contexts
-			.flatMap(context => context.messages)
-			.flatMap(message => (Array.isArray(message.content) ? message.content : []))
-			.filter((block): block is { type: "image"; data: string } => block.type === "image");
-		expect(asked.map(block => block.data)).toEqual([drawn]);
+		expect(imagesAskedFor(contexts)).toEqual([drawn]);
 	});
 
 	test("another client loads the same image off the transcript the host persisted", async () => {
@@ -298,12 +321,8 @@ describe("an image attached to a prompt reaches the turn and the transcript", ()
 			await reader.nextFrame();
 			await reader.nextFrame();
 			const loaded = await reader.request(1, { LoadTranscript: { session, before: null } });
-			const transcript = loaded.frames.find(f => f.Snapshot?.Transcript) as
-				| { Snapshot: { Transcript: { value: TranscriptEntry[] } } }
-				| undefined;
-			const images = (transcript?.Snapshot.Transcript.value ?? [])
-				.flatMap(entry => entry.content)
-				.filter(block => "Image" in block);
+			const [transcript] = snapshotSections<{ value: TranscriptEntry[] }>(loaded.frames, "Transcript");
+			const images = (transcript?.value ?? []).flatMap(entry => entry.content).filter(block => "Image" in block);
 			expect(images.length).toBe(1);
 			expect(await imageOf(images[0])).toBe(drawn);
 		} finally {
@@ -323,11 +342,7 @@ describe("an image attached to a prompt reaches the turn and the transcript", ()
 			const { appended } = await submitAttached(session, mediaType, bytes);
 			const prompt = appended.find(entry => entry.role === "User");
 			const drawn = await imageOf(prompt?.content.at(-1));
-			const asked = contexts
-				.flatMap(context => context.messages)
-				.flatMap(message => (Array.isArray(message.content) ? message.content : []))
-				.filter((block): block is { type: "image"; data: string } => block.type === "image");
-			expect(asked.map(block => block.data)).toEqual([drawn]);
+			expect(imagesAskedFor(contexts)).toEqual([drawn]);
 		}
 	});
 });
