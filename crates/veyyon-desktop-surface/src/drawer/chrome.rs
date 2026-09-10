@@ -139,14 +139,13 @@ pub fn drawer_chrome(
 		);
 	}
 
-	// The attach-or-create the drawer's opening runs happens once, so a drawer
-	// that stays open reaches no second terminal, and one whose last terminal
-	// was closed draws an empty strip with nothing to press. `New` is that
-	// route. It belongs to the terminal's own context: the supervisor tab
-	// carries `Start`, and an empty strip is a drawer with no terminal in it.
-	if content.tabs.is_empty()
-		|| matches!(content.tabs.get(content.active_tab), Some(DrawerTab::Terminal { .. }))
-	{
+	// The attach-or-create the drawer's opening runs happens once, so closing
+	// the last terminal left the drawer open on an empty strip captioned
+	// `Terminal` with nothing on it to press. `New` is the route back, and it
+	// is drawn only there: a tab strip already carrying a tenant is at the
+	// five interactive elements §6.6 authors for this row, and the drawer with
+	// a terminal in it has one to work with.
+	if content.tabs.is_empty() {
 		let create_id = SurfaceId::TerminalCreateButton(SessionId::from(session_id.to_string()));
 		let (create_op, _, create_allowed) =
 			availability_style(&controls.availability(&create_id), tokens);
