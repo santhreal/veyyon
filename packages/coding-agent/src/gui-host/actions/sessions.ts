@@ -1,6 +1,6 @@
 import type { SessionEntry } from "@veyyon/kernel/session/session-entries";
 import { SessionManager } from "@veyyon/kernel/session/session-manager";
-import { disposeTurnSession, getOrCreateAgentSession } from "../turns";
+import { disposeTurnSession, getOrCreateAgentSession, settleRunningTurn } from "../turns";
 import {
 	activateSession as activate,
 	activeManager,
@@ -55,6 +55,9 @@ const handleCreateSession: ActionHandler<CreateSessionPayload | undefined> = asy
 	try {
 		const workspace = payload?.workspace ?? ctx.cwd;
 		const agent = ctx.clientState.agentSession;
+		// A new session replaces the one the turn is running on, whether the
+		// agent session reloads in place or is disposed for another workspace.
+		await settleRunningTurn(ctx.clientState);
 		let sm: SessionManager;
 		if (agent && workspace === agent.sessionManager.getCwd()) {
 			if (!(await agent.newSession())) {
@@ -195,6 +198,8 @@ const handleBranchSession: ActionHandler<BranchSessionPayload | undefined> = asy
 			targetEntryId = latestUserEntry.id;
 		}
 		const agent = await getOrCreateAgentSession(ctx.clientState, ctx.socket, ctx);
+		// A branch reloads the session under the turn the same way a switch does.
+		await settleRunningTurn(ctx.clientState);
 		const result = await agent.branch(targetEntryId);
 		if (result.cancelled) {
 			ctx.reply.failure({

@@ -14,7 +14,7 @@ import {
 	seedFirstMessagePosition,
 	sessionEntriesToTranscript,
 } from "../transcript-conversion";
-import { type ClientSessionState, disposeTurnSession } from "../turns";
+import { type ClientSessionState, disposeTurnSession, settleRunningTurn } from "../turns";
 import type { ErrorScope, TranscriptEntry } from "../wire";
 import type { ActionContext } from "./types";
 
@@ -183,6 +183,10 @@ export async function activateSession(ctx: ActionContext, session: string): Prom
 
 	const agent = ctx.clientState.agentSession;
 	if (agent) {
+		// The turn ends before the file under it is replaced, and only once the
+		// session is known to exist: a switch to a session that is not there
+		// leaves the turn running.
+		await settleRunningTurn(ctx.clientState);
 		ctx.clientState.presentationLedger?.clear();
 		if (!(await agent.switchSession(sessionPath))) {
 			ctx.reply.failure({

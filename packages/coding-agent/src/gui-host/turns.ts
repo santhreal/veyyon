@@ -491,6 +491,33 @@ export async function abortTurn(session: AgentSession): Promise<void> {
 }
 
 /**
+ * End the turn the client is running, before the session it belongs to is
+ * left.
+ *
+ * One client holds one `AgentSession`, so opening another session, creating
+ * one, branching or deleting the open one all reload that session in place,
+ * and the turn in flight cannot survive it. `AgentSession` ends it on its own,
+ * but as an internal abort after the agent is already disconnected: no
+ * `message_end` reaches the listeners, so the reply the model had produced is
+ * neither appended nor persisted, `StreamingChanged` is never cleared -- the
+ * client draws the abandoned reply over the session it switched to, with the
+ * composer still in its running shape -- and the session file trails a prompt
+ * with no reply after it, which the index reports as `pending` and the rail
+ * draws as `Working` for a turn that is over.
+ *
+ * Ending it here, the way the stop control does, keeps all three honest: the
+ * partial reply is appended to the session that produced it and flushed, the
+ * clear reaches the client, and the row settles on the status the abort gave
+ * it.
+ */
+export async function settleRunningTurn(state: ClientSessionState): Promise<void> {
+	const session = state.agentSession;
+	if (!session?.isStreaming) return;
+	await abortTurn(session);
+	await session.sessionManager.flush();
+}
+
+/**
  * Clean up session listeners and dispose the session instance.
  *
  * Terminals, process followers and an auth flow belong to the client, not
@@ -498,6 +525,16 @@ export async function abortTurn(session: AgentSession): Promise<void> {
  * end with the connection, in `disposeClientState`.
  */
 export async function disposeTurnSession(state: ClientSessionState): Promise<void> {
+	// A turn still running is ended before its listeners go, or its own last
+	// events reach nothing. A failure to end it must not leave the rest of the
+	// teardown undone, so it is reported rather than thrown.
+	try {
+		await settleRunningTurn(state);
+	} catch (error) {
+		logger.warn("GUI host could not end the running turn before disposing the session", {
+			error: errorMessage(error),
+		});
+	}
 	state.unsubscribeSession?.();
 	state.unsubscribeSession = undefined;
 	state.unsubscribeAgents?.();
