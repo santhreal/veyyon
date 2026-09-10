@@ -485,8 +485,16 @@ export async function executePromptTurn(
 
 /**
  * Abort an active turn on the session.
+ *
+ * Takes the whole client state, not the session alone, because the decisions
+ * the turn is blocked on are held beside it and have to come down first: see
+ * `InteractionLedger.cancelUnsignalled`. A stop that skipped them never
+ * returned at all.
  */
-export async function abortTurn(session: AgentSession): Promise<void> {
+export async function abortTurn(state: ClientSessionState): Promise<void> {
+	const session = state.agentSession;
+	if (!session) return;
+	state.interactions?.cancelUnsignalled();
 	await session.abort({ reason: USER_INTERRUPT_LABEL });
 }
 
@@ -513,7 +521,7 @@ export async function abortTurn(session: AgentSession): Promise<void> {
 export async function settleRunningTurn(state: ClientSessionState): Promise<void> {
 	const session = state.agentSession;
 	if (!session?.isStreaming) return;
-	await abortTurn(session);
+	await abortTurn(state);
 	await session.sessionManager.flush();
 }
 

@@ -55,10 +55,16 @@ type Settle = (response: InteractionResponse) => AnswerRejection | undefined;
 /**
  * What one raised decision needs to settle: the record the client sees, and
  * the function that turns the client's answer into the caller's value.
+ *
+ * `signalled` says whose job it is to take the decision down when the turn
+ * stops. A caller that passed an `AbortSignal` is reached by the abort itself
+ * and unwinds with its own classification of the outcome; a caller that passed
+ * none is reached by nothing, and stopping the turn would wait on it forever.
  */
 interface Waiting {
 	settle: Settle;
 	cancel: () => void;
+	signalled: boolean;
 }
 
 /** The tool name on a wrapper approval card, or `undefined` when absent. */
@@ -143,6 +149,29 @@ export class InteractionLedger {
 	}
 
 	/**
+	 * Cancel the open decisions no `AbortSignal` reaches.
+	 *
+	 * Stopping a turn waits for the agent to go idle, and the agent is not idle
+	 * while a tool blocks on a decision. A decision raised with a signal comes
+	 * down with the abort, so the wait ends on its own. A decision raised
+	 * without one -- a plan review, whose standing resolve handler is given no
+	 * signal to pass on -- is reached by nothing, so the stop would wait on an
+	 * answer that the operator can no longer give, and every action that ends a
+	 * running turn before leaving the session would wait with it.
+	 *
+	 * Called before the abort is awaited rather than after, since after is
+	 * where the wait already is. The signalled ones are deliberately left to
+	 * the abort: taking them down here first would resolve them before the
+	 * signal fires, and their callers read the signal to tell a stop from a
+	 * refusal.
+	 */
+	cancelUnsignalled(): void {
+		for (const waiting of [...this.#waiting.values()]) {
+			if (!waiting.signalled) waiting.cancel();
+		}
+	}
+
+	/**
 	 * Raise a decision and wait for its answer. `decode` turns a well-shaped
 	 * answer into the value the caller gets, or a rejection that leaves the
 	 * decision open. An abort or timeout resolves `fallback`.
@@ -183,6 +212,7 @@ export class InteractionLedger {
 
 		this.#waiting.set(id, {
 			cancel: onAbort,
+			signalled: dialogOptions?.signal !== undefined,
 			settle: response => {
 				const value = decode(response);
 				if (isRejection(value)) return value;

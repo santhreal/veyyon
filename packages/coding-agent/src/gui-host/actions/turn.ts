@@ -110,7 +110,7 @@ const handleAbortTurn: ActionHandler<SessionRef | undefined> = async (ctx, _payl
 		return;
 	}
 	try {
-		await abortTurn(session);
+		await abortTurn(ctx.clientState);
 		ctx.reply.success();
 	} catch (error) {
 		replyError(ctx, "ABORT_FAILED", error);
@@ -167,7 +167,7 @@ const handleCancelTool: ActionHandler<CancelToolPayload | undefined> = async (ct
 		return;
 	}
 	try {
-		await abortTurn(session);
+		await abortTurn(ctx.clientState);
 		ctx.reply.success();
 	} catch (error) {
 		replyError(ctx, "CANCEL_FAILED", error, "Tool");
