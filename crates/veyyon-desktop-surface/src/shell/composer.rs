@@ -117,12 +117,12 @@ impl ShellView {
 			},
 			PrimaryAction::Steer if has_text => Intent::Steer(text),
 			PrimaryAction::Queue if has_text => Intent::Queue(text),
-			PrimaryAction::Answer if !self.state.cards.is_empty() => {
-				if has_text {
-					Intent::Reply { card: 0, text }
-				} else {
-					Intent::Answer { card: 0, option: 0 }
-				}
+			// A question that offers options is answered by one of them, from
+			// the card's own rows or their digit keys, and the composer's
+			// answer is unavailable for it. What reaches here is a free-text
+			// question, whose answer is the draft.
+			PrimaryAction::Answer if has_text && !self.state.cards.is_empty() => {
+				Intent::Reply { card: 0, text }
 			},
 			PrimaryAction::Approve if !self.state.cards.is_empty() => {
 				Intent::Approval { card: 0, approved: true, standing: false }

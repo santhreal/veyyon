@@ -148,6 +148,8 @@ describe("raising a decision", () => {
 		const [asked] = raisedInput.Snapshot.Interactions.pending.questions;
 		expect(asked.options).toEqual([]);
 		expect(asked.prompt).toContain("Name it");
+		expect(ledger.answer(asked.id, { option: 0 })?.code).toBe("INVALID_ARGUMENTS");
+		expect(ledger.isEmpty).toBe(false);
 		ledger.answer(asked.id, { text: "widget" });
 		expect(await typed).toBe("widget");
 		await sink.next();

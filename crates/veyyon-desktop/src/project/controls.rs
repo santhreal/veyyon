@@ -33,6 +33,11 @@ use super::{
 /// rather than drawing at rest.
 pub const NO_SESSION_OPEN: &str = "no session is open";
 
+/// What the composer's answer states while the open question offers options:
+/// the answer it would send is free text, which is not what such a question
+/// is answered with.
+pub const ANSWERED_BY_OPTION: &str = "choose one of the options";
+
 /// Sets every gated control's availability from the capability map and the
 /// in-flight registry.
 ///
@@ -81,9 +86,24 @@ pub fn project_controls(
 						registry,
 					),
 				);
+				// A question that offers options is answered by the index of
+				// one of them, which is what the card's option rows and their
+				// digit keys send. The host rejects free text for such a
+				// question and leaves it open, so the composer's answer is
+				// unavailable here rather than a control that sends a shape
+				// the answer is refused for. A transport or capability that
+				// carries no answer at all is the wider refusal and states
+				// itself instead.
+				let gated = Availability::from(gate);
+				let availability = match gated {
+					Availability::Enabled if !question.options.is_empty() => {
+						Availability::Unavailable { reason: ANSWERED_BY_OPTION.to_owned() }
+					},
+					other => other,
+				};
 				state.controls.set_availability(
 					SurfaceId::QuestionSubmitButton(row.clone(), question.id.clone()),
-					Availability::from(gate),
+					availability,
 				);
 			}
 			if let Some(plan) = pending.plans.first() {

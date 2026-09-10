@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use support::{NOW_MS, session};
 use veyyon_desktop::{
 	SessionIndex, actions_for, contextual_surface_for_action, project,
-	project::{project_composer, project_panel},
+	project::{ANSWERED_BY_OPTION, project_composer, project_panel},
 	project_controls,
 };
 use veyyon_desktop_model::{
@@ -166,6 +166,37 @@ fn questions_and_plans_gate_by_their_own_capability_not_approvals() {
 		state.controls.availability(&plan_accept),
 		Availability::Unavailable { reason: "plans disabled".into() },
 		"plans are gated on Capability::Plans"
+	);
+}
+
+#[test]
+fn a_question_that_offers_options_is_not_answered_from_the_composer() {
+	let (mut store, index) = store_with_decisions();
+	store
+		.capabilities
+		.set(Capability::Questions, CapabilityStatus::Available);
+	let mut state = ShellState::default();
+	let row = SessionId::from(index.row_id(&SessionId::from("s")).unwrap().to_string());
+	project_controls(&store, &RequestRegistry::new(), &index, &mut state);
+
+	// Swept off the store, so a question added to the fixture is answered for.
+	let read: Vec<(String, usize, Availability)> = store
+		.interactions
+		.get(&SessionId::from("s"))
+		.expect("the store carries the session's decisions")
+		.questions
+		.iter()
+		.map(|question| {
+			let id = SurfaceId::QuestionSubmitButton(row.clone(), question.id.clone());
+			(question.id.0.clone(), question.options.len(), state.controls.availability(&id))
+		})
+		.collect();
+
+	let refused = Availability::Unavailable { reason: ANSWERED_BY_OPTION.to_owned() };
+	assert_eq!(
+		read,
+		vec![("i-ask".to_owned(), 2, refused), ("i-free".to_owned(), 0, Availability::Enabled)],
+		"the composer's answer is offered only for the question its draft answers"
 	);
 }
 

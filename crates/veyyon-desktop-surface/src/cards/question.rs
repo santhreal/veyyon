@@ -66,12 +66,16 @@ pub(super) fn question(
 		);
 	}
 
-	// An operator can also reply with free text in the composer (§5.5).
-	let reply_label = if options.is_empty() {
-		"Reply with the composer's text"
-	} else {
-		"Reply with composer"
-	};
-	element = element.child(answers(&[(reply_label, Choice::Reply { card })], tokens, cx));
+	// A question that offers options is answered by one of them: the host
+	// takes an option index for it and refuses free text, leaving the question
+	// open. So the composer's text is an answer only where the question has no
+	// options, and the card offers that reply only there (§5.5).
+	if options.is_empty() {
+		element = element.child(answers(
+			&[("Reply with the composer's text", Choice::Reply { card })],
+			tokens,
+			cx,
+		));
+	}
 	element
 }

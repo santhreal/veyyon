@@ -62,7 +62,8 @@ fn every_turn_action_is_reachable_and_dispatches_expected_intent() {
 					assert_eq!(primary, PrimaryAction::Queue);
 					assert_eq!(secondary, Some(SecondaryAction::Steer));
 				},
-				TurnPhaseDiscriminant::QuestionPending => {
+				TurnPhaseDiscriminant::QuestionPendingChoice
+				| TurnPhaseDiscriminant::QuestionPendingFreeText => {
 					assert_eq!(primary, PrimaryAction::Answer);
 				},
 				TurnPhaseDiscriminant::ApprovalPending => {
@@ -88,9 +89,15 @@ fn every_turn_action_is_reachable_and_dispatches_expected_intent() {
 				.update(|view, _win, _cx| view.pending().to_vec())
 				.expect("pending intents read");
 
-			assert!(
-				!intents.is_empty(),
-				"phase {phase_kind:?} did not dispatch any intent on primary action submission"
+			// A question that offers options is not answered from the composer:
+			// its answer is the index of one of them, which the card's own rows
+			// and their digit keys send. Every other phase acts on the draft or
+			// on the card it is parked on, so it dispatches here.
+			let answers_from_its_card = phase_kind == TurnPhaseDiscriminant::QuestionPendingChoice;
+			assert_eq!(
+				intents.is_empty(),
+				answers_from_its_card,
+				"phase {phase_kind:?} dispatched {intents:?} on primary action submission"
 			);
 
 			match phase_kind {
@@ -111,8 +118,13 @@ fn every_turn_action_is_reachable_and_dispatches_expected_intent() {
 						matches!(intents.first(), Some(Intent::Queue(t)) if t == "test instructions")
 					);
 				},
-				TurnPhaseDiscriminant::QuestionPending => {
-					assert!(matches!(intents.first(), Some(Intent::Answer { card: 0, option: 0 })));
+				TurnPhaseDiscriminant::QuestionPendingChoice => {
+					assert!(intents.is_empty());
+				},
+				TurnPhaseDiscriminant::QuestionPendingFreeText => {
+					assert!(
+						matches!(intents.first(), Some(Intent::Reply { card: 0, text }) if text == "test instructions")
+					);
 				},
 				TurnPhaseDiscriminant::ApprovalPending => {
 					assert!(matches!(

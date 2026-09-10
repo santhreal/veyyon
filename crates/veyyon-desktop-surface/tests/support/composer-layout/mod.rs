@@ -8,27 +8,83 @@
 use std::path::Path;
 
 use veyyon_desktop_kit::{SpacingStep, load_bundled_theme, load_bundled_tokens};
-use veyyon_desktop_model::{InteractionId, QueueMode};
+use veyyon_desktop_model::{InteractionId, QueueMode, SessionId, SurfaceId};
 use veyyon_desktop_scene::{
 	headless::{RenderOptions, headless_context},
 	session::HeadlessSession,
 };
 use veyyon_desktop_surface::{
-	Card, ShellState, ShellView,
+	Availability, Card, Keymap, ShellState, ShellView,
 	composer::TurnPhase,
 	fixture, install_tokens,
 	layout::{ShedInput, shell_widths},
 };
 use veyyon_gpui::{App, AppContext, Bounds, Pixels};
 
+/// What the projection marks the composer's answer with while the open
+/// question offers options, which is what the window reads before it sends
+/// one. Kept as the reason's own words rather than the desktop crate's
+/// constant, which a surface suite cannot import, so a suite fails if the two
+/// stop agreeing about the control being unavailable at all.
+pub const ANSWERED_BY_OPTION: &str = "choose one of the options";
+
+/// Marks the composer's answer with what the projection states for the phase
+/// the state is in, which is what the window reads before it sends an answer.
+pub fn seed_answer_availability(session: &mut HeadlessSession<ShellView>) {
+	session
+		.update(|view, _window, _cx| {
+			let TurnPhase::QuestionPending { interaction, options } = view.state().turn.clone() else {
+				return;
+			};
+			if options == 0 {
+				return;
+			}
+			let session_id = SessionId::from(view.state().current_id.to_string());
+			let id = SurfaceId::QuestionSubmitButton(session_id, interaction);
+			view
+				.state_mut()
+				.controls
+				.set_availability(id, Availability::Unavailable {
+					reason: ANSWERED_BY_OPTION.to_owned(),
+				});
+		})
+		.expect("the view is live");
+}
+
 /// Opens a headless shell window on the bundled tokens and dark theme at the
 /// given size, optionally seeding composed text, and runs `test` against the
 /// live session.
+///
+/// No keymap is bound, so a chord reaches nothing: a suite that presses one
+/// calls [`render_session_with_keys`] instead.
 pub fn render_session<R>(
 	state: ShellState,
 	seed_text: Option<&str>,
 	width: u32,
 	height: u32,
+	test: impl FnOnce(&mut HeadlessSession<ShellView>) -> R,
+) -> R {
+	open_shell(state, seed_text, width, height, false, test)
+}
+
+/// The same window with the default keymap bound, for a suite whose gesture is
+/// a keystroke rather than a pointer press.
+pub fn render_session_with_keys<R>(
+	state: ShellState,
+	seed_text: Option<&str>,
+	width: u32,
+	height: u32,
+	test: impl FnOnce(&mut HeadlessSession<ShellView>) -> R,
+) -> R {
+	open_shell(state, seed_text, width, height, true, test)
+}
+
+fn open_shell<R>(
+	state: ShellState,
+	seed_text: Option<&str>,
+	width: u32,
+	height: u32,
+	bind_keys: bool,
 	test: impl FnOnce(&mut HeadlessSession<ShellView>) -> R,
 ) -> R {
 	let mut cx = headless_context().expect("headless context available");
@@ -39,6 +95,9 @@ pub fn render_session<R>(
 	let mut session = HeadlessSession::open(&mut cx, &options, move |_window, app: &mut App| {
 		let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
 			.expect("tokens and theme install");
+		if bind_keys {
+			app.bind_keys(Keymap::default().bindings());
+		}
 
 		app.new(|_| ShellView::new(installed, state))
 	})
@@ -53,13 +112,19 @@ pub fn render_session<R>(
 	test(&mut session)
 }
 
-/// Turn phase variant discriminant for sweeping all 7 fundamental turn actions.
+/// Turn phase variant discriminant for sweeping every fundamental turn action.
+///
+/// A question appears twice, because the shape it is answered with decides
+/// what the composer's primary action can do: a question that offers options
+/// is answered by the index of one of them, from its card, and a question
+/// that offers none is answered by the composer's own text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumIter)]
 pub enum TurnPhaseDiscriminant {
 	Idle,
 	RunningSteer,
 	RunningQueue,
-	QuestionPending,
+	QuestionPendingChoice,
+	QuestionPendingFreeText,
 	ApprovalPending,
 	PlanPendingEmpty,
 	PlanPendingWithText,
@@ -82,7 +147,7 @@ pub fn build_state_for_phase(discriminant: TurnPhaseDiscriminant) -> (ShellState
 			state.turn = TurnPhase::Running { queue_mode: QueueMode::Queue };
 			(state, true)
 		},
-		TurnPhaseDiscriminant::QuestionPending => {
+		TurnPhaseDiscriminant::QuestionPendingChoice => {
 			state.turn =
 				TurnPhase::QuestionPending { interaction: InteractionId::from("q"), options: 3 };
 			state.cards = vec![Card::Question {
@@ -90,6 +155,13 @@ pub fn build_state_for_phase(discriminant: TurnPhaseDiscriminant) -> (ShellState
 				options: vec!["A".to_string(), "B".to_string(), "C".to_string()],
 			}];
 			(state, false)
+		},
+		TurnPhaseDiscriminant::QuestionPendingFreeText => {
+			state.turn =
+				TurnPhase::QuestionPending { interaction: InteractionId::from("q"), options: 0 };
+			state.cards =
+				vec![Card::Question { prompt: "Name the branch".to_string(), options: Vec::new() }];
+			(state, true)
 		},
 		TurnPhaseDiscriminant::ApprovalPending => {
 			state.turn = TurnPhase::ApprovalPending { interaction: InteractionId::from("a") };

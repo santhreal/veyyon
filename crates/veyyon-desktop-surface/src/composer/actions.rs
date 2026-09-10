@@ -106,10 +106,15 @@ pub fn turn_action_controls(
 	}
 
 	let actionable = match primary {
-		PrimaryAction::Send | PrimaryAction::Steer | PrimaryAction::Queue | PrimaryAction::Refine => {
-			has_text
-		},
-		PrimaryAction::Answer | PrimaryAction::Approve | PrimaryAction::Accept => true,
+		// An answer is the composer's draft, so it needs one. A question that
+		// is answered by choosing an option is answered from its card, and
+		// the projection marks this control unavailable for it.
+		PrimaryAction::Send
+		| PrimaryAction::Steer
+		| PrimaryAction::Queue
+		| PrimaryAction::Refine
+		| PrimaryAction::Answer => has_text,
+		PrimaryAction::Approve | PrimaryAction::Accept => true,
 	};
 
 	let active = allowed && actionable;
