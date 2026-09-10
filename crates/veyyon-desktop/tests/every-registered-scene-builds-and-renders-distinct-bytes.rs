@@ -169,14 +169,19 @@ fn every_scene_shows_the_state_it_names() {
 	let (frames, error_baselines, unprojected) = render_all();
 	let gated = gated_capabilities();
 
-	// Unknown capabilities cannot expose the file and change tabs.
-	// Other capability controls retain their resting appearance.
+	// A tab is the one surface an unknown capability withholds (§5.13): the
+	// panel's Files and Changes tabs and the drawer's supervisor tab arrive
+	// once the host has declared them, and every other control draws at rest
+	// and reports the refusal on the press.
 	let mut invisible = Vec::new();
 	for capability in Capability::iter() {
 		let enabled = &frames[&gate_scene(capability, GateVariant::Enabled)];
 		let unknown = &frames[&gate_scene(capability, GateVariant::Unknown)];
-		if matches!(capability, Capability::Files | Capability::Changes) {
-			assert!(unknown != enabled, "{capability:?}: unknown capability exposed a panel tab");
+		if matches!(
+			capability,
+			Capability::Files | Capability::Changes | Capability::ProcessSupervisor
+		) {
+			assert!(unknown != enabled, "{capability:?}: unknown capability exposed its tab");
 		} else {
 			assert!(unknown == enabled, "{capability:?}: Unknown must draw at rest");
 		}
