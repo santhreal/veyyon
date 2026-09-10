@@ -64,9 +64,20 @@ const SLOT_PX: f32 = 168.0;
 const SLOT_GAP_PX: f32 = 12.0;
 const ROW_PAD_PX: f32 = 20.0;
 
-/// The primitives this sweep presses nothing for, and why. Pinned by exact
-/// equality: a primitive that becomes clickable, or a new one, must be
-/// classified rather than silently skipped.
+/// The primitives this sweep presses nothing for, in four groups. Static
+/// content answers no press at all: `Text`, `Truncate`, `Markdown`,
+/// `CodeBlock`, `Kbd`, `Spacer`, `Divider`, `Badge`, `Dot`, `Spinner`,
+/// `Meter`, `Avatar`. A container routes a press to the child under it and
+/// fires nothing of its own, so the child is what this sweep draws instead:
+/// `Stack`, `Row`, `ScrollView`, `Resizable`, `List`, `Tree`, `Table`. A text
+/// input takes focus and keystrokes rather than a click handler: `TextField`,
+/// `TextArea`. An overlay is drawn one at a time over everything else, so two
+/// of them are never siblings, and the controls inside one are swept here as
+/// their own kinds: `Sheet`, `Popover`, `Menu`, `Dialog`, `Tooltip`,
+/// `Palette`.
+///
+/// Pinned by exact equality: a primitive that becomes clickable, or a new
+/// one, must be classified rather than silently skipped.
 const NOT_PRESSED: [PrimitiveKind; 27] = [
 	PrimitiveKind::Text,
 	PrimitiveKind::Truncate,
