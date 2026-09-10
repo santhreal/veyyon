@@ -46,7 +46,7 @@ use serde_json::json;
 use strum::{EnumIter, IntoEnumIterator};
 use support::fields::{
 	SETTING_KEY, driven, general_page_holds, keybindings_page_binds, settings_page_open,
-	transport_asks_for_a_secret,
+	supervisor_tab_open, transport_asks_for_a_secret,
 };
 use veyyon_desktop_model::SettingKind;
 use veyyon_desktop_scene::{HeadlessSession, RgbaFrame};
@@ -71,6 +71,8 @@ enum KeyShape {
 	Keybinding,
 	/// [`FieldKey::TaskPrompt`].
 	TaskPrompt,
+	/// [`FieldKey::ProcessCommand`].
+	ProcessCommand,
 }
 
 /// The exhaustive match that makes a new `FieldKey` fail to compile here until
@@ -82,6 +84,7 @@ const fn key_shape(key: &FieldKey) -> KeyShape {
 		FieldKey::SessionRename(_) => KeyShape::SessionRename,
 		FieldKey::Keybinding(_) => KeyShape::Keybinding,
 		FieldKey::TaskPrompt => KeyShape::TaskPrompt,
+		FieldKey::ProcessCommand => KeyShape::ProcessCommand,
 	}
 }
 
@@ -155,6 +158,16 @@ fn cases() -> Vec<Case> {
 			text:  "",
 			says:  "A task needs a description to run",
 			takes: "Read the tokens and report what is unauthored",
+		},
+		Case {
+			key:   FieldKey::ProcessCommand,
+			// The supervisor's tab is the one that draws the command field,
+			// and it is offered before anything is running, which is the
+			// state the first process is started from.
+			state: supervisor_tab_open(),
+			text:  "",
+			says:  "A process needs a command to run",
+			takes: "bun run dev",
 		},
 	]
 }

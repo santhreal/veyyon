@@ -123,7 +123,7 @@ fn test_all_capability_scenes_build_cleanly() {
 }
 
 #[test]
-fn test_unknown_draws_at_rest_except_panel_tenants() {
+fn test_unknown_draws_at_rest_except_the_tabs_a_capability_offers() {
 	let mut cx = headless_context().expect("headless context available on GPU host");
 	let bundle = startup_assets();
 	let assets = Assets {
@@ -144,10 +144,18 @@ fn test_unknown_draws_at_rest_except_panel_tenants() {
 		let enabled = render_scene_bytes(&mut window, &assets, capability, GateVariant::Enabled);
 		let unknown = render_scene_bytes(&mut window, &assets, capability, GateVariant::Unknown);
 
-		if matches!(capability, Capability::Files | Capability::Changes) {
+		// A tab is the one surface an unknown capability withholds: §5.13
+		// states that a tab arriving mid-attach is a surface nobody asked
+		// for, so the panel's Files and Changes tabs and the drawer's
+		// supervisor tab appear once the host has declared them. Every other
+		// control draws at rest and reports the refusal on the press.
+		if matches!(
+			capability,
+			Capability::Files | Capability::Changes | Capability::ProcessSupervisor
+		) {
 			assert!(
 				unknown != enabled,
-				"{capability:?}: UnknownUntilAttached must hide panel tabs (differ from Enabled)"
+				"{capability:?}: UnknownUntilAttached must withhold its tab (differ from Enabled)"
 			);
 		} else {
 			assert_eq!(

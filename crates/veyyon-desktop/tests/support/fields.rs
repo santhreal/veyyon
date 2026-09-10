@@ -15,8 +15,8 @@ use veyyon_desktop_model::{
 };
 use veyyon_desktop_scene::{Appearance, HeadlessSession, RenderOptions, headless_context};
 use veyyon_desktop_surface::{
-	ConnectionPhase, Intent, Keymap, Overlay, SettingsPage, SettingsState, ShellState, ShellView,
-	fixture, install_tokens,
+	ConnectionPhase, DrawerContent, DrawerTab, Intent, Keymap, Overlay, SettingsPage, SettingsState,
+	ShellState, ShellView, fixture, install_tokens,
 };
 use veyyon_gpui::{App, AppContext, Window};
 
@@ -131,6 +131,22 @@ pub fn keybindings_page_binds(action: &str, keys: &[&str]) -> ShellState {
 	ShellState {
 		overlay: Some(Overlay::Settings(Box::new(settings))),
 		..settings_page_open(SettingsPage::Keybindings)
+	}
+}
+
+/// A shell with the drawer open on the supervisor's tab, which is what draws
+/// the command field the `Start` beside it reads.
+pub fn supervisor_tab_open() -> ShellState {
+	ShellState {
+		connection: ConnectionPhase::Attached,
+		drawer_open: true,
+		drawer: DrawerContent {
+			offered: true,
+			tabs: vec![DrawerTab::Processes],
+			active_tab: 0,
+			..DrawerContent::default()
+		},
+		..fixture::populated()
 	}
 }
 
