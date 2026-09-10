@@ -217,3 +217,46 @@ async fn a_socket_that_never_completes_a_handshake_keeps_spending_the_ceiling() 
 		"a connection that never completed its handshake is not a connection that worked"
 	);
 }
+
+#[tokio::test]
+async fn a_handshake_that_got_halfway_keeps_spending_the_ceiling() {
+	let listener = TcpListener::bind("127.0.0.1:0")
+		.await
+		.expect("a local listener");
+	let address = listener.local_addr().expect("a bound address");
+	let endpoint = Endpoint::parse(&format!("tcp:{address}"), None).expect("a tcp endpoint");
+	let (_egress, mut events, task) = spawn_transport(endpoint);
+
+	// The same crash loop, further in: the host answers, the client sends its
+	// initial sync, and the host dies before settling any of it. Events crossed
+	// and the handshake still never completed, so the ceiling keeps counting.
+	// A ceiling cleared by any byte from the host retries this forever.
+	let mut attempts = Vec::new();
+	for _ in 0..3 {
+		let (stream, _) = listener.accept().await.expect("the client connected");
+		let mut reader = BufReader::new(stream);
+		send(
+			&mut reader,
+			&HostEvent::ConnectionChanged(ConnectionState::Connected {
+				endpoint: address.to_string(),
+				protocol: PROTOCOL_VERSION,
+			}),
+		)
+		.await;
+		send(&mut reader, &HostEvent::Snapshot(SnapshotSection::Capabilities(Vec::new()))).await;
+		let mut line = String::new();
+		reader
+			.read_line(&mut line)
+			.await
+			.expect("the client sent its initial sync");
+		drop(reader);
+		attempts.push(wait_for_reconnecting(&mut events).await);
+	}
+
+	task.abort();
+	assert_eq!(
+		attempts,
+		vec![1, 2, 3],
+		"a handshake that never settled its sync is not a connection that worked"
+	);
+}
