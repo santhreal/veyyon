@@ -174,9 +174,9 @@ impl RenderOnce for Markdown {
 		let resolved_tokens = TokenSet::for_app(cx);
 		let tokens: &TokenSet = &resolved_tokens;
 		let ink = tokens.color(ColorRole::Foreground);
-		let (prose_size, prose_line) = self.prose.unwrap_or_else(|| {
-			(tokens.font_size(TextRamp::Read), tokens.line_height(TextRamp::Read))
-		});
+		let (prose_size, prose_line) = self
+			.prose
+			.unwrap_or_else(|| (tokens.font_size(TextRamp::Read), tokens.line_height(TextRamp::Read)));
 
 		let mut container = div()
 			.flex()

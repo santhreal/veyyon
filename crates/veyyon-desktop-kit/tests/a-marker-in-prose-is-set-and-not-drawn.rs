@@ -85,9 +85,7 @@ fn every_marker_leaves_the_frame_as_what_it_means() {
 	for (name, source, drawn) in MARKERS {
 		assert_eq!(plain(source), *drawn, "{name}: the marker must not be drawn");
 		let read = spans(source);
-		let marked = read
-			.iter()
-			.any(|span| span.emphasis != Emphasis::default());
+		let marked = read.iter().any(|span| span.emphasis != Emphasis::default());
 		assert!(marked, "{name}: {source} must set at least one span, and set {read:?}");
 		swept += 1;
 	}

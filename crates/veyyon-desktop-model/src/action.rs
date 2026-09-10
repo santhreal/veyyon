@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 
 pub use crate::action_kind::{HostActionKind, HostActionKind as Kind};
-use crate::composer::QueueMode;
-use crate::connection::{EntryId, RequestId, SessionId};
-use crate::domain::changes::ChangeScope;
+use crate::{
+	composer::QueueMode,
+	connection::{EntryId, RequestId, SessionId},
+	domain::changes::ChangeScope,
+};
 
 /// Binary attachment descriptor for prompt submission.
 ///

@@ -58,9 +58,8 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		},
 		// The vocabulary crosses the wire as the type the window decodes it
 		// with, so a spelling the host rejects cannot be written here.
-		Intent::SetQueueMode(mode) => active.map_or_else(Vec::new, |session| {
-			vec![HostAction::SetQueueMode { session, mode: *mode }]
-		}),
+		Intent::SetQueueMode(mode) => active
+			.map_or_else(Vec::new, |session| vec![HostAction::SetQueueMode { session, mode: *mode }]),
 		Intent::SelectModel(choice) => {
 			vec![HostAction::SelectModel {
 				provider: choice.provider.clone(),

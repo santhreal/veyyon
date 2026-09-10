@@ -121,7 +121,9 @@ fn seeded() -> (Store, SessionIndex) {
 	store.sessions.insert(session("s1", QueuePartition::Live));
 	store.persisted.shell.active_session = Some(id.clone());
 	for capability in Capability::ALL {
-		store.capabilities.set(capability, CapabilityStatus::Available);
+		store
+			.capabilities
+			.set(capability, CapabilityStatus::Available);
 	}
 	let mut index = SessionIndex::new();
 	let _ = index.row_of(&id);
@@ -156,8 +158,11 @@ fn census(value: &Value, path: &str, found: &mut BTreeSet<String>) {
 		},
 		Value::Object(fields) => {
 			for (name, field) in fields {
-				let next =
-					if path.is_empty() { name.clone() } else { format!("{path}.{name}") };
+				let next = if path.is_empty() {
+					name.clone()
+				} else {
+					format!("{path}.{name}")
+				};
 				census(field, &next, found);
 			}
 		},
@@ -206,8 +211,10 @@ fn every_scope_and_every_mode_reaches_the_host_as_the_vocabulary_it_came_from() 
 
 	// A vocabulary recorded and never round-tripped here is a claim with no
 	// evidence behind it, so the census and this sweep name the same set.
-	let recorded: BTreeSet<String> =
-		VOCABULARY_STRINGS.iter().map(|path| (*path).to_owned()).collect();
+	let recorded: BTreeSet<String> = VOCABULARY_STRINGS
+		.iter()
+		.map(|path| (*path).to_owned())
+		.collect();
 	assert_eq!(proven, recorded, "every recorded vocabulary is round-tripped here");
 }
 
@@ -252,8 +259,8 @@ fn every_string_an_action_carries_is_classified() {
 	let stale: Vec<&String> = expected.difference(&found).collect();
 	assert!(
 		unrecorded.is_empty() && stale.is_empty(),
-		"a string field is unaccounted for: type it as the vocabulary the host closes, or record \
-		 it as an open value.\nsent but not recorded: {unrecorded:#?}\nrecorded but never sent: \
+		"a string field is unaccounted for: type it as the vocabulary the host closes, or record it \
+		 as an open value.\nsent but not recorded: {unrecorded:#?}\nrecorded but never sent: \
 		 {stale:#?}"
 	);
 }
