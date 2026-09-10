@@ -248,5 +248,17 @@ pub fn attention_strip(notice: &str, tokens: &TokenSet) -> Div {
 		.line_height(tokens.line_height(TextRamp::Micro))
 		.font_weight(tokens.font_weight(TextWeight::Medium))
 		.text_color(tokens.color(ColorRole::AttentionInk))
-		.child(notice.to_owned())
+		.child(
+			// The strip is one line and the window takes
+			// `attention_strip_height` off the top for it, so a notice longer
+			// than the window is wide has to end rather than wrap: wrapped, it
+			// drew over the surface under a strip that had reserved room for
+			// one line of it.
+			div()
+				.min_w_0()
+				.overflow_hidden()
+				.whitespace_nowrap()
+				.text_ellipsis()
+				.child(notice.to_owned()),
+		)
 }

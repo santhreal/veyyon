@@ -27,6 +27,16 @@ use veyyon_gpui::{
 
 use crate::{Intent, ShellView};
 
+/// How many lines of the host's sentence a refusal row draws before it ends
+/// in an ellipsis.
+///
+/// Two lines of the micro ramp hold about a hundred and sixty characters on
+/// the narrowest surface a refusal is drawn on, which is every sentence the
+/// host writes without the value it quotes back. The bound is what keeps the
+/// row from growing over the rows it is about, and what keeps its own `Retry`
+/// and `Dismiss` on the surface.
+const MESSAGE_LINES: usize = 2;
+
 /// Tri-state capability gate availability for a visual surface control (§4.3).
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum Availability {
@@ -256,6 +266,7 @@ pub fn error_hairline_weak(
 		.id(ElementId::Name(format!("error-hairline-{id:?}").into()))
 		.flex()
 		.flex_row()
+		.w_full()
 		.items_center()
 		.justify_between()
 		.px(pad_h)
@@ -266,10 +277,22 @@ pub fn error_hairline_weak(
 		.border_color(error_color)
 		.gap(tokens.spacing(SpacingStep::S2));
 
+	// The host writes the sentence and can write a long one: a value it
+	// rejected is quoted back in full, and a path or a tool's own output
+	// arrives whole. Unbounded, it took the row's width from its own
+	// controls -- a 300-character refusal drew `Retry` and `Dismiss` a
+	// thousand pixels outside the window, so the operator could neither send
+	// the request again nor put the refusal away. The message takes what the
+	// row has left over and ends in an ellipsis; the controls keep their
+	// width whatever it says.
 	let label = div()
+		.flex_1()
+		.min_w_0()
 		.text_size(font_size)
 		.line_height(line_height)
 		.text_color(text_color)
+		.text_ellipsis()
+		.line_clamp(MESSAGE_LINES)
 		.child(err.message.clone());
 
 	row = row.child(label);
@@ -287,7 +310,7 @@ pub fn error_hairline_weak(
 				});
 			});
 		}
-		row = row.child(retry_btn);
+		row = row.child(div().flex_shrink_0().child(retry_btn));
 	}
 
 	let dismiss_id = id;
@@ -302,7 +325,7 @@ pub fn error_hairline_weak(
 			});
 		});
 	}
-	row = row.child(dismiss_btn);
+	row = row.child(div().flex_shrink_0().child(dismiss_btn));
 
 	row
 }
