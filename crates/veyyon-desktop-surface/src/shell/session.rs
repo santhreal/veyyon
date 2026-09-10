@@ -221,8 +221,12 @@ pub fn session_surface(
 					state.run_status.clone(),
 					widths.composer_px,
 					widths.labels.run_bar,
+					state.turn.is_stoppable(),
+					state.current_id,
+					&state.controls,
 					&surface.composer,
 					tokens,
+					cx,
 				)),
 		)
 		.children((state.drawer_open && widths.drawer.placement == DrawerPlacement::Overlay).then(

@@ -25,14 +25,14 @@ use veyyon_desktop_kit::{
 use veyyon_desktop_model::{SessionId, SurfaceId};
 use veyyon_desktop_tokens::ComposerSurfaceTokens;
 use veyyon_gpui::{
-	BoxShadow, Context, DragMoveEvent, Entity, ExternalPaths, InteractiveElement, IntoElement,
-	ParentElement, Styled, div, point, px,
+	BoxShadow, ClickEvent, Context, DragMoveEvent, Entity, ExternalPaths, InteractiveElement,
+	IntoElement, ParentElement, StatefulInteractiveElement, Styled, div, point, px,
 };
 
 pub use self::{actions::*, attachments::*, footer::*, media::*, queued::*, state::*, turn::*};
 use crate::{
-	ShellView,
-	controls::{ControlStates, hairline_for},
+	Intent, ShellView,
+	controls::{ControlStates, availability_style, hairline_for},
 	model::Badge,
 };
 
@@ -186,13 +186,25 @@ pub fn composer(
 		)
 }
 
-/// Builds the run bar: one line stating what the session is doing.
+/// Builds the run bar: one line stating what the session is doing, and the
+/// stop for the turn it is stating.
+///
+/// `stoppable` comes from the turn phase rather than from the badge, so the
+/// stop is offered exactly where the composer offers its own (§5.4). The word
+/// sheds to the stop glyph on its own authority, and neither is drawn when
+/// there is no turn to stop: a `Stop` that answered no click was the shape of
+/// this surface until it was one.
+#[allow(clippy::too_many_arguments, reason = "one surface, one call site")]
 pub fn run_bar(
 	status: Option<(Badge, String)>,
 	width: f32,
 	labels: bool,
+	stoppable: bool,
+	session_id: u64,
+	controls: &ControlStates,
 	geometry: &ComposerSurfaceTokens,
 	tokens: &TokenSet,
+	cx: &Context<ShellView>,
 ) -> impl IntoElement {
 	let mut bar = div()
 		.id("run-bar")
@@ -223,20 +235,39 @@ pub fn run_bar(
 					.text_color(tokens.color(ColorRole::Secondary))
 					.child(line),
 			)
-			.child(if labels {
-				div()
+			.children(stoppable.then(|| {
+				let abort_id = SurfaceId::ComposerAbortButton(SessionId::from(session_id.to_string()));
+				let (opacity, cursor, allowed) =
+					availability_style(&controls.availability(&abort_id), tokens);
+				let mut stop = div()
+					.id("run-bar-abort-turn")
 					.flex_shrink_0()
-					.text_size(px(geometry.run_bar_label_size.size))
-					.line_height(px(geometry.run_bar_label_size.line_height))
-					.text_color(tokens.color(ColorRole::Muted))
-					.child("Stop")
-			} else {
-				div().flex_shrink_0().child(
-					Icon::new(IconName::Stop)
-						.size(IconSize::Size12)
-						.color(tokens.color(ColorRole::Muted)),
-				)
-			});
+					.px(tokens.spacing(SpacingStep::S1))
+					.opacity(opacity)
+					.cursor(cursor);
+				stop = if labels {
+					stop
+						.text_size(px(geometry.run_bar_label_size.size))
+						.line_height(px(geometry.run_bar_label_size.line_height))
+						.text_color(tokens.color(ColorRole::Secondary))
+						.child("Stop")
+				} else {
+					stop.child(
+						Icon::new(IconName::Stop)
+							.size(IconSize::Size12)
+							.color(tokens.color(ColorRole::Secondary)),
+					)
+				};
+				if allowed {
+					let hover = tokens.color(ColorRole::Hairline);
+					stop = stop
+						.hover(move |style| style.bg(hover))
+						.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
+							view.dispatch(Intent::AbortTurn, cx);
+						}));
+				}
+				stop
+			}));
 	}
 
 	div().flex().flex_row().justify_center().w_full().child(bar)

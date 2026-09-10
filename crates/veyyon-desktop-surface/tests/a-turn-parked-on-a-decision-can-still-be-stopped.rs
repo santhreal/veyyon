@@ -7,11 +7,13 @@
 //!
 //! CLASS CLOSED: a stop is offered for every phase that is not `Idle`. The
 //! phase distinguishes what the primary arrow means (§5.4); it does not
-//! distinguish whether a turn exists to stop. Both routes are pinned here: the
-//! control the pointer reaches and the chord the keyboard reaches, over every
-//! variant of `TurnPhase`. The expectation per variant comes from an exhaustive
-//! `match`, so a new phase fails to compile until someone records whether it is
-//! stoppable, and `Idle` carries the negative control both ways.
+//! distinguish whether a turn exists to stop. All three routes are pinned
+//! here: the composer control the pointer reaches, the chord the keyboard
+//! reaches, and the run bar's own `Stop`, which stated the word beside the
+//! running turn and answered no click at all. Each sweeps every variant of
+//! `TurnPhase`, with the expectation per variant coming from an exhaustive
+//! `match`, so a new phase fails to compile until someone records whether it
+//! is stoppable, and `Idle` carries the negative control on all three.
 //!
 //! GAPS: whether the host can act on the stop it receives is not this suite's
 //! subject -- that is the coding-agent suites
@@ -208,5 +210,65 @@ fn the_stop_chord_reaches_a_turn_parked_on_a_decision_and_nothing_at_rest() {
 				"{label} must not raise AbortTurn, because no turn is running"
 			);
 		}
+	}
+}
+
+/// The hitboxes below the composer float, which is where the run bar sits.
+///
+/// Located by band rather than by id because a hitbox carries no id in a
+/// captured frame, and read by outcome below so a hitbox that is not the stop
+/// cannot be counted as one.
+fn below_float_hitboxes(captured: &Captured, float_bottom: f32) -> Vec<Point<f32>> {
+	let mut found: Vec<Point<f32>> = captured
+		.hitboxes
+		.iter()
+		.filter(|rect| f32::from(rect.origin.y) >= float_bottom)
+		.map(|rect| Point {
+			x: f32::from(rect.origin.x) + f32::from(rect.size.width) / 2.0,
+			y: f32::from(rect.origin.y) + f32::from(rect.size.height) / 2.0,
+		})
+		.collect();
+	found.sort_by(|a, b| a.x.total_cmp(&b.x));
+	found
+}
+
+/// How many controls in the run bar's band stop the turn, one fresh session per
+/// click.
+fn run_bar_stops_in(phase: &TurnPhase) -> usize {
+	let count = render_session(state_in(phase.clone()), |session| {
+		let (_, _, _, bottom) = composer_float_bounds(session, WIDTH, HEIGHT);
+		let captured = session.frame().expect("frame renders");
+		below_float_hitboxes(&captured, bottom).len()
+	});
+	(0..count)
+		.filter(|index| {
+			let at = *index;
+			let intents = render_session(state_in(phase.clone()), |session| {
+				let (_, _, _, bottom) = composer_float_bounds(session, WIDTH, HEIGHT);
+				let captured = session.frame().expect("frame renders");
+				let control = below_float_hitboxes(&captured, bottom)[at];
+				session
+					.click(Point { x: px(control.x), y: px(control.y) })
+					.expect("click a run bar control");
+				session
+					.update(|view, _window, _cx| view.drain_intents())
+					.expect("drain intents")
+			});
+			intents.contains(&Intent::AbortTurn)
+		})
+		.count()
+}
+
+#[test]
+fn the_run_bar_states_a_stop_only_when_it_is_one() {
+	for phase in every_phase() {
+		let wanted = usize::from(stoppable(&phase));
+		let label = format!("{phase:?}");
+
+		assert_eq!(
+			run_bar_stops_in(&phase),
+			wanted,
+			"{label} must offer {wanted} run bar control(s) that stop the turn"
+		);
 	}
 }
