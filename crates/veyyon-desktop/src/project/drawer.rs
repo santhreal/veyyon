@@ -75,11 +75,21 @@ pub fn project_drawer<S: std::hash::BuildHasher>(
 	// exited and left the list moves every tab after it. A tab nobody chose,
 	// or one that is gone, gives way to the last running terminal, which is
 	// the one a turn is most likely writing to, then to the last one opened.
-	drawer.active_tab = drawer
+	//
+	// A tab is carried only once something chose it. The drawer's opening
+	// asks the host for a terminal, and until that answer arrives the index
+	// the drawer holds stands for whatever sits at zero -- the process list,
+	// on a host that supervises processes -- so carrying it forward left the
+	// drawer on the supervisor once the terminal it had asked for existed.
+	let carried = drawer
 		.tabs
 		.get(drawer.active_tab)
-		.and_then(|previous| tabs.iter().position(|tab| same_tab(tab, previous)))
-		.unwrap_or_else(|| default_tab(domains));
+		.and_then(|previous| tabs.iter().position(|tab| same_tab(tab, previous)));
+	drawer.active_tab = if drawer.tab_chosen {
+		carried.unwrap_or_else(|| default_tab(domains))
+	} else {
+		default_tab(domains)
+	};
 	drawer.tabs = tabs;
 
 	drawer.processes = domains

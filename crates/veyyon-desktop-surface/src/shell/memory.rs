@@ -240,6 +240,9 @@ impl ShellView {
 				.position(|tab| tab.slug() == slug)
 		{
 			self.state.drawer.active_tab = index;
+			// A tab the last launch was left on is a tab that was chosen, so
+			// it stays chosen across the terminal the drawer opens with.
+			self.state.drawer.tab_chosen = true;
 			self.pending_drawer_tab = None;
 		}
 		if let Some(anchor) = self.pending_anchor.clone()

@@ -67,6 +67,17 @@ pub struct DrawerContent {
 	pub tabs:           Vec<DrawerTab>,
 	/// Index of the active tab.
 	pub active_tab:     usize,
+	/// Whether the active tab is one the operator chose.
+	///
+	/// The drawer's opening asks the host for a terminal, which arrives a
+	/// round trip later, so the index the drawer holds until then is a
+	/// fallback rather than a choice: a host that supervises processes has
+	/// the process list at index zero, and carrying that index forward as
+	/// though it had been picked left the drawer on the supervisor after the
+	/// terminal it had just asked for arrived. A tab is carried across
+	/// projections only once a click, a process's log or a remembered shape
+	/// has chosen it; until then the drawer follows the terminal.
+	pub tab_chosen:     bool,
 	/// Visible rows of terminal cells.
 	pub grid_rows:      Vec<Vec<Cell>>,
 	/// Cursor horizontal column index.
@@ -98,6 +109,7 @@ impl Default for DrawerContent {
 	fn default() -> Self {
 		Self {
 			tabs:           Vec::new(),
+			tab_chosen:     false,
 			active_tab:     0,
 			grid_rows:      Vec::new(),
 			cursor_col:     0,

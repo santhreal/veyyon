@@ -191,6 +191,7 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		Intent::SelectDrawerTab(index) => {
 			if *index < state.drawer.tabs.len() {
 				state.drawer.active_tab = *index;
+				state.drawer.tab_chosen = true;
 			}
 		},
 		// The tab moves as soon as it is clicked; the log lines it shows arrive
@@ -198,6 +199,7 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		Intent::OpenProcessLogs(name) => {
 			if let Some(index) = state.drawer.process_tab_index(name) {
 				state.drawer.active_tab = index;
+				state.drawer.tab_chosen = true;
 			}
 		},
 		Intent::ClearTerminal => {

@@ -321,6 +321,7 @@ pub fn with_drawer() -> ShellState {
 				title: "Terminal".to_string(),
 			}],
 			active_tab: 0,
+			tab_chosen: true,
 			grid_rows,
 			cursor_col: 0,
 			cursor_row: 4,
