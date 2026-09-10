@@ -169,10 +169,9 @@ fn process_row(
 						Button::new(("process-send", idx), "Send").variant(ButtonVariant::Ghost);
 					if is_running && send_allowed {
 						btn = btn.on_click(cx.listener(move |view, _event: &ClickEvent, _window, cx| {
-							view.dispatch(
-								Intent::ProcessSend { process: name_for_send.clone(), data: Vec::new() },
-								cx,
-							);
+							// The bytes come from the field the supervisor draws:
+							// this row states which process receives them.
+							view.send_process_input(Some(name_for_send.clone()), cx);
 						}));
 					} else {
 						btn = btn.state(InteractiveState::Disabled);

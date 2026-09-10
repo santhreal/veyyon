@@ -92,6 +92,17 @@ pub fn resolve_indexed_color(idx: u8, tokens: &TokenSet) -> Hsla {
 	rgb((r << 16) | (g << 8) | b).into()
 }
 
+/// The editors the supervisor's controls read, drawn on the tab that offers
+/// those controls: `command` is what a `Start` starts, and `input` is what a
+/// row's `Send` writes to that process.
+#[derive(Clone, Copy, Default)]
+pub struct SupervisorFields<'a> {
+	/// The command line a `Start` reads, when the supervisor is open.
+	pub command: Option<&'a Entity<Editor>>,
+	/// The line a row's `Send` reads, when a process is running to take it.
+	pub input:   Option<&'a Entity<Editor>>,
+}
+
 /// Builds the terminal drawer component.
 ///
 /// A docked drawer is the second pane of a split, and the split's handle draws
@@ -105,7 +116,7 @@ pub fn terminal_drawer(
 	height: f32,
 	controls: &ControlStates,
 	session_id: u64,
-	command_field: Option<&Entity<Editor>>,
+	fields: SupervisorFields<'_>,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
 	laid_out: &LaidOut,
@@ -122,7 +133,7 @@ pub fn terminal_drawer(
 			// offers `Start` is the tab that offers somewhere to say what to
 			// start: without it the control can only ask the host to run
 			// nothing (§5.12).
-			.children(command_field.map(|editor| {
+			.children(fields.command.map(|editor| {
 				div()
 					.w_full()
 					.flex_shrink_0()
@@ -131,6 +142,18 @@ pub fn terminal_drawer(
 					.child(TextField::new("process-command-field", editor.clone()))
 			}))
 			.child(process_list(&content.processes, controls, session_id, geometry, tokens, cx))
+			// A row's `Send` writes what this field states, so the field is
+			// drawn wherever a row offers one: without it the control can
+			// only write nothing, which the host reports as a success
+			// (§5.12).
+			.children(fields.input.map(|editor| {
+				div()
+					.w_full()
+					.flex_shrink_0()
+					.px(tokens.spacing(SpacingStep::S3))
+					.pb(tokens.spacing(SpacingStep::S2))
+					.child(TextField::new("process-input-field", editor.clone()))
+			}))
 	} else {
 		div()
 			.flex_1()

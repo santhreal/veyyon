@@ -12,6 +12,7 @@
 
 mod editors;
 mod parse;
+mod supervisor;
 
 use serde_json::Value;
 use veyyon_desktop_kit::input::{Editor, EditorEvent, EditorMode};
@@ -38,6 +39,9 @@ pub enum FieldKey {
 	TaskPrompt,
 	/// The command line the drawer's process supervisor starts.
 	ProcessCommand,
+	/// The line the drawer's process supervisor writes to the input of a
+	/// process that is already running.
+	ProcessInput,
 }
 
 /// What a field's submit sends.
@@ -58,6 +62,8 @@ enum Commit {
 	Task,
 	/// The text is the command line a supervised process is started from.
 	ProcessStart,
+	/// The text is a line written to a running supervised process's input.
+	ProcessSend,
 }
 
 /// A retained field: its editor, and what a submit of it sends.
@@ -116,13 +122,6 @@ impl ShellView {
 	/// it. The text is the task, and a submit empties the field.
 	pub fn submit_task_prompt(&mut self, cx: &mut Context<Self>) {
 		self.commit_field(&FieldKey::TaskPrompt, cx);
-	}
-
-	/// Starts the process the drawer's command field states, for the `Start`
-	/// beside it. The command line is split into the application and its
-	/// arguments, and a submit empties the field.
-	pub fn submit_process_command(&mut self, cx: &mut Context<Self>) {
-		self.commit_field(&FieldKey::ProcessCommand, cx);
 	}
 
 	/// The editor a drawn field registered under `key`, without creating one:
@@ -286,6 +285,9 @@ impl ShellView {
 				self.clear_refusal();
 				self.dispatch(Intent::ProcessStart { command, args }, cx);
 			},
+			// A submit from inside the field names no row, so the process it
+			// reaches is resolved from what is running.
+			(Commit::ProcessSend, FieldKey::ProcessInput) => self.send_process_input(None, cx),
 			_ => {},
 		}
 	}
@@ -326,7 +328,7 @@ impl ShellView {
 					.unwrap_or_default();
 				editor.update(cx, |editor, cx| editor.set_text(initial, cx));
 			},
-			FieldKey::TaskPrompt | FieldKey::ProcessCommand => {
+			FieldKey::TaskPrompt | FieldKey::ProcessCommand | FieldKey::ProcessInput => {
 				editor.update(cx, |editor, cx| editor.set_text(String::new(), cx));
 			},
 		}

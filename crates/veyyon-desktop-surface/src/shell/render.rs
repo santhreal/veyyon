@@ -23,6 +23,7 @@ use crate::{
 	ShellView,
 	attach::render_attach_screen,
 	damage::Region,
+	drawer::SupervisorFields,
 	layout::{RightPanelPlacement, ShedInput, shell_widths},
 	queue::row_menu_layer,
 };
@@ -249,15 +250,25 @@ pub fn render_shell(
 		.get_or_insert_with(|| cx.focus_handle())
 		.clone();
 	let panel_overlay = panel::panel_float(view, &widths, panels, &tokens, &panel_focus, window, cx);
-	// The field the supervisor's `Start` reads is created only while the tab
-	// that draws it is the open one: a field nobody can see is a subscription
-	// and an entity the window carries for nothing.
+	// The fields the supervisor's controls read are created only while the tab
+	// that draws them is the open one: a field nobody can see is a
+	// subscription and an entity the window carries for nothing. The input
+	// field waits on a process to send to, because a row's `Send` is the only
+	// thing that reads it.
 	let processes_open = view.state().drawer_open && view.state().drawer.is_processes_active();
+	let anything_running = view
+		.state()
+		.drawer
+		.processes
+		.iter()
+		.any(|process| process.status == "running");
 	let process_command = processes_open.then(|| view.process_command_field_editor(cx));
+	let process_input =
+		(processes_open && anything_running).then(|| view.process_input_field_editor(cx));
 	let session = session_surface(
 		view.state(),
 		view.composer(),
-		process_command.as_ref(),
+		SupervisorFields { command: process_command.as_ref(), input: process_input.as_ref() },
 		view.composer_local(),
 		has_text,
 		&widths,

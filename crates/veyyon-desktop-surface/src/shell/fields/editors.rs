@@ -157,6 +157,23 @@ impl ShellView {
 		)
 	}
 
+	/// The retained editor for the line written to a running process's
+	/// input. Nothing the host reports replaces it, and a submit empties
+	/// the field.
+	pub fn process_input_field_editor(&mut self, cx: &mut Context<Self>) -> Entity<Editor> {
+		self.field_editor(
+			FieldSpec {
+				key:         FieldKey::ProcessInput,
+				commit:      Commit::ProcessSend,
+				placeholder: "Line to send, then press Send on the process it is for".into(),
+				mask:        false,
+				multiline:   false,
+				initial:     String::new(),
+			},
+			cx,
+		)
+	}
+
 	/// The editors the settings pages draw their own fields from, created
 	/// here because a page renders from a shared view that cannot create one.
 	pub fn field_slots(&mut self, window: &Window, cx: &mut Context<Self>) -> FieldSlots {
