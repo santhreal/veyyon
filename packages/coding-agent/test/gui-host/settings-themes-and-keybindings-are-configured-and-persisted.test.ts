@@ -36,6 +36,7 @@ interface SettingsEntry {
 	value: unknown;
 	default: unknown;
 	source: string;
+	values?: string[];
 }
 
 interface SettingsSnapshotFrame {
@@ -130,6 +131,32 @@ describe("settings, themes, and keybindings action group behaviour", () => {
 			.filter(([, entry]) => !("value" in entry) || !("default" in entry))
 			.map(([key]) => key);
 		expect(incomplete).toEqual([]);
+
+		client.destroy();
+	});
+
+	test("the transitions setting crosses with the two values the desktop reads motion from", async () => {
+		// WHY: the desktop resolves every motion driver against
+		// `display.transitions`, and its reader
+		// (`reduced_motion` in `crates/veyyon-desktop/src/project/mod.rs`)
+		// treats `off` as reduced and every other value as motion. A third
+		// value declared here would reach that reader as motion without
+		// anybody deciding it should, so the choices the host sends are
+		// pinned by exact equality on the side that declares them.
+		server = await startGuiHostServer({
+			endpoint: "tcp:127.0.0.1:0",
+			cwd: tempDir,
+			agentDir,
+		});
+		const client = await TestSocketClient.connect(server.endpoint);
+
+		const res = await client.request(1, "LoadSettings");
+		const settingsFrame: SettingsSnapshotFrame | undefined = res.frames.find(
+			f => f.Snapshot && "Settings" in f.Snapshot,
+		);
+		const entry = (settingsFrame?.Snapshot?.Settings ?? {})["display.transitions"];
+		expect(entry?.values).toEqual(["on", "off"]);
+		expect(entry?.value).toBe("on");
 
 		client.destroy();
 	});

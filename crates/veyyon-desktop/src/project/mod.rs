@@ -99,6 +99,26 @@ impl SessionIndex {
 	}
 }
 
+/// The setting that states whether the operator wants structural motion.
+pub const TRANSITIONS_SETTING: &str = "display.transitions";
+
+/// Whether the operator has turned structural motion off (§7.2).
+///
+/// The schema declares `on` and `off` and defaults to `on`, so `off` is the
+/// one value that means reduced: a host reporting anything else leaves the
+/// window moving rather than reading a third meaning into a value it does
+/// not know.
+#[must_use]
+pub fn reduced_motion(store: &Store) -> bool {
+	store
+		.domains
+		.settings
+		.as_ref()
+		.and_then(|settings| settings.get(TRANSITIONS_SETTING))
+		.and_then(|entry| entry.value.as_str())
+		== Some("off")
+}
+
 /// Projects the store onto the shell state's host-owned fields.
 ///
 /// `emulators` are the terminals the window feeds as chunks arrive; a
@@ -172,6 +192,7 @@ pub fn project<S: std::hash::BuildHasher>(
 	state.drawer_open = state.drawer_open && state.drawer.offered;
 	state.connection = connection_phase(store);
 	project_overlay(store, state);
+	state.reduced_motion = reduced_motion(store);
 }
 
 /// Updates elapsed and remaining time labels across queue rows and drawer

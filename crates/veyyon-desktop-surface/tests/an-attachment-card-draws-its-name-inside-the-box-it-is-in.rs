@@ -14,8 +14,8 @@
 //! 2. Both payload kinds, since a clip draws a glyph square where an image
 //!    draws its own pixels and the two size their card the same way.
 //! 3. Both captions, since the refusal line is longer than `PNG · 8 B` and is
-//!    the wider of the two to fit, and it carries a glyph the size caption
-//!    does not.
+//!    the wider of the two to fit, and it carries a glyph the size caption does
+//!    not.
 //! 4. A tray that wraps: several cards at once, each asserted against the
 //!    composer's own inner edge, so a card cannot escape the card it sits in.
 //! 5. The box being closed: the border is read from the layout tree with its

@@ -15,11 +15,11 @@ use crate::PaletteMode;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShellState {
 	/// The window title: the open session's name.
-	pub title:        String,
+	pub title:          String,
 	/// The queue's sections and their rows.
-	pub sections:     Vec<(Section, Vec<Row>)>,
+	pub sections:       Vec<(Section, Vec<Row>)>,
 	/// The open session's transcript.
-	pub transcript:   Vec<Turn>,
+	pub transcript:     Vec<Turn>,
 	/// The transcript entry each turn was opened by, index-aligned with
 	/// `transcript`.
 	///
@@ -27,32 +27,36 @@ pub struct ShellState {
 	/// reports, and one turn merges every entry the agent produced, so the
 	/// entry that opened it is the id a remembered reading position names
 	/// (§8.10). Empty for a fixture that states turns without a host.
-	pub turn_anchors: Vec<String>,
+	pub turn_anchors:   Vec<String>,
 	/// The active conversational turn phase.
-	pub turn:         TurnPhase,
+	pub turn:           TurnPhase,
 	/// The composer's footer: model, thinking level, queue mode, attachments
 	/// and the context meter, as the host reported them (§5.4).
-	pub composer:     ComposerState,
+	pub composer:       ComposerState,
 	/// The run bar's status line.
-	pub run_status:   Option<(Badge, String)>,
+	pub run_status:     Option<(Badge, String)>,
 	/// The right panel's content and tabs (§5.6, §5.11).
-	pub panel:        PanelContent,
+	pub panel:          PanelContent,
 	/// Decisions attached above the composer.
-	pub cards:        Vec<Card>,
+	pub cards:          Vec<Card>,
 	/// Terminal drawer state and tenants.
-	pub drawer:       DrawerContent,
+	pub drawer:         DrawerContent,
 	/// Whether the terminal drawer is open.
-	pub drawer_open:  bool,
+	pub drawer_open:    bool,
 	/// The open session.
-	pub current_id:   u64,
+	pub current_id:     u64,
 	/// Active transport connectivity phase or authentication overlay state.
-	pub connection:   ConnectionPhase,
+	pub connection:     ConnectionPhase,
 	/// Control availability and error states for capability gate resolution.
-	pub controls:     ControlStates,
+	pub controls:       ControlStates,
 	/// Modal floating overlay currently active (Palette or Settings).
-	pub overlay:      Option<Overlay>,
+	pub overlay:        Option<Overlay>,
 	/// Keymap and keyboard navigation state (§5.14).
-	pub keymap:       KeymapState,
+	pub keymap:         KeymapState,
+	/// Whether the operator has turned structural motion off, which the
+	/// window reads off `display.transitions` and every motion driver
+	/// resolves against (§7.2).
+	pub reduced_motion: bool,
 }
 
 impl ShellState {
@@ -135,22 +139,23 @@ impl ShellState {
 impl Default for ShellState {
 	fn default() -> Self {
 		Self {
-			title:        "veyyon".to_string(),
-			sections:     Vec::new(),
-			transcript:   Vec::new(),
-			turn_anchors: Vec::new(),
-			turn:         TurnPhase::default(),
-			composer:     ComposerState::default(),
-			run_status:   None,
-			panel:        PanelContent::default(),
-			cards:        Vec::new(),
-			drawer:       DrawerContent::default(),
-			drawer_open:  false,
-			current_id:   0,
-			connection:   ConnectionPhase::default(),
-			controls:     ControlStates::default(),
-			overlay:      None,
-			keymap:       KeymapState::default(),
+			title:          "veyyon".to_string(),
+			sections:       Vec::new(),
+			transcript:     Vec::new(),
+			turn_anchors:   Vec::new(),
+			turn:           TurnPhase::default(),
+			composer:       ComposerState::default(),
+			run_status:     None,
+			panel:          PanelContent::default(),
+			cards:          Vec::new(),
+			drawer:         DrawerContent::default(),
+			drawer_open:    false,
+			current_id:     0,
+			connection:     ConnectionPhase::default(),
+			controls:       ControlStates::default(),
+			overlay:        None,
+			keymap:         KeymapState::default(),
+			reduced_motion: false,
 		}
 	}
 }

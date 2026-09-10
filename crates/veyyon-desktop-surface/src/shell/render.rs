@@ -33,6 +33,11 @@ pub fn render_shell(
 	window: &mut Window,
 	cx: &mut Context<ShellView>,
 ) -> impl IntoElement {
+	// Reduced motion is the operator's setting, and it arrives with a
+	// snapshot rather than at construction, so it is carried onto the driver
+	// that owns it before anything in this frame samples one (§7.2).
+	let reduced_motion = view.state().reduced_motion;
+	view.rail_motion.set_reduced_motion(reduced_motion);
 	view.ensure_composer(cx);
 	view.sample_split_motion(window, cx);
 	let transcript_height = view

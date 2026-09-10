@@ -226,6 +226,7 @@ pub fn regions_changed(last: &ShellState, next: &ShellState) -> Invalidation {
 		overlay,
 		keymap,
 		composer,
+		reduced_motion,
 	} = next;
 
 	// Anything that moves layout, or changes a surface that records no box of
@@ -242,6 +243,7 @@ pub fn regions_changed(last: &ShellState, next: &ShellState) -> Invalidation {
 		|| overlay != &last.overlay
 		|| keymap != &last.keymap
 		|| composer != &last.composer
+		|| reduced_motion != &last.reduced_motion
 	{
 		return Invalidation::Full;
 	}

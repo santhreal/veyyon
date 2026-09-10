@@ -138,12 +138,17 @@ impl<'cx> SceneWindow<'cx> {
 						None
 					},
 					SceneRoot::Shell(built) => {
-						let mut view = ShellView::new(installed, built.state).with_notice(built.notice);
+						// A still of a surface mid-spring is a different picture
+						// on every run, so a scene render is taken with motion
+						// off; the driver reads that off the state the frame
+						// draws, the same field a settings snapshot fills.
+						let mut state = built.state;
+						state.reduced_motion = true;
+						let mut view = ShellView::new(installed, state).with_notice(built.notice);
 						view.set_clock_ms(SCENE_CLOCK_MS);
 						if let Some(menu) = built.row_menu {
 							view.open_row_menu(menu);
 						}
-						view.rail_motion_mut().set_reduced_motion(true);
 						let composer_text = built.composer_text;
 						let view = cx.new(|cx| {
 							if !composer_text.is_empty() {

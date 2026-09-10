@@ -177,6 +177,7 @@
 
 ### Fixed
 
+- The desktop window reads `display.transitions`, which reached no desktop behaviour: with it set to `off` the queue rail, the floating queue and every other structural transition arrive at their settled position in one frame instead of gliding to it, and a value the operator changes while the window is open takes effect on the next frame.
 - A bordered box inside the desktop composer draws all four of its edges and the arcs between them, where an attachment card had drawn as two rules and two stubs: the renderer split a border-only quad into strips and narrowed the composer's rounded clip onto each strip, cutting every edge at a corner the clip never reached.
 - A desktop attachment card keeps its caption inside the box it draws, where a refusal naming a long model (`Not accepted by <model>`) had run past the card's authored 240px ceiling instead of ending in an ellipsis.
 - A desktop approval card draws the permission request as text, where the tool wrapper's markdown had reached the card's pane verbatim and drawn `**Scope:** This call only` with its emphasis markers; a tool's own detail line still crosses byte-identical, because it states the command about to run.

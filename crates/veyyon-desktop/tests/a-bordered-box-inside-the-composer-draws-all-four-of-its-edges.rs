@@ -146,8 +146,8 @@ enum Side {
 impl Side {
 	fn extent(self, bounds: BoxBounds) -> f32 {
 		match self {
-			Side::Top | Side::Bottom => bounds.right - bounds.left,
-			Side::Left | Side::Right => bounds.bottom - bounds.top,
+			Self::Top | Self::Bottom => bounds.right - bounds.left,
+			Self::Left | Self::Right => bounds.bottom - bounds.top,
 		}
 	}
 }
