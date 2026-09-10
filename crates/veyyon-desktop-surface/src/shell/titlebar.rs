@@ -254,11 +254,6 @@ pub fn attention_strip(notice: &str, tokens: &TokenSet) -> Div {
 			// than the window is wide has to end rather than wrap: wrapped, it
 			// drew over the surface under a strip that had reserved room for
 			// one line of it.
-			div()
-				.min_w_0()
-				.overflow_hidden()
-				.whitespace_nowrap()
-				.text_ellipsis()
-				.child(notice.to_owned()),
+			div().min_w_0().truncate().child(notice.to_owned()),
 		)
 }

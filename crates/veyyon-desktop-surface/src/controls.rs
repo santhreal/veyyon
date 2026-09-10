@@ -288,6 +288,7 @@ pub fn error_hairline_weak(
 	let label = div()
 		.flex_1()
 		.min_w_0()
+		.overflow_hidden()
 		.text_size(font_size)
 		.line_height(line_height)
 		.text_color(text_color)
