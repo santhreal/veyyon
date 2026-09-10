@@ -94,15 +94,6 @@ impl ShellView {
 			.update(cx, |editor, cx| editor.set_text(text, cx));
 	}
 
-	/// Takes and clears the composer text content.
-	pub fn take_composed(&mut self, cx: &mut Context<Self>) -> String {
-		self.composer_cache.clear();
-		self
-			.composer
-			.as_ref()
-			.map_or_else(String::new, |ed| ed.update(cx, |e, cx| e.take_text(cx)))
-	}
-
 	/// Submits the current draft, or runs the selected slash command when its
 	/// menu is open.
 	pub fn submit_primary_turn_action(&mut self, cx: &mut Context<Self>) {
