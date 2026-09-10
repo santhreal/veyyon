@@ -55,7 +55,14 @@ const BASELINE: &str = "queue-card/rest";
 /// Capabilities whose gate has no control on the frame their scene renders,
 /// so `Unavailable` and `Pending` draw the same bytes as `Enabled`. Ledger row
 /// A7. Shrink-only.
-const GATES_STILL_INVISIBLE: &[Capability] = &[];
+///
+/// `PendingEdits` is here because nothing in the window reads it: no domain
+/// carries a pending edit, no host action fetches one, and the diff tab is
+/// filled by `Changes`. It drew a gate only while the tab required both
+/// capabilities, which withdrew the whole diff surface from a host that
+/// inspects no edit buffer -- every host this product ships with. A window
+/// that grows a pending-edit surface takes this row back out.
+const GATES_STILL_INVISIBLE: &[Capability] = &[Capability::PendingEdits];
 
 /// Scopes whose `request: None` fallback target draws no hairline, so the
 /// error scene is the baseline. Shrink-only.

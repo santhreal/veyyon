@@ -6,7 +6,10 @@
 //! CLASS CLOSED: Ledger row A7. Capabilities whose Unavailable or Pending gate
 //! states draw identical bytes to Enabled; capabilities registering in-flight
 //! requests against incorrect global surfaces rather than point of use;
-//! hardcoded capability opt-outs that mask missing surface projections.
+//! hardcoded capability opt-outs that mask missing surface projections. One
+//! opt-out is recorded rather than hardcoded: `PendingEdits`, which nothing in
+//! the window reads, pinned by exact equality so a second one turns the sweep
+//! red.
 //!
 //! NOT CAUGHT: Live socket network transport latency; theme font rasterization
 //! platform variance.
@@ -156,7 +159,7 @@ fn test_unknown_draws_at_rest_except_panel_tenants() {
 }
 
 #[test]
-fn test_all_thirty_capabilities_render_distinct_unavailable_bytes() {
+fn test_every_capability_the_window_draws_renders_distinct_unavailable_bytes() {
 	let mut cx = headless_context().expect("headless context available on GPU host");
 	let bundle = startup_assets();
 	let assets = Assets {
@@ -183,12 +186,16 @@ fn test_all_thirty_capabilities_render_distinct_unavailable_bytes() {
 			invisible.push(capability);
 		}
 	}
+	// `PendingEdits` is the one capability nothing in the window reads: no
+	// domain carries a pending edit, no action fetches one, and the diff tab is
+	// filled by `Changes` alone. A host that cannot inspect an edit buffer
+	// therefore changes no pixel, which is truthful. The set is pinned by exact
+	// equality, so a second capability losing its surface turns this red.
 	assert_eq!(
 		invisible,
-		Vec::<Capability>::new(),
-		"all 30 capabilities must render distinct bytes when Unavailable (invisible: {invisible:?})"
+		vec![Capability::PendingEdits],
+		"every capability the window draws must render distinct bytes when Unavailable"
 	);
-	println!("Unavailable invisible passed: {invisible:?}");
 }
 
 #[test]

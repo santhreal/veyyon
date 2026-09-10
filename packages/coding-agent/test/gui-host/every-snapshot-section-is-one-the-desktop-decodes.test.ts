@@ -89,6 +89,7 @@ const CORPUS = [
 		Capabilities: [
 			["Sessions", "Available"],
 			["PendingEdits", { Unavailable: { reason: "the desktop holds no edit buffer" } }],
+			["Changes", { Unavailable: { reason: "this directory is no repository" } }],
 			["Lifecycle", "UnknownUntilAttached"],
 		],
 	},
