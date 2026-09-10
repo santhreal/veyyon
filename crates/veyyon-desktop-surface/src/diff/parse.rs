@@ -213,9 +213,16 @@ impl FileBuilder {
 		let added = std::mem::take(&mut self.pending_added);
 		let pairs = removed.len().min(added.len());
 
+		// A pair is positional: removed[i] is the line added[i] replaced. The
+		// added side takes its spans from the same call that gave the removed
+		// side theirs, so the two halves of a pair can never disagree and a
+		// block longer than one line pairs the same way the first line does.
+		let mut added_spans = Vec::with_capacity(pairs);
 		for (i, (old_line, text)) in removed.into_iter().enumerate() {
 			let intraline = if i < pairs {
-				pair_intraline(&text, &added[i].1).0
+				let (old, new) = pair_intraline(&text, &added[i].1);
+				added_spans.push(new);
+				old
 			} else {
 				Vec::new()
 			};
@@ -224,18 +231,9 @@ impl FileBuilder {
 				.push(DiffRow::Removed { old_line, text, intraline });
 		}
 
-		for (i, (new_line, text)) in added.into_iter().enumerate() {
-			let intraline = if i < pairs {
-				if let Some(DiffRow::Removed { text: old_text, .. }) =
-					self.rows.get(self.rows.len() - (pairs - i))
-				{
-					pair_intraline(old_text, &text).1
-				} else {
-					Vec::new()
-				}
-			} else {
-				Vec::new()
-			};
+		let mut added_spans = added_spans.into_iter();
+		for (new_line, text) in added {
+			let intraline = added_spans.next().unwrap_or_default();
 			self.rows.push(DiffRow::Added { new_line, text, intraline });
 		}
 	}
