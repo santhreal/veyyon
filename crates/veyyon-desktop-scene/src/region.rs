@@ -268,7 +268,7 @@ fn cut(
 				return None;
 			}
 			clipped(&logical, &held).map(|held| {
-				let mut moved = *run;
+				let mut moved = run.clone();
 				moved.bounds = device_box(shifted(held, dx, dy));
 				moved
 			})
