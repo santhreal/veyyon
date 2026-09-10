@@ -372,6 +372,11 @@ fn turn_and_drawer_intents_map_to_host_actions() {
 	assert_eq!(actions_for(&Intent::CloseTerminal, &index, &mut store), [
 		HostAction::CloseTerminal { terminal_id: "t".into() }
 	]);
+	// A create, not an attach: the drawer already shows a terminal here, and
+	// `New` is what asks for one more.
+	assert_eq!(actions_for(&Intent::NewTerminal, &index, &mut store), [
+		HostAction::CreateTerminal { cwd: None, shell: None }
+	]);
 	assert_eq!(actions_for(&Intent::ClearOutput, &index, &mut store), [HostAction::ClearOutput {
 		session: s,
 	}]);

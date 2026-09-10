@@ -110,6 +110,7 @@ pub fn every_intent() -> Vec<Intent> {
 		Intent::HandoffSession(Some(1)),
 		Intent::LoadTranscript(Some(1)),
 		Intent::CloseTerminal,
+		Intent::NewTerminal,
 		Intent::ClearOutput,
 		Intent::CancelTool { call_id: "tool-1".to_owned() },
 		Intent::ProcessStart { command: "cargo".to_owned(), args: vec!["run".to_owned()] },
@@ -208,6 +209,7 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::HandoffSession(_)
 			| Intent::LoadTranscript(_)
 			| Intent::CloseTerminal
+			| Intent::NewTerminal
 			| Intent::ClearOutput
 			| Intent::CancelTool { .. }
 			| Intent::ProcessStart { .. }
