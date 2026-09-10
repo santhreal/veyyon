@@ -39,10 +39,10 @@ pub struct BenchComparison {
 /// declares full repaints the viewport whatever the diff found.
 #[derive(Debug, Clone, Copy, Default, Serialize)]
 pub struct RepaintTally {
-	pub frames:                    usize,
-	pub nothing:                   usize,
-	pub within:                    usize,
-	pub full:                      usize,
+	pub frames: usize,
+	pub nothing: usize,
+	pub within: usize,
+	pub full: usize,
 	pub mean_scoped_device_pixels: f64,
 }
 
