@@ -478,11 +478,11 @@ tree-sitter-zig = "1.1"
 # GUI & Renderer
 # ──────────────────────────────────────────────────────────────────────────────
 # Santh GPUI is shared with other native applications through one pinned repository.
-gpui = { git = "https://github.com/santhreal/gpui.git", rev = "d9a8bdbcc23b4c619e186a193d147bcad82b8e69" }
+gpui = { git = "https://github.com/santhreal/gpui.git", rev = "0b7fb3b5612734f3ef022cf8cdef078fc3928b0d" }
 # The headless offscreen path needs the platform crate, which builds the renderer for the current
 # OS, and the wgpu crate, which supplies the text system.
-gpui_platform = { git = "https://github.com/santhreal/gpui.git", rev = "d9a8bdbcc23b4c619e186a193d147bcad82b8e69" }
-gpui_wgpu = { git = "https://github.com/santhreal/gpui.git", rev = "d9a8bdbcc23b4c619e186a193d147bcad82b8e69" }
+gpui_platform = { git = "https://github.com/santhreal/gpui.git", rev = "0b7fb3b5612734f3ef022cf8cdef078fc3928b0d" }
+gpui_wgpu = { git = "https://github.com/santhreal/gpui.git", rev = "0b7fb3b5612734f3ef022cf8cdef078fc3928b0d" }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Unsorted (added by `cargo add` - move into a section above)
