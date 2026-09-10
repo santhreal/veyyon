@@ -26,7 +26,7 @@ use veyyon_desktop_model::{
 	SnapshotSection, Store, SurfaceId, TerminalStatus, reduce,
 };
 use veyyon_desktop_surface::{
-	Attachment, Card, Intent, MediaType, ShellState, composer::payload_for,
+	Attachment, Card, Intent, MediaType, PanelTab, ShellState, composer::payload_for,
 };
 
 fn store_with_decisions() -> (Store, SessionIndex) {
@@ -140,7 +140,10 @@ fn every_intent_maps_to_the_actions_the_host_answers_or_to_none_on_purpose() {
 			],
 		}]
 	);
-	assert!(actions_for(&Intent::SelectTab(0), &index, &mut store).is_empty());
+	// This store's host has stated no capability, so the tab it draws is asked
+	// for nothing. What each tab asks for once a capability is available is
+	// `a-workspace-tab-restates-the-domain-it-draws.rs`.
+	assert!(actions_for(&Intent::SelectTab(PanelTab::Diff), &index, &mut store).is_empty());
 	assert!(actions_for(&Intent::SetDrawer { open: false }, &index, &mut store).is_empty());
 
 	// Answer the plan (position 3) first: its id is the plan's, and the

@@ -7,7 +7,7 @@
 
 use veyyon_desktop_model::SurfaceId;
 use veyyon_desktop_surface::{
-	Intent, Overlay, PaletteState, ScrollBy,
+	Intent, Overlay, PaletteState, PanelTab, ScrollBy,
 	composer::{ModelChoice, QueueMode, ThinkingLevel},
 };
 
@@ -21,7 +21,7 @@ use super::{attachment, send};
 pub fn every_intent() -> Vec<Intent> {
 	let sample = vec![
 		Intent::SelectSession(9),
-		Intent::SelectTab(1),
+		Intent::SelectTab(PanelTab::Diff),
 		Intent::SetDrawer { open: true },
 		Intent::SetDrawer { open: false },
 		Intent::Approval { card: 0, approved: true, standing: false },

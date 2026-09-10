@@ -22,6 +22,7 @@ use crate::{
 	model::ShellState,
 	overlay::Overlay,
 	palette::PaletteState,
+	right_panel::PanelTab,
 };
 
 /// One thing the operator did.
@@ -30,7 +31,10 @@ use crate::{
 #[strum_discriminants(vis(pub))]
 pub enum Intent {
 	SelectSession(u64),
-	SelectTab(usize),
+	/// The workspace tab the operator moved to. The tab travels rather than
+	/// its index, because the panel's tab list is window state a host never
+	/// sees, and what the tab draws is a domain the host has to re-state.
+	SelectTab(PanelTab),
 	SetDrawer {
 		open: bool,
 	},
@@ -210,11 +214,14 @@ impl Intent {
 	}
 
 	/// Whether the shell can finish this intent alone.
+	///
+	/// A workspace tab is not local: the panel's selection is window state,
+	/// but the domain behind the tab is the host's, and only a request states
+	/// it as it is now.
 	pub const fn is_local(&self) -> bool {
 		matches!(
 			self,
-			Self::SelectTab(_)
-				| Self::Attach(_)
+			Self::Attach(_)
 				| Self::RemoveAttachment(_)
 				| Self::SelectDrawerTab(_)
 				| Self::SetDrawer { open: false }

@@ -352,7 +352,7 @@ fn panel_revealing_intents_uncollapse_panel_locally() {
 	state.keymap.panel_collapsed = true;
 	state.panel.tabs =
 		vec![veyyon_desktop_surface::PanelTab::Diff, veyyon_desktop_surface::PanelTab::Tree];
-	Intent::SelectTab(1).apply(&mut state);
+	Intent::SelectTab(veyyon_desktop_surface::PanelTab::Tree).apply(&mut state);
 	assert!(!state.keymap.panel_collapsed, "SelectTab uncollapses panel");
 	assert_eq!(state.panel.active_tab, veyyon_desktop_surface::PanelTab::Tree);
 

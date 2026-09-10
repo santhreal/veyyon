@@ -45,7 +45,7 @@ fn every_field_a_window_holds_is_written_and_read_back() {
 				// Everything below is what a click, a chord or a drag raises.
 				view.dispatch(Intent::ToggleQueue, cx);
 				view.dispatch(Intent::SetPanel { open: true }, cx);
-				view.dispatch(Intent::SelectTab(1), cx);
+				view.dispatch(Intent::SelectTab(PanelTab::File), cx);
 				view.dispatch(Intent::SetDiffMode(DiffMode::Split), cx);
 				view.dispatch(Intent::SetDrawer { open: true }, cx);
 				view.dispatch(Intent::SetQueueMode(QueueMode::Queue), cx);
@@ -150,7 +150,7 @@ fn the_shape_read_off_the_disk_reaches_the_window_that_opens_next() {
 			.update(|view, _window, cx| {
 				view.dispatch(Intent::ToggleQueue, cx);
 				view.dispatch(Intent::SetPanel { open: true }, cx);
-				view.dispatch(Intent::SelectTab(2), cx);
+				view.dispatch(Intent::SelectTab(PanelTab::Tree), cx);
 				view.set_composed("what the operator was typing", cx);
 				view.set_panel_width(480.0);
 				view.rail_motion_mut().show_more_parked(1);

@@ -8,7 +8,7 @@ use veyyon_desktop_kit::ColorRole;
 use veyyon_desktop_model::{ChangeStatus, DiffMode, UsageTotals};
 
 /// The active tenant in the right panel (§5.6, §5.11).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, strum::EnumIter)]
 #[serde(rename_all = "snake_case")]
 pub enum PanelTab {
 	/// Unified or split diff of uncommitted changes.

@@ -111,16 +111,26 @@ pub fn right_panel(
 		.iter()
 		.position(|&t| t == panel.active_tab)
 		.unwrap_or(0);
-	let prev_idx = if current_tab_idx == 0 {
-		tab_count.saturating_sub(1)
-	} else {
-		current_tab_idx - 1
-	};
-	let next_idx = if tab_count == 0 {
-		0
-	} else {
-		(current_tab_idx + 1) % tab_count
-	};
+	// The chord moves by position and dispatches the tab it lands on; an empty
+	// tab list leaves the active one, which the apply then ignores.
+	let prev_tab = panel
+		.tabs
+		.get(if current_tab_idx == 0 {
+			tab_count.saturating_sub(1)
+		} else {
+			current_tab_idx - 1
+		})
+		.copied()
+		.unwrap_or(panel.active_tab);
+	let next_tab = panel
+		.tabs
+		.get(if tab_count == 0 {
+			0
+		} else {
+			(current_tab_idx + 1) % tab_count
+		})
+		.copied()
+		.unwrap_or(panel.active_tab);
 
 	let next_diff_mode = match panel.diff_mode {
 		veyyon_desktop_model::DiffMode::Unified => veyyon_desktop_model::DiffMode::Split,
@@ -135,10 +145,10 @@ pub fn right_panel(
 		.key_context("Panel")
 		.track_focus(focus)
 		.on_action(cx.listener(move |view, _: &PreviousTab, _window, cx| {
-			view.dispatch(Intent::SelectTab(prev_idx), cx);
+			view.dispatch(Intent::SelectTab(prev_tab), cx);
 		}))
 		.on_action(cx.listener(move |view, _: &NextTab, _window, cx| {
-			view.dispatch(Intent::SelectTab(next_idx), cx);
+			view.dispatch(Intent::SelectTab(next_tab), cx);
 		}))
 		.on_action(cx.listener(move |view, _: &ToggleDiffMode, _window, cx| {
 			view.dispatch(Intent::SetDiffMode(next_diff_mode), cx);

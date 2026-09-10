@@ -1,7 +1,7 @@
 //! From what the operator asked to what the host is sent.
 
-use veyyon_desktop_model::{HostAction, Store, TerminalStatus};
-use veyyon_desktop_surface::Intent;
+use veyyon_desktop_model::{Capability, CapabilityStatus, HostAction, Store, TerminalStatus};
+use veyyon_desktop_surface::{Intent, PanelTab};
 
 use super::{SessionIndex, cards::take_interaction, submission::submission_of};
 
@@ -274,23 +274,59 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		Intent::SelectChangeScope(scope) => {
 			vec![HostAction::SelectChangeScope { scope: *scope }, HostAction::RefreshChanges]
 		},
+		// The tab the operator moved to draws a domain the host answers only
+		// when it is asked. A workspace that changed outside a turn -- a
+		// command run in the drawer, an edit made by hand -- reaches no client
+		// until something asks again, and moving to the tab is that ask. Each
+		// request is gated on the capability that fills the tab, so a host
+		// offering none is sent nothing.
+		Intent::SelectTab(tab) => {
+			let mut actions = Vec::new();
+			match tab {
+				PanelTab::Diff => {
+					if offers(store, Capability::Changes) {
+						actions.push(HostAction::RefreshChanges);
+					}
+				},
+				PanelTab::Tree => {
+					if offers(store, Capability::Files) {
+						// The root the client loaded, so a re-statement lands
+						// on the directory it is drawing rather than resetting
+						// to the workspace root.
+						actions.push(HostAction::LoadFileTree {
+							root: store
+								.domains
+								.file_tree
+								.as_ref()
+								.map(|tree| tree.root.clone()),
+						});
+					}
+				},
+				PanelTab::File => {
+					// The tab holds one file, and only a path already open can
+					// be read again; a tab drawing an export asks for nothing.
+					if offers(store, Capability::Files)
+						&& let Some(file) = store.domains.file_content.as_ref()
+					{
+						actions.push(HostAction::ReadFile { path: file.path.clone() });
+					}
+				},
+				PanelTab::Usage => {
+					if offers(store, Capability::Usage)
+						&& let Some(session) = active
+					{
+						actions.push(HostAction::GetUsage { session: Some(session) });
+					}
+				},
+			}
+			actions
+		},
 		Intent::SetPanel { open: true } => {
 			let mut actions = Vec::new();
-			if matches!(
-				store
-					.capabilities
-					.get(veyyon_desktop_model::Capability::Changes),
-				veyyon_desktop_model::CapabilityStatus::Available
-			) {
+			if offers(store, Capability::Changes) {
 				actions.push(HostAction::RefreshChanges);
 			}
-			if store.domains.file_tree.is_none()
-				&& matches!(
-					store
-						.capabilities
-						.get(veyyon_desktop_model::Capability::Files),
-					veyyon_desktop_model::CapabilityStatus::Available
-				) {
+			if store.domains.file_tree.is_none() && offers(store, Capability::Files) {
 				actions.push(HostAction::LoadFileTree { root: None });
 			}
 			actions
@@ -301,6 +337,13 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		| Intent::ExpandContext { .. } => Vec::new(),
 		_ => Vec::new(),
 	}
+}
+
+/// Whether the host has stated that it offers `capability`. A capability it
+/// has not answered for yet is not offered: a request sent against it is
+/// refused, and the tab that would send it is still drawn as unknown.
+fn offers(store: &Store, capability: Capability) -> bool {
+	matches!(store.capabilities.get(capability), CapabilityStatus::Available)
 }
 
 /// What a control sends when its retry has no refused request to send again:

@@ -48,39 +48,46 @@ fn opening_a_session_that_is_not_in_the_queue_keeps_the_title_it_had() {
 }
 
 #[test]
-fn a_tab_out_of_range_is_dropped_rather_than_clamped_to_a_neighbour() {
+fn a_tab_the_panel_does_not_offer_is_dropped_rather_than_taken() {
 	let mut state = state();
 	let mut intents = Intents::new();
 
-	intents.dispatch(Intent::SelectTab(2), &mut state);
+	intents.dispatch(Intent::SelectTab(PanelTab::Tree), &mut state);
 	assert_eq!(
 		state.panel.active_tab,
 		PanelTab::Tree,
 		"the tab that was clicked did not become active"
 	);
 
-	// The active tab is moved off the last one first. A clamp and a drop are
-	// indistinguishable while the active tab already is the clamp's target,
-	// which is the shape a suite passes for the wrong reason in.
-	intents.dispatch(Intent::SelectTab(1), &mut state);
+	// The active tab is moved off the last one first. Dropping an unoffered
+	// tab and falling back to the last offered one are indistinguishable while
+	// the active tab already is that fallback, which is the shape a suite
+	// passes for the wrong reason in.
+	intents.dispatch(Intent::SelectTab(PanelTab::File), &mut state);
 	assert_eq!(
 		state.panel.active_tab,
 		PanelTab::File,
 		"the tab that was clicked did not become active"
 	);
 
-	for past_the_end in [3, 9, usize::MAX] {
-		intents.dispatch(Intent::SelectTab(past_the_end), &mut state);
-		assert_eq!(
-			state.panel.active_tab,
-			PanelTab::File,
-			"tab {past_the_end} past the last one moved the panel to a tab nobody clicked"
-		);
-	}
+	// `Usage` is not in this panel's tab list, so no click can reach it.
+	intents.dispatch(Intent::SelectTab(PanelTab::Usage), &mut state);
+	assert_eq!(
+		state.panel.active_tab,
+		PanelTab::File,
+		"a tab the panel does not offer became active"
+	);
 
-	assert!(
-		intents.pending().is_empty(),
-		"switching a tab is the window's own business and was reported to a host"
+	// The selection is window state; what the tab draws is the host's, so the
+	// intent is reported for the domain behind it to be re-stated.
+	assert_eq!(
+		intents.drain(),
+		vec![
+			Intent::SelectTab(PanelTab::Tree),
+			Intent::SelectTab(PanelTab::File),
+			Intent::SelectTab(PanelTab::Usage),
+		],
+		"a tab selection was not reported for the domain it draws to be re-stated"
 	);
 }
 

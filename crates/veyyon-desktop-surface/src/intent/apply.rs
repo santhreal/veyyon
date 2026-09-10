@@ -17,9 +17,9 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 				state.title = title;
 			}
 		},
-		Intent::SelectTab(index) => {
-			if let Some(&tab) = state.panel.tabs.get(*index) {
-				state.panel.active_tab = tab;
+		Intent::SelectTab(tab) => {
+			if state.panel.tabs.contains(tab) {
+				state.panel.active_tab = *tab;
 				state.keymap.panel_collapsed = false;
 			}
 		},

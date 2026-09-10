@@ -8,8 +8,9 @@
 use strum::IntoEnumIterator;
 use veyyon_desktop_model::SurfaceId;
 use veyyon_desktop_surface::{
-	Attachment, Intent, IntentDiscriminants, MediaType, ModelChoice, Overlay, PaletteState, Payload,
-	QueueMode, ScrollBy, SettingsPage, ThinkingLevel, ToolViewTarget, navigation::SurfaceRoute,
+	Attachment, Intent, IntentDiscriminants, MediaType, ModelChoice, Overlay, PaletteState,
+	PanelTab, Payload, QueueMode, ScrollBy, SettingsPage, ThinkingLevel, ToolViewTarget,
+	navigation::SurfaceRoute,
 };
 
 /// Every sample intent, for the sweep that drives each through `actions_for`.
@@ -24,7 +25,13 @@ pub fn every_sample_intent() -> Vec<Intent> {
 pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent> {
 	match disc {
 		IntentDiscriminants::SelectSession => vec![Intent::SelectSession(1)],
-		IntentDiscriminants::SelectTab => vec![Intent::SelectTab(0)],
+		// Every tab, because each one re-states a different domain.
+		IntentDiscriminants::SelectTab => vec![
+			Intent::SelectTab(PanelTab::Diff),
+			Intent::SelectTab(PanelTab::File),
+			Intent::SelectTab(PanelTab::Tree),
+			Intent::SelectTab(PanelTab::Usage),
+		],
 		IntentDiscriminants::SetDrawer => vec![Intent::SetDrawer { open: true }],
 		IntentDiscriminants::Approval => {
 			vec![Intent::Approval { card: 0, approved: true, standing: false }]

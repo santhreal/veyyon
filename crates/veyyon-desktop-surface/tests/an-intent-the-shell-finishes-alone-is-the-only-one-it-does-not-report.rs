@@ -27,11 +27,12 @@ use strum::IntoEnumIterator;
 use support::intent_samples::every_intent;
 use veyyon_desktop_surface::{Intent, IntentDiscriminants};
 
-/// The interactions the shell finishes without the host: a tab selection, a
-/// scroll, a palette keystroke, a disclosure. Nothing here changes what the
-/// host holds, so nothing here is reported.
-const LOCAL: [IntentDiscriminants; 19] = [
-	IntentDiscriminants::SelectTab,
+/// The interactions the shell finishes without the host: a scroll, a palette
+/// keystroke, a disclosure. Nothing here changes what the host holds, so
+/// nothing here is reported. A workspace tab is NOT here: its selection is
+/// window state, but the domain it draws is the host's and goes stale between
+/// turns.
+const LOCAL: [IntentDiscriminants; 18] = [
 	IntentDiscriminants::Attach,
 	IntentDiscriminants::RemoveAttachment,
 	IntentDiscriminants::SelectDrawerTab,
