@@ -10,15 +10,23 @@
 //! the rows it pushed the diff down by, and the box it stayed inside, all from
 //! the frame the shell rendered rather than from the text the notice returns.
 //!
+//! The panel is at its 360px minimum here, which is the least room a notice
+//! ever has, and the two facts joined into one sentence do not fit it: the
+//! inside-the-panel reading is what a wording that outgrows the pane fails.
+//!
 //! NOT CAUGHT: the notice's words, which are `withheld_notices`' and are
 //! asserted in `a-cut-the-host-made-is-stated-in-the-pane-that-draws-it.rs` --
 //! a shaped text run carries its box and its size, not its string. Whether the
 //! row cursor advanced past the notices, which decides admission at the far
-//! end of a long scroll rather than layout here.
+//! end of a long scroll rather than layout here. The diff's own notices for a
+//! binary or unreadable file, which are rows of the scrolling content rather
+//! than chrome and are reached sideways like any long line.
 
 #[path = "support/mono-pane/mod.rs"]
 #[allow(dead_code, reason = "this binary uses a subset of the shared pane helpers")]
 mod mono_pane;
+
+use std::fmt::Write as _;
 
 use mono_pane::{WINDOW_H, WINDOW_W, open_session, panel_region, rect};
 use veyyon_desktop_kit::load_bundled_tokens;
@@ -33,9 +41,9 @@ use veyyon_desktop_tokens::PanelsSurfaceTokens;
 fn diff_text() -> String {
 	let mut text = String::new();
 	for file in ["src/first.rs", "src/second.rs"] {
-		text.push_str(&format!("diff --git a/{file} b/{file}\n"));
-		text.push_str(&format!("--- a/{file}\n"));
-		text.push_str(&format!("+++ b/{file}\n"));
+		writeln!(text, "diff --git a/{file} b/{file}").expect("a string takes its own bytes");
+		writeln!(text, "--- a/{file}").expect("a string takes its own bytes");
+		writeln!(text, "+++ b/{file}").expect("a string takes its own bytes");
 		text.push_str("@@ -1,2 +1,2 @@\n");
 		text.push_str(" the context line\n");
 		text.push_str("-pub const OLD: u32 = 0;\n");

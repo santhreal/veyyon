@@ -233,10 +233,6 @@ fn bytes_label(bytes: usize) -> String {
 }
 
 /// Renders a notice row for binary/unavailable files or truncation.
-///
-/// Truncated rather than allowed to run on: a row of the diff is code and
-/// scrolls sideways, but a notice is chrome, and chrome carried past the
-/// panel's edge is clipped mid-word by the mask the panel draws under.
 pub fn render_notice_row(message: &str, geometry: &PanelsSurfaceTokens, tokens: &TokenSet) -> Div {
 	div()
 		.h(px(geometry.diff_row_height_px))
@@ -248,6 +244,5 @@ pub fn render_notice_row(message: &str, geometry: &PanelsSurfaceTokens, tokens: 
 		.px(tokens.spacing(SpacingStep::S3))
 		.text_size(tokens.font_size(TextRamp::Micro))
 		.text_color(tokens.color(ColorRole::Muted))
-		.truncate()
 		.child(message.to_string())
 }

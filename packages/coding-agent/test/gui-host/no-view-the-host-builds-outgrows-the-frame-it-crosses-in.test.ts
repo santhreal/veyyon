@@ -276,6 +276,11 @@ describe("no view the host builds outgrows the frame it crosses in", () => {
 		// the same socket.
 		const after = await client.request(2, "RefreshChanges");
 		expect(after.outcome).toEqual({ RequestSucceeded: { request: 2 } });
+		// Read from the stream that followed rather than from the outcome, which
+		// returns at the first terminal frame: a handler that carried on past
+		// the refusal reports its success after that frame, where it would erase
+		// the reason the window was given.
+		expect(after.frames.filter(frame => frame.RequestSucceeded?.request === 1)).toEqual([]);
 		expect(client.largestFrameBytes()).toBeLessThanOrEqual(MAX_FRAME_BYTES);
 	});
 });
