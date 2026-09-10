@@ -78,9 +78,10 @@ pub fn project_panel(
 	};
 
 	let mut tabs = Vec::with_capacity(4);
-	if matches!(capabilities.get(Capability::Changes), CapabilityStatus::Available)
-		&& !matches!(capabilities.get(Capability::PendingEdits), CapabilityStatus::Unavailable { .. })
-	{
+	// The tab draws what `Changes` answers. `PendingEdits` is a separate
+	// capability with no content here, so a host that reports repository
+	// changes and no edit buffer still offers the tab.
+	if matches!(capabilities.get(Capability::Changes), CapabilityStatus::Available) {
 		tabs.push(PanelTab::Diff);
 	}
 	// An export is a session action, not a file one, so its view is reachable
