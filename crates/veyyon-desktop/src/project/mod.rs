@@ -15,6 +15,7 @@
 //! host actions it asks for.
 
 mod actions;
+mod branch;
 mod cards;
 mod composer;
 mod connection;
@@ -36,6 +37,7 @@ use veyyon_desktop_surface::{Row, Section, ShellState, terminal::TerminalEmulato
 
 pub use self::{
 	actions::actions_for,
+	branch::{BranchPoint, branch_point, branched_draft},
 	composer::{project_composer, project_turn_phase, restored_draft},
 	connection::{connection_notice, connection_phase, transport_gate, transport_gate_capability},
 	controls::{

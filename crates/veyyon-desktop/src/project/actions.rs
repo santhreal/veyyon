@@ -6,6 +6,7 @@ use veyyon_desktop_surface::Intent;
 use self::routes::{navigate_actions, retry_control_actions};
 use super::{
 	SessionIndex,
+	branch::branch_point,
 	cards::take_interaction,
 	submission::submission_of,
 	workspace_asks::{open_actions, tab_actions},
@@ -260,8 +261,13 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		Intent::DeleteSession(row) => index.session_of(*row).map_or_else(Vec::new, |session| {
 			vec![HostAction::DeleteSession { session: session.clone() }]
 		}),
+		// The window names the entry it forks at, so the prompt it hands back to
+		// the composer is the prompt the fork actually cut. A transcript the
+		// window has not loaded names none and the host picks the same entry
+		// itself.
 		Intent::BranchSession(row) => index.session_of(*row).map_or_else(Vec::new, |session| {
-			vec![HostAction::BranchSession { session: session.clone(), entry: None }]
+			let entry = branch_point(store, session).map(|point| point.entry);
+			vec![HostAction::BranchSession { session: session.clone(), entry }]
 		}),
 		Intent::RenameSession { session, title } => {
 			index.session_of(*session).map_or_else(Vec::new, |s| {
