@@ -209,7 +209,7 @@ xdotool windowfocus --sync "${SCENE_WINDOW}"
 # The rows are read from the token files this checkout ships rather than
 # restated here, so a scene recorded at a new width crops what the product
 # actually drew instead of what one width happened to make true.
-read -r RAIL_W QUEUE_MODE QUEUE_W PANEL_MODE PANEL_W DRAWER_PLACEMENT LABELS COMPOSER_MAX_W GUTTER_PX SHEET_INSET SHEET_PX COMPOSER_BAND_H TRANSCRIPT_MAX_W CARD_FOOT_PX CARD_PAD_H CARD_PAD_BOTTOM TITLEBAR_H < <(
+read -r RAIL_W QUEUE_MODE QUEUE_W PANEL_MODE PANEL_W DRAWER_PLACEMENT LABELS COMPOSER_MAX_W GUTTER_PX SHEET_INSET SHEET_PX COMPOSER_BAND_H TRANSCRIPT_MAX_W CARD_FOOT_PX CARD_PAD_H CARD_PAD_BOTTOM TITLEBAR_H RUN_BAR_H < <(
 	python3 - "${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/tokens" "${WIN_W}" <<'PY'
 from pathlib import Path
 import sys
@@ -306,6 +306,7 @@ print(
     int(scale["spacing"][composer["padding_horizontal"]]),
     int(scale["spacing"][composer["padding_bottom"]]),
     int(shell["titlebar"]["height_px"]),
+    int(composer_tokens["run_bar"]["height_px"]),
 )
 PY
 )
@@ -337,6 +338,20 @@ COMPOSER_CARD_MAX=$(( TRANSCRIPT_SURFACE_W - 2 * GUTTER_PX ))
 COMPOSER_CARD_W=$(( COMPOSER_MAX_W < COMPOSER_CARD_MAX ? COMPOSER_MAX_W : COMPOSER_CARD_MAX ))
 COMPOSER_CARD_LEFT=$(( WIN_X + RAIL_W + GUTTER_PX + (COMPOSER_CARD_MAX - COMPOSER_CARD_W) / 2 ))
 COMPOSER_CARD_BOTTOM=$(( WIN_Y + WIN_H - CARD_FOOT_PX ))
+
+# Where the run bar's own stop is, in root coordinates. The bar is the row the
+# session column places under the card, centred at the card's measure, so its
+# right edge is the card's; the stop is the bar's trailing child, and the aim
+# is one spacing step in from that edge, which is inside the word at any
+# authored label size rather than at a width this scene decides. Vertically
+# the aim is the middle of the authored bar height, measured down from the gap
+# the column leaves above it.
+RUN_BAR_Y=$(( WIN_Y + WIN_H - CARD_FOOT_PX + (CARD_FOOT_PX - RUN_BAR_H) / 2 + RUN_BAR_H / 2 ))
+RUN_BAR_STOP_X=$(( COMPOSER_CARD_LEFT + COMPOSER_CARD_W - GUTTER_PX ))
+if (( RUN_BAR_Y <= COMPOSER_CARD_BOTTOM || RUN_BAR_Y >= WIN_Y + WIN_H )); then
+	abandon_take "the-run-bar-is-locatable" \
+		"the derived run bar aim ${RUN_BAR_Y} is not between the card's lower edge ${COMPOSER_CARD_BOTTOM} and the window's foot"
+fi
 
 # The model chip: the leading control of the card's footer row, which is the
 # last row inside the card. Vertically the aim is one spacing step above the
@@ -535,29 +550,39 @@ submit_prompt() { # <text> [floor-pixels]
 	k "Return"
 }
 
-# ─── The Working Tint A Row Carries While Its Turn Runs ──────────────────────
-# `[tint.working]` is the fill the `Working` chip paints, and nothing else in
-# the window paints it, so a count of that fill inside a crop is a reading of
-# how many running turns the crop reports. The fill is read from the theme this
-# checkout ships rather than restated as a literal, so a retheme cannot make a
-# scene silently stop finding the chip it is counting, and the count is refused
-# rather than defaulted when the reading is not a number.
-working_tint_pixels() { # <png> <crop> -> pixels of the working fill inside the crop
-	local png="$1" crop="$2" theme fill counted
+# ─── The Tints A Surface Paints While It Holds Something ─────────────────────
+# A `[tint.<role>]` fill is painted by one thing and nothing else in the
+# window paints it, so a count of that fill inside a crop is a reading of how
+# many of them the crop is reporting: `tint.working` is the `Working` chip a
+# running turn carries, `tint.approve` is the edge of a decision card waiting
+# for an answer. The fill is read from the theme this checkout ships rather
+# than restated as a literal, so a retheme cannot make a scene silently stop
+# finding what it is counting, and the count is refused rather than defaulted
+# when the reading is not a number.
+tint_fill_pixels() { # <tint-section> <png> <crop> -> pixels of that fill inside the crop
+	local section="$1" png="$2" crop="$3" theme fill counted
 	theme="${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/themes/dark.toml"
-	fill="$(sed -n '/^\[tint.working\]/,/^\[/ s/^fill = "\(#[0-9a-fA-F]\{6\}\)".*/\1/p' \
+	fill="$(sed -n "/^\\[${section}\\]/,/^\\[/ s/^fill = \"\\(#[0-9a-fA-F]\\{6\\}\\)\".*/\\1/p" \
 		"${theme}" | head -1)"
 	if [ -z "${fill}" ]; then
-		abandon_take "working-tint-known" "no [tint.working] fill in ${theme}"
+		abandon_take "tint-known" "no [${section}] fill in ${theme}"
 	fi
 	counted="$(magick "${png}" -crop "${crop}" +repage \
 		-fuzz 6% -fill white -opaque "${fill}" -fill black +opaque white \
 		-format '%[fx:round(mean*w*h)]' info: 2>/dev/null || true)"
 	case "${counted}" in
 		'' | *[!0-9]*)
-			abandon_take "working-tint-countable" \
-				"counting the working tint in ${png} reported '${counted}' instead of a pixel count"
+			abandon_take "tint-countable" \
+				"counting [${section}] in ${png} reported '${counted}' instead of a pixel count"
 			;;
 	esac
 	printf '%s' "${counted}"
+}
+
+working_tint_pixels() { # <png> <crop> -> pixels of the working fill inside the crop
+	tint_fill_pixels "tint.working" "$@"
+}
+
+approve_tint_pixels() { # <png> <crop> -> pixels of a waiting decision's edge inside the crop
+	tint_fill_pixels "tint.approve" "$@"
 }
