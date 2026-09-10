@@ -139,6 +139,28 @@ pub fn drawer_chrome(
 		);
 	}
 
+	// The attach-or-create the drawer's opening runs happens once, so a drawer
+	// that stays open reaches no second terminal, and one whose last terminal
+	// was closed draws an empty strip with nothing to press. `New` is that
+	// route. It belongs to the terminal's own context: the supervisor tab
+	// carries `Start`, and an empty strip is a drawer with no terminal in it.
+	if content.tabs.is_empty()
+		|| matches!(content.tabs.get(content.active_tab), Some(DrawerTab::Terminal { .. }))
+	{
+		let create_id = SurfaceId::TerminalCreateButton(SessionId::from(session_id.to_string()));
+		let (create_op, _, create_allowed) =
+			availability_style(&controls.availability(&create_id), tokens);
+		let mut new_btn = Button::new("new-terminal-btn", "New").variant(ButtonVariant::Ghost);
+		if create_allowed {
+			new_btn = new_btn.on_click(cx.listener(|view, _event: &ClickEvent, _window, cx| {
+				view.dispatch(Intent::NewTerminal, cx);
+			}));
+		} else {
+			new_btn = new_btn.state(InteractiveState::Disabled);
+		}
+		right_side = right_side.child(div().opacity(create_op).child(new_btn));
+	}
+
 	if let Some(DrawerTab::Terminal { id: active_term_id, .. }) =
 		content.tabs.get(content.active_tab)
 	{

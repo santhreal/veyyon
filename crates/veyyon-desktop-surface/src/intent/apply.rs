@@ -211,6 +211,7 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		| Intent::ResizeTerminal { .. }
 		| Intent::RestartTerminal
 		| Intent::CloseTerminal
+		| Intent::NewTerminal
 		| Intent::ClearOutput
 		| Intent::CancelTool { .. }
 		| Intent::ProcessStart { .. }

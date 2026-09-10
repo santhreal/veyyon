@@ -202,6 +202,10 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		Intent::CloseTerminal => active_terminal(store).map_or_else(Vec::new, |term| {
 			vec![HostAction::CloseTerminal { terminal_id: term.id.clone() }]
 		}),
+		// A drawer that is already open never re-runs the attach-or-create the
+		// opening did, so the strip's `New` is the only route to a second
+		// terminal, and to the first one after the last was closed (§5.12).
+		Intent::NewTerminal => vec![HostAction::CreateTerminal { cwd: None, shell: None }],
 		Intent::ClearOutput => {
 			active.map_or_else(Vec::new, |session| vec![HostAction::ClearOutput { session }])
 		},

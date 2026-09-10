@@ -94,6 +94,11 @@ pub fn surface_for_action(
 				.unwrap_or_else(|| SessionId("0".into())),
 			String::new(),
 		),
+		Intent::NewTerminal => SurfaceId::TerminalCreateButton(
+			active_session
+				.cloned()
+				.unwrap_or_else(|| SessionId("0".into())),
+		),
 		Intent::ClearOutput => SurfaceId::OutputClearButton,
 		Intent::ProcessStart { .. } => SurfaceId::ProcessStartButton(
 			active_session

@@ -135,6 +135,9 @@ pub enum Intent {
 	ClearTerminal,
 	RestartTerminal,
 	CloseTerminal,
+	/// Opens one more terminal in the drawer, and the first one back into a
+	/// drawer whose last terminal was closed.
+	NewTerminal,
 	ClearOutput,
 	CancelTool {
 		call_id: String,
