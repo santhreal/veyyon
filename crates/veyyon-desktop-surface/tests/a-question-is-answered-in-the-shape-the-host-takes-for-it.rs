@@ -186,8 +186,11 @@ fn every_gesture_that_answers_a_question_raises_the_shape_that_question_takes() 
 				.collect(),
 		));
 
-		// The digit keys, which answer an option while the draft is empty.
-		for index in 0..options.len() {
+		// The digit keys, which answer an option while the draft is empty. Every
+		// digit the keymap binds is pressed, so one past the last option is a
+		// digit in the draft and not an answer to an option that is not there.
+		let bound_digits = 5;
+		for index in 0..bound_digits {
 			let (digit_state, _) = build_state_for_phase(discriminant);
 			let (typed, pressed) =
 				render_session_with_keys(digit_state, None, WIDTH, HEIGHT, |session| {
@@ -203,35 +206,23 @@ fn every_gesture_that_answers_a_question_raises_the_shape_that_question_takes() 
 						.expect("intents drain");
 					(typed, pressed)
 				});
-			assert_eq!(
-				pressed,
-				vec![Intent::Answer { card: 0, option: index }],
-				"{name}: the digit {} answers its own option",
-				index + 1
-			);
-			assert!(!typed, "{name}: a digit that answered the question is not also typed");
-		}
-
-		// A digit where the question offers nothing to select is text, not an
-		// answer nobody could have chosen.
-		if options.is_empty() {
-			let (text_state, _) = build_state_for_phase(discriminant);
-			let (typed, pressed) =
-				render_session_with_keys(text_state, None, WIDTH, HEIGHT, |session| {
-					session.frame().expect("frame renders");
-					session
-						.keystroke("1")
-						.expect("the digit reaches the surface");
-					let typed = session
-						.update(|view, _win, _cx| view.has_composer_text())
-						.expect("the draft is readable");
-					let pressed = session
-						.update(|view, _win, _cx| view.drain_intents())
-						.expect("intents drain");
-					(typed, pressed)
-				});
-			assert_eq!(pressed, Vec::new(), "{name}: a digit answers no option here");
-			assert!(typed, "{name}: the digit is typed into the draft instead");
+			if index < options.len() {
+				assert_eq!(
+					pressed,
+					vec![Intent::Answer { card: 0, option: index }],
+					"{name}: the digit {} answers its own option",
+					index + 1
+				);
+				assert!(!typed, "{name}: a digit that answered the question is not also typed");
+			} else {
+				assert_eq!(
+					pressed,
+					Vec::new(),
+					"{name}: the digit {} answers an option this question does not offer",
+					index + 1
+				);
+				assert!(typed, "{name}: the digit is typed into the draft instead");
+			}
 		}
 
 		// The option rows themselves, pressed where the frame drew them.
