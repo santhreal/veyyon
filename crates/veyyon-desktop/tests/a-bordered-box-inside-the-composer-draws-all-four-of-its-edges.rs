@@ -98,8 +98,9 @@ fn ink_coverage(frame: &RgbaFrame, x: i32, y: i32, ground: RgbaColor, colour: Rg
 		(f32::from(pixel.g), f32::from(ground.g), f32::from(colour.g)),
 		(f32::from(pixel.b), f32::from(ground.b), f32::from(colour.b)),
 	];
-	let Some(&(drawn, from, to)) =
-		channels.iter().max_by(|a, b| (a.2 - a.1).abs().total_cmp(&(b.2 - b.1).abs()))
+	let Some(&(drawn, from, to)) = channels
+		.iter()
+		.max_by(|a, b| (a.2 - a.1).abs().total_cmp(&(b.2 - b.1).abs()))
 	else {
 		return 0.0;
 	};
@@ -125,10 +126,9 @@ fn edge_pixels(frame: &RgbaFrame, bounds: BoxBounds, side: Side, colour: RgbaCol
 					(*along, bounds.bottom.ceil() as i32 - 1),
 				),
 				Side::Left => ((bounds.left.floor() as i32, *along), (bounds.left as i32, *along)),
-				Side::Right => (
-					(bounds.right.floor() as i32 - 1, *along),
-					(bounds.right.ceil() as i32 - 1, *along),
-				),
+				Side::Right => {
+					((bounds.right.floor() as i32 - 1, *along), (bounds.right.ceil() as i32 - 1, *along))
+				},
 			};
 			is_border(frame, a.0, a.1, colour) || is_border(frame, b.0, b.1, colour)
 		})
@@ -201,11 +201,17 @@ fn every_bordered_box_inside_the_composer_float_draws_four_edges_and_four_corner
 	let registry = SceneRegistry::new();
 	let scenes = matching(&registry, SCENE).expect("the composer attachment scene is registered");
 	let mut window = SceneWindow::open(&mut cx, &options).expect("open the scene window");
-	let rendered = window.render(&assets, &scenes[0]).expect("the scene renders");
+	let rendered = window
+		.render(&assets, &scenes[0])
+		.expect("the scene renders");
 	let frame = &rendered.captured.frame;
 
-	let bordered: Vec<&LayoutBox> =
-		rendered.captured.layout.iter().filter(|spec| spec.border.is_some()).collect();
+	let bordered: Vec<&LayoutBox> = rendered
+		.captured
+		.layout
+		.iter()
+		.filter(|spec| spec.border.is_some())
+		.collect();
 	// The float is the largest bordered box in the composer band; everything the
 	// sweep reads is a box it clips.
 	let float = bordered
@@ -237,8 +243,8 @@ fn every_bordered_box_inside_the_composer_float_draws_four_edges_and_four_corner
 			let required = (side.extent(bounds) / 2.0).floor() as usize;
 			assert!(
 				drawn >= required,
-				"the {side:?} edge of the box at {bounds:?} drew {drawn} of the {required} pixels \
-				 its length requires: an edge clipped by a corner the mask never reached",
+				"the {side:?} edge of the box at {bounds:?} drew {drawn} of the {required} pixels its \
+				 length requires: an edge clipped by a corner the mask never reached",
 			);
 		}
 		for corner in [
@@ -250,8 +256,8 @@ fn every_bordered_box_inside_the_composer_float_draws_four_edges_and_four_corner
 			let drawn = corner_pixels(frame, corner, ground, colour);
 			assert!(
 				drawn >= CORNER_MIN_PIXELS,
-				"the corner at {corner:?} of the box at {bounds:?} drew {drawn} border pixels, so \
-				 its arc is missing",
+				"the corner at {corner:?} of the box at {bounds:?} drew {drawn} border pixels, so its \
+				 arc is missing",
 			);
 		}
 	}
