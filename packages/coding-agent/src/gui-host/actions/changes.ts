@@ -2,26 +2,25 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { errorMessage } from "@veyyon/utils";
 import { diff, repo, status } from "../../utils/git";
-import type { ChangedFile, ChangeScope, ChangeStatus } from "../wire";
-import type { ActionContext, ActionHandler, ActionHandlersMap } from "./types";
+import type { ClientSessionState } from "../turns";
+import type { ChangedFile, ChangeScope, ChangeStatus, ChangesView } from "../wire";
+import type { ActionHandler, ActionHandlersMap } from "./types";
 
-async function emitChangesSnapshot(ctx: ActionContext): Promise<void> {
-	const selectedScope = ctx.clientState.selectedChangeScope;
+/**
+ * The working tree or the index as git reports it now.
+ *
+ * A view rather than a frame, because two callers publish it: the action a
+ * client sends, and the re-statement the host makes when a turn that edited
+ * files goes idle.
+ */
+export async function changesView(cwd: string, state: ClientSessionState): Promise<ChangesView> {
+	const selectedScope = state.selectedChangeScope;
 	const scope: ChangeScope = selectedScope === "Staged" ? "Staged" : "WorkingTree";
 
-	const gitRepo = await repo.resolve(ctx.cwd);
+	const gitRepo = await repo.resolve(cwd);
 	if (!gitRepo) {
-		ctx.clientState.revision += 1;
-		ctx.reply.snapshot({
-			Changes: {
-				revision: ctx.clientState.revision,
-				repository: null,
-				scope,
-				files: [],
-				diff: "",
-			},
-		});
-		return;
+		state.revision += 1;
+		return { revision: state.revision, repository: null, scope, files: [], diff: "" };
 	}
 
 	const isStaged = scope === "Staged";
@@ -126,21 +125,19 @@ async function emitChangesSnapshot(ctx: ActionContext): Promise<void> {
 		}
 	}
 
-	ctx.clientState.revision += 1;
-	ctx.reply.snapshot({
-		Changes: {
-			revision: ctx.clientState.revision,
-			repository: gitRepo.repoRoot,
-			scope,
-			files,
-			diff: unifiedDiff,
-		},
-	});
+	state.revision += 1;
+	return {
+		revision: state.revision,
+		repository: gitRepo.repoRoot,
+		scope,
+		files,
+		diff: unifiedDiff,
+	};
 }
 
 const handleRefreshChanges: ActionHandler = async ctx => {
 	try {
-		await emitChangesSnapshot(ctx);
+		ctx.reply.snapshot({ Changes: await changesView(ctx.cwd, ctx.clientState) });
 		ctx.reply.success();
 	} catch (error) {
 		ctx.reply.failure({
@@ -169,7 +166,7 @@ const handleSelectChangeScope: ActionHandler<SelectChangeScopePayload | undefine
 
 	ctx.clientState.selectedChangeScope = payload.scope;
 	try {
-		await emitChangesSnapshot(ctx);
+		ctx.reply.snapshot({ Changes: await changesView(ctx.cwd, ctx.clientState) });
 		ctx.reply.success();
 	} catch (error) {
 		ctx.reply.failure({

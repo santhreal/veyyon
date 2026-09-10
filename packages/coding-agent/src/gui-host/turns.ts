@@ -110,6 +110,28 @@ export interface ClientSessionState {
 	 */
 	refreshSessionList?: () => Promise<void>;
 	/**
+	 * Re-state the workspace domains a turn changes, installed per connection.
+	 *
+	 * The host answers `Changes`, `FileTree`, `Usage` and `Processes` only when
+	 * a client asks, and the desktop asks once, at the handshake. Without this
+	 * the panel keeps drawing the workspace as it stood when the session
+	 * opened, however many files the turn just edited.
+	 */
+	republishWorkspace?: () => Promise<void>;
+	/**
+	 * The directory this client last loaded a file tree for, so the
+	 * re-statement covers the tree it is looking at and a client that never
+	 * loaded one is sent none.
+	 */
+	fileTreeRoot?: string;
+	/**
+	 * Whether this client has been sent a process list. Answering one is what
+	 * starts the project's supervisor, so a client that never asked is never
+	 * re-stated: the host would otherwise start a broker behind a workspace
+	 * that supervises nothing.
+	 */
+	processesListed?: boolean;
+	/**
 	 * Whether the open session has recorded a message yet. A live entry arrives
 	 * one at a time with no list around it, so the flag is what tells a setting
 	 * the session opened in from a change made inside its conversation; it is
@@ -317,6 +339,10 @@ export function handleSessionEvent(event: AgentSessionEvent, socket: net.Socket,
 			// an interrupted session. Listing on `turn_end` would draw `Failed`
 			// on a row whose turn is still running.
 			void state.refreshSessionList?.();
+			// The same moment is when the files the turn edited, the files it
+			// created, the processes it launched and the tokens it spent stop
+			// changing, and nothing else asks for any of them again.
+			void state.republishWorkspace?.();
 			break;
 		}
 		default:

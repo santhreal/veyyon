@@ -1,9 +1,10 @@
 import * as os from "node:os";
 import { errorMessage } from "@veyyon/utils";
 import { mcpManagerInstance } from "../../mcp/manager-instance";
+import type { AgentSession } from "../../session/agent-session";
 import { computeContextBreakdown } from "../../session/context-usage";
 import { getOrCreateAgentSession } from "../turns";
-import type { UsageTotals } from "../wire";
+import type { UsageTotals, UsageView } from "../wire";
 import { emitActiveSessionAndTranscript } from "./active-session";
 import type { ActionHandler, ActionHandlersMap } from "./types";
 
@@ -205,6 +206,28 @@ const handleClearOutput: ActionHandler<ClearOutputPayload | undefined> = async (
 	}
 };
 
+/**
+ * What the session has spent, as it stands now.
+ *
+ * A view rather than a frame, because two callers publish it: the action a
+ * client sends, and the re-statement the host makes when a turn that spent
+ * tokens goes idle.
+ */
+export function usageView(session: AgentSession, named?: string): UsageView {
+	const stats = session.getSessionStats();
+	const tokens = stats.tokens;
+	const totals: UsageTotals = {
+		input_tokens: tokens.input,
+		output_tokens: tokens.output,
+		cache_read_tokens: tokens.cacheRead,
+		cache_write_tokens: tokens.cacheWrite,
+		orchestration_tokens: 0,
+		premium_requests: stats.premiumRequests ?? 0,
+		cost_microusd: typeof stats.cost === "number" ? Math.round(stats.cost * 1_000_000) : null,
+	};
+	return { session: session.sessionId ?? named ?? "", totals };
+}
+
 interface GetUsagePayload {
 	session?: string | null;
 }
@@ -222,27 +245,8 @@ const handleGetUsage: ActionHandler<GetUsagePayload | undefined> = async (ctx, p
 		return;
 	}
 
-	const stats = session.getSessionStats();
-	const tokens = stats.tokens;
-	const costMicroUsd = typeof stats.cost === "number" ? Math.round(stats.cost * 1_000_000) : null;
-
-	const totals: UsageTotals = {
-		input_tokens: tokens.input,
-		output_tokens: tokens.output,
-		cache_read_tokens: tokens.cacheRead,
-		cache_write_tokens: tokens.cacheWrite,
-		orchestration_tokens: 0,
-		premium_requests: stats.premiumRequests ?? 0,
-		cost_microusd: costMicroUsd,
-	};
-
 	ctx.clientState.revision += 1;
-	ctx.reply.snapshot({
-		Usage: {
-			session: session.sessionId ?? payload?.session ?? "",
-			totals,
-		},
-	});
+	ctx.reply.snapshot({ Usage: usageView(session, payload?.session ?? undefined) });
 	ctx.reply.success();
 };
 

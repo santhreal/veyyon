@@ -40,7 +40,7 @@ export function requireProcessId(ctx: ActionContext, processId?: string): boolea
 	return true;
 }
 
-export async function mapProcessesView(ctx: ActionContext, client: DaemonBrokerClient): Promise<ProcessView[]> {
+export async function mapProcessesView(cwd: string, client: DaemonBrokerClient): Promise<ProcessView[]> {
 	const listResult = await client.request({ op: "list" });
 	if (listResult.op !== "list") {
 		throw new Error(`Unexpected daemon response: ${listResult.op}`);
@@ -50,13 +50,13 @@ export async function mapProcessesView(ctx: ActionContext, client: DaemonBrokerC
 	for (const daemon of listResult.daemons) {
 		let application = "";
 		let args: string[] = [];
-		let cwd = ctx.cwd;
+		let processCwd = cwd;
 		try {
 			const desc = await client.request({ op: "describe", name: daemon.name });
 			if (desc.op === "describe") {
 				application = desc.spec.application;
 				args = desc.spec.args;
-				cwd = desc.spec.cwd;
+				processCwd = desc.spec.cwd;
 			}
 		} catch {
 			// Describe may fail if the daemon completed during iteration
@@ -67,7 +67,7 @@ export async function mapProcessesView(ctx: ActionContext, client: DaemonBrokerC
 			status: daemon.state,
 			application,
 			args,
-			cwd,
+			cwd: processCwd,
 			lifetime: daemon.detached ? "detached" : daemon.persist ? "broker-shutdown" : "last-client-exit",
 			started_at_ms: daemon.startedAt,
 			exit_code: daemon.exitCode ?? null,
@@ -82,7 +82,7 @@ export async function mapProcessesView(ctx: ActionContext, client: DaemonBrokerC
 			status: "exited",
 			application: "",
 			args: [],
-			cwd: ctx.cwd,
+			cwd,
 			lifetime: "last-client-exit",
 			started_at_ms: completion.startedAt,
 			exit_code: completion.exitCode ?? null,
@@ -94,8 +94,13 @@ export async function mapProcessesView(ctx: ActionContext, client: DaemonBrokerC
 }
 
 export async function emitProcessesSnapshot(ctx: ActionContext, client: DaemonBrokerClient): Promise<void> {
-	const processes = await mapProcessesView(ctx, client);
+	const processes = await mapProcessesView(ctx.cwd, client);
 	ctx.clientState.revision += 1;
+	// Asking for the list is what puts a supervisor behind this workspace, so
+	// it is also what makes the list something the host may re-state later.
+	// Re-stating it to a client that never asked would start a broker for a
+	// workspace that has no supervised process in it.
+	ctx.clientState.processesListed = true;
 	ctx.reply.snapshot({ Processes: processes });
 }
 

@@ -20,6 +20,7 @@ import {
 	type HostActionTag,
 	type SnapshotSection,
 } from "./wire";
+import { republishWorkspace } from "./workspace-republish";
 
 export class SocketInUseError extends Error {
 	readonly code = "EADDRINUSE";
@@ -232,6 +233,7 @@ export class GuiHostServer {
 				logger.warn("GUI host could not re-state the session index", { error: errorMessage(error) });
 			}
 		};
+		clientState.republishWorkspace = () => republishWorkspace(socket, clientState, this.#cwd);
 		this.#clientStates.set(socket, clientState);
 		// 1. Write greeting frame first
 		writeFrame(socket, {

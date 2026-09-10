@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { FileType, fuzzyFind, type GlobMatch, GrepOutputMode, glob, grep, listWorkspace } from "@veyyon/natives";
 import { errorMessage } from "@veyyon/utils";
 import { openPath } from "../../utils/open";
-import type { FileKind, FileNode } from "../wire";
+import type { FileKind, FileNode, FileTreeView } from "../wire";
 import type { ActionHandler, ActionHandlersMap } from "./types";
 
 export const FILE_TREE_MAX_DEPTH = 16;
@@ -111,6 +111,27 @@ interface LoadFileTreePayload {
 	root?: string | null;
 }
 
+/**
+ * The workspace tree under `root`, as the walker reports it now.
+ *
+ * A view rather than a frame, because two callers publish it: the action a
+ * client sends, and the re-statement the host makes when a turn that created
+ * or deleted files goes idle.
+ */
+export async function fileTreeView(cwd: string, root: string): Promise<FileTreeView> {
+	const { entries, truncated: nativeTruncated } = await listWorkspace({
+		path: root,
+		maxDepth: FILE_TREE_MAX_DEPTH,
+		hidden: false,
+		gitignore: true,
+	});
+
+	const treeMap = buildTree(entries, root, cwd);
+	const { nodes, truncated: dfsTruncated } = flattenTreeDfs(treeMap, 0, [], FILE_TREE_MAX_ENTRIES);
+
+	return { root, entries: nodes, truncated: nativeTruncated || dfsTruncated };
+}
+
 const handleLoadFileTree: ActionHandler<LoadFileTreePayload | undefined> = async (ctx, payload) => {
 	const targetDir = payload?.root ? path.resolve(ctx.cwd, payload.root) : ctx.cwd;
 
@@ -148,23 +169,8 @@ const handleLoadFileTree: ActionHandler<LoadFileTreePayload | undefined> = async
 	}
 
 	try {
-		const { entries, truncated: nativeTruncated } = await listWorkspace({
-			path: targetDir,
-			maxDepth: FILE_TREE_MAX_DEPTH,
-			hidden: false,
-			gitignore: true,
-		});
-
-		const treeMap = buildTree(entries, targetDir, ctx.cwd);
-		const { nodes, truncated: dfsTruncated } = flattenTreeDfs(treeMap, 0, [], FILE_TREE_MAX_ENTRIES);
-
-		ctx.reply.snapshot({
-			FileTree: {
-				root: targetDir,
-				entries: nodes,
-				truncated: nativeTruncated || dfsTruncated,
-			},
-		});
+		ctx.clientState.fileTreeRoot = targetDir;
+		ctx.reply.snapshot({ FileTree: await fileTreeView(ctx.cwd, targetDir) });
 		ctx.reply.success();
 	} catch (error) {
 		ctx.reply.failure({
