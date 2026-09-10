@@ -379,6 +379,29 @@ describe("a turn the desktop leaves behind is ended and stated", () => {
 		}
 	});
 
+	test("branching the session on screen ends the turn it branches away from", async () => {
+		// The sweep names another session, so `BranchSession` reaches it through
+		// the switch and is settled there. Branching the session already on
+		// screen takes the early return instead, and reloads that session under
+		// its own running turn, so the branch is the only thing that can end it.
+		const client = await connect();
+		try {
+			const onScreen = await sessionWithATurnInFlight(client);
+			const branched = await client.request(3, { BranchSession: { session: onScreen } });
+			expect(branched.outcome).toEqual({ RequestSucceeded: { request: 3 } });
+			expect(clearedIn(branched.frames)).toBeTrue();
+
+			// The reply stays with the session that produced it, not with the
+			// branch, whose whole point is to re-ask the prompt.
+			expect(await messagesOnDisk(onScreen)).toEqual([
+				`user/-:${JSON.stringify([{ type: "text", text: PROMPT }])}`,
+				`assistant/aborted:${JSON.stringify([{ type: "text", text: PARTIAL }])}`,
+			]);
+		} finally {
+			client.destroy();
+		}
+	});
+
 	test("a session that is not there, and the one already on screen, leave the turn alone", async () => {
 		const client = await connect();
 		try {
