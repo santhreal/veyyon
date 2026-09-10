@@ -1,19 +1,21 @@
 //! WHY: the drawer's only route to a terminal was opening the drawer. The
 //! window turns `SetDrawer { open: true }` into an attach of the newest
 //! running terminal, or a create when there is none, and it runs that once.
-//! A drawer left open therefore reached no second terminal, and one whose
-//! last terminal was closed drew an empty strip captioned `Terminal` with no
-//! control on it at all: the operator's way back to a terminal was to close
-//! the drawer and open it again. `SurfaceId::TerminalCreateButton` was gated
-//! for a control the window drew nowhere.
+//! Closing the last terminal therefore left the drawer open on an empty strip
+//! captioned `Terminal` with no control on it at all: the way back to a
+//! terminal was to close the drawer and open it again.
+//! `SurfaceId::TerminalCreateButton` was gated for a control the window drew
+//! nowhere.
 //!
 //! CLASS CLOSED: every tab the drawer can show states what it offers, pinned
-//! as the whole chrome row by exact equality, and the terminal contexts --
-//! a terminal tab, and the empty strip that is a drawer with no terminal in
-//! it -- offer a route to one more. The sweep matches over `DrawerTab`
-//! exhaustively, so a new tenant turns this red until its row is recorded,
-//! and reads the row off the frame rather than a vocabulary list, so a
-//! control added to the chrome fails here until it is stated.
+//! as the whole chrome row by exact equality, and the one state with no
+//! tenant to work with -- the empty strip -- offers the route to one. The
+//! sweep matches over `DrawerTab` exhaustively, so a new tenant is red until
+//! its row is recorded, and reads the row off the frame rather than a
+//! vocabulary list, so a control added to the chrome fails here until it is
+//! stated. Pinning the rows is also what holds the §6.6 ceiling this row
+//! authors: five interactive elements, which a strip carrying a tenant plus
+//! `Clear`, `Restart` and `Close` already spends.
 //!
 //! The press is the drawn `New`, located by the word the frame recorded and
 //! pressed at its centre, so a control wired to nothing fails here rather
@@ -21,9 +23,12 @@
 //!
 //! GAPS: it drives the window, not the host. That `CreateTerminal` opens a
 //! terminal is the host's contract, and that the intent reaches that action
-//! is `an-intent-maps-to-the-actions-the-host-answers`. A process log tab
-//! carries no control of its own here: its process is worked from the row it
-//! has on the list tab, which is another suite's subject.
+//! is `an-intent-maps-to-the-actions-the-host-answers`. The window asks for a
+//! terminal only where it has none, so a second one beside a terminal already
+//! drawn is the host's to create and the strip's to draw; nothing here offers
+//! it. A process log tab carries no control of its own either: its process is
+//! worked from the row it has on the list tab, which is another suite's
+//! subject.
 
 use std::path::Path;
 
@@ -79,6 +84,12 @@ fn drawer_state(tabs: Vec<DrawerTab>, active: usize) -> ShellState {
 		..DrawerContent::default()
 	};
 	state
+}
+
+/// The drawer as closing the last terminal leaves it: open, offered, and with
+/// nothing in its strip.
+fn emptied_drawer() -> ShellState {
+	drawer_state(Vec::new(), 0)
 }
 
 /// Opens a window on `state` and runs `drive`.
@@ -161,29 +172,20 @@ fn press(state: ShellState, label: &str) -> Vec<Intent> {
 }
 
 #[test]
-fn pressing_new_on_a_terminal_asks_for_one_more() {
-	let raised = press(drawer_state(vec![terminal("bash")], 0), "New");
-	assert!(
-		raised.contains(&Intent::NewTerminal),
-		"the drawn `New` asks for another terminal, raised {raised:?}"
-	);
-}
-
-#[test]
 fn a_drawer_whose_last_terminal_was_closed_can_open_another() {
 	// The state the `Close` beside it leaves: an open drawer with an empty
 	// strip. Before the fix this frame carried the caption and nothing else,
 	// so the only way back to a terminal was closing the drawer.
-	let raised = press(drawer_state(Vec::new(), 0), "New");
+	let raised = press(emptied_drawer(), "New");
 	assert!(
 		raised.contains(&Intent::NewTerminal),
-		"an empty drawer offers a terminal, raised {raised:?}"
+		"an empty drawer offers the terminal it does not have, raised {raised:?}"
 	);
 }
 
 #[test]
 fn a_host_that_opens_no_terminal_draws_the_control_inert() {
-	let mut state = drawer_state(vec![terminal("bash")], 0);
+	let mut state = emptied_drawer();
 	let session = SessionId::from(state.current_id.to_string());
 	state
 		.controls
@@ -202,14 +204,17 @@ fn every_tab_the_drawer_can_show_states_what_it_offers() {
 	// The whole chrome row, read off the frame and pinned by exact equality:
 	// a control added to the chrome, or one that stops being drawn, fails
 	// here. The match is exhaustive, so a new tenant is red until its row is
-	// recorded rather than inheriting whatever the last arm drew.
+	// recorded rather than inheriting whatever the last arm drew. Each row is
+	// also the §6.6 count for this surface: five interactive elements, which
+	// a tab plus `Clear`, `Restart` and `Close` already spends, so `New` is
+	// drawn where there is no tenant instead of beside them.
 	for tab in
 		[terminal("bash"), DrawerTab::Processes, DrawerTab::Process { name: "web".to_owned() }]
 	{
 		let (state, anchor, expected): (ShellState, &str, Vec<&str>) = match &tab {
 			DrawerTab::Terminal { title, .. } => {
 				(drawer_state(vec![tab.clone()], 0), title.as_str(), vec![
-					"bash", "New", "Clear", "Restart", "Close",
+					"bash", "Clear", "Restart", "Close",
 				])
 			},
 			DrawerTab::Processes => {
@@ -232,7 +237,7 @@ fn every_tab_the_drawer_can_show_states_what_it_offers() {
 		assert_eq!(words, expected, "the chrome row of {tab:?}");
 	}
 
-	let empty = driven(drawer_state(Vec::new(), 0), |session| {
+	let empty = driven(emptied_drawer(), |session| {
 		let captured = session.frame().expect("the drawer renders");
 		chrome_row_words(&captured, "Terminal")
 	});

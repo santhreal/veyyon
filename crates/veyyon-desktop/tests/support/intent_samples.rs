@@ -134,6 +134,7 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 		IntentDiscriminants::ClearTerminal => vec![Intent::ClearTerminal],
 		IntentDiscriminants::RestartTerminal => vec![Intent::RestartTerminal],
 		IntentDiscriminants::CloseTerminal => vec![Intent::CloseTerminal],
+		IntentDiscriminants::NewTerminal => vec![Intent::NewTerminal],
 		IntentDiscriminants::ClearOutput => vec![Intent::ClearOutput],
 		IntentDiscriminants::CancelTool => {
 			vec![Intent::CancelTool { call_id: "tool-1".to_string() }]
