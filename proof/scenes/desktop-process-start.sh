@@ -5,15 +5,14 @@
 # Records visual evidence for:
 #   1. supervisor-open (the drawer open on the supervisor, before anything is in it)
 #   2. command-typed (the same drawer with a command stated in its field)
-#   3. process-running (the same drawer a press of `Start` later)
+#   3. aim-taken (the pointer resting on the `Start` the press lands on)
+#   4. process-running (the same drawer a press of `Start` later)
 #
 # THE PAIR IS TWO BINARIES, not two settings. The `Start` dispatched
 # `ProcessStart { command: "", args: [] }`, which the host answers with
-# `INVALID_ARGUMENTS`, and there was nowhere on the surface to state a command;
-# the tab it sits on was pushed only once the host already listed a process, so
-# the tab the first process is started from appeared only after something else
-# had started one. Both arms run this same scene; the window is the
-# differential.
+# `INVALID_ARGUMENTS`, and there was nowhere on the surface to state a command,
+# so the control could not succeed on any press from any state. Both arms run
+# this same scene, press the same word, and the window is the differential.
 #
 #   SCENE_MOTION_FLOOR=5 proof/docker/record-native.sh \
 #     proof/scenes/desktop-process-start.sh
@@ -183,8 +182,8 @@ PY
 }
 
 # Nothing is supervised before the press, in either arm. A workspace that
-# already had a process in it would hand the before arm the tab the defect
-# withholds, and the after arm a row it did not start.
+# already had a process in it would hand the after arm a row it did not start,
+# and the before arm a list its press cannot be read against.
 STARTING_LIST="$(host_processes 2)"
 case "${STARTING_LIST}" in
 	"count=0 "*) ;;
@@ -234,27 +233,22 @@ shot command-typed
 TYPED="$(shots_differ_pixels supervisor-open command-typed)"
 
 # ─── The Press, On The Word The Chrome States ────────────────────────────────
-# The after arm presses the supervisor's `Start`, at the trailing end of the
-# drawer's chrome row. That aim does not exist in the before window: with no
-# supervisor tab, the chrome row's trailing control there is the active
-# terminal's own `Close`, so pressing it would photograph a terminal closing
-# rather than a supervisor starting nothing. The before arm presses inside the
-# drawer body instead, where the supervisor's field and `Start` would be, and
-# rests its claim on the host list below.
-if [ "${ARM}" = "before" ]; then
-	PRESS_X="${FIELD_X}"
-	PRESS_Y="${FIELD_Y}"
-else
-	PRESS_X="${START_X}"
-	PRESS_Y="${CHROME_MID_Y}"
-fi
-echo "scene: pressing at ${PRESS_X},${PRESS_Y}" >&2
-move_px "${PRESS_X}" "${PRESS_Y}"
-pause 0.4
+# Both arms press the supervisor's `Start`, at the trailing end of the drawer's
+# chrome row. The aim exists in both windows -- the tab is offered on the
+# capability the host declared, which is not what this pair holds back -- so
+# the press is the same press, and what it asks the host for is the difference.
+#
+# The pointer rests on the word first and the baseline is taken there, so the
+# hover fill a control paints as a pointer arrives sits in both shots rather
+# than in the number the press is read from.
+echo "scene: pressing at ${START_X},${CHROME_MID_Y}" >&2
+move_px "${START_X}" "${CHROME_MID_Y}"
+pause 0.6
+shot aim-taken
 click
 settle 3
 shot process-running
-PRESSED="$(shots_differ_pixels command-typed process-running)"
+PRESSED="$(shots_differ_pixels aim-taken process-running)"
 LIST="$(host_processes 20)"
 
 echo "scene: drawer ${OPENED}px open, ${TYPED}px typed, ${PRESSED}px after the press;" \
@@ -278,7 +272,17 @@ if [ "${ARM}" = "before" ]; then
 				"the host did not answer RefreshProcesses (${LIST}), so this take cannot say the window was what offered nothing"
 			;;
 	esac
-	echo "scene: before arm -- the drawer opened on a supervisor with no tab, no field and a Start that started nothing (${LIST})" >&2
+	# The frames say the same thing as the list: there is nowhere for the
+	# line to land and the press leaves the drawer as it was.
+	if [ "${TYPED}" -ge 150 ]; then
+		abandon_take "the-command-reached-no-field" \
+			"the drawer changed ${TYPED} pixels while a command was typed, so this window has a field and is not the before one"
+	fi
+	if [ "${PRESSED}" -ge 150 ]; then
+		abandon_take "the-press-changed-nothing" \
+			"the drawer changed ${PRESSED} pixels on the press, so the press did something and this arm is not the before one"
+	fi
+	echo "scene: before arm -- the supervisor drew no field for a command, and its Start started nothing (${LIST})" >&2
 else
 	if [ "${TYPED}" -lt 150 ]; then
 		abandon_take "the-command-reached-the-field" \
