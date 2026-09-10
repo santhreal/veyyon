@@ -1,72 +1,11 @@
-import * as path from "node:path";
 import { ThinkingLevel } from "@veyyon/agent-core";
-import type { Model } from "@veyyon/ai";
-import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
 import { errorMessage, logger } from "@veyyon/utils";
-import { ModelRegistry } from "../../config/model-registry";
-import { parseModelString } from "../../config/model-resolver";
 import { DEFAULT_MODEL_SLOT } from "../../config/model-roles";
-import { Settings } from "../../config/settings";
-import { writeFrame } from "../frames";
+import { buildModelsView, offeredModelsFor, publishModelsView } from "../models-view";
 import { getOrCreateAgentSession } from "../turns";
-import type { ModelRef, ModelsView, ModelView } from "../wire";
 import type { ActionContext, ActionHandler, ActionHandlersMap } from "./types";
 
 const VALID_THINKING_LEVELS: readonly string[] = Object.values(ThinkingLevel);
-
-async function buildModelsView(ctx: ActionContext): Promise<ModelsView> {
-	const registry =
-		ctx.clientState.agentSession?.modelRegistry ??
-		new ModelRegistry(await ctx.authStorage(), path.join(ctx.agentDir, "models.yml"));
-	// The models a turn can actually run: `getAvailable()` keeps a provider that
-	// holds a credential or needs none, and drops the rest of the bundled
-	// catalog. `getAll()` offers four fifths of the catalog as choices that fail
-	// at the first prompt, and `SelectModel` persists whichever is picked.
-	const offered = registry.getAvailable();
-	const models: ModelView[] = offered.map(m => ({
-		provider: m.provider,
-		id: m.id,
-		name: m.name ?? m.id,
-		reasoning: m.reasoning === true,
-		input: m.input,
-		context_window: m.contextWindow ?? 0,
-		max_output: m.maxTokens ?? 0,
-	}));
-
-	let currentModel: Model | undefined = ctx.clientState.agentSession?.model;
-	if (!currentModel) {
-		try {
-			const settings = await Settings.loadIsolated({ cwd: ctx.cwd, agentDir: ctx.agentDir });
-			const defaultSlot = settings.getModelRole(DEFAULT_MODEL_SLOT);
-			if (defaultSlot) {
-				const parsed = parseModelString(defaultSlot);
-				if (parsed) {
-					currentModel = registry.find(parsed.provider, parsed.id);
-				}
-			}
-		} catch {
-			// Fall back to no active model
-		}
-	}
-
-	const current: ModelRef | null = currentModel ? { provider: currentModel.provider, id: currentModel.id } : null;
-
-	const thinking_level = ctx.clientState.agentSession?.thinkingLevel ?? null;
-
-	let thinking_levels: string[] = [];
-	if (currentModel?.reasoning) {
-		const efforts = getSupportedEfforts(currentModel);
-		const supportsOff = currentModel.thinking?.requiresEffort !== true;
-		thinking_levels = [...(supportsOff ? [ThinkingLevel.Off] : []), ...efforts];
-	}
-
-	return {
-		models,
-		current,
-		thinking_level,
-		thinking_levels,
-	};
-}
 
 const handleRefreshModels: ActionHandler = async ctx => {
 	try {
@@ -122,6 +61,19 @@ const handleSelectModel: ActionHandler<SelectModelPayload | undefined> = async (
 				scope: "Provider",
 				code: "MODEL_NOT_AUTHENTICATED",
 				message: `No credentials are stored for provider '${payload.provider}'`,
+				retryable: false,
+			});
+			return;
+		}
+		// `enabledModels` is the scope the session honours, so a model outside it
+		// is not one this client was offered and would not be the model a turn
+		// runs on either.
+		const offered = await offeredModelsFor(ctx);
+		if (!offered.some(model => model.provider === found.provider && model.id === found.id)) {
+			ctx.reply.failure({
+				scope: "Provider",
+				code: "MODEL_NOT_ENABLED",
+				message: `Model '${payload.provider}/${payload.model}' is outside the enabledModels scope`,
 				retryable: false,
 			});
 			return;
@@ -207,12 +159,7 @@ export async function publishModelsAfterAuthChange(ctx: ActionContext): Promise<
 	} catch (error) {
 		logger.warn("GUI host: model discovery failed after authentication", { error: errorMessage(error) });
 	}
-	try {
-		writeFrame(ctx.socket, { Snapshot: { Models: await buildModelsView(ctx) } });
-		ctx.clientState.revision += 1;
-	} catch (error) {
-		logger.warn("GUI host: model list unavailable after authentication", { error: errorMessage(error) });
-	}
+	await publishModelsView(ctx.socket, ctx);
 }
 
 export const modelsActionHandlers: ActionHandlersMap = {

@@ -18,6 +18,7 @@ import { MAX_IMAGE_INPUT_BYTES } from "../utils/image-loading";
 import { base64DecodedBytes, MAX_PROMPT_ATTACHMENT_BYTES, MAX_VIDEO_INPUT_BYTES } from "../utils/video-loading";
 import { writeFrame } from "./frames";
 import { GuiHostUIContext, InteractionLedger } from "./interactions";
+import { publishModelsView } from "./models-view";
 import { enterPlanModeIfConfigured } from "./plan-approval";
 import type { PresentationLedger } from "./presentation";
 import { reportQueuedPrompts } from "./queued-prompts";
@@ -158,6 +159,11 @@ export async function getOrCreateAgentSession(
 	state.agentSession = session;
 	attachTurnListeners(session, socket, state);
 	await enterPlanModeIfConfigured(session, ledger);
+	// The session resolves its own model, through a longer chain than a
+	// configuration read can reproduce, and until now nothing told the client
+	// which one it picked: the composer kept offering to select a model while
+	// a prompt would have run on this one.
+	await publishModelsView(socket, { clientState: state, ...options });
 	return session;
 }
 
