@@ -24,6 +24,8 @@ pub(super) fn fixture_panel() -> PanelContent {
 		derived_from:       DerivedFrom { changes: 1, file_content: 1, export: 0 },
 		// The fixture's host sent the working tree whole.
 		withheld:           DiffWithheld::default(),
+		// The fixture's host answered every request it was sent.
+		failure:            None,
 		diff:               vec![DiffFile {
 			path:      "crates/veyyon-desktop-surface/src/panel.rs".to_string(),
 			old_path:  None,

@@ -5,7 +5,9 @@ use std::{collections::BTreeSet, ops::Range};
 
 use serde::{Deserialize, Serialize};
 use veyyon_desktop_kit::ColorRole;
-use veyyon_desktop_model::{ChangeStatus, DiffMode, UsageTotals};
+use veyyon_desktop_model::{ChangeStatus, DiffMode, SurfaceId, UsageTotals};
+
+use crate::controls::ControlError;
 
 /// The active tenant in the right panel (§5.6, §5.11).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, strum::EnumIter)]
@@ -109,6 +111,23 @@ pub struct DiffWithheld {
 	pub diff_bytes:     usize,
 }
 
+/// The failure the host sent for the tab the panel is drawing, with the
+/// control it landed on.
+///
+/// A failure routed to a right-panel control used to reach nothing that draws
+/// it: the pane read the error only to report a status of its own, so the
+/// sentence the host wrote and the retry it offered were both discarded, and a
+/// refused working tree read as "Failed to load changes" with no reason and no
+/// way to ask again. The surface travels with the message because a retry
+/// sends the request that failed there, which the surface id is the key to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PanelFailure {
+	/// The control the failure landed on, and the key to the request it sent.
+	pub surface: SurfaceId,
+	/// What the host said, and whether it offered to be asked again.
+	pub error:   ControlError,
+}
+
 /// All state rendered by the right panel (§5.6).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PanelContent {
@@ -134,6 +153,8 @@ pub struct PanelContent {
 	pub derived_from:       DerivedFrom,
 	/// What the host cut from the snapshot `diff` was parsed from.
 	pub withheld:           DiffWithheld,
+	/// The host's failure for the active tab, restated every projection.
+	pub failure:            Option<PanelFailure>,
 }
 
 impl PanelContent {

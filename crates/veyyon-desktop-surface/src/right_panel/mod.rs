@@ -17,7 +17,7 @@ pub mod usage_view;
 
 pub use content::{
 	DerivedFrom, DiffFile, DiffRow, DiffStatus, DiffWithheld, FileLine, FileView, HighlightSpan,
-	PanelContent, PanelTab, TreeContent, TreeRowItem, TreeStatus,
+	PanelContent, PanelFailure, PanelTab, TreeContent, TreeRowItem, TreeStatus,
 };
 pub use file_view::{file_view, highlight_source};
 pub use pane_scroll::{PaneId, PaneScrolls};
@@ -32,6 +32,7 @@ use veyyon_gpui::{
 
 use crate::{
 	ShellView,
+	controls::error_hairline,
 	damage::{LaidOut, Region},
 	intent::Intent,
 	keymap::actions::{NextTab, PreviousTab, ToggleDiffMode},
@@ -55,6 +56,20 @@ pub fn right_panel(
 	window: &mut Window,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
+	// The host's own sentence, above whatever the panel draws below it: the
+	// tab's status enum can say a request failed, and only the error it landed
+	// on carries why and whether asking again is offered (§4.4). Built before
+	// the branch because a panel whose capabilities went away still holds the
+	// failure of the request it sent while it had them.
+	let failure_row = panel.failure.as_ref().map(|failure| {
+		div()
+			.id("right-panel-failure")
+			.flex_shrink_0()
+			.w_full()
+			.px(tokens.spacing(SpacingStep::S2))
+			.py(tokens.spacing(SpacingStep::S1))
+			.child(error_hairline(&failure.error, failure.surface.clone(), tokens, cx))
+	});
 	if panel.tabs.is_empty() {
 		let reason = panel
 			.unavailable_reason
@@ -71,6 +86,7 @@ pub fn right_panel(
 			.bg(tokens.color(ColorRole::Rail))
 			.overflow_hidden()
 			.child(tab_strip(panel, geometry, tokens, cx))
+			.children(failure_row)
 			.child(
 				div()
 					.id("right-panel-unavailable")
@@ -164,6 +180,7 @@ pub fn right_panel(
 		// the panel is docked, the sheet's frame when it overlays (§5.6).
 		.overflow_hidden()
 		.child(tab_strip(panel, geometry, tokens, cx))
+		.children(failure_row)
 		.child(active_content)
 		.into_any_element()
 }

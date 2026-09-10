@@ -169,6 +169,10 @@ pub fn project_panel(
 		unavailable_reason,
 		derived_from,
 		withheld,
+		// The failure the active tab states is resolved from the controls
+		// after this, every projection, so nothing here can outlive the
+		// error it described.
+		failure: None,
 	}
 }
 

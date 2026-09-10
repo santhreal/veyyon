@@ -88,6 +88,8 @@ pub fn state() -> ShellState {
 			tabs:               vec![PanelTab::Diff, PanelTab::File, PanelTab::Tree],
 			active_tab:         PanelTab::Diff,
 			withheld:           DiffWithheld::default(),
+			// A host that answered every request the panel sent.
+			failure:            None,
 			diff:               vec![DiffFile {
 				path:      "src/main.rs".to_string(),
 				old_path:  None,

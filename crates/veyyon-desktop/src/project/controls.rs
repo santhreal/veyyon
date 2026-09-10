@@ -14,10 +14,11 @@
 mod gates;
 
 use veyyon_desktop_model::{
-	Capability, CapabilityStatus, ErrorScope, HostActionKind, RequestRegistry, Store, SurfaceId,
-	fallback_surface, gate_kind,
+	Capability, CapabilityStatus, HostActionKind, RequestRegistry, Store, SurfaceId, gate_kind,
 };
-use veyyon_desktop_surface::{Availability, DiffStatus, ShellState, TreeStatus};
+use veyyon_desktop_surface::{
+	Availability, DiffStatus, PanelFailure, PanelTab, ShellState, TreeStatus,
+};
 
 use self::gates::{composer_controls, composer_row};
 pub use self::gates::{contextual_surface_for_action, gated_controls, session_row_controls};
@@ -163,25 +164,31 @@ pub fn project_controls(
 	let has_changes = store.domains.changes.is_some();
 	let diff_unavailable =
 		matches!(store.capabilities.get(Capability::Changes), CapabilityStatus::Unavailable { .. });
-	let diff_error = state
-		.controls
-		.error(&SurfaceId::RightPanelDiffTab(row.clone()))
-		.is_some()
-		|| active_id.is_some_and(|s| {
-			state
-				.controls
-				.error(&SurfaceId::RightPanelDiffTab(s.clone()))
-				.is_some()
-		}) || state
-		.controls
-		.error(&fallback_surface(ErrorScope::Change, active_id))
-		.is_some();
+	// A request registers under the session id the host uses, the projection
+	// reads the row the queue draws, and a scope switch lands on the selector
+	// rather than the tab, so the failure is looked for under each of them in
+	// turn and the first one found is the tab's.
+	//
+	// The scope's fallback control is not one of them: `ErrorScope::Change`
+	// falls back to the titlebar's line, so reading it here made every
+	// failure the titlebar owns -- a lost connection, a refused credential,
+	// a lifecycle error -- report as "Failed to load changes" over a working
+	// tree the panel had loaded and no request had refused.
+	let mut diff_surfaces = vec![
+		SurfaceId::RightPanelDiffTab(row.clone()),
+		SurfaceId::RightPanelChangeScopeSelector(row.clone()),
+	];
+	if let Some(session) = active_id {
+		diff_surfaces.push(SurfaceId::RightPanelDiffTab(session.clone()));
+		diff_surfaces.push(SurfaceId::RightPanelChangeScopeSelector(session.clone()));
+	}
+	let diff_failure = first_failure(state, &diff_surfaces);
 
 	state.panel.diff_status = if diff_pending {
 		DiffStatus::Loading
 	} else if has_changes {
 		DiffStatus::Loaded
-	} else if diff_unavailable || diff_error {
+	} else if diff_unavailable || diff_failure.is_some() {
 		DiffStatus::Failed
 	} else {
 		DiffStatus::Unloaded
@@ -197,27 +204,43 @@ pub fn project_controls(
 	let has_tree = store.domains.file_tree.is_some();
 	let tree_unavailable =
 		matches!(store.capabilities.get(Capability::Files), CapabilityStatus::Unavailable { .. });
-	let tree_error = state
-		.controls
-		.error(&SurfaceId::RightPanelFileTab(row))
-		.is_some()
-		|| active_id.is_some_and(|s| {
-			state
-				.controls
-				.error(&SurfaceId::RightPanelFileTab(s.clone()))
-				.is_some()
-		}) || state
-		.controls
-		.error(&fallback_surface(ErrorScope::File, active_id))
-		.is_some();
+	let mut file_surfaces = vec![SurfaceId::RightPanelFileTab(row)];
+	if let Some(session) = active_id {
+		file_surfaces.push(SurfaceId::RightPanelFileTab(session.clone()));
+	}
+	// No fallback here either: `ErrorScope::File`'s is the titlebar's line.
+	let file_failure = first_failure(state, &file_surfaces);
 
 	state.panel.tree.status = if tree_pending {
 		TreeStatus::Loading
 	} else if has_tree {
 		TreeStatus::Loaded
-	} else if tree_unavailable || tree_error {
+	} else if tree_unavailable || file_failure.is_some() {
 		TreeStatus::Failed
 	} else {
 		TreeStatus::Unloaded
 	};
+
+	// The panel draws one tab, so it states that tab's failure and no other:
+	// a File tab open while the working tree was refused would otherwise
+	// carry the diff's error over the document it did load.
+	state.panel.failure = match state.panel.active_tab {
+		PanelTab::Diff => diff_failure,
+		PanelTab::File | PanelTab::Tree => file_failure,
+		PanelTab::Usage => first_failure(state, &[SurfaceId::UsageRefreshButton]),
+	};
+}
+
+/// The first of these controls carrying a failure, as the panel states it.
+///
+/// One request registers under one surface, so at most one of a tab's
+/// candidates holds an error in practice; the order is what decides when a
+/// stale fallback and a fresh contextual failure are both set.
+fn first_failure(state: &ShellState, surfaces: &[SurfaceId]) -> Option<PanelFailure> {
+	surfaces.iter().find_map(|surface| {
+		state
+			.controls
+			.error(surface)
+			.map(|error| PanelFailure { surface: surface.clone(), error: error.clone() })
+	})
 }
