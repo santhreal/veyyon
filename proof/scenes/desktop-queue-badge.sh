@@ -49,16 +49,6 @@ set -euo pipefail
 
 source "${BASH_SOURCE[0]%/*}/desktop-composer.sh"
 
-# ─── The Fill The Working Chip Paints ────────────────────────────────────────
-# Read from the theme this checkout ships rather than restated as a literal, so
-# a retheme cannot make the scene silently stop finding the chip.
-THEME_FILE="${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/themes/dark.toml"
-WORKING_FILL="$(sed -n '/^\[tint.working\]/,/^\[/ s/^fill = "\(#[0-9a-fA-F]\{6\}\)".*/\1/p' \
-	"${THEME_FILE}" | head -1)"
-if [ -z "${WORKING_FILL}" ]; then
-	abandon_take "working-tint-known" "no [tint.working] fill in ${THEME_FILE}"
-fi
-
 # ─── Where The Queue Is ──────────────────────────────────────────────────────
 # The queue is 256px wide beside the transcript, and collapses below it at the
 # minimum width, where this scene has nothing to photograph.
@@ -76,19 +66,11 @@ CROP_H=$(( WIN_H - TITLEBAR_H ))
 # card's own selected fill contributes at this fuzz.
 CHIP_MIN_FILL=200
 
+# The chip the preamble's counter looks for is `[tint.working]`'s fill, which
+# nothing else in the window paints, over this scene's own crop.
 working_fill_pixels() { # <shot> -> count of pixels of the working tint's fill
-	local png="${SCENE_OUT}/${SCENE_NAME}-$1.png"
-	local counted
-	counted="$(magick "${png}" -crop "${CROP_W}x${CROP_H}+${CROP_X}+${CROP_Y}" +repage \
-		-fuzz 6% -fill white -opaque "${WORKING_FILL}" -fill black +opaque white \
-		-format '%[fx:round(mean*w*h)]' info: 2>/dev/null || true)"
-	case "${counted}" in
-		'' | *[!0-9]*)
-			abandon_take "working-fill-countable" \
-				"counting the working tint in $1 reported '${counted}' instead of a pixel count"
-			;;
-	esac
-	printf '%s' "${counted}"
+	working_tint_pixels "${SCENE_OUT}/${SCENE_NAME}-$1.png" \
+		"${CROP_W}x${CROP_H}+${CROP_X}+${CROP_Y}"
 }
 
 # ─── A Real Turn, Long Enough To Photograph ──────────────────────────────────

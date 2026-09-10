@@ -534,3 +534,30 @@ submit_prompt() { # <text> [floor-pixels]
 	type_prompt "$@"
 	k "Return"
 }
+
+# ─── The Working Tint A Row Carries While Its Turn Runs ──────────────────────
+# `[tint.working]` is the fill the `Working` chip paints, and nothing else in
+# the window paints it, so a count of that fill inside a crop is a reading of
+# how many running turns the crop reports. The fill is read from the theme this
+# checkout ships rather than restated as a literal, so a retheme cannot make a
+# scene silently stop finding the chip it is counting, and the count is refused
+# rather than defaulted when the reading is not a number.
+working_tint_pixels() { # <png> <crop> -> pixels of the working fill inside the crop
+	local png="$1" crop="$2" theme fill counted
+	theme="${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/themes/dark.toml"
+	fill="$(sed -n '/^\[tint.working\]/,/^\[/ s/^fill = "\(#[0-9a-fA-F]\{6\}\)".*/\1/p' \
+		"${theme}" | head -1)"
+	if [ -z "${fill}" ]; then
+		abandon_take "working-tint-known" "no [tint.working] fill in ${theme}"
+	fi
+	counted="$(magick "${png}" -crop "${crop}" +repage \
+		-fuzz 6% -fill white -opaque "${fill}" -fill black +opaque white \
+		-format '%[fx:round(mean*w*h)]' info: 2>/dev/null || true)"
+	case "${counted}" in
+		'' | *[!0-9]*)
+			abandon_take "working-tint-countable" \
+				"counting the working tint in ${png} reported '${counted}' instead of a pixel count"
+			;;
+	esac
+	printf '%s' "${counted}"
+}
