@@ -78,7 +78,7 @@ fn a_refused_request_is_what_its_control_sends_again() {
 
 	for intent in every_sample_intent() {
 		for action in actions_for(&intent, &index, &mut store) {
-			let surface = surface_for_action(&intent, action.kind(), active.as_ref());
+			let surface = surface_for_action(&intent, &action, active.as_ref());
 			// A retry re-sends the request, so a control whose own action IS a
 			// retry would otherwise be swept against itself.
 			if matches!(intent, Intent::RetryControl(_)) {

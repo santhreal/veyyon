@@ -12,7 +12,6 @@ use veyyon_desktop_kit::{
 	ColorRole, MonoSizeStep, MonoText, SpacingStep, TextWeight, TokenSet,
 	input::{Editor, TextField},
 };
-use veyyon_desktop_model::{SessionId, SurfaceId};
 use veyyon_desktop_tokens::{DrawerPlacement, PanelsSurfaceTokens};
 use veyyon_gpui::{
 	Context, Entity, Hsla, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
@@ -21,12 +20,12 @@ use veyyon_gpui::{
 
 pub use self::{
 	chrome::drawer_chrome,
-	content::{DrawerContent, DrawerSearch, DrawerTab, ProcessRow},
+	content::{DrawerContent, DrawerFailure, DrawerSearch, DrawerTab, ProcessRow},
 	process_list::process_list,
 };
 use crate::{
 	Intent, ShellView,
-	controls::{ControlStates, hairline_for},
+	controls::{ControlStates, error_hairline},
 	damage::{LaidOut, Region},
 	terminal::{Ink, NamedColor},
 };
@@ -177,15 +176,27 @@ pub fn terminal_drawer(
 			.border_color(tokens.color(ColorRole::Hairline));
 	}
 
+	// The host's sentence for whatever the drawer last asked it for, above
+	// the tab it was asked from. The drawer read one control for this -- the
+	// terminal it creates on its own opening -- so a start the host refused,
+	// a line it could not write and a process it could not stop each landed
+	// on a control nothing draws (§4.4). What lands here is resolved every
+	// projection, so an error the operator dismissed is gone from the next
+	// frame.
+	let failure_row = content.failure.as_ref().map(|failure| {
+		div()
+			.id("drawer-failure")
+			.flex_shrink_0()
+			.w_full()
+			.px(tokens.spacing(SpacingStep::S3))
+			.py(tokens.spacing(SpacingStep::S1))
+			.child(error_hairline(&failure.error, failure.surface.clone(), tokens, cx))
+	});
+
 	laid_out.track_children(
 		shell
 			.child(drawer_chrome(content, controls, session_id, geometry, tokens, cx))
-			.children(hairline_for(
-				controls,
-				&SurfaceId::TerminalCreateButton(SessionId::from(session_id.to_string())),
-				tokens,
-				cx,
-			))
+			.children(failure_row)
 			.child(body),
 		|index| (index == 0).then_some(Region::DrawerChrome),
 	)

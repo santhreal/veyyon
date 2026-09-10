@@ -332,6 +332,7 @@ pub fn with_drawer() -> ShellState {
 			selection: None,
 			search: None,
 			offered: true,
+			failure: None,
 		},
 		drawer_open: true,
 		..populated()

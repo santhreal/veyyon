@@ -4,7 +4,12 @@
 //! cursor position, scroll offset, supervised process rows, search filters,
 //! and selection highlights.
 
-use crate::terminal::{Cell, TerminalSelection};
+use veyyon_desktop_model::SurfaceId;
+
+use crate::{
+	controls::ControlError,
+	terminal::{Cell, TerminalSelection},
+};
 
 /// A tab in the drawer tab strip.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,6 +65,24 @@ pub struct DrawerSearch {
 	pub match_count: usize,
 }
 
+/// The failure the host sent for a control the drawer draws, with the
+/// control it landed on.
+///
+/// The drawer sends a request from every control on it -- the strip's `New`,
+/// a terminal's `Clear`, `Restart` and `Close`, the supervisor's `Start`, a
+/// row's `Stop`, `Restart` and `Send` -- and the refusal the host answers
+/// with lands on the control that sent it. The drawer stated one of them, so
+/// a start the host refused and a line it could not write reached nothing
+/// that draws. The surface travels with the message because a retry sends
+/// the request that failed there, which the surface id is the key to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DrawerFailure {
+	/// The control the failure landed on, and the key to the request it sent.
+	pub surface: SurfaceId,
+	/// What the host said, and whether it offered to be asked again.
+	pub error:   ControlError,
+}
+
 /// State of the terminal drawer surface.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DrawerContent {
@@ -103,6 +126,9 @@ pub struct DrawerContent {
 	/// processes has no drawer, so the toggle, the chord and `/terminal` do not
 	/// offer one.
 	pub offered:        bool,
+	/// The host's failure for one of the drawer's own controls, restated
+	/// every projection.
+	pub failure:        Option<DrawerFailure>,
 }
 
 impl Default for DrawerContent {
@@ -121,6 +147,7 @@ impl Default for DrawerContent {
 			selection:      None,
 			search:         None,
 			offered:        false,
+			failure:        None,
 		}
 	}
 }

@@ -100,3 +100,95 @@ pub enum SurfaceId {
 	UsageRefreshButton,
 	ContextBreakdownRefreshButton,
 }
+
+impl SurfaceId {
+	/// Whether this control is one the terminal drawer draws (§5.6, §5.12).
+	///
+	/// The drawer states the refusal any of its own controls landed on, so it
+	/// asks here rather than naming a control: a request refused on a process
+	/// row, on the strip's `New` or on the supervisor's `Start` is one press
+	/// the operator made in one surface, and one place is where the host's
+	/// sentence belongs. The match is exhaustive, so a control added to the
+	/// vocabulary states which surface owns it before it compiles.
+	#[must_use]
+	pub const fn in_terminal_drawer(&self) -> bool {
+		match self {
+			Self::TerminalCreateButton(_)
+			| Self::TerminalCloseButton(..)
+			| Self::TerminalRestartButton(..)
+			| Self::TerminalClearButton(..)
+			| Self::ProcessStartButton(_)
+			| Self::ProcessStopButton(..)
+			| Self::ProcessRestartButton(..)
+			| Self::ProcessSignalButton(..)
+			| Self::ProcessSendButton(..)
+			| Self::ProcessLogsTab(..) => true,
+			Self::ConnectionAttachButton
+			| Self::ConnectionDetachButton
+			| Self::ConnectionRetryButton
+			| Self::ShutdownButton
+			| Self::GlobalTitlebarLine
+			| Self::QueueSessionRow(_)
+			| Self::QueueParkButton(_)
+			| Self::QueueUnparkButton(_)
+			| Self::QueueDeferButton(_)
+			| Self::QueueRecallButton(_)
+			| Self::QueuePinButton(_)
+			| Self::QueueUnpinButton(_)
+			| Self::QueueDeleteButton(_)
+			| Self::QueueFilterInput
+			| Self::NewSessionButton
+			| Self::SessionBranchButton(_)
+			| Self::SessionRenameField(_)
+			| Self::SessionExportButton(_)
+			| Self::SessionCompactButton(_)
+			| Self::SessionHandoffButton(_)
+			| Self::ComposerSendButton(_)
+			| Self::ComposerSteerButton(_)
+			| Self::ComposerQueueButton(_)
+			| Self::ComposerAbortButton(_)
+			| Self::ComposerModelSelector(_)
+			| Self::ComposerThinkingSelector(_)
+			| Self::ComposerQueueModeToggle(_)
+			| Self::ComposerQueuedTakeBack(_)
+			| Self::ComposerCancelToolButton(..)
+			| Self::ApprovalApproveButton(..)
+			| Self::ApprovalDeclineButton(..)
+			| Self::ApprovalAlwaysAllowButton(..)
+			| Self::ApprovalCancelButton(..)
+			| Self::QuestionOptionButton(..)
+			| Self::QuestionSubmitButton(..)
+			| Self::PlanAcceptButton(..)
+			| Self::PlanRefineButton(..)
+			| Self::PlanAcceptNewSessionButton(..)
+			| Self::RightPanelDiffTab(_)
+			| Self::RightPanelFileTab(_)
+			| Self::RightPanelPreviewTab(_)
+			| Self::RightPanelSessionDetailTab(_)
+			| Self::RightPanelUsageTab(_)
+			| Self::RightPanelCloseTabButton(..)
+			| Self::RightPanelChangeScopeSelector(_)
+			| Self::PaletteInput
+			| Self::PaletteItem(_)
+			| Self::SettingsField(_)
+			| Self::ThemeSelector
+			| Self::KeybindingField(_)
+			| Self::ProviderAuthStartButton(_)
+			| Self::ProviderAuthSecretSubmit(_)
+			| Self::ProviderAuthUrlOpen(_)
+			| Self::ProviderAuthCancelButton(_)
+			| Self::ProviderAuthRetryButton(_)
+			| Self::AuthRefreshButton
+			| Self::McpRetryButton(_)
+			| Self::McpEnableToggle(_)
+			| Self::TaskSpawnButton
+			| Self::TaskCancelButton(_)
+			| Self::AgentReviveButton(_)
+			| Self::DiagnosticRefreshButton
+			| Self::DiagnosticRetrySourceButton(_)
+			| Self::OutputClearButton
+			| Self::UsageRefreshButton
+			| Self::ContextBreakdownRefreshButton => false,
+		}
+	}
+}

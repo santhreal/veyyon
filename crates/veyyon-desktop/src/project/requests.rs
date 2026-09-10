@@ -1,9 +1,7 @@
 //! Which control a request belongs to, and what the window keeps about one
 //! it has just sent (§4.4).
 
-use veyyon_desktop_model::{
-	HostAction, HostActionKind, RequestId, RequestRegistry, SessionId, Store, SurfaceId,
-};
+use veyyon_desktop_model::{HostAction, RequestId, RequestRegistry, SessionId, Store, SurfaceId};
 use veyyon_desktop_surface::Intent;
 
 /// How long a request may stay in flight before the registry prunes it.
@@ -32,13 +30,30 @@ pub fn record_sent(
 
 /// Which control an intent's action belongs to, so a response the host sends
 /// back lands on the control that asked for it.
+///
+/// The action is read rather than only its kind, because a drawer control
+/// names what it acts on: a `Close` on one terminal, a `Stop` on one process.
+/// A surface resolved without that name is a control the drawer never reads,
+/// so the pending mark and the refusal both landed on an id nothing draws.
 pub fn surface_for_action(
 	intent: &Intent,
-	action: HostActionKind,
+	action: &HostAction,
 	active_session: Option<&SessionId>,
 ) -> SurfaceId {
+	let kind = action.kind();
+	// A drawer control names what it acts on, and that name is the whole
+	// difference between the control the operator pressed and one the drawer
+	// never draws. Resolved before the session-scoped paths below, under the
+	// row of no session where none is open, which is the row the drawer
+	// itself draws under.
+	let row = active_session
+		.cloned()
+		.unwrap_or_else(|| SessionId("0".into()));
+	if let Some(surface) = drawer_surface_for_action(action, &row) {
+		return surface;
+	}
 	if let Some(session) = active_session {
-		if let Some(surface) = super::contextual_surface_for_action(action, session) {
+		if let Some(surface) = super::contextual_surface_for_action(kind, session) {
 			return surface;
 		}
 		if let Some(surface) =
@@ -83,36 +98,58 @@ pub fn surface_for_action(
 				.or_else(|| active_session.cloned())
 				.unwrap_or_else(|| SessionId("0".into())),
 		),
-		Intent::SetDrawer { .. } => SurfaceId::TerminalCreateButton(
-			active_session
-				.cloned()
-				.unwrap_or_else(|| SessionId("0".into())),
-		),
-		Intent::CloseTerminal => SurfaceId::TerminalCloseButton(
-			active_session
-				.cloned()
-				.unwrap_or_else(|| SessionId("0".into())),
-			String::new(),
-		),
-		Intent::NewTerminal => SurfaceId::TerminalCreateButton(
-			active_session
-				.cloned()
-				.unwrap_or_else(|| SessionId("0".into())),
-		),
 		Intent::ClearOutput => SurfaceId::OutputClearButton,
-		Intent::ProcessStart { .. } => SurfaceId::ProcessStartButton(
-			active_session
-				.cloned()
-				.unwrap_or_else(|| SessionId("0".into())),
-		),
-		Intent::ProcessSend { process, .. } => SurfaceId::ProcessSendButton(
-			active_session
-				.cloned()
-				.unwrap_or_else(|| SessionId("0".into())),
-			process.clone(),
-		),
 		_ => SurfaceId::GlobalTitlebarLine,
 	}
+}
+
+/// The drawer control an action belongs to, or `None` for an action no
+/// control of the drawer sends.
+///
+/// Every control the drawer draws is keyed by what it acts on -- a terminal
+/// by its id, a process by its name -- so the surface is read off the action
+/// rather than off the intent, which states neither. A `Close` resolved
+/// without the terminal's id landed on `TerminalCloseButton(row, "")`, an id
+/// the chrome never reads, so the press drew no pending mark and the host's
+/// refusal of it was stated nowhere.
+///
+/// Three actions of the drawer's own capabilities are deliberately not here:
+/// `WriteTerminal` and `ResizeTerminal`, which the grid and the layout raise
+/// rather than a control, and `RefreshProcesses`, which is the window asking
+/// the host what it supervises. Their failures are the connection's, and
+/// they land on the titlebar line.
+fn drawer_surface_for_action(action: &HostAction, row: &SessionId) -> Option<SurfaceId> {
+	Some(match action {
+		HostAction::CreateTerminal { .. } | HostAction::AttachTerminal { .. } => {
+			SurfaceId::TerminalCreateButton(row.clone())
+		},
+		HostAction::ClearTerminal { terminal_id } => {
+			SurfaceId::TerminalClearButton(row.clone(), terminal_id.clone())
+		},
+		HostAction::RestartTerminal { terminal_id } => {
+			SurfaceId::TerminalRestartButton(row.clone(), terminal_id.clone())
+		},
+		HostAction::CloseTerminal { terminal_id } => {
+			SurfaceId::TerminalCloseButton(row.clone(), terminal_id.clone())
+		},
+		HostAction::ProcessStart { .. } => SurfaceId::ProcessStartButton(row.clone()),
+		HostAction::ProcessSend { process_id, .. } => {
+			SurfaceId::ProcessSendButton(row.clone(), process_id.clone())
+		},
+		HostAction::ProcessStop { process_id } => {
+			SurfaceId::ProcessStopButton(row.clone(), process_id.clone())
+		},
+		HostAction::ProcessRestart { process_id } => {
+			SurfaceId::ProcessRestartButton(row.clone(), process_id.clone())
+		},
+		HostAction::ProcessSignal { process_id, .. } => {
+			SurfaceId::ProcessSignalButton(row.clone(), process_id.clone())
+		},
+		HostAction::ProcessLogs { process_id, .. } => {
+			SurfaceId::ProcessLogsTab(row.clone(), process_id.clone())
+		},
+		_ => return None,
+	})
 }
 
 #[cfg(test)]
@@ -124,17 +161,17 @@ mod tests {
 		let row = SessionId("7".into());
 		let open = Intent::SetPanel { open: true };
 		assert_eq!(
-			surface_for_action(&open, HostActionKind::RefreshChanges, Some(&row)),
+			surface_for_action(&open, &HostAction::RefreshChanges, Some(&row)),
 			SurfaceId::RightPanelDiffTab(row.clone())
 		);
 		assert_eq!(
-			surface_for_action(&open, HostActionKind::LoadFileTree, Some(&row)),
+			surface_for_action(&open, &HostAction::LoadFileTree { root: None }, Some(&row)),
 			SurfaceId::RightPanelFileTab(row.clone())
 		);
 		assert_eq!(
 			surface_for_action(
 				&Intent::OpenFile("src/lib.rs".into()),
-				HostActionKind::ReadFile,
+				&HostAction::ReadFile { path: "src/lib.rs".into() },
 				Some(&row)
 			),
 			SurfaceId::RightPanelFileTab(row)

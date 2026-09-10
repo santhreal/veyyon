@@ -144,7 +144,7 @@ pub fn attach(
 			let now_ms = current_timestamp_ms();
 			for intent in &intents {
 				for action in actions_for(intent, &host.index, &mut host.store) {
-					let surface = surface_for_action(intent, action.kind(), active_session.as_ref());
+					let surface = surface_for_action(intent, &action, active_session.as_ref());
 					let req_id = host.link.send(action.clone());
 					record_sent(&mut host.store, &mut host.registry, req_id, &action, surface, now_ms);
 					view.update(cx, |view, _cx| view.track_submission(req_id, intent));

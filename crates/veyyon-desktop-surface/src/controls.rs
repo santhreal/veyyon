@@ -158,6 +158,17 @@ impl ControlStates {
 		self.errors.get(id)
 	}
 
+	/// Every control carrying a failure, with what the host said, in the
+	/// order the ids sort.
+	///
+	/// A surface that states the refusals of a whole region -- the drawer
+	/// asks for any of its own controls -- reads this rather than naming each
+	/// control it could have pressed, so a control added there is stated by
+	/// what it is (§4.4).
+	pub fn failures(&self) -> impl Iterator<Item = (&SurfaceId, &ControlError)> {
+		self.errors.iter()
+	}
+
 	/// Drops every availability the last projection set.
 	///
 	/// The projection is the only writer and it runs before the frame that

@@ -17,7 +17,7 @@ use veyyon_desktop_model::{
 	Capability, CapabilityStatus, HostActionKind, RequestRegistry, Store, SurfaceId, gate_kind,
 };
 use veyyon_desktop_surface::{
-	Availability, DiffStatus, PanelFailure, PanelTab, ShellState, TreeStatus,
+	Availability, DiffStatus, DrawerFailure, PanelFailure, PanelTab, ShellState, TreeStatus,
 };
 
 use self::gates::{composer_controls, composer_row};
@@ -229,6 +229,18 @@ pub fn project_controls(
 		PanelTab::File | PanelTab::Tree => file_failure,
 		PanelTab::Usage => first_failure(state, &[SurfaceId::UsageRefreshButton]),
 	};
+	// §4.4: the drawer states the refusal any of its own controls landed on,
+	// resolved from what the failure is rather than from a control named
+	// here, so a control the drawer grows is stated by what it is. The
+	// drawer read one control -- the terminal its own opening creates -- so
+	// a refused start, a line the host could not write and a process it
+	// could not stop each reached nothing that draws.
+	let drawer_failure = state
+		.controls
+		.failures()
+		.find(|(surface, _)| surface.in_terminal_drawer())
+		.map(|(surface, error)| DrawerFailure { surface: surface.clone(), error: error.clone() });
+	state.drawer.failure = drawer_failure;
 }
 
 /// The first of these controls carrying a failure, as the panel states it.
