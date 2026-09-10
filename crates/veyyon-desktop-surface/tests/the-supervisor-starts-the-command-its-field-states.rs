@@ -15,6 +15,11 @@
 //! An empty command reaching the host is what the defect was, so no case may
 //! produce one.
 //!
+//! The press the operator makes is the drawn `Start`, located by the word the
+//! frame recorded and pressed at its centre, so a control wired to nothing --
+//! which is what the run bar's `Stop` was -- fails here rather than passing on
+//! a direct call to the submit it should have been wired to.
+//!
 //! GAPS: it drives the window, not the daemon: that a well-formed
 //! `ProcessStart` starts a process is the host's contract, asserted by
 //! `an-intent-maps-to-the-actions-the-host-answers` and the host's own suites.
@@ -24,14 +29,16 @@
 use std::path::Path;
 
 use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
+use veyyon_desktop_model::{SessionId, SurfaceId};
 use veyyon_desktop_scene::{
-	headless::{RenderOptions, headless_context},
+	headless::{Captured, RenderOptions, headless_context},
 	session::HeadlessSession,
 };
 use veyyon_desktop_surface::{
-	DrawerContent, DrawerTab, Intent, Keymap, ShellState, ShellView, fixture, install_tokens,
+	Availability, DrawerContent, DrawerTab, Intent, Keymap, ShellState, ShellView, fixture,
+	install_tokens,
 };
-use veyyon_gpui::{App, AppContext, Entity};
+use veyyon_gpui::{App, AppContext, Entity, Point, px};
 
 const WIDTH: u32 = 1440;
 const HEIGHT: u32 = 900;
@@ -48,6 +55,12 @@ fn supervisor_state() -> ShellState {
 		active_tab: 0,
 		..DrawerContent::default()
 	};
+	// The gate holding a control back is another suite's subject, so the
+	// supervisor's `Start` is enabled here and this suite reads the drawing.
+	state.controls.set_availability(
+		SurfaceId::ProcessStartButton(SessionId::from(state.current_id.to_string())),
+		Availability::Enabled,
+	);
 	state
 }
 
@@ -181,4 +194,72 @@ fn the_field_the_start_reads_is_drawn_where_the_supervisor_is_open() {
 	// the transcript.
 	let top = f32::from(placeholder.bounds.origin.y);
 	assert!(top > 450.0, "the command field belongs to the drawer, drawn at y={top}");
+}
+/// Where the frame drew `label`, as the centre of the one run whose text is
+/// exactly that word.
+///
+/// A word the frame drew twice is refused rather than guessed at: the press
+/// has to land on the control, not on some other copy of its name.
+fn drawn_word(captured: &Captured, label: &str) -> Point<f32> {
+	let runs: Vec<Point<f32>> = captured
+		.text_runs
+		.iter()
+		.filter(|run| run.text.as_ref().trim() == label)
+		.map(|run| Point {
+			x: f32::from(run.bounds.origin.x) + f32::from(run.bounds.size.width) / 2.0,
+			y: f32::from(run.bounds.origin.y) + f32::from(run.bounds.size.height) / 2.0,
+		})
+		.collect();
+	assert_eq!(runs.len(), 1, "the frame draws `{label}` exactly once, drew {}", runs.len());
+	runs[0]
+}
+
+#[test]
+fn pressing_the_start_the_tab_draws_sends_what_the_field_states() {
+	// The press an operator makes, on the word the frame drew, rather than a
+	// call to the submit behind it: a `Start` wired to an empty request, or to
+	// nothing at all, fails here.
+	let mut cx = headless_context().expect("headless context available");
+	let tokens = load_bundled_tokens().expect("tokens load");
+	let theme = load_bundled_theme("dark").expect("theme loads");
+	let options =
+		RenderOptions { width: WIDTH, height: HEIGHT, scale_factor: 1.0, ..RenderOptions::default() };
+
+	let mut session = HeadlessSession::open(&mut cx, &options, move |_window, app: &mut App| {
+		let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
+			.expect("tokens and theme install");
+		app.bind_keys(Keymap::default().bindings());
+		veyyon_desktop_kit::input::ensure_editor_bindings_registered(app);
+		app.new(|_| ShellView::new(installed, supervisor_state()))
+	})
+	.expect("session opens");
+
+	let captured = session.frame().expect("the supervisor tab renders");
+	session
+		.update(|view, _window, cx| {
+			let editor = view.process_command_field_editor(cx);
+			editor.update(cx, |editor, cx| editor.set_text("bun run dev".to_owned(), cx));
+		})
+		.expect("state a command in the field the tab draws");
+
+	let at = drawn_word(&captured, "Start");
+	session
+		.click(Point { x: px(at.x), y: px(at.y) })
+		.expect("press the supervisor's start");
+
+	let intents = session
+		.update(|view, _window, _cx| view.drain_intents())
+		.expect("read back what the press did");
+	let started: Vec<&Intent> = intents
+		.iter()
+		.filter(|intent| matches!(intent, Intent::ProcessStart { .. }))
+		.collect();
+	assert_eq!(
+		started,
+		vec![&Intent::ProcessStart {
+			command: "bun".to_owned(),
+			args:    vec!["run".to_owned(), "dev".to_owned()],
+		}],
+		"the drawn `Start` sends the line the field states, raised {intents:?}"
+	);
 }
