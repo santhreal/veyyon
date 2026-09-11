@@ -492,6 +492,20 @@ Each focused page has its own command name: `/account manager`, `/account login`
 `/hotkeys`, `/mcp`, `/agents`, `/usage`, `/context`, `/settings themes`, and
 `/settings diagnostics`.
 
+The Themes page lists the appearances this build ships above the themes the
+host reported for the agent it runs. An appearance row states the theme's name
+and its polarity, with a Select control beside it and an Active badge on the
+one in use. Pointing at a row draws the whole window in that appearance;
+moving the pointer off the row draws the chosen one again. Select settles on
+the appearance, which is written to the window's own state and restored the
+next time it opens. A remembered appearance this build does not ship resolves
+to the default one.
+
+The rows under them are the host's own themes for its agent, and selecting one
+sends the choice to the host. The two listings are independent: an appearance
+decides what the window draws, and a host theme decides what the agent
+reports.
+
 A Keybindings row is a field holding the chords bound to that action,
 separated by commas. `Enter` rebinds the action, `Escape` restores what the
 host reports. A chord is modifiers and a key joined by `-`, as in
@@ -861,6 +875,23 @@ proof/docker/record-native.sh proof/scenes/desktop-attachment.sh
 SCENE_ARM=before PROOF_BASE_REF=HEAD \
   PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
   proof/docker/record-native.sh proof/scenes/desktop-attachment.sh
+```
+
+Use `proof/scenes/desktop-appearance.sh` to open the Themes page, rest the
+pointer on the appearance the window is not drawn in, and press its Select. It
+reads the mean grey of the page's own ground and of the session rail beside the
+sheet, so a preview that reached the row alone and a selection that reverted
+when the pointer left are separate failures. The two arms of the pair are the
+two appearances: the before arm's page lists none, so both readings stay dark
+through the same three frames. The change is inside the executable, so the
+before arm names a build of this tree without the appearance library:
+
+```sh
+SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
+  proof/scenes/desktop-appearance.sh
+SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
+  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
+  proof/docker/record-native.sh proof/scenes/desktop-appearance.sh
 ```
 
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
