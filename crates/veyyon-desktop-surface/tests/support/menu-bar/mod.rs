@@ -1,11 +1,12 @@
-//! The window the menu-bar suite drives, and the readings it takes off its
+//! The window the menu-bar suites drive, and the readings they take off its
 //! frames: one headless `ShellView` with a seeded refusal list, the centre of
 //! the single text run a word was drawn in, and whether a box short enough to
 //! be the titlebar covers a point.
 //!
-//! The harness sits here rather than in the suite because the suite is a
-//! sentence about the bar's behaviour and stays readable only while the window
-//! it opens is somewhere else.
+//! The harness sits here rather than in a suite because a suite is a sentence
+//! about the bar's behaviour and stays readable only while the window it opens
+//! is somewhere else.
+#![allow(dead_code, reason = "each including suite calls a subset of these helpers")]
 
 use std::path::Path;
 

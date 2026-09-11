@@ -54,9 +54,12 @@ A press anywhere outside the open menu closes it and does nothing else.
 
 While a menu is open it holds the keyboard. `Up` and `Down` walk its entries,
 `Left` and `Right` move to the next menu along the bar, and `Enter` runs the
-entry the walk is on. The entry the walk stands on carries the fill every row
-surface selects with. A verb the host does not offer is drawn muted, is
-skipped by the walk and answers no press.
+entry the walk is on. Closing the menu gives the keyboard back to what held it,
+with any draft in the composer untouched. The entry the walk stands on carries
+the fill every row surface selects with. A verb the host does not offer is
+drawn muted, is skipped by the walk and answers no press; a verb withdrawn
+while the walk stands on it is not run by `Enter` either, and the menu stays
+open.
 
 Every entry runs the same action as its chord and states that chord at its
 trailing edge, including a chord rebound on the Keybindings page. Four verbs

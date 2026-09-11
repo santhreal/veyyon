@@ -8,15 +8,16 @@
 //! `MenuSectionId::iter()` rather than one written here. Each word is located
 //! by the text the frame recorded drawing and required to sit in a hitbox of
 //! its own; pressing it opens that section and pressing it again closes it;
-//! Escape closes whichever is open; the arrows walk entries and sections and
-//! never land on a declined entry; Return dispatches the gpui action the same
-//! chord dispatches, which is observed as the state change the verb makes
-//! rather than as a call that was made. A section added to the bar is swept
-//! the moment it exists.
+//! Escape closes whichever is open and hands the keyboard back to the
+//! composer it took it from; the arrows walk entries and sections; Return
+//! dispatches the gpui action the same chord dispatches, which is observed as
+//! the state change the verb makes rather than as a call that was made. A
+//! section added to the bar is swept the moment it exists.
 //!
 //! GAPS: it drives the bar, not every verb behind it. What each verb does is
-//! the suite for that verb. The refusals themselves are seeded here rather
-//! than projected from a host, which
+//! the suite for that verb. A verb the host declined is
+//! `a-verb-the-bar-refuses-is-never-walked-to-and-never-run`'s, and the
+//! refusals it seeds are projected from a host by
 //! `a-verb-the-host-declined-is-refused-in-the-menu-and-dropped-from-the-palette`
 //! covers; the window and process lifecycle the `Veyyon` menu reaches is
 //! `closing-the-window-ends-the-process-only-when-nothing-can-reopen`.
@@ -179,69 +180,6 @@ fn the_arrows_walk_the_bar_from_the_menu_they_opened() {
 }
 
 #[test]
-fn a_declined_verb_is_never_walked_to_and_never_taken() {
-	// The rail toggle is the first entry of `View`; declined, the walk has to
-	// start below it and Return must never reach it.
-	render_session(&[Command::ToggleQueue], |session| {
-		let captured = session.frame().expect("frame renders");
-		let at = drawn_once(&captured, MenuSectionId::View.title());
-		session
-			.click(Point { x: px(at.x), y: px(at.y) })
-			.expect("open the View menu");
-		let standing = session
-			.update(|view, _window, _cx| view.state().menu.highlighted_command())
-			.expect("read the walk");
-		assert_eq!(
-			standing,
-			Some(Command::TogglePanel),
-			"a menu whose first entry is declined opens on the first one that is offered"
-		);
-
-		// Walking the whole section must never stand on the declined entry.
-		for _ in 0..MenuSectionId::View.entries().len() + 2 {
-			session.keystroke("down").expect("walk down");
-			let on = session
-				.update(|view, _window, _cx| view.state().menu.highlighted_command())
-				.expect("read the walk");
-			assert_ne!(
-				on,
-				Some(Command::ToggleQueue),
-				"a declined entry is never walked to, so Return always has something to take"
-			);
-		}
-	});
-}
-
-#[test]
-fn pressing_a_declined_entry_does_nothing_and_leaves_the_menu_open() {
-	render_session(&[Command::ToggleQueue], |session| {
-		let captured = session.frame().expect("frame renders");
-		let at = drawn_once(&captured, MenuSectionId::View.title());
-		session
-			.click(Point { x: px(at.x), y: px(at.y) })
-			.expect("open the View menu");
-		let captured = session.frame().expect("the open menu renders");
-		let row = drawn_once(&captured, Command::ToggleQueue.label());
-		let before = session
-			.update(|view, _window, _cx| view.state().keymap.queue_collapsed)
-			.expect("read the rail");
-		session
-			.click(Point { x: px(row.x), y: px(row.y) })
-			.expect("press the declined row");
-		let (open, after) = session
-			.update(|view, _window, _cx| (view.state().menu.open, view.state().keymap.queue_collapsed))
-			.expect("read the window");
-		assert_eq!(after, before, "a declined entry answers no press");
-		assert_eq!(
-			open,
-			Some(MenuSectionId::View),
-			"the card takes the press rather than passing it to the scrim, so a dead row is a dead \
-			 press and not a dismissal"
-		);
-	});
-}
-
-#[test]
 fn pressing_an_offered_entry_runs_it_and_closes_the_bar() {
 	render_session(&[], |session| {
 		let captured = session.frame().expect("frame renders");
@@ -389,6 +327,21 @@ fn the_menu_key_opens_the_bar_and_the_bar_answers_the_keys_after_it() {
 		assert_eq!(
 			after.1, "a draft nobody asked to send",
 			"the draft is still where the operator left it"
+		);
+
+		// The bar took the keyboard to answer the arrows, so closing it has to
+		// give it back: a draft that survived the walk is worth nothing if the
+		// next word typed reaches nothing.
+		session
+			.type_text(" and one more word")
+			.expect("type after the bar closed");
+		let typed = session
+			.update(|view, _window, _cx| view.composer_text().to_owned())
+			.expect("read the draft");
+		assert_eq!(
+			typed, "a draft nobody asked to send and one more word",
+			"the composer has the keyboard back, so what is typed after the bar closes reaches the \
+			 draft"
 		);
 	});
 }

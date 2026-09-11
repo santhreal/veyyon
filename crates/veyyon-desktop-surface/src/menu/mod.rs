@@ -55,12 +55,17 @@ impl MenuState {
 		self.highlighted = 0;
 	}
 
-	/// The verb the keyboard is on, when it is one that can be taken.
+	/// The verb the keyboard stands on, refused or not.
+	///
+	/// The walk skips a refused entry and an opening menu never stands on
+	/// one, so this reports what it finds rather than filtering it a second
+	/// time: the projection can withdraw the verb under the keyboard
+	/// between frames, and refusing it there is the run gate's, which is
+	/// the one place a refusal is enforced.
 	#[must_use]
 	pub fn highlighted_command(&self) -> Option<Command> {
 		let entries = self.open?.entries();
-		let command = *entries.get(self.highlighted)?;
-		self.enabled(command).then_some(command)
+		entries.get(self.highlighted).copied()
 	}
 
 	/// Moves the keyboard by `delta` entries, skipping the refused ones and
