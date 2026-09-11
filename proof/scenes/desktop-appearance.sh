@@ -83,24 +83,21 @@ if (( DEST_H < 480 )); then
 		"the settings dialog is ${DEST_H}px tall, too short to hold the rows this scene points at"
 fi
 
-# The body of the page: below the dialog's own header and the page's title,
-# which are drawn once and are not rows. The same offset the settings-row scene
-# reads its bands from.
-BODY_TOP=$(( DEST_TOP + 120 ))
+# The rows of the page: below the dialog's own header and the page's
+# description, which are drawn once and are not rows. The Close control sits in
+# the same column the rows draw theirs in, so the scan starts under it rather
+# than counting it as a row.
+BODY_TOP=$(( DEST_TOP + 70 ))
 BODY_H=$(( DEST_TOP + DEST_H - MARGIN - BODY_TOP ))
 LABEL_LEFT=$(( DIALOG_LEFT + BODY_INSET ))
 COLUMN_RIGHT=$(( DIALOG_LEFT + DIALOG_W - BODY_INSET ))
 COLUMN_LEFT=$(( COLUMN_RIGHT - COLUMN_W ))
 
-# The second row of the body. The page lists the appearances this build ships
-# before anything a host reported, in the order they were loaded, so the row
-# under the one the window opened in is the other appearance.
-SECOND_ROW_TOP=$(( BODY_TOP + ROW_H + ROW_GAP ))
-SECOND_ROW_MID=$(( SECOND_ROW_TOP + ROW_H / 2 ))
-if (( SECOND_ROW_TOP + ROW_H > DEST_TOP + DEST_H - MARGIN )); then
-	abandon_take "appearance-preview" \
-		"the second row would draw at ${SECOND_ROW_TOP}px, past the bottom of the ${DEST_H}px dialog"
-fi
+# A control is a badge or a button: a band a few dozen pixels wide, so a row
+# counts as inked on a handful of lit pixels and the ground between rows on
+# none.
+INK_FLOOR=90
+INK_PIXELS=3
 
 # ─── What The Two Readings Are Taken Over ───────────────────────────────────
 # The page's own ground, inset from the rows' text so the reading is of the
@@ -154,6 +151,70 @@ rail_grey() { # <shot>
 	crop_mean_grey "$1" "${RAIL_X}" "${RAIL_Y}" "${RAIL_W}" "${RAIL_H}"
 }
 
+# The horizontal ink bands of the row control column, as `<top>:<bottom>` lines
+# in root coordinates: one band per row's badge or button, and nothing for the
+# ground between them. The reader is written to a file rather than fed on
+# standard input, which carries the crop's own bytes.
+INK_BANDS_PY="${SCENE_RUNTIME_DIR}/ink-bands.py"
+cat >"${INK_BANDS_PY}" <<'PY'
+import sys
+
+width, height, origin, floor, minimum = (int(argument) for argument in sys.argv[1:6])
+pixels = sys.stdin.buffer.read()
+if len(pixels) < width * height:
+	raise SystemExit(f"the crop read {len(pixels)} bytes, short of {width * height}")
+
+inked = [
+	sum(1 for value in pixels[row * width : (row + 1) * width] if value >= floor) >= minimum
+	for row in range(height)
+]
+bands: list[tuple[int, int]] = []
+start = None
+for row, lit in enumerate(inked):
+	if lit and start is None:
+		start = row
+	elif not lit and start is not None:
+		if row - start >= 2:
+			bands.append((start, row))
+		start = None
+if start is not None and height - start >= 2:
+	bands.append((start, height))
+for top, bottom in bands:
+	print(f"{top + origin}:{bottom + origin}")
+PY
+
+row_bands() { # <shot>
+	local png="${SCENE_OUT}/${SCENE_NAME}-$1.png"
+	local bands
+	bands="$(magick "${png}" -crop "${COLUMN_W}x${BODY_H}+${COLUMN_LEFT}+${BODY_TOP}" +repage \
+		-colorspace Gray -depth 8 gray:- |
+		python3 "${INK_BANDS_PY}" "${COLUMN_W}" "${BODY_H}" "${BODY_TOP}" "${INK_FLOOR}" "${INK_PIXELS}")"
+	if [ -z "${bands}" ]; then
+		abandon_take "appearance-rows-readable" \
+			"the control column at +${COLUMN_LEFT}+${BODY_TOP} holds no ink in $1, so the page drew no row"
+	fi
+	printf '%s\n' "${bands}"
+}
+
+# The middle of the lit columns of one band, which is where its control is
+# drawn: a button is set against the far end of the column and a badge is
+# narrower than it, so the press is aimed at the ink rather than at the middle
+# of the column.
+band_ink_middle() { # <shot> <top> <bottom>
+	local png="${SCENE_OUT}/${SCENE_NAME}-$1.png"
+	local trimmed offset
+	trimmed="$(magick "${png}" -crop "${COLUMN_W}x$(( $3 - $2 ))+${COLUMN_LEFT}+$2" +repage \
+		-colorspace Gray -threshold "$(( INK_FLOOR * 100 / 255 ))%" -trim -format '%w %X' info: 2>/dev/null)"
+	case "${trimmed}" in
+		'' | *[!0-9\ +-]*)
+			abandon_take "appearance-rows-readable" \
+				"trimming the band at $2 in $1 reported '${trimmed}' instead of a width and an offset"
+			;;
+	esac
+	offset="${trimmed#* }"
+	printf '%s' "$(( COLUMN_LEFT + offset + ${trimmed%% *} / 2 ))"
+}
+
 # ─── Open The Themes Page ───────────────────────────────────────────────────
 k "ctrl+k"
 pause 0.3
@@ -175,6 +236,31 @@ if [ "${OPENED_PAGE}" -gt "${DARK_MAX}" ]; then
 		"the page opened at a mean grey of ${OPENED_PAGE}, over the ${DARK_MAX} a dark ground draws, so this take starts in the wrong appearance"
 fi
 
+# ─── Which Row The Pointer Is Aimed At ──────────────────────────────────────
+# The second row of the page, read out of the frame it drew rather than
+# counted from the top of the dialog. The page lists the appearances this
+# build ships before anything a host reported, in the order they were loaded,
+# so the row under the one the window opened in is the other appearance; in
+# the before arm the same row is the first theme the host reported, and
+# pointing at it previews nothing.
+ROW_BANDS="$(row_bands appearance-dark)"
+ROW_COUNT="$(printf '%s\n' "${ROW_BANDS}" | wc -l | tr -d ' ')"
+if [ "${ROW_COUNT}" -lt 2 ]; then
+	abandon_take "appearance-rows-readable" \
+		"the page drew ${ROW_COUNT} control band in its body, so it has no second row to point at"
+fi
+FIRST_TOP="$(printf '%s\n' "${ROW_BANDS}" | sed -n '1p' | cut -d: -f1)"
+SECOND_TOP="$(printf '%s\n' "${ROW_BANDS}" | sed -n '2p' | cut -d: -f1)"
+SECOND_BOTTOM="$(printf '%s\n' "${ROW_BANDS}" | sed -n '2p' | cut -d: -f2)"
+PITCH=$(( SECOND_TOP - FIRST_TOP ))
+AUTHORED_PITCH=$(( ROW_H + ROW_GAP ))
+if (( PITCH < AUTHORED_PITCH - 4 || PITCH > AUTHORED_PITCH + 4 )); then
+	abandon_take "appearance-rows-readable" \
+		"the page drew its first two controls ${PITCH}px apart, not the ${AUTHORED_PITCH}px a ${ROW_H}px row and its ${ROW_GAP}px gap author, so these bands are not two rows"
+fi
+SECOND_ROW_MID=$(( (SECOND_TOP + SECOND_BOTTOM) / 2 ))
+SECOND_ROW_CONTROL="$(band_ink_middle appearance-dark "${SECOND_TOP}" "${SECOND_BOTTOM}")"
+
 # ─── The Pointer Resting On The Other Appearance's Row ──────────────────────
 move_px "$(( LABEL_LEFT + 60 ))" "${SECOND_ROW_MID}"
 pause 1.2
@@ -183,10 +269,10 @@ PREVIEW_PAGE="$(page_grey appearance-preview)"
 PREVIEW_RAIL="$(rail_grey appearance-preview)"
 
 # ─── That Appearance Chosen, And The Pointer Taken Away ─────────────────────
-# The press lands in the row's control column, which is where its Select is
-# drawn, and the pointer is then parked off the page: a preview would revert
-# there and a choice would not.
-move_px "$(( COLUMN_LEFT + COLUMN_W / 2 ))" "${SECOND_ROW_MID}"
+# The press lands on the control the row's own band drew, and the pointer is
+# then parked off the page: a preview would revert there and a choice would
+# not.
+move_px "${SECOND_ROW_CONTROL}" "${SECOND_ROW_MID}"
 click
 pause 0.8
 move_px "$(( WIN_X + 40 ))" "$(( WIN_Y + WIN_H - 40 ))"
