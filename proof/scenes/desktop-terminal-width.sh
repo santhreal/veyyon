@@ -31,9 +31,9 @@
 # `--after` to put this tree's executable back).
 #
 # BOTH WIDTHS ARE RECORDED. How wide the grid is, is what changed, so the pair
-# is taken at every width the drawer reaches: 1180px, where the queue rail is
-# inline and the drawer holds 126 columns, and 800px, where the rail is an
-# overlay and it holds 107.
+# is taken at both placements the drawer takes: 1180px, where the queue rail is
+# inline and the docked drawer holds 126 columns, and 800px, where the rail and
+# the drawer are both overlays and the grid holds 109.
 #
 #   SCENE_WIDTH=800 SCENE_MOTION_FLOOR=5 proof/docker/record-native.sh \
 #     proof/scenes/desktop-terminal-width.sh
@@ -104,15 +104,25 @@ PY
 if [ -z "${MIN_COLS:-}" ]; then
 	abandon_take "the-grid-is-locatable" "no drawer geometry resolved for a ${WIN_W}px window"
 fi
-if [ "${DRAWER_PLACEMENT}" != "row" ]; then
-	abandon_take "the-drawer-is-a-row" \
-		"the drawer draws as a ${DRAWER_PLACEMENT} at ${WIN_W}px, and this scene aims at the row it takes"
-fi
+case "${DRAWER_PLACEMENT}" in
+	row)
+		# A docked drawer is the bottom of the session column, under the
+		# split's grip.
+		DRAWER_TOP=$(( WIN_Y + WIN_H - DRAWER_H + GRIP_PX ))
+		;;
+	overlay)
+		# An overlaid drawer is the same width, drawn over the bottom of the
+		# column rather than taking height out of it, and it carries no grip.
+		DRAWER_TOP=$(( WIN_Y + WIN_H - DRAWER_H ))
+		;;
+	*)
+		abandon_take "the-drawer-is-placed" \
+			"the drawer draws as a ${DRAWER_PLACEMENT} at ${WIN_W}px, which this scene has no aim for"
+		;;
+esac
 
-# The drawer is the bottom of the session column, under the split's grip; its
-# chrome row is first inside it and the grid is what follows, inset by its own
-# padding.
-DRAWER_TOP=$(( WIN_Y + WIN_H - DRAWER_H + GRIP_PX ))
+# Its chrome row is first inside it and the grid is what follows, inset by its
+# own padding.
 GRID_X=$(( SESSION_REGION_X + S3 ))
 GRID_W=$(( SESSION_REGION_W - 2 * S3 ))
 GRID_TOP=$(( DRAWER_TOP + CHROME_H + S2 ))
