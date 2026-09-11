@@ -31,7 +31,6 @@ pub mod queue;
 pub mod right_panel;
 pub mod settings;
 pub mod shell;
-pub mod terminal;
 pub mod text;
 pub mod tokens;
 pub mod tool_view;
@@ -55,7 +54,6 @@ pub use shell::{
 	HostShape, ScrollAnchor, SessionShape, ShellView,
 	fields::{FieldKey, FieldSlots},
 };
-pub use terminal::Cell;
 pub use text::{plain_line, plain_lines};
 pub use tokens::{
 	InstalledTokens, ThemeLibrary, apply_appearance, install_appearances, install_tokens,

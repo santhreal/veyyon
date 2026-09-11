@@ -9,11 +9,34 @@ use unicode_width::UnicodeWidthChar;
 
 use super::{
 	cell::{Cell, CellStyle, Ink},
+	reflow,
 	selection::TerminalSelection,
 };
 
 /// Maximum scrollback history retained in rows.
 pub const MAX_SCROLLBACK_ROWS: usize = 10_000;
+
+/// One physical row of the grid, and whether its text ran on.
+///
+/// A row that filled its last column and continued on the next one is a
+/// wrap, not a line the host ended. The two are the same cells once they are
+/// laid down, and telling them apart is what lets a narrower window re-break
+/// the text rather than keep the breaks a wider one happened to produce.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Row {
+	/// The cells of the row, always `cols` long.
+	pub cells:   Vec<Cell>,
+	/// True when the text continues on the row below.
+	pub wrapped: bool,
+}
+
+impl Row {
+	/// A row of blank cells that no text runs out of.
+	#[must_use]
+	pub fn blank(cols: usize) -> Self {
+		Self { cells: vec![Cell::blank(); cols], wrapped: false }
+	}
+}
 
 /// Saved cursor position and formatting attributes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -44,8 +67,8 @@ pub struct TerminalGrid {
 	pub style:                CellStyle,
 	pub fg:                   Ink,
 	pub bg:                   Ink,
-	pub primary_lines:        VecDeque<Vec<Cell>>,
-	pub alt_lines:            Vec<Vec<Cell>>,
+	pub primary_lines:        VecDeque<Row>,
+	pub alt_lines:            Vec<Row>,
 	pub saved_cursor_primary: SavedCursor,
 	pub saved_cursor_alt:     SavedCursor,
 	pub selection:            Option<TerminalSelection>,
@@ -59,11 +82,11 @@ impl TerminalGrid {
 		let rows = rows.max(1);
 		let mut primary_lines = VecDeque::with_capacity(rows);
 		for _ in 0..rows {
-			primary_lines.push_back(vec![Cell::blank(); cols]);
+			primary_lines.push_back(Row::blank(cols));
 		}
 		let mut alt_lines = Vec::with_capacity(rows);
 		for _ in 0..rows {
-			alt_lines.push(vec![Cell::blank(); cols]);
+			alt_lines.push(Row::blank(cols));
 		}
 
 		Self {
@@ -103,61 +126,52 @@ impl TerminalGrid {
 	/// Returns a reference to a visible screen row (0..self.rows).
 	#[must_use]
 	pub fn visible_row(&self, row: usize) -> Option<&[Cell]> {
-		if row >= self.rows {
-			return None;
-		}
-		if self.alternate_screen {
-			self.alt_lines.get(row).map(Vec::as_slice)
-		} else {
-			let idx = self.primary_lines.len().saturating_sub(self.rows) + row;
-			self.primary_lines.get(idx).map(Vec::as_slice)
-		}
+		self.row(row).map(|line| line.cells.as_slice())
 	}
 
 	/// Returns a mutable reference to a visible screen row.
 	pub fn visible_row_mut(&mut self, row: usize) -> Option<&mut [Cell]> {
+		self.row_mut(row).map(|line| line.cells.as_mut_slice())
+	}
+
+	/// The whole visible row, its wrap included.
+	#[must_use]
+	pub fn row(&self, row: usize) -> Option<&Row> {
 		if row >= self.rows {
 			return None;
 		}
 		if self.alternate_screen {
-			self.alt_lines.get_mut(row).map(Vec::as_mut_slice)
+			self.alt_lines.get(row)
 		} else {
 			let idx = self.primary_lines.len().saturating_sub(self.rows) + row;
-			self.primary_lines.get_mut(idx).map(Vec::as_mut_slice)
+			self.primary_lines.get(idx)
 		}
 	}
 
-	/// Resizes the terminal grid without reflowing text.
+	/// The whole visible row to write to, its wrap included.
+	pub fn row_mut(&mut self, row: usize) -> Option<&mut Row> {
+		if row >= self.rows {
+			return None;
+		}
+		if self.alternate_screen {
+			self.alt_lines.get_mut(row)
+		} else {
+			let idx = self.primary_lines.len().saturating_sub(self.rows) + row;
+			self.primary_lines.get_mut(idx)
+		}
+	}
+
+	/// States that the row the cursor is on runs on to the row below.
+	fn mark_wrapped(&mut self) {
+		let row = self.cursor_row;
+		if let Some(line) = self.row_mut(row) {
+			line.wrapped = true;
+		}
+	}
+
+	/// Resizes the grid, re-breaking its text at the new width.
 	pub fn resize(&mut self, new_cols: usize, new_rows: usize) {
-		let new_cols = new_cols.max(1);
-		let new_rows = new_rows.max(1);
-		if new_cols == self.cols && new_rows == self.rows {
-			return;
-		}
-
-		for line in &mut self.primary_lines {
-			line.resize(new_cols, Cell::blank());
-		}
-		while self.primary_lines.len() < new_rows {
-			self.primary_lines.push_back(vec![Cell::blank(); new_cols]);
-		}
-		while self.primary_lines.len() > MAX_SCROLLBACK_ROWS + new_rows {
-			self.primary_lines.pop_front();
-		}
-		for line in &mut self.alt_lines {
-			line.resize(new_cols, Cell::blank());
-		}
-		self
-			.alt_lines
-			.resize(new_rows, vec![Cell::blank(); new_cols]);
-
-		self.cols = new_cols;
-		self.rows = new_rows;
-		self.scroll_top = 0;
-		self.scroll_bottom = new_rows.saturating_sub(1);
-		self.cursor_col = self.cursor_col.min(new_cols.saturating_sub(1));
-		self.cursor_row = self.cursor_row.min(new_rows.saturating_sub(1));
-		self.wrap_next = false;
+		reflow::resize(self, new_cols, new_rows);
 	}
 
 	/// Inserts a printable character at cursor position.
@@ -169,6 +183,7 @@ impl TerminalGrid {
 
 		if self.wrap_next && self.auto_wrap {
 			self.wrap_next = false;
+			self.mark_wrapped();
 			self.cursor_col = 0;
 			self.linefeed();
 		}
@@ -180,9 +195,10 @@ impl TerminalGrid {
 				if let Some(row) = self.visible_row_mut(r_idx)
 					&& let Some(cell) = row.get_mut(col)
 				{
-					cell.reset();
+					*cell = Cell::filler();
 				}
 				if self.auto_wrap {
+					self.mark_wrapped();
 					self.cursor_col = 0;
 					self.linefeed();
 				}

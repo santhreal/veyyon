@@ -9,13 +9,18 @@ mod csi;
 mod grid;
 mod ops;
 mod parser;
+mod reflow;
 mod selection;
+mod sequence;
 mod sgr;
+mod viewport;
 
 pub use self::{
 	cell::{Cell, CellStyle, Ink, NamedColor},
-	grid::{MAX_SCROLLBACK_ROWS, SavedCursor, TerminalGrid},
+	grid::{MAX_SCROLLBACK_ROWS, Row, SavedCursor, TerminalGrid},
 	parser::TerminalEmulator,
 	selection::{SelectionKind, TerminalSelection},
+	sequence::{ControlChar, CsiSeq, EscapeSeq, OscSeq, SequenceClass},
 	sgr::apply_sgr,
+	viewport::{MAX_COLUMNS, MAX_ROWS, cells_that_fit},
 };

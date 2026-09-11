@@ -4,12 +4,12 @@
 //! cursor position, scroll offset, supervised process rows, search filters,
 //! and selection highlights.
 
-use veyyon_desktop_model::SurfaceId;
-
-use crate::{
-	controls::ControlError,
-	terminal::{Cell, TerminalSelection},
+use veyyon_desktop_model::{
+	SurfaceId,
+	text::terminal::{Cell, TerminalSelection},
 };
+
+use crate::controls::ControlError;
 
 /// A tab in the drawer tab strip.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,6 +83,12 @@ pub struct DrawerFailure {
 	pub error:   ControlError,
 }
 
+/// The columns a grid holds before a frame has measured one.
+pub const DEFAULT_COLUMNS: u16 = 80;
+
+/// The rows a grid holds before a frame has measured one.
+pub const DEFAULT_ROWS: u16 = 24;
+
 /// State of the terminal drawer surface.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DrawerContent {
@@ -103,6 +109,13 @@ pub struct DrawerContent {
 	pub tab_chosen:     bool,
 	/// Visible rows of terminal cells.
 	pub grid_rows:      Vec<Vec<Cell>>,
+	/// The columns and rows the window has room for.
+	///
+	/// Measured off the box the last frame drew the grid in, not a
+	/// constant: a terminal that holds 80 columns in a window with room
+	/// for 140 wraps its output a third of the way across and leaves the
+	/// rest of the drawer blank.
+	pub grid_cells:     (u16, u16),
 	/// Cursor horizontal column index.
 	pub cursor_col:     usize,
 	/// Cursor vertical row index.
@@ -138,6 +151,7 @@ impl Default for DrawerContent {
 			tab_chosen:     false,
 			active_tab:     0,
 			grid_rows:      Vec::new(),
+			grid_cells:     (DEFAULT_COLUMNS, DEFAULT_ROWS),
 			cursor_col:     0,
 			cursor_row:     0,
 			cursor_visible: true,

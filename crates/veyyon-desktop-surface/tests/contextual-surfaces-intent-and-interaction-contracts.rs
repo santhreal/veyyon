@@ -18,11 +18,13 @@
 //! NOT CAUGHT:
 //! - Remote host daemon communication failure outside the surface layer.
 
-use veyyon_desktop_model::{Capability, CapabilityMap, CapabilityStatus, ChangeScope, DiffMode};
+use veyyon_desktop_model::{
+	Capability, CapabilityMap, CapabilityStatus, ChangeScope, DiffMode,
+	text::terminal::{SelectionKind, TerminalSelection},
+};
 use veyyon_desktop_surface::{
 	Card, DiffStatus, Intent, PanelContent, PanelTab, ShellState, TreeContent, TreeStatus,
 	drawer::keystroke_to_terminal_bytes,
-	terminal::{SelectionKind, TerminalSelection},
 };
 
 #[test]

@@ -37,7 +37,7 @@ pub use project::{
 	NO_SESSION_OPEN, PANE_LINE_CEILING, SessionIndex, TRANSITIONS_SETTING, actions_for,
 	contextual_surface_for_action, drawer_lines, elapsed_label, expire_notices, land_failure,
 	project, project_clock, project_controls, project_notices, project_turn_phase, record_sent,
-	reduced_motion, strip_control_sequences, surface_for_action, transport_gate,
+	reduced_motion, resize_terminals, strip_control_sequences, surface_for_action, transport_gate,
 	transport_gate_capability,
 };
 pub use reconnect::{

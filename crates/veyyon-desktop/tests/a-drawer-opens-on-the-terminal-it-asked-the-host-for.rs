@@ -34,8 +34,9 @@ use support::{session, terminal};
 use veyyon_desktop::{SessionIndex, project};
 use veyyon_desktop_model::{
 	Capability, CapabilityStatus, ProcessView, QueuePartition, SessionId, Store, TerminalStatus,
+	text::terminal::TerminalEmulator,
 };
-use veyyon_desktop_surface::{DrawerTab, Intent, ShellState, terminal::TerminalEmulator};
+use veyyon_desktop_surface::{DrawerTab, Intent, ShellState};
 
 /// A window attached to a host that runs terminals and supervises processes,
 /// projected as often as the state changes.

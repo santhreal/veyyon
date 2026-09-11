@@ -4,7 +4,11 @@
 //! addressing, erase commands, scrolling regions, OSC titles, and DEC private
 //! modes.
 
-use super::{csi::dispatch_csi, grid::TerminalGrid};
+use super::{
+	csi::dispatch_csi,
+	grid::TerminalGrid,
+	sequence::{ControlChar, EscapeSeq, OscSeq},
+};
 
 /// Internal state of the ECMA-48 sequence parser.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -135,15 +139,51 @@ impl TerminalEmulator {
 	}
 
 	fn handle_ground(&mut self, byte: u8) {
-		match byte {
-			0x1b => self.state = State::Escape,
-			0x07 => {},
-			0x08 => self.grid.backspace(),
-			0x09 => self.grid.tab(),
-			0x0a..=0x0c => self.grid.linefeed(),
-			0x0d => self.grid.carriage_return(),
-			0x20..=0x7e => self.grid.print_char(byte as char),
-			_ => {},
+		if byte == 0x1b {
+			self.state = State::Escape;
+			return;
+		}
+		if let Some(control) = ControlChar::of(byte) {
+			self.run_control(control);
+			return;
+		}
+		if byte.is_ascii_graphic() || byte == b' ' {
+			self.grid.print_char(byte as char);
+		}
+	}
+
+	/// Runs one control character against the grid.
+	fn run_control(&mut self, control: ControlChar) {
+		match control {
+			// The window is not a bell. Nothing is drawn for it, and it is a
+			// class rather than a byte the ground state drops, so a sweep of
+			// what the emulator reads states that it was read.
+			ControlChar::Bell => {},
+			ControlChar::Backspace => self.grid.backspace(),
+			ControlChar::Tab => self.grid.tab(),
+			ControlChar::LineFeed => self.grid.linefeed(),
+			ControlChar::CarriageReturn => self.grid.carriage_return(),
+		}
+	}
+
+	/// Runs one ESC-introduced sequence against the grid.
+	fn run_escape(&mut self, escape: EscapeSeq) {
+		match escape {
+			EscapeSeq::Index => self.grid.linefeed(),
+			EscapeSeq::ReverseIndex => {
+				if self.grid.cursor_row == self.grid.scroll_top {
+					self.grid.scroll_down_region(1);
+				} else {
+					self.grid.cursor_row = self.grid.cursor_row.saturating_sub(1);
+				}
+			},
+			EscapeSeq::NextLine => {
+				self.grid.carriage_return();
+				self.grid.linefeed();
+			},
+			EscapeSeq::SaveCursor => self.grid.save_cursor(),
+			EscapeSeq::RestoreCursor => self.grid.restore_cursor(),
+			EscapeSeq::Reset => self.reset(),
 		}
 	}
 
@@ -162,37 +202,13 @@ impl TerminalEmulator {
 			},
 			b'P' => self.state = State::Dcs,
 			b'X' | b'^' | b'_' => self.state = State::SosPmApc,
-			b'D' => {
-				self.grid.linefeed();
-				self.state = State::Ground;
-			},
-			b'M' => {
-				if self.grid.cursor_row == self.grid.scroll_top {
-					self.grid.scroll_down_region(1);
-				} else {
-					self.grid.cursor_row = self.grid.cursor_row.saturating_sub(1);
+			0x1b => {},
+			other => {
+				if let Some(escape) = EscapeSeq::of(other) {
+					self.run_escape(escape);
 				}
 				self.state = State::Ground;
 			},
-			b'E' => {
-				self.grid.carriage_return();
-				self.grid.linefeed();
-				self.state = State::Ground;
-			},
-			b'7' => {
-				self.grid.save_cursor();
-				self.state = State::Ground;
-			},
-			b'8' => {
-				self.grid.restore_cursor();
-				self.state = State::Ground;
-			},
-			b'c' => {
-				self.reset();
-				self.state = State::Ground;
-			},
-			0x1b => {},
-			_ => self.state = State::Ground,
 		}
 	}
 
@@ -343,10 +359,12 @@ impl TerminalEmulator {
 	}
 
 	fn dispatch_osc(&mut self) {
-		if let Some((kind, title)) = self.osc_buf.split_once(';')
-			&& (kind == "0" || kind == "2")
-		{
-			self.grid.title = title.to_string();
+		let Some((kind, body)) = self.osc_buf.split_once(';') else {
+			return;
+		};
+		match OscSeq::of(kind) {
+			Some(OscSeq::WindowTitle) => self.grid.title = body.to_string(),
+			None => {},
 		}
 	}
 }

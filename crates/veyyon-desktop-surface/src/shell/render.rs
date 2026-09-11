@@ -48,7 +48,6 @@ pub fn render_shell(
 		.map_or(0.0, |bounds| f32::from(bounds.size.height));
 	let now = cx.background_executor().now();
 	view.sync_transcript_viewport(transcript_height, now);
-
 	let chrome_px = view.installed().surface.shell.titlebar_height_px
 		+ if view.has_notice() {
 			attention_strip_height(&view.installed().set)

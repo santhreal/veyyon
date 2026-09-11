@@ -99,6 +99,13 @@ pub enum Region {
 	Drawer,
 	/// The drawer's chrome: its tab strip and toolbar, without the tenant.
 	DrawerChrome,
+	/// The cells of the terminal grid, without the drawer's chrome or its
+	/// padding.
+	///
+	/// The box is what the grid is measured in: how many columns and rows
+	/// the window has room for is read off it, so the emulator holds the
+	/// text at the width it is drawn at.
+	TerminalGrid,
 }
 
 /// What the next frame has to repaint.

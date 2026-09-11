@@ -22,6 +22,7 @@ pub mod signal;
 pub mod store;
 pub mod streaming;
 pub mod surface;
+pub mod text;
 pub mod tool_view;
 pub mod transcript;
 

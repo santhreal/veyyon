@@ -536,10 +536,22 @@ Click the terminal grid to focus it. Terminal input is sent to the host without
 local echo. An overlaid drawer blocks pointer interaction with the composer
 beneath it.
 
+The grid holds the columns and rows the drawer has room for, counted off the
+box the window draws it in. Widening the window, collapsing the queue rail or
+closing the right panel gives the drawer more columns and the host is told the
+new size; the text is broken again at that width on the same frame, before the
+host answers. A window with less room than 80 columns or 11 rows keeps those,
+which is what the drawer's minimum is for.
+
+A line the terminal broke at the right margin is joined and broken again at
+the new width. A line the host ended itself stays its own line at every width,
+and a program on the alternate screen -- a pager, an editor -- keeps the rows
+it drew and redraws them itself.
+
 Each supervised process has a drawer tab named after it, beside the terminal
 tabs. The tab displays the last 200 lines of that process's output in the same
-80-column monospace grid, and the drawer has no scrollback of its own. The tab
-is read-only: terminal input reaches a terminal, not a process.
+monospace grid, and the drawer has no scrollback of its own. The tab is
+read-only: terminal input reaches a terminal, not a process.
 
 A process's row in the supervisor list carries Stop, Restart, Send and Signal.
 Stop, Send and Signal are pressable while the process is running and disabled

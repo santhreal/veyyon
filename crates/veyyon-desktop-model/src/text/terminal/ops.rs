@@ -4,8 +4,7 @@
 //! scrolling within margins, and cursor save/restore functions on
 //! `TerminalGrid`.
 
-use super::grid::{MAX_SCROLLBACK_ROWS, SavedCursor, TerminalGrid};
-use crate::terminal::cell::Cell;
+use super::grid::{MAX_SCROLLBACK_ROWS, Row, SavedCursor, TerminalGrid};
 
 impl TerminalGrid {
 	/// Scrolls the scroll region up by `count` lines.
@@ -21,7 +20,7 @@ impl TerminalGrid {
 				if src <= self.scroll_bottom {
 					self.alt_lines[r] = self.alt_lines[src].clone();
 				} else {
-					self.alt_lines[r] = vec![Cell::blank(); self.cols];
+					self.alt_lines[r] = Row::blank(self.cols);
 				}
 			}
 		} else if self.scroll_top == 0 && self.scroll_bottom == self.rows.saturating_sub(1) {
@@ -29,7 +28,7 @@ impl TerminalGrid {
 				if self.primary_lines.len() >= MAX_SCROLLBACK_ROWS + self.rows {
 					self.primary_lines.pop_front();
 				}
-				self.primary_lines.push_back(vec![Cell::blank(); self.cols]);
+				self.primary_lines.push_back(Row::blank(self.cols));
 			}
 		} else {
 			let base = self.primary_lines.len().saturating_sub(self.rows);
@@ -40,7 +39,7 @@ impl TerminalGrid {
 					let src_idx = base + src;
 					self.primary_lines[dest_idx] = self.primary_lines[src_idx].clone();
 				} else {
-					self.primary_lines[dest_idx] = vec![Cell::blank(); self.cols];
+					self.primary_lines[dest_idx] = Row::blank(self.cols);
 				}
 			}
 		}
@@ -58,7 +57,7 @@ impl TerminalGrid {
 				if r >= self.scroll_top + count {
 					self.alt_lines[r] = self.alt_lines[r - count].clone();
 				} else {
-					self.alt_lines[r] = vec![Cell::blank(); self.cols];
+					self.alt_lines[r] = Row::blank(self.cols);
 				}
 			}
 		} else {
@@ -69,7 +68,7 @@ impl TerminalGrid {
 					let src_idx = base + (r - count);
 					self.primary_lines[dest_idx] = self.primary_lines[src_idx].clone();
 				} else {
-					self.primary_lines[dest_idx] = vec![Cell::blank(); self.cols];
+					self.primary_lines[dest_idx] = Row::blank(self.cols);
 				}
 			}
 		}
@@ -258,7 +257,7 @@ impl TerminalGrid {
 		if enable {
 			self.save_cursor();
 			for row in &mut self.alt_lines {
-				for cell in row.iter_mut() {
+				for cell in &mut row.cells {
 					cell.reset();
 				}
 			}

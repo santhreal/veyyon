@@ -33,8 +33,10 @@ mod transcript;
 mod workspace_asks;
 use std::collections::HashMap;
 
-use veyyon_desktop_model::{QueuePartition, SessionId, Store, session_badge};
-use veyyon_desktop_surface::{Row, Section, ShellState, terminal::TerminalEmulator};
+use veyyon_desktop_model::{
+	QueuePartition, SessionId, Store, session_badge, text::terminal::TerminalEmulator,
+};
+use veyyon_desktop_surface::{Row, Section, ShellState};
 
 pub use self::{
 	actions::actions_for,
@@ -47,7 +49,7 @@ pub use self::{
 		ANSWERED_BY_OPTION, NO_SESSION_OPEN, contextual_surface_for_action, gated_controls,
 		project_controls, session_row_controls,
 	},
-	drawer::{drawer_lines, project_drawer, strip_control_sequences},
+	drawer::{drawer_lines, project_drawer, resize_terminals, strip_control_sequences},
 	failure::land_failure,
 	notices::{expire_notices, project_notices},
 	overlay::project_overlay,

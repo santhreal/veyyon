@@ -177,11 +177,37 @@ impl Cell {
 		style:  CellStyle::new(),
 		width:  1,
 	};
+	/// The column a wide glyph vacated when it moved whole to the next row.
+	///
+	/// It draws as a blank, and it is not text: joining the rows back into
+	/// the line the host wrote drops it, so re-breaking the same text at a
+	/// third width does not grow a space every time.
+	pub const FILLER: Self = Self { width: 0, ..Self::BLANK };
 
 	/// Returns a new blank cell.
 	#[must_use]
 	pub const fn blank() -> Self {
 		Self::BLANK
+	}
+
+	/// Returns the blank a wide glyph left behind at a line break.
+	#[must_use]
+	pub const fn filler() -> Self {
+		Self::FILLER
+	}
+
+	/// Returns true if the cell holds no column of its own and no ink.
+	///
+	/// A wide glyph's continuation cell reads the same way, so the cell
+	/// before decides which of the two this is: a continuation always
+	/// follows the lead it belongs to.
+	#[must_use]
+	pub const fn is_unlit_zero_width(&self) -> bool {
+		self.width == 0
+			&& self.c == ' '
+			&& matches!(self.ink, Ink::Default)
+			&& matches!(self.bg_ink, Ink::Default)
+			&& self.style.is_default()
 	}
 
 	/// Returns true if the cell contains an unstyled space character.

@@ -10,17 +10,19 @@
 //! row of every badge. A fixture full of short tidy strings proves only that
 //! the layout survives the easy case.
 
-use veyyon_desktop_model::InputModality;
+use veyyon_desktop_model::{
+	InputModality,
+	text::terminal::{Cell, CellStyle, Ink},
+};
 
 use crate::{
 	composer::{
 		ComposerState, ContextMeter, ModelChoice, ModelControl, ModelOption, ThinkingControl,
 	},
-	drawer::{DrawerContent, DrawerTab},
+	drawer::{DEFAULT_COLUMNS, DEFAULT_ROWS, DrawerContent, DrawerTab},
 	model::{
 		Badge, Block, Card, ConnectionPhase, Row, Section, ShellState, ToolInvocationViews, Turn,
 	},
-	terminal::{Cell, CellStyle, Ink},
 };
 
 mod panel;
@@ -323,6 +325,7 @@ pub fn with_drawer() -> ShellState {
 			active_tab: 0,
 			tab_chosen: true,
 			grid_rows,
+			grid_cells: (DEFAULT_COLUMNS, DEFAULT_ROWS),
 			cursor_col: 0,
 			cursor_row: 4,
 			cursor_visible: true,

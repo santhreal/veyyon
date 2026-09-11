@@ -10,13 +10,15 @@ pub mod tool_cards;
 
 use std::{collections::BTreeSet, path::PathBuf};
 
-use veyyon_desktop_model::{ChangeStatus, DiffMode};
+use veyyon_desktop_model::{
+	ChangeStatus, DiffMode,
+	text::terminal::{Cell, CellStyle, Ink},
+};
 use veyyon_desktop_surface::{
 	Attachment, Badge, Card, DiffFile, DiffRow, DiffStatus, DiffWithheld, Intent, PanelContent,
 	PanelTab, Row, Section, ShellState, TreeContent, TreeRowItem, TreeStatus,
 	composer::{MediaType, TurnPhase, payload_for},
 	drawer::{DrawerContent, DrawerTab, ProcessRow},
-	terminal::{Cell, CellStyle, Ink},
 };
 
 /// A one-signature PNG under a fixed name: enough for a reducer, which never
@@ -137,6 +139,7 @@ pub fn state() -> ShellState {
 			active_tab:     0,
 			tab_chosen:     true,
 			grid_rows:      vec![vec![cell()]],
+			grid_cells:     (80, 24),
 			cursor_col:     0,
 			cursor_row:     0,
 			cursor_visible: true,

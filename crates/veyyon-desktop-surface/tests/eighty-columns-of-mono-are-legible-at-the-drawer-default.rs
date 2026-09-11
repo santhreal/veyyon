@@ -106,6 +106,19 @@ fn typing_while_focused_dispatches_terminal_input_with_no_local_echo() {
 			.expect("focus terminal by pointer");
 		session.frame().expect("focused terminal renders");
 
+		// The first frames measure the grid and ask for the size the window
+		// has room for, which is an intent like any other. It is raised once
+		// and settles, so it is drained here rather than filtered out of
+		// every chord below: a second one would fail this loop.
+		for _ in 0..3 {
+			session
+				.frame()
+				.expect("the grid settles at its measured size");
+			session
+				.update(|view, _, _| view.drain_intents())
+				.expect("drain the measured resize");
+		}
+
 		for (chord, bytes) in
 			[("a", b"a".as_slice()), ("enter", b"\r"), ("ctrl-c", b"\x03"), ("up", b"\x1b[A")]
 		{

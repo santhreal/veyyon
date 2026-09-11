@@ -227,8 +227,13 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 				}
 			}
 		},
+		// The window measured the grid; the host is told the same size, and
+		// what the drawer holds is what it was measured at, so the next
+		// projection breaks the output at this width rather than the last.
+		Intent::ResizeTerminal { cols, rows } => {
+			state.drawer.grid_cells = (*cols, *rows);
+		},
 		Intent::TerminalInput(_)
-		| Intent::ResizeTerminal { .. }
 		| Intent::RestartTerminal
 		| Intent::CloseTerminal
 		| Intent::NewTerminal

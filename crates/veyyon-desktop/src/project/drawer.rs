@@ -3,25 +3,26 @@
 
 use std::collections::HashMap;
 
-use veyyon_desktop_model::{Capability, CapabilityMap, CapabilityStatus, Domains, TerminalStatus};
-use veyyon_desktop_surface::{
-	Cell, DrawerContent, DrawerTab, ProcessRow, terminal::TerminalEmulator,
+use veyyon_desktop_model::{
+	Capability, CapabilityMap, CapabilityStatus, Domains, TerminalStatus,
+	text::terminal::{Cell, TerminalEmulator},
 };
+use veyyon_desktop_surface::{DrawerContent, DrawerTab, Intent, ProcessRow};
 
 use super::{PANE_LINE_CEILING, elapsed_label};
 
 /// How many trailing log lines of a supervised process are fed to the grid.
 ///
-/// The buffer retains `PROCESS_LOG_CAPACITY_LINES`, the grid draws 24 rows,
-/// and the drawer offers no scrollback of its own, so feeding more than the
-/// tail costs parsing nothing can reach.
+/// The buffer retains `PROCESS_LOG_CAPACITY_LINES`, the grid draws what the
+/// window has room for, and the drawer offers no scrollback of its own, so
+/// feeding more than the tail costs parsing nothing can reach.
 const PROCESS_LOG_TAIL_LINES: usize = 200;
 
 /// Whether the host offers either of the drawer's tenants (§5.13).
 ///
 /// A host that runs no terminal and supervises no process has no drawer: the
 /// titlebar control, the `Primary-J` chord and `/terminal` offer none, rather
-/// than opening an empty 80-column grid. `UnknownUntilAttached` offers nothing
+/// than opening an empty grid. `UnknownUntilAttached` offers nothing
 /// either, since a drawer that appears mid-attach is a surface the operator
 /// did not ask for.
 pub fn drawer_offered(capabilities: &CapabilityMap) -> bool {
@@ -111,17 +112,18 @@ pub fn project_drawer<S: std::hash::BuildHasher>(
 				copy_grid(emu, drawer);
 				drawer.selection = emu.grid().selection;
 			} else if let Some(output) = domains.terminal_output.get(id) {
-				let mut emu = TerminalEmulator::new(80, 24);
+				let mut emu = emulator_for(drawer);
 				emu.feed(&output.data);
 				copy_grid(&emu, drawer);
 			}
 		},
 		Some(DrawerTab::Process { name }) => {
 			let name = name.clone();
-			let mut emu = TerminalEmulator::new(80, 24);
+			let mut emu = emulator_for(drawer);
 			if let Some(logs) = domains.process_logs.get(&name) {
-				// The grid holds 24 rows and the drawer has no scrollback of
-				// its own, so only the tail is reachable. Feeding the last
+				// The grid holds the rows the window has room for and the
+				// drawer has no scrollback of its own, so only the tail is
+				// reachable. Feeding the last
 				// PROCESS_LOG_TAIL_LINES bounds the work per projection at a
 				// buffer that retains PROCESS_LOG_CAPACITY_LINES.
 				let tail = logs.lines.len().saturating_sub(PROCESS_LOG_TAIL_LINES);
@@ -136,12 +138,37 @@ pub fn project_drawer<S: std::hash::BuildHasher>(
 		},
 		Some(DrawerTab::Processes) | None => {
 			if drawer.grid_rows.is_empty() {
-				for _ in 0..11 {
-					drawer.grid_rows.push(vec![Cell::blank(); 80]);
+				let (cols, rows) = drawer.grid_cells;
+				for _ in 0..rows {
+					drawer
+						.grid_rows
+						.push(vec![Cell::blank(); usize::from(cols)]);
 				}
 			}
 		},
 	}
+}
+
+/// Re-breaks every terminal the window holds at the size the window
+/// measured, and states whether any of them moved.
+///
+/// The same intent goes to the host, which resizes the pty; this is what the
+/// operator reads until the host answers. A window that measured nothing
+/// resizes nothing, so the caller re-projects only when this returns true.
+pub fn resize_terminals<S: std::hash::BuildHasher>(
+	terminals: &mut HashMap<String, TerminalEmulator, S>,
+	intents: &[Intent],
+) -> bool {
+	let mut resized = false;
+	for intent in intents {
+		if let Intent::ResizeTerminal { cols, rows } = intent {
+			for emulator in terminals.values_mut() {
+				emulator.resize(usize::from(*cols), usize::from(*rows));
+			}
+			resized = true;
+		}
+	}
+	resized
 }
 
 /// Whether two tabs stand for the same terminal, process or the process list.
@@ -168,6 +195,14 @@ fn default_tab(domains: &Domains) -> usize {
 		.iter()
 		.rposition(|terminal| terminal.status == TerminalStatus::Running)
 		.unwrap_or_else(|| domains.terminals.len().saturating_sub(1))
+}
+
+/// An emulator the size the window has room for, for output the window
+/// replays rather than holds: a terminal whose chunks arrived before it was
+/// opened, and a supervised process, whose log is text rather than a session.
+fn emulator_for(drawer: &DrawerContent) -> TerminalEmulator {
+	let (cols, rows) = drawer.grid_cells;
+	TerminalEmulator::new(usize::from(cols), usize::from(rows))
 }
 
 /// Copies the emulator's visible grid, cursor and title onto the drawer.

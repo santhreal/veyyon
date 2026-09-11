@@ -6,6 +6,7 @@
 
 mod chrome;
 mod content;
+mod measure;
 mod process_list;
 mod signals;
 
@@ -13,6 +14,7 @@ use veyyon_desktop_kit::{
 	ColorRole, MonoSizeStep, MonoText, SpacingStep, TextWeight, TokenSet,
 	input::{Editor, TextField},
 };
+use veyyon_desktop_model::text::terminal::{Ink, NamedColor};
 use veyyon_desktop_tokens::{DrawerPlacement, PanelsSurfaceTokens};
 use veyyon_gpui::{
 	Context, Entity, Hsla, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
@@ -21,7 +23,10 @@ use veyyon_gpui::{
 
 pub use self::{
 	chrome::drawer_chrome,
-	content::{DrawerContent, DrawerFailure, DrawerSearch, DrawerTab, ProcessRow},
+	content::{
+		DEFAULT_COLUMNS, DEFAULT_ROWS, DrawerContent, DrawerFailure, DrawerSearch, DrawerTab,
+		ProcessRow,
+	},
 	process_list::process_list,
 	signals::{SignalMenu, signal_menu_items, signal_menu_layer},
 };
@@ -29,7 +34,6 @@ use crate::{
 	Intent, ShellView,
 	controls::{ControlStates, error_hairline},
 	damage::{LaidOut, Region},
-	terminal::{Ink, NamedColor},
 };
 
 /// Resolves a cell ink value into a GPUI HSLA color.
@@ -160,7 +164,7 @@ pub fn terminal_drawer(
 			.flex_1()
 			.w_full()
 			.overflow_hidden()
-			.child(render_terminal_grid(content, geometry, tokens, cx))
+			.child(render_terminal_grid(content, geometry, tokens, laid_out, cx))
 	};
 
 	let mut shell = div()
@@ -204,18 +208,24 @@ pub fn terminal_drawer(
 	)
 }
 
-/// Renders the monospace 80-column terminal cell grid.
+/// Renders the terminal cell grid at the width the drawer gives it.
+///
+/// The cells sit in a box of their own, inside the grid's padding, because
+/// that box is what the window has room for: the columns and rows the
+/// emulator holds are measured off it, so a grid drawn in a wide window
+/// breaks its text where the window ends rather than where a constant did.
 fn render_terminal_grid(
 	content: &DrawerContent,
 	geometry: &PanelsSurfaceTokens,
 	tokens: &TokenSet,
+	laid_out: &LaidOut,
 	cx: &Context<ShellView>,
 ) -> impl IntoElement {
 	let cell_width = geometry.terminal_cell_width_px;
 	let cell_height = geometry.terminal_cell_height_px;
 	let min_width = cell_width * geometry.terminal_min_columns as f32;
 
-	let mut grid_el = div()
+	let grid_el = div()
 		.id("terminal-grid")
 		.focusable()
 		.key_context("Terminal")
@@ -236,6 +246,7 @@ fn render_terminal_grid(
 			}
 		}));
 
+	let mut cells_el = div().flex().flex_col().w_full().flex_1().min_h_0();
 	for (r_idx, row) in content.grid_rows.iter().enumerate() {
 		let mut row_el = div()
 			.flex()
@@ -298,10 +309,14 @@ fn render_terminal_grid(
 			row_el = row_el.child(cell_el);
 		}
 
-		grid_el = grid_el.child(row_el);
+		cells_el = cells_el.child(row_el);
 	}
 
-	grid_el
+	grid_el.child(measure::track_grid_box(
+		div().w_full().flex_1().min_h_0().child(cells_el),
+		laid_out,
+		cx,
+	))
 }
 
 /// Converts a keystroke chord into raw terminal byte sequences.

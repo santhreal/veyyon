@@ -6,16 +6,15 @@ use veyyon_desktop::{
 	Attachment, DesktopCarrier, HostLink, NoticeDelivery, SessionIndex, actions_for,
 	current_timestamp_ms, expire_notices, land_failure, project,
 	project::{clear_sent_draft, connection_notice, land_branched_draft, restored_draft},
-	project_clock, project_controls, record_sent, request_frame,
+	project_clock, project_controls, record_sent, request_frame, resize_terminals,
 	state::Keeper,
 	surface_for_action,
 };
 use veyyon_desktop_model::{
 	HostAction, HostEvent, PersistedState, RequestRegistry, SessionId, Store, SurfaceId, reduce,
+	text::terminal::TerminalEmulator,
 };
-use veyyon_desktop_surface::{
-	Intent, ShellState, ShellView, damage::regions_changed, terminal::TerminalEmulator,
-};
+use veyyon_desktop_surface::{Intent, ShellState, ShellView, damage::regions_changed};
 use veyyon_gpui::{App, AsyncApp, Context, Window, WindowHandle};
 
 struct Host {
@@ -155,10 +154,16 @@ pub fn attach(
 					view.update(cx, |view, _cx| view.track_submission(req_id, intent));
 				}
 			}
+			// The window measured its grid, so every terminal it holds is
+			// re-broken at that width before the frame that asked for it
+			// draws. The same intent went to the host above, which resizes
+			// the pty; this is what the operator sees until it answers.
+			let resized = resize_terminals(&mut host.terminals, &intents);
 			view.update(cx, |view, cx| {
-				if intents
-					.iter()
-					.any(|intent| intent.moves_partition() || matches!(intent, Intent::Navigate(_)))
+				if resized
+					|| intents
+						.iter()
+						.any(|intent| intent.moves_partition() || matches!(intent, Intent::Navigate(_)))
 				{
 					project(&host.store, &mut host.index, &host.terminals, now_ms, view.state_mut());
 				}
@@ -280,10 +285,17 @@ pub fn attach(
 							HostEvent::Snapshot(
 								veyyon_desktop_model::SnapshotSection::TerminalOutput(chunk),
 							) => {
-								let emu = host
-									.terminals
-									.entry(chunk.terminal.clone())
-									.or_insert_with(|| TerminalEmulator::new(80, 24));
+								// A terminal is opened at the size the window has room
+								// for, so the first chunk is broken where the drawer
+								// ends rather than at a width nothing measured.
+								let (cols, rows) = view.state().drawer.grid_cells;
+								let emu =
+									host
+										.terminals
+										.entry(chunk.terminal.clone())
+										.or_insert_with(|| {
+											TerminalEmulator::new(usize::from(cols), usize::from(rows))
+										});
 								if chunk.reset {
 									emu.reset();
 								}
