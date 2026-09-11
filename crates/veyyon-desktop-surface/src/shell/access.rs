@@ -7,7 +7,7 @@
 //! what a frame reads before it resolves anything.
 
 use veyyon_desktop_kit::input::Editor;
-use veyyon_gpui::{Context, Entity, FocusHandle};
+use veyyon_gpui::{ClipboardItem, Context, Entity, FocusHandle};
 
 use super::ShellView;
 use crate::{
@@ -20,7 +20,7 @@ use crate::{
 	right_panel::PaneScrolls,
 	settings::GeneralSettingsListState,
 	tokens::InstalledTokens,
-	transcript::TranscriptViewportState,
+	transcript::{TranscriptViewportState, TurnMenu},
 };
 
 impl ShellView {
@@ -148,6 +148,22 @@ impl ShellView {
 		self.row_menu = None;
 	}
 
+	/// The transcript turn menu that is open, if one is.
+	#[must_use]
+	pub const fn turn_menu(&self) -> Option<&TurnMenu> {
+		self.turn_menu.as_ref()
+	}
+
+	/// Opens the menu for a transcript turn at the pointer.
+	pub fn open_turn_menu(&mut self, menu: TurnMenu) {
+		self.turn_menu = Some(menu);
+	}
+
+	/// Closes the transcript turn menu, if one is open.
+	pub fn close_turn_menu(&mut self) {
+		self.turn_menu = None;
+	}
+
 	/// The width the operator dragged the docked right panel to, if they have.
 	#[must_use]
 	pub const fn panel_width(&self) -> Option<f32> {
@@ -202,6 +218,13 @@ impl ShellView {
 		}
 		if matches!(intent, Intent::SelectSession(_)) {
 			self.rail_motion.request_scroll_to_selected();
+		}
+		// The clipboard belongs to the platform, so the write happens here
+		// rather than in the state application, which has no window and no app.
+		if let Intent::CopyText(text) = &intent
+			&& !text.is_empty()
+		{
+			cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
 		}
 		self.intents.dispatch(intent, &mut self.state);
 		cx.notify();

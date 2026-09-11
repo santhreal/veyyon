@@ -53,7 +53,7 @@ use crate::{
 	right_panel::PaneScrolls,
 	settings::GeneralSettingsListState,
 	tokens::InstalledTokens,
-	transcript::{TranscriptFindState, TranscriptViewportState},
+	transcript::{TranscriptFindState, TranscriptViewportState, TurnMenu},
 };
 
 /// The window's root view.
@@ -94,6 +94,9 @@ pub struct ShellView {
 	/// The queue row menu that is open, if one is (§5.1). Window-local,
 	/// like a hover: a snapshot never reopens one.
 	row_menu:              Option<RowMenu>,
+	/// The transcript turn menu that is open, if one is (§5.3). Window-local
+	/// on the same terms as the row menu.
+	turn_menu:             Option<TurnMenu>,
 	/// The width the operator dragged the docked right panel to. Window-local
 	/// like the row menu: a snapshot never moves the handle (§5.6).
 	panel_width:           Option<f32>,
@@ -177,6 +180,7 @@ impl ShellView {
 			find_state: TranscriptFindState::default(),
 			split_motion: split::SplitMotions::default(),
 			row_menu: None,
+			turn_menu: None,
 			panel_width: None,
 			pending_expanded: BTreeSet::new(),
 			pending_drawer_tab: None,

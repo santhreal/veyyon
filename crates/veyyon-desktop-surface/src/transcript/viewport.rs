@@ -12,11 +12,15 @@ use veyyon_desktop_kit::{ButtonVariant, ColorRole, IconName, TokenSet, controls:
 use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
 use veyyon_gpui::{
-	Context, Div, InteractiveElement, IntoElement, MouseButton, ParentElement, Styled, Window, div,
-	list, px,
+	Context, Div, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement,
+	Styled, Window, div, list, px,
 };
 
-use super::{state::TranscriptViewportState, turn::render_turn};
+use super::{
+	copy::{TurnMenu, turn_at, turn_text},
+	state::TranscriptViewportState,
+	turn::render_turn,
+};
 use crate::{
 	ShellView,
 	damage::{LaidOut, Region},
@@ -119,9 +123,28 @@ pub fn transcript_viewport(
 	.h_full();
 
 	let focus = state.focus_handle(cx);
+	// The right-click is taken by the body rather than by each turn, so the
+	// transcript costs one hit rect however many turns it holds, and the turn
+	// under the pointer is resolved from the boxes the last frame laid out
+	// (§5.3).
+	let menu_turns: Rc<[Turn]> = state.turns_snapshot();
+	let menu_layout = laid_out.clone();
+	let menu_view = cx.weak_entity();
 	let mut container = div()
 		.track_focus(&focus)
 		.on_mouse_down(MouseButton::Left, move |_, window, app| window.focus(&focus, app))
+		.on_mouse_down(MouseButton::Right, move |event: &MouseDownEvent, _window, app| {
+			let Some(turn) = turn_at(&menu_layout, menu_turns.len(), event.position) else {
+				return;
+			};
+			let Some(text) = menu_turns.get(turn).map(turn_text) else {
+				return;
+			};
+			let _ = menu_view.update(app, |view, cx| {
+				view.open_turn_menu(TurnMenu { turn, origin: event.position, text });
+				cx.notify();
+			});
+		})
 		.relative()
 		.flex()
 		.flex_col()

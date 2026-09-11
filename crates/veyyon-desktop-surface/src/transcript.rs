@@ -11,6 +11,7 @@
 //! rather than a list of unrelated rows.
 
 pub mod blocks;
+pub mod copy;
 pub mod find;
 pub mod fingerprint;
 pub mod footer;
@@ -20,6 +21,7 @@ pub mod turn;
 pub mod viewport;
 
 pub use blocks::*;
+pub use copy::*;
 pub use find::*;
 pub use fingerprint::*;
 pub use footer::*;

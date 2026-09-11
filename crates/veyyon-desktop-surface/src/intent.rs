@@ -187,6 +187,10 @@ pub enum Intent {
 	CloseTabOrPark,
 	MoveQueueSelection(i32),
 	ScrollTranscript(ScrollBy),
+	/// Puts the text a surface states on the clipboard. The words travel with
+	/// the intent because they are the words that were drawn, not a second
+	/// reading of the store.
+	CopyText(String),
 	FindInTranscript,
 	StepTurn(i32),
 	ToggleBlock,
@@ -250,6 +254,7 @@ impl Intent {
 				| Self::FilterQueue(_)
 				| Self::MoveQueueSelection(_)
 				| Self::ScrollTranscript(_)
+				| Self::CopyText(_)
 				| Self::FindInTranscript
 				| Self::StepTurn(_)
 				| Self::ToggleBlock

@@ -53,6 +53,7 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 		IntentDiscriminants::Steer => vec![Intent::Steer("steer text".to_string())],
 		IntentDiscriminants::Queue => vec![Intent::Queue("queue text".to_string())],
 		IntentDiscriminants::AbortTurn => vec![Intent::AbortTurn],
+		IntentDiscriminants::CopyText => vec![Intent::CopyText("copied words".to_string())],
 		IntentDiscriminants::SetQueueMode => vec![Intent::SetQueueMode(QueueMode::Steer)],
 		IntentDiscriminants::SetPlanMode => {
 			vec![Intent::SetPlanMode { on: true }, Intent::SetPlanMode { on: false }]

@@ -62,6 +62,7 @@
 - A desktop popover anchored to a composer control is drawn 384px wide rather than at the centred palette's 576px, so the model picker and the slash-command list no longer cover the turn behind them.
 - Every desktop settings row is drawn 44px tall with its label and description on one line each, and the pointer over a row opens the whole description in a tag over the rows below it, where a description previously wrapped to five and six lines, drew rows of 100px and more, and painted past the row it belonged to.
 - The desktop command palette answers the keyboard with a model catalogue open: the row order is computed when the query, the rows or the command group change and read unchanged by each frame, where every frame re-scored all 4580 rows across five fields and left the window unable to keep up, so typing changed nothing on screen and Enter never reached the selected row.
+- A desktop transcript turn is copied by right-clicking it and pressing `Copy`, which puts the turn's prose, reasoning, notes, tool calls with their results, panes and artifact names on the system clipboard as plain text; nothing outside the composer's own editor could previously be copied out of the window.
 
 ### Changed
 

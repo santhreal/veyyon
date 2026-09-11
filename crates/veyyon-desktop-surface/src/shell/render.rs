@@ -26,6 +26,7 @@ use crate::{
 	drawer::SupervisorFields,
 	layout::{RightPanelPlacement, ShedInput, shell_widths},
 	queue::row_menu_layer,
+	transcript::turn_menu_layer,
 };
 
 /// Renders the root shell view.
@@ -317,6 +318,9 @@ pub fn render_shell(
 	}
 	if let Some(menu) = view.row_menu() {
 		columns = columns.child(row_menu_layer(menu, &view.state().controls, &tokens, cx));
+	}
+	if let Some(menu) = view.turn_menu() {
+		columns = columns.child(turn_menu_layer(menu, cx));
 	}
 
 	root.child(columns)

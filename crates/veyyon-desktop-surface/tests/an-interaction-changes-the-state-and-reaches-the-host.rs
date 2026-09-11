@@ -16,6 +16,11 @@
 //! does not catch a host that ignores what it drained. That an intent lands
 //! on the position it named, not a neighbour, is
 //! `a-click-lands-on-the-row-tab-card-or-drawer-it-named.rs`.
+//!
+//! One intent lands on neither column because its effect is the platform's:
+//! `CopyText` writes the clipboard, which is no field of `ShellState` and no
+//! host action. That set is pinned by exact equality below, so a second intent
+//! that changes nothing and reports nothing is red until someone states why.
 
 mod support;
 
@@ -25,13 +30,23 @@ use veyyon_desktop_model::{
 	domain::ThemeView,
 };
 use veyyon_desktop_surface::{
-	ConnectionPhase, ControlError, Intent, Overlay, PaletteMode, PaletteState, SettingsState, Turn,
+	ConnectionPhase, ControlError, Intent, IntentDiscriminants, Overlay, PaletteMode, PaletteState,
+	SettingsState, Turn,
 	composer::{QueueMode, TurnPhase},
 	intent::Intents,
 };
 
+/// The intents whose whole effect is outside the shell's state and outside the
+/// host: the platform clipboard. Pinned by exact equality, not by a predicate,
+/// so an intent cannot join it by accident.
+const PLATFORM_EFFECT: [&str; 1] = ["CopyText"];
+
 #[test]
 fn every_intent_either_changes_the_state_or_is_reported_and_never_neither() {
+	// What lands on neither column, collected from the same seeded sweep: an
+	// unseeded one would report a send with an empty composer as landing
+	// nowhere.
+	let mut landed_outside: Vec<String> = Vec::new();
 	for intent in every_intent() {
 		// The composer is seeded because a send whose composer is already empty
 		// changes nothing, and the sweep would then read a working send as a
@@ -171,15 +186,21 @@ fn every_intent_either_changes_the_state_or_is_reported_and_never_neither() {
 		let changed = format!("{after:?}") != format!("{before:?}");
 		let reported = !intents.pending().is_empty();
 
-		assert!(
-			changed || reported,
-			"{intent:?} left the state untouched and was not reported, so nothing an operator can \
-			 see happened"
-		);
+		if !changed && !reported {
+			landed_outside.push(format!("{:?}", IntentDiscriminants::from(&intent)));
+		}
 		assert_eq!(
 			reported,
 			!intent.is_local(),
 			"{intent:?} disagrees with its own locality: reported={reported}"
 		);
 	}
+
+	assert_eq!(
+		landed_outside,
+		PLATFORM_EFFECT.map(str::to_owned).to_vec(),
+		"an intent that changes no state and reports to no host has to say where its effect lands; \
+		 anything not pinned as a platform effect is an interaction that does nothing an operator \
+		 can see"
+	);
 }

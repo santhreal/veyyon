@@ -122,6 +122,7 @@ pub fn every_intent() -> Vec<Intent> {
 		},
 		Intent::SpawnTask("review the diff".to_owned()),
 		Intent::SetPlanMode { on: true },
+		Intent::CopyText("copied words".to_owned()),
 	];
 
 	// The exhaustive match is the gate. Every variant is named, so a new one
@@ -183,6 +184,7 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::CloseTabOrPark
 			| Intent::MoveQueueSelection(_)
 			| Intent::ScrollTranscript(_)
+			| Intent::CopyText(_)
 			| Intent::FindInTranscript
 			| Intent::StepTurn(_)
 			| Intent::ToggleBlock

@@ -43,6 +43,9 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		| Intent::Queue(_)
 		| Intent::AbortTurn
 		| Intent::DequeueQueuedPrompt => {},
+		// The clipboard is the platform's, not the shell's: the write happens
+		// where the intent is dispatched, and no state changes here.
+		Intent::CopyText(_) => {},
 		Intent::SetQueueMode(mode) => {
 			state.composer.queue_mode = *mode;
 			if let TurnPhase::Running { queue_mode } = &mut state.turn {
