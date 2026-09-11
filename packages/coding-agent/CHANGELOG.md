@@ -64,6 +64,7 @@
 - The desktop command palette answers the keyboard with a model catalogue open: the row order is computed when the query, the rows or the command group change and read unchanged by each frame, where every frame re-scored all 4580 rows across five fields and left the window unable to keep up, so typing changed nothing on screen and Enter never reached the selected row.
 - A desktop transcript turn is copied by right-clicking it and pressing `Copy`, which puts the turn's prose, reasoning, notes, tool calls with their results, panes and artifact names on the system clipboard as plain text; nothing outside the composer's own editor could previously be copied out of the window.
 - A desktop session is branched at any prompt in its transcript by right-clicking that turn and pressing `Branch from here`, which forks at that turn's entry and hands its prompt to the composer of the session the fork opened; a branch previously forked only at the transcript's last prompt, whatever the operator was reading.
+- A desktop supervised process is sent any of the five signals its daemon accepts — `Interrupt`, `Terminate`, `Hang up`, `Quit` and `Kill` — by pressing `Signal` on its row and picking one, where the drawer previously offered `Stop` and `Restart` alone and a process that traps `SIGTERM` could be asked to stop and never ended.
 
 ### Changed
 

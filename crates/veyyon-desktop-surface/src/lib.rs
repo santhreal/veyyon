@@ -39,7 +39,9 @@ pub use composer::{
 	Attachment, AttachmentSource, MediaKind, MediaType, ModelChoice, Payload, PrimaryAction,
 	QueueMode, SecondaryAction, ThinkingLevel, TurnPhase,
 };
-pub use drawer::{DrawerContent, DrawerFailure, DrawerTab, ProcessRow};
+pub use drawer::{
+	DrawerContent, DrawerFailure, DrawerTab, ProcessRow, SignalMenu, signal_menu_items,
+};
 pub use intent::{Intent, IntentDiscriminants};
 pub use keymap::*;
 pub use model::*;

@@ -17,6 +17,7 @@ pub mod reducer;
 pub mod registry;
 pub mod retries;
 pub mod session;
+pub mod signal;
 pub mod store;
 pub mod streaming;
 pub mod surface;
@@ -66,6 +67,7 @@ pub use session::{
 	BadgeKind, QueuePartition, Session, SessionBadge, SessionCollection, SessionMode,
 	SessionModeKind, SettableMode,
 };
+pub use signal::SupervisorSignal;
 pub use store::Store;
 pub use streaming::StreamingMessageState;
 pub use surface::SurfaceId;

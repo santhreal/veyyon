@@ -241,10 +241,11 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		},
 		Intent::ProcessStop(name) => vec![HostAction::ProcessStop { process_id: name.clone() }],
 		Intent::ProcessRestart(name) => vec![HostAction::ProcessRestart { process_id: name.clone() }],
-		Intent::ProcessSignal(name) => vec![HostAction::ProcessSignal {
-			process_id: name.clone(),
-			signal:     "SIGTERM".to_string(),
-		}],
+		// The signal is the operator's: a process that ignored the polite ask
+		// is the reason the row offers the one nothing can catch.
+		Intent::ProcessSignal { process, signal } => {
+			vec![HostAction::ProcessSignal { process_id: process.clone(), signal: *signal }]
+		},
 		Intent::NewSession => vec![HostAction::CreateSession { workspace: None, title: None }],
 		Intent::CloseTabOrPark => {
 			active.map_or_else(Vec::new, |session| vec![HostAction::DeleteSession { session }])

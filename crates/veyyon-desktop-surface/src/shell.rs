@@ -45,6 +45,7 @@ pub use self::{
 };
 use crate::{
 	damage::LaidOut,
+	drawer::SignalMenu,
 	intent::Intents,
 	keymap::Keymap,
 	layout::LabelState,
@@ -97,6 +98,9 @@ pub struct ShellView {
 	/// The transcript turn menu that is open, if one is (§5.3). Window-local
 	/// on the same terms as the row menu.
 	turn_menu:             Option<TurnMenu>,
+	/// The process signal menu that is open, if one is (§5.12). Window-local
+	/// on the same terms as the row menu.
+	signal_menu:           Option<SignalMenu>,
 	/// The width the operator dragged the docked right panel to. Window-local
 	/// like the row menu: a snapshot never moves the handle (§5.6).
 	panel_width:           Option<f32>,
@@ -181,6 +185,7 @@ impl ShellView {
 			split_motion: split::SplitMotions::default(),
 			row_menu: None,
 			turn_menu: None,
+			signal_menu: None,
 			panel_width: None,
 			pending_expanded: BTreeSet::new(),
 			pending_drawer_tab: None,

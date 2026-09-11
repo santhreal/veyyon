@@ -7,6 +7,7 @@
 mod chrome;
 mod content;
 mod process_list;
+mod signals;
 
 use veyyon_desktop_kit::{
 	ColorRole, MonoSizeStep, MonoText, SpacingStep, TextWeight, TokenSet,
@@ -22,6 +23,7 @@ pub use self::{
 	chrome::drawer_chrome,
 	content::{DrawerContent, DrawerFailure, DrawerSearch, DrawerTab, ProcessRow},
 	process_list::process_list,
+	signals::{SignalMenu, signal_menu_items, signal_menu_layer},
 };
 use crate::{
 	Intent, ShellView,

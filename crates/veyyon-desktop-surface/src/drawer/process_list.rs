@@ -17,7 +17,7 @@ use veyyon_gpui::{
 	AnyElement, ClickEvent, Context, InteractiveElement, IntoElement, ParentElement, Styled, div, px,
 };
 
-use super::content::ProcessRow;
+use super::{content::ProcessRow, signals::SignalMenu};
 use crate::{
 	Intent, ShellView,
 	controls::{ControlStates, availability_style},
@@ -100,6 +100,7 @@ fn process_row(
 	let name_for_stop = proc.name.clone();
 	let name_for_restart = proc.name.clone();
 	let name_for_send = proc.name.clone();
+	let name_for_signal = proc.name.clone();
 	let trailing = div()
 		.flex()
 		.flex_row()
@@ -177,6 +178,28 @@ fn process_row(
 						btn = btn.state(InteractiveState::Disabled);
 					}
 					div().opacity(send_op).child(btn)
+				})
+				.child({
+					let sid = SessionId::from(session_id.to_string());
+					let signal_av =
+						controls.availability(&SurfaceId::ProcessSignalButton(sid, proc.name.clone()));
+					let (signal_op, _, signal_allowed) = availability_style(&signal_av, tokens);
+					let mut btn =
+						Button::new(("process-signal", idx), "Signal").variant(ButtonVariant::Ghost);
+					if is_running && signal_allowed {
+						btn = btn.on_click(cx.listener(move |view, event: &ClickEvent, _window, cx| {
+							// The menu opens where the press landed, so the signal
+							// picked is read beside the row it acts on.
+							view.open_signal_menu(SignalMenu {
+								process: name_for_signal.clone(),
+								origin:  event.position(),
+							});
+							cx.notify();
+						}));
+					} else {
+						btn = btn.state(InteractiveState::Disabled);
+					}
+					div().opacity(signal_op).child(btn)
 				}),
 		);
 

@@ -48,11 +48,23 @@ fn partition_toggle(view: &ShellView, into: Section) -> Option<Intent> {
 
 /// Dismisses the topmost thing over the transcript, one rung per press.
 ///
-/// A routed overlay steps back one surface, an unrouted one closes, and a
-/// queue floated over the transcript at a narrow width closes last, since it
-/// is the only rung that is not an overlay in `state.overlay`. Nothing over
-/// the transcript propagates, so the editor below keeps its own Escape.
+/// A menu floated at the pointer closes first, a routed overlay steps back one
+/// surface, an unrouted one closes, and a queue floated over the transcript at
+/// a narrow width closes last, since it is the only rung that is not an
+/// overlay in `state.overlay`. Nothing over the transcript propagates, so the
+/// editor below keeps its own Escape.
 fn dismiss_topmost(view: &mut ShellView, cx: &mut Context<ShellView>) {
+	// A menu is floated over every other rung, including a routed overlay, so
+	// it is the rung Escape takes first and alone: dismissing the surface under
+	// an open menu would take two rungs on one press.
+	if view.signal_menu().is_some() || view.turn_menu().is_some() || view.row_menu().is_some() {
+		view.close_signal_menu();
+		view.close_turn_menu();
+		view.close_row_menu();
+		cx.stop_propagation();
+		cx.notify();
+		return;
+	}
 	let routed = view
 		.state()
 		.overlay

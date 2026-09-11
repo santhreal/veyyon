@@ -506,6 +506,15 @@ tabs. The tab displays the last 200 lines of that process's output in the same
 80-column monospace grid, and the drawer has no scrollback of its own. The tab
 is read-only: terminal input reaches a terminal, not a process.
 
+A process's row in the supervisor list carries Stop, Restart, Send and Signal.
+Stop, Send and Signal are pressable while the process is running and disabled
+otherwise. Send writes the line the drawer's input field holds to that
+process's input, followed by a newline. Signal opens a menu of the five signals
+the supervisor accepts -- Interrupt (`SIGINT`), Terminate (`SIGTERM`), Hang up
+(`SIGHUP`), Quit (`SIGQUIT`) and Kill (`SIGKILL`) -- and sends the one selected
+to that process. Kill is drawn as destructive, because no program can catch it.
+`Escape` or a press outside the menu closes it without sending a signal.
+
 A host that runs no terminal and supervises no process has no drawer. The
 titlebar control, `Primary-J`, and `/terminal` are absent, and a drawer left
 open closes when the host stops offering one.

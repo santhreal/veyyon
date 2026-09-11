@@ -23,7 +23,7 @@ use crate::{
 	ShellView,
 	attach::render_attach_screen,
 	damage::Region,
-	drawer::SupervisorFields,
+	drawer::{SupervisorFields, signal_menu_layer},
 	layout::{RightPanelPlacement, ShedInput, shell_widths},
 	queue::row_menu_layer,
 	transcript::turn_menu_layer,
@@ -321,6 +321,9 @@ pub fn render_shell(
 	}
 	if let Some(menu) = view.turn_menu() {
 		columns = columns.child(turn_menu_layer(menu, cx));
+	}
+	if let Some(menu) = view.signal_menu() {
+		columns = columns.child(signal_menu_layer(menu, cx));
 	}
 
 	root.child(columns)

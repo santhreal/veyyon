@@ -6,7 +6,7 @@
 //! written down, so the sweep cannot silently stop covering it.
 
 use strum::IntoEnumIterator;
-use veyyon_desktop_model::SurfaceId;
+use veyyon_desktop_model::{SupervisorSignal, SurfaceId};
 use veyyon_desktop_surface::{
 	Attachment, Intent, IntentDiscriminants, MediaType, ModelChoice, Overlay, PaletteState,
 	PanelTab, Payload, QueueMode, ScrollBy, SettingsPage, ThinkingLevel, ToolViewTarget,
@@ -158,7 +158,11 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 		},
 		IntentDiscriminants::ProcessStop => vec![Intent::ProcessStop("server".to_string())],
 		IntentDiscriminants::ProcessRestart => vec![Intent::ProcessRestart("server".to_string())],
-		IntentDiscriminants::ProcessSignal => vec![Intent::ProcessSignal("server".to_string())],
+		// Every signal, because the set is the vocabulary the supervisor
+		// closed: one sample would leave the other four unproven.
+		IntentDiscriminants::ProcessSignal => SupervisorSignal::iter()
+			.map(|signal| Intent::ProcessSignal { process: "server".to_string(), signal })
+			.collect(),
 		IntentDiscriminants::PinSession => vec![Intent::PinSession(1)],
 		IntentDiscriminants::UnpinSession => vec![Intent::UnpinSession(1)],
 		IntentDiscriminants::DeferSession => vec![Intent::DeferSession(1)],

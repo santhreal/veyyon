@@ -6,6 +6,7 @@ use crate::{
 	connection::{EntryId, RequestId, SessionId},
 	domain::changes::ChangeScope,
 	session::SettableMode,
+	signal::SupervisorSignal,
 };
 
 /// Binary attachment descriptor for prompt submission.
@@ -188,9 +189,14 @@ pub enum HostAction {
 		process_id: String,
 		data:       Vec<u8>,
 	},
+	/// Sends one of the supervisor's signals to a process it manages.
+	///
+	/// Every signal the supervisor accepts is a variant of
+	/// [`SupervisorSignal`], so the action cannot carry a name the supervisor
+	/// rejects and the window has no default to fall back on.
 	ProcessSignal {
 		process_id: String,
-		signal:     String,
+		signal:     SupervisorSignal,
 	},
 	ProcessStop {
 		process_id: String,

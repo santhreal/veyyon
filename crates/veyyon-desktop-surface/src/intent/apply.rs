@@ -227,7 +227,7 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		| Intent::ProcessSend { .. }
 		| Intent::ProcessStop(_)
 		| Intent::ProcessRestart(_)
-		| Intent::ProcessSignal(_) => {},
+		| Intent::ProcessSignal { .. } => {},
 		Intent::PinSession(id) => {
 			state.keymap.pinned_session = Some(*id);
 		},

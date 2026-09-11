@@ -12,6 +12,7 @@ use veyyon_gpui::{ClipboardItem, Context, Entity, FocusHandle};
 use super::ShellView;
 use crate::{
 	damage::LaidOut,
+	drawer::SignalMenu,
 	intent::Intent,
 	keymap::Keymap,
 	layout::LabelState,
@@ -162,6 +163,22 @@ impl ShellView {
 	/// Closes the transcript turn menu, if one is open.
 	pub fn close_turn_menu(&mut self) {
 		self.turn_menu = None;
+	}
+
+	/// The process signal menu that is open, if one is.
+	#[must_use]
+	pub const fn signal_menu(&self) -> Option<&SignalMenu> {
+		self.signal_menu.as_ref()
+	}
+
+	/// Opens the signal menu for a supervised process at the press.
+	pub fn open_signal_menu(&mut self, menu: SignalMenu) {
+		self.signal_menu = Some(menu);
+	}
+
+	/// Closes the process signal menu, if one is open.
+	pub fn close_signal_menu(&mut self) {
+		self.signal_menu = None;
 	}
 
 	/// The width the operator dragged the docked right panel to, if they have.

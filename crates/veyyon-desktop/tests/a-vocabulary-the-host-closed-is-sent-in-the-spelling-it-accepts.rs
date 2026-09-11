@@ -21,9 +21,8 @@
 //!
 //! WHAT IT DOES NOT CATCH: a field the host reads under another name, a
 //! vocabulary the window legitimately carries as an open string because the
-//! host itself supplied the value (a thinking level, a model id, a signal
-//! name), and anything about whether the host acts on the value once it
-//! decodes.
+//! host itself supplied the value (a thinking level, a model id), and anything
+//! about whether the host acts on the value once it decodes.
 
 mod support;
 
@@ -35,7 +34,7 @@ use support::{intent_samples::every_sample_intent, session};
 use veyyon_desktop::{SessionIndex, actions_for};
 use veyyon_desktop_model::{
 	Capability, CapabilityStatus, ChangeScope, HostAction, QueueMode, QueuePartition, SessionId,
-	SettableMode, Store,
+	SettableMode, Store, SupervisorSignal,
 };
 use veyyon_desktop_surface::Intent;
 
@@ -107,15 +106,8 @@ const OPEN_STRINGS: [&str; 58] = [
 /// of, and that the window carries as the type it decodes the same set with.
 /// A member here is round-tripped through that type below; a member added
 /// without one leaves the sweep proving nothing about it.
-const VOCABULARY_STRINGS: [&str; 3] =
-	["SelectChangeScope.scope", "SetQueueMode.mode", "SetSessionMode.mode"];
-
-/// A closed set with no type on this side to carry it. The daemon's signals
-/// are declared in `packages/coding-agent/src/launch/protocol.ts` and reach no
-/// Rust enum, so `SIGTERM` is written beside the action and nothing here can
-/// prove the host reads it. One entry, recorded rather than typed because a
-/// transcribed enum would round-trip against its own transcription.
-const UNTYPED_VOCABULARIES: [&str; 1] = ["ProcessSignal.signal"];
+const VOCABULARY_STRINGS: [&str; 4] =
+	["ProcessSignal.signal", "SelectChangeScope.scope", "SetQueueMode.mode", "SetSessionMode.mode"];
 
 fn seeded() -> (Store, SessionIndex) {
 	let mut store = Store::new();
@@ -228,6 +220,28 @@ fn every_scope_and_every_mode_reaches_the_host_as_the_vocabulary_it_came_from() 
 		proven.insert("SetSessionMode.mode".to_owned());
 	}
 
+	for signal in SupervisorSignal::iter() {
+		let (mut store, index) = seeded();
+		let intent = Intent::ProcessSignal { process: "server".to_owned(), signal };
+		let actions = actions_for(&intent, &index, &mut store);
+		let sent = payload_of(&actions, "ProcessSignal")["signal"].clone();
+		let decoded: SupervisorSignal = serde_json::from_value(sent.clone())
+			.unwrap_or_else(|_| panic!("the host's SupervisorSignal cannot read {sent}"));
+		assert_eq!(decoded, signal, "the signal sent for {signal:?} decodes as {decoded:?}");
+		// `DAEMON_SIGNALS` in `packages/coding-agent/src/launch/protocol.ts`,
+		// which the supervisor validates every signal against before it
+		// reaches the process.
+		let expected = match signal {
+			SupervisorSignal::Interrupt => "SIGINT",
+			SupervisorSignal::Terminate => "SIGTERM",
+			SupervisorSignal::HangUp => "SIGHUP",
+			SupervisorSignal::Quit => "SIGQUIT",
+			SupervisorSignal::Kill => "SIGKILL",
+		};
+		assert_eq!(sent, Value::String(expected.to_owned()));
+		proven.insert("ProcessSignal.signal".to_owned());
+	}
+
 	// A vocabulary recorded and never round-tripped here is a claim with no
 	// evidence behind it, so the census and this sweep name the same set.
 	let recorded: BTreeSet<String> = VOCABULARY_STRINGS
@@ -271,7 +285,6 @@ fn every_string_an_action_carries_is_classified() {
 	let expected: BTreeSet<String> = OPEN_STRINGS
 		.iter()
 		.chain(VOCABULARY_STRINGS.iter())
-		.chain(UNTYPED_VOCABULARIES.iter())
 		.map(|path| (*path).to_owned())
 		.collect();
 	let unrecorded: Vec<&String> = found.difference(&expected).collect();

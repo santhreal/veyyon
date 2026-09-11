@@ -315,11 +315,6 @@ fn a_control_a_request_lands_on_is_one_the_projection_gates() {
 		if !surface.in_terminal_drawer() {
 			continue;
 		}
-		// The signal control is drawn nowhere -- `Intent::ProcessSignal` is
-		// dispatched by nothing -- so the projection gates no id for it.
-		if matches!(surface, SurfaceId::ProcessSignalButton(..)) {
-			continue;
-		}
 		assert!(
 			gated.contains(&surface),
 			"{:?} landed on {surface:?}, which no control reads its availability under",

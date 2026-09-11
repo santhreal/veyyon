@@ -211,6 +211,10 @@ pub fn gated_controls(
 					SurfaceId::ProcessSendButton(row.clone(), proc.name.clone()),
 					HostActionKind::ProcessSend,
 				),
+				(
+					SurfaceId::ProcessSignalButton(row.clone(), proc.name.clone()),
+					HostActionKind::ProcessSignal,
+				),
 			]
 		}));
 	}

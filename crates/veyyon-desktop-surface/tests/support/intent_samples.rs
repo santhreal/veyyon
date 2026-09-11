@@ -91,7 +91,10 @@ pub fn every_intent() -> Vec<Intent> {
 		Intent::RestartTerminal,
 		Intent::ProcessStop("build".to_owned()),
 		Intent::ProcessRestart("build".to_owned()),
-		Intent::ProcessSignal("build".to_owned()),
+		Intent::ProcessSignal {
+			process: "build".to_owned(),
+			signal:  veyyon_desktop_model::SupervisorSignal::Interrupt,
+		},
 		Intent::SetDiffMode(veyyon_desktop_model::DiffMode::Split),
 		Intent::OpenFile("src/lib.rs".to_owned()),
 		Intent::ToggleTreeNode("src".to_owned()),
@@ -199,7 +202,7 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::ClearTerminal
 			| Intent::ProcessStop(_)
 			| Intent::ProcessRestart(_)
-			| Intent::ProcessSignal(_)
+			| Intent::ProcessSignal { .. }
 			| Intent::SetDiffMode(_)
 			| Intent::OpenFile(_)
 			| Intent::ToggleTreeNode(_)

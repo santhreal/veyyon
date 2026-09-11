@@ -12,7 +12,7 @@
 //! talks to a host directly, which is what keeps every surface renderable with
 //! no host attached.
 
-use veyyon_desktop_model::SurfaceId;
+use veyyon_desktop_model::{SupervisorSignal, SurfaceId};
 
 mod apply;
 
@@ -165,7 +165,13 @@ pub enum Intent {
 	},
 	ProcessStop(String),
 	ProcessRestart(String),
-	ProcessSignal(String),
+	/// Sends one signal to a supervised process. The signal is the operator's
+	/// choice, because the supervisor answers five of them and a process that
+	/// ignores one is the reason to reach for another.
+	ProcessSignal {
+		process: String,
+		signal:  SupervisorSignal,
+	},
 	PinSession(u64),
 	UnpinSession(u64),
 	DeferSession(u64),
