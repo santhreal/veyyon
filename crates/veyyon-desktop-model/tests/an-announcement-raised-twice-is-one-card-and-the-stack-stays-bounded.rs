@@ -258,3 +258,20 @@ fn a_card_is_dismissed_once_and_a_dismissal_of_nothing_says_so() {
 	assert!(queue.is_empty());
 	assert_eq!(queue.expire(T0), 0, "an empty stack expires nothing and terminates");
 }
+
+#[test]
+fn a_full_stack_of_equals_refuses_rather_than_dropping_one_of_them() {
+	let mut queue = NotificationQueue::default();
+	for slot in 0..NOTIFICATION_CAPACITY {
+		queue.raise(announcement(&format!("held-{slot}"), NotificationPriority::Normal, T0));
+	}
+	assert_eq!(
+		queue.raise(announcement("newcomer", NotificationPriority::Normal, T0 + 1)),
+		Raised::Refused,
+		"a card no more urgent than what is up does not take one of their places: the stack is what \
+		 the operator has not read yet, not what happened most recently"
+	);
+	assert!(!queue.holds("newcomer"));
+	assert_eq!(queue.len(), NOTIFICATION_CAPACITY);
+	assert!(queue.holds("held-0"), "and the one that has been up longest is still up");
+}

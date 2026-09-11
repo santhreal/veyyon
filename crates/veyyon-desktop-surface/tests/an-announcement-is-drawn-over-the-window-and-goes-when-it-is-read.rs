@@ -20,6 +20,7 @@
 #[allow(dead_code, reason = "this binary uses a subset of the shared window helpers")]
 mod window;
 
+use veyyon_desktop_kit::load_bundled_tokens;
 use veyyon_desktop_model::{Notification, NotificationPriority, NotificationSource};
 use veyyon_desktop_scene::headless::Captured;
 use veyyon_desktop_surface::{Intent, ShellState, fixture};
@@ -96,6 +97,10 @@ fn a_raised_announcement_is_drawn_at_the_trailing_edge_under_the_chrome() {
 			f32::from(detail.origin.y) > f32::from(title.origin.y),
 			"the detail is drawn under the line it qualifies"
 		);
+		assert!(
+			runs_labelled(&captured, "Waiting for an answer") == 0,
+			"an announcement that expires on its own is not waiting on anybody"
+		);
 
 		let left = f32::from(title.origin.x);
 		assert!(
@@ -103,7 +108,15 @@ fn a_raised_announcement_is_drawn_at_the_trailing_edge_under_the_chrome() {
 			"the stack is at the trailing edge, clear of the rail: {left}"
 		);
 		let top = f32::from(title.origin.y);
-		assert!(top > 0.0, "and under the chrome rather than over the titlebar: {top}");
+		let chrome = load_bundled_tokens()
+			.expect("the bundled tokens load")
+			.surface
+			.shell
+			.titlebar_height_px;
+		assert!(
+			top >= chrome,
+			"the stack begins under the chrome rather than over the titlebar: {top} < {chrome}"
+		);
 		assert!(
 			top < f32::from(HEIGHT) / 2.0,
 			"the stack grows down from the top, so the first card is in the upper half: {top}"
@@ -153,7 +166,10 @@ fn a_full_stack_stays_clear_of_the_composer_it_floats_over() {
 		.collect();
 	open_window(state_with(notices), |session| {
 		let captured = settled_frame(session);
-		let last = run_box(&captured, "refusal number 5");
+		let last = run_box(
+			&captured,
+			&format!("refusal number {}", veyyon_desktop_model::NOTIFICATION_CAPACITY - 1),
+		);
 		let bottom = f32::from(last.origin.y) + f32::from(last.size.height);
 		assert!(
 			bottom < f32::from(HEIGHT) * 0.75,
@@ -272,5 +288,26 @@ fn a_card_arriving_leaves_the_transition_of_the_one_above_it_alone() {
 			f32::from(second_box.origin.y) > f32::from(resting_box.origin.y),
 			"and it is drawn under the one that was already up"
 		);
+	});
+}
+
+#[test]
+fn an_announcement_waiting_on_an_answer_states_that_rather_than_nothing() {
+	let mut waiting = announcement(
+		"decision-waiting:s:a-1",
+		"bash is waiting for approval",
+		NotificationPriority::Urgent,
+	);
+	waiting.detail = None;
+	open_window(state_with(vec![waiting]), |session| {
+		let captured = settled_frame(session);
+		let title = run_box(&captured, "bash is waiting for approval");
+		let line = run_box(&captured, "Waiting for an answer");
+		assert!(
+			f32::from(line.origin.y) > f32::from(title.origin.y),
+			"a card that stays until it is answered says so under its line, so it is not read as a \
+			 card that failed to go"
+		);
+		assert!(inside_window(line));
 	});
 }

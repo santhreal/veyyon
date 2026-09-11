@@ -98,6 +98,7 @@ impl RenderOnce for Toast {
 			.border_color(tokens.color(ColorRole::Hairline))
 			.p(tokens.spacing(SpacingStep::S3))
 			.shadow_lg()
+			.cursor_pointer()
 			.flex()
 			.flex_col()
 			.gap(tokens.spacing(SpacingStep::S1))
@@ -114,7 +115,7 @@ impl RenderOnce for Toast {
 				div()
 					.text_size(tokens.font_size(TextRamp::Micro))
 					.line_height(tokens.line_height(TextRamp::Micro))
-					.text_color(tokens.color(ColorRole::Secondary))
+					.text_color(tint.ink)
 					.child(detail),
 			);
 		}
