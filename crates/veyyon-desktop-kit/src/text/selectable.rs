@@ -117,13 +117,31 @@ fn reporting(styled: StyledText, span: SpanId, prose: &SelectableProse) -> State
 
 /// The byte offset `at` names in the text `layout` drew.
 ///
-/// A position between two glyphs, past the end of a line or below the last one
-/// resolves to the nearest offset rather than to nothing, which is what a
-/// reader dragging past the end of a sentence means by it.
+/// The boundary taken is the CLOSEST one rather than the glyph the position
+/// sits inside: a reader who drags to the right half of the last character
+/// means that character, and a resolution that took the glyph's own start
+/// could never select it -- the sentence came back one `?` short of what the
+/// drag had crossed. A position above the text, past the end of a line or
+/// below the last line resolves to the nearest offset rather than to nothing,
+/// which is what a reader dragging past the end of a sentence means by it.
 fn offset_at(layout: &TextLayout, at: Point<Pixels>) -> usize {
-	layout
-		.index_for_position(at)
-		.unwrap_or_else(|nearest| nearest)
+	let line_height = layout.line_height();
+	let mut origin = layout.bounds().origin;
+	let mut line_start = 0;
+	for line in layout.line_layouts() {
+		let bottom = origin.y + line.size(line_height).height;
+		if at.y > bottom {
+			origin.y = bottom;
+			// The newline between two lines is a byte of the text they were
+			// laid out from, and no line holds it.
+			line_start += line.len() + 1;
+			continue;
+		}
+		let within = at - origin;
+		let (Ok(index) | Err(index)) = line.closest_index_for_position(within, line_height);
+		return line_start + index;
+	}
+	layout.len()
 }
 
 /// One block's prose, selectable when the document carries a selection and

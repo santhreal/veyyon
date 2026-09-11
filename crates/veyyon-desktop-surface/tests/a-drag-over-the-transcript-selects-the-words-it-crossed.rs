@@ -229,6 +229,34 @@ fn a_drag_across_two_blocks_selects_the_words_it_crossed_and_draws_them_selected
 }
 
 #[test]
+fn a_drag_into_the_last_character_of_a_line_takes_that_character() {
+	let selected = render_session(two_paragraphs(), |session| {
+		let rest = session.frame().expect("frame renders");
+		let first = run_holding(&rest, FIRST);
+		// A quarter of a glyph in from the run's right edge, which is inside
+		// the last character and past its middle. A reader who drags there
+		// means that character; a resolution that took the glyph the position
+		// sits inside would stop at that glyph's own start and hand back a
+		// sentence one character short of what the drag crossed.
+		let glyph = first.size.width / FIRST.chars().count() as f32;
+		let into_last =
+			Point { x: first.origin.x + first.size.width - glyph / 4.0, y: along(first, 0.5).y };
+		session
+			.drag(along(first, 0.0), into_last)
+			.expect("the drag reaches the end of the paragraph");
+		session
+			.update(|view, _window, _cx| view.selected_text())
+			.expect("the view reads back its selection")
+	});
+
+	assert_eq!(
+		selected, FIRST,
+		"a drag from the start of the paragraph into its last character took {selected:?}, so the \
+		 character the pointer was over is unreachable"
+	);
+}
+
+#[test]
 fn a_press_with_shift_extends_the_selection_rather_than_starting_a_new_one() {
 	let (plain, extended) = render_session(two_paragraphs(), |session| {
 		let rest = session.frame().expect("frame renders");

@@ -16,12 +16,12 @@
 
 use std::path::{Path, PathBuf};
 
-use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
+use veyyon_desktop_kit::{document_spans, load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_scene::headless::{
 	Captured, RenderOptions, headless_context, render_view_captured,
 };
 use veyyon_desktop_surface::{
-	Attachment, Intent, MediaType, ShellState, ShellView,
+	Attachment, Block, Intent, MediaType, ShellState, ShellView, Turn,
 	composer::{AttachmentError, payload_for},
 	fixture, install_tokens,
 };
@@ -142,31 +142,28 @@ fn expected_controls(state: &ShellState) -> usize {
 		+ 6 + 2
 		+ usize::from(state.connection.is_attached())
 		+ usize::from(state.current_id > 0) * 2;
+	// A span the frame drew answers the pointer too, and a body behind a
+	// disclosure row draws none until open: prose registers one per paragraph.
 	let transcript = usize::from(!state.transcript.is_empty()) * 2
 		+ state
 			.transcript
 			.iter()
 			.map(|turn| match turn {
-				veyyon_desktop_surface::Turn::Operator(_) => 0,
-				veyyon_desktop_surface::Turn::OperatorArtifacts { artifacts, .. } => artifacts.len(),
-				veyyon_desktop_surface::Turn::Agent { blocks, model } => {
+				Turn::Operator(text) => usize::from(!text.is_empty()),
+				Turn::OperatorArtifacts { artifacts, text } => {
+					artifacts.len() + usize::from(!text.is_empty())
+				},
+				Turn::Agent { blocks, model } => {
 					blocks
-					.iter()
-					.map(|block| match block {
-						veyyon_desktop_surface::Block::Prose(_)
-						| veyyon_desktop_surface::Block::Note { .. } => 0,
-						veyyon_desktop_surface::Block::Reason(_)
-						| veyyon_desktop_surface::Block::Invoke { .. }
-						| veyyon_desktop_surface::Block::Pane { .. }
-						| veyyon_desktop_surface::Block::Unknown { .. }
-						| veyyon_desktop_surface::Block::Artifact(_) => 1,
-					})
-					.sum::<usize>()
-					// A turn that names a model answers two: the hover group the
-					// turn establishes so the name can reveal with it, and the
-					// name itself, which opens the accounting. A turn that names
-					// none establishes no group and draws no footer.
-					+ usize::from(model.is_some()) * 2
+						.iter()
+						.map(|block| match block {
+							Block::Prose(text) => document_spans(text).len(),
+							Block::Note { .. } => 1,
+							Block::Reason(_) | Block::Invoke { .. } | Block::Pane { .. } => 1,
+							Block::Unknown { .. } | Block::Artifact(_) => 1,
+						})
+						.sum::<usize>()
+						+ usize::from(model.is_some()) * 2
 				},
 			})
 			.sum::<usize>();
@@ -274,11 +271,16 @@ fn a_dispatched_intent_reaches_the_frame_the_operator_then_looks_at() {
 	// The drawer is the intent whose effect is a whole region rather than a
 	// tint, so it is the one that proves the loop end to end: dispatch, then
 	// render, then a band of the window that the session column had before.
+	//
+	// Both frames read one short turn: opening the drawer takes its band out of
+	// the column, and a taller transcript scrolls a span out of its clip.
+	let held = || vec![Turn::Operator("Open the drawer.".to_owned())];
+	let closed_state = ShellState { transcript: held(), ..fixture::with_drawer() };
 	let closed = render_view_captured(&mut cx, &options(), move |_window, app: &mut App| {
 		let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
 			.expect("the bundled tokens and theme install");
 		app.new(|cx| {
-			let mut view = ShellView::new(installed, fixture::with_drawer());
+			let mut view = ShellView::new(installed, closed_state);
 			// Closed by dispatch, from the state that ships it open, so the
 			// frame below is what a click on the titlebar control produces.
 			view.dispatch(Intent::SetDrawer { open: false }, cx);
@@ -289,9 +291,9 @@ fn a_dispatched_intent_reaches_the_frame_the_operator_then_looks_at() {
 	.expect("the shell renders offscreen");
 
 	drop(cx);
-	let open_state = fixture::with_drawer();
+	let open_state = ShellState { transcript: held(), ..fixture::with_drawer() };
 	// Clear, Restart, Close, the split's grip and the hairline whose tint turns
-	// on with it, container, occlusion and focusable grid.
+	// on with it, the split and drawer containers, occlusion and focusable grid.
 	let drawer_regions = open_state.drawer.tabs.len() + 8;
 	let open = capture(open_state);
 
