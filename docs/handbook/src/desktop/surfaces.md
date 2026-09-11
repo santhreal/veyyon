@@ -215,7 +215,9 @@ states a name beside its control rather than prose, and a tool card the host
 drew a view for states its text through that view, so neither carries a
 selection; the turn menu's **Copy** takes the whole turn in both cases. A code
 pane's lines are separate selections, one per line, and the pane's caption
-heads the row that opens it rather than being part of the body.
+heads the row that opens it rather than being part of the body. A line the pane
+sets shorter than its text copies the text behind it, never the mark the line
+was cut with.
 
 Persisted thinking-level, service-tier and session changes display their
 recorded values. A model change displays its recorded value from the first
