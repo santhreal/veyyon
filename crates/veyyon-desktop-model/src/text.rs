@@ -5,4 +5,5 @@
 //! modules here hold that reading, so the same grid is available to a
 //! projection, a test and an export without a renderer.
 
+pub mod markdown;
 pub mod terminal;
