@@ -162,6 +162,14 @@ edge_runs() { # <png>
 		awk -v floor="$(( COMPOSER_CARD_W / 2 ))" '$3 >= floor'
 }
 
+# The frame both arms publish under one name: the settled turn, which the off
+# arm reaches on its own and the on arm reaches only by answering the card. One
+# call site, so the name is written once and neither arm can shadow the other's
+# frame.
+answered_shot() {
+	shot decision-answered
+}
+
 # Wait until the stack is drawing exactly this many cards. The host raises a
 # decision when the model calls a tool and not when the prompt is sent, so the
 # wait is on the window rather than on a timer; a stack that never reaches the
@@ -227,7 +235,7 @@ if [ "${ARM}" = "off" ]; then
 	# on arm reaches only by answering. Nothing to fold and nothing to open, so
 	# the two frames the fold needs are on-arm only, by construction.
 	pause 1.2
-	shot decision-answered
+	answered_shot
 	echo "scene: the off arm ends here -- a fold needs decisions, and this mode raises none" >&2
 	exit 0
 fi
@@ -307,7 +315,7 @@ if ! native_session_ready finished 2; then
 		"the turn never completed after its tool call was approved"
 fi
 pause 0.6
-shot decision-answered
+answered_shot
 
 # ─── Three At Once, Against A Stack That Draws Two ───────────────────────────
 # Three tools in one reply, so the wrapper raises three decisions concurrently:
