@@ -34,6 +34,7 @@ scene that clicked the row below Export publishes a pair naming the wrong item.
            lower than an offered ordinary row.
 
     measure-frame.py filled-band <frame> <left> <top> <width> <height> <colour>
+                     [<band> <bands>]
         -> "<y> <x>" at the centre of the one box a colour fills inside the
            rectangle. A transcript is anchored to its foot, so a scene that
            counted a turn down from the column's top would aim at the empty
@@ -41,6 +42,22 @@ scene that clicked the row below Export publishes a pair naming the wrong item.
            thing in the column drawn on a fill, so it is found by that fill
            wherever the column put it. The fill is matched exactly, since the
            elevations a surface is drawn at sit within FUZZ of each other.
+           Two arguments name one of several boxes: <band> is 1-based from the
+           top and <bands> is how many the rectangle must hold, so a session
+           of two prompts states which of them is aimed at and a session that
+           drew one prompt, or three, abandons the take instead of aiming at
+           whichever box came first.
+
+    measure-frame.py menu-item <frame> <left> <top> <width> <height> <colour>
+                     <item> <items>
+        -> "<y> <x> <strength>" at the centre of one item's row in a menu the
+           rectangle holds. The box comes from the exact fill a floated
+           surface is drawn on, so a transcript fill a few levels away from it
+           never merges with the menu, and the rows are then the bands of ink
+           inside that box: <items> names how many the menu must hold, so a
+           menu that grew or lost a row abandons the take instead of clicking
+           whichever band came <item>th. Strength is read as `menu-rows` reads
+           it, against the menu's own first row.
 
 All coordinates are root coordinates, and every reading is taken through
 ImageMagick so a scene needs nothing a recorder container does not already
@@ -88,6 +105,15 @@ GLYPH_GAP_TOLERANCE = 16
 # drawn in, since the bubble is set to a share of the measure and aligned to
 # one edge, so this sits well under FILL_SHARE.
 FILLED_BAND_SHARE = 0.1
+# How many of a menu's outermost pixels are its own border and the radius it is
+# rounded to, which no row of it is read over.
+BORDER_INSET_PX = 3
+# How much of a row a label inks before the row counts as an item. A line of
+# type across a menu's measure comes to a tenth of it and more; a stray column
+# -- a hairline the menu is drawn over, a divider behind it -- comes to one
+# pixel of the row, and a floor of one pixel makes every row of the menu an
+# item and finds one band covering all of them.
+ROW_INK_SHARE = 0.04
 
 
 def run(args):
@@ -230,18 +256,21 @@ def selected_card(argv):
 
 
 def filled_band(argv):
-    """The one box a colour fills inside a rectangle."""
+    """One box a colour fills inside a rectangle, of the number it must hold."""
     frame, left, top, width, height, colour = (
         argv[0], int(argv[1]), int(argv[2]), int(argv[3]), int(argv[4]), argv[5],
     )
+    band, wanted = (int(argv[6]), int(argv[7])) if len(argv) > 7 else (1, 1)
+    if not 1 <= band <= wanted:
+        fail(f"box {band} is not one of the {wanted} asked for", 64)
     crop = crop_of(left, top, width, height)
     bands = merged(
         runs(shares(frame, crop, colour, "row", height, EXACT), FILLED_BAND_SHARE),
         GLYPH_GAP_TOLERANCE,
     )
-    if len(bands) != 1:
-        fail(f"{colour} fills {len(bands)} boxes in the rectangle, not the one looked for", 1)
-    first, last = bands[0]
+    if len(bands) != wanted:
+        fail(f"{colour} fills {len(bands)} boxes in the rectangle, not the {wanted} looked for", 1)
+    first, last = bands[band - 1]
 
     # Read across the box's own rows, so a column reports the fill's width
     # rather than its share of the whole rectangle.
@@ -339,19 +368,110 @@ def menu_rows(argv):
     print(origin_y + (top + foot) // 2, origin_x + (left + right) // 2, strength)
 
 
+def ink_bands(frame, crop, colour, span):
+    """The bands of ink a menu's ground carries, which are its rows.
+
+    The box was found by the exact fill, so inside it the ground is read within
+    FUZZ instead: a row of ground carries the antialiasing of the corner the
+    menu is rounded to and of the hairline it is bordered with, and an exact
+    reading counts that as ink and finds one band covering the whole menu.
+
+    A band under MIN_BAND_PX is a hairline drawn across the menu, and a band
+    touching the box's own edge is its corner; an item's band is neither,
+    because the menu pads its rows away from its edges and a label is a line
+    of type tall.
+    """
+    inside = shares(frame, crop, colour, "row", span)
+    bands = runs([1.0 - share for share in inside], ROW_INK_SHARE)
+    return [band for band in bands if band[0] > 0 and band[1] < span - 1]
+
+
+def menu_item(argv):
+    """One item's row in a menu the rectangle holds, found by its own fill."""
+    frame, left, top, width, height, colour, item, items = (
+        argv[0], int(argv[1]), int(argv[2]), int(argv[3]), int(argv[4]), argv[5],
+        int(argv[6]), int(argv[7]),
+    )
+    if not 1 <= item <= items:
+        fail(f"item {item} is not one of the {items} rows asked for", 64)
+    crop = crop_of(left, top, width, height)
+    boxes = merged(
+        runs(shares(frame, crop, colour, "row", height, EXACT), FILLED_BAND_SHARE),
+        GLYPH_GAP_TOLERANCE,
+    )
+    if len(boxes) != 1:
+        fail(f"{colour} fills {len(boxes)} boxes in the rectangle, not the one menu", 1)
+    first, last = boxes[0]
+    span = last - first + 1
+    columns = merged(
+        runs(
+            shares(frame, crop_of(left, top + first, width, span), colour, "column", width, EXACT),
+            FILLED_BAND_SHARE,
+        ),
+        GLYPH_GAP_TOLERANCE,
+    )
+    if len(columns) != 1:
+        fail(f"{colour} came to {len(columns)} column runs inside the menu, not one", 2)
+    menu_left, menu_right = columns[0]
+    box = menu_right - menu_left + 1
+
+    # The hairline a menu is bordered with runs down its outermost columns, and
+    # every row of the menu crosses it, so a row of pure ground between two
+    # labels reads as inked and the rows come out as one band. The rows are
+    # read inside the border instead.
+    inset = min(BORDER_INSET_PX, box // 4)
+    reading_left = left + menu_left + inset
+    reading_w = box - 2 * inset
+    if reading_w < MIN_BAND_PX:
+        fail(f"the menu came to {box}px across, which is narrower than its own border", 2)
+    bands = ink_bands(frame, crop_of(reading_left, top + first, reading_w, span), colour, span)
+    if len(bands) != items:
+        fail(
+            f"the menu drew {len(bands)} rows of ink, not {items}: "
+            + ", ".join(f"{top + first + band[0]}-{top + first + band[1]}" for band in bands[:12]),
+            3,
+        )
+
+    tops = [band[0] for band in bands]
+    pitches = [tops[index + 1] - tops[index] for index in range(len(tops) - 1)]
+    if pitches:
+        mean = sum(pitches) / len(pitches)
+        if any(abs(pitch - mean) > mean / PITCH_TOLERANCE for pitch in pitches):
+            fail(f"the menu's rows came at {pitches}px, which is not one item height", 4)
+
+    ground_grey = grey_of(colour)
+
+    def strength_of(band):
+        crop = crop_of(reading_left, top + first + band[0], reading_w, band[1] - band[0] + 1)
+        return max(0.0, grey_peak(frame, crop) - ground_grey)
+
+    reference = strength_of(bands[0])
+    if reference <= 0.0:
+        fail("the menu's first row carries no ink to measure the rest against", 5)
+    band = bands[item - 1]
+    strength = round(100 * strength_of(band) / reference)
+    print(
+        top + first + (band[0] + band[1]) // 2,
+        left + (menu_left + menu_right) // 2,
+        strength,
+    )
+
+
 READINGS = {
-    "selected-card": (selected_card, 6),
-    "filled-band": (filled_band, 6),
-    "menu-rows": (menu_rows, 6),
+    "selected-card": (selected_card, (6,)),
+    "filled-band": (filled_band, (6, 8)),
+    "menu-rows": (menu_rows, (6,)),
+    "menu-item": (menu_item, (8,)),
 }
 
 
 def main(argv):
     if not argv or argv[0] not in READINGS:
         fail(f"usage: measure-frame.py <{'|'.join(READINGS)}> <frame> ...", 64)
-    reading, arity = READINGS[argv[0]]
-    if len(argv) - 1 != arity:
-        fail(f"{argv[0]} reads {arity} arguments, not {len(argv) - 1}", 64)
+    reading, arities = READINGS[argv[0]]
+    if len(argv) - 1 not in arities:
+        counts = " or ".join(str(arity) for arity in arities)
+        fail(f"{argv[0]} reads {counts} arguments, not {len(argv) - 1}", 64)
     reading(argv[1:])
 
 
