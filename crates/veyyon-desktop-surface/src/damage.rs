@@ -230,6 +230,9 @@ pub fn regions_changed(last: &ShellState, next: &ShellState) -> Invalidation {
 		keymap,
 		composer,
 		reduced_motion,
+		// Every ground, ink and tint is drawn from the theme, so a preview
+		// the pointer raised changes pixels in every region at once.
+		appearance,
 	} = next;
 
 	// Anything that moves layout, or changes a surface that records no box of
@@ -248,6 +251,7 @@ pub fn regions_changed(last: &ShellState, next: &ShellState) -> Invalidation {
 		|| keymap != &last.keymap
 		|| composer != &last.composer
 		|| reduced_motion != &last.reduced_motion
+		|| appearance != &last.appearance
 	{
 		return Invalidation::Full;
 	}

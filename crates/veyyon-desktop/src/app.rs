@@ -13,7 +13,8 @@ use std::{
 
 use flume::Receiver;
 use veyyon_desktop_tokens::{
-	Theme, TokenError, TokenReloadMessage, TokenWatcher, Tokens, load_from_dir, load_theme,
+	DEFAULT_APPEARANCE, Theme, TokenError, TokenReloadMessage, TokenWatcher, Tokens,
+	load_bundled_themes, load_from_dir,
 };
 
 /// Discovered directory paths for desktop tokens and bundled themes.
@@ -23,13 +24,34 @@ pub struct AssetPaths {
 	pub themes_dir: PathBuf,
 }
 
-/// Resolved startup bundle containing tokens, theme, and filesystem paths.
+/// Resolved startup bundle: the tokens, every bundled appearance, and the
+/// filesystem paths they were read from.
 pub struct StartupBundle {
 	pub tokens:       Arc<Tokens>,
+	/// The theme of the default appearance, which is what a window with
+	/// nothing remembered opens in and what a headless render uses when it
+	/// names no appearance. The same value as the entry in `themes` whose
+	/// appearance is `DEFAULT_APPEARANCE`; `load_startup_bundle` refuses a
+	/// build that ships no such entry rather than picking another one.
 	pub theme:        Theme,
-	pub theme_path:   PathBuf,
+	/// Every appearance this build ships, loaded and contrast-checked once.
+	/// A choice made later restyles the window out of this list rather than
+	/// off the disk, so a theme file edited or deleted while the window is up
+	/// cannot fail a selection under the operator's pointer.
+	pub themes:       Vec<Theme>,
 	pub surface_path: PathBuf,
 	pub paths:        AssetPaths,
+}
+
+impl StartupBundle {
+	/// The bundled theme of one appearance, absent when this build ships none.
+	#[must_use]
+	pub fn theme_of(&self, appearance: &str) -> Option<&Theme> {
+		self
+			.themes
+			.iter()
+			.find(|theme| theme.appearance == appearance)
+	}
 }
 
 /// Discovers the tokens and themes directories from the environment or
@@ -70,17 +92,30 @@ fn find_directory(workspace_rel: &str, manifest_rel: &str) -> PathBuf {
 	PathBuf::from(workspace_rel)
 }
 
-/// Loads tokens, dark theme, and resolves file paths.
+/// Loads the tokens, every bundled appearance, and resolves file paths.
 ///
 /// Fails closed with `TokenError` if any token file or theme is missing or
-/// malformed.
+/// malformed. Every appearance is read here rather than the one the window
+/// opens in, because the appearance page offers them all and a contrast
+/// failure in the one nobody opened in is still a failure of this build.
 pub fn load_startup_bundle(paths: AssetPaths) -> Result<StartupBundle, TokenError> {
 	let tokens = load_from_dir(&paths.tokens_dir)?;
-	let theme_path = paths.themes_dir.join("dark.toml");
-	let theme = load_theme(&theme_path)?;
+	let themes = load_bundled_themes(&paths.themes_dir)?;
+	let theme = themes
+		.iter()
+		.find(|theme| theme.appearance == DEFAULT_APPEARANCE)
+		.ok_or_else(|| TokenError::UnknownAppearance {
+			appearance: DEFAULT_APPEARANCE.to_string(),
+			known:      themes
+				.iter()
+				.map(|theme| theme.appearance.as_str())
+				.collect::<Vec<&str>>()
+				.join(", "),
+		})?
+		.clone();
 	let surface_path = paths.tokens_dir.join("surface/transcript.toml");
 
-	Ok(StartupBundle { tokens: Arc::new(tokens), theme, theme_path, surface_path, paths })
+	Ok(StartupBundle { tokens: Arc::new(tokens), theme, themes, surface_path, paths })
 }
 
 /// Spawns a background `TokenWatcher` monitoring the tokens directory.

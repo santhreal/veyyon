@@ -115,6 +115,7 @@ pub(super) fn overlay_layer(
 				.child(settings_surface(
 					state,
 					&view.general_settings_list,
+					&view.state.appearance,
 					&fields,
 					back,
 					Some(&dest_focus),

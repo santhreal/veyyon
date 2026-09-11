@@ -36,7 +36,8 @@ pub use elevation::{ElevationLevel, ElevationTokens};
 pub use error::TokenError;
 pub use loader::{load_bundled_tokens, load_from_dir};
 pub use loader_theme::{
-	APPEARANCES, THEME_VERSION, load_bundled_theme, load_bundled_themes, load_theme,
+	APPEARANCES, DEFAULT_APPEARANCE, THEME_VERSION, load_bundled_theme, load_bundled_themes,
+	load_theme,
 };
 pub use motion::{
 	DirectThenSpringModel, DurationModel, EasingCurve, FlipModel, MotionModel, MotionRole,

@@ -55,7 +55,10 @@ pub use shell::{
 };
 pub use terminal::Cell;
 pub use text::{plain_line, plain_lines};
-pub use tokens::{InstalledTokens, install_tokens};
+pub use tokens::{
+	InstalledTokens, ThemeLibrary, apply_appearance, install_appearances, install_tokens,
+	reload_tokens,
+};
 pub use tool_view::{
 	DisclosureCallback, TargetCallback, ToolViewCallbacks, ToolViewTarget, render_framed_block,
 	render_headed_block, render_line, render_notice, render_section, render_span, render_status_row,

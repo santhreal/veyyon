@@ -29,6 +29,7 @@ pub use self::{
 use crate::{
 	Intent, ShellView,
 	controls::{ControlError, ControlStates, error_hairline},
+	model::AppearanceChoice,
 	shell::fields::FieldSlots,
 };
 
@@ -162,6 +163,7 @@ pub fn settings_failure_row(
 pub fn settings_surface(
 	state: &SettingsState,
 	list_state: &GeneralSettingsListState,
+	appearance: &AppearanceChoice,
 	fields: &FieldSlots,
 	back: Option<crate::navigation::SurfaceRoute>,
 	focus: Option<&FocusHandle>,
@@ -172,7 +174,7 @@ pub fn settings_surface(
 ) -> impl IntoElement {
 	if let Some(route) = state.route {
 		return focused::focused_surface(
-			state, list_state, fields, route, back, focus, controls, geometry, tokens, cx,
+			state, list_state, appearance, fields, route, back, focus, controls, geometry, tokens, cx,
 		);
 	}
 	let radius = tokens.radius(RadiusStep::Xl);
@@ -312,7 +314,8 @@ pub fn settings_surface(
 	content = content.children(settings_failure_row(state, tokens, cx));
 
 	// Page body rows container.
-	let body = render_page_body(state, list_state, fields, controls, geometry, tokens, cx);
+	let body =
+		render_page_body(state, list_state, appearance, fields, controls, geometry, tokens, cx);
 	content = content.child(body);
 	dialog.child(content)
 }

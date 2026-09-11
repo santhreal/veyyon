@@ -13,6 +13,7 @@ use super::{
 use crate::{
 	ShellView,
 	controls::ControlStates,
+	model::AppearanceChoice,
 	navigation::{SurfaceRoute, surface_header},
 	shell::fields::FieldSlots,
 };
@@ -20,6 +21,7 @@ use crate::{
 pub(super) fn focused_surface(
 	state: &SettingsState,
 	list_state: &GeneralSettingsListState,
+	appearance: &AppearanceChoice,
 	fields: &FieldSlots,
 	route: SurfaceRoute,
 	back: Option<SurfaceRoute>,
@@ -77,8 +79,7 @@ pub(super) fn focused_surface(
 	} else {
 		body_container = body_container.overflow_y_scroll();
 	}
-	container.child(
-		body_container
-			.child(render_page_body(state, list_state, fields, controls, geometry, tokens, cx)),
-	)
+	container.child(body_container.child(render_page_body(
+		state, list_state, appearance, fields, controls, geometry, tokens, cx,
+	)))
 }

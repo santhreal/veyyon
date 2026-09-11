@@ -130,4 +130,9 @@ pub enum TokenError {
 		 install one of them, or name a family this machine has"
 	)]
 	FontUnavailable { path: PathBuf, key: String, families: String },
+
+	// A window asked to draw an appearance this build ships no theme for: a
+	// store written by a later build, or a theme file that has since gone.
+	#[error("no bundled theme draws the {appearance:?} appearance; this build ships {known}")]
+	UnknownAppearance { appearance: String, known: String },
 }

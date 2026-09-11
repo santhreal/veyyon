@@ -10,7 +10,24 @@ use veyyon_desktop_model::{
 	TranscriptStore, VersionedStore as _,
 };
 use veyyon_desktop_surface::{HostShape, PanelTab, ScrollAnchor, SessionShape};
+use veyyon_desktop_tokens::{APPEARANCES, DEFAULT_APPEARANCE};
 use veyyon_gpui::{Bounds, Pixels};
+
+/// The appearance the stores name, resolved against what this build ships.
+///
+/// A name no bundled theme draws -- a store written by a later build, or a
+/// theme file that has since gone -- resolves to the default rather than
+/// travelling on to the window, which would ask for an install that fails
+/// under the operator's pointer.
+#[must_use]
+pub fn chosen_appearance(state: &PersistedState) -> &'static str {
+	state
+		.shell
+		.appearance
+		.as_deref()
+		.and_then(|chosen| APPEARANCES.into_iter().find(|known| *known == chosen))
+		.unwrap_or(DEFAULT_APPEARANCE)
+}
 
 /// What the loaded stores state about every session at once.
 #[must_use]
@@ -19,6 +36,7 @@ pub fn host_shape(state: &PersistedState) -> HostShape {
 		queue_collapsed:    state.shell.queue_collapsed,
 		collapsed_sections: state.queue.collapsed_sections.clone(),
 		parked_page:        state.queue.parked_page.max(1) as usize,
+		appearance:         chosen_appearance(state).to_string(),
 	}
 }
 
@@ -70,6 +88,7 @@ pub fn record_host(state: &mut PersistedState, shape: &HostShape) {
 	state.shell = ShellStore {
 		version:         ShellStore::CURRENT_VERSION,
 		queue_collapsed: shape.queue_collapsed,
+		appearance:      Some(shape.appearance.clone()),
 		// The active session is the host's: it is set by the frame that
 		// reports one and is only read back to reopen it.
 		active_session:  state.shell.active_session.clone(),

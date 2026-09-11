@@ -14,10 +14,13 @@ use clap::Parser as _;
 use veyyon_desktop::{
 	cli::{Cli, Command},
 	connect_or_spawn, discover_asset_paths, load_startup_bundle, scene, start_token_supervision,
-	state::{Keeper, StateDir, placement, report_rejections},
+	state::{Keeper, StateDir, chosen_appearance, placement, report_rejections},
 };
 use veyyon_desktop_model::PersistedState;
-use veyyon_desktop_surface::{Keymap, ShellState, ShellView, install_tokens};
+use veyyon_desktop_surface::{
+	AppearanceChoice, Keymap, ShellState, ShellView, ThemeLibrary, install_appearances,
+	reload_tokens,
+};
 use veyyon_desktop_tokens::TokenReloadMessage;
 use veyyon_gpui::{
 	App, AppContext, Application, AsyncApp, Bounds, Pixels, Size, TitlebarOptions, WindowBounds,
@@ -56,9 +59,13 @@ fn main() {
 	let keeper = state_dir.map(|dir| Keeper::new(dir, persisted.clone()));
 
 	let tokens = bundle.tokens.clone();
-	let theme = bundle.theme.clone();
+	let themes = bundle.themes.clone();
 	let surface_path = bundle.surface_path.clone();
 	let tokens_dir = bundle.paths.tokens_dir;
+	// The appearance the last window was left in, resolved against what this
+	// build ships before the first frame, so the window opens in it rather
+	// than opening dark and restyling once the store has been read (§6.9).
+	let appearance = chosen_appearance(&persisted).to_string();
 
 	let platform = gpui_platform::current_platform(false);
 	let app = Application::with_platform(platform);
@@ -91,14 +98,19 @@ fn main() {
 		};
 
 		let window = match cx.open_window(window_options, |_, cx| {
-			let installed = match install_tokens(cx, &tokens, &theme, &surface_path) {
+			let library = ThemeLibrary::new(&tokens, themes.clone(), &surface_path);
+			let installed = match install_appearances(cx, library, &appearance) {
 				Ok(installed) => installed,
 				Err(error) => {
 					eprintln!("Fatal: failed to install tokens: {error}");
 					process::exit(1);
 				},
 			};
-			cx.new(|_| ShellView::new(installed, ShellState::default()))
+			let state = ShellState {
+				appearance: AppearanceChoice::new(appearance.as_str()),
+				..ShellState::default()
+			};
+			cx.new(|_| ShellView::new(installed, state))
 		}) {
 			Ok(handle) => handle,
 			Err(error) => {
@@ -121,8 +133,6 @@ fn main() {
 		// Background token watcher for hot reload (§8.4).
 		match start_token_supervision(&tokens_dir) {
 			Ok((watcher, rx)) => {
-				let theme = theme.clone();
-				let surface_path = surface_path.clone();
 				cx.spawn(move |cx: &mut AsyncApp| {
 					let mut async_cx = cx.clone();
 					async move {
@@ -132,12 +142,14 @@ fn main() {
 								TokenReloadMessage::Applied(new_tokens) => (Some(new_tokens), None),
 								TokenReloadMessage::Failed(err) => (None, Some(err.to_string())),
 							};
-							let theme = theme.clone();
-							let surface_path = surface_path.clone();
 							let _ = window.update(&mut async_cx, move |view, _window, cx| {
 								match installed {
 									Some(new_tokens) => {
-										match install_tokens(cx, &new_tokens, &theme, &surface_path) {
+										// The reload is resolved against the appearance now
+										// drawn, so an edit to a token file does not drop the
+										// window out of the theme the operator chose.
+										let appearance = view.state().appearance.drawn().to_string();
+										match reload_tokens(cx, &new_tokens, &appearance) {
 											Ok(installed) => {
 												view.set_tokens(installed);
 												view.set_notice(None, cx);

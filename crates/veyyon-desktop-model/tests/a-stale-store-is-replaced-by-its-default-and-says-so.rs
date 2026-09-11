@@ -46,6 +46,7 @@ fn populated() -> PersistedState {
 	state.shell = ShellStore {
 		version:         ShellStore::CURRENT_VERSION,
 		queue_collapsed: true,
+		appearance:      Some("light".to_string()),
 		active_session:  Some(SessionId::from(FIRST)),
 	};
 	state.queue = QueueStore {

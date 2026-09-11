@@ -16,8 +16,9 @@ use veyyon_desktop_model::{
 use veyyon_desktop_scene::{Appearance, HeadlessSession, RenderOptions, headless_context};
 use veyyon_desktop_surface::{
 	ConnectionPhase, DrawerContent, DrawerTab, Intent, Keymap, Overlay, ProcessRow, SettingsPage,
-	SettingsState, ShellState, ShellView, fixture, install_tokens,
+	SettingsState, ShellState, ShellView, ThemeLibrary, fixture, install_appearances,
 };
+use veyyon_desktop_tokens::DEFAULT_APPEARANCE;
 use veyyon_gpui::{App, AppContext, Window};
 
 /// The provider a seeded flow names, so an intent is matched against the
@@ -179,8 +180,13 @@ pub fn driven<R>(
 	let options = options();
 	let mut session =
 		HeadlessSession::open(&mut cx, &options, |_window: &mut Window, app: &mut App| {
-			let installed = install_tokens(app, &bundle.tokens, &bundle.theme, &bundle.surface_path)
-				.expect("tokens install");
+			// The same install the binary does: every bundled appearance
+			// reaches the window, so a page that lists them lists them here
+			// too.
+			let library =
+				ThemeLibrary::new(&bundle.tokens, bundle.themes.clone(), &bundle.surface_path);
+			let installed =
+				install_appearances(app, library, DEFAULT_APPEARANCE).expect("tokens install");
 			app.new(move |_cx| ShellView::new(installed, state))
 		})
 		.expect("the shell opens a window");
@@ -200,8 +206,13 @@ pub fn driven_with_keys<R>(
 	let options = options();
 	let mut session =
 		HeadlessSession::open(&mut cx, &options, |_window: &mut Window, app: &mut App| {
-			let installed = install_tokens(app, &bundle.tokens, &bundle.theme, &bundle.surface_path)
-				.expect("tokens install");
+			// The same install the binary does: every bundled appearance
+			// reaches the window, so a page that lists them lists them here
+			// too.
+			let library =
+				ThemeLibrary::new(&bundle.tokens, bundle.themes.clone(), &bundle.surface_path);
+			let installed =
+				install_appearances(app, library, DEFAULT_APPEARANCE).expect("tokens install");
 			app.bind_keys(Keymap::default().bindings());
 			app.new(move |_cx| ShellView::new(installed, state))
 		})

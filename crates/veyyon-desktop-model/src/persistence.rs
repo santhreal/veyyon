@@ -64,23 +64,36 @@ impl VersionedStore for WindowStore {
 	}
 }
 
-/// Root shell layout parameters and active session pointer.
+/// Root shell layout parameters, the chosen appearance and the active session
+/// pointer.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ShellStore {
 	pub version:         u32,
 	pub queue_collapsed: bool,
+	/// The appearance the window was left drawing in, absent when the
+	/// operator never chose one and the build's default stands.
+	pub appearance:      Option<String>,
 	pub active_session:  Option<SessionId>,
 }
 
 impl Default for ShellStore {
 	fn default() -> Self {
-		Self { version: Self::CURRENT_VERSION, queue_collapsed: false, active_session: None }
+		Self {
+			version:         Self::CURRENT_VERSION,
+			queue_collapsed: false,
+			appearance:      None,
+			active_session:  None,
+		}
 	}
 }
 
 impl VersionedStore for ShellStore {
-	const CURRENT_VERSION: u32 = 2;
+	// Version 3 adds the appearance. A version 2 document is rejected rather
+	// than read with the field defaulted: the two shapes are one field apart,
+	// and a defaulted read would put the window back up in the build's
+	// default appearance while stating it restored what was left.
+	const CURRENT_VERSION: u32 = 3;
 
 	fn version(&self) -> u32 {
 		self.version

@@ -124,6 +124,14 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 		}],
 		IntentDiscriminants::SpawnTask => vec![Intent::SpawnTask("review the diff".to_string())],
 		IntentDiscriminants::SelectTheme => vec![Intent::SelectTheme("dark".to_string())],
+		// Both arms of the preview: the pointer arriving on a row, and the
+		// pointer leaving every row.
+		IntentDiscriminants::PreviewAppearance => {
+			vec![Intent::PreviewAppearance(Some("light".to_string())), Intent::PreviewAppearance(None)]
+		},
+		IntentDiscriminants::SelectAppearance => {
+			vec![Intent::SelectAppearance("light".to_string())]
+		},
 		IntentDiscriminants::ReloadSettings => vec![Intent::ReloadSettings],
 		IntentDiscriminants::SetMcpEnabled => {
 			vec![Intent::SetMcpEnabled { server: "mcp-server".to_string(), enabled: true }]

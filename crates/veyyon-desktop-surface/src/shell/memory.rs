@@ -40,6 +40,9 @@ pub struct HostShape {
 	/// How many pages of the parked section the operator paged in, counted
 	/// from one.
 	pub parked_page:        usize,
+	/// The appearance the operator chose, which is what a relaunch draws in.
+	/// A preview is never written: it is dropped when the pointer leaves.
+	pub appearance:         String,
 }
 
 /// The shape one window holds for one session (§8.10).
@@ -98,6 +101,7 @@ impl ShellView {
 				.map(|section| section.slug().to_string())
 				.collect(),
 			parked_page:        self.rail_motion.parked_page(),
+			appearance:         self.state.appearance.chosen().to_string(),
 		}
 	}
 
@@ -192,6 +196,12 @@ impl ShellView {
 			.filter_map(|slug| Section::from_slug(slug));
 		self.rail_motion.restore_collapsed(sections);
 		self.rail_motion.set_parked_page(shape.parked_page);
+		// A shape that names no appearance leaves the window in the one it
+		// opened in: the tokens are already installed by then, and clearing
+		// the name here would ask for a re-install of nothing.
+		if !shape.appearance.is_empty() {
+			self.state.appearance.choose(&shape.appearance);
+		}
 	}
 
 	/// Puts back the shape a previous window held for the session now drawn.

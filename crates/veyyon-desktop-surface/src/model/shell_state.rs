@@ -6,8 +6,9 @@
 //! handed is one file, and each field states which section owns it.
 
 use super::{
-	Badge, Card, CardAnswers, ComposerState, ConnectionPhase, ControlStates, DrawerContent,
-	KeymapState, Overlay, PaletteState, PanelContent, Row, Section, SettingsState, Turn, TurnPhase,
+	AppearanceChoice, Badge, Card, CardAnswers, ComposerState, ConnectionPhase, ControlStates,
+	DrawerContent, KeymapState, Overlay, PaletteState, PanelContent, Row, Section, SettingsState,
+	Turn, TurnPhase,
 };
 use crate::PaletteMode;
 
@@ -60,6 +61,9 @@ pub struct ShellState {
 	/// window reads off `display.transitions` and every motion driver
 	/// resolves against (§7.2).
 	pub reduced_motion: bool,
+	/// The appearance the window draws in, and the one the pointer is resting
+	/// on while the appearance page is open (§6.9).
+	pub appearance:     AppearanceChoice,
 }
 
 impl ShellState {
@@ -160,6 +164,7 @@ impl Default for ShellState {
 			overlay:        None,
 			keymap:         KeymapState::default(),
 			reduced_motion: false,
+			appearance:     AppearanceChoice::default(),
 		}
 	}
 }

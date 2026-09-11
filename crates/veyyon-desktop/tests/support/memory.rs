@@ -15,8 +15,10 @@ use veyyon_desktop_model::{
 };
 use veyyon_desktop_scene::{Appearance, HeadlessSession, RenderOptions, headless_context};
 use veyyon_desktop_surface::{
-	Block, ShellState, ShellView, ToolInvocationViews, Turn, fixture, install_tokens,
+	Block, ShellState, ShellView, ThemeLibrary, ToolInvocationViews, Turn, fixture,
+	install_appearances,
 };
+use veyyon_desktop_tokens::DEFAULT_APPEARANCE;
 use veyyon_gpui::{App, AppContext, Window};
 use veyyon_test_scratch::{TempTree, scratch_dir};
 
@@ -129,8 +131,13 @@ pub fn driven<R>(
 	};
 	let mut session =
 		HeadlessSession::open(&mut cx, &options, |_window: &mut Window, app: &mut App| {
-			let installed = install_tokens(app, &bundle.tokens, &bundle.theme, &bundle.surface_path)
-				.expect("tokens install");
+			// The same install the binary does: every bundled appearance
+			// reaches the window, so a page that lists them lists them here
+			// too.
+			let library =
+				ThemeLibrary::new(&bundle.tokens, bundle.themes.clone(), &bundle.surface_path);
+			let installed =
+				install_appearances(app, library, DEFAULT_APPEARANCE).expect("tokens install");
 			app.new(move |_cx| ShellView::new(installed, state))
 		})
 		.expect("the shell opens a window");

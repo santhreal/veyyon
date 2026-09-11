@@ -12,8 +12,10 @@ use veyyon_desktop_kit::TintRole;
 use veyyon_desktop_model::tool_view::ToolPresentation;
 use veyyon_desktop_tokens::ColorRole;
 
+mod appearance;
 mod artifact;
 mod shell_state;
+pub use appearance::AppearanceChoice;
 pub use artifact::*;
 pub use shell_state::ShellState;
 

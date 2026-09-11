@@ -180,6 +180,13 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 				themes.current.clone_from(theme);
 			}
 		},
+		// The pointer resting on an appearance row draws that appearance, and
+		// leaving the row draws the choice again. Only the name is recorded
+		// here: the window re-installs the tokens when it sees the state
+		// change, because an install needs the app context an apply has not
+		// got.
+		Intent::PreviewAppearance(appearance) => state.appearance.preview(appearance.as_deref()),
+		Intent::SelectAppearance(appearance) => state.appearance.choose(appearance),
 		Intent::ReloadSettings => {
 			if let Some(Overlay::Settings(settings)) = &mut state.overlay {
 				settings.reloading = true;

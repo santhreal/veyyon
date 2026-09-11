@@ -17,7 +17,7 @@ use veyyon_desktop_scene::{
 	Captured, MetricReport, RenderOptions, SceneRegistry, SheetCell, SheetGrid, SurfaceClass,
 	headless_context, measure, page, text_sizes, tile, write_png,
 };
-use veyyon_desktop_tokens::{Theme, Tokens, dump_to_dir, load_theme};
+use veyyon_desktop_tokens::{Theme, TokenError, Tokens, dump_to_dir};
 
 pub use self::{
 	build::{SceneBuildError, SceneRoot, build},
@@ -45,16 +45,21 @@ impl FrameArgs {
 		}
 	}
 
-	/// The theme of the requested appearance, from the bundle's themes
-	/// directory.
-	fn theme(&self, bundle: &StartupBundle) -> Result<Theme, veyyon_desktop_tokens::TokenError> {
+	/// The bundled theme of the requested appearance.
+	fn theme(&self, bundle: &StartupBundle) -> Result<Theme, TokenError> {
 		let appearance: veyyon_desktop_scene::Appearance = self.appearance.into();
-		load_theme(
-			&bundle
-				.paths
-				.themes_dir
-				.join(format!("{}.toml", appearance.as_str())),
-		)
+		bundle
+			.theme_of(appearance.as_str())
+			.cloned()
+			.ok_or_else(|| TokenError::UnknownAppearance {
+				appearance: appearance.as_str().to_string(),
+				known:      bundle
+					.themes
+					.iter()
+					.map(|theme| theme.appearance.as_str())
+					.collect::<Vec<&str>>()
+					.join(", "),
+			})
 	}
 }
 

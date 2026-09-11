@@ -130,6 +130,12 @@ pub enum Intent {
 	/// field the Agents page draws above its listing.
 	SpawnTask(String),
 	SelectTheme(String),
+	/// Draws the window in the appearance the pointer is resting on, and puts
+	/// the chosen one back when it carries nothing (§6.9).
+	PreviewAppearance(Option<String>),
+	/// Settles the window on an appearance, which a relaunch comes back in
+	/// (§6.9).
+	SelectAppearance(String),
 	ReloadSettings,
 	SetMcpEnabled {
 		server:  String,
@@ -272,6 +278,8 @@ impl Intent {
 				| Self::SetDiffMode(_)
 				| Self::ToggleTreeNode(_)
 				| Self::ExpandContext { .. }
+				| Self::PreviewAppearance(_)
+				| Self::SelectAppearance(_)
 		)
 	}
 

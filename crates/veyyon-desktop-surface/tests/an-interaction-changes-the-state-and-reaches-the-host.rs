@@ -63,6 +63,12 @@ fn every_intent_either_changes_the_state_or_is_reported_and_never_neither() {
 		if let Intent::SetDrawer { open } = &intent {
 			before.drawer_open = !open;
 		}
+		// A preview that drops one is seeded with a preview to drop, for the
+		// same reason: leaving a row nobody pointed at changes nothing, and the
+		// sweep would read a working revert as a dead interaction.
+		if let Intent::PreviewAppearance(None) = &intent {
+			before.appearance.preview(Some("light"));
+		}
 		if let Intent::DismissError(id) | Intent::RetryControl(id) = &intent {
 			before
 				.controls

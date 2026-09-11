@@ -35,6 +35,10 @@ const MICRO_CONTRAST: f32 = 3.0;
 /// against.
 pub const APPEARANCES: [&str; 2] = ["dark", "light"];
 
+/// The appearance a window draws in before one is chosen, and the one it
+/// falls back to when a remembered name is not in this build (§6.9).
+pub const DEFAULT_APPEARANCE: &str = APPEARANCES[0];
+
 /// The grounds text is drawn on, from the §6.5 elevation table. A text role has
 /// to clear its floor against every one of them, because the same role is used
 /// on all five and the lightest ground is what decides legibility.

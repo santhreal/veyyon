@@ -31,9 +31,13 @@ use veyyon_desktop_surface::{Intent, IntentDiscriminants};
 /// keystroke, a disclosure, a copy. Nothing here changes what the host holds,
 /// so nothing here is reported. A workspace tab is NOT here: its selection is
 /// window state, but the domain it draws is the host's and goes stale between
-/// turns.
-const LOCAL: [IntentDiscriminants; 19] = [
+/// turns. The two appearance intents ARE here: which bundled theme the window
+/// draws in is the window's own, written to its own store, and `SelectTheme`
+/// beside them is the host's agent theme and is reported.
+const LOCAL: [IntentDiscriminants; 21] = [
 	IntentDiscriminants::CopyText,
+	IntentDiscriminants::PreviewAppearance,
+	IntentDiscriminants::SelectAppearance,
 	IntentDiscriminants::Attach,
 	IntentDiscriminants::RemoveAttachment,
 	IntentDiscriminants::SelectDrawerTab,

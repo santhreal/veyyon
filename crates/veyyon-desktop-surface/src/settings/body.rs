@@ -20,12 +20,15 @@ use veyyon_desktop_tokens::SettingsSurfaceTokens;
 use veyyon_gpui::{Context, IntoElement, ParentElement, Styled, div, px};
 
 use super::{GeneralSettingsListState, SettingsPage, SettingsState};
-use crate::{ShellView, controls::ControlStates, shell::fields::FieldSlots};
+use crate::{
+	ShellView, controls::ControlStates, model::AppearanceChoice, shell::fields::FieldSlots,
+};
 
 /// Renders the rows for the currently active settings page (§5.9).
 pub fn render_page_body(
 	state: &SettingsState,
 	list_state: &GeneralSettingsListState,
+	appearance: &AppearanceChoice,
 	fields: &FieldSlots,
 	controls: &ControlStates,
 	geometry: &SettingsSurfaceTokens,
@@ -43,7 +46,9 @@ pub fn render_page_body(
 		SettingsPage::General => {
 			general::render_general_page(state, list_state, controls, geometry, tokens, cx)
 		},
-		SettingsPage::Themes => themes::render_themes_page(state, controls, geometry, tokens, cx),
+		SettingsPage::Themes => {
+			themes::render_themes_page(state, appearance, controls, geometry, tokens, cx)
+		},
 		SettingsPage::Keybindings => {
 			keybindings::render_keybindings_page(state, fields, controls, geometry, tokens)
 		},

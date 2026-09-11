@@ -20,7 +20,7 @@ use crate::{
 	queue::{RailMotion, RowMenu},
 	right_panel::PaneScrolls,
 	settings::GeneralSettingsListState,
-	tokens::InstalledTokens,
+	tokens::{InstalledTokens, apply_appearance},
 	transcript::{
 		TranscriptViewportState, TurnMenu, after_gesture, select_whole_turn, selected_text,
 	},
@@ -287,7 +287,30 @@ impl ShellView {
 			cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
 		}
 		self.intents.dispatch(intent, &mut self.state);
+		self.sync_appearance(cx);
 		cx.notify();
+	}
+
+	/// Draws the window in the appearance the state now names.
+	///
+	/// A preview and a selection both reach here, and both are a token
+	/// install: the colours a primitive reads are a global, so nothing short
+	/// of re-installing the set restyles the badge inside a card. The install
+	/// is skipped when the drawn appearance is already up, so a pointer
+	/// crossing a row it is already previewing costs one comparison.
+	///
+	/// A failed install leaves the window in the appearance it is already
+	/// drawing and states the failure, because the alternative is a half
+	/// installed set: the kit's global replaced and the surface geometry not.
+	fn sync_appearance(&mut self, cx: &mut Context<Self>) {
+		if self.state.appearance.drawn() == self.installed.appearance {
+			return;
+		}
+		let wanted = self.state.appearance.drawn().to_string();
+		match apply_appearance(cx, &wanted) {
+			Ok(installed) => self.installed = installed,
+			Err(error) => self.set_notice(Some(error.to_string()), cx),
+		}
 	}
 
 	/// Takes the intents a host has not seen yet.

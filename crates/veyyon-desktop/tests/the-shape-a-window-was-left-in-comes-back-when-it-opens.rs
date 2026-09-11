@@ -49,6 +49,7 @@ fn every_field_a_window_holds_is_written_and_read_back() {
 				view.dispatch(Intent::SetDiffMode(DiffMode::Split), cx);
 				view.dispatch(Intent::SetDrawer { open: true }, cx);
 				view.dispatch(Intent::SetQueueMode(QueueMode::Queue), cx);
+				view.dispatch(Intent::SelectAppearance("light".to_string()), cx);
 				view.set_composed("half a sentence, unsent", cx);
 				view.rail_motion_mut().toggle_collapsed(
 					veyyon_desktop_surface::Section::Parked,
@@ -82,12 +83,14 @@ fn every_field_a_window_holds_is_written_and_read_back() {
 	let host_back = support::memory::host_shape(&loaded);
 	let session_back = support::memory::session_shape(&loaded, Some(&SessionId::from(FIRST)));
 
-	let HostShape { queue_collapsed, collapsed_sections, parked_page } = &recorded.0;
+	let HostShape { queue_collapsed, collapsed_sections, parked_page, appearance } = &recorded.0;
 	assert!(*queue_collapsed, "the rail was collapsed by the chord");
 	assert_eq!(*parked_page, 2, "the operator paged in one more page of parked rows");
+	assert_eq!(appearance, "light", "the appearance the operator selected is the one recorded");
 	assert_eq!(host_back.queue_collapsed, *queue_collapsed);
 	assert_eq!(&host_back.collapsed_sections, collapsed_sections);
 	assert_eq!(host_back.parked_page, *parked_page);
+	assert_eq!(&host_back.appearance, appearance, "the appearance came back off the disk");
 	assert!(
 		collapsed_sections.contains("parked"),
 		"the section the operator collapsed is named: {collapsed_sections:?}"

@@ -58,6 +58,9 @@ pub fn every_intent() -> Vec<Intent> {
 		Intent::BrowseTo { path: Some("crates".to_owned()) },
 		Intent::SettingChanged { key: "font_size".to_owned(), value: serde_json::json!(14) },
 		Intent::SelectTheme("light".to_owned()),
+		Intent::PreviewAppearance(Some("light".to_owned())),
+		Intent::PreviewAppearance(None),
+		Intent::SelectAppearance("light".to_owned()),
 		Intent::ResetSetting("font_size".to_owned()),
 		Intent::ReloadSettings,
 		Intent::SetMcpEnabled { server: "fs".to_owned(), enabled: true },
@@ -169,6 +172,8 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::FindText(_)
 			| Intent::SettingChanged { .. }
 			| Intent::SelectTheme(_)
+			| Intent::PreviewAppearance(_)
+			| Intent::SelectAppearance(_)
 			| Intent::ResetSetting(_)
 			| Intent::ReloadSettings
 			| Intent::SetMcpEnabled { .. }
