@@ -28,7 +28,12 @@ pub fn resize(grid: &mut TerminalGrid, new_cols: usize, new_rows: usize) {
 	}
 
 	let reflowing = new_cols != grid.cols;
-	let offset = reflowing.then(|| cursor_offset(grid));
+	// The offset is a place in the primary screen's text, so it is only the
+	// cursor's place while the primary screen is the one being read. A
+	// full-screen program's cursor is on the alternate screen, whose cells are
+	// resized where they are, and taking its row and column from re-broken
+	// scrollback would move it to text it is not on.
+	let offset = (reflowing && !grid.alternate_screen).then(|| cursor_offset(grid));
 
 	if reflowing {
 		let mut lines = logical_lines(&grid.primary_lines);
@@ -67,8 +72,10 @@ pub fn resize(grid: &mut TerminalGrid, new_cols: usize, new_rows: usize) {
 	if let Some(offset) = offset {
 		place_cursor(grid, offset);
 	} else {
-		// The width did not change, so the text did not move: only the rows
-		// the window lost are taken off the cursor.
+		// Either the width did not change, so the text did not move, or the
+		// cursor is on the alternate screen, which was resized rather than
+		// re-broken: both leave the cursor where it is, less the rows and
+		// columns the window took away.
 		grid.cursor_col = grid.cursor_col.min(new_cols.saturating_sub(1));
 		grid.cursor_row = grid.cursor_row.min(new_rows.saturating_sub(1));
 	}

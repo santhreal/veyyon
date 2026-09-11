@@ -18,6 +18,8 @@
 //! 6. Scrollback growing past its bound through a resize, or the alternate
 //!    screen -- which a full-screen program redraws itself -- being joined up
 //!    as though its rows were one paragraph.
+//! 7. A full-screen program's cursor placed from the primary screen's text,
+//!    which is not the screen it is on.
 //!
 //! WHAT THIS DOES NOT CATCH: the columns the window has room for, which is
 //! measured from a drawn box in the surface suite, and the styling a cell
@@ -293,4 +295,41 @@ fn the_alternate_screen_is_resized_rather_than_re_broken() {
 	assert_eq!(held[0], "a status line the pr", "the first row keeps the split it was drawn with");
 	assert_eq!(held[1], "ogram drew", "and the rest is still the row below it");
 	assert_eq!(held[2], "tail", "the row after them is where the program put it");
+}
+
+#[test]
+fn the_cursor_on_the_alternate_screen_is_not_placed_from_the_scrollback() {
+	let mut emu = TerminalEmulator::new(20, 6);
+	// Two rows of shell output the primary screen wrapped, which a resize joins
+	// back into one line. Nothing about it is where a full-screen program's
+	// cursor is.
+	emu.feed(b"0123456789012345678901234567890123456789");
+
+	emu.feed(b"\x1b[?1049h");
+	emu.feed(b"\x1b[5;15Hx");
+	assert_eq!((emu.grid().cursor_col, emu.grid().cursor_row), (15, 4), "where the program put it");
+
+	emu.resize(40, 6);
+	assert_eq!(
+		(emu.grid().cursor_col, emu.grid().cursor_row),
+		(15, 4),
+		"a wider window leaves the cursor on the cell the program addressed"
+	);
+
+	emu.resize(10, 6);
+	assert_eq!(
+		(emu.grid().cursor_col, emu.grid().cursor_row),
+		(9, 4),
+		"and a narrower one takes off only the columns it no longer has"
+	);
+
+	// The primary screen was re-broken all the same, so the output underneath is
+	// laid out at the width the window ended on rather than the one it had.
+	emu.resize(40, 6);
+	emu.feed(b"\x1b[?1049l");
+	assert_eq!(
+		lines(&emu)[0],
+		"0123456789012345678901234567890123456789",
+		"the line under the program is one row at forty columns"
+	);
 }
