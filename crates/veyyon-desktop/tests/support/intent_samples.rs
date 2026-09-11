@@ -8,9 +8,9 @@
 use strum::IntoEnumIterator;
 use veyyon_desktop_model::{SupervisorSignal, SurfaceId};
 use veyyon_desktop_surface::{
-	Attachment, Intent, IntentDiscriminants, MediaType, ModelChoice, Overlay, PaletteState,
-	PanelTab, Payload, QueueMode, ScrollBy, SettingsPage, ThinkingLevel, ToolViewTarget,
-	navigation::SurfaceRoute,
+	Attachment, Intent, IntentDiscriminants, MediaType, MenuSectionId, ModelChoice, Overlay,
+	PaletteState, PanelTab, Payload, QueueMode, ScrollBy, SettingsPage, ThinkingLevel,
+	ToolViewTarget, navigation::SurfaceRoute,
 };
 
 /// Every sample intent, for the sweep that drives each through `actions_for`.
@@ -218,5 +218,18 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 		IntentDiscriminants::SelectChangeScope => {
 			vec![Intent::SelectChangeScope(veyyon_desktop_model::ChangeScope::WorkingTree)]
 		},
+		// Every section, because each one holds a different set of verbs.
+		IntentDiscriminants::SetMenuSection => MenuSectionId::iter()
+			.map(|section| Intent::SetMenuSection(Some(section)))
+			.chain(std::iter::once(Intent::SetMenuSection(None)))
+			.collect(),
+		IntentDiscriminants::MoveMenuHighlight => {
+			vec![Intent::MoveMenuHighlight(1), Intent::MoveMenuHighlight(-1)]
+		},
+		IntentDiscriminants::MoveMenuSection => {
+			vec![Intent::MoveMenuSection(1), Intent::MoveMenuSection(-1)]
+		},
+		IntentDiscriminants::CloseWindow => vec![Intent::CloseWindow],
+		IntentDiscriminants::Quit => vec![Intent::Quit],
 	}
 }

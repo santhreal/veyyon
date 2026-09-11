@@ -29,12 +29,17 @@ use veyyon_desktop_surface::{Intent, IntentDiscriminants};
 
 /// The interactions the shell finishes without the host: a scroll, a palette
 /// keystroke, a disclosure, a copy. Nothing here changes what the host holds,
-/// so nothing here is reported. A workspace tab is NOT here: its selection is
+/// so nothing here is reported. The three menu-bar intents are here for the
+/// same reason: which menu is down and which entry the keyboard is on is the
+/// window's own, and the verb an entry takes reaches the host as that verb's
+/// own intent, not as the press. `CloseWindow` and `Quit` are NOT here: the
+/// window writes every store before it goes, so the report is what gives the
+/// host the chance to. A workspace tab is NOT here: its selection is
 /// window state, but the domain it draws is the host's and goes stale between
 /// turns. The two appearance intents ARE here: which bundled theme the window
 /// draws in is the window's own, written to its own store, and `SelectTheme`
 /// beside them is the host's agent theme and is reported.
-const LOCAL: [IntentDiscriminants; 21] = [
+const LOCAL: [IntentDiscriminants; 24] = [
 	IntentDiscriminants::CopyText,
 	IntentDiscriminants::PreviewAppearance,
 	IntentDiscriminants::SelectAppearance,
@@ -56,6 +61,9 @@ const LOCAL: [IntentDiscriminants; 21] = [
 	IntentDiscriminants::SetDiffMode,
 	IntentDiscriminants::ToggleTreeNode,
 	IntentDiscriminants::ExpandContext,
+	IntentDiscriminants::SetMenuSection,
+	IntentDiscriminants::MoveMenuHighlight,
+	IntentDiscriminants::MoveMenuSection,
 ];
 
 /// The two whose locality depends on the payload: closing a region is the

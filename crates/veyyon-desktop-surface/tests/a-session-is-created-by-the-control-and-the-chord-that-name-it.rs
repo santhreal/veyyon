@@ -80,19 +80,29 @@ fn shell(av: Availability) -> ShellState {
 /// The header is one band at the top of the rail holding the search area and,
 /// at its trailing edge, the new-session control. Its bounds are derived from
 /// the frame and the queue's own tokens: the rail is what lies within the
-/// queue's width, the band is what lies above the first row the rail drew, and
+/// queue's width and below the titlebar, the band is what lies above the first
+/// row the rail drew, and
 /// the control is the trailing box in that band, the search area taking the
 /// rest of the row from the leading edge.
 fn new_session_control(session: &mut HeadlessSession<'_, ShellView>) -> Bounds<Pixels> {
 	let queue = session
 		.update(|view, _window, _cx| view.installed().surface.queue.clone())
 		.expect("the queue's tokens are read back");
+	// The titlebar is above the rail and carries controls of its own at the
+	// same x, the menu bar's words among them, so the rail is what lies under
+	// it rather than everything left of its width.
+	let titlebar_px = session
+		.update(|view, _window, _cx| view.installed().surface.shell.titlebar_height_px)
+		.expect("the shell's tokens are read back");
 	let frame = session.frame().expect("the shell draws");
 	let rail: Vec<Bounds<Pixels>> = frame
 		.hitboxes
 		.iter()
 		.copied()
-		.filter(|rect| f32::from(rect.origin.x) < queue.width_default_px)
+		.filter(|rect| {
+			f32::from(rect.origin.x) < queue.width_default_px
+				&& f32::from(rect.origin.y) >= titlebar_px
+		})
 		.collect();
 	let band_bottom = rail
 		.iter()

@@ -30,8 +30,8 @@ use veyyon_desktop_model::{
 	domain::ThemeView,
 };
 use veyyon_desktop_surface::{
-	ConnectionPhase, ControlError, Intent, IntentDiscriminants, Overlay, PaletteMode, PaletteState,
-	SettingsState, Turn,
+	ConnectionPhase, ControlError, Intent, IntentDiscriminants, MenuSectionId, Overlay, PaletteMode,
+	PaletteState, SettingsState, Turn,
 	composer::{QueueMode, TurnPhase},
 	intent::Intents,
 };
@@ -91,6 +91,11 @@ fn every_intent_either_changes_the_state_or_is_reported_and_never_neither() {
 		}
 		// The turn cursor moves onto a turn that exists, so a transcript with
 		// none is not the step being swept.
+		// The bar is opened for the two walks, because a walk with no menu
+		// open is not the walk being swept.
+		if let Intent::MoveMenuHighlight(_) | Intent::MoveMenuSection(_) = &intent {
+			before.menu.open_section(MenuSectionId::View);
+		}
 		if let Intent::StepTurn(_) = &intent {
 			before.transcript = vec![Turn::Operator("run the tests".to_owned())];
 		}

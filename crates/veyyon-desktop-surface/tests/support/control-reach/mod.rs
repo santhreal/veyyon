@@ -5,8 +5,9 @@
 //! with a number kept in step by hand. It sits beside the suite that reads
 //! it so the suite stays under the file ceiling.
 
+use strum::IntoEnumIterator;
 use veyyon_desktop_kit::{document_spans, load_bundled_tokens};
-use veyyon_desktop_surface::{Block, ShellState, Turn};
+use veyyon_desktop_surface::{Block, MenuSectionId, ShellState, Turn};
 
 /// The window height the count is taken at, which decides how many queue
 /// rows fit above the footer.
@@ -109,6 +110,10 @@ pub fn expected_controls(state: &ShellState) -> usize {
 	// transcript body, which takes the focus its scope's chords ride on, and
 	// the composer box, which hands the focus back to the editor whatever the
 	// press landed on.
+	// Each word of the menu bar answers a press of its own, counted from the
+	// sections the bar draws rather than as a literal, so a menu added to the
+	// table moves this with it.
+	let menu_bar = MenuSectionId::iter().count();
 	let chrome = 1
 		+ 3 + 1
 		+ 6 + 2
@@ -147,5 +152,5 @@ pub fn expected_controls(state: &ShellState) -> usize {
 	// window-local state and so is counted by its own test below, not here.
 	let tray = state.composer.attachments.len() * 3;
 
-	queue_controls + panel + answers + chrome + tray + transcript
+	queue_controls + panel + answers + chrome + menu_bar + tray + transcript
 }

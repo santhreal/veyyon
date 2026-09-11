@@ -7,7 +7,7 @@
 
 use veyyon_desktop_model::SurfaceId;
 use veyyon_desktop_surface::{
-	Intent, Overlay, PaletteState, PanelTab, ScrollBy,
+	Intent, MenuSectionId, Overlay, PaletteState, PanelTab, ScrollBy,
 	composer::{ModelChoice, QueueMode, ThinkingLevel},
 };
 
@@ -131,6 +131,11 @@ pub fn every_intent() -> Vec<Intent> {
 		Intent::SetPlanMode { on: true },
 		Intent::CopyText("copied words".to_owned()),
 		Intent::DismissNotice("request-failed:transcript:-".to_owned()),
+		Intent::SetMenuSection(Some(MenuSectionId::Session)),
+		Intent::MoveMenuHighlight(1),
+		Intent::MoveMenuSection(1),
+		Intent::CloseWindow,
+		Intent::Quit,
 	];
 
 	// The exhaustive match is the gate. Every variant is named, so a new one
@@ -232,7 +237,12 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::ProcessSend { .. }
 			| Intent::KeybindingChanged { .. }
 			| Intent::SpawnTask(_)
-			| Intent::DismissNotice(_) => {},
+			| Intent::DismissNotice(_)
+			| Intent::SetMenuSection(_)
+			| Intent::MoveMenuHighlight(_)
+			| Intent::MoveMenuSection(_)
+			| Intent::CloseWindow
+			| Intent::Quit => {},
 		}
 	}
 

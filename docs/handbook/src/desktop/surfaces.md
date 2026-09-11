@@ -41,6 +41,40 @@ in `crates/veyyon-desktop-surface/keymap.toml`.
 | `Primary-\` | Toggle the right panel |
 | `Primary-K` | Open the command palette |
 | `Primary-,` | Open settings |
+| `Primary-Shift-W` | Close the window |
+| `Primary-Q` | Quit |
+| `F10` | Open the menu bar |
+
+### Menu bar
+
+The titlebar holds five menus: `Veyyon`, `Session`, `View`, `Edit` and `Turn`.
+A press on a word opens its menu under it; a press on the same word closes it.
+A press anywhere outside the open menu closes it and does nothing else.
+`Escape` closes it too. `F10` opens the first menu without a pointer.
+
+While a menu is open it holds the keyboard. `Up` and `Down` walk its entries,
+`Left` and `Right` move to the next menu along the bar, and `Enter` runs the
+entry the walk is on. A verb the host does not offer is drawn muted, is
+skipped by the walk and answers no press.
+
+Every entry runs the same action as its chord and states that chord at its
+trailing edge, including a chord rebound on the Keybindings page. Four verbs
+read an argument from the chord that invokes them and appear in no menu:
+focusing a session by number, moving a selection, scrolling and selecting a
+decision option. Four more are what a key already means where it is pressed:
+the composer's send, its newline, its half-split and the dismissal `Escape`
+carries. `F10` itself is the ninth, since it has nothing to do from inside an
+open bar.
+
+### Closing the window
+
+`Primary-Shift-W` closes the window and `Primary-Q` ends the process.
+`Primary-W` closes the panel tab or parks the session, which is what it has
+always done. Closing the window writes every store first: the placement, the
+appearance, the queue shape and the open session. On macOS the application
+stays up with no window and the dock icon opens one again, in the placement,
+appearance and session the closed window left; everywhere else a process with
+no window has no way in, so it ends with the window.
 
 ## Queue
 
