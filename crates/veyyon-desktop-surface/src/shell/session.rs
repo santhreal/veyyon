@@ -7,7 +7,7 @@
 
 use std::{cell::Cell, rc::Rc};
 
-use veyyon_desktop_kit::{Axis, Resizable, SpacingStep, input::Editor};
+use veyyon_desktop_kit::{Axis, Resizable, SpacingStep, TextSelection, input::Editor};
 use veyyon_desktop_tokens::DrawerPlacement;
 use veyyon_gpui::{
 	Context, Div, Entity, FocusHandle, InteractiveElement, MouseButton, ParentElement, Pixels,
@@ -48,6 +48,7 @@ pub fn session_surface(
 	cards_expanded: bool,
 	reduced_motion: bool,
 	find_bar: Option<Div>,
+	selection: Option<TextSelection>,
 	panel_overlay: Option<Div>,
 	window: &mut Window,
 	cx: &Context<ShellView>,
@@ -92,6 +93,7 @@ pub fn session_surface(
 			laid_out,
 			widths.composer_px,
 			0.0,
+			selection,
 			window,
 			cx,
 		))

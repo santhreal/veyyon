@@ -11,7 +11,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use veyyon_desktop_kit::input::Editor;
+use veyyon_desktop_kit::{TextSelection, input::Editor};
 use veyyon_gpui::{Context, Entity, FocusHandle, IntoElement, Render, Subscription, Window};
 
 mod access;
@@ -98,6 +98,10 @@ pub struct ShellView {
 	/// The transcript turn menu that is open, if one is (§5.3). Window-local
 	/// on the same terms as the row menu.
 	turn_menu:             Option<TurnMenu>,
+	/// What the pointer has selected of the words the transcript drew, if
+	/// anything (§5.3). Window-local on the same terms as the turn menu: a
+	/// snapshot never brings a dropped selection back.
+	text_selection:        Option<TextSelection>,
 	/// The process signal menu that is open, if one is (§5.12). Window-local
 	/// on the same terms as the row menu.
 	signal_menu:           Option<SignalMenu>,
@@ -185,6 +189,7 @@ impl ShellView {
 			split_motion: split::SplitMotions::default(),
 			row_menu: None,
 			turn_menu: None,
+			text_selection: None,
 			signal_menu: None,
 			panel_width: None,
 			pending_expanded: BTreeSet::new(),

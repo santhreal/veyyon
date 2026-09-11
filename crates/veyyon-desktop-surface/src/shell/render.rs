@@ -282,6 +282,7 @@ pub fn render_shell(
 		cards_expanded,
 		view.rail_motion.is_reduced_motion(),
 		find_bar,
+		view.text_selection(),
 		panel_overlay,
 		window,
 		cx,

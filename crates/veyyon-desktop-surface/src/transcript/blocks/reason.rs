@@ -6,7 +6,7 @@
 use std::time::Instant;
 
 use veyyon_desktop_kit::{
-	ColorRole, Icon, IconName, IconSize, Markdown, SpacingStep, TextRamp, TokenSet,
+	ColorRole, Icon, IconName, IconSize, Markdown, SelectableProse, SpacingStep, TextRamp, TokenSet,
 	controls::button::{Button, ButtonSize},
 };
 use veyyon_desktop_motion::MotionTokens;
@@ -16,7 +16,10 @@ use veyyon_gpui::{
 };
 
 use super::reveal::render_reveal_container;
-use crate::{ShellView, transcript::state::TranscriptViewportState};
+use crate::{
+	ShellView,
+	transcript::{selection::selectable_markdown, state::TranscriptViewportState},
+};
 
 /// Reasoning / thinking block, collapsed to a 24px line, expanding to full
 /// thought prose.
@@ -31,6 +34,7 @@ pub fn render_reason_block(
 	reduced_motion: bool,
 	viewport_state: &TranscriptViewportState,
 	view: Option<&WeakEntity<ShellView>>,
+	selection: Option<SelectableProse>,
 ) -> Div {
 	let chevron = if is_expanded {
 		IconName::ChevronDown
@@ -103,9 +107,12 @@ pub fn render_reason_block(
 			div()
 				.italic()
 				.text_color(tokens.color(ColorRole::Secondary))
-				.child(Markdown::new(summary.to_owned()).prose_size(
-					px(geometry.assistant_turn_type_size.size * 0.95),
-					px(geometry.assistant_turn_type_size.line_height * 0.95),
+				.child(selectable_markdown(
+					Markdown::new(summary.to_owned()).prose_size(
+						px(geometry.assistant_turn_type_size.size * 0.95),
+						px(geometry.assistant_turn_type_size.line_height * 0.95),
+					),
+					selection,
 				)),
 		)
 		.child(

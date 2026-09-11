@@ -10,10 +10,12 @@
 //!   lines, 4 between blocks of one group, 8 between groups in one turn, and 16
 //!   between turns.
 
-use veyyon_desktop_kit::{ColorRole, TokenSet};
+use veyyon_desktop_kit::{ColorRole, SelectableProse, TextSelection, TokenSet, selectable_line};
 use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
-use veyyon_gpui::{Div, InteractiveElement, ParentElement, Styled, WeakEntity, div, px};
+use veyyon_gpui::{
+	Div, InteractiveElement, IntoElement, ParentElement, Styled, WeakEntity, div, px,
+};
 
 use super::{
 	blocks::{
@@ -21,6 +23,7 @@ use super::{
 		render_prose_block, render_reason_block,
 	},
 	footer::{TURN_FOOTER_GROUP, render_turn_footer},
+	selection::selectable_block,
 	state::TranscriptViewportState,
 };
 use crate::{
@@ -45,9 +48,17 @@ pub fn render_turn(
 	measure_px: f32,
 	laid_out: &LaidOut,
 	view: Option<&WeakEntity<ShellView>>,
+	selection: Option<TextSelection>,
 ) -> Div {
 	match turn {
-		Turn::Operator(text) => operator_turn(text, geometry, user_ground, tokens, measure_px),
+		Turn::Operator(text) => operator_turn(
+			text,
+			geometry,
+			user_ground,
+			tokens,
+			measure_px,
+			selectable_block(view, selection, turn_ix, 0),
+		),
 		Turn::OperatorArtifacts { text, artifacts } => {
 			let mut turn = div()
 				.flex()
@@ -56,7 +67,14 @@ pub fn render_turn(
 				.w_full()
 				.gap(px(geometry.group_blocks_gap));
 			if !text.is_empty() {
-				turn = turn.child(operator_turn(text, geometry, user_ground, tokens, measure_px));
+				turn = turn.child(operator_turn(
+					text,
+					geometry,
+					user_ground,
+					tokens,
+					measure_px,
+					selectable_block(view, selection, turn_ix, 0),
+				));
 			}
 			let mut column = div()
 				.flex()
@@ -95,6 +113,7 @@ pub fn render_turn(
 			reduced_motion,
 			laid_out,
 			view,
+			selection,
 		),
 	}
 }
@@ -107,8 +126,16 @@ pub fn operator_turn(
 	user_ground: ColorRole,
 	tokens: &TokenSet,
 	measure_px: f32,
+	selection: Option<SelectableProse>,
 ) -> Div {
 	let bubble_width = measure_px * geometry.user_turn_width_ratio;
+	// The bubble is one span: what the operator sent, drawn as they typed it,
+	// so a reader takes a path out of their own prompt the same way they take
+	// one out of an answer.
+	let drawn = match &selection {
+		Some(prose) => selectable_line(text.to_owned(), tokens, prose.span(0), prose),
+		None => text.to_owned().into_any_element(),
+	};
 
 	div().flex().flex_row().justify_end().w_full().child(
 		div()
@@ -124,7 +151,7 @@ pub fn operator_turn(
 			.text_size(px(geometry.user_turn_type_size.size))
 			.line_height(px(geometry.user_turn_type_size.line_height))
 			.text_color(tokens.color(ColorRole::Foreground))
-			.child(text.to_owned()),
+			.child(drawn),
 	)
 }
 
@@ -143,6 +170,7 @@ pub fn agent_turn(
 	reduced_motion: bool,
 	laid_out: &LaidOut,
 	view: Option<&WeakEntity<ShellView>>,
+	selection: Option<TextSelection>,
 ) -> Div {
 	let mut turn = div().flex().flex_col().w_full();
 	// A hover group is hit-tested so its reveal can be tracked, so a turn that
@@ -155,12 +183,23 @@ pub fn agent_turn(
 	for (block_ix, block) in blocks.iter().enumerate() {
 		let is_last_block = is_last && (block_ix + 1 == blocks.len());
 		let is_expanded = state.is_block_expanded(turn_ix, block_ix);
+		// Every block is handed the same selection and its own numbering, so a
+		// drag that started in one block and ended in another is one selection
+		// rather than one per block.
+		let selectable = selectable_block(view, selection, turn_ix, block_ix);
 
 		let mut rendered = match block {
-			Block::Prose(text) => {
-				render_prose_block(text, is_last_block && is_streaming, caret_opacity, geometry, tokens)
+			Block::Prose(text) => render_prose_block(
+				text,
+				is_last_block && is_streaming,
+				caret_opacity,
+				geometry,
+				tokens,
+				selectable,
+			),
+			Block::Note { label, text, boundary } => {
+				render_note_block(label, text, *boundary, tokens, selectable)
 			},
-			Block::Note { label, text, boundary } => render_note_block(label, text, *boundary, tokens),
 			Block::Artifact(artifact) => render_artifact_block(
 				turn_ix,
 				block_ix,
@@ -188,6 +227,7 @@ pub fn agent_turn(
 				reduced_motion,
 				state,
 				view,
+				selectable,
 			),
 			Block::Reason(summary) => render_reason_block(
 				turn_ix,
@@ -200,6 +240,7 @@ pub fn agent_turn(
 				reduced_motion,
 				state,
 				view,
+				selectable,
 			),
 			Block::Pane { caption, lines } | Block::Unknown { producer: caption, lines } => {
 				render_pane_block(
@@ -215,6 +256,7 @@ pub fn agent_turn(
 					reduced_motion,
 					state,
 					view,
+					selectable,
 				)
 			},
 		};

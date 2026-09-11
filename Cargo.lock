@@ -9947,6 +9947,7 @@ dependencies = [
  "syntect",
  "thiserror 2.0.20",
  "toml 1.1.5+spec-1.1.0",
+ "unicode-segmentation",
  "unicode-width 0.2.2",
  "veyyon-desktop-kit",
  "veyyon-desktop-model",

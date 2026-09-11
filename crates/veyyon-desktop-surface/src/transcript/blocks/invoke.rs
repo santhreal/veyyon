@@ -7,8 +7,8 @@
 use std::time::Instant;
 
 use veyyon_desktop_kit::{
-	CodeBlock, ColorRole, Icon, IconName, IconSize, MonoSizeStep, MonoText, SpacingStep, TextRamp,
-	TextWeight, TokenSet, Truncate,
+	CodeBlock, ColorRole, Icon, IconName, IconSize, MonoSizeStep, MonoText, SelectableProse,
+	SpacingStep, TextRamp, TextWeight, TokenSet, Truncate,
 	controls::button::{Button, ButtonSize},
 };
 use veyyon_desktop_motion::MotionTokens;
@@ -86,6 +86,7 @@ pub fn render_invoke_block(
 	reduced_motion: bool,
 	viewport_state: &TranscriptViewportState,
 	view: Option<&WeakEntity<ShellView>>,
+	selection: Option<SelectableProse>,
 ) -> Div {
 	let chevron = if is_expanded {
 		IconName::ChevronDown
@@ -245,12 +246,17 @@ pub fn render_invoke_block(
 				.lines()
 				.map(|l| SharedString::from(l.to_owned()))
 				.collect();
-			details = details.child(
-				CodeBlock::lines(lines)
-					.caption("Output")
-					.size(MonoSizeStep::Small)
-					.max_height(px(geometry.chrome_invoke_mono_pane_max_height_px)),
-			);
+			let mut pane = CodeBlock::lines(lines)
+				.caption("Output")
+				.size(MonoSizeStep::Small)
+				.max_height(px(geometry.chrome_invoke_mono_pane_max_height_px));
+			// The lines of a raw result are the block's spans. A call the host
+			// drew a view for states its text through that view instead, which
+			// is why nothing is handed to the branch above.
+			if let Some(prose) = &selection {
+				pane = pane.selection(prose.clone(), prose.span(0));
+			}
+			details = details.child(pane);
 		}
 	}
 

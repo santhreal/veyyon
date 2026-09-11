@@ -6,7 +6,7 @@
 //! rather than the host. The layout the frame resolves is elsewhere; this is
 //! what a frame reads before it resolves anything.
 
-use veyyon_desktop_kit::input::Editor;
+use veyyon_desktop_kit::{SpanGesture, TextSelection, input::Editor};
 use veyyon_gpui::{ClipboardItem, Context, Entity, FocusHandle};
 
 use super::ShellView;
@@ -21,7 +21,9 @@ use crate::{
 	right_panel::PaneScrolls,
 	settings::GeneralSettingsListState,
 	tokens::InstalledTokens,
-	transcript::{TranscriptViewportState, TurnMenu},
+	transcript::{
+		TranscriptViewportState, TurnMenu, after_gesture, select_whole_turn, selected_text,
+	},
 };
 
 impl ShellView {
@@ -163,6 +165,47 @@ impl ShellView {
 	/// Closes the transcript turn menu, if one is open.
 	pub fn close_turn_menu(&mut self) {
 		self.turn_menu = None;
+	}
+
+	/// What the pointer has selected in the transcript, if anything.
+	///
+	/// Window-local like the turn menu: a snapshot from the host never brings
+	/// back a selection the reader dropped.
+	#[must_use]
+	pub const fn text_selection(&self) -> Option<TextSelection> {
+		self.text_selection
+	}
+
+	/// Takes what the pointer did over one drawn span: a press starts a
+	/// selection, a press with Shift held and every move with the button down
+	/// extend the one that is held.
+	pub fn report_span_gesture(&mut self, gesture: SpanGesture) {
+		self.text_selection = Some(after_gesture(self.text_selection, gesture));
+	}
+
+	/// Selects the whole of one turn, which is what the entry chord takes.
+	/// Leaves the selection alone when the turn drew nothing selectable.
+	pub fn select_whole_entry(&mut self, turn_ix: usize) {
+		if let Some(turn) = self.state.transcript.get(turn_ix)
+			&& let Some(selection) = select_whole_turn(turn_ix, turn)
+		{
+			self.text_selection = Some(selection);
+		}
+	}
+
+	/// The plain text of what is selected, which is empty when nothing is.
+	#[must_use]
+	pub fn selected_text(&self) -> String {
+		self
+			.text_selection
+			.map(|selection| selected_text(&self.state.transcript, selection))
+			.unwrap_or_default()
+	}
+
+	/// Drops the selection, which is what a dismissal over the transcript
+	/// does.
+	pub const fn clear_text_selection(&mut self) {
+		self.text_selection = None;
 	}
 
 	/// The process signal menu that is open, if one is.

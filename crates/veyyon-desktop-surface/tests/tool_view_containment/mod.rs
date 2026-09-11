@@ -286,6 +286,7 @@ impl Render for BlockAtWidth {
 				false,
 				&self.state,
 				None,
+				None,
 			)))
 	}
 }

@@ -15,6 +15,7 @@ pub mod copy;
 pub mod find;
 pub mod fingerprint;
 pub mod footer;
+pub mod selection;
 pub mod session_store;
 pub mod state;
 pub mod turn;
@@ -25,6 +26,7 @@ pub use copy::*;
 pub use find::*;
 pub use fingerprint::*;
 pub use footer::*;
+pub use selection::*;
 pub use session_store::*;
 pub use state::*;
 pub use turn::*;
@@ -74,6 +76,7 @@ pub fn transcript_column(
 			false,
 			measure_px,
 			laid_out,
+			None,
 			None,
 		);
 

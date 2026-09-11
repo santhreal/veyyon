@@ -10,6 +10,10 @@ use veyyon_gpui::{App, IntoElement, Pixels, RenderOnce, SharedString, Window, di
 
 use crate::{
 	families::MonoText,
+	text::{
+		selectable::selectable_line,
+		span_selection::{SelectableProse, SpanId},
+	},
 	token_set::{ColorRole, MonoSizeStep, RadiusStep, SpacingStep, TextRamp, TokenSet},
 };
 
@@ -21,6 +25,9 @@ pub struct CodeBlock {
 	line_numbers: bool,
 	size:         MonoSizeStep,
 	max_height:   Option<Pixels>,
+	/// The document this pane's lines are spans of, and the id of its first
+	/// line. A pane with no selection draws its lines as plain text.
+	selection:    Option<(SelectableProse, SpanId)>,
 }
 
 impl CodeBlock {
@@ -40,7 +47,16 @@ impl CodeBlock {
 			line_numbers: false,
 			size:         MonoSizeStep::Body,
 			max_height:   None,
+			selection:    None,
 		}
+	}
+
+	/// The pane's lines are selectable, the first one carrying `first` and
+	/// each one after it the next id.
+	#[must_use]
+	pub fn selection(mut self, selection: SelectableProse, first: SpanId) -> Self {
+		self.selection = Some((selection, first));
+		self
 	}
 
 	/// The line above the pane saying what the lines are: a language, a
@@ -106,6 +122,15 @@ impl RenderOnce for CodeBlock {
 						.child(format!("{:>width$}", index + 1)),
 				);
 			}
+			let drawn = match &self.selection {
+				Some((selection, first)) => selectable_line(
+					line,
+					tokens,
+					first.nth(u16::try_from(index).unwrap_or(u16::MAX)),
+					selection,
+				),
+				None => line.into_any_element(),
+			};
 			body = body.child(
 				row.child(
 					div()
@@ -115,7 +140,7 @@ impl RenderOnce for CodeBlock {
 						.whitespace_nowrap()
 						.truncate()
 						.text_color(ink)
-						.child(line),
+						.child(drawn),
 				),
 			);
 		}

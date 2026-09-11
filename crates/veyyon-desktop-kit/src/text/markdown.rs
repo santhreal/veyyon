@@ -13,15 +13,16 @@
 use veyyon_gpui::{App, IntoElement, Pixels, RenderOnce, SharedString, Window, div, prelude::*};
 
 use crate::{
-	text::{code_block::CodeBlock, inline::inline_prose},
+	text::{code_block::CodeBlock, selectable::prose_element, span_selection::SelectableProse},
 	token_set::{ColorRole, SpacingStep, StrokeStep, TextRamp, TokenSet},
 };
 
 /// Markdown structured document renderer.
 #[derive(IntoElement)]
 pub struct Markdown {
-	source: SharedString,
-	prose:  Option<(Pixels, Pixels)>,
+	source:    SharedString,
+	prose:     Option<(Pixels, Pixels)>,
+	selection: Option<SelectableProse>,
 }
 
 impl Markdown {
@@ -29,7 +30,15 @@ impl Markdown {
 	/// reading ramp unless [`Markdown::prose_size`] says otherwise.
 	#[must_use]
 	pub fn new(source: impl Into<SharedString>) -> Self {
-		Self { source: source.into(), prose: None }
+		Self { source: source.into(), prose: None, selection: None }
+	}
+
+	/// The spans of this document are selectable, numbered from the id
+	/// `selection` opens at and drawing the selection it carries.
+	#[must_use]
+	pub fn selection(mut self, selection: SelectableProse) -> Self {
+		self.selection = Some(selection);
+		self
 	}
 
 	/// The size and line height paragraphs and bullets are set at, for a
@@ -64,7 +73,7 @@ pub fn plain_line(source: &str) -> String {
 
 /// One block of a Markdown document.
 #[derive(Debug, PartialEq, Eq)]
-enum MdBlock {
+pub(crate) enum MdBlock {
 	Heading {
 		level: u8,
 		text:  String,
@@ -116,7 +125,7 @@ fn item_of(line: &str) -> Option<(String, &str)> {
 }
 
 /// Reads `source` into blocks.
-fn blocks(source: &str) -> Vec<MdBlock> {
+pub(crate) fn blocks(source: &str) -> Vec<MdBlock> {
 	let mut out = Vec::new();
 	let mut paragraph: Vec<&str> = Vec::new();
 	let mut code: Option<(String, Vec<String>)> = None;
@@ -184,6 +193,12 @@ impl RenderOnce for Markdown {
 			.gap(tokens.spacing(SpacingStep::S3))
 			.w_full();
 
+		// Spans are numbered in the order the document draws them, so the
+		// surface that holds the selection can name the text of a span without
+		// reading the frame: prose is one span, and a code pane is one per
+		// line. `document_spans` walks the same order.
+		let selection = self.selection.as_ref();
+		let mut index: u16 = 0;
 		for block in blocks(&self.source) {
 			container = match block {
 				MdBlock::Heading { level, text } => {
@@ -192,66 +207,77 @@ impl RenderOnce for Markdown {
 					} else {
 						TextRamp::Head
 					};
-					container.child(div().w_full().text_color(ink).child(inline_prose(
+					let drawn = prose_element(
 						&text,
 						tokens,
 						tokens.font_size(ramp),
 						tokens.line_height(ramp),
-					)))
+						index,
+						selection,
+					);
+					index += 1;
+					container.child(div().w_full().text_color(ink).child(drawn))
 				},
 				// The row carries the prose ramp so the marker draws at the size
 				// of the text it marks; a marker that sets none draws at gpui's
 				// 16px default, which §6.3 does not author.
-				MdBlock::Bullet { depth, marker, text } => container.child(
-					div()
-						.w_full()
-						.text_color(ink)
-						.text_size(prose_size)
-						.line_height(prose_line)
-						.pl(
-							tokens.spacing(SpacingStep::S4)
-								* f32::from(u8::try_from(depth).unwrap_or(u8::MAX)),
-						)
-						.flex()
-						.flex_row()
-						.gap(tokens.spacing(SpacingStep::S2))
-						.child(
-							div()
-								.flex_shrink_0()
-								.text_color(tokens.color(ColorRole::Muted))
-								.child(marker),
-						)
-						.child(
-							div()
-								.flex_1()
-								.min_w_0()
-								.child(inline_prose(&text, tokens, prose_size, prose_line)),
-						),
-				),
+				MdBlock::Bullet { depth, marker, text } => {
+					let drawn = prose_element(&text, tokens, prose_size, prose_line, index, selection);
+					index += 1;
+					container.child(
+						div()
+							.w_full()
+							.text_color(ink)
+							.text_size(prose_size)
+							.line_height(prose_line)
+							.pl(
+								tokens.spacing(SpacingStep::S4)
+									* f32::from(u8::try_from(depth).unwrap_or(u8::MAX)),
+							)
+							.flex()
+							.flex_row()
+							.gap(tokens.spacing(SpacingStep::S2))
+							.child(
+								div()
+									.flex_shrink_0()
+									.text_color(tokens.color(ColorRole::Muted))
+									.child(marker),
+							)
+							.child(div().flex_1().min_w_0().child(drawn)),
+					)
+				},
 				// A quote is what someone else said, so it is set off by the
 				// rule down its leading edge rather than by another ramp.
-				MdBlock::Quote(text) => container.child(
-					div()
-						.w_full()
-						.flex()
-						.flex_row()
-						.gap(tokens.spacing(SpacingStep::S2))
-						.border_l(tokens.stroke(StrokeStep::Hairline))
-						.border_color(tokens.color(ColorRole::Hairline))
-						.pl(tokens.spacing(SpacingStep::S2))
-						.text_color(tokens.color(ColorRole::Secondary))
-						.child(inline_prose(&text, tokens, prose_size, prose_line)),
-				),
-				MdBlock::Paragraph(text) => container.child(
-					div()
-						.w_full()
-						.text_color(ink)
-						.child(inline_prose(&text, tokens, prose_size, prose_line)),
-				),
+				MdBlock::Quote(text) => {
+					let drawn = prose_element(&text, tokens, prose_size, prose_line, index, selection);
+					index += 1;
+					container.child(
+						div()
+							.w_full()
+							.flex()
+							.flex_row()
+							.gap(tokens.spacing(SpacingStep::S2))
+							.border_l(tokens.stroke(StrokeStep::Hairline))
+							.border_color(tokens.color(ColorRole::Hairline))
+							.pl(tokens.spacing(SpacingStep::S2))
+							.text_color(tokens.color(ColorRole::Secondary))
+							.child(drawn),
+					)
+				},
+				MdBlock::Paragraph(text) => {
+					let drawn = prose_element(&text, tokens, prose_size, prose_line, index, selection);
+					index += 1;
+					container.child(div().w_full().text_color(ink).child(drawn))
+				},
 				MdBlock::Code { lang, lines } => {
+					let first = index;
+					index += u16::try_from(lines.len()).unwrap_or(u16::MAX);
 					let mut pane = CodeBlock::lines(lines.into_iter().map(SharedString::from));
 					if !lang.is_empty() {
 						pane = pane.caption(lang);
+					}
+					if let Some(selection) = selection {
+						pane = pane.selection(selection.clone(), selection.span(first));
 					}
 					container.child(pane)
 				},

@@ -29,5 +29,6 @@ veyyon-diff-kernel.workspace = true
 veyyon-gpui.workspace = true
 [dev-dependencies]
 serde_json.workspace = true
+unicode-segmentation = { workspace = true }
 veyyon-desktop-scene.workspace = true
 veyyon-test-scratch.workspace = true

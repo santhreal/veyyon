@@ -111,6 +111,10 @@ actions!([
 	#[derive(Eq)]
 	ToggleBlock,
 	#[derive(Eq)]
+	CopySelection,
+	#[derive(Eq)]
+	SelectEntryText,
+	#[derive(Eq)]
 	Primary,
 	#[derive(Eq)]
 	Newline,

@@ -11,12 +11,12 @@ use crate::{
 	Intent, Overlay, Section, ShellView,
 	composer::{ThinkingControl, TurnPhase},
 	keymap::actions::{
-		AbortTurn, AttachFile, CloseTabOrPark, Dismiss, FilterQueue, FindInTranscript, FocusLive,
-		ModelPicker, MoveSelection, NewSession, NextSession, NextTurn, OpenPalette,
-		OpenSelectedSession, OpenSettings, PreviousSession, PreviousTurn, Scroll, SelectOption,
-		SplitHalf, TakeBackQueuedPrompt, ThinkingLevel as CycleThinkingLevel, ToggleBlock,
-		ToggleDeferSelected, ToggleDrawer, TogglePanel, ToggleParkSelected, TogglePinSelected,
-		ToggleQueue, ToggleQueueMode,
+		AbortTurn, AttachFile, CloseTabOrPark, CopySelection, Dismiss, FilterQueue, FindInTranscript,
+		FocusLive, ModelPicker, MoveSelection, NewSession, NextSession, NextTurn, OpenPalette,
+		OpenSelectedSession, OpenSettings, PreviousSession, PreviousTurn, Scroll, SelectEntryText,
+		SelectOption, SplitHalf, TakeBackQueuedPrompt, ThinkingLevel as CycleThinkingLevel,
+		ToggleBlock, ToggleDeferSelected, ToggleDrawer, TogglePanel, ToggleParkSelected,
+		TogglePinSelected, ToggleQueue, ToggleQueueMode,
 	},
 };
 
@@ -76,8 +76,15 @@ fn dismiss_topmost(view: &mut ShellView, cx: &mut Context<ShellView>) {
 	} else if view.state().overlay.is_some() {
 		view.close_palette(cx);
 	} else if !view.close_queue_float() {
-		cx.propagate();
-		return;
+		// A selection is the last rung: it covers nothing the reader has to get
+		// out from under, so every surface over the transcript is dismissed
+		// first, and the press that finds nothing else open drops the
+		// highlight.
+		if view.text_selection().is_none() {
+			cx.propagate();
+			return;
+		}
+		view.clear_text_selection();
 	}
 	cx.stop_propagation();
 	cx.notify();
@@ -249,6 +256,35 @@ pub fn bind_global_keys(root: Div, cx: &Context<ShellView>) -> Div {
 		}))
 		.on_action(cx.listener(|view, _: &ToggleBlock, _window, cx| {
 			view.dispatch(Intent::ToggleBlock, cx);
+		}))
+		// Nothing selected is nothing to copy, so the chord belongs to whatever
+		// else claims it rather than putting an empty string on the clipboard
+		// over what was there.
+		.on_action(cx.listener(|view, _: &CopySelection, _window, cx| {
+			let text = view.selected_text();
+			if text.is_empty() {
+				cx.propagate();
+			} else {
+				view.dispatch(Intent::CopyText(text), cx);
+			}
+		}))
+		// The entry the chord takes is the turn the keyboard is on, and the
+		// last one when it is on none, which is the entry the transcript is
+		// scrolled to.
+		.on_action(cx.listener(|view, _: &SelectEntryText, _window, cx| {
+			let turns = view.state().transcript.len();
+			if turns == 0 {
+				cx.propagate();
+				return;
+			}
+			let turn_ix = view
+				.state()
+				.keymap
+				.focused_turn
+				.unwrap_or(turns - 1)
+				.min(turns - 1);
+			view.select_whole_entry(turn_ix);
+			cx.notify();
 		}))
 }
 

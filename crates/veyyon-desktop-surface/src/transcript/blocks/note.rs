@@ -1,10 +1,18 @@
 //! Subordinate transcript events and structural boundaries.
 
-use veyyon_desktop_kit::{ColorRole, SpacingStep, StrokeStep, TextRamp, TokenSet};
-use veyyon_gpui::{Div, ParentElement, Styled, div};
+use veyyon_desktop_kit::{
+	ColorRole, SelectableProse, SpacingStep, StrokeStep, TextRamp, TokenSet, selectable_line,
+};
+use veyyon_gpui::{Div, IntoElement, ParentElement, Styled, div};
 
 /// Render recorded annotations separately from assistant prose.
-pub fn render_note_block(label: &str, text: &str, boundary: bool, tokens: &TokenSet) -> Div {
+pub fn render_note_block(
+	label: &str,
+	text: &str,
+	boundary: bool,
+	tokens: &TokenSet,
+	selection: Option<SelectableProse>,
+) -> Div {
 	let mut block = div()
 		.w_full()
 		.text_size(tokens.font_size(TextRamp::Small))
@@ -16,5 +24,15 @@ pub fn render_note_block(label: &str, text: &str, boundary: bool, tokens: &Token
 			.border_color(tokens.color(ColorRole::Muted))
 			.pt(tokens.spacing(SpacingStep::S2));
 	}
-	block.child(format!("{label}: {text}"))
+	// The row is one span: the label and the text as one line, which is what
+	// the row draws and what a reader dragging over it means by it.
+	let line = if text.is_empty() {
+		label.to_owned()
+	} else {
+		format!("{label}: {text}")
+	};
+	match &selection {
+		Some(prose) => block.child(selectable_line(line, tokens, prose.span(0), prose)),
+		None => block.child(line.into_any_element()),
+	}
 }

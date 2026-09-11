@@ -56,6 +56,7 @@ impl Render for BlockView {
 					false,
 					&state,
 					None,
+					None,
 				)
 				.into_any_element()
 			})
@@ -77,6 +78,7 @@ impl Render for BlockView {
 				&self.motion,
 				false,
 				&self.state,
+				None,
 				None,
 			)
 			.into_any_element()

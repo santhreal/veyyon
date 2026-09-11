@@ -213,6 +213,7 @@ fn every_tool_view_variant_renders_through_production_invoke_block_path() {
 			false,
 			&viewport_state,
 			None,
+			None,
 		);
 		let _ = collapsed_el;
 
@@ -235,6 +236,7 @@ fn every_tool_view_variant_renders_through_production_invoke_block_path() {
 			&motion_tokens,
 			false,
 			&viewport_state,
+			None,
 			None,
 		);
 		let _ = expanded_el;
@@ -275,6 +277,7 @@ impl Render for TestToolBlockView {
 			&self.motion,
 			false,
 			&self.state,
+			None,
 			None,
 		))
 	}

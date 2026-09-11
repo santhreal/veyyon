@@ -17,12 +17,13 @@ use veyyon_gpui::{
 
 use crate::keymap::{
 	actions::{
-		AbortTurn, AttachFile, CloseTabOrPark, Dismiss, FilterQueue, FindInTranscript, FocusLive,
-		ModelPicker, MoveSelection, NewSession, Newline, NextSession, NextTab, NextTurn, OpenPalette,
-		OpenSelectedSession, OpenSettings, PreviousSession, PreviousTab, PreviousTurn, Primary,
-		Scope, Scroll, ScrollBy, SelectOption, SplitHalf, TakeBackQueuedPrompt, ThinkingLevel,
-		ToggleBlock, ToggleDeferSelected, ToggleDiffMode, ToggleDrawer, TogglePanel,
-		ToggleParkSelected, TogglePinSelected, ToggleQueue, ToggleQueueMode,
+		AbortTurn, AttachFile, CloseTabOrPark, CopySelection, Dismiss, FilterQueue, FindInTranscript,
+		FocusLive, ModelPicker, MoveSelection, NewSession, Newline, NextSession, NextTab, NextTurn,
+		OpenPalette, OpenSelectedSession, OpenSettings, PreviousSession, PreviousTab, PreviousTurn,
+		Primary, Scope, Scroll, ScrollBy, SelectEntryText, SelectOption, SplitHalf,
+		TakeBackQueuedPrompt, ThinkingLevel, ToggleBlock, ToggleDeferSelected, ToggleDiffMode,
+		ToggleDrawer, TogglePanel, ToggleParkSelected, TogglePinSelected, ToggleQueue,
+		ToggleQueueMode,
 	},
 	command::Command,
 };
@@ -210,6 +211,8 @@ pub(crate) fn build_action(
 		"PreviousTurn" => Ok(Arc::new(PreviousTurn)),
 		"NextTurn" => Ok(Arc::new(NextTurn)),
 		"ToggleBlock" => Ok(Arc::new(ToggleBlock)),
+		"CopySelection" => Ok(Arc::new(CopySelection)),
+		"SelectEntryText" => Ok(Arc::new(SelectEntryText)),
 		"Primary" => Ok(Arc::new(Primary)),
 		"Newline" => Ok(Arc::new(Newline)),
 		"SplitHalf" => Ok(Arc::new(SplitHalf)),

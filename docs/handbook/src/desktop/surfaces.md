@@ -188,6 +188,8 @@ Click the transcript to focus keyboard navigation.
 | `End` | Move to the live edge and resume following output |
 | `PageUp` / `PageDown` | Move by the measured viewport height |
 | `Primary-F` | Find matching transcript blocks |
+| `Primary-A` | Select the whole entry's text |
+| `Primary-C` | Copy the selected text |
 
 Keyboard scrolling uses the configured scroll transition. Manual scrolling
 interrupts that transition. Reduced motion applies the destination immediately.
@@ -198,6 +200,22 @@ following. Switching sessions restores their saved scroll anchors.
 
 The find bar displays the selected matching block and total matching blocks.
 `Enter` advances to the next matching block; `Escape` closes the bar.
+
+### Selecting text
+
+Drag across the transcript to select the text it drew. A drag crosses
+paragraphs, blocks and entries. A press with Shift held extends the selection
+from where it is instead of starting a new one, and a press with no modifier
+starts one wherever it lands. `Primary-A` selects the whole entry, `Primary-C`
+copies the selection, and `Escape` drops it once nothing else is open over the
+transcript. Selected text is drawn on the row selection ground.
+
+A copy that crosses blocks is one line per block. A picture or a file row
+states a name beside its control rather than prose, and a tool card the host
+drew a view for states its text through that view, so neither carries a
+selection; the turn menu's **Copy** takes the whole turn in both cases. A code
+pane's lines are separate selections, one per line, and the pane's caption
+heads the row that opens it rather than being part of the body.
 
 Persisted thinking-level, service-tier and session changes display their
 recorded values. A model change displays its recorded value from the first

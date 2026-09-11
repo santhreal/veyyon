@@ -12,6 +12,8 @@
 //! marker is text. A code span's interior is literal, so nothing inside it is
 //! read as a marker either.
 
+use std::ops::Range;
+
 use veyyon_gpui::{
 	AnyElement, FontStyle, FontWeight, HighlightStyle, IntoElement, Pixels, SharedString,
 	StyledText, UnderlineStyle, div, prelude::*, px,
@@ -95,6 +97,50 @@ pub fn plain(text: &str) -> String {
 	spans(text).into_iter().map(|span| span.text).collect()
 }
 
+/// One line of prose shaped for a text element: the string the frame draws,
+/// and what to set each piece of it in.
+///
+/// A caller that draws the line itself -- because it also draws a selection
+/// over it -- reads the shaping here rather than repeating the walk over the
+/// markers.
+#[derive(Debug, Clone, Default)]
+pub struct ShapedProse {
+	/// The text with every marker off: what a reader sees, and the bytes a
+	/// selection into this span is measured in.
+	pub drawn:      String,
+	/// What each piece of `drawn` is set in.
+	pub highlights: Vec<(Range<usize>, HighlightStyle)>,
+	/// The pieces of `drawn` set in the mono family.
+	pub mono:       Vec<(Range<usize>, SharedString)>,
+}
+
+/// Reads `text` into the string the frame draws and the styles over it.
+#[must_use]
+pub fn shaped_prose(text: &str, tokens: &TokenSet) -> ShapedProse {
+	let read = spans(text);
+	let mut shaped = ShapedProse {
+		drawn:      String::with_capacity(text.len()),
+		highlights: Vec::new(),
+		mono:       Vec::new(),
+	};
+	for span in &read {
+		let start = shaped.drawn.len();
+		shaped.drawn.push_str(&span.text);
+		if span.emphasis.is_plain() {
+			continue;
+		}
+		if span.emphasis.code {
+			shaped
+				.mono
+				.push((start..shaped.drawn.len(), tokens.mono_family()));
+		}
+		shaped
+			.highlights
+			.push((start..shaped.drawn.len(), span_style(span.emphasis, tokens)));
+	}
+	shaped
+}
+
 /// Prose set at `size`, with each marker drawn as what it means.
 ///
 /// The element inherits the caller's ink, family and width, so a span that is
@@ -106,25 +152,10 @@ pub fn inline_prose(
 	size: Pixels,
 	line_height: Pixels,
 ) -> AnyElement {
-	let read = spans(text);
-	let mut drawn = String::with_capacity(text.len());
-	let mut highlights = Vec::new();
-	let mut mono = Vec::new();
-	for span in &read {
-		let start = drawn.len();
-		drawn.push_str(&span.text);
-		if span.emphasis.is_plain() {
-			continue;
-		}
-		if span.emphasis.code {
-			mono.push((start..drawn.len(), tokens.mono_family()));
-		}
-		highlights.push((start..drawn.len(), span_style(span.emphasis, tokens)));
-	}
-
-	let styled = StyledText::new(SharedString::from(drawn))
-		.with_highlights(highlights)
-		.with_font_family_overrides(mono);
+	let shaped = shaped_prose(text, tokens);
+	let styled = StyledText::new(SharedString::from(shaped.drawn))
+		.with_highlights(shaped.highlights)
+		.with_font_family_overrides(shaped.mono);
 	div()
 		.text_size(size)
 		.line_height(line_height)

@@ -8,7 +8,9 @@
 
 use std::rc::Rc;
 
-use veyyon_desktop_kit::{ButtonVariant, ColorRole, IconName, TokenSet, controls::Button};
+use veyyon_desktop_kit::{
+	ButtonVariant, ColorRole, IconName, TextSelection, TokenSet, controls::Button,
+};
 use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
 use veyyon_gpui::{
@@ -51,6 +53,7 @@ pub fn transcript_viewport(
 	laid_out: &LaidOut,
 	measure_px: f32,
 	bottom_inset_px: f32,
+	selection: Option<TextSelection>,
 	window: &mut Window,
 	cx: &Context<ShellView>,
 ) -> Div {
@@ -96,6 +99,7 @@ pub fn transcript_viewport(
 				measure_px,
 				&item_layout,
 				Some(&view),
+				selection,
 			);
 
 			if turn_ix > 0 {
@@ -132,6 +136,19 @@ pub fn transcript_viewport(
 	let menu_view = cx.weak_entity();
 	let mut container = div()
 		.track_focus(&focus)
+		// The clear runs in the capture phase, before the span under the
+		// pointer reports its press: a press starts a new selection wherever it
+		// lands, including on the canvas beside the text, and a press with
+		// Shift held extends the one that is held rather than dropping it.
+		.capture_any_mouse_down({
+			let clear_view = cx.weak_entity();
+			move |event: &MouseDownEvent, _window, app| {
+				if event.button != MouseButton::Left || event.modifiers.shift {
+					return;
+				}
+				let _ = clear_view.update(app, |view, _cx| view.clear_text_selection());
+			}
+		})
 		.on_mouse_down(MouseButton::Left, move |_, window, app| window.focus(&focus, app))
 		.on_mouse_down(MouseButton::Right, move |event: &MouseDownEvent, _window, app| {
 			let Some(turn) = turn_at(&menu_layout, menu_turns.len(), event.position) else {

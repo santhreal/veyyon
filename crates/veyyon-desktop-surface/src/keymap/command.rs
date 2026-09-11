@@ -34,6 +34,8 @@ pub enum Command {
 	PreviousTurn,
 	NextTurn,
 	ToggleBlock,
+	CopySelection,
+	SelectEntryText,
 	Primary,
 	Newline,
 	SplitHalf,
@@ -76,6 +78,8 @@ impl Command {
 			Self::PreviousTurn => "PreviousTurn",
 			Self::NextTurn => "NextTurn",
 			Self::ToggleBlock => "ToggleBlock",
+			Self::CopySelection => "CopySelection",
+			Self::SelectEntryText => "SelectEntryText",
 			Self::Primary => "Primary",
 			Self::Newline => "Newline",
 			Self::SplitHalf => "SplitHalf",
@@ -118,6 +122,8 @@ impl Command {
 			Self::PreviousTurn => "Navigate to previous turn",
 			Self::NextTurn => "Navigate to next turn",
 			Self::ToggleBlock => "Expand or collapse focused block",
+			Self::CopySelection => "Copy the selected text",
+			Self::SelectEntryText => "Select the whole entry's text",
 			Self::Primary => "Primary composer action",
 			Self::Newline => "Insert newline in composer",
 			Self::SplitHalf => "Non-primary half of split action",
@@ -161,7 +167,9 @@ impl Command {
 			| Self::FindInTranscript
 			| Self::PreviousTurn
 			| Self::NextTurn
-			| Self::ToggleBlock => Scope::Transcript,
+			| Self::ToggleBlock
+			| Self::CopySelection
+			| Self::SelectEntryText => Scope::Transcript,
 
 			Self::Primary
 			| Self::Newline
@@ -203,6 +211,8 @@ impl Command {
 			"PreviousTurn" => Some(Self::PreviousTurn),
 			"NextTurn" => Some(Self::NextTurn),
 			"ToggleBlock" => Some(Self::ToggleBlock),
+			"CopySelection" => Some(Self::CopySelection),
+			"SelectEntryText" => Some(Self::SelectEntryText),
 			"Primary" => Some(Self::Primary),
 			"Newline" => Some(Self::Newline),
 			"SplitHalf" => Some(Self::SplitHalf),

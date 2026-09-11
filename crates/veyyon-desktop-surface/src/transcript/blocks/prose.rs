@@ -3,9 +3,11 @@
 //! Renders Markdown text at assistant reading size with optional streaming
 //! caret.
 
-use veyyon_desktop_kit::{ColorRole, Markdown, SpacingStep, StrokeStep, TokenSet};
+use veyyon_desktop_kit::{ColorRole, Markdown, SelectableProse, SpacingStep, StrokeStep, TokenSet};
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
 use veyyon_gpui::{Div, ParentElement, Styled, div, px};
+
+use crate::transcript::selection::selectable_markdown;
 
 /// Prose block, rendered as Markdown at assistant reading size with optional
 /// streaming caret.
@@ -15,13 +17,15 @@ pub fn render_prose_block(
 	caret_opacity: f32,
 	geometry: &TranscriptSurfaceTokens,
 	tokens: &TokenSet,
+	selection: Option<SelectableProse>,
 ) -> Div {
+	let markdown = Markdown::new(text.to_owned()).prose_size(
+		px(geometry.assistant_turn_type_size.size),
+		px(geometry.assistant_turn_type_size.line_height),
+	);
 	let mut block = div()
 		.w_full()
-		.child(Markdown::new(text.to_owned()).prose_size(
-			px(geometry.assistant_turn_type_size.size),
-			px(geometry.assistant_turn_type_size.line_height),
-		));
+		.child(selectable_markdown(markdown, selection));
 
 	// Two-step streaming caret (§5.3, §7.1 Caret motion role)
 	if is_streaming && caret_opacity > 0.05 {

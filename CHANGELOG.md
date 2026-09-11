@@ -28,6 +28,7 @@
 
 ### Added
 
+- The desktop transcript selects the text it drew: a drag crosses inline runs, blocks and entries, a press with Shift held extends the selection, `Primary-A` takes the whole entry, `Primary-C` copies it, and `Escape` drops it.
 - The desktop states the mode its session runs in on the composer's footer, and sets it: `/plan` enters plan mode and `/plan off` leaves it, both refused while a turn is running, and leaving restores the tools plan mode took away.
 - A desktop approval card offers the tool wrapper's four answers — `Deny for session`, `Deny`, `Approve for session`, `Approve` — so a standing grant or refusal is reachable without leaving the desktop.
 - The desktop card stack's overflow line expands under the pointer or the keyboard onto one line per decision it folded away, each naming the decision's kind and subject.

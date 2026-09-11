@@ -3,8 +3,8 @@
 use std::time::Instant;
 
 use veyyon_desktop_kit::{
-	CodeBlock, ColorRole, Icon, IconName, IconSize, MonoSizeStep, SpacingStep, TextRamp, TokenSet,
-	Truncate,
+	CodeBlock, ColorRole, Icon, IconName, IconSize, MonoSizeStep, SelectableProse, SpacingStep,
+	TextRamp, TokenSet, Truncate,
 };
 use veyyon_desktop_motion::MotionTokens;
 use veyyon_desktop_tokens::TranscriptSurfaceTokens;
@@ -29,6 +29,7 @@ pub fn render_pane_block(
 	reduced_motion: bool,
 	viewport_state: &TranscriptViewportState,
 	view: Option<&WeakEntity<ShellView>>,
+	selection: Option<SelectableProse>,
 ) -> Div {
 	let state_toggle = viewport_state.clone();
 	let view_toggle = view.cloned();
@@ -88,11 +89,16 @@ pub fn render_pane_block(
 	if !is_expanded && progress <= 0.0 {
 		return container;
 	}
-	let details = div().w_full().child(
-		CodeBlock::lines(lines.iter().map(|line| SharedString::from(line.clone())))
-			.size(MonoSizeStep::Small)
-			.max_height(px(geometry.chrome_invoke_mono_pane_max_height_px)),
-	);
+	let mut pane = CodeBlock::lines(lines.iter().map(|line| SharedString::from(line.clone())))
+		.size(MonoSizeStep::Small)
+		.max_height(px(geometry.chrome_invoke_mono_pane_max_height_px));
+	// The lines are the pane's spans, one each, numbered from the block: the
+	// caption heads the row that opens the pane and is no span, so a drag over
+	// it does not fight the press that expands the body.
+	if let Some(prose) = &selection {
+		pane = pane.selection(prose.clone(), prose.span(0));
+	}
+	let details = div().w_full().child(pane);
 	container.children(render_reveal_container(
 		turn_ix,
 		block_ix,

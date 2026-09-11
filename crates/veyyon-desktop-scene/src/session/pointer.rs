@@ -68,6 +68,30 @@ impl<V: Render + 'static> HeadlessSession<'_, V> {
 		Ok(())
 	}
 
+	/// Clicks at `at` with Shift held, which is how a surface that extends a
+	/// selection from where it is rather than starting a new one is reached.
+	pub fn shift_click(&mut self, at: Point<Pixels>) -> Result<(), RenderError> {
+		let modifiers = Modifiers { shift: true, ..Modifiers::default() };
+		let mouse_down = PlatformInput::MouseDown(MouseDownEvent {
+			button: MouseButton::Left,
+			position: at,
+			modifiers,
+			click_count: 1,
+			first_mouse: false,
+		});
+		let mouse_up = PlatformInput::MouseUp(MouseUpEvent {
+			button: MouseButton::Left,
+			position: at,
+			modifiers,
+			click_count: 1,
+		});
+
+		self.dispatch(mouse_down)?;
+		self.dispatch(mouse_up)?;
+		self.cx.run_until_parked();
+		Ok(())
+	}
+
 	/// Dispatches a right mouse click (`MouseDown` followed by `MouseUp`) at the
 	/// given logical coordinates.
 	pub fn right_click(&mut self, at: Point<Pixels>) -> Result<(), RenderError> {
