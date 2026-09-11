@@ -179,6 +179,12 @@ pub fn document_spans(source: &str) -> Vec<String> {
 			| MdBlock::Paragraph(text)
 			| MdBlock::Bullet { text, .. } => out.push(plain(&text)),
 			MdBlock::Code { lines, .. } => out.extend(lines),
+			// A cell is one span, numbered in the order the grid draws it:
+			// every header cell, then every cell of every row.
+			MdBlock::Table { head, rows, .. } => {
+				out.extend(head.iter().map(|cell| plain(cell)));
+				out.extend(rows.iter().flatten().map(|cell| plain(cell)));
+			},
 		}
 	}
 	out

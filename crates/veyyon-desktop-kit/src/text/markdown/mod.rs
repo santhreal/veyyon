@@ -8,10 +8,15 @@
 //!
 //! A block's own text goes through [`inline_prose`], so the markers inside it
 //! are set rather than drawn. This module owns the block markers and nothing
-//! else: `inline.rs` owns everything between them.
+//! else: `inline.rs` owns everything between them, and `blocks.rs` reads the
+//! source into the blocks drawn here.
+
+mod blocks;
+mod table;
 
 use veyyon_gpui::{App, IntoElement, Pixels, RenderOnce, SharedString, Window, div, prelude::*};
 
+pub(crate) use self::blocks::{MdBlock, blocks};
 use crate::{
 	text::{code_block::CodeBlock, selectable::prose_element, span_selection::SelectableProse},
 	token_set::{ColorRole, SpacingStep, StrokeStep, TextRamp, TokenSet},
@@ -64,118 +69,14 @@ pub fn plain_line(source: &str) -> String {
 				| MdBlock::Paragraph(text)
 				| MdBlock::Bullet { text, .. } => crate::text::inline::plain(text),
 				MdBlock::Code { lines, .. } => lines.first().cloned().unwrap_or_default(),
+				// A table's first line is its header, which states what the rows are
+				// of rather than what any one row holds.
+				MdBlock::Table { head, .. } => crate::text::inline::plain(&head.join(" ")),
 			};
 			let text = text.trim().to_owned();
 			(!text.is_empty()).then_some(text)
 		})
 		.unwrap_or_default()
-}
-
-/// One block of a Markdown document.
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum MdBlock {
-	Heading {
-		level: u8,
-		text:  String,
-	},
-	/// A list item: its own marker, and how deep the source indented it.
-	Bullet {
-		depth:  usize,
-		marker: String,
-		text:   String,
-	},
-	Quote(String),
-	Paragraph(String),
-	Code {
-		lang:  String,
-		lines: Vec<String>,
-	},
-}
-
-/// The heading level a line opens with, and the text after it.
-fn heading_of(line: &str) -> Option<(u8, &str)> {
-	let hashes = line.bytes().take_while(|b| *b == b'#').count();
-	if !(1..=6).contains(&hashes) {
-		return None;
-	}
-	let rest = line.get(hashes..)?;
-	let text = rest.strip_prefix(' ')?;
-	Some((u8::try_from(hashes).ok()?, text.trim_start()))
-}
-
-/// The list marker a line opens with, and the text after it. An ordered item
-/// keeps its own number, because renumbering it would state another order.
-fn item_of(line: &str) -> Option<(String, &str)> {
-	if let Some(text) = line
-		.strip_prefix("- ")
-		.or_else(|| line.strip_prefix("* "))
-		.or_else(|| line.strip_prefix("+ "))
-	{
-		return Some(("•".to_owned(), text));
-	}
-	let digits = line.bytes().take_while(u8::is_ascii_digit).count();
-	if digits == 0 || digits > 9 {
-		return None;
-	}
-	let rest = line.get(digits..)?;
-	let text = rest
-		.strip_prefix(". ")
-		.or_else(|| rest.strip_prefix(") "))?;
-	Some((format!("{}.", &line[..digits]), text))
-}
-
-/// Reads `source` into blocks.
-pub(crate) fn blocks(source: &str) -> Vec<MdBlock> {
-	let mut out = Vec::new();
-	let mut paragraph: Vec<&str> = Vec::new();
-	let mut code: Option<(String, Vec<String>)> = None;
-
-	let flush = |paragraph: &mut Vec<&str>, out: &mut Vec<MdBlock>| {
-		if !paragraph.is_empty() {
-			out.push(MdBlock::Paragraph(paragraph.join(" ")));
-			paragraph.clear();
-		}
-	};
-
-	for line in source.lines() {
-		if let Some((lang, lines)) = code.as_mut() {
-			if line.trim_start().starts_with("```") || line.trim_start().starts_with("~~~") {
-				out.push(MdBlock::Code { lang: std::mem::take(lang), lines: std::mem::take(lines) });
-				code = None;
-			} else {
-				lines.push(line.to_owned());
-			}
-			continue;
-		}
-		let body = line.trim_start();
-		let depth = (line.len() - body.len()) / 2;
-		if let Some(lang) = body
-			.strip_prefix("```")
-			.or_else(|| body.strip_prefix("~~~"))
-		{
-			flush(&mut paragraph, &mut out);
-			code = Some((lang.trim().to_owned(), Vec::new()));
-		} else if let Some((level, text)) = heading_of(body) {
-			flush(&mut paragraph, &mut out);
-			out.push(MdBlock::Heading { level, text: text.to_owned() });
-		} else if let Some(text) = body.strip_prefix('>') {
-			flush(&mut paragraph, &mut out);
-			out.push(MdBlock::Quote(text.trim_start().to_owned()));
-		} else if let Some((marker, text)) = item_of(body) {
-			flush(&mut paragraph, &mut out);
-			out.push(MdBlock::Bullet { depth, marker, text: text.to_owned() });
-		} else if body.is_empty() {
-			flush(&mut paragraph, &mut out);
-		} else {
-			paragraph.push(body);
-		}
-	}
-	flush(&mut paragraph, &mut out);
-	if let Some((lang, lines)) = code {
-		// An unclosed fence at the end of a streaming message is still code.
-		out.push(MdBlock::Code { lang, lines });
-	}
-	out
 }
 
 impl RenderOnce for Markdown {
@@ -281,6 +182,9 @@ impl RenderOnce for Markdown {
 					}
 					container.child(pane)
 				},
+				MdBlock::Table { head, align, rows } => container.child(table::table_block(
+					&head, &align, &rows, tokens, prose_size, prose_line, &mut index, selection,
+				)),
 			};
 		}
 
@@ -290,76 +194,7 @@ impl RenderOnce for Markdown {
 
 #[cfg(test)]
 mod tests {
-	use super::{MdBlock, blocks, plain_line};
-
-	#[test]
-	fn consecutive_lines_are_one_paragraph_and_a_blank_line_ends_it() {
-		let read = blocks("one\ntwo\n\nthree");
-		assert_eq!(read, [MdBlock::Paragraph("one two".into()), MdBlock::Paragraph("three".into())]);
-	}
-
-	#[test]
-	fn a_heading_bullet_or_fence_ends_the_paragraph_before_it() {
-		let read = blocks("a\n# H\nb\n- c\nd\n```rs\nx\n```\ne");
-		assert_eq!(read, [
-			MdBlock::Paragraph("a".into()),
-			MdBlock::Heading { level: 1, text: "H".into() },
-			MdBlock::Paragraph("b".into()),
-			MdBlock::Bullet { depth: 0, marker: "•".into(), text: "c".into() },
-			MdBlock::Paragraph("d".into()),
-			MdBlock::Code { lang: "rs".into(), lines: vec!["x".into()] },
-			MdBlock::Paragraph("e".into()),
-		]);
-	}
-
-	#[test]
-	fn an_unclosed_fence_is_still_code() {
-		let read = blocks("```\nlet a = 1;");
-		assert_eq!(read, [MdBlock::Code { lang: String::new(), lines: vec!["let a = 1;".into()] }]);
-	}
-
-	#[test]
-	fn every_heading_level_is_a_heading_and_a_bare_hash_is_prose() {
-		for level in 1..=6_u8 {
-			let hashes = "#".repeat(usize::from(level));
-			let read = blocks(&format!("{hashes} H"));
-			assert_eq!(read, [MdBlock::Heading { level, text: "H".into() }], "{hashes} H");
-		}
-		assert_eq!(blocks("####### H"), [MdBlock::Paragraph("####### H".into())]);
-		assert_eq!(blocks("#nothash"), [MdBlock::Paragraph("#nothash".into())]);
-	}
-
-	#[test]
-	fn every_list_marker_is_an_item_and_an_ordered_one_keeps_its_number() {
-		for marker in ["-", "*", "+"] {
-			let read = blocks(&format!("{marker} item"));
-			assert_eq!(read, [MdBlock::Bullet {
-				depth:  0,
-				marker: "•".into(),
-				text:   "item".into(),
-			}]);
-		}
-		assert_eq!(blocks("2. second\n3) third"), [
-			MdBlock::Bullet { depth: 0, marker: "2.".into(), text: "second".into() },
-			MdBlock::Bullet { depth: 0, marker: "3.".into(), text: "third".into() },
-		]);
-		assert_eq!(blocks("1.no space"), [MdBlock::Paragraph("1.no space".into())]);
-	}
-
-	#[test]
-	fn an_indented_item_states_its_depth() {
-		let read = blocks("- top\n  - under\n    - deeper");
-		assert_eq!(read, [
-			MdBlock::Bullet { depth: 0, marker: "•".into(), text: "top".into() },
-			MdBlock::Bullet { depth: 1, marker: "•".into(), text: "under".into() },
-			MdBlock::Bullet { depth: 2, marker: "•".into(), text: "deeper".into() },
-		]);
-	}
-
-	#[test]
-	fn a_quote_is_its_own_block_without_the_arrow() {
-		assert_eq!(blocks("> said so"), [MdBlock::Quote("said so".into())]);
-	}
+	use super::plain_line;
 
 	#[test]
 	fn the_plain_line_is_the_first_block_with_text_and_carries_no_marker() {
