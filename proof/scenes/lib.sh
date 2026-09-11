@@ -322,6 +322,27 @@ click() { _be_click 1; }
 # reaches one presses button 3 rather than synthesizing a long press.
 right_click() { _be_click 3; }
 click_at() { point "$1" "$2"; pause 0.3; click; }
+
+# Press, travel and release: the gesture a reader selects text with.
+#
+# A selection is not a click and not a hover, and no composition of the two
+# produces one: the window reads the press for where the selection starts and
+# every motion with the button still down for where its head has reached, so a
+# scene that clicks twice states two collapsed selections and nothing in
+# between. The travel is interpolated in PIXELS and each step is a real motion
+# report, which is what the window is listening for.
+drag_px() { # drag_px <x-from> <y-from> <x-to> <y-to> [steps] [delay]
+	local x0="$1" y0="$2" x1="$3" y1="$4" steps="${5:-12}" delay="${6:-0.04}" i
+	move_px "${x0}" "${y0}"
+	pause 0.2
+	_be_button_down 1
+	for i in $(seq 1 "${steps}"); do
+		move_px "$((x0 + (x1 - x0) * i / steps))" "$((y0 + (y1 - y0) * i / steps))"
+		sleep "${delay}"
+	done
+	pause 0.2
+	_be_button_up 1
+}
 wheel_up() { key_repeat_button 4 "${1:-3}"; }
 wheel_down() { key_repeat_button 5 "${1:-3}"; }
 

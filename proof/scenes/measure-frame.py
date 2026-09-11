@@ -48,6 +48,13 @@ scene that clicked the row below Export publishes a pair naming the wrong item.
            drew one prompt, or three, abandons the take instead of aiming at
            whichever box came first.
 
+    measure-frame.py filled-box <frame> <left> <top> <width> <height> <colour>
+                     [<band> <bands>]
+        -> "<top> <left> <height> <width>" of that same box, as the rectangle
+           it occupies. A press aims at a centre, and a drag has two ends and a
+           region to be read over, so a gesture across a box reads the box and
+           computes its own ends from it.
+
     measure-frame.py menu-item <frame> <left> <top> <width> <height> <colour>
                      <item> <items>
         -> "<y> <x> <strength>" at the centre of one item's row in a menu the
@@ -255,8 +262,8 @@ def selected_card(argv):
     print(top + first, left + columns[0][0])
 
 
-def filled_band(argv):
-    """One box a colour fills inside a rectangle, of the number it must hold."""
+def one_filled_box(argv):
+    """The one box a colour fills inside a rectangle, as <top> <left> <height> <width>."""
     frame, left, top, width, height, colour = (
         argv[0], int(argv[1]), int(argv[2]), int(argv[3]), int(argv[4]), argv[5],
     )
@@ -281,7 +288,19 @@ def filled_band(argv):
     )
     if len(columns) != 1:
         fail(f"{colour} came to {len(columns)} column runs inside the box, not one", 2)
-    print(top + (first + last) // 2, left + (columns[0][0] + columns[0][1]) // 2)
+    return top + first, left + columns[0][0], last - first + 1, columns[0][1] - columns[0][0] + 1
+
+
+def filled_band(argv):
+    """One box a colour fills inside a rectangle, of the number it must hold."""
+    top, left, height, width = one_filled_box(argv)
+    print(top + height // 2, left + width // 2)
+
+
+def filled_box(argv):
+    """The same box, as the rectangle it occupies rather than its centre."""
+    top, left, height, width = one_filled_box(argv)
+    print(top, left, height, width)
 
 
 def menu_rows(argv):
@@ -460,6 +479,7 @@ def menu_item(argv):
 READINGS = {
     "selected-card": (selected_card, (6,)),
     "filled-band": (filled_band, (6, 8)),
+    "filled-box": (filled_box, (6, 8)),
     "menu-rows": (menu_rows, (6,)),
     "menu-item": (menu_item, (8,)),
 }

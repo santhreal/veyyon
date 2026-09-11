@@ -56,6 +56,11 @@ _be_pointer_at() {
 _be_pointer_move() { xdotool mousemove --sync "$1" "$2"; }
 _be_click() { xdotool click --delay 50 "${1:-1}"; }
 
+# A press and a release on their own, which a drag is made of: `xdotool click`
+# sends both in one call and a selection needs the motion between them.
+_be_button_down() { xdotool mousedown "${1:-1}"; }
+_be_button_up() { xdotool mouseup "${1:-1}"; }
+
 # The whole screen, which is what ffmpeg is recording, so a still and the video
 # frame at the same second are the same pixels.
 _be_capture() { import -window root "$1"; }
