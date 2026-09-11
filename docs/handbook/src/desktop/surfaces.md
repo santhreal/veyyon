@@ -156,7 +156,8 @@ no room for. Parked lines offer Open and Unpark; deferred lines offer Open and
 Recall. Branch starts a new session before the latest user message on the
 selected session's active branch, without changing the source session.
 Extensions can cancel the operation. Unavailable and pending management actions
-are disabled in the menu.
+are disabled in the menu. The row under the pointer is filled and the cursor
+becomes a pointing hand; a disabled row is neither filled nor pressable.
 
 Branch, Export, Compact, and Handoff run against the session whose row was
 right-clicked, and each opens that session: the transcript, the titlebar name

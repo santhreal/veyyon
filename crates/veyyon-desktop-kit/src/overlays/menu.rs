@@ -89,8 +89,7 @@ impl RenderOnce for Menu {
 				.flex_row()
 				.items_center()
 				.justify_between()
-				.gap(tokens.spacing(SpacingStep::S4))
-				.cursor_pointer();
+				.gap(tokens.spacing(SpacingStep::S4));
 
 			let mut left = div()
 				.flex()
@@ -117,11 +116,18 @@ impl RenderOnce for Menu {
 				);
 			}
 
-			if !item.is_disabled {
-				if let Some(ref handler) = self.on_select {
-					let h = Arc::clone(handler);
-					row = row.on_click(move |ev, window, cx| h(idx, ev, window, cx));
-				}
+			// A row that answers a click is hit-tested, lights under the pointer
+			// and takes the pointing cursor; a row that answers none takes
+			// neither, so a menu never states that a refused row is pressable.
+			// The fill is the one every row surface lights with.
+			if !item.is_disabled
+				&& let Some(handler) = &self.on_select
+			{
+				let h = Arc::clone(handler);
+				row = row
+					.cursor_pointer()
+					.hover(move |style| style.bg(tokens.row_hover()))
+					.on_click(move |ev, window, cx| h(idx, ev, window, cx));
 			}
 
 			container = container.child(row);

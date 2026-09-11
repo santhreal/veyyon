@@ -291,6 +291,7 @@
 ### Fixed
 
 - A desktop menu draws the row that destroys something in the error tint's ink rather than its fill, where `Delete` on a session card and `Kill (SIGKILL)` on a supervised process were set in the dark red a badge is filled with: the one row in either menu that cannot be undone was drawn at 1.12:1 against the menu's own ground and read as an empty row.
+- A desktop menu fills the row under the pointer and draws the pointing cursor over it, where eight rows one line apart were drawn identically wherever the pointer sat and a disabled row took the cursor of a control it would not answer.
 - A desktop row menu sets every label on one column, where `Open` and `Branch` carry no icon and so started a gutter to the left of the six rows beside them; a menu that draws an icon at all now keeps that gutter for the rows without one.
 - A desktop branch forks at the prompt it hands back to the composer, where it named no entry and returned nothing: the host picked the fork point on its own, and the prompt the fork cut off the transcript was left in no surface of the window. The entry the window names and the words it restores come from one walk of the transcript, so the fork cannot cut one prompt and hand back another.
 - A desktop transcript states a mode change as a `Mode` note rather than a custom message reading `mode: plan`, so the row a session's mode change leaves behind is drawn the way a model change and a thinking-level change already were.

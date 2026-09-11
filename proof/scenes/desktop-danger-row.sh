@@ -179,10 +179,10 @@ case "${ARM}" in
 esac
 
 # ─── 4. Photograph The Menu ──────────────────────────────────────────────────
-# The pointer is parked off the menu, on the card the menu was opened from, so
-# no row carries hover styling in either frame. Nothing in the kit's menu draws
-# a hover fill today, and a frame taken with the pointer on a row would start
-# depending on that.
+# The pointer is parked at the corner the menu opened at, which is outside
+# every row of it, so no row carries the hover fill in either frame. A row
+# under the pointer lights, which is what `desktop-menu-hover.sh` is of; a
+# frame taken with the pointer on a row would read the two states at once.
 move_px "${CARD_X}" "${MENU_ORIGIN_Y}"
 pause 0.6
 shot the-row-menu-marks-what-it-destroys
