@@ -11,12 +11,12 @@ use crate::{
 	Intent, Overlay, Section, ShellView,
 	composer::{ThinkingControl, TurnPhase},
 	keymap::actions::{
-		AbortTurn, AttachFile, CloseTabOrPark, CopySelection, Dismiss, FilterQueue, FindInTranscript,
-		FocusLive, ModelPicker, MoveSelection, NewSession, NextSession, NextTurn, OpenPalette,
-		OpenSelectedSession, OpenSettings, PreviousSession, PreviousTurn, Scroll, SelectEntryText,
-		SelectOption, SplitHalf, TakeBackQueuedPrompt, ThinkingLevel as CycleThinkingLevel,
-		ToggleBlock, ToggleDeferSelected, ToggleDrawer, TogglePanel, ToggleParkSelected,
-		TogglePinSelected, ToggleQueue, ToggleQueueMode,
+		AbortTurn, AttachFile, CloseTabOrPark, CloseWindow, CopySelection, Dismiss, FilterQueue,
+		FindInTranscript, FocusLive, ModelPicker, MoveSelection, NewSession, NextSession, NextTurn,
+		OpenMenu, OpenPalette, OpenSelectedSession, OpenSettings, PreviousSession, PreviousTurn,
+		Quit, Scroll, SelectEntryText, SelectOption, SplitHalf, TakeBackQueuedPrompt,
+		ThinkingLevel as CycleThinkingLevel, ToggleBlock, ToggleDeferSelected, ToggleDrawer,
+		TogglePanel, ToggleParkSelected, TogglePinSelected, ToggleQueue, ToggleQueueMode,
 	},
 };
 
@@ -61,6 +61,13 @@ fn dismiss_topmost(view: &mut ShellView, window: &mut Window, cx: &mut Context<S
 		view.close_detail(window, cx);
 		cx.stop_propagation();
 		cx.notify();
+		return;
+	}
+	// The bar's open menu is floated on the same terms, and holds the
+	// keyboard while it is up, so it is one rung of its own: a press closes
+	// the menu and leaves what is under it where it was.
+	if view.close_menu(window, cx) {
+		cx.stop_propagation();
 		return;
 	}
 	// A menu is floated over every other rung, including a routed overlay, so
@@ -152,6 +159,7 @@ pub fn bind_global_keys(root: Div, cx: &Context<ShellView>) -> Div {
 				cx.propagate();
 			}
 		}))
+		.capture_key_down(super::menu::menu_keys(cx))
 		.capture_key_down(cx.listener(|view, event: &KeyDownEvent, _window, cx| {
 			let key = event.keystroke.key.as_str();
 			let empty_search = view
@@ -190,6 +198,15 @@ pub fn bind_global_keys(root: Div, cx: &Context<ShellView>) -> Div {
 		}))
 		.on_action(cx.listener(|view, _: &OpenSettings, _window, cx| {
 			view.navigate_surface(crate::navigation::SurfaceRoute::Settings, cx);
+		}))
+		.on_action(cx.listener(|view, _: &CloseWindow, _window, cx| {
+			view.dispatch(Intent::CloseWindow, cx);
+		}))
+		.on_action(cx.listener(|view, _: &Quit, _window, cx| {
+			view.dispatch(Intent::Quit, cx);
+		}))
+		.on_action(cx.listener(|view, _: &OpenMenu, window, cx| {
+			view.toggle_menu_section(Some(crate::MenuSectionId::Veyyon), window, cx);
 		}))
 		.on_action(cx.listener(|view, _: &ToggleQueue, _window, cx| {
 			view.toggle_queue(cx);

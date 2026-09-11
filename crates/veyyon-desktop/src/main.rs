@@ -8,24 +8,19 @@
 
 mod host_view;
 
-use std::{env, process};
+use std::{env, process, rc::Rc};
 
 use clap::Parser as _;
 use veyyon_desktop::{
+	StartupBundle,
 	cli::{Cli, Command},
-	connect_or_spawn, discover_asset_paths, load_startup_bundle, scene, start_token_supervision,
-	state::{Keeper, StateDir, chosen_appearance, placement, report_rejections},
+	connect_or_spawn, discover_asset_paths,
+	launch::{WindowSlot, open_shell_window},
+	load_startup_bundle, scene, start_token_supervision,
 };
-use veyyon_desktop_model::PersistedState;
-use veyyon_desktop_surface::{
-	AppearanceChoice, Keymap, ShellState, ShellView, ThemeLibrary, install_appearances,
-	reload_tokens,
-};
+use veyyon_desktop_surface::{Keymap, reload_tokens};
 use veyyon_desktop_tokens::TokenReloadMessage;
-use veyyon_gpui::{
-	App, AppContext, Application, AsyncApp, Bounds, Pixels, Size, TitlebarOptions, WindowBounds,
-	WindowOptions, point, px,
-};
+use veyyon_gpui::{App, Application, AsyncApp};
 
 fn main() {
 	let cli = Cli::parse();
@@ -45,94 +40,57 @@ fn main() {
 		None => cli.endpoint,
 	};
 
-	let min_width = bundle.tokens.surface.shell.window_min_width_px;
-	let min_height = bundle.tokens.surface.shell.window_min_height_px;
-
-	// What the last window left behind, read once before anything is drawn
-	// (§8.10). A store this binary does not recognise states itself on stderr
-	// and leaves its default, so the window comes up rather than refusing to.
-	let state_dir = StateDir::discover();
-	let (persisted, rejections) = state_dir
-		.as_ref()
-		.map_or_else(|| (PersistedState::new(), Vec::new()), StateDir::load);
-	report_rejections(&rejections);
-	let keeper = state_dir.map(|dir| Keeper::new(dir, persisted.clone()));
-
-	let tokens = bundle.tokens.clone();
-	let themes = bundle.themes.clone();
-	let surface_path = bundle.surface_path.clone();
-	let tokens_dir = bundle.paths.tokens_dir;
-	// The appearance the last window was left in, resolved against what this
-	// build ships before the first frame, so the window opens in it rather
-	// than opening dark and restyling once the store has been read (§6.9).
-	let appearance = chosen_appearance(&persisted).to_string();
+	let bundle = Rc::new(bundle);
+	let slot = WindowSlot::default();
+	let tokens_dir = bundle.paths.tokens_dir.clone();
 
 	let platform = gpui_platform::current_platform(false);
 	let app = Application::with_platform(platform);
-	app.run(move |cx: &mut App| {
-		let displays: Vec<Bounds<Pixels>> = cx
-			.displays()
-			.into_iter()
-			.map(|display| display.bounds())
-			.collect();
-		let (bounds, maximized) = placement(&persisted, &displays, min_width, min_height);
-		let window_bounds = if maximized {
-			WindowBounds::Maximized(bounds)
-		} else {
-			WindowBounds::Windowed(bounds)
-		};
 
-		// On macOS the window draws the titlebar itself and the traffic
-		// lights land in the inset the shell's bar leaves for them (§4.1).
-		// Elsewhere the window manager's decorations sit above the bar.
-		let titlebar = cfg!(target_os = "macos").then(|| TitlebarOptions {
-			title:                  None,
-			appears_transparent:    true,
-			traffic_light_position: Some(point(px(12.0), px(20.0))),
+	// A dock press on a process with no window asks for one back, and what it
+	// gets is a launch: the same placement, the same appearance and the
+	// session the closing window wrote (§8.10). Nothing fires this where no
+	// window can be reopened, and a process that still has its window
+	// ignores it.
+	{
+		let bundle = Rc::clone(&bundle);
+		let slot = Rc::clone(&slot);
+		let endpoint = endpoint_argument.clone();
+		app.on_reopen(move |cx: &mut App| {
+			if slot.borrow().is_some() {
+				return;
+			}
+			start(&bundle, &slot, endpoint.clone(), cx);
 		});
-		let window_options = WindowOptions {
-			window_bounds: Some(window_bounds),
-			titlebar,
-			window_min_size: Some(Size { width: px(min_width), height: px(min_height) }),
-			..Default::default()
-		};
+	}
 
-		let window = match cx.open_window(window_options, |_, cx| {
-			let library = ThemeLibrary::new(&tokens, themes.clone(), &surface_path);
-			let installed = match install_appearances(cx, library, &appearance) {
-				Ok(installed) => installed,
-				Err(error) => {
-					eprintln!("Fatal: failed to install tokens: {error}");
-					process::exit(1);
-				},
-			};
-			let state = ShellState {
-				appearance: AppearanceChoice::new(appearance.as_str()),
-				..ShellState::default()
-			};
-			cx.new(|_| ShellView::new(installed, state))
-		}) {
-			Ok(handle) => handle,
-			Err(error) => {
-				eprintln!("Fatal: failed to open window: {error:?}");
-				process::exit(1);
-			},
-		};
+	app.run(move |cx: &mut App| {
 		cx.bind_keys(Keymap::default().bindings());
 
-		// The queue's collapse is the window's, not a session's, so it is put
-		// back before the first frame rather than when a session opens.
-		let mut keeper = keeper;
-		if let Some(keeper) = keeper.as_ref() {
-			let _ = window.update(cx, |view, _window, cx| {
-				keeper.restore_host(view);
-				cx.notify();
-			});
+		// A closed window is no longer the window this process draws, so the
+		// slot it was recorded in is emptied: a reopen opens a new one rather
+		// than updating a handle to a window that is gone.
+		{
+			let slot = Rc::clone(&slot);
+			cx.on_window_closed(move |_cx, closed| {
+				let is_closed = slot
+					.borrow()
+					.as_ref()
+					.is_some_and(|window| window.window_id() == closed);
+				if is_closed {
+					*slot.borrow_mut() = None;
+				}
+			})
+			.detach();
 		}
 
-		// Background token watcher for hot reload (§8.4).
+		start(&bundle, &slot, endpoint_argument, cx);
+
+		// Background token watcher for hot reload (§8.4). It follows the slot
+		// rather than one window, so an edit reaches the window that is up.
 		match start_token_supervision(&tokens_dir) {
 			Ok((watcher, rx)) => {
+				let slot = Rc::clone(&slot);
 				cx.spawn(move |cx: &mut AsyncApp| {
 					let mut async_cx = cx.clone();
 					async move {
@@ -141,6 +99,9 @@ fn main() {
 							let (installed, notice) = match msg {
 								TokenReloadMessage::Applied(new_tokens) => (Some(new_tokens), None),
 								TokenReloadMessage::Failed(err) => (None, Some(err.to_string())),
+							};
+							let Some(window) = *slot.borrow() else {
+								continue;
 							};
 							let _ = window.update(&mut async_cx, move |view, _window, cx| {
 								match installed {
@@ -170,51 +131,72 @@ fn main() {
 				// A window whose watcher never started is indistinguishable
 				// from one whose watcher works, until an edit fails to arrive.
 				// It goes on the surface the operator is looking at.
-				let _ = window.update(cx, |view, _window, cx| {
-					view.set_notice(
-						Some(format!("token hot reload is off: {error}; restart to pick up token edits")),
-						cx,
-					);
-					cx.notify();
-				});
+				let window = *slot.borrow();
+				if let Some(window) = window {
+					let _ = window.update(cx, |view, _window, cx| {
+						view.set_notice(
+							Some(format!(
+								"token hot reload is off: {error}; restart to pick up token edits"
+							)),
+							cx,
+						);
+						cx.notify();
+					});
+				}
 			},
 		}
-
-		// Host startup can block on a cold CLI import graph. Keep the window
-		// responsive and retain the transport after a startup timeout.
-		let _ = window.update(cx, |view, _window, cx| {
-			view.state_mut().connection =
-				veyyon_desktop_surface::attach::ConnectionPhase::Connecting { attempt: 1 };
-			view.set_notice(Some("Starting GUI host".to_string()), cx);
-			cx.notify();
-		});
-		let startup = cx.background_executor().spawn(async move {
-			let cwd = env::current_dir().unwrap_or_else(|_| ".".into());
-			connect_or_spawn(endpoint_argument.as_deref(), &cwd)
-		});
-		cx.spawn(move |cx: &mut AsyncApp| {
-			let async_cx = cx.clone();
-			async move {
-				let attachment = startup.await;
-				async_cx.update(|cx| {
-					let attachment = match attachment {
-						Ok(attachment) => attachment,
-						Err(error) => {
-							let _ = window.update(cx, |view, _window, cx| {
-								view.set_notice(Some(format!("no host: {error}")), cx);
-								view.state_mut().connection =
-									veyyon_desktop_surface::attach::ConnectionPhase::Fatal {
-										message: error.to_string(),
-									};
-								cx.notify();
-							});
-							return;
-						},
-					};
-					host_view::attach(attachment, persisted, keeper.take(), window, cx);
-				});
-			}
-		})
-		.detach();
 	});
+}
+
+/// Opens the window and attaches it to a host.
+///
+/// The launch path and the reopen path are one function, so a window brought
+/// back from the dock comes up in the same placement, the same appearance and
+/// on the same session as one the operator launched.
+fn start(bundle: &StartupBundle, slot: &WindowSlot, endpoint: Option<String>, cx: &mut App) {
+	let Some(opened) = open_shell_window(bundle, cx) else {
+		return;
+	};
+	let window = opened.window;
+	*slot.borrow_mut() = Some(window);
+
+	// Host startup can block on a cold CLI import graph. Keep the window
+	// responsive and retain the transport after a startup timeout.
+	let _ = window.update(cx, |view, _window, cx| {
+		view.state_mut().connection =
+			veyyon_desktop_surface::attach::ConnectionPhase::Connecting { attempt: 1 };
+		view.set_notice(Some("Starting GUI host".to_string()), cx);
+		cx.notify();
+	});
+	let startup = cx.background_executor().spawn(async move {
+		let cwd = env::current_dir().unwrap_or_else(|_| ".".into());
+		connect_or_spawn(endpoint.as_deref(), &cwd)
+	});
+	let persisted = opened.persisted;
+	let keeper = opened.keeper;
+	let slot = Rc::clone(slot);
+	cx.spawn(move |cx: &mut AsyncApp| {
+		let async_cx = cx.clone();
+		async move {
+			let attachment = startup.await;
+			async_cx.update(|cx| {
+				let attachment = match attachment {
+					Ok(attachment) => attachment,
+					Err(error) => {
+						let _ = window.update(cx, |view, _window, cx| {
+							view.set_notice(Some(format!("no host: {error}")), cx);
+							view.state_mut().connection =
+								veyyon_desktop_surface::attach::ConnectionPhase::Fatal {
+									message: error.to_string(),
+								};
+							cx.notify();
+						});
+						return;
+					},
+				};
+				host_view::attach(attachment, persisted, keeper, window, slot, cx);
+			});
+		}
+	})
+	.detach();
 }

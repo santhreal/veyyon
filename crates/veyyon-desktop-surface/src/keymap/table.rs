@@ -15,18 +15,7 @@ use veyyon_gpui::{
 	Keystroke,
 };
 
-use crate::keymap::{
-	actions::{
-		AbortTurn, AttachFile, CloseTabOrPark, CopySelection, Dismiss, FilterQueue, FindInTranscript,
-		FocusLive, ModelPicker, MoveSelection, NewSession, Newline, NextSession, NextTab, NextTurn,
-		OpenPalette, OpenSelectedSession, OpenSettings, PreviousSession, PreviousTab, PreviousTurn,
-		Primary, Scope, Scroll, ScrollBy, SelectEntryText, SelectOption, SplitHalf,
-		TakeBackQueuedPrompt, ThinkingLevel, ToggleBlock, ToggleDeferSelected, ToggleDiffMode,
-		ToggleDrawer, TogglePanel, ToggleParkSelected, TogglePinSelected, ToggleQueue,
-		ToggleQueueMode,
-	},
-	command::Command,
-};
+use crate::keymap::{actions::Scope, command::Command};
 
 /// Default embedded keymap configuration table.
 pub const DEFAULT_KEYMAP_TOML: &str = include_str!("../../keymap.toml");
@@ -141,108 +130,6 @@ pub fn resolve_chord(chord: &str) -> String {
 		.join("-")
 }
 
-/// Instantiates the GPUI `Action` trait object for a named action and optional
-/// argument.
-pub(crate) fn build_action(
-	action_name: &str,
-	arg: Option<&serde_json::Value>,
-) -> Result<Arc<dyn Action>, KeymapError> {
-	match action_name {
-		"OpenPalette" => Ok(Arc::new(OpenPalette)),
-		"NewSession" => Ok(Arc::new(NewSession)),
-		"OpenSettings" => Ok(Arc::new(OpenSettings)),
-		"ToggleQueue" => Ok(Arc::new(ToggleQueue)),
-		"ToggleDrawer" => Ok(Arc::new(ToggleDrawer)),
-		"TogglePanel" => Ok(Arc::new(TogglePanel)),
-		"FocusLive" => {
-			let index = arg
-				.and_then(|v| v.get("index"))
-				.and_then(serde_json::Value::as_u64)
-				.map(|idx| idx as u8)
-				.ok_or_else(|| KeymapError::InvalidArgument {
-					action:  action_name.to_string(),
-					message: "expected { index: u8 }".to_string(),
-				})?;
-			Ok(Arc::new(FocusLive { index }))
-		},
-		"PreviousSession" => Ok(Arc::new(PreviousSession)),
-		"NextSession" => Ok(Arc::new(NextSession)),
-		"CloseTabOrPark" => Ok(Arc::new(CloseTabOrPark)),
-		"MoveSelection" | "MoveQueueSelection" => {
-			let delta = arg
-				.and_then(|v| v.get("delta"))
-				.and_then(serde_json::Value::as_i64)
-				.map(|d| d as i32)
-				.ok_or_else(|| KeymapError::InvalidArgument {
-					action:  action_name.to_string(),
-					message: "expected { delta: i32 }".to_string(),
-				})?;
-			Ok(Arc::new(MoveSelection { delta }))
-		},
-		"OpenSelectedSession" | "OpenSession" => Ok(Arc::new(OpenSelectedSession)),
-		"TogglePinSelected" | "PinSession" => Ok(Arc::new(TogglePinSelected)),
-		"ToggleDeferSelected" | "DeferSession" => Ok(Arc::new(ToggleDeferSelected)),
-		"ToggleParkSelected" | "ParkSession" => Ok(Arc::new(ToggleParkSelected)),
-		"FilterQueue" | "FocusFilter" => Ok(Arc::new(FilterQueue)),
-		"Scroll" | "ScrollTranscript" => {
-			let by = if let Some(arg) = arg {
-				if let Some(by_str) = arg.get("by").and_then(serde_json::Value::as_str) {
-					match by_str {
-						"page-up" | "PageUp" => ScrollBy::PageUp,
-						"page-down" | "PageDown" => ScrollBy::PageDown,
-						"top" | "Top" => ScrollBy::Top,
-						"bottom" | "Bottom" => ScrollBy::Bottom,
-						other => {
-							return Err(KeymapError::InvalidArgument {
-								action:  action_name.to_string(),
-								message: format!("unknown scroll target '{other}'"),
-							});
-						},
-					}
-				} else {
-					ScrollBy::PageDown
-				}
-			} else {
-				ScrollBy::PageDown
-			};
-			Ok(Arc::new(Scroll { by }))
-		},
-		"FindInTranscript" => Ok(Arc::new(FindInTranscript)),
-		"PreviousTurn" => Ok(Arc::new(PreviousTurn)),
-		"NextTurn" => Ok(Arc::new(NextTurn)),
-		"ToggleBlock" => Ok(Arc::new(ToggleBlock)),
-		"CopySelection" => Ok(Arc::new(CopySelection)),
-		"SelectEntryText" => Ok(Arc::new(SelectEntryText)),
-		"Primary" => Ok(Arc::new(Primary)),
-		"Newline" => Ok(Arc::new(Newline)),
-		"SplitHalf" => Ok(Arc::new(SplitHalf)),
-		"Dismiss" => Ok(Arc::new(Dismiss)),
-		"AbortTurn" => Ok(Arc::new(AbortTurn)),
-		"ToggleQueueMode" => Ok(Arc::new(ToggleQueueMode)),
-		"SelectOption" => {
-			let index = arg
-				.and_then(|v| v.get("index"))
-				.and_then(serde_json::Value::as_u64)
-				.map(|idx| idx as u8)
-				.ok_or_else(|| KeymapError::InvalidArgument {
-					action:  action_name.to_string(),
-					message: "expected { index: u8 }".to_string(),
-				})?;
-			Ok(Arc::new(SelectOption { index }))
-		},
-		"ModelPicker" => Ok(Arc::new(ModelPicker)),
-		"ThinkingLevel" => Ok(Arc::new(ThinkingLevel)),
-		"AttachFile" => Ok(Arc::new(AttachFile)),
-		"TakeBackQueuedPrompt" => Ok(Arc::new(TakeBackQueuedPrompt)),
-		"PreviousTab" => Ok(Arc::new(PreviousTab)),
-		"NextTab" => Ok(Arc::new(NextTab)),
-		"ToggleDiffMode" => Ok(Arc::new(ToggleDiffMode)),
-		unknown => {
-			Err(KeymapError::UnknownAction { scope: String::new(), action: unknown.to_string() })
-		},
-	}
-}
-
 impl Keymap {
 	/// Loads and validates a keymap table from a TOML string.
 	pub fn load(toml_str: &str) -> Result<Self, KeymapError> {
@@ -275,7 +162,7 @@ impl Keymap {
 				action: b.action.clone(),
 			})?;
 
-			let action = build_action(&b.action, b.arg.as_ref())?;
+			let action = crate::keymap::build::build_action(&b.action, b.arg.as_ref())?;
 
 			bindings.push(ResolvedBinding {
 				scope,

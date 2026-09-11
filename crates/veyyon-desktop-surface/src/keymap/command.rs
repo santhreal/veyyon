@@ -6,6 +6,7 @@
 //! binding's action name back to the row.
 
 use strum::EnumIter;
+use veyyon_desktop_model::Capability;
 
 use super::actions::Scope;
 
@@ -50,6 +51,9 @@ pub enum Command {
 	PreviousTab,
 	NextTab,
 	ToggleDiffMode,
+	CloseWindow,
+	Quit,
+	OpenMenu,
 }
 
 impl Command {
@@ -94,6 +98,9 @@ impl Command {
 			Self::PreviousTab => "PreviousTab",
 			Self::NextTab => "NextTab",
 			Self::ToggleDiffMode => "ToggleDiffMode",
+			Self::CloseWindow => "CloseWindow",
+			Self::Quit => "Quit",
+			Self::OpenMenu => "OpenMenu",
 		}
 	}
 
@@ -138,6 +145,9 @@ impl Command {
 			Self::PreviousTab => "Select previous panel tab",
 			Self::NextTab => "Select next panel tab",
 			Self::ToggleDiffMode => "Toggle unified or split diff mode",
+			Self::CloseWindow => "Close the window",
+			Self::Quit => "Quit Veyyon",
+			Self::OpenMenu => "Open the menu bar",
 		}
 	}
 
@@ -183,6 +193,64 @@ impl Command {
 			| Self::AttachFile
 			| Self::TakeBackQueuedPrompt => Scope::Composer,
 			Self::PreviousTab | Self::NextTab | Self::ToggleDiffMode => Scope::Panel,
+			Self::CloseWindow | Self::Quit | Self::OpenMenu => Scope::Global,
+		}
+	}
+
+	/// The capability the host must carry for this command's effect, for the
+	/// commands whose effect a host can decline (§5.13).
+	///
+	/// This is the one definition of it: the palette filters a row that
+	/// carries a command on this, and the menu bar disables an entry on it, so
+	/// the two cannot drift. A command the window answers by itself -- its
+	/// layout, its queue partitions, its own navigation -- states `None`,
+	/// since no host can decline it.
+	#[must_use]
+	pub const fn capability(self) -> Option<Capability> {
+		match self {
+			Self::NewSession
+			| Self::FocusLive
+			| Self::PreviousSession
+			| Self::NextSession
+			| Self::OpenSelectedSession => Some(Capability::Sessions),
+			Self::AbortTurn => Some(Capability::TurnControl),
+			Self::ToggleQueueMode | Self::TakeBackQueuedPrompt => {
+				Some(Capability::BackgroundSubmission)
+			},
+			Self::ModelPicker | Self::ThinkingLevel => Some(Capability::Models),
+			// The drawer's two tenants are resolved where a surface is
+			// projected, because either a terminal or a supervised process
+			// carries it.
+			Self::ToggleDrawer
+			| Self::OpenPalette
+			| Self::OpenSettings
+			| Self::ToggleQueue
+			| Self::TogglePanel
+			| Self::CloseTabOrPark
+			| Self::MoveSelection
+			| Self::TogglePinSelected
+			| Self::ToggleDeferSelected
+			| Self::ToggleParkSelected
+			| Self::FilterQueue
+			| Self::Scroll
+			| Self::FindInTranscript
+			| Self::PreviousTurn
+			| Self::NextTurn
+			| Self::ToggleBlock
+			| Self::CopySelection
+			| Self::SelectEntryText
+			| Self::Primary
+			| Self::Newline
+			| Self::SplitHalf
+			| Self::Dismiss
+			| Self::SelectOption
+			| Self::AttachFile
+			| Self::PreviousTab
+			| Self::NextTab
+			| Self::ToggleDiffMode
+			| Self::CloseWindow
+			| Self::Quit
+			| Self::OpenMenu => None,
 		}
 	}
 
@@ -227,6 +295,9 @@ impl Command {
 			"PreviousTab" => Some(Self::PreviousTab),
 			"NextTab" => Some(Self::NextTab),
 			"ToggleDiffMode" => Some(Self::ToggleDiffMode),
+			"CloseWindow" => Some(Self::CloseWindow),
+			"Quit" => Some(Self::Quit),
+			"OpenMenu" => Some(Self::OpenMenu),
 			_ => None,
 		}
 	}

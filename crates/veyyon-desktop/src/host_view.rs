@@ -2,9 +2,13 @@
 
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
+mod lifecycle;
+
 use veyyon_desktop::{
 	Attachment, DesktopCarrier, HostLink, NoticeDelivery, SessionIndex, actions_for,
-	current_timestamp_ms, expire_notices, land_failure, project,
+	current_timestamp_ms, expire_notices, land_failure,
+	launch::WindowSlot,
+	project,
 	project::{clear_sent_draft, connection_notice, land_branched_draft, restored_draft},
 	project_clock, project_controls, record_sent, request_frame, resize_terminals,
 	state::Keeper,
@@ -65,6 +69,7 @@ pub fn attach(
 	persisted: PersistedState,
 	keeper: Option<Keeper>,
 	window: WindowHandle<ShellView>,
+	slot: WindowSlot,
 	cx: &mut App,
 ) {
 	if window.entity(cx).is_err() {
@@ -116,17 +121,7 @@ pub fn attach(
 			let host = Rc::clone(&host);
 			let _ = window.update(cx, |view, window, cx| {
 				let mut host = host.borrow_mut();
-				let now_ms = current_timestamp_ms();
-				host.keep(view, window, now_ms, cx);
-				if let Some(keeper) = host.keeper.as_mut() {
-					for failure in keeper.flush_all() {
-						eprintln!(
-							"warn: {store} was not saved: {reason}",
-							store = failure.kind.file_name(),
-							reason = failure.reason,
-						);
-					}
-				}
+				lifecycle::write_everything(&mut host, view, window, current_timestamp_ms(), cx);
 			});
 			async {}
 		})
@@ -153,6 +148,15 @@ pub fn attach(
 					record_sent(&mut host.store, &mut host.registry, req_id, &action, surface, now_ms);
 					view.update(cx, |view, _cx| view.track_submission(req_id, intent));
 				}
+			}
+			// Closing the window and ending the process are the window's own,
+			// so they are answered here rather than sent to a host.
+			if let Some(intent) = intents
+				.iter()
+				.find(|intent| matches!(intent, Intent::CloseWindow | Intent::Quit))
+			{
+				lifecycle::close(host, intent, &window, &slot, now_ms, cx);
+				return;
 			}
 			// The window measured its grid, so every terminal it holds is
 			// re-broken at that width before the frame that asked for it

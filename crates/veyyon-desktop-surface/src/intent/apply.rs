@@ -334,5 +334,14 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 		Intent::SetToolViewExpanded { .. } => {},
 		Intent::OpenToolTarget(target) => panel::open_tool_target(state, target),
 		Intent::SelectChangeScope(_) => panel::select_change_scope(state),
+		Intent::SetMenuSection(section) => match section {
+			Some(section) => state.menu.toggle_section(*section),
+			None => state.menu.close(),
+		},
+		Intent::MoveMenuHighlight(delta) => state.menu.move_highlight(*delta),
+		Intent::MoveMenuSection(delta) => state.menu.move_section(*delta),
+		// Both belong to the window and the process. The bar closes, because
+		// a window that comes back has no menu open in it.
+		Intent::CloseWindow | Intent::Quit => state.menu.close(),
 	}
 }

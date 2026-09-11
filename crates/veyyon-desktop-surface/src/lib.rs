@@ -22,6 +22,7 @@ pub mod fixture;
 pub mod intent;
 pub mod keymap;
 pub mod layout;
+pub mod menu;
 pub mod model;
 pub mod navigation;
 pub mod overlay;
@@ -45,6 +46,7 @@ pub use drawer::{
 };
 pub use intent::{Intent, IntentDiscriminants};
 pub use keymap::*;
+pub use menu::{MENU_OPT_OUT, MenuSectionId, MenuState, is_in_a_menu};
 pub use model::*;
 pub use overlay::*;
 pub use palette::{PaletteItem, PaletteItemKind, PaletteMode};

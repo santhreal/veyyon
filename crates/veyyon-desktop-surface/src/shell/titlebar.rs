@@ -17,7 +17,12 @@ use veyyon_gpui::{
 	ParentElement, StatefulInteractiveElement, Styled, div, px,
 };
 
-use crate::{Intent, ShellView, attach::ConnectionPhase};
+use crate::{
+	Intent, ShellView,
+	attach::ConnectionPhase,
+	menu::MenuState,
+	shell::menu::{MenuAnchors, menu_bar},
+};
 
 /// The room macOS traffic lights take at the bar's left edge when the window
 /// draws its own titlebar (§4.1). Other platforms draw their controls outside
@@ -40,6 +45,10 @@ pub struct TitlebarState<'a> {
 	/// Whether there is a drawer to show; the control is hidden without one.
 	pub drawer_available: bool,
 	pub drawer_open:      bool,
+	/// Which menu of the bar is open, which is what lights its word.
+	pub menu:             &'a MenuState,
+	/// Where the bar's words are recorded for the float under them.
+	pub menu_anchors:     MenuAnchors,
 }
 
 /// The titlebar: the rail control, the open session's name, the connection
@@ -69,7 +78,8 @@ pub fn titlebar(
 			|view, cx| {
 				view.toggle_queue(cx);
 			},
-		));
+		))
+		.child(menu_bar(state.menu, state.menu_anchors, tokens, cx));
 
 	let mut trailing = div()
 		.flex()

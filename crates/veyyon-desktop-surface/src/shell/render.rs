@@ -155,6 +155,8 @@ pub fn render_shell(
 				panel_collapsed: view.state().keymap.panel_collapsed,
 				drawer_available: view.state().drawer.offered,
 				drawer_open: view.state().drawer_open,
+				menu: &view.state().menu,
+				menu_anchors: view.menu_anchors(),
 			},
 			&surface.shell,
 			&tokens,
@@ -190,7 +192,13 @@ pub fn render_shell(
 	}
 	if let Some(attach_screen) = render_attach_screen(&view.state().connection, secret, &tokens, cx)
 	{
-		return root.child(attach_screen);
+		let root = root.child(attach_screen);
+		// The bar is drawn while a window is waiting to attach, so the menu it
+		// opens is drawn over that screen as well as over a session.
+		return match super::menu::menu_layer(view, cx) {
+			Some(layer) => root.child(layer),
+			None => root,
+		};
 	}
 
 	let panels = &surface.panels;
@@ -337,5 +345,12 @@ pub fn render_shell(
 		columns = columns.child(stack);
 	}
 
-	root.child(columns)
+	let root = root.child(columns);
+	// The open menu is drawn last, over every column and every float under
+	// it: the scrim takes the press that closes it, and the section itself is
+	// deferred above everything.
+	match super::menu::menu_layer(view, cx) {
+		Some(layer) => root.child(layer),
+		None => root,
+	}
 }

@@ -24,6 +24,7 @@ pub mod fields;
 mod float;
 pub mod keys;
 mod memory;
+mod menu;
 mod notice;
 pub mod overlay;
 mod palette;
@@ -174,6 +175,15 @@ pub struct ShellView {
 	/// float or the standing collapsed state.
 	queue_floats:          bool,
 	destination_focus:     Option<FocusHandle>,
+	/// Where the last frame laid the menu bar's words out, one origin per
+	/// section, which is where the open menu is floated from (§4.1).
+	menu_anchors:          menu::MenuAnchors,
+	/// The focus the open menu holds, and the focus it took it from. A bare
+	/// arrow belongs to the queue and a bare Return to the composer, and a
+	/// binding is resolved before a keystroke listener runs, so the bar reads
+	/// its own keys only while it holds the focus (§4.1).
+	menu_focus:            Option<FocusHandle>,
+	menu_return:           Option<FocusHandle>,
 	general_settings_list: GeneralSettingsListState,
 	now_ms:                u64,
 	subscriptions:         Vec<Subscription>,
@@ -238,6 +248,9 @@ impl ShellView {
 			queue_float_open: false,
 			queue_floats: false,
 			destination_focus: None,
+			menu_anchors: menu::MenuAnchors::default(),
+			menu_focus: None,
+			menu_return: None,
 			general_settings_list: GeneralSettingsListState::new(),
 			now_ms: 0,
 			subscriptions: Vec::new(),

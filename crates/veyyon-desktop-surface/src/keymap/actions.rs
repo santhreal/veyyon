@@ -140,6 +140,12 @@ actions!([
 	NextTab,
 	#[derive(Eq)]
 	ToggleDiffMode,
+	#[derive(Eq)]
+	CloseWindow,
+	#[derive(Eq)]
+	Quit,
+	#[derive(Eq)]
+	OpenMenu,
 ]);
 
 /// Focuses the nth session in the Live queue partition.

@@ -19,6 +19,7 @@ mod apply;
 use crate::{
 	composer::{Attachment, ModelChoice, QueueMode, ThinkingLevel},
 	keymap::ScrollBy,
+	menu::MenuSectionId,
 	model::ShellState,
 	overlay::Overlay,
 	palette::PaletteState,
@@ -231,6 +232,19 @@ pub enum Intent {
 		row:  usize,
 	},
 	SelectChangeScope(veyyon_desktop_model::ChangeScope),
+	/// Opens one menu of the bar, closes the bar when that menu is already
+	/// open, and closes it outright with `None`.
+	SetMenuSection(Option<MenuSectionId>),
+	/// Moves the keyboard inside the open menu, by entries.
+	MoveMenuHighlight(i32),
+	/// Moves the open menu along the bar, by sections.
+	MoveMenuSection(i32),
+	/// Takes the verb the keyboard is on in the open menu.
+	/// Closes this window, leaving the process up where something can bring
+	/// a window back.
+	CloseWindow,
+	/// Ends the process, after what is held is written.
+	Quit,
 }
 
 impl Intent {
@@ -283,6 +297,9 @@ impl Intent {
 				| Self::ExpandContext { .. }
 				| Self::PreviewAppearance(_)
 				| Self::SelectAppearance(_)
+				| Self::SetMenuSection(_)
+				| Self::MoveMenuHighlight(_)
+				| Self::MoveMenuSection(_)
 		)
 	}
 

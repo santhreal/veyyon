@@ -22,6 +22,7 @@ mod connection;
 mod controls;
 mod drawer;
 mod failure;
+mod menu;
 mod notices;
 mod overlay;
 mod panel;
@@ -51,6 +52,7 @@ pub use self::{
 	},
 	drawer::{drawer_lines, project_drawer, resize_terminals, strip_control_sequences},
 	failure::land_failure,
+	menu::{command_declined, project_menu},
 	notices::{expire_notices, project_notices},
 	overlay::project_overlay,
 	panel::project_panel,
@@ -206,6 +208,7 @@ pub fn project<S: std::hash::BuildHasher>(
 	state.drawer_open = state.drawer_open && state.drawer.offered;
 	state.connection = connection_phase(store);
 	project_overlay(store, state);
+	project_menu(store, &mut state.menu);
 	state.reduced_motion = reduced_motion(store);
 	project_notices(store, now_ms, state);
 }

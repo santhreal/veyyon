@@ -7,11 +7,11 @@
 
 use veyyon_desktop_model::{Capability, CapabilityStatus, FileKind, Store};
 use veyyon_desktop_surface::{
-	Intent, Overlay, PaletteItem, PaletteItemKind, PaletteMode, PaletteState, SettingsState,
-	ShellState, navigation::SurfaceRoute,
+	Overlay, PaletteItem, PaletteItemKind, PaletteMode, PaletteState, SettingsState, ShellState,
+	navigation::SurfaceRoute, palette::PaletteMeta,
 };
 
-use super::drawer::drawer_offered;
+use super::menu::{command_declined, unavailable};
 
 /// Projects domain store views onto active overlay state fields.
 pub fn project_overlay(store: &Store, state: &mut ShellState) {
@@ -60,12 +60,6 @@ fn project_settings_domains(store: &Store, state: &mut SettingsState) {
 			state.context = Some(ctx.clone());
 		}
 	}
-}
-
-/// Whether the host stated it does not carry the capability, as against not
-/// having said yet (§4.3): an unattached host holds nothing back.
-const fn unavailable(store: &Store, capability: Capability) -> bool {
-	matches!(store.capabilities.get(capability), CapabilityStatus::Unavailable { .. })
 }
 
 /// Populates palette items from file tree and search result domains.
@@ -157,16 +151,18 @@ fn project_palette_domains(store: &Store, state: &mut PaletteState) {
 	// follows its capability while the palette stays open: a host that
 	// withdraws the workspace leaves no file, directory or match row behind.
 	state.retain_items(|item| match &item.kind {
-		PaletteItemKind::Command { intent }
-			if matches!(**intent, Intent::SetDrawer { open: true }) =>
-		{
-			drawer_offered(&store.capabilities)
-		},
 		PaletteItemKind::Composer { command } => command
 			.capability()
 			.is_none_or(|capability| !unavailable(store, capability)),
-		_ => item
-			.capability
-			.is_none_or(|capability| !unavailable(store, capability)),
+		// A row that carries a verb is gated on that verb, from the one
+		// definition the menu bar's entries are gated on. That is what
+		// resolves the drawer here without restating its two tenants: a row
+		// with no verb of its own states a capability instead.
+		_ => match &item.meta {
+			Some(PaletteMeta::Chord(command)) => !command_declined(store, *command),
+			_ => item
+				.capability
+				.is_none_or(|capability| !unavailable(store, capability)),
+		},
 	});
 }

@@ -12,7 +12,7 @@ use super::{
 	DrawerContent, KeymapState, Overlay, PaletteState, PanelContent, Row, Section, SettingsState,
 	Turn, TurnPhase,
 };
-use crate::PaletteMode;
+use crate::{PaletteMode, menu::MenuState};
 
 /// Everything one shell render draws.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,6 +66,9 @@ pub struct ShellState {
 	/// The appearance the window draws in, and the one the pointer is resting
 	/// on while the appearance page is open (§6.9).
 	pub appearance:     AppearanceChoice,
+	/// Which menu the bar has open, where the keyboard is inside it, and
+	/// which of its verbs the host declined.
+	pub menu:           MenuState,
 	/// The announcements waiting to be read, newest first, as the host's
 	/// queue holds them (§5.15).
 	///
@@ -174,6 +177,7 @@ impl Default for ShellState {
 			keymap:         KeymapState::default(),
 			reduced_motion: false,
 			appearance:     AppearanceChoice::default(),
+			menu:           MenuState::default(),
 			notices:        Vec::new(),
 		}
 	}

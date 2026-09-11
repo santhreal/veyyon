@@ -5,11 +5,13 @@
 //! handlers.
 
 pub mod actions;
+pub mod build;
 pub mod command;
 pub mod overrides;
 pub mod table;
 
 pub use actions::{Scope, ScrollBy};
+pub use build::build_action;
 pub use command::Command;
 pub use overrides::OverrideReport;
 pub use table::{DEFAULT_KEYMAP_TOML, Keymap, KeymapError, KeymapRow, resolve_chord};

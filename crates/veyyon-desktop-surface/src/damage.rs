@@ -244,6 +244,10 @@ pub fn regions_changed(last: &ShellState, next: &ShellState) -> Invalidation {
 		// records no box of its own, so a card arriving or going repaints
 		// what was under it.
 		notices,
+		// The open menu is a float over the window with a scrim behind it,
+		// drawn from no box of its own, and the titlebar's own section words
+		// light with it.
+		menu,
 	} = next;
 
 	// Anything that moves layout, or changes a surface that records no box of
@@ -264,6 +268,7 @@ pub fn regions_changed(last: &ShellState, next: &ShellState) -> Invalidation {
 		|| reduced_motion != &last.reduced_motion
 		|| appearance != &last.appearance
 		|| notices != &last.notices
+		|| menu != &last.menu
 	{
 		return Invalidation::Full;
 	}

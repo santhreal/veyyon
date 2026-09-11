@@ -10,8 +10,9 @@ use veyyon_desktop_model::KeybindingView;
 use veyyon_gpui::{InvalidKeystrokeError, Keystroke};
 
 use crate::keymap::{
+	build::build_action,
 	command::Command,
-	table::{Keymap, ResolvedBinding, build_action, resolve_chord},
+	table::{Keymap, ResolvedBinding, resolve_chord},
 };
 
 /// The outcome of applying an individual keybinding override (§5.14).

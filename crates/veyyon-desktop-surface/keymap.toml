@@ -1,6 +1,6 @@
 # Veyyon Desktop Default Keybindings (§5.14)
 
-# Global Scope (10 chords)
+# Global Scope (21 chords)
 [[binding]]
 scope = "global"
 chord = "primary-k"
@@ -99,6 +99,27 @@ action = "NextSession"
 scope = "global"
 chord = "primary-w"
 action = "CloseTabOrPark"
+
+# A window verb rather than a session one: primary-w already closes the
+# panel tab or parks the session, so the window's own close takes the
+# shifted chord.
+[[binding]]
+scope = "global"
+chord = "primary-shift-w"
+action = "CloseWindow"
+
+[[binding]]
+scope = "global"
+chord = "primary-q"
+action = "Quit"
+
+# The way into the menu bar without a pointer, on the key a menu bar is
+# reached with elsewhere on the desktop. The bar is walked with the arrows
+# and taken with Return once it is open.
+[[binding]]
+scope = "global"
+chord = "f10"
+action = "OpenMenu"
 
 # Queue Scope (7 chords)
 [[binding]]
