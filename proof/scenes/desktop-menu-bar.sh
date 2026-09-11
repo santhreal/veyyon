@@ -87,12 +87,10 @@ mkdir -p "${PROBE_DIR}"
 # ─── 1. Leave A Draft In The Composer ────────────────────────────────────────
 # The bar takes the keyboard from whatever held it, so the draft is what states
 # that the keys the bar answers never reached the composer and that the draft
-# comes back when the bar closes.
-move_px "${COMPOSER_EDITOR_X}" "${COMPOSER_EDITOR_Y}"
-pause 0.5
-click
-pause 0.5
-t "a draft nobody asked to send"
+# comes back when the bar closes. The preamble leaves a slash in the editor and
+# the slash palette over the transcript, so the draft is typed through
+# `type_prompt`, which clears the editor first and closes that palette with it.
+type_prompt "a draft nobody asked to send"
 pause 1.0
 
 AT_REST="${PROBE_DIR}/menu-bar-at-rest.png"
