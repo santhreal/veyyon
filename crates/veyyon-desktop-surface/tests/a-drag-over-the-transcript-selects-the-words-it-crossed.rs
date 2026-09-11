@@ -4,195 +4,40 @@
 //! of a refusal, or one line of a command's output, so a reader who wanted a
 //! path retyped it from the screen.
 //!
-//! CLASS CLOSED: every case here drives the live window -- a real `ShellView`,
-//! the real transcript viewport, the production block renderers -- and reads
-//! what the drag selected back through the same projection the copy chord puts
-//! on the clipboard. The block kinds are swept from `BlockShape` at run time,
-//! so a kind that draws text has to state its spans and a kind that draws none
-//! has to be recorded in `SELECTION_OPT_OUTS`, which is pinned here by exact
-//! equality: a `Block` variant added to the transcript turns this suite red
-//! until its spans, or its opt-out, are recorded. The pointer cases cover the
-//! shapes an offset is got wrong in -- a paragraph that wrapped, a
-//! right-to-left run, a combining accent, an emoji cluster joined by a
-//! zero-width joiner, and a code pane whose lines are separate spans behind a
-//! row that has to be opened first.
+//! CLASS CLOSED: where a press and a drag resolve to, over the shapes an
+//! offset is got wrong in -- a paragraph that wrapped, a right-to-left run, a
+//! combining accent, an emoji cluster joined by a zero-width joiner, the last
+//! character of a line, and a line drawn wider than the box that clips it.
+//! Every case drives the live window: a real `ShellView`, the real transcript
+//! viewport and the production block renderers, read back through the same
+//! projection the copy chord puts on the clipboard.
 //!
 //! GAPS: it reads which bytes a selection covers and that the covered words
 //! repaint, not the colour of the ground they repaint on, which the token
 //! suites read. It drives one window width; a paragraph that wraps at another
 //! measure is covered by the wrapped case here rather than by a sweep of
-//! widths. A tool card the host drew a view for states its text through the
-//! tool view renderers and is recorded as offering no span, so a selection
-//! inside one of those rows is out of scope until those rows carry spans of
-//! their own.
+//! widths. What a chord takes out of the window is
+//! `the-copy-chord-takes-the-text-the-transcript-drew`, and which blocks state
+//! spans at all is
+//! `every-block-states-its-spans-or-records-that-it-offers-none`.
+//! What a copy carries is read from the spans a block records, so the clipped
+//! case pins that record against the drawing rather than pinning the shaper:
+//! a renderer that hands the shaper a different string cannot change what
+//! comes back, and the offset it resolves is what that case reads.
 
-use std::{path::Path, sync::Arc};
-
-use strum::IntoEnumIterator;
 use unicode_segmentation::UnicodeSegmentation;
-use veyyon_desktop_kit::{document_spans, load_bundled_theme, load_bundled_tokens};
-use veyyon_desktop_model::tool_view::{TextBlockView, ToolPresentation, ToolView};
-use veyyon_desktop_scene::{
-	frame::RgbaFrame,
-	headless::{Captured, RenderOptions, headless_context},
-	session::HeadlessSession,
+use veyyon_desktop_kit::document_spans;
+use veyyon_desktop_surface::model::{Block, Turn};
+use veyyon_gpui::{Point, px};
+
+#[path = "support/text-selection/mod.rs"]
+#[allow(dead_code, reason = "this binary uses a subset of the shared selection helpers")]
+mod harness;
+
+use harness::{
+	FIRST, PANE_CAPTION, PANE_LINES, SECOND, along, changed_pixels, render_session,
+	render_session_still, run_holding, run_labelled, two_paragraphs,
 };
-use veyyon_desktop_surface::{
-	Keymap, ShellState, ShellView, fixture, install_tokens,
-	model::{Artifact, Block, BlockShape, ToolInvocationViews, Turn},
-	transcript::{SELECTION_OPT_OUTS, block_spans, select_whole_turn, selected_text},
-};
-use veyyon_gpui::{App, AppContext, Bounds, ClipboardItem, Pixels, Point, px};
-
-const WIDTH: u32 = 1440;
-const HEIGHT: u32 = 900;
-
-/// What the clipboard holds before a case touches it, so a copy that wrote
-/// nothing is told apart from a copy that wrote the right thing.
-const SENTINEL: &str = "nothing has been copied yet";
-
-/// The first paragraph of the turn the pointer cases drag over.
-const FIRST: &str = "The fix landed in src/main.rs and the run is green.";
-/// The second, which a drag across a block boundary ends in.
-const SECOND: &str = "Nothing else in the tree reads that path.";
-
-/// A turn of two paragraphs, which is the smallest transcript a drag can cross
-/// a block boundary in.
-fn two_paragraphs() -> Vec<Turn> {
-	vec![Turn::Agent {
-		blocks: vec![Block::Prose(FIRST.into()), Block::Prose(SECOND.into())],
-		model:  None,
-	}]
-}
-
-/// The chord `key` is reached by, which is the platform's own primary
-/// modifier: the keymap declares `primary-` and the window resolves it.
-fn primary(key: &str) -> String {
-	let modifier = if cfg!(target_os = "macos") {
-		"cmd"
-	} else {
-		"ctrl"
-	};
-	format!("{modifier}-{key}")
-}
-
-fn seeded_state(turns: Vec<Turn>, reduced_motion: bool) -> ShellState {
-	let mut state = fixture::populated();
-	state.keymap.panel_collapsed = true;
-	state.reduced_motion = reduced_motion;
-	state.transcript = turns;
-	state
-}
-
-/// Opens the window on `turns`, with the clipboard seeded, and runs `test`.
-fn render_session<R>(
-	turns: Vec<Turn>,
-	test: impl FnOnce(&mut HeadlessSession<'_, ShellView>) -> R,
-) -> R {
-	render_session_still(turns, false, test)
-}
-
-/// The same window with motion off, which is what a block that opens on a
-/// press needs: a reveal is driven by the wall clock, and a body drawn part
-/// way through one is clipped to the height it has reached, so the pointer
-/// reaches its lines only once the reveal has finished. Motion off finishes it
-/// in the frame the press produced; the animation itself is the reveal suite's
-/// subject.
-fn render_session_still<R>(
-	turns: Vec<Turn>,
-	reduced_motion: bool,
-	test: impl FnOnce(&mut HeadlessSession<'_, ShellView>) -> R,
-) -> R {
-	let mut cx = headless_context().expect("headless context available");
-	let tokens = load_bundled_tokens().expect("tokens load");
-	let theme = load_bundled_theme("dark").expect("theme loads");
-	let options =
-		RenderOptions { width: WIDTH, height: HEIGHT, scale_factor: 1.0, ..RenderOptions::default() };
-
-	let mut session = HeadlessSession::open(&mut cx, &options, move |_window, app: &mut App| {
-		let installed = install_tokens(app, &tokens, &theme, Path::new("surface"))
-			.expect("tokens and theme install");
-		app.bind_keys(Keymap::default().bindings());
-		veyyon_desktop_kit::input::ensure_editor_bindings_registered(app);
-		app.write_to_clipboard(ClipboardItem::new_string(SENTINEL.to_owned()));
-		app.new(|_| ShellView::new(installed, seeded_state(turns, reduced_motion)))
-	})
-	.expect("session opens");
-
-	test(&mut session)
-}
-
-/// The box the frame drew the one run holding `needle` in.
-fn run_holding(captured: &Captured, needle: &str) -> Bounds<Pixels> {
-	let runs: Vec<Bounds<Pixels>> = captured
-		.text_runs
-		.iter()
-		.filter(|run| run.text.as_ref().contains(needle))
-		.map(|run| run.bounds)
-		.collect();
-	assert_eq!(
-		runs.len(),
-		1,
-		"the frame draws a run holding {needle:?} exactly once, drew {}",
-		runs.len()
-	);
-	runs[0]
-}
-
-/// The box the frame drew the one run whose whole text is `label` in. A
-/// caption of two common words is held by a card elsewhere on the frame too,
-/// which is what separates this from [`run_holding`].
-fn run_labelled(captured: &Captured, label: &str) -> Bounds<Pixels> {
-	let runs: Vec<Bounds<Pixels>> = captured
-		.text_runs
-		.iter()
-		.filter(|run| run.text.as_ref().trim() == label)
-		.map(|run| run.bounds)
-		.collect();
-	assert_eq!(
-		runs.len(),
-		1,
-		"the frame draws {label:?} as a run of its own exactly once, drew {}",
-		runs.len()
-	);
-	runs[0]
-}
-
-/// A point `fraction` of the way across `bounds`, on its middle line.
-fn along(bounds: Bounds<Pixels>, fraction: f32) -> Point<Pixels> {
-	Point {
-		x: bounds.origin.x + bounds.size.width * fraction,
-		y: bounds.origin.y + bounds.size.height / 2.0,
-	}
-}
-
-/// How many pixels inside `area` two frames disagree on.
-fn changed_pixels(before: &RgbaFrame, after: &RgbaFrame, area: Bounds<Pixels>) -> usize {
-	let scale = before.scale_factor();
-	let device = |value: Pixels| (f32::from(value) * scale).round().max(0.0) as u32;
-	let left = device(area.origin.x);
-	let top = device(area.origin.y);
-	let right = device(area.origin.x + area.size.width);
-	let bottom = device(area.origin.y + area.size.height);
-	assert!(right > left && bottom > top, "the box {area:?} holds no pixels");
-
-	let mut changed = 0;
-	for y in top..bottom {
-		for x in left..right {
-			if before.pixel(x, y) != after.pixel(x, y) {
-				changed += 1;
-			}
-		}
-	}
-	changed
-}
-
-/// What the platform clipboard holds as text.
-fn clipboard(session: &mut HeadlessSession<'_, ShellView>) -> Option<String> {
-	session
-		.update(|_view, _window, cx| cx.read_from_clipboard().and_then(|item| item.text()))
-		.expect("read the clipboard")
-}
 
 #[test]
 fn a_drag_across_two_blocks_selects_the_words_it_crossed_and_draws_them_selected() {
@@ -289,129 +134,6 @@ fn a_press_with_shift_extends_the_selection_rather_than_starting_a_new_one() {
 	);
 }
 
-#[test]
-fn the_entry_chord_takes_the_turn_and_the_copy_chord_puts_it_on_the_clipboard() {
-	let copied = render_session(two_paragraphs(), |session| {
-		let rest = session.frame().expect("frame renders");
-		// The chords resolve on the transcript's own context, which the press
-		// that focuses the column brings into scope.
-		session
-			.click(along(run_holding(&rest, FIRST), 0.1))
-			.expect("the press focuses the transcript");
-		assert!(
-			session
-				.keystroke(&primary("a"))
-				.expect("the chord dispatches"),
-			"the chord that takes an entry is bound in the transcript scope"
-		);
-		assert!(
-			session
-				.keystroke(&primary("c"))
-				.expect("the chord dispatches"),
-			"the chord that copies a selection is bound in the transcript scope"
-		);
-		clipboard(session)
-	});
-
-	assert_eq!(
-		copied.as_deref(),
-		Some(format!("{FIRST}\n{SECOND}").as_str()),
-		"the entry chord takes every span of the turn and the copy chord puts them on the clipboard \
-		 over what was there"
-	);
-}
-
-#[test]
-fn the_copy_chord_leaves_the_clipboard_alone_when_nothing_is_selected() {
-	let (held, claimed) = render_session(two_paragraphs(), |session| {
-		let rest = session.frame().expect("frame renders");
-		session
-			.click(along(run_holding(&rest, FIRST), 0.1))
-			.expect("the press focuses the transcript");
-		let claimed = session
-			.keystroke(&primary("c"))
-			.expect("the chord dispatches");
-		(clipboard(session), claimed)
-	});
-
-	assert_eq!(
-		held.as_deref(),
-		Some(SENTINEL),
-		"a copy with nothing selected wrote an empty string over what the reader had copied"
-	);
-	assert!(
-		!claimed,
-		"a copy with nothing selected claimed the chord, so no other binding can have it"
-	);
-}
-
-#[test]
-fn a_dismissal_drops_the_selection_and_the_words_come_back_unselected() {
-	let (held, dropped, repainted) = render_session(two_paragraphs(), |session| {
-		let rest = session.frame().expect("frame renders");
-		let first = run_holding(&rest, FIRST);
-		session
-			.drag(along(first, 0.2), along(first, 0.8))
-			.expect("the drag stays inside the paragraph");
-		let dragged = session.frame().expect("frame renders after the drag");
-		let held = session
-			.update(|view, _window, _cx| view.selected_text())
-			.expect("the view reads back its selection");
-		session.keystroke("escape").expect("Escape dispatches");
-		let cleared = session.frame().expect("frame renders after the dismissal");
-		let dropped = session
-			.update(|view, _window, _cx| view.text_selection().is_none())
-			.expect("the view reads back its selection");
-		(held, dropped, changed_pixels(&dragged.frame, &cleared.frame, first))
-	});
-
-	assert!(
-		!held.is_empty(),
-		"a drag inside one paragraph selected no words, so what follows proves nothing about \
-		 dropping them"
-	);
-	assert!(dropped, "Escape left the selection held, so the highlight has no way out");
-	assert!(
-		repainted > 0,
-		"the dismissal dropped the selection and repainted nothing, so the highlight is still drawn"
-	);
-}
-
-#[test]
-fn a_press_on_the_canvas_beside_the_text_drops_the_selection() {
-	let (held, dropped) = render_session(two_paragraphs(), |session| {
-		let rest = session.frame().expect("frame renders");
-		let first = run_holding(&rest, FIRST);
-		session
-			.drag(along(first, 0.2), along(first, 0.8))
-			.expect("the drag stays inside the paragraph");
-		let held = session
-			.update(|view, _window, _cx| view.selected_text())
-			.expect("the view reads back its selection");
-		// The margin left of the column is the transcript's own canvas: a press
-		// there names no span, and it is the press that ends a selection without
-		// starting another.
-		session
-			.click(Point { x: first.origin.x - px(24.0), y: along(first, 0.5).y })
-			.expect("the press lands beside the text");
-		let dropped = session
-			.update(|view, _window, _cx| view.text_selection().is_none())
-			.expect("the view reads back its selection");
-		(held, dropped)
-	});
-
-	assert!(
-		!held.is_empty(),
-		"a drag inside one paragraph selected no words, so what follows proves nothing about \
-		 dropping them"
-	);
-	assert!(
-		dropped,
-		"a press beside the text left the selection held, so the highlight stays drawn under a \
-		 pointer that has moved on"
-	);
-}
-
 /// A paragraph carrying the shapes a byte offset is got wrong in: a line long
 /// enough to wrap at this measure, a right-to-left run, a combining accent,
 /// and an emoji cluster joined by a zero-width joiner.
@@ -504,10 +226,6 @@ fn cluster_offsets(text: &str) -> Vec<(usize, &str)> {
 	text.grapheme_indices(true).collect()
 }
 
-/// The caption the row holding the output draws, and the lines behind it.
-const PANE_CAPTION: &str = "cargo test";
-const PANE_LINES: [&str; 2] = ["test result: ok. 3 passed", "Finished in 0.42s"];
-
 #[test]
 fn one_line_of_a_command_s_output_is_selected_after_the_row_that_opened_it() {
 	let selected = render_session_still(
@@ -549,117 +267,71 @@ fn one_line_of_a_command_s_output_is_selected_after_the_row_that_opened_it() {
 	);
 }
 
-/// One sample of every kind of block a turn can hold, keyed by its shape, so
-/// the sweep reads the union from `BlockShape` rather than from a list written
-/// here.
-fn sample(shape: BlockShape) -> Block {
-	match shape {
-		BlockShape::Prose => Block::Prose("A sentence the run wrote.".into()),
-		BlockShape::Reason => Block::Reason("What it was working out.".into()),
-		BlockShape::Note => {
-			Block::Note { label: "Compacted", text: "the earlier turns".into(), boundary: true }
-		},
-		BlockShape::Invoke => Block::Invoke {
-			call_id: "call-1".into(),
-			tool:    "bash".into(),
-			target:  PANE_CAPTION.into(),
-			result:  Some(PANE_LINES.join("\n")),
-			views:   ToolInvocationViews::default(),
-		},
-		BlockShape::Pane => Block::Pane {
-			caption: PANE_CAPTION.into(),
-			lines:   PANE_LINES.iter().map(|line| (*line).to_owned()).collect(),
-		},
-		BlockShape::Unknown => Block::Unknown {
-			producer: "some-plugin".into(),
-			lines:    vec!["a line it recorded".into()],
-		},
-		BlockShape::Artifact => Block::Artifact(Artifact::File {
-			path:               "docs/plan.md".into(),
-			has_content:        false,
-			lines:              Some(12),
-			bytes:              Some(480),
-			unavailable_reason: None,
-			image:              None,
-		}),
-	}
-}
+/// One line of output longer than the box the pane draws it in. The pane sets
+/// what fits and ends it with the truncation mark, so the text the shaper laid
+/// out and the text the span carries are two different strings.
+const TRUNCATED_LINE: &str = "running 1 test in target/debug/deps/a_very_long_binary_name_that \
+                              _will_not_fit_the_pane-0123456789abcdef --nocapture --test-threads \
+                              1 and a tail nobody can see";
 
 #[test]
-fn every_kind_of_block_either_states_its_spans_or_is_recorded_as_offering_none() {
-	let mut offering_none: Vec<String> = Vec::new();
-	for shape in BlockShape::iter() {
-		let block = sample(shape);
-		let spans = block_spans(&block);
-		if spans.is_empty() {
-			offering_none.push(format!("{shape:?}"));
-			continue;
-		}
-
-		// Every span a kind states is reachable: the selection the entry chord
-		// takes covers it, and what comes back is the text the block drew.
-		let turn = Turn::Agent { blocks: vec![block], model: None };
-		let selection = select_whole_turn(0, &turn).expect("a block with spans takes a selection");
-		let copied = selected_text(std::slice::from_ref(&turn), selection);
-		for span in &spans {
-			assert!(
-				copied.contains(span.as_str()),
-				"{shape:?} states the span {span:?} and taking the whole turn copied {copied:?}"
-			);
-		}
-	}
-
-	// An opt-out named by one word is a whole block kind, which is what this
-	// sweep can see. One carrying a qualifier is a case of a kind that states
-	// spans otherwise, and each of those carries a case of its own below.
-	let whole_kinds: Vec<&str> = SELECTION_OPT_OUTS
-		.iter()
-		.copied()
-		.filter(|opt| !opt.contains(' '))
-		.collect();
-	assert_eq!(
-		offering_none.iter().map(String::as_str).collect::<Vec<_>>(),
-		whole_kinds,
-		"a block kind that draws no selectable span is recorded in SELECTION_OPT_OUTS, and one \
-		 recorded there draws none"
+fn a_drag_across_a_truncated_line_takes_its_text_and_not_the_mark() {
+	let (selected, drawn) = render_session_still(
+		vec![Turn::Agent {
+			blocks: vec![Block::Pane {
+				caption: PANE_CAPTION.into(),
+				lines:   vec![TRUNCATED_LINE.to_owned()],
+			}],
+			model:  None,
+		}],
+		true,
+		|session| {
+			let collapsed = session.frame().expect("frame renders");
+			session
+				.click(along(run_labelled(&collapsed, PANE_CAPTION), 0.5))
+				.expect("the press opens the row");
+			let opened = session.frame().expect("frame renders after the row opened");
+			let run = opened
+				.text_runs
+				.iter()
+				.find(|run| run.text.as_ref().starts_with("running 1 test"))
+				.expect("the pane draws the line it was given")
+				.clone();
+			// The head stops one pixel inside the last glyph the pane drew,
+			// which is the mark it ended the line with: what comes back states
+			// whether the span carries the text or the drawing of it.
+			session
+				.drag(along(run.bounds, 0.02), Point {
+					x: run.bounds.right() - px(1.0),
+					y: along(run.bounds, 0.0).y,
+				})
+				.expect("the drag runs the length of the line as it was drawn");
+			let taken = session
+				.update(|view, _window, _cx| view.selected_text())
+				.expect("the view reads back its selection");
+			(taken, run.text.as_ref().to_owned())
+		},
 	);
-
-	let shapes: Vec<String> = BlockShape::iter()
-		.map(|shape| format!("{shape:?}"))
-		.collect();
-	for opt in SELECTION_OPT_OUTS {
-		let named = opt.split_whitespace().next().unwrap_or_default();
-		assert!(
-			shapes.iter().any(|shape| shape == named),
-			"the opt-out {opt:?} names {named:?}, which is no kind of block a turn can hold"
-		);
-	}
-}
-
-#[test]
-fn a_call_the_host_drew_a_view_for_states_no_span_and_is_recorded_as_offering_none() {
-	assert_eq!(
-		SELECTION_OPT_OUTS,
-		["Artifact", "Invoke with a host view"],
-		"the kinds and cases that draw no selectable span are pinned, so one added or taken away is \
-		 a decision rather than a drift"
-	);
-
-	let presented = ToolPresentation {
-		expanded: true,
-		view:     ToolView::TextBlock(TextBlockView::text(PANE_LINES[0])),
-	};
-	let drawn_by_the_host = Block::Invoke {
-		call_id: "call-1".into(),
-		tool:    "bash".into(),
-		target:  PANE_CAPTION.into(),
-		result:  Some(PANE_LINES.join("\n")),
-		views:   ToolInvocationViews { call: None, result: Some(Arc::new(presented)) },
-	};
 
 	assert!(
-		block_spans(&drawn_by_the_host).is_empty(),
-		"a call the host drew a view for states its text through that view, not through a span of \
-		 this module's, so the raw result is not offered twice"
+		drawn.len() < TRUNCATED_LINE.len(),
+		"the pane drew the whole line, so nothing here is truncated and this case proves nothing \
+		 about a line set shorter than the text behind it"
+	);
+	assert!(
+		!selected.is_empty() && TRUNCATED_LINE.contains(selected.as_str()),
+		"a drag along a truncated line takes a run of the line behind it, took {selected:?}"
+	);
+	assert!(
+		!selected.contains('\u{2026}'),
+		"the copy carries the mark the pane ended the line with, which is a character the run never \
+		 wrote: {selected:?}"
+	);
+	assert!(
+		selected.len() <= drawn.len(),
+		"a drag that ended inside the drawn line took {} bytes of the {} the pane set, so an offset \
+		 resolves past the glyphs the reader can see",
+		selected.len(),
+		drawn.len()
 	);
 }
