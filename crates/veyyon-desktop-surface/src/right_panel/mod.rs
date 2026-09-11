@@ -6,6 +6,7 @@ pub mod content;
 pub mod diff_columns;
 pub mod diff_extent;
 pub mod diff_rows;
+pub mod diff_split;
 pub mod diff_view;
 pub mod file_view;
 pub mod mono_pane;

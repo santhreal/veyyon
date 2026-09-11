@@ -19,8 +19,9 @@ use crate::{
 	intent::Intent,
 	right_panel::{
 		content::{DiffFile, DiffStatus, DiffWithheld},
-		diff_columns::{split_columns, unified_columns},
+		diff_columns::unified_columns,
 		diff_rows::{render_notice_row, withheld_notices},
+		diff_split::split_columns,
 		pane_scroll::{PaneId, PaneScrolls},
 		pane_window::{RowWalk, scrolled},
 	},

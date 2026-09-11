@@ -342,10 +342,7 @@ fn stack_lines(notices: Vec<Notification>) -> Vec<(String, Bounds<Pixels>)> {
 }
 
 fn origin_key(bounds: Bounds<Pixels>) -> (u32, u32) {
-	(
-		f32::from(bounds.origin.x).to_bits(),
-		f32::from(bounds.origin.y).to_bits(),
-	)
+	(f32::from(bounds.origin.x).to_bits(), f32::from(bounds.origin.y).to_bits())
 }
 
 #[test]
@@ -355,8 +352,10 @@ fn a_card_cuts_a_line_the_host_wrote_long_rather_than_growing_down_the_window() 
 	// Unbounded, one card took as many lines as the sentence needed and a
 	// full stack of them reached the composer, so the operator could not see
 	// what was being announced about.
-	let long = "the host rejected the value it was given and quoted it back whole, 	            which is a sentence long enough to take a card several lines"
-		.replace(char::is_whitespace, " ");
+	let long = concat!(
+		"the host rejected the value it was given and quoted it back whole, ",
+		"which is a sentence long enough to take a card several lines"
+	);
 	let notices: Vec<Notification> = (0..veyyon_desktop_model::NOTIFICATION_CAPACITY)
 		.map(|slot| {
 			announcement(
@@ -368,8 +367,10 @@ fn a_card_cuts_a_line_the_host_wrote_long_rather_than_growing_down_the_window() 
 		.collect();
 	let lines = stack_lines(notices);
 
-	let titles: Vec<&(String, Bounds<Pixels>)> =
-		lines.iter().filter(|(text, _)| text != "Settings").collect();
+	let titles: Vec<&(String, Bounds<Pixels>)> = lines
+		.iter()
+		.filter(|(text, _)| text != "Settings")
+		.collect();
 	assert_eq!(
 		titles.len(),
 		veyyon_desktop_model::NOTIFICATION_CAPACITY,

@@ -29,7 +29,7 @@ use crate::{
 	detail::{Detail, DetailKind},
 	right_panel::{
 		content::{DiffFile, DiffRow},
-		diff_extent::{row_height, split_file_columns, unified_file_columns},
+		diff_extent::{row_height, unified_file_columns},
 		diff_rows::{
 			content_cell, gutter_cell, render_collapsed_row, render_hunk_header, render_notice_row,
 			sign_cell, truncated_notice,
@@ -52,12 +52,12 @@ pub struct PaneColumns {
 }
 
 impl PaneColumns {
-	const fn new(columns: usize) -> Self {
+	pub(super) const fn new(columns: usize) -> Self {
 		Self { pinned: Vec::new(), code: Vec::new(), columns }
 	}
 
 	/// Adds one row: the cell the pane pins and the cell it scrolls.
-	fn push(&mut self, pinned: Div, code: Div) {
+	pub(super) fn push(&mut self, pinned: Div, code: Div) {
 		self.pinned.push(pinned);
 		self.code.push(code);
 	}
@@ -93,19 +93,19 @@ impl PaneColumns {
 }
 
 /// One line of a diff, as both columns draw it.
-struct Line<'a> {
+pub(super) struct Line<'a> {
 	/// The line number, or `None` for the blank side of a split pair.
-	number:    Option<usize>,
-	sign:      &'a str,
-	sign_role: ColorRole,
-	text:      &'a str,
-	intraline: &'a [Range<usize>],
+	pub(super) number:    Option<usize>,
+	pub(super) sign:      &'a str,
+	pub(super) sign_role: ColorRole,
+	pub(super) text:      &'a str,
+	pub(super) intraline: &'a [Range<usize>],
 	/// The row's tint, or `None` for a context line, which carries no ground.
-	tint:      Option<TintRole>,
+	pub(super) tint:      Option<TintRole>,
 }
 
 impl Line<'_> {
-	const fn context(number: usize, text: &str) -> Line<'_> {
+	pub(super) const fn context(number: usize, text: &str) -> Line<'_> {
 		Line {
 			number: Some(number),
 			sign: " ",
@@ -116,7 +116,7 @@ impl Line<'_> {
 		}
 	}
 
-	const fn blank() -> Line<'static> {
+	pub(super) const fn blank() -> Line<'static> {
 		Line {
 			number:    None,
 			sign:      " ",
@@ -146,7 +146,11 @@ fn tint_fills(
 }
 
 /// One line's pinned cell, scrolled cell and width in cells.
-fn line_cells(line: &Line<'_>, geometry: &PanelsSurfaceTokens, tokens: &TokenSet) -> (Div, Div) {
+pub(super) fn line_cells(
+	line: &Line<'_>,
+	geometry: &PanelsSurfaceTokens,
+	tokens: &TokenSet,
+) -> (Div, Div) {
 	let (ground, highlight) = tint_fills(line.tint, geometry, tokens);
 	let number = line
 		.number
@@ -173,7 +177,7 @@ fn line_cells(line: &Line<'_>, geometry: &PanelsSurfaceTokens, tokens: &TokenSet
 
 /// A row that spans the pane: its ground in the pinned column, its content in
 /// the scrolled one.
-fn span_cells(height_px: f32, ground: Option<Hsla>, code: Div) -> (Div, Div) {
+pub(super) fn span_cells(height_px: f32, ground: Option<Hsla>, code: Div) -> (Div, Div) {
 	let mut bar = div().h(px(height_px)).flex_shrink_0();
 	if let Some(fill) = ground {
 		bar = bar.bg(fill);
@@ -182,7 +186,7 @@ fn span_cells(height_px: f32, ground: Option<Hsla>, code: Div) -> (Div, Div) {
 }
 
 /// Whether this row spans the pane, and the cells it draws if it does.
-fn spanning_cells(
+pub(super) fn spanning_cells(
 	file_index: usize,
 	path: &str,
 	row_index: usize,
@@ -277,126 +281,4 @@ pub fn unified_columns(
 		pane.push(pinned, code);
 	}
 	pane
-}
-
-/// Builds the columns a split diff's two panes draw in: the old side and the
-/// new side.
-///
-/// A spanning row is pushed to both panes so the sides stay level, with its
-/// text on the old side only: drawn on both, a hunk header would read twice.
-pub fn split_columns(
-	file_index: usize,
-	file: &DiffFile,
-	walk: &mut RowWalk,
-	geometry: &PanelsSurfaceTokens,
-	tokens: &TokenSet,
-	cx: &Context<ShellView>,
-) -> (PaneColumns, PaneColumns) {
-	let (old_columns, new_columns) = split_file_columns(file);
-	let mut old = PaneColumns::new(old_columns);
-	let mut new = PaneColumns::new(new_columns);
-
-	let mut row_index = 0;
-	while row_index < file.rows.len() {
-		let row = &file.rows[row_index];
-		if let DiffRow::Removed { .. } | DiffRow::Added { .. } = row {
-			row_index = push_change_chunk(file, row_index, &mut old, &mut new, walk, geometry, tokens);
-			continue;
-		}
-		let height = row_height(row, geometry);
-		if !walk.admit(height) {
-			row_index += 1;
-			continue;
-		}
-		if let Some((pinned, code)) =
-			spanning_cells(file_index, &file.path, row_index, row, geometry, tokens, cx)
-		{
-			let ground = match row {
-				DiffRow::HunkHeader { .. } | DiffRow::Collapsed { .. } => {
-					Some(tokens.color(ColorRole::Inset))
-				},
-				_ => None,
-			};
-			let (mirror_pinned, mirror_code) = span_cells(height, ground, div().h(px(height)));
-			old.push(pinned, code);
-			new.push(mirror_pinned, mirror_code);
-			row_index += 1;
-			continue;
-		}
-		if let DiffRow::Context { old_line, new_line, text } = row {
-			let (pinned, code) = line_cells(&Line::context(*old_line, text), geometry, tokens);
-			old.push(pinned, code);
-			let (pinned, code) = line_cells(&Line::context(*new_line, text), geometry, tokens);
-			new.push(pinned, code);
-		}
-		row_index += 1;
-	}
-
-	(old, new)
-}
-
-/// Pushes one run of removed lines beside the run of added lines that follows
-/// it, one pair per row, and answers the row the run ended at.
-///
-/// The runs are paired rather than concatenated: a split diff reads across, so
-/// the third line removed sits beside the third line added, and the shorter run
-/// is padded with blank cells so the sides stay level.
-fn push_change_chunk(
-	file: &DiffFile,
-	from: usize,
-	old: &mut PaneColumns,
-	new: &mut PaneColumns,
-	walk: &mut RowWalk,
-	geometry: &PanelsSurfaceTokens,
-	tokens: &TokenSet,
-) -> usize {
-	let mut row_index = from;
-	let mut removed = Vec::new();
-	let mut added = Vec::new();
-
-	while let Some(DiffRow::Removed { old_line, text, intraline }) = file.rows.get(row_index) {
-		removed.push((*old_line, text, intraline));
-		row_index += 1;
-	}
-	while let Some(DiffRow::Added { new_line, text, intraline }) = file.rows.get(row_index) {
-		added.push((*new_line, text, intraline));
-		row_index += 1;
-	}
-
-	for pair in 0..removed.len().max(added.len()) {
-		// One pair is one row of the pane, whichever side is shorter, so the
-		// cursor advances once per pair and not once per changed line.
-		if !walk.admit(geometry.diff_row_height_px) {
-			continue;
-		}
-		let line = match removed.get(pair) {
-			Some((number, text, intraline)) => Line {
-				number: Some(*number),
-				sign: "-",
-				sign_role: ColorRole::Foreground,
-				text,
-				intraline,
-				tint: Some(TintRole::Error),
-			},
-			None => Line::blank(),
-		};
-		let (pinned, code) = line_cells(&line, geometry, tokens);
-		old.push(pinned, code);
-
-		let line = match added.get(pair) {
-			Some((number, text, intraline)) => Line {
-				number: Some(*number),
-				sign: "+",
-				sign_role: ColorRole::Foreground,
-				text,
-				intraline,
-				tint: Some(TintRole::Done),
-			},
-			None => Line::blank(),
-		};
-		let (pinned, code) = line_cells(&line, geometry, tokens);
-		new.push(pinned, code);
-	}
-
-	row_index
 }
