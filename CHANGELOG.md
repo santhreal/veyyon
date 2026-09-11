@@ -28,6 +28,7 @@
 
 ### Added
 
+- The desktop announces what happened out of view on a card stack at the window's trailing edge: a request the host refused whose control is not drawn, and a decision waiting on a session that is not the open one, each deduplicated by what raised it, bounded at six, and taken down by a press or by opening the session it names. Two new settings state what else an announcement does -- `notify.sound` plays the desktop alert and `notify.system` posts to the desktop notification service, both off by default -- and a notifier that cannot run is announced on the same stack rather than dropped.
 - The desktop transcript selects the text it drew: a drag crosses inline runs, blocks and entries, a press with Shift held extends the selection, `Primary-A` takes the whole entry, `Primary-C` copies it, and `Escape` drops it.
 - The desktop states the mode its session runs in on the composer's footer, and sets it: `/plan` enters plan mode and `/plan off` leaves it, both refused while a turn is running, and leaving restores the tools plan mode took away.
 - A desktop approval card offers the tool wrapper's four answers — `Deny for session`, `Deny`, `Approve for session`, `Approve` — so a standing grant or refusal is reachable without leaving the desktop.

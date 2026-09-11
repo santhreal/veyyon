@@ -3,7 +3,8 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use veyyon_desktop::{
-	Attachment, HostLink, SessionIndex, actions_for, current_timestamp_ms, land_failure, project,
+	Attachment, DesktopCarrier, HostLink, NoticeDelivery, SessionIndex, actions_for,
+	current_timestamp_ms, expire_notices, land_failure, project,
 	project::{clear_sent_draft, connection_notice, land_branched_draft, restored_draft},
 	project_clock, project_controls, record_sent, request_frame,
 	state::Keeper,
@@ -27,6 +28,9 @@ struct Host {
 	/// What the window remembers, absent when there is no directory to keep it
 	/// in (§8.10).
 	keeper:    Option<Keeper>,
+	/// Which announcements have already left the window, so the sound and
+	/// the desktop notification the operator asked for happen once each.
+	delivery:  NoticeDelivery,
 }
 
 impl Host {
@@ -102,6 +106,7 @@ pub fn attach(
 		terminals: HashMap::new(),
 		drawn: ShellState::default(),
 		keeper,
+		delivery: NoticeDelivery::new(),
 	}));
 
 	// A clean shutdown writes what the debounce is still holding, and the
@@ -181,7 +186,8 @@ pub fn attach(
 							let host = &mut *host;
 							let now_ms = current_timestamp_ms();
 							let changed =
-								project_clock(&host.store, &host.index, now_ms, view.state_mut());
+								project_clock(&host.store, &host.index, now_ms, view.state_mut())
+									| expire_notices(&mut host.store, now_ms, view.state_mut());
 							view.set_clock_ms(now_ms);
 							host.keep(view, gpui_window, now_ms, cx);
 							if changed
@@ -327,6 +333,12 @@ pub fn attach(
 						);
 					}
 					let now_ms = current_timestamp_ms();
+					// An announcement the batch raised is carried out of the window
+					// before it is projected, so a carrier that could not run is on
+					// the stack the same frame draws.
+					host
+						.delivery
+						.carry(&mut host.store, &DesktopCarrier, now_ms);
 					project(&host.store, &mut host.index, &host.terminals, now_ms, view.state_mut());
 					project_controls(&host.store, &host.registry, &host.index, view.state_mut());
 					// The clock the queue's elapsed labels and the connection

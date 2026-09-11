@@ -20,6 +20,7 @@ pub enum SurfaceId {
 	Palette,
 	AttentionStrip,
 	Settings,
+	Notices,
 	Attach,
 }
 
@@ -39,6 +40,7 @@ impl SurfaceId {
 			Self::Palette => "palette",
 			Self::AttentionStrip => "attention_strip",
 			Self::Settings => "settings",
+			Self::Notices => "notices",
 			Self::Attach => "attach",
 		}
 	}

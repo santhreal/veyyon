@@ -32,6 +32,7 @@ mod render;
 mod session;
 mod split;
 pub mod titlebar;
+mod toasts;
 mod transcript;
 mod transcript_find;
 
@@ -121,6 +122,13 @@ pub struct ShellView {
 	/// What the popover was opened on while it is fading out, so the closing
 	/// frames still have facts to draw.
 	detail_retained:       Option<Detail>,
+	/// One float track per slot in the announcement stack, named for the
+	/// surface that owns it and slotted by the position a card holds (§7.1).
+	///
+	/// Window-local because a transition is: a card is drawn from the queue
+	/// the host's model holds, and how far into its entrance it is belongs to
+	/// the window drawing it.
+	notice_motion:         Vec<veyyon_desktop_motion::FloatMotion>,
 	/// The width the operator dragged the docked right panel to. Window-local
 	/// like the row menu: a snapshot never moves the handle (§5.6).
 	panel_width:           Option<f32>,
@@ -215,6 +223,7 @@ impl ShellView {
 				0,
 			),
 			detail_retained: None,
+			notice_motion: Vec::new(),
 			panel_width: None,
 			pending_expanded: BTreeSet::new(),
 			pending_drawer_tab: None,

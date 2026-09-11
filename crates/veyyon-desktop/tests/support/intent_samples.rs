@@ -133,6 +133,9 @@ pub fn sample_intents_for_discriminant(disc: IntentDiscriminants) -> Vec<Intent>
 			vec![Intent::SelectAppearance("light".to_string())]
 		},
 		IntentDiscriminants::ReloadSettings => vec![Intent::ReloadSettings],
+		IntentDiscriminants::DismissNotice => {
+			vec![Intent::DismissNotice("request-failed:global_titlebar_line:-".to_string())]
+		},
 		IntentDiscriminants::SetMcpEnabled => {
 			vec![Intent::SetMcpEnabled { server: "mcp-server".to_string(), enabled: true }]
 		},

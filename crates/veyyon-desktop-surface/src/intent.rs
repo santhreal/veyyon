@@ -137,6 +137,9 @@ pub enum Intent {
 	/// (§6.9).
 	SelectAppearance(String),
 	ReloadSettings,
+	/// Takes the announcement with this key off the stack, which a press on
+	/// its card means (§5.15).
+	DismissNotice(String),
 	SetMcpEnabled {
 		server:  String,
 		enabled: bool,

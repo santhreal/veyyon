@@ -49,6 +49,8 @@ pub enum Damage {
 	ProcessList(SessionId),
 	/// Command palette overlay.
 	Palette,
+	/// The stack of announcements raised for something out of view.
+	Notifications,
 	/// Full window relayout and repaint.
 	FullWindow,
 }
@@ -73,7 +75,8 @@ impl Damage {
 			Self::TerminalOutput(..) => 14,
 			Self::ProcessList(_) => 15,
 			Self::Palette => 16,
-			Self::FullWindow => 17,
+			Self::Notifications => 17,
+			Self::FullWindow => 18,
 		}
 	}
 }
@@ -91,6 +94,7 @@ impl Ord for Damage {
 			| (Self::Titlebar, Self::Titlebar)
 			| (Self::QueueAll, Self::QueueAll)
 			| (Self::Palette, Self::Palette)
+			| (Self::Notifications, Self::Notifications)
 			| (Self::FullWindow, Self::FullWindow) => Ordering::Equal,
 			(Self::QueueRow(a), Self::QueueRow(b))
 			| (Self::TranscriptFull(a), Self::TranscriptFull(b))
@@ -127,6 +131,7 @@ impl Hash for Damage {
 			| Self::Titlebar
 			| Self::QueueAll
 			| Self::Palette
+			| Self::Notifications
 			| Self::FullWindow => {},
 			Self::QueueRow(s)
 			| Self::TranscriptFull(s)

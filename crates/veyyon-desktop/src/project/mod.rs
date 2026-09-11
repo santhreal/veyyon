@@ -22,6 +22,7 @@ mod connection;
 mod controls;
 mod drawer;
 mod failure;
+mod notices;
 mod overlay;
 mod panel;
 mod queue;
@@ -48,6 +49,7 @@ pub use self::{
 	},
 	drawer::{drawer_lines, project_drawer, strip_control_sequences},
 	failure::land_failure,
+	notices::{expire_notices, project_notices},
 	overlay::project_overlay,
 	panel::project_panel,
 	queue::{clear_sent_draft, elapsed_label},
@@ -203,6 +205,7 @@ pub fn project<S: std::hash::BuildHasher>(
 	state.connection = connection_phase(store);
 	project_overlay(store, state);
 	state.reduced_motion = reduced_motion(store);
+	project_notices(store, now_ms, state);
 }
 
 /// Updates elapsed and remaining time labels across queue rows and drawer

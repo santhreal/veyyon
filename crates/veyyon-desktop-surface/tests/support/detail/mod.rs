@@ -15,7 +15,8 @@ mod text_selection;
 
 use std::{path::Path, thread::sleep, time::Duration};
 
-pub use text_selection::{along, run_labelled};
+#[allow(unused_imports, reason = "each including binary re-uses a subset of these")]
+pub use text_selection::{along, changed_pixels, run_labelled};
 use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_scene::{
 	headless::{Captured, RenderOptions, headless_context},

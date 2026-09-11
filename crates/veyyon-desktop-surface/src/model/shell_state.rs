@@ -5,6 +5,8 @@
 //! Held apart from the view models in `model.rs` so the shape a frame is
 //! handed is one file, and each field states which section owns it.
 
+use veyyon_desktop_model::Notification;
+
 use super::{
 	AppearanceChoice, Badge, Card, CardAnswers, ComposerState, ConnectionPhase, ControlStates,
 	DrawerContent, KeymapState, Overlay, PaletteState, PanelContent, Row, Section, SettingsState,
@@ -64,6 +66,13 @@ pub struct ShellState {
 	/// The appearance the window draws in, and the one the pointer is resting
 	/// on while the appearance page is open (§6.9).
 	pub appearance:     AppearanceChoice,
+	/// The announcements waiting to be read, newest first, as the host's
+	/// queue holds them (§5.15).
+	///
+	/// The window draws the stack from this and nothing else: an
+	/// announcement is raised, deduped, expired and bounded in the model, so
+	/// what one frame shows is what the queue holds at that moment.
+	pub notices:        Vec<Notification>,
 }
 
 impl ShellState {
@@ -165,6 +174,7 @@ impl Default for ShellState {
 			keymap:         KeymapState::default(),
 			reduced_motion: false,
 			appearance:     AppearanceChoice::default(),
+			notices:        Vec::new(),
 		}
 	}
 }

@@ -359,6 +359,35 @@ export const INTERACTION_SETTINGS = {
 		},
 	},
 
+	// The desktop window announces a refusal or a waiting decision on its own
+	// stack, which is silent and inside the window. These two say what else
+	// that announcement does: a sound, and a notification the desktop itself
+	// draws. Both default off, because an announcement the operator is
+	// already looking at needs neither.
+	"notify.sound": {
+		type: "enum",
+		values: ["on", "off"] as const,
+		default: "off",
+		ui: {
+			tab: "interaction",
+			group: "Notifications",
+			label: "Announcement Sound",
+			description: "Play the desktop alert sound when the window announces something",
+		},
+	},
+
+	"notify.system": {
+		type: "enum",
+		values: ["on", "off"] as const,
+		default: "off",
+		ui: {
+			tab: "interaction",
+			group: "Notifications",
+			label: "System Notification",
+			description: "Post an announcement to the desktop notification service as well as the window",
+		},
+	},
+
 	"recap.enabled": {
 		type: "boolean",
 		default: true,

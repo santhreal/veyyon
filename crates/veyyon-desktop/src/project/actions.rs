@@ -334,6 +334,13 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		| Intent::SetDiffMode(_)
 		| Intent::ToggleTreeNode(_)
 		| Intent::ExpandContext { .. } => Vec::new(),
+		// A press on a card takes the announcement off the queue the window
+		// draws from, so the next projection does not put it back. Nothing is
+		// sent: the host raised it, and reading it is the window's business.
+		Intent::DismissNotice(key) => {
+			store.notifications.dismiss(key);
+			Vec::new()
+		},
 		_ => Vec::new(),
 	}
 }

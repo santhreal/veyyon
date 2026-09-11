@@ -233,6 +233,10 @@ pub fn regions_changed(last: &ShellState, next: &ShellState) -> Invalidation {
 		// Every ground, ink and tint is drawn from the theme, so a preview
 		// the pointer raised changes pixels in every region at once.
 		appearance,
+		// The stack is drawn in a deferred layer over every region and
+		// records no box of its own, so a card arriving or going repaints
+		// what was under it.
+		notices,
 	} = next;
 
 	// Anything that moves layout, or changes a surface that records no box of
@@ -252,6 +256,7 @@ pub fn regions_changed(last: &ShellState, next: &ShellState) -> Invalidation {
 		|| composer != &last.composer
 		|| reduced_motion != &last.reduced_motion
 		|| appearance != &last.appearance
+		|| notices != &last.notices
 	{
 		return Invalidation::Full;
 	}

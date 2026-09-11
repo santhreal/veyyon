@@ -332,6 +332,11 @@ pub fn render_shell(
 	if let Some(popover) = super::detail::detail_float(view, window, cx) {
 		columns = columns.child(popover);
 	}
+	// Over every float: an announcement is raised by something the operator is
+	// not looking at, so a menu or a popover they opened does not cover it.
+	if let Some(stack) = super::toasts::toast_stack(view, chrome_px, window, cx) {
+		columns = columns.child(stack);
+	}
 
 	root.child(columns)
 }

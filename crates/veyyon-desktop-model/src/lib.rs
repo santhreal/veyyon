@@ -12,6 +12,7 @@ pub mod error;
 pub mod event;
 pub mod gate;
 pub mod interaction;
+pub mod notifications;
 pub mod persistence;
 pub mod reducer;
 pub mod registry;
@@ -54,6 +55,10 @@ pub use event::{
 pub use gate::{Gate, action_to_capability, gate, gate_capability, gate_kind};
 pub use interaction::{
 	ApprovalInteraction, PendingDecisions, PlanInteraction, QuestionInteraction,
+};
+pub use notifications::{
+	CAPACITY as NOTIFICATION_CAPACITY, Notification, NotificationPriority, NotificationQueue,
+	NotificationSource, Raised,
 };
 pub use persistence::{
 	ComposerStore, DiffMode, PanelsStore, PersistedState, PersistenceError, QueueStore, Rejection,

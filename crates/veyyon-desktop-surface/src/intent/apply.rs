@@ -192,6 +192,10 @@ pub fn apply_intent(intent: &Intent, state: &mut ShellState) {
 				settings.reloading = true;
 			}
 		},
+		// The card goes on the press that dismissed it. The queue the host's
+		// model holds is cleared by the same intent, so the next projection
+		// states the same stack this frame already drew.
+		Intent::DismissNotice(key) => state.notices.retain(|notice| &notice.key != key),
 		Intent::SetMcpEnabled { server, enabled } => {
 			if let Some(Overlay::Settings(settings)) = &mut state.overlay
 				&& let Some(view) = settings.mcp.iter_mut().find(|view| view.name == *server)
