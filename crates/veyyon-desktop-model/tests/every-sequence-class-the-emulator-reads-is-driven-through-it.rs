@@ -205,6 +205,11 @@ fn the_union_holds_every_class_each_introducer_declares() {
 
 /// A final byte no class claims leaves the grid alone rather than falling
 /// into the arm of whatever class sorts next to it.
+///
+/// The seed puts the cursor off the origin, in a scroll region, with a style
+/// set and a cursor of its own saved: a class an unclaimed byte fell into
+/// would move something here, where at the top left corner with one word on
+/// screen half of them move nothing.
 #[test]
 fn a_final_byte_no_class_claims_changes_nothing() {
 	for sequence in [
@@ -216,8 +221,9 @@ fn a_final_byte_no_class_claims_changes_nothing() {
 		b"\x1b]777;notify\x07",
 	] {
 		let mut emu = TerminalEmulator::new(20, 6);
-		emu.feed(b"abc");
+		emu.feed(b"\x1b[2;5r\x1b[1;31mfirst line\r\nsecond line\x1b7\x1b[4;8H");
 		let before = observe(&emu);
+		assert_ne!(before.cursor, (0, 0), "the seed leaves the cursor off the origin");
 		emu.feed(sequence);
 		assert_eq!(observe(&emu), before, "unclaimed sequence {sequence:?} changed the grid");
 	}

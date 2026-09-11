@@ -121,7 +121,7 @@ fn a_break_the_host_wrote_survives_every_width() {
 #[test]
 fn a_line_does_not_grow_by_the_padding_of_the_row_it_was_squared_off_with() {
 	let mut emu = TerminalEmulator::new(40, 6);
-	emu.feed(b"short\r\n");
+	emu.feed(b"short\r\nnext\r\n");
 
 	for width in [80, 40, 120, 40] {
 		emu.resize(width, 6);
@@ -133,6 +133,43 @@ fn a_line_does_not_grow_by_the_padding_of_the_row_it_was_squared_off_with() {
 		held.iter().all(|line| line.len() <= 40),
 		"no line grew by the padding of a wider row: {held:?}"
 	);
+
+	// Padding kept as text is only a longer line until the line is narrower
+	// than the padding it carries. Five cells squared off to forty break into
+	// four rows at ten columns, three of them blank, and the line the host
+	// wrote under it is pushed down the screen by rows it never had.
+	emu.resize(10, 6);
+	assert_eq!(
+		lines(&emu)[..2],
+		["short", "next"],
+		"the two lines the host wrote are still the two rows on screen"
+	);
+}
+
+/// Asserts no row holds a zero-width cell that is neither a wide glyph's
+/// continuation nor the column one vacated at the row's own break.
+///
+/// A vacated column belongs to the break it was made at. Carried into the
+/// joined line it becomes a hole that travels: the text after it shifts a
+/// cell at every width, and a continuation cell ends up under something that
+/// is not its lead.
+fn no_stray_zero_width(emu: &TerminalEmulator, width: usize) {
+	let grid = emu.grid();
+	for row_index in 0..grid.rows {
+		let Some(row) = grid.visible_row(row_index) else {
+			continue;
+		};
+		for (index, cell) in row.iter().enumerate() {
+			if cell.width != 0 || index + 1 == row.len() {
+				continue;
+			}
+			assert!(
+				index > 0 && row[index - 1].width == 2,
+				"at {width} columns row {row_index} holds a zero-width cell at column {index} with no \
+				 wide glyph before it"
+			);
+		}
+	}
 }
 
 #[test]
@@ -162,8 +199,30 @@ fn a_wide_glyph_is_never_split_across_the_new_break() {
 				}
 			}
 		}
+		no_stray_zero_width(&emu, width);
 		let held = paragraphs(&emu).join("");
 		assert_eq!(held, "ab日本語日本語", "at {width} columns the text survived whole");
+	}
+}
+
+#[test]
+fn the_column_a_wide_glyph_vacated_is_not_a_space() {
+	// Three narrow cells and a wide glyph at four columns: the pair does not
+	// fit the last column, so the terminal leaves it and takes the whole
+	// glyph to the next row. That column is the width of no character, and
+	// reading it back as a blank puts a space inside the word -- one more
+	// every time the window changes width.
+	let mut emu = TerminalEmulator::new(4, 4);
+	emu.feed("abc日本".as_bytes());
+
+	for width in [12, 3, 7, 4, 20] {
+		emu.resize(width, 4);
+		no_stray_zero_width(&emu, width);
+		assert_eq!(
+			paragraphs(&emu),
+			vec!["abc日本".to_owned()],
+			"at {width} columns the vacated column is still not text"
+		);
 	}
 }
 

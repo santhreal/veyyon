@@ -135,7 +135,16 @@ fn a_settled_window_asks_for_no_further_resize() {
 	settle(&mut session);
 
 	for frame in 0..6 {
+		// A settled window draws frames for reasons of its own -- a streamed
+		// token, a caret, a hover -- and each one lays the grid out again and
+		// runs the measure in its prepaint. Without a repaint the window
+		// draws nothing at all, and a measure that asks on every frame would
+		// never be reached to prove it.
+		session
+			.update(|_, _, cx| cx.notify())
+			.expect("the window repaints");
 		session.frame().expect("a frame renders");
+
 		let raised: Vec<Intent> = session
 			.update(|view, _, _| view.drain_intents())
 			.expect("intents drain");
@@ -192,7 +201,7 @@ fn a_window_whose_geometry_changes_asks_again_at_the_new_size() {
 #[test]
 fn a_box_with_no_room_holds_the_floor_the_tokens_declare() {
 	let mut cx = headless_context().expect("headless context available");
-	let mut session = drawer_session(&mut cx, 640, 420);
+	let mut session = drawer_session(&mut cx, 460, 360);
 	settle(&mut session);
 
 	let (floor_cols, floor_rows) = session
@@ -203,9 +212,12 @@ fn a_box_with_no_room_holds_the_floor_the_tokens_declare() {
 		.expect("the floor is read");
 	let (cols, rows) = grid_cells(&mut session);
 
-	assert!(
-		usize::from(cols) >= floor_cols,
-		"a narrow window kept {floor_cols} columns, not {cols}"
+	// A window this small has room for neither axis, so both are the floor
+	// exactly: a reading above it would mean the box was never this small and
+	// the case proves nothing.
+	assert_eq!(
+		(usize::from(cols), usize::from(rows)),
+		(floor_cols, floor_rows),
+		"a window with room for neither axis holds the floor on both"
 	);
-	assert!(usize::from(rows) >= floor_rows, "a short window kept {floor_rows} rows, not {rows}");
 }

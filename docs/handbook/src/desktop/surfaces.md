@@ -737,6 +737,20 @@ the command answered inside it, so a withheld `Capability::Terminals` ends the
 take rather than publishing the session under both frame names. Set `SCENE_WIDTH`
 to `800` and `1180` for overlaid and docked drawers.
 
+Use `proof/scenes/desktop-terminal-width.sh` to print a ninety-six-column rule
+into the drawer's terminal and read how far across the drawer it reaches. The
+strip it measures starts past the eightieth column, where nothing but terminal
+text draws, so a grid left at the old eighty-column constant leaves it as blank
+as the frame taken before the command. Record both arms at each width the drawer
+reaches, since the width is what the grid is counted from:
+
+```sh
+for px in 800 1180; do
+	SCENE_WIDTH=${px} SCENE_MOTION_FLOOR=5 \
+		proof/docker/record-native.sh proof/scenes/desktop-terminal-width.sh
+done
+```
+
 Use `proof/scenes/desktop-tool-view.sh` to record a real tool call and disclose its
 card twice, once with `space` on the focused turn and once by clicking the card's
 row. The two open frames show the same card, which is what a host-held disclosure
