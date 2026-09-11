@@ -137,11 +137,13 @@ pub fn transcript_viewport(
 			let Some(turn) = turn_at(&menu_layout, menu_turns.len(), event.position) else {
 				return;
 			};
-			let Some(text) = menu_turns.get(turn).map(turn_text) else {
+			let Some(drawn) = menu_turns.get(turn) else {
 				return;
 			};
+			let text = turn_text(drawn);
+			let forkable = matches!(drawn, Turn::Operator(_) | Turn::OperatorArtifacts { .. });
 			let _ = menu_view.update(app, |view, cx| {
-				view.open_turn_menu(TurnMenu { turn, origin: event.position, text });
+				view.open_turn_menu(TurnMenu { turn, origin: event.position, text, forkable });
 				cx.notify();
 			});
 		})

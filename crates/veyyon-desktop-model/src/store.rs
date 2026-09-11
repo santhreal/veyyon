@@ -46,6 +46,15 @@ pub struct Store {
 	/// Single definition of the request each control would send again after
 	/// the host refused the one it sent.
 	pub retries:      RetryMemory,
+	/// Single definition of the prompt each branch cut off the transcript it
+	/// forked, keyed by the queue row whose control asked for the fork.
+	///
+	/// Written when the fork is named and read when the host settles it, so
+	/// the words handed back to the composer are the words of the entry the
+	/// window actually forked at rather than a second reading of a transcript
+	/// the fork has since changed. A row forked twice keeps one entry, so the
+	/// map is bounded by the rows that were forked.
+	pub forks:        HashMap<SessionId, String>,
 }
 
 impl Default for Store {
@@ -71,6 +80,7 @@ impl Store {
 			persisted:    PersistedState::new(),
 			domains:      Domains::new(),
 			retries:      RetryMemory::new(),
+			forks:        HashMap::new(),
 		}
 	}
 

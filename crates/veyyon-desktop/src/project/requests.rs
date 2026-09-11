@@ -71,6 +71,14 @@ pub fn surface_for_action(
 		Intent::SelectSession(id) => SurfaceId::QueueSessionRow(SessionId(id.to_string())),
 		Intent::DeleteSession(id) => SurfaceId::QueueDeleteButton(SessionId(id.to_string())),
 		Intent::BranchSession(id) => SurfaceId::SessionBranchButton(SessionId(id.to_string())),
+		// A fork cut at a turn is the same answer as the row menu's, so it
+		// registers on the row's own branch control: one gate, one refusal, one
+		// place the prompt comes back to.
+		Intent::BranchTurn(_) => SurfaceId::SessionBranchButton(
+			active_session
+				.cloned()
+				.unwrap_or_else(|| SessionId("0".into())),
+		),
 		Intent::RenameSession { session, .. } => {
 			SurfaceId::SessionRenameField(SessionId(session.to_string()))
 		},

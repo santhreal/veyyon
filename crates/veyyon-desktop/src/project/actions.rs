@@ -6,7 +6,7 @@ use veyyon_desktop_surface::Intent;
 use self::routes::{navigate_actions, retry_control_actions};
 use super::{
 	SessionIndex,
-	branch::branch_point,
+	branch::{branch_point, branch_point_at, record_fork},
 	cards::take_interaction,
 	submission::submission_of,
 	workspace_asks::{open_actions, tab_actions},
@@ -265,10 +265,32 @@ pub fn actions_for(intent: &Intent, index: &SessionIndex, store: &mut Store) -> 
 		// the composer is the prompt the fork actually cut. A transcript the
 		// window has not loaded names none and the host picks the same entry
 		// itself.
-		Intent::BranchSession(row) => index.session_of(*row).map_or_else(Vec::new, |session| {
-			let entry = branch_point(store, session).map(|point| point.entry);
-			vec![HostAction::BranchSession { session: session.clone(), entry }]
-		}),
+		Intent::BranchSession(row) => {
+			index
+				.session_of(*row)
+				.cloned()
+				.map_or_else(Vec::new, |session| {
+					let point = branch_point(store, &session);
+					if let Some(point) = point.as_ref() {
+						record_fork(store, *row, point);
+					}
+					vec![HostAction::BranchSession { session, entry: point.map(|point| point.entry) }]
+				})
+		},
+		// A fork cut at one turn names that turn's own prompt. The index is the
+		// transcript's, which is what the frame recorded its boxes under, so a
+		// press on a reply or on a turn no longer drawn asks for nothing rather
+		// than forking at the end.
+		Intent::BranchTurn(turn) => active
+			.and_then(|session| {
+				let row = index.row_id(&session)?;
+				let point = branch_point_at(store, &session, *turn)?;
+				Some((session, row, point))
+			})
+			.map_or_else(Vec::new, |(session, row, point)| {
+				record_fork(store, row, &point);
+				vec![HostAction::BranchSession { session, entry: Some(point.entry) }]
+			}),
 		Intent::RenameSession { session, title } => {
 			index.session_of(*session).map_or_else(Vec::new, |s| {
 				vec![HostAction::RenameSession { session: s.clone(), title: title.clone() }]

@@ -174,6 +174,10 @@ pub enum Intent {
 	RecallSession(u64),
 	DeleteSession(u64),
 	BranchSession(u64),
+	/// Forks the open session at the prompt one drawn turn holds, so a road
+	/// not taken is reachable from the turn that took the other one rather
+	/// than only from the transcript's last prompt.
+	BranchTurn(usize),
 	RenameSession {
 		session: u64,
 		title:   String,

@@ -28,9 +28,11 @@ use crate::{
 /// pressed, so the words copied are the words that were on screen.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TurnMenu {
-	pub turn:   usize,
-	pub origin: Point<Pixels>,
-	pub text:   String,
+	pub turn:     usize,
+	pub origin:   Point<Pixels>,
+	pub text:     String,
+	/// Whether this turn is a prompt, which is the only place a fork is cut.
+	pub forkable: bool,
 }
 
 /// Which turn the last frame laid out over `at`, if any.
@@ -121,9 +123,21 @@ fn artifact_text(artifact: &Artifact) -> String {
 }
 
 /// The rows a turn menu offers, in the order they are drawn.
+///
+/// A fork is cut at a prompt, so the row that cuts one is offered on a prompt
+/// and on nothing else: an answer is no entry a branch can fork at, and a
+/// menu that offered the row there would name an entry the host refuses.
 #[must_use]
 pub fn turn_menu_items(menu: &TurnMenu) -> Vec<(MenuItem, Intent)> {
-	vec![(MenuItem::new("Copy").icon(IconName::File), Intent::CopyText(menu.text.clone()))]
+	let mut rows =
+		vec![(MenuItem::new("Copy").icon(IconName::File), Intent::CopyText(menu.text.clone()))];
+	if menu.forkable {
+		rows.push((
+			MenuItem::new("Branch from here").icon(IconName::Plus),
+			Intent::BranchTurn(menu.turn),
+		));
+	}
+	rows
 }
 
 /// The layer drawn over the window while a turn menu is open: a scrim that

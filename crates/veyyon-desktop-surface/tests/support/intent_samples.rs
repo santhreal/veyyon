@@ -72,6 +72,7 @@ pub fn every_intent() -> Vec<Intent> {
 		Intent::RecallSession(7),
 		Intent::DeleteSession(7),
 		Intent::BranchSession(7),
+		Intent::BranchTurn(1),
 		Intent::FilterQueue("test".to_owned()),
 		Intent::NewSession,
 		Intent::CloseTabOrPark,
@@ -179,6 +180,7 @@ pub fn every_intent() -> Vec<Intent> {
 			| Intent::RecallSession(_)
 			| Intent::DeleteSession(_)
 			| Intent::BranchSession(_)
+			| Intent::BranchTurn(_)
 			| Intent::FilterQueue(_)
 			| Intent::NewSession
 			| Intent::CloseTabOrPark

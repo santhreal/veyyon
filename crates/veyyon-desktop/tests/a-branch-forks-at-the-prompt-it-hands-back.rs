@@ -9,11 +9,12 @@
 //!
 //! CLASS CLOSED: a branch whose named entry and returned prompt come from two
 //! different walks of the transcript, and a settled request of any other kind
-//! writing over the composer. Both readings come from one function here, the
-//! row menu's answers are swept from `card_row_answers` at run time, and the
-//! draft is pinned to the one answer that may hand text back, by exact
-//! equality: an answer added to that table, or a second surface taught to
-//! restore a draft, turns this suite red.
+//! writing over the composer. Both readings come from one walk here, taken
+//! when the fork is named and kept until it settles, the row menu's answers
+//! are swept from `card_row_answers` at run time, and the draft is pinned to
+//! the one answer that may hand text back, by exact equality: an answer added
+//! to that table, or a second surface taught to restore a draft, turns this
+//! suite red.
 //!
 //! NOT CAUGHT: that the host forks where it was told to -- that is
 //! `a-branch-forks-at-the-entry-the-desktop-named.test.ts`, which drives the
@@ -89,7 +90,7 @@ fn a_branch_names_the_last_prompt_on_the_branch_it_forks() {
 		"the branch names the operator's last prompt, not the reply that followed it"
 	);
 	assert_eq!(
-		branched_draft(&store, &index, &SurfaceId::SessionBranchButton(row_surface(row))).as_deref(),
+		branched_draft(&store, &SurfaceId::SessionBranchButton(row_surface(row))).map(String::as_str),
 		Some(LAST_PROMPT),
 		"the prompt handed back is the one the named entry holds"
 	);
@@ -140,7 +141,7 @@ fn a_transcript_the_window_has_not_loaded_names_no_entry() {
 		"a session with no transcript in hand is forked at the host's own choice"
 	);
 	assert_eq!(
-		branched_draft(&store, &index, &SurfaceId::SessionBranchButton(row_surface(row))),
+		branched_draft(&store, &SurfaceId::SessionBranchButton(row_surface(row))),
 		None,
 		"and no text is handed back for a prompt the window never read"
 	);
@@ -168,7 +169,7 @@ fn a_session_with_no_prompt_of_its_own_names_no_entry() {
 		"a transcript holding no prompt names none"
 	);
 	assert_eq!(
-		branched_draft(&store, &index, &SurfaceId::SessionBranchButton(row_surface(row))),
+		branched_draft(&store, &SurfaceId::SessionBranchButton(row_surface(row))),
 		None,
 		"and hands nothing back"
 	);
@@ -185,9 +186,11 @@ fn only_a_settled_branch_hands_a_draft_back() {
 	let mut index = SessionIndex::new();
 	let row = index.row_of(&session_id);
 
+	// Every answer is offered on the same row, and one of them was pressed.
+	actions_for(&Intent::BranchSession(row), &index, &mut store);
 	let restoring: Vec<&'static str> = card_row_answers(row)
 		.iter()
-		.filter(|answer| branched_draft(&store, &index, &answer.surface).is_some())
+		.filter(|answer| branched_draft(&store, &answer.surface).is_some())
 		.map(|answer| answer.label)
 		.collect();
 	assert_eq!(
@@ -205,7 +208,7 @@ fn only_a_settled_branch_hands_a_draft_back() {
 		SurfaceId::SessionRenameField(row_surface(row)),
 	] {
 		assert_eq!(
-			branched_draft(&store, &index, &surface),
+			branched_draft(&store, &surface),
 			None,
 			"{surface:?} is not a branch and hands back nothing"
 		);

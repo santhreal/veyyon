@@ -255,7 +255,6 @@ pub fn attach(
 									// the composer to be edited and sent again.
 									if let Some(text) = land_branched_draft(
 										&mut host.store,
-										&host.index,
 										&in_flight.surface,
 										host.keeper.is_some(),
 									) {

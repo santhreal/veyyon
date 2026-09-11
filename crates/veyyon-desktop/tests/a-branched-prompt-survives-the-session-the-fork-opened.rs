@@ -32,10 +32,11 @@ use support::{
 	memory::{FIRST, SECOND, driven, keeper_over, store_on},
 	session,
 };
-use veyyon_desktop::{SessionIndex, project::land_branched_draft};
+use veyyon_desktop::{SessionIndex, actions_for, project::land_branched_draft};
 use veyyon_desktop_model::{
-	ContentBlock, MessageRole, QueuePartition, SessionId, Store, SurfaceId,
+	ContentBlock, HostAction, MessageRole, QueuePartition, SessionId, Store, SurfaceId,
 };
+use veyyon_desktop_surface::Intent;
 
 /// The prompt the fork cuts off the transcript it forks.
 const PROMPT: &str = "read the file first, then change it";
@@ -54,8 +55,16 @@ fn forked_store() -> (Store, SessionIndex, u64) {
 	let mut index = SessionIndex::new();
 	let row = index.row_of(&source);
 	index.row_of(&SessionId::from(SECOND));
-	// The fork's own header and transcript reach the store before its request
-	// settles, so the pointer is already on the session the fork opened.
+	// The fork is asked for on the row the operator pressed, which is what
+	// records the prompt it cuts. The request settles later, by which time the
+	// fork's own header and transcript have reached the store and the pointer
+	// is already on the session the fork opened.
+	assert!(
+		matches!(actions_for(&Intent::BranchSession(row), &index, &mut store).as_slice(), [
+			HostAction::BranchSession { entry: Some(_), .. }
+		]),
+		"the fork names the prompt it cuts"
+	);
 	store.persisted.shell.active_session = Some(SessionId::from(SECOND));
 	(store, index, row)
 }
@@ -77,7 +86,7 @@ fn drafts(store: &Store) -> (String, String) {
 fn a_window_that_remembers_a_draft_opens_the_fork_holding_the_prompt() {
 	let (_tree, dir) = support::memory::state_dir("gui-branch-draft-remembered");
 	driven(support::memory::seeded(), |window| {
-		let (mut store, index, row) = forked_store();
+		let (mut store, _index, row) = forked_store();
 		let mut keeper = keeper_over(&dir);
 		let branch = SurfaceId::SessionBranchButton(SessionId::from(row.to_string()));
 
@@ -88,7 +97,7 @@ fn a_window_that_remembers_a_draft_opens_the_fork_holding_the_prompt() {
 				store.persisted.shell.active_session = Some(SessionId::from(FIRST));
 				keeper.sync(view, &mut store, win, 0, cx);
 				store.persisted.shell.active_session = Some(SessionId::from(SECOND));
-				land_branched_draft(&mut store, &index, &branch, true)
+				land_branched_draft(&mut store, &branch, true)
 			})
 			.expect("the settled branch is landed");
 		assert_eq!(
@@ -127,10 +136,10 @@ fn a_window_that_remembers_a_draft_opens_the_fork_holding_the_prompt() {
 
 #[test]
 fn a_window_that_remembers_nothing_is_handed_the_prompt_to_draw_itself() {
-	let (mut store, index, row) = forked_store();
+	let (mut store, _index, row) = forked_store();
 	let branch = SurfaceId::SessionBranchButton(SessionId::from(row.to_string()));
 
-	let handed = land_branched_draft(&mut store, &index, &branch, false);
+	let handed = land_branched_draft(&mut store, &branch, false);
 	assert_eq!(
 		handed.as_deref(),
 		Some(PROMPT),
@@ -145,7 +154,7 @@ fn a_window_that_remembers_nothing_is_handed_the_prompt_to_draw_itself() {
 
 #[test]
 fn a_settled_request_that_is_no_branch_leaves_every_draft_alone() {
-	let (mut store, index, row) = forked_store();
+	let (mut store, _index, row) = forked_store();
 	let sid = SessionId::from(row.to_string());
 
 	for surface in [
@@ -155,7 +164,7 @@ fn a_settled_request_that_is_no_branch_leaves_every_draft_alone() {
 		SurfaceId::ComposerSendButton(sid),
 	] {
 		assert_eq!(
-			land_branched_draft(&mut store, &index, &surface, true),
+			land_branched_draft(&mut store, &surface, true),
 			None,
 			"{surface:?} is no branch and hands nothing back"
 		);
