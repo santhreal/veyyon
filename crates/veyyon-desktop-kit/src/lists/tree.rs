@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use veyyon_gpui::{
-	AnyElement, App, ClickEvent, ElementId, IntoElement, Pixels, RenderOnce, SharedString, Window,
-	div, prelude::*,
+	AnyElement, App, ClickEvent, ElementId, IntoElement, MouseButton, MouseDownEvent, Pixels,
+	RenderOnce, SharedString, Window, div, prelude::*,
 };
 
 use crate::{
@@ -29,17 +29,19 @@ pub struct TreeNodeMetrics {
 /// Hierarchical tree node element.
 #[derive(IntoElement)]
 pub struct TreeNode {
-	id:          ElementId,
-	label:       SharedString,
-	depth:       usize,
-	is_branch:   bool,
-	is_expanded: bool,
-	is_selected: bool,
-	icon:        Option<IconName>,
-	trailing:    Option<AnyElement>,
-	metrics:     TreeNodeMetrics,
-	on_toggle:   Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static>>,
-	on_click:    Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static>>,
+	id:           ElementId,
+	label:        SharedString,
+	depth:        usize,
+	is_branch:    bool,
+	is_expanded:  bool,
+	is_selected:  bool,
+	icon:         Option<IconName>,
+	trailing:     Option<AnyElement>,
+	metrics:      TreeNodeMetrics,
+	on_toggle:    Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static>>,
+	on_click:     Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static>>,
+	on_secondary:
+		Option<Arc<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + Send + Sync + 'static>>,
 }
 
 impl TreeNode {
@@ -58,6 +60,7 @@ impl TreeNode {
 			metrics: TreeNodeMetrics::default(),
 			on_toggle: None,
 			on_click: None,
+			on_secondary: None,
 		}
 	}
 
@@ -122,6 +125,17 @@ impl TreeNode {
 		handler: impl Fn(&ClickEvent, &mut Window, &mut App) + Send + Sync + 'static,
 	) -> Self {
 		self.on_click = Some(Arc::new(handler));
+		self
+	}
+
+	/// Sets the callback a press of the secondary button on the row makes,
+	/// which is where a row states what it had no room to draw.
+	#[must_use]
+	pub fn on_secondary_press(
+		mut self,
+		handler: impl Fn(&MouseDownEvent, &mut Window, &mut App) + Send + Sync + 'static,
+	) -> Self {
+		self.on_secondary = Some(Arc::new(handler));
 		self
 	}
 }
@@ -236,6 +250,12 @@ impl RenderOnce for TreeNode {
 
 		if let Some(handler) = self.on_click {
 			el = el.on_click(move |ev, window, cx| handler(ev, window, cx));
+		}
+
+		if let Some(handler) = self.on_secondary {
+			el = el.on_mouse_down(MouseButton::Right, move |event: &MouseDownEvent, window, cx| {
+				handler(event, window, cx);
+			});
 		}
 
 		el

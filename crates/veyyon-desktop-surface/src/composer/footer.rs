@@ -7,14 +7,15 @@ use veyyon_desktop_kit::{
 use veyyon_desktop_model::{SessionId, SurfaceId};
 use veyyon_desktop_tokens::ComposerSurfaceTokens;
 use veyyon_gpui::{
-	ClickEvent, Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
-	Styled, div,
+	ClickEvent, Context, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
+	ParentElement, StatefulInteractiveElement, Styled, div,
 };
 
 use super::{ComposerState, TurnPhase, turn_action_controls};
 use crate::{
 	ShellView,
 	controls::{ControlStates, availability_style},
+	detail::{Detail, DetailKind},
 };
 
 /// The active model stays visible at every width, including before a catalogue
@@ -70,6 +71,16 @@ pub fn footer_row(
 				view.open_model_picker(window, cx);
 			}));
 	}
+	// The chip draws a display name and nothing the catalog said about the
+	// model behind it. A secondary press states the rest, above the chip,
+	// because the chip sits on the window's bottom row (§8.25).
+	let model = model.on_mouse_down(
+		MouseButton::Right,
+		cx.listener(|view, event: &MouseDownEvent, window, cx| {
+			view.toggle_detail(Detail::above(DetailKind::Model, event.position), window, cx);
+			cx.notify();
+		}),
+	);
 	// The kit's chip, not a div of its own: a mode is a status the queue rows
 	// and the settings pages already state this way.
 	let mode = composer

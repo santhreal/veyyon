@@ -10,11 +10,13 @@ use veyyon_desktop_kit::{
 };
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
 use veyyon_gpui::{
-	AnyElement, Context, InteractiveElement, IntoElement, ParentElement, Styled, div, px,
+	AnyElement, Context, InteractiveElement, IntoElement, MouseDownEvent, ParentElement, Styled,
+	div, px,
 };
 
 use crate::{
 	ShellView,
+	detail::{Detail, DetailKind},
 	intent::Intent,
 	right_panel::content::{TreeContent, TreeRowItem, TreeStatus},
 };
@@ -78,8 +80,10 @@ fn render_tree_row(
 ) -> AnyElement {
 	let is_selected = selected_path == Some(&row.path);
 	let row_path = row.path.clone();
+	let detail_path = row.path.clone();
 	let is_dir = row.is_dir;
 	let entity = cx.entity();
+	let detail_entity = cx.entity();
 
 	let mut node = TreeRow::new(("tree-row", index), row.name.clone(), row.depth)
 		.branch(row.is_dir)
@@ -102,7 +106,21 @@ fn render_tree_row(
 					view.dispatch(Intent::OpenFile(row_path.clone()), cx);
 				}
 			});
+		})
+		// The panel is narrower than most of the paths in it, so the row draws
+		// a name and ellipsises the rest. A secondary press states the whole
+		// of what the row holds, anchored where the press landed (§8.25).
+		.on_secondary_press(move |event: &MouseDownEvent, window, app| {
+			let () = detail_entity.update(app, |view, cx| {
+				view.toggle_detail(
+					Detail::below(DetailKind::TreeRow(detail_path.clone()), event.position),
+					window,
+					cx,
+				);
+				cx.notify();
+			});
 		});
+
 	if !row.is_dir {
 		node = node.icon(IconName::File);
 	}

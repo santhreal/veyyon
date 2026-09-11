@@ -5,7 +5,7 @@
 //! view.
 
 use veyyon_desktop_kit::input::editor::actions::{Backspace, Escape, MoveDown, MoveUp};
-use veyyon_gpui::{Context, Div, InteractiveElement, KeyDownEvent};
+use veyyon_gpui::{Context, Div, InteractiveElement, KeyDownEvent, Window};
 
 use crate::{
 	Intent, Overlay, Section, ShellView,
@@ -48,14 +48,23 @@ fn partition_toggle(view: &ShellView, into: Section) -> Option<Intent> {
 
 /// Dismisses the topmost thing over the transcript, one rung per press.
 ///
-/// A menu floated at the pointer closes first, a routed overlay steps back one
-/// surface, an unrouted one closes, and a queue floated over the transcript at
-/// a narrow width closes last, since it is the only rung that is not an
-/// overlay in `state.overlay`. Nothing over the transcript propagates, so the
-/// editor below keeps its own Escape.
-fn dismiss_topmost(view: &mut ShellView, cx: &mut Context<ShellView>) {
+/// An anchored detail closes first, then a menu floated at the pointer, then
+/// a routed overlay steps back one surface, an unrouted one closes, and a
+/// queue floated over the transcript at a narrow width closes last, since it
+/// is the only rung that is not an overlay in `state.overlay`. Nothing over
+/// the transcript propagates, so the editor below keeps its own Escape.
+fn dismiss_topmost(view: &mut ShellView, window: &mut Window, cx: &mut Context<ShellView>) {
+	// A detail popover is anchored to a control a menu may also be open over,
+	// and it is drawn over the menu, so it is the rung above it. It also holds
+	// the window's focus, which this press gives back.
+	if view.detail().is_some() {
+		view.close_detail(window, cx);
+		cx.stop_propagation();
+		cx.notify();
+		return;
+	}
 	// A menu is floated over every other rung, including a routed overlay, so
-	// it is the rung Escape takes first and alone: dismissing the surface under
+	// it is the rung Escape takes next and alone: dismissing the surface under
 	// an open menu would take two rungs on one press.
 	if view.signal_menu().is_some() || view.turn_menu().is_some() || view.row_menu().is_some() {
 		view.close_signal_menu();
@@ -123,11 +132,11 @@ pub fn bind_global_keys(root: Div, cx: &Context<ShellView>) -> Div {
 				cx.propagate();
 			}
 		}))
-		.capture_action(cx.listener(|view, _: &Dismiss, _window, cx| {
-			dismiss_topmost(view, cx);
+		.capture_action(cx.listener(|view, _: &Dismiss, window, cx| {
+			dismiss_topmost(view, window, cx);
 		}))
-		.capture_action(cx.listener(|view, _: &Escape, _window, cx| {
-			dismiss_topmost(view, cx);
+		.capture_action(cx.listener(|view, _: &Escape, window, cx| {
+			dismiss_topmost(view, window, cx);
 		}))
 		.capture_action(cx.listener(|view, _: &Backspace, _window, cx| {
 			let empty = view

@@ -19,6 +19,7 @@ mod attach;
 mod commands;
 mod composer;
 pub mod connection;
+mod detail;
 pub mod fields;
 mod float;
 pub mod keys;
@@ -45,6 +46,7 @@ pub use self::{
 };
 use crate::{
 	damage::LaidOut,
+	detail::Detail,
 	drawer::SignalMenu,
 	intent::Intents,
 	keymap::Keymap,
@@ -105,6 +107,20 @@ pub struct ShellView {
 	/// The process signal menu that is open, if one is (§5.12). Window-local
 	/// on the same terms as the row menu.
 	signal_menu:           Option<SignalMenu>,
+	/// The anchored detail a row, a chip or a hunk header opened, if one is
+	/// open (§5.6). Window-local on the same terms as the row menu.
+	detail:                Option<Detail>,
+	/// The focus the detail popover took, and the focus it took it from: a
+	/// popover holds the window's keystrokes while it is drawn, and gives
+	/// them back to whatever had them when it closes.
+	detail_focus:          Option<FocusHandle>,
+	detail_return:         Option<FocusHandle>,
+	/// The float track the detail popover rises and fades on, named for the
+	/// surface that owns it (§7.1).
+	detail_motion:         crate::palette::motion::FloatMotion,
+	/// What the popover was opened on while it is fading out, so the closing
+	/// frames still have facts to draw.
+	detail_retained:       Option<Detail>,
 	/// The width the operator dragged the docked right panel to. Window-local
 	/// like the row menu: a snapshot never moves the handle (§5.6).
 	panel_width:           Option<f32>,
@@ -191,6 +207,14 @@ impl ShellView {
 			turn_menu: None,
 			text_selection: None,
 			signal_menu: None,
+			detail: None,
+			detail_focus: None,
+			detail_return: None,
+			detail_motion: crate::palette::motion::FloatMotion::new(
+				veyyon_desktop_motion::SurfaceId::RightPanel,
+				0,
+			),
+			detail_retained: None,
 			panel_width: None,
 			pending_expanded: BTreeSet::new(),
 			pending_drawer_tab: None,

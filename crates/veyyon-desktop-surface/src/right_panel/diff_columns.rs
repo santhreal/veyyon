@@ -20,11 +20,13 @@ use std::ops::Range;
 use veyyon_desktop_kit::{ColorRole, TintRole, TokenSet};
 use veyyon_desktop_tokens::PanelsSurfaceTokens;
 use veyyon_gpui::{
-	Context, Div, ElementId, Hsla, ParentElement, ScrollHandle, Styled, Window, div, px,
+	Context, Div, ElementId, Hsla, InteractiveElement, MouseButton, MouseDownEvent, ParentElement,
+	ScrollHandle, Styled, Window, div, px,
 };
 
 use crate::{
 	ShellView,
+	detail::{Detail, DetailKind},
 	right_panel::{
 		content::{DiffFile, DiffRow},
 		diff_extent::{row_height, split_file_columns, unified_file_columns},
@@ -182,6 +184,7 @@ fn span_cells(height_px: f32, ground: Option<Hsla>, code: Div) -> (Div, Div) {
 /// Whether this row spans the pane, and the cells it draws if it does.
 fn spanning_cells(
 	file_index: usize,
+	path: &str,
 	row_index: usize,
 	row: &DiffRow,
 	geometry: &PanelsSurfaceTokens,
@@ -193,6 +196,20 @@ fn spanning_cells(
 		DiffRow::HunkHeader { old_start, old_count, new_start, new_count, symbol } => {
 			let header = render_hunk_header(
 				*old_start, *old_count, *new_start, *new_count, symbol, geometry, tokens,
+			);
+			// Every file's rows scroll in one region, so a hunk's own file
+			// header is usually above the box by the time the hunk is on
+			// screen, and the symbol it states is cut at the pane's width. A
+			// secondary press states the file, the lines the hunk covers on
+			// each side, what it changed, and the symbol whole (§8.25).
+			let opened = path.to_owned();
+			let header = header.on_mouse_down(
+				MouseButton::Right,
+				cx.listener(move |view, event: &MouseDownEvent, window, cx| {
+					let kind = DetailKind::DiffHunk { path: opened.clone(), row: row_index };
+					view.toggle_detail(Detail::below(kind, event.position), window, cx);
+					cx.notify();
+				}),
 			);
 			Some(span_cells(geometry.diff_hunk_header_height_px, inset, header))
 		},
@@ -230,7 +247,8 @@ pub fn unified_columns(
 		if !walk.admit(row_height(row, geometry)) {
 			continue;
 		}
-		if let Some((pinned, code)) = spanning_cells(file_index, row_index, row, geometry, tokens, cx)
+		if let Some((pinned, code)) =
+			spanning_cells(file_index, &file.path, row_index, row, geometry, tokens, cx)
 		{
 			pane.push(pinned, code);
 			continue;
@@ -290,7 +308,8 @@ pub fn split_columns(
 			row_index += 1;
 			continue;
 		}
-		if let Some((pinned, code)) = spanning_cells(file_index, row_index, row, geometry, tokens, cx)
+		if let Some((pinned, code)) =
+			spanning_cells(file_index, &file.path, row_index, row, geometry, tokens, cx)
 		{
 			let ground = match row {
 				DiffRow::HunkHeader { .. } | DiffRow::Collapsed { .. } => {

@@ -15,6 +15,7 @@ pub mod cards;
 pub mod composer;
 pub mod controls;
 pub mod damage;
+pub mod detail;
 pub mod diff;
 pub mod drawer;
 pub mod fixture;
@@ -39,6 +40,7 @@ pub use composer::{
 	Attachment, AttachmentSource, MediaKind, MediaType, ModelChoice, Payload, PrimaryAction,
 	QueueMode, SecondaryAction, ThinkingLevel, TurnPhase,
 };
+pub use detail::{Detail, DetailFacts, DetailKind, DetailRow, DetailSource, detail_facts};
 pub use drawer::{
 	DrawerContent, DrawerFailure, DrawerTab, ProcessRow, SignalMenu, signal_menu_items,
 };

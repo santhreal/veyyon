@@ -326,6 +326,12 @@ pub fn render_shell(
 	if let Some(menu) = view.signal_menu() {
 		columns = columns.child(signal_menu_layer(menu, cx));
 	}
+	// Over every menu: a detail opened from a row the menu also lists is
+	// anchored to that row, and a menu drawn over it would cover the facts the
+	// popover was opened to read.
+	if let Some(popover) = super::detail::detail_float(view, window, cx) {
+		columns = columns.child(popover);
+	}
 
 	root.child(columns)
 }
