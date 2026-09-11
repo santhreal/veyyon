@@ -14,6 +14,7 @@ use veyyon_desktop_model::{EntryId, SessionId, Store, SurfaceId, TranscriptTree}
 use veyyon_desktop_surface::Turn;
 
 use super::{SessionIndex, turns};
+use crate::state::record_draft;
 
 /// The entry a branch forks at and the prompt recorded in it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,4 +67,32 @@ pub fn branched_draft(store: &Store, index: &SessionIndex, surface: &SurfaceId) 
 	};
 	let session = index.session_of(row.0.parse().ok()?)?;
 	branch_point(store, session).map(|point| point.prompt)
+}
+
+/// Puts the prompt a settled branch handed back where the window will draw it.
+///
+/// A fork moves the session pointer, and the keeper reads the drawn window's
+/// shape as the outgoing session's before it restores the incoming one's, so
+/// a prompt written straight into the editor is recorded against the session
+/// the fork was cut from and then drawn over with the fork's empty draft. It
+/// is written as the fork's own draft instead, and the keeper's own restore
+/// puts it in the composer.
+///
+/// A window that remembers nothing has no such restore, so the words are
+/// handed back for the caller to put in the editor itself. That is the whole
+/// meaning of the returned value: `None` is a prompt already landed, or no
+/// branch at all.
+pub fn land_branched_draft(
+	store: &mut Store,
+	index: &SessionIndex,
+	surface: &SurfaceId,
+	remembered: bool,
+) -> Option<String> {
+	let text = branched_draft(store, index, surface)?;
+	if !remembered {
+		return Some(text);
+	}
+	let session = store.persisted.shell.active_session.clone()?;
+	record_draft(&mut store.persisted, &session, &text);
+	None
 }

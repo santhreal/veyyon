@@ -4,7 +4,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use veyyon_desktop::{
 	Attachment, HostLink, SessionIndex, actions_for, current_timestamp_ms, land_failure, project,
-	project::{branched_draft, clear_sent_draft, connection_notice, restored_draft},
+	project::{clear_sent_draft, connection_notice, land_branched_draft, restored_draft},
 	project_clock, project_controls, record_sent, request_frame,
 	state::Keeper,
 	surface_for_action,
@@ -253,9 +253,12 @@ pub fn attach(
 									// A branch cut the operator's last prompt off the
 									// transcript it forked, so the words come back to
 									// the composer to be edited and sent again.
-									if let Some(text) =
-										branched_draft(&host.store, &host.index, &in_flight.surface)
-									{
+									if let Some(text) = land_branched_draft(
+										&mut host.store,
+										&host.index,
+										&in_flight.surface,
+										host.keeper.is_some(),
+									) {
 										view.set_composed(text, cx);
 									}
 								}

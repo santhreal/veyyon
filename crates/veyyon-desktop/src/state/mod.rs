@@ -18,7 +18,7 @@ mod memory;
 mod writer;
 
 pub use keeper::{Keeper, placement};
-pub use memory::{host_shape, session_shape};
+pub use memory::{host_shape, record_draft, session_shape};
 pub use writer::{DEBOUNCE_MS, StateTracker, StateWriter, WriteFailure};
 
 /// Environment variable naming the directory the window keeps its state in,

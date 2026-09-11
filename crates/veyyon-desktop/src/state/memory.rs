@@ -119,6 +119,19 @@ pub fn record_session(
 	});
 }
 
+/// Writes one session's draft into the store its composer is restored from.
+///
+/// `record_session` writes a whole shape read off the drawn window, which is
+/// the outgoing session's while the pointer is moving. A draft that belongs
+/// to the incoming session -- the prompt a branch cut off the transcript it
+/// forked -- is written here instead, under that session's own key, and the
+/// rest of its remembered shape is left alone.
+pub fn record_draft(state: &mut PersistedState, session: &SessionId, draft: &str) {
+	let composer = state.composer.entry(session.clone()).or_default();
+	composer.version = ComposerStore::CURRENT_VERSION;
+	draft.clone_into(&mut composer.draft_text);
+}
+
 /// Writes the window's own geometry into the window store.
 ///
 /// A maximised window keeps the bounds it would return to, so unmaximising it

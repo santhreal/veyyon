@@ -61,6 +61,12 @@ SEARCH_W = 320
 MIN_BAND_PX = 3
 # A menu's rows come at one pitch, or the bands are not the rows of one menu.
 PITCH_TOLERANCE = 4
+# How far apart two bands of one fill may be and still be one box. A card's
+# title and its workspace line are drawn across the whole card, so a row of
+# glyphs takes the fill under FILL_SHARE and cuts the card's own band in
+# three. The gap a line of text opens is a line tall; the height check below
+# is what rejects a merge that joined two real boxes.
+GLYPH_GAP_TOLERANCE = 16
 
 
 def run(args):
@@ -145,6 +151,17 @@ def runs(profile, floor, minimum=MIN_BAND_PX):
     return [band for band in found if band[1] - band[0] >= minimum]
 
 
+def merged(bands, gap):
+    """Bands separated by less than `gap`, read as one."""
+    joined = []
+    for band in bands:
+        if joined and band[0] - joined[-1][1] <= gap:
+            joined[-1] = (joined[-1][0], band[1])
+        else:
+            joined.append(band)
+    return joined
+
+
 def fail(reason, code):
     print(reason, file=sys.stderr)
     raise SystemExit(code)
@@ -163,7 +180,7 @@ def selected_card(argv):
     # covers, which is the next largest area no glyph comes to.
     fill = counted[1][1]
 
-    filled = runs(shares(frame, crop, fill, "row", height), FILL_SHARE)
+    filled = merged(runs(shares(frame, crop, fill, "row", height), FILL_SHARE), GLYPH_GAP_TOLERANCE)
     if len(filled) != 1:
         fail(f"the rail filled {len(filled)} boxes, not the one card the window is on", 2)
     first, last = filled[0]
@@ -174,7 +191,9 @@ def selected_card(argv):
     # Read across the card's own rows, so a column reports the fill's width
     # rather than its share of the whole rail.
     card = crop_of(left, top + first, width, drawn)
-    columns = runs(shares(frame, card, fill, "column", width), FILL_SHARE)
+    columns = merged(
+        runs(shares(frame, card, fill, "column", width), FILL_SHARE), GLYPH_GAP_TOLERANCE
+    )
     if len(columns) != 1:
         fail(f"the fill came to {len(columns)} column runs, not one card's width", 4)
     print(top + first, left + columns[0][0])
