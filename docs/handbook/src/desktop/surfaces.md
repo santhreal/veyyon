@@ -640,6 +640,11 @@ down and clears what raised it, so it does not return on the next frame.
 Opening the session a decision is waiting on takes that session's cards down,
 because the decision is now in view.
 
+A card is 320 pixels wide and cuts what it cannot fit: three lines of the
+announcement's own line, two of the detail under it, each ending in an
+ellipsis. A host that quotes a rejected value back whole does not grow a card
+down over the composer.
+
 ### Sound and desktop notification
 
 The stack is silent and inside the window. Two settings state what else a

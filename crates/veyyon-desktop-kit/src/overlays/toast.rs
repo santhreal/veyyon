@@ -28,6 +28,15 @@ use crate::token_set::{
 /// glance without reflowing into four lines.
 pub const TOAST_WIDTH_PX: f32 = 320.0;
 
+/// How many lines of the announcement's own line a card draws.
+///
+/// The host writes the sentence and can write a long one: a value it rejected
+/// is quoted back in full, and a path arrives whole. Unbounded, a card grew
+/// past its own border and down over the surface it was announcing about.
+const TITLE_LINES: usize = 3;
+/// How many lines of the detail under it a card draws.
+const DETAIL_LINES: usize = 2;
+
 /// One announcement's card.
 #[derive(IntoElement)]
 pub struct Toast {
@@ -99,23 +108,32 @@ impl RenderOnce for Toast {
 			.p(tokens.spacing(SpacingStep::S3))
 			.shadow_lg()
 			.cursor_pointer()
+			.overflow_hidden()
 			.flex()
 			.flex_col()
 			.gap(tokens.spacing(SpacingStep::S1))
 			.child(
 				div()
+					.min_w_0()
+					.overflow_hidden()
 					.text_size(tokens.font_size(TextRamp::Body))
 					.line_height(tokens.line_height(TextRamp::Body))
 					.font_weight(tokens.font_weight(TextWeight::Medium))
 					.text_color(tint.ink)
+					.text_ellipsis()
+					.line_clamp(TITLE_LINES)
 					.child(self.title),
 			);
 		if let Some(detail) = self.detail {
 			card = card.child(
 				div()
+					.min_w_0()
+					.overflow_hidden()
 					.text_size(tokens.font_size(TextRamp::Micro))
 					.line_height(tokens.line_height(TextRamp::Micro))
 					.text_color(tint.ink)
+					.text_ellipsis()
+					.line_clamp(DETAIL_LINES)
 					.child(detail),
 			);
 		}

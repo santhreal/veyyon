@@ -4,6 +4,7 @@
 //! learn of either was to go looking for it.
 //!
 //! CLASS CLOSED: the stack is drawn from the queue and from nothing else, it
+//! keeps a card inside its own border whatever the host wrote in it, it
 //! covers neither the composer it floats over nor the window's chrome, a press
 //! on a card takes that card and only that card down, the dismissal reaches
 //! the host so the next projection does not put it back, and a card at rest
@@ -310,4 +311,83 @@ fn an_announcement_waiting_on_an_answer_states_that_rather_than_nothing() {
 		);
 		assert!(inside_window(line));
 	});
+}
+
+/// The lines `notices` adds to the frame, found by drawing the same window
+/// without them.
+///
+/// A card's words are read back from the frame rather than matched by name,
+/// because a card that cuts the line it was given no longer draws the text it
+/// holds, which is the whole of what this case is about.
+fn stack_lines(notices: Vec<Notification>) -> Vec<(String, Bounds<Pixels>)> {
+	let mut bare: Vec<(u32, u32)> = Vec::new();
+	open_window(state_with(Vec::new()), |session| {
+		bare = settled_frame(session)
+			.text_runs
+			.iter()
+			.map(|run| origin_key(run.bounds))
+			.collect();
+	});
+	let mut added = Vec::new();
+	open_window(state_with(notices), |session| {
+		added = settled_frame(session)
+			.text_runs
+			.iter()
+			.filter(|run| !bare.contains(&origin_key(run.bounds)))
+			.map(|run| (run.text.as_ref().to_owned(), run.bounds))
+			.collect();
+	});
+	assert!(!added.is_empty(), "the stack drew nothing");
+	added
+}
+
+fn origin_key(bounds: Bounds<Pixels>) -> (u32, u32) {
+	(
+		f32::from(bounds.origin.x).to_bits(),
+		f32::from(bounds.origin.y).to_bits(),
+	)
+}
+
+#[test]
+fn a_card_cuts_a_line_the_host_wrote_long_rather_than_growing_down_the_window() {
+	// The host writes the announcement and can write a long one: a value it
+	// rejected is quoted back whole, and a tool's own output arrives whole.
+	// Unbounded, one card took as many lines as the sentence needed and a
+	// full stack of them reached the composer, so the operator could not see
+	// what was being announced about.
+	let long = "the host rejected the value it was given and quoted it back whole, 	            which is a sentence long enough to take a card several lines"
+		.replace(char::is_whitespace, " ");
+	let notices: Vec<Notification> = (0..veyyon_desktop_model::NOTIFICATION_CAPACITY)
+		.map(|slot| {
+			announcement(
+				&format!("slot-{slot}"),
+				&format!("refusal number {slot}: {long}"),
+				NotificationPriority::Normal,
+			)
+		})
+		.collect();
+	let lines = stack_lines(notices);
+
+	let titles: Vec<&(String, Bounds<Pixels>)> =
+		lines.iter().filter(|(text, _)| text != "Settings").collect();
+	assert_eq!(
+		titles.len(),
+		veyyon_desktop_model::NOTIFICATION_CAPACITY,
+		"every card in the stack draws its own line"
+	);
+	for (text, _) in &titles {
+		assert!(
+			text.ends_with('\u{2026}'),
+			"a card cuts the line it was given rather than drawing all of it: {text}"
+		);
+	}
+
+	let foot = lines
+		.iter()
+		.map(|(_, bounds)| f32::from(bounds.origin.y) + f32::from(bounds.size.height))
+		.fold(f32::MIN, f32::max);
+	assert!(
+		foot < f32::from(HEIGHT) * 0.75,
+		"a full stack of long refusals still ends above the composer it floats over: {foot}"
+	);
 }
