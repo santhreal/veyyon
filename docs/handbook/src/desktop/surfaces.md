@@ -274,11 +274,34 @@ underlined, followed by its target in the muted ink. A heading is set at the
 heading ramp, a `-`, `*` or `+` item draws a bullet, an ordered item keeps its
 own number, an indented item keeps its depth, a blockquote carries a rule down
 its leading edge, and a fenced block draws in a code pane with its language as
-the caption. A fence still open at the end of a streaming reply draws as code.
+the caption.
+
+A pipe table draws as a grid. The delimiter row under the header states what
+each column is set against: `:--` the leading edge, `:-:` the centre, `--:`
+the trailing edge, and a cell with no colon the leading edge. Every column
+takes one share of the row's measure, so a narrow window shortens the cells
+rather than pushing the last column out of the surface. The header is set in
+the secondary ink at the medium weight with a hairline under it. A header with
+no row under it is a header, a row with fewer cells than the header draws the
+cells it has, and a header with no delimiter row under it is a paragraph,
+which is what a line of prose with a pipe in it stays.
+
+A reply still arriving is drawn as the shape it is becoming. Up to the first
+byte of the block the text ends in, the reply is finished: it is drawn as it
+is, and its words are what a drag selects. The block after that boundary is
+the one the next delta extends, so it is closed before it is drawn — an
+unterminated fence, table, list marker, heading, code span, emphasis or link
+target draws as the finished shape rather than as its own markers — and it
+offers nothing to select, because its shape changes with the next delta. The
+boundary only moves forward, so text that settled stays where it was drawn and
+does not reflow when the next delta lands.
 
 A marker that markdown reads as text is drawn as written: an underscore inside
 a name, a `*` with a space after it, an unpaired delimiter, a bracket with no
-target, and anything inside a code span.
+target, and anything inside a code span. A closer a stream is in the middle of
+writing is finished rather than doubled: `**strong*` draws as strong. A label
+with no target is the text it is, in an arriving reply as in a finished one,
+since a target nobody wrote would be drawn beside it.
 
 A tool call occupies one row while it is collapsed: the card's status line, its
 block header, or the section it names, followed by how many lines it is holding
@@ -996,6 +1019,23 @@ SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
 SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
   PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
   proof/docker/record-native.sh proof/scenes/desktop-transcript-prose.sh
+```
+
+Use `proof/scenes/desktop-streamed-shape.sh` to ask the local model for a
+markdown table and photograph the transcript twice: while the table is still
+arriving, and once the turn has ended. The turn is real, because a seeded
+transcript holds no arriving block. It reads the queue's `Working` chip, so the
+arriving frame is a frame of a running turn, counts the `[role] hairline` fill
+inside the transcript column, which the rule under a grid's header is the only
+thing this reply draws in it, and then asks the host on a second connection
+whether the reply carries the raw pipes and dashes with no fence around them.
+The after arm requires the rule in both frames; the before arm requires its
+absence, which is the same reading read the other way:
+
+```sh
+proof/docker/record-native.sh proof/scenes/desktop-streamed-shape.sh
+SCENE_ARM=before PROOF_BASE_REF=<commit before the reader> \
+  proof/docker/record-native.sh proof/scenes/desktop-streamed-shape.sh
 ```
 
 Use `proof/scenes/desktop-attachment.sh` to paste an image into the composer,
