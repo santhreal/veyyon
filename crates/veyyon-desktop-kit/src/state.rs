@@ -220,6 +220,38 @@ impl MenuItem {
 		self.is_danger = danger;
 		self
 	}
+
+	/// Resolves the ink this row is drawn in.
+	///
+	/// Refusal outranks destruction: a row that cannot be taken states that
+	/// first, because its mark would otherwise read as an offer.
+	#[must_use]
+	pub fn tone(&self) -> MenuRowTone {
+		if self.is_disabled {
+			MenuRowTone::Refused
+		} else if self.is_danger {
+			MenuRowTone::Destructive
+		} else {
+			MenuRowTone::Offered
+		}
+	}
+}
+
+/// The ink a menu row is drawn in, resolved from what the row is for.
+///
+/// A row states its purpose with `disabled` and `danger`; the renderer needs
+/// one of three inks. Resolving the pair to this enum keeps the ink space
+/// enumerable, so a new tone is swept by the tests that check a row is legible
+/// on the ground a menu draws on rather than added silently.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, strum::EnumIter)]
+pub enum MenuRowTone {
+	/// An offered row.
+	#[default]
+	Offered,
+	/// A row the caller refused, which states why through its shortcut slot.
+	Refused,
+	/// A row that destroys something, offered and marked.
+	Destructive,
 }
 
 /// Button specification for modal dialog action rows.

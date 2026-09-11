@@ -6,7 +6,7 @@ use veyyon_gpui::{App, ClickEvent, ElementId, IntoElement, RenderOnce, Window, d
 
 use crate::{
 	icons::{Icon, IconSize},
-	state::MenuItem,
+	state::{MenuItem, MenuRowTone},
 	token_set::{ColorRole, RadiusStep, SpacingStep, TextRamp, TokenSet},
 };
 
@@ -74,12 +74,10 @@ impl RenderOnce for Menu {
 				continue;
 			}
 
-			let fg = if item.is_disabled {
-				tokens.color(ColorRole::Muted)
-			} else if item.is_danger {
-				tokens.color(ColorRole::ErrorFill)
-			} else {
-				tokens.color(ColorRole::Foreground)
+			let fg = match item.tone() {
+				MenuRowTone::Refused => tokens.color(ColorRole::Muted),
+				MenuRowTone::Destructive => tokens.color(ColorRole::ErrorInk),
+				MenuRowTone::Offered => tokens.color(ColorRole::Foreground),
 			};
 
 			let mut row = div()
