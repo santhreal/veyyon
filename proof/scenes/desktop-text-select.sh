@@ -42,9 +42,10 @@
 # the rectangle that fill occupies wherever the window put it, and the drag
 # computes its own two ends inside that rectangle. A transcript is anchored to
 # its foot, so an aim counted down from the column's top would land in the
-# empty space a short session leaves above it. The travel is diagonal, from
-# inside the first line to inside the last, so a bubble that wrapped is crossed
-# rather than half of one line of it.
+# empty space a short session leaves above it. The travel runs along the line
+# the bubble holds, because the window reports a position only while the
+# pointer is over the text: a travel that crosses the padding stops selecting
+# where it crossed it.
 #
 # NOT RECORDED HERE: which offset a press resolves to inside a wrapped line, a
 # right-to-left run, a combining accent and a cluster joined by a zero-width
@@ -124,6 +125,9 @@ DRAG_ATTEMPTS=4
 # How far inside the fill the two ends of the travel sit, so a press lands on
 # the words and not on the bubble's own padding.
 DRAG_INSET_PX=14
+# What one line of a prompt and the bubble's padding fill: a body line is 18px
+# and the bubble keeps 14 above and below it. A taller bubble wrapped.
+ONE_LINE_MAX_PX=60
 # A line of the prompt's own prose, back in the editor.
 EDITOR_MIN_PIXELS=600
 # A caret is two pixels wide and one line tall, and it is the only thing an
@@ -131,9 +135,12 @@ EDITOR_MIN_PIXELS=600
 EDITOR_MAX_PIXELS=120
 # What the same sentence, drawn twice in the same place, may differ by: the
 # caret is the one thing that moves between the two readings, at two pixels
-# wide and one line tall, and antialiasing is settled by the fuzz the compare
-# already carries.
-SAME_WORDS_MAX_PIXELS=200
+# wide and one line tall, so a blink phase that differs between them accounts
+# for 36 pixels and antialiasing is settled by the fuzz the compare already
+# carries. One character dropped off the end of the selection cost 66, which
+# is what this ceiling sits under: a paste that is the sentence less its
+# question mark is not the words the drag crossed.
+SAME_WORDS_MAX_PIXELS=55
 
 PROBE_DIR="${SCENE_RUNTIME_DIR}/frame-compare"
 mkdir -p "${PROBE_DIR}"
@@ -179,10 +186,19 @@ BEFORE_SELECT="${SCENE_OUT}/${SCENE_NAME}-the-answer-is-in-the-transcript.png"
 
 # ─── 2. Drag Across The Words ────────────────────────────────────────────────
 # The rectangle the operator's turn fills is what the travel is computed from:
-# one end inside its first line, the other inside its last, both held off the
-# bubble's padding. A drag whose head runs past the last glyph of a line lands
-# on the end of that line, which is what makes the whole sentence the selection
-# rather than as much of it as the pointer stopped on.
+# along the line the bubble holds, from inside its left padding to inside its
+# right. A drag whose head runs past the last glyph lands on the end of the
+# line, which is what makes the whole sentence the selection rather than as
+# much of it as the pointer stopped on.
+#
+# THE TRAVEL STAYS ON THE LINE. The window reports a position while the
+# pointer is over the text and nothing once it has left, so a travel that
+# crosses the bubble's padding stops selecting where it crossed it: a diagonal
+# from the top of the bubble to its foot ended the selection at the padding and
+# pasted the 62% of the sentence the pointer had reached by then. The prompt
+# this scene types is one line at the width the recorder opens, which is what
+# the height is read for: a bubble that wrapped is a different gesture and
+# abandons the take rather than pasting part of a sentence.
 read -r TURN_TOP TURN_LEFT TURN_H TURN_W < <(operator_box "${BEFORE_SELECT}") || \
 	abandon_take "the-operator-turn-is-readable" \
 		"the operator's own turn was not readable out of the frame the selection is taken from"
@@ -191,11 +207,16 @@ if (( TURN_W < 120 || TURN_H < 20 )); then
 	abandon_take "the-operator-turn-is-draggable" \
 		"the operator's turn came to ${TURN_W}x${TURN_H}, which is not a rectangle a sentence is dragged across"
 fi
+if (( TURN_H > ONE_LINE_MAX_PX )); then
+	abandon_take "the-prompt-is-one-line" \
+		"the operator's turn came to ${TURN_H}px tall, over the ${ONE_LINE_MAX_PX} one line and its padding fill, so the sentence wrapped and a travel along one line would cross part of it"
+fi
 
+DRAG_Y=$(( TURN_TOP + TURN_H / 2 ))
 DRAG_FROM_X=$(( TURN_LEFT + DRAG_INSET_PX ))
-DRAG_FROM_Y=$(( TURN_TOP + TURN_H / 4 ))
+DRAG_FROM_Y="${DRAG_Y}"
 DRAG_TO_X=$(( TURN_LEFT + TURN_W - DRAG_INSET_PX ))
-DRAG_TO_Y=$(( TURN_TOP + TURN_H - TURN_H / 4 ))
+DRAG_TO_Y="${DRAG_Y}"
 TURN_CROP="${TURN_W}x${TURN_H}+${TURN_LEFT}+${TURN_TOP}"
 echo "scene: the drag runs ${DRAG_FROM_X}+${DRAG_FROM_Y} to ${DRAG_TO_X}+${DRAG_TO_Y}" >&2
 
