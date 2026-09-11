@@ -33,6 +33,15 @@ scene that clicked the row below Export publishes a pair naming the wrong item.
            colour against another: a row drawn in the danger colour reads
            lower than an offered ordinary row.
 
+    measure-frame.py filled-band <frame> <left> <top> <width> <height> <colour>
+        -> "<y> <x>" at the centre of the one box a colour fills inside the
+           rectangle. A transcript is anchored to its foot, so a scene that
+           counted a turn down from the column's top would aim at the empty
+           space a short session leaves; the operator's own turn is the one
+           thing in the column drawn on a fill, so it is found by that fill
+           wherever the column put it. The fill is matched exactly, since the
+           elevations a surface is drawn at sit within FUZZ of each other.
+
 All coordinates are root coordinates, and every reading is taken through
 ImageMagick so a scene needs nothing a recorder container does not already
 carry.
@@ -45,6 +54,13 @@ import sys
 # antialiasing a fill's own rounded corner draws, and far under the distance
 # from any fill to any ink drawn on it.
 FUZZ = "5%"
+# No fuzz at all, for a reading that tells one elevation from the next. The
+# roles a surface is drawn at sit a few levels apart -- an inset and a float
+# differ by seven of 255 in each channel -- so a fuzzy match reads a turn's own
+# fill and a menu floated over it as one colour, and finds each in the other's
+# box. A frame draws a fill at the value the theme states, so the reading that
+# has to tell them apart asks for exactly that.
+EXACT = "0%"
 # How much of a row or column has to be the colour for the row or column to
 # count as inside the box: over half for a card's fill, which glyphs sit on, and
 # a lower share down a menu's ground, whose strip is mostly text.
@@ -67,6 +83,11 @@ PITCH_TOLERANCE = 4
 # three. The gap a line of text opens is a line tall; the height check below
 # is what rejects a merge that joined two real boxes.
 GLYPH_GAP_TOLERANCE = 16
+# How much of a row or column a fill has to cover for the row or column to be
+# inside the box it fills. A turn's own fill takes under half the column it is
+# drawn in, since the bubble is set to a share of the measure and aligned to
+# one edge, so this sits well under FILL_SHARE.
+FILLED_BAND_SHARE = 0.1
 
 
 def run(args):
@@ -78,24 +99,33 @@ def crop_of(left, top, width, height):
 
 
 def histogram(frame, crop):
-    """Every colour in the crop, most of the crop first."""
+    """Every colour in the crop, most of the crop first.
+
+    ImageMagick names a colour it has a name for -- `black`, `grey98` -- and
+    prints `srgb(...)` for the rest, so a reading that looked for `srgb(` could
+    not see the one colour a transcript is mostly made of. The hex form is the
+    field every line carries.
+    """
     counted = []
     for line in run([
         "magick", frame, "-crop", crop, "+repage", "-depth", "8", "-format", "%c",
         "histogram:info:-",
     ]).splitlines():
         head, _, tail = line.strip().partition(":")
-        if "srgb(" not in tail:
+        if "#" not in tail:
+            continue
+        hexed = tail.split("#")[1].split()[0][:6]
+        if len(hexed) < 6:
             continue
         try:
-            counted.append((int(head), "srgb(" + tail.split("srgb(")[1].split(")")[0] + ")"))
+            counted.append((int(head), f"#{hexed}"))
         except ValueError:
             continue
     counted.sort(reverse=True)
     return counted
 
 
-def shares(frame, crop, colour, axis, span):
+def shares(frame, crop, colour, axis, span, fuzz=FUZZ):
     """How much of each row, or of each column, of the crop is `colour`.
 
     The crop is flattened to the colour and everything else, then scaled to one
@@ -105,7 +135,7 @@ def shares(frame, crop, colour, axis, span):
     geometry = f"1x{span}!" if axis == "row" else f"{span}x1!"
     dump = run([
         "magick", frame, "-crop", crop, "+repage",
-        "-fuzz", FUZZ, "-fill", "white", "-opaque", colour,
+        "-fuzz", fuzz, "-fill", "white", "-opaque", colour,
         "-fill", "black", "+opaque", "white",
         "-colorspace", "Gray", "-scale", geometry, "-depth", "8", "txt:-",
     ])
@@ -199,6 +229,32 @@ def selected_card(argv):
     print(top + first, left + columns[0][0])
 
 
+def filled_band(argv):
+    """The one box a colour fills inside a rectangle."""
+    frame, left, top, width, height, colour = (
+        argv[0], int(argv[1]), int(argv[2]), int(argv[3]), int(argv[4]), argv[5],
+    )
+    crop = crop_of(left, top, width, height)
+    bands = merged(
+        runs(shares(frame, crop, colour, "row", height, EXACT), FILLED_BAND_SHARE),
+        GLYPH_GAP_TOLERANCE,
+    )
+    if len(bands) != 1:
+        fail(f"{colour} fills {len(bands)} boxes in the rectangle, not the one looked for", 1)
+    first, last = bands[0]
+
+    # Read across the box's own rows, so a column reports the fill's width
+    # rather than its share of the whole rectangle.
+    box = crop_of(left, top + first, width, last - first + 1)
+    columns = merged(
+        runs(shares(frame, box, colour, "column", width, EXACT), FILLED_BAND_SHARE),
+        GLYPH_GAP_TOLERANCE,
+    )
+    if len(columns) != 1:
+        fail(f"{colour} came to {len(columns)} column runs inside the box, not one", 2)
+    print(top + (first + last) // 2, left + (columns[0][0] + columns[0][1]) // 2)
+
+
 def menu_rows(argv):
     """One item's row in a menu floated with its corner at the pointer."""
     frame, origin_x, origin_y, items, item, window_bottom = (
@@ -258,9 +314,12 @@ def menu_rows(argv):
 
     tops = [top for top, _ in bands]
     pitches = [tops[index + 1] - tops[index] for index in range(len(tops) - 1)]
-    mean = sum(pitches) / len(pitches)
-    if any(abs(pitch - mean) > mean / PITCH_TOLERANCE for pitch in pitches):
-        fail(f"the menu's rows came at {pitches}px, which is not one item height", 4)
+    # A menu of one row states no pitch, so there is nothing to check it
+    # against: it is read for where that row is and no further.
+    if pitches:
+        mean = sum(pitches) / len(pitches)
+        if any(abs(pitch - mean) > mean / PITCH_TOLERANCE for pitch in pitches):
+            fail(f"the menu's rows came at {pitches}px, which is not one item height", 4)
 
     # How strongly the row is inked, against the menu's first row, which is the
     # one item no gate decides. A refused answer is drawn at a fraction of its
@@ -280,7 +339,11 @@ def menu_rows(argv):
     print(origin_y + (top + foot) // 2, origin_x + (left + right) // 2, strength)
 
 
-READINGS = {"selected-card": (selected_card, 6), "menu-rows": (menu_rows, 6)}
+READINGS = {
+    "selected-card": (selected_card, 6),
+    "filled-band": (filled_band, 6),
+    "menu-rows": (menu_rows, 6),
+}
 
 
 def main(argv):
