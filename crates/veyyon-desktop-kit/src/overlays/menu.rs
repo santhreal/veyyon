@@ -59,6 +59,10 @@ impl RenderOnce for Menu {
 			.flex()
 			.flex_col();
 
+		// A menu whose rows carry icons keeps the gutter for the ones that do
+		// not, so every label starts on the same column (§8.25).
+		let icon_gutter = self.items.iter().any(|item| item.icon.is_some());
+
 		for (idx, item) in self.items.into_iter().enumerate() {
 			if item.is_separator {
 				let sep = div()
@@ -98,6 +102,8 @@ impl RenderOnce for Menu {
 
 			if let Some(icon) = item.icon {
 				left = left.child(Icon::new(icon).size(IconSize::Size14).color(fg));
+			} else if icon_gutter {
+				left = left.child(div().w(IconSize::Size14.pixels()));
 			}
 
 			left = left.child(div().text_size(font_size).text_color(fg).child(item.label));

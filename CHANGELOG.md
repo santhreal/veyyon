@@ -287,6 +287,7 @@
 
 ### Fixed
 
+- A desktop row menu sets every label on one column, where `Open` and `Branch` carry no icon and so started a gutter to the left of the six rows beside them; a menu that draws an icon at all now keeps that gutter for the rows without one.
 - A desktop branch forks at the prompt it hands back to the composer, where it named no entry and returned nothing: the host picked the fork point on its own, and the prompt the fork cut off the transcript was left in no surface of the window. The entry the window names and the words it restores come from one walk of the transcript, so the fork cannot cut one prompt and hand back another.
 - A desktop transcript states a mode change as a `Mode` note rather than a custom message reading `mode: plan`, so the row a session's mode change leaves behind is drawn the way a model change and a thinking-level change already were.
 - A desktop decision card draws its answers unpressable while the host cannot take them, where an approval's four answers, a question's options and its composer reply, and a plan's `Revise` and `Accept` were drawn identically whether the capability was declared or not, so a press on any of them reached nothing and stated nothing: each kind's rows now read the capability of that kind of decision under the transport carrying the answer, and draw at the opacity every unavailable control is drawn at.

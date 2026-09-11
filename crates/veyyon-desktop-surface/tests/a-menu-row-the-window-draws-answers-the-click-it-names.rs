@@ -16,6 +16,13 @@
 //! even when the table is wrong: a row whose intent is swapped for its
 //! neighbour's, and a row added to any menu, both turn this red.
 //!
+//! The fourth reads the same sweep as geometry: every label a menu draws is
+//! set on one column. `Menu` drew the icon only where a row carried one, so
+//! `Open` and `Branch` started a gutter to the left of the six rows beside
+//! them. The kit reserves the gutter for a menu that carries any icon at all,
+//! and this pins it where the product's own menus are drawn, so a row added
+//! without an icon is aligned or this is red.
+//!
 //! GAPS: it sweeps the row menus, not every word the window draws. The
 //! composer's own stop control, its chord and the run bar's `Stop` are swept
 //! over every `TurnPhase` by
@@ -118,6 +125,19 @@ fn drawn_label(captured: &Captured, label: &str) -> Point<f32> {
 		.collect();
 	assert_eq!(runs.len(), 1, "the frame draws `{label}` exactly once, drew {}", runs.len());
 	runs[0]
+}
+
+/// The left edge of the one text run whose content is exactly `label`, which
+/// is the column the row's word is set on.
+fn drawn_label_left(captured: &Captured, label: &str) -> f32 {
+	let lefts: Vec<f32> = captured
+		.text_runs
+		.iter()
+		.filter(|run| run.text.as_ref().trim() == label)
+		.map(|run| f32::from(run.bounds.origin.x))
+		.collect();
+	assert_eq!(lefts.len(), 1, "the frame draws `{label}` exactly once, drew {}", lefts.len());
+	lefts[0]
 }
 
 /// Whether a hitbox of a row's own size covers `at`, which is what makes a
@@ -234,4 +254,31 @@ fn each_menu_offers_the_answers_it_is_meant_to_and_no_others() {
 			("Recall".to_owned(), "RecallSession(1)".to_owned()),
 		]),
 	]);
+}
+
+#[test]
+fn every_label_a_menu_draws_is_set_on_one_column() {
+	for menu in every_menu() {
+		let kind = format!("{:?}", menu.kind);
+		let rows: Vec<String> = row_menu_items(&menu, &enabled_controls())
+			.into_iter()
+			.map(|(item, _)| item.label.to_string())
+			.collect();
+
+		render_session(menu, |session| {
+			let captured = session.frame().expect("frame renders");
+			let columns: Vec<(String, f32)> = rows
+				.iter()
+				.map(|row| (row.clone(), drawn_label_left(&captured, row)))
+				.collect();
+			let first = columns.first().expect("a menu draws rows").1;
+			for (row, left) in &columns {
+				assert!(
+					(left - first).abs() <= 0.5,
+					"{kind} sets `{row}` at {left}px against {first}px for the first row, so a row \
+					 carrying no icon loses the gutter its neighbours keep: {columns:?}"
+				);
+			}
+		});
+	}
 }
