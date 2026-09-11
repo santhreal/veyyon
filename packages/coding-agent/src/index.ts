@@ -44,6 +44,8 @@ export type * from "./lsp";
 export * from "./lsp";
 // Main entry point
 export * from "./main";
+export * from "./native-control/telegram-control-bridge";
+export * from "./native-control/telegram-control-host";
 // Run modes for programmatic SDK usage
 export * from "./modes";
 export * from "./modes/components";

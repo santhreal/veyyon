@@ -71,6 +71,7 @@ import type { PrintModeOptions } from "./modes/print-mode";
 import { CURRENT_SETUP_VERSION, resolveOnboardingGeneration } from "./modes/setup-version";
 import { initTheme, stopThemeWatcher } from "./modes/theme/theme";
 import type { SubmittedUserInput } from "./modes/types";
+import { installTelegramNativeControlHost } from "./native-control/telegram-control-host";
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
 import {
 	type CreateAgentSessionOptions,
@@ -1858,6 +1859,10 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 			operatorNotices,
 			preloadedExtensions: extensionsResult,
 		});
+		// Publish the in-process native capability before interactive commands can
+		// activate a Telegram adapter. This starts no poller or socket; only the
+		// lease-owning extension can bind actor/chat credentials to this session.
+		installTelegramNativeControlHost(() => session.sessionManager.getSessionId());
 
 		// Cold-revive support: a `parked` subagent ref restored from disk (the persisted-subagent
 		// scan, collab mirror, resumed process) has a sessionFile but no in-memory

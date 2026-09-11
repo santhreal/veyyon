@@ -18,6 +18,7 @@
 
 ### Added
 
+- The coding-agent session host exposes an in-process, session-invalidating Telegram native-control capability for a lease-owning extension to list scoped agents and inspect their progress without starting another poller or session.
 - The `/autoswarm` dashboard lists a `New session` action (`n`) over an existing session, which closes it keeping every file and every logged run and starts a fresh one with the setup as it stands.
 - Swarm presets: `swarm` and `wide` are built in, and the console saves the current shape under a name to `presets.json` beside the autoresearch databases, offered in every repository.
 - The run screen's `running` row shows the last twelve lines the harness printed under the command, refreshed once a second, with escapes stripped and a carriage-return progress row shown in its final state.
