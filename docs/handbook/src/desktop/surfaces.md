@@ -54,7 +54,8 @@ A press anywhere outside the open menu closes it and does nothing else.
 
 While a menu is open it holds the keyboard. `Up` and `Down` walk its entries,
 `Left` and `Right` move to the next menu along the bar, and `Enter` runs the
-entry the walk is on. A verb the host does not offer is drawn muted, is
+entry the walk is on. The entry the walk stands on carries the fill every row
+surface selects with. A verb the host does not offer is drawn muted, is
 skipped by the walk and answers no press.
 
 Every entry runs the same action as its chord and states that chord at its

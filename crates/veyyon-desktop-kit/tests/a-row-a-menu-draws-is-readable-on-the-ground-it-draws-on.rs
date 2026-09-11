@@ -14,7 +14,7 @@
 //! shortcut columns, which this measures nothing of. It reads the label ink
 //! alone.
 
-use std::{error::Error, path::Path};
+use std::{collections::HashMap, error::Error, path::Path};
 
 use strum::IntoEnumIterator;
 use veyyon_desktop_kit::{
@@ -39,7 +39,8 @@ const SCALE: f32 = 2.0;
 
 /// One row of the tone under measurement, on the ground a menu floats over.
 struct MenuRow {
-	tone: MenuRowTone,
+	tone:        MenuRowTone,
+	highlighted: bool,
 }
 
 impl Render for MenuRow {
@@ -49,7 +50,7 @@ impl Render for MenuRow {
 			.size_full()
 			.bg(tokens.color(ColorRole::Canvas))
 			.p(tokens.spacing(SpacingStep::S4))
-			.child(Menu::new([sample(self.tone)]))
+			.child(Menu::new([sample(self.tone).highlighted(self.highlighted)]))
 	}
 }
 
@@ -85,7 +86,7 @@ fn every_tone_a_menu_row_draws_in_is_readable_on_the_ground_the_menu_draws_on()
 	for tone in MenuRowTone::iter() {
 		let frame = cx.render_frame(viewport, SCALE, move |_window, app: &mut App| {
 			app.set_global(TokenSet::default());
-			app.new(|_cx| MenuRow { tone })
+			app.new(|_cx| MenuRow { tone, highlighted: false })
 		})?;
 		drawn.push((tone, frame.as_bytes().to_vec()));
 	}
@@ -171,4 +172,83 @@ fn a_row_that_is_both_refused_and_destructive_states_the_refusal_first() {
 			);
 		}
 	}
+}
+
+/// WHY THIS ONE IS HERE: a menu walked with the arrows has no pointer in it, so
+/// where the keyboard stands is drawn rather than hovered. It is drawn as the
+/// fill every row surface selects with, and a fill behind a label is the one
+/// change that can take the label's contrast under the floor while looking
+/// deliberate.
+///
+/// The class this closes is a selected row nobody can read, and a selection
+/// that draws nothing. The ground the label is measured against is read out of
+/// the frame -- the colour most of the changed pixels came to -- rather than
+/// recomputed from the tokens, so the reading is of what was drawn.
+///
+/// What it does not catch: which row the selection is on, which is the menu
+/// bar's own suite in the surface crate.
+#[test]
+fn the_row_the_keyboard_stands_on_is_filled_and_still_readable() -> Result<(), Box<dyn Error>> {
+	let mut cx = veyyon_desktop_kit::headless::app_context()?;
+	let viewport = size(px(280.0), px(80.0));
+	let mut frames: Vec<Vec<u8>> = Vec::new();
+	for highlighted in [false, true] {
+		let frame = cx.render_frame(viewport, SCALE, move |_window, app: &mut App| {
+			app.set_global(TokenSet::default());
+			app.new(|_cx| MenuRow { tone: MenuRowTone::Offered, highlighted })
+		})?;
+		frames.push(frame.as_bytes().to_vec());
+	}
+	let (plain, filled) = (&frames[0], &frames[1]);
+	assert_eq!(plain.len(), filled.len(), "the two arms drew frames of different sizes");
+
+	// The fill covers the row, so what changed is the row's own ground: a mark
+	// set beside the label would move a handful of pixels instead.
+	let mut tally: HashMap<[u8; 3], usize> = HashMap::new();
+	let mut changed = 0_usize;
+	for index in (0..plain.len()).step_by(4) {
+		if plain[index..index + 3] != filled[index..index + 3] {
+			changed += 1;
+			let pixel = [filled[index], filled[index + 1], filled[index + 2]];
+			*tally.entry(pixel).or_default() += 1;
+		}
+	}
+	assert!(
+		changed > 200,
+		"a highlighted row changed {changed} pixels, too few to be a row's own fill, so a walk with \
+		 no pointer in the window states nothing",
+	);
+
+	// Most of those pixels are the fill itself; the rest are the glyph edges
+	// it antialiases against, which are fewer.
+	let (fill, covered) = tally
+		.into_iter()
+		.max_by_key(|(_, count)| *count)
+		.ok_or("the highlighted arm changed no pixel")?;
+	assert!(
+		covered * 2 > changed,
+		"the commonest changed colour covers {covered} of {changed} changed pixels, so no one fill \
+		 was drawn over the row",
+	);
+	let ground = RgbColor::new(
+		f32::from(fill[0]) / 255.0,
+		f32::from(fill[1]) / 255.0,
+		f32::from(fill[2]) / 255.0,
+		1.0,
+	);
+
+	// The label is what the fill did not repaint, so it is read against the
+	// fill it now sits on.
+	let peak = (0..filled.len())
+		.step_by(4)
+		.filter(|index| plain[*index..*index + 3] == filled[*index..*index + 3])
+		.map(|index| ratio(&filled[index..index + 4], ground))
+		.fold(1.0_f32, f32::max);
+	assert!(
+		peak >= BODY_FLOOR,
+		"the row the keyboard stands on is drawn at {peak:.2}:1 against its own selected fill, \
+		 under the {BODY_FLOOR}:1 §6.9 asks of body text",
+	);
+
+	Ok(())
 }

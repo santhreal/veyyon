@@ -18,8 +18,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use strum::IntoEnumIterator;
 use veyyon_desktop_kit::{
-	AnchorCorner, ColorRole, IconName, Menu, MenuItem, Popover, RadiusStep, SpacingStep, TextRamp,
-	TokenSet,
+	AnchorCorner, ColorRole, Menu, MenuItem, Popover, RadiusStep, SpacingStep, TextRamp, TokenSet,
 };
 use veyyon_gpui::{
 	App, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent, MouseButton,
@@ -258,9 +257,7 @@ pub(super) fn menu_layer(
 				}
 				// The keyboard's place in the menu is drawn as the row's own
 				// selection, so a walk with no pointer in the window is visible.
-				if index == menu.highlighted && menu.enabled(*command) {
-					item = item.icon(IconName::ChevronRight);
-				}
+				item = item.highlighted(index == menu.highlighted && menu.enabled(*command));
 				item
 			})
 			.collect()

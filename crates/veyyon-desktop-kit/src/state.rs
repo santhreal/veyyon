@@ -158,12 +158,15 @@ pub struct TreeIndex {
 /// Item specification for dropdown and context menus.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MenuItem {
-	pub label:        SharedString,
-	pub icon:         Option<IconName>,
-	pub shortcut:     Option<SharedString>,
-	pub is_disabled:  bool,
-	pub is_danger:    bool,
-	pub is_separator: bool,
+	pub label:          SharedString,
+	pub icon:           Option<IconName>,
+	pub shortcut:       Option<SharedString>,
+	pub is_disabled:    bool,
+	pub is_danger:      bool,
+	pub is_separator:   bool,
+	/// Where the keyboard stands, drawn as the row's own selection so a
+	/// walk with no pointer in the window states which row Return takes.
+	pub is_highlighted: bool,
 }
 
 impl MenuItem {
@@ -171,12 +174,13 @@ impl MenuItem {
 	#[must_use]
 	pub fn new(label: impl Into<SharedString>) -> Self {
 		Self {
-			label:        label.into(),
-			icon:         None,
-			shortcut:     None,
-			is_disabled:  false,
-			is_danger:    false,
-			is_separator: false,
+			label:          label.into(),
+			icon:           None,
+			shortcut:       None,
+			is_disabled:    false,
+			is_danger:      false,
+			is_separator:   false,
+			is_highlighted: false,
 		}
 	}
 
@@ -184,12 +188,13 @@ impl MenuItem {
 	#[must_use]
 	pub fn separator() -> Self {
 		Self {
-			label:        SharedString::default(),
-			icon:         None,
-			shortcut:     None,
-			is_disabled:  false,
-			is_danger:    false,
-			is_separator: true,
+			label:          SharedString::default(),
+			icon:           None,
+			shortcut:       None,
+			is_disabled:    false,
+			is_danger:      false,
+			is_separator:   true,
+			is_highlighted: false,
 		}
 	}
 
@@ -211,6 +216,13 @@ impl MenuItem {
 	#[must_use]
 	pub fn disabled(mut self, disabled: bool) -> Self {
 		self.is_disabled = disabled;
+		self
+	}
+
+	/// Sets whether the keyboard stands on this item.
+	#[must_use]
+	pub fn highlighted(mut self, highlighted: bool) -> Self {
+		self.is_highlighted = highlighted;
 		self
 	}
 

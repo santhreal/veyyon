@@ -120,6 +120,12 @@ impl RenderOnce for Menu {
 			// and takes the pointing cursor; a row that answers none takes
 			// neither, so a menu never states that a refused row is pressable.
 			// The fill is the one every row surface lights with.
+			// Where the keyboard stands is the selected fill, not a mark beside
+			// the label: a walk moves it row to row the way a selection moves
+			// everywhere else in the window, and the icon slot stays the row's.
+			if item.is_highlighted && !item.is_disabled {
+				row = row.bg(tokens.row_selected());
+			}
 			if !item.is_disabled
 				&& let Some(handler) = &self.on_select
 			{
