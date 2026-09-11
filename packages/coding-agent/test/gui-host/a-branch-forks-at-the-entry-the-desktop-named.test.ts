@@ -131,12 +131,12 @@ describe("a branch forks at the entry the desktop named", () => {
 			if (opened.getSessionId() !== session) continue;
 			return opened
 				.getBranch()
-				.filter(entry => entry.type === "message" && entry.message.role === "user")
-				.flatMap(entry =>
-					entry.type === "message" && Array.isArray(entry.message.content)
-						? entry.message.content.map(block => (block.type === "text" ? block.text : ""))
-						: [],
-				)
+				.flatMap(entry => {
+					if (entry.type !== "message") return [];
+					const message = entry.message;
+					if (message.role !== "user" || !Array.isArray(message.content)) return [];
+					return message.content.map(block => (block.type === "text" ? block.text : ""));
+				})
 				.filter(text => text.length > 0);
 		}
 		throw new Error(`no session file in ${sessionDir} holds ${session}`);
