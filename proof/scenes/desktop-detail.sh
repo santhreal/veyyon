@@ -12,9 +12,10 @@
 # is drawn there.
 #
 #   * THE FLOAT GROUND IN THE BAND, counted as pixels of the exact colour the
-#     dark theme authors for `role.float`. A card drawn there fills tens of
-#     thousands of them and the transcript under it draws none, so the reading
-#     separates a popover from any other change in the same band.
+#     installed theme authors for `role.float`, with the theme resolved from
+#     the resting frame's own ground rather than assumed. A card drawn there
+#     fills tens of thousands of them and the transcript under it draws none,
+#     so the reading separates a popover from any other change in the band.
 #   * HOW MANY PIXELS THE BAND CHANGED against the shot before it, which is
 #     what tells a popover that was drawn from one that was drawn somewhere
 #     else: a card placed below the chip, or slid against the window's foot,
@@ -75,41 +76,94 @@ if (( BAND_X + BAND_W > WIN_X + WIN_W )); then
 	abandon_take "detail-closed" \
 		"the ${BAND_W}px band at ${BAND_X} runs past the window's right edge at $(( WIN_X + WIN_W ))"
 fi
+# The band stops at the composer card's top edge. The card is drawn on the same
+# floating ground the popover is, and it holds the draft's caret, so a
+# rectangle that reached over its top edge would report the card that was
+# always there and blink between two shots whatever the press did. What is left
+# is the ground a resting session draws nothing on at all.
+COMPOSER_CARD_TOP=$(( COMPOSER_CARD_BOTTOM - COMPOSER_BAND_H ))
+BAND_H=$(( COMPOSER_CARD_TOP - BAND_Y ))
+if (( BAND_H < 80 )); then
+	abandon_take "detail-closed" \
+		"only ${BAND_H}px sit between the top of the band at ${BAND_Y} and the composer card at ${COMPOSER_CARD_TOP}, too few to read a card in"
+fi
 BAND_CROP="${BAND_W}x${BAND_H}+${BAND_X}+${BAND_Y}"
 
-# A card fills most of the band it is drawn in: the authored measure by its own
-# height, less the text on it. The floor is a fraction of that, so a popover
-# drawn at any height this build's facts come to clears it, and a stray float
-# surface a few rows tall does not.
-FLOAT_FLOOR=20000
+# The card clears the composer card by about thirty-four rows of its full
+# width, which is 13079 pixels of floating ground in this build. The floor is
+# under half of that, so a card whose facts come to one row less still clears
+# it, while a hairline, a shadow or a row of hover tint does not.
+FLOAT_FLOOR=6000
 # What the band reads when nothing is floating in it. The transcript draws no
 # float ground, so this is the ceiling for a band with no card in it.
 FLOAT_CEILING=2000
-# A card appearing or going changes the band wholesale.
-DREW_FLOOR=20000
+# A card appearing or going changes the band wholesale: its ground, its heading
+# and the rows of facts under it, which comes to 15122 pixels in this build.
+# The floor is a little over half of that, so a card one row shorter still
+# clears it.
+DREW_FLOOR=8000
 # What is left when a dismissal took the card away: nothing but the transcript
 # the band was reading before the press.
 QUIET_CEILING=600
 
-# Pixels of the exact ground the dark theme authors for a floating surface.
-# Read from the theme this checkout ships rather than restated as a literal,
-# and matched tightly: the canvas under the band is eighteen levels away, which
-# a loose fuzz would fold into the same bucket.
-float_ground_pixels() { # <shot>
-	local png="${SCENE_OUT}/${SCENE_NAME}-$1.png" theme ground counted
-	theme="${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/themes/dark.toml"
-	ground="$(sed -n '/^\[role\]/,/^\[/ s/^float = "\(#[0-9a-fA-F]\{6\}\)".*/\1/p' \
-		"${theme}" | head -1)"
-	if [ -z "${ground}" ]; then
-		abandon_take "detail-ground-known" "no [role] float in ${theme}"
-	fi
-	counted="$(magick "${png}" -crop "${BAND_CROP}" +repage \
-		-fuzz 2% -fill white -opaque "${ground}" -fill black +opaque white \
+# Which of the shipped themes the window is drawing, and the ground that theme
+# authors for a floating surface. The appearance is read off the frame rather
+# than assumed: the resting band holds one flat colour, and the theme whose own
+# ground is that colour is the one installed. A theme that draws a floating
+# surface on the same ground as the band cannot report one, and says so.
+resolve_float_ground() { # <resting-shot>
+	local png="${SCENE_OUT}/${SCENE_NAME}-$1.png" hist
+	hist="$(magick "${png}" -crop "${BAND_CROP}" +repage -alpha off \
+		-format '%c' histogram:info: 2>/dev/null)" || return 1
+	python3 - \
+		"${BASH_SOURCE[0]%/*}/../../crates/veyyon-desktop-tokens/themes" \
+		"$(( BAND_W * BAND_H ))" \
+		"${hist}" <<'THEME'
+import re
+import sys
+from pathlib import Path
+import tomllib
+
+themes, band, hist = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+rows = re.findall(r"(\d+):\s*\(\s*(\d+),\s*(\d+),\s*(\d+)", hist)
+if not rows:
+    sys.exit(f"the resting band reported no histogram: {hist[:120]!r}")
+held, *channels = max(((int(n), int(r), int(g), int(b)) for n, r, g, b in rows))
+dominant = tuple(channels)
+if held < band * 0.9:
+    sys.exit(f"the resting band is not one flat colour: {dominant} holds {held} of {band}")
+
+
+def rgb(value):
+    return tuple(int(value[i : i + 2], 16) for i in (1, 3, 5))
+
+
+for theme in sorted(Path(themes).glob("*.toml")):
+    role = tomllib.loads(theme.read_text())["role"]
+    if rgb(role["ground"]) != dominant:
+        continue
+    if role["float"] == role["ground"]:
+        sys.exit(f"{theme.stem} draws a floating surface on the ground the band holds")
+    print(f"{theme.stem}\t{role['float']}")
+    break
+else:
+    sys.exit(f"no shipped theme draws its ground as {dominant}, which the resting band holds")
+THEME
+}
+
+# Pixels of exactly that ground. The marker is a colour no surface in the
+# window draws, so a ground that is itself white is counted once rather than
+# folded into the pixels the second pass keeps.
+float_ground_pixels() { # <shot> <crop>
+	local png="${SCENE_OUT}/${SCENE_NAME}-$1.png" counted
+	counted="$(magick "${png}" -crop "$2" +repage -alpha off \
+		-fuzz 0 -fill '#ff00ff' -opaque "${FLOAT_GROUND}" \
+		-fill white -opaque '#ff00ff' -fill black +opaque white \
 		-format '%[fx:round(mean*w*h)]' info: 2>/dev/null || true)"
 	case "${counted}" in
 		'' | *[!0-9]*)
 			abandon_take "detail-ground-countable" \
-				"counting the float ground in $1 over ${BAND_CROP} reported '${counted}' instead of a pixel count"
+				"counting the float ground in $1 over $2 reported '${counted}' instead of a pixel count"
 			;;
 	esac
 	printf '%s' "${counted}"
@@ -122,7 +176,12 @@ band_differs() { # <shot-a> <shot-b>
 		"${BAND_CROP}"
 }
 
-echo "scene: reading the band ${BAND_CROP} above a chip at ${MODEL_CHIP_X},${MODEL_CHIP_Y}" >&2
+echo "scene: reading ${BAND_CROP}, the band between the composer card and a chip at ${MODEL_CHIP_X},${MODEL_CHIP_Y}" >&2
+
+# The float ground the readings count, resolved from the resting frame once the
+# first shot is taken.
+FLOAT_THEME=""
+FLOAT_GROUND=""
 
 # ─── The Session Before Any Press ───────────────────────────────────────────
 # The preamble created the session and left a draft in the composer, so the
@@ -139,7 +198,19 @@ move_px "${PARK_X}" "${PARK_Y}"
 settle_idle
 pause 1.0
 shot detail-closed
-CLOSED_FLOAT="$(float_ground_pixels detail-closed)"
+RESOLVED="$(resolve_float_ground detail-closed 2>&1)" || abandon_take "detail-closed" \
+	"the band's own appearance did not resolve to a shipped theme: ${RESOLVED}"
+FLOAT_THEME="${RESOLVED%%$'\t'*}"
+FLOAT_GROUND="${RESOLVED##*$'\t'}"
+case "${FLOAT_GROUND}" in
+	'#'[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) ;;
+	*)
+		abandon_take "detail-closed" \
+			"the installed theme resolved to '${RESOLVED}', which states no float ground to count"
+		;;
+esac
+echo "scene: the window is drawing ${FLOAT_THEME}, whose floating surfaces sit on ${FLOAT_GROUND}" >&2
+CLOSED_FLOAT="$(float_ground_pixels detail-closed "${BAND_CROP}")"
 if [ "${CLOSED_FLOAT}" -gt "${FLOAT_CEILING}" ]; then
 	abandon_take "detail-closed" \
 		"the band above the chip already holds ${CLOSED_FLOAT} pixels of float ground, over the ${FLOAT_CEILING} an empty band reads: this take is measuring a surface that was already floating there"
@@ -151,7 +222,7 @@ pause 0.4
 right_click
 pause 1.2
 shot detail-open
-OPEN_FLOAT="$(float_ground_pixels detail-open)"
+OPEN_FLOAT="$(float_ground_pixels detail-open "${BAND_CROP}")"
 OPEN_DREW="$(band_differs detail-closed detail-open)"
 
 # ─── The Dismissal ──────────────────────────────────────────────────────────
@@ -162,7 +233,7 @@ pause 0.6
 move_px "${PARK_X}" "${PARK_Y}"
 pause 1.2
 shot detail-dismissed
-GONE_FLOAT="$(float_ground_pixels detail-dismissed)"
+GONE_FLOAT="$(float_ground_pixels detail-dismissed "${BAND_CROP}")"
 GONE_QUIET="$(band_differs detail-closed detail-dismissed)"
 
 if [ "${SCENE_ARM:-after}" = "before" ]; then
