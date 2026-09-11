@@ -18,6 +18,11 @@ Animation state persists separately from the rendered element tree. The shell
 requests another frame while the transition is active and stops requesting
 animation frames after it settles.
 
+A detail popover is on the same role, and the card carries the transition whole:
+the ground and the facts on it arrive together, rather than the facts arriving
+inside a card that was already drawn. With transitions off the card is drawn
+where it opened, and only its opacity moves.
+
 ## Role table
 
 The shared token table defines these timing models. A role definition does not

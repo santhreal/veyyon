@@ -587,6 +587,35 @@ Click the panel to focus it for the keyboard.
 
 The tab walk wraps at both ends.
 
+## Detail popovers
+
+Three controls draw less than the session states about them. A secondary press
+on one opens an anchored popover with the rest.
+
+| Control | What the popover states |
+| --- | --- |
+| A workspace tree row | The path whole, whether the row is a file or a directory, and the lines the host reported changed |
+| The composer's model chip | The provider, the model identifier, whether reasoning is supported, and the inputs the catalog lists |
+| A diff hunk header | The file, the lines the hunk covers on each side, the lines the hunk itself changed, and the symbol whole |
+
+The popover is drawn beside the press. Where the direction it grows in has no
+room for it, it is drawn on the opposite side of the same point, each axis
+decided on its own, so the control stays visible and stays pressable. A card
+too large for either side is slid inside the window margin instead.
+
+The card arrives on the `float` role, ground and facts together. See
+[Motion](motion.md).
+
+While it is open it takes the window's focus, so a character the composer would
+take into the draft does not reach the composer. `Escape` closes it, as does a
+press outside it, and the focus returns to what held it. A second press on a
+control the popover does not cover closes it too.
+
+A popover states nothing about a payload the session no longer holds: a tree
+row that left the last snapshot, a model the host withdrew, and a row index
+that is not a hunk header each close it rather than drawing a card with no
+facts under it.
+
 ## Record native interactions
 
 Build the current executable with `cargo build -p veyyon-desktop` and build the
@@ -892,6 +921,24 @@ SCENE_MOTION_FLOOR=6 proof/docker/record-native.sh \
 SCENE_ARM=before PROOF_BASE_REF=HEAD SCENE_MOTION_FLOOR=6 \
   PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
   proof/docker/record-native.sh proof/scenes/desktop-appearance.sh
+```
+
+Use `proof/scenes/desktop-detail.sh` to press the composer's model chip with the
+secondary button and then dismiss what it opened. It reads one rectangle, the
+band the popover is drawn in above the press, twice per frame: how many pixels
+of it carry the ground the theme authors for a floating surface, and how many of
+it changed against the frame before. A popover that never appeared, one drawn
+below the chip or slid against the window's foot, and one that outlived its
+dismissal are separate failures. The before arm's chip answers no secondary
+press, so the band holds no floating ground and moves by nothing through the
+same three frames. The change is inside the executable, so the before arm names
+a build of this tree without the popover:
+
+```sh
+proof/docker/record-native.sh proof/scenes/desktop-detail.sh
+SCENE_ARM=before PROOF_BASE_REF=HEAD \
+  PROOF_NATIVE_BEFORE_BINARY=<holdback-build> \
+  proof/docker/record-native.sh proof/scenes/desktop-detail.sh
 ```
 
 Output is written to `proof/captures/x11/`, or the absolute directory in `OUT_DIR`.
