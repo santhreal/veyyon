@@ -26,6 +26,10 @@
 //!    painted nothing there. That click opens the session. An action held back
 //!    by opacity or a zero-alpha colour is painted, listeners and all, so it
 //!    parks or defers a session nobody asked to park or defer.
+//! 9. A refused answer that states it is pressable. The row is drawn and
+//!    registers no rect, so a press where its label sits sends nothing, leaves
+//!    the session in the queue and leaves the menu up rather than falling
+//!    through the panel to the scrim.
 
 #[path = "support/large_queue.rs"]
 mod large_queue;
@@ -215,7 +219,31 @@ fn disabled_card_menu_items_suppress_dispatch_on_click() {
 
 	let menu_frame = session.frame().expect("menu renders in frame");
 	let menu_items = find_menu_items(&menu_frame, menu_origin);
-	assert_eq!(menu_items.len(), 8, "card menu registers 8 item bounds");
+	assert_eq!(
+		menu_items.len(),
+		7,
+		"a refused answer answers no press, so the card menu hit-tests only its other seven rows"
+	);
+
+	// The refused row is drawn and registers nothing, so where it is comes off
+	// the label the frame set rather than off a rect a press could land on.
+	let refused = menu_frame
+		.text_runs
+		.iter()
+		.find(|run| run.text.as_ref() == "Delete" && run.bounds.origin.y >= menu_origin.y)
+		.expect("the menu draws the refused answer")
+		.bounds;
+	let target = center_of(refused);
+	assert!(
+		!menu_items.iter().any(|item| {
+			target.x >= item.origin.x
+				&& target.x <= item.origin.x + item.size.width
+				&& target.y >= item.origin.y
+				&& target.y <= item.origin.y + item.size.height
+		}),
+		"the refused answer registers a rect under its label, so the menu states that a press it \
+		 will not answer is pressable"
+	);
 
 	session
 		.update(|view, _window, _cx| {
@@ -223,15 +251,19 @@ fn disabled_card_menu_items_suppress_dispatch_on_click() {
 		})
 		.expect("drain intents");
 
-	// Click disabled Delete item (index 7)
 	session
-		.click(center_of(menu_items[7]))
-		.expect("click disabled delete menu item");
+		.click(target)
+		.expect("press where the refused answer is drawn");
 	session
 		.update(|view, _window, _cx| {
 			assert!(
 				view.drain_intents().is_empty(),
 				"clicking disabled menu item must not dispatch delete intent"
+			);
+			assert!(
+				view.row_menu().is_some(),
+				"a press on a refused row fell through the panel to the scrim and took the menu down \
+				 with it"
 			);
 			let sections = &view.state().sections;
 			let exists = sections
