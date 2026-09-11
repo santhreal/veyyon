@@ -616,6 +616,50 @@ row that left the last snapshot, a model the host withdrew, and a row index
 that is not a hunk header each close it rather than drawing a card with no
 facts under it.
 
+## Announcements
+
+Three things happen where the window draws nothing: a request the host
+refuses whose control is under a closed sheet or a collapsed section, a
+decision arriving on a session that is not the open one, and a notifier the
+window could not run. Each raises a card at the window's trailing edge, under
+the chrome, over every other floating surface. The stack takes no width from
+the transcript, the composer or the run bar.
+
+| What raised it | Tint | How long it stays |
+| --- | --- | --- |
+| A refused request | `error` | 8 seconds |
+| A decision waiting out of view | `attention` | Until it is answered, the session is opened, or the card is pressed |
+| A notifier that did not run | `plan` | 4 seconds |
+
+A second announcement about the same thing is the same card: four refusals of
+one control state one line, at the highest urgency any of them carried. Six
+cards is the bound; past that the most urgent stay and a new routine
+announcement is dropped rather than covering them. Pressing a card takes it
+down and clears what raised it, so it does not return on the next frame.
+
+Opening the session a decision is waiting on takes that session's cards down,
+because the decision is now in view.
+
+### Sound and desktop notification
+
+The stack is silent and inside the window. Two settings state what else a
+raised announcement does, both `off` by default:
+
+| Setting | On |
+| --- | --- |
+| `notify.sound` | Plays the desktop alert once per batch of announcements |
+| `notify.system` | Posts each announcement to the desktop's own notification service |
+
+`notify.system` hands the announcement to the platform's notifier:
+`notify-send` on Linux, `osascript` on macOS, a PowerShell balloon on
+Windows, with the card's urgency mapped to the service's own. `notify.sound`
+plays the session's alert sound: `canberra-gtk-play` or `paplay` on Linux,
+`afplay` on macOS, the system exclamation on Windows.
+
+Neither is required to be installed. One that cannot run is announced on the
+same stack, once per carrier and per setting, stating which program failed and
+why. That announcement is the one kind that is never carried anywhere itself.
+
 ## Record native interactions
 
 Build the current executable with `cargo build -p veyyon-desktop` and build the
