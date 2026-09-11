@@ -9,6 +9,7 @@
 
 use std::path::Path;
 
+use unicode_segmentation::UnicodeSegmentation;
 use veyyon_desktop_kit::{load_bundled_theme, load_bundled_tokens};
 use veyyon_desktop_scene::{
 	frame::RgbaFrame,
@@ -174,3 +175,10 @@ pub fn clipboard(session: &mut HeadlessSession<'_, ShellView>) -> Option<String>
 /// The caption the row holding the output draws, and the lines behind it.
 pub const PANE_CAPTION: &str = "cargo test";
 pub const PANE_LINES: [&str; 2] = ["test result: ok. 3 passed", "Finished in 0.42s"];
+
+/// Each grapheme cluster of `text` with the byte offset it starts at, which
+/// is what a copy is read against: a selection that ends inside one of these
+/// took half a character.
+pub fn cluster_offsets(text: &str) -> Vec<(usize, &str)> {
+	text.grapheme_indices(true).collect()
+}

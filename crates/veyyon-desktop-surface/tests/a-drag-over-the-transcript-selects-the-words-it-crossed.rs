@@ -17,15 +17,16 @@
 //! suites read. It drives one window width; a paragraph that wraps at another
 //! measure is covered by the wrapped case here rather than by a sweep of
 //! widths. What a chord takes out of the window is
-//! `the-copy-chord-takes-the-text-the-transcript-drew`, and which blocks state
+//! `the-copy-chord-takes-the-text-the-transcript-drew`, which blocks state
 //! spans at all is
-//! `every-block-states-its-spans-or-records-that-it-offers-none`.
+//! `every-block-states-its-spans-or-records-that-it-offers-none`, and what one
+//! selection spans across an entry boundary and across two inline runs of one
+//! paragraph is `a-selection-crosses-the-entries-and-the-runs-a-turn-drew`.
 //! What a copy carries is read from the spans a block records, so the clipped
 //! case pins that record against the drawing rather than pinning the shaper:
 //! a renderer that hands the shaper a different string cannot change what
 //! comes back, and the offset it resolves is what that case reads.
 
-use unicode_segmentation::UnicodeSegmentation;
 use veyyon_desktop_kit::document_spans;
 use veyyon_desktop_surface::model::{Block, Turn};
 use veyyon_gpui::{Point, px};
@@ -35,7 +36,7 @@ use veyyon_gpui::{Point, px};
 mod harness;
 
 use harness::{
-	FIRST, PANE_CAPTION, PANE_LINES, SECOND, along, changed_pixels, render_session,
+	FIRST, PANE_CAPTION, PANE_LINES, SECOND, along, changed_pixels, cluster_offsets, render_session,
 	render_session_still, run_holding, run_labelled, two_paragraphs,
 };
 
@@ -219,11 +220,6 @@ fn a_drag_over_a_wrapped_line_never_cuts_a_cluster_or_leaves_the_span() {
 			}
 		}
 	}
-}
-
-/// Each grapheme cluster of `text` with the byte offset it starts at.
-fn cluster_offsets(text: &str) -> Vec<(usize, &str)> {
-	text.grapheme_indices(true).collect()
 }
 
 #[test]

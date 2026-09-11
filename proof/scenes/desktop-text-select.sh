@@ -50,12 +50,12 @@
 # NOT RECORDED HERE: which offset a press resolves to inside a wrapped line, a
 # right-to-left run, a combining accent, a cluster joined by a zero-width
 # joiner and a line the pane truncated; the shift-click that extends a
-# selection; the chord that takes a whole entry; and each block kind's spans.
-# Those are the three suites under
-# `crates/veyyon-desktop-surface/tests/` that open with
-# `a-drag-over-the-transcript-`, `the-copy-chord-takes-` and
-# `every-block-states-its-spans-`, over the boxes a frame recorded, sweeping
-# every block shape the transcript draws.
+# selection; the chord that takes a whole entry; a selection that crosses an
+# entry boundary or a split inline run; and each block kind's spans. Those are
+# the four suites under `crates/veyyon-desktop-surface/tests/` that open with
+# `a-drag-over-the-transcript-`, `the-copy-chord-takes-`,
+# `a-selection-crosses-the-entries-` and `every-block-states-its-spans-`, over
+# the boxes a frame recorded, sweeping every block shape the transcript draws.
 #
 # Sourced by proof/docker/xsession.sh with SCENE_WINDOW, SCENE_NAME, SCENE_OUT
 # and SCENE_LIB already initialized.
