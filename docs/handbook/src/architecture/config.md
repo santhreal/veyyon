@@ -49,7 +49,6 @@ Key integration points:
 - `packages/coding-agent/src/discovery/capability/index.ts`
 - `packages/coding-agent/src/discovery/index.ts`
 - `packages/coding-agent/src/extensibility/skills.ts`
-- `packages/coding-agent/src/extensibility/hooks/loader.ts`
 - `packages/coding-agent/src/extensibility/custom-tools/loader.ts`
 - `packages/coding-agent/src/extensibility/extensions/loader.ts`
 
