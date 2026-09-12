@@ -1263,10 +1263,17 @@ function wrapCommonJsAsModule(source: string): string {
 	);
 }
 
-/** {@link isCommonJsSource} over a file on disk; an unreadable file is not CommonJS, and the import that follows names it. */
-async function isCommonJsModule(modulePath: string): Promise<boolean> {
+/** The source of a file on disk, read once per graph walk however many times the walk asks. */
+type SourceReader = (modulePath: string) => Promise<string>;
+
+/**
+ * {@link isCommonJsSource} over a file on disk; an unreadable file is not CommonJS, and the import
+ * that follows names it. The read goes through the walk's reader: the check runs on a candidate
+ * before the walk reaches it, and the walk's own read of the same file must be the same read.
+ */
+async function isCommonJsModule(modulePath: string, readSource: SourceReader): Promise<boolean> {
 	try {
-		return isCommonJsSource(modulePath, await Bun.file(modulePath).text());
+		return isCommonJsSource(modulePath, await readSource(modulePath));
 	} catch {
 		return false;
 	}
@@ -1311,6 +1318,10 @@ async function realpathOrSelfUncached(p: string): Promise<string> {
  */
 async function collectExtensionModules(entryRealPath: string): Promise<Map<string, string>> {
 	const modules = new Map<string, string>();
+	// One read per file: a candidate is checked for CommonJS when its importer is walked, and read
+	// again as a module of its own when the walk reaches it. Both come from here.
+	const sources = new Map<string, Promise<string>>();
+	const readSource: SourceReader = file => memoized(sources, file, () => Bun.file(file).text());
 	const queuedFollowBareDependencies = new Map<string, boolean>([[entryRealPath, true]]);
 	const queue: Array<{ file: string; followBareDependencies: boolean }> = [
 		{ file: entryRealPath, followBareDependencies: true },
@@ -1327,7 +1338,7 @@ async function collectExtensionModules(entryRealPath: string): Promise<Map<strin
 		}
 		let source: string;
 		try {
-			source = await Bun.file(file).text();
+			source = await readSource(file);
 		} catch {
 			continue;
 		}
@@ -1353,7 +1364,9 @@ async function collectExtensionModules(entryRealPath: string): Promise<Map<strin
 					const candidate = Bun.resolveSync(specifier, dir);
 					if (
 						hasSourceModuleExtension(candidate) &&
-						(isRequired ? await moduleRequiresNativeAddon(candidate) : !(await isCommonJsModule(candidate)))
+						(isRequired
+							? await moduleRequiresNativeAddon(candidate)
+							: !(await isCommonJsModule(candidate, readSource)))
 					) {
 						resolved = await realpathOrSelf(candidate);
 					}
@@ -1361,7 +1374,9 @@ async function collectExtensionModules(entryRealPath: string): Promise<Map<strin
 					const candidate = await resolvePackageImportSpecifier(specifier, file);
 					if (
 						candidate &&
-						(isRequired ? await moduleRequiresNativeAddon(candidate) : !(await isCommonJsModule(candidate)))
+						(isRequired
+							? await moduleRequiresNativeAddon(candidate)
+							: !(await isCommonJsModule(candidate, readSource)))
 					) {
 						resolved = candidate;
 					}
