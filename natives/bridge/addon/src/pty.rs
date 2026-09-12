@@ -76,10 +76,70 @@ pub struct PtyArgvStartOptions<'env> {
 pub struct PtyRunResult {
 	/// Exit code when the command completes.
 	pub exit_code: Option<i32>,
+	/// Signal that ended the command (`SIGKILL`, `SIGTERM`), when it died to one
+	/// rather than exiting. A signal death also reports `exit_code` 1, so a
+	/// consumer that attributes the death reads this field first.
+	pub signal:    Option<String>,
 	/// Whether command was cancelled by signal/user kill.
 	pub cancelled: bool,
 	/// Whether command timed out.
 	pub timed_out: bool,
+}
+
+/// Exit code and terminating signal of a settled PTY child.
+fn exit_status_parts(status: &portable_pty::ExitStatus) -> (i32, Option<String>) {
+	let code = i32::try_from(status.exit_code()).unwrap_or(i32::MAX);
+	(code, status.signal().map(signal_name))
+}
+
+/// `SIGKILL` for the text `portable_pty` derives from `strsignal(3)` (`Killed`,
+/// or `Signal 9` when libc has no description), so a PTY death reports the same
+/// spelling a pipe-spawned child's `signalCode` does.
+#[cfg(unix)]
+fn signal_name(text: &str) -> String {
+	const SIGNALS: &[(libc::c_int, &str)] = &[
+		(libc::SIGHUP, "SIGHUP"),
+		(libc::SIGINT, "SIGINT"),
+		(libc::SIGQUIT, "SIGQUIT"),
+		(libc::SIGILL, "SIGILL"),
+		(libc::SIGTRAP, "SIGTRAP"),
+		(libc::SIGABRT, "SIGABRT"),
+		(libc::SIGBUS, "SIGBUS"),
+		(libc::SIGFPE, "SIGFPE"),
+		(libc::SIGKILL, "SIGKILL"),
+		(libc::SIGUSR1, "SIGUSR1"),
+		(libc::SIGSEGV, "SIGSEGV"),
+		(libc::SIGUSR2, "SIGUSR2"),
+		(libc::SIGPIPE, "SIGPIPE"),
+		(libc::SIGALRM, "SIGALRM"),
+		(libc::SIGTERM, "SIGTERM"),
+		(libc::SIGXCPU, "SIGXCPU"),
+		(libc::SIGXFSZ, "SIGXFSZ"),
+		(libc::SIGVTALRM, "SIGVTALRM"),
+		(libc::SIGPROF, "SIGPROF"),
+		(libc::SIGSYS, "SIGSYS"),
+	];
+	let number = text
+		.strip_prefix("Signal ")
+		.and_then(|digits| digits.parse::<libc::c_int>().ok());
+	for (signal, name) in SIGNALS {
+		if number == Some(*signal) {
+			return (*name).to_string();
+		}
+		// SAFETY: strsignal returns a pointer to a NUL-terminated string owned by
+		// libc (static, or thread-local on glibc >= 2.32); it is read before the
+		// next call on this thread and never freed here.
+		let described = unsafe { std::ffi::CStr::from_ptr(libc::strsignal(*signal)) };
+		if described.to_bytes() == text.as_bytes() {
+			return (*name).to_string();
+		}
+	}
+	text.to_string()
+}
+
+#[cfg(not(unix))]
+fn signal_name(text: &str) -> String {
+	text.to_string()
 }
 
 #[derive(Clone)]
@@ -455,10 +515,10 @@ fn run_pty_sync(
 	let mut timed_out = false;
 	let mut cancelled = false;
 	let mut reader_done = false;
-	let mut exit_code: Option<i32> = None;
+	let mut exit_status: Option<(i32, Option<String>)> = None;
 	let mut terminate_requested = false;
 	let mut reader_drain_deadline: Option<Instant> = None;
-	while exit_code.is_none() || !reader_done {
+	while exit_status.is_none() || !reader_done {
 		if !terminate_requested && let Err(err) = ct.heartbeat() {
 			let message = err.to_string();
 			timed_out = message.contains("Timeout");
@@ -503,12 +563,12 @@ fn run_pty_sync(
 				},
 			}
 		}
-		if exit_code.is_none()
+		if exit_status.is_none()
 			&& let Some(status) = child
 				.try_wait()
 				.map_err(|err| to_napi_with("Failed checking PTY status", err))?
 		{
-			exit_code = Some(i32::try_from(status.exit_code()).unwrap_or(i32::MAX));
+			exit_status = Some(exit_status_parts(&status));
 			if !reader_done && reader_drain_deadline.is_none() {
 				reader_drain_deadline = Some(Instant::now() + POST_EXIT_DRAIN_TIMEOUT);
 			}
@@ -519,7 +579,7 @@ fn run_pty_sync(
 		{
 			break;
 		}
-		if exit_code.is_none() || !reader_done {
+		if exit_status.is_none() || !reader_done {
 			let wait_duration = reader_drain_deadline.map_or(Duration::from_millis(16), |deadline| {
 				deadline
 					.saturating_duration_since(Instant::now())
@@ -531,20 +591,20 @@ fn run_pty_sync(
 				Err(flume::RecvTimeoutError::Timeout) => {},
 				Err(flume::RecvTimeoutError::Disconnected) => {
 					reader_done = true;
-					if exit_code.is_none() {
+					if exit_status.is_none() {
 						std::thread::sleep(wait_duration);
 					}
 				},
 			}
 		}
 	}
-	if exit_code.is_none() {
+	if exit_status.is_none() {
 		if terminate_requested {
 			if let Some(status) = child
 				.try_wait()
 				.map_err(|err| to_napi_with("Failed checking PTY status", err))?
 			{
-				exit_code = Some(i32::try_from(status.exit_code()).unwrap_or(i32::MAX));
+				exit_status = Some(exit_status_parts(&status));
 			}
 		} else {
 			// On Windows, child.wait() can hang indefinitely in ConPTY.
@@ -552,12 +612,12 @@ fn run_pty_sync(
 			#[cfg(windows)]
 			{
 				let wait_start = Instant::now();
-				while exit_code.is_none() && wait_start.elapsed() < Duration::from_secs(5) {
+				while exit_status.is_none() && wait_start.elapsed() < Duration::from_secs(5) {
 					if let Some(status) = child
 						.try_wait()
 						.map_err(|err| to_napi_with("Failed checking PTY status", err))?
 					{
-						exit_code = Some(i32::try_from(status.exit_code()).unwrap_or(i32::MAX));
+						exit_status = Some(exit_status_parts(&status));
 						break;
 					}
 					std::thread::sleep(Duration::from_millis(50));
@@ -568,7 +628,7 @@ fn run_pty_sync(
 				let status = child
 					.wait()
 					.map_err(|err| to_napi_with("Failed waiting PTY process", err))?;
-				exit_code = Some(i32::try_from(status.exit_code()).unwrap_or(i32::MAX));
+				exit_status = Some(exit_status_parts(&status));
 			}
 		}
 	}
@@ -635,7 +695,9 @@ fn run_pty_sync(
 	if reader_done {
 		let _ = reader_thread.join();
 	}
-	Ok(PtyRunResult { exit_code, cancelled, timed_out })
+	let (exit_code, signal) =
+		exit_status.map_or((None, None), |(code, signal)| (Some(code), signal));
+	Ok(PtyRunResult { exit_code, signal, cancelled, timed_out })
 }
 
 fn emit_chunk(text: &str, callback: Option<&ThreadsafeFunction<String>>) {
