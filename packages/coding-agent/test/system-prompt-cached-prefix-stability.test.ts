@@ -85,6 +85,15 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 		const blockZero = systemPrompt[0] as string;
 
 		expect({ sha: sha(blockZero), length: blockZero.length }).toEqual({
+			// Updated 2026-09-12, deliberately: `909a57db336489da` / 10_748 ->
+			// `522f3fb5fb1c5d11` / 10_764 (+16).
+			//
+			// WHAT THE +16 IS. The conventions preamble opens `Keywords follow RFC 2119:`
+			// instead of `RFC 2119:`. Google's consumer Antigravity backend answers any
+			// system instruction carrying the upstream `<system-conventions>\nRFC 2119:
+			// MUST, ...` window with 429 RESOURCE_EXHAUSTED; see
+			// `the-system-prompt-never-carries-the-header-consumer-antigravity-rejects.test.ts`.
+			//
 			// Updated 2026-09-06, deliberately: `eaca56aa5c352dfe` / 10_743 ->
 			// `909a57db336489da` / 10_748 (+5).
 			//
@@ -193,8 +202,8 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 			//
 			// The one-time cost this gate exists to surface is real and was accepted:
 			// every conversation re-reads its prefix once after the release.
-			sha: "909a57db336489da",
-			length: 10_748,
+			sha: "522f3fb5fb1c5d11",
+			length: 10_764,
 		});
 	});
 
