@@ -258,7 +258,8 @@
 - The extension graph walk reads each module file from disk once; the CommonJS check on a candidate reuses the walk's read instead of opening the file again.
 - `veyyon --help` summarises `worktree` with the profile-scoped path `~/.veyyon/profiles/<name>/wt`, matching the command's own description.
 - Legacy `hindsight.dynamicBankId` and `hindsight.agentName` written as flat keys migrate to `hindsight.scoping` and `hindsight.bankId` and are dropped on rewrite instead of surviving as dead entries.
-- `accounts.loadBalancing` ships on again: a quota or rate-limit wall on the chosen account continues the turn on an idle account of the same provider, announced with both account names, instead of ending it on `Provider requested 1800000ms wait, exceeds retry.maxDelayMs`; the explicit account choice still leads while it has quota.
+- Antigravity turns from a consumer Google account (`aicode-consumers`) no longer fail with `429 RESOURCE_EXHAUSTED` on every request: the backend rejects any system instruction carrying the upstream oh-my-pi conventions header, so the preamble now opens `Keywords follow RFC 2119:` instead of `RFC 2119:`.
+- A Gemini or Antigravity 429 whose body is Google's generic `Resource has been exhausted (e.g. check quota)` / `RESOURCE_EXHAUSTED` is a per-minute throttle and retries on the same account after 45–75 seconds instead of being read as a 30-minute daily quota that exceeded `retry.maxDelayMs` and ended the turn; the "exhausted your capacity … quota will reset" body still reads as the daily wall.
 - Removing the retired `providers.parallelFetch` key no longer leaves an empty `providers:` section in the rewritten config.
 - A nested legacy `task.isolation.enabled` no longer overrides an explicit `task.isolation.mode` during migration.
 - Corrected comments that named a distribution channel or runtime API the project does not use; no behavior change.
@@ -381,7 +382,6 @@
 - An MCP server whose reconnects trip the breaker is reported on the operator channel with the server name and the suspension; the suspension was logged only.
 - A CommonJS extension (`module.exports = …`, or a transpiled module with `exports.__esModule`) runs instead of being reported as missing its default export; the wrapper mirrors Bun's `__esModule` interop.
 - A marketplace catalog entry the parser drops is reported with the plugin name, the failing field and the reason: `veyyon plugin marketplace add`/`update` print it to stderr and a session states it on the notice channel; the entry was skipped in silence and the cached catalog persisted without it.
-- `accounts.loadBalancing` ships on: with it off, a quota or rate-limit wall on the chosen account ended the turn on `Provider requested 1800000ms wait, exceeds retry.maxDelayMs` with an idle account of the same provider one row away; the explicit choice still leads while it has quota, and every move names both accounts.
 
 ### Removed
 
