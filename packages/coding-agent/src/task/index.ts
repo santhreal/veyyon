@@ -1762,7 +1762,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				});
 			};
 
-			const result = await runTask();
+			let result = await runTask();
 
 			let mergeSummary = "";
 			let changesApplied: boolean | null = null;
@@ -1772,10 +1772,15 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				mergeSummary = outcome.summary;
 				changesApplied = outcome.changesApplied;
 				mergedBranchForNestedPatches = outcome.mergedBranchForNestedPatches;
+				// The child did its work and the merge back did not land. Without
+				// this the run reads as a clean completion whose work is not in the
+				// tree; with it `classifyAgentOutcome` reports `merge-failed`.
+				if (outcome.failure !== undefined && !result.error) result = { ...result, error: outcome.failure };
 			}
 
 			// Apply nested repo patches (separate from parent git).
 			if (isIsolated && repoRoot) {
+				let nestedFailure: string | undefined;
 				mergeSummary += await applyEligibleNestedPatches({
 					result,
 					repoRoot,
@@ -1783,7 +1788,13 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					changesApplied,
 					mergedBranchForNestedPatches,
 					commitMessage: buildCommitMessageFn(),
+					onApplyFailure: error => {
+						nestedFailure = errorMessage(error);
+					},
 				});
+				if (nestedFailure !== undefined && !result.error) {
+					result = { ...result, error: `Merge failed: nested repository patches did not apply: ${nestedFailure}` };
+				}
 			}
 
 			// The orphan artifacts dir (fileless parent) is intentionally NOT deleted: it holds
@@ -1794,13 +1805,14 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			// transcript, so a study/backtest tool can enumerate a session's agents without
 			// scraping tool-result prose (GRAN-2). The child transcript path is derived exactly
 			// as the executor derives it: `<artifactsDir>/<id>.jsonl` (ONE PLACE).
+			const outcome = classifyAgentOutcome(result);
 			this.session.recordAgentSpawn?.({
 				agentId: result.id,
 				agentName: result.agent,
 				task: result.task,
 				sessionFile: path.join(effectiveArtifactsDir, sessionFileName(result.id)),
 				isolation: isIsolated ? isolationMode : "none",
-				status: result.aborted ? "cancelled" : result.exitCode === 0 ? "completed" : "failed",
+				status: outcome.kind === "aborted" ? "cancelled" : outcome.isError ? "failed" : "completed",
 				exitCode: result.exitCode,
 				durationMs: result.durationMs,
 				usage: result.usage,
@@ -1826,7 +1838,16 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		const outcome = classifyAgentOutcome(result);
 		const status = outcome.label;
 		const output = formatResultOutputFallback(result);
-		const outputCharCount = result.outputMeta?.charCount ?? output.length;
+		// `meta` counts the block the reader sees. When that block is the child's
+		// output, the artifact's numbers apply (the preview may be a slice of the
+		// `agent://` file); when the output was empty and stderr or a placeholder
+		// stands in for it, the artifact's `size="0B"` would describe text that is
+		// not shown.
+		const emittedMeta =
+			result.outputMeta && result.output.trim().length > 0
+				? result.outputMeta
+				: { lineCount: output.split("\n").length, charCount: output.length };
+		const outputCharCount = emittedMeta.charCount;
 		const fullOutputThreshold = 5000;
 		let preview = output;
 		let truncated = false;
@@ -1851,8 +1872,8 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			truncated,
 			meta: result.outputMeta
 				? {
-						lineCount: result.outputMeta.lineCount,
-						charSize: formatBytes(result.outputMeta.charCount),
+						lineCount: emittedMeta.lineCount,
+						charSize: formatBytes(emittedMeta.charCount),
 					}
 				: undefined,
 			mergeSummary,

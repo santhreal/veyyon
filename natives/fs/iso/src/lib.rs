@@ -392,8 +392,8 @@ pub const fn auto_order() -> &'static [BackendKind] {
 /// every host-available backend in fallback order, starting with `kind`, so
 /// callers can retry when a backend is unavailable for a specific filesystem
 /// path. `fell_back` is `true` when a `preferred` choice (or earlier automatic
-/// candidate) was unusable. `reason` carries the first unavailable probe's
-/// explanation when available.
+/// candidate) was unusable, and `reason` then carries the first unavailable
+/// probe's explanation; it is `None` whenever `fell_back` is `false`.
 #[derive(Debug, Clone)]
 pub struct Resolution {
 	pub kind:       BackendKind,
@@ -449,6 +449,7 @@ pub fn resolve(preferred: Option<BackendKind>) -> Resolution {
 		Some(p) => kind != p,
 		None => kind != auto_order()[0],
 	};
+	let reason = if fell_back { reason } else { None };
 
 	Resolution { kind, candidates, fell_back, reason }
 }

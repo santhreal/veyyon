@@ -20,7 +20,7 @@
  */
 import * as path from "node:path";
 import type * as natives from "@veyyon/natives";
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import type { ToolSession } from "../tools";
 import { generateCommitMessage } from "../utils/commit-message-generator";
 import * as git from "../utils/git";
@@ -37,6 +37,7 @@ import {
 	ensureIsolation,
 	getRepoRoot,
 	type IsolationHandle,
+	isolationModeName,
 	mergeTaskBranches,
 	type NestedRepoPatch,
 	TASK_BRANCH_PREFIX,
@@ -159,13 +160,31 @@ export async function runIsolatedSubprocess(opts: IsolatedRunOptions): Promise<S
 		const taskBaseline = structuredClone(opts.context.baseline);
 		handle = await ensureIsolation(opts.context.repoRoot, opts.agentId, opts.preferredBackend);
 		const isolationDir = handle.mergedDir;
-		const result = await runSubprocess({
+		// An explicit mode the host cannot honour runs on the next backend and
+		// says so; `auto` (preferredBackend undefined) asked the resolver to pick,
+		// so its choice is not a fallback.
+		const isolationFallback =
+			opts.preferredBackend !== undefined && handle.fellBack
+				? {
+						requested: isolationModeName(opts.preferredBackend),
+						actual: isolationModeName(handle.backend),
+						reason: handle.fallbackReason ?? "the requested backend is unavailable on this host",
+					}
+				: undefined;
+		if (isolationFallback) {
+			logger.warn("Isolation mode fell back to another backend", {
+				agentId: opts.agentId,
+				...isolationFallback,
+			});
+		}
+		const subprocessResult = await runSubprocess({
 			...opts.baseOptions,
 			worktree: isolationDir,
 			preloadedExtensionPaths: undefined,
 			preloadedNamedExtensionPaths: undefined,
 			preloadedCustomToolPaths: undefined,
 		});
+		const result: SingleResult = isolationFallback ? { ...subprocessResult, isolationFallback } : subprocessResult;
 		if (opts.mergeMode === "branch" && result.exitCode === 0) {
 			try {
 				const commitResult = await commitToBranch(
@@ -244,6 +263,13 @@ export interface IsolationMergeOutcome {
 	 * - `null`  — caller skipped the merge phase entirely (e.g. `apply=false`).
 	 */
 	changesApplied: boolean | null;
+	/**
+	 * One plain line stating why the merge did not land, present exactly when
+	 * `changesApplied === false`. A caller copies it onto `SingleResult.error`
+	 * so `classifyAgentOutcome` reports `merge-failed` instead of reading a
+	 * green completion whose work is not in the tree.
+	 */
+	failure?: string;
 	hadAnyChanges: boolean;
 	/** True iff the root branch actually merged — gates nested-repo patch application. */
 	mergedBranchForNestedPatches: boolean;
@@ -256,8 +282,22 @@ export interface IsolationMergeOutcome {
  * The caller decides whether to run this at all — eval `agent()` with
  * `apply=False` skips this step and surfaces the patch artifact / branch name
  * instead.
+ *
+ * When the run recorded an `isolationFallback`, the summary opens with a
+ * notification naming the requested and actual backends, so the reader learns
+ * the explicit mode was not honoured without reading a log.
  */
 export async function mergeIsolatedChanges(opts: IsolationMergeOptions): Promise<IsolationMergeOutcome> {
+	const outcome = await mergeRootChanges(opts);
+	const fallback = opts.result.isolationFallback;
+	if (!fallback) return outcome;
+	return {
+		...outcome,
+		summary: `\n\n<system-notification>Isolation fell back from ${fallback.requested} to ${fallback.actual}: ${fallback.reason}</system-notification>${outcome.summary}`,
+	};
+}
+
+async function mergeRootChanges(opts: IsolationMergeOptions): Promise<IsolationMergeOutcome> {
 	const { result, repoRoot, mergeMode } = opts;
 	try {
 		if (mergeMode === "branch") {
@@ -266,6 +306,7 @@ export async function mergeIsolatedChanges(opts: IsolationMergeOptions): Promise
 				return {
 					summary: `\n\n<system-notification>Branch merge failed before a task branch could be created: ${result.error}\nTask outputs are preserved but changes were not applied.${patchList}</system-notification>`,
 					changesApplied: false,
+					failure: `Merge failed: ${result.error}`,
 					hadAnyChanges: false,
 					mergedBranchForNestedPatches: false,
 				};
@@ -295,11 +336,13 @@ export async function mergeIsolatedChanges(opts: IsolationMergeOptions): Promise
 			const hadAnyChanges = changesApplied && mergeResult.merged.length > 0;
 
 			let summary: string;
+			let failure: string | undefined;
 			if (changesApplied) {
 				summary = hadAnyChanges ? `\n\nMerged branch: ${result.branchName}` : "\n\nNo changes to apply.";
 			} else {
 				const conflictPart = mergeResult.conflict ? `\nConflict: ${mergeResult.conflict}` : "";
 				summary = `\n\n<system-notification>Branch merge failed: ${result.branchName}.${conflictPart}\nThe unmerged branch remains for manual resolution.</system-notification>`;
+				failure = `Merge failed: branch ${result.branchName} did not merge${mergeResult.conflict ? ` (${mergeResult.conflict})` : ""}; the branch remains for manual resolution`;
 			}
 			if (mergeResult.stashConflict) {
 				summary += `\n\n<system-notification>${mergeResult.stashConflict}</system-notification>`;
@@ -309,7 +352,7 @@ export async function mergeIsolatedChanges(opts: IsolationMergeOptions): Promise
 			if (changesApplied) {
 				await cleanupTaskBranches(repoRoot, [result.branchName]);
 			}
-			return { summary, changesApplied, hadAnyChanges, mergedBranchForNestedPatches };
+			return { summary, changesApplied, failure, hadAnyChanges, mergedBranchForNestedPatches };
 		}
 
 		// Patch mode: apply the patch from a successful run. A failed or
@@ -360,6 +403,7 @@ export async function mergeIsolatedChanges(opts: IsolationMergeOptions): Promise
 		}
 
 		let summary: string;
+		let failure: string | undefined;
 		if (changesApplied) {
 			summary = hadAnyChanges ? "\n\nApplied patches: yes" : "\n\nNo changes to apply.";
 		} else {
@@ -367,13 +411,17 @@ export async function mergeIsolatedChanges(opts: IsolationMergeOptions): Promise
 				"<system-notification>Patches were not applied and must be handled manually.</system-notification>";
 			const patchList = result.patchPath ? `\n\nPatch artifact:\n- ${result.patchPath}` : "";
 			summary = `\n\n${notification}${patchList}`;
+			failure = result.patchPath
+				? `Merge failed: the patch did not apply to the parent tree; it is preserved at ${result.patchPath}`
+				: "Merge failed: the run produced no patch artifact to apply";
 		}
-		return { summary, changesApplied, hadAnyChanges, mergedBranchForNestedPatches: false };
+		return { summary, changesApplied, failure, hadAnyChanges, mergedBranchForNestedPatches: false };
 	} catch (mergeErr) {
 		const msg = errorMessage(mergeErr);
 		return {
 			summary: `\n\n<system-notification>Merge phase failed: ${msg}\nTask outputs are preserved but changes were not applied.</system-notification>`,
 			changesApplied: false,
+			failure: `Merge failed: ${msg}`,
 			hadAnyChanges: false,
 			mergedBranchForNestedPatches: false,
 		};
@@ -391,6 +439,13 @@ export interface NestedPatchApplyOptions {
 	mergedBranchForNestedPatches: boolean;
 	/** Optional AI commit-message callback for nested commits; falls back to a generic message. */
 	commitMessage?: (diff: string) => Promise<string | null>;
+	/**
+	 * Receives the error when the nested apply itself throws. The returned
+	 * summary already reports the failure to the reader; a caller that also
+	 * has to mark the run as failed (the task tool sets `SingleResult.error`)
+	 * reads it here rather than parsing the summary text.
+	 */
+	onApplyFailure?: (error: unknown) => void;
 }
 
 /**
@@ -416,8 +471,10 @@ export async function applyEligibleNestedPatches(opts: NestedPatchApplyOptions):
 		const warnings = await applyNestedPatches(repoRoot, nestedPatches, commitMessage);
 		if (warnings.length === 0) return "";
 		return `\n\n<system-notification>${warnings.join("\n")}</system-notification>`;
-	} catch {
-		// Nested patch failures are non-fatal to the parent merge.
+	} catch (error) {
+		// Nested patch failures do not undo the parent merge; the caller decides
+		// whether they fail the run.
+		opts.onApplyFailure?.(error);
 		return "\n\n<system-notification>Some nested repository patches failed to apply.</system-notification>";
 	}
 }

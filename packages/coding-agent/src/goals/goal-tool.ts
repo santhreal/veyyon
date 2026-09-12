@@ -54,6 +54,12 @@ export class GoalTool implements AgentTool<typeof goalSchema, GoalToolDetails> {
 	readonly strict = true;
 	readonly intent = "omit" as const;
 	/**
+	 * The tool rewrites the session's goal record and nothing in the workspace, the same tier as its
+	 * hidden siblings (`yield`, `resolve`, `report_finding`). Without a tier `normalizeDecision`
+	 * defaults to `exec`, which prompts in `ask-command` and is denied outright in plan mode.
+	 */
+	readonly approval = "read" as const;
+	/**
 	 * The tool's own card, as data. Declared here so the live tool carries it and any host that draws
 	 * a transcript reads it off the tool rather than from a terminal-side registry.
 	 */

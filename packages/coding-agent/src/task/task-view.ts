@@ -33,8 +33,6 @@ import type {
 	ViewTone,
 	ViewTreeLines,
 } from "@veyyon/view";
-// The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
-import { settings } from "../config/settings-instance";
 import {
 	type FindingPriority,
 	findingTitle,
@@ -524,6 +522,7 @@ function progressRows(
 	progress: AgentProgress,
 	place: NodePlace,
 	expanded: boolean,
+	showResolvedModelBadge: boolean,
 	frozen: boolean,
 	seen: WeakSet<object> | undefined,
 	nestedDepth: number,
@@ -590,7 +589,6 @@ function progressRows(
 		line.push(span(" "), { text: progress.status === "failed" ? "failed" : "aborted", badge: true, tone: iconTone });
 	}
 
-	const showBadge = settings.get("agent.showResolvedModelBadge");
 	if (progress.status === "running") {
 		if (!description) {
 			line.push(
@@ -598,9 +596,9 @@ function progressRows(
 				span(previewLine(sanitizeText(progress.assignment ?? progress.task), TOOL_DETAIL_WIDTH), "muted"),
 			);
 		}
-		appendAgentStats(line, { ...progress, showResolvedModelBadge: showBadge });
+		appendAgentStats(line, { ...progress, showResolvedModelBadge });
 	} else if (progress.status === "completed") {
-		appendAgentStats(line, { ...progress, showResolvedModelBadge: showBadge });
+		appendAgentStats(line, { ...progress, showResolvedModelBadge });
 	}
 
 	rows.push(openRow(place, line));
@@ -693,7 +691,9 @@ function progressRows(
 	const inflight = progress.inflightTaskDetails;
 	if (completedTaskCalls.length > 0 || inflight) {
 		const snapshots = inflight ? [...completedTaskCalls, inflight] : completedTaskCalls;
-		rows.push(...nestedTreeRows(snapshots, place.depth + 1, expanded, frozen, seen, nestedDepth));
+		rows.push(
+			...nestedTreeRows(snapshots, place.depth + 1, expanded, showResolvedModelBadge, frozen, seen, nestedDepth),
+		);
 	}
 
 	if (expanded && progress.status === "running") {
@@ -809,6 +809,7 @@ function resultRows(
 	result: SingleResult,
 	place: NodePlace,
 	expanded: boolean,
+	showResolvedModelBadge: boolean,
 	seen: WeakSet<object> | undefined,
 	nestedDepth: number,
 ): TaskRow[] {
@@ -865,7 +866,7 @@ function resultRows(
 		contextWindow: result.contextWindow,
 		cost: result.usage?.cost.total ?? 0,
 		resolvedModel: result.resolvedModel,
-		showResolvedModelBadge: settings.get("agent.showResolvedModelBadge"),
+		showResolvedModelBadge,
 	});
 	line.push(STATS_DOT, span(formatDuration(result.durationMs), "dim"));
 	if (result.truncated) line.push(span(" "), span("[truncated]", "warning"));
@@ -931,6 +932,7 @@ function resultRows(
 						dataArray as TaskToolDetails[],
 						place.depth + 1,
 						expanded,
+						showResolvedModelBadge,
 						undefined,
 						seen,
 						nestedDepth,
@@ -1065,6 +1067,7 @@ function nestedTreeRows(
 	detailsList: TaskToolDetails[],
 	depth: number,
 	expanded: boolean,
+	showResolvedModelBadge: boolean,
 	// Undefined excludes live progress from completed-result snapshots.
 	frozen: boolean | undefined,
 	seen: WeakSet<object> = new WeakSet<object>(),
@@ -1087,7 +1090,7 @@ function nestedTreeRows(
 			const hiddenCount = ordered.length - visible.length;
 			visible.forEach((result, index) => {
 				const last = hiddenCount === 0 && index === visible.length - 1;
-				rows.push(...resultRows(result, { depth, last }, expanded, seen, nestedDepth + 1));
+				rows.push(...resultRows(result, { depth, last }, expanded, showResolvedModelBadge, seen, nestedDepth + 1));
 			});
 			if (hiddenCount > 0) {
 				rows.push(openRow({ depth, last: true }, [span(formatMoreItems(hiddenCount, "agent"), "dim")]));
@@ -1102,7 +1105,9 @@ function nestedTreeRows(
 			const hiddenCount = ordered.length - visible.length;
 			visible.forEach((prog, index) => {
 				const last = hiddenCount === 0 && index === visible.length - 1;
-				rows.push(...progressRows(prog, { depth, last }, expanded, frozen, seen, nestedDepth + 1));
+				rows.push(
+					...progressRows(prog, { depth, last }, expanded, showResolvedModelBadge, frozen, seen, nestedDepth + 1),
+				);
 			});
 			if (hiddenCount > 0) {
 				rows.push(openRow({ depth, last: true }, [span(formatMoreItems(hiddenCount, "agent"), "dim")]));
@@ -1174,6 +1179,7 @@ function renderResult(result: TaskViewResult, context: ToolViewContext, rawArgs?
 	const expanded = context.expanded === true;
 	const partial = context.partial === true;
 	const frozen = context.frozen === true;
+	const showResolvedModelBadge = context.showResolvedModel === true;
 	const fallbackText = extractResultText(result.content);
 	const details = result.details;
 	const agentLabel = agentHeaderLabel(args);
@@ -1258,11 +1264,13 @@ function renderResult(result: TaskViewResult, context: ToolViewContext, rawArgs?
 		if (visible.length < ordered.length) {
 			rows.push(openRow(TOP, hiddenProgressSpans(ordered.slice(0, ordered.length - visible.length))));
 		}
-		for (const progress of visible) rows.push(...progressRows(progress, TOP, expanded, frozen, undefined, 0));
+		for (const progress of visible) {
+			rows.push(...progressRows(progress, TOP, expanded, showResolvedModelBadge, frozen, undefined, 0));
+		}
 	} else if (details.results && details.results.length > 0) {
 		const ordered = orderResultsForDisplay(details.results);
 		const visible = expanded ? ordered : selectCollapsedResults(ordered);
-		for (const res of visible) rows.push(...resultRows(res, TOP, expanded, undefined, 0));
+		for (const res of visible) rows.push(...resultRows(res, TOP, expanded, showResolvedModelBadge, undefined, 0));
 		if (visible.length < ordered.length) {
 			rows.push(openRow(TOP, [span(formatMoreItems(ordered.length - visible.length, "agent"), "dim")]));
 		}
@@ -1272,7 +1280,9 @@ function renderResult(result: TaskViewResult, context: ToolViewContext, rawArgs?
 		const supplemental = details.progress
 			? orderProgressForDisplay(details.progress.filter(p => !details.results.some(res => res.id === p.id)))
 			: [];
-		for (const progress of supplemental) rows.push(...progressRows(progress, TOP, expanded, frozen, undefined, 0));
+		for (const progress of supplemental) {
+			rows.push(...progressRows(progress, TOP, expanded, showResolvedModelBadge, frozen, undefined, 0));
+		}
 
 		const summary: ViewSpan[] = [{ text: "", symbol: "format.bracketLeft", tone: "dim" }];
 		const parts: ViewSpan[] = [];

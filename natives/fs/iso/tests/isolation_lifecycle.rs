@@ -191,10 +191,12 @@ fn test_candidate_resolution_and_fallback() {
 		"Rcopy must be the final auto_order fallback"
 	);
 
-	// Preferred available backend (Rcopy)
+	// Preferred available backend (Rcopy): no fallback, so no reason, even when a
+	// later automatic candidate probed unavailable on this host.
 	let res = resolve(Some(BackendKind::Rcopy));
 	assert_eq!(res.kind, BackendKind::Rcopy);
 	assert!(!res.fell_back);
+	assert!(res.reason.is_none(), "reason must be absent when no fallback happened");
 	assert!(res.candidates.contains(&BackendKind::Rcopy));
 
 	// Preferred unavailable backend on Linux (e.g. Apfs)

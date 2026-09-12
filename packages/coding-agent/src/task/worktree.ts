@@ -421,6 +421,32 @@ export function parseIsolationMode(mode: TaskIsolationMode): IsoBackendKind | un
 	}
 }
 
+/**
+ * The setting spelling of a backend the PAL reports, for messages that state
+ * which backend a task ran on. Inverse of {@link parseIsolationMode} over the
+ * canonical (non-legacy) names.
+ */
+export function isolationModeName(kind: IsoBackendKind): TaskIsolationMode {
+	switch (kind) {
+		case IsoBackendKind.Apfs:
+			return "apfs";
+		case IsoBackendKind.Btrfs:
+			return "btrfs";
+		case IsoBackendKind.Zfs:
+			return "zfs";
+		case IsoBackendKind.LinuxReflink:
+			return "reflink";
+		case IsoBackendKind.Overlayfs:
+			return "overlayfs";
+		case IsoBackendKind.Projfs:
+			return "projfs";
+		case IsoBackendKind.WindowsBlockClone:
+			return "block-clone";
+		case IsoBackendKind.Rcopy:
+			return "rcopy";
+	}
+}
+
 export interface IsolationHandle {
 	/** Merged view materialised by the backend; pass this to the task. */
 	mergedDir: string;
@@ -428,7 +454,7 @@ export interface IsolationHandle {
 	backend: IsoBackendKind;
 	/** True when the resolver downgraded from `preferred` to `backend`. */
 	fellBack: boolean;
-	/** Optional reason associated with `fellBack`. */
+	/** Why the downgrade happened; set when `fellBack` is true, `null` otherwise. */
 	fallbackReason: string | null;
 }
 
@@ -461,11 +487,12 @@ export async function ensureIsolation(
 		await fs.rm(baseDir, { recursive: true, force: true });
 		try {
 			await natives.isoStart(candidate, repoRoot, mergedDir);
+			const fellBack = candidate !== resolution.kind || resolution.fellBack;
 			return {
 				mergedDir,
 				backend: candidate,
-				fellBack: candidate !== resolution.kind || resolution.fellBack,
-				fallbackReason,
+				fellBack,
+				fallbackReason: fellBack ? fallbackReason : null,
 			};
 		} catch (err) {
 			await fs.rm(baseDir, { recursive: true, force: true });

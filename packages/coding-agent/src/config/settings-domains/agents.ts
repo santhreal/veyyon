@@ -99,8 +99,9 @@ export type AgentSettings = AgentLaneSettings;
  * The other bundled agents (scout, reviewer, librarian, designer, sonic) stay
  * off until the operator turns them on. They are still LISTED while off, each
  * with a line saying what it is for, because an agent you cannot see is one you
- * will never enable. A user-authored agent under `~/.veyyon/agents/` is on by
- * default: writing the file is the opt-in.
+ * will never enable. A user-authored agent under `~/.veyyon/agents/` is off by
+ * default too: writing the file makes it available, and its
+ * `agent.agents.<name>.enabled` row (or Settings → Agents → Roster) turns it on.
  */
 export const DEFAULT_ENABLED_BUNDLED_AGENT = "deep";
 
@@ -556,7 +557,7 @@ export const AGENTS_SETTINGS = {
 			group: "Isolation",
 			label: "Isolation Mode",
 			description:
-				"Filesystem isolation for spawned agents. Auto picks the best backend available on this host: a copy-on-write filesystem, then overlayfs or ProjFS, then a git worktree or a recursive copy.",
+				"Filesystem isolation for spawned agents. Auto picks the best backend available on this host: a copy-on-write filesystem, then overlayfs or ProjFS, then a git worktree or a recursive copy. A named backend the host cannot provide falls back the same way; the agent's result then opens with the backend it ran on and why, and the fallback is logged.",
 			options: [
 				{ value: "none", label: "None", description: "No isolation" },
 				{ value: "auto", label: "Auto", description: "The best backend available on this host" },

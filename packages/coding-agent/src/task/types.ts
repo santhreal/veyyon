@@ -6,7 +6,7 @@ import type { RetryRecoveryMode } from "../modes/retry-display";
 import type { AgentSessionEvent } from "../session/agent-session-types";
 import type { ConfiguredThinkingLevel } from "../thinking";
 import { DEFAULT_SPAWN_AGENT } from "./spawn-policy";
-import type { NestedRepoPatch } from "./worktree";
+import type { NestedRepoPatch, TaskIsolationMode } from "./worktree";
 
 /** Source of an agent definition */
 export type AgentSource = "bundled" | "user" | "project";
@@ -17,7 +17,7 @@ export const MAX_OUTPUT_BYTES = $envpos("VEYYON_TASK_MAX_OUTPUT_BYTES", 500_000)
 /** Maximum output lines per agent */
 export const MAX_OUTPUT_LINES = $envpos("VEYYON_TASK_MAX_OUTPUT_LINES", 5000);
 
-/** EventBus channel for raw agent events */
+/** EventBus channel for raw agent events. In-process only: `collab/host.ts` forwards the two `subagent` channels below and not this one, so its spelling is not wire vocabulary. */
 export const TASK_SUBAGENT_EVENT_CHANNEL = "task:agent:event";
 
 /** EventBus channel for aggregated agent progress. The string is a wire spelling a collab guest matches on; it does not change. */
@@ -481,6 +481,12 @@ export interface SingleResult {
 	branchBaseSha?: string;
 	/** Nested repo patches to apply after parent merge */
 	nestedPatches?: NestedRepoPatch[];
+	/**
+	 * Set when an explicit `agent.isolation.mode` could not be honoured and the
+	 * run used another backend. `auto` never reports one: the resolver picking
+	 * is what `auto` asks for.
+	 */
+	isolationFallback?: { requested: TaskIsolationMode; actual: TaskIsolationMode; reason: string };
 	/** Data extracted by registered subprocess tool handlers (keyed by tool name) */
 	extractedToolData?: Record<string, unknown[]>;
 	/**
