@@ -1067,7 +1067,7 @@ Applied whenever raw settings are loaded (profile config, `--config` overlays, a
 | `queueMode` | `steeringMode` |
 | `ask.timeout` in milliseconds (value `> 1000`) | seconds (divided by 1000), and the rewrite is logged with both values |
 | flat `theme: "<name>"` string | `theme.dark` / `theme.light` (slot chosen by luminance; built-in `light`/`dark` are dropped to use defaults) |
-| `task.isolation.enabled: true/false` | `agent.isolation.mode: auto/none` |
+| `task.isolation.enabled: true/false` | `agent.isolation.mode: auto/none`, unless an explicit `task.isolation.mode` is also set, which wins |
 | `task.simple` | removed |
 | legacy `task.isolation.mode` (`worktree`, `fuse-overlay`, `fuse-projfs`) | `rcopy`, `overlayfs`, `projfs` |
 | `task.eager` (`default` / `preferred` / `always`, or a boolean) | `agent.delegation` (`allowed` / `preferred` / `required`) |
@@ -1077,6 +1077,9 @@ Applied whenever raw settings are loaded (profile config, `--config` overlays, a
 | `task.disabledAgents` | one row per agent in `agent.agents` |
 | `task.agentModelOverrides` | Dropped and reported; configure per-agent `model` and `thinkingLevel` under `agent.agents.<name>` with `agent.sharedModel: false`, or set `model:` in agent frontmatter. |
 | `modelRoles.task` | `agent.model` (the `task` role is retired) |
+| `hindsight.dynamicBankId: true` (nested or flat spelling) | `hindsight.scoping: per-project` when no scoping is set; `false` sets nothing; the key is dropped |
+| `hindsight.agentName` (nested or flat spelling) | `hindsight.bankId` when no bankId is set and the name is not the product default; the key is dropped |
+| `providers.parallelFetch` | removed; an emptied `providers:` section is removed with it |
 | `lastChangelogVersion` | moved to a marker file and stripped from `config.yml` |
 | `collapseChangelog` | removed; startup no longer prints release notes, so there is nothing to collapse. Use `startup.updateNotice` to control the one-line notice that replaced it. |
 

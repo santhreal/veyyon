@@ -245,6 +245,10 @@
 
 ### Fixed
 
+- Legacy `hindsight.dynamicBankId` and `hindsight.agentName` written as flat keys migrate to `hindsight.scoping` and `hindsight.bankId` and are dropped on rewrite instead of surviving as dead entries.
+- `accounts.loadBalancing` ships on again: a quota or rate-limit wall on the chosen account continues the turn on an idle account of the same provider, announced with both account names, instead of ending it on `Provider requested 1800000ms wait, exceeds retry.maxDelayMs`; the explicit account choice still leads while it has quota.
+- Removing the retired `providers.parallelFetch` key no longer leaves an empty `providers:` section in the rewritten config.
+- A nested legacy `task.isolation.enabled` no longer overrides an explicit `task.isolation.mode` during migration.
 - Corrected comments that named a distribution channel or runtime API the project does not use; no behavior change.
 - A subagent that inherits the session's model shows that model and effort in its Subagents row, the task widget and the `/agents` roster, and keeps the badge when a follow-up turn wakes it.
 - An inherited subagent model's badge prints the effort the session settled on, so a parent running `auto` shows the resolved level rather than `auto`.

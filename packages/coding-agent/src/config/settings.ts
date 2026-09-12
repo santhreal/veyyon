@@ -760,7 +760,7 @@ class CodingAgentSettingsHooks implements SettingsStoreHooks {
 		const taskObj = raw.task as Record<string, unknown> | undefined;
 		const isolationObj = taskObj?.isolation as Record<string, unknown> | undefined;
 		if (isolationObj && "enabled" in isolationObj) {
-			if (typeof isolationObj.enabled === "boolean") {
+			if (typeof isolationObj.enabled === "boolean" && isolationObj.mode === undefined) {
 				isolationObj.mode = isolationObj.enabled ? "auto" : "none";
 			}
 			delete isolationObj.enabled;
@@ -948,6 +948,7 @@ class CodingAgentSettingsHooks implements SettingsStoreHooks {
 		const providersObj = raw.providers as Record<string, unknown> | undefined;
 		if (providersObj && "parallelFetch" in providersObj) {
 			delete providersObj.parallelFetch;
+			if (Object.keys(providersObj).length === 0) delete raw.providers;
 		}
 		delete raw["providers.parallelFetch"];
 
@@ -997,27 +998,33 @@ class CodingAgentSettingsHooks implements SettingsStoreHooks {
 		// - hindsight.agentName was only used as the agent slot in the legacy
 		//   dynamic tuple; if the user customised it we surface it as the new
 		//   bankId base when no explicit bankId is set.
+		// Both legacy keys are retired, so the dotted-key expansion leaves their flat
+		// spelling (`hindsight.dynamicBankId: true`, as `config set` writes it) alone;
+		// each is read from whichever spelling holds it and both spellings are dropped.
 		const hindsightObj = raw.hindsight as Record<string, unknown> | undefined;
-		if (hindsightObj) {
-			if ("dynamicBankId" in hindsightObj) {
-				if (!("scoping" in hindsightObj) && hindsightObj.dynamicBankId === true) {
-					hindsightObj.scoping = "per-project";
-				}
-				delete hindsightObj.dynamicBankId;
+		const flatDynamicBankId = raw["hindsight.dynamicBankId"];
+		const flatAgentName = raw["hindsight.agentName"];
+		if (hindsightObj || flatDynamicBankId !== undefined || flatAgentName !== undefined) {
+			const target = hindsightObj ?? {};
+			const dynamicBankId = target.dynamicBankId ?? flatDynamicBankId;
+			if (dynamicBankId === true && !("scoping" in target)) {
+				target.scoping = "per-project";
 			}
-			if ("agentName" in hindsightObj) {
-				const agentName = hindsightObj.agentName;
-				if (
-					!("bankId" in hindsightObj) &&
-					typeof agentName === "string" &&
-					agentName.trim().length > 0 &&
-					agentName !== "veyyon" &&
-					agentName !== "omp"
-				) {
-					hindsightObj.bankId = agentName;
-				}
-				delete hindsightObj.agentName;
+			delete target.dynamicBankId;
+			delete raw["hindsight.dynamicBankId"];
+			const agentName = target.agentName ?? flatAgentName;
+			if (
+				!("bankId" in target) &&
+				typeof agentName === "string" &&
+				agentName.trim().length > 0 &&
+				agentName !== "veyyon" &&
+				agentName !== "omp"
+			) {
+				target.bankId = agentName;
 			}
+			delete target.agentName;
+			delete raw["hindsight.agentName"];
+			if (Object.keys(target).length > 0) raw.hindsight = target;
 		}
 
 		// power.preventIdleSleep / power.preventSystemSleep / power.declareUserActive
