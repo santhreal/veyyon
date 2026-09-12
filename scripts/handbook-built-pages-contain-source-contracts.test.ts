@@ -18,6 +18,7 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { stripCode } from "./check-doc-links";
 
 const ROOT = path.resolve(import.meta.dir, "..");
 const SRC = path.join(ROOT, "docs", "handbook", "src");
@@ -253,7 +254,7 @@ interface SourceTarget {
 function sourceTargets(markdown: string): SourceTarget[] {
 	const targets: SourceTarget[] = [];
 	const pattern = /(!?)\[[^\]]*\]\(\s*<?([^\s)>]+)>?(?:\s+["'][^)]*["'])?\s*\)/g;
-	for (const match of withoutHtmlComments(markdown).matchAll(pattern)) {
+	for (const match of stripCode(withoutHtmlComments(markdown)).matchAll(pattern)) {
 		const target = match[2];
 		if (!target) continue;
 		targets.push({
@@ -393,6 +394,25 @@ describe("the source contract extractor follows visible Markdown semantics", () 
 			"The setting subagent model decides which model a spawned agent runs on by default",
 		]);
 		expect(sourceTargets(source)).toEqual([{ attribute: "href", target: "./models.html" }]);
+	});
+
+	it("ignores link and image examples inside code while retaining real destinations", () => {
+		const literal = "[label](target) ![preview](example.png)";
+		for (let width = 1; width <= 8; width++) {
+			const ticks = "`".repeat(width);
+			for (const embedded of new Set(["", "`".repeat(width - 1)])) {
+				const source = `Example: ${ticks}sample ${embedded}\n${literal}\ncontinued ${ticks}\n[real](./models.md)`;
+				expect(sourceTargets(source)).toEqual([{ attribute: "href", target: "./models.html" }]);
+			}
+		}
+		for (const marker of ["`", "~"]) {
+			for (let width = 3; width <= 8; width++) {
+				const fence = marker.repeat(width);
+				const other = marker === "`" ? "~" : "`";
+				const source = `${fence}md\n${literal}\n${other.repeat(width)}\n${literal}\n${marker.repeat(width - 1)}\n${literal}\n${fence}still-code\n${literal}\n${fence}\n![real](./real.png)`;
+				expect(sourceTargets(source)).toEqual([{ attribute: "src", target: "./real.png" }]);
+			}
+		}
 	});
 
 	/**
