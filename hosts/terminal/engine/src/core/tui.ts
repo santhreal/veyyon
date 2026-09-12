@@ -2751,7 +2751,8 @@ export class TUI extends Container {
 			chunkTo = Math.min(windowTop, historyEnd);
 		} else if (
 			frameLength <= this.#committedRows ||
-			(frameLength - this.#committedRows < height && cursorMarkers.some(marker => marker.row >= this.#committedRows))
+			(frameLength - this.#committedRows < height &&
+				(prevWindowTop < this.#committedRows || cursorMarkers.some(marker => marker.row >= this.#committedRows)))
 		) {
 			// Tail re-anchor (a direct terminal may instead take the
 			// divergenceRebuild full paint above when the prefix resynced):
@@ -2773,6 +2774,11 @@ export class TUI extends Container {
 			// so the next growth slides the window in place (`#emitUpdate`'s
 			// uncommitted-slide rewrite) until it passes the committed boundary,
 			// and only rows beyond that boundary ever scroll off into history.
+			// That slide is the third way in: a window that already shows
+			// committed rows (`prevWindowTop < #committedRows`) keeps the frame
+			// tail while the tail is still shorter than the viewport, cursor or
+			// no cursor — flooring it at the boundary now would paint a short
+			// window over rows the grid already shows, with blank rows under it.
 			// Lowering the index here is what made every insert/retract cycle
 			// under a tall running card append the same rows to native scrollback
 			// again — thousands of copies of one status row over a long turn.
