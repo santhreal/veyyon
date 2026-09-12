@@ -30,7 +30,7 @@ import { EventBus } from "../../utils/event-bus";
 // Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
 import { type CodingAgentApi, loadCodingAgentApi } from "../coding-agent-api";
 import { installLegacyPiSpecifierShim, loadLegacyPiModule } from "../plugins/legacy-pi-compat";
-import { getAllPluginExtensionPaths } from "../plugins/loader";
+import { getAllPluginExtensionPaths, getAllPluginHookPaths } from "../plugins/loader";
 import { resolvePath, withExitGuard } from "../utils";
 import type {
 	AssistantThinkingRenderer,
@@ -699,8 +699,12 @@ export async function discoverExtensionPaths(
 		});
 	}
 
-	// 3. Discover extension entry points from installed plugins
-	addPaths(await getAllPluginExtensionPaths(cwd, agentDir ? pluginsRootFor(agentDir) : undefined));
+	// 3. Discover extension and hook entry points from installed plugins. A
+	// manifest `hooks` entry is a hook factory exactly like a discovered
+	// `hooks/*.ts` file above, and binds through the same runner.
+	const pluginsRoot = agentDir ? pluginsRootFor(agentDir) : undefined;
+	addPaths(await getAllPluginExtensionPaths(cwd, pluginsRoot));
+	addPaths(await getAllPluginHookPaths(cwd, pluginsRoot));
 	// 4. Explicitly configured paths
 	for (const configuredPath of configuredPaths) {
 		const resolved = resolvePath(configuredPath, cwd);

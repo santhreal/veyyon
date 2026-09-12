@@ -1843,8 +1843,12 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				gateSpawn,
 			),
 		);
+		// The same channel `reportExtensionLoadFailures` uses: a tool with a syntax error, a
+		// bad default export, or a name another tool already took was dropped with a line in
+		// the file log and nothing on the surface, so the tool was absent with no explanation.
 		for (const { path, error } of customToolsLoadResult.errors) {
 			logger.error("Custom tool load failed", { path, error });
+			operatorNotices.error("tools", `${path}: ${error}`);
 		}
 		if (customToolsLoadResult.tools.length > 0) {
 			customTools.push(...customToolsLoadResult.tools.map(loaded => loaded.tool));
@@ -2293,6 +2297,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		if (!options.disableExtensionDiscovery) {
 			for (const { path, error } of customCommandsResult.errors) {
 				logger.error("Failed to load custom command", { path, error });
+				operatorNotices.error("commands", `${path}: ${error}`);
 			}
 		}
 

@@ -11,7 +11,7 @@ import { type ManifestHolder, manifestFromPackageJson } from "@veyyon/kernel/loa
 import { normalizePluginRuntimeConfig } from "@veyyon/kernel/loader/plugins/runtime-config";
 import type { InstalledPlugin, PluginRuntimeConfig, ProjectPluginOverrides } from "@veyyon/kernel/loader/plugins/types";
 import type { PluginManifest } from "@veyyon/plugin";
-import { errorMessage, getPluginsDir, getPluginsLockfile, isEnoent, logger } from "@veyyon/utils";
+import { errorMessage, getPluginsDir, getPluginsLockfile, isEnoent, logger, reportFault } from "@veyyon/utils";
 import { getConfigDirPaths } from "../../config";
 import { registerPluginCacheInvalidator, resolveActiveProjectRegistryPath } from "../../discovery/helpers";
 import { installLegacyPiSpecifierShim } from "./legacy-pi-compat";
@@ -74,6 +74,20 @@ async function loadProjectOverrides(cwd: string): Promise<ProjectPluginOverrides
 	return {};
 }
 /**
+ * A file the plugin roots depend on exists and cannot be read or parsed. The
+ * root carries on without it; the operator is told what was skipped and where.
+ */
+function reportUnreadablePluginFile(filePath: string, err: unknown, skipped: string): void {
+	reportFault({
+		source: "plugins",
+		text:
+			`Cannot read ${filePath}: ${errorMessage(err)}. Not loaded in this run: ${skipped}. ` +
+			"Fix: repair the file or reinstall the plugin with `veyyon plugin install`.",
+		context: { path: filePath, error: errorMessage(err) },
+	});
+}
+
+/**
  * Per-root enumeration of plugins from `<root>/node_modules`,
  * `<root>/package.json#dependencies`, and `<root>/veyyon-plugins.lock.json#plugins`.
  * Honors `projectOverrides.disabled` and `projectOverrides.features`. Returns an
@@ -95,7 +109,7 @@ async function collectPluginsAtRoot(
 	} catch (err) {
 		// Linked-only setups may have no `<root>/package.json` yet — that's
 		// fine, the lockfile still records the link.
-		if (!isEnoent(err)) throw err;
+		if (!isEnoent(err)) reportUnreadablePluginFile(pkgJsonPath, err, "the plugins it lists");
 	}
 
 	const lockPath = path.join(root, "veyyon-plugins.lock.json");
@@ -103,7 +117,7 @@ async function collectPluginsAtRoot(
 	try {
 		runtimeConfig = normalizePluginRuntimeConfig(await Bun.file(lockPath).json());
 	} catch (err) {
-		if (!isEnoent(err)) throw err;
+		if (!isEnoent(err)) reportUnreadablePluginFile(lockPath, err, "the linked plugins and enable state it records");
 		runtimeConfig = normalizePluginRuntimeConfig({});
 	}
 
@@ -125,7 +139,11 @@ async function collectPluginsAtRoot(
 			// Lockfile entry without a corresponding node_modules tree means the
 			// link was deleted out from under us; skip silently.
 			if (isEnoent(err)) continue;
-			throw err;
+			// A manifest that exists and cannot be read is that plugin's fault, not
+			// the root's: one broken package used to throw out of here and take
+			// every other plugin at this root, and the session, down with it.
+			reportUnreadablePluginFile(pluginPkgPath, err, `the plugin "${name}"`);
+			continue;
 		}
 
 		const manifest: PluginManifest | undefined = manifestFromPackageJson(pluginPkg);
@@ -414,10 +432,18 @@ function resolveManifestEntryFiles(joined: string, expandDirectory: boolean): st
 }
 
 /**
+ * Every manifest key whose entries resolve to files a loader imports. Each
+ * key has one consumer: `tools` the custom-tool loader, `commands` the
+ * custom-command loader, `hooks` and `extensions` the extension loader.
+ */
+export const PLUGIN_MANIFEST_ENTRY_KEYS = ["tools", "hooks", "commands", "extensions"] as const;
+export type PluginManifestEntryKey = (typeof PLUGIN_MANIFEST_ENTRY_KEYS)[number];
+
+/**
  * Generic path resolver for plugin manifest entries (tools, hooks, commands, extensions).
  * Handles both single-string and string[] base entries, plus feature-specific entries.
  */
-function resolvePluginPaths(plugin: InstalledPlugin, key: "tools" | "hooks" | "commands" | "extensions"): string[] {
+function resolvePluginPaths(plugin: InstalledPlugin, key: PluginManifestEntryKey): string[] {
 	const resolved: string[] = [];
 	for (const entry of resolvePluginManifestEntries(plugin, key)) {
 		if (entry.resolvedPath) {
@@ -436,7 +462,7 @@ function resolvePluginPaths(plugin: InstalledPlugin, key: "tools" | "hooks" | "c
  */
 export function resolvePluginManifestEntries(
 	plugin: InstalledPlugin,
-	key: "tools" | "hooks" | "commands" | "extensions",
+	key: PluginManifestEntryKey,
 ): Array<{ entry: string; resolvedPath: string | null }> {
 	const declared: Array<{ entry: string; resolvedPath: string | null }> = [];
 	const manifest = plugin.manifest;

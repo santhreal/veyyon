@@ -1257,7 +1257,16 @@ export class PluginManager {
 					}
 					continue;
 				}
-				throw err;
+				// The file is there and cannot be read or parsed: the exact defect the
+				// doctor exists to report, so it is a check on this plugin, not an abort.
+				checks.push({
+					name: `plugin:${name}`,
+					status: "error",
+					message:
+						`package.json cannot be read: ${errorMessage(err)}. ` +
+						"Fix: reinstall the plugin with `veyyon plugin install`, or repair the file.",
+				});
+				continue;
 			}
 			const manifest: PluginManifest | undefined = manifestFromPackageJson(pluginPkg);
 			const hasManifest = manifest !== undefined;

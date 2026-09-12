@@ -25,7 +25,7 @@ import {
 } from "../config/project-trust";
 import { type ConfiguredThinkingLevel, parseConfiguredThinkingLevel } from "../thinking";
 import { normalizeToolNames, TOOL } from "../tools/core/builtin-names";
-import { registerProvider } from "./capability";
+import { isForeignConfigImportEnabled, registerProvider } from "./capability";
 import type { ContextFile } from "./capability/context-file";
 import type { ExtensionModule } from "./capability/extension-module";
 import { invalidate as invalidateFsCache, readDirEntries, readFile } from "./capability/fs";
@@ -1218,7 +1218,11 @@ export async function listClaudePluginRoots(
 	const resolvedAgentDir = agentDir ?? getAgentDir();
 	// The agent dir is part of the key because the project-trust decision is per profile: without
 	// it, one profile's refusal would be served to a profile that had approved the same repository.
-	const cacheKey = `${home}:${resolvedProjectPath ?? ""}:${resolvedPluginsRoot}:${resolvedAgentDir}`;
+	// The foreign-config gate is part of the key because it selects whether the Claude Code
+	// registry below contributes roots: without it a load taken while the gate was off would be
+	// served, without those roots, after the operator turned it on.
+	const importForeign = isForeignConfigImportEnabled();
+	const cacheKey = `${home}:${resolvedProjectPath ?? ""}:${resolvedPluginsRoot}:${resolvedAgentDir}:${importForeign}`;
 	const cached = pluginRootsCache.get(cacheKey);
 	if (cached) return cached;
 
@@ -1227,15 +1231,20 @@ export async function listClaudePluginRoots(
 	const projectRoots: ClaudePluginRoot[] = [];
 
 	// ── Claude Code registry ──────────────────────────────────────────────────
-	const registryPath = path.join(home, ".claude", "plugins", "installed_plugins.json");
-	const content = await readFile(registryPath);
+	// This is the one source here that is another tool's configuration, so it follows
+	// `discovery.importForeignConfig`. The profile registry, the trusted project registry and
+	// `--plugin-dir` below are the operator's own and load at the default setting.
+	if (importForeign) {
+		const registryPath = path.join(home, ".claude", "plugins", "installed_plugins.json");
+		const content = await readFile(registryPath);
 
-	if (content) {
-		const registry = parseClaudePluginsRegistry(content);
-		if (!registry) {
-			warnings.push(`Failed to parse Claude Code plugin registry: ${registryPath}`);
-		} else {
-			collectRegistryRoots(registry, warnings, "user", roots);
+		if (content) {
+			const registry = parseClaudePluginsRegistry(content);
+			if (!registry) {
+				warnings.push(`Failed to parse Claude Code plugin registry: ${registryPath}`);
+			} else {
+				collectRegistryRoots(registry, warnings, "user", roots);
+			}
 		}
 	}
 

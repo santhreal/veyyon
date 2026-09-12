@@ -1224,6 +1224,54 @@ async function moduleRequiresNativeAddonUncached(modulePath: string): Promise<bo
 // import statement still join the graph.
 const EXTENSION_GRAPH_SPECIFIER_REGEX = /((?:from\s+|import\s+|import\s*\(\s*)["'])([^"'()\s]+)(["'])/g;
 
+const ESM_SYNTAX_REGEX = /^\s*(?:import\s|export\s|import\s*\()/m;
+const CJS_SYNTAX_REGEX = /\bmodule\.exports\b|\bexports\.[A-Za-z_$]|\brequire\s*\(/;
+
+/**
+ * Whether a source module is CommonJS: by extension when the extension states
+ * it, otherwise by shape (no `import`/`export` statement, and a `require`,
+ * `module.exports` or `exports.x` reference).
+ *
+ * Source served through a `Bun.plugin` `onLoad` hook is never given Bun's own
+ * CommonJS treatment: a `module.exports = factory` file arrives as an empty
+ * namespace, unevaluated, and the loader then reports "no default export" for
+ * an extension that was never run. The entry is therefore wrapped by
+ * {@link wrapCommonJsAsModule}, and every other CommonJS module in the graph is
+ * left off the hook so Bun's native loader evaluates it.
+ */
+function isCommonJsSource(filePath: string, source: string): boolean {
+	const ext = path.extname(filePath);
+	if (ext === ".cjs" || ext === ".cts") return true;
+	if (ext === ".mjs" || ext === ".mts") return false;
+	return !ESM_SYNTAX_REGEX.test(source) && CJS_SYNTAX_REGEX.test(source);
+}
+
+/**
+ * A CommonJS extension entry as an ES module: `module` and `exports` are
+ * declared, the body runs unchanged (Bun provides `require`, `__dirname` and
+ * `__filename` to an ES module), and `module.exports` is the default export,
+ * which is where the extension loader reads the factory from. A transpiled
+ * ES module (`exports.__esModule = true; exports.default = factory`) unwraps
+ * to its `default`, the same interop Bun's native loader applies to it.
+ */
+function wrapCommonJsAsModule(source: string): string {
+	return (
+		"const module = { exports: {} };\nlet exports = module.exports;\n" +
+		`${source}\n` +
+		'export default module.exports !== null && typeof module.exports === "object" && module.exports.__esModule === true && "default" in module.exports\n' +
+		"\t? module.exports.default\n\t: module.exports;\n"
+	);
+}
+
+/** {@link isCommonJsSource} over a file on disk; an unreadable file is not CommonJS, and the import that follows names it. */
+async function isCommonJsModule(modulePath: string): Promise<boolean> {
+	try {
+		return isCommonJsSource(modulePath, await Bun.file(modulePath).text());
+	} catch {
+		return false;
+	}
+}
+
 // Extension source realpaths already covered by an installed load-time hook for
 // each entry. `Bun.plugin()` registrations are process-global and permanent, so
 // reloads install supplemental hooks only for modules added to the graph since
@@ -1305,13 +1353,16 @@ async function collectExtensionModules(entryRealPath: string): Promise<Map<strin
 					const candidate = Bun.resolveSync(specifier, dir);
 					if (
 						hasSourceModuleExtension(candidate) &&
-						(!isRequired || (await moduleRequiresNativeAddon(candidate)))
+						(isRequired ? await moduleRequiresNativeAddon(candidate) : !(await isCommonJsModule(candidate)))
 					) {
 						resolved = await realpathOrSelf(candidate);
 					}
 				} else if (specifier.startsWith("#")) {
 					const candidate = await resolvePackageImportSpecifier(specifier, file);
-					if (candidate && (!isRequired || (await moduleRequiresNativeAddon(candidate)))) {
+					if (
+						candidate &&
+						(isRequired ? await moduleRequiresNativeAddon(candidate) : !(await isCommonJsModule(candidate)))
+					) {
 						resolved = candidate;
 					}
 				} else if (
@@ -1403,8 +1454,12 @@ function installExtensionGraphHook(
 					} else {
 						raw = await Bun.file(sourcePath).text();
 					}
+					const rewritten = await rewriteLegacyExtensionSource(raw, sourcePath, mtimeTag);
 					return {
-						contents: await rewriteLegacyExtensionSource(raw, sourcePath, mtimeTag),
+						contents:
+							sourcePath === entryRealPath && isCommonJsSource(sourcePath, rewritten)
+								? wrapCommonJsAsModule(rewritten)
+								: rewritten,
 						loader: getLoader(sourcePath),
 					};
 				});
@@ -1428,7 +1483,13 @@ function installExtensionGraphHook(
 					if (source === undefined) {
 						throw new Error(`Missing pre-rewritten CommonJS extension source: ${sourcePath}`);
 					}
-					return { contents: source, loader: getLoader(sourcePath) };
+					return {
+						contents:
+							sourcePath === entryRealPath && isCommonJsSource(sourcePath, source)
+								? wrapCommonJsAsModule(source)
+								: source,
+						loader: getLoader(sourcePath),
+					};
 				});
 			},
 		});

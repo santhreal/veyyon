@@ -28,6 +28,41 @@ export function parseSlashCommand(text: string): ParsedSlashCommand | null {
 	};
 }
 
+/** A slash invocation resolved against a command set: the command and the arguments that follow it. */
+export interface ResolvedSlashCommand<T> {
+	command: T;
+	/** The argument string with the command's own tokens removed. */
+	args: string;
+}
+
+/**
+ * Resolve a parsed invocation against a command set, including commands registered under a
+ * plugin namespace.
+ *
+ * Plugin providers register a command as `<plugin>:<name>` (`claude-style:cs-cmd`) while
+ * {@link parseSlashCommand} splits at the first `:`, so `/claude-style:cs-cmd arg` parses to
+ * `{ name: "claude-style", args: "cs-cmd arg" }` and an exact-name lookup can never match.
+ * When the bare name resolves nothing, the first argument token is joined back onto the name
+ * with `:` and looked up again; on a hit the remaining arguments are returned as the command's
+ * arguments. `/claude-style:cs-cmd arg` and `/claude-style cs-cmd arg` therefore both run the
+ * plugin's command with `arg`.
+ *
+ * `lookup` is the caller's own registry access; `undefined` means no command by that name.
+ */
+export function resolveSlashCommand<T>(
+	parsed: ParsedSlashCommand,
+	lookup: (name: string) => T | undefined,
+): ResolvedSlashCommand<T> | undefined {
+	const direct = lookup(parsed.name);
+	if (direct !== undefined) return { command: direct, args: parsed.args };
+	const firstToken = parsed.args.search(/\s/);
+	const subcommand = firstToken === -1 ? parsed.args : parsed.args.slice(0, firstToken);
+	if (subcommand.length === 0) return undefined;
+	const namespaced = lookup(`${parsed.name}:${subcommand}`);
+	if (namespaced === undefined) return undefined;
+	return { command: namespaced, args: firstToken === -1 ? "" : parsed.args.slice(firstToken + 1).trimStart() };
+}
+
 /**
  * What a slash COMMAND may be called, as opposed to a path that merely starts with `/`.
  *

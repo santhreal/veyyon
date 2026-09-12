@@ -9,7 +9,7 @@
  *   1. context files      `<agentDir>/AGENTS.md`
  *   2. authored skills    `<agentDir>/skills`
  *   3. managed skills     `<agentDir>/managed-skills`
- *   4. plugin skills      `<agentDir>/settings.json#extensions`
+ *   4. plugin skills      the profile's `extensions` setting
  *   5. marketplace config `<profile root>/plugins/installed_plugins.json`
  *
  * Every one of them used to resolve the process-global `getAgentDir()`, so an
@@ -33,6 +33,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { setSettingsInstance, settingsOrNull } from "@veyyon/coding-agent/config/settings-instance";
 import { loadCapability } from "@veyyon/coding-agent/discovery";
 import { PROFILE_AGENTS_GUIDANCE } from "@veyyon/coding-agent/discovery/agents-guidance";
 import {
@@ -46,7 +47,6 @@ import { type SlashCommand, slashCommandCapability } from "@veyyon/coding-agent/
 import { clearClaudePluginRootsCache } from "@veyyon/coding-agent/discovery/helpers";
 import { discoverCustomToolPaths } from "@veyyon/coding-agent/extensibility/custom-tools";
 import { discoverExtensionPaths } from "@veyyon/coding-agent/extensibility/extensions";
-import { discoverAndLoadHooks } from "@veyyon/coding-agent/extensibility/hooks";
 import { loadSkills } from "@veyyon/coding-agent/extensibility/skills";
 import { loadSlashCommands } from "@veyyon/coding-agent/extensibility/slash-commands";
 import { loadAllMCPConfigs } from "@veyyon/coding-agent/mcp/config";
@@ -71,6 +71,16 @@ const ACTIVE_MARKER = "Marker: ACTIVE-PROFILE-BYTES-91c2.\n";
 const NAMED_MARKER = "Marker: NAMED-PROFILE-BYTES-6ea7.\n";
 
 describe("a non-active agent dir gets its own layers, not the booted profile's", () => {
+	let previousSettings: Settings | null = null;
+
+	beforeEach(() => {
+		previousSettings = settingsOrNull();
+	});
+
+	afterEach(() => {
+		setSettingsInstance(previousSettings);
+	});
+
 	/**
 	 * LAYER 1, context files.
 	 *
@@ -188,23 +198,25 @@ describe("a non-active agent dir gets its own layers, not the booted profile's",
 	});
 
 	/**
-	 * LAYER 4, skills shipped by plugin packages the profile configured in its own
-	 * `settings.json#extensions`.
+	 * LAYER 4, skills shipped by the extension packages the `extensions` setting
+	 * names. The setting is read from the process settings store, which a session
+	 * initialises for its own agent dir (`Settings.init({ cwd, agentDir })`), so
+	 * each arm here installs the store that profile's session would have.
 	 *
-	 * The third skill provider and the last one threaded. Its roots come from the
-	 * profile's settings file plus that profile's installed plugins, so both
-	 * halves used to follow the booted profile.
+	 * Sub-discovery used to read `<agentDir>/settings.json` instead, the legacy
+	 * file the settings store migrates away from, so a package named in config.yml
+	 * loaded its extension module and none of its `skills/`.
 	 */
-	test("loads the named profile's plugin-shipped skills and none of the active profile's", async () => {
+	test("loads the plugin-shipped skills the profile's extensions setting names", async () => {
 		const f = fixture("plugins-active");
 		const namedAgentDir = f.agentDirFor("plugins-named");
 		const activePackage = writePluginPackage(f, path.join(f.home, "active-pkg"), "active-plugin-skill");
 		const namedPackage = writePluginPackage(f, path.join(f.home, "named-pkg"), "named-plugin-skill");
-		f.writeFile(path.join(f.agentDir, "settings.json"), JSON.stringify({ extensions: [activePackage] }));
-		f.writeFile(path.join(namedAgentDir, "settings.json"), JSON.stringify({ extensions: [namedPackage] }));
 
+		setSettingsInstance(Settings.isolated({ extensions: [activePackage] }));
 		const defaulted = await loadSkills({ cwd: f.cwd });
 		f.resetCaches();
+		setSettingsInstance(Settings.isolated({ extensions: [namedPackage] }));
 		const named = await loadSkills({ cwd: f.cwd, agentDir: namedAgentDir });
 
 		// The defaulted call is the control: without it, a loader that returned
@@ -284,8 +296,8 @@ describe("a non-active agent dir gets its own layers, not the booted profile's",
 	});
 
 	/**
-	 * Agent definitions shipped by an extension PACKAGE the profile declared in its own
-	 * `settings.json#extensions`, against the user-authored definitions, which are GLOBAL.
+	 * Agent definitions shipped by an extension PACKAGE the profile's `extensions`
+	 * setting names, against the user-authored definitions, which are GLOBAL.
 	 * Two sources feeding the same `discoverAgents` surface as the marketplace case below,
 	 * and each one resolved the process-active profile independently of the others, so
 	 * fixing the marketplace read alone would still have handed a spawned agent the wrong
@@ -304,14 +316,14 @@ describe("a non-active agent dir gets its own layers, not the booted profile's",
 		const namedPackage = path.join(f.home, "named-agent-pkg");
 		writeAgentDefinition(f, path.join(activePackage, "agents"), "active-ext-agent");
 		writeAgentDefinition(f, path.join(namedPackage, "agents"), "named-ext-agent");
-		f.writeFile(path.join(f.agentDir, "settings.json"), JSON.stringify({ extensions: [activePackage] }));
-		f.writeFile(path.join(namedAgentDir, "settings.json"), JSON.stringify({ extensions: [namedPackage] }));
 		writeAgentDefinition(f, getGlobalSubagentsDir(), "global-user-agent");
 		writeAgentDefinition(f, path.join(f.agentDir, "agents"), "retired-active-agent");
 		writeAgentDefinition(f, path.join(namedAgentDir, "agents"), "retired-named-agent");
 
+		setSettingsInstance(Settings.isolated({ extensions: [activePackage] }));
 		const defaulted = await discoverAgents(f.cwd, f.home);
 		f.resetCaches();
+		setSettingsInstance(Settings.isolated({ extensions: [namedPackage] }));
 		const named = await discoverAgents(f.cwd, f.home, namedAgentDir);
 
 		const own = (result: DiscoveryResult): string[] =>
@@ -330,10 +342,8 @@ describe("a non-active agent dir gets its own layers, not the booted profile's",
 		writeSkill(f, f.agentDir, "managed-skills", "active-managed");
 		writeSkill(f, namedAgentDir, "skills", "named-authored");
 		writeSkill(f, namedAgentDir, "managed-skills", "named-managed");
-		const activePackage = writePluginPackage(f, path.join(f.home, "all-active-pkg"), "active-plugin-skill");
 		const namedPackage = writePluginPackage(f, path.join(f.home, "all-named-pkg"), "named-plugin-skill");
-		f.writeFile(path.join(f.agentDir, "settings.json"), JSON.stringify({ extensions: [activePackage] }));
-		f.writeFile(path.join(namedAgentDir, "settings.json"), JSON.stringify({ extensions: [namedPackage] }));
+		setSettingsInstance(Settings.isolated({ extensions: [namedPackage] }));
 
 		const files = await discoverContextFiles(f.cwd, namedAgentDir);
 		const { skills } = await discoverSkills(f.cwd, namedAgentDir);
@@ -529,41 +539,17 @@ describe("loader-level layers follow the named profile, not the booted one", () 
 
 	/**
 	 * HOOKS, which run on every tool call, so the wrong profile's hook can block
-	 * or rewrite this session's tool traffic. Asserted on the LOADED hooks rather
-	 * than the discovered paths, so a hook that resolves but fails to import
-	 * cannot read as success.
-	 */
-	test("discoverAndLoadHooks loads the named profile's hooks and none of the active profile's", async () => {
-		const f = fixture("hooks-active");
-		const namedAgentDir = f.agentDirFor("hooks-named");
-		const activeHook = writeHook(f, f.agentDir, "active-hook");
-		const namedHook = writeHook(f, namedAgentDir, "named-hook");
-
-		const defaulted = await discoverAndLoadHooks([], f.cwd);
-		f.resetCaches();
-		const named = await discoverAndLoadHooks([], f.cwd, namedAgentDir);
-
-		expect(defaulted.errors).toEqual([]);
-		expect(named.errors).toEqual([]);
-		expect(defaulted.hooks.map(hook => hook.resolvedPath)).toEqual([activeHook]);
-		expect(named.hooks.map(hook => hook.resolvedPath)).toEqual([namedHook]);
-	});
-
-	/**
-	 * HOOKS AGAIN, through the path the APP actually runs.
-	 *
-	 * `discoverAndLoadHooks` above is a public package export with no in-repo
-	 * caller. The production consumer is `discoverExtensionPaths`, whose own
-	 * comment calls itself "the only production consumer of the capability": it
-	 * loads `hookCapability` and binds the JS/TS ones through the extension
-	 * runner. It also loads `extensionModuleCapability` in the same call, a
-	 * profile-scoped layer that was on nobody's list.
+	 * or rewrite this session's tool traffic. The production consumer is
+	 * `discoverExtensionPaths`, whose own comment calls itself "the only
+	 * production consumer of the capability": it loads `hookCapability` and
+	 * binds the JS/TS ones through the extension runner. It also loads
+	 * `extensionModuleCapability` in the same call, a profile-scoped layer that
+	 * was on nobody's list.
 	 *
 	 * Both loads shared one `loadOptions` that carried `cwd` and never an agent
-	 * dir, so both fell back to `getAgentDir()` and served the BOOTED profile.
-	 * The threading had landed on the function nothing calls and missed the one
-	 * that runs, which is why every layer-scope test above could pass while a
-	 * session rooted in another profile still ran the active profile's hooks.
+	 * dir, so both fell back to `getAgentDir()` and served the BOOTED profile,
+	 * which is why every layer-scope test above could pass while a session
+	 * rooted in another profile still ran the active profile's hooks.
 	 */
 	test("discoverExtensionPaths collects the named profile's hooks and extensions, not the active profile's", async () => {
 		const f = fixture("ext-active");

@@ -7,7 +7,7 @@ description: Use when creating a new veyyon hook. Covers HookAPI, event catalog,
 
 Hooks are event-driven interceptors that run alongside the agent loop. They are best used for cross-cutting concerns: safety policy, secret redaction, context pruning, audit logging. A hook module registers handlers via `pi.on(event, handler)` and can block tool execution, override tool output, or rewrite the message context before each LLM call.
 
-> **Relationship to extensions:** The hook subsystem (`HookAPI`) is the legacy API. The extension runner now handles everything hooks can do plus more. `ExtensionAPI` supports the hook event model plus extension-only events. Use `ExtensionAPI` for new work; use `HookAPI` only if you are maintaining an existing hook module.
+> **Relationship to extensions:** A hook module is an extension module discovered from a `hooks/` directory. The extension loader imports it and the extension runner drives its handlers, so the factory receives the runner's `ExtensionAPI`; `HookAPI` types the event and registration surface a hook module uses. `ExtensionAPI` adds extension-only events. Use `ExtensionAPI` for new work; `HookAPI` types an existing hook module.
 
 ## Factory signature
 

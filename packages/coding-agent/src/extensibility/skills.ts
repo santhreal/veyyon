@@ -10,6 +10,7 @@ import { type DiscoveredSkill, loadCapability } from "../discovery";
 import { PROVIDER_ID as NATIVE_SKILL_PROVIDER } from "../discovery/builtin";
 import { skillCapability } from "../discovery/capability/skill";
 import type { SourceMeta } from "../discovery/capability/types";
+import { PROVIDER_ID as CLAUDE_PLUGINS_SKILL_PROVIDER } from "../discovery/claude-plugins";
 import { compareSkillOrder, scanSkillsFromDir } from "../discovery/helpers";
 import { PROVIDER_ID as VEYYON_PLUGINS_SKILL_PROVIDER } from "../discovery/veyyon-plugins";
 import { skillsPrompts } from "../prompts/skills/rows";
@@ -25,13 +26,18 @@ export { getActiveSkills, resetActiveSkillsForTests, setActiveSkills } from "./a
  *   - `native`         — the profile's own `skills/` directory (skills you author)
  *   - `veyyon-managed` — auto-learn managed skills in the same profile
  *   - `veyyon-plugins` — skills bundled with plugins installed into the profile
+ *   - `claude-plugins` — skills in the profile's marketplace installs
+ *                        (`veyyon plugin install`), `--plugin-dir` roots and a
+ *                        trusted project plugin registry
  *
  * There is no cross-computer autodiscovery. Claude (`~/.claude`), Codex
- * (`~/.codex`), the Agent Skills standard (`~/.agent[s]`), GitHub, OpenCode, and
- * Claude marketplace plugins never contribute skills, and are never scanned:
- * this list is passed to `loadCapability` as an explicit provider allowlist, so
- * their directories are not read at all. Switching profiles switches the skill
- * set, because every provider here resolves through the active profile.
+ * (`~/.codex`), the Agent Skills standard (`~/.agent[s]`), GitHub and OpenCode
+ * never contribute skills, and are never scanned: this list is passed to
+ * `loadCapability` as an explicit provider allowlist, so their directories are
+ * not read at all. Claude Code's own marketplace registry
+ * (`~/.claude/plugins/installed_plugins.json`) is read by `claude-plugins` only
+ * when `discovery.importForeignConfig` is on. Switching profiles switches the
+ * skill set, because every provider here resolves through the active profile.
  *
  * This is a function, not a top-level array, because the provider-id constants
  * live in modules that participate in the discovery import cycle: reading them at
@@ -39,7 +45,12 @@ export { getActiveSkills, resetActiveSkillsForTests, setActiveSkills } from "./a
  * every binding is initialized.
  */
 export function profileSkillProviderIds(): readonly string[] {
-	return [NATIVE_SKILL_PROVIDER, MANAGED_SKILLS_PROVIDER_ID, VEYYON_PLUGINS_SKILL_PROVIDER];
+	return [
+		NATIVE_SKILL_PROVIDER,
+		MANAGED_SKILLS_PROVIDER_ID,
+		VEYYON_PLUGINS_SKILL_PROVIDER,
+		CLAUDE_PLUGINS_SKILL_PROVIDER,
+	];
 }
 export interface Skill {
 	name: string;
@@ -147,8 +158,9 @@ function realPathsOf(skills: readonly DiscoveredSkill[]): Promise<string[]> {
  *
  *   - `native`         reads `<agentDir>/skills`
  *   - `veyyon-managed` reads `<agentDir>/managed-skills`
- *   - `veyyon-plugins` reads `<agentDir>/settings.json#extensions` and that profile's
- *                      installed plugins, via `listVeyyonExtensionRoots`
+ *   - `veyyon-plugins` reads the `extensions` setting and that profile's installed
+ *                      plugins, via `listVeyyonExtensionRoots`
+ *   - `claude-plugins` reads that profile's marketplace registry, via `listClaudePluginRoots`
  *
  * Each of them used to call the process-global `getAgentDir()` instead, so a session
  * rooted in another profile silently ran on the booted profile's skills.

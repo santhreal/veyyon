@@ -52,7 +52,6 @@ packages/coding-agent/src/export/markit/converters/pdf/extract.ts
 packages/coding-agent/src/extensibility/coding-agent-api.ts
 packages/coding-agent/src/extensibility/custom-commands/loader.ts
 packages/coding-agent/src/extensibility/custom-tools/loader.ts
-packages/coding-agent/src/extensibility/hooks/loader.ts
 packages/coding-agent/src/extensibility/plugins/legacy-pi-compat.ts
 packages/coding-agent/src/extensibility/plugins/marketplace-auto-update.ts
 packages/coding-agent/src/main.ts

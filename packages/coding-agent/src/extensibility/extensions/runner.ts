@@ -4,7 +4,7 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { CredentialDisabledEvent, ImageContent, Model, ProviderResponseMetadata } from "@veyyon/ai";
 import type { SessionManager } from "@veyyon/kernel/session/session-manager";
-import { errorMessage, logger } from "@veyyon/utils";
+import { errorMessage, logger, reportFault } from "@veyyon/utils";
 import type { KeyId } from "@veyyon/utils/keys";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
@@ -250,7 +250,7 @@ export class ExtensionRunner {
 	#reloadHandler: () => Promise<void> = async () => {};
 	#shutdownHandler: ShutdownHandler = () => {};
 	#getMemoryFn?: () => MemoryRuntimeContext | undefined;
-	#commandDiagnostics: Array<{ type: string; message: string; path: string }> = [];
+	#reportedCommandFaults = new Set<string>();
 	#initialized = false;
 	/**
 	 * Buffer for `credential_disabled` events received via {@link emitCredentialDisabled}
@@ -520,31 +520,45 @@ export class ExtensionRunner {
 	}
 
 	getRegisteredCommands(reserved?: ReadonlySet<string>): RegisteredCommand[] {
-		this.#commandDiagnostics = [];
-
-		const commands = new Map<string, RegisteredCommand>();
+		const commands = new Map<string, { command: RegisteredCommand; path: string }>();
 		for (const ext of this.extensions) {
 			for (const command of ext.commands.values()) {
 				if (reserved?.has(command.name)) {
-					const message =
+					this.#reportCommandFault(
 						`The extension at ${ext.path} registers the command "/${command.name}", which is a built-in, ` +
-						`so the extension's version is not active and "/${command.name}" still runs the built-in. ` +
-						"Fix: rename it in that extension's source.";
-					this.#commandDiagnostics.push({ type: "warning", message, path: ext.path });
-					if (!this.hasUI()) {
-						logger.warn(message);
-					}
+							`so the extension's version is not active and "/${command.name}" still runs the built-in. ` +
+							"Fix: rename it in that extension's source.",
+						{ path: ext.path, command: command.name },
+					);
 					continue;
 				}
 
-				commands.set(command.name, command);
+				// Last registration wins, the same order `getCommand` resolves, so the
+				// extension already in the map is the one whose command never runs.
+				const shadowed = commands.get(command.name);
+				if (shadowed && shadowed.path !== ext.path) {
+					this.#reportCommandFault(
+						`The extension at ${shadowed.path} registers the command "/${command.name}", which the extension at ` +
+							`${ext.path} also registers, so only the latter's version runs. ` +
+							"Fix: rename it in one extension's source, or drop the extension you do not want.",
+						{ path: shadowed.path, shadowedBy: ext.path, command: command.name },
+					);
+				}
+				commands.set(command.name, { command, path: ext.path });
 			}
 		}
-		return [...commands.values()];
+		return [...commands.values()].map(entry => entry.command);
 	}
 
-	getCommandDiagnostics(): Array<{ type: string; message: string; path: string }> {
-		return this.#commandDiagnostics;
+	/**
+	 * A command-name collision is reported once per session, not once per listing:
+	 * this runs every time the command palette is drawn, and the collision does not
+	 * change between draws.
+	 */
+	#reportCommandFault(text: string, context: Record<string, unknown>): void {
+		if (this.#reportedCommandFaults.has(text)) return;
+		this.#reportedCommandFaults.add(text);
+		reportFault({ source: "extensions", text, context });
 	}
 
 	getCommand(name: string): RegisteredCommand | undefined {

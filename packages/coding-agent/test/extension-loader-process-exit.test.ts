@@ -1,5 +1,5 @@
 /**
- * Regression test for #3680: third-party extension / hook modules that call
+ * Regression test for #3680: third-party extension modules (hooks load through the same loader) that call
  * `process.exit()` at the top level must not terminate the host veyyon process.
  *
  * The harness intercepts the load via `withExitGuard`; this test pins that the
@@ -10,7 +10,6 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { loadExtensions } from "@veyyon/coding-agent/extensibility/extensions/loader";
-import { loadHooks } from "@veyyon/coding-agent/extensibility/hooks/loader";
 import { ExtensionExitError, withExitGuard } from "@veyyon/coding-agent/extensibility/utils";
 import { TempDir } from "@veyyon/utils";
 
@@ -48,23 +47,22 @@ describe("extension/hook loader process.exit guard (#3680)", () => {
 		expect(result.errors[0].error).toContain("process.exit(0)");
 	});
 
-	it("converts a top-level process.exit in a hook into a load error", async () => {
+	it("converts a top-level process.exit in a hook loaded as an extension into a load error", async () => {
 		const hook = writeModule("rogue-hook.ts", "process.exit(42)\n");
 		const cwd = project!.path();
 		const originalExit = process.exit;
 
-		const result = await loadHooks([hook], cwd);
+		const result = await loadExtensions([hook], cwd, undefined, undefined, { configuredPaths: [hook] });
 
 		expect(process.exit).toBe(originalExit);
-		expect(result.hooks).toEqual([]);
+		expect(result.extensions).toEqual([]);
 		expect(result.errors).toHaveLength(1);
 		expect(result.errors[0].path).toBe(hook);
 		expect(result.errors[0].error).toContain("process.exit(42)");
 	});
 
-	it("converts hard exits from extension and hook factories into load errors", async () => {
+	it("converts hard exits from extension factories into load errors", async () => {
 		const extension = writeModule("factory-exit-extension.ts", "export default function(pi) { process.exit(31); }\n");
-		const hook = writeModule("factory-exit-hook.ts", "export default function(pi) { process.exit(32); }\n");
 		const reallyExitExtension = writeModule(
 			"factory-really-exit-extension.ts",
 			"export default function(pi) { process.reallyExit(33); }\n",
@@ -76,7 +74,6 @@ describe("extension/hook loader process.exit guard (#3680)", () => {
 		const extensionResult = await loadExtensions([extension], cwd, undefined, undefined, {
 			configuredPaths: [extension],
 		});
-		const hookResult = await loadHooks([hook], cwd);
 		const reallyExitResult = await loadExtensions([reallyExitExtension], cwd, undefined, undefined, {
 			configuredPaths: [reallyExitExtension],
 		});
@@ -87,10 +84,6 @@ describe("extension/hook loader process.exit guard (#3680)", () => {
 		expect(extensionResult.errors).toHaveLength(1);
 		expect(extensionResult.errors[0].path).toBe(extension);
 		expect(extensionResult.errors[0].error).toContain("process.exit(31)");
-		expect(hookResult.hooks).toEqual([]);
-		expect(hookResult.errors).toHaveLength(1);
-		expect(hookResult.errors[0].path).toBe(hook);
-		expect(hookResult.errors[0].error).toContain("process.exit(32)");
 		expect(reallyExitResult.extensions).toEqual([]);
 		expect(reallyExitResult.errors).toHaveLength(1);
 		expect(reallyExitResult.errors[0].path).toBe(reallyExitExtension);

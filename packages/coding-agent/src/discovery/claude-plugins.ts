@@ -29,7 +29,7 @@ import {
 
 import { resolvePluginStdioPaths, substitutePluginRoot } from "./substitute-plugin-root";
 
-const PROVIDER_ID = "claude-plugins";
+export const PROVIDER_ID = "claude-plugins";
 const DISPLAY_NAME = "Claude Code Marketplace";
 const PRIORITY = 70; // Below claude.ts (80) so user .claude/ overrides win
 

@@ -2,7 +2,7 @@
  * Regression tests for #1496.
  *
  * The native `veyyon` discovery provider only walks `.veyyon/` and `~/.veyyon/agent/`.
- * Extension packages registered via `extensions:` in settings or
+ * Extension packages registered via `extensions:` in config.yml or
  * `--extension` on the CLI ship their own `skills/`, `hooks/`, `tools/`,
  * `commands/`, `rules/`, `prompts/`, and `.mcp.json`. The `veyyon-plugins`
  * provider (`src/discovery/veyyon-plugins.ts`) is what wires those sub-trees
@@ -16,6 +16,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getCapability } from "@veyyon/coding-agent/discovery/capability";
 import { clearCache } from "@veyyon/coding-agent/discovery/capability/fs";
 import { hookCapability } from "@veyyon/coding-agent/discovery/capability/hook";
@@ -33,7 +34,7 @@ import {
 	injectVeyyonExtensionCliRoots,
 } from "@veyyon/coding-agent/discovery/veyyon-extension-roots";
 import { removeSyncWithRetries, setAgentDir } from "@veyyon/utils";
-import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 
 const PROVIDER_ID = "veyyon-plugins";
 
@@ -41,11 +42,16 @@ let tempDir: string;
 let home: string;
 let project: string;
 let ext: string;
+// One owner for "undo a setAgentDir call" and for the Settings singleton: the
+// hand-rolled version this replaces could not express "the variable was absent"
+// and left the active profile cleared, so it handed every later file in the
+// process the default profile.
+let settingsState: SettingsTestState | undefined;
 
-// One owner for "undo a setAgentDir call": the hand-rolled version this replaces could
-// not express "the variable was absent" and left the active profile cleared, so it
-// handed every later file in the process the default profile.
-const dirOverrides = captureDirOverrides();
+/** Install `extensions: [...]` in the settings store, the source the provider reads. */
+async function configureExtensions(paths: string[]): Promise<void> {
+	await Settings.init({ inMemory: true, cwd: project, overrides: { extensions: paths } });
+}
 
 function writeFile(filePath: string, content: string): void {
 	fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -89,6 +95,7 @@ function buildExtensionPackage(packageDir: string): void {
 }
 
 beforeEach(() => {
+	settingsState = beginSettingsTest();
 	clearCache();
 	clearVeyyonExtensionCliRoots();
 	tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-plugins-"));
@@ -105,7 +112,8 @@ beforeEach(() => {
 afterEach(() => {
 	clearCache();
 	clearVeyyonExtensionCliRoots();
-	restoreDirOverrides(dirOverrides);
+	restoreSettingsTestState(settingsState);
+	settingsState = undefined;
 	removeSyncWithRetries(tempDir);
 });
 
@@ -113,15 +121,14 @@ function ctx(): LoadContext {
 	return { cwd: project, home, repoRoot: project };
 }
 
-// The extensions list lives in the PROFILE's `<agentDir>/settings.json`, which
-// `beforeEach` points at `home/.veyyon/agent`. It used to be written to
-// `project/.veyyon/settings.json`; `veyyon-extension-roots.ts` no longer reads
-// that file, because naming a package root is naming every skill, command,
-// rule, prompt, hook, tool and MCP server it ships, and a repository does not
-// get to do that. What each case here tests is unchanged: only the file the
-// list is written to moved.
-test("settings.json#extensions surfaces every sub-directory", async () => {
-	writeFile(path.join(home, ".veyyon", "agent", "settings.json"), JSON.stringify({ extensions: [ext] }));
+// The extensions list is the `extensions` setting in the profile's config.yml, read
+// through the settings store. It used to be read from `<agentDir>/settings.json`,
+// the legacy file `config/settings.ts` migrates away from, while the session's
+// extension-module loader read the store: a package named in config.yml loaded
+// its module and none of its sibling directories. What each case here tests is
+// unchanged: only the source the list is read from moved.
+test("the `extensions` setting surfaces every sub-directory", async () => {
+	await configureExtensions([ext]);
 
 	const [skills, commands, rules, prompts, hooks, tools, mcps] = await Promise.all([
 		loadFromPlugin<{ name: string }>(skillCapability.id, ctx()),
@@ -156,7 +163,7 @@ test("`--extension` CLI injection is wired through the same provider", async () 
 test("file-extension entrypoints contribute zero sub-surface (the file has no siblings to scan)", async () => {
 	const standaloneFile = path.join(tempDir, "standalone.ts");
 	fs.writeFileSync(standaloneFile, "export default function (_pi) {}\n");
-	writeFile(path.join(project, ".veyyon", "settings.json"), JSON.stringify({ extensions: [standaloneFile] }));
+	await configureExtensions([standaloneFile]);
 
 	const skills = await loadFromPlugin<{ name: string }>(skillCapability.id, ctx());
 	expect(skills).toHaveLength(0);
@@ -168,7 +175,7 @@ test("relative paths in settings resolve against the project cwd", async () => {
 	const target = path.join(project, relative);
 	fs.mkdirSync(path.dirname(target), { recursive: true });
 	fs.cpSync(ext, target, { recursive: true });
-	writeFile(path.join(home, ".veyyon", "agent", "settings.json"), JSON.stringify({ extensions: [`./${relative}`] }));
+	await configureExtensions([`./${relative}`]);
 
 	const skills = await loadFromPlugin<{ name: string }>(skillCapability.id, ctx());
 	expect(skills.map(s => s.name)).toContain("my-skill");
@@ -179,7 +186,7 @@ test(".mcp.json with bare entries (no command/url) records a warning and is skip
 		path.join(ext, ".mcp.json"),
 		JSON.stringify({ mcpServers: { broken: {}, ok: { command: "x", args: [] } } }),
 	);
-	writeFile(path.join(home, ".veyyon", "agent", "settings.json"), JSON.stringify({ extensions: [ext] }));
+	await configureExtensions([ext]);
 
 	const result = await pluginProvider(mcpCapability.id).load(ctx());
 	expect(result.items.map(s => (s as { name: string }).name)).toEqual(["ok"]);
@@ -196,7 +203,7 @@ test("relative path-like command and cwd resolve against the plugin config direc
 			},
 		}),
 	);
-	writeFile(path.join(home, ".veyyon", "agent", "settings.json"), JSON.stringify({ extensions: [ext] }));
+	await configureExtensions([ext]);
 
 	const servers = await loadFromPlugin<{ name: string; command?: string; cwd?: string }>(mcpCapability.id, ctx());
 	const local = servers.find(s => s.name === "local");

@@ -2643,14 +2643,9 @@
 			"wrapRegisteredTool",
 			"wrapRegisteredTools"
 		],
-		"@veyyon/coding-agent/extensibility/hooks": [
-			"HookRunner",
-			"HookToolWrapper",
-			"discoverAndLoadHooks",
-			"execCommand",
-			"loadHooks"
-		],
+		"@veyyon/coding-agent/extensibility/hooks": [],
 		"@veyyon/coding-agent/extensibility/plugins": [
+			"PLUGIN_MANIFEST_ENTRY_KEYS",
 			"PluginManager",
 			"SHORTHAND_PREFIXES",
 			"addInstalledPlugin",
@@ -4313,7 +4308,9 @@
 			"writeGlobalResourceLimit",
 			"writeRuntimeManifest"
 		],
-		"@veyyon/view": [],
+		"@veyyon/view": [
+			"UNICODE_SYMBOLS"
+		],
 		"@veyyon/web": [
 			"SITE_DECLARATION_ENTRIES",
 			"fetchGitHubApi",

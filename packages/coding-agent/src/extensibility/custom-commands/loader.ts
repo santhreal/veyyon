@@ -17,9 +17,11 @@ import { errorMessage, getAgentDir, getProjectDir, isEnoent, readdirIfPresent, r
 import * as arktype from "arktype";
 import * as zodModule from "zod/v4";
 import { getConfigDirs } from "../../config";
+import { pluginsRootFor } from "../../discovery/helpers";
 import { execCommand, withSessionCpuExec } from "../../exec/exec";
 // Runtime self-reference: dereference this namespace only inside loader functions to keep the index.ts cycle safe.
 import { loadCodingAgentApi } from "../coding-agent-api";
+import { getAllPluginCommandPaths } from "../plugins/loader";
 import { GreenCommand } from "./bundled/ci-green";
 import { ReviewCommand } from "./bundled/review";
 import type {
@@ -210,6 +212,14 @@ export async function discoverCustomCommands(
 				});
 			}
 		}
+	}
+
+	// A plugin manifest `commands` entry resolves straight to a module file
+	// (`resolvePluginCommandPaths` accepts a file or a directory holding an
+	// index), so it joins the list as-is rather than going through the
+	// `<commandsDir>/<name>/index.*` scan above.
+	for (const commandPath of await getAllPluginCommandPaths(cwd, agentDir ? pluginsRootFor(agentDir) : undefined)) {
+		addPath(commandPath, "plugin");
 	}
 
 	return { paths };
