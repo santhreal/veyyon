@@ -1128,7 +1128,7 @@ describe("resolveCliModel", () => {
 		expect(offResult.thinkingLevel).toBe("off");
 	});
 
-	test("returns a clear error when there are no models", () => {
+	test("an empty registry is reported as empty, not as an unknown model id", () => {
 		const registry = {
 			getAll: () => [],
 		} as unknown as Parameters<typeof resolveCliModel>[0]["modelRegistry"];
@@ -1140,7 +1140,8 @@ describe("resolveCliModel", () => {
 		});
 
 		expect(result.model).toBeUndefined();
-		expect(result.error).toContain("No models available");
+		expect(result.error).toContain("the registry is empty");
+		expect(result.error).toContain("not an unknown model id");
 	});
 
 	test("resolves provider-prefixed fuzzy patterns (openrouter/qwen -> openrouter model)", () => {
